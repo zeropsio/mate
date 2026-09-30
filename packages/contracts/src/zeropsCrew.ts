@@ -640,12 +640,16 @@ export type CrewCommand = typeof CrewCommand.Type;
  * - `tasks` — each task's crewmate's;
  * - `claim` — that of the crewmate the dev service's claim names;
  * - `tell` — the lead's, with a lead; else each crewmate mentioned;
- * - `crew` — every crewmate's: a run, the goal;
+ * - `crew` — every crewmate's: a run's start, resume or finish, the goal;
  * - `home` — every crewmate's, and every login the crew home names: Apply;
+ * - `stops` — none: any member may stop or pause a running crew, since a
+ *   colleague must be able to stop what they may not start (D6) — a runaway
+ *   crew on somebody's account never waits for them;
  * - `reads` — none: a draft's facts, lost work found, ports proposed.
  */
 export type CrewCommandReach =
   | { readonly kind: "reads" }
+  | { readonly kind: "stops" }
   | { readonly kind: "crew" }
   | { readonly kind: "home" }
   | { readonly kind: "crewmates"; readonly handles: ReadonlyArray<string> }
@@ -660,10 +664,11 @@ export function crewCommandReach(command: CrewCommand): CrewCommandReach {
     case "deliverDraft":
     case "addCrewPorts":
       return { kind: "reads" };
-    case "start":
     case "pause":
-    case "resume":
     case "stop":
+      return { kind: "stops" };
+    case "start":
+    case "resume":
     case "finish":
     case "briefSave":
       return { kind: "crew" };
@@ -742,6 +747,7 @@ export function crewReachLogins(
   const every = roster.crewmates.map((mate) => mate.login);
   switch (reach.kind) {
     case "reads":
+    case "stops":
       return [];
     case "crew":
       return logins(every);

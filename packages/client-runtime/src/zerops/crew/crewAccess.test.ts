@@ -138,10 +138,28 @@ describe("crewAccess — the crew exactly as closed as its conversations", () =>
       locked("claudeAgent"),
     ],
     [
-      "a run reaches everybody",
-      { _tag: "stop", runId: "run-3" },
+      "a run going on reaches everybody",
+      { _tag: "resume", runId: "run-3" },
       ["claudeAgent_eva"],
       locked("claudeAgent_eva"),
+    ],
+    [
+      "a run's finish reaches everybody",
+      { _tag: "finish", runId: "run-3" },
+      ["claudeAgent_eva"],
+      locked("claudeAgent_eva"),
+    ],
+    [
+      "stopping a run is every member's",
+      { _tag: "stop", runId: "run-3" },
+      ["claudeAgent", "claudeAgent_eva", "codex"],
+      null,
+    ],
+    [
+      "pausing a run is every member's",
+      { _tag: "pause", runId: "run-3" },
+      ["claudeAgent", "claudeAgent_eva", "codex"],
+      null,
     ],
     [
       "the goal reaches everybody",

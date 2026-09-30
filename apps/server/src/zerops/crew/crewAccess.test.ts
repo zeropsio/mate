@@ -21,7 +21,9 @@ import {
 import {
   KAREL,
   command,
+  dispatchedOf,
   everyCopyReady,
+  firstTurn,
   latest,
   snapshotWhere,
 } from "./testing/crewEngineSteps.ts";
@@ -110,6 +112,8 @@ const EVA_LOGIN: MateLogin = {
 
 const EVAS =
   "Claude Code · eva was signed in by another project member — only they can run it. Use a login you signed in yourself.";
+const THEIRS =
+  "This agent was signed in by another project member — only they can run it. Sign in with your own account first.";
 
 /** The lead on the Mate's default login; Backend on Eva's second Claude login. */
 const CREW_YAML = [
@@ -216,8 +220,13 @@ describe("the crew's door", () => {
             refused,
             [["claudeAgent", "claudeAgent_eva"]],
           ],
+          [{ _tag: "resume", runId: "run-gone" }, refused, [["claudeAgent", "claudeAgent_eva"]]],
+          [{ _tag: "finish", runId: "run-gone" }, refused, [["claudeAgent", "claudeAgent_eva"]]],
           [{ _tag: "briefSave", apply: "nextTurn" }, refused, [["claudeAgent", "claudeAgent_eva"]]],
           [{ _tag: "apply" }, refused, [["claudeAgent", "claudeAgent_eva"]]],
+          // Any member stops or pauses a crew (D6): neither reaches a login.
+          [{ _tag: "stop", runId: "run-gone" }, "let past", []],
+          [{ _tag: "pause", runId: "run-gone" }, "let past", []],
           // The lead's own login is Karel's: telling the crew goes to the lead.
           [
             { _tag: "tell", text: "Plan the pagination", mentions: [] },
@@ -248,6 +257,73 @@ describe("the crew's door", () => {
         );
       }),
     ),
+  );
+
+  it.live(
+    "lets a colleague who may run no login pause and stop a running crew, its turns interrupted, and nothing more",
+    () =>
+      withCrewEngine((world) =>
+        Effect.gen(function* () {
+          yield* Ref.set(world.logins, new Map([[EVA_LOGIN.id, EVA_LOGIN]]));
+          writeCrewHome(world.workspace, {
+            "crew.yaml": CREW_YAML,
+            "jobs/lead.md": "Plan the work.\n",
+          });
+          yield* command({ _tag: "apply" });
+          yield* eventually(Effect.map(latest, everyCopyReady));
+          yield* command({
+            _tag: "start",
+            budgetUsd: 5,
+            timeLimitHours: 1,
+            stopAtUsagePercent: null,
+            landing: "person",
+            devGrant: false,
+            leadMayStart: false,
+          });
+          const runId = (yield* snapshotWhere((current) => current.run?.state === "running")).run!
+            .id;
+          const thread = yield* firstTurn(world, () => undefined);
+          // From here Karel stands for a colleague who may run neither login.
+          yield* Ref.set(
+            world.notTheirs,
+            new Map([
+              ["claudeAgent", THEIRS],
+              [EVA_LOGIN.id, EVAS],
+            ]),
+          );
+          const admittedBefore = (yield* Ref.get(world.admitted)).length;
+          yield* command({ _tag: "pause", runId });
+          const paused = (yield* snapshotWhere((current) => current.run?.state === "paused")).run!;
+          const resumed = yield* Effect.flip(command({ _tag: "resume", runId }));
+          const finished = yield* Effect.flip(command({ _tag: "finish", runId }));
+          yield* command({ _tag: "stop", runId });
+          const stopped = (yield* snapshotWhere((current) => current.run?.state === "stopped"))
+            .run!;
+          const interrupted = (yield* dispatchedOf(world, "thread.turn.interrupt")).filter(
+            (entry) => entry.threadId === thread,
+          );
+          assert.deepStrictEqual(
+            {
+              paused: [paused.reason, paused.startedBy],
+              resumed: [resumed.reason, resumed.detail],
+              finished: finished.reason,
+              stopped: stopped.state,
+              // One interrupt for the pause, and one for the stop.
+              interrupted: interrupted.length,
+              // The crew's interrupts ask admission nothing: a turn's interrupt is every member's.
+              admitted: (yield* Ref.get(world.admitted)).slice(admittedBefore),
+            },
+            {
+              paused: ["person", "user-karel"],
+              resumed: ["not-allowed", THEIRS],
+              finished: "not-allowed",
+              stopped: "stopped",
+              interrupted: 2,
+              admitted: [],
+            },
+          );
+        }),
+      ),
   );
 
   it.live("judges a write to the crew home on the logins of what it changes", () =>

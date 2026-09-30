@@ -306,9 +306,9 @@ describe("CrewCommand", () => {
 const REACH: { readonly [Tag in CrewCommand["_tag"]]: CrewCommandReach } = {
   apply: { kind: "home" },
   start: { kind: "crew" },
-  pause: { kind: "crew" },
+  pause: { kind: "stops" },
   resume: { kind: "crew" },
-  stop: { kind: "crew" },
+  stop: { kind: "stops" },
   finish: { kind: "crew" },
   briefSave: { kind: "crew" },
   message: { kind: "crewmates", handles: ["backend"] },
@@ -378,6 +378,7 @@ const LEADLESS: CrewLoginRoster = {
 describe("crewReachLogins", () => {
   it.each([
     ["reads nothing", { kind: "reads" }, ROSTER, []],
+    ["reaches nobody's to stop or pause the crew", { kind: "stops" }, ROSTER, []],
     ["every crewmate's", { kind: "crew" }, ROSTER, ["claudeAgent", "claudeAgent-eva", "codex"]],
     [
       "every crewmate's and every one the crew home names",
