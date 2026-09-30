@@ -393,16 +393,35 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     };
   }, []);
 
+  // A list the pane keeps (`KeptTimelines`): out of sight while the person
+  // is elsewhere, shown again when they come back.
+  const kept = use(KeptTimelineContext);
   // Where the person left off: the last visit this conversation remembers,
-  // read once as it opens — only when something came since — so the line
-  // marks what is new and never follows the reader around.
-  const [newSince] = useState(() => {
+  // read as it opens — and as a kept list shows again — only when something
+  // came since, so the line marks what is new and never follows the reader
+  // around.
+  const readNewSince = () => {
     const visitedAt = useUiStateStore.getState().threadLastVisitedAtById[routeThreadKey];
     const completedAt = latestTurn?.completedAt;
     return visitedAt && completedAt && Date.parse(completedAt) > Date.parse(visitedAt)
       ? visitedAt
       : null;
+  };
+  const [newSince, setNewSince] = useState(readNewSince);
+  const readNewSinceRef = useRef(readNewSince);
+  useLayoutEffect(() => {
+    readNewSinceRef.current = readNewSince;
   });
+  const shownAgain = kept?.shown ?? true;
+  const firstShownRef = useRef(true);
+  useLayoutEffect(() => {
+    if (!shownAgain) return;
+    if (firstShownRef.current) {
+      firstShownRef.current = false;
+      return;
+    }
+    setNewSince(readNewSinceRef.current());
+  }, [shownAgain]);
   // A running turn's last words wait a moment once finished: the rows are
   // derived again when the newest wait runs out.
   const [nowMs, setNowMs] = useState(() => Date.now());
@@ -802,7 +821,6 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   // A list the pane keeps (`KeptTimelines`) hides as the person leaves and
   // shows again as they come back, its runs as they stood: the keeper folds
   // them once it lets the list go.
-  const kept = use(KeptTimelineContext);
   const foldsOfRef = useRef(routeThreadKey);
   useLayoutEffect(() => {
     foldsOfRef.current = routeThreadKey;

@@ -2194,7 +2194,11 @@ describe("KeptTimelines — a conversation seen a moment ago", () => {
     return null;
   };
   beforeEach(() => read.clear());
-  const pane = async (open: string, alive: (key: string) => boolean = () => true) => {
+  const pane = async (
+    open: string,
+    alive: (key: string) => boolean = () => true,
+    extra: Partial<Parameters<typeof MessagesTimeline>[0]> = {},
+  ) => {
     const { KeptTimelines } = await import("./KeptTimelines");
     return (
       <KeptTimelines
@@ -2207,6 +2211,7 @@ describe("KeptTimelines — a conversation seen a moment ago", () => {
           listRef,
           routeThreadKey: open,
           timelineEntries: [buildUserTimelineEntry(`Where were we in ${open}?`)],
+          ...extra,
         }}
       />
     );
@@ -2271,6 +2276,64 @@ describe("KeptTimelines — a conversation seen a moment ago", () => {
       const { LegendList } = await import("@legendapp/list/react");
       const rowsOfA = listOf(renderer!, KEY_A).findByType(LegendList).props.data;
       expect(JSON.stringify(rowsOfA)).toContain("Here is where.");
+    } finally {
+      await act(() => renderer?.unmount());
+    }
+  });
+
+  // The line over what is new is read as the person comes back, not only as
+  // the list first opened: an answer that came while they were away is
+  // marked, and a line from an earlier visit goes.
+  it("marks what came while the person was away when it shows again", async () => {
+    const { useUiStateStore } = await import("../../uiStateStore");
+    const place = await settle();
+    const turn = (completedAt: string) => ({
+      turnId: TurnId.make("turn-a"),
+      state: "completed" as const,
+      startedAt: "2026-09-30T09:00:00.000Z",
+      completedAt,
+    });
+    useUiStateStore.setState((state) => ({
+      threadLastVisitedAtById: {
+        ...state.threadLastVisitedAtById,
+        [KEY_A]: "2026-09-30T09:10:00.000Z",
+      },
+    }));
+    const seamNew = (renderer: ReactTestRenderer) =>
+      JSON.stringify(listOf(renderer, KEY_A).findByType(LegendListType).props.data).includes(
+        '"seam:new"',
+      );
+    const { LegendList: LegendListType } = await import("@legendapp/list/react");
+    let renderer: ReactTestRenderer | undefined;
+    await act(async () => {
+      renderer = create(
+        await pane(KEY_A, undefined, { latestTurn: turn("2026-09-30T09:05:00.000Z") }),
+      );
+    });
+    try {
+      await place(renderer!);
+      expect(seamNew(renderer!)).toBe(false);
+      const b = await pane(KEY_B);
+      await act(() => renderer!.update(b));
+      const answered = await pane(KEY_A, undefined, {
+        latestTurn: turn("2026-09-30T09:30:00.000Z"),
+        timelineEntries: [
+          buildUserTimelineEntry(`Where were we in ${KEY_A}?`),
+          {
+            ...buildAssistantTimelineEntry("It is done."),
+            id: "entry-answer",
+            createdAt: "2026-09-30T09:30:00.000Z",
+            message: {
+              ...buildAssistantTimelineEntry("It is done.").message,
+              id: MessageId.make("message-answer"),
+              createdAt: "2026-09-30T09:30:00.000Z",
+              updatedAt: "2026-09-30T09:30:00.000Z",
+            },
+          },
+        ],
+      });
+      await act(() => renderer!.update(answered));
+      expect(seamNew(renderer!)).toBe(true);
     } finally {
       await act(() => renderer?.unmount());
     }
