@@ -96,7 +96,6 @@ import {
   resolveTimelineScrollAnchor,
   shouldRepinTimelineEndAfterRowResize,
 } from "./timelineScrollAnchoring";
-import { useTimelineSwitch } from "./TimelineSwitch";
 import { MessageCopyButton } from "./MessageCopyButton";
 import {
   computeStableMessagesTimelineRows,
@@ -557,7 +556,6 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   const [timelineViewportElement, setTimelineViewportElement] = useState<HTMLDivElement | null>(
     null,
   );
-  const timelineSwitch = useTimelineSwitch();
   const [listReady, setListReady] = useState(false);
   const onListLoad = useCallback(() => setListReady(true), []);
   // The list stands where it stays: a reading position put back, or the end
@@ -788,8 +786,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   // A run the person watched stays open while they are here; once they leave
   // the conversation every run in it folds, so coming back it is folded from
   // the first frame and nothing moves (K7). It folds as the timeline goes,
-  // never while it is still on screen: the switch has taken its picture by
-  // then.
+  // never while it is still on screen.
   const foldsOfRef = useRef(routeThreadKey);
   useLayoutEffect(() => {
     foldsOfRef.current = routeThreadKey;
@@ -894,7 +891,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     setListReady(false);
     setListPlaced(false);
   }
-  // Placing (T1): from the list's mount until it stands where it stays — a
+  // Placing: from the list's mount until it stands where it stays — a
   // reading position put back, or the end reached — out of sight, then shown.
   // One loop, however often the rows change: a Mate streaming its answer
   // changes them every frame, and a restore restarted on each change never
@@ -1030,15 +1027,6 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     restoringReadingPosition,
     showsList,
   ]);
-  // The conversation says when it stands on screen where it stays (T1): its
-  // list placed — an empty conversation at once, one still on its way never.
-  // Until then the pane holds what it showed last over it.
-  const standsInPlace = showsList ? listPlaced : !(hideEmptyPlaceholder && loading);
-  useEffect(() => {
-    if (!standsInPlace || timelineSwitch === null) return;
-    const frame = requestAnimationFrame(() => timelineSwitch.painted());
-    return () => cancelAnimationFrame(frame);
-  }, [standsInPlace, timelineSwitch]);
   if (!showsList) {
     if (hideEmptyPlaceholder) {
       return (
@@ -1131,17 +1119,12 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   );
 });
 
-/** When a conversation slow to come shows its Mate at work: `--animate-held-appear`'s delay. */
-const MATE_AT_WORK_AFTER_MS = 400;
-
 /**
  * The pane of a conversation on its way. It occupies the pane with the theme
  * surface so a thread switch cannot punch a hole through to the window chrome
  * (white in light mode). A conversation slow to come — a Mate opened for the
  * first time, over the network — was a blank second: its Mate works in the
- * middle of the pane instead, shown only once the wait passes 400 ms. From
- * then the pane is something on screen: the switch keeps it there while the
- * rows that replace it are placed, as it keeps a conversation left (T1).
+ * middle of the pane instead, shown only once the wait passes 400 ms.
  */
 function TimelineLoadingPane({
   loading,
@@ -1152,17 +1135,6 @@ function TimelineLoadingPane({
   readonly routeThreadKey: string;
   readonly speaker: ConversationSpeaker;
 }) {
-  const timelineSwitch = useTimelineSwitch();
-  useEffect(() => {
-    if (!loading || timelineSwitch === null) return;
-    const shown = setTimeout(timelineSwitch.waiting, MATE_AT_WORK_AFTER_MS);
-    return () => clearTimeout(shown);
-  }, [loading, timelineSwitch]);
-  // As it goes, while it still stands on the page.
-  useLayoutEffect(() => {
-    if (timelineSwitch === null) return;
-    return () => timelineSwitch.placing();
-  }, [timelineSwitch]);
   return (
     <div
       className="flex h-full min-h-0 items-center justify-center bg-background"
