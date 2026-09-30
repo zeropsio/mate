@@ -22,6 +22,7 @@
  * runtime's, with the account's services.
  */
 import type { EnvironmentId } from "@t3tools/contracts";
+import type { ConnectionAdmission } from "../../connection/admission.ts";
 import type * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
@@ -146,6 +147,14 @@ export interface AccountEnvironmentPorts {
     /** The connect named the environment: the birth is over. */
     readonly promote: (projectId: string) => void;
   };
+  /**
+   * The environment the tab's route names as the stage starts — the reload's address — so the
+   * route's target is wanted before the records and auto-connect fill the exchange slots; a
+   * surface's `setRoute` follows it. Absent: the route is only what `setRoute` names.
+   */
+  readonly route?: () => EnvironmentId | null;
+  /** The tab's socket admission (`connection/admission.ts`): the route's socket opens first. */
+  readonly admission?: Pick<ConnectionAdmission, "prefer">;
 }
 
 // ── What surfaces read and ask ───────────────────────────────────────────────────────────────
@@ -616,9 +625,20 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
 
   // ── The stage ──────────────────────────────────────────────────────────────────────────────
 
+  /** What the socket admission was last told the route is. */
+  let preferred: EnvironmentId | null = null;
+  const preferRoute = () => {
+    const next = closed ? null : route;
+    if (next === preferred) return;
+    preferred = next;
+    ports.admission?.prefer(next);
+  };
+
   const start = (built: EnvironmentStores): EnvironmentStage => {
     stores = built;
     const { records, containers, driver } = built;
+    route = ports.route?.() ?? route;
+    preferRoute();
     const stops: Array<() => void> = [];
     driver.setVisible(!options.hidden);
     containers.setVisible(!options.hidden);
@@ -687,6 +707,7 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
       next: containers.next,
       setRoute: (environmentId) => {
         route = environmentId;
+        preferRoute();
         updateRoute();
       },
       setActiveOrganization: (organizationId) => {
@@ -737,6 +758,7 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
         activity.clear();
         driver.dispose();
         containers.dispose();
+        preferRoute();
       },
     };
   };

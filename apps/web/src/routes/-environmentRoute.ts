@@ -14,6 +14,17 @@ export function environmentIdFromPathname(pathname: string): string | null {
   return prefix;
 }
 
+/**
+ * The environment the address bar's route names, under the prefix the bundle is served at
+ * (`appBasePath`): what a reload opens on, read before the router has mounted. An address outside
+ * the prefix names none.
+ */
+export function environmentIdFromAddress(pathname: string, basePath: string): string | null {
+  if (basePath === "") return environmentIdFromPathname(pathname);
+  if (pathname !== basePath && !pathname.startsWith(`${basePath}/`)) return null;
+  return environmentIdFromPathname(pathname.slice(basePath.length) || "/");
+}
+
 /** The draft a `/draft/{draftId}` pathname opens, or null for every other route. */
 export function draftIdFromPathname(pathname: string): string | null {
   return /^\/draft\/([^/]+)\/?$/.exec(pathname)?.[1] ?? null;
