@@ -26,7 +26,7 @@ import { USAGE_LIMITS_COMMAND } from "@t3tools/shared/usageLimits";
 import { isZeropsInstanceRunnable } from "../ChatView.logic";
 import { useAgentLoginCancel } from "../../zerops/useAgentLoginCancel";
 import { useZeropsAgentSignInDialog } from "../../zerops/useZeropsAgentSignInDialog";
-import { ZEROPS_AGENT_NAMES } from "../zerops/ZeropsAgentAuthorizationDialog.logic";
+import { ZEROPS_AGENT_NAMES } from "../zerops/ZeropsAgentSignIn.logic";
 import { ZeropsAgentPickerPanel } from "../zerops/ZeropsAgentPickerPanel";
 import { CrewRunsOnControl } from "../zerops/crew/CrewRunsOnControl";
 import { crewmateMenuItems } from "../zerops/crew/CrewTellComposer.logic";
@@ -593,8 +593,6 @@ export interface ChatComposerProps {
   zeropsAgentAvailabilityByInstanceId?:
     | ReadonlyMap<ProviderInstanceId, ZeropsAgentAvailability>
     | undefined;
-  /** The Zerops project's display name, for the sign-in dialog's chip (`useZeropsAgentSignInDialog`). */
-  zeropsProjectName?: string | null | undefined;
 
   // Context window
   activeContextWindow: ContextWindowSnapshot | null;
@@ -702,7 +700,6 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     activeProjectDefaultModelSelection,
     activeThreadModelSelection,
     zeropsAgentAvailabilityByInstanceId,
-    zeropsProjectName,
     activeContextWindow,
     compactThreadUnavailable,
     compactDisabled,
@@ -851,9 +848,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       zeropsAgentAvailabilityByInstanceId,
     ],
   );
-  const zeropsSignInDialog = useZeropsAgentSignInDialog(environmentId, routeThreadRef, {
-    projectName: zeropsProjectName ?? null,
-  });
+  const zeropsSignInDialog = useZeropsAgentSignInDialog(environmentId, routeThreadRef);
   const cancelZeropsAgentLogin = useAgentLoginCancel(routeThreadRef);
   const openZeropsAgentSignIn = zeropsSignInDialog.openFor;
   // Signing an agent in is project-wide, not per session, so the panel must

@@ -33,7 +33,6 @@ import { ScrollArea } from "~/components/ui/scroll-area";
 import { buildZeropsServiceMap } from "@t3tools/client-runtime/zerops/serviceMap";
 import { crewPortOwners } from "@t3tools/client-runtime/zerops/projections/crew";
 import { useEnvironment } from "~/state/environments";
-import { useAgentLogin } from "../../zerops/useAgentLogin";
 import { useAgentLoginCancel } from "../../zerops/useAgentLoginCancel";
 import { useAgentSignOut } from "../../zerops/useAgentSignOut";
 import { useCrew } from "../../zerops/crew/useCrew";
@@ -50,7 +49,7 @@ import { zeropsMateAt } from "../../zerops/mateIdentities";
 import { useZeropsMateDirectory } from "../../zerops/useZeropsMates";
 import { useZeropsSessionOptional } from "../../zerops/ZeropsSessionProvider";
 import { ZeropsAgentAuthCard } from "./ZeropsAgentAuthCard";
-import { ZeropsAgentAuthorizationDialog } from "./ZeropsAgentAuthorizationDialog";
+import { ZeropsAgentSignInDialog } from "./ZeropsAgentSignIn";
 import { ZeropsMateUpdateControl } from "./ZeropsMateUpdateControl";
 import { ZeropsServiceMap } from "./ZeropsServiceMap";
 import { MicroLabel } from "./primitives";
@@ -78,7 +77,6 @@ export function ZeropsPanel({
   const [authorizationAgentId, setAuthorizationAgentId] = useState<
     ZeropsAgentAuthSnapshot["agents"][number]["agentId"] | null
   >(null);
-  const startAgentLogin = useAgentLogin(threadRef, { terminalSurface: "embedded" });
   const cancelAgentLogin = useAgentLoginCancel(threadRef);
   const agentSignOut = useAgentSignOut(threadRef?.environmentId ?? null);
   // Absent on an older Mate: missing means unsupported, as for every capability.
@@ -258,34 +256,26 @@ export function ZeropsPanel({
         </div>
       </ScrollArea>
       {authorizationAgent === undefined ? null : (
-        <ZeropsAgentAuthorizationDialog
-          agent={authorizationAgent}
-          onCancel={cancelAgentLogin}
-          onOpenChange={(open) => {
-            if (!open) setAuthorizationAgentId(null);
-          }}
-          onStart={startAgentLogin}
-          open
-          projectName={view?.project?.name ?? null}
+        <ZeropsAgentSignInDialog
+          agentId={authorizationAgent.agentId}
+          environmentId={threadRef?.environmentId ?? null}
+          mateName={mateIdentity?.name ?? null}
+          onClose={() => setAuthorizationAgentId(null)}
           threadRef={threadRef}
         />
       )}
       {authorizationLogin === undefined ? null : (
-        <ZeropsAgentAuthorizationDialog
-          agent={{ agentId: authorizationLogin.agent, login: authorizationLogin.login }}
-          loginId={authorizationLogin.id}
-          title={authorizationLogin.title}
-          onCancel={(agentId) => {
-            cancelAgentLogin(agentId, authorizationLogin.id);
+        <ZeropsAgentSignInDialog
+          agentId={authorizationLogin.agent}
+          environmentId={threadRef?.environmentId ?? null}
+          login={{
+            id: authorizationLogin.id,
+            agentId: authorizationLogin.agent,
+            title: authorizationLogin.title,
+            login: authorizationLogin.login,
           }}
-          onOpenChange={(open) => {
-            if (!open) setAuthorizationLoginId(null);
-          }}
-          onStart={(agentId) => {
-            startAgentLogin(agentId, authorizationLogin.id);
-          }}
-          open
-          projectName={view?.project?.name ?? null}
+          mateName={mateIdentity?.name ?? null}
+          onClose={() => setAuthorizationLoginId(null)}
           threadRef={threadRef}
         />
       )}

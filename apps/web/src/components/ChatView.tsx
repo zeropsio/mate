@@ -2368,21 +2368,12 @@ export default function ChatView(props: ChatViewProps) {
   // The environment, not the thread: a draft has one before it has the other,
   // and the header names the project either way. This host demands the
   // project's topology (`useProjectTopology`) — the panel demands the same
-  // ref-counted interest, so opening it costs nothing extra. Hoisted here
-  // (rather than beside `zeropsChrome` below, which also reads it) so the
-  // sign-in dialog's project-name chip is available from its very first call.
+  // ref-counted interest, so opening it costs nothing extra.
   const zeropsTopology = useProjectTopology(activeThreadEnvironmentId).view;
-  const zeropsProjectName = zeropsTopology?.project.name.trim() || null;
-  // The one sign-in dialog, shared with the Zerops empty state and the
-  // model picker's per-agent panels — see `useZeropsAgentSignInDialog`. Its
-  // `recordFailed` set (H13) also feeds the availability map below.
-  const zeropsSignInDialog = useZeropsAgentSignInDialog(
-    activeThreadEnvironmentId,
-    activeThreadRef,
-    {
-      projectName: zeropsProjectName,
-    },
-  );
+  // The one sign-in dialog, shared with the model picker's per-agent panels
+  // and the Crew tab — see `useZeropsAgentSignInDialog`. Its `recordFailed`
+  // set (H13) also feeds the availability map below.
+  const zeropsSignInDialog = useZeropsAgentSignInDialog(activeThreadEnvironmentId, activeThreadRef);
   const zeropsAgentAvailabilityByInstanceId = useMemo(
     () =>
       resolveZeropsProviderAvailability({
@@ -8392,7 +8383,6 @@ export default function ChatView(props: ChatViewProps) {
                               zeropsAgentAvailabilityByInstanceId={
                                 zeropsAgentAvailabilityByInstanceId
                               }
-                              zeropsProjectName={zeropsProjectName}
                               activeContextWindow={activeContextWindow}
                               compactThreadUnavailable={compactThreadUnavailable}
                               compactDisabled={compactDisabled}
