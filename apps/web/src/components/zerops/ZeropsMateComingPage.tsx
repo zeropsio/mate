@@ -610,8 +610,9 @@ export function MateComingFrame({
 }
 
 /**
- * The header's line as its conversation will draw it: the Mate's face and its name, and its
- * project in Zerops — once the platform has made one.
+ * The header's line: the Mate's face and its name. While a Mate comes up, nothing else — the
+ * header's way into Zerops stands with its conversation's header, which an existing Mate's
+ * stand-in draws in place so nothing moves when the conversation takes over.
  */
 export function MateComingHeader({
   mate,
@@ -660,7 +661,9 @@ export function MateComingHeader({
             <EllipsisIcon className="size-4" />
           </Button>
         )}
-        {mate.projectUrl === undefined ? null : <ZeropsProjectLink projectUrl={mate.projectUrl} />}
+        {standsIn === null || mate.projectUrl === undefined ? null : (
+          <ZeropsProjectLink projectUrl={mate.projectUrl} />
+        )}
       </div>
       {standsIn === null ? null : (
         <div

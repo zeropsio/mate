@@ -1332,3 +1332,19 @@ export function conversationContentPending(input: {
   if (input.messageCount > 0 || input.shell === null) return false;
   return input.shell.latestUserMessageAt !== null || input.shell.latestTurn !== null;
 }
+
+/**
+ * The error this view wrote on a conversation, while it still stands: until the conversation
+ * holds more than it did when the error was written. A turn ran since — whoever started it, from
+ * whichever of the person's browsers — and a refusal from before it no longer speaks for it.
+ */
+export function localThreadErrorStanding(
+  entry: { readonly message: string | null; readonly messages?: number | undefined } | undefined,
+  messageCount: number | undefined,
+): string | null {
+  if (entry === undefined || entry.message === null) return null;
+  if (entry.messages !== undefined && messageCount !== undefined && messageCount > entry.messages) {
+    return null;
+  }
+  return entry.message;
+}

@@ -74,6 +74,7 @@ import {
   shouldShowBranchMismatchBanner,
   shouldWriteThreadErrorToCurrentServerThread,
   conversationContentPending,
+  localThreadErrorStanding,
 } from "./ChatView.logic";
 
 const environmentId = EnvironmentId.make("environment-local");
@@ -2322,5 +2323,52 @@ describe("conversationContentPending", () => {
             : { latestUserMessageAt: userAt, latestTurn: turn === true ? {} : null },
       }),
     ).toBe(expected);
+  });
+});
+
+// A refusal this view was told of stands until the conversation moves on: a turn another of the
+// person's browsers started a moment later ran under the red line for as long as the view was
+// open (a live run, 2026-09-30).
+describe("localThreadErrorStanding", () => {
+  it.each([
+    { name: "nothing written", entry: undefined, messages: 0, expected: null },
+    {
+      name: "an error on an empty conversation",
+      entry: { message: "Refused.", messages: 0 },
+      messages: 0,
+      expected: "Refused.",
+    },
+    {
+      name: "a turn ran since",
+      entry: { message: "Refused.", messages: 0 },
+      messages: 2,
+      expected: null,
+    },
+    {
+      name: "an error on a conversation with messages, nothing since",
+      entry: { message: "Refused.", messages: 4 },
+      messages: 4,
+      expected: "Refused.",
+    },
+    {
+      name: "an error written before its conversation was read",
+      entry: { message: "Refused." },
+      messages: 3,
+      expected: "Refused.",
+    },
+    {
+      name: "a conversation not read",
+      entry: { message: "Refused.", messages: 0 },
+      messages: undefined,
+      expected: "Refused.",
+    },
+    {
+      name: "an error cleared",
+      entry: { message: null, messages: 0 },
+      messages: 0,
+      expected: null,
+    },
+  ])("$name", ({ entry, messages, expected }) => {
+    expect(localThreadErrorStanding(entry, messages)).toBe(expected);
   });
 });

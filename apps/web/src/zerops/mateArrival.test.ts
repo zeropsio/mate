@@ -1,6 +1,8 @@
 import { deriveBirthProgress, type BirthFacts } from "@t3tools/client-runtime/zerops/birthProgress";
 import { describe, expect, it } from "vite-plus/test";
 
+import { signInPhrase } from "~/components/zerops/ZeropsAgentSignIn.logic";
+
 import {
   arrivalFace,
   arrivalHeadline,
@@ -56,7 +58,12 @@ describe("arrivalSteps", () => {
         time: "0:47",
         note: "about 2 min",
       },
-      { id: "you", label: "You sign Wren in", state: "you", note: "next" },
+      {
+        id: "you",
+        label: "You sign Wren in with your Claude or ChatGPT subscription",
+        phrase: signInPhrase("Wren"),
+        state: "you",
+      },
     ]);
   });
 
@@ -172,7 +179,11 @@ describe("arrivalSteps", () => {
       { id: "git-hosting", label: "Git hosting", state: "done" },
       { id: "registry", label: "Acme Shop", state: "done" },
       { id: "workspace", label: "Vera's workspace", state: "active" },
-      { id: "you", label: "You sign Vera in", state: "you" },
+      {
+        id: "you",
+        label: "You sign Vera in with your Claude or ChatGPT subscription",
+        state: "you",
+      },
     ]);
     // Its clock starts with the project's own creation.
     expect(steps[2]?.time).toBe("1:12");
@@ -316,7 +327,7 @@ describe("the stage's words", () => {
     {
       kind: "coming",
       headline: "Wren is coming up on Beviro.",
-      sentence: "About two minutes. Then you sign it in.",
+      sentence: "About two minutes.",
       face: "sleep",
     },
     {
@@ -381,11 +392,11 @@ describe("the stage's words", () => {
   });
 
   it.each([
-    [undefined, "About two minutes. Then you sign it in."],
-    [20_000, "About two minutes. Then you sign it in."],
-    [75_000, "About a minute left. Then you sign it in."],
-    [140_000, "Almost there. Then you sign it in."],
-    [600_000, "Almost there. Then you sign it in."],
+    [undefined, "About two minutes."],
+    [20_000, "About two minutes."],
+    [75_000, "About a minute left."],
+    [140_000, "Almost there."],
+    [600_000, "Almost there."],
   ])("coming up %s ms in: %s", (elapsedMs, words) => {
     expect(comingSentence(elapsedMs)).toBe(words);
   });

@@ -16,7 +16,7 @@ describe("newMateNext — what happens once a Mate is added", () => {
       input: { groupName: "Beviro", botName: "Wren", recipe: "recipe" },
       steps: [
         ["Wren comes up", "about 1½–2 min"],
-        ["You sign Wren in", undefined],
+        ["You sign Wren in with your Claude or ChatGPT subscription", undefined],
         ["Wren sets up development, deploying Beviro's code", "about 6–10 min"],
       ],
       note: "You can leave meanwhile.",
@@ -26,7 +26,7 @@ describe("newMateNext — what happens once a Mate is added", () => {
       input: { groupName: "Beviro", botName: "Wren", recipe: "reading" },
       steps: [
         ["Wren comes up", "about 1½–2 min"],
-        ["You sign Wren in", undefined],
+        ["You sign Wren in with your Claude or ChatGPT subscription", undefined],
         ["Wren sets up development, deploying Beviro's code", "about 6–10 min"],
       ],
       note: "You can leave meanwhile.",
@@ -36,7 +36,7 @@ describe("newMateNext — what happens once a Mate is added", () => {
       input: { groupName: "Acme Docs", botName: "Quinn", recipe: "recipe" },
       steps: [
         ["Quinn comes up", "about 1½–2 min"],
-        ["You sign Quinn in", undefined],
+        ["You sign Quinn in with your Claude or ChatGPT subscription", undefined],
         ["Quinn sets up development, deploying Acme Docs' code", "about 6–10 min"],
       ],
       note: "You can leave meanwhile.",
@@ -46,7 +46,7 @@ describe("newMateNext — what happens once a Mate is added", () => {
       input: { groupName: "Beviro", botName: "Wren", recipe: "none" },
       steps: [
         ["Wren comes up", "about 1½–2 min"],
-        ["You sign Wren in", undefined],
+        ["You sign Wren in with your Claude or ChatGPT subscription", undefined],
         ["You tell Wren what to build", undefined],
       ],
       note: "You can leave while Wren comes up.",
@@ -56,7 +56,7 @@ describe("newMateNext — what happens once a Mate is added", () => {
       input: { groupName: "Beviro", botName: "   ", recipe: "recipe" },
       steps: [
         ["The Mate comes up", "about 1½–2 min"],
-        ["You sign the Mate in", undefined],
+        ["You sign the Mate in with your Claude or ChatGPT subscription", undefined],
         ["The Mate sets up development, deploying Beviro's code", "about 6–10 min"],
       ],
       note: "You can leave meanwhile.",
@@ -66,7 +66,7 @@ describe("newMateNext — what happens once a Mate is added", () => {
       input: { groupName: "Beviro", botName: "  Mira   Lin ", recipe: "none" },
       steps: [
         ["Mira Lin comes up", "about 1½–2 min"],
-        ["You sign Mira Lin in", undefined],
+        ["You sign Mira Lin in with your Claude or ChatGPT subscription", undefined],
         ["You tell Mira Lin what to build", undefined],
       ],
       note: "You can leave while Mira Lin comes up.",
@@ -94,7 +94,8 @@ describe("newProjectNext — what happens once a project is created", () => {
       steps: [
         ["Mate s.r.o. gets Git hosting, for all its projects", "about 3 min"],
         ["Acme Shop and Vera come up meanwhile", "about 1½–2 min"],
-        ["You sign Vera in and tell it what to build", undefined],
+        ["You sign Vera in with your Claude or ChatGPT subscription", undefined],
+        ["You tell Vera what to build", undefined],
       ],
     },
     {
@@ -107,7 +108,8 @@ describe("newProjectNext — what happens once a project is created", () => {
       },
       steps: [
         ["Acme Shop and Vera come up", "about 1½–2 min"],
-        ["You sign Vera in and tell it what to build", undefined],
+        ["You sign Vera in with your Claude or ChatGPT subscription", undefined],
+        ["You tell Vera what to build", undefined],
       ],
     },
     {
@@ -116,7 +118,8 @@ describe("newProjectNext — what happens once a project is created", () => {
       steps: [
         ["Your team gets Git hosting, for all its projects", "about 3 min"],
         ["The project and the Mate come up meanwhile", "about 1½–2 min"],
-        ["You sign the Mate in and tell it what to build", undefined],
+        ["You sign the Mate in with your Claude or ChatGPT subscription", undefined],
+        ["You tell the Mate what to build", undefined],
       ],
     },
   ] as const)("$case", ({ input, steps }) => {
@@ -151,4 +154,21 @@ describe("what happens next — in the person's words", () => {
       }
     },
   );
+});
+
+// The person's own step wears the brands it names (`signInPhrase`), in both dialogs.
+describe("what happens next — the sign-in step", () => {
+  it.each([
+    newMateNext({ groupName: "Beviro", botName: "Wren", recipe: "recipe" }),
+    newProjectNext({
+      projectName: "Acme Shop",
+      botName: "Wren",
+      organizationName: "Mate s.r.o.",
+      withGitHosting: false,
+    }),
+  ])("names the subscriptions it offers", (next) => {
+    const step = next.steps.find((each) => each.phrase !== undefined);
+    expect(step?.phrase?.map((part) => part.text).join("")).toBe(step?.words);
+    expect(step?.words).toBe("You sign Wren in with your Claude or ChatGPT subscription");
+  });
 });

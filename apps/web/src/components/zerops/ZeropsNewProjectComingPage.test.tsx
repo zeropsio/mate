@@ -1,5 +1,5 @@
 import { act, createElement as h, type ReactNode } from "react";
-import { create, type ReactTestRenderer } from "react-test-renderer";
+import { create, type ReactTestRenderer, type ReactTestRendererJSON } from "react-test-renderer";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { useNewProjectBirths, type NewProjectBirth } from "~/zerops/newProjectBirth";
@@ -88,10 +88,15 @@ function openView() {
 }
 
 /** Everything the view says, as one line. */
-const said = () =>
-  (tree?.root.findAll((node) => typeof node.type === "string") ?? [])
-    .flatMap((node) => node.children.filter((child) => typeof child === "string"))
-    .join(" ");
+/** Everything the view says, as its text reads. */
+const said = () => textOf(tree?.toJSON() ?? null).replace(/\s+/g, " ");
+
+function textOf(node: ReactTestRendererJSON | ReactTestRendererJSON[] | string | null): string {
+  if (node === null) return "";
+  if (typeof node === "string") return node;
+  if (Array.isArray(node)) return node.map(textOf).join(" ");
+  return (node.children ?? []).map(textOf).join(" ");
+}
 
 /** Each step as the arrival draws it, in order: which, and where it stands. */
 const steps = () =>
@@ -134,7 +139,7 @@ describe("a New project's first Mate, before its project exists", () => {
     ]);
     expect(said()).toContain("Git hosting");
     expect(said()).toContain("Vera's workspace");
-    expect(said()).toContain("You sign Vera in");
+    expect(said()).toContain("You sign Vera in with your Claude or ChatGPT subscription");
     expect(app.navigate).not.toHaveBeenCalled();
   });
 

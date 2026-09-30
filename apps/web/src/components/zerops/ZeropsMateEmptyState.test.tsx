@@ -322,13 +322,13 @@ describe("MateEmptyStateView — a Mate coming up", () => {
     const html = view({
       coming: {
         kind: "coming",
-        sentence: "About two minutes. Then you sign it in.",
+        sentence: "About two minutes.",
         below: progress,
       },
     });
     expect(stage(html)).toMatchObject({
       headline: "Fen is coming up on Acme Docs.",
-      sentence: "About two minutes. Then you sign it in.",
+      sentence: "About two minutes.",
       face: "sleep",
       signIn: false,
     });

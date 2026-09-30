@@ -211,7 +211,7 @@ import {
   agentOwnershipComposerNotice,
   resolveAgentOwnership,
 } from "@t3tools/client-runtime/zerops/agentOwnership";
-import { resolveSpentLogin, spentLoginRegistering } from "@t3tools/client-runtime/zerops/logins";
+import { resolveSpentLogin, spentLoginStatusStale } from "@t3tools/client-runtime/zerops/logins";
 import { useProjectTopology } from "../zerops/useProjectTopology";
 import {
   deriveAgentPanelModel,
@@ -448,6 +448,7 @@ import {
   resolveDraftHeroState,
   resolveZeropsConversationReadOnly,
   conversationContentPending,
+  localThreadErrorStanding,
   resolveZeropsOwnedAgentSendBlockReason,
   resolveZeropsProviderAvailability,
   peekRememberedThreadTimeline,
@@ -1282,6 +1283,8 @@ const PersistentThreadTerminalPanel = memo(function PersistentThreadTerminalPane
 type LocalThreadErrorEntry = {
   readonly message: string | null;
   readonly at: number;
+  /** How many messages its conversation held when it was written (`localThreadErrorStanding`). */
+  readonly messages?: number | undefined;
 };
 
 function chatActionErrorMessage(error: unknown): string {
@@ -1658,7 +1661,10 @@ export default function ChatView(props: ChatViewProps) {
   const localDraftError = activeServerThread
     ? null
     : ((draftId ? localDraftErrorsByDraftId[draftId]?.message : null) ?? null);
-  const localServerError = localServerErrorsByThreadKey[routeThreadKey]?.message ?? null;
+  const localServerError = localThreadErrorStanding(
+    localServerErrorsByThreadKey[routeThreadKey],
+    activeServerThread?.messages.length,
+  );
   // Draft errors are keyed by draftId while server errors are keyed by thread
   // key, so a pending draft entry must migrate when the server thread loads or
   // a failed send would silently disappear on promotion. When both keys hold
@@ -3057,14 +3063,11 @@ export default function ChatView(props: ChatViewProps) {
       setDismissedProviderStatusBannerKey(null);
     }
   }, [dismissedProviderStatusBannerKey, providerStatusBannerKey]);
-  // A Zerops login signed in and still being registered runs already: nothing to warn about.
+  // A Zerops login signed in, being registered or registered, runs: a status saying otherwise
+  // is behind the Mate's sign-in record and says nothing.
   const visibleProviderStatus =
     shouldShowProviderStatusBanner(activeProviderStatus, dismissedProviderStatusBannerKey) &&
-    !spentLoginRegistering(
-      activeProviderStatus?.instanceId,
-      zeropsAgentAuth.snapshot,
-      providerStatuses,
-    )
+    !spentLoginStatusStale(activeProviderStatus, zeropsAgentAuth.snapshot, providerStatuses)
       ? activeProviderStatus
       : null;
   const hasTimelineTopBanner = Boolean(visibleThreadError) || visibleProviderStatus !== null;
@@ -3164,7 +3167,11 @@ export default function ChatView(props: ChatViewProps) {
     (targetThreadId: ThreadId | null, error: string | null) => {
       if (!targetThreadId) return;
       const nextError = sanitizeThreadErrorMessage(error);
-      const nextEntry: LocalThreadErrorEntry = { message: nextError, at: Date.now() };
+      const nextEntry: LocalThreadErrorEntry = {
+        message: nextError,
+        at: Date.now(),
+        messages: activeServerThread?.messages.length,
+      };
       if (
         shouldWriteThreadErrorToCurrentServerThread({
           activeServerThread,

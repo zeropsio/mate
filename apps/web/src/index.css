@@ -6953,6 +6953,18 @@ html[data-theme-id] [data-chat-header] .conversation-crewmate[data-popup-open] {
   color: color-mix(in oklab, var(--muted-foreground) 72%, transparent);
 }
 
+/* p26/signin */
+/* A step with no time to say gives its words the time's column: "You sign Wren in with your
+   Claude or ChatGPT subscription" reads whole. The time's column stops growing at the widest
+   time, so words that span it widen the words' column, never the times'. */
+.arrival-steps {
+  grid-template-columns: 20px minmax(0, max-content) fit-content(12rem);
+}
+
+.arrival-step-label[data-spans-time] {
+  grid-column: 2 / -1;
+}
+
 .arrival-step-sub {
   grid-column: 2 / -1;
   /* Wraps within the words' width, never widening the steps. */
