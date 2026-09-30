@@ -3257,8 +3257,8 @@ no-cache`.
   restarted). Whether an attempt is the route's is judged when it starts: a waiting Mate that
   becomes the route starts at once, and every other attempt still connecting gives way, the
   previous route's included; others connect one at a time, 8 s each; a socket's turn covers only
-  its opening, and its wait in line never counts against its setup; with no route named, nothing
-  waits. The route's Mate never waits out the five-minute cap — it stays on the ladder (≤ ~36 s),
+  its opening, and its wait in line never counts against its setup or a replacement's; with no
+  route named they still go one at a time, and a Mate coming up names itself the route. The route's Mate never waits out the five-minute cap — it stays on the ladder (≤ ~36 s),
   a capped Mate that becomes the route is tried at once, and a route that doesn't answer has its
   container read every 2 s and is tried the moment it answers.
   - _Why:_ Chrome connects one socket at a time per address, every Mate sits behind one address,
