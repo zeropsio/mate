@@ -2,6 +2,7 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import type { GitCheckRow } from "./gitTab.ts";
+import type { RecipeReach } from "./recipeReach.ts";
 import { RELEASE_NOT_A_RELEASER, RELEASE_NOTHING_NEW_ON_MAIN } from "./release.ts";
 import {
   changeReview,
@@ -236,12 +237,6 @@ describe("changeReview: the button says what will happen (R5)", () => {
       { enabled: true, safe: true },
     ],
     [
-      "a recipe change",
-      { pull: pull({ kind: "recipe" }), commits: undefined },
-      "Squash-merges it into main. The project's environments change to match.",
-      { enabled: true, safe: true },
-    ],
-    [
       "nothing downstream yet",
       { downstream: { production: false, stage: false } },
       "Squash-merges 1 commit into main.",
@@ -329,6 +324,142 @@ describe("changeReview: the button says what will happen (R5)", () => {
     const review = changeReview(change({ press }));
     expect(review.verdict).toMatchObject(verdict);
     expect(review.primary?.enabled).toBe(enabled);
+  });
+});
+
+describe("changeReview: a recipe change says what its merge does, and is never released", () => {
+  const reach = (over: Partial<RecipeReach> = {}): RecipeReach => ({
+    stages: 0,
+    production: false,
+    later: [],
+    unused: [],
+    declarations: false,
+    ...over,
+  });
+  const recipe = (over: Partial<ChangeReviewInput["pull"]> = {}) =>
+    pull({ kind: "recipe", checks: "none", checkRows: [], ...over });
+  const merged = recipe({ merged: true, mergedAt: minutesAgo(0) });
+  /** Where production waits for a release: a code change's review would offer it now. */
+  const releasable = { releaseOffered: true, waiting: { count: 2, live: "v0.1.0" } } as const;
+
+  it.each<[string, Partial<RecipeReach>, string, string]>([
+    [
+      "the stage made from a recipe it changes",
+      { stages: 1 },
+      "The stage gets any service added to its recipe, created empty; the services it has stay as they are.",
+      "the stage gets any new service",
+    ],
+    [
+      "every stage",
+      { stages: 2 },
+      "The stages get any service added to their recipe, created empty; the services they have stay as they are.",
+      "the stages get any new service",
+    ],
+    [
+      "production",
+      { production: true },
+      "Production gets any service added to its recipe, created empty; the services it has stay as they are.",
+      "production gets any new service",
+    ],
+    [
+      "the stage and production",
+      { stages: 1, production: true },
+      "The stage and production get any service added to their recipes, created empty; the services they have stay as they are.",
+      "the stage and production get any new service",
+    ],
+    [
+      "the stages and production, and a Mate added later",
+      { stages: 2, production: true, later: ["mate"] },
+      "The stages and production get any service added to their recipes, created empty; the services they have stay as they are. A Mate added later is made from the new recipe.",
+      "the stages and production get any new service",
+    ],
+    [
+      // The owner's case, 2026-09-30: a service added to these two, and a release offered for it.
+      "recipes nothing in the project is made from",
+      { unused: ["Remote (CDE)", "Local"] },
+      "Nothing in this project is made from the Remote (CDE) or Local recipe, so no environment changes.",
+      "no environment changes",
+    ],
+    [
+      "production's recipe with no production yet",
+      { later: ["production"] },
+      "No environment changes. A production added later is made from the new recipe.",
+      "no environment changes",
+    ],
+    [
+      "the Mates' recipe",
+      { later: ["mate"] },
+      "No environment changes. A Mate added later is made from the new recipe.",
+      "no environment changes",
+    ],
+    [
+      "every recipe, in a project with nothing made from them yet",
+      { later: ["mate", "stage", "production"], unused: ["Local"] },
+      "No environment changes. A Mate, a stage or a production added later is made from the new recipe.",
+      "no environment changes",
+    ],
+    [
+      "the declarations",
+      { declarations: true },
+      "The project deploys to the environments it declares.",
+      "the project deploys to what it declares",
+    ],
+    [
+      "the stage's recipe and the declarations",
+      { stages: 1, declarations: true },
+      "The stage gets any service added to its recipe, created empty; the services it has stay as they are. The project deploys to the environments it declares.",
+      "the stage gets any new service",
+    ],
+    [
+      "nothing anything is made from: its READMEs",
+      {},
+      "No environment changes.",
+      "no environment changes",
+    ],
+  ])("%s", (_case, over, sentence, next) => {
+    const before = changeReview(change({ pull: recipe(), recipe: reach(over), ...releasable }));
+    expect(before.consequence).toBe(`Squash-merges 1 commit into main. ${sentence}`);
+    expect(before.primary).toEqual({ label: "Merge", enabled: true, safe: true });
+
+    const after = changeReview(change({ pull: merged, recipe: reach(over), ...releasable }));
+    expect(after.verdict).toMatchObject({
+      state: "merged",
+      tone: "done",
+      title: "Merged into main",
+      why: `Just now · ${next}`,
+    });
+    expect(after.consequence).toBe(sentence);
+    expect(after.primary).toBeUndefined();
+  });
+
+  const UNREAD =
+    "Each environment gets any service added to its recipe, created empty; the services it has stay as they are.";
+
+  it("says what any recipe change does where its files could not be read", () => {
+    const review = changeReview(change({ pull: recipe(), readout: "failed", ...releasable }));
+    expect(review.consequence).toBe(
+      `Squash-merges 1 commit into main without its files shown. ${UNREAD}`,
+    );
+  });
+
+  it("says it is on main, and what any recipe change does, until the files of one merged are read", () => {
+    const review = changeReview(change({ pull: merged, readout: "reading", ...releasable }));
+    expect(review.verdict.why).toBe("Just now · it's on main");
+    expect(review.consequence).toBe(UNREAD);
+    expect(review.primary).toBeUndefined();
+  });
+
+  it("merged by its own press, offers no release either", () => {
+    const review = changeReview(
+      change({
+        pull: recipe(),
+        recipe: reach({ stages: 1 }),
+        press: { kind: "done" },
+        ...releasable,
+      }),
+    );
+    expect(review.verdict.state).toBe("merged");
+    expect(review.primary).toBeUndefined();
   });
 });
 
