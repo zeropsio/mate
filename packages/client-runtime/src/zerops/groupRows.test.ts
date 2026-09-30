@@ -48,7 +48,18 @@ describe("deployedCommit", () => {
     { name: "an upper-case sha", value: SHA.toUpperCase(), expected: SHA },
     // Nothing of ours named it, so it does not name a commit.
     { name: "a hand-made version", value: "manual upload", expected: undefined },
-    { name: "a short sha, which never compares equal", value: "3f9c1b2", expected: undefined },
+    { name: "a bare short sha, which no writer names", value: "3f9c1b2", expected: undefined },
+    {
+      name: "a stage version, named by branch and short sha",
+      value: "main 3f9c1b2",
+      expected: "3f9c1b2",
+    },
+    {
+      name: "a production version, named by tag and short sha",
+      value: "v1.2.0 3f9c1b2",
+      expected: "3f9c1b2",
+    },
+    { name: "a hand-made two-word version", value: "hotfix friday", expected: undefined },
     { name: "nothing deployed", value: undefined, expected: undefined },
   ])("reads $name", ({ value, expected }) => {
     expect(deployedCommit(value)).toBe(expected);
@@ -69,6 +80,30 @@ describe("deployedVersion", () => {
         name: undefined,
         commit: "3f9c1b2",
         sha: SHA,
+        taggedBy: undefined,
+        label: "3f9c1b2",
+      },
+    },
+    {
+      name: "a release named by its tag and short sha",
+      value: "v1.2.0 3f9c1b2",
+      expected: {
+        name: "v1.2.0",
+        commit: "3f9c1b2",
+        sha: "3f9c1b2",
+        taggedBy: undefined,
+        label: "v1.2.0",
+      },
+    },
+    {
+      // The row already says the branch a stage follows; the commit is what it adds.
+      name: "a stage deploy named by its branch and short sha, called by the commit",
+      value: "main 3f9c1b2",
+      expected: {
+        name: undefined,
+        branch: "main",
+        commit: "3f9c1b2",
+        sha: "3f9c1b2",
         taggedBy: undefined,
         label: "3f9c1b2",
       },

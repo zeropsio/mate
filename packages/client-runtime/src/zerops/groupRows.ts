@@ -20,9 +20,9 @@
  *
  * ## Every fact from the party that can prove it
  *
- * The sha comes from the service's **app-version name**, whose first token is
- * the commit the broker built from (`docs/group-repo.md`, measured
- * 2026-09-16) — never from the branch head, which says what *should* be there.
+ * The sha comes from the service's **app-version name**, which spells the
+ * commit the broker built from (`versionName.ts`, `docs/group-repo.md`) —
+ * never from the branch head, which says what *should* be there.
  * The deploy outcome comes from the commit status the broker wrote,
  * `mate/deploy/{environment}/{service}` — never from the version's existence.
  * Whether a group's Gitea is ready comes from `GET /orgs/{slug}` answering as
@@ -42,7 +42,8 @@ import {
 } from "./groupCreation.ts";
 import type { GroupEnvironmentTier, MissingEnvironmentRow } from "./groupEnvironments.ts";
 import { mateOnlyOwnerOpensIt, type MateOwnerCandidate } from "./mateAccess.ts";
-import { shortCommit } from "./release.ts";
+import { isReleaseTag, shortCommit } from "./release.ts";
+import { parseVersionName } from "./versionName.ts";
 import type { RoleMateVisibility } from "@t3tools/shared/zeropsRoles";
 
 /** What a row's dot says, for the four things a dot can honestly mean. */
@@ -98,17 +99,16 @@ export interface GroupRows {
 }
 
 /**
- * The commit an app version was built from: the first token of its name
- * (`docs/group-repo.md`). Production's carries the tag and the tagger after
- * it; the sha is always first.
+ * The commit an app version was built from, as its name spells it
+ * (`parseVersionName`): whole in a name written before 2026-09-30, short in
+ * one written since — so it is compared with `sameCommit`, never `===`.
  *
  * `undefined` for a name that is not one of ours — a version somebody deployed
  * with `zcli` by hand, say. Saying nothing is right: this row's whole job is to
  * name the commit that is running, and a name that is not a sha is not one.
  */
 export function deployedCommit(appVersionName: string | undefined): string | undefined {
-  const first = appVersionName?.trim().split(/\s+/u)[0];
-  return first !== undefined && /^[0-9a-f]{40}$/iu.test(first) ? first.toLowerCase() : undefined;
+  return parseVersionName(appVersionName)?.sha;
 }
 
 /**
@@ -146,9 +146,9 @@ export function environmentNameUnderGroup(
  *
  * Zerops keeps one string per service — the app version's name — and the two
  * parties that write it write different things. The broker names a stage
- * deploy by the commit alone, and a release by `{sha} {tag} {tagger}`
- * (measured 2026-09-16); somebody deploying with `zcli` by hand names it
- * whatever they typed.
+ * deploy `{branch} {short sha}` and a release `{tag} {short sha}` (before
+ * 2026-09-30: the bare sha, and `{sha} {tag} {tagger}`); somebody deploying
+ * with `zcli` by hand names it whatever they typed.
  *
  * The name is what a row writes, and the commit is only its fallback: a
  * release is `v1.2.0` to everyone who talks about it, and `77ab0e1` answers a
@@ -157,13 +157,20 @@ export function environmentNameUnderGroup(
  * either way, because the place that has room for both should say both.
  */
 export interface DeployedVersion {
-  /** The tag, or the whole of a hand-made name; `undefined` for a bare commit. */
+  /** The tag, or the whole of a hand-made name; `undefined` for a stage's commit. */
   readonly name: string | undefined;
+  /**
+   * The branch a stage deploy's name carries. The row already says the branch
+   * the stage follows, so it names the commit; this keeps what the name said.
+   */
+  readonly branch?: string | undefined;
   /** The commit it was built from, short; `undefined` where the name is not one of ours. */
   readonly commit: string | undefined;
   /**
-   * The whole 40-hex commit, where the version names one. `commit` is what a
-   * person reads; this is what compares equal, because a short sha never does.
+   * The commit as the name spells it — the whole 40-hex sha in an old name, the
+   * short one in a new one. `commit` is what a person reads; this is what is
+   * compared, with `sameCommit`, and resolved to a whole sha where a key needs
+   * one (`resolveCommit`).
    */
   readonly sha: string | undefined;
   /** Who tagged the release, where the name carries it. */
@@ -182,21 +189,28 @@ const NO_VERSION: DeployedVersion = {
 };
 
 export function deployedVersion(appVersionName: string | undefined): DeployedVersion {
-  const tokens = (appVersionName ?? "")
-    .trim()
-    .split(/\s+/u)
-    .filter((token) => token.length > 0);
-  if (tokens.length === 0) return NO_VERSION;
-  const sha = deployedCommit(appVersionName);
-  if (sha === undefined) {
+  const whole = (appVersionName ?? "").trim().replace(/\s+/gu, " ");
+  if (whole.length === 0) return NO_VERSION;
+  const parsed = parseVersionName(whole);
+  if (parsed === undefined) {
     // Not one of ours: the whole string is the only name it has, and it is a
     // better answer than saying nothing.
-    const name = tokens.join(" ");
-    return { name, commit: undefined, sha: undefined, taggedBy: undefined, label: name };
+    return { name: whole, commit: undefined, sha: undefined, taggedBy: undefined, label: whole };
   }
-  const [, name, taggedBy] = tokens;
+  const { sha, label, taggedBy } = parsed;
   const commit = shortCommit(sha);
-  return { name, commit, sha, taggedBy, label: name ?? commit };
+  // A new name's label is a stage's branch or a release's tag; only the tag is
+  // what a person calls the version.
+  const isBranch = label !== undefined && sha.length < 40 && !isReleaseTag(label);
+  const name = isBranch ? undefined : label;
+  return {
+    name,
+    ...(isBranch ? { branch: label } : {}),
+    commit,
+    sha,
+    taggedBy,
+    label: name ?? commit,
+  };
 }
 
 /** The commit status the broker writes for one service of one environment. */

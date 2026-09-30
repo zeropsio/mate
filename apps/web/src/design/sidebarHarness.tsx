@@ -123,7 +123,7 @@ import {
 
 const hoursAgo = (hours: number) => new Date(Date.now() - hours * 3_600_000).toISOString();
 
-/** A full sha, the only thing `deployedCommit` accepts. */
+/** A full sha, as a version name written before 2026-09-30 spells it. */
 const sha = (seed: string) => seed.padEnd(40, "0").slice(0, 40);
 
 function routes(
