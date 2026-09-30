@@ -555,6 +555,7 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
       composer={standsInComposer ? <ComposerStandIn onType={type} typed={typed} /> : null}
       header={
         <MateComingHeader
+          arriving={shown !== undefined}
           mate={{ ...mate, connected: environmentId !== null }}
           standsIn={standsInComposer ? { subject: standInSubject } : null}
         />
@@ -610,14 +611,17 @@ export function MateComingFrame({
 }
 
 /**
- * The header's line: the Mate's face and its name. While a Mate comes up, nothing else — the
- * header's way into Zerops stands with its conversation's header, which an existing Mate's
- * stand-in draws in place so nothing moves when the conversation takes over.
+ * The header's line: the Mate's face and its name, and its project in Zerops — except while a new
+ * Mate comes up, when the page waits on the Mate and the way into Zerops arrives with its
+ * conversation's header.
  */
 export function MateComingHeader({
   mate,
   standsIn = null,
+  arriving = false,
 }: {
+  /** A new Mate coming up: its face and name only. */
+  readonly arriving?: boolean;
   readonly mate: Pick<ZeropsMateIdentity, "name" | "tint" | "shape" | "connected"> & {
     readonly projectUrl: string | undefined;
   };
@@ -661,7 +665,7 @@ export function MateComingHeader({
             <EllipsisIcon className="size-4" />
           </Button>
         )}
-        {standsIn === null || mate.projectUrl === undefined ? null : (
+        {arriving || mate.projectUrl === undefined ? null : (
           <ZeropsProjectLink projectUrl={mate.projectUrl} />
         )}
       </div>
