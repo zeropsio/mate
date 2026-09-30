@@ -58,6 +58,13 @@ export interface ConnectionAdmission {
   /** The route's environment, whose socket opens before any other's; null when none. */
   readonly prefer: (environmentId: EnvironmentId | null) => void;
   /**
+   * A page's own claim on the environment it shows when its path names none (a Mate coming up):
+   * first after the route's, and released by what this returns without touching the route's.
+   */
+  readonly hold: (environmentId: EnvironmentId) => () => void;
+  /** The environment whose socket goes first now: the route's, else the latest hold's. */
+  readonly preferred: () => EnvironmentId | null;
+  /**
    * Resolves once this environment may create its socket. Rejects with the signal's reason when
    * the caller gives up first.
    */
@@ -82,6 +89,8 @@ interface Attempt {
   readonly controller: AbortController;
   /** Disarms its give-way timer; a route's attempt has none. */
   cancelTimer: (() => void) | null;
+  /** Its time ran out: it gives way as soon as anyone else waits. */
+  expired: boolean;
   settled: boolean;
 }
 
@@ -89,6 +98,9 @@ export function makeConnectionAdmission(
   timers: AdmissionTimers = systemTimers,
 ): ConnectionAdmission {
   let preferred: EnvironmentId | null = null;
+  /** The route's naming (`prefer`) and the pages' holds, latest last: `preferred` is their sum. */
+  let named: EnvironmentId | null = null;
+  const holds: Array<{ readonly environmentId: EnvironmentId }> = [];
   let awaitingFirst = false;
   let cancelFirstHold: (() => void) | null = null;
   /** Open sockets per environment: a replacement opens beside the connection it replaces. */
@@ -117,13 +129,28 @@ export function makeConnectionAdmission(
     attempt.controller.abort(new Error(reason));
   };
 
-  /** An attempt that is not the route's: given its time, then made to give way. */
+  /** Someone else wants the lock: a route not yet open, or an attempt waiting its turn. */
+  const contended = () => waiting.length > 0 || (preferred !== null && !isOpen(preferred));
+
+  /** Makes every attempt past its time give way, when someone else wants the lock. */
+  const expireOthers = () => {
+    if (!contended()) return;
+    for (const attempt of connecting) {
+      if (attempt.expired && !isRoute(attempt)) giveWay(attempt, "The attempt ran out of time.");
+    }
+  };
+
+  /**
+   * An attempt that is not the route's: given its time, then made to give way — only while
+   * someone else wants the lock. A lone attempt keeps its supervisor's own limit.
+   */
   const armOther = (attempt: Attempt) => {
-    if (attempt.cancelTimer !== null) return;
+    if (attempt.cancelTimer !== null || attempt.expired) return;
     attempt.cancelTimer = timers.setTimer(OTHER_ATTEMPT_MS, () => {
       attempt.cancelTimer = null;
       if (!connecting.has(attempt)) return;
-      giveWay(attempt, "The attempt ran out of time.");
+      attempt.expired = true;
+      expireOthers();
       pump();
     });
   };
@@ -146,6 +173,7 @@ export function makeConnectionAdmission(
 
   /** Starts what may start: the route at once; others only when the route holds nothing. */
   function pump(): void {
+    expireOthers();
     for (const waiter of waiting.filter(({ environmentId }) => environmentId === preferred)) {
       waiting.splice(waiting.indexOf(waiter), 1);
       waiter.start();
@@ -205,6 +233,7 @@ export function makeConnectionAdmission(
       environmentId,
       controller: new AbortController(),
       cancelTimer: null,
+      expired: false,
       settled: false,
     };
     connecting.add(attempt);
@@ -213,22 +242,40 @@ export function makeConnectionAdmission(
     return ticketFor(attempt, callerSignal);
   };
 
+  const setPreferred = (environmentId: EnvironmentId | null) => {
+    if (environmentId === preferred) return;
+    preferred = environmentId;
+    endFirstHold();
+    if (environmentId !== null && !isOpen(environmentId) && !routeConnecting()) {
+      awaitingFirst = true;
+      cancelFirstHold = timers.setTimer(ROUTE_FIRST_HOLD_MS, () => {
+        awaitingFirst = false;
+        cancelFirstHold = null;
+        pump();
+      });
+    }
+    rejudge();
+    pump();
+  };
+  const settleClaims = () => setPreferred(named ?? holds.at(-1)?.environmentId ?? null);
+
   return {
     prefer: (environmentId) => {
-      if (environmentId === preferred) return;
-      preferred = environmentId;
-      endFirstHold();
-      if (environmentId !== null && !isOpen(environmentId) && !routeConnecting()) {
-        awaitingFirst = true;
-        cancelFirstHold = timers.setTimer(ROUTE_FIRST_HOLD_MS, () => {
-          awaitingFirst = false;
-          cancelFirstHold = null;
-          pump();
-        });
-      }
-      rejudge();
-      pump();
+      named = environmentId;
+      settleClaims();
     },
+    hold: (environmentId) => {
+      const claim = { environmentId };
+      holds.push(claim);
+      settleClaims();
+      return () => {
+        const index = holds.indexOf(claim);
+        if (index < 0) return;
+        holds.splice(index, 1);
+        settleClaims();
+      };
+    },
+    preferred: () => preferred,
     admit: (environmentId, signal) => {
       if (signal?.aborted) return Promise.reject(signal.reason);
       return new Promise<AdmissionTicket>((resolve, reject) => {
@@ -255,8 +302,27 @@ export function makeConnectionAdmission(
 /** The tab's one admission: the route's publisher and every connection attempt share it. */
 export const connectionAdmission: ConnectionAdmission = makeConnectionAdmission();
 
-/** What the connection driver asks before a socket; the tab's own admission unless provided. */
+/** For a client with no browser connection lock (mobile): nobody ever waits or gives way. */
+export const passThroughAdmission: ConnectionAdmission = {
+  prefer: () => undefined,
+  hold: () => () => undefined,
+  preferred: () => null,
+  admit: (_environmentId, signal) =>
+    signal?.aborted
+      ? Promise.reject(signal.reason)
+      : Promise.resolve({
+          signal: new AbortController().signal,
+          claim: () => undefined,
+          settle: () => undefined,
+          close: () => undefined,
+        }),
+};
+
+/**
+ * What the connection driver asks before a socket. A pass-through unless a client provides the
+ * browser's admission (the web provides {@link connectionAdmission}).
+ */
 export class ConnectionAdmissionRef extends Context.Reference<ConnectionAdmission>(
   "@t3tools/client-runtime/connection/admission/ConnectionAdmission",
-  { defaultValue: () => connectionAdmission },
+  { defaultValue: () => passThroughAdmission },
 ) {}

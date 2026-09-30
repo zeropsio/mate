@@ -1,7 +1,9 @@
 import { EnvironmentId } from "@t3tools/contracts";
-import { describe, expect, it } from "vite-plus/test";
+import { describe, expect, it } from "@effect/vitest";
+import * as Effect from "effect/Effect";
 
 import {
+  ConnectionAdmissionRef,
   makeConnectionAdmission,
   OTHER_ATTEMPT_MS,
   ROUTE_FIRST_HOLD_MS,
@@ -341,4 +343,55 @@ describe("connection admission", () => {
     await flush();
     expect(third.ticket).toBeNull();
   });
+
+  describe("the others' time runs out only while someone waits", () => {
+    it("a lone attempt is never cut off by the others' time", async () => {
+      const timers = manualTimers();
+      const admission = makeConnectionAdmission(timers);
+      const lone = ask(admission, OTHER);
+      await flush();
+      lone.ticket!.claim();
+      timers.advance(12_000);
+      await flush();
+      expect(lone.ticket!.signal.aborted).toBe(false);
+    });
+
+    it("an attempt past its time gives way the moment another waits", async () => {
+      const timers = manualTimers();
+      const admission = makeConnectionAdmission(timers);
+      const lone = ask(admission, OTHER);
+      await flush();
+      lone.ticket!.claim();
+      timers.advance(12_000);
+      const next = ask(admission, THIRD);
+      await flush();
+      expect(lone.ticket!.signal.aborted).toBe(true);
+      expect(next.ticket).not.toBeNull();
+    });
+  });
+
+  it("a page's hold and the route's naming are separate claims: the page leaving keeps the route", () => {
+    const admission = makeConnectionAdmission(manualTimers());
+    const release = admission.hold(ROUTE);
+    admission.prefer(ROUTE);
+    release();
+    expect(admission.preferred()).toBe(ROUTE);
+    admission.prefer(null);
+    expect(admission.preferred()).toBeNull();
+  });
+});
+
+describe("without a browser's connection lock", () => {
+  it.effect(
+    "the default admission, what a client that provides none gets, never makes anyone wait",
+    () =>
+      Effect.gen(function* () {
+        const admission = yield* ConnectionAdmissionRef;
+        admission.prefer(ROUTE);
+        const tickets = yield* Effect.promise(() =>
+          Promise.all([admission.admit(OTHER), admission.admit(THIRD), admission.admit(ROUTE)]),
+        );
+        expect(tickets.map((ticket) => ticket.signal.aborted)).toEqual([false, false, false]);
+      }),
+  );
 });
