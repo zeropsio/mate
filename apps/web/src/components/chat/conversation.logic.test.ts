@@ -18,6 +18,7 @@ import {
   namedToolCall,
   noteLine,
   operationLineWords,
+  splitStandup,
   readCrewCard,
   readSlashCommand,
   readsAsAnswer,
@@ -1427,6 +1428,88 @@ describe("deriveOutcome", () => {
     expect(outcome?.notDone).toEqual([]);
   });
 
+  it.each([
+    {
+      name: "a pair that failed before its deploy stays in the result, with zcp's words",
+      steps: [
+        {
+          id: "apidev",
+          label: "apidev",
+          state: "failed",
+          stateLabel: "Failed",
+          note: "checking main out into apidev failed",
+        },
+      ],
+      live: [
+        { hostname: "apidev", tone: "failed", reason: "checking main out into apidev failed" },
+      ],
+    },
+    {
+      name: "a build the call stopped waiting for is not deployed yet: no row, no address",
+      steps: [
+        { id: "apidev", label: "apidev", state: "done", stateLabel: "Deployed" },
+        { id: "webdev", label: "webdev", state: "running", stateLabel: "Building" },
+      ],
+      live: [{ hostname: "apidev", tone: "ok", reason: null }],
+    },
+    {
+      name: "a stage held back is neither running nor broken",
+      steps: [
+        {
+          id: "apistage",
+          label: "apistage",
+          state: "failed",
+          stateLabel: "Failed",
+          note: "the build ran out of memory",
+        },
+        {
+          id: "webstage",
+          label: "webstage",
+          state: "queued",
+          stateLabel: "Waits",
+          note: "apistage did not stand up",
+        },
+      ],
+      live: [{ hostname: "apistage", tone: "failed", reason: "the build ran out of memory" }],
+    },
+  ] as const)("$name", ({ steps, live }) => {
+    const entries = [
+      user("m0", 0),
+      operation("s1", "t1", 1, {
+        kind: "standup",
+        subject: "development",
+        phase: steps.some((step) => step.state === "failed") ? "failed" : "done",
+        steps,
+        links: [
+          { label: "apidev", url: "https://apidev.example.dev" },
+          { label: "webdev", url: "https://webdev.example.dev" },
+        ],
+      }),
+      assistant("a1", "t1", 2),
+    ];
+    const [only] = structure(entries, settled).turns;
+    const outcome = deriveOutcome({ turn: only!, landed: [], diff: null });
+    expect(
+      outcome?.live.map(({ hostname, tone, failure }) => ({
+        hostname,
+        tone,
+        reason: failure?.reason ?? null,
+      })),
+    ).toEqual(live);
+  });
+
+  it("keeps a failed stand-up with nothing to split as the failure it is", () => {
+    const failedCall = (
+      operation("s1", "t1", 1, {
+        kind: "standup",
+        subject: "development",
+        phase: "failed",
+        steps: [],
+      }) as Extract<TimelineEntry, { kind: "operation" }>
+    ).operation;
+    expect(splitStandup(failedCall)).toEqual([failedCall]);
+  });
+
   it("names no stage a development call queued: the next call builds it", () => {
     const entries = [
       user("m0", 0),
@@ -2262,6 +2345,10 @@ describe("operationLineWords — a stand-up call, by what its report said", () =
     ({ id: label, label, state: "queued", stateLabel: "Next" }) as const;
   const failed = (label: string) =>
     ({ id: label, label, state: "failed", stateLabel: "Failed" }) as const;
+  const building = (label: string) =>
+    ({ id: label, label, state: "running", stateLabel: "Building" }) as const;
+  const held = (label: string, note: string) =>
+    ({ id: label, label, state: "queued", stateLabel: "Waits", note }) as const;
   it.each([
     {
       name: "the development call running",
@@ -2310,6 +2397,24 @@ describe("operationLineWords — a stand-up call, by what its report said", () =
       name: "a refusal before anything was built",
       fields: { subject: "development", phase: "failed", steps: [] },
       words: "Standing development up failed",
+    },
+    {
+      name: "a build the call stopped waiting for: still building, no failure",
+      fields: {
+        subject: "development",
+        phase: "done",
+        steps: [built("apidev"), next("apistage"), building("webdev")],
+      },
+      words: "Stood development up · webdev still building · apistage next",
+    },
+    {
+      name: "a stage held by one that failed: the failed one is named, the held one is not counted",
+      fields: {
+        subject: "stage",
+        phase: "failed",
+        steps: [failed("apistage"), held("webstage", "apistage did not stand up")],
+      },
+      words: "Stood up 0 of 1 · apistage failed",
     },
   ] as const)("$name", ({ fields, words }) => {
     expect(operationLineWords(op(fields))).toBe(words);

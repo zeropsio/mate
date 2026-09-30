@@ -135,6 +135,100 @@ const DEVELOPMENT_UP_UNMARKED = {
   next: "",
 };
 
+/** A pair that failed before its deploy: its dev half carries zcp's pair-level failure. */
+const CHECKOUT_FAILED = {
+  standUp: "partial",
+  message: "0 of 2 pairs stand and 1 of 2 dev halves run.",
+  services: [
+    {
+      hostname: "apidev",
+      role: "dev",
+      pair: "apistage",
+      failed: "checking main out into apidev failed: the repository is empty",
+      next: "",
+    },
+    {
+      hostname: "apistage",
+      role: "stage",
+      pair: "apidev",
+      deploy: {
+        status: "not deployed",
+        reason: "apidev did not stand up, and the stage is built from it",
+      },
+      next: "",
+    },
+    deployed("webdev"),
+    queued("webstage", "webdev"),
+  ],
+  next: "",
+};
+
+/** A development call whose poll gave up on one build: partial, but nothing failed. */
+const DEV_STILL_BUILDING = {
+  standUp: "partial",
+  message: "0 of 2 pairs stand and 1 of 2 dev halves run.",
+  services: [
+    deployed("apidev"),
+    queued("apistage", "apidev"),
+    { hostname: "webdev", role: "dev", deploy: { status: "still building" }, next: "" },
+    {
+      hostname: "webstage",
+      role: "stage",
+      deploy: {
+        status: "not deployed",
+        reason: "webdev did not deploy, and the stage is built from it",
+      },
+      next: "",
+    },
+  ],
+  next: "",
+};
+
+/** A retry: apidev ran code already, so the development call built its stage too. */
+const RETRY_WITH_A_STAGE = {
+  standUp: "partial",
+  message: "0 of 2 pairs stand and 2 of 2 dev halves run.",
+  services: [
+    already("apidev"),
+    {
+      hostname: "apistage",
+      role: "stage",
+      deploy: { status: "failed", reason: "the build ran out of memory" },
+      next: "",
+    },
+    deployed("webdev"),
+    queued("webstage", "webdev"),
+  ],
+  next: "",
+};
+
+/** A stage call where a stage failed, and the one reading it waits. */
+const STAGE_HELD = {
+  standUp: "partial",
+  message: "0 of 2 pairs stand and 2 of 2 dev halves run.",
+  services: [
+    already("apidev"),
+    {
+      hostname: "apistage",
+      role: "stage",
+      deploy: { status: "failed", reason: "the build ran out of memory" },
+      next: "",
+    },
+    already("webdev"),
+    {
+      hostname: "webstage",
+      role: "stage",
+      deploy: {
+        status: "not deployed",
+        reason:
+          "waits for apistage, which did not stand up: a stage is built after every stage above it by priority, whose API its build may read",
+      },
+      next: "",
+    },
+  ],
+  next: "",
+};
+
 const NEXT = (hostname: string) => ({
   id: hostname,
   label: hostname,
@@ -254,6 +348,87 @@ describe("buildStandupFields — a stand-up call, named by the half it deploys",
           },
         ],
         links: [{ label: "apistage", url: "https://apistage.example.test" }],
+        explanation: { reason: "the build ran out of memory" },
+      },
+    },
+    {
+      name: "a pair that failed before its deploy: its dev half fails with zcp's words",
+      call: standupCall("c1", "completed", CHECKOUT_FAILED),
+      earlier: [],
+      expected: {
+        subject: "development",
+        phase: "failed",
+        steps: [
+          {
+            id: "apidev",
+            label: "apidev",
+            state: "failed",
+            stateLabel: "Failed",
+            note: "checking main out into apidev failed: the repository is empty",
+          },
+          { id: "webdev", label: "webdev", state: "done", stateLabel: "Deployed" },
+          NEXT("webstage"),
+        ],
+        explanation: { reason: "checking main out into apidev failed: the repository is empty" },
+      },
+    },
+    {
+      name: "a build the call stopped waiting for: still running, and no failure",
+      call: standupCall("c1", "completed", DEV_STILL_BUILDING),
+      earlier: [],
+      expected: {
+        subject: "development",
+        phase: "done",
+        steps: [
+          { id: "apidev", label: "apidev", state: "done", stateLabel: "Deployed" },
+          NEXT("apistage"),
+          { id: "webdev", label: "webdev", state: "running", stateLabel: "Building" },
+        ],
+      },
+    },
+    {
+      name: "a retry that built a stage in the development call: the stage is the call's",
+      call: standupCall("c3", "completed", RETRY_WITH_A_STAGE),
+      earlier: [standupCall("c1", "completed", DEV_FAILED)],
+      expected: {
+        subject: "development",
+        phase: "failed",
+        steps: [
+          {
+            id: "apistage",
+            label: "apistage",
+            state: "failed",
+            stateLabel: "Failed",
+            note: "the build ran out of memory",
+          },
+          { id: "webdev", label: "webdev", state: "done", stateLabel: "Deployed" },
+          NEXT("webstage"),
+        ],
+      },
+    },
+    {
+      name: "a stage held by a stage above it that failed: it waits, it did not fail",
+      call: standupCall("c2", "completed", STAGE_HELD),
+      earlier: [standupCall("c1", "completed", DEVELOPMENT_UP)],
+      expected: {
+        subject: "stage",
+        phase: "failed",
+        steps: [
+          {
+            id: "apistage",
+            label: "apistage",
+            state: "failed",
+            stateLabel: "Failed",
+            note: "the build ran out of memory",
+          },
+          {
+            id: "webstage",
+            label: "webstage",
+            state: "queued",
+            stateLabel: "Waits",
+            note: "apistage did not stand up",
+          },
+        ],
         explanation: { reason: "the build ran out of memory" },
       },
     },

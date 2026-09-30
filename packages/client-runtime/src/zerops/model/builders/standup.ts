@@ -36,6 +36,8 @@ import {
 interface ReportedService {
   readonly hostname: string;
   readonly role: string;
+  /** zcp's pair-level failure: the pair stopped before its deploy (a checkout, an adopt). */
+  readonly failed?: string;
   readonly deploy?: {
     readonly status: string;
     readonly url?: string;
@@ -62,10 +64,12 @@ function reportedServices(call: ZeropsCall): ReadonlyArray<ReportedService> | un
     const status = readString(deploy?.status);
     const url = readString(deploy?.url);
     const reason = readString(deploy?.reason);
+    const failed = readString(entry.failed);
     return [
       {
         hostname,
         role,
+        ...(failed === undefined ? {} : { failed }),
         ...(deploy === undefined || status === undefined
           ? {}
           : {
@@ -88,6 +92,18 @@ const isQueued = (service: ReportedService) => service.deploy?.status === QUEUED
 const DEVELOPMENT_STOOD = "development";
 /** zcp's word for a stage the next call builds. */
 const QUEUED = "queued";
+/** zcp's word for a half held back by what it waits for. */
+const NOT_DEPLOYED = "not deployed";
+/** A held stage's step label: it waits on what did not stand up. */
+const HELD_LABEL = "Waits";
+/** A queued stage's step label: the next call builds it. */
+const NEXT_LABEL = "Next";
+
+/** What a stand-up step is to its call: its own, the next call's, or held back by what did not stand up. */
+export function standupStepRole(step: ZeropsOperationStep): "own" | "next" | "held" {
+  if (step.state !== "queued") return "own";
+  return step.stateLabel === HELD_LABEL ? "held" : "next";
+}
 
 interface Report {
   readonly standUp: string | undefined;
@@ -136,42 +152,85 @@ function halfDeployed(report: Report): StandupHalf | undefined {
   return now.some((service) => service.role === "dev") ? "development" : "stage";
 }
 
-const ROLE: Readonly<Record<StandupHalf, string>> = { development: "dev", stage: "stage" };
-
 /** A stage the next call builds: coming, never failed. */
 function nextStep(service: ReportedService): ZeropsOperationStep {
-  return { id: service.hostname, label: service.hostname, state: "queued", stateLabel: "Next" };
+  return { id: service.hostname, label: service.hostname, state: "queued", stateLabel: NEXT_LABEL };
+}
+
+/**
+ * What held a stage back, as the person reads it: "apistage did not stand up"
+ * — from zcp's reason ("waits for apistage, which did not stand up: …",
+ * "apidev did not deploy, and the stage is built from it").
+ */
+function heldBy(reason: string | undefined): string | undefined {
+  if (reason === undefined) return undefined;
+  const waited = /^waits for (.+?), which (?:did not stand up|builds on the next)/u.exec(reason);
+  if (waited?.[1] !== undefined) return `${waited[1]} did not stand up`;
+  const built = /^(\S+) did not (?:deploy|stand up)/u.exec(reason);
+  if (built?.[1] !== undefined) return `${built[1]} did not stand up`;
+  return firstLine(reason);
 }
 
 function stepOf(service: ReportedService): ZeropsOperationStep {
-  const status = service.deploy?.status ?? "";
+  const status = service.deploy?.status;
   const base = { id: service.hostname, label: service.hostname };
+  if (status === undefined) {
+    // The pair stopped before its deploy: its failure is zcp's pair-level one.
+    return {
+      ...base,
+      state: "failed",
+      stateLabel: "Failed",
+      ...(service.failed === undefined ? {} : { note: service.failed }),
+    };
+  }
   if (status === QUEUED) return nextStep(service);
   if (status === "deployed") return { ...base, state: "done", stateLabel: "Deployed" };
   if (status === "already deployed") return { ...base, state: "done", stateLabel: "Running" };
   if (status === "still building") return { ...base, state: "running", stateLabel: "Building" };
   const reason = service.deploy?.reason;
+  if (status === NOT_DEPLOYED) {
+    // Held back by what it waits for: it waits, it did not fail.
+    const held = heldBy(reason);
+    return {
+      ...base,
+      state: "queued",
+      stateLabel: HELD_LABEL,
+      ...(held === undefined ? {} : { note: held }),
+    };
+  }
   return {
     ...base,
     state: "failed",
-    stateLabel: status === "failed" ? "Failed" : "Not deployed",
+    stateLabel: "Failed",
     ...(reason === undefined ? {} : { note: reason }),
   };
 }
 
 /**
- * The services a settled call answers for: those of its half it deployed or
- * found in its way, and — a development call — each stage it queued, named as
- * next. A stage it left because its dev half failed is that dev half's story.
+ * The services a settled call answers for: those of its half it built, found
+ * failing or held back; a development call also each stage it built (a retry
+ * builds the stage of a dev half that already ran) and each stage it queued,
+ * named as next. A stage held back because its own dev half failed is that
+ * dev half's story; a service it found already running is no work of its.
  */
 function callServices(report: Report, half: StandupHalf): ReadonlyArray<ReportedService> {
-  return report.services.filter(
-    (service) =>
-      service.deploy !== undefined &&
-      (half === "development"
-        ? service.role === "dev" || (service.role === "stage" && isQueued(service))
-        : service.role === ROLE[half] && !isQueued(service)),
-  );
+  return report.services.filter((service) => {
+    const status = service.deploy?.status;
+    if (status === "already deployed") return false;
+    if (half === "development") {
+      if (service.role === "dev") return status !== undefined || service.failed !== undefined;
+      return (
+        service.role === "stage" &&
+        status !== undefined &&
+        (isQueued(service) || deployedNow(service))
+      );
+    }
+    return (
+      service.role === "stage" &&
+      !isQueued(service) &&
+      (status !== undefined || service.failed !== undefined)
+    );
+  });
 }
 
 export function buildStandupFields(
@@ -193,8 +252,9 @@ export function buildStandupFields(
   const failedStep = steps.find((step) => step.state === "failed");
   const standUp = report?.standUp;
   const phase: ZeropsOperationPhase =
-    call.status === "completed" &&
-    (failedStep !== undefined || standUp === "failed" || standUp === "partial")
+    // A partial whose only open step still builds is no failure: zcp stopped
+    // waiting for the build, which goes on.
+    call.status === "completed" && (failedStep !== undefined || standUp === "failed")
       ? "failed"
       : phaseFor(call.status);
   const message = readString(decoded.document?.message);

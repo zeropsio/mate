@@ -13,7 +13,11 @@
  * Pure: no React, no clock except the `nowMs` a caller passes.
  */
 import type { TurnId } from "@t3tools/contracts";
-import { isReadOperationKind, type ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
+import {
+  isReadOperationKind,
+  standupStepRole,
+  type ZeropsOperation,
+} from "@t3tools/client-runtime/zerops/model";
 
 import { workLogEntryIsToolLike, type TimelineEntry, type WorkLogEntry } from "../../session-logic";
 import type { ChatMessage, TurnDiffSummary } from "../../types";
@@ -1176,21 +1180,24 @@ export function operationLineWords(operation: ZeropsOperation): string {
     case "discover":
       return `Looked at ${subject}`;
     case "standup": {
-      // A stage the call queued is the next call's: named as coming, never
-      // counted as one it failed.
-      const built = operation.steps.filter((step) => step.state !== "queued");
-      if (!failed) {
-        const next = operation.steps
-          .filter((step) => step.state === "queued")
-          .map((step) => step.label);
-        return next.length === 0
-          ? `Stood ${subject} up`
-          : `Stood ${subject} up · ${namesInWords(next)} next`;
+      // A stage the call queued is the next call's, one it held back waits on
+      // what did not stand up: named as coming, never counted as failed.
+      const own = operation.steps.filter((step) => standupStepRole(step) === "own");
+      const broke = own.find((step) => step.state === "failed");
+      if (failed) {
+        if (broke === undefined) return `Standing ${subject} up failed`;
+        const up = own.filter((step) => step.state === "done").length;
+        return `Stood up ${up} of ${own.length} · ${broke.label} failed`;
       }
-      const broke = built.find((step) => step.state === "failed");
-      if (broke === undefined) return `Standing ${subject} up failed`;
-      const up = built.filter((step) => step.state === "done").length;
-      return `Stood up ${up} of ${built.length} · ${broke.label} failed`;
+      const building = own.filter((step) => step.state === "running").map((step) => step.label);
+      const next = operation.steps
+        .filter((step) => standupStepRole(step) === "next")
+        .map((step) => step.label);
+      return [
+        `Stood ${subject} up`,
+        ...(building.length === 0 ? [] : [`${namesInWords(building)} still building`]),
+        ...(next.length === 0 ? [] : [`${namesInWords(next)} next`]),
+      ].join(" · ");
     }
     case "devServer":
       // What it came to, as its pill says it: "Running app" read as work
@@ -1296,11 +1303,13 @@ export function splitBatchDeploy(operation: ZeropsOperation): ZeropsOperation[] 
 export function splitStandup(operation: ZeropsOperation): ZeropsOperation[] {
   if (operation.kind !== "standup" || operation.phase === "running") return [operation];
   const { explanation: _explanation, closing: _closing, ...shared } = operation;
-  // A stage the call queued runs nothing yet: the next call builds it.
-  return operation.steps
-    .filter((step) => step.state !== "queued")
-    .map((step) => {
-      const phase: ZeropsOperation["phase"] = step.state === "failed" ? "failed" : "done";
+  // A stage the call queued or held back runs nothing yet; a build the call
+  // stopped waiting for still runs — no address, no verdict.
+  const parts = operation.steps
+    .filter((step) => standupStepRole(step) === "own")
+    .map((step): ZeropsOperation => {
+      const phase: ZeropsOperation["phase"] =
+        step.state === "failed" ? "failed" : step.state === "running" ? "running" : "done";
       const link = operation.links.find((candidate) => candidate.label === step.label);
       return {
         ...shared,
@@ -1310,14 +1319,16 @@ export function splitStandup(operation: ZeropsOperation): ZeropsOperation[] {
         kicker: `Deploy · ${step.label}`,
         target: { hostname: step.label },
         phase,
-        statusWord: phase === "done" ? "Deployed" : "Failed",
+        statusWord: phase === "done" ? "Deployed" : phase === "failed" ? "Failed" : "Deploying",
         steps: [step],
-        links: link === undefined ? [] : [{ label: "Open", url: link.url }],
+        links: link === undefined || phase !== "done" ? [] : [{ label: "Open", url: link.url }],
         ...(phase === "failed" && step.note !== undefined
           ? { explanation: { reason: step.note } }
           : {}),
       };
     });
+  // Nothing to split — a refusal before any service — stays the failure it is.
+  return parts.length === 0 ? [operation] : parts;
 }
 
 export function stretchOperations(stretch: Stretch): ZeropsOperation[] {

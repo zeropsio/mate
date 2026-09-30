@@ -36,7 +36,7 @@
  * is. Nothing opens a dialog.
  */
 import type { EnvironmentId, ScopedThreadRef } from "@t3tools/contracts";
-import type { ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
+import { standupStepRole, type ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
 import {
   isActiveSubagentStatus,
   type AgentPanelModel,
@@ -1417,10 +1417,10 @@ function settledBar(
 ): ReadonlyArray<{ readonly key: string; readonly tone: BarTone }> {
   const failed = operation.phase === "failed";
   const cut: BarTone = undone ? "waiting" : "failed";
-  // A stage a stand-up queued is the next call's, not a segment of this one.
+  // A stage a stand-up queued or held back is no segment of this call.
   const steps =
     operation.kind === "standup"
-      ? operation.steps.filter((step) => step.state !== "queued")
+      ? operation.steps.filter((step) => standupStepRole(step) === "own")
       : operation.steps;
   if (steps.length === 0) return [{ key: "whole", tone: failed ? cut : "done" }];
   return steps.map((step) => ({
