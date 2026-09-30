@@ -36,7 +36,13 @@ import { useOperationCard } from "../../zerops/activity/useOperationCard";
 import { useStandupReading } from "../../zerops/activity/useStandupReading";
 import { Button } from "../ui/button";
 import { MateFace } from "../zerops/primitives";
-import { formatWorkDuration, isGitPushOnly, type IncidentModel } from "./conversation.logic";
+import {
+  formatWorkDuration,
+  incidentsStanding,
+  isGitPushOnly,
+  type IncidentModel,
+} from "./conversation.logic";
+import { useZeropsTopology } from "../../zerops/useZeropsFeeds";
 import {
   importLines,
   lineSegments,
@@ -488,11 +494,21 @@ function Instruments({
   const hold = useHoldReading();
   const [open, setOpen] = useState<ReadonlySet<string>>(() => new Set());
   useLayoutEffect(() => onDrawn?.());
+  // A service the platform works on this moment says nothing stale of itself.
+  const topology = useZeropsTopology(incidents.length === 0 ? null : environmentId);
+  const standing = incidentsStanding(
+    incidents,
+    new Set(
+      (topology?.services ?? [])
+        .filter((service) => service.transient)
+        .map((service) => service.hostname),
+    ),
+  );
   const operations = dock?.operations ?? [];
   const helpers = dock?.helpers ?? null;
   const tasks = dock?.tasks ?? null;
   const background = dock?.background ?? null;
-  if (!dockDraws(dock) && incidents.length === 0) return null;
+  if (!dockDraws(dock) && standing.length === 0) return null;
   const runningTask = background?.tasks.findLast((task) => task.state === "running");
   const toggle = (key: string) => {
     // What the person opened is theirs to read: the conversation stops
@@ -545,7 +561,7 @@ function Instruments({
           ) : null}
         </Arriving>
       ))}
-      {incidents.map((incident) => (
+      {standing.map((incident) => (
         <Arriving key={incident.key}>
           <Instrument
             bar={[{ key: "whole", tone: INCIDENT_BAR[incident.tone] }]}

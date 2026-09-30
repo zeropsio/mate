@@ -213,6 +213,81 @@ const DEPLOY_DONE = deploy({
   closing: "appdev is live.",
 });
 
+/** An operation of no single service: a check of every one. */
+function withoutTarget(overrides: Partial<ZeropsOperation>): ZeropsOperation {
+  const { target: _target, ...rest } = deploy(overrides);
+  return rest;
+}
+
+/** A made-up Mate's own working branch, as zcp names its pushes. */
+const MATE_BRANCH_VERSION = "mate/mate-Pq7Zr0TestProject0000A 227b804";
+
+/** What the owner's guestbook run did, made up: a deploy, a check of every service, a dev server found down. */
+const GUESTBOOK: ReadonlyArray<RecordItem> = [
+  {
+    kind: "operation",
+    key: "operation:op:gb-deploy",
+    at: ago(90),
+    operation: deploy({
+      key: "op:gb-deploy",
+      subject: "appstage",
+      target: { hostname: "appstage" },
+      phase: "done",
+      statusWord: "Deployed",
+      anchorAt: ago(168),
+      settledAt: ago(90),
+      version: { name: MATE_BRANCH_VERSION },
+      steps: ["Build container", "Build", "Prepare", "Deploy", "Run"].map((label) => ({
+        id: label,
+        label,
+        state: "done" as const,
+        stateLabel: "Done",
+      })),
+    }),
+  },
+  {
+    kind: "operation",
+    key: "operation:op:gb-verify",
+    at: ago(80),
+    operation: withoutTarget({
+      key: "op:gb-verify",
+      kind: "verify",
+      subject: "all services",
+      phase: "done",
+      statusWord: "Healthy",
+      voice: "Checking all services.",
+      anchorAt: ago(82),
+      settledAt: ago(80),
+      steps: ["appdev", "appstage", "db", "cache"].map((label) => ({
+        id: label,
+        label,
+        state: "done" as const,
+        stateLabel: "Done",
+      })),
+    }),
+  },
+  {
+    kind: "operation",
+    key: "operation:op:gb-dev",
+    at: ago(60),
+    operation: deploy({
+      key: "op:gb-dev",
+      kind: "devServer",
+      subject: "appdev",
+      target: { hostname: "appdev" },
+      phase: "done",
+      statusWord: "Not running",
+      voice: "Checking the dev server on appdev.",
+      anchorAt: ago(61),
+      settledAt: ago(60),
+      steps: [{ id: "dev-server", label: "Status", state: "failed", stateLabel: "Failed" }],
+    }),
+  },
+];
+
+/** Thinking, between steps. */
+const THINKING_NOW: TurnHeaderActivity = { kind: "thinking", key: null, messages: [] };
+
 const EMPTY_DOCK: DockModel = {
   operations: [],
   helpers: null,
@@ -1009,6 +1084,21 @@ function Harness() {
             </Card>
           </State>
         ))}
+        <State
+          label="The guestbook card"
+          note="A deploy from the Mate's branch, a check of every service, a dev server found down: the dock waits while that is the latest line."
+        >
+          <Card>
+            <RunChat row={record({ turnKey: "guestbook", items: GUESTBOOK, now: THINKING_NOW })} />
+            <ConversationWorking
+              dock={EMPTY_DOCK}
+              environmentId={null}
+              incidents={[]}
+              onOpenAgents={() => undefined}
+              threadRef={null}
+            />
+          </Card>
+        </State>
         <State
           label="Settled bars"
           note="A deploy that landed and a batch that failed, as the bars say it."

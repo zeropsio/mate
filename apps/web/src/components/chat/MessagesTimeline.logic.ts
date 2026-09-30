@@ -37,6 +37,7 @@ import {
   readSlashCommand,
   readUsageLimitNotice,
   stretchFace,
+  standingIncidents,
   stretchIncidents,
   timelineEntryEnd,
   type BrowserStripModel,
@@ -1998,7 +1999,7 @@ export function deriveMessagesTimelineRows(input: {
           stretchKey: last.key,
           turnKey: turn.key,
           cardKey: first.key,
-          incidents: stretchIncidents(wholeRun),
+          incidents: standingIncidents(wholeRun),
         });
       }
       // Settled, what runs alongside becomes the run's result, where it was —

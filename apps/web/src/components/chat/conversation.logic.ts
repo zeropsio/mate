@@ -1603,6 +1603,92 @@ function devServerFailurePhrase(operation: ZeropsOperation): string {
   return "not running";
 }
 
+/** The kinds that act on a service: after one of them, what was found of it before is old. */
+const ACTING_KINDS: ReadonlySet<ZeropsOperation["kind"]> = new Set([
+  "deploy",
+  "devServer",
+  "import",
+  "manage",
+  "scale",
+  "standup",
+]);
+
+/** The services an operation acts on: its target, or each a stand-up or an import names. */
+function actedOn(operation: ZeropsOperation): ReadonlyArray<string> {
+  if (!ACTING_KINDS.has(operation.kind)) return [];
+  if (operation.kind === "standup" || operation.kind === "import") {
+    return operation.steps.map((step) => step.label);
+  }
+  return [operationTargetKey(operation)];
+}
+
+/**
+ * What the dock under a live run's now line says of a service (K10) — one
+ * rule for when it stands:
+ *
+ * - it appears when the latest thing done to a service is a dev-server call
+ *   that found it not running (amber), or a start, a restart that failed
+ *   (red);
+ * - its source is that call's own finding, and nothing older: any later
+ *   operation acting on the service — a deploy, a dev-server call, a
+ *   stand-up, a restart — takes it down while it runs (the Mate is on it),
+ *   and after it settles the dock says only what a dev-server call found
+ *   since; a deploy's end leaves nothing to say until the Mate looks again;
+ * - it clears once a later call finds the dev server running;
+ * - the platform working on the service this moment stands it down too
+ *   (`incidentsStanding`);
+ * - it waits until the Mate moves on: while the finding is the record's
+ *   latest line, it stands right above the now line already, and the dock
+ *   would say it twice;
+ * - it says the finding in words: "not running", "stopped answering (502)",
+ *   "start failed".
+ *
+ * The run's record keeps the history (`stretchIncidents`); the dock keeps
+ * only what is true now.
+ */
+export function standingIncidents(stretch: Stretch): IncidentModel[] {
+  const latest = new Map<string, ZeropsOperation>();
+  for (const operation of stretchOperations(stretch)) {
+    for (const host of actedOn(operation)) latest.set(host, operation);
+  }
+  const lineOf = (operation: ZeropsOperation) =>
+    stretch.entries.findIndex(
+      (entry) => entry.kind === "operation" && entry.operation.key === operation.key,
+    );
+  const movedOnFrom = (operation: ZeropsOperation) =>
+    stretch.entries
+      .slice(lineOf(operation) + 1)
+      .some((entry) => !(entry.kind === "message" && entry.message.role === "reasoning"));
+  return [...latest.entries()].flatMap(([hostname, operation]): IncidentModel[] => {
+    if (operation.kind !== "devServer" || devServerRunning(operation) !== false) return [];
+    if (!movedOnFrom(operation)) return [];
+    const failed = operation.phase === "failed";
+    return [
+      {
+        key: `incident:${operation.key}`,
+        hostname,
+        phases: [
+          failed
+            ? `${devServerAction(operation) || "start"} failed`
+            : devServerFailurePhrase(operation),
+        ],
+        tone: failed ? "failed" : "attention",
+        appearedAt: operation.settledAt ?? operation.anchorAt,
+      },
+    ];
+  });
+}
+
+/** The incidents that stand while the platform is not working on their service (`transient`). */
+export function incidentsStanding(
+  incidents: ReadonlyArray<IncidentModel>,
+  transient: ReadonlySet<string>,
+): ReadonlyArray<IncidentModel> {
+  return incidents.some((incident) => transient.has(incident.hostname))
+    ? incidents.filter((incident) => !transient.has(incident.hostname))
+    : incidents;
+}
+
 /**
  * A service that stopped answering and what happened to it, as one line per
  * service and stretch — "nextstoredev · stopped answering (502) · restarted ·

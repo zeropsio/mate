@@ -17,7 +17,9 @@ import {
   messageReceipt,
   namedToolCall,
   noteLine,
+  incidentsStanding,
   operationLineWords,
+  standingIncidents,
   splitStandup,
   readCrewCard,
   readSlashCommand,
@@ -1280,6 +1282,124 @@ describe("stretchIncidents", () => {
     ];
     const [only] = structure(entries, { live: "t1" }).turns;
     expect(stretchIncidents(only!.stretches[0]!)).toEqual([]);
+  });
+});
+
+describe("standingIncidents — what the dock under the now line says of a service", () => {
+  const dev = (id: string, minute: number, label: string, running: boolean, overrides = {}) =>
+    operation(id, "t1", minute, {
+      kind: "devServer",
+      subject: "appdev",
+      statusWord: running ? "Running" : "Not running",
+      steps: [
+        {
+          id: "dev-server",
+          label,
+          state: running ? "done" : "failed",
+          stateLabel: running ? "Done" : "Failed",
+        },
+      ],
+      ...overrides,
+    });
+  const deploy = (id: string, minute: number, subject: string, overrides = {}) =>
+    operation(id, "t1", minute, {
+      kind: "deploy",
+      subject,
+      target: { hostname: subject },
+      statusWord: "Deployed",
+      ...overrides,
+    });
+  const moveOn = operation("v9", "t1", 9, {
+    kind: "logs",
+    subject: "appstage",
+    target: { hostname: "appstage" },
+    statusWord: "Read",
+  });
+  it.each([
+    {
+      name: "a dev server found not running, and nothing since: it says so",
+      ops: [dev("s1", 1, "Status", false)],
+      shows: [["appdev", "not running", "attention"]],
+    },
+    {
+      name: "found no longer answering: why",
+      ops: [
+        dev("s1", 1, "Health check", false, {
+          steps: [
+            {
+              id: "dev-server",
+              label: "Health check",
+              state: "failed",
+              stateLabel: "Failed",
+              note: "HTTP 502",
+            },
+          ],
+        }),
+      ],
+      shows: [["appdev", "stopped answering (502)", "attention"]],
+    },
+    {
+      name: "a routine start: nothing",
+      ops: [dev("s1", 1, "Start", true)],
+      shows: [],
+    },
+    {
+      name: "found, then started and running: gone",
+      ops: [dev("s1", 1, "Status", false), dev("s2", 2, "Start", true)],
+      shows: [],
+    },
+    {
+      name: "found, and the Mate restarting it this moment: nothing stale asserted",
+      ops: [dev("s1", 1, "Status", false), dev("s2", 2, "Restart", false, { phase: "running" })],
+      shows: [],
+    },
+    {
+      name: "found, and the Mate deploying it this moment: nothing stale asserted",
+      ops: [dev("s1", 1, "Status", false), deploy("d1", 2, "appdev", { phase: "running" })],
+      shows: [],
+    },
+    {
+      name: "found, then deployed: unknown until the Mate looks again",
+      ops: [dev("s1", 1, "Status", false), deploy("d1", 2, "appdev")],
+      shows: [],
+    },
+    {
+      name: "a start that failed: red, and what failed",
+      ops: [
+        dev("s1", 1, "Status", false),
+        dev("s2", 2, "Start", false, { phase: "failed", statusWord: "Failed" }),
+      ],
+      shows: [["appdev", "start failed", "failed"]],
+    },
+    {
+      name: "another service's deploy leaves it standing",
+      ops: [dev("s1", 1, "Status", false), deploy("d1", 2, "appstage")],
+      shows: [["appdev", "not running", "attention"]],
+    },
+  ])("$name", ({ ops, shows }) => {
+    // The Mate moved on: a step of its own after them.
+    const [only] = structure([user("m0", 0), ...ops, moveOn], { live: "t1" }).turns;
+    expect(
+      standingIncidents(only!.stretches[0]!).map((incident) => [
+        incident.hostname,
+        incident.phases.join(" · "),
+        incident.tone,
+      ]),
+    ).toEqual(shows);
+  });
+
+  it("waits while the finding is the record's latest line: it stands right above", () => {
+    const [only] = structure([user("m0", 0), dev("s1", 1, "Status", false)], { live: "t1" }).turns;
+    expect(standingIncidents(only!.stretches[0]!)).toEqual([]);
+  });
+
+  it("stands down while the platform works on the service", () => {
+    const [only] = structure([user("m0", 0), dev("s1", 1, "Status", false), moveOn], {
+      live: "t1",
+    }).turns;
+    const incidents = standingIncidents(only!.stretches[0]!);
+    expect(incidentsStanding(incidents, new Set(["appdev"]))).toEqual([]);
+    expect(incidentsStanding(incidents, new Set(["appstage"]))).toEqual(incidents);
   });
 });
 
