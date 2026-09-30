@@ -3279,3 +3279,23 @@ no-cache`.
   the person's own next turn.
   - _Why:_ the stand-up sends on the local signer the moment the sign-in succeeds, while the client
     writes the tag after it
+- **2026-09-30** — **The account speaks from one line at the menu's foot** (the owner, of
+  "Project access could not be verified. Try again Sign out": "at very least the placement is wrong
+  … so is the copy"). A read failing while the grant still holds never covers or freezes the
+  product: it is silent for 20 s, then "Zerops isn't answering. Trying again…" with _Try now_; a
+  lapse speaks from the same line — "Checking your Zerops access…", then "Zerops isn't answering."
+  with _Try now_ — with _Sign out_; only the organization on screen speaks, and the projects page
+  shows what it has without repeating the line.
+  - _Why:_ one stalled read in any of the account's organizations covered the whole product and
+    made it inert until a retry landed
+- **2026-09-30** — **Stopping a run from its row takes a second press** (the owner: "this has
+  confirm, right?"). ■ or x arms the row — a red "Stop?" crossfades in where the clock stood — and a
+  second press within 3 s stops; the pointer leaving, Esc, the focus leaving, 3 s or the run ending
+  puts it back. The ⋯ menu's _Stop the run_ stays one press, opening the menu being the first.
+  - _Why:_ one press on a hover control cut a run short, with nothing to take it back
+- **2026-09-30** — **A run's clock looks live** (the owner: "the timer here could have an extra
+  icon, be bold, have some color in color of mate"). 600, tabular figures, the Mate's own hue mixed
+  into the ink (5:1 or more on the menu and on the selected row, in both themes), after a 6 px dot
+  of the same hue breathing slowly and still under reduced motion; when the run ends, the relative
+  time fades in where it stood.
+  - _Why:_ "0:50" read as a timestamp beside "4h" and "7m"

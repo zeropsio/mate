@@ -7160,3 +7160,9 @@ and the parts' harnesses and fake-timer probes where a state could not be made l
   `message`), which the client now reads.
 - **The result lost a device's picture** — pictures were keyed per page, so the phone's take of a
   page replaced the desktop's.
+- **A Mate's hand-run git had no token** — Pia on Heron at 22:21Z: the model ran `git fetch origin`
+  in its own shell (the zcp container, on the dev service's repository through the mount) and got
+  "Failed to authenticate user". The repository's saved credential helper answers `$GIT_TOKEN`,
+  which only the dev service carries, as a secret; the Mate's shell carries the bot's token as
+  `GITEA_TOKEN`, and `GIT_TOKEN="$GITEA_TOKEN" git fetch origin` went through. Every Mate with a
+  wired Gitea pair has it, latent until the model runs git on the mount.

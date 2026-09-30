@@ -763,10 +763,12 @@ ledger row or a test.
     never kept waiting by another; a project someone else makes is read at once (no endless name
     check, no stray "Still reading…"); a stalled read never covers the product; the arrival names
     the subscription; the first ask waits for its signer record; a colleague's Mate waits on its
-    owner; rows keep their height and show drafts; the run card keeps one radius, a calm live line,
+    owner; rows keep their height and show drafts, their run clock looks live, and a stop takes a
+    second press; the account speaks from one line at the menu's foot; the run card keeps one radius, a calm live line,
     the whole environment in its stand-up bar, a dock that says one true thing and a result with
     every picture; the release line and its folded tag; a release's changes open in its dialog.
-    **Open**: a Mate's hand-run git has no token (zcp); zcp to fold a process's `error` into its
+    **Open**: a Mate's hand-run git has no token (zcp `p26/git-helper`: the Gitea host's saved
+    helper answers `${GIT_TOKEN:-$GITEA_TOKEN}`); zcp to fold a process's `error` into its
     import result and to relay a dev server's state live; dev artefacts' 2–4 min uploads
   - _Built in:_ `pass-26` (mate)
   - _Proven by:_ ledger 2026-09-30 _Pass 26 as measured_; `admission.test.ts`,

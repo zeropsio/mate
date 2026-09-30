@@ -573,7 +573,11 @@ conversation's state) Fen lives here` (`ZeropsMateOnMap`, from the panel), and t
     words to its first Mate's name, or, folded, to the next heading's; 30 from one Mate's words to
     the next's; 50 from an open project's last words to the next heading's. The list starts 16 px
     under the logo row; _New project_ stands at the menu's foot, over the account (D11): a + in the
-    faces' column, the words at 56
+    faces' column, the words at 56; between them, only when the account has something to say, one line — 13/18
+    muted words and quiet text buttons (`AccountVoiceLine`, `accountFootLine`): a lapse ("Checking
+    your Zerops access…", then "Zerops isn't answering." with _Try now_, both with _Sign out_) or
+    trouble lasting 20 s in the organization on screen ("Zerops isn't answering. Trying again…"
+    with _Try now_); nothing ever covers the product
   - _States:_ open · folded (its busy faces) · unnamed (italic, muted) · the ungrouped heading (no
     toggle, no verbs)
   - _Phrase source:_ `SidebarProjects.logic.ts` (`projectRoom`, `headingFaces`, `slackForFold`);
@@ -619,7 +623,8 @@ conversation's state) Fen lives here` (`ZeropsMateOnMap`, from the panel), and t
     something it finished is unread, and on the right edge an 8 px dot — amber needs you (only on the viewer's own Mate, the one whose signer tag names
     them: `mateIsViewers`; another's waiting Mate rests, its question muted, its change keeping its
     _Review_), blue finished unseen, red stopped on an error; no word, and no `StatusDot` — with when it last did
-    something, or the run's clock counting up in ink, or a pause glyph and when a usage limit lets
+    something, or the run's clock counting up (600, tabular, in the Mate's own hue after a 6 px dot of it
+    breathing; the time fades back in where it stood when the run ends), or a pause glyph and when a usage limit lets
     it go on. Under it the person's last ask, 13/18 in the second ink, then the third line (M7): its
     last words muted — in the second ink while unread; the question itself in ink while it needs you
     (D6); the error's first line in red where it stopped on one; while it works, the step it is on,
@@ -629,9 +634,10 @@ conversation's state) Fen lives here` (`ZeropsMateOnMap`, from the panel), and t
     Mate's line. One even leading, no gaps (M5): every row three lines, 76 px, its third blank while
     nothing is said (M6); 30 px from one
     Mate's words to the next's (M16). A new ask or new words rise into their line, never on a first
-    paint. On hover _Stop_ while it works, and ⋯; a right-click or a finger held opens its menu; ⌥
+    paint. On hover _Stop_ while it works — a first press turns it into a red "Stop?" in its place, a
+    second within 3 s stops, and leaving, Esc or 3 s puts it back — and ⋯; a right-click or a finger held opens its menu; ⌥
     held puts each row's number in its time slot, and ⌥1–9 opens that Mate; j and k move between
-    rows, x stops, e marks it read or unread. A Mate resting for more than a week, with nothing
+    rows, x arms a stop and a second x stops, e marks it read or unread. A Mate resting for more than a week, with nothing
     unread and not open, folds into its project's "3 quiet Mates". Its face and its words come from
     one reading (`mateRowReading`): its conversation's while its socket is up or only reconnecting,
     else this browser's memory, at rest — a line held for words still to come stays empty, never
