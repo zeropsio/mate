@@ -1,4 +1,4 @@
-import { ServiceBrowserLink } from "./ServiceBrowserLink";
+import { ServiceBrowserLink, useLinkDestination } from "./ServiceBrowserLink";
 import { ZeropsChangeLinkChip } from "./zerops/ZeropsChangeLinkChip";
 import { useAtomValue } from "@effect/atom-react";
 import {
@@ -1032,19 +1032,29 @@ function brandLinkIcon(host: string): typeof GitHubIcon | null {
   return null;
 }
 
-const MarkdownLinkFavicon = memo(function MarkdownLinkFavicon({ host }: { host: string }) {
+/**
+ * The mark a web link leads with: the site's own, or — for a service of this
+ * project, which the side panel opens — the globe the panel wears beside the
+ * same address. A service's page has no favicon worth fetching: the favicon
+ * service answers a fresh subdomain with its default globe, drawn blurry at
+ * this size (the owner, 2026-09-30).
+ */
+const MarkdownLinkFavicon = memo(function MarkdownLinkFavicon({
+  host,
+  service = false,
+}: {
+  host: string;
+  service?: boolean;
+}) {
   const [failedHost, setFailedHost] = useState<string | null>(null);
   const BrandIcon = brandLinkIcon(host);
-  const faviconUrl = faviconUrlForOrigin(`https://${host}`);
+  const faviconUrl = service ? null : faviconUrlForOrigin(`https://${host}`);
   return (
-    <span
-      className="ms-[0.25em] me-[0.2em] inline-flex size-[14px] [vertical-align:-0.125em]"
-      aria-hidden
-    >
+    <span className="me-[0.25em] inline-flex size-[14px] [vertical-align:-0.125em]" aria-hidden>
       {BrandIcon ? (
         <BrandIcon className={MARKDOWN_LINK_FAVICON_CLASS_NAME} />
       ) : faviconUrl === null || failedHost === host || failedFaviconHosts.has(host) ? (
-        <GlobeIcon className={MARKDOWN_LINK_FAVICON_CLASS_NAME} />
+        <GlobeIcon className={cn(MARKDOWN_LINK_FAVICON_CLASS_NAME, "text-muted-foreground")} />
       ) : (
         <img
           src={faviconUrl}
@@ -1406,7 +1416,15 @@ function handleMarkdownFragmentClick(event: ReactMouseEvent<HTMLAnchorElement>, 
  * alone. The rest wraps as text does: at word boundaries, and inside a token
  * only when the token cannot fit a line (the stylesheet's `anywhere` on links).
  */
-function MarkdownExternalLinkContent({ host, children }: { host: string; children: ReactNode }) {
+function MarkdownExternalLinkContent({
+  host,
+  service,
+  children,
+}: {
+  host: string;
+  service: boolean;
+  children: ReactNode;
+}) {
   const [firstChild, ...rest] = Children.toArray(children);
 
   if (typeof firstChild === "string" && firstChild.length > 0) {
@@ -1414,7 +1432,7 @@ function MarkdownExternalLinkContent({ host, children }: { host: string; childre
     return (
       <>
         <span className="whitespace-nowrap">
-          <MarkdownLinkFavicon host={host} />
+          <MarkdownLinkFavicon host={host} service={service} />
           {firstLetter}
         </span>
         {firstChild.slice(firstLetter.length)}
@@ -1426,7 +1444,7 @@ function MarkdownExternalLinkContent({ host, children }: { host: string; childre
   return (
     <>
       <span className="whitespace-nowrap">
-        <MarkdownLinkFavicon host={host} />
+        <MarkdownLinkFavicon host={host} service={service} />
         {firstChild}
       </span>
       {rest}
@@ -2153,6 +2171,7 @@ const CHAT_MARKDOWN_COMPONENTS = {
       updateThreadPullRequestLink,
       fileLinkChip,
     } = use(ChatMarkdownRendererContext);
+    const { destination } = useLinkDestination(href);
     const normalizedHref = href ? normalizeMarkdownLinkHrefKey(href) : "";
     const fileLinkMeta = normalizedHref
       ? (markdownFileLinkMetaByHref.get(normalizedHref) ??
@@ -2170,6 +2189,9 @@ const CHAT_MARKDOWN_COMPONENTS = {
           {...props}
           data-markdown-copy={bareUrl === null ? undefined : href}
           href={href}
+          // In a sentence the link's leading mark says where it goes; a mark
+          // after its words would sit between them and the full stop.
+          indicator="words"
           target={isSameDocumentLink ? undefined : "_blank"}
           rel={isSameDocumentLink ? undefined : "noopener noreferrer"}
           onClick={(event) => {
@@ -2226,7 +2248,7 @@ const CHAT_MARKDOWN_COMPONENTS = {
           }}
         >
           {faviconHost && hastHasText(node) ? (
-            <MarkdownExternalLinkContent host={faviconHost}>
+            <MarkdownExternalLinkContent host={faviconHost} service={destination === "preview"}>
               {bareUrl ?? plainText ?? children}
             </MarkdownExternalLinkContent>
           ) : (

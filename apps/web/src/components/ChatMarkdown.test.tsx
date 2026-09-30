@@ -1,4 +1,5 @@
-import { EnvironmentId } from "@t3tools/contracts";
+import type { ZeropsTopologyService } from "@t3tools/client-runtime/zerops/topology";
+import { EnvironmentId, ThreadId } from "@t3tools/contracts";
 import { act, type ComponentProps, type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { create, type ReactTestRenderer } from "react-test-renderer";
@@ -7,6 +8,7 @@ import { describe, expect, it, vi } from "vite-plus/test";
 import * as settingsModule from "../hooks/useSettings";
 import { getSyntaxHighlighterPromise } from "../lib/syntaxHighlighting";
 import { Button } from "./ui/button";
+import { ServiceBrowserScope } from "./ServiceBrowserLink";
 import { setMarkdownTaskChecked } from "./files/filePreviewMode";
 
 vi.mock("@effect/atom-react", () => ({ useAtomValue: () => null }));
@@ -810,5 +812,78 @@ describe("ChatMarkdown pictures", () => {
     expect(markup).toContain("data-markdown-image");
     expect(markup.includes('aria-label="Open The home page"')).toBe(opens);
     expect(markup.includes("<button")).toBe(opens);
+  });
+});
+
+describe("ChatMarkdown links read as part of the sentence", () => {
+  const host = "webdev-1a2b-3000.prg1.zerops.app";
+  const services: ZeropsTopologyService[] = [
+    {
+      hostname: "webdev",
+      serviceId: "webdev",
+      type: "nodejs@22",
+      status: "ACTIVE",
+      group: "runtimes",
+      transient: false,
+      ports: [],
+      routes: [{ url: `https://${host}`, host, port: 3000 }],
+    },
+  ];
+  function render(text: string) {
+    return renderToStaticMarkup(
+      <ServiceBrowserScope
+        threadRef={{ environmentId: EnvironmentId.make("env-1"), threadId: ThreadId.make("t-1") }}
+        services={services}
+      >
+        <ChatMarkdown cwd="/tmp/project" text={text} />
+      </ServiceBrowserScope>,
+    );
+  }
+  /** The first link's markup, and what follows it up to the next tag. */
+  function firstLink(html: string) {
+    const [, tag = "", inner = "", after = ""] =
+      /(<a [^>]*>)([\s\S]*?)<\/a>([^<]*)/.exec(html) ?? [];
+    return { tag, inner, after };
+  }
+  /** What the link draws after its last visible word, its destination's words aside. */
+  function drawnAfterWords(inner: string, said: string): string {
+    const parts = inner.replace(said, "").split(/(<[^>]+>)/);
+    const last = parts.findLastIndex((part) => !part.startsWith("<") && part.trim() !== "");
+    return parts.slice(last + 1).join("");
+  }
+
+  it.each([
+    {
+      name: "a service's address, opened beside the conversation",
+      text: `It is live: https://${host}/app. Try it.`,
+      destination: "preview",
+      said: "Open in side panel",
+    },
+    {
+      name: "a named link to a service",
+      text: `Open [the guestbook](https://${host}/).`,
+      destination: "preview",
+      said: "Open in side panel",
+    },
+    {
+      name: "an address on the web",
+      text: "See https://docs.example.org/guide.",
+      destination: "external",
+      said: "Open in new tab",
+    },
+  ])("$name: its mark leads, the full stop follows its words", (link) => {
+    const { tag, inner, after } = firstLink(render(link.text));
+    expect(tag).toContain(`data-link-destination="${link.destination}"`);
+    // Nothing drawn between the link's last word and the sentence's full stop.
+    expect(drawnAfterWords(inner, link.said)).not.toMatch(/<svg|<img/);
+    expect(after).toMatch(/^\./);
+    // The destination is still said, to whoever cannot see the mark.
+    expect(inner).toContain(link.said);
+  });
+
+  it("marks a service's address with a drawn globe, never a fetched favicon", () => {
+    const { inner } = firstLink(render(`It is live: https://${host}/app.`));
+    expect(inner).not.toContain("<img");
+    expect(inner).toContain("<svg");
   });
 });
