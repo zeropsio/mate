@@ -25,6 +25,7 @@ const TIMELINE: CrewTimeline = {
   crewmate: { handle: "backend", profile: null },
   mateName: "Fen",
   onOpenThread: () => {},
+  onChangeJob: null,
 };
 
 const render = (id: string, timeline: CrewTimeline | null) =>

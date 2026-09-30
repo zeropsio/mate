@@ -251,8 +251,14 @@ interface HeadlinePhrase {
   readonly clauses: ReadonlyArray<string>;
 }
 
-const HEADLINE_CLASS =
+/**
+ * The opening's headline and its face's size, which a crewmate's empty
+ * conversation shares (`CrewmateEmptyState`), so a switch between the two
+ * keeps the face where it stood.
+ */
+export const MATE_EMPTY_HEADLINE_CLASS =
   "text-center text-2xl font-normal tracking-tight text-foreground sm:text-3xl";
+export const MATE_EMPTY_FACE_CLASS = "size-16 sm:size-18";
 
 /**
  * The empty conversation as it is drawn, from what it says: its Mate, the stand-up's phase (null
@@ -312,14 +318,14 @@ export function MateEmptyStateView({
         {/* The brand mark's box: a draft's hero shows the mark until it is
             known who lives here, and the face takes its place without a jump. */}
         <MateFace
-          className="size-16 sm:size-18"
+          className={MATE_EMPTY_FACE_CLASS}
           size="lg"
           shape={mate.shape}
           state={mateFaceFor(mate.connected, undefined)}
           tint={mate.tint}
         />
         {coming === null && phase === null ? (
-          <h1 className={HEADLINE_CLASS}>{mateQuestion(mate)}</h1>
+          <h1 className={MATE_EMPTY_HEADLINE_CLASS}>{mateQuestion(mate)}</h1>
         ) : (
           // Every phase in one box, the tallest's: a new one fades its words in
           // where the last ones began, and nothing around them moves. The
@@ -342,7 +348,12 @@ export function MateEmptyStateView({
                   inert={each.id !== shownId}
                   key={each.id}
                 >
-                  <Words className={cn(HEADLINE_CLASS, each.id !== "question" && "text-balance")}>
+                  <Words
+                    className={cn(
+                      MATE_EMPTY_HEADLINE_CLASS,
+                      each.id !== "question" && "text-balance",
+                    )}
+                  >
                     {each.clauses.map((clause, at) => (
                       <Fragment key={clause}>
                         {at === 0 ? null : " "}

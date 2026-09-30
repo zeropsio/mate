@@ -1044,7 +1044,10 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       <TimelineEmptyState environmentId={activeThreadEnvironmentId} threadKey={routeThreadKey} />
     ) : (
       <CrewmateEmptyState
-        crewmate={crew.crewmate}
+        bottomInset={contentInsetEndAdjustment}
+        crew={crew}
+        environmentId={activeThreadEnvironmentId}
+        mateFace={mate.kind === "mate" ? mate.mate : null}
         seams={rows.flatMap((row) => (row.kind === "crew-seam" ? [row] : []))}
       />
     );

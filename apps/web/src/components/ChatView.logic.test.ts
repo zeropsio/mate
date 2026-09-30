@@ -52,6 +52,7 @@ import {
   resolveComposerInteractionMode,
   resolveComposerOverlayHeight,
   resolveComposerProviderSelection,
+  resolveCrewChangeOffered,
   resolveZeropsConversationReadOnly,
   resolveZeropsOwnedAgentSendBlockReason,
   resolveZeropsProviderAvailability,
@@ -2171,6 +2172,24 @@ describe("resolveZeropsConversationReadOnly", () => {
     ["no Zerops agent at all", undefined, "someone-else", null],
   ] as const)("%s", (_label, agent, ownership, expected) => {
     expect(resolveZeropsConversationReadOnly({ agent, ownership })).toEqual(expected);
+  });
+});
+
+describe("resolveCrewChangeOffered", () => {
+  const personal = { flagToken: false };
+  const token = { flagToken: true };
+
+  it.each([
+    ["the viewer's own login", true, personal, "mine", true],
+    ["a login nobody holds", true, personal, "none", true],
+    ["no Zerops agent at all", true, undefined, "none", true],
+    ["a project token, whoever signed it", true, token, "someone-else", true],
+    ["someone else's personal login", true, personal, "someone-else", false],
+    ["an unrecorded login: nobody may run it", true, personal, "unrecorded", false],
+    ["a login whose record failed", true, personal, "record-failed", false],
+    ["whose agent it is, not read yet", false, personal, "none", false],
+  ] as const)("%s", (_label, agentAuthKnown, agent, ownership, offered) => {
+    expect(resolveCrewChangeOffered({ agentAuthKnown, agent, ownership })).toBe(offered);
   });
 });
 

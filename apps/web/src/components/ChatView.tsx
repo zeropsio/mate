@@ -432,6 +432,7 @@ import {
   resolveComposerInteractionMode,
   resolveComposerOverlayHeight,
   resolveComposerProviderSelection,
+  resolveCrewChangeOffered,
   resolveDraftHeroState,
   resolveZeropsConversationReadOnly,
   resolveZeropsOwnedAgentSendBlockReason,
@@ -5419,17 +5420,32 @@ export default function ChatView(props: ChatViewProps) {
           to: "/$environmentId/$threadId",
           params: buildThreadRouteParams(scopeThreadRef(environmentId, target)),
         }),
+      // Its empty conversation's *Change its job*, as its menu's: offered to a
+      // viewer who may run its agent (D6), the answer its composer gets.
+      onChangeJob:
+        activeThreadRef !== null &&
+        resolveCrewChangeOffered({
+          agentAuthKnown: zeropsAgentAuth.snapshot !== null,
+          agent: zeropsOwnedAgent,
+          ownership: zeropsAgentOwnership,
+        })
+          ? () => openCrewView(activeThreadRef, { kind: "job", handle: activeCrewOrigin.crewmate })
+          : null,
     };
   }, [
     activeCrewOrigin,
     activeCrewmate,
+    activeThreadRef,
     crew.snapshot,
     displayedTimeline.entries,
     environmentId,
     loadEarlierTurns,
     navigate,
     threadId,
+    zeropsAgentAuth.snapshot,
+    zeropsAgentOwnership,
     zeropsMates,
+    zeropsOwnedAgent,
   ]);
 
   const feedbackBannerItems = useMemo(

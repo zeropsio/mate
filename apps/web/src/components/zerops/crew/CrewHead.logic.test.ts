@@ -68,14 +68,14 @@ describe("crewModeLine", () => {
     ],
     [
       "stopped by its time, with work queued",
-      { run: at({ state: "paused", reason: "time", spentUsd: 0 }), ...QUEUED },
-      "Stopped working on its own: its 8 hours are up. It spent $0.00.",
+      { run: at({ state: "paused", reason: "time", spentUsd: 6.4 }), ...QUEUED },
+      "Stopped working on its own: its 8 hours are up. It spent $6.40.",
       "keepGoing",
     ],
     [
-      "stopped by its time, with nothing left to do",
+      "stopped by its time, with nothing left to do and nothing spent",
       { run: at({ state: "paused", reason: "time", spentUsd: 0 }), ...QUIET },
-      "Stopped working on its own: its 8 hours are up. It spent $0.00.",
+      "Stopped working on its own: its 8 hours are up",
       null,
     ],
     [
