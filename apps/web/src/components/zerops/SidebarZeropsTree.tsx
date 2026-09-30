@@ -2541,9 +2541,19 @@ function MateRow<T extends RosterCandidate>({
           stepStop({ kind: "blur" });
         }
       }}
-      onPointerLeave={() => {
+      onKeyDown={(event) => {
+        // Esc lets an armed stop go wherever in the row the focus stands: its main button or
+        // the Stop? itself.
+        if (armed && event.key === "Escape") {
+          event.preventDefault();
+          stepStop({ kind: "escape" });
+        }
+      }}
+      onPointerLeave={(event) => {
         cancelLongPress();
-        if (armed) stepStop({ kind: "leave" });
+        // Only a mouse leaves: a tap fires pointerleave before its click, and a second tap on
+        // Stop? must still stop.
+        if (armed && event.pointerType === "mouse") stepStop({ kind: "leave" });
       }}
       onPointerMove={(event) => {
         if (event.pointerType === "touch" && event.movementY !== 0) cancelLongPress();
@@ -2574,11 +2584,8 @@ function MateRow<T extends RosterCandidate>({
           onSelect(candidate);
         }}
         onKeyDown={(event) => {
-          if (armed && event.key === "Escape") {
-            event.preventDefault();
-            stepStop({ kind: "escape" });
-            return;
-          }
+          // Esc while armed is the row's own (`onKeyDown` on the row, above).
+          if (armed && event.key === "Escape") return;
           // The list's keys: j and k move, x arms a working Mate's stop and x again stops it,
           // e marks it read or unread.
           const action = sidebarMateKey({
