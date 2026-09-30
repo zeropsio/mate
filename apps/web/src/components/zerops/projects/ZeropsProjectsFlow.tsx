@@ -57,6 +57,8 @@ export interface ProjectsFlowGroup<T> {
    * `main` hold a skeleton, whatever its deploys already say.
    */
   readonly changesAwaiting: boolean;
+  /** Its changes' read failed and nothing is held: their steps say so (`CHANGES_UNREAD_LINE`). */
+  readonly changesFailed?: boolean;
   /** The Mates' environments by project id, in the tree's order (`matesOf` pairs them). */
   readonly mates: ReadonlyMap<string, T>;
   /** Its stages and its production, by project id. */

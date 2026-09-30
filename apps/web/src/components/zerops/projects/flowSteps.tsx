@@ -426,7 +426,7 @@ export function MainStep<T>({
   readonly verb: ReactNode;
   readonly menuFor?: ((projectId: string) => ReactNode) | undefined;
 }) {
-  const cell = mainCell(entry.flow, entry.lastMerged);
+  const cell = mainCell(entry.flow, entry.lastMerged, entry.changesFailed);
   const { stages, creatingStages } = entry.flow;
   const staged = stages.length + creatingStages.length > 0;
   const notLive = entry.flow.main.notLive > 0;
@@ -588,7 +588,7 @@ export function PullRequestsStep<T>({
       density="line"
       lines={
         shown === undefined ? (
-          <EmptyStep>{pullRequestsLine(flow)}</EmptyStep>
+          <EmptyStep>{pullRequestsLine(flow, entry.changesFailed)}</EmptyStep>
         ) : (
           <>
             <span className={LINE_ONE_CLASS}>
