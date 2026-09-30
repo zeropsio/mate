@@ -344,6 +344,7 @@ import {
 } from "~/zerops/useZeropsAgentSigner";
 import { mateArrivalHoldsComposer } from "~/zerops/mateStandUp";
 import { useMateStandUp } from "~/zerops/useMateStandUp";
+import { takeHandedOverCaret } from "~/zerops/mateHandOver";
 import { useZeropsAgentSignInDialog } from "~/zerops/useZeropsAgentSignInDialog";
 import { ExpandedImageDialog } from "./chat/ExpandedImageDialog";
 import { PullRequestThreadDialog } from "./PullRequestThreadDialog";
@@ -4665,12 +4666,16 @@ export default function ChatView(props: ChatViewProps) {
   useEffect(() => {
     if (!activeThread?.id || terminalUiState.terminalOpen) return;
     const frame = window.requestAnimationFrame(() => {
-      focusComposer();
+      // Handed over from its Mate's own view, what was typed there is the
+      // draft: the caret stays where the person left it.
+      const caret = takeHandedOverCaret(routeThreadKey, Date.now());
+      if (caret === null) focusComposer();
+      else composerRef.current?.focusAt(caret);
     });
     return () => {
       window.cancelAnimationFrame(frame);
     };
-  }, [activeThread?.id, focusComposer, terminalUiState.terminalOpen]);
+  }, [activeThread?.id, composerRef, focusComposer, routeThreadKey, terminalUiState.terminalOpen]);
 
   // Tabbing back into the app lands focus wherever it last was, often the right panel or the
   // body. Put it in the composer unless something that takes typing already holds it. The

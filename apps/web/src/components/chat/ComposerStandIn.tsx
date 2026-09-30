@@ -8,9 +8,10 @@
  * as `ChatView` draws the composer's dock and `ChatComposer` its card, so the
  * conversation's own takes over in the same frame, in the same place.
  *
- * Nothing can be written or sent yet: it is the card, its placeholder and
- * its send, at rest. The toolbar's model and meter come with the
- * conversation.
+ * It takes typing: what the person writes while the Mate connects is the
+ * conversation's draft once it opens (`mateHandOver.ts`), the caret where
+ * they left it. Nothing is sent from it — its send waits, as Enter does — and
+ * the toolbar's model and meter come with the conversation.
  */
 import { ZEROPS_CONNECTED_COMPOSER_PLACEHOLDER } from "../../composerPlaceholder";
 import { COMPOSER_PROMPT_TYPE_CLASS_NAME } from "../ComposerPromptEditor";
@@ -19,15 +20,28 @@ import { ContextWindowMeterPlaceholder } from "./ContextWindowMeter";
 
 const nothing = () => undefined;
 
-export function ComposerStandIn() {
+/** What the person typed into the stand-in, and where the caret stands in it. */
+export interface StandInTyped {
+  readonly text: string;
+  readonly caret: number;
+}
+
+export function ComposerStandIn({
+  typed,
+  onType,
+}: {
+  readonly typed: StandInTyped;
+  readonly onType: (typed: StandInTyped) => void;
+}) {
+  const report = (field: HTMLTextAreaElement) =>
+    onType({ text: field.value, caret: field.selectionEnd });
   return (
     <div
       className="pointer-events-none absolute inset-x-0 bottom-0 z-20 pt-1.5 sm:pt-2"
       data-composer-stand-in=""
-      inert
     >
       <div className="w-full ps-(--workspace-gutter-start) pe-(--workspace-gutter-end)">
-        <div className="relative z-10">
+        <div className="pointer-events-auto relative z-10">
           <div className="relative">
             <div
               data-slot="composer-shell"
@@ -41,15 +55,20 @@ export function ComposerStandIn() {
                         <div>
                           <div className="relative px-3 pt-3.5 pb-2 sm:px-4 sm:pt-4">
                             <div className={COMPOSER_PROMPT_TYPE_CLASS_NAME}>
-                              <div
-                                aria-disabled="true"
-                                aria-placeholder={ZEROPS_CONNECTED_COMPOSER_PLACEHOLDER}
-                                className="block min-h-17.5 w-full leading-relaxed"
-                                role="textbox"
+                              <textarea
+                                aria-label="Message"
+                                className="block field-sizing-content max-h-50 min-h-17.5 w-full resize-none overflow-y-auto bg-transparent p-0 leading-relaxed text-foreground outline-none placeholder:text-placeholder"
+                                onChange={(event) => report(event.currentTarget)}
+                                onKeyDown={(event) => {
+                                  // Nothing is sent before the conversation opens.
+                                  if (event.key === "Enter" && !event.shiftKey)
+                                    event.preventDefault();
+                                }}
+                                onSelect={(event) => report(event.currentTarget)}
+                                placeholder={ZEROPS_CONNECTED_COMPOSER_PLACEHOLDER}
+                                rows={1}
+                                value={typed.text}
                               />
-                              <div className="pointer-events-none absolute inset-0 leading-relaxed text-placeholder">
-                                {ZEROPS_CONNECTED_COMPOSER_PLACEHOLDER}
-                              </div>
                             </div>
                           </div>
                           <div className="flex min-w-0 flex-nowrap items-center justify-between gap-2 overflow-visible pt-1.5 pe-3 pb-3 ps-3.5">
@@ -63,7 +82,7 @@ export function ComposerStandIn() {
                                 showPlanFollowUpPrompt={false}
                                 promptHasText={false}
                                 isSendBusy={false}
-                                sendDisabledReason={null}
+                                sendDisabledReason="Opening this conversation…"
                                 isConnecting={false}
                                 isEnvironmentUnavailable={false}
                                 isPreparingWorktree={false}

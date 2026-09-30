@@ -25,7 +25,11 @@
  * on the account — says why here, with the way to the projects: nothing here hands the person to
  * another screen on its own (the owner, 2026-09-30: "it just throws me at /zerops page").
  */
-import { scopeThreadRef } from "@t3tools/client-runtime/environment";
+import {
+  parseScopedThreadKey,
+  scopedThreadKey,
+  scopeThreadRef,
+} from "@t3tools/client-runtime/environment";
 import {
   assignCandidateMateTints,
   resolvePrimaryConversation,
@@ -79,7 +83,13 @@ import { ZeropsProjectLink } from "../chat/ChatHeader";
 import { Button } from "../ui/button";
 import { SidebarInset } from "../ui/sidebar";
 import { WorkspacePageHeader } from "../WorkspacePageHeader";
-import { ComposerStandIn } from "../chat/ComposerStandIn";
+import { ComposerStandIn, type StandInTyped } from "../chat/ComposerStandIn";
+import { PanelLayoutControls } from "../chat/PanelLayoutControls";
+import { EllipsisIcon } from "lucide-react";
+import { rememberedActivity } from "~/zerops/menuMemory";
+import { useZeropsThreadActivity } from "~/zerops/useZeropsAgentActivity";
+import { useComposerDraftStore } from "~/composerDraftStore";
+import { draftWithTyped, handOverMateConversation } from "~/zerops/mateHandOver";
 import type { BirthLineProgress } from "./ZeropsBirthProgress.logic";
 import { ZeropsArrivalSteps, type ArrivalYou } from "./ZeropsArrivalSteps";
 import { ALMOST_THERE_LINE } from "./ZeropsProjectRow.logic";
@@ -98,6 +108,8 @@ const NO_FACE: ZeropsMateFace = { tint: "slate", shape: "squircle" };
 
 /** The hand-over's own length: the stage's words and slot handing over (`ArrivalSwap`), then the route. */
 const HAND_OVER_MS = 280;
+
+const NOTHING_TYPED: StandInTyped = { text: "", caret: 0 };
 
 /** How long a connected Mate's conversation may take to be read live before it hands over anyway. */
 const LIVE_GRACE_MS = 3_000;
@@ -225,12 +237,55 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
   const [handing, setHanding] = useState(false);
   if (up && !handing) setHanding(true);
   const handingOver = useNewMate((state) => state.handingOver);
+  // What the person types into the composer standing in while it connects: the conversation's
+  // draft, the caret where they left it (`mateHandOver`). The conversation its menu row stands
+  // for is known before it connects — its draft is typed into as its own composer would; else
+  // what is typed joins the conversation's draft as it opens.
+  const liveActivity = useZeropsThreadActivity(threadRef);
+  const remembered = rememberedActivity(projectId);
+  const standInKey = liveActivity?.threadKey ?? remembered?.threadKey ?? null;
+  const standInRef = useMemo(
+    () => (standInKey === null ? null : parseScopedThreadKey(standInKey)),
+    [standInKey],
+  );
+  const heldDraft = useComposerDraftStore((state) =>
+    standInKey === null ? "" : (state.draftsByThreadKey[standInKey]?.prompt ?? ""),
+  );
+  const [typing, setTyping] = useState<{ readonly typed: StandInTyped; readonly touched: boolean }>(
+    { typed: NOTHING_TYPED, touched: false },
+  );
+  const typed: StandInTyped =
+    standInRef === null ? typing.typed : { text: heldDraft, caret: typing.typed.caret };
+  const type = (next: StandInTyped) => {
+    if (standInRef !== null) useComposerDraftStore.getState().setPrompt(standInRef, next.text);
+    setTyping({ typed: next, touched: true });
+  };
+  const typedRef = useRef({ typed, touched: typing.touched, key: standInKey });
+  useEffect(() => {
+    typedRef.current = { typed, touched: typing.touched, key: standInKey };
+  });
   useEffect(() => {
     if (!handing || environmentId === null || threadRef === null) return;
     // Kept read from above every view while the route changes under it.
     if (cameUp) handingOver(threadRef);
     const timer = setTimeout(
       () => {
+        const written = typedRef.current;
+        const conversation = scopedThreadKey(threadRef);
+        let caret: number | null = written.touched ? written.typed.caret : null;
+        if (written.key !== conversation && written.typed.text.length > 0) {
+          // Typed where no conversation was known, or into another than the one that opened.
+          const drafts = useComposerDraftStore.getState();
+          const draft = draftWithTyped(
+            drafts.getComposerDraft(threadRef)?.prompt ?? "",
+            written.typed,
+          );
+          drafts.setPrompt(threadRef, draft.prompt);
+          const typedInto = written.key === null ? null : parseScopedThreadKey(written.key);
+          if (typedInto !== null) drafts.setPrompt(typedInto, "");
+          caret = draft.caret;
+        }
+        handOverMateConversation(conversation, { nowMs: Date.now(), caret });
         takeMateConversation(projectId)?.(threadRef);
         void navigate({
           to: "/$environmentId/$threadId",
@@ -436,11 +491,19 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
   // will draw it: a switch here from a conversation keeps it on screen. A new Mate holds it back
   // for its stand-up; one that cannot be opened has nothing to write to.
   const standsInComposer = shown === undefined && page?.kind !== "unreachable";
+  // What the Mate is on, as its menu row says it: its conversation's own once its conversations
+  // are read, else what the menu remembers drawing.
+  const standInSubject = liveActivity?.subject ?? remembered?.subject ?? null;
 
   return (
     <MateComingFrame
-      composer={standsInComposer ? <ComposerStandIn /> : null}
-      header={<MateComingHeader mate={{ ...mate, connected: environmentId !== null }} />}
+      composer={standsInComposer ? <ComposerStandIn onType={type} typed={typed} /> : null}
+      header={
+        <MateComingHeader
+          mate={{ ...mate, connected: environmentId !== null }}
+          standsIn={standsInComposer ? { subject: standInSubject } : null}
+        />
+      }
     >
       {view === null ? null : (
         <MateEmptyStateView
@@ -496,10 +559,17 @@ export function MateComingFrame({
  */
 export function MateComingHeader({
   mate,
+  standsIn = null,
 }: {
   readonly mate: Pick<ZeropsMateIdentity, "name" | "tint" | "shape" | "connected"> & {
     readonly projectUrl: string | undefined;
   };
+  /**
+   * An existing Mate's conversation header, standing in until it connects: what the Mate is on
+   * (its menu row's subject), the header's menu and the panel toggles, each in its place and
+   * inert, so the header stays as it is when the conversation takes over.
+   */
+  readonly standsIn?: { readonly subject: string | null } | null;
 }) {
   return (
     <div className="@container/header-actions flex min-w-0 flex-1 items-center gap-2 sm:gap-3">
@@ -513,7 +583,7 @@ export function MateComingHeader({
           face: mate.connected ? "idle" : "sleep",
           open: true,
           threadId: null,
-          tooltip: null,
+          tooltip: standsIn?.subject ?? null,
         }}
         onCloseChat={() => undefined}
         onOpen={() => undefined}
@@ -523,11 +593,43 @@ export function MateComingHeader({
       />
       <span className="flex size-4 shrink-0" />
       <div className="flex shrink-0 items-center justify-end gap-1 pr-18.25 sm:pr-14.25">
+        {standsIn === null ? null : (
+          <Button
+            aria-label="More header actions"
+            data-chat-header-ghost
+            inert
+            size="icon-sm"
+            variant="ghost-muted"
+          >
+            <EllipsisIcon className="size-4" />
+          </Button>
+        )}
         {mate.projectUrl === undefined ? null : <ZeropsProjectLink projectUrl={mate.projectUrl} />}
       </div>
+      {standsIn === null ? null : (
+        <div
+          className="absolute top-[var(--workspace-controls-top)] right-[var(--workspace-controls-right)] z-50 mr-px flex h-[var(--workspace-topbar-height)] items-center gap-1 [-webkit-app-region:no-drag]"
+          data-workspace-titlebar-controls
+          inert
+        >
+          <PanelLayoutControls
+            liveAgentCount={0}
+            onToggleRightPanel={nothing}
+            onToggleTerminal={nothing}
+            rightPanelAvailable
+            rightPanelOpen={false}
+            rightPanelShortcutLabel={null}
+            terminalAvailable
+            terminalOpen={false}
+            terminalShortcutLabel={null}
+          />
+        </div>
+      )}
     </div>
   );
 }
+
+const nothing = () => undefined;
 
 /**
  * Under a Mate's name while its link is made, or when it cannot be opened: the route gate's words

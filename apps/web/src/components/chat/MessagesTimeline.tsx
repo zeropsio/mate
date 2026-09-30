@@ -151,6 +151,7 @@ import { ConversationAfterWork, ConversationWorking, dockDraws } from "./Convers
 import { BackgroundLine, FOLD_FADE_MASK, foldsLikeAMessage, RunChat, RunLine } from "./RunChat";
 import { forgetRunFolds } from "./runCard.logic";
 import { KeptTimelineContext } from "./keptTimelineContext";
+import { handedOverRecently } from "../../zerops/mateHandOver";
 import type { CarriedRow } from "./stepHeight";
 import {
   TimelineRowActivityCtx,
@@ -1169,6 +1170,9 @@ function TimelineLoadingPane({
   readonly routeThreadKey: string;
   readonly speaker: ConversationSpeaker;
 }) {
+  // Handed over from its Mate's own view, its Mate was on screen the whole
+  // wait: it stays at work without the hold.
+  const [handedOver] = useState(() => handedOverRecently(routeThreadKey, Date.now()));
   return (
     <div
       className="flex h-full min-h-0 items-center justify-center bg-background"
@@ -1180,7 +1184,7 @@ function TimelineLoadingPane({
           aria-label={`Opening ${speaker.name}'s conversation`}
           // Opacity alone, so it keeps its 400 ms hold under reduced
           // motion too: without the hold a quick load flashed it.
-          className="flex animate-held-appear"
+          className={handedOver ? "flex" : "flex animate-held-appear"}
           role="status"
         >
           <MateFace shape={speaker.shape} size="lg" state="working" tint={speaker.tint} />
