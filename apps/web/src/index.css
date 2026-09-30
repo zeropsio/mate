@@ -4728,12 +4728,13 @@ button.run-bar:focus-visible {
    between a tile and the tray's edge — 6 px here, the tray's 12 under it. */
 /* p26/runcard */
 /* What a service's checks found stays on its one line, never a line of its
-   own that leads with a "·" or a "/": past its room it gives way at its end,
-   and never runs out of its column. The pictures its checks took stand
+   own that leads with a "·" or a "/": it keeps the line while 12 characters
+   of room are left, gives way at its end past its room, and never runs out
+   of its column — nor shrinks to nothing when what stands before it is long. The pictures its checks took stand
    under its row, the open card's thumbnails' 80 px. */
 .run-result-checked {
-  flex: 1 1 0;
-  min-width: 0;
+  flex: 1 1 12ch;
+  min-width: min(12ch, 100%);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
