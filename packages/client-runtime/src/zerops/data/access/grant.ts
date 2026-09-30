@@ -57,6 +57,11 @@ export interface ProjectEvidence {
   readonly access: ProjectEffectiveAccess;
   /** The stamp of the round whose membership it joins; never later than its own read. */
   readonly startedAt: Instant;
+  /**
+   * First named by an organization's live list, not a round's: held across rounds whose lagging
+   * search leaves it out, until its own read says otherwise (`PROJECTS_LISTED`).
+   */
+  readonly listed?: true;
 }
 
 /**
@@ -67,6 +72,8 @@ export interface ProjectEvidence {
 export interface UnverifiedProject {
   readonly project: ProjectRef;
   readonly failure: GrantFailure | null;
+  /** First named by an organization's live list (`ProjectEvidence.listed`). */
+  readonly listed?: true;
   readonly retryAt: Instant;
   /** Failed reads so far; picks the rung of the next wait. */
   readonly attempt: number;
@@ -691,19 +698,22 @@ const completeRound = (
     }
   }
 
-  // Listed after this round read its organizations: not its target, so still to be read.
-  const listedSince = new Set(
+  // A project an organization's live list named, which this round did not target — listed after
+  // it read its organizations, or left out by a search that lags — is held as it was: its own
+  // reads keep it, and a direct read that denies it is what lets it go.
+  const organizationsRead = new Set(
     (round.organizations ?? []).map(({ organization }) => organization.organizationId),
   );
+  const targeted = new Set((round.targets ?? []).map((target) => target.projectId));
+  const keptListed = (id: ZeropsProjectId, project: ProjectRef): boolean =>
+    organizationsRead.has(project.organization.organizationId) &&
+    !targeted.has(id) &&
+    !closedProjects.has(id);
+  for (const [id, own] of previous?.projects ?? []) {
+    if (own.listed === true && keptListed(id, own.access.project)) projects.set(id, own);
+  }
   for (const [id, entry] of previous?.unverified ?? []) {
-    if (
-      entry.failure === null &&
-      listedSince.has(entry.project.organization.organizationId) &&
-      !(round.targets ?? []).some((target) => target.projectId === id) &&
-      !closedProjects.has(id)
-    ) {
-      unverified.set(id, entry);
-    }
+    if (entry.listed === true && keptListed(id, entry.project)) unverified.set(id, entry);
   }
 
   const evidence: Evidence = {
@@ -802,7 +812,12 @@ const projectResult = (
     return withEvidence(machine, { ...held, unverified });
   }
   const projects = new Map(held.projects);
-  projects.set(id, { access: outcome.access, startedAt: held.account.startedAt });
+  const entry = held.unverified.get(id);
+  projects.set(id, {
+    access: outcome.access,
+    startedAt: held.account.startedAt,
+    ...(entry?.listed === true ? { listed: true as const } : {}),
+  });
   const unverified = new Map(held.unverified);
   unverified.delete(id);
   const closedProjects = new Map(held.closedProjects);
@@ -986,7 +1001,13 @@ const listProjects = (
   if (fresh.length === 0) return machine;
   const unverified = new Map(evidence.unverified);
   for (const project of fresh) {
-    unverified.set(project.projectId, { project, failure: null, retryAt: ctx.now, attempt: 0 });
+    unverified.set(project.projectId, {
+      project,
+      failure: null,
+      retryAt: ctx.now,
+      attempt: 0,
+      listed: true,
+    });
   }
   return withEvidence(machine, { ...evidence, unverified });
 };
@@ -1011,6 +1032,7 @@ const dropExpiredProjects = (
     if (!unverified.has(id)) {
       unverified.set(id, {
         project: own.access.project,
+        ...(own.listed === true ? { listed: true as const } : {}),
         failure: { kind: "timeout", afterMs: ctx.policy.windowMs },
         retryAt: ctx.now,
         attempt: 0,

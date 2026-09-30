@@ -1062,6 +1062,38 @@ describe("access grant reducer", () => {
       expect(verifyRuns(sim, C)).toHaveLength(1);
     });
 
+    it.each([
+      ["verified by its own read", verified(C)],
+      ["whose first read failed", failed],
+    ] as const)(
+      "%s, is kept by a renewal round whose lagging search leaves it out",
+      (_label, outcome) => {
+        const sim = grantedSim();
+        sim.elapse(MINUTE);
+        sim.send(listed([A, B, C]));
+        sim.elapse(300);
+        sim.send({
+          type: "PROJECT_RESULT",
+          attempt: sim.lastRun("verify-project").attempt,
+          project: C,
+          outcome,
+        });
+        const allowed = sim.read(C).allowed;
+        play(sim, 12 * MINUTE + 10 * SECOND, () => []);
+        const round = sim.round();
+        // The search index lags: the round lists A and B, and nothing positively lacks C.
+        sim.send({ type: "ROUND_ACCOUNT", round, organizations, projects: [A, B] });
+        sim.send({ type: "ROUND_PROJECT", round, project: A, outcome: verified(A) });
+        sim.send({ type: "ROUND_PROJECT", round, project: B, outcome: verified(B) });
+        expect(grantRoundInFlight(sim.state)).toBeNull();
+        const evidence = sim.state.phase.phase === "granted" ? sim.state.phase.evidence : null;
+        expect(
+          evidence?.projects.has(C.projectId) === true || evidence?.unverified.has(C.projectId),
+        ).toBe(true);
+        expect(sim.read(C).allowed).toBe(allowed);
+      },
+    );
+
     it("is not read before the account's first grant: that round reads the list itself", () => {
       const sim = new GrantSim();
       sim.send({ type: "START" });
