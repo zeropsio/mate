@@ -712,6 +712,30 @@ describe("the projects listing", () => {
         view: { alert: null, listingNotice: null, empty: EMPTY },
       },
       {
+        name: "nothing to show while the trouble lasts, the list still reading: only the empty words",
+        input: {
+          connectError: null,
+          inventoryError: TROUBLE,
+          listingNotice: projectsListingNotice({ state: "reading", sinceMs: 0, attempt: 1 }, 0),
+          rows: 0,
+        },
+        view: { alert: null, listingNotice: null, empty: EMPTY },
+      },
+      {
+        name: "nothing to show, the list still reading, the trouble not yet spoken: the reading line",
+        input: {
+          connectError: null,
+          inventoryError: null,
+          listingNotice: projectsListingNotice({ state: "reading", sinceMs: 0, attempt: 1 }, 0),
+          rows: 0,
+        },
+        view: {
+          alert: null,
+          listingNotice: projectsListingNotice({ state: "reading", sinceMs: 0, attempt: 1 }, 0),
+          empty: null,
+        },
+      },
+      {
         name: "a failed listing the account's line does not speak for: its cause, once",
         input: { connectError: null, inventoryError: null, listingNotice: failedListing, rows: 0 },
         view: { alert: null, listingNotice: failedListing, empty: null },
