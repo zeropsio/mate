@@ -29,7 +29,6 @@ const ASK: NewProjectAsk = {
   face: { tint: "rose", shape: "seal" },
   locationId: null,
   agents: [],
-  standUpBy: "u-ada",
 };
 
 const PRESSED_AT = Date.parse("2026-09-30T10:00:00.000Z");
@@ -384,7 +383,7 @@ describe("runNewProjectBirth — the project, then its first Mate", () => {
 
   it.each<{ readonly case: string; readonly ask: Partial<NewProjectAsk>; readonly args: object }>([
     {
-      case: "named after its Mate, tagged into the project, with the face picked and its stand-up",
+      case: "named after its Mate, tagged into the project, with the face picked and no stand-up",
       ask: {},
       args: {
         name: "Acme CRM - Vera",
@@ -392,12 +391,11 @@ describe("runNewProjectBirth — the project, then its first Mate", () => {
         group: { groupId: "g-acme", role: "dev", label: "Acme CRM" },
         botName: "Vera",
         face: { tint: "rose", shape: "seal" },
-        standUpBy: "u-ada",
       },
     },
     {
-      case: "in the location chosen, with the agents selected, asked by nobody",
-      ask: { locationId: "prg1", agents: ["claude-code"], standUpBy: undefined },
+      case: "in the location chosen, with the agents selected",
+      ask: { locationId: "prg1", agents: ["claude-code"] },
       args: {
         name: "Acme CRM - Vera",
         location: "prg1",

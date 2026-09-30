@@ -3027,3 +3027,12 @@ its ratio)`, its size attributes giving its height before a byte has come; a pic
   account has none, then the project. The Mate's six steps follow, and the menu draws both from the
   press.
   - _Why:_ Git hosting blocked the page and Create landed on the projects list, not the Mate
+
+- **2026-09-30** — **A new project's first Mate gets no stand-up; its person says what to build.**
+  _New project_ no longer writes `mate:standup:`, so its Mate's sign-in reads "Once it's signed
+  in, Enzo writes and runs code on its own copy of Kestrel." and its first turn is the person's, as
+  the dialog's "You sign Enzo in and tell it what to build" promised. It supersedes the stand-up
+  half of "_New project_ asks who its first Mate is". A Mate added to a project with a recipe still
+  stands it up.
+  - _Why:_ on the live run (Kestrel, Enzo) the stand-up went to a project with no recipe and no
+    code, and the Mate could only report that there was nothing to set up

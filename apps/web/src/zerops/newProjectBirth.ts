@@ -60,8 +60,6 @@ export interface NewProjectAsk {
   readonly locationId: string | null;
   /** Empty for every agent: an empty selection omits `ZCP_AGENTS` (`newProject.ts`). */
   readonly agents: ReadonlyArray<ZeropsAgentType>;
-  /** The person whose first sign-in sends the Mate the project's stand-up (D6). */
-  readonly standUpBy?: string | undefined;
 }
 
 export interface NewProjectFailure {
@@ -97,7 +95,6 @@ export interface NewProjectCreation {
   readonly group: { readonly groupId: string; readonly role: "dev"; readonly label: string };
   readonly botName: string;
   readonly face: ZeropsMateFace;
-  readonly standUpBy?: string;
 }
 
 /** What a New project's creation acts through: the platform, and the birth it hands over to. */
@@ -349,7 +346,6 @@ export async function runNewProjectBirth(
       group: { groupId: birth.groupId, role: "dev", label: birth.name },
       botName: birth.botName,
       face: birth.face,
-      ...(birth.standUpBy === undefined ? {} : { standUpBy: birth.standUpBy }),
     });
     projectId = created.project.id;
   } catch (cause) {

@@ -65,7 +65,6 @@ const ACME: NewProjectBirth = {
   face: { tint: "rose", shape: "seal" },
   locationId: null,
   agents: [],
-  standUpBy: "u-ada",
   startedAt: Date.parse("2026-09-30T10:00:00.000Z"),
   withGitea: true,
   giteaProjectId: null,
