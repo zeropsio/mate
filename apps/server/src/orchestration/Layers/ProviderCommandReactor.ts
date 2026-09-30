@@ -1679,6 +1679,29 @@ const make = Effect.gen(function* () {
     yield* providerService
       .interruptTurn({ threadId: event.payload.threadId })
       .pipe(Effect.catchCause(recoverInterruptFailure));
+
+    // The provider reports the end of a turn it runs. A session that says it
+    // runs but runs none — its start cancelled above before the run began —
+    // has no end to report, and would say it runs on until a restart (Juno,
+    // 2026-09-29: the conversation kept thinking after Stop, and the next
+    // message's run took the stuck one for its opener).
+    const stopped = (yield* resolveThreadShell(event.payload.threadId))?.session;
+    if (
+      stopped &&
+      (stopped.status === "running" || stopped.status === "starting") &&
+      stopped.activeTurnId === null
+    ) {
+      yield* setThreadSession({
+        threadId: event.payload.threadId,
+        session: {
+          ...stopped,
+          status: "interrupted",
+          lastError: null,
+          updatedAt: event.payload.createdAt,
+        },
+        createdAt: event.payload.createdAt,
+      });
+    }
   });
 
   const processApprovalResponseRequested = Effect.fn("processApprovalResponseRequested")(function* (
