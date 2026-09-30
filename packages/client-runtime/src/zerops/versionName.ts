@@ -6,16 +6,19 @@
  * keeps whatever name it was deployed under, so every name the broker has ever
  * written is read:
  *
- * - **now** — exactly two tokens, a label and the commit's short sha: a stage's
- *   `main 7e2d4c1`, production's `v0.1.0 7e2d4c1`. Branches and tags hold no
- *   space, so the label is always one token;
- * - **before 2026-09-30** — a stage's bare 40-hex sha, and production's
- *   `{sha} {tag} {tagger}`, the sha first.
+ * - **now** — exactly two tokens, a label and the commit's short sha, exactly
+ *   seven hex: a stage's `main 7e2d4c1`, production's `v0.1.0 7e2d4c1`.
+ *   Branches and tags hold no space, so the label is always one token;
+ * - **before 2026-09-30** — a stage's bare whole sha, and production's
+ *   `{sha} {tag} {tagger}`, the whole sha first.
+ *
+ * A whole sha is 40 hex, or 64 in a SHA-256 repository.
  *
  * zcp names its own pushes the same way, `{branch} {short sha}`, and a push of a
  * working tree with uncommitted changes `{branch} {short sha}-dirty`: that one
  * was built from no commit, and reads as named by hand. Anything else was named
- * by hand (`zcli` with a name somebody typed) and names no commit.
+ * by hand (`zcli` with a name somebody typed, `release 20260930`) and names no
+ * commit.
  *
  * A short sha never equals a full one, so a commit is compared with
  * {@link sameCommit}, and where a full sha is needed as a key it is found among
@@ -29,12 +32,18 @@
 /** The fewest hex characters a sha is spelled with: what git and every row here show. */
 export const SHORT_SHA_LENGTH = 7;
 
-const FULL_SHA = /^[0-9a-f]{40}$/u;
-const SHA = /^[0-9a-f]{7,40}$/u;
+const FULL_SHA = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/u;
+const SHA = /^[0-9a-f]{7,64}$/u;
+const SHORT_SHA = /^[0-9a-f]{7}$/u;
+
+/** Whether `sha` is a whole commit sha — 40 hex, or 64 in a SHA-256 repository — in any case. */
+export function isWholeSha(sha: string): boolean {
+  return FULL_SHA.test(sha.toLowerCase());
+}
 
 /** What an app version's name says, where one of ours named it. */
 export interface ParsedVersionName {
-  /** The commit, lower case, whole in an old name and short in a new one. */
+  /** The commit, lower case, whole in an old name and seven hex in a new one. */
   readonly sha: string;
   /** The tag or the branch the name carries; absent from an old stage name. */
   readonly label?: string;
@@ -52,7 +61,7 @@ export function parseVersionName(name: string | undefined): ParsedVersionName | 
   const firstSha = first.toLowerCase();
   if (second === undefined) return FULL_SHA.test(firstSha) ? { sha: firstSha } : undefined;
   const secondSha = second.toLowerCase();
-  if (rest.length === 0 && SHA.test(secondSha)) return { sha: secondSha, label: first };
+  if (rest.length === 0 && SHORT_SHA.test(secondSha)) return { sha: secondSha, label: first };
   if (!FULL_SHA.test(firstSha)) return undefined;
   return rest.length === 0
     ? { sha: firstSha, label: second }
@@ -61,7 +70,7 @@ export function parseVersionName(name: string | undefined): ParsedVersionName | 
 
 /**
  * Whether the commit a version's name spells (`named`, whole or short) is
- * `commit`, a whole sha: equal, or a hex prefix of it at least
+ * `commit`, a whole sha (40 or 64 hex): equal, or a hex prefix of it at least
  * {@link SHORT_SHA_LENGTH} long. Only the named side may be short — a short
  * `commit` is a spelling nothing can check, and a dirty tree's `-dirty` token
  * is not hex, so neither is ever the commit. Nothing is never a commit.
