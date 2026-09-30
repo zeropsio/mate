@@ -872,12 +872,18 @@ it.live(
         harness.holdRenewal();
         invalidateZerops({ topic: "inventory", organization: harness.organization });
         yield* harness.advance(250);
+        const loading: Array<boolean> = [];
         for (let second = 0; second < 600 && harness.inventory()?.error == null; second++) {
           yield* harness.advance(1_000);
           // Nothing covers the product, freezes it or offers to sign out meanwhile.
           if (harness.inventory()?.error == null) expect(harness.container.textContent).toBe("");
+          loading.push(harness.inventory()?.isLoading === true);
         }
+        // The silence changes nothing the data says: through the hold before the line speaks,
+        // the stalled read is not known.
+        expect(loading.slice(-19, -1)).toEqual(Array.from({ length: 18 }, () => true));
         expect(harness.inventory()?.error).toBe("Zerops isn't answering. Trying again…");
+        expect(harness.inventory()?.isLoading).toBe(true);
         // Said once, at the menu's foot, with Try now and no Sign out.
         expect(harness.container.textContent).toBe("Zerops isn't answering. Trying again…Try now");
         heard.length = 0;
