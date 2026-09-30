@@ -727,6 +727,51 @@ describe("a Mate with no owner, or nobody signed in", () => {
     });
     expect(opened).toEqual(["crm-dev"]);
   });
+
+  // Focus on a row — the keyboard walking the list — warms its conversation,
+  // as the pointer resting on it does, so the press finds its rows placed.
+  it("warms its conversation when its row takes focus", async () => {
+    const { useWarmTimelineAsk } = await import("../chat/warmTimeline");
+    let asked: string | null = null;
+    function Asked() {
+      asked = useWarmTimelineAsk();
+      return null;
+    }
+    const activity: ZeropsAgentActivity = {
+      threadId: "thread-crm" as ZeropsAgentActivity["threadId"],
+      kind: "idle",
+      status: null,
+      face: "idle",
+      subject: "Something",
+      at: new Date().toISOString(),
+      snippet: undefined,
+      errorLine: undefined,
+      unread: false,
+      pausedUntil: undefined,
+      threadKey: "env-crm-dev:thread-focused",
+      task: undefined,
+    };
+    const mounted = mount(
+      <>
+        <Asked />
+        <SidebarZeropsTree
+          candidates={[mate([], { group: "connected" })]}
+          complete
+          getActivity={() => activity}
+          onBrowseProjects={() => {}}
+          onSelect={() => {}}
+        />
+      </>,
+    );
+    const row = mounted.root.find(
+      (node) =>
+        typeof node.type === "string" && node.props["data-zerops-surface"] === "sidebar-mate",
+    );
+    act(() => {
+      row.props.onFocus({});
+    });
+    expect(asked).toBe("env-crm-dev:thread-focused");
+  });
 });
 
 describe("a creation under way in the menu", () => {

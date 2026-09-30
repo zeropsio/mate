@@ -2418,9 +2418,10 @@ function MateRow<T extends RosterCandidate>({
             openMenu();
           }
         }}
-        onFocus={() => {
+        onFocus={(event) => {
           // The eye is on this Mate now: "the next one that waits" starts here.
           useSidebarReveal.getState().setCursor(candidate.project.id);
+          warmIntent.onFocus(event);
         }}
         ref={rowButton}
         type="button"
