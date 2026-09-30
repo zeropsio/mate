@@ -490,14 +490,17 @@ ledger row or a test.
   - _Proven by:_ `ThreadLiveStep.test.ts`, `ProviderRuntimeIngestion.test.ts`,
     `ProjectionSnapshotQuery.test.ts`, `pendingUserInput.test.ts`, `liveStep.test.ts`,
     `agentActivity.test.ts`
-- **—** — Pass 16: switching Mates (T1) — no empty pane, the place kept by row
-  - _State:_ **live**, 2026-09-29, four switches on the localhost pair sampled every frame: no empty
-    frame, the next conversation in at 369–681 ms and the old one's picture gone 65–80 ms after it;
-    one first open scrolled its list 4 px with nothing on screen moving, its source unfound (§7,
-    34). Before: about 320 ms of empty pane on a first open, a 96 px scroll one frame after a return
-  - _Built in:_ mate 0.11.63 (PR #32)
-  - _Proven by:_ `timelineSwitch.logic.test.ts`, `timelineScrollAnchoring.test.tsx`; the harness
-    `/design-switch.html`; ledger _Pass 16 as measured_
+- **—** — Pass 16: switching Mates (T1) — the place kept by row; at once since 2026-09-30
+  - _State:_ **live**. 2026-09-30, the owner on the held picture: "I'd do it immediately then
+    start loading content … it feels like when there are two transparent texts transitioning over
+    itself". Measured on the localhost pair: the old conversation stayed 250–600 ms after the press
+    and crossfaded over the new one for 150 ms; the composer's frame faded its colour three times
+    during one first open, as a drawer came and went, showing the page through it. Now the next
+    Mate's pane is on screen from the press, its list out of sight until placed and in over 140 ms;
+    the picture, its hold and both fades are gone
+  - _Built in:_ mate 0.11.63 (PR #32); at once on `fix/pass-23`
+  - _Proven by:_ `MessagesTimeline.test.tsx` (placing its rows), `timelineScrollAnchoring.test.tsx`;
+    the harness `/design-switch.html`; ledger _Pass 16 as measured_
 - **—** — Pass 16's feedback: the run's card — closed its line, open one scroll
   - _State:_ **live** on the localhost pair, 2026-09-29: closed, a run is its summary line (Juno's
     25-minute run 44 px); open, every event in one scroll of 440 px at most that opens at its foot

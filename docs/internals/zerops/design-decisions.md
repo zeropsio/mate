@@ -2326,7 +2326,8 @@ its ratio)`, its size attributes giving its height before a byte has come; a pic
   older server sends neither a step nor a question, and the row keeps its dots or its last words.
   - _Why:_ a pace on the server would need an event per step, and the menu and the card must never
     say different words
-- **2026-09-29** — **Switching Mates never shows an empty pane** (T1). The conversation being left
+- **2026-09-29** — **Switching Mates never shows an empty pane** (T1; superseded 2026-09-30: a
+  switch is at once). The conversation being left
   stays as a still picture over the pane until the next one stands where it stays, then fades over
   150 ms (at once under reduced motion); a Mate opened before paints where it was left. The picture
   is a copy of the page's conversation with its scroll, shadow roots, canvases and animations put
@@ -2334,7 +2335,7 @@ its ratio)`, its size attributes giving its height before a byte has come; a pic
   conversation holds; the header, the composer's top and the composer switch at once.
   - _Why:_ an empty frame reads as a crash and a late scroll as a glitch: measured, about 320 ms
     empty on a first open and a 96 px scroll one frame after a return
-- **2026-09-29** — **The picture holds at most 600 ms.** A conversation slower than that gives way
+- **2026-09-29** — **The picture holds at most 600 ms** (superseded 2026-09-30). A conversation slower than that gives way
   to its own pane, its Mate at work (from 400 ms), held the same way while its rows are placed; a
   working Mate's conversation still on its way shows that pane, never a run made up from its status.
   - _Why:_ a picture of the wrong conversation under the new header for seconds would mislead
@@ -3027,3 +3028,15 @@ its ratio)`, its size attributes giving its height before a byte has come; a pic
   account has none, then the project. The Mate's six steps follow, and the menu draws both from the
   press.
   - _Why:_ Git hosting blocked the page and Create landed on the projects list, not the Mate
+
+- **2026-09-30** — **A switch between Mates is at once** (the owner: "transition between mates
+  suck, I'd do it immediately then start loading content … it feels like when there are two
+  transparent texts transitioning over itself … the textarea element is transitioning from itself
+  to itself"). The press shows the next Mate's pane — its header, its composer, its own list — and
+  its rows come in as they are placed: out of sight until then, in over 140 ms, its Mate at work
+  from 400 ms when slow to come. No picture of the conversation left is held, and nothing
+  crossfades. The composer's frame takes no colour transition: its surface is painted by the frame
+  or by the shell's layer as a drawer comes and goes, never faded between the two.
+  - _Why:_ measured on the localhost pair, the conversation left stayed 250–600 ms after the press
+    and faded over the next one for 150 ms, two texts at once; the composer's frame faded three
+    times during one first open, showing the page through it
