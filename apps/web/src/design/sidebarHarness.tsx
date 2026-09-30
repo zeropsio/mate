@@ -93,6 +93,7 @@ import {
   type SidebarProjectFlow,
 } from "~/components/zerops/SidebarZeropsTree";
 import { SidebarContent, SidebarProvider } from "~/components/ui/sidebar";
+import { HeadingLadder } from "./headingLadder";
 import { useComposerDraftStore } from "~/composerDraftStore";
 import { setLocalStorageItem } from "~/hooks/useLocalStorage";
 import { writeCollapsedProjects } from "~/zerops/collapsedProjects";
@@ -1341,6 +1342,8 @@ writeCollapsedProjects(
         : fold.split(","),
   ),
 );
+/** `?set=ladder`: every state of a heading's second line (D′), open and folded (`headingLadder.tsx`). */
+const LADDER = params.get("set") === "ladder";
 const order = params.get("order");
 if (order === "custom" || order === "name" || order === "newest") {
   setLocalStorageItem(PROJECT_ORDER_STORAGE_KEY, order, ProjectOrderSchema);
@@ -1362,7 +1365,7 @@ const router = createRouter({
   routeTree: createRootRoute({
     component: () => (
       <SidebarProvider className="block" defaultOpen={!MENU_CLOSED}>
-        <Harness />
+        {LADDER ? <HeadingLadder width={Number(params.get("w") ?? 256)} /> : <Harness />}
       </SidebarProvider>
     ),
   }),
