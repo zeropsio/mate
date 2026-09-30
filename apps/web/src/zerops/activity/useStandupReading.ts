@@ -4,7 +4,7 @@
  * statuses off the topology, its builds off the platform socket
  * (`useProjectActivity`), watched for as long as the call runs and no longer
  * (the tool's own limit is the bound); once settled, from what its report
- * said of each service it built, in the environment the topology draws.
+ * said of each service it built, as the call left it.
  *
  * `StandupReadings` gives a reading by operation key in place of the live one
  * — the design harness's made-up builds.
@@ -16,8 +16,9 @@ import {
   type StandupService,
   type StandupServiceRow,
   readStandup,
-  settleStandup,
+  standupReadingOf,
 } from "@t3tools/client-runtime/zerops/activity/standupReading";
+import type { ActivityProcess } from "@t3tools/client-runtime/zerops/activity/dto";
 import type { ZeropsTopologyService } from "@t3tools/client-runtime/zerops/topology";
 import { standupStepRole, type ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
 import { createContext, use, useMemo } from "react";
@@ -40,14 +41,13 @@ function halfOf(operation: ZeropsOperation): StandupHalf {
 }
 
 /**
- * What the report said of each service it built, once the call settled, in
- * the environment it stood up (`services`, the project's) — or alone, before
- * the project is read.
+ * What the report said of each service it built, as the call left them: a
+ * settled call never changes once it has settled (a service stopped or
+ * failed since, or added since, is not the call's to show). The data services
+ * and utilities around its runtimes are not in its report, so they are left
+ * out rather than shown as they stand today.
  */
-export function settledStandupReading(
-  operation: ZeropsOperation,
-  services?: ReadonlyArray<StandupService>,
-): StandupReading {
+export function settledStandupReading(operation: ZeropsOperation): StandupReading {
   const rows = operation.steps.flatMap((step): StandupServiceRow[] => {
     const role = standupStepRole(step);
     // A stage the call queued is the next call's.
@@ -63,11 +63,7 @@ export function settledStandupReading(
     }
     return [{ hostname: step.label, state: SETTLED_STATE[step.state] ?? "up" }];
   });
-  return settleStandup({
-    half: halfOf(operation),
-    rows,
-    ...(services === undefined ? {} : { services }),
-  });
+  return standupReadingOf(rows);
 }
 
 /** The project's services as the stand-up reads them. */
@@ -89,6 +85,34 @@ export function standupExpected(operation: ZeropsOperation): ReadonlyArray<strin
   return next.length === 0 ? undefined : next.map((step) => step.label);
 }
 
+/**
+ * A call's reading: a running one from the project as it stands (`read`, not
+ * read yet: null — the bar says it is getting ready); a settled one from its
+ * report alone, as the call left it (`settledStandupReading`).
+ */
+export function standupReadingFor(
+  operation: ZeropsOperation,
+  read:
+    | {
+        readonly services: ReadonlyArray<StandupService>;
+        readonly processes: ReadonlyArray<ActivityProcess>;
+        readonly nowMs: number;
+      }
+    | undefined,
+): StandupReading | null {
+  if (operation.phase !== "running") return settledStandupReading(operation);
+  if (read === undefined) return null;
+  const expected = standupExpected(operation);
+  return readStandup({
+    half: halfOf(operation),
+    ...(expected === undefined ? {} : { expected }),
+    services: read.services,
+    processes: read.processes,
+    since: operation.anchorAt,
+    nowMs: read.nowMs,
+  });
+}
+
 export function useStandupReading(
   operation: ZeropsOperation,
   environmentId: EnvironmentId | null,
@@ -98,20 +122,15 @@ export function useStandupReading(
   const topology = useZeropsTopology(environmentId);
   const { processes } = useProjectActivity(running ? (topology?.project.id ?? null) : null);
   const nowMs = useNowMs();
-  const live = useMemo(() => {
-    const services = topology === undefined ? undefined : standupServices(topology.services);
-    if (!running) return settledStandupReading(operation, services);
-    // Not read yet: the bar says it is getting ready, never that nothing builds.
-    if (services === undefined || processes === undefined) return null;
-    const expected = standupExpected(operation);
-    return readStandup({
-      half: halfOf(operation),
-      ...(expected === undefined ? {} : { expected }),
-      services,
-      processes,
-      since: operation.anchorAt,
-      nowMs,
-    });
-  }, [nowMs, operation, processes, running, topology]);
+  const live = useMemo(
+    () =>
+      standupReadingFor(
+        operation,
+        topology === undefined || processes === undefined
+          ? undefined
+          : { services: standupServices(topology.services), processes, nowMs },
+      ),
+    [nowMs, operation, processes, topology],
+  );
   return fixtures?.get(operation.key) ?? live;
 }
