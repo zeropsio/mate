@@ -89,6 +89,15 @@ export function deployActivatedAt(deployment: Shown<Deployment> | undefined): st
 }
 
 /**
+ * Whether a stop runs a version now, as the platform pushed it: `false` while it
+ * runs nothing, builds, or nothing is known yet. A surface reads it here, never
+ * off the Known itself.
+ */
+export function deployRuns(deployment: Shown<Deployment> | undefined): boolean {
+  return deployment?.state === "known" && deployment.value.kind === "running";
+}
+
+/**
  * A deploy on its way on a stop: the version it builds and what served before
  * it. `undefined` while nothing builds, or nothing is known yet.
  */

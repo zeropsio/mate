@@ -79,7 +79,7 @@ import {
 import type { EnvironmentConnectionPresentation } from "@t3tools/client-runtime/connection";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import { mateOwnerRecords } from "@t3tools/client-runtime/zerops/mateAccess";
-import { deployActivatedAt } from "@t3tools/client-runtime/zerops/flow";
+import { deployActivatedAt, deployRuns } from "@t3tools/client-runtime/zerops/flow";
 import type { KnownAffordance } from "@t3tools/client-runtime/zerops/knowledge";
 import type { CandidatesNotice } from "@t3tools/client-runtime/zerops/projections";
 import type { ZeropsContainerHealth } from "@t3tools/client-runtime/zerops/provisioning";
@@ -1219,9 +1219,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
         nowMs,
         services: item?.services?.statuses,
         building: buildingOf(deployment) !== undefined,
-        deployed:
-          stop.version !== undefined ||
-          (deployment?.state === "known" && deployment.value.kind === "running"),
+        deployed: stop.version !== undefined || deployRuns(deployment),
         routes: item?.routes?.length ?? 0,
       });
     };
