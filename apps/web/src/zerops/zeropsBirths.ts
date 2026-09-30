@@ -26,6 +26,7 @@ import {
   type BirthLedger,
   type BirthLocks,
   type BirthRecord,
+  type BirthRuntimes,
   type BirthStepOutcome,
   type BirthStore,
   type BirthWorker,
@@ -352,6 +353,20 @@ export function bornOnAccept(
       return imported;
     },
   };
+}
+
+/**
+ * The runtimes a creation leaves for its birth to import once the project is closed off
+ * (`import-runtimes`): carried on the birth's record from the moment the platform accepts the
+ * project, so a reload before the harden loses nothing.
+ */
+export function runtimesLeftToBirth(
+  steps: ReadonlyArray<EnvironmentCreationStep>,
+): BirthRuntimes | undefined {
+  for (const step of steps) {
+    if (step.kind === "import-runtimes") return { yaml: step.yaml, services: step.services };
+  }
+  return undefined;
 }
 
 /** Whether a creation's container import went through: one that stopped on it or before made none. */

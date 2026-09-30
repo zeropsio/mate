@@ -7,7 +7,8 @@
  *
  * The project is a birth from the moment the platform accepts it (`zeropsBirths.ts`, DESIGN
  * §4.5), which the account's worker finishes whatever the surface does next — a reload or a
- * closed tab included. It carries the group writes this person makes: a Mate an owner or an admin
+ * closed tab included. A Mate's birth carries its tier's runtimes, which the plan leaves for after
+ * the project is closed off. It carries the group writes this person makes: a Mate an owner or an admin
  * makes is registered as soon as its project exists (without the entry the broker gives it no
  * bot; a member cannot write the registry, and their Mate waits on the card's *Register in
  * {group}*), and a stage or a production is a group environment the registry, the broker's token
@@ -43,6 +44,7 @@ import {
   bornOnAccept,
   creationAccepted,
   importedContainer,
+  runtimesLeftToBirth,
 } from "./zeropsBirths";
 import { useZeropsInventory } from "./ZeropsInventoryProvider";
 import { useZeropsSession } from "./ZeropsSessionProvider";
@@ -153,6 +155,8 @@ export function useEnvironmentCreation(): (
 
       const registers = tier !== null || canWriteRegistry(organization);
       const withAgent = plan.steps.some((step) => step.kind === "import-container");
+      // What the birth imports once it has closed the project off, not this run.
+      const runtimes = runtimesLeftToBirth(plan.steps);
       // The listing is read again at once, so the group catches up with its birth.
       const accepted = (projectId: string) => {
         if (!isCurrent()) return;
@@ -171,6 +175,7 @@ export function useEnvironmentCreation(): (
                   }
                 : null,
             container: withAgent,
+            ...(runtimes === undefined ? {} : { runtimes }),
             placement: {
               groupId: group.groupId,
               groupName: group.name,

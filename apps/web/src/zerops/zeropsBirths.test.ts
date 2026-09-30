@@ -28,6 +28,7 @@ import {
   bornOnAccept,
   importedContainer,
   placedBirthsIn,
+  runtimesLeftToBirth,
   webBirthPorts,
   type BirthInputs,
 } from "./zeropsBirths";
@@ -229,6 +230,18 @@ function matePlan(yaml: string): ReadonlyArray<EnvironmentCreationStep> {
   return plan.steps;
 }
 
+function mateWithoutRecipe(): ReadonlyArray<EnvironmentCreationStep> {
+  const plan = planEnvironmentCreation({
+    clientId: "org-1",
+    groupId: "group-1",
+    role: "dev",
+    name: "Todo - Vera",
+    recipe: { kind: "none" },
+  });
+  if (!plan.ok) throw new Error(plan.reason);
+  return plan.steps;
+}
+
 /** The platform as it answers a creation, the container import held until `importContainer`. */
 function creationPlatform() {
   let importContainer!: (outcome: "accepted" | "refused") => void;
@@ -291,6 +304,20 @@ describe("a creation's birth", () => {
         ? ({ ok: true, projectId: "project-1", serviceName: "zcp", awaitingAgent: true } as const)
         : ({ ok: false, projectId: "project-1", failedStep, error: "No." } as const);
     expect(importedContainer(steps, outcome)).toBe(want);
+  });
+
+  it.each([
+    {
+      name: "a tier's runtimes, for after the project is closed off",
+      steps: () => matePlan(`${SERVICES}  - hostname: db\n    type: postgresql@17\n`),
+      want: {
+        yaml: SERVICES,
+        services: [{ hostname: "api", role: "dev" }],
+      },
+    },
+    { name: "none for a Mate with no recipe", steps: () => mateWithoutRecipe(), want: undefined },
+  ])("leaves its birth $name", ({ steps, want }) => {
+    expect(runtimesLeftToBirth(steps())).toEqual(want);
   });
 });
 

@@ -8,8 +8,11 @@ import {
   type EnvironmentCreationStepProgress,
 } from "./runEnvironmentCreation.ts";
 
-/** A tier already converted to import-ready form (`recipeTier.ts`). */
-const TIER_YAML = "services:\n  - hostname: api\n    startWithoutCode: true\n";
+/** A tier as `main` holds it: a runtime built from the group's own repository, and a database. */
+const TIER_YAML =
+  "services:\n  - hostname: api\n    buildFromGit: https://gitea.test/acme/api\n    zeropsSetup: api\n  - hostname: db\n    type: postgresql@17\n";
+/** What a Mate's creation imports itself: the managed services, with its project. */
+const MANAGED_YAML = "services:\n  - hostname: db\n    type: postgresql@17\n";
 
 function plan(role: ZeropsEnvironmentRole): ReadonlyArray<EnvironmentCreationStep> {
   const result = planEnvironmentCreation({
@@ -181,6 +184,8 @@ describe("runEnvironmentCreation", () => {
       // The 200 is an acceptance; the platform's `project.create` process is
       // the creation, and the step is not done until it has finished.
       "creation:proj-1",
+      // The managed services, with the project: nothing in them runs code.
+      `import:proj-1:${MANAGED_YAML.length}`,
       // The group's agents reach the container import, not just the plan.
       "container:proj-1:claude-code",
       "tokens:client-1",
@@ -188,29 +193,58 @@ describe("runEnvironmentCreation", () => {
       // The token list is read once and shared by the two steps that need it.
       "delegations:tok-mate",
       "delegation:tok-mate:del-1",
-      // Before the application import: no app container and no build ever
-      // boots holding the Mate's key or its agent's login.
-      `import:proj-1:${TIER_YAML.length}`,
+      // No runtime import: the birth makes it once the project is closed off,
+      // so no app container and no build ever boots holding the Mate's key.
     ]);
   });
 
-  it("hands an environment with an agent back without waiting on the container", async () => {
-    // The provisioning state machine owns that wait; a second one here would
-    // be a second opinion about when a container is ready.
+  it("imports a stage's or a production's tier whole, every runtime empty for the broker", async () => {
+    const { platform, calls } = fakePlatform();
+    await run(plan("prod"), platform);
+    expect(calls.filter((call) => call.startsWith("import:"))).toEqual([
+      `import:proj-1:${"services:\n  - hostname: api\n    startWithoutCode: true\n  - hostname: db\n    type: postgresql@17\n".length}`,
+    ]);
+  });
+
+  it("hands an environment with an agent to its birth at the runtimes, waiting on nothing", async () => {
+    // The birth closes the project off, imports the runtimes and waits for the
+    // container — the provisioning state machine owns that wait, and a second
+    // one here would be a second opinion about when a container is ready.
     const { platform, calls } = fakePlatform();
     const { outcome, reports } = await run(plan("dev"), platform);
 
-    expect(outcome.ok && outcome.awaitingAgent).toBe(true);
+    expect(outcome).toEqual({
+      ok: true,
+      projectId: "proj-1",
+      serviceName: "zcp",
+      awaitingAgent: true,
+    });
     expect(calls.some((call) => call.startsWith("services:"))).toBe(false);
     const last = reports.at(-1)!;
-    expect(last.map((entry) => entry.state)).toEqual([
-      "done",
-      "done",
-      "done",
-      "done",
-      "done",
-      "running",
+    expect(last.map((entry) => [entry.step.kind, entry.state])).toEqual([
+      ["create-project", "done"],
+      ["import-managed", "done"],
+      ["import-container", "done"],
+      ["secure-container-token", "done"],
+      ["drop-container-delegation", "done"],
+      ["import-runtimes", "running"],
+      ["await-ready", "queued"],
     ]);
+  });
+
+  it("hands over at the wait for the agent when there are no runtimes to import", async () => {
+    const { platform } = fakePlatform();
+    const steps = planEnvironmentCreation({
+      clientId: "client-1",
+      groupId: "7k2m9qx4vb1c",
+      name: "Go Hello World - dev",
+      role: "dev",
+      recipe: { kind: "none" },
+    });
+    if (!steps.ok) throw new Error(steps.reason);
+    const { outcome, reports } = await run(steps.steps, platform);
+    expect(outcome.ok && outcome.awaitingAgent).toBe(true);
+    expect(reports.at(-1)!.at(-1)).toMatchObject({ state: "running" });
   });
 
   it("waits for every service of an environment without an agent", async () => {
@@ -296,21 +330,22 @@ describe("runEnvironmentCreation", () => {
     expect(outcome).toEqual({
       ok: false,
       projectId: "proj-1",
-      failedStep: expect.objectContaining({ kind: "import-recipe" }),
+      failedStep: expect.objectContaining({ kind: "import-managed" }),
       error: "projectImportProjectIncluded",
     });
     // Nothing after the failure runs.
-    expect(calls.some((call) => call.startsWith("services:"))).toBe(false);
+    expect(calls.some((call) => call.startsWith("container:"))).toBe(false);
     const last = reports.at(-1)!;
     expect(last.map((entry) => entry.state)).toEqual([
       "done",
-      "done",
-      "done",
-      "done",
       "failed",
       "queued",
+      "queued",
+      "queued",
+      "queued",
+      "queued",
     ]);
-    expect(last[4]?.error).toBe("projectImportProjectIncluded");
+    expect(last[1]?.error).toBe("projectImportProjectIncluded");
   });
 
   it("reports no project when creating it is what failed", async () => {
@@ -326,6 +361,7 @@ describe("runEnvironmentCreation", () => {
     const { platform } = fakePlatform();
     const { reports } = await run(plan("dev"), platform);
     expect(reports[0]!.map((entry) => entry.state)).toEqual([
+      "queued",
       "queued",
       "queued",
       "queued",
