@@ -73,7 +73,13 @@ export type ZeropsAgentOwnership =
    * `unrecorded`, which says nothing about whose fault it is: this one
    * knows, because it is the write this browser just tried and watched fail.
    */
-  | "record-failed";
+  | "record-failed"
+  /**
+   * A credential the project records for two or more people: whose it is is
+   * not known, so nothing is said about it — never a guess — and the server,
+   * which knows the session, decides a turn.
+   */
+  | "unknown";
 
 export interface ZeropsAgentOwnershipInput {
   /** Whether a credential artifact exists at all (`ZeropsAgentAuth.credPresent`). */
@@ -88,6 +94,8 @@ export interface ZeropsAgentOwnershipInput {
    * failed attempt is what happened here, whatever the tag currently says.
    */
   readonly recordFailed?: boolean | undefined;
+  /** The project records the sign-in for two or more people (`ZeropsAgentAuth.signerUnknown`). */
+  readonly signerUnknown?: boolean | undefined;
 }
 
 /**
@@ -110,7 +118,9 @@ export function resolveAgentOwnership(input: ZeropsAgentOwnershipInput): ZeropsA
   if (input.recordFailed === true) return "record-failed";
 
   const recorded = input.authorizedBy?.subject;
-  if (recorded === undefined || recorded.length === 0) return "unrecorded";
+  if (recorded === undefined || recorded.length === 0) {
+    return input.signerUnknown === true ? "unknown" : "unrecorded";
+  }
 
   // A viewer we cannot identify is not evidence that the agent belongs to
   // someone else — say nothing rather than the wrong thing.
@@ -136,6 +146,7 @@ export function agentOwnershipNotice(ownership: ZeropsAgentOwnership): string | 
     case "mine":
       return "Signed in by you.";
     case "none":
+    case "unknown":
       return undefined;
   }
 }
@@ -151,7 +162,7 @@ export function agentOwnershipNeedsAttention(ownership: ZeropsAgentOwnership): b
  * that is closed never hides a turn that would have worked.
  */
 export function agentOwnershipAllowsTurns(ownership: ZeropsAgentOwnership): boolean {
-  return ownership === "mine" || ownership === "none";
+  return ownership === "mine" || ownership === "none" || ownership === "unknown";
 }
 
 /**
@@ -178,6 +189,7 @@ export function agentOwnershipComposerNotice(
       return "Your sign-in could not be recorded.";
     case "mine":
     case "none":
+    case "unknown":
       return undefined;
   }
 }

@@ -62,7 +62,12 @@ import { subscribeBeforeSnapshot } from "../utils/subscribeBeforeSnapshot.ts";
 import { spawnAgentAuthProbe, verifyAgentAuth } from "./ZeropsAgentAuthVerify.ts";
 import { watchWithFallback, type WatcherHandle } from "./ZeropsAgentAuthWatcher.ts";
 import { isZeropsEnvironment } from "./ZeropsEnvironment.ts";
-import { ZeropsProjectSigners, type ProjectSigners } from "./ZeropsProjectSigners.ts";
+import {
+  knownSigner,
+  ZeropsProjectSigners,
+  type ProjectSigners,
+  type SignerRecord,
+} from "./ZeropsProjectSigners.ts";
 import { extraLoginAgent, LOGIN_DRIVER_KIND, makeExtraLoginId } from "./zeropsLoginIds.ts";
 
 /** One login beyond the defaults, as the settings hold it. */
@@ -200,7 +205,7 @@ export interface MateLoginFacts {
 export function mateLoginRow(
   login: MateLogin,
   facts: MateLoginFacts,
-  signer: string | undefined,
+  signer: SignerRecord | undefined,
 ): ZeropsLogin {
   const held = login.kind === "apiKey" ? login.keyStored : facts.credPresent;
   return {
@@ -211,7 +216,8 @@ export function mateLoginRow(
     default: false,
     state: mateLoginState({ ...facts, kind: login.kind, keyStored: login.keyStored }),
     token: false,
-    ...(held && signer !== undefined && signer.length > 0 ? { signedInBy: signer } : {}),
+    ...(held && knownSigner(signer) !== undefined ? { signedInBy: knownSigner(signer) } : {}),
+    ...(held && typeof signer === "object" ? { signerUnknown: true } : {}),
   };
 }
 
@@ -225,6 +231,7 @@ const defaultLoginRow = (agent: ZeropsAgentAuthSnapshot["agents"][number]): Zero
   state: classifyZeropsAgentAuth(agent).kind,
   token: agent.flagToken,
   ...(agent.authorizedBy === undefined ? {} : { signedInBy: agent.authorizedBy.subject }),
+  ...(agent.signerUnknown === true ? { signerUnknown: true } : {}),
   ...(agent.login === undefined ? {} : { login: agent.login }),
 });
 
@@ -382,7 +389,8 @@ const rowsEqual = (a: ReadonlyArray<ZeropsLogin>, b: ReadonlyArray<ZeropsLogin>)
       row.label === other.label &&
       row.kind === other.kind &&
       row.state === other.state &&
-      row.signedInBy === other.signedInBy
+      row.signedInBy === other.signedInBy &&
+      row.signerUnknown === other.signerUnknown
     );
   });
 

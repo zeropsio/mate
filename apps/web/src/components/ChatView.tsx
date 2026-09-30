@@ -3859,6 +3859,7 @@ export default function ChatView(props: ChatViewProps) {
     viewerSubject: zeropsViewerSubject,
     recordFailed:
       zeropsSpentLogin !== undefined && zeropsSignInDialog.recordFailed.has(zeropsSpentLogin.key),
+    signerUnknown: zeropsOwnedAgent?.signerUnknown,
   });
   // Someone else's agent: the conversation is read, not run — the composer
   // gives way to `ZeropsReadOnlyConversationFooter`.

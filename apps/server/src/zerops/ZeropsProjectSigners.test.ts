@@ -57,6 +57,36 @@ describe("parseSignerTags", () => {
     });
   }
 
+  // Two records for one login (two sign-ins racing their tag writes, or a hand edit): whose it is
+  // is not known, and never guessed from the order the platform lists the tags in.
+  for (const [name, tags, expected] of [
+    ["one record", [signerTag("claude-code", JAN)], { "claude-code": JAN }],
+    [
+      "the same person twice",
+      [signerTag("claude-code", JAN), signerTag("claude-code", JAN)],
+      { "claude-code": JAN },
+    ],
+    [
+      "two people",
+      [signerTag("claude-code", JAN), signerTag("claude-code", EVA)],
+      { "claude-code": { among: [EVA, JAN] } },
+    ],
+    [
+      "two people, listed the other way round",
+      [signerTag("claude-code", EVA), signerTag("claude-code", JAN)],
+      { "claude-code": { among: [EVA, JAN] } },
+    ],
+    [
+      "two people on one login, one on another",
+      [signerTag("claude-code", JAN), signerTag("claude-code", EVA), signerTag("codex", EVA)],
+      { "claude-code": { among: [EVA, JAN] }, codex: EVA },
+    ],
+  ] as const) {
+    it(`reads ${name}`, () => {
+      assert.deepStrictEqual(parseSignerTags(tags), expected);
+    });
+  }
+
   it("reads nothing out of a project with no tags at all", () => {
     assert.deepStrictEqual(parseSignerTags(undefined), {});
   });
@@ -202,6 +232,16 @@ describe("loginTurnRefusal", () => {
       { kind: "not-signed-in", auth: "not-authorized" },
     ],
     [
+      "a login recorded for two people, one of them me",
+      { state: "authorized", token: false, signer: { among: [EVA, JAN] }, subject: JAN },
+      undefined,
+    ],
+    [
+      "a login recorded for two people, neither of them me",
+      { state: "authorized", token: false, signer: { among: [EVA, JAN] }, subject: "ida-user-id" },
+      { kind: "someone-else" },
+    ],
+    [
       "a project token somebody else set",
       { state: "authorized", token: true, signer: EVA, subject: JAN },
       undefined,
@@ -284,6 +324,16 @@ describe("planAgentSignOut", () => {
   it("signs nobody out when the member list could not be read", () => {
     assert.deepStrictEqual(
       planAgentSignOut({ signers: { "claude-code": JAN }, activeMemberIds: undefined }),
+      [],
+    );
+  });
+
+  it("signs nobody out on a record that names two people", () => {
+    assert.deepStrictEqual(
+      planAgentSignOut({
+        signers: { "claude-code": { among: [EVA, JAN] } },
+        activeMemberIds: new Set([EVA]),
+      }),
       [],
     );
   });

@@ -147,6 +147,7 @@ export function mateLoginAsAgentRow(login: ZeropsLogin): ZeropsAgentAuth {
     flagOAuth: row.state === "authorized",
     flagToken: login.token,
     ...(login.signedInBy === undefined ? {} : { authorizedBy: { subject: login.signedInBy } }),
+    ...(login.signerUnknown === true ? { signerUnknown: true } : {}),
     ...(login.login === undefined ? {} : { login: login.login }),
   };
 }
