@@ -487,6 +487,8 @@ export class ZeropsApiError extends Error {
   readonly code: string | null;
   /** What the platform itself said, when it said anything; `null` for a status alone. */
   readonly detail: string | null;
+  /** How long a throttled request was asked to wait (its `Retry-After`); `null` when unsaid. */
+  readonly retryAfterMs: number | null;
 
   constructor(
     message: string,
@@ -494,6 +496,7 @@ export class ZeropsApiError extends Error {
     status: number | null = null,
     code: string | null = null,
     detail: string | null = null,
+    retryAfterMs: number | null = null,
   ) {
     super(message);
     this.name = "ZeropsApiError";
@@ -501,7 +504,20 @@ export class ZeropsApiError extends Error {
     this.status = status;
     this.code = code;
     this.detail = detail;
+    this.retryAfterMs = retryAfterMs;
   }
+}
+
+/**
+ * A `Retry-After` header as milliseconds from `nowMs`: delta seconds or an HTTP date; `null` when
+ * absent or unreadable, and never negative.
+ */
+export function parseRetryAfterMs(header: string | null, nowMs: number): number | null {
+  const value = header?.trim();
+  if (!value) return null;
+  if (/^\d+$/u.test(value)) return Number(value) * 1000;
+  const at = Date.parse(value);
+  return Number.isNaN(at) ? null : Math.max(0, at - nowMs);
 }
 
 /**
@@ -612,7 +628,15 @@ async function apiErrorFromResponse(response: Response): Promise<ZeropsApiError>
       : kind === "forbidden"
         ? "This Zerops account is not allowed to do that."
         : (backendMessage ?? `Zerops API request failed (${response.status}).`);
-  return new ZeropsApiError(message, kind, response.status, code, backendMessage ?? null);
+  return new ZeropsApiError(
+    message,
+    kind,
+    response.status,
+    code,
+    backendMessage ?? null,
+    // @effect-diagnostics-next-line globalDate:off -- an HTTP date is read against the wall clock it names.
+    parseRetryAfterMs(response.headers.get("retry-after"), Date.now()),
+  );
 }
 
 export interface ZeropsApiClientOptions {
