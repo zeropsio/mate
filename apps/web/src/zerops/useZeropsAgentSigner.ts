@@ -90,6 +90,14 @@ export function rememberLocalAgentSigner(key: string, userId: string): void {
   setLocalAgentSigners({ ...localAgentSigners, [key]: userId });
 }
 
+/** Forgets a record this client meant to write: its write failed. */
+export function forgetLocalAgentSigner(key: string): void {
+  if (localAgentSigners[key] === undefined) return;
+  const next: Partial<Record<string, string>> = { ...localAgentSigners };
+  delete next[key];
+  setLocalAgentSigners(next);
+}
+
 /** Every login's signer key and its record, as the snapshot carries them. */
 function recordedSigners(
   snapshot: ZeropsAgentAuthSnapshot,
@@ -129,13 +137,22 @@ export interface AgentSignerFacts {
     | undefined;
 }
 
-/** A login that ended without a credential vouches for nobody. */
-const LOGIN_ENDED_EMPTY: ReadonlySet<ZeropsAgentLoginPhase> = new Set(["failed", "cancelled"]);
+/**
+ * A login that has ended vouches for nobody by itself: a failed or cancelled one has no
+ * credential, and a succeeded one stays succeeded on the server until it restarts — after a
+ * record write that failed and a reload it would claim a sign-in the server refuses. Its record
+ * write, while pending, is the local signer (`rememberLocalAgentSigner`).
+ */
+const LOGIN_ENDED: ReadonlySet<ZeropsAgentLoginPhase> = new Set([
+  "succeeded",
+  "failed",
+  "cancelled",
+]);
 
 /**
  * Who signed this agent in, for ownership: the snapshot's own record when it has one, else the
- * record this client wrote and the server has not read back yet, else the viewer's own login —
- * being checked, or succeeded with its record on its way — else nobody. The viewer is the one
+ * record this client is writing or wrote and the server has not read back yet, else the viewer's
+ * own login while its code is being checked — else nobody. The viewer is the one
  * person who knows what the record will say, so the seconds before it lands never read as a
  * sign-in nobody recorded.
  */
@@ -154,7 +171,7 @@ export function resolveAgentAuthorizer(
     viewer.length > 0 &&
     login !== undefined &&
     login.startedBy === viewer &&
-    !LOGIN_ENDED_EMPTY.has(login.phase)
+    !LOGIN_ENDED.has(login.phase)
   ) {
     return { subject: viewer };
   }
@@ -266,6 +283,8 @@ export function useZeropsAgentSignerRecord(input: {
   const writeRecord = useCallback(
     async (key: string, signal: AbortSignal): Promise<boolean> => {
       if (projectId === undefined || orgId === undefined || !userId || data === null) return false;
+      // The record counts as the viewer's while it is written, and stops counting if it fails.
+      rememberLocalAgentSigner(key, userId);
       try {
         // A patch the TagWriter applies to the project as it is now: a list that already names
         // this signer costs a read and nothing more.
@@ -285,6 +304,7 @@ export function useZeropsAgentSignerRecord(input: {
         });
         return true;
       } catch {
+        forgetLocalAgentSigner(key);
         if (signal.aborted) return false;
         // Surfaced (H13): the card says nobody is recorded and the agent
         // refuses the turn, and `retry` is how signing in again would have

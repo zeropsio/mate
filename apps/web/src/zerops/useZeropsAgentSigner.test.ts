@@ -8,6 +8,7 @@ import {
   localSignersSettledBy,
   readLocalAgentSigners,
   rememberLocalAgentSigner,
+  forgetLocalAgentSigner,
   resolveAgentAuthorizer,
   subscribeLocalAgentSigners,
 } from "./useZeropsAgentSigner";
@@ -261,6 +262,15 @@ describe("local agent signers", () => {
     expect(readLocalAgentSigners()).toEqual({});
   });
 
+  it("forgets a record whose write failed, and keeps the others", () => {
+    rememberLocalAgentSigner("claude-code", "user-a");
+    rememberLocalAgentSigner("codex", "user-a");
+    forgetLocalAgentSigner("claude-code");
+    expect(readLocalAgentSigners()).toEqual({ codex: "user-a" });
+    forgetLocalAgentSigner("codex");
+    expect(readLocalAgentSigners()).toEqual({});
+  });
+
   it("keeps the store's identity when a snapshot settles nothing", () => {
     rememberLocalAgentSigner("codex", "user-a");
     const before = readLocalAgentSigners();
@@ -296,9 +306,17 @@ describe("local agent signers", () => {
       expected: { subject: "user-a" },
     },
     {
-      name: "the viewer's own login that succeeded is theirs while its record is written",
+      // The server keeps a finished login's state until it restarts: after a failed record
+      // write and a reload it vouches for nothing, and the composer must not say "you".
+      name: "the viewer's own finished login vouches for nobody by itself",
       agent: { login: login("succeeded", "user-a") },
       local: {},
+      expected: undefined,
+    },
+    {
+      name: "the viewer's own finished login with its record being written is theirs",
+      agent: { login: login("succeeded", "user-a") },
+      local: { "claude-code": "user-a" },
       expected: { subject: "user-a" },
     },
     {
