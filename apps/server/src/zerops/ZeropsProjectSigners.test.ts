@@ -734,6 +734,54 @@ describe("the turn gate", () => {
     }).pipe(Effect.scoped),
   );
 
+  // A sign-in over somebody else's record, or over a record naming two people, ends in this
+  // person's record too: their turn waits for it as for a first one.
+  for (const [name, before] of [
+    ["over another person's record", [signerTag("claude-code", EVA)]],
+    [
+      "over a record naming two people",
+      [signerTag("claude-code", EVA), signerTag("claude-code", JAN)],
+    ],
+  ] as const) {
+    it.effect(`a sign-in just made ${name} waits for its own record`, () =>
+      Effect.gen(function* () {
+        const { signers, setTags } = yield* gate(before);
+        const { agent, login } = yield* justSignedIn(JAN);
+        const fiber = yield* signers
+          .turnRefusal({ agentId: "claude-code", agent, subject: JAN, login })
+          .pipe(Effect.forkChild);
+        yield* TestClock.adjust(Duration.seconds(2));
+        setTags([signerTag("claude-code", JAN)]);
+        yield* TestClock.adjust(Duration.seconds(2));
+
+        assert.isUndefined(yield* Fiber.join(fiber));
+      }).pipe(Effect.scoped),
+    );
+  }
+
+  // Until the new record lands, the old one names the person before: the credential is already
+  // the new person's, so the one before runs nothing on it.
+  it.effect("the signer before runs nothing on a credential somebody just signed in", () =>
+    Effect.gen(function* () {
+      const { signers } = yield* gate([signerTag("claude-code", EVA)]);
+      const { agent, login } = yield* justSignedIn(JAN);
+
+      assert.deepStrictEqual(
+        yield* signers.turnRefusal({ agentId: "claude-code", agent, subject: EVA, login }),
+        { kind: "someone-else" },
+      );
+      assert.isUndefined(
+        yield* signers.turnRefusal({
+          agentId: "claude-code",
+          agent: { ...agent, state: "authorized-token", flagToken: true },
+          subject: EVA,
+          login,
+        }),
+        "a project token is nobody's login",
+      );
+    }).pipe(Effect.scoped),
+  );
+
   it.effect("somebody else's sign-in is nothing this turn waits for", () =>
     Effect.gen(function* () {
       const { signers, reads } = yield* gate([]);
