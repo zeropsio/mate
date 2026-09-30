@@ -3256,7 +3256,8 @@ no-cache`.
   day's "connects first"; the owner's Sana took 50 s to open, and Juno stuck while other Mates
   restarted). Whether an attempt is the route's is judged when it starts: a waiting Mate that
   becomes the route starts at once, and every other attempt still connecting gives way, the
-  previous route's included; others connect one at a time, 8 s each; a socket's turn covers only
+  previous route's included; others connect one at a time, each given 8 s before it must give way while someone else waits (a
+  lone attempt keeps its own 15 s), and the phone app, with no browser lock, never queues; a socket's turn covers only
   its opening, and its wait in line never counts against its setup or a replacement's; with no
   route named they still go one at a time, and a Mate coming up names itself the route. The route's Mate never waits out the five-minute cap — it stays on the ladder (≤ ~36 s),
   a capped Mate that becomes the route is tried at once, and a route that doesn't answer has its
@@ -3274,8 +3275,9 @@ no-cache`.
   unrecorded a second before its tag landed). When this server's own login succeeded, was started
   by the same person and is under 30 minutes old, the turn gate re-reads the signer tags every 1 s
   for up to 15 s — over no record, another person's, or one that names two people — before it
-  refuses; the earlier signer is refused on the new person's credential. Every browser of one
-  person sends the same command id per attempt, so one runs. A refused send's error stands until
+  refuses; the earlier signer is refused on the new person's credential. The gate and the client that
+  records the signer both go by the latest sign-in that succeeded, so an attempt cancelled or failed
+  after it changes nothing. Every browser of one person sends the same command id per attempt, so one runs. A refused send's error stands until
   the person's own next turn.
   - _Why:_ the stand-up sends on the local signer the moment the sign-in succeeds, while the client
     writes the tag after it
@@ -3285,7 +3287,7 @@ no-cache`.
   product: it is silent for 20 s, then "Zerops isn't answering. Trying again…" with _Try now_; a
   lapse speaks from the same line — "Checking your Zerops access…", then "Zerops isn't answering."
   with _Try now_ — with _Sign out_; only the organization on screen speaks, and the projects page
-  shows what it has without repeating the line.
+  shows what it has without repeating the line; the settings pages carry the same line.
   - _Why:_ one stalled read in any of the account's organizations covered the whole product and
     made it inert until a retry landed
 - **2026-09-30** — **Stopping a run from its row takes a second press** (the owner: "this has
