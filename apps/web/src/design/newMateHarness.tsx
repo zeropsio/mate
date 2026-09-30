@@ -6,7 +6,10 @@
  * the repo still being read; `none` — no recipe merged on main; `stage` — the
  * stage form, which keeps its own fields; `&name=<name>` proposes another
  * name; `&resolves=none` has a `reading` repo find no recipe; `adding` — Add pressed, the
- * platform taking the Mate's project; `refused` — the platform refused it before). A press on Add
+ * platform taking the Mate's project; `refused` — the platform refused it before; and the project
+ * taking no Mate (`newMateDoor`): `waiting` — the recipe in Fen's change, `writer` — Fen still to
+ * write it, `mates` — one of three to, `unreadable` — the read failed; `&resolves=<one of them>`
+ * has a `reading` repo shut the door, to watch nothing move). A press on Add
  * goes busy for a second, as the platform takes the project, and then the dialog closes where
  * the person lands on the new Mate. Open it at the owner's 1786 × 1000. The account holds three Mates —
  * Fen, Ada and Nova — so the proposed face walks past the tints they wear.
@@ -22,7 +25,10 @@ import { StrictMode, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 
 import { ZeropsEnvironmentCreationDialog } from "~/components/zerops/ZeropsEnvironmentCreationDialog";
-import { proposedEnvironmentName } from "~/components/zerops/ZeropsEnvironmentCreationDialog.logic";
+import {
+  newMateDoor,
+  proposedEnvironmentName,
+} from "~/components/zerops/ZeropsEnvironmentCreationDialog.logic";
 import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
 import "../index.css";
 
@@ -59,6 +65,31 @@ function mate(bot: string): ZeropsCandidate {
 const MATES = [mate("Fen"), mate("Ada"), mate("Nova")];
 const TAKEN = ["Acme Docs - Fen", "Acme Docs - Ada", "Acme Docs - Nova", "Acme Docs - stage"];
 
+/** The project taking no Mate, as the door says it for each. */
+const FEN = { projectId: "acme-docs-fen", name: "Fen" };
+const door = (input: Partial<Parameters<typeof newMateDoor>[0]>) =>
+  newMateDoor({
+    groupName: "Acme Docs",
+    recipe: "absent",
+    mates: [FEN],
+    change: undefined,
+    rereading: false,
+    ...input,
+  });
+const SHUT: Readonly<Record<string, ReturnType<typeof newMateDoor>>> = {
+  waiting: door({ change: { number: 11, mate: "Fen" } }),
+  writer: door({}),
+  mates: door({
+    mates: [
+      FEN,
+      { projectId: "acme-docs-ada", name: "Ada" },
+      { projectId: "acme-docs-nova", name: "Nova" },
+    ],
+  }),
+  unreadable: door({ recipe: "unreadable" }),
+};
+const SHUTS = SHUT[STATE] ?? SHUT[params.get("resolves") ?? ""];
+
 declare global {
   interface Window {
     __newMateHarness?: { readonly read: () => void; readonly created: ReadonlyArray<unknown> };
@@ -80,7 +111,7 @@ function Harness() {
       created,
     };
   }, []);
-  const loaded = read && RESOLVES === "recipe";
+  const loaded = read && RESOLVES === "recipe" && SHUTS === undefined;
   if (landed !== null) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background text-foreground">
@@ -99,6 +130,7 @@ function Harness() {
             : undefined
         }
         adding={adding}
+        closed={read && SHUTS?.kind === "closed" ? SHUTS : undefined}
         defaultBotName={NAME}
         defaultName={role === "dev" ? `Acme Docs - ${NAME}` : "Acme Docs - stage"}
         defaultTintFor={(name) => newMateTint(MATES, name)}
@@ -112,6 +144,14 @@ function Harness() {
           setTimeout(() => {
             setLanded(`/mate/acme-docs-${(choice.botName ?? "mate").toLowerCase()}`);
           }, 1200);
+        }}
+        onDoorAction={(action) => {
+          if (action.kind === "retry") return;
+          setLanded(
+            action.kind === "change"
+              ? `/change/acme/group/${String(action.number)}`
+              : `/mate/${action.projectId}`,
+          );
         }}
         onOpenChange={() => {}}
         open

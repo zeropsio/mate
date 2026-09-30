@@ -5,8 +5,13 @@
  * they are picked: the person sees who they are making. Everything else is decided for them. The
  * Mate gets its own copy of the project with the project's recipe deployed (the tier read from
  * the group repo's `main`), runs its agent, and is called what the project calls its Mates
- * (`proposedEnvironmentName`). A project with no recipe on main still gets its Mate, with nothing
- * in it yet, and the description says so in plain words.
+ * (`proposedEnvironmentName`). A project with no recipe on main and no Mate yet still gets its
+ * first, with nothing in it yet, and the description says so in plain words.
+ *
+ * A project that takes no Mate now — its Mates have not written its recipe yet, or it cannot be
+ * read (`newMateDoor`) — gets no form: the description says why, and the one thing to do about it
+ * stands where Add stood. The form keeps its room out of sight and out of reach, so the title and
+ * the buttons stay where they stood when the door shuts after the recipe is read.
  *
  * Until its person picks, the face follows the name as it is typed: the tint the account would
  * give that name (`newMateTint`, which never takes a tint another Mate wears) and that tint's
@@ -35,6 +40,9 @@ import {
   newMateRecipe,
   newMateSubmit,
   newMateWords,
+  READING_RECIPE,
+  type NewMateDoorAction,
+  type NewMateDoorClosed,
   type NewMateRecipe,
 } from "./ZeropsEnvironmentCreationDialog.logic";
 import { MateFacePicker } from "./MateFacePicker";
@@ -68,6 +76,10 @@ export interface ZeropsNewMateFormProps {
   readonly adding?: boolean | undefined;
   /** Why the platform refused the last Add, before it took any project; Add tries again. */
   readonly addError?: string | undefined;
+  /** Why the project takes no Mate now, and what to do about it (`newMateDoor`): no form. */
+  readonly closed?: NewMateDoorClosed | undefined;
+  /** The one thing to do while the project takes no Mate, pressed. */
+  readonly onDoorAction?: ((action: NewMateDoorAction) => void) | undefined;
   readonly onCancel: () => void;
   readonly onCreate: (choice: NewMateChoice) => void;
 }
@@ -82,6 +94,8 @@ export function ZeropsNewMateForm({
   defaultTintFor,
   adding = false,
   addError,
+  closed,
+  onDoorAction,
   onCancel,
   onCreate,
 }: ZeropsNewMateFormProps) {
@@ -99,6 +113,12 @@ export function ZeropsNewMateForm({
   // Add was pressed: from then on what is wrong with the name is said, as it is typed.
   const [pressed, setPressed] = useState(false);
   const [selected, setSelected] = useState(false);
+  // A press waiting on the recipe is dropped once the project is read as taking no Mate: were the
+  // door to open later, Add goes only when pressed again.
+  if (closed !== undefined && pressedFor !== null) setPressedFor(null);
+  // The last reason said: it keeps its room, and fades with its words, after the door opens.
+  const [reason, setReason] = useState(closed?.reason);
+  if (closed !== undefined && closed.reason !== reason) setReason(closed.reason);
 
   const face = newMateFace({
     name: faceName(botName, heldName),
@@ -115,15 +135,23 @@ export function ZeropsNewMateForm({
     waitingOn: submit.kind === "wait" && waiting ? submit.on : null,
   });
   const refused = pressed && submit.kind === "refuse" ? submit.error : undefined;
-  const error = refused ?? addError;
+  const error = closed === undefined ? (refused ?? addError) : undefined;
   const bot = botName.replace(/\s+/g, " ").trim();
-  const line = adding ? `Adding ${bot}…` : (error ?? words.line);
+  const action = closed?.action;
+  const line =
+    closed !== undefined
+      ? action?.kind === "retry" && action.busy
+        ? READING_RECIPE
+        : undefined
+      : adding
+        ? `Adding ${bot}…`
+        : (error ?? words.line);
 
   const create = (choice: EnvironmentRecipeChoice) => {
     onCreate({ name: proposeName(bot), botName: bot, recipe: choice, face });
   };
   const press = () => {
-    if (adding) return;
+    if (adding || closed !== undefined) return;
     setPressed(true);
     if (submit.kind === "create") create(submit.recipe);
     else setPressedFor(submit.kind === "wait" ? recipe : null);
@@ -133,6 +161,7 @@ export function ZeropsNewMateForm({
   // not there — a project read as having no recipe after Add was pressed for one with it says
   // so, and waits for another press. A name refused meanwhile is said instead.
   const goes =
+    closed === undefined &&
     pressedFor !== null &&
     submit.kind === "create" &&
     (submit.recipe.kind === "tier" || pressedFor === "none");
@@ -142,6 +171,20 @@ export function ZeropsNewMateForm({
   useEffect(() => {
     if (goes) go();
   }, [goes]);
+
+  const sayings = [
+    {
+      key: "recipe",
+      text: newMateDescription({ groupName, botName, recipe: "recipe" }),
+      shown: closed === undefined && recipe !== "none",
+    },
+    {
+      key: "none",
+      text: newMateDescription({ groupName, botName, recipe: "none" }),
+      shown: closed === undefined && recipe === "none",
+    },
+    { key: "closed", text: closed?.reason ?? reason, shown: closed !== undefined },
+  ];
 
   return (
     <form
@@ -155,62 +198,72 @@ export function ZeropsNewMateForm({
       <DialogHeader>
         <DialogTitle>New Mate</DialogTitle>
         <DialogDescription>
-          {/* Both sayings hold one room, so learning the project has no recipe moves nothing. */}
+          {/* Every saying holds one room, so learning the project has no recipe, or takes no
+              Mate, moves nothing. */}
           <span className="grid">
-            {(["recipe", "none"] as const).map((saying) => (
+            {sayings.map(({ key, text, shown }) => (
               <span
+                aria-hidden={shown ? undefined : true}
                 className={cn(
                   "col-start-1 row-start-1 text-pretty transition-[opacity,visibility] ease-out",
                   // The one leaving is gone before the one arriving shows: never both at once.
-                  (saying === "none") !== (recipe === "none")
-                    ? "invisible opacity-0 duration-100"
-                    : "delay-100 duration-200",
+                  shown ? "delay-100 duration-200" : "invisible opacity-0 duration-100",
                 )}
-                key={saying}
+                key={key}
               >
-                {newMateDescription(groupName, saying)}
+                {text}
               </span>
             ))}
           </span>
         </DialogDescription>
       </DialogHeader>
       <DialogPanel>
-        <MateFacePicker
-          face={face}
-          onPickShape={(shape) => {
-            if (!adding) setPicked((current) => ({ ...current, shape }));
-          }}
-          onPickTint={(tint) => {
-            if (!adding) setPicked((current) => ({ ...current, tint }));
-          }}
+        {/* Out of sight and out of reach while the project takes no Mate: it holds its room, and
+            what was typed and picked, for a door that opens again. */}
+        <div
+          className={cn(
+            "transition-[opacity,visibility] ease-out",
+            closed === undefined ? "delay-100 duration-200" : "invisible opacity-0 duration-100",
+          )}
+          inert={closed !== undefined}
         >
-          <Input
-            aria-describedby={`${id}-line`}
-            aria-invalid={refused === undefined ? undefined : true}
-            aria-label="Name"
-            autoComplete="off"
-            onChange={(event) => {
-              const typed = event.target.value;
-              setBotName(typed);
-              setPressedFor(null);
-              const name = typed.replace(/\s+/g, " ").trim();
-              if (name.length > 0) setHeldName(name);
+          <MateFacePicker
+            face={face}
+            onPickShape={(shape) => {
+              if (!adding) setPicked((current) => ({ ...current, shape }));
             }}
-            onFocus={(event) => {
-              // The proposed name is taken whole by the first key typed over it.
-              if (selected) return;
-              setSelected(true);
-              event.currentTarget.select();
+            onPickTint={(tint) => {
+              if (!adding) setPicked((current) => ({ ...current, tint }));
             }}
-            // While the platform takes the Mate's project, what made it stays as it was: the
-            // name reads, and nothing typed or picked changes the Mate on its way.
-            readOnly={adding}
-            placeholder="Name"
-            size="lg"
-            spellCheck={false}
-            value={botName}
-          />
-        </MateFacePicker>
+          >
+            <Input
+              aria-describedby={`${id}-line`}
+              aria-invalid={refused === undefined ? undefined : true}
+              aria-label="Name"
+              autoComplete="off"
+              onChange={(event) => {
+                const typed = event.target.value;
+                setBotName(typed);
+                setPressedFor(null);
+                const name = typed.replace(/\s+/g, " ").trim();
+                if (name.length > 0) setHeldName(name);
+              }}
+              onFocus={(event) => {
+                // The proposed name is taken whole by the first key typed over it.
+                if (selected) return;
+                setSelected(true);
+                event.currentTarget.select();
+              }}
+              // While the platform takes the Mate's project, what made it stays as it was: the
+              // name reads, and nothing typed or picked changes the Mate on its way.
+              readOnly={adding}
+              placeholder="Name"
+              size="lg"
+              spellCheck={false}
+              value={botName}
+            />
+          </MateFacePicker>
+        </div>
       </DialogPanel>
       <DialogFooter>
         {/* The one quiet line, beside the button it is about: what Add waits on, why it
@@ -225,16 +278,39 @@ export function ZeropsNewMateForm({
         >
           {line}
         </p>
-        <Button disabled={adding} onClick={onCancel} type="button" variant="ghost">
-          Cancel
-        </Button>
-        <Button
-          aria-busy={waiting || adding || undefined}
-          disabled={waiting || adding}
-          type="submit"
-        >
-          {words.button}
-        </Button>
+        {closed === undefined ? (
+          <>
+            <Button disabled={adding} onClick={onCancel} type="button" variant="ghost">
+              Cancel
+            </Button>
+            <Button
+              aria-busy={waiting || adding || undefined}
+              disabled={waiting || adding}
+              type="submit"
+            >
+              {words.button}
+            </Button>
+          </>
+        ) : (
+          <>
+            <Button onClick={onCancel} type="button" variant="ghost">
+              Close
+            </Button>
+            {/* Where Add stood: the one thing to do about it, where there is one. */}
+            {action === undefined ? null : (
+              <Button
+                aria-busy={(action.kind === "retry" && action.busy) || undefined}
+                disabled={action.kind === "retry" && action.busy}
+                onClick={() => {
+                  onDoorAction?.(action);
+                }}
+                type="button"
+              >
+                {action.label}
+              </Button>
+            )}
+          </>
+        )}
       </DialogFooter>
     </form>
   );

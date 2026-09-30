@@ -485,6 +485,8 @@ export {
   flowPullRequest,
   flowVerbKey,
   flowVerbLabel,
+  isRecipeProposal,
+  RECIPE_PROPOSAL_TITLE,
   pullRequestLineWith,
   pullRequestsByMate,
   changeAuthorName,
