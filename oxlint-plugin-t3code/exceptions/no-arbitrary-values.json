@@ -1208,14 +1208,6 @@
     "expires": "F6"
   },
   {
-    "path": "apps/web/src/components/zerops/ZeropsNewProjectWizard.tsx",
-    "kind": "Literal",
-    "fingerprint": "<> rounded-[var(--zerops-card-radius)] in \"rounded-[var(--zerops-card-radius)] border border-border/60 bg-card\"",
-    "owner": "web-intake",
-    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
-    "expires": "F6"
-  },
-  {
     "path": "apps/web/src/components/zerops/ZeropsOperationCard.tsx",
     "kind": "Literal",
     "fingerprint": "<> border-[var(--zerops-status-failed)]/35 in \"border-[var(--zerops-status-failed)]/35\"",

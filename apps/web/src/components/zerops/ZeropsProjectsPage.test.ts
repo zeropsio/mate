@@ -44,7 +44,7 @@ import groupDetailSource from "./ZeropsGroupDetail.tsx?raw";
 import giteaPageSource from "./ZeropsGiteaPage.tsx?raw";
 import sidebarTreeSource from "./SidebarZeropsTree.tsx?raw";
 import sidebarSource from "../Sidebar.tsx?raw";
-import wizardSource from "./ZeropsNewProjectWizard.tsx?raw";
+import newProjectSource from "./ZeropsNewProjectHost.tsx?raw";
 import gitBlockSource from "./ZeropsGitBlock.tsx?raw";
 import deployRunSource from "./ZeropsDeployRun.tsx?raw";
 import verdictPanelSource from "./primitives/VerdictPanel.tsx?raw";
@@ -915,8 +915,8 @@ describe("a creation under way on the projects page", () => {
   it("lists the organization again the moment a creation is accepted, as New project does", () => {
     expect(creationSource).toContain("creationAccepted(");
     expect(creationSource).toContain("organizationRef(organization.id),");
-    expect(wizardSource).toContain("creationAccepted(");
-    expect(wizardSource).not.toContain("beginBirth(");
+    expect(newProjectSource).toContain("creationAccepted(");
+    expect(newProjectSource).not.toContain("beginBirth(");
   });
 
   it("says why a merge or a release was refused, in the page's own trouble line", () => {

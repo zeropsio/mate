@@ -18,6 +18,8 @@ import {
 } from "@t3tools/shared/brand";
 import { useRef, useState, type CSSProperties, type ReactNode } from "react";
 
+import { cn } from "~/lib/utils";
+
 import { MateFace } from "./primitives";
 
 /** The colours and the shapes by the words a screen reader says for them. */
@@ -52,18 +54,29 @@ export function MateFacePicker({
   face,
   onPickTint,
   onPickShape,
+  compact = false,
   children,
 }: {
   /** The face the picks make now. */
   readonly face: ZeropsMateFace;
   readonly onPickTint: (tint: MateTintId) => void;
   readonly onPickShape: (shape: MateShapeId) => void;
+  /**
+   * The face at 72 px rather than 112: a New project's first Mate, under the project's name,
+   * which is what that dialog asks first (board D1).
+   */
+  readonly compact?: boolean;
   /** What the form asks before the face: a new Mate's name. */
   readonly children?: ReactNode;
 }) {
   return (
-    <div className="flex items-center gap-6 max-sm:flex-col max-sm:gap-4">
-      <FacePreview face={face} />
+    <div
+      className={cn(
+        "flex items-center max-sm:flex-col max-sm:gap-4",
+        compact ? "gap-4.5" : "gap-6",
+      )}
+    >
+      <FacePreview className={compact ? "size-18" : "size-28"} face={face} />
       <div className="flex w-full min-w-0 flex-1 flex-col gap-3.5">
         {children}
         <div className="flex flex-col gap-0.5">
@@ -194,7 +207,14 @@ const ARROW_STEPS: Readonly<Record<string, number>> = {
  * reads as the same somebody turning into someone else rather than a picture swapped. The first
  * paint is still, and reduced motion keeps only the fade.
  */
-function FacePreview({ face }: { readonly face: ZeropsMateFace }) {
+function FacePreview({
+  face,
+  className,
+}: {
+  readonly face: ZeropsMateFace;
+  /** Its size. */
+  readonly className: string;
+}) {
   const [shown, setShown] = useState<{
     readonly face: ZeropsMateFace;
     readonly before: ZeropsMateFace | undefined;
@@ -207,7 +227,7 @@ function FacePreview({ face }: { readonly face: ZeropsMateFace }) {
     <span className="mate-face-preview" data-zerops-surface="mate-face-preview">
       {shown.before === undefined ? null : (
         <MateFace
-          className="size-28"
+          className={className}
           data-mate-face-preview="out"
           key={`out-${shown.turn}`}
           onAnimationEnd={(event) => {
@@ -223,7 +243,7 @@ function FacePreview({ face }: { readonly face: ZeropsMateFace }) {
         />
       )}
       <MateFace
-        className="size-28"
+        className={className}
         data-mate-face-preview={shown.turn === 0 ? undefined : "in"}
         key={`in-${shown.turn}`}
         shape={shown.face.shape}

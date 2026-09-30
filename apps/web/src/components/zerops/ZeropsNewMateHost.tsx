@@ -249,6 +249,9 @@ function NewMateDialog({
         if (!open && !adding) dismiss();
       }}
       open
+      proposeAnotherName={(current) =>
+        generateBotName([...taken.names, current], (bytes) => crypto.getRandomValues(bytes))
+      }
       proposeName={proposeName}
       role="dev"
       takenBotNames={taken}

@@ -106,6 +106,8 @@ import { useSidebarJump } from "~/zerops/sidebarJump";
 import type { ZeropsAgentActivity } from "~/zerops/agentActivity";
 import { PROJECT_ORDER_STORAGE_KEY, ProjectOrderSchema } from "~/zerops/projectOrderPreference";
 import type { ZeropsMateOwner } from "~/zerops/useZeropsMateOwners";
+import { ZeropsSessionContext } from "~/zerops/sessionContext";
+import type { ZeropsSessionValue } from "~/zerops/ZeropsSessionProvider";
 import type { AppRouter } from "~/router";
 
 import "../index.css";
@@ -742,6 +744,20 @@ const COMING_SET = new URLSearchParams(location.search).get("set") === "coming";
 const COMING_PHASE: ComingPhase =
   COMING_PHASES.find((phase) => phase === new URLSearchParams(location.search).get("phase")) ??
   "coming";
+/**
+ * Who looks at it: the person who added Quinn, so it waits for their sign-in — or with
+ * `&viewer=colleague` anybody else, who reads that nobody has signed it in yet.
+ */
+const COMING_VIEWER: ZeropsSessionValue | null = !COMING_SET
+  ? null
+  : ({
+      user: {
+        id:
+          new URLSearchParams(location.search).get("viewer") === "colleague"
+            ? "u-other"
+            : "u-harness",
+      },
+    } as unknown as ZeropsSessionValue);
 
 /**
  * Which fixtures the menu draws: the hostile set, or with `?set=plan` the pass
@@ -913,56 +929,58 @@ function SidebarFrame({
           the canvas at an edge only while something is scrolled under it. */}
       <SidebarContent>
         <div className="ps-2.25 pe-2 pb-1">
-          <SidebarZeropsTree
-            births={coming?.births}
-            candidates={candidates}
-            className="mb-2"
-            complete
-            getActivity={coming?.activity ?? activityOfCandidate}
-            getComing={coming?.coming}
-            onOpenComing={(projectId) => {
-              menuActions.push(`coming ${projectId}`);
-              setOpen(projectId);
-            }}
-            getFlow={(groupId) => FIXTURES.flows.get(groupId)}
-            getOwner={(item) => FIXTURES.owners.get(item.project.id)}
-            getCrew={(item) => CREWS.get(item.project.id)}
-            getMateActions={(item, live) => ({
-              muted: item.project.id === "notes-iris",
-              toggleMute: () => {},
-              toggleUnread: () => {},
-              copyLink: () => {},
-              rename: {
-                initialValue:
-                  item.project.tagList
-                    ?.find((tag) => tag.startsWith("mate:bot:"))
-                    ?.slice("mate:bot:".length) ?? item.project.name,
-                validate: (value) => (value.trim() === "" ? "Give the Mate a name." : undefined),
-                commit: () => {},
-              },
-              ...(live?.face === "working" ? { stop: () => {} } : {}),
-              entries: [
-                { id: "restart", label: "Restart", onSelect: () => {} },
-                { id: "assign", label: "Hand over…", onSelect: () => {} },
-                { id: "move", label: "Move to project…", onSelect: () => {} },
-              ],
-            })}
-            onBrowseProjects={() => {}}
-            onAskToFix={(mateProjectId, problem) => {
-              menuActions.push(`ask ${mateProjectId}: ${problem.what}`);
-            }}
-            onSelect={(item) => {
-              menuActions.push(`open ${item.project.id}`);
-              setOpen(item.project.id);
-            }}
-            onOpenCrew={(item, setUp) => {
-              menuActions.push(`${setUp ? "set up a crew" : "crew"} ${item.project.id}`);
-              setOpen(item.project.id);
-            }}
-            activeProjectId={open}
-            shown={shown}
-            timestampFormat="24-hour"
-          />
+          <ZeropsSessionContext.Provider value={COMING_VIEWER}>
+            <SidebarZeropsTree
+              births={coming?.births}
+              candidates={candidates}
+              className="mb-2"
+              complete
+              getActivity={coming?.activity ?? activityOfCandidate}
+              getComing={coming?.coming}
+              onOpenComing={(projectId) => {
+                menuActions.push(`coming ${projectId}`);
+                setOpen(projectId);
+              }}
+              getFlow={(groupId) => FIXTURES.flows.get(groupId)}
+              getOwner={(item) => FIXTURES.owners.get(item.project.id)}
+              getCrew={(item) => CREWS.get(item.project.id)}
+              getMateActions={(item, live) => ({
+                muted: item.project.id === "notes-iris",
+                toggleMute: () => {},
+                toggleUnread: () => {},
+                copyLink: () => {},
+                rename: {
+                  initialValue:
+                    item.project.tagList
+                      ?.find((tag) => tag.startsWith("mate:bot:"))
+                      ?.slice("mate:bot:".length) ?? item.project.name,
+                  validate: (value) => (value.trim() === "" ? "Give the Mate a name." : undefined),
+                  commit: () => {},
+                },
+                ...(live?.face === "working" ? { stop: () => {} } : {}),
+                entries: [
+                  { id: "restart", label: "Restart", onSelect: () => {} },
+                  { id: "assign", label: "Hand over…", onSelect: () => {} },
+                  { id: "move", label: "Move to project…", onSelect: () => {} },
+                ],
+              })}
+              onBrowseProjects={() => {}}
+              onAskToFix={(mateProjectId, problem) => {
+                menuActions.push(`ask ${mateProjectId}: ${problem.what}`);
+              }}
+              onSelect={(item) => {
+                menuActions.push(`open ${item.project.id}`);
+                setOpen(item.project.id);
+              }}
+              onOpenCrew={(item, setUp) => {
+                menuActions.push(`${setUp ? "set up a crew" : "crew"} ${item.project.id}`);
+                setOpen(item.project.id);
+              }}
+              activeProjectId={open}
+              shown={shown}
+              timestampFormat="24-hour"
+            />
+          </ZeropsSessionContext.Provider>
         </div>
       </SidebarContent>
       {/* *New project* pinned above the account's row, as the app's

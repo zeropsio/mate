@@ -55,9 +55,11 @@ export type MateComingVerb =
 export type MateComing =
   | {
       readonly kind: "coming";
-      /** How far it has got, as its row says it. */
+      /** How far it has got, as the projects page says it. */
       readonly line: string;
       readonly verb: "keep-waiting" | undefined;
+      /** When the platform took it, wall ms, where this browser holds its birth: its row's clock. */
+      readonly since?: number | undefined;
     }
   | {
       readonly kind: "failed";
@@ -71,6 +73,8 @@ export interface MateComingInput {
   readonly birth:
     | {
         readonly step: BirthStep;
+        /** When the platform accepted its creation, wall ms. */
+        readonly startedAt?: number | undefined;
         /** The step outlasted its cap. */
         readonly overdue: boolean;
         /** Whether a Mate container is being brought up at all. */
@@ -124,6 +128,7 @@ export function mateComing(input: MateComingInput): MateComing | undefined {
       kind: "coming",
       line: comingMateLine({ step: birth.step, overdue: birth.overdue }),
       verb: birth.overdue ? "keep-waiting" : undefined,
+      ...(birth.startedAt === undefined ? {} : { since: birth.startedAt }),
     };
   }
   if (

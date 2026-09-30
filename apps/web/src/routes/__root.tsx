@@ -29,6 +29,7 @@ import { SlowRpcRequestToastCoordinator } from "../components/SlowRpcRequestToas
 import { ThemeEditorHost } from "../components/settings/ThemeEditorHost";
 import { ZeropsHostedLanding } from "../components/zerops/landing/ZeropsHostedLanding";
 import { ZeropsNewMateHost } from "../components/zerops/ZeropsNewMateHost";
+import { ZeropsNewProjectHost } from "../components/zerops/ZeropsNewProjectHost";
 import { Button } from "../components/ui/button";
 import {
   AnchoredToastProvider,
@@ -186,8 +187,10 @@ function SignedInRootRouteView() {
           </RouteGateView>
         </AppSidebarLayout>
         {/* The New Mate dialog over whatever is on screen — every "Add a Mate" asks here — and a
-            new Mate's hand-over to its conversation. */}
+            new Mate's hand-over to its conversation; the New project dialog, of its family, the
+            same way for every "New project". */}
         <ZeropsNewMateHost />
+        <ZeropsNewProjectHost />
       </CommandPalette>
     </ZeropsReviewProvider>
   );

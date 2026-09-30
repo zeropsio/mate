@@ -8,7 +8,7 @@ import { MATE_SHAPE_IDS, MATE_TINT_IDS, type MateTintId } from "@t3tools/shared/
 import { act, type ReactElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { create, type ReactTestInstance, type ReactTestRenderer } from "react-test-renderer";
-import { afterEach, describe, expect, it } from "vite-plus/test";
+import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { Dialog } from "../ui/dialog";
 import {
@@ -59,6 +59,7 @@ afterEach(() => {
       tree.unmount();
     });
   }
+  vi.unstubAllGlobals();
 });
 
 function mount(element: ReactElement): ReactTestRenderer {
@@ -119,10 +120,35 @@ function spoken(node: ReactTestInstance): string {
 const said = (tree: ReactTestRenderer) =>
   spoken(host(tree, (node) => node.props["data-slot"] === "dialog-description"));
 
-/** Every button's words, in order. */
+/**
+ * What happens next, as the dialog's closing block shows it now: each step's words and time,
+ * then the line under them.
+ */
+function next(tree: ReactTestRenderer) {
+  const shown = host(tree, (node) => node.props["data-zerops-next"] === "shown");
+  return {
+    steps: shown
+      .findAll((node) => node.type === "li")
+      .map((step) => [
+        spoken(step.children[1] as ReactTestInstance),
+        spoken(step.children[2] as ReactTestInstance),
+      ]),
+    note: spoken(shown.find((node) => node.type === "p")),
+  };
+}
+
+/** Out of reach: under an `inert` form, or not a button a person can press there at all. */
+function inReach(node: ReactTestInstance): boolean {
+  for (let at: ReactTestInstance | null = node; at !== null; at = at.parent) {
+    if (at.props.inert === true) return false;
+  }
+  return true;
+}
+
+/** Every button a person can reach, its words, in order. */
 const buttons = (tree: ReactTestRenderer) =>
   tree.root
-    .findAll((node) => node.type === "button" && node.props.role !== "radio")
+    .findAll((node) => node.type === "button" && node.props.role !== "radio" && inReach(node))
     .map((node) => spoken(node));
 
 const button = (tree: ReactTestRenderer, words: string) =>
@@ -142,14 +168,59 @@ describe("the New Mate dialog", () => {
     }
   });
 
-  it("says what happens, and names the Mate on its button", () => {
+  // Board D1, 2026-09-30: the dialog ends with what happens next, with honest times, and names
+  // the project in its title; nothing above the form says it twice.
+  it("ends with what happens next, names the project and the Mate, and says nothing twice", () => {
     const tree = mount(form());
-    expect(said(tree)).toBe("Otto gets its own copy of Acme Docs, with its services and code.");
+    expect(next(tree)).toEqual({
+      steps: [
+        ["Otto comes up", "about 1½–2 min"],
+        ["You sign Otto in", ""],
+        ["Otto sets up development, deploying Acme Docs' code", "about 6–10 min"],
+      ],
+      note: "You can leave meanwhile.",
+    });
     type(tree, "Ada");
-    expect(said(tree)).toBe("Ada gets its own copy of Acme Docs, with its services and code.");
+    expect(next(tree).steps[0]).toEqual(["Ada comes up", "about 1½–2 min"]);
+    expect(said(tree)).toBe("");
     const html = renderToStaticMarkup(form());
-    expect(html).toContain(">New Mate<");
+    expect(html).toContain(">New Mate on Acme Docs<");
     expect(html).toContain(">Add Otto to Acme Docs</button>");
+  });
+
+  it("rolls another name free on the account with its die, and the face follows it", () => {
+    // The die's tooltip listens on `window` once mounted; there is no DOM here.
+    const noDom = Object.fromEntries(
+      ["Node", "Element", "HTMLElement", "ShadowRoot"].map((name) => [name, function none() {}]),
+    );
+    vi.stubGlobal("window", Object.assign(new EventTarget(), noDom));
+    for (const [name, type] of Object.entries(noDom)) vi.stubGlobal(name, type);
+    const asked: string[] = [];
+    const tree = mount(
+      form({
+        proposeAnotherName: (current) => {
+          asked.push(current);
+          return "Milo";
+        },
+      }),
+    );
+    act(() => {
+      host(tree, (node) => node.props["data-zerops-mate-name"] === "another").props.onClick({
+        nativeEvent: {},
+        preventDefault: () => {},
+        stopPropagation: () => {},
+      });
+    });
+    expect(asked).toEqual(["Otto"]);
+    expect(
+      host(tree, (node) => node.type === "input" && node.props["aria-label"] === "Name").props
+        .value,
+    ).toBe("Milo");
+    expect(face(tree).tint).toBe("coral");
+  });
+
+  it("offers no die where no other name can be proposed", () => {
+    expect(renderToStaticMarkup(form())).not.toContain("Another name");
   });
 
   it("shows the face being made, big, in the colour and shape the name asks for", () => {
@@ -273,18 +344,32 @@ describe("the New Mate dialog", () => {
     });
     expect(made).toEqual([]);
     expect(lineText(tree)).toBe("");
-    expect(renderToStaticMarkup(form({ tier: undefined, tierLoading: false }))).toContain(
-      "There&#x27;s no recipe yet, so it sets the application up itself.",
-    );
+    expect(next(tree).steps[2]).toEqual(["You tell Otto what to build", ""]);
     press(tree);
     expect(made.map((choice) => choice.recipe)).toEqual([{ kind: "none" }]);
   });
 
-  it("tells a project with no recipe on main that its Mate sets the application up", () => {
+  it("tells a project with nothing to deploy yet that its person says what to build", () => {
     const tree = mount(form({ tier: undefined, tierLoading: false }));
-    expect(said(tree)).toBe(
-      "It gets its own copy of Acme Docs. There's no recipe yet, so it sets the application up itself. It takes a couple of minutes.",
+    expect(next(tree)).toEqual({
+      steps: [
+        ["Otto comes up", "about 1½–2 min"],
+        ["You sign Otto in", ""],
+        ["You tell Otto what to build", ""],
+      ],
+      note: "You can leave while Otto comes up.",
+    });
+  });
+
+  // Learning the project has nothing to deploy changes the block's words in its one place: both
+  // versions stand there, one out of sight, so the dialog keeps its height.
+  it("holds both versions of what happens next in one place while the recipe is read", () => {
+    const tree = mount(form({ tier: undefined, tierLoading: true }));
+    const versions = tree.root.findAll(
+      (node) => typeof node.type === "string" && node.props["data-zerops-next"] !== undefined,
     );
+    expect(versions.map((version) => version.props["data-zerops-next"])).toEqual(["shown", "held"]);
+    expect(versions[1]!.props["aria-hidden"]).toBe(true);
   });
 
   it("says nothing until Add is pressed, then why a name will not do", () => {
@@ -413,7 +498,9 @@ describe("the New Mate dialog, while the project takes no Mate", () => {
   it("says why in the form's place, under the same title, with no Add", () => {
     const tree = mount(form({ tier: undefined, closed: REVIEW }));
     expect(said(tree)).toBe(REVIEW.reason);
-    expect(renderToStaticMarkup(form({ tier: undefined, closed: REVIEW }))).toContain(">New Mate<");
+    expect(renderToStaticMarkup(form({ tier: undefined, closed: REVIEW }))).toContain(
+      ">New Mate on Acme Docs<",
+    );
     expect(buttons(tree)).toEqual(["Close", "Review the change"]);
     expect(
       tree.root.findAll((node) => node.type === "button" && node.props.type === "submit"),

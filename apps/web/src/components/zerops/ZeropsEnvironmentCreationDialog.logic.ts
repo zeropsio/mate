@@ -269,30 +269,12 @@ export function newMateSubmit(input: {
     : { kind: "create", recipe: { kind: "none" } };
 }
 
-/**
- * What happens when a Mate is added, as the dialog's description says it: the Mate being named
- * gets the project's recipe — its services and its code — and the project's first, with no
- * recipe to start from, sets the application up itself.
- */
-export function newMateDescription(input: {
-  readonly groupName: string;
-  readonly botName: string;
-  readonly recipe: NewMateRecipe;
-}): string {
-  const { groupName } = input;
-  if (input.recipe === "none") {
-    return `It gets its own copy of ${groupName}. There's no recipe yet, so it sets the application up itself. It takes a couple of minutes.`;
-  }
-  const name = input.botName.replace(/\s+/g, " ").trim();
-  return `${name.length === 0 ? "It" : name} gets its own copy of ${groupName}, with its services and code.`;
-}
-
 /** The quiet line while the group repo is read for the recipe. */
 export const READING_RECIPE = "Reading the project's recipe…";
 
 /**
- * What the Mate's dialog says: what happens, in its description — a project with no recipe to
- * deploy included; what the button does; and the one quiet line beside it, for what Add waits on.
+ * What the Mate's dialog says: what the button does, and the one quiet line beside it, for what
+ * Add waits on. What happens once it is added is its closing block's (`newMateNext`).
  */
 export function newMateWords(input: {
   readonly groupName: string;
@@ -300,11 +282,10 @@ export function newMateWords(input: {
   readonly recipe: NewMateRecipe;
   /** What a pressed Add waits on, if anything. */
   readonly waitingOn: "names" | "recipe" | null;
-}): { readonly description: string; readonly button: string; readonly line: string | undefined } {
+}): { readonly button: string; readonly line: string | undefined } {
   const { groupName, recipe } = input;
   const name = input.botName.replace(/\s+/g, " ").trim();
   return {
-    description: newMateDescription({ groupName, botName: input.botName, recipe }),
     button: name.length === 0 ? `Add a Mate to ${groupName}` : `Add ${name} to ${groupName}`,
     line:
       input.waitingOn === "names"

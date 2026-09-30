@@ -9,8 +9,11 @@
  * platform taking the Mate's project; `refused` — the platform refused it before; and the project
  * taking no Mate (`newMateDoor`): `waiting` — the recipe in Fen's change, `writer` — Fen still to
  * write it, `mates` — one of three to, `unreadable` — the read failed; `&resolves=<one of them>`
- * has a `reading` repo shut the door, to watch nothing move). A press on Add
- * goes busy for a second, as the platform takes the project, and then the dialog closes where
+ * has a `reading` repo shut the door, to watch nothing move). The dialog ends with what happens
+ * next (board D1): up, signed in, development set up with the project's code for `recipe` and
+ * `reading`; up, signed in, told what to build for `none` — `&resolves=none` turns one into the
+ * other in place, to watch nothing move. The die at the name's end rolls another name. A press on
+ * Add goes busy for a second, as the platform takes the project, and then the dialog closes where
  * the person lands on the new Mate. Open it at the owner's 1786 × 1000. The account holds three Mates —
  * Fen, Ada and Nova — so the proposed face walks past the tints they wear.
  * `window.__newMateHarness.read()` answers the recipe the moment it is asked
@@ -62,6 +65,8 @@ function mate(bot: string): ZeropsCandidate {
 }
 
 const MATES = [mate("Fen"), mate("Ada"), mate("Nova")];
+/** What the die rolls, in turn: never the name it was rolled from. */
+const ROLLS = ["Wren", "Milo", "Iris"];
 const TAKEN = ["Acme Docs - Fen", "Acme Docs - Ada", "Acme Docs - Nova", "Acme Docs - stage"];
 
 /** The project taking no Mate, as the door says it for each. */
@@ -154,6 +159,7 @@ function Harness() {
         }}
         onOpenChange={() => {}}
         open
+        proposeAnotherName={(current) => ROLLS.find((name) => name !== current) ?? current}
         proposeName={(botName) =>
           proposedEnvironmentName({
             groupName: "Acme Docs",

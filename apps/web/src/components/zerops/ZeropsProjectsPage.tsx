@@ -2,9 +2,10 @@ import { captureAccountLifetime } from "~/zerops/accountLifetime";
 import { useZeropsUpgradeRestart, type UpgradeRecovery } from "~/zerops/useZeropsUpgradeRestart";
 /**
  * `/zerops` — the project picker for a signed-in Zerops account: an existing
- * candidate to connect to or wait on, and a way to `/zerops/new` (also where
- * an exhausted pool falls back to, since that phase has nothing ready-made to
- * pick). Creating a project happens at that route, not here.
+ * candidate to connect to or wait on, and a way to New project (also where an
+ * exhausted pool falls back to, since that phase has nothing ready-made to
+ * pick). Creating a project happens in its dialog over this page
+ * (`ZeropsNewProjectHost`), not here.
  */
 
 import { useAtomValue } from "@effect/atom-react";
@@ -63,6 +64,7 @@ import {
 } from "@t3tools/client-runtime/zerops/projections";
 import { deriveProvisioningStart } from "@t3tools/client-runtime/zerops/registrationHandoff";
 import { useAddMate } from "~/zerops/newMate";
+import { askNewProject } from "~/zerops/newProjectAsk";
 import { useEnvironmentCreation } from "~/zerops/useEnvironmentCreation";
 import { useConnectMate, type MateConnectTarget } from "~/zerops/accountEnvironments";
 import { intendContainer, useZeropsContainers } from "~/zerops/zeropsContainers";
@@ -2223,9 +2225,10 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
       const { clientId, zcpClaimed } = deriveProvisioningStart(lastRegistration);
       clearLastRegistration();
       if (!clientId) return;
-      // No ready-made project to wait on: the only way forward is to create one.
+      // No ready-made project to wait on: the only way forward is to create one, in its dialog
+      // over this page (`ZeropsNewProjectHost`).
       if (zcpClaimed === false) {
-        void navigate({ to: "/zerops/new" });
+        askNewProject();
         return;
       }
       claimRef.current = clientId;
@@ -2245,7 +2248,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
       // A claimed project is already listed, in no group of this account's.
       placement: null,
     });
-  }, [clearLastRegistration, inventory.projects, lastRegistration, navigate]);
+  }, [clearLastRegistration, inventory.projects, lastRegistration]);
 
   if (status === "loading") {
     return (
@@ -2873,11 +2876,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
         isMate={hasMate}
         onCreateEnvironment={requestEnvironment}
         onCreateProject={
-          hasNoZeropsProject({ listing, creationPending: activeBirths })
-            ? () => {
-                void navigate({ to: "/zerops/new" });
-              }
-            : undefined
+          hasNoZeropsProject({ listing, creationPending: activeBirths }) ? askNewProject : undefined
         }
         // A Gitea the grant withholds is still the account's: never offered a second.
         {...(holdsGitea

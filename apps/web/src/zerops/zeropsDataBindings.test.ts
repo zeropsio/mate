@@ -47,7 +47,7 @@ describe("central Zerops data bindings", () => {
 
   it("keeps all product writes behind the account runtime command facade", () => {
     const files = [
-      "../components/zerops/ZeropsNewProjectWizard.tsx",
+      "../components/zerops/ZeropsNewProjectHost.tsx",
       "../components/zerops/ZeropsProjectsPage.tsx",
       "./useZeropsGroupReach.ts",
       "./zeropsBirths.ts",
