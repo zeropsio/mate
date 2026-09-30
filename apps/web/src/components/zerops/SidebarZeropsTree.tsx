@@ -181,9 +181,12 @@ import {
   mateDeletingView,
   mateNotYours,
   mateOwnerView,
+  mateRowAskLine,
+  mateRowDraft,
   mateRowReading,
   pendingBornLine,
   type MateBornLine,
+  type MateRowAskLine,
   type MateRowReply,
   type MateRowSlot,
   ownerBadge,
@@ -405,6 +408,11 @@ export interface SidebarZeropsTreeProps<T extends RosterCandidate> {
    */
   readonly getActivity?: (candidate: T) => ZeropsAgentActivity | undefined;
   /**
+   * Its conversations have been read — its environment's shell arrived — so a Mate with none has
+   * nothing asked yet. Absent, nobody knows, and its row says nothing of it.
+   */
+  readonly getConversationsRead?: ((candidate: T) => boolean) | undefined;
+  /**
    * Whose this Mate is — the person its project names as `OWNER`, or who
    * signed its agent in, once the org's member list has been read. Absent,
    * the seat before the name is what the Mate's own records say
@@ -556,6 +564,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
   onOpenGroup,
   activeProjectId,
   getActivity,
+  getConversationsRead,
   getOwner,
   getFlow,
   remembered,
@@ -1387,6 +1396,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
                   appUrl={appUrl}
                   candidate={item}
                   coming={getComing?.(item)}
+                  conversationsRead={getConversationsRead?.(item) === true}
                   crew={getCrew?.(item)}
                   onOpenCrew={onOpenCrew}
                   keys={mateKeys}
@@ -2301,6 +2311,7 @@ function MateRow<T extends RosterCandidate>({
   active,
   activity,
   coming,
+  conversationsRead = false,
   onSelect,
   owner,
   timestampFormat,
@@ -2321,6 +2332,8 @@ function MateRow<T extends RosterCandidate>({
   readonly activity: ZeropsAgentActivity | undefined;
   /** Still coming up, or never came (`mateComing`): its one line says so. */
   readonly coming?: MateComing | undefined;
+  /** Its conversations are read: none there says nothing was asked (`mateRowAskLine`). */
+  readonly conversationsRead?: boolean;
   readonly onSelect: (candidate: T) => void;
   readonly owner: ZeropsMateOwner | undefined;
   readonly timestampFormat: TimestampFormat;
@@ -2392,6 +2405,24 @@ function MateRow<T extends RosterCandidate>({
     viewer,
   });
   const known = activity !== undefined && activity.remembered !== true;
+  // What the person is about to send it, waiting in its composer: the row's second line says it.
+  const environmentId = candidate.group === "connected" ? candidate.environmentId : undefined;
+  const draft = useComposerDraftStore((state) =>
+    mateRowDraft(state, {
+      environmentId,
+      threadId: activity?.threadId,
+      threadKey: activity?.threadKey,
+    }),
+  );
+  // The person's line (`mateRowAskLine`): what they asked, or are about to, or that nothing was.
+  const askLine = mateRowAskLine({
+    view,
+    signIn:
+      signIn === undefined ? undefined : { text: signIn, waitsOnViewer: seated.waitsOnViewer },
+    draft,
+    deleting,
+    read: conversationsRead,
+  });
   const warmIntent = useWarmIntent(activity?.threadKey);
   // Its menu's door to its crew (`mateCrewItem`): whether crew mode is on and
   // a crew applied — a fixture's, or its feed's once it is connected.
@@ -2558,8 +2589,11 @@ function MateRow<T extends RosterCandidate>({
         {/* One even leading, three lines of one thing: the name 14/20, what
             was asked 13/18, the answer 13/18, and no gap between them — the
             name used to float over a paragraph on a 22 px line and 2 px of
-            air. The ask is the words' second ink, the answer muted. */}
-        <span className="flex min-w-0 flex-col">
+            air. The ask is the words' second ink, the answer muted. Every
+            row keeps the three lines' height, whatever it says yet: a Mate
+            nobody has asked anything does not float its name in a short
+            row, and its first message grows nothing. */}
+        <span className="flex min-h-14 min-w-0 flex-col">
           <span className="flex h-5 min-w-0 items-center gap-2">
             <span
               className={cn("flex min-w-0 flex-1 items-center gap-1.5", renaming && "invisible")}
@@ -2607,26 +2641,13 @@ function MateRow<T extends RosterCandidate>({
               ) : null}
             </span>
           </span>
-          {view.ask === undefined ? null : (
-            <span
-              className={cn(
-                "menu-ink-2 truncate text-line leading-4.5",
-                askChanged && "animate-words-in motion-reduce:animate-none",
-              )}
-              data-zerops-surface="sidebar-mate-subject"
-              key={view.ask}
-            >
-              {view.ask}
-            </span>
+          {view.coming !== undefined ? <MateComingLine line={mateBornLine(view.coming)} /> : null}
+          {askLine === undefined ? null : askLine.kind === "sign-in" ? (
+            <MateSignInLine waitsOnViewer={askLine.waitsOnViewer} words={askLine.text} />
+          ) : (
+            <MateAskLine line={askLine} rises={askChanged} />
           )}
-          {view.coming !== undefined ? (
-            <MateComingLine line={mateBornLine(view.coming)} />
-          ) : signIn === undefined ? null : (
-            <MateSignInLine waitsOnViewer={seated.waitsOnViewer} words={signIn} />
-          )}
-          {view.reply === undefined ? null : (
-            <MateReply known={known} reply={view.reply} threadKey={activity?.threadKey} />
-          )}
+          {view.reply === undefined ? null : <MateReply known={known} reply={view.reply} />}
           {deleting ? <MateDeletingLine /> : null}
         </span>
       </button>
@@ -2896,43 +2917,84 @@ const REPLY_TONE_CLASS: Record<"muted" | "ink-2" | "ink" | "failed", string> = {
 };
 
 /**
- * The row's third line (`mateRowView`): the Mate's last words in its state's
- * ink — the question it waits on, the error it stopped on — or, while it
- * works, the step it is on, its command in mono under a sweep of light (D5);
- * or the dots holding the line while words are still to come. While a
- * message to it waits unsent in its composer, that draft stands in for its
- * words or its dots, led by *Draft:*: never over a question, an error or a
- * live step, and never growing a row — the composer holds it anyway.
+ * The row's second line, the person's (`mateRowAskLine`): what they last asked, rising in as they
+ * set it; or what they are about to send, led by *Draft:* the way a messenger leads an unsent
+ * message — the ask kept under it in the same cell, so clearing the draft replays no rise; or,
+ * its conversation read and nobody having asked it anything, that fact in the muted ink.
+ */
+function MateAskLine({
+  line,
+  rises,
+}: {
+  readonly line: Exclude<MateRowAskLine, { readonly kind: "sign-in" } | undefined>;
+  /** The ask is new since the row was shown: it rises in. */
+  readonly rises: boolean;
+}) {
+  if (line.kind === "nothing-asked") {
+    return (
+      <span
+        className="truncate text-line leading-4.5 text-muted-foreground"
+        data-zerops-surface="sidebar-mate-nothing-asked"
+      >
+        {NOTHING_ASKED_YET}
+      </span>
+    );
+  }
+  const ask = line.kind === "ask" ? line.text : line.ask;
+  const drafting = line.kind === "draft";
+  return (
+    <span className="grid min-w-0 text-line leading-4.5">
+      {ask === undefined ? null : (
+        <span
+          aria-hidden={drafting ? true : undefined}
+          className={cn(
+            "menu-ink-2 col-start-1 row-start-1 truncate",
+            drafting && "invisible",
+            rises && "animate-words-in motion-reduce:animate-none",
+          )}
+          data-zerops-surface={drafting ? undefined : "sidebar-mate-subject"}
+          key={ask}
+        >
+          {ask}
+        </span>
+      )}
+      {drafting ? (
+        <span
+          className="col-start-1 row-start-1 truncate text-muted-foreground"
+          data-zerops-surface="sidebar-mate-draft"
+        >
+          <span className="font-medium text-sidebar-foreground">Draft:</span> {line.text}
+        </span>
+      ) : null}
+    </span>
+  );
+}
+
+const NOTHING_ASKED_YET = "Nothing asked yet";
+
+/**
+ * The row's third line, the Mate's (`mateRowView`): its last words in its state's ink — the
+ * question it waits on, the error it stopped on — or, while it works, the step it is on, its
+ * command in mono under a sweep of light (D5); or the dots holding the line while words are
+ * still to come. An unsent draft never stands here: it is the person's, on the line above.
  */
 function MateReply({
   reply,
-  threadKey,
   known,
 }: {
   readonly reply: NonNullable<MateRowReply>;
-  readonly threadKey: string | undefined;
   /** The words are the Mate's as read, not what this browser remembered them saying. */
   readonly known: boolean;
 }) {
-  const draft = useComposerDraftStore((state) =>
-    threadKey === undefined ? undefined : state.draftsByThreadKey[threadKey]?.prompt,
-  );
-  const unsent = draft?.trim() ?? "";
   // The Mate's newest words rise into their line when they arrive, as its
   // status line's do in the chat; what the menu opened onto is simply there,
-  // and remembered words give way to the read ones without a rise. Only its
-  // words: a draft is the person's own typing and changes with every key.
+  // and remembered words give way to the read ones without a rise.
   const words = reply.kind === "words" ? reply.text : reply.kind === "live" ? reply.words : null;
   const wordsChanged = useChangedSinceShown(words, known);
-  const drafting =
-    unsent.length > 0 &&
-    (reply.kind === "pending" ||
-      reply.kind === "held" ||
-      (reply.kind === "words" && (reply.tone === "muted" || reply.tone === "ink-2")));
-  if (reply.kind === "pending" && !drafting) return <MateReplyPending />;
+  if (reply.kind === "pending") return <MateReplyPending />;
   // Remembered as holding words to come: its place kept, empty — words on their way are only
   // true now, and an asleep face over them said the opposite.
-  if (reply.kind === "held" && !drafting) {
+  if (reply.kind === "held") {
     return <span aria-hidden="true" className="h-4.5" data-zerops-surface="sidebar-mate-held" />;
   }
   if (reply.kind === "live") {
@@ -2961,33 +3023,17 @@ function MateReply({
     );
   }
   return (
-    // The words keep their node while a draft stands over them in the same
-    // cell, so clearing the draft does not replay their rise.
-    <span className="grid min-w-0 text-line leading-4.5">
-      {reply.kind === "words" ? (
-        <span
-          aria-hidden={drafting ? true : undefined}
-          className={cn(
-            "col-start-1 row-start-1 truncate",
-            REPLY_TONE_CLASS[reply.tone],
-            drafting && "invisible",
-            wordsChanged && "animate-words-in motion-reduce:animate-none",
-          )}
-          data-zerops-reply-tone={reply.tone}
-          data-zerops-surface={drafting ? undefined : "sidebar-mate-snippet"}
-          key={`words:${reply.text}`}
-        >
-          {reply.text}
-        </span>
-      ) : null}
-      {drafting ? (
-        <span
-          className="col-start-1 row-start-1 truncate text-muted-foreground"
-          data-zerops-surface="sidebar-mate-snippet"
-        >
-          <span className="font-medium text-sidebar-foreground">Draft:</span> {unsent}
-        </span>
-      ) : null}
+    <span
+      className={cn(
+        "truncate text-line leading-4.5",
+        REPLY_TONE_CLASS[reply.tone],
+        wordsChanged && "animate-words-in motion-reduce:animate-none",
+      )}
+      data-zerops-reply-tone={reply.tone}
+      data-zerops-surface="sidebar-mate-snippet"
+      key={`words:${reply.text}`}
+    >
+      {reply.text}
     </span>
   );
 }

@@ -21,10 +21,10 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { create, type ReactTestInstance, type ReactTestRenderer } from "react-test-renderer";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
-import { scopeThreadRef } from "@t3tools/client-runtime/environment";
-import { EnvironmentId, ThreadId } from "@t3tools/contracts";
+import { scopeProjectRef, scopeThreadRef } from "@t3tools/client-runtime/environment";
+import { EnvironmentId, ProjectId, ThreadId } from "@t3tools/contracts";
 
-import { useComposerDraftStore } from "~/composerDraftStore";
+import { DraftId, useComposerDraftStore } from "~/composerDraftStore";
 import { getLocalStorageItem, setLocalStorageItem } from "~/hooks/useLocalStorage";
 import type { ZeropsAgentActivity } from "~/zerops/agentActivity";
 import { markMateDeleting, settleDeletingMates } from "~/zerops/deletingMates";
@@ -284,7 +284,7 @@ describe("SidebarZeropsTree", () => {
     // In the face's box, after the face and before the words: "(face) Cleo"
     // on the name's line read as a person called Cleo (the owner, 2026-09-30).
     expect(ownerAt).toBeGreaterThan(row.indexOf("</svg>"));
-    expect(ownerAt).toBeLessThan(row.indexOf("flex min-w-0 flex-col"));
+    expect(ownerAt).toBeLessThan(row.indexOf('data-zerops-surface="sidebar-mate-name"'));
     expect(row).toContain("menu-face-cut");
     expect(row).toContain('data-zerops-avatar="picture"');
     expect(row).toContain('src="https://cdn/jan.png"');
@@ -371,16 +371,6 @@ describe("SidebarZeropsTree", () => {
     expect(snippetAt).toBeGreaterThan(subjectAt);
     expect(html).toContain("give it optimistic updates");
     expect(html).toContain("Deploying and verifying now.");
-    // Three inks on one leading, and only the name at full strength: what the
-    // Mate was asked in the words' second ink, what it said back muted, both
-    // 13/18 with no gap between the lines.
-    const subject = html.slice(html.lastIndexOf("<span", subjectAt), subjectAt);
-    const snippet = html.slice(html.lastIndexOf("<span", snippetAt), snippetAt);
-    expect(subject).toContain("menu-ink-2");
-    expect(subject).toContain("text-line leading-4.5");
-    expect(subject).not.toContain("mt-");
-    expect(snippet).toContain("text-muted-foreground");
-    expect(html).toContain('class="grid min-w-0 text-line leading-4.5"');
   });
 
   const READING: CandidatesNotice = {
@@ -2578,6 +2568,13 @@ describe("arranging the projects by hand", () => {
 });
 
 describe("a Mate's row says more without words", () => {
+  const SIGNED_IN = {
+    ...CRM_DEV_CONNECTED,
+    project: {
+      ...CRM_DEV_CONNECTED.project,
+      tagList: [...(CRM_DEV_CONNECTED.project.tagList ?? []), SIGNER],
+    },
+  } as ZeropsCandidate;
   const live = (overrides: Partial<ZeropsAgentActivity> = {}): ZeropsAgentActivity => ({
     threadId: "thread-1" as ZeropsAgentActivity["threadId"],
     kind: "idle",
@@ -2850,51 +2847,92 @@ describe("a Mate's row says more without words", () => {
 
   describe("an unsent draft", () => {
     const ref = scopeThreadRef(EnvironmentId.make("env-crm-dev"), ThreadId.make("thread-1"));
+    const NEW_CHAT = DraftId.make("draft-crm-dev");
     afterEach(() => {
       useComposerDraftStore.getState().setPrompt(ref, "");
+      useComposerDraftStore.getState().clearDraftThread(NEW_CHAT);
     });
-
-    it("leads the last line with Draft:, in place of the last words", () => {
-      useComposerDraftStore.getState().setPrompt(ref, "also check the thumbnails");
-      // Mounted, not drawn once: a store read on the server answers with its
-      // first state, never the draft written since.
-      const mounted = mount(
+    const drawn = (activity: ZeropsAgentActivity | undefined, read = true) =>
+      mount(
         <SidebarZeropsTree
-          candidates={[CRM_DEV_CONNECTED]}
+          candidates={[SIGNED_IN]}
           complete
-          getActivity={() => live()}
+          getActivity={() => activity}
+          getConversationsRead={() => read}
           onBrowseProjects={() => {}}
           onSelect={() => {}}
         />,
       );
-      const snippet = text(surface(mounted, "sidebar-mate-snippet"));
-      expect(snippet).toBe("Draft: also check the thumbnails");
+    const said = (tree: ReactTestRenderer, name: string) =>
+      tree.root.findAll(
+        (node) => typeof node.type === "string" && node.props["data-zerops-surface"] === name,
+      );
+
+    // Mounted, not drawn once: a store read on the server answers with its
+    // first state, never the draft written since.
+    it.each([
+      { case: "answered", activity: () => live(), last: "sidebar-mate-snippet" },
+      {
+        case: "working",
+        activity: () => working({ snippet: undefined }),
+        last: "sidebar-mate-pending",
+      },
+      {
+        case: "waiting on a question",
+        activity: () => live({ face: "needs", question: "Which port?" }),
+        last: "sidebar-mate-snippet",
+      },
+    ])(
+      "stands in the person's line, the Mate's line under it kept: $case",
+      ({ activity, last }) => {
+        useComposerDraftStore.getState().setPrompt(ref, "also check the thumbnails");
+        const tree = drawn(activity());
+        expect(text(surface(tree, "sidebar-mate-draft"))).toBe("Draft: also check the thumbnails");
+        expect(said(tree, "sidebar-mate-subject")).toHaveLength(0);
+        expect(said(tree, last)).toHaveLength(1);
+      },
+    );
+
+    it("gives the line back to the ask once it is cleared", () => {
+      useComposerDraftStore.getState().setPrompt(ref, "also check the thumbnails");
+      const tree = drawn(live());
+      act(() => {
+        useComposerDraftStore.getState().setPrompt(ref, "  ");
+      });
+      expect(said(tree, "sidebar-mate-draft")).toHaveLength(0);
+      expect(text(surface(tree, "sidebar-mate-subject"))).toBe(
+        "Add a /status page with the build number",
+      );
     });
 
-    // Where the last line waits for the Mate's words, an unsent draft is the
-    // more pressing thing to say there: the face and the clock say it works.
-    it("stands in the line kept for words still to come", () => {
-      useComposerDraftStore.getState().setPrompt(ref, "also check the thumbnails");
-      const mounted = mount(
-        <SidebarZeropsTree
-          candidates={[CRM_DEV_CONNECTED]}
-          complete
-          getActivity={() => working({ snippet: undefined })}
-          onBrowseProjects={() => {}}
-          onSelect={() => {}}
-        />,
+    it("shows a new conversation's draft on a Mate nobody has asked anything", () => {
+      const store = useComposerDraftStore.getState();
+      store.setProjectDraftThreadId(
+        scopeProjectRef(EnvironmentId.make("env-crm-dev"), ProjectId.make("project-crm")),
+        NEW_CHAT,
+        { threadId: ThreadId.make("thread-new"), createdAt: new Date().toISOString() },
       );
-      expect(text(surface(mounted, "sidebar-mate-snippet"))).toBe(
-        "Draft: also check the thumbnails",
-      );
+      store.setPrompt(NEW_CHAT, "set up a staging");
+      const tree = drawn(undefined);
+      expect(text(surface(tree, "sidebar-mate-draft"))).toBe("Draft: set up a staging");
+      expect(said(tree, "sidebar-mate-nothing-asked")).toHaveLength(0);
     });
+  });
 
-    it("never grows a row that has no last words: the composer holds the draft", () => {
-      useComposerDraftStore.getState().setPrompt(ref, "also check the thumbnails");
-      const html = row(live({ snippet: undefined }));
-      expect(html).not.toContain("sidebar-mate-snippet");
-      expect(html).not.toContain("Draft:");
+  it.each([
+    { case: "its conversations read", read: true, says: ["Nothing asked yet"] },
+    { case: "its conversations not read yet", read: false, says: [] },
+  ])("says nothing was asked of a Mate nobody has spoken to: $case", ({ read, says }) => {
+    const html = render([SIGNED_IN], {
+      getActivity: () => undefined,
+      getConversationsRead: () => read,
     });
+    const found = [
+      ...html.matchAll(
+        /<span[^>]*data-zerops-surface="sidebar-mate-nothing-asked"[^>]*>([^<]*)<\/span>/gu,
+      ),
+    ].map((match) => match[1]);
+    expect(found).toEqual(says);
   });
 });
 
