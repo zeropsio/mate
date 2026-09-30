@@ -8,6 +8,8 @@
  * While the agent-auth feed is being read, nothing is closed and `reading`
  * holds the presses; a feed that failed, or a Mate outside Zerops, gates
  * nothing — the server's door stays the authority, as for the composer.
+ * Without an environment it reads nothing that moves, so a row that asks
+ * nothing (the left menu's) never draws again for it.
  */
 import {
   crewAccess,
@@ -16,10 +18,14 @@ import {
 } from "@t3tools/client-runtime/zerops/crew/crewAccess";
 import { zeropsAgentAuthView } from "@t3tools/client-runtime/zerops/agentLogin";
 import { resolveSpentLogin } from "@t3tools/client-runtime/zerops/logins";
-import type { CrewSnapshot, EnvironmentId } from "@t3tools/contracts";
+import { useAtomValue } from "@effect/atom-react";
+import type { EnvironmentProject } from "@t3tools/client-runtime/state/models";
+import type { CrewSnapshot, EnvironmentId, ServerConfig } from "@t3tools/contracts";
+import { Atom } from "effect/unstable/reactivity";
 import { useMemo } from "react";
 
-import { useProjects, useServerConfigs } from "../../state/entities";
+import { environmentProjects } from "../../state/projects";
+import { environmentServerConfigsAtom } from "../../state/server";
 import {
   resolveAgentAuthorizer,
   useLocalAgentSigners,
@@ -31,14 +37,23 @@ import { useZeropsSessionOptional } from "../ZeropsSessionProvider";
 /** The login a crewmate runs on when its crew home names none, as the engine reads it. */
 export const DEFAULT_CREW_LOGIN = "claudeAgent";
 
+const NO_PROJECTS = Atom.make<ReadonlyArray<EnvironmentProject>>([]).pipe(
+  Atom.withLabel("crew-access:no-projects"),
+);
+const NO_CONFIGS = Atom.make<ReadonlyMap<EnvironmentId, ServerConfig>>(new Map()).pipe(
+  Atom.withLabel("crew-access:no-configs"),
+);
+
 export function useCrewAccess(
   environmentId: EnvironmentId | null,
   snapshot: CrewSnapshot | null,
 ): CrewAccess {
   const agentAuth = useZeropsAgentAuth(environmentId);
-  const configs = useServerConfigs();
+  const configs = useAtomValue(environmentId === null ? NO_CONFIGS : environmentServerConfigsAtom);
   const config = environmentId === null ? undefined : configs.get(environmentId);
-  const projects = useProjects();
+  const projects = useAtomValue(
+    environmentId === null ? NO_PROJECTS : environmentProjects.projectsAtom,
+  );
   const viewerSubject = useZeropsSessionOptional()?.user?.id;
   const localSigners = useLocalAgentSigners();
   const { recordFailed } = useZeropsAgentSignerRecordState(environmentId);
