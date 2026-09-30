@@ -1419,8 +1419,13 @@ function settledBar(
 ): ReadonlyArray<{ readonly key: string; readonly tone: BarTone }> {
   const failed = operation.phase === "failed";
   const cut: BarTone = undone ? "waiting" : "failed";
-  if (operation.steps.length === 0) return [{ key: "whole", tone: failed ? cut : "done" }];
-  return operation.steps.map((step) => ({
+  // A stage a stand-up queued is the next call's, not a segment of this one.
+  const steps =
+    operation.kind === "standup"
+      ? operation.steps.filter((step) => step.state !== "queued")
+      : operation.steps;
+  if (steps.length === 0) return [{ key: "whole", tone: failed ? cut : "done" }];
+  return steps.map((step) => ({
     key: step.id,
     tone: failed
       ? step.state === "done"

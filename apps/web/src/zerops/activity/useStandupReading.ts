@@ -33,16 +33,25 @@ const SETTLED_STATE: Record<string, StandupServiceRow["state"]> = {
 
 /** What the report said of each service, once the call settled. */
 export function settledStandupReading(operation: ZeropsOperation): StandupReading {
-  const rows = operation.steps.map((step): StandupServiceRow => ({
-    hostname: step.label,
-    state: SETTLED_STATE[step.state] ?? "built",
-  }));
+  // A stage the call queued is the next call's.
+  const rows = operation.steps
+    .filter((step) => step.state !== "queued")
+    .map((step): StandupServiceRow => ({
+      hostname: step.label,
+      state: SETTLED_STATE[step.state] ?? "built",
+    }));
   return {
     rows,
     building: rows.filter((row) => row.state === "building").length,
     built: rows.filter((row) => row.state === "built").length,
     failed: rows.filter((row) => row.state === "failed").length,
   };
+}
+
+/** The services a running call builds, when the report before it named them (its queued steps). */
+export function standupExpected(operation: ZeropsOperation): ReadonlyArray<string> | undefined {
+  const queued = operation.steps.filter((step) => step.state === "queued");
+  return queued.length === 0 ? undefined : queued.map((step) => step.label);
 }
 
 export function useStandupReading(
@@ -59,8 +68,10 @@ export function useStandupReading(
     if (!running) return settledStandupReading(operation);
     // Not read yet: the bar says it is getting ready, never that nothing builds.
     if (topology === undefined || processes === undefined) return null;
+    const expected = standupExpected(operation);
     return readStandup({
       half,
+      ...(expected === undefined ? {} : { expected }),
       services: topology.services.map((service) => ({
         hostname: service.hostname,
         serviceId: service.serviceId,

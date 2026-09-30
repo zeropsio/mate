@@ -1427,6 +1427,27 @@ describe("deriveOutcome", () => {
     expect(outcome?.notDone).toEqual([]);
   });
 
+  it("names no stage a development call queued: the next call builds it", () => {
+    const entries = [
+      user("m0", 0),
+      operation("s1", "t1", 1, {
+        kind: "standup",
+        subject: "development",
+        steps: [
+          { id: "apidev", label: "apidev", state: "done", stateLabel: "Deployed" },
+          { id: "apistage", label: "apistage", state: "queued", stateLabel: "Next" },
+        ],
+        links: [{ label: "apidev", url: "https://apidev.example.dev" }],
+      }),
+      assistant("a1", "t1", 2),
+    ];
+    const [only] = structure(entries, settled).turns;
+    const outcome = deriveOutcome({ turn: only!, landed: [], diff: null });
+    expect(outcome?.live.map(({ hostname, word, url }) => ({ hostname, word, url }))).toEqual([
+      { hostname: "apidev", word: "Deployed", url: "https://apidev.example.dev" },
+    ]);
+  });
+
   // What is still broken says why, when, and what its log said last: the
   // row's words and the fix request's (S6).
   it.each([
@@ -2224,6 +2245,74 @@ describe("operationLineWords", () => {
     },
   ] as const)("$kind $phase: $words", ({ words, ...fields }) => {
     expect(operationLineWords(op({ subject: "app", ...fields }))).toBe(words);
+  });
+});
+
+describe("operationLineWords — a stand-up call, by what its report said", () => {
+  const op = (overrides: Partial<ZeropsOperation>) =>
+    (
+      operation("s", "t1", 1, { kind: "standup", ...overrides }) as Extract<
+        TimelineEntry,
+        { kind: "operation" }
+      >
+    ).operation;
+  const built = (label: string) =>
+    ({ id: label, label, state: "done", stateLabel: "Deployed" }) as const;
+  const next = (label: string) =>
+    ({ id: label, label, state: "queued", stateLabel: "Next" }) as const;
+  const failed = (label: string) =>
+    ({ id: label, label, state: "failed", stateLabel: "Failed" }) as const;
+  it.each([
+    {
+      name: "the development call running",
+      fields: { subject: "development", phase: "running", voice: "Standing development up." },
+      words: "Standing development up",
+    },
+    {
+      name: "the development call stood, its stages next",
+      fields: {
+        subject: "development",
+        phase: "done",
+        steps: [built("apidev"), next("apistage"), built("webdev"), next("webstage")],
+      },
+      words: "Stood development up · apistage and webstage next",
+    },
+    {
+      name: "the development call stood, nothing queued",
+      fields: { subject: "development", phase: "done", steps: [built("apidev")] },
+      words: "Stood development up",
+    },
+    {
+      name: "the development call with a dev half failed: its queued stage is no failure",
+      fields: {
+        subject: "development",
+        phase: "failed",
+        steps: [built("apidev"), next("apistage"), failed("webdev")],
+      },
+      words: "Stood up 1 of 2 · webdev failed",
+    },
+    {
+      name: "the stage call running",
+      fields: { subject: "stage", phase: "running", voice: "Standing stage up." },
+      words: "Standing stage up",
+    },
+    {
+      name: "the stage call stood",
+      fields: { subject: "stage", phase: "done", steps: [built("apistage"), built("webstage")] },
+      words: "Stood stage up",
+    },
+    {
+      name: "the stage call with one failed",
+      fields: { subject: "stage", phase: "failed", steps: [built("apistage"), failed("webstage")] },
+      words: "Stood up 1 of 2 · webstage failed",
+    },
+    {
+      name: "a refusal before anything was built",
+      fields: { subject: "development", phase: "failed", steps: [] },
+      words: "Standing development up failed",
+    },
+  ] as const)("$name", ({ fields, words }) => {
+    expect(operationLineWords(op(fields))).toBe(words);
   });
 });
 
