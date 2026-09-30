@@ -15,6 +15,7 @@ import type { AtomCommandResult } from "../state/runtime.ts";
 import type {
   ZeropsAgentAuth,
   ZeropsAgentAuthSnapshot,
+  ZeropsAgentLoginPhase,
   ZeropsAgentLoginState,
   ZeropsAgentLoginStartResult,
 } from "@t3tools/contracts";
@@ -222,6 +223,10 @@ export function zeropsAgentAuthNeedsAttention(snapshot: ZeropsAgentAuthSnapshot)
  * authorized and must not flash the band while the provider answers; an empty
  * or unavailable feed has nothing to ask for. The per-agent card
  * (`zeropsAgentAuthNeedsAttention`) keeps the wider "any agent" rule.
+ *
+ * A credential that lands while its own login is still checking the code is
+ * not a sign-in yet: the sign-in stays until that login ends, so the view the
+ * person is signing in on never trades places with the conversation mid-check.
  */
 export function zeropsAgentSignInRequired(snapshot: ZeropsAgentAuthSnapshot): boolean {
   return (
@@ -229,10 +234,15 @@ export function zeropsAgentSignInRequired(snapshot: ZeropsAgentAuthSnapshot): bo
     snapshot.agents.length > 0 &&
     snapshot.agents.every((agent) => {
       const kind = classifyAgentAuth(agent).kind;
+      if (kind === "registering") return loginInFlight(agent.login?.phase);
       return kind === "not-authorized" || kind === "reconnect" || kind === "needs-reauth";
     })
   );
 }
+
+/** A login that has not ended: its credential is not a sign-in until it does. */
+const loginInFlight = (phase: ZeropsAgentLoginPhase | undefined): boolean =>
+  phase !== undefined && phase !== "succeeded" && phase !== "failed" && phase !== "cancelled";
 
 /** The agent-auth feed as its surfaces read it (DESIGN §2.C C13, §3.4). */
 export interface ZeropsAgentAuthView {

@@ -276,7 +276,7 @@ function ZeropsAgentAuthRow({
   const localSigners = useLocalAgentSigners();
   const ownership = resolveAgentOwnership({
     credPresent: agent.credPresent,
-    authorizedBy: resolveAgentAuthorizer(agent.agentId, agent.authorizedBy, localSigners),
+    authorizedBy: resolveAgentAuthorizer(agent.agentId, agent, localSigners, viewerSubject),
     viewerSubject,
     recordFailed,
   });

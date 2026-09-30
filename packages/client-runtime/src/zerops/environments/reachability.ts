@@ -164,9 +164,10 @@ export function selectReachability(
       restart: credential.last.kind === "identity-failed" && identityRestartOffered(machine),
     };
   }
-  // 10
+  // 10 — a reconnect only once something was lost: a held credential whose link never
+  // connected is still a first connect (row 12).
   if (
-    held ||
+    (held && machine.linkLostAt !== null) ||
     ((credential.kind === "none" ||
       credential.kind === "waiting" ||
       credential.kind === "exchanging") &&

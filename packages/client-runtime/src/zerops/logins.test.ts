@@ -10,6 +10,7 @@ import {
   mateLoginRows,
   mateLoginSignerLine,
   resolveSpentLogin,
+  spentLoginRegistering,
 } from "./logins.ts";
 
 const EVA = "u-eva";
@@ -210,5 +211,59 @@ describe("resolveSpentLogin", () => {
     expect(resolveSpentLogin("opencode", feed, providers)).toBeUndefined();
     expect(resolveSpentLogin(undefined, feed, providers)).toBeUndefined();
     expect(resolveSpentLogin("claudeAgent-work", null, providers)).toBeUndefined();
+  });
+});
+
+describe("spentLoginRegistering", () => {
+  const providers = [
+    { instanceId: "claudeAgent", driver: "claudeAgent" },
+    { instanceId: "claudeAgent-work", driver: "claudeAgent" },
+  ];
+  const agentRow = (
+    state: "local-only" | "authorized",
+    providerAuth: "unknown" | "authenticated",
+  ) =>
+    ({
+      agentId: "claude-code",
+      credPresent: true,
+      flagOAuth: state === "authorized",
+      flagToken: false,
+      providerAuth,
+      state,
+    }) as const;
+
+  it.each([
+    {
+      name: "the default login signed in and its flag not written yet",
+      instanceId: "claudeAgent",
+      feed: { available: true, agents: [agentRow("local-only", "unknown")] },
+      expected: true,
+    },
+    {
+      name: "the default login authorized",
+      instanceId: "claudeAgent",
+      feed: { available: true, agents: [agentRow("authorized", "authenticated")] },
+      expected: false,
+    },
+    {
+      name: "a login beyond the defaults still answering its own check",
+      instanceId: "claudeAgent-work",
+      feed: {
+        available: true,
+        agents: [agentRow("authorized", "authenticated")],
+        logins: [login({ id: "claudeAgent-work", state: "registering" })],
+      },
+      expected: true,
+    },
+    {
+      name: "no feed",
+      instanceId: "claudeAgent",
+      feed: null,
+      expected: false,
+    },
+  ])("is $expected for $name", ({ instanceId, feed, expected }) => {
+    expect(
+      spentLoginRegistering(instanceId, feed as ZeropsAgentAuthSnapshot | null, providers),
+    ).toBe(expected);
   });
 });

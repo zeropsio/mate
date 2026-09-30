@@ -462,7 +462,14 @@ const VERDICTS: ReadonlyArray<readonly [Reachability["kind"], EnvironmentMachine
       },
     }),
   ],
-  ["reconnecting", machine({ credential: HELD, link: { phase: "backoff", retryAtMs: null } })],
+  [
+    "reconnecting",
+    machine({
+      credential: HELD,
+      link: { phase: "backoff", retryAtMs: null },
+      linkLostAt: { wall: 0, mono: 0 },
+    }),
+  ],
   ["resolving", machine({ presence: { kind: "unknown" } })],
 ];
 

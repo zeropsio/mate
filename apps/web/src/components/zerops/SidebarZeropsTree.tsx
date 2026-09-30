@@ -2233,6 +2233,8 @@ function MateRow<T extends RosterCandidate>({
     asked: view.ask !== undefined,
     standUpBy: tags.standUp?.by,
     viewer,
+    // It waits on the viewer once its page can show the sign-in: its link made.
+    linked: candidate.group === "connected",
   });
   // The sign-in line stands where nothing else is said of a Mate that is up: to the person who
   // added it, that it waits on them — with the amber dot of what needs them.

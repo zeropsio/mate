@@ -316,9 +316,29 @@ const ROWS: ReadonlyArray<{
   },
   {
     row: 10,
-    name: "held, link in backoff",
-    machine: machine({ credential: HELD, link: { phase: "backoff", retryAtMs: NOW + 2_000 } }),
+    name: "held, the link lost and in backoff",
+    machine: machine({
+      credential: HELD,
+      link: { phase: "backoff", retryAtMs: NOW + 2_000 },
+      linkLostAt: at(NOW - 5_000),
+    }),
     verdict: { kind: "reconnecting" },
+  },
+  {
+    row: 12,
+    name: "held on a first load, the link not connected yet",
+    machine: machine({ credential: HELD, link: { phase: "connecting" }, linkLostAt: null }),
+    verdict: { kind: "connecting", waitingOn: "exchange" },
+  },
+  {
+    row: 12,
+    name: "held on a first load, the first socket attempt in backoff",
+    machine: machine({
+      credential: HELD,
+      link: { phase: "backoff", retryAtMs: NOW + 2_000 },
+      linkLostAt: null,
+    }),
+    verdict: { kind: "connecting", waitingOn: "exchange" },
   },
   {
     row: 10,

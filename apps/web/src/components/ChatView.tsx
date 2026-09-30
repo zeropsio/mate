@@ -209,7 +209,7 @@ import {
   agentOwnershipComposerNotice,
   resolveAgentOwnership,
 } from "@t3tools/client-runtime/zerops/agentOwnership";
-import { resolveSpentLogin } from "@t3tools/client-runtime/zerops/logins";
+import { resolveSpentLogin, spentLoginRegistering } from "@t3tools/client-runtime/zerops/logins";
 import { useProjectTopology } from "../zerops/useProjectTopology";
 import {
   deriveAgentPanelModel,
@@ -3074,12 +3074,16 @@ export default function ChatView(props: ChatViewProps) {
       setDismissedProviderStatusBannerKey(null);
     }
   }, [dismissedProviderStatusBannerKey, providerStatusBannerKey]);
-  const visibleProviderStatus = shouldShowProviderStatusBanner(
-    activeProviderStatus,
-    dismissedProviderStatusBannerKey,
-  )
-    ? activeProviderStatus
-    : null;
+  // A Zerops login signed in and still being registered runs already: nothing to warn about.
+  const visibleProviderStatus =
+    shouldShowProviderStatusBanner(activeProviderStatus, dismissedProviderStatusBannerKey) &&
+    !spentLoginRegistering(
+      activeProviderStatus?.instanceId,
+      zeropsAgentAuth.snapshot,
+      providerStatuses,
+    )
+      ? activeProviderStatus
+      : null;
   const hasTimelineTopBanner = Boolean(visibleThreadError) || visibleProviderStatus !== null;
   const activeProjectCwd = activeProject?.workspaceRoot ?? null;
   const activeThreadWorktreePath = activeThread?.worktreePath ?? null;
@@ -3848,8 +3852,9 @@ export default function ChatView(props: ChatViewProps) {
         ? undefined
         : resolveAgentAuthorizer(
             zeropsSpentLogin.key,
-            zeropsSpentLogin.agent.authorizedBy,
+            zeropsSpentLogin.agent,
             zeropsLocalSigners,
+            zeropsViewerSubject,
           ),
     viewerSubject: zeropsViewerSubject,
     recordFailed:

@@ -191,8 +191,34 @@ describe("mateOwnerView — whose seat, and whether anybody signed its agent in"
       waits: false,
     },
   ])("$case", ({ records, standUpBy, viewer, line, waits }) => {
-    const view = mateOwnerView({ owner: undefined, records, asked: false, standUpBy, viewer });
+    const view = mateOwnerView({
+      owner: undefined,
+      records,
+      asked: false,
+      standUpBy,
+      viewer,
+      linked: true,
+    });
     expect(view.signInLine).toBe(line);
+    expect(view.waitsOnViewer).toBe(waits);
+  });
+
+  // The row follows what the page knows (the owner, 2026-09-30, Pia: the row asked for the
+  // sign-in with its dot while the page still said Connecting…): its words stand from the first
+  // paint, and it waits on the viewer — the dot — only once the page can show the sign-in.
+  it.each([
+    { case: "its link not made yet: the words, no dot", linked: false, waits: false },
+    { case: "its link made: it waits on the viewer", linked: true, waits: true },
+  ])("$case", ({ linked, waits }) => {
+    const view = mateOwnerView({
+      owner: undefined,
+      records: NOBODY,
+      asked: false,
+      standUpBy: "user-petra",
+      viewer: "user-petra",
+      linked,
+    });
+    expect(view.signInLine).toBe("Waiting for your sign-in");
     expect(view.waitsOnViewer).toBe(waits);
   });
 

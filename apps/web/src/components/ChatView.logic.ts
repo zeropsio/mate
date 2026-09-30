@@ -439,7 +439,7 @@ export function resolveZeropsProviderAvailability(input: {
     providerAuth: agent.providerAuth,
     state: agent.state,
     loginPhase: agent.login?.phase,
-    authorizedBy: resolveAgentAuthorizer(key, agent.authorizedBy, input.localSigners),
+    authorizedBy: resolveAgentAuthorizer(key, agent, input.localSigners, input.viewerSubject),
   });
   const reads = zeropsAgentAuthReads(input.agentAuth, (agent) => factsOf(agent, agent.agentId));
   if (reads === undefined) return undefined;
