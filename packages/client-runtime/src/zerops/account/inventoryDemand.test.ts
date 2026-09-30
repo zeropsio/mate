@@ -4,7 +4,7 @@
  */
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
-import { AtomRegistry } from "effect/unstable/reactivity";
+import { Atom, AtomRegistry } from "effect/unstable/reactivity";
 
 import { account, organization, project, scope } from "../data/__fixtures__/index.ts";
 import {
@@ -17,7 +17,7 @@ import {
 } from "../data/access/grant.ts";
 import type { AccessVerifier } from "../data/access/verifier.ts";
 import { DEFAULT_ZEROPS_GRANT_POLICY } from "../data/policy.ts";
-import { makeZeropsDataRuntime } from "../data/runtime.ts";
+import { makeZeropsDataRuntime, type ManagedZeropsDataRuntime } from "../data/runtime.ts";
 import {
   AccountEpoch,
   type AccessState,
@@ -29,6 +29,7 @@ import {
 import {
   heldEvidence,
   holdInventoryDemand,
+  holdListedProjects,
   inventoryDemand,
   inventoryProjectRefs,
 } from "./inventoryDemand.ts";
@@ -263,6 +264,57 @@ describe("holdInventoryDemand", () => {
         const held = [...(yield* data.state).interests.values()].filter(({ leases }) => leases > 0);
         expect(held).toHaveLength(39);
         expect(published).toBe(1);
+      }),
+    ),
+  );
+});
+
+describe("holdListedProjects", () => {
+  const settle = Effect.gen(function* () {
+    for (let turn = 0; turn < 20; turn++) {
+      yield* Effect.promise(() => new Promise<void>((resolve) => setImmediate(resolve)));
+      yield* Effect.yieldNow;
+    }
+  });
+
+  it.effect("offers a listed project again once a grant that ignored it is granted", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const registry = AtomRegistry.make();
+        const lapsed = drive([
+          ...granted,
+          {
+            at: { wall: T0.wall + 16 * MINUTE, mono: T0.mono + 16 * MINUTE },
+            event: { type: "TICK" },
+          },
+        ]);
+        expect(lapsed.phase.phase).toBe("lapsed");
+        const view = Atom.make({ machine: lapsed, failure: null, overdue: false });
+        // The organization's live list names C, which no evidence holds.
+        const list = Atom.make({
+          value: [A, B, C].map((ref) => ({ knowledge: "unresolved" as const, ref })),
+        });
+        const sent: Array<ReadonlyArray<string>> = [];
+        const data = {
+          access: {
+            view,
+            signal: (event: GrantEvent) =>
+              Effect.sync(() => {
+                if (event.type === "PROJECTS_LISTED")
+                  sent.push(event.projects.map(({ projectId }) => projectId));
+              }),
+          },
+          reads: { projectsOf: () => list },
+        } as unknown as ManagedZeropsDataRuntime;
+        yield* holdListedProjects({ data, atomRegistry: registry });
+        yield* settle;
+        // Offered while lapsed, and ignored there: the grant reads no project then.
+        expect(sent).toEqual([["project-c"]]);
+
+        // A round grants again, with the same evidence names: C is still unheld.
+        registry.set(view, { machine: drive(granted), failure: null, overdue: false });
+        yield* settle;
+        expect(sent).toEqual([["project-c"], ["project-c"]]);
       }),
     ),
   );
