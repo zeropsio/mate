@@ -1895,6 +1895,7 @@ export function ProjectHeader({
             {faces}
             {collapsed ? (
               <HeadingReleaseMark
+                line={secondLine}
                 mark={line === undefined ? undefined : headingMark(line, landing)}
               />
             ) : null}
