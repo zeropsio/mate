@@ -1489,6 +1489,7 @@
         "apps/web/src/components/zerops/crew/SidebarCrewLine.tsx",
         "apps/web/src/components/zerops/crew/SidebarCrewLine.logic.ts",
         "apps/web/src/components/zerops/crew/CrewmateEmptyState.tsx",
+        "apps/web/src/components/zerops/crew/CrewmateEmptyState.logic.ts",
         "apps/web/src/components/zerops/crew/CrewLeadPlan.tsx",
         "apps/web/src/components/zerops/crew/CrewLeadPlan.logic.ts",
         "apps/web/src/components/zerops/crew/CrewRunsOnControl.tsx"
@@ -1599,6 +1600,7 @@
         "apps/web/src/components/zerops/crew/SidebarCrewLine.test.tsx",
         "apps/web/src/components/zerops/crew/SidebarCrewLine.logic.test.ts",
         "apps/web/src/components/zerops/crew/CrewmateEmptyState.test.tsx",
+        "apps/web/src/components/zerops/crew/CrewmateEmptyState.logic.test.ts",
         "apps/web/src/components/zerops/crew/CrewLeadPlan.test.tsx",
         "apps/web/src/components/zerops/crew/CrewLeadPlan.logic.test.ts",
         "apps/web/src/components/zerops/crew/CrewRunsOnControl.test.tsx"

@@ -22,6 +22,7 @@ import {
   crewBackToMateWord,
   crewBriefPlainText,
   crewBrokenCopyWord,
+  crewClosedOutcome,
   crewCommitEditAsk,
   crewDeliverAsk,
   crewDescribeAsk,
@@ -63,6 +64,7 @@ import {
   crewStoppedWords,
   crewSuggestedLine,
   crewTryWorkLine,
+  crewWentInOutcome,
   crewWentInWord,
   crewClosedWord,
   crewNotShippedWords,
@@ -823,6 +825,13 @@ describe("the conversation's line and a crewmate's menu", () => {
 describe("a crewmate's empty conversation", () => {
   it("heads its job as the job view does, and the work it finished beside it", () => {
     expect(CREWMATE_EMPTY_WORDS).toEqual({ job: "Its job", work: "Its work" });
+  });
+
+  it("says what became of a piece of work after its title, as its chat's seam does", () => {
+    expect(crewWentInOutcome("Fen")).toBe("went into Fen's code");
+    expect(crewClosedOutcome("Fen")).toBe("closed with nothing to add to Fen's code");
+    expect(crewWentInWord("Seasons", "Fen")).toBe(`Seasons ${crewWentInOutcome("Fen")}`);
+    expect(crewClosedWord("Seasons", "Fen")).toBe(`Seasons ${crewClosedOutcome("Fen")}`);
   });
 
   it.each([

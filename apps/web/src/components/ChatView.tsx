@@ -205,6 +205,7 @@ import { agentTurnNotes } from "@t3tools/client-runtime/zerops";
 import { useZeropsSessionOptional } from "../zerops/ZeropsSessionProvider";
 import {
   AGENT_OWNERSHIP_RECOVERY_LABEL,
+  agentOwnershipAllowsTurns,
   agentOwnershipComposerNotice,
   resolveAgentOwnership,
 } from "@t3tools/client-runtime/zerops/agentOwnership";
@@ -5419,16 +5420,24 @@ export default function ChatView(props: ChatViewProps) {
           to: "/$environmentId/$threadId",
           params: buildThreadRouteParams(scopeThreadRef(environmentId, target)),
         }),
+      // Its empty conversation's *Change its job*, as its menu's: offered to a
+      // viewer who may run its agent (D6), the same answer its composer gets.
+      onChangeJob:
+        activeThreadRef !== null && agentOwnershipAllowsTurns(zeropsAgentOwnership)
+          ? () => openCrewView(activeThreadRef, { kind: "job", handle: activeCrewOrigin.crewmate })
+          : null,
     };
   }, [
     activeCrewOrigin,
     activeCrewmate,
+    activeThreadRef,
     crew.snapshot,
     displayedTimeline.entries,
     environmentId,
     loadEarlierTurns,
     navigate,
     threadId,
+    zeropsAgentOwnership,
     zeropsMates,
   ]);
 

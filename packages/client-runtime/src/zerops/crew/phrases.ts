@@ -625,15 +625,21 @@ export const crewShowAllWord = (count: number): string => `Show all ${count}`;
 
 export const CREW_WHAT_CHANGED = "What changed";
 
+/** What became of a piece of work that went in, after its title. */
+export const crewWentInOutcome = (mateName: string): string =>
+  `went into ${crewPossessive(mateName)} code`;
+
+/** What became of a piece of work that closed with nothing of its own to add, after its title. */
+export const crewClosedOutcome = (mateName: string): string =>
+  `closed with nothing to add to ${crewPossessive(mateName)} code`;
+
 /** A piece of work that went in, as a crewmate's chat marks it. */
 export const crewWentInWord = (title: string | null, mateName: string): string =>
-  title === null
-    ? `Its work went into ${crewPossessive(mateName)} code`
-    : `${title} went into ${crewPossessive(mateName)} code`;
+  `${title ?? "Its work"} ${crewWentInOutcome(mateName)}`;
 
 /** A piece of work that closed with nothing of its own to add, as a crewmate's chat marks it. */
 export const crewClosedWord = (title: string | null, mateName: string): string =>
-  `${title ?? "Its work"} closed with nothing to add to ${crewPossessive(mateName)} code`;
+  `${title ?? "Its work"} ${crewClosedOutcome(mateName)}`;
 
 /* ------------------------------------------------------------ no crew yet, setup */
 
@@ -905,8 +911,8 @@ export const crewMessagePlaceholder = (name: string): string => `Message ${name}
 
 /**
  * A crewmate's empty conversation: its job, headed as the job view heads it,
- * and the work it finished — each line of that said as its chat's seam says
- * it (`crewWentInWord`, `crewClosedWord`).
+ * and the work it finished — each piece by its title and what became of it,
+ * as its chat's seam says it (`crewWentInOutcome`, `crewClosedOutcome`).
  */
 export const CREWMATE_EMPTY_WORDS = {
   job: CREW_JOB_WORDS.job,

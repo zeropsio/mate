@@ -763,6 +763,7 @@ describe("MessagesTimeline", () => {
           crewmate: { handle: "backend", profile: null },
           mateName: "Fen",
           onOpenThread: () => {},
+          onChangeJob: null,
         }}
       >
         <MessagesTimeline
@@ -789,7 +790,8 @@ describe("MessagesTimeline", () => {
 
     expect(markup).toContain('data-zerops-surface="crewmate-empty-state"');
     expect(markup).toContain("You cleared its conversation");
-    expect(markup).toContain("Message backend…");
+    expect(markup).toContain(">backend</h1>");
+    expect(markup).not.toContain("Message backend");
     expect(markup).not.toContain("@backend");
     expect(markup).not.toContain('data-timeline-row-kind="crew-seam"');
   });
@@ -1265,6 +1267,7 @@ describe("MessagesTimeline — the conversation", () => {
           crewmate: { handle: "backend", profile: backend },
           mateName: "Fen",
           onOpenThread: () => {},
+          onChangeJob: null,
         }}
       >
         <MessagesTimeline
