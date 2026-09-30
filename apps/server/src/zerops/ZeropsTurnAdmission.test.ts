@@ -189,14 +189,16 @@ const admission = (world: World) =>
                 }),
               ),
             ),
-          loginRefusal: ({ key, state, token, subject }) =>
-            Effect.succeed(
-              ZeropsProjectSignersModule.loginTurnRefusal({
-                state,
-                token,
-                signer: world.signers?.[key],
-                subject,
-              }),
+          loginRefusal: ({ key, state, token, subject, login }) =>
+            Effect.sync(() => world.gateCalls?.push({ agentId: key, login })).pipe(
+              Effect.as(
+                ZeropsProjectSignersModule.loginTurnRefusal({
+                  state,
+                  token,
+                  signer: world.signers?.[key],
+                  subject,
+                }),
+              ),
             ),
           isActiveMember: (userId) => Effect.succeed(world.members?.[userId]),
         }),
@@ -300,6 +302,26 @@ describe("ZeropsTurnAdmission — the login the gate is told of", () => {
         session(JAN),
       );
       assert.deepStrictEqual(gateCalls, [{ agentId: "claude-code", login }]);
+    }),
+  );
+});
+
+describe("ZeropsTurnAdmission — the login beyond the defaults the gate is told of", () => {
+  it.effect("hands the gate that login's own state, by the login the turn runs on", () =>
+    Effect.gen(function* () {
+      const login = {
+        phase: "succeeded",
+        terminalId: "t",
+        startedAt: DateTime.makeUnsafe(CREATED_AT),
+        startedBy: JAN,
+      } as const;
+      const gateCalls: Array<{ readonly agentId: string; readonly login: unknown }> = [];
+      yield* admitted(
+        { ...evaSignedWork, agentLogins: { "claudeAgent-work": login }, gateCalls },
+        turnStart("claudeAgent-work"),
+        session(JAN),
+      );
+      assert.deepStrictEqual(gateCalls, [{ agentId: "claudeAgent-work", login }]);
     }),
   );
 });

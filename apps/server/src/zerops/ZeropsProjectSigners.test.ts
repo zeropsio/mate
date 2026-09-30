@@ -782,6 +782,32 @@ describe("the turn gate", () => {
     }).pipe(Effect.scoped),
   );
 
+  // A login beyond the defaults (crew mode's *Runs on*) is its own: the same wait for its own
+  // record, and the signer before runs nothing on it once somebody else signed it in.
+  it.effect(
+    "another login signed in over a colleague's record: theirs waits, the colleague's is refused",
+    () =>
+      Effect.gen(function* () {
+        const { signers, setTags } = yield* gate([signerTag("claudeAgent-work", EVA)]);
+        const { login } = yield* justSignedIn(JAN);
+        const onWork = (subject: string) =>
+          signers.loginRefusal({
+            key: "claudeAgent-work",
+            state: "registering",
+            token: false,
+            subject,
+            login,
+          });
+
+        assert.deepStrictEqual(yield* onWork(EVA), { kind: "someone-else" });
+        const fiber = yield* onWork(JAN).pipe(Effect.forkChild);
+        yield* TestClock.adjust(Duration.seconds(2));
+        setTags([signerTag("claudeAgent-work", JAN)]);
+        yield* TestClock.adjust(Duration.seconds(2));
+        assert.isUndefined(yield* Fiber.join(fiber));
+      }).pipe(Effect.scoped),
+  );
+
   it.effect("somebody else's sign-in is nothing this turn waits for", () =>
     Effect.gen(function* () {
       const { signers, reads } = yield* gate([]);

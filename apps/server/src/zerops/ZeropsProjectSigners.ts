@@ -286,6 +286,8 @@ export class ZeropsProjectSigners extends Context.Service<
       readonly state: ZeropsLoginState;
       readonly token: boolean;
       readonly subject: string | undefined;
+      /** That login's server-driven sign-in as this server holds it (`ZeropsAgentLogin`). */
+      readonly login?: ZeropsAgentLoginState | undefined;
     }) => Effect.Effect<TurnRefusal | undefined>;
     /**
      * Whether the org lists `userId` as an `ACTIVE` member, from a read no
@@ -485,15 +487,21 @@ export const make = Effect.gen(function* () {
   const gate = (
     key: string,
     refuse: (signer: SignerRecord | undefined) => TurnRefusal | undefined,
-    awaitRecord = false,
+    signIn: { readonly recent: boolean; readonly awaitRecord: boolean } = {
+      recent: false,
+      awaitRecord: false,
+    },
   ) =>
     Effect.gen(function* () {
       if (environment === undefined) return refuse(undefined);
       const held = yield* cachedOrRead(environment);
       let refusal = refuse(held.value[key]);
-      if (refusal === undefined || refusal.kind === "not-signed-in") return refusal;
+      if (refusal?.kind === "not-signed-in") return refusal;
+      // A cached admission stands, unless somebody has just signed this login in: the record
+      // from before the sign-in may name another person than the one it holds now.
+      if (refusal === undefined && !signIn.recent) return refusal;
       if (!held.fresh) refusal = refuse((yield* readThrough(environment)).value[key]);
-      if (!awaitRecord) return refusal;
+      if (!signIn.awaitRecord) return refusal;
       const deadline = (yield* Clock.currentTimeMillis) + Duration.toMillis(SIGNER_RECORD_WAIT);
       // No record, somebody else's from before, or one naming two people: each ends in this
       // person's own once it lands.
@@ -508,22 +516,43 @@ export const make = Effect.gen(function* () {
       return refusal;
     });
 
+  /**
+   * `base` against the signer of `key`, with the sign-in this server walked for that login: the
+   * person who just signed it in waits for their record on its way, and until it lands the
+   * signer before runs nothing on their credential.
+   */
+  const gateSignedIn = (
+    key: string,
+    base: (signer: SignerRecord | undefined) => TurnRefusal | undefined,
+    input: {
+      readonly token: boolean;
+      readonly subject: string | undefined;
+      readonly login: ZeropsAgentLoginState | undefined;
+    },
+  ) =>
+    Effect.gen(function* () {
+      const { token, subject } = input;
+      const signedInBy = recentSignInBy(input.login, yield* Clock.currentTimeMillis);
+      const refuse = (signer: SignerRecord | undefined): TurnRefusal | undefined => {
+        const refusal = base(signer);
+        // The record from before names this person, but the credential is now another's.
+        if (refusal !== undefined || token || signedInBy === undefined) return refusal;
+        return signedInBy === subject ? undefined : { kind: "someone-else" };
+      };
+      const awaitRecord = subject !== undefined && subject.length > 0 && signedInBy === subject;
+      return yield* gate(key, refuse, { recent: signedInBy !== undefined && !token, awaitRecord });
+    });
+
   const gateTurn: ZeropsProjectSigners["Service"]["turnRefusal"] = ({
     agentId,
     agent,
     subject,
     login,
   }) =>
-    Effect.gen(function* () {
-      const signedInBy = recentSignInBy(login, yield* Clock.currentTimeMillis);
-      const refuse = (signer: SignerRecord | undefined): TurnRefusal | undefined => {
-        const refusal = turnRefusal({ agent, signer, subject });
-        // The record from before names this person, but the credential is now another's.
-        if (refusal !== undefined || agent.flagToken || signedInBy === undefined) return refusal;
-        return signedInBy === subject ? undefined : { kind: "someone-else" };
-      };
-      const awaitRecord = subject !== undefined && subject.length > 0 && signedInBy === subject;
-      return yield* gate(agentId, refuse, awaitRecord);
+    gateSignedIn(agentId, (signer) => turnRefusal({ agent, signer, subject }), {
+      token: agent.flagToken,
+      subject,
+      login,
     });
 
   const gateLogin: ZeropsProjectSigners["Service"]["loginRefusal"] = ({
@@ -531,7 +560,13 @@ export const make = Effect.gen(function* () {
     state,
     token,
     subject,
-  }) => gate(key, (signer) => loginTurnRefusal({ state, token, signer, subject }));
+    login,
+  }) =>
+    gateSignedIn(key, (signer) => loginTurnRefusal({ state, token, signer, subject }), {
+      token,
+      subject,
+      login,
+    });
 
   const checkLeaversNow: ZeropsProjectSigners["Service"]["checkLeaversNow"] =
     environment === undefined
