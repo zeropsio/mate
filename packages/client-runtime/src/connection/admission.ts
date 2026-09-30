@@ -4,21 +4,24 @@
  * A browser opens one WebSocket at a time to an address (RFC 6455 §4.1 allows one connection in
  * CONNECTING per host), its TLS handshake included, and every Mate a Zerops region serves answers
  * at one address, the region's L7 balancer. The lock is the browser profile's, shared by every tab
- * of it. The sockets a page asks for therefore open one after another, each on a fresh TLS
- * connection: a WebSocket never shares the HTTP/2 connection the page's requests ride on.
- * Measured 2026-09-30: 0.9–1.8 s per socket on a VPN whose path MTU stalls a post-quantum
+ * of it. Measured 2026-09-30: 0.9–1.8 s per socket on a VPN whose path MTU stalls a post-quantum
  * ClientHello, and an upgrade to a Mate whose container is going down held by the L7 for up to
  * 5 s before its 502 — each such attempt holding the lock, and everything behind it, for as long.
  *
- * So, while the route's socket is not open:
- * - from the moment the route is named until its first attempt ends (or {@link ROUTE_FIRST_HOLD_MS}
- *   passes, a route whose exchange never finishes), and during every later attempt of the route's
- *   own — a reconnect included — no other environment starts one;
- * - the moment the route starts an attempt, every other attempt still in flight is told to yield
- *   (its ticket's `signal` aborts): closing a socket still CONNECTING frees the lock at once.
+ * An attempt is admitted for the part that takes the lock only: from creating its socket to the
+ * socket opening or failing (the driver asks for its ticket before, and synchronizes after).
+ * Whether an attempt is the route's is judged now, not when it was asked for:
+ * - The route's attempt starts at once, queued or not, and every other attempt still connecting
+ *   is told to give way (its ticket's `signal` aborts): closing a socket still CONNECTING frees
+ *   the lock. A previous route's attempt is one of those others from the moment the route moves.
+ * - While a route is named and its socket is not open, others wait: from the naming until its
+ *   first attempt ends (or {@link ROUTE_FIRST_HOLD_MS}, a route whose exchange never finishes),
+ *   and during every later attempt of its own — a reconnect included.
+ * - With a route named, others connect one at a time, each given {@link OTHER_ATTEMPT_MS} before
+ *   it gives way. With none, nothing waits: there is no one to go first.
  *
- * Other environments open one at a time, each given {@link OTHER_ATTEMPT_MS} before it yields, so
- * none of them keeps the lock from the rest either.
+ * A ticket the caller never claims (its wait was interrupted as the attempt started) ends by
+ * itself once the caller's signal aborts, or after {@link UNCLAIMED_TICKET_MS}.
  *
  * @module connection/admission
  */
@@ -27,8 +30,10 @@ import * as Context from "effect/Context";
 
 /** How long the route, named but not yet attempting (its exchange running), holds the others. */
 export const ROUTE_FIRST_HOLD_MS = 15_000;
-/** How long another environment's attempt may run before it yields to the rest. */
+/** How long another environment's attempt may hold the lock before it gives way. */
 export const OTHER_ATTEMPT_MS = 8_000;
+/** A ticket nobody claimed is let go after this. */
+export const UNCLAIMED_TICKET_MS = 1_000;
 
 export interface AdmissionTimers {
   /** Arms a timer; returns what disarms it. */
@@ -39,7 +44,9 @@ export interface AdmissionTimers {
 export interface AdmissionTicket {
   /** Aborts when the attempt must give way: the route needs the lock, or its time ran out. */
   readonly signal: AbortSignal;
-  /** The attempt ended: `open` when its socket is up. Later calls are ignored. */
+  /** The caller holds the ticket and will settle it. */
+  readonly claim: () => void;
+  /** The socket opened (`true`) or the attempt ended without it. Later calls are ignored. */
   readonly settle: (open: boolean) => void;
   /** A socket that settled open has closed. */
   readonly close: () => void;
@@ -49,7 +56,7 @@ export interface ConnectionAdmission {
   /** The route's environment, whose socket opens before any other's; null when none. */
   readonly prefer: (environmentId: EnvironmentId | null) => void;
   /**
-   * Resolves once this environment may start an attempt. Rejects with the signal's reason when
+   * Resolves once this environment may create its socket. Rejects with the signal's reason when
    * the caller gives up first.
    */
   readonly admit: (environmentId: EnvironmentId, signal?: AbortSignal) => Promise<AdmissionTicket>;
@@ -68,30 +75,32 @@ interface Waiter {
   readonly start: () => void;
 }
 
+interface Attempt {
+  readonly environmentId: EnvironmentId;
+  readonly controller: AbortController;
+  /** Disarms its give-way timer; a route's attempt has none. */
+  cancelTimer: (() => void) | null;
+  settled: boolean;
+}
+
 export function makeConnectionAdmission(
   timers: AdmissionTimers = systemTimers,
 ): ConnectionAdmission {
   let preferred: EnvironmentId | null = null;
-  /** The route is named and its first attempt has not ended. */
   let awaitingFirst = false;
   let cancelFirstHold: (() => void) | null = null;
-  /** The route's attempts in flight. */
-  let routeAttempts = 0;
   /** Open sockets per environment: a replacement opens beside the connection it replaces. */
   const open = new Map<EnvironmentId, number>();
-  /** Other environments' attempts in flight, each with what makes it yield. */
-  const others = new Set<{ readonly controller: AbortController; cancelTimer: () => void }>();
+  /** Attempts holding the lock: admitted, their socket neither open nor failed yet. */
+  const connecting = new Set<Attempt>();
   const waiting: Array<Waiter> = [];
 
   const isOpen = (environmentId: EnvironmentId) => (open.get(environmentId) ?? 0) > 0;
+  const isRoute = (attempt: Attempt) => attempt.environmentId === preferred;
+  const routeConnecting = () => [...connecting].some(isRoute);
+  const othersConnecting = () => [...connecting].filter((attempt) => !isRoute(attempt));
   const holding = () =>
-    preferred !== null && !isOpen(preferred) && (awaitingFirst || routeAttempts > 0);
-
-  /** Starts what may start: nothing while the route holds, else one other at a time. */
-  const pump = () => {
-    if (holding()) return;
-    while (waiting.length > 0 && others.size === 0) waiting.shift()!.start();
-  };
+    preferred !== null && !isOpen(preferred) && (awaitingFirst || routeConnecting());
 
   const endFirstHold = () => {
     awaitingFirst = false;
@@ -99,83 +108,114 @@ export function makeConnectionAdmission(
     cancelFirstHold = null;
   };
 
-  const yieldOthers = () => {
-    for (const other of others) {
-      other.cancelTimer();
-      other.controller.abort(new Error("The route's socket goes first."));
-    }
-    others.clear();
+  const giveWay = (attempt: Attempt, reason: string) => {
+    attempt.cancelTimer?.();
+    attempt.cancelTimer = null;
+    connecting.delete(attempt);
+    attempt.controller.abort(new Error(reason));
   };
 
-  const ticketFor = (
-    environmentId: EnvironmentId,
-    controller: AbortController,
-    onEnd: () => void,
-  ): AdmissionTicket => {
-    let settled = false;
+  /** An attempt that is not the route's: given its time, then made to give way. */
+  const armOther = (attempt: Attempt) => {
+    if (attempt.cancelTimer !== null) return;
+    attempt.cancelTimer = timers.setTimer(OTHER_ATTEMPT_MS, () => {
+      attempt.cancelTimer = null;
+      if (!connecting.has(attempt)) return;
+      giveWay(attempt, "The attempt ran out of time.");
+      pump();
+    });
+  };
+
+  /** Re-judges every attempt against the route now named. */
+  const rejudge = () => {
+    const routeGoing = routeConnecting();
+    for (const attempt of connecting) {
+      if (isRoute(attempt)) {
+        attempt.cancelTimer?.();
+        attempt.cancelTimer = null;
+      } else if (routeGoing) {
+        giveWay(attempt, "The route's socket goes first.");
+      } else if (preferred !== null) {
+        armOther(attempt);
+      }
+    }
+  };
+
+  /** Starts what may start: the route at once; others only when the route holds nothing. */
+  function pump(): void {
+    for (const waiter of waiting.filter(({ environmentId }) => environmentId === preferred)) {
+      waiting.splice(waiting.indexOf(waiter), 1);
+      waiter.start();
+    }
+    if (holding()) return;
+    if (preferred === null) {
+      for (const waiter of waiting.splice(0)) waiter.start();
+      return;
+    }
+    while (waiting.length > 0 && othersConnecting().length === 0) waiting.shift()!.start();
+  }
+
+  const ticketFor = (attempt: Attempt, callerSignal: AbortSignal | undefined): AdmissionTicket => {
     let opened = false;
     let closed = false;
+    let claimed = false;
+    const settle = (isOpenNow: boolean) => {
+      if (attempt.settled) return;
+      attempt.settled = true;
+      attempt.cancelTimer?.();
+      attempt.cancelTimer = null;
+      connecting.delete(attempt);
+      if (isRoute(attempt)) endFirstHold();
+      if (isOpenNow) {
+        opened = true;
+        open.set(attempt.environmentId, (open.get(attempt.environmentId) ?? 0) + 1);
+      }
+      pump();
+    };
+    // Until claimed, a caller that went away ends the attempt.
+    const abandoned = () => {
+      if (!claimed) settle(false);
+    };
+    callerSignal?.addEventListener("abort", abandoned, { once: true });
+    const cancelUnclaimed = timers.setTimer(UNCLAIMED_TICKET_MS, abandoned);
     return {
-      signal: controller.signal,
-      settle: (isOpenNow) => {
-        if (settled) return;
-        settled = true;
-        if (isOpenNow) {
-          opened = true;
-          open.set(environmentId, (open.get(environmentId) ?? 0) + 1);
-        }
-        onEnd();
-        pump();
+      signal: attempt.controller.signal,
+      claim: () => {
+        claimed = true;
+        cancelUnclaimed();
+        callerSignal?.removeEventListener("abort", abandoned);
       },
+      settle,
       close: () => {
         if (!opened || closed) return;
         closed = true;
-        const count = (open.get(environmentId) ?? 0) - 1;
-        if (count > 0) open.set(environmentId, count);
-        else open.delete(environmentId);
+        const count = (open.get(attempt.environmentId) ?? 0) - 1;
+        if (count > 0) open.set(attempt.environmentId, count);
+        else open.delete(attempt.environmentId);
+        pump();
       },
     };
   };
 
-  const admitRoute = (environmentId: EnvironmentId): AdmissionTicket => {
-    routeAttempts += 1;
-    yieldOthers();
-    let ended = false;
-    return ticketFor(environmentId, new AbortController(), () => {
-      if (ended) return;
-      ended = true;
-      if (preferred === environmentId) {
-        routeAttempts = Math.max(0, routeAttempts - 1);
-        endFirstHold();
-      }
-    });
-  };
-
-  const admitOther = (environmentId: EnvironmentId): AdmissionTicket => {
-    const controller = new AbortController();
-    const entry: { readonly controller: AbortController; cancelTimer: () => void } = {
-      controller,
-      cancelTimer: () => undefined,
+  const start = (environmentId: EnvironmentId, callerSignal: AbortSignal | undefined) => {
+    const attempt: Attempt = {
+      environmentId,
+      controller: new AbortController(),
+      cancelTimer: null,
+      settled: false,
     };
-    entry.cancelTimer = timers.setTimer(OTHER_ATTEMPT_MS, () => {
-      others.delete(entry);
-      controller.abort(new Error("The attempt ran out of time."));
-      pump();
-    });
-    others.add(entry);
-    return ticketFor(environmentId, controller, () => {
-      entry.cancelTimer();
-      others.delete(entry);
-    });
+    connecting.add(attempt);
+    if (environmentId === preferred) rejudge();
+    else if (preferred !== null) armOther(attempt);
+    return ticketFor(attempt, callerSignal);
   };
 
   return {
     prefer: (environmentId) => {
       if (environmentId === preferred) return;
       preferred = environmentId;
-      routeAttempts = 0;
       endFirstHold();
-      if (environmentId !== null && !isOpen(environmentId)) {
+      if (environmentId !== null && !isOpen(environmentId) && !routeConnecting()) {
         awaitingFirst = true;
         cancelFirstHold = timers.setTimer(ROUTE_FIRST_HOLD_MS, () => {
           awaitingFirst = false;
@@ -183,17 +223,17 @@ export function makeConnectionAdmission(
           pump();
         });
       }
+      rejudge();
       pump();
     },
     admit: (environmentId, signal) => {
       if (signal?.aborted) return Promise.reject(signal.reason);
-      if (environmentId === preferred) return Promise.resolve(admitRoute(environmentId));
       return new Promise<AdmissionTicket>((resolve, reject) => {
         const waiter: Waiter = {
           environmentId,
           start: () => {
             signal?.removeEventListener("abort", abort);
-            resolve(admitOther(environmentId));
+            resolve(start(environmentId, signal));
           },
         };
         const abort = () => {

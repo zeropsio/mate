@@ -298,6 +298,36 @@ describe("environment machine (DESIGN §4.4)", () => {
     else expect(retryDelays[4]).toBeLessThanOrEqual(36_000);
   });
 
+  it("a Mate on the five-minute cap that becomes the route is exchanged at once", () => {
+    const other = { ...GUARDS, routeTarget: false };
+    let run = drive(initialEnvironment({ record: ENV_A }), [
+      { type: "GUARDS", guards: other },
+      { type: "CONTAINER", container: { level: "ready" } },
+      { type: "PRESENCE", presence: { kind: "present", origin: ORIGIN } },
+    ]);
+    for (let failure = 1; failure <= 5; failure += 1) {
+      run = drive(
+        run.machine,
+        [
+          {
+            type: "EXCHANGE_FAILED",
+            attempt: lastExchange(run.machine),
+            failure: { class: "retryable", cause: { kind: "network" } },
+            descriptor: null,
+          },
+        ],
+        run.nowMs,
+      );
+      if (failure < 5) run = drive(run.machine, [{ type: "TICK" }], run.nowMs);
+    }
+    const capped = run.machine.credential;
+    if (capped.kind !== "backoff") throw new Error("no backoff");
+    expect(capped.retryAt.wall - run.nowMs).toBe(CAPPED_RETRY_MS);
+
+    const opened = drive(run.machine, [{ type: "GUARDS", guards: GUARDS }], run.nowMs);
+    expect(opened.machine.credential.kind).toBe("exchanging");
+  });
+
   it("an exchange that answers after the user removed the Mate is logged stale and never held", () => {
     const exchanging = drive(initialEnvironment({ record: ENV_A }), [
       { type: "GUARDS", guards: GUARDS },

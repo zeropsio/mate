@@ -11,6 +11,7 @@ import type { WsRpcProtocolClient } from "../rpc/protocol.ts";
 import * as RpcSession from "../rpc/session.ts";
 import {
   ConnectionAdmissionRef,
+  makeConnectionAdmission,
   type AdmissionTicket,
   type ConnectionAdmission,
 } from "./admission.ts";
@@ -39,8 +40,11 @@ const PREPARED: PreparedConnection = {
   target: TARGET,
 };
 
-/** What the driver asked of the admission, the resolver and the socket, in order. */
-function rig(ready: Effect.Effect<void, ConnectionTransientError>) {
+/** What the driver asked of the resolver, the admission and the socket, in order. */
+function rig(session: {
+  readonly opened: Effect.Effect<void, ConnectionTransientError>;
+  readonly ready: Effect.Effect<void, ConnectionTransientError>;
+}) {
   const log: Array<string> = [];
   let letThrough: () => void = () => undefined;
   const giveWay = new AbortController();
@@ -52,13 +56,31 @@ function rig(ready: Effect.Effect<void, ConnectionTransientError>) {
         letThrough = () =>
           resolve({
             signal: giveWay.signal,
+            claim: () => undefined,
             settle: (open) => void log.push(`settle ${environmentId} ${open}`),
             close: () => void log.push(`close ${environmentId}`),
           });
       });
     },
   };
-  const layer = ConnectionDriver.layer.pipe(
+  const layer = driverLayer(log, session);
+  return {
+    log,
+    admission,
+    layer,
+    letThrough: () => letThrough(),
+    giveWay: () => giveWay.abort(),
+  };
+}
+
+function driverLayer(
+  log: Array<string>,
+  session: {
+    readonly opened: Effect.Effect<void, ConnectionTransientError>;
+    readonly ready: Effect.Effect<void, ConnectionTransientError>;
+  },
+) {
+  return ConnectionDriver.layer.pipe(
     Layer.provide(
       Layer.mergeAll(
         Layer.succeed(
@@ -79,7 +101,8 @@ function rig(ready: Effect.Effect<void, ConnectionTransientError>) {
                   subscribeServerConfig: () => {
                     throw new Error("unused");
                   },
-                  ready,
+                  opened: session.opened,
+                  ready: session.ready.pipe(Effect.tap(() => Effect.sync(() => log.push("ready")))),
                   probe: Effect.void,
                   closed: Effect.never,
                 } satisfies RpcSession.RpcSession;
@@ -89,23 +112,19 @@ function rig(ready: Effect.Effect<void, ConnectionTransientError>) {
       ),
     ),
   );
-  return {
-    log,
-    admission,
-    layer,
-    letThrough: () => letThrough(),
-    giveWay: () => giveWay.abort(),
-  };
 }
 
 const settle = Effect.promise(() => new Promise<void>((resolve) => setImmediate(resolve)));
 
 describe("connection driver admission", () => {
   it.effect(
-    "asks for its ticket only once admitted, and settles open when its session is ready",
+    "waits its turn after its ticket, and gives the turn back once its socket opens, before it synchronizes",
     () =>
       Effect.gen(function* () {
-        const { log, admission, layer, letThrough } = rig(Effect.void);
+        const { log, admission, layer, letThrough } = rig({
+          opened: Effect.void,
+          ready: Effect.void,
+        });
         const driver = yield* ConnectionDriver.ConnectionDriver.pipe(Effect.provide(layer));
         const scope = yield* Scope.make();
         const fiber = yield* driver
@@ -116,15 +135,16 @@ describe("connection driver admission", () => {
             Effect.forkChild,
           );
         yield* settle;
-        expect(log).toEqual(["admit environment-1"]);
+        expect(log).toEqual(["ticket", "admit environment-1"]);
 
         letThrough();
         yield* Fiber.join(fiber);
         expect(log).toEqual([
-          "admit environment-1",
           "ticket",
+          "admit environment-1",
           "socket",
           "settle environment-1 true",
+          "ready",
         ]);
 
         yield* Scope.close(scope, Exit.void);
@@ -132,10 +152,16 @@ describe("connection driver admission", () => {
       }),
   );
 
-  it.effect("settles closed when its session never gets ready", () =>
+  it.effect.each([
+    { name: "its socket never opens", opened: false },
+    { name: "it is told to give way", opened: "never" },
+  ] as const)("settles closed when $name", ({ opened }) =>
     Effect.gen(function* () {
       const failed = new ConnectionTransientError({ reason: "transport", detail: "refused" });
-      const { log, admission, layer, letThrough } = rig(Effect.fail(failed));
+      const { log, admission, layer, letThrough, giveWay } = rig({
+        opened: opened === false ? Effect.fail(failed) : Effect.never,
+        ready: Effect.void,
+      });
       const driver = yield* ConnectionDriver.ConnectionDriver.pipe(Effect.provide(layer));
       const fiber = yield* driver
         .connect(ENTRY, () => Effect.void)
@@ -146,20 +172,22 @@ describe("connection driver admission", () => {
         );
       yield* settle;
       letThrough();
+      yield* settle;
+      if (opened === "never") giveWay();
       const exit = yield* Fiber.await(fiber);
       expect(Exit.isFailure(exit)).toBe(true);
-      expect(log).toEqual([
-        "admit environment-1",
+      expect(log.slice(0, 4)).toEqual([
         "ticket",
+        "admit environment-1",
         "socket",
         "settle environment-1 false",
       ]);
     }),
   );
 
-  it.effect("an attempt interrupted while waiting never asks for its ticket", () =>
+  it.effect("an attempt interrupted while waiting its turn never creates a socket", () =>
     Effect.gen(function* () {
-      const { log, admission, layer } = rig(Effect.void);
+      const { log, admission, layer } = rig({ opened: Effect.void, ready: Effect.void });
       const driver = yield* ConnectionDriver.ConnectionDriver.pipe(Effect.provide(layer));
       const fiber = yield* driver
         .connect(ENTRY, () => Effect.void)
@@ -170,30 +198,45 @@ describe("connection driver admission", () => {
         );
       yield* settle;
       yield* Fiber.interrupt(fiber);
-      expect(log).toEqual(["admit environment-1"]);
+      expect(log).toEqual(["ticket", "admit environment-1"]);
     }),
   );
 
-  it.effect("an attempt told to give way ends and settles closed", () =>
-    Effect.gen(function* () {
-      const { log, admission, layer, letThrough, giveWay } = rig(Effect.never);
-      const driver = yield* ConnectionDriver.ConnectionDriver.pipe(Effect.provide(layer));
-      const fiber = yield* driver
-        .connect(ENTRY, () => Effect.void)
-        .pipe(
-          Effect.scoped,
-          Effect.provideService(ConnectionAdmissionRef, admission),
-          Effect.forkChild,
+  it.effect.each(Array.from({ length: 12 }, (_, hops) => ({ hops })))(
+    "a route reconnect interrupted after $hops hops holds no other Mate",
+    ({ hops }) =>
+      Effect.gen(function* () {
+        const admission = makeConnectionAdmission();
+        const OTHER = EnvironmentId.make("environment-2");
+        const log: Array<string> = [];
+        const driver = yield* ConnectionDriver.ConnectionDriver.pipe(
+          Effect.provide(driverLayer(log, { opened: Effect.never, ready: Effect.void })),
         );
-      yield* settle;
-      letThrough();
-      yield* settle;
-      expect(log).toEqual(["admit environment-1", "ticket", "socket"]);
+        // The route opened once and its socket dropped: it is reconnecting.
+        admission.prefer(TARGET.environmentId);
+        const first = yield* Effect.promise(() => admission.admit(TARGET.environmentId));
+        first.claim();
+        first.settle(true);
+        first.close();
 
-      giveWay();
-      const exit = yield* Fiber.await(fiber);
-      expect(Exit.isFailure(exit)).toBe(true);
-      expect(log.at(-1)).toBe("settle environment-1 false");
-    }),
+        const fiber = yield* driver
+          .connect(ENTRY, () => Effect.void)
+          .pipe(
+            Effect.scoped,
+            Effect.provideService(ConnectionAdmissionRef, admission),
+            Effect.forkChild,
+          );
+        for (let hop = 0; hop < hops; hop += 1) yield* Effect.yieldNow;
+        yield* Fiber.interrupt(fiber);
+
+        const other = yield* Effect.promise(() =>
+          Promise.race([
+            admission.admit(OTHER).then(() => "admitted"),
+            // @effect-diagnostics-next-line globalTimers:off -- a plain deadline on a plain promise.
+            new Promise<string>((resolve) => setTimeout(() => resolve("held"), 50)),
+          ]),
+        );
+        expect(other).toBe("admitted");
+      }),
   );
 });

@@ -35,6 +35,8 @@ export class ConnectionDriver extends Context.Service<
     readonly connect: (
       entry: ConnectionCatalogEntry,
       reportProgress: (progress: ConnectionDriverProgress) => Effect.Effect<void>,
+      /** Told while the attempt waits its turn for a socket (`admission.ts`), and when it ends. */
+      queue?: (waiting: boolean) => Effect.Effect<void>,
     ) => Effect.Effect<EnvironmentConnectionLease, ConnectionAttemptError, Scope.Scope>;
   }
 >()("@t3tools/client-runtime/connection/driver/ConnectionDriver") {}
@@ -47,6 +49,7 @@ export const make = Effect.gen(function* () {
   const connect = Effect.fn("ConnectionDriver.connect")(function* (
     entry: ConnectionCatalogEntry,
     reportProgress: (progress: ConnectionDriverProgress) => Effect.Effect<void>,
+    queue: (waiting: boolean) => Effect.Effect<void> = () => Effect.void,
   ) {
     const target = entry.target;
     yield* Effect.annotateCurrentSpan({
@@ -54,37 +57,47 @@ export const make = Effect.gen(function* () {
       "connection.target.kind": target._tag,
     });
     yield* reportProgress({ stage: "preparing" });
-    // The route's socket opens first and never behind another (`admission.ts`): the ticket is
-    // asked for once admitted, and an attempt told to give way ends, closing its socket.
+    const prepared = yield* resolver.prepare(entry);
+    yield* reportProgress({ stage: "opening", prepared });
+    // The socket waits its turn for the browser's one CONNECTING slot (`admission.ts`), and holds
+    // it only until it opens: synchronizing runs outside. Acquired and released in one region no
+    // interruption splits, so a ticket is never left holding the others.
     const admission = yield* ConnectionAdmissionRef;
-    const ticket = yield* Effect.promise((signal) => admission.admit(target.environmentId, signal));
-    const yielded = Effect.callback<never, ConnectionTransientError>((resume) => {
-      const give = () =>
-        resume(
-          Effect.fail(
-            new ConnectionTransientError({
-              reason: "transport",
-              detail: `${target.label} gave way to another connection.`,
-            }),
-          ),
+    const session = yield* Effect.uninterruptibleMask((restore) =>
+      Effect.gen(function* () {
+        yield* queue(true);
+        const ticket = yield* restore(
+          Effect.promise((signal) => admission.admit(target.environmentId, signal)),
+        ).pipe(Effect.ensuring(queue(false)));
+        ticket.claim();
+        yield* Effect.addFinalizer(() => Effect.sync(ticket.close));
+        const yielded = Effect.callback<never, ConnectionTransientError>((resume) => {
+          const give = () =>
+            resume(
+              Effect.fail(
+                new ConnectionTransientError({
+                  reason: "transport",
+                  detail: `${target.label} gave way to another connection.`,
+                }),
+              ),
+            );
+          if (ticket.signal.aborted) give();
+          else ticket.signal.addEventListener("abort", give, { once: true });
+          return Effect.sync(() => ticket.signal.removeEventListener("abort", give));
+        });
+        const opening = Effect.gen(function* () {
+          const opened = yield* sessions.connect(prepared);
+          yield* opened.opened ?? opened.ready;
+          return opened;
+        });
+        return yield* restore(Effect.raceFirst(opening, yielded)).pipe(
+          Effect.onExit((exit) => Effect.sync(() => ticket.settle(Exit.isSuccess(exit)))),
         );
-      if (ticket.signal.aborted) give();
-      else ticket.signal.addEventListener("abort", give, { once: true });
-      return Effect.sync(() => ticket.signal.removeEventListener("abort", give));
-    });
-    const attempt = Effect.gen(function* () {
-      const prepared = yield* resolver.prepare(entry);
-      yield* reportProgress({ stage: "opening", prepared });
-      const session = yield* sessions.connect(prepared);
-      yield* reportProgress({ stage: "synchronizing", prepared });
-      yield* session.ready;
-      return { prepared, session } satisfies EnvironmentConnectionLease;
-    });
-    const lease = yield* Effect.raceFirst(attempt, yielded).pipe(
-      Effect.onExit((exit) => Effect.sync(() => ticket.settle(Exit.isSuccess(exit)))),
+      }),
     );
-    yield* Effect.addFinalizer(() => Effect.sync(ticket.close));
-    return lease;
+    yield* reportProgress({ stage: "synchronizing", prepared });
+    yield* session.ready;
+    return { prepared, session } satisfies EnvironmentConnectionLease;
   });
 
   return ConnectionDriver.of({ connect });
