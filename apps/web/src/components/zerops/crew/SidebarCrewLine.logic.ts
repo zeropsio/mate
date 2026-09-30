@@ -32,12 +32,22 @@ export type CrewLineFact =
 export function crewLine(
   view: Pick<CrewView, "crewmates" | "tasks" | "personLands">,
   attention: ReadonlyArray<Pick<CrewAttention, "kind" | "handle">>,
+  /**
+   * Its Mate is the viewer's own (`mateIsViewers`). Under another's Mate the crew waits on its
+   * owner: no face needs the viewer and the line never says so — its finished work still offers
+   * its Review, for anybody with write on the group.
+   */
+  mine: boolean,
 ): { readonly faces: ReadonlyArray<CrewLineFace>; readonly fact: CrewLineFact | null } {
+  const stateOf = (kind: Parameters<typeof mateMarkStateForThreadStatus>[0]): MateMarkState => {
+    const state = mateMarkStateForThreadStatus(kind);
+    return !mine && state === "needs" ? "idle" : state;
+  };
   const faces = view.crewmates.map((row): CrewLineFace => ({
     handle: row.crewmate.handle,
     displayName: row.crewmate.displayName,
     tint: row.crewmate.tint,
-    state: row.status === null ? "idle" : mateMarkStateForThreadStatus(row.status.kind),
+    state: row.status === null ? "idle" : stateOf(row.status.kind),
     threadId: row.crewmate.currentThreadId,
     lead: row.crewmate.kind === "lead",
   }));
@@ -46,7 +56,7 @@ export function crewLine(
   // one is the next fact's. In the crew's own order, the lead first.
   const waiting = new Set(
     attention.flatMap((row) =>
-      row.handle === null || row.kind === "ready-to-land" ? [] : [row.handle],
+      !mine || row.handle === null || row.kind === "ready-to-land" ? [] : [row.handle],
     ),
   );
   const needs = faces.filter((face) => face.state === "needs" || waiting.has(face.handle));

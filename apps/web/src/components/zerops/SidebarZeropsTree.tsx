@@ -1418,6 +1418,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
                     browser last saw it, so a reload moves no row. */}
                 <SidebarCrewLine
                   environmentId={item.group === "connected" ? item.environmentId : undefined}
+                  mine={mateIsViewers(item.project, viewer)}
                   projectId={item.project.id}
                   read={getCrew?.(item)}
                 />
