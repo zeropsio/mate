@@ -205,9 +205,15 @@ export function makeContainerStore(ports: ContainerStorePorts): ContainerStore {
     const rank = (cadence: ProbeCadence): number =>
       cadence.kind === "poll" ? (cadence.overdue ? 2 : 3) : cadence.kind === "on-demand" ? 1 : 0;
     const byOrigin = new Map<string, ProbeCadence>();
-    for (const entry of entries.values()) {
+    for (const [key, entry] of entries) {
       if (entry.origin === null) continue;
-      const cadence = probeCadence(entry.machine);
+      const own = probeCadence(entry.machine);
+      // The route's Mate is never read on the overdue ladder: the person is looking at it, and the
+      // read that finds it back is what sends its exchange again (`bindContainerStore`).
+      const cadence: ProbeCadence =
+        own.kind === "poll" && own.overdue && first.has(key)
+          ? { kind: "poll", overdue: false }
+          : own;
       const held = byOrigin.get(entry.origin);
       if (held === undefined || rank(cadence) > rank(held)) byOrigin.set(entry.origin, cadence);
     }
@@ -379,6 +385,23 @@ export function makeContainerStore(ports: ContainerStorePorts): ContainerStore {
  */
 export function bindContainerStore(store: ContainerStore, driver: ExchangeDriver): () => void {
   const toDriver = () => {
+    // A Mate found answering again after its reads went unanswered, while its exchange or its
+    // link waits out a backoff, is tried at once rather than at the ladder's next rung.
+    for (const [key, machine] of store.machines()) {
+      const reading = machine.reading?.reading.kind;
+      if (reading === undefined) continue;
+      const now = reading === "ready";
+      const before = answering.get(key);
+      answering.set(key, now);
+      const environment = driver.machine(key);
+      if (
+        before === false &&
+        now &&
+        environment !== undefined &&
+        (environment.credential.kind === "backoff" || environment.link.phase === "backoff")
+      )
+        driver.retry(key);
+    }
     // Only a target the driver already knows: its record is read when the driver first sees it.
     const targets = [...store.machines()]
       .filter(([key]) => driver.machine(key) !== undefined)
@@ -392,6 +415,9 @@ export function bindContainerStore(store: ContainerStore, driver: ExchangeDriver
   };
   const exchanging = new Set<TargetKey>();
   const failing = new Set<TargetKey>();
+  const backingOff = new Set<TargetKey>();
+  /** Whether each target's last read found its Mate answering. */
+  const answering = new Map<TargetKey, boolean>();
   /** Reads the container once each time `now` turns true for the key. */
   const onEdge = (seen: Set<TargetKey>, key: TargetKey, now: boolean) => {
     if (now && !seen.has(key)) store.request(key);
@@ -409,6 +435,8 @@ export function bindContainerStore(store: ContainerStore, driver: ExchangeDriver
       onEdge(exchanging, key, machine.credential.kind === "exchanging");
       // A connect failing, connected before or not, reads it again: ready is never terminal.
       onEdge(failing, key, machine.link.phase === "backoff");
+      // So does an exchange backing off: the read that finds the Mate back ends the wait.
+      onEdge(backingOff, key, machine.credential.kind === "backoff");
     }
   };
   const unsubscribeStore = store.subscribe(toDriver);
