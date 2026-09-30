@@ -48,6 +48,8 @@ export interface RpcSession {
     input: ServerConfigSubscriptionInput,
   ) => ServerConfigSubscription;
   readonly ready: Effect.Effect<void, ConnectionAttemptError>;
+  /** The socket itself opened; `ready` follows once the server's config arrived. */
+  readonly opened?: Effect.Effect<void, ConnectionAttemptError>;
   readonly probe: Effect.Effect<void, ConnectionAttemptError>;
   readonly closed: Effect.Effect<never, ConnectionAttemptError>;
 }
@@ -331,6 +333,7 @@ export const make = Effect.fn("RpcSessionFactory.make")(function* (
         Effect.asVoid,
         Effect.raceFirst(Deferred.await(disconnected)),
       ),
+      opened: Deferred.await(connected).pipe(Effect.raceFirst(Deferred.await(disconnected))),
       probe,
       closed: Effect.raceFirst(
         Deferred.await(disconnected),

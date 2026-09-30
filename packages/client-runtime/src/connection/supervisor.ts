@@ -279,6 +279,8 @@ export const make = Effect.fn("EnvironmentSupervisor.make")(function* (
   );
   const session = yield* SubscriptionRef.make<Option.Option<RpcSession.RpcSession>>(Option.none());
   const prepared = yield* SubscriptionRef.make<Option.Option<PreparedConnection>>(Option.none());
+  /** The attempt in flight is waiting its turn for a socket. */
+  const queued = yield* SubscriptionRef.make(false);
 
   const clearLease = Effect.all(
     [SubscriptionRef.set(session, Option.none()), SubscriptionRef.set(prepared, Option.none())],
@@ -318,14 +320,39 @@ export const make = Effect.fn("EnvironmentSupervisor.make")(function* (
     );
   });
 
+  /**
+   * The attempt waits in the browser's socket queue (`admission.ts`): time there is another
+   * Mate's, so the setup timeout runs only outside it, and afresh after each wait.
+   */
+  const setupTimeout = Effect.gen(function* () {
+    for (;;) {
+      yield* SubscriptionRef.changes(queued).pipe(
+        Stream.filter((waiting) => !waiting),
+        Stream.runHead,
+      );
+      const expired = yield* Effect.raceFirst(
+        Effect.sleep(CONNECTION_ESTABLISHMENT_TIMEOUT).pipe(Effect.as(true)),
+        SubscriptionRef.changes(queued).pipe(
+          Stream.filter((waiting) => waiting),
+          Stream.runHead,
+          Effect.as(false),
+        ),
+      );
+      if (expired) return;
+    }
+  });
+
   const establishConnection = Effect.fnUntraced(function* (
     attempt: number,
     generation: number,
     lastFailure: ConnectionAttemptError | null,
     publishProgress: boolean,
   ) {
-    return yield* driver.connect(entry, (progress) =>
-      publishProgress ? reportProgress(attempt, generation, lastFailure, progress) : Effect.void,
+    return yield* driver.connect(
+      entry,
+      (progress) =>
+        publishProgress ? reportProgress(attempt, generation, lastFailure, progress) : Effect.void,
+      (waiting) => SubscriptionRef.set(queued, waiting),
     );
   });
 
@@ -693,6 +720,7 @@ export const make = Effect.fn("EnvironmentSupervisor.make")(function* (
   ) {
     const initialGeneration = previousGeneration + 1;
     yield* SubscriptionRef.set(prepared, Option.none());
+    yield* SubscriptionRef.set(queued, false);
     const initial = yield* forkScopedTracedConnection(
       attempt,
       initialGeneration,
@@ -713,9 +741,7 @@ export const make = Effect.fn("EnvironmentSupervisor.make")(function* (
           resetRetry,
         })),
       ),
-      Effect.sleep(CONNECTION_ESTABLISHMENT_TIMEOUT).pipe(
-        Effect.as<EstablishmentEvent>({ _tag: "TimedOut" }),
-      ),
+      setupTimeout.pipe(Effect.as<EstablishmentEvent>({ _tag: "TimedOut" })),
     ]);
 
     if (establishment._tag !== "Completed") {

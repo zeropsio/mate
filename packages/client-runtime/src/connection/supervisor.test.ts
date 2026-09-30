@@ -2,6 +2,7 @@ import { EnvironmentId } from "@t3tools/contracts";
 import { RelayClientTracer } from "@t3tools/shared/relayTracing";
 import { describe, expect, it } from "@effect/vitest";
 import * as Deferred from "effect/Deferred";
+import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
@@ -128,6 +129,8 @@ const makeHarness = Effect.fn("TestConnectionHarness.make")(function* (options?:
   ) => Effect.Effect<PreparedConnection, ConnectionAttemptError>;
   readonly ready?: (attempt: number) => Effect.Effect<void, ConnectionAttemptError>;
   readonly probe?: (attempt: number) => Effect.Effect<void, ConnectionAttemptError>;
+  /** How long each attempt waits in the socket admission's queue before its socket. */
+  readonly queued?: Duration.Input;
 }) {
   const networkStatus = yield* SubscriptionRef.make<NetworkStatus>(
     options?.networkStatus ?? "online",
@@ -162,11 +165,17 @@ const makeHarness = Effect.fn("TestConnectionHarness.make")(function* (options?:
   const connect = Effect.fn("TestConnectionDriver.connect")(function* (
     entry: ConnectionCatalogEntry,
     reportProgress: (progress: ConnectionDriver.ConnectionDriverProgress) => Effect.Effect<void>,
+    queue?: (queued: boolean) => Effect.Effect<void>,
   ) {
     const target = entry.target;
     yield* reportProgress({ stage: "preparing" });
     const prepared = yield* prepare(target);
     yield* reportProgress({ stage: "opening", prepared });
+    if (options?.queued !== undefined) {
+      yield* queue?.(true) ?? Effect.void;
+      yield* Effect.sleep(options.queued);
+      yield* queue?.(false) ?? Effect.void;
+    }
 
     const attempt = yield* Ref.updateAndGet(sessionCount, (count) => count + 1);
     const closed = yield* Deferred.make<never, ConnectionTransientError>();
@@ -447,6 +456,26 @@ describe("EnvironmentSupervisor", () => {
       });
       expect(yield* Ref.get(harness.releaseCount)).toBe(1);
       expect(Option.isNone(yield* SubscriptionRef.get(supervisor.prepared))).toBe(true);
+    }).pipe(Effect.provide(TestClock.layer())),
+  );
+
+  it.effect("time waiting for the browser's socket queue does not count against setup", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeHarness({ queued: "40 seconds" });
+      const supervisor = yield* EnvironmentSupervisor.make(TARGET_ENTRY, {
+        initiallyDesired: true,
+      }).pipe(Effect.provide(harness.dependencies));
+
+      yield* awaitState(
+        supervisor.state,
+        (state) => state.phase === "connecting" && state.stage === "opening",
+      );
+      yield* TestClock.adjust("40 seconds");
+      const connected = yield* eventuallyState(
+        supervisor.state,
+        (state) => state.phase === "connected" || state.phase === "backoff",
+      );
+      expect(connected.phase).toBe("connected");
     }).pipe(Effect.provide(TestClock.layer())),
   );
 
