@@ -43,7 +43,8 @@ export const heldEvidence = (grant: GrantMachine): Evidence | null =>
 /**
  * The projects admitted evidence names: verified ones, those whose latest
  * read failed, and those a denial withholds until a confirming read (G6).
- * A confirmed denial is the only way a project leaves.
+ * A confirmed denial is the only way a project leaves. One only an
+ * organization's list has named joins once its own read has answered.
  */
 export function evidenceProjectRefs(evidence: Evidence | null): ReadonlyArray<ProjectRef> {
   if (evidence === null) return [];
@@ -51,7 +52,10 @@ export function evidenceProjectRefs(evidence: Evidence | null): ReadonlyArray<Pr
   for (const { access } of evidence.projects.values()) {
     if (access.role !== "NO_ACCESS") refs.set(projectKeyOf(access.project), access.project);
   }
-  for (const { project } of evidence.unverified.values()) {
+  for (const { project, failure } of evidence.unverified.values()) {
+    // A project only a list has named waits for its own read: one still being created or
+    // deleted is never registered for before the platform has answered for it.
+    if (failure === null) continue;
     if (!evidence.projects.has(project.projectId)) refs.set(projectKeyOf(project), project);
   }
   for (const { project, confirmation } of evidence.closedProjects.values()) {

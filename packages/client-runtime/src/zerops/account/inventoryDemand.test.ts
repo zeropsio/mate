@@ -151,6 +151,20 @@ describe("inventoryDemand", () => {
       expected: ["organization", "project-a", "project-b", "project-c"],
     },
     {
+      name: "not a project the organization's list named before its own read answered",
+      grant: drive([...granted, { type: "PROJECTS_LISTED", projects: [A, B, C] }]),
+      expected: ["organization", "project-a", "project-b"],
+    },
+    {
+      name: "a project the organization's list named, once its own read verified it",
+      grant: drive([
+        ...granted,
+        { type: "PROJECTS_LISTED", projects: [A, B, C] },
+        { type: "PROJECT_RESULT", attempt: 2, project: C, outcome: owner(C) },
+      ]),
+      expected: ["organization", "project-a", "project-b", "project-c"],
+    },
+    {
       name: "the last evidence while the grant is lapsed (L3)",
       grant: drive([
         ...granted,
