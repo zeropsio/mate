@@ -316,6 +316,76 @@ const STAGE_AND_PRODUCTION: ChangeReviewViewProps["environments"] = [
   { tier: "stage" },
   { tier: "production" },
 ];
+/** A project that has made nothing from its recipe yet. */
+const NO_ENVIRONMENTS: ChangeReviewViewProps["environments"] = [];
+
+/** A change to the group repo's recipe, from a Mate's bot: no checks run on a recipe. */
+const RECIPE: Partial<FlowPullRequest> = {
+  repository: "group",
+  kind: "recipe",
+  number: 7,
+  title: "Add a mail service to the Remote (CDE) and Local recipes",
+  line: "#7",
+  url: "https://gitea.example/snap/group/pulls/7",
+  checks: "none",
+  checkWord: undefined,
+  checkRows: [],
+  additions: 12,
+  deletions: 0,
+  changedFiles: 2,
+};
+
+/** The same service added to two tiers, as git names a path with an em dash in it. */
+function recipeDiff(tiers: ReadonlyArray<string>): string {
+  return tiers
+    .flatMap((tier) => {
+      const path = `${tier.replace("—", "\\342\\200\\224")}/import.yaml`;
+      return [
+        `diff --git "a/${path}" "b/${path}"`,
+        `--- "a/${path}"`,
+        `+++ "b/${path}"`,
+        "@@ -18,3 +18,9 @@ services:",
+        "   - hostname: db",
+        "     type: postgresql@17",
+        "     mode: NON_HA",
+        "+",
+        "+  - hostname: mail",
+        "+    type: nodejs@22",
+        "+    buildFromGit: https://gitea.example/snap/mail",
+        "+    zeropsSetup: mail",
+        "+    enableSubdomainAccess: true",
+      ];
+    })
+    .join("\n");
+}
+
+/** What a recipe change touching `tiers` reads as: each tier's recipe, and its diff. */
+function recipeRead(tiers: ReadonlyArray<string>): Partial<ChangeReviewViewProps["readout"]> {
+  return {
+    files: {
+      kind: "read",
+      value: tiers.map((tier) => ({
+        filename: `${tier}/import.yaml`,
+        previousFilename: undefined,
+        status: "modified",
+        additions: 6,
+        deletions: 0,
+      })),
+    },
+    diff: { kind: "read", value: { files: parseChangeDiff(recipeDiff(tiers)), cut: false } },
+    commits: {
+      kind: "read",
+      value: [
+        { sha: `7d1e0a4${"d".repeat(33)}`, subject: "Add a mail service", at: minutesAgo(6) },
+      ],
+    },
+  };
+}
+
+/** The owner's case: two recipes nothing in the project is made from. */
+const UNUSED_TIERS = ["1 — Remote (CDE)", "2 — Local"];
+/** The two recipes a stage and a production are made from. */
+const MADE_FROM_TIERS = ["3 — Stage", "4 — Small Production"];
 
 /** Everything Gitea answers, still on its way: what the flow knew paints, the rest holds its room. */
 const ALL_READING = {
@@ -335,6 +405,7 @@ function Change({
   open = NONE_OPEN,
   run = RUN,
   conversation = TALKING,
+  environments = STAGE_AND_PRODUCTION,
   frame,
 }: {
   readonly over?: Partial<FlowPullRequest>;
@@ -345,13 +416,14 @@ function Change({
   readonly open?: ReadonlyArray<string>;
   readonly run?: { readonly words: string | undefined; readonly reading: boolean };
   readonly conversation?: ZeropsChangeComments;
+  readonly environments?: ChangeReviewViewProps["environments"];
   readonly frame?: ChangeReviewViewProps["frame"];
 }) {
   const value = pull(over);
   return (
     <ChangeReviewView
       comments={conversation}
-      environments={STAGE_AND_PRODUCTION}
+      environments={environments}
       frame={frame}
       giteaOrigin={HARNESS_GITEA}
       initiallyOpen={open}
@@ -759,6 +831,59 @@ export const REVIEW_STATES: ReadonlyArray<{
     id: "closed",
     label: "Closed without merging",
     node: <Change over={{ state: "closed", merged: false }} />,
+  },
+  {
+    id: "recipe",
+    label: "A recipe change, ready: a service added to recipes nothing is made from",
+    node: (
+      <Change
+        conversation={comments({ kind: "read", comments: [] })}
+        open={[`${UNUSED_TIERS[0]}/import.yaml`]}
+        over={RECIPE}
+        readout={recipeRead(UNUSED_TIERS)}
+        run={{ words: undefined, reading: false }}
+      />
+    ),
+  },
+  {
+    id: "recipe-merged-unused",
+    label: "A recipe change after Merge, to recipes nothing is made from: no release",
+    node: (
+      <Change
+        conversation={comments({ kind: "read", comments: [] })}
+        over={RECIPE}
+        press={{ kind: "done" }}
+        readout={recipeRead(UNUSED_TIERS)}
+        run={{ words: undefined, reading: false }}
+      />
+    ),
+  },
+  {
+    id: "recipe-merged",
+    label: "A recipe change after Merge: the stage and production get what it adds",
+    node: (
+      <Change
+        conversation={comments({ kind: "read", comments: [] })}
+        over={{ ...RECIPE, title: "Add a mail service to the stage and production recipes" }}
+        press={{ kind: "done" }}
+        readout={recipeRead(MADE_FROM_TIERS)}
+        run={{ words: undefined, reading: false }}
+      />
+    ),
+  },
+  {
+    id: "recipe-merged-none",
+    label: "A recipe change after Merge, in a project with no stage or production yet",
+    node: (
+      <Change
+        conversation={comments({ kind: "read", comments: [] })}
+        environments={NO_ENVIRONMENTS}
+        over={{ ...RECIPE, title: "Add a mail service to the stage and production recipes" }}
+        press={{ kind: "done" }}
+        readout={recipeRead(MADE_FROM_TIERS)}
+        run={{ words: undefined, reading: false }}
+      />
+    ),
   },
   { id: "release", label: "A release", node: <Release /> },
   {
