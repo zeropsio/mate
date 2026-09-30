@@ -104,13 +104,8 @@ import {
   type IncidentModel,
   type OutcomeModel,
 } from "./conversation.logic";
-import {
-  calmClockMs,
-  calmLineDue,
-  calmLineOffer,
-  calmLineSettle,
-  calmLineStart,
-} from "./nowLineCalm.logic";
+import { calmClockMs } from "./nowLineCalm.logic";
+import { useCalmLine } from "./useCalmLine";
 import { useRunEffortWords } from "./runResultFacts";
 import { drawerEase, LIST_LAYS_OUT_FRAMES, stepHeight } from "./stepHeight";
 import { StatusBar } from "./StatusBar";
@@ -2347,30 +2342,6 @@ function NowWords({
   }
 }
 
-/**
- * The now line as it shows, calm (`nowLineCalm.logic`): what the run does now
- * once the line before it has stood its dwell, the latest of a burst only,
- * and the run's end (`final`) at once.
- */
-function useCalmNowLine(latest: NowLineModel, key: string, final: boolean): NowLineModel {
-  const [calm, setCalm] = useState(() => calmLineStart(latest, key, Date.now()));
-  useLayoutEffect(() => {
-    setCalm((current) => calmLineOffer(current, latest, key, Date.now(), final));
-  }, [latest, key, final]);
-  const due = calmLineDue(calm);
-  useEffect(() => {
-    if (due === null) return;
-    const timer = setTimeout(
-      () => setCalm((current) => calmLineSettle(current, Date.now())),
-      Math.max(0, due - Date.now()),
-    );
-    return () => clearTimeout(timer);
-  }, [due]);
-  // The words shown are drawn from the latest line: a thought's newest words,
-  // a step's details.
-  return calm.key === key ? latest : calm.shown;
-}
-
 /** How long the words a line leaves take to go: their fade, and a frame to spare. */
 const LINE_LEAVES_MS = 160;
 
@@ -2439,7 +2410,7 @@ function NowLine({
   });
   // A line once shown stands a moment, and a burst shows its latest only
   // (`nowLineCalm.logic`); the run's end shows at once.
-  const line = useCalmNowLine(latest, nowLineWords(latest), !status.live);
+  const line = useCalmLine(latest, nowLineWords(latest), !status.live);
   const face = nowLineFace(line, status);
   const words = nowLineWords(line);
   // The line's words change in place as the run goes: the old ones leave
