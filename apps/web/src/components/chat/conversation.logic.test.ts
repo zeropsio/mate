@@ -68,6 +68,30 @@ function structure(
   });
 }
 
+/** A day, in the fixtures' minutes. */
+const DAY = 24 * 60;
+
+/** What the server says outside any run: a start that failed, a Stop that found nothing to stop. */
+function serverSaid(
+  id: string,
+  minute: number,
+  kind: "provider.turn.start.failed" | "provider.turn.interrupt.failed",
+): TimelineEntry {
+  return {
+    id,
+    kind: "work",
+    createdAt: at(minute),
+    entry: {
+      id,
+      createdAt: at(minute),
+      turnId: null,
+      label: kind === "provider.turn.start.failed" ? "Provider turn start failed" : "Stop failed",
+      tone: "error",
+      sourceActivityKind: kind,
+    },
+  };
+}
+
 /** The Mate looking at a picture — a screenshot it took of its own app — as its runtime reports it. */
 function look(
   id: string,
@@ -346,6 +370,84 @@ describe("deriveConversationStructure", () => {
       ["msg:m1", 0],
       ["msg:m2", 2],
     ]);
+  });
+
+  // Juno, 2026-09-30: a message stopped before its run began stood unclaimed
+  // overnight; the run the person's next message started took it for its
+  // opener, so its clock counted from the day before ("Thinking 17:42:08")
+  // and the new message read as sent into that run, not read yet. A run is
+  // opened by the message that started it: one sent before a silence, or
+  // before the server said its start failed, had its own moment.
+  it.each([
+    {
+      name: "a day later, the next message's run thinking",
+      entries: [user("m0", 0), user("m1", DAY), reasoning("r1", "t2", DAY + 1)],
+      options: { live: "t2" },
+      expected: { turns: [["msg:m1", ["msg:m1"], at(DAY)]], loose: [0] },
+    },
+    {
+      name: "a day later, the next message's run named but silent",
+      entries: [user("m0", 0), user("m1", DAY)],
+      options: { live: "t2" },
+      expected: { turns: [["msg:m1", ["msg:m1"], at(DAY)]], loose: [0] },
+    },
+    {
+      name: "a day later, before the server names the next message's run",
+      entries: [user("m0", 0), user("m1", DAY)],
+      options: { working: true },
+      expected: { turns: [["msg:m1", ["msg:m1"], at(DAY)]], loose: [0] },
+    },
+    {
+      name: "a day later, the next message's run settled",
+      entries: [
+        user("m0", 0),
+        user("m1", DAY),
+        reasoning("r1", "t2", DAY + 1),
+        assistant("a1", "t2", DAY + 2, "Both have it."),
+      ],
+      options: { latest: { id: "t2", state: "completed", completed: true } },
+      expected: { turns: [["msg:m1", ["msg:m1"], at(DAY)]], loose: [0] },
+    },
+    {
+      name: "a start that failed, the message sent again at once",
+      entries: [
+        user("m0", 0),
+        serverSaid("f1", 0, "provider.turn.start.failed"),
+        user("m1", 1),
+        reasoning("r1", "t2", 1),
+      ],
+      options: { live: "t2" },
+      expected: { turns: [["msg:m1", ["msg:m1"], at(1)]], loose: [0, 1] },
+    },
+    {
+      name: "a Stop that found nothing to stop, the message sent again at once",
+      entries: [
+        user("m0", 0),
+        serverSaid("f1", 0, "provider.turn.interrupt.failed"),
+        user("m1", 1),
+        reasoning("r1", "t2", 1),
+      ],
+      options: { live: "t2" },
+      expected: { turns: [["msg:m1", ["msg:m1"], at(1)]], loose: [0, 1] },
+    },
+    {
+      // What the rule must keep: a message sent into a run that has not said
+      // anything yet is the run's, whoever opened it.
+      name: "a message sent a minute into a run that has not said anything yet",
+      entries: [user("m0", 0), user("m1", 1), reasoning("r1", "t1", 2)],
+      options: { live: "t1" },
+      expected: { turns: [["msg:m0", ["msg:m0", "msg:m1"], at(0)]], loose: [] },
+    },
+  ])("a message whose run never came: $name", ({ entries, options, expected }) => {
+    const result = structure(entries, options);
+    expect({
+      turns: result.turns.map((candidate) => [
+        candidate.key,
+        candidate.stretches.map((stretch) => stretch.key),
+        candidate.stretches[0]!.startedAt,
+      ]),
+      loose: [...result.looseIndexes],
+    }).toEqual(expected);
   });
 
   it("holds a live stretch for a message the server has not opened a turn for yet", () => {
@@ -800,6 +902,27 @@ describe("messageReceipt", () => {
       entries: [user("m0", 0)],
       options: {},
       expected: [["m0", "sent"]],
+    },
+    {
+      // Juno, 2026-09-30: the clock stood beside the new message while its
+      // own run thought over it, and "Not read yet" on the one before would
+      // promise a next step that never comes.
+      name: "a message whose run never came, once the next one's run thinks",
+      entries: [user("m0", 0), user("m1", DAY), reasoning("r1", "t2", DAY + 1)],
+      options: { live: "t2" },
+      expected: [
+        ["m0", null],
+        ["m1", "seen"],
+      ],
+    },
+    {
+      name: "a message whose run never came, while the next one waits for its run",
+      entries: [user("m0", 0), user("m1", DAY)],
+      options: { working: true },
+      expected: [
+        ["m0", null],
+        ["m1", "sent"],
+      ],
     },
   ])("$name", ({ entries, options, expected }) => {
     const result = structure(entries, options);

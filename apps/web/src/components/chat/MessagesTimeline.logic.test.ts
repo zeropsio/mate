@@ -43,6 +43,9 @@ type Scene = {
   helperFinishes?: ReadonlyArray<HelperFinish>;
 };
 
+/** A day, in the fixtures' minutes. */
+const DAY = 24 * 60;
+
 /** The conversation as the list draws it, its cards' frames included. */
 function framed(scene: Scene): MessagesTimelineRow[] {
   const latestId = scene.live ?? scene.settled;
@@ -380,6 +383,60 @@ describe("deriveMessagesTimelineRows", () => {
       waitingSince: since === null ? null : at(since),
     });
   });
+
+  // Juno, 2026-09-30, the owner: "I triggered a message after I stopped
+  // previous and it says thinking 17h". The message before had no run of its
+  // own — Stop and a restart ended it before it said anything — and the next
+  // message's run counted from it, the new message beside it "Not read yet".
+  it.each([
+    {
+      name: "thinking",
+      scene: {
+        entries: [user("m0", 0), user("m1", DAY), reasoning("r1", "t2", DAY)],
+        live: "t2",
+        startedAt: DAY,
+      } satisfies Scene,
+      receipt: "seen",
+    },
+    {
+      name: "named, silent",
+      scene: { entries: [user("m0", 0), user("m1", DAY)], live: "t2", startedAt: DAY },
+      receipt: "seen",
+    },
+    {
+      name: "before the server names it",
+      scene: { entries: [user("m0", 0), user("m1", DAY)], working: true } satisfies Scene,
+      receipt: "sent",
+    },
+    {
+      name: "settled",
+      scene: {
+        entries: [
+          user("m0", 0),
+          user("m1", DAY),
+          reasoning("r1", "t2", DAY),
+          assistant("a1", "t2", DAY + 1, "Both have it."),
+        ],
+        settled: "t2",
+        startedAt: DAY,
+      } satisfies Scene,
+      receipt: "seen",
+    },
+  ])(
+    "runs a run's clock from the message that started it, never from one whose run never came: $name",
+    ({ scene, receipt }) => {
+      const list = rows(scene);
+      expect(statusOf(list)).toMatchObject({ startedAt: at(DAY) });
+      expect(
+        list.flatMap((row) =>
+          row.kind === "message" && row.message.role === "user" ? [[row.id, row.receipt]] : [],
+        ),
+      ).toEqual([
+        ["m0", null],
+        ["m1", receipt],
+      ]);
+    },
+  );
 
   it.each([
     {
