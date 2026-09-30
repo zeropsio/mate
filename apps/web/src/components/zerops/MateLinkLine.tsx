@@ -12,6 +12,7 @@ import { useState, type ReactElement, type ReactNode } from "react";
 import { useProjectActivity } from "~/zerops/activity/useProjectActivity";
 import { useZeropsInventory } from "~/zerops/inventoryContext";
 import { inFirstSeenOrder } from "~/zerops/mateArrival";
+import type { ArrivalService } from "~/zerops/mateArrival";
 import { mateLinkProcesses } from "~/zerops/mateLinkProcesses";
 import { Button } from "../ui/button";
 import { ArrivalServices } from "./ZeropsArrivalSteps";
@@ -42,10 +43,19 @@ function MateLinkProcesses({
   );
   if (next !== seen) setSeen(next);
   const ordered = order.flatMap((name) => read.filter((service) => service.name === name));
-  if (ordered.length === 0) return null;
+  return <MateLinkProcessesView services={ordered} />;
+}
+
+/** The processes as drawn: one name and one dot each, centred under the line. */
+export function MateLinkProcessesView({
+  services,
+}: {
+  readonly services: ReadonlyArray<ArrivalService>;
+}) {
+  if (services.length === 0) return null;
   return (
     <div className="mt-3 flex justify-center" data-zerops-surface="mate-link-processes">
-      <ArrivalServices services={ordered} />
+      <ArrivalServices services={services} />
     </div>
   );
 }
@@ -65,16 +75,43 @@ export function MateLinkLine({
   readonly onTryNow: (() => void) | undefined;
 }) {
   return (
+    <MateLinkLineView
+      onTryNow={onTryNow}
+      processes={
+        voice.processes && projectId !== null ? (
+          <MateLinkProcesses mateServiceId={mateServiceId} projectId={projectId} />
+        ) : null
+      }
+      projects={<Link to="/zerops" />}
+      projectUrl={projectUrl}
+      voice={voice}
+    />
+  );
+}
+
+/** The slot as drawn: the line, its verb once, and what stands under it. */
+export function MateLinkLineView({
+  voice,
+  processes,
+  projects,
+  projectUrl,
+  onTryNow,
+}: {
+  readonly voice: Spoken;
+  readonly processes: ReactNode;
+  readonly projects: ReactElement;
+  readonly projectUrl: string | undefined;
+  readonly onTryNow: (() => void) | undefined;
+}) {
+  return (
     <div className="flex flex-col items-center">
       <MateOpeningLine
         onTryNow={onTryNow}
         phrase={{ text: voice.text, actions: voice.actions }}
-        projects={<Link to="/zerops" />}
+        projects={projects}
         projectUrl={projectUrl}
       />
-      {voice.processes && projectId !== null ? (
-        <MateLinkProcesses mateServiceId={mateServiceId} projectId={projectId} />
-      ) : null}
+      {processes}
     </div>
   );
 }

@@ -50,10 +50,11 @@ import {
   comingSentenceOf,
   type ArrivalProgress,
 } from "~/components/zerops/ZeropsMateComingPage";
-import { MateOpeningLine } from "~/components/zerops/MateLinkLine";
+import { MateLinkLineView, MateLinkProcessesView } from "~/components/zerops/MateLinkLine";
 import { MateEmptyStateView, type MateEmptyComing } from "~/components/zerops/ZeropsMateEmptyState";
 import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
-import type { ArrivalStepInput } from "~/zerops/mateArrival";
+import type { ArrivalService, ArrivalStepInput } from "~/zerops/mateArrival";
+import type { MateVoice } from "@t3tools/client-runtime/zerops/environments";
 import type { MateComing } from "~/zerops/mateComing";
 import type { ZeropsMateIdentity } from "~/zerops/mateIdentities";
 import { mateStandUpAskLine, type MateStandUpPhase } from "~/zerops/mateStandUp";
@@ -192,6 +193,8 @@ interface HarnessState {
   readonly mate: ZeropsMateIdentity;
   readonly phase: MateStandUpPhase | null;
   readonly coming?: "coming" | "coming-new" | "slow" | "not-created" | "reaching";
+  /** A Mate that is up, as its link's one voice says it (`mateVoice`). */
+  readonly voice?: MateVoice;
   readonly logins?: Logins;
   readonly addedBy?: string | null;
   readonly unknown?: KnownMessage;
@@ -225,10 +228,40 @@ const STATES: ReadonlyArray<HarnessState> = [
   },
   {
     id: "connecting",
-    label: "0 Connecting · a Mate that is up, its link being made",
-    mate: WREN,
+    label: "0 Opening · the first 1.5 s: the face and the name, nothing said",
+    mate: { ...WREN, connected: false },
     phase: null,
     coming: "reaching",
+    voice: { surface: "stage", text: null, actions: [], processes: false },
+  },
+  {
+    id: "opening",
+    label: "0 Opening · past 1.5 s: its line and the platform's processes",
+    mate: { ...WREN, connected: false },
+    phase: null,
+    coming: "reaching",
+    voice: { surface: "stage", text: "Opening Wren…", actions: [], processes: true },
+  },
+  {
+    id: "restarting",
+    label: "0 Restarting · a reload while Zerops restarts it",
+    mate: { ...WREN, connected: false },
+    phase: null,
+    coming: "reaching",
+    voice: { surface: "stage", text: "Wren is restarting.", actions: [], processes: false },
+  },
+  {
+    id: "reconnecting",
+    label: "0 Reconnecting · its link lost past 1.5 s, no conversation shown",
+    mate: { ...WREN, connected: false },
+    phase: null,
+    coming: "reaching",
+    voice: {
+      surface: "stage",
+      text: "Reconnecting to Wren…",
+      actions: ["try-now"],
+      processes: false,
+    },
   },
   { id: "signin", label: "2 Sign-in · the choice", mate: WREN, phase: "sign-in", logins: {} },
   {
@@ -465,17 +498,29 @@ function FixtureSignIn({
   );
 }
 
+const SILENT = { surface: "stage", text: null, actions: [], processes: false } as const;
+
+/** Beviro as a slow first connect finds it: the Mate's container restarting, a stage waiting. */
+const PROCESSES: ReadonlyArray<ArrivalService> = [
+  { name: "zcp", state: "busy" },
+  { name: "appdev", state: "ok" },
+  { name: "appstage", state: "waiting" },
+  { name: "db", state: "ok" },
+];
+
 function comingOf(state: HarnessState, nowMs: number): MateEmptyComing | null {
   if (state.coming === undefined) return null;
   if (state.coming === "reaching") {
+    const voice = state.voice?.surface === "stage" ? state.voice : SILENT;
     return {
       kind: "reaching",
       below: (
-        <MateOpeningLine
-          onTryNow={undefined}
-          phrase={{ text: "Connecting…", actions: [] }}
+        <MateLinkLineView
+          onTryNow={voice.actions.includes("try-now") ? () => undefined : undefined}
+          processes={voice.processes ? <MateLinkProcessesView services={PROCESSES} /> : null}
           projects={<a href="#projects" />}
           projectUrl={undefined}
+          voice={voice}
         />
       ),
     };
