@@ -441,7 +441,6 @@ describe("newMateWords — what the Mate's dialog says", () => {
       case: "a project with a recipe",
       input: { groupName: "Acme Docs", botName: " Quinn ", recipe: "recipe", waitingOn: null },
       words: {
-        description: "Quinn gets its own copy of Acme Docs, with its services and code.",
         button: "Add Quinn to Acme Docs",
         line: undefined,
       },
@@ -450,7 +449,6 @@ describe("newMateWords — what the Mate's dialog says", () => {
       case: "the recipe still being read",
       input: { groupName: "Acme Docs", botName: "Quinn", recipe: "reading", waitingOn: null },
       words: {
-        description: "Quinn gets its own copy of Acme Docs, with its services and code.",
         button: "Add Quinn to Acme Docs",
         line: "Reading the project's recipe…",
       },
@@ -459,8 +457,6 @@ describe("newMateWords — what the Mate's dialog says", () => {
       case: "a project with no recipe on main",
       input: { groupName: "Acme Docs", botName: "Quinn", recipe: "none", waitingOn: null },
       words: {
-        description:
-          "It gets its own copy of Acme Docs. There's no recipe yet, so it sets the application up itself. It takes a couple of minutes.",
         button: "Add Quinn to Acme Docs",
         line: undefined,
       },
@@ -469,7 +465,6 @@ describe("newMateWords — what the Mate's dialog says", () => {
       case: "Add pressed while the names are read",
       input: { groupName: "Acme Docs", botName: "Quinn", recipe: "recipe", waitingOn: "names" },
       words: {
-        description: "Quinn gets its own copy of Acme Docs, with its services and code.",
         button: "Add Quinn to Acme Docs",
         line: "Checking which names are taken…",
       },
@@ -478,7 +473,6 @@ describe("newMateWords — what the Mate's dialog says", () => {
       case: "a blank name",
       input: { groupName: "Acme Docs", botName: "  ", recipe: "recipe", waitingOn: null },
       words: {
-        description: "It gets its own copy of Acme Docs, with its services and code.",
         button: "Add a Mate to Acme Docs",
         line: undefined,
       },

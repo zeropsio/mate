@@ -59,6 +59,8 @@ export interface ZeropsEnvironmentCreationFormProps {
   readonly role: ZeropsEnvironmentRole;
   readonly defaultName: string;
   readonly defaultBotName: string;
+  /** Another name free on the account, for a Mate's die (`ZeropsNewMateForm`). */
+  readonly proposeAnotherName?: ((current: string) => string) | undefined;
   /**
    * What the project calls an environment whose agent goes by `botName`: a
    * Mate after its bot, so renaming Fen to Ada renames "Todo - Fen" to
@@ -106,6 +108,7 @@ export function ZeropsEnvironmentCreationForm(props: ZeropsEnvironmentCreationFo
       onCreate={({ name, botName, recipe, face }) => {
         onCreate({ name, withAgent: true, botName, recipe, face });
       }}
+      proposeAnotherName={props.proposeAnotherName}
       proposeName={proposeName}
       takenBotNames={takenBotNames}
       tier={tier}

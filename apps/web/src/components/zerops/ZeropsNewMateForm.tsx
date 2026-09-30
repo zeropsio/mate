@@ -1,22 +1,23 @@
 /**
- * The New Mate dialog: who the new Mate is, and nothing else.
+ * The New Mate dialog: who the new Mate is, and what happens once it is added.
  *
  * It asks three things — a name, a colour and a shape — and shows the face they make, big, while
  * they are picked: the person sees who they are making. Everything else is decided for them. The
  * Mate gets its own copy of the project with the project's recipe deployed (the tier read from
  * the group repo's `main`), runs its agent, and is called what the project calls its Mates
  * (`proposedEnvironmentName`). A project with no recipe on main and no Mate yet still gets its
- * first, with nothing in it yet, and the description says so in plain words.
+ * first, with nothing in it yet. The dialog ends with what happens next, with honest times
+ * (`newMateNext`, board D1): the family New project belongs to (`ZeropsNewProjectForm`).
  *
  * A project that takes no Mate now — its Mates have not written its recipe yet, or it cannot be
  * read (`newMateDoor`) — gets no form: the description says why, and the one thing to do about it
- * stands where Add stood. The form keeps its room out of sight and out of reach, so the title and
- * the buttons stay where they stood when the door shuts after the recipe is read.
+ * stands where Add stood. The form gives its room back as the reason takes its own, in one move,
+ * so the title and the buttons stay where they stood when the door shuts after the recipe is read.
  *
- * Until its person picks, the face follows the name as it is typed: the tint the account would
- * give that name (`newMateTint`, which never takes a tint another Mate wears) and that tint's
- * shape. A pick sticks. The face is written onto the project at birth (`mate:face:`), so the Mate
- * wears it everywhere from its first moment.
+ * Until its person picks, the face follows the name as it is typed or rolled: the tint the account
+ * would give that name (`newMateTint`, which never takes a tint another Mate wears) and that
+ * tint's shape. A pick sticks. The face is written onto the project at birth (`mate:face:`), so
+ * the Mate wears it everywhere from its first moment.
  */
 import type { EnvironmentRecipeChoice, ZeropsMateFace } from "@t3tools/client-runtime/zerops";
 import type { TakenBotNames } from "@t3tools/client-runtime/zerops/projections";
@@ -31,11 +32,10 @@ import {
   DialogPanel,
   DialogTitle,
 } from "../ui/dialog";
-import { Input } from "../ui/input";
+import { Label } from "../ui/label";
 import { cn } from "~/lib/utils";
 import {
   faceName,
-  newMateDescription,
   newMateFace,
   newMateRecipe,
   newMateSubmit,
@@ -46,6 +46,9 @@ import {
   type NewMateRecipe,
 } from "./ZeropsEnvironmentCreationDialog.logic";
 import { MateFacePicker } from "./MateFacePicker";
+import { MateNameInput } from "./MateNameInput";
+import { WhatHappensNext } from "./WhatHappensNext";
+import { newMateNext } from "./whatHappensNext.logic";
 
 /** What the form hands over: the environment's name, its agent's, the recipe and the face. */
 export interface NewMateChoice {
@@ -59,6 +62,8 @@ export interface ZeropsNewMateFormProps {
   readonly groupName: string;
   /** The name proposed for it, free on the account (`generateBotName`). */
   readonly defaultBotName: string;
+  /** Another name free on the account, never the one given: the die at the name's end. */
+  readonly proposeAnotherName?: ((current: string) => string) | undefined;
   /** What the project calls a Mate of this name: `Acme Docs - Quinn`, numbered when taken. */
   readonly proposeName: (botName: string) => string;
   /** The account's Mates' names, and whether the listing read them all (`takenBotNames`). */
@@ -84,9 +89,14 @@ export interface ZeropsNewMateFormProps {
   readonly onCreate: (choice: NewMateChoice) => void;
 }
 
+/** A room that opens and gives itself back in one move: a grid row from 0fr to 1fr. */
+const ROOM_CLASS =
+  "grid transition-[grid-template-rows] duration-200 ease-(--ease-out-strong) motion-reduce:transition-none";
+
 export function ZeropsNewMateForm({
   groupName,
   defaultBotName,
+  proposeAnotherName,
   proposeName,
   takenBotNames,
   tier,
@@ -112,11 +122,10 @@ export function ZeropsNewMateForm({
   const [pressedFor, setPressedFor] = useState<NewMateRecipe | null>(null);
   // Add was pressed: from then on what is wrong with the name is said, as it is typed.
   const [pressed, setPressed] = useState(false);
-  const [selected, setSelected] = useState(false);
   // A press waiting on the recipe is dropped once the project is read as taking no Mate: were the
   // door to open later, Add goes only when pressed again.
   if (closed !== undefined && pressedFor !== null) setPressedFor(null);
-  // The last reason said: it keeps its room, and fades with its words, after the door opens.
+  // The last reason said: it keeps its words while its room gives itself back, after the door opens.
   const [reason, setReason] = useState(closed?.reason);
   if (closed !== undefined && closed.reason !== reason) setReason(closed.reason);
 
@@ -147,6 +156,12 @@ export function ZeropsNewMateForm({
         ? `Adding ${bot}…`
         : (error ?? words.line);
 
+  const name = (typed: string) => {
+    setBotName(typed);
+    setPressedFor(null);
+    const named = typed.replace(/\s+/g, " ").trim();
+    if (named.length > 0) setHeldName(named);
+  };
   const create = (choice: EnvironmentRecipeChoice) => {
     onCreate({ name: proposeName(bot), botName: bot, recipe: choice, face });
   };
@@ -172,20 +187,6 @@ export function ZeropsNewMateForm({
     if (goes) go();
   }, [goes]);
 
-  const sayings = [
-    {
-      key: "recipe",
-      text: newMateDescription({ groupName, botName, recipe: "recipe" }),
-      shown: closed === undefined && recipe !== "none",
-    },
-    {
-      key: "none",
-      text: newMateDescription({ groupName, botName, recipe: "none" }),
-      shown: closed === undefined && recipe === "none",
-    },
-    { key: "closed", text: closed?.reason ?? reason, shown: closed !== undefined },
-  ];
-
   return (
     <form
       className="flex min-h-0 flex-col"
@@ -196,40 +197,39 @@ export function ZeropsNewMateForm({
       }}
     >
       <DialogHeader>
-        <DialogTitle>New Mate</DialogTitle>
-        <DialogDescription>
-          {/* Every saying holds one room, so learning the project has no recipe, or takes no
-              Mate, moves nothing. */}
-          <span className="grid">
-            {sayings.map(({ key, text, shown }) => (
-              <span
-                aria-hidden={shown ? undefined : true}
-                className={cn(
-                  "col-start-1 row-start-1 text-pretty transition-[opacity,visibility] ease-out",
-                  // The one leaving is gone before the one arriving shows: never both at once.
-                  shown ? "delay-100 duration-200" : "invisible opacity-0 duration-100",
-                )}
-                key={key}
-              >
-                {text}
-              </span>
-            ))}
-          </span>
-        </DialogDescription>
+        <DialogTitle>{`New Mate on ${groupName}`}</DialogTitle>
       </DialogHeader>
+      {/* Why the project takes no Mate now, where it takes none: its room opens as the form
+          gives its own back below, so the dialog's height follows in one move. */}
+      <div
+        className={ROOM_CLASS}
+        style={{ gridTemplateRows: closed === undefined ? "0fr" : "1fr" }}
+      >
+        <div className="min-h-0 overflow-hidden">
+          <div
+            className={cn(
+              "px-6 pt-1 pb-6 text-pretty transition-[opacity,visibility] ease-out",
+              // The form is gone before the reason shows: never both at once.
+              closed === undefined ? "invisible opacity-0 duration-100" : "delay-100 duration-200",
+            )}
+          >
+            <DialogDescription>{closed?.reason ?? reason}</DialogDescription>
+          </div>
+        </div>
+      </div>
       {/* While the project takes no Mate the form gives its room back, easing shut rather than
           leaving a blank under the reason: a grid row from 1fr to 0fr, so the dialog's height
           follows without a measurement. It stays mounted, out of sight and out of reach, keeping
           what was typed and picked for a door that opens again. */}
       <div
-        className="grid transition-[grid-template-rows] duration-200 ease-(--ease-out-strong) motion-reduce:transition-none"
+        className={ROOM_CLASS}
         style={{ gridTemplateRows: closed === undefined ? "1fr" : "0fr" }}
       >
         <div className="min-h-0 overflow-hidden">
           <DialogPanel>
             <div
               className={cn(
-                "transition-[opacity,visibility] ease-out",
+                "flex flex-col gap-5 transition-[opacity,visibility] ease-out",
                 closed === undefined
                   ? "delay-100 duration-200"
                   : "invisible opacity-0 duration-100",
@@ -245,40 +245,51 @@ export function ZeropsNewMateForm({
                   if (!adding) setPicked((current) => ({ ...current, tint }));
                 }}
               >
-                <Input
-                  aria-describedby={`${id}-line`}
-                  aria-invalid={refused === undefined ? undefined : true}
-                  aria-label="Name"
-                  autoComplete="off"
-                  onChange={(event) => {
-                    const typed = event.target.value;
-                    setBotName(typed);
-                    setPressedFor(null);
-                    const name = typed.replace(/\s+/g, " ").trim();
-                    if (name.length > 0) setHeldName(name);
-                  }}
-                  onFocus={(event) => {
-                    // The proposed name is taken whole by the first key typed over it.
-                    if (selected) return;
-                    setSelected(true);
-                    event.currentTarget.select();
-                  }}
-                  // While the platform takes the Mate's project, what made it stays as it was: the
-                  // name reads, and nothing typed or picked changes the Mate on its way.
-                  readOnly={adding}
-                  placeholder="Name"
-                  size="lg"
-                  spellCheck={false}
-                  value={botName}
-                />
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor={`${id}-name`}>Name</Label>
+                  <MateNameInput
+                    describedBy={`${id}-line`}
+                    id={`${id}-name`}
+                    invalid={refused !== undefined}
+                    label="Name"
+                    onAnother={
+                      proposeAnotherName === undefined
+                        ? undefined
+                        : () => {
+                            name(proposeAnotherName(bot));
+                          }
+                    }
+                    onValueChange={name}
+                    // While the platform takes the Mate's project, what made it stays as it was:
+                    // the name reads, and nothing typed or picked changes the Mate on its way.
+                    readOnly={adding}
+                    value={botName}
+                  />
+                </div>
               </MateFacePicker>
+              {/* What happens once it is added, both ways the project may read: learning it has
+                  nothing to deploy changes the words and moves nothing. */}
+              <WhatHappensNext
+                versions={[
+                  {
+                    key: "recipe",
+                    next: newMateNext({ groupName, botName, recipe: "recipe" }),
+                    shown: recipe !== "none",
+                  },
+                  {
+                    key: "none",
+                    next: newMateNext({ groupName, botName, recipe: "none" }),
+                    shown: recipe === "none",
+                  },
+                ]}
+              />
             </div>
           </DialogPanel>
         </div>
       </div>
       <DialogFooter>
-        {/* The one quiet line, beside the button it is about: what Add waits on, why it
-            refused, or that there is no recipe to deploy. The footer holds its room. */}
+        {/* The one quiet line, beside the button it is about: what Add waits on, or why it
+            refused. The footer holds its room. */}
         <p
           aria-live="polite"
           className={cn(
