@@ -1265,6 +1265,43 @@ describe("the cells' one-shot reads", () => {
     }).pipe(Effect.provide(TestClock.layer())),
   );
 
+  it.effect("a reader of a failed cell whose retry is scheduled joins that retry", () =>
+    Effect.gen(function* () {
+      const scope = accountScope();
+      let reads = 0;
+      const cells = yield* makeZeropsCells({
+        scope,
+        access: () => verifiedAccess(scope),
+        random: () => 0.5,
+        adapter: unusedAdapter({
+          readOrganizationMembers: () =>
+            Effect.suspend(() => {
+              reads += 1;
+              return reads === 1
+                ? Effect.fail(transportFailure(true))
+                : Effect.succeed([{ id: "member-1" }]);
+            }),
+        }),
+      });
+      const request = membersRequest(scope);
+      const display = yield* Scope.make();
+      const held = yield* cells.acquire(request).pipe(Scope.provide(display));
+      const failed = yield* held.awaitSettled;
+      expect(failed).toMatchObject({ state: "failed" });
+      const retryAtMs = failed.state === "failed" ? (failed.retryAtMs ?? 0) : 0;
+
+      const reader = yield* Effect.forkChild(oneShot(cells, request));
+      yield* Effect.yieldNow;
+      expect(reads).toBe(1);
+      yield* TestClock.adjust(retryAtMs);
+
+      expect(yield* Fiber.join(reader)).toMatchObject({ value: [{ id: "member-1" }] });
+      expect(reads).toBe(2);
+      yield* Scope.close(display, Exit.void);
+      yield* cells.shutdown;
+    }).pipe(Effect.provide(TestClock.layer())),
+  );
+
   it.effect("a reader of a held failed cell starts a fresh read rather than the old failure", () =>
     Effect.gen(function* () {
       const scope = accountScope();

@@ -296,6 +296,8 @@ interface CellEntry {
 /** What an open demand answers to its holder. */
 interface OpenDemand {
   readonly key: ZeropsCellKey;
+  /** The failure the cell showed when this demand arrived, its retry scheduled; else `null`. */
+  readonly joinedFailure: AnyShown | null;
   /** Neither released nor closed with the broker. */
   readonly active: () => boolean;
   readonly shown: () => AnyShown;
@@ -731,10 +733,15 @@ export const makeZeropsCells = Effect.fn("ZeropsCells.make")(function* (
     scheduleAccessDeadline(admission.deadlineMs);
     if (entry.cell.withheld !== null) apply(entry, { kind: "restore-authority" });
     const held = entry.cell.held;
+    // A failed cell whose retry is scheduled is read then, by its new reader too: it joins it.
+    const retryPending =
+      held.state === "failed" && held.retryAtMs !== null && held.retryAtMs > nowMs;
+    if (newlyDemanded && retryPending && entry.retryWake === null && held.retryAtMs !== null)
+      scheduleRetryWake(entry, held.retryAtMs);
     if (
       entry.inFlight === null &&
       (held.state === "unread" ||
-        (newlyDemanded && held.state === "failed") ||
+        (newlyDemanded && held.state === "failed" && !retryPending) ||
         (held.state === "known" &&
           (entry.cell.dirty ||
             entry.cell.lastInvalidation > held.asOf.ordinal ||
@@ -805,6 +812,11 @@ export const makeZeropsCells = Effect.fn("ZeropsCells.make")(function* (
       entries.set(key, entry);
     }
     const held = entry;
+    const before = held.shown;
+    const joinedFailure =
+      before.state === "failed" && before.retryAtMs !== null && before.retryAtMs > now()
+        ? before
+        : null;
     const id = ++nextDemandId;
     held.demands.set(id, demand);
     if (held.demands.size === 1) cancelEviction(held);
@@ -814,6 +826,7 @@ export const makeZeropsCells = Effect.fn("ZeropsCells.make")(function* (
     const active = () => !closed && held.demands.has(id);
     return {
       key,
+      joinedFailure,
       active,
       shown: () => {
         if (closed) return ACCOUNT_CLOSED;
@@ -910,7 +923,9 @@ export const makeZeropsCells = Effect.fn("ZeropsCells.make")(function* (
         awaitSettled: Effect.callback<Value>((resume) => {
           const waiter: Demand = {
             publish: (next) => {
-              if (!isSettled(next)) return;
+              // A failure whose retry was scheduled when this lease joined is not its answer:
+              // the retry's is.
+              if (!isSettled(next) || next === opened.joinedFailure) return;
               waiters.delete(waiter);
               resume(Effect.succeed(next as Value));
             },
