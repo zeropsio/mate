@@ -6,7 +6,8 @@
  * (every dispatched command), the projection (a Mate project and the threads
  * a test says run), admission (every principal it was asked about, the
  * logins each press was judged on, and the refusals a test can set), the
- * provider event bus (events a test publishes) and the server's command
+ * provider event bus (events a test publishes, each handled before its
+ * publish returns) and the server's command
  * readiness (a test completes it).
  *
  * @module crewEngineFixture
@@ -30,10 +31,12 @@ import {
   type ZeropsAgentAuthSnapshot,
 } from "@t3tools/contracts";
 import * as Context from "effect/Context";
+import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as PubSub from "effect/PubSub";
+import * as Queue from "effect/Queue";
 import * as Ref from "effect/Ref";
 import * as Stream from "effect/Stream";
 
@@ -101,9 +104,56 @@ export interface CrewWorld {
   readonly sshCalls: Ref.Ref<number>;
   /** Mate logins beyond the defaults, by id. */
   readonly logins: Ref.Ref<ReadonlyMap<string, MateLogin>>;
+  /**
+   * Hands the engine a provider event and returns once the engine has handled
+   * it: its next pull of the bus comes only after its handler for this one.
+   */
   readonly publish: (event: SpiEvent) => Effect.Effect<void>;
+  /**
+   * Holds the next ssh session whose remote script `matches` before it runs:
+   * `reached` once the engine is waiting on it, `release` lets it run.
+   */
+  readonly holdSsh: (matches: (script: string) => boolean) => Effect.Effect<SshHold>;
   /** A login's sign-in or signer changed: the agent-auth and logins feeds move. */
   readonly signedIn: Effect.Effect<void>;
+}
+
+export interface SshHold {
+  readonly reached: Effect.Effect<void>;
+  readonly release: Effect.Effect<void>;
+}
+
+/** An event on the fake bus, and when the engine is done with it. */
+interface Published {
+  readonly event: SpiEvent;
+  readonly handled: Deferred.Deferred<void>;
+}
+
+/**
+ * The bus the engine reads, one event a pull: the engine pulls again only when
+ * its handler for the last event returned, so that pull marks it handled.
+ */
+const publishedEvents = (queue: Queue.Queue<Published>) => {
+  let last: Published | undefined;
+  return Stream.fromEffectRepeat(
+    Effect.suspend(() => {
+      const done = last === undefined ? Effect.void : Deferred.succeed(last.handled, undefined);
+      last = undefined;
+      return done.pipe(
+        Effect.andThen(Queue.take(queue)),
+        Effect.map((published) => {
+          last = published;
+          return published.event;
+        }),
+      );
+    }),
+  );
+};
+
+interface PendingHold {
+  readonly matches: (script: string) => boolean;
+  readonly reached: Deferred.Deferred<void>;
+  readonly release: Deferred.Deferred<void>;
 }
 
 const project: OrchestrationProject = {
@@ -185,8 +235,8 @@ const repositoryLayers = (root: string) =>
   );
 
 const fakes = (
-  world: Omit<CrewWorld, "publish" | "signedIn">,
-  events: PubSub.PubSub<SpiEvent>,
+  world: Omit<CrewWorld, "publish" | "holdSsh" | "signedIn">,
+  events: Queue.Queue<Published>,
   signIns: PubSub.PubSub<void>,
 ) =>
   Layer.mergeAll(
@@ -242,23 +292,36 @@ const fakes = (
     Layer.mock(ProviderInstances)({
       driverKindOf: () => Effect.succeed(ProviderDriverKind.make("claudeAgent")),
     }),
-    ProviderRuntimeEventBusTest.make(Stream.fromPubSub(events)),
+    ProviderRuntimeEventBusTest.make(publishedEvents(events)),
     ThreadToolPolicyRegistry.layer,
     ClaudeThreadExtensionRegistry.layer,
     ServerCommandReadiness.layer,
   );
 
-/** The local ssh shim, counting every session. */
-const countingSsh = (calls: Ref.Ref<number>) =>
+/** The local ssh shim, counting every session and holding the one a test asked for. */
+const countingSsh = (calls: Ref.Ref<number>, holds: Ref.Ref<ReadonlyArray<PendingHold>>) =>
   Layer.effect(
     ProcessRunner.ProcessRunner,
     Effect.gen(function* () {
       const runner = yield* ProcessRunner.ProcessRunner;
+      const held = (script: string) =>
+        Effect.gen(function* () {
+          const hold = yield* Ref.modify(holds, (all) => {
+            const found = all.find((entry) => entry.matches(script));
+            return [found, found === undefined ? all : all.filter((entry) => entry !== found)];
+          });
+          if (hold === undefined) return;
+          yield* Deferred.succeed(hold.reached, undefined);
+          yield* Deferred.await(hold.release);
+        });
       return ProcessRunner.ProcessRunner.of({
         run: (input) =>
-          (input.command === "ssh" ? Ref.update(calls, (count) => count + 1) : Effect.void).pipe(
-            Effect.andThen(runner.run(input)),
-          ),
+          (input.command === "ssh"
+            ? Ref.update(calls, (count) => count + 1).pipe(
+                Effect.andThen(held(input.args.at(-1) ?? "")),
+              )
+            : Effect.void
+          ).pipe(Effect.andThen(runner.run(input))),
       });
     }),
   ).pipe(Layer.provide(localSshProcessRunnerLayer(TEST_IDENTITY)));
@@ -291,8 +354,9 @@ export const withCrewEngines = <E>(
     const workspace = NodeFS.realpathSync(
       NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "t3-crew-mate-")),
     );
-    const events = yield* PubSub.unbounded<SpiEvent>();
+    const events = yield* Queue.unbounded<Published>();
     const signIns = yield* PubSub.unbounded<void>();
+    const holds = yield* Ref.make<ReadonlyArray<PendingHold>>([]);
     const world: CrewWorld = {
       root,
       workspace,
@@ -312,7 +376,25 @@ export const withCrewEngines = <E>(
       installs: yield* Ref.make(0),
       sshCalls: yield* Ref.make(0),
       logins: yield* Ref.make<ReadonlyMap<string, MateLogin>>(new Map()),
-      publish: (event) => PubSub.publish(events, event).pipe(Effect.asVoid),
+      publish: (event) =>
+        Effect.gen(function* () {
+          const handled = yield* Deferred.make<void>();
+          yield* Queue.offer(events, { event, handled });
+          yield* Deferred.await(handled);
+        }),
+      holdSsh: (matches) =>
+        Effect.gen(function* () {
+          const hold: PendingHold = {
+            matches,
+            reached: yield* Deferred.make<void>(),
+            release: yield* Deferred.make<void>(),
+          };
+          yield* Ref.update(holds, (all) => [...all, hold]);
+          return {
+            reached: Deferred.await(hold.reached),
+            release: Deferred.succeed(hold.release, undefined).pipe(Effect.asVoid),
+          };
+        }),
       signedIn: PubSub.publish(signIns, undefined).pipe(Effect.asVoid),
     };
     const installer = (options.installer ?? countingInstaller)(world.installs);
@@ -322,7 +404,7 @@ export const withCrewEngines = <E>(
         Layer.provideMerge(
           Layer.mergeAll(
             fakes(world, events, signIns),
-            countingSsh(world.sshCalls),
+            countingSsh(world.sshCalls, holds),
             ServerConfig.layer({
               cwd: workspace,
               zerops: ZEROPS,

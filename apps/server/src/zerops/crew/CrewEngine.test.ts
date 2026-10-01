@@ -10,6 +10,7 @@ import {
   type OrchestrationThreadShell,
 } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
+import * as Fiber from "effect/Fiber";
 import * as Option from "effect/Option";
 import * as Ref from "effect/Ref";
 import * as Stream from "effect/Stream";
@@ -18,8 +19,10 @@ import type { MateLogin } from "../ZeropsLogins.ts";
 import { ServerCommandReadiness } from "../../spi/serverCommandReadiness.ts";
 import { ThreadToolPolicyRegistry } from "../../spi/threadToolPolicy.ts";
 import { CrewEngine } from "./CrewEngine.ts";
+import { CREW_ID } from "./CrewHome.ts";
 import { DEV_SERVER_PIDFILE } from "./CrewRuntime.ts";
 import { CrewThreadDirectory, CrewToolHost } from "./crewSeams.ts";
+import { CrewStore } from "./CrewStore.ts";
 import { installCrewThreadPolicy } from "./CrewThreadPolicy.ts";
 import {
   eventually,
@@ -270,18 +273,83 @@ describe("CrewEngine", () => {
         );
         const [stint] = yield* dispatchedOf(world, "thread.crew.create");
         yield* world.publish(spiEvent("turn.completed", stint!.threadId, { state: "completed" }));
-        yield* eventually(
-          command({ _tag: "discard", taskId: queued.board.tasks[0]!.id }).pipe(
-            Effect.as(true),
-            Effect.orElseSucceed(() => false),
-          ),
-        );
+        yield* command({ _tag: "discard", taskId: queued.board.tasks[0]!.id });
         yield* snapshotWhere((snapshot) => snapshot.board.tasks[1]?.state === "working");
         const admitted = yield* Ref.get(world.admitted);
         assert.deepStrictEqual(admitted.at(-1)?.principal, {
           kind: "crew",
           startedBy: "user-karel",
         });
+      }),
+    ),
+  );
+
+  it.live("a discard pressed while its crewmate's turn end is handled waits for that end", () =>
+    withCrewEngine((world) =>
+      Effect.gen(function* () {
+        yield* applied(world);
+        yield* command({ _tag: "message", handle: "backend", text: "First", attachments: [] });
+        yield* command({
+          _tag: "taskCreate",
+          owner: "backend",
+          title: "Second",
+          brief: "Do the second thing.",
+          doneWhen: "",
+          dependsOn: [],
+        });
+        const first = (yield* snapshotWhere((snapshot) => snapshot.board.tasks.length === 2)).board
+          .tasks[0]!.id;
+        const [stint] = yield* dispatchedOf(world, "thread.crew.create");
+        const turnCommit = yield* world.holdSsh((script) => script.includes("): turn 1"));
+        const ended = yield* Effect.forkChild(
+          world.publish(spiEvent("turn.completed", stint!.threadId, { state: "completed" })),
+        );
+        yield* turnCommit.reached;
+        const pressed = yield* Effect.forkChild(command({ _tag: "discard", taskId: first }));
+        const beforeTheEnd = yield* Fiber.await(pressed).pipe(Effect.timeoutOption("300 millis"));
+        yield* turnCommit.release;
+        yield* Fiber.join(ended);
+        yield* Fiber.join(pressed);
+        assert.isTrue(Option.isNone(beforeTheEnd), "the discard returned before the turn's end");
+        yield* snapshotWhere(
+          (snapshot) =>
+            snapshot.board.tasks[0]?.state === "discarded" &&
+            snapshot.board.tasks[1]?.state === "working",
+        );
+      }),
+    ),
+  );
+
+  it.live("a discard whose copy cannot be reset leaves its task as it was", () =>
+    withCrewEngine((world) =>
+      Effect.gen(function* () {
+        yield* applied(world);
+        const thread = yield* firstTurn(world, () =>
+          write(NodePath.join(world.root, ".crew/backend"), "a.txt", "changed\n"),
+        );
+        yield* command({
+          _tag: "taskCreate",
+          owner: "backend",
+          title: "Second",
+          brief: "Do the second thing.",
+          doneWhen: "",
+          dependsOn: [],
+        });
+        yield* world.publish(spiEvent("turn.completed", thread, { state: "completed" }));
+        yield* snapshotWhere((snapshot) => snapshot.crewmates[0]!.lane?.ahead === 1);
+        const lock = NodePath.join(world.root, ".git/worktrees/backend/index.lock");
+        NodeFS.writeFileSync(lock, "");
+        const first = (yield* latest).board.tasks[0]!.id;
+        const refused = yield* Effect.flip(command({ _tag: "discard", taskId: first }));
+        assert.strictEqual(refused.reason, "io");
+        NodeFS.rmSync(lock);
+        // Pressed again it discards: the refused press left the task open.
+        yield* command({ _tag: "discard", taskId: first });
+        yield* snapshotWhere(
+          (snapshot) =>
+            snapshot.board.tasks[0]?.state === "discarded" &&
+            snapshot.board.tasks[1]?.state === "working",
+        );
       }),
     ),
   );
@@ -423,9 +491,6 @@ describe("CrewEngine", () => {
         yield* command({ _tag: "message", handle: "backend", text: "Start", attachments: [] });
         const [first] = yield* dispatchedOf(world, "thread.crew.create");
         yield* world.publish(spiEvent("turn.completed", first!.threadId, { state: "completed" }));
-        yield* eventually(
-          Effect.map(latest, (snapshot) => snapshot.crewmates[0]!.lane?.ahead === 0),
-        );
         writeCrewHome(world.workspace, {
           "jobs/backend.md": "You own the server and its tests.\n",
         });
@@ -493,7 +558,6 @@ describe("CrewEngine", () => {
         });
         yield* world.publish(spiEvent("turn.completed", thread, { state: "completed" }));
         yield* snapshotWhere((current) => current.board.tasks[0]?.state === "blocked");
-        yield* Effect.sleep("300 millis");
         yield* command({ _tag: "message", handle: "backend", text: "EUR", attachments: [] });
         const answered = yield* snapshotWhere(
           (current) => current.board.tasks[0]?.state === "working",
@@ -519,11 +583,8 @@ describe("CrewEngine", () => {
           git(world.root, ["update-ref", "refs/t3/crew-state/main", "HEAD"]),
         );
         yield* world.publish(spiEvent("turn.completed", thread, { state: "completed" }));
-        yield* eventually(
-          Effect.map(latest, (snapshot) => snapshot.crewmates[0]!.lane?.ahead === 0),
-        );
-        yield* Effect.sleep("300 millis");
-        assert.strictEqual((yield* latest).board.tasks[0]?.state, "working");
+        const [task] = yield* Effect.flatMap(CrewStore, (store) => store.assignments(CREW_ID));
+        assert.strictEqual(task?.state, "working");
         yield* command({ _tag: "message", handle: "backend", text: "More", attachments: [] });
         git(world.root, ["update-ref", "refs/heads/crewmate-made-this", "HEAD"]);
         yield* world.publish(spiEvent("turn.completed", thread, { state: "completed" }));

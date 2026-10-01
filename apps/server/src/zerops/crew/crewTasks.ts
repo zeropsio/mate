@@ -746,27 +746,35 @@ export const markFresh = (core: CrewCore, taskId: string) =>
     yield* saveTask(core, { ...row, fresh: true });
   });
 
-/** Discards a task from any state; an open task's work is kept aside and its copy reset. */
+/**
+ * Discards a task from any state; an open task's work is kept aside and its
+ * copy reset first, so a reset that fails leaves the task as it was. A press
+ * while its crewmate's turn end is handled waits for that end.
+ */
 export const discard = (core: CrewCore, taskId: string) =>
-  Effect.gen(function* () {
-    const applied = yield* requireApplied(core);
-    const row = yield* requireTask(core, taskId);
-    if (isOpenTask(row.state) && isWorking(core, applied, row.member)) {
-      return yield* refuse("wrong-state", `@${row.member}'s turn is running`);
-    }
-    const discarded = yield* stepTask(core, row, { type: "discard" });
-    const member = memberOf(applied, row.member);
-    if (isOpenTask(row.state) && member?.row.kind === "writer") {
-      yield* asRefusal(
-        core.workspace.keepAndReset(
-          { crew: CREW_ID, handle: row.member },
-          { run: null, assignment: row.assignment, attempt: row.attempt, abortMerge: true },
-        ),
-      );
-    }
-    core.memory.cantStart.delete(discarded.assignment);
-    yield* pump(core, row.member);
-  });
+  Effect.flatMap(requireTask(core, taskId), (pressed) =>
+    core.crewmate(pressed.member)(
+      Effect.gen(function* () {
+        const applied = yield* requireApplied(core);
+        const row = yield* requireTask(core, taskId);
+        if (isOpenTask(row.state) && isWorking(core, applied, row.member)) {
+          return yield* refuse("wrong-state", `@${row.member}'s turn is running`);
+        }
+        const member = memberOf(applied, row.member);
+        if (isOpenTask(row.state) && member?.row.kind === "writer") {
+          yield* asRefusal(
+            core.workspace.keepAndReset(
+              { crew: CREW_ID, handle: row.member },
+              { run: null, assignment: row.assignment, attempt: row.attempt, abortMerge: true },
+            ),
+          );
+        }
+        const discarded = yield* stepTask(core, row, { type: "discard" });
+        core.memory.cantStart.delete(discarded.assignment);
+        yield* pump(core, row.member);
+      }),
+    ),
+  );
 
 /** *Try again* on a stopped task (parked → queued), or on a queued one admission refused. */
 export const retryTask = (core: CrewCore, principal: TurnPrincipal, taskId: string) =>

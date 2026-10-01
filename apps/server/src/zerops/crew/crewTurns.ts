@@ -459,7 +459,7 @@ export const makeTurnHandler = (core: CrewCore) => {
           yield* followCrewWork(core);
           break;
         case "turn.completed":
-          yield* turnEnded(core, stint, event);
+          yield* core.crewmate(stint.member)(turnEnded(core, stint, event));
           break;
         case "thread.token-usage.updated":
           core.memory.context.set(stint.threadId, {
