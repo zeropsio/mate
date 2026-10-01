@@ -2,6 +2,7 @@ import { withRelayClientTracing } from "@t3tools/shared/relayTracing";
 import * as Cause from "effect/Cause";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
+import type * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Fiber from "effect/Fiber";
@@ -34,6 +35,8 @@ const RETRY_DELAYS_MS = [3_000, 4_000, 8_000, 16_000] as const;
 const CONNECTION_ESTABLISHMENT_TIMEOUT = "15 seconds";
 const CONNECTION_PROBE_TIMEOUT = "15 seconds";
 const MOBILE_CONNECTION_PROBE_TIMEOUT = "3 seconds";
+/** How long a socket kept through an offline spell has to answer once the network is back. */
+const NETWORK_RETURN_PROBE_TIMEOUT = "3 seconds";
 const BACKOFF_RESET_AFTER_MS = 30_000;
 
 interface SupervisorIntent {
@@ -496,11 +499,91 @@ export const make = Effect.fn("EnvironmentSupervisor.make")(function* (
       }),
     );
 
+  /**
+   * Asks a connected lease whether its socket still answers. `null` keeps the lease; a boolean
+   * ends it as {@link monitorConnectedLease} does. A probe that fails or runs out of time is a
+   * dead transport: the lease fails, and the reconnect skips the first backoff rung.
+   */
+  const probeConnectedLease = Effect.fnUntraced(function* (
+    lease: ConnectionDriver.EnvironmentConnectionLease,
+    timeout: Duration.Input,
+  ) {
+    const probe = yield* lease.session.probe.pipe(
+      Effect.timeoutOrElse({
+        duration: timeout,
+        orElse: () =>
+          Effect.fail(
+            new ConnectionTransientError({
+              reason: "timeout",
+              detail: `${target.label} did not respond to a connection health check.`,
+            }),
+          ),
+      }),
+      Effect.forkChild,
+    );
+    for (;;) {
+      const probeEvent = yield* Effect.raceFirst(
+        Fiber.await(probe).pipe(Effect.map((exit) => ({ _tag: "ProbeCompleted" as const, exit }))),
+        Queue.take(signals).pipe(Effect.map((signal) => ({ _tag: "Signal" as const, signal }))),
+      );
+      if (probeEvent._tag === "ProbeCompleted") {
+        if (Exit.isFailure(probeEvent.exit)) {
+          yield* Ref.set(wakeProbeFailed, true);
+        }
+        yield* probeEvent.exit;
+        return null;
+      }
+      switch (probeEvent.signal._tag) {
+        case "DisconnectRequested":
+        case "RetryRequested":
+          yield* Fiber.interrupt(probe);
+          return false;
+        case "NetworkChanged":
+          // A probe sent into an offline spell says nothing of the socket: the network's return
+          // sends another.
+          if (probeEvent.signal.network === "offline") {
+            yield* Fiber.interrupt(probe);
+            return null;
+          }
+          break;
+        case "StreamDefect":
+          if (probeEvent.signal.session === lease.session) {
+            yield* Fiber.interrupt(probe);
+            return yield* streamDefect();
+          }
+          break;
+        case "Wakeup":
+          if (probeEvent.signal.reason === "application-active-reconnect") {
+            yield* Fiber.interrupt(probe);
+            return true;
+          }
+          if (
+            probeEvent.signal.reason === "credentials-changed" &&
+            target._tag === "RelayConnectionTarget"
+          ) {
+            yield* Fiber.interrupt(probe);
+            return false;
+          }
+          break;
+        case "ConnectRequested":
+          break;
+      }
+    }
+  });
+
+  /**
+   * Watches a connected lease until it must end. An offline spell keeps it: a socket a short drop
+   * left alive answers the probe the network's return sends, and the Mate is back without a new
+   * socket — each of which waits its turn for the browser's one connecting slot. A socket the
+   * drop killed closes by itself or fails that probe, and is replaced at once.
+   */
   const monitorConnectedLease = Effect.fnUntraced(function* (
     lease: ConnectionDriver.EnvironmentConnectionLease,
   ) {
+    let wentOffline = false;
     for (;;) {
       const next = yield* Queue.take(signals);
+      let ended: boolean | null = null;
       switch (next._tag) {
         case "DisconnectRequested":
         case "RetryRequested":
@@ -510,7 +593,10 @@ export const make = Effect.fn("EnvironmentSupervisor.make")(function* (
           break;
         case "NetworkChanged":
           if (next.network === "offline") {
-            return false;
+            wentOffline = true;
+          } else if (wentOffline) {
+            wentOffline = false;
+            ended = yield* probeConnectedLease(lease, NETWORK_RETURN_PROBE_TIMEOUT);
           }
           break;
         case "Wakeup":
@@ -525,77 +611,18 @@ export const make = Effect.fn("EnvironmentSupervisor.make")(function* (
             return true;
           }
           if (next.reason === "application-active" || next.reason === "application-active-probe") {
-            const probe = yield* lease.session.probe.pipe(
-              Effect.timeoutOrElse({
-                duration:
-                  next.reason === "application-active-probe"
-                    ? MOBILE_CONNECTION_PROBE_TIMEOUT
-                    : CONNECTION_PROBE_TIMEOUT,
-                orElse: () =>
-                  Effect.fail(
-                    new ConnectionTransientError({
-                      reason: "timeout",
-                      detail: `${target.label} did not respond to a connection health check.`,
-                    }),
-                  ),
-              }),
-              Effect.forkChild,
+            ended = yield* probeConnectedLease(
+              lease,
+              next.reason === "application-active-probe"
+                ? MOBILE_CONNECTION_PROBE_TIMEOUT
+                : CONNECTION_PROBE_TIMEOUT,
             );
-            for (;;) {
-              const probeEvent = yield* Effect.raceFirst(
-                Fiber.await(probe).pipe(
-                  Effect.map((exit) => ({ _tag: "ProbeCompleted" as const, exit })),
-                ),
-                Queue.take(signals).pipe(
-                  Effect.map((signal) => ({ _tag: "Signal" as const, signal })),
-                ),
-              );
-              if (probeEvent._tag === "ProbeCompleted") {
-                if (Exit.isFailure(probeEvent.exit)) {
-                  yield* Ref.set(wakeProbeFailed, true);
-                }
-                yield* probeEvent.exit;
-                break;
-              }
-              switch (probeEvent.signal._tag) {
-                case "DisconnectRequested":
-                case "RetryRequested":
-                  yield* Fiber.interrupt(probe);
-                  return false;
-                case "NetworkChanged":
-                  if (probeEvent.signal.network === "offline") {
-                    yield* Fiber.interrupt(probe);
-                    return false;
-                  }
-                  break;
-                case "StreamDefect":
-                  if (probeEvent.signal.session === lease.session) {
-                    yield* Fiber.interrupt(probe);
-                    return yield* streamDefect();
-                  }
-                  break;
-                case "Wakeup":
-                  if (probeEvent.signal.reason === "application-active-reconnect") {
-                    yield* Fiber.interrupt(probe);
-                    return true;
-                  }
-                  if (
-                    probeEvent.signal.reason === "credentials-changed" &&
-                    target._tag === "RelayConnectionTarget"
-                  ) {
-                    yield* Fiber.interrupt(probe);
-                    return false;
-                  }
-                  break;
-                case "ConnectRequested":
-                  break;
-              }
-            }
           }
           break;
         case "ConnectRequested":
           break;
       }
+      if (ended !== null) return ended;
     }
   });
 
@@ -1032,6 +1059,12 @@ export const make = Effect.fn("EnvironmentSupervisor.make")(function* (
         if (applicationActivated) {
           resetRetryLadder();
         }
+        continue;
+      }
+
+      if ((yield* Ref.get(intent)).network === "offline") {
+        // A lease kept through an offline spell that died meanwhile: the network's return, not a
+        // backoff, starts the next attempt.
         continue;
       }
 
