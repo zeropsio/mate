@@ -503,13 +503,20 @@ export const makeZeropsSetup = (timings: ZeropsSetupTimings = TIMINGS) =>
             : undefined;
         const tagList = yield* tags;
         if (tagList === undefined) return false;
+        // A claim taken over is sent as whoever can send it now: its sender, else the person
+        // who asked for the stand-up — the first of them who holds an agent here. When none
+        // does, it went out (its message is in the conversation) or it is settled as none:
+        // a claim never waits on a sign-in that may never come.
         const requestedBy =
-          resuming !== undefined && resuming.userId !== ""
-            ? resuming.userId
-            : standUpRequestedBy(tagList);
+          resuming === undefined
+            ? standUpRequestedBy(tagList)
+            : [resuming.userId, standUpRequestedBy(tagList)].find(
+                (userId): userId is string =>
+                  userId !== undefined &&
+                  userId !== "" &&
+                  standUpSigners(tagList, userId).length > 0,
+              );
         if (requestedBy === undefined && resuming !== undefined) {
-          // A browser's claim taken over, sent by nobody this server can name, and asked by
-          // nobody: it went out (its message is in the conversation), or it is settled as none.
           const thread = Option.getOrUndefined(
             yield* projection
               .getThreadShellById(ThreadId.make(resuming.threadId))

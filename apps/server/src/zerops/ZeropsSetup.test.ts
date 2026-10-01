@@ -553,6 +553,49 @@ describe("ZeropsSetup: the stand-up", () => {
     }),
   );
 
+  it.live("a claim whose sender no longer holds the agent is sent as its asker who does", () =>
+    Effect.gen(function* () {
+      const world = yield* makeWorld;
+      // user-b's browser sent it; user-a, who asked, has since signed the agent in.
+      yield* Ref.set(world.tags, ["mate:standup:user-a", "mate:signer:claude-code:user-a"]);
+      yield* withServer(
+        world,
+        freshDatabase(),
+        (setup) =>
+          Effect.gen(function* () {
+            assert.strictEqual(yield* setup.browserStandUp(browserSend(2), "user-b"), "claimed");
+            yield* eventually(turnsOf(world), (turns) => turns.length === 1);
+            assert.deepStrictEqual((yield* Ref.get(world.admitted)).at(-1), {
+              kind: "session",
+              subject: "zerops-user:user-a",
+            });
+          }),
+        { ...FAST, claimMaxAge: Duration.millis(50), noneAfter: Duration.minutes(5) },
+      );
+    }),
+  );
+
+  it.live("a claim nobody who could send it holds the agent for settles, never stuck", () =>
+    Effect.gen(function* () {
+      const world = yield* makeWorld;
+      // Someone else entirely signed the agent in.
+      yield* Ref.set(world.tags, ["mate:standup:user-a", "mate:signer:claude-code:user-c"]);
+      const database = freshDatabase();
+      yield* withServer(
+        world,
+        database,
+        (setup) =>
+          Effect.gen(function* () {
+            assert.strictEqual(yield* setup.browserStandUp(browserSend(2), "user-b"), "claimed");
+            yield* Effect.sleep(Duration.millis(300));
+          }),
+        { ...FAST, claimMaxAge: Duration.millis(50), noneAfter: Duration.minutes(5) },
+      );
+      assert.deepStrictEqual(yield* turnsOf(world), []);
+      assert.isFalse(yield* withServer(world, database, () => stillPolling(world)));
+    }),
+  );
+
   it.live("a claim taken over is sent as the person whose browser sent it", () =>
     Effect.gen(function* () {
       const world = yield* makeWorld;
