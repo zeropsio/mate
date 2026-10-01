@@ -61,6 +61,52 @@ describe("deriveZeropsThreadModel", () => {
     expect(model.running?.phase).toBe("running");
   });
 
+  it("a running stand-up carries the newest progress its Mate relayed, an older Mate's none", () => {
+    const runningTurnId = "turn-running";
+    const started = {
+      id: "a1",
+      tone: "tool",
+      kind: "tool.started",
+      summary: "Tool call started",
+      turnId: runningTurnId,
+      createdAt: "2026-09-01T00:00:00.000Z",
+      payload: {
+        toolCallId: "call-1",
+        status: "inProgress",
+        data: { toolName: "mcp__zerops__zerops_standup", input: {} },
+      },
+    };
+    const progress = (createdAt: string, state: string) => ({
+      id: `progress-${createdAt}`,
+      tone: "info",
+      kind: "tool.progress",
+      summary: "Stand-up progress",
+      turnId: runningTurnId,
+      createdAt,
+      payload: {
+        toolCallId: "call-1",
+        zeropsStandUp: {
+          phase: "development",
+          state: "running",
+          services: [{ hostname: "api", step: "build", state, processId: "", at: "" }],
+        },
+      },
+    });
+    const derive = (activities: ReadonlyArray<unknown>) =>
+      deriveZeropsThreadModel({ activities: activities as never, runningTurnId, nowMs: NOW_MS })
+        .running;
+    expect(derive([started])?.standUpProgress).toBeUndefined();
+    const running = derive([
+      started,
+      progress("2026-09-01T00:00:09.000Z", "done"),
+      progress("2026-09-01T00:00:05.000Z", "running"),
+    ]);
+    expect(running?.kind).toBe("standup");
+    expect(running?.standUpProgress?.services).toEqual([
+      { hostname: "api", step: "build", state: "done", processId: "", at: "" },
+    ]);
+  });
+
   it("composes the session from a known lifecycle's envelope, stale or not, and from nothing else", () => {
     const envelope = {
       phase: "develop-active",

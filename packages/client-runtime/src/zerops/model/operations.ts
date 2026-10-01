@@ -180,6 +180,9 @@ function buildStandaloneOperation(
     steps: fields.steps,
     links: fields.links,
     callIds: [call.id],
+    ...(kind === "standup" && call.standUpProgress !== undefined
+      ? { standUpProgress: call.standUpProgress }
+      : {}),
     ...(fields.target !== undefined ? { target: fields.target } : {}),
     ...(fields.batch !== undefined ? { batch: fields.batch } : {}),
     ...(fields.strategy !== undefined ? { strategy: fields.strategy } : {}),

@@ -130,7 +130,12 @@ function inWindow(process: ActivityProcess, sinceMs: number): boolean {
   return Date.parse(process.finished) > sinceMs;
 }
 
-function sentenceOf(process: ActivityProcess, hostname: string, nowMs: number): string | undefined {
+/** A running build's step, in the Zerops GUI's words, off its platform process. */
+export function sentenceOf(
+  process: ActivityProcess,
+  hostname: string,
+  nowMs: number,
+): string | undefined {
   if (process.appVersion === undefined) return undefined;
   const pipeline = readPipeline(process.appVersion, {
     nowMs,
