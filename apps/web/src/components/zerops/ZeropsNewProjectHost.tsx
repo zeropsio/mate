@@ -319,6 +319,7 @@ function NewProjectDialog() {
             projectName: placement.displayName,
             // Imported a moment ago, with the project, by the one call that made it.
             container: null,
+            containerJustImported: true,
             groupProjectIds: [],
             viewer: pressViewer(user, activeOrganization),
             registration: {

@@ -3,8 +3,9 @@ import { describe, expect, it } from "vite-plus/test";
 import { planEnvironmentCreation, type EnvironmentCreationStep } from "./createEnvironment.ts";
 import type { ZeropsEnvironmentRole } from "./groups.ts";
 import {
-  RECIPE_ENV_WRITE_CAP_MS,
+  RECIPE_ENV_WRITE_APPEAR_MS,
   RECIPE_ENV_WRITE_POLL_MS,
+  resumableEnvironmentCreationStep,
   runEnvironmentCreation,
   type EnvironmentCreationPlatform,
   type EnvironmentCreationStepProgress,
@@ -604,7 +605,7 @@ describe("runEnvironmentCreation — closing the project off", () => {
     expect(calls.slice(0, firstRead).filter((call) => call === "envWrites:proj-1")).toHaveLength(4);
   });
 
-  it("goes on after about thirty seconds when the recipe's write never shows", async () => {
+  it("goes on after a few seconds when no recipe write appears, reading it back twice", async () => {
     const { platform, calls } = fakePlatform({
       readProjectEnvWrites: async (projectId) => {
         calls.push(`envWrites:${projectId}`);
@@ -615,10 +616,76 @@ describe("runEnvironmentCreation — closing the project off", () => {
     expect(outcome.ok).toBe(true);
     const waited = slept.filter((ms) => ms === RECIPE_ENV_WRITE_POLL_MS).length;
     expect(waited * RECIPE_ENV_WRITE_POLL_MS).toBeGreaterThanOrEqual(
-      RECIPE_ENV_WRITE_CAP_MS - 1_000,
+      RECIPE_ENV_WRITE_APPEAR_MS - RECIPE_ENV_WRITE_POLL_MS,
     );
-    expect(waited * RECIPE_ENV_WRITE_POLL_MS).toBeLessThanOrEqual(RECIPE_ENV_WRITE_CAP_MS + 1_000);
+    expect(waited * RECIPE_ENV_WRITE_POLL_MS).toBeLessThanOrEqual(
+      RECIPE_ENV_WRITE_APPEAR_MS + RECIPE_ENV_WRITE_POLL_MS,
+    );
     expect(calls).toContain("closedOff:proj-1");
+  });
+
+  // The close-off never goes through by timing out: a write still under way at the cap stops
+  // the step, which a press may try again (pass 28 review).
+  it("stops, to be tried again, when the recipe's write is still running at the cap", async () => {
+    const { platform, calls } = fakePlatform({
+      readProjectEnvWrites: async (projectId) => {
+        calls.push(`envWrites:${projectId}`);
+        return calls.some((call) => call.startsWith("container:"))
+          ? [{ id: "w-recipe", status: "RUNNING" }]
+          : [];
+      },
+    });
+    const { outcome } = await run(plan("dev"), platform);
+    expect(outcome).toMatchObject({ ok: false, failedStep: { kind: "close-off" } });
+    expect(calls).not.toContain("closedOff:proj-1");
+    expect(calls.some((call) => call.startsWith("isolation:"))).toBe(false);
+    if (outcome.ok) throw new Error("expected a stop");
+    expect(resumableEnvironmentCreationStep(outcome.failedStep)).toBe(true);
+  });
+
+  // New project: the container came with the project, in one call before this press, so no
+  // write was seen before it — the close-off waits for the recipe's to appear and end.
+  it("waits for a recipe write it expects to appear, when its container came before the press", async () => {
+    const answers: Array<ReadonlyArray<{ readonly id: string; readonly status: string }>> = [
+      [],
+      [],
+      [{ id: "w-recipe", status: "PENDING" }],
+      [{ id: "w-recipe", status: "FINISHED" }],
+    ];
+    const { platform, calls } = fakePlatform({
+      readProjectEnvWrites: async (projectId) => {
+        calls.push(`envWrites:${projectId}`);
+        return answers.length > 1 ? answers.shift()! : answers[0]!;
+      },
+    });
+    const outcome = await runEnvironmentCreation({
+      clientId: "client-1",
+      steps: [{ kind: "close-off", recipeWrite: "expected" }],
+      platform,
+      resume: { from: 0, projectId: "proj-1", projectName: "Go Hello World - dev" },
+      sleep: async () => undefined,
+    });
+    expect(outcome).toMatchObject({ ok: true });
+    const firstRead = calls.indexOf("isolation:proj-1");
+    expect(calls.slice(0, firstRead).filter((call) => call === "envWrites:proj-1")).toHaveLength(4);
+  });
+
+  // A harden's isolation is trusted only where no container came after it: a container imported
+  // in the same press brings the recipe's write, which may open the project again.
+  it("reads back a project the harden isolated once a container was imported after it", async () => {
+    const { platform, calls } = fakePlatform();
+    await runEnvironmentCreation({
+      clientId: "client-1",
+      steps: [
+        { kind: "import-container", agents: [] },
+        { kind: "close-off", isolated: true },
+      ],
+      platform,
+      resume: { from: 0, projectId: "proj-1", projectName: "Go Hello World - dev" },
+      sleep: async () => undefined,
+    });
+    expect(calls.filter((call) => call === "isolation:proj-1").length).toBeGreaterThan(1);
+    expect(calls.at(-1)).toBe("closedOff:proj-1");
   });
 
   it("closes off before the registration", async () => {

@@ -502,7 +502,11 @@ describe("finishMateSetup — the harden path", () => {
       client: {
         readProjectEnv: async () => {
           calls.push("read isolation");
-          return [];
+          return [{ key: "envIsolation", content: "service" }];
+        },
+        readProjectEnvWrites: async () => {
+          calls.push("env writes");
+          return [{ id: "w-recipe", status: "FINISHED" }];
         },
       },
       organizationId: "org-acme",
@@ -531,7 +535,11 @@ describe("finishMateSetup — the harden path", () => {
         },
       },
     }) as never;
-  const finish = (harden: () => boolean, calls: Array<string>) =>
+  const finish = (
+    harden: () => boolean,
+    calls: Array<string>,
+    made: { readonly harden?: boolean; readonly containerJustImported?: boolean } = {},
+  ) =>
     finishMateSetup({
       inputs: inputs(harden, calls),
       projectId: "p-old",
@@ -541,7 +549,8 @@ describe("finishMateSetup — the harden path", () => {
       viewer: null,
       registration: null,
       isCurrent: () => true,
-      harden: true,
+      harden: made.harden ?? true,
+      ...(made.containerJustImported === true ? { containerJustImported: true } : {}),
       locks: undefined,
       sleep: async () => undefined,
     });
@@ -561,6 +570,18 @@ describe("finishMateSetup — the harden path", () => {
     expect(await finish(() => true, calls)).toMatchObject({ ok: true });
     expect(calls).toEqual(["harden", "mark"]);
     expect(readMatePress("p-old")?.state).toEqual({ kind: "pressed" });
+    forgetPress("p-old");
+  });
+
+  // Every other close-off goes through the one procedure: a New project's, whose container came
+  // with the project a moment before, waits for the recipe's write, then reads closed twice.
+  it("closes a New project's first Mate off through the whole procedure", async () => {
+    begin();
+    const calls: Array<string> = [];
+    expect(
+      await finish(() => true, calls, { harden: false, containerJustImported: true }),
+    ).toMatchObject({ ok: true });
+    expect(calls).toEqual(["env writes", "read isolation", "read isolation", "mark"]);
     forgetPress("p-old");
   });
 

@@ -209,9 +209,14 @@ export const ISOLATION_READS = 10;
 export const ISOLATION_CONFIRM_READS = 2;
 export const ISOLATION_CONFIRM_MS = 2_000;
 /**
- * How long a close-off waits for the container recipe's `stack.updateProjectEnvs`, created after
- * the import, to finish: past it, it goes on — the isolation it then writes and reads back twice
- * is the guard, and a stuck write is not the press's.
+ * How long a close-off waits for the container recipe's `stack.updateProjectEnvs` to appear after
+ * the import: where none does, nothing will undo the isolation, and the two closed reads go on.
+ * Set from the live measurement of when the write appears.
+ */
+export const RECIPE_ENV_WRITE_APPEAR_MS = 6_000;
+/**
+ * How long a close-off waits for a write under way to end: past it the step stops, to be tried
+ * again — it never goes through by timing out.
  */
 export const RECIPE_ENV_WRITE_CAP_MS = 30_000;
 export const RECIPE_ENV_WRITE_POLL_MS = 1_000;
@@ -425,11 +430,14 @@ export async function runEnvironmentCreation(
           // recipe's own write of the project's variables is waited out first, isolation is
           // written wherever a read says anything but closed, and the mark goes only on two
           // reads, two seconds apart, that say closed.
-          if (step.isolated !== true) {
+          // A harden's isolation is trusted only where no container came after it in this press:
+          // a container brings the recipe's write, which may open the project again.
+          if (step.isolated !== true || envWritesBefore !== undefined) {
             await awaitRecipeEnvWrite({
               projectId: target,
               platform: input.platform,
               before: envWritesBefore,
+              expect: envWritesBefore !== undefined || step.recipeWrite === "expected",
               now,
               sleep,
               assertCurrent,
@@ -623,36 +631,48 @@ async function awaitServices(input: {
 const ENV_WRITE_UNDER_WAY = new Set(["PENDING", "RUNNING"]);
 
 /**
- * Waits out the container recipe's write of the project's variables: through once a write this
- * press's import made — one not there before it — has ended and none is under way; for a press that
- * imported no container here, once none is under way. Never past {@link RECIPE_ENV_WRITE_CAP_MS};
- * a read that fails counts as not through yet.
+ * Waits out the container recipe's write of the project's variables. Where one is expected — a
+ * container imported in this press, or just before it — through once a write not there before has
+ * ended and none is under way, or once none has appeared within {@link RECIPE_ENV_WRITE_APPEAR_MS};
+ * otherwise once none is under way. A write still under way, or reads that never answer, at
+ * {@link RECIPE_ENV_WRITE_CAP_MS} stop the step: it never goes through by timing out.
  */
 async function awaitRecipeEnvWrite(input: {
   readonly projectId: string;
   readonly platform: EnvironmentCreationPlatform;
-  /** The writes before the import; null where unread, undefined where nothing was imported. */
+  /** The writes before the import; null where unread, undefined where none was taken. */
   readonly before: ReadonlySet<string> | null | undefined;
+  /** A recipe write is to come. */
+  readonly expect: boolean;
   readonly now: () => number;
   readonly sleep: (ms: number) => Promise<void>;
   readonly assertCurrent: () => void;
 }): Promise<void> {
-  const deadline = input.now() + RECIPE_ENV_WRITE_CAP_MS;
+  const started = input.now();
+  const isNew = (id: string) => !(input.before instanceof Set) || !input.before.has(id);
   for (;;) {
     const writes = await input.platform.readProjectEnvWrites(input.projectId).then(
       (answer) => answer,
       () => null,
     );
     input.assertCurrent();
+    const elapsed = input.now() - started;
     if (writes !== null) {
       const underWay = writes.some((write) => ENV_WRITE_UNDER_WAY.has(write.status));
-      const before = input.before;
-      const recipeDone =
-        before === undefined ||
-        writes.some((write) => !before?.has(write.id) && !ENV_WRITE_UNDER_WAY.has(write.status));
-      if (!underWay && recipeDone) return;
+      const appeared = writes.some((write) => isNew(write.id));
+      const ended = writes.some(
+        (write) => isNew(write.id) && !ENV_WRITE_UNDER_WAY.has(write.status),
+      );
+      if (!underWay && (!input.expect || ended)) return;
+      if (!underWay && !appeared && elapsed >= RECIPE_ENV_WRITE_APPEAR_MS) return;
     }
-    if (input.now() >= deadline) return;
+    if (elapsed >= RECIPE_ENV_WRITE_CAP_MS) {
+      throw new Error(
+        writes === null
+          ? "The project's variable writes could not be read. Try again."
+          : "The project's variables are still being written. Try again.",
+      );
+    }
     await input.sleep(RECIPE_ENV_WRITE_POLL_MS);
     input.assertCurrent();
   }
