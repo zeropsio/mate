@@ -6944,6 +6944,7 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
   it.effect("a browser's stand-up the Mate already has is answered without running it", () =>
     Effect.gen(function* () {
       const dispatched: string[] = [];
+      const ended: string[] = [];
       yield* buildAppUnderTest({
         layers: {
           orchestrationEngine: {
@@ -6954,8 +6955,9 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
           },
           zeropsSetup: {
             browserStandUp: (command) =>
-              Effect.succeed(command.commandId.endsWith("-1") ? "dispatch" : "ignore"),
-            browserStandUpFailed: () => Effect.void,
+              Effect.succeed(command.commandId.endsWith("-1") ? "claimed" : "ignore"),
+            browserStandUpEnded: (command, through) =>
+              Effect.sync(() => ended.push(`${command.commandId}:${through}`)),
           },
         },
       });
@@ -6983,6 +6985,43 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
         ),
       );
       assert.deepEqual(dispatched, ["mate-standup-thread-main-1"]);
+      assert.deepEqual(ended, ["mate-standup-thread-main-1:true"]);
+    }).pipe(Effect.provide(NodeHttpServer.layerTest)),
+  );
+
+  it.effect("a browser's stand-up that dies on its way withdraws its claim", () =>
+    Effect.gen(function* () {
+      const ended: string[] = [];
+      yield* buildAppUnderTest({
+        layers: {
+          orchestrationEngine: { dispatch: () => Effect.die("the engine fell over") },
+          zeropsSetup: {
+            browserStandUp: () => Effect.succeed("claimed"),
+            browserStandUpEnded: (command, through) =>
+              Effect.sync(() => ended.push(`${command.commandId}:${through}`)),
+          },
+        },
+      });
+      yield* Effect.scoped(
+        withWsRpcClient(yield* getWsServerUrl("/ws"), (client) =>
+          client[ORCHESTRATION_WS_METHODS.dispatchCommand]({
+            type: "thread.turn.start",
+            commandId: CommandId.make("mate-standup-thread-main-3"),
+            threadId: ThreadId.make("thread-main"),
+            message: {
+              messageId: MessageId.make("mate-standup-thread-main-3"),
+              role: "user",
+              text: "Stand up development of the project.",
+              attachments: [],
+            },
+            modelSelection: defaultModelSelection,
+            runtimeMode: "full-access",
+            interactionMode: "default",
+            createdAt: "2026-01-01T00:00:00.000Z",
+          }).pipe(Effect.exit),
+        ),
+      );
+      assert.deepEqual(ended, ["mate-standup-thread-main-3:false"]);
     }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
 

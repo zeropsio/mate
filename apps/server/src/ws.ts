@@ -9,6 +9,7 @@ import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
+import * as Exit from "effect/Exit";
 import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 import * as Queue from "effect/Queue";
@@ -1302,14 +1303,22 @@ const makeWsRpcLayer = (
         const setup = zeropsSetup.value;
         return setup.browserStandUp(normalizedCommand).pipe(
           Effect.flatMap((verdict) =>
-            verdict === "dispatch"
-              ? admitted.pipe(Effect.tapError(() => setup.browserStandUpFailed(normalizedCommand)))
-              : projectionSnapshotQuery.getSnapshotSequence().pipe(
-                  Effect.map(({ snapshotSequence }) => ({ sequence: snapshotSequence })),
-                  Effect.mapError((cause) =>
-                    toDispatchCommandError(cause, "Failed to dispatch orchestration command"),
+            verdict === "claimed"
+              ? // However the send ends — refused, failed, interrupted, a defect — a claim
+                // that did not go through is withdrawn, so a later "Try again" is real.
+                admitted.pipe(
+                  Effect.onExit((exit) =>
+                    setup.browserStandUpEnded(normalizedCommand, Exit.isSuccess(exit)),
                   ),
-                ),
+                )
+              : verdict === "dispatch"
+                ? admitted
+                : projectionSnapshotQuery.getSnapshotSequence().pipe(
+                    Effect.map(({ snapshotSequence }) => ({ sequence: snapshotSequence })),
+                    Effect.mapError((cause) =>
+                      toDispatchCommandError(cause, "Failed to dispatch orchestration command"),
+                    ),
+                  ),
           ),
         );
       };

@@ -46,6 +46,7 @@ import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Ref from "effect/Ref";
+import * as Semaphore from "effect/Semaphore";
 import * as HttpClient from "effect/unstable/http/HttpClient";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
 
@@ -93,6 +94,9 @@ export const STAND_UP_NONE_AFTER = Duration.minutes(5);
  */
 export const SETUP_TAGS_TTL = Duration.seconds(15);
 
+/** How long a failed read of the tags stands before another is tried. */
+export const SETUP_TAGS_FAILED_TTL = Duration.seconds(30);
+
 /** The reads this needs from outside the process; a test hands in its own. */
 export class ZeropsSetupReads extends Context.Service<
   ZeropsSetupReads,
@@ -106,8 +110,12 @@ export class ZeropsSetupReads extends Context.Service<
   }
 >()("t3/zerops/ZeropsSetup/ZeropsSetupReads") {}
 
-/** What a browser's stand-up comes to (`browserStandUp`). */
-export type BrowserStandUp = "dispatch" | "ignore";
+/**
+ * What a browser's stand-up comes to (`browserStandUp`): `claimed`, the
+ * Mate's stand-up is this send's until it ends (`browserStandUpEnded`);
+ * `dispatch`, it goes through owning nothing; `ignore`, another runs or ran.
+ */
+export type BrowserStandUp = "claimed" | "dispatch" | "ignore";
 
 export class ZeropsSetup extends Context.Service<
   ZeropsSetup,
@@ -117,13 +125,20 @@ export class ZeropsSetup extends Context.Service<
     /** zcp's status file, as this build reads it. */
     readonly status: Effect.Effect<ZcpStatus | undefined>;
     /**
-     * A browser's stand-up: `dispatch` when there is no stand-up yet (it is
-     * recorded as this one) or when it is the very command already recorded
-     * (the engine takes a command id once); `ignore` while another runs or ran.
+     * A browser's stand-up: `claimed` when there is none yet (it is recorded
+     * as this one, on its way); `dispatch` when it is the very command already
+     * recorded (the engine takes a command id once) or none ran; `ignore`
+     * while another runs or ran.
      */
     readonly browserStandUp: (command: OrchestrationCommand) => Effect.Effect<BrowserStandUp>;
-    /** A browser's stand-up that did not go through: its record is withdrawn. */
-    readonly browserStandUpFailed: (command: OrchestrationCommand) => Effect.Effect<void>;
+    /**
+     * How a `claimed` send ended: through, its record stands; any other way —
+     * refused, failed, interrupted — its own claim, and only that, is withdrawn.
+     */
+    readonly browserStandUpEnded: (
+      command: OrchestrationCommand,
+      through: boolean,
+    ) => Effect.Effect<void>;
   }
 >()("t3/zerops/ZeropsSetup") {}
 
@@ -131,8 +146,9 @@ interface StandUpRow {
   readonly threadId: string;
   readonly commandId: string;
   readonly startedAt: string;
-  /** `server`, `browser`: it ran; `skipped`, `none`: settled without one. */
+  /** `RAN` and `TERMINAL` below name its sources. */
   readonly source: string;
+  readonly userId: string;
 }
 
 const AGENT_INSTANCE: Readonly<Record<ZeropsAgentId, string>> = {
@@ -201,6 +217,7 @@ export interface ZeropsSetupTimings {
   readonly slowPoll: Duration.Duration;
   readonly noneAfter: Duration.Duration;
   readonly tagsTtl: Duration.Duration;
+  readonly tagsFailedTtl: Duration.Duration;
 }
 
 const TIMINGS: ZeropsSetupTimings = {
@@ -209,6 +226,7 @@ const TIMINGS: ZeropsSetupTimings = {
   slowPoll: STAND_UP_SLOW_POLL,
   noneAfter: STAND_UP_NONE_AFTER,
   tagsTtl: SETUP_TAGS_TTL,
+  tagsFailedTtl: SETUP_TAGS_FAILED_TTL,
 };
 
 /** How long to wait before the next look, this far (ms) into the wait for the stand-up. */
@@ -219,7 +237,20 @@ export const standUpPollDelay = (
   elapsedMs < Duration.toMillis(timings.fastFor) ? timings.poll : timings.slowPoll;
 
 /** A record's source: a stand-up that ran (here or from a browser), or one settled as never due. */
-const RAN: ReadonlySet<string> = new Set(["server", "browser"]);
+/**
+ * A record's source. `server:claimed`, `browser:claimed`: a send on its way,
+ * the first resumed after a restart (its ids make it go out once), the second
+ * withdrawn unless it went through. `server`, `browser`: it went out. `none`
+ * (nobody asked), `skipped` (the conversation was under way): settled without one.
+ */
+const RAN: ReadonlySet<string> = new Set([
+  "server",
+  "browser",
+  "server:claimed",
+  "browser:claimed",
+]);
+/** The sources after which nothing is left to do. */
+const TERMINAL: ReadonlySet<string> = new Set(["server", "browser", "none", "skipped"]);
 
 export const makeZeropsSetup = (timings: ZeropsSetupTimings = TIMINGS) =>
   Effect.gen(function* () {
@@ -237,10 +268,13 @@ export const makeZeropsSetup = (timings: ZeropsSetupTimings = TIMINGS) =>
     const startedAt = yield* nowIso;
     const gitAt = yield* Ref.make<string | undefined>(undefined);
     const signinAt = yield* Ref.make<string | undefined>(undefined);
+    /** The last read of the tags, and the last that succeeded. */
     const tagsRead = yield* Ref.make<{
       readonly at: number;
-      readonly tags: ReadonlyArray<string>;
+      readonly failed: boolean;
+      readonly tags: ReadonlyArray<string> | undefined;
     } | null>(null);
+    const reading = yield* Semaphore.make(1);
 
     /* ---------------------------------------------------------- the record */
 
@@ -249,9 +283,10 @@ export const makeZeropsSetup = (timings: ZeropsSetupTimings = TIMINGS) =>
       readonly commandId: string;
       readonly startedAt: string;
       readonly source: string;
+      readonly userId: string;
     }>`
     SELECT thread_id AS "threadId", command_id AS "commandId", started_at AS "startedAt",
-      source
+      source, user_id AS "userId"
     FROM zerops_stand_ups WHERE project_id = ${projectId}
   `.pipe(
       Effect.map((rows): StandUpRow | undefined => rows[0]),
@@ -259,7 +294,7 @@ export const makeZeropsSetup = (timings: ZeropsSetupTimings = TIMINGS) =>
     );
 
     /** Records a stand-up unless one is recorded; whether this call recorded it. */
-    const claim = (row: StandUpRow & { readonly userId: string }) =>
+    const claim = (row: StandUpRow) =>
       sql`
       INSERT INTO zerops_stand_ups
         (project_id, thread_id, command_id, user_id, source, started_at)
@@ -271,24 +306,46 @@ export const makeZeropsSetup = (timings: ZeropsSetupTimings = TIMINGS) =>
         Effect.catch(() => Effect.succeed(false)),
       );
 
-    const withdraw = (commandId: string) =>
-      sql`DELETE FROM zerops_stand_ups WHERE project_id = ${projectId} AND command_id = ${commandId}`.pipe(
+    /** Withdraws a claim on its way, `source` naming whose: never any other record. */
+    const withdraw = (commandId: string, source: "server:claimed" | "browser:claimed") =>
+      sql`DELETE FROM zerops_stand_ups
+        WHERE project_id = ${projectId} AND command_id = ${commandId} AND source = ${source}`.pipe(
+        Effect.asVoid,
+        Effect.catch(() => Effect.void),
+      );
+
+    /** A claim on its way went out: its record stands for good. */
+    const confirm = (commandId: string, from: "server:claimed" | "browser:claimed") =>
+      sql`UPDATE zerops_stand_ups SET source = ${from === "server:claimed" ? "server" : "browser"}
+        WHERE project_id = ${projectId} AND command_id = ${commandId} AND source = ${from}`.pipe(
         Effect.asVoid,
         Effect.catch(() => Effect.void),
       );
 
     /* ---------------------------------------------------------- the facts */
 
-    /** The tags, read at most once per {@link SETUP_TAGS_TTL}; the last read when one fails. */
-    const tags = Effect.gen(function* () {
-      const now = yield* Clock.currentTimeMillis;
-      const held = yield* Ref.get(tagsRead);
-      if (held !== null && now - held.at < Duration.toMillis(timings.tagsTtl)) return held.tags;
-      const read = yield* reads.tags;
-      if (read === undefined) return held?.tags;
-      yield* Ref.set(tagsRead, { at: now, tags: read });
-      return read;
-    });
+    /**
+     * The tags, one read at a time, at most once per {@link SETUP_TAGS_TTL} —
+     * once per {@link SETUP_TAGS_FAILED_TTL} after a failure, which answers
+     * with the last good read. However often `/setup.json` is asked, the
+     * Mate's key reads the platform at most this often.
+     */
+    const tags = reading.withPermits(1)(
+      Effect.gen(function* () {
+        const now = yield* Clock.currentTimeMillis;
+        const held = yield* Ref.get(tagsRead);
+        const ttl = held?.failed === true ? timings.tagsFailedTtl : timings.tagsTtl;
+        if (held !== null && now - held.at < Duration.toMillis(ttl)) return held.tags;
+        const read = yield* reads.tags;
+        yield* Ref.set(
+          tagsRead,
+          read === undefined
+            ? { at: now, failed: true, tags: held?.tags }
+            : { at: now, failed: false, tags: read },
+        );
+        return read ?? held?.tags;
+      }),
+    );
 
     const latch = (ref: Ref.Ref<string | undefined>, reached: boolean) =>
       Effect.gen(function* () {
@@ -314,10 +371,12 @@ export const makeZeropsSetup = (timings: ZeropsSetupTimings = TIMINGS) =>
     const document = Effect.gen(function* () {
       const variables = yield* reads.serviceVariables;
       const git = yield* latch(gitAt, variables !== undefined && hasGitVariables(variables));
+      const marked = variables !== undefined && hasSetupMarker(variables);
       const record = yield* recordOf;
       const ran = record !== undefined && RAN.has(record.source);
-      // A stood-up Mate asks the platform nothing more: its sign-in is behind it.
-      const tagList = ran ? [] : yield* tags;
+      // Only a marked Mate whose stand-up is still pending reads the tags: a Mate made
+      // before has its browser's stand-up, and a settled one has its record.
+      const tagList = marked && record === undefined ? yield* tags : undefined;
       const requestedBy = tagList === undefined ? undefined : standUpRequestedBy(tagList);
       const signedIn =
         ran ||
@@ -325,6 +384,8 @@ export const makeZeropsSetup = (timings: ZeropsSetupTimings = TIMINGS) =>
           (requestedBy === undefined
             ? Object.keys(parseSignerTags(tagList)).length > 0
             : standUpSigners(tagList, requestedBy).length > 0));
+      // The sign-in is known from a stand-up that ran, or from the tags read for one pending.
+      const signinKnown = ran || (marked && record === undefined);
       return setupDocument({
         now: yield* nowIso,
         startedAt,
@@ -335,6 +396,10 @@ export const makeZeropsSetup = (timings: ZeropsSetupTimings = TIMINGS) =>
         signinAt: yield* latch(signinAt, signedIn),
         record: record === undefined ? undefined : { startedAt: record.startedAt, ran },
         standUpTurn: ran ? yield* turnOf(record.threadId) : undefined,
+        unknown: [
+          ...(signinKnown ? [] : (["signin"] as const)),
+          ...(marked || record !== undefined ? [] : (["standup"] as const)),
+        ],
       });
     });
 
@@ -348,13 +413,21 @@ export const makeZeropsSetup = (timings: ZeropsSetupTimings = TIMINGS) =>
         return true;
       });
 
-    /** One look: starts the stand-up when it is due; whether there is nothing left to do. */
+    /**
+     * One look: starts the stand-up when it is due, or resumes one this
+     * server claimed and died before sending (its ids make the engine take it
+     * once); whether there is nothing left to do — only a terminal record.
+     */
     const tick = (upMs: number) =>
       Effect.gen(function* () {
-        if ((yield* recordOf) !== undefined) return true;
+        const held = yield* recordOf;
+        if (held !== undefined && TERMINAL.has(held.source)) return true;
+        // A browser's send is on its way: it ends in a record, or leaves the stand-up to us.
+        if (held?.source === "browser:claimed") return false;
+        const resuming = held?.source === "server:claimed" ? held : undefined;
         const tagList = yield* tags;
         if (tagList === undefined) return false;
-        const requestedBy = standUpRequestedBy(tagList);
+        const requestedBy = resuming?.userId ?? standUpRequestedBy(tagList);
         if (requestedBy === undefined) {
           return upMs >= Duration.toMillis(timings.noneAfter) ? yield* settle("none") : false;
         }
@@ -364,21 +437,31 @@ export const makeZeropsSetup = (timings: ZeropsSetupTimings = TIMINGS) =>
             .pipe(Effect.catch(() => Effect.succeed(Option.none()))),
         );
         if (project === undefined) return false;
-        const snapshot = yield* projection.getShellSnapshot();
-        const main = mainConversation(
-          snapshot.threads.filter((thread) => thread.projectId === project.id),
+        const threads = (yield* projection.getShellSnapshot()).threads.filter(
+          (thread) => thread.projectId === project.id,
         );
+        const main =
+          resuming === undefined
+            ? mainConversation(threads)
+            : threads.find((thread) => thread.id === resuming.threadId);
+        // Resumed, and its stand-up is already in the conversation: it went out before.
+        if (resuming !== undefined && main?.latestUserMessageAt != null) {
+          yield* confirm(resuming.commandId, "server:claimed");
+          return true;
+        }
         const decision = standUpDecision({
           recorded: false,
           requestedBy,
-          signers: requestedBy === undefined ? [] : standUpSigners(tagList, requestedBy),
-          spoken: main?.latestUserMessageAt != null,
+          signers: standUpSigners(tagList, requestedBy),
+          spoken: resuming === undefined && main?.latestUserMessageAt != null,
         });
         if (decision.kind === "spoken") return yield* settle("skipped");
         if (decision.kind !== "start") return false;
 
         const now = yield* nowIso;
-        const threadId = ThreadId.make(main?.id ?? (yield* crypto.randomUUIDv4));
+        const threadId = ThreadId.make(
+          resuming?.threadId ?? main?.id ?? (yield* crypto.randomUUIDv4),
+        );
         const modelSelection = standUpModelSelection(
           decision.agentId,
           main,
@@ -414,19 +497,23 @@ export const makeZeropsSetup = (timings: ZeropsSetupTimings = TIMINGS) =>
           ),
         );
         if (!admitted) return false;
-        const claimed = yield* claim({
-          threadId,
-          commandId: ids.commandId,
-          userId: decision.userId,
-          source: "server",
-          startedAt: now,
-        });
-        if (!claimed) return true;
+        if (resuming === undefined) {
+          const claimed = yield* claim({
+            threadId,
+            commandId: ids.commandId,
+            userId: decision.userId,
+            source: "server:claimed",
+            startedAt: now,
+          });
+          // A browser claimed it meanwhile: look again, until its send ends.
+          if (!claimed) return false;
+        }
         const sent = yield* Effect.gen(function* () {
           if (main === undefined) {
             yield* orchestration.dispatch({
               type: "thread.create",
-              commandId: CommandId.make(yield* crypto.randomUUIDv4),
+              // Its id too, so a resumed send never opens a second conversation.
+              commandId: CommandId.make(`${ids.commandId}-thread`),
               threadId,
               projectId: project.id,
               title: "New thread",
@@ -441,16 +528,21 @@ export const makeZeropsSetup = (timings: ZeropsSetupTimings = TIMINGS) =>
           yield* orchestration.dispatch(turn);
         }).pipe(
           Effect.as(true),
-          Effect.catchCause((cause) =>
-            Effect.logWarning("zerops setup: the stand-up did not go out", { cause }).pipe(
-              Effect.andThen(withdraw(ids.commandId)),
+          Effect.catch((error) =>
+            Effect.logWarning("zerops setup: the stand-up did not go out", { error }).pipe(
+              Effect.andThen(withdraw(ids.commandId, "server:claimed")),
               Effect.as(false),
             ),
           ),
         );
-        if (sent) yield* Effect.logInfo("zerops setup: the stand-up went out", { threadId });
-        return sent;
-      }).pipe(Effect.catchCause(() => Effect.succeed(false)));
+        if (!sent) return false;
+        yield* confirm(ids.commandId, "server:claimed");
+        yield* Effect.logInfo("zerops setup: the stand-up went out", { threadId });
+        return true;
+      }).pipe(
+        Effect.catch(() => Effect.succeed(false)),
+        Effect.catchDefect(() => Effect.succeed(false)),
+      );
 
     /** Until the stand-up is settled: fast while the Mate is new, slower after. */
     const wait = Effect.gen(function* () {
@@ -481,21 +573,20 @@ export const makeZeropsSetup = (timings: ZeropsSetupTimings = TIMINGS) =>
           threadId: command.threadId,
           commandId: command.commandId,
           userId: "",
-          source: "browser",
+          source: "browser:claimed",
           startedAt: yield* nowIso,
         });
-        return claimed ? ("dispatch" as const) : ("ignore" as const);
+        return claimed ? ("claimed" as const) : ("ignore" as const);
       });
 
     return ZeropsSetup.of({
       document,
       status,
       browserStandUp,
-      browserStandUpFailed: (command) =>
-        Effect.gen(function* () {
-          const held = yield* recordOf;
-          if (held?.commandId === command.commandId) yield* withdraw(command.commandId);
-        }),
+      browserStandUpEnded: (command, through) =>
+        through
+          ? confirm(command.commandId, "browser:claimed")
+          : withdraw(command.commandId, "browser:claimed"),
     });
   });
 

@@ -263,6 +263,8 @@ export interface SetupFacts {
    * else settled as never due (nobody asked, or the conversation was under way).
    */
   readonly record: { readonly startedAt: string; readonly ran: boolean } | undefined;
+  /** Steps this server cannot say: left out of the document rather than guessed. */
+  readonly unknown?: ReadonlyArray<"signin" | "standup">;
   /** How the stand-up's turn ended, for a zcp that writes no status file. */
   readonly standUpTurn: "running" | "done" | "failed" | undefined;
 }
@@ -318,15 +320,17 @@ const standUpStep = (facts: SetupFacts): SetupStep => {
 export const setupDocument = (facts: SetupFacts): SetupDocument => ({
   version: 1,
   at: facts.now,
-  steps: [
-    { id: "container", state: "done", at: facts.startedAt },
-    facts.gitAt === undefined
-      ? { id: "git", state: "waiting", at: "" }
-      : { id: "git", state: "done", at: facts.gitAt },
-    runtimesStep(facts.status),
-    facts.signinAt === undefined
-      ? { id: "signin", state: "waiting", at: "" }
-      : { id: "signin", state: "done", at: facts.signinAt },
-    standUpStep(facts),
-  ],
+  steps: (
+    [
+      { id: "container", state: "done", at: facts.startedAt },
+      facts.gitAt === undefined
+        ? { id: "git", state: "waiting", at: "" }
+        : { id: "git", state: "done", at: facts.gitAt },
+      runtimesStep(facts.status),
+      facts.signinAt === undefined
+        ? { id: "signin", state: "waiting", at: "" }
+        : { id: "signin", state: "done", at: facts.signinAt },
+      standUpStep(facts),
+    ] satisfies ReadonlyArray<SetupStep>
+  ).filter((step) => !(facts.unknown ?? []).some((id) => id === step.id)),
 });
