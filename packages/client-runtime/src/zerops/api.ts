@@ -25,13 +25,15 @@ import { planProjectIsolation, type ProjectEnvEntry } from "./projectIsolation.t
 import {
   pickProjectCreation,
   projectProcessSearchBody,
+  zcpCreationUnderWay,
   type ZeropsProjectCreation,
 } from "./projectCreation.ts";
 import {
   buildGroupGrants,
-  findMateIntegrationToken,
+  findHeldMateKey,
   makeTokenWriteLock,
   MATE_SELF_PROJECT_ROLE,
+  newestMateKey,
   planGroupReach,
   type TokenWriteHold,
 } from "./groupReach.ts";
@@ -2031,8 +2033,25 @@ export class ZeropsApiClient {
       groupProjectIds: input.groupProjectIds ?? [input.projectId],
     });
     const tokens = await this.listIntegrationTokens(input.clientId, signal);
-    const earlier = findMateIntegrationToken(tokens, input.projectId);
+    const earlier = newestMateKey(tokens, input.projectId);
     this.#assertGeneration(generation);
+    if (earlier !== undefined) {
+      // A key is regenerated only where no container holds it: a zcp the platform is still
+      // creating does, though the listing above may not show it yet.
+      const processes = await this.#request<{ readonly items?: ReadonlyArray<unknown> }>(
+        "/process/search",
+        {
+          method: "POST",
+          signal: signal ?? null,
+          body: JSON.stringify(projectProcessSearchBody(input)),
+        },
+        { operationKind: "read" },
+      );
+      if (zcpCreationUnderWay(Array.isArray(processes.items) ? processes.items : [])) {
+        throw new Error("Its container is still being created. Try again in a minute.");
+      }
+      this.#assertGeneration(generation);
+    }
     let apiKey: string;
     if (earlier === undefined) {
       apiKey = (
@@ -2529,8 +2548,10 @@ export class ZeropsApiClient {
     readonly restarted: boolean;
   }> {
     const generation = this.#generation;
+    // The key its container holds: where two are its, the one made before the container.
+    const container = (await this.listProjectServices(projectId, signal)).find(isZcpService);
     const tokens = await this.listIntegrationTokens(clientId, signal);
-    const token = findMateIntegrationToken(tokens, projectId);
+    const token = findHeldMateKey(tokens, projectId, container?.created);
 
     let tokenLowered = false;
     let delegationsDropped = 0;
@@ -2542,9 +2563,10 @@ export class ZeropsApiClient {
       // kept as it is (`planAccountGroupReach` keeps it). A key the press minted is already this
       // and is left alone.
       tokenLowered = await this.#holdToken(token.id, async () => {
-        const current = findMateIntegrationToken(
+        const current = findHeldMateKey(
           await this.listIntegrationTokens(clientId, signal),
           projectId,
+          container?.created,
         );
         if (current === undefined) return false;
         this.#assertGeneration(generation);

@@ -282,6 +282,7 @@ describe("finishMateSetupVerb", () => {
     containerMissing: false,
     pressStopped: false,
     closedOffMissing: false,
+    pastGrace: true,
   };
   it.each([
     {
@@ -311,6 +312,26 @@ describe("finishMateSetupVerb", () => {
     {
       name: "an owner, on a Mate whose press stopped before its close-off was marked",
       input: { ...HALF_MADE, closedOffMissing: true },
+      viewerRole: "OWNER",
+      expected: "Finish setup",
+    },
+    // A press may still be running in another browser for two minutes: its Mate reads
+    // unregistered, or not closed off, for those seconds, and finishing it then would race it.
+    {
+      name: "nobody, on a Mate made a moment ago that nobody has registered yet",
+      input: { ...HALF_MADE, registration: "awaiting-owner", pastGrace: false },
+      viewerRole: "OWNER",
+      expected: undefined,
+    },
+    {
+      name: "nobody, on a Mate made a moment ago whose close-off is not marked yet",
+      input: { ...HALF_MADE, closedOffMissing: true, pastGrace: false },
+      viewerRole: "OWNER",
+      expected: undefined,
+    },
+    {
+      name: "an owner, at once, on a Mate whose press in this tab stopped",
+      input: { ...HALF_MADE, pressStopped: true, pastGrace: false },
       viewerRole: "OWNER",
       expected: "Finish setup",
     },

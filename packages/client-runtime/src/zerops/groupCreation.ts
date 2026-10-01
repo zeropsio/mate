@@ -309,14 +309,21 @@ export function finishMateSetupVerb(input: {
    * `mate:closed-off`: a press interrupted before its close-off, whose runtimes zcp holds back.
    */
   readonly closedOffMissing: boolean;
+  /**
+   * Its project is older than the grace a press in another browser has (`MATE_CONTAINER_GRACE_MS`):
+   * before it, an unregistered or unmarked Mate may be a press still running, and finishing it
+   * would race that press. A press this tab made and saw stop needs no grace.
+   */
+  readonly pastGrace: boolean;
   /** The viewer's org role, as the platform spells it. */
   readonly viewerRole?: string | undefined;
 }): string | undefined {
   const halfMade =
-    input.registration === "awaiting-owner" ||
-    input.containerMissing ||
     input.pressStopped ||
-    input.closedOffMissing;
+    (input.pastGrace &&
+      (input.registration === "awaiting-owner" ||
+        input.containerMissing ||
+        input.closedOffMissing));
   if (!halfMade) return undefined;
   if (input.viewerRole !== "OWNER" && input.viewerRole !== "ADMIN") return undefined;
   return FINISH_MATE_SETUP_VERB;

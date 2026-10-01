@@ -130,13 +130,56 @@ export function findMateIntegrationToken(
   tokens: ReadonlyArray<ZeropsIntegrationToken>,
   projectId: string,
 ): ZeropsIntegrationToken | undefined {
-  return tokens.find(
-    (token) =>
-      token.name.startsWith(ZCP_TOKEN_NAME_PREFIX) &&
-      (token.projects ?? []).some(
-        (grant) => grant.projectId === projectId && MATE_SELF_GRANT_ROLES.has(grant.roleCode),
-      ),
+  return tokens.find((token) => isMateKeyOf(token, projectId));
+}
+
+function isMateKeyOf(token: ZeropsIntegrationToken, projectId: string): boolean {
+  return (
+    token.name.startsWith(ZCP_TOKEN_NAME_PREFIX) &&
+    (token.projects ?? []).some(
+      (grant) => grant.projectId === projectId && MATE_SELF_GRANT_ROLES.has(grant.roleCode),
+    )
   );
+}
+
+const createdMs = (token: ZeropsIntegrationToken): number =>
+  token.created === undefined ? Number.NaN : Date.parse(token.created);
+
+/** Newest first; a key with no readable age last. */
+function newestFirst(keys: ReadonlyArray<ZeropsIntegrationToken>): Array<ZeropsIntegrationToken> {
+  return [...keys].sort((left, right) => {
+    const l = createdMs(left);
+    const r = createdMs(right);
+    if (Number.isNaN(l)) return Number.isNaN(r) ? 0 : 1;
+    if (Number.isNaN(r)) return -1;
+    return r - l;
+  });
+}
+
+/**
+ * The key a Mate's container holds, out of every key that is its (`findMateIntegrationToken`):
+ * the one key, or — where a raced press or an older platform key left two — the newest made before
+ * its container. A key made after it is an orphan, and keys nothing tells apart are never guessed
+ * at: undefined.
+ */
+export function findHeldMateKey(
+  tokens: ReadonlyArray<ZeropsIntegrationToken>,
+  projectId: string,
+  containerCreated: string | undefined,
+): ZeropsIntegrationToken | undefined {
+  const keys = tokens.filter((token) => isMateKeyOf(token, projectId));
+  if (keys.length <= 1) return keys[0];
+  const container = containerCreated === undefined ? Number.NaN : Date.parse(containerCreated);
+  if (Number.isNaN(container)) return undefined;
+  return newestFirst(keys.filter((key) => createdMs(key) <= container))[0];
+}
+
+/** The key a press reuses where no container holds one yet: the newest. */
+export function newestMateKey(
+  tokens: ReadonlyArray<ZeropsIntegrationToken>,
+  projectId: string,
+): ZeropsIntegrationToken | undefined {
+  return newestFirst(tokens.filter((token) => isMateKeyOf(token, projectId)))[0];
 }
 
 /**

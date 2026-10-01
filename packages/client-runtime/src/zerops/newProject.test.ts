@@ -324,6 +324,7 @@ interface Recorded {
 function platformClient(state: {
   readonly services?: ReadonlyArray<Record<string, unknown>>;
   readonly tokens?: ReadonlyArray<Record<string, unknown>>;
+  readonly processes?: ReadonlyArray<Record<string, unknown>>;
 }) {
   const requests: Array<Recorded> = [];
   const client = new ZeropsApiClient({
@@ -336,17 +337,19 @@ function platformClient(state: {
       });
       const payload = input.includes("/first-class-recipe/")
         ? {}
-        : input.includes("/service-stack")
-          ? { list: state.services ?? [] }
-          : input.includes("/integration-token/list")
-            ? { list: state.tokens ?? [] }
-            : input.endsWith("/regenerate")
-              ? { token: REGENERATED_KEY }
-              : input.endsWith("/integration-token") && method === "POST"
-                ? { id: "token-new", token: MINTED_KEY }
-                : input.includes("/integration-token/")
-                  ? {}
-                  : { id: "project-9", name: "new", status: "CREATING", clientId: "org-1" };
+        : input.endsWith("/process/search")
+          ? { items: state.processes ?? [] }
+          : input.includes("/service-stack")
+            ? { list: state.services ?? [] }
+            : input.includes("/integration-token/list")
+              ? { list: state.tokens ?? [] }
+              : input.endsWith("/regenerate")
+                ? { token: REGENERATED_KEY }
+                : input.endsWith("/integration-token") && method === "POST"
+                  ? { id: "token-new", token: MINTED_KEY }
+                  : input.includes("/integration-token/")
+                    ? {}
+                    : { id: "project-9", name: "new", status: "CREATING", clientId: "org-1" };
       return Promise.resolve(
         new Response(JSON.stringify(payload), {
           status: 200,
@@ -464,6 +467,51 @@ describe("ZeropsApiClient.importDevelopmentContainer: the Mate's key comes with 
       "PUT /project/project-9/first-class-recipe/development-container",
     ]);
     expect(importOf(requests).serviceImportYaml).toContain(`ZCP_API_KEY: "${REGENERATED_KEY}"`);
+  });
+
+  // A zcp the platform is still creating holds the key already: regenerating it would cut the
+  // container off (pass 28 review).
+  it("regenerates no key while a container is being created", async () => {
+    const { client, requests } = platformClient({
+      tokens: [
+        {
+          id: "token-old",
+          name: "zcp-Acme Docs - Ada",
+          roleCode: "NO_ACCESS",
+          projects: [{ projectId: "project-9", roleCode: "BASIC_USER" }],
+        },
+      ],
+      processes: [
+        {
+          id: "pr-1",
+          actionName: "stack.create",
+          status: "RUNNING",
+          serviceStacks: [{ name: "zcp" }],
+        },
+      ],
+    });
+
+    await expect(client.importDevelopmentContainer(INPUT)).rejects.toThrow(/being created/u);
+    expect(writesOf(requests)).toEqual([]);
+  });
+
+  it("reuses the newest of two keys a stopped press left, never an older one", async () => {
+    const key = (id: string, created: string) => ({
+      id,
+      name: "zcp-Acme Docs - Ada",
+      roleCode: "NO_ACCESS",
+      created,
+      projects: [{ projectId: "project-9", roleCode: "BASIC_USER" }],
+    });
+    const { client, requests } = platformClient({
+      tokens: [key("token-old", "2026-10-01T09:00:00Z"), key("token-new", "2026-10-01T10:00:00Z")],
+    });
+
+    await client.importDevelopmentContainer(INPUT);
+
+    expect(writesOf(requests)).toContain(
+      "PUT /client/org-1/integration-token/token-new/regenerate",
+    );
   });
 
   it("numbers the container around the services the project already has", async () => {

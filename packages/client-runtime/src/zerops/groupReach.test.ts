@@ -2,7 +2,9 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   buildGroupGrants,
+  findHeldMateKey,
   findMateIntegrationToken,
+  newestMateKey,
   planAccountGroupReach,
   makeTokenWriteLock,
   planGroupReach,
@@ -424,5 +426,61 @@ describe("makeTokenWriteLock", () => {
     const next = hold("tok-a", async () => "next");
     await expect(stuck).rejects.toThrow(/tok-a/);
     await expect(next).resolves.toBe("next");
+  });
+});
+
+// Two keys on one Mate — a press that raced another, a platform key beside the press's own: the
+// container holds the one made before it, newest first; a key made after it is an orphan, and a
+// key nothing can tell apart is never guessed at (pass 28 review).
+describe("findHeldMateKey — the key a Mate's container holds", () => {
+  const key = (id: string, created: string | undefined) => ({
+    id,
+    name: "zcp-acme",
+    roleCode: "NO_ACCESS",
+    ...(created === undefined ? {} : { created }),
+    projects: [{ projectId: "p-1", roleCode: "BASIC_USER" as const }],
+  });
+  const OTHER = { ...key("k-other", "2026-10-01T10:00:00Z"), name: "deploy-acme" };
+  it.each([
+    { case: "no key", tokens: [OTHER], container: "2026-10-01T10:05:00Z", want: undefined },
+    {
+      case: "the one key",
+      tokens: [key("k-1", undefined)],
+      container: undefined,
+      want: "k-1",
+    },
+    {
+      case: "the newest made before its container, not the orphan made after",
+      tokens: [
+        key("k-old", "2026-10-01T09:00:00Z"),
+        key("k-held", "2026-10-01T10:04:59Z"),
+        key("k-orphan", "2026-10-01T10:06:00Z"),
+      ],
+      container: "2026-10-01T10:05:00Z",
+      want: "k-held",
+    },
+    {
+      case: "nothing, where its container's age is unknown",
+      tokens: [key("k-a", "2026-10-01T09:00:00Z"), key("k-b", "2026-10-01T10:00:00Z")],
+      container: undefined,
+      want: undefined,
+    },
+    {
+      case: "nothing, where every key came after its container",
+      tokens: [key("k-a", "2026-10-01T11:00:00Z"), key("k-b", "2026-10-01T12:00:00Z")],
+      container: "2026-10-01T10:05:00Z",
+      want: undefined,
+    },
+  ])("$case", ({ tokens, container, want }) => {
+    expect(findHeldMateKey(tokens, "p-1", container)?.id).toBe(want);
+  });
+
+  it("reuses the newest key where no container holds one", () => {
+    expect(
+      newestMateKey(
+        [key("k-old", "2026-10-01T09:00:00Z"), key("k-new", "2026-10-01T10:00:00Z")],
+        "p-1",
+      )?.id,
+    ).toBe("k-new");
   });
 });
