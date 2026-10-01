@@ -592,6 +592,7 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
       client,
       giteaProjectId,
       groupTree.groups,
+      listedTokens,
       organizationRef,
       projectRef,
       refresh,
