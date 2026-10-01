@@ -27,6 +27,8 @@ import {
 } from "../data/platformProtocol.ts";
 import {
   ZeropsOrganizationId,
+  ZeropsProjectId,
+  ZeropsServiceId,
   type EntityQueryDescriptor,
   type ProjectRef,
   type ZeropsDataAdapter,
@@ -34,6 +36,7 @@ import {
 import type { DescriptorFacts } from "../environments/environmentMachine.ts";
 import { EXCHANGE_CONCURRENCY } from "../environments/exchangeDriver.ts";
 import { candidateListingsAtom } from "../environments/listings.ts";
+import { readServiceMateFlag } from "../environments/mateFlag.ts";
 import { rowTarget } from "../environments/mateLink.ts";
 import type { ProbeReading } from "../environments/probeStore.ts";
 import { REGISTRATION_RECORDS_KEY, type RegistrationRecord } from "../environments/records.ts";
@@ -565,12 +568,21 @@ describe("the account runtime", () => {
           yield* settle;
 
           // The round listed the organization; its project is still being read.
-          expect(yield* demanded()).toEqual(["organization-inventory"]);
+          expect(yield* demanded()).toEqual([
+            "organization-inventory",
+            "organization-versions",
+            "organization-variables",
+          ]);
 
           yield* Deferred.succeed(projectAnswered, undefined);
           yield* clock.advance(SECOND);
           yield* settle;
-          expect(yield* demanded()).toEqual(["organization-inventory", "project-inventory"]);
+          expect(yield* demanded()).toEqual([
+            "organization-inventory",
+            "organization-versions",
+            "organization-variables",
+            "project-inventory",
+          ]);
 
           yield* built.close("logout");
           expect(yield* demanded()).toEqual([]);
@@ -752,8 +764,9 @@ describe("the account runtime", () => {
         yield* clock.advance(SECOND);
         yield* settle;
         yield* settle;
-        // The account holds both organizations' inventories and their projects'.
-        expect(yield* statuses()).toEqual(["observing", "observing", "observing", "observing"]);
+        // The account holds both organizations' inventories, versions and variables, and their
+        // projects'.
+        expect(yield* statuses()).toEqual(Array.from({ length: 8 }, () => "observing"));
         expect(opened.toSorted()).toEqual(["org-1", "org-2"]);
         const roundsBefore = rounds().length;
 
@@ -767,10 +780,107 @@ describe("the account runtime", () => {
         yield* settle;
 
         expect(opened.slice(2)).toEqual(["org-1"]);
-        expect(yield* statuses()).toEqual(["observing", "observing", "observing", "observing"]);
+        expect(yield* statuses()).toEqual(Array.from({ length: 8 }, () => "observing"));
         expect(rounds()).toHaveLength(roundsBefore);
       }),
     ),
+  );
+
+  it.effect(
+    "reads a Mate flag from the account's streamed variables however often it is asked, registering nothing",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const clock = yield* makeDeadlineClock({ startWallMs: START_WALL_MS });
+          const registry = AtomRegistry.make();
+          const page = yield* makePage(clock);
+          const rest = makeFakeZeropsRest();
+          rest.addUser({
+            user: {
+              id: account.accountId,
+              email: "person@example.test",
+              clientUserList: [
+                { id: "cu-1", clientId: organization.organizationId, roleCode: "OWNER" },
+              ],
+            },
+            password: "secret",
+          });
+          rest.addProject({
+            id: "project-1",
+            clientId: organization.organizationId,
+            name: "project-1",
+            status: "ACTIVE",
+          });
+          const client = new ZeropsApiClient({ fetch: rest.fetch });
+          client.restoreSession(rest.issueSession(account.accountId));
+          const datastream = makeFakeDatastream(rest, {
+            variables: () => [
+              {
+                id: "variable-1",
+                serviceStackId: "service-1",
+                projectId: "project-1",
+                key: "ZCP_MATE_ENABLED",
+                content: "1",
+              },
+            ],
+          });
+          const built = yield* Effect.gen(function* () {
+            const data = yield* makeZeropsDataRuntime({
+              scope: scope(),
+              adapter: datastream.adapter,
+              atomRegistry: registry,
+              makeOpaqueId: (() => {
+                let next = 0;
+                return () => `opaque-${++next}`;
+              })(),
+            });
+            return yield* makeAccountRuntime({
+              data,
+              verifier: makeRestAccessVerifier({
+                client,
+                account,
+                concurrency: policy.roundProjectConcurrency,
+                onUser: () => undefined,
+              }),
+              signals: page.signals,
+              atomRegistry: registry,
+              environments: inertEnvironments(clock),
+            });
+          }).pipe(Effect.provideService(Clock.Clock, clock));
+          yield* Effect.addFinalizer(() => built.close("application-close"));
+          yield* clock.advance(SECOND);
+          yield* settle;
+          yield* settle;
+          const registered = datastream.registrations().length;
+          const service = {
+            kind: "service" as const,
+            project: {
+              kind: "project" as const,
+              organization,
+              projectId: ZeropsProjectId.make("project-1"),
+            },
+            serviceId: ZeropsServiceId.make("service-1"),
+          };
+
+          for (let asked = 0; asked < 20; asked++) {
+            const flag = yield* Effect.promise(() =>
+              readServiceMateFlag(built.data, registry, service),
+            );
+            expect(flag).toBe(true);
+            yield* settle;
+          }
+
+          expect(datastream.registrations()).toHaveLength(registered);
+          expect(
+            datastream
+              .registrations()
+              .filter(
+                ({ descriptor }) =>
+                  descriptor.kind === "table-list" || descriptor.kind === "table-updates",
+              ),
+          ).toHaveLength(4);
+        }),
+      ),
   );
 
   it.effect(
@@ -849,7 +959,8 @@ describe("the account runtime", () => {
           yield* settle;
           yield* settle;
           expect(verifiedProjects()).toEqual(["project-1"]);
-          expect(yield* observing()).toBe(2);
+          // The organization's inventory, versions and variables, and its one project's.
+          expect(yield* observing()).toBe(4);
           const roundsBefore = rounds().length;
 
           // Someone else adds a Mate: its project appears in the organization's list.
@@ -868,7 +979,7 @@ describe("the account runtime", () => {
 
           expect(verifiedProjects()).toEqual(["project-1", "project-2"]);
           // Its services are read: the organization's inventory and both projects'.
-          expect(yield* observing()).toBe(3);
+          expect(yield* observing()).toBe(5);
           expect(rounds()).toHaveLength(roundsBefore);
           // Both projects' rows are read the same way: the new one is no less known than the old.
           const listed = listing();

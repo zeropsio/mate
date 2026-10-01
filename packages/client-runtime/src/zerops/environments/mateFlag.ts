@@ -1,9 +1,10 @@
 /**
  * `ZCP_MATE_ENABLED` for a Mate's service: the Mate flag port of the container store and the
- * birth worker, on web and mobile alike. The organization's variables, streamed, answer it; a flag
- * they say is off is confirmed by the service's own lag-free read once, since a service the stream
- * has not caught up with yet reads as off too, and off is a fact a row offers Enable on (H9). A
- * read that did not succeed is `"unknown"`, never `false`.
+ * birth worker, on web and mobile alike. The organization's variables, streamed, answer "on"; any
+ * other answer — off, or unknown because the stream failed or did not say in time — is settled by
+ * the service's own lag-free read once, since a service the stream has not caught up with yet
+ * reads as off too, and off is a fact a row offers Enable on (H9). A read that did not succeed is
+ * `"unknown"`, never `false`.
  */
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
@@ -21,10 +22,8 @@ export async function readServiceMateFlag(
   service: ServiceRef,
   services: Context.Context<never> = Context.empty(),
 ): Promise<MateFlag> {
-  const stated = await readMateFlagFromStore(data, atoms, service, services).catch(
-    (): MateFlag => "unknown",
-  );
-  if (stated !== false) return stated;
+  const stated = await readMateFlagFromStore(data, atoms, service).catch((): MateFlag => "unknown");
+  if (stated === true) return true;
   return Effect.runPromiseWith(services)(
     Effect.scoped(
       data.resources

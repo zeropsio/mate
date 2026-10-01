@@ -108,11 +108,11 @@ describe("readServiceMateFlag", () => {
       reads: 0,
     },
     {
-      name: "unknown, as the store states it, reads nothing",
+      name: "unknown, as the store states it, is settled by the service's own read",
       stated: "unknown",
       read: true,
-      expected: "unknown",
-      reads: 0,
+      expected: true,
+      reads: 1,
     },
     {
       name: "off is confirmed by the service's own read",
@@ -155,7 +155,8 @@ describe("readServiceMateFlag", () => {
 
         expect(flag).toBe(testCase.expected);
         expect(requested).toHaveLength(testCase.reads);
-        expect(acquired).toEqual(["organization-variables"]);
+        // The account holds the variables' stream: a flag read registers nothing.
+        expect(acquired).toEqual([]);
       }),
     );
   }

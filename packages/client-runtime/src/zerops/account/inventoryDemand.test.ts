@@ -88,7 +88,10 @@ const ownerOf = (ref: ProjectRef): ProjectEffectiveAccess => ({
   mutationsAllowed: true,
 });
 
-/** A demand as a person reads it: `organization` or the project's id. */
+/**
+ * A demand as a person reads it: `organization` or the project's id. An organization's version
+ * and variable streams go with its inventory (asserted on their own below).
+ */
 const named = (descriptor: RuntimeInterestDescriptor) =>
   descriptor.kind === "organization-inventory"
     ? "organization"
@@ -205,7 +208,19 @@ describe("inventoryDemand", () => {
       projectStatus: (ref) => status?.[ref.projectId],
       organizationListed: () => listed ?? false,
     });
-    expect(demand.map(named)).toEqual(expected);
+    expect(
+      demand
+        .filter(({ kind }) => kind !== "organization-versions" && kind !== "organization-variables")
+        .map(named),
+    ).toEqual(expected);
+    // Every organization the inventory holds has its versions and variables streamed with it.
+    const organizations = demand.filter(({ kind }) => kind === "organization-inventory").length;
+    expect(demand.filter(({ kind }) => kind === "organization-versions")).toHaveLength(
+      organizations,
+    );
+    expect(demand.filter(({ kind }) => kind === "organization-variables")).toHaveLength(
+      organizations,
+    );
   });
 });
 
@@ -280,7 +295,8 @@ describe("holdInventoryDemand", () => {
         yield* settle;
 
         const held = [...(yield* data.state).interests.values()].filter(({ leases }) => leases > 0);
-        expect(held).toHaveLength(39);
+        // 38 projects, the organization, and its version and variable streams.
+        expect(held).toHaveLength(41);
         expect(published).toBe(1);
       }),
     ),

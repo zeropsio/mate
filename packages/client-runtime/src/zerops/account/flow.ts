@@ -157,16 +157,8 @@ export function deploymentStorePorts(
           data.acquire({ kind: "project-activity", project }).pipe(Effect.andThen(Effect.never)),
         ).pipe(Effect.catch((error) => Effect.sync(() => refused(error.reason)))),
       );
-      // What a pushed version runs is the organization's active versions and variables, streamed
-      // once for every stop: a stop reads nothing of its own for it (A14).
-      const organization = project.organization;
-      const streams = (["organization-versions", "organization-variables"] as const).map((kind) =>
-        run(
-          Effect.scoped(
-            data.acquire({ kind, organization }).pipe(Effect.andThen(Effect.never)),
-          ).pipe(Effect.ignore),
-        ),
-      );
+      // What a pushed version runs comes from the organization's active versions and variables,
+      // which the account streams for its session: a stop reads nothing of its own for it (A14).
       // Read once, so the table's next change is one its subscription hears.
       atomRegistry.get(table);
       const unsubscribes = [
@@ -177,7 +169,6 @@ export function deploymentStorePorts(
       return () => {
         for (const unsubscribe of unsubscribes) unsubscribe();
         run(Fiber.interrupt(lease));
-        for (const stream of streams) run(Fiber.interrupt(stream));
       };
     },
     deployedVersion: (service) => atomRegistry.get(data.reads.deployedVersion(service)),

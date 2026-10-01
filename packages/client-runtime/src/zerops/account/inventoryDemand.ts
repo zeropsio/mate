@@ -70,10 +70,13 @@ export function inventoryDemand(
     },
   );
   return [
-    ...organizations.map(({ organization }): RuntimeInterestDescriptor => ({
-      kind: "organization-inventory",
-      organization,
-    })),
+    ...organizations.flatMap(({ organization }): ReadonlyArray<RuntimeInterestDescriptor> => [
+      { kind: "organization-inventory", organization },
+      // What its services run and their Mate flags, streamed for the session: a read of either
+      // only waits on the store, and never registers anything of its own.
+      { kind: "organization-versions", organization },
+      { kind: "organization-variables", organization },
+    ]),
     ...projects.map((project): RuntimeInterestDescriptor => ({
       kind: "project-inventory",
       project,
