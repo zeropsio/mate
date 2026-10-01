@@ -167,12 +167,13 @@ export function useZeropsGroupReach(input: {
     if (tokens === null || tokenSetKey === null) return;
     // A reach the platform refused waits out its back-off, however often the list is read again.
     const reachKey = `${clientId}:${key}`;
-    if (refused.current?.key === reachKey && Date.now() < refused.current.retryAtMs) return;
+    if (refused.current?.key === reachKey && performance.now() < refused.current.retryAtMs) return;
     const runKey = `${clientId}:${key}:${tokenSetKey}`;
     if (lastKey.current === runKey) return;
     lastKey.current = runKey;
 
     let cancelled = false;
+    let finished = false;
     void (async () => {
       try {
         // The shared list says whether anything is owed; each write replaces a token's whole
@@ -190,14 +191,16 @@ export function useZeropsGroupReach(input: {
             ).then(() => undefined),
           hold: tokenWrites,
         });
+        finished = true;
         if (refused.current?.key === reachKey) refused.current = null;
       } catch {
+        finished = true;
         // Background repair: never an error the person did not ask for, and never a loop on a
         // write the platform keeps refusing — it is planned again after 30 s, 2 min, then 10 min.
         const attempts = (refused.current?.key === reachKey ? refused.current.attempts : 0) + 1;
         const waitMs =
           GROUP_REACH_BACKOFF_MS[Math.min(attempts, GROUP_REACH_BACKOFF_MS.length) - 1]!;
-        refused.current = { key: reachKey, attempts, retryAtMs: Date.now() + waitMs };
+        refused.current = { key: reachKey, attempts, retryAtMs: performance.now() + waitMs };
         lastKey.current = null;
         if (wakeTimer.current !== null) clearTimeout(wakeTimer.current);
         wakeTimer.current = setTimeout(() => {
@@ -209,6 +212,9 @@ export function useZeropsGroupReach(input: {
 
     return () => {
       cancelled = true;
+      // Cut short — the list was read again, or the page went — what it had left is still owed:
+      // the next run plans it again, whatever key the list shows.
+      if (!finished) lastKey.current = null;
     };
   }, [
     clientId,

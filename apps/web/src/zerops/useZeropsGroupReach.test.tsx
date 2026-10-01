@@ -721,4 +721,109 @@ describe("useZeropsGroupReach", () => {
     // must not go on to issue the second write for an unmounted consumer.
     expect(writes.map(({ tokenId }) => tokenId)).toEqual(["token-a"]);
   });
+
+  it("plans again after a read of the same tokens cut its run short", async () => {
+    installTestDom();
+    const { createRoot } = await import("react-dom/client");
+    const broker = new FakeCells<TokensCellRequest>();
+    const writes: Array<{
+      readonly tokenId: string;
+      readonly projects: ZeropsIntegrationTokenGrantMetadata["grants"];
+    }> = [];
+    let releaseFirst!: () => void;
+    const firstGate = new Promise<void>((resolve) => {
+      releaseFirst = resolve;
+    });
+    const runtime = {
+      scope,
+      cells: { known: broker.known },
+      commands: {
+        // The platform: what the test published, with every write that landed applied.
+        listIntegrationTokenGrants: () =>
+          Effect.sync(() => ({
+            attempt: {} as never,
+            value: (broker.current.state === "known" ? broker.current.value : []).map((token) => {
+              const landed = writes.findLast((write) => write.tokenId === token.tokenId);
+              return landed === undefined ? token : { ...token, grants: landed.projects };
+            }),
+          })),
+        setIntegrationTokenProjects: (input: {
+          readonly tokenId: string;
+          readonly projects: ZeropsIntegrationTokenGrantMetadata["grants"];
+        }) =>
+          Effect.promise(async () => {
+            if (input.tokenId === "token-a" && writes.length === 0) await firstGate;
+            writes.push(input);
+            return { attempt: {} as never, value: undefined };
+          }),
+      },
+    } as unknown as ManagedZeropsDataRuntime;
+    const context: ZeropsDataContextValue = {
+      runtime,
+      signals: { hidden: () => false, online: () => true, listen: () => () => undefined },
+      organizationRef: () => organization,
+      projectRef: () => {
+        throw new Error("not used");
+      },
+    };
+
+    // Two groups, each with its own Mate token, so the reconcile plans two
+    // sequential writes: "token-a" first, "token-c" second.
+    const groupA: ZeropsGroupReachGroup = {
+      projectIds: ["project-a", "project-b"],
+      mateProjectIds: ["project-a"],
+    };
+    const groupC: ZeropsGroupReachGroup = {
+      projectIds: ["project-c", "project-d"],
+      mateProjectIds: ["project-c"],
+    };
+    const grants: ReadonlyArray<ZeropsIntegrationTokenGrantMetadata> = [
+      ...NARROW_GRANTS,
+      {
+        tokenId: "token-c",
+        name: "zcp-c",
+        grants: [{ projectId: "project-c", roleCode: "ADMIN" }],
+      },
+    ];
+
+    function Probe() {
+      useZeropsGroupReach({ clientId: "org-1", groups: [groupA, groupC], enabled: true });
+      return null;
+    }
+
+    const root = createRoot(document.createElement("div") as unknown as Element);
+    await act(() => {
+      root.render(
+        <ZeropsDataContext value={context}>
+          <Probe />
+        </ZeropsDataContext>,
+      );
+    });
+    await flushEffects();
+    await act(async () => {
+      await broker.publish(knownGrants(grants, 1));
+    });
+    await flushEffects();
+    // The first write ("token-a") is in flight, blocked on `firstGate`.
+    expect(writes).toEqual([]);
+
+    // The shared list is read again and says the same: the run in flight is cut short.
+    await act(async () => {
+      await broker.publish(
+        knownGrants(
+          grants.map((grant) => ({ ...grant })),
+          2,
+        ),
+      );
+    });
+    await flushEffects();
+    await act(async () => {
+      releaseFirst();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    await flushEffects();
+    // The reach still owed is planned again: token-c is written too.
+    expect(writes.map(({ tokenId }) => tokenId)).toContain("token-c");
+    await act(() => root.unmount());
+  });
 });
