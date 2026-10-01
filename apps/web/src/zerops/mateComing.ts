@@ -46,6 +46,11 @@ export type MateComingVerb =
   | "remove"
   /** A press stopped at a step safe to ask again: it resumes there, on the same project. */
   | "try-again"
+  /**
+   * A press that stopped before its container, in any browser: an owner or an admin finishes it
+   * (*Finish setup*), the same steps the press makes.
+   */
+  | "finish-setup"
   /** The platform may have taken it anyway: the projects page lists it if it did. */
   | "go-to-projects";
 
@@ -82,11 +87,22 @@ export interface MateComingInput {
         readonly group: ZeropsCandidateGroup;
         readonly creationFailed?: { readonly message: string | undefined } | undefined;
         readonly service?: { readonly status: string } | undefined;
+        /** Its project lists no container. */
+        readonly missingContainer?: true | undefined;
+        readonly project?: { readonly created?: string | undefined } | undefined;
       }
     | undefined;
+  /** Now, wall ms: how long a project without its container has stood. */
+  readonly nowMs?: number | undefined;
   /** Why this tab's press stopped after the platform had taken the project. */
   readonly setUpFailed?: string | undefined;
 }
+
+/** How long a Mate's project may stand without its container before that is no longer its press. */
+export const MATE_CONTAINER_GRACE_MS = 120_000;
+
+/** A Mate whose press stopped before its container: half-made, and *Finish setup* completes it. */
+export const HALF_MADE_LINE = "Its setup stopped before its container. Finish setup completes it.";
 
 /** A reason, as a sentence: capitalised, and ended; empty where it says nothing. */
 export function asSentence(reason: string): string {
@@ -124,6 +140,18 @@ export function mateComing(input: MateComingInput): MateComing | undefined {
       line: comingMateLine({}),
       ...(press.startedAt === undefined ? {} : { since: press.startedAt }),
     };
+  }
+  if (press === undefined && candidate?.missingContainer === true) {
+    // A press in another browser is still importing it a moment after the project; past that,
+    // the press stopped before its container — the tab closed — and nothing will bring it.
+    const created = Date.parse(candidate.project?.created ?? "");
+    const young =
+      input.nowMs === undefined ||
+      Number.isNaN(created) ||
+      input.nowMs - created < MATE_CONTAINER_GRACE_MS;
+    return young
+      ? { kind: "coming", line: COMING_UP_LINE }
+      : { kind: "failed", line: HALF_MADE_LINE, verb: "finish-setup" };
   }
   if (
     press === undefined &&

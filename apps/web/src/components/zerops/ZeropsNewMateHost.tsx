@@ -17,7 +17,12 @@
  * changing under the person paints the view's last frame, never a loading pane.
  */
 import { scopedThreadKey } from "@t3tools/client-runtime/environment";
-import { buildZeropsGroupTree, generateBotName, newMateTint } from "@t3tools/client-runtime/zerops";
+import {
+  buildZeropsGroupTree,
+  generateBotName,
+  newMateTint,
+  type EnvironmentCreationStepProgress,
+} from "@t3tools/client-runtime/zerops";
 import { heldCandidates } from "@t3tools/client-runtime/zerops/projections";
 import type { ScopedThreadRef } from "@t3tools/contracts";
 import { useNavigate } from "@tanstack/react-router";
@@ -36,7 +41,7 @@ import { useTakenBotNames, useZeropsCandidates } from "~/zerops/useZeropsCandida
 import { useZeropsAgentAuth } from "~/zerops/useZeropsFeeds";
 import { useZeropsGroupRecipe } from "~/zerops/useZeropsGroupRecipe";
 import { registryGroupSlug, useZeropsRegistry } from "~/zerops/useZeropsRegistry";
-import { placedPressesIn, useMatePresses } from "~/zerops/matePress";
+import { placedPressesIn, useMatePress, useMatePresses, type MatePress } from "~/zerops/matePress";
 import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
 
 import { ZeropsEnvironmentCreationDialog } from "./ZeropsEnvironmentCreationDialog";
@@ -45,6 +50,8 @@ import {
   newMateDoor,
   newMateDoorMates,
   newMateRecipeChange,
+  pressSteps,
+  pressThrough,
   proposedEnvironmentName,
   recipeChangeView,
 } from "./ZeropsEnvironmentCreationDialog.logic";
@@ -155,6 +162,13 @@ function NewMateDialog({
   );
   const [adding, setAdding] = useState(false);
   const [addError, setAddError] = useState<string | undefined>(undefined);
+  // The press under way: the dialog stays on it until the Mate needs no browser.
+  const [pressed, setPressed] = useState<{
+    readonly name: string;
+    readonly projectId: string | null;
+    readonly progress: ReadonlyArray<EnvironmentCreationStepProgress>;
+  } | null>(null);
+  const press = useMatePress(pressed?.projectId ?? undefined);
   const dismiss = useNewMate((state) => state.dismiss);
   const created = useNewMate((state) => state.created);
   const settled = useNewMate((state) => state.settled);
@@ -197,6 +211,20 @@ function NewMateDialog({
         setAdding(true);
         setAddError(undefined);
         let accepted: string | undefined;
+        let landed = false;
+        const name = choice.botName ?? choice.name;
+        setPressed({ name, projectId: null, progress: [] });
+        // The Mate needs no browser once its project is marked closed off: only then does the
+        // dialog give way to it. A tab closed before is the person's choice; *Finish setup*
+        // completes it, in any browser.
+        const land = (projectId: string) => {
+          if (landed) return;
+          landed = true;
+          setPressed(null);
+          setAdding(false);
+          dismiss();
+          void navigate(newMateView(projectId));
+        };
         void create({
           group,
           environments,
@@ -208,21 +236,30 @@ function NewMateDialog({
               projectId,
               groupId: group.groupId,
               groupName: group.name,
-              botName: choice.botName ?? choice.name,
+              botName: name,
               face: choice.face ?? { tint: "slate", shape: "squircle" },
             });
-            dismiss();
-            void navigate(newMateView(projectId));
+            setPressed((current) => (current === null ? current : { ...current, projectId }));
+          },
+          onProgress: (progress) => {
+            setPressed((current) => (current === null ? current : { ...current, progress }));
+            if (accepted !== undefined && pressThrough(progress)) land(accepted);
           },
         }).then((run: EnvironmentCreationRun) => {
           if (accepted !== undefined) {
-            // The rest was the Mate's own: said where it comes up, never lost with the dialog.
+            if (run.kind === "ran" && run.outcome.ok) {
+              land(accepted);
+              return;
+            }
+            // Stopped after the platform took the project: the dialog stays on the step that
+            // stopped, with Try again, which resumes it on the same project.
             settled(
               accepted,
               run.kind === "ran" && !run.outcome.ok ? run.outcome.error : undefined,
             );
             return;
           }
+          setPressed(null);
           // Refused before the platform took any project: said beside Add, which tries again.
           setAdding(false);
           setAddError(
@@ -244,9 +281,23 @@ function NewMateDialog({
         if (action.kind === "change") void navigate(recipeChangeView(group.groupId, action.number));
         else openMate({ projectId: action.projectId });
       }}
+      {...(pressed === null
+        ? {}
+        : {
+            pressing: {
+              name: pressed.name,
+              steps: pressSteps(pressed.progress),
+              ...pressFailedView(press),
+            },
+          })}
       onOpenChange={(open) => {
-        // Half way through an Add there is nothing to close: the Mate is on its way.
-        if (!open && !adding) dismiss();
+        // Half way through an Add there is nothing to close: the Mate needs this tab a few
+        // seconds more. A press that stopped may be left, for Finish setup to complete.
+        if (open) return;
+        if (adding && press?.state.kind !== "failed") return;
+        setPressed(null);
+        setAdding(false);
+        dismiss();
       }}
       open
       proposeAnotherName={(current) =>
@@ -260,4 +311,17 @@ function NewMateDialog({
       tierServices={recipe.services}
     />
   );
+}
+
+/** Where a press stopped, as the Add dialog says it: why, and Try again where it may resume. */
+function pressFailedView(press: MatePress | undefined): {
+  readonly failed?: string;
+  readonly onTryAgain?: () => void;
+} {
+  if (press?.state.kind !== "failed") return {};
+  const retry = press.state.retry;
+  return {
+    failed: press.state.reason,
+    ...(retry === null ? {} : { onTryAgain: () => void retry() }),
+  };
 }

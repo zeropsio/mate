@@ -7,8 +7,10 @@ import {
   mateConnectKey,
   mateOpeningPhrase,
   type MateComingInput,
+  HALF_MADE_LINE,
 } from "./mateComing";
 
+const NOW = Date.parse("2026-10-01T20:00:00.000Z");
 const HELD = { startedAt: 1_000, container: true, retryable: false } as const;
 
 // A new Mate's first minutes, as its row, its own view and the projects page say them: in the
@@ -79,6 +81,32 @@ describe("mateComing — a Mate in its first minutes, in one set of words", () =
         line: "Could not be set up. Zerops did not answer.",
         verb: "try-again",
       },
+    },
+    {
+      case: "a Mate whose press stopped before its container, minutes on: half-made, with Finish setup",
+      input: {
+        press: undefined,
+        candidate: {
+          group: "unavailable",
+          missingContainer: true,
+          project: { created: new Date(NOW - 3 * 60_000).toISOString() },
+        },
+        nowMs: NOW,
+      },
+      expected: { kind: "failed", line: HALF_MADE_LINE, verb: "finish-setup" },
+    },
+    {
+      case: "a Mate with no container yet, moments after its press: still coming up",
+      input: {
+        press: undefined,
+        candidate: {
+          group: "unavailable",
+          missingContainer: true,
+          project: { created: new Date(NOW - 30_000).toISOString() },
+        },
+        nowMs: NOW,
+      },
+      expected: { kind: "coming", line: "Coming up. A few minutes." },
     },
   ])("$case", ({ input, expected }) => {
     expect(mateComing(input)).toEqual(expected);

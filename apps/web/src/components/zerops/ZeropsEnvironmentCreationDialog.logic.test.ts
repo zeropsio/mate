@@ -1,4 +1,9 @@
-import type { FlowPullRequest, ZeropsGroupPendingMember } from "@t3tools/client-runtime/zerops";
+import type {
+  EnvironmentCreationStep,
+  EnvironmentCreationStepProgress,
+  FlowPullRequest,
+  ZeropsGroupPendingMember,
+} from "@t3tools/client-runtime/zerops";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import type { MateShapeId, MateTintId } from "@t3tools/shared/brand";
 import { describe, expect, it } from "vite-plus/test";
@@ -21,6 +26,8 @@ import {
   validateCreationForm,
   type NewMateDoor,
   type RecipeOption,
+  pressSteps,
+  pressThrough,
 } from "./ZeropsEnvironmentCreationDialog.logic";
 
 /** The account's Mates' names, read in full. */
@@ -746,5 +753,62 @@ describe("recipeChangeView — where Review the change goes", () => {
       to: "/change/$groupId/$repository/$number",
       params: { groupId: "beviro-group", repository: "group", number: "11" },
     });
+  });
+});
+
+// The Add dialog stays on the press until the Mate needs no browser (live, 2026-10-01: a tab
+// closed 2 s after the dialog left a Mate with no container).
+describe("pressSteps — the press as the Add dialog draws it", () => {
+  const plan: ReadonlyArray<EnvironmentCreationStep> = [
+    { kind: "create-project", name: "Beviro - Ivo", tagList: [], location: undefined },
+    { kind: "import-container", agents: [] },
+    { kind: "register" },
+    { kind: "close-off" },
+    { kind: "share-reach" },
+    { kind: "await-ready", withAgent: true },
+  ];
+  const at = (states: ReadonlyArray<EnvironmentCreationStepProgress["state"]>, error?: string) =>
+    plan.map((step, index) => ({
+      step,
+      state: states[index]!,
+      ...(error !== undefined && states[index] === "failed" ? { error } : {}),
+    }));
+  const drawn = (progress: ReadonlyArray<EnvironmentCreationStepProgress>) =>
+    pressSteps(progress).map((step) => `${step.label}:${step.state}`);
+
+  it.each([
+    {
+      case: "creating the project",
+      states: ["running", "queued", "queued", "queued", "queued", "queued"],
+      want: ["Project:active", "Container:waiting", "Registered:waiting", "Closed off:waiting"],
+    },
+    {
+      case: "closing it off",
+      states: ["done", "done", "done", "running", "queued", "queued"],
+      want: ["Project:done", "Container:done", "Registered:done", "Closed off:active"],
+    },
+    {
+      case: "a container that would not come",
+      states: ["done", "failed", "queued", "queued", "queued", "queued"],
+      want: ["Project:done", "Container:failed", "Registered:waiting", "Closed off:waiting"],
+    },
+  ] as const)("draws $case", ({ states, want }) => {
+    expect(drawn(at(states))).toEqual(want);
+  });
+
+  it("says nothing of the group's sight of it, nor the wait after", () => {
+    expect(pressSteps(at(["done", "done", "done", "done", "running", "queued"]))).toHaveLength(4);
+  });
+
+  it("leaves Registered out of a press that writes no registration", () => {
+    const progress = at(["done", "done", "done", "done", "done", "queued"]).filter(
+      (entry) => entry.step.kind !== "register",
+    );
+    expect(drawn(progress)).toEqual(["Project:done", "Container:done", "Closed off:done"]);
+  });
+
+  it("is through once the project is marked closed off", () => {
+    expect(pressThrough(at(["done", "done", "done", "running", "queued", "queued"]))).toBe(false);
+    expect(pressThrough(at(["done", "done", "done", "done", "running", "queued"]))).toBe(true);
   });
 });

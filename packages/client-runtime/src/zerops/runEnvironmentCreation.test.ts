@@ -190,13 +190,14 @@ describe("runEnvironmentCreation", () => {
       // The group's agents reach the container import, not just the plan, and the runtimes ride
       // with it for zcp to import on boot: no runtime import of the press's own.
       `container:proj-1:Go Hello World - dev:claude-code:${"services:\n  - hostname: api\n    startWithoutCode: true\n".length}`,
-      // Registered at once, the group's other Mates given sight of it, then read back closed —
-      // the recipe already left it so, nothing written — and marked: zcp imports the runtimes on
-      // the mark alone, and nothing is left for a browser after the press.
+      // Registered at once, then read back closed — the recipe already left it so, nothing
+      // written — and marked: zcp imports the runtimes on the mark alone, and the Mate needs no
+      // browser any more.
       "register:proj-1",
-      "shareReach:proj-1",
       "isolation:proj-1",
       "closedOff:proj-1",
+      // Last, and best-effort: the group-reach reconcile covers it anyway.
+      "shareReach:proj-1",
     ]);
   });
 
@@ -227,8 +228,8 @@ describe("runEnvironmentCreation", () => {
       ["import-managed", "done"],
       ["import-container", "done"],
       ["register", "done"],
-      ["share-reach", "done"],
       ["close-off", "done"],
+      ["share-reach", "done"],
       ["await-ready", "running"],
     ]);
   });
@@ -547,9 +548,10 @@ describe("runEnvironmentCreation — a press tried again", () => {
     expect(outcome).toMatchObject({ ok: true, projectId: "proj-1" });
     expect(calls).toEqual([
       "register:proj-1",
-      "shareReach:proj-1",
       "isolation:proj-1",
       "closedOff:proj-1",
+      // Last, and best-effort: the group-reach reconcile covers it anyway.
+      "shareReach:proj-1",
     ]);
   });
 

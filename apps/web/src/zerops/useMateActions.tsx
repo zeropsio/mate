@@ -101,6 +101,7 @@ import {
   type ZeropsCandidatePresentation,
 } from "./useZeropsCandidates";
 import { useZeropsOrganizationMembers, zeropsMateOwner } from "./useZeropsMateOwners";
+import { MATE_CONTAINER_GRACE_MS } from "./mateComing";
 import {
   finishMateSetup,
   forgetPress,
@@ -942,9 +943,6 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
 
   return { actionsFor, dialogs, busyKey, trouble, renameInPlace, changeFace };
 }
-
-/** How long a Mate's project may stand without its container before that is no longer its press. */
-export const MATE_CONTAINER_GRACE_MS = 120_000;
 
 /**
  * Whether a Mate's container never came: its project lists no zcp, it is past the moments a press

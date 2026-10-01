@@ -297,8 +297,10 @@ export function planEnvironmentCreation(input: EnvironmentCreationInput): Enviro
   // At once: none of it waits for the close-off.
   if (input.register === true) steps.push({ kind: "register" });
   if (withAgent) {
-    steps.push({ kind: "share-reach" });
+    // The close-off is what makes the Mate need no browser; the group's sight of it is
+    // best-effort, last, and the group-reach reconcile covers it anyway.
     steps.push({ kind: "close-off" });
+    steps.push({ kind: "share-reach" });
   }
   // Last, and the only step that waits on anything: everything the person's rights are needed
   // for is done before it.

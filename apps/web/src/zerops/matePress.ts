@@ -521,8 +521,8 @@ export async function finishMateSetup(input: {
       ? []
       : [{ kind: "import-container", agents: input.container.agents } as const]),
     ...(input.registration === null ? [] : [{ kind: "register" } as const]),
-    { kind: "share-reach" },
     { kind: "close-off" },
+    { kind: "share-reach" },
     { kind: "await-ready", withAgent: true },
   ];
   return runPress({

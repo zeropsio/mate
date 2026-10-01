@@ -32,6 +32,8 @@ import {
 } from "@t3tools/client-runtime/environment";
 import {
   assignCandidateMateTints,
+  FINISH_MATE_SETUP_VERB,
+  readZeropsGroupTags,
   resolvePrimaryConversation,
   type ZeropsMateFace,
 } from "@t3tools/client-runtime/zerops";
@@ -87,6 +89,9 @@ import { useZeropsInventory, type InventoryServiceOutcome } from "~/zerops/inven
 import { forgetPress, pressFailure, useMatePress } from "~/zerops/matePress";
 import { useReviveFailedMate } from "~/zerops/mateRestart";
 import { useMateSetup } from "~/zerops/useMateSetup";
+import { useAccountGitea } from "~/zerops/giteaProject";
+import { useMateActions } from "~/zerops/useMateActions";
+import { useZeropsRegistry } from "~/zerops/useZeropsRegistry";
 import type { MateSetup } from "@t3tools/client-runtime/zerops/mateSetup";
 import { useZeropsContainers } from "~/zerops/zeropsContainers";
 import { runZeropsCommand, useZeropsData } from "~/zerops/zeropsDataContext";
@@ -119,6 +124,9 @@ import { usePreferredConnection } from "~/zerops/mateConnectionPreference";
 
 /** Up, its conversation being opened: the last of its coming words. */
 const UP_AND_OPENING: MateComing = { kind: "coming", line: ALMOST_THERE_LINE };
+
+/** The coming page reads no server version: its *Finish setup* is all it takes of the menu. */
+const NO_VERSIONS: ReadonlyMap<string, string> = new Map();
 
 /** The slate face a Mate wears where nobody picked one. */
 const NO_FACE: ZeropsMateFace = { tint: "slate", shape: "squircle" };
@@ -177,6 +185,7 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
           },
     candidate,
     setUpFailed: pressFailure(press) ?? creation?.failed,
+    nowMs: Date.now(),
   });
   // What opens it is its machine (`mateLink`): found by its project while its row stands for the
   // project, and before the listing names it at all.
@@ -435,6 +444,21 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
           ...(setup === undefined ? {} : { setup }),
         };
 
+  // *Finish setup*, where its press stopped before its container: the same verb as its menu's,
+  // offered to an owner or an admin in any browser.
+  const giteaProjectId = useAccountGitea(activeOrganization?.id)?.projectId;
+  const halfMade = coming?.kind === "failed" && coming.verb === "finish-setup";
+  const registryState = useZeropsRegistry({ giteaProjectId, enabled: halfMade });
+  const mateActions = useMateActions({ registry: registryState, serverVersions: NO_VERSIONS });
+  const finishEntry =
+    !halfMade || candidate === undefined
+      ? undefined
+      : mateActions
+          .actionsFor(candidate, readZeropsGroupTags(candidate.project.tagList))
+          .find((entry) => entry.id === "finish-setup");
+  const finishSetup =
+    finishEntry === undefined || "separator" in finishEntry ? undefined : finishEntry.onSelect;
+
   const [removing, setRemoving] = useState(false);
   const [trouble, setTrouble] = useState<string | null>(null);
   const remove = () => {
@@ -512,7 +536,7 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
               over: handing,
               sentence: comingSentenceOf({
                 coming: shown,
-                trouble,
+                trouble: trouble ?? mateActions.trouble,
                 progress: lineProgress,
                 nowMs: progress?.nowMs,
               }),
@@ -522,6 +546,8 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
                   mate={mate}
                   nowMs={progress?.nowMs}
                   onRemove={remove}
+                  {...(finishSetup === undefined ? {} : { onFinishSetup: finishSetup })}
+                  finishing={mateActions.busyKey === candidate?.key}
                   {...(pressRetry === null ? {} : { onTryAgain: () => void pressRetry() })}
                   progress={lineProgress}
                   removing={removing}
@@ -757,7 +783,9 @@ export function ComingBelow({
   mate,
   you,
   removing = false,
+  finishing = false,
   onRemove,
+  onFinishSetup,
   onTryAgain,
   projects,
 }: {
@@ -767,7 +795,11 @@ export function ComingBelow({
   readonly mate: Pick<ZeropsMateIdentity, "name" | "project">;
   readonly you: ArrivalYou | null;
   readonly removing?: boolean;
+  /** *Finish setup* runs. */
+  readonly finishing?: boolean;
   readonly onRemove?: () => void;
+  /** *Finish setup*, for a Mate whose press stopped before its container. */
+  readonly onFinishSetup?: () => void;
   readonly onTryAgain?: () => void;
   /** What *Go to projects* is: the router's link to the projects screen. */
   readonly projects?: ReactElement;
@@ -799,6 +831,10 @@ export function ComingBelow({
       coming.verb === "remove" && onRemove !== undefined ? (
         <Button disabled={removing} onClick={onRemove}>
           Remove
+        </Button>
+      ) : coming.verb === "finish-setup" && onFinishSetup !== undefined ? (
+        <Button disabled={finishing} onClick={onFinishSetup}>
+          {FINISH_MATE_SETUP_VERB}
         </Button>
       ) : coming.verb === "try-again" && onTryAgain !== undefined ? (
         <Button onClick={onTryAgain}>{MATE_STAND_UP_RETRY_LABEL}</Button>

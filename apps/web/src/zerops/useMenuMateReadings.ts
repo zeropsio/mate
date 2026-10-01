@@ -100,6 +100,7 @@ export function useMateComingOf(
         press,
         candidate: applyProjectCreationVerdict(candidate, verdicts.get(candidate.project.id)),
         setUpFailed: setUpFailed ?? creations[candidate.project.id]?.failed,
+        nowMs: Date.now(),
       });
     },
     [presses, creations, verdicts],

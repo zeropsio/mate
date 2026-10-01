@@ -7,13 +7,13 @@ import { sidebarMateVerbs } from "./useSidebarMateMenus";
 const entry = (id: string, label: string): ZeropsMenuEntry => ({ id, label, onSelect: () => {} });
 
 describe("sidebarMateVerbs — the shared verbs a Mate's own menu carries", () => {
-  it("keeps start or restart, register, hand over and move, in the menu's own words", () => {
+  it("keeps start or restart, Finish setup, hand over and move, in the menu's own words", () => {
     const verbs = sidebarMateVerbs([
       entry("restart", "Restart"),
       { id: "quick", separator: true },
       entry("rename-agent", "Rename Mate"),
       entry("face", "Change face…"),
-      entry("register", "Register in Storefront"),
+      entry("finish-setup", "Finish setup"),
       entry("assign", "Hand this Mate over"),
       entry("move", "Change project or role"),
       entry("leave", "Leave the project"),
@@ -22,7 +22,8 @@ describe("sidebarMateVerbs — the shared verbs a Mate's own menu carries", () =
     ]);
     expect(verbs.map((verb) => ("label" in verb ? verb.label : "—"))).toEqual([
       "Restart",
-      "Register in Storefront",
+      // Without it a half-made Mate had no way to be finished from the left menu (2026-10-01).
+      "Finish setup",
       "Hand over…",
       "Move to project…",
     ]);

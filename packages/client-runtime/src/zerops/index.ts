@@ -551,6 +551,7 @@ export {
   canWriteRegistry,
   onlyTheseCanAddAProject,
   planGroupMembership,
+  FINISH_MATE_SETUP_VERB,
   finishMateSetupVerb,
   planGroupRegistration,
   mateAwaitingRegistryLine,

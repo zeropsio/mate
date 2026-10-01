@@ -9,6 +9,8 @@ import {
   isRecipeProposal,
   readZeropsGroupTags,
   ZEROPS_BOT_NAME_MAX_LENGTH,
+  type EnvironmentCreationStep,
+  type EnvironmentCreationStepProgress,
   type EnvironmentRecipeChoice,
   type FlowPullRequest,
   type ZeropsGroupPendingMember,
@@ -475,4 +477,48 @@ export function recipeChangeView(
     to: "/change/$groupId/$repository/$number",
     params: { groupId, repository: GROUP_REPOSITORY, number: String(number) },
   };
+}
+
+/** One step of a press, as the Add dialog draws it while it stays open. */
+export interface PressStepView {
+  readonly label: string;
+  readonly state: "waiting" | "active" | "done" | "failed";
+}
+
+/** The press's steps the person waits on, and which runner steps make each. */
+const PRESS_STEPS: ReadonlyArray<{
+  readonly label: string;
+  readonly kinds: ReadonlyArray<EnvironmentCreationStep["kind"]>;
+}> = [
+  { label: "Project", kinds: ["create-project", "import-project", "import-managed"] },
+  { label: "Container", kinds: ["import-container"] },
+  { label: "Registered", kinds: ["register"] },
+  { label: "Closed off", kinds: ["close-off"] },
+];
+
+/**
+ * The press as the Add dialog draws it: Project, Container, Registered, Closed off — what the
+ * Mate needs before it needs no browser. The group's sight of it and the wait for it come after,
+ * the dialog gone. A step a press does not make is left out.
+ */
+export function pressSteps(
+  progress: ReadonlyArray<EnvironmentCreationStepProgress>,
+): ReadonlyArray<PressStepView> {
+  return PRESS_STEPS.flatMap(({ label, kinds }) => {
+    const own = progress.filter((entry) => kinds.includes(entry.step.kind));
+    if (own.length === 0) return [];
+    const state: PressStepView["state"] = own.some((entry) => entry.state === "failed")
+      ? "failed"
+      : own.every((entry) => entry.state === "done")
+        ? "done"
+        : own.some((entry) => entry.state === "running" || entry.state === "done")
+          ? "active"
+          : "waiting";
+    return [{ label, state }];
+  });
+}
+
+/** The press has marked the project closed off: the Mate needs no browser, the dialog may go. */
+export function pressThrough(progress: ReadonlyArray<EnvironmentCreationStepProgress>): boolean {
+  return progress.some((entry) => entry.step.kind === "close-off" && entry.state === "done");
 }

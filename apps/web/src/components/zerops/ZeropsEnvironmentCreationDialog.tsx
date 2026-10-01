@@ -41,7 +41,9 @@ import {
   type CreationFormErrors,
   type NewMateDoorAction,
   type NewMateDoorClosed,
+  type PressStepView,
 } from "./ZeropsEnvironmentCreationDialog.logic";
+import { ProcessSteps, type ProcessStep } from "./primitives";
 import { ZeropsNewMateForm } from "./ZeropsNewMateForm";
 
 export interface EnvironmentCreationChoice {
@@ -82,6 +84,11 @@ export interface ZeropsEnvironmentCreationFormProps {
   readonly adding?: boolean | undefined;
   /** Why the platform refused a Mate's last Add, before it took any project. */
   readonly addError?: string | undefined;
+  /**
+   * The press under way, in the form's place: the dialog stays open until the Mate needs no
+   * browser (its project marked closed off), so a tab closed meanwhile is a person's choice.
+   */
+  readonly pressing?: PressingView | undefined;
   /** Why the project takes no Mate now, in the Mate's form's place (`newMateDoor`). */
   readonly closed?: NewMateDoorClosed | undefined;
   /** The one thing to do while the project takes no Mate, pressed. */
@@ -90,8 +97,61 @@ export interface ZeropsEnvironmentCreationFormProps {
   readonly onCreate: (choice: EnvironmentCreationChoice) => void;
 }
 
+/** A press the Add dialog stays on: its steps, and where one stopped, why and Try again. */
+export interface PressingView {
+  /** What is being set up: the Mate's name. */
+  readonly name: string;
+  readonly steps: ReadonlyArray<PressStepView>;
+  /** The step that stopped said this. */
+  readonly failed?: string | undefined;
+  /** Resumes the press at the step that stopped, on the same project. */
+  readonly onTryAgain?: (() => void) | undefined;
+}
+
+const PRESS_STEP_STATES: Readonly<
+  Record<PressStepView["state"], { readonly state: ProcessStep["state"]; readonly label: string }>
+> = {
+  waiting: { state: "queued", label: "Waiting" },
+  active: { state: "running", label: "In progress" },
+  done: { state: "done", label: "Done" },
+  failed: { state: "failed", label: "Failed" },
+};
+
+/** The press, in the form's place, until the Mate needs no browser. */
+function PressingPanel({ pressing }: { readonly pressing: PressingView }) {
+  return (
+    <>
+      <DialogHeader>
+        <DialogTitle>Setting up {pressing.name}…</DialogTitle>
+        <DialogDescription>
+          {pressing.failed === undefined
+            ? "Keep this open for a few seconds: after this it needs nobody."
+            : pressing.failed}
+        </DialogDescription>
+      </DialogHeader>
+      <DialogPanel>
+        <ProcessSteps
+          aria-label={`Setting up ${pressing.name}`}
+          steps={pressing.steps.map((step) => ({
+            id: step.label,
+            label: step.label,
+            state: PRESS_STEP_STATES[step.state].state,
+            stateLabel: PRESS_STEP_STATES[step.state].label,
+          }))}
+        />
+      </DialogPanel>
+      {pressing.onTryAgain === undefined ? null : (
+        <DialogFooter>
+          <Button onClick={pressing.onTryAgain}>Try again</Button>
+        </DialogFooter>
+      )}
+    </>
+  );
+}
+
 /** The form on its own, so it can be rendered and read without a portal. */
 export function ZeropsEnvironmentCreationForm(props: ZeropsEnvironmentCreationFormProps) {
+  if (props.pressing !== undefined) return <PressingPanel pressing={props.pressing} />;
   if (props.role !== "dev") return <EnvironmentForm {...props} />;
   const { groupName, defaultBotName, proposeName, takenBotNames, tier, tierLoading } = props;
   const { defaultTintFor, adding, addError, closed, onDoorAction, onCancel, onCreate } = props;
