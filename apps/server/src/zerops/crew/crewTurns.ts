@@ -226,8 +226,10 @@ const turnEnded = (
     const after = openTaskOf(yield* asRefusal(core.store.assignments(CREW_ID)), handle);
     if (after?.state === "merging") {
       yield* core.background(
-        core.crewmate(handle)(
-          integrate(core, after.assignment).pipe(Effect.andThen(advance(core, handle))),
+        // Only the git in its copy holds the crewmate: its check and app restart run beside
+        // presses, the task standing `checking` meanwhile.
+        integrate(core, after.assignment, core.crewmate(handle)).pipe(
+          Effect.andThen(core.crewmate(handle)(advance(core, handle))),
         ),
       );
     } else {

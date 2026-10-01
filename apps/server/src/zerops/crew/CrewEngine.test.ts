@@ -5,11 +5,13 @@ import * as NodePath from "node:path";
 
 import { assert, describe, it } from "@effect/vitest";
 import {
+  type CrewCommandError,
   ProviderInstanceId,
   ThreadId as ThreadIdSchema,
   type OrchestrationThreadShell,
 } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
+import * as Exit from "effect/Exit";
 import * as Fiber from "effect/Fiber";
 import * as Option from "effect/Option";
 import * as Ref from "effect/Ref";
@@ -284,7 +286,42 @@ describe("CrewEngine", () => {
     ),
   );
 
-  it.live("a discard pressed while its crewmate's turn end is handled waits for that end", () =>
+  /** A press while `backend`'s turn end commits in its copy: what it came to, and how soon. */
+  const pressDuringTurnEnd = (
+    world: Parameters<Parameters<typeof withCrewEngine>[0]>[0],
+    press: (taskId: string) => Parameters<typeof command>[0],
+  ) =>
+    Effect.gen(function* () {
+      const first = (yield* snapshotWhere((snapshot) => snapshot.board.tasks.length >= 1)).board
+        .tasks[0]!.id;
+      const [stint] = yield* dispatchedOf(world, "thread.crew.create");
+      const turnCommit = yield* world.holdSsh((script) => script.includes("): turn 1"));
+      const ended = yield* Effect.forkChild(
+        world.publish(spiEvent("turn.completed", stint!.threadId, { state: "completed" })),
+      );
+      yield* turnCommit.reached;
+      const pressed = yield* Effect.forkChild(Effect.exit(command(press(first))));
+      const atOnce = yield* Fiber.await(pressed).pipe(Effect.timeoutOption("300 millis"));
+      yield* turnCommit.release;
+      yield* Fiber.join(ended);
+      yield* Fiber.join(pressed);
+      return { first, atOnce };
+    });
+
+  /** The press came back before the turn's end, refused because its crewmate was busy. */
+  const refusedAsBusy = (
+    atOnce: Option.Option<Exit.Exit<Exit.Exit<unknown, CrewCommandError>>>,
+  ) => {
+    assert.isTrue(Option.isSome(atOnce), "the press hung on the turn's end");
+    const outer = Option.getOrThrow(atOnce);
+    assert.isTrue(Exit.isSuccess(outer), "the press died");
+    const exit = (outer as Exit.Success<Exit.Exit<unknown, CrewCommandError>>).value;
+    assert.isTrue(Exit.isFailure(exit), "the press was not refused");
+    const error = Option.getOrThrow(Exit.findErrorOption(exit));
+    assert.include(error.detail ?? "", "busy");
+  };
+
+  it.live("a discard pressed while its crewmate's turn end is handled is refused at once", () =>
     withCrewEngine((world) =>
       Effect.gen(function* () {
         yield* applied(world);
@@ -297,20 +334,14 @@ describe("CrewEngine", () => {
           doneWhen: "",
           dependsOn: [],
         });
-        const first = (yield* snapshotWhere((snapshot) => snapshot.board.tasks.length === 2)).board
-          .tasks[0]!.id;
-        const [stint] = yield* dispatchedOf(world, "thread.crew.create");
-        const turnCommit = yield* world.holdSsh((script) => script.includes("): turn 1"));
-        const ended = yield* Effect.forkChild(
-          world.publish(spiEvent("turn.completed", stint!.threadId, { state: "completed" })),
-        );
-        yield* turnCommit.reached;
-        const pressed = yield* Effect.forkChild(command({ _tag: "discard", taskId: first }));
-        const beforeTheEnd = yield* Fiber.await(pressed).pipe(Effect.timeoutOption("300 millis"));
-        yield* turnCommit.release;
-        yield* Fiber.join(ended);
-        yield* Fiber.join(pressed);
-        assert.isTrue(Option.isNone(beforeTheEnd), "the discard returned before the turn's end");
+        yield* snapshotWhere((snapshot) => snapshot.board.tasks.length === 2);
+        const { first, atOnce } = yield* pressDuringTurnEnd(world, (taskId) => ({
+          _tag: "discard",
+          taskId,
+        }));
+        refusedAsBusy(atOnce);
+        // Once the turn has ended, the same press goes through and the queue moves.
+        yield* command({ _tag: "discard", taskId: first });
         yield* snapshotWhere(
           (snapshot) =>
             snapshot.board.tasks[0]?.state === "discarded" &&
@@ -348,29 +379,49 @@ describe("CrewEngine", () => {
   ];
 
   for (const { name, press } of pressesDuringTurnEnd) {
-    it.live(`${name} pressed while its crewmate's turn end is handled waits for that end`, () =>
+    it.live(`${name} pressed while its crewmate's turn end is handled is refused at once`, () =>
       withCrewEngine((world) =>
         Effect.gen(function* () {
           yield* applied(world);
           yield* command({ _tag: "message", handle: "backend", text: "First", attachments: [] });
-          const first = (yield* snapshotWhere((snapshot) => snapshot.board.tasks.length === 1))
-            .board.tasks[0]!.id;
-          const [stint] = yield* dispatchedOf(world, "thread.crew.create");
-          const turnCommit = yield* world.holdSsh((script) => script.includes("): turn 1"));
-          const ended = yield* Effect.forkChild(
-            world.publish(spiEvent("turn.completed", stint!.threadId, { state: "completed" })),
-          );
-          yield* turnCommit.reached;
-          const pressed = yield* Effect.forkChild(Effect.exit(command(press(first))));
-          const beforeTheEnd = yield* Fiber.await(pressed).pipe(Effect.timeoutOption("300 millis"));
-          yield* turnCommit.release;
-          yield* Fiber.join(ended);
-          yield* Fiber.join(pressed);
-          assert.isTrue(Option.isNone(beforeTheEnd), "the press returned before the turn's end");
+          const { atOnce } = yield* pressDuringTurnEnd(world, press);
+          refusedAsBusy(atOnce);
         }),
       ),
     );
   }
+
+  it.live("a long check after a turn end holds up no press and no run", () =>
+    withCrewEngine((world) =>
+      Effect.gen(function* () {
+        yield* applied(world);
+        const thread = yield* firstTurn(world, () => undefined);
+        yield* reportDone(thread);
+        const check = yield* world.holdSsh((script) => script.includes("test -f ok.txt"));
+        yield* world.publish(spiEvent("turn.completed", thread, { state: "completed" }));
+        yield* check.reached;
+        const quick = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
+          Effect.exit(effect).pipe(Effect.timeoutOption("300 millis"));
+        const started = yield* quick(
+          command({
+            _tag: "start",
+            budgetUsd: "unlimited",
+            timeLimitHours: "unlimited",
+            stopAtUsagePercent: null,
+            landing: "person",
+            devGrant: false,
+            leadMayStart: false,
+          }),
+        );
+        const messaged = yield* quick(
+          command({ _tag: "message", handle: "backend", text: "More", attachments: [] }),
+        );
+        yield* check.release;
+        assert.isTrue(Option.isSome(started), "Start hung on the check");
+        assert.isTrue(Option.isSome(messaged), "a message hung on the check");
+      }),
+    ),
+  );
 
   it.live("a discard whose copy cannot be reset leaves its task as it was", () =>
     withCrewEngine((world) =>

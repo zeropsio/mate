@@ -19,7 +19,12 @@
  *
  * @module crewTasks
  */
-import type { ChatAttachment, CrewTaskSource, CrewTaskState } from "@t3tools/contracts";
+import type {
+  ChatAttachment,
+  CrewCommandError,
+  CrewTaskSource,
+  CrewTaskState,
+} from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 
@@ -84,15 +89,40 @@ export const requireTask = (core: CrewCore, taskId: string) =>
     ),
   );
 
+/** What a press to a crewmate busy in its copy is told. */
+export const busyWords = (handle: string) =>
+  `@${handle} is busy with its copy of the code; try again in a moment`;
+
 /**
- * A press on a task, under its crewmate's lock (`CrewCore.crewmate`): it never
- * runs beside that crewmate's turn end, which commits in the same copy.
+ * A press to a crewmate, under its lock (`CrewCore.crewmate`): it never runs
+ * beside that crewmate's turn end or another press in the same copy, and it
+ * never waits for one — it is refused at once, saying so.
  */
+export const pressCrewmate = <A, E, R>(
+  core: CrewCore,
+  handle: string,
+  effect: Effect.Effect<A, E, R>,
+): Effect.Effect<A, E | CrewCommandError, R> =>
+  core
+    .crewmateIfFree(handle)(effect)
+    .pipe(
+      Effect.flatMap(
+        Option.match({
+          onNone: () => Effect.fail(refuse("wrong-state", busyWords(handle))),
+          onSome: (value) => Effect.succeed(value),
+        }),
+      ),
+    );
+
+/** A press on a task, to its crewmate (`pressCrewmate`). */
 export const onTaskCrewmate = <A, E, R>(
   core: CrewCore,
   taskId: string,
   effect: Effect.Effect<A, E, R>,
-) => Effect.flatMap(requireTask(core, taskId), (pressed) => core.crewmate(pressed.member)(effect));
+) =>
+  Effect.flatMap(requireTask(core, taskId), (pressed) =>
+    pressCrewmate(core, pressed.member, effect),
+  );
 
 export const saveTask = (core: CrewCore, row: CrewAssignmentRow) =>
   Effect.gen(function* () {
@@ -689,9 +719,11 @@ export const tell = (
           handle: route.handle,
           text: input.text,
           attachments: [],
-        }).pipe(core.crewmate(route.handle));
+        }).pipe((sent) => pressCrewmate(core, route.handle, sent));
       case "to-lead":
-        return yield* core.crewmate(route.lead)(
+        return yield* pressCrewmate(
+          core,
+          route.lead,
           message(core, principal, {
             handle: route.lead,
             text:
@@ -711,7 +743,9 @@ export const tell = (
             card: { brief: input.text, doneWhen: "", note: routed.note ?? null },
             dependsOn: [],
           });
-          yield* core.crewmate(routed.handle)(
+          yield* pressCrewmate(
+            core,
+            routed.handle,
             pump(core, routed.handle, { taskId: task.assignment, principal }),
           );
         }

@@ -169,19 +169,28 @@ const runCheck = (core: CrewCore, member: CrewMember, task: CrewAssignmentRow) =
  * Merge-in and check for a task in `merging`; a no-op in any other state, so
  * a report, a boot sweep and a press may all ask for it.
  */
-export const integrate = (core: CrewCore, taskId: string) =>
+export const integrate = (
+  core: CrewCore,
+  taskId: string,
+  /** What the git in the crewmate's copy runs under: its lock, when the caller holds none. */
+  inCopy: <A, E, R>(effect: Effect.Effect<A, E, R>) => Effect.Effect<A, E, R> = (effect) => effect,
+) =>
   Effect.gen(function* () {
     const task = yield* requireTask(core, taskId);
     if (task.state !== "merging" || core.memory.integrating.has(taskId)) return task;
     core.memory.integrating.add(taskId);
-    return yield* integrateMerging(core, task).pipe(
+    return yield* integrateMerging(core, task, inCopy).pipe(
       // A review nobody takes up waits on the person after a while (`crewSnapshot`).
       Effect.tap((row) => (row.state === "review" ? feedWhenUnattended(core) : Effect.void)),
       Effect.ensuring(Effect.sync(() => core.memory.integrating.delete(taskId))),
     );
   });
 
-const integrateMerging = (core: CrewCore, task: CrewAssignmentRow) =>
+const integrateMerging = (
+  core: CrewCore,
+  task: CrewAssignmentRow,
+  inCopy: <A, E, R>(effect: Effect.Effect<A, E, R>) => Effect.Effect<A, E, R>,
+) =>
   Effect.gen(function* () {
     const applied = yield* requireApplied(core);
     const member = yield* requireMember(applied, task.member);
@@ -193,7 +202,7 @@ const integrateMerging = (core: CrewCore, task: CrewAssignmentRow) =>
       });
     }
     const key = { crew: CREW_ID, handle: member.row.handle };
-    const merged = yield* asRefusal(core.integration.mergeIn(key));
+    const merged = yield* inCopy(asRefusal(core.integration.mergeIn(key)));
     let result: CrewAssignmentRow;
     switch (merged._tag) {
       case "current":
