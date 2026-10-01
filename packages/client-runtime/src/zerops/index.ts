@@ -510,6 +510,7 @@ export {
   releaseContentsCommits,
   releaseContentsSummary,
   sidebarChangeLabel,
+  changeNamesRepository,
   type FlowPullRequest,
   type FlowPullRequestKind,
   type FlowVerb,

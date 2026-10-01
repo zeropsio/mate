@@ -270,6 +270,29 @@ export function agentTurnNotes(
   });
 }
 
+type ChangeLabelOf = Pick<
+  FlowPullRequest,
+  "repository" | "number" | "title" | "mateProjectId" | "author"
+>;
+
+/**
+ * Whether a change is named with its repository: when the changes of whoever opened it — its
+ * Mate's, or a person's own — stand open in more than one repository, `#1` alone is two rows
+ * that read the same (`appdev #1`, `apidev #1`).
+ */
+export function changeNamesRepository(
+  pull: ChangeLabelOf,
+  among?: ReadonlyArray<ChangeLabelOf>,
+): boolean {
+  if (among === undefined) return false;
+  const whose = (entry: ChangeLabelOf) =>
+    entry.mateProjectId === undefined
+      ? `person:${entry.author ?? ""}`
+      : `mate:${entry.mateProjectId}`;
+  const owner = whose(pull);
+  return among.some((entry) => whose(entry) === owner && entry.repository !== pull.repository);
+}
+
 /**
  * What a change is called on the menu: `#4 Add a due date to each todo`, and
  * `· ada` after it where no Mate's row stands above to say whose it is.
@@ -280,11 +303,16 @@ export function agentTurnNotes(
  * costs more than the echo did (the owner, 2026-09-19). The fork carries the
  * distinction instead: a change is drawn branching off the line rather than
  * standing on it, so it reads as subordinate without having to go mute.
+ *
+ * `among` is what is drawn with it: where its opener's changes span repositories, each row
+ * leads with its own — `apidev #1 Rebuild the API`.
  */
 export function sidebarChangeLabel(
-  pull: Pick<FlowPullRequest, "number" | "title" | "mateProjectId" | "author">,
+  pull: ChangeLabelOf,
+  among?: ReadonlyArray<ChangeLabelOf>,
 ): string {
-  const title = `#${pull.number} ${pull.title}`;
+  const number = `#${pull.number} ${pull.title}`;
+  const title = changeNamesRepository(pull, among) ? `${pull.repository} ${number}` : number;
   return pull.mateProjectId === undefined && pull.author !== undefined
     ? `${title} · ${pull.author}`
     : title;
@@ -304,7 +332,7 @@ export function pullRequestLineWith(
 }
 
 /** Newest first — the one a person is most likely waiting on. */
-function byNewest(left: FlowPullRequest, right: FlowPullRequest): number {
+export function byNewest(left: FlowPullRequest, right: FlowPullRequest): number {
   return (right.updatedAt ?? "").localeCompare(left.updatedAt ?? "") || right.number - left.number;
 }
 

@@ -1191,6 +1191,24 @@ describe("the project's flow under it", () => {
     expect(html).not.toContain("main has code, no production yet");
   });
 
+  it("names the repository on each of a Mate's changes once they span two", () => {
+    const html = withFlow(
+      [CRM_DEV, CRM_STAGE],
+      flow({
+        pullRequests: [
+          pull(1, { title: "Build the storefront" }),
+          pull(1, { repository: "apidev", title: "Rebuild the API" }),
+        ],
+      }),
+    );
+    const rows = [
+      ...html.matchAll(/data-zerops-surface="sidebar-pull-request"[\s\S]*?<\/li>/gu),
+    ].map((match) => match[0].replace(/<[^>]+>/gu, " "));
+    expect(rows).toHaveLength(2);
+    expect(rows.some((row) => row.includes("appdev #1 Build the storefront"))).toBe(true);
+    expect(rows.some((row) => row.includes("apidev #1 Rebuild the API"))).toBe(true);
+  });
+
   it("folds a Mate's pull requests behind a count once there are more than three", () => {
     const html = withFlow(
       [CRM_DEV, CRM_STAGE],

@@ -288,6 +288,66 @@ describe("one pull request in the flow", () => {
   });
 });
 
+describe("sidebarChangeLabel: a Mate's changes in two repositories name their repository", () => {
+  const change = (repository: string, number: number, title: string, login: string) =>
+    flowPullRequest({
+      mergeability: "mergeable",
+      repository,
+      pull: pull({
+        number,
+        title,
+        head: {
+          ref: login.startsWith("mate-") ? login.replace("mate-", "mate/mate-") : "fix",
+          sha: "abc",
+        },
+        user: { login },
+      }),
+      checks: [],
+    });
+  const appdev = change("appdev", 1, "Build the storefront", `mate-${VERA}`);
+  const apidev = change("apidev", 1, "Rebuild the API", `mate-${VERA}`);
+  const fenApi = change("apidev", 2, "Add a health route", `mate-${FEN}`);
+  const adaApp = change("appdev", 7, "Fix a typo", "ada");
+  const adaApi = change("apidev", 8, "Tune the pool", "ada");
+
+  it.each([
+    ["one repository: number and title", appdev, [appdev, fenApi], "#1 Build the storefront"],
+    ["alone, nothing to tell apart", appdev, undefined, "#1 Build the storefront"],
+    [
+      "two repositories: each names its own",
+      appdev,
+      [appdev, apidev],
+      "appdev #1 Build the storefront",
+    ],
+    [
+      "two repositories, the other one",
+      apidev,
+      [appdev, apidev, fenApi],
+      "apidev #1 Rebuild the API",
+    ],
+    [
+      "another Mate's repository is not this Mate's",
+      fenApi,
+      [appdev, apidev, fenApi],
+      "#2 Add a health route",
+    ],
+    [
+      "a person's change in one repository",
+      adaApp,
+      [adaApp, appdev, apidev],
+      "#7 Fix a typo · ada",
+    ],
+    [
+      "a person's changes in two repositories",
+      adaApi,
+      [adaApp, adaApi],
+      "apidev #8 Tune the pool · ada",
+    ],
+  ] as const)("%s", (_case, row, among, label) => {
+    expect(sidebarChangeLabel(row, among)).toBe(label);
+  });
+});
+
 describe("the pull requests of each Mate", () => {
   const vera = flowPullRequest({
     mergeability: "mergeable",
