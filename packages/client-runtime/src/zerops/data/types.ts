@@ -1090,11 +1090,6 @@ export type FacetState<Fields, RequiredField extends keyof Fields> =
       /** Source that established observed knowledge; later search seeds do not replace it. */
       readonly source: ObservationSource;
       readonly stamp: IngestionStamp;
-      /**
-       * When the platform said it: the start of the read that answered, or the arrival of the
-       * push; absent, its stamp. A search answers for a facet only well after this.
-       */
-      readonly asOfMs?: number;
       readonly admission: FacetAdmission;
     }
   | {

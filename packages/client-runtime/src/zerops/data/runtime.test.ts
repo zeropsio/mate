@@ -5856,3 +5856,79 @@ describe("a registration every project shares", () => {
     }),
   );
 });
+
+it.effect(
+  "anchors a renewed service inventory: a reconnect's search says what changed while down",
+  () =>
+    Effect.gen(function* () {
+      const { decodeRegistrationResponse } = yield* Effect.promise(
+        () => import("./platformProtocol.ts"),
+      );
+      const registry = AtomRegistry.make();
+      const ref: ServiceRef = {
+        kind: "service",
+        project: project("p"),
+        serviceId: ZeropsServiceId.make("s"),
+      };
+      let currentName = "First";
+      let events: Queue.Queue<ReceiverEvent> | null = null;
+      const runtime = yield* makeZeropsDataRuntime({
+        scope: runtimeScope,
+        atomRegistry: registry,
+        makeOpaqueId: makeIdFactory(),
+        policy: makeZeropsDataPolicy({ recoveryBackoffStartMs: 10, recoveryBackoffMaxMs: 10 }),
+        adapter: {
+          ...makeAdapterHarness().adapter,
+          openReceiver: (_scope, organization, identity) =>
+            Effect.gen(function* () {
+              events = yield* Queue.unbounded<ReceiverEvent>();
+              return {
+                identity,
+                organization,
+                delivery: "hot-single-consumer-buffered-before-open-resolves",
+                events: Stream.fromQueue(events),
+              } satisfies ReceiverHandle;
+            }),
+          register: (_handle, request) =>
+            Effect.sync(() => ({
+              responseObservations:
+                request.descriptor.kind === "query-membership" &&
+                request.descriptor.query.kind === "services-of-organization"
+                  ? decodeRegistrationResponse(request, {
+                      items: [{ id: "s", projectId: "p", name: currentName, status: "ACTIVE" }],
+                      totalHits: 1,
+                    }).observations
+                  : [],
+            })),
+        },
+      });
+      const scope = yield* Scope.make();
+      const lease = yield* runtime
+        .acquire({ kind: "project-inventory", project: ref.project })
+        .pipe(Scope.provide(scope));
+      const observing = (state: ZeropsDataState) =>
+        state.interests.get(lease.interest)?.interest.status === "observing";
+      const nameOf = () => {
+        const read = registry.get(runtime.reads.service(ref));
+        return read.value.knowledge === "observed" &&
+          read.value.record.identity.knowledge === "observed"
+          ? read.value.record.identity.fields.hostname
+          : null;
+      };
+      yield* settleUntil(runtime, observing, 2_000);
+      expect(nameOf()).toBe("First");
+
+      // Renamed while the socket was down: no push of it ever arrives.
+      currentName = "Changed while disconnected";
+      yield* Queue.offer(events!, { kind: "closed", reason: "network lost" });
+      yield* settleUntil(runtime, (state) => !observing(state), 2_000);
+      yield* TestClock.adjust("10 millis");
+      yield* settleUntil(runtime, observing, 2_000);
+
+      expect(nameOf()).toBe("Changed while disconnected");
+
+      yield* runtime.shutdown("application-close");
+      yield* Scope.close(scope, Exit.void);
+      registry.dispose();
+    }),
+);

@@ -195,7 +195,7 @@ const observationRequestId = <Fields>(observation: FacetObservation<Fields>): st
 const authoritativeOrder = <Fields>(
   observation: FacetObservation<Fields>,
 ): { readonly dispatch: DispatchOrdinal; readonly readStart: ReadStartOrdinal | null } | null => {
-  if (observation.source === "direct-read") {
+  if (observation.source === "direct-read" || observation.source === "indexed-search") {
     return {
       dispatch: observation.ticket.dispatchOrdinal,
       readStart: observation.ticket.readStartOrdinal,
@@ -244,15 +244,6 @@ const canReopenUnavailable = <Fields, RequiredField extends keyof Fields>(
   return false;
 };
 
-/**
- * How far the platform's search index may trail what it indexes. A search seeds only the fields a
- * facet lacks — it may answer with what an entity was a moment ago — unless the facet was last
- * written longer than this before the search began: then the index has caught up with it, and the
- * search corrects whatever changed meanwhile, as after a socket that was down. The organization's
- * searches are its only reads (DESIGN §4.1), so nothing else would.
- */
-export const SEARCH_INDEX_LAG_MS = 5_000;
-
 export function applyFacet<Fields, RequiredField extends keyof Fields>(
   facet: FacetState<Fields, RequiredField>,
   required: ReadonlyArray<RequiredField>,
@@ -289,13 +280,13 @@ export function applyFacet<Fields, RequiredField extends keyof Fields>(
     return { facet, status: "suppressed", requestId, unresolvedRequiredFields: unresolved };
   }
 
+  // A search answers for every field of what it carries, ordered by when it was sent: one
+  // dispatched before a read already applied, or begun before a push that arrived since, was
+  // suppressed above. The organization's searches are its only reads (DESIGN §4.1), and a
+  // reconnect's is what says what changed while the socket was down. An embedded entity a row
+  // carries in passing only seeds what is missing.
   let patch: FacetPatch<Fields> = observation.fields;
-  const searchAnswersForFacet =
-    source === "indexed-search" &&
-    facet.knowledge === "observed" &&
-    (facet.asOfMs ?? facet.stamp.observedAtMs) <=
-      observation.ticket.startedAtMs - SEARCH_INDEX_LAG_MS;
-  if ((source === "indexed-search" && !searchAnswersForFacet) || source === "embedded") {
+  if (source === "embedded") {
     const seedEntries = keys
       .filter((key) => !hasOwn(currentFields, key))
       .map((key) => [key, observation.fields[key]] as const);
@@ -336,14 +327,7 @@ export function applyFacet<Fields, RequiredField extends keyof Fields>(
     };
   }
 
-  const preserveProvenance =
-    facet.knowledge === "observed" &&
-    ((source === "indexed-search" && !searchAnswersForFacet) || source === "embedded");
-  const asOfMs = preserveProvenance
-    ? facet.asOfMs
-    : source === "direct-read" || source === "indexed-search"
-      ? observation.ticket.startedAtMs
-      : undefined;
+  const preserveProvenance = facet.knowledge === "observed" && source === "embedded";
   return {
     facet: {
       knowledge: "observed",
@@ -351,7 +335,6 @@ export function applyFacet<Fields, RequiredField extends keyof Fields>(
       unresolvedRequiredFields: [],
       source: preserveProvenance ? facet.source : source,
       stamp: preserveProvenance ? facet.stamp : stamp,
-      ...(asOfMs === undefined ? {} : { asOfMs }),
       admission: nextAdmission,
     } as FacetState<Fields, RequiredField>,
     status: "applied",

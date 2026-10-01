@@ -85,7 +85,7 @@ describe("Zerops inventory model", () => {
     });
   });
 
-  it("lets search seed absent fields but preserves direct values and replacement semantics", () => {
+  it("keeps a direct read ahead of a search sent before it, and replacement semantics", () => {
     const id = identity();
     const ref = service();
     const descriptor = {
@@ -94,7 +94,8 @@ describe("Zerops inventory model", () => {
       schemaVersion: 1 as const,
     };
     const direct = directTicket({ kind: "service", ref }, id, 2, 1, 2);
-    const search = queryTicket(descriptor, id, 3, 2, 3);
+    // Sent before the direct read, answered after it.
+    const search = queryTicket(descriptor, id, 1, 1, 1);
     let state = reduce(makeInitialZeropsDataState(scope()), {
       kind: "interest-upserted",
       interest: desiredInterest(id),
@@ -169,17 +170,11 @@ describe("Zerops inventory model", () => {
   });
 
   it.each([
-    [
-      "long after the facet was last written: it corrects what changed meanwhile",
-      10_000,
-      "changed",
-    ],
-    [
-      "within the index's lag of the last write: it may trail it, and changes nothing",
-      4_000,
-      "canonical",
-    ],
-  ] as const)("a search begun %s", (_, searchStartedAtMs, hostname) => {
+    // A reconnect's search: whatever changed while the socket was down, it says.
+    ["sent after the facet's last read and push, says what it is now", 5, "changed"],
+    // A search begun before a push that arrived since answers with what the push replaced.
+    ["begun before a push that arrived since, changes nothing", 1, "pushed"],
+  ] as const)("a search %s", (_, receiptAtStart, hostname) => {
     const id = identity();
     const ref = service();
     const descriptor = {
@@ -188,105 +183,35 @@ describe("Zerops inventory model", () => {
       schemaVersion: 1 as const,
     };
     const direct = directTicket({ kind: "service", ref }, id, 2, 1, 2);
-    const search = { ...queryTicket(descriptor, id, 3, 2, 3), startedAtMs: searchStartedAtMs };
+    const search = queryTicket(descriptor, id, 3, receiptAtStart, 3);
     let state = reduce(makeInitialZeropsDataState(scope()), {
       kind: "interest-upserted",
       interest: desiredInterest(id),
     });
-    state = reduce(state, {
-      kind: "observation",
-      observation: {
-        stamp: stamp(1, 10),
-        accessEvidence: null,
-        input: {
-          kind: "service-identity-observed",
-          ref,
-          observation: {
-            source: "direct-read",
-            ticket: direct,
-            fields: { hostname: "canonical" },
-            metadata: {},
+    const observe = (at: number, observation: Record<string, unknown>, hostname: string) => {
+      state = reduce(state, {
+        kind: "observation",
+        observation: {
+          stamp: stamp(at),
+          accessEvidence: null,
+          input: {
+            kind: "service-identity-observed",
+            ref,
+            observation: { ...observation, fields: { hostname }, metadata: {} },
           },
         },
-      },
-    });
-    state = reduce(state, {
-      kind: "observation",
-      observation: {
-        stamp: stamp(2, searchStartedAtMs + 100),
-        accessEvidence: null,
-        input: {
-          kind: "service-identity-observed",
-          ref,
-          observation: {
-            source: "indexed-search",
-            ticket: search,
-            fields: { hostname: "changed" },
-            metadata: {},
-          },
-        },
-      },
-    });
+      } as never);
+    };
+    observe(1, { source: "direct-read", ticket: direct }, "canonical");
+    observe(
+      2,
+      { source: "native-push", registration: entityRegistration("service", id) },
+      "pushed",
+    );
+    observe(6, { source: "indexed-search", ticket: search }, "changed");
 
     const facet = state.inventory.services.get(serviceKeyOf(ref))?.identity;
     expect(facet?.knowledge === "observed" ? facet.fields.hostname : null).toBe(hostname);
-  });
-
-  it("does not rewrite provenance of an observed facet when search seeds an absent field", () => {
-    const id = identity();
-    const ref = service();
-    const descriptor = {
-      kind: "services-of-organization" as const,
-      organization: project().organization,
-      schemaVersion: 1 as const,
-    };
-    const direct = directTicket({ kind: "service", ref }, id, 1, 1, 1);
-    const search = queryTicket(descriptor, id, 2, 2, 2);
-    let state = reduce(makeInitialZeropsDataState(scope()), {
-      kind: "interest-upserted",
-      interest: desiredInterest(id),
-    });
-    state = reduce(state, {
-      kind: "observation",
-      observation: {
-        stamp: stamp(1),
-        accessEvidence: null,
-        input: {
-          kind: "service-identity-observed",
-          ref,
-          observation: {
-            source: "direct-read",
-            ticket: direct,
-            fields: { hostname: "canonical", type: null },
-            metadata: {},
-          },
-        },
-      },
-    });
-    state = reduce(state, {
-      kind: "observation",
-      observation: {
-        stamp: stamp(2),
-        accessEvidence: null,
-        input: {
-          kind: "service-identity-observed",
-          ref,
-          observation: {
-            source: "indexed-search",
-            ticket: search,
-            fields: { isSystem: true },
-            metadata: {},
-          },
-        },
-      },
-    });
-    const facet = state.inventory.services.get(serviceKeyOf(ref))?.identity;
-    expect(facet?.knowledge === "observed" ? facet.source : null).toBe("direct-read");
-    expect(facet?.knowledge === "observed" ? facet.stamp : null).toEqual(stamp(1));
-    expect(facet?.knowledge === "observed" ? facet.fields : null).toMatchObject({
-      hostname: "canonical",
-      isSystem: true,
-    });
   });
 
   it("applies only the latest query baseline and overlays intervening membership per ID", () => {
