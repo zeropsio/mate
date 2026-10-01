@@ -27,7 +27,12 @@ import {
   projectProcessSearchBody,
   type ZeropsProjectCreation,
 } from "./projectCreation.ts";
-import { findMateIntegrationToken, planGroupReach } from "./groupReach.ts";
+import {
+  findMateIntegrationToken,
+  makeTokenWriteLock,
+  planGroupReach,
+  type TokenWriteHold,
+} from "./groupReach.ts";
 import type {
   ZeropsIntegrationToken,
   ZeropsProjectGrant,
@@ -649,6 +654,12 @@ export interface ZeropsApiClientOptions {
     stale: ZeropsSession,
     refresh: () => Promise<ZeropsSession>,
   ) => Promise<ZeropsSession>;
+  /**
+   * Holds one integration token's read-then-write at a time (`mate:token:{id}`), shared with
+   * every other writer of the account's tokens in this browser. Without it, this client's own
+   * writes queue per token in memory.
+   */
+  readonly holdToken?: TokenWriteHold;
 }
 
 export interface ZeropsDataHttpRequest {
@@ -824,6 +835,7 @@ export class ZeropsApiClient {
     this.#fetch = options.fetch ?? globalThis.fetch.bind(globalThis);
     this.#onSessionChange = options.onSessionChange ?? (() => undefined);
     this.#renewSession = options.renewSession ?? ((_stale, refresh) => refresh());
+    this.#holdToken = options.holdToken ?? makeTokenWriteLock();
   }
 
   get session(): ZeropsSession | null {
@@ -1035,6 +1047,8 @@ export class ZeropsApiClient {
   }
 
   #tokenListeners = new Set<(clientId: string) => void>();
+
+  readonly #holdToken: TokenWriteHold;
 
   #tokensWritten(clientId: string): void {
     for (const listener of this.#tokenListeners) listener(clientId);
@@ -1456,28 +1470,34 @@ export class ZeropsApiClient {
           // role and every write into it is refused: no runner is imported and
           // a job queues for ever (measured 2026-09-20).
           const target = requireToolProject(project);
-          // The write replaces the broker's whole project list: it is planned from the token as
-          // it is now, not as the setup read it before the create and the regenerate.
-          const broker = (await this.listIntegrationTokens(input.clientId, signal)).find(
+          const listed = (await this.listIntegrationTokens(input.clientId, signal)).find(
             (token) => token.name === GITEA_BROKER_TOKEN_NAME,
           );
           // Nothing to re-grant: the mint above made a fresh org `BASIC_USER` token.
-          if (broker === undefined || brokerReachesEveryProject(broker)) break;
-          const write = withBrokerProjectGrant(broker.projects, target.id);
-          if (!write.ok) throw new ZeropsApiError(write.reason, "uncertain");
-          // The same array back means the broker already reaches the project.
-          if (write.grants === broker.projects) break;
-          await this.setIntegrationTokenProjects(
-            {
-              clientId: input.clientId,
-              tokenId: broker.id,
-              name: GITEA_BROKER_TOKEN_NAME,
-              projects: write.grants,
-              roleCode: broker.roleCode ?? "READ_ONLY",
-            },
-            signal,
-            beforeWrite,
-          );
+          if (listed === undefined || brokerReachesEveryProject(listed)) break;
+          // The write replaces the broker's whole project list: it is planned from the token as
+          // read under its lock, not as the setup read it before the create and the regenerate.
+          await this.#holdToken(listed.id, async () => {
+            const broker = (await this.listIntegrationTokens(input.clientId, signal)).find(
+              (token) => token.id === listed.id,
+            );
+            if (broker === undefined || brokerReachesEveryProject(broker)) return;
+            const write = withBrokerProjectGrant(broker.projects, target.id);
+            if (!write.ok) throw new ZeropsApiError(write.reason, "uncertain");
+            // The same array back means the broker already reaches the project.
+            if (write.grants === broker.projects) return;
+            await this.setIntegrationTokenProjects(
+              {
+                clientId: input.clientId,
+                tokenId: broker.id,
+                name: GITEA_BROKER_TOKEN_NAME,
+                projects: write.grants,
+                roleCode: broker.roleCode ?? "READ_ONLY",
+              },
+              signal,
+              beforeWrite,
+            );
+          });
           break;
         }
         case "import-services": {
@@ -2469,19 +2489,33 @@ export class ZeropsApiClient {
 
     if (token !== undefined) {
       this.#assertGeneration(generation);
-      const plan = planGroupReach({
-        token,
-        selfProjectId: projectId,
-        groupProjectIds: [projectId],
-      });
-      if (plan !== undefined) {
+      // The write replaces the token's whole project list: it is planned from the token as read
+      // under its lock. It lowers the token's org role to none, whatever the token held.
+      tokenLowered = await this.#holdToken(token.id, async () => {
+        const current = findMateIntegrationToken(
+          await this.listIntegrationTokens(clientId, signal),
+          projectId,
+        );
+        if (current === undefined) return false;
+        this.#assertGeneration(generation);
+        const plan = planGroupReach({
+          token: current,
+          selfProjectId: projectId,
+          groupProjectIds: [projectId],
+        });
+        if (plan === undefined) return false;
         await this.setIntegrationTokenProjects(
-          { clientId, tokenId: plan.tokenId, name: token.name, projects: plan.projects },
+          {
+            clientId,
+            tokenId: plan.tokenId,
+            name: current.name,
+            projects: plan.projects,
+          },
           signal,
           beforeWrite,
         );
-        tokenLowered = true;
-      }
+        return true;
+      });
 
       this.#assertGeneration(generation);
       const delegations = await this.listIntegrationTokenDelegations(

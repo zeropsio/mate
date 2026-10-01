@@ -827,6 +827,70 @@ describe("ZeropsApiClient project reads", () => {
     expect(result).toEqual({ restarted: false, steps: 0 });
   });
 
+  it("hardening lowers the Mate's token from a read under the token's lock", async () => {
+    const log: string[] = [];
+    const stub = recordingFetch((request) => {
+      if (request.url.includes("integration-token"))
+        log.push(`${request.method} ${new URL(request.url).pathname.split("/").slice(-1)[0]}`);
+      if (request.url.endsWith("/integration-token/list?limit=100"))
+        return jsonResponse(200, {
+          list: [
+            {
+              id: "token-1",
+              name: "zcp-project-1",
+              roleCode: "ADMIN",
+              projects: [{ projectId: "project-1", roleCode: "ADMIN" }],
+            },
+          ],
+        });
+      if (request.method === "PUT" && request.url.endsWith("/integration-token/token-1"))
+        return jsonResponse(200, {});
+      if (request.url.endsWith("/integration-token/token-1/delegation") && request.method === "GET")
+        return jsonResponse(200, { list: [{ id: "del-1", tokenId: "token-1" }] });
+      if (request.url.endsWith("/integration-token/token-1/delegation/del-1"))
+        return jsonResponse(200, {});
+      if (request.url.endsWith("/project/search"))
+        return jsonResponse(200, {
+          items: [
+            {
+              envList: [
+                { id: "iso", key: "envIsolation", content: "none" },
+                { id: "key", key: "ZCP_API_KEY", content: "secret", sensitive: false },
+              ],
+            },
+          ],
+        });
+      if (request.url.includes("/service-stack")) {
+        return jsonResponse(200, {
+          list: [{ id: "svc-1", name: "zcp", serviceStackTypeId: "zcp" }],
+        });
+      }
+      return jsonResponse(200, {});
+    });
+    const client = new ZeropsApiClient({
+      fetch: stub.fetch,
+      holdToken: async (tokenId, run) => {
+        log.push(`hold ${tokenId}`);
+        try {
+          return await run();
+        } finally {
+          log.push(`let go ${tokenId}`);
+        }
+      },
+    });
+    client.restoreSession(SESSION);
+
+    await client.hardenMate("org-1", "project-1");
+
+    const held = log.slice(log.indexOf("hold token-1"), log.indexOf("let go token-1") + 1);
+    expect(held).toEqual(["hold token-1", "GET list", "PUT token-1", "let go token-1"]);
+    const write = stub.requests.find(
+      (request) => request.method === "PUT" && request.url.endsWith("/integration-token/token-1"),
+    );
+    // Lowered to no org role, whatever the token held when it was read.
+    expect(write?.body).toContain('"roleCode":"NO_ACCESS"');
+  });
+
   it("hardening lowers the Mate's token and drops its delegations before health is asked", async () => {
     const stub = recordingFetch((request) => {
       if (request.url.endsWith("/integration-token/list?limit=100"))
@@ -1705,11 +1769,24 @@ describe("ZeropsApiClient.exchangeWebSocketToken", () => {
       if (request.url.includes("/regenerate")) return jsonResponse(200, { token: "fresh" });
       return jsonResponse(200, {});
     });
-    const client = new ZeropsApiClient({ fetch: stub.fetch });
+    const held: string[] = [];
+    let readsUnderLock = 0;
+    const client = new ZeropsApiClient({
+      fetch: stub.fetch,
+      holdToken: async (tokenId, run) => {
+        held.push(tokenId);
+        const before = tokenReads;
+        const value = await run();
+        readsUnderLock += tokenReads - before;
+        return value;
+      },
+    });
     client.restoreSession(SESSION);
 
     await client.createToolProject(TOOL_INPUT);
 
+    expect(held).toEqual(["tok-b"]);
+    expect(readsUnderLock).toBe(1);
     const grant = stub.requests.find(
       (request) => request.method === "PUT" && request.url.endsWith("/integration-token/tok-b"),
     );
