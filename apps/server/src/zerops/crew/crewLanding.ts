@@ -58,7 +58,6 @@ import {
   parkTask,
   pump,
   requireTask,
-  saveTask,
   sendTurn,
   stepTask,
   stintForTurn,
@@ -109,146 +108,228 @@ export const restartApp = (core: CrewCore, member: CrewMember) =>
 const goesToReview = (applied: AppliedCrew, task: CrewAssignmentRow) =>
   leadReviews(applied) && readTaskReview(task.review)?.verdict !== "accept";
 
-const runCheck = (core: CrewCore, member: CrewMember, task: CrewAssignmentRow) =>
+/** What runs under the crewmate's lock: the lock itself, or nothing when the caller holds it. */
+export type InCopy = <A, E, R>(effect: Effect.Effect<A, E, R>) => Effect.Effect<A, E, R>;
+
+const callerHoldsTheLock: InCopy = (effect) => effect;
+
+/**
+ * The check on a task its merge left `checking`. The command runs outside the
+ * crewmate's lock — a message may send the task back to work meanwhile, and a
+ * discard is refused as busy — and its verdict is written under the lock, on
+ * the task as it stands then: a verdict on a tree that will not land is dropped.
+ */
+const runCheck = (core: CrewCore, member: CrewMember, taskId: string, inCopy: InCopy) =>
   Effect.gen(function* () {
     const command = member.spec.check;
-    const reviewed = goesToReview(yield* requireApplied(core), task);
-    if (command === undefined || member.row.host === null) {
-      return yield* stepTask(core, task, { type: "check-passed", reviewed });
-    }
-    let checking = yield* saveTask(core, { ...task, check: { state: "running", output: "" } });
-    yield* core.changed;
     for (let run = 0; ; run += 1) {
       const outcome = yield* asRefusal(
         core.checks.run({
-          host: member.row.host,
+          host: member.row.host ?? "",
           lane: member.row.handle,
           kind: "check",
-          command,
+          command: command ?? "",
           crewPort: member.row.crewPort ?? undefined,
           env: member.spec.env,
         }),
       );
-      // A message during the check returned the task to its crewmate: the
-      // check's verdict is on a tree that will not land.
-      const current = yield* requireTask(core, checking.assignment);
-      if (current.state !== "checking") return current;
-      checking = current;
-      switch (outcome._tag) {
-        case "passed":
-          return yield* stepTask(core, checking, { type: "check-passed", reviewed }, (next) => ({
-            ...next,
-            check: { state: "passed", output: outcome.tail },
-          }));
-        case "failed":
-          return yield* stepTask(core, checking, { type: "check-failed" }, (next) => ({
-            ...next,
-            check: { state: "failed", output: outcome.tail },
-            waiting: { on: "check-failed", reason: "the check failed", paths: [] },
-          }));
-        case "lane-missing":
-          core.memory.missingLanes.add(member.row.handle);
-          return yield* parkTask(core, checking, "its copy of the code is missing");
-        case "timed-out":
-        case "killed":
-          if (run >= CHECK_RERUNS) {
-            return yield* parkTask(
-              core,
-              checking,
-              outcome._tag === "timed-out"
-                ? "the check timed out twice"
-                : "the check was killed twice",
-            );
+      const verdict = yield* inCopy(
+        Effect.gen(function* () {
+          // A message during the check returned the task to its crewmate: the
+          // check's verdict is on a tree that will not land.
+          const checking = yield* requireTask(core, taskId);
+          if (checking.state !== "checking") return { done: checking } as const;
+          const reviewed = goesToReview(yield* requireApplied(core), checking);
+          switch (outcome._tag) {
+            case "passed":
+              return {
+                done: yield* stepTask(
+                  core,
+                  checking,
+                  { type: "check-passed", reviewed },
+                  (next) => ({
+                    ...next,
+                    check: { state: "passed", output: outcome.tail },
+                  }),
+                ),
+              } as const;
+            case "failed":
+              return {
+                done: yield* stepTask(core, checking, { type: "check-failed" }, (next) => ({
+                  ...next,
+                  check: { state: "failed", output: outcome.tail },
+                  waiting: { on: "check-failed", reason: "the check failed", paths: [] },
+                })),
+              } as const;
+            case "lane-missing":
+              core.memory.missingLanes.add(member.row.handle);
+              return {
+                done: yield* parkTask(core, checking, "its copy of the code is missing"),
+              } as const;
+            case "timed-out":
+            case "killed":
+              if (run >= CHECK_RERUNS) {
+                return {
+                  done: yield* parkTask(
+                    core,
+                    checking,
+                    outcome._tag === "timed-out"
+                      ? "the check timed out twice"
+                      : "the check was killed twice",
+                  ),
+                } as const;
+              }
+              yield* stepTask(core, checking, { type: "check-killed" });
+              return { again: true } as const;
           }
-          checking = yield* stepTask(core, checking, { type: "check-killed" });
-      }
+        }),
+      );
+      if ("done" in verdict) return verdict.done;
     }
   });
 
 /**
  * Merge-in and check for a task in `merging`; a no-op in any other state, so
- * a report, a boot sweep and a press may all ask for it.
+ * a report, a boot sweep and a press may all ask for it. Asked while its
+ * integration runs — a message sent the task back to work during the check,
+ * and the turn reported again before that check ended — it runs again once
+ * that one ends, so the task is never left `merging`.
+ *
+ * `inCopy` is the crewmate's lock for a caller that holds none: the merge and
+ * every state written run under it, the setup, the app restart and the check
+ * outside it, the task standing `checking`.
  */
-export const integrate = (core: CrewCore, taskId: string) =>
+export const integrate = (
+  core: CrewCore,
+  taskId: string,
+  inCopy: InCopy = callerHoldsTheLock,
+): Effect.Effect<CrewAssignmentRow, CrewCommandError> =>
   Effect.gen(function* () {
     const task = yield* requireTask(core, taskId);
-    if (task.state !== "merging" || core.memory.integrating.has(taskId)) return task;
+    if (task.state !== "merging") return task;
+    if (core.memory.integrating.has(taskId)) {
+      core.memory.integrateAgain.add(taskId);
+      return task;
+    }
     core.memory.integrating.add(taskId);
-    return yield* integrateMerging(core, task).pipe(
+    const result = yield* integrateMerging(core, taskId, inCopy).pipe(
       // A review nobody takes up waits on the person after a while (`crewSnapshot`).
       Effect.tap((row) => (row.state === "review" ? feedWhenUnattended(core) : Effect.void)),
       Effect.ensuring(Effect.sync(() => core.memory.integrating.delete(taskId))),
     );
+    return core.memory.integrateAgain.delete(taskId)
+      ? yield* integrate(core, taskId, inCopy)
+      : result;
   });
 
-const integrateMerging = (core: CrewCore, task: CrewAssignmentRow) =>
+const integrateMerging = (core: CrewCore, taskId: string, inCopy: InCopy) =>
   Effect.gen(function* () {
     const applied = yield* requireApplied(core);
-    const member = yield* requireMember(applied, task.member);
-    if (member.row.kind !== "writer") {
-      const clean = yield* stepTask(core, task, { type: "merge-clean" });
-      return yield* stepTask(core, clean, {
-        type: "check-passed",
-        reviewed: goesToReview(applied, task),
-      });
-    }
-    const key = { crew: CREW_ID, handle: member.row.handle };
-    const merged = yield* asRefusal(core.integration.mergeIn(key));
-    let result: CrewAssignmentRow;
-    switch (merged._tag) {
-      case "current":
-      case "merged": {
-        if (merged._tag === "merged" && merged.lockfileChanged && member.spec.setup !== undefined) {
-          yield* asRefusal(
-            core.checks.run({
-              host: member.row.host ?? "",
-              lane: member.row.handle,
-              kind: "setup",
-              command: member.spec.setup,
-              crewPort: member.row.crewPort ?? undefined,
-              env: member.spec.env,
-            }),
-          );
+    // Under the lock: the task as it stands, the merge in its copy, and the state it leaves.
+    const merge = yield* inCopy(
+      Effect.gen(function* () {
+        const task = yield* requireTask(core, taskId);
+        const member = yield* requireMember(applied, task.member);
+        if (task.state !== "merging") return { task, member } as const;
+        if (member.row.kind !== "writer") {
+          const clean = yield* stepTask(core, task, { type: "merge-clean" });
+          const done = yield* stepTask(core, clean, {
+            type: "check-passed",
+            reviewed: goesToReview(applied, task),
+          });
+          return { task: done, member } as const;
         }
-        if (merged._tag === "merged" && member.row.restartAfterMerge)
-          yield* restartApp(core, member);
-        const checking = yield* stepTask(core, task, { type: "merge-clean" }, (next) => ({
-          ...next,
-          mergedHead: merged.head,
-          waiting: null,
-        }));
-        result = yield* runCheck(core, member, checking);
-        break;
+        const key = { crew: CREW_ID, handle: member.row.handle };
+        const merged = yield* asRefusal(core.integration.mergeIn(key));
+        switch (merged._tag) {
+          case "current":
+          case "merged": {
+            const checking = yield* stepTask(core, task, { type: "merge-clean" }, (next) => ({
+              ...next,
+              mergedHead: merged.head,
+              waiting: null,
+              ...(member.spec.check === undefined || member.row.host === null
+                ? {}
+                : { check: { state: "running" as const, output: "" } }),
+            }));
+            return { task: checking, member, merged } as const;
+          }
+          case "conflict":
+            return {
+              task: yield* stepTask(core, task, { type: "merge-conflict" }, (next) => ({
+                ...next,
+                mergedHead: merged.head,
+                waiting: {
+                  on: "conflict",
+                  reason: "conflicts with what landed",
+                  paths: merged.paths,
+                },
+              })),
+              member,
+            } as const;
+          case "unrelated":
+            return {
+              task: yield* stepTask(core, task, { type: "merge-empty-base" }, (next) => ({
+                ...next,
+                waiting: { on: "triage", reason: "your tree's history was rewritten", paths: [] },
+              })),
+              member,
+            } as const;
+          case "frozen":
+            core.memory.lastError = `${member.row.host} is redeploying; #${task.number} merges when it is back.`;
+            return { task, member } as const;
+          case "lane-missing":
+            core.memory.missingLanes.add(member.row.handle);
+            return {
+              task: yield* parkTask(core, task, "its copy of the code is missing"),
+              member,
+            } as const;
+          case "uncommitted":
+            return {
+              task: yield* parkTask(core, task, "its copy has work the engine did not commit"),
+              member,
+            } as const;
+          case "unknown-tip":
+            return {
+              task: yield* parkTask(core, task, "its copy of the code moved outside the engine"),
+              member,
+            } as const;
+        }
+      }),
+    );
+    let result = merge.task;
+    if ("merged" in merge && merge.merged !== undefined) {
+      const { member, merged } = merge;
+      yield* core.changed;
+      // Outside the lock, the task standing `checking`: what the merge needs, then the check.
+      if (merged._tag === "merged" && merged.lockfileChanged && member.spec.setup !== undefined) {
+        yield* asRefusal(
+          core.checks.run({
+            host: member.row.host ?? "",
+            lane: member.row.handle,
+            kind: "setup",
+            command: member.spec.setup,
+            crewPort: member.row.crewPort ?? undefined,
+            env: member.spec.env,
+          }),
+        );
       }
-      case "conflict":
-        result = yield* stepTask(core, task, { type: "merge-conflict" }, (next) => ({
-          ...next,
-          mergedHead: merged.head,
-          waiting: { on: "conflict", reason: "conflicts with what landed", paths: merged.paths },
-        }));
-        break;
-      case "unrelated":
-        result = yield* stepTask(core, task, { type: "merge-empty-base" }, (next) => ({
-          ...next,
-          waiting: { on: "triage", reason: "your tree's history was rewritten", paths: [] },
-        }));
-        break;
-      case "frozen":
-        core.memory.lastError = `${member.row.host} is redeploying; #${task.number} merges when it is back.`;
-        result = task;
-        break;
-      case "lane-missing":
-        core.memory.missingLanes.add(member.row.handle);
-        result = yield* parkTask(core, task, "its copy of the code is missing");
-        break;
-      case "uncommitted":
-        result = yield* parkTask(core, task, "its copy has work the engine did not commit");
-        break;
-      case "unknown-tip":
-        result = yield* parkTask(core, task, "its copy of the code moved outside the engine");
-        break;
+      if (merged._tag === "merged" && member.row.restartAfterMerge) yield* restartApp(core, member);
+      result =
+        member.spec.check === undefined || member.row.host === null
+          ? yield* inCopy(
+              Effect.gen(function* () {
+                const checking = yield* requireTask(core, taskId);
+                if (checking.state !== "checking") return checking;
+                return yield* stepTask(core, checking, {
+                  type: "check-passed",
+                  reviewed: goesToReview(applied, checking),
+                });
+              }),
+            )
+          : yield* runCheck(core, member, taskId, inCopy);
     }
-    yield* refreshLaneStats(core, member);
+    yield* refreshLaneStats(core, merge.member);
     yield* core.changed;
     return result;
   });

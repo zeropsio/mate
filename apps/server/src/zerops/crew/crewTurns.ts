@@ -226,7 +226,11 @@ const turnEnded = (
     const after = openTaskOf(yield* asRefusal(core.store.assignments(CREW_ID)), handle);
     if (after?.state === "merging") {
       yield* core.background(
-        integrate(core, after.assignment).pipe(Effect.andThen(advance(core, handle))),
+        // The merge and every state written hold the crewmate; its setup, app restart and
+        // check run beside presses, the task standing `checking`.
+        integrate(core, after.assignment, core.crewmate(handle)).pipe(
+          Effect.andThen(core.crewmate(handle)(advance(core, handle))),
+        ),
       );
     } else {
       yield* advance(core, handle);

@@ -130,6 +130,8 @@ export interface EngineMemory {
   readonly turns: Map<string, number>;
   /** Tasks whose merge-in and check are running, so a second ask waits for the first. */
   readonly integrating: Set<string>;
+  /** Tasks asked to integrate while their integration ran: it runs again when that one ends. */
+  readonly integrateAgain: Set<string>;
   /** Each dev service's Show-on-dev claim, as the gate's `holdsClaim` reads it. */
   readonly claims: Map<string, MemoryClaim>;
   /** What each dev service's dev server served when last read. */
@@ -227,6 +229,7 @@ export const makeMemory = (): EngineMemory => ({
   continueAtTurnEnd: new Map(),
   turns: new Map(),
   integrating: new Set(),
+  integrateAgain: new Set(),
   claims: new Map(),
   served: new Map(),
   integration: new Map(),
@@ -343,6 +346,14 @@ export const makeCrewCore = Effect.gen(function* () {
   const numbering = yield* Semaphore.make(1);
   const opening = yield* Semaphore.make(1);
   const crewmateLocks = new Map<string, Semaphore.Semaphore>();
+  const lockOf = (handle: string) => {
+    let lock = crewmateLocks.get(handle);
+    if (lock === undefined) {
+      lock = Semaphore.makeUnsafe(1);
+      crewmateLocks.set(handle, lock);
+    }
+    return lock;
+  };
   const changed = PubSub.publish(signals, undefined).pipe(Effect.asVoid);
 
   /** Reads the applied crew back from the tables into {@link cache}. */
@@ -523,14 +534,16 @@ export const makeCrewCore = Effect.gen(function* () {
      */
     crewmate:
       (handle: string) =>
-      <A, E, R>(effect: Effect.Effect<A, E, R>) => {
-        let lock = crewmateLocks.get(handle);
-        if (lock === undefined) {
-          lock = Semaphore.makeUnsafe(1);
-          crewmateLocks.set(handle, lock);
-        }
-        return lock.withPermits(1)(effect);
-      },
+      <A, E, R>(effect: Effect.Effect<A, E, R>) =>
+        lockOf(handle).withPermits(1)(effect),
+    /**
+     * `crewmate`'s lock taken only when free: `None`, and `effect` not run,
+     * while its turn end, a merge in its copy or another press holds it.
+     */
+    crewmateIfFree:
+      (handle: string) =>
+      <A, E, R>(effect: Effect.Effect<A, E, R>) =>
+        lockOf(handle).withPermitsIfAvailable(1)(effect),
     now: Effect.map(DateTime.now, DateTime.formatIso),
     uuid: crypto.randomUUIDv4.pipe(Effect.orDie),
   };

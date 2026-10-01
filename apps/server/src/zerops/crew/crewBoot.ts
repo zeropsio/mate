@@ -105,14 +105,20 @@ export const boot = (core: CrewCore) =>
       switch (task.state) {
         case "landing":
           yield* saveTask(core, { ...task, state: "merging" });
-          yield* core.background(integrate(core, task.assignment).pipe(Effect.asVoid));
+          yield* core.background(
+            integrate(core, task.assignment, core.crewmate(task.member)).pipe(Effect.asVoid),
+          );
           break;
         case "merging":
-          yield* core.background(integrate(core, task.assignment).pipe(Effect.asVoid));
+          yield* core.background(
+            integrate(core, task.assignment, core.crewmate(task.member)).pipe(Effect.asVoid),
+          );
           break;
         case "checking":
           yield* saveTask(core, { ...task, state: "merging" });
-          yield* core.background(integrate(core, task.assignment).pipe(Effect.asVoid));
+          yield* core.background(
+            integrate(core, task.assignment, core.crewmate(task.member)).pipe(Effect.asVoid),
+          );
           break;
         case "working": {
           const attempts = yield* asRefusal(core.store.attemptsOf(task.assignment));

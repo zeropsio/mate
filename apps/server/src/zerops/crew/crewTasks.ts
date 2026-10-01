@@ -19,7 +19,12 @@
  *
  * @module crewTasks
  */
-import type { ChatAttachment, CrewTaskSource, CrewTaskState } from "@t3tools/contracts";
+import type {
+  ChatAttachment,
+  CrewCommandError,
+  CrewTaskSource,
+  CrewTaskState,
+} from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 
@@ -82,6 +87,53 @@ export const requireTask = (core: CrewCore, taskId: string) =>
         onSome: Effect.succeed,
       }),
     ),
+  );
+
+/** What a press to a crewmate busy in its copy is told. */
+export const busyWords = (handle: string) =>
+  `@${handle} is busy with its copy of the code; try again in a moment`;
+
+/**
+ * A press to a crewmate, under its lock (`CrewCore.crewmate`): it never runs
+ * beside that crewmate's turn end, a merge or another press in the same copy,
+ * and never waits for one — it is refused at once as busy, having done nothing.
+ */
+export const pressCrewmate = <A, E, R>(
+  core: CrewCore,
+  handle: string,
+  effect: Effect.Effect<A, E, R>,
+): Effect.Effect<A, E | CrewCommandError, R> =>
+  core
+    .crewmateIfFree(handle)(effect)
+    .pipe(
+      Effect.flatMap(
+        Option.match({
+          onNone: () => Effect.fail(refuse("wrong-state", busyWords(handle))),
+          onSome: (value) => Effect.succeed(value),
+        }),
+      ),
+    );
+
+/** `pressCrewmate` on every one of `handles`, or on none: a busy one refuses the whole press. */
+export const pressCrewmates = <A, E, R>(
+  core: CrewCore,
+  handles: ReadonlyArray<string>,
+  effect: Effect.Effect<A, E, R>,
+): Effect.Effect<A, E | CrewCommandError, R> => {
+  const [first, ...rest] = [...new Set(handles)];
+  return first === undefined
+    ? effect
+    : pressCrewmate(core, first, pressCrewmates(core, rest, effect));
+};
+
+/** A press on a task, to its crewmate (`pressCrewmate`); the task is read again inside. */
+export const onTaskCrewmate = <A, E, R>(
+  core: CrewCore,
+  taskId: string,
+  effect: Effect.Effect<A, E, R>,
+) =>
+  Effect.flatMap(requireTask(core, taskId), (pressed) =>
+    pressCrewmate(core, pressed.member, effect),
   );
 
 export const saveTask = (core: CrewCore, row: CrewAssignmentRow) =>
@@ -595,10 +647,7 @@ export const message = (
     }
     if (open !== undefined) {
       if (open.state === "merging" || open.state === "landing") {
-        return yield* refuse(
-          "wrong-state",
-          `#${open.number} is ${open.state}; try again in a moment`,
-        );
+        return yield* refuse("wrong-state", busyWords(input.handle));
       }
       yield* continueTask(core, applied, member, open, principal, input.text, input.attachments);
       return;
@@ -641,15 +690,22 @@ export const newTask = (
     const applied = yield* requireApplied(core);
     yield* requireMember(applied, input.owner);
     for (const id of input.dependsOn) yield* requireTask(core, id);
-    const task = yield* createTask(core, {
-      owner: input.owner,
-      title: input.title,
-      source: "you",
-      createdBy: principalUser(principal),
-      card: { brief: input.brief, doneWhen: input.doneWhen, note: null },
-      dependsOn: input.dependsOn,
-    });
-    yield* pump(core, input.owner, { taskId: task.assignment, principal });
+    // Checked, then its crewmate held: a busy one is refused before anything is made.
+    yield* pressCrewmate(
+      core,
+      input.owner,
+      Effect.gen(function* () {
+        const task = yield* createTask(core, {
+          owner: input.owner,
+          title: input.title,
+          source: "you",
+          createdBy: principalUser(principal),
+          card: { brief: input.brief, doneWhen: input.doneWhen, note: null },
+          dependsOn: input.dependsOn,
+        });
+        yield* pump(core, input.owner, { taskId: task.assignment, principal });
+      }),
+    );
   });
 
 /** *Tell the crew* (PRD §5.3). */
@@ -675,32 +731,43 @@ export const tell = (
             )
           : refuse("no-mention");
       case "to-crewmate":
-        return yield* message(core, principal, {
-          handle: route.handle,
-          text: input.text,
-          attachments: [],
-        });
+        return yield* pressCrewmate(
+          core,
+          route.handle,
+          message(core, principal, { handle: route.handle, text: input.text, attachments: [] }),
+        );
       case "to-lead":
-        return yield* message(core, principal, {
-          handle: route.lead,
-          text:
-            route.addressed.length === 0
-              ? input.text
-              : `${input.text}\n\nAddressed: ${route.addressed.map((handle) => `@${handle}`).join(", ")}`,
-          attachments: [],
-        });
+        return yield* pressCrewmate(
+          core,
+          route.lead,
+          message(core, principal, {
+            handle: route.lead,
+            text:
+              route.addressed.length === 0
+                ? input.text
+                : `${input.text}\n\nAddressed: ${route.addressed.map((handle) => `@${handle}`).join(", ")}`,
+            attachments: [],
+          }),
+        );
       case "tasks":
-        for (const routed of route.tasks) {
-          const task = yield* createTask(core, {
-            owner: routed.handle,
-            title: routed.title || "Message",
-            source: "you",
-            createdBy: principalUser(principal),
-            card: { brief: input.text, doneWhen: "", note: routed.note ?? null },
-            dependsOn: [],
-          });
-          yield* pump(core, routed.handle, { taskId: task.assignment, principal });
-        }
+        // Every crewmate held first: one busy refuses the press before any task is made.
+        return yield* pressCrewmates(
+          core,
+          route.tasks.map((routed) => routed.handle),
+          Effect.gen(function* () {
+            for (const routed of route.tasks) {
+              const task = yield* createTask(core, {
+                owner: routed.handle,
+                title: routed.title || "Message",
+                source: "you",
+                createdBy: principalUser(principal),
+                card: { brief: input.text, doneWhen: "", note: routed.note ?? null },
+                dependsOn: [],
+              });
+              yield* pump(core, routed.handle, { taskId: task.assignment, principal });
+            }
+          }),
+        );
     }
   });
 
@@ -753,12 +820,24 @@ export const markFresh = (core: CrewCore, taskId: string) =>
  */
 export const discard = (core: CrewCore, taskId: string) =>
   Effect.flatMap(requireTask(core, taskId), (pressed) =>
-    core.crewmate(pressed.member)(
+    // A proposed task touches no copy: its discard needs nothing of its crewmate.
+    (pressed.state === "proposed"
+      ? (effect: Effect.Effect<void, CrewCommandError>) => effect
+      : (effect: Effect.Effect<void, CrewCommandError>) =>
+          pressCrewmate(core, pressed.member, effect))(
       Effect.gen(function* () {
         const applied = yield* requireApplied(core);
         const row = yield* requireTask(core, taskId);
         if (isOpenTask(row.state) && isWorking(core, applied, row.member)) {
           return yield* refuse("wrong-state", `@${row.member}'s turn is running`);
+        }
+        // Its merge or check runs (`integrate`): a discard now would be written over.
+        if (
+          row.state === "merging" ||
+          row.state === "checking" ||
+          core.memory.integrating.has(row.assignment)
+        ) {
+          return yield* refuse("wrong-state", busyWords(row.member));
         }
         const member = memberOf(applied, row.member);
         if (isOpenTask(row.state) && member?.row.kind === "writer") {
