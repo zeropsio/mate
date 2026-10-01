@@ -875,6 +875,18 @@ const RETRIED_BY_PERSON: AdapterError = {
   accountRevocationEvidence: false,
 };
 
+/**
+ * A shared registration its sender abandoned in flight — its establishment ran out of time, or it
+ * went: the interests waiting on it retry alone, as the sender does, and never strand.
+ */
+const REGISTRATION_ABANDONED: AdapterError = {
+  _tag: "ZeropsDataAdapterError",
+  kind: "timeout",
+  message: "The shared registration was abandoned by the interest that sent it.",
+  retryable: true,
+  accountRevocationEvidence: false,
+};
+
 /** An interest's establishment that outlived `establishmentDeadlineMs`: its own, not its socket's. */
 const ESTABLISHMENT_DEADLINE: AdapterError = {
   _tag: "ZeropsDataAdapterError",
@@ -2122,7 +2134,16 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
                 ) {
                   receiver.registrationOwners.delete(registration.request.subscriptionName);
                 }
-              }).pipe(Effect.andThen(Deferred.interrupt(registration.outcome)), Effect.asVoid),
+              }).pipe(
+                // Its siblings waiting on it hear it was abandoned, and retry alone as it does.
+                Effect.andThen(
+                  Deferred.succeed(registration.outcome, {
+                    kind: "failed",
+                    error: REGISTRATION_ABANDONED,
+                  }),
+                ),
+                Effect.asVoid,
+              ),
             ),
           );
         }
@@ -2183,6 +2204,16 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
           // A refusal left nothing registered: this interest registers again, alone, on the
           // receiver its siblings keep observing on. Without an answer the receiver may hold a
           // subscription nobody owns, whose frames would name no registration: it is replaced.
+          // A shared registration whose sender gave up on it (its own deadline) says nothing
+          // against an open socket: this interest retries alone too, and sends it afresh.
+          if (
+            outcome.error === REGISTRATION_ABANDONED &&
+            receiver.handle !== null &&
+            identity.receiver.receiverId === receiver.identity.receiverId
+          ) {
+            yield* recoverInterest(receiver, identity, "disconnect", outcome.error.message);
+            return interestFailed;
+          }
           if (registrationRefused(outcome.error)) {
             yield* recoverInterest(receiver, identity, "registration", outcome.error.message);
             return interestFailed;
@@ -2931,28 +2962,34 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
         // long enough to complete a registration — a livelock. Wake the existing
         // cycle instead, which recomputes its wait from current state.
         const activeRecovery = recoveryCycles.get(organizationKey);
-        if (activeRecovery !== undefined) {
-          // A person asked (Try now): every subscription of the organization not observing
-          // starts over now, past its backoff, on the socket the cycle already holds — which none
-          // of this replaces. Its registrations still unanswered are let go, so nothing waits on
-          // them. A socket that is not open is the cycle's: its login retries on its own backoff.
-          const current = receivers.get(organizationKey);
-          if (current !== undefined && current.handle !== null) {
-            const stalled = yield* Ref.get(model);
-            const restarting = [...interests.values()].filter((runtimeInterest) => {
-              const status = stalled.interests.get(runtimeInterest.key)?.interest.status;
-              return (
-                runtimeInterest.leases.size > 0 &&
-                runtimeInterest.identity.receiver.receiverId === current.identity.receiverId &&
-                (status === "establishing" || status === "recovering")
-              );
-            });
-            for (const registration of [...current.registrations.values()]) {
+        // A person asked (Try now), or the organization's data was invalidated, while some of its
+        // subscriptions are not observing — stalled, recovering, or failed past their attempts:
+        // every one of them starts over now, past its backoff, on the socket that is open, which
+        // none of this replaces. Its registrations still unanswered are let go, so nothing waits
+        // on them. A socket that is not open is the recovery cycle's: its login retries on its
+        // own backoff.
+        const current = receivers.get(organizationKey);
+        const open = current !== undefined && current.handle !== null ? current : null;
+        const stalled = yield* Ref.get(model);
+        const restarting =
+          open === null
+            ? []
+            : [...interests.values()].filter((runtimeInterest) => {
+                const status = stalled.interests.get(runtimeInterest.key)?.interest.status;
+                return (
+                  runtimeInterest.leases.size > 0 &&
+                  runtimeInterest.identity.receiver.receiverId === open.identity.receiverId &&
+                  (status === "establishing" || status === "recovering" || status === "failed")
+                );
+              });
+        if (activeRecovery !== undefined || restarting.length > 0) {
+          if (open !== null) {
+            for (const registration of [...open.registrations.values()]) {
               if (registration.status !== "registering") continue;
-              current.registrations.delete(registration.key);
+              open.registrations.delete(registration.key);
               const name = registration.request.subscriptionName;
-              if (current.registrationOwners.get(name) === registration)
-                current.registrationOwners.delete(name);
+              if (open.registrationOwners.get(name) === registration)
+                open.registrationOwners.delete(name);
               yield* Deferred.succeed(registration.outcome, {
                 kind: "failed",
                 error: RETRIED_BY_PERSON,
@@ -2960,7 +2997,7 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
             }
             for (const runtimeInterest of restarting) {
               runtimeInterest.recoveryAttempts = 0;
-              const desired = yield* updateInterestIdentity(runtimeInterest, current);
+              const desired = yield* updateInterestIdentity(runtimeInterest, open);
               yield* applyControl({ kind: "interest-upserted", interest: desired });
             }
             yield* Effect.forEach(
@@ -2969,7 +3006,7 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
               { discard: true },
             );
           }
-          yield* Deferred.succeed(activeRecovery.wake, undefined);
+          if (activeRecovery !== undefined) yield* Deferred.succeed(activeRecovery.wake, undefined);
           return;
         }
         const state = yield* Ref.get(model);

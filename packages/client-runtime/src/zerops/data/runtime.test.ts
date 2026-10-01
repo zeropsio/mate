@@ -4650,6 +4650,62 @@ describe("a failure's scope: its own interest, or the receiver", () => {
       }),
   );
 
+  it.effect(
+    "the organization's services subscription that outlives its establishment deadline on a live socket recovers alone, never replacing the socket",
+    () =>
+      Effect.gen(function* () {
+        // Live, 2026-10-01: one subscription stuck past its 60 s deadline replaced the org's
+        // socket. Shared by every project, the services subscription is retried on its own:
+        // the projects waiting on it recover with it, the project list never leaves.
+        let hung = true;
+        const rig = yield* setup({
+          hang: (request) =>
+            hung &&
+            request.descriptor.kind === "query-membership" &&
+            request.descriptor.query.kind === "services-of-organization",
+          policy: { establishmentDeadlineMs: 100 },
+        });
+        yield* settleUntil(
+          rig.runtime,
+          (state) => rig.interestOf(state, rig.list)?.status === "observing",
+        );
+        yield* TestClock.adjust("100 millis");
+        const first = yield* settleUntil(
+          rig.runtime,
+          (state) =>
+            rig.settled(state) &&
+            rig.inventories.every((lease) => rig.interestOf(state, lease)?.status === "recovering"),
+        );
+        expect(rig.inventories.map((lease) => rig.interestOf(first, lease))).toEqual(
+          rig.inventories.map(() =>
+            expect.objectContaining({
+              status: "recovering",
+              identity: expect.objectContaining({ receiver: rig.live }),
+            }),
+          ),
+        );
+        expect(rig.interestOf(first, rig.list)).toMatchObject({
+          status: "observing",
+          identity: { receiver: rig.live },
+        });
+        expect(rig.closes()).toBe(0);
+
+        hung = false;
+        yield* TestClock.adjust("40 millis");
+        const recovered = yield* settleUntil(rig.runtime, (state) =>
+          rig.inventories.every((lease) => rig.interestOf(state, lease)?.status === "observing"),
+        );
+        expect(rig.inventories.map((lease) => rig.interestOf(recovered, lease))).toEqual(
+          rig.inventories.map(() =>
+            expect.objectContaining({ identity: expect.objectContaining({ receiver: rig.live }) }),
+          ),
+        );
+        expect(yield* Queue.size(rig.opened)).toBe(0);
+        expect(rig.closes()).toBe(0);
+        yield* rig.dispose;
+      }),
+  );
+
   it.effect.each([
     ["timed out", unanswered("timeout")],
     ["was lost on the network", unanswered("network")],
@@ -5705,5 +5761,98 @@ describe("an organization's reads, whatever its number of projects (DESIGN §4.1
 
         yield* account.close;
       }),
+  );
+});
+
+describe("a registration every project shares", () => {
+  it.effect("whose sender ran out of time leaves its siblings to recover, never stranded", () =>
+    Effect.gen(function* () {
+      const registry = AtomRegistry.make();
+      let sent = 0;
+      const adapter: ZeropsDataAdapter = {
+        ...makeAdapterHarness().adapter,
+        // The first registration never answers; every later one does at once.
+        register: () =>
+          ++sent === 1 ? Effect.never : Effect.succeed({ responseObservations: [] }),
+      };
+      const runtime = yield* makeZeropsDataRuntime({
+        scope: runtimeScope,
+        adapter,
+        atomRegistry: registry,
+        makeOpaqueId: makeIdFactory(),
+        policy: makeZeropsDataPolicy({
+          establishmentDeadlineMs: 100,
+          registrationDeadlineMs: 1_000,
+          recoveryBackoffStartMs: 10,
+          recoveryBackoffMaxMs: 10,
+        }),
+      });
+      const leases = yield* Scope.make();
+      const first = yield* runtime
+        .acquire({ kind: "project-activity", project: project("project-a") })
+        .pipe(Scope.provide(leases));
+      yield* settleUntil(runtime, () => false, 20);
+      const second = yield* runtime
+        .acquire({ kind: "project-activity", project: project("project-b") })
+        .pipe(Scope.provide(leases));
+      yield* settleUntil(runtime, () => false, 20);
+
+      for (let step = 0; step < 30; step++) {
+        yield* TestClock.adjust("50 millis");
+        yield* settleUntil(runtime, () => false, 20);
+      }
+      const state = yield* runtime.state;
+
+      expect(
+        [first, second].map((lease) => state.interests.get(lease.interest)?.interest.status),
+      ).toEqual(["observing", "observing"]);
+
+      yield* runtime.shutdown("application-close");
+      yield* Scope.close(leases, Exit.void);
+      registry.dispose();
+    }),
+  );
+
+  it.effect("survives the release of the interest that happened to send it", () =>
+    Effect.gen(function* () {
+      const registry = AtomRegistry.make();
+      const answer = yield* Deferred.make<void>();
+      const adapter: ZeropsDataAdapter = {
+        ...makeAdapterHarness().adapter,
+        register: () => Deferred.await(answer).pipe(Effect.as({ responseObservations: [] })),
+      };
+      const runtime = yield* makeZeropsDataRuntime({
+        scope: runtimeScope,
+        adapter,
+        atomRegistry: registry,
+        makeOpaqueId: makeIdFactory(),
+      });
+      const sender = yield* Scope.make();
+      const sibling = yield* Scope.make();
+      const first = yield* runtime
+        .acquire({ kind: "project-activity", project: project("project-a") })
+        .pipe(Scope.provide(sender));
+      yield* settleUntil(runtime, () => false, 20);
+      const second = yield* runtime
+        .acquire({ kind: "project-activity", project: project("project-b") })
+        .pipe(Scope.provide(sibling));
+      yield* settleUntil(runtime, () => false, 20);
+
+      // The interest whose establishment sent the organization's process registrations goes.
+      yield* first.release;
+      yield* Deferred.succeed(answer, undefined);
+      const settled = yield* settleUntil(
+        runtime,
+        (state) => state.interests.get(second.interest)?.interest.status === "observing",
+        2_000,
+      );
+
+      expect(settled.interests.get(second.interest)?.interest.status).toBe("observing");
+
+      yield* runtime.shutdown("application-close");
+      yield* Scope.close(sibling, Exit.void);
+      yield* Scope.close(sender, Exit.void);
+      registry.dispose();
+    }),
   );
 });
