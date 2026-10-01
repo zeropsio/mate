@@ -625,13 +625,14 @@ describe("a Mate with no owner, or nobody signed in", () => {
   const KAREL = { name: "Karel Novák", initials: "KN", avatarUrl: null, isViewer: false };
 
   // Board D1, 2026-09-30: the person who added a Mate reads that it waits on them, with the amber
-  // dot of what needs them; anybody else the fact, and no dot — it is not waiting on them.
+  // dot of what needs them; anybody else that it waits for a sign-in — never a failure while it
+  // is being set up (2026-10-01) — and no dot: it is not waiting on them.
   it.each([
     { case: "the viewer added it", viewer: "u-petra", says: "Waiting for your sign-in", dot: true },
     {
       case: "somebody else added it",
       viewer: "u-karel",
-      says: "Nobody has signed in yet",
+      says: "Waiting for sign-in",
       dot: false,
     },
   ])("says whose sign-in it waits for: $case", ({ viewer, says, dot }) => {

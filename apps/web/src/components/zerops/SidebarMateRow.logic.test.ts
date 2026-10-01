@@ -151,7 +151,9 @@ describe("mateOwnerView — whose seat, and whether anybody signed its agent in"
 
   // Whose sign-in a new Mate waits for (board D1, 2026-09-30): the person who added it — the
   // stand-up's `mate:standup:` tag names them until their sign-in sends it — reads that it waits
-  // on them, with the amber dot of what needs them; anybody else reads the fact, quietly.
+  // on them, with the amber dot of what needs them. A Mate still being set up never reads like a
+  // failure (the owner, 2026-10-01, of "none signed in" on a Mate setting up): anybody else reads
+  // that it waits for a sign-in, quietly, and a viewer not known yet reads nothing.
   it.each([
     {
       case: "nobody signed in, the viewer added it: it waits on them",
@@ -162,11 +164,11 @@ describe("mateOwnerView — whose seat, and whether anybody signed its agent in"
       waits: true,
     },
     {
-      case: "nobody signed in, somebody else added it: the fact",
+      case: "nobody signed in, somebody else added it: it waits for a sign-in",
       records: NOBODY,
       standUpBy: "user-karel",
       viewer: "user-petra",
-      line: LINE,
+      line: "Waiting for sign-in",
       waits: false,
     },
     {
@@ -178,11 +180,11 @@ describe("mateOwnerView — whose seat, and whether anybody signed its agent in"
       waits: false,
     },
     {
-      case: "nobody signed in, the viewer not known yet: the fact",
+      case: "nobody signed in, the viewer not known yet: nothing",
       records: NOBODY,
       standUpBy: "user-petra",
       viewer: undefined,
-      line: LINE,
+      line: undefined,
       waits: false,
     },
     {
