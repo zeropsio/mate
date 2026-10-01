@@ -342,9 +342,10 @@ function tableSearch(query: TableQueryDescriptor) {
         query.kind === "active-versions-of-organization"
           ? { name: "status", operator: "eq", value: "ACTIVE" }
           : { name: "key", operator: "in", value: query.keys },
+        ...(query.ids === undefined ? [] : [{ name: "id", operator: "in", value: query.ids }]),
       ],
       sort: [],
-      limit: ORGANIZATION_SEARCH_LIMIT,
+      limit: query.ids === undefined ? ORGANIZATION_SEARCH_LIMIT : Math.max(1, query.ids.length),
     },
   };
 }

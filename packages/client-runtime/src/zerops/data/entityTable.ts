@@ -1,14 +1,20 @@
 /**
  * The entity table: platform entities the account's socket streams by organization and the app
  * holds as the platform sends them, row for row (the legacy app's entity manager, `zef`). Each
- * kind is fed the same two ways the inventory is: a list (`listStream`) whose search states the
- * rows it admits and whose frames add and delete ids, and an update stream (`updateStream`) whose
- * frames carry whole rows, taken in place — an update never asks for a read.
+ * kind is fed three ways:
  *
- * A row is held while its kind admits it (an active version; a variable the app reads) and no
- * list deleted it. A list whose search has answered makes its rows complete: a row it lacks is not
- * there. A search answer never overwrites a row pushed after the search began, nor brings back one
- * deleted after it began; a search that began before the one already applied says nothing.
+ * - its update stream (`updateStream`), whose frames carry whole rows, taken in place;
+ * - its list's search (`listStream`'s registration answer, or a read), which states every row the
+ *   list admits at the moment it ran;
+ * - its list's membership frames, which carry bare ids and so prove nothing (S0.11): an id added
+ *   or removed is read by id, batched, after a short grace (`tableRowsWanted`).
+ *
+ * Every row keeps the receipt it is as current as, and the wall time it came: an older answer
+ * never overwrites a newer push, and a search never takes away a row pushed so recently its index
+ * may not show it yet (`SEARCH_LAG_MS`) — that row is read by id instead. A row the platform
+ * retired stays a tombstone until a search newer than it answers, so no older answer brings it
+ * back. A list whose search has answered makes its organization's rows complete: a row it lacks
+ * is not there.
  */
 import type {
   AdmittedObservation,
@@ -18,7 +24,6 @@ import type {
   QueryCoverage,
   QueryKey,
   ReadStartOrdinal,
-  ReceiptOrdinal,
   ServiceVariableRow,
   TableEntity,
   TableObservation,
@@ -26,7 +31,7 @@ import type {
   TableRow,
   TableRowsOf,
 } from "./types.ts";
-import { queryKeyOf } from "./types.ts";
+import { organizationKeyOf, queryKeyOf, tableEntityOf } from "./types.ts";
 import { noOutcome, type DomainObservationOutcome } from "./inventory.ts";
 
 /** The service variables the app reads: the Mate flag, and the deploy a service last started. */
@@ -36,11 +41,22 @@ export const SERVICE_VARIABLE_KEYS: ReadonlyArray<string> = [
   "appVersionName",
 ];
 
+/** How far a search's index may trail a push: a row pushed this soon before it is kept. */
+export const SEARCH_LAG_MS = 10_000;
+
+/**
+ * How long a retired row is remembered against an answer that began before it: longer than any
+ * read may take, so a tombstone this old outlives every read that could still bring it back.
+ */
+export const TOMBSTONE_MS = 120_000;
+
 interface HeldRow<Row> {
-  readonly row: Row;
-  /** The receipt the row is as current as: its push's, or the search's start for a search's row. */
+  /** `null`: the platform retired it (a tombstone). */
+  readonly row: Row | null;
+  /** The receipt the row is as current as: its push's, or the start of the read that said it. */
   readonly asOf: number;
-  /** The organization whose stream or search sent it. */
+  /** When it came, on the wall clock: a search started this long after it shows it. */
+  readonly atMs: number;
   readonly organizationId: string;
 }
 
@@ -55,13 +71,21 @@ export interface TableListState {
   } | null;
 }
 
+/** An id a row is owed for: its list's frame named it, or a search could not confirm it. */
+interface WantedRow {
+  readonly entity: TableEntity;
+  readonly organization: OrganizationRef;
+  readonly id: string;
+  /** The receipt that asked: a read that began before it answers nothing about it. */
+  readonly since: number;
+}
+
 export interface EntityTableState {
   readonly rows: {
     readonly [Entity in TableEntity]: ReadonlyMap<string, HeldRow<TableRowsOf[Entity]>>;
   };
   readonly lists: ReadonlyMap<QueryKey, TableListState>;
-  /** Ids a list's stream deleted, with the receipt that deleted them. */
-  readonly deleted: ReadonlyMap<string, ReceiptOrdinal>;
+  readonly wanted: ReadonlyMap<string, WantedRow>;
 }
 
 export interface EntityTableReduction {
@@ -72,151 +96,8 @@ export interface EntityTableReduction {
 export const makeInitialEntityTableState = (): EntityTableState => ({
   rows: { "app-version": new Map(), "user-data": new Map() },
   lists: new Map(),
-  deleted: new Map(),
+  wanted: new Map(),
 });
-
-/** Whether a kind holds this row at all: an active version, a variable the app reads. */
-function admits(entity: TableEntity, row: TableRow): boolean {
-  return entity === "app-version"
-    ? (row as AppVersionRow).status === "ACTIVE"
-    : SERVICE_VARIABLE_KEYS.includes((row as ServiceVariableRow).key);
-}
-
-const outcomeOf = (
-  observation: TableObservation,
-  status: "applied" | "suppressed",
-): DomainObservationOutcome => ({
-  readRequestId:
-    observation.kind === "table-rows-observed" && observation.source === "direct-read"
-      ? observation.ticket.requestId
-      : null,
-  applied: status === "applied" ? ["table"] : [],
-  suppressed: status === "suppressed" ? ["table"] : [],
-  unresolvedRequiredFields: [],
-});
-
-function withRows(
-  state: EntityTableState,
-  entity: TableEntity,
-  rows: ReadonlyMap<string, HeldRow<TableRow>>,
-): EntityTableState {
-  return { ...state, rows: { ...state.rows, [entity]: rows } };
-}
-
-export function reduceTableObservation(
-  state: EntityTableState,
-  admitted: AdmittedObservation,
-): EntityTableReduction {
-  const observation = admitted.input;
-  if (
-    observation.kind !== "table-rows-observed" &&
-    observation.kind !== "table-membership-observed"
-  )
-    return { state, outcome: noOutcome() };
-  const receipt = admitted.stamp.receiptOrdinal;
-
-  if (observation.kind === "table-membership-observed") {
-    const entity: TableEntity =
-      observation.registration.descriptor.query.kind === "active-versions-of-organization"
-        ? "app-version"
-        : "user-data";
-    if (observation.operation === "add") {
-      if (!state.deleted.has(observation.id))
-        return { state, outcome: outcomeOf(observation, "applied") };
-      const deleted = new Map(state.deleted);
-      deleted.delete(observation.id);
-      return { state: { ...state, deleted }, outcome: outcomeOf(observation, "applied") };
-    }
-    const rows = new Map<string, HeldRow<TableRow>>(state.rows[entity]);
-    rows.delete(observation.id);
-    const deleted = new Map(state.deleted);
-    deleted.set(observation.id, receipt);
-    return {
-      state: { ...withRows(state, entity, rows), deleted },
-      outcome: outcomeOf(observation, "applied"),
-    };
-  }
-
-  const entity = observation.entity;
-  const rows = new Map<string, HeldRow<TableRow>>(state.rows[entity]);
-  if (observation.source === "native-push") {
-    const organizationId = observation.registration.descriptor.organization.organizationId;
-    for (const row of observation.rows) {
-      if (admits(entity, row)) rows.set(row.id, { row, asOf: receipt, organizationId });
-      else rows.delete(row.id);
-    }
-    return { state: withRows(state, entity, rows), outcome: outcomeOf(observation, "applied") };
-  }
-
-  const ticket = observation.ticket;
-  const descriptor = ticket.target.descriptor;
-  const key = queryKeyOf(descriptor);
-  const list = state.lists.get(key);
-  if (list?.answered != null && list.answered.readStartOrdinal >= ticket.readStartOrdinal)
-    return { state, outcome: outcomeOf(observation, "suppressed") };
-  const startedAt = ticket.receiptOrdinalAtStart;
-  const organizationId = descriptor.organization.organizationId;
-  const answered = new Set(observation.rows.map((row) => row.id));
-  for (const [id, held] of rows) {
-    if (held.organizationId === organizationId && held.asOf <= startedAt && !answered.has(id))
-      rows.delete(id);
-  }
-  for (const row of observation.rows) {
-    if (!admits(entity, row)) continue;
-    const deletedAt = state.deleted.get(row.id);
-    if (deletedAt !== undefined && deletedAt > startedAt) continue;
-    const held = rows.get(row.id);
-    if (held !== undefined && held.asOf > startedAt) continue;
-    rows.set(row.id, { row, asOf: startedAt, organizationId });
-  }
-  // A deletion older than this answer's start is in the answer already.
-  const deleted = new Map([...state.deleted].filter(([, at]) => at > startedAt));
-  const lists = new Map(state.lists);
-  lists.set(key, {
-    key,
-    descriptor,
-    answered: {
-      coverage: observation.coverage,
-      stamp: admitted.stamp,
-      readStartOrdinal: ticket.readStartOrdinal,
-    },
-  });
-  return {
-    state: { ...withRows(state, entity, rows), lists, deleted },
-    outcome: outcomeOf(observation, "applied"),
-  };
-}
-
-/**
- * Lets go of lists nothing demands any more, and of the rows their organization's kind held: a
- * table no stream keeps current says nothing.
- */
-export function releaseTableLists(
-  state: EntityTableState,
-  released: ReadonlySet<QueryKey>,
-): EntityTableState {
-  const gone = [...state.lists.values()].filter((list) => released.has(list.key));
-  if (gone.length === 0) return state;
-  const lists = new Map(state.lists);
-  let next: EntityTableState = state;
-  for (const list of gone) {
-    lists.delete(list.key);
-    const entity: TableEntity =
-      list.descriptor.kind === "active-versions-of-organization" ? "app-version" : "user-data";
-    const organizationId = list.descriptor.organization.organizationId;
-    const kept = new Map<string, HeldRow<TableRow>>();
-    for (const [id, held] of next.rows[entity] as ReadonlyMap<string, HeldRow<TableRow>>) {
-      if (held.organizationId !== organizationId) kept.set(id, held);
-    }
-    next = withRows(next, entity, kept);
-  }
-  return { ...next, lists };
-}
-
-/** The organization's list of a kind has been answered: a row the table lacks is not there. */
-function answered(state: EntityTableState, descriptor: TableQueryDescriptor): boolean {
-  return state.lists.get(queryKeyOf(descriptor))?.answered?.coverage.kind === "exhausted-traversal";
-}
 
 export const activeVersionsDescriptor = (organization: OrganizationRef): TableQueryDescriptor => ({
   kind: "active-versions-of-organization",
@@ -233,6 +114,268 @@ export const serviceVariablesDescriptor = (
   schemaVersion: 1,
 });
 
+/** The one list each organization holds of a kind. */
+const listDescriptorOf = (entity: TableEntity, organization: OrganizationRef) =>
+  entity === "app-version"
+    ? activeVersionsDescriptor(organization)
+    : serviceVariablesDescriptor(organization);
+
+/** Whether a kind holds this row at all: an active version, a variable the app reads. */
+function admits(entity: TableEntity, row: TableRow): boolean {
+  return entity === "app-version"
+    ? (row as AppVersionRow).status === "ACTIVE"
+    : SERVICE_VARIABLE_KEYS.includes((row as ServiceVariableRow).key);
+}
+
+const wantedKey = (entity: TableEntity, id: string) => `${entity}:${id}`;
+
+const outcomeOf = (
+  observation: TableObservation,
+  status: "applied" | "suppressed",
+): DomainObservationOutcome => ({
+  readRequestId:
+    observation.kind === "table-rows-observed" && observation.source === "direct-read"
+      ? observation.ticket.requestId
+      : null,
+  applied: status === "applied" ? ["table"] : [],
+  suppressed: status === "suppressed" ? ["table"] : [],
+  unresolvedRequiredFields: [],
+});
+
+type Rows = Map<string, HeldRow<TableRow>>;
+
+const rowsOf = (state: EntityTableState, entity: TableEntity): Rows =>
+  new Map(state.rows[entity] as ReadonlyMap<string, HeldRow<TableRow>>);
+
+const withRows = (state: EntityTableState, entity: TableEntity, rows: Rows): EntityTableState => ({
+  ...state,
+  rows: { ...state.rows, [entity]: rows },
+});
+
+/** The organization's list of a kind, held from its first frame so a release finds it. */
+function withList(state: EntityTableState, descriptor: TableQueryDescriptor): EntityTableState {
+  const key = queryKeyOf(descriptor);
+  if (state.lists.has(key)) return state;
+  const lists = new Map(state.lists);
+  lists.set(key, { key, descriptor, answered: null });
+  return { ...state, lists };
+}
+
+export function reduceTableObservation(
+  initial: EntityTableState,
+  admitted: AdmittedObservation,
+): EntityTableReduction {
+  const observation = admitted.input;
+  if (
+    observation.kind !== "table-rows-observed" &&
+    observation.kind !== "table-membership-observed"
+  )
+    return { state: initial, outcome: noOutcome() };
+  const receipt = admitted.stamp.receiptOrdinal;
+  const atMs = admitted.stamp.observedAtMs;
+
+  // A list's frame names an id, nothing more: it is read by id, and the row stands meanwhile.
+  if (observation.kind === "table-membership-observed") {
+    const descriptor = observation.registration.descriptor.query;
+    const entity = tableEntityOf(descriptor);
+    const state = withList(initial, descriptor);
+    const held = state.rows[entity].get(observation.id);
+    // An id added whose row a push already brought is proven by that push.
+    if (observation.operation === "add" && held?.row != null)
+      return { state, outcome: outcomeOf(observation, "applied") };
+    const wanted = new Map(state.wanted);
+    wanted.set(wantedKey(entity, observation.id), {
+      entity,
+      organization: descriptor.organization,
+      id: observation.id,
+      since: receipt,
+    });
+    return { state: { ...state, wanted }, outcome: outcomeOf(observation, "applied") };
+  }
+
+  const entity = observation.entity;
+  if (observation.source === "native-push") {
+    const organization = observation.registration.descriptor.organization;
+    const state = withList(initial, listDescriptorOf(entity, organization));
+    const rows = rowsOf(state, entity);
+    const wanted = new Map(state.wanted);
+    for (const row of observation.rows) {
+      // A variable the app does not read is none of the table's business, ever.
+      if (entity === "user-data" && !admits(entity, row) && !rows.has(row.id)) continue;
+      rows.set(row.id, {
+        row: admits(entity, row) ? row : null,
+        asOf: receipt,
+        atMs,
+        organizationId: organization.organizationId,
+      });
+      wanted.delete(wantedKey(entity, row.id));
+    }
+    for (const [id, held] of rows) {
+      if (held.row === null && held.atMs < atMs - TOMBSTONE_MS) rows.delete(id);
+    }
+    return {
+      state: { ...withRows(state, entity, rows), wanted },
+      outcome: outcomeOf(observation, "applied"),
+    };
+  }
+
+  const ticket = observation.ticket;
+  const descriptor = ticket.target.descriptor;
+  const startedAt = ticket.receiptOrdinalAtStart;
+  const organizationId = descriptor.organization.organizationId;
+  const listDescriptor = listDescriptorOf(entity, descriptor.organization);
+  const key = queryKeyOf(listDescriptor);
+  const state = withList(initial, listDescriptor);
+  const rows = rowsOf(state, entity);
+  const wanted = new Map(state.wanted);
+  const said = new Map(observation.rows.map((row) => [row.id, row] as const));
+  /** Sets what the read said of one id, unless something newer than the read already did. */
+  const settle = (id: string, row: TableRow | null) => {
+    const held = rows.get(id);
+    if (held !== undefined && held.asOf > startedAt) return;
+    if (row === null && held === undefined) return;
+    rows.set(id, {
+      row: row !== null && admits(entity, row) ? row : null,
+      asOf: startedAt,
+      atMs: ticket.startedAtMs,
+      organizationId,
+    });
+  };
+
+  // A read of named ids: settles those ids, and stops asking for them.
+  if (descriptor.ids !== undefined) {
+    for (const id of descriptor.ids) {
+      settle(id, said.get(id) ?? null);
+      const owed = wanted.get(wantedKey(entity, id));
+      if (owed !== undefined && owed.since <= startedAt) wanted.delete(wantedKey(entity, id));
+    }
+    return {
+      state: { ...withRows(state, entity, rows), wanted },
+      outcome: outcomeOf(observation, "applied"),
+    };
+  }
+
+  // The list's whole search.
+  const list = state.lists.get(key);
+  if (list?.answered != null && list.answered.readStartOrdinal >= ticket.readStartOrdinal)
+    return { state: initial, outcome: outcomeOf(observation, "suppressed") };
+  for (const [id, held] of rows) {
+    if (held.organizationId !== organizationId || said.has(id) || held.asOf > startedAt) continue;
+    if (held.row === null) {
+      // A tombstone the answer agrees with: nothing older can bring it back now.
+      rows.delete(id);
+      continue;
+    }
+    // Pushed so recently the index may not show it yet: kept, and read by id.
+    if (held.atMs > ticket.startedAtMs - SEARCH_LAG_MS) {
+      if (!wanted.has(wantedKey(entity, id)))
+        wanted.set(wantedKey(entity, id), {
+          entity,
+          organization: descriptor.organization,
+          id,
+          since: startedAt,
+        });
+      continue;
+    }
+    rows.delete(id);
+  }
+  for (const row of observation.rows) settle(row.id, row);
+  for (const [entryKey, owed] of wanted) {
+    if (owed.entity === entity && said.has(owed.id) && owed.since <= startedAt)
+      wanted.delete(entryKey);
+  }
+  const lists = new Map(state.lists);
+  lists.set(key, {
+    key,
+    descriptor: listDescriptor,
+    answered: {
+      coverage: observation.coverage,
+      stamp: admitted.stamp,
+      readStartOrdinal: ticket.readStartOrdinal,
+    },
+  });
+  return {
+    state: { ...withRows(state, entity, rows), lists, wanted },
+    outcome: outcomeOf(observation, "applied"),
+  };
+}
+
+/**
+ * Lets go of lists nothing demands any more, and of every row and wanted id of their
+ * organization's kind: a table no stream keeps current says nothing.
+ */
+export function releaseTableLists(
+  state: EntityTableState,
+  released: ReadonlySet<QueryKey>,
+): EntityTableState {
+  const gone = [...state.lists.values()].filter((list) => released.has(list.key));
+  if (gone.length === 0) return state;
+  const lists = new Map(state.lists);
+  let next: EntityTableState = state;
+  const wanted = new Map(state.wanted);
+  for (const list of gone) {
+    lists.delete(list.key);
+    const entity = tableEntityOf(list.descriptor);
+    const organization = organizationKeyOf(list.descriptor.organization);
+    const organizationId = list.descriptor.organization.organizationId;
+    const kept: Rows = new Map();
+    for (const [id, held] of rowsOf(next, entity)) {
+      if (held.organizationId !== organizationId) kept.set(id, held);
+    }
+    next = withRows(next, entity, kept);
+    for (const [entryKey, owed] of wanted) {
+      if (owed.entity === entity && organizationKeyOf(owed.organization) === organization)
+        wanted.delete(entryKey);
+    }
+  }
+  return { ...next, lists, wanted };
+}
+
+/** Asks for rows the table is owed and does not hold (a service runs a version it lacks). */
+export function wantTableRows(
+  state: EntityTableState,
+  entity: TableEntity,
+  organization: OrganizationRef,
+  ids: ReadonlyArray<string>,
+  since: number,
+): EntityTableState {
+  const missing = ids.filter(
+    (id) => state.rows[entity].get(id) === undefined && !state.wanted.has(wantedKey(entity, id)),
+  );
+  if (missing.length === 0) return state;
+  const wanted = new Map(state.wanted);
+  for (const id of missing) wanted.set(wantedKey(entity, id), { entity, organization, id, since });
+  return { ...state, wanted };
+}
+
+/** The ids each organization's kind is owed a read of, batched. */
+export function tableRowsWanted(state: EntityTableState): ReadonlyArray<{
+  readonly entity: TableEntity;
+  readonly organization: OrganizationRef;
+  readonly ids: ReadonlyArray<string>;
+}> {
+  const batches = new Map<
+    string,
+    { entity: TableEntity; organization: OrganizationRef; ids: string[] }
+  >();
+  for (const owed of state.wanted.values()) {
+    const key = `${owed.entity}:${organizationKeyOf(owed.organization)}`;
+    const batch = batches.get(key) ?? {
+      entity: owed.entity,
+      organization: owed.organization,
+      ids: [],
+    };
+    batch.ids.push(owed.id);
+    batches.set(key, batch);
+  }
+  return [...batches.values()];
+}
+
+/** The organization's list of a kind has answered in full: a row the table lacks is not there. */
+function answered(state: EntityTableState, descriptor: TableQueryDescriptor): boolean {
+  return state.lists.get(queryKeyOf(descriptor))?.answered?.coverage.kind === "exhausted-traversal";
+}
+
 /**
  * An active version of the organization: `known` once its list answered, with `row` `null` for a
  * version that is not active (or not the organization's).
@@ -242,9 +385,10 @@ export function activeVersionOf(
   organization: OrganizationRef,
   versionId: string,
 ): { readonly known: boolean; readonly row: AppVersionRow | null } {
+  const held = state.rows["app-version"].get(versionId);
   return {
     known: answered(state, activeVersionsDescriptor(organization)),
-    row: state.rows["app-version"].get(versionId)?.row ?? null,
+    row: held?.organizationId === organization.organizationId ? held.row : null,
   };
 }
 
@@ -262,7 +406,7 @@ function variablesByService(
   if (cached !== undefined) return cached;
   const index = new Map<string, Map<string, ServiceVariableRow>>();
   for (const { row } of rows.values()) {
-    if (row.serviceId === null) continue;
+    if (row === null || row.serviceId === null) continue;
     let byKey = index.get(row.serviceId);
     if (byKey === undefined) {
       byKey = new Map();
@@ -290,4 +434,12 @@ export function serviceVariableOf(
       answered(state, serviceVariablesDescriptor(organization)),
     content: variablesByService(state).get(serviceId)?.get(key)?.content ?? null,
   };
+}
+
+/** Whether the organization's variables list has answered in full. */
+export function serviceVariablesAnswered(
+  state: EntityTableState,
+  organization: OrganizationRef,
+): boolean {
+  return answered(state, serviceVariablesDescriptor(organization));
 }

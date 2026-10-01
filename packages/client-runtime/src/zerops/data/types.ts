@@ -604,6 +604,8 @@ export type QueryDescriptor =
        */
       readonly kind: "active-versions-of-organization";
       readonly organization: OrganizationRef;
+      /** Only these versions: a read by id of rows the list's frames named (`entityTable.ts`). */
+      readonly ids?: ReadonlyArray<string>;
       readonly schemaVersion: 1;
     }
   | {
@@ -614,6 +616,8 @@ export type QueryDescriptor =
       readonly kind: "service-variables-of-organization";
       readonly organization: OrganizationRef;
       readonly keys: ReadonlyArray<string>;
+      /** Only these variables: a read by id of rows the list's frames named (`entityTable.ts`). */
+      readonly ids?: ReadonlyArray<string>;
       readonly schemaVersion: 1;
     };
 
@@ -723,6 +727,7 @@ export const queryKeyOf = (descriptor: QueryDescriptor): QueryKey => {
         scopedKey([
           descriptor.kind,
           organizationKeyOf(descriptor.organization),
+          descriptor.ids === undefined ? "" : canonicalStringSet(descriptor.ids),
           String(descriptor.schemaVersion),
         ]),
       );
@@ -732,6 +737,7 @@ export const queryKeyOf = (descriptor: QueryDescriptor): QueryKey => {
           descriptor.kind,
           organizationKeyOf(descriptor.organization),
           canonicalStringSet(descriptor.keys),
+          descriptor.ids === undefined ? "" : canonicalStringSet(descriptor.ids),
           String(descriptor.schemaVersion),
         ]),
       );

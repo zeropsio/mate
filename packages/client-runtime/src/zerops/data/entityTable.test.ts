@@ -2,35 +2,43 @@ import { describe, expect, it } from "@effect/vitest";
 
 import {
   activeVersionOf,
+  activeVersionsDescriptor,
   makeInitialEntityTableState,
   reduceTableObservation,
   releaseTableLists,
+  SEARCH_LAG_MS,
   serviceVariableOf,
-  SERVICE_VARIABLE_KEYS,
+  TOMBSTONE_MS,
+  serviceVariablesDescriptor,
+  tableRowsWanted,
   type EntityTableState,
 } from "./entityTable.ts";
 import type {
   AppVersionRow,
+  OrganizationRef,
   QueryCoverage,
   RegistrationRequest,
   ServiceVariableRow,
   TableObservation,
   TableQueryDescriptor,
 } from "./types.ts";
-import { ReceiptOrdinal, ZeropsWireSubscriptionName, queryKeyOf } from "./types.ts";
-import { directTicket, identity, organization, stamp } from "./__fixtures__/index.ts";
+import {
+  DispatchOrdinal,
+  ReadStartOrdinal,
+  ReceiptOrdinal,
+  ZeropsOrganizationId,
+  ZeropsRequestId,
+  ZeropsWireSubscriptionName,
+  queryKeyOf,
+} from "./types.ts";
+import { identity, organization } from "./__fixtures__/index.ts";
 
-const versions: TableQueryDescriptor = {
-  kind: "active-versions-of-organization",
-  organization,
-  schemaVersion: 1,
+const other: OrganizationRef = {
+  ...organization,
+  organizationId: ZeropsOrganizationId.make("org-other"),
 };
-const variables: TableQueryDescriptor = {
-  kind: "service-variables-of-organization",
-  organization,
-  keys: SERVICE_VARIABLE_KEYS,
-  schemaVersion: 1,
-};
+const versions = activeVersionsDescriptor(organization);
+const variables = serviceVariablesDescriptor(organization);
 const complete: QueryCoverage = {
   kind: "exhausted-traversal",
   traversedPages: 1,
@@ -52,10 +60,12 @@ const variable = (
   content: string | null,
 ): ServiceVariableRow => ({ id, serviceId, projectId: "project-1", key, content });
 
-const baseline = (
+/** A search answer that began at receipt `start`, at wall time `startMs`. */
+const answered = (
   descriptor: TableQueryDescriptor,
   rows: ReadonlyArray<AppVersionRow | ServiceVariableRow>,
   start: number,
+  startMs = start,
 ): TableObservation => ({
   kind: "table-rows-observed",
   entity: descriptor.kind === "active-versions-of-organization" ? "app-version" : "user-data",
@@ -63,13 +73,21 @@ const baseline = (
   source: "direct-read",
   coverage: complete,
   ticket: {
-    ...directTicket({ kind: "query", descriptor }, identity(), start, start, start),
+    kind: "baseline",
+    requestId: ZeropsRequestId.make(`read-${start}`),
+    owner: { kind: "interest", identity: identity() },
+    target: { kind: "query", descriptor },
+    receiptOrdinalAtStart: ReceiptOrdinal.make(start),
     membershipReceiptOrdinalAtStart: ReceiptOrdinal.make(start),
+    readStartOrdinal: ReadStartOrdinal.make(start),
+    dispatchOrdinal: DispatchOrdinal.make(start),
+    startedAtMs: startMs,
   } as never,
 });
 const pushed = (
   entity: "app-version" | "user-data",
   rows: ReadonlyArray<AppVersionRow | ServiceVariableRow>,
+  owner: OrganizationRef = organization,
 ): TableObservation => ({
   kind: "table-rows-observed",
   entity,
@@ -78,7 +96,7 @@ const pushed = (
   registration: {
     identity: identity(),
     subscriptionName: ZeropsWireSubscriptionName.make(`wire-${entity}-updates`),
-    descriptor: { kind: "table-updates", entity, organization },
+    descriptor: { kind: "table-updates", entity, organization: owner },
     baselineTicket: null,
   } as unknown as RegistrationRequest & { readonly descriptor: { readonly kind: "table-updates" } },
 });
@@ -98,18 +116,30 @@ const membership = (
   } as unknown as RegistrationRequest & { readonly descriptor: { readonly kind: "table-list" } },
 });
 
-const run = (steps: ReadonlyArray<[number, TableObservation]>): EntityTableState =>
+/** Each step is admitted at its receipt `at`, at wall time `ms` (default `at`). */
+type Step = readonly [at: number, observation: TableObservation, ms?: number];
+const run = (steps: ReadonlyArray<Step>): EntityTableState =>
   steps.reduce(
-    (state, [ordinal, input]) =>
-      reduceTableObservation(state, { stamp: stamp(ordinal), accessEvidence: null, input }).state,
+    (state, [at, input, ms]) =>
+      reduceTableObservation(state, {
+        stamp: { receiptOrdinal: ReceiptOrdinal.make(at), observedAtMs: ms ?? at },
+        accessEvidence: null,
+        input,
+      }).state,
     makeInitialEntityTableState(),
   );
 
-describe("the entity table", () => {
+const sourceOf = (state: EntityTableState, id: string, owner = organization) => {
+  const answer = activeVersionOf(state, owner, id);
+  return answer.known ? (answer.row?.source ?? null) : "unknown";
+};
+
+describe("the entity table's active versions", () => {
   const cases: ReadonlyArray<{
     readonly name: string;
-    readonly steps: ReadonlyArray<[number, TableObservation]>;
+    readonly steps: ReadonlyArray<Step>;
     readonly versions: Record<string, string | null | "unknown">;
+    readonly wanted?: ReadonlyArray<string>;
   }> = [
     {
       name: "is unknown until its list's search answered",
@@ -118,81 +148,193 @@ describe("the entity table", () => {
     },
     {
       name: "holds what the search answered, and knows a version it lacks is not active",
-      steps: [[2, baseline(versions, [version("v-1"), version("v-2", "ACTIVE", "NONE")], 1)]],
+      steps: [[2, answered(versions, [version("v-1"), version("v-2", "ACTIVE", "NONE")], 1)]],
       versions: { "v-1": "CLI", "v-2": "NONE", "v-3": null },
     },
     {
       name: "takes an update frame's row in place, without reading",
       steps: [
-        [2, baseline(versions, [version("v-1")], 1)],
+        [2, answered(versions, [version("v-1")], 1)],
         [3, pushed("app-version", [version("v-2", "ACTIVE", "GIT")])],
       ],
       versions: { "v-1": "CLI", "v-2": "GIT" },
     },
     {
+      name: "takes a version inactive at first once a push activates it",
+      steps: [
+        [2, answered(versions, [], 1)],
+        [3, pushed("app-version", [version("v-1", "BUILDING")])],
+        [4, pushed("app-version", [version("v-1", "ACTIVE")])],
+      ],
+      versions: { "v-1": "CLI" },
+    },
+    {
       name: "lets go of a version an update says is no longer active",
       steps: [
-        [2, baseline(versions, [version("v-1")], 1)],
+        [2, answered(versions, [version("v-1")], 1)],
         [3, pushed("app-version", [version("v-1", "BACKUP")])],
       ],
       versions: { "v-1": null },
     },
     {
-      name: "lets go of a version its list's stream deleted",
+      name: "asks for a row its list added without one, and keeps nothing it cannot prove",
       steps: [
-        [2, baseline(versions, [version("v-1")], 1)],
-        [3, membership(versions, "remove", "v-1")],
+        [2, answered(versions, [], 1)],
+        [3, membership(versions, "add", "v-1")],
       ],
       versions: { "v-1": null },
+      wanted: ["v-1"],
+    },
+    {
+      name: "asks again about a version its list removed, and keeps the row until it knows",
+      steps: [
+        [2, answered(versions, [version("v-1")], 1)],
+        [3, membership(versions, "remove", "v-1")],
+      ],
+      versions: { "v-1": "CLI" },
+      wanted: ["v-1"],
     },
     {
       name: "keeps a row pushed after the search began over the search's older answer",
       steps: [
         [3, pushed("app-version", [version("v-1", "ACTIVE", "GIT")])],
-        [4, baseline(versions, [version("v-1", "ACTIVE", "CLI")], 2)],
+        [4, answered(versions, [version("v-1", "ACTIVE", "CLI")], 2)],
       ],
       versions: { "v-1": "GIT" },
     },
     {
-      name: "does not bring back a version deleted after the search began",
+      name: "keeps a row pushed just before a search its index may not show yet, and asks",
       steps: [
-        [3, membership(versions, "remove", "v-1")],
-        [4, baseline(versions, [version("v-1")], 2)],
+        [2, pushed("app-version", [version("v-1")]), 1_000],
+        [4, answered(versions, [], 3, 1_000 + SEARCH_LAG_MS - 1)],
+      ],
+      versions: { "v-1": "CLI" },
+      wanted: ["v-1"],
+    },
+    {
+      name: "drops a row pushed long before a search that no longer names it",
+      steps: [
+        [2, pushed("app-version", [version("v-1")]), 1_000],
+        [4, answered(versions, [], 3, 1_000 + SEARCH_LAG_MS)],
       ],
       versions: { "v-1": null },
     },
     {
-      name: "drops a held version a later search no longer names",
+      name: "does not bring back a version an update retired after the search began",
       steps: [
-        [2, baseline(versions, [version("v-1"), version("v-2")], 1)],
-        [4, baseline(versions, [version("v-2")], 3)],
+        [3, pushed("app-version", [version("v-1", "BACKUP")])],
+        [4, answered(versions, [version("v-1")], 2)],
       ],
-      versions: { "v-1": null, "v-2": "CLI" },
+      versions: { "v-1": null },
     },
     {
       name: "ignores a search answer that began before the one it already applied",
       steps: [
-        [3, baseline(versions, [version("v-2")], 2)],
-        [4, baseline(versions, [version("v-1")], 1)],
+        [3, answered(versions, [version("v-2")], 2)],
+        [4, answered(versions, [version("v-1")], 1)],
       ],
       versions: { "v-1": null, "v-2": "CLI" },
+    },
+    {
+      name: "keeps each organization's versions to its own search",
+      steps: [
+        [2, answered(versions, [version("v-1")], 1)],
+        [3, pushed("app-version", [version("v-9")], other)],
+        [4, answered(activeVersionsDescriptor(other), [version("v-9")], 3)],
+        [6, answered(versions, [], 5, 10_000_000)],
+      ],
+      versions: { "v-1": null },
     },
   ];
   for (const testCase of cases) {
     it(testCase.name, () => {
       const state = run(testCase.steps);
       for (const [id, expected] of Object.entries(testCase.versions)) {
-        const answer = activeVersionOf(state, organization, id);
-        expect(answer.known ? (answer.row?.source ?? null) : "unknown").toBe(expected);
+        expect(sourceOf(state, id)).toBe(expected);
       }
+      expect(
+        tableRowsWanted(state).flatMap((wanted) =>
+          wanted.entity === "app-version" ? wanted.ids : [],
+        ),
+      ).toEqual(testCase.wanted ?? []);
     });
   }
 
+  it("keeps another organization's versions when one organization's search answers", () => {
+    const state = run([
+      [2, answered(activeVersionsDescriptor(other), [version("v-9")], 1)],
+      [4, answered(versions, [], 3, 10_000_000)],
+    ]);
+    expect(sourceOf(state, "v-9", other)).toBe("CLI");
+  });
+
+  it("forgets a retired version once no read could still bring it back", () => {
+    const state = run([
+      [2, answered(versions, [], 1)],
+      [3, pushed("app-version", [version("v-1", "BUILDING")]), 1_000],
+      [4, pushed("app-version", [version("v-2")]), 1_000 + TOMBSTONE_MS + 1],
+    ]);
+    expect([...state.rows["app-version"].keys()]).toEqual(["v-2"]);
+  });
+
+  it("settles a row it asked about by the read of it, and stops asking", () => {
+    const byId = { ...versions, ids: ["v-1", "v-2"] } as TableQueryDescriptor;
+    const state = run([
+      [2, answered(versions, [version("v-2")], 1)],
+      [3, membership(versions, "add", "v-1")],
+      [4, membership(versions, "remove", "v-2")],
+      [6, answered(byId, [version("v-1")], 5)],
+    ]);
+    expect(sourceOf(state, "v-1")).toBe("CLI");
+    expect(sourceOf(state, "v-2")).toBe(null);
+    expect(tableRowsWanted(state)).toEqual([]);
+  });
+
+  it("forgets a list nothing demands any more, every row it kept and every row it waits on", () => {
+    const state = run([
+      [2, pushed("app-version", [version("v-0")])],
+      [3, answered(versions, [version("v-1")], 2)],
+      [4, membership(versions, "add", "v-2")],
+    ]);
+    const released = releaseTableLists(state, new Set([queryKeyOf(versions)]));
+    expect(activeVersionOf(released, organization, "v-1")).toEqual({ known: false, row: null });
+    expect(released.rows["app-version"].size).toBe(0);
+    expect(tableRowsWanted(released)).toEqual([]);
+  });
+
+  it("forgets a list that never answered, and the rows pushed for it", () => {
+    const state = run([[2, pushed("app-version", [version("v-0")])]]);
+    const released = releaseTableLists(state, new Set([queryKeyOf(versions)]));
+    expect(released.rows["app-version"].size).toBe(0);
+  });
+
+  it("knows no list whose search answered only a window of it", () => {
+    const partial = answered(versions, [version("v-1")], 1);
+    const state = run([
+      [
+        2,
+        {
+          ...partial,
+          coverage: {
+            kind: "partial-window",
+            offset: 0,
+            limit: 1,
+            traversedPages: 1,
+            observedTotal: 5,
+          },
+        } as TableObservation,
+      ],
+    ]);
+    expect(activeVersionOf(state, organization, "v-2").known).toBe(false);
+  });
+});
+
+describe("the entity table's service variables", () => {
   it("holds only the variables the app reads, by service", () => {
     const state = run([
       [
         2,
-        baseline(
+        answered(
           variables,
           [
             variable("u-1", "s-1", "ZCP_MATE_ENABLED", "1"),
@@ -223,30 +365,21 @@ describe("the entity table", () => {
     expect(state.rows["user-data"].has("u-3")).toBe(false);
   });
 
-  it("forgets a list nothing demands any more, and the rows it kept current", () => {
-    const state = run([[2, baseline(versions, [version("v-1")], 1)]]);
-    const released = releaseTableLists(state, new Set([queryKeyOf(versions)]));
-    expect(activeVersionOf(released, organization, "v-1")).toEqual({ known: false, row: null });
-  });
-
-  it("knows no list whose search answered only a window of it", () => {
-    const partial = baseline(versions, [version("v-1")], 1);
+  it("keeps a variable deleted for good, whatever older answer comes after", () => {
+    const byId = { ...variables, ids: ["u-1"] } as TableQueryDescriptor;
     const state = run([
-      [
-        2,
-        {
-          ...partial,
-          coverage: {
-            kind: "partial-window",
-            offset: 0,
-            limit: 1,
-            traversedPages: 1,
-            observedTotal: 5,
-          },
-        } as TableObservation,
-      ],
+      [2, answered(variables, [variable("u-1", "s-1", "ZCP_MATE_ENABLED", "1")], 1)],
+      [3, membership(variables, "remove", "u-1")],
+      [5, answered(byId, [], 4)],
+      // Another organization's answer prunes nothing of this one's.
+      [6, answered(serviceVariablesDescriptor(other), [], 6)],
+      // A search that began before the deletion was read says nothing of it.
+      [7, answered(variables, [variable("u-1", "s-1", "ZCP_MATE_ENABLED", "1")], 3)],
     ]);
-    expect(activeVersionOf(state, organization, "v-2").known).toBe(false);
+    expect(serviceVariableOf(state, organization, "s-1", "ZCP_MATE_ENABLED")).toEqual({
+      known: true,
+      content: null,
+    });
   });
 
   it("knows no variable before its list's search answered", () => {

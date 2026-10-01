@@ -19,9 +19,12 @@ import {
   type InventoryState,
 } from "./inventory.ts";
 import {
+  activeVersionOf,
   makeInitialEntityTableState,
   reduceTableObservation,
   releaseTableLists,
+  tableRowsWanted,
+  wantTableRows,
   type EntityTableState,
 } from "./entityTable.ts";
 import {
@@ -55,8 +58,10 @@ import type {
   ReadTicket,
   ReceiptOrdinal,
   RegistrationRequest,
+  OrganizationRef,
   ServiceRecord,
   SharedReadOwnership,
+  TableEntity,
   ZeropsCommandAttemptId,
   ZeropsRequestId,
 } from "./types.ts";
@@ -149,10 +154,18 @@ export type RuntimeControlInput =
 
 export type ZeropsDataModelInput = IngestionInput | RuntimeControlInput;
 
-export type ZeropsDataFollowUp = {
-  readonly kind: "hydrate-unresolved-query-members";
-  readonly query: QueryKey;
-};
+export type ZeropsDataFollowUp =
+  | {
+      readonly kind: "hydrate-unresolved-query-members";
+      readonly query: QueryKey;
+    }
+  | {
+      /** Rows the entity table is owed, read by id after a short grace (`entityTable.ts`). */
+      readonly kind: "read-table-rows";
+      readonly entity: TableEntity;
+      readonly organization: OrganizationRef;
+      readonly ids: ReadonlyArray<string>;
+    };
 
 export interface ZeropsDataReduction {
   readonly state: ZeropsDataState;
@@ -1515,6 +1528,31 @@ function scheduleRetention(state: ZeropsDataState, policy: ZeropsDataPolicy): Ze
   };
 }
 
+/**
+ * A version a service runs that its organization's answered list of active versions lacks, with
+ * no push to state its source: the list may trail the service, so the version is read by id.
+ */
+function wantActiveVersions(state: ZeropsDataState, receipt: number): ZeropsDataState {
+  const missing = new Map<string, { organization: OrganizationRef; ids: string[] }>();
+  for (const record of state.inventory.services.values()) {
+    const facet = record.deployment;
+    if (facet.knowledge !== "observed") continue;
+    const deploy = facet.fields.activeDeploy;
+    if (deploy == null || deploy.id === null || deploy.source !== null) continue;
+    const organization = record.ref.project.organization;
+    const version = activeVersionOf(state.table, organization, deploy.id);
+    if (!version.known || version.row !== null) continue;
+    const key = organizationKeyOf(organization);
+    const batch = missing.get(key) ?? { organization, ids: [] };
+    batch.ids.push(deploy.id);
+    missing.set(key, batch);
+  }
+  let table = state.table;
+  for (const { organization, ids } of missing.values())
+    table = wantTableRows(table, "app-version", organization, ids, receipt);
+  return table === state.table ? state : { ...state, table };
+}
+
 export function reduceZeropsDataState(
   initial: ZeropsDataState,
   input: ZeropsDataModelInput,
@@ -1553,11 +1591,14 @@ export function reduceZeropsDataState(
   state = { ...state, lastReceiptOrdinal: stamp.receiptOrdinal };
   state = trimDiagnostics(state, policy);
   state = scheduleRetention(state, policy);
+  if (input.kind === "observation") state = wantActiveVersions(state, stamp.receiptOrdinal);
   const followUps: ZeropsDataFollowUp[] = [];
   for (const query of [...state.inventory.queries.values(), ...state.activity.queries.values()]) {
     if (query.unresolvedMemberKeys.length > 0) {
       followUps.push({ kind: "hydrate-unresolved-query-members", query: query.key });
     }
   }
+  for (const wanted of tableRowsWanted(state.table))
+    followUps.push({ kind: "read-table-rows", ...wanted });
   return { state, followUps };
 }
