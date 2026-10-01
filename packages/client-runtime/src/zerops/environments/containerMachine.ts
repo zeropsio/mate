@@ -207,6 +207,7 @@ export const containerVerdict = (machine: ContainerMachine): ContainerVerdict =>
  * failure or a wake asks.
  */
 export const probeCadence = (machine: ContainerMachine): ProbeCadence => {
+  if (platformSaysDown(machine)) return { kind: "none" };
   switch (machine.state.level) {
     case "booting":
       return { kind: "poll", overdue: machine.overdue || machine.state.guessed };
@@ -226,6 +227,21 @@ export const probeCadence = (machine: ContainerMachine): ProbeCadence => {
     case "inactive":
       return { kind: "none" };
   }
+};
+
+/**
+ * The platform's own status says the Mate's server is not up: its project or its zcp service is
+ * read and is not ACTIVE (restarting, upgrading, stopped…). Its address is then neither probed nor
+ * connected to — the balancer answers for a server that is down without CORS headers, so every
+ * read is a console error and a wasted request — and the status push that says ACTIVE again reads
+ * it. A status not read yet says nothing.
+ */
+export const platformSaysDown = (machine: ContainerMachine): boolean => {
+  const platform = machine.platform;
+  if (platform === null) return false;
+  return (
+    platform.project !== "ACTIVE" || (platform.service !== null && platform.service !== "ACTIVE")
+  );
 };
 
 /** The held reading is an unanswered probe sent since the container was last known up. */

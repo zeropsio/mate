@@ -43,7 +43,11 @@ import {
   type ProjectRef,
 } from "../data/types.ts";
 import type { IdentityExchangeReason } from "../diagnostics.ts";
-import type { ContainerMachine, MateFlag } from "../environments/containerMachine.ts";
+import {
+  platformSaysDown,
+  type ContainerMachine,
+  type MateFlag,
+} from "../environments/containerMachine.ts";
 import { containerSnapshotOf } from "../environments/containerRows.ts";
 import {
   bindContainerStore,
@@ -154,7 +158,7 @@ export interface AccountEnvironmentPorts {
    */
   readonly route?: () => EnvironmentId | null;
   /** The tab's socket admission (`connection/admission.ts`): the route's socket opens first. */
-  readonly admission?: Pick<ConnectionAdmission, "prefer">;
+  readonly admission?: Pick<ConnectionAdmission, "prefer" | "down">;
 }
 
 // ── What surfaces read and ask ───────────────────────────────────────────────────────────────
@@ -694,6 +698,38 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
     ports.admission?.prefer(next);
   };
 
+  /** The environments the socket admission holds as down, each with what lets it go. */
+  const downs = new Map<EnvironmentId, () => void>();
+  /**
+   * A Mate the platform says is down attempts no socket (`ConnectionAdmission.down`): its server
+   * is not there to answer, and the status push that says ACTIVE again lets it go.
+   */
+  const updateDowns = () => {
+    const admission = ports.admission;
+    if (admission === undefined) return;
+    const next = new Set<EnvironmentId>();
+    if (!closed && stores !== null) {
+      const recorded = new Map(
+        stores.records.list().map((record) => [record.targetKey, record.environmentId] as const),
+      );
+      for (const [key, machine] of stores.containers.machines()) {
+        if (!platformSaysDown(machine)) continue;
+        const credential = stores.driver.machine(key)?.credential;
+        const environmentId =
+          credential?.kind === "held" ? credential.environmentId : recorded.get(key);
+        if (environmentId !== undefined) next.add(environmentId);
+      }
+    }
+    for (const [environmentId, up] of downs) {
+      if (next.has(environmentId)) continue;
+      downs.delete(environmentId);
+      up();
+    }
+    for (const environmentId of next) {
+      if (!downs.has(environmentId)) downs.set(environmentId, admission.down(environmentId));
+    }
+  };
+
   const start = (built: EnvironmentStores): EnvironmentStage => {
     stores = built;
     const { records, containers, driver } = built;
@@ -709,10 +745,12 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
         updateAutoConnect();
         updateRoute();
         updateProcesses();
+        updateDowns();
         notify();
       }),
       driver.subscribe(() => {
         updateRoute();
+        updateDowns();
         // A credential its machine let go — an install that failed, a retirement — is released.
         release();
         notify();
@@ -827,6 +865,7 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
         driver.dispose();
         containers.dispose();
         preferRoute();
+        updateDowns();
       },
     };
   };

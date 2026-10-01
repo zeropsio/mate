@@ -52,6 +52,7 @@ function rig(session: {
     prefer: () => undefined,
     hold: () => () => undefined,
     preferred: () => null,
+    down: () => () => undefined,
     admit: (environmentId) => {
       log.push(`admit ${environmentId}`);
       return new Promise<AdmissionTicket>((resolve) => {

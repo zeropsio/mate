@@ -244,6 +244,8 @@ const environmentRig = (clock: DeadlineClock, remembered: ReadonlyArray<Registra
   let route: EnvironmentId | null = null;
   /** Each environment the stage told the socket admission to open first. */
   const preferred: Array<EnvironmentId | null> = [];
+  /** The environments the socket admission holds as down now. */
+  const down: Array<EnvironmentId> = [];
   const ports: AccountEnvironmentPorts = {
     clock: {
       now: () => ({ wall: clock.wallMs(), mono: clock.monoMs() }),
@@ -288,11 +290,18 @@ const environmentRig = (clock: DeadlineClock, remembered: ReadonlyArray<Registra
       promote: (projectId) => void promoted.push(projectId),
     },
     route: () => route,
-    admission: { prefer: (environmentId) => void preferred.push(environmentId) },
+    admission: {
+      prefer: (environmentId) => void preferred.push(environmentId),
+      down: (environmentId) => {
+        down.push(environmentId);
+        return () => void down.splice(down.indexOf(environmentId), 1);
+      },
+    },
   };
   return {
     ports,
     preferred,
+    down,
     /** The tab opens on this environment's route: the stage reads it when it starts. */
     openOn: (environmentId: EnvironmentId | null) => {
       route = environmentId;
@@ -1888,6 +1897,22 @@ describe("the post-grant stage's Mate environments", () => {
         environments.setRoute(ENV_A);
         yield* built.close("application-close");
         expect(rig.preferred).toEqual([ENV_A, null, ENV_A, null]);
+      }),
+    ),
+  );
+
+  it.effect.each([
+    { status: "RESTARTING", down: [ENV_A] },
+    { status: "STOPPED", down: [ENV_A] },
+    { status: "ACTIVE", down: [] },
+  ])("a Mate whose service is $status: its sockets wait on the platform", ({ status, down }) =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const restarting = { ...A_MATE, service: { ...A_MATE.service, status } };
+        const { rig, built } = yield* granted([REMEMBERED_A], [restarting]);
+        expect(rig.down).toEqual(down);
+        yield* built.close("application-close");
+        expect(rig.down).toEqual([]);
       }),
     ),
   );

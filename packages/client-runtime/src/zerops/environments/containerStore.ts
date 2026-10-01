@@ -16,6 +16,7 @@ import type { Instant } from "../data/access/grant.ts";
 import {
   containerVerdict,
   initialContainer,
+  platformSaysDown,
   probeCadence,
   transitionContainer,
   type ContainerEffect,
@@ -253,8 +254,9 @@ export function makeContainerStore(ports: ContainerStorePorts): ContainerStore {
     for (const listener of listeners) listener();
   }
 
+  /** Reads the container now, unless the platform says it is down: its push back reads it. */
   const requestFor = (entry: Entry) => {
-    if (entry.origin !== null) probes.request(entry.origin);
+    if (entry.origin !== null && !platformSaysDown(entry.machine)) probes.request(entry.origin);
   };
 
   const unsubscribeProbes = probes.subscribe((origin, reading, sentAt) =>

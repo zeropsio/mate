@@ -65,6 +65,13 @@ export interface ConnectionAdmission {
   /** The environment whose socket goes first now: the route's, else the latest hold's. */
   readonly preferred: () => EnvironmentId | null;
   /**
+   * The platform says this environment's server is down (its container restarting, stopped…):
+   * none of its attempts starts, one connecting gives way, and it holds nobody else, until what
+   * this returns is called — by every caller that said so. A socket to a server that is down is
+   * held by the balancer until its 502, the browser's lock with it.
+   */
+  readonly down: (environmentId: EnvironmentId) => () => void;
+  /**
    * Resolves once this environment may create its socket. Rejects with the signal's reason when
    * the caller gives up first.
    */
@@ -108,13 +115,21 @@ export function makeConnectionAdmission(
   /** Attempts holding the lock: admitted, their socket neither open nor failed yet. */
   const connecting = new Set<Attempt>();
   const waiting: Array<Waiter> = [];
+  /** Environments the platform says are down, with how many callers say so. */
+  const downs = new Map<EnvironmentId, number>();
 
+  const isDown = (environmentId: EnvironmentId) => downs.has(environmentId);
+  /** Waiters that may start once it is their turn. */
+  const eligible = () => waiting.filter(({ environmentId }) => !isDown(environmentId));
   const isOpen = (environmentId: EnvironmentId) => (open.get(environmentId) ?? 0) > 0;
   const isRoute = (attempt: Attempt) => attempt.environmentId === preferred;
   const routeConnecting = () => [...connecting].some(isRoute);
   const othersConnecting = () => [...connecting].filter((attempt) => !isRoute(attempt));
   const holding = () =>
-    preferred !== null && !isOpen(preferred) && (awaitingFirst || routeConnecting());
+    preferred !== null &&
+    !isDown(preferred) &&
+    !isOpen(preferred) &&
+    (awaitingFirst || routeConnecting());
 
   const endFirstHold = () => {
     awaitingFirst = false;
@@ -130,7 +145,8 @@ export function makeConnectionAdmission(
   };
 
   /** Someone else wants the lock: a route not yet open, or an attempt waiting its turn. */
-  const contended = () => waiting.length > 0 || (preferred !== null && !isOpen(preferred));
+  const contended = () =>
+    eligible().length > 0 || (preferred !== null && !isDown(preferred) && !isOpen(preferred));
 
   /** Makes every attempt past its time give way, when someone else wants the lock. */
   const expireOthers = () => {
@@ -174,12 +190,17 @@ export function makeConnectionAdmission(
   /** Starts what may start: the route at once; others only when the route holds nothing. */
   function pump(): void {
     expireOthers();
-    for (const waiter of waiting.filter(({ environmentId }) => environmentId === preferred)) {
+    for (const waiter of eligible().filter(({ environmentId }) => environmentId === preferred)) {
       waiting.splice(waiting.indexOf(waiter), 1);
       waiter.start();
     }
     if (holding()) return;
-    while (waiting.length > 0 && othersConnecting().length === 0) waiting.shift()!.start();
+    for (;;) {
+      const next = eligible()[0];
+      if (next === undefined || othersConnecting().length > 0) return;
+      waiting.splice(waiting.indexOf(next), 1);
+      next.start();
+    }
   }
 
   const ticketFor = (attempt: Attempt, callerSignal: AbortSignal | undefined): AdmissionTicket => {
@@ -276,6 +297,22 @@ export function makeConnectionAdmission(
       };
     },
     preferred: () => preferred,
+    down: (environmentId) => {
+      downs.set(environmentId, (downs.get(environmentId) ?? 0) + 1);
+      for (const attempt of connecting) {
+        if (attempt.environmentId === environmentId) giveWay(attempt, "Its server is down.");
+      }
+      pump();
+      let released = false;
+      return () => {
+        if (released) return;
+        released = true;
+        const count = (downs.get(environmentId) ?? 0) - 1;
+        if (count > 0) downs.set(environmentId, count);
+        else downs.delete(environmentId);
+        pump();
+      };
+    },
     admit: (environmentId, signal) => {
       if (signal?.aborted) return Promise.reject(signal.reason);
       return new Promise<AdmissionTicket>((resolve, reject) => {
@@ -307,6 +344,7 @@ export const passThroughAdmission: ConnectionAdmission = {
   prefer: () => undefined,
   hold: () => () => undefined,
   preferred: () => null,
+  down: () => () => undefined,
   admit: (_environmentId, signal) =>
     signal?.aborted
       ? Promise.reject(signal.reason)
