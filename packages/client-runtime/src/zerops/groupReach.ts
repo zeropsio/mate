@@ -257,15 +257,41 @@ export const tokenWriteLockName = (tokenId: string): string => `mate:token:${tok
 /** Holds one token's read-then-write at a time, until `run` settles. */
 export type TokenWriteHold = <T>(tokenId: string, run: () => Promise<T>) => Promise<T>;
 
+/** How long one token's read-then-write may hold its lock before it is let go and fails. */
+export const TOKEN_WRITE_HOLD_MS = 30_000;
+
 /**
  * One token's read-then-write at a time: in this page by a queue per token, and across the
- * browser's tabs by the page's lock named `mate:token:{id}` where the platform has locks.
+ * browser's tabs by the page's lock named `mate:token:{id}` where the platform has locks. A hold
+ * past `timeoutMs` is let go and fails, so a write that never answers blocks nobody for good.
  */
-export function makeTokenWriteLock(locks?: TokenWriteLocks): TokenWriteHold {
+export function makeTokenWriteLock(
+  locks?: TokenWriteLocks,
+  options: { readonly timeoutMs?: number } = {},
+): TokenWriteHold {
+  const timeoutMs = options.timeoutMs ?? TOKEN_WRITE_HOLD_MS;
   const queues = new Map<string, Promise<void>>();
   return <T>(tokenId: string, run: () => Promise<T>): Promise<T> => {
+    const bounded = () =>
+      new Promise<T>((resolve, reject) => {
+        // @effect-diagnostics-next-line globalTimers:off -- a plain Promise bound, outside any Effect.
+        const timer = setTimeout(
+          () => reject(new Error(`The write to token ${tokenId} took too long; it was let go.`)),
+          timeoutMs,
+        );
+        run().then(
+          (value) => {
+            clearTimeout(timer);
+            resolve(value);
+          },
+          (cause: unknown) => {
+            clearTimeout(timer);
+            reject(cause);
+          },
+        );
+      });
     const held = () =>
-      locks === undefined ? run() : locks.request(tokenWriteLockName(tokenId), run);
+      locks === undefined ? bounded() : locks.request(tokenWriteLockName(tokenId), bounded);
     const next = (queues.get(tokenId) ?? Promise.resolve()).then(held);
     const settled = next.then(
       () => undefined,
@@ -301,21 +327,29 @@ export async function writeTokenProjectsFresh(input: {
   let written = 0;
   let attempts = 0;
   let most: number | null = null;
+  /** Tokens whose write failed: the others are still written, and the run fails at its end. */
+  const refused = new Map<string, unknown>();
   while (most === null || attempts < most) {
     const writes = input.plan(await input.read());
     most ??= writes.length;
-    const next = writes[0];
+    const next = writes.find((planned) => !refused.has(planned.tokenId));
     if (next === undefined) break;
     attempts += 1;
-    const wrote = await hold(next.tokenId, async () => {
-      const tokens = await input.read();
-      const write = input.plan(tokens).find((planned) => planned.tokenId === next.tokenId);
-      if (write === undefined) return false;
-      const roleCode = tokens.find((token) => token.id === write.tokenId)?.roleCode;
-      await input.write(roleCode === undefined ? write : { ...write, roleCode });
-      return true;
-    });
-    if (wrote) written += 1;
+    try {
+      const wrote = await hold(next.tokenId, async () => {
+        const tokens = await input.read();
+        const write = input.plan(tokens).find((planned) => planned.tokenId === next.tokenId);
+        if (write === undefined) return false;
+        const roleCode = tokens.find((token) => token.id === write.tokenId)?.roleCode;
+        await input.write(roleCode === undefined ? write : { ...write, roleCode });
+        return true;
+      });
+      if (wrote) written += 1;
+    } catch (cause) {
+      refused.set(next.tokenId, cause);
+    }
   }
+  const [failure] = refused.values();
+  if (refused.size > 0) throw failure;
   return written;
 }

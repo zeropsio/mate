@@ -274,6 +274,7 @@ export {
   makeTokenWriteLock,
   planGroupReach,
   tokenWriteLockName,
+  TOKEN_WRITE_HOLD_MS,
   writeTokenProjectsFresh,
   type TokenWriteHold,
   type TokenWriteLocks,

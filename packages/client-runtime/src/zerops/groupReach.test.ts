@@ -7,6 +7,7 @@ import {
   makeTokenWriteLock,
   planGroupReach,
   writeTokenProjectsFresh,
+  type TokenWriteLocks,
   type ZeropsGroupReachWrite,
   type ZeropsIntegrationToken,
 } from "./groupReach.ts";
@@ -340,29 +341,73 @@ describe("writeTokenProjectsFresh", () => {
   });
 });
 
-describe("makeTokenWriteLock", () => {
-  it("holds one token's read-then-write at a time, under the page's lock of its name", async () => {
-    const names: string[] = [];
-    const hold = makeTokenWriteLock({
-      request: (name, run) => {
-        names.push(name);
-        return run();
+describe("writeTokenProjectsFresh with a write the platform refuses", () => {
+  it("still writes the other tokens, then fails so its caller backs off", async () => {
+    let held: ReadonlyArray<ZeropsIntegrationToken> = [
+      { id: "tok-a", name: "a", projects: [] },
+      { id: "tok-b", name: "b", projects: [] },
+    ];
+    const attempts: string[] = [];
+    const run = writeTokenProjectsFresh({
+      read: async () => held,
+      plan: (tokens) =>
+        tokens
+          .filter((token) => (token.projects ?? []).length === 0)
+          .map((token) => ({
+            tokenId: token.id,
+            name: token.name,
+            projects: [{ projectId: DEV, roleCode: "BASIC_USER" as const }],
+          })),
+      write: async (write) => {
+        attempts.push(write.tokenId);
+        if (write.tokenId === "tok-a") throw new Error("refused");
+        held = held.map((token) =>
+          token.id === write.tokenId ? { ...token, projects: write.projects } : token,
+        );
       },
     });
+    await expect(run).rejects.toThrow("refused");
+    expect(attempts).toEqual(["tok-a", "tok-b"]);
+  });
+});
+
+describe("makeTokenWriteLock", () => {
+  /** The browser's locks: one holder of a name at a time, across every page that asks. */
+  const browserLocks = (): TokenWriteLocks & { readonly names: string[] } => {
+    const chains = new Map<string, Promise<unknown>>();
+    const names: string[] = [];
+    return {
+      names,
+      request: <T>(name: string, hold: () => Promise<T>) => {
+        names.push(name);
+        const next = (chains.get(name) ?? Promise.resolve()).then(hold);
+        chains.set(
+          name,
+          next.catch(() => undefined),
+        );
+        return next;
+      },
+    };
+  };
+
+  it("holds one token's read-then-write at a time, across two tabs under the browser's lock", async () => {
+    const locks = browserLocks();
+    // Two tabs: each its own page queue, one browser.
+    const [tabA, tabB] = [makeTokenWriteLock(locks), makeTokenWriteLock(locks)];
     const order: string[] = [];
     let release!: () => void;
     const gate = new Promise<void>((resolve) => {
       release = resolve;
     });
-    const first = hold("tok-a", async () => {
+    const first = tabA("tok-a", async () => {
       order.push("first in");
       await gate;
       order.push("first out");
     });
-    const second = hold("tok-a", async () => {
+    const second = tabB("tok-a", async () => {
       order.push("second in");
     });
-    const other = hold("tok-b", async () => {
+    const other = tabB("tok-b", async () => {
       order.push("other in");
     });
     await other;
@@ -370,6 +415,18 @@ describe("makeTokenWriteLock", () => {
     await Promise.all([first, second]);
 
     expect(order).toEqual(["first in", "other in", "first out", "second in"]);
-    expect(names).toEqual(["mate:token:tok-a", "mate:token:tok-b", "mate:token:tok-a"]);
+    expect(locks.names.toSorted()).toEqual([
+      "mate:token:tok-a",
+      "mate:token:tok-a",
+      "mate:token:tok-b",
+    ]);
+  });
+
+  it("lets go of a hold that outlives its bound, failing it, so the next writer goes on", async () => {
+    const hold = makeTokenWriteLock(browserLocks(), { timeoutMs: 10 });
+    const stuck = hold("tok-a", () => new Promise<void>(() => undefined));
+    const next = hold("tok-a", async () => "next");
+    await expect(stuck).rejects.toThrow(/tok-a/);
+    await expect(next).resolves.toBe("next");
   });
 });
