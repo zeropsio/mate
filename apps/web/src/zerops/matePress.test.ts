@@ -518,7 +518,10 @@ describe("finishMateSetup — the harden path", () => {
               calls.push("harden");
               return harden()
                 ? Effect.succeed({ value: undefined })
-                : Effect.fail(new Error("The isolation was refused."));
+                : Effect.fail({
+                    _tag: "IsolationRefused" as const,
+                    message: "The isolation was refused.",
+                  });
             },
             updateProjectTags: () => {
               calls.push("mark");
