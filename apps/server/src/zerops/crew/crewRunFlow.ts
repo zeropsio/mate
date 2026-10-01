@@ -239,8 +239,7 @@ export const retryRefused = (core: CrewCore) =>
         .filter((task) => task.state === "queued" && core.memory.cantStart.has(task.assignment))
         .map((task) => task.member),
     );
-    // A crewmate busy in its copy advances when that work ends.
-    for (const handle of handles) yield* core.crewmateIfFree(handle)(advance(core, handle));
+    for (const handle of handles) yield* core.crewmate(handle)(advance(core, handle));
   });
 
 /** Advances every crewmate; a failure is the section's last error, never a stop. */
@@ -249,9 +248,8 @@ export const advanceAll = (core: CrewCore) =>
     const applied = yield* core.applied;
     if (applied === undefined) return;
     for (const handle of applied.members.keys()) {
-      // A crewmate busy in its copy advances when that work ends, not after a wait here.
       yield* core
-        .crewmateIfFree(handle)(advance(core, handle))
+        .crewmate(handle)(advance(core, handle))
         .pipe(
           Effect.catch((error) =>
             Effect.sync(() => {

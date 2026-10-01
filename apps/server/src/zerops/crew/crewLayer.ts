@@ -102,7 +102,6 @@ import { editMemory, forgetMemory, removeMemory } from "./crewMemoryCommands.ts"
 import {
   discard,
   onTaskCrewmate,
-  pressCrewmate,
   editTask,
   markFresh,
   message,
@@ -252,13 +251,11 @@ const run = (core: CrewCore, command: CrewCommand, principal: TurnPrincipal, act
         yield* apply(core, principal, activate);
         return done;
       case "message":
-        yield* pressCrewmate(core, command.handle, message(core, principal, command));
+        yield* core.crewmate(command.handle)(message(core, principal, command));
         return done;
       case "answer":
         if (command.taskId === null) yield* leadAnswered(core, command.handle);
-        yield* pressCrewmate(
-          core,
-          command.handle,
+        yield* core.crewmate(command.handle)(
           message(core, principal, { handle: command.handle, text: command.text, attachments: [] }),
         );
         return done;
@@ -266,7 +263,7 @@ const run = (core: CrewCore, command: CrewCommand, principal: TurnPrincipal, act
         yield* tell(core, principal, command);
         return done;
       case "taskCreate":
-        yield* pressCrewmate(core, command.owner, newTask(core, principal, command));
+        yield* core.crewmate(command.owner)(newTask(core, principal, command));
         return done;
       case "taskEdit":
         yield* onTaskCrewmate(core, command.taskId, editTask(core, principal, command));
