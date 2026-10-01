@@ -462,7 +462,7 @@ describe("the entity table's reads by id", () => {
     state = run([[2, answered(versions, [], 1, 0), 0]], state);
     const due: Array<number | null> = [];
     for (const [at, ms] of [
-      [3, 1_000],
+      [3, SEARCH_LAG_MS],
       [4, 40_000],
       [5, 200_000],
       [6, 900_000],
@@ -470,11 +470,54 @@ describe("the entity table's reads by id", () => {
       state = run([[at, answered(byId(["v-9"]), [], at - 1, ms), ms]], state);
       due.push(dueOf(state, "v-9"));
     }
-    expect(due).toEqual([31_000, 160_000, 800_000, 1_500_000]);
+    expect(due).toEqual([SEARCH_LAG_MS + 30_000, 160_000, 800_000, 1_500_000]);
     expect(askedAbsent(state, "app-version", "v-9")).toEqual({ retryAtMs: 1_500_000 });
     // Owed and asked already: wanting it again asks nothing sooner.
     expect(
       dueOf(wantTableRows(state, "app-version", organization, ["v-9"], 7, 900_001), "v-9"),
     ).toBe(1_500_000);
+  });
+
+  it("does not call an id absent before the index could show it, and looks again after the lag", () => {
+    let state = wantTableRows(
+      makeInitialEntityTableState(),
+      "app-version",
+      organization,
+      ["v-9"],
+      1,
+      5_000,
+    );
+    state = run([[3, answered(byId(["v-9"]), [], 2, 6_000), 6_000]], state);
+    expect(askedAbsent(state, "app-version", "v-9")).toBe(null);
+    expect(dueOf(state, "v-9")).toBe(5_000 + SEARCH_LAG_MS);
+    state = run([[5, answered(byId(["v-9"]), [], 4, 15_000), 15_000]], state);
+    expect(askedAbsent(state, "app-version", "v-9")).toEqual({ retryAtMs: 15_000 + 30_000 });
+  });
+
+  it("keeps asking for an id its list named after a full search began", () => {
+    const state = run([
+      [2, answered(versions, [], 1, 0), 0],
+      [5, membership(versions, "add", "v-2"), 5_000],
+      // A full search that began at receipt 4, before the list named v-2.
+      [6, answered(versions, [version("v-2")], 4, 4_000), 6_000],
+    ]);
+    expect(dueOf(state, "v-2")).not.toBe(null);
+  });
+
+  it("never lets an answer that lags a push replace the push's content", () => {
+    const flag = (content: string) => variable("u-1", "s-1", "ZCP_MATE_ENABLED", content);
+    const byIdVariables = { ...variables, ids: ["u-1"] } as TableQueryDescriptor;
+    for (const lagging of [
+      answered(variables, [flag("0")], 4, 2_000),
+      answered(byIdVariables, [flag("0")], 4, 2_000),
+    ]) {
+      const state = run([
+        [2, answered(variables, [flag("0")], 1, 0), 0],
+        [3, pushed("user-data", [flag("1")]), 1_000],
+        [5, lagging, 2_500],
+      ]);
+      expect(serviceVariableOf(state, organization, "s-1", "ZCP_MATE_ENABLED").content).toBe("1");
+      expect(dueOf(state, "u-1")).toBe(1_000 + SEARCH_LAG_MS);
+    }
   });
 });

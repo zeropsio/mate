@@ -84,6 +84,8 @@ interface WantedRow {
   readonly dueAtMs: number;
   /** How often a read found it absent though the table is owed it (`ABSENT_BACKOFF_MS`). */
   readonly absent: number;
+  /** When it was first owed: a read before `SEARCH_LAG_MS` past it may not show it yet. */
+  readonly firstAtMs: number;
 }
 
 /**
@@ -156,6 +158,15 @@ const outcomeOf = (
 
 type Rows = Map<string, HeldRow<TableRow>>;
 
+/** Whether two states of a row say the same: a tombstone, or every field alike. */
+const sameRow = (left: TableRow | null, right: TableRow | null): boolean => {
+  if (left === null || right === null) return left === right;
+  const a = left as unknown as Record<string, unknown>;
+  const b = right as unknown as Record<string, unknown>;
+  const keys = new Set([...Object.keys(a), ...Object.keys(b)]);
+  return [...keys].every((key) => a[key] === b[key]);
+};
+
 const rowsOf = (state: EntityTableState, entity: TableEntity): Rows =>
   new Map(state.rows[entity] as ReadonlyMap<string, HeldRow<TableRow>>);
 
@@ -215,6 +226,7 @@ export function reduceTableObservation(
       since: receipt,
       dueAtMs: atMs,
       absent: 0,
+      firstAtMs: wanted.get(wantedKey(entity, observation.id))?.firstAtMs ?? atMs,
     });
     return { state: { ...state, wanted }, outcome: outcomeOf(observation, "applied") };
   }
@@ -267,6 +279,7 @@ export function reduceTableObservation(
       since: startedAt,
       dueAtMs: Math.max(owed?.dueAtMs ?? 0, held.atMs + SEARCH_LAG_MS),
       absent: owed?.absent ?? 0,
+      firstAtMs: owed?.firstAtMs ?? atMs,
     });
   };
   /**
@@ -278,17 +291,15 @@ export function reduceTableObservation(
     const admitted = answer !== null && admits(entity, answer) ? answer : null;
     if (held !== undefined && held.asOf > startedAt) return;
     if (held === undefined && admitted === null) return;
-    if (
-      held !== undefined &&
-      held.source === "push" &&
-      held.atMs > startMs - SEARCH_LAG_MS &&
-      (held.row === null) !== (admitted === null)
-    ) {
-      lookAgain(id, held);
+    // A push the index may not show yet keeps its content, whatever the answer says of it.
+    if (held !== undefined && held.source === "push" && held.atMs > startMs - SEARCH_LAG_MS) {
+      if (!sameRow(held.row, admitted)) lookAgain(id, held);
       return;
     }
     rows.set(id, { row: admitted, asOf: startedAt, atMs: startMs, source: "read", organizationId });
-    wanted.delete(wantedKey(entity, id));
+    // An id asked for after the read began is something the read cannot answer.
+    if ((wanted.get(wantedKey(entity, id))?.since ?? 0) <= startedAt)
+      wanted.delete(wantedKey(entity, id));
   };
 
   // A read of named ids: settles those ids. One the table is owed and the read found absent is
@@ -300,6 +311,11 @@ export function reduceTableObservation(
       const answer = said.get(id) ?? null;
       if (answer === null && rows.get(id) === undefined) {
         if (owed === undefined) continue;
+        // Too soon after it was first owed for the index to show it: one more look, not absent.
+        if (startMs < owed.firstAtMs + SEARCH_LAG_MS) {
+          wanted.set(wantedKey(entity, id), { ...owed, dueAtMs: owed.firstAtMs + SEARCH_LAG_MS });
+          continue;
+        }
         wanted.set(wantedKey(entity, id), {
           ...owed,
           dueAtMs: atMs + ABSENT_BACKOFF_MS[Math.min(owed.absent, ABSENT_BACKOFF_MS.length - 1)]!,
@@ -405,7 +421,26 @@ export function wantTableRows(
       since,
       dueAtMs: nowMs,
       absent: 0,
+      firstAtMs: nowMs,
     });
+  return { ...state, wanted };
+}
+
+/**
+ * Stops asking about rows a read already found absent that nothing needs any more: a version no
+ * service runs now waits out no back-off.
+ */
+export function forgetAbsentRows(
+  state: EntityTableState,
+  entity: TableEntity,
+  needed: (organization: OrganizationRef, id: string) => boolean,
+): EntityTableState {
+  const gone = [...state.wanted].filter(
+    ([, owed]) => owed.entity === entity && owed.absent > 0 && !needed(owed.organization, owed.id),
+  );
+  if (gone.length === 0) return state;
+  const wanted = new Map(state.wanted);
+  for (const [key] of gone) wanted.delete(key);
   return { ...state, wanted };
 }
 
