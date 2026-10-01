@@ -287,18 +287,6 @@ export function pressViewer(
     : { userId: user.id, roleCode: organization?.roleCode };
 }
 
-/** The Mates among a group's environments other than `projectId`: those with a container. */
-export function groupMatesOtherThan(
-  environments: ReadonlyArray<{
-    readonly item: { readonly project: { readonly id: string }; readonly service?: unknown };
-  }>,
-  projectId: string | null,
-): ReadonlyArray<string> {
-  return environments.flatMap(({ item }) =>
-    item.service === undefined || item.project.id === projectId ? [] : [item.project.id],
-  );
-}
-
 /**
  * The writes that give a group's other Mates sight of a new project: each Mate's key extended to
  * `READ_ONLY` on it (`planGroupReach`), where this person may edit the key — an org owner, or its
@@ -307,11 +295,12 @@ export function groupMatesOtherThan(
  */
 export function planShareReach(input: {
   readonly tokens: ReadonlyArray<ZeropsIntegrationToken & { readonly createdByUser?: unknown }>;
-  readonly groupMateProjectIds: ReadonlyArray<string>;
+  /** The group's other environments: the Mates among them are those a key writes. */
+  readonly siblingProjectIds: ReadonlyArray<string>;
   readonly projectId: string;
   readonly viewer: PressViewer;
 }): ReadonlyArray<ZeropsGroupReachWrite & { readonly roleCode: string | undefined }> {
-  return input.groupMateProjectIds.flatMap((mateProjectId) => {
+  return input.siblingProjectIds.flatMap((mateProjectId) => {
     const token = findMateIntegrationToken(input.tokens, mateProjectId);
     if (token === undefined) return [];
     const editable =
@@ -329,14 +318,55 @@ export function planShareReach(input: {
   });
 }
 
+/**
+ * Gives the group's other Mates sight of a new project: every environment the key mint counts
+ * (`buildGroupGrants`), never the services listing, which a press seconds after a load may not
+ * hold yet. A Mate's key is found in the account's token list (`findMateIntegrationToken`), read
+ * fresh and live right before its write — the write replaces the key's whole project list, so a
+ * cached one would undo a grant made meanwhile. Best-effort: a key it could not write is counted
+ * and left to the group-reach reconcile.
+ */
+export async function shareGroupReach(input: {
+  readonly client: Pick<ZeropsApiClient, "listIntegrationTokens" | "setIntegrationTokenProjects">;
+  readonly organizationId: string;
+  readonly groupProjectIds: ReadonlyArray<string>;
+  readonly projectId: string;
+  readonly viewer: PressViewer;
+}): Promise<{ readonly extended: number; readonly failed: number }> {
+  let extended = 0;
+  let failed = 0;
+  for (const siblingProjectId of input.groupProjectIds) {
+    if (siblingProjectId === input.projectId) continue;
+    try {
+      const writes = planShareReach({
+        tokens: await input.client.listIntegrationTokens(input.organizationId),
+        siblingProjectIds: [siblingProjectId],
+        projectId: input.projectId,
+        viewer: input.viewer,
+      });
+      for (const write of writes) {
+        await input.client.setIntegrationTokenProjects({
+          clientId: input.organizationId,
+          tokenId: write.tokenId,
+          name: write.name,
+          projects: write.projects,
+          roleCode: write.roleCode,
+        });
+        extended += 1;
+      }
+    } catch {
+      failed += 1;
+    }
+  }
+  return { extended, failed };
+}
+
 /** The press's platform calls, through the account's command layer. */
 export function pressPlatform(
   inputs: PressInputs,
   options: {
     /** The group's other environments: the Mate's key reads them. */
     readonly groupProjectIds: ReadonlyArray<string>;
-    /** The group's other Mates: their keys are given sight of the new project. */
-    readonly groupMateProjectIds: ReadonlyArray<string>;
     readonly viewer: PressViewer | null;
     /** Null where the press writes no registration. */
     readonly register: ((projectId: string) => Promise<void>) | null;
@@ -385,24 +415,14 @@ export function pressPlatform(
     },
     shareReach: async (projectId) => {
       const viewer = options.viewer;
-      if (viewer === null || options.groupMateProjectIds.length === 0) return;
-      const writes = planShareReach({
-        tokens: await client.listIntegrationTokens(organizationId),
-        groupMateProjectIds: options.groupMateProjectIds,
+      if (viewer === null) return;
+      await shareGroupReach({
+        client,
+        organizationId,
+        groupProjectIds: options.groupProjectIds,
         projectId,
         viewer,
       });
-      for (const write of writes) {
-        await client
-          .setIntegrationTokenProjects({
-            clientId: organizationId,
-            tokenId: write.tokenId,
-            name: write.name,
-            projects: write.projects,
-            roleCode: write.roleCode,
-          })
-          .catch(() => undefined);
-      }
     },
     readObservedServices: options.readObservedServices,
   };
@@ -489,8 +509,6 @@ export async function finishMateSetup(input: {
   readonly container: { readonly agents: ReadonlyArray<ZeropsAgentType> } | null;
   /** The group's other environments: a key minted here reads them. */
   readonly groupProjectIds: ReadonlyArray<string>;
-  /** The group's other Mates: their keys are given sight of this one. */
-  readonly groupMateProjectIds: ReadonlyArray<string>;
   readonly viewer: PressViewer | null;
   /** Null where there is no registry to write it in. */
   readonly registration: PressRegistration | null;
@@ -533,7 +551,6 @@ export async function finishMateSetup(input: {
     steps,
     platform: pressPlatform(input.inputs, {
       groupProjectIds: input.groupProjectIds,
-      groupMateProjectIds: input.groupMateProjectIds,
       viewer: input.viewer,
       register:
         input.registration === null ? null : pressRegistration(input.inputs, input.registration),

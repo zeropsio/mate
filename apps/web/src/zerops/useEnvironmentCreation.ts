@@ -30,14 +30,7 @@ import type { EnvironmentCreationChoice } from "../components/zerops/ZeropsEnvir
 import { invalidateZerops } from "./accountInvalidations";
 import { captureAccountLifetime } from "./accountLifetime";
 import { useAccountGitea } from "./giteaProject";
-import {
-  beginPress,
-  groupMatesOtherThan,
-  pressPlatform,
-  pressRegistration,
-  pressViewer,
-  runPress,
-} from "./matePress";
+import { beginPress, pressPlatform, pressRegistration, pressViewer, runPress } from "./matePress";
 import { readZeropsCellOnce } from "./useZeropsDeployedVersion";
 import { useZeropsInventory } from "./ZeropsInventoryProvider";
 import { useZeropsSession } from "./ZeropsSessionProvider";
@@ -185,7 +178,6 @@ export function useEnvironmentCreation(): (
       };
       const platform = pressPlatform(inputs, {
         groupProjectIds: request.environments.map(({ item }) => item.project.id),
-        groupMateProjectIds: groupMatesOtherThan(request.environments, null),
         viewer: pressViewer(user, organization),
         register:
           registers && giteaProjectId !== undefined

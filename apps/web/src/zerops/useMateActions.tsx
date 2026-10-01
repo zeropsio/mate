@@ -105,7 +105,6 @@ import { MATE_CONTAINER_GRACE_MS } from "./mateComing";
 import {
   finishMateSetup,
   forgetPress,
-  groupMatesOtherThan,
   pressViewer,
   useInterruptedPresses,
   useMatePresses,
@@ -488,7 +487,6 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
             groupProjectIds: (group?.environments ?? []).flatMap(({ item }) =>
               item.project.id === projectId ? [] : [item.project.id],
             ),
-            groupMateProjectIds: groupMatesOtherThan(group?.environments ?? [], projectId),
             viewer: pressViewer(user, activeOrganization),
             // A Mate made before the press: its key lowered from ADMIN.
             harden: true,

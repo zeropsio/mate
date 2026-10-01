@@ -320,8 +320,6 @@ function NewProjectDialog() {
             // Imported a moment ago, with the project, by the one call that made it.
             container: null,
             groupProjectIds: [],
-            // Its project's first Mate: nobody else in it to give sight of it.
-            groupMateProjectIds: [],
             viewer: pressViewer(user, activeOrganization),
             registration: {
               giteaProjectId,

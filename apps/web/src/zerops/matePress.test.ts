@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { interruptedPresses, planShareReach } from "./matePress";
+import { interruptedPresses, planShareReach, shareGroupReach } from "./matePress";
 
 const mate = (serviceId: string | undefined, tags: ReadonlyArray<string>) => ({
   ...(serviceId === undefined ? {} : { service: { id: serviceId } }),
@@ -71,7 +71,7 @@ describe("planShareReach", () => {
   const plan = (viewer: { readonly userId: string; readonly roleCode: string }) =>
     planShareReach({
       tokens: TOKENS,
-      groupMateProjectIds: ["uma", "fen"],
+      siblingProjectIds: ["uma", "fen"],
       projectId: "new",
       viewer,
     }).map((write) => [write.tokenId, write.projects.map((grant) => grant.projectId)]);
@@ -98,10 +98,89 @@ describe("planShareReach", () => {
             projects: [...TOKENS[0]!.projects, { projectId: "new", roleCode: "READ_ONLY" }],
           },
         ],
-        groupMateProjectIds: ["uma"],
+        siblingProjectIds: ["uma"],
         projectId: "new",
         viewer: { userId: "u-zoe", roleCode: "OWNER" },
       }),
     ).toEqual([]);
+  });
+});
+
+// Every sibling the key mint counts, whatever the services listing holds yet, each key read fresh
+// right before its write (live, 2026-10-01: a press ten seconds after load reached three of nine
+// siblings, picked by the zcp services the listing held).
+describe("shareGroupReach", () => {
+  const key = (id: string, projectId: string) => ({
+    id,
+    name: `zcp-${projectId}`,
+    roleCode: "NO_ACCESS",
+    createdByUser: "u-ada",
+    projects: [{ projectId, roleCode: "BASIC_USER" as const }],
+  });
+  const fakeClient = (failing: ReadonlySet<string> = new Set()) => {
+    const tokens = new Map(
+      [key("k-uma", "uma"), key("k-fen", "fen"), key("k-ivo", "ivo")].map((token) => [
+        token.id,
+        token,
+      ]),
+    );
+    const calls: Array<string> = [];
+    return {
+      calls,
+      tokens,
+      client: {
+        listIntegrationTokens: async () => {
+          calls.push("list");
+          return [...tokens.values()];
+        },
+        setIntegrationTokenProjects: async (input: {
+          readonly tokenId: string;
+          readonly projects: ReadonlyArray<{
+            readonly projectId: string;
+            readonly roleCode: string;
+          }>;
+        }) => {
+          calls.push(`put ${input.tokenId}`);
+          if (failing.has(input.tokenId)) throw new Error("refused");
+          const token = tokens.get(input.tokenId)!;
+          tokens.set(input.tokenId, { ...token, projects: input.projects as never });
+        },
+      },
+    };
+  };
+  const share = (client: ReturnType<typeof fakeClient>["client"]) =>
+    shareGroupReach({
+      client,
+      organizationId: "org-acme",
+      // A stage environment with no key among them, and the new project itself.
+      groupProjectIds: ["uma", "stage", "fen", "ivo", "new"],
+      projectId: "new",
+      viewer: { userId: "u-zoe", roleCode: "OWNER" },
+    });
+
+  it("extends every sibling Mate's key, reading the list fresh before each write", async () => {
+    const fake = fakeClient();
+    expect(await share(fake.client)).toEqual({ extended: 3, failed: 0 });
+    expect(fake.calls).toEqual([
+      "list",
+      "put k-uma",
+      "list",
+      "list",
+      "put k-fen",
+      "list",
+      "put k-ivo",
+    ]);
+    expect(
+      [...fake.tokens.values()].map((token) => token.projects.map((grant) => grant.projectId)),
+    ).toEqual([
+      ["uma", "new"],
+      ["fen", "new"],
+      ["ivo", "new"],
+    ]);
+  });
+
+  it("goes on past a key it could not write, and counts it", async () => {
+    const fake = fakeClient(new Set(["k-fen"]));
+    expect(await share(fake.client)).toEqual({ extended: 2, failed: 1 });
   });
 });
