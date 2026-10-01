@@ -354,9 +354,21 @@ export function selectRunningProcessesOf(
   const query =
     (state.activity.queries.get(queryKeyOf(descriptor)) as QueryState<RunningQuery> | undefined) ??
     unresolvedRunningQuery(project.organization);
+  // The organization's read of what runs is the word on a process it does not carry: one whose
+  // status was last said before that read began finished meanwhile — a build that ended while the
+  // socket was down, whose FINISHED was never pushed. Only a status said after the read stands.
+  const whole = query.status === "observed" && query.coverage.kind === "exhausted-traversal";
+  const members = whole ? new Set<string>(query.memberKeys) : null;
+  const readAt = whole && query.status === "observed" ? query.stamp.receiptOrdinal : null;
   const running = [...state.activity.processes.values()].filter(
     (record) =>
-      projectKeyOf(record.ref.project) === projectKeyOf(project) && isRunningProcess(record),
+      projectKeyOf(record.ref.project) === projectKeyOf(project) &&
+      isRunningProcess(record) &&
+      (members === null ||
+        members.has(processKeyOf(record.ref)) ||
+        (record.lifecycle.knowledge === "observed" &&
+          readAt !== null &&
+          record.lifecycle.stamp.receiptOrdinal > readAt)),
   );
   return {
     value: running.map((record) => processKnowledge(record, record.ref)),
