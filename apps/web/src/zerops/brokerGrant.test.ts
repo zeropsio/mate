@@ -1,6 +1,11 @@
 import { describe, expect, it, vi } from "vite-plus/test";
 
-import { parseZeropsRegistry, type ZeropsIntegrationToken } from "@t3tools/client-runtime/zerops";
+import {
+  makeTokenWriteLock,
+  parseZeropsRegistry,
+  type TokenWriteLocks,
+  type ZeropsIntegrationToken,
+} from "@t3tools/client-runtime/zerops";
 
 import {
   brokerGrantTokens,
@@ -302,11 +307,23 @@ describe("two grants of one broker at once", () => {
         },
       });
     const stores = [await tab(), await tab()];
+    // One browser's locks, which exclude across its tabs; each tab queues in its own page.
+    const chains = new Map<string, Promise<unknown>>();
+    const browser: TokenWriteLocks = {
+      request: (name, hold) => {
+        const next = (chains.get(name) ?? Promise.resolve()).then(hold);
+        chains.set(
+          name,
+          next.catch(() => undefined),
+        );
+        return next;
+      },
+    };
     try {
       const outcomes = await Promise.all(
         stores.map((store, index) =>
           grantBrokerProject({
-            client: brokerGrantTokens(store.runtime),
+            client: brokerGrantTokens(store.runtime, makeTokenWriteLock(browser)),
             clientId: "org-1",
             projectId: index === 0 ? "p-a" : "p-b",
           }),
@@ -337,6 +354,29 @@ describe("two grants of one broker at once", () => {
       });
       expect(outcome.kind).toBe("failed");
       expect(calls).toEqual([]);
+    } finally {
+      await store.close();
+    }
+  });
+});
+
+describe("a broker token replaced between the reads", () => {
+  it("is not reported granted: nothing was written to it", async () => {
+    const calls: Array<string> = [];
+    let reads = 0;
+    // The broker's token was replaced after the read that found it.
+    const store = await makeTokenStore({
+      calls,
+      tokens: () => (reads++ === 0 ? [BROKER] : [{ ...BROKER, id: "t-9" }]),
+    });
+    try {
+      const outcome = await grantBrokerProject({
+        client: brokerGrantTokens(store.runtime),
+        clientId: "org-1",
+        projectId: "p-new",
+      });
+      expect(outcome.kind).toBe("failed");
+      expect(calls.filter((call) => call.startsWith("grant"))).toEqual([]);
     } finally {
       await store.close();
     }
