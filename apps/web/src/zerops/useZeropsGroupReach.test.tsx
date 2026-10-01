@@ -122,20 +122,31 @@ const knownGrants = (
 
 type GrantsBroker = FakeCells<TokensCellRequest>;
 
-function contextFor(broker: GrantsBroker, setIntegrationTokenProjects: (input: unknown) => void) {
+function contextFor(
+  broker: GrantsBroker,
+  setIntegrationTokenProjects: (input: unknown) => void,
+  options: {
+    /** What a live read answers; by default what the test published last in the shared cell. */
+    readonly platform?: () => ReadonlyArray<ZeropsIntegrationTokenGrantMetadata>;
+    /** The platform refuses every project list write. */
+    readonly refuseWrites?: boolean;
+  } = {},
+) {
   const runtime = {
     scope,
     cells: { known: broker.known },
     commands: {
-      // The platform's tokens as a live read answers them: what the test published last.
       listIntegrationTokenGrants: () =>
         Effect.sync(() => ({
           attempt: {} as never,
-          value: broker.current.state === "known" ? broker.current.value : [],
+          value:
+            options.platform?.() ?? (broker.current.state === "known" ? broker.current.value : []),
         })),
       setIntegrationTokenProjects: (input: unknown) => {
         setIntegrationTokenProjects(input);
-        return Effect.succeed({ attempt: {} as never, value: undefined });
+        return options.refuseWrites === true
+          ? Effect.fail({ _tag: "ZeropsDataAdapterError", kind: "rejected", message: "refused" })
+          : Effect.succeed({ attempt: {} as never, value: undefined });
       },
       // A birth's one restart, and its delegation drop, both run in
       // `provisioning.ts`'s `hardening` phase (`ZeropsApiClient.hardenMate`)
@@ -204,6 +215,103 @@ describe("integrationTokensFromGrantMetadata", () => {
 });
 
 describe("useZeropsGroupReach", () => {
+  /** Renders the reconcile for `GROUP` over `context`, and answers its root. */
+  async function mounted(context: ZeropsDataContextValue) {
+    installTestDom();
+    const { createRoot } = await import("react-dom/client");
+    function Probe() {
+      useZeropsGroupReach({ clientId: "org-1", groups: [GROUP], enabled: true });
+      return null;
+    }
+    const root = createRoot(document.createElement("div") as unknown as Element);
+    await act(() => {
+      root.render(
+        <ZeropsDataContext value={context}>
+          <Probe />
+        </ZeropsDataContext>,
+      );
+    });
+    await flushEffects();
+    return root;
+  }
+
+  it("plans from the live list, not the shared one: nothing to write for a token already reaching", async () => {
+    const broker = new FakeCells<TokensCellRequest>();
+    const writes: unknown[] = [];
+    // The shared list is older: on the platform, the token already reaches its group.
+    const reached: ReadonlyArray<ZeropsIntegrationTokenGrantMetadata> = [
+      {
+        tokenId: "token-a",
+        name: "zcp-a",
+        grants: [
+          { projectId: "project-a", roleCode: "BASIC_USER" },
+          { projectId: "project-b", roleCode: "READ_ONLY" },
+        ],
+      },
+    ];
+    const root = await mounted(
+      contextFor(broker, (input) => writes.push(input), { platform: () => reached }),
+    );
+    try {
+      await act(async () => {
+        await broker.publish(knownGrants(NARROW_GRANTS, 1));
+      });
+      await flushEffects();
+      expect(writes).toEqual([]);
+    } finally {
+      await act(() => root.unmount());
+    }
+  });
+
+  it("backs off a write the platform keeps refusing: 30 s, then 2 min, never on every re-read", async () => {
+    vi.useFakeTimers();
+    const broker = new FakeCells<TokensCellRequest>();
+    const writes: unknown[] = [];
+    const root = await mounted(
+      contextFor(broker, (input) => writes.push(input), { refuseWrites: true }),
+    );
+    // Each refused write makes the shared list read again: the same grants, a new read.
+    let ordinal = 0;
+    const reread = async () => {
+      await act(async () => {
+        await broker.publish(
+          knownGrants(
+            NARROW_GRANTS.map((grant) => ({ ...grant })),
+            ++ordinal,
+          ),
+        );
+      });
+      await flushEffects();
+    };
+    try {
+      await reread();
+      expect(writes).toHaveLength(1);
+      await reread();
+      await reread();
+      expect(writes).toHaveLength(1);
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(30_000);
+      });
+      await flushEffects();
+      expect(writes).toHaveLength(2);
+      await reread();
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(119_000);
+      });
+      await flushEffects();
+      expect(writes).toHaveLength(2);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1_000);
+      });
+      await flushEffects();
+      expect(writes).toHaveLength(3);
+    } finally {
+      await act(() => root.unmount());
+      vi.useRealTimers();
+    }
+  });
+
   it("issues exactly one PUT for a group whose token does not yet reach it, and none once it does", async () => {
     installTestDom();
     const { createRoot } = await import("react-dom/client");

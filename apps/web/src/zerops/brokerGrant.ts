@@ -20,7 +20,6 @@
  */
 
 import {
-  makeTokenWriteLock,
   planBrokerProjectGrant,
   writeTokenProjectsFresh,
   type TokenWriteHold,
@@ -34,6 +33,7 @@ import {
 } from "@t3tools/client-runtime/zerops/data";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 
+import { tokenWrites } from "./tokenWriteLock";
 import { integrationTokensFromGrantMetadata } from "./useZeropsGroupReach";
 import { runZeropsCommand, type ZeropsDataContextValue } from "./zeropsDataContext";
 
@@ -72,9 +72,6 @@ export type BrokerGrantClient = Pick<
   /** Holds one token's read-then-write at a time, across this browser's tabs. */
   readonly hold?: TokenWriteHold;
 };
-
-/** This page's token locks: one token's read-then-write at a time, in it and across tabs. */
-const tokenWrites = makeTokenWriteLock(globalThis.navigator?.locks);
 
 /**
  * The broker grant's token list and its one write, through the account's runtime. The write

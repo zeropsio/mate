@@ -54,7 +54,7 @@ import {
   type TokensCellRequest,
   type ZeropsIntegrationTokenGrantMetadata,
 } from "@t3tools/client-runtime/zerops/data";
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import {
   planAccountGroupReach,
@@ -62,6 +62,7 @@ import {
   type ZeropsGroupReachGroup,
   type ZeropsIntegrationToken,
 } from "@t3tools/client-runtime/zerops";
+import { tokenWrites } from "./tokenWriteLock";
 import { runZeropsCommand, useKnown, useZeropsData } from "./zeropsDataContext";
 
 /** Serialises a plan input so an unchanged account is not re-read. */
@@ -107,6 +108,9 @@ export function integrationTokensFromGrantMetadata(
   }));
 }
 
+/** How long a reach the platform refused waits before it is planned again. */
+export const GROUP_REACH_BACKOFF_MS: ReadonlyArray<number> = [30_000, 120_000, 600_000];
+
 export function useZeropsGroupReach(input: {
   readonly clientId: string | undefined;
   readonly groups: ReadonlyArray<ZeropsGroupReachGroup>;
@@ -115,6 +119,20 @@ export function useZeropsGroupReach(input: {
   const { clientId, groups, enabled } = input;
   const { organizationRef, runtime } = useZeropsData();
   const lastKey = useRef<string | null>(null);
+  /** A reach the platform refused: when it may be planned again, and how often it was. */
+  const refused = useRef<{
+    readonly key: string;
+    readonly attempts: number;
+    readonly retryAtMs: number;
+  } | null>(null);
+  const [wake, setWake] = useState(0);
+  const wakeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(
+    () => () => {
+      if (wakeTimer.current !== null) clearTimeout(wakeTimer.current);
+    },
+    [],
+  );
   const key = groupsKey(groups);
   const hasMate = groups.some((group) => group.mateProjectIds.length > 0);
   const request = useMemo<TokensCellRequest | null>(
@@ -147,6 +165,9 @@ export function useZeropsGroupReach(input: {
       return;
     }
     if (tokens === null || tokenSetKey === null) return;
+    // A reach the platform refused waits out its back-off, however often the list is read again.
+    const reachKey = `${clientId}:${key}`;
+    if (refused.current?.key === reachKey && Date.now() < refused.current.retryAtMs) return;
     const runKey = `${clientId}:${key}:${tokenSetKey}`;
     if (lastKey.current === runKey) return;
     lastKey.current = runKey;
@@ -167,11 +188,22 @@ export function useZeropsGroupReach(input: {
             runZeropsCommand(
               runtime.commands.setIntegrationTokenProjects({ organization, ...write }),
             ).then(() => undefined),
+          hold: tokenWrites,
         });
+        if (refused.current?.key === reachKey) refused.current = null;
       } catch {
-        // Background repair: try again on the next read rather than showing
-        // the user an error about something they did not ask for.
+        // Background repair: never an error the person did not ask for, and never a loop on a
+        // write the platform keeps refusing — it is planned again after 30 s, 2 min, then 10 min.
+        const attempts = (refused.current?.key === reachKey ? refused.current.attempts : 0) + 1;
+        const waitMs =
+          GROUP_REACH_BACKOFF_MS[Math.min(attempts, GROUP_REACH_BACKOFF_MS.length) - 1]!;
+        refused.current = { key: reachKey, attempts, retryAtMs: Date.now() + waitMs };
         lastKey.current = null;
+        if (wakeTimer.current !== null) clearTimeout(wakeTimer.current);
+        wakeTimer.current = setTimeout(() => {
+          wakeTimer.current = null;
+          setWake((count) => count + 1);
+        }, waitMs);
       }
     })();
 
@@ -189,5 +221,6 @@ export function useZeropsGroupReach(input: {
     key,
     organizationRef,
     runtime.commands,
+    wake,
   ]);
 }
