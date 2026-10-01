@@ -342,6 +342,7 @@ export const makeCrewCore = Effect.gen(function* () {
   const scope = yield* Effect.scope;
   const numbering = yield* Semaphore.make(1);
   const opening = yield* Semaphore.make(1);
+  const crewmateLocks = new Map<string, Semaphore.Semaphore>();
   const changed = PubSub.publish(signals, undefined).pipe(Effect.asVoid);
 
   /** Reads the applied crew back from the tables into {@link cache}. */
@@ -516,6 +517,20 @@ export const makeCrewCore = Effect.gen(function* () {
     numbered: <A, E, R>(effect: Effect.Effect<A, E, R>) => numbering.withPermits(1)(effect),
     /** Serializes opening a crewmate's first conversation: two callers at once open one. */
     opening: <A, E, R>(effect: Effect.Effect<A, E, R>) => opening.withPermits(1)(effect),
+    /**
+     * Serializes a crewmate's turn end with a press that resets its copy: the
+     * turn's WIP commit and a discard's reset never run in one worktree at once.
+     */
+    crewmate:
+      (handle: string) =>
+      <A, E, R>(effect: Effect.Effect<A, E, R>) => {
+        let lock = crewmateLocks.get(handle);
+        if (lock === undefined) {
+          lock = Semaphore.makeUnsafe(1);
+          crewmateLocks.set(handle, lock);
+        }
+        return lock.withPermits(1)(effect);
+      },
     now: Effect.map(DateTime.now, DateTime.formatIso),
     uuid: crypto.randomUUIDv4.pipe(Effect.orDie),
   };

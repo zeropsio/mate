@@ -30,6 +30,7 @@ import {
   type ZeropsAgentAuthSnapshot,
 } from "@t3tools/contracts";
 import * as Context from "effect/Context";
+import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
@@ -102,8 +103,24 @@ export interface CrewWorld {
   /** Mate logins beyond the defaults, by id. */
   readonly logins: Ref.Ref<ReadonlyMap<string, MateLogin>>;
   readonly publish: (event: SpiEvent) => Effect.Effect<void>;
+  /**
+   * Holds the next ssh session whose remote script `matches` before it runs:
+   * `reached` once the engine is waiting on it, `release` lets it run.
+   */
+  readonly holdSsh: (matches: (script: string) => boolean) => Effect.Effect<SshHold>;
   /** A login's sign-in or signer changed: the agent-auth and logins feeds move. */
   readonly signedIn: Effect.Effect<void>;
+}
+
+export interface SshHold {
+  readonly reached: Effect.Effect<void>;
+  readonly release: Effect.Effect<void>;
+}
+
+interface PendingHold {
+  readonly matches: (script: string) => boolean;
+  readonly reached: Deferred.Deferred<void>;
+  readonly release: Deferred.Deferred<void>;
 }
 
 const project: OrchestrationProject = {
@@ -185,7 +202,7 @@ const repositoryLayers = (root: string) =>
   );
 
 const fakes = (
-  world: Omit<CrewWorld, "publish" | "signedIn">,
+  world: Omit<CrewWorld, "publish" | "holdSsh" | "signedIn">,
   events: PubSub.PubSub<SpiEvent>,
   signIns: PubSub.PubSub<void>,
 ) =>
@@ -248,17 +265,30 @@ const fakes = (
     ServerCommandReadiness.layer,
   );
 
-/** The local ssh shim, counting every session. */
-const countingSsh = (calls: Ref.Ref<number>) =>
+/** The local ssh shim, counting every session and holding the one a test asked for. */
+const countingSsh = (calls: Ref.Ref<number>, holds: Ref.Ref<ReadonlyArray<PendingHold>>) =>
   Layer.effect(
     ProcessRunner.ProcessRunner,
     Effect.gen(function* () {
       const runner = yield* ProcessRunner.ProcessRunner;
+      const held = (script: string) =>
+        Effect.gen(function* () {
+          const hold = yield* Ref.modify(holds, (all) => {
+            const found = all.find((entry) => entry.matches(script));
+            return [found, found === undefined ? all : all.filter((entry) => entry !== found)];
+          });
+          if (hold === undefined) return;
+          yield* Deferred.succeed(hold.reached, undefined);
+          yield* Deferred.await(hold.release);
+        });
       return ProcessRunner.ProcessRunner.of({
         run: (input) =>
-          (input.command === "ssh" ? Ref.update(calls, (count) => count + 1) : Effect.void).pipe(
-            Effect.andThen(runner.run(input)),
-          ),
+          (input.command === "ssh"
+            ? Ref.update(calls, (count) => count + 1).pipe(
+                Effect.andThen(held(input.args.at(-1) ?? "")),
+              )
+            : Effect.void
+          ).pipe(Effect.andThen(runner.run(input))),
       });
     }),
   ).pipe(Layer.provide(localSshProcessRunnerLayer(TEST_IDENTITY)));
@@ -293,6 +323,7 @@ export const withCrewEngines = <E>(
     );
     const events = yield* PubSub.unbounded<SpiEvent>();
     const signIns = yield* PubSub.unbounded<void>();
+    const holds = yield* Ref.make<ReadonlyArray<PendingHold>>([]);
     const world: CrewWorld = {
       root,
       workspace,
@@ -313,6 +344,19 @@ export const withCrewEngines = <E>(
       sshCalls: yield* Ref.make(0),
       logins: yield* Ref.make<ReadonlyMap<string, MateLogin>>(new Map()),
       publish: (event) => PubSub.publish(events, event).pipe(Effect.asVoid),
+      holdSsh: (matches) =>
+        Effect.gen(function* () {
+          const hold: PendingHold = {
+            matches,
+            reached: yield* Deferred.make<void>(),
+            release: yield* Deferred.make<void>(),
+          };
+          yield* Ref.update(holds, (all) => [...all, hold]);
+          return {
+            reached: Deferred.await(hold.reached),
+            release: Deferred.succeed(hold.release, undefined).pipe(Effect.asVoid),
+          };
+        }),
       signedIn: PubSub.publish(signIns, undefined).pipe(Effect.asVoid),
     };
     const installer = (options.installer ?? countingInstaller)(world.installs);
@@ -322,7 +366,7 @@ export const withCrewEngines = <E>(
         Layer.provideMerge(
           Layer.mergeAll(
             fakes(world, events, signIns),
-            countingSsh(world.sshCalls),
+            countingSsh(world.sshCalls, holds),
             ServerConfig.layer({
               cwd: workspace,
               zerops: ZEROPS,

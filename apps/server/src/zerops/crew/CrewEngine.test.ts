@@ -10,6 +10,7 @@ import {
   type OrchestrationThreadShell,
 } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
+import * as Fiber from "effect/Fiber";
 import * as Option from "effect/Option";
 import * as Ref from "effect/Ref";
 import * as Stream from "effect/Stream";
@@ -282,6 +283,39 @@ describe("CrewEngine", () => {
           kind: "crew",
           startedBy: "user-karel",
         });
+      }),
+    ),
+  );
+
+  it.live("a discard pressed while its crewmate's turn end is handled waits for that end", () =>
+    withCrewEngine((world) =>
+      Effect.gen(function* () {
+        yield* applied(world);
+        yield* command({ _tag: "message", handle: "backend", text: "First", attachments: [] });
+        yield* command({
+          _tag: "taskCreate",
+          owner: "backend",
+          title: "Second",
+          brief: "Do the second thing.",
+          doneWhen: "",
+          dependsOn: [],
+        });
+        const first = (yield* snapshotWhere((snapshot) => snapshot.board.tasks.length === 2)).board
+          .tasks[0]!.id;
+        const [stint] = yield* dispatchedOf(world, "thread.crew.create");
+        const turnCommit = yield* world.holdSsh((script) => script.includes("): turn 1"));
+        yield* world.publish(spiEvent("turn.completed", stint!.threadId, { state: "completed" }));
+        yield* turnCommit.reached;
+        const pressed = yield* Effect.forkChild(command({ _tag: "discard", taskId: first }));
+        const beforeTheEnd = yield* Fiber.await(pressed).pipe(Effect.timeoutOption("300 millis"));
+        yield* turnCommit.release;
+        yield* Fiber.join(pressed);
+        assert.isTrue(Option.isNone(beforeTheEnd), "the discard returned before the turn's end");
+        yield* snapshotWhere(
+          (snapshot) =>
+            snapshot.board.tasks[0]?.state === "discarded" &&
+            snapshot.board.tasks[1]?.state === "working",
+        );
       }),
     ),
   );
