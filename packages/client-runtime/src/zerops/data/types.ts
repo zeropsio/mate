@@ -2202,8 +2202,16 @@ export interface ZeropsDataRuntime {
    * over the list it had a moment ago. An organization nobody holds is left
    * alone, and so is a paused interest — the return to the foreground
    * re-reads it.
+   *
+   * `retry` is a person's Try now: the organization's subscriptions that are
+   * not observing — stalled, recovering or failed — start over at once on the
+   * socket that is open, which it does not replace, and the ones observing
+   * keep their registrations.
    */
-  readonly refresh: (organization: OrganizationRef) => Effect.Effect<void>;
+  readonly refresh: (
+    organization: OrganizationRef,
+    options?: { readonly retry?: boolean },
+  ) => Effect.Effect<void>;
   /**
    * Idempotent. It closes admission and advances the account fence before
    * interrupting work, closing receivers and clearing retained grants/model state.

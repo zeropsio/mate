@@ -39,7 +39,7 @@ describe("retryInvalidations", () => {
       name: "an organization whose data failed is read again, and a held grant is left alone",
       granted: true,
       blocked: [organization],
-      want: [{ topic: "inventory", organization }],
+      want: [{ topic: "inventory", organization, why: "user-retry" }],
     },
     {
       name: "a grant not held and failed data ask for both",
@@ -47,8 +47,8 @@ describe("retryInvalidations", () => {
       blocked: [organization, other],
       want: [
         { topic: "access", change: "renew-now" },
-        { topic: "inventory", organization },
-        { topic: "inventory", organization: other },
+        { topic: "inventory", organization, why: "user-retry" },
+        { topic: "inventory", organization: other, why: "user-retry" },
       ],
     },
     {

@@ -4707,6 +4707,55 @@ describe("a failure's scope: its own interest, or the receiver", () => {
   );
 
   it.effect.each([
+    [
+      "an invalidation re-reads every subscription on a socket of its own",
+      {},
+      { opened: 1, closes: 1, listReRead: true },
+    ],
+    [
+      "Try now restarts only the stalled ones, on the socket that is open",
+      { retry: true },
+      { opened: 0, closes: 0, listReRead: false },
+    ],
+  ] as const)(
+    "while the organization's services subscription is stalled, %s",
+    ([, refreshOptions, expected]) =>
+      Effect.gen(function* () {
+        // PR #60 review: an accepted creation, a Mate's delete or "not listed yet" invalidates the
+        // organization's data to read it again; a stalled sibling must not narrow that to an
+        // in-place restart, which leaves the healthy project list unread.
+        const rig = yield* setup({
+          hang: (request) =>
+            request.descriptor.kind === "query-membership" &&
+            request.descriptor.query.kind === "services-of-organization",
+          policy: { establishmentDeadlineMs: 100 },
+        });
+        yield* settleUntil(
+          rig.runtime,
+          (state) => rig.interestOf(state, rig.list)?.status === "observing",
+        );
+        yield* TestClock.adjust("100 millis");
+        yield* settleUntil(
+          rig.runtime,
+          (state) =>
+            rig.settled(state) &&
+            rig.inventories.every((lease) => rig.interestOf(state, lease)?.status === "recovering"),
+        );
+        const sent = rig.registrations.length;
+
+        yield* rig.runtime.refresh(organization, refreshOptions);
+        yield* settleUntil(rig.runtime, () => false, 20);
+
+        expect({
+          opened: yield* Queue.size(rig.opened),
+          closes: rig.closes(),
+          listReRead: rig.registrations.slice(sent).some(isProjectList),
+        }).toEqual(expected);
+        yield* rig.dispose;
+      }),
+  );
+
+  it.effect.each([
     ["timed out", unanswered("timeout")],
     ["was lost on the network", unanswered("network")],
     ["was cancelled in flight", unanswered("cancelled")],

@@ -159,6 +159,7 @@ export function retryInvalidations(input: {
   const reads = input.blockedOrganizations.map((organization): Invalidation => ({
     topic: "inventory",
     organization,
+    why: "user-retry",
   }));
   return !input.granted || reads.length === 0
     ? [{ topic: "access", change: "renew-now" }, ...reads]

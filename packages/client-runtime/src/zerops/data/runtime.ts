@@ -2950,7 +2950,7 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
       }),
     );
 
-  const refresh: ZeropsDataRuntime["refresh"] = (organization) =>
+  const refresh: ZeropsDataRuntime["refresh"] = (organization, refreshOptions) =>
     lifecycleLock.withPermit(
       Effect.gen(function* () {
         if (yield* Ref.get(closed)) return;
@@ -2959,20 +2959,21 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
         // on its own backoff. An independent replacement here would race it: each
         // one's in-flight establishInterest call loses to the other's receiver swap
         // (the identity/receiver mismatch guards abort it), so neither ever survives
-        // long enough to complete a registration — a livelock. Wake the existing
-        // cycle instead, which recomputes its wait from current state.
+        // long enough to complete a registration — a livelock. While the cycle owns
+        // the receiver (its socket is down, or it is about to replace it), wake it
+        // instead, which recomputes its wait from current state.
         const activeRecovery = recoveryCycles.get(organizationKey);
-        // A person asked (Try now), or the organization's data was invalidated, while some of its
-        // subscriptions are not observing — stalled, recovering, or failed past their attempts:
-        // every one of them starts over now, past its backoff, on the socket that is open, which
-        // none of this replaces. Its registrations still unanswered are let go, so nothing waits
-        // on them. A socket that is not open is the recovery cycle's: its login retries on its
-        // own backoff.
+        // A person asked (Try now) while some of the organization's subscriptions are not
+        // observing — stalled, recovering, or failed past their attempts: every one of them starts
+        // over now, past its backoff, on the socket that is open, which none of this replaces. Its
+        // registrations still unanswered are let go, so nothing waits on them. A socket that is not
+        // open is the recovery cycle's: its login retries on its own backoff. Any other
+        // invalidation is a full re-read, below.
         const current = receivers.get(organizationKey);
         const open = current !== undefined && current.handle !== null ? current : null;
         const stalled = yield* Ref.get(model);
         const restarting =
-          open === null
+          open === null || refreshOptions?.retry !== true
             ? []
             : [...interests.values()].filter((runtimeInterest) => {
                 const status = stalled.interests.get(runtimeInterest.key)?.interest.status;
@@ -2982,7 +2983,11 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
                   (status === "establishing" || status === "recovering" || status === "failed")
                 );
               });
-        if (activeRecovery !== undefined || restarting.length > 0) {
+        // A socket that is down, or one the cycle is about to replace, is the cycle's to
+        // re-read: everything re-registers on the receiver it opens.
+        const cycleOwnsReceiver =
+          activeRecovery !== undefined && (open === null || activeRecovery.replace !== null);
+        if (cycleOwnsReceiver || restarting.length > 0) {
           if (open !== null) {
             for (const registration of [...open.registrations.values()]) {
               if (registration.status !== "registering") continue;
@@ -3052,6 +3057,9 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
           (runtimeInterest) => establishInterest(runtimeInterest).pipe(forkOwned),
           { discard: true },
         );
+        // A cycle retrying single interests on the replaced socket finds its round's receiver
+        // gone and recomputes what is due on this one.
+        if (activeRecovery !== undefined) yield* Deferred.succeed(activeRecovery.wake, undefined);
       }),
     );
 
@@ -3675,7 +3683,9 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
     Effect.flatMap(bus.subscribe, (subscription) =>
       Stream.fromSubscription(subscription).pipe(
         Stream.runForEach((invalidation) =>
-          invalidation.topic === "inventory" ? refresh(invalidation.organization) : Effect.void,
+          invalidation.topic === "inventory"
+            ? refresh(invalidation.organization, { retry: invalidation.why === "user-retry" })
+            : Effect.void,
         ),
         Effect.forkScoped,
       ),

@@ -892,7 +892,9 @@ it.live(
         const [tryNow] = buttonsLabelled(harness.container as never, "Try now");
         yield* Effect.promise(async () => act(async () => press(tryNow!)));
         yield* harness.advance(250);
-        expect(heard).toEqual([{ topic: "inventory", organization: harness.organization }]);
+        expect(heard).toEqual([
+          { topic: "inventory", organization: harness.organization, why: "user-retry" },
+        ]);
         // The stalled subscriptions register again at once, past their backoff, on the socket
         // that is open: none is replaced, and no grant round starts.
         expect(harness.registerCalls()).toBeGreaterThan(sent);
