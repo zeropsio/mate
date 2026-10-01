@@ -7,6 +7,8 @@
  */
 import type { ServiceStatusToneId } from "@t3tools/shared/brand";
 
+import type { StandUpProgress } from "../activity/standupProgress.ts";
+
 /**
  * `inProgress` is the only non-terminal value. `interrupted` is the client
  * form of R10: a call still `inProgress` whose turn is not the thread's
@@ -55,6 +57,8 @@ export interface ZeropsCall {
   readonly rowIds: ReadonlySet<string>;
   /** Any row carried a non-empty `payload.agentId` — the whole call is a subagent's. */
   readonly agentInternal: boolean;
+  /** A stand-up call's progress as its Mate relays it (`standupProgress.ts`); absent from an older Mate. */
+  readonly standUpProgress?: StandUpProgress;
 }
 
 export type ZeropsOperationKind =
@@ -270,6 +274,8 @@ export interface ZeropsOperation {
   readonly links: ReadonlyArray<ZeropsOperationLink>;
   /** The operation's calls, anchor first: one per per-call kind, a bootstrap session's members and joined imports. */
   readonly callIds: ReadonlyArray<string>;
+  /** `standup` only: its call's progress as its Mate relays it; absent from an older Mate. */
+  readonly standUpProgress?: StandUpProgress;
   readonly target?: { readonly hostname: string };
   /** `deploy` only: a `zerops_deploy_batch` — one step per target, no single service to observe or name. */
   readonly batch?: true;

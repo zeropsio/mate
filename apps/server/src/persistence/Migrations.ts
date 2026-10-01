@@ -67,6 +67,7 @@ import Migration0052 from "./Migrations/052_ProjectionThreadsAutoSettleDisabledA
 import Migration0053 from "./Migrations/053_ProjectionThreadsUsagePause.ts";
 import Migration0054 from "./Migrations/054_ProjectionThreadsCrew.ts";
 import Migration0055 from "./Migrations/055_Crew.ts";
+import Migration0056 from "./Migrations/056_ZeropsStandUp.ts";
 
 /**
  * Migration loader with all migrations defined inline.
@@ -136,6 +137,7 @@ export const migrationEntries = [
   [53, "ProjectionThreadsUsagePause", Migration0053],
   [54, "ProjectionThreadsCrew", Migration0054],
   [55, "Crew", Migration0055],
+  [56, "ZeropsStandUp", Migration0056],
 ] as const;
 
 export const migrationManifest = migrationEntries.map(([id, name]) => [id, name] as const);

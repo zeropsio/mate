@@ -966,8 +966,47 @@ function StandupStates() {
             </div>
           );
         })}
+        <RelayedStandup />
       </State>
     </StandupReadings>
+  );
+}
+
+/** A stand-up whose Mate relays zcp's progress: the card reads it, no fixture reading. */
+function RelayedStandup() {
+  const operation: ZeropsOperation = {
+    ...standupOp("op:standup-relayed", "development"),
+    standUpProgress: {
+      phase: "development",
+      state: "running",
+      services: [
+        { hostname: "db", step: "verify", state: "done", processId: "", at: ago(300) },
+        { hostname: "apidev", step: "deploy", state: "running", processId: "p-2", at: ago(70) },
+        { hostname: "shopdev", step: "build", state: "running", processId: "p-3", at: ago(40) },
+        { hostname: "workerdev", step: "build", state: "pending", processId: "", at: "" },
+      ],
+    },
+  };
+  return (
+    <div className="grid gap-1" data-standup-state="Relayed by its Mate">
+      <p className="text-muted-foreground text-xs">Relayed by its Mate, from zcp's status file</p>
+      <Card>
+        <RunChat
+          row={record({
+            turnKey: "standup-relayed",
+            items: [],
+            now: { kind: "operation", operation },
+          })}
+        />
+        <ConversationWorking
+          dock={{ ...EMPTY_DOCK, operations: [operation] }}
+          environmentId={null}
+          incidents={[]}
+          onOpenAgents={() => undefined}
+          threadRef={null}
+        />
+      </Card>
+    </div>
   );
 }
 

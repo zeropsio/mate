@@ -103,7 +103,7 @@ import * as RemoteOpenTargets from "./environment/RemoteOpenTargets.ts";
 import { authHttpApiLayer, environmentAuthenticatedAuthLayer } from "./auth/http.ts";
 import * as ZeropsGitSpawner from "./zerops/ZeropsGitSpawner.ts";
 import * as ZeropsRepositorySource from "./zerops/ZeropsRepositorySource.ts";
-import { zeropsHttpApiLayer } from "./zerops/http.ts";
+import { zeropsHttpApiLayer, zeropsSetupRouteLayer } from "./zerops/http.ts";
 import * as ServerSecretStore from "./auth/ServerSecretStore.ts";
 import * as EnvironmentAuth from "./auth/EnvironmentAuth.ts";
 import {
@@ -588,6 +588,7 @@ export const makeRoutesLayer = Layer.mergeAll(
   otlpTracesProxyRouteLayer,
   assetRouteLayer,
   attachmentUploadRouteLayer,
+  zeropsSetupRouteLayer,
   staticAndDevRouteLayer,
   websocketRpcRouteLayer,
 ).pipe(

@@ -11,6 +11,7 @@
  */
 import type { OrchestrationThreadActivity } from "@t3tools/contracts";
 
+import { readStandUpProgress, type StandUpProgress } from "../activity/standupProgress.ts";
 import { readRecord, readString } from "../cards/decode.ts";
 import { compareAnchors, compareCallRows } from "./order.ts";
 import { normalizedToolName } from "./partition.ts";
@@ -83,6 +84,24 @@ interface CallGroup {
   readonly id: string;
   readonly toolCallId: string | undefined;
   readonly rows: Row[];
+}
+
+/** The newest relayed progress of each stand-up call, by its `toolCallId` (`standupProgress.ts`). */
+function standUpProgressByCall(
+  activities: ReadonlyArray<OrchestrationThreadActivity>,
+): ReadonlyMap<string, { readonly at: string; readonly progress: StandUpProgress }> {
+  const byCall = new Map<string, { readonly at: string; readonly progress: StandUpProgress }>();
+  for (const activity of activities) {
+    if (activity.kind !== "tool.progress") continue;
+    const toolCallId = readString(readRecord(activity.payload)?.toolCallId);
+    const progress = readStandUpProgress(activity.payload);
+    if (toolCallId === undefined || progress === undefined) continue;
+    const held = byCall.get(toolCallId);
+    if (held === undefined || held.at <= activity.createdAt) {
+      byCall.set(toolCallId, { at: activity.createdAt, progress });
+    }
+  }
+  return byCall;
 }
 
 function rowStatus(row: Row): RawRowStatus | undefined {
@@ -197,6 +216,7 @@ export function collectZeropsCalls(
     group.rows.push(row);
   }
 
+  const progressByCall = standUpProgressByCall(activities);
   const calls: ZeropsCall[] = [];
   for (const key of order) {
     const group = groups.get(key)!;
@@ -206,7 +226,10 @@ export function collectZeropsCalls(
     if (!isZerops) {
       continue;
     }
-    calls.push(buildCall(group, runningTurnId));
+    const call = buildCall(group, runningTurnId);
+    const progress =
+      group.toolCallId === undefined ? undefined : progressByCall.get(group.toolCallId);
+    calls.push(progress === undefined ? call : { ...call, standUpProgress: progress.progress });
   }
   calls.sort((a, b) => compareAnchors(anchorOf(a), anchorOf(b)));
   return calls;

@@ -183,3 +183,30 @@ describe("standupReadingFor — a settled call never changes once it has settled
     ).toBeNull();
   });
 });
+
+describe("standupReadingFor — a running call its Mate relays", () => {
+  const relayed = standup({
+    phase: "running",
+    standUpProgress: {
+      phase: "development",
+      state: "running",
+      services: [
+        { hostname: "apidev", step: "deploy", state: "running", processId: "p-1", at: "" },
+        { hostname: "webdev", step: "build", state: "pending", processId: "", at: "" },
+      ],
+    },
+  });
+
+  it("reads zcp's own progress, before the project is even read here", () => {
+    const reading = standupReadingFor(relayed, { nowMs: Date.parse("2026-09-02T10:02:00Z") });
+    expect(reading?.rows.map((row) => [row.hostname, row.state, row.sentence])).toEqual([
+      ["apidev", "building", "Deploying"],
+      ["webdev", "waits", undefined],
+    ]);
+  });
+
+  it("a settled call reads as it settled, whatever was relayed", () => {
+    const settled = { ...relayed, phase: "done" as const };
+    expect(standupReadingFor(settled, { nowMs: 0 })?.rows).toEqual([]);
+  });
+});

@@ -219,6 +219,10 @@
       "types": "./src/zerops/activity/pipelineState.ts",
       "default": "./src/zerops/activity/pipelineState.ts"
     },
+    "./zerops/activity/standupProgress": {
+      "types": "./src/zerops/activity/standupProgress.ts",
+      "default": "./src/zerops/activity/standupProgress.ts"
+    },
     "./zerops/activity/standupReading": {
       "types": "./src/zerops/activity/standupReading.ts",
       "default": "./src/zerops/activity/standupReading.ts"

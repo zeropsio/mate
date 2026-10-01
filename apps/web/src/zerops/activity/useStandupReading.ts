@@ -18,6 +18,7 @@ import {
   readStandup,
   settleStandup,
 } from "@t3tools/client-runtime/zerops/activity/standupReading";
+import { standupReadingFromProgress } from "@t3tools/client-runtime/zerops/activity/standupProgress";
 import type { ActivityProcess } from "@t3tools/client-runtime/zerops/activity/dto";
 import type { ZeropsTopologyService } from "@t3tools/client-runtime/zerops/topology";
 import { standupStepRole, type ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
@@ -109,6 +110,13 @@ export function standupReadingFor(
   },
 ): StandupReading | null {
   if (operation.phase !== "running") return settledStandupReading(operation, read.services);
+  // zcp's own word, relayed by its Mate, before anything pieced together here.
+  if (operation.standUpProgress !== undefined) {
+    return standupReadingFromProgress(operation.standUpProgress, {
+      ...(read.processes === undefined ? {} : { processes: read.processes }),
+      nowMs: read.nowMs,
+    });
+  }
   if (read.services === undefined || read.processes === undefined) return null;
   const expected = standupExpected(operation);
   return readStandup({

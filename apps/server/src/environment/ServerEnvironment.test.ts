@@ -317,6 +317,7 @@ it.layer(NodeServices.layer)("ServerEnvironmentLive", (it) => {
       expect(descriptor.capabilities.dataConsole).toBe(false);
       expect(descriptor.capabilities.agentSignOut).toBe(false);
       expect(descriptor.capabilities.mateLogins).toBe(false);
+      expect(descriptor.capabilities.setup).toBeUndefined();
     }),
   );
 
@@ -340,7 +341,7 @@ it.layer(NodeServices.layer)("ServerEnvironmentLive", (it) => {
         },
       };
 
-      const descriptor = yield* Effect.gen(function* () {
+      const describe = Effect.gen(function* () {
         return yield* (yield* ServerEnvironment.ServerEnvironment).getDescriptor;
       }).pipe(
         Effect.provide(
@@ -363,6 +364,13 @@ it.layer(NodeServices.layer)("ServerEnvironmentLive", (it) => {
           }),
         ),
       );
+      // Only a Mate the new press made stands itself up: it carries the runtimes plan.
+      const unmarked = yield* describe;
+      process.env["MATE_SETUP_RUNTIMES"] = "";
+      const descriptor = yield* describe.pipe(
+        Effect.ensuring(Effect.sync(() => delete process.env["MATE_SETUP_RUNTIMES"])),
+      );
+      expect(unmarked.capabilities.setup).toBeUndefined();
 
       expect(descriptor.update).toEqual({
         installed: "0.8.0",
@@ -375,6 +383,7 @@ it.layer(NodeServices.layer)("ServerEnvironmentLive", (it) => {
       expect(descriptor.capabilities.dataConsole).toBe(true);
       expect(descriptor.capabilities.agentSignOut).toBe(true);
       expect(descriptor.capabilities.mateLogins).toBe(true);
+      expect(descriptor.capabilities.setup).toEqual({ serverStandUp: true });
     }),
   );
 

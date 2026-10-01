@@ -157,6 +157,7 @@ import * as ZeropsAgentSignOutModule from "./zerops/ZeropsAgentSignOut.ts";
 import * as ZeropsLoginSignOutModule from "./zerops/ZeropsLoginSignOut.ts";
 import * as ZeropsLoginsModule from "./zerops/ZeropsLogins.ts";
 import * as ZeropsProjectSignersModule from "./zerops/ZeropsProjectSigners.ts";
+import * as ZeropsSetupModule from "./zerops/ZeropsSetup.ts";
 import * as ZeropsTurnAdmissionModule from "./zerops/ZeropsTurnAdmission.ts";
 import { layer as providerInstancesLayer } from "./spi/providerInstances.ts";
 import * as ZeropsBrowserStreamModule from "./zerops/ZeropsBrowserStream.ts";
@@ -617,6 +618,8 @@ const buildAppUnderTest = (options?: {
     zeropsMateUpdate?: Partial<ZeropsMateUpdateModule.ZeropsMateUpdate["Service"]>;
     zeropsDataConsole?: Partial<ZeropsDataConsoleModule.ZeropsDataConsole["Service"]>;
     zeropsGitRemoteProbe?: Partial<ZeropsGitRemoteProbeModule.ZeropsGitRemoteProbe["Service"]>;
+    /** A Mate's setup; absent unless a test sets it, as on a server older than it. */
+    zeropsSetup?: Partial<ZeropsSetupModule.ZeropsSetup["Service"]>;
   };
 }) =>
   Effect.gen(function* () {
@@ -1263,6 +1266,9 @@ const buildAppUnderTest = (options?: {
             // Crew mode off, as outside a Zerops project: the crew RPCs answer
             // `off` and refuse the rest.
             crewLayerInert,
+            options?.layers?.zeropsSetup === undefined
+              ? Layer.empty
+              : Layer.mock(ZeropsSetupModule.ZeropsSetup)(options.layers.zeropsSetup),
           ).pipe((zeropsMocks) =>
             // D6's gate, live, over the agent-auth and signers mocked above:
             // with no agents reported, it admits every turn.
@@ -2422,6 +2428,37 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
 
       assert.equal(response.status, 200);
       assert.deepEqual(body, testEnvironmentDescriptor);
+    }).pipe(Effect.provide(NodeHttpServer.layerTest)),
+  );
+
+  const setupDocument = {
+    version: 1 as const,
+    at: "2026-10-01T12:00:00Z",
+    steps: [{ id: "container" as const, state: "done", at: "2026-10-01T11:50:00Z" }],
+  };
+
+  it.effect("serves a Mate's setup to any origin, without auth", () =>
+    Effect.gen(function* () {
+      yield* buildAppUnderTest({
+        config: { zerops: zeropsTestEnvironment() },
+        layers: { zeropsSetup: { document: Effect.succeed(setupDocument) } },
+      });
+      const response = yield* fetchEffect(yield* getHttpServerUrl("/setup.json"), {
+        headers: { origin: "https://somewhere-else.test" },
+      });
+      assert.equal(response.status, 200);
+      assert.equal(response.headers["access-control-allow-origin"], "*");
+      assert.deepEqual(yield* responseJsonEffect<typeof setupDocument>(response), setupDocument);
+    }).pipe(Effect.provide(NodeHttpServer.layerTest)),
+  );
+
+  it.effect("answers 404 for the setup outside a Zerops project, as an older Mate does", () =>
+    Effect.gen(function* () {
+      yield* buildAppUnderTest({
+        layers: { zeropsSetup: { document: Effect.succeed(setupDocument) } },
+      });
+      const response = yield* fetchEffect(yield* getHttpServerUrl("/setup.json"));
+      assert.equal(response.status, 404);
     }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
 
@@ -6902,6 +6939,133 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
         ),
       );
     }).pipe(Effect.provide(NodeHttpServer.layerTest)),
+  );
+
+  it.effect("a browser's stand-up the Mate already has is answered without running it", () =>
+    Effect.gen(function* () {
+      const dispatched: string[] = [];
+      const ended: string[] = [];
+      yield* buildAppUnderTest({
+        layers: {
+          orchestrationEngine: {
+            dispatch: (command) =>
+              Effect.sync(() => dispatched.push(command.commandId)).pipe(
+                Effect.as({ sequence: 7 }),
+              ),
+          },
+          zeropsSetup: {
+            browserStandUp: (command) =>
+              Effect.succeed(command.commandId.endsWith("-1") ? "claimed" : "ignore"),
+            browserStandUpEnded: (command, outcome) =>
+              Effect.sync(() => ended.push(`${command.commandId}:${outcome}`)),
+          },
+        },
+      });
+      const standUp = (attempt: number) => ({
+        type: "thread.turn.start" as const,
+        commandId: CommandId.make(`mate-standup-thread-main-${attempt}`),
+        threadId: ThreadId.make("thread-main"),
+        message: {
+          messageId: MessageId.make(`mate-standup-thread-main-${attempt}`),
+          role: "user" as const,
+          text: "Stand up development of the project.",
+          attachments: [],
+        },
+        modelSelection: defaultModelSelection,
+        runtimeMode: "full-access" as const,
+        interactionMode: "default" as const,
+        createdAt: "2026-01-01T00:00:00.000Z",
+      });
+      yield* Effect.scoped(
+        withWsRpcClient(yield* getWsServerUrl("/ws"), (client) =>
+          Effect.gen(function* () {
+            yield* client[ORCHESTRATION_WS_METHODS.dispatchCommand](standUp(2));
+            yield* client[ORCHESTRATION_WS_METHODS.dispatchCommand](standUp(1));
+          }),
+        ),
+      );
+      assert.deepEqual(dispatched, ["mate-standup-thread-main-1"]);
+      assert.deepEqual(ended, ["mate-standup-thread-main-1:through"]);
+    }).pipe(Effect.provide(NodeHttpServer.layerTest)),
+  );
+
+  it.effect("a browser's stand-up that surely failed withdraws its claim", () =>
+    Effect.gen(function* () {
+      const ended: string[] = [];
+      yield* buildAppUnderTest({
+        layers: {
+          orchestrationEngine: {
+            dispatch: () =>
+              Effect.fail(
+                new PersistenceSqlError({ operation: "append", detail: "the store refused" }),
+              ),
+          },
+          zeropsSetup: {
+            browserStandUp: () => Effect.succeed("claimed"),
+            browserStandUpEnded: (command, outcome) =>
+              Effect.sync(() => ended.push(`${command.commandId}:${outcome}`)),
+          },
+        },
+      });
+      yield* Effect.scoped(
+        withWsRpcClient(yield* getWsServerUrl("/ws"), (client) =>
+          client[ORCHESTRATION_WS_METHODS.dispatchCommand]({
+            type: "thread.turn.start",
+            commandId: CommandId.make("mate-standup-thread-main-4"),
+            threadId: ThreadId.make("thread-main"),
+            message: {
+              messageId: MessageId.make("mate-standup-thread-main-4"),
+              role: "user",
+              text: "Stand up development of the project.",
+              attachments: [],
+            },
+            modelSelection: defaultModelSelection,
+            runtimeMode: "full-access",
+            interactionMode: "default",
+            createdAt: "2026-01-01T00:00:00.000Z",
+          }).pipe(Effect.exit),
+        ),
+      );
+      assert.deepEqual(ended, ["mate-standup-thread-main-4:failed"]);
+    }).pipe(Effect.provide(NodeHttpServer.layerTest)),
+  );
+
+  it.effect(
+    "a browser's stand-up that dies on its way keeps its claim, as it may have gone out",
+    () =>
+      Effect.gen(function* () {
+        const ended: string[] = [];
+        yield* buildAppUnderTest({
+          layers: {
+            orchestrationEngine: { dispatch: () => Effect.die("the engine fell over") },
+            zeropsSetup: {
+              browserStandUp: () => Effect.succeed("claimed"),
+              browserStandUpEnded: (command, outcome) =>
+                Effect.sync(() => ended.push(`${command.commandId}:${outcome}`)),
+            },
+          },
+        });
+        yield* Effect.scoped(
+          withWsRpcClient(yield* getWsServerUrl("/ws"), (client) =>
+            client[ORCHESTRATION_WS_METHODS.dispatchCommand]({
+              type: "thread.turn.start",
+              commandId: CommandId.make("mate-standup-thread-main-3"),
+              threadId: ThreadId.make("thread-main"),
+              message: {
+                messageId: MessageId.make("mate-standup-thread-main-3"),
+                role: "user",
+                text: "Stand up development of the project.",
+                attachments: [],
+              },
+              modelSelection: defaultModelSelection,
+              runtimeMode: "full-access",
+              interactionMode: "default",
+              createdAt: "2026-01-01T00:00:00.000Z",
+            }).pipe(Effect.exit),
+          ),
+        );
+        assert.deepEqual(ended, ["mate-standup-thread-main-3:unknown"]);
+      }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
 
   it.effect("records thread analytics only after a client command succeeds", () =>
