@@ -1569,6 +1569,7 @@ export function makeZeropsDataAdapter(options: ZeropsDataAdapterOptions): Zerops
     execute,
     closeReceiver,
     cells: makeZeropsCellReads(options.client),
+    onTokensWritten: (listener) => options.client.onIntegrationTokensWritten(listener),
   };
 }
 

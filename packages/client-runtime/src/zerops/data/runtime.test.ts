@@ -2272,24 +2272,21 @@ describe("makeZeropsDataRuntime", () => {
       registry.dispose();
     }),
   );
-  it.effect("reads an organization's tokens again once our own write changed them", () =>
+  it.effect("reads an organization's tokens again whenever a token of it is written", () =>
     Effect.gen(function* () {
       const registry = AtomRegistry.make();
       const base = makeAdapterHarness();
       let reads = 0;
+      const listeners = new Set<(organizationId: string) => void>();
       const unused = Effect.die("this test reads only tokens");
       const runtime = yield* makeZeropsDataRuntime({
         scope: runtimeScope,
         adapter: {
           ...base.adapter,
-          execute: (command) =>
-            command.kind === "set-integration-token-projects"
-              ? Effect.succeed({
-                  processRefs: [],
-                  observations: [],
-                  result: { kind: command.kind, value: undefined },
-                })
-              : Effect.die(`unexpected command ${command.kind}`),
+          onTokensWritten: (listener) => {
+            listeners.add(listener);
+            return () => listeners.delete(listener);
+          },
           cells: {
             readOrganizationLocations: () => unused,
             readServiceAuthorizedAgents: () => unused,
@@ -2323,17 +2320,14 @@ describe("makeZeropsDataRuntime", () => {
       yield* lease.awaitSettled;
       expect(reads).toBe(1);
 
-      yield* runtime.commands.setIntegrationTokenProjects({
-        organization,
-        tokenId: "token-a",
-        name: "broker",
-        projects: [],
-      });
-      for (let turn = 0; turn < 20; turn++) yield* Effect.yieldNow;
-
+      // Any write to one of its tokens — a mint, a grant, a delete, from anywhere in the app.
+      for (const listener of listeners) listener(organization.organizationId);
+      yield* lease.awaitSettled;
       expect(reads).toBe(2);
-      yield* Scope.close(leaseScope, Exit.void);
+
       yield* runtime.shutdown("application-close");
+      expect(listeners.size).toBe(0);
+      yield* Scope.close(leaseScope, Exit.void);
       registry.dispose();
     }),
   );

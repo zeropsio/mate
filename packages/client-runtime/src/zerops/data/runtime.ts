@@ -94,6 +94,7 @@ import {
   ZeropsLeaseId,
   ZeropsProjectId,
   ZeropsReceiverId,
+  ZeropsOrganizationId,
   ZeropsRequestId,
   ZeropsSharedReadId,
   ZeropsWireSubscriptionName,
@@ -944,6 +945,21 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
     access: () => Ref.getUnsafe(model).access,
     maxEntries: policy.activeSharedReadsPerAccount,
   });
+  // Every write to an organization's tokens, wherever the app made it, makes its list read again.
+  const stopTokenWrites =
+    options.adapter.onTokensWritten?.((organizationId) =>
+      Effect.runForkWith(runtimeContext)(
+        cells.invalidate({
+          kind: "tokens",
+          account: options.scope,
+          organization: {
+            kind: "organization",
+            account: options.scope.account,
+            organizationId: ZeropsOrganizationId.make(organizationId),
+          },
+        }),
+      ),
+    ) ?? (() => undefined);
   const logTimers = options.logTimers ?? {
     setTimer: (callback: () => void, delayMs: number) =>
       Effect.runForkWith(runtimeContext)(
@@ -3740,14 +3756,6 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
       ),
     setIntegrationTokenProjects: (input) =>
       runCommand({ kind: "set-integration-token-projects", ...input }).pipe(
-        // Our own write changed the organization's token list: every reader of it reads again.
-        Effect.ensuring(
-          cells.invalidate({
-            kind: "tokens",
-            account: options.scope,
-            organization: input.organization,
-          }),
-        ),
         Effect.flatMap(({ attempt, result }) =>
           result.kind === "set-integration-token-projects"
             ? Effect.succeed({ attempt, value: result.value })
@@ -3855,6 +3863,7 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
         yield* applyControl({ kind: "runtime-closed" });
         yield* flushPublication;
         yield* ingress.shutdown;
+        stopTokenWrites();
         yield* cells.shutdown;
         logs.shutdown();
         yield* Scope.close(runtimeScope, Exit.void);

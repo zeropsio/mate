@@ -24,7 +24,6 @@ import {
   planThrowawaySweep,
   throwawaySweepDue,
 } from "@t3tools/client-runtime/zerops/doorThrowaway";
-import * as Effect from "effect/Effect";
 import { useEffect, useRef } from "react";
 
 import { readZeropsCell } from "./useZeropsDeployedVersion";
@@ -86,14 +85,10 @@ export function useZeropsThrowawaySweep(input: {
           })),
           nowEpochMs: Date.now(),
         });
-        try {
-          for (const tokenId of stale) {
-            if (controller.signal.aborted) return;
-            await client.deleteIntegrationToken({ clientId, tokenId }, controller.signal);
-          }
-        } finally {
-          // Our own deletes changed the list every reader shares.
-          if (stale.length > 0) await Effect.runPromise(runtime.cells.invalidate(request));
+        // Each delete makes the shared list read again (the client tells the store of it).
+        for (const tokenId of stale) {
+          if (controller.signal.aborted) return;
+          await client.deleteIntegrationToken({ clientId, tokenId }, controller.signal);
         }
         rememberSwept(clientId, Date.now());
       } catch {

@@ -951,6 +951,30 @@ describe("ZeropsDataAdapter receiver", () => {
     }),
   );
 
+  it.effect("tells the runtime of every token write its client makes", () =>
+    Effect.gen(function* () {
+      const client = clientFor(() => new Response(JSON.stringify({}), { status: 200 }));
+      const adapter = makeZeropsDataAdapter({ client, makeSocket: () => new FakeSocket(), timers });
+      const heard: string[] = [];
+      const stop = adapter.onTokensWritten?.((organizationId) => heard.push(organizationId));
+
+      yield* adapter.execute(
+        {
+          ...commandBase,
+          kind: "set-integration-token-projects",
+          organization,
+          tokenId: "token-a",
+          name: "t",
+          projects: [],
+        },
+        context(),
+      );
+      stop?.();
+
+      expect(heard).toEqual([organization.organizationId]);
+    }),
+  );
+
   it.effect("writes a token's projects with its own org role, so the write never lowers it", () =>
     Effect.gen(function* () {
       const bodies: unknown[] = [];

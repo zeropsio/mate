@@ -230,6 +230,48 @@ describe("ZeropsApiClient authentication", () => {
     expect(client.session?.accessToken).toBe("access-2");
   });
 
+  it.each([
+    [
+      "a mint",
+      (client: ZeropsApiClient) =>
+        client.mintIntegrationToken({ clientId: "org-1", name: "t", roleCode: "BASIC_USER" }),
+    ],
+    [
+      "a regenerate",
+      (client: ZeropsApiClient) =>
+        client.regenerateIntegrationToken({ clientId: "org-1", tokenId: "token-1" }),
+    ],
+    [
+      "a project list write",
+      (client: ZeropsApiClient) =>
+        client.setIntegrationTokenProjects({
+          clientId: "org-1",
+          tokenId: "token-1",
+          name: "t",
+          projects: [],
+        }),
+    ],
+    [
+      "a delete",
+      (client: ZeropsApiClient) =>
+        client.deleteIntegrationToken({ clientId: "org-1", tokenId: "token-1" }),
+    ],
+  ])("tells its listeners the organization's tokens changed after %s", async (_, write) => {
+    const stub = recordingFetch(() =>
+      jsonResponse(200, { id: "token-1", token: "value-from-parts", name: "t" }),
+    );
+    const client = new ZeropsApiClient({ fetch: stub.fetch });
+    client.restoreSession(SESSION);
+    const heard: string[] = [];
+    const stop = client.onIntegrationTokensWritten((clientId) => heard.push(clientId));
+
+    await write(client).catch(() => undefined);
+    stop();
+    await write(client).catch(() => undefined);
+
+    expect(heard).toEqual(["org-1"]);
+  });
+
   it("remembers the user it last read for this session, and forgets it with the session", async () => {
     vi.useFakeTimers({ now: 5_000 });
     try {
