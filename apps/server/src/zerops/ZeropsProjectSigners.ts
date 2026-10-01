@@ -65,6 +65,7 @@ import * as Layer from "effect/Layer";
 import * as Path from "effect/Path";
 import * as Ref from "effect/Ref";
 import * as Schedule from "effect/Schedule";
+import * as Semaphore from "effect/Semaphore";
 import * as HttpClient from "effect/unstable/http/HttpClient";
 import * as NodeOS from "node:os";
 
@@ -248,14 +249,17 @@ const SIGNER_RECORD_POLL = Duration.seconds(1);
  */
 export const SIGNER_RECORD_FRESH_POLL = Duration.seconds(2);
 export const SIGNER_RECORD_FRESH_AWAIT = Duration.seconds(60);
-/** A sign-in still running: its credential may already be written while its code is checked. */
-const SIGN_IN_UNDER_WAY: ReadonlySet<ZeropsAgentLoginState["phase"]> = new Set([
-  "starting",
-  "menu",
-  "awaiting-browser",
-  "awaiting-code",
-  "verifying-code",
-]);
+/**
+ * How fresh a read the tags' fresh readers share: every turn waiting on a record, and the feeds'
+ * own re-reads, take one read a second between them.
+ */
+const FRESH_READ_SHARED_FOR = Duration.seconds(1);
+/** How long a fresh read waits after the platform refused one, doubling to the last. */
+const FRESH_READ_BACKOFF: ReadonlyArray<Duration.Duration> = [
+  Duration.seconds(2),
+  Duration.seconds(4),
+  Duration.seconds(8),
+];
 
 /** A login started longer ago than this has had its record written, or never will. */
 const RECORD_ON_ITS_WAY_WITHIN = Duration.minutes(30);
@@ -453,6 +457,12 @@ export const make = Effect.gen(function* () {
     readonly value: ProjectSigners;
   } | null>(null);
   const readSeq = yield* Ref.make(0);
+  // One fresh read at a time, shared for a second; after a refused one, none until the backoff.
+  const freshLock = yield* Semaphore.make(1);
+  const freshBackoff = yield* Ref.make<{ readonly until: number; readonly failures: number }>({
+    until: 0,
+    failures: 0,
+  });
   const members = yield* Ref.make<{
     readonly at: number;
     readonly value: ReadonlySet<string>;
@@ -495,6 +505,35 @@ export const make = Effect.gen(function* () {
       );
     });
 
+  /**
+   * The tags as fresh as the platform lets them be read, for a record known to be on its way:
+   * one read at a time for every caller, a read made within the last second shared, and after a
+   * read that failed (a 429) the last known until the backoff is over.
+   */
+  const freshRead = (environment: ZeropsEnvironment) =>
+    Effect.gen(function* () {
+      const now = yield* Clock.currentTimeMillis;
+      const held = yield* Ref.get(cache);
+      if (held !== null && now - held.at < Duration.toMillis(FRESH_READ_SHARED_FOR)) {
+        return held.value;
+      }
+      const backoff = yield* Ref.get(freshBackoff);
+      if (now < backoff.until) return held?.value ?? {};
+      const read = yield* readThrough(environment);
+      if (read.fresh) {
+        yield* Ref.set(freshBackoff, { until: 0, failures: 0 });
+      } else {
+        const wait =
+          FRESH_READ_BACKOFF[Math.min(backoff.failures, FRESH_READ_BACKOFF.length - 1)] ??
+          FRESH_READ_SHARED_FOR;
+        yield* Ref.set(freshBackoff, {
+          until: (yield* Clock.currentTimeMillis) + Duration.toMillis(wait),
+          failures: backoff.failures + 1,
+        });
+      }
+      return read.value;
+    }).pipe(freshLock.withPermits(1));
+
   /** The signers, and whether they come from a read made for this call. */
   const cachedOrRead = (environment: ZeropsEnvironment) =>
     Effect.gen(function* () {
@@ -534,13 +573,19 @@ export const make = Effect.gen(function* () {
       : cachedOrRead(environment).pipe(Effect.map((read) => read.value));
 
   /**
-   * `base` against the signer of `key`, with the sign-in this server walks for that login. From
-   * the cache, and once more from a fresh read; a refusal on a record from before somebody's
-   * sign-in is never a cached one. Whoever signed in last holds the credential, however long
-   * ago: a record naming anybody else runs nothing. And the very person whose sign-in has just
-   * finished here, or is finishing — the credential written while the code is still checked —
-   * waits for it and for their record on its way, read afresh a second at a time, up to
-   * {@link SIGNER_RECORD_WAIT}; the wait ends early on a sign-in that failed or was cancelled.
+   * `base` against the signer of `key`, with the sign-in this server walks for that login.
+   *
+   * - From the cache; a refusal on a cached read is read once more before it stands.
+   * - Whoever signed in last holds the credential, however long ago: a record naming anybody
+   *   else runs nothing.
+   * - While a code is being checked, the credential may already be its person's: every other
+   *   person's turn waits for that sign-in to settle, then goes by it.
+   * - The person whose code is being checked, or whose sign-in has just succeeded here, waits for
+   *   their record on its way, read afresh about a second at a time ({@link freshRead}).
+   *
+   * Both waits last up to {@link SIGNER_RECORD_WAIT}, and end once the sign-in is settled: one
+   * that failed or was cancelled waits for nothing more. A login at its menu, its page or its
+   * code prompt has written nothing, and holds no turn.
    */
   const gateSignedIn = (
     key: string,
@@ -556,46 +601,49 @@ export const make = Effect.gen(function* () {
       const { token, subject } = input;
       const person = subject !== undefined && subject.length > 0 ? subject : undefined;
       const judge = (login: ZeropsAgentLoginState | undefined, nowMs: number) => {
-        const signedInBy = recentSignInBy(login, nowMs);
         const heldBy = latestSucceededSignIn(login)?.startedBy;
-        const underWay =
-          login !== undefined && SIGN_IN_UNDER_WAY.has(login.phase) ? login.startedBy : undefined;
+        const checking = login?.phase === "verifying-code" ? login.startedBy : undefined;
+        const justSignedIn =
+          login?.phase === "succeeded" ? recentSignInBy(login, nowMs) : undefined;
+        // Somebody else's code is being checked: their credential may already be the one here.
+        const holds = !token && checking !== undefined && checking !== person;
         return {
-          refuse: (signer: SignerRecord | undefined): TurnRefusal | undefined => {
+          decide: (signer: SignerRecord | undefined): TurnRefusal | undefined => {
             const refusal = base(signer);
+            if (refusal?.kind === "not-signed-in") return refusal;
+            if (holds) return { kind: "someone-else" };
             if (refusal !== undefined || token || heldBy === undefined || heldBy.length === 0) {
               return refusal;
             }
             return heldBy === subject ? undefined : { kind: "someone-else" };
           },
-          recent: !token && (signedInBy !== undefined || underWay !== undefined),
-          // This person's sign-in, finished here or finishing: their record is on its way.
-          onItsWay: person !== undefined && (signedInBy === person || underWay === person),
+          holds,
+          // This person's sign-in, being checked or just succeeded: their record is on its way.
+          onItsWay:
+            !token && person !== undefined && (checking === person || justSignedIn === person),
         };
       };
       let now = judge(input.login, yield* Clock.currentTimeMillis);
-      if (environment === undefined) return now.refuse(undefined);
+      if (environment === undefined) return now.decide(undefined);
       const held = yield* cachedOrRead(environment);
-      let refusal = now.refuse(held.value[key]);
-      if (refusal?.kind === "not-signed-in") return refusal;
-      // A cached admission stands, unless somebody has just signed this login in: the record
-      // from before the sign-in may name another person than the one it holds now.
-      if (refusal === undefined && !now.recent) return refusal;
-      if (!held.fresh) refusal = now.refuse((yield* readThrough(environment)).value[key]);
-      if (!now.onItsWay) return refusal;
+      let refusal = now.decide(held.value[key]);
+      if (refusal === undefined || refusal.kind === "not-signed-in") return refusal;
+      if (!held.fresh && !now.holds) refusal = now.decide((yield* freshRead(environment))[key]);
       const deadline = (yield* Clock.currentTimeMillis) + Duration.toMillis(SIGNER_RECORD_WAIT);
-      // No record, somebody else's from before, or one naming two people: each ends in this
-      // person's own once it lands.
       while (
         refusal !== undefined &&
         refusal.kind !== "not-signed-in" &&
-        now.onItsWay &&
+        (now.onItsWay || now.holds) &&
         (yield* Clock.currentTimeMillis) < deadline
       ) {
         yield* Effect.sleep(SIGNER_RECORD_POLL);
         const login = input.currentLogin === undefined ? input.login : yield* input.currentLogin;
         now = judge(login, yield* Clock.currentTimeMillis);
-        refusal = now.refuse((yield* readThrough(environment)).value[key]);
+        // Only the person whose record is on its way reads past the cache.
+        const signers = now.onItsWay
+          ? yield* freshRead(environment)
+          : (yield* cachedOrRead(environment)).value;
+        refusal = now.decide(signers[key]);
       }
       return refusal;
     });
@@ -660,9 +708,7 @@ export const make = Effect.gen(function* () {
   }
 
   const fresh: ZeropsProjectSigners["Service"]["fresh"] =
-    environment === undefined
-      ? Effect.succeed({})
-      : readThrough(environment).pipe(Effect.map((read) => read.value));
+    environment === undefined ? Effect.succeed({}) : freshRead(environment);
 
   return ZeropsProjectSigners.of({
     signers,
