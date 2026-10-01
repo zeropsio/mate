@@ -247,11 +247,44 @@ export function planAccountGroupReach(input: {
   return writes;
 }
 
+/** The page's exclusive locks (`navigator.locks`): `hold` runs once the lock is this tab's. */
+export interface TokenWriteLocks {
+  readonly request: <T>(name: string, hold: () => Promise<T>) => Promise<T>;
+}
+
+export const tokenWriteLockName = (tokenId: string): string => `mate:token:${tokenId}`;
+
+/** Holds one token's read-then-write at a time, until `run` settles. */
+export type TokenWriteHold = <T>(tokenId: string, run: () => Promise<T>) => Promise<T>;
+
 /**
- * Writes tokens' project lists, each planned from the list read right before it. A write replaces
- * a token's whole list, so it is never planned from a list read earlier — a shared, possibly old
- * one least of all — and it carries the token's own org role as read, which the replacement would
- * otherwise lower. It writes at most what its first plan asked for, and answers how many it wrote.
+ * One token's read-then-write at a time: in this page by a queue per token, and across the
+ * browser's tabs by the page's lock named `mate:token:{id}` where the platform has locks.
+ */
+export function makeTokenWriteLock(locks?: TokenWriteLocks): TokenWriteHold {
+  const queues = new Map<string, Promise<void>>();
+  return <T>(tokenId: string, run: () => Promise<T>): Promise<T> => {
+    const held = () =>
+      locks === undefined ? run() : locks.request(tokenWriteLockName(tokenId), run);
+    const next = (queues.get(tokenId) ?? Promise.resolve()).then(held);
+    const settled = next.then(
+      () => undefined,
+      () => undefined,
+    );
+    queues.set(tokenId, settled);
+    void settled.then(() => {
+      if (queues.get(tokenId) === settled) queues.delete(tokenId);
+    });
+    return next;
+  };
+}
+
+/**
+ * Writes tokens' project lists. A write replaces a token's whole list, so each is planned from
+ * the list read under that token's lock (`hold`), right before it — never from a list read
+ * earlier, a shared, possibly old one least of all — and it carries the token's own org role as
+ * read, which the replacement would otherwise lower. A read outside the lock only finds the next
+ * token to write. It writes at most what its first plan asked for, and answers how many it wrote.
  */
 export async function writeTokenProjectsFresh(input: {
   readonly read: () => Promise<ReadonlyArray<ZeropsIntegrationToken>>;
@@ -261,18 +294,28 @@ export async function writeTokenProjectsFresh(input: {
   readonly write: (
     write: ZeropsGroupReachWrite & { readonly roleCode?: string | undefined },
   ) => Promise<void>;
+  /** Serializes each token's read-then-write; without it, nothing else writes these tokens. */
+  readonly hold?: TokenWriteHold;
 }): Promise<number> {
+  const hold: TokenWriteHold = input.hold ?? ((_tokenId, run) => run());
   let written = 0;
+  let attempts = 0;
   let most: number | null = null;
-  while (most === null || written < most) {
-    const tokens = await input.read();
-    const writes = input.plan(tokens);
+  while (most === null || attempts < most) {
+    const writes = input.plan(await input.read());
     most ??= writes.length;
     const next = writes[0];
     if (next === undefined) break;
-    const roleCode = tokens.find((token) => token.id === next.tokenId)?.roleCode;
-    await input.write(roleCode === undefined ? next : { ...next, roleCode });
-    written += 1;
+    attempts += 1;
+    const wrote = await hold(next.tokenId, async () => {
+      const tokens = await input.read();
+      const write = input.plan(tokens).find((planned) => planned.tokenId === next.tokenId);
+      if (write === undefined) return false;
+      const roleCode = tokens.find((token) => token.id === write.tokenId)?.roleCode;
+      await input.write(roleCode === undefined ? write : { ...write, roleCode });
+      return true;
+    });
+    if (wrote) written += 1;
   }
   return written;
 }

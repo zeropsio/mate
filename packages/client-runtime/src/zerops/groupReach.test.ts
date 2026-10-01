@@ -4,6 +4,7 @@ import {
   buildGroupGrants,
   findMateIntegrationToken,
   planAccountGroupReach,
+  makeTokenWriteLock,
   planGroupReach,
   writeTokenProjectsFresh,
   type ZeropsGroupReachWrite,
@@ -260,79 +261,69 @@ describe("planAccountGroupReach", () => {
 
 describe("writeTokenProjectsFresh", () => {
   const grant = (projectId: string) => ({ projectId, roleCode: "BASIC_USER" as const });
+  /** Wants PROD on every token, keeping whatever it holds. */
+  const wantProd = (tokens: ReadonlyArray<ZeropsIntegrationToken>) =>
+    tokens.flatMap((token) =>
+      (token.projects ?? []).some((project) => project.projectId === PROD)
+        ? []
+        : [
+            {
+              tokenId: token.id,
+              name: token.name,
+              projects: [...(token.projects ?? []), grant(PROD)],
+            },
+          ],
+    );
 
-  it("plans each write from a list read right before it, never from an older one", async () => {
-    // What the platform holds changes between the reads: someone registered a Mate meanwhile.
+  it("writes from the list read under the token's lock, never from an older one", async () => {
+    // Between the read that found the token and the read under its lock, another writer gave
+    // it STAGE: the write keeps STAGE, as the platform holds it now.
     const answers: ReadonlyArray<ReadonlyArray<ZeropsIntegrationToken>> = [
       [{ id: "tok-a", name: "a", roleCode: "NO_ACCESS", projects: [grant(DEV)] }],
-      [{ id: "tok-a", name: "a", roleCode: "NO_ACCESS", projects: [grant(DEV), grant(STAGE)] }],
-      [
-        {
-          id: "tok-a",
-          name: "a",
-          roleCode: "NO_ACCESS",
-          projects: [grant(DEV), grant(STAGE), grant(PROD)],
-        },
-      ],
+      [{ id: "tok-a", name: "a", roleCode: "READ_ONLY", projects: [grant(DEV), grant(STAGE)] }],
     ];
     let reads = 0;
+    const held: string[] = [];
     const written: Array<ZeropsGroupReachWrite & { readonly roleCode?: string | undefined }> = [];
     const count = await writeTokenProjectsFresh({
       read: async () => answers[Math.min(reads++, answers.length - 1)]!,
-      // Wants PROD on the token, keeping whatever it holds now.
-      plan: (tokens) =>
-        tokens.flatMap((token) =>
-          (token.projects ?? []).some((project) => project.projectId === PROD)
-            ? []
-            : [
-                {
-                  tokenId: token.id,
-                  name: token.name,
-                  projects: [...(token.projects ?? []), grant(PROD)],
-                },
-              ],
-        ),
+      plan: wantProd,
+      hold: (tokenId, run) => {
+        held.push(tokenId);
+        return run();
+      },
       write: async (write) => {
         written.push(write);
       },
     });
 
     expect(count).toBe(1);
-    expect(reads).toBe(1);
+    expect(held).toEqual(["tok-a"]);
     expect(written).toEqual([
-      { tokenId: "tok-a", name: "a", roleCode: "NO_ACCESS", projects: [grant(DEV), grant(PROD)] },
+      {
+        tokenId: "tok-a",
+        name: "a",
+        roleCode: "READ_ONLY",
+        projects: [grant(DEV), grant(STAGE), grant(PROD)],
+      },
     ]);
   });
 
-  it("reads afresh before every write, and carries the token's own role", async () => {
-    let held: ReadonlyArray<ZeropsIntegrationToken> = [
-      { id: "tok-a", name: "a", projects: [] },
-      { id: "tok-b", name: "b", roleCode: "READ_ONLY", projects: [] },
+  it("writes nothing for a token another writer already brought where it should be", async () => {
+    const answers: ReadonlyArray<ReadonlyArray<ZeropsIntegrationToken>> = [
+      [{ id: "tok-a", name: "a", projects: [grant(DEV)] }],
+      [{ id: "tok-a", name: "a", projects: [grant(DEV), grant(PROD)] }],
     ];
     let reads = 0;
-    const order: string[] = [];
-    await writeTokenProjectsFresh({
-      read: async () => {
-        reads += 1;
-        order.push("read");
-        return held;
-      },
-      plan: (tokens) =>
-        tokens
-          .filter((token) => (token.projects ?? []).length === 0)
-          .map((token) => ({ tokenId: token.id, name: token.name, projects: [grant(DEV)] })),
-      write: async (write) => {
-        order.push(
-          `write ${write.tokenId}${write.roleCode === undefined ? "" : ` ${write.roleCode}`}`,
-        );
-        held = held.map((token) =>
-          token.id === write.tokenId ? { ...token, projects: write.projects } : token,
-        );
+    let writes = 0;
+    const count = await writeTokenProjectsFresh({
+      read: async () => answers[Math.min(reads++, answers.length - 1)]!,
+      plan: wantProd,
+      write: async () => {
+        writes += 1;
       },
     });
-
-    expect(order).toEqual(["read", "write tok-a", "read", "write tok-b READ_ONLY"]);
-    expect(reads).toBe(2);
+    expect([count, writes]).toEqual([0, 0]);
   });
 
   it("writes no more than its first plan asked for, whatever the platform answers", async () => {
@@ -346,5 +337,39 @@ describe("writeTokenProjectsFresh", () => {
       },
     });
     expect(writes).toBe(1);
+  });
+});
+
+describe("makeTokenWriteLock", () => {
+  it("holds one token's read-then-write at a time, under the page's lock of its name", async () => {
+    const names: string[] = [];
+    const hold = makeTokenWriteLock({
+      request: (name, run) => {
+        names.push(name);
+        return run();
+      },
+    });
+    const order: string[] = [];
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const first = hold("tok-a", async () => {
+      order.push("first in");
+      await gate;
+      order.push("first out");
+    });
+    const second = hold("tok-a", async () => {
+      order.push("second in");
+    });
+    const other = hold("tok-b", async () => {
+      order.push("other in");
+    });
+    await other;
+    release();
+    await Promise.all([first, second]);
+
+    expect(order).toEqual(["first in", "other in", "first out", "second in"]);
+    expect(names).toEqual(["mate:token:tok-a", "mate:token:tok-b", "mate:token:tok-a"]);
   });
 });
