@@ -76,6 +76,7 @@ import * as DateTime from "effect/DateTime";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 import * as PubSub from "effect/PubSub";
 import * as Queue from "effect/Queue";
@@ -350,15 +351,23 @@ export const make = (options: ZeropsAgentLoginOptions) =>
       logins: {
         ...EMPTY_LOGIN_BY_AGENT,
         ...Object.fromEntries(
-          Object.entries(kept).map(([key, record]) => [
-            key,
-            {
-              phase: "succeeded",
-              terminalId: loginTerminalId(key),
-              startedAt: DateTime.makeUnsafe(record.at),
-              startedBy: record.by,
-            } satisfies ZeropsAgentLoginState,
-          ]),
+          Object.entries(kept).flatMap(([key, record]) => {
+            // An instant no `DateTime` holds is no sign-in: never a reason not to start.
+            const startedAt = Option.getOrUndefined(DateTime.make(record.at));
+            return startedAt === undefined
+              ? []
+              : [
+                  [
+                    key,
+                    {
+                      phase: "succeeded",
+                      terminalId: loginTerminalId(key),
+                      startedAt: DateTime.toUtc(startedAt),
+                      startedBy: record.by,
+                    } satisfies ZeropsAgentLoginState,
+                  ] as const,
+                ];
+          }),
         ),
       },
     });

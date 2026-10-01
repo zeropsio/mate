@@ -621,6 +621,26 @@ it.effect("keeps who signed in last, and lets it go with the credential", () =>
   ),
 );
 
+it.effect("starts over a kept sign-in no instant can hold, and keeps nobody for it", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const fakeTerminal = yield* makeFakeTerminalManager();
+      const feed = yield* ZeropsAgentLoginModule.make({
+        terminalManager: fakeTerminal.service,
+        zeropsAgentAuth: yield* makeFakeAuth(),
+        isZeropsEnvironment: true,
+        signIns: yield* memorySignInStore({
+          "claude-code": { by: "user-eva", at: 1e20 },
+          codex: { by: "user-ada", at: Number.NaN },
+        }),
+      });
+      const latest = yield* feed.latest;
+      assert.isUndefined(loginOf(latest, "claude-code"));
+      assert.isUndefined(loginOf(latest, "codex"));
+    }),
+  ),
+);
+
 // A login whose CLI ended without the walker seeing success or failure (it
 // crashed, was killed, printed something unrecognized and quit) must not sit
 // in `menu` or `awaiting-browser` for ever: the terminal's exit ends it.
