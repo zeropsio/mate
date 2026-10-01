@@ -49,6 +49,7 @@ import {
   INVENTORY_TROUBLE_HOLD_MS,
   accountFootLine,
   inventoryTroubleVoice,
+  organizationKnowledge,
 } from "./inventoryTrouble.logic";
 import { useHeldFor } from "./useHeldFor";
 import {
@@ -369,14 +370,15 @@ export function ZeropsInventoryProvider({ children }: { readonly children: React
     const previousOutcomes = prevServiceOutcomesRef.current;
     const resolvedOrCarried = (projectId: string, computed: InventoryServiceOutcome) =>
       carryForwardServiceOutcome(previousOutcomes, projectId, computed);
-    // Whether every project and its services are read.
-    let complete = evidence !== null;
+    /** The organizations some of whose projects or services are not read yet. */
+    const unread = new Set<string>();
     for (const ref of knownProjectRefs) {
       const key = inventoryProjectRefKey(ref);
       projectRefs.set(key, ref);
       // A project withheld until its denial is confirmed holds nothing open (G6).
       const incomplete = () => {
-        if (!denied.has(key)) complete = false;
+        if (denied.has(key)) return;
+        unread.add(ref.organization.organizationId);
       };
       const project = projectReads.get(key)?.value;
       if (project === undefined) {
@@ -462,7 +464,7 @@ export function ZeropsInventoryProvider({ children }: { readonly children: React
       projects,
       services,
       projectRefs,
-      read: complete,
+      unreadOrganizations: [...unread],
       blockedOrganizations: [...blocked.values()],
     };
   }, [
@@ -472,7 +474,6 @@ export function ZeropsInventoryProvider({ children }: { readonly children: React
     projectDescriptors,
     projectReads,
     serviceReads,
-    evidence,
     knownProjectRefs,
   ]);
 
@@ -516,15 +517,14 @@ export function ZeropsInventoryProvider({ children }: { readonly children: React
   // failed or stalled — another organization's is not what anyone is looking at, unless none is
   // chosen yet. It never covers or freezes the product; it speaks only once it has lasted
   // (`inventoryTroubleVoice`).
-  const trouble =
-    phase.phase === "unverified-failed"
-      ? ("grant" as const)
-      : projected.blockedOrganizations.some(
-            ({ organizationId }) =>
-              activeOrganization === null || organizationId === activeOrganization.id,
-          )
-        ? ("organization" as const)
-        : null;
+  const known = organizationKnowledge({
+    grantFailed: phase.phase === "unverified-failed",
+    blocked: projected.blockedOrganizations.map(({ organizationId }) => organizationId),
+    // No evidence yet reads nothing at all.
+    unread: evidence === null ? organizations.map(({ id }) => id) : projected.unreadOrganizations,
+    active: activeOrganization?.id ?? null,
+  });
+  const trouble = known.trouble;
   const troubleHeld = useHeldFor(ready && trouble !== null, INVENTORY_TROUBLE_HOLD_MS);
   const voice = inventoryTroubleVoice({
     mounted: ready,
@@ -601,8 +601,9 @@ export function ZeropsInventoryProvider({ children }: { readonly children: React
     lost,
     // A read failing or stalled is not known, spoken of yet or not: the 20 s silence decides only
     // when the account's line speaks, never what the data says (a Mate link settled "not found",
-    // "no projects" painted and taken back).
-    isLoading: !projected.read || trouble !== null,
+    // "no projects" painted and taken back). Scoped to the organization in view
+    // (`organizationKnowledge`): another organization's trouble changes nothing its consumers see.
+    isLoading: known.loading,
     error: shownError,
   });
   useEffect(() => {

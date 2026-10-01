@@ -4,6 +4,7 @@ import {
   INVENTORY_TROUBLE_HOLD_MS,
   accountFootLine,
   inventoryTroubleVoice,
+  organizationKnowledge,
   type InventoryTroubleInput,
   type InventoryTroubleVoice,
 } from "./inventoryTrouble.logic";
@@ -99,5 +100,46 @@ describe("what the account says at the menu's foot", () => {
     },
   ])("$name", ({ lapse, trouble, said }) => {
     expect(accountFootLine({ lapse, trouble })).toEqual(said);
+  });
+});
+
+describe("what the inventory says of the organization in view", () => {
+  it.each<{
+    readonly name: string;
+    readonly input: Parameters<typeof organizationKnowledge>[0];
+    readonly known: ReturnType<typeof organizationKnowledge>;
+  }>([
+    {
+      name: "every organization read: known, no trouble",
+      input: { grantFailed: false, blocked: [], unread: [], active: "org-b" },
+      known: { loading: false, trouble: null },
+    },
+    {
+      name: "trouble in another organization: what org B's consumers see is unchanged",
+      input: { grantFailed: false, blocked: ["org-a"], unread: ["org-a"], active: "org-b" },
+      known: { loading: false, trouble: null },
+    },
+    {
+      name: "trouble in the organization in view: not known, and the trouble is its",
+      input: { grantFailed: false, blocked: ["org-b"], unread: [], active: "org-b" },
+      known: { loading: true, trouble: "organization" },
+    },
+    {
+      name: "the organization in view still unread: loading, no trouble",
+      input: { grantFailed: false, blocked: [], unread: ["org-b"], active: "org-b" },
+      known: { loading: true, trouble: null },
+    },
+    {
+      name: "no organization chosen: every organization is in view",
+      input: { grantFailed: false, blocked: ["org-a"], unread: [], active: null },
+      known: { loading: true, trouble: "organization" },
+    },
+    {
+      name: "a grant round failing: nothing is known, wherever",
+      input: { grantFailed: true, blocked: [], unread: [], active: "org-b" },
+      known: { loading: true, trouble: "grant" },
+    },
+  ])("$name", ({ input, known }) => {
+    expect(organizationKnowledge(input)).toEqual(known);
   });
 });

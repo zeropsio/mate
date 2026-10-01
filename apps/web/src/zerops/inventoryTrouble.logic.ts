@@ -71,3 +71,24 @@ export function accountFootLine(input: {
   }
   return input.trouble === null ? null : { sentence: input.trouble.sentence, actions: ["try-now"] };
 }
+
+/**
+ * What the inventory reports of the organization in view — what the menu, the routes and the
+ * pages read: still loading while its own reads are unread or in trouble, and its own trouble.
+ * Another organization's trouble is not this one's, so it changes nothing here; with no
+ * organization chosen, every one is in view. A failing grant round leaves nothing known.
+ */
+export function organizationKnowledge(input: {
+  readonly grantFailed: boolean;
+  /** The organizations whose demanded reads failed or stalled. */
+  readonly blocked: ReadonlyArray<string>;
+  /** The organizations some of whose projects or services are not read yet. */
+  readonly unread: ReadonlyArray<string>;
+  readonly active: string | null;
+}): { readonly loading: boolean; readonly trouble: "grant" | "organization" | null } {
+  if (input.grantFailed) return { loading: true, trouble: "grant" };
+  const inView = (organizationId: string) =>
+    input.active === null || organizationId === input.active;
+  const trouble = input.blocked.some(inView) ? ("organization" as const) : null;
+  return { loading: trouble !== null || input.unread.some(inView), trouble };
+}
