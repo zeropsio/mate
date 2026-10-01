@@ -209,6 +209,16 @@ describe("mateComingPage — what a Mate's own view shows", () => {
       expected: { kind: "up" },
     },
     {
+      case: "a birth left behind in this browser, its environment registered: it hands over",
+      input: { ...BASE, coming: COMING, linked: true },
+      expected: { kind: "up" },
+    },
+    {
+      case: "a birth left behind in this browser, its row connected: it hands over",
+      input: { ...BASE, coming: COMING, candidate: { group: "connected" } },
+      expected: { kind: "up" },
+    },
+    {
       case: "listed and answering, its socket not open yet: what its machine waits for",
       input: { ...BASE, reachability: { kind: "connecting", waitingOn: "exchange" } },
       expected: { kind: "reaching", reachability: { kind: "connecting", waitingOn: "exchange" } },

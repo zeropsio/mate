@@ -208,9 +208,11 @@ export function mateComingPage(input: {
   /** What its machine says of it (`mateLink`); null while no machine names it. */
   readonly reachability: Reachability | null;
 }): MateComingPage | undefined {
-  if (input.coming !== undefined) return { kind: "coming", coming: input.coming };
   const { candidate, reachability } = input;
+  // A Mate whose conversation can be opened is up, whatever this browser still holds of its
+  // coming — a birth left behind never keeps it from its conversation.
   if (input.linked || candidate?.group === "connected") return { kind: "up" };
+  if (input.coming !== undefined) return { kind: "coming", coming: input.coming };
   if (reachability !== null && isTerminalReachability(reachability)) {
     return { kind: "unreachable", reachability };
   }
