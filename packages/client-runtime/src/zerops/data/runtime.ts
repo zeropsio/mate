@@ -1642,20 +1642,30 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
       } as ReadTicket;
     });
 
-  /** The table reads waiting or in flight, by kind and organization: one batch each. */
-  const tableReads = new Set<string>();
+  /**
+   * The table reads waiting or in flight, by kind and organization: one loop each, and what
+   * wakes it when an id comes due sooner than it sleeps.
+   */
+  const tableReads = new Map<string, { wake: Deferred.Deferred<void> }>();
   /** When a kind's failed batch may be read again, by kind and organization. */
   const tableReadRetryAt = new Map<string, number>();
   scheduleTableRead = (followUp) =>
     Effect.gen(function* () {
       const organizationKey = organizationKeyOf(followUp.organization);
       const key = `${followUp.entity}:${organizationKey}`;
-      if (tableReads.has(key) || (yield* Ref.get(closed))) return;
-      tableReads.add(key);
+      const running = tableReads.get(key);
+      if (running !== undefined) {
+        yield* Deferred.succeed(running.wake, undefined);
+        return;
+      }
+      if (yield* Ref.get(closed)) return;
+      const loop = { wake: yield* Deferred.make<void>() };
+      tableReads.set(key, loop);
       // One loop per kind and organization: it reads what is due, batched, at most once a
       // grace, and ends when nothing is owed. Ids that arrive while a batch reads, or past its
-      // cap, are read by the next round.
+      // cap, are read by the next round; one that arrives while the loop sleeps wakes it.
       const read = Effect.gen(function* () {
+        let lastReadAt = yield* Clock.currentTimeMillis;
         while (true) {
           const before = yield* Clock.currentTimeMillis;
           const batch = tableRowsWanted((yield* Ref.get(model)).table).find(
@@ -1664,12 +1674,23 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
               organizationKeyOf(wanted.organization) === organizationKey,
           );
           if (batch === undefined) return;
-          const waitMs = Math.max(
-            TABLE_READ_GRACE_MS,
-            batch.dueAtMs - before,
-            (tableReadRetryAt.get(key) ?? 0) - before,
+          // A grace after the last read and after the first id came due, so ids that arrive
+          // together are read together; every bound is absolute, so a wake never postpones it.
+          const readAt = Math.max(
+            lastReadAt + TABLE_READ_GRACE_MS,
+            batch.dueAtMs + TABLE_READ_GRACE_MS,
+            tableReadRetryAt.get(key) ?? 0,
           );
-          yield* Effect.sleep(Duration.millis(waitMs));
+          if (readAt > before) {
+            const woken = yield* Effect.raceFirst(
+              Effect.sleep(Duration.millis(readAt - before)).pipe(Effect.as(false)),
+              Deferred.await(loop.wake).pipe(Effect.as(true)),
+            );
+            if (woken) {
+              loop.wake = yield* Deferred.make<void>();
+              continue;
+            }
+          }
           if (yield* Ref.get(closed)) return;
           const now = yield* Clock.currentTimeMillis;
           const ids = tableRowsDue(
@@ -1714,8 +1735,9 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
           const succeeded = admitted ? (yield* runReadOutcome(ticket, null)).succeeded : false;
           if (admitted) yield* awaitIngress;
           yield* applyControl({ kind: "shared-read-released", requestId: ticket.requestId });
+          lastReadAt = yield* Clock.currentTimeMillis;
           if (succeeded) tableReadRetryAt.delete(key);
-          else tableReadRetryAt.set(key, (yield* Clock.currentTimeMillis) + TABLE_READ_RETRY_MS);
+          else tableReadRetryAt.set(key, lastReadAt + TABLE_READ_RETRY_MS);
         }
       });
       yield* read.pipe(Effect.ensuring(Effect.sync(() => tableReads.delete(key))), forkOwned);

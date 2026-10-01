@@ -280,60 +280,80 @@ describe("the Mate flag, as the account's store states it", () => {
 });
 
 describe("a version a service runs that its organization's list lacks", () => {
-  it("is read by id once, then reads unknown on a back-off, never in a loop", () => {
-    const empty = makeInitialZeropsDataState(scope());
-    let state: ZeropsDataState = withService(
-      answered(answered(empty, versions, []), variables, []),
+  /** A read by id of `ids` that began at `startedAtMs` and found none of them. */
+  const absentById = (
+    state: ZeropsDataState,
+    ids: ReadonlyArray<string>,
+    receipt: number,
+    startedAtMs: number,
+  ): ZeropsDataState => ({
+    ...state,
+    table: reduceTableObservation(state.table, {
+      stamp: { receiptOrdinal: ReceiptOrdinal.make(receipt), observedAtMs: startedAtMs + 500 },
+      accessEvidence: null,
+      input: {
+        kind: "table-rows-observed",
+        entity: "app-version",
+        rows: [],
+        source: "direct-read",
+        coverage: {
+          kind: "exhausted-traversal",
+          traversedPages: 1,
+          observedTotal: 0,
+          guarantee: "non-atomic",
+        },
+        ticket: {
+          ...directTicket(
+            { kind: "query", descriptor: { ...versions, ids } as never },
+            identity(),
+            receipt - 1,
+            receipt - 1,
+            receipt - 1,
+          ),
+          startedAtMs,
+        } as never,
+      },
+    }).state,
+  });
+  const fresh = (): ZeropsDataState =>
+    withService(
+      answered(answered(makeInitialZeropsDataState(scope()), versions, []), variables, []),
       deploy({}),
     );
-    state = wantActiveVersions(state, 3, 1_000);
+
+  it("is read by id, waits out the index's lag, then reads unknown on a back-off, never in a loop", () => {
+    let state = wantActiveVersions(fresh(), 3, 1_000);
     expect(tableRowsWanted(state.table)).toMatchObject([
       { entity: "app-version", ids: ["v-2"], dueAtMs: 1_000 },
     ]);
-    // The read by id finds it absent too.
-    state = {
-      ...state,
-      table: reduceTableObservation(state.table, {
-        stamp: { receiptOrdinal: ReceiptOrdinal.make(5), observedAtMs: 2_000 },
-        accessEvidence: null,
-        input: {
-          kind: "table-rows-observed",
-          entity: "app-version",
-          rows: [],
-          source: "direct-read",
-          coverage: {
-            kind: "exhausted-traversal",
-            traversedPages: 1,
-            observedTotal: 0,
-            guarantee: "non-atomic",
-          },
-          ticket: {
-            ...directTicket(
-              { kind: "query", descriptor: { ...versions, ids: ["v-2"] } as never },
-              identity(),
-              4,
-              4,
-              4,
-            ),
-            startedAtMs: 1_500,
-          } as never,
-        },
-      }).state,
-    };
+    // A read right after it was owed may trail it: no verdict, one more look after the lag.
+    state = absentById(state, ["v-2"], 5, 1_500);
+    expect(selectDeployedVersion(state, ref).state).toBe("unread");
+    expect(tableRowsWanted(state.table)).toMatchObject([{ ids: ["v-2"], dueAtMs: 11_000 }]);
+    // The read past the lag finds it absent too.
+    state = absentById(state, ["v-2"], 7, 11_000);
     // Every later message asks nothing sooner than its back-off.
     for (const [receipt, nowMs] of [
-      [6, 2_100],
-      [7, 2_200],
-      [8, 3_000],
+      [8, 12_100],
+      [9, 12_200],
+      [10, 13_000],
     ] as const)
       state = wantActiveVersions(state, receipt, nowMs);
     expect(tableRowsWanted(state.table)).toMatchObject([
-      { ids: ["v-2"], dueAtMs: 2_000 + ABSENT_BACKOFF_MS[0]! },
+      { ids: ["v-2"], dueAtMs: 11_500 + ABSENT_BACKOFF_MS[0]! },
     ]);
     expect(selectDeployedVersion(state, ref)).toMatchObject({
       state: "failed",
-      retryAtMs: 2_000 + ABSENT_BACKOFF_MS[0]!,
+      retryAtMs: 11_500 + ABSENT_BACKOFF_MS[0]!,
     });
+  });
+
+  it("stops asking about a version once no service runs it", () => {
+    let state = wantActiveVersions(fresh(), 3, 1_000);
+    state = absentById(state, ["v-2"], 5, 11_000);
+    expect(tableRowsWanted(state.table)).toMatchObject([{ ids: ["v-2"] }]);
+    state = wantActiveVersions(withService(state, null), 6, 12_000);
+    expect(tableRowsWanted(state.table)).toEqual([]);
   });
 });
 

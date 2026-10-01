@@ -24,6 +24,7 @@ import {
   reduceTableObservation,
   releaseTableLists,
   tableRowsWanted,
+  forgetAbsentRows,
   wantTableRows,
   type EntityTableState,
 } from "./entityTable.ts";
@@ -1538,12 +1539,15 @@ export function wantActiveVersions(
   nowMs: number,
 ): ZeropsDataState {
   const missing = new Map<string, { organization: OrganizationRef; ids: string[] }>();
+  const running = new Set<string>();
   for (const record of state.inventory.services.values()) {
     const facet = record.deployment;
     if (facet.knowledge !== "observed") continue;
     const deploy = facet.fields.activeDeploy;
-    if (deploy == null || deploy.id === null || deploy.source !== null) continue;
+    if (deploy == null || deploy.id === null) continue;
     const organization = record.ref.project.organization;
+    running.add(`${organizationKeyOf(organization)}:${deploy.id}`);
+    if (deploy.source !== null) continue;
     const version = activeVersionOf(state.table, organization, deploy.id);
     if (!version.known || version.row !== null) continue;
     const key = organizationKeyOf(organization);
@@ -1551,7 +1555,9 @@ export function wantActiveVersions(
     batch.ids.push(deploy.id);
     missing.set(key, batch);
   }
-  let table = state.table;
+  let table = forgetAbsentRows(state.table, "app-version", (organization, id) =>
+    running.has(`${organizationKeyOf(organization)}:${id}`),
+  );
   for (const { organization, ids } of missing.values())
     table = wantTableRows(table, "app-version", organization, ids, receipt, nowMs);
   return table === state.table ? state : { ...state, table };
