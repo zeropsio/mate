@@ -700,9 +700,38 @@ describe("RunChat", () => {
   it("marks where the person's words reached the Mate, in one line on their side", () => {
     const markup = draw(record([step(command("w1", "ls")), personItem]));
     expect(markup).toMatch(
-      /justify-end[^>]*><p[^>]*data-chat-kind="person"[^>]*>Keep \/health working too</,
+      /justify-end[^>]*><div[^>]*data-chat-kind="person"[^>]*><p[^>]*>Keep \/health working too</u,
     );
     expect(markup).not.toContain("The load balancer calls it.");
+  });
+
+  // A message with a picture read only "[Picture 1]" there (the owner,
+  // 2026-10-01: "it also swallows the text it had"): its one line is the
+  // first line of its words, never a label, and its pictures are drawn.
+
+  it("draws a message's pictures under the first line of its words, never a label", () => {
+    const withPicture = {
+      ...personItem,
+      message: {
+        ...personItem.message,
+        text: "[Picture 1]\nmake the map larger and let people pick a district\nthe dropdown can stay",
+        attachments: [
+          {
+            type: "image",
+            id: "img-1",
+            name: "landing.png",
+            mimeType: "image/png",
+            sizeBytes: 10,
+            previewUrl: "data:image/png;base64,AAAA",
+          },
+        ],
+      },
+    } as unknown as typeof personItem;
+    const markup = draw(record([step(command("w1", "ls")), withPicture]));
+    expect(markup).toContain(">make the map larger and let people pick a district<");
+    expect(markup).not.toContain("the dropdown can stay");
+    expect(markup).not.toContain("[Picture 1]");
+    expect(markup).toMatch(/<img[^>]*alt="landing.png"[^>]*src="data:image\/png;base64,AAAA"/u);
   });
 
   // A mark says where in the run the person spoke. Before anything the Mate

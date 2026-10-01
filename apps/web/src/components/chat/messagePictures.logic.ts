@@ -71,6 +71,48 @@ export function placeMessagePictures(
   };
 }
 
+/** The person's message as a run's card repeats it: its words in short, and its pictures apart. */
+export interface MessageEcho {
+  /** The first line of what they wrote: never a picture's label or its notes. */
+  readonly line: string;
+  /** Its pictures in the order the conversation draws them: those no label places first. */
+  readonly pictures: ReadonlyArray<ChatImageAttachment>;
+}
+
+/**
+ * The person's message as the run's card repeats it: in short — the first
+ * line of their words (the owner, 2026-09-28: "shown the user message in
+ * short inside the working group"), never a line that is only a picture's
+ * label — and its pictures apart, in the conversation's order.
+ */
+export function echoOfMessage(
+  text: string,
+  attachments: ReadonlyArray<ChatAttachment>,
+): MessageEcho {
+  const placed = placeMessagePictures(text, attachments);
+  const words =
+    placed === null
+      ? [text]
+      : placed.segments.flatMap((segment) => (segment.kind === "text" ? [segment.text] : []));
+  const line =
+    words
+      .flatMap((part) => part.split("\n"))
+      .map((part) => part.trim())
+      .find((part) => part.length > 0) ?? "";
+  return {
+    line,
+    pictures:
+      placed === null
+        ? attachments.filter(isImageAttachment)
+        : [
+            ...placed.unplaced,
+            ...placed.segments.flatMap((segment) =>
+              segment.kind === "picture" ? [segment.image] : [],
+            ),
+          ],
+  };
+}
+
 /**
  * The terminal contexts each run of words names, by the picture it follows:
  * each context goes to the words that hold its label, and one named nowhere

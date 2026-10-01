@@ -1289,6 +1289,47 @@ function Harness() {
           </State>
         ))}
         <State
+          label="A message with a picture sent into the run"
+          note="Its first line on the person's side, never a picture's label, its picture small under it, opening the viewer."
+        >
+          <Card>
+            <RunChat
+              row={record({
+                turnKey: "echo-picture",
+                now: THINKING_NOW,
+                items: [
+                  ...SO_FAR.slice(0, 2),
+                  {
+                    kind: "person",
+                    key: "person:echo",
+                    at: ago(20),
+                    imageOnly: false,
+                    message: {
+                      ...said(
+                        "echo",
+                        "assistant",
+                        "[Picture 1]\nmake the map larger and let people pick a district on it",
+                        20,
+                      ),
+                      role: "user",
+                      attachments: [
+                        {
+                          type: "image",
+                          id: "echo-shot",
+                          name: "landing.png",
+                          mimeType: "image/png",
+                          sizeBytes: 1200,
+                          previewUrl: shot(1440, 900, "Landing"),
+                        },
+                      ],
+                    },
+                  },
+                ],
+              })}
+            />
+          </Card>
+        </State>
+        <State
           label="Settled bars"
           note="A deploy that landed and a batch that failed, as the bars say it."
         >
