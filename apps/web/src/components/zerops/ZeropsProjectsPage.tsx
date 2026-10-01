@@ -2176,7 +2176,6 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
   );
   const [deployTokenGeneration, setDeployTokenGeneration] = useState(0);
   const withoutDeployToken = useZeropsDeployTokenGaps({
-    client,
     giteaProjectId,
     declaredProjects,
     enabled:

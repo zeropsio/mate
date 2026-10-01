@@ -8,7 +8,7 @@ import * as Result from "effect/Result";
 import * as Scope from "effect/Scope";
 import { Atom } from "effect/unstable/reactivity";
 
-import type { ZeropsLocation } from "../api.ts";
+import type { ZeropsLocation, ZeropsOrganizationMember } from "../api.ts";
 import type { ZeropsIntegrationToken, ZeropsProjectGrant } from "../groupReach.ts";
 import {
   advance,
@@ -53,6 +53,20 @@ export interface ServiceAuthorizedAgentsResourceRequest {
   readonly service: ServiceRef;
 }
 
+/** The organization's members (`GET /client/{id}/user/list`): names, roles and pictures. */
+export interface OrganizationMembersResourceRequest {
+  readonly kind: "organization-members";
+  readonly account: AccountScope;
+  readonly organization: OrganizationRef;
+}
+
+/** A service's variable names (`GET /service-stack/{id}/env`), never a value. */
+export interface ServiceVariableNamesResourceRequest {
+  readonly kind: "service-variable-names";
+  readonly account: AccountScope;
+  readonly service: ServiceRef;
+}
+
 export interface OrganizationIntegrationTokenGrantsResourceRequest {
   readonly kind: "organization-integration-token-grants";
   readonly account: AccountScope;
@@ -76,7 +90,9 @@ export type ZeropsResourceRequest =
   | OrganizationLocationsResourceRequest
   | ServiceAuthorizedAgentsResourceRequest
   | ServiceMateFlagResourceRequest
-  | OrganizationIntegrationTokenGrantsResourceRequest;
+  | OrganizationIntegrationTokenGrantsResourceRequest
+  | OrganizationMembersResourceRequest
+  | ServiceVariableNamesResourceRequest;
 
 export type ZeropsResourceKind = ZeropsResourceRequest["kind"];
 
@@ -85,6 +101,8 @@ export interface ZeropsIntegrationTokenGrantMetadata {
   readonly tokenId: ZeropsIntegrationToken["id"];
   readonly name: ZeropsIntegrationToken["name"];
   readonly grants: ReadonlyArray<ZeropsProjectGrant>;
+  /** When the platform minted it: the start-up throwaway sweep dates rows by it. */
+  readonly created?: string | undefined;
 }
 
 export interface ZeropsResourceValues {
@@ -97,7 +115,23 @@ export interface ZeropsResourceValues {
    */
   readonly "service-mate-flag": { readonly enabled: boolean | "unknown" };
   readonly "organization-integration-token-grants": ReadonlyArray<ZeropsIntegrationTokenGrantMetadata>;
+  readonly "organization-members": ReadonlyArray<ZeropsOrganizationMember>;
+  readonly "service-variable-names": ReadonlyArray<string>;
 }
+
+/**
+ * How long a value stays fresh for a new demand: one inside it is shown the value and reads
+ * nothing; past it, a new demand reads again under the value. Our own writes invalidate it
+ * (`invalidate`) whatever its age. `0` re-reads on every new demand.
+ */
+export const RESOURCE_FRESH_MS: Readonly<Record<ZeropsResourceKind, number>> = {
+  "organization-locations": 0,
+  "service-authorized-agents": 0,
+  "service-mate-flag": 0,
+  "organization-integration-token-grants": 60_000,
+  "organization-members": 5 * 60_000,
+  "service-variable-names": 60_000,
+};
 
 export type ZeropsResourceValue<Request extends ZeropsResourceRequest> =
   ZeropsResourceValues[Request["kind"]];
@@ -144,6 +178,14 @@ export interface ZeropsResourceAdapter {
     ZeropsResourceValues["organization-integration-token-grants"],
     ZeropsResourceSourceError
   >;
+  readonly readOrganizationMembers: (
+    request: OrganizationMembersResourceRequest,
+    context: ZeropsResourceRequestContext,
+  ) => Effect.Effect<ZeropsResourceValues["organization-members"], ZeropsResourceSourceError>;
+  readonly readServiceVariableNames: (
+    request: ServiceVariableNamesResourceRequest,
+    context: ZeropsResourceRequestContext,
+  ) => Effect.Effect<ZeropsResourceValues["service-variable-names"], ZeropsResourceSourceError>;
 }
 
 /** Why the broker takes no demand at all; access never refuses demand, it withholds (§9 C4). */
@@ -193,6 +235,11 @@ export interface ZeropsResourceBroker {
   readonly diagnostics: Effect.Effect<ZeropsResourceDiagnostics>;
   /** Withholds and erases what the current access no longer covers; re-reads what it covers again. */
   readonly reconcileAccess: Effect.Effect<void>;
+  /**
+   * Our own write changed it: a demanded resource reads again now, once however often it is told;
+   * an idle one on its next demand, whatever its freshness.
+   */
+  readonly invalidate: (request: ZeropsResourceRequest) => Effect.Effect<void>;
   /** Idempotent. Fences completion, aborts work and erases all retained values. */
   readonly shutdown: Effect.Effect<void>;
 }
@@ -278,9 +325,11 @@ const organizationOf = (request: ZeropsResourceRequest): OrganizationRef => {
   switch (request.kind) {
     case "organization-locations":
     case "organization-integration-token-grants":
+    case "organization-members":
       return request.organization;
     case "service-authorized-agents":
     case "service-mate-flag":
+    case "service-variable-names":
       return request.service.project.organization;
   }
 };
@@ -290,9 +339,11 @@ const projectOf = (request: ZeropsResourceRequest): ProjectRef | null => {
   switch (request.kind) {
     case "organization-locations":
     case "organization-integration-token-grants":
+    case "organization-members":
       return null;
     case "service-authorized-agents":
     case "service-mate-flag":
+    case "service-variable-names":
       return request.service.project;
   }
 };
@@ -320,9 +371,11 @@ export function zeropsResourceKeyOf(request: ZeropsResourceRequest): ZeropsResou
   switch (request.kind) {
     case "organization-locations":
     case "organization-integration-token-grants":
+    case "organization-members":
       return JSON.stringify(prefix) as ZeropsResourceKey;
     case "service-authorized-agents":
     case "service-mate-flag":
+    case "service-variable-names":
       return JSON.stringify([
         ...prefix,
         request.service.project.projectId,
@@ -421,6 +474,10 @@ function readResource(
       return adapter.readServiceMateFlag(request, context);
     case "organization-integration-token-grants":
       return adapter.readOrganizationIntegrationTokenGrants(request, context);
+    case "organization-members":
+      return adapter.readOrganizationMembers(request, context);
+    case "service-variable-names":
+      return adapter.readServiceVariableNames(request, context);
   }
 }
 
@@ -573,6 +630,8 @@ export const makeZeropsResourceBroker = Effect.fn("ZeropsResourceBroker.make")(f
         coverage: "complete",
         atMs,
       });
+      // Invalidated while it read: what it answered may predate the write, so it reads once more.
+      if (entry.cell.dirty && entry.demands.size > 0) startRead(entry);
       return;
     }
     const { failure, retryable } = failureOf(exit.cause);
@@ -671,8 +730,15 @@ export const makeZeropsResourceBroker = Effect.fn("ZeropsResourceBroker.make")(f
     }
     scheduleAccessDeadline(admission.deadlineMs);
     if (entry.cell.withheld !== null) apply(entry, { kind: "restore-authority" });
-    const held = entry.cell.held.state;
-    if (entry.inFlight === null && (held === "unread" || (newlyDemanded && held === "known"))) {
+    const held = entry.cell.held;
+    if (
+      entry.inFlight === null &&
+      (held.state === "unread" ||
+        (held.state === "known" &&
+          (entry.cell.dirty ||
+            entry.cell.lastInvalidation > held.asOf.ordinal ||
+            (newlyDemanded && nowMs - held.asOf.atMs >= RESOURCE_FRESH_MS[entry.request.kind]))))
+    ) {
       startRead(entry);
     }
   }
@@ -871,6 +937,8 @@ export const makeZeropsResourceBroker = Effect.fn("ZeropsResourceBroker.make")(f
       "service-authorized-agents": 0,
       "service-mate-flag": 0,
       "organization-integration-token-grants": 0,
+      "organization-members": 0,
+      "service-variable-names": 0,
     };
     const counts = { leases: 0, reading: 0, known: 0, failed: 0, withheld: 0 };
     for (const entry of entries.values()) {
@@ -909,6 +977,16 @@ export const makeZeropsResourceBroker = Effect.fn("ZeropsResourceBroker.make")(f
     acquire,
     diagnostics,
     reconcileAccess: Effect.sync(reconcileAll),
+    invalidate: (request) =>
+      Effect.sync(() => {
+        if (closed) return;
+        const entry = entries.get(zeropsResourceKeyOf(request));
+        if (entry === undefined || entry.cell.held.state !== "known") return;
+        apply(entry, { kind: "invalidated", ordinal: ++ordinal });
+        // A read in flight began before the write: it is read once more when it answers (M3).
+        if (entry.demands.size > 0 && entry.inFlight === null)
+          reconcile(entry, options.access(), now());
+      }),
     shutdown,
   } satisfies ZeropsResourceBroker;
 });

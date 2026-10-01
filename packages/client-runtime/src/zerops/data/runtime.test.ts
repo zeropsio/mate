@@ -2224,6 +2224,8 @@ describe("makeZeropsDataRuntime", () => {
             Effect.sync(() => void (reads += 1)).pipe(Effect.as([])),
           readServiceMateFlag: () => unused,
           readOrganizationIntegrationTokenGrants: () => unused,
+          readOrganizationMembers: () => unused,
+          readServiceVariableNames: () => unused,
         },
         atomRegistry: registry,
         makeOpaqueId: makeIdFactory(),

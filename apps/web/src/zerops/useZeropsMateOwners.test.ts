@@ -1,9 +1,21 @@
-import { act, createElement, StrictMode } from "react";
+import { act, createElement } from "react";
 import { create } from "react-test-renderer";
 import { describe, expect, it } from "vite-plus/test";
 
-import { ZeropsSessionContext } from "./sessionContext";
-import type { ZeropsSessionValue } from "./ZeropsSessionProvider";
+import { RegistryContext } from "@effect/atom-react";
+import {
+  AccountEpoch,
+  makeZeropsApiOrigin,
+  ZeropsAccountId,
+  ZeropsOrganizationId,
+  type AccountScope,
+  type OrganizationMembersResourceRequest,
+  type OrganizationRef,
+} from "@t3tools/client-runtime/zerops/data";
+import { AtomRegistry } from "effect/unstable/reactivity";
+
+import { FakeResourceBroker } from "./__fixtures__/resourceBroker";
+import { ZeropsDataContext, type ZeropsDataContextValue } from "./zeropsDataContext";
 import {
   useZeropsOrganizationMembersRead,
   zeropsMateOwner,
@@ -79,20 +91,24 @@ describe("zeropsMemberNameByUserId", () => {
 });
 
 describe("useZeropsOrganizationMembersRead", () => {
-  it("reads the members again when its first read was put away unanswered", async () => {
-    // StrictMode runs the effect, puts it away and runs it again, as a
-    // remount or a hot update does: the read put away never answers.
-    const client = {
-      listOrganizationMembers: (_clientId: string, signal: AbortSignal) =>
-        new Promise((resolve, reject) => {
-          signal.addEventListener("abort", () => {
-            reject(new Error("aborted"));
-          });
-          queueMicrotask(() => {
-            if (!signal.aborted) resolve([{ id: "cu-jan", user: { fullName: "Jan Novák" } }]);
-          });
-        }),
+  it("is one shared read of the organization's members, however many surfaces ask", async () => {
+    const scope: AccountScope = {
+      account: {
+        apiOrigin: makeZeropsApiOrigin("https://api.example.test"),
+        accountId: ZeropsAccountId.make("account-a"),
+      },
+      epoch: AccountEpoch.make(1),
     };
+    const organizationRef = (organizationId: string): OrganizationRef => ({
+      kind: "organization",
+      account: scope.account,
+      organizationId: ZeropsOrganizationId.make(organizationId),
+    });
+    const resources = new FakeResourceBroker<OrganizationMembersResourceRequest>();
+    const data = {
+      runtime: { scope, resources },
+      organizationRef,
+    } as unknown as ZeropsDataContextValue;
     const seen: Array<ReturnType<typeof useZeropsOrganizationMembersRead>> = [];
     function Probe() {
       seen.push(useZeropsOrganizationMembersRead({ clientId: "org-1", enabled: true }));
@@ -101,17 +117,31 @@ describe("useZeropsOrganizationMembersRead", () => {
     await act(async () => {
       create(
         createElement(
-          StrictMode,
-          null,
+          RegistryContext.Provider,
+          { value: AtomRegistry.make() },
           createElement(
-            ZeropsSessionContext,
-            { value: { client } as unknown as ZeropsSessionValue },
+            ZeropsDataContext.Provider,
+            { value: data },
+            createElement(Probe),
+            createElement(Probe),
+            createElement(Probe),
             createElement(Probe),
           ),
         ),
       );
     });
+    expect(seen.at(-1)?.status).toBe("loading");
+    await act(async () => {
+      resources.publish({
+        state: "known",
+        value: [{ id: "cu-jan", user: { fullName: "Jan Novák" } }] as never,
+        asOf: { ordinal: 1, atMs: 0 },
+        coverage: "complete",
+        freshness: { kind: "settled" },
+      });
+    });
     expect(seen.at(-1)?.status).toBe("ready");
     expect(seen.at(-1)?.members).toHaveLength(1);
+    expect(resources.acquisitions).toBe(1);
   });
 });

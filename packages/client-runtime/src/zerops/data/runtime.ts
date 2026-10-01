@@ -742,6 +742,8 @@ const unavailableResourceAdapter: ZeropsResourceAdapter = {
   readServiceAuthorizedAgents: unavailableResource,
   readServiceMateFlag: unavailableResource,
   readOrganizationIntegrationTokenGrants: unavailableResource,
+  readOrganizationMembers: unavailableResource,
+  readServiceVariableNames: unavailableResource,
 };
 
 const unavailableLogTransport: BuildLogTransport = {

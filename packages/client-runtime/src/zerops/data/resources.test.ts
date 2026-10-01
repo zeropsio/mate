@@ -10,7 +10,9 @@ import { AtomRegistry } from "effect/unstable/reactivity";
 import type { ZeropsLocation } from "../api.ts";
 import {
   makeZeropsResourceBroker,
+  RESOURCE_FRESH_MS,
   zeropsResourceKeyOf,
+  type OrganizationMembersResourceRequest,
   type OrganizationIntegrationTokenGrantsResourceRequest,
   type OrganizationLocationsResourceRequest,
   type ServiceAuthorizedAgentsResourceRequest,
@@ -93,8 +95,16 @@ const tokenGrantsRequest = (
   organization: organization(scope),
 });
 
+const membersRequest = (scope: AccountScope): OrganizationMembersResourceRequest => ({
+  kind: "organization-members",
+  account: scope,
+  organization: organization(scope),
+});
+
 const unusedAdapter = (overrides: Partial<ZeropsResourceAdapter> = {}): ZeropsResourceAdapter => ({
   readOrganizationLocations: () => Effect.succeed([]),
+  readOrganizationMembers: () => Effect.succeed([]),
+  readServiceVariableNames: () => Effect.succeed([]),
   readServiceAuthorizedAgents: () => Effect.succeed([]),
   readServiceMateFlag: () => Effect.succeed({ enabled: "unknown" }),
   readOrganizationIntegrationTokenGrants: () => Effect.succeed([]),
@@ -319,6 +329,77 @@ describe("makeZeropsResourceBroker", () => {
       yield* Scope.close(thirdScope, Exit.void);
       yield* broker.shutdown;
     }).pipe(Effect.provide(TestClock.layer())),
+  );
+
+  it.effect("a demand inside its kind's freshness reads nothing, and past it reads again", () =>
+    Effect.gen(function* () {
+      const scope = accountScope();
+      let reads = 0;
+      const broker = yield* makeZeropsResourceBroker({
+        scope,
+        access: () => verifiedAccess(scope),
+        adapter: unusedAdapter({
+          readOrganizationMembers: () =>
+            Effect.sync(() => {
+              reads += 1;
+              return [{ id: `member-${reads}` }];
+            }),
+        }),
+      });
+      const request = membersRequest(scope);
+      const demand = Effect.gen(function* () {
+        const held = yield* Scope.make();
+        const lease = yield* broker.acquire(request).pipe(Scope.provide(held));
+        const settled = yield* lease.awaitSettled;
+        yield* Scope.close(held, Exit.void);
+        return settled;
+      });
+      expect(yield* demand).toMatchObject({ state: "known", value: [{ id: "member-1" }] });
+      yield* TestClock.adjust(RESOURCE_FRESH_MS["organization-members"] - 1);
+      expect(yield* demand).toMatchObject({ state: "known", value: [{ id: "member-1" }] });
+      expect(reads).toBe(1);
+      yield* TestClock.adjust(1);
+      expect(yield* demand).toMatchObject({ state: "known", value: [{ id: "member-2" }] });
+      expect(reads).toBe(2);
+      yield* broker.shutdown;
+    }).pipe(Effect.provide(TestClock.layer())),
+  );
+
+  it.effect(
+    "an invalidation re-reads a demanded resource, and an idle one on its next demand",
+    () =>
+      Effect.gen(function* () {
+        const scope = accountScope();
+        let reads = 0;
+        const broker = yield* makeZeropsResourceBroker({
+          scope,
+          access: () => verifiedAccess(scope),
+          adapter: unusedAdapter({
+            readOrganizationIntegrationTokenGrants: () =>
+              Effect.sync(() => {
+                reads += 1;
+                return [{ tokenId: `token-${reads}`, name: "t", grants: [] }];
+              }),
+          }),
+        });
+        const request = tokenGrantsRequest(scope);
+        const held = yield* Scope.make();
+        const lease = yield* broker.acquire(request).pipe(Scope.provide(held));
+        yield* lease.awaitSettled;
+
+        yield* broker.invalidate(request);
+        expect(yield* lease.awaitSettled).toMatchObject({ value: [{ tokenId: "token-2" }] });
+        expect(reads).toBe(2);
+
+        yield* Scope.close(held, Exit.void);
+        yield* broker.invalidate(request);
+        expect(reads).toBe(2);
+        const again = yield* Scope.make();
+        const next = yield* broker.acquire(request).pipe(Scope.provide(again));
+        expect(yield* next.awaitSettled).toMatchObject({ value: [{ tokenId: "token-3" }] });
+        yield* Scope.close(again, Exit.void);
+        yield* broker.shutdown;
+      }).pipe(Effect.provide(TestClock.layer())),
   );
 
   it.effect("a lapse erases a value retained with no demand", () =>

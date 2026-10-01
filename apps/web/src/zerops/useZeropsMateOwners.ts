@@ -23,12 +23,17 @@ import {
   resolveMateOwner,
   type MateOwnerCandidate,
 } from "@t3tools/client-runtime/zerops/mateAccess";
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  selectMembers,
+  type OrganizationMembersResourceRequest,
+} from "@t3tools/client-runtime/zerops/data";
+import { useCallback, useContext, useEffect, useMemo } from "react";
 
 import { zeropsAccountDisplay } from "~/components/zerops/landing/ZeropsAccountControl.logic";
 
 import { menuMemory, rememberMenu, withMembers } from "./menuMemory";
-import { useZeropsSession, useZeropsSessionOptional } from "./ZeropsSessionProvider";
+import { useKnown, ZeropsDataContext } from "./zeropsDataContext";
+import { useZeropsSession } from "./ZeropsSessionProvider";
 
 /** A Mate's owner, as a face in the corner of the Mate's own draws them. */
 export interface ZeropsMateOwner {
@@ -83,62 +88,40 @@ export function useZeropsOrganizationMembersRead(input: {
   readonly members: ReadonlyArray<ZeropsOrganizationMember>;
   readonly status: ZeropsOrganizationMembersStatus;
 } {
-  // A surface outside the session provider (a render test in isolation)
-  // reads nobody, and its rows say the same thing without names.
-  const client = useZeropsSessionOptional()?.client;
+  // A surface outside the account's data (a render test in isolation) reads nobody, and its rows
+  // say the same thing without names.
+  const data = useContext(ZeropsDataContext);
   const { clientId, enabled } = input;
-  // The members this browser read last, until they are read again: whose
-  // each Mate is — its face's badge, *Mine* — from the first paint
-  // (`menuMemory.ts`). What waits for the read itself waits on `status`.
-  const [members, setMembers] = useState<ReadonlyArray<ZeropsOrganizationMember>>(() =>
-    clientId === undefined ? [] : (menuMemory().members[clientId] ?? []),
+  // One read per organization, shared by every surface that asks (the account's resource
+  // broker): asked at once, they are one read; asked again while it is fresh, none.
+  const request = useMemo<OrganizationMembersResourceRequest | null>(
+    () =>
+      enabled && clientId !== undefined && data !== null
+        ? {
+            kind: "organization-members",
+            account: data.runtime.scope,
+            organization: data.organizationRef(clientId),
+          }
+        : null,
+    [clientId, data, enabled],
   );
-  const [settled, setSettled] = useState<{
-    readonly clientId: string;
-    readonly failed: boolean;
-  } | null>(null);
-  const read = useRef<string | null>(null);
-
+  const read = selectMembers(
+    useKnown(request === null || data === null ? null : data.runtime.resources.known(request)),
+  );
+  const answered = read.status === "ready" ? read.members : undefined;
+  // The members this browser read last, until they are read again: whose each Mate is — its
+  // face's badge, *Mine* — from the first paint (`menuMemory.ts`). What waits for the read
+  // itself waits on `status`.
   useEffect(() => {
-    if (!enabled || clientId === undefined || client === undefined) return;
-    if (read.current === clientId) return;
-    read.current = clientId;
-
-    const controller = new AbortController();
-    let answered = false;
-    void client
-      .listOrganizationMembers(clientId, controller.signal)
-      .then((answer) => {
-        answered = true;
-        if (controller.signal.aborted) return;
-        setMembers(answer);
-        setSettled({ clientId, failed: false });
-        rememberMenu((memory) => withMembers(memory, clientId, answer));
-      })
-      .catch(() => {
-        answered = true;
-        if (controller.signal.aborted) return;
-        // No names, and the rows say the same thing without them.
-        read.current = null;
-        setSettled({ clientId, failed: true });
-      });
-
-    return () => {
-      controller.abort();
-      // A read put away before it answered was never had: the effect that
-      // runs next — a remount's, a hot update's — reads again.
-      if (!answered) read.current = null;
-    };
-  }, [client, clientId, enabled]);
-
+    if (clientId !== undefined && answered !== undefined)
+      rememberMenu((memory) => withMembers(memory, clientId, answered));
+  }, [answered, clientId]);
+  const members = useMemo(
+    () => answered ?? (clientId === undefined ? [] : (menuMemory().members[clientId] ?? [])),
+    [answered, clientId],
+  );
   const status: ZeropsOrganizationMembersStatus =
-    !enabled || clientId === undefined || client === undefined
-      ? "idle"
-      : settled?.clientId !== clientId
-        ? "loading"
-        : settled.failed
-          ? "failed"
-          : "ready";
+    !enabled || clientId === undefined ? "idle" : request === null ? "loading" : read.status;
   return { members, status };
 }
 

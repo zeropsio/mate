@@ -73,6 +73,8 @@ const flagThrough = (
         readServiceAuthorizedAgents: () => Effect.succeed([]),
         readServiceMateFlag: read,
         readOrganizationIntegrationTokenGrants: () => Effect.succeed([]),
+        readOrganizationMembers: () => Effect.succeed([]),
+        readServiceVariableNames: () => Effect.succeed([]),
       },
     });
     const flagAtom = Atom.make<boolean | "unknown" | "unread">(stated);

@@ -24,7 +24,11 @@ import {
   planThrowawaySweep,
   throwawaySweepDue,
 } from "@t3tools/client-runtime/zerops/doorThrowaway";
+import * as Effect from "effect/Effect";
 import { useEffect, useRef } from "react";
+
+import { readZeropsResource } from "./useZeropsDeployedVersion";
+import { useZeropsData } from "./zeropsDataContext";
 
 import { useZeropsSession } from "./ZeropsSessionProvider";
 
@@ -53,6 +57,7 @@ export function useZeropsThrowawaySweep(input: {
   readonly enabled: boolean;
 }): void {
   const { client } = useZeropsSession();
+  const { organizationRef, runtime } = useZeropsData();
   const swept = useRef<string | null>(null);
   const { clientId, enabled } = input;
 
@@ -66,11 +71,29 @@ export function useZeropsThrowawaySweep(input: {
     const controller = new AbortController();
     void (async () => {
       try {
-        const tokens = await client.listIntegrationTokens(clientId, controller.signal);
-        const stale = planThrowawaySweep({ tokens, nowEpochMs: Date.now() });
-        for (const tokenId of stale) {
-          if (controller.signal.aborted) return;
-          await client.deleteIntegrationToken({ clientId, tokenId }, controller.signal);
+        // The account's one token list, shared with every reader of it (the resource broker).
+        const request = {
+          kind: "organization-integration-token-grants",
+          account: runtime.scope,
+          organization: organizationRef(clientId),
+        } as const;
+        const tokens = await readZeropsResource(runtime.resources, request, controller.signal);
+        const stale = planThrowawaySweep({
+          tokens: tokens.map((token) => ({
+            id: token.tokenId,
+            name: token.name,
+            ...(token.created === undefined ? {} : { created: token.created }),
+          })),
+          nowEpochMs: Date.now(),
+        });
+        try {
+          for (const tokenId of stale) {
+            if (controller.signal.aborted) return;
+            await client.deleteIntegrationToken({ clientId, tokenId }, controller.signal);
+          }
+        } finally {
+          // Our own deletes changed the list every reader shares.
+          if (stale.length > 0) await Effect.runPromise(runtime.resources.invalidate(request));
         }
         rememberSwept(clientId, Date.now());
       } catch {
@@ -82,5 +105,5 @@ export function useZeropsThrowawaySweep(input: {
     return () => {
       controller.abort();
     };
-  }, [client, clientId, enabled]);
+  }, [client, clientId, enabled, organizationRef, runtime]);
 }

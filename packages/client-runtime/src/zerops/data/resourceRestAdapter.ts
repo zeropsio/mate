@@ -53,7 +53,18 @@ export function makeZeropsResourceRestAdapter(client: ZeropsApiClient): ZeropsRe
       request(async () =>
         (
           await client.listIntegrationTokens(input.organization.organizationId, context.abortSignal)
-        ).map((token) => ({ tokenId: token.id, name: token.name, grants: token.projects ?? [] })),
+        ).map((token) => ({
+          tokenId: token.id,
+          name: token.name,
+          grants: token.projects ?? [],
+          ...(token.created === undefined ? {} : { created: token.created }),
+        })),
       ),
+    readOrganizationMembers: (input, context) =>
+      request(() =>
+        client.listOrganizationMembers(input.organization.organizationId, context.abortSignal),
+      ),
+    readServiceVariableNames: (input, context) =>
+      request(() => client.listServiceVariableNames(input.service.serviceId, context.abortSignal)),
   };
 }
