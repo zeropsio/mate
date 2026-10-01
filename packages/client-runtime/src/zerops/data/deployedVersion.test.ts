@@ -1,8 +1,13 @@
 import { describe, expect, it } from "@effect/vitest";
 
 import { selectDeployedVersion, selectMateFlag } from "./deployedVersion.ts";
-import { reduceTableObservation, SERVICE_VARIABLE_KEYS } from "./entityTable.ts";
-import { makeInitialZeropsDataState, type ZeropsDataState } from "./state.ts";
+import {
+  ABSENT_BACKOFF_MS,
+  reduceTableObservation,
+  SERVICE_VARIABLE_KEYS,
+  tableRowsWanted,
+} from "./entityTable.ts";
+import { makeInitialZeropsDataState, wantActiveVersions, type ZeropsDataState } from "./state.ts";
 import type {
   DesiredInterestState,
   ServiceDeployInfo,
@@ -272,4 +277,62 @@ describe("the Mate flag, as the account's store states it", () => {
       expect(selectMateFlag(testCase.state, ref)).toBe(testCase.expected);
     });
   }
+});
+
+describe("a version a service runs that its organization's list lacks", () => {
+  it("is read by id once, then reads unknown on a back-off, never in a loop", () => {
+    const empty = makeInitialZeropsDataState(scope());
+    let state: ZeropsDataState = withService(
+      answered(answered(empty, versions, []), variables, []),
+      deploy({}),
+    );
+    state = wantActiveVersions(state, 3, 1_000);
+    expect(tableRowsWanted(state.table)).toMatchObject([
+      { entity: "app-version", ids: ["v-2"], dueAtMs: 1_000 },
+    ]);
+    // The read by id finds it absent too.
+    state = {
+      ...state,
+      table: reduceTableObservation(state.table, {
+        stamp: { receiptOrdinal: ReceiptOrdinal.make(5), observedAtMs: 2_000 },
+        accessEvidence: null,
+        input: {
+          kind: "table-rows-observed",
+          entity: "app-version",
+          rows: [],
+          source: "direct-read",
+          coverage: {
+            kind: "exhausted-traversal",
+            traversedPages: 1,
+            observedTotal: 0,
+            guarantee: "non-atomic",
+          },
+          ticket: {
+            ...directTicket(
+              { kind: "query", descriptor: { ...versions, ids: ["v-2"] } as never },
+              identity(),
+              4,
+              4,
+              4,
+            ),
+            startedAtMs: 1_500,
+          } as never,
+        },
+      }).state,
+    };
+    // Every later message asks nothing sooner than its back-off.
+    for (const [receipt, nowMs] of [
+      [6, 2_100],
+      [7, 2_200],
+      [8, 3_000],
+    ] as const)
+      state = wantActiveVersions(state, receipt, nowMs);
+    expect(tableRowsWanted(state.table)).toMatchObject([
+      { ids: ["v-2"], dueAtMs: 2_000 + ABSENT_BACKOFF_MS[0]! },
+    ]);
+    expect(selectDeployedVersion(state, ref)).toMatchObject({
+      state: "failed",
+      retryAtMs: 2_000 + ABSENT_BACKOFF_MS[0]!,
+    });
+  });
 });

@@ -7,7 +7,7 @@
  */
 import { readsAsEnabled } from "../api.ts";
 import type { Shown } from "../knowledge/known.ts";
-import { activeVersionOf, serviceVariableOf } from "./entityTable.ts";
+import { activeVersionOf, askedAbsent, serviceVariableOf } from "./entityTable.ts";
 import type { ZeropsDataState } from "./state.ts";
 import type { IngestionStamp, RuntimeInterestDescriptor, ServiceRef } from "./types.ts";
 import { organizationKeyOf, serviceKeyOf } from "./types.ts";
@@ -92,9 +92,20 @@ export function selectDeployedVersion(
   let source = deploy.source;
   if (source === null) {
     const version = activeVersionOf(state.table, organization, deploy.id);
-    // A version not listed active yet is one the list has not caught up with: it waits.
-    if (!version.known || version.row === null)
+    // A version not listed active yet is one the list has not caught up with: it waits. One a
+    // read by id found absent too is unknown until its next look.
+    if (!version.known || version.row === null) {
+      const absent = askedAbsent(state.table, "app-version", deploy.id);
+      if (absent !== null)
+        return {
+          state: "failed",
+          failure: { kind: "malformed", detail: "Its active version is not listed." },
+          atMs: facet.stamp.observedAtMs,
+          attempt: 1,
+          retryAtMs: absent.retryAtMs,
+        };
       return streamFailure(state, "organization-versions", service) ?? UNREAD;
+    }
     source = version.row.source;
   }
   const started = serviceVariableOf(state.table, organization, service.serviceId, "appVersionId");

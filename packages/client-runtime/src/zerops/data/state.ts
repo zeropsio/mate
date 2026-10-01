@@ -1532,7 +1532,11 @@ function scheduleRetention(state: ZeropsDataState, policy: ZeropsDataPolicy): Ze
  * A version a service runs that its organization's answered list of active versions lacks, with
  * no push to state its source: the list may trail the service, so the version is read by id.
  */
-function wantActiveVersions(state: ZeropsDataState, receipt: number): ZeropsDataState {
+export function wantActiveVersions(
+  state: ZeropsDataState,
+  receipt: number,
+  nowMs: number,
+): ZeropsDataState {
   const missing = new Map<string, { organization: OrganizationRef; ids: string[] }>();
   for (const record of state.inventory.services.values()) {
     const facet = record.deployment;
@@ -1549,7 +1553,7 @@ function wantActiveVersions(state: ZeropsDataState, receipt: number): ZeropsData
   }
   let table = state.table;
   for (const { organization, ids } of missing.values())
-    table = wantTableRows(table, "app-version", organization, ids, receipt);
+    table = wantTableRows(table, "app-version", organization, ids, receipt, nowMs);
   return table === state.table ? state : { ...state, table };
 }
 
@@ -1591,7 +1595,8 @@ export function reduceZeropsDataState(
   state = { ...state, lastReceiptOrdinal: stamp.receiptOrdinal };
   state = trimDiagnostics(state, policy);
   state = scheduleRetention(state, policy);
-  if (input.kind === "observation") state = wantActiveVersions(state, stamp.receiptOrdinal);
+  if (input.kind === "observation")
+    state = wantActiveVersions(state, stamp.receiptOrdinal, stamp.observedAtMs);
   const followUps: ZeropsDataFollowUp[] = [];
   for (const query of [...state.inventory.queries.values(), ...state.activity.queries.values()]) {
     if (query.unresolvedMemberKeys.length > 0) {

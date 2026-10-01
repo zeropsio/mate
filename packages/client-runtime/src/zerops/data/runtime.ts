@@ -106,6 +106,7 @@ import {
 import {
   activeVersionsDescriptor,
   serviceVariablesDescriptor,
+  tableRowsDue,
   tableRowsWanted,
 } from "./entityTable.ts";
 
@@ -1651,55 +1652,71 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
       const key = `${followUp.entity}:${organizationKey}`;
       if (tableReads.has(key) || (yield* Ref.get(closed))) return;
       tableReads.add(key);
+      // One loop per kind and organization: it reads what is due, batched, at most once a
+      // grace, and ends when nothing is owed. Ids that arrive while a batch reads, or past its
+      // cap, are read by the next round.
       const read = Effect.gen(function* () {
-        // A grace first: the row an id names usually arrives on its own update frame.
-        const now = yield* Clock.currentTimeMillis;
-        const waitMs = Math.max(TABLE_READ_GRACE_MS, (tableReadRetryAt.get(key) ?? 0) - now);
-        yield* Effect.sleep(Duration.millis(waitMs));
-        const ids =
-          tableRowsWanted((yield* Ref.get(model)).table).find(
+        while (true) {
+          const before = yield* Clock.currentTimeMillis;
+          const batch = tableRowsWanted((yield* Ref.get(model)).table).find(
             (wanted) =>
               wanted.entity === followUp.entity &&
               organizationKeyOf(wanted.organization) === organizationKey,
-          )?.ids ?? [];
-        if (ids.length === 0) return;
-        const streamKind =
-          followUp.entity === "app-version" ? "organization-versions" : "organization-variables";
-        const dependents = new Map<InterestKey, InterestIdentity>();
-        for (const interest of interests.values()) {
-          if (
-            interest.leases.size > 0 &&
-            interest.descriptor.kind === streamKind &&
-            organizationKeyOf(interest.descriptor.organization) === organizationKey
-          )
-            dependents.set(interest.key, interest.identity);
+          );
+          if (batch === undefined) return;
+          const waitMs = Math.max(
+            TABLE_READ_GRACE_MS,
+            batch.dueAtMs - before,
+            (tableReadRetryAt.get(key) ?? 0) - before,
+          );
+          yield* Effect.sleep(Duration.millis(waitMs));
+          if (yield* Ref.get(closed)) return;
+          const now = yield* Clock.currentTimeMillis;
+          const ids = tableRowsDue(
+            (yield* Ref.get(model)).table,
+            followUp.entity,
+            followUp.organization,
+            now,
+          ).slice(0, TABLE_READ_BATCH);
+          if (ids.length === 0) continue;
+          const streamKind =
+            followUp.entity === "app-version" ? "organization-versions" : "organization-variables";
+          const dependents = new Map<InterestKey, InterestIdentity>();
+          for (const interest of interests.values()) {
+            if (
+              interest.leases.size > 0 &&
+              interest.descriptor.kind === streamKind &&
+              organizationKeyOf(interest.descriptor.organization) === organizationKey
+            )
+              dependents.set(interest.key, interest.identity);
+          }
+          if (dependents.size === 0) return;
+          const list =
+            followUp.entity === "app-version"
+              ? activeVersionsDescriptor(followUp.organization)
+              : serviceVariablesDescriptor(followUp.organization);
+          const owner = {
+            kind: "shared" as const,
+            account: options.scope,
+            sharedReadId: ZeropsSharedReadId.make(options.makeOpaqueId()),
+          };
+          const ticket = yield* sharedReadTicket(
+            { kind: "query", descriptor: { ...list, ids } },
+            owner,
+            "baseline",
+          );
+          yield* applyControl({
+            kind: "shared-read-upserted",
+            requestId: ticket.requestId,
+            ownership: { owner, target: ticket.target, dependents, status: "active" },
+          });
+          const admitted = yield* admitRead(ticket);
+          const succeeded = admitted ? (yield* runReadOutcome(ticket, null)).succeeded : false;
+          if (admitted) yield* awaitIngress;
+          yield* applyControl({ kind: "shared-read-released", requestId: ticket.requestId });
+          if (succeeded) tableReadRetryAt.delete(key);
+          else tableReadRetryAt.set(key, (yield* Clock.currentTimeMillis) + TABLE_READ_RETRY_MS);
         }
-        if (dependents.size === 0) return;
-        const list =
-          followUp.entity === "app-version"
-            ? activeVersionsDescriptor(followUp.organization)
-            : serviceVariablesDescriptor(followUp.organization);
-        const owner = {
-          kind: "shared" as const,
-          account: options.scope,
-          sharedReadId: ZeropsSharedReadId.make(options.makeOpaqueId()),
-        };
-        const ticket = yield* sharedReadTicket(
-          { kind: "query", descriptor: { ...list, ids: ids.slice(0, TABLE_READ_BATCH) } },
-          owner,
-          "baseline",
-        );
-        yield* applyControl({
-          kind: "shared-read-upserted",
-          requestId: ticket.requestId,
-          ownership: { owner, target: ticket.target, dependents, status: "active" },
-        });
-        const admitted = yield* admitRead(ticket);
-        const succeeded = admitted ? (yield* runReadOutcome(ticket, null)).succeeded : false;
-        if (admitted) yield* awaitIngress;
-        yield* applyControl({ kind: "shared-read-released", requestId: ticket.requestId });
-        if (succeeded) tableReadRetryAt.delete(key);
-        else tableReadRetryAt.set(key, (yield* Clock.currentTimeMillis) + TABLE_READ_RETRY_MS);
       });
       yield* read.pipe(Effect.ensuring(Effect.sync(() => tableReads.delete(key))), forkOwned);
     });
