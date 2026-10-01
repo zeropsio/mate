@@ -320,58 +320,6 @@ describe("CrewEngine", () => {
     ),
   );
 
-  const pressesDuringTurnEnd: ReadonlyArray<{
-    readonly name: string;
-    readonly press: (taskId: string) => Parameters<typeof command>[0];
-  }> = [
-    {
-      name: "a message to the crewmate",
-      press: () => ({ _tag: "message", handle: "backend", text: "More", attachments: [] }),
-    },
-    {
-      name: "Tell the crew naming the crewmate",
-      press: () => ({ _tag: "tell", text: "@backend more", mentions: [{ handle: "backend" }] }),
-    },
-    { name: "Land now", press: (taskId) => ({ _tag: "landNow", taskId }) },
-    { name: "Try again", press: (taskId) => ({ _tag: "taskRetry", taskId }) },
-    {
-      name: "a new task for the crewmate",
-      press: () => ({
-        _tag: "taskCreate",
-        owner: "backend",
-        title: "Next",
-        brief: "Then this.",
-        doneWhen: "",
-        dependsOn: [],
-      }),
-    },
-  ];
-
-  for (const { name, press } of pressesDuringTurnEnd) {
-    it.live(`${name} pressed while its crewmate's turn end is handled waits for that end`, () =>
-      withCrewEngine((world) =>
-        Effect.gen(function* () {
-          yield* applied(world);
-          yield* command({ _tag: "message", handle: "backend", text: "First", attachments: [] });
-          const first = (yield* snapshotWhere((snapshot) => snapshot.board.tasks.length === 1))
-            .board.tasks[0]!.id;
-          const [stint] = yield* dispatchedOf(world, "thread.crew.create");
-          const turnCommit = yield* world.holdSsh((script) => script.includes("): turn 1"));
-          const ended = yield* Effect.forkChild(
-            world.publish(spiEvent("turn.completed", stint!.threadId, { state: "completed" })),
-          );
-          yield* turnCommit.reached;
-          const pressed = yield* Effect.forkChild(Effect.exit(command(press(first))));
-          const beforeTheEnd = yield* Fiber.await(pressed).pipe(Effect.timeoutOption("300 millis"));
-          yield* turnCommit.release;
-          yield* Fiber.join(ended);
-          yield* Fiber.join(pressed);
-          assert.isTrue(Option.isNone(beforeTheEnd), "the press returned before the turn's end");
-        }),
-      ),
-    );
-  }
-
   it.live("a discard whose copy cannot be reset leaves its task as it was", () =>
     withCrewEngine((world) =>
       Effect.gen(function* () {

@@ -84,16 +84,6 @@ export const requireTask = (core: CrewCore, taskId: string) =>
     ),
   );
 
-/**
- * A press on a task, under its crewmate's lock (`CrewCore.crewmate`): it never
- * runs beside that crewmate's turn end, which commits in the same copy.
- */
-export const onTaskCrewmate = <A, E, R>(
-  core: CrewCore,
-  taskId: string,
-  effect: Effect.Effect<A, E, R>,
-) => Effect.flatMap(requireTask(core, taskId), (pressed) => core.crewmate(pressed.member)(effect));
-
 export const saveTask = (core: CrewCore, row: CrewAssignmentRow) =>
   Effect.gen(function* () {
     const next = { ...row, updatedAt: yield* core.now };
@@ -689,18 +679,16 @@ export const tell = (
           handle: route.handle,
           text: input.text,
           attachments: [],
-        }).pipe(core.crewmate(route.handle));
+        });
       case "to-lead":
-        return yield* core.crewmate(route.lead)(
-          message(core, principal, {
-            handle: route.lead,
-            text:
-              route.addressed.length === 0
-                ? input.text
-                : `${input.text}\n\nAddressed: ${route.addressed.map((handle) => `@${handle}`).join(", ")}`,
-            attachments: [],
-          }),
-        );
+        return yield* message(core, principal, {
+          handle: route.lead,
+          text:
+            route.addressed.length === 0
+              ? input.text
+              : `${input.text}\n\nAddressed: ${route.addressed.map((handle) => `@${handle}`).join(", ")}`,
+          attachments: [],
+        });
       case "tasks":
         for (const routed of route.tasks) {
           const task = yield* createTask(core, {
@@ -711,9 +699,7 @@ export const tell = (
             card: { brief: input.text, doneWhen: "", note: routed.note ?? null },
             dependsOn: [],
           });
-          yield* core.crewmate(routed.handle)(
-            pump(core, routed.handle, { taskId: task.assignment, principal }),
-          );
+          yield* pump(core, routed.handle, { taskId: task.assignment, principal });
         }
     }
   });
@@ -766,28 +752,28 @@ export const markFresh = (core: CrewCore, taskId: string) =>
  * while its crewmate's turn end is handled waits for that end.
  */
 export const discard = (core: CrewCore, taskId: string) =>
-  onTaskCrewmate(
-    core,
-    taskId,
-    Effect.gen(function* () {
-      const applied = yield* requireApplied(core);
-      const row = yield* requireTask(core, taskId);
-      if (isOpenTask(row.state) && isWorking(core, applied, row.member)) {
-        return yield* refuse("wrong-state", `@${row.member}'s turn is running`);
-      }
-      const member = memberOf(applied, row.member);
-      if (isOpenTask(row.state) && member?.row.kind === "writer") {
-        yield* asRefusal(
-          core.workspace.keepAndReset(
-            { crew: CREW_ID, handle: row.member },
-            { run: null, assignment: row.assignment, attempt: row.attempt, abortMerge: true },
-          ),
-        );
-      }
-      const discarded = yield* stepTask(core, row, { type: "discard" });
-      core.memory.cantStart.delete(discarded.assignment);
-      yield* pump(core, row.member);
-    }),
+  Effect.flatMap(requireTask(core, taskId), (pressed) =>
+    core.crewmate(pressed.member)(
+      Effect.gen(function* () {
+        const applied = yield* requireApplied(core);
+        const row = yield* requireTask(core, taskId);
+        if (isOpenTask(row.state) && isWorking(core, applied, row.member)) {
+          return yield* refuse("wrong-state", `@${row.member}'s turn is running`);
+        }
+        const member = memberOf(applied, row.member);
+        if (isOpenTask(row.state) && member?.row.kind === "writer") {
+          yield* asRefusal(
+            core.workspace.keepAndReset(
+              { crew: CREW_ID, handle: row.member },
+              { run: null, assignment: row.assignment, attempt: row.attempt, abortMerge: true },
+            ),
+          );
+        }
+        const discarded = yield* stepTask(core, row, { type: "discard" });
+        core.memory.cantStart.delete(discarded.assignment);
+        yield* pump(core, row.member);
+      }),
+    ),
   );
 
 /** *Try again* on a stopped task (parked → queued), or on a queued one admission refused. */

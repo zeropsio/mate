@@ -101,7 +101,6 @@ import { installCrewThreadPolicy } from "./CrewThreadPolicy.ts";
 import { editMemory, forgetMemory, removeMemory } from "./crewMemoryCommands.ts";
 import {
   discard,
-  onTaskCrewmate,
   editTask,
   markFresh,
   message,
@@ -251,22 +250,24 @@ const run = (core: CrewCore, command: CrewCommand, principal: TurnPrincipal, act
         yield* apply(core, principal, activate);
         return done;
       case "message":
-        yield* core.crewmate(command.handle)(message(core, principal, command));
+        yield* message(core, principal, command);
         return done;
       case "answer":
         if (command.taskId === null) yield* leadAnswered(core, command.handle);
-        yield* core.crewmate(command.handle)(
-          message(core, principal, { handle: command.handle, text: command.text, attachments: [] }),
-        );
+        yield* message(core, principal, {
+          handle: command.handle,
+          text: command.text,
+          attachments: [],
+        });
         return done;
       case "tell":
         yield* tell(core, principal, command);
         return done;
       case "taskCreate":
-        yield* core.crewmate(command.owner)(newTask(core, principal, command));
+        yield* newTask(core, principal, command);
         return done;
       case "taskEdit":
-        yield* onTaskCrewmate(core, command.taskId, editTask(core, principal, command));
+        yield* editTask(core, principal, command);
         return done;
       case "discard":
         yield* discard(core, command.taskId);
@@ -275,27 +276,19 @@ const run = (core: CrewCore, command: CrewCommand, principal: TurnPrincipal, act
         yield* markFresh(core, command.taskId);
         return done;
       case "taskRetry":
-        yield* onTaskCrewmate(core, command.taskId, retryTask(core, principal, command.taskId));
+        yield* retryTask(core, principal, command.taskId);
         return done;
       case "land":
-        yield* onTaskCrewmate(core, command.taskId, land(core, principal, command.taskId));
+        yield* land(core, principal, command.taskId);
         return done;
       case "landNow":
-        yield* onTaskCrewmate(core, command.taskId, landNow(core, principal, command.taskId));
+        yield* landNow(core, principal, command.taskId);
         return done;
       case "askResolve":
-        yield* onTaskCrewmate(
-          core,
-          command.taskId,
-          askRework(core, principal, command.taskId, "conflict"),
-        );
+        yield* askRework(core, principal, command.taskId, "conflict");
         return done;
       case "askFix":
-        yield* onTaskCrewmate(
-          core,
-          command.taskId,
-          askRework(core, principal, command.taskId, "check-failed"),
-        );
+        yield* askRework(core, principal, command.taskId, "check-failed");
         return done;
       case "startFresh":
         yield* startFresh(core, command.handle);
