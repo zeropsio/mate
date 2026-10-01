@@ -111,7 +111,8 @@ import { drawerEase, LIST_LAYS_OUT_FRAMES, stepHeight } from "./stepHeight";
 import { StatusBar } from "./StatusBar";
 import { versionText } from "../zerops/operation/version";
 import { ImportDetail } from "./ImportDetail";
-import { settledOperationBar } from "./operationBar.logic";
+import { useStandupReading } from "../../zerops/activity/useStandupReading";
+import { detailLines, opensTo, settledOperationBar } from "./operationBar.logic";
 import { StandupDetail } from "./StandupDetail";
 import type { ExpandedImagePreview } from "./ExpandedImagePreview";
 import {
@@ -1423,13 +1424,35 @@ function ZeropsOperationDetail({
  * runs, what the Mate waits on beside its face (the bar under the chat has
  * its clock). Its card — the pipeline, the build log — opens under it.
  */
+/** A stand-up's row: it opens to its services' lines only when there are any. */
+function StandupBubble({
+  operation,
+  undone,
+}: {
+  readonly operation: ZeropsOperation;
+  readonly undone: boolean;
+}) {
+  const ctx = use(TimelineRowCtx);
+  const reading = useStandupReading(operation, ctx.activeThreadEnvironmentId);
+  return (
+    <OperationBubble
+      lines={detailLines(operation, reading?.rows.length ?? null)}
+      operation={operation}
+      undone={undone}
+    />
+  );
+}
+
 function OperationBubble({
   operation,
   undone = false,
+  lines = detailLines(operation, null),
 }: {
   readonly operation: ZeropsOperation;
   /** It failed, and a later one on the same service went through: quiet (K9). */
   readonly undone?: boolean;
+  /** How many lines it opens to; null, its own card (`detailLines`). */
+  readonly lines?: number | null;
 }) {
   const ctx = use(TimelineRowCtx);
   const disclosure = useDisclosure();
@@ -1437,11 +1460,42 @@ function OperationBubble({
   const failure: Failure | null = !failed ? null : undone ? "undone" : "broken";
   const running = operation.phase === "running";
   const words = operationLineWords(operation);
-  const detail = failed
-    ? (operation.explanation?.reason ?? operation.closing ?? null)
-    : operation.kind === "deploy"
-      ? (versionText(operation.version?.name) ?? null)
-      : null;
+  const reason = failed ? (operation.explanation?.reason ?? operation.closing ?? null) : null;
+  const detail =
+    reason ?? (operation.kind === "deploy" ? (versionText(operation.version?.name) ?? null) : null);
+  // Its reason cut short on its one line is a way to the whole of it.
+  // Opened, it stands whole in place, wrapped: no longer cut, still the
+  // way back to its one line.
+  const [cut, watchDetail] = useRunsPast(false, true);
+  const reasonCut = reason !== null && (cut || disclosure.open);
+  // Nothing to add: no chevron, and it does not press.
+  const opens = opensTo({ lines, reasonCut });
+  const head = (
+    <Headline
+      column
+      opens={opens}
+      time={operationTime(operation)}
+      timeTone={failure === "broken" ? "failed" : "muted"}
+    >
+      <span className="flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-0.5">
+        <span className="text-foreground/75">{words}</span>
+        {running ? null : (
+          <StatusBar className="w-12" segments={settledOperationBar(operation, undone)} />
+        )}
+        {detail !== null ? (
+          <span
+            ref={watchDetail}
+            className={cn(
+              "min-w-0 font-mono text-muted-foreground",
+              reason !== null && disclosure.open ? "whitespace-pre-wrap break-words" : "truncate",
+            )}
+          >
+            {detail}
+          </span>
+        ) : null}
+      </span>
+    </Headline>
+  );
   return (
     <CallRow
       failure={failure}
@@ -1450,30 +1504,19 @@ function OperationBubble({
         failure === null ? <KindGlyph kind={operation.kind} /> : <FailedMark failure={failure} />
       }
     >
-      <DisclosureButton
-        className={CALL_PAD}
-        label={`${words}. ${disclosure.open ? "Hide" : "Show"} it`}
-        onToggle={disclosure.toggle}
-        open={disclosure.open}
-      >
-        <Headline
-          column
-          opens
-          time={operationTime(operation)}
-          timeTone={failure === "broken" ? "failed" : "muted"}
+      {opens ? (
+        <DisclosureButton
+          className={CALL_PAD}
+          label={`${words}. ${disclosure.open ? "Hide" : "Show"} it`}
+          onToggle={disclosure.toggle}
+          open={disclosure.open}
         >
-          <span className="flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-0.5">
-            <span className="text-foreground/75">{words}</span>
-            {running ? null : (
-              <StatusBar className="w-12" segments={settledOperationBar(operation, undone)} />
-            )}
-            {detail !== null ? (
-              <span className="min-w-0 truncate font-mono text-muted-foreground">{detail}</span>
-            ) : null}
-          </span>
-        </Headline>
-      </DisclosureButton>
-      {disclosure.open ? (
+          {head}
+        </DisclosureButton>
+      ) : (
+        <div className={CALL_PAD}>{head}</div>
+      )}
+      {opens && disclosure.open && lines !== 0 ? (
         <div className="animate-detail-in px-3 pb-2 motion-reduce:animate-none" data-chat-detail>
           <OperationDetail
             environmentId={ctx.activeThreadEnvironmentId}
@@ -2090,7 +2133,12 @@ function itemLine(item: RecordItem, undone: ReadonlySet<string>): ChatLine | nul
     case "operation":
       return {
         key: item.key,
-        bubble: <OperationBubble operation={item.operation} undone={undone.has(item.key)} />,
+        bubble:
+          item.operation.kind === "standup" ? (
+            <StandupBubble operation={item.operation} undone={undone.has(item.key)} />
+          ) : (
+            <OperationBubble operation={item.operation} undone={undone.has(item.key)} />
+          ),
         call: true,
       };
     case "helpers":

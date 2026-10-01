@@ -44,8 +44,10 @@ import {
 } from "./conversation.logic";
 import { useZeropsTopology } from "../../zerops/useZeropsFeeds";
 import {
+  detailLines,
   importLines,
   lineSegments,
+  opensTo,
   operationSubject,
   settledOperationWords,
 } from "./operationBar.logic";
@@ -280,6 +282,7 @@ function DeployInstrument({
   const words = (lines === null ? null : settledOperationWords(operation, lines)) ?? reading.words;
   const failed = lines === null ? reading.failed : lines.some((line) => line.state === "failed");
   const subject = operationSubject(operation);
+  const opens = opensTo({ lines: detailLines(operation, null), reasonCut: false });
   const settledMs =
     operation.settledAt === undefined
       ? null
@@ -295,8 +298,8 @@ function DeployInstrument({
           formatWorkDuration(settledMs)
         ) : null
       }
-      label={`${subject}: ${words}. ${open ? "Hide" : "Show"} ${lines === null ? "the pipeline" : "each service"}`}
-      onToggle={onToggle}
+      label={`${subject}: ${words}.${opens ? ` ${open ? "Hide" : "Show"} ${lines === null ? "the pipeline" : "each service"}` : ""}`}
+      onToggle={opens ? onToggle : null}
       open={open}
       subject={subject}
       words={words}
@@ -324,13 +327,18 @@ function StandupInstrument({
   const reading = useStandupReading(operation, environmentId);
   const { words, figure, segments, failed } = standupBar(reading);
   const subject = operationSubject(operation);
+  // No service read yet: nothing to open to.
+  const opens = opensTo({
+    lines: detailLines(operation, reading?.rows.length ?? null),
+    reasonCut: false,
+  });
   return (
     <Instrument
       bar={segments}
       failed={failed && reading !== null && reading.building === 0}
       figure={figure}
-      label={`${subject}: ${words}${figure === null ? "" : `, ${figure}`}. ${open ? "Hide" : "Show"} each service`}
-      onToggle={onToggle}
+      label={`${subject}: ${words}${figure === null ? "" : `, ${figure}`}.${opens ? ` ${open ? "Hide" : "Show"} each service` : ""}`}
+      onToggle={opens ? onToggle : null}
       open={open}
       subject={subject}
       words={words}
