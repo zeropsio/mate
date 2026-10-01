@@ -1265,7 +1265,46 @@ describe("the cells' one-shot reads", () => {
     }).pipe(Effect.provide(TestClock.layer())),
   );
 
-  it.effect("a reader of a failed cell whose retry is scheduled joins that retry", () =>
+  it.effect("a one-shot reader of a cell failed five times reads it at once", () =>
+    Effect.gen(function* () {
+      const scope = accountScope();
+      let reads = 0;
+      const cells = yield* makeZeropsCells({
+        scope,
+        access: () => verifiedAccess(scope),
+        random: () => 0.5,
+        adapter: unusedAdapter({
+          readServiceAuthorizedAgents: () =>
+            Effect.suspend(() => {
+              reads += 1;
+              return reads <= 5 ? Effect.fail(transportFailure(true)) : Effect.succeed(["codex"]);
+            }),
+        }),
+      });
+      const request = authorizedAgentsRequest(scope);
+      // A surface holds the agents while their reads fail and the retries widen.
+      const display = yield* Scope.make();
+      const held = yield* cells.acquire(request).pipe(Scope.provide(display));
+      yield* held.awaitSettled;
+      while (reads < 5) {
+        const shown = yield* held.snapshot;
+        const retryAtMs = shown.state === "failed" ? (shown.retryAtMs ?? 0) : 0;
+        yield* TestClock.setTime(retryAtMs);
+        yield* Effect.yieldNow;
+      }
+      expect(yield* held.snapshot).toMatchObject({ state: "failed" });
+
+      // A person creates an environment: its read of the agents is not held for the retry.
+      const reader = yield* Effect.forkChild(oneShot(cells, request));
+      yield* Effect.yieldNow;
+      expect(reads).toBe(6);
+      expect(yield* Fiber.join(reader)).toMatchObject({ value: ["codex"] });
+      yield* Scope.close(display, Exit.void);
+      yield* cells.shutdown;
+    }).pipe(Effect.provide(TestClock.layer())),
+  );
+
+  it.effect("a surface that starts watching a failed cell waits for its scheduled retry", () =>
     Effect.gen(function* () {
       const scope = accountScope();
       let reads = 0;
@@ -1286,17 +1325,14 @@ describe("the cells' one-shot reads", () => {
       const request = membersRequest(scope);
       const display = yield* Scope.make();
       const held = yield* cells.acquire(request).pipe(Scope.provide(display));
-      const failed = yield* held.awaitSettled;
-      expect(failed).toMatchObject({ state: "failed" });
-      const retryAtMs = failed.state === "failed" ? (failed.retryAtMs ?? 0) : 0;
+      expect(yield* held.awaitSettled).toMatchObject({ state: "failed" });
 
-      const reader = yield* Effect.forkChild(oneShot(cells, request));
+      const registry = AtomRegistry.make();
+      const unmount = registry.mount(cells.known(request));
       yield* Effect.yieldNow;
       expect(reads).toBe(1);
-      yield* TestClock.adjust(retryAtMs);
-
-      expect(yield* Fiber.join(reader)).toMatchObject({ value: [{ id: "member-1" }] });
-      expect(reads).toBe(2);
+      unmount();
+      registry.dispose();
       yield* Scope.close(display, Exit.void);
       yield* cells.shutdown;
     }).pipe(Effect.provide(TestClock.layer())),
