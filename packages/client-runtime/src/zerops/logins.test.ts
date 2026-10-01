@@ -244,6 +244,11 @@ describe("spentLoginStatusStale", () => {
     message: REGISTERING,
   } as const;
   const authorized = { available: true, agents: [agentRow("authorized", "authenticated")] };
+  const notSignedInWord = {
+    instanceId: "claudeAgent",
+    status: "error",
+    message: "Claude Code is not signed in on this project. Sign it in to use it.",
+  } as const;
 
   it.each([
     {
@@ -276,6 +281,64 @@ describe("spentLoginStatusStale", () => {
         logins: [login({ id: "claudeAgent-work", label: "work", state: "registering" })],
       },
       expected: true,
+    },
+    // The sign-in's own moment: the composer picks the agent off the sign-in feed, and the
+    // provider statuses — another stream, debounced on the server — still carry the answer from
+    // before it.
+    {
+      name: "the default login just signed in while its status still says it is not",
+      status: notSignedInWord,
+      feed: { available: true, agents: [agentRow("local-only", "unknown")] },
+      expected: true,
+    },
+    {
+      name: "the default login registered while its status still says it is not signed in",
+      status: notSignedInWord,
+      feed: authorized,
+      expected: true,
+    },
+    {
+      name: "a login beyond the defaults signed in while its status still says it is not",
+      status: {
+        instanceId: "claudeAgent-work",
+        status: "error",
+        message: "Claude Code · work is not signed in on this project. Sign it in to use it.",
+      },
+      feed: {
+        ...authorized,
+        logins: [login({ id: "claudeAgent-work", label: "work", state: "registering" })],
+      },
+      expected: true,
+    },
+    // A real failure says so at once: the sign-in feed agrees with the status.
+    {
+      name: "the default login not signed in, and its status says so",
+      status: notSignedInWord,
+      feed: { available: true, agents: [agentRow("not-authorized", "unknown")] },
+      expected: false,
+    },
+    {
+      name: "the default login no longer working, and its status says so",
+      status: {
+        instanceId: "claudeAgent",
+        status: "error",
+        message: "Claude Code's login on this project no longer works. Sign in again.",
+      },
+      feed: { available: true, agents: [agentRow("authorized", "unauthenticated")] },
+      expected: false,
+    },
+    {
+      name: "a login beyond the defaults not signed in, and its status says so",
+      status: {
+        instanceId: "claudeAgent-work",
+        status: "error",
+        message: "Claude Code · work is not signed in on this project. Sign it in to use it.",
+      },
+      feed: {
+        ...authorized,
+        logins: [login({ id: "claudeAgent-work", label: "work", state: "not-authorized" })],
+      },
+      expected: false,
     },
     {
       name: "a driver's own warning on a registered login (its check could not answer)",
