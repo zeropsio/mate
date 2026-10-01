@@ -568,21 +568,12 @@ describe("the account runtime", () => {
           yield* settle;
 
           // The round listed the organization; its project is still being read.
-          expect(yield* demanded()).toEqual([
-            "organization-inventory",
-            "organization-versions",
-            "organization-variables",
-          ]);
+          expect(yield* demanded()).toEqual(["organization-inventory"]);
 
           yield* Deferred.succeed(projectAnswered, undefined);
           yield* clock.advance(SECOND);
           yield* settle;
-          expect(yield* demanded()).toEqual([
-            "organization-inventory",
-            "organization-versions",
-            "organization-variables",
-            "project-inventory",
-          ]);
+          expect(yield* demanded()).toEqual(["organization-inventory", "project-inventory"]);
 
           yield* built.close("logout");
           expect(yield* demanded()).toEqual([]);
@@ -764,9 +755,8 @@ describe("the account runtime", () => {
         yield* clock.advance(SECOND);
         yield* settle;
         yield* settle;
-        // The account holds both organizations' inventories, versions and variables, and their
-        // projects'.
-        expect(yield* statuses()).toEqual(Array.from({ length: 8 }, () => "observing"));
+        // The account holds both organizations' inventories and their projects'.
+        expect(yield* statuses()).toEqual(["observing", "observing", "observing", "observing"]);
         expect(opened.toSorted()).toEqual(["org-1", "org-2"]);
         const roundsBefore = rounds().length;
 
@@ -780,7 +770,7 @@ describe("the account runtime", () => {
         yield* settle;
 
         expect(opened.slice(2)).toEqual(["org-1"]);
-        expect(yield* statuses()).toEqual(Array.from({ length: 8 }, () => "observing"));
+        expect(yield* statuses()).toEqual(["observing", "observing", "observing", "observing"]);
         expect(rounds()).toHaveLength(roundsBefore);
       }),
     ),
@@ -810,6 +800,7 @@ describe("the account runtime", () => {
             clientId: organization.organizationId,
             name: "project-1",
             status: "ACTIVE",
+            tagList: ["mate"],
           });
           const client = new ZeropsApiClient({ fetch: rest.fetch });
           client.restoreSession(rest.issueSession(account.accountId));
@@ -959,8 +950,7 @@ describe("the account runtime", () => {
           yield* settle;
           yield* settle;
           expect(verifiedProjects()).toEqual(["project-1"]);
-          // The organization's inventory, versions and variables, and its one project's.
-          expect(yield* observing()).toBe(4);
+          expect(yield* observing()).toBe(2);
           const roundsBefore = rounds().length;
 
           // Someone else adds a Mate: its project appears in the organization's list.
@@ -979,7 +969,7 @@ describe("the account runtime", () => {
 
           expect(verifiedProjects()).toEqual(["project-1", "project-2"]);
           // Its services are read: the organization's inventory and both projects'.
-          expect(yield* observing()).toBe(5);
+          expect(yield* observing()).toBe(3);
           expect(rounds()).toHaveLength(roundsBefore);
           // Both projects' rows are read the same way: the new one is no less known than the old.
           const listed = listing();

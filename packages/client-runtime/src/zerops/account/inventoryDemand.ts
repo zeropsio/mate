@@ -25,6 +25,7 @@ import {
   pendingDenials,
 } from "../data/access/grantProjects.ts";
 import { projectRecordToZeropsProject } from "../data/dto.ts";
+import { MATE_TAG_NAMESPACE } from "../groups.ts";
 import { interestKeyOf, type ManagedZeropsDataRuntime } from "../data/runtime.ts";
 import {
   projectKeyOf,
@@ -52,6 +53,8 @@ export interface InventoryDemandInput {
   readonly projectStatus: (project: ProjectRef) => string | undefined;
   /** Whether the organization's project list has answered. */
   readonly organizationListed: (organization: ProjectRef["organization"]) => boolean;
+  /** Whether the organization's list names a project of this product (a Mate, or its group). */
+  readonly organizationHasMates: (organization: ProjectRef["organization"]) => boolean;
 }
 
 /** The inventories the account demands now: its organizations', then its projects'. */
@@ -72,10 +75,15 @@ export function inventoryDemand(
   return [
     ...organizations.flatMap(({ organization }): ReadonlyArray<RuntimeInterestDescriptor> => [
       { kind: "organization-inventory", organization },
-      // What its services run and their Mate flags, streamed for the session: a read of either
-      // only waits on the store, and never registers anything of its own.
-      { kind: "organization-versions", organization },
-      { kind: "organization-variables", organization },
+      // What its services run and their Mate flags, streamed for the session — only for an
+      // organization with Mates, the only one anything reads them for. A read of either only
+      // waits on the store, and never registers anything of its own.
+      ...(input.organizationHasMates(organization)
+        ? ([
+            { kind: "organization-versions", organization },
+            { kind: "organization-variables", organization },
+          ] as const)
+        : []),
     ]),
     ...projects.map((project): RuntimeInterestDescriptor => ({
       kind: "project-inventory",
@@ -117,6 +125,14 @@ export const holdInventoryDemand = (input: {
         },
         organizationListed: (organization) =>
           get(data.reads.projectsOf(organization)).query.status === "observed",
+        organizationHasMates: (organization) =>
+          get(data.reads.projectsOf(organization)).value.some(
+            (knowledge) =>
+              knowledge.knowledge === "observed" &&
+              (projectRecordToZeropsProject(knowledge.record)?.tagList ?? []).some(
+                (tag) => tag === MATE_TAG_NAMESPACE || tag.startsWith(`${MATE_TAG_NAMESPACE}:`),
+              ),
+          ),
       }),
     );
     const wanted = yield* Queue.sliding<ReadonlyArray<RuntimeInterestDescriptor>>(1);

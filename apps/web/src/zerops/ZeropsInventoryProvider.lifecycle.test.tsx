@@ -1083,8 +1083,6 @@ it.live(
         const demands = [...(yield* harness.runtime.state).interests.values()];
         expect(demands.map(({ descriptor }) => descriptor.kind)).toEqual([
           "organization-inventory",
-          "organization-versions",
-          "organization-variables",
           "project-inventory",
         ]);
       }),

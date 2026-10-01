@@ -207,20 +207,25 @@ describe("inventoryDemand", () => {
       access: access ?? { status: "unverified" },
       projectStatus: (ref) => status?.[ref.projectId],
       organizationListed: () => listed ?? false,
+      organizationHasMates: () => false,
     });
-    expect(
-      demand
-        .filter(({ kind }) => kind !== "organization-versions" && kind !== "organization-variables")
-        .map(named),
-    ).toEqual(expected);
-    // Every organization the inventory holds has its versions and variables streamed with it.
-    const organizations = demand.filter(({ kind }) => kind === "organization-inventory").length;
-    expect(demand.filter(({ kind }) => kind === "organization-versions")).toHaveLength(
-      organizations,
-    );
-    expect(demand.filter(({ kind }) => kind === "organization-variables")).toHaveLength(
-      organizations,
-    );
+    expect(demand.map(named)).toEqual(expected);
+  });
+
+  it.each([
+    { name: "with Mates, its versions and variables streamed for the session", mates: true },
+    { name: "without, neither: nothing reads them", mates: false },
+  ])("holds an organization $name", ({ mates }) => {
+    const demand = inventoryDemand({
+      grant: drive(granted),
+      access: { status: "unverified" },
+      projectStatus: () => undefined,
+      organizationListed: () => true,
+      organizationHasMates: () => mates,
+    });
+    const kinds = demand.map(({ kind }) => kind);
+    expect(kinds.filter((kind) => kind === "organization-versions")).toHaveLength(mates ? 1 : 0);
+    expect(kinds.filter((kind) => kind === "organization-variables")).toHaveLength(mates ? 1 : 0);
   });
 });
 
@@ -295,8 +300,7 @@ describe("holdInventoryDemand", () => {
         yield* settle;
 
         const held = [...(yield* data.state).interests.values()].filter(({ leases }) => leases > 0);
-        // 38 projects, the organization, and its version and variable streams.
-        expect(held).toHaveLength(41);
+        expect(held).toHaveLength(39);
         expect(published).toBe(1);
       }),
     ),
