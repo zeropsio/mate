@@ -272,6 +272,7 @@ export {
   MATE_SELF_PROJECT_ROLE,
   planAccountGroupReach,
   planGroupReach,
+  writeTokenProjectsFresh,
   type ZeropsGroupReachGroup,
   type ZeropsGroupReachWrite,
   type ZeropsIntegrationToken,

@@ -21,8 +21,8 @@ import {
 } from "@t3tools/client-runtime/zerops/data";
 import * as Effect from "effect/Effect";
 
-import { fakeTokenStore } from "./__fixtures__/tokenStore";
-import { describe, expect, it } from "vite-plus/test";
+import { makeTokenStore, type TokenStore } from "./__fixtures__/tokenStore";
+import { afterEach, describe, expect, it } from "vite-plus/test";
 
 import {
   birthStepFailure,
@@ -72,18 +72,29 @@ const birth: BirthRecord = {
  * The account's runtime as far as a birth writes tags with it: `updateProjectTags` over the Gitea
  * project's list, each patch applied to the list as it is now.
  */
-function fakeRuntime(
+/** Each test's token stores, ended after it. */
+const stores: Array<TokenStore> = [];
+afterEach(async () => {
+  await Promise.all(stores.splice(0).map((store) => store.close()));
+});
+
+async function fakeRuntime(
   calls: Array<string>,
   onWrite: () => void = () => undefined,
   initial: ReadonlyArray<string> = ["mate:tool:gitea", "mate:gn:group-1:todo"],
 ) {
   let tagList = initial;
-  const tokens = fakeTokenStore(calls, [{ id: "broker-1", name: "mate-broker", projects: [] }]);
+  const tokens = await makeTokenStore({
+    calls,
+    tokens: () => [{ id: "broker-1", name: "mate-broker", projects: [] }],
+  });
+  stores.push(tokens);
   return {
-    scope: tokens.scope,
-    cells: tokens.cells,
+    scope: tokens.runtime.scope,
+    cells: tokens.runtime.cells,
     commands: {
-      setIntegrationTokenProjects: tokens.setIntegrationTokenProjects,
+      listIntegrationTokenGrants: tokens.runtime.commands.listIntegrationTokenGrants,
+      setIntegrationTokenProjects: tokens.runtime.commands.setIntegrationTokenProjects,
       updateProjectTags: (project: ProjectRef, patch: ProjectTagPatch) =>
         Effect.sync(() => {
           const read = { id: project.projectId, name: "Gitea", status: "ACTIVE", tagList };
@@ -112,7 +123,7 @@ describe("the birth's ports", () => {
     const calls: Array<string> = [];
     const inputs = {
       client: fakeClient(),
-      runtime: fakeRuntime(calls),
+      runtime: await fakeRuntime(calls),
       projectRef,
     } as unknown as BirthInputs;
     const ports = webBirthPorts(
@@ -138,7 +149,7 @@ describe("the birth's ports", () => {
     const calls: Array<string> = [];
     const inputs = {
       client: fakeClient(),
-      runtime: fakeRuntime(calls),
+      runtime: await fakeRuntime(calls),
       projectRef,
     } as unknown as BirthInputs;
     const ports = webBirthPorts(
@@ -182,7 +193,7 @@ describe("the birth's ports", () => {
     const calls: Array<string> = [];
     const inputs = {
       client: { fetchProject } as unknown as ZeropsApiClient,
-      runtime: fakeRuntime(calls, undefined, [
+      runtime: await fakeRuntime(calls, undefined, [
         "mate:tool:gitea",
         "mate:gn:group-1:todo",
         "mate:gm:group-1:project-dead:production",
@@ -415,7 +426,7 @@ describe("the birth's account", () => {
     const calls: Array<string> = [];
     let current = true;
     // The person signs out while the registry entry is written; somebody else signs in.
-    const runtime = fakeRuntime(calls, () => {
+    const runtime = await fakeRuntime(calls, () => {
       current = false;
     });
     const ports = webBirthPorts(

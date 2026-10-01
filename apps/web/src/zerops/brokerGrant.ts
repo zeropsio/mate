@@ -32,7 +32,6 @@ import {
 } from "@t3tools/client-runtime/zerops/data";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 
-import { readZeropsCell } from "./useZeropsDeployedVersion";
 import { integrationTokensFromGrantMetadata } from "./useZeropsGroupReach";
 import { runZeropsCommand, type ZeropsDataContextValue } from "./zeropsDataContext";
 
@@ -70,9 +69,11 @@ export type BrokerGrantClient = Pick<
 >;
 
 /**
- * The broker grant's token list and its one write, over the account's store: the list is the
- * organization's shared `tokens:{org}` cell — the sweep's and group reach's too — and the write is
- * the runtime's command, which makes every reader of the list read it again.
+ * The broker grant's token list and its one write, through the account's runtime. The write
+ * replaces the broker token's whole project list, so the list it is planned from is read live,
+ * right before it — never the shared `tokens:{org}` cell, which serves display and decisions
+ * and may be older than a Mate registered meanwhile. The write makes every reader of that cell
+ * read it again.
  */
 export function brokerGrantTokens(runtime: ZeropsDataContextValue["runtime"]): BrokerGrantClient {
   const organization = (clientId: string): OrganizationRef => ({
@@ -81,13 +82,9 @@ export function brokerGrantTokens(runtime: ZeropsDataContextValue["runtime"]): B
     organizationId: ZeropsOrganizationId.make(clientId),
   });
   return {
-    listIntegrationTokens: async (clientId, signal) =>
+    listIntegrationTokens: async (clientId) =>
       integrationTokensFromGrantMetadata(
-        await readZeropsCell(
-          runtime.cells,
-          { kind: "tokens", account: runtime.scope, organization: organization(clientId) },
-          signal,
-        ),
+        await runZeropsCommand(runtime.commands.listIntegrationTokenGrants(organization(clientId))),
       ),
     setIntegrationTokenProjects: async ({ clientId, ...input }) => {
       await runZeropsCommand(

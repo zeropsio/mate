@@ -58,6 +58,7 @@ import { useEffect, useMemo, useRef } from "react";
 
 import {
   planAccountGroupReach,
+  writeTokenProjectsFresh,
   type ZeropsGroupReachGroup,
   type ZeropsIntegrationToken,
 } from "@t3tools/client-runtime/zerops";
@@ -153,15 +154,20 @@ export function useZeropsGroupReach(input: {
     let cancelled = false;
     void (async () => {
       try {
-        for (const write of planAccountGroupReach({ groups, tokens })) {
-          if (cancelled) return;
-          await runZeropsCommand(
-            runtime.commands.setIntegrationTokenProjects({
-              organization: organizationRef(clientId),
-              ...write,
-            }),
-          );
-        }
+        // The shared list says whether anything is owed; each write replaces a token's whole
+        // project list, so it is planned from the list read live right before it.
+        const organization = organizationRef(clientId);
+        await writeTokenProjectsFresh({
+          read: async () =>
+            integrationTokensFromGrantMetadata(
+              await runZeropsCommand(runtime.commands.listIntegrationTokenGrants(organization)),
+            ),
+          plan: (fresh) => (cancelled ? [] : planAccountGroupReach({ groups, tokens: fresh })),
+          write: (write) =>
+            runZeropsCommand(
+              runtime.commands.setIntegrationTokenProjects({ organization, ...write }),
+            ).then(() => undefined),
+        });
       } catch {
         // Background repair: try again on the next read rather than showing
         // the user an error about something they did not ask for.

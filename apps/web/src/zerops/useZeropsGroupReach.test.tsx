@@ -127,6 +127,12 @@ function contextFor(broker: GrantsBroker, setIntegrationTokenProjects: (input: u
     scope,
     cells: { known: broker.known },
     commands: {
+      // The platform's tokens as a live read answers them: what the test published last.
+      listIntegrationTokenGrants: () =>
+        Effect.sync(() => ({
+          attempt: {} as never,
+          value: broker.current.state === "known" ? broker.current.value : [],
+        })),
       setIntegrationTokenProjects: (input: unknown) => {
         setIntegrationTokenProjects(input);
         return Effect.succeed({ attempt: {} as never, value: undefined });
@@ -536,6 +542,11 @@ describe("useZeropsGroupReach", () => {
       scope,
       cells: { known: broker.known },
       commands: {
+        listIntegrationTokenGrants: () =>
+          Effect.sync(() => ({
+            attempt: {} as never,
+            value: broker.current.state === "known" ? broker.current.value : [],
+          })),
         setIntegrationTokenProjects: (input: { readonly tokenId: string }) =>
           Effect.promise(async () => {
             if (input.tokenId === "token-a") await firstGate;

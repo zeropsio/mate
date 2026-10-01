@@ -82,7 +82,7 @@ import type { MoveMembership } from "../components/zerops/ZeropsMoveToGroupDialo
 import { useEnvironmentLinks } from "../routes/-environmentTargets";
 import { resolveThreadRouteTarget } from "../threadRoutes";
 import { invalidateZerops } from "./accountInvalidations";
-import { projectTagsWrite, registerMateInGroup } from "./brokerGrant";
+import { brokerGrantTokens, projectTagsWrite, registerMateInGroup } from "./brokerGrant";
 import {
   deletingMates,
   markMateDeleting,
@@ -456,7 +456,7 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
         // Mate gets its bot's access on the loop's next pass rather than on a
         // step this verb has to sequence.
         const outstanding = await registerMateInGroup({
-          client,
+          client: brokerGrantTokens(runtime),
           writeTags: projectTagsWrite({ runtime, projectRef }, activeOrganization.id),
           clientId: activeOrganization.id,
           giteaProjectId,
@@ -467,7 +467,7 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
         if (outstanding !== null) setTrouble(outstanding);
       });
     },
-    [activeOrganization, client, giteaProjectId, projectRef, registry, runtime, write],
+    [activeOrganization, giteaProjectId, projectRef, registry, runtime, write],
   );
 
   /** Whose Mate it is, where that is a colleague: "Ada's Mate", as its row says it. */
