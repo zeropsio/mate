@@ -4708,6 +4708,57 @@ describe("a failure's scope: its own interest, or the receiver", () => {
 
   it.effect.each([
     [
+      "a project's record",
+      { kind: "project-record", project: project("project-d") },
+      (ticket: ReadTicket) => ticket.target.kind === "project",
+    ],
+    [
+      "a project's lag-free services check",
+      { kind: "project-services-check", project: project("project-d") },
+      (ticket: ReadTicket) =>
+        ticket.target.kind === "query" && ticket.target.descriptor.kind === "services-of-project",
+    ],
+  ] as const)(
+    "%s whose read fails recovers alone, on the live receiver",
+    ([, descriptor, isItsRead]) =>
+      Effect.gen(function* () {
+        const rig = yield* setup({ read: failFirst(1, isItsRead, refused(503, "server")) });
+        yield* settleUntil(rig.runtime, (state) =>
+          rig.leases.every((lease) => rig.interestOf(state, lease)?.status === "observing"),
+        );
+        const leaseScope = yield* Scope.make();
+        const lease = yield* rig.runtime
+          .acquire(descriptor as RuntimeInterestDescriptor)
+          .pipe(Scope.provide(leaseScope));
+        const first = yield* settleUntil(
+          rig.runtime,
+          (state) => rig.interestOf(state, lease)?.status === "recovering",
+        );
+        expect(rig.interestOf(first, lease)).toMatchObject({ identity: { receiver: rig.live } });
+        expect(rig.leases.map((held) => rig.interestOf(first, held)?.status)).toEqual(
+          rig.leases.map(() => "observing"),
+        );
+
+        yield* TestClock.adjust("10 millis");
+        const recovered = yield* settleUntil(
+          rig.runtime,
+          (state) => rig.interestOf(state, lease)?.status === "observing",
+        );
+        expect(rig.interestOf(recovered, lease)).toMatchObject({
+          identity: { receiver: rig.live },
+        });
+        expect(rig.leases.map((held) => rig.interestOf(recovered, held)?.status)).toEqual(
+          rig.leases.map(() => "observing"),
+        );
+        expect(yield* Queue.size(rig.opened)).toBe(0);
+        expect(rig.closes()).toBe(0);
+        yield* Scope.close(leaseScope, Exit.void);
+        yield* rig.dispose;
+      }),
+  );
+
+  it.effect.each([
+    [
       "an invalidation re-reads every subscription on a socket of its own",
       {},
       { opened: 1, closes: 1, listReRead: true },
