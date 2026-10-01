@@ -178,6 +178,7 @@ import { useZeropsNextStepStrip } from "./zerops/ZeropsNextStepBanner";
 import { zeropsMateAt } from "../zerops/mateIdentities";
 import { mateVoiceSpeaks } from "@t3tools/client-runtime/zerops/environments";
 import { useMateVoice } from "../zerops/mateVoiceContext";
+import { useReviveFailedMate } from "../zerops/mateRestart";
 import { useZeropsMateDirectory } from "../zerops/useZeropsMates";
 import { ZeropsPanel } from "./zerops/ZeropsPanel";
 import { ZeropsLifecycleStrip } from "./zerops/ZeropsLifecycleStrip";
@@ -2318,6 +2319,7 @@ export default function ChatView(props: ChatViewProps) {
   // is the container's internal host.
   const zeropsMates = useZeropsMateDirectory();
   const mateLinkVoice = useMateVoice();
+  const reviveFailedMate = useReviveFailedMate();
   const systemComposerBannerItems = useMemo<ComposerBannerStackItem[]>(() => {
     const items: ComposerBannerStackItem[] = [];
     const unavailableConnection = activeEnvironmentUnavailableState?.connection ?? null;
@@ -2333,7 +2335,12 @@ export default function ChatView(props: ChatViewProps) {
       const banner = mateVoiceBannerItem({
         environmentId,
         voice: mateLinkVoice,
-        onRetry: () => void handleReconnectActiveEnvironment(environmentId),
+        // A container that failed is stopped and started; any other link is asked again.
+        onRetry: () => {
+          if (!reviveFailedMate(routeMateAt.mate.serviceId)) {
+            void handleReconnectActiveEnvironment(environmentId);
+          }
+        },
         projects: <Link to="/zerops" />,
       });
       if (banner !== null) items.push(banner);
@@ -2356,6 +2363,7 @@ export default function ChatView(props: ChatViewProps) {
     environmentId,
     mateLinkVoice,
     reconnectWarningGraceElapsed,
+    reviveFailedMate,
     handleReconnectActiveEnvironment,
     zeropsMates,
   ]);

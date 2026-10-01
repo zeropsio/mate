@@ -2720,6 +2720,39 @@ export class ZeropsApiClient {
   }
 
   /**
+   * `PUT /service-stack/{id}/stop` with the user's own token — the first half
+   * of bringing a FAILED service back: the platform refuses to restart one
+   * (`serviceStackIsFailed`, "Try to stop the stack and then start it again";
+   * three Mates after a platform outage, 2026-10-01). Answers the stop's
+   * process id, which the caller waits on before the start.
+   */
+  async stopService(
+    serviceId: string,
+    signal?: AbortSignal,
+    beforeWrite?: () => Promise<void>,
+  ): Promise<{ readonly processId: string | undefined }> {
+    const process = await this.#request<{ readonly id?: unknown }>(
+      `/service-stack/${serviceId}/stop`,
+      { method: "PUT", signal: signal ?? null },
+      {
+        operationKind: "project-write",
+        ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),
+      },
+    );
+    return { processId: typeof process?.id === "string" ? process.id : undefined };
+  }
+
+  /** `GET /process/{id}` — where one process stands (`PENDING`, `RUNNING`, `FINISHED`, …). */
+  async readProcessStatus(processId: string, signal?: AbortSignal): Promise<string | undefined> {
+    const process = await this.#request<{ readonly status?: unknown }>(
+      `/process/${processId}`,
+      { signal: signal ?? null },
+      { operationKind: "read" },
+    );
+    return typeof process?.status === "string" ? process.status : undefined;
+  }
+
+  /**
    * `PUT /service-stack/{id}/start` with the user's own token — starts a
    * STOPPED service (a zcp container included).
    */

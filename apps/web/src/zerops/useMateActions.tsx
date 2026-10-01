@@ -102,6 +102,7 @@ import {
 } from "./useZeropsCandidates";
 import { useZeropsOrganizationMembers, zeropsMateOwner } from "./useZeropsMateOwners";
 import { finishMateSetup, forgetPress, useMatePresses } from "./matePress";
+import { mateRestartPorts, restartMateContainer } from "./mateRestart";
 import { intendContainer } from "./zeropsContainers";
 import { runZeropsCommand, useZeropsData } from "./zeropsDataContext";
 import { useZeropsSession } from "./ZeropsSessionProvider";
@@ -339,23 +340,25 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
       const serviceId = candidate.service?.id;
       if (activeOrganization === null || serviceId === undefined) return;
       const project = projectRef(activeOrganization.id, candidate.project.id);
+      const service = {
+        kind: "service" as const,
+        project,
+        serviceId: ZeropsServiceId.make(serviceId),
+      };
+      // A container that failed is stopped and started: the platform refuses to restart it.
       void write(
         candidate.key,
         () =>
-          runZeropsCommand(
-            runtime.commands.restartService({
-              kind: "service",
-              project,
-              serviceId: ZeropsServiceId.make(serviceId),
-            }),
-          ).then((value) => {
+          restartMateContainer(
+            candidate.service?.status,
+            mateRestartPorts({ client, runtime, service }),
+          ).then(() => {
             intendContainer(candidate.key, { kind: "restart" });
-            return value;
           }),
         refresh,
       );
     },
-    [activeOrganization, projectRef, refresh, runtime.commands, write],
+    [activeOrganization, client, projectRef, refresh, runtime, write],
   );
 
   const rename = useCallback(

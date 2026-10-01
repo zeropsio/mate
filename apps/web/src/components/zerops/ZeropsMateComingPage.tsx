@@ -85,6 +85,7 @@ import { useZeropsCandidates } from "~/zerops/useZeropsCandidates";
 import { useZeropsCreationVerdicts } from "~/zerops/useZeropsCreationVerdicts";
 import { useZeropsInventory, type InventoryServiceOutcome } from "~/zerops/inventoryContext";
 import { forgetPress, pressFailure, useMatePress } from "~/zerops/matePress";
+import { useReviveFailedMate } from "~/zerops/mateRestart";
 import { useMateSetup } from "~/zerops/useMateSetup";
 import { useZeropsContainers } from "~/zerops/zeropsContainers";
 import { runZeropsCommand, useZeropsData } from "~/zerops/zeropsDataContext";
@@ -370,9 +371,17 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
     environments.setOnScreen(projectId);
     return () => environments.setOnScreen(null);
   }, [environments, projectId]);
-  // Try now: the person's own retry of what its machine backs off from.
+  // Try now: the person's own retry of what its machine backs off from — and for a container
+  // that failed, its stop and its start, which the platform asks for instead of a restart.
+  const reviveFailed = useReviveFailedMate();
   const linkKey = link.key;
-  const tryNow = linkKey === undefined ? undefined : () => void connect({ key: linkKey });
+  const failedServiceId = candidate?.service?.id;
+  const tryNow =
+    linkKey === undefined
+      ? undefined
+      : () => {
+          if (!reviveFailed(failedServiceId)) void connect({ key: linkKey });
+        };
 
   // What its container says of its own setup, in any browser (`/mate/setup.json`).
   const setup = useMateSetup(page?.kind === "coming" ? candidate?.containerOrigin : undefined);

@@ -2056,6 +2056,24 @@ describe("ZeropsApiClient.exchangeWebSocketToken", () => {
   });
 });
 
+describe("ZeropsApiClient.stopService and readProcessStatus", () => {
+  it("stops a service and answers the stop's process, then reads where it stands", async () => {
+    const stub = recordingFetch((request) =>
+      request.url.endsWith("/stop")
+        ? jsonResponse(200, { id: "process-stop", status: "PENDING" })
+        : jsonResponse(200, { id: "process-stop", status: "FINISHED" }),
+    );
+    const client = new ZeropsApiClient({ fetch: stub.fetch });
+    client.restoreSession(SESSION);
+
+    expect(await client.stopService("svc-1")).toEqual({ processId: "process-stop" });
+    expect(await client.readProcessStatus("process-stop")).toBe("FINISHED");
+    expect(
+      stub.requests.map((request) => `${request.method} ${request.url.split("/public")[1]}`),
+    ).toEqual(["PUT /service-stack/svc-1/stop", "GET /process/process-stop"]);
+  });
+});
+
 describe("ZeropsApiClient.readProjectEnvWrites", () => {
   it("answers the project's variable writes alone, by status", async () => {
     const stub = recordingFetch(() =>
