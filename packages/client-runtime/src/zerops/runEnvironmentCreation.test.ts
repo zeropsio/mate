@@ -70,6 +70,14 @@ function fakePlatform(overrides: Partial<EnvironmentCreationPlatform> = {}) {
       calls.push(`closeOff:${projectId}`);
       return Promise.resolve();
     },
+    readIsolation: (projectId) => {
+      calls.push(`isolation:${projectId}`);
+      return Promise.resolve("service");
+    },
+    markClosedOff: (projectId) => {
+      calls.push(`closedOff:${projectId}`);
+      return Promise.resolve();
+    },
     register: (projectId) => {
       calls.push(`register:${projectId}`);
       return Promise.resolve();
@@ -187,6 +195,9 @@ describe("runEnvironmentCreation", () => {
       // The recipe's own write of the project's variables is waited out, then the project is
       // closed off and registered: nothing is left for a browser after the press.
       "closeOff:proj-1",
+      // Read back closed before it is marked so: zcp imports the runtimes on the mark alone.
+      "isolation:proj-1",
+      "closedOff:proj-1",
       "register:proj-1",
     ]);
     expect(calls.indexOf("envWrites:proj-1")).toBeGreaterThan(
@@ -547,6 +558,24 @@ describe("runEnvironmentCreation — closing the project off", () => {
     expect(calls).toContain("closeOff:proj-1");
   });
 
+  it("marks the project closed off only once it reads back closed, asking again until it does", async () => {
+    const reads = ["none", "none", "service"];
+    const { platform, calls } = fakePlatform({
+      readIsolation: async () => reads.shift(),
+    });
+    const { outcome } = await run(plan("dev"), platform);
+    expect(outcome.ok).toBe(true);
+    expect(calls.filter((call) => call.startsWith("closeOff:"))).toHaveLength(3);
+    expect(calls.filter((call) => call.startsWith("closedOff:"))).toEqual(["closedOff:proj-1"]);
+  });
+
+  it("never marks a project closed off that never reads back closed", async () => {
+    const { platform, calls } = fakePlatform({ readIsolation: async () => "none" });
+    const { outcome } = await run(plan("dev"), platform);
+    expect(outcome).toMatchObject({ ok: false, failedStep: { kind: "close-off" } });
+    expect(calls.some((call) => call.startsWith("closedOff:"))).toBe(false);
+  });
+
   it("tries the close-off again while the project's variables have not all appeared", async () => {
     let attempts = 0;
     const { platform } = fakePlatform({
@@ -588,7 +617,13 @@ describe("runEnvironmentCreation — a press tried again", () => {
       sleep: async () => undefined,
     });
     expect(outcome).toMatchObject({ ok: true, projectId: "proj-1" });
-    expect(calls).toEqual(["envWrites:proj-1", "closeOff:proj-1", "register:proj-1"]);
+    expect(calls).toEqual([
+      "envWrites:proj-1",
+      "closeOff:proj-1",
+      "isolation:proj-1",
+      "closedOff:proj-1",
+      "register:proj-1",
+    ]);
   });
 
   it("says the project the press made the moment the platform takes it", async () => {

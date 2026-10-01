@@ -304,11 +304,19 @@ export function finishMateSetupVerb(input: {
   readonly containerMissing: boolean;
   /** A press this tab made for it stopped at a step. */
   readonly pressStopped: boolean;
+  /**
+   * Its container carries the press's marker (`MATE_SETUP_RUNTIMES`) and its project no
+   * `mate:closed-off`: a press interrupted before its close-off, whose runtimes zcp holds back.
+   */
+  readonly closedOffMissing: boolean;
   /** The viewer's org role, as the platform spells it. */
   readonly viewerRole?: string | undefined;
 }): string | undefined {
   const halfMade =
-    input.registration === "awaiting-owner" || input.containerMissing || input.pressStopped;
+    input.registration === "awaiting-owner" ||
+    input.containerMissing ||
+    input.pressStopped ||
+    input.closedOffMissing;
   if (!halfMade) return undefined;
   if (input.viewerRole !== "OWNER" && input.viewerRole !== "ADMIN") return undefined;
   return FINISH_MATE_SETUP_VERB;

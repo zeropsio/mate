@@ -385,6 +385,27 @@ export function withZeropsStandUpTag(
   return by.length === 0 ? kept : [...kept, `${STAND_UP_TAG_PREFIX}${by}`];
 }
 
+/**
+ * The press closed the project off and read it back closed (`mate:closed-off`, pass 28): zcp's
+ * boot import of the tier's runtimes, and its import refusal, wait for this tag, read with the
+ * Mate's own key. A new project starts `envIsolation: service` before the container recipe opens
+ * it, so the setting alone could be read too early; the tag is written only after the close-off.
+ */
+export const MATE_CLOSED_OFF_TAG = `${MATE_TAG_NAMESPACE}:closed-off`;
+
+/** Whether the press marked the project closed off. */
+export function isZeropsMateClosedOff(tagList: ReadonlyArray<string> | undefined): boolean {
+  return (tagList ?? []).includes(MATE_CLOSED_OFF_TAG);
+}
+
+/** The project marked closed off, every other tag kept. Idempotent. */
+export function withZeropsClosedOffTag(
+  tagList: ReadonlyArray<string> | undefined,
+): ReadonlyArray<string> {
+  const tags = tagList ?? [];
+  return tags.includes(MATE_CLOSED_OFF_TAG) ? tags : [...tags, MATE_CLOSED_OFF_TAG];
+}
+
 /** The ask answered: every stand-up tag goes, every other tag stays. Idempotent. */
 export function withoutZeropsStandUpTag(
   tagList: ReadonlyArray<string> | undefined,

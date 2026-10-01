@@ -405,6 +405,9 @@ export interface ZeropsServiceEnvVar {
  */
 const ZEROPS_MATE_ENV_KEY = "ZCP_MATE_ENABLED";
 
+/** The press's marker on a Mate's container (`newProject.ts`). */
+const MATE_SETUP_RUNTIMES_ENV_KEY = "MATE_SETUP_RUNTIMES";
+
 /**
  * zcp's own reading of that flag: `1` or `true`, case-insensitive, surrounding
  * space tolerated. Deliberately forgiving, because it is a value a person
@@ -2815,6 +2818,17 @@ export class ZeropsApiClient {
     signal?: AbortSignal,
   ): Promise<ReadonlyArray<ZeropsAgentType>> {
     return agentsFromOAuthFlags(await this.#serviceEnv(serviceId, signal));
+  }
+
+  /**
+   * Whether a zcp container carries the press's marker (`MATE_SETUP_RUNTIMES`, pass 28): a Mate
+   * made by the press, whose runtimes zcp imports once its project is marked closed off. Only the
+   * key's presence leaves this call.
+   */
+  async carriesSetupMarker(serviceId: string, signal?: AbortSignal): Promise<boolean> {
+    return (await this.#serviceEnv(serviceId, signal)).some(
+      (entry) => entry.key === MATE_SETUP_RUNTIMES_ENV_KEY,
+    );
   }
 
   /**

@@ -88,6 +88,13 @@ export interface EnvironmentCreationPlatform {
   ) => Promise<ReadonlyArray<{ readonly status: string }>>;
   /** The project closed off (`projectIsolation.ts`); safe to ask again. */
   readonly closeOff: (projectId: string) => Promise<void>;
+  /** The project's `envIsolation`, read back; undefined while the read has not caught up. */
+  readonly readIsolation: (projectId: string) => Promise<string | undefined>;
+  /**
+   * `mate:closed-off` on the project, as the person: zcp's boot import of the runtimes waits for
+   * it (pass 28). Idempotent.
+   */
+  readonly markClosedOff: (projectId: string) => Promise<void>;
   /**
    * The environment's group registration (`addGroupEnvironment.ts`); safe to ask again. Throws
    * with the reason a write did not go through.
@@ -348,7 +355,15 @@ export async function runEnvironmentCreation(
             sleep,
             assertCurrent,
           });
-          await withTries(() => input.platform.closeOff(target));
+          // Marked only once it reads back closed: zcp imports the runtimes on the mark alone.
+          await withTries(async () => {
+            await input.platform.closeOff(target);
+            const isolation = await input.platform.readIsolation(target);
+            if (isolation !== "service") {
+              throw new Error("The project does not read as closed off yet.");
+            }
+          });
+          await withTries(() => input.platform.markClosedOff(target));
           break;
         }
         case "register": {

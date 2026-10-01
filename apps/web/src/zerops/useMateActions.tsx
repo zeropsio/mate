@@ -101,7 +101,7 @@ import {
   type ZeropsCandidatePresentation,
 } from "./useZeropsCandidates";
 import { useZeropsOrganizationMembers, zeropsMateOwner } from "./useZeropsMateOwners";
-import { finishMateSetup, forgetPress, useMatePresses } from "./matePress";
+import { finishMateSetup, forgetPress, useInterruptedPresses, useMatePresses } from "./matePress";
 import { mateRestartPorts, restartMateContainer } from "./mateRestart";
 import { intendContainer } from "./zeropsContainers";
 import { runZeropsCommand, useZeropsData } from "./zeropsDataContext";
@@ -224,6 +224,13 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
 
   const giteaProjectId = useAccountGitea(activeOrganization?.id)?.projectId;
   const presses = useMatePresses();
+  // A press interrupted before its close-off, on a Mate made in any browser: read only for an
+  // owner or an admin, who could finish it.
+  const interrupted = useInterruptedPresses(
+    candidates,
+    client,
+    activeOrganization?.roleCode === "OWNER" || activeOrganization?.roleCode === "ADMIN",
+  );
   const groupTree = useMemo(
     () =>
       buildZeropsGroupTree(candidates, {
@@ -445,11 +452,12 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
           projectId: candidate.project.id,
         }),
         containerMissing: mateContainerMissing(candidate, press !== undefined, Date.now()),
+        closedOffMissing: candidate.service !== undefined && interrupted.has(candidate.service.id),
         pressStopped: press?.state.kind === "failed",
         viewerRole: activeOrganization?.roleCode,
       });
     },
-    [activeOrganization?.roleCode, groupTree.groups, presses, registry.registry],
+    [activeOrganization?.roleCode, groupTree.groups, interrupted, presses, registry.registry],
   );
 
   const finishSetup = useCallback(

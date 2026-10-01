@@ -93,6 +93,8 @@ export {
   withZeropsFaceTag,
   withZeropsGroupTags,
   withZeropsMateTag,
+  isZeropsMateClosedOff,
+  MATE_CLOSED_OFF_TAG,
   type BirthPlacement,
   type DeriveZeropsGroupsOptions,
   type ZeropsEnvironmentRole,

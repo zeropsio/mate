@@ -42,7 +42,8 @@ vi.mock("./ZeropsSessionProvider", () => ({
       roleCode: mock.roleCode,
       canCreateProjects: true,
     },
-    client: {},
+    // No Mate here carries the press marker: no Finish setup for an interrupted press.
+    client: { carriesSetupMarker: async () => false },
     user: { id: "user-ada" },
   }),
 }));

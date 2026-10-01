@@ -281,6 +281,7 @@ describe("finishMateSetupVerb", () => {
     registration: "registered" as MateRegistration,
     containerMissing: false,
     pressStopped: false,
+    closedOffMissing: false,
   };
   it.each([
     {
@@ -304,6 +305,12 @@ describe("finishMateSetupVerb", () => {
     {
       name: "an owner, on a Mate whose press in this tab stopped",
       input: { ...HALF_MADE, pressStopped: true },
+      viewerRole: "OWNER",
+      expected: "Finish setup",
+    },
+    {
+      name: "an owner, on a Mate whose press stopped before its close-off was marked",
+      input: { ...HALF_MADE, closedOffMissing: true },
       viewerRole: "OWNER",
       expected: "Finish setup",
     },
