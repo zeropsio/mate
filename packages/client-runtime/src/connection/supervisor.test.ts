@@ -649,9 +649,16 @@ describe("EnvironmentSupervisor", () => {
     }).pipe(Effect.provide(TestClock.layer())),
   );
 
-  it.effect("releases a live session while offline and starts a new generation when online", () =>
+  it.effect("shows offline over a kept session, and connected the moment its probe answers", () =>
     Effect.gen(function* () {
-      const harness = yield* makeHarness();
+      const probes = yield* Ref.make(0);
+      const probed = yield* Deferred.make<void>();
+      const harness = yield* makeHarness({
+        probe: () =>
+          Ref.update(probes, (count) => count + 1).pipe(
+            Effect.andThen(Deferred.succeed(probed, undefined)),
+          ),
+      });
       const supervisor = yield* EnvironmentSupervisor.make(TARGET_ENTRY, {
         initiallyDesired: true,
       }).pipe(Effect.provide(harness.dependencies));
@@ -661,9 +668,64 @@ describe("EnvironmentSupervisor", () => {
         (state) => state.phase === "connected" && state.generation === 1,
       );
       yield* harness.setNetworkStatus("offline");
+      // The face never claims a live link during an outage, though the socket stays.
       yield* awaitState(supervisor.state, (state) => state.phase === "offline");
 
+      expect(yield* Ref.get(probes)).toBe(0);
+      expect(yield* Ref.get(harness.releaseCount)).toBe(0);
+      expect(Option.isSome(yield* SubscriptionRef.get(supervisor.session))).toBe(true);
+
+      yield* harness.setNetworkStatus("online");
+      yield* Deferred.await(probed);
+      yield* awaitState(supervisor.state, (state) => state.phase === "connected");
+
+      expect(yield* Ref.get(probes)).toBe(1);
+      expect(yield* Ref.get(harness.sessionCount)).toBe(1);
+      expect(yield* Ref.get(harness.releaseCount)).toBe(0);
+      expect((yield* SubscriptionRef.get(supervisor.state)).generation).toBe(1);
+    }),
+  );
+
+  it.effect.each([
+    { case: "fails", probe: Effect.fail(transient("The socket died offline.")), wait: "0 millis" },
+    { case: "never answers", probe: Effect.never, wait: "3 seconds" },
+  ] as const)("replaces a session whose probe $case once the network returns", (row) =>
+    Effect.gen(function* () {
+      const harness = yield* makeHarness({
+        probe: (attempt) => (attempt === 1 ? row.probe : Effect.void),
+      });
+      const supervisor = yield* EnvironmentSupervisor.make(TARGET_ENTRY, {
+        initiallyDesired: true,
+      }).pipe(Effect.provide(harness.dependencies));
+
+      yield* awaitState(supervisor.state, (state) => state.phase === "connected");
+      yield* harness.setNetworkStatus("offline");
+      yield* Effect.yieldNow;
+      yield* harness.setNetworkStatus("online");
+      yield* TestClock.adjust(row.wait);
+      // A dead socket found on the network's return reconnects at once, past the backoff ladder.
+      yield* awaitState(
+        supervisor.state,
+        (state) => state.phase === "connected" && state.generation === 2 && state.attempt === 1,
+      );
+
+      expect(yield* Ref.get(harness.sessionCount)).toBe(2);
       expect(yield* Ref.get(harness.releaseCount)).toBe(1);
+    }).pipe(Effect.provide(TestClock.layer())),
+  );
+
+  it.effect("a session that closes while offline waits for the network, then reconnects", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeHarness();
+      const supervisor = yield* EnvironmentSupervisor.make(TARGET_ENTRY, {
+        initiallyDesired: true,
+      }).pipe(Effect.provide(harness.dependencies));
+
+      yield* awaitState(supervisor.state, (state) => state.phase === "connected");
+      yield* harness.setNetworkStatus("offline");
+      yield* Effect.yieldNow;
+      yield* harness.closeLatestSession();
+      yield* awaitState(supervisor.state, (state) => state.phase === "offline");
       expect(Option.isNone(yield* SubscriptionRef.get(supervisor.session))).toBe(true);
 
       yield* harness.setNetworkStatus("online");
@@ -672,7 +734,7 @@ describe("EnvironmentSupervisor", () => {
         (state) => state.phase === "connected" && state.generation === 2,
       );
       expect(yield* Ref.get(harness.sessionCount)).toBe(2);
-    }),
+    }).pipe(Effect.provide(TestClock.layer())),
   );
 
   it.effect("retries a blocked connection when platform credentials change", () =>
