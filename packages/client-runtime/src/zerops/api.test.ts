@@ -1679,6 +1679,44 @@ describe("ZeropsApiClient.exchangeWebSocketToken", () => {
     expect(writes[2]?.body).toContain("fresh");
   });
 
+  it("grant-broker-token plans from the broker token as it is right before the write", async () => {
+    const project = {
+      id: "project-1",
+      name: "Gitea",
+      status: "ACTIVE",
+      publicZone: "project-1.prg1-zerops.zone",
+      tagList: ["mate:tool:gitea"],
+    };
+    let tokenReads = 0;
+    const stub = recordingFetch((request) => {
+      if (request.url.includes("/integration-token/list")) {
+        tokenReads += 1;
+        // A Mate's birth granted the broker its project while the setup regenerated the token.
+        const projects =
+          tokenReads === 1 ? [] : [{ projectId: "project-mate", roleCode: "BASIC_USER" }];
+        return jsonResponse(200, {
+          list: [{ id: "tok-b", name: "mate-broker", roleCode: "READ_ONLY", projects }],
+        });
+      }
+      if (request.method === "GET" && request.url.includes("/client/org-1/project")) {
+        return jsonResponse(200, { list: [project], totalCount: 1 });
+      }
+      if (request.url.includes("/service-stack?")) return jsonResponse(200, { items: [] });
+      if (request.url.includes("/regenerate")) return jsonResponse(200, { token: "fresh" });
+      return jsonResponse(200, {});
+    });
+    const client = new ZeropsApiClient({ fetch: stub.fetch });
+    client.restoreSession(SESSION);
+
+    await client.createToolProject(TOOL_INPUT);
+
+    const grant = stub.requests.find(
+      (request) => request.method === "PUT" && request.url.endsWith("/integration-token/tok-b"),
+    );
+    expect(grant?.body).toContain('"projectId":"project-mate"');
+    expect(grant?.body).toContain('"projectId":"project-1"');
+  });
+
   it("grant-broker-token writes nothing when the org role covers the project", async () => {
     const project = {
       id: "project-1",

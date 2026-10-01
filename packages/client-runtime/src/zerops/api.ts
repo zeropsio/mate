@@ -1456,7 +1456,11 @@ export class ZeropsApiClient {
           // role and every write into it is refused: no runner is imported and
           // a job queues for ever (measured 2026-09-20).
           const target = requireToolProject(project);
-          const broker = tokens.find((token) => token.name === GITEA_BROKER_TOKEN_NAME);
+          // The write replaces the broker's whole project list: it is planned from the token as
+          // it is now, not as the setup read it before the create and the regenerate.
+          const broker = (await this.listIntegrationTokens(input.clientId, signal)).find(
+            (token) => token.name === GITEA_BROKER_TOKEN_NAME,
+          );
           // Nothing to re-grant: the mint above made a fresh org `BASIC_USER` token.
           if (broker === undefined || brokerReachesEveryProject(broker)) break;
           const write = withBrokerProjectGrant(broker.projects, target.id);
