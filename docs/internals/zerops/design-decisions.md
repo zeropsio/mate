@@ -3301,3 +3301,37 @@ no-cache`.
   of the same hue breathing slowly and still under reduced motion; when the run ends, the relative
   time fades in where it stood.
   - _Why:_ "0:50" read as a timestamp beside "4h" and "7m"
+- **2026-10-01** — **A queued message whose send failed says why** (Milo's follow-up stayed queued
+  after the turn ended). A send cut off — the link dropped, the command interrupted, the account's
+  wait out — goes back unheld and is retried, at most three times, with the same message and
+  command ids, so the engine's command receipt drops a second start. A refused send is held with its
+  reason in the clock's place and ↑ becomes Retry (fresh ids); the ones behind it say "Waits for the
+  message above"; while a question is open the next says "Waits for your answer above".
+  - _Why:_ a held message never went again, blocked the queue and looked like a waiting one
+- **2026-10-01** — **A Mate's changes name their repository when it has more than one** (the owner:
+  two rows read "#1"). "appdev #1 …", "apidev #1 …" in the menu, the jump box and the project page;
+  the composer's top lists every waiting change — one as before, two or three a line each with its
+  own Review under "… of 2 changes", more as the newest three and "and N more". A change's review
+  reads the change itself, by the group's slug, and spins only while a read is in flight.
+  - _Why:_ the dialog waited for the group's whole flow (74 requests in 97 s for one group) and spun
+    even when no request had gone out
+- **2026-10-01** — **A row opens only when opening adds something** (a colleague: "you don't need an
+  arrow if it doesn't show anything"). A docked operation's chevron shows only for its services'
+  lines or a reason cut short; a cut-short reason opens whole, wrapped, in place.
+  - _Why:_ a failed stand-up with no services opened to nothing
+- **2026-10-01** — **A message echoed in the run card keeps its words** (the owner: it "swallows the
+  text it had"). The echo stays one line (2026-09-28), now the first line of the words, never a
+  picture label, with its pictures as a strip of thumbnails under it.
+  - _Why:_ a message with a picture starts with its `[Picture 1]` line
+- **2026-10-01** — **A coming-up Mate hands over the moment it answers** (Vera's creating browser
+  held "Almost there" for over an hour). A registered or connected Mate always wins over a leftover
+  setup record; every recorded Mate's setup record ends on load; the Mate on screen connects past
+  auto-connect's ceiling, and its connect is retried by the environment machine's ladder.
+  - _Why:_ a leftover record, a 12-Mate ceiling and a single untried connect kept the page waiting
+- **2026-10-01** — **One stalled subscription retries alone** ("Zerops isn't answering" kept coming
+  back). While the org's socket is open, a subscription past its deadline retries on its own backoff
+  and the rest keep observing; a socket is replaced only when it closes or misses a pong. The account
+  line's Try now says "Trying…", then "Still not answering" if nothing answered; a second muted line
+  names what isn't; one organization's trouble holds no other's screens.
+  - _Why:_ one stall re-registered all ~60 of the org's subscriptions four at a time, and Try now
+    looked like it did nothing
