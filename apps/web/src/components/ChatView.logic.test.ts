@@ -76,6 +76,7 @@ import {
   conversationContentPending,
   localThreadErrorStanding,
   newestPersonTurn,
+  queuedSendOutcome,
   threadErrorEntryUnchanged,
 } from "./ChatView.logic";
 
@@ -2419,5 +2420,77 @@ describe("the view's own thread error", () => {
     },
   ])("$name", ({ existing, next, kept }) => {
     expect(threadErrorEntryUnchanged(existing, next)).toBe(kept);
+  });
+});
+
+// A queued send that did not go: a failure of the moment (the link dropped, the command
+// interrupted, the account's access still being read past its wait) goes back for the drain to
+// retry; a refusal with words is held with them for the person (the owner, 2026-10-01).
+describe("queuedSendOutcome", () => {
+  const capabilityWait = {
+    _tag: "CapabilityRefusal",
+    waitable: true,
+    message: "Still checking your access.",
+  };
+  it.each([
+    {
+      name: "a command interrupted",
+      failure: { kind: "interrupted" },
+      retries: 0,
+      expected: { action: "requeue" },
+    },
+    {
+      name: "the link dropped",
+      failure: { kind: "error", error: new Error("SocketCloseError: closed") },
+      retries: 0,
+      expected: { action: "requeue" },
+    },
+    {
+      name: "the account's access wait ran out",
+      failure: { kind: "error", error: capabilityWait },
+      retries: 1,
+      expected: { action: "requeue" },
+    },
+    {
+      name: "a refusal with words (D6)",
+      failure: { kind: "error", error: new Error("Your sign-in could not be recorded.") },
+      retries: 0,
+      expected: { action: "hold", reason: "Your sign-in could not be recorded." },
+    },
+    {
+      name: "the access refused for good",
+      failure: {
+        kind: "error",
+        error: { _tag: "CapabilityRefusal", waitable: false, message: "Your session ended." },
+      },
+      retries: 0,
+      expected: { action: "hold", reason: "Your session ended." },
+    },
+    {
+      name: "an upload that failed",
+      failure: { kind: "upload-failed" },
+      retries: 0,
+      expected: { action: "hold", reason: "An attachment didn't upload." },
+    },
+    {
+      name: "too long to send",
+      failure: { kind: "too-long" },
+      retries: 0,
+      expected: { action: "hold", reason: "Too long to send. Cancel it to edit." },
+    },
+    {
+      name: "an error with no words",
+      failure: { kind: "error", error: {} },
+      retries: 0,
+      expected: { action: "hold", reason: "Didn't send." },
+    },
+    {
+      name: "the link still down after three tries",
+      failure: { kind: "error", error: new Error("SocketCloseError: closed") },
+      retries: 3,
+      expected: { action: "hold", reason: "Couldn't reach it. Retry when it's back." },
+    },
+  ] as const)("$name", ({ failure, retries, expected }) => {
+    expect(queuedSendOutcome(failure, retries)).toEqual(expected);
   });
 });

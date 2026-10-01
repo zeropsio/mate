@@ -449,6 +449,8 @@ import {
   resolveZeropsConversationReadOnly,
   conversationContentPending,
   localThreadErrorStanding,
+  queuedSendOutcome,
+  type QueuedSendFailure,
   newestPersonTurn,
   threadErrorEntryUnchanged,
   resolveZeropsOwnedAgentSendBlockReason,
@@ -6528,7 +6530,14 @@ export default function ChatView(props: ChatViewProps) {
       // A queued message that no longer fits is held at the head for the
       // user to edit via Cancel, instead of failing on every boundary.
       if (queuedMessage && activeThreadKey) {
-        useQueuedMessageStore.getState().holdAtFront(activeThreadKey, queuedMessage);
+        const outcome = queuedSendOutcome({ kind: "too-long" }, 0);
+        useQueuedMessageStore
+          .getState()
+          .holdAtFront(
+            activeThreadKey,
+            queuedMessage,
+            outcome.action === "hold" ? outcome.reason : undefined,
+          );
       }
       return;
     }
@@ -6555,13 +6564,20 @@ export default function ChatView(props: ChatViewProps) {
     // that moment must not start a turn afterwards; it checks this before
     // dispatch and hands the message back to the composer instead.
     const drainGenerationAtTake = useQueuedMessageStore.getState().drainGeneration;
-    // A queued send that fails goes back to the head of the queue, held. The
-    // messages behind it keep their order and wait; the composer is not
-    // touched. The user retries with Send now or edits with Cancel.
-    const abortQueuedReplay = () => {
-      if (queuedMessage && activeThreadKey) {
-        useQueuedMessageStore.getState().holdAtFront(activeThreadKey, queuedMessage);
-      }
+    // A queued send that did not go goes back to the head of the queue: unheld
+    // where it failed for a moment, for the drain to send again; held with its
+    // reason where it was refused, which its bubble says — never the banner.
+    // The messages behind it keep their order and wait; the composer is not
+    // touched. The person retries from the bubble or edits with Cancel.
+    const abortQueuedReplay = (
+      failure: QueuedSendFailure,
+      message: QueuedComposerMessage | undefined = queuedMessage,
+    ) => {
+      if (!message || !activeThreadKey) return;
+      const outcome = queuedSendOutcome(failure, message.retries ?? 0);
+      const store = useQueuedMessageStore.getState();
+      if (outcome.action === "requeue") store.requeueAtFront(activeThreadKey, message);
+      else store.holdAtFront(activeThreadKey, message, outcome.reason);
     };
     // A live send that failed goes back into the composer, unless the user
     // has started writing something else there in the meantime.
@@ -6593,8 +6609,9 @@ export default function ChatView(props: ChatViewProps) {
       await awaitAttachmentUploads(composerImagesSnapshot.map((image) => image.id));
       if (getUploadedAttachments({ environmentId, images: composerImagesSnapshot }) === null) {
         sendInFlightRef.current = false;
-        setThreadError(threadIdForSend, "Retry or remove failed image uploads before sending.");
-        abortQueuedReplay();
+        if (queuedMessage) abortQueuedReplay({ kind: "upload-failed" });
+        else
+          setThreadError(threadIdForSend, "Retry or remove failed image uploads before sending.");
         return;
       }
     }
@@ -6623,8 +6640,9 @@ export default function ChatView(props: ChatViewProps) {
     if (crewMessage !== null) {
       if (crewAttachments === null) {
         sendInFlightRef.current = false;
-        setThreadError(threadIdForSend, "Retry or remove failed image uploads before sending.");
-        abortQueuedReplay();
+        if (queuedMessage) abortQueuedReplay({ kind: "upload-failed" });
+        else
+          setThreadError(threadIdForSend, "Retry or remove failed image uploads before sending.");
         return;
       }
       setThreadError(threadIdForSend, null);
@@ -6638,9 +6656,14 @@ export default function ChatView(props: ChatViewProps) {
         if (supportsAttachmentUploads) releaseAttachmentUploads(composerImagesSnapshot);
         acknowledgeActiveThreadWoke();
       } else {
-        if (queuedMessage) abortQueuedReplay();
-        else if (composerLeftEmpty()) restoreSentToComposer();
-        if (!isAtomCommandInterrupted(crewResult)) {
+        if (queuedMessage) {
+          abortQueuedReplay(
+            isAtomCommandInterrupted(crewResult)
+              ? { kind: "interrupted" }
+              : { kind: "error", error: squashAtomCommandFailure(crewResult) },
+          );
+        } else if (composerLeftEmpty()) restoreSentToComposer();
+        if (!queuedMessage && !isAtomCommandInterrupted(crewResult)) {
           setThreadError(
             threadIdForSend,
             crewFailureSentence(squashAtomCommandFailure(crewResult)),
@@ -6963,12 +6986,12 @@ export default function ChatView(props: ChatViewProps) {
         });
         // The optimistic row's preview URLs were just revoked, so the images
         // need fresh ones before the row can show them again.
-        if (activeThreadKey) {
-          useQueuedMessageStore.getState().holdAtFront(activeThreadKey, {
-            ...queuedMessage,
-            images: queuedMessage.images.map(cloneComposerImageForRetry),
-          });
-        }
+        abortQueuedReplay(
+          isAtomCommandInterrupted(failure)
+            ? { kind: "interrupted" }
+            : { kind: "error", error: squashAtomCommandFailure(failure) },
+          { ...queuedMessage, images: queuedMessage.images.map(cloneComposerImageForRetry) },
+        );
       } else if (composerLeftEmpty()) {
         setOptimisticUserMessages((existing) => {
           const removed = existing.filter((message) => message.id === messageIdForSend);
@@ -6980,7 +7003,8 @@ export default function ChatView(props: ChatViewProps) {
         });
         restoreSentToComposer();
       }
-      if (!isAtomCommandInterrupted(failure)) {
+      // A queued send's reason is its bubble's to say (`abortQueuedReplay`).
+      if (!queuedMessage && !isAtomCommandInterrupted(failure)) {
         const error = squashAtomCommandFailure(failure);
         if (isLocalDraftThread && draftId && wasBootstrapThreadDeleted(error)) {
           const failedDraftSession = getDraftSession(draftId);
@@ -7060,7 +7084,13 @@ export default function ChatView(props: ChatViewProps) {
     steer: (id) => {
       const message = queuedMessages.find((entry) => entry.id === id);
       if (!message || sendInFlightRef.current || queueBlockedByPendingRequest) return;
-      void onSend(undefined, message.submissionIntent, message);
+      // Retry on a held send: its hold goes first, so a gate that turns it back
+      // leaves it for the drain rather than held again with nothing to say.
+      const released =
+        message.holdUntilUserAction && activeThreadKey
+          ? (useQueuedMessageStore.getState().release(activeThreadKey, id) ?? message)
+          : message;
+      void onSend(undefined, released.submissionIntent, released);
     },
     remove: (id) => {
       if (!activeThreadKey) return;

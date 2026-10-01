@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from "vite-plus/test";
 
 import {
   isQueuedMessageDue,
+  queuedBubbleState,
   latestCompletedToolActivityId,
   useQueuedMessageStore,
   type QueuedComposerMessage,
@@ -137,5 +138,129 @@ describe("queued message dispatch timing", () => {
     expect(isQueuedMessageDue({ message, phase: "connecting", latestToolActivityId: "a4" })).toBe(
       false,
     );
+  });
+});
+
+// The owner, 2026-10-01: a turn ended and the queued follow-up never left — held after a send
+// that failed for a moment, looking exactly like one still waiting. A send interrupted goes back
+// unheld for the drain to retry; a send refused is held with its reason, which the bubble shows.
+describe("a queued send that did not go", () => {
+  beforeEach(() => {
+    useQueuedMessageStore.setState({ queuesByThreadKey: {}, drainGeneration: 0 });
+  });
+
+  it.each([
+    {
+      name: "held with its reason",
+      reason: "Your sign-in could not be recorded." as string | undefined,
+    },
+    { name: "held by Stop, with none", reason: undefined },
+  ])("$name: kept at the head, never due", ({ reason }) => {
+    const store = useQueuedMessageStore.getState();
+    const first = store.enqueue("t", makeMessage("first"));
+    store.enqueue("t", makeMessage("second"));
+    const taken = store.take("t", first.id, null)!;
+    store.holdAtFront("t", taken, reason);
+    const [head] = useQueuedMessageStore.getState().queuesByThreadKey.t!;
+    expect(head?.id).toBe(first.id);
+    expect(head?.heldReason).toBe(reason);
+    expect(isQueuedMessageDue({ message: head!, phase: "ready", latestToolActivityId: null })).toBe(
+      false,
+    );
+  });
+
+  it("an interrupted send goes back to the head unheld, due again, counted", () => {
+    const store = useQueuedMessageStore.getState();
+    const first = store.enqueue("t", makeMessage("first"));
+    store.enqueue("t", makeMessage("second"));
+    const taken = store.take("t", first.id, null)!;
+    store.requeueAtFront("t", taken);
+    const [head, next] = useQueuedMessageStore.getState().queuesByThreadKey.t!;
+    expect([head?.prompt, next?.prompt]).toEqual(["first", "second"]);
+    expect(head?.holdUntilUserAction).toBeFalsy();
+    expect(head?.heldReason).toBeUndefined();
+    expect(head?.retries).toBe(1);
+    expect(isQueuedMessageDue({ message: head!, phase: "ready", latestToolActivityId: null })).toBe(
+      true,
+    );
+  });
+
+  it("Retry takes the held message out, its hold and reason with it", () => {
+    const store = useQueuedMessageStore.getState();
+    const first = store.enqueue("t", makeMessage("first"));
+    store.holdAtFront("t", store.take("t", first.id, null)!, "Refused.");
+    const retried = useQueuedMessageStore.getState().release("t", first.id);
+    expect(retried?.holdUntilUserAction).toBeFalsy();
+    expect(retried?.heldReason).toBeUndefined();
+    const [head] = useQueuedMessageStore.getState().queuesByThreadKey.t!;
+    expect(head?.heldReason).toBeUndefined();
+    expect(isQueuedMessageDue({ message: head!, phase: "ready", latestToolActivityId: null })).toBe(
+      true,
+    );
+  });
+});
+
+describe("queuedBubbleState — what a queued bubble says", () => {
+  const base = { ...makeMessage("x"), id: "m" };
+  it.each([
+    {
+      name: "waiting, the next",
+      input: { message: base, isNext: true, heldAhead: false, blockedByAnswer: false },
+      line: null,
+      send: { label: "Send now", retry: false, disabled: false },
+    },
+    {
+      name: "held with its reason",
+      input: {
+        message: {
+          ...base,
+          holdUntilUserAction: true,
+          heldReason: "Your sign-in could not be recorded.",
+        },
+        isNext: true,
+        heldAhead: false,
+        blockedByAnswer: false,
+      },
+      line: { text: "Your sign-in could not be recorded.", tone: "error" },
+      send: { label: "Retry", retry: true, disabled: false },
+    },
+    {
+      name: "held by Stop: the clock, waiting for Send now",
+      input: {
+        message: { ...base, holdUntilUserAction: true },
+        isNext: true,
+        heldAhead: false,
+        blockedByAnswer: false,
+      },
+      line: null,
+      send: { label: "Send now", retry: false, disabled: false },
+    },
+    {
+      name: "behind a held one",
+      input: { message: base, isNext: false, heldAhead: true, blockedByAnswer: false },
+      line: { text: "Waits for the message above", tone: "muted" },
+      send: { label: "Send now", retry: false, disabled: false },
+    },
+    {
+      name: "the next, while a question waits on the person",
+      input: { message: base, isNext: true, heldAhead: false, blockedByAnswer: true },
+      line: { text: "Waits for your answer above", tone: "muted" },
+      send: { label: "Waits for your answer above", retry: false, disabled: true },
+    },
+    {
+      name: "held, while a question waits on the person: its reason, Retry after the answer",
+      input: {
+        message: { ...base, holdUntilUserAction: true, heldReason: "Refused." },
+        isNext: true,
+        heldAhead: false,
+        blockedByAnswer: true,
+      },
+      line: { text: "Refused.", tone: "error" },
+      send: { label: "Waits for your answer above", retry: true, disabled: true },
+    },
+  ] as const)("$name", ({ input, line, send }) => {
+    const state = queuedBubbleState(input);
+    expect(state.line).toEqual(line);
+    expect(state.send).toEqual(send);
   });
 });

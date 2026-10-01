@@ -1,3 +1,4 @@
+import { isTransportConnectionErrorMessage } from "@t3tools/client-runtime/errors";
 import { onAccountLifetimeClose } from "../zerops/accountLifetime";
 import { resolveAgentAuthorizer, type LocalAgentSigners } from "../zerops/useZeropsAgentSigner";
 import { resolveZeropsAgentPickerPanelView } from "./zerops/ZeropsAgentPickerPanel.logic";
@@ -1381,4 +1382,59 @@ export function threadErrorEntryUnchanged(
     (existing.message ?? null) === next.message &&
     existing.after === next.after
   );
+}
+
+/** Why a queued message's send did not go. */
+export type QueuedSendFailure =
+  | { readonly kind: "interrupted" }
+  | { readonly kind: "error"; readonly error: unknown }
+  | { readonly kind: "upload-failed" }
+  | { readonly kind: "too-long" };
+
+/** What becomes of it: back for the drain to send again, or held with its reason. */
+export type QueuedSendOutcome =
+  | { readonly action: "requeue" }
+  | { readonly action: "hold"; readonly reason: string };
+
+/** How many times a send interrupted goes back before it is held for the person. */
+export const QUEUED_SEND_RETRIES = 3;
+
+const errorWords = (error: unknown): string | undefined => {
+  if (typeof error !== "object" || error === null || !("message" in error)) return undefined;
+  const message = (error as { readonly message: unknown }).message;
+  return typeof message === "string" && message.trim().length > 0 ? message.trim() : undefined;
+};
+
+/**
+ * A queued send that did not go. A failure of the moment — the command interrupted, the link
+ * dropped, the account's access still being read when its wait ran out — goes back unheld for
+ * the drain to send once the link and the gates allow, up to {@link QUEUED_SEND_RETRIES} times.
+ * A refusal with words — D6, an upload, the server's own — is held with them, for its bubble to
+ * say and the person to retry.
+ */
+export function queuedSendOutcome(failure: QueuedSendFailure, retries: number): QueuedSendOutcome {
+  switch (failure.kind) {
+    case "upload-failed":
+      return { action: "hold", reason: "An attachment didn't upload." };
+    case "too-long":
+      return { action: "hold", reason: "Too long to send. Cancel it to edit." };
+    case "interrupted":
+    case "error": {
+      const error = failure.kind === "error" ? failure.error : undefined;
+      const words = errorWords(error);
+      const momentary =
+        failure.kind === "interrupted" ||
+        (typeof error === "object" &&
+          error !== null &&
+          (error as { readonly _tag?: unknown })._tag === "CapabilityRefusal" &&
+          (error as { readonly waitable?: unknown }).waitable === true) ||
+        isTransportConnectionErrorMessage(words);
+      if (momentary) {
+        return retries < QUEUED_SEND_RETRIES
+          ? { action: "requeue" }
+          : { action: "hold", reason: "Couldn't reach it. Retry when it's back." };
+      }
+      return { action: "hold", reason: words ?? "Didn't send." };
+    }
+  }
 }
