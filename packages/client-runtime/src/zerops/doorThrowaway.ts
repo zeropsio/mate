@@ -81,46 +81,114 @@ function isTransientDeleteFailure(cause: unknown): boolean {
   );
 }
 
-/** Door exchanges this tab may mint for in any minute (DESIGN §4.4). */
-export const DOOR_MINTS_PER_MINUTE = 10;
-/** Gitea sign-ins this tab may mint for in any minute, apart from the doors'. */
-export const GITEA_MINTS_PER_MINUTE = 4;
-const MINT_BUDGET_WINDOW_MS = 60_000;
-
 /**
- * Hands out mints at a bounded rate: past the budget, a mint waits for a slot.
- * Slots belong to the account epoch they were taken in
- * (`ZeropsApiClient.accountEpoch`): the next account in the tab starts with a
- * budget of its own, and a mint still waiting from an epoch that has ended is
- * refused rather than given one of its slots.
+ * How fast mints start, as a bucket: a full one starts `burst` at once, and it refills at
+ * `perMinute`, never past `burst`.
  */
-export interface MintBudget {
-  readonly take: (epoch: number, signal?: AbortSignal) => Promise<void>;
+export interface MintPaceConfig {
+  readonly burst: number;
+  readonly perMinute: number;
 }
 
-function makeMintBudget(perMinute: number, now: () => number): MintBudget {
-  const taken: Array<number> = [];
-  let takenIn = Number.NEGATIVE_INFINITY;
-  const take = async (epoch: number, signal?: AbortSignal): Promise<void> => {
+/** Door exchanges the background — restores, auto-connect, repair — may start at once. */
+export const DOOR_MINT_BURST = 10;
+/**
+ * The background's door mints refill at one every two seconds. The platform drew no 429 at 80
+ * mints a minute, each deleted at once (measured 2026-10-01), and the most this pace starts in a
+ * minute, a full bucket and a minute's refill, is half that.
+ */
+export const DOOR_MINTS_PER_MINUTE = 30;
+export const DOOR_MINT_PACE: MintPaceConfig = {
+  burst: DOOR_MINT_BURST,
+  perMinute: DOOR_MINTS_PER_MINUTE,
+};
+/** Gitea sign-ins this tab may mint for, apart from the doors'. */
+export const GITEA_MINTS_PER_MINUTE = 4;
+const GITEA_MINT_PACE: MintPaceConfig = { burst: 4, perMinute: GITEA_MINTS_PER_MINUTE };
+/** How long background mints stand still after the platform answers one with 429. */
+export const DOOR_MINT_THROTTLE_MS = 30_000;
+
+/**
+ * The bucket behind a mint budget, on a monotonic clock in milliseconds. Only the background
+ * waits on it: a mint the person asked for — the Mate the route names, the Connect they pressed —
+ * is spent at once, past empty if it must, and the background waits that debt out (never more
+ * than one bucket of it). A 429 holds the background for {@link DOOR_MINT_THROTTLE_MS}, or the
+ * platform's `Retry-After` when that is longer, and it then refills from empty.
+ */
+export interface MintPace {
+  /** When a background mint may start, with `owed` mints already promised; `now` once it may. */
+  readonly readyAt: (now: number, owed?: number) => number;
+  /** A mint started, asked for or not. */
+  readonly spend: (now: number) => void;
+  /** The platform answered a mint 429. */
+  readonly throttled: (now: number, retryAfterMs?: number | null) => void;
+}
+
+export function makeMintPace(config: MintPaceConfig): MintPace {
+  const perMs = config.perMinute / 60_000;
+  /** The bucket's level at `from`; it refills only after `from`, which a hold moves ahead. */
+  let tokens = config.burst;
+  let from = Number.NEGATIVE_INFINITY;
+  const level = (now: number) =>
+    now <= from ? tokens : Math.min(config.burst, tokens + (now - from) * perMs);
+  return {
+    readyAt: (now, owed = 0) => {
+      const need = 1 + owed;
+      const start = Math.max(now, from);
+      const short = need - level(start);
+      return short <= 0 ? start : start + short / perMs;
+    },
+    spend: (now) => {
+      const left = level(now) - 1;
+      if (now > from) from = now;
+      tokens = Math.max(left, -config.burst);
+    },
+    throttled: (now, retryAfterMs = null) => {
+      const left = Math.min(level(now), 0);
+      from = Math.max(from, now + Math.max(DOOR_MINT_THROTTLE_MS, retryAfterMs ?? 0));
+      tokens = left;
+    },
+  };
+}
+
+/**
+ * Hands out mints at the pace of {@link MintPace}: past it, a background mint waits for its turn.
+ * The pace belongs to the account epoch it was spent in (`ZeropsApiClient.accountEpoch`): the
+ * next account in the tab starts with a full bucket, and a mint still waiting from an epoch that
+ * has ended is refused rather than started.
+ */
+export interface MintBudget {
+  readonly take: (
+    epoch: number,
+    options?: { readonly signal?: AbortSignal | undefined; readonly asked?: boolean },
+  ) => Promise<void>;
+  /** The platform answered a mint 429, asking for `retryAfterMs` when it said. */
+  readonly throttled: (retryAfterMs: number | null) => void;
+}
+
+function makeMintBudget(config: MintPaceConfig, now: () => number): MintBudget {
+  let pace = makeMintPace(config);
+  let pacedIn = Number.NEGATIVE_INFINITY;
+  const take: MintBudget["take"] = async (epoch, { signal, asked = false } = {}) => {
     for (;;) {
       signal?.throwIfAborted();
-      if (epoch < takenIn) {
+      if (epoch < pacedIn) {
         throw new ZeropsApiError("This account session has ended.", "expired-session", 401);
       }
-      if (epoch > takenIn) {
-        taken.length = 0;
-        takenIn = epoch;
+      if (epoch > pacedIn) {
+        pace = makeMintPace(config);
+        pacedIn = epoch;
       }
       const at = now();
-      while (taken.length > 0 && at - taken[0]! >= MINT_BUDGET_WINDOW_MS) taken.shift();
-      if (taken.length < perMinute) {
-        taken.push(at);
+      const readyAt = pace.readyAt(at);
+      if (asked || readyAt <= at) {
+        pace.spend(at);
         return;
       }
-      await slotFree(taken[0]! + MINT_BUDGET_WINDOW_MS - at, signal);
+      await slotFree(readyAt - at, signal);
     }
   };
-  return { take };
+  return { take, throttled: (retryAfterMs) => pace.throttled(now(), retryAfterMs) };
 }
 
 function slotFree(delayMs: number, signal: AbortSignal | undefined): Promise<void> {
@@ -152,8 +220,8 @@ export function makeThrowawayMintBudgets(
   now: () => number = () => performance.now(),
 ): ThrowawayMintBudgets {
   return {
-    door: makeMintBudget(DOOR_MINTS_PER_MINUTE, now),
-    gitea: makeMintBudget(GITEA_MINTS_PER_MINUTE, now),
+    door: makeMintBudget(DOOR_MINT_PACE, now),
+    gitea: makeMintBudget(GITEA_MINT_PACE, now),
   };
 }
 
@@ -168,16 +236,21 @@ const tabMintBudgets = makeThrowawayMintBudgets();
  * flag of any kind, which is what makes what it mints a throwaway rather than
  * something a door has to argue with, and why a closed account window does
  * not hold it up. A mint first takes a slot from this tab's budget for its
- * kind; `signal` ends that wait and the mint — never the delete,
+ * kind — at once when `asked`, the person having asked for this Mate — and a
+ * 429 holds that budget's background mints; `signal` ends the wait and the mint — never the delete,
  * which runs on its own deadline with the token the mint carried and is tried
  * once more after {@link THROWAWAY_DELETE_RETRY_MS} when Zerops could not
  * answer.
  */
 export function zeropsThrowawayPlatform(
   client: ZeropsApiClient,
-  signal?: AbortSignal,
-  budgets: ThrowawayMintBudgets = tabMintBudgets,
+  options: {
+    readonly signal?: AbortSignal | undefined;
+    readonly asked?: boolean;
+    readonly budgets?: ThrowawayMintBudgets;
+  } = {},
 ): ZeropsThrowawayPlatform {
+  const { signal, asked = false, budgets = tabMintBudgets } = options;
   /**
    * What each throwaway minted here is deleted with: its name, and the access
    * token its mint carried. Held from the mint to the delete, and no longer.
@@ -197,7 +270,7 @@ export function zeropsThrowawayPlatform(
           { clientId: input.clientId, name: input.name },
           {
             ...(signal === undefined ? {} : { signal }),
-            beforeMint: () => budgets[purpose].take(client.accountEpoch, signal),
+            beforeMint: () => budgets[purpose].take(client.accountEpoch, { signal, asked }),
           },
         )
         .then(
@@ -207,6 +280,9 @@ export function zeropsThrowawayPlatform(
             return { id: throwaway.id, token: throwaway.token };
           },
           (cause: unknown) => {
+            if (cause instanceof ZeropsApiError && cause.status === 429) {
+              budgets[purpose].throttled(cause.retryAfterMs);
+            }
             mateDiagnostics.record({
               ...diagnostic,
               outcome: "failed",

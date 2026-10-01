@@ -13,8 +13,11 @@ import {
 import { mateDiagnostics } from "./diagnostics.ts";
 import {
   connectThroughThrowaway,
-  DOOR_MINTS_PER_MINUTE,
+  DOOR_MINT_BURST,
+  DOOR_MINT_PACE,
+  DOOR_MINT_THROTTLE_MS,
   GITEA_MINTS_PER_MINUTE,
+  makeMintPace,
   makeThrowawayMintBudgets,
   planThrowawaySweep,
   throwawaySweepDue,
@@ -145,6 +148,97 @@ describe("connectThroughThrowaway", () => {
   });
 });
 
+describe("the door's mint pace", () => {
+  /** The background mint's gap at the pace's steady rate. */
+  const GAP = 60_000 / DOOR_MINT_PACE.perMinute;
+  type Step =
+    | { readonly at: number; readonly spend: "asked" | "background" }
+    | { readonly at: number; readonly throttled: number | null };
+  const run = (steps: ReadonlyArray<Step>) => {
+    const pace = makeMintPace(DOOR_MINT_PACE);
+    for (const step of steps) {
+      if ("spend" in step) {
+        // A background mint is spent only once the pace lets it start.
+        if (step.spend === "background") expect(pace.readyAt(step.at)).toBeLessThanOrEqual(step.at);
+        pace.spend(step.at);
+      } else pace.throttled(step.at, step.throttled);
+    }
+    return pace;
+  };
+  const spends = (count: number, spend: "asked" | "background", at = 0): Array<Step> =>
+    Array.from({ length: count }, () => ({ at, spend }));
+
+  it("the platform's own limit leaves the pace at least half its headroom", () => {
+    // Measured 2026-10-01: 80 mints, each deleted at once, in 14 s, drew no 429. The most the pace
+    // ever starts in a minute is a full bucket and a minute's refill.
+    expect(DOOR_MINT_PACE.burst + DOOR_MINT_PACE.perMinute).toBeLessThanOrEqual(80 / 2);
+    expect(DOOR_MINT_PACE.burst).toBe(DOOR_MINT_BURST);
+  });
+
+  it.each([
+    ["a fresh tab starts a full bucket at once", [], 0, 0, 0],
+    ["the mint past a full bucket waits one gap", spends(DOOR_MINT_BURST, "background"), 0, 0, GAP],
+    [
+      "the bucket refills one mint a gap",
+      [...spends(DOOR_MINT_BURST, "background"), { at: GAP, spend: "background" } as const],
+      GAP,
+      0,
+      2 * GAP,
+    ],
+    [
+      "an idle bucket never fills past the burst",
+      [{ at: 0, spend: "background" } as const, ...spends(DOOR_MINT_BURST, "background", 600_000)],
+      600_000,
+      0,
+      600_000 + GAP,
+    ],
+    [
+      "a mint promised to a descriptor read counts as spent",
+      spends(DOOR_MINT_BURST - 1, "background"),
+      0,
+      1,
+      GAP,
+    ],
+    [
+      "asked-for mints spend past empty, and the background waits the debt out",
+      [...spends(DOOR_MINT_BURST, "background"), ...spends(3, "asked")],
+      0,
+      0,
+      4 * GAP,
+    ],
+    [
+      "the debt is bounded by one bucket",
+      [...spends(DOOR_MINT_BURST, "background"), ...spends(50, "asked")],
+      0,
+      0,
+      (DOOR_MINT_BURST + 1) * GAP,
+    ],
+    [
+      "a 429 holds the background for the throttle, then refills from empty",
+      [{ at: 0, throttled: null } as const],
+      0,
+      0,
+      DOOR_MINT_THROTTLE_MS + GAP,
+    ],
+    [
+      "a 429's Retry-After holds the background when it is the longer",
+      [{ at: 0, throttled: 90_000 } as const],
+      0,
+      0,
+      90_000 + GAP,
+    ],
+    [
+      "an asked-for mint during a hold extends the wait by a gap",
+      [{ at: 0, throttled: null } as const, { at: 1_000, spend: "asked" } as const],
+      1_000,
+      0,
+      DOOR_MINT_THROTTLE_MS + 2 * GAP,
+    ],
+  ] as const)("%s", (_name, steps, now, owed, readyAt) => {
+    expect(run(steps as ReadonlyArray<Step>).readyAt(now, owed)).toBeCloseTo(readyAt, 6);
+  });
+});
+
 describe("zeropsThrowawayPlatform's diagnostics", () => {
   it("tells door and Gitea mints apart and pairs each delete with its mint", async () => {
     const client = {
@@ -246,7 +340,8 @@ function signedInTab(roleCode = "OWNER") {
   const mints = () => rest.requests().filter(({ route }) => route.startsWith("POST /client/"));
   // Budgets of its own, so one case's mints never wait on another's.
   const budgets = makeThrowawayMintBudgets(() => Date.now());
-  const throwaways = (signal?: AbortSignal) => zeropsThrowawayPlatform(client, signal, budgets);
+  const throwaways = (options: { readonly signal?: AbortSignal; readonly asked?: boolean } = {}) =>
+    zeropsThrowawayPlatform(client, { ...options, budgets });
   return { rest, client, session, sessionChanges, mints, throwaways };
 }
 
@@ -374,7 +469,7 @@ describe("throwaway hygiene", () => {
     client.restoreSession(tab.session);
     client.admitWritesThrough(writesClosed);
 
-    const failure = await zeropsThrowawayPlatform(client, undefined, makeThrowawayMintBudgets())
+    const failure = await zeropsThrowawayPlatform(client, { budgets: makeThrowawayMintBudgets() })
       .mint({ clientId: "org-1", name: "mate-door:p1:n1" })
       .then(
         () => null,
@@ -392,7 +487,7 @@ describe("throwaway hygiene", () => {
     const orphaned: Array<unknown> = [];
 
     const connecting = connectThroughThrowaway({
-      platform: tab.throwaways(exchange.signal),
+      platform: tab.throwaways({ signal: exchange.signal }),
       clientId: "org-1",
       projectId: "p1",
       nonce: "n1",
@@ -491,39 +586,72 @@ describe("throwaway hygiene", () => {
     });
   }
 
-  it("11th exchange mint in a minute waits; Gitea mints do not consume it", async () => {
+  it("a background door mint past the bucket waits its gap; an asked-for one never waits; Gitea mints keep their own", async () => {
     vi.useFakeTimers();
     const tab = signedInTab();
-    const platform = tab.throwaways();
-    const mint = (name: string) => platform.mint({ clientId: "org-1", name });
+    const mint = (name: string, asked = false) =>
+      tab.throwaways({ asked }).mint({ clientId: "org-1", name });
     const minted = (prefix: string) =>
       tab.mints().filter(({ body }) => (body as { name: string }).name.startsWith(prefix)).length;
+    const gap = 60_000 / DOOR_MINT_PACE.perMinute;
 
     for (let n = 1; n <= GITEA_MINTS_PER_MINUTE; n += 1)
       await mint(`gitea-signin:git.example:${n}`);
-    for (let n = 1; n <= DOOR_MINTS_PER_MINUTE; n += 1) await mint(`mate-door:p1:${n}`);
-    expect(minted("mate-door:")).toBe(DOOR_MINTS_PER_MINUTE);
+    for (let n = 1; n <= DOOR_MINT_BURST; n += 1) await mint(`mate-door:p1:${n}`);
+    expect(minted("mate-door:")).toBe(DOOR_MINT_BURST);
     expect(minted("gitea-signin:")).toBe(GITEA_MINTS_PER_MINUTE);
 
-    await vi.advanceTimersByTimeAsync(1_000);
-    const eleventh = mint("mate-door:p1:11");
+    const background = mint("mate-door:p1:background");
     const fifthGitea = mint("gitea-signin:git.example:5");
-    await vi.advanceTimersByTimeAsync(58_000);
-    expect(minted("mate-door:")).toBe(DOOR_MINTS_PER_MINUTE);
-    expect(minted("gitea-signin:")).toBe(GITEA_MINTS_PER_MINUTE);
+    await settle();
+    expect(minted("mate-door:")).toBe(DOOR_MINT_BURST);
 
-    // A minute after the first of each, a slot comes free for each.
-    await vi.advanceTimersByTimeAsync(1_000);
-    await Promise.all([eleventh, fifthGitea]);
-    expect(minted("mate-door:")).toBe(DOOR_MINTS_PER_MINUTE + 1);
+    // The Mate the person asked for is minted at once, past the empty bucket.
+    await mint("mate-door:p2:asked", true);
+    expect(minted("mate-door:")).toBe(DOOR_MINT_BURST + 1);
+
+    // The background one waits out its own gap and the asked-for mint's.
+    await vi.advanceTimersByTimeAsync(2 * gap - 1);
+    expect(minted("mate-door:")).toBe(DOOR_MINT_BURST + 1);
+    await vi.advanceTimersByTimeAsync(1);
+    await background;
+    expect(minted("mate-door:")).toBe(DOOR_MINT_BURST + 2);
+
+    await vi.advanceTimersByTimeAsync(60_000);
+    await fifthGitea;
     expect(minted("gitea-signin:")).toBe(GITEA_MINTS_PER_MINUTE + 1);
+  });
+
+  it("a door mint the platform throttles holds the background ones, never an asked-for one", async () => {
+    vi.useFakeTimers();
+    const tab = signedInTab();
+    const mint = (name: string, asked = false) =>
+      tab.throwaways({ asked }).mint({ clientId: "org-1", name });
+    const throttled = tab.rest.hold("POST /client/org-1/integration-token");
+    const first = mint("mate-door:p1:1").then(
+      () => null,
+      (cause: unknown) => cause,
+    );
+    await settle();
+    throttled.fail(429);
+    expect(await first).toMatchObject({ status: 429 });
+
+    const background = mint("mate-door:p1:2");
+    await mint("mate-door:p2:asked", true);
+    expect(tab.mints()).toHaveLength(2);
+
+    await vi.advanceTimersByTimeAsync(DOOR_MINT_THROTTLE_MS);
+    expect(tab.mints()).toHaveLength(2);
+    await vi.advanceTimersByTimeAsync(2 * (60_000 / DOOR_MINT_PACE.perMinute));
+    await background;
+    expect(tab.mints()).toHaveLength(3);
   });
 
   it("a mint queued behind the budget is dropped when somebody else signs in meanwhile", async () => {
     vi.useFakeTimers();
     const tab = signedInTab();
     const platform = tab.throwaways();
-    for (let n = 1; n <= DOOR_MINTS_PER_MINUTE; n += 1)
+    for (let n = 1; n <= DOOR_MINT_BURST; n += 1)
       await platform.mint({ clientId: "org-1", name: `mate-door:p1:${n}` });
     const eleventh = platform.mint({ clientId: "org-1", name: "mate-door:p1:11" }).then(
       () => null,
@@ -543,7 +671,7 @@ describe("throwaway hygiene", () => {
     vi.useFakeTimers();
     const tab = signedInTab();
     const platform = tab.throwaways();
-    for (let n = 1; n <= DOOR_MINTS_PER_MINUTE; n += 1)
+    for (let n = 1; n <= DOOR_MINT_BURST; n += 1)
       await platform.mint({ clientId: "org-1", name: `mate-door:p1:${n}` });
 
     await tab.client.signOutLocally();

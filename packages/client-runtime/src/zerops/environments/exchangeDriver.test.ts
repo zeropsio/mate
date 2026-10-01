@@ -2,7 +2,8 @@ import { EnvironmentId } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
 import type { ZeropsThrowawayPlatform } from "../../authorization/zeropsThrowaway.ts";
-import { DOOR_MINTS_PER_MINUTE } from "../doorThrowaway.ts";
+import { ZeropsApiError } from "../api.ts";
+import { DOOR_MINT_BURST, DOOR_MINT_PACE, DOOR_MINT_THROTTLE_MS } from "../doorThrowaway.ts";
 import { descriptorFacts, exchangeAtDoor } from "../identityExchange.ts";
 import { makeFakeMate, type FakeMate, type FakeMateCredential } from "../testing/fakeMate.ts";
 import {
@@ -82,9 +83,22 @@ function manualClock(): ExchangeClock & { readonly advance: (ms: number) => Prom
   };
 }
 
-const platform: ZeropsThrowawayPlatform = {
-  mint: async () => ({ id: "token", token: "throwaway" }),
-  remove: async () => undefined,
+/** The background's gap between door mints once its bucket is spent. */
+const GAP = 60_000 / DOOR_MINT_PACE.perMinute;
+
+/** A platform whose first `throttled` mints answer 429. */
+const platformThrottling = (throttled: number): ZeropsThrowawayPlatform => {
+  let left = throttled;
+  return {
+    mint: async () => {
+      if (left > 0) {
+        left -= 1;
+        throw new ZeropsApiError("Too many requests.", "unexpected", 429);
+      }
+      return { id: "token", token: "throwaway" };
+    },
+    remove: async () => undefined,
+  };
 };
 
 const keyOf = (mate: FakeMate): TargetKey => `${mate.projectId}:zcp`;
@@ -113,8 +127,11 @@ function rig(
     readonly hold?: boolean;
     /** How the first installs fail, in order; every later one succeeds. */
     readonly failedInstalls?: ReadonlyArray<"answers" | "throws">;
+    /** How many of the first mints the platform answers 429. */
+    readonly throttledMints?: number;
   } = {},
 ): Rig {
+  const platform = platformThrottling(options.throttledMints ?? 0);
   const clock = manualClock();
   const exchanges: Array<ExchangeRequest> = [];
   const installs: Array<{ readonly key: TargetKey; readonly credential: FakeMateCredential }> = [];
@@ -363,7 +380,7 @@ describe("exchange driver (DESIGN §4.4)", () => {
     expect(exchanges.map((request) => request.key).slice(3)).toEqual([keyOf(mates[2]!)]);
   });
 
-  it("the route's exchange takes a slot while three restores are pending", async () => {
+  it("the route's exchange starts at once while three restores hold every slot", async () => {
     const records = ["a", "b", "c"].map((id) => mate(id));
     const route = mate("route");
     const { driver, exchanges, start } = rig([...records, route], { hold: true });
@@ -377,23 +394,17 @@ describe("exchange driver (DESIGN §4.4)", () => {
     const started = start({ records: [...records, route], route });
     driver.setTargets([routeTarget({ level: "booting", overdue: false })]);
     await started;
-    expect(exchanges.map((request) => request.key)).toEqual(
-      records.slice(0, EXCHANGE_CONCURRENCY - 1).map(keyOf),
-    );
+    expect(exchanges.map((request) => request.key)).toEqual(records.map(keyOf));
 
-    // Its container comes up with every restore still out: the slot kept for it is free.
+    // Its container comes up with every restore still out: it does not wait for one to end.
     driver.setTargets([routeTarget({ level: "ready" })]);
     await flush();
-    expect(exchanges.map((request) => request.key)).toEqual([
-      ...records.slice(0, EXCHANGE_CONCURRENCY - 1).map(keyOf),
-      keyOf(route),
-    ]);
+    expect(exchanges.map((request) => request.key)).toEqual([...records.map(keyOf), keyOf(route)]);
+    expect(exchanges.map((request) => request.asked)).toEqual([false, false, false, true]);
   });
 
   it("a remembered target's descriptor probe counts against the minute's mints (A16)", async () => {
-    const spent = Array.from({ length: DOOR_MINTS_PER_MINUTE - 1 }, (_, index) =>
-      mate(`s${index}`),
-    );
+    const spent = Array.from({ length: DOOR_MINT_BURST - 1 }, (_, index) => mate(`s${index}`));
     const remembered = [mate("r1"), mate("r2")];
     const { driver, exchanges } = rig([...spent, ...remembered]);
     driver.setAccount(GRANTED);
@@ -414,13 +425,13 @@ describe("exchange driver (DESIGN §4.4)", () => {
     ]);
     driver.setDemand("auto-connect", spent.map(keyOf));
     await flush();
-    expect(exchanges).toHaveLength(DOOR_MINTS_PER_MINUTE - 1);
+    expect(exchanges).toHaveLength(DOOR_MINT_BURST - 1);
 
     // Both are looked for where their records kept them: one mint is left for the two.
     driver.setDemand("record", remembered.map(keyOf));
     await flush();
 
-    expect(exchanges).toHaveLength(DOOR_MINTS_PER_MINUTE);
+    expect(exchanges).toHaveLength(DOOR_MINT_BURST);
     expect(exchanges.at(-1)?.key).toBe(keyOf(remembered[0]!));
   });
 
@@ -496,21 +507,57 @@ describe("exchange driver (DESIGN §4.4)", () => {
     });
   });
 
-  it("this tab mints at most ten exchanges a minute (I12)", async () => {
-    const mates = Array.from({ length: 12 }, (_, index) => mate(`m${index}`));
+  it("the background starts a bucket of exchanges at once, then one a gap (I12)", async () => {
+    const mates = Array.from({ length: DOOR_MINT_BURST + 2 }, (_, index) => mate(`m${index}`));
     const { clock, exchanges, start } = rig(mates);
     await start({ demand: { reason: "auto-connect", mates } });
-    expect(exchanges).toHaveLength(DOOR_MINTS_PER_MINUTE);
+    expect(exchanges).toHaveLength(DOOR_MINT_BURST);
 
-    await clock.advance(59_000);
-    expect(exchanges).toHaveLength(DOOR_MINTS_PER_MINUTE);
-    await clock.advance(1_000);
-    expect(exchanges).toHaveLength(12);
+    await clock.advance(GAP - 1);
+    expect(exchanges).toHaveLength(DOOR_MINT_BURST);
+    await clock.advance(1);
+    expect(exchanges).toHaveLength(DOOR_MINT_BURST + 1);
+    await clock.advance(GAP);
+    expect(exchanges).toHaveLength(DOOR_MINT_BURST + 2);
     expect(exchanges.every((request) => request.reason === "auto-connect")).toBe(true);
+    expect(exchanges.every((request) => !request.asked)).toBe(true);
   });
 
-  it("a route target whose container turns ready exchanges within the minute its records spent", async () => {
-    const records = Array.from({ length: 11 }, (_, index) => mate(`r${index}`));
+  describe("a Mate the person asks for never waits on the mint budget", () => {
+    const records = Array.from({ length: DOOR_MINT_BURST + 2 }, (_, index) => mate(`r${index}`));
+    type Ask = (driver: ExchangeDriver, key: TargetKey) => void;
+    const byRoute: Ask = (driver, key) => driver.setDemand("route", [key]);
+    const byConnect: Ask = (driver, key) => void driver.connect(key, "user");
+    it.each([
+      ["the route names it", byRoute],
+      ["the person presses Connect", byConnect],
+    ] as const)("%s", async (_name, ask) => {
+      const asked = mate("asked");
+      const { driver, clock, exchanges, start } = rig([...records, asked]);
+      await start({ records });
+      expect(exchanges).toHaveLength(DOOR_MINT_BURST);
+
+      await clock.advance(1_000);
+      ask(driver, keyOf(asked));
+      await flush();
+
+      expect(exchanges.map((request) => request.key)).toEqual([
+        ...records.slice(0, DOOR_MINT_BURST).map(keyOf),
+        keyOf(asked),
+      ]);
+      expect(exchanges.at(-1)?.asked).toBe(true);
+      expect(driver.machine(keyOf(asked))?.credential).toMatchObject({ kind: "held" });
+
+      // The background waits out its gap and the asked-for exchange's.
+      await clock.advance(2 * GAP - 1_000 - 1);
+      expect(exchanges).toHaveLength(DOOR_MINT_BURST + 1);
+      await clock.advance(1);
+      expect(exchanges).toHaveLength(DOOR_MINT_BURST + 2);
+    });
+  });
+
+  it("a route target whose container turns ready exchanges at once after the records spent the bucket", async () => {
+    const records = Array.from({ length: DOOR_MINT_BURST + 1 }, (_, index) => mate(`r${index}`));
     const route = mate("route");
     const { driver, clock, exchanges, start } = rig([...records, route]);
     const restarting: ContainerVerdict = { level: "restarting", by: "you", overdue: false };
@@ -524,36 +571,45 @@ describe("exchange driver (DESIGN §4.4)", () => {
     const started = start({ records: [...records, route], route });
     driver.setTargets([routeTarget(restarting)]);
     await started;
-    expect(exchanges.some((request) => request.key === keyOf(route))).toBe(false);
+    expect(exchanges).toHaveLength(DOOR_MINT_BURST);
 
-    await clock.advance(5_000);
+    await clock.advance(GAP / 2);
     driver.setTargets([routeTarget({ level: "ready" })]);
     await flush();
     expect(driver.machine(keyOf(route))?.credential).toMatchObject({ kind: "held" });
-    expect(exchanges).toHaveLength(DOOR_MINTS_PER_MINUTE);
+    expect(exchanges.map((request) => request.key)).toEqual([
+      ...records.slice(0, DOOR_MINT_BURST).map(keyOf),
+      keyOf(route),
+    ]);
   });
 
-  it("records held back by the route target's mint start once the minute's mints age out", async () => {
-    const records = Array.from({ length: 11 }, (_, index) => mate(`r${index}`));
+  it("a mint the platform throttles holds the background, never the Mate the route names", async () => {
+    const records = ["a", "b", "c"].map((id) => mate(id));
     const route = mate("route");
-    const { driver, clock, exchanges, start } = rig([...records, route]);
-    const started = start({ records: [...records, route], route });
-    driver.setTargets([
-      {
-        key: keyOf(route),
-        presence: { kind: "present", origin: route.origin },
-        container: { level: "restarting", by: "you", overdue: false },
-        record: route.descriptor().environmentId,
-      },
-    ]);
-    await started;
-    expect(exchanges).toHaveLength(DOOR_MINTS_PER_MINUTE - 1);
+    const { driver, clock, exchanges, start, reach } = rig([...records, route], {
+      throttledMints: 1,
+    });
+    await start({ demand: { reason: "auto-connect", mates: [records[0]!] } });
+    expect(exchanges).toHaveLength(1);
+    expect(reach(records[0]!)).toMatchObject({
+      kind: "retrying",
+      last: { kind: "mint", status: 429 },
+    });
 
-    await clock.advance(60_000);
-    expect(exchanges.map((request) => request.key).slice(DOOR_MINTS_PER_MINUTE - 1)).toEqual([
-      keyOf(records[9]!),
-      keyOf(records[10]!),
-    ]);
+    driver.setDemand("auto-connect", records.map(keyOf));
+    driver.setDemand("route", [keyOf(route)]);
+    await flush();
+    expect(exchanges.map((request) => request.key)).toEqual([keyOf(records[0]!), keyOf(route)]);
+
+    // The hold ends from an empty bucket, owing the route's mint: then one a gap.
+    await clock.advance(DOOR_MINT_THROTTLE_MS + 2 * GAP - 1);
+    expect(exchanges).toHaveLength(2);
+    await clock.advance(1);
+    expect(exchanges.slice(2).map((request) => request.key)).toEqual([keyOf(records[0]!)]);
+    await clock.advance(GAP);
+    expect(exchanges.slice(2).map((request) => request.key)).toEqual(
+      records.slice(0, 2).map(keyOf),
+    );
   });
 
   it("a container turning ready kicks a link in backoff", async () => {
