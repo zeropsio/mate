@@ -187,6 +187,11 @@ export interface AccountEnvironments {
   readonly setRoute: (environmentId: EnvironmentId | null) => void;
   /** The organization the tab has open: auto-connect wants its ready Mates (D13). */
   readonly setActiveOrganization: (organizationId: string | null) => void;
+  /**
+   * The project whose Mate is on screen — its own view, its conversation — or null: it is
+   * connected past auto-connect's ceiling, which is for Mates not on screen.
+   */
+  readonly setOnScreen: (projectId: string | null) => void;
 }
 
 /** What the account runtime drives the stage with, besides its stores. */
@@ -272,6 +277,7 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
   /** The route's target, as `updateRoute` last found it; its container is read first. */
   let routeKey: TargetKey | null = null;
   let activeOrganization: string | null = null;
+  let onScreen: string | null = null;
   /** Installs in flight, by the Mate origin they exchanged at. */
   const installing = new Map<string, number>();
   /** The origin each target's latest exchange ran at. */
@@ -371,8 +377,27 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
     }
   };
 
+  /**
+   * The births the records end: a record is the exchange's word that it named the Mate's
+   * environment, so a birth this browser still holds for its project is over — however it was
+   * left behind. Each project once per stage.
+   */
+  const ended = new Set<string>();
+  const endBirth = (projectId: string) => {
+    if (ended.has(projectId)) return;
+    ended.add(projectId);
+    ports.births.promote(projectId);
+  };
+  const endRecordedBirths = () => {
+    if (stores === null || closed) return;
+    for (const record of stores.records.list()) {
+      if (record.projectRef !== null) endBirth(record.projectRef.projectId);
+    }
+  };
+
   /** The records, or the installs that write them, changed. */
   const registrationsChanged = () => {
+    endRecordedBirths();
     updateRoute();
     updateTargets();
     release();
@@ -402,7 +427,7 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
         name: project?.name ?? null,
       });
       // The birth is over: the exchange named its environment.
-      if (project !== undefined) ports.births.promote(project.id);
+      if (project !== undefined) endBirth(project.id);
       return outcome;
     } finally {
       if (at !== null) {
@@ -499,18 +524,25 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
           : [[environment.origin, environment.environmentId] as const],
       ),
     );
-    const candidates = (listed === undefined ? [] : heldCandidates(listed.listing).rows).map(
-      (row) => {
-        const environmentId = byOrigin.get(origin(row.containerOrigin) ?? "");
-        return environmentId === undefined ? row : { ...row, environmentId };
-      },
-    );
+    const active = listed === undefined ? [] : heldCandidates(listed.listing).rows;
+    // The Mate on screen, from whichever organization lists it.
+    const shown =
+      onScreen === null || active.some((row) => row.project.id === onScreen)
+        ? []
+        : listings
+            .flatMap(({ listing }) => heldCandidates(listing).rows)
+            .filter((row) => row.project.id === onScreen);
+    const candidates = [...active, ...shown].map((row) => {
+      const environmentId = byOrigin.get(origin(row.containerOrigin) ?? "");
+      return environmentId === undefined ? row : { ...row, environmentId };
+    });
     stores.driver.setDemand(
       "auto-connect",
       selectAutoConnectTargets({
         candidates,
         health: containerSnapshotOf(stores.containers.machines()).health,
         birthProjectIds: ports.births.unhardened(),
+        onScreenProjectId: onScreen,
       }),
     );
   };
@@ -637,6 +669,7 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
   const start = (built: EnvironmentStores): EnvironmentStage => {
     stores = built;
     const { records, containers, driver } = built;
+    endRecordedBirths();
     route = ports.route?.() ?? route;
     preferRoute();
     const stops: Array<() => void> = [];
@@ -712,6 +745,11 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
       },
       setActiveOrganization: (organizationId) => {
         activeOrganization = organizationId;
+        updateAutoConnect();
+      },
+      setOnScreen: (projectId) => {
+        if (onScreen === projectId) return;
+        onScreen = projectId;
         updateAutoConnect();
       },
     };

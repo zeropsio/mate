@@ -132,6 +132,7 @@ function shellStage(): AccountEnvironments {
       shell.routes.push(environmentId);
     },
     setActiveOrganization: () => undefined,
+    setOnScreen: () => undefined,
   };
 }
 

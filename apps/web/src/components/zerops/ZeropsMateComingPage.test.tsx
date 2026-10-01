@@ -51,6 +51,7 @@ const MAIN = {
 const app = vi.hoisted(() => ({
   navigate: vi.fn(async (_to: unknown) => undefined),
   connect: vi.fn(async (_target: unknown) => ({ _tag: "Success" as const })),
+  onScreen: vi.fn((_projectId: string | null) => undefined),
   openMate: vi.fn(),
   handingOver: vi.fn(),
   link: { key: undefined, environmentId: undefined, reachability: null } as unknown,
@@ -80,7 +81,11 @@ vi.mock("~/state/entities", () => ({
   useThreadStatus: () => "live",
   useProjects: () => app.projects,
 }));
-vi.mock("~/zerops/accountEnvironments", () => ({ useConnectMate: () => app.connect }));
+vi.mock("~/zerops/accountEnvironments", () => ({
+  useConnectMate: () => app.connect,
+  useAccountEnvironments: () => environments,
+}));
+const environments = { setOnScreen: (projectId: string | null) => app.onScreen(projectId) };
 vi.mock("~/zerops/useOpenMate", () => ({ useOpenMate: () => app.openMate }));
 vi.mock("~/zerops/useZeropsCandidates", () => ({
   useZeropsCandidates: () => ({ listing: app.listing }),
@@ -194,6 +199,7 @@ beforeEach(() => {
   vi.stubGlobal("cancelAnimationFrame", () => undefined);
   app.navigate.mockClear();
   app.connect.mockClear();
+  app.onScreen.mockClear();
   app.openMate.mockClear();
   app.handingOver.mockClear();
   app.listing = listingOf([QUINN]);
@@ -258,6 +264,17 @@ describe("a Mate's own view while its link is made", () => {
         ?.props.onClick(),
     );
     expect(app.connect).toHaveBeenCalledExactlyOnceWith({ key: KEY });
+  });
+
+  // The ceiling on auto-connect is for Mates not on screen (a live run, 2026-10-01: a browser
+  // with 21 registered stayed on "coming up" for an hour): the Mate whose view is open is wanted
+  // past it while the view stands.
+  it("puts its Mate on screen while it stands, and takes it off when it goes", () => {
+    openView();
+    expect(app.onScreen.mock.calls).toEqual([[PROJECT]]);
+    act(() => tree?.unmount());
+    tree = undefined;
+    expect(app.onScreen.mock.calls).toEqual([[PROJECT], [null]]);
   });
 
   it("waits for a machine to name it before connecting: a Connect before the stage holds it ends unheard", () => {

@@ -58,10 +58,11 @@ import { useEffect, useMemo, useRef, useState, type ReactElement, type ReactNode
 import { useEnvironmentLinks } from "~/routes/-environmentTargets";
 import { useProjects, useThreadShells, useThreadStatus } from "~/state/entities";
 import { buildThreadRouteParams } from "~/threadRoutes";
-import { useConnectMate, type MateConnectTarget } from "~/zerops/accountEnvironments";
+import { useAccountEnvironments, useConnectMate } from "~/zerops/accountEnvironments";
 import {
   mateComing,
   mateComingPage,
+  mateConnectKey,
   mateOpeningPhrase,
   type MateComing,
 } from "~/zerops/mateComing";
@@ -343,34 +344,26 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
   // Once a machine names it: a Connect asked before the stage holds its target would end unheard.
   const reachingKey =
     page?.kind === "reaching" && link.reachability !== null ? link.key : undefined;
-  const birthOrigin = answering ? candidate.containerOrigin : undefined;
-  useEffect(() => {
-    const target: MateConnectTarget | null =
-      reachingKey !== undefined
-        ? { key: reachingKey }
-        : birthOrigin === undefined
-          ? null
-          : birth?.serviceId != null
-            ? { key: `${projectId}:${birth.serviceId}` }
-            : {
-                origin: birthOrigin,
-                organization:
-                  activeOrganization === null ? null : organizationRef(activeOrganization.id),
-              };
-    if (target === null) return;
-    const id = "key" in target ? target.key : `${projectId}@${target.origin}`;
-    if (asked.current === id) return;
-    asked.current = id;
-    void connect(target);
-  }, [
-    activeOrganization,
-    birth?.serviceId,
-    birthOrigin,
-    connect,
-    organizationRef,
-    projectId,
+  const connectKey = mateConnectKey({
     reachingKey,
-  ]);
+    answering,
+    projectId,
+    birthServiceId: birth?.serviceId,
+    candidateKey: candidate?.key,
+  });
+  useEffect(() => {
+    // Once per target: from there its machine holds it, and tries again on its own ladder.
+    if (connectKey === null || asked.current === connectKey) return;
+    asked.current = connectKey;
+    void connect({ key: connectKey });
+  }, [connect, connectKey]);
+  // On screen, it is connected past auto-connect's ceiling, which is for Mates not on screen.
+  const environments = useAccountEnvironments();
+  useEffect(() => {
+    if (environments === null) return;
+    environments.setOnScreen(projectId);
+    return () => environments.setOnScreen(null);
+  }, [environments, projectId]);
   // Try now: the person's own retry of what its machine backs off from.
   const linkKey = link.key;
   const tryNow = linkKey === undefined ? undefined : () => void connect({ key: linkKey });

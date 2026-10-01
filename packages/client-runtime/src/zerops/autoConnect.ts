@@ -47,6 +47,11 @@ export function selectAutoConnectTargets(input: {
    */
   readonly birthProjectIds?: ReadonlySet<string>;
   readonly limit?: number;
+  /**
+   * The project whose Mate is on screen: wanted first, and past the ceiling, which is for Mates
+   * not on screen — a page never waits on a connect the ceiling holds back.
+   */
+  readonly onScreenProjectId?: string | null;
 }): ReadonlyArray<string> {
   const limit = input.limit ?? ZEROPS_AUTO_CONNECT_LIMIT;
   const birthProjectIds = input.birthProjectIds ?? new Set<string>();
@@ -62,15 +67,29 @@ export function selectAutoConnectTargets(input: {
 
   const targets: Array<string> = [];
   const seen = new Set<string>();
+  const wanted = (candidate: AutoConnectCandidate): string | null => {
+    const origin = candidate.containerOrigin;
+    if (origin === undefined) return null;
+    if (candidate.group !== "ready") return null;
+    if (candidate.connection !== undefined || candidate.environmentId !== undefined) return null;
+    if (input.health.get(candidate.key) !== "ready") return null;
+    if (seen.has(origin)) return null;
+    if (birthProjectIds.has(candidate.project.id)) return null;
+    return origin;
+  };
+  const onScreen = input.onScreenProjectId ?? null;
+  for (const candidate of input.candidates) {
+    if (onScreen === null || candidate.project.id !== onScreen) continue;
+    const origin = wanted(candidate);
+    if (origin === null) continue;
+    seen.add(origin);
+    targets.push(candidate.key);
+  }
+  // The ceiling counts the Mate on screen too: it is one of ours like any other.
   for (const candidate of input.candidates) {
     if (registered.size + targets.length >= limit) break;
-    const origin = candidate.containerOrigin;
-    if (origin === undefined) continue;
-    if (candidate.group !== "ready") continue;
-    if (candidate.connection !== undefined || candidate.environmentId !== undefined) continue;
-    if (input.health.get(candidate.key) !== "ready") continue;
-    if (seen.has(origin)) continue;
-    if (birthProjectIds.has(candidate.project.id)) continue;
+    const origin = wanted(candidate);
+    if (origin === null) continue;
     seen.add(origin);
     targets.push(candidate.key);
   }

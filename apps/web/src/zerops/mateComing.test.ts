@@ -4,6 +4,7 @@ import {
   mateComing,
   mateComingHeadlineClauses,
   mateComingPage,
+  mateConnectKey,
   mateOpeningPhrase,
   type MateComingInput,
 } from "./mateComing";
@@ -209,6 +210,16 @@ describe("mateComingPage — what a Mate's own view shows", () => {
       expected: { kind: "up" },
     },
     {
+      case: "a birth left behind in this browser, its environment registered: it hands over",
+      input: { ...BASE, coming: COMING, linked: true },
+      expected: { kind: "up" },
+    },
+    {
+      case: "a birth left behind in this browser, its row connected: it hands over",
+      input: { ...BASE, coming: COMING, candidate: { group: "connected" } },
+      expected: { kind: "up" },
+    },
+    {
       case: "listed and answering, its socket not open yet: what its machine waits for",
       input: { ...BASE, reachability: { kind: "connecting", waitingOn: "exchange" } },
       expected: { kind: "reaching", reachability: { kind: "connecting", waitingOn: "exchange" } },
@@ -317,5 +328,59 @@ describe("mateOpeningPhrase — what a Mate's own view says under its name", () 
     },
   ])("$case", ({ page, phrase }) => {
     expect(mateOpeningPhrase(page, CONTEXT)).toEqual(phrase);
+  });
+});
+
+// What a Mate's own view connects: always a target its machine holds, so a connect that fails is
+// the machine's to try again on its ladder — never an origin a listing not caught up yet turns
+// away once, with nothing asking again while the view stays (a live run, 2026-10-01).
+describe("mateConnectKey — what a Mate's own view connects", () => {
+  it.each([
+    {
+      case: "its machine named, reaching: that machine's target",
+      input: {
+        reachingKey: "p:zcp-a",
+        answering: false,
+        projectId: "p",
+        birthServiceId: null,
+        candidateKey: "p:zcp-b",
+      },
+      expected: "p:zcp-a",
+    },
+    {
+      case: "its birth answering, its container named: the birth's target",
+      input: {
+        reachingKey: undefined,
+        answering: true,
+        projectId: "p",
+        birthServiceId: "svc",
+        candidateKey: "p:zcp",
+      },
+      expected: "p:svc",
+    },
+    {
+      case: "answering, no container named by a birth: its listed row's target",
+      input: {
+        reachingKey: undefined,
+        answering: true,
+        projectId: "p",
+        birthServiceId: null,
+        candidateKey: "p:zcp",
+      },
+      expected: "p:zcp",
+    },
+    {
+      case: "not answering yet: nothing",
+      input: {
+        reachingKey: undefined,
+        answering: false,
+        projectId: "p",
+        birthServiceId: "svc",
+        candidateKey: "p:zcp",
+      },
+      expected: null,
+    },
+  ])("$case", ({ input, expected }) => {
+    expect(mateConnectKey(input)).toBe(expected);
   });
 });

@@ -1251,6 +1251,19 @@ describe("the post-grant stage's Mate environments", () => {
     ),
   );
 
+  // A browser that holds a Mate's record and still its birth — the record written, the birth
+  // left behind (a live run, 2026-10-01: "coming up" for an hour over a Mate that answered) —
+  // ends the birth: the record is the exchange's word that it named the environment.
+  it.effect("a birth this browser still holds for a recorded Mate ends when the stage starts", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const { rig } = yield* granted([REMEMBERED_A]);
+        yield* settle;
+        expect(rig.promoted).toEqual([A_MATE.projectId]);
+      }),
+    ),
+  );
+
   it.effect.each([
     {
       name: "the registry takes it: its target is remembered and its birth ends",
