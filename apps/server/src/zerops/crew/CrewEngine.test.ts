@@ -447,30 +447,6 @@ describe("CrewEngine", () => {
       ),
   );
 
-  it.live("Start during a long check never waits on it", () =>
-    withCrewEngine((world) =>
-      Effect.gen(function* () {
-        const { check } = yield* holdTheCheck(world);
-        const started = yield* quick(
-          command({
-            _tag: "start",
-            budgetUsd: "unlimited",
-            timeLimitHours: "unlimited",
-            stopAtUsagePercent: null,
-            landing: "person",
-            devGrant: false,
-            leadMayStart: false,
-          }),
-        );
-        yield* check.release;
-        assert.isTrue(
-          Option.isSome(started) && Exit.isSuccess(Option.getOrThrow(started)),
-          "Start hung on the check",
-        );
-      }),
-    ),
-  );
-
   it.live("Tell the crew to a busy crewmate is refused and creates nothing", () =>
     withCrewEngine((world) =>
       Effect.gen(function* () {
@@ -499,6 +475,117 @@ describe("CrewEngine", () => {
         }));
         refusedAsBusy(atOnce);
         assert.strictEqual((yield* latest).board.tasks.length, 1, "a busy Tell made tasks");
+      }),
+    ),
+  );
+
+  const RUN_NOW = {
+    _tag: "start",
+    budgetUsd: "unlimited",
+    timeLimitHours: "unlimited",
+    stopAtUsagePercent: null,
+    landing: "person",
+    devGrant: false,
+    leadMayStart: false,
+  } as const;
+
+  /** `backend`'s first task, its turn ended without a report: working, no turn running. */
+  const turnEndedWorking = (world: Parameters<Parameters<typeof withCrewEngine>[0]>[0]) =>
+    Effect.gen(function* () {
+      yield* applied(world);
+      const thread = yield* firstTurn(world, () => undefined);
+      yield* world.publish(spiEvent("turn.completed", thread, { state: "completed" }));
+      const taskId = (yield* latest).board.tasks[0]!.id;
+      return { thread, taskId };
+    });
+
+  const stuckStates: ReadonlyArray<"merging" | "checking"> = ["merging", "checking"];
+  for (const state of stuckStates) {
+    it.live(`a task left ${state} with nothing running on it can be discarded`, () =>
+      withCrewEngine((world) =>
+        Effect.gen(function* () {
+          const { taskId } = yield* turnEndedWorking(world);
+          // A redeploy held its merge, or its check errored: nothing runs on it now.
+          const store = yield* CrewStore;
+          const row = (yield* store.assignments(CREW_ID)).find(
+            (task) => task.assignment === taskId,
+          )!;
+          yield* store.putAssignment({ ...row, state });
+          yield* command({ _tag: "discard", taskId });
+          yield* snapshotWhere((snapshot) => snapshot.board.tasks[0]?.state === "discarded");
+        }),
+      ),
+    );
+  }
+
+  it.live("a message during a Land now's check goes through", () =>
+    withCrewEngine((world) =>
+      Effect.gen(function* () {
+        const { taskId } = yield* turnEndedWorking(world);
+        const check = yield* world.holdSsh((script) => script.includes("test -f ok.txt"));
+        const landing = yield* Effect.forkChild(Effect.exit(command({ _tag: "landNow", taskId })));
+        yield* check.reached;
+        const messaged = yield* quick(
+          command({ _tag: "message", handle: "backend", text: "More", attachments: [] }),
+        );
+        yield* check.release;
+        yield* Fiber.join(landing);
+        assert.isTrue(
+          Option.isSome(messaged) && Exit.isSuccess(Option.getOrThrow(messaged)),
+          "the message waited on, or was refused by, the Land's check",
+        );
+      }),
+    ),
+  );
+
+  it.live("a Land now while the task's integration still runs lands once that one ends", () =>
+    withCrewEngine((world) =>
+      Effect.gen(function* () {
+        const { thread, check, taskId } = yield* holdTheCheck(world);
+        // Back to work during the check, and its turn ends with no report.
+        yield* command({ _tag: "message", handle: "backend", text: "More", attachments: [] });
+        yield* world.publish(spiEvent("turn.started", thread, {}));
+        write(world.root, ".crew/backend/ok.txt", "ok\n");
+        yield* world.publish(spiEvent("turn.completed", thread, { state: "completed" }));
+        yield* command({ _tag: "landNow", taskId });
+        yield* check.release;
+        yield* snapshotWhere((snapshot) => snapshot.board.tasks[0]?.state === "landed");
+      }),
+    ),
+  );
+
+  it.live("Start during a turn end waits for the copy, then carries the task on once", () =>
+    withCrewEngine((world) =>
+      Effect.gen(function* () {
+        yield* applied(world);
+        const thread = yield* firstTurn(world, () => undefined);
+        const turnCommit = yield* world.holdSsh((script) => script.includes("): turn 1"));
+        const ended = yield* Effect.forkChild(
+          world.publish(spiEvent("turn.completed", thread, { state: "completed" })),
+        );
+        yield* turnCommit.reached;
+        const turnsBefore = (yield* dispatchedOf(world, "thread.turn.start")).length;
+        const started = yield* quick(command(RUN_NOW));
+        assert.isTrue(Option.isSome(started), "Start waited on the turn end");
+        assert.strictEqual(
+          (yield* dispatchedOf(world, "thread.turn.start")).length,
+          turnsBefore,
+          "a turn went to the crewmate while its copy was being committed",
+        );
+        yield* turnCommit.release;
+        yield* Fiber.join(ended);
+        // The advance Start skipped runs once the copy is free: one carry-on, not two.
+        yield* eventually(
+          Effect.map(
+            dispatchedOf(world, "thread.turn.start"),
+            (turns) => turns.length === turnsBefore + 1,
+          ),
+        );
+        yield* Effect.sleep("300 millis");
+        assert.strictEqual(
+          (yield* dispatchedOf(world, "thread.turn.start")).length,
+          turnsBefore + 1,
+        );
       }),
     ),
   );

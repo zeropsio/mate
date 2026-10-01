@@ -126,6 +126,24 @@ export const pressCrewmates = <A, E, R>(
     : pressCrewmate(core, first, pressCrewmates(core, rest, effect));
 };
 
+/**
+ * A press whose work runs long — a Land, a Land now, with their merge and
+ * check: refused at once as busy like any press, then run holding the
+ * crewmate only around the git in its copy and the states it writes (`inCopy`).
+ */
+export const pressCrewmateLong = <A, E, R>(
+  core: CrewCore,
+  taskId: string,
+  effect: (
+    inCopy: <B, E2, R2>(inner: Effect.Effect<B, E2, R2>) => Effect.Effect<B, E2, R2>,
+  ) => Effect.Effect<A, E, R>,
+): Effect.Effect<A, E | CrewCommandError, R> =>
+  Effect.flatMap(requireTask(core, taskId), (pressed) =>
+    Effect.flatMap(pressCrewmate(core, pressed.member, Effect.void), () =>
+      effect(core.crewmate(pressed.member)),
+    ),
+  );
+
 /** A press on a task, to its crewmate (`pressCrewmate`); the task is read again inside. */
 export const onTaskCrewmate = <A, E, R>(
   core: CrewCore,
@@ -142,6 +160,22 @@ export const saveTask = (core: CrewCore, row: CrewAssignmentRow) =>
     yield* asRefusal(core.store.putAssignment(next));
     return next;
   });
+
+/**
+ * `saveTask` over the task only as it was read: a write from a read made
+ * before another changed the task (its state or its attempt) is refused as
+ * `wrong-state`, never written over the newer state.
+ */
+export const saveOver = (core: CrewCore, read: CrewAssignmentRow, next: CrewAssignmentRow) =>
+  core.stepping.withPermits(1)(
+    Effect.gen(function* () {
+      const stored = yield* requireTask(core, read.assignment);
+      if (stored.state !== read.state || stored.attempt !== read.attempt) {
+        return yield* refuse("wrong-state", `#${stored.number} is ${stored.state}`);
+      }
+      return yield* saveTask(core, next);
+    }),
+  );
 
 /**
  * One step of a task's machine, written. A step the task's state does not
@@ -179,8 +213,9 @@ export const stepTask = (
       step.parked === undefined
         ? undefined
         : { on: "triage", reason: PARK_WORDS[step.parked] ?? step.parked, paths: [] };
-    return yield* saveTask(
+    return yield* saveOver(
       core,
+      row,
       change({
         ...row,
         state: step.to,
@@ -810,7 +845,7 @@ export const markFresh = (core: CrewCore, taskId: string) =>
     if (row.state !== "queued" && row.state !== "proposed") {
       return yield* refuse("wrong-state", `#${row.number} has started`);
     }
-    yield* saveTask(core, { ...row, fresh: true });
+    yield* saveOver(core, row, { ...row, fresh: true });
   });
 
 /**
@@ -831,12 +866,10 @@ export const discard = (core: CrewCore, taskId: string) =>
         if (isOpenTask(row.state) && isWorking(core, applied, row.member)) {
           return yield* refuse("wrong-state", `@${row.member}'s turn is running`);
         }
-        // Its merge or check runs (`integrate`): a discard now would be written over.
-        if (
-          row.state === "merging" ||
-          row.state === "checking" ||
-          core.memory.integrating.has(row.assignment)
-        ) {
+        // Its merge or check runs (`integrate`): a discard now would be written over. One
+        // left merging or checking with nothing running on it (a redeploy held its merge,
+        // its check errored) is discarded as any other.
+        if (core.memory.integrating.has(row.assignment)) {
           return yield* refuse("wrong-state", busyWords(row.member));
         }
         const member = memberOf(applied, row.member);

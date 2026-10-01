@@ -103,6 +103,7 @@ import {
   discard,
   onTaskCrewmate,
   pressCrewmate,
+  pressCrewmateLong,
   editTask,
   markFresh,
   message,
@@ -287,10 +288,14 @@ const run = (core: CrewCore, command: CrewCommand, principal: TurnPrincipal, act
         yield* onTaskCrewmate(core, command.taskId, retryTask(core, principal, command.taskId));
         return done;
       case "land":
-        yield* onTaskCrewmate(core, command.taskId, land(core, principal, command.taskId));
+        yield* pressCrewmateLong(core, command.taskId, (inCopy) =>
+          land(core, principal, command.taskId, inCopy),
+        );
         return done;
       case "landNow":
-        yield* onTaskCrewmate(core, command.taskId, landNow(core, principal, command.taskId));
+        yield* pressCrewmateLong(core, command.taskId, (inCopy) =>
+          landNow(core, principal, command.taskId, inCopy),
+        );
         return done;
       case "askResolve":
         yield* onTaskCrewmate(

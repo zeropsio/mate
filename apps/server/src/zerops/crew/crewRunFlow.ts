@@ -100,15 +100,24 @@ const carryOn = (
         if (landing !== "check" && !(landing === "lead" && accepted)) return;
         // A landing held (your chat is working, the service redeploys) waits for the next free
         // moment, and says why: in the crew log once per reason, and as the section's last error.
-        yield* land(core, dispatchPrincipal(applied, task), task.assignment).pipe(
-          Effect.catchTag("CrewCommandError", (error) =>
-            Effect.gen(function* () {
-              const words = failureWords(error);
-              memory.lastError = `#${task.number} waits to land: ${words}`;
-              if (memory.heldLandings.get(task.assignment) === words) return;
-              memory.heldLandings.set(task.assignment, words);
-              yield* landingHeld(core, task, words);
-            }),
+        // Beside the advance that asked for it, which may hold the crewmate: the landing
+        // holds it only around the git in its copy, its merge's check outside.
+        yield* core.background(
+          land(
+            core,
+            dispatchPrincipal(applied, task),
+            task.assignment,
+            core.crewmate(member.row.handle),
+          ).pipe(
+            Effect.catchTag("CrewCommandError", (error) =>
+              Effect.gen(function* () {
+                const words = failureWords(error);
+                memory.lastError = `#${task.number} waits to land: ${words}`;
+                if (memory.heldLandings.get(task.assignment) === words) return;
+                memory.heldLandings.set(task.assignment, words);
+                yield* landingHeld(core, task, words);
+              }),
+            ),
           ),
         );
         return;
