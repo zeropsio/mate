@@ -470,6 +470,9 @@ export function pressPlatform(
     closeOff: async (projectId) => {
       await runZeropsCommand(data.runtime.commands.isolateProjectEnv(projectOf(projectId)));
     },
+    // Reads, not writes: what has written the project's variables, waited on by the runner.
+    readProjectEnvWrites: (projectId) =>
+      client.readProjectEnvWrites({ clientId: organizationId, projectId }),
     readIsolation: async (projectId) =>
       (await client.readProjectEnv(organizationId, projectId)).find(
         (entry) => entry.key === PROJECT_ENV_ISOLATION_KEY,

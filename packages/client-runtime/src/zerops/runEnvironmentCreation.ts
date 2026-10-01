@@ -81,6 +81,14 @@ export interface EnvironmentCreationPlatform {
   }) => Promise<{ readonly projectId: string }>;
   /** The project closed off (`projectIsolation.ts`); safe to ask again. */
   readonly closeOff: (projectId: string) => Promise<void>;
+  /**
+   * The project's `stack.updateProjectEnvs` processes, newest first, by id and status: the
+   * container recipe writes the project's variables in one after its import, and a read of
+   * `envIsolation` before it is through is stale.
+   */
+  readonly readProjectEnvWrites: (
+    projectId: string,
+  ) => Promise<ReadonlyArray<{ readonly id: string; readonly status: string }>>;
   /** The project's `envIsolation`, read back; undefined while the read has not caught up. */
   readonly readIsolation: (projectId: string) => Promise<string | undefined>;
   /**
@@ -197,6 +205,17 @@ export const ISOLATION_READ_MS = 1_000;
 /** How many reads a close-off makes before it writes, or gives up: about ten seconds. */
 export const ISOLATION_READS = 10;
 
+/** A close-off's reads that must say closed before the mark, and the time between them. */
+export const ISOLATION_CONFIRM_READS = 2;
+export const ISOLATION_CONFIRM_MS = 2_000;
+/**
+ * How long a close-off waits for the container recipe's `stack.updateProjectEnvs`, created after
+ * the import, to finish: past it, it goes on — the isolation it then writes and reads back twice
+ * is the guard, and a stuck write is not the press's.
+ */
+export const RECIPE_ENV_WRITE_CAP_MS = 30_000;
+export const RECIPE_ENV_WRITE_POLL_MS = 1_000;
+
 /** The idempotent steps' tries: the platform's index catching up is the usual "not yet". */
 export const PRESS_STEP_ATTEMPTS = 4;
 export const PRESS_STEP_RETRY_MS = 2_000;
@@ -262,6 +281,11 @@ export async function runEnvironmentCreation(
   let serviceName: string | undefined;
   let deployments: ReadonlyArray<ServiceDeployment> = [];
   /**
+   * The project's variable writes before this press imported its container: null where they
+   * could not be read; undefined where this press imported none.
+   */
+  let envWritesBefore: ReadonlySet<string> | null | undefined;
+  /**
    * `envIsolation` as soon as it reads at all, a second apart for about ten seconds; undefined
    * while it never did. A read that answers is the answer, open or closed.
    */
@@ -280,6 +304,31 @@ export async function runEnvironmentCreation(
       }
       await sleep(ISOLATION_READ_MS);
       assertCurrent();
+    }
+  };
+
+  /**
+   * Two reads two seconds apart that say closed, writing isolation wherever one says anything
+   * else — once, and the two reads asked again after it.
+   */
+  const confirmClosed = async (target: string): Promise<void> => {
+    let written = false;
+    for (let closedReads = 0; closedReads < ISOLATION_CONFIRM_READS;) {
+      if (closedReads > 0) {
+        await sleep(ISOLATION_CONFIRM_MS);
+        assertCurrent();
+      }
+      const isolation = await readIsolation(target);
+      if (isolation === undefined) throw new Error("The project's isolation could not be read.");
+      if (readsClosed(isolation)) {
+        closedReads += 1;
+        continue;
+      }
+      if (written) throw new Error("The project does not read as closed off yet.");
+      await input.platform.closeOff(target);
+      assertCurrent();
+      written = true;
+      closedReads = 0;
     }
   };
 
@@ -352,6 +401,14 @@ export async function runEnvironmentCreation(
           break;
         }
         case "import-container": {
+          // What has written the project's variables so far: the recipe's write is the one the
+          // close-off then waits for. Unknown where it could not be read.
+          envWritesBefore = await input.platform
+            .readProjectEnvWrites(requireProject(projectId))
+            .then(
+              (writes): ReadonlySet<string> | null => new Set(writes.map((write) => write.id)),
+              (): ReadonlySet<string> | null => null,
+            );
           const imported = await input.platform.importDevelopmentContainer({
             projectId: requireProject(projectId),
             projectName: projectName ?? "",
@@ -359,23 +416,24 @@ export async function runEnvironmentCreation(
             ...(step.runtimes === undefined ? {} : { setupRuntimesYaml: step.runtimes.yaml }),
           });
           serviceName = imported.serviceName;
+          if (!imported.imported) envWritesBefore = undefined;
           break;
         }
         case "close-off": {
           const target = requireProject(projectId);
-          // Read back at once: the recipe leaves it closed, and a new project starts closed.
-          // Written only where it reads anything else, and read back again; marked only once it
-          // reads closed — zcp imports the runtimes on the mark alone.
-          const isolation = await readIsolation(target);
-          if (isolation === undefined) {
-            throw new Error("The project's isolation could not be read.");
-          }
-          if (!readsClosed(isolation)) {
-            await input.platform.closeOff(target);
-            if (!readsClosed(await readIsolation(target))) {
-              throw new Error("The project does not read as closed off yet.");
-            }
-          }
+          // The read trails the platform, and zcp imports the runtimes on the mark alone: the
+          // recipe's own write of the project's variables is waited out first, isolation is
+          // written wherever a read says anything but closed, and the mark goes only on two
+          // reads, two seconds apart, that say closed.
+          await awaitRecipeEnvWrite({
+            projectId: target,
+            platform: input.platform,
+            before: envWritesBefore,
+            now,
+            sleep,
+            assertCurrent,
+          });
+          await confirmClosed(target);
           await withTries(() => input.platform.markClosedOff(target));
           break;
         }
@@ -557,5 +615,43 @@ async function awaitServices(input: {
       );
     }
     await input.sleep(input.pollIntervalMs);
+  }
+}
+
+const ENV_WRITE_UNDER_WAY = new Set(["PENDING", "RUNNING"]);
+
+/**
+ * Waits out the container recipe's write of the project's variables: through once a write this
+ * press's import made — one not there before it — has ended and none is under way; for a press that
+ * imported no container here, once none is under way. Never past {@link RECIPE_ENV_WRITE_CAP_MS};
+ * a read that fails counts as not through yet.
+ */
+async function awaitRecipeEnvWrite(input: {
+  readonly projectId: string;
+  readonly platform: EnvironmentCreationPlatform;
+  /** The writes before the import; null where unread, undefined where nothing was imported. */
+  readonly before: ReadonlySet<string> | null | undefined;
+  readonly now: () => number;
+  readonly sleep: (ms: number) => Promise<void>;
+  readonly assertCurrent: () => void;
+}): Promise<void> {
+  const deadline = input.now() + RECIPE_ENV_WRITE_CAP_MS;
+  for (;;) {
+    const writes = await input.platform.readProjectEnvWrites(input.projectId).then(
+      (answer) => answer,
+      () => null,
+    );
+    input.assertCurrent();
+    if (writes !== null) {
+      const underWay = writes.some((write) => ENV_WRITE_UNDER_WAY.has(write.status));
+      const before = input.before;
+      const recipeDone =
+        before === undefined ||
+        writes.some((write) => !before?.has(write.id) && !ENV_WRITE_UNDER_WAY.has(write.status));
+      if (!underWay && recipeDone) return;
+    }
+    if (input.now() >= deadline) return;
+    await input.sleep(RECIPE_ENV_WRITE_POLL_MS);
+    input.assertCurrent();
   }
 }

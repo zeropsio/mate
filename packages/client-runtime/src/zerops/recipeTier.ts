@@ -527,7 +527,13 @@ export function recipeProjectImportYaml(
   return [
     ...lines.slice(0, block.start),
     ...header,
-    ...withoutKeys(lines.slice(block.start + 1, block.end), ["name", "tags"]),
+    // The project's isolation is the press's alone to write (`runEnvironmentCreation.ts`): a
+    // tier that named it, as a key or as a variable, would open a Mate's project at birth.
+    ...withoutKeys(lines.slice(block.start + 1, block.end), [
+      "name",
+      "tags",
+      "envIsolation",
+    ]).filter((line) => !/^\s*envIsolation\s*:/u.test(line)),
     ...lines.slice(block.end),
   ].join("\n");
 }
