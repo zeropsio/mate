@@ -436,7 +436,13 @@ async function readFact(client: GiteaClient, fact: ForgeFact): Promise<Outcome> 
         : { kind: "value", value: head, coverage: "complete" };
     }
     case "declarations": {
-      const file = await client.readFile(fact.owner, fact.repo, ENVIRONMENTS_DOCUMENT_PATH);
+      // The root's listing first: a group with no `environments.yaml` — most of them — answers
+      // it without the 404 a read of the missing file printed in red on every load.
+      const root = await client.listDirectory(fact.owner, fact.repo, "", "main");
+      const file =
+        root?.includes(ENVIRONMENTS_DOCUMENT_PATH) === true
+          ? await client.readFile(fact.owner, fact.repo, ENVIRONMENTS_DOCUMENT_PATH, "main")
+          : undefined;
       return {
         kind: "value",
         value: file === undefined ? [] : readGroupEnvironments(file.content),

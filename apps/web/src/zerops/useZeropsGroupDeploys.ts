@@ -452,6 +452,10 @@ async function readDeclarations(
   client: GiteaClient,
   slug: string,
 ): Promise<ReadonlyArray<GroupEnvironment>> {
+  // The root's listing first: a group with no `environments.yaml` — most of them — answers it
+  // without the 404 a read of the missing file printed in red on every load.
+  const root = await client.listDirectory(slug, GROUP_REPOSITORY, "", "main");
+  if (root?.includes(ENVIRONMENTS_PATH) !== true) return [];
   const file = await client.readFile(slug, GROUP_REPOSITORY, ENVIRONMENTS_PATH, "main");
   return file === undefined ? [] : readGroupEnvironments(file.content);
 }

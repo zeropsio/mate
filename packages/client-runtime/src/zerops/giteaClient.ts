@@ -421,6 +421,16 @@ export interface GiteaClient {
    */
   deleteBranch(owner: string, repo: string, branch: string): Promise<void>;
 
+  /**
+   * The names in a directory of that ref — `""` for the root — or `undefined` when it is not
+   * there. Asked before a file that may not exist, so its absence is a listing, never a 404.
+   */
+  listDirectory(
+    owner: string,
+    repo: string,
+    path: string,
+    ref?: string | undefined,
+  ): Promise<ReadonlyArray<string> | undefined>;
   /** `undefined` when the path is not in that ref — an empty group repo, say. */
   readFile(
     owner: string,
@@ -802,6 +812,26 @@ export function createGiteaClient(options: GiteaClientOptions): GiteaClient {
           if (!response.ok) await fail(response, "delete the branch");
         },
       ),
+
+    listDirectory: async (owner, repo, path, ref) => {
+      const answer = await optional<unknown>(
+        {
+          method: "GET",
+          path: `/repos/${enc(owner)}/${enc(repo)}/contents${path === "" ? "" : `/${encodePath(path)}`}`,
+          ...(ref === undefined ? {} : { query: { ref } }),
+        },
+        "list the directory",
+      );
+      if (!Array.isArray(answer)) return undefined;
+      return answer.flatMap((entry: unknown) =>
+        typeof entry === "object" &&
+        entry !== null &&
+        "name" in entry &&
+        typeof entry.name === "string"
+          ? [entry.name]
+          : [],
+      );
+    },
 
     readFile: async (owner, repo, path, ref) => {
       const answer = await optional<{
