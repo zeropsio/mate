@@ -56,7 +56,12 @@ export const Invalidation = Schema.Union([
     topic: Schema.Literal("access"),
     change: Schema.Literals(["granted", "lapsed", "renew-now"]),
   }),
-  Schema.Struct({ topic: Schema.Literal("inventory"), organization: OrganizationRef }),
+  Schema.Struct({
+    topic: Schema.Literal("inventory"),
+    organization: OrganizationRef,
+    /** A person's Try now: what stalled starts over on the open socket, not a full re-read. */
+    why: Schema.optionalKey(Schema.Literal("user-retry")),
+  }),
   Schema.Struct({ topic: Schema.Literal("project"), project: ProjectRef }),
   Schema.Struct({
     topic: Schema.Literal("environment"),

@@ -70,11 +70,20 @@ const listingsOver = (first: CollectionRead<ProjectRecord>) => {
     access: {
       view: Atom.make({
         machine: {
-          phase: { phase: "granted", evidence: { account: { organizations: [{ organization }] } } },
+          phase: {
+            phase: "granted",
+            evidence: {
+              account: { organizations: [{ organization }] },
+              projects: new Map(),
+              unverified: new Map(),
+              closedProjects: new Map(),
+            },
+          },
         },
       }),
     },
     reads: {
+      access: Atom.make({ status: "unverified" }),
       projectsOf: () => projects,
       servicesOf: () => {
         throw new Error("no project is listed, so no services are read");

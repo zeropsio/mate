@@ -64,13 +64,15 @@ export type ZeropsDeployedVersionReader = (
   projectId: string,
   serviceId: string,
   signal: AbortSignal,
+  /** The active version the live data pushed: a read that names another reads again by id. */
+  activeId?: string,
 ) => Promise<string | undefined>;
 
 export function useZeropsDeployedVersionReader(): ZeropsDeployedVersionReader {
   const { activeOrganization } = useZeropsSession();
   const { projectRef, runtime } = useZeropsData();
   return useCallback(
-    async (projectId: string, serviceId: string, signal: AbortSignal) => {
+    async (projectId: string, serviceId: string, signal: AbortSignal, activeId?: string) => {
       if (activeOrganization === null) throw new Error("No organization is chosen.");
       const deployed = await readZeropsResource(
         runtime.resources,
@@ -82,6 +84,7 @@ export function useZeropsDeployedVersionReader(): ZeropsDeployedVersionReader {
             project: projectRef(activeOrganization.id, projectId),
             serviceId: ZeropsServiceId.make(serviceId),
           },
+          ...(activeId === undefined ? {} : { activeId }),
         },
         signal,
       );

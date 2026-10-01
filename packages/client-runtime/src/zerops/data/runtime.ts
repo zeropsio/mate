@@ -52,6 +52,7 @@ import type {
   InterestIdentity,
   InterestKey,
   InterestLease,
+  EntityQueryDescriptor,
   LeaseAdmissionError,
   OrganizationRef,
   PlatformCommand,
@@ -154,6 +155,8 @@ function serializedInterestKey(descriptor: RuntimeInterestDescriptor): InterestK
         ]),
       );
     case "project-inventory":
+    case "project-record":
+    case "project-services-check":
     case "project-current-metrics":
       return InterestKeySchema.make(
         JSON.stringify([descriptor.kind, projectKeyOf(descriptor.project)]),
@@ -394,67 +397,77 @@ const queryKeysOfPlan = (plan: InterestPlan): ReadonlyArray<QueryKey> => [
   ),
 ];
 
+/**
+ * What an interest registers and reads (DESIGN §4.1). Projects, services and running processes
+ * are the organization's, read and subscribed once for every project the way the platform's own
+ * app does (`POST /<entity>/search` filtered by `clientId`): a project's inventory, topology or
+ * activity shares those registrations, deduplicated by key, and reads nothing of its own. A cold
+ * load, and a reconnect, cost the same whatever the number of projects. Only a project's metrics
+ * and its process history, which the platform answers per project, are the project's own.
+ */
 export function planZeropsInterest(descriptor: RuntimeInterestDescriptor): InterestPlan {
   const organization = organizationOfInterest(descriptor);
   const entityUpdate = (entity: "project" | "service" | "process"): PlannedRegistration => ({
     descriptor: { kind: "entity-updates", entity, organization },
     baseline: null,
   });
+  const membership = (query: EntityQueryDescriptor): PlannedRegistration => ({
+    descriptor: { kind: "query-membership", query },
+    baseline: { kind: "query", descriptor: query },
+  });
+  const projects: EntityQueryDescriptor = {
+    kind: "projects-of-organization",
+    organization,
+    statuses: [],
+    schemaVersion: 1,
+  };
+  const services: EntityQueryDescriptor = {
+    kind: "services-of-organization",
+    organization,
+    schemaVersion: 1,
+  };
+  const running: EntityQueryDescriptor = {
+    kind: "running-processes-of-organization",
+    organization,
+    statuses: ["PENDING", "RUNNING", "ROLLBACKING", "CANCELING"],
+    schemaVersion: 1,
+  };
   if (descriptor.kind === "organization-inventory") {
-    const query: QueryDescriptor = {
-      kind: "projects-of-organization",
-      organization,
-      statuses: [],
-      schemaVersion: 1,
-    };
     return {
-      registrations: [
-        entityUpdate("project"),
-        {
-          descriptor: { kind: "query-membership", query },
-          baseline: { kind: "query", descriptor: query },
-        },
-      ],
-      directReads: [{ kind: "query", descriptor: query }],
+      registrations: [entityUpdate("project"), membership(projects)],
+      // The lag-free list (`GET /client/{id}/project`): a project is there before its create
+      // call has returned, while the search behind the registration trails it.
+      directReads: [{ kind: "query", descriptor: projects }],
     };
   }
-
-  const project = descriptor.project;
+  const activity = [entityUpdate("process"), membership(running)];
   if (descriptor.kind === "project-inventory" || descriptor.kind === "project-topology") {
-    const services: QueryDescriptor = {
-      kind: "services-of-project",
-      project,
-      schemaVersion: 1,
-    };
-    const processes: QueryDescriptor = {
-      kind: "running-processes-of-project",
-      project,
-      statuses: ["PENDING", "RUNNING", "ROLLBACKING", "CANCELING"],
-      schemaVersion: 1,
-    };
-    const registrations: PlannedRegistration[] = [
-      entityUpdate("project"),
-      entityUpdate("service"),
-      {
-        descriptor: { kind: "query-membership", query: services },
-        baseline: { kind: "query", descriptor: services },
-      },
-    ];
-    if (descriptor.kind === "project-topology") {
-      registrations.push(entityUpdate("process"), {
-        descriptor: { kind: "query-membership", query: processes },
-        baseline: { kind: "query", descriptor: processes },
-      });
-    }
     return {
-      registrations,
-      directReads: [
-        { kind: "project", ref: project },
-        { kind: "query", descriptor: services },
-        ...(descriptor.kind === "project-topology"
-          ? [{ kind: "query" as const, descriptor: processes }]
-          : []),
+      // The project itself is the organization inventory's, which every app holds beside it.
+      registrations: [
+        entityUpdate("service"),
+        membership(services),
+        ...(descriptor.kind === "project-topology" ? activity : []),
       ],
+      directReads: [],
+    };
+  }
+  const project = descriptor.project;
+  if (descriptor.kind === "project-activity") {
+    return { registrations: activity, directReads: [] };
+  }
+  if (descriptor.kind === "project-services-check") {
+    return {
+      registrations: [],
+      directReads: [
+        { kind: "query", descriptor: { kind: "services-of-project", project, schemaVersion: 1 } },
+      ],
+    };
+  }
+  if (descriptor.kind === "project-record") {
+    return {
+      registrations: [entityUpdate("project")],
+      directReads: [{ kind: "project", ref: project }],
     };
   }
   if (descriptor.kind === "project-current-metrics") {
@@ -472,24 +485,6 @@ export function planZeropsInterest(descriptor: RuntimeInterestDescriptor): Inter
         },
       ],
       directReads: [],
-    };
-  }
-  if (descriptor.kind === "project-activity") {
-    const query: QueryDescriptor = {
-      kind: "running-processes-of-project",
-      project,
-      statuses: ["PENDING", "RUNNING", "ROLLBACKING", "CANCELING"],
-      schemaVersion: 1,
-    };
-    return {
-      registrations: [
-        entityUpdate("process"),
-        {
-          descriptor: { kind: "query-membership", query },
-          baseline: { kind: "query", descriptor: query },
-        },
-      ],
-      directReads: [{ kind: "query", descriptor: query }],
     };
   }
   if (descriptor.kind === "project-process-history") {
@@ -876,6 +871,18 @@ const RETRIED_BY_PERSON: AdapterError = {
   _tag: "ZeropsDataAdapterError",
   kind: "cancelled",
   message: "Retried at a person's request.",
+  retryable: true,
+  accountRevocationEvidence: false,
+};
+
+/**
+ * A shared registration its sender abandoned in flight — its establishment ran out of time, or it
+ * went: the interests waiting on it retry alone, as the sender does, and never strand.
+ */
+const REGISTRATION_ABANDONED: AdapterError = {
+  _tag: "ZeropsDataAdapterError",
+  kind: "timeout",
+  message: "The shared registration was abandoned by the interest that sent it.",
   retryable: true,
   accountRevocationEvidence: false,
 };
@@ -1451,8 +1458,9 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
       return (
         target.kind === "query" &&
         (target.descriptor.kind === "projects-of-organization" ||
+          target.descriptor.kind === "services-of-organization" ||
           target.descriptor.kind === "services-of-project" ||
-          target.descriptor.kind === "running-processes-of-project" ||
+          target.descriptor.kind === "running-processes-of-organization" ||
           target.descriptor.kind === "process-history-window")
           ? {
               ...base,
@@ -2126,7 +2134,16 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
                 ) {
                   receiver.registrationOwners.delete(registration.request.subscriptionName);
                 }
-              }).pipe(Effect.andThen(Deferred.interrupt(registration.outcome)), Effect.asVoid),
+              }).pipe(
+                // Its siblings waiting on it hear it was abandoned, and retry alone as it does.
+                Effect.andThen(
+                  Deferred.succeed(registration.outcome, {
+                    kind: "failed",
+                    error: REGISTRATION_ABANDONED,
+                  }),
+                ),
+                Effect.asVoid,
+              ),
             ),
           );
         }
@@ -2187,6 +2204,16 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
           // A refusal left nothing registered: this interest registers again, alone, on the
           // receiver its siblings keep observing on. Without an answer the receiver may hold a
           // subscription nobody owns, whose frames would name no registration: it is replaced.
+          // A shared registration whose sender gave up on it (its own deadline) says nothing
+          // against an open socket: this interest retries alone too, and sends it afresh.
+          if (
+            outcome.error === REGISTRATION_ABANDONED &&
+            receiver.handle !== null &&
+            identity.receiver.receiverId === receiver.identity.receiverId
+          ) {
+            yield* recoverInterest(receiver, identity, "disconnect", outcome.error.message);
+            return interestFailed;
+          }
           if (registrationRefused(outcome.error)) {
             yield* recoverInterest(receiver, identity, "registration", outcome.error.message);
             return interestFailed;
@@ -2923,7 +2950,7 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
       }),
     );
 
-  const refresh: ZeropsDataRuntime["refresh"] = (organization) =>
+  const refresh: ZeropsDataRuntime["refresh"] = (organization, refreshOptions) =>
     lifecycleLock.withPermit(
       Effect.gen(function* () {
         if (yield* Ref.get(closed)) return;
@@ -2932,31 +2959,42 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
         // on its own backoff. An independent replacement here would race it: each
         // one's in-flight establishInterest call loses to the other's receiver swap
         // (the identity/receiver mismatch guards abort it), so neither ever survives
-        // long enough to complete a registration — a livelock. Wake the existing
-        // cycle instead, which recomputes its wait from current state.
+        // long enough to complete a registration — a livelock. While the cycle owns
+        // the receiver (its socket is down, or it is about to replace it), wake it
+        // instead, which recomputes its wait from current state.
         const activeRecovery = recoveryCycles.get(organizationKey);
-        if (activeRecovery !== undefined) {
-          // A person asked (Try now): every subscription of the organization not observing
-          // starts over now, past its backoff, on the socket the cycle already holds — which none
-          // of this replaces. Its registrations still unanswered are let go, so nothing waits on
-          // them. A socket that is not open is the cycle's: its login retries on its own backoff.
-          const current = receivers.get(organizationKey);
-          if (current !== undefined && current.handle !== null) {
-            const stalled = yield* Ref.get(model);
-            const restarting = [...interests.values()].filter((runtimeInterest) => {
-              const status = stalled.interests.get(runtimeInterest.key)?.interest.status;
-              return (
-                runtimeInterest.leases.size > 0 &&
-                runtimeInterest.identity.receiver.receiverId === current.identity.receiverId &&
-                (status === "establishing" || status === "recovering")
-              );
-            });
-            for (const registration of [...current.registrations.values()]) {
+        // A person asked (Try now) while some of the organization's subscriptions are not
+        // observing — stalled, recovering, or failed past their attempts: every one of them starts
+        // over now, past its backoff, on the socket that is open, which none of this replaces. Its
+        // registrations still unanswered are let go, so nothing waits on them. A socket that is not
+        // open is the recovery cycle's: its login retries on its own backoff. Any other
+        // invalidation is a full re-read, below.
+        const current = receivers.get(organizationKey);
+        const open = current !== undefined && current.handle !== null ? current : null;
+        const stalled = yield* Ref.get(model);
+        const restarting =
+          open === null || refreshOptions?.retry !== true
+            ? []
+            : [...interests.values()].filter((runtimeInterest) => {
+                const status = stalled.interests.get(runtimeInterest.key)?.interest.status;
+                return (
+                  runtimeInterest.leases.size > 0 &&
+                  runtimeInterest.identity.receiver.receiverId === open.identity.receiverId &&
+                  (status === "establishing" || status === "recovering" || status === "failed")
+                );
+              });
+        // A socket that is down, or one the cycle is about to replace, is the cycle's to
+        // re-read: everything re-registers on the receiver it opens.
+        const cycleOwnsReceiver =
+          activeRecovery !== undefined && (open === null || activeRecovery.replace !== null);
+        if (cycleOwnsReceiver || restarting.length > 0) {
+          if (open !== null) {
+            for (const registration of [...open.registrations.values()]) {
               if (registration.status !== "registering") continue;
-              current.registrations.delete(registration.key);
+              open.registrations.delete(registration.key);
               const name = registration.request.subscriptionName;
-              if (current.registrationOwners.get(name) === registration)
-                current.registrationOwners.delete(name);
+              if (open.registrationOwners.get(name) === registration)
+                open.registrationOwners.delete(name);
               yield* Deferred.succeed(registration.outcome, {
                 kind: "failed",
                 error: RETRIED_BY_PERSON,
@@ -2964,7 +3002,7 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
             }
             for (const runtimeInterest of restarting) {
               runtimeInterest.recoveryAttempts = 0;
-              const desired = yield* updateInterestIdentity(runtimeInterest, current);
+              const desired = yield* updateInterestIdentity(runtimeInterest, open);
               yield* applyControl({ kind: "interest-upserted", interest: desired });
             }
             yield* Effect.forEach(
@@ -2973,7 +3011,7 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
               { discard: true },
             );
           }
-          yield* Deferred.succeed(activeRecovery.wake, undefined);
+          if (activeRecovery !== undefined) yield* Deferred.succeed(activeRecovery.wake, undefined);
           return;
         }
         const state = yield* Ref.get(model);
@@ -3019,6 +3057,9 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
           (runtimeInterest) => establishInterest(runtimeInterest).pipe(forkOwned),
           { discard: true },
         );
+        // A cycle retrying single interests on the replaced socket finds its round's receiver
+        // gone and recomputes what is due on this one.
+        if (activeRecovery !== undefined) yield* Deferred.succeed(activeRecovery.wake, undefined);
       }),
     );
 
@@ -3642,7 +3683,9 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
     Effect.flatMap(bus.subscribe, (subscription) =>
       Stream.fromSubscription(subscription).pipe(
         Stream.runForEach((invalidation) =>
-          invalidation.topic === "inventory" ? refresh(invalidation.organization) : Effect.void,
+          invalidation.topic === "inventory"
+            ? refresh(invalidation.organization, { retry: invalidation.why === "user-retry" })
+            : Effect.void,
         ),
         Effect.forkScoped,
       ),

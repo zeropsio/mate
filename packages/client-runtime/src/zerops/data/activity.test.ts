@@ -121,8 +121,8 @@ describe("Zerops activity model", () => {
     const id = identity();
     const ref = process();
     const descriptor = {
-      kind: "running-processes-of-project" as const,
-      project: project(),
+      kind: "running-processes-of-organization" as const,
+      organization: project().organization,
       statuses: ["PENDING", "RUNNING", "ROLLBACKING", "CANCELING"] as const,
       schemaVersion: 1 as const,
     };
@@ -251,5 +251,76 @@ describe("Zerops activity model", () => {
     expect(state.activity.processes.get(processKeyOf(ref))?.lifecycle).toMatchObject({
       fields: { status: "FAILED" },
     });
+  });
+});
+
+describe("a project's running processes after its organization's running read", () => {
+  const running = (
+    order: ReadonlyArray<"pushed RUNNING" | "read without it" | "read with it">,
+  ): ReadonlyArray<string> => {
+    const id = identity();
+    const ref = process("build");
+    const descriptor = {
+      kind: "running-processes-of-organization" as const,
+      organization: project().organization,
+      statuses: ["PENDING", "RUNNING", "ROLLBACKING", "CANCELING"] as const,
+      schemaVersion: 1 as const,
+    };
+    let state = reduce(makeInitialZeropsDataState(scope()), {
+      kind: "interest-upserted",
+      interest: desiredInterest(id),
+    });
+    order.forEach((step, index) => {
+      const at = stamp(index + 1);
+      state = reduce(state, {
+        kind: "observation",
+        observation: {
+          stamp: at,
+          accessEvidence: null,
+          input:
+            step === "pushed RUNNING"
+              ? {
+                  kind: "process-lifecycle-observed",
+                  ref,
+                  observation: {
+                    source: "native-push",
+                    registration: entityRegistration("process", id),
+                    fields: { status: "RUNNING" },
+                    metadata: {},
+                  },
+                }
+              : {
+                  kind: "query-baseline-observed",
+                  members: step === "read with it" ? [ref] : [],
+                  unresolvedMembers: [],
+                  observedTotal: step === "read with it" ? 1 : 0,
+                  coverage: {
+                    kind: "exhausted-traversal",
+                    traversedPages: 1,
+                    observedTotal: step === "read with it" ? 1 : 0,
+                    guarantee: "non-atomic",
+                  },
+                  source: "indexed-search",
+                  ticket: queryTicket(descriptor, id, index + 1, index + 1, index + 1),
+                },
+        },
+      });
+    });
+    return selectRunningProcessesOf(state, project()).value.map((entry) =>
+      entry.knowledge === "observed" ? entry.record.ref.processId : entry.ref.processId,
+    );
+  };
+
+  it.each([
+    // A build that finished while the socket was down: its FINISHED was never pushed.
+    [
+      "one the read no longer carries, pushed only before it, has finished",
+      ["pushed RUNNING", "read without it"],
+      [],
+    ],
+    ["one pushed RUNNING after the read runs", ["read without it", "pushed RUNNING"], ["build"]],
+    ["one the read carries runs", ["pushed RUNNING", "read with it"], ["build"]],
+  ] as const)("%s", (_, order, expected) => {
+    expect(running(order)).toEqual(expected);
   });
 });

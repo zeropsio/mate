@@ -110,9 +110,10 @@ export function servicesRead(
   } = {},
 ): CollectionRead<ServiceRecord> {
   const coverage = options.coverage ?? COMPLETE;
+  const owner = options.project ?? project();
   const descriptor = {
-    kind: "services-of-project" as const,
-    project: options.project ?? project(),
+    kind: "services-of-organization" as const,
+    organization: owner.organization,
     schemaVersion: 1 as const,
   };
   const common = {
@@ -123,6 +124,7 @@ export function servicesRead(
     membershipOperations: new Map(),
   };
   return {
+    project: owner,
     value: records.map((entry, index) =>
       entry === "unresolved"
         ? { knowledge: "unresolved", ref: service(`unresolved-${index}`) }

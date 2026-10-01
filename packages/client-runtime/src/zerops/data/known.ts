@@ -158,7 +158,9 @@ function knownCollection<Record extends ProjectRecord | ServiceRecord>(
   const query: QueryState = read.query;
   if (query.status !== "observed") return notYetKnown(source, nowMs);
   const records: Record[] = [];
-  let pending = query.unresolvedMemberKeys.length > 0;
+  // A project's slice of the organization's read is pending on its own unresolved members, which
+  // it lists as such, never on another project's.
+  let pending = read.project === undefined && query.unresolvedMemberKeys.length > 0;
   let revoked = 0;
   for (const member of read.value) {
     if (member.knowledge === "observed") records.push(member.record);
@@ -213,9 +215,28 @@ const projectFeeders = feedersOnce(
     ]),
 );
 
+/**
+ * The receipt ordinal of the confirming read of a project's services (§9 C19): its own lag-free
+ * read (`project-services-check`), observing. The organization's search behind the inventory may
+ * trail a service it lacks, so it never confirms an absence. `null` while that read has not run.
+ */
+export function servicesCheckOrdinalOf(read: CollectionRead<ServiceRecord>): number | null {
+  if (read.project === undefined) return null;
+  const check = interestKeyOf({ kind: "project-services-check", project: read.project });
+  for (const interests of [read.observation.required, read.observation.optional]) {
+    for (const interest of interests) {
+      if (interest.status === "observing" && interest.identity.key === check)
+        return interest.sinceReceiptOrdinal;
+    }
+  }
+  return null;
+}
+
 /** The interest a project's services read is as current as, like `projectsSourceOf`. */
 export function servicesSourceOf(read: CollectionRead<ServiceRecord>): InterestState | null {
-  return sourceOf(read.observation, projectFeeders(read.query.descriptor.project));
+  return read.project === undefined
+    ? null
+    : sourceOf(read.observation, projectFeeders(read.project));
 }
 
 /** A project's services: fed by its inventory interest or by its topology. */

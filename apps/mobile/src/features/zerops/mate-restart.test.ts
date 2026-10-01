@@ -98,7 +98,7 @@ const platform = () => {
   const rowsOf = (query: EntityQueryDescriptor): ReadonlyArray<unknown> =>
     query.kind === "projects-of-organization"
       ? [projectRow]
-      : query.kind === "services-of-project"
+      : query.kind === "services-of-organization"
         ? [serviceRow()]
         : [];
   const adapter: ZeropsDataAdapter = {
@@ -116,7 +116,7 @@ const platform = () => {
         return {
           responseObservations: decodeRegistrationResponse(request, {
             items,
-            total: items.length,
+            totalHits: items.length,
           }).observations,
         };
       }),

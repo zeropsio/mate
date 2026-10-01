@@ -95,15 +95,18 @@ function pushedRuntime(overrides: Partial<ZeropsDataReads> = {}) {
     );
   const pushServices = (list: ReadonlyArray<object>) => {
     const query = {
-      kind: "services-of-project" as const,
-      project: owner,
+      kind: "services-of-organization" as const,
+      organization: owner.organization,
       schemaVersion: 1 as const,
     };
     push(
       decodeEntityQueryResponse(
         query,
         directTicket({ kind: "query", descriptor: query }, id, 3, 3),
-        { list, totalCount: list.length },
+        {
+          list: list.map((row) => ({ ...row, projectId: owner.projectId })),
+          totalCount: list.length,
+        },
         "direct-read",
       ),
     );

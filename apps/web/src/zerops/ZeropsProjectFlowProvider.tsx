@@ -390,12 +390,16 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
               ...(tags.role === undefined ? {} : { role: tags.role }),
               services:
                 services?.status === "resolved"
-                  ? summarizeEnvironmentServices(services.services).deployable.map((service) => ({
-                      ...service,
-                      activeDeploy: activeDeployOf(
-                        services.services.find((entry) => entry.id === service.serviceId),
-                      ),
-                    }))
+                  ? summarizeEnvironmentServices(services.services).deployable.map((service) => {
+                      const pushed = services.services.find(
+                        (entry) => entry.id === service.serviceId,
+                      );
+                      return {
+                        ...service,
+                        activeDeploy: activeDeployOf(pushed),
+                        activeVersionId: pushed?.activeAppVersion?.id ?? undefined,
+                      };
+                    })
                   : [],
             };
           }),

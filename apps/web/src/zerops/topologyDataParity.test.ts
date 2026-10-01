@@ -199,12 +199,20 @@ function fixture() {
     }
   };
   ingest(decodeEntityDirectResponse(directTicket({ kind: "project", ref: owner }, id), projectDto));
-  const query = { kind: "services-of-project" as const, project: owner, schemaVersion: 1 as const };
+  const query = {
+    kind: "services-of-organization" as const,
+    organization: owner.organization,
+    schemaVersion: 1 as const,
+  };
   ingest(
     decodeEntityQueryResponse(
       query,
       directTicket({ kind: "query", descriptor: query }, id),
-      { list: services, totalCount: services.length },
+      // An organization's rows each name their project.
+      {
+        list: services.map((row) => ({ ...row, projectId: owner.projectId })),
+        totalCount: services.length,
+      },
       "direct-read",
     ),
   );

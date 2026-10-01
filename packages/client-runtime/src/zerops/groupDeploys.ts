@@ -52,6 +52,8 @@ export interface GroupEnvironmentService {
   readonly serviceId: string;
   /** Its hostname in the environment — `app` for a pair's promoted runtime. */
   readonly hostname: string;
+  /** The active version the platform pushed for it, which its version read must name. */
+  readonly activeVersionId?: string | undefined;
 }
 
 /** A service whose deployed version name has to be read from Zerops. */

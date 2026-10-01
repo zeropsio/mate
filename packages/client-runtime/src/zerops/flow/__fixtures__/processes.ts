@@ -87,8 +87,8 @@ export function processesRead(
   const coverage = options.coverage ?? COMPLETE;
   const owner = options.project ?? project();
   const descriptor = {
-    kind: "running-processes-of-project" as const,
-    project: owner,
+    kind: "running-processes-of-organization" as const,
+    organization: owner.organization,
     statuses: ["PENDING", "RUNNING", "ROLLBACKING", "CANCELING"] as const,
     schemaVersion: 1 as const,
   };
@@ -100,6 +100,7 @@ export function processesRead(
     membershipOperations: new Map(),
   };
   return {
+    project: owner,
     value: records.map((entry, index) =>
       entry === "unresolved"
         ? { knowledge: "unresolved", ref: process(`unresolved-${index}`, owner) }

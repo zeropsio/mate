@@ -19,6 +19,11 @@ import * as Scope from "effect/Scope";
 import { Atom, type AtomRegistry } from "effect/unstable/reactivity";
 
 import { grantRoundInFlight, type Evidence, type GrantMachine } from "../data/access/grant.ts";
+import {
+  evidenceProjectRefs,
+  inventoryProjectRefs,
+  pendingDenials,
+} from "../data/access/grantProjects.ts";
 import { projectRecordToZeropsProject } from "../data/dto.ts";
 import { interestKeyOf, type ManagedZeropsDataRuntime } from "../data/runtime.ts";
 import {
@@ -40,63 +45,13 @@ export const heldEvidence = (grant: GrantMachine): Evidence | null =>
       ? grant.phase.last
       : null;
 
-/**
- * The projects admitted evidence names: verified ones, those whose latest
- * read failed, and those a denial withholds until a confirming read (G6).
- * A confirmed denial is the only way a project leaves. One only an
- * organization's list has named joins once its own read has answered.
- */
-export function evidenceProjectRefs(evidence: Evidence | null): ReadonlyArray<ProjectRef> {
-  if (evidence === null) return [];
-  const refs = new Map<string, ProjectRef>();
-  for (const { access } of evidence.projects.values()) {
-    if (access.role !== "NO_ACCESS") refs.set(projectKeyOf(access.project), access.project);
-  }
-  for (const { project, failure } of evidence.unverified.values()) {
-    // A project only a list has named waits for its own read: one still being created or
-    // deleted is never registered for before the platform has answered for it.
-    if (failure === null) continue;
-    if (!evidence.projects.has(project.projectId)) refs.set(projectKeyOf(project), project);
-  }
-  for (const { project, confirmation } of evidence.closedProjects.values()) {
-    if (confirmation.status === "due") refs.set(projectKeyOf(project), project);
-  }
-  return [...refs.values()];
-}
-
-/** The projects a denial withholds until its confirming read (G6), by `projectKeyOf`. */
-export function pendingDenials(evidence: Evidence | null): ReadonlySet<string> {
-  if (evidence === null) return new Set();
-  return new Set(
-    [...evidence.closedProjects.values()]
-      .filter(({ confirmation }) => confirmation.status === "due")
-      .map(({ project }) => projectKeyOf(project)),
-  );
-}
-
-/** Evidence projects plus those a command established since, from the runtime's grant. */
-export function inventoryProjectRefs(
-  granted: ReadonlyArray<ProjectRef>,
-  access: AccessState | undefined,
-): ReadonlyArray<ProjectRef> {
-  const refs = new Map(granted.map((ref) => [projectKeyOf(ref), ref]));
-  const established =
-    access?.status === "verified"
-      ? access.projects
-      : access?.status === "verifying" || access?.status === "failed"
-        ? (access.previous?.projects ?? [])
-        : [];
-  for (const { project: ref, role } of established) {
-    if (role !== "NO_ACCESS") refs.set(projectKeyOf(ref), ref);
-  }
-  return [...refs.values()];
-}
-
 export interface InventoryDemandInput {
   readonly grant: GrantMachine;
   readonly access: AccessState;
   /** The project's status as the data runtime holds it; undefined while it is unread. */
   readonly projectStatus: (project: ProjectRef) => string | undefined;
+  /** Whether the organization's project list has answered. */
+  readonly organizationListed: (organization: ProjectRef["organization"]) => boolean;
 }
 
 /** The inventories the account demands now: its organizations', then its projects'. */
@@ -123,6 +78,15 @@ export function inventoryDemand(
       kind: "project-inventory",
       project,
     })),
+    // Every project's record is its organization's list's: one the answered list lacks — this
+    // tab's own new project, which the platform answers for before its lists do — is read alone.
+    ...projects
+      .filter(
+        (project) =>
+          input.projectStatus(project) === undefined &&
+          input.organizationListed(project.organization),
+      )
+      .map((project): RuntimeInterestDescriptor => ({ kind: "project-record", project })),
   ];
 }
 
@@ -148,6 +112,8 @@ export const holdInventoryDemand = (input: {
             ? projectRecordToZeropsProject(value.record)?.status
             : undefined;
         },
+        organizationListed: (organization) =>
+          get(data.reads.projectsOf(organization)).query.status === "observed",
       }),
     );
     const wanted = yield* Queue.sliding<ReadonlyArray<RuntimeInterestDescriptor>>(1);
@@ -266,3 +232,5 @@ export const holdListedProjects = (input: {
     );
     yield* Effect.addFinalizer(() => Effect.sync(unsubscribe));
   });
+
+export { evidenceProjectRefs, inventoryProjectRefs, pendingDenials };

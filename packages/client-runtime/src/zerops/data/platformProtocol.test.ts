@@ -200,10 +200,10 @@ describe("Zerops platform protocol decoding", () => {
     });
   });
 
-  it("keeps good rows but marks coverage partial when one required row is malformed", () => {
+  it("drops one malformed row alone, keeping the good rows and the read whole", () => {
     const descriptor = {
-      kind: "services-of-project" as const,
-      project,
+      kind: "services-of-organization" as const,
+      organization: project.organization,
       schemaVersion: 1 as const,
     };
     const result = decodeEntityQueryResponse(
@@ -224,7 +224,8 @@ describe("Zerops platform protocol decoding", () => {
     ]);
     expect(result.observations.at(-1)).toMatchObject({
       kind: "query-baseline-observed",
-      coverage: { kind: "partial", reason: "malformed" },
+      members: [expect.objectContaining({ serviceId: "service-1" })],
+      coverage: { kind: "exhausted-traversal" },
     });
   });
 
@@ -241,8 +242,8 @@ describe("Zerops platform protocol decoding", () => {
       },
       {
         descriptor: {
-          kind: "services-of-project" as const,
-          project,
+          kind: "services-of-organization" as const,
+          organization: project.organization,
           schemaVersion: 1 as const,
         },
         row: { id: "", projectId: "project", name: "app", status: "ACTIVE" },
@@ -265,8 +266,8 @@ describe("Zerops platform protocol decoding", () => {
       },
       {
         descriptor: {
-          kind: "services-of-project" as const,
-          project,
+          kind: "services-of-organization" as const,
+          organization: project.organization,
           schemaVersion: 1 as const,
         },
         row: { id: "service", projectId: "project", name: "app", status: "ACTIVE", rootId: "" },
@@ -302,9 +303,11 @@ describe("Zerops platform protocol decoding", () => {
       expect(decode().issues).toEqual([
         expect.objectContaining({ kind: "malformed-row", rowIndex: 0 }),
       ]);
+      // The bad row is dropped alone; the read still covers what it was handed.
       expect(decode().observations.at(-1)).toMatchObject({
         kind: "query-baseline-observed",
-        coverage: { kind: "partial", reason: "malformed" },
+        members: [],
+        coverage: { kind: "exhausted-traversal" },
       });
     }
   });
@@ -334,8 +337,8 @@ describe("Zerops platform protocol decoding", () => {
 
   it("routes arbitrary names through the registry and decodes list deletes as membership only", () => {
     const descriptor = {
-      kind: "running-processes-of-project" as const,
-      project,
+      kind: "running-processes-of-organization" as const,
+      organization: project.organization,
       statuses: ["PENDING", "RUNNING"] as const,
       schemaVersion: 1 as const,
     };
@@ -347,6 +350,7 @@ describe("Zerops platform protocol decoding", () => {
         data: { add: ["process-a"], delete: ["process-b"] },
       }),
       new Map([[request.subscriptionName, request]]),
+      () => project,
     );
 
     expect(decoded).toMatchObject({ kind: "observations" });
@@ -360,10 +364,50 @@ describe("Zerops platform protocol decoding", () => {
     );
   });
 
+  it.each([
+    ["services-of-organization", "service"],
+    ["running-processes-of-organization", "process"],
+  ] as const)(
+    "places each id of an organization's %s frame in the project a row named it with, and leaves out one no row named",
+    (kind, entity) => {
+      const descriptor =
+        kind === "services-of-organization"
+          ? { kind, organization: project.organization, schemaVersion: 1 as const }
+          : {
+              kind,
+              organization: project.organization,
+              statuses: ["PENDING", "RUNNING"] as const,
+              schemaVersion: 1 as const,
+            };
+      const request = registration(descriptor);
+      const named = new Map([[`${entity}:known`, project]]);
+      const decoded = decodeNativeFrame(
+        JSON.stringify({
+          type: "search",
+          subscriptionName: request.subscriptionName,
+          data: { add: ["known", "unnamed"], delete: ["gone-unnamed"] },
+        }),
+        new Map([[request.subscriptionName, request]]),
+        (asked, id) => named.get(`${asked}:${id}`),
+      );
+
+      expect(decoded.kind).toBe("observations");
+      if (decoded.kind !== "observations") return;
+      expect(decoded.issues).toEqual([]);
+      expect(decoded.observations).toEqual([
+        expect.objectContaining({
+          kind: "query-membership-observed",
+          operation: "add",
+          member: expect.objectContaining({ kind: entity, project }),
+        }),
+      ]);
+    },
+  );
+
   it("rejects blank native membership ids as a malformed frame", () => {
     const descriptor = {
-      kind: "services-of-project" as const,
-      project,
+      kind: "services-of-organization" as const,
+      organization: project.organization,
       schemaVersion: 1 as const,
     };
     const request = registration(descriptor);
@@ -840,8 +884,8 @@ describe("Zerops platform protocol decoding", () => {
         },
       },
       baselineTicket: ticket({
-        kind: "services-of-project",
-        project,
+        kind: "services-of-organization",
+        organization: project.organization,
         schemaVersion: 1,
       }),
     } as RegistrationRequest;
@@ -859,8 +903,8 @@ describe("Zerops platform protocol decoding", () => {
         },
       },
       baselineTicket: ticket({
-        kind: "services-of-project",
-        project,
+        kind: "services-of-organization",
+        organization: project.organization,
         schemaVersion: 1,
       }),
     } as RegistrationRequest;
@@ -921,8 +965,8 @@ describe("Zerops platform protocol decoding", () => {
 
   it("consumes a query registration response into observations", () => {
     const descriptor = {
-      kind: "services-of-project" as const,
-      project,
+      kind: "services-of-organization" as const,
+      organization: project.organization,
       schemaVersion: 1 as const,
     };
     const result = decodeRegistrationResponse(registration(descriptor), {
@@ -971,7 +1015,11 @@ describe("Zerops platform protocol decoding", () => {
           schemaVersion: 1 as const,
         },
       },
-      baselineTicket: ticket({ kind: "services-of-project", project, schemaVersion: 1 }),
+      baselineTicket: ticket({
+        kind: "services-of-organization",
+        organization: project.organization,
+        schemaVersion: 1,
+      }),
     } as RegistrationRequest;
     const history = {
       identity: interest,
@@ -986,7 +1034,11 @@ describe("Zerops platform protocol decoding", () => {
           schemaVersion: 1 as const,
         },
       },
-      baselineTicket: ticket({ kind: "services-of-project", project, schemaVersion: 1 }),
+      baselineTicket: ticket({
+        kind: "services-of-organization",
+        organization: project.organization,
+        schemaVersion: 1,
+      }),
     } as RegistrationRequest;
 
     const currentResult = decodeRegistrationResponse(current, {

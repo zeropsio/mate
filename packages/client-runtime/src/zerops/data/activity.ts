@@ -42,7 +42,7 @@ export interface ActivityState {
 
 type RunningQuery = Extract<
   QueryBaselineObservation["ticket"]["target"]["descriptor"],
-  { readonly kind: "running-processes-of-project" }
+  { readonly kind: "running-processes-of-organization" }
 >;
 type HistoryQuery = Extract<
   QueryBaselineObservation["ticket"]["target"]["descriptor"],
@@ -179,7 +179,7 @@ function reduceQueryBaseline(
 ): ActivityReduction {
   const descriptor = observation.ticket.target.descriptor;
   if (
-    descriptor.kind !== "running-processes-of-project" &&
+    descriptor.kind !== "running-processes-of-organization" &&
     descriptor.kind !== "process-history-window"
   )
     return { state, outcome: noOutcome() };
@@ -285,7 +285,7 @@ function reduceMembership(
 ): ActivityReduction {
   const descriptor = observation.registration.descriptor.query;
   if (
-    descriptor.kind !== "running-processes-of-project" &&
+    descriptor.kind !== "running-processes-of-organization" &&
     descriptor.kind !== "process-history-window"
   )
     return { state, outcome: noOutcome() };

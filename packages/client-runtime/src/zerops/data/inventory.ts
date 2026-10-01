@@ -68,7 +68,7 @@ type ProjectQuery = Extract<
 >;
 type ServiceQuery = Extract<
   QueryBaselineObservation["ticket"]["target"]["descriptor"],
-  { readonly kind: "services-of-project" }
+  { readonly kind: "services-of-organization" | "services-of-project" }
 >;
 export type InventoryQueryState = QueryState<ProjectQuery> | QueryState<ServiceQuery>;
 
@@ -195,7 +195,7 @@ const observationRequestId = <Fields>(observation: FacetObservation<Fields>): st
 const authoritativeOrder = <Fields>(
   observation: FacetObservation<Fields>,
 ): { readonly dispatch: DispatchOrdinal; readonly readStart: ReadStartOrdinal | null } | null => {
-  if (observation.source === "direct-read") {
+  if (observation.source === "direct-read" || observation.source === "indexed-search") {
     return {
       dispatch: observation.ticket.dispatchOrdinal,
       readStart: observation.ticket.readStartOrdinal,
@@ -280,8 +280,13 @@ export function applyFacet<Fields, RequiredField extends keyof Fields>(
     return { facet, status: "suppressed", requestId, unresolvedRequiredFields: unresolved };
   }
 
+  // A search answers for every field of what it carries, ordered by when it was sent: one
+  // dispatched before a read already applied, or begun before a push that arrived since, was
+  // suppressed above. The organization's searches are its only reads (DESIGN §4.1), and a
+  // reconnect's is what says what changed while the socket was down. An embedded entity a row
+  // carries in passing only seeds what is missing.
   let patch: FacetPatch<Fields> = observation.fields;
-  if (source === "indexed-search" || source === "embedded") {
+  if (source === "embedded") {
     const seedEntries = keys
       .filter((key) => !hasOwn(currentFields, key))
       .map((key) => [key, observation.fields[key]] as const);
@@ -322,8 +327,7 @@ export function applyFacet<Fields, RequiredField extends keyof Fields>(
     };
   }
 
-  const preserveProvenance =
-    facet.knowledge === "observed" && (source === "indexed-search" || source === "embedded");
+  const preserveProvenance = facet.knowledge === "observed" && source === "embedded";
   return {
     facet: {
       knowledge: "observed",
@@ -616,7 +620,11 @@ function reduceQueryBaseline(
   observation: QueryBaselineObservation,
 ): InventoryReduction {
   const descriptor = observation.ticket.target.descriptor;
-  if (descriptor.kind !== "projects-of-organization" && descriptor.kind !== "services-of-project") {
+  if (
+    descriptor.kind !== "projects-of-organization" &&
+    descriptor.kind !== "services-of-organization" &&
+    descriptor.kind !== "services-of-project"
+  ) {
     return { state, outcome: noOutcome() };
   }
   const key = queryKeyOf(descriptor);
@@ -716,7 +724,11 @@ function reduceMembership(
   observation: QueryMembershipObservation,
 ): InventoryReduction {
   const descriptor = observation.registration.descriptor.query;
-  if (descriptor.kind !== "projects-of-organization" && descriptor.kind !== "services-of-project") {
+  if (
+    descriptor.kind !== "projects-of-organization" &&
+    descriptor.kind !== "services-of-organization" &&
+    descriptor.kind !== "services-of-project"
+  ) {
     return { state, outcome: noOutcome() };
   }
   const key = queryKeyOf(descriptor);

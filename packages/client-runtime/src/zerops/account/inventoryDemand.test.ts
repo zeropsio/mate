@@ -94,7 +94,9 @@ const named = (descriptor: RuntimeInterestDescriptor) =>
     ? "organization"
     : descriptor.kind === "project-inventory"
       ? descriptor.project.projectId
-      : descriptor.kind;
+      : descriptor.kind === "project-record"
+        ? `record of ${descriptor.project.projectId}`
+        : descriptor.kind;
 
 interface DemandRow {
   readonly name: string;
@@ -102,6 +104,8 @@ interface DemandRow {
   readonly access?: AccessState;
   /** Each project's status as the data runtime holds it, by id; unread when absent. */
   readonly status?: Readonly<Record<string, string>>;
+  /** Whether the organization's project list has answered. */
+  readonly listed?: boolean;
   readonly expected: ReadonlyArray<string>;
 }
 
@@ -177,15 +181,29 @@ describe("inventoryDemand", () => {
       expected: ["organization", "project-a", "project-b"],
     },
     {
+      name: "a project its organization's answered list lacks, read on its own, lag-free",
+      grant: drive(granted),
+      status: { "project-a": "ACTIVE" },
+      listed: true,
+      expected: ["organization", "project-a", "project-b", "record of project-b"],
+    },
+    {
+      name: "no project on its own before its organization's list answers",
+      grant: drive(granted),
+      listed: false,
+      expected: ["organization", "project-a", "project-b"],
+    },
+    {
       name: "nothing once the epoch closed",
       grant: drive([...granted, { type: "EPOCH_CLOSED" }]),
       expected: [],
     },
-  ])("demands $name", ({ grant, access, status, expected }) => {
+  ])("demands $name", ({ grant, access, status, listed, expected }) => {
     const demand = inventoryDemand({
       grant,
       access: access ?? { status: "unverified" },
       projectStatus: (ref) => status?.[ref.projectId],
+      organizationListed: () => listed ?? false,
     });
     expect(demand.map(named)).toEqual(expected);
   });

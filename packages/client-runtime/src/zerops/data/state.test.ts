@@ -173,8 +173,8 @@ describe("Zerops data model coordination", () => {
     (mode) => {
       const initialIdentity = identity(1, 1, 1, `query-${mode}`);
       const descriptor = {
-        kind: "services-of-project" as const,
-        project: project(),
+        kind: "services-of-organization" as const,
+        organization: project().organization,
         schemaVersion: 1 as const,
       };
       const ticket = queryTicket(descriptor, initialIdentity, 1, 0, 1);
@@ -549,8 +549,8 @@ describe("Zerops data model coordination", () => {
     const tiny = makeZeropsDataPolicy({ membershipMarkersPerQuery: 2 });
     const id = identity();
     const descriptor = {
-      kind: "services-of-project" as const,
-      project: project("marker-project"),
+      kind: "services-of-organization" as const,
+      organization: project("marker-project").organization,
       schemaVersion: 1 as const,
     };
     const ticket = queryTicket(descriptor, id, 1, 0, 1);
@@ -572,7 +572,7 @@ describe("Zerops data model coordination", () => {
             input: {
               kind: "query-membership-observed",
               operation: "add",
-              member: service(`marker-service-${index}`, descriptor.project),
+              member: service(`marker-service-${index}`),
               registration,
             },
           },
@@ -608,8 +608,8 @@ describe("Zerops data model coordination", () => {
   describe("a late failure never strands a paused or failed interest in recovering", () => {
     const tiny = makeZeropsDataPolicy({ membershipMarkersPerQuery: 1 });
     const servicesQuery = {
-      kind: "services-of-project" as const,
-      project: project("held-project"),
+      kind: "services-of-organization" as const,
+      organization: project("held-project").organization,
       schemaVersion: 1 as const,
     };
     const held = {
@@ -675,7 +675,7 @@ describe("Zerops data model coordination", () => {
                 input: {
                   kind: "query-membership-observed",
                   operation: "add",
-                  member: service(`held-service-${index}`, servicesQuery.project),
+                  member: service(`held-service-${index}`),
                   registration,
                 },
               },
@@ -720,8 +720,8 @@ describe("Zerops data model coordination", () => {
     });
     const inventoryMember = service("inactive-inventory-member", project("inactive-inventory"));
     const inventoryDescriptor = {
-      kind: "services-of-project" as const,
-      project: inventoryMember.project,
+      kind: "services-of-organization" as const,
+      organization: inventoryMember.project.organization,
       schemaVersion: 1 as const,
     };
     const inventoryTicket = queryTicket(inventoryDescriptor, id, 1, 0, 1);
@@ -745,8 +745,8 @@ describe("Zerops data model coordination", () => {
 
     const activityMember = process("inactive-activity-member", project("inactive-activity"));
     const activityDescriptor = {
-      kind: "running-processes-of-project" as const,
-      project: activityMember.project,
+      kind: "running-processes-of-organization" as const,
+      organization: activityMember.project.organization,
       statuses: ["RUNNING" as const],
       schemaVersion: 1 as const,
     };
@@ -1104,8 +1104,8 @@ describe("Zerops data model coordination", () => {
     const id = identity();
     const projectRef = project("running-retention-project");
     const descriptor = {
-      kind: "running-processes-of-project" as const,
-      project: projectRef,
+      kind: "running-processes-of-organization" as const,
+      organization: projectRef.organization,
       statuses: ["PENDING", "RUNNING"] as const,
       schemaVersion: 1 as const,
     };

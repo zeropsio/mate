@@ -234,9 +234,11 @@ const mountInventory = Effect.fn(function* (
       if (fetchGate !== null) await fetchGate;
       return user;
     }),
-    listAccessibleClientProjects: vi.fn(async () =>
-      [...projects.values()].filter(({ id }) => indexed.has(id)),
-    ),
+    // A searched listing: each project is judged by its own read, which these tests fail.
+    readAccessibleClientProjects: vi.fn(async () => ({
+      projects: [...projects.values()].filter(({ id }) => indexed.has(id)),
+      direct: false,
+    })),
     fetchProject: vi.fn(async (id: string) => {
       if (failing.has(id)) throw new ZeropsApiError("Unavailable", "server", 503);
       const project = gone.has(id) ? undefined : projects.get(id);
@@ -877,11 +879,11 @@ it.live(
         expect(loading.slice(-19, -1)).toEqual(Array.from({ length: 18 }, () => true));
         expect(harness.inventory()?.error).toBe("Zerops isn't answering. Trying again…");
         expect(harness.inventory()?.isLoading).toBe(true);
-        // Said once, at the menu's foot, naming what isn't answering — the one project whose
-        // subscription stalls, its siblings observing on the same socket — with Try now and no
+        // Said once, at the menu's foot, naming what isn't answering — the organization's
+        // projects and services, whose subscriptions every project shares — with Try now and no
         // Sign out.
         expect(harness.container.textContent).toBe(
-          "Zerops isn't answering. Trying again…kept in OrganizationTry now",
+          "Zerops isn't answering. Trying again…Organization's projects and servicesTry now",
         );
         heard.length = 0;
         const reopened = harness.refreshed().length;
@@ -890,7 +892,9 @@ it.live(
         const [tryNow] = buttonsLabelled(harness.container as never, "Try now");
         yield* Effect.promise(async () => act(async () => press(tryNow!)));
         yield* harness.advance(250);
-        expect(heard).toEqual([{ topic: "inventory", organization: harness.organization }]);
+        expect(heard).toEqual([
+          { topic: "inventory", organization: harness.organization, why: "user-retry" },
+        ]);
         // The stalled subscriptions register again at once, past their backoff, on the socket
         // that is open: none is replaced, and no grant round starts.
         expect(harness.registerCalls()).toBeGreaterThan(sent);

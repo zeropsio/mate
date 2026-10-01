@@ -384,21 +384,21 @@ export type FacetPatch<Fields> = Readonly<Partial<Fields>>;
 type IndexedQueryForTarget<Target extends EntityReadTarget> = Target["kind"] extends "project"
   ? Extract<EntityQueryDescriptor, { readonly kind: "projects-of-organization" }>
   : Target["kind"] extends "service"
-    ? Extract<EntityQueryDescriptor, { readonly kind: "services-of-project" }>
+    ? Extract<EntityQueryDescriptor, { readonly kind: "services-of-organization" }>
     : Extract<
         EntityQueryDescriptor,
-        { readonly kind: "running-processes-of-project" | "process-history-window" }
+        { readonly kind: "running-processes-of-organization" | "process-history-window" }
       >;
 
 type DirectCollectionQueryForTarget<Target extends EntityReadTarget> =
   Target["kind"] extends "project"
     ? Extract<EntityQueryDescriptor, { readonly kind: "projects-of-organization" }>
     : Target["kind"] extends "service"
-      ? Extract<EntityQueryDescriptor, { readonly kind: "services-of-project" }>
+      ? Extract<EntityQueryDescriptor, { readonly kind: "services-of-organization" }>
       : Target["kind"] extends "process"
         ? Extract<
             EntityQueryDescriptor,
-            { readonly kind: "running-processes-of-project" | "process-history-window" }
+            { readonly kind: "running-processes-of-organization" | "process-history-window" }
           >
         : never;
 
@@ -550,13 +550,27 @@ export type QueryDescriptor =
       readonly schemaVersion: 1;
     }
   | {
+      /**
+       * Every service of the organization, in one search and one subscription: a project's
+       * services are its slice of these (`selectServicesOf`), never a search of their own.
+       */
+      readonly kind: "services-of-organization";
+      readonly organization: OrganizationRef;
+      readonly schemaVersion: 1;
+    }
+  | {
+      /**
+       * One project's services, read directly and lag-free (`GET /project/{id}/service-stack`),
+       * never subscribed: only the confirming read an absence asks for (§9 C19).
+       */
       readonly kind: "services-of-project";
       readonly project: ProjectRef;
       readonly schemaVersion: 1;
     }
   | {
-      readonly kind: "running-processes-of-project";
-      readonly project: ProjectRef;
+      /** The organization's running processes, read and subscribed once for every project. */
+      readonly kind: "running-processes-of-organization";
+      readonly organization: OrganizationRef;
       /** Wire filters admit only known status strings. Unknown values are observation data. */
       readonly statuses: ReadonlyArray<RunningProcessStatus>;
       readonly schemaVersion: 1;
@@ -587,8 +601,9 @@ export type EntityQueryDescriptor = Extract<
   {
     readonly kind:
       | "projects-of-organization"
+      | "services-of-organization"
       | "services-of-project"
-      | "running-processes-of-project"
+      | "running-processes-of-organization"
       | "process-history-window";
   }
 >;
@@ -596,7 +611,7 @@ export type EntityQueryDescriptor = Extract<
 export type QueryMemberRef<Descriptor extends EntityQueryDescriptor> =
   Descriptor["kind"] extends "projects-of-organization"
     ? ProjectRef
-    : Descriptor["kind"] extends "services-of-project"
+    : Descriptor["kind"] extends "services-of-organization" | "services-of-project"
       ? ServiceRef
       : ProcessRef;
 
@@ -622,11 +637,19 @@ export const queryKeyOf = (descriptor: QueryDescriptor): QueryKey => {
           String(descriptor.schemaVersion),
         ]),
       );
-    case "running-processes-of-project":
+    case "services-of-organization":
       return QueryKey.make(
         scopedKey([
           descriptor.kind,
-          projectKeyOf(descriptor.project),
+          organizationKeyOf(descriptor.organization),
+          String(descriptor.schemaVersion),
+        ]),
+      );
+    case "running-processes-of-organization":
+      return QueryKey.make(
+        scopedKey([
+          descriptor.kind,
+          organizationKeyOf(descriptor.organization),
           canonicalStringSet(descriptor.statuses),
           String(descriptor.schemaVersion),
         ]),
@@ -1124,10 +1147,10 @@ export type CollectionQueryForRecord<Record extends ZeropsEntityRecord> =
   Record extends ProjectRecord
     ? Extract<EntityQueryDescriptor, { readonly kind: "projects-of-organization" }>
     : Record extends ServiceRecord
-      ? Extract<EntityQueryDescriptor, { readonly kind: "services-of-project" }>
+      ? Extract<EntityQueryDescriptor, { readonly kind: "services-of-organization" }>
       : Extract<
           EntityQueryDescriptor,
-          { readonly kind: "running-processes-of-project" | "process-history-window" }
+          { readonly kind: "running-processes-of-organization" | "process-history-window" }
         >;
 
 export interface RetainedMembershipOperation<Member extends EntityRef = EntityRef> {
@@ -1442,6 +1465,13 @@ export type RuntimeInterestDescriptor =
       readonly includeCurrentMetrics: boolean;
     }
   | { readonly kind: "project-inventory"; readonly project: ProjectRef }
+  /**
+   * A project its organization's list does not carry yet — one this tab just created, which the
+   * platform answers for before its lists do: read on its own, lag-free.
+   */
+  | { readonly kind: "project-record"; readonly project: ProjectRef }
+  /** A project's services read on their own, lag-free, to confirm one is gone (§9 C19). */
+  | { readonly kind: "project-services-check"; readonly project: ProjectRef }
   | { readonly kind: "project-current-metrics"; readonly project: ProjectRef }
   | { readonly kind: "project-activity"; readonly project: ProjectRef }
   | {
@@ -1950,6 +1980,11 @@ export interface CollectionRead<Record extends ZeropsEntityRecord> {
   readonly value: ReadonlyArray<EntityKnowledge<Record>>;
   readonly query: QueryState<CollectionQueryForRecord<Record>>;
   readonly observation: ViewObservation;
+  /**
+   * The project this read is the slice of, when it is one project's services or processes: the
+   * query behind it is the organization's.
+   */
+  readonly project?: ProjectRef;
 }
 
 export interface ServiceUsage {
@@ -2167,8 +2202,16 @@ export interface ZeropsDataRuntime {
    * over the list it had a moment ago. An organization nobody holds is left
    * alone, and so is a paused interest — the return to the foreground
    * re-reads it.
+   *
+   * `retry` is a person's Try now: the organization's subscriptions that are
+   * not observing — stalled, recovering or failed — start over at once on the
+   * socket that is open, which it does not replace, and the ones observing
+   * keep their registrations.
    */
-  readonly refresh: (organization: OrganizationRef) => Effect.Effect<void>;
+  readonly refresh: (
+    organization: OrganizationRef,
+    options?: { readonly retry?: boolean },
+  ) => Effect.Effect<void>;
   /**
    * Idempotent. It closes admission and advances the account fence before
    * interrupting work, closing receivers and clearing retained grants/model state.

@@ -181,10 +181,10 @@ export const selectService = (
 });
 
 type ProjectQuery = Extract<EntityQueryDescriptor, { readonly kind: "projects-of-organization" }>;
-type ServiceQuery = Extract<EntityQueryDescriptor, { readonly kind: "services-of-project" }>;
+type ServiceQuery = Extract<EntityQueryDescriptor, { readonly kind: "services-of-organization" }>;
 type RunningQuery = Extract<
   EntityQueryDescriptor,
-  { readonly kind: "running-processes-of-project" }
+  { readonly kind: "running-processes-of-organization" }
 >;
 
 const unresolvedProjectQuery = (
@@ -236,43 +236,25 @@ export function selectProjectsOf(
   };
 }
 
-const unresolvedServiceQuery = (project: ProjectRef): QueryState<ServiceQuery> => ({
-  status: "unresolved",
-  descriptor: { kind: "services-of-project", project, schemaVersion: 1 },
-  key: queryKeyOf({ kind: "services-of-project", project, schemaVersion: 1 }),
-  memberKeys: [],
-  unresolvedMemberKeys: [],
-  coverage: { kind: "none" },
-  lastAppliedReadStartOrdinal: null,
-  membershipOperations: new Map(),
-});
+const unresolvedServiceQuery = (organization: OrganizationRef): QueryState<ServiceQuery> => {
+  const descriptor: ServiceQuery = {
+    kind: "services-of-organization",
+    organization,
+    schemaVersion: 1,
+  };
+  return {
+    status: "unresolved",
+    descriptor,
+    key: queryKeyOf(descriptor),
+    memberKeys: [],
+    unresolvedMemberKeys: [],
+    coverage: { kind: "none" },
+    lastAppliedReadStartOrdinal: null,
+    membershipOperations: new Map(),
+  };
+};
 
-type InventoryQueries = ZeropsDataState["inventory"]["queries"];
 type InventoryServices = ZeropsDataState["inventory"]["services"];
-
-/** Each project's services read, once per query map: the first one the map holds. */
-const serviceQueryIndexes = new WeakMap<
-  InventoryQueries,
-  ReadonlyMap<ProjectKey, QueryState<ServiceQuery>>
->();
-
-function serviceQueryOf(
-  queries: InventoryQueries,
-  project: ProjectKey,
-): QueryState<ServiceQuery> | undefined {
-  let index = serviceQueryIndexes.get(queries);
-  if (index === undefined) {
-    const byProject = new Map<ProjectKey, QueryState<ServiceQuery>>();
-    for (const candidate of queries.values()) {
-      if (candidate.descriptor.kind !== "services-of-project") continue;
-      const key = projectKeyOf(candidate.descriptor.project);
-      if (!byProject.has(key)) byProject.set(key, candidate as QueryState<ServiceQuery>);
-    }
-    index = byProject;
-    serviceQueryIndexes.set(queries, index);
-  }
-  return index.get(project);
-}
 
 /** Each project's service keys, once per service map, in the order the map holds them. */
 const serviceKeyIndexes = new WeakMap<
@@ -299,14 +281,30 @@ function serviceKeysOf(
   return index.get(project) ?? [];
 }
 
+/**
+ * One project's services: its slice of the organization's services read (DESIGN §4.1), whose
+ * state says whether they are known. A member the read names but has not resolved yet is the
+ * project's when its ref says so.
+ */
 export function selectServicesOf(
   state: ZeropsDataState,
   project: ProjectRef,
 ): CollectionRead<ServiceRecord> {
   const projectKey = projectKeyOf(project);
+  const descriptor: ServiceQuery = {
+    kind: "services-of-organization",
+    organization: project.organization,
+    schemaVersion: 1,
+  };
   const query =
-    serviceQueryOf(state.inventory.queries, projectKey) ?? unresolvedServiceQuery(project);
-  const relationshipKeys = new Set(query.memberKeys);
+    (state.inventory.queries.get(queryKeyOf(descriptor)) as QueryState<ServiceQuery> | undefined) ??
+    unresolvedServiceQuery(project.organization);
+  const relationshipKeys = new Set<ServiceKey>();
+  for (const key of query.memberKeys) {
+    const ref = state.inventory.memberRefs.get(key);
+    if (ref?.kind === "service" && projectKeyOf(ref.project) === projectKey)
+      relationshipKeys.add(key as ServiceKey);
+  }
   for (const key of serviceKeysOf(state.inventory.services, projectKey)) relationshipKeys.add(key);
   return {
     value: [...relationshipKeys].flatMap((key) => {
@@ -317,48 +315,66 @@ export function selectServicesOf(
     }),
     query,
     observation: observationOf(state, project),
+    project,
   };
 }
 
-const unresolvedRunningQuery = (project: ProjectRef): QueryState<RunningQuery> => ({
-  status: "unresolved",
-  descriptor: {
-    kind: "running-processes-of-project",
-    project,
-    statuses: ["PENDING", "RUNNING", "ROLLBACKING", "CANCELING"],
-    schemaVersion: 1,
-  },
-  key: queryKeyOf({
-    kind: "running-processes-of-project",
-    project,
-    statuses: ["PENDING", "RUNNING", "ROLLBACKING", "CANCELING"],
-    schemaVersion: 1,
-  }),
-  memberKeys: [],
-  unresolvedMemberKeys: [],
-  coverage: { kind: "none" },
-  lastAppliedReadStartOrdinal: null,
-  membershipOperations: new Map(),
-});
+const RUNNING_STATUSES = ["PENDING", "RUNNING", "ROLLBACKING", "CANCELING"] as const;
 
+const unresolvedRunningQuery = (organization: OrganizationRef): QueryState<RunningQuery> => {
+  const descriptor: RunningQuery = {
+    kind: "running-processes-of-organization",
+    organization,
+    statuses: RUNNING_STATUSES,
+    schemaVersion: 1,
+  };
+  return {
+    status: "unresolved",
+    descriptor,
+    key: queryKeyOf(descriptor),
+    memberKeys: [],
+    unresolvedMemberKeys: [],
+    coverage: { kind: "none" },
+    lastAppliedReadStartOrdinal: null,
+    membershipOperations: new Map(),
+  };
+};
+
+/** One project's running processes: its slice of the organization's running processes read. */
 export function selectRunningProcessesOf(
   state: ZeropsDataState,
   project: ProjectRef,
 ): CollectionRead<ProcessRecord> {
-  const indexed = [...state.activity.queries.values()].find(
-    (candidate) =>
-      candidate.descriptor.kind === "running-processes-of-project" &&
-      projectKeyOf(candidate.descriptor.project) === projectKeyOf(project),
-  ) as QueryState<RunningQuery> | undefined;
-  const query = indexed ?? unresolvedRunningQuery(project);
+  const descriptor: RunningQuery = {
+    kind: "running-processes-of-organization",
+    organization: project.organization,
+    statuses: RUNNING_STATUSES,
+    schemaVersion: 1,
+  };
+  const query =
+    (state.activity.queries.get(queryKeyOf(descriptor)) as QueryState<RunningQuery> | undefined) ??
+    unresolvedRunningQuery(project.organization);
+  // The organization's read of what runs is the word on a process it does not carry: one whose
+  // status was last said before that read began finished meanwhile — a build that ended while the
+  // socket was down, whose FINISHED was never pushed. Only a status said after the read stands.
+  const whole = query.status === "observed" && query.coverage.kind === "exhausted-traversal";
+  const members = whole ? new Set<string>(query.memberKeys) : null;
+  const readAt = whole && query.status === "observed" ? query.stamp.receiptOrdinal : null;
   const running = [...state.activity.processes.values()].filter(
     (record) =>
-      projectKeyOf(record.ref.project) === projectKeyOf(project) && isRunningProcess(record),
+      projectKeyOf(record.ref.project) === projectKeyOf(project) &&
+      isRunningProcess(record) &&
+      (members === null ||
+        members.has(processKeyOf(record.ref)) ||
+        (record.lifecycle.knowledge === "observed" &&
+          readAt !== null &&
+          record.lifecycle.stamp.receiptOrdinal > readAt)),
   );
   return {
     value: running.map((record) => processKnowledge(record, record.ref)),
     query,
     observation: observationOf(state, project),
+    project,
   };
 }
 

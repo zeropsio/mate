@@ -68,6 +68,11 @@ export interface ServiceDeployedVersionResourceRequest {
   readonly kind: "service-deployed-version";
   readonly account: AccountScope;
   readonly service: ServiceRef;
+  /**
+   * The active version the caller's live data names. Right after a deploy the organization's
+   * search still answers the version before it; an answer naming another is read again by id.
+   */
+  readonly activeId?: string;
 }
 
 /**
@@ -352,12 +357,18 @@ export function zeropsResourceKeyOf(request: ZeropsResourceRequest): ZeropsResou
     case "organization-integration-token-grants":
       return JSON.stringify(prefix) as ZeropsResourceKey;
     case "service-authorized-agents":
-    case "service-deployed-version":
     case "service-mate-flag":
       return JSON.stringify([
         ...prefix,
         request.service.project.projectId,
         request.service.serviceId,
+      ]) as ZeropsResourceKey;
+    case "service-deployed-version":
+      return JSON.stringify([
+        ...prefix,
+        request.service.project.projectId,
+        request.service.serviceId,
+        ...(request.activeId === undefined ? [] : [request.activeId]),
       ]) as ZeropsResourceKey;
   }
 }

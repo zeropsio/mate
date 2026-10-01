@@ -14,14 +14,20 @@
  */
 import { Atom } from "effect/unstable/reactivity";
 
+import {
+  evidenceProjectRefs,
+  inventoryProjectRefs,
+  pendingDenials,
+} from "../data/access/grantProjects.ts";
 import type { Evidence, GrantMachine } from "../data/access/grant.ts";
-import { knownProjectsOf, knownServicesOf, servicesSourceOf } from "../data/known.ts";
+import { knownProjectsOf, knownServicesOf, servicesCheckOrdinalOf } from "../data/known.ts";
 import type { ManagedZeropsDataRuntime } from "../data/runtime.ts";
-import type {
-  CollectionRead,
-  OrganizationRef,
-  ProjectRecord,
-  ServiceRecord,
+import {
+  projectKeyOf,
+  type CollectionRead,
+  type OrganizationRef,
+  type ProjectRecord,
+  type ServiceRecord,
 } from "../data/types.ts";
 import type { Known } from "../knowledge/known.ts";
 import {
@@ -52,6 +58,8 @@ const heldEvidence = (machine: GrantMachine): Evidence | null =>
 /** One project as last derived: what it was derived from, and what came out. */
 interface ProjectEntry {
   readonly record: ProjectRecord;
+  /** Whether the grant admits the project: only then are its services its Mates'. */
+  readonly admitted: boolean;
   /** Its services read; null for a project whose status reads no services. */
   readonly services: CollectionRead<ServiceRecord> | null;
   /** Null while its record does not name it yet. */
@@ -68,6 +76,9 @@ interface OrganizationEntry {
 }
 
 const NO_DIRECT_READS: ReadonlyMap<string, number> = new Map();
+
+/** A project the grant does not admit: its services say nothing of a Mate of this person's. */
+const UNREAD_SERVICES: Known<ReadonlyArray<ServiceRecord>> = { state: "unread", waitingFor: null };
 
 const sameJson = (left: unknown, right: unknown): boolean =>
   JSON.stringify(left) === JSON.stringify(right);
@@ -91,11 +102,8 @@ const directReadOf = (
   read: CollectionRead<ServiceRecord>,
   services: Known<ReadonlyArray<ServiceRecord>>,
 ): number | null => {
-  const source = servicesSourceOf(read);
-  return source?.status === "observing" &&
-    services.state === "known" &&
-    services.coverage === "complete"
-    ? source.sinceReceiptOrdinal
+  return services.state === "known" && services.coverage === "complete"
+    ? servicesCheckOrdinalOf(read)
     : null;
 };
 
@@ -116,29 +124,41 @@ export function candidateListingsAtom(
   const atom = Atom.make((get): ReadonlyArray<OrganizationListing> => {
     const nowMs = systemExchangeClock.now().wall;
     const evidence = heldEvidence(get(data.access.view).machine);
+    // The projects the grant admits (what the inventory demands): the organization's services are
+    // read for every project, but only an admitted project's are its Mates'. Another's Mate gets no
+    // address, no probe and no connection, as when its services were never read at all.
+    const withheld = pendingDenials(evidence);
+    const admitted = new Set(
+      inventoryProjectRefs(evidenceProjectRefs(evidence), get(data.reads.access))
+        .map((ref) => projectKeyOf(ref))
+        .filter((key) => !withheld.has(key)),
+    );
 
-    /** One project, derived again only from a new record or a new services read. */
+    /** One project, derived again only from a new record, a new services read or admission. */
     const projectEntry = (
       record: ProjectRecord,
       before: ProjectEntry | undefined,
     ): ProjectEntry => {
-      if (before?.record === record) {
+      const isAdmitted = admitted.has(projectKeyOf(record.ref));
+      if (before?.record === record && before.admitted === isAdmitted) {
         if (before.services === null) return before;
         const read = get(data.reads.servicesOf(record.ref));
         if (read === before.services) return before;
-        return derive(record, before, read);
+        return derive(record, before, read, isAdmitted);
       }
-      return derive(record, before, null);
+      return derive(record, before, null, isAdmitted);
     };
 
     const derive = (
       record: ProjectRecord,
       before: ProjectEntry | undefined,
       known: CollectionRead<ServiceRecord> | null,
+      isAdmitted: boolean,
     ): ProjectEntry => {
       let services: CollectionRead<ServiceRecord> | null = null;
       let directRead: number | null = null;
       const rows = projectCandidates(record, (ref) => {
+        if (!isAdmitted) return UNREAD_SERVICES;
         const read = known ?? get(data.reads.servicesOf(ref));
         const value = knownServicesOf(read, nowMs);
         services = read;
@@ -146,7 +166,13 @@ export function candidateListingsAtom(
         return value;
       });
       const same = before?.rows != null && rows !== null && sameJson(before.rows, rows);
-      return { record, services, rows: same ? before.rows : rows, directRead };
+      return {
+        record,
+        admitted: isAdmitted,
+        services,
+        rows: same ? before.rows : rows,
+        directRead,
+      };
     };
 
     const organizationEntry = (organization: OrganizationRef): OrganizationEntry => {
