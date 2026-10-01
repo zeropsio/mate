@@ -40,6 +40,7 @@ import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Crypto from "effect/Crypto";
 import * as DateTime from "effect/DateTime";
+import * as Deferred from "effect/Deferred";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
@@ -94,6 +95,13 @@ export const STAND_UP_NONE_AFTER = Duration.minutes(5);
  */
 export const SETUP_TAGS_TTL = Duration.seconds(15);
 
+/**
+ * How long a browser's send may stand claimed: one its server lost track of
+ * (a restart mid-send) is then the server's to send, under the same ids, so
+ * the engine takes it once whichever got through.
+ */
+export const STAND_UP_CLAIM_MAX_AGE = Duration.minutes(2);
+
 /** How long a failed read of the tags stands before another is tried. */
 export const SETUP_TAGS_FAILED_TTL = Duration.seconds(30);
 
@@ -117,6 +125,9 @@ export class ZeropsSetupReads extends Context.Service<
  */
 export type BrowserStandUp = "claimed" | "dispatch" | "ignore";
 
+/** How a browser's claimed send ended (`browserStandUpEnded`). */
+export type BrowserStandUpOutcome = "through" | "failed" | "unknown";
+
 export class ZeropsSetup extends Context.Service<
   ZeropsSetup,
   {
@@ -132,12 +143,15 @@ export class ZeropsSetup extends Context.Service<
      */
     readonly browserStandUp: (command: OrchestrationCommand) => Effect.Effect<BrowserStandUp>;
     /**
-     * How a `claimed` send ended: through, its record stands; any other way —
-     * refused, failed, interrupted — its own claim, and only that, is withdrawn.
+     * How a `claimed` send ended: `through`, its record stands; `failed`, it
+     * surely did not go out, and its own claim, only that, is withdrawn;
+     * `unknown` (interrupted, a defect: it may have gone out), the claim
+     * stands until {@link STAND_UP_CLAIM_MAX_AGE}, when the server sends it
+     * under the same ids.
      */
     readonly browserStandUpEnded: (
       command: OrchestrationCommand,
-      through: boolean,
+      outcome: BrowserStandUpOutcome,
     ) => Effect.Effect<void>;
   }
 >()("t3/zerops/ZeropsSetup") {}
@@ -218,6 +232,7 @@ export interface ZeropsSetupTimings {
   readonly noneAfter: Duration.Duration;
   readonly tagsTtl: Duration.Duration;
   readonly tagsFailedTtl: Duration.Duration;
+  readonly claimMaxAge: Duration.Duration;
 }
 
 const TIMINGS: ZeropsSetupTimings = {
@@ -227,6 +242,7 @@ const TIMINGS: ZeropsSetupTimings = {
   noneAfter: STAND_UP_NONE_AFTER,
   tagsTtl: SETUP_TAGS_TTL,
   tagsFailedTtl: SETUP_TAGS_FAILED_TTL,
+  claimMaxAge: STAND_UP_CLAIM_MAX_AGE,
 };
 
 /** How long to wait before the next look, this far (ms) into the wait for the stand-up. */
@@ -275,6 +291,10 @@ export const makeZeropsSetup = (timings: ZeropsSetupTimings = TIMINGS) =>
       readonly tags: ReadonlyArray<string> | undefined;
     } | null>(null);
     const reading = yield* Semaphore.make(1);
+    const inFlight = yield* Ref.make<Deferred.Deferred<ReadonlyArray<string> | undefined> | null>(
+      null,
+    );
+    const scope = yield* Effect.scope;
 
     /* ---------------------------------------------------------- the record */
 
@@ -314,6 +334,16 @@ export const makeZeropsSetup = (timings: ZeropsSetupTimings = TIMINGS) =>
         Effect.catch(() => Effect.void),
       );
 
+    /** A browser's claim its send never ended becomes the server's to send. */
+    const takeOver = (commandId: string) =>
+      sql`UPDATE zerops_stand_ups SET source = 'server:claimed'
+        WHERE project_id = ${projectId} AND command_id = ${commandId}
+          AND source = 'browser:claimed'
+        RETURNING project_id`.pipe(
+        Effect.map((rows) => rows.length === 1),
+        Effect.catch(() => Effect.succeed(false)),
+      );
+
     /** A claim on its way went out: its record stands for good. */
     const confirm = (commandId: string, from: "server:claimed" | "browser:claimed") =>
       sql`UPDATE zerops_stand_ups SET source = ${from === "server:claimed" ? "server" : "browser"}
@@ -330,22 +360,45 @@ export const makeZeropsSetup = (timings: ZeropsSetupTimings = TIMINGS) =>
      * with the last good read. However often `/setup.json` is asked, the
      * Mate's key reads the platform at most this often.
      */
-    const tags = reading.withPermits(1)(
-      Effect.gen(function* () {
-        const now = yield* Clock.currentTimeMillis;
-        const held = yield* Ref.get(tagsRead);
-        const ttl = held?.failed === true ? timings.tagsFailedTtl : timings.tagsTtl;
-        if (held !== null && now - held.at < Duration.toMillis(ttl)) return held.tags;
-        const read = yield* reads.tags;
-        yield* Ref.set(
-          tagsRead,
-          read === undefined
-            ? { at: now, failed: true, tags: held?.tags }
-            : { at: now, failed: false, tags: read },
-        );
-        return read ?? held?.tags;
-      }),
-    );
+    const tags = Effect.gen(function* () {
+      const next = yield* Effect.uninterruptible(
+        reading.withPermits(1)(
+          Effect.gen(function* () {
+            const now = yield* Clock.currentTimeMillis;
+            const held = yield* Ref.get(tagsRead);
+            const ttl = held?.failed === true ? timings.tagsFailedTtl : timings.tagsTtl;
+            if (held !== null && now - held.at < Duration.toMillis(ttl)) {
+              return { held: held.tags } as const;
+            }
+            const running = yield* Ref.get(inFlight);
+            if (running !== null) return { awaiting: running } as const;
+            // Detached from whoever asked: it finishes and stamps the cache even when
+            // they give up, so a request that aborts never costs another read.
+            const done = yield* Deferred.make<ReadonlyArray<string> | undefined>();
+            yield* Ref.set(inFlight, done);
+            yield* Effect.forkIn(
+              Effect.gen(function* () {
+                const read = yield* reads.tags.pipe(
+                  Effect.catchCause(() => Effect.succeed(undefined)),
+                );
+                const at = yield* Clock.currentTimeMillis;
+                yield* Ref.set(
+                  tagsRead,
+                  read === undefined
+                    ? { at, failed: true, tags: held?.tags }
+                    : { at, failed: false, tags: read },
+                );
+                yield* Ref.set(inFlight, null);
+                yield* Deferred.succeed(done, read ?? held?.tags);
+              }),
+              scope,
+            );
+            return { awaiting: done } as const;
+          }),
+        ),
+      );
+      return "held" in next ? next.held : yield* Deferred.await(next.awaiting);
+    });
 
     const latch = (ref: Ref.Ref<string | undefined>, reached: boolean) =>
       Effect.gen(function* () {
@@ -422,12 +475,23 @@ export const makeZeropsSetup = (timings: ZeropsSetupTimings = TIMINGS) =>
       Effect.gen(function* () {
         const held = yield* recordOf;
         if (held !== undefined && TERMINAL.has(held.source)) return true;
-        // A browser's send is on its way: it ends in a record, or leaves the stand-up to us.
-        if (held?.source === "browser:claimed") return false;
-        const resuming = held?.source === "server:claimed" ? held : undefined;
+        // A browser's send is on its way: it ends in a record, or leaves the stand-up to
+        // us — and one that never ends is ours after a while, under its own ids.
+        if (held?.source === "browser:claimed") {
+          const age = (yield* Clock.currentTimeMillis) - Date.parse(held.startedAt);
+          if (!(age >= Duration.toMillis(timings.claimMaxAge))) return false;
+          if (!(yield* takeOver(held.commandId))) return false;
+        }
+        const resuming =
+          held?.source === "server:claimed" || held?.source === "browser:claimed"
+            ? held
+            : undefined;
         const tagList = yield* tags;
         if (tagList === undefined) return false;
-        const requestedBy = resuming?.userId ?? standUpRequestedBy(tagList);
+        const requestedBy =
+          resuming !== undefined && resuming.userId !== ""
+            ? resuming.userId
+            : standUpRequestedBy(tagList);
         if (requestedBy === undefined) {
           return upMs >= Duration.toMillis(timings.noneAfter) ? yield* settle("none") : false;
         }
@@ -467,7 +531,10 @@ export const makeZeropsSetup = (timings: ZeropsSetupTimings = TIMINGS) =>
           main,
           project.defaultModelSelection,
         );
-        const ids = standUpCommandIds(threadId);
+        const ids =
+          resuming === undefined
+            ? standUpCommandIds(threadId)
+            : { commandId: resuming.commandId, messageId: resuming.commandId };
         const turn = {
           type: "thread.turn.start",
           commandId: CommandId.make(ids.commandId),
@@ -583,10 +650,12 @@ export const makeZeropsSetup = (timings: ZeropsSetupTimings = TIMINGS) =>
       document,
       status,
       browserStandUp,
-      browserStandUpEnded: (command, through) =>
-        through
+      browserStandUpEnded: (command, outcome) =>
+        outcome === "through"
           ? confirm(command.commandId, "browser:claimed")
-          : withdraw(command.commandId, "browser:claimed"),
+          : outcome === "failed"
+            ? withdraw(command.commandId, "browser:claimed")
+            : Effect.void,
     });
   });
 

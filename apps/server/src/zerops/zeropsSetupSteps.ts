@@ -131,6 +131,8 @@ export interface ZcpStatus {
   readonly standup:
     | {
         readonly state: StandUpState | undefined;
+        /** zcp's heartbeat for this section; empty from a zcp that writes only the file's. */
+        readonly updatedAt: string;
         readonly phase: string;
         readonly startedAt: string;
         readonly endedAt: string;
@@ -201,6 +203,7 @@ export const parseZcpStatus = (raw: unknown): ZcpStatus | undefined => {
         ? undefined
         : {
             state: oneOf(STAND_UP_STATES, standup["state"]),
+            updatedAt: text(standup["updatedAt"]),
             phase: text(standup["phase"]),
             startedAt: text(standup["startedAt"]),
             endedAt: text(standup["endedAt"]),
@@ -223,7 +226,8 @@ export const STAND_UP_STALE_AFTER_MS = 2 * 60_000;
 /** A stand-up the file says runs, from a zcp that stopped writing it. */
 export const isStaleStandUp = (status: ZcpStatus | undefined, nowMs: number): boolean => {
   if (status?.standup?.state !== "running") return false;
-  const updated = Date.parse(status.updatedAt);
+  // The section's own heartbeat, else the file's.
+  const updated = Date.parse(status.standup.updatedAt || status.updatedAt);
   return Number.isFinite(updated) && nowMs - updated > STAND_UP_STALE_AFTER_MS;
 };
 

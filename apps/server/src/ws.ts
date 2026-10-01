@@ -1304,11 +1304,19 @@ const makeWsRpcLayer = (
         return setup.browserStandUp(normalizedCommand).pipe(
           Effect.flatMap((verdict) =>
             verdict === "claimed"
-              ? // However the send ends — refused, failed, interrupted, a defect — a claim
-                // that did not go through is withdrawn, so a later "Try again" is real.
+              ? // A claim that surely did not go out (refused, failed) is withdrawn, so a
+                // later "Try again" is real; one that may have (interrupted while queued
+                // for startup, a defect) stands until the server sends it, same ids.
                 admitted.pipe(
                   Effect.onExit((exit) =>
-                    setup.browserStandUpEnded(normalizedCommand, Exit.isSuccess(exit)),
+                    setup.browserStandUpEnded(
+                      normalizedCommand,
+                      Exit.isSuccess(exit)
+                        ? "through"
+                        : Cause.hasDies(exit.cause) || Cause.hasInterrupts(exit.cause)
+                          ? "unknown"
+                          : "failed",
+                    ),
                   ),
                 )
               : verdict === "dispatch"

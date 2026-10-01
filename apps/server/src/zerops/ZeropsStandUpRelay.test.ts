@@ -110,6 +110,26 @@ describe("isStaleStandUp", () => {
   });
 });
 
+describe("isStaleStandUp: the section's own heartbeat first", () => {
+  const NOW = Date.parse("2026-10-01T10:10:00Z");
+  const file = (top: string, own: string | undefined) =>
+    parseZcpStatus({
+      version: 1,
+      updatedAt: top,
+      standup: { state: "running", ...(own === undefined ? {} : { updatedAt: own }) },
+    });
+  it("reads the section's updatedAt, else the file's", () => {
+    assert.deepStrictEqual(
+      [
+        isStaleStandUp(file("2026-10-01T10:00:00Z", "2026-10-01T10:09:50Z"), NOW),
+        isStaleStandUp(file("2026-10-01T10:09:50Z", "2026-10-01T10:00:00Z"), NOW),
+        isStaleStandUp(file("2026-10-01T10:00:00Z", undefined), NOW),
+      ],
+      [false, true, true],
+    );
+  });
+});
+
 describe("ZeropsStandUpRelay", () => {
   it.live("relays each change of the call's section into one progress row, then stops", () =>
     Effect.gen(function* () {

@@ -16,6 +16,7 @@ import {
 } from "@t3tools/contracts";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
+import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Ref from "effect/Ref";
@@ -93,6 +94,8 @@ interface World {
   readonly refusal: Ref.Ref<string | undefined>;
   /** A dispatch never comes back: the server dies before its stand-up goes out. */
   readonly dispatchHangs: Ref.Ref<boolean>;
+  /** How long one read of the tags takes. */
+  readonly tagsTake: Ref.Ref<Duration.Duration>;
 }
 
 const makeWorld = Effect.gen(function* () {
@@ -107,6 +110,7 @@ const makeWorld = Effect.gen(function* () {
     admitted: yield* Ref.make<ReadonlyArray<TurnPrincipal>>([]),
     refusal: yield* Ref.make<string | undefined>(undefined),
     dispatchHangs: yield* Ref.make(false),
+    tagsTake: yield* Ref.make(Duration.zero),
   } satisfies World;
 });
 
@@ -114,6 +118,7 @@ const fakes = (world: World) =>
   Layer.mergeAll(
     Layer.succeed(ZeropsSetupReads, {
       tags: Ref.update(world.tagReads, (count) => count + 1).pipe(
+        Effect.andThen(Effect.flatMap(Ref.get(world.tagsTake), Effect.sleep)),
         Effect.andThen(Ref.get(world.tags)),
       ),
       serviceVariables: Ref.get(world.variables),
@@ -166,6 +171,7 @@ const FAST: ZeropsSetupTimings = {
   noneAfter: Duration.millis(0),
   tagsTtl: Duration.millis(0),
   tagsFailedTtl: Duration.millis(0),
+  claimMaxAge: Duration.minutes(2),
 };
 
 /** A server on `database`; a second one on the same file is the same Mate after a restart. */
@@ -437,7 +443,7 @@ describe("ZeropsSetup: the stand-up", () => {
       yield* withServer(world, freshDatabase(), (setup) =>
         Effect.gen(function* () {
           assert.strictEqual(yield* setup.browserStandUp(browserSend(1)), "claimed");
-          yield* setup.browserStandUpEnded(browserSend(1), true);
+          yield* setup.browserStandUpEnded(browserSend(1), "through");
           assert.strictEqual(yield* setup.browserStandUp(browserSend(2)), "ignore");
           yield* Ref.set(world.tags, SIGNED);
           yield* ticks;
@@ -460,7 +466,7 @@ describe("ZeropsSetup: the stand-up", () => {
           yield* ticks;
           assert.deepStrictEqual(yield* turnsOf(world), []);
           // The send did not go through: the server, still looking, starts its own.
-          yield* setup.browserStandUpEnded(browserSend(1), false);
+          yield* setup.browserStandUpEnded(browserSend(1), "failed");
           yield* eventually(turnsOf(world), (turns) => turns.length === 1);
         }),
       );
@@ -477,13 +483,56 @@ describe("ZeropsSetup: the stand-up", () => {
           yield* eventually(turnsOf(world), (turns) => turns.length === 1);
           // The same command, as an old client sends it: it owns no claim.
           assert.strictEqual(yield* setup.browserStandUp(browserSend(1)), "dispatch");
-          yield* setup.browserStandUpEnded(browserSend(1), false);
+          yield* setup.browserStandUpEnded(browserSend(1), "failed");
         }),
       );
       yield* Ref.set(world.dispatched, []);
       yield* withServer(world, database, () => ticks);
       assert.deepStrictEqual(yield* turnsOf(world), []);
     }),
+  );
+
+  it.live("a browser's claim that never ended is the server's after 2 minutes, same ids", () =>
+    Effect.gen(function* () {
+      const world = yield* makeWorld;
+      yield* Ref.set(world.tags, SIGNED);
+      yield* withServer(
+        world,
+        freshDatabase(),
+        (setup) =>
+          Effect.gen(function* () {
+            assert.strictEqual(yield* setup.browserStandUp(browserSend(2)), "claimed");
+            // Its server restarted mid-send: the claim is never ended.
+            const [turn] = yield* eventually(turnsOf(world), (turns) => turns.length === 1);
+            assert.deepStrictEqual(
+              [turn!.commandId, turn!.message.messageId],
+              ["mate-standup-thread-main-2", "mate-standup-thread-main-2"],
+            );
+            yield* ticks;
+            assert.strictEqual((yield* turnsOf(world)).length, 1);
+          }),
+        { ...FAST, claimMaxAge: Duration.millis(50) },
+      );
+    }),
+  );
+
+  it.live(
+    "a browser's send that may have gone out keeps its claim; one that failed withdraws it",
+    () =>
+      Effect.gen(function* () {
+        const world = yield* makeWorld;
+        yield* Ref.set(world.tags, SIGNED);
+        yield* withServer(world, freshDatabase(), (setup) =>
+          Effect.gen(function* () {
+            assert.strictEqual(yield* setup.browserStandUp(browserSend(2)), "claimed");
+            yield* setup.browserStandUpEnded(browserSend(2), "unknown");
+            yield* ticks;
+            assert.deepStrictEqual(yield* turnsOf(world), [], "an unknown end left the claim");
+            yield* setup.browserStandUpEnded(browserSend(2), "failed");
+            yield* eventually(turnsOf(world), (turns) => turns.length === 1);
+          }),
+        );
+      }),
   );
 
   it.live("a server that died between its claim and its send sends it once after a restart", () =>
@@ -526,6 +575,30 @@ describe("ZeropsSetup: what an unauthenticated caller can make it do", () => {
         LIVE,
       );
       assert.strictEqual(yield* Ref.get(world.tagReads), 1);
+    }),
+  );
+
+  it.live("a request that gives up mid-read leaves the read to finish for the next", () =>
+    Effect.gen(function* () {
+      const world = yield* makeWorld;
+      yield* Ref.set(world.tagsTake, Duration.millis(200));
+      yield* withServer(
+        world,
+        freshDatabase(),
+        (setup) =>
+          Effect.gen(function* () {
+            // The poll's own first read is done, and its cache has gone stale.
+            yield* Effect.sleep(Duration.millis(400));
+            const before = yield* Ref.get(world.tagReads);
+            const first = yield* Effect.forkChild(setup.document);
+            yield* Effect.sleep(Duration.millis(50));
+            yield* Fiber.interrupt(first);
+            yield* setup.document;
+            yield* flood(setup);
+            assert.strictEqual((yield* Ref.get(world.tagReads)) - before, 1);
+          }),
+        { ...LIVE, poll: Duration.minutes(10), tagsTtl: Duration.millis(100) },
+      );
     }),
   );
 
