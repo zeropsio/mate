@@ -522,7 +522,10 @@ export function birthWithoutContainer(projectId: string): void {
 
 /** The connect named the environment: the birth is over. */
 export function promoteBirth(projectId: string): void {
-  host().store.forget(projectId);
+  const { store } = host();
+  // Every recorded Mate is ended once per stage (`environments.ts`): most have no birth to end.
+  if (store.birth(projectId) === undefined) return;
+  store.forget(projectId);
 }
 
 /** The project failed or was removed: nothing is born of it. */

@@ -371,8 +371,27 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
     }
   };
 
+  /**
+   * The births the records end: a record is the exchange's word that it named the Mate's
+   * environment, so a birth this browser still holds for its project is over — however it was
+   * left behind. Each project once per stage.
+   */
+  const ended = new Set<string>();
+  const endBirth = (projectId: string) => {
+    if (ended.has(projectId)) return;
+    ended.add(projectId);
+    ports.births.promote(projectId);
+  };
+  const endRecordedBirths = () => {
+    if (stores === null || closed) return;
+    for (const record of stores.records.list()) {
+      if (record.projectRef !== null) endBirth(record.projectRef.projectId);
+    }
+  };
+
   /** The records, or the installs that write them, changed. */
   const registrationsChanged = () => {
+    endRecordedBirths();
     updateRoute();
     updateTargets();
     release();
@@ -402,7 +421,7 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
         name: project?.name ?? null,
       });
       // The birth is over: the exchange named its environment.
-      if (project !== undefined) ports.births.promote(project.id);
+      if (project !== undefined) endBirth(project.id);
       return outcome;
     } finally {
       if (at !== null) {
@@ -637,6 +656,7 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
   const start = (built: EnvironmentStores): EnvironmentStage => {
     stores = built;
     const { records, containers, driver } = built;
+    endRecordedBirths();
     route = ports.route?.() ?? route;
     preferRoute();
     const stops: Array<() => void> = [];
