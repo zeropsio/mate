@@ -51,6 +51,22 @@ const withService = (state: ZeropsDataState, activeDeploy: ServiceDeployInfo | n
   return { ...state, inventory: { ...state.inventory, services } };
 };
 
+/** The service as a read found it gone. */
+const withGoneService = (state: ZeropsDataState) => {
+  const record = {
+    ref,
+    deployment: {
+      knowledge: "unavailable",
+      reason: "not-found",
+      previousFields: {},
+      stamp: stamp(3),
+    },
+  } as unknown as ServiceRecord;
+  const services = new Map(state.inventory.services);
+  services.set(serviceKeyOf(ref), record);
+  return { ...state, inventory: { ...state.inventory, services } };
+};
+
 const answered = (
   state: ZeropsDataState,
   descriptor: TableQueryDescriptor,
@@ -155,9 +171,13 @@ describe("what a service runs, as the account's store states it (A14)", () => {
     {
       name: "takes the source from the organization's active versions",
       state: withService(
-        answered(empty, versions, [
-          { id: "v-2", serviceId: "s-1", projectId: null, status: "ACTIVE", source: "NONE" },
-        ]),
+        answered(
+          answered(empty, versions, [
+            { id: "v-2", serviceId: "s-1", projectId: null, status: "ACTIVE", source: "NONE" },
+          ]),
+          variables,
+          [],
+        ),
         deploy({}),
       ),
       expected: { state: "known", value: { activeId: "v-2", source: "NONE", name: null } },
@@ -186,6 +206,24 @@ describe("what a service runs, as the account's store states it (A14)", () => {
         deploy({ source: "CLI" }),
       ),
       expected: { state: "known", value: { activeId: "v-2", source: "CLI", name: null } },
+    },
+    {
+      name: "keeps the name the push gave until the variables answer",
+      state: withService(empty, deploy({ source: "CLI", name: "abc123 v1.0.0" })),
+      expected: {
+        state: "known",
+        value: { activeId: "v-2", source: "CLI", name: "abc123 v1.0.0" },
+      },
+    },
+    {
+      name: "waits for the variables to name a version the push named nothing",
+      state: withService(empty, deploy({ source: "CLI", name: null })),
+      expected: { state: "unread" },
+    },
+    {
+      name: "fails for good once the service is gone",
+      state: withGoneService(empty),
+      expected: { state: "failed", retryAtMs: null },
     },
     {
       name: "fails as its stream failed",

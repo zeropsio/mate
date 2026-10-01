@@ -74,6 +74,15 @@ export function selectDeployedVersion(
   service: ServiceRef,
 ): Shown<ZeropsServiceDeployedVersion> {
   const facet = state.inventory.services.get(serviceKeyOf(service))?.deployment;
+  // A service the platform no longer shows runs nothing anyone can state.
+  if (facet?.knowledge === "unavailable")
+    return {
+      state: "failed",
+      failure: { kind: "refused", code: facet.reason, words: "The service is not there." },
+      atMs: facet.stamp.observedAtMs,
+      attempt: 1,
+      retryAtMs: null,
+    };
   if (facet === undefined || facet.knowledge !== "observed") return UNREAD;
   const deploy = facet.fields.activeDeploy;
   if (deploy === undefined) return UNREAD;
@@ -89,13 +98,18 @@ export function selectDeployedVersion(
     source = version.row.source;
   }
   const started = serviceVariableOf(state.table, organization, service.serviceId, "appVersionId");
-  const name = started.known
-    ? trimmed(started.content) === deploy.id
+  if (!started.known) {
+    // The push's own name stands until the variables answer; with none, the name waits for them.
+    if (deploy.name !== null)
+      return known({ activeId: deploy.id, source, name: deploy.name }, facet.stamp);
+    return streamFailure(state, "organization-variables", service) ?? UNREAD;
+  }
+  const name =
+    trimmed(started.content) === deploy.id
       ? trimmed(
           serviceVariableOf(state.table, organization, service.serviceId, "appVersionName").content,
         )
-      : null
-    : deploy.name;
+      : null;
   return known({ activeId: deploy.id, source, name }, facet.stamp);
 }
 
