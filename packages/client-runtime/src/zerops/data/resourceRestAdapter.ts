@@ -1,6 +1,7 @@
 import * as Effect from "effect/Effect";
 
 import { ZeropsApiError, type ZeropsApiClient, type ZeropsServiceDeploys } from "../api.ts";
+import { makeServiceDeploysBatch } from "./deployedVersionBatch.ts";
 import type {
   ZeropsResourceAdapter,
   ZeropsResourceSourceError,
@@ -53,6 +54,8 @@ function deployedVersionOf(deploys: ZeropsServiceDeploys): ZeropsServiceDeployed
 
 /** Adapts scoped configuration reads and strips secret-bearing source rows at the boundary. */
 export function makeZeropsResourceRestAdapter(client: ZeropsApiClient): ZeropsResourceAdapter {
+  // Every service asked for in the same moment is read in its organization's two searches.
+  const readServiceDeploys = makeServiceDeploysBatch(client);
   return {
     readOrganizationLocations: (input, context) =>
       request(() =>
@@ -62,9 +65,7 @@ export function makeZeropsResourceRestAdapter(client: ZeropsApiClient): ZeropsRe
       request(() => client.readAuthorizedAgents(input.service.serviceId, context.abortSignal)),
     readServiceDeployedVersion: (input, context) =>
       request(async () =>
-        deployedVersionOf(
-          await client.readServiceDeploys(input.service.serviceId, context.abortSignal),
-        ),
+        deployedVersionOf(await readServiceDeploys(input.service, context.abortSignal)),
       ),
     // A failed read is folded into `"unknown"` here, not left to fail the
     // resource: this flag exists to replace an inference (H9), and a read
