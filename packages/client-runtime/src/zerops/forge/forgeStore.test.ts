@@ -121,6 +121,8 @@ function rig() {
         at(`branch ${owner}/${repo} ${branch}`),
       readFile: (owner: string, repo: string, path: string, ref?: string) =>
         at(`file ${owner}/${repo} ${path}${ref === undefined ? "" : `@${ref}`}`),
+      listDirectory: (owner: string, repo: string, path: string, ref?: string) =>
+        at(`dir ${owner}/${repo} ${path === "" ? "/" : path}${ref === undefined ? "" : `@${ref}`}`),
       listCommitStatuses: (owner: string, repo: string, sha: string) =>
         at(`statuses ${owner}/${repo}@${sha}`),
       listCommits: (owner: string, repo: string, options?: { readonly limit?: number }) =>
@@ -572,17 +574,42 @@ describe("forge store backstops (DESIGN §6.3)", () => {
     expect(sent("statuses shop/app@h4")).toHaveLength(3);
   });
 
-  it("the group repo's declarations come from environments.yaml, and no file declares none", async () => {
+  it.each([
+    [
+      "a group whose main has no environments.yaml asks only for the listing: no 404 per load",
+      ["README.md", "3 — Stage"],
+      [] as ReadonlyArray<string>,
+    ],
+    [
+      "an empty group repo, with no main yet, declares none",
+      undefined,
+      [] as ReadonlyArray<string>,
+    ],
+    [
+      "a group whose main lists environments.yaml reads it",
+      ["environments.yaml", "README.md"],
+      ["file shop/group environments.yaml@main"],
+    ],
+  ])("%s", async (_case, listing, fileReads) => {
     const { clock, store, sent, pending } = rig();
     const fact: ForgeFact = { kind: "declarations", origin: ORIGIN, owner: "shop", repo: "group" };
     store.demand(fact);
     await clock.advance(0);
-    await pending("file shop/group environments.yaml").answer(undefined);
+    await pending("dir shop/group /@main").answer(listing);
+    if (fileReads.length > 0) {
+      await pending("file shop/group environments.yaml@main").answer({
+        path: "environments.yaml",
+        sha: "s1",
+        content: "environments: []\n",
+      });
+    }
+    expect(sent("file shop/group environments.yaml")).toEqual([]);
+    expect(sent("file shop/group environments.yaml@main")).toHaveLength(fileReads.length);
     expect(store.read(fact)).toMatchObject({ state: "known", value: [], coverage: "complete" });
     await clock.advance(FORGE_DECLARATIONS_BACKSTOP_MS - 1);
-    expect(sent("file shop/group environments.yaml")).toHaveLength(1);
+    expect(sent("dir shop/group /@main")).toHaveLength(1);
     await clock.advance(1);
-    expect(sent("file shop/group environments.yaml")).toHaveLength(2);
+    expect(sent("dir shop/group /@main")).toHaveLength(2);
   });
 
   it("a branch's head is its commit, read at the list backstop, and a missing branch is gone", async () => {

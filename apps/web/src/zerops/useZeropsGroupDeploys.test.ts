@@ -34,6 +34,7 @@ vi.mock("./accountGiteaSessions", () => ({
       return Promise.reject(new Error("Gitea answered 401."));
     };
     return {
+      listDirectory: async () => (gitea.readable ? undefined : refuse()),
       readFile: async () => (gitea.readable ? undefined : refuse()),
       listPullRequests: async () => {
         if (!gitea.readable) return refuse();
@@ -138,6 +139,7 @@ describe("deployGroupKey", () => {
 /** The group repo declares one stage; the version read is the caller's. */
 function groupRepo() {
   return {
+    listDirectory: async () => ["environments.yaml", "README.md"],
     readFile: async (_owner: string, _repo: string, path: string) =>
       path === "environments.yaml"
         ? {
@@ -259,6 +261,50 @@ describe("readGroupDeploys", () => {
     });
     expect(read).toContain("group/environments.yaml@main");
     expect(update(held)?.declarations.map((declaration) => declaration.name)).toEqual(["stage"]);
+  });
+
+  it("a group whose main has no environments.yaml never asks for it: no 404 on every load", async () => {
+    const read: string[] = [];
+    const repo = groupRepo();
+    const client = {
+      ...repo,
+      listDirectory: async (_owner: string, repository: string, path: string, ref: string) => {
+        read.push(`list ${repository}/${path}@${ref}`);
+        return ["README.md", "3 — Stage"];
+      },
+      readFile: (owner: string, repository: string, path: string, ref: string) => {
+        read.push(`${repository}/${path}@${ref}`);
+        return repo.readFile(owner, repository, path, ref);
+      },
+    } as unknown as GiteaClient;
+    const held: ZeropsGroupDeployState = {
+      declarations: [],
+      environments: [],
+      groupHead: undefined,
+      pullRequests: [],
+      missing: [],
+      mainHeadRepositories: new Map([["app", "appdev"]]),
+      mainHeads: new Map(),
+      releaseContents: [],
+    };
+    const { deploys } = flowVerbInvalidations({
+      kind: "merge",
+      slug: "harbor",
+      repository: "group",
+      number: 2,
+    });
+    if (deploys === null) throw new Error("a recipe merge changes the deploy half");
+    const update = await readGroupDeploys({
+      client,
+      group: GROUP,
+      scope: deploys,
+      readVersion: async () => SHA,
+      held,
+      signal: new AbortController().signal,
+    });
+    expect(read).toContain("list group/@main");
+    expect(read).not.toContain("group/environments.yaml@main");
+    expect(update(held)?.declarations).toEqual([]);
   });
 
   it("keeps the version the group last read when reading it again fails", async () => {
