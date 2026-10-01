@@ -991,6 +991,51 @@ it.live("a renewal reverifies a command-created project the search index still o
   ),
 );
 
+it.live(
+  "the person's own new project keeps its grant and inventory when the organization's list names it while the platform still creates it",
+  () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        // Add a Mate, live 2026-10-01: the tab's own creation established the project, then the
+        // organization's live list named it. Read on the path for someone else's project, it left
+        // the runtime's grant and the inventory until a renewal, and the arrival page never saw
+        // its container come up.
+        const harness = yield* mountInventory();
+        yield* harness.advance(10_000);
+        harness.projects.set("created", {
+          id: "created",
+          clientId: "org",
+          name: "Created",
+          status: "CREATING",
+        });
+        // The platform does not answer for a project it is still creating.
+        harness.client.fetchProject.mockImplementation(async (id: string) => {
+          const project = harness.projects.get(id);
+          if (id === "created" || project === undefined)
+            throw new ZeropsApiError("Gone", "not-found");
+          return project;
+        });
+        yield* actEffect(
+          harness.runtime.observeAccess({
+            kind: "project-access-established",
+            accountEpoch: harness.grants.at(-1)!.accountEpoch,
+            project: harness.projectRef("org", "created"),
+          }),
+        );
+        yield* harness.advance(1_000);
+        expect(grantedProjects(harness.grants.at(-1))).toEqual(["kept", "created"]);
+        expect(harness.inventory()?.projects.map(({ id }) => id)).toEqual(["kept", "created"]);
+
+        harness.indexed.add("created");
+        invalidateZerops({ topic: "inventory", organization: harness.organization });
+        yield* harness.advance(3_000);
+
+        expect(grantedProjects(harness.grants.at(-1))).toEqual(["kept", "created"]);
+        expect(harness.inventory()?.projects.map(({ id }) => id)).toEqual(["kept", "created"]);
+      }),
+    ),
+);
+
 it.live("has given the runtime its grant before the first child mounts", () =>
   Effect.scoped(
     Effect.gen(function* () {
