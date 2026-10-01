@@ -54,9 +54,12 @@ vi.mock("./zeropsDataContext", () => ({
     runtime: {
       commands: { updateProjectTags: mock.updateProjectTags },
       reads: { setupMarker: () => null },
+      cells: { known: () => null },
     },
   }),
   runZeropsCommand: (command: Promise<unknown>) => command,
+  // The organization's token list, not read: no key here reads as unhardened.
+  useKnown: () => ({ state: "unread" }),
   // No container here carries the press's marker: no Finish setup for an interrupted press.
   useZeropsAtomSelections: () => new Map(),
 }));

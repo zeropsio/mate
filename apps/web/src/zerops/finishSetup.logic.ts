@@ -1,10 +1,7 @@
 /**
  * *Finish setup*'s decisions, apart from the hook that runs it (`useMateActions.tsx`): when a
- * Mate's project is past the grace a press elsewhere has, whether it imports a container, and
- * what a Mate in no group is offered.
+ * Mate's project is past the grace a press elsewhere has, and whether it imports a container.
  */
-import { FINISH_MATE_SETUP_VERB } from "@t3tools/client-runtime/zerops";
-
 import { MATE_CONTAINER_GRACE_MS } from "./mateComing";
 
 /** Its project is older than a press in another browser could still be working on it. */
@@ -29,14 +26,4 @@ export function finishSetupContainer(input: {
 }): { readonly agents: readonly [] } | null {
   if (input.hasService) return null;
   return input.pressStopped || input.pastGrace ? { agents: [] } : null;
-}
-
-/**
- * Finish setup on a Mate in no group — one claimed from the pool: offered where its harden stopped
- * in this tab, and then only the harden and the close-off run again.
- */
-export function finishSetupVerbForUngrouped(input: {
-  readonly pressStopped: boolean;
-}): string | undefined {
-  return input.pressStopped ? FINISH_MATE_SETUP_VERB : undefined;
 }

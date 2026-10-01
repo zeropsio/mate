@@ -315,18 +315,37 @@ export function finishMateSetupVerb(input: {
    * would race that press. A press this tab made and saw stop needs no grace.
    */
   readonly pastGrace: boolean;
+  /**
+   * The platform's token list still shows a key of its at `ADMIN` on its own project
+   * (`mateNeedsHarden`): a pool-claimed or older Mate whose harden never ran.
+   */
+  readonly needsHarden: boolean;
+  /** The viewer added this Mate: closing it off needs no registry rights. */
+  readonly viewerIsAdder: boolean;
   /** The viewer's org role, as the platform spells it. */
   readonly viewerRole?: string | undefined;
 }): string | undefined {
-  const halfMade =
-    input.pressStopped ||
-    (input.pastGrace &&
-      (input.registration === "awaiting-owner" ||
-        input.containerMissing ||
-        input.closedOffMissing));
-  if (!halfMade) return undefined;
-  if (input.viewerRole !== "OWNER" && input.viewerRole !== "ADMIN") return undefined;
-  return FINISH_MATE_SETUP_VERB;
+  if (input.viewerRole === "OWNER" || input.viewerRole === "ADMIN") {
+    const halfMade =
+      input.pressStopped ||
+      (input.pastGrace &&
+        (input.registration === "awaiting-owner" ||
+          input.containerMissing ||
+          input.closedOffMissing ||
+          input.needsHarden));
+    return halfMade ? FINISH_MATE_SETUP_VERB : undefined;
+  }
+  // The Mate's own adder may close it off — nothing more: its registration and its key are an
+  // owner's or an admin's to write.
+  if (input.viewerIsAdder && (input.pressStopped || (input.pastGrace && input.closedOffMissing))) {
+    return FINISH_MATE_SETUP_VERB;
+  }
+  return undefined;
+}
+
+/** What a viewer's *Finish setup* runs: all of it for an owner or an admin, else the close-off. */
+export function finishMateSetupScope(viewerRole: string | undefined): "whole" | "close-off" {
+  return viewerRole === "OWNER" || viewerRole === "ADMIN" ? "whole" : "close-off";
 }
 
 export const FINISH_MATE_SETUP_VERB = "Finish setup";

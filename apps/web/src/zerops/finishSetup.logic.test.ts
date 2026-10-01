@@ -1,10 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import {
-  finishSetupContainer,
-  finishSetupVerbForUngrouped,
-  mateProjectPastGrace,
-} from "./finishSetup.logic";
+import { finishSetupContainer, mateProjectPastGrace } from "./finishSetup.logic";
 import { MATE_CONTAINER_GRACE_MS } from "./mateComing";
 
 const NOW = Date.parse("2026-10-01T12:00:00Z");
@@ -54,16 +50,5 @@ describe("finishSetupContainer — whether Finish setup imports a container", ()
     },
   ])("$case", ({ want, ...input }) => {
     expect(finishSetupContainer(input)).toEqual(want);
-  });
-});
-
-// A Mate claimed from the pool belongs to no group: where its harden stopped in this tab, Finish
-// setup offers the harden and the close-off again (pass 28 review).
-describe("finishSetupVerbForUngrouped", () => {
-  it.each([
-    { case: "its harden stopped", pressStopped: true, want: "Finish setup" },
-    { case: "nothing stopped", pressStopped: false, want: undefined },
-  ])("$case", ({ pressStopped, want }) => {
-    expect(finishSetupVerbForUngrouped({ pressStopped })).toBe(want);
   });
 });

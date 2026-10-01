@@ -8,6 +8,7 @@ import {
   planGroupRegistration,
   resolveAddProjectVerb,
   resolveGroupGitea,
+  finishMateSetupScope,
   finishMateSetupVerb,
   resolveMateRegistration,
   type MateRegistration,
@@ -282,7 +283,9 @@ describe("finishMateSetupVerb", () => {
     containerMissing: false,
     pressStopped: false,
     closedOffMissing: false,
+    needsHarden: false,
     pastGrace: true,
+    viewerIsAdder: false,
   };
   it.each([
     {
@@ -335,6 +338,38 @@ describe("finishMateSetupVerb", () => {
       viewerRole: "OWNER",
       expected: "Finish setup",
     },
+    // Read off the platform's token list, in any browser, after a reload too.
+    {
+      name: "an owner, on a Mate whose key is still ADMIN — a pool claim whose harden never ran",
+      input: { ...HALF_MADE, needsHarden: true },
+      viewerRole: "OWNER",
+      expected: "Finish setup",
+    },
+    {
+      name: "nobody else, on a Mate whose key is still ADMIN",
+      input: { ...HALF_MADE, needsHarden: true, viewerIsAdder: true },
+      viewerRole: "BASIC_USER",
+      expected: undefined,
+    },
+    // Closing off needs no registry rights: the member who added it may close it off.
+    {
+      name: "the member who added it, on a Mate its press left open",
+      input: { ...HALF_MADE, closedOffMissing: true, viewerIsAdder: true },
+      viewerRole: "BASIC_USER",
+      expected: "Finish setup",
+    },
+    {
+      name: "another member, on a Mate a press left open",
+      input: { ...HALF_MADE, closedOffMissing: true },
+      viewerRole: "BASIC_USER",
+      expected: undefined,
+    },
+    {
+      name: "the member who added it, on a Mate nobody has registered: that is an owner's",
+      input: { ...HALF_MADE, registration: "awaiting-owner", viewerIsAdder: true },
+      viewerRole: "BASIC_USER",
+      expected: undefined,
+    },
     {
       name: "the member who made it, and cannot finish it",
       input: { ...HALF_MADE, registration: "awaiting-owner" },
@@ -363,5 +398,16 @@ describe("finishMateSetupVerb", () => {
     expect(
       finishMateSetupVerb({ ...input, ...(viewerRole === undefined ? {} : { viewerRole }) }),
     ).toBe(expected);
+  });
+});
+
+describe("finishMateSetupScope", () => {
+  it.each([
+    { role: "OWNER", want: "whole" },
+    { role: "ADMIN", want: "whole" },
+    { role: "BASIC_USER", want: "close-off" },
+    { role: undefined, want: "close-off" },
+  ])("$role: $want", ({ role, want }) => {
+    expect(finishMateSetupScope(role)).toBe(want);
   });
 });

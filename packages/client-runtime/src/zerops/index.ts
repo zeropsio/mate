@@ -557,6 +557,7 @@ export {
   onlyTheseCanAddAProject,
   planGroupMembership,
   FINISH_MATE_SETUP_VERB,
+  finishMateSetupScope,
   finishMateSetupVerb,
   planGroupRegistration,
   mateAwaitingRegistryLine,
