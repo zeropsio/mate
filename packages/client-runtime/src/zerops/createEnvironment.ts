@@ -156,7 +156,14 @@ export type EnvironmentCreationStep =
    * imports the runtimes on the mark alone, so no service the project runs
    * ever reads another's variables, the Mate's key among them.
    */
-  | { readonly kind: "close-off" }
+  | {
+      readonly kind: "close-off";
+      /**
+       * The press has just isolated the project itself (`hardenMate`): the step trusts that and
+       * reads no trailing index to isolate it again.
+       */
+      readonly isolated?: true;
+    }
   /**
    * The group's other Mates given sight of the new project: each one's key
    * extended to `READ_ONLY` on it, where this person may edit those keys (an

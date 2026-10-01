@@ -563,6 +563,21 @@ describe("runEnvironmentCreation — closing the project off", () => {
     }
   });
 
+  // Finish setup on an older Mate isolates it first (`hardenMate`): its close-off trusts that and
+  // reads no trailing index to isolate it a second time.
+  it("marks a project the press has just isolated, reading nothing", async () => {
+    const { platform, calls } = fakePlatform();
+    const outcome = await runEnvironmentCreation({
+      clientId: "client-1",
+      steps: [{ kind: "close-off", isolated: true }],
+      platform,
+      resume: { from: 0, projectId: "proj-1", projectName: "Go Hello World - dev" },
+      sleep: async () => undefined,
+    });
+    expect(outcome).toMatchObject({ ok: true });
+    expect(calls).toEqual(["closedOff:proj-1"]);
+  });
+
   it("waits for the recipe's write of the project's variables before it reads", async () => {
     // Before the import, an older write; then the recipe's, running, then through.
     const answers: Array<ReadonlyArray<{ readonly id: string; readonly status: string }>> = [

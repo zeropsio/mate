@@ -425,15 +425,17 @@ export async function runEnvironmentCreation(
           // recipe's own write of the project's variables is waited out first, isolation is
           // written wherever a read says anything but closed, and the mark goes only on two
           // reads, two seconds apart, that say closed.
-          await awaitRecipeEnvWrite({
-            projectId: target,
-            platform: input.platform,
-            before: envWritesBefore,
-            now,
-            sleep,
-            assertCurrent,
-          });
-          await confirmClosed(target);
+          if (step.isolated !== true) {
+            await awaitRecipeEnvWrite({
+              projectId: target,
+              platform: input.platform,
+              before: envWritesBefore,
+              now,
+              sleep,
+              assertCurrent,
+            });
+            await confirmClosed(target);
+          }
           await withTries(() => input.platform.markClosedOff(target));
           break;
         }

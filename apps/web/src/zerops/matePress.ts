@@ -626,7 +626,8 @@ export async function finishMateSetup(input: {
     ...(input.container === null
       ? []
       : [{ kind: "import-container", agents: input.container.agents } as const]),
-    { kind: "close-off" },
+    // Isolated a moment ago by the harden, which the close-off trusts rather than a trailing read.
+    input.harden === true ? { kind: "close-off", isolated: true } : { kind: "close-off" },
     // After the close-off: a refused registration leaves the Mate closed off and running.
     ...(input.registration === null ? [] : [{ kind: "register" } as const]),
     { kind: "share-reach" },
