@@ -226,7 +226,9 @@ const turnEnded = (
     const after = openTaskOf(yield* asRefusal(core.store.assignments(CREW_ID)), handle);
     if (after?.state === "merging") {
       yield* core.background(
-        integrate(core, after.assignment).pipe(Effect.andThen(advance(core, handle))),
+        core.crewmate(handle)(
+          integrate(core, after.assignment).pipe(Effect.andThen(advance(core, handle))),
+        ),
       );
     } else {
       yield* advance(core, handle);

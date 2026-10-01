@@ -239,7 +239,7 @@ export const retryRefused = (core: CrewCore) =>
         .filter((task) => task.state === "queued" && core.memory.cantStart.has(task.assignment))
         .map((task) => task.member),
     );
-    for (const handle of handles) yield* advance(core, handle);
+    for (const handle of handles) yield* core.crewmate(handle)(advance(core, handle));
   });
 
 /** Advances every crewmate; a failure is the section's last error, never a stop. */
@@ -248,12 +248,14 @@ export const advanceAll = (core: CrewCore) =>
     const applied = yield* core.applied;
     if (applied === undefined) return;
     for (const handle of applied.members.keys()) {
-      yield* advance(core, handle).pipe(
-        Effect.catch((error) =>
-          Effect.sync(() => {
-            core.memory.lastError = failureWords(error);
-          }),
-        ),
-      );
+      yield* core
+        .crewmate(handle)(advance(core, handle))
+        .pipe(
+          Effect.catch((error) =>
+            Effect.sync(() => {
+              core.memory.lastError = failureWords(error);
+            }),
+          ),
+        );
     }
   });
