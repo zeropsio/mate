@@ -101,7 +101,14 @@ import {
   type ZeropsCandidatePresentation,
 } from "./useZeropsCandidates";
 import { useZeropsOrganizationMembers, zeropsMateOwner } from "./useZeropsMateOwners";
-import { finishMateSetup, forgetPress, useInterruptedPresses, useMatePresses } from "./matePress";
+import {
+  finishMateSetup,
+  forgetPress,
+  groupMatesOtherThan,
+  pressViewer,
+  useInterruptedPresses,
+  useMatePresses,
+} from "./matePress";
 import { mateRestartPorts, restartMateContainer } from "./mateRestart";
 import { intendContainer } from "./zeropsContainers";
 import { runZeropsCommand, useZeropsData } from "./zeropsDataContext";
@@ -480,6 +487,10 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
             groupProjectIds: (group?.environments ?? []).flatMap(({ item }) =>
               item.project.id === projectId ? [] : [item.project.id],
             ),
+            groupMateProjectIds: groupMatesOtherThan(group?.environments ?? [], projectId),
+            viewer: pressViewer(user, activeOrganization),
+            // A Mate made before the press: its key lowered from ADMIN.
+            harden: true,
             registration:
               giteaProjectId === undefined
                 ? null
@@ -508,6 +519,7 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
       refresh,
       registry,
       runtime,
+      user,
       write,
     ],
   );

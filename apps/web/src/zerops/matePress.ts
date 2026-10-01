@@ -18,7 +18,9 @@
  */
 import {
   canWriteRegistry,
+  findMateIntegrationToken,
   isZeropsMateClosedOff,
+  planGroupReach,
   PROJECT_ENV_ISOLATION_KEY,
   resumableEnvironmentCreationStep,
   runEnvironmentCreation,
@@ -29,6 +31,8 @@ import {
   type RecipeRuntime,
   type ZeropsAgentType,
   type ZeropsApiClient,
+  type ZeropsGroupReachWrite,
+  type ZeropsIntegrationToken,
   type ZeropsPlacedBirth,
 } from "@t3tools/client-runtime/zerops";
 import { ZeropsServiceId } from "@t3tools/client-runtime/zerops/data";
@@ -138,6 +142,7 @@ const PRESS_STEP_NAMES: Readonly<Record<EnvironmentCreationStep["kind"], string>
   "import-recipe": "Adding its services",
   "import-container": "Adding its container",
   "close-off": "Closing the project off",
+  "share-reach": "Letting the project's other Mates see it",
   register: "Registering it",
   "await-ready": "Waiting for it",
 };
@@ -264,12 +269,74 @@ export function pressRegistration(
   };
 }
 
+/** Whose press it is, for what it may write beyond its own project. */
+export interface PressViewer {
+  readonly userId: string;
+  /** The org role, as the platform spells it. */
+  readonly roleCode: string | undefined;
+}
+
+/** The person pressing, where the session names them. */
+export function pressViewer(
+  user: { readonly id: string } | null | undefined,
+  organization: { readonly roleCode?: string | undefined } | null | undefined,
+): PressViewer | null {
+  return user === null || user === undefined
+    ? null
+    : { userId: user.id, roleCode: organization?.roleCode };
+}
+
+/** The Mates among a group's environments other than `projectId`: those with a container. */
+export function groupMatesOtherThan(
+  environments: ReadonlyArray<{
+    readonly item: { readonly project: { readonly id: string }; readonly service?: unknown };
+  }>,
+  projectId: string | null,
+): ReadonlyArray<string> {
+  return environments.flatMap(({ item }) =>
+    item.service === undefined || item.project.id === projectId ? [] : [item.project.id],
+  );
+}
+
+/**
+ * The writes that give a group's other Mates sight of a new project: each Mate's key extended to
+ * `READ_ONLY` on it (`planGroupReach`), where this person may edit the key — an org owner, or its
+ * creator. A key that reads the project already, or that this person may not edit, is left alone;
+ * the group-reach reconcile covers it later.
+ */
+export function planShareReach(input: {
+  readonly tokens: ReadonlyArray<ZeropsIntegrationToken & { readonly createdByUser?: unknown }>;
+  readonly groupMateProjectIds: ReadonlyArray<string>;
+  readonly projectId: string;
+  readonly viewer: PressViewer;
+}): ReadonlyArray<ZeropsGroupReachWrite & { readonly roleCode: string | undefined }> {
+  return input.groupMateProjectIds.flatMap((mateProjectId) => {
+    const token = findMateIntegrationToken(input.tokens, mateProjectId);
+    if (token === undefined) return [];
+    const editable =
+      input.viewer.roleCode === "OWNER" ||
+      (token as { readonly createdByUser?: unknown }).createdByUser === input.viewer.userId;
+    if (!editable) return [];
+    if ((token.projects ?? []).some((grant) => grant.projectId === input.projectId)) return [];
+    const plan = planGroupReach({
+      token,
+      selfProjectId: mateProjectId,
+      groupProjectIds: [...(token.projects ?? []).map((grant) => grant.projectId), input.projectId],
+    });
+    // The key's own org role goes round: the write replaces the whole record.
+    return plan === undefined ? [] : [{ ...plan, name: token.name, roleCode: token.roleCode }];
+  });
+}
+
 /** The press's platform calls, through the account's command layer. */
 export function pressPlatform(
   inputs: PressInputs,
   options: {
     /** The group's other environments: the Mate's key reads them. */
     readonly groupProjectIds: ReadonlyArray<string>;
+    /** The group's other Mates: their keys are given sight of the new project. */
+    readonly groupMateProjectIds: ReadonlyArray<string>;
+    readonly viewer: PressViewer | null;
     /** Null where the press writes no registration. */
     readonly register: ((projectId: string) => Promise<void>) | null;
     readonly readObservedServices: EnvironmentCreationPlatform["readObservedServices"];
@@ -283,8 +350,6 @@ export function pressPlatform(
       runZeropsCommand(data.runtime.commands.createProject({ organization, ...input })),
     // Reads, not writes: the platform's verdict on what the press made, waited on by the runner.
     readProjectCreation: (input) => client.readProjectCreation(input),
-    readProjectEnvWrites: (projectId) =>
-      client.readProjectEnvWrites({ clientId: organizationId, projectId }),
     importDevelopmentContainer: ({ projectId, projectName, agents, setupRuntimesYaml }) =>
       runZeropsCommand(
         data.runtime.commands.importDevelopmentContainer({
@@ -316,6 +381,27 @@ export function pressPlatform(
     },
     register: async (projectId) => {
       await options.register?.(projectId);
+    },
+    shareReach: async (projectId) => {
+      const viewer = options.viewer;
+      if (viewer === null || options.groupMateProjectIds.length === 0) return;
+      const writes = planShareReach({
+        tokens: await client.listIntegrationTokens(organizationId),
+        groupMateProjectIds: options.groupMateProjectIds,
+        projectId,
+        viewer,
+      });
+      for (const write of writes) {
+        await client
+          .setIntegrationTokenProjects({
+            clientId: organizationId,
+            tokenId: write.tokenId,
+            name: write.name,
+            projects: write.projects,
+            roleCode: write.roleCode,
+          })
+          .catch(() => undefined);
+      }
     },
     readObservedServices: options.readObservedServices,
   };
@@ -390,7 +476,7 @@ export const canFinishMateSetup = canWriteRegistry;
  * any browser — for one made before this pass, the close-off also lowers a key still at `ADMIN`
  * and moves it off the project's variables (`hardenMate`).
  */
-export function finishMateSetup(input: {
+export async function finishMateSetup(input: {
   readonly inputs: PressInputs;
   readonly projectId: string;
   readonly projectName: string;
@@ -402,18 +488,41 @@ export function finishMateSetup(input: {
   readonly container: { readonly agents: ReadonlyArray<ZeropsAgentType> } | null;
   /** The group's other environments: a key minted here reads them. */
   readonly groupProjectIds: ReadonlyArray<string>;
+  /** The group's other Mates: their keys are given sight of this one. */
+  readonly groupMateProjectIds: ReadonlyArray<string>;
+  readonly viewer: PressViewer | null;
   /** Null where there is no registry to write it in. */
   readonly registration: PressRegistration | null;
   readonly isCurrent: () => boolean;
-  /** When its container was imported, where that was a moment ago. */
-  readonly containerAcceptedAtMs?: number;
+  /**
+   * A Mate made before the press: its key lowered from `ADMIN`, its delegations dropped and its
+   * key moved off the project's variables (`hardenMate`) before the steps run.
+   */
+  readonly harden?: boolean;
 }): Promise<EnvironmentCreationOutcome> {
+  if (input.harden === true) {
+    try {
+      await runZeropsCommand(
+        input.inputs.data.runtime.commands.isolateProjectEnv(
+          input.inputs.data.projectRef(input.inputs.organizationId, input.projectId),
+        ),
+      );
+    } catch (cause) {
+      return {
+        ok: false,
+        projectId: input.projectId,
+        failedStep: { kind: "close-off" },
+        error: zeropsErrorMessage(cause),
+      };
+    }
+  }
   const steps: ReadonlyArray<EnvironmentCreationStep> = [
     ...(input.container === null
       ? []
       : [{ kind: "import-container", agents: input.container.agents } as const]),
-    { kind: "close-off" },
     ...(input.registration === null ? [] : [{ kind: "register" } as const]),
+    { kind: "share-reach" },
+    { kind: "close-off" },
     { kind: "await-ready", withAgent: true },
   ];
   return runPress({
@@ -421,19 +530,14 @@ export function finishMateSetup(input: {
     steps,
     platform: pressPlatform(input.inputs, {
       groupProjectIds: input.groupProjectIds,
+      groupMateProjectIds: input.groupMateProjectIds,
+      viewer: input.viewer,
       register:
         input.registration === null ? null : pressRegistration(input.inputs, input.registration),
       readObservedServices: async () => [],
     }),
     isCurrent: input.isCurrent,
-    resume: {
-      from: 0,
-      projectId: input.projectId,
-      projectName: input.projectName,
-      ...(input.containerAcceptedAtMs === undefined
-        ? {}
-        : { containerAcceptedAtMs: input.containerAcceptedAtMs }),
-    },
+    resume: { from: 0, projectId: input.projectId, projectName: input.projectName },
   });
 }
 

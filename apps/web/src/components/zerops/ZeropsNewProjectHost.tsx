@@ -71,7 +71,7 @@ import { useNewProjectAsk } from "~/zerops/newProjectAsk";
 import { useTakenBotNames, useZeropsCandidates } from "~/zerops/useZeropsCandidates";
 import { invalidateZerops } from "~/zerops/accountInvalidations";
 import { captureAccountLifetime } from "~/zerops/accountLifetime";
-import { beginPress, finishMateSetup } from "~/zerops/matePress";
+import { beginPress, finishMateSetup, pressViewer } from "~/zerops/matePress";
 import { runZeropsCommand, useKnown, useZeropsData } from "~/zerops/zeropsDataContext";
 import type { ZeropsOrganizationStatus } from "~/zerops/ZeropsSessionProvider";
 import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
@@ -102,8 +102,14 @@ export function ZeropsNewProjectHost() {
 
 function NewProjectDialog() {
   const dismiss = useNewProjectAsk((state) => state.dismiss);
-  const { activeOrganization, client, organizationStatus, organizations, selectOrganization } =
-    useZeropsSession();
+  const {
+    activeOrganization,
+    client,
+    organizationStatus,
+    organizations,
+    selectOrganization,
+    user,
+  } = useZeropsSession();
   const { organizationRef, projectRef, runtime } = useZeropsData();
   const navigate = useNavigate();
   // The account's Mates: the names a new one may not take, and the tints its face walks past.
@@ -286,6 +292,9 @@ function NewProjectDialog() {
             // Imported a moment ago, with the project, by the one call that made it.
             container: null,
             groupProjectIds: [],
+            // Its project's first Mate: nobody else in it to give sight of it.
+            groupMateProjectIds: [],
+            viewer: pressViewer(user, activeOrganization),
             registration: {
               giteaProjectId,
               giteaOrigin: null,
@@ -294,7 +303,6 @@ function NewProjectDialog() {
               displayName: placement.displayName,
             },
             isCurrent,
-            containerAcceptedAtMs: acceptedAt,
           });
           // Who it is until the listing names it, as Add a Mate's are: its
           // view's face, name and stand-up.

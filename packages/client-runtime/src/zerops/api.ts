@@ -1926,34 +1926,6 @@ export class ZeropsApiClient {
   }
 
   /**
-   * `POST /process/search` — the project's newest `stack.updateProjectEnvs`
-   * processes, by status: the container recipe writes the project's variables
-   * in one, and a close-off written before it is through is undone by it. One
-   * read; the waiting is the press's (`runEnvironmentCreation.ts`).
-   */
-  async readProjectEnvWrites(
-    input: { readonly clientId: string; readonly projectId: string },
-    signal?: AbortSignal,
-  ): Promise<ReadonlyArray<{ readonly status: string }>> {
-    const response = await this.#request<{ readonly items?: ReadonlyArray<unknown> }>(
-      "/process/search",
-      {
-        method: "POST",
-        signal: signal ?? null,
-        body: JSON.stringify(projectProcessSearchBody(input)),
-      },
-      { operationKind: "read" },
-    );
-    return (Array.isArray(response.items) ? response.items : []).flatMap((item) => {
-      if (typeof item !== "object" || item === null) return [];
-      const { actionName, status } = item as { actionName?: unknown; status?: unknown };
-      return actionName === "stack.updateProjectEnvs" && typeof status === "string"
-        ? [{ status }]
-        : [];
-    });
-  }
-
-  /**
    * `DELETE /project/{id}` — takes a project off the account. The platform
    * answers with the deleting process and the project is gone shortly after
    * (measured 2026-09-16). What the product deletes through this is a project

@@ -2074,31 +2074,6 @@ describe("ZeropsApiClient.stopService and readProcessStatus", () => {
   });
 });
 
-describe("ZeropsApiClient.readProjectEnvWrites", () => {
-  it("answers the project's variable writes alone, by status", async () => {
-    const stub = recordingFetch(() =>
-      jsonResponse(200, {
-        items: [
-          { actionName: "stack.updateProjectEnvs", status: "RUNNING" },
-          { actionName: "stack.create", status: "FINISHED" },
-          { actionName: "stack.updateProjectEnvs", status: "FINISHED" },
-          { status: "PENDING" },
-        ],
-      }),
-    );
-    const client = new ZeropsApiClient({ fetch: stub.fetch });
-    client.restoreSession(SESSION);
-
-    expect(
-      await client.readProjectEnvWrites({ clientId: "org-1", projectId: "project-1" }),
-    ).toEqual([{ status: "RUNNING" }, { status: "FINISHED" }]);
-    expect(JSON.parse(stub.requests[0]?.body ?? "{}").search).toEqual([
-      { name: "clientId", operator: "eq", value: "org-1" },
-      { name: "projectId", operator: "eq", value: "project-1" },
-    ]);
-  });
-});
-
 describe("ZeropsApiClient.deleteThrowaway", () => {
   it.each(["zcp-acme", "mate-broker", "mate-doorstop", "mate-door"])(
     "refuses %s, which is not a throwaway, and sends nothing",

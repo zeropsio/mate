@@ -33,6 +33,7 @@ import type { EnvironmentCreationStep } from "./createEnvironment.ts";
 import type { Deployment } from "./flow/deployment.ts";
 import { deployedVersion } from "./groupRows.ts";
 import type { Known } from "./knowledge/known.ts";
+import { readsClosed } from "./projectIsolation.ts";
 import type { ZeropsAgentType } from "./newProject.ts";
 import {
   projectCreationFailureSentence,
@@ -78,14 +79,6 @@ export interface EnvironmentCreationPlatform {
     readonly clientId: string;
     readonly yaml: string;
   }) => Promise<{ readonly projectId: string }>;
-  /**
-   * The project's `stack.updateProjectEnvs` processes, by status: the container recipe writes the
-   * project's variables in one of these, and a close-off written before it is through is undone
-   * by it (ledger, 2026-09-20).
-   */
-  readonly readProjectEnvWrites: (
-    projectId: string,
-  ) => Promise<ReadonlyArray<{ readonly status: string }>>;
   /** The project closed off (`projectIsolation.ts`); safe to ask again. */
   readonly closeOff: (projectId: string) => Promise<void>;
   /** The project's `envIsolation`, read back; undefined while the read has not caught up. */
@@ -95,6 +88,11 @@ export interface EnvironmentCreationPlatform {
    * it (pass 28). Idempotent.
    */
   readonly markClosedOff: (projectId: string) => Promise<void>;
+  /**
+   * The group's other Mates' keys extended to `READ_ONLY` on the project, where this person may
+   * edit them; quietly nothing where they may not. Never fails the press.
+   */
+  readonly shareReach: (projectId: string) => Promise<void>;
   /**
    * The environment's group registration (`addGroupEnvironment.ts`); safe to ask again. Throws
    * with the reason a write did not go through.
@@ -189,22 +187,16 @@ export interface RunEnvironmentCreationInput {
     readonly from: number;
     readonly projectId: string;
     readonly projectName: string;
-    /** When the project's container was imported, where that was a moment ago. */
-    readonly containerAcceptedAtMs?: number;
   };
   /** The platform took the project: everything after this step acts on it. */
   readonly onProjectAccepted?: (projectId: string) => void;
 }
 
-/**
- * How long a close-off gives the container recipe's write of the project's variables to appear
- * after the import was accepted: in the test org's process lists it began within a second or two
- * of the import once the project stood (2026-10-01), and the process index trails.
- */
-export const RECIPE_ENV_WRITE_GRACE_MS = 6_000;
-/** Past this, the close-off goes ahead whatever the recipe is doing: a stuck write is not ours. */
-export const RECIPE_ENV_WRITE_CAP_MS = 90_000;
-export const RECIPE_ENV_WRITE_POLL_MS = 1_500;
+/** Between reads of a project's `envIsolation` while it has not caught up. */
+export const ISOLATION_READ_MS = 1_000;
+/** How many reads a close-off makes before it writes, or gives up: about ten seconds. */
+export const ISOLATION_READS = 10;
+
 /** The idempotent steps' tries: the platform's index catching up is the usual "not yet". */
 export const PRESS_STEP_ATTEMPTS = 4;
 export const PRESS_STEP_RETRY_MS = 2_000;
@@ -215,7 +207,12 @@ export const PRESS_STEP_RETRY_MS = 2_000;
  * there, or at the project itself, is removed rather than resumed.
  */
 export function resumableEnvironmentCreationStep(step: EnvironmentCreationStep): boolean {
-  return step.kind === "import-container" || step.kind === "close-off" || step.kind === "register";
+  return (
+    step.kind === "import-container" ||
+    step.kind === "close-off" ||
+    step.kind === "register" ||
+    step.kind === "share-reach"
+  );
 }
 
 /** Measured at ~2 minutes for a two-service recipe; a build can take longer. */
@@ -262,9 +259,30 @@ export async function runEnvironmentCreation(
 
   let projectId: string | undefined = input.resume?.projectId;
   let projectName: string | undefined = input.resume?.projectName;
-  let containerAcceptedAtMs: number | undefined = input.resume?.containerAcceptedAtMs;
   let serviceName: string | undefined;
   let deployments: ReadonlyArray<ServiceDeployment> = [];
+  /**
+   * `envIsolation` as soon as it reads at all, a second apart for about ten seconds; undefined
+   * while it never did. A read that answers is the answer, open or closed.
+   */
+  const readIsolation = async (target: string): Promise<string | undefined> => {
+    for (let read = 1; ; read += 1) {
+      // A read that failed is asked again like one not caught up, and said once none is left.
+      const answer = await input.platform.readIsolation(target).then(
+        (isolation) => ({ isolation }),
+        (cause: unknown) => ({ cause }),
+      );
+      assertCurrent();
+      if ("isolation" in answer && answer.isolation !== undefined) return answer.isolation;
+      if (read >= ISOLATION_READS) {
+        if ("cause" in answer) throw answer.cause;
+        return undefined;
+      }
+      await sleep(ISOLATION_READ_MS);
+      assertCurrent();
+    }
+  };
+
   /** An idempotent step, tried again while it answers "not yet". */
   const withTries = async (attempt: () => Promise<void>): Promise<void> => {
     for (let tried = 1; ; tried += 1) {
@@ -341,29 +359,30 @@ export async function runEnvironmentCreation(
             ...(step.runtimes === undefined ? {} : { setupRuntimesYaml: step.runtimes.yaml }),
           });
           serviceName = imported.serviceName;
-          // A container already there was imported long enough ago: nothing to wait out.
-          if (imported.imported) containerAcceptedAtMs = now();
           break;
         }
         case "close-off": {
           const target = requireProject(projectId);
-          await awaitRecipeEnvWrite({
-            projectId: target,
-            platform: input.platform,
-            sinceMs: containerAcceptedAtMs ?? now() - RECIPE_ENV_WRITE_GRACE_MS,
-            now,
-            sleep,
-            assertCurrent,
-          });
-          // Marked only once it reads back closed: zcp imports the runtimes on the mark alone.
-          await withTries(async () => {
+          // Read back at once: the recipe leaves it closed, and a new project starts closed.
+          // Written only where it reads anything else, and read back again; marked only once it
+          // reads closed — zcp imports the runtimes on the mark alone.
+          const isolation = await readIsolation(target);
+          if (isolation === undefined) {
+            throw new Error("The project's isolation could not be read.");
+          }
+          if (!readsClosed(isolation)) {
             await input.platform.closeOff(target);
-            const isolation = await input.platform.readIsolation(target);
-            if (isolation !== "service") {
+            if (!readsClosed(await readIsolation(target))) {
               throw new Error("The project does not read as closed off yet.");
             }
-          });
+          }
           await withTries(() => input.platform.markClosedOff(target));
+          break;
+        }
+        case "share-reach": {
+          const target = requireProject(projectId);
+          // Quietly nothing where it cannot: the group-reach reconcile gives the sight later.
+          await input.platform.shareReach(target).catch(() => undefined);
           break;
         }
         case "register": {
@@ -416,35 +435,6 @@ export async function runEnvironmentCreation(
     awaitingAgent: false,
     deployments,
   };
-}
-
-/**
- * Waits out the container recipe's own write of the project's variables: through once none is
- * pending or running and the import is at least {@link RECIPE_ENV_WRITE_GRACE_MS} old, so a write
- * the index has not listed yet is not missed; never past {@link RECIPE_ENV_WRITE_CAP_MS}.
- */
-async function awaitRecipeEnvWrite(input: {
-  readonly projectId: string;
-  readonly platform: EnvironmentCreationPlatform;
-  readonly sinceMs: number;
-  readonly now: () => number;
-  readonly sleep: (ms: number) => Promise<void>;
-  readonly assertCurrent: () => void;
-}): Promise<void> {
-  // Bounded by reads as well as by the clock, so a clock that stands still never holds a press.
-  const reads = Math.ceil(RECIPE_ENV_WRITE_CAP_MS / RECIPE_ENV_WRITE_POLL_MS);
-  for (let read = 0; read < reads; read += 1) {
-    const writes = await input.platform.readProjectEnvWrites(input.projectId);
-    input.assertCurrent();
-    const elapsed = input.now() - input.sinceMs;
-    const inFlight = writes.some(
-      (write) => write.status === "PENDING" || write.status === "RUNNING",
-    );
-    if (elapsed >= RECIPE_ENV_WRITE_CAP_MS) return;
-    if (!inFlight && elapsed >= RECIPE_ENV_WRITE_GRACE_MS) return;
-    await input.sleep(RECIPE_ENV_WRITE_POLL_MS);
-    input.assertCurrent();
-  }
 }
 
 function requireProject(projectId: string | undefined): string {

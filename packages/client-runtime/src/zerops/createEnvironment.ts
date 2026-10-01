@@ -149,13 +149,21 @@ export type EnvironmentCreationStep =
       readonly runtimes?: RecipeRuntimes;
     }
   /**
-   * The project closed off (`projectIsolation.ts`): `envIsolation` set to
-   * `service` once the container recipe's own write of the project's
-   * variables is through, so no service the project ever runs reads another's
-   * variables — the Mate's key among them. Before any runtime exists, so
-   * nothing restarts.
+   * The project closed off and marked so (`mate:closed-off`): read back at
+   * once — the container recipe leaves it `service service@zcp` within a
+   * second of the import, and a new project starts `service` — and written
+   * `service` only where it reads anything else (`projectIsolation.ts`). zcp
+   * imports the runtimes on the mark alone, so no service the project runs
+   * ever reads another's variables, the Mate's key among them.
    */
   | { readonly kind: "close-off" }
+  /**
+   * The group's other Mates given sight of the new project: each one's key
+   * extended to `READ_ONLY` on it, where this person may edit those keys (an
+   * org owner, or their creator). Anyone else's press skips it, and the
+   * group-reach reconcile gives the sight later.
+   */
+  | { readonly kind: "share-reach" }
   /**
    * The environment's group registration: its registry entry, the broker's
    * grant where an older broker needs one, and for a stage or a production
@@ -285,9 +293,13 @@ export function planEnvironmentCreation(input: EnvironmentCreationInput): Enviro
       agents: input.agents ?? [],
       ...(tier?.runtimes === undefined ? {} : { runtimes: tier.runtimes }),
     });
+  }
+  // At once: none of it waits for the close-off.
+  if (input.register === true) steps.push({ kind: "register" });
+  if (withAgent) {
+    steps.push({ kind: "share-reach" });
     steps.push({ kind: "close-off" });
   }
-  if (input.register === true) steps.push({ kind: "register" });
   // Last, and the only step that waits on anything: everything the person's rights are needed
   // for is done before it.
   steps.push({ kind: "await-ready", withAgent });
@@ -337,6 +349,8 @@ export function environmentCreationStepLabel(step: EnvironmentCreationStep): str
       return "Adding the agent container";
     case "close-off":
       return "Closing the project off";
+    case "share-reach":
+      return "Letting the project's other Mates see it";
     case "register":
       return "Registering it in its project";
     case "import-recipe":

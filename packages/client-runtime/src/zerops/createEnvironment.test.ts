@@ -103,6 +103,7 @@ describe("planEnvironmentCreation", () => {
     expect(stepKinds(plan.steps)).toEqual([
       "create-project",
       "import-container",
+      "share-reach",
       "close-off",
       "await-ready",
     ]);
@@ -118,7 +119,15 @@ describe("planEnvironmentCreation", () => {
     {
       case: "a Mate",
       input: { role: "dev" as const, name: "dev", register: true },
-      steps: ["create-project", "import-container", "close-off", "register", "await-ready"],
+      // Registered at once: nothing in it waits for the close-off.
+      steps: [
+        "create-project",
+        "import-container",
+        "register",
+        "share-reach",
+        "close-off",
+        "await-ready",
+      ],
     },
     {
       case: "a production",
@@ -128,7 +137,7 @@ describe("planEnvironmentCreation", () => {
     {
       case: "a Mate whose person may not write the registry",
       input: { role: "dev" as const, name: "dev", register: false },
-      steps: ["create-project", "import-container", "close-off", "await-ready"],
+      steps: ["create-project", "import-container", "share-reach", "close-off", "await-ready"],
     },
   ])("registers $case in the press, before anything is waited on", ({ input, steps }) => {
     const plan = planEnvironmentCreation({ ...BASE, ...input });
@@ -202,6 +211,7 @@ describe("environmentCreationStepLabel", () => {
       "Creating the environment",
       "Adding the managed services",
       "Adding the agent container",
+      "Letting the project's other Mates see it",
       "Closing the project off",
       "Waiting for the agent",
     ]);
@@ -412,6 +422,7 @@ describe("the recipe choice", () => {
     expect(stepKinds(plan.steps)).toEqual([
       "create-project",
       "import-container",
+      "share-reach",
       "close-off",
       "await-ready",
     ]);
@@ -451,7 +462,7 @@ services:
     priority: 10
 `;
   const SERVICES_ONLY = MATE_TIER.replace(/^project:\n(?: {2}.*\n)+/mu, "");
-  const CONTAINER_STEPS = ["import-container", "close-off"] as const;
+  const CONTAINER_STEPS = ["import-container", "share-reach", "close-off"] as const;
 
   function plan(yaml: string, extra: Partial<EnvironmentCreationInput> = {}) {
     const result = planEnvironmentCreation({
@@ -615,6 +626,7 @@ services:
     expect(plan(WHOLE, { withAgent: true }).map((step) => step.kind)).toEqual([
       "import-project",
       "import-container",
+      "share-reach",
       "close-off",
       "await-ready",
     ]);

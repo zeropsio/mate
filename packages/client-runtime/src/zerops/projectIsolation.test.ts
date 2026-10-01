@@ -74,6 +74,15 @@ describe("planProjectIsolation", () => {
     );
   });
 
+  it("reads the container recipe's own setting as closed, and plans nothing over it", () => {
+    // `service service@zcp`, left by the recipe within a second of the import (2026-10-01):
+    // rewritten to a plain `service`, it restarted every runtime for nothing.
+    const recipe = { ...CLOSED, content: "service service@zcp" };
+    expect(stepsOf(planProjectIsolation({ envList: [recipe, SSH], services: [APP, ZCP] }))).toEqual(
+      [],
+    );
+  });
+
   it("refuses to plan from a read that is missing the setting", () => {
     // The platform puts `envIsolation` on every project it makes, so a list
     // without it is an incomplete read — `POST /project/search` is an index

@@ -73,6 +73,8 @@ import {
   beginPress,
   finishMateSetup,
   forgetPress,
+  groupMatesOtherThan,
+  pressViewer,
   pressFailureLine,
   placedPressesIn,
   useMatePresses,
@@ -1122,6 +1124,8 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
           groupProjectIds: (group?.environments ?? []).flatMap(({ item }) =>
             item.project.id === projectId ? [] : [item.project.id],
           ),
+          groupMateProjectIds: groupMatesOtherThan(group?.environments ?? [], projectId),
+          viewer: pressViewer(user, activeOrganization),
           registration: null,
           isCurrent,
         });
@@ -1152,6 +1156,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
       settingUpKey,
       runtime,
       taken,
+      user,
     ],
   );
 
@@ -2141,8 +2146,12 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
       // The pool made its container.
       container: null,
       groupProjectIds: [],
+      groupMateProjectIds: [],
+      viewer: null,
       registration: null,
       isCurrent: captureAccountLifetime(),
+      // A container the pool made: its key at ADMIN, lowered.
+      harden: true,
     });
   }, [
     clearLastRegistration,
