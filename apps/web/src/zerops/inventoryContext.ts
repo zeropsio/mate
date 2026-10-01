@@ -196,10 +196,14 @@ export function useProjectDialog<T>(
  */
 export interface AccountVoice {
   readonly sentence: string;
+  /** What isn't answering, for the line's tooltip (`troubleSubject`); null when nothing is named. */
+  readonly title: string | null;
   readonly actions: ReadonlyArray<{
-    readonly kind: "try-now" | "sign-out";
-    readonly label: "Try now" | "Sign out";
+    readonly kind: "try-now" | "trying" | "sign-out";
+    readonly label: "Try now" | "Trying…" | "Sign out";
     readonly run: () => void;
+    /** Running: shown, not pressable again. */
+    readonly busy: boolean;
   }>;
 }
 

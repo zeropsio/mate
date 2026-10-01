@@ -46,30 +46,61 @@ export function inventoryTroubleVoice(input: InventoryTroubleInput): InventoryTr
   return input.troubledForMs >= INVENTORY_TROUBLE_HOLD_MS ? UNANSWERED : null;
 }
 
-/** What the account's one line does: a grant round and the troubled reads now, or sign out. */
-export type AccountFootAction = "try-now" | "sign-out";
+/**
+ * What the account's one line does: a grant round and the troubled reads now, or sign out. A
+ * `trying` is Try now while it runs, which takes no second press.
+ */
+export type AccountFootAction = "try-now" | "trying" | "sign-out";
 
 export interface AccountFootLine {
   readonly sentence: string;
   readonly actions: ReadonlyArray<AccountFootAction>;
 }
 
+/** Try now as the person last pressed it: not since, running, or run with the trouble still on. */
+export type TryNowAttempt = "idle" | "trying" | "still";
+
+/** How long Try now shows it is trying before the line says whether that helped. */
+export const TRY_NOW_SETTLE_MS = 8_000;
+
 /**
  * The account's one line at the menu's foot: a lapse of the grant the product runs on first, with
  * Try now once a renewal failed and always the way out of the account (A9), since nothing the
  * account holds can be read meanwhile; else the inventory's lasting trouble, with Try now only.
+ * Try now is never a silent no-op: it says it is trying while it runs, and a trouble that outlived
+ * it says so in the line.
  */
 export function accountFootLine(input: {
   readonly lapse: { readonly sentence: string; readonly retry: boolean } | null;
   readonly trouble: InventoryTroubleVoice | null;
+  readonly attempt: TryNowAttempt;
 }): AccountFootLine | null {
+  const tryNow: AccountFootAction = input.attempt === "trying" ? "trying" : "try-now";
+  const still = input.attempt === "still";
   if (input.lapse !== null) {
     return {
-      sentence: input.lapse.sentence,
-      actions: input.lapse.retry ? ["try-now", "sign-out"] : ["sign-out"],
+      sentence: input.lapse.retry && still ? STILL_NOT_ANSWERING : input.lapse.sentence,
+      actions: input.lapse.retry ? [tryNow, "sign-out"] : ["sign-out"],
     };
   }
-  return input.trouble === null ? null : { sentence: input.trouble.sentence, actions: ["try-now"] };
+  if (input.trouble === null) return null;
+  return { sentence: still ? STILL_NOT_ANSWERING : input.trouble.sentence, actions: [tryNow] };
+}
+
+const STILL_NOT_ANSWERING = "Still not answering. Trying again…";
+
+/**
+ * What isn't answering, for the line's tooltip, so a report names it: the one project when it
+ * alone is in trouble, else the organization's projects and services.
+ */
+export function troubleSubject(input: {
+  readonly organization: string;
+  readonly projects: ReadonlyArray<string>;
+  readonly organizationList: boolean;
+}): string {
+  return !input.organizationList && input.projects.length === 1
+    ? `${input.projects[0]} in ${input.organization}`
+    : `${input.organization}'s projects and services`;
 }
 
 /**

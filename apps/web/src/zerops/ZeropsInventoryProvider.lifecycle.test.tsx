@@ -44,6 +44,7 @@ import {
 } from "./inventoryContext";
 import { ZeropsInventoryProvider } from "./ZeropsInventoryProvider";
 import { AccountVoiceLine } from "../components/zerops/AccountVoiceLine";
+import { TRY_NOW_SETTLE_MS } from "./inventoryTrouble.logic";
 
 const session = vi.hoisted(() => ({ current: undefined as unknown }));
 vi.mock("./ZeropsSessionProvider", () => ({ useZeropsSession: () => session.current }));
@@ -884,8 +885,10 @@ it.live(
         expect(loading.slice(-19, -1)).toEqual(Array.from({ length: 18 }, () => true));
         expect(harness.inventory()?.error).toBe("Zerops isn't answering. Trying again…");
         expect(harness.inventory()?.isLoading).toBe(true);
-        // Said once, at the menu's foot, with Try now and no Sign out.
-        expect(harness.container.textContent).toBe("Zerops isn't answering. Trying again…Try now");
+        // Said once, at the menu's foot, naming what isn't answering, with Try now and no Sign out.
+        expect(harness.container.textContent).toBe(
+          "Zerops isn't answering. Trying again…Organization's projects and servicesTry now",
+        );
         heard.length = 0;
         const reread = harness.refreshed().length;
 
@@ -894,6 +897,12 @@ it.live(
         expect(heard).toEqual([{ topic: "inventory", organization: harness.organization }]);
         expect(harness.refreshed().slice(reread)).toEqual([harness.organization]);
         expect(harness.client.fetchUser).toHaveBeenCalledTimes(1);
+        // Never a silent no-op: it says it is trying, and once that has run with the stall still
+        // on, the line says so and offers it again.
+        expect(harness.container.textContent).toContain("Trying…");
+        yield* harness.advance(TRY_NOW_SETTLE_MS);
+        expect(harness.container.textContent).toContain("Still not answering.");
+        expect(harness.container.textContent).toContain("Try now");
       }),
     ),
 );

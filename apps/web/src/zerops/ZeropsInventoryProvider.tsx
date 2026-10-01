@@ -47,9 +47,12 @@ import {
 import { useZeropsSession } from "./ZeropsSessionProvider";
 import {
   INVENTORY_TROUBLE_HOLD_MS,
+  TRY_NOW_SETTLE_MS,
   accountFootLine,
   inventoryTroubleVoice,
   organizationKnowledge,
+  troubleSubject,
+  type TryNowAttempt,
 } from "./inventoryTrouble.logic";
 import { useHeldFor } from "./useHeldFor";
 import {
@@ -439,6 +442,7 @@ export function ZeropsInventoryProvider({ children }: { readonly children: React
     const demanded = [
       ...organizationDescriptors.map((descriptor) => ({
         organization: descriptor.organization,
+        projectId: null,
         interest: demandedInterest(
           organizationReads.get(interestKeyOf(descriptor))?.observation,
           descriptor,
@@ -446,6 +450,7 @@ export function ZeropsInventoryProvider({ children }: { readonly children: React
       })),
       ...projectDescriptors.map((descriptor) => ({
         organization: descriptor.project.organization,
+        projectId: descriptor.project.projectId as string | null,
         interest: demandedInterest(
           serviceReads.get(inventoryProjectRefKey(descriptor.project))?.observation,
           descriptor,
@@ -455,9 +460,16 @@ export function ZeropsInventoryProvider({ children }: { readonly children: React
     const documentHidden = typeof document !== "undefined" && document.visibilityState === "hidden";
     /** The organizations whose data failed or stalled, once each. */
     const blocked = new Map<string, OrganizationRef>();
-    for (const { organization, interest } of demanded) {
+    /** Each failed or stalled read: its organization, and its project when it is one's. */
+    const blockedReads: Array<{ organizationId: string; projectId: string | null }> = [];
+    /** The organizations some of whose demanded reads are not observing yet: not answered. */
+    const pending = new Set<string>();
+    for (const { organization, projectId, interest } of demanded) {
+      if (interest?.status !== "observing" && interest?.status !== "paused")
+        pending.add(organization.organizationId);
       if (isInterestBlocked(interest, Date.now(), documentHidden)) {
         blocked.set(organizationKeyOf(organization), organization);
+        blockedReads.push({ organizationId: organization.organizationId, projectId });
       }
     }
     return {
@@ -466,6 +478,8 @@ export function ZeropsInventoryProvider({ children }: { readonly children: React
       projectRefs,
       unreadOrganizations: [...unread],
       blockedOrganizations: [...blocked.values()],
+      blockedReads,
+      pendingOrganizations: pending,
     };
   }, [
     denied,
@@ -549,28 +563,109 @@ export function ZeropsInventoryProvider({ children }: { readonly children: React
     retryRef.current = retry;
     signOutRef.current = signOut;
   });
-  const retryNow = useCallback(() => retryRef.current(), []);
+  // Try now is never a silent no-op: it says it is trying while it runs, then whether that
+  // helped — a trouble still on after `TRY_NOW_SETTLE_MS` says so in the line.
+  const [attempt, setAttempt] = useState<TryNowAttempt>("idle");
+  const [tried, setTried] = useState(0);
+  const retryNow = useCallback(() => {
+    retryRef.current();
+    setAttempt("trying");
+    setTried((count) => count + 1);
+  }, []);
   const signOutNow = useCallback(() => void signOutRef.current(), []);
+  // Try now re-reads what was in trouble, which then reads as establishing, not stalled: the line
+  // it was pressed on stays up while it runs and while the organization stays unknown, and says
+  // after `TRY_NOW_SETTLE_MS` whether that helped — never a line that just vanishes and returns.
+  // Answered is the grant held and every read of the organization in view observing again.
+  const unanswered =
+    lapse !== null ||
+    voice !== null ||
+    [...projected.pendingOrganizations].some(
+      (organizationId) => activeOrganization === null || organizationId === activeOrganization.id,
+    );
+  const unansweredRef = useRef(unanswered);
+  const lastVoiceRef = useRef(voice);
+  useEffect(() => {
+    unansweredRef.current = unanswered;
+    if (voice !== null) lastVoiceRef.current = voice;
+  });
+  useEffect(() => {
+    if (tried === 0) return;
+    const timer = setTimeout(
+      () => setAttempt(unansweredRef.current ? "still" : "idle"),
+      TRY_NOW_SETTLE_MS,
+    );
+    return () => clearTimeout(timer);
+  }, [tried]);
+  const owed = unanswered;
+  // A trouble that ended takes its attempt with it: the next one starts untried.
+  useEffect(() => {
+    if (!owed) return;
+    return () => setAttempt("idle");
+  }, [owed]);
+  const tryingOn = attempt !== "idle" && unanswered ? lastVoiceRef.current : null;
   // The account speaks from one place, the menu's foot (`accountFootLine`): its lapse, which
   // withholds every region meanwhile, or its inventory's lasting trouble. Never over the product.
-  const footLine = accountFootLine({ lapse, trouble: voice });
+  const footLine = accountFootLine({
+    lapse,
+    trouble: voice ?? tryingOn,
+    attempt: owed ? attempt : "idle",
+  });
   const footSentence = footLine?.sentence ?? null;
   const footActions = footLine?.actions.join(" ") ?? "";
+  // What isn't answering, named under the line's sentence (`troubleSubject`).
+  const inView = activeOrganization ?? null;
+  const subjectNow =
+    lapse !== null || trouble === "grant"
+      ? "Your Zerops access"
+      : trouble === "organization"
+        ? troubleSubject({
+            organization:
+              inView?.name ??
+              organizations.find(({ id }) => id === projected.blockedReads[0]?.organizationId)
+                ?.name ??
+              "Zerops",
+            organizationList: projected.blockedReads.some(
+              ({ organizationId, projectId }) =>
+                projectId === null && (inView === null || organizationId === inView.id),
+            ),
+            projects: [
+              ...new Set(
+                projected.blockedReads.flatMap(({ organizationId, projectId }) =>
+                  projectId === null || (inView !== null && organizationId !== inView.id)
+                    ? []
+                    : [projected.projects.find(({ id }) => id === projectId)?.name ?? projectId],
+                ),
+              ),
+            ],
+          })
+        : null;
+  const lastSubjectRef = useRef(subjectNow);
+  useEffect(() => {
+    if (subjectNow !== null) lastSubjectRef.current = subjectNow;
+  });
+  const footTitle = subjectNow ?? (tryingOn === null ? null : lastSubjectRef.current);
   const accountVoice = useMemo(
     (): AccountVoice | null =>
       footSentence === null
         ? null
         : {
             sentence: footSentence,
-            actions: footActions
-              .split(" ")
-              .map((kind) =>
-                kind === "try-now"
-                  ? { kind, label: "Try now" as const, run: retryNow }
-                  : { kind: "sign-out" as const, label: "Sign out" as const, run: signOutNow },
-              ),
+            title: footTitle,
+            actions: footActions.split(" ").map((kind) =>
+              kind === "try-now"
+                ? { kind, label: "Try now" as const, run: retryNow, busy: false }
+                : kind === "trying"
+                  ? { kind, label: "Trying…" as const, run: retryNow, busy: true }
+                  : {
+                      kind: "sign-out" as const,
+                      label: "Sign out" as const,
+                      run: signOutNow,
+                      busy: false,
+                    },
+            ),
           },
-    [footActions, footSentence, retryNow, signOutNow],
+    [footActions, footSentence, footTitle, retryNow, signOutNow],
   );
 
   // Withholding is applied here, at the inventory's one read (DESIGN law 5, §3.1): a withheld

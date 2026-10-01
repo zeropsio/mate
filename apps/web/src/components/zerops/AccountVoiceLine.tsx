@@ -6,6 +6,6 @@ import { SidebarAccountLine } from "./SidebarZeropsTree";
 export function AccountVoiceLine() {
   const voice = useAccountVoice();
   return voice === null ? null : (
-    <SidebarAccountLine actions={voice.actions} sentence={voice.sentence} />
+    <SidebarAccountLine actions={voice.actions} sentence={voice.sentence} title={voice.title} />
   );
 }
