@@ -1,7 +1,7 @@
 import { create } from "zustand";
 
 import type { ComposerSubmissionIntent } from "./composer-logic";
-import type { ComposerImageAttachment } from "./composerDraftStore";
+import type { ComposerImageAttachment, ComposerSendIds } from "./composerDraftStore";
 import type { TerminalContextDraft } from "./lib/terminalContext";
 import { randomUUID } from "./lib/utils";
 import type { ReviewCommentContext } from "./reviewCommentContext";
@@ -35,6 +35,11 @@ export interface QueuedComposerMessage {
   heldReason?: string;
   /** How many times its send was interrupted and it went back for the drain to retry. */
   retries?: number;
+  /**
+   * The ids its interrupted send went with. The server may have taken that command before its
+   * answer was lost, so the retry goes with the same ids and the server's receipts take it once.
+   */
+  sendIds?: ComposerSendIds;
   createdAt: string;
 }
 
@@ -164,7 +169,8 @@ export const useQueuedMessageStore = create<QueuedMessageStoreState>()((set, get
     release: (threadKey, id) => {
       const entry = get().queuesByThreadKey[threadKey]?.find((message) => message.id === id);
       if (!entry) return null;
-      const { holdUntilUserAction: _held, heldReason: _reason, ...released } = entry;
+      // A person's Retry goes with fresh ids: a refusal remembered by command id never returns.
+      const { holdUntilUserAction: _held, heldReason: _reason, sendIds: _ids, ...released } = entry;
       set((state) => ({
         queuesByThreadKey: {
           ...state.queuesByThreadKey,
@@ -232,6 +238,19 @@ export function isQueuedMessageDue(input: {
   if (input.phase === "connecting") return false;
   if (input.phase !== "running") return true;
   return input.latestToolActivityId !== input.message.queuedAfterToolActivityId;
+}
+
+/**
+ * The ids a queued send goes with: the caller's own, else those its interrupted attempt went
+ * with — the server may have taken that command, and its receipts take a retry of it once —
+ * else fresh ones, minted here so a failure knows which ids it was.
+ */
+export function queuedSendAttemptIds(input: {
+  readonly given: ComposerSendIds | undefined;
+  readonly stored: ComposerSendIds | undefined;
+  readonly mint: () => ComposerSendIds;
+}): ComposerSendIds {
+  return input.given ?? input.stored ?? input.mint();
 }
 
 /** What a queued bubble says, and what its ↑ does. */

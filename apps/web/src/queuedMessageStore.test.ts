@@ -1,8 +1,11 @@
 import { beforeEach, describe, expect, it } from "vite-plus/test";
 
+import { CommandId, MessageId } from "@t3tools/contracts";
+
 import {
   isQueuedMessageDue,
   queuedBubbleState,
+  queuedSendAttemptIds,
   latestCompletedToolActivityId,
   useQueuedMessageStore,
   type QueuedComposerMessage,
@@ -262,5 +265,43 @@ describe("queuedBubbleState — what a queued bubble says", () => {
     const state = queuedBubbleState(input);
     expect(state.line).toEqual(line);
     expect(state.send).toEqual(send);
+  });
+});
+
+// An interrupted send may have reached the server before its answer was lost: the retry goes
+// with the same ids, which the server's command receipts take once. A person's Retry after a
+// refusal goes with fresh ones, so a refusal the server remembers by id never comes back.
+describe("the ids a queued send goes with", () => {
+  const ids = { commandId: CommandId.make("command-1"), messageId: MessageId.make("message-1") };
+  const fresh = { commandId: CommandId.make("command-2"), messageId: MessageId.make("message-2") };
+
+  beforeEach(() => {
+    useQueuedMessageStore.setState({ queuesByThreadKey: {}, drainGeneration: 0 });
+  });
+
+  it("an interrupted send's ids stay with it; a person's Retry lets them go", () => {
+    const store = useQueuedMessageStore.getState();
+    const first = store.enqueue("t", makeMessage("first"));
+    const taken = store.take("t", first.id, null)!;
+    store.requeueAtFront("t", { ...taken, sendIds: ids });
+    expect(useQueuedMessageStore.getState().queuesByThreadKey.t?.[0]?.sendIds).toEqual(ids);
+    const again = useQueuedMessageStore.getState().take("t", first.id, null)!;
+    useQueuedMessageStore.getState().holdAtFront("t", again, "Refused.");
+    const retried = useQueuedMessageStore.getState().release("t", first.id);
+    expect(retried?.sendIds).toBeUndefined();
+    expect(useQueuedMessageStore.getState().queuesByThreadKey.t?.[0]?.sendIds).toBeUndefined();
+  });
+
+  it.each([
+    { name: "the caller's own ids first", given: ids, stored: fresh, expected: ids },
+    {
+      name: "else the ids an interrupted attempt went with",
+      given: undefined,
+      stored: ids,
+      expected: ids,
+    },
+    { name: "else fresh ones", given: undefined, stored: undefined, expected: fresh },
+  ])("$name", ({ given, stored, expected }) => {
+    expect(queuedSendAttemptIds({ given, stored, mint: () => fresh })).toEqual(expected);
   });
 });

@@ -244,7 +244,7 @@ import {
   nextProjectScriptId,
   projectScriptIdFromCommand,
 } from "~/projectScripts";
-import { newDraftId, newMessageId, newThreadId } from "~/lib/utils";
+import { newCommandId, newDraftId, newMessageId, newThreadId } from "~/lib/utils";
 import { getProviderModelCapabilities } from "../providerModels";
 import {
   applyProviderInstanceSettings,
@@ -292,6 +292,7 @@ import {
 } from "../lib/terminalContext";
 import {
   isQueuedMessageDue,
+  queuedSendAttemptIds,
   latestCompletedToolActivityId,
   type QueuedComposerMessage,
   useQueuedMessages,
@@ -6564,6 +6565,15 @@ export default function ChatView(props: ChatViewProps) {
     // that moment must not start a turn afterwards; it checks this before
     // dispatch and hands the message back to the composer instead.
     const drainGenerationAtTake = useQueuedMessageStore.getState().drainGeneration;
+    // A queued send always knows its ids: a retry after an interruption goes with the same ones.
+    const attemptIds =
+      queuedMessage === undefined
+        ? sendIds
+        : queuedSendAttemptIds({
+            given: sendIds,
+            stored: queuedMessage.sendIds,
+            mint: () => ({ commandId: newCommandId(), messageId: newMessageId() }),
+          });
     // A queued send that did not go goes back to the head of the queue: unheld
     // where it failed for a moment, for the drain to send again; held with its
     // reason where it was refused, which its bubble says — never the banner.
@@ -6576,8 +6586,12 @@ export default function ChatView(props: ChatViewProps) {
       if (!message || !activeThreadKey) return;
       const outcome = queuedSendOutcome(failure, message.retries ?? 0);
       const store = useQueuedMessageStore.getState();
-      if (outcome.action === "requeue") store.requeueAtFront(activeThreadKey, message);
-      else store.holdAtFront(activeThreadKey, message, outcome.reason);
+      if (outcome.action === "requeue") {
+        store.requeueAtFront(
+          activeThreadKey,
+          attemptIds === undefined ? message : { ...message, sendIds: attemptIds },
+        );
+      } else store.holdAtFront(activeThreadKey, message, outcome.reason);
     };
     // A live send that failed goes back into the composer, unless the user
     // has started writing something else there in the meantime.
@@ -6703,7 +6717,7 @@ export default function ChatView(props: ChatViewProps) {
       submissionIntent: resolvedSubmissionIntent,
     });
 
-    const messageIdForSend = sendIds?.messageId ?? newMessageId();
+    const messageIdForSend = attemptIds?.messageId ?? newMessageId();
     const messageCreatedAt = new Date().toISOString();
     const turnAttachmentsPromise = Promise.all(
       composerImagesSnapshot.map(async (image) => {
@@ -6881,7 +6895,7 @@ export default function ChatView(props: ChatViewProps) {
       const startResult = await startThreadTurn({
         environmentId,
         input: {
-          ...(sendIds === undefined ? {} : { commandId: sendIds.commandId }),
+          ...(attemptIds === undefined ? {} : { commandId: attemptIds.commandId }),
           threadId: threadIdForSend,
           message: {
             messageId: messageIdForSend,
