@@ -875,6 +875,105 @@ describe("the account runtime", () => {
   );
 
   it.effect(
+    "reads a Mate flag the account's variables never stated from the service itself, once",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const clock = yield* makeDeadlineClock({ startWallMs: START_WALL_MS });
+          const registry = AtomRegistry.make();
+          const page = yield* makePage(clock);
+          const rest = makeFakeZeropsRest();
+          rest.addUser({
+            user: {
+              id: account.accountId,
+              email: "person@example.test",
+              clientUserList: [
+                { id: "cu-1", clientId: organization.organizationId, roleCode: "OWNER" },
+              ],
+            },
+            password: "secret",
+          });
+          rest.addProject({
+            id: "project-1",
+            clientId: organization.organizationId,
+            name: "project-1",
+            status: "ACTIVE",
+            tagList: ["mate"],
+          });
+          const client = new ZeropsApiClient({ fetch: rest.fetch });
+          client.restoreSession(rest.issueSession(account.accountId));
+          let ownReads = 0;
+          const datastream = makeFakeDatastream(rest, {
+            variables: () => [
+              {
+                id: "variable-1",
+                serviceStackId: "service-1",
+                projectId: "project-1",
+                key: "ZCP_MATE_ENABLED",
+                content: "1",
+              },
+            ],
+          });
+          const built = yield* Effect.gen(function* () {
+            const data = yield* makeZeropsDataRuntime({
+              scope: scope(),
+              adapter: datastream.adapter,
+              resourceAdapter: {
+                readOrganizationLocations: () => Effect.succeed([]),
+                readServiceAuthorizedAgents: () => Effect.succeed([]),
+                readOrganizationIntegrationTokenGrants: () => Effect.succeed([]),
+                readServiceMateFlag: () =>
+                  Effect.sync(() => {
+                    ownReads += 1;
+                    return { enabled: true };
+                  }),
+              },
+              atomRegistry: registry,
+              makeOpaqueId: (() => {
+                let next = 0;
+                return () => `opaque-${++next}`;
+              })(),
+            });
+            return yield* makeAccountRuntime({
+              data,
+              verifier: makeRestAccessVerifier({
+                client,
+                account,
+                concurrency: policy.roundProjectConcurrency,
+                onUser: () => undefined,
+              }),
+              signals: page.signals,
+              atomRegistry: registry,
+              environments: inertEnvironments(clock),
+            });
+          }).pipe(Effect.provideService(Clock.Clock, clock));
+          yield* Effect.addFinalizer(() => built.close("application-close"));
+          // The account's variables never answer: the flag cannot be stated from them.
+          datastream.holdRegistrations();
+          yield* clock.advance(SECOND);
+          yield* settle;
+          yield* settle;
+          const service = {
+            kind: "service" as const,
+            project: {
+              kind: "project" as const,
+              organization,
+              projectId: ZeropsProjectId.make("project-1"),
+            },
+            serviceId: ZeropsServiceId.make("service-1"),
+          };
+
+          const flag = yield* Effect.promise(() =>
+            readServiceMateFlag(built.data, registry, service, undefined, 50),
+          );
+
+          expect(flag).toBe(true);
+          expect(ownReads).toBe(1);
+        }),
+      ),
+  );
+
+  it.effect(
     "a project someone else creates is verified and its services read as the list names it, not at the next renewal",
     () =>
       Effect.scoped(

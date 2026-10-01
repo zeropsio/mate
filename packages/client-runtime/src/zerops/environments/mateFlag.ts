@@ -21,8 +21,12 @@ export async function readServiceMateFlag(
   atoms: AtomRegistry.AtomRegistry,
   service: ServiceRef,
   services: Context.Context<never> = Context.empty(),
+  /** How long the organization's variables are waited for before the flag reads unknown. */
+  deadlineMs?: number,
 ): Promise<MateFlag> {
-  const stated = await readMateFlagFromStore(data, atoms, service).catch((): MateFlag => "unknown");
+  const stated = await readMateFlagFromStore(data, atoms, service, undefined, deadlineMs).catch(
+    (): MateFlag => "unknown",
+  );
   if (stated === true) return true;
   return Effect.runPromiseWith(services)(
     Effect.scoped(
