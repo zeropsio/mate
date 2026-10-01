@@ -617,9 +617,15 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
       readonly tokenId: string;
       readonly name: string;
       readonly grants: ZeropsIntegrationToken["projects"];
+      readonly createdByUser?: string | undefined;
     }>,
   ): ReadonlyArray<ZeropsIntegrationToken> =>
-    grants.map((token) => ({ id: token.tokenId, name: token.name, projects: token.grants }));
+    grants.map((token) => ({
+      id: token.tokenId,
+      name: token.name,
+      projects: token.grants,
+      ...(token.createdByUser === undefined ? {} : { createdByUser: token.createdByUser }),
+    }));
 
   /**
    * The active organization's Mates whose key the platform still lists at `ADMIN` on their own

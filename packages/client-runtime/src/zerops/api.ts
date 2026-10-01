@@ -32,6 +32,7 @@ import {
   buildGroupGrants,
   findHeldMateKey,
   makeTokenWriteLock,
+  mateAdminKeys,
   MATE_SELF_PROJECT_ROLE,
   newestMateKey,
   planGroupReach,
@@ -2529,17 +2530,22 @@ export class ZeropsApiClient {
     let tokenLowered = false;
     let delegationsDropped = 0;
 
-    if (token !== undefined) {
+    // The key its container holds, and every other key of the Mate still ADMIN on its project —
+    // a raced press's, an older platform key — whichever the container holds.
+    const keys = [
+      ...new Set([
+        ...(token === undefined ? [] : [token.id]),
+        ...mateAdminKeys(tokens, projectId).map((key) => key.id),
+      ]),
+    ];
+    for (const tokenId of keys) {
       this.#assertGeneration(generation);
       // The write replaces the token's whole project list: it is planned from the token as read
       // under its lock. Only the Mate's own grant is lowered; what else it reads is its group's,
-      // kept as it is (`planAccountGroupReach` keeps it). A key the press minted is already this
-      // and is left alone.
-      tokenLowered = await this.#holdToken(token.id, async () => {
-        const current = findHeldMateKey(
-          await this.listIntegrationTokens(clientId, signal),
-          projectId,
-          container?.created,
+      // kept as it is (`planAccountGroupReach` keeps it). A key already lowered is left alone.
+      const lowered = await this.#holdToken(tokenId, async () => {
+        const current = (await this.listIntegrationTokens(clientId, signal)).find(
+          (listed) => listed.id === tokenId,
         );
         if (current === undefined) return false;
         this.#assertGeneration(generation);
@@ -2556,16 +2562,14 @@ export class ZeropsApiClient {
         );
         return true;
       });
+      tokenLowered ||= lowered;
 
       this.#assertGeneration(generation);
-      const delegations = await this.listIntegrationTokenDelegations(
-        { clientId, tokenId: token.id },
-        signal,
-      );
+      const delegations = await this.listIntegrationTokenDelegations({ clientId, tokenId }, signal);
       for (const delegation of delegations) {
         this.#assertGeneration(generation);
         await this.deleteIntegrationTokenDelegation(
-          { clientId, tokenId: token.id, delegationId: delegation.id },
+          { clientId, tokenId, delegationId: delegation.id },
           signal,
           beforeWrite,
         );

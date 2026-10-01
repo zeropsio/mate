@@ -1465,6 +1465,12 @@ export function makeZeropsDataAdapter(options: ZeropsDataAdapterOptions): Zerops
                 grants: token.projects ?? [],
                 ...(token.created === undefined ? {} : { created: token.created }),
                 ...(token.roleCode === undefined ? {} : { roleCode: token.roleCode }),
+                ...(token.createdByUser === undefined
+                  ? {}
+                  : { createdByUser: token.createdByUser }),
+                ...(token.createdByUser === undefined
+                  ? {}
+                  : { createdByUser: token.createdByUser }),
               })),
             },
           })),
@@ -1632,6 +1638,7 @@ export function makeZeropsCellReads(client: ZeropsApiClient): ZeropsCellAdapter 
           grants: token.projects ?? [],
           ...(token.created === undefined ? {} : { created: token.created }),
           ...(token.roleCode === undefined ? {} : { roleCode: token.roleCode }),
+          ...(token.createdByUser === undefined ? {} : { createdByUser: token.createdByUser }),
         })),
       ),
     readOrganizationMembers: (input, context) =>

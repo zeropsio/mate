@@ -275,6 +275,8 @@ export {
 export {
   buildGroupGrants,
   findHeldMateKey,
+  mateAdminKeys,
+  mateHardenableBy,
   mateNeedsHarden,
   findMateIntegrationToken,
   newestMateKey,

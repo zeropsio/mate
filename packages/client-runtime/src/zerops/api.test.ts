@@ -891,6 +891,51 @@ describe("ZeropsApiClient project reads", () => {
     expect(write?.body).toContain('"roleCode":"NO_ACCESS"');
   });
 
+  // A raced press, an older platform key: every key of the Mate still ADMIN on its project is
+  // lowered, whichever the container holds (pass 28 review).
+  it("hardening lowers every key of the Mate still ADMIN on its project", async () => {
+    const adminKey = (id: string, created: string) => ({
+      id,
+      name: "zcp-project-1",
+      created,
+      projects: [{ projectId: "project-1", roleCode: "ADMIN" }],
+    });
+    const stub = recordingFetch((request) => {
+      if (request.url.endsWith("/integration-token/list?limit=100"))
+        return jsonResponse(200, {
+          list: [
+            adminKey("token-1", "2026-10-01T09:00:00Z"),
+            adminKey("token-2", "2026-10-01T10:00:00Z"),
+            {
+              id: "token-3",
+              name: "zcp-project-1",
+              projects: [{ projectId: "project-1", roleCode: "BASIC_USER" }],
+            },
+          ],
+        });
+      if (request.url.includes("/delegation") && request.method === "GET")
+        return jsonResponse(200, { list: [] });
+      if (request.url.endsWith("/project/search"))
+        return jsonResponse(200, {
+          items: [{ envList: [{ id: "iso", key: "envIsolation", content: "service" }] }],
+        });
+      if (request.url.includes("/service-stack")) return jsonResponse(200, { list: [] });
+      return jsonResponse(200, {});
+    });
+    const client = new ZeropsApiClient({ fetch: stub.fetch });
+    client.restoreSession(SESSION);
+
+    await client.hardenMate("org-1", "project-1");
+
+    const lowered = stub.requests
+      .filter(
+        (request) =>
+          request.method === "PUT" && /\/integration-token\/token-\d$/u.test(request.url),
+      )
+      .map((request) => request.url.split("/").at(-1));
+    expect(lowered.toSorted()).toEqual(["token-1", "token-2"]);
+  });
+
   it("hardening lowers the Mate's token and drops its delegations before health is asked", async () => {
     const stub = recordingFetch((request) => {
       if (request.url.endsWith("/integration-token/list?limit=100"))
