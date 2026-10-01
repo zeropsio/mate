@@ -62,12 +62,15 @@ export function makeFakeDatastream(
             })
           : Effect.fail(forbidden),
       register: (receiver, request) => {
+        const descriptor = request.descriptor;
         const organization =
-          request.descriptor.kind === "entity-updates"
-            ? request.descriptor.organization
-            : request.descriptor.query.kind === "projects-of-organization"
-              ? request.descriptor.query.organization
-              : receiver.organization;
+          descriptor.kind === "entity-updates" || descriptor.kind === "table-updates"
+            ? descriptor.organization
+            : descriptor.kind === "table-list"
+              ? descriptor.query.organization
+              : descriptor.query.kind === "projects-of-organization"
+                ? descriptor.query.organization
+                : receiver.organization;
         if (!admits(receiver.organization, organization.organizationId))
           return Effect.fail(forbidden);
         return Effect.promise(() => {
@@ -75,7 +78,11 @@ export function makeFakeDatastream(
           return held ?? Promise.resolve();
         }).pipe(
           Effect.map(() => {
-            if (request.descriptor.kind === "entity-updates") return { responseObservations: [] };
+            if (
+              request.descriptor.kind === "entity-updates" ||
+              request.descriptor.kind === "table-updates"
+            )
+              return { responseObservations: [] };
             const query = request.descriptor.query;
             const items =
               query.kind === "projects-of-organization"

@@ -127,6 +127,7 @@ describe("the deployment store's ports (DESIGN §2.D D6)", () => {
     const listing = Atom.make(null);
     const data = {
       reads: { servicesOf: () => listing, runningProcessesOf: () => listing },
+      stateAtom: Atom.make({ table: {} }),
       acquire: () => Effect.fail(refusal),
     } as unknown as ManagedZeropsDataRuntime;
     const ports = deploymentStorePorts(data, AtomRegistry.make(), Context.empty());
@@ -142,35 +143,59 @@ describe("the deployment store's ports (DESIGN §2.D D6)", () => {
     unfollow();
   });
 
-  it("reads a service directly through the account's resource broker while the store holds it", () => {
+  it("states a service's version from the account's store, reading nothing for it", () => {
     const shown = Atom.make({ state: "reading", sinceMs: 0, attempt: 1 });
-    const requests: Array<unknown> = [];
-    const scope = { epoch: 1 };
+    const asked: Array<unknown> = [];
     const data = {
-      scope,
-      resources: {
-        known: (request: unknown) => {
-          requests.push(request);
+      reads: {
+        deployedVersion: (target: unknown) => {
+          asked.push(target);
           return shown;
         },
       },
     } as unknown as ManagedZeropsDataRuntime;
     const registry = AtomRegistry.make();
     const ports = deploymentStorePorts(data, registry, Context.empty());
-    const told: Array<string> = [];
     const target = service("app-id", project("project-stage"));
 
-    const release = ports.deployedVersion(target, (next) => told.push(next.state));
-
-    expect(requests).toEqual([
-      { kind: "service-deployed-version", account: scope, service: target },
-    ]);
-    expect(told).toEqual(["reading"]);
+    expect(ports.deployedVersion(target).state).toBe("reading");
     registry.set(shown, { state: "reading", sinceMs: 0, attempt: 2 });
-    expect(told).toEqual(["reading", "reading"]);
-    release();
-    registry.set(shown, { state: "reading", sinceMs: 0, attempt: 3 });
-    expect(told).toHaveLength(2);
+    expect(ports.deployedVersion(target)).toMatchObject({ attempt: 2 });
+    expect(asked).toEqual([target, target]);
+  });
+
+  it("follows a stop with its organization's versions and variables streamed beside it", () => {
+    const listing = Atom.make(null);
+    const state = Atom.make({ table: { rows: 1 } });
+    const acquired: Array<string> = [];
+    const data = {
+      reads: { servicesOf: () => listing, runningProcessesOf: () => listing },
+      stateAtom: state,
+      acquire: (descriptor: { readonly kind: string }) => {
+        acquired.push(descriptor.kind);
+        return Effect.never;
+      },
+    } as unknown as ManagedZeropsDataRuntime;
+    const registry = AtomRegistry.make();
+    const ports = deploymentStorePorts(data, registry, Context.empty());
+    let changes = 0;
+
+    const unfollow = ports.follow(
+      project("project-stage"),
+      () => (changes += 1),
+      () => undefined,
+    );
+
+    expect(acquired.toSorted()).toEqual([
+      "organization-variables",
+      "organization-versions",
+      "project-activity",
+    ]);
+    registry.set(state, { table: { rows: 2 } });
+    expect(changes).toBe(1);
+    unfollow();
+    registry.set(state, { table: { rows: 3 } });
+    expect(changes).toBe(1);
   });
 
   effectIt.effect("arms the store's timers on the account's clock, and disarms them", () =>

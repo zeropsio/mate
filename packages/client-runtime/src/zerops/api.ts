@@ -364,12 +364,6 @@ export interface ZeropsService {
   readonly currentAutoscaling?: ZeropsAutoscaling | null;
 }
 
-/** What `GET /service-stack/{id}` says a service runs (`readServiceDeploys`). */
-export interface ZeropsServiceDeploys {
-  readonly activeAppVersion?: ZeropsAppVersion | null;
-  readonly userData?: ReadonlyArray<{ readonly key?: string; readonly content?: string }>;
-}
-
 /**
  * A managed service — a database, a cache, a storage: any type category but a
  * runtime's `USER`, the line the service map draws between its data and its
@@ -410,7 +404,7 @@ const ZEROPS_MATE_ENV_KEY = "ZCP_MATE_ENABLED";
  * types into a service's env in the Zerops GUI, where a silently ignored
  * spelling is indistinguishable from a broken feature.
  */
-function readsAsEnabled(value: string): boolean {
+export function readsAsEnabled(value: string): boolean {
   const normalized = value.trim().toLowerCase();
   return normalized === "1" || normalized === "true";
 }
@@ -2666,90 +2660,6 @@ export class ZeropsApiClient {
       (entry) => entry.key === ZEROPS_MATE_ENV_KEY,
     );
     return current !== undefined && readsAsEnabled(current.content);
-  }
-
-  /**
-   * What each of an organization's services runs, as `readServiceDeploys` says
-   * it, in two searches whatever their count: `POST /service-stack/search` for
-   * the services (each row carries its user data and its active version's id,
-   * not that version's `source`), then `POST /app-version/search` for those
-   * versions' sources. Measured 2026-10-01 on 40 services: equal to each one's
-   * own read. Both searches trail the database a little, so a service, or an
-   * active version, the searches do not carry is left out of the answer and
-   * read on its own by the caller.
-   */
-  async readServicesDeploys(
-    clientId: string,
-    serviceIds: ReadonlyArray<string>,
-    signal?: AbortSignal,
-  ): Promise<ReadonlyMap<string, ZeropsServiceDeploys>> {
-    const search = <Row>(entity: string, ids: ReadonlyArray<string>) =>
-      this.#request<{ readonly items?: ReadonlyArray<Row> }>(
-        `/${entity}/search`,
-        {
-          method: "POST",
-          signal: signal ?? null,
-          body: JSON.stringify({
-            search: [
-              { name: "clientId", operator: "eq", value: clientId },
-              { name: "id", operator: "in", value: ids },
-            ],
-            limit: ids.length,
-          }),
-        },
-        { operationKind: "read" },
-      );
-    const services = (
-      await search<ZeropsServiceDeploys & { readonly id?: string }>("service-stack", serviceIds)
-    ).items;
-    if (!Array.isArray(services)) {
-      throw new ZeropsApiError("Zerops returned an unreadable service search.", "unexpected");
-    }
-    const versionIds = [
-      ...new Set(services.flatMap((service) => service.activeAppVersion?.id ?? [])),
-    ];
-    const versions =
-      versionIds.length === 0
-        ? []
-        : ((await search<ZeropsAppVersion>("app-version", versionIds)).items ?? []);
-    const versionsById = new Map(
-      versions.flatMap((version) => (version.id ? [[version.id, version]] : [])),
-    );
-    const answer = new Map<string, ZeropsServiceDeploys>();
-    for (const service of services) {
-      if (service.id === undefined) continue;
-      const active = service.activeAppVersion ?? null;
-      if (active === null || active.id === undefined) {
-        answer.set(service.id, { activeAppVersion: null, userData: service.userData ?? [] });
-        continue;
-      }
-      const version = versionsById.get(active.id);
-      if (version === undefined) continue;
-      answer.set(service.id, {
-        activeAppVersion: { ...active, ...version },
-        userData: service.userData ?? [],
-      });
-    }
-    return answer;
-  }
-
-  /**
-   * `GET /service-stack/{id}` — what a service runs: its active version, and
-   * its user data.
-   *
-   * The user data is the one place a deploy's name survives: the app-version
-   * API never returns a `name` at all, and the string the broker sent comes
-   * back only as `userData[].appVersionName`, beside `appVersionId` (measured
-   * 2026-09-16). That pair names the newest deploy STARTED, which switches
-   * when a build starts, before its version activates (A11); what it names
-   * runs only while its id is the active version's (A14,
-   * `data/resourceRestAdapter.ts`). Never a branch head, which says what
-   * *should* be running (guide 4.5).
-   */
-  async readServiceDeploys(serviceId: string, signal?: AbortSignal): Promise<ZeropsServiceDeploys> {
-    return this.#request<ZeropsServiceDeploys>(`/service-stack/${serviceId}`, {
-      signal: signal ?? null,
-    });
   }
 
   /**

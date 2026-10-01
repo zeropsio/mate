@@ -13,6 +13,12 @@ import {
   selectTopology,
   selectUsage,
 } from "./projection.ts";
+import type { Shown } from "../knowledge/known.ts";
+import {
+  selectDeployedVersion,
+  selectMateFlag,
+  type ZeropsServiceDeployedVersion,
+} from "./deployedVersion.ts";
 import type { ZeropsDataState } from "./state.ts";
 import type {
   CollectionRead,
@@ -118,6 +124,24 @@ function stableAtom<Value>(
     previous = next;
     return next;
   }).pipe(Atom.withLabel(label));
+}
+
+/** Two statements of what a service runs say the same. */
+function shownVersionsEqual(
+  left: Shown<ZeropsServiceDeployedVersion>,
+  right: Shown<ZeropsServiceDeployedVersion>,
+): boolean {
+  if (left === right) return true;
+  if (left.state !== right.state) return false;
+  if (left.state === "known" && right.state === "known")
+    return (
+      left.value.activeId === right.value.activeId &&
+      left.value.source === right.value.source &&
+      left.value.name === right.value.name
+    );
+  if (left.state === "failed" && right.state === "failed")
+    return left.retryAtMs === right.retryAtMs && left.attempt === right.attempt;
+  return left.state === "unread";
 }
 
 type RefRegistry<Ref> = Map<string, Ref>;
@@ -254,6 +278,23 @@ export function createZeropsDataAtoms(stateAtom: Atom.Atom<ZeropsDataState>): {
     ),
   );
 
+  const deployedVersionAtom = Atom.family((key: string) =>
+    stableAtom(
+      stateAtom,
+      (state) => selectDeployedVersion(state, services.get(key)!),
+      shownVersionsEqual,
+      `zerops-deployed-version:${key}`,
+    ),
+  );
+  const mateFlagAtom = Atom.family((key: string) =>
+    stableAtom(
+      stateAtom,
+      (state) => selectMateFlag(state, services.get(key)!),
+      Object.is,
+      `zerops-mate-flag:${key}`,
+    ),
+  );
+
   const attemptKey = (attempt: CommandAttemptRef): string =>
     JSON.stringify([
       attempt.account.apiOrigin,
@@ -277,6 +318,8 @@ export function createZeropsDataAtoms(stateAtom: Atom.Atom<ZeropsDataState>): {
       activity: (ref) => activityAtom(remember(projects, projectKeyOf(ref), ref)),
       operationProgress: (ref) => operationAtom(remember(attempts, attemptKey(ref), ref)),
       commandAttempt: (ref) => commandAtom(remember(attempts, attemptKey(ref), ref)),
+      deployedVersion: (ref) => deployedVersionAtom(remember(services, serviceKeyOf(ref), ref)),
+      mateFlag: (ref) => mateFlagAtom(remember(services, serviceKeyOf(ref), ref)),
     },
   };
 }

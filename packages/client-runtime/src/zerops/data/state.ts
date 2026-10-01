@@ -19,6 +19,12 @@ import {
   type InventoryState,
 } from "./inventory.ts";
 import {
+  makeInitialEntityTableState,
+  reduceTableObservation,
+  releaseTableLists,
+  type EntityTableState,
+} from "./entityTable.ts";
+import {
   makeInitialObservabilityState,
   reduceObservabilityObservation,
   type CurrentMetricQueryState,
@@ -112,6 +118,8 @@ export interface ZeropsDataState {
   readonly inventory: InventoryState;
   readonly activity: ActivityState;
   readonly observability: ObservabilityState;
+  /** The entities held as the platform sends them (`entityTable.ts`). */
+  readonly table: EntityTableState;
   readonly reads: ReadonlyMap<ZeropsRequestId, ReadState>;
   readonly readAccumulators: ReadonlyMap<ZeropsRequestId, ReadAccumulator>;
   readonly sharedReads: ReadonlyMap<ZeropsRequestId, SharedReadOwnership>;
@@ -162,6 +170,7 @@ export function makeInitialZeropsDataState(
     inventory: makeInitialInventoryState(),
     activity: makeInitialActivityState(),
     observability: makeInitialObservabilityState(),
+    table: makeInitialEntityTableState(),
     reads: new Map(),
     readAccumulators: new Map(),
     sharedReads: new Map(),
@@ -235,10 +244,12 @@ const observationTicket = (observation: PlatformObservation): ReadTicket | null 
   }
   if (
     observation.kind === "current-metrics-replaced" ||
-    observation.kind === "metric-history-window-observed"
+    observation.kind === "metric-history-window-observed" ||
+    observation.kind === "table-rows-observed"
   ) {
     return observation.source === "direct-read" ? observation.ticket : null;
   }
+  if (observation.kind === "table-membership-observed") return null;
   if ("observation" in observation) {
     const source = observation.observation;
     if (source.source === "direct-read" || source.source === "indexed-search") return source.ticket;
@@ -248,10 +259,15 @@ const observationTicket = (observation: PlatformObservation): ReadTicket | null 
 };
 
 const observationRegistration = (observation: PlatformObservation): RegistrationRequest | null => {
-  if (observation.kind === "query-membership-observed") return observation.registration;
+  if (
+    observation.kind === "query-membership-observed" ||
+    observation.kind === "table-membership-observed"
+  )
+    return observation.registration;
   if (
     observation.kind === "current-metrics-replaced" ||
-    observation.kind === "metric-history-window-observed"
+    observation.kind === "metric-history-window-observed" ||
+    observation.kind === "table-rows-observed"
   ) {
     return observation.source === "native-push" ? observation.registration : null;
   }
@@ -334,22 +350,31 @@ function reduceObservation(state: ZeropsDataState, admitted: AdmittedObservation
   const inventory = reduceInventoryObservation(state.inventory, state.scope, admitted);
   const activity = reduceActivityObservation(state.activity, state.scope, admitted);
   const observability = reduceObservabilityObservation(state.observability, admitted);
+  const table = reduceTableObservation(state.table, admitted);
   const changed =
     inventory.state !== state.inventory ||
     activity.state !== state.activity ||
-    observability.state !== state.observability;
+    observability.state !== state.observability ||
+    table.state !== state.table;
   const outcome: DomainObservationOutcome = {
     readRequestId:
       inventory.outcome.readRequestId ??
       activity.outcome.readRequestId ??
-      observability.outcome.readRequestId,
+      observability.outcome.readRequestId ??
+      table.outcome.readRequestId,
     applied: mergeUnique(
-      mergeUnique(inventory.outcome.applied, activity.outcome.applied),
-      observability.outcome.applied,
+      mergeUnique(
+        mergeUnique(inventory.outcome.applied, activity.outcome.applied),
+        observability.outcome.applied,
+      ),
+      table.outcome.applied,
     ),
     suppressed: mergeUnique(
-      mergeUnique(inventory.outcome.suppressed, activity.outcome.suppressed),
-      observability.outcome.suppressed,
+      mergeUnique(
+        mergeUnique(inventory.outcome.suppressed, activity.outcome.suppressed),
+        observability.outcome.suppressed,
+      ),
+      table.outcome.suppressed,
     ),
     unresolvedRequiredFields: mergeUnique(
       mergeUnique(
@@ -365,6 +390,7 @@ function reduceObservation(state: ZeropsDataState, admitted: AdmittedObservation
         inventory: inventory.state,
         activity: activity.state,
         observability: observability.state,
+        table: table.state,
       }
     : state;
   next = accumulateRead(next, outcome, observationTicket(admitted.input));
@@ -817,6 +843,8 @@ function releaseInactiveQueries(
     history.delete(seriesKey);
     historyAdmission.delete(seriesKey);
   }
+  const table = releaseTableLists(next.table, released);
+  if (table !== next.table) next = { ...next, table };
   if (inventoryQueries === null && activityQueries === null && current === null && history === null)
     return next;
 

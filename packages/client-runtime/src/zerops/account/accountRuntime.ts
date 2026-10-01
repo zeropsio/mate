@@ -131,9 +131,7 @@ const VISIBLE: InvalidationSignal = { type: "visible" };
 const VISIBLE_WAKE: InvalidationSignal = { type: "visible-wake" };
 
 const organizationOf = (descriptor: RuntimeInterestDescriptor) =>
-  descriptor.kind === "organization-inventory"
-    ? descriptor.organization
-    : descriptor.project.organization;
+  "organization" in descriptor ? descriptor.organization : descriptor.project.organization;
 
 export const makeAccountRuntime = Effect.fnUntraced(function* (
   ports: AccountRuntimePorts,
@@ -174,7 +172,7 @@ export const makeAccountRuntime = Effect.fnUntraced(function* (
       case "project":
         return held(
           (descriptor) =>
-            descriptor.kind !== "organization-inventory" &&
+            "project" in descriptor &&
             projectKeyOf(descriptor.project) === projectKeyOf(invalidation.project),
         );
       case "forge-org":

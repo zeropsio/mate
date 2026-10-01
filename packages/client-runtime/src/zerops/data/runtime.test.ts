@@ -2222,7 +2222,6 @@ describe("makeZeropsDataRuntime", () => {
           readOrganizationLocations: () => unused,
           readServiceAuthorizedAgents: () =>
             Effect.sync(() => void (reads += 1)).pipe(Effect.as([])),
-          readServiceDeployedVersion: () => unused,
           readServiceMateFlag: () => unused,
           readOrganizationIntegrationTokenGrants: () => unused,
         },

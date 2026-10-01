@@ -2,6 +2,8 @@ import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 
 import { readActivityAppVersion } from "../activity/dto.ts";
+import { coverageFor } from "./coverage.ts";
+import { decodeTableFrame, decodeTableSearch } from "./tableProtocol.ts";
 
 import type {
   CurrentMetricObservation,
@@ -17,7 +19,6 @@ import type {
   OrganizationRef,
   ProjectRef,
   QueryBaselineObservation,
-  QueryCoverage,
   QueryMembershipObservation,
   ReadTicket,
   RegistrationDescriptor,
@@ -948,34 +949,6 @@ export function decodeEntityQueryPages(
   return { observations: [...decoded.observations, baseline], issues };
 }
 
-function coverageFor(
-  count: number,
-  envelope: { readonly limit?: number; readonly offset?: number; readonly total?: number },
-  malformed: boolean,
-): QueryCoverage {
-  if (malformed) return { kind: "partial", reason: "malformed" };
-  const offset = envelope.offset ?? 0;
-  const limit = envelope.limit ?? Math.max(count, 1);
-  const total = envelope.total ?? null;
-  if (
-    !Number.isInteger(offset) ||
-    offset < 0 ||
-    !Number.isInteger(limit) ||
-    limit < 0 ||
-    (total !== null && (!Number.isInteger(total) || total < offset + count)) ||
-    (limit > 0 && count > limit)
-  )
-    return { kind: "partial", reason: "contradictory-total" };
-  if (total !== null && offset + count === total)
-    return {
-      kind: "exhausted-traversal",
-      traversedPages: Math.max(1, Math.ceil(Math.max(total, 1) / Math.max(limit, 1))),
-      observedTotal: total,
-      guarantee: "non-atomic",
-    };
-  return { kind: "partial-window", offset, limit, traversedPages: 1, observedTotal: total };
-}
-
 export function decodeEntityQueryResponse(
   descriptor: EntityQueryDescriptor,
   ticket: ReadTicket,
@@ -1480,6 +1453,20 @@ export function decodeNativeFrame(
       subscriptionName: name,
       message: "Frame names no active registration.",
     };
+  if (
+    registration.descriptor.kind === "table-list" ||
+    registration.descriptor.kind === "table-updates"
+  ) {
+    const decoded = decodeTableFrame(
+      registration as RegistrationRequest & {
+        readonly descriptor: { readonly kind: "table-list" | "table-updates" };
+      },
+      frame.data,
+    );
+    return decoded === null
+      ? { kind: "malformed", subscriptionName: name, message: "Table frame is malformed." }
+      : { kind: "observations", ...decoded };
+  }
   if (registration.descriptor.kind === "query-membership") {
     const delta = Option.getOrUndefined(decodeMembershipDelta(frame.data));
     const query = registration.descriptor.query;
@@ -1653,7 +1640,9 @@ export function decodeRegistrationResponse(
   input: unknown,
 ): ProtocolDecodeResult {
   const descriptor = request.descriptor;
-  if (descriptor.kind === "entity-updates")
+  if (descriptor.kind === "table-list")
+    return decodeTableSearch(request.baselineTicket as ReadTicket, input);
+  if (descriptor.kind === "entity-updates" || descriptor.kind === "table-updates")
     return Option.isSome(decodeRegistrationSuccess(input))
       ? { observations: [], issues: [] }
       : {

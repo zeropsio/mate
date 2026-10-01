@@ -60,26 +60,11 @@ export interface OrganizationIntegrationTokenGrantsResourceRequest {
 }
 
 /**
- * What a group environment's service is running — its active version, and the
- * sha in that version's name (guide 4.5, `groupDeploys.ts`). Read per service,
- * because the name lives on the service and nowhere else (A14).
- */
-export interface ServiceDeployedVersionResourceRequest {
-  readonly kind: "service-deployed-version";
-  readonly account: AccountScope;
-  readonly service: ServiceRef;
-  /**
-   * The active version the caller's live data names. Right after a deploy the organization's
-   * search still answers the version before it; an answer naming another is read again by id.
-   */
-  readonly activeId?: string;
-}
-
-/**
  * `ZCP_MATE_ENABLED` on a service — the one read fact that tells a container
  * not serving Zerops Mate apart from one that is merely away (spec-mate
  * §4.5, H9): a browser cannot, and `predates-mate` reads identically either
- * way. Read per service, same as the agent and deployed-version reads.
+ * way. Read per service, only to confirm an off the organization's streamed
+ * variables state (`environments/mateFlag.ts`).
  */
 export interface ServiceMateFlagResourceRequest {
   readonly kind: "service-mate-flag";
@@ -90,7 +75,6 @@ export interface ServiceMateFlagResourceRequest {
 export type ZeropsResourceRequest =
   | OrganizationLocationsResourceRequest
   | ServiceAuthorizedAgentsResourceRequest
-  | ServiceDeployedVersionResourceRequest
   | ServiceMateFlagResourceRequest
   | OrganizationIntegrationTokenGrantsResourceRequest;
 
@@ -103,22 +87,9 @@ export interface ZeropsIntegrationTokenGrantMetadata {
   readonly grants: ReadonlyArray<ZeropsProjectGrant>;
 }
 
-/**
- * What a service runs, as the service itself states it (A14): its active version's id and source
- * (`NONE` on a runtime nothing was ever deployed to), each `null` when it has no active version, and
- * that version's name — `null` unless the newest deploy started is the active one (A11), since only
- * then is the name the service carries the one it runs.
- */
-export interface ZeropsServiceDeployedVersion {
-  readonly activeId: string | null;
-  readonly source: string | null;
-  readonly name: string | null;
-}
-
 export interface ZeropsResourceValues {
   readonly "organization-locations": ReadonlyArray<ZeropsLocation>;
   readonly "service-authorized-agents": ReadonlyArray<ZeropsAgentType>;
-  readonly "service-deployed-version": ZeropsServiceDeployedVersion;
   /**
    * `"unknown"` for a read that failed rather than answered — never folded
    * into `false`, which is itself a fact a caller may act on (H9): a row
@@ -162,10 +133,6 @@ export interface ZeropsResourceAdapter {
     request: ServiceAuthorizedAgentsResourceRequest,
     context: ZeropsResourceRequestContext,
   ) => Effect.Effect<ZeropsResourceValues["service-authorized-agents"], ZeropsResourceSourceError>;
-  readonly readServiceDeployedVersion: (
-    request: ServiceDeployedVersionResourceRequest,
-    context: ZeropsResourceRequestContext,
-  ) => Effect.Effect<ZeropsResourceValues["service-deployed-version"], ZeropsResourceSourceError>;
   readonly readServiceMateFlag: (
     request: ServiceMateFlagResourceRequest,
     context: ZeropsResourceRequestContext,
@@ -313,7 +280,6 @@ const organizationOf = (request: ZeropsResourceRequest): OrganizationRef => {
     case "organization-integration-token-grants":
       return request.organization;
     case "service-authorized-agents":
-    case "service-deployed-version":
     case "service-mate-flag":
       return request.service.project.organization;
   }
@@ -326,7 +292,6 @@ const projectOf = (request: ZeropsResourceRequest): ProjectRef | null => {
     case "organization-integration-token-grants":
       return null;
     case "service-authorized-agents":
-    case "service-deployed-version":
     case "service-mate-flag":
       return request.service.project;
   }
@@ -362,13 +327,6 @@ export function zeropsResourceKeyOf(request: ZeropsResourceRequest): ZeropsResou
         ...prefix,
         request.service.project.projectId,
         request.service.serviceId,
-      ]) as ZeropsResourceKey;
-    case "service-deployed-version":
-      return JSON.stringify([
-        ...prefix,
-        request.service.project.projectId,
-        request.service.serviceId,
-        ...(request.activeId === undefined ? [] : [request.activeId]),
       ]) as ZeropsResourceKey;
   }
 }
@@ -459,8 +417,6 @@ function readResource(
       return adapter.readOrganizationLocations(request, context);
     case "service-authorized-agents":
       return adapter.readServiceAuthorizedAgents(request, context);
-    case "service-deployed-version":
-      return adapter.readServiceDeployedVersion(request, context);
     case "service-mate-flag":
       return adapter.readServiceMateFlag(request, context);
     case "organization-integration-token-grants":
@@ -913,7 +869,6 @@ export const makeZeropsResourceBroker = Effect.fn("ZeropsResourceBroker.make")(f
     const byKind: Record<ZeropsResourceKind, number> = {
       "organization-locations": 0,
       "service-authorized-agents": 0,
-      "service-deployed-version": 0,
       "service-mate-flag": 0,
       "organization-integration-token-grants": 0,
     };

@@ -70,7 +70,6 @@ function locationsSource() {
         return [{ id: "loc-1", name: "Prague", pingUrl: "https://prague.example.test" }];
       }),
     readServiceAuthorizedAgents: unavailable,
-    readServiceDeployedVersion: unavailable,
     readServiceMateFlag: unavailable,
     readOrganizationIntegrationTokenGrants: unavailable,
   };

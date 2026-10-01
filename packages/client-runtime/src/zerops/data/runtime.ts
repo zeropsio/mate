@@ -76,6 +76,7 @@ import type {
   RegistrationReceipt,
   RuntimeInterestDescriptor,
   SharedReadOwnership,
+  TableQueryDescriptor,
   VerifiedAccessGrant,
   ZeropsDataAdapter,
   ZeropsDataRuntime,
@@ -99,7 +100,9 @@ import {
   entityKeyOf,
   projectKeyOf,
   queryKeyOf,
+  tableEntityOf,
 } from "./types.ts";
+import { activeVersionsDescriptor, serviceVariablesDescriptor } from "./entityTable.ts";
 
 export function accountRefsEqual(left: AccountRef, right: AccountRef): boolean {
   return left.apiOrigin === right.apiOrigin && left.accountId === right.accountId;
@@ -116,9 +119,7 @@ function interestIdentitiesEqual(left: InterestIdentity, right: InterestIdentity
 }
 
 function organizationOfInterest(descriptor: RuntimeInterestDescriptor): OrganizationRef {
-  return descriptor.kind === "organization-inventory"
-    ? descriptor.organization
-    : descriptor.project.organization;
+  return "organization" in descriptor ? descriptor.organization : descriptor.project.organization;
 }
 
 function organizationOfEntityRef(ref: EntityRef): OrganizationRef {
@@ -143,6 +144,8 @@ export function interestKeyOf(descriptor: RuntimeInterestDescriptor): InterestKe
 function serializedInterestKey(descriptor: RuntimeInterestDescriptor): InterestKey {
   switch (descriptor.kind) {
     case "organization-inventory":
+    case "organization-versions":
+    case "organization-variables":
       return InterestKeySchema.make(
         JSON.stringify([descriptor.kind, organizationKeyOf(descriptor.organization)]),
       );
@@ -432,6 +435,19 @@ export function planZeropsInterest(descriptor: RuntimeInterestDescriptor): Inter
     statuses: ["PENDING", "RUNNING", "ROLLBACKING", "CANCELING"],
     schemaVersion: 1,
   };
+  const table = (query: TableQueryDescriptor): ReadonlyArray<PlannedRegistration> => [
+    {
+      descriptor: { kind: "table-updates", entity: tableEntityOf(query), organization },
+      baseline: null,
+    },
+    { descriptor: { kind: "table-list", query }, baseline: { kind: "query", descriptor: query } },
+  ];
+  if (descriptor.kind === "organization-versions") {
+    return { registrations: table(activeVersionsDescriptor(organization)), directReads: [] };
+  }
+  if (descriptor.kind === "organization-variables") {
+    return { registrations: table(serviceVariablesDescriptor(organization)), directReads: [] };
+  }
   if (descriptor.kind === "organization-inventory") {
     return {
       registrations: [entityUpdate("project"), membership(projects)],
@@ -525,7 +541,7 @@ export function planZeropsInterest(descriptor: RuntimeInterestDescriptor): Inter
 }
 
 function registrationKeyOf(descriptor: RegistrationDescriptor): string {
-  if (descriptor.kind === "entity-updates")
+  if (descriptor.kind === "entity-updates" || descriptor.kind === "table-updates")
     return JSON.stringify([
       descriptor.kind,
       descriptor.entity,
@@ -711,7 +727,6 @@ const unavailableResource = (): Effect.Effect<never, ZeropsResourceSourceError> 
 const unavailableResourceAdapter: ZeropsResourceAdapter = {
   readOrganizationLocations: unavailableResource,
   readServiceAuthorizedAgents: unavailableResource,
-  readServiceDeployedVersion: unavailableResource,
   readServiceMateFlag: unavailableResource,
   readOrganizationIntegrationTokenGrants: unavailableResource,
 };
@@ -1461,7 +1476,9 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
           target.descriptor.kind === "services-of-organization" ||
           target.descriptor.kind === "services-of-project" ||
           target.descriptor.kind === "running-processes-of-organization" ||
-          target.descriptor.kind === "process-history-window")
+          target.descriptor.kind === "process-history-window" ||
+          target.descriptor.kind === "active-versions-of-organization" ||
+          target.descriptor.kind === "service-variables-of-organization")
           ? {
               ...base,
               kind: kind as "baseline" | "history",
@@ -1910,8 +1927,13 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
           subscriptionName: ZeropsWireSubscriptionName.make(options.makeOpaqueId()),
         };
         const request: RegistrationRequest =
-          planned.descriptor.kind === "entity-updates"
-            ? { ...base, descriptor: planned.descriptor, baselineTicket: null }
+          planned.descriptor.kind === "entity-updates" ||
+          planned.descriptor.kind === "table-updates"
+            ? ({
+                ...base,
+                descriptor: planned.descriptor,
+                baselineTicket: null,
+              } as RegistrationRequest)
             : ({
                 ...base,
                 descriptor: planned.descriptor,

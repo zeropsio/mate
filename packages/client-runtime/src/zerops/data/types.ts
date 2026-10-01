@@ -8,6 +8,8 @@ import type { Atom } from "effect/unstable/reactivity";
 import type { ActivityAppVersion } from "../activity/dto.ts";
 import type { ZeropsProject } from "../api.ts";
 import type { ZeropsProjectGrant, ZeropsTokenDelegation } from "../groupReach.ts";
+import type { Shown } from "../knowledge/known.ts";
+import type { ZeropsServiceDeployedVersion } from "./deployedVersion.ts";
 import type { ZeropsEnvironmentRole, ZeropsMateFace } from "../groups.ts";
 import type { ZeropsAgentType } from "../newProject.ts";
 import type { ZeropsToolKind } from "../tools.ts";
@@ -594,7 +596,38 @@ export type QueryDescriptor =
       readonly groupBy: "serviceStackId";
       readonly window: MetricWindow;
       readonly schemaVersion: 1;
+    }
+  | {
+      /**
+       * Every version the organization's services run now (`POST /app-version/search`, status
+       * `ACTIVE`): what each runs and from where, which a service's own row does not say (A14).
+       */
+      readonly kind: "active-versions-of-organization";
+      readonly organization: OrganizationRef;
+      readonly schemaVersion: 1;
+    }
+  | {
+      /**
+       * The organization's service variables of these keys (`POST /user-data/search`, `key in`):
+       * the Mate flag and the deploy a service last started, for every service in one search.
+       */
+      readonly kind: "service-variables-of-organization";
+      readonly organization: OrganizationRef;
+      readonly keys: ReadonlyArray<string>;
+      readonly schemaVersion: 1;
     };
+
+/** The searches whose rows the entity table holds as the platform sends them (`entityTable.ts`). */
+export type TableQueryDescriptor = Extract<
+  QueryDescriptor,
+  { readonly kind: "active-versions-of-organization" | "service-variables-of-organization" }
+>;
+
+/** The platform entities the entity table holds, by their search's path. */
+export type TableEntity = "app-version" | "user-data";
+
+export const tableEntityOf = (descriptor: TableQueryDescriptor): TableEntity =>
+  descriptor.kind === "active-versions-of-organization" ? "app-version" : "user-data";
 
 export type EntityQueryDescriptor = Extract<
   QueryDescriptor,
@@ -685,6 +718,23 @@ export const queryKeyOf = (descriptor: QueryDescriptor): QueryKey => {
           String(descriptor.schemaVersion),
         ]),
       );
+    case "active-versions-of-organization":
+      return QueryKey.make(
+        scopedKey([
+          descriptor.kind,
+          organizationKeyOf(descriptor.organization),
+          String(descriptor.schemaVersion),
+        ]),
+      );
+    case "service-variables-of-organization":
+      return QueryKey.make(
+        scopedKey([
+          descriptor.kind,
+          organizationKeyOf(descriptor.organization),
+          canonicalStringSet(descriptor.keys),
+          String(descriptor.schemaVersion),
+        ]),
+      );
   }
 };
 
@@ -739,7 +789,18 @@ export interface MetricQueryReadTarget<
   readonly descriptor: Descriptor;
 }
 
-export type ReadTarget = EntityReadTarget | MembershipQueryReadTarget | MetricQueryReadTarget;
+export interface TableQueryReadTarget<
+  Descriptor extends TableQueryDescriptor = TableQueryDescriptor,
+> {
+  readonly kind: "query";
+  readonly descriptor: Descriptor;
+}
+
+export type ReadTarget =
+  | EntityReadTarget
+  | MembershipQueryReadTarget
+  | MetricQueryReadTarget
+  | TableQueryReadTarget;
 
 export type ReadOwner =
   | { readonly kind: "interest"; readonly identity: InterestIdentity }
@@ -783,6 +844,12 @@ export type ReadTicket =
       readonly kind: "baseline" | "history";
       readonly target: MetricQueryReadTarget;
       readonly membershipReceiptOrdinalAtStart?: never;
+    })
+  | (ReadTicketBase & {
+      readonly kind: "baseline";
+      readonly target: TableQueryReadTarget;
+      /** Membership frames after this marker overlay an admitted baseline. */
+      readonly membershipReceiptOrdinalAtStart: ReceiptOrdinal;
     });
 
 export type ReadFailureKind =
@@ -802,7 +869,8 @@ export type ReadContribution =
   | `process:${ProcessFacetName}`
   | "query-membership"
   | "current-metrics"
-  | "metric-history";
+  | "metric-history"
+  | "table";
 
 export type ReadState =
   | { readonly status: "pending"; readonly ticket: ReadTicket }
@@ -1000,13 +1068,74 @@ export type HistoryMetricObservation = HistoryMetricObservationBase &
       }
   );
 
+/** One version a service runs, as `POST /app-version/search` states it. */
+export interface AppVersionRow {
+  readonly id: string;
+  readonly serviceId: string | null;
+  readonly projectId: string | null;
+  readonly status: string | null;
+  /** `GIT`, `CLI`, or `NONE` on a runtime nothing was ever deployed to. */
+  readonly source: string | null;
+}
+
+/** One service variable, as `POST /user-data/search` states it. */
+export interface ServiceVariableRow {
+  readonly id: string;
+  readonly serviceId: string | null;
+  readonly projectId: string | null;
+  readonly key: string;
+  readonly content: string | null;
+}
+
+export type TableRow = AppVersionRow | ServiceVariableRow;
+
+export interface TableRowsOf {
+  readonly "app-version": AppVersionRow;
+  readonly "user-data": ServiceVariableRow;
+}
+
+/**
+ * Rows of a table entity: a search's whole answer (`direct-read`, which also states the list's
+ * members), or the rows an update frame carries (`native-push`), each the full row.
+ */
+export type TableRowsObservation = {
+  readonly kind: "table-rows-observed";
+  readonly entity: TableEntity;
+  readonly rows: ReadonlyArray<TableRow>;
+} & (
+  | {
+      readonly source: "direct-read";
+      readonly coverage: QueryCoverage;
+      readonly ticket: ReadTicket & { readonly target: TableQueryReadTarget };
+    }
+  | {
+      readonly source: "native-push";
+      readonly registration: RegistrationRequest & {
+        readonly descriptor: { readonly kind: "table-updates" };
+      };
+    }
+);
+
+/** An id a table list's stream added or deleted. */
+export interface TableMembershipObservation {
+  readonly kind: "table-membership-observed";
+  readonly operation: "add" | "remove";
+  readonly id: string;
+  readonly registration: RegistrationRequest & {
+    readonly descriptor: { readonly kind: "table-list" };
+  };
+}
+
+export type TableObservation = TableRowsObservation | TableMembershipObservation;
+
 export type PlatformObservation =
   | EntityObservation
   | QueryBaselineObservation
   | QueryMembershipObservation
   | EntityUnavailableObservation
   | CurrentMetricObservation
-  | HistoryMetricObservation;
+  | HistoryMetricObservation
+  | TableObservation;
 
 export interface AdmittedObservation {
   readonly stamp: IngestionStamp;
@@ -1458,6 +1587,13 @@ export type CommandAttemptState =
 
 export type RuntimeInterestDescriptor =
   | { readonly kind: "organization-inventory"; readonly organization: OrganizationRef }
+  /** What the organization's services run: its active versions, listed and streamed (A14). */
+  | { readonly kind: "organization-versions"; readonly organization: OrganizationRef }
+  /**
+   * The organization's service variables the app reads (`SERVICE_VARIABLE_KEYS`): the Mate flag
+   * and the deploy a service last started, listed and streamed.
+   */
+  | { readonly kind: "organization-variables"; readonly organization: OrganizationRef }
   | {
       readonly kind: "project-topology";
       readonly project: ProjectRef;
@@ -1500,6 +1636,14 @@ export type RegistrationDescriptor =
   | {
       readonly kind: "metric-history";
       readonly query: Extract<QueryDescriptor, { readonly kind: "metric-history-of-project" }>;
+    }
+  /** A table list's membership stream (`listStream`): the ids its search admits, as they change. */
+  | { readonly kind: "table-list"; readonly query: TableQueryDescriptor }
+  /** A table entity's update stream (`updateStream`): every changed row of the organization. */
+  | {
+      readonly kind: "table-updates";
+      readonly entity: TableEntity;
+      readonly organization: OrganizationRef;
     };
 
 export interface RequestContext {
@@ -1627,7 +1771,19 @@ export type RegistrationRequest =
     >
   | MetricRegistrationRequest<
       Extract<QueryDescriptor, { readonly kind: "metric-history-of-project" }>
-    >;
+    >
+  | (RegistrationRequestBase & {
+      readonly descriptor: Extract<RegistrationDescriptor, { readonly kind: "table-updates" }>;
+      readonly baselineTicket: null;
+    })
+  | (RegistrationRequestBase & {
+      readonly descriptor: Extract<RegistrationDescriptor, { readonly kind: "table-list" }>;
+      /** Also fences the subscription response's search answer. */
+      readonly baselineTicket: ReadTicket & {
+        readonly owner: { readonly kind: "interest"; readonly identity: InterestIdentity };
+        readonly target: TableQueryReadTarget;
+      };
+    });
 
 export interface RegistrationReceipt {
   readonly responseObservations: ReadonlyArray<PlatformObservation>;
@@ -2044,6 +2200,10 @@ export interface ZeropsDataReads {
   readonly activity: (project: ProjectRef) => Atom.Atom<ProjectActivityRead>;
   readonly operationProgress: (attempt: CommandAttemptRef) => Atom.Atom<OperationProgressView>;
   readonly commandAttempt: (attempt: CommandAttemptRef) => Atom.Atom<CommandAttemptState | null>;
+  /** What the service runs, as the account's store states it (`deployedVersion.ts`). */
+  readonly deployedVersion: (service: ServiceRef) => Atom.Atom<Shown<ZeropsServiceDeployedVersion>>;
+  /** The service's Mate flag, as the account's store states it (`deployedVersion.ts`). */
+  readonly mateFlag: (service: ServiceRef) => Atom.Atom<boolean | "unknown" | "unread">;
 }
 
 export interface CommandAdmissionError {
