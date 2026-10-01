@@ -3,8 +3,12 @@ import * as DateTime from "effect/DateTime";
 import { act, createElement } from "react";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
+import { closeAccountLifetime } from "./accountLifetime";
 import {
   agentSignersToRecord,
+  LOCAL_SIGNER_STANDS_MS,
+  localAgentSignerWritten,
+  retainLocalAgentSigners,
   localSignersSettledBy,
   readLocalAgentSigners,
   rememberLocalAgentSigner,
@@ -350,6 +354,57 @@ describe("local agent signers", () => {
     expect(readLocalAgentSigners(ENV)).toEqual({ "claude-code": "user-a" });
     localSignersSettledBy(ENV, signedInOver(earlier, "user-b"));
     expect(readLocalAgentSigners(ENV)).toEqual({});
+  });
+
+  // The server publishes a landed record within its wait (`SIGNER_RECORD_AWAIT`, 60 s): past it,
+  // the snapshot speaks for the login again, whatever this client wrote.
+  it("lets a written record speak for a minute after its write, then the snapshot", () => {
+    vi.useFakeTimers();
+    try {
+      rememberLocalAgentSigner(ENV, "claude-code", "user-a");
+      vi.advanceTimersByTime(5 * 60_000);
+      expect(readLocalAgentSigners(ENV)).toEqual({ "claude-code": "user-a" });
+      localAgentSignerWritten(ENV, "claude-code", "user-a");
+      vi.advanceTimersByTime(LOCAL_SIGNER_STANDS_MS - 1);
+      expect(readLocalAgentSigners(ENV)).toEqual({ "claude-code": "user-a" });
+      vi.advanceTimersByTime(1);
+      expect(readLocalAgentSigners(ENV)).toEqual({});
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("a newer write of the same record starts its own minute", () => {
+    vi.useFakeTimers();
+    try {
+      rememberLocalAgentSigner(ENV, "claude-code", "user-a");
+      localAgentSignerWritten(ENV, "claude-code", "user-a");
+      vi.advanceTimersByTime(LOCAL_SIGNER_STANDS_MS - 1_000);
+      rememberLocalAgentSigner(ENV, "claude-code", "user-a");
+      localAgentSignerWritten(ENV, "claude-code", "user-a");
+      vi.advanceTimersByTime(2_000);
+      expect(readLocalAgentSigners(ENV)).toEqual({ "claude-code": "user-a" });
+      vi.advanceTimersByTime(LOCAL_SIGNER_STANDS_MS);
+      expect(readLocalAgentSigners(ENV)).toEqual({});
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("forgets every record when the account's session ends", () => {
+    rememberLocalAgentSigner(ENV, "claude-code", "user-a");
+    closeAccountLifetime();
+    expect(readLocalAgentSigners(ENV)).toEqual({});
+  });
+
+  it("forgets the records of a Mate that has left the account", () => {
+    const other = EnvironmentId.make("env-other-mate");
+    rememberLocalAgentSigner(ENV, "claude-code", "user-a");
+    rememberLocalAgentSigner(other, "codex", "user-a");
+    retainLocalAgentSigners(new Set([other]));
+    expect(readLocalAgentSigners(ENV)).toEqual({});
+    expect(readLocalAgentSigners(other)).toEqual({ codex: "user-a" });
+    forgetLocalAgentSigner(other, "codex");
   });
 
   it("keeps the store's identity when a snapshot settles nothing", () => {

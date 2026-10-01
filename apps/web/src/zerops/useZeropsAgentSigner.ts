@@ -51,7 +51,8 @@ import {
 
 import { latestSucceededSignIn } from "@t3tools/shared/zeropsAgentAuth";
 
-import { useRegistrationRecord } from "./registrationRecords";
+import { onAccountLifetimeClose } from "./accountLifetime";
+import { useRegistrationRecord, useRegistrationRecords } from "./registrationRecords";
 import { runZeropsCommand, ZeropsDataContext } from "./zeropsDataContext";
 import { useZeropsSession } from "./ZeropsSessionProvider";
 
@@ -72,6 +73,25 @@ export type LocalAgentSigners = Readonly<Partial<Record<string, string>>>;
 const NO_LOCAL_SIGNERS: LocalAgentSigners = {};
 let localAgentSigners: ReadonlyMap<string, LocalAgentSigners> = new Map();
 const localAgentSignerListeners = new Set<() => void>();
+
+/**
+ * How long a written record speaks for its login over the server's snapshot: the server reads
+ * the tags afresh after a sign-in it walked and publishes the record within its wait
+ * (`SIGNER_RECORD_AWAIT` in `ZeropsAgentAuth`, 60 s). Past it the snapshot is the answer again,
+ * whatever this client wrote — a record it believes in must never outlive the server's word.
+ */
+export const LOCAL_SIGNER_STANDS_MS = 60_000;
+
+/** The timer that ends each written record's minute, by `environmentId key`. */
+const localSignerExpiries = new Map<string, ReturnType<typeof setTimeout>>();
+const expiryKey = (environmentId: string, key: string) => `${environmentId} ${key}`;
+
+function endExpiry(environmentId: string, key: string): void {
+  const timer = localSignerExpiries.get(expiryKey(environmentId, key));
+  if (timer === undefined) return;
+  clearTimeout(timer);
+  localSignerExpiries.delete(expiryKey(environmentId, key));
+}
 
 function setLocalAgentSigners(environmentId: string, next: LocalAgentSigners): void {
   const all = new Map(localAgentSigners);
@@ -108,13 +128,48 @@ export function subscribeLocalAgentSigners(listener: () => void): () => void {
 
 /** Remembers a record this client is writing: it speaks for its login until the write ends. */
 export function rememberLocalAgentSigner(environmentId: string, key: string, userId: string): void {
+  endExpiry(environmentId, key);
   const current = readLocalAgentSigners(environmentId);
   if (current[key] === userId) return;
   setLocalAgentSigners(environmentId, { ...current, [key]: userId });
 }
 
+/** The record's write landed: it speaks for {@link LOCAL_SIGNER_STANDS_MS} more, no longer. */
+export function localAgentSignerWritten(environmentId: string, key: string, userId: string): void {
+  rememberLocalAgentSigner(environmentId, key, userId);
+  localSignerExpiries.set(
+    expiryKey(environmentId, key),
+    setTimeout(() => {
+      localSignerExpiries.delete(expiryKey(environmentId, key));
+      if (readLocalAgentSigners(environmentId)[key] === userId) {
+        forgetLocalAgentSigner(environmentId, key);
+      }
+    }, LOCAL_SIGNER_STANDS_MS),
+  );
+}
+
+/** Forgets every record of the Mates not in `environmentIds`: those that left the account. */
+export function retainLocalAgentSigners(environmentIds: ReadonlySet<string>): void {
+  for (const [environmentId, signers] of localAgentSigners) {
+    if (environmentIds.has(environmentId)) continue;
+    for (const key of Object.keys(signers)) forgetLocalAgentSigner(environmentId, key);
+  }
+}
+
+function forgetAllLocalAgentSigners(): void {
+  for (const timer of localSignerExpiries.values()) clearTimeout(timer);
+  localSignerExpiries.clear();
+  if (localAgentSigners.size === 0) return;
+  localAgentSigners = new Map();
+  for (const listener of localAgentSignerListeners) listener();
+}
+
+// What this client wrote is the account's: it goes when the account does.
+onAccountLifetimeClose(forgetAllLocalAgentSigners);
+
 /** Forgets a record this client meant to write: its write failed, or it has been read back. */
 export function forgetLocalAgentSigner(environmentId: string, key: string): void {
+  endExpiry(environmentId, key);
   const current = readLocalAgentSigners(environmentId);
   if (current[key] === undefined) return;
   const next: Partial<Record<string, string>> = { ...current };
@@ -382,6 +437,14 @@ export function useZeropsAgentSignerRecord(input: {
     if (snapshot !== null && environmentId !== null) localSignersSettledBy(environmentId, snapshot);
   }, [environmentId, snapshot]);
 
+  // A Mate gone from the account takes the records written for it. No records at all is the
+  // account between grants, not every Mate gone: sign-out clears them (`onAccountLifetimeClose`).
+  const records = useRegistrationRecords();
+  useEffect(() => {
+    if (records.length === 0) return;
+    retainLocalAgentSigners(new Set(records.map((record) => record.environmentId)));
+  }, [records]);
+
   const writeRecord = useCallback(
     async (key: string, signal: AbortSignal): Promise<boolean> => {
       if (
@@ -411,7 +474,7 @@ export function useZeropsAgentSignerRecord(input: {
             userId,
           }),
         );
-        rememberLocalAgentSigner(environmentId, key, userId);
+        localAgentSignerWritten(environmentId, key, userId);
         setRecordFailed((current) => {
           if (!current.has(key)) return current;
           const next = new Set(current);
