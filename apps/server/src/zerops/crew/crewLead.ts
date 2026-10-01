@@ -58,7 +58,15 @@ import type {
 } from "./crewSeams.ts";
 import type { CrewAssignmentRow } from "./CrewStore.ts";
 import { readTaskReport } from "./crewTaskData.ts";
-import { continueTask, createTask, discard, leadTurn, requireTask, stepTask } from "./crewTasks.ts";
+import {
+  continueTask,
+  createTask,
+  discard,
+  leadTurn,
+  requireTask,
+  saveOver,
+  stepTask,
+} from "./crewTasks.ts";
 
 /** Wakes per run, and the least time between two (CONCEPT §5 caps). */
 const LEAD_WAKES_MAX = 30;
@@ -307,7 +315,7 @@ export const propose = (
           board.find((other) => `#${other.number}` === ref.trim())!.assignment,
       );
       if (dependsOn.length > 0) {
-        yield* asRefusal(core.store.putAssignment({ ...row, dependsOn }));
+        yield* saveOver(core, row, { ...row, dependsOn });
       }
     }
     yield* core.changed;

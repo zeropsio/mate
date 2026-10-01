@@ -57,7 +57,7 @@ import { appendSeam } from "./crewSeamLines.ts";
 import { currentOrFirstStint, retireStint, rotateBetweenTurns } from "./CrewStints.ts";
 import type { CrewMemberRow } from "./CrewStore.ts";
 import { refreshLaneStats } from "./crewLanding.ts";
-import { saveTask } from "./crewTasks.ts";
+import { requireTask, saveOver } from "./crewTasks.ts";
 import { versionsAfterSave } from "./crewVersions.ts";
 import type { RotationReason } from "./rotationDecision.ts";
 
@@ -194,7 +194,16 @@ const dropMember = (
     }
     for (const task of yield* asRefusal(core.store.assignments(CREW_ID))) {
       if (task.member === row.handle && task.state !== "landed" && task.state !== "discarded") {
-        yield* saveTask(core, { ...task, state: "discarded" });
+        // Over the task as read: one that moved meanwhile is read again and discarded as it stands.
+        yield* saveOver(core, task, { ...task, state: "discarded" }).pipe(
+          Effect.catchTag("CrewCommandError", () =>
+            Effect.flatMap(requireTask(core, task.assignment), (now) =>
+              now.state === "landed" || now.state === "discarded"
+                ? Effect.void
+                : Effect.asVoid(saveOver(core, now, { ...now, state: "discarded" })),
+            ),
+          ),
+        );
       }
     }
     yield* asRefusal(core.store.deleteMember(CREW_ID, row.handle));

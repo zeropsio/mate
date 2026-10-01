@@ -134,6 +134,8 @@ export interface EngineMemory {
   readonly integrateAgain: Set<string>;
   /** A Land now that found its task's integration running: the person who pressed it, by task. */
   readonly landWhenReady: Map<string, TurnPrincipal>;
+  /** Tasks a run's own landing is queued or running for: one at a time per task. */
+  readonly autoLanding: Set<string>;
   /** Each dev service's Show-on-dev claim, as the gate's `holdsClaim` reads it. */
   readonly claims: Map<string, MemoryClaim>;
   /** What each dev service's dev server served when last read. */
@@ -233,6 +235,7 @@ export const makeMemory = (): EngineMemory => ({
   integrating: new Set(),
   integrateAgain: new Set(),
   landWhenReady: new Map(),
+  autoLanding: new Set(),
   claims: new Map(),
   served: new Map(),
   integration: new Map(),

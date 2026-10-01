@@ -20,8 +20,11 @@
  *
  * @module crewRunFlow
  */
+import type { CrewCommandError } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
+
+import type { TurnPrincipal } from "../ZeropsTurnAdmission.ts";
 
 import { carriedCard, nudgeCard } from "./crewCards.ts";
 import {
@@ -39,13 +42,13 @@ import {
 } from "./crewCore.ts";
 import { CREW_ID } from "./CrewHome.ts";
 import { grantClaim } from "./crewClaims.ts";
-import { land, landingHeld, reworkCard } from "./crewLanding.ts";
+import { land, landingHeld, reworkCard, type InCopy } from "./crewLanding.ts";
 import { remember } from "./crewNotes.ts";
 import { renewLeadWakes, wakeLead } from "./crewLead.ts";
 import { pauseRun, runOptionsOf } from "./crewRuns.ts";
 import type { CrewAssignmentRow } from "./CrewStore.ts";
 import { readTaskReview, readTaskWait } from "./crewTaskData.ts";
-import { continueTask, openTaskOf, pump } from "./crewTasks.ts";
+import { continueTask, openTaskOf, pump, requireTask } from "./crewTasks.ts";
 
 const CARRY_ON = "Carry on with your task from your copy and its history.";
 
@@ -98,28 +101,7 @@ const carryOn = (
         const landing = run === undefined ? undefined : runOptionsOf(run)?.landing;
         const accepted = readTaskReview(task.review)?.verdict === "accept";
         if (landing !== "check" && !(landing === "lead" && accepted)) return;
-        // A landing held (your chat is working, the service redeploys) waits for the next free
-        // moment, and says why: in the crew log once per reason, and as the section's last error.
-        // Beside the advance that asked for it, which may hold the crewmate: the landing
-        // holds it only around the git in its copy, its merge's check outside.
-        yield* core.background(
-          land(
-            core,
-            dispatchPrincipal(applied, task),
-            task.assignment,
-            core.crewmate(member.row.handle),
-          ).pipe(
-            Effect.catchTag("CrewCommandError", (error) =>
-              Effect.gen(function* () {
-                const words = failureWords(error);
-                memory.lastError = `#${task.number} waits to land: ${words}`;
-                if (memory.heldLandings.get(task.assignment) === words) return;
-                memory.heldLandings.set(task.assignment, words);
-                yield* landingHeld(core, task, words);
-              }),
-            ),
-          ),
-        );
+        yield* autoLand(core, task, dispatchPrincipal(applied, task));
         return;
       }
       case "working": {
@@ -180,6 +162,46 @@ const allowShowOnDev = (core: CrewCore, applied: AppliedCrew, member: CrewMember
  * A crewmate is free, or something it waits on moved: its open task goes on
  * in a running run, or its next queued task starts.
  */
+/**
+ * A run's own landing of a ready task, beside the advance that asked for it
+ * (which may hold the crewmate): the landing holds it only around the git in
+ * its copy, its merge's check outside. One at a time per task — every advance
+ * of a ready task asks — and a task landed meanwhile, by it or by a press, is
+ * a landing done. A landing held (your chat is working, the service
+ * redeploys) waits for the next free moment, and says why: in the crew log
+ * once per reason, and as the section's last error.
+ */
+export const autoLand = (
+  core: CrewCore,
+  task: CrewAssignmentRow,
+  principal: TurnPrincipal,
+  landing: (inCopy: InCopy) => Effect.Effect<void, CrewCommandError> = (inCopy) =>
+    land(core, principal, task.assignment, inCopy),
+) =>
+  Effect.suspend(() => {
+    const { memory } = core;
+    if (memory.autoLanding.has(task.assignment)) return Effect.void;
+    memory.autoLanding.add(task.assignment);
+    return core.background(
+      landing(core.crewmate(task.member)).pipe(
+        Effect.catchTag("CrewCommandError", (error) =>
+          Effect.gen(function* () {
+            const now = Option.getOrUndefined(
+              yield* Effect.option(requireTask(core, task.assignment)),
+            );
+            if (now?.state === "landed") return;
+            const words = failureWords(error);
+            memory.lastError = `#${task.number} waits to land: ${words}`;
+            if (memory.heldLandings.get(task.assignment) === words) return;
+            memory.heldLandings.set(task.assignment, words);
+            yield* landingHeld(core, task, words);
+          }),
+        ),
+        Effect.ensuring(Effect.sync(() => memory.autoLanding.delete(task.assignment))),
+      ),
+    );
+  });
+
 export const advance = (core: CrewCore, handle: string) =>
   Effect.gen(function* () {
     const applied = yield* core.applied;

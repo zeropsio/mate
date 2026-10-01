@@ -5,7 +5,7 @@ import * as Semaphore from "effect/Semaphore";
 
 import type { CrewCore } from "./crewCore.ts";
 import type { CrewAssignmentRow } from "./CrewStore.ts";
-import { stepTask } from "./crewTasks.ts";
+import { editTask, stepTask } from "./crewTasks.ts";
 
 const row = (overrides: Partial<CrewAssignmentRow> = {}): CrewAssignmentRow => ({
   assignment: "task-1",
@@ -66,6 +66,36 @@ describe("stepTask writes only over the state it read", () => {
       const stored = new Map([["task-1", row({ state: "review" })]]);
       yield* stepTask(coreOver(stored), row({ state: "review" }), { type: "review-rejected" });
       assert.strictEqual(stored.get("task-1")?.state, "rework");
+    }),
+  );
+});
+
+describe("an edit writes only over the task it read", () => {
+  it.effect("an edit read in review never writes review back over a lead's accept since", () =>
+    Effect.gen(function* () {
+      const stored = new Map([["task-1", row({ state: "review" })]]);
+      const core = coreOver(stored);
+      // The lead accepts between the edit's read and its write.
+      const read = core.store.getAssignment;
+      let reads = 0;
+      (core.store as { getAssignment: typeof read }).getAssignment = (id) =>
+        Effect.tap(read(id), () =>
+          Effect.sync(() => {
+            reads += 1;
+            if (reads === 1) stored.set("task-1", row({ state: "ready" }));
+          }),
+        );
+      const refused = yield* Effect.flip(
+        editTask(
+          core,
+          { kind: "crew", startedBy: "user-a" },
+          { taskId: "task-1", title: "Renamed" },
+        ),
+      );
+      assert.deepStrictEqual(
+        [refused.reason, stored.get("task-1")?.state, stored.get("task-1")?.title],
+        ["wrong-state", "ready", "First"],
+      );
     }),
   );
 });

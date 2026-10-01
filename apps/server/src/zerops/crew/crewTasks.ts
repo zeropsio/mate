@@ -154,12 +154,17 @@ export const onTaskCrewmate = <A, E, R>(
     pressCrewmate(core, pressed.member, effect),
   );
 
-export const saveTask = (core: CrewCore, row: CrewAssignmentRow) =>
+/** The write itself; every writer goes through `core.stepping` (`saveTask`, `saveOver`). */
+const putTask = (core: CrewCore, row: CrewAssignmentRow) =>
   Effect.gen(function* () {
     const next = { ...row, updatedAt: yield* core.now };
     yield* asRefusal(core.store.putAssignment(next));
     return next;
   });
+
+/** A task written as it is given, one write at a time (`core.stepping`). */
+export const saveTask = (core: CrewCore, row: CrewAssignmentRow) =>
+  core.stepping.withPermits(1)(putTask(core, row));
 
 /**
  * `saveTask` over the task only as it was read: a write from a read made
@@ -173,7 +178,7 @@ export const saveOver = (core: CrewCore, read: CrewAssignmentRow, next: CrewAssi
       if (stored.state !== read.state || stored.attempt !== read.attempt) {
         return yield* refuse("wrong-state", `#${stored.number} is ${stored.state}`);
       }
-      return yield* saveTask(core, next);
+      return yield* putTask(core, next);
     }),
   );
 
@@ -824,7 +829,7 @@ export const editTask = (
       return yield* refuse("wrong-state", `#${row.number} is ${row.state}`);
     }
     const card = readTaskCard(row.card) ?? { brief: "", doneWhen: "", note: null };
-    yield* saveTask(core, {
+    yield* saveOver(core, row, {
       ...row,
       title: input.title ?? row.title,
       card: {
