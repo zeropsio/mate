@@ -46,6 +46,11 @@ import { onAccountLifetimeClose } from "./accountLifetime";
 import { giteaClientFor } from "./accountGiteaSessions";
 import { addGroupEnvironment, writeRegistryMember } from "./addGroupEnvironment";
 import { brokerGrantTokens, grantBrokerProject, projectTagsWrite } from "./brokerGrant";
+import {
+  pressSteps,
+  pressThrough,
+  type PressStepView,
+} from "../components/zerops/ZeropsEnvironmentCreationDialog.logic";
 import { placedNewProjects, type NewProjectBirth } from "./newProjectBirth";
 import {
   runZeropsCommand,
@@ -81,6 +86,10 @@ export interface MatePress {
   readonly managed?: ReadonlyArray<string>;
   /** The runtimes zcp imports on boot, as the plan named them. */
   readonly runtimes?: ReadonlyArray<RecipeRuntime>;
+  /** *Finish setup* on a Mate made before, not an Add: its view draws the steps and their end. */
+  readonly finishing?: boolean;
+  /** Each step's state as the press moves. */
+  readonly progress?: ReadonlyArray<EnvironmentCreationStepProgress>;
   readonly state: MatePressState;
 }
 
@@ -110,6 +119,23 @@ export function settlePress(projectId: string, state: MatePressState): void {
   });
 }
 
+/** A press moved on: each step's state, kept on a press this tab holds. */
+export function progressPress(
+  projectId: string,
+  progress: ReadonlyArray<EnvironmentCreationStepProgress>,
+): void {
+  usePressStore.setState((store) => {
+    const press = store.presses[projectId];
+    if (press === undefined) return store;
+    return { presses: { ...store.presses, [projectId]: { ...press, progress } } };
+  });
+}
+
+/** The press this tab holds for a project, read outside a render. */
+export function readMatePress(projectId: string): MatePress | undefined {
+  return usePressStore.getState().presses[projectId];
+}
+
 /** The project is gone: nothing more is said of it. */
 export function forgetPress(projectId: string): void {
   usePressStore.setState((store) => {
@@ -133,6 +159,32 @@ export function useMatePress(projectId: string | undefined): MatePress | undefin
 /** Why a press stopped, in words, while it is stopped. */
 export function pressFailure(press: MatePress | undefined): string | undefined {
   return press?.state.kind === "failed" ? press.state.reason : undefined;
+}
+
+/** *Finish setup* through its close-off: the container does the rest. */
+export const FINISHED_SETUP_LINE =
+  "Its setup is finished. It comes up on its own now, with no browser needed.";
+
+/**
+ * *Finish setup* as a Mate's own view draws it: the steps the Add dialog draws, and — once its
+ * project is marked closed off — a clear end. Undefined for any other press. A step that stops is
+ * said by the press's failure (`pressFailure`), with *Try again*.
+ */
+export function finishSetupView(press: MatePress | undefined):
+  | {
+      readonly steps: ReadonlyArray<PressStepView>;
+      readonly line: string;
+      readonly done: boolean;
+    }
+  | undefined {
+  if (press?.finishing !== true) return undefined;
+  const progress = press.progress ?? [];
+  const done = press.state.kind === "pressed" || pressThrough(progress);
+  return {
+    steps: pressSteps(progress),
+    line: done ? FINISHED_SETUP_LINE : "Finishing its setup…",
+    done,
+  };
 }
 
 /** Each step of a press, as a person names it where it stopped. */
@@ -454,6 +506,8 @@ export async function runPress(input: {
   for (const step of input.steps) {
     if (step.kind === "create-project" || step.kind === "import-project") projectName = step.name;
   }
+  // Each step's state is kept on the press, once the platform has taken its project.
+  let accepted = input.resume?.projectId;
   const outcome = await runEnvironmentCreation({
     clientId: input.organizationId,
     steps: input.steps,
@@ -462,8 +516,14 @@ export async function runPress(input: {
     describeError: zeropsErrorMessage,
     sleep,
     ...(input.resume === undefined ? {} : { resume: input.resume }),
-    onProjectAccepted: (projectId) => input.onProjectAccepted?.(projectId, projectName),
-    ...(input.onProgress === undefined ? {} : { onProgress: input.onProgress }),
+    onProjectAccepted: (projectId) => {
+      accepted = projectId;
+      input.onProjectAccepted?.(projectId, projectName);
+    },
+    onProgress: (progress) => {
+      if (accepted !== undefined && input.isCurrent()) progressPress(accepted, progress);
+      input.onProgress?.(progress);
+    },
   });
   const projectId = outcome.projectId;
   if (projectId === undefined || !input.isCurrent()) return outcome;
@@ -529,12 +589,16 @@ export async function finishMateSetup(input: {
         ),
       );
     } catch (cause) {
-      return {
-        ok: false,
-        projectId: input.projectId,
-        failedStep: { kind: "close-off" },
-        error: zeropsErrorMessage(cause),
-      };
+      const error = zeropsErrorMessage(cause);
+      if (input.isCurrent()) {
+        settlePress(input.projectId, {
+          kind: "failed",
+          step: "close-off",
+          reason: error,
+          retry: null,
+        });
+      }
+      return { ok: false, projectId: input.projectId, failedStep: { kind: "close-off" }, error };
     }
   }
   const steps: ReadonlyArray<EnvironmentCreationStep> = [

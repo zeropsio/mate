@@ -86,7 +86,7 @@ import { useZeropsBirthProgress } from "~/zerops/useZeropsBirthProgress";
 import { useZeropsCandidates } from "~/zerops/useZeropsCandidates";
 import { useZeropsCreationVerdicts } from "~/zerops/useZeropsCreationVerdicts";
 import { useZeropsInventory, type InventoryServiceOutcome } from "~/zerops/inventoryContext";
-import { forgetPress, pressFailure, useMatePress } from "~/zerops/matePress";
+import { finishSetupView, forgetPress, pressFailure, useMatePress } from "~/zerops/matePress";
 import { useReviveFailedMate } from "~/zerops/mateRestart";
 import { useMateSetup } from "~/zerops/useMateSetup";
 import { useAccountGitea } from "~/zerops/giteaProject";
@@ -113,6 +113,7 @@ import { useComposerDraftStore } from "~/composerDraftStore";
 import { draftWithTyped, handOverMateConversation } from "~/zerops/mateHandOver";
 import type { BirthLineProgress } from "./ZeropsBirthProgress.logic";
 import { ZeropsArrivalSteps, type ArrivalYou } from "./ZeropsArrivalSteps";
+import { PressSteps } from "./ZeropsEnvironmentCreationDialog";
 import { ALMOST_THERE_LINE } from "./ZeropsProjectRow.logic";
 import {
   MateEmptyStateView,
@@ -459,6 +460,9 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
   const finishSetup =
     finishEntry === undefined || "separator" in finishEntry ? undefined : finishEntry.onSelect;
 
+  // *Finish setup* running, or through: its steps as the Add dialog draws them, and their end.
+  const finish = finishSetupView(press);
+
   const [removing, setRemoving] = useState(false);
   const [trouble, setTrouble] = useState<string | null>(null);
   const remove = () => {
@@ -534,26 +538,32 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
           : {
               kind: shown.kind,
               over: handing,
-              sentence: comingSentenceOf({
-                coming: shown,
-                trouble: trouble ?? mateActions.trouble,
-                progress: lineProgress,
-                nowMs: progress?.nowMs,
-              }),
-              below: (
-                <ComingBelow
-                  coming={shown}
-                  mate={mate}
-                  nowMs={progress?.nowMs}
-                  onRemove={remove}
-                  {...(finishSetup === undefined ? {} : { onFinishSetup: finishSetup })}
-                  finishing={mateActions.busyKey === candidate?.key}
-                  {...(pressRetry === null ? {} : { onTryAgain: () => void pressRetry() })}
-                  progress={lineProgress}
-                  removing={removing}
-                  you={you}
-                />
-              ),
+              sentence:
+                finish !== undefined && shown.kind === "coming"
+                  ? finish.line
+                  : comingSentenceOf({
+                      coming: shown,
+                      trouble: trouble ?? mateActions.trouble,
+                      progress: lineProgress,
+                      nowMs: progress?.nowMs,
+                    }),
+              below:
+                finish !== undefined && shown.kind === "coming" ? (
+                  <PressSteps name={mate.name} steps={finish.steps} />
+                ) : (
+                  <ComingBelow
+                    coming={shown}
+                    mate={mate}
+                    nowMs={progress?.nowMs}
+                    onRemove={remove}
+                    {...(finishSetup === undefined ? {} : { onFinishSetup: finishSetup })}
+                    finishing={mateActions.busyKey === candidate?.key}
+                    {...(pressRetry === null ? {} : { onTryAgain: () => void pressRetry() })}
+                    progress={lineProgress}
+                    removing={removing}
+                    you={you}
+                  />
+                ),
             }
         : page.kind === "coming"
           ? null

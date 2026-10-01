@@ -1,6 +1,21 @@
+import type {
+  EnvironmentCreationStep,
+  EnvironmentCreationStepProgress,
+} from "@t3tools/client-runtime/zerops";
 import { describe, expect, it } from "vite-plus/test";
 
-import { interruptedPresses, planShareReach, shareGroupReach } from "./matePress";
+import {
+  beginPress,
+  finishSetupView,
+  forgetPress,
+  interruptedPresses,
+  planShareReach,
+  progressPress,
+  shareGroupReach,
+  readMatePress,
+  type MatePress,
+  type MatePressState,
+} from "./matePress";
 
 const mate = (serviceId: string | undefined, tags: ReadonlyArray<string>) => ({
   ...(serviceId === undefined ? {} : { service: { id: serviceId } }),
@@ -182,5 +197,103 @@ describe("shareGroupReach", () => {
   it("goes on past a key it could not write, and counts it", async () => {
     const fake = fakeClient(new Set(["k-fen"]));
     expect(await share(fake.client)).toEqual({ extended: 2, failed: 1 });
+  });
+});
+
+// Finish setup drawn as the Add dialog draws a press, then a clear end (live, 2026-10-01: Hugo's
+// view went "could not be added", "isn't running", "coming up", and never said it was done).
+describe("finishSetupView — Finish setup on a Mate's own view", () => {
+  const STEPS: ReadonlyArray<EnvironmentCreationStep> = [
+    { kind: "import-container", agents: [] },
+    { kind: "register" },
+    { kind: "close-off" },
+    { kind: "share-reach" },
+  ];
+  const progress = (
+    states: ReadonlyArray<EnvironmentCreationStepProgress["state"]>,
+  ): ReadonlyArray<EnvironmentCreationStepProgress> =>
+    STEPS.map((step, index) => ({ step, state: states[index]! }));
+  const press = (state: MatePressState, made: Partial<MatePress> = {}): MatePress => ({
+    projectId: "p-hugo",
+    organizationId: "org-acme",
+    startedAt: 0,
+    placement: null,
+    container: true,
+    finishing: true,
+    state,
+    ...made,
+  });
+  const drawn = (view: ReturnType<typeof finishSetupView>) =>
+    view === undefined
+      ? undefined
+      : { done: view.done, line: view.line, steps: view.steps.map((s) => `${s.label}:${s.state}`) };
+
+  it.each([
+    {
+      case: "an Add's press",
+      made: press({ kind: "pressing" }, { finishing: false }),
+      want: undefined,
+    },
+    {
+      case: "before its first step",
+      made: press({ kind: "pressing" }),
+      want: { done: false, line: "Finishing its setup…", steps: [] },
+    },
+    {
+      case: "its container being imported",
+      made: press(
+        { kind: "pressing" },
+        { progress: progress(["running", "queued", "queued", "queued"]) },
+      ),
+      want: {
+        done: false,
+        line: "Finishing its setup…",
+        steps: ["Container:active", "Registered:waiting", "Closed off:waiting"],
+      },
+    },
+    {
+      case: "closed off: it needs no browser now",
+      made: press(
+        { kind: "pressing" },
+        { progress: progress(["done", "done", "done", "running"]) },
+      ),
+      want: {
+        done: true,
+        line: "Its setup is finished. It comes up on its own now, with no browser needed.",
+        steps: ["Container:done", "Registered:done", "Closed off:done"],
+      },
+    },
+    {
+      case: "through",
+      made: press({ kind: "pressed" }, { progress: progress(["done", "done", "done", "done"]) }),
+      want: {
+        done: true,
+        line: "Its setup is finished. It comes up on its own now, with no browser needed.",
+        steps: ["Container:done", "Registered:done", "Closed off:done"],
+      },
+    },
+  ])("$case", ({ made, want }) => {
+    expect(drawn(finishSetupView(made))).toEqual(want);
+  });
+
+  it("is kept on the press as it moves", () => {
+    beginPress({
+      projectId: "p-hugo",
+      organizationId: "org-acme",
+      startedAt: 0,
+      placement: null,
+      container: true,
+      finishing: true,
+    });
+    progressPress("p-hugo", progress(["done", "running", "queued", "queued"]));
+    expect(drawn(finishSetupView(readMatePress("p-hugo")!))?.steps).toEqual([
+      "Container:done",
+      "Registered:active",
+      "Closed off:waiting",
+    ]);
+    forgetPress("p-hugo");
+    // A press nobody holds keeps nothing.
+    progressPress("p-hugo", progress(["done", "done", "done", "done"]));
+    expect(readMatePress("p-hugo")).toBeUndefined();
   });
 });

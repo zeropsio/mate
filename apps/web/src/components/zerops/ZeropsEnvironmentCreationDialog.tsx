@@ -117,6 +117,27 @@ const PRESS_STEP_STATES: Readonly<
   failed: { state: "failed", label: "Failed" },
 };
 
+/** A press's steps, as the Add dialog and *Finish setup* on a Mate's view draw them. */
+export function PressSteps({
+  name,
+  steps,
+}: {
+  readonly name: string;
+  readonly steps: ReadonlyArray<PressStepView>;
+}) {
+  return (
+    <ProcessSteps
+      aria-label={`Setting up ${name}`}
+      steps={steps.map((step) => ({
+        id: step.label,
+        label: step.label,
+        state: PRESS_STEP_STATES[step.state].state,
+        stateLabel: PRESS_STEP_STATES[step.state].label,
+      }))}
+    />
+  );
+}
+
 /** The press, in the form's place, until the Mate needs no browser. */
 export function PressingPanel({ pressing }: { readonly pressing: PressingView }) {
   return (
@@ -130,15 +151,7 @@ export function PressingPanel({ pressing }: { readonly pressing: PressingView })
         </DialogDescription>
       </DialogHeader>
       <DialogPanel>
-        <ProcessSteps
-          aria-label={`Setting up ${pressing.name}`}
-          steps={pressing.steps.map((step) => ({
-            id: step.label,
-            label: step.label,
-            state: PRESS_STEP_STATES[step.state].state,
-            stateLabel: PRESS_STEP_STATES[step.state].label,
-          }))}
-        />
+        <PressSteps name={pressing.name} steps={pressing.steps} />
       </DialogPanel>
       {pressing.onTryAgain === undefined ? null : (
         <DialogFooter>

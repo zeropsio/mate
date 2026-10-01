@@ -103,6 +103,7 @@ import {
 import { useZeropsOrganizationMembers, zeropsMateOwner } from "./useZeropsMateOwners";
 import { MATE_CONTAINER_GRACE_MS } from "./mateComing";
 import {
+  beginPress,
   finishMateSetup,
   forgetPress,
   pressViewer,
@@ -474,6 +475,15 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
       const organizationId = activeOrganization.id;
       const projectId = candidate.project.id;
       const group = groupTree.groups.find((entry) => entry.group.groupId === groupId);
+      // Its view draws the steps as they run, and their end (`finishSetupView`).
+      beginPress({
+        projectId,
+        organizationId,
+        startedAt: Date.now(),
+        placement: null,
+        container: true,
+        finishing: true,
+      });
       void write(
         candidate.key,
         async () => {
