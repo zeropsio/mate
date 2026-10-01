@@ -68,6 +68,10 @@ export function decodeTableSearch(ticket: ReadTicket, input: unknown): ProtocolD
   const target = ticket.target as TableQueryReadTarget;
   const envelope =
     typeof input === "object" && input !== null ? (input as Record<string, unknown>) : null;
+  // A read of named ids that answered none found none of them: each waits out its back-off
+  // rather than being asked again at once.
+  if (envelope !== null && !Array.isArray(envelope.items) && target.descriptor.ids !== undefined)
+    return decodeTableSearch(ticket, { ...envelope, items: [] });
   if (envelope === null || !Array.isArray(envelope.items))
     return {
       observations: [],
