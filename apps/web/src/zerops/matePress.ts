@@ -31,9 +31,10 @@ import {
   type ZeropsApiClient,
   type ZeropsPlacedBirth,
 } from "@t3tools/client-runtime/zerops";
+import { ZeropsServiceId } from "@t3tools/client-runtime/zerops/data";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 import type { RoleProjectKind } from "@t3tools/shared/zeropsRoles";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 import { create } from "zustand";
 
 import { onAccountLifetimeClose } from "./accountLifetime";
@@ -41,7 +42,11 @@ import { giteaClientFor } from "./accountGiteaSessions";
 import { addGroupEnvironment, writeRegistryMember } from "./addGroupEnvironment";
 import { brokerGrantTokens, grantBrokerProject, projectTagsWrite } from "./brokerGrant";
 import { placedNewProjects, type NewProjectBirth } from "./newProjectBirth";
-import { runZeropsCommand, type ZeropsDataContextValue } from "./zeropsDataContext";
+import {
+  runZeropsCommand,
+  useZeropsAtomSelections,
+  type ZeropsDataContextValue,
+} from "./zeropsDataContext";
 
 /** Where a press stands. */
 export type MatePressState =
@@ -434,66 +439,66 @@ export function finishMateSetup(input: {
 
 // ── The press's marker on Mates made elsewhere ───────────────────────────────────────────────
 
-/** Each zcp service's marker as read this session: one read per service, never repeated. */
-const markers = new Map<string, boolean>();
-const asked = new Set<string>();
-const markerListeners = new Set<() => void>();
-
-onAccountLifetimeClose(() => {
-  markers.clear();
-  asked.clear();
-});
+interface MarkedCandidate {
+  readonly service?: { readonly id: string } | undefined;
+  readonly project: { readonly tagList?: ReadonlyArray<string> | undefined };
+}
 
 /**
- * Which of these Mates carry the press's marker (`MATE_SETUP_RUNTIMES`) while their project has
- * no `mate:closed-off`: a press interrupted before its close-off, which *Finish setup* finishes.
- * Read once per service per session, only for a Mate whose project lacks the tag and only where
- * `enabled` — an owner or an admin, who could finish it.
+ * The zcp services of the Mates whose press was interrupted before its close-off: the container
+ * carries the press's marker (`MATE_SETUP_RUNTIMES`) while the project has no `mate:closed-off`.
+ * A marker the store has not read, or could not, says nothing.
+ */
+export function interruptedPresses(
+  candidates: ReadonlyArray<MarkedCandidate>,
+  markers: ReadonlyMap<string, boolean | "unknown" | "unread">,
+): ReadonlySet<string> {
+  return new Set(
+    candidates.flatMap((candidate) =>
+      candidate.service !== undefined &&
+      !isZeropsMateClosedOff(candidate.project.tagList) &&
+      markers.get(candidate.service.id) === true
+        ? [candidate.service.id]
+        : [],
+    ),
+  );
+}
+
+/**
+ * Which of these Mates' presses were interrupted before their close-off, as the account's store
+ * states their containers' variables — the organization's own stream, no read of its own. Only
+ * where `enabled` (an owner or an admin, who could finish one), and only for a Mate whose project
+ * lacks the mark.
  */
 export function useInterruptedPresses(
-  candidates: ReadonlyArray<{
-    readonly service?: { readonly id: string } | undefined;
-    readonly project: { readonly tagList?: ReadonlyArray<string> | undefined };
-  }>,
-  client: Pick<ZeropsApiClient, "carriesSetupMarker">,
+  candidates: ReadonlyArray<
+    MarkedCandidate & { readonly project: { readonly id: string; readonly clientId?: string } }
+  >,
+  data: Pick<ZeropsDataContextValue, "runtime" | "projectRef">,
   enabled: boolean,
 ): ReadonlySet<string> {
-  const [read, setRead] = useState<ReadonlyMap<string, boolean>>(() => new Map(markers));
-  useEffect(() => {
-    const heard = () => setRead(new Map(markers));
-    markerListeners.add(heard);
-    return () => {
-      markerListeners.delete(heard);
-    };
-  }, []);
-  const unmarked = useMemo(
+  const selections = useMemo(
     () =>
       enabled
         ? candidates.flatMap((candidate) =>
-            candidate.service === undefined || isZeropsMateClosedOff(candidate.project.tagList)
+            candidate.service === undefined ||
+            candidate.project.clientId === undefined ||
+            isZeropsMateClosedOff(candidate.project.tagList)
               ? []
-              : [candidate.service.id],
+              : [
+                  [
+                    candidate.service.id,
+                    data.runtime.reads.setupMarker({
+                      kind: "service",
+                      project: data.projectRef(candidate.project.clientId, candidate.project.id),
+                      serviceId: ZeropsServiceId.make(candidate.service.id),
+                    }),
+                  ] as const,
+                ],
           )
         : [],
-    [candidates, enabled],
+    [candidates, data, enabled],
   );
-  useEffect(() => {
-    for (const serviceId of unmarked) {
-      if (asked.has(serviceId)) continue;
-      asked.add(serviceId);
-      void client.carriesSetupMarker(serviceId).then(
-        (carries) => {
-          markers.set(serviceId, carries);
-          for (const listener of markerListeners) listener();
-        },
-        () => {
-          // Asked again next session; a menu with one entry fewer is no failure.
-        },
-      );
-    }
-  }, [client, unmarked]);
-  return useMemo(
-    () => new Set(unmarked.filter((serviceId) => read.get(serviceId) === true)),
-    [read, unmarked],
-  );
+  const markers = useZeropsAtomSelections(selections);
+  return useMemo(() => interruptedPresses(candidates, markers), [candidates, markers]);
 }

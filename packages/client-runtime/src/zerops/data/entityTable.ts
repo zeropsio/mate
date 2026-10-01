@@ -34,11 +34,15 @@ import type {
 import { organizationKeyOf, queryKeyOf, tableEntityOf } from "./types.ts";
 import { noOutcome, type DomainObservationOutcome } from "./inventory.ts";
 
-/** The service variables the app reads: the Mate flag, and the deploy a service last started. */
+/**
+ * The service variables the app reads: the Mate flag, the deploy a service last started, and the
+ * new press's marker on a Mate's container (`MATE_SETUP_RUNTIMES`), whose presence alone is read.
+ */
 export const SERVICE_VARIABLE_KEYS: ReadonlyArray<string> = [
   "ZCP_MATE_ENABLED",
   "appVersionId",
   "appVersionName",
+  "MATE_SETUP_RUNTIMES",
 ];
 
 /** How far a search's index may trail a push: a row pushed this soon before it is kept. */

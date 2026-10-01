@@ -228,7 +228,7 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
   // owner or an admin, who could finish it.
   const interrupted = useInterruptedPresses(
     candidates,
-    client,
+    { runtime, projectRef },
     activeOrganization?.roleCode === "OWNER" || activeOrganization?.roleCode === "ADMIN",
   );
   const groupTree = useMemo(

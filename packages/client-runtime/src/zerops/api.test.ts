@@ -2074,27 +2074,6 @@ describe("ZeropsApiClient.stopService and readProcessStatus", () => {
   });
 });
 
-describe("ZeropsApiClient.carriesSetupMarker", () => {
-  it.each([
-    {
-      case: "a container the press made",
-      keys: ["ZCP_MATE_ENABLED", "MATE_SETUP_RUNTIMES"],
-      want: true,
-    },
-    { case: "a container made before the press", keys: ["ZCP_MATE_ENABLED"], want: false },
-  ])("reads $case as $want", async ({ keys, want }) => {
-    const stub = recordingFetch(() =>
-      jsonResponse(200, {
-        items: keys.map((key, index) => ({ id: `e${index}`, key, content: "x" })),
-      }),
-    );
-    const client = new ZeropsApiClient({ fetch: stub.fetch });
-    client.restoreSession(SESSION);
-    expect(await client.carriesSetupMarker("svc-1")).toBe(want);
-    expect(stub.requests[0]?.url.endsWith("/service-stack/svc-1/env")).toBe(true);
-  });
-});
-
 describe("ZeropsApiClient.readProjectEnvWrites", () => {
   it("answers the project's variable writes alone, by status", async () => {
     const stub = recordingFetch(() =>

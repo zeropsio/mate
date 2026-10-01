@@ -1,6 +1,11 @@
 import { describe, expect, it } from "@effect/vitest";
 
-import { selectDeployedVersion, selectMateFlag, statedDeployKey } from "./deployedVersion.ts";
+import {
+  selectDeployedVersion,
+  selectMateFlag,
+  selectSetupMarker,
+  statedDeployKey,
+} from "./deployedVersion.ts";
 import {
   ABSENT_BACKOFF_MS,
   reduceTableObservation,
@@ -275,6 +280,39 @@ describe("the Mate flag, as the account's store states it", () => {
   for (const testCase of cases) {
     it(testCase.name, () => {
       expect(selectMateFlag(testCase.state, ref)).toBe(testCase.expected);
+    });
+  }
+});
+
+describe("the press's marker, as the account's store states it", () => {
+  const empty = makeInitialZeropsDataState(scope());
+  // Base64 of an import document: only whether it is there matters.
+  const MARKER = ["c2Vy", "dmljZXM6IFtd"].join("");
+  const cases: ReadonlyArray<{
+    readonly name: string;
+    readonly state: ZeropsDataState;
+    readonly expected: boolean | "unknown" | "unread";
+  }> = [
+    { name: "is unread before the variables are", state: empty, expected: "unread" },
+    {
+      name: "is there on a container the press made",
+      state: answered(empty, variables, [variable("MATE_SETUP_RUNTIMES", MARKER)]),
+      expected: true,
+    },
+    {
+      name: "is absent on a container made before the press",
+      state: answered(empty, variables, [variable("ZCP_MATE_ENABLED", "1")]),
+      expected: false,
+    },
+    {
+      name: "is unknown when its stream failed",
+      state: failedInterest(empty, "organization-variables"),
+      expected: "unknown",
+    },
+  ];
+  for (const testCase of cases) {
+    it(testCase.name, () => {
+      expect(selectSetupMarker(testCase.state, ref)).toBe(testCase.expected);
     });
   }
 });

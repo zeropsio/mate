@@ -2221,6 +2221,8 @@ export interface ZeropsDataReads {
   readonly deployedVersion: (service: ServiceRef) => Atom.Atom<Shown<ZeropsServiceDeployedVersion>>;
   /** The service's Mate flag, as the account's store states it (`deployedVersion.ts`). */
   readonly mateFlag: (service: ServiceRef) => Atom.Atom<boolean | "unknown" | "unread">;
+  /** Whether the service carries the new press's marker (`deployedVersion.ts`). */
+  readonly setupMarker: (service: ServiceRef) => Atom.Atom<boolean | "unknown" | "unread">;
 }
 
 export interface CommandAdmissionError {

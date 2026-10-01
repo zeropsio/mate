@@ -137,6 +137,26 @@ export function statedDeployKey(shown: Shown<ZeropsServiceDeployedVersion> | und
  * the organization's variables are listed; `"unknown"` when their stream failed — never `false`,
  * a fact a row offers Enable on (H9).
  */
+/**
+ * The new press's marker on a Mate's container (`MATE_SETUP_RUNTIMES`, pass 28): whether the
+ * service carries it. `"unread"` until the organization's variables are listed; `"unknown"` when
+ * their stream failed.
+ */
+export function selectSetupMarker(
+  state: ZeropsDataState,
+  service: ServiceRef,
+): boolean | "unknown" | "unread" {
+  const marker = serviceVariableOf(
+    state.table,
+    service.project.organization,
+    service.serviceId,
+    "MATE_SETUP_RUNTIMES",
+  );
+  // Its presence alone: the value is the tier's import document, and it goes nowhere.
+  if (marker.known) return marker.content !== null;
+  return streamFailure(state, "organization-variables", service) === null ? "unread" : "unknown";
+}
+
 export function selectMateFlag(
   state: ZeropsDataState,
   service: ServiceRef,

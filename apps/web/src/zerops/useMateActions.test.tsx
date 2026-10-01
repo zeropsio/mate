@@ -42,8 +42,7 @@ vi.mock("./ZeropsSessionProvider", () => ({
       roleCode: mock.roleCode,
       canCreateProjects: true,
     },
-    // No Mate here carries the press marker: no Finish setup for an interrupted press.
-    client: { carriesSetupMarker: async () => false },
+    client: {},
     user: { id: "user-ada" },
   }),
 }));
@@ -52,9 +51,14 @@ vi.mock("./zeropsDataContext", () => ({
   useZeropsData: () => ({
     organizationRef: (organizationId: string) => ({ organizationId }),
     projectRef: (organizationId: string, projectId: string) => ({ organizationId, projectId }),
-    runtime: { commands: { updateProjectTags: mock.updateProjectTags } },
+    runtime: {
+      commands: { updateProjectTags: mock.updateProjectTags },
+      reads: { setupMarker: () => null },
+    },
   }),
   runZeropsCommand: (command: Promise<unknown>) => command,
+  // No container here carries the press's marker: no Finish setup for an interrupted press.
+  useZeropsAtomSelections: () => new Map(),
 }));
 vi.mock("./useZeropsCandidates", () => ({
   useZeropsCandidates: () => ({ listing: mock.listing.current, refresh: () => {} }),
