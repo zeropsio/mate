@@ -4,6 +4,7 @@ import { act, createElement, Fragment } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { TestNode } from "./__fixtures__/testDom";
+import { MATE_STAND_UP_MESSAGE } from "./mateStandUp";
 
 const ENVIRONMENT = EnvironmentId.make("environment-fen");
 const MAIN = scopeThreadRef(ENVIRONMENT, ThreadId.make("thread-main"));
@@ -242,6 +243,48 @@ describe("useMateStandUp", () => {
         ids: { commandId: "mate-standup-thread-main-2", messageId: "mate-standup-thread-main-2" },
       });
       expect(views.attempt()).toBe("sending");
+    } finally {
+      await views.close();
+    }
+  });
+
+  // A live run (2026-10-01): the browser's ask was refused, its words went back into the
+  // composer, and the Mate's own server sent the stand-up a few seconds later. The conversation
+  // holds it: nothing "didn't go through", and the words left in the composer are not a draft.
+  it("a failed ask gives way to the stand-up the conversation holds since, and leaves no draft", async () => {
+    const views = await openViews();
+    const { useComposerDraftStore } = await import("../composerDraftStore");
+    try {
+      await views.show();
+      await views.show({ sendBusy: true });
+      await views.show({ sendBusy: false });
+      expect(views.attempt()).toBe("failed");
+      // The refused send handed its words back to the composer.
+      act(() => useComposerDraftStore.getState().setPrompt(MAIN, MATE_STAND_UP_MESSAGE));
+
+      await views.show({ messageCount: 1 });
+
+      expect(views.attempt()).not.toBe("failed");
+      expect(useComposerDraftStore.getState().getComposerDraft(MAIN)?.prompt ?? "").toBe("");
+    } finally {
+      await views.close();
+    }
+  });
+
+  it("leaves words the person typed after a failed ask", async () => {
+    const views = await openViews();
+    const { useComposerDraftStore } = await import("../composerDraftStore");
+    try {
+      await views.show();
+      await views.show({ sendBusy: true });
+      await views.show({ sendBusy: false });
+      act(() => useComposerDraftStore.getState().setPrompt(MAIN, "Also add a blog."));
+
+      await views.show({ messageCount: 1 });
+
+      expect(useComposerDraftStore.getState().getComposerDraft(MAIN)?.prompt).toBe(
+        "Also add a blog.",
+      );
     } finally {
       await views.close();
     }

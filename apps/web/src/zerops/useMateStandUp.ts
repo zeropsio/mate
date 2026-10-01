@@ -25,6 +25,7 @@ import { useThreadShells } from "../state/entities";
 import { onAccountLifetimeClose } from "./accountLifetime";
 import { zeropsMateAt } from "./mateIdentities";
 import {
+  isMateStandUpAsk,
   MATE_STAND_UP_MESSAGE,
   mateStandUpAskLine,
   mateStandUpCleared,
@@ -45,8 +46,11 @@ export const MATE_STAND_UP_UNSEEN_MS = 8_000;
 export interface MateStandUpAttempt {
   /** 1 for the send every client makes on its own; each Try again is the next. */
   readonly number: number;
-  /** `due`: asked again, to go; `sending`: asked of the composer; `failed`: not through. */
-  readonly state: "due" | "sending" | "failed";
+  /**
+   * `due`: asked again, to go; `sending`: asked of the composer; `failed`: not through;
+   * `answered`: not through, but the conversation holds a stand-up since (the Mate's own).
+   */
+  readonly state: "due" | "sending" | "failed" | "answered";
   /** When it was asked of the composer, wall ms. */
   readonly askedAt: number;
   /** Its send was seen on its way. */
@@ -84,7 +88,11 @@ export function useMateStandUpAttempt(
 ): "none" | "sending" | "failed" {
   const read = () => (environmentId === null ? undefined : attempts.get(environmentId)?.state);
   const state = useSyncExternalStore(subscribeAttempts, read, read);
-  return state === undefined ? "none" : state === "failed" ? "failed" : "sending";
+  return state === undefined || state === "answered"
+    ? "none"
+    : state === "failed"
+      ? "failed"
+      : "sending";
 }
 
 /** Forgets every attempt and clear: the account's session is over. */
@@ -200,6 +208,19 @@ export function useMateStandUp(input: {
       window.clearTimeout(timer);
     };
   }, [attempt, conversation, environmentId, sendBusy]);
+
+  // A failed ask gives way to a stand-up the conversation holds since — the Mate's own server
+  // sends one once the sign-in is recorded: nothing "didn't go through", and the words the
+  // refused send handed back to the composer are not the person's draft.
+  useEffect(() => {
+    if (environmentId === null || threadRef === null) return;
+    if (attempt?.state !== "failed" || conversation !== "started") return;
+    setAttempt(environmentId, { ...attempt, state: "answered" });
+    const drafts = useComposerDraftStore.getState();
+    if (isMateStandUpAsk(drafts.getComposerDraft(threadRef)?.prompt ?? "")) {
+      drafts.clearComposerContent(threadRef);
+    }
+  }, [attempt, conversation, environmentId, threadRef]);
 
   const project = useZeropsEnvironmentProject(environmentId);
   const data = useContext(ZeropsDataContext);
