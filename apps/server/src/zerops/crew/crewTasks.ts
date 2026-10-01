@@ -19,7 +19,12 @@
  *
  * @module crewTasks
  */
-import type { ChatAttachment, CrewTaskSource, CrewTaskState } from "@t3tools/contracts";
+import type {
+  ChatAttachment,
+  CrewCommandError,
+  CrewTaskSource,
+  CrewTaskState,
+} from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 
@@ -84,12 +89,98 @@ export const requireTask = (core: CrewCore, taskId: string) =>
     ),
   );
 
-export const saveTask = (core: CrewCore, row: CrewAssignmentRow) =>
+/** What a press to a crewmate busy in its copy is told. */
+export const busyWords = (handle: string) =>
+  `@${handle} is busy with its copy of the code; try again in a moment`;
+
+/**
+ * A press to a crewmate, under its lock (`CrewCore.crewmate`): it never runs
+ * beside that crewmate's turn end, a merge or another press in the same copy,
+ * and never waits for one — it is refused at once as busy, having done nothing.
+ */
+export const pressCrewmate = <A, E, R>(
+  core: CrewCore,
+  handle: string,
+  effect: Effect.Effect<A, E, R>,
+): Effect.Effect<A, E | CrewCommandError, R> =>
+  core
+    .crewmateIfFree(handle)(effect)
+    .pipe(
+      Effect.flatMap(
+        Option.match({
+          onNone: () => Effect.fail(refuse("wrong-state", busyWords(handle))),
+          onSome: (value) => Effect.succeed(value),
+        }),
+      ),
+    );
+
+/** `pressCrewmate` on every one of `handles`, or on none: a busy one refuses the whole press. */
+export const pressCrewmates = <A, E, R>(
+  core: CrewCore,
+  handles: ReadonlyArray<string>,
+  effect: Effect.Effect<A, E, R>,
+): Effect.Effect<A, E | CrewCommandError, R> => {
+  const [first, ...rest] = [...new Set(handles)];
+  return first === undefined
+    ? effect
+    : pressCrewmate(core, first, pressCrewmates(core, rest, effect));
+};
+
+/**
+ * A press whose work runs long — a Land, a Land now, with their merge and
+ * check: refused at once as busy like any press, then run holding the
+ * crewmate only around the git in its copy and the states it writes (`inCopy`).
+ */
+export const pressCrewmateLong = <A, E, R>(
+  core: CrewCore,
+  taskId: string,
+  effect: (
+    inCopy: <B, E2, R2>(inner: Effect.Effect<B, E2, R2>) => Effect.Effect<B, E2, R2>,
+  ) => Effect.Effect<A, E, R>,
+): Effect.Effect<A, E | CrewCommandError, R> =>
+  Effect.flatMap(requireTask(core, taskId), (pressed) =>
+    Effect.flatMap(pressCrewmate(core, pressed.member, Effect.void), () =>
+      effect(core.crewmate(pressed.member)),
+    ),
+  );
+
+/** A press on a task, to its crewmate (`pressCrewmate`); the task is read again inside. */
+export const onTaskCrewmate = <A, E, R>(
+  core: CrewCore,
+  taskId: string,
+  effect: Effect.Effect<A, E, R>,
+) =>
+  Effect.flatMap(requireTask(core, taskId), (pressed) =>
+    pressCrewmate(core, pressed.member, effect),
+  );
+
+/** The write itself; every writer goes through `core.stepping` (`saveTask`, `saveOver`). */
+const putTask = (core: CrewCore, row: CrewAssignmentRow) =>
   Effect.gen(function* () {
     const next = { ...row, updatedAt: yield* core.now };
     yield* asRefusal(core.store.putAssignment(next));
     return next;
   });
+
+/** A task written as it is given, one write at a time (`core.stepping`). */
+export const saveTask = (core: CrewCore, row: CrewAssignmentRow) =>
+  core.stepping.withPermits(1)(putTask(core, row));
+
+/**
+ * `saveTask` over the task only as it was read: a write from a read made
+ * before another changed the task (its state or its attempt) is refused as
+ * `wrong-state`, never written over the newer state.
+ */
+export const saveOver = (core: CrewCore, read: CrewAssignmentRow, next: CrewAssignmentRow) =>
+  core.stepping.withPermits(1)(
+    Effect.gen(function* () {
+      const stored = yield* requireTask(core, read.assignment);
+      if (stored.state !== read.state || stored.attempt !== read.attempt) {
+        return yield* refuse("wrong-state", `#${stored.number} is ${stored.state}`);
+      }
+      return yield* putTask(core, next);
+    }),
+  );
 
 /**
  * One step of a task's machine, written. A step the task's state does not
@@ -127,8 +218,9 @@ export const stepTask = (
       step.parked === undefined
         ? undefined
         : { on: "triage", reason: PARK_WORDS[step.parked] ?? step.parked, paths: [] };
-    return yield* saveTask(
+    return yield* saveOver(
       core,
+      row,
       change({
         ...row,
         state: step.to,
@@ -595,10 +687,7 @@ export const message = (
     }
     if (open !== undefined) {
       if (open.state === "merging" || open.state === "landing") {
-        return yield* refuse(
-          "wrong-state",
-          `#${open.number} is ${open.state}; try again in a moment`,
-        );
+        return yield* refuse("wrong-state", busyWords(input.handle));
       }
       yield* continueTask(core, applied, member, open, principal, input.text, input.attachments);
       return;
@@ -641,15 +730,22 @@ export const newTask = (
     const applied = yield* requireApplied(core);
     yield* requireMember(applied, input.owner);
     for (const id of input.dependsOn) yield* requireTask(core, id);
-    const task = yield* createTask(core, {
-      owner: input.owner,
-      title: input.title,
-      source: "you",
-      createdBy: principalUser(principal),
-      card: { brief: input.brief, doneWhen: input.doneWhen, note: null },
-      dependsOn: input.dependsOn,
-    });
-    yield* pump(core, input.owner, { taskId: task.assignment, principal });
+    // Checked, then its crewmate held: a busy one is refused before anything is made.
+    yield* pressCrewmate(
+      core,
+      input.owner,
+      Effect.gen(function* () {
+        const task = yield* createTask(core, {
+          owner: input.owner,
+          title: input.title,
+          source: "you",
+          createdBy: principalUser(principal),
+          card: { brief: input.brief, doneWhen: input.doneWhen, note: null },
+          dependsOn: input.dependsOn,
+        });
+        yield* pump(core, input.owner, { taskId: task.assignment, principal });
+      }),
+    );
   });
 
 /** *Tell the crew* (PRD §5.3). */
@@ -675,32 +771,43 @@ export const tell = (
             )
           : refuse("no-mention");
       case "to-crewmate":
-        return yield* message(core, principal, {
-          handle: route.handle,
-          text: input.text,
-          attachments: [],
-        });
+        return yield* pressCrewmate(
+          core,
+          route.handle,
+          message(core, principal, { handle: route.handle, text: input.text, attachments: [] }),
+        );
       case "to-lead":
-        return yield* message(core, principal, {
-          handle: route.lead,
-          text:
-            route.addressed.length === 0
-              ? input.text
-              : `${input.text}\n\nAddressed: ${route.addressed.map((handle) => `@${handle}`).join(", ")}`,
-          attachments: [],
-        });
+        return yield* pressCrewmate(
+          core,
+          route.lead,
+          message(core, principal, {
+            handle: route.lead,
+            text:
+              route.addressed.length === 0
+                ? input.text
+                : `${input.text}\n\nAddressed: ${route.addressed.map((handle) => `@${handle}`).join(", ")}`,
+            attachments: [],
+          }),
+        );
       case "tasks":
-        for (const routed of route.tasks) {
-          const task = yield* createTask(core, {
-            owner: routed.handle,
-            title: routed.title || "Message",
-            source: "you",
-            createdBy: principalUser(principal),
-            card: { brief: input.text, doneWhen: "", note: routed.note ?? null },
-            dependsOn: [],
-          });
-          yield* pump(core, routed.handle, { taskId: task.assignment, principal });
-        }
+        // Every crewmate held first: one busy refuses the press before any task is made.
+        return yield* pressCrewmates(
+          core,
+          route.tasks.map((routed) => routed.handle),
+          Effect.gen(function* () {
+            for (const routed of route.tasks) {
+              const task = yield* createTask(core, {
+                owner: routed.handle,
+                title: routed.title || "Message",
+                source: "you",
+                createdBy: principalUser(principal),
+                card: { brief: input.text, doneWhen: "", note: routed.note ?? null },
+                dependsOn: [],
+              });
+              yield* pump(core, routed.handle, { taskId: task.assignment, principal });
+            }
+          }),
+        );
     }
   });
 
@@ -722,7 +829,7 @@ export const editTask = (
       return yield* refuse("wrong-state", `#${row.number} is ${row.state}`);
     }
     const card = readTaskCard(row.card) ?? { brief: "", doneWhen: "", note: null };
-    yield* saveTask(core, {
+    yield* saveOver(core, row, {
       ...row,
       title: input.title ?? row.title,
       card: {
@@ -743,7 +850,7 @@ export const markFresh = (core: CrewCore, taskId: string) =>
     if (row.state !== "queued" && row.state !== "proposed") {
       return yield* refuse("wrong-state", `#${row.number} has started`);
     }
-    yield* saveTask(core, { ...row, fresh: true });
+    yield* saveOver(core, row, { ...row, fresh: true });
   });
 
 /**
@@ -753,12 +860,22 @@ export const markFresh = (core: CrewCore, taskId: string) =>
  */
 export const discard = (core: CrewCore, taskId: string) =>
   Effect.flatMap(requireTask(core, taskId), (pressed) =>
-    core.crewmate(pressed.member)(
+    // A proposed task touches no copy: its discard needs nothing of its crewmate.
+    (pressed.state === "proposed"
+      ? (effect: Effect.Effect<void, CrewCommandError>) => effect
+      : (effect: Effect.Effect<void, CrewCommandError>) =>
+          pressCrewmate(core, pressed.member, effect))(
       Effect.gen(function* () {
         const applied = yield* requireApplied(core);
         const row = yield* requireTask(core, taskId);
         if (isOpenTask(row.state) && isWorking(core, applied, row.member)) {
           return yield* refuse("wrong-state", `@${row.member}'s turn is running`);
+        }
+        // Its merge or check runs (`integrate`): a discard now would be written over. One
+        // left merging or checking with nothing running on it (a redeploy held its merge,
+        // its check errored) is discarded as any other.
+        if (core.memory.integrating.has(row.assignment)) {
+          return yield* refuse("wrong-state", busyWords(row.member));
         }
         const member = memberOf(applied, row.member);
         if (isOpenTask(row.state) && member?.row.kind === "writer") {

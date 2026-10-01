@@ -5,11 +5,13 @@ import * as NodePath from "node:path";
 
 import { assert, describe, it } from "@effect/vitest";
 import {
+  type CrewCommandError,
   ProviderInstanceId,
   ThreadId as ThreadIdSchema,
   type OrchestrationThreadShell,
 } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
+import * as Exit from "effect/Exit";
 import * as Fiber from "effect/Fiber";
 import * as Option from "effect/Option";
 import * as Ref from "effect/Ref";
@@ -284,7 +286,44 @@ describe("CrewEngine", () => {
     ),
   );
 
-  it.live("a discard pressed while its crewmate's turn end is handled waits for that end", () =>
+  /** A press while `backend`'s turn end commits in its copy: what it came to, and how soon. */
+  const pressDuringTurnEnd = (
+    world: Parameters<Parameters<typeof withCrewEngine>[0]>[0],
+    press: (taskId: string) => Parameters<typeof command>[0],
+  ) =>
+    Effect.gen(function* () {
+      const first = (yield* snapshotWhere((snapshot) => snapshot.board.tasks.length >= 1)).board
+        .tasks[0]!.id;
+      const stint = (yield* dispatchedOf(world, "thread.crew.create")).find(
+        (entry) => entry.crew.crewmate === "backend",
+      );
+      const turnCommit = yield* world.holdSsh((script) => script.includes("): turn 1"));
+      const ended = yield* Effect.forkChild(
+        world.publish(spiEvent("turn.completed", stint!.threadId, { state: "completed" })),
+      );
+      yield* turnCommit.reached;
+      const pressed = yield* Effect.forkChild(Effect.exit(command(press(first))));
+      const atOnce = yield* Fiber.await(pressed).pipe(Effect.timeoutOption("300 millis"));
+      yield* turnCommit.release;
+      yield* Fiber.join(ended);
+      yield* Fiber.join(pressed);
+      return { first, atOnce };
+    });
+
+  /** The press came back before the turn's end, refused because its crewmate was busy. */
+  const refusedAsBusy = (
+    atOnce: Option.Option<Exit.Exit<Exit.Exit<unknown, CrewCommandError>>>,
+  ) => {
+    assert.isTrue(Option.isSome(atOnce), "the press hung on the turn's end");
+    const outer = Option.getOrThrow(atOnce);
+    assert.isTrue(Exit.isSuccess(outer), "the press died");
+    const exit = (outer as Exit.Success<Exit.Exit<unknown, CrewCommandError>>).value;
+    assert.isTrue(Exit.isFailure(exit), "the press was not refused");
+    const error = Option.getOrThrow(Exit.findErrorOption(exit));
+    assert.include(error.detail ?? "", "busy");
+  };
+
+  it.live("a discard pressed while its crewmate's turn end is handled is refused at once", () =>
     withCrewEngine((world) =>
       Effect.gen(function* () {
         yield* applied(world);
@@ -297,24 +336,265 @@ describe("CrewEngine", () => {
           doneWhen: "",
           dependsOn: [],
         });
-        const first = (yield* snapshotWhere((snapshot) => snapshot.board.tasks.length === 2)).board
-          .tasks[0]!.id;
-        const [stint] = yield* dispatchedOf(world, "thread.crew.create");
-        const turnCommit = yield* world.holdSsh((script) => script.includes("): turn 1"));
-        const ended = yield* Effect.forkChild(
-          world.publish(spiEvent("turn.completed", stint!.threadId, { state: "completed" })),
-        );
-        yield* turnCommit.reached;
-        const pressed = yield* Effect.forkChild(command({ _tag: "discard", taskId: first }));
-        const beforeTheEnd = yield* Fiber.await(pressed).pipe(Effect.timeoutOption("300 millis"));
-        yield* turnCommit.release;
-        yield* Fiber.join(ended);
-        yield* Fiber.join(pressed);
-        assert.isTrue(Option.isNone(beforeTheEnd), "the discard returned before the turn's end");
+        yield* snapshotWhere((snapshot) => snapshot.board.tasks.length === 2);
+        const { first, atOnce } = yield* pressDuringTurnEnd(world, (taskId) => ({
+          _tag: "discard",
+          taskId,
+        }));
+        refusedAsBusy(atOnce);
+        // Once the turn has ended, the same press goes through and the queue moves.
+        yield* command({ _tag: "discard", taskId: first });
         yield* snapshotWhere(
           (snapshot) =>
             snapshot.board.tasks[0]?.state === "discarded" &&
             snapshot.board.tasks[1]?.state === "working",
+        );
+      }),
+    ),
+  );
+
+  const pressesDuringTurnEnd: ReadonlyArray<{
+    readonly name: string;
+    readonly press: (taskId: string) => Parameters<typeof command>[0];
+  }> = [
+    {
+      name: "a message to the crewmate",
+      press: () => ({ _tag: "message", handle: "backend", text: "More", attachments: [] }),
+    },
+    {
+      name: "Tell the crew naming the crewmate",
+      press: () => ({ _tag: "tell", text: "@backend more", mentions: [{ handle: "backend" }] }),
+    },
+    { name: "Land now", press: (taskId) => ({ _tag: "landNow", taskId }) },
+    { name: "Try again", press: (taskId) => ({ _tag: "taskRetry", taskId }) },
+    {
+      name: "a new task for the crewmate",
+      press: () => ({
+        _tag: "taskCreate",
+        owner: "backend",
+        title: "Next",
+        brief: "Then this.",
+        doneWhen: "",
+        dependsOn: [],
+      }),
+    },
+  ];
+
+  for (const { name, press } of pressesDuringTurnEnd) {
+    it.live(`${name} pressed while its crewmate's turn end is handled is refused at once`, () =>
+      withCrewEngine((world) =>
+        Effect.gen(function* () {
+          yield* applied(world);
+          yield* command({ _tag: "message", handle: "backend", text: "First", attachments: [] });
+          const { atOnce } = yield* pressDuringTurnEnd(world, press);
+          refusedAsBusy(atOnce);
+        }),
+      ),
+    );
+  }
+
+  /** `backend` reported done; its check after the turn end is held. */
+  const holdTheCheck = (world: Parameters<Parameters<typeof withCrewEngine>[0]>[0]) =>
+    Effect.gen(function* () {
+      yield* applied(world);
+      const thread = yield* firstTurn(world, () => undefined);
+      yield* reportDone(thread);
+      const check = yield* world.holdSsh((script) => script.includes("test -f ok.txt"));
+      yield* world.publish(spiEvent("turn.completed", thread, { state: "completed" }));
+      yield* check.reached;
+      // The board as the engine has rebuilt it, never a snapshot from before the turn end.
+      const taskId = (yield* snapshotWhere(
+        (snapshot) => snapshot.board.tasks[0]?.state === "checking",
+      )).board.tasks[0]!.id;
+      return { thread, check, taskId };
+    });
+
+  const quick = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
+    Effect.exit(effect).pipe(Effect.timeoutOption("300 millis"));
+
+  it.live("a discard while the check runs is refused as busy, and the check is not undone", () =>
+    withCrewEngine((world) =>
+      Effect.gen(function* () {
+        const { check, taskId } = yield* holdTheCheck(world);
+        const pressed = yield* quick(command({ _tag: "discard", taskId }));
+        refusedAsBusy(Option.map(pressed, (exit) => Exit.succeed(exit)));
+        yield* check.release;
+        // No ok.txt: the check fails, and the task goes back for rework — never discarded.
+        yield* snapshotWhere((snapshot) => snapshot.board.tasks[0]?.state === "rework");
+      }),
+    ),
+  );
+
+  it.live(
+    "a message during the check goes on at once; a turn that reports before the check ends is integrated after it",
+    () =>
+      withCrewEngine((world) =>
+        Effect.gen(function* () {
+          const { thread, check } = yield* holdTheCheck(world);
+          const messaged = yield* quick(
+            command({ _tag: "message", handle: "backend", text: "More", attachments: [] }),
+          );
+          assert.isTrue(
+            Option.isSome(messaged) && Exit.isSuccess(Option.getOrThrow(messaged)),
+            "the message did not go through at once",
+          );
+          yield* snapshotWhere((snapshot) => snapshot.board.tasks[0]?.state === "working");
+          // Its turn reports done and ends while the first check still runs.
+          yield* world.publish(spiEvent("turn.started", thread, {}));
+          yield* reportDone(thread);
+          yield* world.publish(spiEvent("turn.completed", thread, { state: "completed" }));
+          yield* check.release;
+          // Never stuck in merging: integrated again once the check ended.
+          yield* snapshotWhere((snapshot) => snapshot.board.tasks[0]?.state === "rework");
+        }),
+      ),
+  );
+
+  it.live("Tell the crew to a busy crewmate is refused and creates nothing", () =>
+    withCrewEngine((world) =>
+      Effect.gen(function* () {
+        writeCrewHome(world.workspace, {
+          "crew.yaml": [
+            "name: Game team",
+            "briefTitle: Space shooter",
+            "members:",
+            "  - handle: backend",
+            "    displayName: Backend",
+            "    host: appdev",
+            "  - handle: erik",
+            "    displayName: Erik",
+            "    kind: reader",
+            "",
+          ].join("\n"),
+          "jobs/erik.md": "You write the plan.\n",
+        });
+        yield* command({ _tag: "apply" });
+        yield* eventually(Effect.map(latest, everyCopyReady));
+        yield* command({ _tag: "message", handle: "backend", text: "First", attachments: [] });
+        const { atOnce } = yield* pressDuringTurnEnd(world, () => ({
+          _tag: "tell",
+          text: "@backend adds the API, @erik reviews the plan.",
+          mentions: [{ handle: "backend" }, { handle: "erik" }],
+        }));
+        refusedAsBusy(atOnce);
+        // Read from the tables, not a snapshot that may not have caught up.
+        assert.strictEqual(
+          (yield* (yield* CrewStore).assignments(CREW_ID)).length,
+          1,
+          "a busy Tell made tasks",
+        );
+      }),
+    ),
+  );
+
+  const RUN_NOW = {
+    _tag: "start",
+    budgetUsd: "unlimited",
+    timeLimitHours: "unlimited",
+    stopAtUsagePercent: null,
+    landing: "person",
+    devGrant: false,
+    leadMayStart: false,
+  } as const;
+
+  /** `backend`'s first task, its turn ended without a report: working, no turn running. */
+  const turnEndedWorking = (world: Parameters<Parameters<typeof withCrewEngine>[0]>[0]) =>
+    Effect.gen(function* () {
+      yield* applied(world);
+      const thread = yield* firstTurn(world, () => undefined);
+      yield* world.publish(spiEvent("turn.completed", thread, { state: "completed" }));
+      const taskId = (yield* snapshotWhere(
+        (snapshot) => snapshot.board.tasks[0]?.state === "working",
+      )).board.tasks[0]!.id;
+      return { thread, taskId };
+    });
+
+  const stuckStates: ReadonlyArray<"merging" | "checking"> = ["merging", "checking"];
+  for (const state of stuckStates) {
+    it.live(`a task left ${state} with nothing running on it can be discarded`, () =>
+      withCrewEngine((world) =>
+        Effect.gen(function* () {
+          const { taskId } = yield* turnEndedWorking(world);
+          // A redeploy held its merge, or its check errored: nothing runs on it now.
+          const store = yield* CrewStore;
+          const row = (yield* store.assignments(CREW_ID)).find(
+            (task) => task.assignment === taskId,
+          )!;
+          yield* store.putAssignment({ ...row, state });
+          yield* command({ _tag: "discard", taskId });
+          yield* snapshotWhere((snapshot) => snapshot.board.tasks[0]?.state === "discarded");
+        }),
+      ),
+    );
+  }
+
+  it.live("a message during a Land now's check goes through", () =>
+    withCrewEngine((world) =>
+      Effect.gen(function* () {
+        const { taskId } = yield* turnEndedWorking(world);
+        const check = yield* world.holdSsh((script) => script.includes("test -f ok.txt"));
+        const landing = yield* Effect.forkChild(Effect.exit(command({ _tag: "landNow", taskId })));
+        yield* check.reached;
+        const messaged = yield* quick(
+          command({ _tag: "message", handle: "backend", text: "More", attachments: [] }),
+        );
+        yield* check.release;
+        yield* Fiber.join(landing);
+        assert.isTrue(
+          Option.isSome(messaged) && Exit.isSuccess(Option.getOrThrow(messaged)),
+          "the message waited on, or was refused by, the Land's check",
+        );
+      }),
+    ),
+  );
+
+  it.live("a Land now while the task's integration still runs lands once that one ends", () =>
+    withCrewEngine((world) =>
+      Effect.gen(function* () {
+        const { thread, check, taskId } = yield* holdTheCheck(world);
+        // Back to work during the check, and its turn ends with no report.
+        yield* command({ _tag: "message", handle: "backend", text: "More", attachments: [] });
+        yield* world.publish(spiEvent("turn.started", thread, {}));
+        write(world.root, ".crew/backend/ok.txt", "ok\n");
+        yield* world.publish(spiEvent("turn.completed", thread, { state: "completed" }));
+        yield* command({ _tag: "landNow", taskId });
+        yield* check.release;
+        yield* snapshotWhere((snapshot) => snapshot.board.tasks[0]?.state === "landed");
+      }),
+    ),
+  );
+
+  it.live("Start during a turn end waits for the copy, then carries the task on once", () =>
+    withCrewEngine((world) =>
+      Effect.gen(function* () {
+        yield* applied(world);
+        const thread = yield* firstTurn(world, () => undefined);
+        const turnCommit = yield* world.holdSsh((script) => script.includes("): turn 1"));
+        const ended = yield* Effect.forkChild(
+          world.publish(spiEvent("turn.completed", thread, { state: "completed" })),
+        );
+        yield* turnCommit.reached;
+        const turnsBefore = (yield* dispatchedOf(world, "thread.turn.start")).length;
+        const started = yield* quick(command(RUN_NOW));
+        assert.isTrue(Option.isSome(started), "Start waited on the turn end");
+        assert.strictEqual(
+          (yield* dispatchedOf(world, "thread.turn.start")).length,
+          turnsBefore,
+          "a turn went to the crewmate while its copy was being committed",
+        );
+        yield* turnCommit.release;
+        yield* Fiber.join(ended);
+        // The advance Start skipped runs once the copy is free: one carry-on, not two.
+        yield* eventually(
+          Effect.map(
+            dispatchedOf(world, "thread.turn.start"),
+            (turns) => turns.length === turnsBefore + 1,
+          ),
+        );
+        yield* Effect.sleep("300 millis");
+        assert.strictEqual(
+          (yield* dispatchedOf(world, "thread.turn.start")).length,
+          turnsBefore + 1,
         );
       }),
     ),
@@ -339,7 +619,8 @@ describe("CrewEngine", () => {
         yield* snapshotWhere((snapshot) => snapshot.crewmates[0]!.lane?.ahead === 1);
         const lock = NodePath.join(world.root, ".git/worktrees/backend/index.lock");
         NodeFS.writeFileSync(lock, "");
-        const first = (yield* latest).board.tasks[0]!.id;
+        const first = (yield* snapshotWhere((snapshot) => snapshot.board.tasks.length === 2)).board
+          .tasks[0]!.id;
         const refused = yield* Effect.flip(command({ _tag: "discard", taskId: first }));
         assert.strictEqual(refused.reason, "io");
         NodeFS.rmSync(lock);

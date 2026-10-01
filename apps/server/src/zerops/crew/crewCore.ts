@@ -130,6 +130,12 @@ export interface EngineMemory {
   readonly turns: Map<string, number>;
   /** Tasks whose merge-in and check are running, so a second ask waits for the first. */
   readonly integrating: Set<string>;
+  /** Tasks asked to integrate while their integration ran: it runs again when that one ends. */
+  readonly integrateAgain: Set<string>;
+  /** A Land now that found its task's integration running: the person who pressed it, by task. */
+  readonly landWhenReady: Map<string, TurnPrincipal>;
+  /** Tasks a run's own landing is queued or running for: one at a time per task. */
+  readonly autoLanding: Set<string>;
   /** Each dev service's Show-on-dev claim, as the gate's `holdsClaim` reads it. */
   readonly claims: Map<string, MemoryClaim>;
   /** What each dev service's dev server served when last read. */
@@ -227,6 +233,9 @@ export const makeMemory = (): EngineMemory => ({
   continueAtTurnEnd: new Map(),
   turns: new Map(),
   integrating: new Set(),
+  integrateAgain: new Set(),
+  landWhenReady: new Map(),
+  autoLanding: new Set(),
   claims: new Map(),
   served: new Map(),
   integration: new Map(),
@@ -341,8 +350,17 @@ export const makeCrewCore = Effect.gen(function* () {
   const memory = makeMemory();
   const scope = yield* Effect.scope;
   const numbering = yield* Semaphore.make(1);
+  const stepping = yield* Semaphore.make(1);
   const opening = yield* Semaphore.make(1);
   const crewmateLocks = new Map<string, Semaphore.Semaphore>();
+  const lockOf = (handle: string) => {
+    let lock = crewmateLocks.get(handle);
+    if (lock === undefined) {
+      lock = Semaphore.makeUnsafe(1);
+      crewmateLocks.set(handle, lock);
+    }
+    return lock;
+  };
   const changed = PubSub.publish(signals, undefined).pipe(Effect.asVoid);
 
   /** Reads the applied crew back from the tables into {@link cache}. */
@@ -515,6 +533,8 @@ export const makeCrewCore = Effect.gen(function* () {
     signals: Stream.fromPubSub(signals),
     /** Serializes what takes a task's `#N`: two presses at once never share a number. */
     numbered: <A, E, R>(effect: Effect.Effect<A, E, R>) => numbering.withPermits(1)(effect),
+    /** One task write at a time, so a write can check the state it read is still the stored one. */
+    stepping,
     /** Serializes opening a crewmate's first conversation: two callers at once open one. */
     opening: <A, E, R>(effect: Effect.Effect<A, E, R>) => opening.withPermits(1)(effect),
     /**
@@ -523,14 +543,16 @@ export const makeCrewCore = Effect.gen(function* () {
      */
     crewmate:
       (handle: string) =>
-      <A, E, R>(effect: Effect.Effect<A, E, R>) => {
-        let lock = crewmateLocks.get(handle);
-        if (lock === undefined) {
-          lock = Semaphore.makeUnsafe(1);
-          crewmateLocks.set(handle, lock);
-        }
-        return lock.withPermits(1)(effect);
-      },
+      <A, E, R>(effect: Effect.Effect<A, E, R>) =>
+        lockOf(handle).withPermits(1)(effect),
+    /**
+     * `crewmate`'s lock taken only when free: `None`, and `effect` not run,
+     * while its turn end, a merge in its copy or another press holds it.
+     */
+    crewmateIfFree:
+      (handle: string) =>
+      <A, E, R>(effect: Effect.Effect<A, E, R>) =>
+        lockOf(handle).withPermitsIfAvailable(1)(effect),
     now: Effect.map(DateTime.now, DateTime.formatIso),
     uuid: crypto.randomUUIDv4.pipe(Effect.orDie),
   };

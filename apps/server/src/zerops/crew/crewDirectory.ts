@@ -56,7 +56,7 @@ import { isOpenTask } from "./crewSnapshot.ts";
 import type { CrewStintRow } from "./CrewStore.ts";
 import type { CrewMemoryTask } from "./CrewMemory.ts";
 import { readTaskCard, readTaskCheck } from "./crewTaskData.ts";
-import { openTaskOf, saveTask, stepTask } from "./crewTasks.ts";
+import { openTaskOf, saveOver, stepTask } from "./crewTasks.ts";
 
 /** A crew turn's commands run at most this long in the crewmate's copy. */
 export const CREW_PAYLOAD_TIMEOUT_SECONDS = 600;
@@ -210,7 +210,7 @@ export const report = (core: CrewCore, member: CrewThreadMember, input: CrewRepo
       };
       switch (input.status) {
         case "progress":
-          yield* saveTask(core, reported);
+          yield* saveOver(core, open, reported);
           yield* core.changed;
           return text("Noted.");
         case "blocked":
