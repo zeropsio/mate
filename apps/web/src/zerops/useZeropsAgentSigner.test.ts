@@ -3,8 +3,12 @@ import * as DateTime from "effect/DateTime";
 import { act, createElement } from "react";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
+import { closeAccountLifetime } from "./accountLifetime";
 import {
   agentSignersToRecord,
+  LOCAL_SIGNER_STANDS_MS,
+  localAgentSignerWritten,
+  retainLocalAgentSigners,
   localSignersSettledBy,
   readLocalAgentSigners,
   rememberLocalAgentSigner,
@@ -33,6 +37,8 @@ vi.mock("./zeropsDataContext", async () => {
 });
 
 const PROJECT = { projectId: "project-1", orgId: "org-1" };
+/** The Mate the records are of: what this client wrote is its own, never another Mate's. */
+const ENV = EnvironmentId.make("env-mate");
 
 const snapshot = (
   logins: Readonly<
@@ -239,9 +245,9 @@ describe("agentSignersToRecord, logins beyond the defaults", () => {
   });
 
   it("forgets a login's local record once the snapshot carries it", () => {
-    rememberLocalAgentSigner("claudeAgent-work", "user-a");
-    localSignersSettledBy(withWork({ phase: "succeeded", startedBy: "user-a" }, "user-a"));
-    expect(readLocalAgentSigners()).toEqual({});
+    rememberLocalAgentSigner(ENV, "claudeAgent-work", "user-a");
+    localSignersSettledBy(ENV, withWork({ phase: "succeeded", startedBy: "user-a" }, "user-a"));
+    expect(readLocalAgentSigners(ENV)).toEqual({});
   });
 });
 
@@ -267,40 +273,146 @@ describe("local agent signers", () => {
   it("remembers a record once written, and tells subscribers", () => {
     const seen: number[] = [];
     const unsubscribe = subscribeLocalAgentSigners(() => seen.push(seen.length));
-    rememberLocalAgentSigner("claude-code", "user-a");
-    expect(readLocalAgentSigners()).toEqual({ "claude-code": "user-a" });
+    rememberLocalAgentSigner(ENV, "claude-code", "user-a");
+    expect(readLocalAgentSigners(ENV)).toEqual({ "claude-code": "user-a" });
     expect(seen).toEqual([0]);
     // The same fact again is not a change.
-    rememberLocalAgentSigner("claude-code", "user-a");
+    rememberLocalAgentSigner(ENV, "claude-code", "user-a");
     expect(seen).toEqual([0]);
     unsubscribe();
-    localSignersSettledBy(authorized({ "claude-code": "user-a" }));
+    localSignersSettledBy(ENV, authorized({ "claude-code": "user-a" }));
   });
 
   it("forgets an entry once the snapshot carries that agent's signer, and keeps the others", () => {
-    rememberLocalAgentSigner("claude-code", "user-a");
-    rememberLocalAgentSigner("codex", "user-a");
-    localSignersSettledBy(authorized({ "claude-code": "user-a" }));
-    expect(readLocalAgentSigners()).toEqual({ codex: "user-a" });
-    localSignersSettledBy(authorized({ codex: "user-b" }));
-    expect(readLocalAgentSigners()).toEqual({});
+    rememberLocalAgentSigner(ENV, "claude-code", "user-a");
+    rememberLocalAgentSigner(ENV, "codex", "user-a");
+    localSignersSettledBy(ENV, authorized({ "claude-code": "user-a" }));
+    expect(readLocalAgentSigners(ENV)).toEqual({ codex: "user-a" });
+    localSignersSettledBy(ENV, authorized({ codex: "user-b" }));
+    expect(readLocalAgentSigners(ENV)).toEqual({});
   });
 
   it("forgets a record whose write failed, and keeps the others", () => {
-    rememberLocalAgentSigner("claude-code", "user-a");
-    rememberLocalAgentSigner("codex", "user-a");
-    forgetLocalAgentSigner("claude-code");
-    expect(readLocalAgentSigners()).toEqual({ codex: "user-a" });
-    forgetLocalAgentSigner("codex");
-    expect(readLocalAgentSigners()).toEqual({});
+    rememberLocalAgentSigner(ENV, "claude-code", "user-a");
+    rememberLocalAgentSigner(ENV, "codex", "user-a");
+    forgetLocalAgentSigner(ENV, "claude-code");
+    expect(readLocalAgentSigners(ENV)).toEqual({ codex: "user-a" });
+    forgetLocalAgentSigner(ENV, "codex");
+    expect(readLocalAgentSigners(ENV)).toEqual({});
+  });
+
+  it("keeps one Mate's record to that Mate", () => {
+    const other = EnvironmentId.make("env-other-mate");
+    rememberLocalAgentSigner(ENV, "claude-code", "user-a");
+    expect(readLocalAgentSigners(other)).toEqual({});
+    localSignersSettledBy(other, authorized({ "claude-code": "user-a" }));
+    expect(readLocalAgentSigners(ENV)).toEqual({ "claude-code": "user-a" });
+    localSignersSettledBy(ENV, authorized({ "claude-code": "user-a" }));
+  });
+
+  // Signing in over an earlier record: the server's read of the tags is cached, so its snapshot
+  // names the record from before for a while after this client wrote the new one.
+  const signedInOver = (
+    earlier: string | undefined,
+    latestBy: string,
+  ): ZeropsAgentAuthSnapshot => ({
+    available: true,
+    agents: [
+      {
+        agentId: "claude-code",
+        credPresent: true,
+        flagOAuth: true,
+        flagToken: false,
+        providerAuth: "authenticated",
+        state: "authorized",
+        ...(earlier === undefined ? {} : { authorizedBy: { subject: earlier } }),
+        login: {
+          phase: "succeeded",
+          terminalId: "t",
+          startedAt: DateTime.makeUnsafe("2026-09-30T10:00:00.000Z"),
+          startedBy: latestBy,
+        },
+      },
+    ],
+  });
+
+  it("keeps the record it wrote while the snapshot still names the one from before", () => {
+    rememberLocalAgentSigner(ENV, "claude-code", "user-a");
+    localSignersSettledBy(ENV, signedInOver("user-b", "user-a"));
+    expect(readLocalAgentSigners(ENV)).toEqual({ "claude-code": "user-a" });
+    localSignersSettledBy(ENV, authorized({ "claude-code": "user-a" }));
+    expect(readLocalAgentSigners(ENV)).toEqual({});
+  });
+
+  // Neither snapshot names this client's record: what forgets it is the later sign-in alone.
+  it.each([
+    { name: "before any record", earlier: undefined },
+    { name: "while the record from before still stands", earlier: "user-c" },
+  ])("forgets the record it wrote once somebody else has signed in since, $name", ({ earlier }) => {
+    rememberLocalAgentSigner(ENV, "claude-code", "user-a");
+    localSignersSettledBy(ENV, signedInOver(earlier, "user-a"));
+    expect(readLocalAgentSigners(ENV)).toEqual({ "claude-code": "user-a" });
+    localSignersSettledBy(ENV, signedInOver(earlier, "user-b"));
+    expect(readLocalAgentSigners(ENV)).toEqual({});
+  });
+
+  // The server publishes a landed record within its wait (`SIGNER_RECORD_AWAIT`, 60 s): past it,
+  // the snapshot speaks for the login again, whatever this client wrote.
+  it("lets a written record speak for a minute after its write, then the snapshot", () => {
+    vi.useFakeTimers();
+    try {
+      rememberLocalAgentSigner(ENV, "claude-code", "user-a");
+      vi.advanceTimersByTime(5 * 60_000);
+      expect(readLocalAgentSigners(ENV)).toEqual({ "claude-code": "user-a" });
+      localAgentSignerWritten(ENV, "claude-code", "user-a");
+      vi.advanceTimersByTime(LOCAL_SIGNER_STANDS_MS - 1);
+      expect(readLocalAgentSigners(ENV)).toEqual({ "claude-code": "user-a" });
+      vi.advanceTimersByTime(1);
+      expect(readLocalAgentSigners(ENV)).toEqual({});
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("a newer write of the same record starts its own minute", () => {
+    vi.useFakeTimers();
+    try {
+      rememberLocalAgentSigner(ENV, "claude-code", "user-a");
+      localAgentSignerWritten(ENV, "claude-code", "user-a");
+      vi.advanceTimersByTime(LOCAL_SIGNER_STANDS_MS - 1_000);
+      rememberLocalAgentSigner(ENV, "claude-code", "user-a");
+      localAgentSignerWritten(ENV, "claude-code", "user-a");
+      vi.advanceTimersByTime(2_000);
+      expect(readLocalAgentSigners(ENV)).toEqual({ "claude-code": "user-a" });
+      vi.advanceTimersByTime(LOCAL_SIGNER_STANDS_MS);
+      expect(readLocalAgentSigners(ENV)).toEqual({});
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("forgets every record when the account's session ends", () => {
+    rememberLocalAgentSigner(ENV, "claude-code", "user-a");
+    closeAccountLifetime();
+    expect(readLocalAgentSigners(ENV)).toEqual({});
+  });
+
+  it("forgets the records of a Mate that has left the account", () => {
+    const other = EnvironmentId.make("env-other-mate");
+    rememberLocalAgentSigner(ENV, "claude-code", "user-a");
+    rememberLocalAgentSigner(other, "codex", "user-a");
+    retainLocalAgentSigners(new Set([other]));
+    expect(readLocalAgentSigners(ENV)).toEqual({});
+    expect(readLocalAgentSigners(other)).toEqual({ codex: "user-a" });
+    forgetLocalAgentSigner(other, "codex");
   });
 
   it("keeps the store's identity when a snapshot settles nothing", () => {
-    rememberLocalAgentSigner("codex", "user-a");
-    const before = readLocalAgentSigners();
-    localSignersSettledBy(authorized({}));
-    expect(readLocalAgentSigners()).toBe(before);
-    localSignersSettledBy(authorized({ codex: "user-a" }));
+    rememberLocalAgentSigner(ENV, "codex", "user-a");
+    const before = readLocalAgentSigners(ENV);
+    localSignersSettledBy(ENV, authorized({}));
+    expect(readLocalAgentSigners(ENV)).toBe(before);
+    localSignersSettledBy(ENV, authorized({ codex: "user-a" }));
   });
 
   const login = (phase: "verifying-code" | "succeeded" | "failed" | "cancelled", by?: string) => ({
@@ -314,6 +426,33 @@ describe("local agent signers", () => {
     {
       name: "the snapshot's authorizer wins",
       agent: { authorizedBy: { subject: "user-b" }, login: login("verifying-code", "user-a") },
+      local: { "claude-code": "user-a" },
+      expected: { subject: "user-b" },
+    },
+    {
+      // The server's snapshot still names the record from before this person's sign-in.
+      name: "the record being written wins over the one from before the sign-in it records",
+      agent: { authorizedBy: { subject: "user-b" }, login: login("succeeded", "user-a") },
+      local: { "claude-code": "user-a" },
+      expected: { subject: "user-a" },
+    },
+    {
+      name: "a sign-in by somebody else since leaves the record this client wrote behind",
+      agent: { login: login("succeeded", "user-b") },
+      local: { "claude-code": "user-a" },
+      expected: undefined,
+    },
+    {
+      // A record that names anybody but whoever signed in last runs nothing (the gate): the
+      // latest sign-in is whose the agent is, and that is who the viewer is told about.
+      name: "a record from before a later sign-in yields to that sign-in",
+      agent: { authorizedBy: { subject: "user-a" }, login: login("succeeded", "user-b") },
+      local: {},
+      expected: { subject: "user-b" },
+    },
+    {
+      name: "a sign-in by somebody else since, recorded, is theirs",
+      agent: { authorizedBy: { subject: "user-b" }, login: login("succeeded", "user-b") },
       local: { "claude-code": "user-a" },
       expected: { subject: "user-b" },
     },
@@ -468,7 +607,7 @@ describe("useZeropsAgentSignerRecord (H13: a failed write is surfaced, not swall
     const { useZeropsAgentSignerRecord } = await import("./useZeropsAgentSigner");
     let latest: ReturnType<typeof useZeropsAgentSignerRecord> | undefined;
     function Probe({ current }: { readonly current: ZeropsAgentAuthSnapshot }) {
-      latest = useZeropsAgentSignerRecord({ environmentId: null, snapshot: current, project });
+      latest = useZeropsAgentSignerRecord({ environmentId: ENV, snapshot: current, project });
       return null;
     }
     const root = createRoot(document.createElement("div") as unknown as Element);
@@ -497,9 +636,41 @@ describe("useZeropsAgentSignerRecord (H13: a failed write is surfaced, not swall
       await Promise.resolve();
     });
     expect(result().recordFailed.has("claude-code")).toBe(false);
-    expect(readLocalAgentSigners()).toMatchObject({ "claude-code": "user-a" });
+    expect(readLocalAgentSigners(ENV)).toMatchObject({ "claude-code": "user-a" });
 
     await unmount();
+  });
+
+  // user-a's write failed; user-b signs in since. Retrying would write user-a's tag over the
+  // record of user-b's sign-in: the failure is no longer user-a's to fix, and nothing is written.
+  it("a failed record is not offered again once somebody else has signed in since", async () => {
+    vi.useFakeTimers();
+    try {
+      mock.updateProjectTags.mockRejectedValueOnce(new Error("network"));
+      const { result, rerender, unmount } = await render(PROJECT, succeeded("claude-code"));
+      expect(result().recordFailed.has("claude-code")).toBe(true);
+
+      const bSignedIn = succeeded("claude-code");
+      await rerender({
+        ...bSignedIn,
+        agents: bSignedIn.agents.map((agent) => ({
+          ...agent,
+          login: { ...agent.login!, startedBy: "user-b" },
+        })),
+      });
+      expect(result().recordFailed.has("claude-code")).toBe(false);
+
+      mock.updateProjectTags.mockResolvedValue(undefined);
+      await act(async () => {
+        result().retry("claude-code");
+        await vi.advanceTimersByTimeAsync(30_000);
+      });
+      expect(mock.updateProjectTags).toHaveBeenCalledTimes(1);
+      expect(readLocalAgentSigners(ENV)).toEqual({});
+      await unmount();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("a failed write is tried again on its own, and clears when it lands", async () => {

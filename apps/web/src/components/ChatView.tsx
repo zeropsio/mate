@@ -2378,7 +2378,7 @@ export default function ChatView(props: ChatViewProps) {
   );
   const zeropsViewerSubject = useZeropsSessionOptional()?.user?.id;
   // The record this client wrote itself counts until the snapshot carries it.
-  const zeropsLocalSigners = useLocalAgentSigners();
+  const zeropsLocalSigners = useLocalAgentSigners(activeThreadEnvironmentId);
   // The environment, not the thread: a draft has one before it has the other,
   // and the header names the project either way. This host demands the
   // project's topology (`useProjectTopology`) — the panel demands the same
@@ -3084,7 +3084,7 @@ export default function ChatView(props: ChatViewProps) {
       setDismissedProviderStatusBannerKey(null);
     }
   }, [dismissedProviderStatusBannerKey, providerStatusBannerKey]);
-  // A Zerops login being registered runs already: the server's "being registered" says nothing.
+  // A Zerops login's status says nothing the sign-in feed has moved past (`spentLoginStatusStale`).
   const visibleProviderStatus =
     shouldShowProviderStatusBanner(activeProviderStatus, dismissedProviderStatusBannerKey) &&
     !spentLoginStatusStale(activeProviderStatus, zeropsAgentAuth.snapshot, providerStatuses)

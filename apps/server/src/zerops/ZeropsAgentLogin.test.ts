@@ -9,11 +9,14 @@ import type {
   TerminalWriteInput,
   ZeropsAgentId,
 } from "@t3tools/contracts";
-import { ZeropsAgentLoginError } from "@t3tools/contracts";
+import { TerminalNotRunningError, ZeropsAgentLoginError } from "@t3tools/contracts";
+import { latestSucceededSignIn } from "@t3tools/shared/zeropsAgentAuth";
 import * as DateTime from "effect/DateTime";
+import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as Option from "effect/Option";
+import * as Queue from "effect/Queue";
 import * as Ref from "effect/Ref";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
@@ -21,6 +24,7 @@ import * as TestClock from "effect/testing/TestClock";
 
 import type { TerminalManager } from "../terminal/Manager.ts";
 import * as ZeropsAgentLoginModule from "./ZeropsAgentLogin.ts";
+import { memorySignInStore } from "./zeropsSignIns.ts";
 import type { ZeropsAgentLoginByAgent } from "./ZeropsAgentLogin.ts";
 
 type TerminalManagerService = Pick<
@@ -519,6 +523,124 @@ it.effect("asks the auth feed to republish when a login succeeds", () =>
   ),
 );
 
+// Eva signed in; Jan's sign-in fails to start. Eva's success is still the latest one, and the
+// gate goes by it: a start that failed leaves the login as it was, never wipes who signed in.
+it.effect("a start that fails leaves the latest success standing", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const fakeTerminal = yield* makeFakeTerminalManager();
+      const fakeAuth = yield* makeFakeAuth();
+      let openFails = false;
+      const feed = yield* ZeropsAgentLoginModule.make({
+        terminalManager: {
+          ...fakeTerminal.service,
+          open: (input) =>
+            openFails
+              ? Effect.fail(
+                  new TerminalNotRunningError({
+                    threadId: input.threadId,
+                    terminalId: input.terminalId,
+                  }),
+                )
+              : fakeTerminal.service.open(input),
+        },
+        zeropsAgentAuth: fakeAuth,
+        isZeropsEnvironment: true,
+      });
+
+      yield* feed.start("claude-code", "thread-1", "zerops-user-eva");
+      yield* fakeTerminal.emit(
+        "thread-1",
+        "agent-login-claude-code",
+        "Login successful. Press Enter to continue…\n",
+      );
+      const evas = loginOf(yield* feed.latest, "claude-code");
+      assert.equal(evas?.phase, "succeeded");
+
+      openFails = true;
+      yield* Effect.flip(feed.start("claude-code", "thread-1", "zerops-user-jan"));
+
+      const after = loginOf(yield* feed.latest, "claude-code");
+      assert.equal(latestSucceededSignIn(after)?.startedBy, evas?.startedBy);
+      assert.isDefined(evas?.startedBy);
+    }),
+  ),
+);
+
+// Who signed a login in last is kept across restarts (`zeropsSignIns`): written with every
+// success, a fresh one replacing it, and gone with the credential.
+it.effect("keeps who signed in last, and lets it go with the credential", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const fakeTerminal = yield* makeFakeTerminalManager();
+      const store = yield* memorySignInStore({ codex: { by: "user-gone", at: 1 } });
+      const held = yield* Queue.unbounded<ReadonlyArray<readonly [string, boolean]>>();
+      const feed = yield* ZeropsAgentLoginModule.make({
+        terminalManager: fakeTerminal.service,
+        zeropsAgentAuth: yield* makeFakeAuth(),
+        isZeropsEnvironment: true,
+        signIns: store,
+        credentialsHeld: Stream.fromQueue(held),
+      });
+      const settle = TestClock.adjust(Duration.millis(5));
+      const succeed = (subject: string) =>
+        Effect.gen(function* () {
+          yield* feed.start("claude-code", "thread-1", subject);
+          yield* fakeTerminal.emit(
+            "thread-1",
+            "agent-login-claude-code",
+            "Login successful. Press Enter to continue…\n",
+          );
+        });
+
+      // A credential gone while the server was down: its kept sign-in goes at the first reading.
+      yield* Queue.offer(held, [
+        ["claude-code", false],
+        ["codex", false],
+      ]);
+      yield* settle;
+      assert.deepEqual(yield* store.load, {});
+
+      // A sign-in's own first moments, the credential not there yet: nothing is let go.
+      yield* succeed("zerops-user-eva");
+      yield* Queue.offer(held, [["claude-code", false]]);
+      yield* settle;
+      const evas = (yield* store.load)["claude-code"]?.by;
+      assert.isDefined(evas);
+
+      yield* Queue.offer(held, [["claude-code", true]]);
+      yield* succeed("zerops-user-jan");
+      const jans = (yield* store.load)["claude-code"]?.by;
+      assert.notEqual(jans, evas, "a fresh sign-in replaces the one before");
+
+      // Signed out: the credential goes, and its sign-in with it.
+      yield* Queue.offer(held, [["claude-code", false]]);
+      yield* settle;
+      assert.deepEqual(yield* store.load, {});
+    }),
+  ),
+);
+
+it.effect("starts over a kept sign-in no instant can hold, and keeps nobody for it", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const fakeTerminal = yield* makeFakeTerminalManager();
+      const feed = yield* ZeropsAgentLoginModule.make({
+        terminalManager: fakeTerminal.service,
+        zeropsAgentAuth: yield* makeFakeAuth(),
+        isZeropsEnvironment: true,
+        signIns: yield* memorySignInStore({
+          "claude-code": { by: "user-eva", at: 1e20 },
+          codex: { by: "user-ada", at: Number.NaN },
+        }),
+      });
+      const latest = yield* feed.latest;
+      assert.isUndefined(loginOf(latest, "claude-code"));
+      assert.isUndefined(loginOf(latest, "codex"));
+    }),
+  ),
+);
+
 // A login whose CLI ended without the walker seeing success or failure (it
 // crashed, was killed, printed something unrecognized and quit) must not sit
 // in `menu` or `awaiting-browser` for ever: the terminal's exit ends it.
@@ -601,7 +723,8 @@ it.effect("an exit after the login succeeded changes nothing", () =>
         exitSignal: null,
       });
 
-      assert.equal(loginOf(yield* feed.latest, "claude-code")?.phase, "succeeded");
+      const evas = loginOf(yield* feed.latest, "claude-code");
+      assert.equal(evas?.phase, "succeeded");
     }),
   ),
 );
@@ -698,7 +821,8 @@ it.effect("after a submitted code, the CLI's success line ends the login as succ
         "Login successful. Press Enter to continue\n",
       );
 
-      assert.equal(loginOf(yield* feed.latest, "claude-code")?.phase, "succeeded");
+      const evas = loginOf(yield* feed.latest, "claude-code");
+      assert.equal(evas?.phase, "succeeded");
       assert.deepEqual(yield* Ref.get(fakeAuth.calls), ["claude-code"]);
     }),
   ),

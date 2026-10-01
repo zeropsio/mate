@@ -31,7 +31,7 @@ vi.mock("../../state/entities", () => ({
 
 vi.mock("../../zerops/useZeropsAgentSigner", async (importActual) => ({
   ...(await importActual<typeof import("../../zerops/useZeropsAgentSigner")>()),
-  useLocalAgentSigners: () => new Map(),
+  useLocalAgentSigners: () => ({}),
   useZeropsEnvironmentProject: () => ({ projectId: "p-fen", orgId: "org-acme" }),
 }));
 

@@ -1201,6 +1201,7 @@ const buildAppUnderTest = (options?: {
             // nobody signed anything in and nothing is ever signed out.
             Layer.mock(ZeropsProjectSignersModule.ZeropsProjectSigners)({
               signers: Effect.succeed({}),
+              fresh: Effect.succeed({}),
               turnRefusal: ({ agent, subject }) =>
                 Effect.succeed(
                   ZeropsProjectSignersModule.turnRefusal({ agent, signer: undefined, subject }),

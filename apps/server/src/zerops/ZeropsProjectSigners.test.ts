@@ -1,6 +1,7 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, describe, it } from "@effect/vitest";
 import * as DateTime from "effect/DateTime";
+import * as Deferred from "effect/Deferred";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
@@ -10,7 +11,17 @@ import * as Path from "effect/Path";
 import * as TestClock from "effect/testing/TestClock";
 import { HttpClient, HttpClientResponse } from "effect/unstable/http";
 
+import type { TerminalAttachStreamEvent, TerminalSessionSnapshot } from "@t3tools/contracts";
+
 import * as ServerConfig from "../config.ts";
+import { make as makeAgentLogin } from "./ZeropsAgentLogin.ts";
+import { ZEROPS_SUBJECT_PREFIX } from "./ZeropsMembershipWatch.ts";
+import {
+  fileSignInStore,
+  memorySignInStore,
+  signInsPath,
+  type SignInStore,
+} from "./zeropsSignIns.ts";
 import { resolveZeropsEnvironment } from "./ZeropsEnvironment.ts";
 import * as ZeropsMateKeyModule from "./ZeropsMateKey.ts";
 import { make as makeMateKey } from "./ZeropsMateKey.ts";
@@ -834,6 +845,126 @@ describe("the turn gate", () => {
     }).pipe(Effect.scoped),
   );
 
+  // Eva signs in over Jan's record. Jan's Retry, still showing from a write of his that failed
+  // earlier, writes his tag over Eva's. Half an hour on, the credential is still Eva's: the record
+  // written after her sign-in runs nothing for Jan, however old her sign-in is.
+  it.effect("a record written over a later sign-in admits nobody else, however long ago", () =>
+    Effect.gen(function* () {
+      const { signers } = yield* gate([signerTag("claude-code", JAN)]);
+      const { login } = yield* justSignedIn(EVA);
+      yield* TestClock.adjust(Duration.minutes(31));
+
+      assert.deepStrictEqual(
+        yield* signers.turnRefusal({
+          agentId: "claude-code",
+          agent: signedIn,
+          subject: JAN,
+          login,
+        }),
+        { kind: "someone-else" },
+      );
+      assert.deepStrictEqual(
+        yield* signers.loginRefusal({
+          key: "claude-code",
+          state: "authorized",
+          token: false,
+          subject: JAN,
+          login,
+        }),
+        { kind: "someone-else" },
+      );
+    }).pipe(Effect.scoped),
+  );
+
+  // Eva signs in over Jan's record; Jan writes his tag over hers by API; the server restarts.
+  // The credential is still Eva's — it lives on under the home — and so does who signed it in.
+  describe("across a restart", () => {
+    const terminal = () => {
+      const listeners = new Map<
+        string,
+        (event: TerminalAttachStreamEvent) => Effect.Effect<void>
+      >();
+      const manager = {
+        open: () => Effect.succeed({} as TerminalSessionSnapshot),
+        write: () => Effect.void,
+        close: () => Effect.void,
+        attachStream: (
+          input: { readonly terminalId: string },
+          listener: (event: TerminalAttachStreamEvent) => Effect.Effect<void>,
+        ) =>
+          Effect.sync(() => {
+            listeners.set(input.terminalId, listener);
+            return () => listeners.delete(input.terminalId);
+          }),
+      } as unknown as Parameters<typeof makeAgentLogin>[0]["terminalManager"];
+      const succeed = (terminalId: string) =>
+        listeners.get(terminalId)?.({
+          type: "output",
+          threadId: "thread-1",
+          terminalId,
+          data: "Login successful. Press Enter to continue…\n",
+        }) ?? Effect.void;
+      return { manager, succeed };
+    };
+    const server = (store: SignInStore) => {
+      const { manager, succeed } = terminal();
+      return makeAgentLogin({
+        terminalManager: manager,
+        zeropsAgentAuth: { recheckNow: () => Effect.void },
+        isZeropsEnvironment: true,
+        signIns: store,
+      }).pipe(Effect.map((logins) => ({ logins, succeed })));
+    };
+
+    it.effect("a tag written over a sign-in admits nobody else after a restart", () =>
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem;
+        const path = yield* Path.Path;
+        const home = yield* fs.makeTempDirectoryScoped({ prefix: "mate-sign-ins-" });
+        const file = signInsPath(path, home);
+
+        yield* Effect.scoped(
+          Effect.gen(function* () {
+            const { logins, succeed } = yield* server(yield* fileSignInStore(file));
+            yield* logins.start("claude-code", "thread-1", `${ZEROPS_SUBJECT_PREFIX}${EVA}`);
+            yield* succeed("agent-login-claude-code");
+          }),
+        );
+
+        const { signers } = yield* gate([signerTag("claude-code", JAN)]);
+        const { logins } = yield* server(yield* fileSignInStore(file));
+        const login = (yield* logins.latest)["claude-code"];
+
+        assert.deepStrictEqual(
+          yield* signers.turnRefusal({
+            agentId: "claude-code",
+            agent: signedIn,
+            subject: JAN,
+            login,
+          }),
+          { kind: "someone-else" },
+        );
+      }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+    );
+
+    it.effect("a credential nobody kept a sign-in for goes by its tag, as before", () =>
+      Effect.gen(function* () {
+        const { signers } = yield* gate([signerTag("claude-code", JAN)]);
+        const { logins } = yield* server(yield* memorySignInStore());
+        const login = (yield* logins.latest)["claude-code"];
+
+        assert.isUndefined(
+          yield* signers.turnRefusal({
+            agentId: "claude-code",
+            agent: signedIn,
+            subject: JAN,
+            login,
+          }),
+        );
+      }).pipe(Effect.scoped),
+    );
+  });
+
   it.effect("somebody else's sign-in is nothing this turn waits for", () =>
     Effect.gen(function* () {
       const { signers, reads } = yield* gate([]);
@@ -863,6 +994,74 @@ describe("the turn gate", () => {
       });
       assert.deepStrictEqual(refusal, { kind: "not-signed-in", auth: "not-authorized" });
       assert.strictEqual(reads() - before, 0);
+    }).pipe(Effect.scoped),
+  );
+});
+
+// A read that set out before a record landed and came back after a newer read: what it saw is
+// older than what the cache holds, and it never puts the earlier signer back.
+describe("a read that comes back late", () => {
+  const slowProject = () =>
+    Effect.gen(function* () {
+      let tags: ReadonlyArray<string> = [signerTag("claude-code", EVA)];
+      let holdNext = false;
+      const held: Array<Deferred.Deferred<void>> = [];
+      const client = HttpClient.make((request) =>
+        Effect.gen(function* () {
+          if (request.url.endsWith("/user/list")) {
+            return HttpClientResponse.fromWeb(request, json({ message: "down" }, 500));
+          }
+          // What the platform held when the read set out.
+          const response = json({ id: PROJECT_ID, clientId: CLIENT_ID, tagList: tags });
+          if (holdNext) {
+            holdNext = false;
+            const gate = yield* Deferred.make<void>();
+            held.push(gate);
+            yield* Deferred.await(gate);
+          }
+          return HttpClientResponse.fromWeb(request, response);
+        }),
+      );
+      const signers = yield* makeProjectSigners.pipe(
+        Effect.provide(
+          Layer.mergeAll(
+            Layer.succeed(HttpClient.HttpClient, client),
+            Layer.succeed(
+              ZeropsMateKeyModule.ZeropsMateKey,
+              ZeropsMateKeyModule.snapshotOnlyReader(MATE_KEY),
+            ),
+            ServerConfig.layer({ zerops: environment } as ServerConfig.ServerConfig["Service"]),
+            NodeServices.layer,
+          ),
+        ),
+      );
+      yield* TestClock.adjust(Duration.zero);
+      return {
+        signers,
+        holdNextRead: () => {
+          holdNext = true;
+        },
+        setTags: (next: ReadonlyArray<string>) => {
+          tags = next;
+        },
+        releaseAll: () =>
+          Effect.forEach(held.splice(0), (gate) => Deferred.succeed(gate, undefined)),
+      };
+    });
+
+  it.effect("never overwrites a newer read, nor answers with what it saw", () =>
+    Effect.gen(function* () {
+      const { signers, holdNextRead, setTags, releaseAll } = yield* slowProject();
+      holdNextRead();
+      const late = yield* signers.fresh.pipe(Effect.forkChild);
+      yield* TestClock.adjust(Duration.zero);
+
+      setTags([signerTag("claude-code", JAN)]);
+      assert.deepStrictEqual(yield* signers.fresh, { "claude-code": JAN });
+
+      yield* releaseAll();
+      assert.deepStrictEqual(yield* Fiber.join(late), { "claude-code": JAN });
+      assert.deepStrictEqual(yield* signers.signers, { "claude-code": JAN });
     }).pipe(Effect.scoped),
   );
 });

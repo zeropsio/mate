@@ -86,8 +86,30 @@ describe("resolveAgentOwnership", () => {
   });
 
   it("a sign-in whose record failed says so and can be retried (H13)", () => {
-    // The viewer's own just-tried write failing outranks whatever the
-    // recorded tag currently says — even a stale someone-else read.
+    // The viewer's own just-tried write failing outranks a record of nobody,
+    // or of the viewer — the authorizer comes resolved against the latest
+    // sign-in (`resolveAgentAuthorizer`), so a stale earlier record is already
+    // the viewer's here.
+    expect(
+      resolveAgentOwnership({
+        credPresent: true,
+        authorizedBy: { subject: "user-a", at: AT },
+        viewerSubject: "user-a",
+        recordFailed: true,
+      }),
+    ).toBe("record-failed");
+    expect(
+      resolveAgentOwnership({
+        credPresent: true,
+        viewerSubject: "user-a",
+        recordFailed: true,
+      }),
+    ).toBe("record-failed");
+  });
+
+  // Somebody else signed in since the viewer's write failed: retrying it would write the
+  // viewer's tag over theirs. The row says whose the agent is now, and offers no retry.
+  it("a failed record of the viewer's yields to somebody else's sign-in since", () => {
     expect(
       resolveAgentOwnership({
         credPresent: true,
@@ -95,14 +117,7 @@ describe("resolveAgentOwnership", () => {
         viewerSubject: "user-a",
         recordFailed: true,
       }),
-    ).toBe("record-failed");
-    expect(
-      resolveAgentOwnership({
-        credPresent: true,
-        viewerSubject: "user-a",
-        recordFailed: true,
-      }),
-    ).toBe("record-failed");
+    ).toBe("someone-else");
   });
 
   it("no credential still means nobody, even mid-retry", () => {

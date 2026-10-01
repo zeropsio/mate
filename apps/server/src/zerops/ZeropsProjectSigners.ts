@@ -238,6 +238,16 @@ export const SIGNERS_CACHE_TTL = Duration.seconds(30);
  */
 export const SIGNER_RECORD_WAIT = Duration.seconds(15);
 const SIGNER_RECORD_POLL = Duration.seconds(1);
+
+/**
+ * How often, and for how long, a feed reads the tags afresh ({@link ZeropsProjectSigners}'
+ * `fresh`) after a sign-in this server walked, until the record names the person who signed in.
+ * The app writes it a second or two after it sees the success, and retries a failed write for
+ * ~20 s; meanwhile the cached read names the record from before — no record, or the earlier
+ * signer — and with that one recorded nothing else would ever republish.
+ */
+export const SIGNER_RECORD_FRESH_POLL = Duration.seconds(2);
+export const SIGNER_RECORD_FRESH_AWAIT = Duration.seconds(60);
 /** A login started longer ago than this has had its record written, or never will. */
 const RECORD_ON_ITS_WAY_WITHIN = Duration.minutes(30);
 
@@ -265,6 +275,11 @@ export class ZeropsProjectSigners extends Context.Service<
   {
     /** Who signed each agent in, from a read no older than {@link SIGNERS_CACHE_TTL}. */
     readonly signers: Effect.Effect<ProjectSigners>;
+    /**
+     * Who signed each agent in, read now and cached — a failed read answers what was last known.
+     * For a record known to be on its way: a sign-in this server has just walked.
+     */
+    readonly fresh: Effect.Effect<ProjectSigners>;
     /**
      * {@link turnRefusal} for this session on `agentId`. A refusal that rests
      * on the signer record and came from the cache — or from what was last
@@ -418,9 +433,13 @@ export const make = Effect.gen(function* () {
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
   const homeDir = NodeOS.homedir();
-  const cache = yield* Ref.make<{ readonly at: number; readonly value: ProjectSigners } | null>(
-    null,
-  );
+  /** `seq` orders reads by when they set out: a read that came back late is older than `seq`. */
+  const cache = yield* Ref.make<{
+    readonly at: number;
+    readonly seq: number;
+    readonly value: ProjectSigners;
+  } | null>(null);
+  const readSeq = yield* Ref.make(0);
   const members = yield* Ref.make<{
     readonly at: number;
     readonly value: ReadonlySet<string>;
@@ -446,12 +465,21 @@ export const make = Effect.gen(function* () {
   const readThrough = (environment: ZeropsEnvironment) =>
     Effect.gen(function* () {
       const now = yield* Clock.currentTimeMillis;
+      const seq = yield* Ref.updateAndGet(readSeq, (n) => n + 1);
       const read = yield* withHttp(readProjectSigners({ environment }));
       if (read === undefined) {
         return { value: (yield* Ref.get(cache))?.value ?? {}, fresh: false };
       }
-      yield* Ref.set(cache, { at: now, value: read });
-      return { value: read, fresh: true };
+      // A read that set out before the one the cache holds saw an older project: a record that
+      // landed in between stays, and the late read answers with it.
+      return yield* Ref.modify(cache, (held) =>
+        held !== null && held.seq > seq
+          ? [{ value: held.value, fresh: true }, held]
+          : [
+              { value: read, fresh: true },
+              { at: now, seq, value: read },
+            ],
+      );
     });
 
   /** The signers, and whether they come from a read made for this call. */
@@ -545,11 +573,15 @@ export const make = Effect.gen(function* () {
     Effect.gen(function* () {
       const { token, subject } = input;
       const signedInBy = recentSignInBy(input.login, yield* Clock.currentTimeMillis);
+      // Whoever signed in last here holds the credential, however long ago: a record naming
+      // anybody else — the one from before, or one written over theirs since — runs nothing.
+      const heldBy = latestSucceededSignIn(input.login)?.startedBy;
       const refuse = (signer: SignerRecord | undefined): TurnRefusal | undefined => {
         const refusal = base(signer);
-        // The record from before names this person, but the credential is now another's.
-        if (refusal !== undefined || token || signedInBy === undefined) return refusal;
-        return signedInBy === subject ? undefined : { kind: "someone-else" };
+        if (refusal !== undefined || token || heldBy === undefined || heldBy.length === 0) {
+          return refusal;
+        }
+        return heldBy === subject ? undefined : { kind: "someone-else" };
       };
       const awaitRecord = subject !== undefined && subject.length > 0 && signedInBy === subject;
       return yield* gate(key, refuse, { recent: signedInBy !== undefined && !token, awaitRecord });
@@ -610,8 +642,14 @@ export const make = Effect.gen(function* () {
     );
   }
 
+  const fresh: ZeropsProjectSigners["Service"]["fresh"] =
+    environment === undefined
+      ? Effect.succeed({})
+      : readThrough(environment).pipe(Effect.map((read) => read.value));
+
   return ZeropsProjectSigners.of({
     signers,
+    fresh,
     turnRefusal: gateTurn,
     loginRefusal: gateLogin,
     isActiveMember,
