@@ -41,7 +41,7 @@ import {
 import { ZeropsServiceId } from "@t3tools/client-runtime/zerops/data";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 import type { RoleProjectKind } from "@t3tools/shared/zeropsRoles";
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
 import { create } from "zustand";
 
 import { onAccountLifetimeClose } from "./accountLifetime";
@@ -58,6 +58,7 @@ import { addGroupEnvironment, writeRegistryMember } from "./addGroupEnvironment"
 import { brokerGrantTokens, grantBrokerProject, projectTagsWrite } from "./brokerGrant";
 import {
   pressSteps,
+  pressThrough,
   type PressStepView,
 } from "../components/zerops/ZeropsEnvironmentCreationDialog.logic";
 import { placedNewProjects, type NewProjectBirth } from "./newProjectBirth";
@@ -138,6 +139,41 @@ export function progressPress(
     if (press === undefined) return store;
     return { presses: { ...store.presses, [projectId]: { ...press, progress } } };
   });
+}
+
+/**
+ * Whether a press is over at this progress: once its project is marked closed off the Mate needs
+ * no browser, and its record goes — but *Finish setup*'s, whose view says when it is done, stays
+ * until its Mate connects (`connectedPresses`).
+ */
+export function pressDoneAt(
+  press: { readonly finishing?: boolean | undefined },
+  progress: ReadonlyArray<EnvironmentCreationStepProgress>,
+): boolean {
+  return press.finishing !== true && pressThrough(progress);
+}
+
+/** The presses whose Mate has connected: nothing of them is left to say. */
+export function connectedPresses(
+  presses: ReadonlyArray<MatePress>,
+  candidates: ReadonlyArray<{ readonly project: { readonly id: string }; readonly group: string }>,
+): ReadonlyArray<string> {
+  const connected = new Set(
+    candidates.flatMap((candidate) =>
+      candidate.group === "connected" ? [candidate.project.id] : [],
+    ),
+  );
+  return presses.flatMap((press) => (connected.has(press.projectId) ? [press.projectId] : []));
+}
+
+/** Ends the presses whose Mate has connected, as the listing reads them. */
+export function useForgetConnectedPresses(
+  candidates: ReadonlyArray<{ readonly project: { readonly id: string }; readonly group: string }>,
+): void {
+  const presses = useMatePresses();
+  useEffect(() => {
+    for (const projectId of connectedPresses(presses, candidates)) forgetPress(projectId);
+  }, [candidates, presses]);
 }
 
 /** The press this tab holds for a project, read outside a render. */
@@ -622,7 +658,12 @@ async function pressRun(
       input.onProjectAccepted?.(projectId, projectName);
     },
     onProgress: (progress) => {
-      if (accepted !== undefined && input.isCurrent()) progressPress(accepted, progress);
+      if (accepted !== undefined && input.isCurrent()) {
+        const held = readMatePress(accepted);
+        // Marked closed off: the Mate needs no browser, and its press record goes.
+        if (held !== undefined && pressDoneAt(held, progress)) forgetPress(accepted);
+        else progressPress(accepted, progress);
+      }
       input.onProgress?.(progress);
     },
   }).finally(ended);

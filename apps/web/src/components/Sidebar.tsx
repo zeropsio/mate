@@ -254,7 +254,7 @@ import { useOpenMate } from "../zerops/useOpenMate";
 import { SidebarWaitingStack } from "./zerops/SidebarWaitingStack";
 
 import { useZeropsProjectFlowOptional } from "../zerops/projectFlowContext";
-import { placedPressesIn, useMatePresses } from "../zerops/matePress";
+import { placedPressesIn, useForgetConnectedPresses, useMatePresses } from "../zerops/matePress";
 import {
   canCreateProjectsInOrganization,
   readZeropsGroupTags,
@@ -1811,6 +1811,8 @@ export default function Sidebar() {
   // groups before the listing holds them — the projects page's own placing —
   // and the New projects this tab is making, from the press.
   const zeropsPresses = useMatePresses();
+  // A press ends once its Mate connects: nothing of it is left to say.
+  useForgetConnectedPresses(zeropsCandidates);
   const zeropsMade = useNewProjectBirths((state) => state.births);
   const zeropsPlacedBirths = useMemo(
     () =>

@@ -15,6 +15,8 @@ import {
   progressPress,
   shareGroupReach,
   PRESSED_ELSEWHERE,
+  connectedPresses,
+  pressDoneAt,
   readMatePress,
   runPress,
   withPressTries,
@@ -342,13 +344,14 @@ describe("runPress — a press settled, tried again, and one at a time", () => {
       },
       shareReach: async () => undefined,
     }) as unknown as EnvironmentCreationPlatform;
-  const begin = () =>
+  const begin = (finishing = false) =>
     beginPress({
       projectId: "p-1",
       organizationId: "org-acme",
       startedAt: 0,
       placement: null,
       container: true,
+      finishing,
     });
   const press = (marks: Array<"ok" | "refused">, locks?: LockManagerLike) =>
     runPress({
@@ -361,11 +364,17 @@ describe("runPress — a press settled, tried again, and one at a time", () => {
       sleep: async () => undefined,
     });
 
-  it("settles a press that ran through", async () => {
-    begin();
+  it("settles a Finish setup that ran through, for its view to say so", async () => {
+    begin(true);
     expect(await press(["ok"])).toMatchObject({ ok: true });
     expect(readMatePress("p-1")?.state).toEqual({ kind: "pressed" });
     forgetPress("p-1");
+  });
+
+  it("ends an Add's press at its mark", async () => {
+    begin();
+    expect(await press(["ok"])).toMatchObject({ ok: true });
+    expect(readMatePress("p-1")).toBeUndefined();
   });
 
   it("settles a press that stopped with Try again, which resumes it at the step that stopped", async () => {
@@ -379,10 +388,9 @@ describe("runPress — a press settled, tried again, and one at a time", () => {
       reason: "The tag was refused.",
     });
     if (stopped?.kind !== "failed" || stopped.retry === null) throw new Error("no retry");
-    // The platform now takes it: refusals spent, the retry runs through.
+    // The platform now takes it: refusals spent, the retry runs through, and the press ends.
     await stopped.retry();
-    expect(readMatePress("p-1")?.state).toEqual({ kind: "pressed" });
-    forgetPress("p-1");
+    expect(readMatePress("p-1")).toBeUndefined();
   });
 
   it("runs none where another tab is pressing the project, and says so", async () => {
@@ -426,5 +434,60 @@ describe("withPressTries — the harden, tried again", () => {
     );
     expect(outcome).toEqual({ ok: false, error: "Refused." });
     expect(tries).toBe(PRESS_STEP_ATTEMPTS);
+  });
+});
+
+// A press record ended only with the tab (pass 28 review): it ends at the mark — the Mate needs no
+// browser from then — or, for Finish setup, whose view says it is done, at its first connect.
+describe("a press's end", () => {
+  const STEPS: ReadonlyArray<EnvironmentCreationStep> = [
+    { kind: "import-container", agents: [] },
+    { kind: "close-off" },
+    { kind: "register" },
+  ];
+  const at = (states: ReadonlyArray<EnvironmentCreationStepProgress["state"]>) =>
+    STEPS.map((step, index) => ({ step, state: states[index]! }));
+
+  it.each([
+    {
+      case: "an Add before its mark",
+      finishing: false,
+      states: ["done", "running", "queued"],
+      want: false,
+    },
+    {
+      case: "an Add at its mark",
+      finishing: false,
+      states: ["done", "done", "running"],
+      want: true,
+    },
+    {
+      case: "Finish setup at its mark: its view says when it is done",
+      finishing: true,
+      states: ["done", "done", "running"],
+      want: false,
+    },
+  ] as const)("$case: $want", ({ finishing, states, want }) => {
+    expect(pressDoneAt({ finishing }, at(states))).toBe(want);
+  });
+
+  it("ends every press whose Mate has connected", () => {
+    const made = (projectId: string): MatePress => ({
+      projectId,
+      organizationId: "org-acme",
+      startedAt: 0,
+      placement: null,
+      container: true,
+      state: { kind: "pressed" },
+    });
+    expect(
+      connectedPresses(
+        [made("p-up"), made("p-coming"), made("p-unlisted")],
+        [
+          { project: { id: "p-up" }, group: "connected" },
+          { project: { id: "p-coming" }, group: "provisioning" },
+        ],
+      ),
+    ).toEqual(["p-up"]);
   });
 });

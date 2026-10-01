@@ -112,6 +112,14 @@ export function asSentence(reason: string): string {
   return /[.!?]$/u.test(capital) ? capital : `${capital}.`;
 }
 
+/** A container that failed, stopped, or is restarting: its own state, never "Coming up". */
+function containerDown(status: string | undefined): boolean {
+  if (status === undefined) return false;
+  return (
+    status.endsWith("FAILED") || status === "STOPPED" || RESTARTING_SERVICE_STATUSES.has(status)
+  );
+}
+
 /**
  * Where a Mate is in its first minutes, or `undefined` once it is up — or where nothing says it is
  * being made at all: a Mate that is only asleep, stopped or restarting is not coming.
@@ -134,6 +142,8 @@ export function mateComing(input: MateComingInput): MateComing | undefined {
       verb: press?.retryable === true ? "try-again" : "remove",
     };
   }
+  // A container that failed, stopped or is restarting shows that, whatever this tab pressed.
+  if (containerDown(candidate?.service?.status)) return undefined;
   if (press !== undefined && press.container) {
     return {
       kind: "coming",

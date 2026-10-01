@@ -134,6 +134,15 @@ describe("mateComing — a Mate in its first minutes, in one set of words", () =
       input: { press: undefined, candidate: { group: "ready" } },
     },
     { case: "a stopped Mate", input: { press: undefined, candidate: { group: "unavailable" } } },
+    // A press this tab made does not make a container that failed, stopped or is restarting read
+    // as coming up: it shows its own state (pass 28 review).
+    ...(["ACTION_FAILED", "STOPPED", "RESTARTING", "UPGRADING"] as const).map((status) => ({
+      case: `a container ${status} under this tab's press`,
+      input: {
+        press: HELD,
+        candidate: { group: "unavailable" as const, service: { status } },
+      },
+    })),
   ])("says nothing for $case", ({ input }) => {
     expect(mateComing(input)).toBeUndefined();
   });
