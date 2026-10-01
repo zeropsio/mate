@@ -1,4 +1,4 @@
-import { act, createElement } from "react";
+import { act, createElement, StrictMode } from "react";
 import { create } from "react-test-renderer";
 import { describe, expect, it } from "vite-plus/test";
 
@@ -9,12 +9,11 @@ import {
   ZeropsAccountId,
   ZeropsOrganizationId,
   type AccountScope,
-  type MembersCellRequest,
   type OrganizationRef,
 } from "@t3tools/client-runtime/zerops/data";
 import { AtomRegistry } from "effect/unstable/reactivity";
 
-import { FakeCells } from "./__fixtures__/cells";
+import { makeMemberCells } from "./__fixtures__/memberCells";
 import { ZeropsDataContext, type ZeropsDataContextValue } from "./zeropsDataContext";
 import {
   useZeropsOrganizationMembersRead,
@@ -91,7 +90,7 @@ describe("zeropsMemberNameByUserId", () => {
 });
 
 describe("useZeropsOrganizationMembersRead", () => {
-  it("is one shared read of the organization's members, however many surfaces ask", async () => {
+  it("is one read of the organization's members, however many surfaces ask at once", async () => {
     const scope: AccountScope = {
       account: {
         apiOrigin: makeZeropsApiOrigin("https://api.example.test"),
@@ -104,9 +103,17 @@ describe("useZeropsOrganizationMembersRead", () => {
       account: scope.account,
       organizationId: ZeropsOrganizationId.make(organizationId),
     });
-    const resources = new FakeCells<MembersCellRequest>();
+    let reads = 0;
+    const cells = await makeMemberCells({
+      scope,
+      organization: organizationRef("org-1"),
+      members: async () => {
+        reads += 1;
+        return [{ id: "cu-jan", user: { fullName: "Jan Novák" } }] as never;
+      },
+    });
     const data = {
-      runtime: { scope, cells: resources },
+      runtime: { scope, cells },
       organizationRef,
     } as unknown as ZeropsDataContextValue;
     const seen: Array<ReturnType<typeof useZeropsOrganizationMembersRead>> = [];
@@ -117,31 +124,28 @@ describe("useZeropsOrganizationMembersRead", () => {
     await act(async () => {
       create(
         createElement(
-          RegistryContext.Provider,
-          { value: AtomRegistry.make() },
+          StrictMode,
+          null,
           createElement(
-            ZeropsDataContext.Provider,
-            { value: data },
-            createElement(Probe),
-            createElement(Probe),
-            createElement(Probe),
-            createElement(Probe),
+            RegistryContext.Provider,
+            { value: AtomRegistry.make() },
+            createElement(
+              ZeropsDataContext.Provider,
+              { value: data },
+              createElement(Probe),
+              createElement(Probe),
+              createElement(Probe),
+              createElement(Probe),
+            ),
           ),
         ),
       );
     });
-    expect(seen.at(-1)?.status).toBe("loading");
     await act(async () => {
-      resources.publish({
-        state: "known",
-        value: [{ id: "cu-jan", user: { fullName: "Jan Novák" } }] as never,
-        asOf: { ordinal: 1, atMs: 0 },
-        coverage: "complete",
-        freshness: { kind: "settled" },
-      });
+      await new Promise((resolve) => setTimeout(resolve, 0));
     });
     expect(seen.at(-1)?.status).toBe("ready");
     expect(seen.at(-1)?.members).toHaveLength(1);
-    expect(resources.acquisitions).toBe(1);
+    expect(reads).toBe(1);
   });
 });
