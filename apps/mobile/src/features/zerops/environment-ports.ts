@@ -235,6 +235,7 @@ export async function mobileAccountPorts(input: {
       account: account.account,
       concurrency: DEFAULT_ZEROPS_GRANT_POLICY.roundProjectConcurrency,
       onUser: input.onUser,
+      recentUser: () => client.verifiedUser(),
     }),
     signals: mobilePlatformSignals(),
     environments: {

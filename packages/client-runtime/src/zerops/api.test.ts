@@ -230,6 +230,26 @@ describe("ZeropsApiClient authentication", () => {
     expect(client.session?.accessToken).toBe("access-2");
   });
 
+  it("remembers the user it last read for this session, and forgets it with the session", async () => {
+    vi.useFakeTimers({ now: 5_000 });
+    try {
+      const stub = recordingFetch(() =>
+        jsonResponse(200, { id: "user-1", email: "a@b.c", clientUserList: [] }),
+      );
+      const client = new ZeropsApiClient({ fetch: stub.fetch });
+      client.restoreSession(SESSION);
+      expect(client.verifiedUser()).toBe(null);
+
+      await client.fetchUser();
+      expect(client.verifiedUser()).toMatchObject({ user: { id: "user-1" }, atMs: 5_000 });
+
+      client.forgetSession();
+      expect(client.verifiedUser()).toBe(null);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("renews through the renewal hook and holds a session it hands back without storing it again", async () => {
     const renewedElsewhere: ZeropsSession = { accessToken: "access-9", refreshToken: "refresh-9" };
     const stub = recordingFetch((request) =>

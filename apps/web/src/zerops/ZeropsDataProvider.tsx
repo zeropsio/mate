@@ -260,6 +260,8 @@ export function ZeropsDataProvider({
               account: scope.account,
               concurrency: DEFAULT_ZEROPS_GRANT_POLICY.roundProjectConcurrency,
               onUser: (verified) => verifiedMemberships(verified),
+              // The session read the user as it opened: the first round takes it.
+              recentUser: () => client.verifiedUser(),
             }),
             signals,
             atomRegistry: registry,

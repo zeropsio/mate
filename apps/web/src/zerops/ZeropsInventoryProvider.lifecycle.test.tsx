@@ -234,6 +234,8 @@ const mountInventory = Effect.fn(function* (
       if (fetchGate !== null) await fetchGate;
       return user;
     }),
+    // No session read stands in: each round reads its own user, as these tests count.
+    verifiedUser: () => null,
     // A searched listing: each project is judged by its own read, which these tests fail.
     readAccessibleClientProjects: vi.fn(async () => ({
       projects: [...projects.values()].filter(({ id }) => indexed.has(id)),

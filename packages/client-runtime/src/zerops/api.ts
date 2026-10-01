@@ -1022,9 +1022,30 @@ export class ZeropsApiClient {
     }
   }
 
-  fetchUser(signal?: AbortSignal): Promise<ZeropsUser> {
-    return this.#request<ZeropsUser>("/user/info", { signal: signal ?? null });
+  async fetchUser(signal?: AbortSignal): Promise<ZeropsUser> {
+    const generation = this.#generation;
+    const user = await this.#request<ZeropsUser>("/user/info", { signal: signal ?? null });
+    // @effect-diagnostics-next-line globalDate:off -- dated on the wall clock its readers' Clock reads.
+    this.#verified = { user, atMs: Date.now(), generation };
+    return user;
   }
+
+  /**
+   * The user the platform last answered `GET /user/info` with for this session, and when — so a
+   * reader moments after the session's own read takes it rather than asking again.
+   */
+  verifiedUser(): { readonly user: ZeropsUser; readonly atMs: number } | null {
+    const verified = this.#verified;
+    return verified === null || verified.generation !== this.#generation
+      ? null
+      : { user: verified.user, atMs: verified.atMs };
+  }
+
+  #verified: {
+    readonly user: ZeropsUser;
+    readonly atMs: number;
+    readonly generation: number;
+  } | null = null;
 
   /**
    * `GET /client/{id}/project` — the direct read. It is lag-free: a project is
