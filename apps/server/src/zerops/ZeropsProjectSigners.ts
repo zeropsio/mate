@@ -542,11 +542,15 @@ export const make = Effect.gen(function* () {
     Effect.gen(function* () {
       const { token, subject } = input;
       const signedInBy = recentSignInBy(input.login, yield* Clock.currentTimeMillis);
+      // Whoever signed in last here holds the credential, however long ago: a record naming
+      // anybody else — the one from before, or one written over theirs since — runs nothing.
+      const heldBy = latestSucceededSignIn(input.login)?.startedBy;
       const refuse = (signer: SignerRecord | undefined): TurnRefusal | undefined => {
         const refusal = base(signer);
-        // The record from before names this person, but the credential is now another's.
-        if (refusal !== undefined || token || signedInBy === undefined) return refusal;
-        return signedInBy === subject ? undefined : { kind: "someone-else" };
+        if (refusal !== undefined || token || heldBy === undefined || heldBy.length === 0) {
+          return refusal;
+        }
+        return heldBy === subject ? undefined : { kind: "someone-else" };
       };
       const awaitRecord = subject !== undefined && subject.length > 0 && signedInBy === subject;
       return yield* gate(key, refuse, { recent: signedInBy !== undefined && !token, awaitRecord });

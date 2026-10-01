@@ -351,9 +351,13 @@ export const make = (options: ZeropsAgentLoginOptions) =>
         yield* publish;
       });
 
-    const clearLoginState = (key: string) =>
+    /**
+     * Puts a login back as it stood before an attempt that never started: the person who signed
+     * it in last is what the gate goes by, and an attempt that failed to start changes nothing.
+     */
+    const restoreLoginState = (key: string, before: ZeropsAgentLoginState | undefined) =>
       Ref.update(state, (current) => ({
-        logins: { ...current.logins, [key]: undefined },
+        logins: { ...current.logins, [key]: before },
       })).pipe(Effect.andThen(publish));
 
     /** Removes the session from the active map and stops its output listener — see the module header for why the stall fiber is left running. */
@@ -501,6 +505,7 @@ export const make = (options: ZeropsAgentLoginOptions) =>
         const token = Symbol(key);
         const startedAt = yield* DateTime.now;
         const startedBy = startedByOf(subject);
+        const before = (yield* Ref.get(state)).logins[key];
 
         yield* setLoginState(key, { phase: "starting", terminalId, startedAt, startedBy });
 
@@ -552,7 +557,7 @@ export const make = (options: ZeropsAgentLoginOptions) =>
           yield* Queue.offer(stallQueue, undefined);
         });
 
-        yield* attempt.pipe(Effect.tapError(() => clearLoginState(key)));
+        yield* attempt.pipe(Effect.tapError(() => restoreLoginState(key, before)));
 
         return { terminalId };
       });

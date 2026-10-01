@@ -9,7 +9,8 @@ import type {
   TerminalWriteInput,
   ZeropsAgentId,
 } from "@t3tools/contracts";
-import { ZeropsAgentLoginError } from "@t3tools/contracts";
+import { TerminalNotRunningError, ZeropsAgentLoginError } from "@t3tools/contracts";
+import { latestSucceededSignIn } from "@t3tools/shared/zeropsAgentAuth";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
@@ -519,6 +520,50 @@ it.effect("asks the auth feed to republish when a login succeeds", () =>
   ),
 );
 
+// Eva signed in; Jan's sign-in fails to start. Eva's success is still the latest one, and the
+// gate goes by it: a start that failed leaves the login as it was, never wipes who signed in.
+it.effect("a start that fails leaves the latest success standing", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const fakeTerminal = yield* makeFakeTerminalManager();
+      const fakeAuth = yield* makeFakeAuth();
+      let openFails = false;
+      const feed = yield* ZeropsAgentLoginModule.make({
+        terminalManager: {
+          ...fakeTerminal.service,
+          open: (input) =>
+            openFails
+              ? Effect.fail(
+                  new TerminalNotRunningError({
+                    threadId: input.threadId,
+                    terminalId: input.terminalId,
+                  }),
+                )
+              : fakeTerminal.service.open(input),
+        },
+        zeropsAgentAuth: fakeAuth,
+        isZeropsEnvironment: true,
+      });
+
+      yield* feed.start("claude-code", "thread-1", "zerops-user-eva");
+      yield* fakeTerminal.emit(
+        "thread-1",
+        "agent-login-claude-code",
+        "Login successful. Press Enter to continue…\n",
+      );
+      const evas = loginOf(yield* feed.latest, "claude-code");
+      assert.equal(evas?.phase, "succeeded");
+
+      openFails = true;
+      yield* Effect.flip(feed.start("claude-code", "thread-1", "zerops-user-jan"));
+
+      const after = loginOf(yield* feed.latest, "claude-code");
+      assert.equal(latestSucceededSignIn(after)?.startedBy, evas?.startedBy);
+      assert.isDefined(evas?.startedBy);
+    }),
+  ),
+);
+
 // A login whose CLI ended without the walker seeing success or failure (it
 // crashed, was killed, printed something unrecognized and quit) must not sit
 // in `menu` or `awaiting-browser` for ever: the terminal's exit ends it.
@@ -601,7 +646,8 @@ it.effect("an exit after the login succeeded changes nothing", () =>
         exitSignal: null,
       });
 
-      assert.equal(loginOf(yield* feed.latest, "claude-code")?.phase, "succeeded");
+      const evas = loginOf(yield* feed.latest, "claude-code");
+      assert.equal(evas?.phase, "succeeded");
     }),
   ),
 );
@@ -698,7 +744,8 @@ it.effect("after a submitted code, the CLI's success line ends the login as succ
         "Login successful. Press Enter to continue\n",
       );
 
-      assert.equal(loginOf(yield* feed.latest, "claude-code")?.phase, "succeeded");
+      const evas = loginOf(yield* feed.latest, "claude-code");
+      assert.equal(evas?.phase, "succeeded");
       assert.deepEqual(yield* Ref.get(fakeAuth.calls), ["claude-code"]);
     }),
   ),

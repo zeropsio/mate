@@ -834,6 +834,37 @@ describe("the turn gate", () => {
     }).pipe(Effect.scoped),
   );
 
+  // Eva signs in over Jan's record. Jan's Retry, still showing from a write of his that failed
+  // earlier, writes his tag over Eva's. Half an hour on, the credential is still Eva's: the record
+  // written after her sign-in runs nothing for Jan, however old her sign-in is.
+  it.effect("a record written over a later sign-in admits nobody else, however long ago", () =>
+    Effect.gen(function* () {
+      const { signers } = yield* gate([signerTag("claude-code", JAN)]);
+      const { login } = yield* justSignedIn(EVA);
+      yield* TestClock.adjust(Duration.minutes(31));
+
+      assert.deepStrictEqual(
+        yield* signers.turnRefusal({
+          agentId: "claude-code",
+          agent: signedIn,
+          subject: JAN,
+          login,
+        }),
+        { kind: "someone-else" },
+      );
+      assert.deepStrictEqual(
+        yield* signers.loginRefusal({
+          key: "claude-code",
+          state: "authorized",
+          token: false,
+          subject: JAN,
+          login,
+        }),
+        { kind: "someone-else" },
+      );
+    }).pipe(Effect.scoped),
+  );
+
   it.effect("somebody else's sign-in is nothing this turn waits for", () =>
     Effect.gen(function* () {
       const { signers, reads } = yield* gate([]);
