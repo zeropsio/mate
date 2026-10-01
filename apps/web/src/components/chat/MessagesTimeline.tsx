@@ -56,7 +56,7 @@ import {
   resolveFileDiffPath,
 } from "../../lib/diffRendering";
 import ChatMarkdown from "../ChatMarkdown";
-import type { QueuedComposerMessage } from "../../queuedMessageStore";
+import { queuedBubbleState, type QueuedComposerMessage } from "../../queuedMessageStore";
 import {
   ArrowUpIcon,
   BotIcon,
@@ -71,6 +71,7 @@ import {
   GlobeIcon,
   HammerIcon,
   MessageCircleIcon,
+  RotateCcwIcon,
   SearchIcon,
   SquarePenIcon,
   TerminalIcon,
@@ -309,6 +310,8 @@ interface MessagesTimelineProps {
   onUsageAutoResumeChange?: ((enabled: boolean) => void) | null;
   onSteerQueuedMessage?: (id: string) => void;
   steerQueuedMessageShortcutLabel?: string | null;
+  /** A question or an approval waits on the person: the queue waits with it. */
+  queueBlockedByAnswer?: boolean;
   onRemoveQueuedMessage?: (id: string) => void;
 }
 
@@ -362,6 +365,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   onUsageAutoResumeChange = null,
   onSteerQueuedMessage = NOOP_QUEUED_MESSAGE_ACTION,
   steerQueuedMessageShortcutLabel = null,
+  queueBlockedByAnswer = false,
   onRemoveQueuedMessage = NOOP_QUEUED_MESSAGE_ACTION,
 }: MessagesTimelineProps) {
   // The timeline mounts once per thread; a thread left mid-read comes back at
@@ -871,6 +875,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       onStopBackgroundWork,
       onSteerQueuedMessage,
       steerQueuedMessageShortcutLabel,
+      queueBlockedByAnswer,
       onRemoveQueuedMessage,
       arrivedAfter,
       syncing,
@@ -898,6 +903,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       onStopBackgroundWork,
       onSteerQueuedMessage,
       steerQueuedMessageShortcutLabel,
+      queueBlockedByAnswer,
       onRemoveQueuedMessage,
       arrivedAfter,
       syncing,
@@ -2122,7 +2128,7 @@ function SeamTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "seam" }> 
  * actions inside it. The dashed outline and the clock carry the state; the
  * timing reads from the clock's tooltip.
  */
-function QueuedMessageTimelineRow({
+export function QueuedMessageTimelineRow({
   row,
 }: {
   row: Extract<TimelineRow, { kind: "queued-message" }>;
@@ -2132,11 +2138,12 @@ function QueuedMessageTimelineRow({
   const attachmentCount = queuedMessage.images.length;
   const contextCount = queuedMessage.terminalContexts.length + queuedMessage.reviewComments.length;
   const text = queuedMessage.prompt.trim();
-  const timingLabel = queuedMessage.holdUntilUserAction
-    ? "Waits for Send now"
-    : row.isNext
-      ? "Sends after the next tool call or when the turn ends"
-      : "Sends after the messages above it";
+  const state = queuedBubbleState({
+    message: queuedMessage,
+    isNext: row.isNext,
+    heldAhead: row.heldAhead,
+    blockedByAnswer: ctx.queueBlockedByAnswer === true,
+  });
   return (
     <div className="flex flex-col items-end" data-queued-message-id={queuedMessage.id}>
       <div className="max-w-[80%] rounded-2xl border border-dashed border-border p-3 text-message-foreground/80">
@@ -2163,15 +2170,35 @@ function QueuedMessageTimelineRow({
           </div>
         ) : null}
         <div className="mt-2 flex items-center gap-4 text-secondary-label text-xs">
-          <Tooltip>
-            <TooltipTrigger
-              render={<span className="inline-flex h-6 items-center" />}
-              aria-label={`Queued. ${timingLabel}.`}
-            >
-              <ClockIcon className="size-3.5" aria-hidden />
-            </TooltipTrigger>
-            <TooltipPopup side="bottom">{timingLabel}</TooltipPopup>
-          </Tooltip>
+          {/* The clock's place, one line high: what it waits for, or why its send was refused. */}
+          {state.line === null ? (
+            <Tooltip>
+              <TooltipTrigger
+                render={<span className="inline-flex h-6 items-center" />}
+                aria-label={`Queued. ${state.clockLabel}.`}
+              >
+                <ClockIcon className="size-3.5" aria-hidden />
+              </TooltipTrigger>
+              <TooltipPopup side="bottom">{state.clockLabel}</TooltipPopup>
+            </Tooltip>
+          ) : (
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <span
+                    className={cn(
+                      "min-w-0 truncate leading-6",
+                      state.line.tone === "error" && "text-destructive",
+                    )}
+                    data-queued-line={state.line.tone}
+                  />
+                }
+              >
+                {state.line.text}
+              </TooltipTrigger>
+              <TooltipPopup side="bottom">{state.line.text}</TooltipPopup>
+            </Tooltip>
+          )}
           <div className="ml-auto flex items-center gap-0.5">
             <Tooltip>
               <TooltipTrigger
@@ -2181,16 +2208,24 @@ function QueuedMessageTimelineRow({
                     size="icon-xs"
                     variant="ghost-muted"
                     onPointerDown={(event) => event.preventDefault()}
-                    onClick={() => ctx.onSteerQueuedMessage(queuedMessage.id)}
-                    aria-label="Send now"
+                    // Held back while an answer is due, never pressed to do nothing: it says why.
+                    aria-disabled={state.send.disabled ? true : undefined}
+                    onClick={() => {
+                      if (!state.send.disabled) ctx.onSteerQueuedMessage(queuedMessage.id);
+                    }}
+                    aria-label={state.send.label}
                   />
                 }
               >
-                <ArrowUpIcon className="size-3.5" aria-hidden />
+                {state.send.retry ? (
+                  <RotateCcwIcon className="size-3.5" aria-hidden />
+                ) : (
+                  <ArrowUpIcon className="size-3.5" aria-hidden />
+                )}
               </TooltipTrigger>
               <TooltipPopup side="bottom">
-                Send now
-                {row.isNext && ctx.steerQueuedMessageShortcutLabel
+                {state.send.label}
+                {row.isNext && !state.send.disabled && ctx.steerQueuedMessageShortcutLabel
                   ? ` (${ctx.steerQueuedMessageShortcutLabel})`
                   : null}
               </TooltipPopup>

@@ -52,6 +52,8 @@ export interface TimelineRowSharedState {
   onStopBackgroundWork: () => void;
   onSteerQueuedMessage: (id: string) => void;
   steerQueuedMessageShortcutLabel: string | null;
+  /** A question or an approval waits on the person: the queue waits with it. */
+  queueBlockedByAnswer?: boolean;
   onRemoveQueuedMessage: (id: string) => void;
   /**
    * The newest message's time when this conversation opened, on the server's
