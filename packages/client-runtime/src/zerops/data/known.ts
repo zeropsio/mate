@@ -210,26 +210,24 @@ const projectFeeders = feedersOnce(
       interestKeyOf({ kind: "project-inventory", project }),
       interestKeyOf({ kind: "project-topology", project, includeCurrentMetrics: false }),
       interestKeyOf({ kind: "project-topology", project, includeCurrentMetrics: true }),
-      interestKeyOf({ kind: "project-services-check", project }),
     ]),
 );
 
 /**
- * The receipt ordinal of the latest complete read of a project's services: the latest an observing
- * interest that reads them crossed when it last established — the confirming read (§9 C19) among
- * them. `null` while none observes.
+ * The receipt ordinal of the confirming read of a project's services (§9 C19): its own lag-free
+ * read (`project-services-check`), observing. The organization's search behind the inventory may
+ * trail a service it lacks, so it never confirms an absence. `null` while that read has not run.
  */
-export function servicesReadOrdinalOf(read: CollectionRead<ServiceRecord>): number | null {
+export function servicesCheckOrdinalOf(read: CollectionRead<ServiceRecord>): number | null {
   if (read.project === undefined) return null;
-  const feeders = projectFeeders(read.project);
-  let latest: number | null = null;
+  const check = interestKeyOf({ kind: "project-services-check", project: read.project });
   for (const interests of [read.observation.required, read.observation.optional]) {
     for (const interest of interests) {
-      if (interest.status !== "observing" || !feeders.has(interest.identity.key)) continue;
-      latest = Math.max(latest ?? 0, interest.sinceReceiptOrdinal);
+      if (interest.status === "observing" && interest.identity.key === check)
+        return interest.sinceReceiptOrdinal;
     }
   }
-  return latest;
+  return null;
 }
 
 /** The interest a project's services read is as current as, like `projectsSourceOf`. */

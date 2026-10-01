@@ -20,7 +20,7 @@ import {
   pendingDenials,
 } from "../account/inventoryDemand.ts";
 import type { Evidence, GrantMachine } from "../data/access/grant.ts";
-import { knownProjectsOf, knownServicesOf, servicesReadOrdinalOf } from "../data/known.ts";
+import { knownProjectsOf, knownServicesOf, servicesCheckOrdinalOf } from "../data/known.ts";
 import type { ManagedZeropsDataRuntime } from "../data/runtime.ts";
 import {
   projectKeyOf,
@@ -103,7 +103,7 @@ const directReadOf = (
   services: Known<ReadonlyArray<ServiceRecord>>,
 ): number | null => {
   return services.state === "known" && services.coverage === "complete"
-    ? servicesReadOrdinalOf(read)
+    ? servicesCheckOrdinalOf(read)
     : null;
 };
 

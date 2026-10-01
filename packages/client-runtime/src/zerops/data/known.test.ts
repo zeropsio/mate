@@ -6,6 +6,7 @@ import {
   knownProjectTags,
   knownServicesOf,
   projectsSourceOf,
+  servicesCheckOrdinalOf,
   servicesSourceOf,
 } from "./known.ts";
 import { selectProjectsOf, selectServicesOf } from "./projection.ts";
@@ -244,6 +245,28 @@ describe("inventory knowledge", () => {
         project: owner,
       };
     };
+
+    it.each([
+      ["only its inventory observes: no lag-free read confirmed anything", ["inventory"], null],
+      ["its own lag-free read observes: that read confirms", ["inventory", "check"], 7],
+    ] as const)("the confirming read of an absence (§9 C19): %s", (_, feeding, expected) => {
+      const observingAs = (kind: "inventory" | "check", at: number): InterestState => ({
+        status: "observing",
+        identity: {
+          ...identity(),
+          key: interestKeyOf(
+            kind === "inventory"
+              ? { kind: "project-inventory", project: owner }
+              : { kind: "project-services-check", project: owner },
+          ),
+        },
+        guarantee: "source-order-unverified",
+        sinceReceiptOrdinal: stamp(at).receiptOrdinal,
+      });
+      const read = listing(feeding.map((kind) => observingAs(kind, kind === "inventory" ? 9 : 7)));
+
+      expect(servicesCheckOrdinalOf(read)).toBe(expected);
+    });
 
     it.each<{
       readonly name: string;
