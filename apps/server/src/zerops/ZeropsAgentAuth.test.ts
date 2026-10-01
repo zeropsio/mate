@@ -224,6 +224,11 @@ describe("signer catch-up", () => {
     readonly signers: Readonly<Partial<Record<ZeropsAgentId, string>>>;
     /** The env store's document, as the file holds it. */
     readonly env?: string;
+    /**
+     * Reads the tags the way `ZeropsProjectSigners` does: `readSigners` answers its cached read,
+     * and `readSignersFresh` reads `answer` now and caches it.
+     */
+    readonly cached?: boolean;
   }) =>
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem;
@@ -238,7 +243,9 @@ describe("signer catch-up", () => {
       yield* fs.writeFileString(credential, "{}");
 
       const answer = yield* Ref.make(input.signers);
+      const cache = yield* Ref.make(input.signers);
       const calls = yield* Ref.make(0);
+      const freshCalls = yield* Ref.make(0);
       const feed = yield* make({
         agentFlag: {
           markSignedIn: () => Effect.fail(new ZeropsAgentFlagError({ reason: "not used" })),
@@ -246,7 +253,17 @@ describe("signer catch-up", () => {
         refreshProviderAuth: () => Effect.succeed("unauthenticated" as const),
         homeDir,
         envStorePath,
-        readSigners: Ref.update(calls, (n) => n + 1).pipe(Effect.andThen(Ref.get(answer))),
+        readSigners: Ref.update(calls, (n) => n + 1).pipe(
+          Effect.andThen(Ref.get(input.cached === true ? cache : answer)),
+        ),
+        ...(input.cached === true
+          ? {
+              readSignersFresh: Ref.update(freshCalls, (n) => n + 1).pipe(
+                Effect.andThen(Ref.get(answer)),
+                Effect.tap((read) => Ref.set(cache, read)),
+              ),
+            }
+          : {}),
         isZeropsEnvironment: true,
         watch: noWatch,
       });
@@ -256,7 +273,7 @@ describe("signer catch-up", () => {
         subscription,
         (snapshot) => agentState(snapshot, "claude-code")?.providerAuth === "unauthenticated",
       );
-      return { feed, subscription, answer, calls };
+      return { feed, subscription, answer, calls, freshCalls };
     });
 
   itEffect.layer(NodeServices.layer)("ZeropsAgentAuth signer catch-up", (it) => {
@@ -280,6 +297,73 @@ describe("signer catch-up", () => {
             agentState(yield* feed.latest, "claude-code")?.authorizedBy?.subject,
             "user-a",
           );
+        }),
+      ),
+    );
+
+    // Signing in over an earlier record: the snapshot named the earlier signer, and the cached
+    // read of the tags goes on naming them after the new record lands — with nothing else to
+    // republish, for good.
+    it.effect("publishes the record of a sign-in made here as soon as it lands", () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const { feed, subscription, answer } = yield* makeFeed({
+            signers: { "claude-code": "user-b" },
+            cached: true,
+          });
+          assert.equal(
+            agentState(subscription.latest, "claude-code")?.authorizedBy?.subject,
+            "user-b",
+          );
+
+          yield* feed.recheckNow("claude-code", "user-a");
+          yield* TestClock.adjust(Duration.seconds(2));
+          yield* Ref.set(answer, { "claude-code": "user-a" });
+          yield* TestClock.adjust(Duration.seconds(4));
+          const published = yield* changeWhere(
+            subscription,
+            (snapshot) => agentState(snapshot, "claude-code")?.authorizedBy?.subject === "user-a",
+          );
+
+          assert.equal(agentState(published, "claude-code")?.authorizedBy?.subject, "user-a");
+        }),
+      ),
+    );
+
+    it.effect("stops reading once the record names the person who signed in", () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const { feed, freshCalls } = yield* makeFeed({
+            signers: { "claude-code": "user-a" },
+            cached: true,
+          });
+
+          yield* feed.recheckNow("claude-code", "user-a");
+          yield* TestClock.adjust(Duration.seconds(4));
+          const settled = yield* Ref.get(freshCalls);
+          yield* TestClock.adjust(Duration.minutes(2));
+
+          assert.isAtMost(settled, 2);
+          assert.equal(yield* Ref.get(freshCalls), settled);
+        }),
+      ),
+    );
+
+    it.effect("gives up on a record that never lands", () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const { feed, freshCalls } = yield* makeFeed({
+            signers: { "claude-code": "user-b" },
+            cached: true,
+          });
+
+          yield* feed.recheckNow("claude-code", "user-a");
+          yield* TestClock.adjust(Duration.minutes(2));
+          const spent = yield* Ref.get(freshCalls);
+          yield* TestClock.adjust(Duration.minutes(2));
+
+          assert.isAbove(spent, 0);
+          assert.equal(yield* Ref.get(freshCalls), spent);
         }),
       ),
     );

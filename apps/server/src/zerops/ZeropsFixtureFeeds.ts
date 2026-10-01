@@ -508,6 +508,7 @@ const fixtureSignersLayer = Layer.succeed(
   ZeropsProjectSigners.ZeropsProjectSigners,
   ZeropsProjectSigners.ZeropsProjectSigners.of({
     signers: Effect.succeed({}),
+    fresh: Effect.succeed({}),
     turnRefusal: ({ agent, subject }) =>
       Effect.succeed(ZeropsProjectSigners.turnRefusal({ agent, signer: undefined, subject })),
     loginRefusal: ({ state, token, subject }) =>

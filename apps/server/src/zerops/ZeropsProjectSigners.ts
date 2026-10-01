@@ -266,6 +266,11 @@ export class ZeropsProjectSigners extends Context.Service<
     /** Who signed each agent in, from a read no older than {@link SIGNERS_CACHE_TTL}. */
     readonly signers: Effect.Effect<ProjectSigners>;
     /**
+     * Who signed each agent in, read now and cached — a failed read answers what was last known.
+     * For a record known to be on its way: a sign-in this server has just walked.
+     */
+    readonly fresh: Effect.Effect<ProjectSigners>;
+    /**
      * {@link turnRefusal} for this session on `agentId`. A refusal that rests
      * on the signer record and came from the cache — or from what was last
      * known after a failed read — reads the tags once more and answers from
@@ -602,8 +607,14 @@ export const make = Effect.gen(function* () {
     );
   }
 
+  const fresh: ZeropsProjectSigners["Service"]["fresh"] =
+    environment === undefined
+      ? Effect.succeed({})
+      : readThrough(environment).pipe(Effect.map((read) => read.value));
+
   return ZeropsProjectSigners.of({
     signers,
+    fresh,
     turnRefusal: gateTurn,
     loginRefusal: gateLogin,
     isActiveMember,

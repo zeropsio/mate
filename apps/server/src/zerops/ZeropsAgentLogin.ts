@@ -416,10 +416,10 @@ export const make = (options: ZeropsAgentLoginOptions) =>
           // by the app as the person (D6, `ZeropsProjectSigners`): this
           // container's own key cannot write tags, which is the whole reason
           // the record moved off its disk. All this does is republish the
-          // snapshot, which re-reads the tags. A login beyond the defaults
-          // is its own feed's to re-check.
+          // snapshot, which reads the tags afresh until the record names who
+          // signed in. A login beyond the defaults is its own feed's to re-check.
           yield* key === session.agentId
-            ? zeropsAgentAuth.recheckNow(session.agentId)
+            ? zeropsAgentAuth.recheckNow(session.agentId, session.startedBy)
             : (zeropsLogins?.recheckNow(key) ?? Effect.void);
         }
 
