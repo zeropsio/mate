@@ -309,7 +309,7 @@ export class ZeropsProjectSigners extends Context.Service<
  * The project's tags, as the Mate. `undefined` for every failure alike: the
  * gate treats "cannot read" as "no record", which refuses rather than admits.
  */
-export const readProjectSigners = Effect.fn("ZeropsProjectSigners.read")(function* (input: {
+export const readProjectTagList = Effect.fn("ZeropsProjectSigners.readTags")(function* (input: {
   readonly environment: ZeropsEnvironment;
 }) {
   const { apiBaseUrl, projectId } = input.environment;
@@ -327,9 +327,17 @@ export const readProjectSigners = Effect.fn("ZeropsProjectSigners.read")(functio
   );
   if (readProjectRoles(body) === null) return undefined;
   const tagList = (body as { readonly tagList?: unknown }).tagList;
-  return parseSignerTags(
-    Array.isArray(tagList) ? tagList.filter((tag): tag is string => typeof tag === "string") : [],
-  );
+  return Array.isArray(tagList)
+    ? tagList.filter((tag): tag is string => typeof tag === "string")
+    : [];
+});
+
+/** The signers off the project's tags, as the Mate; `undefined` when they cannot be read. */
+export const readProjectSigners = Effect.fn("ZeropsProjectSigners.read")(function* (input: {
+  readonly environment: ZeropsEnvironment;
+}) {
+  const tagList = yield* readProjectTagList(input);
+  return tagList === undefined ? undefined : parseSignerTags(tagList);
 });
 
 /**

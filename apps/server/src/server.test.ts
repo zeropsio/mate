@@ -157,6 +157,7 @@ import * as ZeropsAgentSignOutModule from "./zerops/ZeropsAgentSignOut.ts";
 import * as ZeropsLoginSignOutModule from "./zerops/ZeropsLoginSignOut.ts";
 import * as ZeropsLoginsModule from "./zerops/ZeropsLogins.ts";
 import * as ZeropsProjectSignersModule from "./zerops/ZeropsProjectSigners.ts";
+import * as ZeropsSetupModule from "./zerops/ZeropsSetup.ts";
 import * as ZeropsTurnAdmissionModule from "./zerops/ZeropsTurnAdmission.ts";
 import { layer as providerInstancesLayer } from "./spi/providerInstances.ts";
 import * as ZeropsBrowserStreamModule from "./zerops/ZeropsBrowserStream.ts";
@@ -617,6 +618,8 @@ const buildAppUnderTest = (options?: {
     zeropsMateUpdate?: Partial<ZeropsMateUpdateModule.ZeropsMateUpdate["Service"]>;
     zeropsDataConsole?: Partial<ZeropsDataConsoleModule.ZeropsDataConsole["Service"]>;
     zeropsGitRemoteProbe?: Partial<ZeropsGitRemoteProbeModule.ZeropsGitRemoteProbe["Service"]>;
+    /** A Mate's setup; absent unless a test sets it, as on a server older than it. */
+    zeropsSetup?: Partial<ZeropsSetupModule.ZeropsSetup["Service"]>;
   };
 }) =>
   Effect.gen(function* () {
@@ -1263,6 +1266,9 @@ const buildAppUnderTest = (options?: {
             // Crew mode off, as outside a Zerops project: the crew RPCs answer
             // `off` and refuse the rest.
             crewLayerInert,
+            options?.layers?.zeropsSetup === undefined
+              ? Layer.empty
+              : Layer.mock(ZeropsSetupModule.ZeropsSetup)(options.layers.zeropsSetup),
           ).pipe((zeropsMocks) =>
             // D6's gate, live, over the agent-auth and signers mocked above:
             // with no agents reported, it admits every turn.
@@ -2422,6 +2428,37 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
 
       assert.equal(response.status, 200);
       assert.deepEqual(body, testEnvironmentDescriptor);
+    }).pipe(Effect.provide(NodeHttpServer.layerTest)),
+  );
+
+  const setupDocument = {
+    version: 1 as const,
+    at: "2026-10-01T12:00:00Z",
+    steps: [{ id: "container" as const, state: "done", at: "2026-10-01T11:50:00Z" }],
+  };
+
+  it.effect("serves a Mate's setup to any origin, without auth", () =>
+    Effect.gen(function* () {
+      yield* buildAppUnderTest({
+        config: { zerops: zeropsTestEnvironment() },
+        layers: { zeropsSetup: { document: Effect.succeed(setupDocument) } },
+      });
+      const response = yield* fetchEffect(yield* getHttpServerUrl("/setup.json"), {
+        headers: { origin: "https://somewhere-else.test" },
+      });
+      assert.equal(response.status, 200);
+      assert.equal(response.headers["access-control-allow-origin"], "*");
+      assert.deepEqual(yield* responseJsonEffect<typeof setupDocument>(response), setupDocument);
+    }).pipe(Effect.provide(NodeHttpServer.layerTest)),
+  );
+
+  it.effect("answers 404 for the setup outside a Zerops project, as an older Mate does", () =>
+    Effect.gen(function* () {
+      yield* buildAppUnderTest({
+        layers: { zeropsSetup: { document: Effect.succeed(setupDocument) } },
+      });
+      const response = yield* fetchEffect(yield* getHttpServerUrl("/setup.json"));
+      assert.equal(response.status, 404);
     }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
 

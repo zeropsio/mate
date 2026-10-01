@@ -36,6 +36,7 @@ import * as ZeropsMateKeyModule from "./ZeropsMateKey.ts";
 import * as ZeropsMateUpdateModule from "./ZeropsMateUpdate.ts";
 import * as ZeropsMembershipWatchModule from "./ZeropsMembershipWatch.ts";
 import * as ZeropsProjectSignersModule from "./ZeropsProjectSigners.ts";
+import * as ZeropsSetupModule from "./ZeropsSetup.ts";
 import * as ZeropsTurnAdmissionModule from "./ZeropsTurnAdmission.ts";
 
 /**
@@ -109,6 +110,12 @@ const liveLayer = Layer.mergeAll(
     Layer.provide(ZeropsProjectSignersModule.layer),
     Layer.provide(providerInstancesLayer),
     Layer.provide(ProcessRunner.layer),
+  ),
+  // A new Mate's setup, reported at `/setup.json`, and its stand-up started
+  // here once its asker signed an agent in — admitted through the same gate.
+  ZeropsSetupModule.layer.pipe(
+    Layer.provide(ZeropsSetupModule.liveReadsLayer),
+    Layer.provide(ZeropsTurnAdmissionLive),
   ),
   ZeropsBrowserStreamModule.layer,
   ZeropsMateUpdateModule.layer.pipe(Layer.provideMerge(ZeropsCliModule.layer)),

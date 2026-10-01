@@ -12,7 +12,8 @@
  */
 import { EnvironmentHttpApi } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
-import { HttpServerRequest } from "effect/unstable/http";
+import * as Option from "effect/Option";
+import { HttpRouter, HttpServerRequest, HttpServerResponse } from "effect/unstable/http";
 import * as HttpApiBuilder from "effect/unstable/httpapi/HttpApiBuilder";
 
 import * as ServerConfig from "../config.ts";
@@ -27,6 +28,7 @@ import {
 import { verifyRequestDpopProof } from "../auth/dpop.ts";
 import { isZeropsEnvironment } from "./ZeropsEnvironment.ts";
 import { mintZeropsThrowawayPairingCredential } from "./ZeropsIdentityGate.ts";
+import { ZeropsSetup } from "./ZeropsSetup.ts";
 
 export const zeropsHttpApiLayer = HttpApiBuilder.group(
   EnvironmentHttpApi,
@@ -88,5 +90,27 @@ export const zeropsHttpApiLayer = HttpApiBuilder.group(
         ),
       ),
     );
+  }),
+);
+
+/**
+ * `GET /setup.json` (`/mate/setup.json` behind the container's nginx): a new
+ * Mate's setup, step by step (`ZeropsSetup`). Public and readable from any
+ * origin — it carries no names, no error text and no secrets — so any
+ * browser, signed in or not, can show how far the Mate has come. A server
+ * outside a Zerops project answers 404, as an older Mate does.
+ */
+export const zeropsSetupRouteLayer = HttpRouter.add(
+  "GET",
+  "/setup.json",
+  Effect.gen(function* () {
+    const config = yield* ServerConfig.ServerConfig;
+    const setup = yield* Effect.serviceOption(ZeropsSetup);
+    if (Option.isNone(setup) || !isZeropsEnvironment(config)) {
+      return HttpServerResponse.text("Not Found", { status: 404 });
+    }
+    return HttpServerResponse.jsonUnsafe(yield* setup.value.document, {
+      headers: { "access-control-allow-origin": "*", "cache-control": "no-store" },
+    });
   }),
 );
