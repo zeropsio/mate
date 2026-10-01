@@ -19,6 +19,16 @@ import {
   type InventoryState,
 } from "./inventory.ts";
 import {
+  activeVersionOf,
+  makeInitialEntityTableState,
+  reduceTableObservation,
+  releaseTableLists,
+  tableRowsWanted,
+  forgetAbsentRows,
+  wantTableRows,
+  type EntityTableState,
+} from "./entityTable.ts";
+import {
   makeInitialObservabilityState,
   reduceObservabilityObservation,
   type CurrentMetricQueryState,
@@ -49,8 +59,10 @@ import type {
   ReadTicket,
   ReceiptOrdinal,
   RegistrationRequest,
+  OrganizationRef,
   ServiceRecord,
   SharedReadOwnership,
+  TableEntity,
   ZeropsCommandAttemptId,
   ZeropsRequestId,
 } from "./types.ts";
@@ -112,6 +124,8 @@ export interface ZeropsDataState {
   readonly inventory: InventoryState;
   readonly activity: ActivityState;
   readonly observability: ObservabilityState;
+  /** The entities held as the platform sends them (`entityTable.ts`). */
+  readonly table: EntityTableState;
   readonly reads: ReadonlyMap<ZeropsRequestId, ReadState>;
   readonly readAccumulators: ReadonlyMap<ZeropsRequestId, ReadAccumulator>;
   readonly sharedReads: ReadonlyMap<ZeropsRequestId, SharedReadOwnership>;
@@ -141,10 +155,18 @@ export type RuntimeControlInput =
 
 export type ZeropsDataModelInput = IngestionInput | RuntimeControlInput;
 
-export type ZeropsDataFollowUp = {
-  readonly kind: "hydrate-unresolved-query-members";
-  readonly query: QueryKey;
-};
+export type ZeropsDataFollowUp =
+  | {
+      readonly kind: "hydrate-unresolved-query-members";
+      readonly query: QueryKey;
+    }
+  | {
+      /** Rows the entity table is owed, read by id after a short grace (`entityTable.ts`). */
+      readonly kind: "read-table-rows";
+      readonly entity: TableEntity;
+      readonly organization: OrganizationRef;
+      readonly ids: ReadonlyArray<string>;
+    };
 
 export interface ZeropsDataReduction {
   readonly state: ZeropsDataState;
@@ -162,6 +184,7 @@ export function makeInitialZeropsDataState(
     inventory: makeInitialInventoryState(),
     activity: makeInitialActivityState(),
     observability: makeInitialObservabilityState(),
+    table: makeInitialEntityTableState(),
     reads: new Map(),
     readAccumulators: new Map(),
     sharedReads: new Map(),
@@ -235,10 +258,12 @@ const observationTicket = (observation: PlatformObservation): ReadTicket | null 
   }
   if (
     observation.kind === "current-metrics-replaced" ||
-    observation.kind === "metric-history-window-observed"
+    observation.kind === "metric-history-window-observed" ||
+    observation.kind === "table-rows-observed"
   ) {
     return observation.source === "direct-read" ? observation.ticket : null;
   }
+  if (observation.kind === "table-membership-observed") return null;
   if ("observation" in observation) {
     const source = observation.observation;
     if (source.source === "direct-read" || source.source === "indexed-search") return source.ticket;
@@ -248,10 +273,15 @@ const observationTicket = (observation: PlatformObservation): ReadTicket | null 
 };
 
 const observationRegistration = (observation: PlatformObservation): RegistrationRequest | null => {
-  if (observation.kind === "query-membership-observed") return observation.registration;
+  if (
+    observation.kind === "query-membership-observed" ||
+    observation.kind === "table-membership-observed"
+  )
+    return observation.registration;
   if (
     observation.kind === "current-metrics-replaced" ||
-    observation.kind === "metric-history-window-observed"
+    observation.kind === "metric-history-window-observed" ||
+    observation.kind === "table-rows-observed"
   ) {
     return observation.source === "native-push" ? observation.registration : null;
   }
@@ -334,22 +364,31 @@ function reduceObservation(state: ZeropsDataState, admitted: AdmittedObservation
   const inventory = reduceInventoryObservation(state.inventory, state.scope, admitted);
   const activity = reduceActivityObservation(state.activity, state.scope, admitted);
   const observability = reduceObservabilityObservation(state.observability, admitted);
+  const table = reduceTableObservation(state.table, admitted);
   const changed =
     inventory.state !== state.inventory ||
     activity.state !== state.activity ||
-    observability.state !== state.observability;
+    observability.state !== state.observability ||
+    table.state !== state.table;
   const outcome: DomainObservationOutcome = {
     readRequestId:
       inventory.outcome.readRequestId ??
       activity.outcome.readRequestId ??
-      observability.outcome.readRequestId,
+      observability.outcome.readRequestId ??
+      table.outcome.readRequestId,
     applied: mergeUnique(
-      mergeUnique(inventory.outcome.applied, activity.outcome.applied),
-      observability.outcome.applied,
+      mergeUnique(
+        mergeUnique(inventory.outcome.applied, activity.outcome.applied),
+        observability.outcome.applied,
+      ),
+      table.outcome.applied,
     ),
     suppressed: mergeUnique(
-      mergeUnique(inventory.outcome.suppressed, activity.outcome.suppressed),
-      observability.outcome.suppressed,
+      mergeUnique(
+        mergeUnique(inventory.outcome.suppressed, activity.outcome.suppressed),
+        observability.outcome.suppressed,
+      ),
+      table.outcome.suppressed,
     ),
     unresolvedRequiredFields: mergeUnique(
       mergeUnique(
@@ -365,6 +404,7 @@ function reduceObservation(state: ZeropsDataState, admitted: AdmittedObservation
         inventory: inventory.state,
         activity: activity.state,
         observability: observability.state,
+        table: table.state,
       }
     : state;
   next = accumulateRead(next, outcome, observationTicket(admitted.input));
@@ -817,6 +857,8 @@ function releaseInactiveQueries(
     history.delete(seriesKey);
     historyAdmission.delete(seriesKey);
   }
+  const table = releaseTableLists(next.table, released);
+  if (table !== next.table) next = { ...next, table };
   if (inventoryQueries === null && activityQueries === null && current === null && history === null)
     return next;
 
@@ -1487,6 +1529,40 @@ function scheduleRetention(state: ZeropsDataState, policy: ZeropsDataPolicy): Ze
   };
 }
 
+/**
+ * A version a service runs that its organization's answered list of active versions lacks, with
+ * no push to state its source: the list may trail the service, so the version is read by id.
+ */
+export function wantActiveVersions(
+  state: ZeropsDataState,
+  receipt: number,
+  nowMs: number,
+): ZeropsDataState {
+  const missing = new Map<string, { organization: OrganizationRef; ids: string[] }>();
+  const running = new Set<string>();
+  for (const record of state.inventory.services.values()) {
+    const facet = record.deployment;
+    if (facet.knowledge !== "observed") continue;
+    const deploy = facet.fields.activeDeploy;
+    if (deploy == null || deploy.id === null) continue;
+    const organization = record.ref.project.organization;
+    running.add(`${organizationKeyOf(organization)}:${deploy.id}`);
+    if (deploy.source !== null) continue;
+    const version = activeVersionOf(state.table, organization, deploy.id);
+    if (!version.known || version.row !== null) continue;
+    const key = organizationKeyOf(organization);
+    const batch = missing.get(key) ?? { organization, ids: [] };
+    batch.ids.push(deploy.id);
+    missing.set(key, batch);
+  }
+  let table = forgetAbsentRows(state.table, "app-version", (organization, id) =>
+    running.has(`${organizationKeyOf(organization)}:${id}`),
+  );
+  for (const { organization, ids } of missing.values())
+    table = wantTableRows(table, "app-version", organization, ids, receipt, nowMs);
+  return table === state.table ? state : { ...state, table };
+}
+
 export function reduceZeropsDataState(
   initial: ZeropsDataState,
   input: ZeropsDataModelInput,
@@ -1525,11 +1601,15 @@ export function reduceZeropsDataState(
   state = { ...state, lastReceiptOrdinal: stamp.receiptOrdinal };
   state = trimDiagnostics(state, policy);
   state = scheduleRetention(state, policy);
+  if (input.kind === "observation")
+    state = wantActiveVersions(state, stamp.receiptOrdinal, stamp.observedAtMs);
   const followUps: ZeropsDataFollowUp[] = [];
   for (const query of [...state.inventory.queries.values(), ...state.activity.queries.values()]) {
     if (query.unresolvedMemberKeys.length > 0) {
       followUps.push({ kind: "hydrate-unresolved-query-members", query: query.key });
     }
   }
+  for (const wanted of tableRowsWanted(state.table))
+    followUps.push({ kind: "read-table-rows", ...wanted });
   return { state, followUps };
 }

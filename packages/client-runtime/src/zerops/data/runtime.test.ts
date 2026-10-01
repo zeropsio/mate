@@ -2222,7 +2222,6 @@ describe("makeZeropsDataRuntime", () => {
           readOrganizationLocations: () => unused,
           readServiceAuthorizedAgents: () =>
             Effect.sync(() => void (reads += 1)).pipe(Effect.as([])),
-          readServiceDeployedVersion: () => unused,
           readServiceMateFlag: () => unused,
           readOrganizationIntegrationTokenGrants: () => unused,
         },
@@ -6101,5 +6100,325 @@ describe("opening a Mate on a loaded organization", () => {
       yield* Scope.close(leases, Exit.void);
       registry.dispose();
     }),
+  );
+});
+
+describe("the entity table's reads by id", () => {
+  it.effect("reads a new id at once while another waits out its back-off", () =>
+    Effect.gen(function* () {
+      const registry = AtomRegistry.make();
+      const events = yield* Queue.unbounded<ReceiverEvent>();
+      const { decodeRegistrationResponse } = yield* Effect.promise(
+        () => import("./platformProtocol.ts"),
+      );
+      const { decodeTableSearch } = yield* Effect.promise(() => import("./tableProtocol.ts"));
+      let list: RegistrationRequest | undefined;
+      const reads: Array<ReadonlyArray<string>> = [];
+      const readAt: number[] = [];
+      const adapter: ZeropsDataAdapter = {
+        openReceiver: (_scope, organization, identity) =>
+          Effect.succeed({
+            identity,
+            organization,
+            delivery: "hot-single-consumer-buffered-before-open-resolves",
+            events: Stream.fromQueue(events),
+          }),
+        register: (_receiver, request) => {
+          if (request.descriptor.kind === "table-list") list = request;
+          return Effect.succeed({
+            responseObservations:
+              request.descriptor.kind === "table-list"
+                ? decodeRegistrationResponse(request, { items: [], totalHits: 0 }).observations
+                : [],
+          });
+        },
+        read: (ticket) => {
+          const ids =
+            (ticket.target as { readonly descriptor: { readonly ids?: string[] } }).descriptor
+              .ids ?? [];
+          reads.push(ids);
+          // The platform never lists u-9.
+          const found = ids.filter((id) => id !== "u-9");
+          return Effect.map(
+            Clock.currentTimeMillis,
+            (now) => (
+              readAt.push(now),
+              {
+                observations: decodeTableSearch(ticket, {
+                  items: found.map((id) => ({
+                    id,
+                    serviceStackId: `service-of-${id}`,
+                    key: "ZCP_MATE_ENABLED",
+                    content: "1",
+                  })),
+                  totalHits: found.length,
+                }).observations,
+              }
+            ),
+          );
+        },
+        execute: () => Effect.succeed({ processRefs: [], observations: [] }),
+        closeReceiver: () => Effect.void,
+      };
+      const runtime = yield* makeZeropsDataRuntime({
+        scope: runtimeScope,
+        adapter,
+        atomRegistry: registry,
+        makeOpaqueId: makeIdFactory(),
+      });
+      const states = yield* Queue.unbounded<ZeropsDataState>();
+      const unsubscribe = registry.subscribe(runtime.stateAtom, (state) => {
+        Queue.offerUnsafe(states, state);
+      });
+      const organization = topologyDescriptor.project.organization;
+      const leaseScope = yield* Scope.make();
+      const lease = yield* runtime
+        .acquire({ kind: "organization-variables", organization })
+        .pipe(Scope.provide(leaseScope));
+      yield* waitForState(
+        states,
+        (state) => state.interests.get(lease.interest)?.interest.status === "observing",
+      );
+      const add = (id: string) =>
+        Queue.offer(events, {
+          kind: "observation",
+          input: {
+            kind: "table-membership-observed",
+            operation: "add",
+            id,
+            registration: list as never,
+          },
+          bytes: 1,
+        });
+      const settleFibers = Effect.forEach(Array.from({ length: 20 }), () => Effect.yieldNow, {
+        discard: true,
+      });
+      yield* add("u-9");
+      yield* settleFibers;
+      // Read at the grace, then past the index's lag: absent, it now waits out its back-off.
+      for (let second = 0; second < 12; second += 1) {
+        yield* TestClock.adjust("1 second");
+        yield* settleFibers;
+      }
+      expect(reads).toEqual([["u-9"], ["u-9"]]);
+
+      yield* add("u-2");
+      yield* settleFibers;
+      yield* TestClock.adjust("1 second");
+      yield* waitForState(states, (state) => state.table.rows["user-data"].get("u-2")?.row != null);
+      expect({ reads, readAt }).toEqual({
+        reads: [["u-9"], ["u-9"], ["u-2"]],
+        readAt: [1_000, 11_000, 13_000],
+      });
+
+      yield* runtime.shutdown("application-close");
+      yield* Scope.close(leaseScope, Exit.void);
+      unsubscribe();
+      registry.dispose();
+    }),
+  );
+  it.effect("reads the rows its list's frames named without one, batched once after a grace", () =>
+    Effect.gen(function* () {
+      const registry = AtomRegistry.make();
+      const events = yield* Queue.unbounded<ReceiverEvent>();
+      const { decodeRegistrationResponse } = yield* Effect.promise(
+        () => import("./platformProtocol.ts"),
+      );
+      const { decodeTableSearch } = yield* Effect.promise(() => import("./tableProtocol.ts"));
+      const { activeVersionOf } = yield* Effect.promise(() => import("./entityTable.ts"));
+      let list: RegistrationRequest | undefined;
+      const reads: Array<ReadonlyArray<string>> = [];
+      const adapter: ZeropsDataAdapter = {
+        openReceiver: (_scope, organization, identity) =>
+          Effect.succeed({
+            identity,
+            organization,
+            delivery: "hot-single-consumer-buffered-before-open-resolves",
+            events: Stream.fromQueue(events),
+          }),
+        register: (_receiver, request) => {
+          if (request.descriptor.kind === "table-list") list = request;
+          return Effect.succeed({
+            responseObservations:
+              request.descriptor.kind === "table-list"
+                ? decodeRegistrationResponse(request, { items: [], totalHits: 0 }).observations
+                : [],
+          });
+        },
+        read: (ticket) => {
+          const descriptor = (ticket.target as { readonly descriptor: { readonly ids?: string[] } })
+            .descriptor;
+          reads.push(descriptor.ids ?? []);
+          return Effect.succeed({
+            observations: decodeTableSearch(ticket, {
+              items: (descriptor.ids ?? []).map((id) => ({
+                id,
+                serviceStackId: `service-of-${id}`,
+                status: "ACTIVE",
+                source: "CLI",
+              })),
+              totalHits: descriptor.ids?.length ?? 0,
+            }).observations,
+          });
+        },
+        execute: () => Effect.succeed({ processRefs: [], observations: [] }),
+        closeReceiver: () => Effect.void,
+      };
+      const runtime = yield* makeZeropsDataRuntime({
+        scope: runtimeScope,
+        adapter,
+        atomRegistry: registry,
+        makeOpaqueId: makeIdFactory(),
+      });
+      const states = yield* Queue.unbounded<ZeropsDataState>();
+      const unsubscribe = registry.subscribe(runtime.stateAtom, (state) => {
+        Queue.offerUnsafe(states, state);
+      });
+      const organization = topologyDescriptor.project.organization;
+      const leaseScope = yield* Scope.make();
+      const lease = yield* runtime
+        .acquire({ kind: "organization-versions", organization })
+        .pipe(Scope.provide(leaseScope));
+      yield* waitForState(
+        states,
+        (state) => state.interests.get(lease.interest)?.interest.status === "observing",
+      );
+      for (const id of ["v-1", "v-2"])
+        yield* Queue.offer(events, {
+          kind: "observation",
+          input: {
+            kind: "table-membership-observed",
+            operation: "add",
+            id,
+            registration: list as never,
+          },
+          bytes: 1,
+        });
+      yield* Effect.yieldNow;
+      expect(reads).toEqual([]);
+
+      yield* TestClock.adjust("1 second");
+      yield* waitForState(
+        states,
+        (state) =>
+          activeVersionOf(state.table, organization, "v-1").row !== null &&
+          activeVersionOf(state.table, organization, "v-2").row !== null,
+      );
+      expect(reads).toEqual([["v-1", "v-2"]]);
+
+      yield* runtime.shutdown("application-close");
+      yield* Scope.close(leaseScope, Exit.void);
+      unsubscribe();
+      registry.dispose();
+    }),
+  );
+  it.effect(
+    "reads ids that arrive while a batch reads in the next round, never stranding them",
+    () =>
+      Effect.gen(function* () {
+        const registry = AtomRegistry.make();
+        const events = yield* Queue.unbounded<ReceiverEvent>();
+        const { decodeRegistrationResponse } = yield* Effect.promise(
+          () => import("./platformProtocol.ts"),
+        );
+        const { decodeTableSearch } = yield* Effect.promise(() => import("./tableProtocol.ts"));
+        const { activeVersionOf } = yield* Effect.promise(() => import("./entityTable.ts"));
+        let list: RegistrationRequest | undefined;
+        const reads: Array<ReadonlyArray<string>> = [];
+        const gate = yield* Deferred.make<void>();
+        const adapter: ZeropsDataAdapter = {
+          openReceiver: (_scope, organization, identity) =>
+            Effect.succeed({
+              identity,
+              organization,
+              delivery: "hot-single-consumer-buffered-before-open-resolves",
+              events: Stream.fromQueue(events),
+            }),
+          register: (_receiver, request) => {
+            if (request.descriptor.kind === "table-list") list = request;
+            return Effect.succeed({
+              responseObservations:
+                request.descriptor.kind === "table-list"
+                  ? decodeRegistrationResponse(request, { items: [], totalHits: 0 }).observations
+                  : [],
+            });
+          },
+          read: (ticket) => {
+            const descriptor = (
+              ticket.target as { readonly descriptor: { readonly ids?: string[] } }
+            ).descriptor;
+            reads.push(descriptor.ids ?? []);
+            return (reads.length === 1 ? Deferred.await(gate) : Effect.void).pipe(
+              Effect.as({
+                observations: decodeTableSearch(ticket, {
+                  items: (descriptor.ids ?? []).map((id) => ({
+                    id,
+                    serviceStackId: `service-of-${id}`,
+                    status: "ACTIVE",
+                    source: "CLI",
+                  })),
+                  totalHits: descriptor.ids?.length ?? 0,
+                }).observations,
+              }),
+            );
+          },
+          execute: () => Effect.succeed({ processRefs: [], observations: [] }),
+          closeReceiver: () => Effect.void,
+        };
+        const runtime = yield* makeZeropsDataRuntime({
+          scope: runtimeScope,
+          adapter,
+          atomRegistry: registry,
+          makeOpaqueId: makeIdFactory(),
+        });
+        const states = yield* Queue.unbounded<ZeropsDataState>();
+        const unsubscribe = registry.subscribe(runtime.stateAtom, (state) => {
+          Queue.offerUnsafe(states, state);
+        });
+        const organization = topologyDescriptor.project.organization;
+        const leaseScope = yield* Scope.make();
+        const lease = yield* runtime
+          .acquire({ kind: "organization-versions", organization })
+          .pipe(Scope.provide(leaseScope));
+        yield* waitForState(
+          states,
+          (state) => state.interests.get(lease.interest)?.interest.status === "observing",
+        );
+        const add = (id: string) =>
+          Queue.offer(events, {
+            kind: "observation",
+            input: {
+              kind: "table-membership-observed",
+              operation: "add",
+              id,
+              registration: list as never,
+            },
+            bytes: 1,
+          });
+        const settleFibers = Effect.forEach(Array.from({ length: 20 }), () => Effect.yieldNow, {
+          discard: true,
+        });
+        yield* add("v-1");
+        yield* settleFibers;
+        yield* TestClock.adjust("1 second");
+        yield* settleFibers;
+        // The first batch is still reading when the second id arrives.
+        expect(reads).toEqual([["v-1"]]);
+        yield* add("v-2");
+        yield* settleFibers;
+        yield* Deferred.succeed(gate, undefined);
+        yield* settleFibers;
+        yield* TestClock.adjust("1 second");
+        yield* waitForState(
+          states,
+          (state) => activeVersionOf(state.table, organization, "v-2").row !== null,
+        );
+        expect(reads).toEqual([["v-1"], ["v-2"]]);
+
+        yield* runtime.shutdown("application-close");
+        yield* Scope.close(leaseScope, Exit.void);
+        unsubscribe();
+        registry.dispose();
+      }),
   );
 });

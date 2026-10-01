@@ -17,6 +17,7 @@ import { bindAccountFlow } from "./accountForge";
 import { HeldInventoryContext } from "./inventoryContext";
 import { useZeropsProjectFlow, type ZeropsProjectFlowValue } from "./projectFlowContext";
 import {
+  activeDeployOf,
   HELD_VERB_MS,
   MERGE_HEAD_MOVED,
   ZeropsProjectFlowProvider,
@@ -914,5 +915,24 @@ describe("ZeropsProjectFlowProvider", () => {
         vi.useRealTimers();
       }
     });
+  });
+});
+
+describe("a group read's key on what its services run", () => {
+  const pushed = {
+    id: "service-1",
+    activeAppVersion: { id: "version-1", lastUpdate: "2026-10-01T09:00:00Z" },
+  } as never;
+  it("moves once the account's store states the version, so a fallen-back read reads again", () => {
+    const unread = activeDeployOf(pushed, { state: "unread", waitingFor: null });
+    const known = activeDeployOf(pushed, {
+      state: "known",
+      value: { activeId: "version-1", source: "GIT", name: "3f9c1b2 v1.0.0" },
+      asOf: { ordinal: 1, atMs: 0 },
+      coverage: "complete",
+      freshness: { kind: "live" },
+    });
+    expect(known).not.toBe(unread);
+    expect(activeDeployOf(pushed, { state: "unread", waitingFor: null })).toBe(unread);
   });
 });

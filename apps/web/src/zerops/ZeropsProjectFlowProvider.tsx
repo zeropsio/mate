@@ -47,6 +47,11 @@ import {
   type Deployment,
   type FlowHalf,
 } from "@t3tools/client-runtime/zerops/flow";
+import {
+  statedDeployKey,
+  ZeropsServiceId,
+  type ZeropsServiceDeployedVersion,
+} from "@t3tools/client-runtime/zerops/data";
 import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
 import { mateDiagnostics } from "@t3tools/client-runtime/zerops/diagnostics";
 import { zeropsThrowawayPlatform } from "@t3tools/client-runtime/zerops/doorThrowaway";
@@ -71,6 +76,7 @@ import {
   type ZeropsProjectFlowValue,
 } from "./projectFlowContext";
 import { useNowMs } from "./useNowMs";
+import { useZeropsAtomSelections, ZeropsDataContext } from "./zeropsDataContext";
 import { useZeropsDeployedVersionReader } from "./useZeropsDeployedVersion";
 import {
   useZeropsGroupDeploys,
@@ -146,10 +152,18 @@ function headMoved(cause: unknown): boolean {
 }
 
 /** What the platform pushed as a service's active deploy: when it was activated, and its name. */
-function activeDeployOf(service: ZeropsService | undefined): string | undefined {
+/**
+ * What a service runs, as a group's read is keyed on it: the push's activation and name, and the
+ * name the account's store states once it does — so a group read that had to fall back while the
+ * store was slow reads again the moment the store answers.
+ */
+export function activeDeployOf(
+  service: ZeropsService | undefined,
+  stated?: Shown<ZeropsServiceDeployedVersion>,
+): string | undefined {
   const version = service?.activeAppVersion;
   if (version === null || version === undefined) return undefined;
-  return `${version.lastUpdate ?? ""} ${version.name ?? ""}`;
+  return `${version.lastUpdate ?? ""} ${version.name ?? ""} ${statedDeployKey(stated)}`;
 }
 
 /** Stands for a half a group has no answer for, as a key of {@link joinedFlows}. */
@@ -375,6 +389,33 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
    * (DESIGN M7), and its stop renders withheld where it is drawn.
    */
   const held = useContext(HeldInventoryContext);
+  const data = useContext(ZeropsDataContext);
+  // What each group service runs, as the account's store states it, read live: a slow first
+  // statement re-keys its group once it lands (`activeDeployOf`).
+  const statedServices = useMemo(() => {
+    if (data === null || held === null) return [];
+    return registry.registry.groups.flatMap((entry) =>
+      held.projects
+        .filter((project) => readZeropsGroupTags(project.tagList ?? []).groupId === entry.groupId)
+        .flatMap((project) => {
+          const services = held.services.get(project.id);
+          const ref = inventory.projectRefs.get(project.id);
+          if (services?.status !== "resolved" || ref === undefined) return [];
+          return summarizeEnvironmentServices(services.services).deployable.map(
+            (service) =>
+              [
+                service.serviceId,
+                data.runtime.reads.deployedVersion({
+                  kind: "service",
+                  project: ref,
+                  serviceId: ZeropsServiceId.make(service.serviceId),
+                }),
+              ] as const,
+          );
+        }),
+    );
+  }, [data, held, inventory.projectRefs, registry.registry.groups]);
+  const stated = useZeropsAtomSelections(statedServices);
   const groups = useMemo<ReadonlyArray<ZeropsDeployGroup>>(
     () =>
       registry.registry.groups.map((entry) => ({
@@ -397,7 +438,7 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
                       );
                       return {
                         ...service,
-                        activeDeploy: activeDeployOf(pushed),
+                        activeDeploy: activeDeployOf(pushed, stated.get(service.serviceId)),
                         activeVersionId: pushed?.activeAppVersion?.id ?? undefined,
                       };
                     })
@@ -405,7 +446,7 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
             };
           }),
       })),
-    [held, registry.registry.groups],
+    [held, registry.registry.groups, stated],
   );
   const forgeGroups = useMemo(
     () => groups.map(({ groupId, slug }) => ({ groupId, slug })),

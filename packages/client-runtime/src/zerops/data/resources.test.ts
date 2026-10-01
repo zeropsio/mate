@@ -96,7 +96,6 @@ const tokenGrantsRequest = (
 const unusedAdapter = (overrides: Partial<ZeropsResourceAdapter> = {}): ZeropsResourceAdapter => ({
   readOrganizationLocations: () => Effect.succeed([]),
   readServiceAuthorizedAgents: () => Effect.succeed([]),
-  readServiceDeployedVersion: () => Effect.succeed({ activeId: null, source: null, name: null }),
   readServiceMateFlag: () => Effect.succeed({ enabled: "unknown" }),
   readOrganizationIntegrationTokenGrants: () => Effect.succeed([]),
   ...overrides,

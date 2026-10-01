@@ -11,7 +11,7 @@ import {
   type ServiceRecord,
   type ServiceRef,
 } from "../data/types.ts";
-import type { ZeropsServiceDeployedVersion } from "../data/resources.ts";
+import type { ZeropsServiceDeployedVersion } from "../data/deployedVersion.ts";
 import type { Shown } from "../knowledge/known.ts";
 import type { StopService } from "./deployment.ts";
 import { processesRead, runningProcess } from "./__fixtures__/processes.ts";
@@ -30,12 +30,10 @@ function listings() {
   const refusals = new Map<string, (reason: LeaseAdmissionError["reason"]) => void>();
   const timers: Array<{ readonly delayMs: number; readonly fire: () => void; armed: boolean }> = [];
   let follows = 0;
-  /** The direct reads the store holds, by service id, each with what it is told. */
-  const directReads: Array<{
-    readonly serviceId: string;
-    readonly changed: (shown: Shown<ZeropsServiceDeployedVersion>) => void;
-    released: boolean;
-  }> = [];
+  /** What the account's store states of each service's version, by service id. */
+  const versions = new Map<string, Shown<ZeropsServiceDeployedVersion>>();
+  /** Every service the store asked about. */
+  const asked: string[] = [];
   const changed = (ref: ProjectRef) => {
     for (const listener of watchers.get(projectKeyOf(ref)) ?? []) listener();
   };
@@ -59,15 +57,9 @@ function listings() {
         refusals.set(key, refused);
         return () => void set.delete(listener);
       },
-      deployedVersion: (
-        ref: ServiceRef,
-        changed: (shown: Shown<ZeropsServiceDeployedVersion>) => void,
-      ) => {
-        const read = { serviceId: ref.serviceId, changed, released: false };
-        directReads.push(read);
-        return () => {
-          read.released = true;
-        };
+      deployedVersion: (ref: ServiceRef): Shown<ZeropsServiceDeployedVersion> => {
+        asked.push(ref.serviceId);
+        return versions.get(ref.serviceId) ?? { state: "unread", waitingFor: null };
       },
       nowMs: () => NOW,
       random: () => 0.5,
@@ -91,11 +83,12 @@ function listings() {
     refuse: (ref: ProjectRef, reason: LeaseAdmissionError["reason"]) =>
       refusals.get(projectKeyOf(ref))?.(reason),
     watching: () => [...watchers.values()].reduce((count, set) => count + set.size, 0),
-    /** Every direct read the store took, held or released. */
-    directReads: () => directReads,
-    /** Tells every held direct read what the service states now. */
+    /** Every service whose version the store asked the account's store about. */
+    asked: () => asked,
+    /** The account's store now states this of the stage's `app`, and says it changed. */
     answer: (shown: Shown<ZeropsServiceDeployedVersion>) => {
-      for (const read of directReads.filter(({ released }) => !released)) read.changed(shown);
+      versions.set("app-id", shown);
+      changed(STAGE);
     },
     /** How often a stop's demand was taken. */
     follows: () => follows,
@@ -271,19 +264,17 @@ describe("the deployment store (DESIGN §2.D D6)", () => {
     });
   });
 
-  it("a new active version seen only by push is read once directly and then named", () => {
+  it("a new active version seen only by push is named by what the account's store states of it", () => {
     const platform = listings();
     const store = makeDeploymentStore(platform.ports);
     store.demand(STAGE);
     platform.publishProcesses(STAGE, building());
     platform.publish(STAGE, stage({ ...NEVER_DEPLOYED, source: "GIT", name: "v1.0.0" }));
-    expect(platform.directReads()).toEqual([]);
+    expect(platform.asked()).toEqual([]);
 
     // No build of it was seen: the push names only the new version's id (A14).
-    const pushed = stage({ ...NEVER_DEPLOYED, id: "version-2", source: null });
-    platform.publish(STAGE, pushed);
-    platform.publish(STAGE, pushed);
-    expect(platform.directReads().map(({ serviceId }) => serviceId)).toEqual(["app-id"]);
+    platform.publish(STAGE, stage({ ...NEVER_DEPLOYED, id: "version-2", source: null }));
+    expect(platform.asked()).toContain("app-id");
     expect(deploymentOf(store.stop(STAGE), "app")?.state).toBe("unread");
 
     platform.answer(stated({ activeId: "version-2", source: "GIT", name: `${SHA} v1.1.0 ada` }));
@@ -292,43 +283,31 @@ describe("the deployment store (DESIGN §2.D D6)", () => {
       state: "known",
       value: { kind: "running", version: { sha: SHA, name: "v1.1.0", label: "v1.1.0" } },
     });
-    expect(platform.directReads().map(({ released }) => released)).toEqual([true]);
-    platform.publish(STAGE, pushed);
-    expect(platform.directReads()).toHaveLength(1);
   });
 
-  describe("what the direct read of a pushed version answers (A14)", () => {
+  describe("what the account's store states of a pushed version (A14)", () => {
     const cases: ReadonlyArray<{
       readonly name: string;
       readonly answer: Shown<ZeropsServiceDeployedVersion>;
       readonly deployment: object;
-      readonly held: boolean;
-      /** When the store asks for the read again itself. */
-      readonly asksAgain: ReadonlyArray<number>;
     }> = [
       {
         name: "a version the service does not name runs, unnamed",
         answer: stated({ activeId: "version-2", source: "GIT", name: null }),
         deployment: { state: "known", value: { kind: "running", version: { label: undefined } } },
-        held: false,
-        asksAgain: [],
       },
       {
         name: "a never-deployed runtime's NONE version runs nothing",
         answer: stated({ activeId: "version-2", source: "NONE", name: null }),
         deployment: { state: "known", value: { kind: "none" } },
-        held: false,
-        asksAgain: [],
       },
       {
-        name: "an answer for another version names nothing, and is asked for again",
+        name: "a statement of another version names nothing",
         answer: stated({ activeId: "version-1", source: "GIT", name: SHA }),
         deployment: { state: "unread" },
-        held: false,
-        asksAgain: [2_000],
       },
       {
-        name: "a read that failed says so, and is tried again",
+        name: "a stream that failed says so",
         answer: {
           state: "failed",
           failure: { kind: "transport", detail: "Zerops did not answer." },
@@ -337,19 +316,15 @@ describe("the deployment store (DESIGN §2.D D6)", () => {
           retryAtMs: NOW + 2_000,
         },
         deployment: { state: "failed", retryAtMs: NOW + 2_000 },
-        held: true,
-        asksAgain: [],
       },
       {
-        name: "a read still under way holds the line",
+        name: "a list still under way holds the line",
         answer: { state: "reading", sinceMs: NOW, attempt: 1 },
         deployment: { state: "unread" },
-        held: true,
-        asksAgain: [],
       },
     ];
 
-    it.each(cases)("$name", ({ answer, deployment, held, asksAgain }) => {
+    it.each(cases)("$name", ({ answer, deployment }) => {
       const platform = listings();
       const store = makeDeploymentStore(platform.ports);
       store.demand(STAGE);
@@ -359,65 +334,9 @@ describe("the deployment store (DESIGN §2.D D6)", () => {
       platform.answer(answer);
 
       expect(deploymentOf(store.stop(STAGE), "app")).toMatchObject(deployment);
-      expect(platform.directReads().map(({ released }) => !released)).toEqual([held]);
-      expect(platform.armed()).toEqual(asksAgain);
+      // Nothing is read for it, so nothing is asked for again either.
+      expect(platform.armed()).toEqual([]);
     });
-  });
-
-  it("asks again on the retry ladder while the direct read answers for another version", () => {
-    const platform = listings();
-    const store = makeDeploymentStore(platform.ports);
-    store.demand(STAGE);
-    platform.publishProcesses(STAGE, building());
-    platform.publish(STAGE, stage({ ...NEVER_DEPLOYED, id: "version-2", source: null }));
-
-    // The read joined one taken before version-2 activated: it answers for version-1.
-    platform.answer(stated({ activeId: "version-1", source: "GIT", name: SHA }));
-    expect(deploymentOf(store.stop(STAGE), "app")?.state).toBe("unread");
-    expect(platform.directReads().map(({ released }) => released)).toEqual([true]);
-    expect(platform.armed()).toEqual([2_000]);
-
-    platform.fire();
-    expect(platform.directReads().map(({ released }) => released)).toEqual([true, false]);
-    platform.answer(stated({ activeId: "version-1", source: "GIT", name: SHA }));
-    expect(platform.armed()).toEqual([4_000]);
-
-    platform.fire();
-    platform.answer(stated({ activeId: "version-2", source: "GIT", name: `${SHA} v1.1.0 ada` }));
-    expect(deploymentOf(store.stop(STAGE), "app")).toMatchObject({
-      state: "known",
-      value: { kind: "running", version: { sha: SHA, name: "v1.1.0" } },
-    });
-    expect(platform.directReads().map(({ released }) => released)).toEqual([true, true, true]);
-    expect(platform.armed()).toEqual([]);
-  });
-
-  it("a stop let go no longer asks again for a read that answered for another version", () => {
-    const platform = listings();
-    const store = makeDeploymentStore(platform.ports);
-    const release = store.demand(STAGE);
-    platform.publishProcesses(STAGE, building());
-    platform.publish(STAGE, stage({ ...NEVER_DEPLOYED, id: "version-2", source: null }));
-    platform.answer(stated({ activeId: "version-1", source: "GIT", name: SHA }));
-
-    release();
-
-    expect(platform.armed()).toEqual([]);
-  });
-
-  it("lets go of a direct read once the stop is let go, or its version is named otherwise", () => {
-    const platform = listings();
-    const store = makeDeploymentStore(platform.ports);
-    const release = store.demand(STAGE);
-    platform.publishProcesses(STAGE, building());
-    platform.publish(STAGE, stage({ ...NEVER_DEPLOYED, id: "version-2", source: null }));
-    // The next frame states the source itself.
-    platform.publish(STAGE, stage({ ...NEVER_DEPLOYED, id: "version-2", source: "GIT" }));
-    expect(platform.directReads().map(({ released }) => released)).toEqual([true]);
-
-    platform.publish(STAGE, stage({ ...NEVER_DEPLOYED, id: "version-3", source: null }));
-    release();
-    expect(platform.directReads().map(({ released }) => released)).toEqual([true, true]);
   });
 
   it("a never-deployed runtime stays Nothing deployed", () => {

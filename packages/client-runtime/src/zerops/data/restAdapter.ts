@@ -42,7 +42,8 @@ import type {
   ZeropsDataAdapter,
   ZeropsWireSubscriptionName,
 } from "./types.ts";
-import { ZeropsProcessId } from "./types.ts";
+import { ZeropsProcessId, tableEntityOf, type TableQueryDescriptor } from "./types.ts";
+import { decodeTableSearch } from "./tableProtocol.ts";
 import { ZeropsApiError, type ZeropsApiClient } from "../api.ts";
 import type { PlatformWatchSocket, PlatformWatchTimers } from "./platformSocket.ts";
 import { makeProjectTagWriter, type ProjectTagLocks } from "./tagWriter.ts";
@@ -282,7 +283,8 @@ function queryOrganizationId(query: EntityQueryDescriptor): string {
 
 function registrationOrganization(request: RegistrationRequest) {
   const descriptor = request.descriptor;
-  return descriptor.kind === "entity-updates"
+  if (descriptor.kind === "table-list") return descriptor.query.organization;
+  return descriptor.kind === "entity-updates" || descriptor.kind === "table-updates"
     ? descriptor.organization
     : descriptor.kind === "query-membership"
       ? descriptor.query.kind === "process-history-window" ||
@@ -330,12 +332,48 @@ function searchTerms(
  */
 const ORGANIZATION_SEARCH_LIMIT = 2000;
 
+/** The search a table list is: its organization's rows its kind holds (`entityTable.ts`). */
+function tableSearch(query: TableQueryDescriptor) {
+  return {
+    path: `/${tableEntityOf(query)}/search`,
+    body: {
+      search: [
+        { name: "clientId", operator: "eq", value: query.organization.organizationId },
+        query.kind === "active-versions-of-organization"
+          ? { name: "status", operator: "eq", value: "ACTIVE" }
+          : { name: "key", operator: "in", value: query.keys },
+        ...(query.ids === undefined ? [] : [{ name: "id", operator: "in", value: query.ids }]),
+      ],
+      sort: [],
+      limit: query.ids === undefined ? ORGANIZATION_SEARCH_LIMIT : Math.max(1, query.ids.length),
+    },
+  };
+}
+
 function registrationHttp(request: RegistrationRequest, receiver: ReceiverHandle) {
   const common = {
     receiverId: receiver.identity.receiverId,
     subscriptionName: request.subscriptionName,
   };
   const descriptor = request.descriptor;
+  if (descriptor.kind === "table-updates") {
+    return {
+      path: `/${descriptor.entity}/search`,
+      body: {
+        search: [
+          { name: "clientId", operator: "eq", value: descriptor.organization.organizationId },
+        ],
+        sort: [],
+        ...common,
+        wsOutputType: "updateStream",
+        disableOutput: true,
+      },
+    };
+  }
+  if (descriptor.kind === "table-list") {
+    const search = tableSearch(descriptor.query);
+    return { path: search.path, body: { ...search.body, ...common, wsOutputType: "listStream" } };
+  }
   if (descriptor.kind === "entity-updates") {
     const entity = descriptor.entity === "service" ? "service-stack" : descriptor.entity;
     return {
@@ -407,6 +445,17 @@ function readHttp(ticket: PlatformReadRequest, offset = 0) {
   if (target.kind === "process")
     return { path: `/process/${target.ref.processId}`, method: "GET" as const };
   const query = target.descriptor;
+  if (
+    query.kind === "active-versions-of-organization" ||
+    query.kind === "service-variables-of-organization"
+  ) {
+    const search = tableSearch(query);
+    return {
+      path: search.path,
+      method: "POST" as const,
+      body: { ...search.body, ...(offset ? { offset } : {}) },
+    };
+  }
   if (query.kind === "projects-of-organization")
     return {
       path: `/client/${query.organization.organizationId}/project?limit=500${offset ? `&offset=${offset}` : ""}`,
@@ -472,6 +521,9 @@ function decodeRead(ticket: PlatformReadRequest, body: unknown) {
     case "current-metrics-of-project":
     case "metric-history-of-project":
       return decodeMetricRead(ticket, body);
+    case "active-versions-of-organization":
+    case "service-variables-of-organization":
+      return decodeTableSearch(ticket, body);
   }
 }
 

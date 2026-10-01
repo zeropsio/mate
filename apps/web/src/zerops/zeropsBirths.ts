@@ -318,7 +318,7 @@ export function webBirthPorts(
     readMateFlag: async (birth, serviceId) => {
       const inputs = read();
       if (inputs === null) return "unknown";
-      return readServiceMateFlag(inputs.runtime.resources, {
+      return readServiceMateFlag(inputs.runtime, inputs.atoms, {
         kind: "service",
         project: refOf(inputs, birth),
         serviceId: ZeropsServiceId.make(serviceId),

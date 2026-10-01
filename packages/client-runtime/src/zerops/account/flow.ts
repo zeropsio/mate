@@ -21,7 +21,7 @@ import type * as Context from "effect/Context";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
-import type { AtomRegistry } from "effect/unstable/reactivity";
+import { Atom, type AtomRegistry } from "effect/unstable/reactivity";
 
 import type { Instant } from "../data/access/grant.ts";
 import type { ManagedZeropsDataRuntime } from "../data/runtime.ts";
@@ -143,6 +143,8 @@ export function deploymentStorePorts(
   services: Context.Context<never>,
 ): DeploymentStorePorts {
   const run = Effect.runForkWith(services);
+  /** The account's entity table: what services run changes with it (`deployedVersion.ts`). */
+  const table = Atom.make((get) => get(data.stateAtom).table);
   return {
     services: (project: ProjectRef) => atomRegistry.get(data.reads.servicesOf(project)),
     processes: (project: ProjectRef) => atomRegistry.get(data.reads.runningProcessesOf(project)),
@@ -155,23 +157,21 @@ export function deploymentStorePorts(
           data.acquire({ kind: "project-activity", project }).pipe(Effect.andThen(Effect.never)),
         ).pipe(Effect.catch((error) => Effect.sync(() => refused(error.reason)))),
       );
+      // What a pushed version runs comes from the organization's active versions and variables,
+      // which the account streams for its session: a stop reads nothing of its own for it (A14).
+      // Read once, so the table's next change is one its subscription hears.
+      atomRegistry.get(table);
       const unsubscribes = [
         atomRegistry.subscribe(data.reads.servicesOf(project), changed),
         atomRegistry.subscribe(data.reads.runningProcessesOf(project), changed),
+        atomRegistry.subscribe(table, changed),
       ];
       return () => {
         for (const unsubscribe of unsubscribes) unsubscribe();
         run(Fiber.interrupt(lease));
       };
     },
-    // Subscribing is the demand: the broker reads the service while it is held, and tries a failed
-    // read again on the retry ladder (§4.0).
-    deployedVersion: (service, changed) =>
-      atomRegistry.subscribe(
-        data.resources.known({ kind: "service-deployed-version", account: data.scope, service }),
-        changed,
-        { immediate: true },
-      ),
+    deployedVersion: (service) => atomRegistry.get(data.reads.deployedVersion(service)),
     nowMs: () => data.access.clock.currentTimeMillisUnsafe(),
     random: Math.random,
     setTimer: (delayMs, fire) => {

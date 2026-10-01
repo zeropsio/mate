@@ -36,6 +36,7 @@ import {
   makeInitialZeropsDataState,
   reduceZeropsDataState,
   type RuntimeControlInput,
+  type ZeropsDataFollowUp,
   type ZeropsDataState,
 } from "./state.ts";
 import type {
@@ -76,6 +77,7 @@ import type {
   RegistrationReceipt,
   RuntimeInterestDescriptor,
   SharedReadOwnership,
+  TableQueryDescriptor,
   VerifiedAccessGrant,
   ZeropsDataAdapter,
   ZeropsDataRuntime,
@@ -99,7 +101,14 @@ import {
   entityKeyOf,
   projectKeyOf,
   queryKeyOf,
+  tableEntityOf,
 } from "./types.ts";
+import {
+  activeVersionsDescriptor,
+  serviceVariablesDescriptor,
+  tableRowsDue,
+  tableRowsWanted,
+} from "./entityTable.ts";
 
 export function accountRefsEqual(left: AccountRef, right: AccountRef): boolean {
   return left.apiOrigin === right.apiOrigin && left.accountId === right.accountId;
@@ -116,9 +125,7 @@ function interestIdentitiesEqual(left: InterestIdentity, right: InterestIdentity
 }
 
 function organizationOfInterest(descriptor: RuntimeInterestDescriptor): OrganizationRef {
-  return descriptor.kind === "organization-inventory"
-    ? descriptor.organization
-    : descriptor.project.organization;
+  return "organization" in descriptor ? descriptor.organization : descriptor.project.organization;
 }
 
 function organizationOfEntityRef(ref: EntityRef): OrganizationRef {
@@ -143,6 +150,8 @@ export function interestKeyOf(descriptor: RuntimeInterestDescriptor): InterestKe
 function serializedInterestKey(descriptor: RuntimeInterestDescriptor): InterestKey {
   switch (descriptor.kind) {
     case "organization-inventory":
+    case "organization-versions":
+    case "organization-variables":
       return InterestKeySchema.make(
         JSON.stringify([descriptor.kind, organizationKeyOf(descriptor.organization)]),
       );
@@ -432,6 +441,19 @@ export function planZeropsInterest(descriptor: RuntimeInterestDescriptor): Inter
     statuses: ["PENDING", "RUNNING", "ROLLBACKING", "CANCELING"],
     schemaVersion: 1,
   };
+  const table = (query: TableQueryDescriptor): ReadonlyArray<PlannedRegistration> => [
+    {
+      descriptor: { kind: "table-updates", entity: tableEntityOf(query), organization },
+      baseline: null,
+    },
+    { descriptor: { kind: "table-list", query }, baseline: { kind: "query", descriptor: query } },
+  ];
+  if (descriptor.kind === "organization-versions") {
+    return { registrations: table(activeVersionsDescriptor(organization)), directReads: [] };
+  }
+  if (descriptor.kind === "organization-variables") {
+    return { registrations: table(serviceVariablesDescriptor(organization)), directReads: [] };
+  }
   if (descriptor.kind === "organization-inventory") {
     return {
       registrations: [entityUpdate("project"), membership(projects)],
@@ -524,8 +546,15 @@ export function planZeropsInterest(descriptor: RuntimeInterestDescriptor): Inter
   };
 }
 
+/** How long an id a table is owed waits for its own update frame before it is read. */
+const TABLE_READ_GRACE_MS = 1_000;
+/** How long a failed table read waits before its kind's next batch. */
+const TABLE_READ_RETRY_MS = 30_000;
+/** The most ids one table read names. */
+const TABLE_READ_BATCH = 500;
+
 function registrationKeyOf(descriptor: RegistrationDescriptor): string {
-  if (descriptor.kind === "entity-updates")
+  if (descriptor.kind === "entity-updates" || descriptor.kind === "table-updates")
     return JSON.stringify([
       descriptor.kind,
       descriptor.entity,
@@ -711,7 +740,6 @@ const unavailableResource = (): Effect.Effect<never, ZeropsResourceSourceError> 
 const unavailableResourceAdapter: ZeropsResourceAdapter = {
   readOrganizationLocations: unavailableResource,
   readServiceAuthorizedAgents: unavailableResource,
-  readServiceDeployedVersion: unavailableResource,
   readServiceMateFlag: unavailableResource,
   readOrganizationIntegrationTokenGrants: unavailableResource,
 };
@@ -986,6 +1014,9 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
   let receiverEpoch = 0;
   let interestEpoch = 0;
   let scheduleHydration: (query: QueryKey) => Effect.Effect<void> = () => Effect.void;
+  let scheduleTableRead: (
+    followUp: Extract<ZeropsDataFollowUp, { readonly kind: "read-table-rows" }>,
+  ) => Effect.Effect<void> = () => Effect.void;
   let scheduleRecovery: (receiver: RuntimeReceiver, reason: string) => Effect.Effect<void> = () =>
     Effect.void;
   let recoverSubscription: (
@@ -1180,9 +1211,14 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
           return reduction.followUps;
         }),
       );
-      yield* Effect.forEach(followUps, (followUp) => scheduleHydration(followUp.query), {
-        discard: true,
-      });
+      yield* Effect.forEach(
+        followUps,
+        (followUp) =>
+          followUp.kind === "read-table-rows"
+            ? scheduleTableRead(followUp)
+            : scheduleHydration(followUp.query),
+        { discard: true },
+      );
     });
 
   const markRecovering = (
@@ -1461,7 +1497,9 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
           target.descriptor.kind === "services-of-organization" ||
           target.descriptor.kind === "services-of-project" ||
           target.descriptor.kind === "running-processes-of-organization" ||
-          target.descriptor.kind === "process-history-window")
+          target.descriptor.kind === "process-history-window" ||
+          target.descriptor.kind === "active-versions-of-organization" ||
+          target.descriptor.kind === "service-variables-of-organization")
           ? {
               ...base,
               kind: kind as "baseline" | "history",
@@ -1602,6 +1640,107 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
         kind,
         target,
       } as ReadTicket;
+    });
+
+  /**
+   * The table reads waiting or in flight, by kind and organization: one loop each, and what
+   * wakes it when an id comes due sooner than it sleeps.
+   */
+  const tableReads = new Map<string, { wake: Deferred.Deferred<void> }>();
+  /** When a kind's failed batch may be read again, by kind and organization. */
+  const tableReadRetryAt = new Map<string, number>();
+  scheduleTableRead = (followUp) =>
+    Effect.gen(function* () {
+      const organizationKey = organizationKeyOf(followUp.organization);
+      const key = `${followUp.entity}:${organizationKey}`;
+      const running = tableReads.get(key);
+      if (running !== undefined) {
+        yield* Deferred.succeed(running.wake, undefined);
+        return;
+      }
+      if (yield* Ref.get(closed)) return;
+      const loop = { wake: yield* Deferred.make<void>() };
+      tableReads.set(key, loop);
+      // One loop per kind and organization: it reads what is due, batched, at most once a
+      // grace, and ends when nothing is owed. Ids that arrive while a batch reads, or past its
+      // cap, are read by the next round; one that arrives while the loop sleeps wakes it.
+      const read = Effect.gen(function* () {
+        let lastReadAt = yield* Clock.currentTimeMillis;
+        while (true) {
+          const before = yield* Clock.currentTimeMillis;
+          const batch = tableRowsWanted((yield* Ref.get(model)).table).find(
+            (wanted) =>
+              wanted.entity === followUp.entity &&
+              organizationKeyOf(wanted.organization) === organizationKey,
+          );
+          if (batch === undefined) return;
+          // A grace after the last read and after the first id came due, so ids that arrive
+          // together are read together; every bound is absolute, so a wake never postpones it.
+          const readAt = Math.max(
+            lastReadAt + TABLE_READ_GRACE_MS,
+            batch.dueAtMs + TABLE_READ_GRACE_MS,
+            tableReadRetryAt.get(key) ?? 0,
+          );
+          if (readAt > before) {
+            const woken = yield* Effect.raceFirst(
+              Effect.sleep(Duration.millis(readAt - before)).pipe(Effect.as(false)),
+              Deferred.await(loop.wake).pipe(Effect.as(true)),
+            );
+            if (woken) {
+              loop.wake = yield* Deferred.make<void>();
+              continue;
+            }
+          }
+          if (yield* Ref.get(closed)) return;
+          const now = yield* Clock.currentTimeMillis;
+          const ids = tableRowsDue(
+            (yield* Ref.get(model)).table,
+            followUp.entity,
+            followUp.organization,
+            now,
+          ).slice(0, TABLE_READ_BATCH);
+          if (ids.length === 0) continue;
+          const streamKind =
+            followUp.entity === "app-version" ? "organization-versions" : "organization-variables";
+          const dependents = new Map<InterestKey, InterestIdentity>();
+          for (const interest of interests.values()) {
+            if (
+              interest.leases.size > 0 &&
+              interest.descriptor.kind === streamKind &&
+              organizationKeyOf(interest.descriptor.organization) === organizationKey
+            )
+              dependents.set(interest.key, interest.identity);
+          }
+          if (dependents.size === 0) return;
+          const list =
+            followUp.entity === "app-version"
+              ? activeVersionsDescriptor(followUp.organization)
+              : serviceVariablesDescriptor(followUp.organization);
+          const owner = {
+            kind: "shared" as const,
+            account: options.scope,
+            sharedReadId: ZeropsSharedReadId.make(options.makeOpaqueId()),
+          };
+          const ticket = yield* sharedReadTicket(
+            { kind: "query", descriptor: { ...list, ids } },
+            owner,
+            "baseline",
+          );
+          yield* applyControl({
+            kind: "shared-read-upserted",
+            requestId: ticket.requestId,
+            ownership: { owner, target: ticket.target, dependents, status: "active" },
+          });
+          const admitted = yield* admitRead(ticket);
+          const succeeded = admitted ? (yield* runReadOutcome(ticket, null)).succeeded : false;
+          if (admitted) yield* awaitIngress;
+          yield* applyControl({ kind: "shared-read-released", requestId: ticket.requestId });
+          lastReadAt = yield* Clock.currentTimeMillis;
+          if (succeeded) tableReadRetryAt.delete(key);
+          else tableReadRetryAt.set(key, lastReadAt + TABLE_READ_RETRY_MS);
+        }
+      });
+      yield* read.pipe(Effect.ensuring(Effect.sync(() => tableReads.delete(key))), forkOwned);
     });
 
   scheduleHydration = (query) =>
@@ -1910,8 +2049,13 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
           subscriptionName: ZeropsWireSubscriptionName.make(options.makeOpaqueId()),
         };
         const request: RegistrationRequest =
-          planned.descriptor.kind === "entity-updates"
-            ? { ...base, descriptor: planned.descriptor, baselineTicket: null }
+          planned.descriptor.kind === "entity-updates" ||
+          planned.descriptor.kind === "table-updates"
+            ? ({
+                ...base,
+                descriptor: planned.descriptor,
+                baselineTicket: null,
+              } as RegistrationRequest)
             : ({
                 ...base,
                 descriptor: planned.descriptor,

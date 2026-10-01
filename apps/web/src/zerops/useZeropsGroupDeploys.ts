@@ -243,15 +243,15 @@ export async function readGroupDeploys(input: {
       activeVersionId: service.activeVersionId,
     })),
   );
-  // Asked all at once: what the services run is answered by the organization's searches in one
-  // batch (`deployedVersionBatch.ts`), where one at a time read each service by id.
+  // What the services run is the account's store's: the organization's versions and variables
+  // are streamed, so asking reads nothing (`readDeployedVersion`).
   signal.throwIfAborted();
   const versions = new Map<string, string>();
   const answered = await Promise.all(
     planDeployedVersionReads({ declarations, services }).map(async (read) => ({
       read,
       name: await input
-        .readVersion(read.projectId, read.serviceId, signal, read.activeVersionId)
+        .readVersion(read.projectId, read.serviceId, signal)
         .catch(() => heldVersion(held, read)),
     })),
   );

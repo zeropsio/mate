@@ -1,5 +1,8 @@
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
+import { Atom, AtomRegistry } from "effect/unstable/reactivity";
+
+import type { ManagedZeropsDataRuntime } from "../data/runtime.ts";
 
 import { makeZeropsResourceBroker, type ZeropsResourceAdapter } from "../data/resources.ts";
 import {
@@ -52,8 +55,12 @@ const verified: AccessState = {
   projects: [{ project, role: "OWNER", mutationsAllowed: true }],
 };
 
-/** The flag as the helper reads it through a broker whose adapter answers `read`. */
-const flagReadThrough = (
+/**
+ * The flag as the helper answers it: the store states `stated`, and the service's own read, when
+ * it is asked, answers `read`.
+ */
+const flagThrough = (
+  stated: boolean | "unknown",
   read: ZeropsResourceAdapter["readServiceMateFlag"],
   access: AccessState = verified,
 ) =>
@@ -64,52 +71,99 @@ const flagReadThrough = (
       adapter: {
         readOrganizationLocations: () => Effect.succeed([]),
         readServiceAuthorizedAgents: () => Effect.succeed([]),
-        readServiceDeployedVersion: () =>
-          Effect.succeed({ activeId: null, source: null, name: null }),
         readServiceMateFlag: read,
         readOrganizationIntegrationTokenGrants: () => Effect.succeed([]),
       },
     });
-    const flag = yield* Effect.promise(() => readServiceMateFlag(broker, service));
+    const flagAtom = Atom.make<boolean | "unknown" | "unread">(stated);
+    const acquired: Array<string> = [];
+    const data = {
+      resources: broker,
+      reads: { mateFlag: () => flagAtom },
+      acquire: (descriptor: { readonly kind: string }) => {
+        acquired.push(descriptor.kind);
+        return Effect.never;
+      },
+    } as unknown as ManagedZeropsDataRuntime;
+    const flag = yield* Effect.promise(() =>
+      readServiceMateFlag(data, AtomRegistry.make(), service),
+    );
     yield* broker.shutdown;
-    return flag;
+    return { flag, acquired };
   });
 
 describe("readServiceMateFlag", () => {
-  for (const { name, enabled } of [
-    { name: "on", enabled: true },
-    { name: "off", enabled: false },
-    { name: "an answer that could not say", enabled: "unknown" as const },
-  ]) {
-    it.live(`reads the service's ZCP_MATE_ENABLED as it answered: ${name}`, () =>
+  const cases: ReadonlyArray<{
+    readonly name: string;
+    readonly stated: boolean | "unknown";
+    readonly read: boolean | "unknown" | "fails";
+    readonly expected: boolean | "unknown";
+    readonly reads: number;
+  }> = [
+    {
+      name: "on, as the store states it, reads nothing",
+      stated: true,
+      read: false,
+      expected: true,
+      reads: 0,
+    },
+    {
+      name: "unknown, as the store states it, is settled by the service's own read",
+      stated: "unknown",
+      read: true,
+      expected: true,
+      reads: 1,
+    },
+    {
+      name: "off is confirmed by the service's own read",
+      stated: false,
+      read: false,
+      expected: false,
+      reads: 1,
+    },
+    {
+      name: "off the stream has not caught up with is on by the service's own read",
+      stated: false,
+      read: true,
+      expected: true,
+      reads: 1,
+    },
+    {
+      name: "off whose confirming read failed is unknown, never off",
+      stated: false,
+      read: "fails",
+      expected: "unknown",
+      reads: 1,
+    },
+  ];
+  for (const testCase of cases) {
+    it.live(testCase.name, () =>
       Effect.gen(function* () {
         const requested: Array<ServiceRef> = [];
-        const flag = yield* flagReadThrough((request) =>
-          Effect.sync(() => {
+        const { flag, acquired } = yield* flagThrough(testCase.stated, (request) =>
+          Effect.suspend(() => {
             requested.push(request.service);
-            return { enabled };
+            return testCase.read === "fails"
+              ? Effect.fail({
+                  _tag: "ZeropsResourceSourceError" as const,
+                  kind: "transport" as const,
+                  retryable: false,
+                })
+              : Effect.succeed({ enabled: testCase.read });
           }),
         );
 
-        expect(flag).toBe(enabled);
-        expect(requested).toEqual([service]);
+        expect(flag).toBe(testCase.expected);
+        expect(requested).toHaveLength(testCase.reads);
+        // The account holds the variables' stream: a flag read registers nothing.
+        expect(acquired).toEqual([]);
       }),
     );
   }
 
-  it.live("is unknown, never off, when the read failed", () =>
+  it.live("is unknown when the account's access withholds the confirming read", () =>
     Effect.gen(function* () {
-      const flag = yield* flagReadThrough(() =>
-        Effect.fail({ _tag: "ZeropsResourceSourceError", kind: "transport", retryable: false }),
-      );
-
-      expect(flag).toBe("unknown");
-    }),
-  );
-
-  it.live("is unknown when the account's access withholds the read", () =>
-    Effect.gen(function* () {
-      const flag = yield* flagReadThrough(() => Effect.succeed({ enabled: false }), {
+      const { flag } = yield* flagThrough(false, () => Effect.succeed({ enabled: false }), {
         status: "expired",
         accountEpoch: scope.epoch,
         expiredAtMs: 0,

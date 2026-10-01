@@ -1,5 +1,5 @@
 /**
- * What a service actually runs, read once through the account's runtime.
+ * What a service actually runs, as the account's store states it.
  *
  * The sha is the commit the deployed version's name spells (`versionName.ts`,
  * measured 2026-09-16), named only while it is the active version's (A14),
@@ -18,9 +18,14 @@ import type {
   ZeropsResourceRequest,
   ZeropsResourceValue,
 } from "@t3tools/client-runtime/zerops/data";
-import { settledValue, ZeropsServiceId } from "@t3tools/client-runtime/zerops/data";
+import {
+  readDeployedVersion,
+  settledValue,
+  ZeropsServiceId,
+} from "@t3tools/client-runtime/zerops/data";
+import { RegistryContext } from "@effect/atom-react";
 import * as Effect from "effect/Effect";
-import { useCallback } from "react";
+import { useCallback, useContext } from "react";
 
 import { useZeropsData } from "./zeropsDataContext";
 import { useZeropsSession } from "./ZeropsSessionProvider";
@@ -57,39 +62,35 @@ export function readZeropsResourceOnce<Request extends ZeropsResourceRequest>(
 }
 
 /**
- * Reads the name of the version one service runs, in the account's scope; rejects when it could
- * not. `undefined` when nothing names what runs there.
+ * The name of the version one service runs, as the account's store states it (`readDeployedVersion`):
+ * the organization's versions and variables are streamed, so nothing is read for it. Rejects when
+ * the store could not say. `undefined` when nothing names what runs there.
  */
 export type ZeropsDeployedVersionReader = (
   projectId: string,
   serviceId: string,
   signal: AbortSignal,
-  /** The active version the live data pushed: a read that names another reads again by id. */
-  activeId?: string,
 ) => Promise<string | undefined>;
 
 export function useZeropsDeployedVersionReader(): ZeropsDeployedVersionReader {
   const { activeOrganization } = useZeropsSession();
   const { projectRef, runtime } = useZeropsData();
+  const atoms = useContext(RegistryContext);
   return useCallback(
-    async (projectId: string, serviceId: string, signal: AbortSignal, activeId?: string) => {
+    async (projectId: string, serviceId: string, signal: AbortSignal) => {
       if (activeOrganization === null) throw new Error("No organization is chosen.");
-      const deployed = await readZeropsResource(
-        runtime.resources,
+      const deployed = await readDeployedVersion(
+        runtime,
+        atoms,
         {
-          kind: "service-deployed-version",
-          account: runtime.scope,
-          service: {
-            kind: "service",
-            project: projectRef(activeOrganization.id, projectId),
-            serviceId: ZeropsServiceId.make(serviceId),
-          },
-          ...(activeId === undefined ? {} : { activeId }),
+          kind: "service",
+          project: projectRef(activeOrganization.id, projectId),
+          serviceId: ZeropsServiceId.make(serviceId),
         },
         signal,
       );
       return deployed.name ?? undefined;
     },
-    [activeOrganization, projectRef, runtime.resources, runtime.scope],
+    [activeOrganization, atoms, projectRef, runtime],
   );
 }

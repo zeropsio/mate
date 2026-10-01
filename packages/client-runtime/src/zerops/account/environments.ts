@@ -352,7 +352,8 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
     const project = projectId === undefined ? undefined : projectRefOf(projectId);
     if (project === undefined || serviceId === undefined) return "unknown";
     return readServiceMateFlag(
-      data.resources,
+      data,
+      atomRegistry,
       { kind: "service", project, serviceId: ZeropsServiceId.make(serviceId) },
       options.services,
     );

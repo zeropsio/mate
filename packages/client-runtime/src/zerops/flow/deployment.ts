@@ -26,7 +26,7 @@
  */
 import { isZcpService } from "../containerAddress.ts";
 import { serviceRecordToZeropsService } from "../data/dto.ts";
-import type { ZeropsServiceDeployedVersion } from "../data/resources.ts";
+import type { ZeropsServiceDeployedVersion } from "../data/deployedVersion.ts";
 import type {
   CollectionRead,
   IngestionStamp,
