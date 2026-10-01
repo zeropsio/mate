@@ -17,6 +17,7 @@ import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { bindTestInvalidationBus } from "./__fixtures__/invalidationBus";
+import { fakeTokenStore } from "./__fixtures__/tokenStore";
 import { TestNode } from "./__fixtures__/testDom";
 import { onZeropsInvalidation } from "./accountInvalidations";
 import { closeAccountLifetime, openAccountLifetime } from "./accountLifetime";
@@ -56,18 +57,6 @@ function accountTree(calls: Array<string>): BirthInputs {
   let tagList: ReadonlyArray<string> = ["mate:tool:gitea", "mate:gn:group-1:todo"];
   const broker: ZeropsIntegrationToken = { id: "broker-1", name: "mate-broker", projects: [] };
   const client = {
-    listIntegrationTokens: async (clientId: string) => {
-      calls.push(`list tokens of ${clientId}`);
-      return [broker];
-    },
-    setIntegrationTokenProjects: async (input: {
-      readonly clientId: string;
-      readonly projects: ReadonlyArray<{ readonly projectId: string }>;
-    }) => {
-      calls.push(
-        `grant ${input.projects.map((project) => project.projectId).join(",")} in ${input.clientId}`,
-      );
-    },
     fetchProject: async (projectId: string) => ({
       id: projectId,
       name: "Todo - Vera",
@@ -87,10 +76,14 @@ function accountTree(calls: Array<string>): BirthInputs {
       },
     ],
   } as unknown as ZeropsApiClient;
+  const tokens = fakeTokenStore(calls, [broker]);
   const runtime = {
     acquire: () => Effect.void,
     reads: { activity: (project: ProjectRef) => project },
+    scope: tokens.scope,
+    cells: tokens.cells,
     commands: {
+      setIntegrationTokenProjects: tokens.setIntegrationTokenProjects,
       updateProjectTags: (project: ProjectRef, patch: ProjectTagPatch) =>
         Effect.sync(() => {
           calls.push(`${patch.kind} on ${project.projectId}`);

@@ -61,7 +61,7 @@ import {
   onAccountLifetimeClose,
 } from "./accountLifetime";
 import { addGroupEnvironment, writeRegistryMember } from "./addGroupEnvironment";
-import { grantBrokerProject, projectTagsWrite } from "./brokerGrant";
+import { brokerGrantTokens, grantBrokerProject, projectTagsWrite } from "./brokerGrant";
 import { giteaClientFor } from "./accountGiteaSessions";
 import { placedNewProjects, type NewProjectBirth } from "./newProjectBirth";
 import { nextContainerReading } from "./zeropsContainers";
@@ -222,7 +222,7 @@ export function webBirthPorts(
       if (registration === null) return DONE;
       if (registration.kind === "mate") {
         const grant = await grantBrokerProject({
-          client: inputs.client,
+          client: brokerGrantTokens(inputs.runtime),
           clientId: birth.organizationId,
           projectId: birth.projectId,
         });
@@ -232,6 +232,7 @@ export function webBirthPorts(
       try {
         const written = await addGroupEnvironment({
           client: inputs.client,
+          tokens: brokerGrantTokens(inputs.runtime),
           writeTags: projectTagsWrite(inputs, birth.organizationId),
           gitea:
             registration.giteaOrigin === null ? null : giteaClientFor(registration.giteaOrigin),

@@ -5,7 +5,6 @@ import {
   type EnvironmentCreationPlatform,
   type EnvironmentCreationStep,
   type ZeropsApiClient,
-  type ZeropsIntegrationToken,
 } from "@t3tools/client-runtime/zerops";
 import type { BirthRecord } from "@t3tools/client-runtime/zerops/birth";
 import type { NewProjectBirth } from "./newProjectBirth";
@@ -21,6 +20,8 @@ import {
   type ProjectTagWrite,
 } from "@t3tools/client-runtime/zerops/data";
 import * as Effect from "effect/Effect";
+
+import { fakeTokenStore } from "./__fixtures__/tokenStore";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
@@ -77,8 +78,12 @@ function fakeRuntime(
   initial: ReadonlyArray<string> = ["mate:tool:gitea", "mate:gn:group-1:todo"],
 ) {
   let tagList = initial;
+  const tokens = fakeTokenStore(calls, [{ id: "broker-1", name: "mate-broker", projects: [] }]);
   return {
+    scope: tokens.scope,
+    cells: tokens.cells,
     commands: {
+      setIntegrationTokenProjects: tokens.setIntegrationTokenProjects,
       updateProjectTags: (project: ProjectRef, patch: ProjectTagPatch) =>
         Effect.sync(() => {
           const read = { id: project.projectId, name: "Gitea", status: "ACTIVE", tagList };
@@ -99,29 +104,14 @@ function fakeRuntime(
   };
 }
 
-function fakeClient(calls: Array<string>) {
-  const broker: ZeropsIntegrationToken = { id: "broker-1", name: "mate-broker", projects: [] };
-  return {
-    listIntegrationTokens: async (clientId: string) => {
-      calls.push(`list tokens of ${clientId}`);
-      return [broker];
-    },
-    setIntegrationTokenProjects: async (input: {
-      readonly clientId: string;
-      readonly projects: ReadonlyArray<{ readonly projectId: string }>;
-    }) => {
-      calls.push(
-        `grant ${input.projects.map((project) => project.projectId).join(",")} in ${input.clientId}`,
-      );
-    },
-  } as unknown as ZeropsApiClient;
-}
+/** The client a birth holds: every read and write it makes here goes through the runtime. */
+const fakeClient = (): ZeropsApiClient => ({}) as ZeropsApiClient;
 
 describe("the birth's ports", () => {
   it("makes each group write once, a reload between them included", async () => {
     const calls: Array<string> = [];
     const inputs = {
-      client: fakeClient(calls),
+      client: fakeClient(),
       runtime: fakeRuntime(calls),
       projectRef,
     } as unknown as BirthInputs;
@@ -147,7 +137,7 @@ describe("the birth's ports", () => {
   it("waits for a group whose own registry write has not landed, and fails on a contradiction", async () => {
     const calls: Array<string> = [];
     const inputs = {
-      client: fakeClient(calls),
+      client: fakeClient(),
       runtime: fakeRuntime(calls),
       projectRef,
     } as unknown as BirthInputs;
@@ -429,7 +419,7 @@ describe("the birth's account", () => {
       current = false;
     });
     const ports = webBirthPorts(
-      () => ({ client: fakeClient(calls), runtime, projectRef }) as unknown as BirthInputs,
+      () => ({ client: fakeClient(), runtime, projectRef }) as unknown as BirthInputs,
       () => current,
     );
 
@@ -536,7 +526,7 @@ describe("the birth's runtimes import", () => {
       },
     };
     const ports = webBirthPorts(
-      () => ({ client: fakeClient(calls), runtime, projectRef }) as unknown as BirthInputs,
+      () => ({ client: fakeClient(), runtime, projectRef }) as unknown as BirthInputs,
       () => true,
     );
 

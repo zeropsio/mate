@@ -58,6 +58,7 @@ const base = (
   writeTags: ProjectTagsWrite = tagsFake(REGISTRY).writeTags,
 ) => ({
   client: api as never,
+  tokens: api as never,
   writeTags,
   gitea,
   clientId: "org-1",

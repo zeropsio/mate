@@ -24,9 +24,16 @@ import {
   type ZeropsApiClient,
   type ZeropsIntegrationToken,
 } from "@t3tools/client-runtime/zerops";
-import type { ProjectTagPatch, ProjectTagWrite } from "@t3tools/client-runtime/zerops/data";
+import {
+  ZeropsOrganizationId,
+  type OrganizationRef,
+  type ProjectTagPatch,
+  type ProjectTagWrite,
+} from "@t3tools/client-runtime/zerops/data";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 
+import { readZeropsCell } from "./useZeropsDeployedVersion";
+import { integrationTokensFromGrantMetadata } from "./useZeropsGroupReach";
 import { runZeropsCommand, type ZeropsDataContextValue } from "./zeropsDataContext";
 
 /**
@@ -61,6 +68,37 @@ export type BrokerGrantClient = Pick<
   ZeropsApiClient,
   "listIntegrationTokens" | "setIntegrationTokenProjects"
 >;
+
+/**
+ * The broker grant's token list and its one write, over the account's store: the list is the
+ * organization's shared `tokens:{org}` cell — the sweep's and group reach's too — and the write is
+ * the runtime's command, which makes every reader of the list read it again.
+ */
+export function brokerGrantTokens(runtime: ZeropsDataContextValue["runtime"]): BrokerGrantClient {
+  const organization = (clientId: string): OrganizationRef => ({
+    kind: "organization",
+    account: runtime.scope.account,
+    organizationId: ZeropsOrganizationId.make(clientId),
+  });
+  return {
+    listIntegrationTokens: async (clientId, signal) =>
+      integrationTokensFromGrantMetadata(
+        await readZeropsCell(
+          runtime.cells,
+          { kind: "tokens", account: runtime.scope, organization: organization(clientId) },
+          signal,
+        ),
+      ),
+    setIntegrationTokenProjects: async ({ clientId, ...input }) => {
+      await runZeropsCommand(
+        runtime.commands.setIntegrationTokenProjects({
+          organization: organization(clientId),
+          ...input,
+        }),
+      );
+    },
+  };
+}
 
 /**
  * The broker reaching one project: nothing to write for an org `BASIC_USER`

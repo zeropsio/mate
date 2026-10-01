@@ -173,6 +173,28 @@ describe("integrationTokensFromGrantMetadata", () => {
       { id: "token-a", name: "zcp-a", projects: [{ projectId: "project-a", roleCode: "ADMIN" }] },
     ]);
   });
+
+  it("keeps the token's own org role and its minting time", () => {
+    expect(
+      integrationTokensFromGrantMetadata([
+        {
+          tokenId: "token-b",
+          name: "broker",
+          grants: [],
+          roleCode: "READ_ONLY",
+          created: "2026-10-01T09:00:00Z",
+        },
+      ]),
+    ).toEqual([
+      {
+        id: "token-b",
+        name: "broker",
+        projects: [],
+        roleCode: "READ_ONLY",
+        created: "2026-10-01T09:00:00Z",
+      },
+    ]);
+  });
 });
 
 describe("useZeropsGroupReach", () => {
