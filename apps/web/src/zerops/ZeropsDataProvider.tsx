@@ -13,7 +13,6 @@ import {
   makeZeropsApiOrigin,
   makeZeropsDataAdapter,
   makeZeropsDataRuntime,
-  makeZeropsResourceRestAdapter,
   writeAdmissionOf,
   ZeropsAccountId,
   ZeropsOrganizationId,
@@ -110,7 +109,6 @@ export const defaultMakeZeropsDataRuntime: MakeZeropsDataRuntime = ({
     makeZeropsDataRuntime({
       scope,
       adapter,
-      resourceAdapter: makeZeropsResourceRestAdapter(client),
       buildLogTransport: makeBuildLogTransport({
         scope,
         acquireGrant: (project, projectSignal) =>

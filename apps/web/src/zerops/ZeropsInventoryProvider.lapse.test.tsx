@@ -1,5 +1,5 @@
 import { ZEROPS_SESSION_STORAGE_KEY, type ZeropsUser } from "@t3tools/client-runtime/zerops";
-import type { ZeropsResourceAdapter } from "@t3tools/client-runtime/zerops/data";
+import type { ZeropsCellAdapter } from "@t3tools/client-runtime/zerops/data";
 import type { Link } from "@t3tools/client-runtime/zerops/environments";
 import { INVALIDATION_COALESCE_MS } from "@t3tools/client-runtime/zerops/knowledge/invalidation";
 import { makeAccountHarness, type AccountHarness } from "@t3tools/client-runtime/zerops/testing";
@@ -59,11 +59,11 @@ function locationsSource() {
   let reads = 0;
   const unavailable = () =>
     Effect.fail({
-      _tag: "ZeropsResourceSourceError" as const,
+      _tag: "ZeropsCellSourceError" as const,
       kind: "unavailable" as const,
       retryable: false,
     });
-  const adapter: ZeropsResourceAdapter = {
+  const adapter: ZeropsCellAdapter = {
     readOrganizationLocations: () =>
       Effect.sync(() => {
         reads++;
@@ -84,7 +84,7 @@ function locationsSource() {
  */
 async function admittedProduct(
   options: {
-    readonly resourceAdapter?: ZeropsResourceAdapter;
+    readonly cellAdapter?: ZeropsCellAdapter;
     /** An open dialog and a document title that name the projects. */
     readonly layers?: boolean;
     /** Mate p1's conversation over this link, which dropped this long after the mount (null: never). */
@@ -126,9 +126,7 @@ async function admittedProduct(
       return (
         <AccountProduct
           datastream={harness.datastream}
-          {...(options.resourceAdapter === undefined
-            ? {}
-            : { resourceAdapter: options.resourceAdapter })}
+          {...(options.cellAdapter === undefined ? {} : { cellAdapter: options.cellAdapter })}
         >
           <ProductChild
             label={CHILD}
@@ -141,7 +139,7 @@ async function admittedProduct(
           {conversation === undefined ? null : (
             <Conversation projectId="p1" link={conversation.link} linkLostAt={linkLostAt} />
           )}
-          {options.resourceAdapter === undefined ? null : (
+          {options.cellAdapter === undefined ? null : (
             <OrganizationLocations organizationId="org-1" />
           )}
           {options.layers === true ? (
@@ -170,7 +168,7 @@ describe("ZeropsInventoryProvider lapse", () => {
   it("broker values erased at the deadline", async () => {
     const source = locationsSource();
     const { harness, tab, pass, mounts } = await admittedProduct({
-      resourceAdapter: source.adapter,
+      cellAdapter: source.adapter,
     });
     await pass(0);
     expect(tab.text()).toContain("locations: known Prague");
@@ -187,7 +185,7 @@ describe("ZeropsInventoryProvider lapse", () => {
   it("a resource erased by lapse reads again on the next grant", async () => {
     const source = locationsSource();
     const { harness, tab, pass, mounts } = await admittedProduct({
-      resourceAdapter: source.adapter,
+      cellAdapter: source.adapter,
     });
     await pass(0);
     const renewals = harness.rest.hang("GET /user/info");
@@ -236,7 +234,7 @@ describe("ZeropsInventoryProvider lapse", () => {
     const source = locationsSource();
     const { harness, tab, pass } = await admittedProduct({
       layers: true,
-      resourceAdapter: source.adapter,
+      cellAdapter: source.adapter,
     });
     await pass(0);
     expect(tab.readable()).toContain("dialog: One, Two");

@@ -47,6 +47,7 @@ import { decodeTableSearch } from "./tableProtocol.ts";
 import { ZeropsApiError, type ZeropsApiClient } from "../api.ts";
 import type { PlatformWatchSocket, PlatformWatchTimers } from "./platformSocket.ts";
 import { makeProjectTagWriter, type ProjectTagLocks } from "./tagWriter.ts";
+import type { ZeropsCellAdapter, ZeropsCellSourceError } from "./cells.ts";
 
 const PUBLIC_WS_PATH = "/api/rest/public/web-socket";
 
@@ -1558,5 +1559,79 @@ export function makeZeropsDataAdapter(options: ZeropsDataAdapterOptions): Zerops
       if (internals) yield* internals.close;
     });
 
-  return { openReceiver, register, read, execute, closeReceiver };
+  return {
+    openReceiver,
+    register,
+    read,
+    execute,
+    closeReceiver,
+    cells: makeZeropsCellReads(options.client),
+  };
+}
+
+const cellReadError = (cause: unknown): ZeropsCellSourceError => {
+  if (cause instanceof ZeropsApiError) {
+    switch (cause.kind) {
+      case "forbidden":
+      case "expired-session":
+        return { _tag: "ZeropsCellSourceError", kind: "permission", retryable: false };
+      case "not-found":
+        return { _tag: "ZeropsCellSourceError", kind: "unavailable", retryable: false };
+      case "network":
+      case "server":
+        return { _tag: "ZeropsCellSourceError", kind: "transport", retryable: true };
+      default:
+        return { _tag: "ZeropsCellSourceError", kind: "decode", retryable: false };
+    }
+  }
+  return { _tag: "ZeropsCellSourceError", kind: "transport", retryable: true };
+};
+
+const cellRead = <Value>(run: () => Promise<Value>): Effect.Effect<Value, ZeropsCellSourceError> =>
+  Effect.tryPromise({ try: run, catch: cellReadError });
+
+/**
+ * The reads no stream carries, one per cell kind, over the REST API; secret-bearing source rows
+ * are stripped at this boundary.
+ */
+export function makeZeropsCellReads(client: ZeropsApiClient): ZeropsCellAdapter {
+  return {
+    readOrganizationLocations: (input, context) =>
+      cellRead(() =>
+        client.listClientLocations(input.organization.organizationId, context.abortSignal),
+      ),
+    readServiceAuthorizedAgents: (input, context) =>
+      cellRead(() => client.readAuthorizedAgents(input.service.serviceId, context.abortSignal)),
+    // A failed read is folded into `"unknown"` here, not left to fail the
+    // resource: this flag exists to replace an inference (H9), and a read
+    // that could not be made is exactly the case a caller must not treat as
+    // a fact either way.
+    readServiceMateFlag: (input, context) =>
+      cellRead(async () => {
+        try {
+          return {
+            enabled: await client.isZeropsMateEnabled(input.service.serviceId, context.abortSignal),
+          };
+        } catch {
+          return { enabled: "unknown" as const };
+        }
+      }),
+    readOrganizationIntegrationTokenGrants: (input, context) =>
+      cellRead(async () =>
+        (
+          await client.listIntegrationTokens(input.organization.organizationId, context.abortSignal)
+        ).map((token) => ({
+          tokenId: token.id,
+          name: token.name,
+          grants: token.projects ?? [],
+          ...(token.created === undefined ? {} : { created: token.created }),
+        })),
+      ),
+    readOrganizationMembers: (input, context) =>
+      cellRead(() =>
+        client.listOrganizationMembers(input.organization.organizationId, context.abortSignal),
+      ),
+    readServiceVariableNames: (input, context) =>
+      cellRead(() => client.listServiceVariableNames(input.service.serviceId, context.abortSignal)),
+  };
 }

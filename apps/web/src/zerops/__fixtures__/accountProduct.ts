@@ -11,10 +11,7 @@
 import { RegistryContext } from "@effect/atom-react";
 import type { Instant } from "@t3tools/client-runtime/zerops/data";
 import type { Link } from "@t3tools/client-runtime/zerops/environments";
-import {
-  selectLocationChoice,
-  type ZeropsResourceAdapter,
-} from "@t3tools/client-runtime/zerops/data";
+import { selectLocationChoice, type ZeropsCellAdapter } from "@t3tools/client-runtime/zerops/data";
 import { candidatesNotice, heldCandidates } from "@t3tools/client-runtime/zerops/projections";
 import type { FakeDatastream } from "@t3tools/client-runtime/zerops/testing";
 import * as Effect from "effect/Effect";
@@ -35,16 +32,16 @@ import { harnessRuntime } from "./harnessRuntime";
 
 export function AccountProduct({
   datastream,
-  resourceAdapter,
+  cellAdapter,
   children,
 }: {
   readonly datastream: FakeDatastream;
-  /** Where the runtime's resource broker reads; every resource is unavailable without one. */
-  readonly resourceAdapter?: ZeropsResourceAdapter;
+  /** Where the runtime's cells read; every cell is unavailable without one. */
+  readonly cellAdapter?: ZeropsCellAdapter;
   readonly children: ReactNode;
 }) {
   const [registry] = useState(() => AtomRegistry.make());
-  const [makeRuntime] = useState(() => harnessRuntime(datastream, resourceAdapter));
+  const [makeRuntime] = useState(() => harnessRuntime(datastream, cellAdapter));
   return createElement(RegistryContext, {
     value: registry,
     children: createElement(ZeropsDataProvider, {
@@ -94,13 +91,13 @@ export function OrganizationLocations({ organizationId }: { readonly organizatio
   const { runtime, organizationRef } = useZeropsData();
   const request = useMemo(
     () => ({
-      kind: "organization-locations" as const,
+      kind: "locations" as const,
       account: runtime.scope,
       organization: organizationRef(organizationId),
     }),
     [organizationId, organizationRef, runtime.scope],
   );
-  const shown = useKnown(runtime.resources.known(request));
+  const shown = useKnown(runtime.cells.known(request));
   const names = selectLocationChoice(shown).locations.map(({ name }) => name);
   return [`locations: ${shown.state}`, ...names].join(" ");
 }

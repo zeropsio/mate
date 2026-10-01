@@ -27,10 +27,7 @@ import {
   type ZeropsGroup,
 } from "@t3tools/client-runtime/zerops";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
-import {
-  ZeropsServiceId,
-  type ServiceAuthorizedAgentsResourceRequest,
-} from "@t3tools/client-runtime/zerops/data";
+import { ZeropsServiceId, type AgentsCellRequest } from "@t3tools/client-runtime/zerops/data";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 import { useCallback, useEffect, useRef } from "react";
 
@@ -38,7 +35,7 @@ import type { EnvironmentCreationChoice } from "../components/zerops/ZeropsEnvir
 import { captureAccountLifetime } from "./accountLifetime";
 import { useAccountGitea } from "./giteaProject";
 import { integrationTokensFromGrantMetadata } from "./useZeropsGroupReach";
-import { readZeropsResourceOnce } from "./useZeropsDeployedVersion";
+import { readZeropsCellOnce } from "./useZeropsDeployedVersion";
 import {
   birthWithoutContainer,
   bornOnAccept,
@@ -108,8 +105,8 @@ export function useEnvironmentCreation(): (
         await Promise.all(
           environments.flatMap(({ item }) => {
             if (item.service === undefined || activeOrganization === null) return [];
-            const request: ServiceAuthorizedAgentsResourceRequest = {
-              kind: "service-authorized-agents",
+            const request: AgentsCellRequest = {
+              kind: "agents",
               account: runtime.scope,
               service: {
                 kind: "service",
@@ -118,14 +115,14 @@ export function useEnvironmentCreation(): (
               },
             };
             return [
-              readZeropsResourceOnce(runtime.resources, request).then(
+              readZeropsCellOnce(runtime.cells, request).then(
                 (agents): ReadonlyArray<ZeropsAgentType> => agents ?? [],
               ),
             ];
           }),
         ),
       ),
-    [activeOrganization, projectRef, runtime.resources, runtime.scope],
+    [activeOrganization, projectRef, runtime.cells, runtime.scope],
   );
 
   return useCallback(

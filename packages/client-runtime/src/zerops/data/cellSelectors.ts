@@ -5,7 +5,7 @@
  */
 import type { ZeropsLocation, ZeropsOrganizationMember } from "../api.ts";
 import type { Shown } from "../knowledge/index.ts";
-import type { ZeropsIntegrationTokenGrantMetadata } from "./resources.ts";
+import type { ZeropsIntegrationTokenGrantMetadata } from "./cells.ts";
 
 const NO_LOCATIONS: ReadonlyArray<ZeropsLocation> = [];
 

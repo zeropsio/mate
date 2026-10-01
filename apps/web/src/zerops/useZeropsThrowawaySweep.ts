@@ -27,7 +27,7 @@ import {
 import * as Effect from "effect/Effect";
 import { useEffect, useRef } from "react";
 
-import { readZeropsResource } from "./useZeropsDeployedVersion";
+import { readZeropsCell } from "./useZeropsDeployedVersion";
 import { useZeropsData } from "./zeropsDataContext";
 
 import { useZeropsSession } from "./ZeropsSessionProvider";
@@ -71,13 +71,13 @@ export function useZeropsThrowawaySweep(input: {
     const controller = new AbortController();
     void (async () => {
       try {
-        // The account's one token list, shared with every reader of it (the resource broker).
+        // The account's one token list, shared with every reader of it (the account's cells).
         const request = {
-          kind: "organization-integration-token-grants",
+          kind: "tokens",
           account: runtime.scope,
           organization: organizationRef(clientId),
         } as const;
-        const tokens = await readZeropsResource(runtime.resources, request, controller.signal);
+        const tokens = await readZeropsCell(runtime.cells, request, controller.signal);
         const stale = planThrowawaySweep({
           tokens: tokens.map((token) => ({
             id: token.tokenId,
@@ -93,7 +93,7 @@ export function useZeropsThrowawaySweep(input: {
           }
         } finally {
           // Our own deletes changed the list every reader shares.
-          if (stale.length > 0) await Effect.runPromise(runtime.resources.invalidate(request));
+          if (stale.length > 0) await Effect.runPromise(runtime.cells.invalidate(request));
         }
         rememberSwept(clientId, Date.now());
       } catch {

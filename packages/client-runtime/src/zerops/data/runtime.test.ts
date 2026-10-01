@@ -2217,15 +2217,17 @@ describe("makeZeropsDataRuntime", () => {
       const unused = Effect.die("this test reads only authorized agents");
       const runtime = yield* makeZeropsDataRuntime({
         scope: runtimeScope,
-        adapter,
-        resourceAdapter: {
-          readOrganizationLocations: () => unused,
-          readServiceAuthorizedAgents: () =>
-            Effect.sync(() => void (reads += 1)).pipe(Effect.as([])),
-          readServiceMateFlag: () => unused,
-          readOrganizationIntegrationTokenGrants: () => unused,
-          readOrganizationMembers: () => unused,
-          readServiceVariableNames: () => unused,
+        adapter: {
+          ...adapter,
+          cells: {
+            readOrganizationLocations: () => unused,
+            readServiceAuthorizedAgents: () =>
+              Effect.sync(() => void (reads += 1)).pipe(Effect.as([])),
+            readServiceMateFlag: () => unused,
+            readOrganizationIntegrationTokenGrants: () => unused,
+            readOrganizationMembers: () => unused,
+            readServiceVariableNames: () => unused,
+          },
         },
         atomRegistry: registry,
         makeOpaqueId: makeIdFactory(),
@@ -2243,9 +2245,9 @@ describe("makeZeropsDataRuntime", () => {
         },
       });
       const leaseScope = yield* Scope.make();
-      const lease = yield* runtime.resources
+      const lease = yield* runtime.cells
         .acquire({
-          kind: "service-authorized-agents",
+          kind: "agents",
           account: runtimeScope,
           service: {
             kind: "service",

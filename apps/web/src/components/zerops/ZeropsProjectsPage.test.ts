@@ -80,7 +80,7 @@ const SAME_ORIGIN_CANDIDATE = {
 describe("same-origin Zerops identity bootstrap", () => {
   it("routes configuration reads through scoped resources", () => {
     expect(projectsPageSource).toContain(
-      "readZeropsResourceOnce(runtime.resources, request, unmountRef.current?.signal)",
+      "readZeropsCellOnce(runtime.cells, request, unmountRef.current?.signal)",
     );
     expect(projectsPageSource).not.toContain(".readAuthorizedAgents(");
     // The recipe is the group repo's, read as the person over Gitea — there is

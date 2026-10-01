@@ -23,10 +23,7 @@ import {
   resolveMateOwner,
   type MateOwnerCandidate,
 } from "@t3tools/client-runtime/zerops/mateAccess";
-import {
-  selectMembers,
-  type OrganizationMembersResourceRequest,
-} from "@t3tools/client-runtime/zerops/data";
+import { selectMembers, type MembersCellRequest } from "@t3tools/client-runtime/zerops/data";
 import { useCallback, useContext, useEffect, useMemo } from "react";
 
 import { zeropsAccountDisplay } from "~/components/zerops/landing/ZeropsAccountControl.logic";
@@ -92,13 +89,13 @@ export function useZeropsOrganizationMembersRead(input: {
   // say the same thing without names.
   const data = useContext(ZeropsDataContext);
   const { clientId, enabled } = input;
-  // One read per organization, shared by every surface that asks (the account's resource
-  // broker): asked at once, they are one read; asked again while it is fresh, none.
-  const request = useMemo<OrganizationMembersResourceRequest | null>(
+  // One read per organization, shared by every surface that asks (the account's cells):
+  // asked at once, they are one read; asked again while it is fresh, none.
+  const request = useMemo<MembersCellRequest | null>(
     () =>
       enabled && clientId !== undefined && data !== null
         ? {
-            kind: "organization-members",
+            kind: "members",
             account: data.runtime.scope,
             organization: data.organizationRef(clientId),
           }
@@ -106,7 +103,7 @@ export function useZeropsOrganizationMembersRead(input: {
     [clientId, data, enabled],
   );
   const read = selectMembers(
-    useKnown(request === null || data === null ? null : data.runtime.resources.known(request)),
+    useKnown(request === null || data === null ? null : data.runtime.cells.known(request)),
   );
   const answered = read.status === "ready" ? read.members : undefined;
   // The members this browser read last, until they are read again: whose each Mate is — its

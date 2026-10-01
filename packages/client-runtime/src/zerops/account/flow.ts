@@ -10,7 +10,7 @@
  *   a verb's settlement sends its own through the account's bus.
  * - The deployment store follows the data runtime's service listings and, holding the project's
  *   activity demand while a stop is shown, its running processes; it reads a service directly
- *   through the account's resource broker when a push leaves its active version unstated (A14). A
+ *   through the account's cells when a push leaves its active version unstated (A14). A
  *   Mate's envelope names a service by hostname, which the account's inventory resolves.
  *
  * The stores are constructed by the account runtime alone (§7.2 rule 6); this module only wires

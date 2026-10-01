@@ -51,7 +51,7 @@
 
 import {
   selectTokenGrants,
-  type OrganizationIntegrationTokenGrantsResourceRequest,
+  type TokensCellRequest,
   type ZeropsIntegrationTokenGrantMetadata,
 } from "@t3tools/client-runtime/zerops/data";
 import { useEffect, useMemo, useRef } from "react";
@@ -114,11 +114,11 @@ export function useZeropsGroupReach(input: {
   const lastKey = useRef<string | null>(null);
   const key = groupsKey(groups);
   const hasMate = groups.some((group) => group.mateProjectIds.length > 0);
-  const request = useMemo<OrganizationIntegrationTokenGrantsResourceRequest | null>(
+  const request = useMemo<TokensCellRequest | null>(
     () =>
       enabled && clientId !== undefined && hasMate
         ? {
-            kind: "organization-integration-token-grants",
+            kind: "tokens",
             account: runtime.scope,
             organization: organizationRef(clientId),
           }
@@ -126,7 +126,7 @@ export function useZeropsGroupReach(input: {
     [clientId, enabled, hasMate, organizationRef, runtime.scope],
   );
   const grants = selectTokenGrants(
-    useKnown(request === null ? null : runtime.resources.known(request)),
+    useKnown(request === null ? null : runtime.cells.known(request)),
   );
   const grantMetadata = grants.status === "known" ? grants.grants : null;
 

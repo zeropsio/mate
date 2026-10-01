@@ -917,18 +917,20 @@ describe("the account runtime", () => {
           const built = yield* Effect.gen(function* () {
             const data = yield* makeZeropsDataRuntime({
               scope: scope(),
-              adapter: datastream.adapter,
-              resourceAdapter: {
-                readOrganizationLocations: () => Effect.succeed([]),
-                readServiceAuthorizedAgents: () => Effect.succeed([]),
-                readOrganizationIntegrationTokenGrants: () => Effect.succeed([]),
-                readOrganizationMembers: () => Effect.succeed([]),
-                readServiceVariableNames: () => Effect.succeed([]),
-                readServiceMateFlag: () =>
-                  Effect.sync(() => {
-                    ownReads += 1;
-                    return { enabled: true };
-                  }),
+              adapter: {
+                ...datastream.adapter,
+                cells: {
+                  readOrganizationLocations: () => Effect.succeed([]),
+                  readServiceAuthorizedAgents: () => Effect.succeed([]),
+                  readOrganizationIntegrationTokenGrants: () => Effect.succeed([]),
+                  readOrganizationMembers: () => Effect.succeed([]),
+                  readServiceVariableNames: () => Effect.succeed([]),
+                  readServiceMateFlag: () =>
+                    Effect.sync(() => {
+                      ownReads += 1;
+                      return { enabled: true };
+                    }),
+                },
               },
               atomRegistry: registry,
               makeOpaqueId: (() => {

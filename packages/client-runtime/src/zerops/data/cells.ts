@@ -1,3 +1,11 @@
+/**
+ * The store's cells: the reads no organization stream carries, one keyed cell each —
+ * `tokens:{org}`, `members:{org}`, `locations:{org}`, `env:{service}`, `agents:{service}` and
+ * `mate-flag:{service}`. Every caller of a key shares its one read; a value stays fresh for its
+ * kind's while (`CELL_FRESH_MS`), our own writes invalidate it, an idle cell is kept
+ * `CELL_IDLE_RETENTION_MS`, and access withholds what it no longer covers. The data adapter's
+ * `cells` read them (`restAdapter.ts`).
+ */
 import * as Cause from "effect/Cause";
 import * as Clock from "effect/Clock";
 import * as Duration from "effect/Duration";
@@ -40,35 +48,35 @@ import type {
 } from "./types.ts";
 import { organizationKeyOf, projectKeyOf, projectRoleGrantsAccess } from "./types.ts";
 
-export interface OrganizationLocationsResourceRequest {
-  readonly kind: "organization-locations";
+export interface LocationsCellRequest {
+  readonly kind: "locations";
   readonly account: AccountScope;
   readonly organization: OrganizationRef;
 }
 
 /** The adapter projects service env rows to agent identifiers before returning. */
-export interface ServiceAuthorizedAgentsResourceRequest {
-  readonly kind: "service-authorized-agents";
+export interface AgentsCellRequest {
+  readonly kind: "agents";
   readonly account: AccountScope;
   readonly service: ServiceRef;
 }
 
 /** The organization's members (`GET /client/{id}/user/list`): names, roles and pictures. */
-export interface OrganizationMembersResourceRequest {
-  readonly kind: "organization-members";
+export interface MembersCellRequest {
+  readonly kind: "members";
   readonly account: AccountScope;
   readonly organization: OrganizationRef;
 }
 
 /** A service's variable names (`GET /service-stack/{id}/env`), never a value. */
-export interface ServiceVariableNamesResourceRequest {
-  readonly kind: "service-variable-names";
+export interface EnvCellRequest {
+  readonly kind: "env";
   readonly account: AccountScope;
   readonly service: ServiceRef;
 }
 
-export interface OrganizationIntegrationTokenGrantsResourceRequest {
-  readonly kind: "organization-integration-token-grants";
+export interface TokensCellRequest {
+  readonly kind: "tokens";
   readonly account: AccountScope;
   readonly organization: OrganizationRef;
 }
@@ -80,21 +88,21 @@ export interface OrganizationIntegrationTokenGrantsResourceRequest {
  * way. Read per service, only to confirm an off the organization's streamed
  * variables state (`environments/mateFlag.ts`).
  */
-export interface ServiceMateFlagResourceRequest {
-  readonly kind: "service-mate-flag";
+export interface MateFlagCellRequest {
+  readonly kind: "mate-flag";
   readonly account: AccountScope;
   readonly service: ServiceRef;
 }
 
-export type ZeropsResourceRequest =
-  | OrganizationLocationsResourceRequest
-  | ServiceAuthorizedAgentsResourceRequest
-  | ServiceMateFlagResourceRequest
-  | OrganizationIntegrationTokenGrantsResourceRequest
-  | OrganizationMembersResourceRequest
-  | ServiceVariableNamesResourceRequest;
+export type ZeropsCellRequest =
+  | LocationsCellRequest
+  | AgentsCellRequest
+  | MateFlagCellRequest
+  | TokensCellRequest
+  | MembersCellRequest
+  | EnvCellRequest;
 
-export type ZeropsResourceKind = ZeropsResourceRequest["kind"];
+export type ZeropsCellKind = ZeropsCellRequest["kind"];
 
 /** Grant metadata contains no integration-token credential. */
 export interface ZeropsIntegrationTokenGrantMetadata {
@@ -105,18 +113,18 @@ export interface ZeropsIntegrationTokenGrantMetadata {
   readonly created?: string | undefined;
 }
 
-export interface ZeropsResourceValues {
-  readonly "organization-locations": ReadonlyArray<ZeropsLocation>;
-  readonly "service-authorized-agents": ReadonlyArray<ZeropsAgentType>;
+export interface ZeropsCellValues {
+  readonly locations: ReadonlyArray<ZeropsLocation>;
+  readonly agents: ReadonlyArray<ZeropsAgentType>;
   /**
    * `"unknown"` for a read that failed rather than answered — never folded
    * into `false`, which is itself a fact a caller may act on (H9): a row
    * offering Enable off an `"unknown"` flag would be back to inferring.
    */
-  readonly "service-mate-flag": { readonly enabled: boolean | "unknown" };
-  readonly "organization-integration-token-grants": ReadonlyArray<ZeropsIntegrationTokenGrantMetadata>;
-  readonly "organization-members": ReadonlyArray<ZeropsOrganizationMember>;
-  readonly "service-variable-names": ReadonlyArray<string>;
+  readonly "mate-flag": { readonly enabled: boolean | "unknown" };
+  readonly tokens: ReadonlyArray<ZeropsIntegrationTokenGrantMetadata>;
+  readonly members: ReadonlyArray<ZeropsOrganizationMember>;
+  readonly env: ReadonlyArray<string>;
 }
 
 /**
@@ -124,27 +132,26 @@ export interface ZeropsResourceValues {
  * nothing; past it, a new demand reads again under the value. Our own writes invalidate it
  * (`invalidate`) whatever its age. `0` re-reads on every new demand.
  */
-export const RESOURCE_FRESH_MS: Readonly<Record<ZeropsResourceKind, number>> = {
-  "organization-locations": 0,
-  "service-authorized-agents": 0,
-  "service-mate-flag": 0,
-  "organization-integration-token-grants": 60_000,
-  "organization-members": 5 * 60_000,
-  "service-variable-names": 60_000,
+export const CELL_FRESH_MS: Readonly<Record<ZeropsCellKind, number>> = {
+  locations: 0,
+  agents: 0,
+  "mate-flag": 0,
+  tokens: 60_000,
+  members: 5 * 60_000,
+  env: 60_000,
 };
 
-export type ZeropsResourceValue<Request extends ZeropsResourceRequest> =
-  ZeropsResourceValues[Request["kind"]];
+export type ZeropsCellValue<Request extends ZeropsCellRequest> = ZeropsCellValues[Request["kind"]];
 
-export type ZeropsResourceKey = string & { readonly ZeropsResourceKey: unique symbol };
+export type ZeropsCellKey = string & { readonly ZeropsCellKey: unique symbol };
 
-export interface ZeropsResourceSourceError {
-  readonly _tag: "ZeropsResourceSourceError";
+export interface ZeropsCellSourceError {
+  readonly _tag: "ZeropsCellSourceError";
   readonly kind: "transport" | "unavailable" | "permission" | "decode";
   readonly retryable: boolean;
 }
 
-export interface ZeropsResourceRequestContext {
+export interface ZeropsCellReadContext {
   /**
    * Withholding, shutdown and the end of the entry abort this signal. The final
    * release ends an entry that holds no value; an entry that holds one is
@@ -158,108 +165,105 @@ export interface ZeropsResourceRequestContext {
  * ZeropsApiClient calls, but must perform secret stripping and env projection
  * before their Effects succeed.
  */
-export interface ZeropsResourceAdapter {
+export interface ZeropsCellAdapter {
   readonly readOrganizationLocations: (
-    request: OrganizationLocationsResourceRequest,
-    context: ZeropsResourceRequestContext,
-  ) => Effect.Effect<ZeropsResourceValues["organization-locations"], ZeropsResourceSourceError>;
+    request: LocationsCellRequest,
+    context: ZeropsCellReadContext,
+  ) => Effect.Effect<ZeropsCellValues["locations"], ZeropsCellSourceError>;
   readonly readServiceAuthorizedAgents: (
-    request: ServiceAuthorizedAgentsResourceRequest,
-    context: ZeropsResourceRequestContext,
-  ) => Effect.Effect<ZeropsResourceValues["service-authorized-agents"], ZeropsResourceSourceError>;
+    request: AgentsCellRequest,
+    context: ZeropsCellReadContext,
+  ) => Effect.Effect<ZeropsCellValues["agents"], ZeropsCellSourceError>;
   readonly readServiceMateFlag: (
-    request: ServiceMateFlagResourceRequest,
-    context: ZeropsResourceRequestContext,
-  ) => Effect.Effect<ZeropsResourceValues["service-mate-flag"], ZeropsResourceSourceError>;
+    request: MateFlagCellRequest,
+    context: ZeropsCellReadContext,
+  ) => Effect.Effect<ZeropsCellValues["mate-flag"], ZeropsCellSourceError>;
   readonly readOrganizationIntegrationTokenGrants: (
-    request: OrganizationIntegrationTokenGrantsResourceRequest,
-    context: ZeropsResourceRequestContext,
-  ) => Effect.Effect<
-    ZeropsResourceValues["organization-integration-token-grants"],
-    ZeropsResourceSourceError
-  >;
+    request: TokensCellRequest,
+    context: ZeropsCellReadContext,
+  ) => Effect.Effect<ZeropsCellValues["tokens"], ZeropsCellSourceError>;
   readonly readOrganizationMembers: (
-    request: OrganizationMembersResourceRequest,
-    context: ZeropsResourceRequestContext,
-  ) => Effect.Effect<ZeropsResourceValues["organization-members"], ZeropsResourceSourceError>;
+    request: MembersCellRequest,
+    context: ZeropsCellReadContext,
+  ) => Effect.Effect<ZeropsCellValues["members"], ZeropsCellSourceError>;
   readonly readServiceVariableNames: (
-    request: ServiceVariableNamesResourceRequest,
-    context: ZeropsResourceRequestContext,
-  ) => Effect.Effect<ZeropsResourceValues["service-variable-names"], ZeropsResourceSourceError>;
+    request: EnvCellRequest,
+    context: ZeropsCellReadContext,
+  ) => Effect.Effect<ZeropsCellValues["env"], ZeropsCellSourceError>;
 }
 
 /** Why the broker takes no demand at all; access never refuses demand, it withholds (§9 C4). */
-export interface ZeropsResourceAdmissionError {
-  readonly _tag: "ZeropsResourceAdmissionError";
+export interface ZeropsCellAdmissionError {
+  readonly _tag: "ZeropsCellAdmissionError";
   readonly reason: "runtime-closed" | "account-mismatch" | "account-capacity" | "lease-released";
 }
 
-export interface ZeropsResourceLease<Request extends ZeropsResourceRequest> {
-  readonly key: ZeropsResourceKey;
+export interface ZeropsCellLease<Request extends ZeropsCellRequest> {
+  readonly key: ZeropsCellKey;
   readonly request: Request;
-  /** The resource read through withholding; a released lease shows nothing. */
-  readonly snapshot: Effect.Effect<Shown<ZeropsResourceValue<Request>>>;
+  /** The cell read through withholding; a released lease shows nothing. */
+  readonly snapshot: Effect.Effect<Shown<ZeropsCellValue<Request>>>;
   /** The first state with no read in flight: known, failed, gone or withheld; interrupted by release. */
-  readonly awaitSettled: Effect.Effect<Shown<ZeropsResourceValue<Request>>>;
+  readonly awaitSettled: Effect.Effect<Shown<ZeropsCellValue<Request>>>;
   /** Reads again now, once for every lease, when the last read failed. */
-  readonly retry: Effect.Effect<boolean, ZeropsResourceAdmissionError>;
+  readonly retry: Effect.Effect<boolean, ZeropsCellAdmissionError>;
   /** Idempotent; the acquiring Scope invokes the same release path. */
   readonly release: Effect.Effect<void>;
 }
 
-export interface ZeropsResourceDiagnostics {
+export interface ZeropsCellDiagnostics {
   readonly entries: number;
   readonly leases: number;
   readonly reading: number;
   readonly known: number;
   readonly failed: number;
   readonly withheld: number;
-  readonly byKind: Readonly<Record<ZeropsResourceKind, number>>;
+  readonly byKind: Readonly<Record<ZeropsCellKind, number>>;
 }
 
-export interface ZeropsResourceBroker {
+export interface ZeropsCells {
   readonly scope: AccountScope;
   /**
-   * One atom per key. Mounting it is the demand for the resource; its value is
-   * the resource read through withholding, so a lapse and the next grant reach
+   * One atom per key. Mounting it is the demand for the cell; its value is
+   * the cell read through withholding, so a lapse and the next grant reach
    * the mounted view without a remount.
    */
-  readonly known: <Request extends ZeropsResourceRequest>(
+  readonly known: <Request extends ZeropsCellRequest>(
     request: Request,
-  ) => Atom.Atom<Shown<ZeropsResourceValue<Request>>>;
+  ) => Atom.Atom<Shown<ZeropsCellValue<Request>>>;
   /** The same demand, held by an Effect scope. */
-  readonly acquire: <Request extends ZeropsResourceRequest>(
+  readonly acquire: <Request extends ZeropsCellRequest>(
     request: Request,
-  ) => Effect.Effect<ZeropsResourceLease<Request>, ZeropsResourceAdmissionError, Scope.Scope>;
-  /** Counts and states only; resource values and adapter errors never enter diagnostics. */
-  readonly diagnostics: Effect.Effect<ZeropsResourceDiagnostics>;
+  ) => Effect.Effect<ZeropsCellLease<Request>, ZeropsCellAdmissionError, Scope.Scope>;
+  /** Counts and states only; cell values and adapter errors never enter diagnostics. */
+  readonly diagnostics: Effect.Effect<ZeropsCellDiagnostics>;
   /** Withholds and erases what the current access no longer covers; re-reads what it covers again. */
   readonly reconcileAccess: Effect.Effect<void>;
   /**
-   * Our own write changed it: a demanded resource reads again now, once however often it is told;
+   * Our own write changed it: a demanded cell reads again now, once however often it is told;
    * an idle one on its next demand, whatever its freshness.
    */
-  readonly invalidate: (request: ZeropsResourceRequest) => Effect.Effect<void>;
+  readonly invalidate: (request: ZeropsCellRequest) => Effect.Effect<void>;
   /** Idempotent. Fences completion, aborts work and erases all retained values. */
   readonly shutdown: Effect.Effect<void>;
 }
 
-export interface ZeropsResourceBrokerOptions {
+export interface ZeropsCellsOptions {
   readonly scope: AccountScope;
-  readonly adapter: ZeropsResourceAdapter;
+  readonly adapter: ZeropsCellAdapter;
   /** Dynamic account access owned by the parent runtime. */
   readonly access: () => AccessState;
   readonly maxEntries?: number;
-  /** How long a resource no one demands keeps its value (DESIGN §5 L2). */
+  /** How long a cell no one demands keeps its value (DESIGN §5 L2). */
   readonly idleRetentionMs?: number;
   /** The jitter source of the retry policy. */
   readonly random?: () => number;
 }
 
-export const RESOURCE_IDLE_RETENTION_MS = 10 * 60_000;
+export const CELL_IDLE_RETENTION_MS = 10 * 60_000;
 
-type AnyResourceValue = ZeropsResourceValues[ZeropsResourceKind];
-type AnyShown = Shown<AnyResourceValue>;
+type AnyCellValue = ZeropsCellValues[ZeropsCellKind];
+type AnyShown = Shown<AnyCellValue>;
 
 /** One consumer's demand: told every change, and told once when the broker closes. */
 interface Demand {
@@ -267,19 +271,19 @@ interface Demand {
   readonly close: () => void;
 }
 
-interface ResourceRead {
+interface CellReadInFlight {
   readonly ordinal: number;
   readonly controller: AbortController;
   fiber: Fiber.Fiber<void> | null;
 }
 
-interface ResourceEntry {
-  readonly key: ZeropsResourceKey;
-  readonly request: ZeropsResourceRequest;
-  cell: Cell<AnyResourceValue>;
+interface CellEntry {
+  readonly key: ZeropsCellKey;
+  readonly request: ZeropsCellRequest;
+  cell: Cell<AnyCellValue>;
   shown: AnyShown;
   readonly demands: Map<number, Demand>;
-  inFlight: ResourceRead | null;
+  inFlight: CellReadInFlight | null;
   backoff: Backoff;
   /** The wake at the failed read's `retryAt`, while demanded. */
   retryWake: Fiber.Fiber<void> | null;
@@ -289,11 +293,11 @@ interface ResourceEntry {
 
 /** What an open demand answers to its holder. */
 interface OpenDemand {
-  readonly key: ZeropsResourceKey;
+  readonly key: ZeropsCellKey;
   /** Neither released nor closed with the broker. */
   readonly active: () => boolean;
   readonly shown: () => AnyShown;
-  readonly retry: () => boolean | ZeropsResourceAdmissionError;
+  readonly retry: () => boolean | ZeropsCellAdmissionError;
   readonly release: () => void;
 }
 
@@ -312,7 +316,7 @@ const accountRefsEqual = (left: AccountRef, right: AccountRef): boolean =>
 const accountScopesEqual = (left: AccountScope, right: AccountScope): boolean =>
   left.epoch === right.epoch && accountRefsEqual(left.account, right.account);
 
-/** The grant a resource outside any denial stands on. */
+/** The grant a cell outside any denial stands on. */
 const usableGrant = (access: AccessState): VerifiedAccessGrant | null => {
   if (access.status === "verified") return access;
   if (access.status === "verifying" || access.status === "failed" || access.status === "denied") {
@@ -321,72 +325,60 @@ const usableGrant = (access: AccessState): VerifiedAccessGrant | null => {
   return null;
 };
 
-const organizationOf = (request: ZeropsResourceRequest): OrganizationRef => {
+const organizationOf = (request: ZeropsCellRequest): OrganizationRef => {
   switch (request.kind) {
-    case "organization-locations":
-    case "organization-integration-token-grants":
-    case "organization-members":
+    case "locations":
+    case "tokens":
+    case "members":
       return request.organization;
-    case "service-authorized-agents":
-    case "service-mate-flag":
-    case "service-variable-names":
+    case "agents":
+    case "mate-flag":
+    case "env":
       return request.service.project.organization;
   }
 };
 
-/** The project a resource belongs to; an organization's resource belongs to none. */
-const projectOf = (request: ZeropsResourceRequest): ProjectRef | null => {
+/** The project a cell belongs to; an organization's cell belongs to none. */
+const projectOf = (request: ZeropsCellRequest): ProjectRef | null => {
   switch (request.kind) {
-    case "organization-locations":
-    case "organization-integration-token-grants":
-    case "organization-members":
+    case "locations":
+    case "tokens":
+    case "members":
       return null;
-    case "service-authorized-agents":
-    case "service-mate-flag":
-    case "service-variable-names":
+    case "agents":
+    case "mate-flag":
+    case "env":
       return request.service.project;
   }
 };
 
-/** The access scope that withholds a resource: its project, or the account for an organization's. */
-const cellScopeOf = (request: ZeropsResourceRequest): Cell<AnyResourceValue>["scope"] =>
+/** The access scope that withholds a cell: its project, or the account for an organization's. */
+const cellScopeOf = (request: ZeropsCellRequest): Cell<AnyCellValue>["scope"] =>
   projectOf(request)?.projectId ?? "account";
 
-/** A denial of the account covers every resource; a project's covers only that project's. */
-const denialCovers = (scope: AccessDenialScope, request: ZeropsResourceRequest): boolean => {
+/** A denial of the account covers every cell; a project's covers only that project's. */
+const denialCovers = (scope: AccessDenialScope, request: ZeropsCellRequest): boolean => {
   if (scope.kind === "account") return true;
   const project = projectOf(request);
   return project !== null && projectKeyOf(project) === projectKeyOf(scope.project);
 };
 
-export function zeropsResourceKeyOf(request: ZeropsResourceRequest): ZeropsResourceKey {
-  const organization = organizationOf(request);
-  const prefix = [
-    request.kind,
-    request.account.account.apiOrigin,
-    request.account.account.accountId,
-    request.account.epoch,
-    organization.organizationId,
-  ];
+export function zeropsCellKeyOf(request: ZeropsCellRequest): ZeropsCellKey {
   switch (request.kind) {
-    case "organization-locations":
-    case "organization-integration-token-grants":
-    case "organization-members":
-      return JSON.stringify(prefix) as ZeropsResourceKey;
-    case "service-authorized-agents":
-    case "service-mate-flag":
-    case "service-variable-names":
-      return JSON.stringify([
-        ...prefix,
-        request.service.project.projectId,
-        request.service.serviceId,
-      ]) as ZeropsResourceKey;
+    case "locations":
+    case "tokens":
+    case "members":
+      return `${request.kind}:${request.organization.organizationId}` as ZeropsCellKey;
+    case "agents":
+    case "mate-flag":
+    case "env":
+      return `${request.kind}:${request.service.serviceId}` as ZeropsCellKey;
   }
 }
 
 /** The sanitized reason a read failed: the source's own message never leaves the adapter. */
 const failureOf = (
-  cause: Cause.Cause<ZeropsResourceSourceError>,
+  cause: Cause.Cause<ZeropsCellSourceError>,
 ): { readonly failure: FailureReason; readonly retryable: boolean } => {
   const found = Cause.findError(cause);
   if (Result.isFailure(found)) {
@@ -417,18 +409,19 @@ const failureOf = (
   }
 };
 
-const admissionError = (
-  reason: ZeropsResourceAdmissionError["reason"],
-): ZeropsResourceAdmissionError => ({ _tag: "ZeropsResourceAdmissionError", reason });
+const admissionError = (reason: ZeropsCellAdmissionError["reason"]): ZeropsCellAdmissionError => ({
+  _tag: "ZeropsCellAdmissionError",
+  reason,
+});
 
-const requestInScope = (scope: AccountScope, request: ZeropsResourceRequest): boolean =>
+const requestInScope = (scope: AccountScope, request: ZeropsCellRequest): boolean =>
   accountScopesEqual(request.account, scope) &&
   accountRefsEqual(organizationOf(request).account, scope.account);
 
-function resourceAdmission(
+function cellAdmission(
   scope: AccountScope,
   access: AccessState,
-  request: ZeropsResourceRequest,
+  request: ZeropsCellRequest,
   nowMs: number,
 ): Admission {
   const withheld = (reason: WithheldReason): Admission => ({ kind: "withheld", reason });
@@ -460,23 +453,23 @@ function resourceAdmission(
   return { kind: "admitted", deadlineMs: grant.deadlineMs };
 }
 
-function readResource(
-  adapter: ZeropsResourceAdapter,
-  request: ZeropsResourceRequest,
-  context: ZeropsResourceRequestContext,
-): Effect.Effect<AnyResourceValue, ZeropsResourceSourceError> {
+function readCell(
+  adapter: ZeropsCellAdapter,
+  request: ZeropsCellRequest,
+  context: ZeropsCellReadContext,
+): Effect.Effect<AnyCellValue, ZeropsCellSourceError> {
   switch (request.kind) {
-    case "organization-locations":
+    case "locations":
       return adapter.readOrganizationLocations(request, context);
-    case "service-authorized-agents":
+    case "agents":
       return adapter.readServiceAuthorizedAgents(request, context);
-    case "service-mate-flag":
+    case "mate-flag":
       return adapter.readServiceMateFlag(request, context);
-    case "organization-integration-token-grants":
+    case "tokens":
       return adapter.readOrganizationIntegrationTokenGrants(request, context);
-    case "organization-members":
+    case "members":
       return adapter.readOrganizationMembers(request, context);
-    case "service-variable-names":
+    case "env":
       return adapter.readServiceVariableNames(request, context);
   }
 }
@@ -496,22 +489,21 @@ const isSettled = (shown: AnyShown): boolean => {
   }
 };
 
-const readFailed = (cell: Cell<AnyResourceValue>): boolean =>
+const readFailed = (cell: Cell<AnyCellValue>): boolean =>
   cell.held.state === "failed" ||
   (cell.held.state === "known" &&
     cell.held.freshness.kind === "stale" &&
     cell.held.freshness.reason.kind === "revalidation-failed");
 
 /**
- * The account's broker for configuration resources (DESIGN §2.B B6/B7). Each
- * key is one `Cell`: demand reads it, a lapse or a grant that no longer covers
+ * The account's cells (DESIGN §2.B B6/B7). Each key is one `Cell`: demand reads it, a lapse or a grant that no longer covers
  * its scope withholds it with its value erased and its read aborted (law 5's
  * one erasure), and the next grant covering the scope reads it again while the
  * demand stays (§9 C4).
  */
-export const makeZeropsResourceBroker = Effect.fn("ZeropsResourceBroker.make")(function* (
-  options: ZeropsResourceBrokerOptions,
-): Effect.fn.Return<ZeropsResourceBroker> {
+export const makeZeropsCells = Effect.fn("ZeropsCells.make")(function* (
+  options: ZeropsCellsOptions,
+): Effect.fn.Return<ZeropsCells> {
   const maxEntries = options.maxEntries ?? DEFAULT_ZEROPS_DATA_POLICY.activeSharedReadsPerAccount;
   if (!Number.isSafeInteger(maxEntries) || maxEntries <= 0) {
     return yield* Effect.die(new RangeError("maxEntries must be a positive safe integer."));
@@ -523,9 +515,9 @@ export const makeZeropsResourceBroker = Effect.fn("ZeropsResourceBroker.make")(f
   const clock = yield* Clock.Clock;
   const now = () => clock.currentTimeMillisUnsafe();
   const random = options.random ?? Math.random;
-  const idleRetentionMs = options.idleRetentionMs ?? RESOURCE_IDLE_RETENTION_MS;
-  const entries = new Map<ZeropsResourceKey, ResourceEntry>();
-  const atoms = new Map<ZeropsResourceKey, Atom.Atom<AnyShown>>();
+  const idleRetentionMs = options.idleRetentionMs ?? CELL_IDLE_RETENTION_MS;
+  const entries = new Map<ZeropsCellKey, CellEntry>();
+  const atoms = new Map<ZeropsCellKey, Atom.Atom<AnyShown>>();
   /** Atoms refused for capacity: each asks again at its retryAt, or at once when the broker closes. */
   const capacityWaits = new Set<() => void>();
   let nextDemandId = 0;
@@ -533,7 +525,7 @@ export const makeZeropsResourceBroker = Effect.fn("ZeropsResourceBroker.make")(f
   let closed = false;
   let deadline: { readonly atMs: number; fiber: Fiber.Fiber<void> | null } | null = null;
 
-  const setCell = (entry: ResourceEntry, cell: Cell<AnyResourceValue>): void => {
+  const setCell = (entry: CellEntry, cell: Cell<AnyCellValue>): void => {
     const previous = entry.cell;
     entry.cell = cell;
     if (
@@ -547,15 +539,15 @@ export const makeZeropsResourceBroker = Effect.fn("ZeropsResourceBroker.make")(f
     for (const demand of entry.demands.values()) demand.publish(entry.shown);
   };
 
-  const apply = (entry: ResourceEntry, event: KnownEvent<AnyResourceValue>): void =>
+  const apply = (entry: CellEntry, event: KnownEvent<AnyCellValue>): void =>
     setCell(entry, advance(entry.cell, event, now()));
 
-  const cancelRetry = (entry: ResourceEntry): void => {
+  const cancelRetry = (entry: CellEntry): void => {
     entry.retryWake?.interruptUnsafe();
     entry.retryWake = null;
   };
 
-  const abortRead = (entry: ResourceEntry): void => {
+  const abortRead = (entry: CellEntry): void => {
     cancelRetry(entry);
     const inFlight = entry.inFlight;
     if (inFlight === null) return;
@@ -564,13 +556,13 @@ export const makeZeropsResourceBroker = Effect.fn("ZeropsResourceBroker.make")(f
     inFlight.fiber?.interruptUnsafe();
   };
 
-  const cancelEviction = (entry: ResourceEntry): void => {
+  const cancelEviction = (entry: CellEntry): void => {
     entry.evictionWake?.interruptUnsafe();
     entry.evictionWake = null;
   };
 
   /** Ends the entry's identity: a later demand starts a new one at `unread`. */
-  const dispose = (entry: ResourceEntry): void => {
+  const dispose = (entry: CellEntry): void => {
     if (entries.get(entry.key) !== entry) return;
     entries.delete(entry.key);
     atoms.delete(entry.key);
@@ -582,7 +574,7 @@ export const makeZeropsResourceBroker = Effect.fn("ZeropsResourceBroker.make")(f
    * The last demand went: a held value stays for the retention window (and a
    * revalidation in flight may still land in it), anything else goes now.
    */
-  const idle = (entry: ResourceEntry): void => {
+  const idle = (entry: CellEntry): void => {
     cancelRetry(entry);
     if (entry.cell.held.state !== "known" || entry.cell.withheld !== null) {
       dispose(entry);
@@ -614,10 +606,10 @@ export const makeZeropsResourceBroker = Effect.fn("ZeropsResourceBroker.make")(f
   };
 
   const completeRead = (
-    entry: ResourceEntry,
-    inFlight: ResourceRead,
+    entry: CellEntry,
+    inFlight: CellReadInFlight,
     atMs: number,
-    exit: Exit.Exit<AnyResourceValue, ZeropsResourceSourceError>,
+    exit: Exit.Exit<AnyCellValue, ZeropsCellSourceError>,
   ): void => {
     if (closed || entries.get(entry.key) !== entry || entry.inFlight !== inFlight) return;
     entry.inFlight = null;
@@ -646,9 +638,9 @@ export const makeZeropsResourceBroker = Effect.fn("ZeropsResourceBroker.make")(f
     if (scheduled !== null) scheduleRetryWake(entry, scheduled.retryAtMs);
   };
 
-  const startRead = (entry: ResourceEntry): void => {
+  const startRead = (entry: CellEntry): void => {
     cancelRetry(entry);
-    const inFlight: ResourceRead = {
+    const inFlight: CellReadInFlight = {
       ordinal: ++ordinal,
       controller: new AbortController(),
       fiber: null,
@@ -657,7 +649,7 @@ export const makeZeropsResourceBroker = Effect.fn("ZeropsResourceBroker.make")(f
     entry.inFlight = inFlight;
     apply(entry, { kind: "read-started", ordinal: inFlight.ordinal, atMs });
     inFlight.fiber = fork(
-      readResource(options.adapter, entry.request, {
+      readCell(options.adapter, entry.request, {
         abortSignal: inFlight.controller.signal,
       }).pipe(
         Effect.exit,
@@ -667,7 +659,7 @@ export const makeZeropsResourceBroker = Effect.fn("ZeropsResourceBroker.make")(f
   };
 
   /** Withholding erases: the value and its read go, the demand stays for the next grant. */
-  const withhold = (entry: ResourceEntry, reason: WithheldReason): void => {
+  const withhold = (entry: CellEntry, reason: WithheldReason): void => {
     if (entry.demands.size === 0) {
       dispose(entry);
       return;
@@ -718,12 +710,12 @@ export const makeZeropsResourceBroker = Effect.fn("ZeropsResourceBroker.make")(f
    * when it holds nothing. A new demand also revalidates a retained value.
    */
   function reconcile(
-    entry: ResourceEntry,
+    entry: CellEntry,
     access: AccessState,
     nowMs: number,
     newlyDemanded = false,
   ): void {
-    const admission = resourceAdmission(options.scope, access, entry.request, nowMs);
+    const admission = cellAdmission(options.scope, access, entry.request, nowMs);
     if (admission.kind === "withheld") {
       withhold(entry, admission.reason);
       return;
@@ -737,16 +729,16 @@ export const makeZeropsResourceBroker = Effect.fn("ZeropsResourceBroker.make")(f
         (held.state === "known" &&
           (entry.cell.dirty ||
             entry.cell.lastInvalidation > held.asOf.ordinal ||
-            (newlyDemanded && nowMs - held.asOf.atMs >= RESOURCE_FRESH_MS[entry.request.kind]))))
+            (newlyDemanded && nowMs - held.asOf.atMs >= CELL_FRESH_MS[entry.request.kind]))))
     ) {
       startRead(entry);
     }
   }
 
-  /** Reads a failed resource again, under the access that holds now. */
-  const readAgain = (entry: ResourceEntry): boolean => {
+  /** Reads a failed cell again, under the access that holds now. */
+  const readAgain = (entry: CellEntry): boolean => {
     if (!readFailed(entry.cell) || entry.inFlight !== null) return false;
-    const admission = resourceAdmission(options.scope, options.access(), entry.request, now());
+    const admission = cellAdmission(options.scope, options.access(), entry.request, now());
     if (admission.kind === "withheld") {
       withhold(entry, admission.reason);
       return false;
@@ -757,7 +749,7 @@ export const makeZeropsResourceBroker = Effect.fn("ZeropsResourceBroker.make")(f
   };
 
   /** Timers are hints (§4.0): the wake re-checks the entry before it reads. */
-  function scheduleRetryWake(entry: ResourceEntry, retryAtMs: number): void {
+  function scheduleRetryWake(entry: CellEntry, retryAtMs: number): void {
     cancelRetry(entry);
     if (entry.demands.size === 0) return;
     entry.retryWake = fork(
@@ -774,22 +766,22 @@ export const makeZeropsResourceBroker = Effect.fn("ZeropsResourceBroker.make")(f
   }
 
   /** A user's "Try again" starts from the first rung. */
-  const retry = (entry: ResourceEntry): boolean => {
+  const retry = (entry: CellEntry): boolean => {
     entry.backoff = backoffOn(entry.backoff, "user-retry");
     return readAgain(entry);
   };
 
   const open = (
-    request: ZeropsResourceRequest,
+    request: ZeropsCellRequest,
     demand: Demand,
-  ): OpenDemand | ZeropsResourceAdmissionError => {
+  ): OpenDemand | ZeropsCellAdmissionError => {
     if (closed) return admissionError("runtime-closed");
     if (!requestInScope(options.scope, request)) return admissionError("account-mismatch");
-    const key = zeropsResourceKeyOf(request);
+    const key = zeropsCellKeyOf(request);
     let entry = entries.get(key);
     if (entry === undefined) {
       if (entries.size >= maxEntries && !evictIdle()) return admissionError("account-capacity");
-      const cell = newCell<AnyResourceValue>(cellScopeOf(request));
+      const cell = newCell<AnyCellValue>(cellScopeOf(request));
       entry = {
         key,
         request,
@@ -829,10 +821,10 @@ export const makeZeropsResourceBroker = Effect.fn("ZeropsResourceBroker.make")(f
     };
   };
 
-  const known = <Request extends ZeropsResourceRequest>(
+  const known = <Request extends ZeropsCellRequest>(
     request: Request,
-  ): Atom.Atom<Shown<ZeropsResourceValue<Request>>> => {
-    const key = zeropsResourceKeyOf(request);
+  ): Atom.Atom<Shown<ZeropsCellValue<Request>>> => {
+    const key = zeropsCellKeyOf(request);
     let atom = atoms.get(key);
     if (atom === undefined) {
       // Consecutive refusals for capacity, which the atom outlives between evaluations.
@@ -877,10 +869,10 @@ export const makeZeropsResourceBroker = Effect.fn("ZeropsResourceBroker.make")(f
       });
       atoms.set(key, atom);
     }
-    return atom as Atom.Atom<Shown<ZeropsResourceValue<Request>>>;
+    return atom as Atom.Atom<Shown<ZeropsCellValue<Request>>>;
   };
 
-  const acquire: ZeropsResourceBroker["acquire"] = (request) =>
+  const acquire: ZeropsCells["acquire"] = (request) =>
     Effect.gen(function* () {
       const leaseScope = yield* Scope.Scope;
       const waiters = new Set<Demand>();
@@ -900,7 +892,7 @@ export const makeZeropsResourceBroker = Effect.fn("ZeropsResourceBroker.make")(f
         closeWaiters();
       });
       yield* Scope.addFinalizer(leaseScope, release);
-      type Value = Shown<ZeropsResourceValue<typeof request>>;
+      type Value = Shown<ZeropsCellValue<typeof request>>;
       const shown = () => opened.shown() as Value;
       return {
         key: opened.key,
@@ -928,17 +920,17 @@ export const makeZeropsResourceBroker = Effect.fn("ZeropsResourceBroker.make")(f
           return typeof retried === "boolean" ? Effect.succeed(retried) : Effect.fail(retried);
         }),
         release,
-      } satisfies ZeropsResourceLease<typeof request>;
+      } satisfies ZeropsCellLease<typeof request>;
     });
 
-  const diagnostics: Effect.Effect<ZeropsResourceDiagnostics> = Effect.sync(() => {
-    const byKind: Record<ZeropsResourceKind, number> = {
-      "organization-locations": 0,
-      "service-authorized-agents": 0,
-      "service-mate-flag": 0,
-      "organization-integration-token-grants": 0,
-      "organization-members": 0,
-      "service-variable-names": 0,
+  const diagnostics: Effect.Effect<ZeropsCellDiagnostics> = Effect.sync(() => {
+    const byKind: Record<ZeropsCellKind, number> = {
+      locations: 0,
+      agents: 0,
+      "mate-flag": 0,
+      tokens: 0,
+      members: 0,
+      env: 0,
     };
     const counts = { leases: 0, reading: 0, known: 0, failed: 0, withheld: 0 };
     for (const entry of entries.values()) {
@@ -980,7 +972,7 @@ export const makeZeropsResourceBroker = Effect.fn("ZeropsResourceBroker.make")(f
     invalidate: (request) =>
       Effect.sync(() => {
         if (closed) return;
-        const entry = entries.get(zeropsResourceKeyOf(request));
+        const entry = entries.get(zeropsCellKeyOf(request));
         if (entry === undefined || entry.cell.held.state !== "known") return;
         apply(entry, { kind: "invalidated", ordinal: ++ordinal });
         // A read in flight began before the write: it is read once more when it answers (M3).
@@ -988,5 +980,5 @@ export const makeZeropsResourceBroker = Effect.fn("ZeropsResourceBroker.make")(f
           reconcile(entry, options.access(), now());
       }),
     shutdown,
-  } satisfies ZeropsResourceBroker;
+  } satisfies ZeropsCells;
 });

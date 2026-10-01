@@ -9,12 +9,12 @@ import {
   ZeropsAccountId,
   ZeropsOrganizationId,
   type AccountScope,
-  type OrganizationMembersResourceRequest,
+  type MembersCellRequest,
   type OrganizationRef,
 } from "@t3tools/client-runtime/zerops/data";
 import { AtomRegistry } from "effect/unstable/reactivity";
 
-import { FakeResourceBroker } from "./__fixtures__/resourceBroker";
+import { FakeCells } from "./__fixtures__/cells";
 import { ZeropsDataContext, type ZeropsDataContextValue } from "./zeropsDataContext";
 import {
   useZeropsOrganizationMembersRead,
@@ -104,9 +104,9 @@ describe("useZeropsOrganizationMembersRead", () => {
       account: scope.account,
       organizationId: ZeropsOrganizationId.make(organizationId),
     });
-    const resources = new FakeResourceBroker<OrganizationMembersResourceRequest>();
+    const resources = new FakeCells<MembersCellRequest>();
     const data = {
-      runtime: { scope, resources },
+      runtime: { scope, cells: resources },
       organizationRef,
     } as unknown as ZeropsDataContextValue;
     const seen: Array<ReturnType<typeof useZeropsOrganizationMembersRead>> = [];

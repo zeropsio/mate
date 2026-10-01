@@ -2,14 +2,14 @@ import { describe, expect, it } from "@effect/vitest";
 
 import type { ZeropsLocation, ZeropsOrganizationMember } from "../api.ts";
 import type { Shown } from "../knowledge/index.ts";
-import type { ZeropsIntegrationTokenGrantMetadata } from "./resources.ts";
+import type { ZeropsIntegrationTokenGrantMetadata } from "./cells.ts";
 import {
   selectLocationChoice,
   selectMembers,
   selectTokenGrants,
   selectVariableNames,
   settledValue,
-} from "./resourceSelectors.ts";
+} from "./cellSelectors.ts";
 
 const PRAGUE: ZeropsLocation = { id: "prg1", name: "Prague", pingUrl: "https://ping.test" };
 const FAILURE = { kind: "transport", detail: "Zerops did not answer." } as const;

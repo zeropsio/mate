@@ -2,7 +2,7 @@
  * Capabilities (DESIGN §4.3): what a command may do now, read from the access grant at the moment
  * it is asked. The grant runs inside a data runtime here, its verification reads on a fake verifier
  * and its timers on the harness clock, so a capability is compared with what the runtime's own
- * command admission and resource broker decide over the same grant.
+ * command admission and the cells decide over the same grant.
  */
 import { describe, expect, it } from "@effect/vitest";
 import * as Clock from "effect/Clock";
@@ -15,10 +15,7 @@ import { makeDeadlineClock, type DeadlineClock } from "../../testing/deadlineClo
 import { ZeropsApiError, type ZeropsProject } from "../../api.ts";
 import { account, organization, project, scope, service } from "../__fixtures__/index.ts";
 import { commandAdmissionError } from "../commands.ts";
-import type {
-  ServiceAuthorizedAgentsResourceRequest,
-  ZeropsResourceAdapter,
-} from "../resources.ts";
+import type { AgentsCellRequest, ZeropsCellAdapter } from "../cells.ts";
 import { makeZeropsDataRuntime } from "../runtime.ts";
 import type { ProjectEffectiveAccess, ProjectRef, ZeropsDataAdapter } from "../types.ts";
 import {
@@ -69,7 +66,7 @@ const inertAdapter: ZeropsDataAdapter = {
 };
 
 /** Every service resource reads as one agent; nothing else is asked for. */
-const resourceAdapter: ZeropsResourceAdapter = {
+const cellAdapter: ZeropsCellAdapter = {
   readOrganizationLocations: () => Effect.succeed([]),
   readServiceAuthorizedAgents: () => Effect.succeed(["codex"]),
   readServiceMateFlag: () => Effect.succeed({ enabled: "unknown" }),
@@ -130,8 +127,7 @@ const tab = Effect.fnUntraced(function* (platform: Platform, rest?: AccessVerifi
   let opaque = 0;
   const runtime = yield* makeZeropsDataRuntime({
     scope: scope(),
-    adapter: inertAdapter,
-    resourceAdapter,
+    adapter: { ...inertAdapter, cells: cellAdapter },
     atomRegistry: registry,
     makeOpaqueId: () => `opaque-${++opaque}`,
   }).pipe(Effect.provideService(Clock.Clock, clock));
@@ -182,16 +178,16 @@ const tab = Effect.fnUntraced(function* (platform: Platform, rest?: AccessVerifi
   yield* runtime.access.start({ verifier: rest ?? verifier, hidden: false, online: true });
   yield* settle;
   const resources = new Map(
-    [A, B].map((target): [ProjectRef, ServiceAuthorizedAgentsResourceRequest] => [
+    [A, B].map((target): [ProjectRef, AgentsCellRequest] => [
       target,
       {
-        kind: "service-authorized-agents",
+        kind: "agents",
         account: runtime.scope,
         service: service(`service-of-${target.projectId}`, target),
       },
     ]),
   );
-  for (const request of resources.values()) registry.mount(runtime.resources.known(request));
+  for (const request of resources.values()) registry.mount(runtime.cells.known(request));
   const capabilities = grantCapabilities(runtime.access);
   return {
     clock,
@@ -207,14 +203,14 @@ const tab = Effect.fnUntraced(function* (platform: Platform, rest?: AccessVerifi
     await: (ask: CapabilityAsk, withinMs: number) =>
       Effect.forkChild(capabilities.await(ask, { withinMs })),
     /**
-     * Whether the broker admits a read of the project's resource now: it is neither withheld
+     * Whether the cells admit a read of the project's cell now: it is neither withheld
      * nor, once the account closed, waiting for a Zerops session.
      */
     readable: (target: ProjectRef) =>
       Effect.gen(function* () {
-        yield* runtime.resources.reconcileAccess;
+        yield* runtime.cells.reconcileAccess;
         yield* settle;
-        const shown = registry.get(runtime.resources.known(resources.get(target)!));
+        const shown = registry.get(runtime.cells.known(resources.get(target)!));
         return (
           shown.state !== "withheld" &&
           !(shown.state === "unread" && shown.waitingFor === "zerops-session")

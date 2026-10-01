@@ -14,7 +14,7 @@ import {
   selectVariableNames,
   type CollectionRead,
   type ServiceRecord,
-  type ServiceVariableNamesResourceRequest,
+  type EnvCellRequest,
 } from "@t3tools/client-runtime/zerops/data";
 import * as Effect from "effect/Effect";
 import { Atom } from "effect/unstable/reactivity";
@@ -55,22 +55,20 @@ export function useZeropsDeployTokenGaps(input: {
       knowledge.record.identity.fields.hostname === BROKER_HOSTNAME,
   );
   const brokerRef = broker?.knowledge === "observed" ? broker.record.ref : undefined;
-  // Its variable names, one read shared by every reader of them (the resource broker).
-  const request = useMemo<ServiceVariableNamesResourceRequest | null>(
+  // Its variable names, one read shared by every reader of them (the account's cells).
+  const request = useMemo<EnvCellRequest | null>(
     () =>
-      brokerRef === undefined
-        ? null
-        : { kind: "service-variable-names", account: runtime.scope, service: brokerRef },
+      brokerRef === undefined ? null : { kind: "env", account: runtime.scope, service: brokerRef },
     [brokerRef, runtime.scope],
   );
-  const names = useKnown(request === null ? null : runtime.resources.known(request));
+  const names = useKnown(request === null ? null : runtime.cells.known(request));
   // Something the page finished may have minted a key: the names are read again.
   const seenGeneration = useRef(generation);
   useEffect(() => {
     if (seenGeneration.current === generation) return;
     seenGeneration.current = generation;
-    if (request !== null) Effect.runFork(runtime.resources.invalidate(request));
-  }, [generation, request, runtime.resources]);
+    if (request !== null) Effect.runFork(runtime.cells.invalidate(request));
+  }, [generation, request, runtime.cells]);
   const read = selectVariableNames(names);
   const brokerVariables = read.status === "known" ? read.names : undefined;
   const declaredKey = input.declaredProjects.toSorted().join(",");

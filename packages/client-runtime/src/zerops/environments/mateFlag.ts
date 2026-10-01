@@ -10,7 +10,7 @@ import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import type { AtomRegistry } from "effect/unstable/reactivity";
 
-import { settledValue } from "../data/resourceSelectors.ts";
+import { settledValue } from "../data/cellSelectors.ts";
 import type { ManagedZeropsDataRuntime } from "../data/runtime.ts";
 import { readMateFlagFromStore } from "../data/storeReads.ts";
 import type { ServiceRef } from "../data/types.ts";
@@ -30,8 +30,8 @@ export async function readServiceMateFlag(
   if (stated === true) return true;
   return Effect.runPromiseWith(services)(
     Effect.scoped(
-      data.resources
-        .acquire({ kind: "service-mate-flag", account: data.resources.scope, service })
+      data.cells
+        .acquire({ kind: "mate-flag", account: data.cells.scope, service })
         .pipe(Effect.flatMap((lease) => lease.awaitSettled)),
     ),
   ).then(

@@ -27,11 +27,11 @@ import {
   type ZeropsDataPolicy,
 } from "./policy.ts";
 import {
-  makeZeropsResourceBroker,
-  type ZeropsResourceAdapter,
-  type ZeropsResourceBroker,
-  type ZeropsResourceSourceError,
-} from "./resources.ts";
+  makeZeropsCells,
+  type ZeropsCellAdapter,
+  type ZeropsCells,
+  type ZeropsCellSourceError,
+} from "./cells.ts";
 import {
   makeInitialZeropsDataState,
   reduceZeropsDataState,
@@ -696,7 +696,6 @@ export interface ZeropsDataRuntimeOptions {
   readonly policy?: ZeropsDataPolicy;
   readonly initialAccess?: AccessState;
   readonly visibility?: ZeropsVisibility;
-  readonly resourceAdapter?: ZeropsResourceAdapter;
   readonly buildLogTransport?: BuildLogTransport;
   readonly logTimers?: {
     readonly setTimer: (callback: () => void, delayMs: number) => unknown;
@@ -713,7 +712,7 @@ interface ZeropsDataRuntimeDiagnostics {
 
 export type ManagedZeropsDataRuntime = ZeropsDataRuntime &
   ZeropsDataRuntimeDiagnostics & {
-    readonly resources: ZeropsResourceBroker;
+    readonly cells: ZeropsCells;
     readonly logs: BuildLogRegistry;
     /** The epoch's access grant, interpreted here (DESIGN §4.2, D16(a)). */
     readonly access: ZeropsAccessGrant;
@@ -730,14 +729,14 @@ const leaseError = (
   message: string,
 ): LeaseAdmissionError => ({ _tag: "ZeropsLeaseAdmissionError", reason, message });
 
-const unavailableResource = (): Effect.Effect<never, ZeropsResourceSourceError> =>
+const unavailableResource = (): Effect.Effect<never, ZeropsCellSourceError> =>
   Effect.fail({
-    _tag: "ZeropsResourceSourceError",
+    _tag: "ZeropsCellSourceError",
     kind: "unavailable",
     retryable: false,
   });
 
-const unavailableResourceAdapter: ZeropsResourceAdapter = {
+const unavailableCellAdapter: ZeropsCellAdapter = {
   readOrganizationLocations: unavailableResource,
   readServiceAuthorizedAgents: unavailableResource,
   readServiceMateFlag: unavailableResource,
@@ -939,9 +938,9 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
   const model = yield* Ref.make(
     makeInitialZeropsDataState(options.scope, options.initialAccess ?? { status: "unverified" }),
   );
-  const resources = yield* makeZeropsResourceBroker({
+  const cells = yield* makeZeropsCells({
     scope: options.scope,
-    adapter: options.resourceAdapter ?? unavailableResourceAdapter,
+    adapter: options.adapter.cells ?? unavailableCellAdapter,
     access: () => Ref.getUnsafe(model).access,
     maxEntries: policy.activeSharedReadsPerAccount,
   });
@@ -964,7 +963,7 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
     setTimer: logTimers.setTimer,
     clearTimer: logTimers.clearTimer,
   });
-  /** The access the build logs and the resource broker were last reconciled with. */
+  /** The access the build logs and the cells were last reconciled with. */
   let reconciledAccess = Ref.getUnsafe(model).access;
   const runtimeScope = yield* Scope.make();
   // Demand arrives from independently run UI effects; workers retain the account scheduler.
@@ -1063,7 +1062,7 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
   };
 
   /**
-   * Every change of access reaches the build logs and the resource broker, whatever made it. The
+   * Every change of access reaches the build logs and the cells, whatever made it. The
    * atoms hear the change now, after the task, or when the ingress loop flushes its batch.
    */
   const publish = (
@@ -1079,7 +1078,7 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
           if (next.access === reconciledAccess) return Effect.void;
           reconciledAccess = next.access;
           logs.reconcileAccess();
-          return resources.reconcileAccess;
+          return cells.reconcileAccess;
         }),
       ),
       Effect.andThen(publication === "now" ? flushPublication : Effect.void),
@@ -3848,7 +3847,7 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
         yield* applyControl({ kind: "runtime-closed" });
         yield* flushPublication;
         yield* ingress.shutdown;
-        yield* resources.shutdown;
+        yield* cells.shutdown;
         logs.shutdown();
         yield* Scope.close(runtimeScope, Exit.void);
         interests.clear();
@@ -3864,7 +3863,7 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
     scope: options.scope,
     reads: atoms.reads,
     commands,
-    resources,
+    cells,
     logs,
     acquire,
     refresh,

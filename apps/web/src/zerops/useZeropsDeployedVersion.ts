@@ -14,9 +14,9 @@
  * than a row that says nothing is there.
  */
 import type {
-  ZeropsResourceBroker,
-  ZeropsResourceRequest,
-  ZeropsResourceValue,
+  ZeropsCells,
+  ZeropsCellRequest,
+  ZeropsCellValue,
 } from "@t3tools/client-runtime/zerops/data";
 import {
   readDeployedVersion,
@@ -37,13 +37,13 @@ import { useZeropsSession } from "./ZeropsSessionProvider";
  * unless the read that settled it succeeded: a failure, a withholding, or a
  * value whose revalidation failed.
  */
-export function readZeropsResource<Request extends ZeropsResourceRequest>(
-  resources: ZeropsResourceBroker,
+export function readZeropsCell<Request extends ZeropsCellRequest>(
+  cells: ZeropsCells,
   request: Request,
   signal?: AbortSignal,
-): Promise<ZeropsResourceValue<Request>> {
+): Promise<ZeropsCellValue<Request>> {
   return Effect.runPromise(
-    Effect.scoped(resources.acquire(request).pipe(Effect.flatMap((lease) => lease.awaitSettled))),
+    Effect.scoped(cells.acquire(request).pipe(Effect.flatMap((lease) => lease.awaitSettled))),
     signal === undefined ? undefined : { signal },
   ).then((shown) => {
     const answer = settledValue(shown);
@@ -52,13 +52,13 @@ export function readZeropsResource<Request extends ZeropsResourceRequest>(
   });
 }
 
-/** {@link readZeropsResource} for a caller that treats a failed read as no answer. */
-export function readZeropsResourceOnce<Request extends ZeropsResourceRequest>(
-  resources: ZeropsResourceBroker,
+/** {@link readZeropsCell} for a caller that treats a failed read as no answer. */
+export function readZeropsCellOnce<Request extends ZeropsCellRequest>(
+  cells: ZeropsCells,
   request: Request,
   signal?: AbortSignal,
-): Promise<ZeropsResourceValue<Request> | undefined> {
-  return readZeropsResource(resources, request, signal).catch(() => undefined);
+): Promise<ZeropsCellValue<Request> | undefined> {
+  return readZeropsCell(cells, request, signal).catch(() => undefined);
 }
 
 /**

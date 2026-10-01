@@ -11,11 +11,11 @@ import {
   ZeropsAccountId,
   ZeropsOrganizationId,
   type ManagedZeropsDataRuntime,
-  type OrganizationLocationsResourceRequest,
+  type LocationsCellRequest,
 } from "@t3tools/client-runtime/zerops/data";
 import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
 
-import { FakeResourceBroker } from "./__fixtures__/resourceBroker";
+import { FakeCells } from "./__fixtures__/cells";
 import {
   makeZeropsAtomSelectionStore,
   runZeropsCommand,
@@ -196,12 +196,12 @@ const known = (value: ReadonlyArray<ZeropsLocation>): Shown<ReadonlyArray<Zerops
 
 const PRAGUE: ZeropsLocation = { id: "prg1", name: "Prague", pingUrl: "https://ping.test" };
 
-type LocationsBroker = FakeResourceBroker<OrganizationLocationsResourceRequest>;
+type LocationsBroker = FakeCells<LocationsCellRequest>;
 
 function locationsContext(broker: LocationsBroker) {
   const runtime = {
     scope,
-    resources: { known: broker.known },
+    cells: { known: broker.known },
   } as unknown as ManagedZeropsDataRuntime;
   return {
     runtime,
@@ -223,9 +223,9 @@ describe("useKnown", () => {
   it("follows a withheld resource back to its value without a remount", async () => {
     installTestDom();
     const { createRoot } = await import("react-dom/client");
-    const broker = new FakeResourceBroker<OrganizationLocationsResourceRequest>();
-    const request: OrganizationLocationsResourceRequest = {
-      kind: "organization-locations",
+    const broker = new FakeCells<LocationsCellRequest>();
+    const request: LocationsCellRequest = {
+      kind: "locations",
       account: scope,
       organization,
     };
@@ -234,7 +234,7 @@ describe("useKnown", () => {
 
     function Probe() {
       const { runtime } = useZeropsData();
-      const result = useKnown(runtime.resources.known(request));
+      const result = useKnown(runtime.cells.known(request));
       useEffect(() => {
         mounts += 1;
       }, []);
