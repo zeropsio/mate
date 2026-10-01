@@ -2,6 +2,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import type { ChatAttachment } from "~/types";
 import {
+  echoOfMessage,
   placeMessagePictures,
   reservedPictureBox,
   terminalContextsBySegment,
@@ -130,5 +131,60 @@ describe("reservedPictureBox", () => {
     ["no size known, no room held", picture({}), undefined, null],
   ])("%s", (_label, image, serverSize, expected) => {
     expect(reservedPictureBox(image, serverSize)).toEqual(expected);
+  });
+});
+
+// The person's message echoed in a run's card, in short (the owner,
+// 2026-09-28), and 2026-10-01: "cannot handle images ... it also swallows the
+// text it had": the first line of their words, never a picture's label, and
+// its pictures in the order the conversation draws them.
+describe("echoOfMessage — the person's message as the run's card repeats it", () => {
+  it.each([
+    {
+      name: "words after a picture's label: their first line, the picture apart",
+      text: "[Picture 1]\nthis could be almost fullscreen\nand interactive",
+      attachments: [image("a")],
+      line: "this could be almost fullscreen",
+      pictures: ["a"],
+    },
+    {
+      name: "a picture only",
+      text: "[Picture 1]",
+      attachments: [image("a")],
+      line: "",
+      pictures: ["a"],
+    },
+    {
+      name: "words around two pictures, in the order written, a note dropped",
+      text: "Off:\n[Picture 1]\nNotes on picture 1:\n1. Bigger logo\nand here\n[Picture 2]\nFix both",
+      attachments: [image("a"), image("b")],
+      line: "Off:",
+      pictures: ["a", "b"],
+    },
+    {
+      name: "a picture no label places: before the placed ones, as the conversation draws it",
+      text: "[Picture 1]\nLook",
+      attachments: [image("a"), image("b")],
+      line: "Look",
+      pictures: ["b", "a"],
+    },
+    {
+      name: "words alone",
+      text: "Just words\non two lines",
+      attachments: [],
+      line: "Just words",
+      pictures: [],
+    },
+    {
+      name: "pictures with no label at all",
+      text: "Look at these",
+      attachments: [image("a"), image("b"), file("c", "application/pdf")],
+      line: "Look at these",
+      pictures: ["a", "b"],
+    },
+  ])("$name", ({ text, attachments, line, pictures }) => {
+    const echo = echoOfMessage(text, attachments);
+    expect(echo.line).toBe(line);
+    expect(echo.pictures.map((picture) => picture.id)).toEqual(pictures);
   });
 });

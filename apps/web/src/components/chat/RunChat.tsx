@@ -79,13 +79,15 @@ import {
 import { flushSync } from "react-dom";
 
 import { cn } from "~/lib/utils";
-import { useAssetUrlState } from "../../assets/assetUrls";
+import { useAssetUrls, useAssetUrlState } from "../../assets/assetUrls";
 import {
+  selectMessageImageResources,
   workEntryDisplayIndicatesToolFailure,
   type TurnPlanEntry,
   type WorkLogEntry,
 } from "../../session-logic";
-import { isImageAttachment, type ChatMessage } from "../../types";
+import type { ChatImageAttachment, ChatMessage } from "../../types";
+import { echoOfMessage } from "./messagePictures.logic";
 import ChatMarkdown from "../ChatMarkdown";
 import { ChangeChipMomentContext } from "../zerops/ZeropsChangeLinkChip";
 import { CrewSeamActivity } from "../zerops/crew/CrewTaskCard";
@@ -2066,27 +2068,86 @@ function gatherCalls(lines: ReadonlyArray<ChatLine>): ReadonlyArray<ChatEntry> {
 /**
  * Where the person's words reached the Mate, on their side, in their bubble:
  * an answer to its question whole — it stands nowhere else; a message they
- * sent into the run in one line — the message itself stands on the page above
- * the card (the owner, 2026-09-28: "shown the user message in short inside
- * the working group, printed it in the chat at the same time").
+ * sent into the run in short, one line — the message itself stands on the
+ * page above the card (the owner, 2026-09-28) — and its pictures small under
+ * it, each opening the viewer: never a picture's label standing in for its
+ * words (2026-10-01: "it also swallows the text it had").
  */
 function PersonMark({ item }: { readonly item: Extract<RecordItem, { kind: "person" }> }) {
-  const words =
-    item.words ?? (item.imageOnly ? "" : (item.message?.text.trim().split("\n")[0] ?? ""));
-  const images = item.message?.attachments?.filter(isImageAttachment).length ?? 0;
+  const bubble = cn("max-w-4/5 bg-message text-message-foreground", BUBBLE_SHAPE, BUBBLE_PAD);
+  if (item.words !== undefined) {
+    return (
+      <p className={cn(bubble, "whitespace-pre-wrap break-words", WORDS)} data-chat-kind="person">
+        {item.words}
+      </p>
+    );
+  }
+  // The client's own placeholder for an image-only message is nothing they wrote.
+  const echo = echoOfMessage(
+    item.imageOnly ? "" : (item.message?.text ?? ""),
+    item.message?.attachments ?? [],
+  );
   return (
-    <p
-      className={cn(
-        "max-w-4/5 bg-message text-message-foreground",
-        item.words === undefined ? "truncate" : "whitespace-pre-wrap break-words",
-        BUBBLE_SHAPE,
-        BUBBLE_PAD,
-        WORDS,
+    <div className={cn(bubble, "grid min-w-0 gap-2")} data-chat-kind="person">
+      {echo.line.length > 0 ? <p className={cn("truncate", WORDS)}>{echo.line}</p> : null}
+      {echo.pictures.length > 0 ? <PersonPictures pictures={echo.pictures} /> : null}
+    </div>
+  );
+}
+
+/** The pictures of a message the person sent into the run: a compact strip, each opening the viewer on all of them. */
+function PersonPictures({ pictures }: { readonly pictures: ReadonlyArray<ChatImageAttachment> }) {
+  const { activeThreadEnvironmentId, onImageExpand } = use(TimelineRowCtx);
+  const resources = useMemo(() => selectMessageImageResources(pictures), [pictures]);
+  const urls = useAssetUrls(activeThreadEnvironmentId, resources);
+  const byId = new Map(
+    resources.flatMap((resource, index) => {
+      const url = urls[index];
+      return resource._tag === "attachment" && url ? [[resource.attachmentId, url] as const] : [];
+    }),
+  );
+  const shown = pictures.map((picture) => ({
+    picture,
+    src: byId.get(picture.id) ?? picture.previewUrl ?? null,
+  }));
+  const viewable = shown.flatMap(({ picture, src }) =>
+    src === null ? [] : [{ src, name: picture.name }],
+  );
+  return (
+    <span className="flex min-w-0 flex-wrap gap-1.5" data-person-pictures>
+      {shown.map(({ picture, src }) =>
+        src === null ? (
+          <span
+            key={picture.id}
+            aria-label={`Loading ${picture.name}`}
+            className="block h-16 w-24 rounded-lg bg-foreground/5"
+            role="status"
+          />
+        ) : (
+          <button
+            key={picture.id}
+            aria-label={`Open ${picture.name}`}
+            className="block h-16 cursor-zoom-in overflow-hidden rounded-lg border border-border/60 bg-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70"
+            onClick={() =>
+              onImageExpand({
+                images: viewable,
+                index: Math.max(
+                  0,
+                  viewable.findIndex((view) => view.src === src),
+                ),
+              })
+            }
+            type="button"
+          >
+            <img
+              alt={picture.name}
+              className="block h-full w-auto max-w-32 object-cover"
+              src={src}
+            />
+          </button>
+        ),
       )}
-      data-chat-kind="person"
-    >
-      {words.length > 0 ? words : images > 1 ? `${images} images` : "An image"}
-    </p>
+    </span>
   );
 }
 
