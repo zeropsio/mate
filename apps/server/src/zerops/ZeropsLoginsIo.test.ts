@@ -16,7 +16,9 @@ import type {
 } from "@t3tools/contracts";
 
 import type { WatcherHandle } from "./ZeropsAgentAuthWatcher.ts";
+import * as ZeropsAgentLoginModule from "./ZeropsAgentLogin.ts";
 import * as ZeropsLogins from "./ZeropsLogins.ts";
+import { memorySignInStore } from "./zeropsSignIns.ts";
 
 type Instances = Readonly<Record<string, ProviderInstanceConfig>>;
 
@@ -228,6 +230,82 @@ it.layer(NodeServices.layer, { excludeTestServices: true })("ZeropsLogins", (it)
         const landed = yield* listWhere(subscription, (rows) => rows[0]?.signedInBy === "u-eva");
 
         assert.strictEqual(landed[0]?.signedInBy, "u-eva");
+      }),
+    ),
+  );
+
+  // A restart: the rows are listed before each login's first check answers, and read "not
+  // signed in" meanwhile. Who signed a login in is let go only on an answer, never on that.
+  it.effect("keeps a login's signer across a restart, before and after its first check", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const before = yield* makeHarness({});
+        const { id } = yield* before.logins.add({
+          agent: "claude-code",
+          kind: "subscription",
+          label: "work",
+        });
+        yield* before.fs.writeFileString(
+          `${before.homeDir}/.mate/logins/${id}/.credentials.json`,
+          "{}",
+        );
+
+        const store = yield* memorySignInStore({ [id]: { by: "u-eva", at: 1 } });
+        const restarted = yield* ZeropsLogins.make({
+          ...before.settings.options,
+          isZeropsEnvironment: true,
+          homeDir: before.homeDir,
+          verify: () => Effect.succeed("authenticated" as const),
+          watch: makeFakeWatch().watch,
+          checkDebounce: Duration.millis(10),
+        });
+        yield* ZeropsAgentLoginModule.make({
+          terminalManager: {} as Parameters<
+            typeof ZeropsAgentLoginModule.make
+          >[0]["terminalManager"],
+          zeropsAgentAuth: { recheckNow: () => Effect.void },
+          isZeropsEnvironment: true,
+          signIns: store,
+          credentialsHeld: ZeropsAgentLoginModule.credentialsHeldOf(
+            { latest: Effect.succeed({ available: false, agents: [] }), changes: Stream.empty },
+            restarted,
+          ),
+        });
+        yield* Effect.sleep(Duration.millis(5));
+        assert.deepStrictEqual((yield* store.load)[id]?.by, "u-eva", "before the first check");
+        const subscription = yield* restarted.subscribe;
+        yield* listWhere(subscription, (rows) => rows[0]?.state === "authorized");
+        yield* Effect.sleep(Duration.millis(20));
+        assert.deepStrictEqual((yield* store.load)[id]?.by, "u-eva", "after it");
+      }),
+    ),
+  );
+
+  it.effect("lets a login's signer go once its first check finds no credential", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const { logins } = yield* makeHarness({});
+        const { id } = yield* logins.add({
+          agent: "claude-code",
+          kind: "subscription",
+          label: "x",
+        });
+        const store = yield* memorySignInStore({ [id]: { by: "u-eva", at: 1 } });
+        yield* ZeropsAgentLoginModule.make({
+          terminalManager: {} as Parameters<
+            typeof ZeropsAgentLoginModule.make
+          >[0]["terminalManager"],
+          zeropsAgentAuth: { recheckNow: () => Effect.void },
+          isZeropsEnvironment: true,
+          signIns: store,
+          credentialsHeld: ZeropsAgentLoginModule.credentialsHeldOf(
+            { latest: Effect.succeed({ available: false, agents: [] }), changes: Stream.empty },
+            logins,
+          ),
+        });
+        yield* logins.recheckNow(id);
+        yield* Effect.sleep(Duration.millis(50));
+        assert.isUndefined((yield* store.load)[id]);
       }),
     ),
   );

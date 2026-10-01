@@ -345,6 +345,12 @@ export class ZeropsLogins extends Context.Service<
       never,
       Scope.Scope
     >;
+    /**
+     * Whether each login holds a credential, by id, as its own check found it — only once a
+     * check has answered, never the "not signed in" a row reads while none has. A login gone
+     * from the settings reads as holding none.
+     */
+    readonly credentials: Stream.Stream<ReadonlyArray<readonly [string, boolean]>>;
     /** The login beyond the defaults configured under `id`, if there is one. */
     readonly resolve: (id: string) => Effect.Effect<MateLogin | undefined>;
     /**
@@ -423,6 +429,7 @@ export const unavailable = Effect.gen(function* () {
     latest,
     changes: Stream.fromPubSub(changes),
     subscribe: subscribeBeforeSnapshot(changes, latest, yield* Semaphore.make(1)),
+    credentials: Stream.empty,
     resolve: () => Effect.succeed(undefined),
     recheckNow: () => Effect.void,
     add: () => Effect.fail(refused),
@@ -436,6 +443,7 @@ export const make = (options: ZeropsLoginsOptions) =>
 
     const changes = yield* PubSub.sliding<ReadonlyArray<ZeropsLogin>>(4);
     const subscribeMutex = yield* Semaphore.make(1);
+    const credentialAnswers = yield* PubSub.unbounded<ReadonlyArray<readonly [string, boolean]>>();
 
     const {
       homeDir,
@@ -520,6 +528,7 @@ export const make = (options: ZeropsLoginsOptions) =>
           ...current,
           [id]: { credPresent, providerAuth },
         }));
+        yield* PubSub.publish(credentialAnswers, [[id, credPresent]]);
         yield* publish;
         if (reconcile !== undefined && providerAuth !== before.providerAuth) {
           yield* reconcile(id, providerAuth);
@@ -558,9 +567,16 @@ export const make = (options: ZeropsLoginsOptions) =>
           watchers.delete(id);
         }
         yield* Ref.set(logins, next);
+        const gone = Object.keys(yield* Ref.get(facts)).filter((id) => !nextIds.has(id));
         yield* Ref.update(facts, (current) =>
           Object.fromEntries(Object.entries(current).filter(([id]) => nextIds.has(id))),
         );
+        if (gone.length > 0) {
+          yield* PubSub.publish(
+            credentialAnswers,
+            gone.map((id) => [id, false] as const),
+          );
+        }
         for (const login of next) {
           if (!watchers.has(login.id)) {
             watchers.set(
@@ -774,6 +790,7 @@ export const make = (options: ZeropsLoginsOptions) =>
       latest,
       changes: Stream.fromPubSub(changes),
       subscribe: subscribeBeforeSnapshot(changes, latest, subscribeMutex),
+      credentials: Stream.fromPubSub(credentialAnswers),
       resolve,
       recheckNow,
       add,
