@@ -118,7 +118,7 @@ const PRESS_STEP_STATES: Readonly<
 };
 
 /** The press, in the form's place, until the Mate needs no browser. */
-function PressingPanel({ pressing }: { readonly pressing: PressingView }) {
+export function PressingPanel({ pressing }: { readonly pressing: PressingView }) {
   return (
     <>
       <DialogHeader>

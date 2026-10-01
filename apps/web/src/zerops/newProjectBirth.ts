@@ -25,6 +25,8 @@
 import {
   ZeropsApiError,
   type BirthPlacement,
+  type EnvironmentCreationStep,
+  type EnvironmentCreationStepProgress,
   type ZeropsAgentType,
   type ZeropsMateFace,
   type ZeropsPlacedBirth,
@@ -39,6 +41,10 @@ import type {
   BirthLineProgress,
   BirthLineStep,
 } from "../components/zerops/ZeropsBirthProgress.logic";
+import {
+  pressThrough,
+  type PressStepView,
+} from "../components/zerops/ZeropsEnvironmentCreationDialog.logic";
 import { COMING_UP_LINE, NOT_SET_UP_LINE } from "../components/zerops/ZeropsProjectRow.logic";
 import { captureAccountLifetime, onAccountLifetimeClose } from "./accountLifetime";
 import { asSentence, type MateComing } from "./mateComing";
@@ -457,3 +463,68 @@ onAccountLifetimeClose(() => {
   driving.clear();
   useNewProjectBirths.setState({ births: {} });
 });
+
+/**
+ * A New project's press as its dialog draws it, until the first Mate needs no browser: Git
+ * hosting where the account has none, the project's registration, the project itself — its
+ * creation's wait part of the press — then its Mate's registration and its close-off, from the
+ * Mate's own press (`progress`, null before it begins).
+ */
+export function newProjectPressSteps(
+  birth: NewProjectBirth,
+  progress: ReadonlyArray<EnvironmentCreationStepProgress> | null,
+): ReadonlyArray<PressStepView> {
+  const own = (label: string, step: NewProjectStep): PressStepView => ({
+    label,
+    state: stateOf(birth, step),
+  });
+  const mate = (label: string, kind: EnvironmentCreationStep["kind"]): PressStepView => {
+    const entry = progress?.find((candidate) => candidate.step.kind === kind);
+    const state: PressStepView["state"] =
+      entry === undefined
+        ? "waiting"
+        : entry.state === "queued"
+          ? "waiting"
+          : entry.state === "running"
+            ? "active"
+            : entry.state;
+    return { label, state };
+  };
+  return [
+    ...(birth.withGitea ? [own("Git hosting", "gitea")] : []),
+    own("Project registered", "registry"),
+    own("Creating the project", "create"),
+    mate("Mate registered", "register"),
+    mate("Closed off", "close-off"),
+  ];
+}
+
+/** The first Mate is marked closed off: it needs no browser, and the dialog may go. */
+export function newProjectPressThrough(
+  progress: ReadonlyArray<EnvironmentCreationStepProgress> | null,
+): boolean {
+  return progress !== null && pressThrough(progress);
+}
+
+/** A press's stop as its dialog reads it: why, and whether Try again may run it again. */
+export interface NewProjectPressStop {
+  readonly kind: "failed";
+  readonly reason: string;
+  readonly retryable: boolean;
+}
+
+/**
+ * Why a New project's press stopped, and what *Try again* resumes: its own step (`creation`),
+ * its Mate's press (`press`), or nothing where the platform may have taken the creation anyway.
+ * Null while it runs.
+ */
+export function newProjectPressFailure(
+  birth: NewProjectBirth,
+  press: NewProjectPressStop | null,
+): { readonly reason: string; readonly tryAgain: "creation" | "press" | null } | null {
+  if (birth.failed !== null) {
+    return { reason: birth.failed.reason, tryAgain: birth.failed.uncertain ? null : "creation" };
+  }
+  if (press === null) return null;
+  return { reason: press.reason, tryAgain: press.retryable ? "press" : null };
+}

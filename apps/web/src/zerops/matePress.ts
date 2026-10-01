@@ -28,6 +28,7 @@ import {
   type EnvironmentCreationOutcome,
   type EnvironmentCreationPlatform,
   type EnvironmentCreationStep,
+  type EnvironmentCreationStepProgress,
   type RecipeRuntime,
   type ZeropsAgentType,
   type ZeropsApiClient,
@@ -499,6 +500,8 @@ export async function finishMateSetup(input: {
    * key moved off the project's variables (`hardenMate`) before the steps run.
    */
   readonly harden?: boolean;
+  /** Each step's state as the press moves, for a dialog that stays on it. */
+  readonly onProgress?: (progress: ReadonlyArray<EnvironmentCreationStepProgress>) => void;
 }): Promise<EnvironmentCreationOutcome> {
   if (input.harden === true) {
     try {
@@ -538,6 +541,7 @@ export async function finishMateSetup(input: {
     }),
     isCurrent: input.isCurrent,
     resume: { from: 0, projectId: input.projectId, projectName: input.projectName },
+    ...(input.onProgress === undefined ? {} : { onProgress: input.onProgress }),
   });
 }
 
