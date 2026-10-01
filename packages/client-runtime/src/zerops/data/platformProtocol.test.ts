@@ -200,7 +200,7 @@ describe("Zerops platform protocol decoding", () => {
     });
   });
 
-  it("keeps good rows but marks coverage partial when one required row is malformed", () => {
+  it("drops one malformed row alone, keeping the good rows and the read whole", () => {
     const descriptor = {
       kind: "services-of-organization" as const,
       organization: project.organization,
@@ -224,7 +224,8 @@ describe("Zerops platform protocol decoding", () => {
     ]);
     expect(result.observations.at(-1)).toMatchObject({
       kind: "query-baseline-observed",
-      coverage: { kind: "partial", reason: "malformed" },
+      members: [expect.objectContaining({ serviceId: "service-1" })],
+      coverage: { kind: "exhausted-traversal" },
     });
   });
 
@@ -302,9 +303,11 @@ describe("Zerops platform protocol decoding", () => {
       expect(decode().issues).toEqual([
         expect.objectContaining({ kind: "malformed-row", rowIndex: 0 }),
       ]);
+      // The bad row is dropped alone; the read still covers what it was handed.
       expect(decode().observations.at(-1)).toMatchObject({
         kind: "query-baseline-observed",
-        coverage: { kind: "partial", reason: "malformed" },
+        members: [],
+        coverage: { kind: "exhausted-traversal" },
       });
     }
   });

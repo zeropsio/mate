@@ -338,6 +338,9 @@ export interface ProtocolDecodeIssue {
   readonly rowIndex?: number;
 }
 
+/** An issue of one row, which drops that row alone and never the read or registration it rode. */
+export const isRowIssue = (issue: ProtocolDecodeIssue): boolean => issue.kind === "malformed-row";
+
 export interface ProtocolDecodeResult {
   readonly observations: ReadonlyArray<PlatformObservation>;
   readonly issues: ReadonlyArray<ProtocolDecodeIssue>;
@@ -998,7 +1001,9 @@ export function decodeEntityQueryResponse(
       offset: searchEnvelope?.offset ?? 0,
       ...(total === undefined ? {} : { total }),
     },
-    decoded.issues.length > 0,
+    // A malformed row is that row's alone: it is dropped, and the read still covers every row it
+    // was handed. One project's broken row never leaves the organization's other projects unread.
+    decoded.issues.some((issue) => !isRowIssue(issue)),
   );
   const baseline: QueryBaselineObservation = {
     kind: "query-baseline-observed",

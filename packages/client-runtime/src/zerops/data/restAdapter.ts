@@ -18,9 +18,12 @@ import {
   decodeStartProjectResponse,
   decodeStartServiceResponse,
   decodeSearchListPage,
+  isRowIssue,
   rememberMemberProjects,
   type MemberProjectOf,
+  type ProtocolDecodeIssue,
 } from "./platformProtocol.ts";
+import { mateDiagnostics } from "../diagnostics.ts";
 import type {
   AdapterError,
   EntityQueryDescriptor,
@@ -261,6 +264,14 @@ function requestEffect(
             }),
     ({ dispose }) => Effect.sync(dispose),
   );
+}
+
+/** A row the platform sent malformed is dropped and noted, once per kind of fault. */
+function reportDroppedRows(issues: ReadonlyArray<ProtocolDecodeIssue>): void {
+  for (const issue of issues) {
+    if (isRowIssue(issue))
+      mateDiagnostics.recordOnce({ kind: "dropped-row", message: issue.message });
+  }
 }
 
 function queryOrganizationId(query: EntityQueryDescriptor): string {
@@ -636,7 +647,10 @@ export function makeZeropsDataAdapter(options: ZeropsDataAdapterOptions): Zerops
           return;
         }
         const decoded = decodeNativeFrame(data, registrations, memberProjectOf);
-        if (decoded.kind === "observations") remember(decoded);
+        if (decoded.kind === "observations") {
+          remember(decoded);
+          reportDroppedRows(decoded.issues);
+        }
         if (decoded.kind === "pong") {
           if (pongHandle !== undefined) {
             options.timers.clearTimer(pongHandle);
@@ -663,7 +677,9 @@ export function makeZeropsDataAdapter(options: ZeropsDataAdapterOptions): Zerops
                 input: observation,
                 bytes: index === 0 ? bytes : 0,
               })),
-              ...(decoded.issues.length ? ([{ kind: "malformed" }] as const) : []),
+              ...(decoded.issues.some((issue) => !isRowIssue(issue))
+                ? ([{ kind: "malformed" }] as const)
+                : []),
             ],
             bytes,
           );
@@ -811,8 +827,9 @@ export function makeZeropsDataAdapter(options: ZeropsDataAdapterOptions): Zerops
     ).pipe(
       Effect.flatMap((body) => {
         const decoded = remember(decodeRegistrationResponse(request, body));
-        if (decoded.issues.length)
-          return Effect.fail(adapterError("malformed", decoded.issues[0]!.message));
+        reportDroppedRows(decoded.issues);
+        const fatal = decoded.issues.find((issue) => !isRowIssue(issue));
+        if (fatal !== undefined) return Effect.fail(adapterError("malformed", fatal.message));
         return Effect.succeed<RegistrationReceipt>({ responseObservations: decoded.observations });
       }),
       Effect.tapError(() =>

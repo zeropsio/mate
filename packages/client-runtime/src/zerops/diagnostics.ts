@@ -155,7 +155,9 @@ export type MateDiagnosticEvent =
   /** A thread route rendered its conversation. */
   | { readonly kind: "thread-content"; readonly environmentId: string; readonly threadId: string }
   /** The first open pull request a group's flow showed. */
-  | { readonly kind: "flow-pr-row"; readonly groupId: string };
+  | { readonly kind: "flow-pr-row"; readonly groupId: string }
+  /** A row the platform sent malformed, dropped alone; the rest of its read stands. */
+  | { readonly kind: "dropped-row"; readonly message: string };
 
 export type MateDiagnosticEntry = MateDiagnosticEvent & { readonly t: number };
 

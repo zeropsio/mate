@@ -246,6 +246,26 @@ describe("inventory knowledge", () => {
       };
     };
 
+    it("is complete though another project's service the organization's read names is unresolved", () => {
+      const read = listing([
+        {
+          status: "observing",
+          identity: id,
+          guarantee: "source-order-unverified",
+          sinceReceiptOrdinal: stamp(1).receiptOrdinal,
+        },
+      ]);
+      const elsewhere = {
+        ...read,
+        query: { ...read.query, unresolvedMemberKeys: ["service-of-another-project"] },
+      } as unknown as typeof read;
+
+      expect(knownServicesOf(elsewhere, 100)).toMatchObject({
+        state: "known",
+        coverage: "complete",
+      });
+    });
+
     it.each([
       ["only its inventory observes: no lag-free read confirmed anything", ["inventory"], null],
       ["its own lag-free read observes: that read confirms", ["inventory", "check"], 7],

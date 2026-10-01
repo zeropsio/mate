@@ -1704,3 +1704,102 @@ describe("ZeropsDataAdapter receiver", () => {
       }),
   );
 });
+
+describe("one malformed row of the organization's", () => {
+  const good = { id: "service", projectId: "project", name: "app", status: "ACTIVE" };
+  /** A row of a project this person may not even see, missing its status. */
+  const broken = { id: "other-service", projectId: "elsewhere", name: "db" };
+
+  it.effect("is dropped from a registration's baseline, which keeps the rest and succeeds", () =>
+    Effect.gen(function* () {
+      const sockets: FakeSocket[] = [];
+      const client = clientFor((url) =>
+        url.endsWith("/web-socket/login")
+          ? new Response('{"webSocketToken":"socket-token"}', { status: 200 })
+          : new Response(
+              JSON.stringify({ items: [good, broken], limit: 2000, offset: 0, totalHits: 2 }),
+              { status: 200 },
+            ),
+      );
+      const adapter = makeZeropsDataAdapter({ client, makeSocket: socketFactory(sockets), timers });
+      const receipt = yield* Effect.scoped(
+        Effect.gen(function* () {
+          const receiver = yield* adapter.openReceiver(
+            scope,
+            organization,
+            receiverIdentity,
+            context(),
+          );
+          return yield* adapter.register(
+            receiver,
+            {
+              identity: interest,
+              subscriptionName: ZeropsWireSubscriptionName.make("opaque-services"),
+              descriptor: {
+                kind: "query-membership",
+                query: {
+                  kind: "services-of-organization",
+                  organization,
+                  schemaVersion: 1,
+                },
+              },
+              baselineTicket: servicesTicket(),
+            } as RegistrationRequest,
+            context(),
+          );
+        }),
+      );
+      const baseline = receipt.responseObservations.at(-1);
+
+      expect(baseline).toMatchObject({
+        kind: "query-baseline-observed",
+        members: [expect.objectContaining({ serviceId: "service" })],
+        coverage: { kind: "exhausted-traversal" },
+      });
+    }),
+  );
+
+  it.effect("in an update frame is dropped, and never says the socket is malformed", () =>
+    Effect.gen(function* () {
+      const sockets: FakeSocket[] = [];
+      const client = clientFor(
+        (url) =>
+          new Response(
+            JSON.stringify(
+              url.endsWith("/web-socket/login")
+                ? { webSocketToken: "socket-token" }
+                : { success: true },
+            ),
+            { status: 200 },
+          ),
+      );
+      const adapter = makeZeropsDataAdapter({ client, makeSocket: socketFactory(sockets), timers });
+      const events = yield* Effect.scoped(
+        Effect.gen(function* () {
+          const receiver = yield* adapter.openReceiver(
+            scope,
+            organization,
+            receiverIdentity,
+            context(),
+          );
+          const request = updateRegistration();
+          yield* adapter.register(receiver, request, context());
+          sockets[0]!.receive({
+            type: "search",
+            subscriptionName: request.subscriptionName,
+            data: { update: [broken, good] },
+          });
+          sockets[0]!.receive({ type: "pong" });
+          return Array.from(
+            yield* Stream.runCollect(
+              Stream.takeUntil(receiver.events, (event) => event.kind === "pong"),
+            ),
+          );
+        }),
+      );
+
+      expect(events.map((event) => event.kind)).not.toContain("malformed");
+      expect(events.some((event) => event.kind === "observation")).toBe(true);
+    }),
+  );
+});

@@ -158,7 +158,9 @@ function knownCollection<Record extends ProjectRecord | ServiceRecord>(
   const query: QueryState = read.query;
   if (query.status !== "observed") return notYetKnown(source, nowMs);
   const records: Record[] = [];
-  let pending = query.unresolvedMemberKeys.length > 0;
+  // A project's slice of the organization's read is pending on its own unresolved members, which
+  // it lists as such, never on another project's.
+  let pending = read.project === undefined && query.unresolvedMemberKeys.length > 0;
   let revoked = 0;
   for (const member of read.value) {
     if (member.knowledge === "observed") records.push(member.record);
