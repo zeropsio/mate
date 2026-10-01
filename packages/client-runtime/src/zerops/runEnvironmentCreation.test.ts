@@ -3,8 +3,6 @@ import { describe, expect, it } from "vite-plus/test";
 import { planEnvironmentCreation, type EnvironmentCreationStep } from "./createEnvironment.ts";
 import type { ZeropsEnvironmentRole } from "./groups.ts";
 import {
-  RECIPE_ENV_WRITE_APPEAR_MS,
-  RECIPE_ENV_WRITE_POLL_MS,
   resumableEnvironmentCreationStep,
   runEnvironmentCreation,
   type EnvironmentCreationPlatform,
@@ -41,9 +39,6 @@ function plan(role: ZeropsEnvironmentRole): ReadonlyArray<EnvironmentCreationSte
 function fakePlatform(overrides: Partial<EnvironmentCreationPlatform> = {}) {
   const calls: Array<string> = [];
   let serviceReads = 0;
-  // The container recipe writes the project's variables once its import is in: a finished write
-  // that was not there before.
-  let containerIn = false;
   const platform: EnvironmentCreationPlatform = {
     createProject: (input) => {
       calls.push(`create:${input.name}:${input.tagList.join(",")}`);
@@ -57,12 +52,7 @@ function fakePlatform(overrides: Partial<EnvironmentCreationPlatform> = {}) {
       calls.push(
         `container:${input.projectId}:${input.projectName}:${input.agents.join("|")}:${input.setupRuntimesYaml?.length ?? "none"}`,
       );
-      containerIn = true;
       return Promise.resolve({ serviceName: "zcp", imported: true });
-    },
-    readProjectEnvWrites: (projectId) => {
-      calls.push(`envWrites:${projectId}`);
-      return Promise.resolve(containerIn ? [{ id: "w-recipe", status: "FINISHED" }] : []);
     },
     importServices: (projectId, yaml) => {
       calls.push(`import:${projectId}:${yaml.length}`);
@@ -200,12 +190,7 @@ describe("runEnvironmentCreation", () => {
       `import:proj-1:${MANAGED_YAML.length}`,
       // The group's agents reach the container import, not just the plan, and the runtimes ride
       // with it for zcp to import on boot: no runtime import of the press's own.
-      // What the project's variables have been written by so far: the recipe's write is the one
-      // that comes after the import.
-      "envWrites:proj-1",
       `container:proj-1:Go Hello World - dev:claude-code:${"services:\n  - hostname: api\n    startWithoutCode: true\n".length}`,
-      // The close-off waits for the recipe's write to be through: a read before it is stale.
-      "envWrites:proj-1",
       // Read back closed — the recipe already left it so, nothing written — and marked: zcp
       // imports the runtimes on the mark alone, and the Mate needs no browser any more. Only then
       // registered: a refused registration never keeps it open.
@@ -460,8 +445,7 @@ describe("runEnvironmentCreation — the platform's verdict on the project", () 
     });
     // Nothing after it runs: no container, no token, no import. (The verdict
     // read is this test's own and records nothing.)
-    // The recipe's write is read until it is through: how often is the clock's business.
-    expect(calls.filter((call) => !call.startsWith("envWrites:"))).toEqual([
+    expect(calls).toEqual([
       "create:Go Hello World - dev:mate:g:7k2m9qx4vb1c,mate:role:dev,mate:name:Go Hello World,mate,mate:bot:Ada",
     ]);
     const last = reports.at(-1)!;
@@ -579,95 +563,22 @@ describe("runEnvironmentCreation — closing the project off", () => {
     expect(calls).toEqual(["closedOff:proj-1"]);
   });
 
-  it("waits for the recipe's write of the project's variables before it reads", async () => {
-    // Before the import, an older write; then the recipe's, running, then through.
-    const answers: Array<ReadonlyArray<{ readonly id: string; readonly status: string }>> = [
-      [{ id: "w-old", status: "FINISHED" }],
-      [{ id: "w-old", status: "FINISHED" }],
-      [
-        { id: "w-old", status: "FINISHED" },
-        { id: "w-recipe", status: "RUNNING" },
-      ],
-      [
-        { id: "w-old", status: "FINISHED" },
-        { id: "w-recipe", status: "FINISHED" },
-      ],
-    ];
-    const { platform, calls } = fakePlatform({
-      readProjectEnvWrites: async (projectId) => {
-        calls.push(`envWrites:${projectId}`);
-        return answers.length > 1 ? answers.shift()! : answers[0]!;
-      },
-    });
-    const { outcome } = await run(plan("dev"), platform);
-    expect(outcome.ok).toBe(true);
-    const firstRead = calls.indexOf("isolation:proj-1");
-    expect(calls.slice(0, firstRead).filter((call) => call === "envWrites:proj-1")).toHaveLength(4);
-  });
-
-  it("goes on after a few seconds when no recipe write appears, reading it back twice", async () => {
-    const { platform, calls } = fakePlatform({
-      readProjectEnvWrites: async (projectId) => {
-        calls.push(`envWrites:${projectId}`);
-        return [];
-      },
-    });
+  // Nothing waits on a process: the platform stalled a project's recipe write for minutes while
+  // its isolation read closed throughout (a live press, 2026-10-01).
+  it("reads no process, and closes off in two reads two seconds apart", async () => {
+    const { platform, calls } = fakePlatform();
     const { outcome, slept } = await run(plan("dev"), platform);
     expect(outcome.ok).toBe(true);
-    const waited = slept.filter((ms) => ms === RECIPE_ENV_WRITE_POLL_MS).length;
-    expect(waited * RECIPE_ENV_WRITE_POLL_MS).toBeGreaterThanOrEqual(
-      RECIPE_ENV_WRITE_APPEAR_MS - RECIPE_ENV_WRITE_POLL_MS,
-    );
-    expect(waited * RECIPE_ENV_WRITE_POLL_MS).toBeLessThanOrEqual(
-      RECIPE_ENV_WRITE_APPEAR_MS + RECIPE_ENV_WRITE_POLL_MS,
-    );
-    expect(calls).toContain("closedOff:proj-1");
+    expect(calls.filter((call) => call === "isolation:proj-1")).toHaveLength(2);
+    expect(slept.filter((ms) => ms === 2_000)).toHaveLength(1);
   });
 
-  // The close-off never goes through by timing out: a write still under way at the cap stops
-  // the step, which a press may try again (pass 28 review).
-  it("stops, to be tried again, when the recipe's write is still running at the cap", async () => {
-    const { platform, calls } = fakePlatform({
-      readProjectEnvWrites: async (projectId) => {
-        calls.push(`envWrites:${projectId}`);
-        return calls.some((call) => call.startsWith("container:"))
-          ? [{ id: "w-recipe", status: "RUNNING" }]
-          : [];
-      },
-    });
+  it("stops, to be tried again, where the isolation never answers", async () => {
+    const { platform } = fakePlatform({ readIsolation: async () => undefined });
     const { outcome } = await run(plan("dev"), platform);
     expect(outcome).toMatchObject({ ok: false, failedStep: { kind: "close-off" } });
-    expect(calls).not.toContain("closedOff:proj-1");
-    expect(calls.some((call) => call.startsWith("isolation:"))).toBe(false);
     if (outcome.ok) throw new Error("expected a stop");
     expect(resumableEnvironmentCreationStep(outcome.failedStep)).toBe(true);
-  });
-
-  // New project: the container came with the project, in one call before this press, so no
-  // write was seen before it — the close-off waits for the recipe's to appear and end.
-  it("waits for a recipe write it expects to appear, when its container came before the press", async () => {
-    const answers: Array<ReadonlyArray<{ readonly id: string; readonly status: string }>> = [
-      [],
-      [],
-      [{ id: "w-recipe", status: "PENDING" }],
-      [{ id: "w-recipe", status: "FINISHED" }],
-    ];
-    const { platform, calls } = fakePlatform({
-      readProjectEnvWrites: async (projectId) => {
-        calls.push(`envWrites:${projectId}`);
-        return answers.length > 1 ? answers.shift()! : answers[0]!;
-      },
-    });
-    const outcome = await runEnvironmentCreation({
-      clientId: "client-1",
-      steps: [{ kind: "close-off", recipeWrite: "expected" }],
-      platform,
-      resume: { from: 0, projectId: "proj-1", projectName: "Go Hello World - dev" },
-      sleep: async () => undefined,
-    });
-    expect(outcome).toMatchObject({ ok: true });
-    const firstRead = calls.indexOf("isolation:proj-1");
-    expect(calls.slice(0, firstRead).filter((call) => call === "envWrites:proj-1")).toHaveLength(4);
   });
 
   // A harden's isolation is trusted only where no container came after it: a container imported
@@ -712,6 +623,21 @@ describe("runEnvironmentCreation — closing the project off", () => {
     });
   });
 
+  // Best-effort, but never quiet: what the group's sight of it could not do is said on its step.
+  it("says on its step what the group's sight of it could not do, and goes on", async () => {
+    const { platform } = fakePlatform({
+      shareReach: async () => {
+        throw new Error("2 of the group's Mates could not be given sight of it.");
+      },
+    });
+    const { outcome, reports } = await run(plan("dev"), platform);
+    expect(outcome).toMatchObject({ ok: true, awaitingAgent: true });
+    expect(reports.at(-1)!.find((entry) => entry.step.kind === "share-reach")).toMatchObject({
+      state: "failed",
+      error: "2 of the group's Mates could not be given sight of it.",
+    });
+  });
+
   it("stops a stage's press at a refused registration: it has no close-off to keep", async () => {
     const { platform } = fakePlatform({
       register: async () => {
@@ -743,7 +669,7 @@ describe("runEnvironmentCreation — a press tried again", () => {
     ]);
   });
 
-  it("resumed at its close-off, waits only for a write still running, then reads it back", async () => {
+  it("resumed at its close-off, reads it back twice, then marks it", async () => {
     const { platform, calls } = fakePlatform();
     const steps = plan("dev");
     const from = steps.findIndex((step) => step.kind === "close-off");
@@ -756,7 +682,6 @@ describe("runEnvironmentCreation — a press tried again", () => {
     });
     expect(outcome).toMatchObject({ ok: true, projectId: "proj-1" });
     expect(calls).toEqual([
-      "envWrites:proj-1",
       "isolation:proj-1",
       "isolation:proj-1",
       "closedOff:proj-1",

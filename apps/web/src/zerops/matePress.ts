@@ -536,9 +536,6 @@ export function pressPlatform(
     closeOff: async (projectId) => {
       await runZeropsCommand(data.runtime.commands.isolateProjectEnv(projectOf(projectId)));
     },
-    // Reads, not writes: what has written the project's variables, waited on by the runner.
-    readProjectEnvWrites: (projectId) =>
-      client.readProjectEnvWrites({ clientId: organizationId, projectId }),
     readIsolation: async (projectId) =>
       (await client.readProjectEnv(organizationId, projectId)).find(
         (entry) => entry.key === PROJECT_ENV_ISOLATION_KEY,
@@ -555,13 +552,19 @@ export function pressPlatform(
     shareReach: async (projectId) => {
       const viewer = options.viewer;
       if (viewer === null) return;
-      await shareGroupReach({
+      const shared = await shareGroupReach({
         client,
         organizationId,
         groupProjectIds: options.groupProjectIds,
         projectId,
         viewer,
       });
+      // Said on its step, never swallowed: the group-reach reconcile gives the sight later.
+      if (shared.failed > 0) {
+        throw new Error(
+          `${shared.failed} of the group's Mates could not be given sight of it yet.`,
+        );
+      }
     },
     readObservedServices: options.readObservedServices,
   };
@@ -729,8 +732,6 @@ export async function finishMateSetup(input: {
   readonly onProgress?: (progress: ReadonlyArray<EnvironmentCreationStepProgress>) => void;
   /** This browser's locks; the page's own where omitted. */
   readonly locks?: LockManagerLike | undefined;
-  /** Its container came a moment ago, with the project: its recipe's write is still to come. */
-  readonly containerJustImported?: boolean;
   /** Between the harden's tries; the clock's own where omitted. */
   readonly sleep?: (ms: number) => Promise<void>;
 }): Promise<EnvironmentCreationOutcome> {
@@ -820,13 +821,10 @@ async function finishLocked(
       ? []
       : [{ kind: "import-container", agents: input.container.agents } as const]),
     // Isolated a moment ago by the harden, which the close-off trusts where no container comes
-    // after it; a container imported a moment before — a New project's — brings a recipe write the
-    // close-off waits for.
+    // after it.
     input.harden === true && input.container === null
       ? { kind: "close-off", isolated: true }
-      : input.containerJustImported === true
-        ? { kind: "close-off", recipeWrite: "expected" }
-        : { kind: "close-off" },
+      : { kind: "close-off" },
     // After the close-off: a refused registration leaves the Mate closed off and running.
     ...(input.registration === null ? [] : [{ kind: "register" } as const]),
     { kind: "share-reach" },

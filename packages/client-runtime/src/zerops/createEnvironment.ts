@@ -163,11 +163,6 @@ export type EnvironmentCreationStep =
        * reads no trailing index to isolate it again.
        */
       readonly isolated?: true;
-      /**
-       * Its container came before this press — with the project, in one call — so the recipe's
-       * write of the project's variables is still to appear: the step waits for it.
-       */
-      readonly recipeWrite?: "expected";
     }
   /**
    * The group's other Mates given sight of the new project: each one's key
