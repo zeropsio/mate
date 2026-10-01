@@ -1,6 +1,8 @@
-import type {
-  EnvironmentCreationStep,
-  EnvironmentCreationStepProgress,
+import {
+  PRESS_STEP_ATTEMPTS,
+  type EnvironmentCreationPlatform,
+  type EnvironmentCreationStep,
+  type EnvironmentCreationStepProgress,
 } from "@t3tools/client-runtime/zerops";
 import { describe, expect, it } from "vite-plus/test";
 
@@ -12,10 +14,14 @@ import {
   planShareReach,
   progressPress,
   shareGroupReach,
+  PRESSED_ELSEWHERE,
   readMatePress,
+  runPress,
+  withPressTries,
   type MatePress,
   type MatePressState,
 } from "./matePress";
+import type { LockManagerLike } from "./mateLocks";
 
 const mate = (serviceId: string | undefined, tags: ReadonlyArray<string>) => ({
   ...(serviceId === undefined ? {} : { service: { id: serviceId } }),
@@ -163,9 +169,10 @@ describe("shareGroupReach", () => {
       },
     };
   };
-  const share = (client: ReturnType<typeof fakeClient>["client"]) =>
+  const share = (client: ReturnType<typeof fakeClient>["client"], locks?: LockManagerLike) =>
     shareGroupReach({
       client,
+      locks,
       organizationId: "org-acme",
       // A stage environment with no key among them, and the new project itself.
       groupProjectIds: ["uma", "stage", "fen", "ivo", "new"],
@@ -173,18 +180,34 @@ describe("shareGroupReach", () => {
       viewer: { userId: "u-zoe", roleCode: "OWNER" },
     });
 
-  it("extends every sibling Mate's key, reading the list fresh before each write", async () => {
+  it("extends every sibling Mate's key, each read fresh under its lock right before its write", async () => {
     const fake = fakeClient();
-    expect(await share(fake.client)).toEqual({ extended: 3, failed: 0 });
+    const held: Array<string> = [];
+    const locks: LockManagerLike = {
+      request: async (name, _options, hold) => {
+        held.push(name);
+        fake.calls.push(`lock ${name}`);
+        return hold({ name });
+      },
+    };
+    expect(await share(fake.client, locks)).toEqual({ extended: 3, failed: 0 });
     expect(fake.calls).toEqual([
+      "list",
+      "lock mate:token:k-uma",
       "list",
       "put k-uma",
       "list",
       "list",
+      "lock mate:token:k-fen",
+      "list",
       "put k-fen",
+      "list",
+      "lock mate:token:k-ivo",
       "list",
       "put k-ivo",
     ]);
+    // The store's token writes take the same names: the two never write one key at once.
+    expect(held).toEqual(["mate:token:k-uma", "mate:token:k-fen", "mate:token:k-ivo"]);
     expect(
       [...fake.tokens.values()].map((token) => token.projects.map((grant) => grant.projectId)),
     ).toEqual([
@@ -304,5 +327,104 @@ describe("finishSetupView — Finish setup on a Mate's own view", () => {
     // A press nobody holds keeps nothing.
     progressPress("p-hugo", progress(["done", "done", "done", "done"]));
     expect(readMatePress("p-hugo")).toBeUndefined();
+  });
+});
+
+describe("runPress — a press settled, tried again, and one at a time", () => {
+  const STEPS: ReadonlyArray<EnvironmentCreationStep> = [
+    { kind: "close-off", isolated: true },
+    { kind: "share-reach" },
+  ];
+  const platform = (marks: Array<"ok" | "refused">): EnvironmentCreationPlatform =>
+    ({
+      markClosedOff: async () => {
+        if (marks.shift() === "refused") throw new Error("The tag was refused.");
+      },
+      shareReach: async () => undefined,
+    }) as unknown as EnvironmentCreationPlatform;
+  const begin = () =>
+    beginPress({
+      projectId: "p-1",
+      organizationId: "org-acme",
+      startedAt: 0,
+      placement: null,
+      container: true,
+    });
+  const press = (marks: Array<"ok" | "refused">, locks?: LockManagerLike) =>
+    runPress({
+      organizationId: "org-acme",
+      steps: STEPS,
+      platform: platform(marks),
+      isCurrent: () => true,
+      resume: { from: 0, projectId: "p-1", projectName: "Acme - Ada" },
+      locks,
+      sleep: async () => undefined,
+    });
+
+  it("settles a press that ran through", async () => {
+    begin();
+    expect(await press(["ok"])).toMatchObject({ ok: true });
+    expect(readMatePress("p-1")?.state).toEqual({ kind: "pressed" });
+    forgetPress("p-1");
+  });
+
+  it("settles a press that stopped with Try again, which resumes it at the step that stopped", async () => {
+    begin();
+    const refusals = Array.from({ length: 4 }, () => "refused" as const);
+    expect(await press(refusals)).toMatchObject({ ok: false, failedStep: { kind: "close-off" } });
+    const stopped = readMatePress("p-1")?.state;
+    expect(stopped).toMatchObject({
+      kind: "failed",
+      step: "close-off",
+      reason: "The tag was refused.",
+    });
+    if (stopped?.kind !== "failed" || stopped.retry === null) throw new Error("no retry");
+    // The platform now takes it: refusals spent, the retry runs through.
+    await stopped.retry();
+    expect(readMatePress("p-1")?.state).toEqual({ kind: "pressed" });
+    forgetPress("p-1");
+  });
+
+  it("runs none where another tab is pressing the project, and says so", async () => {
+    begin();
+    const busy: LockManagerLike = { request: async (_name, _options, hold) => hold(null) };
+    expect(await press(["ok"], busy)).toMatchObject({ ok: false, error: PRESSED_ELSEWHERE });
+    expect(readMatePress("p-1")?.state).toMatchObject({
+      kind: "failed",
+      reason: PRESSED_ELSEWHERE,
+    });
+    forgetPress("p-1");
+  });
+});
+
+// A pool-claimed Mate's harden ran once and was never tried again (pass 28 review).
+describe("withPressTries — the harden, tried again", () => {
+  it("goes on once an attempt takes", async () => {
+    let tries = 0;
+    const waits: Array<number> = [];
+    const outcome = await withPressTries(
+      async () => {
+        tries += 1;
+        if (tries < 3) throw new Error("not yet");
+      },
+      async (ms) => {
+        waits.push(ms);
+      },
+    );
+    expect(outcome).toEqual({ ok: true });
+    expect(waits).toHaveLength(2);
+  });
+
+  it("says why, after the press's own tries", async () => {
+    let tries = 0;
+    const outcome = await withPressTries(
+      async () => {
+        tries += 1;
+        throw new Error("Refused.");
+      },
+      async () => undefined,
+    );
+    expect(outcome).toEqual({ ok: false, error: "Refused." });
+    expect(tries).toBe(PRESS_STEP_ATTEMPTS);
   });
 });

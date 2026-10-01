@@ -18,9 +18,11 @@
  */
 import {
   canWriteRegistry,
-  findMateIntegrationToken,
+  findHeldMateKey,
   isZeropsMateClosedOff,
   planGroupReach,
+  PRESS_STEP_ATTEMPTS,
+  PRESS_STEP_RETRY_MS,
   PROJECT_ENV_ISOLATION_KEY,
   resumableEnvironmentCreationStep,
   runEnvironmentCreation,
@@ -43,6 +45,14 @@ import { useMemo } from "react";
 import { create } from "zustand";
 
 import { onAccountLifetimeClose } from "./accountLifetime";
+import {
+  browserLocks,
+  matePressLockName,
+  mateTokenLockName,
+  withExclusiveLock,
+  withLockIfFree,
+  type LockManagerLike,
+} from "./mateLocks";
 import { giteaClientFor } from "./accountGiteaSessions";
 import { addGroupEnvironment, writeRegistryMember } from "./addGroupEnvironment";
 import { brokerGrantTokens, grantBrokerProject, projectTagsWrite } from "./brokerGrant";
@@ -371,7 +381,8 @@ export function planShareReach(input: {
   readonly viewer: PressViewer;
 }): ReadonlyArray<ZeropsGroupReachWrite & { readonly roleCode: string | undefined }> {
   return input.siblingProjectIds.flatMap((mateProjectId) => {
-    const token = findMateIntegrationToken(input.tokens, mateProjectId);
+    // The key its container holds; where two are its and nothing tells them apart, none.
+    const token = findHeldMateKey(input.tokens, mateProjectId, undefined);
     if (token === undefined) return [];
     const editable =
       input.viewer.roleCode === "OWNER" ||
@@ -391,10 +402,10 @@ export function planShareReach(input: {
 /**
  * Gives the group's other Mates sight of a new project: every environment the key mint counts
  * (`buildGroupGrants`), never the services listing, which a press seconds after a load may not
- * hold yet. A Mate's key is found in the account's token list (`findMateIntegrationToken`), read
- * fresh and live right before its write — the write replaces the key's whole project list, so a
- * cached one would undo a grant made meanwhile. Best-effort: a key it could not write is counted
- * and left to the group-reach reconcile.
+ * hold yet. A Mate's key is found in the account's token list (`findHeldMateKey`) and read again,
+ * live, under its lock (`mate:token:{id}`, the store's own) right before its write — the write
+ * replaces the key's whole project list, so an older read would undo a grant made meanwhile.
+ * Best-effort: a key it could not write is counted and left to the group-reach reconcile.
  */
 export async function shareGroupReach(input: {
   readonly client: Pick<ZeropsApiClient, "listIntegrationTokens" | "setIntegrationTokenProjects">;
@@ -402,19 +413,34 @@ export async function shareGroupReach(input: {
   readonly groupProjectIds: ReadonlyArray<string>;
   readonly projectId: string;
   readonly viewer: PressViewer;
+  /** This browser's locks; the page's own where omitted. */
+  readonly locks?: LockManagerLike | undefined;
 }): Promise<{ readonly extended: number; readonly failed: number }> {
+  const locks = "locks" in input ? input.locks : browserLocks();
+  const plan = (tokens: ReadonlyArray<ZeropsIntegrationToken>, siblingProjectId: string) =>
+    planShareReach({
+      tokens,
+      siblingProjectIds: [siblingProjectId],
+      projectId: input.projectId,
+      viewer: input.viewer,
+    })[0];
   let extended = 0;
   let failed = 0;
   for (const siblingProjectId of input.groupProjectIds) {
     if (siblingProjectId === input.projectId) continue;
     try {
-      const writes = planShareReach({
-        tokens: await input.client.listIntegrationTokens(input.organizationId),
-        siblingProjectIds: [siblingProjectId],
-        projectId: input.projectId,
-        viewer: input.viewer,
-      });
-      for (const write of writes) {
+      // A read that only finds the key; the write is planned from one read under its lock.
+      const found = plan(
+        await input.client.listIntegrationTokens(input.organizationId),
+        siblingProjectId,
+      );
+      if (found === undefined) continue;
+      const wrote = await withExclusiveLock(locks, mateTokenLockName(found.tokenId), async () => {
+        const write = plan(
+          await input.client.listIntegrationTokens(input.organizationId),
+          siblingProjectId,
+        );
+        if (write?.tokenId !== found.tokenId) return false;
         await input.client.setIntegrationTokenProjects({
           clientId: input.organizationId,
           tokenId: write.tokenId,
@@ -422,8 +448,9 @@ export async function shareGroupReach(input: {
           projects: write.projects,
           roleCode: write.roleCode,
         });
-        extended += 1;
-      }
+        return true;
+      });
+      if (wrote) extended += 1;
     } catch {
       failed += 1;
     }
@@ -522,30 +549,83 @@ export async function runPress(input: {
   };
   readonly onProjectAccepted?: (projectId: string, projectName: string) => void;
   readonly onProgress?: Parameters<typeof runEnvironmentCreation>[0]["onProgress"];
+  /** This browser's locks; the page's own where omitted. */
+  readonly locks?: LockManagerLike | undefined;
+  /** The caller holds the project's press lock already (`finishMateSetup`). */
+  readonly heldLock?: boolean;
+  /** Between a step's tries and reads; the clock's own where omitted. */
+  readonly sleep?: (ms: number) => Promise<void>;
 }): Promise<EnvironmentCreationOutcome> {
+  const locks = "locks" in input ? input.locks : browserLocks();
+  const resume = input.resume;
+  // One press or *Finish setup* per project at a time, across this browser's tabs.
+  if (resume !== undefined && input.heldLock !== true) {
+    return withLockIfFree(
+      locks,
+      matePressLockName(resume.projectId),
+      () => pressRun({ ...input, locks, heldLock: true }),
+      () => pressedElsewhere(input, resume),
+    );
+  }
+  return pressRun({ ...input, locks });
+}
+
+/** What a press says where another tab is running one for the project. */
+export const PRESSED_ELSEWHERE = "Its setup is already running in another tab.";
+
+function pressedElsewhere(
+  input: Parameters<typeof runPress>[0],
+  resume: NonNullable<Parameters<typeof runPress>[0]["resume"]>,
+): EnvironmentCreationOutcome {
+  const failedStep = input.steps[resume.from] ?? input.steps[0]!;
+  if (input.isCurrent()) {
+    settlePress(resume.projectId, {
+      kind: "failed",
+      step: failedStep.kind,
+      reason: PRESSED_ELSEWHERE,
+      retry: async () => {
+        settlePress(resume.projectId, { kind: "pressing" });
+        await runPress(input);
+      },
+    });
+  }
+  return { ok: false, projectId: resume.projectId, failedStep, error: PRESSED_ELSEWHERE };
+}
+
+async function pressRun(
+  input: Parameters<typeof runPress>[0],
+): Promise<EnvironmentCreationOutcome> {
   let projectName = input.resume?.projectName ?? "";
   for (const step of input.steps) {
     if (step.kind === "create-project" || step.kind === "import-project") projectName = step.name;
   }
   // Each step's state is kept on the press, once the platform has taken its project.
   let accepted = input.resume?.projectId;
+  // A new project's press holds its lock from the moment the platform takes it to its end.
+  let ended: () => void = () => undefined;
+  const end = new Promise<void>((resolve) => {
+    ended = resolve;
+  });
   const outcome = await runEnvironmentCreation({
     clientId: input.organizationId,
     steps: input.steps,
     platform: input.platform,
     isCurrent: input.isCurrent,
     describeError: zeropsErrorMessage,
-    sleep,
+    sleep: input.sleep ?? sleep,
     ...(input.resume === undefined ? {} : { resume: input.resume }),
     onProjectAccepted: (projectId) => {
       accepted = projectId;
+      if (input.heldLock !== true) {
+        void withExclusiveLock(input.locks, matePressLockName(projectId), () => end);
+      }
       input.onProjectAccepted?.(projectId, projectName);
     },
     onProgress: (progress) => {
       if (accepted !== undefined && input.isCurrent()) progressPress(accepted, progress);
       input.onProgress?.(progress);
     },
-  });
+  }).finally(ended);
   const projectId = outcome.projectId;
   if (projectId === undefined || !input.isCurrent()) return outcome;
   if (outcome.ok) {
@@ -556,7 +636,7 @@ export async function runPress(input: {
   const retry = resumableEnvironmentCreationStep(outcome.failedStep)
     ? async () => {
         settlePress(projectId, { kind: "pressing" });
-        await runPress({ ...input, resume: { from, projectId, projectName } });
+        await runPress({ ...input, heldLock: false, resume: { from, projectId, projectName } });
       }
     : null;
   settlePress(projectId, {
@@ -601,25 +681,90 @@ export async function finishMateSetup(input: {
   readonly harden?: boolean;
   /** Each step's state as the press moves, for a dialog that stays on it. */
   readonly onProgress?: (progress: ReadonlyArray<EnvironmentCreationStepProgress>) => void;
+  /** This browser's locks; the page's own where omitted. */
+  readonly locks?: LockManagerLike | undefined;
+  /** Between the harden's tries; the clock's own where omitted. */
+  readonly sleep?: (ms: number) => Promise<void>;
 }): Promise<EnvironmentCreationOutcome> {
-  if (input.harden === true) {
-    try {
-      await runZeropsCommand(
-        input.inputs.data.runtime.commands.isolateProjectEnv(
-          input.inputs.data.projectRef(input.inputs.organizationId, input.projectId),
-        ),
-      );
-    } catch (cause) {
-      const error = zeropsErrorMessage(cause);
+  const locks = "locks" in input ? input.locks : browserLocks();
+  // The whole of it holds the project's press lock: no other tab presses it meanwhile.
+  return withLockIfFree(
+    locks,
+    matePressLockName(input.projectId),
+    () => finishLocked({ ...input, locks }),
+    () => {
       if (input.isCurrent()) {
         settlePress(input.projectId, {
           kind: "failed",
           step: "close-off",
-          reason: error,
-          retry: null,
+          reason: PRESSED_ELSEWHERE,
+          retry: async () => {
+            settlePress(input.projectId, { kind: "pressing" });
+            await finishMateSetup(input);
+          },
         });
       }
-      return { ok: false, projectId: input.projectId, failedStep: { kind: "close-off" }, error };
+      return {
+        ok: false,
+        projectId: input.projectId,
+        failedStep: { kind: "close-off" },
+        error: PRESSED_ELSEWHERE,
+      };
+    },
+  );
+}
+
+/**
+ * An attempt tried again while it fails, a little apart, up to the press's own tries: what a
+ * pool-claimed Mate's harden and *Finish setup*'s get.
+ */
+export async function withPressTries(
+  attempt: () => Promise<void>,
+  wait: (ms: number) => Promise<void> = sleep,
+): Promise<{ readonly ok: true } | { readonly ok: false; readonly error: string }> {
+  for (let tried = 1; ; tried += 1) {
+    try {
+      await attempt();
+      return { ok: true };
+    } catch (cause) {
+      if (tried >= PRESS_STEP_ATTEMPTS) return { ok: false, error: zeropsErrorMessage(cause) };
+      await wait(PRESS_STEP_RETRY_MS);
+    }
+  }
+}
+
+async function finishLocked(
+  input: Parameters<typeof finishMateSetup>[0],
+): Promise<EnvironmentCreationOutcome> {
+  if (input.harden === true) {
+    const hardened = await withPressTries(
+      () =>
+        runZeropsCommand(
+          input.inputs.data.runtime.commands.isolateProjectEnv(
+            input.inputs.data.projectRef(input.inputs.organizationId, input.projectId),
+          ),
+        ).then(() => undefined),
+      input.sleep,
+    );
+    if (!hardened.ok) {
+      if (input.isCurrent()) {
+        settlePress(input.projectId, {
+          kind: "failed",
+          step: "close-off",
+          reason: hardened.error,
+          // The harden is safe to ask again: Finish setup runs again, whole.
+          retry: async () => {
+            settlePress(input.projectId, { kind: "pressing" });
+            await finishMateSetup(input);
+          },
+        });
+      }
+      return {
+        ok: false,
+        projectId: input.projectId,
+        failedStep: { kind: "close-off" },
+        error: hardened.error,
+      };
     }
   }
   const steps: ReadonlyArray<EnvironmentCreationStep> = [
@@ -646,6 +791,8 @@ export async function finishMateSetup(input: {
     isCurrent: input.isCurrent,
     resume: { from: 0, projectId: input.projectId, projectName: input.projectName },
     ...(input.onProgress === undefined ? {} : { onProgress: input.onProgress }),
+    locks: input.locks,
+    heldLock: true,
   });
 }
 
