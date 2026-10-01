@@ -210,12 +210,33 @@ const projectFeeders = feedersOnce(
       interestKeyOf({ kind: "project-inventory", project }),
       interestKeyOf({ kind: "project-topology", project, includeCurrentMetrics: false }),
       interestKeyOf({ kind: "project-topology", project, includeCurrentMetrics: true }),
+      interestKeyOf({ kind: "project-services-check", project }),
     ]),
 );
 
+/**
+ * The receipt ordinal of the latest complete read of a project's services: the latest an observing
+ * interest that reads them crossed when it last established — the confirming read (§9 C19) among
+ * them. `null` while none observes.
+ */
+export function servicesReadOrdinalOf(read: CollectionRead<ServiceRecord>): number | null {
+  if (read.project === undefined) return null;
+  const feeders = projectFeeders(read.project);
+  let latest: number | null = null;
+  for (const interests of [read.observation.required, read.observation.optional]) {
+    for (const interest of interests) {
+      if (interest.status !== "observing" || !feeders.has(interest.identity.key)) continue;
+      latest = Math.max(latest ?? 0, interest.sinceReceiptOrdinal);
+    }
+  }
+  return latest;
+}
+
 /** The interest a project's services read is as current as, like `projectsSourceOf`. */
 export function servicesSourceOf(read: CollectionRead<ServiceRecord>): InterestState | null {
-  return sourceOf(read.observation, projectFeeders(read.query.descriptor.project));
+  return read.project === undefined
+    ? null
+    : sourceOf(read.observation, projectFeeders(read.project));
 }
 
 /** A project's services: fed by its inventory interest or by its topology. */

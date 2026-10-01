@@ -68,7 +68,7 @@ type ProjectQuery = Extract<
 >;
 type ServiceQuery = Extract<
   QueryBaselineObservation["ticket"]["target"]["descriptor"],
-  { readonly kind: "services-of-project" }
+  { readonly kind: "services-of-organization" | "services-of-project" }
 >;
 export type InventoryQueryState = QueryState<ProjectQuery> | QueryState<ServiceQuery>;
 
@@ -244,6 +244,15 @@ const canReopenUnavailable = <Fields, RequiredField extends keyof Fields>(
   return false;
 };
 
+/**
+ * How far the platform's search index may trail what it indexes. A search seeds only the fields a
+ * facet lacks — it may answer with what an entity was a moment ago — unless the facet was last
+ * written longer than this before the search began: then the index has caught up with it, and the
+ * search corrects whatever changed meanwhile, as after a socket that was down. The organization's
+ * searches are its only reads (DESIGN §4.1), so nothing else would.
+ */
+export const SEARCH_INDEX_LAG_MS = 5_000;
+
 export function applyFacet<Fields, RequiredField extends keyof Fields>(
   facet: FacetState<Fields, RequiredField>,
   required: ReadonlyArray<RequiredField>,
@@ -281,7 +290,12 @@ export function applyFacet<Fields, RequiredField extends keyof Fields>(
   }
 
   let patch: FacetPatch<Fields> = observation.fields;
-  if (source === "indexed-search" || source === "embedded") {
+  const searchAnswersForFacet =
+    source === "indexed-search" &&
+    facet.knowledge === "observed" &&
+    (facet.asOfMs ?? facet.stamp.observedAtMs) <=
+      observation.ticket.startedAtMs - SEARCH_INDEX_LAG_MS;
+  if ((source === "indexed-search" && !searchAnswersForFacet) || source === "embedded") {
     const seedEntries = keys
       .filter((key) => !hasOwn(currentFields, key))
       .map((key) => [key, observation.fields[key]] as const);
@@ -323,7 +337,13 @@ export function applyFacet<Fields, RequiredField extends keyof Fields>(
   }
 
   const preserveProvenance =
-    facet.knowledge === "observed" && (source === "indexed-search" || source === "embedded");
+    facet.knowledge === "observed" &&
+    ((source === "indexed-search" && !searchAnswersForFacet) || source === "embedded");
+  const asOfMs = preserveProvenance
+    ? facet.asOfMs
+    : source === "direct-read" || source === "indexed-search"
+      ? observation.ticket.startedAtMs
+      : undefined;
   return {
     facet: {
       knowledge: "observed",
@@ -331,6 +351,7 @@ export function applyFacet<Fields, RequiredField extends keyof Fields>(
       unresolvedRequiredFields: [],
       source: preserveProvenance ? facet.source : source,
       stamp: preserveProvenance ? facet.stamp : stamp,
+      ...(asOfMs === undefined ? {} : { asOfMs }),
       admission: nextAdmission,
     } as FacetState<Fields, RequiredField>,
     status: "applied",
@@ -616,7 +637,11 @@ function reduceQueryBaseline(
   observation: QueryBaselineObservation,
 ): InventoryReduction {
   const descriptor = observation.ticket.target.descriptor;
-  if (descriptor.kind !== "projects-of-organization" && descriptor.kind !== "services-of-project") {
+  if (
+    descriptor.kind !== "projects-of-organization" &&
+    descriptor.kind !== "services-of-organization" &&
+    descriptor.kind !== "services-of-project"
+  ) {
     return { state, outcome: noOutcome() };
   }
   const key = queryKeyOf(descriptor);
@@ -716,7 +741,11 @@ function reduceMembership(
   observation: QueryMembershipObservation,
 ): InventoryReduction {
   const descriptor = observation.registration.descriptor.query;
-  if (descriptor.kind !== "projects-of-organization" && descriptor.kind !== "services-of-project") {
+  if (
+    descriptor.kind !== "projects-of-organization" &&
+    descriptor.kind !== "services-of-organization" &&
+    descriptor.kind !== "services-of-project"
+  ) {
     return { state, outcome: noOutcome() };
   }
   const key = queryKeyOf(descriptor);

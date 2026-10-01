@@ -116,6 +116,8 @@ const platformAdapter = (mates: ReadonlyArray<Mate>): ZeropsDataAdapter => {
     switch (query.kind) {
       case "projects-of-organization":
         return mates.map(({ project }) => project);
+      case "services-of-organization":
+        return mates.map(({ service }) => service);
       case "services-of-project":
         return mates
           .filter(({ projectId }) => projectId === query.project.projectId)
@@ -139,7 +141,7 @@ const platformAdapter = (mates: ReadonlyArray<Mate>): ZeropsDataAdapter => {
         return {
           responseObservations: decodeRegistrationResponse(request, {
             items,
-            total: items.length,
+            totalHits: items.length,
           }).observations,
         };
       }),
@@ -1415,7 +1417,7 @@ describe("the post-grant stage's Mate environments", () => {
     () =>
       Effect.scoped(
         Effect.gen(function* () {
-          const platform = heldQueries(platformAdapter([A_MATE]), ["services-of-project"]);
+          const platform = heldQueries(platformAdapter([A_MATE]), ["services-of-organization"]);
           const { rig, built, registry, environments } = yield* granted(
             [REMEMBERED_A],
             [A_MATE],
@@ -1600,6 +1602,8 @@ describe("the post-grant stage's Mate environments", () => {
         resolve();
       };
     });
+    // A project's own services read is the confirming read an absence asks for: it answers only
+    // once released.
     const adapter: ZeropsDataAdapter = {
       ...first,
       register: (receiver, request, context) =>
@@ -1607,7 +1611,7 @@ describe("the post-grant stage's Mate environments", () => {
       read: (ticket, context) =>
         ticket.target.kind === "query" &&
         (ticket.target.descriptor as EntityQueryDescriptor).kind === "services-of-project" &&
-        ++reads > 1
+        ++reads > 0
           ? Effect.promise(() => opened).pipe(Effect.andThen(after.read(ticket, context)))
           : (released ? after : first).read(ticket, context),
     };
@@ -1633,7 +1637,7 @@ describe("the post-grant stage's Mate environments", () => {
         // answers the Mate is kept, however long it takes.
         expect(environments.machines().get(deleted.targetKey)?.presence.kind).not.toBe("gone");
         expect(rig.removed).toEqual([]);
-        expect(platform.reads()).toBeGreaterThan(1);
+        expect(platform.reads()).toBeGreaterThan(0);
 
         platform.release();
         yield* clock.advance(MINUTE);
@@ -1669,7 +1673,7 @@ describe("the post-grant stage's Mate environments", () => {
           yield* settle;
           // Listed without it: the Mate is kept while a direct read of the services is asked for.
           expect(environments.machines().get(MATE)?.presence.kind).not.toBe("gone");
-          expect(platform.reads()).toBeGreaterThan(1);
+          expect(platform.reads()).toBeGreaterThan(0);
 
           platform.release();
           yield* clock.advance(MINUTE);
@@ -1689,7 +1693,7 @@ describe("the post-grant stage's Mate environments", () => {
     () =>
       Effect.scoped(
         Effect.gen(function* () {
-          const platform = heldQueries(platformAdapter([A_MATE]), ["services-of-project"]);
+          const platform = heldQueries(platformAdapter([A_MATE]), ["services-of-organization"]);
           const { rig, environments } = yield* granted([REMEMBERED_A], [A_MATE], platform.adapter);
           environments.setRoute(ENV_A);
           yield* settle;
@@ -1748,7 +1752,7 @@ describe("the post-grant stage's Mate environments", () => {
     Effect.scoped(
       Effect.gen(function* () {
         const { mates, route, environment, records } = routeScene();
-        const services = heldQueries(platformAdapter(mates), ["services-of-project"]);
+        const services = heldQueries(platformAdapter(mates), ["services-of-organization"]);
         const projects = heldQueries(services.adapter, ["projects-of-organization"]);
         const { rig, environments } = yield* granted(
           records.filter(({ environmentId }) => environmentId !== environment),
@@ -1777,7 +1781,7 @@ describe("the post-grant stage's Mate environments", () => {
     Effect.scoped(
       Effect.gen(function* () {
         const { mates, route, environment, records } = routeScene();
-        const services = heldQueries(platformAdapter(mates), ["services-of-project"]);
+        const services = heldQueries(platformAdapter(mates), ["services-of-organization"]);
         const { rig, environments } = yield* granted([], mates, services.adapter);
         environments.setRoute(environment);
         yield* settle;

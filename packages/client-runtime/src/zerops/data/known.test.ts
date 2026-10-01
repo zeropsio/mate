@@ -241,6 +241,7 @@ describe("inventory knowledge", () => {
           lastAppliedReadStartOrdinal: ReadStartOrdinal.make(1),
         },
         observation: { ...unread.observation, required: interests },
+        project: owner,
       };
     };
 

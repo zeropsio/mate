@@ -14,6 +14,7 @@ import type {
   PlatformObservation,
   ProcessRef,
   ProcessStatus,
+  OrganizationRef,
   ProjectRef,
   QueryBaselineObservation,
   QueryCoverage,
@@ -742,17 +743,30 @@ function processObservations(
   return observations;
 }
 
-const projectRefFor = (descriptor: EntityQueryDescriptor, id: string): ProjectRef => {
-  switch (descriptor.kind) {
-    case "projects-of-organization":
-      return {
-        kind: "project",
-        organization: descriptor.organization,
-        projectId: ZeropsProjectId.make(id),
-      };
-    default:
-      return descriptor.project;
-  }
+const organizationOfQuery = (descriptor: EntityQueryDescriptor): OrganizationRef =>
+  descriptor.kind === "process-history-window" || descriptor.kind === "services-of-project"
+    ? descriptor.project.organization
+    : descriptor.organization;
+
+/**
+ * The project a row belongs to: the one an organization-wide row names, or the one a project's
+ * query was asked for. `undefined` when an organization-wide row names none, or a project's row
+ * names another.
+ */
+const rowProject = (
+  descriptor: EntityQueryDescriptor,
+  projectId: string | undefined,
+): ProjectRef | undefined => {
+  if (descriptor.kind === "process-history-window" || descriptor.kind === "services-of-project")
+    return projectId === undefined || projectId === descriptor.project.projectId
+      ? descriptor.project
+      : undefined;
+  if (projectId === undefined || !Option.isSome(decodeProjectId(projectId))) return undefined;
+  return {
+    kind: "project",
+    organization: organizationOfQuery(descriptor),
+    projectId: ZeropsProjectId.make(projectId),
+  };
 };
 
 function decodeRows(
@@ -803,30 +817,38 @@ function decodeRows(
         });
         return;
       }
-      const ref = projectRefFor(descriptor, decoded.id);
+      const ref: ProjectRef = {
+        kind: "project",
+        organization: descriptor.organization,
+        projectId: ZeropsProjectId.make(decoded.id),
+      };
       if (!retainMember(ref, rowIndex)) return;
       observations.push(...projectObservations(ref, decoded, cause));
       return;
     }
-    if (descriptor.kind === "services-of-project") {
+    if (
+      descriptor.kind === "services-of-organization" ||
+      descriptor.kind === "services-of-project"
+    ) {
       const decoded = Option.getOrUndefined(decodeServiceRow(row));
+      const project = rowProject(descriptor, decoded?.projectId);
       if (
         !decoded ||
         !hasValidServiceIds(decoded) ||
         decoded.name === undefined ||
         decoded.status === undefined ||
-        (decoded.projectId !== undefined && decoded.projectId !== descriptor.project.projectId)
+        project === undefined
       ) {
         issues.push({
           kind: "malformed-row",
-          message: "Service row lacks identity/status or contradicts its project.",
+          message: "Service row lacks identity, status or its project.",
           rowIndex,
         });
         return;
       }
       const ref: ServiceRef = {
         kind: "service",
-        project: descriptor.project,
+        project,
         serviceId: ZeropsServiceId.make(decoded.id),
       };
       if (!retainMember(ref, rowIndex)) return;
@@ -834,17 +856,18 @@ function decodeRows(
       return;
     }
     const { row: decoded, droppedServiceStacks } = decodeProcessRowLenient(row);
+    const project = rowProject(descriptor, decoded?.projectId);
     if (
       !decoded ||
       !hasValidProcessIds(decoded) ||
       decoded.actionName === undefined ||
       decoded.created === undefined ||
       decoded.status === undefined ||
-      (decoded.projectId !== undefined && decoded.projectId !== descriptor.project.projectId)
+      project === undefined
     ) {
       issues.push({
         kind: "malformed-row",
-        message: "Process row lacks identity/status or contradicts its project.",
+        message: "Process row lacks identity, status or its project.",
         rowIndex,
       });
       return;
@@ -852,12 +875,12 @@ function decodeRows(
     if (droppedServiceStacks > 0) issues.push(droppedServiceStacksIssue(rowIndex));
     const ref: ProcessRef = {
       kind: "process",
-      project: descriptor.project,
+      project,
       processId: ZeropsProcessId.make(decoded.id),
     };
     observations.push(...processObservations(ref, decoded, cause));
     if (
-      descriptor.kind === "running-processes-of-project" &&
+      descriptor.kind === "running-processes-of-organization" &&
       !descriptor.statuses.includes(
         processStatus(decoded.status) as (typeof descriptor.statuses)[number],
       )
@@ -1405,9 +1428,32 @@ const decodeMembershipDelta = Schema.decodeUnknownOption(MembershipDelta);
 const decodeUpdateEnvelope = Schema.decodeUnknownOption(UpdateEnvelope);
 const decodeCurrentEnvelope = Schema.decodeUnknownOption(CurrentEnvelope);
 
+/**
+ * The project a service or process belongs to, as this receiver has seen it named: an
+ * organization-wide membership frame carries bare ids, and only a row says whose they are.
+ */
+export type MemberProjectOf = (entity: "service" | "process", id: string) => ProjectRef | undefined;
+
+/**
+ * The projects every service and process in `observations` was named with, for
+ * {@link decodeNativeFrame} to place a bare id later.
+ */
+export function rememberMemberProjects(
+  remembered: Map<string, ProjectRef>,
+  observations: ReadonlyArray<PlatformObservation>,
+): void {
+  for (const observation of observations) {
+    if (!("ref" in observation)) continue;
+    const ref = observation.ref;
+    if (ref.kind === "service") remembered.set(`service:${ref.serviceId}`, ref.project);
+    else if (ref.kind === "process") remembered.set(`process:${ref.processId}`, ref.project);
+  }
+}
+
 export function decodeNativeFrame(
   encoded: string,
   registrations: ReadonlyMap<ZeropsWireSubscriptionName, RegistrationRequest>,
+  memberProjectOf: MemberProjectOf = () => undefined,
 ): NativeFrameDecode {
   let json: unknown;
   try {
@@ -1435,7 +1481,7 @@ export function decodeNativeFrame(
     const hasValidMemberId =
       query.kind === "projects-of-organization"
         ? isProjectId
-        : query.kind === "services-of-project"
+        : query.kind === "services-of-organization" || query.kind === "services-of-project"
           ? isServiceId
           : isProcessId;
     if (
@@ -1448,36 +1494,47 @@ export function decodeNativeFrame(
         subscriptionName: name,
         message: "Membership delta is malformed or contradictory.",
       };
-    const memberFor = (id: string): ProjectRef | ServiceRef | ProcessRef => {
+    /**
+     * The member an id names. An organization-wide service or process id is placed in the
+     * project a row named it with; one no row has named yet is left out — its own update frame
+     * (`updateStream`, the full entity) brings it, measured to arrive before the membership frame.
+     */
+    const memberFor = (id: string): ProjectRef | ServiceRef | ProcessRef | undefined => {
       if (query.kind === "projects-of-organization")
         return {
           kind: "project",
           organization: query.organization,
           projectId: ZeropsProjectId.make(id),
         };
-      if (query.kind === "services-of-project")
-        return { kind: "service", project: query.project, serviceId: ZeropsServiceId.make(id) };
-      return { kind: "process", project: query.project, processId: ZeropsProcessId.make(id) };
+      if (query.kind === "services-of-organization" || query.kind === "services-of-project") {
+        const project =
+          query.kind === "services-of-project" ? query.project : memberProjectOf("service", id);
+        return project === undefined
+          ? undefined
+          : { kind: "service", project, serviceId: ZeropsServiceId.make(id) };
+      }
+      const project =
+        query.kind === "process-history-window" ? query.project : memberProjectOf("process", id);
+      return project === undefined
+        ? undefined
+        : { kind: "process", project, processId: ZeropsProcessId.make(id) };
+    };
+    const membershipOf = (operation: "add" | "remove") => (id: string) => {
+      const member = memberFor(id);
+      return member === undefined
+        ? []
+        : [
+            {
+              kind: "query-membership-observed" as const,
+              operation,
+              member,
+              registration,
+            } as never as QueryMembershipObservation,
+          ];
     };
     const observations: QueryMembershipObservation[] = [
-      ...delta.add.map(
-        (id) =>
-          ({
-            kind: "query-membership-observed" as const,
-            operation: "add" as const,
-            member: memberFor(id),
-            registration,
-          }) as never,
-      ),
-      ...delta.delete.map(
-        (id) =>
-          ({
-            kind: "query-membership-observed" as const,
-            operation: "remove" as const,
-            member: memberFor(id),
-            registration,
-          }) as never,
-      ),
+      ...delta.add.flatMap(membershipOf("add")),
+      ...delta.delete.flatMap(membershipOf("remove")),
     ];
     return { kind: "observations", observations, issues: [] };
   }

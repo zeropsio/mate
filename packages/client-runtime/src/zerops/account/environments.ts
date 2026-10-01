@@ -287,6 +287,24 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
     readonly route: EnvironmentId | null;
     readonly keys: ReadonlyMap<TargetKey, Instant>;
   } = { route: null, keys: new Map() };
+  /**
+   * The confirming read of each project an absence waits on (§9 C19): held until no absence in
+   * the project waits, read again whenever one asks for it again.
+   */
+  const checks = new Map<string, () => void>();
+  const confirmAbsence = (projectId: string) => {
+    const project = projectRefOf(projectId);
+    if (project === undefined || closed) return;
+    checks.get(projectId)?.();
+    const lease = run(
+      Effect.scoped(
+        data
+          .acquire({ kind: "project-services-check", project })
+          .pipe(Effect.andThen(Effect.never)),
+      ).pipe(Effect.ignore),
+    );
+    checks.set(projectId, () => run(Fiber.interrupt(lease)));
+  };
   /** The activity feed of each booting target's project: its lease and its subscription. */
   const activity = new Map<
     string,
@@ -485,8 +503,8 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
 
   /**
    * Every target, its presence and its container, and the records' demand. An absence that
-   * begins a wait has its organization's inventory read again, which reads its project's services
-   * directly (§9 C19).
+   * begins a wait has its project's services read on their own, lag-free (§9 C19): the
+   * organization's search may trail a service it lacks.
    */
   const updateTargets = () => {
     if (stores === null || closed) return;
@@ -500,7 +518,17 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
     });
     absences = listed.absences;
     stores.containers.setTargets(containerTargetsOf(rows, listed.targets, routeKey));
-    for (const key of listed.confirm) driverPorts.refreshPresence(key);
+    for (const key of listed.confirm) confirmAbsence(targetProject(key));
+    const waiting = new Set(
+      [...absences].flatMap(([key, absence]) =>
+        absence.kind === "waiting" ? [targetProject(key)] : [],
+      ),
+    );
+    for (const [projectId, release] of checks) {
+      if (waiting.has(projectId)) continue;
+      release();
+      checks.delete(projectId);
+    }
     stores.driver.setTargets(
       listed.targets.map((target) => ({
         ...target,
@@ -794,6 +822,8 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
         for (const stop of stops) stop();
         for (const followed of activity.values()) followed.stop();
         activity.clear();
+        for (const release of checks.values()) release();
+        checks.clear();
         driver.dispose();
         containers.dispose();
         preferRoute();

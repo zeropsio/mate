@@ -15,7 +15,7 @@
 import { Atom } from "effect/unstable/reactivity";
 
 import type { Evidence, GrantMachine } from "../data/access/grant.ts";
-import { knownProjectsOf, knownServicesOf, servicesSourceOf } from "../data/known.ts";
+import { knownProjectsOf, knownServicesOf, servicesReadOrdinalOf } from "../data/known.ts";
 import type { ManagedZeropsDataRuntime } from "../data/runtime.ts";
 import type {
   CollectionRead,
@@ -91,11 +91,8 @@ const directReadOf = (
   read: CollectionRead<ServiceRecord>,
   services: Known<ReadonlyArray<ServiceRecord>>,
 ): number | null => {
-  const source = servicesSourceOf(read);
-  return source?.status === "observing" &&
-    services.state === "known" &&
-    services.coverage === "complete"
-    ? source.sinceReceiptOrdinal
+  return services.state === "known" && services.coverage === "complete"
+    ? servicesReadOrdinalOf(read)
     : null;
 };
 

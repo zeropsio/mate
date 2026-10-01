@@ -27,8 +27,8 @@ describe("Zerops data projections", () => {
     const owner = project();
     const ref = service("unresolved", owner);
     const descriptor = {
-      kind: "services-of-project" as const,
-      project: owner,
+      kind: "services-of-organization" as const,
+      organization: owner.organization,
       schemaVersion: 1 as const,
     };
     const ticket = queryTicket(descriptor, id);
@@ -94,11 +94,55 @@ describe("Zerops data projections", () => {
     ).toEqual([ref]);
   });
 
-  it("does not share unresolved query keys across projects", () => {
-    const state = makeInitialZeropsDataState(scope());
-    const first = selectServicesOf(state, project("one"));
-    const second = selectServicesOf(state, project("two"));
-    expect(first.query.key).not.toBe(second.query.key);
+  it("gives each project its slice of the organization's services read, one with none an observed empty one", () => {
+    const id = identity();
+    const [one, two, empty] = [project("one"), project("two"), project("empty")];
+    const members = [service("one-api", one), service("one-db", one), service("two-api", two)];
+    const descriptor = {
+      kind: "services-of-organization" as const,
+      organization: one.organization,
+      schemaVersion: 1 as const,
+    };
+    let state = reduce(makeInitialZeropsDataState(scope()), {
+      kind: "interest-upserted",
+      interest: desiredInterest(id),
+    });
+    state = reduce(state, {
+      kind: "observation",
+      observation: {
+        stamp: stamp(1),
+        accessEvidence: null,
+        input: {
+          kind: "query-baseline-observed",
+          members,
+          unresolvedMembers: members,
+          observedTotal: members.length,
+          coverage: {
+            kind: "exhausted-traversal",
+            traversedPages: 1,
+            observedTotal: members.length,
+            guarantee: "non-atomic",
+          },
+          source: "indexed-search",
+          ticket: queryTicket(descriptor, id),
+        },
+      },
+    });
+    const slice = (ref: ReturnType<typeof project>) => {
+      const read = selectServicesOf(state, ref);
+      return {
+        status: read.query.status,
+        services: read.value.map((entry) =>
+          entry.knowledge === "observed" ? entry.record.ref.serviceId : entry.ref.serviceId,
+        ),
+      };
+    };
+
+    expect([one, two, empty].map(slice)).toEqual([
+      { status: "observed", services: ["one-api", "one-db"] },
+      { status: "observed", services: ["two-api"] },
+      { status: "observed", services: [] },
+    ]);
   });
 
   it("selects the projects-of-organization query matching the requested statuses, not an arbitrary one", () => {

@@ -117,15 +117,15 @@ function readRuntime(): ManagedZeropsDataRuntime {
     ),
   );
   const services = {
-    kind: "services-of-project" as const,
-    project: owner,
+    kind: "services-of-organization" as const,
+    organization: owner.organization,
     schemaVersion: 1 as const,
   };
   ingest(
     decodeEntityQueryResponse(
       services,
       directTicket({ kind: "query", descriptor: services }, id, 3, 3),
-      { list: [ZCP], totalCount: 1 },
+      { list: [{ ...ZCP, projectId: owner.projectId }], totalCount: 1 },
       "direct-read",
     ),
   );

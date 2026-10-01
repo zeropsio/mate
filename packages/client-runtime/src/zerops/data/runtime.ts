@@ -52,6 +52,7 @@ import type {
   InterestIdentity,
   InterestKey,
   InterestLease,
+  EntityQueryDescriptor,
   LeaseAdmissionError,
   OrganizationRef,
   PlatformCommand,
@@ -154,6 +155,8 @@ function serializedInterestKey(descriptor: RuntimeInterestDescriptor): InterestK
         ]),
       );
     case "project-inventory":
+    case "project-record":
+    case "project-services-check":
     case "project-current-metrics":
       return InterestKeySchema.make(
         JSON.stringify([descriptor.kind, projectKeyOf(descriptor.project)]),
@@ -394,67 +397,77 @@ const queryKeysOfPlan = (plan: InterestPlan): ReadonlyArray<QueryKey> => [
   ),
 ];
 
+/**
+ * What an interest registers and reads (DESIGN §4.1). Projects, services and running processes
+ * are the organization's, read and subscribed once for every project the way the platform's own
+ * app does (`POST /<entity>/search` filtered by `clientId`): a project's inventory, topology or
+ * activity shares those registrations, deduplicated by key, and reads nothing of its own. A cold
+ * load, and a reconnect, cost the same whatever the number of projects. Only a project's metrics
+ * and its process history, which the platform answers per project, are the project's own.
+ */
 export function planZeropsInterest(descriptor: RuntimeInterestDescriptor): InterestPlan {
   const organization = organizationOfInterest(descriptor);
   const entityUpdate = (entity: "project" | "service" | "process"): PlannedRegistration => ({
     descriptor: { kind: "entity-updates", entity, organization },
     baseline: null,
   });
+  const membership = (query: EntityQueryDescriptor): PlannedRegistration => ({
+    descriptor: { kind: "query-membership", query },
+    baseline: { kind: "query", descriptor: query },
+  });
+  const projects: EntityQueryDescriptor = {
+    kind: "projects-of-organization",
+    organization,
+    statuses: [],
+    schemaVersion: 1,
+  };
+  const services: EntityQueryDescriptor = {
+    kind: "services-of-organization",
+    organization,
+    schemaVersion: 1,
+  };
+  const running: EntityQueryDescriptor = {
+    kind: "running-processes-of-organization",
+    organization,
+    statuses: ["PENDING", "RUNNING", "ROLLBACKING", "CANCELING"],
+    schemaVersion: 1,
+  };
   if (descriptor.kind === "organization-inventory") {
-    const query: QueryDescriptor = {
-      kind: "projects-of-organization",
-      organization,
-      statuses: [],
-      schemaVersion: 1,
-    };
     return {
-      registrations: [
-        entityUpdate("project"),
-        {
-          descriptor: { kind: "query-membership", query },
-          baseline: { kind: "query", descriptor: query },
-        },
-      ],
-      directReads: [{ kind: "query", descriptor: query }],
+      registrations: [entityUpdate("project"), membership(projects)],
+      // The lag-free list (`GET /client/{id}/project`): a project is there before its create
+      // call has returned, while the search behind the registration trails it.
+      directReads: [{ kind: "query", descriptor: projects }],
     };
   }
-
-  const project = descriptor.project;
+  const activity = [entityUpdate("process"), membership(running)];
   if (descriptor.kind === "project-inventory" || descriptor.kind === "project-topology") {
-    const services: QueryDescriptor = {
-      kind: "services-of-project",
-      project,
-      schemaVersion: 1,
-    };
-    const processes: QueryDescriptor = {
-      kind: "running-processes-of-project",
-      project,
-      statuses: ["PENDING", "RUNNING", "ROLLBACKING", "CANCELING"],
-      schemaVersion: 1,
-    };
-    const registrations: PlannedRegistration[] = [
-      entityUpdate("project"),
-      entityUpdate("service"),
-      {
-        descriptor: { kind: "query-membership", query: services },
-        baseline: { kind: "query", descriptor: services },
-      },
-    ];
-    if (descriptor.kind === "project-topology") {
-      registrations.push(entityUpdate("process"), {
-        descriptor: { kind: "query-membership", query: processes },
-        baseline: { kind: "query", descriptor: processes },
-      });
-    }
     return {
-      registrations,
-      directReads: [
-        { kind: "project", ref: project },
-        { kind: "query", descriptor: services },
-        ...(descriptor.kind === "project-topology"
-          ? [{ kind: "query" as const, descriptor: processes }]
-          : []),
+      // The project itself is the organization inventory's, which every app holds beside it.
+      registrations: [
+        entityUpdate("service"),
+        membership(services),
+        ...(descriptor.kind === "project-topology" ? activity : []),
       ],
+      directReads: [],
+    };
+  }
+  const project = descriptor.project;
+  if (descriptor.kind === "project-activity") {
+    return { registrations: activity, directReads: [] };
+  }
+  if (descriptor.kind === "project-services-check") {
+    return {
+      registrations: [],
+      directReads: [
+        { kind: "query", descriptor: { kind: "services-of-project", project, schemaVersion: 1 } },
+      ],
+    };
+  }
+  if (descriptor.kind === "project-record") {
+    return {
+      registrations: [entityUpdate("project")],
+      directReads: [{ kind: "project", ref: project }],
     };
   }
   if (descriptor.kind === "project-current-metrics") {
@@ -472,24 +485,6 @@ export function planZeropsInterest(descriptor: RuntimeInterestDescriptor): Inter
         },
       ],
       directReads: [],
-    };
-  }
-  if (descriptor.kind === "project-activity") {
-    const query: QueryDescriptor = {
-      kind: "running-processes-of-project",
-      project,
-      statuses: ["PENDING", "RUNNING", "ROLLBACKING", "CANCELING"],
-      schemaVersion: 1,
-    };
-    return {
-      registrations: [
-        entityUpdate("process"),
-        {
-          descriptor: { kind: "query-membership", query },
-          baseline: { kind: "query", descriptor: query },
-        },
-      ],
-      directReads: [{ kind: "query", descriptor: query }],
     };
   }
   if (descriptor.kind === "project-process-history") {
@@ -1451,8 +1446,9 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
       return (
         target.kind === "query" &&
         (target.descriptor.kind === "projects-of-organization" ||
+          target.descriptor.kind === "services-of-organization" ||
           target.descriptor.kind === "services-of-project" ||
-          target.descriptor.kind === "running-processes-of-project" ||
+          target.descriptor.kind === "running-processes-of-organization" ||
           target.descriptor.kind === "process-history-window")
           ? {
               ...base,

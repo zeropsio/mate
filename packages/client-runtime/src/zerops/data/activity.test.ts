@@ -121,8 +121,8 @@ describe("Zerops activity model", () => {
     const id = identity();
     const ref = process();
     const descriptor = {
-      kind: "running-processes-of-project" as const,
-      project: project(),
+      kind: "running-processes-of-organization" as const,
+      organization: project().organization,
       statuses: ["PENDING", "RUNNING", "ROLLBACKING", "CANCELING"] as const,
       schemaVersion: 1 as const,
     };

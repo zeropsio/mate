@@ -1223,13 +1223,17 @@ function markRetentionViewsPartial(
     }
   }
 
-  const serviceProjects = new Set<string>();
+  const serviceOrganizations = new Set<string>();
   for (const [key, record] of state.inventory.services) {
-    if (serviceKeys.has(key)) serviceProjects.add(projectKeyOf(record.ref.project));
+    if (serviceKeys.has(key))
+      serviceOrganizations.add(organizationKeyOf(record.ref.project.organization));
   }
   const processProjects = new Set<string>();
+  const processOrganizations = new Set<string>();
   for (const [key, record] of state.activity.processes) {
-    if (processKeys.has(key)) processProjects.add(projectKeyOf(record.ref.project));
+    if (!processKeys.has(key)) continue;
+    processProjects.add(projectKeyOf(record.ref.project));
+    processOrganizations.add(organizationKeyOf(record.ref.project.organization));
   }
 
   let inventoryQueries: Map<QueryKey, InventoryQueryState> | null = null;
@@ -1239,8 +1243,10 @@ function markRetentionViewsPartial(
     const affected =
       queryKeys.has(key) ||
       query.memberKeys.some((memberKey) => entityKeys.has(memberKey)) ||
+      (query.descriptor.kind === "services-of-organization" &&
+        serviceOrganizations.has(organizationKeyOf(query.descriptor.organization))) ||
       (query.descriptor.kind === "services-of-project" &&
-        serviceProjects.has(projectKeyOf(query.descriptor.project)));
+        serviceOrganizations.has(organizationKeyOf(query.descriptor.project.organization)));
     if (!affected) continue;
     inventoryQueries ??= new Map(state.inventory.queries);
     inventoryQueries.set(key, {
@@ -1254,7 +1260,9 @@ function markRetentionViewsPartial(
     const affected =
       queryKeys.has(key) ||
       query.memberKeys.some((memberKey) => processKeys.has(memberKey)) ||
-      processProjects.has(projectKeyOf(query.descriptor.project));
+      (query.descriptor.kind === "process-history-window"
+        ? processProjects.has(projectKeyOf(query.descriptor.project))
+        : processOrganizations.has(organizationKeyOf(query.descriptor.organization)));
     if (!affected) continue;
     activityQueries ??= new Map(state.activity.queries);
     activityQueries.set(key, {

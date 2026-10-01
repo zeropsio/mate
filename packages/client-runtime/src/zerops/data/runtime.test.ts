@@ -360,13 +360,13 @@ const unresolvedProcessBaseline = (
 ): PlatformObservation | null => {
   if (
     request.descriptor.kind !== "query-membership" ||
-    request.descriptor.query.kind !== "running-processes-of-project" ||
+    request.descriptor.query.kind !== "running-processes-of-organization" ||
     request.baselineTicket === null
   )
     return null;
   const ref = {
     kind: "process" as const,
-    project: request.descriptor.query.project,
+    project: project("project-a"),
     processId: ZeropsProcessId.make(processId),
   };
   return {
@@ -547,6 +547,7 @@ describe("makeZeropsDataRuntime", () => {
         adapter: harness.adapter,
         atomRegistry: registry,
         makeOpaqueId: makeIdFactory(),
+        // The topology's two organization queries fill it; the metrics' own is one too many.
         policy: makeZeropsDataPolicy({ activeQueriesPerAccount: 2 }),
       });
       const topologyScope = yield* Scope.make();
@@ -623,7 +624,8 @@ describe("makeZeropsDataRuntime", () => {
       );
       expect(observing.interests.get(first.interest)?.leases).toBe(2);
       expect(second.interest).toBe(first.interest);
-      expect(harness.counts()).toEqual({ opens: 1, registrations: 5, reads: 3, closes: 0 });
+      // The organization's searches, shared: a project's topology reads nothing of its own.
+      expect(harness.counts()).toEqual({ opens: 1, registrations: 4, reads: 0, closes: 0 });
 
       yield* first.release;
       expect((yield* runtime.state).interests.get(first.interest)?.leases).toBe(1);
@@ -701,7 +703,7 @@ describe("makeZeropsDataRuntime", () => {
         const activityState = state.interests.get(activity.interest)?.interest.status;
         return topologyState === "observing" && activityState === "observing";
       });
-      expect(harness.counts().registrations).toBe(5);
+      expect(harness.counts().registrations).toBe(4);
 
       yield* topology.release;
       expect((yield* runtime.state).interests.has(activity.interest)).toBe(true);
@@ -1402,7 +1404,7 @@ describe("makeZeropsDataRuntime", () => {
     };
     const isActivityQuery = (request: RegistrationRequest) =>
       request.descriptor.kind === "query-membership" &&
-      request.descriptor.query.kind === "running-processes-of-project";
+      request.descriptor.query.kind === "running-processes-of-organization";
 
     const setup = Effect.gen(function* () {
       const registry = AtomRegistry.make();
@@ -3694,7 +3696,8 @@ describe("makeZeropsDataRuntime", () => {
       expect((yield* runtime.state).interests.get(lease.interest)?.interest.status).toBe(
         "recovering",
       );
-      expect(registrations).toBe(3);
+      // The deadline bounds the whole attempt: its four registrations were never all sent.
+      expect(registrations).toBeLessThan(4);
 
       yield* runtime.shutdown("application-close");
       yield* Scope.close(leaseScope, Exit.void);
@@ -4229,7 +4232,7 @@ describe("inventory demand", () => {
         plan.registrations.some(
           ({ descriptor }) =>
             descriptor.kind === "query-membership" &&
-            descriptor.query.kind === "running-processes-of-project",
+            descriptor.query.kind === "running-processes-of-organization",
         ),
       ).toBe(false);
     }
@@ -4242,7 +4245,8 @@ describe("inventory demand", () => {
     expect(
       inventory.registrations.some(
         ({ descriptor }) =>
-          descriptor.kind === "query-membership" && descriptor.query.kind === "services-of-project",
+          descriptor.kind === "query-membership" &&
+          descriptor.query.kind === "services-of-organization",
       ),
     ).toBe(true);
     const topology = planZeropsInterest(topologyDescriptor);
@@ -4250,7 +4254,7 @@ describe("inventory demand", () => {
       topology.registrations.some(
         ({ descriptor }) =>
           descriptor.kind === "query-membership" &&
-          descriptor.query.kind === "running-processes-of-project",
+          descriptor.query.kind === "running-processes-of-organization",
       ),
     ).toBe(true);
     expect(
@@ -4258,89 +4262,6 @@ describe("inventory demand", () => {
     ).not.toBe(interestKeyOf(topologyDescriptor));
   });
 });
-
-it.effect("anchors a renewed service inventory with a direct collection despite stale search", () =>
-  Effect.gen(function* () {
-    const { decodeRegistrationResponse, decodeEntityQueryPages } = yield* Effect.promise(
-      () => import("./platformProtocol.ts"),
-    );
-    const registry = AtomRegistry.make();
-    const states = yield* Queue.unbounded<ZeropsDataState>();
-    const base = makeAdapterHarness();
-    const ref: ServiceRef = {
-      kind: "service",
-      project: project("p"),
-      serviceId: ZeropsServiceId.make("s"),
-    };
-    const row = (name: string) => ({
-      id: "s",
-      projectId: "p",
-      name,
-      status: "ACTIVE",
-      created: "2026-09-01T00:00:00Z",
-    });
-    let currentName = "First";
-    let collectionReads = 0;
-    const runtime = yield* makeZeropsDataRuntime({
-      scope: runtimeScope,
-      atomRegistry: registry,
-      makeOpaqueId: makeIdFactory(),
-      adapter: {
-        ...base.adapter,
-        register: (_handle, request) =>
-          Effect.succeed({
-            responseObservations:
-              request.descriptor.kind === "query-membership"
-                ? decodeRegistrationResponse(request, { items: [row("Stale index")], total: 1 })
-                    .observations
-                : [],
-          }),
-        read: (ticket) =>
-          Effect.sync(() => {
-            if (
-              ticket.target.kind !== "query" ||
-              ticket.target.descriptor.kind !== "services-of-project"
-            )
-              return { observations: [] };
-            collectionReads++;
-            return {
-              observations: decodeEntityQueryPages(ticket.target.descriptor, ticket, [
-                { rows: [row(currentName)], totalCount: 1 },
-              ]).observations,
-            };
-          }),
-      },
-    });
-    const unsubscribe = registry.subscribe(runtime.stateAtom, (state) => {
-      Queue.offerUnsafe(states, state);
-    });
-    for (const name of ["First", "Changed while disconnected"]) {
-      currentName = name;
-      const scope = yield* Scope.make();
-      const lease = yield* runtime
-        .acquire({ kind: "project-inventory", project: ref.project })
-        .pipe(Scope.provide(scope));
-      yield* waitForState(
-        states,
-        (state) => state.interests.get(lease.interest)?.interest.status === "observing",
-      );
-      const read = registry.get(runtime.reads.service(ref));
-      expect(read.value.knowledge).toBe("observed");
-      if (
-        read.value.knowledge === "observed" &&
-        read.value.record.identity.knowledge === "observed"
-      )
-        expect(read.value.record.identity.fields.hostname).toBe(name);
-      yield* Scope.close(scope, Exit.void);
-    }
-    expect(collectionReads).toBe(2);
-    yield* TestClock.adjust("5 minutes");
-    expect(collectionReads).toBe(2);
-    yield* runtime.shutdown("application-close");
-    unsubscribe();
-    registry.dispose();
-  }),
-);
 
 it.effect("re-reads an organization's inventory on a fresh receiver and keeps what it holds", () =>
   Effect.gen(function* () {
@@ -4460,7 +4381,7 @@ it.effect("re-reads an organization's inventory on a fresh receiver and keeps wh
   }),
 );
 
-it.effect("aborts an in-flight direct inventory baseline when its final lease is released", () =>
+it.effect("aborts the organization's in-flight project list when its final lease is released", () =>
   Effect.gen(function* () {
     const registry = AtomRegistry.make();
     const started = yield* Deferred.make<AbortSignal>();
@@ -4499,7 +4420,7 @@ it.effect("aborts an in-flight direct inventory baseline when its final lease is
     });
     const scope = yield* Scope.make();
     const lease = yield* runtime
-      .acquire({ kind: "project-inventory", project: project("p") })
+      .acquire({ kind: "organization-inventory", organization: project("p").organization })
       .pipe(Scope.provide(scope));
     const signal = yield* Deferred.await(started);
     yield* lease.release;
@@ -4539,8 +4460,6 @@ describe("a failure's scope: its own interest, or the receiver", () => {
   const isProjectList = (request: RegistrationRequest) =>
     request.descriptor.kind === "query-membership" &&
     request.descriptor.query.kind === "projects-of-organization";
-  const readsProject = (ticket: ReadTicket, projectId: string) =>
-    ticket.target.kind === "project" && ticket.target.ref.projectId === projectId;
 
   /** A request the platform refused with an HTTP status, as the adapter reports it. */
   const refused = (status: number, kind: AdapterError["kind"]): AdapterError => ({
@@ -4725,110 +4644,6 @@ describe("a failure's scope: its own interest, or the receiver", () => {
         });
         expect(rig.inventories.map((lease) => rig.interestOf(recovered, lease))).toEqual(projects);
         expect(rig.registrations.filter(isProjectList)).toHaveLength(3);
-        expect(yield* Queue.size(rig.opened)).toBe(0);
-        expect(rig.closes()).toBe(0);
-        yield* rig.dispose;
-      }),
-  );
-
-  it.effect.each([
-    ["was refused with 503", refused(503, "server")],
-    ["timed out", unanswered("timeout")],
-  ] as const)(
-    "a project's direct read that %s recovers that project alone, on the live receiver",
-    ([, failure]) =>
-      Effect.gen(function* () {
-        const rig = yield* setup({
-          read: failFirst(1, (ticket: ReadTicket) => readsProject(ticket, "project-b"), failure),
-        });
-        const [failing, sibling] = rig.inventories as [InterestLease, InterestLease];
-        const first = yield* settleUntil(
-          rig.runtime,
-          (state) => rig.settled(state) && rig.interestOf(state, failing)?.status === "recovering",
-        );
-        expect(rig.interestOf(first, failing)).toMatchObject({
-          status: "recovering",
-          attempt: 1,
-          identity: { receiver: rig.live },
-        });
-        const untouched = [rig.list, sibling].map((lease) => rig.interestOf(first, lease));
-        expect(untouched).toEqual([
-          expect.objectContaining({
-            status: "observing",
-            identity: expect.objectContaining({ receiver: rig.live }),
-          }),
-          expect.objectContaining({
-            status: "observing",
-            identity: expect.objectContaining({ receiver: rig.live }),
-          }),
-        ]);
-
-        yield* TestClock.adjust("10 millis");
-        const recovered = yield* settleUntil(
-          rig.runtime,
-          (state) => rig.interestOf(state, failing)?.status === "observing",
-        );
-        expect(rig.interestOf(recovered, failing)).toMatchObject({
-          status: "observing",
-          identity: { receiver: rig.live },
-        });
-        expect([rig.list, sibling].map((lease) => rig.interestOf(recovered, lease))).toEqual(
-          untouched,
-        );
-        expect(yield* Queue.size(rig.opened)).toBe(0);
-        expect(rig.closes()).toBe(0);
-        yield* rig.dispose;
-      }),
-  );
-
-  it.effect(
-    "a project's subscription that outlives its establishment deadline on a live socket recovers alone, never replacing the socket",
-    () =>
-      Effect.gen(function* () {
-        // Live, 2026-10-01: one subscription stuck past its 60 s deadline replaced the org's
-        // socket, and every one of its ~60 subscriptions registered again, four at a time.
-        let hung = true;
-        const rig = yield* setup({
-          hang: (request) =>
-            hung &&
-            request.descriptor.kind === "query-membership" &&
-            request.descriptor.query.kind === "services-of-project" &&
-            request.descriptor.query.project.projectId === "project-b",
-          policy: { establishmentDeadlineMs: 100 },
-        });
-        const [stuck, sibling] = rig.inventories as [InterestLease, InterestLease];
-        yield* settleUntil(rig.runtime, (state) =>
-          [rig.list, sibling].every(
-            (lease) => rig.interestOf(state, lease)?.status === "observing",
-          ),
-        );
-        yield* TestClock.adjust("100 millis");
-        const first = yield* settleUntil(
-          rig.runtime,
-          (state) => rig.settled(state) && rig.interestOf(state, stuck)?.status === "recovering",
-        );
-        expect(rig.interestOf(first, stuck)).toMatchObject({ identity: { receiver: rig.live } });
-        expect([rig.list, sibling].map((lease) => rig.interestOf(first, lease))).toEqual([
-          expect.objectContaining({
-            status: "observing",
-            identity: expect.objectContaining({ receiver: rig.live }),
-          }),
-          expect.objectContaining({
-            status: "observing",
-            identity: expect.objectContaining({ receiver: rig.live }),
-          }),
-        ]);
-        expect(rig.closes()).toBe(0);
-
-        hung = false;
-        yield* TestClock.adjust("40 millis");
-        const recovered = yield* settleUntil(
-          rig.runtime,
-          (state) => rig.interestOf(state, stuck)?.status === "observing",
-        );
-        expect(rig.interestOf(recovered, stuck)).toMatchObject({
-          identity: { receiver: rig.live },
-        });
         expect(yield* Queue.size(rig.opened)).toBe(0);
         expect(rig.closes()).toBe(0);
         yield* rig.dispose;
@@ -5050,6 +4865,16 @@ describe("a recovery round", () => {
         /** The interests with a direct read in flight while reads are held. */
         const reading = new Set<string>();
         let peak = 0;
+        /** Answers once released, counting the interests waiting on it meanwhile. */
+        const held = <Answer>(interest: string, answer: Answer) =>
+          Effect.sync(() => {
+            reading.add(interest);
+            peak = Math.max(peak, reading.size);
+          }).pipe(
+            Effect.andThen(Deferred.await(release)),
+            Effect.ensuring(Effect.sync(() => reading.delete(interest))),
+            Effect.as(answer),
+          );
         const adapter: ZeropsDataAdapter = {
           ...makeAdapterHarness().adapter,
           openReceiver: (_scope, organization, identity) =>
@@ -5067,16 +4892,13 @@ describe("a recovery round", () => {
           read: (ticket) => {
             if (!gated || ticket.owner.kind !== "interest")
               return Effect.succeed({ observations: [] });
-            const interest = ticket.owner.identity.key;
-            return Effect.sync(() => {
-              reading.add(interest);
-              peak = Math.max(peak, reading.size);
-            }).pipe(
-              Effect.andThen(Deferred.await(release)),
-              Effect.ensuring(Effect.sync(() => reading.delete(interest))),
-              Effect.as({ observations: [] }),
-            );
+            return held(ticket.owner.identity.key, { observations: [] });
           },
+          // A project's own registration: its current metrics, the one thing it reads alone.
+          register: (_receiver, request) =>
+            gated && request.descriptor.kind === "current-metrics"
+              ? held(request.identity.key, { responseObservations: [] })
+              : Effect.succeed({ responseObservations: [] }),
         };
         const runtime = yield* makeZeropsDataRuntime({
           scope: runtimeScope,
@@ -5093,7 +4915,7 @@ describe("a recovery round", () => {
         // Leased before the list, the projects come first in the organization's own order.
         const projects = yield* Effect.forEach(["b", "c", "d"], (id) =>
           runtime
-            .acquire({ kind: "project-inventory", project: project(`project-${id}`) })
+            .acquire({ kind: "project-current-metrics", project: project(`project-${id}`) })
             .pipe(Scope.provide(leaseScope)),
         );
         const list = yield* runtime
@@ -5240,8 +5062,8 @@ describe("registrations", () => {
   const label = (request: RegistrationRequest): string => {
     const descriptor = request.descriptor;
     if (descriptor.kind === "entity-updates") return `${descriptor.entity} updates`;
-    if (descriptor.kind === "query-membership" && descriptor.query.kind === "services-of-project")
-      return `services of ${descriptor.query.project.projectId}`;
+    if (descriptor.kind === "current-metrics")
+      return `metrics of ${descriptor.query.project.projectId}`;
     return descriptor.kind === "query-membership" ? descriptor.query.kind : descriptor.kind;
   };
 
@@ -5261,7 +5083,7 @@ describe("registrations", () => {
               sent.push(label(request));
               inFlight += 1;
               peak = Math.max(peak, inFlight);
-              if (label(request).startsWith("services of")) yield* Deferred.await(servicesAnswer);
+              if (label(request).startsWith("metrics of")) yield* Deferred.await(servicesAnswer);
               return { responseObservations: [] };
             }).pipe(Effect.ensuring(Effect.sync(() => void (inFlight -= 1)))),
         };
@@ -5275,11 +5097,11 @@ describe("registrations", () => {
         const leaseScope = yield* Scope.make();
         const projects = yield* Effect.forEach(["b", "c", "d"], (id) =>
           runtime
-            .acquire({ kind: "project-inventory", project: project(`project-${id}`) })
+            .acquire({ kind: "project-current-metrics", project: project(`project-${id}`) })
             .pipe(Scope.provide(leaseScope)),
         );
-        yield* settleUntil(runtime, () => sent.includes("services of project-b"));
-        // project-c's and project-d's service lists queue behind project-b's.
+        yield* settleUntil(runtime, () => sent.includes("metrics of project-b"));
+        // project-c's and project-d's metrics queue behind project-b's.
         yield* settleUntil(runtime, () => false, 50);
         const list = yield* runtime
           .acquire({
@@ -5288,7 +5110,7 @@ describe("registrations", () => {
           })
           .pipe(Scope.provide(leaseScope));
         yield* settleUntil(runtime, () => false, 50);
-        expect(sent).toEqual(["project updates", "service updates", "services of project-b"]);
+        expect(sent).toEqual(["metrics of project-b"]);
 
         yield* Deferred.succeed(servicesAnswer, undefined);
         const leases = [...projects, list];
@@ -5297,13 +5119,14 @@ describe("registrations", () => {
             (lease) => state.interests.get(lease.interest)?.interest.status === "observing",
           ),
         );
+        // The list's registration goes ahead of the projects' already waiting; its next one, asked
+        // for once that answers, waits its turn.
         expect(sent).toEqual([
+          "metrics of project-b",
           "project updates",
-          "service updates",
-          "services of project-b",
+          "metrics of project-c",
+          "metrics of project-d",
           "projects-of-organization",
-          "services of project-c",
-          "services of project-d",
         ]);
         expect(peak).toBe(1);
 
@@ -5326,7 +5149,7 @@ describe("registrations", () => {
         register: (_receiver, request, context) =>
           Effect.gen(function* () {
             const descriptor = request.descriptor;
-            if (descriptor.kind === "entity-updates" && descriptor.entity === "project") {
+            if (descriptor.kind === "entity-updates" && descriptor.entity === "service") {
               const now = yield* Clock.currentTimeMillis;
               sent.push({
                 organizationId: descriptor.organization.organizationId,
@@ -5414,7 +5237,7 @@ describe("I8: after resume every leased interest reaches observing or failed(ret
   ];
   const isActivityQuery = (request: RegistrationRequest) =>
     request.descriptor.kind === "query-membership" &&
-    request.descriptor.query.kind === "running-processes-of-project";
+    request.descriptor.query.kind === "running-processes-of-organization";
   const failure = (message: string): AdapterError => ({
     _tag: "ZeropsDataAdapterError",
     kind: "registration",
@@ -5753,5 +5576,134 @@ describe("publication: one per task", () => {
         expect(harness.counts().opens).toBe(1);
       }),
     ),
+  );
+});
+
+describe("an organization's reads, whatever its number of projects (DESIGN §4.1)", () => {
+  /** What reached the platform: each registration and each read, by what it asked for. */
+  const platform = () => {
+    const sent: string[] = [];
+    let events: Queue.Queue<ReceiverEvent> | null = null;
+    const labelOf = (request: RegistrationRequest): string =>
+      request.descriptor.kind === "entity-updates"
+        ? `${request.descriptor.entity} updates`
+        : request.descriptor.kind === "query-membership"
+          ? request.descriptor.query.kind
+          : request.descriptor.kind;
+    const adapter: ZeropsDataAdapter = {
+      ...makeAdapterHarness().adapter,
+      openReceiver: (_scope, organization, identity) =>
+        Effect.gen(function* () {
+          sent.push("socket");
+          events = yield* Queue.unbounded<ReceiverEvent>();
+          return {
+            identity,
+            organization,
+            delivery: "hot-single-consumer-buffered-before-open-resolves",
+            events: Stream.fromQueue(events),
+          } satisfies ReceiverHandle;
+        }),
+      register: (_receiver, request) =>
+        Effect.sync(() => {
+          sent.push(`register ${labelOf(request)}`);
+          return { responseObservations: [] };
+        }),
+      read: (ticket) =>
+        Effect.sync(() => {
+          sent.push(
+            `read ${ticket.target.kind === "query" ? ticket.target.descriptor.kind : ticket.target.kind}`,
+          );
+          return { observations: [] };
+        }),
+    };
+    return {
+      adapter,
+      sent,
+      drop: Effect.suspend(() =>
+        events === null
+          ? Effect.die("no socket is open")
+          : Queue.offer(events, { kind: "closed", reason: "network lost" }),
+      ),
+    };
+  };
+
+  /** The organization's list, and each project's inventory and activity, as the web app holds them. */
+  const openAccount = (count: number) =>
+    Effect.gen(function* () {
+      const registry = AtomRegistry.make();
+      const { adapter, sent, drop } = platform();
+      const runtime = yield* makeZeropsDataRuntime({
+        scope: runtimeScope,
+        adapter,
+        atomRegistry: registry,
+        makeOpaqueId: makeIdFactory(),
+        policy: makeZeropsDataPolicy({ recoveryBackoffStartMs: 10, recoveryBackoffMaxMs: 10 }),
+      });
+      const leaseScope = yield* Scope.make();
+      const projects = Array.from({ length: count }, (_, index) => project(`project-${index}`));
+      const leases = yield* Effect.forEach(
+        [
+          { kind: "organization-inventory" as const, organization: projects[0]!.organization },
+          ...projects.flatMap((ref) => [
+            { kind: "project-inventory" as const, project: ref },
+            { kind: "project-activity" as const, project: ref },
+          ]),
+        ],
+        (descriptor) => runtime.acquire(descriptor).pipe(Scope.provide(leaseScope)),
+      );
+      const observing = (state: ZeropsDataState) =>
+        leases.every(
+          (lease) => state.interests.get(lease.interest)?.interest.status === "observing",
+        );
+      yield* settleUntil(runtime, observing, 2_000);
+      const close = Effect.gen(function* () {
+        yield* runtime.shutdown("application-close");
+        yield* Scope.close(leaseScope, Exit.void);
+        registry.dispose();
+      });
+      return { runtime, sent, drop, observing, close };
+    });
+
+  const ORGANIZATION_CALLS = [
+    "socket",
+    "register project updates",
+    "register projects-of-organization",
+    "register service updates",
+    "register services-of-organization",
+    "register process updates",
+    "register running-processes-of-organization",
+    "read projects-of-organization",
+  ];
+
+  it.effect.each([1, 6, 40])(
+    "a cold load of %i projects sends the organization's searches once, none of a project's own",
+    (count) =>
+      Effect.gen(function* () {
+        const account = yield* openAccount(count);
+
+        expect(account.observing(yield* account.runtime.state)).toBe(true);
+        expect([...account.sent].sort()).toEqual([...ORGANIZATION_CALLS].sort());
+
+        yield* account.close;
+      }),
+  );
+
+  it.effect.each([1, 6, 40])(
+    "a dropped socket with %i projects comes back with the organization's searches once",
+    (count) =>
+      Effect.gen(function* () {
+        const account = yield* openAccount(count);
+        const before = account.sent.length;
+
+        yield* account.drop;
+        yield* settleUntil(account.runtime, (state) => !account.observing(state), 2_000);
+        yield* TestClock.adjust("10 millis");
+        const recovered = yield* settleUntil(account.runtime, account.observing, 5_000);
+
+        expect(account.observing(recovered)).toBe(true);
+        expect(account.sent.slice(before).sort()).toEqual([...ORGANIZATION_CALLS].sort());
+
+        yield* account.close;
+      }),
   );
 });

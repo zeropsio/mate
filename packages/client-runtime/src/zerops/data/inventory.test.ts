@@ -89,8 +89,8 @@ describe("Zerops inventory model", () => {
     const id = identity();
     const ref = service();
     const descriptor = {
-      kind: "services-of-project" as const,
-      project: project(),
+      kind: "services-of-organization" as const,
+      organization: project().organization,
       schemaVersion: 1 as const,
     };
     const direct = directTicket({ kind: "service", ref }, id, 2, 1, 2);
@@ -168,12 +168,76 @@ describe("Zerops inventory model", () => {
     });
   });
 
+  it.each([
+    [
+      "long after the facet was last written: it corrects what changed meanwhile",
+      10_000,
+      "changed",
+    ],
+    [
+      "within the index's lag of the last write: it may trail it, and changes nothing",
+      4_000,
+      "canonical",
+    ],
+  ] as const)("a search begun %s", (_, searchStartedAtMs, hostname) => {
+    const id = identity();
+    const ref = service();
+    const descriptor = {
+      kind: "services-of-organization" as const,
+      organization: project().organization,
+      schemaVersion: 1 as const,
+    };
+    const direct = directTicket({ kind: "service", ref }, id, 2, 1, 2);
+    const search = { ...queryTicket(descriptor, id, 3, 2, 3), startedAtMs: searchStartedAtMs };
+    let state = reduce(makeInitialZeropsDataState(scope()), {
+      kind: "interest-upserted",
+      interest: desiredInterest(id),
+    });
+    state = reduce(state, {
+      kind: "observation",
+      observation: {
+        stamp: stamp(1, 10),
+        accessEvidence: null,
+        input: {
+          kind: "service-identity-observed",
+          ref,
+          observation: {
+            source: "direct-read",
+            ticket: direct,
+            fields: { hostname: "canonical" },
+            metadata: {},
+          },
+        },
+      },
+    });
+    state = reduce(state, {
+      kind: "observation",
+      observation: {
+        stamp: stamp(2, searchStartedAtMs + 100),
+        accessEvidence: null,
+        input: {
+          kind: "service-identity-observed",
+          ref,
+          observation: {
+            source: "indexed-search",
+            ticket: search,
+            fields: { hostname: "changed" },
+            metadata: {},
+          },
+        },
+      },
+    });
+
+    const facet = state.inventory.services.get(serviceKeyOf(ref))?.identity;
+    expect(facet?.knowledge === "observed" ? facet.fields.hostname : null).toBe(hostname);
+  });
+
   it("does not rewrite provenance of an observed facet when search seeds an absent field", () => {
     const id = identity();
     const ref = service();
     const descriptor = {
-      kind: "services-of-project" as const,
-      project: project(),
+      kind: "services-of-organization" as const,
+      organization: project().organization,
       schemaVersion: 1 as const,
     };
     const direct = directTicket({ kind: "service", ref }, id, 1, 1, 1);
@@ -231,8 +295,8 @@ describe("Zerops inventory model", () => {
     const a = service("a");
     const b = service("b");
     const descriptor = {
-      kind: "services-of-project" as const,
-      project: p,
+      kind: "services-of-organization" as const,
+      organization: p.organization,
       schemaVersion: 1 as const,
     };
     const older = queryTicket(descriptor, id, 1, 1, 1);
@@ -307,8 +371,8 @@ describe("Zerops inventory model", () => {
     const p = project();
     const a = service("a");
     const descriptor = {
-      kind: "services-of-project" as const,
-      project: p,
+      kind: "services-of-organization" as const,
+      organization: p.organization,
       schemaVersion: 1 as const,
     };
     let state = reduce(makeInitialZeropsDataState(scope()), {

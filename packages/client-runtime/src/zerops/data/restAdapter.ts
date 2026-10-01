@@ -18,6 +18,8 @@ import {
   decodeStartProjectResponse,
   decodeStartServiceResponse,
   decodeSearchListPage,
+  rememberMemberProjects,
+  type MemberProjectOf,
 } from "./platformProtocol.ts";
 import type {
   AdapterError,
@@ -26,6 +28,7 @@ import type {
   PlatformCommandReceipt,
   PlatformObservation,
   ProcessRef,
+  ProjectRef,
   PlatformReadRequest,
   PlatformReadResult,
   ReceiverEvent,
@@ -261,9 +264,9 @@ function requestEffect(
 }
 
 function queryOrganizationId(query: EntityQueryDescriptor): string {
-  return query.kind === "projects-of-organization"
-    ? query.organization.organizationId
-    : query.project.organization.organizationId;
+  return query.kind === "process-history-window" || query.kind === "services-of-project"
+    ? query.project.organization.organizationId
+    : query.organization.organizationId;
 }
 
 function registrationOrganization(request: RegistrationRequest) {
@@ -271,9 +274,10 @@ function registrationOrganization(request: RegistrationRequest) {
   return descriptor.kind === "entity-updates"
     ? descriptor.organization
     : descriptor.kind === "query-membership"
-      ? descriptor.query.kind === "projects-of-organization"
-        ? descriptor.query.organization
-        : descriptor.query.project.organization
+      ? descriptor.query.kind === "process-history-window" ||
+        descriptor.query.kind === "services-of-project"
+        ? descriptor.query.project.organization
+        : descriptor.query.organization
       : descriptor.query.project.organization;
 }
 
@@ -294,11 +298,11 @@ function searchTerms(
   const terms: Array<Readonly<Record<string, unknown>>> = [
     { name: "clientId", operator: "eq", value: queryOrganizationId(query) },
   ];
-  if (query.kind !== "projects-of-organization")
+  if (query.kind === "process-history-window" || query.kind === "services-of-project")
     terms.push({ name: "projectId", operator: "eq", value: query.project.projectId });
   if (query.kind === "projects-of-organization" && query.statuses.length)
     terms.push({ name: "status", operator: "in", value: query.statuses });
-  if (query.kind === "running-processes-of-project") {
+  if (query.kind === "running-processes-of-organization") {
     terms.push({ name: "status", operator: "in", value: query.statuses });
     terms.push({ name: "executorTag", operator: "ne", value: "L7_MASTER" });
   }
@@ -306,6 +310,14 @@ function searchTerms(
     terms.push({ name: "executorTag", operator: "ne", value: "L7_MASTER" });
   return terms;
 }
+
+/**
+ * The rows one organization-wide search answers with: its projects, its services or its running
+ * processes. The platform accepts far more than its usual 500 (measured 2026-10-01: a limit of
+ * 2000 answered all 244 services of the test organization in one page), and an organization's
+ * whole inventory is one page of it.
+ */
+const ORGANIZATION_SEARCH_LIMIT = 2000;
 
 function registrationHttp(request: RegistrationRequest, receiver: ReceiverHandle) {
   const common = {
@@ -335,7 +347,7 @@ function registrationHttp(request: RegistrationRequest, receiver: ReceiverHandle
     const entity =
       descriptor.query.kind === "projects-of-organization"
         ? "project"
-        : descriptor.query.kind === "services-of-project"
+        : descriptor.query.kind === "services-of-organization"
           ? "service-stack"
           : "process";
     return {
@@ -343,7 +355,10 @@ function registrationHttp(request: RegistrationRequest, receiver: ReceiverHandle
       body: {
         search: searchTerms(descriptor.query),
         sort: [],
-        limit: descriptor.query.kind === "process-history-window" ? descriptor.query.limit : 500,
+        limit:
+          descriptor.query.kind === "process-history-window"
+            ? descriptor.query.limit
+            : ORGANIZATION_SEARCH_LIMIT,
         ...common,
         wsOutputType: "listStream",
       },
@@ -386,14 +401,28 @@ function readHttp(ticket: PlatformReadRequest, offset = 0) {
       path: `/client/${query.organization.organizationId}/project?limit=500${offset ? `&offset=${offset}` : ""}`,
       method: "GET" as const,
     };
+  if (
+    query.kind === "services-of-organization" ||
+    query.kind === "running-processes-of-organization"
+  )
+    return {
+      path: query.kind === "services-of-organization" ? "/service-stack/search" : "/process/search",
+      method: "POST" as const,
+      body: {
+        search: searchTerms(query),
+        sort: [],
+        limit: ORGANIZATION_SEARCH_LIMIT,
+        ...(offset ? { offset } : {}),
+      },
+    };
+  if (query.kind === "process-history-window")
+    return {
+      path: `/project/${query.project.projectId}/process?limit=${query.limit}${offset ? `&offset=${offset}` : ""}`,
+      method: "GET" as const,
+    };
   if (query.kind === "services-of-project")
     return {
       path: `/project/${query.project.projectId}/service-stack?limit=500${offset ? `&offset=${offset}` : ""}`,
-      method: "GET" as const,
-    };
-  if (query.kind === "running-processes-of-project" || query.kind === "process-history-window")
-    return {
-      path: `/project/${query.project.projectId}/process?limit=${query.kind === "process-history-window" ? query.limit : 500}${offset ? `&offset=${offset}` : ""}`,
       method: "GET" as const,
     };
   const body = {
@@ -424,8 +453,9 @@ function decodeRead(ticket: PlatformReadRequest, body: unknown) {
   if (ticket.target.kind !== "query") return decodeEntityDirectResponse(ticket, body);
   switch (ticket.target.descriptor.kind) {
     case "projects-of-organization":
+    case "services-of-organization":
     case "services-of-project":
-    case "running-processes-of-project":
+    case "running-processes-of-organization":
     case "process-history-window":
       return decodeEntityQueryResponse(ticket.target.descriptor, ticket, body, "direct-read");
     case "current-metrics-of-project":
@@ -442,6 +472,18 @@ export function makeZeropsDataAdapter(options: ZeropsDataAdapterOptions): Zerops
   const policy = options.policy ?? DEFAULT_ZEROPS_DATA_POLICY;
   const tags = makeProjectTagWriter({ source: options.client, locks: options.locks });
   const openReceivers = new WeakMap<ReceiverHandle, OpenReceiverInternals>();
+  /**
+   * Whose every service and process this account's rows named: an organization-wide membership
+   * frame carries bare ids, and is placed by these (`decodeNativeFrame`).
+   */
+  const memberProjects = new Map<string, ProjectRef>();
+  const memberProjectOf: MemberProjectOf = (entity, id) => memberProjects.get(`${entity}:${id}`);
+  const remember = <Decoded extends { readonly observations: ReadonlyArray<PlatformObservation> }>(
+    decoded: Decoded,
+  ): Decoded => {
+    rememberMemberProjects(memberProjects, decoded.observations);
+    return decoded;
+  };
   let accountBufferedEvents = 0;
   let accountBufferedBytes = 0;
 
@@ -593,7 +635,8 @@ export function makeZeropsDataAdapter(options: ZeropsDataAdapterOptions): Zerops
           );
           return;
         }
-        const decoded = decodeNativeFrame(data, registrations);
+        const decoded = decodeNativeFrame(data, registrations, memberProjectOf);
+        if (decoded.kind === "observations") remember(decoded);
         if (decoded.kind === "pong") {
           if (pongHandle !== undefined) {
             options.timers.clearTimer(pongHandle);
@@ -767,7 +810,7 @@ export function makeZeropsDataAdapter(options: ZeropsDataAdapterOptions): Zerops
       "registration",
     ).pipe(
       Effect.flatMap((body) => {
-        const decoded = decodeRegistrationResponse(request, body);
+        const decoded = remember(decodeRegistrationResponse(request, body));
         if (decoded.issues.length)
           return Effect.fail(adapterError("malformed", decoded.issues[0]!.message));
         return Effect.succeed<RegistrationReceipt>({ responseObservations: decoded.observations });
@@ -850,10 +893,24 @@ export function makeZeropsDataAdapter(options: ZeropsDataAdapterOptions): Zerops
       const descriptor = ticket.target.kind === "query" ? ticket.target.descriptor : null;
       if (
         descriptor !== null &&
-        (descriptor.kind === "projects-of-organization" ||
-          descriptor.kind === "services-of-project" ||
-          descriptor.kind === "running-processes-of-project")
+        (descriptor.kind === "services-of-organization" ||
+          descriptor.kind === "running-processes-of-organization")
       ) {
+        // The platform has no lag-free list of an organization's services or processes: its
+        // search is the read, as the platform's own app reads them.
+        const pages = yield* traversePages(perform, decodeSearchListPage);
+        const decoded = remember(
+          decodeEntityQueryPages(descriptor, ticket, pages, "indexed-search"),
+        );
+        return { observations: decoded.observations } satisfies PlatformReadResult;
+      }
+      if (descriptor !== null && descriptor.kind === "services-of-project") {
+        // The lag-free list of one project's services: the confirming read (§9 C19).
+        const pages = yield* traversePages(perform, decodeDirectListPage);
+        const decoded = remember(decodeEntityQueryPages(descriptor, ticket, pages, "direct-read"));
+        return { observations: decoded.observations } satisfies PlatformReadResult;
+      }
+      if (descriptor !== null && descriptor.kind === "projects-of-organization") {
         const direct = yield* traversePages(perform, decodeDirectListPage).pipe(Effect.result);
         let pages: Array<NonNullable<ReturnType<typeof decodeDirectListPage>>>;
         let source: "direct-read" | "indexed-search" = "direct-read";
@@ -872,7 +929,7 @@ export function makeZeropsDataAdapter(options: ZeropsDataAdapterOptions): Zerops
         return { observations: decoded.observations } satisfies PlatformReadResult;
       }
       const body = yield* perform();
-      const decoded = decodeRead(ticket, body);
+      const decoded = remember(decodeRead(ticket, body));
       if (decoded.issues.length && decoded.observations.length === 0)
         return yield* Effect.fail(adapterError("malformed", decoded.issues[0]!.message));
       return { observations: decoded.observations } satisfies PlatformReadResult;

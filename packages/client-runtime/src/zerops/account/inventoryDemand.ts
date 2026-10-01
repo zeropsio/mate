@@ -97,6 +97,8 @@ export interface InventoryDemandInput {
   readonly access: AccessState;
   /** The project's status as the data runtime holds it; undefined while it is unread. */
   readonly projectStatus: (project: ProjectRef) => string | undefined;
+  /** Whether the organization's project list has answered. */
+  readonly organizationListed: (organization: ProjectRef["organization"]) => boolean;
 }
 
 /** The inventories the account demands now: its organizations', then its projects'. */
@@ -123,6 +125,15 @@ export function inventoryDemand(
       kind: "project-inventory",
       project,
     })),
+    // Every project's record is its organization's list's: one the answered list lacks — this
+    // tab's own new project, which the platform answers for before its lists do — is read alone.
+    ...projects
+      .filter(
+        (project) =>
+          input.projectStatus(project) === undefined &&
+          input.organizationListed(project.organization),
+      )
+      .map((project): RuntimeInterestDescriptor => ({ kind: "project-record", project })),
   ];
 }
 
@@ -148,6 +159,8 @@ export const holdInventoryDemand = (input: {
             ? projectRecordToZeropsProject(value.record)?.status
             : undefined;
         },
+        organizationListed: (organization) =>
+          get(data.reads.projectsOf(organization)).query.status === "observed",
       }),
     );
     const wanted = yield* Queue.sliding<ReadonlyArray<RuntimeInterestDescriptor>>(1);

@@ -149,8 +149,8 @@ export const directTicket = <Target extends ReadTarget>(
     startedAtMs: start,
     ...(target.kind === "query" &&
     (target.descriptor.kind === "projects-of-organization" ||
-      target.descriptor.kind === "services-of-project" ||
-      target.descriptor.kind === "running-processes-of-project" ||
+      target.descriptor.kind === "services-of-organization" ||
+      target.descriptor.kind === "running-processes-of-organization" ||
       target.descriptor.kind === "process-history-window")
       ? { membershipReceiptOrdinalAtStart: ReceiptOrdinal.make(receipt) }
       : {}),

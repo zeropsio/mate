@@ -93,8 +93,8 @@ describe("Zerops platform data identities", () => {
 
   it("shares query identity across equivalent status-set orderings", () => {
     const base = {
-      kind: "running-processes-of-project" as const,
-      project: project(),
+      kind: "running-processes-of-organization" as const,
+      organization: project().organization,
       schemaVersion: 1 as const,
     };
     expect(queryKeyOf({ ...base, statuses: ["PENDING", "RUNNING"] })).toBe(
