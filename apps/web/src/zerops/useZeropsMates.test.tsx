@@ -131,7 +131,21 @@ function readRuntime(): ManagedZeropsDataRuntime {
   );
   const granted = {
     machine: {
-      phase: { phase: "granted", evidence: { account: { organizations: [{ organization }] } } },
+      phase: {
+        phase: "granted",
+        evidence: {
+          account: { organizations: [{ organization }] },
+          // The grant admits the project: its services are its Mates'.
+          projects: new Map([
+            [
+              owner.projectId,
+              { access: { project: owner, role: "OWNER", mutationsAllowed: true } },
+            ],
+          ]),
+          unverified: new Map(),
+          closedProjects: new Map(),
+        },
+      },
     },
   };
   return {

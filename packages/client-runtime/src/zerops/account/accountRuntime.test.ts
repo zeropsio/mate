@@ -382,7 +382,11 @@ const makePage = Effect.fnUntraced(function* (clock: DeadlineClock) {
 });
 
 /** A grant whose rounds each wait for the test to answer them, then verify `projects`. */
-const heldVerifier = (projects: ReadonlyArray<ProjectRef> = [A]) => {
+const heldVerifier = (
+  projects: ReadonlyArray<ProjectRef> = [A],
+  /** Projects the round verifies with no access: listed, and not this person's to know. */
+  hidden: ReadonlyArray<ProjectRef> = [],
+) => {
   const answers: Array<Deferred.Deferred<GrantFailure | null>> = [];
   const verifier: AccessVerifier = {
     verifyRound: ({ round, report }) =>
@@ -391,7 +395,12 @@ const heldVerifier = (projects: ReadonlyArray<ProjectRef> = [A]) => {
         answers.push(answer);
         const failure = yield* Deferred.await(answer);
         if (failure !== null) return yield* Effect.fail({ failure, message: "Zerops is down." });
-        yield* report({ type: "ROUND_ACCOUNT", round, organizations, projects });
+        yield* report({
+          type: "ROUND_ACCOUNT",
+          round,
+          organizations,
+          projects: [...projects, ...hidden],
+        });
         for (const verified of projects)
           yield* report({
             type: "ROUND_PROJECT",
@@ -400,6 +409,16 @@ const heldVerifier = (projects: ReadonlyArray<ProjectRef> = [A]) => {
             outcome: {
               kind: "verified",
               access: { project: verified, role: "OWNER", mutationsAllowed: true },
+            },
+          });
+        for (const verified of hidden)
+          yield* report({
+            type: "ROUND_PROJECT",
+            round,
+            project: verified,
+            outcome: {
+              kind: "verified",
+              access: { project: verified, role: "NO_ACCESS", mutationsAllowed: false },
             },
           });
       }),
@@ -1045,11 +1064,18 @@ describe("the post-grant stage's Mate environments", () => {
     remembered: ReadonlyArray<RegistrationRecord>,
     mates: ReadonlyArray<Mate> = [A_MATE],
     adapter: ZeropsDataAdapter = platformAdapter(mates),
+    /** The Mates the grant admits; the organization may list more. */
+    admitted: ReadonlyArray<Mate> = mates,
   ) {
     const clock = yield* makeDeadlineClock({ startWallMs: START_WALL_MS });
     const registry = AtomRegistry.make();
     const page = yield* makePage(clock);
-    const grant = heldVerifier(mates.map(({ projectId }) => project(projectId)));
+    const grant = heldVerifier(
+      admitted.map(({ projectId }) => project(projectId)),
+      mates
+        .filter((listed) => !admitted.includes(listed))
+        .map(({ projectId }) => project(projectId)),
+    );
     const rig = environmentRig(clock, remembered);
     const built = yield* Effect.gen(function* () {
       const data = yield* makeZeropsDataRuntime({
@@ -1078,8 +1104,9 @@ describe("the post-grant stage's Mate environments", () => {
     remembered: ReadonlyArray<RegistrationRecord>,
     mates: ReadonlyArray<Mate> = [A_MATE],
     adapter: ZeropsDataAdapter = platformAdapter(mates),
+    admitted: ReadonlyArray<Mate> = mates,
   ) {
-    const opened = yield* openAccount(remembered, mates, adapter);
+    const opened = yield* openAccount(remembered, mates, adapter, admitted);
     yield* opened.grant.answer();
     yield* opened.clock.advance(SECOND);
     yield* settle;
@@ -1617,6 +1644,28 @@ describe("the post-grant stage's Mate environments", () => {
     };
     return { adapter, reads: () => reads, release };
   };
+
+  it.effect(
+    "a ready Mate in a project the person has no access to is never a target: no address, no probe",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const outside = mate("b");
+          const { clock, rig, environments } = yield* granted(
+            [],
+            [A_MATE, outside],
+            platformAdapter([A_MATE, outside]),
+            [A_MATE],
+          );
+          yield* clock.advance(MINUTE);
+          yield* settle;
+
+          expect([...environments.machines().keys()]).not.toContain(outside.key);
+          expect(rig.probes.map(({ input }) => input)).not.toContain(outside.origin);
+          expect([...environments.machines().keys()]).toContain(MATE);
+        }),
+      ),
+  );
 
   it.effect("a deleted service loses its Mate only after a confirming read (§9 C19, MC-14)", () =>
     Effect.scoped(
