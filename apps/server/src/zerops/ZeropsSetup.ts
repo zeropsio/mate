@@ -141,7 +141,11 @@ export class ZeropsSetup extends Context.Service<
      * recorded (the engine takes a command id once) or none ran; `ignore`
      * while another runs or ran.
      */
-    readonly browserStandUp: (command: OrchestrationCommand) => Effect.Effect<BrowserStandUp>;
+    readonly browserStandUp: (
+      command: OrchestrationCommand,
+      /** The Zerops user whose session sends it, when it is one. */
+      userId?: string,
+    ) => Effect.Effect<BrowserStandUp>;
     /**
      * How a `claimed` send ended: `through`, its record stands; `failed`, it
      * surely did not go out, and its own claim, only that, is withdrawn;
@@ -295,6 +299,8 @@ export const makeZeropsSetup = (timings: ZeropsSetupTimings = TIMINGS) =>
       null,
     );
     const scope = yield* Effect.scope;
+    /** Whether the stand-up loop runs: it takes over a claim whose send never ended. */
+    const looping = yield* Ref.make(false);
 
     /* ---------------------------------------------------------- the record */
 
@@ -342,6 +348,15 @@ export const makeZeropsSetup = (timings: ZeropsSetupTimings = TIMINGS) =>
         RETURNING project_id`.pipe(
         Effect.map((rows) => rows.length === 1),
         Effect.catch(() => Effect.succeed(false)),
+      );
+
+    /** A claim taken over that nobody can be sent as: settled, as nobody asked. */
+    const settleTaken = (commandId: string) =>
+      sql`UPDATE zerops_stand_ups SET source = 'none'
+        WHERE project_id = ${projectId} AND command_id = ${commandId}
+          AND source = 'server:claimed'`.pipe(
+        Effect.asVoid,
+        Effect.catch(() => Effect.void),
       );
 
     /** A claim on its way went out: its record stands for good. */
@@ -492,6 +507,21 @@ export const makeZeropsSetup = (timings: ZeropsSetupTimings = TIMINGS) =>
           resuming !== undefined && resuming.userId !== ""
             ? resuming.userId
             : standUpRequestedBy(tagList);
+        if (requestedBy === undefined && resuming !== undefined) {
+          // A browser's claim taken over, sent by nobody this server can name, and asked by
+          // nobody: it went out (its message is in the conversation), or it is settled as none.
+          const thread = Option.getOrUndefined(
+            yield* projection
+              .getThreadShellById(ThreadId.make(resuming.threadId))
+              .pipe(Effect.catch(() => Effect.succeed(Option.none()))),
+          );
+          if (thread?.latestUserMessageAt != null) {
+            yield* confirm(resuming.commandId, "server:claimed");
+          } else {
+            yield* settleTaken(resuming.commandId);
+          }
+          return true;
+        }
         if (requestedBy === undefined) {
           return upMs >= Duration.toMillis(timings.noneAfter) ? yield* settle("none") : false;
         }
@@ -616,6 +646,7 @@ export const makeZeropsSetup = (timings: ZeropsSetupTimings = TIMINGS) =>
       const variables = yield* reads.serviceVariables;
       // A Mate the new press did not make keeps its browser's stand-up, and never polls.
       if (variables === undefined || !hasSetupMarker(variables)) return;
+      yield* Ref.set(looping, true);
       yield* readiness.await;
       const since = yield* Clock.currentTimeMillis;
       while (true) {
@@ -626,20 +657,33 @@ export const makeZeropsSetup = (timings: ZeropsSetupTimings = TIMINGS) =>
     });
 
     if (environment !== undefined && isZeropsEnvironment(config)) {
-      yield* Effect.forkScoped(wait);
+      yield* Effect.forkScoped(wait.pipe(Effect.ensuring(Ref.set(looping, false))));
     }
 
-    const browserStandUp = (command: OrchestrationCommand) =>
+    const browserStandUp = (command: OrchestrationCommand, userId?: string) =>
       Effect.gen(function* () {
         if (command.type !== "thread.turn.start") return "dispatch" as const;
-        const held = yield* recordOf;
+        // Where the server never stands up, a browser's stand-up passes as it always did.
+        const variables = yield* reads.serviceVariables;
+        if (variables === undefined || !hasSetupMarker(variables)) return "dispatch" as const;
+        let held = yield* recordOf;
+        // A claim whose send never ended, with no loop to take it over: withdrawn after a while.
+        if (
+          held?.source === "browser:claimed" &&
+          !(yield* Ref.get(looping)) &&
+          (yield* Clock.currentTimeMillis) - Date.parse(held.startedAt) >=
+            Duration.toMillis(timings.claimMaxAge)
+        ) {
+          yield* withdraw(held.commandId, "browser:claimed");
+          held = undefined;
+        }
         // Settled without one (`none`, `skipped`): nothing ran, so a browser's is the only one.
         if (held !== undefined && !RAN.has(held.source)) return "dispatch" as const;
         if (held !== undefined) return held.commandId === command.commandId ? "dispatch" : "ignore";
         const claimed = yield* claim({
           threadId: command.threadId,
           commandId: command.commandId,
-          userId: "",
+          userId: userId ?? "",
           source: "browser:claimed",
           startedAt: yield* nowIso,
         });

@@ -137,7 +137,7 @@ import * as ProcessResourceMonitor from "./diagnostics/ProcessResourceMonitor.ts
 import * as ResourceTelemetry from "./resourceTelemetry/ResourceTelemetry.ts";
 import * as ZeropsAgentAuth from "./zerops/ZeropsAgentAuth.ts";
 import { overlayZeropsAgentAuth } from "./zerops/zeropsAgentProviderOverlay.ts";
-import { ZeropsTurnAdmission } from "./zerops/ZeropsTurnAdmission.ts";
+import { ZeropsTurnAdmission, principalUserId } from "./zerops/ZeropsTurnAdmission.ts";
 import * as ZeropsAgentLoginModule from "./zerops/ZeropsAgentLogin.ts";
 import * as ZeropsAgentSignOutModule from "./zerops/ZeropsAgentSignOut.ts";
 import { threadsToStopForAgent, waitUntilNotLive } from "./zerops/ZeropsAgentSignOut.ts";
@@ -1301,34 +1301,39 @@ const makeWsRpcLayer = (
         // A browser's stand-up — an older cached client still sends one — goes
         // through only while the Mate has none; one more is answered as taken.
         const setup = zeropsSetup.value;
-        return setup.browserStandUp(normalizedCommand).pipe(
-          Effect.flatMap((verdict) =>
-            verdict === "claimed"
-              ? // A claim that surely did not go out (refused, failed) is withdrawn, so a
-                // later "Try again" is real; one that may have (interrupted while queued
-                // for startup, a defect) stands until the server sends it, same ids.
-                admitted.pipe(
-                  Effect.onExit((exit) =>
-                    setup.browserStandUpEnded(
-                      normalizedCommand,
-                      Exit.isSuccess(exit)
-                        ? "through"
-                        : Cause.hasDies(exit.cause) || Cause.hasInterrupts(exit.cause)
-                          ? "unknown"
-                          : "failed",
+        return setup
+          .browserStandUp(
+            normalizedCommand,
+            principalUserId({ kind: "session", subject: currentSession.subject }),
+          )
+          .pipe(
+            Effect.flatMap((verdict) =>
+              verdict === "claimed"
+                ? // A claim that surely did not go out (refused, failed) is withdrawn, so a
+                  // later "Try again" is real; one that may have (interrupted while queued
+                  // for startup, a defect) stands until the server sends it, same ids.
+                  admitted.pipe(
+                    Effect.onExit((exit) =>
+                      setup.browserStandUpEnded(
+                        normalizedCommand,
+                        Exit.isSuccess(exit)
+                          ? "through"
+                          : Cause.hasDies(exit.cause) || Cause.hasInterrupts(exit.cause)
+                            ? "unknown"
+                            : "failed",
+                      ),
                     ),
-                  ),
-                )
-              : verdict === "dispatch"
-                ? admitted
-                : projectionSnapshotQuery.getSnapshotSequence().pipe(
-                    Effect.map(({ snapshotSequence }) => ({ sequence: snapshotSequence })),
-                    Effect.mapError((cause) =>
-                      toDispatchCommandError(cause, "Failed to dispatch orchestration command"),
+                  )
+                : verdict === "dispatch"
+                  ? admitted
+                  : projectionSnapshotQuery.getSnapshotSequence().pipe(
+                      Effect.map(({ snapshotSequence }) => ({ sequence: snapshotSequence })),
+                      Effect.mapError((cause) =>
+                        toDispatchCommandError(cause, "Failed to dispatch orchestration command"),
+                      ),
                     ),
-                  ),
-          ),
-        );
+            ),
+          );
       };
 
       /**

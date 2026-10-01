@@ -492,6 +492,89 @@ describe("ZeropsSetup: the stand-up", () => {
     }),
   );
 
+  it.live("on a Mate made before the new press a browser's stand-up claims nothing", () =>
+    Effect.gen(function* () {
+      const world = yield* makeWorld;
+      yield* Ref.set(world.variables, ["PATH"]);
+      yield* withServer(world, freshDatabase(), (setup) =>
+        Effect.gen(function* () {
+          assert.deepStrictEqual(
+            [
+              yield* setup.browserStandUp(browserSend(1), "user-a"),
+              yield* setup.browserStandUp(browserSend(2), "user-a"),
+            ],
+            ["dispatch", "dispatch"],
+          );
+        }),
+      );
+    }),
+  );
+
+  it.live("a claim no loop will take over is withdrawn after 2 minutes", () =>
+    Effect.gen(function* () {
+      const world = yield* makeWorld;
+      // Unmarked at boot, so no loop runs; marked by the time a browser sends.
+      yield* Ref.set(world.variables, ["PATH"]);
+      yield* withServer(
+        world,
+        freshDatabase(),
+        (setup) =>
+          Effect.gen(function* () {
+            yield* ticks;
+            yield* Ref.set(world.variables, ["PATH", "MATE_SETUP_RUNTIMES"]);
+            assert.strictEqual(yield* setup.browserStandUp(browserSend(1), "user-a"), "claimed");
+            yield* setup.browserStandUpEnded(browserSend(1), "unknown");
+            yield* Effect.sleep(Duration.millis(80));
+            assert.strictEqual(yield* setup.browserStandUp(browserSend(2), "user-a"), "claimed");
+          }),
+        { ...FAST, claimMaxAge: Duration.millis(50) },
+      );
+    }),
+  );
+
+  it.live("a claim taken over with nobody to send it as settles, never stuck", () =>
+    Effect.gen(function* () {
+      const world = yield* makeWorld;
+      yield* Ref.set(world.tags, ["mate:face:coral:gem"]);
+      const database = freshDatabase();
+      yield* withServer(
+        world,
+        database,
+        (setup) =>
+          Effect.gen(function* () {
+            assert.strictEqual(yield* setup.browserStandUp(browserSend(2)), "claimed");
+            yield* setup.browserStandUpEnded(browserSend(2), "unknown");
+            yield* Effect.sleep(Duration.millis(200));
+          }),
+        { ...FAST, claimMaxAge: Duration.millis(50), noneAfter: Duration.minutes(5) },
+      );
+      assert.deepStrictEqual(yield* turnsOf(world), []);
+      assert.isFalse(yield* withServer(world, database, () => stillPolling(world)));
+    }),
+  );
+
+  it.live("a claim taken over is sent as the person whose browser sent it", () =>
+    Effect.gen(function* () {
+      const world = yield* makeWorld;
+      // Signed in, but the tags name no asker any more.
+      yield* Ref.set(world.tags, ["mate:signer:claude-code:user-a"]);
+      yield* withServer(
+        world,
+        freshDatabase(),
+        (setup) =>
+          Effect.gen(function* () {
+            assert.strictEqual(yield* setup.browserStandUp(browserSend(2), "user-a"), "claimed");
+            yield* eventually(turnsOf(world), (turns) => turns.length === 1);
+            assert.deepStrictEqual((yield* Ref.get(world.admitted)).at(-1), {
+              kind: "session",
+              subject: "zerops-user:user-a",
+            });
+          }),
+        { ...FAST, claimMaxAge: Duration.millis(50), noneAfter: Duration.minutes(5) },
+      );
+    }),
+  );
+
   it.live("a browser's claim that never ended is the server's after 2 minutes, same ids", () =>
     Effect.gen(function* () {
       const world = yield* makeWorld;
