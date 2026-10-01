@@ -424,7 +424,7 @@ export const make = (options: ZeropsAgentLoginOptions) =>
           // signed in. A login beyond the defaults is its own feed's to re-check.
           yield* key === session.agentId
             ? zeropsAgentAuth.recheckNow(session.agentId, session.startedBy)
-            : (zeropsLogins?.recheckNow(key) ?? Effect.void);
+            : (zeropsLogins?.recheckNow(key, session.startedBy) ?? Effect.void);
         }
 
         yield* setLoginState(key, {

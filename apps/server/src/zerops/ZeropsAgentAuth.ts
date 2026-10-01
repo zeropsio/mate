@@ -244,15 +244,9 @@ export const MARK_SIGNED_IN_FAILURE_RECHECK_INTERVAL = Duration.minutes(2);
  */
 export const SIGNER_RECHECK_INTERVAL = Duration.seconds(35);
 
-/**
- * How often, and for how long, the feed reads the tags afresh after a sign-in this server walked,
- * until the record names the person who signed in. The app writes it a second or two after it
- * sees the success, and retries a failed write for ~20 s; meanwhile the cached read names the
- * record from before — no record, or the earlier signer — and with that one recorded nothing
- * else would ever republish.
- */
-export const SIGNER_RECORD_POLL = Duration.seconds(2);
-export const SIGNER_RECORD_AWAIT = Duration.seconds(60);
+/** The fresh reads after a sign-in walked here: see `ZeropsProjectSigners`' own. */
+export const SIGNER_RECORD_POLL = ZeropsProjectSignersModule.SIGNER_RECORD_FRESH_POLL;
+export const SIGNER_RECORD_AWAIT = ZeropsProjectSignersModule.SIGNER_RECORD_FRESH_AWAIT;
 
 /**
  * How often an agent whose credential is present but whose last check could

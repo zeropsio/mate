@@ -238,6 +238,16 @@ export const SIGNERS_CACHE_TTL = Duration.seconds(30);
  */
 export const SIGNER_RECORD_WAIT = Duration.seconds(15);
 const SIGNER_RECORD_POLL = Duration.seconds(1);
+
+/**
+ * How often, and for how long, a feed reads the tags afresh ({@link ZeropsProjectSigners}'
+ * `fresh`) after a sign-in this server walked, until the record names the person who signed in.
+ * The app writes it a second or two after it sees the success, and retries a failed write for
+ * ~20 s; meanwhile the cached read names the record from before — no record, or the earlier
+ * signer — and with that one recorded nothing else would ever republish.
+ */
+export const SIGNER_RECORD_FRESH_POLL = Duration.seconds(2);
+export const SIGNER_RECORD_FRESH_AWAIT = Duration.seconds(60);
 /** A login started longer ago than this has had its record written, or never will. */
 const RECORD_ON_ITS_WAY_WITHIN = Duration.minutes(30);
 
