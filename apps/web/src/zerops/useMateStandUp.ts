@@ -25,13 +25,13 @@ import { useThreadShells } from "../state/entities";
 import { onAccountLifetimeClose } from "./accountLifetime";
 import { zeropsMateAt } from "./mateIdentities";
 import {
-  isMateStandUpAsk,
   MATE_STAND_UP_MESSAGE,
   mateStandUpAskLine,
   mateStandUpCleared,
   mateStandUpDecision,
   mateStandUpHoldsComposer,
   mateStandUpSendIds,
+  promptWithoutStandUpAsk,
   type MateStandUpConversation,
 } from "./mateStandUp";
 import { useMateReadOnly } from "./useMateReadOnly";
@@ -216,10 +216,10 @@ export function useMateStandUp(input: {
     if (environmentId === null || threadRef === null) return;
     if (attempt?.state !== "failed" || conversation !== "started") return;
     setAttempt(environmentId, { ...attempt, state: "answered" });
+    // Only the ask's words go: the pictures, terminal lines and notes beside them stay.
     const drafts = useComposerDraftStore.getState();
-    if (isMateStandUpAsk(drafts.getComposerDraft(threadRef)?.prompt ?? "")) {
-      drafts.clearComposerContent(threadRef);
-    }
+    const prompt = promptWithoutStandUpAsk(drafts.getComposerDraft(threadRef)?.prompt ?? "");
+    if (prompt !== undefined) drafts.setPrompt(threadRef, prompt);
   }, [attempt, conversation, environmentId, threadRef]);
 
   const project = useZeropsEnvironmentProject(environmentId);

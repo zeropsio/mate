@@ -34,6 +34,8 @@ import type { ZeropsAgentAuthSnapshot } from "@t3tools/contracts";
 import { classifyZeropsAgentAuth } from "@t3tools/shared/zeropsAgentAuth";
 
 import type { ComposerSendIds } from "../composerDraftStore";
+import { INLINE_PICTURE_PLACEHOLDER } from "../lib/composerPictures";
+import { INLINE_TERMINAL_CONTEXT_PLACEHOLDER } from "../lib/terminalContext";
 import type { ZeropsMateIdentity } from "./mateIdentities";
 import { resolveAgentAuthorizer, type LocalAgentSigners } from "./useZeropsAgentSigner";
 
@@ -193,6 +195,21 @@ export function mateStandUpAskLine(
   return asker === "you"
     ? `You asked ${mate.name} to stand up development of ${of}`
     : `${mate.name} was asked to stand up development of ${of}`;
+}
+
+/** What a composer's prompt carries besides its words: a picture's or a terminal's place. */
+const INLINE_PLACES = new Set([INLINE_PICTURE_PLACEHOLDER, INLINE_TERMINAL_CONTEXT_PLACEHOLDER]);
+
+/**
+ * A composer's prompt without the stand-up's ask, where its words are the ask and nothing else:
+ * the places of its pictures and terminal lines stay, in order. `undefined` where the person wrote
+ * anything of their own — then it is their draft, left as it is.
+ */
+export function promptWithoutStandUpAsk(prompt: string): string | undefined {
+  const chars = [...prompt];
+  const words = chars.filter((char) => !INLINE_PLACES.has(char)).join("");
+  if (!isMateStandUpAsk(words)) return undefined;
+  return chars.filter((char) => INLINE_PLACES.has(char)).join("");
 }
 
 /** Whether a message of the Mate's main conversation is the stand-up's ask: its exact words. */

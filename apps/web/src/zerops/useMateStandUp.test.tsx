@@ -4,6 +4,7 @@ import { act, createElement, Fragment } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { TestNode } from "./__fixtures__/testDom";
+import { INLINE_TERMINAL_CONTEXT_PLACEHOLDER } from "../lib/terminalContext";
 import { MATE_STAND_UP_MESSAGE } from "./mateStandUp";
 
 const ENVIRONMENT = EnvironmentId.make("environment-fen");
@@ -259,13 +260,32 @@ describe("useMateStandUp", () => {
       await views.show({ sendBusy: true });
       await views.show({ sendBusy: false });
       expect(views.attempt()).toBe("failed");
-      // The refused send handed its words back to the composer.
-      act(() => useComposerDraftStore.getState().setPrompt(MAIN, MATE_STAND_UP_MESSAGE));
+      // The refused send handed its words back to the composer, beside what the person had put
+      // there meanwhile — a terminal's lines here; pictures and review notes alike.
+      act(() => {
+        const drafts = useComposerDraftStore.getState();
+        drafts.setPrompt(MAIN, MATE_STAND_UP_MESSAGE);
+        drafts.setTerminalContexts(MAIN, [
+          {
+            id: "context-1",
+            threadId: ThreadId.make("thread-main"),
+            createdAt: "2026-10-01T10:00:00.000Z",
+            terminalId: "term-1",
+            terminalLabel: "Terminal 1",
+            lineStart: 1,
+            lineEnd: 2,
+            text: "npm run dev",
+          },
+        ]);
+      });
 
       await views.show({ messageCount: 1 });
 
       expect(views.attempt()).not.toBe("failed");
-      expect(useComposerDraftStore.getState().getComposerDraft(MAIN)?.prompt ?? "").toBe("");
+      const draft = useComposerDraftStore.getState().getComposerDraft(MAIN);
+      // The ask's words gone; the terminal lines' place stays where it stood.
+      expect(draft?.prompt).toBe(INLINE_TERMINAL_CONTEXT_PLACEHOLDER);
+      expect(draft?.terminalContexts.map((context) => context.id)).toEqual(["context-1"]);
     } finally {
       await views.close();
     }
