@@ -39,6 +39,12 @@ export function selectAutoConnectTargets(input: {
   readonly candidates: ReadonlyArray<AutoConnectCandidate>;
   /** What each container answered, by candidate key; absent = still asking. */
   readonly health: ReadonlyMap<string, ZeropsContainerHealth>;
+  /**
+   * Projects whose press stopped before its close-off: the container carries the press's marker
+   * (`MATE_SETUP_RUNTIMES`) and the project no `mate:closed-off`. Skipped, on screen or not: nobody
+   * is let into a Mate before its project is closed off, and *Finish setup* does that.
+   */
+  readonly closeOffPendingProjectIds?: ReadonlySet<string>;
   readonly limit?: number;
   /**
    * The project whose Mate is on screen: wanted first, and past the ceiling, which is for Mates
@@ -47,6 +53,7 @@ export function selectAutoConnectTargets(input: {
   readonly onScreenProjectId?: string | null;
 }): ReadonlyArray<string> {
   const limit = input.limit ?? ZEROPS_AUTO_CONNECT_LIMIT;
+  const closeOffPending = input.closeOffPendingProjectIds ?? new Set<string>();
 
   // Registered environments count against the ceiling whether or not their
   // socket is up right now; a reconnecting one is still one of ours.
@@ -66,6 +73,7 @@ export function selectAutoConnectTargets(input: {
     if (candidate.connection !== undefined || candidate.environmentId !== undefined) return null;
     if (input.health.get(candidate.key) !== "ready") return null;
     if (seen.has(origin)) return null;
+    if (closeOffPending.has(candidate.project.id)) return null;
     return origin;
   };
   const onScreen = input.onScreenProjectId ?? null;

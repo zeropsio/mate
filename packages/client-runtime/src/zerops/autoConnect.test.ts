@@ -26,6 +26,7 @@ describe("selectAutoConnectTargets: auto-connect's WANT (DESIGN §4.4)", () => {
     readonly name: string;
     readonly candidate: AutoConnectCandidate;
     readonly health?: ZeropsContainerHealth;
+    readonly closeOffPending?: boolean;
     readonly wanted: boolean;
   }> = [
     {
@@ -60,6 +61,15 @@ describe("selectAutoConnectTargets: auto-connect's WANT (DESIGN §4.4)", () => {
       wanted: false,
     },
     {
+      // Its press stopped before the mark: its container carries the press's marker and its
+      // project no `mate:closed-off`. Nobody is let in until Finish setup closes it off.
+      name: "a Mate whose press has not closed its project off",
+      candidate: candidate("a"),
+      health: "ready",
+      closeOffPending: true,
+      wanted: false,
+    },
+    {
       name: "a container with no address",
       candidate: (({ containerOrigin: _origin, ...noAddress }) => noAddress)(candidate("a")),
       health: "ready",
@@ -71,6 +81,7 @@ describe("selectAutoConnectTargets: auto-connect's WANT (DESIGN §4.4)", () => {
     const targets = selectAutoConnectTargets({
       candidates: [row.candidate],
       health: health(row.health === undefined ? [] : [["a", row.health]]),
+      closeOffPendingProjectIds: new Set(row.closeOffPending === true ? ["a"] : []),
     });
     expect(targets).toEqual(row.wanted ? ["a:zcp"] : []);
   });
@@ -121,11 +132,16 @@ describe("selectAutoConnectTargets: auto-connect's WANT (DESIGN §4.4)", () => {
     expect(targets).toEqual(["shown:zcp"]);
   });
 
-  it("the Mate on screen still waits for its health", () => {
-    for (const shownHealth of [undefined, "initializing"] as const) {
+  it("the Mate on screen still waits for its health and its close-off", () => {
+    for (const [shownHealth, pending] of [
+      [undefined, false],
+      ["initializing", false],
+      ["ready", true],
+    ] as const) {
       const targets = selectAutoConnectTargets({
         candidates: [candidate("shown")],
         health: health(shownHealth === undefined ? [] : [["shown", shownHealth]]),
+        closeOffPendingProjectIds: new Set(pending ? ["shown"] : []),
         limit: 0,
         onScreenProjectId: "shown",
       });

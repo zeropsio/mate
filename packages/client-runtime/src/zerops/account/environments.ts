@@ -41,6 +41,7 @@ import {
   type OrganizationRef,
   type ProjectActivityRead,
   type ProjectRef,
+  type ServiceRef,
 } from "../data/types.ts";
 import type { IdentityExchangeReason } from "../diagnostics.ts";
 import {
@@ -93,6 +94,7 @@ import {
 import type { ExchangeAnswer } from "../identityExchange.ts";
 import type { InvalidationBus } from "../knowledge/invalidation.ts";
 import type { PlatformSignal } from "../knowledge/signals.ts";
+import { isZeropsMateClosedOff } from "../groups.ts";
 import { heldCandidates, type CandidateRow } from "../projections/candidates.ts";
 
 // ── Ports ────────────────────────────────────────────────────────────────────────────────────
@@ -517,7 +519,56 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
     );
   };
 
-  /** The active organization's ready Mates, capped (D13). */
+  /**
+   * The press's marker (`MATE_SETUP_RUNTIMES`) on each listed Mate's container whose project has
+   * no `mate:closed-off`, by service id: a press stopped before its close-off, and nobody is let
+   * in until *Finish setup* closes it. Followed only while such a Mate is listed.
+   */
+  interface FollowedMarker {
+    readonly projectId: string;
+    marked: boolean;
+    stop: () => void;
+  }
+  const markers = new Map<string, FollowedMarker>();
+  const followMarkers = (rows: ReadonlyArray<CandidateRow>): ReadonlySet<string> => {
+    const open = new Map<string, { readonly projectId: string; readonly ref: ServiceRef }>();
+    for (const row of rows) {
+      if (row.service === undefined || isZeropsMateClosedOff(row.project.tagList)) continue;
+      const project = projectRefOf(row.project.id);
+      if (project === undefined) continue;
+      open.set(row.service.id, {
+        projectId: row.project.id,
+        ref: { kind: "service", project, serviceId: ZeropsServiceId.make(row.service.id) },
+      });
+    }
+    for (const [serviceId, followed] of markers) {
+      if (open.has(serviceId)) continue;
+      followed.stop();
+      markers.delete(serviceId);
+    }
+    for (const [serviceId, { projectId, ref }] of open) {
+      if (markers.has(serviceId)) continue;
+      const followed: FollowedMarker = { projectId, marked: false, stop: () => undefined };
+      markers.set(serviceId, followed);
+      let ready = false;
+      followed.stop = atomRegistry.subscribe(
+        data.reads.setupMarker(ref),
+        (marker) => {
+          const marked = marker === true;
+          if (followed.marked === marked) return;
+          followed.marked = marked;
+          if (ready) updateAutoConnect();
+        },
+        { immediate: true },
+      );
+      ready = true;
+    }
+    return new Set(
+      [...markers.values()].flatMap((followed) => (followed.marked ? [followed.projectId] : [])),
+    );
+  };
+
+  /** The active organization's ready Mates, capped (D13), none a stopped press left open. */
   const updateAutoConnect = () => {
     if (stores === null || closed) return;
     const listed = listings.find(({ organizationId }) => organizationId === activeOrganization);
@@ -545,6 +596,7 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
       selectAutoConnectTargets({
         candidates,
         health: containerSnapshotOf(stores.containers.machines()).health,
+        closeOffPendingProjectIds: followMarkers(candidates),
         onScreenProjectId: onScreen,
       }),
     );
@@ -829,6 +881,8 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
         for (const stop of stops) stop();
         for (const followed of activity.values()) followed.stop();
         activity.clear();
+        for (const followed of markers.values()) followed.stop();
+        markers.clear();
         for (const release of checks.values()) release();
         checks.clear();
         driver.dispose();
