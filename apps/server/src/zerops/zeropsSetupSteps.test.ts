@@ -294,6 +294,26 @@ describe("setupDocument", () => {
       "failed",
     ],
     ["nothing asked, nothing started: nothing to wait for", { requestedBy: undefined }, "done"],
+    [
+      "started, zcp says running but stopped refreshing its file: its MCP server died",
+      {
+        record: { startedAt: NOW, ran: true },
+        status: parseZcpStatus(
+          status({ updatedAt: "2026-10-01T11:57:59Z", standup: { state: "running" } }),
+        ),
+      },
+      "failed",
+    ],
+    [
+      "started, zcp running and refreshed two minutes ago: still running",
+      {
+        record: { startedAt: NOW, ran: true },
+        status: parseZcpStatus(
+          status({ updatedAt: "2026-10-01T11:58:00Z", standup: { state: "running" } }),
+        ),
+      },
+      "running",
+    ],
     ["settled with none ran: done", { record: { startedAt: NOW, ran: false } }, "done"],
     [
       "the tags not read yet: it may yet be asked",

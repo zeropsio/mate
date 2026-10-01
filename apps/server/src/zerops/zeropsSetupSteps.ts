@@ -214,6 +214,19 @@ export const parseZcpStatus = (raw: unknown): ZcpStatus | undefined => {
   };
 };
 
+/**
+ * zcp refreshes its file's `updatedAt` every 15 s while a stand-up runs; one
+ * left `running` and not refreshed for longer than this lost its MCP server.
+ */
+export const STAND_UP_STALE_AFTER_MS = 2 * 60_000;
+
+/** A stand-up the file says runs, from a zcp that stopped writing it. */
+export const isStaleStandUp = (status: ZcpStatus | undefined, nowMs: number): boolean => {
+  if (status?.standup?.state !== "running") return false;
+  const updated = Date.parse(status.updatedAt);
+  return Number.isFinite(updated) && nowMs - updated > STAND_UP_STALE_AFTER_MS;
+};
+
 /* ------------------------------------------------------------ the document */
 
 export type SetupStepId = "container" | "git" | "runtimes" | "signin" | "standup";
@@ -277,8 +290,9 @@ const runtimesStep = (status: ZcpStatus | undefined): SetupStep => {
 
 const standUpStep = (facts: SetupFacts): SetupStep => {
   const standup = facts.status?.standup;
-  const zcpState =
-    standup?.state === "running" || standup?.state === "done" || standup?.state === "failed"
+  const zcpState = isStaleStandUp(facts.status, Date.parse(facts.now))
+    ? "failed"
+    : standup?.state === "running" || standup?.state === "done" || standup?.state === "failed"
       ? standup.state
       : undefined;
   if (facts.record !== undefined && !facts.record.ran) {
