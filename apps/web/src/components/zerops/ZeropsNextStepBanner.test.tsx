@@ -51,6 +51,8 @@ const WAITING: ZeropsMateNextStep = {
     pull: PULL,
     title: "Nova is waiting for your review of #2",
     detail: "Add a status page",
+    lines: [],
+    more: 0,
   },
   tint: "slate",
   shape: "squircle",
@@ -79,6 +81,58 @@ const SHOWN: ZeropsNextStepStripModel = {
   tint: "slate",
   shape: "squircle",
   target: { kind: "change", groupId: "g-1", repository: "app", number: 2 },
+};
+
+const API_PULL: FlowPullRequest = {
+  ...PULL,
+  repository: "api",
+  number: 2,
+  title: "Rebuild the API",
+};
+
+/** Two of Nova's changes waiting: a count, and a line for each. */
+const WAITING_TWO: ZeropsMateNextStep = {
+  ...WAITING,
+  step: {
+    kind: "review",
+    pull: API_PULL,
+    title: "Nova is waiting for your review of 2 changes",
+    detail: "Rebuild the API",
+    lines: [
+      { pull: API_PULL, label: "api #2 Rebuild the API" },
+      { pull: PULL, label: "app #2 Add a status page" },
+    ],
+    more: 0,
+  },
+  target: { kind: "change", groupId: "g-1", repository: "api", number: 2 },
+};
+
+const REMEMBERED_TWO: RememberedComposerTop = {
+  ...REMEMBERED,
+  repository: "api",
+  title: "Rebuild the API",
+  words: "Nova is waiting for your review of 2 changes",
+  lines: [
+    { repository: "api", number: 2, label: "api #2 Rebuild the API" },
+    { repository: "app", number: 2, label: "app #2 Add a status page" },
+  ],
+};
+
+const SHOWN_TWO: ZeropsNextStepStripModel = {
+  ...SHOWN,
+  title: "Nova is waiting for your review of 2 changes",
+  detail: "Rebuild the API",
+  target: { kind: "change", groupId: "g-1", repository: "api", number: 2 },
+  lines: [
+    {
+      label: "api #2 Rebuild the API",
+      target: { kind: "change", groupId: "g-1", repository: "api", number: 2 },
+    },
+    {
+      label: "app #2 Add a status page",
+      target: { kind: "change", groupId: "g-1", repository: "app", number: 2 },
+    },
+  ],
 };
 
 describe("zeropsComposerTop", () => {
@@ -153,6 +207,14 @@ describe("zeropsComposerTop", () => {
       answers: [UNANSWERED, WAITING],
       shown: [null, SHOWN],
       remembered: REMEMBERED,
+    },
+    {
+      case: "two waiting: remembered with their lines, so a reload paints the strip it keeps",
+      memory: { "env-nova:thread-1": REMEMBERED_TWO },
+      threadKey: "env-nova:thread-1",
+      answers: [UNANSWERED, WAITING_TWO],
+      shown: [SHOWN_TWO, SHOWN_TWO],
+      remembered: REMEMBERED_TWO,
     },
     {
       case: "another conversation's memory, never used",
@@ -274,6 +336,48 @@ describe("ZeropsNextStepStrip", () => {
 
     expect(onReview).toHaveBeenCalledWith(
       { kind: "change", groupId: "g-1", repository: "app", number: 2 },
+      pressed,
+    );
+  });
+
+  it("lists every change waiting, each with its own Review, under a count", () => {
+    const strip: ZeropsNextStepStripModel = {
+      ...STRIP,
+      title: "Nova is waiting for your review of 2 changes",
+      detail: "Rebuild the API",
+      lines: [
+        {
+          label: "apidev #1 Rebuild the API",
+          target: { kind: "change", groupId: "g-1", repository: "apidev", number: 1 },
+        },
+        {
+          label: "appdev #1 Build the site",
+          target: { kind: "change", groupId: "g-1", repository: "appdev", number: 1 },
+        },
+      ],
+    };
+    const text = renderToStaticMarkup(<ZeropsNextStepStrip onReview={() => {}} strip={strip} />)
+      .replace(/<[^>]*>/gu, " ")
+      .replace(/\s+/gu, " ");
+    expect(text).toContain("Nova is waiting for your review of 2 changes");
+    expect(text).toContain("apidev #1 Rebuild the API Review");
+    expect(text).toContain("appdev #1 Build the site Review");
+
+    const onReview = vi.fn();
+    const buttons: Array<ReactElement<Record<string, unknown>>> = [];
+    visitElements(ZeropsNextStepStrip({ onReview, strip }) as ReactElement, (element) => {
+      if (element.type === "button") buttons.push(element);
+      return false;
+    });
+    expect(buttons).toHaveLength(2);
+    const second = buttons[1];
+    if (second === undefined) throw new Error("the second change has no Review");
+    const pressed = { tagName: "BUTTON" } as unknown as HTMLElement;
+    (second.props.onClick as (event: { currentTarget: HTMLElement }) => void)({
+      currentTarget: pressed,
+    });
+    expect(onReview).toHaveBeenCalledWith(
+      { kind: "change", groupId: "g-1", repository: "appdev", number: 1 },
       pressed,
     );
   });

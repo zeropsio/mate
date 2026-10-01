@@ -32,6 +32,14 @@ const StripSchema = Schema.Struct({
   tint: Schema.Literals(MATE_TINT_IDS),
   /** The shape its person picked; absent from a memory kept before a face could be picked. */
   shape: Schema.optionalKey(Schema.Literals(MATE_SHAPE_IDS)),
+  /** Where more than one change waits, the lines it listed: `apidev #1 Rebuild the API`. */
+  lines: Schema.optionalKey(
+    Schema.Array(
+      Schema.Struct({ repository: Schema.String, number: Schema.Number, label: Schema.String }),
+    ),
+  ),
+  /** How many more waited past the lines. */
+  more: Schema.optionalKey(Schema.Number),
 });
 
 const MemorySchema = Schema.Record(Schema.String, StripSchema);

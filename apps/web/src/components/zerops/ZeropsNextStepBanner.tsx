@@ -26,6 +26,7 @@
 import { scopedThreadKey } from "@t3tools/client-runtime/environment";
 import type { ScopedThreadRef } from "@t3tools/contracts";
 import type { MateShapeId, MateTintId } from "@t3tools/shared/brand";
+import { useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, type ReactNode } from "react";
 
 import {
@@ -43,11 +44,22 @@ export interface ZeropsNextStepPending {
   readonly approval: boolean;
 }
 
+/** One of several changes waiting, on a line of its own with its own Review. */
+export interface ZeropsNextStepLine {
+  /** `apidev #1 Rebuild the API`, as the menu names it. */
+  readonly label: string;
+  readonly target: Extract<ReviewTarget, { kind: "change" }>;
+}
+
 export interface ZeropsNextStepStripModel {
-  /** `Nova is waiting for your review of #2` */
+  /** `Nova is waiting for your review of #2`, or `of 2 changes` */
   readonly title: string;
-  /** The change's own title. */
+  /** The change's own title — the newest's, where several wait. */
   readonly detail: string;
+  /** Where several wait, the newest three, each with its own Review. */
+  readonly lines?: ReadonlyArray<ZeropsNextStepLine> | undefined;
+  /** How many more wait past the lines: "and 2 more" opens the project's page. */
+  readonly more?: number | undefined;
   readonly tint: MateTintId;
   /** The shape its person picked; its tint's own when absent. */
   readonly shape?: MateShapeId | undefined;
@@ -77,6 +89,20 @@ function stripOf(top: RememberedComposerTop): ZeropsNextStepStripModel {
       repository: top.repository,
       number: top.number,
     },
+    ...(top.lines === undefined
+      ? {}
+      : {
+          lines: top.lines.map((line) => ({
+            label: line.label,
+            target: {
+              kind: "change" as const,
+              groupId: top.groupId,
+              repository: line.repository,
+              number: line.number,
+            },
+          })),
+        }),
+    ...(top.more === undefined ? {} : { more: top.more }),
   };
 }
 
@@ -113,6 +139,16 @@ export function zeropsComposerTop(input: {
         words: nextStep.step.title,
         tint: nextStep.tint ?? remembered?.tint ?? "slate",
         ...(shape === undefined ? {} : { shape }),
+        ...(nextStep.step.lines.length === 0
+          ? {}
+          : {
+              lines: nextStep.step.lines.map((line) => ({
+                repository: line.pull.repository,
+                number: line.pull.number,
+                label: line.label,
+              })),
+            }),
+        ...(nextStep.step.more === 0 ? {} : { more: nextStep.step.more }),
       };
       return { strip: held ? null : stripOf(shown), remember: shown };
     }
@@ -122,11 +158,61 @@ export function zeropsComposerTop(input: {
 export function ZeropsNextStepStrip({
   strip,
   onReview,
+  onMore,
 }: {
   readonly strip: ZeropsNextStepStripModel;
   /** Opens the review, from the button that was pressed. */
   readonly onReview: (target: ZeropsNextStepStripModel["target"], from: HTMLElement) => void;
+  /** Opens the project's page, where every change waiting is listed. */
+  readonly onMore?: ((groupId: string) => void) | undefined;
 }) {
+  const lines = strip.lines ?? [];
+  if (lines.length > 0) {
+    // Several waiting: the count on the face's line, then one line per change with its own
+    // Review, newest first — in blue words, as the menu's change rows have it, so no line
+    // stacks a second blue button. The strip grows upward from the composer's text, which stays.
+    return (
+      <section
+        aria-label={strip.title}
+        className="grid grid-cols-[28px_minmax(0,1fr)_auto] items-center gap-x-3 gap-y-0.5 border-foreground/8 border-b pt-3 pe-2.5 pb-2.5 ps-4"
+        data-composer-top="review"
+      >
+        <MateFace shape={strip.shape} size="md" state="needs" tint={strip.tint} />
+        <p className="col-span-2 truncate font-medium text-foreground text-line leading-4.5">
+          {strip.title}
+        </p>
+        {lines.map((line) => (
+          <div
+            className="col-start-2 col-end-4 grid grid-cols-subgrid items-center"
+            data-composer-top-line=""
+            key={`${line.target.repository}#${String(line.target.number)}`}
+          >
+            <p className="truncate text-muted-foreground text-line leading-4.5">{line.label}</p>
+            <button
+              className="menu-textbtn outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              onClick={(event) => {
+                onReview(line.target, event.currentTarget);
+              }}
+              type="button"
+            >
+              Review
+            </button>
+          </div>
+        ))}
+        {strip.more === undefined || strip.more === 0 ? null : (
+          <button
+            className="col-start-2 cursor-pointer justify-self-start rounded-sm text-muted-foreground text-line leading-6 outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+            onClick={() => {
+              onMore?.(strip.target.groupId);
+            }}
+            type="button"
+          >
+            and {strip.more} more
+          </button>
+        )}
+      </section>
+    );
+  }
   return (
     <section
       aria-label={strip.title}
@@ -157,6 +243,7 @@ export function useZeropsNextStepStrip(
   pending: ZeropsNextStepPending,
 ): ReactNode {
   const openReview = useOpenReview();
+  const navigate = useNavigate();
   const threadKey = threadRef === null ? null : scopedThreadKey(threadRef);
   const { strip, remember } = zeropsComposerTop({
     nextStep: useZeropsMateNextStep(threadRef),
@@ -172,34 +259,20 @@ export function useZeropsNextStepStrip(
   // says does — a remembered strip Gitea confirms is the same node, so the
   // answer re-renders nothing — and a conversation's re-render never
   // re-renders the composer.
-  const title = strip?.title;
-  const detail = strip?.detail;
-  const tint = strip?.tint;
-  const shape = strip?.shape;
-  const groupId = strip?.target.groupId;
-  const repository = strip?.target.repository;
-  const number = strip?.target.number;
+  const shown = strip === null ? null : JSON.stringify(strip);
   return useMemo(
     () =>
-      title === undefined ||
-      detail === undefined ||
-      tint === undefined ||
-      groupId === undefined ||
-      repository === undefined ||
-      number === undefined ? null : (
+      shown === null ? null : (
         <ZeropsNextStepStrip
+          onMore={(groupId) => {
+            void navigate({ to: "/group/$groupId/flow", params: { groupId } });
+          }}
           onReview={(target, from) => {
             openReview(target, { from });
           }}
-          strip={{
-            title,
-            detail,
-            tint,
-            shape,
-            target: { kind: "change", groupId, repository, number },
-          }}
+          strip={JSON.parse(shown) as ZeropsNextStepStripModel}
         />
       ),
-    [detail, groupId, number, openReview, repository, shape, tint, title],
+    [navigate, openReview, shown],
   );
 }
