@@ -340,9 +340,15 @@ describe("local agent signers", () => {
     expect(readLocalAgentSigners(ENV)).toEqual({});
   });
 
-  it("forgets the record it wrote once somebody else has signed in since", () => {
+  // Neither snapshot names this client's record: what forgets it is the later sign-in alone.
+  it.each([
+    { name: "before any record", earlier: undefined },
+    { name: "while the record from before still stands", earlier: "user-c" },
+  ])("forgets the record it wrote once somebody else has signed in since, $name", ({ earlier }) => {
     rememberLocalAgentSigner(ENV, "claude-code", "user-a");
-    localSignersSettledBy(ENV, signedInOver("user-a", "user-b"));
+    localSignersSettledBy(ENV, signedInOver(earlier, "user-a"));
+    expect(readLocalAgentSigners(ENV)).toEqual({ "claude-code": "user-a" });
+    localSignersSettledBy(ENV, signedInOver(earlier, "user-b"));
     expect(readLocalAgentSigners(ENV)).toEqual({});
   });
 
