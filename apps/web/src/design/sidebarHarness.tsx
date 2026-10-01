@@ -547,6 +547,13 @@ const FLOWS = new Map<string, SidebarProjectFlow>([
           merged: false,
           mergedAt: undefined,
         }),
+        // Enzo's #4 in a second repository: each of its rows names its own.
+        pull({
+          number: 4,
+          repository: "apidev",
+          title: "Rebuild the API on the new schema",
+          mateProjectId: "links-enzo",
+        }),
         pull({
           number: 5,
           title: "Cache the link previews",
