@@ -87,6 +87,8 @@ export interface ZeropsDeployGroup {
        * showing the previous one until the clock does (DESIGN §4.7).
        */
       readonly activeDeploy?: string | undefined;
+      /** The id of that active deploy's version: a version read naming another is stale. */
+      readonly activeVersionId?: string | undefined;
     }>;
   }>;
 }
@@ -238,13 +240,14 @@ export async function readGroupDeploys(input: {
       projectId: project.projectId,
       serviceId: service.serviceId,
       hostname: service.hostname,
+      activeVersionId: service.activeVersionId,
     })),
   );
   const versions = new Map<string, string>();
   for (const read of planDeployedVersionReads({ declarations, services })) {
     signal.throwIfAborted();
     const name = await input
-      .readVersion(read.projectId, read.serviceId, signal)
+      .readVersion(read.projectId, read.serviceId, signal, read.activeVersionId)
       .catch(() => heldVersion(held, read));
     if (name !== undefined) versions.set(read.serviceId, name);
   }

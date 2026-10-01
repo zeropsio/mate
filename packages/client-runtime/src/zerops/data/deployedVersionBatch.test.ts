@@ -49,10 +49,30 @@ interface Platform {
   readonly client: ZeropsApiClient;
 }
 
-/** A Zerops whose searches leave out `unindexed` services, as a lagging index does. */
-function platform(options: { readonly unindexed?: ReadonlyArray<string> } = {}): Platform {
+/**
+ * A Zerops whose searches leave out `unindexed` services, and still answer the version a `lagging`
+ * one ran before its deploy, as a lagging index does.
+ */
+function platform(
+  options: {
+    readonly unindexed?: ReadonlyArray<string>;
+    readonly lagging?: ReadonlyArray<string>;
+  } = {},
+): Platform {
   const requests: Platform["requests"] = [];
   const unindexed = new Set(options.unindexed);
+  const lagging = new Set(options.lagging);
+  const indexed = (id: string) =>
+    lagging.has(id)
+      ? {
+          id,
+          activeAppVersion: { id: `v-old-${id}`, status: "ACTIVE" },
+          userData: [
+            { key: "appVersionId", content: `v-old-${id}` },
+            { key: "appVersionName", content: `old-${id}` },
+          ],
+        }
+      : row(id);
   const client = new ZeropsApiClient({
     baseUrl: account.apiOrigin,
     fetch: async (input, init) => {
@@ -71,7 +91,7 @@ function platform(options: { readonly unindexed?: ReadonlyArray<string> } = {}):
         }
       ).search.find(({ name }) => name === "id")?.value as ReadonlyArray<string>;
       if (path === "/service-stack/search")
-        return json({ items: ids.filter((id) => !unindexed.has(id)).map(row) });
+        return json({ items: ids.filter((id) => !unindexed.has(id)).map(indexed) });
       if (path === "/app-version/search")
         return json({ items: ids.map((id) => ({ id, source: "GIT", status: "ACTIVE" })) });
       return new Response("{}", { status: 404 });
@@ -81,12 +101,22 @@ function platform(options: { readonly unindexed?: ReadonlyArray<string> } = {}):
   return { requests, client };
 }
 
-const readAll = (client: ZeropsApiClient, services: ReadonlyArray<ServiceRef>) => {
+const readAll = (
+  client: ZeropsApiClient,
+  services: ReadonlyArray<ServiceRef>,
+  /** The active version the caller's live data names, per service. */
+  activeIdOf?: (service: ServiceRef) => string,
+) => {
   const adapter = makeZeropsResourceRestAdapter(client);
   return Effect.all(
     services.map((service) =>
       adapter.readServiceDeployedVersion(
-        { kind: "service-deployed-version", account: scope, service },
+        {
+          kind: "service-deployed-version",
+          account: scope,
+          service,
+          ...(activeIdOf === undefined ? {} : { activeId: activeIdOf(service) }),
+        },
         { abortSignal: new AbortController().signal },
       ),
     ),
@@ -140,6 +170,28 @@ describe("what services run, read together (A14)", () => {
         { method: "GET", path: "/service-stack/s1" },
       ]);
     }),
+  );
+
+  it.effect(
+    "a service whose search still names the version before its deploy is read on its own",
+    () =>
+      Effect.gen(function* () {
+        // PR #60 review: right after a deploy the search answers the version that ran before
+        // it; the version the live data pushed is what the service runs.
+        const { client, requests } = platform({ lagging: ["s1"] });
+        const values = yield* readAll(
+          client,
+          ids(3).map((id) => serviceOf("org", id)),
+          (service) => `v-${service.serviceId}`,
+        );
+
+        expect(values).toEqual(ids(3).map(expectedOf));
+        expect(requests).toEqual([
+          { method: "POST", path: "/service-stack/search" },
+          { method: "POST", path: "/app-version/search" },
+          { method: "GET", path: "/service-stack/s1" },
+        ]);
+      }),
   );
 
   it.effect("each organization's services are searched in that organization", () =>

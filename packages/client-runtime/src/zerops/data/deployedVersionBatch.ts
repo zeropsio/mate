@@ -6,7 +6,8 @@
  * searches (`readServicesDeploys`) whatever their count, the way the platform's own app reads.
  *
  * A service asked for alone is read by id: that is the deploy that just activated, which the
- * lag-free read sees first. A service the searches do not carry yet is read by id too.
+ * lag-free read sees first. A service the searches do not carry yet is read by id too, and so is
+ * one whose search still names another version than the one its asker's live data pushed.
  */
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
@@ -28,6 +29,8 @@ export interface ServiceDeploysBatchOptions {
 
 interface Waiter {
   readonly serviceId: string;
+  /** The active version the asker's live data names: a search naming another is stale. */
+  readonly activeId: string | undefined;
   readonly resolve: (deploys: ZeropsServiceDeploys) => void;
   readonly reject: (cause: unknown) => void;
   settled: boolean;
@@ -41,7 +44,7 @@ const aborted = () => new DOMException("The read was abandoned.", "AbortError");
 export function makeServiceDeploysBatch(
   client: ServiceDeploysClient,
   options: ServiceDeploysBatchOptions = {},
-): (service: ServiceRef, signal: AbortSignal) => Promise<ZeropsServiceDeploys> {
+): (service: ServiceRef, signal: AbortSignal, activeId?: string) => Promise<ZeropsServiceDeploys> {
   const windowMs = options.windowMs ?? 10;
   const chunk = options.chunk ?? 250;
   const pending = new Map<string, Waiter[]>();
@@ -88,7 +91,12 @@ export function makeServiceDeploysBatch(
         (answers) => {
           for (const serviceId of part) {
             const answer = answers.get(serviceId);
-            if (answer === undefined) void alone(serviceId);
+            // Not indexed yet, or indexed before the deploy its asker already saw: read by id.
+            const stale = (byService.get(serviceId) ?? []).some(
+              (waiter) =>
+                waiter.activeId !== undefined && waiter.activeId !== answer?.activeAppVersion?.id,
+            );
+            if (answer === undefined || stale) void alone(serviceId);
             else settle(serviceId, { ok: answer });
           }
         },
@@ -99,7 +107,7 @@ export function makeServiceDeploysBatch(
     }
   };
 
-  return (service, signal) =>
+  return (service, signal, activeId) =>
     new Promise<ZeropsServiceDeploys>((resolve, reject) => {
       if (signal.aborted) {
         reject(aborted());
@@ -108,6 +116,7 @@ export function makeServiceDeploysBatch(
       const organizationId = service.project.organization.organizationId;
       const waiter: Waiter = {
         serviceId: service.serviceId,
+        activeId,
         resolve,
         reject,
         settled: false,

@@ -65,7 +65,9 @@ export function makeZeropsResourceRestAdapter(client: ZeropsApiClient): ZeropsRe
       request(() => client.readAuthorizedAgents(input.service.serviceId, context.abortSignal)),
     readServiceDeployedVersion: (input, context) =>
       request(async () =>
-        deployedVersionOf(await readServiceDeploys(input.service, context.abortSignal)),
+        deployedVersionOf(
+          await readServiceDeploys(input.service, context.abortSignal, input.activeId),
+        ),
       ),
     // A failed read is folded into `"unknown"` here, not left to fail the
     // resource: this flag exists to replace an inference (H9), and a read
