@@ -17,6 +17,7 @@ import {
   GITEA_MINTS_PER_MINUTE,
   makeThrowawayMintBudgets,
   planThrowawaySweep,
+  throwawaySweepDue,
   THROWAWAY_DELETE_RETRY_MS,
   THROWAWAY_SWEEP_AGE_MS,
   zeropsThrowawayPlatform,
@@ -26,6 +27,19 @@ import { makeFakeZeropsRest } from "./testing/fakeZeropsRest.ts";
 
 const NOW = Date.parse("2026-09-16T10:00:00.000Z");
 const at = (msAgo: number) => DateTime.formatIso(DateTime.makeUnsafe(NOW - msAgo));
+
+describe("throwawaySweepDue", () => {
+  const DAY = 24 * 60 * 60 * 1000;
+  it.each([
+    ["never swept on this browser", null, true],
+    ["swept a minute ago", NOW - 60_000, false],
+    ["swept just under a day ago", NOW - DAY + 1, false],
+    ["swept a day ago", NOW - DAY, true],
+    ["swept by a clock that has since gone back", NOW + 60_000, true],
+  ] as const)("an account %s: %s", (_, lastSweptAtMs, due) => {
+    expect(throwawaySweepDue(lastSweptAtMs, NOW)).toBe(due);
+  });
+});
 
 describe("planThrowawaySweep", () => {
   // Only ours, only stale. Everything else on the account's token list is

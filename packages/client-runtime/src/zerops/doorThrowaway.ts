@@ -46,6 +46,26 @@ import { diagnosticFailure, mateDiagnostics } from "./diagnostics.ts";
 /** Nothing older than this is still anybody's live throwaway. */
 export const THROWAWAY_SWEEP_AGE_MS = 5 * 60 * 1000;
 
+/**
+ * How often one browser sweeps an account's throwaways. A throwaway is deleted in its own
+ * `finally`; the sweep only takes back what a closed tab or a lost network left, which a day's
+ * wait costs nothing — while sweeping on every open listed the account's tokens, and deleted
+ * them, each time anyone opened the app.
+ */
+export const THROWAWAY_SWEEP_EVERY_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Whether an account's throwaways are due a sweep on this browser: never swept here, swept a
+ * day or more ago, or swept by a clock that has since gone back.
+ */
+export function throwawaySweepDue(lastSweptAtMs: number | null, nowMs: number): boolean {
+  return (
+    lastSweptAtMs === null ||
+    lastSweptAtMs > nowMs ||
+    nowMs - lastSweptAtMs >= THROWAWAY_SWEEP_EVERY_MS
+  );
+}
+
 /** How long a throwaway delete that Zerops could not answer waits before its one retry. */
 export const THROWAWAY_DELETE_RETRY_MS = 5_000;
 

@@ -7,9 +7,9 @@
  * (measured 2026-09-15), so the rows are not harmless: enough of them and a
  * leaver cannot be taken off the org.
  *
- * So the app sweeps at start-up, once per account per session, over the
- * person's own `mate-door:*` and `gitea-signin:*` tokens older than five
- * minutes. Anything younger is left alone: five minutes is the window the door
+ * So the app sweeps at start-up, once a day per account on a browser
+ * (`throwawaySweepDue`), over the person's own `mate-door:*` and
+ * `gitea-signin:*` tokens older than five minutes. Anything younger is left alone: five minutes is the window the door
  * itself allows, so another tab's live connect is never swept out from under
  * it, and nothing else on the token list is ours to touch.
  *
@@ -20,10 +20,33 @@
  * that is otherwise fine.
  */
 
-import { planThrowawaySweep } from "@t3tools/client-runtime/zerops/doorThrowaway";
+import {
+  planThrowawaySweep,
+  throwawaySweepDue,
+} from "@t3tools/client-runtime/zerops/doorThrowaway";
 import { useEffect, useRef } from "react";
 
 import { useZeropsSession } from "./ZeropsSessionProvider";
+
+/** When this browser last swept each account, by organization id. */
+const SWEPT_STORAGE_KEY = "zerops-mate.throwaway-swept.v1";
+
+const readSwept = (): Record<string, number> => {
+  try {
+    const held: unknown = JSON.parse(localStorage.getItem(SWEPT_STORAGE_KEY) ?? "{}");
+    return typeof held === "object" && held !== null ? (held as Record<string, number>) : {};
+  } catch {
+    return {};
+  }
+};
+
+const rememberSwept = (clientId: string, atMs: number): void => {
+  try {
+    localStorage.setItem(SWEPT_STORAGE_KEY, JSON.stringify({ ...readSwept(), [clientId]: atMs }));
+  } catch {
+    // Storage blocked: the next open sweeps again, as before.
+  }
+};
 
 export function useZeropsThrowawaySweep(input: {
   readonly clientId: string | undefined;
@@ -37,6 +60,8 @@ export function useZeropsThrowawaySweep(input: {
     if (!enabled || clientId === undefined) return;
     if (swept.current === clientId) return;
     swept.current = clientId;
+    const lastSwept = readSwept()[clientId];
+    if (!throwawaySweepDue(typeof lastSwept === "number" ? lastSwept : null, Date.now())) return;
 
     const controller = new AbortController();
     void (async () => {
@@ -47,6 +72,7 @@ export function useZeropsThrowawaySweep(input: {
           if (controller.signal.aborted) return;
           await client.deleteIntegrationToken({ clientId, tokenId }, controller.signal);
         }
+        rememberSwept(clientId, Date.now());
       } catch {
         // Housekeeping: the next sign-in tries again.
         swept.current = null;
