@@ -8,10 +8,15 @@ import * as Fiber from "effect/Fiber";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Path from "effect/Path";
+import * as Ref from "effect/Ref";
 import * as TestClock from "effect/testing/TestClock";
 import { HttpClient, HttpClientResponse } from "effect/unstable/http";
 
-import type { TerminalAttachStreamEvent, TerminalSessionSnapshot } from "@t3tools/contracts";
+import type {
+  TerminalAttachStreamEvent,
+  TerminalSessionSnapshot,
+  ZeropsAgentLoginState,
+} from "@t3tools/contracts";
 
 import * as ServerConfig from "../config.ts";
 import { make as makeAgentLogin } from "./ZeropsAgentLogin.ts";
@@ -728,6 +733,91 @@ describe("the turn gate", () => {
       yield* TestClock.adjust(Duration.seconds(2));
 
       assert.isUndefined(yield* Fiber.join(fiber));
+    }).pipe(Effect.scoped),
+  );
+
+  // A live run (2026-10-01): Claude writes its credential before it prints its success line, so
+  // the agent reads signed in while its login still checks the code — and the stand-up left
+  // then, refused as "not recorded" before this server knew of the sign-in at all. A turn of the
+  // very person whose sign-in is under way waits for it to finish and for its record to land.
+  it.effect("a turn sent while its own person's code is still checked waits for the sign-in", () =>
+    Effect.gen(function* () {
+      const { signers, setTags } = yield* gate([]);
+      const now = yield* DateTime.now;
+      const login = yield* Ref.make<ZeropsAgentLoginState>({
+        phase: "verifying-code",
+        terminalId: "t",
+        startedAt: now,
+        startedBy: JAN,
+      });
+      const fiber = yield* signers
+        .turnRefusal({
+          agentId: "claude-code",
+          agent: { ...signedIn, state: "local-only", providerAuth: "unknown" },
+          subject: JAN,
+          login: yield* Ref.get(login),
+          currentLogin: Ref.get(login),
+        })
+        .pipe(Effect.forkChild);
+      yield* TestClock.adjust(Duration.seconds(2));
+      yield* Ref.update(login, (current) => ({ ...current, phase: "succeeded" as const }));
+      yield* TestClock.adjust(Duration.seconds(18));
+      setTags([signerTag("claude-code", JAN)]);
+      yield* TestClock.adjust(Duration.seconds(2));
+
+      assert.isUndefined(yield* Fiber.join(fiber));
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect("somebody else's sign-in under way is nothing this turn waits for", () =>
+    Effect.gen(function* () {
+      const { signers } = yield* gate([]);
+      const now = yield* DateTime.now;
+      const login = {
+        phase: "verifying-code",
+        terminalId: "t",
+        startedAt: now,
+        startedBy: EVA,
+      } as const;
+
+      assert.deepStrictEqual(
+        yield* signers.turnRefusal({
+          agentId: "claude-code",
+          agent: { ...signedIn, state: "local-only", providerAuth: "unknown" },
+          subject: JAN,
+          login,
+          currentLogin: Effect.succeed(login),
+        }),
+        { kind: "unrecorded" },
+      );
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect("a sign-in under way that fails ends the wait with its refusal", () =>
+    Effect.gen(function* () {
+      const { signers } = yield* gate([]);
+      const now = yield* DateTime.now;
+      const login = yield* Ref.make<ZeropsAgentLoginState>({
+        phase: "verifying-code",
+        terminalId: "t",
+        startedAt: now,
+        startedBy: JAN,
+      });
+      const fiber = yield* signers
+        .turnRefusal({
+          agentId: "claude-code",
+          agent: { ...signedIn, state: "local-only", providerAuth: "unknown" },
+          subject: JAN,
+          login: yield* Ref.get(login),
+          currentLogin: Ref.get(login),
+        })
+        .pipe(Effect.forkChild);
+      yield* TestClock.adjust(Duration.seconds(2));
+      yield* Ref.update(login, (current) => ({ ...current, phase: "failed" as const }));
+      yield* TestClock.adjust(Duration.seconds(2));
+
+      assert.isTrue(fiber.pollUnsafe() !== undefined, "no wait past a failed sign-in");
+      assert.deepStrictEqual(yield* Fiber.join(fiber), { kind: "unrecorded" });
     }).pipe(Effect.scoped),
   );
 

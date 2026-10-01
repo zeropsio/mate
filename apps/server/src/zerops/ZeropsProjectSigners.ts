@@ -230,13 +230,13 @@ export function isTurnStartingCommand(
 export const SIGNERS_CACHE_TTL = Duration.seconds(30);
 
 /**
- * How long a turn waits for the record of a sign-in its own person has just finished. The app
- * writes the record as the person the moment it sees the login succeed — the same moment a new
- * Mate's first turn (its stand-up) leaves — and the tag takes a second or two to land: a turn
- * refused ahead of it was the person's own, refused for a record already on its way (a live
- * run, 2026-09-30).
+ * How long a turn waits for the record of a sign-in its own person has just finished, or is
+ * finishing. The app writes the record as the person the moment it sees the login succeed — the
+ * same moment a new Mate's first turn (its stand-up) leaves — and the tag lands a few seconds on,
+ * behind whatever else the app writes to the project then: a turn refused ahead of it was the
+ * person's own, refused for a record already on its way (live runs, 2026-09-30 and 2026-10-01).
  */
-export const SIGNER_RECORD_WAIT = Duration.seconds(15);
+export const SIGNER_RECORD_WAIT = Duration.seconds(30);
 const SIGNER_RECORD_POLL = Duration.seconds(1);
 
 /**
@@ -248,6 +248,15 @@ const SIGNER_RECORD_POLL = Duration.seconds(1);
  */
 export const SIGNER_RECORD_FRESH_POLL = Duration.seconds(2);
 export const SIGNER_RECORD_FRESH_AWAIT = Duration.seconds(60);
+/** A sign-in still running: its credential may already be written while its code is checked. */
+const SIGN_IN_UNDER_WAY: ReadonlySet<ZeropsAgentLoginState["phase"]> = new Set([
+  "starting",
+  "menu",
+  "awaiting-browser",
+  "awaiting-code",
+  "verifying-code",
+]);
+
 /** A login started longer ago than this has had its record written, or never will. */
 const RECORD_ON_ITS_WAY_WITHIN = Duration.minutes(30);
 
@@ -295,6 +304,8 @@ export class ZeropsProjectSigners extends Context.Service<
       readonly subject: string | undefined;
       /** The agent's server-driven login as this server holds it (`ZeropsAgentLogin`). */
       readonly login?: ZeropsAgentLoginState | undefined;
+      /** That login as it stands now, read again while the turn waits on it. */
+      readonly currentLogin?: Effect.Effect<ZeropsAgentLoginState | undefined> | undefined;
     }) => Effect.Effect<TurnRefusal | undefined>;
     /**
      * {@link loginTurnRefusal} for this session on the login whose signer tag
@@ -307,6 +318,8 @@ export class ZeropsProjectSigners extends Context.Service<
       readonly subject: string | undefined;
       /** That login's server-driven sign-in as this server holds it (`ZeropsAgentLogin`). */
       readonly login?: ZeropsAgentLoginState | undefined;
+      /** That login as it stands now, read again while the turn waits on it. */
+      readonly currentLogin?: Effect.Effect<ZeropsAgentLoginState | undefined> | undefined;
     }) => Effect.Effect<TurnRefusal | undefined>;
     /**
      * Whether the org lists `userId` as an `ACTIVE` member, from a read no
@@ -521,45 +534,13 @@ export const make = Effect.gen(function* () {
       : cachedOrRead(environment).pipe(Effect.map((read) => read.value));
 
   /**
-   * `refuse` against the signer of `key`: from the cache, and once more from a fresh read — and,
-   * where the record is on its way, from a read a second until it lands or the wait is over.
-   */
-  const gate = (
-    key: string,
-    refuse: (signer: SignerRecord | undefined) => TurnRefusal | undefined,
-    signIn: { readonly recent: boolean; readonly awaitRecord: boolean } = {
-      recent: false,
-      awaitRecord: false,
-    },
-  ) =>
-    Effect.gen(function* () {
-      if (environment === undefined) return refuse(undefined);
-      const held = yield* cachedOrRead(environment);
-      let refusal = refuse(held.value[key]);
-      if (refusal?.kind === "not-signed-in") return refusal;
-      // A cached admission stands, unless somebody has just signed this login in: the record
-      // from before the sign-in may name another person than the one it holds now.
-      if (refusal === undefined && !signIn.recent) return refusal;
-      if (!held.fresh) refusal = refuse((yield* readThrough(environment)).value[key]);
-      if (!signIn.awaitRecord) return refusal;
-      const deadline = (yield* Clock.currentTimeMillis) + Duration.toMillis(SIGNER_RECORD_WAIT);
-      // No record, somebody else's from before, or one naming two people: each ends in this
-      // person's own once it lands.
-      while (
-        refusal !== undefined &&
-        refusal.kind !== "not-signed-in" &&
-        (yield* Clock.currentTimeMillis) < deadline
-      ) {
-        yield* Effect.sleep(SIGNER_RECORD_POLL);
-        refusal = refuse((yield* readThrough(environment)).value[key]);
-      }
-      return refusal;
-    });
-
-  /**
-   * `base` against the signer of `key`, with the sign-in this server walked for that login: the
-   * person who just signed it in waits for their record on its way, and until it lands the
-   * signer before runs nothing on their credential.
+   * `base` against the signer of `key`, with the sign-in this server walks for that login. From
+   * the cache, and once more from a fresh read; a refusal on a record from before somebody's
+   * sign-in is never a cached one. Whoever signed in last holds the credential, however long
+   * ago: a record naming anybody else runs nothing. And the very person whose sign-in has just
+   * finished here, or is finishing — the credential written while the code is still checked —
+   * waits for it and for their record on its way, read afresh a second at a time, up to
+   * {@link SIGNER_RECORD_WAIT}; the wait ends early on a sign-in that failed or was cancelled.
    */
   const gateSignedIn = (
     key: string,
@@ -568,23 +549,55 @@ export const make = Effect.gen(function* () {
       readonly token: boolean;
       readonly subject: string | undefined;
       readonly login: ZeropsAgentLoginState | undefined;
+      readonly currentLogin?: Effect.Effect<ZeropsAgentLoginState | undefined> | undefined;
     },
   ) =>
     Effect.gen(function* () {
       const { token, subject } = input;
-      const signedInBy = recentSignInBy(input.login, yield* Clock.currentTimeMillis);
-      // Whoever signed in last here holds the credential, however long ago: a record naming
-      // anybody else — the one from before, or one written over theirs since — runs nothing.
-      const heldBy = latestSucceededSignIn(input.login)?.startedBy;
-      const refuse = (signer: SignerRecord | undefined): TurnRefusal | undefined => {
-        const refusal = base(signer);
-        if (refusal !== undefined || token || heldBy === undefined || heldBy.length === 0) {
-          return refusal;
-        }
-        return heldBy === subject ? undefined : { kind: "someone-else" };
+      const person = subject !== undefined && subject.length > 0 ? subject : undefined;
+      const judge = (login: ZeropsAgentLoginState | undefined, nowMs: number) => {
+        const signedInBy = recentSignInBy(login, nowMs);
+        const heldBy = latestSucceededSignIn(login)?.startedBy;
+        const underWay =
+          login !== undefined && SIGN_IN_UNDER_WAY.has(login.phase) ? login.startedBy : undefined;
+        return {
+          refuse: (signer: SignerRecord | undefined): TurnRefusal | undefined => {
+            const refusal = base(signer);
+            if (refusal !== undefined || token || heldBy === undefined || heldBy.length === 0) {
+              return refusal;
+            }
+            return heldBy === subject ? undefined : { kind: "someone-else" };
+          },
+          recent: !token && (signedInBy !== undefined || underWay !== undefined),
+          // This person's sign-in, finished here or finishing: their record is on its way.
+          onItsWay: person !== undefined && (signedInBy === person || underWay === person),
+        };
       };
-      const awaitRecord = subject !== undefined && subject.length > 0 && signedInBy === subject;
-      return yield* gate(key, refuse, { recent: signedInBy !== undefined && !token, awaitRecord });
+      let now = judge(input.login, yield* Clock.currentTimeMillis);
+      if (environment === undefined) return now.refuse(undefined);
+      const held = yield* cachedOrRead(environment);
+      let refusal = now.refuse(held.value[key]);
+      if (refusal?.kind === "not-signed-in") return refusal;
+      // A cached admission stands, unless somebody has just signed this login in: the record
+      // from before the sign-in may name another person than the one it holds now.
+      if (refusal === undefined && !now.recent) return refusal;
+      if (!held.fresh) refusal = now.refuse((yield* readThrough(environment)).value[key]);
+      if (!now.onItsWay) return refusal;
+      const deadline = (yield* Clock.currentTimeMillis) + Duration.toMillis(SIGNER_RECORD_WAIT);
+      // No record, somebody else's from before, or one naming two people: each ends in this
+      // person's own once it lands.
+      while (
+        refusal !== undefined &&
+        refusal.kind !== "not-signed-in" &&
+        now.onItsWay &&
+        (yield* Clock.currentTimeMillis) < deadline
+      ) {
+        yield* Effect.sleep(SIGNER_RECORD_POLL);
+        const login = input.currentLogin === undefined ? input.login : yield* input.currentLogin;
+        now = judge(login, yield* Clock.currentTimeMillis);
+        refusal = now.refuse((yield* readThrough(environment)).value[key]);
+      }
+      return refusal;
     });
 
   const gateTurn: ZeropsProjectSigners["Service"]["turnRefusal"] = ({
@@ -592,11 +605,13 @@ export const make = Effect.gen(function* () {
     agent,
     subject,
     login,
+    currentLogin,
   }) =>
     gateSignedIn(agentId, (signer) => turnRefusal({ agent, signer, subject }), {
       token: agent.flagToken,
       subject,
       login,
+      currentLogin,
     });
 
   const gateLogin: ZeropsProjectSigners["Service"]["loginRefusal"] = ({
@@ -605,11 +620,13 @@ export const make = Effect.gen(function* () {
     token,
     subject,
     login,
+    currentLogin,
   }) =>
     gateSignedIn(key, (signer) => loginTurnRefusal({ state, token, signer, subject }), {
       token,
       subject,
       login,
+      currentLogin,
     });
 
   const checkLeaversNow: ZeropsProjectSigners["Service"]["checkLeaversNow"] =
