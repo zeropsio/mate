@@ -6032,3 +6032,74 @@ it.effect(
       registry.dispose();
     }),
 );
+
+describe("opening a Mate on a loaded organization", () => {
+  it.effect("adds no call of the organization's: only the project's own metrics", () =>
+    Effect.gen(function* () {
+      const registry = AtomRegistry.make();
+      const sent: string[] = [];
+      const adapter: ZeropsDataAdapter = {
+        ...makeAdapterHarness().adapter,
+        register: (_receiver, request) =>
+          Effect.sync(() => {
+            sent.push(
+              request.descriptor.kind === "entity-updates"
+                ? `${request.descriptor.entity} updates`
+                : request.descriptor.kind === "query-membership"
+                  ? request.descriptor.query.kind
+                  : request.descriptor.kind,
+            );
+            return { responseObservations: [] };
+          }),
+        read: (ticket) =>
+          Effect.sync(() => {
+            sent.push(`read ${ticket.target.kind}`);
+            return { observations: [] };
+          }),
+      };
+      const runtime = yield* makeZeropsDataRuntime({
+        scope: runtimeScope,
+        adapter,
+        atomRegistry: registry,
+        makeOpaqueId: makeIdFactory(),
+      });
+      const leases = yield* Scope.make();
+      const projects = ["a", "b", "c"].map((id) => project(`project-${id}`));
+      const resting = yield* Effect.forEach(
+        [
+          { kind: "organization-inventory" as const, organization: projects[0]!.organization },
+          ...projects.flatMap((ref) => [
+            { kind: "project-inventory" as const, project: ref },
+            { kind: "project-activity" as const, project: ref },
+          ]),
+        ],
+        (descriptor) => runtime.acquire(descriptor).pipe(Scope.provide(leases)),
+      );
+      const observing = (state: ZeropsDataState, held: ReadonlyArray<InterestLease>) =>
+        held.every((lease) => state.interests.get(lease.interest)?.interest.status === "observing");
+      yield* settleUntil(runtime, (state) => observing(state, resting), 2_000);
+      const atRest = sent.length;
+
+      // The Mate's conversation: its topology and activity, then its live usage.
+      const open = yield* Effect.forEach(
+        [
+          {
+            kind: "project-topology" as const,
+            project: projects[1]!,
+            includeCurrentMetrics: false,
+          },
+          { kind: "project-activity" as const, project: projects[1]! },
+          { kind: "project-current-metrics" as const, project: projects[1]! },
+        ],
+        (descriptor) => runtime.acquire(descriptor).pipe(Scope.provide(leases)),
+      );
+      yield* settleUntil(runtime, (state) => observing(state, open), 2_000);
+
+      expect(sent.slice(atRest)).toEqual(["current-metrics"]);
+
+      yield* runtime.shutdown("application-close");
+      yield* Scope.close(leases, Exit.void);
+      registry.dispose();
+    }),
+  );
+});
