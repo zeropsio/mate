@@ -143,11 +143,29 @@ export const make = Effect.gen(function* () {
   const orchestration = yield* OrchestrationEngineService;
   const crypto = yield* Crypto.Crypto;
   const scope = yield* Effect.scope;
-  /** The calls followed now: when each started, what was last written, and its loop. */
+  /**
+   * The one call followed per thread — its newest stand-up call: its id, when
+   * it started, what was last written, and its loop. A newer call in the
+   * thread (a retry of one that died without an end) or the thread's deletion
+   * ends it, so a dead call is never followed on and a retry's progress never
+   * lands on its card.
+   */
   const following = new Map<
     string,
-    { readonly startedAt: string; last: string | undefined; fiber?: Fiber.Fiber<void> }
+    {
+      readonly callId: string;
+      readonly startedAt: string;
+      last: string | undefined;
+      fiber?: Fiber.Fiber<void>;
+    }
   >();
+
+  const unfollow = (threadId: string) =>
+    Effect.gen(function* () {
+      const followed = following.get(threadId);
+      following.delete(threadId);
+      if (followed?.fiber !== undefined) yield* Fiber.interrupt(followed.fiber);
+    });
 
   /**
    * Writes the call's progress when it changed since the last write; whether
@@ -193,27 +211,33 @@ export const make = Effect.gen(function* () {
   const handle = (event: SpiEvent) =>
     Effect.gen(function* () {
       if (!isStandUpCall(event)) return;
-      const key = `${event.threadId}:${event.itemId}`;
-      const followed = following.get(key);
-      if (event.type === "item.started" && followed === undefined) {
+      const followed = following.get(event.threadId);
+      const same = followed?.callId === event.itemId;
+      if (event.type === "item.started" && !same) {
+        yield* unfollow(event.threadId);
         const call: {
+          readonly callId: string;
           readonly startedAt: string;
           last: string | undefined;
           fiber?: Fiber.Fiber<void>;
-        } = { startedAt: event.createdAt, last: undefined };
-        following.set(key, call);
+        } = { callId: event.itemId!, startedAt: event.createdAt, last: undefined };
+        following.set(event.threadId, call);
         call.fiber = yield* Effect.forkIn(follow(event, call), scope);
         return;
       }
-      if (event.type === "item.completed" && followed !== undefined) {
-        following.delete(key);
-        if (followed.fiber !== undefined) yield* Fiber.interrupt(followed.fiber);
+      if (event.type === "item.completed" && followed !== undefined && same) {
+        yield* unfollow(event.threadId);
         // The call's end: what the file says of it last, once more.
         yield* relayOnce(event, followed);
       }
     });
 
   yield* Effect.forkScoped(Stream.runForEach(bus.events, handle));
+  yield* Effect.forkScoped(
+    Stream.runForEach(orchestration.streamDomainEvents, (event) =>
+      event.type === "thread.deleted" ? unfollow(event.payload.threadId) : Effect.void,
+    ),
+  );
 });
 
 export const layer = Layer.effectDiscard(make);
