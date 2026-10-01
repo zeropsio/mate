@@ -50,6 +50,11 @@ export interface ZeropsProjectFlow {
   /** The project's Gitea org. */
   readonly slug: string;
   readonly declarations: ReadonlyArray<GroupEnvironment>;
+  /**
+   * Whether `environments.yaml` has been read: until then `declarations` is empty for want of an
+   * answer, not because the group declares nothing.
+   */
+  readonly declarationsRead: boolean;
   /** Stages first, then the production — the order code travels. */
   readonly environments: ReadonlyArray<EnvironmentRow>;
   readonly environmentInputs: ReadonlyArray<GroupEnvironmentRowInput>;
