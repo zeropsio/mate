@@ -1,4 +1,6 @@
 import { createContext, useContext, useState } from "react";
+
+import type { InventoryTroubleVoice } from "./inventoryTrouble.logic";
 import type { ZeropsProject } from "@t3tools/client-runtime/zerops";
 import type { ZeropsService } from "@t3tools/client-runtime/zerops";
 import {
@@ -190,25 +192,24 @@ export function useProjectDialog<T>(
 }
 
 /**
- * What the account says at the menu's foot (`accountFootLine`) — its lapse, or its inventory's
- * lasting trouble — with each action bound. Null while it has nothing to say, and outside the
+ * What the account has to say at the menu's foot, as facts: its lapse, or its inventory's lasting
+ * trouble, whether the organization in view has answered again, what isn't answering, and the
+ * actions. The line (`useAccountVoice`) owns how Try now reads while it runs. Null outside the
  * account's product.
  */
-export interface AccountVoice {
-  readonly sentence: string;
-  /** What isn't answering, for the line's tooltip (`troubleSubject`); null when nothing is named. */
-  readonly title: string | null;
-  readonly actions: ReadonlyArray<{
-    readonly kind: "try-now" | "trying" | "sign-out";
-    readonly label: "Try now" | "Trying…" | "Sign out";
-    readonly run: () => void;
-    /** Running: shown, not pressable again. */
-    readonly busy: boolean;
-  }>;
+export interface AccountTrouble {
+  readonly lapse: { readonly sentence: string; readonly retry: boolean } | null;
+  readonly trouble: InventoryTroubleVoice | null;
+  /** The grant is lapsed, a trouble is spoken, or a read of the organization in view is pending. */
+  readonly unanswered: boolean;
+  /** What isn't answering (`troubleSubject`); null when nothing is named. */
+  readonly subject: string | null;
+  readonly retry: () => void;
+  readonly signOut: () => void;
 }
 
-export const AccountVoiceContext = createContext<AccountVoice | null>(null);
+export const AccountTroubleContext = createContext<AccountTrouble | null>(null);
 
-export function useAccountVoice(): AccountVoice | null {
-  return useContext(AccountVoiceContext);
+export function useAccountTrouble(): AccountTrouble | null {
+  return useContext(AccountTroubleContext);
 }

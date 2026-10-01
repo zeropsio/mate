@@ -36,12 +36,7 @@ import { buttonsLabelled, press } from "./__fixtures__/testDom";
 import { invalidateZerops, onZeropsInvalidation } from "./accountInvalidations";
 import { closeAccountLifetime, openAccountLifetime } from "./accountLifetime";
 import { ZeropsDataProvider } from "./ZeropsDataProvider";
-import {
-  inventoryProjectRefKey,
-  useAccountVoice,
-  useZeropsInventory,
-  type Inventory,
-} from "./inventoryContext";
+import { inventoryProjectRefKey, useZeropsInventory, type Inventory } from "./inventoryContext";
 import { ZeropsInventoryProvider } from "./ZeropsInventoryProvider";
 import { AccountVoiceLine } from "../components/zerops/AccountVoiceLine";
 import { TRY_NOW_SETTLE_MS } from "./inventoryTrouble.logic";
@@ -340,13 +335,8 @@ const mountInventory = Effect.fn(function* (
   let grantsWhenChildMounted: number | null = null;
   /** The first mount opened the gate: the product's child is there. */
   const mounted = signal();
-  let retryNow: (() => void) | null = null;
   function Consumer() {
     const value = useZeropsInventory();
-    const voice = useAccountVoice();
-    useEffect(() => {
-      retryNow = voice?.actions.find(({ kind }) => kind === "try-now")?.run ?? null;
-    }, [voice]);
     useEffect(() => {
       grantsWhenChildMounted ??= grants.length;
       mounted.resolve();
@@ -410,8 +400,6 @@ const mountInventory = Effect.fn(function* (
     organization,
     projectRef,
     inventory: () => inventory,
-    /** The account line's "Try now" (`useAccountVoice`), while it says anything. */
-    retry: () => retryNow,
     unmount: () => Effect.promise(async () => act(async () => root.unmount())),
     /** The held first round's reads answer; resolves once a grant reached the runtime. */
     verifyFirstRound: () =>
@@ -892,7 +880,8 @@ it.live(
         heard.length = 0;
         const reread = harness.refreshed().length;
 
-        yield* Effect.promise(async () => act(async () => harness.retry()!()));
+        const [tryNow] = buttonsLabelled(harness.container as never, "Try now");
+        yield* Effect.promise(async () => act(async () => press(tryNow!)));
         yield* harness.advance(250);
         expect(heard).toEqual([{ topic: "inventory", organization: harness.organization }]);
         expect(harness.refreshed().slice(reread)).toEqual([harness.organization]);

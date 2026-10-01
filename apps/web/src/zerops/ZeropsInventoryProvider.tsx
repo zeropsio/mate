@@ -38,8 +38,8 @@ import { invalidateZerops } from "./accountInvalidations";
 import {
   HeldInventoryContext,
   InventoryContext,
-  AccountVoiceContext,
-  type AccountVoice,
+  AccountTroubleContext,
+  type AccountTrouble,
   inventoryProjectRefKey,
   type Inventory,
   type InventoryServiceOutcome,
@@ -47,12 +47,9 @@ import {
 import { useZeropsSession } from "./ZeropsSessionProvider";
 import {
   INVENTORY_TROUBLE_HOLD_MS,
-  TRY_NOW_SETTLE_MS,
-  accountFootLine,
   inventoryTroubleVoice,
   organizationKnowledge,
   troubleSubject,
-  type TryNowAttempt,
 } from "./inventoryTrouble.logic";
 import { useHeldFor } from "./useHeldFor";
 import {
@@ -563,19 +560,11 @@ export function ZeropsInventoryProvider({ children }: { readonly children: React
     retryRef.current = retry;
     signOutRef.current = signOut;
   });
-  // Try now is never a silent no-op: it says it is trying while it runs, then whether that
-  // helped — a trouble still on after `TRY_NOW_SETTLE_MS` says so in the line.
-  const [attempt, setAttempt] = useState<TryNowAttempt>("idle");
-  const [tried, setTried] = useState(0);
-  const retryNow = useCallback(() => {
-    retryRef.current();
-    setAttempt("trying");
-    setTried((count) => count + 1);
-  }, []);
+  const retryNow = useCallback(() => retryRef.current(), []);
   const signOutNow = useCallback(() => void signOutRef.current(), []);
-  // Try now re-reads what was in trouble, which then reads as establishing, not stalled: the line
-  // it was pressed on stays up while it runs and while the organization stays unknown, and says
-  // after `TRY_NOW_SETTLE_MS` whether that helped — never a line that just vanishes and returns.
+  // The account speaks from one place, the menu's foot: its lapse, which withholds every region
+  // meanwhile, or its inventory's lasting trouble — never over the product. This publishes the
+  // facts and the actions; the line (`useAccountVoice`) owns what Try now says while it runs.
   // Answered is the grant held and every read of the organization in view observing again.
   const unanswered =
     lapse !== null ||
@@ -583,39 +572,9 @@ export function ZeropsInventoryProvider({ children }: { readonly children: React
     [...projected.pendingOrganizations].some(
       (organizationId) => activeOrganization === null || organizationId === activeOrganization.id,
     );
-  const unansweredRef = useRef(unanswered);
-  const lastVoiceRef = useRef(voice);
-  useEffect(() => {
-    unansweredRef.current = unanswered;
-    if (voice !== null) lastVoiceRef.current = voice;
-  });
-  useEffect(() => {
-    if (tried === 0) return;
-    const timer = setTimeout(
-      () => setAttempt(unansweredRef.current ? "still" : "idle"),
-      TRY_NOW_SETTLE_MS,
-    );
-    return () => clearTimeout(timer);
-  }, [tried]);
-  const owed = unanswered;
-  // A trouble that ended takes its attempt with it: the next one starts untried.
-  useEffect(() => {
-    if (!owed) return;
-    return () => setAttempt("idle");
-  }, [owed]);
-  const tryingOn = attempt !== "idle" && unanswered ? lastVoiceRef.current : null;
-  // The account speaks from one place, the menu's foot (`accountFootLine`): its lapse, which
-  // withholds every region meanwhile, or its inventory's lasting trouble. Never over the product.
-  const footLine = accountFootLine({
-    lapse,
-    trouble: voice ?? tryingOn,
-    attempt: owed ? attempt : "idle",
-  });
-  const footSentence = footLine?.sentence ?? null;
-  const footActions = footLine?.actions.join(" ") ?? "";
   // What isn't answering, named under the line's sentence (`troubleSubject`).
   const inView = activeOrganization ?? null;
-  const subjectNow =
+  const subject =
     lapse !== null || trouble === "grant"
       ? "Your Zerops access"
       : trouble === "organization"
@@ -640,32 +599,18 @@ export function ZeropsInventoryProvider({ children }: { readonly children: React
             ],
           })
         : null;
-  const lastSubjectRef = useRef(subjectNow);
-  useEffect(() => {
-    if (subjectNow !== null) lastSubjectRef.current = subjectNow;
-  });
-  const footTitle = subjectNow ?? (tryingOn === null ? null : lastSubjectRef.current);
-  const accountVoice = useMemo(
-    (): AccountVoice | null =>
-      footSentence === null
-        ? null
-        : {
-            sentence: footSentence,
-            title: footTitle,
-            actions: footActions.split(" ").map((kind) =>
-              kind === "try-now"
-                ? { kind, label: "Try now" as const, run: retryNow, busy: false }
-                : kind === "trying"
-                  ? { kind, label: "Trying…" as const, run: retryNow, busy: true }
-                  : {
-                      kind: "sign-out" as const,
-                      label: "Sign out" as const,
-                      run: signOutNow,
-                      busy: false,
-                    },
-            ),
-          },
-    [footActions, footSentence, footTitle, retryNow, signOutNow],
+  const lapseSentence = lapse?.sentence ?? null;
+  const lapseRetry = lapse?.retry ?? false;
+  const accountTrouble = useMemo(
+    (): AccountTrouble => ({
+      lapse: lapseSentence === null ? null : { sentence: lapseSentence, retry: lapseRetry },
+      trouble: voice,
+      unanswered,
+      subject,
+      retry: retryNow,
+      signOut: signOutNow,
+    }),
+    [lapseRetry, lapseSentence, retryNow, signOutNow, subject, unanswered, voice],
   );
 
   // Withholding is applied here, at the inventory's one read (DESIGN law 5, §3.1): a withheld
@@ -748,7 +693,7 @@ export function ZeropsInventoryProvider({ children }: { readonly children: React
       ) : (
         <InventoryContext value={snapshot}>
           <HeldInventoryContext value={held}>
-            <AccountVoiceContext value={accountVoice}>{children}</AccountVoiceContext>
+            <AccountTroubleContext value={accountTrouble}>{children}</AccountTroubleContext>
           </HeldInventoryContext>
         </InventoryContext>
       )}
