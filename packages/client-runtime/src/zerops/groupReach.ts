@@ -246,3 +246,33 @@ export function planAccountGroupReach(input: {
   }
   return writes;
 }
+
+/**
+ * Writes tokens' project lists, each planned from the list read right before it. A write replaces
+ * a token's whole list, so it is never planned from a list read earlier — a shared, possibly old
+ * one least of all — and it carries the token's own org role as read, which the replacement would
+ * otherwise lower. It writes at most what its first plan asked for, and answers how many it wrote.
+ */
+export async function writeTokenProjectsFresh(input: {
+  readonly read: () => Promise<ReadonlyArray<ZeropsIntegrationToken>>;
+  readonly plan: (
+    tokens: ReadonlyArray<ZeropsIntegrationToken>,
+  ) => ReadonlyArray<ZeropsGroupReachWrite>;
+  readonly write: (
+    write: ZeropsGroupReachWrite & { readonly roleCode?: string | undefined },
+  ) => Promise<void>;
+}): Promise<number> {
+  let written = 0;
+  let most: number | null = null;
+  while (most === null || written < most) {
+    const tokens = await input.read();
+    const writes = input.plan(tokens);
+    most ??= writes.length;
+    const next = writes[0];
+    if (next === undefined) break;
+    const roleCode = tokens.find((token) => token.id === next.tokenId)?.roleCode;
+    await input.write(roleCode === undefined ? next : { ...next, roleCode });
+    written += 1;
+  }
+  return written;
+}
