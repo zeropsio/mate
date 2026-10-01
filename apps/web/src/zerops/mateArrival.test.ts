@@ -45,6 +45,42 @@ const CREATING: BirthFacts = {
   connection: "none",
 };
 
+describe("arrivalSteps — what the Mate's own setup says (`/mate/setup.json`)", () => {
+  const ids = (setup: Parameters<typeof arrivalSteps>[0]["setup"]) =>
+    arrivalSteps({ ...deriveBirthProgress(CREATING, NOW), setup }, WREN, NOW).map(
+      (step) => `${step.id}:${step.state}`,
+    );
+
+  it("adds nothing for a Mate whose setup it has not read: an older one, or one not up yet", () => {
+    expect(ids(undefined)).toEqual(["copy:done", "workspace:active", "you:you"]);
+  });
+
+  it.each([
+    {
+      case: "Git on its way, nobody signed in yet",
+      setup: { git: "waiting", signin: "waiting", standup: "waiting" },
+      want: ["git:active", "you:you", "standup:waiting"],
+    },
+    {
+      case: "Git there, signed in, standing up",
+      setup: { git: "done", signin: "done", standup: "running" },
+      want: ["git:done", "you:done", "standup:active"],
+    },
+    {
+      case: "all of it done",
+      setup: { git: "done", signin: "done", standup: "done" },
+      want: ["git:done", "you:done", "standup:done"],
+    },
+    {
+      case: "a stand-up that failed",
+      setup: { git: "done", signin: "done", standup: "failed" },
+      want: ["git:done", "you:done", "standup:failed"],
+    },
+  ] as const)("draws $case", ({ setup, want }) => {
+    expect(ids(setup)).toEqual(["copy:done", "workspace:active", ...want]);
+  });
+});
+
 describe("arrivalSteps", () => {
   it("reads a Mate's six birth steps as its copy, its workspace and the person's sign-in", () => {
     const steps = arrivalSteps(deriveBirthProgress(CREATING, NOW), WREN, NOW);

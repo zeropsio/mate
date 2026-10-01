@@ -87,6 +87,7 @@ import { useZeropsInventory, type InventoryServiceOutcome } from "~/zerops/inven
 import { forgetPress, pressFailure, useMatePress } from "~/zerops/matePress";
 import { useReviveFailedMate } from "~/zerops/mateRestart";
 import { useMateSetup } from "~/zerops/useMateSetup";
+import type { MateSetup } from "@t3tools/client-runtime/zerops/mateSetup";
 import { useZeropsContainers } from "~/zerops/zeropsContainers";
 import { runZeropsCommand, useZeropsData } from "~/zerops/zeropsDataContext";
 import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
@@ -383,7 +384,9 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
           if (!reviveFailed(failedServiceId)) void connect({ key: linkKey });
         };
 
-  // What its container says of its own setup, in any browser (`/mate/setup.json`).
+  // What its container says of its own setup, in any browser (`/mate/setup.json`): read only
+  // while its card is on screen and its setup is under way — every read of an older Mate costs
+  // it a tag read of its own.
   const setup = useMateSetup(page?.kind === "coming" ? candidate?.containerOrigin : undefined);
   // How far it has got, as the projects page's card draws it.
   const progress = useZeropsBirthProgress(
@@ -429,6 +432,7 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
             ? progress.progress
             : newProjectProgress(made, progress.progress, progress.nowMs)),
           ...(managed === undefined ? {} : { managed }),
+          ...(setup === undefined ? {} : { setup }),
         };
 
   const [removing, setRemoving] = useState(false);
@@ -813,9 +817,13 @@ export function ComingBelow({
   );
 }
 
-/** What the arrival's steps read: the birth's line, with its copy's managed services. */
+/**
+ * What the arrival's steps read: the birth's line, with its copy's managed services and what the
+ * Mate's own setup says.
+ */
 export type ArrivalProgress = BirthLineProgress & {
   readonly managed?: ReadonlyArray<BirthCopyService> | undefined;
+  readonly setup?: MateSetup | undefined;
 };
 
 /** A project's services once the inventory has read them; nothing while it hasn't, or failed. */
