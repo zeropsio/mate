@@ -521,6 +521,8 @@ export const make = (options: ZeropsAgentAuthOptions) =>
         .exists(path.join(homeDir, ...CRED_PROBE_SEGMENTS[agentId]))
         .pipe(Effect.orElseSucceed(() => false));
 
+    // One publish at a time: a read and its publish are never overtaken by a newer read's.
+    const publishMutex = yield* Semaphore.make(1);
     const publishWith = (
       read: Effect.Effect<ZeropsProjectSignersModule.ProjectSigners> | undefined,
     ) =>
@@ -552,7 +554,7 @@ export const make = (options: ZeropsAgentAuthOptions) =>
         }
         yield* Ref.update(state, (previous) => ({ ...previous, lastPublished: snapshot }));
         yield* PubSub.publish(changes, snapshot);
-      });
+      }).pipe(publishMutex.withPermits(1));
     const publish = publishWith(readSigners);
 
     /**

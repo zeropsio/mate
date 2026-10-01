@@ -1,6 +1,7 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, describe, it } from "@effect/vitest";
 import * as DateTime from "effect/DateTime";
+import * as Deferred from "effect/Deferred";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
@@ -894,6 +895,74 @@ describe("the turn gate", () => {
       });
       assert.deepStrictEqual(refusal, { kind: "not-signed-in", auth: "not-authorized" });
       assert.strictEqual(reads() - before, 0);
+    }).pipe(Effect.scoped),
+  );
+});
+
+// A read that set out before a record landed and came back after a newer read: what it saw is
+// older than what the cache holds, and it never puts the earlier signer back.
+describe("a read that comes back late", () => {
+  const slowProject = () =>
+    Effect.gen(function* () {
+      let tags: ReadonlyArray<string> = [signerTag("claude-code", EVA)];
+      let holdNext = false;
+      const held: Array<Deferred.Deferred<void>> = [];
+      const client = HttpClient.make((request) =>
+        Effect.gen(function* () {
+          if (request.url.endsWith("/user/list")) {
+            return HttpClientResponse.fromWeb(request, json({ message: "down" }, 500));
+          }
+          // What the platform held when the read set out.
+          const response = json({ id: PROJECT_ID, clientId: CLIENT_ID, tagList: tags });
+          if (holdNext) {
+            holdNext = false;
+            const gate = yield* Deferred.make<void>();
+            held.push(gate);
+            yield* Deferred.await(gate);
+          }
+          return HttpClientResponse.fromWeb(request, response);
+        }),
+      );
+      const signers = yield* makeProjectSigners.pipe(
+        Effect.provide(
+          Layer.mergeAll(
+            Layer.succeed(HttpClient.HttpClient, client),
+            Layer.succeed(
+              ZeropsMateKeyModule.ZeropsMateKey,
+              ZeropsMateKeyModule.snapshotOnlyReader(MATE_KEY),
+            ),
+            ServerConfig.layer({ zerops: environment } as ServerConfig.ServerConfig["Service"]),
+            NodeServices.layer,
+          ),
+        ),
+      );
+      yield* TestClock.adjust(Duration.zero);
+      return {
+        signers,
+        holdNextRead: () => {
+          holdNext = true;
+        },
+        setTags: (next: ReadonlyArray<string>) => {
+          tags = next;
+        },
+        releaseAll: () =>
+          Effect.forEach(held.splice(0), (gate) => Deferred.succeed(gate, undefined)),
+      };
+    });
+
+  it.effect("never overwrites a newer read, nor answers with what it saw", () =>
+    Effect.gen(function* () {
+      const { signers, holdNextRead, setTags, releaseAll } = yield* slowProject();
+      holdNextRead();
+      const late = yield* signers.fresh.pipe(Effect.forkChild);
+      yield* TestClock.adjust(Duration.zero);
+
+      setTags([signerTag("claude-code", JAN)]);
+      assert.deepStrictEqual(yield* signers.fresh, { "claude-code": JAN });
+
+      yield* releaseAll();
+      assert.deepStrictEqual(yield* Fiber.join(late), { "claude-code": JAN });
+      assert.deepStrictEqual(yield* signers.signers, { "claude-code": JAN });
     }).pipe(Effect.scoped),
   );
 });

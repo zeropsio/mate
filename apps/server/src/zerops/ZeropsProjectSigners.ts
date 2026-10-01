@@ -415,9 +415,13 @@ export const make = Effect.gen(function* () {
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
   const homeDir = NodeOS.homedir();
-  const cache = yield* Ref.make<{ readonly at: number; readonly value: ProjectSigners } | null>(
-    null,
-  );
+  /** `seq` orders reads by when they set out: a read that came back late is older than `seq`. */
+  const cache = yield* Ref.make<{
+    readonly at: number;
+    readonly seq: number;
+    readonly value: ProjectSigners;
+  } | null>(null);
+  const readSeq = yield* Ref.make(0);
   const members = yield* Ref.make<{
     readonly at: number;
     readonly value: ReadonlySet<string>;
@@ -443,12 +447,21 @@ export const make = Effect.gen(function* () {
   const readThrough = (environment: ZeropsEnvironment) =>
     Effect.gen(function* () {
       const now = yield* Clock.currentTimeMillis;
+      const seq = yield* Ref.updateAndGet(readSeq, (n) => n + 1);
       const read = yield* withHttp(readProjectSigners({ environment }));
       if (read === undefined) {
         return { value: (yield* Ref.get(cache))?.value ?? {}, fresh: false };
       }
-      yield* Ref.set(cache, { at: now, value: read });
-      return { value: read, fresh: true };
+      // A read that set out before the one the cache holds saw an older project: a record that
+      // landed in between stays, and the late read answers with it.
+      return yield* Ref.modify(cache, (held) =>
+        held !== null && held.seq > seq
+          ? [{ value: held.value, fresh: true }, held]
+          : [
+              { value: read, fresh: true },
+              { at: now, seq, value: read },
+            ],
+      );
     });
 
   /** The signers, and whether they come from a read made for this call. */
