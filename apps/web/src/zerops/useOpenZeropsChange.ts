@@ -13,7 +13,7 @@
  * session there is no flow to ask, and it takes nothing.
  */
 import type { ScopedThreadRef } from "@t3tools/contracts";
-import { parseGiteaChangeUrl } from "@t3tools/client-runtime/zerops";
+import { resolveGiteaChange } from "@t3tools/client-runtime/zerops";
 import { useNavigate } from "@tanstack/react-router";
 import { useCallback } from "react";
 
@@ -35,19 +35,12 @@ export function useOpenZeropsChange(
   const slugs = flow?.slugs;
   return useCallback(
     (href) => {
-      const link = parseGiteaChangeUrl(href, giteaOrigin);
-      if (link === null || slugs === undefined) return null;
+      if (slugs === undefined) return null;
       // The url carries the Gitea org, which is a group's slug; the route takes
       // the group's id. Only a slug this account actually holds is claimed.
-      let groupId: string | undefined;
-      for (const [id, slug] of slugs) {
-        if (slug === link.owner) {
-          groupId = id;
-          break;
-        }
-      }
-      if (groupId === undefined) return null;
-      const target = groupId;
+      const link = resolveGiteaChange(href, giteaOrigin, slugs);
+      if (link === null) return null;
+      const target = link.groupId;
       if (threadRef) {
         const ref = threadRef;
         return () => {

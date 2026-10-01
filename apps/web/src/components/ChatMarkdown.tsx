@@ -2259,7 +2259,7 @@ const CHAT_MARKDOWN_COMPONENTS = {
       // The chip wraps whichever link this would have been: it renders that
       // link back unchanged for every address it cannot claim as a change.
       return (
-        <ZeropsChangeLinkChip href={href}>
+        <ZeropsChangeLinkChip href={href} words={bareUrl === null ? children : undefined}>
           {!faviconHost || !href ? (
             link
           ) : (

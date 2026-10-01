@@ -307,7 +307,13 @@ export {
   type GitVerdict,
   type PullRequestBlocked,
 } from "./gitTab.ts";
-export { parseGiteaChangeUrl, type GiteaChangeLink } from "./giteaChangeLink.ts";
+export {
+  groupForGiteaOwner,
+  parseGiteaChangeUrl,
+  resolveGiteaChange,
+  type GiteaChangeLink,
+  type GiteaGroupChange,
+} from "./giteaChangeLink.ts";
 export {
   branchLabel,
   mateBotLogin,

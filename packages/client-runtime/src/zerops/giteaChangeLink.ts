@@ -26,8 +26,12 @@ export interface GiteaChangeLink {
   readonly number: number;
 }
 
-/** `/{owner}/{repo}/pulls/{n}`, and nothing else on the path. */
-const CHANGE_PATH = /^\/([^/]+)\/([^/]+)\/pulls\/(\d+)\/?$/u;
+/**
+ * `/{owner}/{repo}/pulls/{n}`, or one of the change's own tabs below it — its
+ * files, its commits — which name the same change. A query or a fragment (a
+ * comment, a line of the diff) is not part of the path.
+ */
+const CHANGE_PATH = /^\/([^/]+)\/([^/]+)\/pulls\/(\d+)(?:\/(?:files|commits))?\/?$/u;
 
 /**
  * The change a url names, or `null` where it names something else.
@@ -49,11 +53,48 @@ export function parseGiteaChangeUrl(
   } catch {
     return null;
   }
-  if (url.origin !== origin.origin) return null;
+  // Hosts compare without case (the URL parser lowers them already); a forge
+  // reached over plain http is still that forge.
+  const web = (protocol: string) => protocol === "https:" || protocol === "http:";
+  if (!web(url.protocol) || !web(origin.protocol) || url.host !== origin.host) return null;
   const match = CHANGE_PATH.exec(url.pathname);
   if (match === null) return null;
   const [, owner, repository, number] = match;
   if (owner === undefined || repository === undefined || number === undefined) return null;
   const parsed = Number.parseInt(number, 10);
   return Number.isSafeInteger(parsed) && parsed > 0 ? { owner, repository, number: parsed } : null;
+}
+
+/** The group whose Gitea org is `owner`: Gitea names an org in any case. */
+export function groupForGiteaOwner(
+  slugs: ReadonlyMap<string, string>,
+  owner: string,
+): string | undefined {
+  const wanted = owner.toLowerCase();
+  for (const [groupId, slug] of slugs) {
+    if (slug.toLowerCase() === wanted) return groupId;
+  }
+  return undefined;
+}
+
+/** A change of one of the person's groups, which the app opens in place of the forge. */
+export interface GiteaGroupChange extends GiteaChangeLink {
+  readonly groupId: string;
+}
+
+/**
+ * The change a link in a conversation names, in one of the person's groups —
+ * whatever the link's words — or `null` where the app cannot claim it: another
+ * host, an org no group holds, or anything but a pull request. A `null` link
+ * stays the external link it was.
+ */
+export function resolveGiteaChange(
+  href: string,
+  giteaOrigin: string | undefined,
+  slugs: ReadonlyMap<string, string>,
+): GiteaGroupChange | null {
+  const link = parseGiteaChangeUrl(href, giteaOrigin);
+  if (link === null) return null;
+  const groupId = groupForGiteaOwner(slugs, link.owner);
+  return groupId === undefined ? null : { groupId, ...link };
 }

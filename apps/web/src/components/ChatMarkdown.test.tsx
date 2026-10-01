@@ -8,7 +8,11 @@ import { describe, expect, it, vi } from "vite-plus/test";
 import * as settingsModule from "../hooks/useSettings";
 import { getSyntaxHighlighterPromise } from "../lib/syntaxHighlighting";
 import { Button } from "./ui/button";
-import { ServiceBrowserScope } from "./ServiceBrowserLink";
+import { AppLinkContext, ServiceBrowserScope } from "./ServiceBrowserLink";
+import {
+  ZeropsProjectFlowContext,
+  type ZeropsProjectFlowValue,
+} from "../zerops/projectFlowContext";
 import { setMarkdownTaskChecked } from "./files/filePreviewMode";
 
 vi.mock("@effect/atom-react", () => ({ useAtomValue: () => null }));
@@ -52,6 +56,10 @@ vi.mock("../remoteOpen", () => ({
 vi.mock("../editorPreferences", () => ({
   useOpenInPreferredEditor: () => vi.fn(),
   usePreferredEditor: () => [null, vi.fn()],
+}));
+// A change no flow carries is asked of the forge; here the forge is still answering.
+vi.mock("../zerops/useZeropsLandedChange", () => ({
+  useZeropsLandedChange: () => ({ kind: "reading" }),
 }));
 vi.mock("~/lib/openPullRequestLink", () => ({
   findProjectForChangeRequest: () => undefined,
@@ -885,5 +893,47 @@ describe("ChatMarkdown links read as part of the sentence", () => {
     const { inner } = firstLink(render(`It is live: https://${host}/app.`));
     expect(inner).not.toContain("<img");
     expect(inner).toContain("<svg");
+  });
+});
+
+describe("ChatMarkdown links to a change of the person's group", () => {
+  const GITEA = "https://forge-7c1d-3000.prg1.zerops.app";
+  const flow = {
+    giteaOrigin: GITEA,
+    flows: new Map(),
+    slugs: new Map([["group-1", "orchard"]]),
+    askForOwner: () => {},
+  } as unknown as ZeropsProjectFlowValue;
+
+  it.each([
+    {
+      name: "a link in the Mate's own words",
+      text: `The changes are in the [site pull request](${GITEA}/orchard/site/pulls/7), with screenshots.`,
+      words: "site pull request",
+    },
+    { name: "a bare address", text: `See ${GITEA}/orchard/site/pulls/7/files.`, words: "site #7" },
+  ])("$name opens the change's review in the app, wearing the change's mark", async (link) => {
+    const opened: string[] = [];
+    const openChange = (href: string) => () => opened.push(href);
+    let renderer: ReactTestRenderer | undefined;
+    await act(async () => {
+      renderer = create(
+        <ZeropsProjectFlowContext.Provider value={flow}>
+          <AppLinkContext value={openChange}>
+            <ChatMarkdown cwd="/tmp/project" text={link.text} />
+          </AppLinkContext>
+        </ZeropsProjectFlowContext.Provider>,
+      );
+    });
+    const anchor = renderer!.root.find(
+      (node) => node.type === "a" && node.props["data-zerops-change-chip"] !== undefined,
+    );
+    const words = anchor.findAll((node) => typeof node.props.children === "string");
+    expect(words.map((node) => node.props.children).join("")).toBe(link.words);
+    const preventDefault = vi.fn();
+    anchor.props.onClick({ button: 0, preventDefault });
+    expect(preventDefault).toHaveBeenCalled();
+    expect(opened).toHaveLength(1);
+    await act(async () => renderer!.unmount());
   });
 });

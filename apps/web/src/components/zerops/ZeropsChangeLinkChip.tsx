@@ -20,7 +20,11 @@
  * registry read that failed. The chip asks for the org, and takes its word and
  * its in-app open once the registry names it.
  */
-import { changeState, parseGiteaChangeUrl } from "@t3tools/client-runtime/zerops";
+import {
+  changeState,
+  groupForGiteaOwner,
+  parseGiteaChangeUrl,
+} from "@t3tools/client-runtime/zerops";
 import type { ServiceStatusToneId } from "@t3tools/shared/brand";
 import { GitMergeIcon, GitPullRequestArrow } from "lucide-react";
 import { createContext, useContext, useEffect, type ReactNode } from "react";
@@ -48,9 +52,15 @@ const TONE_GLYPH: Record<ServiceStatusToneId, string> = {
 
 export function ZeropsChangeLinkChip({
   href,
+  words,
   children,
 }: {
   readonly href: string | undefined;
+  /**
+   * The link's own words — a Mate's "[site pull request](…)" — which the chip
+   * keeps in place of the change's line: the sentence was written around them.
+   */
+  readonly words?: ReactNode;
   readonly children: ReactNode;
 }) {
   const flowValue = useZeropsProjectFlowOptional();
@@ -58,15 +68,10 @@ export function ZeropsChangeLinkChip({
   const writtenAt = useContext(ChangeChipMomentContext);
   const link = href === undefined ? null : parseGiteaChangeUrl(href, flowValue?.giteaOrigin);
 
-  let groupId: string | undefined;
-  if (link !== null && flowValue !== null) {
-    for (const [id, slug] of flowValue.slugs) {
-      if (slug === link.owner) {
-        groupId = id;
-        break;
-      }
-    }
-  }
+  const groupId =
+    link !== null && flowValue !== null
+      ? groupForGiteaOwner(flowValue.slugs, link.owner)
+      : undefined;
   const unknownOwner =
     link !== null && flowValue !== null && groupId === undefined ? link.owner : undefined;
   const askForOwner = flowValue?.askForOwner;
@@ -164,7 +169,7 @@ export function ZeropsChangeLinkChip({
           />
         ) : null}
       </span>
-      <span className="font-medium">{line}</span>
+      <span className="font-medium">{words ?? line}</span>
       {state === undefined ? null : (
         <span className="sr-only">
           {`, ${state.word}${landedSince ? ", landed since this message" : ""}`}
