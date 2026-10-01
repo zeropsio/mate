@@ -36,6 +36,7 @@ import {
   type ZeropsApiClient,
   type ZeropsGroupReachWrite,
   type ZeropsIntegrationToken,
+  type TokenWriteHold,
   type ZeropsPlacedBirth,
 } from "@t3tools/client-runtime/zerops";
 import { ZeropsServiceId } from "@t3tools/client-runtime/zerops/data";
@@ -45,10 +46,10 @@ import { useEffect, useMemo } from "react";
 import { create } from "zustand";
 
 import { onAccountLifetimeClose } from "./accountLifetime";
+import { tokenWrites } from "./tokenWriteLock";
 import {
   browserLocks,
   matePressLockName,
-  mateTokenLockName,
   withExclusiveLock,
   withLockIfFree,
   type LockManagerLike,
@@ -442,7 +443,7 @@ export function planShareReach(input: {
  * Gives the group's other Mates sight of a new project: every environment the key mint counts
  * (`buildGroupGrants`), never the services listing, which a press seconds after a load may not
  * hold yet. A Mate's key is found in the account's token list (`findHeldMateKey`) and read again,
- * live, under its lock (`mate:token:{id}`, the store's own) right before its write — the write
+ * live, under its lock (`tokenWrites`, every token writer's) right before its write — the write
  * replaces the key's whole project list, so an older read would undo a grant made meanwhile.
  * Best-effort: a key it could not write is counted and left to the group-reach reconcile.
  */
@@ -452,10 +453,10 @@ export async function shareGroupReach(input: {
   readonly groupProjectIds: ReadonlyArray<string>;
   readonly projectId: string;
   readonly viewer: PressViewer;
-  /** This browser's locks; the page's own where omitted. */
-  readonly locks?: LockManagerLike | undefined;
+  /** Each key's read-then-write, one at a time with every other writer's; the page's own. */
+  readonly hold?: TokenWriteHold;
 }): Promise<{ readonly extended: number; readonly failed: number }> {
-  const locks = "locks" in input ? input.locks : browserLocks();
+  const hold = input.hold ?? tokenWrites;
   const plan = (tokens: ReadonlyArray<ZeropsIntegrationToken>, siblingProjectId: string) =>
     planShareReach({
       tokens,
@@ -474,7 +475,7 @@ export async function shareGroupReach(input: {
         siblingProjectId,
       );
       if (found === undefined) continue;
-      const wrote = await withExclusiveLock(locks, mateTokenLockName(found.tokenId), async () => {
+      const wrote = await hold(found.tokenId, async () => {
         const write = plan(
           await input.client.listIntegrationTokens(input.organizationId),
           siblingProjectId,

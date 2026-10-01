@@ -2033,24 +2033,31 @@ export class ZeropsApiClient {
         )
       ).token;
     } else {
-      const reach = planGroupReach({
-        token: earlier,
-        selfProjectId: input.projectId,
-        groupProjectIds: input.groupProjectIds ?? [input.projectId],
-      });
-      if (reach !== undefined) {
+      // The write replaces the key's whole project list: it is planned from the key as read
+      // under its lock, every token writer's, and lowers its org role to none.
+      await this.#holdToken(earlier.id, async () => {
+        const current = (await this.listIntegrationTokens(input.clientId, signal)).find(
+          (token) => token.id === earlier.id,
+        );
+        if (current === undefined) return;
+        this.#assertGeneration(generation);
+        const reach = planGroupReach({
+          token: current,
+          selfProjectId: input.projectId,
+          groupProjectIds: input.groupProjectIds ?? [input.projectId],
+        });
+        if (reach === undefined) return;
         await this.setIntegrationTokenProjects(
           {
             clientId: input.clientId,
-            tokenId: earlier.id,
-            name: earlier.name,
+            tokenId: current.id,
+            name: current.name,
             projects: reach.projects,
-            roleCode: earlier.roleCode,
           },
           signal,
           beforeWrite,
         );
-      }
+      });
       this.#assertGeneration(generation);
       apiKey = await this.regenerateIntegrationToken(
         { clientId: input.clientId, tokenId: earlier.id },

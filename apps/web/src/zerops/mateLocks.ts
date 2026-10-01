@@ -1,7 +1,7 @@
 /**
  * The browser's locks a Mate's setup holds across this browser's tabs (`navigator.locks`): one
- * press or *Finish setup* per project at a time, and one read-then-write per key — under the same
- * name the store's token writes take, so the two compose.
+ * press or *Finish setup* per project at a time. A key's read-then-write is every token writer's
+ * one lock (`tokenWriteLock.ts`).
  */
 
 /** The part of `navigator.locks` these use. */
@@ -21,7 +21,6 @@ export function browserLocks(): LockManagerLike | undefined {
 }
 
 export const matePressLockName = (projectId: string): string => `mate:press:${projectId}`;
-export const mateTokenLockName = (tokenId: string): string => `mate:token:${tokenId}`;
 
 /** Runs `run` holding the lock where no other holder has it; `busy` where one does. */
 export async function withLockIfFree<T>(
@@ -36,7 +35,7 @@ export async function withLockIfFree<T>(
   );
 }
 
-/** Runs `run` holding the lock, waiting its turn behind any other holder. */
+/** Runs `run` holding the lock, waiting its turn behind any other holder: a press, to its end. */
 export async function withExclusiveLock<T>(
   locks: LockManagerLike | undefined,
   name: string,

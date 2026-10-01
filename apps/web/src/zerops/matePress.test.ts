@@ -1,5 +1,7 @@
 import {
+  makeTokenWriteLock,
   PRESS_STEP_ATTEMPTS,
+  type TokenWriteHold,
   type EnvironmentCreationPlatform,
   type EnvironmentCreationStep,
   type EnvironmentCreationStepProgress,
@@ -174,10 +176,10 @@ describe("shareGroupReach", () => {
       },
     };
   };
-  const share = (client: ReturnType<typeof fakeClient>["client"], locks?: LockManagerLike) =>
+  const share = (client: ReturnType<typeof fakeClient>["client"], hold?: TokenWriteHold) =>
     shareGroupReach({
       client,
-      locks,
+      ...(hold === undefined ? {} : { hold }),
       organizationId: "org-acme",
       // A stage environment with no key among them, and the new project itself.
       groupProjectIds: ["uma", "stage", "fen", "ivo", "new"],
@@ -188,14 +190,15 @@ describe("shareGroupReach", () => {
   it("extends every sibling Mate's key, each read fresh under its lock right before its write", async () => {
     const fake = fakeClient();
     const held: Array<string> = [];
-    const locks: LockManagerLike = {
-      request: async (name, _options, hold) => {
+    // The page's one token lock, every token writer's, over locks that record what they hold.
+    const hold = makeTokenWriteLock({
+      request: async (name, run) => {
         held.push(name);
         fake.calls.push(`lock ${name}`);
-        return hold({ name });
+        return run();
       },
-    };
-    expect(await share(fake.client, locks)).toEqual({ extended: 3, failed: 0 });
+    });
+    expect(await share(fake.client, hold)).toEqual({ extended: 3, failed: 0 });
     expect(fake.calls).toEqual([
       "list",
       "lock mate:token:k-uma",
@@ -211,7 +214,7 @@ describe("shareGroupReach", () => {
       "list",
       "put k-ivo",
     ]);
-    // The store's token writes take the same names: the two never write one key at once.
+    // Every token writer takes the same names: no two write one key at once.
     expect(held).toEqual(["mate:token:k-uma", "mate:token:k-fen", "mate:token:k-ivo"]);
     expect(
       [...fake.tokens.values()].map((token) => token.projects.map((grant) => grant.projectId)),

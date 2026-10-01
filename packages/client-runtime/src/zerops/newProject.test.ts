@@ -1,3 +1,4 @@
+import type { TokenWriteHold } from "./groupReach.ts";
 import { describe, expect, it, vi } from "@effect/vitest";
 
 import { DEFAULT_ZEROPS_API_BASE, ZeropsApiClient } from "./api.ts";
@@ -325,9 +326,11 @@ function platformClient(state: {
   readonly services?: ReadonlyArray<Record<string, unknown>>;
   readonly tokens?: ReadonlyArray<Record<string, unknown>>;
   readonly processes?: ReadonlyArray<Record<string, unknown>>;
+  readonly holdToken?: TokenWriteHold;
 }) {
   const requests: Array<Recorded> = [];
   const client = new ZeropsApiClient({
+    ...(state.holdToken === undefined ? {} : { holdToken: state.holdToken }),
     fetch: (input, init) => {
       const method = init?.method ?? "GET";
       requests.push({
@@ -493,6 +496,48 @@ describe("ZeropsApiClient.importDevelopmentContainer: the Mate's key comes with 
 
     await expect(client.importDevelopmentContainer(INPUT)).rejects.toThrow(/being created/u);
     expect(writesOf(requests)).toEqual([]);
+  });
+
+  // The write replaces the key's whole project list: it is planned from a read under the key's
+  // lock, every token writer's (pass 28 review).
+  it("sets a reused key's reach from a read under its lock", async () => {
+    const held: Array<string> = [];
+    const { client, requests } = platformClient({
+      tokens: [
+        {
+          id: "token-old",
+          name: "zcp-Acme Docs - Ada",
+          roleCode: "NO_ACCESS",
+          projects: [{ projectId: "project-9", roleCode: "BASIC_USER" }],
+        },
+      ],
+      holdToken: async (tokenId, run) => {
+        held.push(`hold ${tokenId} after ${requests.length}`);
+        try {
+          return await run();
+        } finally {
+          held.push(`let go ${tokenId} after ${requests.length}`);
+        }
+      },
+    });
+
+    await client.importDevelopmentContainer(INPUT);
+
+    const write = requests.findIndex(
+      (request) =>
+        request.method === "PUT" && request.url === "/client/org-1/integration-token/token-old",
+    );
+    const holdAt = Number(held[0]?.split(" after ")[1]);
+    const goneAt = Number(held[1]?.split(" after ")[1]);
+    expect(held[0]).toMatch(/^hold token-old/u);
+    // A read of the token list inside the hold, then the write, before it is let go.
+    expect(
+      requests
+        .slice(holdAt, write)
+        .some((request) => request.url.includes("/integration-token/list")),
+    ).toBe(true);
+    expect(write).toBeGreaterThanOrEqual(holdAt);
+    expect(write).toBeLessThan(goneAt);
   });
 
   it("reuses the newest of two keys a stopped press left, never an older one", async () => {

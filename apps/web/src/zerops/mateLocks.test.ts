@@ -2,7 +2,6 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   matePressLockName,
-  mateTokenLockName,
   withExclusiveLock,
   withLockIfFree,
   type LockManagerLike,
@@ -36,9 +35,8 @@ function fakeLocks() {
 }
 
 describe("the locks a Mate's setup holds across this browser's tabs", () => {
-  it("names a press's lock by its project and a key's by its id, as the store's own", () => {
+  it("names a press's lock by its project", () => {
     expect(matePressLockName("p-1")).toBe("mate:press:p-1");
-    expect(mateTokenLockName("tok-1")).toBe("mate:token:tok-1");
   });
 
   it("runs a press only where no other tab is running one for the project", async () => {
@@ -72,18 +70,18 @@ describe("the locks a Mate's setup holds across this browser's tabs", () => {
     ).toBe("third");
   });
 
-  it("queues one key's writes behind each other", async () => {
+  it("queues one press behind another for the same project", async () => {
     const { locks } = fakeLocks();
     const order: Array<string> = [];
     let release: () => void = () => undefined;
-    const first = withExclusiveLock(locks, "mate:token:t", async () => {
+    const first = withExclusiveLock(locks, "mate:press:p-2", async () => {
       order.push("first in");
       await new Promise<void>((resolve) => {
         release = resolve;
       });
       order.push("first out");
     });
-    const second = withExclusiveLock(locks, "mate:token:t", async () => {
+    const second = withExclusiveLock(locks, "mate:press:p-2", async () => {
       order.push("second");
     });
     await Promise.resolve();
@@ -101,6 +99,6 @@ describe("the locks a Mate's setup holds across this browser's tabs", () => {
         () => "busy",
       ),
     ).toBe("ran");
-    expect(await withExclusiveLock(undefined, "mate:token:t", async () => "ran")).toBe("ran");
+    expect(await withExclusiveLock(undefined, "mate:press:p-2", async () => "ran")).toBe("ran");
   });
 });
