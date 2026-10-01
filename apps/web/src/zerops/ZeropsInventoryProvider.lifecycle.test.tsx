@@ -234,9 +234,11 @@ const mountInventory = Effect.fn(function* (
       if (fetchGate !== null) await fetchGate;
       return user;
     }),
-    listAccessibleClientProjects: vi.fn(async () =>
-      [...projects.values()].filter(({ id }) => indexed.has(id)),
-    ),
+    // A searched listing: each project is judged by its own read, which these tests fail.
+    readAccessibleClientProjects: vi.fn(async () => ({
+      projects: [...projects.values()].filter(({ id }) => indexed.has(id)),
+      direct: false,
+    })),
     fetchProject: vi.fn(async (id: string) => {
       if (failing.has(id)) throw new ZeropsApiError("Unavailable", "server", 503);
       const project = gone.has(id) ? undefined : projects.get(id);

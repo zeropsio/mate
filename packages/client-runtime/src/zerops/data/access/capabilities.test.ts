@@ -576,7 +576,7 @@ describe("capabilities over the access grant", () => {
                   ],
                 };
               },
-              listAccessibleClientProjects: async () => [read],
+              readAccessibleClientProjects: async () => ({ projects: [read], direct: false }),
               fetchProject: async () => read,
             },
             account,

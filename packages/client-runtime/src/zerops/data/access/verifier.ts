@@ -1,8 +1,10 @@
 /**
  * The access grant's verification reads (DESIGN §4.2 G1), behind the `AccessVerifier` port the
- * grant's interpreter in the data runtime runs: `fetchUser`, each organization's project list,
- * then one `fetchProject` per project a few at a time. Each answer reaches the grant as its own
- * event, so one project's failure is that project's alone.
+ * grant's interpreter in the data runtime runs: `fetchUser`, then each organization's project
+ * list. A project the lag-free direct list carries is judged from its row, which holds the
+ * project's `userRoles` as its own read does; a project only the search names, or a carried one
+ * the list omits, is read with `fetchProject`, a few at a time. Each answer reaches the grant as
+ * its own event, so one project's failure is that project's alone.
  *
  * Verification reads are admission evidence only; platform records are published exclusively by
  * the data runtime.
@@ -60,7 +62,7 @@ export interface AccessVerifier {
 
 export type AccessVerifierClient = Pick<
   ZeropsApiClient,
-  "fetchUser" | "listAccessibleClientProjects" | "fetchProject"
+  "fetchUser" | "readAccessibleClientProjects" | "fetchProject"
 >;
 
 // ── The per-project classifier ────────────────────────────────────────────────────────────────
@@ -148,6 +150,22 @@ const readPlatform = <A>(
   read: (signal: AbortSignal) => Promise<A>,
 ): Effect.Effect<A, ReadFailure> => Effect.tryPromise({ try: read, catch: (cause) => ({ cause }) });
 
+/** A project's row — its own read, or the direct list's — judged against the viewer's membership. */
+const projectOutcome = (
+  project: ProjectRef,
+  row: ZeropsProject,
+  membership: ZeropsOrganization,
+): ProjectOutcome => {
+  const access = operableProjectAccess(row, membership);
+  return {
+    kind: "verified",
+    access:
+      access === null
+        ? { project, role: "NO_ACCESS", mutationsAllowed: false }
+        : { project, role: access.role, mutationsAllowed: access.visibility === "open" },
+  };
+};
+
 /**
  * One project's read, judged against the viewer's membership. A hidden project
  * is verified with no access; a 403/404 is that project's denial (G6).
@@ -158,16 +176,7 @@ const readProjectAccess = (
   membership: ZeropsOrganization,
 ): Effect.Effect<ProjectOutcome> =>
   readPlatform((signal) => client.fetchProject(project.projectId, signal)).pipe(
-    Effect.map((read): ProjectOutcome => {
-      const access = operableProjectAccess(read, membership);
-      return {
-        kind: "verified",
-        access:
-          access === null
-            ? { project, role: "NO_ACCESS", mutationsAllowed: false }
-            : { project, role: access.role, mutationsAllowed: access.visibility === "open" },
-      };
-    }),
+    Effect.map((read) => projectOutcome(project, read, membership)),
     Effect.catch(({ cause }) =>
       Effect.succeed<ProjectOutcome>(
         cause instanceof ZeropsApiError && cause.kind === "forbidden"
@@ -219,20 +228,26 @@ export function makeRestAccessVerifier(options: RestAccessVerifierOptions): Acce
           (organization) => {
             reads++;
             return readPlatform((signal) =>
-              client.listAccessibleClientProjects(organization.id, { signal }),
-            ).pipe(Effect.map((projects) => ({ organization, projects })));
+              client.readAccessibleClientProjects(organization.id, { signal }),
+            ).pipe(Effect.map((read) => ({ organization, ...read })));
           },
           { concurrency: "unbounded" },
         );
         const targets = new Map<
           string,
-          { readonly ref: ProjectRef; readonly membership: ZeropsOrganization }
+          {
+            readonly ref: ProjectRef;
+            readonly membership: ZeropsOrganization;
+            /** The direct list's row, when it carries the project's overrides: no read needed. */
+            readonly row: ZeropsProject | null;
+          }
         >();
-        for (const { organization, projects } of listed) {
+        for (const { organization, projects, direct } of listed) {
           for (const project of projects) {
             targets.set(project.id, {
               ref: projectRef(organization.id, project.id),
               membership: organization,
+              row: direct && Array.isArray(project.userRoles) ? project : null,
             });
           }
           for (const ref of carried) {
@@ -240,7 +255,7 @@ export function makeRestAccessVerifier(options: RestAccessVerifierOptions): Acce
               ref.organization.organizationId === organization.id &&
               !targets.has(ref.projectId)
             ) {
-              targets.set(ref.projectId, { ref, membership: organization });
+              targets.set(ref.projectId, { ref, membership: organization, row: null });
             }
           }
         }
@@ -255,16 +270,26 @@ export function makeRestAccessVerifier(options: RestAccessVerifierOptions): Acce
           })),
           projects: queue.map(({ ref }) => ref),
         });
+        // A project the direct list carried with its overrides is judged from that row: the
+        // organization's one list stands for N project reads. Only the rest are read.
         yield* Effect.forEach(
           queue,
-          ({ ref, membership }) => {
-            reads++;
-            return readProjectAccess(client, ref, membership).pipe(
-              Effect.flatMap((outcome) =>
-                report({ type: "ROUND_PROJECT", round, project: ref, outcome }),
-              ),
-            );
-          },
+          ({ ref, membership, row }) =>
+            row !== null
+              ? report({
+                  type: "ROUND_PROJECT",
+                  round,
+                  project: ref,
+                  outcome: projectOutcome(ref, row, membership),
+                })
+              : Effect.suspend(() => {
+                  reads++;
+                  return readProjectAccess(client, ref, membership);
+                }).pipe(
+                  Effect.flatMap((outcome) =>
+                    report({ type: "ROUND_PROJECT", round, project: ref, outcome }),
+                  ),
+                ),
           { concurrency: options.concurrency, discard: true },
         );
       }).pipe(

@@ -1071,8 +1071,22 @@ export class ZeropsApiClient {
     clientId: string,
     options: ListProjectsOptions = {},
   ): Promise<ReadonlyArray<ZeropsProject>> {
+    return (await this.readAccessibleClientProjects(clientId, options)).projects;
+  }
+
+  /**
+   * `listAccessibleClientProjects`, saying which read answered. `direct` is the
+   * lag-free client read, whose rows carry each project's `userRoles` exactly as
+   * `GET /project/{id}` does (measured 2026-10-01, 6 of 6 projects equal); the
+   * search fallback's rows do not, so a caller judging access from a row trusts
+   * only a direct one.
+   */
+  async readAccessibleClientProjects(
+    clientId: string,
+    options: ListProjectsOptions = {},
+  ): Promise<{ readonly projects: ReadonlyArray<ZeropsProject>; readonly direct: boolean }> {
     try {
-      return await this.listClientProjects(clientId, options);
+      return { projects: await this.listClientProjects(clientId, options), direct: true };
     } catch (cause) {
       if (!(cause instanceof ZeropsApiError) || cause.kind !== "forbidden") throw cause;
     }
@@ -1097,9 +1111,9 @@ export class ZeropsApiClient {
       );
       return { items: response.items, total: response.totalHits };
     });
-    if (!options.statuses?.length) return projects;
+    if (!options.statuses?.length) return { projects, direct: false };
     const statuses = new Set(options.statuses);
-    return projects.filter((project) => statuses.has(project.status));
+    return { projects: projects.filter((project) => statuses.has(project.status)), direct: false };
   }
 
   /**
