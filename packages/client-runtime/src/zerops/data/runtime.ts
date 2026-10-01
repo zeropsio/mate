@@ -871,6 +871,15 @@ function failureKind(error: AdapterError): ReadFailureKind {
  */
 const registrationRefused = (error: AdapterError): boolean => error.status !== undefined;
 
+/** A registration let go because a person asked to try again (Try now). */
+const RETRIED_BY_PERSON: AdapterError = {
+  _tag: "ZeropsDataAdapterError",
+  kind: "cancelled",
+  message: "Retried at a person's request.",
+  retryable: true,
+  accountRevocationEvidence: false,
+};
+
 /** An interest's establishment that outlived `establishmentDeadlineMs`: its own, not its socket's. */
 const ESTABLISHMENT_DEADLINE: AdapterError = {
   _tag: "ZeropsDataAdapterError",
@@ -2927,6 +2936,43 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
         // cycle instead, which recomputes its wait from current state.
         const activeRecovery = recoveryCycles.get(organizationKey);
         if (activeRecovery !== undefined) {
+          // A person asked (Try now): every subscription of the organization not observing
+          // starts over now, past its backoff, on the socket the cycle already holds — which none
+          // of this replaces. Its registrations still unanswered are let go, so nothing waits on
+          // them. A socket that is not open is the cycle's: its login retries on its own backoff.
+          const current = receivers.get(organizationKey);
+          if (current !== undefined && current.handle !== null) {
+            const stalled = yield* Ref.get(model);
+            const restarting = [...interests.values()].filter((runtimeInterest) => {
+              const status = stalled.interests.get(runtimeInterest.key)?.interest.status;
+              return (
+                runtimeInterest.leases.size > 0 &&
+                runtimeInterest.identity.receiver.receiverId === current.identity.receiverId &&
+                (status === "establishing" || status === "recovering")
+              );
+            });
+            for (const registration of [...current.registrations.values()]) {
+              if (registration.status !== "registering") continue;
+              current.registrations.delete(registration.key);
+              const name = registration.request.subscriptionName;
+              if (current.registrationOwners.get(name) === registration)
+                current.registrationOwners.delete(name);
+              yield* Deferred.succeed(registration.outcome, {
+                kind: "failed",
+                error: RETRIED_BY_PERSON,
+              });
+            }
+            for (const runtimeInterest of restarting) {
+              runtimeInterest.recoveryAttempts = 0;
+              const desired = yield* updateInterestIdentity(runtimeInterest, current);
+              yield* applyControl({ kind: "interest-upserted", interest: desired });
+            }
+            yield* Effect.forEach(
+              restarting,
+              (runtimeInterest) => establishInterest(runtimeInterest).pipe(forkOwned),
+              { discard: true },
+            );
+          }
           yield* Deferred.succeed(activeRecovery.wake, undefined);
           return;
         }
