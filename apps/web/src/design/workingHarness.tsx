@@ -1251,6 +1251,43 @@ function Harness() {
             />
           </Card>
         </State>
+        {[
+          {
+            label: "A stand-up that failed before any service, its reason cut short",
+            reason:
+              "Git access has not reached this Mate: GITEA_URL, MATE_BROKER_URL, GITEA_TOKEN are unset in its container, so it cannot push the recipe's repositories",
+          },
+          {
+            label: "A stand-up that failed before any service, its reason whole",
+            reason: "Git access has not reached this Mate.",
+          },
+        ].map(({ label, reason }) => (
+          <State key={label} label={label} note="Opening adds only what its line cut short.">
+            <Card>
+              <RunChat
+                row={record({
+                  turnKey: `standup-failed-${reason.length}`,
+                  now: THINKING_NOW,
+                  items: [
+                    {
+                      kind: "operation",
+                      key: `operation:op:standup-failed-${reason.length}`,
+                      at: ago(10),
+                      operation: {
+                        ...standupOp(`op:standup-failed-${reason.length}`, "development"),
+                        phase: "failed",
+                        statusWord: "Failed",
+                        settledAt: ago(10),
+                        anchorAt: ago(190),
+                        explanation: { reason },
+                      },
+                    },
+                  ],
+                })}
+              />
+            </Card>
+          </State>
+        ))}
         <State
           label="Settled bars"
           note="A deploy that landed and a batch that failed, as the bars say it."

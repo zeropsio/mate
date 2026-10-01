@@ -5,6 +5,7 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   importLines,
   lineSegments,
+  opensTo,
   operationLineWord,
   operationSubject,
   processReasons,
@@ -233,5 +234,22 @@ describe("settledOperationBar — a settled operation's bar carries what it foun
         (segment) => segment.tone,
       ),
     ).toEqual(tones);
+  });
+});
+
+describe("opensTo — a row offers to open only when opening adds something", () => {
+  it.each([
+    {
+      name: "a failed stand-up with no services yet and its reason whole on its line",
+      lines: 0,
+      reasonCut: false,
+      opens: false,
+    },
+    { name: "the same, its reason cut short on its line", lines: 0, reasonCut: true, opens: true },
+    { name: "a stand-up with its services' lines", lines: 3, reasonCut: false, opens: true },
+    { name: "an import with nothing to list", lines: 0, reasonCut: false, opens: false },
+    { name: "a kind that opens to its own card", lines: null, reasonCut: false, opens: true },
+  ])("$name", ({ lines, reasonCut, opens }) => {
+    expect(opensTo({ lines, reasonCut })).toBe(opens);
   });
 });

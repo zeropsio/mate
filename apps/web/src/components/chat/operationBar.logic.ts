@@ -187,3 +187,24 @@ export function settledOperationBar(
         : "done",
   }));
 }
+
+/**
+ * Whether opening a row adds anything (the owner's colleague, 2026-10-01:
+ * "you don't need an arrow if it doesn't show anything"): its services'
+ * lines (`lines`, null for a kind that opens to its own card), or the whole
+ * of a reason its one line cut short. A row with nothing to add wears no
+ * chevron and does not press.
+ */
+export function opensTo(input: {
+  readonly lines: number | null;
+  readonly reasonCut: boolean;
+}): boolean {
+  return input.lines === null || input.lines > 0 || input.reasonCut;
+}
+
+/** How many lines an operation opens to, by kind; null for one that opens to its own card. */
+export function detailLines(operation: ZeropsOperation, standupRows: number | null): number | null {
+  if (operation.kind === "standup") return standupRows ?? 0;
+  if (operation.kind === "import") return operation.steps.length;
+  return null;
+}
