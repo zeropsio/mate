@@ -4579,6 +4579,8 @@ describe("a failure's scope: its own interest, or the receiver", () => {
    */
   const setup = (options: {
     readonly register?: (request: RegistrationRequest) => AdapterError | null;
+    /** Registrations that never answer at all. */
+    readonly hang?: (request: RegistrationRequest) => boolean;
     readonly read?: (ticket: ReadTicket) => AdapterError | null;
     readonly policy?: Partial<ZeropsDataPolicy>;
     readonly visibility?: ZeropsVisibility;
@@ -4607,6 +4609,7 @@ describe("a failure's scope: its own interest, or the receiver", () => {
         register: (_receiver, request) =>
           Effect.suspend(() => {
             registrations.push(request);
+            if (options.hang?.(request) === true) return Effect.never;
             const failure = options.register?.(request) ?? null;
             return failure === null
               ? Effect.succeed({ responseObservations: [] })
@@ -4772,6 +4775,60 @@ describe("a failure's scope: its own interest, or the receiver", () => {
         expect([rig.list, sibling].map((lease) => rig.interestOf(recovered, lease))).toEqual(
           untouched,
         );
+        expect(yield* Queue.size(rig.opened)).toBe(0);
+        expect(rig.closes()).toBe(0);
+        yield* rig.dispose;
+      }),
+  );
+
+  it.effect(
+    "a project's subscription that outlives its establishment deadline on a live socket recovers alone, never replacing the socket",
+    () =>
+      Effect.gen(function* () {
+        // Live, 2026-10-01: one subscription stuck past its 60 s deadline replaced the org's
+        // socket, and every one of its ~60 subscriptions registered again, four at a time.
+        let hung = true;
+        const rig = yield* setup({
+          hang: (request) =>
+            hung &&
+            request.descriptor.kind === "query-membership" &&
+            request.descriptor.query.kind === "services-of-project" &&
+            request.descriptor.query.project.projectId === "project-b",
+          policy: { establishmentDeadlineMs: 100 },
+        });
+        const [stuck, sibling] = rig.inventories as [InterestLease, InterestLease];
+        yield* settleUntil(rig.runtime, (state) =>
+          [rig.list, sibling].every(
+            (lease) => rig.interestOf(state, lease)?.status === "observing",
+          ),
+        );
+        yield* TestClock.adjust("100 millis");
+        const first = yield* settleUntil(
+          rig.runtime,
+          (state) => rig.settled(state) && rig.interestOf(state, stuck)?.status === "recovering",
+        );
+        expect(rig.interestOf(first, stuck)).toMatchObject({ identity: { receiver: rig.live } });
+        expect([rig.list, sibling].map((lease) => rig.interestOf(first, lease))).toEqual([
+          expect.objectContaining({
+            status: "observing",
+            identity: expect.objectContaining({ receiver: rig.live }),
+          }),
+          expect.objectContaining({
+            status: "observing",
+            identity: expect.objectContaining({ receiver: rig.live }),
+          }),
+        ]);
+        expect(rig.closes()).toBe(0);
+
+        hung = false;
+        yield* TestClock.adjust("40 millis");
+        const recovered = yield* settleUntil(
+          rig.runtime,
+          (state) => rig.interestOf(state, stuck)?.status === "observing",
+        );
+        expect(rig.interestOf(recovered, stuck)).toMatchObject({
+          identity: { receiver: rig.live },
+        });
         expect(yield* Queue.size(rig.opened)).toBe(0);
         expect(rig.closes()).toBe(0);
         yield* rig.dispose;

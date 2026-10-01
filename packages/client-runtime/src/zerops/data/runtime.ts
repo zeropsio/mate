@@ -871,6 +871,15 @@ function failureKind(error: AdapterError): ReadFailureKind {
  */
 const registrationRefused = (error: AdapterError): boolean => error.status !== undefined;
 
+/** An interest's establishment that outlived `establishmentDeadlineMs`: its own, not its socket's. */
+const ESTABLISHMENT_DEADLINE: AdapterError = {
+  _tag: "ZeropsDataAdapterError",
+  kind: "timeout",
+  message: "The interest establishment deadline expired.",
+  retryable: true,
+  accountRevocationEvidence: false,
+};
+
 /**
  * Creates one account-scoped owner. The returned runtime owns its Effect scope
  * and transports, while the caller continues to own the supplied AtomRegistry.
@@ -2211,17 +2220,25 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
     }).pipe(
       Effect.timeoutOrElse({
         duration: Duration.millis(policy.establishmentDeadlineMs),
-        orElse: () =>
-          Effect.fail({
-            _tag: "ZeropsDataAdapterError",
-            kind: "timeout",
-            message: "The interest establishment deadline expired.",
-            retryable: true,
-            accountRevocationEvidence: false,
-          } satisfies AdapterError),
+        orElse: () => Effect.fail(ESTABLISHMENT_DEADLINE),
       }),
       Effect.catch((error: AdapterError) => {
         const receiver = receiverFor(organizationOfInterest(runtimeInterest.descriptor));
+        // One subscription outliving its deadline on a socket that is open says nothing against
+        // the socket: it retries alone on its own backoff, and its siblings keep observing. A
+        // socket that is dead says so itself (its close, a missed pong) and is replaced then.
+        if (
+          error === ESTABLISHMENT_DEADLINE &&
+          receiver.handle !== null &&
+          runtimeInterest.identity.receiver.receiverId === receiver.identity.receiverId
+        ) {
+          return recoverInterest(
+            receiver,
+            runtimeInterest.identity,
+            "disconnect",
+            error.message,
+          ).pipe(Effect.as(interestFailed));
+        }
         return markRecovering(runtimeInterest.identity, "disconnect").pipe(
           Effect.andThen(scheduleRecovery(receiver, error.message)),
           Effect.as(receiverFailed(error.message)),
