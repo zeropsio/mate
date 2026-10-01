@@ -57,6 +57,7 @@ import { isZeropsEnvironment, type ZeropsEnvironment } from "./ZeropsEnvironment
 import * as ZeropsMateKeyModule from "./ZeropsMateKey.ts";
 import { ZEROPS_SUBJECT_PREFIX } from "./ZeropsMembershipWatch.ts";
 import { parseSignerTags, readProjectTagList } from "./ZeropsProjectSigners.ts";
+import { hasSetupMarker, readServiceVariableKeys } from "./zeropsSetupMarker.ts";
 import { ZeropsTurnAdmission, type TurnPrincipal } from "./ZeropsTurnAdmission.ts";
 import {
   STAND_UP_MESSAGE,
@@ -73,13 +74,6 @@ import {
 
 /** The variable zcp names its status file in when it launches this server. */
 export const ZCP_STATUS_FILE_VARIABLE = "ZCP_STATUS_FILE";
-
-/**
- * The mark of a Mate the new press made: it always sets the tier's runtimes
- * plan on zcp, empty or not. Only such a Mate starts its own stand-up; one
- * made before keeps its browser's.
- */
-export const SETUP_MARKER_VARIABLE = "MATE_SETUP_RUNTIMES";
 
 /** How often the server looks for the stand-up's go-ahead while it is new… */
 export const STAND_UP_POLL = Duration.seconds(10);
@@ -462,7 +456,7 @@ export const makeZeropsSetup = (timings: ZeropsSetupTimings = TIMINGS) =>
     const wait = Effect.gen(function* () {
       const variables = yield* reads.serviceVariables;
       // A Mate the new press did not make keeps its browser's stand-up, and never polls.
-      if (variables === undefined || !variables.includes(SETUP_MARKER_VARIABLE)) return;
+      if (variables === undefined || !hasSetupMarker(variables)) return;
       yield* readiness.await;
       const since = yield* Clock.currentTimeMillis;
       while (true) {
@@ -542,13 +536,8 @@ export const makeLiveReads = (input: {
               Effect.provideService(HttpClient.HttpClient, httpClient),
               Effect.provideService(ZeropsMateKeyModule.ZeropsMateKey, mateKey),
             ),
-      serviceVariables: readFileJson(fs, ZeropsMateKeyModule.MATE_LIVE_ENV_STORE_PATH).pipe(
-        Effect.map((store) => [
-          ...Object.keys(process.env),
-          ...(typeof store === "object" && store !== null && !Array.isArray(store)
-            ? Object.keys(store)
-            : []),
-        ]),
+      serviceVariables: readServiceVariableKeys.pipe(
+        Effect.provideService(FileSystem.FileSystem, fs),
       ),
       statusFile:
         statusFilePath === undefined || statusFilePath.length === 0
