@@ -921,7 +921,19 @@ describe("RunChat, as the person uses it", () => {
       return 0;
     }) as typeof requestAnimationFrame;
   });
+  // Every card a test drew is taken down with it: a card left drawn keeps its
+  // now line's dwell, its words' fade and its clock running past the test,
+  // and their late renders logged while the worker closed (CI, 2026-10-01).
+  const drawn: ReactTestRenderer[] = [];
+  const mounted = (...args: Parameters<typeof create>): ReactTestRenderer => {
+    const renderer = create(...args);
+    drawn.push(renderer);
+    return renderer;
+  };
   afterEach(() => {
+    act(() => {
+      for (const renderer of drawn.splice(0)) renderer.unmount();
+    });
     globalThis.ResizeObserver = saved.resize;
     globalThis.requestAnimationFrame = saved.frame;
   });
@@ -929,7 +941,7 @@ describe("RunChat, as the person uses it", () => {
   const mount = (row: RecordRow) => {
     let renderer!: ReactTestRenderer;
     act(() => {
-      renderer = create(
+      renderer = mounted(
         <Rows>
           <RunChat row={row} />
         </Rows>,
@@ -1238,7 +1250,7 @@ describe("RunChat, as the person uses it", () => {
       const focused: string[] = [];
       let renderer!: ReactTestRenderer;
       act(() => {
-        renderer = create(
+        renderer = mounted(
           <Rows>
             <RunChat row={record([thought("r1", LONG)])} />
           </Rows>,
@@ -1316,7 +1328,7 @@ describe("RunChat, as the person uses it", () => {
         element.type === "ol" ? list : element.type === "div" ? box : {};
       let renderer!: ReactTestRenderer;
       act(() => {
-        renderer = create(
+        renderer = mounted(
           <Rows>
             <RunChat row={record([], { live: true, status: status() })} />
           </Rows>,

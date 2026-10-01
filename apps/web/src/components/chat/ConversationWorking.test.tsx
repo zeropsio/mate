@@ -1,7 +1,7 @@
 import { act, type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { create, type ReactTestRenderer } from "react-test-renderer";
-import { describe, expect, it, vi } from "vite-plus/test";
+import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
 import type { IncidentModel } from "./conversation.logic";
 import type { DockModel } from "./conversationDock.logic";
@@ -137,6 +137,20 @@ function barsOf(markup: string) {
 }
 
 describe("what runs alongside the Mate", () => {
+  // Every dock a test drew is taken down with it: one left drawn keeps its
+  // bars' clocks ticking past the test, into the next file's run.
+  const drawn: ReactTestRenderer[] = [];
+  const mounted = (...args: Parameters<typeof create>): ReactTestRenderer => {
+    const renderer = create(...args);
+    drawn.push(renderer);
+    return renderer;
+  };
+  afterEach(() => {
+    act(() => {
+      for (const renderer of drawn.splice(0)) renderer.unmount();
+    });
+  });
+
   it("draws nothing when nothing runs", () => {
     expect(render(null)).not.toContain("data-working-instruments");
   });
@@ -195,7 +209,7 @@ describe("what runs alongside the Mate", () => {
     try {
       let renderer!: ReactTestRenderer;
       act(() => {
-        renderer = create(
+        renderer = mounted(
           <ConversationWorking
             dock={DOCK}
             environmentId={null}
@@ -262,7 +276,7 @@ describe("what runs alongside the Mate", () => {
       );
       let renderer!: ReactTestRenderer;
       act(() => {
-        renderer = create(draw(DOCK), {
+        renderer = mounted(draw(DOCK), {
           createNodeMock: (element) =>
             (element.props as Record<string, unknown>)["data-conversation-working"] === undefined
               ? {}
