@@ -90,8 +90,6 @@ export interface EnvironmentCreationPlatform {
     readonly tokenId: string;
     readonly name: string;
     readonly projects: ReadonlyArray<ZeropsProjectGrant>;
-    /** The token's own org role, as read: the replacement would otherwise lower it. */
-    readonly roleCode?: string | undefined;
   }) => Promise<void>;
   /** `GET /client/{id}/integration-token/{tokenId}/delegation`. */
   readonly listTokenDelegations: (input: {
@@ -327,7 +325,6 @@ export async function runEnvironmentCreation(
               tokenId: write.tokenId,
               name: token.name,
               projects: write.projects,
-              ...(token.roleCode === undefined ? {} : { roleCode: token.roleCode }),
             });
           }
           break;

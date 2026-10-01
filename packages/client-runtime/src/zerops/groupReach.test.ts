@@ -300,13 +300,9 @@ describe("writeTokenProjectsFresh", () => {
 
     expect(count).toBe(1);
     expect(held).toEqual(["tok-a"]);
+    // As planned, no more: a Mate's token is lowered to no org role, whatever it held.
     expect(written).toEqual([
-      {
-        tokenId: "tok-a",
-        name: "a",
-        roleCode: "READ_ONLY",
-        projects: [grant(DEV), grant(STAGE), grant(PROD)],
-      },
+      { tokenId: "tok-a", name: "a", projects: [grant(DEV), grant(STAGE), grant(PROD)] },
     ]);
   });
 

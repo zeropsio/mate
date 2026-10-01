@@ -206,18 +206,19 @@ describe("runEnvironmentCreation", () => {
     ]);
   });
 
-  it("lowers the container's token from its list as read in that step, keeping its own role", async () => {
-    const written: Array<{ readonly roleCode?: string | undefined }> = [];
+  it("lowers the container's token to no org role, whatever role it was minted with", async () => {
+    const written: Array<object> = [];
     const { platform } = fakePlatform({
-      listIntegrationTokenGrants: () =>
-        Promise.resolve([{ ...MINTED_TOKEN, roleCode: "NO_ACCESS" }]),
+      listIntegrationTokenGrants: () => Promise.resolve([{ ...MINTED_TOKEN, roleCode: "ADMIN" }]),
       setIntegrationTokenProjects: (input) => {
         written.push(input);
         return Promise.resolve();
       },
     });
     await run(plan("dev"), platform);
-    expect(written).toMatchObject([{ tokenId: "tok-mate", roleCode: "NO_ACCESS" }]);
+    expect(written).toHaveLength(1);
+    // No role passed: the write lowers the token's org role to none.
+    expect(written[0]).not.toHaveProperty("roleCode");
   });
 
   it("hands an environment with an agent to its birth at the runtimes, waiting on nothing", async () => {

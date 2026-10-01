@@ -308,15 +308,15 @@ export function makeTokenWriteLock(
 /**
  * Writes tokens' project lists. A write replaces a token's whole list, so each is planned from
  * the list read under that token's lock (`hold`), right before it — never from a list read
- * earlier, a shared, possibly old one least of all — and it carries the token's own org role as
- * read, which the replacement would otherwise lower. A read outside the lock only finds the next
- * token to write. It writes at most what its first plan asked for, and answers how many it wrote.
+ * earlier, a shared, possibly old one least of all. It writes the plan as it stands: an org role
+ * only where the plan names one (the broker's own, read under the lock), else the write lowers it
+ * to none. A read outside the lock only finds the next token to write. It writes at most what its first plan asked for, and answers how many it wrote.
  */
 export async function writeTokenProjectsFresh(input: {
   readonly read: () => Promise<ReadonlyArray<ZeropsIntegrationToken>>;
   readonly plan: (
     tokens: ReadonlyArray<ZeropsIntegrationToken>,
-  ) => ReadonlyArray<ZeropsGroupReachWrite>;
+  ) => ReadonlyArray<ZeropsGroupReachWrite & { readonly roleCode?: string | undefined }>;
   readonly write: (
     write: ZeropsGroupReachWrite & { readonly roleCode?: string | undefined },
   ) => Promise<void>;
@@ -340,8 +340,7 @@ export async function writeTokenProjectsFresh(input: {
         const tokens = await input.read();
         const write = input.plan(tokens).find((planned) => planned.tokenId === next.tokenId);
         if (write === undefined) return false;
-        const roleCode = tokens.find((token) => token.id === write.tokenId)?.roleCode;
-        await input.write(roleCode === undefined ? write : { ...write, roleCode });
+        await input.write(write);
         return true;
       });
       if (wrote) written += 1;
