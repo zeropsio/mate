@@ -22,6 +22,7 @@ import {
   mateRowReading,
   mateRowView,
   ownerMark,
+  mateRowOffersMenu,
 } from "./SidebarMateRow.logic";
 
 describe("ownerMark — whose Mate it is, as a 16 px mark before its name", () => {
@@ -1362,5 +1363,32 @@ describe("mateRowAskLine — the row's second line: what the person asked, or is
     },
   ])("$case", ({ input, line }) => {
     expect(mateRowAskLine(input)).toEqual(line);
+  });
+});
+
+// A row whose setup stopped offers its menu — *Finish setup* is on it — while one still coming
+// offers none (live, 2026-10-01: a half-made Mate's row read "Setting up stopped" with no ⋯).
+describe("mateRowOffersMenu", () => {
+  it.each([
+    { case: "a Mate that is up", deleting: false, coming: undefined, want: true },
+    { case: "a Mate going", deleting: true, coming: undefined, want: false },
+    {
+      case: "a Mate still coming",
+      deleting: false,
+      coming: { kind: "coming", line: "Coming up" } satisfies MateComing,
+      want: false,
+    },
+    {
+      case: "a Mate whose setup stopped",
+      deleting: false,
+      coming: {
+        kind: "failed",
+        line: "Its setup stopped.",
+        verb: "finish-setup",
+      } satisfies MateComing,
+      want: true,
+    },
+  ])("$case: $want", ({ deleting, coming, want }) => {
+    expect(mateRowOffersMenu({ deleting, coming })).toBe(want);
   });
 });

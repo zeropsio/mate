@@ -659,6 +659,18 @@ export function pendingBornLine(
 }
 
 /**
+ * Whether a row offers its ⋯ menu: not while its Mate is going, nor while it is still being made —
+ * nothing on it is about a Mate on its way — but once its setup stopped, for what finishes or
+ * removes it (*Finish setup*, *Delete*).
+ */
+export function mateRowOffersMenu(input: {
+  readonly deleting: boolean;
+  readonly coming: MateComing | undefined;
+}): boolean {
+  return !input.deleting && (input.coming === undefined || input.coming.kind === "failed");
+}
+
+/**
  * A Mate still coming up, or one that never came (`mateComing`), in its row: its face in the
  * coming pose — asleep, in the colours its person picked — its one line where it has got
  * (`mateBornLine`), and none of what only a Mate that is up has: no time, no ask, no words.

@@ -178,6 +178,7 @@ import {
   mateBornLine,
   mateBornLineText,
   mateComingRowView,
+  mateRowOffersMenu,
   mateCrewItem,
   mateDeletingView,
   mateNotYours,
@@ -2439,8 +2440,8 @@ function MateRow<T extends RosterCandidate>({
       ? read
       : mateComingRowView(read, coming);
   // Nothing on its menu is about a Mate still being made, or one going: it
-  // offers none.
-  const actions = deleting || coming !== undefined ? undefined : offered;
+  // offers none — until its setup stopped, when *Finish setup* is on it.
+  const actions = mateRowOffersMenu({ deleting, coming }) ? offered : undefined;
   // Whose seat it is, and whether anybody has signed its agent in — read off
   // its own records, so from the first paint (`mateOwnerView`).
   const records = mateOwnerRecords(candidate.project);
