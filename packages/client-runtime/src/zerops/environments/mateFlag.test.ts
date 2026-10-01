@@ -4,7 +4,7 @@ import { Atom, AtomRegistry } from "effect/unstable/reactivity";
 
 import type { ManagedZeropsDataRuntime } from "../data/runtime.ts";
 
-import { makeZeropsResourceBroker, type ZeropsResourceAdapter } from "../data/resources.ts";
+import { makeZeropsCells, type ZeropsCellAdapter } from "../data/cells.ts";
 import {
   AccountEpoch,
   makeZeropsApiOrigin,
@@ -61,11 +61,11 @@ const verified: AccessState = {
  */
 const flagThrough = (
   stated: boolean | "unknown",
-  read: ZeropsResourceAdapter["readServiceMateFlag"],
+  read: ZeropsCellAdapter["readServiceMateFlag"],
   access: AccessState = verified,
 ) =>
   Effect.gen(function* () {
-    const broker = yield* makeZeropsResourceBroker({
+    const broker = yield* makeZeropsCells({
       scope,
       access: () => access,
       adapter: {
@@ -73,12 +73,14 @@ const flagThrough = (
         readServiceAuthorizedAgents: () => Effect.succeed([]),
         readServiceMateFlag: read,
         readOrganizationIntegrationTokenGrants: () => Effect.succeed([]),
+        readOrganizationMembers: () => Effect.succeed([]),
+        readServiceVariableNames: () => Effect.succeed([]),
       },
     });
     const flagAtom = Atom.make<boolean | "unknown" | "unread">(stated);
     const acquired: Array<string> = [];
     const data = {
-      resources: broker,
+      cells: broker,
       reads: { mateFlag: () => flagAtom },
       acquire: (descriptor: { readonly kind: string }) => {
         acquired.push(descriptor.kind);
@@ -145,7 +147,7 @@ describe("readServiceMateFlag", () => {
             requested.push(request.service);
             return testCase.read === "fails"
               ? Effect.fail({
-                  _tag: "ZeropsResourceSourceError" as const,
+                  _tag: "ZeropsCellSourceError" as const,
                   kind: "transport" as const,
                   retryable: false,
                 })

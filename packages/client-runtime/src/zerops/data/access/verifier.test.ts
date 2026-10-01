@@ -1,4 +1,5 @@
 import { describe, expect, it } from "@effect/vitest";
+import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 
@@ -9,7 +10,9 @@ import type { GrantEvent } from "./grant.ts";
 import {
   makeRestAccessVerifier,
   operableProjectAccess,
+  RECENT_USER_MS,
   type AccessVerifierClient,
+  type RestAccessVerifierOptions,
 } from "./verifier.ts";
 
 const orgId = organization.organizationId;
@@ -31,7 +34,11 @@ const elsewhere: ProjectRef = {
   projectId: ZeropsProjectId.make("elsewhere"),
 };
 
-const verifierOver = (client: Partial<AccessVerifierClient>, concurrency = 4) => {
+const verifierOver = (
+  client: Partial<AccessVerifierClient>,
+  concurrency = 4,
+  recentUser?: RestAccessVerifierOptions["recentUser"],
+) => {
   const users: ZeropsUser[] = [];
   const verifier = makeRestAccessVerifier({
     client: {
@@ -43,9 +50,52 @@ const verifierOver = (client: Partial<AccessVerifierClient>, concurrency = 4) =>
     account,
     concurrency,
     onUser: (read) => users.push(read),
+    ...(recentUser === undefined ? {} : { recentUser }),
   });
   return { verifier, users };
 };
+
+describe("the round's user", () => {
+  const cases: ReadonlyArray<{
+    readonly name: string;
+    readonly verifiedAgoMs: number | null;
+    readonly reads: number;
+  }> = [
+    {
+      name: "is the one the session verified moments ago, read again by nobody",
+      verifiedAgoMs: 1_000,
+      reads: 0,
+    },
+    {
+      name: "is read again once the session's is no longer recent",
+      verifiedAgoMs: RECENT_USER_MS,
+      reads: 1,
+    },
+    { name: "is read when the session verified none", verifiedAgoMs: null, reads: 1 },
+  ];
+  for (const testCase of cases) {
+    it.effect(testCase.name, () =>
+      Effect.gen(function* () {
+        const now = yield* Clock.currentTimeMillis;
+        let reads = 0;
+        const { verifier, users } = verifierOver(
+          {
+            fetchUser: async () => {
+              reads += 1;
+              return user;
+            },
+          },
+          4,
+          () =>
+            testCase.verifiedAgoMs === null ? null : { user, atMs: now - testCase.verifiedAgoMs },
+        );
+        yield* verifier.verifyRound({ round: 1, carried: [], report: () => Effect.void });
+        expect(reads).toBe(testCase.reads);
+        expect(users).toEqual([user]);
+      }),
+    );
+  }
+});
 
 const round = Effect.fnUntraced(function* (
   client: Partial<AccessVerifierClient>,

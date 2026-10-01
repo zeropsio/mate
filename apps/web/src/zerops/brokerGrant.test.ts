@@ -3,12 +3,14 @@ import { describe, expect, it, vi } from "vite-plus/test";
 import { parseZeropsRegistry } from "@t3tools/client-runtime/zerops";
 
 import {
+  brokerGrantTokens,
   grantBrokerProject,
   registerMateInGroup,
   registerMateProject,
   type ProjectTagsWrite,
 } from "./brokerGrant";
 import { tagsFake } from "./__fixtures__/projectTags";
+import { makeTokenStore } from "./__fixtures__/tokenStore";
 
 const BROKER = {
   id: "t-2",
@@ -242,5 +244,40 @@ describe("registerMateInGroup", () => {
         )
         .toSorted(),
     ).toEqual(written);
+  });
+});
+
+describe("brokerGrantTokens", () => {
+  it("grants from the list as the platform holds it now, never the shared list a surface holds", async () => {
+    const calls: Array<string> = [];
+    let held = [BROKER];
+    const store = await makeTokenStore({ calls, tokens: () => held });
+    try {
+      // A surface holds the organization's tokens, read once.
+      const unmount = store.registry.mount(store.runtime.cells.known(store.tokensRequest));
+      await vi.waitFor(() => expect(calls).toEqual(["shared tokens of org-1"]));
+
+      // Meanwhile a Mate was registered: the broker reaches its project now.
+      held = [
+        {
+          ...BROKER,
+          projects: [...BROKER.projects, { projectId: "p-mate", roleCode: "BASIC_USER" as const }],
+        },
+      ];
+      const outcome = await grantBrokerProject({
+        client: brokerGrantTokens(store.runtime),
+        clientId: "org-1",
+        projectId: "p-new",
+      });
+
+      expect(outcome).toEqual({ kind: "granted" });
+      expect(calls.slice(1)).toEqual([
+        "list tokens of org-1",
+        "grant p-gitea,p-mate,p-new in org-1 as READ_ONLY",
+      ]);
+      unmount();
+    } finally {
+      await store.close();
+    }
   });
 });

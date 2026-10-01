@@ -47,7 +47,7 @@ import {
 import type { ProjectTagPatch, ProjectTagWrite } from "@t3tools/client-runtime/zerops/data";
 import type { RoleProjectKind } from "@t3tools/shared/zeropsRoles";
 
-import { grantBrokerProject, type ProjectTagsWrite } from "./brokerGrant";
+import { grantBrokerProject, type BrokerGrantClient, type ProjectTagsWrite } from "./brokerGrant";
 import { ensureDeployToken } from "./deployToken";
 
 /** The group repo of a group, by its slug (`{slug}/group`). */
@@ -74,6 +74,8 @@ export interface AddGroupEnvironmentOutcome {
 
 export async function addGroupEnvironment(input: {
   readonly client: ZeropsApiClient;
+  /** The organization's token list and the broker's grant write (`brokerGrantTokens`). */
+  readonly tokens: BrokerGrantClient;
   readonly writeTags: ProjectTagsWrite;
   readonly gitea: GiteaClient | null;
   readonly clientId: string;
@@ -124,7 +126,7 @@ export async function addGroupEnvironment(input: {
   // account with no broker stops here — unlike a Mate, which is registered
   // either way (`brokerGrant.ts`).
   const grant = await grantBrokerProject({
-    client: input.client,
+    client: input.tokens,
     clientId: input.clientId,
     projectId: input.environment.project,
     ...(input.signal === undefined ? {} : { signal: input.signal }),

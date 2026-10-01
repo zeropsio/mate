@@ -114,9 +114,9 @@
   {
     "path": "apps/web/src/zerops/useZeropsDeployedVersion.ts",
     "kind": "CallExpression",
-    "fingerprint": "readZeropsResource(resources, request, signal).catch(() => undefined)",
+    "fingerprint": "readZeropsCell(cells, request, signal).catch(() => undefined)",
     "owner": "state-model 4.6",
-    "reason": "readZeropsResourceOnce turns a failed broker read into no answer; the deployment store (4.4) replaces its callers and 4.6 deletes the hook",
+    "reason": "readZeropsCellOnce turns a failed cell read into no answer; the deployment store (4.4) replaces its callers and 4.6 deletes the hook",
     "expires": "never"
   },
   {
@@ -154,7 +154,7 @@
   {
     "path": "apps/web/src/zerops/useZeropsGroupEnvironmentReconcile.ts",
     "kind": "CallExpression",
-    "fingerprint": "addGroupEnvironment({ client, writeTags: projectTagsWrite(data.current, clientId), gitea, clientId, giteaProjectId, groupId: entry.groupId, environment: { displayName: entry.displayName, tier: entry.tier, project: entry.projectId, }, signal: controller.signal, }).catch((): AddGroupEnvironmentOutcome | undefined => undefined)",
+    "fingerprint": "addGroupEnvironment({ client, tokens: brokerGrantTokens(data.current.runtime), writeTags: projectTagsWrite(data.current, clientId), gitea, clientId, giteaProjectId, groupId: entry.groupId, environment: { displayName: entry.displayName, tier: entry.tier, project: entry.projectId, }, signal: controller.signal, }).catch((): AddGroupEnvironmentOutcome | undefined => undefined)",
     "owner": "state-model 4.7",
     "reason": "a failed repair reads as no outcome and the entry is given back for the next pass; the reconciler becomes an account worker with typed attempts",
     "expires": "never"

@@ -26,6 +26,9 @@ import {
 } from "@t3tools/client-runtime/zerops/doorThrowaway";
 import { useEffect, useRef } from "react";
 
+import { readZeropsCell } from "./useZeropsDeployedVersion";
+import { useZeropsData } from "./zeropsDataContext";
+
 import { useZeropsSession } from "./ZeropsSessionProvider";
 
 /** When this browser last swept each account, by organization id. */
@@ -53,6 +56,7 @@ export function useZeropsThrowawaySweep(input: {
   readonly enabled: boolean;
 }): void {
   const { client } = useZeropsSession();
+  const { organizationRef, runtime } = useZeropsData();
   const swept = useRef<string | null>(null);
   const { clientId, enabled } = input;
 
@@ -66,8 +70,22 @@ export function useZeropsThrowawaySweep(input: {
     const controller = new AbortController();
     void (async () => {
       try {
-        const tokens = await client.listIntegrationTokens(clientId, controller.signal);
-        const stale = planThrowawaySweep({ tokens, nowEpochMs: Date.now() });
+        // The account's one token list, shared with every reader of it (the account's cells).
+        const request = {
+          kind: "tokens",
+          account: runtime.scope,
+          organization: organizationRef(clientId),
+        } as const;
+        const tokens = await readZeropsCell(runtime.cells, request, controller.signal);
+        const stale = planThrowawaySweep({
+          tokens: tokens.map((token) => ({
+            id: token.tokenId,
+            name: token.name,
+            ...(token.created === undefined ? {} : { created: token.created }),
+          })),
+          nowEpochMs: Date.now(),
+        });
+        // Each delete makes the shared list read again (the client tells the store of it).
         for (const tokenId of stale) {
           if (controller.signal.aborted) return;
           await client.deleteIntegrationToken({ clientId, tokenId }, controller.signal);
@@ -82,5 +100,5 @@ export function useZeropsThrowawaySweep(input: {
     return () => {
       controller.abort();
     };
-  }, [client, clientId, enabled]);
+  }, [client, clientId, enabled, organizationRef, runtime]);
 }

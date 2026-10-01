@@ -17,6 +17,7 @@ import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { bindTestInvalidationBus } from "./__fixtures__/invalidationBus";
+import { makeTokenStore, type TokenStore } from "./__fixtures__/tokenStore";
 import { TestNode } from "./__fixtures__/testDom";
 import { onZeropsInvalidation } from "./accountInvalidations";
 import { closeAccountLifetime, openAccountLifetime } from "./accountLifetime";
@@ -52,22 +53,13 @@ const projectRef = (organizationId: string, projectId: string): ProjectRef => ({
 });
 
 /** The tab's account tree: a client, a runtime and a feed that reads the container's boot over. */
-function accountTree(calls: Array<string>): BirthInputs {
+/** Each test's token stores, ended after it. */
+const stores: Array<TokenStore> = [];
+
+async function accountTree(calls: Array<string>): Promise<BirthInputs> {
   let tagList: ReadonlyArray<string> = ["mate:tool:gitea", "mate:gn:group-1:todo"];
   const broker: ZeropsIntegrationToken = { id: "broker-1", name: "mate-broker", projects: [] };
   const client = {
-    listIntegrationTokens: async (clientId: string) => {
-      calls.push(`list tokens of ${clientId}`);
-      return [broker];
-    },
-    setIntegrationTokenProjects: async (input: {
-      readonly clientId: string;
-      readonly projects: ReadonlyArray<{ readonly projectId: string }>;
-    }) => {
-      calls.push(
-        `grant ${input.projects.map((project) => project.projectId).join(",")} in ${input.clientId}`,
-      );
-    },
     fetchProject: async (projectId: string) => ({
       id: projectId,
       name: "Todo - Vera",
@@ -87,10 +79,16 @@ function accountTree(calls: Array<string>): BirthInputs {
       },
     ],
   } as unknown as ZeropsApiClient;
+  const tokens = await makeTokenStore({ calls, tokens: () => [broker] });
+  stores.push(tokens);
   const runtime = {
     acquire: () => Effect.void,
     reads: { activity: (project: ProjectRef) => project },
+    scope: tokens.runtime.scope,
+    cells: tokens.runtime.cells,
     commands: {
+      listIntegrationTokenGrants: tokens.runtime.commands.listIntegrationTokenGrants,
+      setIntegrationTokenProjects: tokens.runtime.commands.setIntegrationTokenProjects,
       updateProjectTags: (project: ProjectRef, patch: ProjectTagPatch) =>
         Effect.sync(() => {
           calls.push(`${patch.kind} on ${project.projectId}`);
@@ -159,10 +157,11 @@ function openTab() {
   };
 }
 
-afterEach(() => {
+afterEach(async () => {
   closeAccountLifetime();
   vi.useRealTimers();
   vi.unstubAllGlobals();
+  await Promise.all(stores.splice(0).map((store) => store.close()));
 });
 
 describe("a creation the platform accepted", () => {
@@ -201,7 +200,7 @@ describe("the account's births", () => {
   it("leaving /zerops mid-birth keeps it hardening", async () => {
     const tab = openTab();
     const calls: Array<string> = [];
-    bindBirthInputs(accountTree(calls));
+    bindBirthInputs(await accountTree(calls));
     let births: ReturnType<typeof useZeropsBirths>["births"] = [];
     function ProjectsPage() {
       const current = useZeropsBirths().births;
@@ -228,11 +227,13 @@ describe("the account's births", () => {
   it("org switch after create-accepted still finishes tags and registry", async () => {
     const tab = openTab();
     const calls: Array<string> = [];
-    bindBirthInputs(accountTree(calls));
+    bindBirthInputs(await accountTree(calls));
     beginBirth(mate);
     // The tab switches to org-2: the account tree commits again, and the birth is still org-1's.
-    bindBirthInputs(accountTree(calls));
-    await vi.advanceTimersByTimeAsync(INVALIDATION_COALESCE_MS + 100);
+    bindBirthInputs(await accountTree(calls));
+    // The runtime's commands settle over a few turns of their own.
+    for (let turn = 0; turn < 10; turn++)
+      await vi.advanceTimersByTimeAsync(INVALIDATION_COALESCE_MS + 100);
     try {
       expect(calls).toEqual([
         "registry-member on gitea-1",

@@ -1022,9 +1022,48 @@ export class ZeropsApiClient {
     }
   }
 
-  fetchUser(signal?: AbortSignal): Promise<ZeropsUser> {
-    return this.#request<ZeropsUser>("/user/info", { signal: signal ?? null });
+  /**
+   * Hears every write this client makes to an organization's integration tokens — a mint, a
+   * regenerate, a project list, a delete — by the organization's id, so the store's shared token
+   * list is read again. A throwaway's mint and delete are not heard: nothing reads them back.
+   */
+  onIntegrationTokensWritten(listener: (clientId: string) => void): () => void {
+    this.#tokenListeners.add(listener);
+    return () => {
+      this.#tokenListeners.delete(listener);
+    };
   }
+
+  #tokenListeners = new Set<(clientId: string) => void>();
+
+  #tokensWritten(clientId: string): void {
+    for (const listener of this.#tokenListeners) listener(clientId);
+  }
+
+  async fetchUser(signal?: AbortSignal): Promise<ZeropsUser> {
+    const generation = this.#generation;
+    const user = await this.#request<ZeropsUser>("/user/info", { signal: signal ?? null });
+    // @effect-diagnostics-next-line globalDate:off -- dated on the wall clock its readers' Clock reads.
+    this.#verified = { user, atMs: Date.now(), generation };
+    return user;
+  }
+
+  /**
+   * The user the platform last answered `GET /user/info` with for this session, and when — so a
+   * reader moments after the session's own read takes it rather than asking again.
+   */
+  verifiedUser(): { readonly user: ZeropsUser; readonly atMs: number } | null {
+    const verified = this.#verified;
+    return verified === null || verified.generation !== this.#generation
+      ? null
+      : { user: verified.user, atMs: verified.atMs };
+  }
+
+  #verified: {
+    readonly user: ZeropsUser;
+    readonly atMs: number;
+    readonly generation: number;
+  } | null = null;
 
   /**
    * `GET /client/{id}/project` — the direct read. It is lag-free: a project is
@@ -1488,8 +1527,13 @@ export class ZeropsApiClient {
     signal?: AbortSignal,
     beforeWrite?: () => Promise<void>,
   ): Promise<{ readonly id: string; readonly token: string }> {
-    const { id, token } = await this.#mintIntegrationToken(input, signal, beforeWrite);
-    return { id, token };
+    try {
+      const { id, token } = await this.#mintIntegrationToken(input, signal, beforeWrite);
+      return { id, token };
+    } finally {
+      // Landed or not, it may have: every reader of the organization's tokens reads them again.
+      this.#tokensWritten(input.clientId);
+    }
   }
 
   /**
@@ -1580,14 +1624,19 @@ export class ZeropsApiClient {
     signal?: AbortSignal,
     beforeWrite?: () => Promise<void>,
   ): Promise<void> {
-    await this.#request(
-      `/client/${input.clientId}/integration-token/${input.tokenId}`,
-      { method: "DELETE", signal: signal ?? null },
-      {
-        operationKind: "project-write",
-        ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),
-      },
-    );
+    try {
+      await this.#request(
+        `/client/${input.clientId}/integration-token/${input.tokenId}`,
+        { method: "DELETE", signal: signal ?? null },
+        {
+          operationKind: "project-write",
+          ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),
+        },
+      );
+    } finally {
+      // Landed or not, it may have: every reader of the organization's tokens reads them again.
+      this.#tokensWritten(input.clientId);
+    }
   }
 
   /**
@@ -1647,21 +1696,26 @@ export class ZeropsApiClient {
     signal?: AbortSignal,
     beforeWrite?: () => Promise<void>,
   ): Promise<string> {
-    const response = await this.#request<{ readonly token?: string }>(
-      `/client/${input.clientId}/integration-token/${input.tokenId}/regenerate`,
-      { method: "PUT", signal: signal ?? null },
-      {
-        operationKind: "project-write",
-        ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),
-      },
-    );
-    if (!response.token) {
-      throw new ZeropsApiError(
-        "Zerops regenerated the token but did not return its value, so it cannot be used.",
-        "uncertain",
+    try {
+      const response = await this.#request<{ readonly token?: string }>(
+        `/client/${input.clientId}/integration-token/${input.tokenId}/regenerate`,
+        { method: "PUT", signal: signal ?? null },
+        {
+          operationKind: "project-write",
+          ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),
+        },
       );
+      if (!response.token) {
+        throw new ZeropsApiError(
+          "Zerops regenerated the token but did not return its value, so it cannot be used.",
+          "uncertain",
+        );
+      }
+      return response.token;
+    } finally {
+      // Landed or not, it may have: every reader of the organization's tokens reads them again.
+      this.#tokensWritten(input.clientId);
     }
-    return response.token;
   }
 
   /** Locations the selected organization may place a new project in. */
@@ -2169,25 +2223,30 @@ export class ZeropsApiClient {
     signal?: AbortSignal,
     beforeWrite?: () => Promise<void>,
   ): Promise<void> {
-    await this.#request(
-      `/client/${input.clientId}/integration-token/${input.tokenId}`,
-      {
-        method: "PUT",
-        signal: signal ?? null,
-        body: JSON.stringify({
-          name: input.name,
-          roleCode: input.roleCode ?? "NO_ACCESS",
-          canCreateProjects: false,
-          canViewFinances: false,
-          canEditFinances: false,
-          projects: input.projects,
-        }),
-      },
-      {
-        operationKind: "project-write",
-        ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),
-      },
-    );
+    try {
+      await this.#request(
+        `/client/${input.clientId}/integration-token/${input.tokenId}`,
+        {
+          method: "PUT",
+          signal: signal ?? null,
+          body: JSON.stringify({
+            name: input.name,
+            roleCode: input.roleCode ?? "NO_ACCESS",
+            canCreateProjects: false,
+            canViewFinances: false,
+            canEditFinances: false,
+            projects: input.projects,
+          }),
+        },
+        {
+          operationKind: "project-write",
+          ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),
+        },
+      );
+    } finally {
+      // Landed or not, it may have: every reader of the organization's tokens reads them again.
+      this.#tokensWritten(input.clientId);
+    }
   }
 
   /**

@@ -2,7 +2,7 @@ import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 
 import { ZeropsApiClient } from "../api.ts";
-import { makeZeropsResourceRestAdapter } from "./resourceRestAdapter.ts";
+import { makeZeropsCellReads } from "./restAdapter.ts";
 import {
   AccountEpoch,
   ZeropsAccountId,
@@ -42,23 +42,24 @@ function clientFor(body: unknown): ZeropsApiClient {
   return client;
 }
 
-describe("makeZeropsResourceRestAdapter", () => {
+describe("makeZeropsCellReads", () => {
   it.effect("projects integration tokens to grant metadata without credential fields", () =>
     Effect.gen(function* () {
-      const adapter = makeZeropsResourceRestAdapter(
+      const adapter = makeZeropsCellReads(
         clientFor({
           list: [
             {
               id: "token-id",
               name: "zcp-project",
               token: "must-not-leave-adapter",
+              roleCode: "READ_ONLY",
               projects: [{ projectId: "project", roleCode: "ADMIN" }],
             },
           ],
         }),
       );
       const value = yield* adapter.readOrganizationIntegrationTokenGrants(
-        { kind: "organization-integration-token-grants", account: scope, organization },
+        { kind: "tokens", account: scope, organization },
         { abortSignal: new AbortController().signal },
       );
 
@@ -67,6 +68,7 @@ describe("makeZeropsResourceRestAdapter", () => {
           tokenId: "token-id",
           name: "zcp-project",
           grants: [{ projectId: "project", roleCode: "ADMIN" }],
+          roleCode: "READ_ONLY",
         },
       ]);
       expect(Object.keys(value[0] ?? {})).not.toContain("token");
@@ -75,11 +77,11 @@ describe("makeZeropsResourceRestAdapter", () => {
 
   it.effect("reads ZCP_MATE_ENABLED as the flag it is, never an inference", () =>
     Effect.gen(function* () {
-      const adapter = makeZeropsResourceRestAdapter(
+      const adapter = makeZeropsCellReads(
         clientFor({ items: [{ id: "e1", key: "ZCP_MATE_ENABLED", content: "1" }] }),
       );
       const value = yield* adapter.readServiceMateFlag(
-        { kind: "service-mate-flag", account: scope, service },
+        { kind: "mate-flag", account: scope, service },
         { abortSignal: new AbortController().signal },
       );
 
@@ -94,10 +96,10 @@ describe("makeZeropsResourceRestAdapter", () => {
         fetch: () => Promise.resolve(new Response("", { status: 500 })),
       });
       client.restoreSession({ accessToken: "account-token" });
-      const adapter = makeZeropsResourceRestAdapter(client);
+      const adapter = makeZeropsCellReads(client);
 
       const value = yield* adapter.readServiceMateFlag(
-        { kind: "service-mate-flag", account: scope, service },
+        { kind: "mate-flag", account: scope, service },
         { abortSignal: new AbortController().signal },
       );
 

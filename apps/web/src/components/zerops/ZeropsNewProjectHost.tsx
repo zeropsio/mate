@@ -45,7 +45,7 @@
 import { useNavigate } from "@tanstack/react-router";
 import {
   selectLocationChoice,
-  type OrganizationLocationsResourceRequest,
+  type LocationsCellRequest,
 } from "@t3tools/client-runtime/zerops/data";
 import { heldCandidates } from "@t3tools/client-runtime/zerops/projections";
 import { useEffect, useMemo, useState } from "react";
@@ -136,11 +136,11 @@ function NewProjectDialog() {
     },
   });
   const canCreate = addProject.offered;
-  const locationRequest = useMemo<OrganizationLocationsResourceRequest | null>(
+  const locationRequest = useMemo<LocationsCellRequest | null>(
     () =>
       activeOrganization && canCreate
         ? {
-            kind: "organization-locations",
+            kind: "locations",
             account: runtime.scope,
             organization: organizationRef(activeOrganization.id),
           }
@@ -148,7 +148,7 @@ function NewProjectDialog() {
     [activeOrganization, canCreate, organizationRef, runtime.scope],
   );
   const offered = selectLocationChoice(
-    useKnown(locationRequest === null ? null : runtime.resources.known(locationRequest)),
+    useKnown(locationRequest === null ? null : runtime.cells.known(locationRequest)),
   );
   const locations = offered.locations;
   const locationKey = activeOrganization?.id ?? "";

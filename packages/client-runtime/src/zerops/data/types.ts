@@ -1,3 +1,4 @@
+import type { ZeropsCellAdapter } from "./cells.ts";
 import type * as Clock from "effect/Clock";
 import type * as Effect from "effect/Effect";
 import type * as Result from "effect/Result";
@@ -13,7 +14,7 @@ import type { ZeropsServiceDeployedVersion } from "./deployedVersion.ts";
 import type { ZeropsEnvironmentRole, ZeropsMateFace } from "../groups.ts";
 import type { ZeropsAgentType } from "../newProject.ts";
 import type { ZeropsToolKind } from "../tools.ts";
-import type { ZeropsIntegrationTokenGrantMetadata } from "./resources.ts";
+import type { ZeropsIntegrationTokenGrantMetadata } from "./cells.ts";
 import type { ProjectTagPatch } from "./tagPatch.ts";
 import type { ProjectTagWrite } from "./tagWriter.ts";
 
@@ -1447,7 +1448,7 @@ export interface VerifiedAccessGrant {
 
 /**
  * Which project roles a caller admits for read access, beyond an outright `NO_ACCESS` entry.
- * - "any-role": resources.ts and logs.ts callers — any admitted role (including READ_ONLY) may read.
+ * - "any-role": cells.ts and logs.ts callers — any admitted role (including READ_ONLY) may read.
  * - "no-read-only": inventory.ts's unavailable-reopen fence — READ_ONLY may not reopen an
  *   unavailable facet, matching account-lifecycle.md's "READ_ONLY may not operate Mate".
  * These two behaviours are intentionally different today (F4); this predicate keeps each
@@ -1930,6 +1931,8 @@ export interface SetIntegrationTokenProjectsCommandIntent {
   readonly name: string;
   /** Whole-record replacement, never a partial project-grant patch. */
   readonly projects: ReadonlyArray<ZeropsProjectGrant>;
+  /** The token's own org role, round-tripped: the replacement would otherwise lower it. */
+  readonly roleCode?: string | undefined;
 }
 
 /**
@@ -2112,6 +2115,10 @@ export interface ZeropsDataAdapter {
     context: RequestContext,
   ) => Effect.Effect<PlatformCommandReceipt, AdapterError>;
   readonly closeReceiver: (receiver: ReceiverHandle) => Effect.Effect<void>;
+  /** The reads no stream carries, one per cell kind (`cells.ts`); without them, none answers. */
+  readonly cells?: ZeropsCellAdapter;
+  /** Hears every write to an organization's integration tokens, by its id, until stopped. */
+  readonly onTokensWritten?: (listener: (organizationId: string) => void) => () => void;
 }
 
 export type InterestLease = {

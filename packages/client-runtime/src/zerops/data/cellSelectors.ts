@@ -3,9 +3,9 @@
  * `Shown` state, so no consumer outside `cr/zerops` narrows a `Known` to its
  * value (DESIGN §3.6).
  */
-import type { ZeropsLocation } from "../api.ts";
+import type { ZeropsLocation, ZeropsOrganizationMember } from "../api.ts";
 import type { Shown } from "../knowledge/index.ts";
-import type { ZeropsIntegrationTokenGrantMetadata } from "./resources.ts";
+import type { ZeropsIntegrationTokenGrantMetadata } from "./cells.ts";
 
 const NO_LOCATIONS: ReadonlyArray<ZeropsLocation> = [];
 
@@ -63,6 +63,37 @@ export function selectTokenGrants(
     case "withheld":
       return { status: "pending" };
   }
+}
+
+const NO_MEMBERS: ReadonlyArray<ZeropsOrganizationMember> = [];
+
+/** An organization's members once a read answered them, and whether one is still coming. */
+export interface MembersRead {
+  readonly status: "loading" | "ready" | "failed";
+  readonly members: ReadonlyArray<ZeropsOrganizationMember>;
+}
+
+export function selectMembers(shown: Shown<ReadonlyArray<ZeropsOrganizationMember>>): MembersRead {
+  switch (shown.state) {
+    case "known":
+      return { status: "ready", members: shown.value };
+    case "failed":
+    case "gone":
+    case "withheld":
+      return { status: "failed", members: NO_MEMBERS };
+    case "unread":
+    case "reading":
+      return { status: "loading", members: NO_MEMBERS };
+  }
+}
+
+/** A service's variable names (never a value), once a read answered them. */
+export type VariableNamesRead =
+  | { readonly status: "pending" }
+  | { readonly status: "known"; readonly names: ReadonlyArray<string> };
+
+export function selectVariableNames(shown: Shown<ReadonlyArray<string>>): VariableNamesRead {
+  return shown.state === "known" ? { status: "known", names: shown.value } : { status: "pending" };
 }
 
 /**

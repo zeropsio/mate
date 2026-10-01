@@ -9,6 +9,7 @@
  * Verification reads are admission evidence only; platform records are published exclusively by
  * the data runtime.
  */
+import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 
 import { canCreateProjectsInOrganization } from "../../accountScope.ts";
@@ -195,7 +196,15 @@ export interface RestAccessVerifierOptions {
   readonly concurrency: number;
   /** Told each user a round reads, so the session's memberships stay current. */
   readonly onUser: (user: ZeropsUser) => void;
+  /**
+   * The user the session verified last, and when: a round within `RECENT_USER_MS` of it takes
+   * that user rather than reading it again.
+   */
+  readonly recentUser?: () => { readonly user: ZeropsUser; readonly atMs: number } | null;
 }
+
+/** How long a user the session verified stands in for a round's own read of it. */
+export const RECENT_USER_MS = 60_000;
 
 /** The verifier over the Zerops REST API, measured as `access-round` diagnostics. */
 export function makeRestAccessVerifier(options: RestAccessVerifierOptions): AccessVerifier {
@@ -216,10 +225,17 @@ export function makeRestAccessVerifier(options: RestAccessVerifierOptions): Acce
   return {
     verifyRound: ({ round, carried, report }) => {
       const span = mateDiagnostics.span("access-round", { round });
-      // The user read, then each organization's listing and each project read.
-      let reads = 1;
+      // The user read (unless the session's stands in), then each organization's listing and
+      // each project read.
+      let reads = 0;
       return Effect.gen(function* () {
-        const user = yield* readPlatform((signal) => client.fetchUser(signal));
+        const recent = options.recentUser?.() ?? null;
+        const now = yield* Clock.currentTimeMillis;
+        const fresh = recent !== null && now - recent.atMs < RECENT_USER_MS;
+        if (!fresh) reads++;
+        const user = fresh
+          ? recent.user
+          : yield* readPlatform((signal) => client.fetchUser(signal));
         options.onUser(user);
         const organizations = zeropsClientsFromUser(user);
         memberships = organizations;

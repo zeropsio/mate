@@ -24,9 +24,15 @@ import {
   type ZeropsApiClient,
   type ZeropsIntegrationToken,
 } from "@t3tools/client-runtime/zerops";
-import type { ProjectTagPatch, ProjectTagWrite } from "@t3tools/client-runtime/zerops/data";
+import {
+  ZeropsOrganizationId,
+  type OrganizationRef,
+  type ProjectTagPatch,
+  type ProjectTagWrite,
+} from "@t3tools/client-runtime/zerops/data";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 
+import { integrationTokensFromGrantMetadata } from "./useZeropsGroupReach";
 import { runZeropsCommand, type ZeropsDataContextValue } from "./zeropsDataContext";
 
 /**
@@ -61,6 +67,35 @@ export type BrokerGrantClient = Pick<
   ZeropsApiClient,
   "listIntegrationTokens" | "setIntegrationTokenProjects"
 >;
+
+/**
+ * The broker grant's token list and its one write, through the account's runtime. The write
+ * replaces the broker token's whole project list, so the list it is planned from is read live,
+ * right before it — never the shared `tokens:{org}` cell, which serves display and decisions
+ * and may be older than a Mate registered meanwhile. The write makes every reader of that cell
+ * read it again.
+ */
+export function brokerGrantTokens(runtime: ZeropsDataContextValue["runtime"]): BrokerGrantClient {
+  const organization = (clientId: string): OrganizationRef => ({
+    kind: "organization",
+    account: runtime.scope.account,
+    organizationId: ZeropsOrganizationId.make(clientId),
+  });
+  return {
+    listIntegrationTokens: async (clientId) =>
+      integrationTokensFromGrantMetadata(
+        await runZeropsCommand(runtime.commands.listIntegrationTokenGrants(organization(clientId))),
+      ),
+    setIntegrationTokenProjects: async ({ clientId, ...input }) => {
+      await runZeropsCommand(
+        runtime.commands.setIntegrationTokenProjects({
+          organization: organization(clientId),
+          ...input,
+        }),
+      );
+    },
+  };
+}
 
 /**
  * The broker reaching one project: nothing to write for an org `BASIC_USER`

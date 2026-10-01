@@ -15,7 +15,7 @@ import type { EnvironmentConnectionPhase } from "@t3tools/client-runtime/connect
 import {
   ZeropsServiceId,
   type OrganizationRef,
-  type ServiceAuthorizedAgentsResourceRequest,
+  type AgentsCellRequest,
 } from "@t3tools/client-runtime/zerops/data";
 import type * as React from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -169,7 +169,7 @@ import { useZeropsGroupOrganizations } from "~/zerops/useZeropsGroupOrganization
 import { registryGroupSlug, useZeropsRegistry } from "~/zerops/useZeropsRegistry";
 import { useZeropsProjectFlow } from "~/zerops/projectFlowContext";
 import { REVIEW_LABEL, REVIEW_RELEASE_LABEL, useOpenReview } from "~/zerops/review";
-import { readZeropsResourceOnce } from "~/zerops/useZeropsDeployedVersion";
+import { readZeropsCellOnce } from "~/zerops/useZeropsDeployedVersion";
 import { deployRowTone, TAKING_LONGER_LINE } from "./ZeropsProjectRow.logic";
 import { ZeropsReleaseRows } from "./ZeropsReleaseRows";
 import { ZeropsReleaseVerb } from "./ZeropsGroupDetail";
@@ -1054,7 +1054,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
   // The server that served this page gets one automatic identity exchange.
   // A failed exchange stays manual so rerenders cannot hammer the door.
   const autoConnectingRef = useRef(false);
-  // One-shot resource reads (readZeropsResourceOnce) hold their lease under
+  // One-shot resource reads (readZeropsCellOnce) hold their lease under
   // this signal, so a component unmounted mid-read releases immediately.
   const unmountRef = useRef<AbortController>(undefined);
   if (unmountRef.current === undefined) unmountRef.current = new AbortController();
@@ -1198,8 +1198,8 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
         await Promise.all(
           environments.flatMap(({ item }) => {
             if (item.service === undefined || activeOrganization === null) return [];
-            const request: ServiceAuthorizedAgentsResourceRequest = {
-              kind: "service-authorized-agents",
+            const request: AgentsCellRequest = {
+              kind: "agents",
               account: runtime.scope,
               service: {
                 kind: "service",
@@ -1208,14 +1208,14 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
               },
             };
             return [
-              readZeropsResourceOnce(runtime.resources, request, unmountRef.current?.signal).then(
+              readZeropsCellOnce(runtime.cells, request, unmountRef.current?.signal).then(
                 (agents): ReadonlyArray<ZeropsAgentType> => agents ?? [],
               ),
             ];
           }),
         ),
       ),
-    [activeOrganization, projectRef, runtime.resources, runtime.scope],
+    [activeOrganization, projectRef, runtime.cells, runtime.scope],
   );
 
   const setUpMate = useCallback(
@@ -2176,7 +2176,6 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
   );
   const [deployTokenGeneration, setDeployTokenGeneration] = useState(0);
   const withoutDeployToken = useZeropsDeployTokenGaps({
-    client,
     giteaProjectId,
     declaredProjects,
     enabled:

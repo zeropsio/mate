@@ -38,8 +38,8 @@ describe("ZeropsNewProjectHost source", () => {
   });
 
   it("loads organization locations through the broker's demand-scoped atom", () => {
-    expect(hostSource).toContain("runtime.resources.known(locationRequest)");
-    expect(hostSource).toContain('kind: "organization-locations"');
+    expect(hostSource).toContain("runtime.cells.known(locationRequest)");
+    expect(hostSource).toContain('kind: "locations"');
     expect(hostSource).not.toContain(".listClientLocations(");
   });
 

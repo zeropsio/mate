@@ -8,13 +8,13 @@ import {
   ZeropsAccountId,
   ZeropsOrganizationId,
   type ManagedZeropsDataRuntime,
-  type OrganizationIntegrationTokenGrantsResourceRequest,
+  type TokensCellRequest,
   type ZeropsIntegrationTokenGrantMetadata,
 } from "@t3tools/client-runtime/zerops/data";
 import type { ZeropsGroupReachGroup } from "@t3tools/client-runtime/zerops";
 import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
 
-import { FakeResourceBroker } from "./__fixtures__/resourceBroker";
+import { FakeCells } from "./__fixtures__/cells";
 import { integrationTokensFromGrantMetadata, useZeropsGroupReach } from "./useZeropsGroupReach";
 import { ZeropsDataContext, type ZeropsDataContextValue } from "./zeropsDataContext";
 
@@ -120,13 +120,19 @@ const knownGrants = (
   freshness: { kind: "settled" },
 });
 
-type GrantsBroker = FakeResourceBroker<OrganizationIntegrationTokenGrantsResourceRequest>;
+type GrantsBroker = FakeCells<TokensCellRequest>;
 
 function contextFor(broker: GrantsBroker, setIntegrationTokenProjects: (input: unknown) => void) {
   const runtime = {
     scope,
-    resources: { known: broker.known },
+    cells: { known: broker.known },
     commands: {
+      // The platform's tokens as a live read answers them: what the test published last.
+      listIntegrationTokenGrants: () =>
+        Effect.sync(() => ({
+          attempt: {} as never,
+          value: broker.current.state === "known" ? broker.current.value : [],
+        })),
       setIntegrationTokenProjects: (input: unknown) => {
         setIntegrationTokenProjects(input);
         return Effect.succeed({ attempt: {} as never, value: undefined });
@@ -173,13 +179,35 @@ describe("integrationTokensFromGrantMetadata", () => {
       { id: "token-a", name: "zcp-a", projects: [{ projectId: "project-a", roleCode: "ADMIN" }] },
     ]);
   });
+
+  it("keeps the token's own org role and its minting time", () => {
+    expect(
+      integrationTokensFromGrantMetadata([
+        {
+          tokenId: "token-b",
+          name: "broker",
+          grants: [],
+          roleCode: "READ_ONLY",
+          created: "2026-10-01T09:00:00Z",
+        },
+      ]),
+    ).toEqual([
+      {
+        id: "token-b",
+        name: "broker",
+        projects: [],
+        roleCode: "READ_ONLY",
+        created: "2026-10-01T09:00:00Z",
+      },
+    ]);
+  });
 });
 
 describe("useZeropsGroupReach", () => {
   it("issues exactly one PUT for a group whose token does not yet reach it, and none once it does", async () => {
     installTestDom();
     const { createRoot } = await import("react-dom/client");
-    const broker = new FakeResourceBroker<OrganizationIntegrationTokenGrantsResourceRequest>();
+    const broker = new FakeCells<TokensCellRequest>();
     const writes: unknown[] = [];
     const context = contextFor(broker, (input) => writes.push(input));
 
@@ -234,7 +262,7 @@ describe("useZeropsGroupReach", () => {
   it("plans from retained grants only once a read confirms them", async () => {
     installTestDom();
     const { createRoot } = await import("react-dom/client");
-    const broker = new FakeResourceBroker<OrganizationIntegrationTokenGrantsResourceRequest>();
+    const broker = new FakeCells<TokensCellRequest>();
     // A remount inside the retention window shows the retained grants while they are read again.
     broker.current = {
       state: "known",
@@ -281,7 +309,7 @@ describe("useZeropsGroupReach", () => {
     // calls either, so this test's pass is itself the assertion.
     installTestDom();
     const { createRoot } = await import("react-dom/client");
-    const broker = new FakeResourceBroker<OrganizationIntegrationTokenGrantsResourceRequest>();
+    const broker = new FakeCells<TokensCellRequest>();
     const context = contextFor(broker, () => {});
     const settled: ReadonlyArray<ZeropsIntegrationTokenGrantMetadata> = [
       {
@@ -326,7 +354,7 @@ describe("useZeropsGroupReach", () => {
     // and the reconcile never re-ran for it.
     installTestDom();
     const { createRoot } = await import("react-dom/client");
-    const broker = new FakeResourceBroker<OrganizationIntegrationTokenGrantsResourceRequest>();
+    const broker = new FakeCells<TokensCellRequest>();
     const writes: unknown[] = [];
     const context = contextFor(broker, (input) => writes.push(input));
 
@@ -385,7 +413,7 @@ describe("useZeropsGroupReach", () => {
     // calls it, so this test's pass is itself the assertion.
     installTestDom();
     const { createRoot } = await import("react-dom/client");
-    const broker = new FakeResourceBroker<OrganizationIntegrationTokenGrantsResourceRequest>();
+    const broker = new FakeCells<TokensCellRequest>();
     const context = contextFor(broker, () => {});
 
     function Probe() {
@@ -416,7 +444,7 @@ describe("useZeropsGroupReach", () => {
   it("lowers a solo Mate, which has no sibling to reach but a token to secure", async () => {
     installTestDom();
     const { createRoot } = await import("react-dom/client");
-    const broker = new FakeResourceBroker<OrganizationIntegrationTokenGrantsResourceRequest>();
+    const broker = new FakeCells<TokensCellRequest>();
     const writes: unknown[] = [];
     const context = contextFor(broker, (input) => writes.push(input));
     const solo: ZeropsGroupReachGroup = {
@@ -461,7 +489,7 @@ describe("useZeropsGroupReach", () => {
   it("does not write when the token already reaches exactly its group", async () => {
     installTestDom();
     const { createRoot } = await import("react-dom/client");
-    const broker = new FakeResourceBroker<OrganizationIntegrationTokenGrantsResourceRequest>();
+    const broker = new FakeCells<TokensCellRequest>();
     const writes: unknown[] = [];
     const context = contextFor(broker, (input) => writes.push(input));
     const alreadyWide: ReadonlyArray<ZeropsIntegrationTokenGrantMetadata> = [
@@ -504,7 +532,7 @@ describe("useZeropsGroupReach", () => {
   it("cancels the remaining planned writes when unmounted mid-loop", async () => {
     installTestDom();
     const { createRoot } = await import("react-dom/client");
-    const broker = new FakeResourceBroker<OrganizationIntegrationTokenGrantsResourceRequest>();
+    const broker = new FakeCells<TokensCellRequest>();
     const writes: Array<{ readonly tokenId: string }> = [];
     let releaseFirst!: () => void;
     const firstGate = new Promise<void>((resolve) => {
@@ -512,8 +540,13 @@ describe("useZeropsGroupReach", () => {
     });
     const runtime = {
       scope,
-      resources: { known: broker.known },
+      cells: { known: broker.known },
       commands: {
+        listIntegrationTokenGrants: () =>
+          Effect.sync(() => ({
+            attempt: {} as never,
+            value: broker.current.state === "known" ? broker.current.value : [],
+          })),
         setIntegrationTokenProjects: (input: { readonly tokenId: string }) =>
           Effect.promise(async () => {
             if (input.tokenId === "token-a") await firstGate;

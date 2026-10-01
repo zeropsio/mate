@@ -3005,7 +3005,7 @@ it.layer(NodeServices.layer)("mate zone architecture", (it) => {
         [`${zerops}/forge/forgeStore.ts`]:
           'import { advance, newCell, type Cell } from "../knowledge/known.ts";\n',
         [`${zerops}/store/kit.ts`]: 'import { read } from "../knowledge/known";\n',
-        [`${zerops}/data/resources.ts`]: 'import { advance } from "../knowledge/known.ts";\n',
+        [`${zerops}/data/cells.ts`]: 'import { advance } from "../knowledge/known.ts";\n',
         [`${zerops}/knowledge/presentation.ts`]: 'import type { Known } from "./known.ts";\n',
         [`${zerops}/forge/forgeStore.test.ts`]:
           'import { advance } from "../knowledge/known.ts";\n',

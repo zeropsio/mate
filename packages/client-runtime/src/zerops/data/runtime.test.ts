@@ -2217,13 +2217,17 @@ describe("makeZeropsDataRuntime", () => {
       const unused = Effect.die("this test reads only authorized agents");
       const runtime = yield* makeZeropsDataRuntime({
         scope: runtimeScope,
-        adapter,
-        resourceAdapter: {
-          readOrganizationLocations: () => unused,
-          readServiceAuthorizedAgents: () =>
-            Effect.sync(() => void (reads += 1)).pipe(Effect.as([])),
-          readServiceMateFlag: () => unused,
-          readOrganizationIntegrationTokenGrants: () => unused,
+        adapter: {
+          ...adapter,
+          cells: {
+            readOrganizationLocations: () => unused,
+            readServiceAuthorizedAgents: () =>
+              Effect.sync(() => void (reads += 1)).pipe(Effect.as([])),
+            readServiceMateFlag: () => unused,
+            readOrganizationIntegrationTokenGrants: () => unused,
+            readOrganizationMembers: () => unused,
+            readServiceVariableNames: () => unused,
+          },
         },
         atomRegistry: registry,
         makeOpaqueId: makeIdFactory(),
@@ -2241,9 +2245,9 @@ describe("makeZeropsDataRuntime", () => {
         },
       });
       const leaseScope = yield* Scope.make();
-      const lease = yield* runtime.resources
+      const lease = yield* runtime.cells
         .acquire({
-          kind: "service-authorized-agents",
+          kind: "agents",
           account: runtimeScope,
           service: {
             kind: "service",
@@ -2265,6 +2269,65 @@ describe("makeZeropsDataRuntime", () => {
       expect(reads).toBe(1);
       yield* Scope.close(leaseScope, Exit.void);
       yield* runtime.shutdown("application-close");
+      registry.dispose();
+    }),
+  );
+  it.effect("reads an organization's tokens again whenever a token of it is written", () =>
+    Effect.gen(function* () {
+      const registry = AtomRegistry.make();
+      const base = makeAdapterHarness();
+      let reads = 0;
+      const listeners = new Set<(organizationId: string) => void>();
+      const unused = Effect.die("this test reads only tokens");
+      const runtime = yield* makeZeropsDataRuntime({
+        scope: runtimeScope,
+        adapter: {
+          ...base.adapter,
+          onTokensWritten: (listener) => {
+            listeners.add(listener);
+            return () => listeners.delete(listener);
+          },
+          cells: {
+            readOrganizationLocations: () => unused,
+            readServiceAuthorizedAgents: () => unused,
+            readServiceMateFlag: () => unused,
+            readOrganizationIntegrationTokenGrants: () =>
+              Effect.sync(() => void (reads += 1)).pipe(Effect.as([])),
+            readOrganizationMembers: () => unused,
+            readServiceVariableNames: () => unused,
+          },
+        },
+        atomRegistry: registry,
+        makeOpaqueId: makeIdFactory(),
+        initialAccess: {
+          status: "verified",
+          account: runtimeScope.account,
+          accountEpoch: runtimeScope.epoch,
+          verifiedAtMs: 0,
+          deadlineMs: 10_000,
+          mutationsAllowed: true,
+          organizations: [
+            { organization: topologyDescriptor.project.organization, mutationsAllowed: true },
+          ],
+          projects: [],
+        },
+      });
+      const organization = topologyDescriptor.project.organization;
+      const leaseScope = yield* Scope.make();
+      const lease = yield* runtime.cells
+        .acquire({ kind: "tokens", account: runtimeScope, organization })
+        .pipe(Scope.provide(leaseScope));
+      yield* lease.awaitSettled;
+      expect(reads).toBe(1);
+
+      // Any write to one of its tokens — a mint, a grant, a delete, from anywhere in the app.
+      for (const listener of listeners) listener(organization.organizationId);
+      yield* lease.awaitSettled;
+      expect(reads).toBe(2);
+
+      yield* runtime.shutdown("application-close");
+      expect(listeners.size).toBe(0);
+      yield* Scope.close(leaseScope, Exit.void);
       registry.dispose();
     }),
   );

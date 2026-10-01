@@ -1,9 +1,9 @@
 import * as Effect from "effect/Effect";
 import { describe, expect, it } from "vite-plus/test";
 
-import { readZeropsResource, readZeropsResourceOnce } from "./useZeropsDeployedVersion";
+import { readZeropsCell, readZeropsCellOnce } from "./useZeropsDeployedVersion";
 
-describe("readZeropsResourceOnce", () => {
+describe("readZeropsCellOnce", () => {
   it("releases the lease and resolves undefined when the signal aborts before settling", async () => {
     let released = false;
     const broker = {
@@ -23,16 +23,16 @@ describe("readZeropsResourceOnce", () => {
               released = true;
             }),
         ),
-    } as unknown as import("./zeropsDataContext").ZeropsDataContextValue["runtime"]["resources"];
+    } as unknown as import("./zeropsDataContext").ZeropsDataContextValue["runtime"]["cells"];
     const controller = new AbortController();
-    const pending = readZeropsResourceOnce(broker, {} as never, controller.signal);
+    const pending = readZeropsCellOnce(broker, {} as never, controller.signal);
     controller.abort();
     await expect(pending).resolves.toBeUndefined();
     expect(released).toBe(true);
   });
 
   it("answers nothing for a read that did not succeed", async () => {
-    await expect(readZeropsResourceOnce(settling(FAILED), {} as never)).resolves.toBeUndefined();
+    await expect(readZeropsCellOnce(settling(FAILED), {} as never)).resolves.toBeUndefined();
   });
 });
 
@@ -76,27 +76,23 @@ function settling(shown: unknown) {
         retry: undefined as never,
         release: Effect.void,
       }),
-  } as unknown as import("./zeropsDataContext").ZeropsDataContextValue["runtime"]["resources"];
+  } as unknown as import("./zeropsDataContext").ZeropsDataContextValue["runtime"]["cells"];
 }
 
-describe("readZeropsResource", () => {
+describe("readZeropsCell", () => {
   it("rejects a read that did not succeed, rather than answering nothing", async () => {
-    await expect(readZeropsResource(settling(FAILED), {} as never)).rejects.toBeDefined();
+    await expect(readZeropsCell(settling(FAILED), {} as never)).rejects.toBeDefined();
     await expect(
-      readZeropsResource(
+      readZeropsCell(
         settling({ state: "withheld", reason: "access-lapsed", cause: null }),
         {} as never,
       ),
     ).rejects.toBeDefined();
-    await expect(
-      readZeropsResource(settling(known("v0", false)), {} as never),
-    ).rejects.toBeDefined();
+    await expect(readZeropsCell(settling(known("v0", false)), {} as never)).rejects.toBeDefined();
   });
 
   it("answers a read that succeeded, including a service with no version name", async () => {
-    await expect(readZeropsResource(settling(known("v1")), {} as never)).resolves.toBe("v1");
-    await expect(
-      readZeropsResource(settling(known(undefined)), {} as never),
-    ).resolves.toBeUndefined();
+    await expect(readZeropsCell(settling(known("v1")), {} as never)).resolves.toBe("v1");
+    await expect(readZeropsCell(settling(known(undefined)), {} as never)).resolves.toBeUndefined();
   });
 });

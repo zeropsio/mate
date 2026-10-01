@@ -7,17 +7,14 @@
  */
 import { hasMate, readZeropsGroupTags } from "@t3tools/client-runtime/zerops";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
-import {
-  ZeropsServiceId,
-  type ServiceAuthorizedAgentsResourceRequest,
-} from "@t3tools/client-runtime/zerops/data";
+import { ZeropsServiceId, type AgentsCellRequest } from "@t3tools/client-runtime/zerops/data";
 import { heldCandidates } from "@t3tools/client-runtime/zerops/projections";
 import type { ZeropsAgentId } from "@t3tools/contracts";
 import { useContext, useEffect, useMemo, useState } from "react";
 
 import { usualAgentOf } from "../components/zerops/ZeropsAgentSignIn.logic";
 import { onAccountLifetimeClose } from "./accountLifetime";
-import { readZeropsResourceOnce } from "./useZeropsDeployedVersion";
+import { readZeropsCellOnce } from "./useZeropsDeployedVersion";
 import { useZeropsCandidates } from "./useZeropsCandidates";
 import { ZeropsDataContext } from "./zeropsDataContext";
 import { useZeropsSessionOptional } from "./ZeropsSessionProvider";
@@ -78,8 +75,8 @@ export function useUsualAgent(projectId: string | undefined): {
     for (const other of others) {
       if (signedInWith.has(other.key) || other.service === undefined) continue;
       signedInWith.set(other.key, "reading");
-      const request: ServiceAuthorizedAgentsResourceRequest = {
-        kind: "service-authorized-agents",
+      const request: AgentsCellRequest = {
+        kind: "agents",
         account: data.runtime.scope,
         service: {
           kind: "service",
@@ -87,7 +84,7 @@ export function useUsualAgent(projectId: string | undefined): {
           serviceId: ZeropsServiceId.make(other.service.id),
         },
       };
-      void readZeropsResourceOnce(data.runtime.resources, request).then((agents) => {
+      void readZeropsCellOnce(data.runtime.cells, request).then((agents) => {
         signedInWith.set(other.key, agents ?? []);
         for (const listener of listeners) listener();
       });

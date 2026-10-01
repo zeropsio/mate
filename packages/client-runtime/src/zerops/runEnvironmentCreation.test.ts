@@ -206,6 +206,20 @@ describe("runEnvironmentCreation", () => {
     ]);
   });
 
+  it("lowers the container's token from its list as read in that step, keeping its own role", async () => {
+    const written: Array<{ readonly roleCode?: string | undefined }> = [];
+    const { platform } = fakePlatform({
+      listIntegrationTokenGrants: () =>
+        Promise.resolve([{ ...MINTED_TOKEN, roleCode: "NO_ACCESS" }]),
+      setIntegrationTokenProjects: (input) => {
+        written.push(input);
+        return Promise.resolve();
+      },
+    });
+    await run(plan("dev"), platform);
+    expect(written).toMatchObject([{ tokenId: "tok-mate", roleCode: "NO_ACCESS" }]);
+  });
+
   it("hands an environment with an agent to its birth at the runtimes, waiting on nothing", async () => {
     // The birth closes the project off, imports the runtimes and waits for the
     // container — the provisioning state machine owns that wait, and a second

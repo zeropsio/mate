@@ -28,7 +28,7 @@ import { useEffect, useRef, useState } from "react";
 
 import { addGroupEnvironment, type AddGroupEnvironmentOutcome } from "./addGroupEnvironment";
 import { giteaClientFor } from "./accountGiteaSessions";
-import { projectTagsWrite } from "./brokerGrant";
+import { brokerGrantTokens, projectTagsWrite } from "./brokerGrant";
 import type { ZeropsDataContextValue } from "./zeropsDataContext";
 
 export function useZeropsGroupEnvironmentReconcile(input: {
@@ -143,6 +143,7 @@ export function useZeropsGroupEnvironmentReconcile(input: {
           });
           const outcome = await addGroupEnvironment({
             client,
+            tokens: brokerGrantTokens(data.current.runtime),
             writeTags: projectTagsWrite(data.current, clientId),
             gitea,
             clientId,

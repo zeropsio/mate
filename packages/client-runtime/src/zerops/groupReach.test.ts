@@ -5,6 +5,8 @@ import {
   findMateIntegrationToken,
   planAccountGroupReach,
   planGroupReach,
+  writeTokenProjectsFresh,
+  type ZeropsGroupReachWrite,
   type ZeropsIntegrationToken,
 } from "./groupReach.ts";
 
@@ -253,5 +255,96 @@ describe("planAccountGroupReach", () => {
         tokens: [DEPLOY_TOKEN],
       }),
     ).toEqual([]);
+  });
+});
+
+describe("writeTokenProjectsFresh", () => {
+  const grant = (projectId: string) => ({ projectId, roleCode: "BASIC_USER" as const });
+
+  it("plans each write from a list read right before it, never from an older one", async () => {
+    // What the platform holds changes between the reads: someone registered a Mate meanwhile.
+    const answers: ReadonlyArray<ReadonlyArray<ZeropsIntegrationToken>> = [
+      [{ id: "tok-a", name: "a", roleCode: "NO_ACCESS", projects: [grant(DEV)] }],
+      [{ id: "tok-a", name: "a", roleCode: "NO_ACCESS", projects: [grant(DEV), grant(STAGE)] }],
+      [
+        {
+          id: "tok-a",
+          name: "a",
+          roleCode: "NO_ACCESS",
+          projects: [grant(DEV), grant(STAGE), grant(PROD)],
+        },
+      ],
+    ];
+    let reads = 0;
+    const written: Array<ZeropsGroupReachWrite & { readonly roleCode?: string | undefined }> = [];
+    const count = await writeTokenProjectsFresh({
+      read: async () => answers[Math.min(reads++, answers.length - 1)]!,
+      // Wants PROD on the token, keeping whatever it holds now.
+      plan: (tokens) =>
+        tokens.flatMap((token) =>
+          (token.projects ?? []).some((project) => project.projectId === PROD)
+            ? []
+            : [
+                {
+                  tokenId: token.id,
+                  name: token.name,
+                  projects: [...(token.projects ?? []), grant(PROD)],
+                },
+              ],
+        ),
+      write: async (write) => {
+        written.push(write);
+      },
+    });
+
+    expect(count).toBe(1);
+    expect(reads).toBe(1);
+    expect(written).toEqual([
+      { tokenId: "tok-a", name: "a", roleCode: "NO_ACCESS", projects: [grant(DEV), grant(PROD)] },
+    ]);
+  });
+
+  it("reads afresh before every write, and carries the token's own role", async () => {
+    let held: ReadonlyArray<ZeropsIntegrationToken> = [
+      { id: "tok-a", name: "a", projects: [] },
+      { id: "tok-b", name: "b", roleCode: "READ_ONLY", projects: [] },
+    ];
+    let reads = 0;
+    const order: string[] = [];
+    await writeTokenProjectsFresh({
+      read: async () => {
+        reads += 1;
+        order.push("read");
+        return held;
+      },
+      plan: (tokens) =>
+        tokens
+          .filter((token) => (token.projects ?? []).length === 0)
+          .map((token) => ({ tokenId: token.id, name: token.name, projects: [grant(DEV)] })),
+      write: async (write) => {
+        order.push(
+          `write ${write.tokenId}${write.roleCode === undefined ? "" : ` ${write.roleCode}`}`,
+        );
+        held = held.map((token) =>
+          token.id === write.tokenId ? { ...token, projects: write.projects } : token,
+        );
+      },
+    });
+
+    expect(order).toEqual(["read", "write tok-a", "read", "write tok-b READ_ONLY"]);
+    expect(reads).toBe(2);
+  });
+
+  it("writes no more than its first plan asked for, whatever the platform answers", async () => {
+    let writes = 0;
+    await writeTokenProjectsFresh({
+      read: async () => [{ id: "tok-a", name: "a", projects: [] }],
+      plan: (tokens) =>
+        tokens.map((token) => ({ tokenId: token.id, name: token.name, projects: [] })),
+      write: async () => {
+        writes += 1;
+      },
+    });
+    expect(writes).toBe(1);
   });
 });

@@ -13,7 +13,6 @@ import {
   makeZeropsApiOrigin,
   makeZeropsDataAdapter,
   makeZeropsDataRuntime,
-  makeZeropsResourceRestAdapter,
   writeAdmissionOf,
   ZeropsAccountId,
   ZeropsOrganizationId,
@@ -110,7 +109,6 @@ export const defaultMakeZeropsDataRuntime: MakeZeropsDataRuntime = ({
     makeZeropsDataRuntime({
       scope,
       adapter,
-      resourceAdapter: makeZeropsResourceRestAdapter(client),
       buildLogTransport: makeBuildLogTransport({
         scope,
         acquireGrant: (project, projectSignal) =>
@@ -260,6 +258,8 @@ export function ZeropsDataProvider({
               account: scope.account,
               concurrency: DEFAULT_ZEROPS_GRANT_POLICY.roundProjectConcurrency,
               onUser: (verified) => verifiedMemberships(verified),
+              // The session read the user as it opened: the first round takes it.
+              recentUser: () => client.verifiedUser(),
             }),
             signals,
             atomRegistry: registry,

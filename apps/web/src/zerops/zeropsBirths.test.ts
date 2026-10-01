@@ -5,7 +5,6 @@ import {
   type EnvironmentCreationPlatform,
   type EnvironmentCreationStep,
   type ZeropsApiClient,
-  type ZeropsIntegrationToken,
 } from "@t3tools/client-runtime/zerops";
 import type { BirthRecord } from "@t3tools/client-runtime/zerops/birth";
 import type { NewProjectBirth } from "./newProjectBirth";
@@ -21,7 +20,9 @@ import {
   type ProjectTagWrite,
 } from "@t3tools/client-runtime/zerops/data";
 import * as Effect from "effect/Effect";
-import { describe, expect, it } from "vite-plus/test";
+
+import { makeTokenStore, type TokenStore } from "./__fixtures__/tokenStore";
+import { afterEach, describe, expect, it } from "vite-plus/test";
 
 import {
   birthStepFailure,
@@ -71,14 +72,29 @@ const birth: BirthRecord = {
  * The account's runtime as far as a birth writes tags with it: `updateProjectTags` over the Gitea
  * project's list, each patch applied to the list as it is now.
  */
-function fakeRuntime(
+/** Each test's token stores, ended after it. */
+const stores: Array<TokenStore> = [];
+afterEach(async () => {
+  await Promise.all(stores.splice(0).map((store) => store.close()));
+});
+
+async function fakeRuntime(
   calls: Array<string>,
   onWrite: () => void = () => undefined,
   initial: ReadonlyArray<string> = ["mate:tool:gitea", "mate:gn:group-1:todo"],
 ) {
   let tagList = initial;
+  const tokens = await makeTokenStore({
+    calls,
+    tokens: () => [{ id: "broker-1", name: "mate-broker", projects: [] }],
+  });
+  stores.push(tokens);
   return {
+    scope: tokens.runtime.scope,
+    cells: tokens.runtime.cells,
     commands: {
+      listIntegrationTokenGrants: tokens.runtime.commands.listIntegrationTokenGrants,
+      setIntegrationTokenProjects: tokens.runtime.commands.setIntegrationTokenProjects,
       updateProjectTags: (project: ProjectRef, patch: ProjectTagPatch) =>
         Effect.sync(() => {
           const read = { id: project.projectId, name: "Gitea", status: "ACTIVE", tagList };
@@ -99,30 +115,15 @@ function fakeRuntime(
   };
 }
 
-function fakeClient(calls: Array<string>) {
-  const broker: ZeropsIntegrationToken = { id: "broker-1", name: "mate-broker", projects: [] };
-  return {
-    listIntegrationTokens: async (clientId: string) => {
-      calls.push(`list tokens of ${clientId}`);
-      return [broker];
-    },
-    setIntegrationTokenProjects: async (input: {
-      readonly clientId: string;
-      readonly projects: ReadonlyArray<{ readonly projectId: string }>;
-    }) => {
-      calls.push(
-        `grant ${input.projects.map((project) => project.projectId).join(",")} in ${input.clientId}`,
-      );
-    },
-  } as unknown as ZeropsApiClient;
-}
+/** The client a birth holds: every read and write it makes here goes through the runtime. */
+const fakeClient = (): ZeropsApiClient => ({}) as ZeropsApiClient;
 
 describe("the birth's ports", () => {
   it("makes each group write once, a reload between them included", async () => {
     const calls: Array<string> = [];
     const inputs = {
-      client: fakeClient(calls),
-      runtime: fakeRuntime(calls),
+      client: fakeClient(),
+      runtime: await fakeRuntime(calls),
       projectRef,
     } as unknown as BirthInputs;
     const ports = webBirthPorts(
@@ -147,8 +148,8 @@ describe("the birth's ports", () => {
   it("waits for a group whose own registry write has not landed, and fails on a contradiction", async () => {
     const calls: Array<string> = [];
     const inputs = {
-      client: fakeClient(calls),
-      runtime: fakeRuntime(calls),
+      client: fakeClient(),
+      runtime: await fakeRuntime(calls),
       projectRef,
     } as unknown as BirthInputs;
     const ports = webBirthPorts(
@@ -192,7 +193,7 @@ describe("the birth's ports", () => {
     const calls: Array<string> = [];
     const inputs = {
       client: { fetchProject } as unknown as ZeropsApiClient,
-      runtime: fakeRuntime(calls, undefined, [
+      runtime: await fakeRuntime(calls, undefined, [
         "mate:tool:gitea",
         "mate:gn:group-1:todo",
         "mate:gm:group-1:project-dead:production",
@@ -425,11 +426,11 @@ describe("the birth's account", () => {
     const calls: Array<string> = [];
     let current = true;
     // The person signs out while the registry entry is written; somebody else signs in.
-    const runtime = fakeRuntime(calls, () => {
+    const runtime = await fakeRuntime(calls, () => {
       current = false;
     });
     const ports = webBirthPorts(
-      () => ({ client: fakeClient(calls), runtime, projectRef }) as unknown as BirthInputs,
+      () => ({ client: fakeClient(), runtime, projectRef }) as unknown as BirthInputs,
       () => current,
     );
 
@@ -536,7 +537,7 @@ describe("the birth's runtimes import", () => {
       },
     };
     const ports = webBirthPorts(
-      () => ({ client: fakeClient(calls), runtime, projectRef }) as unknown as BirthInputs,
+      () => ({ client: fakeClient(), runtime, projectRef }) as unknown as BirthInputs,
       () => true,
     );
 
