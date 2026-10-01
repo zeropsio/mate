@@ -4,6 +4,7 @@ import {
   type EnvironmentCreationStep,
   type EnvironmentCreationStepProgress,
 } from "@t3tools/client-runtime/zerops";
+import * as Effect from "effect/Effect";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
@@ -16,6 +17,7 @@ import {
   shareGroupReach,
   PRESSED_ELSEWHERE,
   connectedPresses,
+  finishMateSetup,
   pressDoneAt,
   readMatePress,
   runPress,
@@ -489,5 +491,91 @@ describe("a press's end", () => {
         ],
       ),
     ).toEqual(["p-up"]);
+  });
+});
+
+// Finish setup on an older Mate, or a pool-claimed one: its harden first, tried again; then its
+// close-off, which trusts the harden and reads nothing (pass 28 review).
+describe("finishMateSetup — the harden path", () => {
+  const inputs = (harden: () => boolean, calls: Array<string>) =>
+    ({
+      client: {
+        readProjectEnv: async () => {
+          calls.push("read isolation");
+          return [];
+        },
+      },
+      organizationId: "org-acme",
+      data: {
+        organizationRef: (organizationId: string) => ({ kind: "organization", organizationId }),
+        projectRef: (_organizationId: string, projectId: string) => ({
+          kind: "project",
+          projectId,
+        }),
+        runtime: {
+          commands: {
+            isolateProjectEnv: () => {
+              calls.push("harden");
+              return harden()
+                ? Effect.succeed({ value: undefined })
+                : Effect.fail(new Error("The isolation was refused."));
+            },
+            updateProjectTags: () => {
+              calls.push("mark");
+              return Effect.succeed({ value: { kind: "written" } });
+            },
+          },
+        },
+      },
+    }) as never;
+  const finish = (harden: () => boolean, calls: Array<string>) =>
+    finishMateSetup({
+      inputs: inputs(harden, calls),
+      projectId: "p-old",
+      projectName: "Acme - Ada",
+      container: null,
+      groupProjectIds: [],
+      viewer: null,
+      registration: null,
+      isCurrent: () => true,
+      harden: true,
+      locks: undefined,
+      sleep: async () => undefined,
+    });
+  const begin = () =>
+    beginPress({
+      projectId: "p-old",
+      organizationId: "org-acme",
+      startedAt: 0,
+      placement: null,
+      container: true,
+      finishing: true,
+    });
+
+  it("hardens, then marks it closed off without reading the isolation again", async () => {
+    begin();
+    const calls: Array<string> = [];
+    expect(await finish(() => true, calls)).toMatchObject({ ok: true });
+    expect(calls).toEqual(["harden", "mark"]);
+    expect(readMatePress("p-old")?.state).toEqual({ kind: "pressed" });
+    forgetPress("p-old");
+  });
+
+  it("tries the harden again, and stops with Try again where it still fails", async () => {
+    begin();
+    const calls: Array<string> = [];
+    let refusing = true;
+    expect(await finish(() => !refusing, calls)).toMatchObject({
+      ok: false,
+      failedStep: { kind: "close-off" },
+      error: "The isolation was refused.",
+    });
+    expect(calls.filter((call) => call === "harden")).toHaveLength(PRESS_STEP_ATTEMPTS);
+    const stopped = readMatePress("p-old")?.state;
+    if (stopped?.kind !== "failed" || stopped.retry === null) throw new Error("no retry");
+    refusing = false;
+    await stopped.retry();
+    expect(readMatePress("p-old")?.state).toEqual({ kind: "pressed" });
+    forgetPress("p-old");
   });
 });
