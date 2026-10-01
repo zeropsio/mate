@@ -258,7 +258,10 @@ export function webEnvironmentPorts(input: {
             // The token is minted in the organization that lists the Mate's project.
             throwaway: client.session?.accessToken
               ? {
-                  platform: zeropsThrowawayPlatform(client, request.signal),
+                  platform: zeropsThrowawayPlatform(client, {
+                    signal: request.signal,
+                    asked: request.asked,
+                  }),
                   clientId: request.organizationId,
                   projectId: request.projectId,
                   nonce: randomUUID(),
