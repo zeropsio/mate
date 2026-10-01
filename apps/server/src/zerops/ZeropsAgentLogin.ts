@@ -67,6 +67,7 @@ import type {
   ZeropsLogin,
 } from "@t3tools/contracts";
 import { ZEROPS_AGENT_LOGIN_COMMANDS, ZeropsAgentLoginError } from "@t3tools/contracts";
+import { latestSucceededSignIn } from "@t3tools/shared/zeropsAgentAuth";
 import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";
 import * as Duration from "effect/Duration";
@@ -182,7 +183,26 @@ export const loginStateEqual = (a: ZeropsAgentLoginState, b: ZeropsAgentLoginSta
   a.message === b.message &&
   a.terminalId === b.terminalId &&
   a.startedBy === b.startedBy &&
-  DateTime.Equivalence(a.startedAt, b.startedAt);
+  DateTime.Equivalence(a.startedAt, b.startedAt) &&
+  a.lastSucceeded?.startedBy === b.lastSucceeded?.startedBy &&
+  (a.lastSucceeded === undefined || b.lastSucceeded === undefined
+    ? a.lastSucceeded === b.lastSucceeded
+    : DateTime.Equivalence(a.lastSucceeded.startedAt, b.lastSucceeded.startedAt));
+
+/**
+ * `next`, carrying the latest attempt before it that succeeded (`lastSucceeded`) where it has not
+ * succeeded itself: a sign-in started, cancelled or failed after another's success leaves that
+ * success known until its record lands.
+ */
+export function withLatestSuccess(
+  before: ZeropsAgentLoginState | undefined,
+  next: ZeropsAgentLoginState,
+): ZeropsAgentLoginState {
+  const { lastSucceeded: _carried, ...attempt } = next;
+  if (next.phase === "succeeded") return attempt;
+  const success = latestSucceededSignIn(before);
+  return success === undefined ? attempt : { ...attempt, lastSucceeded: success };
+}
 
 export class ZeropsAgentLogin extends Context.Service<
   ZeropsAgentLogin,
@@ -321,11 +341,12 @@ export const make = (options: ZeropsAgentLoginOptions) =>
     const setLoginState = (key: string, login: ZeropsAgentLoginState) =>
       Effect.gen(function* () {
         const before = (yield* Ref.get(state)).logins[key];
-        if (before !== undefined && loginStateEqual(before, login)) {
+        const carried = withLatestSuccess(before, login);
+        if (before !== undefined && loginStateEqual(before, carried)) {
           return;
         }
         yield* Ref.update(state, (current) => ({
-          logins: { ...current.logins, [key]: login },
+          logins: { ...current.logins, [key]: carried },
         }));
         yield* publish;
       });

@@ -96,12 +96,13 @@ describe("candidatePickerBody", () => {
       rows,
       notice: { message: { text: "Still reading…" } },
     });
+    // A complete list says nothing more while a row's services are still being read.
     expect(
       candidatePickerBody(
         known([row({ presence: "unknown", group: "unavailable" })], "complete"),
         NOW_MS,
       ),
-    ).toMatchObject({ kind: "rows", notice: { message: { text: "Still reading…" } } });
+    ).toMatchObject({ kind: "rows", notice: null });
   });
 });
 

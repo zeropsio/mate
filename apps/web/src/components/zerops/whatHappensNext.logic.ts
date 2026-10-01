@@ -15,11 +15,14 @@
  */
 import { crewPossessive } from "@t3tools/client-runtime/zerops/crew/phrases";
 
+import { signInPhrase, signInPhraseWords, type SignInPhrasePart } from "./ZeropsAgentSignIn.logic";
 import type { NewMateRecipe } from "./ZeropsEnvironmentCreationDialog.logic";
 
 /** One step after the press. */
 export interface NextStep {
   readonly words: string;
+  /** The words with the brands in them marked, where they name any (`signInPhrase`). */
+  readonly phrase?: ReadonlyArray<SignInPhrasePart>;
   /** How long it takes, where that is worth saying. */
   readonly time: string | undefined;
 }
@@ -42,6 +45,12 @@ function named(botName: string): { readonly subject: string; readonly object: st
     : { subject: name, object: name };
 }
 
+/** The person's own step: what they sign the Mate in with. */
+function signInStep(object: string): NextStep {
+  const phrase = signInPhrase(object);
+  return { words: signInPhraseWords(phrase), phrase, time: undefined };
+}
+
 /**
  * Once a Mate is added: it comes up, its person signs it in, and — where the project has code —
  * it sets up development by itself, deploying that code, so they can leave meanwhile. The
@@ -56,7 +65,7 @@ export function newMateNext(input: {
 }): WhatHappensNext {
   const { subject, object } = named(input.botName);
   const up: NextStep = { words: `${subject} comes up`, time: MATE_UP };
-  const signIn: NextStep = { words: `You sign ${object} in`, time: undefined };
+  const signIn = signInStep(object);
   if (input.recipe === "none") {
     return {
       steps: [up, signIn, { words: `You tell ${object} what to build`, time: undefined }],
@@ -78,7 +87,7 @@ export function newMateNext(input: {
 
 /**
  * Once a project is created: Git hosting where the account has none — for all its projects,
- * coming up alongside — then the project and its first Mate, then its person signs it in and
+ * coming up alongside — then the project and its first Mate, then its person signs it in, then
  * tells it what to build.
  */
 export function newProjectNext(input: {
@@ -99,7 +108,8 @@ export function newProjectNext(input: {
         ? [{ words: `${team} gets Git hosting, for all its projects`, time: GIT_HOSTING_UP }]
         : []),
       { words: input.withGitHosting ? `${comeUp} meanwhile` : comeUp, time: MATE_UP },
-      { words: `You sign ${object} in and tell it what to build`, time: undefined },
+      signInStep(object),
+      { words: `You tell ${object} what to build`, time: undefined },
     ],
     note: "You can leave while they come up.",
   };

@@ -1,4 +1,9 @@
-import { Connection, EnvironmentRegistry } from "@t3tools/client-runtime/connection";
+import {
+  Connection,
+  ConnectionAdmissionRef,
+  EnvironmentRegistry,
+  connectionAdmission,
+} from "@t3tools/client-runtime/connection";
 import { shellSnapshotLoaderLayer } from "@t3tools/client-runtime/state/shell";
 import { threadSnapshotLoaderLayer } from "@t3tools/client-runtime/state/threads";
 import { mateDiagnostics } from "@t3tools/client-runtime/zerops/diagnostics";
@@ -39,6 +44,8 @@ const providedClientConnectionLayer = Layer.merge(
       runtimeContextLayer,
       providedConnectionPlatformLayer,
       backgroundActivityObserverLayer,
+      // The browser opens one socket at a time per address: the tab's sockets take turns.
+      Layer.succeed(ConnectionAdmissionRef, connectionAdmission),
     ),
   ),
 );

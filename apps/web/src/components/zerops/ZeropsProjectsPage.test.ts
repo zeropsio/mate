@@ -24,7 +24,7 @@ import {
   nextZeropsBirthRetryDelayMs,
   projectsGroupLine,
   projectsListingNotice,
-  projectsPageError,
+  projectsTroubleView,
   readContainerAfter,
   readContainerAgain,
   removeFailedZeropsProject,
@@ -691,36 +691,67 @@ describe("the projects listing", () => {
       },
       0,
     );
-    const INVENTORY_ERROR = "Some project access or services could not be verified.";
+    const TROUBLE = "Zerops isn't answering. Trying again…";
+    const EMPTY = "Your projects will show here once Zerops answers.";
+    const heldNotice = projectsListingNotice(held("complete"), 0);
 
-    it("never repeats a failed listing's cause beside it (R-K2, R-K3)", () => {
-      expect(
-        projectsPageError({
+    it.each([
+      {
+        name: "rows it holds, while the account's line says the trouble: the rows, and no words",
+        input: { connectError: null, inventoryError: TROUBLE, listingNotice: heldNotice, rows: 3 },
+        view: { alert: null, listingNotice: heldNotice, empty: null },
+      },
+      {
+        name: "nothing to show while the trouble lasts: its own empty words, with no retry",
+        input: {
           connectError: null,
-          inventoryError: INVENTORY_ERROR,
+          inventoryError: TROUBLE,
           listingNotice: failedListing,
-        }),
-      ).toBeNull();
-    });
-
-    it("still says a connect failure, which is not the listing's", () => {
-      expect(
-        projectsPageError({
+          rows: 0,
+        },
+        view: { alert: null, listingNotice: null, empty: EMPTY },
+      },
+      {
+        name: "nothing to show while the trouble lasts, the list still reading: only the empty words",
+        input: {
+          connectError: null,
+          inventoryError: TROUBLE,
+          listingNotice: projectsListingNotice({ state: "reading", sinceMs: 0, attempt: 1 }, 0),
+          rows: 0,
+        },
+        view: { alert: null, listingNotice: null, empty: EMPTY },
+      },
+      {
+        name: "nothing to show, the list still reading, the trouble not yet spoken: the reading line",
+        input: {
+          connectError: null,
+          inventoryError: null,
+          listingNotice: projectsListingNotice({ state: "reading", sinceMs: 0, attempt: 1 }, 0),
+          rows: 0,
+        },
+        view: {
+          alert: null,
+          listingNotice: projectsListingNotice({ state: "reading", sinceMs: 0, attempt: 1 }, 0),
+          empty: null,
+        },
+      },
+      {
+        name: "a failed listing the account's line does not speak for: its cause, once",
+        input: { connectError: null, inventoryError: null, listingNotice: failedListing, rows: 0 },
+        view: { alert: null, listingNotice: failedListing, empty: null },
+      },
+      {
+        name: "a connect failure, which is another region's: said, whatever the trouble",
+        input: {
           connectError: "The container is unreachable.",
-          inventoryError: INVENTORY_ERROR,
-          listingNotice: failedListing,
-        }),
-      ).toBe("The container is unreachable.");
-    });
-
-    it("says the inventory's failure over a list it holds", () => {
-      expect(
-        projectsPageError({
-          connectError: null,
-          inventoryError: INVENTORY_ERROR,
-          listingNotice: projectsListingNotice(held("complete"), 0),
-        }),
-      ).toBe(INVENTORY_ERROR);
+          inventoryError: TROUBLE,
+          listingNotice: heldNotice,
+          rows: 3,
+        },
+        view: { alert: "The container is unreachable.", listingNotice: heldNotice, empty: null },
+      },
+    ])("$name", ({ input, view }) => {
+      expect(projectsTroubleView(input)).toEqual(view);
     });
   });
 });

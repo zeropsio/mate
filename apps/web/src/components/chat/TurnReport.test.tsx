@@ -104,7 +104,7 @@ const OUTCOME: OutcomeModel = {
   change: { repository: "app", number: 2 },
   crewTask: null,
   activity: [{ kind: "command", count: 2 }],
-  later: { services: [], changes: [], tasks: [], pages: [], files: [], answered: false },
+  later: { services: [], changes: [], tasks: [], pages: [], views: [], files: [], answered: false },
 };
 
 /** The forge knows the run's change, still open. */
@@ -162,16 +162,21 @@ const inConversation = (node: ReactNode) => (
   <TimelineRowCtx value={CONVERSATION}>{node}</TimelineRowCtx>
 );
 
+/** A page of no service the result shows: its pictures stand in the strip under the rows. */
+const DOCS = "docs.example.dev";
+const APPDEV_HOST = "appdev-1f3c-3000.prg1.example.app";
+
 const checkPicture = (
   key: string,
   caption: string,
   device: string | null = null,
+  host = DOCS,
 ): Extract<OutcomePicture, { kind: "check" }> => ({
   kind: "check",
   key,
   src: `data:image/png;base64,${key}`,
   caption,
-  page: `appdev-1f3c-3000.prg1.example.app${caption}`,
+  page: `${host}${caption}`,
   device,
   failed: false,
   ratio: 1.6,
@@ -227,25 +232,40 @@ describe("TurnReport's pictures", () => {
   });
 
   // The owner, 2026-09-29, of a result that had none: "if anything it
-  // should show the screenshots". What the checks took and what the Mate
-  // looked at stand in one strip under the rows, in the order they were
-  // taken, each named by what it is; no row carries a picture of its own.
-  it("draws the run's pictures in one strip under its rows, each named by what it is", () => {
+  // should show the screenshots"; and 2026-09-30, of one picture under the
+  // wrong service: "showing only one of the images". Every picture a
+  // service's checks took stands under its row, in the order taken; what the
+  // Mate looked at stands in one strip under the rows. Each is named by what
+  // it is.
+  it("draws each service's pictures under its row and the rest in a strip under the rows", () => {
     const renderer = renderPictures([
-      checkPicture("op:b1", "/status"),
+      checkPicture("op:b1", "/status", null, APPDEV_HOST),
       filePicture("home-mobile.png"),
-      checkPicture("op:b2", "/", "iPhone 16"),
+      checkPicture("op:b2", "/", "iPhone 16", APPDEV_HOST),
     ]);
     expect(tilesOf(renderer).map((tile) => tile.props["aria-label"])).toEqual([
       "/status in the browser. Open the picture",
-      "home-mobile.png. Open the picture",
       "/ on iPhone 16. Open the picture",
+      "home-mobile.png. Open the picture",
     ]);
     expect(
       renderer.root
         .findAll((node) => node.props["data-tooltip"] !== undefined)
         .map((tooltip) => tooltip.children.join("")),
-    ).toEqual(["/status in the browser", "home-mobile.png", "/ on iPhone 16"]);
+    ).toEqual(["/status in the browser", "/ on iPhone 16", "home-mobile.png"]);
+    // Both of appdev's under appdev's row, none under another's.
+    expect(
+      rowsOf(renderer).map((row) => [
+        row.props["data-result-row"],
+        row.findAll((node) => node.type === "img").length,
+      ]),
+    ).toContainEqual(["running", 2]);
+    expect(
+      rowsOf(renderer).reduce(
+        (sum, row) => sum + row.findAll((node) => node.type === "img").length,
+        0,
+      ),
+    ).toBe(2);
     const markup = renderToStaticMarkup(
       inConversation(
         <TurnReport
@@ -257,9 +277,6 @@ describe("TurnReport's pictures", () => {
       ),
     );
     expect(markup.indexOf("Dev server running")).toBeLessThan(markup.indexOf("data-result-strip"));
-    for (const row of rowsOf(renderer)) {
-      expect(row.findAll((node) => node.type === "img")).toEqual([]);
-    }
   });
 
   it("stands six tiles at most, the sixth saying how many more", () => {

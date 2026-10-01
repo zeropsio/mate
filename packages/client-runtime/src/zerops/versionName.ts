@@ -68,6 +68,27 @@ export function parseVersionName(name: string | undefined): ParsedVersionName | 
     : { sha: firstSha, label: second, taggedBy: rest.join(" ") };
 }
 
+const DIRTY_SHORT_SHA = /^([0-9a-f]{7})-dirty$/u;
+
+/**
+ * zcp's push of a working tree with uncommitted changes, `{branch} {short
+ * sha}-dirty`: its branch and the commit its tree started from. Built from no
+ * commit, it is never one to compare ({@link parseVersionName} reads it as
+ * named by hand); this reads it only to say it.
+ */
+export function parseDirtyVersionName(
+  name: string | undefined,
+): { readonly label: string; readonly sha: string } | undefined {
+  const tokens = (name ?? "")
+    .trim()
+    .split(/\s+/u)
+    .filter((token) => token.length > 0);
+  const [label, dirty, ...rest] = tokens;
+  if (label === undefined || dirty === undefined || rest.length > 0) return undefined;
+  const sha = DIRTY_SHORT_SHA.exec(dirty.toLowerCase())?.[1];
+  return sha === undefined ? undefined : { label, sha };
+}
+
 /**
  * Whether the commit a version's name spells (`named`, whole or short) is
  * `commit`, a whole sha (40 or 64 hex): equal, or a hex prefix of it at least

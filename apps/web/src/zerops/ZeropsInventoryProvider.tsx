@@ -22,7 +22,15 @@ import {
 import { mateDiagnostics } from "@t3tools/client-runtime/zerops/diagnostics";
 import type { Invalidation } from "@t3tools/client-runtime/zerops/knowledge";
 import * as Effect from "effect/Effect";
-import { useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import {
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 
 import { ZeropsLandingWait } from "../components/zerops/landing/ZeropsLandingShell";
 import { zeropsDataRuntimeAtom, zeropsInventoryAtom, zeropsSessionAtom } from "../state/zerops";
@@ -30,11 +38,19 @@ import { invalidateZerops } from "./accountInvalidations";
 import {
   HeldInventoryContext,
   InventoryContext,
+  AccountVoiceContext,
+  type AccountVoice,
   inventoryProjectRefKey,
   type Inventory,
   type InventoryServiceOutcome,
 } from "./inventoryContext";
 import { useZeropsSession } from "./ZeropsSessionProvider";
+import {
+  INVENTORY_TROUBLE_HOLD_MS,
+  accountFootLine,
+  inventoryTroubleVoice,
+} from "./inventoryTrouble.logic";
+import { useHeldFor } from "./useHeldFor";
 import {
   stabilizeZeropsAtom,
   useZeropsAtomSelections,
@@ -183,40 +199,6 @@ export function accessLapseCopy(failure: GrantFailure | null): {
   return failure === null
     ? { sentence: "Checking your Zerops access…", retry: false }
     : { sentence: "Zerops isn't answering.", retry: true };
-}
-
-/**
- * The app's one banner while the account's access lapses (DESIGN §3.4): each
- * platform region is withheld at its own read meanwhile, and the product stays
- * mounted and usable around them (§4.2 G9, §9 C1). Whatever it says, it offers
- * the session's own Sign out, so a lapse that never ends is never a dead end (A9).
- */
-function AccessLapseBanner({
-  copy,
-  onRetry,
-  onSignOut,
-}: {
-  readonly copy: ReturnType<typeof accessLapseCopy>;
-  readonly onRetry: () => void;
-  readonly onSignOut: () => void;
-}) {
-  return (
-    // Above every layer the app opens (dialogs, menus, tooltips): a dialog left open when the
-    // lapse starts must not stand between the person and Sign out.
-    <div role="alert" className="fixed inset-x-0 top-0 z-[200] bg-background p-4">
-      {copy.sentence}{" "}
-      {copy.retry ? (
-        <>
-          <button type="button" onClick={onRetry}>
-            Try now
-          </button>{" "}
-        </>
-      ) : null}
-      <button type="button" onClick={onSignOut}>
-        Sign out
-      </button>
-    </div>
-  );
 }
 
 const AUTHORIZED: ScopeAuthority = { kind: "authorized" };
@@ -495,6 +477,7 @@ export function ZeropsInventoryProvider({ children }: { readonly children: React
   ]);
 
   const phase = grant.machine.phase;
+  /** What the first mount's gate says when its wait failed. */
   const error =
     phase.phase === "unverified-failed"
       ? (grant.failure ?? "Zerops didn't answer.")
@@ -529,8 +512,28 @@ export function ZeropsInventoryProvider({ children }: { readonly children: React
 
   /** What the app's banner says while the mounted product's grant is lapsed, until the next grant. */
   const lapse = ready && phase.phase === "lapsed" ? accessLapseCopy(phase.failure) : null;
-  /** The inventory's own trouble, which a lapse's one banner speaks over (§3.4). */
-  const shownError = lapse === null ? error : null;
+  // The mounted product's own trouble: a round failing, or the data of the organization in view
+  // failed or stalled — another organization's is not what anyone is looking at, unless none is
+  // chosen yet. It never covers or freezes the product; it speaks only once it has lasted
+  // (`inventoryTroubleVoice`).
+  const trouble =
+    phase.phase === "unverified-failed"
+      ? ("grant" as const)
+      : projected.blockedOrganizations.some(
+            ({ organizationId }) =>
+              activeOrganization === null || organizationId === activeOrganization.id,
+          )
+        ? ("organization" as const)
+        : null;
+  const troubleHeld = useHeldFor(ready && trouble !== null, INVENTORY_TROUBLE_HOLD_MS);
+  const voice = inventoryTroubleVoice({
+    mounted: ready,
+    lapsed: lapse !== null,
+    sessionEnded: status !== "signed-in",
+    trouble,
+    troubledForMs: troubleHeld ? INVENTORY_TROUBLE_HOLD_MS : 0,
+  });
+  const shownError = voice?.sentence ?? null;
   const retry = () => {
     const intents = retryInvalidations({
       granted: phase.phase === "granted",
@@ -538,6 +541,37 @@ export function ZeropsInventoryProvider({ children }: { readonly children: React
     });
     for (const intent of intents) invalidateZerops(intent);
   };
+  // "Try now" and "Sign out" from the account's line at the menu's foot: one function each for
+  // the product's life, always asking for what this render's trouble names.
+  const retryRef = useRef(retry);
+  const signOutRef = useRef(signOut);
+  useEffect(() => {
+    retryRef.current = retry;
+    signOutRef.current = signOut;
+  });
+  const retryNow = useCallback(() => retryRef.current(), []);
+  const signOutNow = useCallback(() => void signOutRef.current(), []);
+  // The account speaks from one place, the menu's foot (`accountFootLine`): its lapse, which
+  // withholds every region meanwhile, or its inventory's lasting trouble. Never over the product.
+  const footLine = accountFootLine({ lapse, trouble: voice });
+  const footSentence = footLine?.sentence ?? null;
+  const footActions = footLine?.actions.join(" ") ?? "";
+  const accountVoice = useMemo(
+    (): AccountVoice | null =>
+      footSentence === null
+        ? null
+        : {
+            sentence: footSentence,
+            actions: footActions
+              .split(" ")
+              .map((kind) =>
+                kind === "try-now"
+                  ? { kind, label: "Try now" as const, run: retryNow }
+                  : { kind: "sign-out" as const, label: "Sign out" as const, run: signOutNow },
+              ),
+          },
+    [footActions, footSentence, retryNow, signOutNow],
+  );
 
   // Withholding is applied here, at the inventory's one read (DESIGN law 5, §3.1): a withheld
   // project's content leaves `projects` and `services` and comes back with its next authority.
@@ -565,7 +599,10 @@ export function ZeropsInventoryProvider({ children }: { readonly children: React
     authority,
     account,
     lost,
-    isLoading: !projected.read && error === null,
+    // A read failing or stalled is not known, spoken of yet or not: the 20 s silence decides only
+    // when the account's line speaks, never what the data says (a Mate link settled "not found",
+    // "no projects" painted and taken back).
+    isLoading: !projected.read || trouble !== null,
     error: shownError,
   });
   useEffect(() => {
@@ -615,22 +652,7 @@ export function ZeropsInventoryProvider({ children }: { readonly children: React
       ) : (
         <InventoryContext value={snapshot}>
           <HeldInventoryContext value={held}>
-            {lapse !== null ? (
-              <AccessLapseBanner copy={lapse} onRetry={retry} onSignOut={() => void signOut()} />
-            ) : shownError !== null ? (
-              <div role="alert" className="fixed inset-x-0 top-0 z-50 bg-background p-4">
-                Project access could not be verified.{" "}
-                <button type="button" onClick={retry}>
-                  Try again
-                </button>{" "}
-                <button type="button" onClick={() => void signOut()}>
-                  Sign out
-                </button>
-              </div>
-            ) : null}
-            <div inert={shownError !== null} className="contents">
-              {children}
-            </div>
+            <AccountVoiceContext value={accountVoice}>{children}</AccountVoiceContext>
           </HeldInventoryContext>
         </InventoryContext>
       )}

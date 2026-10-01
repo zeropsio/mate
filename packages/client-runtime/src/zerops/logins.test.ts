@@ -10,7 +10,7 @@ import {
   mateLoginRows,
   mateLoginSignerLine,
   resolveSpentLogin,
-  spentLoginRegistering,
+  spentLoginStatusStale,
 } from "./logins.ts";
 
 const EVA = "u-eva";
@@ -214,56 +214,112 @@ describe("resolveSpentLogin", () => {
   });
 });
 
-describe("spentLoginRegistering", () => {
+// The server's provider status and the Mate's sign-in record are two streams. Past the
+// registration the record says authorized while the status still says "being registered":
+// the record wins, and the stale status says nothing (the owner, 2026-09-30: "there still
+// flashes …, which layout shifts").
+describe("spentLoginStatusStale", () => {
   const providers = [
     { instanceId: "claudeAgent", driver: "claudeAgent" },
     { instanceId: "claudeAgent-work", driver: "claudeAgent" },
+    { instanceId: "opencode", driver: "opencode" },
   ];
   const agentRow = (
-    state: "local-only" | "authorized",
-    providerAuth: "unknown" | "authenticated",
+    state: "local-only" | "authorized" | "not-authorized",
+    providerAuth: "unknown" | "authenticated" | "unauthenticated",
   ) =>
     ({
       agentId: "claude-code",
-      credPresent: true,
+      credPresent: state !== "not-authorized",
       flagOAuth: state === "authorized",
       flagToken: false,
       providerAuth,
       state,
     }) as const;
+  const REGISTERING =
+    "Claude Code is signed in and being registered with Zerops. It will be ready in a moment.";
+  const registeringWord = {
+    instanceId: "claudeAgent",
+    status: "warning",
+    message: REGISTERING,
+  } as const;
+  const authorized = { available: true, agents: [agentRow("authorized", "authenticated")] };
 
   it.each([
     {
       name: "the default login signed in and its flag not written yet",
-      instanceId: "claudeAgent",
+      status: registeringWord,
       feed: { available: true, agents: [agentRow("local-only", "unknown")] },
       expected: true,
     },
     {
-      name: "the default login authorized",
-      instanceId: "claudeAgent",
-      feed: { available: true, agents: [agentRow("authorized", "authenticated")] },
-      expected: false,
+      name: "the default login registered while its status still says it is being registered",
+      status: registeringWord,
+      feed: authorized,
+      expected: true,
+    },
+    {
+      name: "the record not caught up yet while the status already says it is being registered",
+      status: registeringWord,
+      feed: { available: true, agents: [agentRow("not-authorized", "unauthenticated")] },
+      expected: true,
     },
     {
       name: "a login beyond the defaults still answering its own check",
-      instanceId: "claudeAgent-work",
+      status: {
+        instanceId: "claudeAgent-work",
+        status: "warning",
+        message: "Claude Code · work is signed in and being checked. It will be ready in a moment.",
+      },
       feed: {
-        available: true,
-        agents: [agentRow("authorized", "authenticated")],
-        logins: [login({ id: "claudeAgent-work", state: "registering" })],
+        ...authorized,
+        logins: [login({ id: "claudeAgent-work", label: "work", state: "registering" })],
       },
       expected: true,
     },
     {
-      name: "no feed",
-      instanceId: "claudeAgent",
-      feed: null,
+      name: "a driver's own warning on a registered login (its check could not answer)",
+      status: {
+        instanceId: "claudeAgent",
+        status: "warning",
+        message: "Could not verify Claude authentication status.",
+      },
+      feed: authorized,
       expected: false,
     },
-  ])("is $expected for $name", ({ instanceId, feed, expected }) => {
-    expect(
-      spentLoginRegistering(instanceId, feed as ZeropsAgentAuthSnapshot | null, providers),
-    ).toBe(expected);
+    {
+      name: "a driver's error on a registered login (a revoked credential)",
+      status: { instanceId: "claudeAgent", status: "error", message: "Not signed in." },
+      feed: authorized,
+      expected: false,
+    },
+    {
+      name: "the agent disabled in settings",
+      status: {
+        instanceId: "claudeAgent",
+        status: "warning",
+        message: "Claude is disabled in settings.",
+      },
+      feed: authorized,
+      expected: false,
+    },
+    {
+      name: "a ready status (a version advisory) on a registered login",
+      status: { instanceId: "claudeAgent", status: "ready", message: REGISTERING },
+      feed: authorized,
+      expected: false,
+    },
+    {
+      name: "a provider Mate signs nobody in to",
+      status: { instanceId: "opencode", status: "warning", message: REGISTERING },
+      feed: authorized,
+      expected: false,
+    },
+    { name: "no feed", status: registeringWord, feed: null, expected: false },
+    { name: "no status", status: null, feed: authorized, expected: false },
+  ])("is $expected for $name", ({ status, feed, expected }) => {
+    expect(spentLoginStatusStale(status, feed as ZeropsAgentAuthSnapshot | null, providers)).toBe(
+      expected,
+    );
   });
 });

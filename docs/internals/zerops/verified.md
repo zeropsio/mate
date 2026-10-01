@@ -7112,3 +7112,57 @@ Mates, and the parts' own harnesses where a state could not be made live. The Ma
 - **The heading line folds without a jump** — the sidebar harness (`design.html?set=ladder`) at
   435 px: the line's height 20 → 0 px over about 150 ms, its words kept while it folds, no frame
   where the Mates below it jump.
+
+## Pass 26 as measured — 2026-09-30
+
+Measured on the test org `Mate` during the owner's and a colleague's live runs on mate.zerops.io
+(0.11.73, zcp v9.186.0): the platform's app-version builds read through the API, a sampler on the
+lead's audit browser signed in as the test owner, 250 ms upgrade probes against a restarting Mate,
+and the parts' harnesses and fake-timer probes where a state could not be made live.
+
+- **The balancer holds a restarting Mate's upgrade** — Theo restarted at 21:33:58Z, 1,005 probes
+  every 250 ms: upgrades to a Mate whose container is going down were held 3.0–5.1 s and then
+  answered 502, a window of about 2.5 s of attempts released together; otherwise 401/400/200 about
+  0.1 s after TLS. The Mate's server never held a connection before it was ready.
+- **Chrome's one-connecting-socket lock is per profile** — every tab of one person shares it,
+  mate.zerops.io and a localhost app alike, and every Mate sits behind one address.
+- **Juno "completely stuck" was other Mates restarting** — the owner's Juno stuck from 21:04:53 and
+  unlocked at 21:05:24Z, while Kai, Nova and Iris restarted from 21:04:40 to their last ready at
+  21:05:21Z; Juno's own restart came later, 21:08:21–21:08:56Z.
+- **The admission kept a queued route waiting** — fake-timer probe of `admission.ts`: a Mate queued
+  before it became the route was admitted only when the 15 s hold ran out (after: at once), and the
+  previous route's attempt was never told to give way within 30 s (after: as the route starts).
+- **A new Mate's server does not restart after the agent sign-in** — two Heron Mates, 21:21–21:26Z.
+- **A project someone else made stayed out of the access grant until its renewal** — up to about 12
+  minutes (a 15-minute window renewed 3 minutes early): its services unread, its Mate missing from
+  the menu, "Still reading…" shown and the name check held on "Checking which names are taken…"
+  (a colleague's report on Heron; the owner's of a colleague's new Mate).
+- **"Still reading…" showed about 3 s on every reload** — on 0.11.73, from 1.8–2.9 s to 5.5–6.2 s
+  of three reloads, over rows whose services were not read yet.
+- **"Project access could not be verified" froze a mounted product** — from the code: when any read
+  in any of the account's organizations failed after its five retries (1 + 2 + 4 + 8 + 16 s) or
+  stalled 30 s past its deadline, the whole product went `inert` under the bar until a retry
+  landed. The owner saw it again at about 22:28Z; the audit browser on the same account showed
+  nothing at 22:29Z, and no project in the test org had changed since 21:39Z.
+- **Ada on Beviro, the parallel stand-up** — Add pressed at 21:34:34Z, the name check took 0.1 s,
+  ready to sign in at 21:36:45 (2 min 11 s), signed in at 21:38:33. The first ask was refused at
+  21:38:32 as unrecorded — the client wrote the signer tag at 21:38:33.485 — and ran at 21:39:11.
+  "Stood development up · medusastage and nextstorestage next" at 21:44:22, 5 min 2 s after the
+  ask (Enzo's development: about 19 min); both stages up at 1,014 s, 16 min 54 s (Enzo: about 26
+  min). Builds, upload / total: medusadev 115 / 263 s and nextstoredev 143 / 261 s side by side,
+  medusastage 147 / 281 s from 422 s, nextstorestage 248 / 301 s from 712 s, and about 112 s of the
+  Mate's own work between its two calls. Uploads of 2–4 min per service are now the largest share.
+- **The sign-in's end drew a banner for a moment** — the provider's status ("Claude Code is signed
+  in and being registered with Zerops. It will be ready in a moment.") and the auth snapshot raced
+  at the end of registration, and the banner above the timeline came and went, shifting the layout.
+- **An import's failure carried no reason** — zcp's import result reads a service's reason only
+  from the process's `publicMeta`; the project's process list also carries `error` (`code`,
+  `message`), which the client now reads.
+- **The result lost a device's picture** — pictures were keyed per page, so the phone's take of a
+  page replaced the desktop's.
+- **A Mate's hand-run git had no token** — Pia on Heron at 22:21Z: the model ran `git fetch origin`
+  in its own shell (the zcp container, on the dev service's repository through the mount) and got
+  "Failed to authenticate user". The repository's saved credential helper answers `$GIT_TOKEN`,
+  which only the dev service carries, as a secret; the Mate's shell carries the bot's token as
+  `GITEA_TOKEN`, and `GIT_TOKEN="$GITEA_TOKEN" git fetch origin` went through. Every Mate with a
+  wired Gitea pair has it, latent until the model runs git on the mount.

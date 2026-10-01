@@ -3197,6 +3197,85 @@ code {
   }
 }
 
+/* p26/row — a working Mate's clock reads as a live clock, not a timestamp (the owner,
+   2026-09-30): 600 in its Mate's hue — the tint mixed into the ink, so it holds its contrast on
+   the menu, on the selected row's grey and in dark — after a 6 px dot of the same hue that
+   breathes slowly. The dot hangs in the gap before the clock: nothing beside it moves. */
+.menu-clock {
+  position: relative;
+  color: color-mix(in oklab, var(--menu-clock-tint) 45%, var(--sidebar-foreground));
+  font-weight: 600;
+}
+
+.dark .menu-clock {
+  color: color-mix(in oklab, var(--menu-clock-tint) 62%, var(--sidebar-foreground));
+}
+
+.menu-clock[data-tint="coral"] {
+  --menu-clock-tint: var(--zerops-mate-tint-coral);
+}
+
+.menu-clock[data-tint="amber"] {
+  --menu-clock-tint: var(--zerops-mate-tint-amber);
+}
+
+.menu-clock[data-tint="olive"] {
+  --menu-clock-tint: var(--zerops-mate-tint-olive);
+}
+
+.menu-clock[data-tint="sky"] {
+  --menu-clock-tint: var(--zerops-mate-tint-sky);
+}
+
+.menu-clock[data-tint="violet"] {
+  --menu-clock-tint: var(--zerops-mate-tint-violet);
+}
+
+.menu-clock[data-tint="rose"] {
+  --menu-clock-tint: var(--zerops-mate-tint-rose);
+}
+
+.menu-clock[data-tint="sand"] {
+  --menu-clock-tint: var(--zerops-mate-tint-sand);
+}
+
+.menu-clock[data-tint="slate"] {
+  --menu-clock-tint: var(--zerops-mate-tint-slate);
+}
+
+.menu-clock-mark {
+  position: absolute;
+  top: 50%;
+  right: calc(100% + 5px);
+  width: 6px;
+  height: 6px;
+  margin-top: -3px;
+  border-radius: 50%;
+  background-color: currentColor;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .menu-clock-mark {
+    animation: menu-clock-breathe 2.4s steps(8, jump-none) infinite alternate;
+  }
+}
+
+/* p26/row — the row's stop, armed: "Stop?" crossfades in where the ■ stood (140 ms). */
+@media (prefers-reduced-motion: no-preference) {
+  .menu-stop-armed {
+    animation: zerops-appear 140ms ease-out both;
+  }
+}
+
+@keyframes menu-clock-breathe {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0.3;
+  }
+}
+
 @keyframes menu-dot-in {
   from {
     scale: 0;
@@ -3314,7 +3393,7 @@ code {
 }
 
 .zerops-heading-stack:has(.zerops-heading-line[data-open]) .zerops-project-heading::before {
-  bottom: -16px;
+  bottom: -24px;
 }
 
 @media (hover: hover) {
@@ -3323,8 +3402,9 @@ code {
   }
 }
 
-/* 0 px between the name's line box and the line's: it hugs the name (9 px letter to letter),
-   and keeps the 20 px of line box to the first Mate that the name has without it. */
+/* p26/row — the line breathes under the name (13 px letter to letter, was 10) and stays one
+   group with it, twice that from the first Mate; 13/18 like the rows under it, where 12/16
+   tucked under the name read as squeezed and faint (the owner, 2026-09-30). */
 .zerops-heading-line {
   display: grid;
   grid-template-rows: 0fr;
@@ -3339,8 +3419,8 @@ code {
 
 .zerops-heading-line[data-open] {
   grid-template-rows: 1fr;
-  margin-top: -4px;
-  padding-bottom: 4px;
+  margin-top: -2px;
+  padding-bottom: 8px;
   opacity: 1;
 }
 
@@ -3362,11 +3442,11 @@ code {
   display: flex;
   align-items: center;
   gap: 8px;
-  height: 16px;
+  height: 18px;
   padding: 0 6px;
   color: var(--muted-foreground);
-  font-size: 12px;
-  line-height: 16px;
+  font-size: 13px;
+  line-height: 18px;
 }
 
 .zerops-heading-line-words {
@@ -3379,8 +3459,17 @@ code {
 
 .zerops-heading-line-words > .zerops-envdot {
   display: inline-block;
-  margin-right: 5px;
+  margin-right: 6px;
   vertical-align: -1px;
+}
+
+/* The release's tag, the one its folded heading's mark wears: the eye ties the two. */
+.zerops-heading-line-tag {
+  display: inline-block;
+  width: 13px;
+  height: 13px;
+  margin-right: 6px;
+  vertical-align: -2px;
 }
 
 /* The fact in ink; a landing in ok and trouble in amber carry weight as well. */
@@ -3398,18 +3487,26 @@ code {
   font-weight: 500;
 }
 
-/* p25/menu — D: a folded heading's release mark after its faces, 12 · 500 muted, tabular. */
+/* p25/menu — D: a folded heading's release mark after its faces, 12 · 500, tabular — its open
+   line's colours (p26/row): the tag muted, the count in the fact's ink. */
 .zerops-heading-mark {
+  /* Over the heading button's hit area, so a pointer on it reaches the mark's tooltip. */
+  position: relative;
+  z-index: 1;
   display: inline-flex;
   flex: none;
   align-items: center;
   gap: 3px;
   margin-left: 6px;
-  color: var(--muted-foreground);
+  color: var(--sidebar-foreground);
   font-size: 12px;
   font-weight: 500;
   line-height: 1;
   font-variant-numeric: tabular-nums;
+}
+
+.zerops-heading-mark:not([data-tone]) > svg {
+  color: var(--muted-foreground);
 }
 
 .zerops-heading-mark[data-tone="ok"] {
@@ -4005,14 +4102,18 @@ code {
   border-width: 0 1px;
 }
 
-/* Corners run parallel (S4): the tray's 34 px is its bubbles' 18 px plus the
-   16 px between them — 15 px of padding inside the 1 px ring. At 12 the
-   bubbles pressed on its edge, the top most of all (the owner, 2026-09-29:
-   "some spacing, especially at the top is pretty poor"). */
+/* p26/runcard */
+/* One radius, the composer's (`--composer-radius`), in every state of the
+   card: live or settled, closed or opened, its line alone or with results or
+   a stand-up's bar under it (the owner, 2026-09-30: "I'd just keep one
+   constant border radius, the 'expansion' doesn't work with the stuff on
+   bottom"). Its 15 px of padding inside the 1 px ring keep its bubbles 16 px
+   from its edge (the owner, 2026-09-29: "some spacing, especially at the top
+   is pretty poor"). */
 .run-tray-top {
   border-top-width: 1px;
-  border-top-left-radius: 34px;
-  border-top-right-radius: 34px;
+  border-top-left-radius: var(--composer-radius);
+  border-top-right-radius: var(--composer-radius);
   padding-top: 15px;
   padding-inline: 15px;
 }
@@ -4023,24 +4124,21 @@ code {
   padding-inline: 15px;
 }
 
+/* The edge row is 16 px tall: a round 20 px corner would be squeezed to 16
+   in it, so its corners reach the composer's width across and the row's
+   height up — a curve that meets the card's side as the top's does, and
+   differs from a circle by under a pixel. */
 .run-tray-bottom {
   height: 16px;
   border-bottom-width: 1px;
-  border-bottom-left-radius: 34px;
-  border-bottom-right-radius: 34px;
+  border-bottom-left-radius: var(--composer-radius) 16px;
+  border-bottom-right-radius: var(--composer-radius) 16px;
 }
 
 /* A card nothing stands in but its line's row (`cardWhole`) is drawn whole by
    that row: one box over the edge row's 16 px, and over the room its panel
-   holds while it closes (`--card-room`), so its corners are its own — sliced,
-   the 16 px edge row clamped the card's 34 px corners to 16 under 34 px ones.
-   Around its line alone it is the conversation's other box, the composer's
-   rectangle (the owner, 2026-09-30, of a card holding only "Thinking": "the
-   state of border radiuses in the initial thinking with no other content
-   around sucks"); once anything stands in it — the chat over its line, its
-   work opened under it, a panel's room — its corners are the card's. They
-   ease from one to the other as the card grows and shrinks: on the toggle's
-   curve, and from the card's on the fold's as its work folds into its line. */
+   holds while it closes (`--card-room`), so its corners are its own, the
+   card's one radius, whatever stands in it. */
 [data-card-whole] > .run-tray-top {
   position: relative;
   isolation: isolate;
@@ -4056,13 +4154,6 @@ code {
   border-radius: var(--composer-radius);
   background: var(--run-tray);
 }
-[data-card-whole]
-  > .run-tray-top:is(
-    [data-card-room],
-    :has(.run-above:not([data-folding]), .run-later-feed:not(:empty))
-  )::before {
-  border-radius: 34px 34px 16px 16px;
-}
 [data-card-whole] > :is(.run-tray-middle, .run-tray-bottom) {
   background: none;
   border-color: transparent;
@@ -4071,20 +4162,6 @@ code {
    from both of the card's edges, live as closed. */
 [data-card-whole] > .run-tray-middle {
   padding-top: 0;
-}
-@media (prefers-reduced-motion: no-preference) {
-  [data-card-whole] > .run-tray-top::before {
-    transition: border-radius 220ms var(--ease-out-strong);
-  }
-  [data-card-whole] > .run-tray-top:has(.run-above[data-folding])::before {
-    transition: none;
-    animation: run-card-folds 360ms var(--ease-drawer) both;
-  }
-}
-@keyframes run-card-folds {
-  from {
-    border-radius: 34px 34px 16px 16px;
-  }
 }
 
 /* The Mate's words in its card wear its tint lightly (K13): with the
@@ -4135,6 +4212,48 @@ code {
   white-space: nowrap;
   text-overflow: ellipsis;
 }
+/* p26/runcard */
+/* A change of the line's words crossfades in place: the old words leave where
+   they stood, rising 3 px out, as the new ones rise 3 px in over them — on the
+   strong ease-out, in under 180 ms. What changes it is paced
+   (`nowLineCalm.logic`), so a change comes at most once a second; the words'
+   column is the grid's flexible one, so the clock never moves for them. A
+   first paint is simply there, and under reduced motion a change is a cut. */
+.run-now-words {
+  position: relative;
+}
+.run-now-leaving {
+  position: absolute;
+  inset-inline: 0;
+  top: 0;
+  pointer-events: none;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .run-now-head[data-run-now-change] {
+    animation: run-now-in 180ms var(--ease-out-strong) both;
+  }
+  .run-now-leaving {
+    animation: run-now-out 140ms var(--ease-out-strong) both;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .run-now-leaving {
+    display: none;
+  }
+}
+@keyframes run-now-in {
+  from {
+    opacity: 0;
+    translate: 0 3px;
+  }
+}
+@keyframes run-now-out {
+  to {
+    opacity: 0;
+    translate: 0 -3px;
+  }
+}
+
 .run-now-verb {
   font-weight: 500;
   color: var(--color-foreground);
@@ -4301,7 +4420,7 @@ button.run-bar:focus-visible {
 /* A tray on its own, not sliced: the Mate at work once its turn is over. */
 .run-tray-whole {
   border-width: 1px;
-  border-radius: 34px;
+  border-radius: var(--composer-radius);
   padding: 15px;
 }
 
@@ -4607,6 +4726,26 @@ button.run-bar:focus-visible {
    Six tiles at most, 8 px apart, wrapping into rows as the column needs.
    Their corners run parallel with the tray's (S4): 30 px = 12 + the 18 px
    between a tile and the tray's edge — 6 px here, the tray's 12 under it. */
+/* p26/runcard */
+/* What a service's checks found stays on its one line, never a line of its
+   own that leads with a "·" or a "/": it keeps the line while 12 characters
+   of room are left, gives way at its end past its room, and never runs out
+   of its column — nor shrinks to nothing when what stands before it is long. The pictures its checks took stand
+   under its row, the open card's thumbnails' 80 px. */
+.run-result-checked {
+  flex: 1 1 12ch;
+  min-width: min(12ch, 100%);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.run-result-row-pictures {
+  margin-top: 8px;
+}
+.run-result-row-pictures .run-result-tile {
+  height: 80px;
+}
+
 .run-result-pictures {
   display: grid;
   grid-template-columns: 28px minmax(0, 1fr);
@@ -4776,8 +4915,8 @@ html[data-theme-id] [data-chat-header] .conversation-crewmate[data-popup-open] {
    canvas. */
 :root {
   --chat-composer-shadow: 0 1px 2px rgb(15 18 24 / 5%), 0 14px 34px -16px rgb(15 18 24 / 28%);
-  /* The composer's corners: the conversation's other box, a run's card that
-     holds its line alone, wears them too. */
+  /* The composer's corners: the conversation's other box, a run's card,
+     wears them too, in every state. */
   --composer-radius: 20px;
 
   @variant dark {
@@ -5642,7 +5781,9 @@ html[data-theme-id] [data-chat-header] .conversation-crewmate[data-popup-open] {
   display: flex;
   flex-direction: column;
   width: min(768px, 100%);
-  max-height: calc(100dvh - clamp(16px, 7dvh, 72px) - 16px);
+  /* The steps of a release (p26/release) are held to it too. */
+  --rv-max: calc(100dvh - clamp(16px, 7dvh, 72px) - 16px);
+  max-height: var(--rv-max);
   overflow: hidden;
   border-radius: 20px;
   background: var(--card);
@@ -6648,6 +6789,153 @@ html[data-theme-id] [data-chat-header] .conversation-crewmate[data-popup-open] {
 .rv-on[data-mark="failed-on-stage"] {
   color: var(--zerops-status-failed);
 }
+
+/* p26/release */
+/* A change row opens its review in place: the whole row presses, the menu's way — a wash under
+   the pointer, a deeper one pressed, its Mate's face looking up — with a › at its end. */
+.rv-rel[data-opens] .rv-relrow {
+  grid-template-columns: 20px minmax(0, 1fr) auto 14px;
+}
+button.rv-relrow {
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+  outline: none;
+  transition: background-color 150ms ease;
+}
+button.rv-relrow:hover {
+  background: color-mix(in oklab, var(--foreground) 4%, transparent);
+}
+button.rv-relrow:active {
+  background: color-mix(in oklab, var(--foreground) 7%, transparent);
+}
+button.rv-relrow:focus-visible {
+  box-shadow: inset 0 0 0 2px var(--ring);
+}
+.rv-relrow-go {
+  width: 14px;
+  height: 14px;
+  color: var(--muted-foreground);
+  opacity: 0.7;
+  transition:
+    opacity 150ms ease,
+    color 150ms ease,
+    translate 200ms var(--ease-out-strong);
+}
+button.rv-relrow:hover .rv-relrow-go {
+  color: var(--foreground);
+  opacity: 1;
+  translate: 2px 0;
+}
+@media (prefers-reduced-motion: no-preference) {
+  button.rv-relrow:hover [data-mate-face-look] {
+    translate: 0 -5px;
+  }
+  button.rv-relrow [data-mate-face-hop] {
+    transition: scale 220ms var(--ease-spring);
+  }
+  button.rv-relrow:active [data-mate-face-hop] {
+    scale: 0.92;
+    transition-duration: 90ms;
+  }
+}
+
+/* The dialog's two steps: the release, and a change it carries. The step shown holds the room;
+   the other stands aside, out of the flow — the change comes in over the release from the right,
+   the release giving way to the left, and back undoes it from wherever the slide stood. */
+.rv-steps {
+  position: relative;
+  display: flex;
+  flex: 0 1 auto;
+  flex-direction: column;
+  min-height: 0;
+  max-height: var(--rv-max);
+}
+.rv-step {
+  position: relative;
+  display: flex;
+  flex: 0 1 auto;
+  flex-direction: column;
+  min-height: 0;
+  max-height: var(--rv-max);
+  background: var(--card);
+  transition:
+    translate 220ms var(--ease-out-strong),
+    opacity 220ms var(--ease-out-strong);
+}
+.rv-step-over {
+  z-index: 1;
+}
+.rv-step:not([data-at="here"]) {
+  position: absolute;
+  inset: 0 0 auto;
+  pointer-events: none;
+}
+.rv-step[data-at="before"] {
+  translate: -30% 0;
+  opacity: 0;
+}
+.rv-step[data-at="after"] {
+  translate: 100% 0;
+}
+@starting-style {
+  .rv-step-over[data-at="here"] {
+    translate: 100% 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .rv-step {
+    transition: none;
+  }
+}
+/* "← Release", where a review says what kind of thing it is: its arrow on the text's edge. */
+.rv-back {
+  display: inline-flex;
+  height: 28px;
+  align-items: center;
+  gap: 6px;
+  margin-left: -8px;
+  padding: 0 10px 0 8px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 18px;
+  color: var(--muted-foreground);
+  cursor: pointer;
+  transition:
+    background-color 150ms ease,
+    color 150ms ease;
+}
+.rv-back svg {
+  width: 15px;
+  height: 15px;
+}
+.rv-back:hover {
+  background: color-mix(in oklab, var(--foreground) 6%, transparent);
+  color: var(--foreground);
+}
+.rv-back:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+/* What was already done, where the button would stand: "Merged". */
+.rv-settled {
+  display: inline-flex;
+  height: 34px;
+  flex: none;
+  align-items: center;
+  gap: 6px;
+  padding: 0 8px;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 18px;
+  color: var(--muted-foreground);
+}
+.rv-settled svg {
+  width: 15px;
+  height: 15px;
+  color: var(--zerops-status-ok);
+}
 .rv-where {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
@@ -6929,6 +7217,23 @@ html[data-theme-id] [data-chat-header] .conversation-crewmate[data-popup-open] {
 
 .arrival-step-note {
   color: color-mix(in oklab, var(--muted-foreground) 72%, transparent);
+}
+
+/* p26/signin */
+/* A step with no time to say gives its words the time's column: "You sign Wren in with your
+   Claude or ChatGPT subscription" reads whole. The time's column stops growing at the widest
+   time, so words that span it widen the words' column, never the times'. */
+.arrival-steps {
+  grid-template-columns: 20px minmax(0, max-content) fit-content(12rem);
+}
+
+.arrival-step-label[data-spans-time] {
+  grid-column: 2 / -1;
+  /* Where the stage is narrow (a phone) it wraps rather than cut what the person signs in
+     with; each brand keeps its logo on its line. */
+  overflow: visible;
+  white-space: normal;
+  text-wrap: pretty;
 }
 
 .arrival-step-sub {

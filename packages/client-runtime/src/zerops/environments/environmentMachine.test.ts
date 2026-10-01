@@ -264,9 +264,12 @@ describe("environment machine (DESIGN §4.4)", () => {
     expect(blockAndRotate(rotated).credential.kind).toBe("held");
   });
 
-  it("after five consecutive automatic failures the next retry is five minutes out", () => {
+  it.each([
+    { name: "any other target's next retry is five minutes out", routeTarget: false, capped: true },
+    { name: "the route's target stays on the ladder", routeTarget: true, capped: false },
+  ])("after five consecutive automatic failures, $name", ({ routeTarget, capped }) => {
     let run = drive(initialEnvironment({ record: ENV_A }), [
-      { type: "GUARDS", guards: GUARDS },
+      { type: "GUARDS", guards: { ...GUARDS, routeTarget } },
       { type: "CONTAINER", container: { level: "ready" } },
       { type: "PRESENCE", presence: { kind: "present", origin: ORIGIN } },
     ]);
@@ -290,7 +293,39 @@ describe("environment machine (DESIGN §4.4)", () => {
       run = drive(run.machine, [{ type: "TICK" }], run.nowMs);
     }
     expect(retryDelays.slice(0, 4).every((delay) => delay < CAPPED_RETRY_MS)).toBe(true);
-    expect(retryDelays[4]).toBe(CAPPED_RETRY_MS);
+    if (capped) expect(retryDelays[4]).toBe(CAPPED_RETRY_MS);
+    // The fifth rung, 30 s within its jitter: the route is read again in half a minute at most.
+    else expect(retryDelays[4]).toBeLessThanOrEqual(36_000);
+  });
+
+  it("a Mate on the five-minute cap that becomes the route is exchanged at once", () => {
+    const other = { ...GUARDS, routeTarget: false };
+    let run = drive(initialEnvironment({ record: ENV_A }), [
+      { type: "GUARDS", guards: other },
+      { type: "CONTAINER", container: { level: "ready" } },
+      { type: "PRESENCE", presence: { kind: "present", origin: ORIGIN } },
+    ]);
+    for (let failure = 1; failure <= 5; failure += 1) {
+      run = drive(
+        run.machine,
+        [
+          {
+            type: "EXCHANGE_FAILED",
+            attempt: lastExchange(run.machine),
+            failure: { class: "retryable", cause: { kind: "network" } },
+            descriptor: null,
+          },
+        ],
+        run.nowMs,
+      );
+      if (failure < 5) run = drive(run.machine, [{ type: "TICK" }], run.nowMs);
+    }
+    const capped = run.machine.credential;
+    if (capped.kind !== "backoff") throw new Error("no backoff");
+    expect(capped.retryAt.wall - run.nowMs).toBe(CAPPED_RETRY_MS);
+
+    const opened = drive(run.machine, [{ type: "GUARDS", guards: GUARDS }], run.nowMs);
+    expect(opened.machine.credential.kind).toBe("exchanging");
   });
 
   it("an exchange that answers after the user removed the Mate is logged stale and never held", () => {
@@ -344,7 +379,7 @@ describe("environment machine (DESIGN §4.4)", () => {
 
   it("a credential that keeps failing to install climbs the ladder to the cap", () => {
     let run = drive(initialEnvironment({ record: null }), [
-      { type: "GUARDS", guards: GUARDS },
+      { type: "GUARDS", guards: { ...GUARDS, routeTarget: false } },
       { type: "CONTAINER", container: { level: "ready" } },
       { type: "PRESENCE", presence: { kind: "present", origin: ORIGIN } },
     ]);

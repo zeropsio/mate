@@ -59,7 +59,7 @@ import {
   type AccountForgePorts,
   type ForgeStage,
 } from "./flow.ts";
-import { holdInventoryDemand } from "./inventoryDemand.ts";
+import { holdInventoryDemand, holdListedProjects } from "./inventoryDemand.ts";
 import {
   makeEnvironmentWiring,
   type AccountEnvironmentPorts,
@@ -319,6 +319,9 @@ export const makeAccountRuntime = Effect.fnUntraced(function* (
     yield* data.access.listen(invalidations).pipe(Scope.provide(busScope));
     yield* data.listen(invalidations).pipe(Scope.provide(busScope));
     yield* holdInventoryDemand({ data, atomRegistry: ports.atomRegistry }).pipe(
+      Scope.provide(demandScope),
+    );
+    yield* holdListedProjects({ data, atomRegistry: ports.atomRegistry }).pipe(
       Scope.provide(demandScope),
     );
     yield* Queue.take(heard).pipe(Effect.flatMap(hear), Effect.forever, Effect.forkIn(epoch));

@@ -111,6 +111,7 @@ import {
   type MateEmptyComing,
 } from "./ZeropsMateEmptyState";
 import { removeFailedZeropsProject } from "./ZeropsProjectsPage";
+import { usePreferredConnection } from "~/zerops/mateConnectionPreference";
 
 /** Up, its conversation being opened: the last of its coming words. */
 const UP_AND_OPENING: MateComing = { kind: "coming", line: ALMOST_THERE_LINE, verb: undefined };
@@ -227,6 +228,8 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
   );
   const status = useThreadStatus(threadRef);
   const empty = useMateEmptyState({ environmentId, mate, threadRef, projectId });
+  // The Mate on screen: its socket goes first, though this path names no environment.
+  usePreferredConnection(environmentId);
   // Its conversation read live and its agents' sign-in are what the conversation paints first; a
   // few seconds without them and the view hands over anyway.
   const [graceOver, setGraceOver] = useState(false);
@@ -555,6 +558,7 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
       composer={standsInComposer ? <ComposerStandIn onType={type} typed={typed} /> : null}
       header={
         <MateComingHeader
+          arriving={shown !== undefined}
           mate={{ ...mate, connected: environmentId !== null }}
           standsIn={standsInComposer ? { subject: standInSubject } : null}
         />
@@ -610,13 +614,17 @@ export function MateComingFrame({
 }
 
 /**
- * The header's line as its conversation will draw it: the Mate's face and its name, and its
- * project in Zerops — once the platform has made one.
+ * The header's line: the Mate's face and its name, and its project in Zerops — except while a new
+ * Mate comes up, when the page waits on the Mate and the way into Zerops arrives with its
+ * conversation's header.
  */
 export function MateComingHeader({
   mate,
   standsIn = null,
+  arriving = false,
 }: {
+  /** A new Mate coming up: its face and name only. */
+  readonly arriving?: boolean;
   readonly mate: Pick<ZeropsMateIdentity, "name" | "tint" | "shape" | "connected"> & {
     readonly projectUrl: string | undefined;
   };
@@ -660,7 +668,9 @@ export function MateComingHeader({
             <EllipsisIcon className="size-4" />
           </Button>
         )}
-        {mate.projectUrl === undefined ? null : <ZeropsProjectLink projectUrl={mate.projectUrl} />}
+        {arriving || mate.projectUrl === undefined ? null : (
+          <ZeropsProjectLink projectUrl={mate.projectUrl} />
+        )}
       </div>
       {standsIn === null ? null : (
         <div

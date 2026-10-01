@@ -138,11 +138,18 @@ export function mateFaceFor(
 }
 
 /**
- * The face of a Mate whose own change waits on the person's review
- * (`mateNextStep`, the composer's top): it needs them, so it wears the
- * needs-you face wherever it is not at work — a row, a folded heading — the
- * one the composer's top wears for the same fact. At work, the work shows;
- * the review still waits under it.
+ * The face a Mate wears for the viewer — the one rule of "waits on you", on every surface that
+ * draws it (a row's face and amber dot, a folded heading, the waiting stack, the projects pages):
+ *
+ * | whose Mate            | its question waits | its change waits (`mateReviewWaits`) |
+ * | --------------------- | ------------------ | ------------------------------------ |
+ * | the viewer's own      | needs you          | needs you, unless at work            |
+ * | another's, or nobody's | at rest            | at rest                              |
+ *
+ * Own is the viewer having signed its agent in (`mateIsViewers`). Another's Mate waits on its
+ * owner, not on the viewer: it claims nothing of them here, though its change stays on its row
+ * with its Review, for anybody with write on the group to review and merge. At work, the work
+ * shows; the review still waits under it.
  */
 export function mateFaceAwaitingReview(
   face: MateMarkState,
@@ -151,9 +158,12 @@ export function mateFaceAwaitingReview(
    * Paused at its usage limit (`pausedUntil`): asleep, whatever its last turn said — its row
    * reads paused, and the review stays on its change's row under it.
    */
-  paused = false,
+  paused: boolean,
+  /** The viewer's own Mate (`mateIsViewers`): only then does anything it waits on wait on them. */
+  mine: boolean,
 ): MateMarkState {
   if (paused && face === "sleep") return face;
+  if (!mine) return face === "needs" ? "idle" : face;
   return reviewWaits && face !== "working" ? "needs" : face;
 }
 
@@ -189,11 +199,14 @@ export function mateFaceOf(input: {
     | (Pick<ZeropsAgentActivity, "face"> & { readonly pausedUntil?: string | undefined })
     | undefined;
   readonly reviewWaits: boolean;
+  /** The viewer's own Mate (`mateIsViewers`). */
+  readonly mine: boolean;
 }): MateMarkState {
   return mateFaceAwaitingReview(
     mateFaceFor(input.connected, input.activity),
     input.reviewWaits,
     input.activity?.pausedUntil !== undefined,
+    input.mine,
   );
 }
 

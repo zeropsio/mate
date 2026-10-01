@@ -1,4 +1,4 @@
-import { act } from "react";
+import { act, type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { create, type ReactTestRenderer } from "react-test-renderer";
 import { describe, expect, it, vi } from "vite-plus/test";
@@ -9,6 +9,22 @@ import { ConversationWorking } from "./ConversationWorking";
 import type { stepHeight } from "./stepHeight";
 
 /** How the panel asked its room to close: the frames are the stepper's own to test. */
+// The kit's tooltip needs a window; here the name it holds is what counts.
+vi.mock("../ui/tooltip", async () => {
+  const { cloneElement, isValidElement } = await import("react");
+  return {
+    Tooltip: ({ children }: { readonly children: ReactNode }) => <>{children}</>,
+    TooltipTrigger: ({
+      render,
+      children,
+    }: {
+      readonly render: unknown;
+      readonly children: ReactNode;
+    }) => (isValidElement(render) ? cloneElement(render, undefined, children) : <>{children}</>),
+    TooltipPopup: () => null,
+  };
+});
+
 const closings = vi.hoisted(() => [] as Array<Parameters<typeof stepHeight>[0]>);
 vi.mock("./stepHeight", async (importOriginal) => ({
   ...(await importOriginal<typeof import("./stepHeight")>()),

@@ -220,11 +220,17 @@ import { newMateView, useAddMate } from "../zerops/newMate";
 import { useSetUpEnvironment } from "../zerops/setUpEnvironment";
 import { useAskNewProject } from "../zerops/newProjectAsk";
 import { newProjectView, useNewProjectBirths } from "../zerops/newProjectBirth";
-import { useMateComingOf, useMateRowActivity } from "../zerops/useMenuMateReadings";
+import {
+  useMateComingOf,
+  useMateConversationsRead,
+  useMateRowActivity,
+} from "../zerops/useMenuMateReadings";
 import { useAskMateToFix } from "../zerops/fixRequest";
 import { useZeropsCandidates } from "../zerops/useZeropsCandidates";
 import { useZeropsMateOwners } from "../zerops/useZeropsMateOwners";
 import { useZeropsSession } from "../zerops/ZeropsSessionProvider";
+import { AccountVoiceLine } from "./zerops/AccountVoiceLine";
+import { useListingPatience } from "../zerops/useListingPatience";
 import { useNowMs } from "../zerops/useNowMs";
 import { useZeropsContainers } from "../zerops/zeropsContainers";
 import { SidebarProjectTree } from "./sidebar/SidebarProjectTree";
@@ -1823,12 +1829,15 @@ export default function Sidebar() {
   // account still to choose its organization is asked on the projects screen,
   // and no listing is on its way to be waited on here.
   const zeropsNowMs = useNowMs();
+  const zeropsPatient = useListingPatience(zeropsListing);
   const zeropsNotice = useMemo(
     () =>
       zeropsSession.organizationStatus === "needs-selection"
         ? null
-        : candidatesNotice(zeropsListing, ZEROPS_SIDEBAR_SURFACE, zeropsNowMs),
-    [zeropsListing, zeropsNowMs, zeropsSession.organizationStatus],
+        : candidatesNotice(zeropsListing, ZEROPS_SIDEBAR_SURFACE, zeropsNowMs, {
+            patient: zeropsPatient,
+          }),
+    [zeropsListing, zeropsNowMs, zeropsPatient, zeropsSession.organizationStatus],
   );
   // A Mate's conversation, from its row — the jump box opens it the same way.
   const openMate = useOpenMate();
@@ -2314,6 +2323,8 @@ export default function Sidebar() {
   // (`menuMemory.ts`) — a reload paints whole rows, not names that grow as
   // each Mate connects, and a Mate at work never falls asleep for a blink.
   const zeropsRowActivity = useMateRowActivity(zeropsAgentActivity);
+  // Whether a Mate's conversations are read: one with none says nothing was asked yet.
+  const zeropsConversationsRead = useMateConversationsRead();
   // Whether a Mate is still in its first minutes, as the projects page says it.
   const zeropsComing = useMateComingOf(zeropsCandidates);
   // Remember each connected Mate's row as its conversation says it, and
@@ -4184,6 +4195,7 @@ export default function Sidebar() {
               timestampFormat={timestampFormat}
               onOpenGroup={openGroup}
               getActivity={zeropsRowActivity}
+              getConversationsRead={zeropsConversationsRead}
               remembered={zeropsRemembered}
               onDrawn={rememberZeropsDrawn}
               onSelect={(candidate) => {
@@ -4719,6 +4731,9 @@ export default function Sidebar() {
       }) ? (
         <SidebarNewProject onNewProject={openNewZeropsProject} />
       ) : null}
+      {/* The account's one line (`accountFootLine`) — its lapse, or its inventory's lasting
+          trouble — pinned at the menu's foot, seen whatever the list's length, never over the app. */}
+      {zeropsSignedIn ? <AccountVoiceLine /> : null}
       <SidebarChromeFooter />
     </>
   );

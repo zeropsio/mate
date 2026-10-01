@@ -78,7 +78,7 @@ import {
 } from "@t3tools/client-runtime/zerops";
 import type { EnvironmentConnectionPresentation } from "@t3tools/client-runtime/connection";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
-import { mateOwnerRecords } from "@t3tools/client-runtime/zerops/mateAccess";
+import { mateIsViewers, mateOwnerRecords } from "@t3tools/client-runtime/zerops/mateAccess";
 import { deployActivatedAt, deployRuns } from "@t3tools/client-runtime/zerops/flow";
 import type { KnownAffordance } from "@t3tools/client-runtime/zerops/knowledge";
 import type { CandidatesNotice } from "@t3tools/client-runtime/zerops/projections";
@@ -136,6 +136,7 @@ import { SidebarCrewLine, type SidebarCrewRead } from "./crew/SidebarCrewLine";
 import { SidebarSelectedBand } from "./SidebarSelectedBand";
 import { KeyChip, MateFace } from "./primitives";
 import { groupNameIsPlaceholder } from "./ZeropsGroupTree.logic";
+import { STOP_ARM_MS, stopArmStep, type StopArm, type StopArmEvent } from "./SidebarStopArm.logic";
 import { formatWorkingTime, isQuietMate, sidebarMateKey } from "./SidebarZeropsTree.logic";
 import { MateMenu, MateRenameField, type MateRowActions, type MenuPoint } from "./SidebarMateMenu";
 import {
@@ -181,9 +182,12 @@ import {
   mateDeletingView,
   mateNotYours,
   mateOwnerView,
+  mateRowAskLine,
+  mateRowDraft,
   mateRowReading,
   pendingBornLine,
   type MateBornLine,
+  type MateRowAskLine,
   type MateRowReply,
   type MateRowSlot,
   ownerBadge,
@@ -405,6 +409,11 @@ export interface SidebarZeropsTreeProps<T extends RosterCandidate> {
    */
   readonly getActivity?: (candidate: T) => ZeropsAgentActivity | undefined;
   /**
+   * Its conversations have been read — its environment's shell arrived — so a Mate with none has
+   * nothing asked yet. Absent, nobody knows, and its row says nothing of it.
+   */
+  readonly getConversationsRead?: ((candidate: T) => boolean) | undefined;
+  /**
    * Whose this Mate is — the person its project names as `OWNER`, or who
    * signed its agent in, once the org's member list has been read. Absent,
    * the seat before the name is what the Mate's own records say
@@ -556,6 +565,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
   onOpenGroup,
   activeProjectId,
   getActivity,
+  getConversationsRead,
   getOwner,
   getFlow,
   remembered,
@@ -598,6 +608,8 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
   // in step without either one owning the other. In *Custom* the headings
   // take a grip, and every heading's menu moves its project up or down.
   const projectOrder = useProjectOrder();
+  // Who is looking: only their own Mates wait on them (`mateIsViewers`).
+  const viewer = useZeropsSessionOptional()?.user?.id;
   const treeRef = useRef<HTMLElement>(null);
   const reorder = useProjectReorder(treeRef);
   // A Mate opened from elsewhere — Add landing on the new Mate, a link, a
@@ -911,6 +923,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
           connected: item.group === "connected",
           activity: getActivity?.(item),
           reviewWaits: mateReviewWaits(input.flow, item.project.id),
+          mine: mateIsViewers(item.project, viewer),
         }),
       );
     }
@@ -990,6 +1003,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
           entries,
           (item) => getActivity?.(item),
           () => false,
+          viewer,
         ),
         flow: flow === undefined ? undefined : groupFlowReadsOf(flow),
         deployments,
@@ -1186,6 +1200,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
               connected: item.group === "connected",
               activity: live,
               reviewWaits: reviewWaits(item),
+              mine: mateIsViewers(item.project, viewer),
             });
             const view = coming === undefined ? read : mateComingRowView(read, coming);
             return {
@@ -1387,6 +1402,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
                   appUrl={appUrl}
                   candidate={item}
                   coming={getComing?.(item)}
+                  conversationsRead={getConversationsRead?.(item) === true}
                   crew={getCrew?.(item)}
                   onOpenCrew={onOpenCrew}
                   keys={mateKeys}
@@ -1403,6 +1419,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
                     browser last saw it, so a reload moves no row. */}
                 <SidebarCrewLine
                   environmentId={item.group === "connected" ? item.environmentId : undefined}
+                  mine={mateIsViewers(item.project, viewer)}
                   projectId={item.project.id}
                   read={getCrew?.(item)}
                 />
@@ -1685,6 +1702,39 @@ export function SidebarNewProject({ onNewProject }: { readonly onNewProject: () 
 }
 
 /**
+ * What the account says (`accountFootLine`) — its lapse, or its inventory's lasting trouble — as
+ * one quiet line pinned at the menu's foot: what is true and what happens, with its actions. The
+ * rows above keep what they have; nothing is covered or frozen.
+ */
+export function SidebarAccountLine({
+  sentence,
+  actions,
+}: {
+  readonly sentence: string;
+  readonly actions: ReadonlyArray<{ readonly label: string; readonly run: () => void }>;
+}) {
+  return (
+    <div
+      className="animate-zerops-appear flex shrink-0 items-center gap-1 ps-4 pe-2 py-1.5 text-xs text-sidebar-muted-foreground"
+      data-zerops-surface="sidebar-account-line"
+      role="status"
+    >
+      <span className="me-1 min-w-0 truncate">{sentence}</span>
+      {actions.map(({ label, run }) => (
+        <button
+          className="shrink-0 cursor-pointer rounded-md px-1.5 py-0.5 font-medium text-sidebar-foreground outline-none transition-colors hover:bg-sidebar-row-hover focus-visible:ring-2 focus-visible:ring-ring"
+          key={label}
+          onClick={run}
+          type="button"
+        >
+          {label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/**
  * What scrolls the menu: the sidebar's viewport, or the page where nothing
  * inside does. Nothing where the menu is not drawn (a test's renderer).
  */
@@ -1881,6 +1931,7 @@ export function ProjectHeader({
             {faces}
             {collapsed ? (
               <HeadingReleaseMark
+                line={secondLine}
                 mark={line === undefined ? undefined : headingMark(line, landing)}
               />
             ) : null}
@@ -2255,6 +2306,10 @@ const HEADING_CLASS =
 const HEADING_MUTED = "text-line font-medium text-sidebar-muted-foreground";
 const HEADING_UNNAMED = "font-normal text-sidebar-muted-foreground italic";
 
+/** The row's stop, armed: its confirm in red words, as tall as the ■ it replaces. */
+const ROW_STOP_ARMED_CLASS =
+  "inline-flex h-5 cursor-pointer items-center rounded px-1 text-line leading-5 font-semibold text-status-failed-text outline-none focus-visible:ring-2 focus-visible:ring-ring";
+
 const ROW_ACTION_CLASS =
   "inline-flex size-5 cursor-pointer items-center justify-center rounded text-sidebar-muted-foreground outline-none transition-colors hover:bg-sidebar-row-hover hover:text-sidebar-foreground focus-visible:ring-2 focus-visible:ring-ring data-popup-open:bg-sidebar-row-active data-popup-open:text-sidebar-foreground";
 
@@ -2301,6 +2356,7 @@ function MateRow<T extends RosterCandidate>({
   active,
   activity,
   coming,
+  conversationsRead = false,
   onSelect,
   owner,
   timestampFormat,
@@ -2321,6 +2377,8 @@ function MateRow<T extends RosterCandidate>({
   readonly activity: ZeropsAgentActivity | undefined;
   /** Still coming up, or never came (`mateComing`): its one line says so. */
   readonly coming?: MateComing | undefined;
+  /** Its conversations are read: none there says nothing was asked (`mateRowAskLine`). */
+  readonly conversationsRead?: boolean;
   readonly onSelect: (candidate: T) => void;
   readonly owner: ZeropsMateOwner | undefined;
   readonly timestampFormat: TimestampFormat;
@@ -2353,10 +2411,12 @@ function MateRow<T extends RosterCandidate>({
   // read through its socket, or until the socket opens what this browser
   // remembers the row saying. A Mate still coming up says only that
   // (`mateComingRowView`).
+  const viewer = useZeropsSessionOptional()?.user?.id;
   const read = mateRowReading({
     connected: candidate.group === "connected",
     activity,
     reviewWaits,
+    mine: mateIsViewers(candidate.project, viewer),
   });
   const view = deleting
     ? mateDeletingView(read)
@@ -2369,7 +2429,6 @@ function MateRow<T extends RosterCandidate>({
   // Whose seat it is, and whether anybody has signed its agent in — read off
   // its own records, so from the first paint (`mateOwnerView`).
   const records = mateOwnerRecords(candidate.project);
-  const viewer = useZeropsSessionOptional()?.user?.id;
   const seated = mateOwnerView({
     owner,
     records,
@@ -2392,6 +2451,24 @@ function MateRow<T extends RosterCandidate>({
     viewer,
   });
   const known = activity !== undefined && activity.remembered !== true;
+  // What the person is about to send it, waiting in its composer: the row's second line says it,
+  // read from this browser whether or not its socket is open (`mateRowDraft`).
+  const draft = useComposerDraftStore((state) =>
+    mateRowDraft(state, {
+      environmentId: candidate.environmentId,
+      threadId: activity?.threadId,
+      threadKey: activity?.threadKey,
+    }),
+  );
+  // The person's line (`mateRowAskLine`): what they asked, or are about to, or that nothing was.
+  const askLine = mateRowAskLine({
+    view,
+    signIn:
+      signIn === undefined ? undefined : { text: signIn, waitsOnViewer: seated.waitsOnViewer },
+    draft,
+    deleting,
+    read: conversationsRead,
+  });
   const warmIntent = useWarmIntent(activity?.threadKey);
   // Its menu's door to its crew (`mateCrewItem`): whether crew mode is on and
   // a crew applied — a fixture's, or its feed's once it is connected.
@@ -2420,6 +2497,30 @@ function MateRow<T extends RosterCandidate>({
   // ask this browser remembered gives way to the one read without a rise.
   const askChanged = useChangedSinceShown(view.ask, known);
   const unread = activity?.unread === true;
+  // Stopping from the row is two presses (`stopArmStep`): the ■ or x arms it, a second press
+  // within 3 s stops; leaving, Esc, blur, the time or the run ending by itself let it go.
+  const [stopArm, setStopArm] = useState<StopArm>(null);
+  if (stopArm !== null && actions?.stop === undefined) {
+    setStopArm(stopArmStep(stopArm, { kind: "run-ended" }).state);
+  }
+  const armed = stopArm !== null;
+  const stepStop = (event: StopArmEvent) => {
+    const next = stopArmStep(stopArm, event);
+    setStopArm(next.state);
+    if (next.stop) actions?.stop?.();
+  };
+  useEffect(() => {
+    if (stopArm === null) return;
+    const timer = setTimeout(
+      () => {
+        setStopArm((current) => stopArmStep(current, { kind: "tick", at: Date.now() }).state);
+      },
+      STOP_ARM_MS - (Date.now() - stopArm.armedAt),
+    );
+    return () => {
+      clearTimeout(timer);
+    };
+  }, [stopArm]);
   const [menuOpen, setMenuOpen] = useState(false);
   const [menuAt, setMenuAt] = useState<MenuPoint | undefined>(undefined);
   const [renaming, setRenaming] = useState(false);
@@ -2468,7 +2569,25 @@ function MateRow<T extends RosterCandidate>({
           openMenu();
         }, 480);
       }}
-      onPointerLeave={cancelLongPress}
+      onBlur={(event) => {
+        if (armed && !event.currentTarget.contains(event.relatedTarget as Node | null)) {
+          stepStop({ kind: "blur" });
+        }
+      }}
+      onKeyDown={(event) => {
+        // Esc lets an armed stop go wherever in the row the focus stands: its main button or
+        // the Stop? itself.
+        if (armed && event.key === "Escape") {
+          event.preventDefault();
+          stepStop({ kind: "escape" });
+        }
+      }}
+      onPointerLeave={(event) => {
+        cancelLongPress();
+        // Only a mouse leaves: a tap fires pointerleave before its click, and a second tap on
+        // Stop? must still stop.
+        if (armed && event.pointerType === "mouse") stepStop({ kind: "leave" });
+      }}
       onPointerMove={(event) => {
         if (event.pointerType === "touch" && event.movementY !== 0) cancelLongPress();
       }}
@@ -2498,8 +2617,10 @@ function MateRow<T extends RosterCandidate>({
           onSelect(candidate);
         }}
         onKeyDown={(event) => {
-          // The list's keys: j and k move, x stops a working Mate, e marks it
-          // read or unread.
+          // Esc while armed is the row's own (`onKeyDown` on the row, above).
+          if (armed && event.key === "Escape") return;
+          // The list's keys: j and k move, x arms a working Mate's stop and x again stops it,
+          // e marks it read or unread.
           const action = sidebarMateKey({
             key: event.key,
             modified: event.metaKey || event.ctrlKey || event.altKey,
@@ -2511,7 +2632,7 @@ function MateRow<T extends RosterCandidate>({
           }
           if (action === "stop" && actions?.stop !== undefined) {
             event.preventDefault();
-            actions.stop();
+            stepStop({ kind: "press", at: Date.now() });
             return;
           }
           if (action === "unread" && actions?.toggleUnread !== undefined) {
@@ -2558,8 +2679,11 @@ function MateRow<T extends RosterCandidate>({
         {/* One even leading, three lines of one thing: the name 14/20, what
             was asked 13/18, the answer 13/18, and no gap between them — the
             name used to float over a paragraph on a 22 px line and 2 px of
-            air. The ask is the words' second ink, the answer muted. */}
-        <span className="flex min-w-0 flex-col">
+            air. The ask is the words' second ink, the answer muted. Every
+            row keeps the three lines' height, whatever it says yet: a Mate
+            nobody has asked anything does not float its name in a short
+            row, and its first message grows nothing. */}
+        <span className="flex min-h-14 min-w-0 flex-col">
           <span className="flex h-5 min-w-0 items-center gap-2">
             <span
               className={cn("flex min-w-0 flex-1 items-center gap-1.5", renaming && "invisible")}
@@ -2589,6 +2713,7 @@ function MateRow<T extends RosterCandidate>({
                 "relative flex h-5 min-w-11 shrink-0 justify-end",
                 actions !== undefined &&
                   "transition-opacity group-hover/mate:opacity-0 group-has-[:focus-visible]/mate:opacity-0 group-has-[[data-popup-open]]/mate:opacity-0",
+                armed && "opacity-0",
               )}
             >
               <span
@@ -2598,7 +2723,12 @@ function MateRow<T extends RosterCandidate>({
                 )}
               >
                 <MateDot known={known} tone={dot} />
-                <MateSlot at={activity?.at} slot={view.slot} timestampFormat={timestampFormat} />
+                <MateSlot
+                  at={activity?.at}
+                  slot={view.slot}
+                  timestampFormat={timestampFormat}
+                  tint={tint}
+                />
               </span>
               {numbers && number !== undefined ? (
                 <KeyChip className="absolute end-0 top-0" data-zerops-surface="sidebar-mate-number">
@@ -2607,51 +2737,51 @@ function MateRow<T extends RosterCandidate>({
               ) : null}
             </span>
           </span>
-          {view.ask === undefined ? null : (
-            <span
-              className={cn(
-                "menu-ink-2 truncate text-line leading-4.5",
-                askChanged && "animate-words-in motion-reduce:animate-none",
-              )}
-              data-zerops-surface="sidebar-mate-subject"
-              key={view.ask}
-            >
-              {view.ask}
-            </span>
+          {view.coming !== undefined ? <MateComingLine line={mateBornLine(view.coming)} /> : null}
+          {askLine === undefined ? null : askLine.kind === "sign-in" ? (
+            <MateSignInLine waitsOnViewer={askLine.waitsOnViewer} words={askLine.text} />
+          ) : (
+            <MateAskLine line={askLine} rises={askChanged} />
           )}
-          {view.coming !== undefined ? (
-            <MateComingLine line={mateBornLine(view.coming)} />
-          ) : signIn === undefined ? null : (
-            <MateSignInLine waitsOnViewer={seated.waitsOnViewer} words={signIn} />
-          )}
-          {view.reply === undefined ? null : (
-            <MateReply known={known} reply={view.reply} threadKey={activity?.threadKey} />
-          )}
+          {view.reply === undefined ? null : <MateReply known={known} reply={view.reply} />}
           {deleting ? <MateDeletingLine /> : null}
         </span>
       </button>
       {actions === undefined ? null : (
         <span
-          className="absolute end-2 top-2.5 flex h-5 items-center gap-0.5 opacity-0 transition-opacity group-hover/mate:opacity-100 group-has-[:focus-visible]/mate:opacity-100 has-[[data-popup-open]]:opacity-100"
+          className={cn(
+            "absolute end-2 top-2.5 flex h-5 items-center gap-0.5 opacity-0 transition-opacity group-hover/mate:opacity-100 group-has-[:focus-visible]/mate:opacity-100 has-[[data-popup-open]]:opacity-100",
+            armed && "opacity-100",
+          )}
           data-zerops-surface="sidebar-mate-actions"
         >
           {actions.stop === undefined ? null : (
-            // While it works, the time's slot is also its stop.
+            // While it works, the time's slot is also its stop: armed by a first press, a red
+            // "Stop?" stands where the ■ stood, and only it stops (`stopArmStep`).
             <Tooltip>
               <TooltipTrigger
                 render={
                   <button
-                    aria-label={`Stop ${name}`}
-                    className={ROW_ACTION_CLASS}
+                    aria-label={armed ? `Confirm stop ${name}` : `Stop ${name}`}
+                    className={armed ? ROW_STOP_ARMED_CLASS : ROW_ACTION_CLASS}
+                    data-armed={armed ? "" : undefined}
                     data-zerops-surface="sidebar-mate-stop"
-                    onClick={actions.stop}
+                    onClick={() => {
+                      stepStop({ kind: "press", at: Date.now() });
+                    }}
                     type="button"
                   />
                 }
               >
-                <SquareIcon aria-hidden="true" className="size-2.5 fill-current" />
+                {armed ? (
+                  <span className="menu-stop-armed">Stop?</span>
+                ) : (
+                  <SquareIcon aria-hidden="true" className="size-2.5 fill-current" />
+                )}
               </TooltipTrigger>
-              <TooltipPopup side="right">Stop the run</TooltipPopup>
+              <TooltipPopup side="right">
+                {armed ? "Press again to stop" : "Stop the run"}
+              </TooltipPopup>
             </Tooltip>
           )}
           <MateMenu
@@ -2793,17 +2923,31 @@ function MateSlot({
   slot,
   at,
   timestampFormat,
+  tint,
 }: {
   readonly slot: MateRowSlot;
   /** When it last did something, for the age. */
   readonly at: string | undefined;
   readonly timestampFormat: TimestampFormat;
+  /** Its Mate's colour: the working clock wears it. */
+  readonly tint: MateTintId;
 }) {
+  // A run ending hands its clock over to the age in place, and a run starting the age to its
+  // clock: the newcomer fades in (220 ms). What the row opened onto is simply there.
+  const [shown, setShown] = useState(slot.kind);
+  const [handedOver, setHandedOver] = useState(false);
+  if (shown !== slot.kind) {
+    setShown(slot.kind);
+    setHandedOver(
+      (shown === "clock" && slot.kind === "age") || (shown === "age" && slot.kind === "clock"),
+    );
+  }
+  const fadeIn = handedOver ? "animate-zerops-appear motion-reduce:animate-none" : undefined;
   switch (slot.kind) {
     case "none":
       return null;
     case "clock":
-      return <MateWorkingTime since={slot.since} />;
+      return <MateWorkingTime className={fadeIn} since={slot.since} tint={tint} />;
     case "paused": {
       const upcoming = formatUpcomingTimestamp(slot.until, timestampFormat);
       return (
@@ -2827,7 +2971,7 @@ function MateSlot({
     case "age": {
       const when = at === undefined ? "" : compactSidebarTimeLabel(formatRelativeTimeLabel(at));
       return when.length === 0 ? null : (
-        <span className={TIME_CLASS} data-zerops-surface="sidebar-mate-time">
+        <span className={cn(TIME_CLASS, fadeIn)} data-zerops-surface="sidebar-mate-time">
           {when}
         </span>
       );
@@ -2837,8 +2981,21 @@ function MateSlot({
 
 const TIME_CLASS = "shrink-0 text-line leading-5 text-muted-foreground tabular-nums";
 
-/** The working clock, ticking once a second — a step, never a continuous repaint (R6). */
-function MateWorkingTime({ since }: { readonly since: string }) {
+/**
+ * The working clock, ticking once a second — a step, never a continuous repaint (R6) — read as a
+ * live clock, not a timestamp (the owner, 2026-09-30): 600 and tabular in its Mate's own hue,
+ * after a small dot of the same hue breathing slowly. The dot stands outside the clock's box, in
+ * the gap before it, so nothing beside it moves; reduced motion holds it still.
+ */
+function MateWorkingTime({
+  since,
+  tint,
+  className,
+}: {
+  readonly since: string;
+  readonly tint: MateTintId;
+  readonly className?: string | undefined;
+}) {
   const [nowMs, setNowMs] = useState(Date.now);
   useEffect(() => {
     const timer = setInterval(() => {
@@ -2850,9 +3007,11 @@ function MateWorkingTime({ since }: { readonly since: string }) {
   }, []);
   return (
     <span
-      className="shrink-0 text-line leading-5 text-sidebar-foreground tabular-nums"
+      className={cn("menu-clock shrink-0 text-line leading-5 tabular-nums", className)}
+      data-tint={tint}
       data-zerops-surface="sidebar-mate-time"
     >
+      <span aria-hidden="true" className="menu-clock-mark" />
       {formatWorkingTime(nowMs - Date.parse(since))}
     </span>
   );
@@ -2896,43 +3055,84 @@ const REPLY_TONE_CLASS: Record<"muted" | "ink-2" | "ink" | "failed", string> = {
 };
 
 /**
- * The row's third line (`mateRowView`): the Mate's last words in its state's
- * ink — the question it waits on, the error it stopped on — or, while it
- * works, the step it is on, its command in mono under a sweep of light (D5);
- * or the dots holding the line while words are still to come. While a
- * message to it waits unsent in its composer, that draft stands in for its
- * words or its dots, led by *Draft:*: never over a question, an error or a
- * live step, and never growing a row — the composer holds it anyway.
+ * The row's second line, the person's (`mateRowAskLine`): what they last asked, rising in as they
+ * set it; or what they are about to send, led by *Draft:* the way a messenger leads an unsent
+ * message — the ask kept under it in the same cell, so clearing the draft replays no rise; or,
+ * its conversation read and nobody having asked it anything, that fact in the muted ink.
+ */
+function MateAskLine({
+  line,
+  rises,
+}: {
+  readonly line: Exclude<MateRowAskLine, { readonly kind: "sign-in" } | undefined>;
+  /** The ask is new since the row was shown: it rises in. */
+  readonly rises: boolean;
+}) {
+  if (line.kind === "nothing-asked") {
+    return (
+      <span
+        className="truncate text-line leading-4.5 text-muted-foreground"
+        data-zerops-surface="sidebar-mate-nothing-asked"
+      >
+        {NOTHING_ASKED_YET}
+      </span>
+    );
+  }
+  const ask = line.kind === "ask" ? line.text : line.ask;
+  const drafting = line.kind === "draft";
+  return (
+    <span className="grid min-w-0 text-line leading-4.5">
+      {ask === undefined ? null : (
+        <span
+          aria-hidden={drafting ? true : undefined}
+          className={cn(
+            "menu-ink-2 col-start-1 row-start-1 truncate",
+            drafting && "invisible",
+            rises && "animate-words-in motion-reduce:animate-none",
+          )}
+          data-zerops-surface={drafting ? undefined : "sidebar-mate-subject"}
+          key={ask}
+        >
+          {ask}
+        </span>
+      )}
+      {drafting ? (
+        <span
+          className="col-start-1 row-start-1 truncate text-muted-foreground"
+          data-zerops-surface="sidebar-mate-draft"
+        >
+          <span className="font-medium text-sidebar-foreground">Draft:</span> {line.text}
+        </span>
+      ) : null}
+    </span>
+  );
+}
+
+const NOTHING_ASKED_YET = "Nothing asked yet";
+
+/**
+ * The row's third line, the Mate's (`mateRowView`): its last words in its state's ink — the
+ * question it waits on, the error it stopped on — or, while it works, the step it is on, its
+ * command in mono under a sweep of light (D5); or the dots holding the line while words are
+ * still to come. An unsent draft never stands here: it is the person's, on the line above.
  */
 function MateReply({
   reply,
-  threadKey,
   known,
 }: {
   readonly reply: NonNullable<MateRowReply>;
-  readonly threadKey: string | undefined;
   /** The words are the Mate's as read, not what this browser remembered them saying. */
   readonly known: boolean;
 }) {
-  const draft = useComposerDraftStore((state) =>
-    threadKey === undefined ? undefined : state.draftsByThreadKey[threadKey]?.prompt,
-  );
-  const unsent = draft?.trim() ?? "";
   // The Mate's newest words rise into their line when they arrive, as its
   // status line's do in the chat; what the menu opened onto is simply there,
-  // and remembered words give way to the read ones without a rise. Only its
-  // words: a draft is the person's own typing and changes with every key.
+  // and remembered words give way to the read ones without a rise.
   const words = reply.kind === "words" ? reply.text : reply.kind === "live" ? reply.words : null;
   const wordsChanged = useChangedSinceShown(words, known);
-  const drafting =
-    unsent.length > 0 &&
-    (reply.kind === "pending" ||
-      reply.kind === "held" ||
-      (reply.kind === "words" && (reply.tone === "muted" || reply.tone === "ink-2")));
-  if (reply.kind === "pending" && !drafting) return <MateReplyPending />;
+  if (reply.kind === "pending") return <MateReplyPending />;
   // Remembered as holding words to come: its place kept, empty — words on their way are only
   // true now, and an asleep face over them said the opposite.
-  if (reply.kind === "held" && !drafting) {
+  if (reply.kind === "held") {
     return <span aria-hidden="true" className="h-4.5" data-zerops-surface="sidebar-mate-held" />;
   }
   if (reply.kind === "live") {
@@ -2961,33 +3161,17 @@ function MateReply({
     );
   }
   return (
-    // The words keep their node while a draft stands over them in the same
-    // cell, so clearing the draft does not replay their rise.
-    <span className="grid min-w-0 text-line leading-4.5">
-      {reply.kind === "words" ? (
-        <span
-          aria-hidden={drafting ? true : undefined}
-          className={cn(
-            "col-start-1 row-start-1 truncate",
-            REPLY_TONE_CLASS[reply.tone],
-            drafting && "invisible",
-            wordsChanged && "animate-words-in motion-reduce:animate-none",
-          )}
-          data-zerops-reply-tone={reply.tone}
-          data-zerops-surface={drafting ? undefined : "sidebar-mate-snippet"}
-          key={`words:${reply.text}`}
-        >
-          {reply.text}
-        </span>
-      ) : null}
-      {drafting ? (
-        <span
-          className="col-start-1 row-start-1 truncate text-muted-foreground"
-          data-zerops-surface="sidebar-mate-snippet"
-        >
-          <span className="font-medium text-sidebar-foreground">Draft:</span> {unsent}
-        </span>
-      ) : null}
+    <span
+      className={cn(
+        "truncate text-line leading-4.5",
+        REPLY_TONE_CLASS[reply.tone],
+        wordsChanged && "animate-words-in motion-reduce:animate-none",
+      )}
+      data-zerops-reply-tone={reply.tone}
+      data-zerops-surface="sidebar-mate-snippet"
+      key={`words:${reply.text}`}
+    >
+      {reply.text}
     </span>
   );
 }

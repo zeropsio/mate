@@ -183,31 +183,48 @@ export interface CandidatesNotice {
 }
 
 /**
- * The region's notice until the listing is complete (`candidatesComplete`): a placeholder while
- * it is unread or being read, the cause and one affordance when its read failed, and "Still
- * reading…" over the rows read of a listing known only in part — a presence unread included,
- * since a row whose container is not read yet may still be the one the region lacks. Copy, delay
- * and affordance are `knownPresentation`'s; a complete listing has nothing to say here, nor has
- * one a lapse withholds, whose words are the app's one banner (§3.4).
+ * How long a listing known only in part holds before it says "Still reading…": the one voice's
+ * quiet (`MATE_VOICE_QUIET_MS`), so a read that lands within it never paints a line it takes back.
+ */
+export const STILL_READING_HOLD_MS = 1_500;
+
+/**
+ * How long a listing known only in part may keep saying "Still reading…" over the rows it holds.
+ * Past it, the read is not arriving but failing or refused, and is retried on its own backoff; the
+ * rows hold what they have, and a Mate the read brings later simply appears.
+ */
+export const STILL_READING_PATIENCE_MS = 20_000;
+
+export interface CandidatesNoticeOptions {
+  /** The listing has been partial for less than `STILL_READING_PATIENCE_MS`. */
+  readonly patient?: boolean;
+}
+
+/**
+ * The region's notice while the listing may not say "none" yet: a placeholder while it is unread
+ * or being read, the cause and one affordance when its read failed, and "Still reading…" over the
+ * rows of a listing known only in part — after `STILL_READING_HOLD_MS`, and over rows only while
+ * it is `patient`. A row whose presence is unread says so itself ("Checking"), so a complete
+ * listing has nothing to say here, nor has one a lapse withholds, whose words are the app's one
+ * banner (§3.4). Copy, delay and affordance are otherwise `knownPresentation`'s.
  */
 export function candidatesNotice<Row extends CandidateRow>(
   listing: Shown<ReadonlyArray<Row>>,
   surface: KnownSurface<ReadonlyArray<Row>>,
   nowMs: number,
+  options: CandidatesNoticeOptions = {},
 ): CandidatesNotice | null {
-  if (candidatesComplete(listing)) return null;
-  const presentation = knownPresentation(
-    listing.state === "known" ? { ...listing, coverage: "partial" } : listing,
-    surface,
-    { nowMs, updateOffered: false },
-  );
-  return presentation.message === null
-    ? null
-    : {
-        region: presentation.region,
-        message: presentation.message,
-        affordance: presentation.affordance,
-      };
+  if (listing.state === "known" && listing.coverage === "complete") return null;
+  const presentation = knownPresentation(listing, surface, { nowMs, updateOffered: false });
+  const message = presentation.message;
+  if (message === null) return null;
+  const reading = listing.state === "known" && message.tone === "quiet";
+  if (reading && options.patient === false && listing.value.length > 0) return null;
+  return {
+    region: presentation.region,
+    message: reading ? { ...message, afterMs: STILL_READING_HOLD_MS } : message,
+    affordance: presentation.affordance,
+  };
 }
 
 /**
@@ -247,15 +264,20 @@ export function findCandidate<Row extends CandidateRow>(
 /**
  * The names the organization's Mates already go by (`mate:bot:`), read off the listing's projects.
  * A name lives on the project, so a row whose presence is unread still names its bot; `complete`
- * is the listing being known and complete, the one licence to call a name free. Until then a name
- * found here is taken and one missing may still be.
+ * — the one licence to call a name free — is the listing being known and complete, every row's
+ * tags read (a project pushed before any read that carries them names no bot yet), and no member
+ * of its list withheld from this account (`withheldMembers`: its name is on it, unread). Until
+ * then a name found here is taken and one missing may still be.
  */
 export interface TakenBotNames {
   readonly names: ReadonlyArray<string>;
   readonly complete: boolean;
 }
 
-export function takenBotNames(listing: Shown<ReadonlyArray<ZeropsCandidate>>): TakenBotNames {
+export function takenBotNames(
+  listing: Shown<ReadonlyArray<ZeropsCandidate>>,
+  options: { readonly withheldMembers?: boolean } = {},
+): TakenBotNames {
   switch (listing.state) {
     case "known":
       return {
@@ -263,7 +285,10 @@ export function takenBotNames(listing: Shown<ReadonlyArray<ZeropsCandidate>>): T
           const bot = readZeropsGroupTags(row.project.tagList).bot;
           return bot === undefined ? [] : [bot];
         }),
-        complete: listing.coverage === "complete",
+        complete:
+          listing.coverage === "complete" &&
+          options.withheldMembers !== true &&
+          listing.value.every((row) => row.project.tagList !== undefined),
       };
     default:
       return { names: [], complete: false };

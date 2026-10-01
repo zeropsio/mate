@@ -63,6 +63,7 @@ import { ProjectionSnapshotQuery } from "../orchestration/Services/ProjectionSna
 import { ProviderInstances } from "../spi/providerInstances.ts";
 import { ThreadToolPolicyRegistry, threadProfileFor } from "../spi/threadToolPolicy.ts";
 import * as ZeropsAgentAuth from "./ZeropsAgentAuth.ts";
+import { ZeropsAgentLogin } from "./ZeropsAgentLogin.ts";
 import { isZeropsEnvironment } from "./ZeropsEnvironment.ts";
 import { ZeropsLogins, type MateLogin } from "./ZeropsLogins.ts";
 import { ZEROPS_SUBJECT_PREFIX } from "./ZeropsMembershipWatch.ts";
@@ -182,6 +183,9 @@ export const make = Effect.gen(function* () {
   const projectionSnapshotQuery = yield* ProjectionSnapshotQuery;
   const agentAuth = yield* ZeropsAgentAuth.ZeropsAgentAuth;
   const projectSigners = yield* ZeropsProjectSigners;
+  // The server-driven logins, as this server holds them: the agent-auth feed's rows carry none
+  // (only the clients' stream is joined with them), and the gate waits on a login just made.
+  const agentLogins = yield* ZeropsAgentLogin;
   const providerInstances = yield* ProviderInstances;
   const zeropsLogins = yield* ZeropsLogins;
   const policies = yield* Effect.serviceOption(ThreadToolPolicyRegistry);
@@ -264,6 +268,7 @@ export const make = Effect.gen(function* () {
       state: row?.state ?? "not-authorized",
       token: false,
       subject: principalUserId(principal),
+      login: (yield* agentLogins.latest)[login.id],
     });
     if (refusal === undefined) return;
     return yield* new OrchestrationDispatchCommandError({
@@ -289,6 +294,7 @@ export const make = Effect.gen(function* () {
       agentId,
       agent,
       subject: principalUserId(principal),
+      login: (yield* agentLogins.latest)[agentId],
     });
     if (refusal === undefined) return;
     return yield* new OrchestrationDispatchCommandError({

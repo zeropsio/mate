@@ -735,6 +735,7 @@ describe("groupMemberFactsOf — whether a Mate was spoken to", () => {
         [{ item: mate(group), role: "dev" }],
         () => found,
         () => conversationsRead,
+        undefined,
       );
       expect(facts?.mate?.talked).toBe(talked);
     });
@@ -764,11 +765,39 @@ describe("groupMemberFactsOf — whether a Mate was spoken to", () => {
     expect(talkSettled([...members, bare])).toBe(settled);
   });
 
+  // A Mate asking waits on the viewer only when it is theirs (`mateIsViewers`): the overview's
+  // "is waiting on an answer" step says what the group's detail and the menu say.
+  it.each([
+    { case: "own Mate asking", signer: "u-petra", waiting: true },
+    { case: "a colleague's Mate asking", signer: "u-karlos", waiting: false },
+    { case: "nobody's Mate asking", signer: undefined, waiting: false },
+  ])("$case waits on the viewer: $waiting", ({ signer, waiting }) => {
+    const asking = mate("connected");
+    const item = {
+      ...asking,
+      project: {
+        ...asking.project,
+        tagList: [
+          ...(asking.project.tagList ?? []),
+          ...(signer === undefined ? [] : [`mate:signer:claude-code:${signer}`]),
+        ],
+      },
+    } as ZeropsCandidate;
+    const [facts] = groupMemberFactsOf(
+      [{ item, role: "dev" }],
+      () => ({ ...activity("Which port?"), kind: "input", face: "needs" }),
+      () => true,
+      "u-petra",
+    );
+    expect(facts?.mate?.waiting).toBe(waiting);
+  });
+
   it("feeds an unknown talk to the flow as not spoken to", () => {
     const members = groupMemberFactsOf(
       [{ item: mate("ready"), role: "dev" }],
       () => undefined,
       () => false,
+      undefined,
     );
     const input = groupFlowInputOf({
       groupId: "g",

@@ -2,6 +2,7 @@ import { ThreadId } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
 import type { ZeropsAgentActivity } from "~/zerops/agentActivity";
+import type { MateComing } from "~/zerops/mateComing";
 import { MATE_STAND_UP_MESSAGE } from "~/zerops/mateStandUp";
 
 import {
@@ -16,6 +17,8 @@ import {
   mateNotYours,
   ownerBadge,
   mateRowActivity,
+  mateRowAskLine,
+  mateRowDraft,
   mateRowReading,
   mateRowView,
   ownerMark,
@@ -755,7 +758,7 @@ describe("mateRowReading — the face follows the work, and the words never outr
       reply: undefined,
     },
   ] as const)("$case", ({ connected, activity, face, reply }) => {
-    const view = mateRowReading({ connected, activity });
+    const view = mateRowReading({ connected, activity, mine: true });
     expect(view.face).toBe(face);
     expect(view.reply).toEqual(reply);
   });
@@ -826,14 +829,62 @@ describe("mateRowReading — the face follows the work, and the words never outr
       dot: "failed",
     },
   ] as const)("$case", ({ connected, activity, state, face, dot }) => {
-    const view = mateRowReading({ connected, activity, reviewWaits: true });
+    const view = mateRowReading({ connected, activity, reviewWaits: true, mine: true });
     expect({ state: view.state, face: view.face, dot: view.dot }).toEqual({ state, face, dot });
   });
+
+  // Another's Mate waits on its owner (the owner, 2026-09-30): no needs face, no amber dot,
+  // its question said at rest as its last words; its own a viewer's needs them.
+  it.each([
+    {
+      case: "own Mate asking",
+      mine: true,
+      review: false,
+      state: "needs",
+      face: "needs",
+      dot: "attention",
+      reply: { kind: "words", text: "Which port?", tone: "ink" },
+    },
+    {
+      case: "another's Mate asking",
+      mine: false,
+      review: false,
+      state: "idle",
+      face: "idle",
+      dot: undefined,
+      reply: { kind: "words", text: "Which port?", tone: "muted" },
+    },
+    {
+      case: "another's Mate, its change waiting",
+      mine: false,
+      review: true,
+      state: "idle",
+      face: "idle",
+      dot: undefined,
+      reply: { kind: "words", text: "Which port?", tone: "muted" },
+    },
+  ] as const)(
+    "waits on the viewer only when it is theirs: $case",
+    ({ mine, review, state, face, dot, reply }) => {
+      const view = mateRowReading({
+        connected: true,
+        activity: reading({ kind: "input", face: "needs", question: "Which port?" }),
+        reviewWaits: review,
+        mine,
+      });
+      expect({ state: view.state, face: view.face, dot: view.dot, reply: view.reply }).toEqual({
+        state,
+        face,
+        dot,
+        reply,
+      });
+    },
+  );
 
   it("never draws the working dots under an asleep face", () => {
     for (const connected of [true, false]) {
       for (const activity of [reading(), remembered, undefined]) {
-        const view = mateRowReading({ connected, activity });
+        const view = mateRowReading({ connected, activity, mine: true });
         if (view.face === "sleep") expect(view.reply?.kind).not.toBe("pending");
       }
     }
@@ -1097,5 +1148,241 @@ describe("mateNotYours — whether a Mate's face is paler under its owner's badg
     },
   ] as const)("$name", ({ seat, isViewer, signer, viewer, pale }) => {
     expect(mateNotYours({ seat, isViewer, signer, viewer })).toBe(pale);
+  });
+});
+
+describe("mateRowDraft — a Mate's unsent message, wherever its composer keeps it", () => {
+  const ENV = "env-milo";
+  const session = (
+    threadId: string,
+    overrides: { environmentId?: string; createdAt?: string; promotedTo?: unknown } = {},
+  ) => ({
+    environmentId: ENV,
+    threadId,
+    createdAt: "2026-09-30T20:00:00.000Z",
+    ...overrides,
+  });
+
+  it.each([
+    {
+      case: "its conversation's own draft",
+      source: { drafts: { "env-milo:thread-1": "also check the thumbnails" }, sessions: {} },
+      mate: { environmentId: ENV, threadId: "thread-1", threadKey: "env-milo:thread-1" },
+      draft: "also check the thumbnails",
+    },
+    {
+      case: "nothing typed",
+      source: { drafts: { "env-milo:thread-1": "" }, sessions: {} },
+      mate: { environmentId: ENV, threadId: "thread-1", threadKey: "env-milo:thread-1" },
+      draft: undefined,
+    },
+    {
+      case: "only blanks typed",
+      source: { drafts: { "env-milo:thread-1": "  \n " }, sessions: {} },
+      mate: { environmentId: ENV, threadId: "thread-1", threadKey: "env-milo:thread-1" },
+      draft: undefined,
+    },
+    {
+      case: "its words, trimmed",
+      source: { drafts: { "env-milo:thread-1": "  deploy it \n" }, sessions: {} },
+      mate: { environmentId: ENV, threadId: "thread-1", threadKey: "env-milo:thread-1" },
+      draft: "deploy it",
+    },
+    {
+      case: "no conversation yet: the new one's draft in its environment",
+      source: {
+        drafts: { "draft-a": "set up a staging" },
+        sessions: { "draft-a": session("t-a") },
+      },
+      mate: { environmentId: ENV },
+      draft: "set up a staging",
+    },
+    {
+      case: "no conversation yet: another environment's draft is not its own",
+      source: {
+        drafts: { "draft-a": "set up a staging" },
+        sessions: { "draft-a": session("t-a", { environmentId: "env-other" }) },
+      },
+      mate: { environmentId: ENV },
+      draft: undefined,
+    },
+    {
+      case: "no conversation yet: a draft already sent is not unsent",
+      source: {
+        drafts: { "draft-a": "set up a staging" },
+        sessions: { "draft-a": session("t-a", { promotedTo: { threadId: "t-a" } }) },
+      },
+      mate: { environmentId: ENV },
+      draft: undefined,
+    },
+    {
+      case: "no conversation yet: the newest draft with words",
+      source: {
+        drafts: { "draft-a": "older words", "draft-b": "newer words", "draft-c": "" },
+        sessions: {
+          "draft-a": session("t-a", { createdAt: "2026-09-30T20:00:00.000Z" }),
+          "draft-b": session("t-b", { createdAt: "2026-09-30T21:00:00.000Z" }),
+          "draft-c": session("t-c", { createdAt: "2026-09-30T22:00:00.000Z" }),
+        },
+      },
+      mate: { environmentId: ENV },
+      draft: "newer words",
+    },
+    {
+      case: "a conversation: a new chat's draft beside it is not its own",
+      source: { drafts: { "draft-a": "a side question" }, sessions: { "draft-a": session("t-a") } },
+      mate: { environmentId: ENV, threadId: "thread-1", threadKey: "env-milo:thread-1" },
+      draft: undefined,
+    },
+    {
+      case: "a conversation made from a draft: the draft still kept under the draft's key",
+      source: {
+        drafts: { "draft-a": "and the logo" },
+        sessions: { "draft-a": session("thread-1") },
+      },
+      mate: { environmentId: ENV, threadId: "thread-1", threadKey: "env-milo:thread-1" },
+      draft: "and the logo",
+    },
+    {
+      case: "not connected: its remembered conversation's draft, read from this browser",
+      source: { drafts: { "env-milo:thread-1": "also check the thumbnails" }, sessions: {} },
+      mate: { threadId: "thread-1", threadKey: "env-milo:thread-1" },
+      draft: "also check the thumbnails",
+    },
+    {
+      case: "not connected: its remembered conversation, made from a draft",
+      source: {
+        drafts: { "draft-a": "and the logo" },
+        sessions: { "draft-a": session("thread-1") },
+      },
+      mate: { threadId: "thread-1", threadKey: "env-milo:thread-1" },
+      draft: "and the logo",
+    },
+    {
+      case: "not connected: nowhere to look",
+      source: {
+        drafts: { "draft-a": "set up a staging" },
+        sessions: { "draft-a": session("t-a") },
+      },
+      mate: {},
+      draft: undefined,
+    },
+  ])("$case", ({ source, mate, draft }) => {
+    const drafts = Object.fromEntries(
+      Object.entries(source.drafts).map(([key, prompt]) => [key, { prompt }]),
+    );
+    expect(
+      mateRowDraft({ draftsByThreadKey: drafts, draftThreadsByThreadKey: source.sessions }, mate),
+    ).toBe(draft);
+  });
+});
+
+describe("mateRowAskLine — the row's second line: what the person asked, or is about to", () => {
+  const ASK = "Speed up the photo gallery";
+  const WORDS = { kind: "words", text: "Thumbnails load lazily now.", tone: "muted" } as const;
+  const COMING = { kind: "coming", verb: "wait", since: 0 } as unknown as MateComing;
+  const base = {
+    view: { ask: undefined, reply: undefined, coming: undefined },
+    signIn: undefined,
+    draft: undefined,
+    deleting: false,
+    read: true,
+  };
+
+  it.each([
+    {
+      case: "no messages, its conversations read: nothing asked yet",
+      input: base,
+      line: { kind: "nothing-asked" },
+    },
+    {
+      case: "no messages, its conversations not read yet: nothing painted to take back",
+      input: { ...base, read: false },
+      line: undefined,
+    },
+    {
+      case: "no messages, a draft: the draft",
+      input: { ...base, draft: "set up a staging" },
+      line: { kind: "draft", text: "set up a staging", ask: undefined },
+    },
+    {
+      case: "no messages, not read, a draft: the draft is this browser's own",
+      input: { ...base, read: false, draft: "set up a staging" },
+      line: { kind: "draft", text: "set up a staging", ask: undefined },
+    },
+    {
+      case: "asked and answered: the ask",
+      input: { ...base, view: { ask: ASK, reply: WORDS, coming: undefined } },
+      line: { kind: "ask", text: ASK },
+    },
+    {
+      case: "asked and answered, a draft: the draft over the ask",
+      input: {
+        ...base,
+        view: { ask: ASK, reply: WORDS, coming: undefined },
+        draft: "and the logo",
+      },
+      line: { kind: "draft", text: "and the logo", ask: ASK },
+    },
+    {
+      case: "running, a draft: the draft over the ask, the live step below keeps its place",
+      input: {
+        ...base,
+        view: { ask: ASK, reply: { kind: "pending" } as const, coming: undefined },
+        draft: "and the logo",
+      },
+      line: { kind: "draft", text: "and the logo", ask: ASK },
+    },
+    {
+      case: "running, no draft: the ask",
+      input: {
+        ...base,
+        view: { ask: ASK, reply: { kind: "pending" } as const, coming: undefined },
+      },
+      line: { kind: "ask", text: ASK },
+    },
+    {
+      case: "setting up, nothing the person asked: its step says it below",
+      input: {
+        ...base,
+        view: {
+          ask: undefined,
+          reply: { kind: "live", words: "Setting up development", code: undefined } as const,
+          coming: undefined,
+        },
+      },
+      line: undefined,
+    },
+    {
+      case: "nobody signed in: the sign-in, whatever is typed",
+      input: {
+        ...base,
+        signIn: { text: "Waiting for your sign-in", waitsOnViewer: true },
+        draft: "hello",
+      },
+      line: { kind: "sign-in", text: "Waiting for your sign-in", waitsOnViewer: true },
+    },
+    {
+      case: "coming up: its born line says it",
+      input: { ...base, view: { ask: undefined, reply: undefined, coming: COMING }, draft: "hi" },
+      line: undefined,
+    },
+    {
+      case: "deleting, asked: the ask, and no draft waits on it",
+      input: {
+        ...base,
+        view: { ask: ASK, reply: undefined, coming: undefined },
+        deleting: true,
+        draft: "hi",
+      },
+      line: { kind: "ask", text: ASK },
+    },
+    {
+      case: "deleting, never asked: its deleting line says it",
+      input: { ...base, deleting: true },
+      line: undefined,
+    },
+  ])("$case", ({ input, line }) => {
+    expect(mateRowAskLine(input)).toEqual(line);
   });
 });

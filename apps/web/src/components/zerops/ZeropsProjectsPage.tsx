@@ -40,6 +40,7 @@ import {
   type ZeropsCandidate,
 } from "@t3tools/client-runtime/zerops/candidates";
 import {
+  mateIsViewers,
   resolveMateOwnerName,
   resolveMateVerbs,
   resolveMateVisibility,
@@ -59,7 +60,6 @@ import {
 import {
   heldCandidates,
   listsNoProject,
-  takenBotNames,
   type TakenBotNames,
 } from "@t3tools/client-runtime/zerops/projections";
 import { deriveProvisioningStart } from "@t3tools/client-runtime/zerops/registrationHandoff";
@@ -80,6 +80,7 @@ import {
 } from "~/zerops/zeropsBirths";
 import { useNewProjectBirths } from "~/zerops/newProjectBirth";
 import {
+  useTakenBotNames,
   useZeropsCandidates,
   type ZeropsCandidatePresentation,
 } from "~/zerops/useZeropsCandidates";
@@ -465,19 +466,35 @@ export function projectsListingNotice(
 }
 
 /**
- * The page's own alert, beside the listing's notice. A failure covers its own
- * region once (R-K2, R-K3): when the listing already says its read failed,
- * the inventory's failure over that same read is not said again. A connect
- * failure is another region's and always stands.
+ * What the page says of the account's trouble, in one voice (R-K2, R-K3): the
+ * inventory's lasting trouble is the account line's at the menu's foot, with
+ * its Try now, so the page repeats none of it. Rows it holds stand as they are;
+ * with none to show while the trouble lasts, the page's own empty words take
+ * the place of the listing's failed read, with no retry of their own. A
+ * connect failure is another region's and always stands.
  */
-export function projectsPageError(input: {
+export function projectsTroubleView(input: {
   readonly connectError: string | null;
   readonly inventoryError: string | null;
   readonly listingNotice: ProjectsListingNotice | null;
-}): string | null {
-  if (input.connectError !== null) return input.connectError;
-  return input.listingNotice?.region === "message" ? null : input.inventoryError;
+  readonly rows: number;
+}): {
+  readonly alert: string | null;
+  readonly listingNotice: ProjectsListingNotice | null;
+  readonly empty: string | null;
+} {
+  const spoken = input.inventoryError !== null;
+  const failed = input.listingNotice?.region === "message";
+  const empty = spoken && input.rows === 0;
+  return {
+    alert: input.connectError,
+    // The empty words replace the listing's own line, its reading placeholder included: one says it.
+    listingNotice: spoken && (failed || empty) ? null : input.listingNotice,
+    empty: empty ? PROJECTS_WAIT_FOR_ZEROPS : null,
+  };
 }
+
+const PROJECTS_WAIT_FOR_ZEROPS = "Your projects will show here once Zerops answers.";
 
 /**
  * What a declared stage or production says in its row's middle. With
@@ -941,6 +958,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
     organizationStatus,
     selectOrganization,
     status,
+    user,
   } = useZeropsSession();
   const { organizationRef, projectRef, runtime } = useZeropsData();
   const inventory = useZeropsInventory();
@@ -950,7 +968,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
   const observedCandidates = useMemo(() => heldCandidates(listing).rows, [listing]);
   // An agent's name must be new on the account, not just in the group: it is
   // what the left menu calls the row, and two Adas is two of nothing.
-  const taken = useMemo(() => takenBotNames(listing), [listing]);
+  const taken = useTakenBotNames();
   const nowMs = useNowMs();
   const {
     births,
@@ -1785,6 +1803,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
         groupId === undefined ? undefined : projectFlow.flows.get(groupId),
         candidate.project.id,
       ),
+      mine: mateIsViewers(candidate.project, user?.id),
     });
   };
   const openReview = useOpenReview();
@@ -2300,12 +2319,14 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
   // — the face asleep, the line saying how long, a failure and its retry on
   // the same line — and the rest of the roster stays where it was.
   const connectErrorOnRow = connectError !== null && candidates.some(connectFailedOn);
-  const listingNotice = projectsListingNotice(listing, nowMs);
-  const pageError = projectsPageError({
+  const troubleView = projectsTroubleView({
     connectError: connectErrorOnRow ? null : connectError,
     inventoryError: error,
-    listingNotice,
+    listingNotice: projectsListingNotice(listing, nowMs),
+    rows: candidates.length,
   });
+  const listingNotice = troubleView.listingNotice;
+  const pageError = troubleView.alert;
   // Every affordance this region carries asks for the list again: a failed or
   // stale read offers a retry, and the page it would go to is this one.
   const listingAffordance =
@@ -2786,6 +2807,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
         environments,
         (item) => (item.environmentId === undefined ? undefined : activity.get(item.environmentId)),
         (item) => item.environmentId !== undefined && withConversations.has(item.environmentId),
+        user?.id,
       );
       const isStop = (role: ZeropsEnvironmentRole | undefined) =>
         role === "stage" || role === "prod";
@@ -2883,6 +2905,13 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
         >
           {pageError}
         </div>
+      )}
+      {/* Nothing to show while the account's line says Zerops isn't answering: the page's own
+          words, and no retry — Try now is the line's (`projectsTroubleView`). */}
+      {troubleView.empty === null ? null : (
+        <p className="py-16 text-center text-sm text-muted-foreground" role="status">
+          {troubleView.empty}
+        </p>
       )}
       {/* A project the grant withholds says why in place of its rows: its name,
           tags and Mates are its content, so none of them is drawn (DESIGN §3.4). */}

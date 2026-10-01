@@ -63,6 +63,8 @@ export interface JumpMate {
   readonly pausedUntil: string | undefined;
   /** Its own change waits for the person's review (`mateReviewWaits`): it needs them. */
   readonly reviewWaits?: boolean;
+  /** The viewer's own Mate (`mateIsViewers`): only then does what it waits on need them. */
+  readonly mine: boolean;
 }
 
 export interface JumpProject {
@@ -140,6 +142,7 @@ export function jumpMateOf(input: {
   readonly connected: boolean;
   readonly activity: JumpActivity | undefined;
   readonly reviewWaits?: boolean | undefined;
+  readonly mine: boolean;
 }): JumpMate {
   const live = input.connected ? input.activity : undefined;
   return {
@@ -151,6 +154,7 @@ export function jumpMateOf(input: {
       connected: input.connected,
       activity: input.activity,
       reviewWaits: input.reviewWaits === true,
+      mine: input.mine,
     }),
     projectName: input.projectName,
     subject: live?.subject,
@@ -160,6 +164,7 @@ export function jumpMateOf(input: {
     conversation: live === undefined ? undefined : { threadId: live.threadId, kind: live.kind },
     owner: input.owner,
     pausedUntil: live?.pausedUntil,
+    mine: input.mine,
     ...(input.reviewWaits === true ? { reviewWaits: true } : {}),
   };
 }

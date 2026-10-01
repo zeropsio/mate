@@ -8,6 +8,7 @@ import {
   TurnId,
   type ThreadLiveStep,
 } from "@t3tools/contracts";
+import { mateIsViewers } from "@t3tools/client-runtime/zerops/mateAccess";
 import { SECRET_MASK } from "@t3tools/shared/messagePreview";
 import { describe, expect, it } from "vite-plus/test";
 
@@ -143,8 +144,94 @@ describe("mateFaceOf — the face a Mate wears wherever it is drawn", () => {
         connected,
         activity: face === undefined ? undefined : { face },
         reviewWaits: review,
+        mine: true,
       }),
     ).toBe(shown);
+  });
+
+  // Waiting on you is claimed only by your own Mate — the one you signed in (the owner,
+  // 2026-09-30: "sana doesn't wait for me, it waits for karlos"). Another's Mate waits on its
+  // owner: it wears no needs face here, though its change can still be reviewed and merged.
+  describe("waits on you only when it is yours", () => {
+    const VIEWER = "u-petra";
+    const signed = (...users: ReadonlyArray<string>) =>
+      users.map((user) => `mate:signer:claude-code:${user}`);
+    it.each([
+      {
+        case: "own Mate, its change waits",
+        tags: signed(VIEWER),
+        face: "idle",
+        review: true,
+        shown: "needs",
+      },
+      {
+        case: "another's Mate, its change waits",
+        tags: signed("u-karlos"),
+        face: "idle",
+        review: true,
+        shown: "idle",
+      },
+      {
+        case: "own Mate, its question waits",
+        tags: signed(VIEWER),
+        face: "needs",
+        review: false,
+        shown: "needs",
+      },
+      {
+        case: "another's Mate, its question waits",
+        tags: signed("u-karlos"),
+        face: "needs",
+        review: false,
+        shown: "idle",
+      },
+      {
+        case: "nobody signed in, its change waits",
+        tags: [],
+        face: "idle",
+        review: true,
+        shown: "idle",
+      },
+      {
+        case: "nobody signed in, its question waits",
+        tags: [],
+        face: "needs",
+        review: false,
+        shown: "idle",
+      },
+      {
+        case: "its signers disagree",
+        tags: signed(VIEWER, "u-karlos"),
+        face: "needs",
+        review: true,
+        shown: "idle",
+      },
+      {
+        case: "the viewer not known yet",
+        tags: signed(VIEWER),
+        face: "needs",
+        review: true,
+        shown: "idle",
+        viewer: undefined,
+      },
+      {
+        case: "another's Mate at work: the work shows",
+        tags: signed("u-karlos"),
+        face: "working",
+        review: true,
+        shown: "working",
+      },
+    ] as const)("$case", ({ tags, face, review, shown, ...rest }) => {
+      const viewer = "viewer" in rest ? rest.viewer : VIEWER;
+      expect(
+        mateFaceOf({
+          connected: true,
+          activity: { face },
+          reviewWaits: review,
+          mine: mateIsViewers({ tagList: tags }, viewer),
+        }),
+      ).toBe(shown);
+    });
   });
 
   it("keeps a Mate paused at its usage limit asleep, its review waiting or not", () => {
@@ -153,6 +240,7 @@ describe("mateFaceOf — the face a Mate wears wherever it is drawn", () => {
         connected: true,
         activity: { face: "sleep", pausedUntil: "2026-09-29T23:00:00.000Z" },
         reviewWaits: true,
+        mine: true,
       }),
     ).toBe("sleep");
   });

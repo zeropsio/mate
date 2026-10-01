@@ -1,27 +1,63 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import type { ActivityAppVersion, ActivityProcess } from "./dto.ts";
-import { type StandupService, readStandup } from "./standupReading.ts";
+import { type StandupReading, type StandupService, readStandup } from "./standupReading.ts";
 
 const SINCE = "2026-09-02T10:00:00.000Z";
 const NOW = Date.parse("2026-09-02T10:06:00.000Z");
 const at = (minute: number, second = 0) =>
   `2026-09-02T10:${String(minute).padStart(2, "0")}:${String(second).padStart(2, "0")}.000Z`;
 
-/** Two made-up pairs, a utility that runs code, and a managed service. */
+type Group = StandupService["group"];
+
+function service(
+  hostname: string,
+  group: Group,
+  status: string,
+  runsCode = status === "ACTIVE" && group === "runtimes",
+): StandupService {
+  return { hostname, serviceId: `s-${hostname}`, group, runsCode, status };
+}
+
+/**
+ * A made-up environment as the arrival leaves it: three data services up, a
+ * mail catcher that keeps its own public build, two pairs that run no code
+ * yet, the Mate's own container and a build container of the platform's.
+ */
 const FRESH: ReadonlyArray<StandupService> = [
-  { hostname: "apidev", serviceId: "s-apidev", runtime: true, runsCode: false },
-  { hostname: "apistage", serviceId: "s-apistage", runtime: true, runsCode: false },
-  { hostname: "webdev", serviceId: "s-webdev", runtime: true, runsCode: false },
-  { hostname: "webstage", serviceId: "s-webstage", runtime: true, runsCode: false },
-  { hostname: "mailer", serviceId: "s-mailer", runtime: true, runsCode: true },
-  { hostname: "db", serviceId: "s-db", runtime: false, runsCode: false },
+  service("apidev", "runtimes", "READY_TO_DEPLOY"),
+  service("apistage", "runtimes", "READY_TO_DEPLOY"),
+  service("db", "data", "ACTIVE"),
+  service("mailer", "runtimes", "ACTIVE"),
+  service("cache", "data", "ACTIVE"),
+  service("webdev", "runtimes", "READY_TO_DEPLOY"),
+  service("webstage", "runtimes", "READY_TO_DEPLOY"),
+  service("files", "data", "ACTIVE"),
+  service("mate", "infrastructure", "ACTIVE", true),
+  service("build-apidev", "infrastructure", "STOPPED"),
 ];
 
 /** After the development call: its dev halves run code. */
-const DEVS_UP = FRESH.map((service) =>
-  service.hostname.endsWith("dev") ? { ...service, runsCode: true } : service,
+const DEVS_UP = FRESH.map((entry) =>
+  entry.hostname.endsWith("dev") && entry.group === "runtimes"
+    ? { ...entry, runsCode: true, status: "ACTIVE" }
+    : entry,
 );
+
+/** What the development call stands up around its runtimes, as the arrival left it. */
+const DEV_AROUND = [
+  { hostname: "db", state: "up" },
+  { hostname: "cache", state: "up" },
+  { hostname: "files", state: "up" },
+  { hostname: "mailer", state: "up" },
+] as const;
+
+/** What the stage call stands up around its runtimes: the data they share. */
+const STAGE_AROUND = [
+  { hostname: "db", state: "up" },
+  { hostname: "cache", state: "up" },
+  { hostname: "files", state: "up" },
+] as const;
 
 const BUILDING_COMMANDS: ActivityAppVersion = {
   status: "BUILDING",
@@ -53,86 +89,26 @@ describe("readStandup — each service a stand-up call builds, from the project'
     readonly expected?: ReadonlyArray<string>;
     readonly services: ReadonlyArray<StandupService>;
     readonly processes: ReadonlyArray<ActivityProcess>;
-    readonly rows: ReadonlyArray<{ hostname: string; state: string; sentence?: string }>;
-    readonly counts: { building: number; built: number; failed: number };
+    readonly rows: ReadonlyArray<{
+      hostname: string;
+      state: string;
+      sentence?: string;
+      note?: string;
+      reason?: string;
+    }>;
+    readonly counts: { building: number; up: number; failed: number };
   }> = [
     {
-      name: "no build yet: every dev half that runs no code waits, the stages are the next call's",
+      name: "just started: the data and the utility up, every dev half that runs no code waits",
       half: "development",
       services: FRESH,
       processes: [],
       rows: [
+        ...DEV_AROUND,
         { hostname: "apidev", state: "waits" },
         { hostname: "webdev", state: "waits" },
       ],
-      counts: { building: 0, built: 0, failed: 0 },
-    },
-    {
-      name: "the stage call before its first build: only the stages wait",
-      half: "stage",
-      services: DEVS_UP,
-      processes: [],
-      rows: [
-        { hostname: "apistage", state: "waits" },
-        { hostname: "webstage", state: "waits" },
-      ],
-      counts: { building: 0, built: 0, failed: 0 },
-    },
-    {
-      name: "the stage call told which stages it builds: those wait, whatever their names",
-      half: "stage",
-      expected: ["apistage", "preview"],
-      services: [
-        ...DEVS_UP,
-        { hostname: "preview", serviceId: "s-preview", runtime: true, runsCode: false },
-      ],
-      processes: [],
-      rows: [
-        { hostname: "apistage", state: "waits" },
-        { hostname: "preview", state: "waits" },
-      ],
-      counts: { building: 0, built: 0, failed: 0 },
-    },
-    {
-      name: "a runtime with no partner zcp never builds: it does not wait",
-      half: "development",
-      services: [
-        ...FRESH,
-        { hostname: "worker", serviceId: "s-worker", runtime: true, runsCode: false },
-        { hostname: "docsstage", serviceId: "s-docsstage", runtime: true, runsCode: false },
-      ],
-      processes: [],
-      rows: [
-        { hostname: "apidev", state: "waits" },
-        { hostname: "webdev", state: "waits" },
-      ],
-      counts: { building: 0, built: 0, failed: 0 },
-    },
-    {
-      name: "a dev half named like its stage's stem (api beside apistage) waits",
-      half: "development",
-      services: [
-        { hostname: "api", serviceId: "s-api", runtime: true, runsCode: false },
-        { hostname: "apistage", serviceId: "s-apistage", runtime: true, runsCode: false },
-      ],
-      processes: [],
-      rows: [{ hostname: "api", state: "waits" }],
-      counts: { building: 0, built: 0, failed: 0 },
-    },
-    {
-      name: "one with no partner is the call's once a build of the call names it",
-      half: "development",
-      services: [
-        ...FRESH,
-        { hostname: "worker", serviceId: "s-worker", runtime: true, runsCode: false },
-      ],
-      processes: [build("s-worker", "RUNNING")],
-      rows: [
-        { hostname: "apidev", state: "waits" },
-        { hostname: "webdev", state: "waits" },
-        { hostname: "worker", state: "building" },
-      ],
-      counts: { building: 1, built: 0, failed: 0 },
+      counts: { building: 0, up: 4, failed: 0 },
     },
     {
       name: "one building: its row says the pipeline's step",
@@ -140,6 +116,7 @@ describe("readStandup — each service a stand-up call builds, from the project'
       services: FRESH,
       processes: [build("s-apidev", "RUNNING", { appVersion: BUILDING_COMMANDS })],
       rows: [
+        ...DEV_AROUND,
         {
           hostname: "apidev",
           state: "building",
@@ -147,7 +124,7 @@ describe("readStandup — each service a stand-up call builds, from the project'
         },
         { hostname: "webdev", state: "waits" },
       ],
-      counts: { building: 1, built: 0, failed: 0 },
+      counts: { building: 1, up: 4, failed: 0 },
     },
     {
       name: "several building at once",
@@ -155,66 +132,191 @@ describe("readStandup — each service a stand-up call builds, from the project'
       services: FRESH,
       processes: [build("s-apidev", "RUNNING"), build("s-webdev", "PENDING")],
       rows: [
+        ...DEV_AROUND,
         { hostname: "apidev", state: "building" },
         { hostname: "webdev", state: "building" },
       ],
-      counts: { building: 2, built: 0, failed: 0 },
+      counts: { building: 2, up: 4, failed: 0 },
     },
     {
-      name: "one built: it runs code now and stays the call's",
+      name: "one runtime up: its build finished, the other still builds",
       half: "development",
-      services: FRESH.map((service) =>
-        service.hostname === "apidev" ? { ...service, runsCode: true } : service,
+      services: FRESH.map((entry) =>
+        entry.hostname === "apidev" ? { ...entry, runsCode: true, status: "ACTIVE" } : entry,
       ),
       processes: [build("s-apidev", "FINISHED"), build("s-webdev", "RUNNING")],
       rows: [
-        { hostname: "apidev", state: "built" },
+        ...DEV_AROUND,
+        { hostname: "apidev", state: "up" },
         { hostname: "webdev", state: "building" },
       ],
-      counts: { building: 1, built: 1, failed: 0 },
+      counts: { building: 1, up: 5, failed: 0 },
     },
     {
-      name: "one failed and the rest go on",
-      half: "stage",
-      services: DEVS_UP,
-      processes: [build("s-apistage", "FAILED"), build("s-webstage", "RUNNING")],
-      rows: [
-        { hostname: "apistage", state: "failed" },
-        { hostname: "webstage", state: "building" },
-      ],
-      counts: { building: 1, built: 0, failed: 1 },
-    },
-    {
-      name: "all built",
+      name: "all up",
       half: "development",
       services: DEVS_UP,
       processes: [build("s-apidev", "FINISHED"), build("s-webdev", "FINISHED")],
       rows: [
-        { hostname: "apidev", state: "built" },
-        { hostname: "webdev", state: "built" },
+        ...DEV_AROUND,
+        { hostname: "apidev", state: "up" },
+        { hostname: "webdev", state: "up" },
       ],
-      counts: { building: 0, built: 2, failed: 0 },
+      counts: { building: 0, up: 6, failed: 0 },
     },
     {
-      name: "a service already running code, with no build in the call, is not the call's",
+      name: "a data service still starting builds, in its own word",
       half: "development",
-      services: FRESH.map((service) =>
-        service.hostname === "webdev" ? { ...service, runsCode: true } : service,
+      services: FRESH.map((entry) =>
+        entry.hostname === "files" ? { ...entry, status: "CREATING" } : entry,
       ),
       processes: [],
-      rows: [{ hostname: "apidev", state: "waits" }],
-      counts: { building: 0, built: 0, failed: 0 },
+      rows: [
+        { hostname: "db", state: "up" },
+        { hostname: "cache", state: "up" },
+        { hostname: "files", state: "building", sentence: "Starting" },
+        { hostname: "mailer", state: "up" },
+        { hostname: "apidev", state: "waits" },
+        { hostname: "webdev", state: "waits" },
+      ],
+      counts: { building: 1, up: 3, failed: 0 },
     },
     {
-      name: "a build from before the call ended before it: not the call's; one still running is",
+      name: "a utility still on its own public build, begun before the call, builds",
+      half: "development",
+      services: FRESH.map((entry) =>
+        entry.hostname === "mailer"
+          ? { ...entry, runsCode: false, status: "READY_TO_DEPLOY" }
+          : entry,
+      ),
+      processes: [build("s-mailer", "RUNNING", { created: "2026-09-02T09:58:00.000Z" })],
+      rows: [
+        { hostname: "db", state: "up" },
+        { hostname: "cache", state: "up" },
+        { hostname: "files", state: "up" },
+        { hostname: "mailer", state: "building" },
+        { hostname: "apidev", state: "waits" },
+        { hostname: "webdev", state: "waits" },
+      ],
+      counts: { building: 1, up: 3, failed: 0 },
+    },
+    {
+      name: "a failed data service and a stopped utility say so",
+      half: "development",
+      services: FRESH.map((entry) =>
+        entry.hostname === "cache"
+          ? { ...entry, status: "SERVICE_ACTION_FAILED" }
+          : entry.hostname === "mailer"
+            ? { ...entry, status: "STOPPED" }
+            : entry,
+      ),
+      processes: [],
+      rows: [
+        { hostname: "db", state: "up" },
+        { hostname: "cache", state: "failed" },
+        { hostname: "files", state: "up" },
+        { hostname: "mailer", state: "waits", note: "stopped" },
+        { hostname: "apidev", state: "waits" },
+        { hostname: "webdev", state: "waits" },
+      ],
+      counts: { building: 0, up: 2, failed: 1 },
+    },
+    {
+      name: "the stage call before its first build: the data, and the stages wait",
+      half: "stage",
+      services: DEVS_UP,
+      processes: [],
+      rows: [
+        ...STAGE_AROUND,
+        { hostname: "apistage", state: "waits" },
+        { hostname: "webstage", state: "waits" },
+      ],
+      counts: { building: 0, up: 3, failed: 0 },
+    },
+    {
+      name: "the stage call told which stages it builds: those, whatever their names",
+      half: "stage",
+      expected: ["apistage", "preview"],
+      services: [...DEVS_UP, service("preview", "runtimes", "READY_TO_DEPLOY")],
+      processes: [],
+      rows: [
+        ...STAGE_AROUND,
+        { hostname: "apistage", state: "waits" },
+        { hostname: "preview", state: "waits" },
+      ],
+      counts: { building: 0, up: 3, failed: 0 },
+    },
+    {
+      name: "one stage failed and the rest go on: the platform's reason on its row",
+      half: "stage",
+      services: DEVS_UP,
+      processes: [
+        build("s-apistage", "FAILED", { failReason: "Build commands exited 1" }),
+        build("s-webstage", "RUNNING"),
+      ],
+      rows: [
+        ...STAGE_AROUND,
+        { hostname: "apistage", state: "failed", reason: "Build commands exited 1" },
+        { hostname: "webstage", state: "building" },
+      ],
+      counts: { building: 1, up: 3, failed: 1 },
+    },
+    {
+      name: "a dev half named like its stage's stem (api beside apistage) is a runtime of development",
+      half: "development",
+      services: [
+        service("api", "runtimes", "READY_TO_DEPLOY"),
+        service("apistage", "runtimes", "READY_TO_DEPLOY"),
+        service("db", "data", "ACTIVE"),
+      ],
+      processes: [],
+      rows: [
+        { hostname: "db", state: "up" },
+        { hostname: "api", state: "waits" },
+      ],
+      counts: { building: 0, up: 1, failed: 0 },
+    },
+    {
+      name: "a stage with no partner is of neither half; one a build of the call names is the call's",
+      half: "stage",
+      services: [...DEVS_UP, service("docsstage", "runtimes", "READY_TO_DEPLOY")],
+      processes: [build("s-mailer", "RUNNING")],
+      rows: [
+        ...STAGE_AROUND,
+        { hostname: "apistage", state: "waits" },
+        { hostname: "mailer", state: "building" },
+        { hostname: "webstage", state: "waits" },
+      ],
+      counts: { building: 1, up: 3, failed: 0 },
+    },
+    {
+      name: "a dev half already running code, with no build in the call, is up",
+      half: "development",
+      services: FRESH.map((entry) =>
+        entry.hostname === "webdev" ? { ...entry, runsCode: true, status: "ACTIVE" } : entry,
+      ),
+      processes: [],
+      rows: [
+        ...DEV_AROUND,
+        { hostname: "apidev", state: "waits" },
+        { hostname: "webdev", state: "up" },
+      ],
+      counts: { building: 0, up: 5, failed: 0 },
+    },
+    {
+      name: "a build that ended before the call is not the call's: its service stands as it is",
       half: "development",
       services: DEVS_UP,
       processes: [
         build("s-apidev", "FINISHED", { created: "2026-09-02T09:50:00.000Z", finished: at(0) }),
         build("s-webdev", "RUNNING", { created: "2026-09-02T09:58:00.000Z" }),
       ],
-      rows: [{ hostname: "webdev", state: "building" }],
-      counts: { building: 1, built: 0, failed: 0 },
+      rows: [
+        ...DEV_AROUND,
+        { hostname: "apidev", state: "up" },
+        { hostname: "webdev", state: "building" },
+      ],
+      counts: { building: 1, up: 5, failed: 0 },
     },
     {
       name: "a service built twice in the call reads its latest build",
@@ -225,18 +327,23 @@ describe("readStandup — each service a stand-up call builds, from the project'
         build("s-apidev", "RUNNING", { id: "second", created: at(3) }),
       ],
       rows: [
+        ...DEV_AROUND,
         { hostname: "apidev", state: "building" },
         { hostname: "webdev", state: "waits" },
       ],
-      counts: { building: 1, built: 0, failed: 0 },
+      counts: { building: 1, up: 4, failed: 0 },
     },
     {
-      name: "a process that is no build (a restart) says nothing",
+      name: "a process that is no build (a restart) says nothing: the halves stand as they are",
       half: "development",
       services: DEVS_UP,
       processes: [build("s-apidev", "RUNNING", { actionName: "stack.restart" })],
-      rows: [],
-      counts: { building: 0, built: 0, failed: 0 },
+      rows: [
+        ...DEV_AROUND,
+        { hostname: "apidev", state: "up" },
+        { hostname: "webdev", state: "up" },
+      ],
+      counts: { building: 0, up: 6, failed: 0 },
     },
   ];
 
@@ -255,11 +362,13 @@ describe("readStandup — each service a stand-up call builds, from the project'
           hostname: row.hostname,
           state: row.state,
           ...(row.sentence === undefined ? {} : { sentence: row.sentence }),
+          ...(row.note === undefined ? {} : { note: row.note }),
+          ...(row.reason === undefined ? {} : { reason: row.reason }),
         })),
       ).toEqual(testCase.rows.map((row) => ({ ...row })));
       expect({
         building: reading.building,
-        built: reading.built,
+        up: reading.up,
         failed: reading.failed,
       }).toEqual(testCase.counts);
     });
@@ -281,8 +390,10 @@ describe("readStandup — each service a stand-up call builds, from the project'
       since: SINCE,
       nowMs: NOW,
     });
-    expect(queued.rows[0]?.startedAt).toBe(at(1));
-    expect(started.rows[0]?.startedAt).toBe(at(1));
+    const apidev = (reading: StandupReading) =>
+      reading.rows.find((row) => row.hostname === "apidev");
+    expect(apidev(queued)?.startedAt).toBe(at(1));
+    expect(apidev(started)?.startedAt).toBe(at(1));
   });
 
   it("a row carries its build's own span: from its start, until it ended", () => {
@@ -296,10 +407,11 @@ describe("readStandup — each service a stand-up call builds, from the project'
       since: SINCE,
       nowMs: NOW,
     });
-    expect(reading.rows).toEqual([
+    const runtimes = reading.rows.filter((row) => row.hostname.endsWith("dev"));
+    expect(runtimes).toEqual([
       expect.objectContaining({ hostname: "apidev", startedAt: at(1, 5), endedAt: at(4, 10) }),
       expect.objectContaining({ hostname: "webdev", startedAt: at(2) }),
     ]);
-    expect(reading.rows[1]).not.toHaveProperty("endedAt");
+    expect(runtimes[1]).not.toHaveProperty("endedAt");
   });
 });

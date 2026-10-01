@@ -44,13 +44,13 @@ const readyTasks = (ids: ReadonlyArray<string>) =>
 describe("crewLine — the crew as one line under its Mate", () => {
   it("draws every crewmate's face, the lead first, each in its thread's state", () => {
     const { view, attention } = crew({ kinds: { backend: "working", frontend: "done" } });
-    expect(crewLine(view, attention).faces).toEqual([
+    expect(crewLine(view, attention, true).faces).toEqual([
       expect.objectContaining({ handle: "lead", lead: true, state: "idle" }),
       expect.objectContaining({ handle: "backend", lead: false, state: "working" }),
       expect.objectContaining({ handle: "frontend", lead: false, state: "done" }),
       expect.objectContaining({ handle: "erik", lead: false, state: "idle" }),
     ]);
-    expect(crewLine(view, attention).faces[1]?.threadId).toBe(
+    expect(crewLine(view, attention, true).faces[1]?.threadId).toBe(
       ThreadId.make("thread-crew-backend-2"),
     );
   });
@@ -92,7 +92,35 @@ describe("crewLine — the crew as one line under its Mate", () => {
     },
   ])("says the one most urgent fact: $case", ({ input, fact }) => {
     const { view, attention } = crew(input);
-    expect(crewLine(view, attention).fact).toEqual(fact);
+    expect(crewLine(view, attention, true).fact).toEqual(fact);
+  });
+
+  // Under a colleague's Mate the crew waits on its owner, never on the viewer (the owner,
+  // 2026-09-30): no "needs you", no needs face — and its finished work keeps its Review.
+  it.each([
+    {
+      case: "a crewmate asks",
+      input: { kinds: { backend: "input" as const } },
+      fact: null,
+    },
+    {
+      case: "the waiting list names crewmates",
+      input: { snapshot: { attention: crewSnapshotFixture().attention.slice(0, 2) } },
+      fact: null,
+    },
+    {
+      case: "a crewmate asks and a task is ready: the work, not the ask",
+      input: {
+        kinds: { erik: "approval" as const },
+        snapshot: { board: { tasks: readyTasks(["task-13"]) } },
+      },
+      fact: { kind: "land", words: "Frontend's work is ready", taskId: "task-13" },
+    },
+  ])("says nobody needs the viewer under another's Mate: $case", ({ input, fact }) => {
+    const { view, attention } = crew(input);
+    const line = crewLine(view, attention, false);
+    expect(line.fact).toEqual(fact);
+    expect(line.faces.some((face) => face.state === "needs")).toBe(false);
   });
 
   it("counts no task the lead lands itself", () => {
@@ -103,7 +131,7 @@ describe("crewLine — the crew as one line under its Mate", () => {
         run: { ...fixture.run!, options: { ...fixture.run!.options, landing: "lead" } },
       },
     });
-    expect(crewLine(view, attention).fact).toBeNull();
+    expect(crewLine(view, attention, true).fact).toBeNull();
   });
 
   it("does not count a ready-to-land row of the waiting list as somebody needing you", () => {
@@ -115,7 +143,7 @@ describe("crewLine — the crew as one line under its Mate", () => {
       handle: "frontend",
       taskId: "task-13",
     };
-    expect(crewLine(view, [ready]).fact).toEqual({
+    expect(crewLine(view, [ready], true).fact).toEqual({
       kind: "land",
       words: "Frontend's work is ready",
       taskId: "task-13",

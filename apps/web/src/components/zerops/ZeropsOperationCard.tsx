@@ -705,7 +705,10 @@ export function ZeropsOperationCard(props: {
       : undefined;
   const links = openLink !== undefined ? [openLink, ...operation.links] : operation.links;
   const version = versionLabel(operation.version);
-  const closing = drawnClosing(operation);
+  // Under its line (headless), the line says how it went: the closing would
+  // say it again, and a bare "Failed." carries nothing — why stays, in its
+  // explanation.
+  const closing = headless ? undefined : drawnClosing(operation);
   const hasResultRow = closing !== undefined || version !== undefined || links.length > 0;
 
   const Frame = headless ? HeadlessFrame : FlatCard;

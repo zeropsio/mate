@@ -1945,8 +1945,7 @@ function WorkingTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "workin
 /**
  * The room a live card's panel holds while it closes (`ConversationWorking`),
  * on the card's line: drawn whole by that row (`[data-card-whole]`), the card
- * reaches over it (`--card-room`), and is no longer the line alone while it
- * holds any (`data-card-room`).
+ * reaches over it (`--card-room`).
  */
 function holdCardRoom(from: HTMLElement | null, cardKey: string, room: number | null) {
   const list = from?.closest<HTMLElement>(".timeline-legend-list") ?? null;
@@ -1956,11 +1955,9 @@ function holdCardRoom(from: HTMLElement | null, cardKey: string, room: number | 
   if (line === null || line === undefined) return;
   if (room === null || room < 0.5) {
     line.style.removeProperty("--card-room");
-    line.removeAttribute("data-card-room");
     return;
   }
   line.style.setProperty("--card-room", `${room}px`);
-  line.setAttribute("data-card-room", "");
 }
 
 /**

@@ -340,6 +340,17 @@ export const ZeropsAgentLoginState = Schema.Struct({
    * where the client records on a success it watched happen instead.
    */
   startedBy: Schema.optional(Schema.String),
+  /**
+   * The latest attempt before this one that succeeded, where this one has not: an attempt
+   * started, cancelled or failed after a sign-in leaves who signed in known, to the turn gate
+   * and to the client that records the signer. Absent on older servers.
+   */
+  lastSucceeded: Schema.optional(
+    Schema.Struct({
+      startedAt: Schema.DateTimeUtc,
+      startedBy: Schema.optional(Schema.String),
+    }),
+  ),
 });
 export type ZeropsAgentLoginState = typeof ZeropsAgentLoginState.Type;
 

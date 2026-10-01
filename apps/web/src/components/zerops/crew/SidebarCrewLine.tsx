@@ -42,6 +42,7 @@ export function SidebarCrewLine({
   environmentId,
   projectId,
   read,
+  mine,
 }: {
   /** Its Mate's environment once connected; until then only what this browser remembers is drawn. */
   readonly environmentId: EnvironmentId | undefined;
@@ -49,6 +50,8 @@ export function SidebarCrewLine({
   readonly projectId: string;
   /** A crew handed in instead of the feed's; absent, the line reads its own. */
   readonly read?: SidebarCrewRead | undefined;
+  /** Its Mate is the viewer's own (`mateIsViewers`): only then does the crew need them. */
+  readonly mine: boolean;
 }) {
   const live = useCrew(environmentId ?? null);
   // Whose the crew's logins are, for the crew the feed reads; a crew handed in reads nobody's.
@@ -67,7 +70,7 @@ export function SidebarCrewLine({
       ? undefined
       : crew.view.crewmates.length === 0
         ? undefined
-        : crewLine(crew.view, crew.attention);
+        : crewLine(crew.view, crew.attention, mine);
   // The crew as read, for the next reload to keep its place; a crew that is
   // gone is forgotten. Not a fixture's, and not while unread.
   const faces = line?.faces;

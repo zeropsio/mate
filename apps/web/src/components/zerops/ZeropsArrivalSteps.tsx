@@ -2,10 +2,12 @@
  * The Mate's own steps while it comes up (`arrivalSteps`), as the arrival's slot draws them: one
  * row a step — its mark, its words, how long it took — the services its copy of the project brings
  * on a quieter line under the first, and the person's own step last, with their picture: "You
- * sign Wren in", next.
+ * sign Wren in with your Claude or ChatGPT subscription", each brand wearing its logo.
  */
 import type { BirthRuntimeFact } from "@t3tools/client-runtime/zerops/birthProgress";
-import { useState, type ReactNode } from "react";
+import { Fragment, useState, type ReactNode } from "react";
+
+import { ClaudeAI, OpenAI } from "~/components/Icons";
 
 import {
   nextRuntimesLine,
@@ -16,6 +18,7 @@ import {
 } from "~/zerops/mateArrival";
 
 import { Avatar } from "./primitives";
+import type { SignInPhrasePart } from "./ZeropsAgentSignIn.logic";
 
 /** The person, as their own step wears them. */
 export interface ArrivalYou {
@@ -46,20 +49,25 @@ export function ZeropsArrivalSteps({
           <span className="arrival-step-mark">
             <ArrivalStepGlyph state={step.state} you={you} />
           </span>
-          <span className="arrival-step-label">
-            {step.label}
+          <span
+            className="arrival-step-label"
+            data-spans-time={step.time === undefined && step.note === undefined ? "" : undefined}
+          >
+            {step.phrase === undefined ? step.label : <SignInPhrase parts={step.phrase} />}
             {step.why === undefined ? null : (
               <span className="arrival-step-why"> · {step.why}</span>
             )}
           </span>
-          <span className="arrival-step-time">
-            {step.time}
-            {step.time !== undefined && step.note !== undefined && step.state !== "you" ? (
-              <span className="arrival-step-note"> of {step.note}</span>
-            ) : (
-              step.note
-            )}
-          </span>
+          {step.time === undefined && step.note === undefined ? null : (
+            <span className="arrival-step-time">
+              {step.time}
+              {step.time !== undefined && step.note !== undefined ? (
+                <span className="arrival-step-note"> of {step.note}</span>
+              ) : (
+                step.note
+              )}
+            </span>
+          )}
           {step.services === undefined ? null : (
             <div className="arrival-step-sub">
               <ArrivalServices services={step.services} />
@@ -195,4 +203,23 @@ export function ArrivalSpinner({ className }: { readonly className: string }) {
       <path className="arrival-glyph-arc" d="M8 1.6a6.4 6.4 0 0 1 6.4 6.4" />
     </svg>
   );
+}
+
+/**
+ * The words that tell a person they will sign a Mate in (`signInPhrase`), with each subscription
+ * they name wearing its agent's own logo, the size of the text around it — the arrival's own step,
+ * and the add dialogs' *What happens next*.
+ */
+export function SignInPhrase({ parts }: { readonly parts: ReadonlyArray<SignInPhrasePart> }) {
+  return parts.map((part, index) => {
+    const key = `${String(index)}:${part.text}`;
+    if (part.agentId === undefined) return <Fragment key={key}>{part.text}</Fragment>;
+    const Logo = part.agentId === "claude-code" ? ClaudeAI : OpenAI;
+    return (
+      <span className="whitespace-nowrap" data-agent-brand={part.agentId} key={key}>
+        <Logo aria-hidden="true" className="me-[0.25em] inline-block size-[1em] align-[-0.14em]" />
+        {part.text}
+      </span>
+    );
+  });
 }

@@ -23,6 +23,12 @@ import {
   formatBirthElapsed,
   type BirthLineStep,
 } from "../components/zerops/ZeropsBirthProgress.logic";
+import {
+  signInPhrase,
+  signInPhraseWords,
+  type SignInPhrasePart,
+} from "~/components/zerops/ZeropsAgentSignIn.logic";
+
 import { mateComingHeadlineClauses } from "./mateComing";
 import { mateQuestion, type ZeropsMateIdentity } from "./mateIdentities";
 
@@ -103,10 +109,10 @@ export const MATE_ARRIVAL_TYPICAL_MS = 160_000;
  * first connect at +160 s — and never a count down past it.
  */
 export function comingSentence(elapsedMs: number | undefined): string {
-  const then = "Then you sign it in.";
-  if (elapsedMs === undefined || elapsedMs < 60_000) return `About two minutes. ${then}`;
-  if (elapsedMs < 120_000) return `About a minute left. ${then}`;
-  return `Almost there. ${then}`;
+  // What comes after is the steps' last row, with what the person signs it in with.
+  if (elapsedMs === undefined || elapsedMs < 60_000) return "About two minutes.";
+  if (elapsedMs < 120_000) return "About a minute left.";
+  return "Almost there.";
 }
 
 /** The one sentence under the headline; empty where the headline says it all. */
@@ -185,6 +191,8 @@ interface BirthService {
 export interface ArrivalStep {
   readonly id: string;
   readonly label: string;
+  /** The label's words with the brands in them marked, where it names any (`signInPhrase`). */
+  readonly phrase?: ReadonlyArray<SignInPhrasePart>;
   /** `you`: the person's own step, next. */
   readonly state: "done" | "active" | "waiting" | "failed" | "you";
   /** How long it took, or has taken so far — measured, `m:ss`. */
@@ -313,7 +321,8 @@ export function arrivalSteps(
       ),
     });
   }
-  steps.push({ id: "you", label: `You sign ${mate.name} in`, state: "you", note: "next" });
+  const phrase = signInPhrase(mate.name);
+  steps.push({ id: "you", label: signInPhraseWords(phrase), phrase, state: "you" });
   return steps;
 }
 

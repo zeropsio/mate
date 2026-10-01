@@ -36,8 +36,14 @@ import { buttonsLabelled, press } from "./__fixtures__/testDom";
 import { invalidateZerops, onZeropsInvalidation } from "./accountInvalidations";
 import { closeAccountLifetime, openAccountLifetime } from "./accountLifetime";
 import { ZeropsDataProvider } from "./ZeropsDataProvider";
-import { inventoryProjectRefKey, useZeropsInventory, type Inventory } from "./inventoryContext";
+import {
+  inventoryProjectRefKey,
+  useAccountVoice,
+  useZeropsInventory,
+  type Inventory,
+} from "./inventoryContext";
 import { ZeropsInventoryProvider } from "./ZeropsInventoryProvider";
+import { AccountVoiceLine } from "../components/zerops/AccountVoiceLine";
 
 const session = vi.hoisted(() => ({ current: undefined as unknown }));
 vi.mock("./ZeropsSessionProvider", () => ({ useZeropsSession: () => session.current }));
@@ -333,8 +339,13 @@ const mountInventory = Effect.fn(function* (
   let grantsWhenChildMounted: number | null = null;
   /** The first mount opened the gate: the product's child is there. */
   const mounted = signal();
+  let retryNow: (() => void) | null = null;
   function Consumer() {
     const value = useZeropsInventory();
+    const voice = useAccountVoice();
+    useEffect(() => {
+      retryNow = voice?.actions.find(({ kind }) => kind === "try-now")?.run ?? null;
+    }, [voice]);
     useEffect(() => {
       grantsWhenChildMounted ??= grants.length;
       mounted.resolve();
@@ -365,6 +376,7 @@ const mountInventory = Effect.fn(function* (
       <ZeropsDataProvider makeRuntime={makeRuntime}>
         <ZeropsInventoryProvider>
           <Consumer />
+          <AccountVoiceLine />
         </ZeropsInventoryProvider>
       </ZeropsDataProvider>
     </RegistryContext>
@@ -397,6 +409,8 @@ const mountInventory = Effect.fn(function* (
     organization,
     projectRef,
     inventory: () => inventory,
+    /** The account line's "Try now" (`useAccountVoice`), while it says anything. */
+    retry: () => retryNow,
     unmount: () => Effect.promise(async () => act(async () => root.unmount())),
     /** The held first round's reads answer; resolves once a grant reached the runtime. */
     verifyFirstRound: () =>
@@ -843,37 +857,45 @@ it.live("Try again asks the grant to renew now and re-reads no inventory", () =>
   ),
 );
 
-it.live("Try again re-reads an organization whose data stalled and starts no round", () =>
-  Effect.scoped(
-    Effect.gen(function* () {
-      const harness = yield* mountInventory();
-      const heard: Array<Invalidation> = [];
-      const stop = onZeropsInvalidation((invalidation) => heard.push(invalidation));
-      yield* Effect.addFinalizer(() => Effect.sync(stop));
-      // The organization's receiver is replaced and its registration never answers: each
-      // recovery round waits out its establishment deadline, on a receiver of its own, until
-      // the organization's interests run out of attempts.
-      harness.holdRenewal();
-      invalidateZerops({ topic: "inventory", organization: harness.organization });
-      yield* harness.advance(250);
-      for (
-        let second = 0;
-        second < 600 && !harness.container.textContent.includes("could not be verified");
-        second++
-      )
-        yield* harness.advance(1_000);
-      expect(harness.container.textContent).toContain("Project access could not be verified.");
-      heard.length = 0;
-      const reread = harness.refreshed().length;
+it.live(
+  "an organization whose data stalled leaves the product usable, says so once it lasts, and Try now re-reads it and starts no round",
+  () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const harness = yield* mountInventory();
+        const heard: Array<Invalidation> = [];
+        const stop = onZeropsInvalidation((invalidation) => heard.push(invalidation));
+        yield* Effect.addFinalizer(() => Effect.sync(stop));
+        // The organization's receiver is replaced and its registration never answers: each
+        // recovery round waits out its establishment deadline, on a receiver of its own, until
+        // the organization's interests run out of attempts.
+        harness.holdRenewal();
+        invalidateZerops({ topic: "inventory", organization: harness.organization });
+        yield* harness.advance(250);
+        const loading: Array<boolean> = [];
+        for (let second = 0; second < 600 && harness.inventory()?.error == null; second++) {
+          yield* harness.advance(1_000);
+          // Nothing covers the product, freezes it or offers to sign out meanwhile.
+          if (harness.inventory()?.error == null) expect(harness.container.textContent).toBe("");
+          loading.push(harness.inventory()?.isLoading === true);
+        }
+        // The silence changes nothing the data says: through the hold before the line speaks,
+        // the stalled read is not known.
+        expect(loading.slice(-19, -1)).toEqual(Array.from({ length: 18 }, () => true));
+        expect(harness.inventory()?.error).toBe("Zerops isn't answering. Trying again…");
+        expect(harness.inventory()?.isLoading).toBe(true);
+        // Said once, at the menu's foot, with Try now and no Sign out.
+        expect(harness.container.textContent).toBe("Zerops isn't answering. Trying again…Try now");
+        heard.length = 0;
+        const reread = harness.refreshed().length;
 
-      const [retry] = buttonsLabelled(harness.container as never, "Try again");
-      yield* Effect.promise(async () => act(async () => press(retry!)));
-      yield* harness.advance(250);
-      expect(heard).toEqual([{ topic: "inventory", organization: harness.organization }]);
-      expect(harness.refreshed().slice(reread)).toEqual([harness.organization]);
-      expect(harness.client.fetchUser).toHaveBeenCalledTimes(1);
-    }),
-  ),
+        yield* Effect.promise(async () => act(async () => harness.retry()!()));
+        yield* harness.advance(250);
+        expect(heard).toEqual([{ topic: "inventory", organization: harness.organization }]);
+        expect(harness.refreshed().slice(reread)).toEqual([harness.organization]);
+        expect(harness.client.fetchUser).toHaveBeenCalledTimes(1);
+      }),
+    ),
 );
 
 it.live(

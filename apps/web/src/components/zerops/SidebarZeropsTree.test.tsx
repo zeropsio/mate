@@ -21,10 +21,10 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { create, type ReactTestInstance, type ReactTestRenderer } from "react-test-renderer";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
-import { scopeThreadRef } from "@t3tools/client-runtime/environment";
-import { EnvironmentId, ThreadId } from "@t3tools/contracts";
+import { scopeProjectRef, scopeThreadRef } from "@t3tools/client-runtime/environment";
+import { EnvironmentId, ProjectId, ThreadId } from "@t3tools/contracts";
 
-import { useComposerDraftStore } from "~/composerDraftStore";
+import { DraftId, useComposerDraftStore } from "~/composerDraftStore";
 import { getLocalStorageItem, setLocalStorageItem } from "~/hooks/useLocalStorage";
 import type { ZeropsAgentActivity } from "~/zerops/agentActivity";
 import { markMateDeleting, settleDeletingMates } from "~/zerops/deletingMates";
@@ -117,6 +117,14 @@ function candidate(
 
 /** D6's record of who signed a Mate's agent in: its person, somebody signed in. */
 const SIGNER = "mate:signer:claude-code:u-ada";
+
+/** A Mate signed in by `u-ada` — the viewer's own, where a test makes her the viewer. */
+function mine(item: ZeropsCandidate, signer = SIGNER): ZeropsCandidate {
+  return {
+    ...item,
+    project: { ...item.project, tagList: [...(item.project.tagList ?? []), signer] },
+  };
+}
 
 const CRM_DEV = candidate("crm-dev", [
   "mate",
@@ -284,7 +292,7 @@ describe("SidebarZeropsTree", () => {
     // In the face's box, after the face and before the words: "(face) Cleo"
     // on the name's line read as a person called Cleo (the owner, 2026-09-30).
     expect(ownerAt).toBeGreaterThan(row.indexOf("</svg>"));
-    expect(ownerAt).toBeLessThan(row.indexOf("flex min-w-0 flex-col"));
+    expect(ownerAt).toBeLessThan(row.indexOf('data-zerops-surface="sidebar-mate-name"'));
     expect(row).toContain("menu-face-cut");
     expect(row).toContain('data-zerops-avatar="picture"');
     expect(row).toContain('src="https://cdn/jan.png"');
@@ -371,16 +379,6 @@ describe("SidebarZeropsTree", () => {
     expect(snippetAt).toBeGreaterThan(subjectAt);
     expect(html).toContain("give it optimistic updates");
     expect(html).toContain("Deploying and verifying now.");
-    // Three inks on one leading, and only the name at full strength: what the
-    // Mate was asked in the words' second ink, what it said back muted, both
-    // 13/18 with no gap between the lines.
-    const subject = html.slice(html.lastIndexOf("<span", subjectAt), subjectAt);
-    const snippet = html.slice(html.lastIndexOf("<span", snippetAt), snippetAt);
-    expect(subject).toContain("menu-ink-2");
-    expect(subject).toContain("text-line leading-4.5");
-    expect(subject).not.toContain("mt-");
-    expect(snippet).toContain("text-muted-foreground");
-    expect(html).toContain('class="grid min-w-0 text-line leading-4.5"');
   });
 
   const READING: CandidatesNotice = {
@@ -1510,7 +1508,7 @@ describe("production and the stages are two chips on the project's heading (M2, 
       /data-zerops-surface="sidebar-project-release-mark"[^>]*>.*?<span class="sr-only">([^<]*)</u.exec(
         html,
       )?.[1],
-    ).toBe("1 change not released");
+    ).toBe("1 change not released · since v2.4.0");
   });
 
   it("keeps production neutral when the newest release did not go through: the old one serves", () => {
@@ -1842,7 +1840,8 @@ describe("a project collapsed to its heading", () => {
       { ...named("crm-a", "CRM - a", ["mate", "mate:g:aaa", "mate:role:dev", "mate:bot:Ada"]) },
       { ...named("crm-b", "CRM - b", ["mate", "mate:g:aaa", "mate:role:dev", "mate:bot:Bo"]) },
       { ...named("crm-c", "CRM - c", ["mate", "mate:g:aaa", "mate:role:dev", "mate:bot:Cy"]) },
-    ].map((item) => ({ ...item, group: "connected" }) as ZeropsCandidate);
+    ].map((item) => mine({ ...item, group: "connected" }) as ZeropsCandidate);
+    session.viewer = "u-ada";
     const busy = (id: string): ZeropsAgentActivity => ({
       threadId: `thread-${id}` as ZeropsAgentActivity["threadId"],
       kind: id === "crm-a" ? "working" : id === "crm-b" ? "input" : "idle",
@@ -1898,8 +1897,9 @@ describe("a project collapsed to its heading", () => {
         releaseOffered: false,
       }),
     };
+    session.viewer = "u-ada";
     stored.collapsed = new Set(["aaa"]);
-    const folded = render([CRM_DEV_CONNECTED], props);
+    const folded = render([mine(CRM_DEV_CONNECTED)], props);
     const shown =
       /data-zerops-surface="sidebar-project-faces">(.*?)<span class="sr-only">([^<]*)</u.exec(
         folded,
@@ -1908,11 +1908,11 @@ describe("a project collapsed to its heading", () => {
     expect(shown?.[1]).toContain('data-mate-face-state="needs"');
     expect(shown?.[1]).toContain('data-dot="attention"');
     stored.collapsed = new Set();
-    const open = render([CRM_DEV_CONNECTED], props);
+    const open = render([mine(CRM_DEV_CONNECTED)], props);
     expect(open).not.toContain("sidebar-project-faces");
     expect(open).toContain('data-mate-face-state="needs"');
     // Still being checked, it waits on Gitea, not on the person: at rest.
-    const checking = render([CRM_DEV_CONNECTED], {
+    const checking = render([mine(CRM_DEV_CONNECTED)], {
       ...props,
       getFlow: (): SidebarProjectFlow => ({
         pullRequests: [pull(2, { mergeability: "checking" })],
@@ -1921,6 +1921,42 @@ describe("a project collapsed to its heading", () => {
       }),
     });
     expect(checking).not.toContain('data-mate-face-state="needs"');
+  });
+
+  // Another's Mate waits on its owner, not the viewer (the owner, 2026-09-30: "sana doesn't wait
+  // for me, it waits for karlos"): no needs face, no amber, nothing on its folded heading — and
+  // its change keeps its Review, for anybody with write on the group to merge.
+  it("claims nothing of the viewer for another's Mate whose change waits, and keeps its Review", () => {
+    session.viewer = "u-ada";
+    const theirs = mine(CRM_DEV_CONNECTED, "mate:signer:claude-code:u-karlos");
+    const props = {
+      getActivity: (): ZeropsAgentActivity => ({
+        threadId: "thread-crm" as ZeropsAgentActivity["threadId"],
+        kind: "idle",
+        status: null,
+        face: "idle",
+        subject: "Something",
+        at: new Date().toISOString(),
+        snippet: undefined,
+        unread: false,
+        pausedUntil: undefined,
+        threadKey: "env-crm-dev:thread-crm",
+        task: undefined,
+      }),
+      getFlow: (): SidebarProjectFlow => ({
+        pullRequests: [pull(2)],
+        environments: new Map(),
+        releaseOffered: false,
+      }),
+    };
+    stored.collapsed = new Set(["aaa"]);
+    expect(render([theirs], props)).not.toContain("sidebar-project-faces");
+    stored.collapsed = new Set();
+    const open = render([theirs], props);
+    expect(open).not.toContain('data-mate-face-state="needs"');
+    expect(open).not.toContain('data-zerops-surface="sidebar-mate-dot"');
+    expect(open).toContain('data-zerops-surface="sidebar-pull-request"');
+    expect(open).toContain(">Review<");
   });
 
   // A folded heading's face is its row's (`mateRowView`): a Mate stopped on
@@ -1981,8 +2017,9 @@ describe("a project collapsed to its heading", () => {
         }),
       ),
     );
+    session.viewer = "u-ada";
     act(() => {
-      mounted.update(tree(CRM_DEV_CONNECTED, { ...read, kind: "input", face: "needs" }));
+      mounted.update(tree(mine(CRM_DEV_CONNECTED), { ...read, kind: "input", face: "needs" }));
     });
     const faces = mounted.root.find(
       (node) =>
@@ -2417,6 +2454,7 @@ describe("the sidebar and the projects page read one group the same way", () => 
           group.environments,
           () => undefined,
           () => false,
+          undefined,
         ),
         flow: groupReads,
         deployments: new Map(),
@@ -2578,6 +2616,13 @@ describe("arranging the projects by hand", () => {
 });
 
 describe("a Mate's row says more without words", () => {
+  const SIGNED_IN = {
+    ...CRM_DEV_CONNECTED,
+    project: {
+      ...CRM_DEV_CONNECTED.project,
+      tagList: [...(CRM_DEV_CONNECTED.project.tagList ?? []), SIGNER],
+    },
+  } as ZeropsCandidate;
   const live = (overrides: Partial<ZeropsAgentActivity> = {}): ZeropsAgentActivity => ({
     threadId: "thread-1" as ZeropsAgentActivity["threadId"],
     kind: "idle",
@@ -2603,7 +2648,9 @@ describe("a Mate's row says more without words", () => {
       ...overrides,
     });
   const slot = (html: string) =>
-    /<span[^>]*data-zerops-surface="sidebar-mate-time"[^>]*>(.*?)<\/span>/u.exec(html)?.[0] ?? "";
+    /<span[^>]*data-zerops-surface="sidebar-mate-time"[^>]*>(?:<span[^>]*><\/span>)?(.*?)<\/span>/u.exec(
+      html,
+    )?.[0] ?? "";
 
   // The working face turns and glances, and its step is the row's third
   // line: no ring around it repeats the step as a count in blue (S3).
@@ -2613,11 +2660,9 @@ describe("a Mate's row says more without words", () => {
 
   // A running clock is not something to click, so it is not blue (S3): it
   // counts up in ink where the age was.
-  it("counts up how long it has been working, in ink, where its age was", () => {
+  it("counts up how long it has been working, where its age was", () => {
     const time = slot(row(working()));
     expect(time).toContain("3:12");
-    expect(time).toContain("text-sidebar-foreground");
-    expect(time).not.toContain("text-status-busy-text");
     expect(slot(row(live()))).toContain(">2h<");
   });
 
@@ -2627,7 +2672,6 @@ describe("a Mate's row says more without words", () => {
   it("counts up work left running in the background, as it counts a run", () => {
     const time = slot(row(working({ kind: "monitoring" })));
     expect(time).toContain("3:12");
-    expect(time).toContain("text-sidebar-foreground");
   });
 
   it.each([
@@ -2763,7 +2807,9 @@ describe("a Mate's row says more without words", () => {
       third: 'data-zerops-reply-tone="failed"',
     },
   ])("draws $case", ({ activity, face, dot, third }) => {
-    const html = row(activity);
+    // The viewer's own Mate: what it waits on waits on them.
+    session.viewer = "u-ada";
+    const html = render([SIGNED_IN], { getActivity: () => activity });
     expect(html).toContain(`data-mate-face-state="${face}"`);
     if (dot === undefined) expect(html).not.toContain("sidebar-mate-dot");
     else
@@ -2850,51 +2896,92 @@ describe("a Mate's row says more without words", () => {
 
   describe("an unsent draft", () => {
     const ref = scopeThreadRef(EnvironmentId.make("env-crm-dev"), ThreadId.make("thread-1"));
+    const NEW_CHAT = DraftId.make("draft-crm-dev");
     afterEach(() => {
       useComposerDraftStore.getState().setPrompt(ref, "");
+      useComposerDraftStore.getState().clearDraftThread(NEW_CHAT);
     });
-
-    it("leads the last line with Draft:, in place of the last words", () => {
-      useComposerDraftStore.getState().setPrompt(ref, "also check the thumbnails");
-      // Mounted, not drawn once: a store read on the server answers with its
-      // first state, never the draft written since.
-      const mounted = mount(
+    const drawn = (activity: ZeropsAgentActivity | undefined, read = true) =>
+      mount(
         <SidebarZeropsTree
-          candidates={[CRM_DEV_CONNECTED]}
+          candidates={[SIGNED_IN]}
           complete
-          getActivity={() => live()}
+          getActivity={() => activity}
+          getConversationsRead={() => read}
           onBrowseProjects={() => {}}
           onSelect={() => {}}
         />,
       );
-      const snippet = text(surface(mounted, "sidebar-mate-snippet"));
-      expect(snippet).toBe("Draft: also check the thumbnails");
+    const said = (tree: ReactTestRenderer, name: string) =>
+      tree.root.findAll(
+        (node) => typeof node.type === "string" && node.props["data-zerops-surface"] === name,
+      );
+
+    // Mounted, not drawn once: a store read on the server answers with its
+    // first state, never the draft written since.
+    it.each([
+      { case: "answered", activity: () => live(), last: "sidebar-mate-snippet" },
+      {
+        case: "working",
+        activity: () => working({ snippet: undefined }),
+        last: "sidebar-mate-pending",
+      },
+      {
+        case: "waiting on a question",
+        activity: () => live({ face: "needs", question: "Which port?" }),
+        last: "sidebar-mate-snippet",
+      },
+    ])(
+      "stands in the person's line, the Mate's line under it kept: $case",
+      ({ activity, last }) => {
+        useComposerDraftStore.getState().setPrompt(ref, "also check the thumbnails");
+        const tree = drawn(activity());
+        expect(text(surface(tree, "sidebar-mate-draft"))).toBe("Draft: also check the thumbnails");
+        expect(said(tree, "sidebar-mate-subject")).toHaveLength(0);
+        expect(said(tree, last)).toHaveLength(1);
+      },
+    );
+
+    it("gives the line back to the ask once it is cleared", () => {
+      useComposerDraftStore.getState().setPrompt(ref, "also check the thumbnails");
+      const tree = drawn(live());
+      act(() => {
+        useComposerDraftStore.getState().setPrompt(ref, "  ");
+      });
+      expect(said(tree, "sidebar-mate-draft")).toHaveLength(0);
+      expect(text(surface(tree, "sidebar-mate-subject"))).toBe(
+        "Add a /status page with the build number",
+      );
     });
 
-    // Where the last line waits for the Mate's words, an unsent draft is the
-    // more pressing thing to say there: the face and the clock say it works.
-    it("stands in the line kept for words still to come", () => {
-      useComposerDraftStore.getState().setPrompt(ref, "also check the thumbnails");
-      const mounted = mount(
-        <SidebarZeropsTree
-          candidates={[CRM_DEV_CONNECTED]}
-          complete
-          getActivity={() => working({ snippet: undefined })}
-          onBrowseProjects={() => {}}
-          onSelect={() => {}}
-        />,
+    it("shows a new conversation's draft on a Mate nobody has asked anything", () => {
+      const store = useComposerDraftStore.getState();
+      store.setProjectDraftThreadId(
+        scopeProjectRef(EnvironmentId.make("env-crm-dev"), ProjectId.make("project-crm")),
+        NEW_CHAT,
+        { threadId: ThreadId.make("thread-new"), createdAt: new Date().toISOString() },
       );
-      expect(text(surface(mounted, "sidebar-mate-snippet"))).toBe(
-        "Draft: also check the thumbnails",
-      );
+      store.setPrompt(NEW_CHAT, "set up a staging");
+      const tree = drawn(undefined);
+      expect(text(surface(tree, "sidebar-mate-draft"))).toBe("Draft: set up a staging");
+      expect(said(tree, "sidebar-mate-nothing-asked")).toHaveLength(0);
     });
+  });
 
-    it("never grows a row that has no last words: the composer holds the draft", () => {
-      useComposerDraftStore.getState().setPrompt(ref, "also check the thumbnails");
-      const html = row(live({ snippet: undefined }));
-      expect(html).not.toContain("sidebar-mate-snippet");
-      expect(html).not.toContain("Draft:");
+  it.each([
+    { case: "its conversations read", read: true, says: ["Nothing asked yet"] },
+    { case: "its conversations not read yet", read: false, says: [] },
+  ])("says nothing was asked of a Mate nobody has spoken to: $case", ({ read, says }) => {
+    const html = render([SIGNED_IN], {
+      getActivity: () => undefined,
+      getConversationsRead: () => read,
     });
+    const found = [
+      ...html.matchAll(
+        /<span[^>]*data-zerops-surface="sidebar-mate-nothing-asked"[^>]*>([^<]*)<\/span>/gu,
+      ),
+    ].map((match) => match[1]);
+    expect(found).toEqual(says);
   });
 });
 
@@ -2940,6 +3027,107 @@ describe("a Mate's own menu, in its row", () => {
     );
     expect(row({ ...ACTIONS, stop: () => {} })).toContain('aria-label="Stop crm-dev"');
     expect(row(ACTIONS)).not.toContain("sidebar-mate-stop");
+  });
+
+  // Two presses stop a run from its row (the owner, 2026-10-01: "this has confirm, right?"):
+  // the ■ arms it — a red "Stop?" in its place, named for the confirm — and only that stops.
+  it("stops a run on the second press of its row's stop, never the first", () => {
+    const stop = vi.fn();
+    const tree = mount(
+      <SidebarZeropsTree
+        candidates={[CRM_DEV_CONNECTED]}
+        complete
+        getActivity={() => spoken}
+        getMateActions={() => ({ ...ACTIONS, stop })}
+        onBrowseProjects={() => {}}
+        onSelect={() => {}}
+      />,
+    );
+    press(tree, "sidebar-mate-stop");
+    expect(stop).not.toHaveBeenCalled();
+    const armed = surface(tree, "sidebar-mate-stop");
+    expect(armed.props["aria-label"]).toBe("Confirm stop crm-dev");
+    expect(text(armed)).toContain("Stop?");
+    press(tree, "sidebar-mate-stop");
+    expect(stop).toHaveBeenCalledTimes(1);
+    expect(surface(tree, "sidebar-mate-stop").props["aria-label"]).toBe("Stop crm-dev");
+  });
+
+  it("lets an armed stop go on Esc, and x on the row arms before it stops", () => {
+    const stop = vi.fn();
+    const tree = mount(
+      <SidebarZeropsTree
+        candidates={[CRM_DEV_CONNECTED]}
+        complete
+        getActivity={() => spoken}
+        getMateActions={() => ({ ...ACTIONS, stop })}
+        onBrowseProjects={() => {}}
+        onSelect={() => {}}
+      />,
+    );
+    const key = (value: string) =>
+      act(() => {
+        surface(tree, "sidebar-mate").props.onKeyDown({
+          key: value,
+          metaKey: false,
+          ctrlKey: false,
+          altKey: false,
+          shiftKey: false,
+          preventDefault: () => {},
+          currentTarget: {},
+        });
+      });
+    key("x");
+    expect(stop).not.toHaveBeenCalled();
+    expect(surface(tree, "sidebar-mate-stop").props["aria-label"]).toBe("Confirm stop crm-dev");
+    // Esc bubbles from the row's button to the row, which lets the stop go.
+    act(() => {
+      tree.root
+        .find(
+          (node) =>
+            typeof node.type === "string" && node.props["data-zerops-mate-row"] !== undefined,
+        )
+        .props.onKeyDown({ key: "Escape", preventDefault: () => {} });
+    });
+    expect(surface(tree, "sidebar-mate-stop").props["aria-label"]).toBe("Stop crm-dev");
+    key("x");
+    key("x");
+    expect(stop).toHaveBeenCalledTimes(1);
+  });
+
+  // A tap fires pointerleave before its click: the second tap on "Stop?" must still stop, and
+  // Esc lets an armed stop go wherever in the row the focus stands.
+  it("stops on a second tap, and lets go on Esc from the Stop? itself", () => {
+    const stop = vi.fn();
+    const tree = mount(
+      <SidebarZeropsTree
+        candidates={[CRM_DEV_CONNECTED]}
+        complete
+        getActivity={() => spoken}
+        getMateActions={() => ({ ...ACTIONS, stop })}
+        onBrowseProjects={() => {}}
+        onSelect={() => {}}
+      />,
+    );
+    const container = () =>
+      tree.root.find(
+        (node) => typeof node.type === "string" && node.props["data-zerops-mate-row"] !== undefined,
+      );
+    const tap = () => {
+      act(() => {
+        container().props.onPointerLeave({ pointerType: "touch" });
+      });
+      press(tree, "sidebar-mate-stop");
+    };
+    tap();
+    expect(surface(tree, "sidebar-mate-stop").props["aria-label"]).toBe("Confirm stop crm-dev");
+    act(() => {
+      container().props.onKeyDown({ key: "Escape", preventDefault: () => {} });
+    });
+    expect(surface(tree, "sidebar-mate-stop").props["aria-label"]).toBe("Stop crm-dev");
+    tap();
+    tap();
+    expect(stop).toHaveBeenCalledTimes(1);
   });
 
   it("carries no menu where nobody supplied its verbs", () => {
@@ -3196,7 +3384,7 @@ describe("a long list, kept scannable", () => {
     expect(html).not.toContain('data-zerops-group="aaa"');
   });
 
-  it("stops a working Mate with x and marks one read or unread with e, from its row", () => {
+  it("stops a working Mate with x pressed twice and marks one read or unread with e, from its row", () => {
     const stop = vi.fn();
     const toggleUnread = vi.fn();
     const tree = mount(
@@ -3220,6 +3408,8 @@ describe("a long list, kept scannable", () => {
         });
       });
     };
+    key("x");
+    expect(stop).not.toHaveBeenCalled();
     key("x");
     key("e");
     expect(stop).toHaveBeenCalledTimes(1);

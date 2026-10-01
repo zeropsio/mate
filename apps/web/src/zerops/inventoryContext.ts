@@ -188,3 +188,23 @@ export function useProjectDialog<T>(
   }
   return [dialog, setDialog];
 }
+
+/**
+ * What the account says at the menu's foot (`accountFootLine`) — its lapse, or its inventory's
+ * lasting trouble — with each action bound. Null while it has nothing to say, and outside the
+ * account's product.
+ */
+export interface AccountVoice {
+  readonly sentence: string;
+  readonly actions: ReadonlyArray<{
+    readonly kind: "try-now" | "sign-out";
+    readonly label: "Try now" | "Sign out";
+    readonly run: () => void;
+  }>;
+}
+
+export const AccountVoiceContext = createContext<AccountVoice | null>(null);
+
+export function useAccountVoice(): AccountVoice | null {
+  return useContext(AccountVoiceContext);
+}

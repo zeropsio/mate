@@ -1,7 +1,7 @@
 import type { ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
 import { describe, expect, it } from "vite-plus/test";
 
-import { settledStandupReading, standupExpected } from "./useStandupReading";
+import { settledStandupReading, standupExpected, standupReadingFor } from "./useStandupReading";
 
 const standup = (overrides: Partial<ZeropsOperation>): ZeropsOperation => ({
   key: "op:s",
@@ -42,11 +42,11 @@ describe("settledStandupReading — a settled call's services, as its report sai
       }),
     );
     expect(reading.rows).toEqual([
-      { hostname: "apidev", state: "built" },
+      { hostname: "apidev", state: "up" },
       { hostname: "webdev", state: "failed" },
       { hostname: "shopdev", state: "building" },
     ]);
-    expect({ built: reading.built, failed: reading.failed }).toEqual({ built: 1, failed: 1 });
+    expect({ up: reading.up, failed: reading.failed }).toEqual({ up: 1, failed: 1 });
   });
 
   it("reads a stage held back as waiting on what did not stand up, never as failed", () => {
@@ -85,5 +85,101 @@ describe("standupExpected — the services a running call builds, when the repor
     },
   ])("$name", ({ steps, expected }) => {
     expect(standupExpected(standup({ phase: "running", steps }))).toEqual(expected);
+  });
+});
+
+describe("standupReadingFor — a settled call never changes once it has settled", () => {
+  const SINCE = "2026-09-02T10:00:00.000Z";
+  const ENDED = "2026-09-02T10:06:00.000Z";
+  const before = "2026-09-02T09:50:00.000Z";
+  type Service = Parameters<typeof standupReadingFor>[1]["services"] & object;
+  const service = (
+    hostname: string,
+    group: "data" | "runtimes",
+    status: string,
+    runsCode: boolean,
+    createdAt = before,
+  ): Service[number] => ({
+    hostname,
+    serviceId: `s-${hostname}`,
+    group,
+    runsCode,
+    status,
+    createdAt,
+  });
+  // As the call found them: data and a mail catcher up, two pairs to deploy.
+  const atStart = [
+    service("db", "data", "ACTIVE", false),
+    service("mailer", "runtimes", "ACTIVE", true),
+    service("apidev", "runtimes", "READY_TO_DEPLOY", false),
+    service("apistage", "runtimes", "READY_TO_DEPLOY", false),
+    service("webdev", "runtimes", "READY_TO_DEPLOY", false),
+    service("webstage", "runtimes", "READY_TO_DEPLOY", false),
+  ];
+  // The day after: the db failed, apidev stopped, a service was added.
+  const today = [
+    service("db", "data", "ACTION_FAILED", false),
+    service("mailer", "runtimes", "ACTIVE", true),
+    service("apidev", "runtimes", "STOPPED", true),
+    service("apistage", "runtimes", "READY_TO_DEPLOY", false),
+    service("webdev", "runtimes", "ACTIVE", true),
+    service("webstage", "runtimes", "READY_TO_DEPLOY", false),
+    service("newdev", "runtimes", "READY_TO_DEPLOY", false, "2026-09-03T08:00:00.000Z"),
+  ];
+  const built = (serviceId: string) => ({
+    id: `p-${serviceId}`,
+    projectId: "proj",
+    serviceStackIds: [serviceId],
+    status: "FINISHED",
+    actionName: "stack.build",
+    created: "2026-09-02T10:01:00.000Z",
+    finished: "2026-09-02T10:05:00.000Z",
+  });
+  const read = (reading: ReturnType<typeof standupReadingFor>) =>
+    reading?.rows.map((row) => `${row.hostname} ${row.state}`);
+
+  it("a watched call keeps its services across its settling: all up, as the call left them", () => {
+    const watched = standupReadingFor(standup({ phase: "running", steps: [] }), {
+      services: atStart,
+      processes: [built("s-apidev"), built("s-webdev")],
+      nowMs: Date.parse(ENDED),
+    });
+    const settled = standupReadingFor(
+      standup({ settledAt: ENDED, steps: [step("apidev", "done"), step("webdev", "done")] }),
+      { services: today, nowMs: Date.parse("2026-09-03T10:00:00.000Z") },
+    );
+    expect(read(watched)).toEqual(["db up", "mailer up", "apidev up", "webdev up"]);
+    expect(read(settled)).toEqual(read(watched));
+  });
+
+  it("a failed call: its runtimes as it reported them, the rest not checked", () => {
+    const settled = standupReadingFor(
+      standup({
+        phase: "failed",
+        settledAt: ENDED,
+        steps: [step("apidev", "failed"), step("webdev", "done")],
+      }),
+      { services: today, nowMs: Date.parse("2026-09-03T10:00:00.000Z") },
+    );
+    expect(read(settled)).toEqual([
+      "db unchecked",
+      "mailer unchecked",
+      "apidev failed",
+      "webdev up",
+    ]);
+  });
+
+  it("without the project read, a settled call is its report alone", () => {
+    const settled = standupReadingFor(
+      standup({ settledAt: ENDED, steps: [step("apidev", "done")] }),
+      { nowMs: Date.parse(ENDED) },
+    );
+    expect(read(settled)).toEqual(["apidev up"]);
+  });
+
+  it("has nothing to read of a running call before the project is read", () => {
+    expect(
+      standupReadingFor(standup({ phase: "running", anchorAt: SINCE }), { nowMs: 0 }),
+    ).toBeNull();
   });
 });

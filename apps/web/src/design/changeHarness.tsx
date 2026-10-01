@@ -6,7 +6,8 @@
  * reads and no session, so there is no door to get through and nothing live to disturb.
  * `?review=<id>` shows one state alone, `?review=all` every one (the default); `?theme=dark` the
  * dark palette. The page's states are `page`, `page-settle` and `page-reading`; `settle` is the
- * dialog's reads landing late, to set its first frame against its settled one.
+ * dialog's reads landing late, to set its first frame against its settled one. `?release=open`
+ * opens the release's dialog, whose change rows step into each change's review and back.
  *
  * Fixtures only. Nothing here ships in the app bundle — `design-change.html` is not
  * `index.html`, and no route imports this module.
@@ -23,6 +24,7 @@ import { ZeropsDataContext, type ZeropsDataContextValue } from "~/zerops/zeropsD
 import { SidebarProvider } from "~/components/ui/sidebar";
 import {
   REVIEW_STATES,
+  ReleaseDialogTry,
   ReviewDialogTry,
   ReviewPageStage,
   ReviewStage,
@@ -31,6 +33,8 @@ import "../index.css";
 
 /** `?review=<id>` shows one review state alone; `?review=all` every one. */
 const REVIEW = new URLSearchParams(location.search).get("review") ?? "all";
+/** `?release=open`: the release's dialog open as the page loads, to step into its changes. */
+const RELEASE_OPEN = new URLSearchParams(location.search).get("release") === "open";
 
 function Harness() {
   const shown =
@@ -38,6 +42,7 @@ function Harness() {
   return (
     <div className="flex flex-col gap-8 bg-background p-6">
       <ReviewDialogTry />
+      <ReleaseDialogTry openAtStart={RELEASE_OPEN} />
       {shown.map((entry) =>
         entry.page === true ? (
           <ReviewPageStage key={entry.id} label={entry.label}>

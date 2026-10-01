@@ -12,6 +12,7 @@ import type { MateMarkState } from "@t3tools/shared/brand";
 
 import {
   browserCheckCaption,
+  devServerRunning,
   formatWorkDuration,
   operationLineWords,
   unrecoveredFailures,
@@ -311,6 +312,31 @@ export function formatClock(ms: number): string {
  */
 export type RunFold = "watched" | "folding" | "folded" | "shown";
 
+/**
+ * Where a run's work stands and what its line offers: over the line while it
+ * runs, and after, while the person reads it or it folds away; under the
+ * line once they open it again; nowhere, folded. A settled run carries its
+ * toggle in every fold — one the person watched to its end included, which
+ * they hide as they would any other (the owner, 2026-09-30: "why is this
+ * uncloseable? because I saw it finish live?").
+ */
+export function runCardShows(
+  settled: boolean,
+  fold: RunFold,
+): { readonly work: "above" | "below" | null; readonly toggle: "hide" | "show" | null } {
+  if (!settled) return { work: "above", toggle: null };
+  switch (fold) {
+    case "watched":
+      return { work: "above", toggle: "hide" };
+    case "folding":
+      return { work: "above", toggle: "show" };
+    case "folded":
+      return { work: null, toggle: "show" };
+    case "shown":
+      return { work: "below", toggle: "hide" };
+  }
+}
+
 /** The runs of each conversation the person watched or opened, by the conversation's key. */
 const runFolds = new Map<string, Map<string, Exclude<RunFold, "folded">>>();
 const runFoldListeners = new Set<() => void>();
@@ -367,8 +393,8 @@ function stepSignatures(step: WorkStep): ReadonlyArray<string> {
 /**
  * The failures a later step undid (K9): a command or a call that failed and
  * passed when the Mate ran it again — the same command, or the same words —
- * and a platform operation that failed and then went through on the same
- * service. Red always means still broken, so these turn quiet; the rest stay
+ * a platform operation that failed and then went through on the same
+ * service, and a dev server found down and then found running. Red always means still broken, so these turn quiet; the rest stay
  * red. One walk back from the run's end, whatever its length: a two-hour
  * run's card redraws on every word of a thought.
  */
@@ -392,6 +418,17 @@ export function recoveredFailures(items: ReadonlyArray<RecordItem>): ReadonlySet
   const standing = new Set(unrecoveredFailures(operations.map((item) => item.operation)));
   for (const item of operations) {
     if (item.operation.phase === "failed" && !standing.has(item.operation)) undone.add(item.key);
+  }
+  // A dev server found down, then found running on the same service: the
+  // finding stands no more.
+  const runningLater = new Set<string>();
+  for (let index = operations.length - 1; index >= 0; index -= 1) {
+    const { operation, key } = operations[index]!;
+    const found = devServerRunning(operation);
+    const host = operation.target?.hostname ?? operation.subject;
+    if (found === true) runningLater.add(host);
+    else if (found === false && operation.phase !== "failed" && runningLater.has(host))
+      undone.add(key);
   }
   // In the run's order.
   return new Set(items.flatMap((item) => (undone.has(item.key) ? [item.key] : [])));

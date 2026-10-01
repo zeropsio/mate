@@ -9,6 +9,7 @@ import {
   currentAttempt,
   openAgentOf,
   signInAgents,
+  signInPhrase,
   SIGN_IN_FAILED_LINE,
   usualAgentOf,
 } from "./ZeropsAgentSignIn.logic";
@@ -249,5 +250,24 @@ describe("abbreviatedCode", () => {
     ["  short-code  ", "short-code"],
   ])("%s reads %s", (code, shown) => {
     expect(abbreviatedCode(code)).toBe(shown);
+  });
+});
+
+// The owner, 2026-09-30: "'You sign … in' … should convey you sign in with your agent
+// subscription … show the logos for brand recognition". The words name every subscription the
+// sign-in offers, each brand marked with the agent whose logo it wears, in the sign-in's order.
+describe("signInPhrase", () => {
+  it.each([
+    { name: "Wren", words: "You sign Wren in with your Claude or ChatGPT subscription" },
+    { name: "the Mate", words: "You sign the Mate in with your Claude or ChatGPT subscription" },
+  ])("$words", ({ name, words }) => {
+    const parts = signInPhrase(name);
+    expect(parts.map((part) => part.text).join("")).toBe(words);
+    expect(
+      parts.flatMap((part) => (part.agentId === undefined ? [] : [[part.agentId, part.text]])),
+    ).toEqual([
+      ["claude-code", "Claude"],
+      ["codex", "ChatGPT"],
+    ]);
   });
 });

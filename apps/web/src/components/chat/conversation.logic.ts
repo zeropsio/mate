@@ -28,6 +28,7 @@ import {
   isSlashCommand,
   isUsageLimitResumePrompt,
 } from "@t3tools/shared/userAsk";
+import { versionText } from "../zerops/operation/version";
 
 export type MessageEntry = Extract<TimelineEntry, { kind: "message" }>;
 export type WorkEntry = Extract<TimelineEntry, { kind: "work" }>;
@@ -1163,8 +1164,22 @@ export function operationLineWords(operation: ZeropsOperation): string {
   if (operation.kind === "error" || operation.phase === "running") return voice;
   const failed = operation.phase === "failed";
   switch (operation.kind) {
-    case "verify":
+    case "verify": {
+      // A check of every service (zcp's `all services`) says how many.
+      if (subject === "all services") {
+        // Only a check that passed is healthy.
+        const total = operation.steps.length;
+        const healthy = operation.steps.filter((step) => step.state === "done").length;
+        const unhealthy = operation.steps.filter((step) => step.state === "failed").length;
+        if (total === 0) return failed ? "Checks failed" : "All services healthy";
+        const services = total === 1 ? "service" : "services";
+        if (unhealthy > 0) return `${unhealthy} of ${total} ${services} unhealthy`;
+        return healthy === total && !failed
+          ? `${total} ${services} healthy`
+          : `${healthy} of ${total} ${services} healthy`;
+      }
       return failed ? `${subject}: ${statusWord.toLowerCase()}` : `${subject} is healthy`;
+    }
     case "deploy":
       return failed && !isGitPushOnly(operation)
         ? `Deploy to ${subject} failed`
@@ -1448,6 +1463,15 @@ export function browserCheckShape(check: ZeropsOperation): number {
   return TAKE_ASPECT[browserCheckDevice(check)];
 }
 
+/**
+ * A page as one device saw it — "host/path on iPhone 16", "host/path on a
+ * desktop": what a picture is of, so a later look on another device takes
+ * none of this one's.
+ */
+export function pageView(page: string, device: string | null): string {
+  return `${page} on ${device ?? "a desktop"}`;
+}
+
 /** Which page a check looked at, for counting pages: its host and its path. */
 export function browserCheckPage(operation: ZeropsOperation): string {
   const url = browserCheckUrl(operation);
@@ -1569,7 +1593,8 @@ export interface IncidentModel {
   readonly appearedAt: string;
 }
 
-function devServerRunning(operation: ZeropsOperation): boolean | null {
+/** What a dev-server call found: running, not running, or nothing (still running, another kind). */
+export function devServerRunning(operation: ZeropsOperation): boolean | null {
   if (operation.kind !== "devServer" || operation.phase === "running") return null;
   if (operation.phase === "failed") return false;
   if (operation.statusWord === "Not running") return false;
@@ -1589,6 +1614,100 @@ function devServerFailurePhrase(operation: ZeropsOperation): string {
   if (note && note.length > 0)
     return `not running · ${note.charAt(0).toLowerCase()}${note.slice(1)}`;
   return "not running";
+}
+
+/** The kinds that act on a service: after one of them, what was found of it before is old. */
+const ACTING_KINDS: ReadonlySet<ZeropsOperation["kind"]> = new Set([
+  "deploy",
+  "devServer",
+  "import",
+  "manage",
+  "scale",
+  "standup",
+]);
+
+/**
+ * The services an operation acts on: its target, or each a stand-up, an
+ * import or a batch deploy names — a batch stays one call in the run's
+ * entries, and every service it deploys is acted on.
+ */
+function actedOn(operation: ZeropsOperation): ReadonlyArray<string> {
+  if (!ACTING_KINDS.has(operation.kind)) return [];
+  if (
+    operation.kind === "standup" ||
+    operation.kind === "import" ||
+    (operation.kind === "deploy" && operation.batch === true)
+  ) {
+    return operation.steps.map((step) => step.label);
+  }
+  return [operationTargetKey(operation)];
+}
+
+/**
+ * What the dock under a live run's now line says of a service (K10) — one
+ * rule for when it stands:
+ *
+ * - it appears when the latest thing done to a service is a dev-server call
+ *   that found it not running (amber), or a start, a restart that failed
+ *   (red);
+ * - its source is that call's own finding, and nothing older: any later
+ *   operation acting on the service — a deploy, a dev-server call, a
+ *   stand-up, a restart — takes it down while it runs (the Mate is on it),
+ *   and after it settles the dock says only what a dev-server call found
+ *   since; a deploy's end leaves nothing to say until the Mate looks again;
+ * - it clears once a later call finds the dev server running;
+ * - the platform working on the service this moment stands it down too
+ *   (`incidentsStanding`);
+ * - it waits until the Mate moves on: while the finding is the record's
+ *   latest line, it stands right above the now line already, and the dock
+ *   would say it twice;
+ * - it says the finding in words: "not running", "stopped answering (502)",
+ *   "start failed".
+ *
+ * The run's record keeps the history (`stretchIncidents`); the dock keeps
+ * only what is true now.
+ */
+export function standingIncidents(stretch: Stretch): IncidentModel[] {
+  const latest = new Map<string, ZeropsOperation>();
+  for (const operation of stretchOperations(stretch)) {
+    for (const host of actedOn(operation)) latest.set(host, operation);
+  }
+  const lineOf = (operation: ZeropsOperation) =>
+    stretch.entries.findIndex(
+      (entry) => entry.kind === "operation" && entry.operation.key === operation.key,
+    );
+  const movedOnFrom = (operation: ZeropsOperation) =>
+    stretch.entries
+      .slice(lineOf(operation) + 1)
+      .some((entry) => !(entry.kind === "message" && entry.message.role === "reasoning"));
+  return [...latest.entries()].flatMap(([hostname, operation]): IncidentModel[] => {
+    if (operation.kind !== "devServer" || devServerRunning(operation) !== false) return [];
+    if (!movedOnFrom(operation)) return [];
+    const failed = operation.phase === "failed";
+    return [
+      {
+        key: `incident:${operation.key}`,
+        hostname,
+        phases: [
+          failed
+            ? `${devServerAction(operation) || "start"} failed`
+            : devServerFailurePhrase(operation),
+        ],
+        tone: failed ? "failed" : "attention",
+        appearedAt: operation.settledAt ?? operation.anchorAt,
+      },
+    ];
+  });
+}
+
+/** The incidents that stand while the platform is not working on their service (`transient`). */
+export function incidentsStanding(
+  incidents: ReadonlyArray<IncidentModel>,
+  transient: ReadonlySet<string>,
+): ReadonlyArray<IncidentModel> {
+  return incidents.some((incident) => transient.has(incident.hostname))
+    ? incidents.filter((incident) => !transient.has(incident.hostname))
+    : incidents;
 }
 
 /**
@@ -1696,6 +1815,8 @@ export interface OutcomeLater {
   readonly tasks: ReadonlyArray<number>;
   /** Pages a later run checked, by host and path. */
   readonly pages: ReadonlyArray<string>;
+  /** The same pages by the device each was seen on (`pageView`): what takes a picture over. */
+  readonly views: ReadonlyArray<string>;
   /** Pictures a later run looked at, by path: the file shows what that run saw now. */
   readonly files: ReadonlyArray<string>;
   readonly answered: boolean;
@@ -1777,9 +1898,7 @@ export interface OutcomeModel {
 }
 
 function shortVersion(operation: ZeropsOperation): string | null {
-  const name = operation.version?.name;
-  if (!name) return null;
-  return /^[0-9a-f]{12,40}$/i.test(name) ? name.slice(0, 7) : name;
+  return versionText(operation.version?.name) ?? null;
 }
 
 function failureWords(operation: ZeropsOperation): string {
@@ -1863,6 +1982,7 @@ const NOTHING_LATER: OutcomeLater = {
   changes: [],
   tasks: [],
   pages: [],
+  views: [],
   files: [],
   answered: false,
 };
@@ -1902,6 +2022,7 @@ interface TurnClaims {
   readonly services: ReadonlyArray<string>;
   readonly changes: ReadonlyArray<string>;
   readonly pages: ReadonlyArray<string>;
+  readonly views: ReadonlyArray<string>;
   readonly files: ReadonlyArray<string>;
   readonly task: number | null;
   /** The person wrote it: not a command, not the server resuming after a limit. */
@@ -1916,13 +2037,17 @@ function turnClaims(turn: ConversationTurn): TurnClaims {
   const services: string[] = [];
   const changes: string[] = [];
   const pages: string[] = [];
+  const views: string[] = [];
   for (const operation of turn.stretches.flatMap(stretchOperations).flatMap(splitBatchDeploy)) {
     if (operation.phase === "running") continue;
     services.push(...takenServices(operation));
     if (operation.pullRequest !== undefined) {
       changes.push(`${operation.pullRequest.repository}#${operation.pullRequest.number}`);
     }
-    if (operation.kind === "browser") pages.push(browserCheckPage(operation));
+    if (operation.kind === "browser") {
+      pages.push(browserCheckPage(operation));
+      views.push(pageView(browserCheckPage(operation), operation.deviceName ?? null));
+    }
   }
   const files = turn.stretches
     .flatMap((stretch) => stretch.entries)
@@ -1936,6 +2061,7 @@ function turnClaims(turn: ConversationTurn): TurnClaims {
     services,
     changes,
     pages,
+    views,
     files,
     task: crewTaskOf(turn)?.number ?? null,
     answers: opener !== null && !isResumePrompt(opener.message.text) && !isCommandMessage(opener),
@@ -1951,6 +2077,7 @@ function laterClaims(turns: ReadonlyArray<ConversationTurn>): OutcomeLater {
   const changes = new Set<string>();
   const tasks = new Set<number>();
   const pages = new Set<string>();
+  const views = new Set<string>();
   const files = new Set<string>();
   let answered = false;
   for (const turn of turns) {
@@ -1958,6 +2085,7 @@ function laterClaims(turns: ReadonlyArray<ConversationTurn>): OutcomeLater {
     for (const host of claims.services) services.add(host);
     for (const change of claims.changes) changes.add(change);
     for (const page of claims.pages) pages.add(page);
+    for (const view of claims.views) views.add(view);
     for (const file of claims.files) files.add(file);
     if (claims.task !== null) tasks.add(claims.task);
     answered ||= claims.answers;
@@ -1967,6 +2095,7 @@ function laterClaims(turns: ReadonlyArray<ConversationTurn>): OutcomeLater {
     changes: [...changes],
     tasks: [...tasks],
     pages: [...pages],
+    views: [...views],
     files: [...files],
     answered,
   };
@@ -1990,7 +2119,7 @@ function fileName(path: string): string {
 /**
  * The pictures a turn took and looked at, in the order they were taken — a
  * check's when it came back, a look's when the Mate saw it: each page's last
- * take with a picture, and each file the Mate looked at. A picture taken
+ * take with a picture on each device, and each file the Mate looked at. A picture taken
  * again — the same file, the same pixels — stands once, where it was taken
  * last.
  */
@@ -2003,9 +2132,12 @@ function turnPictures(
     readonly at: number;
     readonly picture: OutcomePicture;
   }> = [];
+  // Each page's last take on each device: a page seen on a desktop and on a
+  // phone is two pictures.
   const lastByPage = new Map<string, ZeropsOperation>();
   for (const check of checks) {
-    if (check.screenshot !== undefined) lastByPage.set(browserCheckPage(check), check);
+    if (check.screenshot === undefined) continue;
+    lastByPage.set(pageView(browserCheckPage(check), check.deviceName ?? null), check);
   }
   for (const check of lastByPage.values()) {
     const src = check.screenshot!.src;

@@ -36,8 +36,21 @@ import { useOperationCard } from "../../zerops/activity/useOperationCard";
 import { useStandupReading } from "../../zerops/activity/useStandupReading";
 import { Button } from "../ui/button";
 import { MateFace } from "../zerops/primitives";
-import { formatWorkDuration, isGitPushOnly, type IncidentModel } from "./conversation.logic";
+import {
+  formatWorkDuration,
+  incidentsStanding,
+  isGitPushOnly,
+  type IncidentModel,
+} from "./conversation.logic";
+import { useZeropsTopology } from "../../zerops/useZeropsFeeds";
+import {
+  importLines,
+  lineSegments,
+  operationSubject,
+  settledOperationWords,
+} from "./operationBar.logic";
 import { StatusBar, type BarTone } from "./StatusBar";
+import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import type { DockBackgroundTask, DockModel } from "./conversationDock.logic";
 import { ElapsedSince, type ConversationSpeaker } from "./ConversationRows";
 import { DetailRow, spanOf } from "./DetailRow";
@@ -127,10 +140,20 @@ function Instrument({
   const body = (
     <>
       <span aria-hidden="true" />
-      <span className="flex min-w-0 items-center gap-3">
-        <span className="w-24 shrink-0 truncate text-start font-medium text-foreground">
-          {subject}
-        </span>
+      {/* Narrow, the name takes its own line over the bar and the words, so
+          the words stay readable; either way a name past its room gives way,
+          whole on hover, and nothing runs over the figure. */}
+      <span className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-0.5 @md/panel:flex-nowrap">
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <span className="min-w-0 basis-full truncate text-start font-medium text-foreground @md/panel:min-w-24 @md/panel:max-w-1/2 @md/panel:shrink-0 @md/panel:basis-auto" />
+            }
+          >
+            {subject}
+          </TooltipTrigger>
+          <TooltipPopup side="top">{subject}</TooltipPopup>
+        </Tooltip>
         <StatusBar className="w-14 shrink-0 @md/panel:w-28" segments={bar} />
         <span
           className={cn(
@@ -249,7 +272,14 @@ function DeployInstrument({
   readonly open: boolean;
   readonly onToggle: () => void;
 }) {
-  const { words, bar, running, failed } = useDeployReading(operation, environmentId);
+  const reading = useDeployReading(operation, environmentId);
+  const { running } = reading;
+  // An import is its services: a segment each, and settled, how many failed.
+  const lines = operation.kind === "import" ? importLines(operation) : null;
+  const bar = lines === null ? reading.bar : lineSegments(lines);
+  const words = (lines === null ? null : settledOperationWords(operation, lines)) ?? reading.words;
+  const failed = lines === null ? reading.failed : lines.some((line) => line.state === "failed");
+  const subject = operationSubject(operation);
   const settledMs =
     operation.settledAt === undefined
       ? null
@@ -265,10 +295,10 @@ function DeployInstrument({
           formatWorkDuration(settledMs)
         ) : null
       }
-      label={`${operation.subject}: ${words}. ${open ? "Hide" : "Show"} the pipeline`}
+      label={`${subject}: ${words}. ${open ? "Hide" : "Show"} ${lines === null ? "the pipeline" : "each service"}`}
       onToggle={onToggle}
       open={open}
-      subject={operation.subject}
+      subject={subject}
       words={words}
     />
   );
@@ -277,7 +307,7 @@ function DeployInstrument({
 /** A step's key: its words, and how many times the same words came before it. */
 /**
  * A stand-up call's status bar: the half it stands up, a segment per service
- * it builds, the build that runs — or how many do — and how many are built.
+ * of its environment, the build that runs — or how many do — and how many are up.
  * No clock: the run's is the now line's (K3).
  */
 function StandupInstrument({
@@ -293,13 +323,13 @@ function StandupInstrument({
 }) {
   const reading = useStandupReading(operation, environmentId);
   const { words, figure, segments, failed } = standupBar(reading);
-  const subject = operation.subject === "stage" ? "Stage" : "Development";
+  const subject = operationSubject(operation);
   return (
     <Instrument
       bar={segments}
       failed={failed && reading !== null && reading.building === 0}
       figure={figure}
-      label={`${subject}: ${words}${figure === null ? "" : `, ${figure} built`}. ${open ? "Hide" : "Show"} each service`}
+      label={`${subject}: ${words}${figure === null ? "" : `, ${figure}`}. ${open ? "Hide" : "Show"} each service`}
       onToggle={onToggle}
       open={open}
       subject={subject}
@@ -474,11 +504,21 @@ function Instruments({
   const hold = useHoldReading();
   const [open, setOpen] = useState<ReadonlySet<string>>(() => new Set());
   useLayoutEffect(() => onDrawn?.());
+  // A service the platform works on this moment says nothing stale of itself.
+  const topology = useZeropsTopology(incidents.length === 0 ? null : environmentId);
+  const standing = incidentsStanding(
+    incidents,
+    new Set(
+      (topology?.services ?? [])
+        .filter((service) => service.transient)
+        .map((service) => service.hostname),
+    ),
+  );
   const operations = dock?.operations ?? [];
   const helpers = dock?.helpers ?? null;
   const tasks = dock?.tasks ?? null;
   const background = dock?.background ?? null;
-  if (!dockDraws(dock) && incidents.length === 0) return null;
+  if (!dockDraws(dock) && standing.length === 0) return null;
   const runningTask = background?.tasks.findLast((task) => task.state === "running");
   const toggle = (key: string) => {
     // What the person opened is theirs to read: the conversation stops
@@ -531,7 +571,7 @@ function Instruments({
           ) : null}
         </Arriving>
       ))}
-      {incidents.map((incident) => (
+      {standing.map((incident) => (
         <Arriving key={incident.key}>
           <Instrument
             bar={[{ key: "whole", tone: INCIDENT_BAR[incident.tone] }]}

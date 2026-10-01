@@ -155,6 +155,11 @@ export interface HeadingLine {
   readonly tone: "ink" | "ok" | "amber";
   /** A release on its way: the stepped spinner before the fact. */
   readonly spinner: boolean;
+  /**
+   * The line is the release's — waiting, on its way, live, or not gone out: it leads with the
+   * tag its folded heading's mark wears (`headingMark`), so the eye ties the two.
+   */
+  readonly release: boolean;
   /** The door at the line's end, in the column of the Review below it. */
   readonly verb: HeadingLineVerb | undefined;
 }
@@ -197,6 +202,7 @@ export function headingLine(
       rest: failureReason(production?.failure),
       tone: "amber",
       spinner: false,
+      release: true,
       verb: { kind: "review" },
     };
   }
@@ -206,6 +212,7 @@ export function headingLine(
       rest: production.coming.reason,
       tone: "amber",
       spinner: false,
+      release: false,
       verb: { kind: "details", projectId: production.projectId },
     };
   }
@@ -216,6 +223,7 @@ export function headingLine(
       rest: stage.coming.reason,
       tone: "amber",
       spinner: false,
+      release: false,
       verb: { kind: "details", projectId: stage.projectId },
     };
   }
@@ -225,6 +233,7 @@ export function headingLine(
       rest: STEP_WORDS[production.coming.step],
       tone: "ink",
       spinner: false,
+      release: false,
       verb: undefined,
     };
   }
@@ -235,6 +244,7 @@ export function headingLine(
       rest: STEP_WORDS[stage.coming.step],
       tone: "ink",
       spinner: false,
+      release: false,
       verb: undefined,
     };
   }
@@ -244,6 +254,7 @@ export function headingLine(
       rest: "just now",
       tone: "ok",
       spinner: false,
+      release: landing.kind === "live",
       verb: undefined,
     };
   }
@@ -253,6 +264,7 @@ export function headingLine(
       rest: undefined,
       tone: "ink",
       spinner: true,
+      release: true,
       verb: chip.next === undefined ? undefined : { kind: "review" },
     };
   }
@@ -270,6 +282,7 @@ export function headingLine(
             : `since ${served}`,
     tone: "ink",
     spinner: false,
+    release: true,
     verb: { kind: "review" },
   };
 }

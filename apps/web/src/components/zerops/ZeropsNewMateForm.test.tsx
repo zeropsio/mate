@@ -175,7 +175,7 @@ describe("the New Mate dialog", () => {
     expect(next(tree)).toEqual({
       steps: [
         ["Otto comes up", "about 1½–2 min"],
-        ["You sign Otto in", ""],
+        ["You sign Otto in with your Claude or ChatGPT subscription", ""],
         ["Otto sets up development, deploying Acme Docs' code", "about 6–10 min"],
       ],
       note: "You can leave meanwhile.",
@@ -354,7 +354,7 @@ describe("the New Mate dialog", () => {
     expect(next(tree)).toEqual({
       steps: [
         ["Otto comes up", "about 1½–2 min"],
-        ["You sign Otto in", ""],
+        ["You sign Otto in with your Claude or ChatGPT subscription", ""],
         ["You tell Otto what to build", ""],
       ],
       note: "You can leave while Otto comes up.",

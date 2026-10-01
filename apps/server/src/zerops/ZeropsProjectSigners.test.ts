@@ -1,7 +1,9 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, describe, it } from "@effect/vitest";
+import * as DateTime from "effect/DateTime";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
+import * as Fiber from "effect/Fiber";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Path from "effect/Path";
@@ -21,6 +23,7 @@ import {
   planAgentSignOut,
   readActiveMemberIds,
   readProjectSigners,
+  SIGNER_RECORD_WAIT,
   SIGNERS_CACHE_TTL,
   signerTag,
   turnRefusal,
@@ -686,6 +689,165 @@ describe("the turn gate", () => {
 
       assert.deepStrictEqual(yield* onWork(JAN), { kind: "someone-else" });
       assert.isUndefined(yield* onWork(EVA));
+    }).pipe(Effect.scoped),
+  );
+
+  // A new Mate's first turn (its stand-up) leaves the moment its person's sign-in succeeds, and
+  // the app writes that person's record as them in the same moment: the turn waits for the
+  // record on its way instead of being refused ahead of it (a live run, 2026-09-30: refused a
+  // second after the sign-in, the record read ~40 s later).
+  const justSignedIn = (startedBy: string) =>
+    Effect.gen(function* () {
+      const now = yield* DateTime.now;
+      return {
+        agent: { ...signedIn, state: "local-only", providerAuth: "unknown" },
+        login: { phase: "succeeded", terminalId: "t", startedAt: now, startedBy },
+      } as const;
+    });
+
+  it.effect("a turn on its own person's sign-in just made waits for the record on its way", () =>
+    Effect.gen(function* () {
+      const { signers, setTags } = yield* gate([]);
+      const { agent, login } = yield* justSignedIn(JAN);
+      const fiber = yield* signers
+        .turnRefusal({ agentId: "claude-code", agent, subject: JAN, login })
+        .pipe(Effect.forkChild);
+      yield* TestClock.adjust(Duration.seconds(2));
+      setTags([signerTag("claude-code", JAN)]);
+      yield* TestClock.adjust(Duration.seconds(2));
+
+      assert.isUndefined(yield* Fiber.join(fiber));
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect("a record that never lands refuses once the wait is over", () =>
+    Effect.gen(function* () {
+      const { signers } = yield* gate([]);
+      const { agent, login } = yield* justSignedIn(JAN);
+      const fiber = yield* signers
+        .turnRefusal({ agentId: "claude-code", agent, subject: JAN, login })
+        .pipe(Effect.forkChild);
+      yield* TestClock.adjust(SIGNER_RECORD_WAIT);
+      yield* TestClock.adjust(Duration.seconds(1));
+
+      assert.deepStrictEqual(yield* Fiber.join(fiber), { kind: "unrecorded" });
+    }).pipe(Effect.scoped),
+  );
+
+  // A sign-in over somebody else's record, or over a record naming two people, ends in this
+  // person's record too: their turn waits for it as for a first one.
+  for (const [name, before] of [
+    ["over another person's record", [signerTag("claude-code", EVA)]],
+    [
+      "over a record naming two people",
+      [signerTag("claude-code", EVA), signerTag("claude-code", JAN)],
+    ],
+  ] as const) {
+    it.effect(`a sign-in just made ${name} waits for its own record`, () =>
+      Effect.gen(function* () {
+        const { signers, setTags } = yield* gate(before);
+        const { agent, login } = yield* justSignedIn(JAN);
+        const fiber = yield* signers
+          .turnRefusal({ agentId: "claude-code", agent, subject: JAN, login })
+          .pipe(Effect.forkChild);
+        yield* TestClock.adjust(Duration.seconds(2));
+        setTags([signerTag("claude-code", JAN)]);
+        yield* TestClock.adjust(Duration.seconds(2));
+
+        assert.isUndefined(yield* Fiber.join(fiber));
+      }).pipe(Effect.scoped),
+    );
+  }
+
+  // Until the new record lands, the old one names the person before: the credential is already
+  // the new person's, so the one before runs nothing on it.
+  it.effect("the signer before runs nothing on a credential somebody just signed in", () =>
+    Effect.gen(function* () {
+      const { signers } = yield* gate([signerTag("claude-code", EVA)]);
+      const { agent, login } = yield* justSignedIn(JAN);
+
+      assert.deepStrictEqual(
+        yield* signers.turnRefusal({ agentId: "claude-code", agent, subject: EVA, login }),
+        { kind: "someone-else" },
+      );
+      assert.isUndefined(
+        yield* signers.turnRefusal({
+          agentId: "claude-code",
+          agent: { ...agent, state: "authorized-token", flagToken: true },
+          subject: EVA,
+          login,
+        }),
+        "a project token is nobody's login",
+      );
+    }).pipe(Effect.scoped),
+  );
+
+  // A login beyond the defaults (crew mode's *Runs on*) is its own: the same wait for its own
+  // record, and the signer before runs nothing on it once somebody else signed it in.
+  it.effect(
+    "another login signed in over a colleague's record: theirs waits, the colleague's is refused",
+    () =>
+      Effect.gen(function* () {
+        const { signers, setTags } = yield* gate([signerTag("claudeAgent-work", EVA)]);
+        const { login } = yield* justSignedIn(JAN);
+        const onWork = (subject: string) =>
+          signers.loginRefusal({
+            key: "claudeAgent-work",
+            state: "registering",
+            token: false,
+            subject,
+            login,
+          });
+
+        assert.deepStrictEqual(yield* onWork(EVA), { kind: "someone-else" });
+        const fiber = yield* onWork(JAN).pipe(Effect.forkChild);
+        yield* TestClock.adjust(Duration.seconds(2));
+        setTags([signerTag("claudeAgent-work", JAN)]);
+        yield* TestClock.adjust(Duration.seconds(2));
+        assert.isUndefined(yield* Fiber.join(fiber));
+      }).pipe(Effect.scoped),
+  );
+
+  // Eva signs in; Jan starts and cancels a sign-in before her record lands. The credential is
+  // still Eva's: the record from before (Jan's) runs nothing on it, and Eva waits for hers.
+  it.effect("an attempt cancelled after a sign-in leaves that sign-in standing", () =>
+    Effect.gen(function* () {
+      const { signers, setTags } = yield* gate([signerTag("claude-code", JAN)]);
+      const { agent, login: evas } = yield* justSignedIn(EVA);
+      const now = yield* DateTime.now;
+      const login = {
+        phase: "cancelled",
+        terminalId: "t",
+        startedAt: now,
+        startedBy: JAN,
+        lastSucceeded: { startedAt: evas.startedAt, startedBy: EVA },
+      } as const;
+      const on = (subject: string) =>
+        signers.turnRefusal({ agentId: "claude-code", agent, subject, login });
+
+      assert.deepStrictEqual(yield* on(JAN), { kind: "someone-else" });
+      const fiber = yield* on(EVA).pipe(Effect.forkChild);
+      yield* TestClock.adjust(Duration.seconds(2));
+      setTags([signerTag("claude-code", EVA)]);
+      yield* TestClock.adjust(Duration.seconds(2));
+      assert.isUndefined(yield* Fiber.join(fiber));
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect("somebody else's sign-in is nothing this turn waits for", () =>
+    Effect.gen(function* () {
+      const { signers, reads } = yield* gate([]);
+      const { agent, login } = yield* justSignedIn(EVA);
+      const before = reads();
+
+      const refusal = yield* signers.turnRefusal({
+        agentId: "claude-code",
+        agent,
+        subject: JAN,
+        login,
+      });
+      assert.deepStrictEqual(refusal, { kind: "unrecorded" });
+      assert.strictEqual(reads() - before, 1, "one re-read, no wait");
     }).pipe(Effect.scoped),
   );
 

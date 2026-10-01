@@ -211,7 +211,7 @@ import {
   agentOwnershipComposerNotice,
   resolveAgentOwnership,
 } from "@t3tools/client-runtime/zerops/agentOwnership";
-import { resolveSpentLogin, spentLoginRegistering } from "@t3tools/client-runtime/zerops/logins";
+import { resolveSpentLogin, spentLoginStatusStale } from "@t3tools/client-runtime/zerops/logins";
 import { useProjectTopology } from "../zerops/useProjectTopology";
 import {
   deriveAgentPanelModel,
@@ -448,6 +448,9 @@ import {
   resolveDraftHeroState,
   resolveZeropsConversationReadOnly,
   conversationContentPending,
+  localThreadErrorStanding,
+  newestPersonTurn,
+  threadErrorEntryUnchanged,
   resolveZeropsOwnedAgentSendBlockReason,
   resolveZeropsProviderAvailability,
   peekRememberedThreadTimeline,
@@ -1282,6 +1285,8 @@ const PersistentThreadTerminalPanel = memo(function PersistentThreadTerminalPane
 type LocalThreadErrorEntry = {
   readonly message: string | null;
   readonly at: number;
+  /** When the person's newest turn was made as it was written (`localThreadErrorStanding`). */
+  readonly after?: string | null | undefined;
 };
 
 function chatActionErrorMessage(error: unknown): string {
@@ -1658,7 +1663,16 @@ export default function ChatView(props: ChatViewProps) {
   const localDraftError = activeServerThread
     ? null
     : ((draftId ? localDraftErrorsByDraftId[draftId]?.message : null) ?? null);
-  const localServerError = localServerErrorsByThreadKey[routeThreadKey]?.message ?? null;
+  const activeServerNewestTurn = newestPersonTurn(activeServerThread?.messages);
+  // The newest turn as it stands now, for an error written after an await (`setThreadError`).
+  const activeServerNewestTurnRef = useRef(activeServerNewestTurn);
+  useLayoutEffect(() => {
+    activeServerNewestTurnRef.current = activeServerNewestTurn;
+  }, [activeServerNewestTurn]);
+  const localServerError = localThreadErrorStanding(
+    localServerErrorsByThreadKey[routeThreadKey],
+    activeServerNewestTurn,
+  );
   // Draft errors are keyed by draftId while server errors are keyed by thread
   // key, so a pending draft entry must migrate when the server thread loads or
   // a failed send would silently disappear on promotion. When both keys hold
@@ -1690,10 +1704,20 @@ export default function ChatView(props: ChatViewProps) {
       }
       return {
         ...existing,
-        [routeThreadKey]: pendingDraftEntry,
+        // A draft's error knows no turn: from here, the conversation's own newest stands.
+        [routeThreadKey]: {
+          ...pendingDraftEntry,
+          after: pendingDraftEntry.after ?? activeServerNewestTurn,
+        },
       };
     });
-  }, [activeServerThread, draftId, localDraftErrorsByDraftId, routeThreadKey]);
+  }, [
+    activeServerThread,
+    activeServerNewestTurn,
+    draftId,
+    localDraftErrorsByDraftId,
+    routeThreadKey,
+  ]);
   const localDraftThread = useMemo(
     () =>
       draftThread
@@ -3057,14 +3081,10 @@ export default function ChatView(props: ChatViewProps) {
       setDismissedProviderStatusBannerKey(null);
     }
   }, [dismissedProviderStatusBannerKey, providerStatusBannerKey]);
-  // A Zerops login signed in and still being registered runs already: nothing to warn about.
+  // A Zerops login being registered runs already: the server's "being registered" says nothing.
   const visibleProviderStatus =
     shouldShowProviderStatusBanner(activeProviderStatus, dismissedProviderStatusBannerKey) &&
-    !spentLoginRegistering(
-      activeProviderStatus?.instanceId,
-      zeropsAgentAuth.snapshot,
-      providerStatuses,
-    )
+    !spentLoginStatusStale(activeProviderStatus, zeropsAgentAuth.snapshot, providerStatuses)
       ? activeProviderStatus
       : null;
   const hasTimelineTopBanner = Boolean(visibleThreadError) || visibleProviderStatus !== null;
@@ -3164,7 +3184,11 @@ export default function ChatView(props: ChatViewProps) {
     (targetThreadId: ThreadId | null, error: string | null) => {
       if (!targetThreadId) return;
       const nextError = sanitizeThreadErrorMessage(error);
-      const nextEntry: LocalThreadErrorEntry = { message: nextError, at: Date.now() };
+      const nextEntry: LocalThreadErrorEntry = {
+        message: nextError,
+        at: Date.now(),
+        after: activeServerNewestTurnRef.current,
+      };
       if (
         shouldWriteThreadErrorToCurrentServerThread({
           activeServerThread,
@@ -3173,7 +3197,7 @@ export default function ChatView(props: ChatViewProps) {
         })
       ) {
         setLocalServerErrorsByThreadKey((existing) => {
-          if ((existing[routeThreadKey]?.message ?? null) === nextError) {
+          if (threadErrorEntryUnchanged(existing[routeThreadKey], nextEntry)) {
             return existing;
           }
           return {

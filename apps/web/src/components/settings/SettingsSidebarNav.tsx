@@ -34,6 +34,7 @@ import {
   SidebarInput,
 } from "../ui/sidebar";
 import { SidebarUtilityMenu } from "../sidebar/SidebarChrome";
+import { AccountVoiceLine } from "../zerops/AccountVoiceLine";
 import { scrollToSettingsTarget } from "./settingsLayout";
 import {
   searchSettings,
@@ -282,6 +283,8 @@ export function SettingsSidebarNav({ pathname }: { pathname: string }) {
           </div>
         </SidebarGroup>
       </SidebarContent>
+      {/* The account's one line, as at the menu's foot: settings replace the menu, not the lapse. */}
+      <AccountVoiceLine />
       <SidebarFooter className="p-[var(--sidebar-content-inset)]">
         <SidebarUtilityMenu />
       </SidebarFooter>

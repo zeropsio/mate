@@ -27,7 +27,7 @@ import type {
   ZeropsLoginState,
 } from "@t3tools/contracts";
 import {
-  classifyZeropsAgentAuth,
+  zeropsAgentUnavailableReason,
   zeropsLoginTitle,
   zeropsLoginUnavailableReason,
 } from "@t3tools/shared/zeropsAgentAuth";
@@ -179,15 +179,32 @@ export function resolveSpentLogin(
 }
 
 /**
- * Whether the login `instanceId` spends is signed in and still being registered: runnable
- * (`ZeropsTurnAdmission` admits it), seconds from authorized, and nothing the person does —
- * so no surface warns about it.
+ * Whether a provider status is only the server's "being registered" on a login the Mate signs
+ * people in to, and so says nothing: that login runs while it is registered
+ * (`ZeropsTurnAdmission` admits it) and nothing is the person's to do. The server's provider
+ * status and its sign-in record are two streams, and either may be ahead, so the word flashed
+ * over a conversation that had nothing to wait for. Any other status — the driver's own
+ * warning, an error, a login disabled — is the person's to read.
  */
-export function spentLoginRegistering(
-  instanceId: string | undefined,
+export function spentLoginStatusStale(
+  status:
+    | {
+        readonly instanceId: string;
+        readonly status: string;
+        readonly message?: string | undefined;
+      }
+    | null
+    | undefined,
   snapshot: ZeropsAgentAuthSnapshot | null | undefined,
   providers: ReadonlyArray<{ readonly instanceId: string; readonly driver: string }>,
 ): boolean {
-  const spent = resolveSpentLogin(instanceId, snapshot, providers);
-  return spent !== undefined && classifyZeropsAgentAuth(spent.agent).kind === "registering";
+  if (status == null || status.status !== "warning" || status.message === undefined) return false;
+  const spent = resolveSpentLogin(status.instanceId, snapshot, providers);
+  if (spent === undefined) return false;
+  const login = snapshot?.logins?.find((entry) => !entry.default && entry.id === spent.key);
+  const registering =
+    login === undefined
+      ? zeropsAgentUnavailableReason(spent.agent.agentId, "registering")
+      : zeropsLoginUnavailableReason(login, "registering");
+  return status.message === registering;
 }

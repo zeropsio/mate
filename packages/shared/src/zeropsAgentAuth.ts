@@ -19,7 +19,12 @@
  * container rebuilt) and the agent must be signed in again. A check that has
  * not answered (`unknown`) changes nothing.
  */
-import type { ZeropsAgentAuth, ZeropsAgentId, ZeropsLogin } from "@t3tools/contracts";
+import type {
+  ZeropsAgentAuth,
+  ZeropsAgentId,
+  ZeropsAgentLoginState,
+  ZeropsLogin,
+} from "@t3tools/contracts";
 
 export type ZeropsAgentAuthFields = Pick<ZeropsAgentAuth, "credPresent" | "providerAuth" | "state">;
 
@@ -163,4 +168,28 @@ export function readSignerTags(
     signers[key] = more.length === 0 ? only : { among: [only, ...more] };
   }
   return signers;
+}
+
+/**
+ * The latest sign-in of a login that succeeded, whatever was started after it: this attempt if it
+ * succeeded, else the success it carries (`lastSucceeded`). An attempt started, cancelled or
+ * failed after a sign-in changes nothing about whose credential it is.
+ */
+export function latestSucceededSignIn<At>(
+  login:
+    | (Pick<ZeropsAgentLoginState, "phase" | "startedBy"> & {
+        readonly startedAt: At;
+        readonly lastSucceeded?:
+          | { readonly startedAt: At; readonly startedBy?: string | undefined }
+          | undefined;
+      })
+    | undefined,
+): { readonly startedAt: At; readonly startedBy?: string | undefined } | undefined {
+  if (login === undefined) return undefined;
+  if (login.phase === "succeeded") {
+    return login.startedBy === undefined
+      ? { startedAt: login.startedAt }
+      : { startedAt: login.startedAt, startedBy: login.startedBy };
+  }
+  return login.lastSucceeded;
 }

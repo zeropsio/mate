@@ -17,10 +17,19 @@ import {
 } from "@t3tools/client-runtime/zerops";
 import { normalizeOrigin } from "@t3tools/client-runtime/zerops/candidates";
 import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
-import { presentCandidates, type CandidateRow } from "@t3tools/client-runtime/zerops/projections";
+import {
+  presentCandidates,
+  type CandidateRow,
+  type TakenBotNames,
+} from "@t3tools/client-runtime/zerops/projections";
 import { Atom } from "effect/unstable/reactivity";
 
-import { candidateRowsAtom, zeropsEnvironmentsAtom, zeropsInventoryAtom } from "../state/zerops";
+import {
+  candidateRowsAtom,
+  takenBotNamesAtom,
+  zeropsEnvironmentsAtom,
+  zeropsInventoryAtom,
+} from "../state/zerops";
 import { invalidateZerops } from "./accountInvalidations";
 import { useZeropsInventory } from "./inventoryContext";
 import { useZeropsSession } from "./ZeropsSessionProvider";
@@ -173,4 +182,13 @@ export function useZeropsCandidates(): {
   }, [activeOrganizationRef]);
 
   return { listing, isLoading, error: inventory.error, refresh };
+}
+
+/**
+ * The names the active organization's Mates go by, and whether its project list is read whole
+ * (`takenBotNamesAtom`): judged as soon as that list is known, never waiting on any project's
+ * services or its admission.
+ */
+export function useTakenBotNames(): TakenBotNames {
+  return useAtomValue(takenBotNamesAtom);
 }

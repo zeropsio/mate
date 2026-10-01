@@ -333,7 +333,8 @@ describe("ZeropsNewProjectForm — what happens next", () => {
       withGitHosting: false,
       steps: [
         ["Acme Shop and Vera come up", "about 1½–2 min"],
-        ["You sign Vera in and tell it what to build", ""],
+        ["You sign Vera in with your Claude or ChatGPT subscription", ""],
+        ["You tell Vera what to build", ""],
       ],
     },
     {
@@ -342,7 +343,8 @@ describe("ZeropsNewProjectForm — what happens next", () => {
       steps: [
         ["Mate s.r.o. gets Git hosting, for all its projects", "about 3 min"],
         ["Acme Shop and Vera come up meanwhile", "about 1½–2 min"],
-        ["You sign Vera in and tell it what to build", ""],
+        ["You sign Vera in with your Claude or ChatGPT subscription", ""],
+        ["You tell Vera what to build", ""],
       ],
     },
   ])("$case", ({ withGitHosting, steps }) => {

@@ -57,12 +57,23 @@ export interface ProjectEvidence {
   readonly access: ProjectEffectiveAccess;
   /** The stamp of the round whose membership it joins; never later than its own read. */
   readonly startedAt: Instant;
+  /**
+   * First named by an organization's live list, not a round's: held across rounds whose lagging
+   * search leaves it out, until its own read says otherwise (`PROJECTS_LISTED`).
+   */
+  readonly listed?: true;
 }
 
-/** Listed, but its latest read failed: it keeps any older evidence until that expires. */
+/**
+ * Listed, but not verified: its latest read failed, and it keeps any older evidence until that
+ * expires — or the organization's list named it after the round that would have read it, and no
+ * read has answered yet (`failure` null).
+ */
 export interface UnverifiedProject {
   readonly project: ProjectRef;
-  readonly failure: GrantFailure;
+  readonly failure: GrantFailure | null;
+  /** First named by an organization's live list (`ProjectEvidence.listed`). */
+  readonly listed?: true;
   readonly retryAt: Instant;
   /** Failed reads so far; picks the rung of the next wait. */
   readonly attempt: number;
@@ -221,6 +232,12 @@ export type GrantEvent =
       readonly project: ProjectRef;
       readonly outcome: ProjectOutcome;
     }
+  /**
+   * The projects an organization's live list names now. One the held evidence does not name —
+   * a project someone else created since the round — is read on its own at once, rather than
+   * waiting out the window for the next renewal.
+   */
+  | { readonly type: "PROJECTS_LISTED"; readonly projects: ReadonlyArray<ProjectRef> }
   /** Any GET on the project answered 403/404 (G6). */
   | {
       readonly type: "PROJECT_DENIED";
@@ -681,6 +698,24 @@ const completeRound = (
     }
   }
 
+  // A project an organization's live list named, which this round did not target — listed after
+  // it read its organizations, or left out by a search that lags — is held as it was: its own
+  // reads keep it, and a direct read that denies it is what lets it go.
+  const organizationsRead = new Set(
+    (round.organizations ?? []).map(({ organization }) => organization.organizationId),
+  );
+  const targeted = new Set((round.targets ?? []).map((target) => target.projectId));
+  const keptListed = (id: ZeropsProjectId, project: ProjectRef): boolean =>
+    organizationsRead.has(project.organization.organizationId) &&
+    !targeted.has(id) &&
+    !closedProjects.has(id);
+  for (const [id, own] of previous?.projects ?? []) {
+    if (own.listed === true && keptListed(id, own.access.project)) projects.set(id, own);
+  }
+  for (const [id, entry] of previous?.unverified ?? []) {
+    if (entry.listed === true && keptListed(id, entry.project)) unverified.set(id, entry);
+  }
+
   const evidence: Evidence = {
     account: {
       round: round.id,
@@ -777,7 +812,12 @@ const projectResult = (
     return withEvidence(machine, { ...held, unverified });
   }
   const projects = new Map(held.projects);
-  projects.set(id, { access: outcome.access, startedAt: held.account.startedAt });
+  const entry = held.unverified.get(id);
+  projects.set(id, {
+    access: outcome.access,
+    startedAt: held.account.startedAt,
+    ...(entry?.listed === true ? { listed: true as const } : {}),
+  });
   const unverified = new Map(held.unverified);
   unverified.delete(id);
   const closedProjects = new Map(held.closedProjects);
@@ -909,6 +949,8 @@ const apply = (
       projectAttempts.delete(id);
       return projectResult({ ...machine, projectAttempts }, attempt, event.outcome, ctx, out);
     }
+    case "PROJECTS_LISTED":
+      return listProjects(machine, event.projects, ctx);
     case "PROJECT_DENIED": {
       if (heldEvidence(machine) !== null) {
         return closeProject(machine, event.project, event.evidence, null, ctx, out);
@@ -932,6 +974,45 @@ const apply = (
 };
 
 /**
+ * The listed projects a fresh grant does not name yet, in an organization its evidence holds, are
+ * held unverified and due now: `startProjectReads` reads each on its own. A project the evidence
+ * names already — verified, unverified or closed — is left as it is.
+ */
+const listProjects = (
+  machine: GrantMachine,
+  listed: ReadonlyArray<ProjectRef>,
+  ctx: GrantContext,
+): GrantMachine => {
+  const phase = machine.phase;
+  if (phase.phase !== "granted" || expired(phase.evidence.account.startedAt, ctx.now, ctx.policy)) {
+    return machine;
+  }
+  const evidence = phase.evidence;
+  const organizations = new Set(
+    evidence.account.organizations.map(({ organization }) => organization.organizationId),
+  );
+  const fresh = listed.filter(
+    (project) =>
+      organizations.has(project.organization.organizationId) &&
+      !evidence.projects.has(project.projectId) &&
+      !evidence.unverified.has(project.projectId) &&
+      !evidence.closedProjects.has(project.projectId),
+  );
+  if (fresh.length === 0) return machine;
+  const unverified = new Map(evidence.unverified);
+  for (const project of fresh) {
+    unverified.set(project.projectId, {
+      project,
+      failure: null,
+      retryAt: ctx.now,
+      attempt: 0,
+      listed: true,
+    });
+  }
+  return withEvidence(machine, { ...evidence, unverified });
+};
+
+/**
  * A project's authority ends at its own deadline for good: its evidence is dropped, so a wall
  * clock set back later cannot revive it, and the project is read again at once.
  */
@@ -951,6 +1032,7 @@ const dropExpiredProjects = (
     if (!unverified.has(id)) {
       unverified.set(id, {
         project: own.access.project,
+        ...(own.listed === true ? { listed: true as const } : {}),
         failure: { kind: "timeout", afterMs: ctx.policy.windowMs },
         retryAt: ctx.now,
         attempt: 0,
@@ -1152,7 +1234,7 @@ const publish = (machine: GrantMachine, ctx: GrantContext, out: Effects): GrantM
             ? AUTHORIZED
             : withheld(
                 "access-unverified",
-                entry === undefined
+                entry === undefined || entry.failure === null
                   ? null
                   : { failure: entry.failure, retryAtMs: entry.retryAt.wall },
               );

@@ -51,9 +51,10 @@ import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
 import { InventoryContext, type Inventory } from "~/zerops/inventoryContext";
 import { ZeropsDataContext, type ZeropsDataContextValue } from "~/zerops/zeropsDataContext";
 import { StandupReadings } from "~/zerops/activity/useStandupReading";
-import type {
-  StandupReading,
-  StandupServiceRow,
+import {
+  standupReadingOf,
+  type StandupReading,
+  type StandupServiceRow,
 } from "@t3tools/client-runtime/zerops/activity/standupReading";
 import "../index.css";
 
@@ -176,6 +177,116 @@ const BATCH = splitBatchDeploy(
     ],
   }),
 );
+
+/** An import of a pair whose dev half the platform refused, with its reason. */
+const IMPORT_ONE_FAILED: ZeropsOperation = {
+  ...deploy({}),
+  key: "op:import",
+  kind: "import",
+  phase: "failed",
+  anchorAt: ago(70),
+  settledAt: ago(9),
+  subject: "appdev, appstage",
+  kicker: "Import · appdev, appstage",
+  voice: "Importing appdev and appstage.",
+  statusWord: "Import failed",
+  closing: "Failed.",
+  target: { hostname: "appdev" },
+  steps: [
+    {
+      id: "appdev",
+      label: "appdev",
+      state: "failed",
+      stateLabel: "Failed",
+      note: "serviceStackCreateFailed: the project's disk quota is used up",
+    },
+    { id: "appstage", label: "appstage", state: "done", stateLabel: "Done" },
+  ],
+};
+
+/** A deploy that landed. */
+const DEPLOY_DONE = deploy({
+  key: "op:deploy-done",
+  phase: "done",
+  statusWord: "Deployed",
+  settledAt: ago(2),
+  closing: "appdev is live.",
+});
+
+/** An operation of no single service: a check of every one. */
+function withoutTarget(overrides: Partial<ZeropsOperation>): ZeropsOperation {
+  const { target: _target, ...rest } = deploy(overrides);
+  return rest;
+}
+
+/** A made-up Mate's own working branch, as zcp names its pushes. */
+const MATE_BRANCH_VERSION = "mate/mate-Pq7Zr0TestProject0000A 227b804";
+
+/** What the owner's guestbook run did, made up: a deploy, a check of every service, a dev server found down. */
+const GUESTBOOK: ReadonlyArray<RecordItem> = [
+  {
+    kind: "operation",
+    key: "operation:op:gb-deploy",
+    at: ago(90),
+    operation: deploy({
+      key: "op:gb-deploy",
+      subject: "appstage",
+      target: { hostname: "appstage" },
+      phase: "done",
+      statusWord: "Deployed",
+      anchorAt: ago(168),
+      settledAt: ago(90),
+      version: { name: MATE_BRANCH_VERSION },
+      steps: ["Build container", "Build", "Prepare", "Deploy", "Run"].map((label) => ({
+        id: label,
+        label,
+        state: "done" as const,
+        stateLabel: "Done",
+      })),
+    }),
+  },
+  {
+    kind: "operation",
+    key: "operation:op:gb-verify",
+    at: ago(80),
+    operation: withoutTarget({
+      key: "op:gb-verify",
+      kind: "verify",
+      subject: "all services",
+      phase: "done",
+      statusWord: "Healthy",
+      voice: "Checking all services.",
+      anchorAt: ago(82),
+      settledAt: ago(80),
+      steps: ["appdev", "appstage", "db", "cache"].map((label) => ({
+        id: label,
+        label,
+        state: "done" as const,
+        stateLabel: "Done",
+      })),
+    }),
+  },
+  {
+    kind: "operation",
+    key: "operation:op:gb-dev",
+    at: ago(60),
+    operation: deploy({
+      key: "op:gb-dev",
+      kind: "devServer",
+      subject: "appdev",
+      target: { hostname: "appdev" },
+      phase: "done",
+      statusWord: "Not running",
+      voice: "Checking the dev server on appdev.",
+      anchorAt: ago(61),
+      settledAt: ago(60),
+      steps: [{ id: "dev-server", label: "Status", state: "failed", stateLabel: "Failed" }],
+    }),
+  },
+];
+
+/** Thinking, between steps. */
+const THINKING_NOW: TurnHeaderActivity = { kind: "thinking", key: null, messages: [] };
 
 const EMPTY_DOCK: DockModel = {
   operations: [],
@@ -320,7 +431,7 @@ const REPORT: OutcomeModel = {
   change: null,
   crewTask: null,
   activity: [],
-  later: { services: [], changes: [], tasks: [], pages: [], files: [], answered: false },
+  later: { services: [], changes: [], tasks: [], pages: [], views: [], files: [], answered: false },
 };
 
 const TURN = TurnId.make("turn-1");
@@ -728,14 +839,17 @@ function standupOp(key: string, subject: "development" | "stage"): ZeropsOperati
   };
 }
 
-function standupReading(rows: ReadonlyArray<StandupServiceRow>): StandupReading {
-  return {
-    rows,
-    building: rows.filter((row) => row.state === "building").length,
-    built: rows.filter((row) => row.state === "built").length,
-    failed: rows.filter((row) => row.state === "failed").length,
-  };
-}
+/** What development stands up around its runtimes: the data, up since the arrival, and a mail catcher. */
+const DEV_AROUND: ReadonlyArray<StandupServiceRow> = [
+  { hostname: "db", state: "up" },
+  { hostname: "cache", state: "up" },
+  { hostname: "storage", state: "up" },
+  { hostname: "search", state: "up" },
+  { hostname: "mailer", state: "up" },
+];
+
+/** What the stages share: the data. */
+const STAGE_AROUND = DEV_AROUND.filter((row) => row.hostname !== "mailer");
 
 const STANDUP_STATES: ReadonlyArray<{
   readonly label: string;
@@ -743,9 +857,10 @@ const STANDUP_STATES: ReadonlyArray<{
   readonly rows: ReadonlyArray<StandupServiceRow>;
 }> = [
   {
-    label: "Starting: nothing builds yet",
+    label: "Just started: the data and the mail catcher up, the runtimes queued",
     subject: "development",
     rows: [
+      ...DEV_AROUND,
       { hostname: "apidev", state: "waits" },
       { hostname: "shopdev", state: "waits" },
     ],
@@ -754,6 +869,7 @@ const STANDUP_STATES: ReadonlyArray<{
     label: "One building",
     subject: "development",
     rows: [
+      ...DEV_AROUND,
       {
         hostname: "apidev",
         state: "building",
@@ -764,9 +880,14 @@ const STANDUP_STATES: ReadonlyArray<{
     ],
   },
   {
-    label: "Several building",
+    label: "Several building, one of the data still starting",
     subject: "development",
     rows: [
+      { hostname: "db", state: "up" },
+      { hostname: "cache", state: "up" },
+      { hostname: "storage", state: "building", sentence: "Starting" },
+      { hostname: "search", state: "up" },
+      { hostname: "mailer", state: "up" },
       { hostname: "apidev", state: "building", startedAt: ago(130), sentence: "Deploying" },
       {
         hostname: "shopdev",
@@ -777,12 +898,13 @@ const STANDUP_STATES: ReadonlyArray<{
     ],
   },
   {
-    label: "One built",
-    subject: "stage",
+    label: "One runtime up",
+    subject: "development",
     rows: [
-      { hostname: "apistage", state: "built", startedAt: ago(400), endedAt: ago(90) },
+      ...DEV_AROUND,
+      { hostname: "apidev", state: "up", startedAt: ago(400), endedAt: ago(90) },
       {
-        hostname: "shopstage",
+        hostname: "shopdev",
         state: "building",
         startedAt: ago(80),
         sentence: "Running build commands from zerops.yml",
@@ -790,25 +912,27 @@ const STANDUP_STATES: ReadonlyArray<{
     ],
   },
   {
-    label: "One failed, the rest go on",
-    subject: "stage",
+    label: "All up",
+    subject: "development",
     rows: [
-      { hostname: "apistage", state: "failed", startedAt: ago(400), endedAt: ago(200) },
-      { hostname: "shopstage", state: "building", startedAt: ago(150) },
+      ...DEV_AROUND,
+      { hostname: "apidev", state: "up", startedAt: ago(400), endedAt: ago(90) },
+      { hostname: "shopdev", state: "up", startedAt: ago(398), endedAt: ago(4) },
     ],
   },
   {
-    label: "All built",
-    subject: "development",
+    label: "The stages: one failed, the rest go on",
+    subject: "stage",
     rows: [
-      { hostname: "apidev", state: "built", startedAt: ago(400), endedAt: ago(90) },
-      { hostname: "shopdev", state: "built", startedAt: ago(398), endedAt: ago(4) },
+      ...STAGE_AROUND,
+      { hostname: "apistage", state: "failed", startedAt: ago(400), endedAt: ago(200) },
+      { hostname: "shopstage", state: "building", startedAt: ago(150) },
     ],
   },
 ];
 
 const STANDUP_READINGS: ReadonlyMap<string, StandupReading> = new Map(
-  STANDUP_STATES.map((state, index) => [`op:standup-${index}`, standupReading(state.rows)]),
+  STANDUP_STATES.map((state, index) => [`op:standup-${index}`, standupReadingOf(state.rows)]),
 );
 
 function StandupStates() {
@@ -816,7 +940,7 @@ function StandupStates() {
     <StandupReadings value={STANDUP_READINGS}>
       <State
         label="Standing up"
-        note="A stand-up call's bar: a segment per service, the build that runs, how many are built."
+        note="A stand-up call's bar: a segment per service of the environment, the build that runs, how many are up."
       >
         {STANDUP_STATES.map((state, index) => {
           const operation = standupOp(`op:standup-${index}`, state.subject);
@@ -866,6 +990,73 @@ function State({
     </section>
   );
 }
+
+/** A made-up screenshot: a page's shape, drawn, in place of a real take. */
+function shot(width: number, height: number, label: string): string {
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}"><rect width="100%" height="100%" fill="#f4f1ea"/><rect x="6%" y="6%" width="88%" height="10%" rx="8" fill="#d9d2c3"/><text x="50%" y="55%" font-family="sans-serif" font-size="${Math.round(width / 12)}" text-anchor="middle" fill="#6b6456">${label}</text></svg>`;
+  return `data:image/svg+xml;base64,${btoa(svg)}`;
+}
+
+const STAGE_URL = "https://appstage-2b7d.prg1.example.app";
+
+/** The guestbook's stage checked on a desktop and on a phone. */
+const STAGE_TAKES = [
+  { key: "op:gb-desktop", device: undefined, width: 1440, height: 900, label: "Guestbook" },
+  { key: "op:gb-phone", device: "iPhone 16", width: 393, height: 852, label: "Guestbook" },
+].map(({ key, device, width, height, label }) =>
+  deploy({
+    key,
+    kind: "browser",
+    subject: `${STAGE_URL}/`,
+    target: { hostname: "appstage" },
+    phase: "done",
+    statusWord: "Checked",
+    anchorAt: ago(40),
+    settledAt: ago(30),
+    screenshot: { src: shot(width, height, label), width, height },
+    ...(device === undefined ? {} : { deviceName: device }),
+  }),
+);
+
+/** What the guestbook run left: its stage deployed and checked twice, its dev server running. */
+const GUESTBOOK_RESULT: OutcomeModel = {
+  ...REPORT,
+  key: "outcome:guestbook",
+  turnKey: "guestbook",
+  live: [
+    {
+      hostname: "appstage",
+      tone: "ok",
+      word: "Deployed",
+      version: "227b804",
+      url: STAGE_URL,
+      at: ago(90),
+      failure: null,
+    },
+    {
+      hostname: "appdev",
+      tone: "ok",
+      word: "Dev server running",
+      version: null,
+      url: null,
+      at: ago(20),
+      failure: null,
+    },
+  ],
+  files: null,
+  change: null,
+  checks: { count: 2, views: 2, failures: 0, takes: STAGE_TAKES },
+  pictures: STAGE_TAKES.map((take) => ({
+    kind: "check" as const,
+    key: take.key,
+    src: take.screenshot!.src,
+    caption: "/",
+    page: "appstage-2b7d.prg1.example.app/",
+    device: take.deviceName ?? null,
+    failed: false,
+    ratio: take.screenshot!.width! / take.screenshot!.height!,
+  })),
+};
 
 // What its calls came to: the worked line's effort, never a row.
 const REPORT_WITH_ACTIVITY: OutcomeModel = {
@@ -933,6 +1124,129 @@ function Harness() {
                 live: false,
                 status: status({ live: false, face: "produced", endedAt: ago(2) }),
                 outcome: REPORT_WITH_ACTIVITY,
+              })}
+            />
+          </Card>
+        </State>
+        {[
+          { label: "An import, one failed", operation: IMPORT_ONE_FAILED },
+          { label: "A deploy, done", operation: DEPLOY_DONE },
+          {
+            label: "A deploy of a long name",
+            operation: deploy({
+              key: "op:deploy-long",
+              subject: "storefrontpreviewdevhost",
+              target: { hostname: "storefrontpreviewdevhost" },
+              statusWord: "Deploying",
+            }),
+          },
+        ].map(({ label, operation }) => (
+          <State
+            key={label}
+            label={label}
+            note="Its name, a segment per service, its state once; opened, a line per service."
+          >
+            <Card>
+              <RunChat
+                row={record({ turnKey: `dock-${operation.key}`, items: [], now: RUNNING_STEP })}
+              />
+              <ConversationWorking
+                dock={{ ...EMPTY_DOCK, operations: [operation] }}
+                environmentId={null}
+                incidents={[]}
+                onOpenAgents={() => undefined}
+                threadRef={null}
+              />
+            </Card>
+          </State>
+        ))}
+        <State
+          label="The guestbook card"
+          note="A deploy from the Mate's branch, a check of every service, a dev server found down: the dock waits while that is the latest line."
+        >
+          <Card>
+            <RunChat row={record({ turnKey: "guestbook", items: GUESTBOOK, now: THINKING_NOW })} />
+            <ConversationWorking
+              dock={EMPTY_DOCK}
+              environmentId={null}
+              incidents={[]}
+              onOpenAgents={() => undefined}
+              threadRef={null}
+            />
+          </Card>
+        </State>
+        <State
+          label="A result with long words"
+          note="A dirty push's version, a long page checked twice, a long reason: the checked words keep their room."
+        >
+          <Card
+            result={
+              <TurnReport
+                facts={{}}
+                onOpenImage={() => undefined}
+                onOpenTurnDiff={() => undefined}
+                outcome={{
+                  ...GUESTBOOK_RESULT,
+                  pictures: [],
+                  checks: {
+                    count: 2,
+                    views: 2,
+                    failures: 0,
+                    takes: STAGE_TAKES.map((take) => ({
+                      ...take,
+                      subject: `${STAGE_URL}/api/health`,
+                    })),
+                  },
+                  live: [
+                    { ...GUESTBOOK_RESULT.live[0]!, version: "227b804 · uncommitted" },
+                    {
+                      ...GUESTBOOK_RESULT.live[1]!,
+                      tone: "failed",
+                      word: "Build failing",
+                      failure: {
+                        reason:
+                          "3 type errors in src/routes/guestbook/entries.ts: Property 'author' does not exist on type 'Entry'",
+                        at: ago(20),
+                        logLines: [],
+                      },
+                    },
+                  ],
+                }}
+              />
+            }
+          >
+            <RunChat
+              row={record({
+                turnKey: "guestbook-long",
+                items: GUESTBOOK,
+                live: false,
+                status: status({ live: false, face: "produced", endedAt: ago(2) }),
+                outcome: GUESTBOOK_RESULT,
+              })}
+            />
+          </Card>
+        </State>
+        <State
+          label="The guestbook result"
+          note="Its stage deployed from the Mate's branch and checked on a desktop and a phone; its dev server running."
+        >
+          <Card
+            result={
+              <TurnReport
+                facts={{}}
+                onOpenImage={() => undefined}
+                onOpenTurnDiff={() => undefined}
+                outcome={GUESTBOOK_RESULT}
+              />
+            }
+          >
+            <RunChat
+              row={record({
+                turnKey: "guestbook-settled",
+                items: GUESTBOOK,
+                live: false,
+                status: status({ live: false, face: "produced", endedAt: ago(2) }),
+                outcome: GUESTBOOK_RESULT,
               })}
             />
           </Card>

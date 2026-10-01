@@ -17,7 +17,9 @@ import {
   messageReceipt,
   namedToolCall,
   noteLine,
+  incidentsStanding,
   operationLineWords,
+  standingIncidents,
   splitStandup,
   readCrewCard,
   readSlashCommand,
@@ -1283,6 +1285,153 @@ describe("stretchIncidents", () => {
   });
 });
 
+describe("standingIncidents — what the dock under the now line says of a service", () => {
+  const dev = (id: string, minute: number, label: string, running: boolean, overrides = {}) =>
+    operation(id, "t1", minute, {
+      kind: "devServer",
+      subject: "appdev",
+      statusWord: running ? "Running" : "Not running",
+      steps: [
+        {
+          id: "dev-server",
+          label,
+          state: running ? "done" : "failed",
+          stateLabel: running ? "Done" : "Failed",
+        },
+      ],
+      ...overrides,
+    });
+  const deploy = (id: string, minute: number, subject: string, overrides = {}) =>
+    operation(id, "t1", minute, {
+      kind: "deploy",
+      subject,
+      target: { hostname: subject },
+      statusWord: "Deployed",
+      ...overrides,
+    });
+  const moveOn = operation("v9", "t1", 9, {
+    kind: "logs",
+    subject: "appstage",
+    target: { hostname: "appstage" },
+    statusWord: "Read",
+  });
+  it.each([
+    {
+      name: "a dev server found not running, and nothing since: it says so",
+      ops: [dev("s1", 1, "Status", false)],
+      shows: [["appdev", "not running", "attention"]],
+    },
+    {
+      name: "found no longer answering: why",
+      ops: [
+        dev("s1", 1, "Health check", false, {
+          steps: [
+            {
+              id: "dev-server",
+              label: "Health check",
+              state: "failed",
+              stateLabel: "Failed",
+              note: "HTTP 502",
+            },
+          ],
+        }),
+      ],
+      shows: [["appdev", "stopped answering (502)", "attention"]],
+    },
+    {
+      name: "a routine start: nothing",
+      ops: [dev("s1", 1, "Start", true)],
+      shows: [],
+    },
+    {
+      name: "found, then started and running: gone",
+      ops: [dev("s1", 1, "Status", false), dev("s2", 2, "Start", true)],
+      shows: [],
+    },
+    {
+      name: "found, and the Mate restarting it this moment: nothing stale asserted",
+      ops: [dev("s1", 1, "Status", false), dev("s2", 2, "Restart", false, { phase: "running" })],
+      shows: [],
+    },
+    {
+      name: "found, and the Mate deploying it this moment: nothing stale asserted",
+      ops: [dev("s1", 1, "Status", false), deploy("d1", 2, "appdev", { phase: "running" })],
+      shows: [],
+    },
+    {
+      name: "found, then deployed: unknown until the Mate looks again",
+      ops: [dev("s1", 1, "Status", false), deploy("d1", 2, "appdev")],
+      shows: [],
+    },
+    {
+      name: "a start that failed: red, and what failed",
+      ops: [
+        dev("s1", 1, "Status", false),
+        dev("s2", 2, "Start", false, { phase: "failed", statusWord: "Failed" }),
+      ],
+      shows: [["appdev", "start failed", "failed"]],
+    },
+    {
+      name: "another service's deploy leaves it standing",
+      ops: [dev("s1", 1, "Status", false), deploy("d1", 2, "appstage")],
+      shows: [["appdev", "not running", "attention"]],
+    },
+    {
+      name: "a batch deploy that takes the service in acts on it",
+      ops: [
+        dev("s1", 1, "Status", false),
+        deploy("d1", 2, "appstage, appdev", {
+          batch: true,
+          phase: "running",
+          steps: [
+            { id: "appstage", label: "appstage", state: "running", stateLabel: "Running" },
+            { id: "appdev", label: "appdev", state: "queued", stateLabel: "Waiting" },
+          ],
+        }),
+      ],
+      shows: [],
+    },
+    {
+      name: "a batch deploy of other services leaves it standing",
+      ops: [
+        dev("s1", 1, "Status", false),
+        deploy("d1", 2, "apistage, webstage", {
+          batch: true,
+          steps: [
+            { id: "apistage", label: "apistage", state: "done", stateLabel: "Done" },
+            { id: "webstage", label: "webstage", state: "done", stateLabel: "Done" },
+          ],
+        }),
+      ],
+      shows: [["appdev", "not running", "attention"]],
+    },
+  ])("$name", ({ ops, shows }) => {
+    // The Mate moved on: a step of its own after them.
+    const [only] = structure([user("m0", 0), ...ops, moveOn], { live: "t1" }).turns;
+    expect(
+      standingIncidents(only!.stretches[0]!).map((incident) => [
+        incident.hostname,
+        incident.phases.join(" · "),
+        incident.tone,
+      ]),
+    ).toEqual(shows);
+  });
+
+  it("waits while the finding is the record's latest line: it stands right above", () => {
+    const [only] = structure([user("m0", 0), dev("s1", 1, "Status", false)], { live: "t1" }).turns;
+    expect(standingIncidents(only!.stretches[0]!)).toEqual([]);
+  });
+
+  it("stands down while the platform works on the service", () => {
+    const [only] = structure([user("m0", 0), dev("s1", 1, "Status", false), moveOn], {
+      live: "t1",
+    }).turns;
+    const incidents = standingIncidents(only!.stretches[0]!);
+    expect(incidentsStanding(incidents, new Set(["appdev"]))).toEqual([]);
+    expect(incidentsStanding(incidents, new Set(["appstage"]))).toEqual(incidents);
+  });
+});
+
 describe("deriveOutcome", () => {
   const settled = { latest: { id: "t1", state: "completed", completed: true } } as const;
   const diff = (files: number): TurnDiffSummary =>
@@ -1371,7 +1520,15 @@ describe("deriveOutcome", () => {
       planLeft: [],
       change: null,
       crewTask: null,
-      later: { services: [], changes: [], tasks: [], pages: [], files: [], answered: false },
+      later: {
+        services: [],
+        changes: [],
+        tasks: [],
+        pages: [],
+        views: [],
+        files: [],
+        answered: false,
+      },
     });
   });
 
@@ -1806,6 +1963,7 @@ describe("deriveOutcome", () => {
         changes: [],
         tasks: [],
         pages: ["a.dev/status"],
+        views: ["a.dev/status on a desktop"],
         files: [],
         answered: true,
       },
@@ -1823,6 +1981,7 @@ describe("deriveOutcome", () => {
         changes: [],
         tasks: [],
         pages: [],
+        views: [],
         files: ["/var/www/shots/home.png"],
         answered: true,
       },
@@ -1842,6 +2001,7 @@ describe("deriveOutcome", () => {
         changes: [],
         tasks: [],
         pages: [],
+        views: [],
         files: [],
         answered: true,
       },
@@ -1849,12 +2009,28 @@ describe("deriveOutcome", () => {
     {
       name: "a later run only checks a service's health: nothing taken over",
       after: [user("m1", 10), devServer("s2", "t2", 11, "health check"), assistant("a2", "t2", 12)],
-      later: { services: [], changes: [], tasks: [], pages: [], files: [], answered: true },
+      later: {
+        services: [],
+        changes: [],
+        tasks: [],
+        pages: [],
+        views: [],
+        files: [],
+        answered: true,
+      },
     },
     {
       name: "a later run pushes to the same change",
       after: [user("m1", 10), pushedTo("p2", "t2", 11, 2), assistant("a2", "t2", 12)],
-      later: { services: [], changes: ["app#2"], tasks: [], pages: [], files: [], answered: true },
+      later: {
+        services: [],
+        changes: ["app#2"],
+        tasks: [],
+        pages: [],
+        views: [],
+        files: [],
+        answered: true,
+      },
     },
     {
       name: "a later run works the same crew task",
@@ -1863,17 +2039,41 @@ describe("deriveOutcome", () => {
         tool("w2", "t2", 11),
         assistant("a2", "t2", 12),
       ],
-      later: { services: [], changes: [], tasks: [12], pages: [], files: [], answered: true },
+      later: {
+        services: [],
+        changes: [],
+        tasks: [12],
+        pages: [],
+        views: [],
+        files: [],
+        answered: true,
+      },
     },
     {
       name: "a later run a command opened: the person did not answer",
       after: [user("m1", 10, "/compact"), tool("w2", "t2", 11), assistant("a2", "t2", 12)],
-      later: { services: [], changes: [], tasks: [], pages: [], files: [], answered: false },
+      later: {
+        services: [],
+        changes: [],
+        tasks: [],
+        pages: [],
+        views: [],
+        files: [],
+        answered: false,
+      },
     },
     {
       name: "no run after it",
       after: [],
-      later: { services: [], changes: [], tasks: [], pages: [], files: [], answered: false },
+      later: {
+        services: [],
+        changes: [],
+        tasks: [],
+        pages: [],
+        views: [],
+        files: [],
+        answered: false,
+      },
     },
   ])("knows what the runs after it took over: $name", ({ after, later }) => {
     const entries = [
@@ -1975,12 +2175,22 @@ describe("deriveOutcome", () => {
         : `file ${picture.name} ${picture.path}`,
     );
   it.each([
+    // "showing only one of the images" (the owner, 2026-09-30): a page taken
+    // on a desktop and on a phone is two pictures.
     {
-      name: "each page's last picture: a page checked again stands in its latest",
+      name: "each page's picture on each device, in the order taken",
       pictures: [
         check("b1", 1, "https://a.dev/", "A"),
         check("b2", 2, "https://a.dev/", "B", { deviceName: "iPhone 16" }),
         check("b3", 3, "https://a.dev/status", null),
+      ],
+      read: ["check / A", "check / on iPhone 16 B"],
+    },
+    {
+      name: "a page checked again on the same device stands in its latest",
+      pictures: [
+        check("b1", 1, "https://a.dev/", "A", { deviceName: "iPhone 16" }),
+        check("b2", 2, "https://a.dev/", "B", { deviceName: "iPhone 16" }),
       ],
       read: ["check / on iPhone 16 B"],
     },
@@ -2328,6 +2538,67 @@ describe("operationLineWords", () => {
     },
   ] as const)("$kind $phase: $words", ({ words, ...fields }) => {
     expect(operationLineWords(op({ subject: "app", ...fields }))).toBe(words);
+  });
+
+  // "all services is healthy" (the owner, 2026-09-30): a check of every
+  // service says how many, in English.
+  const check = (id: string, state: "done" | "failed" | "queued") => ({
+    id,
+    label: id,
+    state,
+    stateLabel: state,
+  });
+  it.each([
+    {
+      name: "every service healthy",
+      phase: "done",
+      steps: [
+        check("api", "done"),
+        check("web", "done"),
+        check("db", "done"),
+        check("cache", "done"),
+      ],
+      words: "4 services healthy",
+    },
+    {
+      name: "one service, healthy",
+      phase: "done",
+      steps: [check("api", "done")],
+      words: "1 service healthy",
+    },
+    {
+      name: "one of four unhealthy",
+      phase: "failed",
+      steps: [
+        check("api", "failed"),
+        check("web", "done"),
+        check("db", "done"),
+        check("cache", "done"),
+      ],
+      words: "1 of 4 services unhealthy",
+    },
+    { name: "no checks reported", phase: "done", steps: [], words: "All services healthy" },
+    // Only a check that passed is healthy: a call that failed with no check
+    // failed, or checks still unanswered, count none of theirs.
+    {
+      name: "a call that failed with no failed check",
+      phase: "failed",
+      steps: [check("api", "done"), check("web", "queued")],
+      words: "1 of 2 services healthy",
+    },
+  ] as const)("a check of all services: $name", ({ phase, steps, words }) => {
+    expect(
+      operationLineWords(
+        op({
+          kind: "verify",
+          subject: "all services",
+          voice: "Checking all services.",
+          statusWord: phase === "done" ? "Healthy" : "Checks failed",
+          phase,
+          steps,
+        }),
+      ),
+    ).toBe(words);
   });
 });
 
