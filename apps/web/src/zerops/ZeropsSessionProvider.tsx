@@ -51,6 +51,7 @@ import {
 
 import { randomUUID } from "../lib/utils";
 import { browserZeropsStorage } from "./storage";
+import { tokenWrites } from "./tokenWriteLock";
 
 export type ZeropsSessionStatus =
   | "loading"
@@ -152,6 +153,8 @@ function makeSession(storage: ZeropsStorageAdapter) {
   const locks: LockManager | undefined = browser.navigator.locks;
   let driver!: ZeropsSessionDriver;
   const client = new ZeropsApiClient({
+    // The client's own token writes hold the same locks as every other writer in this browser.
+    holdToken: tokenWrites,
     fetch,
     onSessionChange: (session: ZeropsSession | null) => {
       if (session === null) {

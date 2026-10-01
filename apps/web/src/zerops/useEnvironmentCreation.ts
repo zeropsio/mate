@@ -34,6 +34,7 @@ import { useCallback, useEffect, useRef } from "react";
 import type { EnvironmentCreationChoice } from "../components/zerops/ZeropsEnvironmentCreationDialog";
 import { captureAccountLifetime } from "./accountLifetime";
 import { useAccountGitea } from "./giteaProject";
+import { tokenWrites } from "./tokenWriteLock";
 import { integrationTokensFromGrantMetadata } from "./useZeropsGroupReach";
 import { readZeropsCellOnce } from "./useZeropsDeployedVersion";
 import {
@@ -232,6 +233,7 @@ export function useEnvironmentCreation(): (
                   ...input,
                 }),
               ),
+            holdToken: tokenWrites,
             listTokenDelegations: ({ clientId: _clientId, ...input }) =>
               runZeropsCommand(
                 runtime.commands.listTokenDelegations({

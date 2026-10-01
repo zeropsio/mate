@@ -34,6 +34,7 @@ import { deployedVersion } from "./groupRows.ts";
 import {
   findMateIntegrationToken,
   planGroupReach,
+  type TokenWriteHold,
   type ZeropsIntegrationToken,
   type ZeropsProjectGrant,
   type ZeropsTokenDelegation,
@@ -91,6 +92,11 @@ export interface EnvironmentCreationPlatform {
     readonly name: string;
     readonly projects: ReadonlyArray<ZeropsProjectGrant>;
   }) => Promise<void>;
+  /**
+   * Holds one token's read-then-write at a time (`mate:token:{id}`), shared with every other
+   * writer of the account's tokens; without it, nothing else writes this token meanwhile.
+   */
+  readonly holdToken?: TokenWriteHold;
   /** `GET /client/{id}/integration-token/{tokenId}/delegation`. */
   readonly listTokenDelegations: (input: {
     readonly clientId: string;
@@ -305,28 +311,33 @@ export async function runEnvironmentCreation(
           break;
         }
         case "secure-container-token": {
-          // The first read of the token in the flow, so the write that replaces its whole project
-          // list is planned from the list as the platform holds it now.
-          const token = await resolveMateToken();
-          const write = planGroupReach({
-            token,
-            selfProjectId: requireProject(projectId),
-            // A group of one: the new environment's siblings, if it has any,
-            // are the projects-screen reconcile's business — that one runs on
-            // every read and can see the whole account, while this runs once
-            // and can see only what it just made.
-            groupProjectIds: [requireProject(projectId)],
-          });
-          // Already exactly right — a platform that starts minting the lowered
-          // shape makes this step a read.
-          if (write !== undefined) {
-            await input.platform.setIntegrationTokenProjects({
-              clientId: input.clientId,
-              tokenId: write.tokenId,
-              name: token.name,
-              projects: write.projects,
+          const found = await resolveMateToken();
+          const hold = input.platform.holdToken ?? ((_tokenId, run) => run());
+          // The write replaces the token's whole project list: it is planned from the token as
+          // read under its lock, so a write another writer made meanwhile is seen.
+          await hold(found.id, async () => {
+            mateToken = undefined;
+            const token = await resolveMateToken();
+            const write = planGroupReach({
+              token,
+              selfProjectId: requireProject(projectId),
+              // A group of one: the new environment's siblings, if it has any,
+              // are the projects-screen reconcile's business — that one runs on
+              // every read and can see the whole account, while this runs once
+              // and can see only what it just made.
+              groupProjectIds: [requireProject(projectId)],
             });
-          }
+            // Already exactly right — a platform that starts minting the lowered
+            // shape makes this step a read.
+            if (write !== undefined) {
+              await input.platform.setIntegrationTokenProjects({
+                clientId: input.clientId,
+                tokenId: write.tokenId,
+                name: token.name,
+                projects: write.projects,
+              });
+            }
+          });
           break;
         }
         case "drop-container-delegation": {

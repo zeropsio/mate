@@ -189,8 +189,10 @@ describe("runEnvironmentCreation", () => {
       // The group's agents reach the container import, not just the plan.
       "container:proj-1:claude-code",
       "tokens:client-1",
+      // Again under the token's lock: the write is planned from that read.
+      "tokens:client-1",
       "token:tok-mate:proj-1=BASIC_USER",
-      // The token list is read once and shared by the two steps that need it.
+      // The read under the lock is shared with the step that drops its delegations.
       "delegations:tok-mate",
       "delegation:tok-mate:del-1",
       // No runtime import: the birth makes it once the project is closed off,
@@ -204,6 +206,31 @@ describe("runEnvironmentCreation", () => {
     expect(calls.filter((call) => call.startsWith("import:"))).toEqual([
       `import:proj-1:${"services:\n  - hostname: api\n    startWithoutCode: true\n  - hostname: db\n    type: postgresql@17\n".length}`,
     ]);
+  });
+
+  it("lowers the container's token from a read under the token's lock", async () => {
+    const log: string[] = [];
+    const { platform } = fakePlatform({
+      listIntegrationTokenGrants: () => {
+        log.push("read");
+        return Promise.resolve([MINTED_TOKEN]);
+      },
+      setIntegrationTokenProjects: () => {
+        log.push("write");
+        return Promise.resolve();
+      },
+      holdToken: async (tokenId, run) => {
+        log.push(`hold ${tokenId}`);
+        try {
+          return await run();
+        } finally {
+          log.push(`let go ${tokenId}`);
+        }
+      },
+    });
+    await run(plan("dev"), platform);
+    const held = log.slice(log.indexOf("hold tok-mate"), log.indexOf("let go tok-mate") + 1);
+    expect(held).toEqual(["hold tok-mate", "read", "write", "let go tok-mate"]);
   });
 
   it("lowers the container's token to no org role, whatever role it was minted with", async () => {
