@@ -12,9 +12,11 @@ import type {
 import { TerminalNotRunningError, ZeropsAgentLoginError } from "@t3tools/contracts";
 import { latestSucceededSignIn } from "@t3tools/shared/zeropsAgentAuth";
 import * as DateTime from "effect/DateTime";
+import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as Option from "effect/Option";
+import * as Queue from "effect/Queue";
 import * as Ref from "effect/Ref";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
@@ -22,6 +24,7 @@ import * as TestClock from "effect/testing/TestClock";
 
 import type { TerminalManager } from "../terminal/Manager.ts";
 import * as ZeropsAgentLoginModule from "./ZeropsAgentLogin.ts";
+import { memorySignInStore } from "./zeropsSignIns.ts";
 import type { ZeropsAgentLoginByAgent } from "./ZeropsAgentLogin.ts";
 
 type TerminalManagerService = Pick<
@@ -560,6 +563,60 @@ it.effect("a start that fails leaves the latest success standing", () =>
       const after = loginOf(yield* feed.latest, "claude-code");
       assert.equal(latestSucceededSignIn(after)?.startedBy, evas?.startedBy);
       assert.isDefined(evas?.startedBy);
+    }),
+  ),
+);
+
+// Who signed a login in last is kept across restarts (`zeropsSignIns`): written with every
+// success, a fresh one replacing it, and gone with the credential.
+it.effect("keeps who signed in last, and lets it go with the credential", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const fakeTerminal = yield* makeFakeTerminalManager();
+      const store = yield* memorySignInStore({ codex: { by: "user-gone", at: 1 } });
+      const held = yield* Queue.unbounded<ReadonlyArray<readonly [string, boolean]>>();
+      const feed = yield* ZeropsAgentLoginModule.make({
+        terminalManager: fakeTerminal.service,
+        zeropsAgentAuth: yield* makeFakeAuth(),
+        isZeropsEnvironment: true,
+        signIns: store,
+        credentialsHeld: Stream.fromQueue(held),
+      });
+      const settle = TestClock.adjust(Duration.millis(5));
+      const succeed = (subject: string) =>
+        Effect.gen(function* () {
+          yield* feed.start("claude-code", "thread-1", subject);
+          yield* fakeTerminal.emit(
+            "thread-1",
+            "agent-login-claude-code",
+            "Login successful. Press Enter to continue…\n",
+          );
+        });
+
+      // A credential gone while the server was down: its kept sign-in goes at the first reading.
+      yield* Queue.offer(held, [
+        ["claude-code", false],
+        ["codex", false],
+      ]);
+      yield* settle;
+      assert.deepEqual(yield* store.load, {});
+
+      // A sign-in's own first moments, the credential not there yet: nothing is let go.
+      yield* succeed("zerops-user-eva");
+      yield* Queue.offer(held, [["claude-code", false]]);
+      yield* settle;
+      const evas = (yield* store.load)["claude-code"]?.by;
+      assert.isDefined(evas);
+
+      yield* Queue.offer(held, [["claude-code", true]]);
+      yield* succeed("zerops-user-jan");
+      const jans = (yield* store.load)["claude-code"]?.by;
+      assert.notEqual(jans, evas, "a fresh sign-in replaces the one before");
+
+      // Signed out: the credential goes, and its sign-in with it.
+      yield* Queue.offer(held, [["claude-code", false]]);
+      yield* settle;
+      assert.deepEqual(yield* store.load, {});
     }),
   ),
 );

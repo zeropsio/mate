@@ -55,6 +55,8 @@
  * amount of retained memory across a very long server lifetime is an
  * accepted trade-off against a scheduler crash.
  */
+import * as NodeOS from "node:os";
+
 import type {
   TerminalAttachInput,
   TerminalCloseInput,
@@ -65,6 +67,7 @@ import type {
   ZeropsAgentId,
   ZeropsAgentLoginState,
   ZeropsLogin,
+  ZeropsLoginState,
 } from "@t3tools/contracts";
 import { ZEROPS_AGENT_LOGIN_COMMANDS, ZeropsAgentLoginError } from "@t3tools/contracts";
 import { latestSucceededSignIn } from "@t3tools/shared/zeropsAgentAuth";
@@ -73,6 +76,7 @@ import * as DateTime from "effect/DateTime";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Path from "effect/Path";
 import * as PubSub from "effect/PubSub";
 import * as Queue from "effect/Queue";
 import * as Ref from "effect/Ref";
@@ -89,6 +93,16 @@ import { isZeropsEnvironment } from "./ZeropsEnvironment.ts";
 import { ZEROPS_SUBJECT_PREFIX } from "./ZeropsMembershipWatch.ts";
 import { ZEROPS_AGENT_LOGIN_HANDLERS } from "./zeropsAgentLoginHandlers.ts";
 import { stallLoginAction, stepLoginOutput } from "./zeropsAgentLoginWalker.ts";
+import { fileSignInStore, signInsPath, type SignInStore } from "./zeropsSignIns.ts";
+
+/** Whether a further login's state holds a credential — `ZeropsTurnAdmission` reads it the same way. */
+const LOGIN_HOLDS_CREDENTIAL: Readonly<Record<ZeropsLoginState, boolean>> = {
+  authorized: true,
+  registering: true,
+  "needs-reauth": true,
+  reconnect: false,
+  "not-authorized": false,
+};
 
 /** How long a burst of terminal output coalesces into one stall countdown — mirrors the GUI walker's `STALL_TIMEOUT_MS`. */
 const STALL_TIMEOUT_MS = 1000;
@@ -255,6 +269,16 @@ export interface ZeropsAgentLoginOptions {
   /** Re-checks a login beyond the defaults once it signs in; absent, only default logins run. */
   readonly zeropsLogins?: Pick<ZeropsLogins["Service"], "recheckNow">;
   readonly isZeropsEnvironment: boolean;
+  /**
+   * Who signed each login in last, kept across restarts (`zeropsSignIns`): read back at start,
+   * written with every success. Absent, it lives only as long as the process.
+   */
+  readonly signIns?: SignInStore;
+  /**
+   * Whether each login holds a credential, by signer key, as the feeds read it: a login whose
+   * credential goes takes its kept sign-in with it. Absent, nothing is cleared.
+   */
+  readonly credentialsHeld?: Stream.Stream<ReadonlyArray<readonly [string, boolean]>>;
 }
 
 interface FeedState {
@@ -297,6 +321,8 @@ export const make = (options: ZeropsAgentLoginOptions) =>
       zeropsAgentAuth,
       zeropsLogins,
       isZeropsEnvironment: enabled,
+      signIns,
+      credentialsHeld,
     } = options;
     const changes = yield* PubSub.sliding<ZeropsAgentLoginByAgent>(4);
     const subscribeMutex = yield* Semaphore.make(1);
@@ -317,7 +343,44 @@ export const make = (options: ZeropsAgentLoginOptions) =>
       } satisfies ZeropsAgentLogin["Service"];
     }
 
-    const state = yield* Ref.make<FeedState>({ logins: EMPTY_LOGIN_BY_AGENT });
+    // A restart picks up who signed each login in last: the credential lives on, and so does
+    // whose it is — the turn gate goes by it whatever the signer tag says.
+    const kept = signIns === undefined ? {} : yield* signIns.load;
+    const state = yield* Ref.make<FeedState>({
+      logins: {
+        ...EMPTY_LOGIN_BY_AGENT,
+        ...Object.fromEntries(
+          Object.entries(kept).map(([key, record]) => [
+            key,
+            {
+              phase: "succeeded",
+              terminalId: loginTerminalId(key),
+              startedAt: DateTime.makeUnsafe(record.at),
+              startedBy: record.by,
+            } satisfies ZeropsAgentLoginState,
+          ]),
+        ),
+      },
+    });
+    // A login whose credential goes takes its kept sign-in with it: on the first reading
+    // without one (a credential gone while the server was down), and when one is seen to go.
+    // Not on a reading that never had one, which is every sign-in's own first moments.
+    if (signIns !== undefined && credentialsHeld !== undefined) {
+      const held = new Map<string, boolean>();
+      yield* credentialsHeld.pipe(
+        Stream.runForEach((rows) =>
+          Effect.forEach(rows, ([key, now]) => {
+            const before = held.get(key);
+            held.set(key, now);
+            return !now && before !== false ? signIns.clear(key) : Effect.void;
+          }),
+        ),
+        Effect.catchCause((cause) =>
+          Effect.logWarning("zerops agent login: credential watch stopped", { cause }),
+        ),
+        Effect.forkScoped,
+      );
+    }
     // Plain Map, not a Ref — mirrors `ZeropsAgentAuth.ts`'s own
     // `providerCheckQueues`: session bookkeeping is fiber/queue handles,
     // never decoded/compared as data, so a Ref buys nothing here.
@@ -413,6 +476,15 @@ export const make = (options: ZeropsAgentLoginOptions) =>
               data: result.write,
             })
             .pipe(Effect.ignore);
+        }
+
+        if (result.nextPhase === "succeeded" && signIns !== undefined) {
+          // Kept before anything else hears of the success: whose the credential is outlives
+          // this process (`zeropsSignIns`).
+          yield* signIns.save(key, {
+            by: session.startedBy,
+            at: DateTime.toEpochMillis(before?.startedAt ?? (yield* DateTime.now)),
+          });
         }
 
         if (result.nextPhase === "succeeded") {
@@ -654,11 +726,33 @@ export const layer = Layer.effect(
     const zeropsAgentAuth = yield* ZeropsAgentAuth;
     const zeropsLogins = yield* ZeropsLogins;
     const config = yield* ServerConfig;
+    const path = yield* Path.Path;
+    const signIns = yield* fileSignInStore(signInsPath(path, NodeOS.homedir()));
+    // Whether each login holds a credential: the agents' own by their credential file, the
+    // further logins by the state their own check reads.
+    const agentsHeld = Stream.concat(
+      Stream.fromEffect(zeropsAgentAuth.latest),
+      zeropsAgentAuth.changes,
+    ).pipe(
+      Stream.map((snapshot) =>
+        snapshot.available
+          ? snapshot.agents.map((agent) => [agent.agentId, agent.credPresent] as const)
+          : [],
+      ),
+    );
+    const loginsHeld = Stream.concat(
+      Stream.fromEffect(zeropsLogins.latest),
+      zeropsLogins.changes,
+    ).pipe(
+      Stream.map((rows) => rows.map((row) => [row.id, LOGIN_HOLDS_CREDENTIAL[row.state]] as const)),
+    );
     return yield* make({
       terminalManager,
       zeropsAgentAuth,
       zeropsLogins,
       isZeropsEnvironment: isZeropsEnvironment(config),
+      signIns,
+      credentialsHeld: Stream.merge(agentsHeld, loginsHeld),
     });
   }),
 );
