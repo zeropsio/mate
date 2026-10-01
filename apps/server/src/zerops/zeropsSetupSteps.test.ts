@@ -204,7 +204,7 @@ describe("setupDocument", () => {
               },
             }),
           ),
-          record: { startedAt: NOW },
+          record: { startedAt: NOW, ran: true },
         }),
       ),
     );
@@ -258,11 +258,11 @@ describe("setupDocument", () => {
 
   const standups: ReadonlyArray<[string, Partial<SetupFacts>, string]> = [
     ["asked, not started", {}, "waiting"],
-    ["started, zcp says nothing yet", { record: { startedAt: NOW } }, "running"],
+    ["started, zcp says nothing yet", { record: { startedAt: NOW, ran: true } }, "running"],
     [
       "started, zcp running it",
       {
-        record: { startedAt: NOW },
+        record: { startedAt: NOW, ran: true },
         status: parseZcpStatus(status({ standup: { state: "running" } })),
       },
       "running",
@@ -270,7 +270,7 @@ describe("setupDocument", () => {
     [
       "started, zcp done",
       {
-        record: { startedAt: NOW },
+        record: { startedAt: NOW, ran: true },
         status: parseZcpStatus(status({ standup: { state: "done" } })),
       },
       "done",
@@ -278,22 +278,23 @@ describe("setupDocument", () => {
     [
       "started, zcp failed",
       {
-        record: { startedAt: NOW },
+        record: { startedAt: NOW, ran: true },
         status: parseZcpStatus(status({ standup: { state: "failed" } })),
       },
       "failed",
     ],
     [
       "started, no status file, its turn ended",
-      { record: { startedAt: NOW }, standUpTurn: "done" },
+      { record: { startedAt: NOW, ran: true }, standUpTurn: "done" },
       "done",
     ],
     [
       "started, no status file, its turn failed",
-      { record: { startedAt: NOW }, standUpTurn: "failed" },
+      { record: { startedAt: NOW, ran: true }, standUpTurn: "failed" },
       "failed",
     ],
     ["nothing asked, nothing started: nothing to wait for", { requestedBy: undefined }, "done"],
+    ["settled with none ran: done", { record: { startedAt: NOW, ran: false } }, "done"],
     [
       "the tags not read yet: it may yet be asked",
       { requestedBy: undefined, tagsRead: false },

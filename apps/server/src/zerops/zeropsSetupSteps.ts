@@ -245,8 +245,11 @@ export interface SetupFacts {
   readonly requestedBy: string | undefined;
   /** When the asker's sign-in — anybody's, when nobody asked — was first seen recorded. */
   readonly signinAt: string | undefined;
-  /** The durable record of the stand-up, started here or by a browser. */
-  readonly record: { readonly startedAt: string } | undefined;
+  /**
+   * The durable record of the stand-up: `ran`, started here or by a browser;
+   * else settled as never due (nobody asked, or the conversation was under way).
+   */
+  readonly record: { readonly startedAt: string; readonly ran: boolean } | undefined;
   /** How the stand-up's turn ended, for a zcp that writes no status file. */
   readonly standUpTurn: "running" | "done" | "failed" | undefined;
 }
@@ -278,6 +281,9 @@ const standUpStep = (facts: SetupFacts): SetupStep => {
     standup?.state === "running" || standup?.state === "done" || standup?.state === "failed"
       ? standup.state
       : undefined;
+  if (facts.record !== undefined && !facts.record.ran) {
+    return { id: "standup", state: zcpState ?? "done", at: "" };
+  }
   if (facts.record === undefined) {
     if (zcpState !== undefined)
       return { id: "standup", state: zcpState, at: standup?.startedAt ?? "" };

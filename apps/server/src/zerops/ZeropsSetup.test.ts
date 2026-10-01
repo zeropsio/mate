@@ -27,7 +27,7 @@ import { runMigrations } from "../persistence/Migrations.ts";
 import * as NodeSqliteClient from "../persistence/NodeSqliteClient.ts";
 import { ServerCommandReadiness } from "../spi/serverCommandReadiness.ts";
 import { resolveZeropsEnvironment } from "./ZeropsEnvironment.ts";
-import { ZeropsSetup, ZeropsSetupReads, makeZeropsSetup } from "./ZeropsSetup.ts";
+import { ZeropsSetup, ZeropsSetupReads, makeZeropsSetup, standUpPollDelay } from "./ZeropsSetup.ts";
 import { ZeropsTurnAdmission, type TurnPrincipal } from "./ZeropsTurnAdmission.ts";
 
 const ZEROPS = resolveZeropsEnvironment({
@@ -78,6 +78,8 @@ const SIGNED = [...ASKED, "mate:signer:claude-code:user-a"];
 interface World {
   readonly tags: Ref.Ref<ReadonlyArray<string> | undefined>;
   readonly variables: Ref.Ref<ReadonlyArray<string>>;
+  /** How many times the project's tags were read from the platform. */
+  readonly tagReads: Ref.Ref<number>;
   readonly statusFile: Ref.Ref<unknown>;
   readonly threads: Ref.Ref<ReadonlyArray<OrchestrationThreadShell>>;
   readonly dispatched: Ref.Ref<ReadonlyArray<OrchestrationCommand>>;
@@ -88,7 +90,9 @@ interface World {
 const makeWorld = Effect.gen(function* () {
   return {
     tags: yield* Ref.make<ReadonlyArray<string> | undefined>(ASKED),
-    variables: yield* Ref.make<ReadonlyArray<string>>(["PATH"]),
+    // Made by the new press: it always sets the runtimes plan, even an empty one.
+    variables: yield* Ref.make<ReadonlyArray<string>>(["PATH", "MATE_SETUP_RUNTIMES"]),
+    tagReads: yield* Ref.make(0),
     statusFile: yield* Ref.make<unknown>(undefined),
     threads: yield* Ref.make<ReadonlyArray<OrchestrationThreadShell>>([mainThread()]),
     dispatched: yield* Ref.make<ReadonlyArray<OrchestrationCommand>>([]),
@@ -100,7 +104,9 @@ const makeWorld = Effect.gen(function* () {
 const fakes = (world: World) =>
   Layer.mergeAll(
     Layer.succeed(ZeropsSetupReads, {
-      tags: Ref.get(world.tags),
+      tags: Ref.update(world.tagReads, (count) => count + 1).pipe(
+        Effect.andThen(Ref.get(world.tags)),
+      ),
       serviceVariables: Ref.get(world.variables),
       statusFile: Ref.get(world.statusFile),
     }),
@@ -140,7 +146,13 @@ const fakes = (world: World) =>
 const serverOn = (world: World, database: string) =>
   Layer.effect(
     ZeropsSetup,
-    makeZeropsSetup({ poll: Duration.millis(10), tagsTtl: Duration.millis(0) }),
+    makeZeropsSetup({
+      poll: Duration.millis(10),
+      slowPoll: Duration.millis(10),
+      fastFor: Duration.minutes(30),
+      noneAfter: Duration.millis(0),
+      tagsTtl: Duration.millis(0),
+    }),
   ).pipe(
     Layer.provide(fakes(world)),
     Layer.provide(
@@ -281,6 +293,100 @@ describe("ZeropsSetup: the stand-up", () => {
     }),
   );
 
+  /** Whether the tags are still being read: two reads apart, the count moved. */
+  const stillPolling = (world: World) =>
+    Effect.gen(function* () {
+      const before = yield* Ref.get(world.tagReads);
+      yield* ticks;
+      return (yield* Ref.get(world.tagReads)) > before;
+    });
+
+  it.live("a Mate made before the new press never starts one, and never polls for it", () =>
+    Effect.gen(function* () {
+      const world = yield* makeWorld;
+      yield* Ref.set(world.variables, ["PATH"]);
+      yield* Ref.set(world.tags, SIGNED);
+      yield* withServer(world, freshDatabase(), () => ticks);
+      assert.deepStrictEqual([yield* turnsOf(world), yield* Ref.get(world.tagReads)], [[], 0]);
+    }),
+  );
+
+  const settles: ReadonlyArray<[string, (world: World) => Effect.Effect<void>]> = [
+    ["once it started the stand-up", (world) => Ref.set(world.tags, SIGNED)],
+    ["when nobody asked for one", (world) => Ref.set(world.tags, ["mate:face:coral:gem"])],
+    [
+      "when the conversation was already spoken in",
+      (world) =>
+        Effect.andThen(
+          Ref.set(world.tags, SIGNED),
+          Ref.set(world.threads, [mainThread({ latestUserMessageAt: "2026-10-01T10:05:00.000Z" })]),
+        ),
+    ],
+  ];
+  for (const [name, arrange] of settles) {
+    it.live(`stops polling for good ${name}, across a restart too`, () =>
+      Effect.gen(function* () {
+        const world = yield* makeWorld;
+        yield* arrange(world);
+        const database = freshDatabase();
+        yield* withServer(world, database, () =>
+          Effect.gen(function* () {
+            yield* ticks;
+            assert.isFalse(yield* stillPolling(world));
+          }),
+        );
+        const reads = yield* Ref.get(world.tagReads);
+        yield* withServer(world, database, () => ticks);
+        assert.strictEqual(yield* Ref.get(world.tagReads), reads);
+      }),
+    );
+  }
+
+  it.live("polls while the stand-up is pending", () =>
+    Effect.gen(function* () {
+      const world = yield* makeWorld;
+      yield* withServer(world, freshDatabase(), () =>
+        Effect.gen(function* () {
+          assert.isTrue(yield* stillPolling(world));
+        }),
+      );
+    }),
+  );
+
+  it.live("a stood-up Mate's setup document reads no tags", () =>
+    Effect.gen(function* () {
+      const world = yield* makeWorld;
+      yield* Ref.set(world.tags, SIGNED);
+      yield* withServer(world, freshDatabase(), (setup) =>
+        Effect.gen(function* () {
+          yield* eventually(turnsOf(world), (turns) => turns.length === 1);
+          const reads = yield* Ref.get(world.tagReads);
+          const document = yield* setup.document;
+          assert.strictEqual(yield* Ref.get(world.tagReads), reads);
+          assert.deepStrictEqual(
+            document.steps
+              .filter((step) => step.id === "signin" || step.id === "standup")
+              .map((step) => step.state),
+            ["done", "running"],
+          );
+        }),
+      );
+    }),
+  );
+
+  it.live("a browser's stand-up after a settled none goes through: nothing ran", () =>
+    Effect.gen(function* () {
+      const world = yield* makeWorld;
+      yield* Ref.set(world.tags, ["mate:face:coral:gem"]);
+      yield* withServer(world, freshDatabase(), (setup) =>
+        Effect.gen(function* () {
+          yield* ticks;
+          assert.strictEqual(yield* setup.browserStandUp(browserSend(1)), "dispatch");
+        }),
+      );
+    }),
+  );
+
   const browserSend = (attempt: number): OrchestrationCommand =>
     ({
       type: "thread.turn.start",
@@ -356,7 +462,12 @@ describe("ZeropsSetup: the document", () => {
             "waiting",
             "waiting",
           ]);
-          yield* Ref.set(world.variables, ["GITEA_URL", "GITEA_TOKEN", "MATE_BROKER_URL"]);
+          yield* Ref.update(world.variables, (now) => [
+            ...now,
+            "GITEA_URL",
+            "GITEA_TOKEN",
+            "MATE_BROKER_URL",
+          ]);
           yield* Ref.set(world.statusFile, {
             version: 1,
             runtimes: { state: "importing", startedAt: "2026-10-01T10:01:00Z" },
@@ -379,4 +490,20 @@ describe("ZeropsSetup: the document", () => {
       );
     }),
   );
+});
+
+describe("standUpPollDelay", () => {
+  const cases: ReadonlyArray<[string, Duration.Duration, Duration.Duration]> = [
+    ["at boot", Duration.zero, Duration.seconds(10)],
+    ["29 minutes in", Duration.minutes(29), Duration.seconds(10)],
+    ["30 minutes in", Duration.minutes(30), Duration.seconds(60)],
+    ["a day in", Duration.hours(24), Duration.seconds(60)],
+  ];
+  for (const [name, elapsed, delay] of cases) {
+    it(`every ${Duration.toSeconds(delay)} s ${name}`, () =>
+      assert.strictEqual(
+        Duration.toMillis(standUpPollDelay(Duration.toMillis(elapsed))),
+        Duration.toMillis(delay),
+      ));
+  }
 });
