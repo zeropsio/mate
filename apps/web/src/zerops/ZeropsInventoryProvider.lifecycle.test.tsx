@@ -36,14 +36,10 @@ import { buttonsLabelled, press } from "./__fixtures__/testDom";
 import { invalidateZerops, onZeropsInvalidation } from "./accountInvalidations";
 import { closeAccountLifetime, openAccountLifetime } from "./accountLifetime";
 import { ZeropsDataProvider } from "./ZeropsDataProvider";
-import {
-  inventoryProjectRefKey,
-  useAccountVoice,
-  useZeropsInventory,
-  type Inventory,
-} from "./inventoryContext";
+import { inventoryProjectRefKey, useZeropsInventory, type Inventory } from "./inventoryContext";
 import { ZeropsInventoryProvider } from "./ZeropsInventoryProvider";
 import { AccountVoiceLine } from "../components/zerops/AccountVoiceLine";
+import { TRY_NOW_SETTLE_MS } from "./inventoryTrouble.logic";
 
 const session = vi.hoisted(() => ({ current: undefined as unknown }));
 vi.mock("./ZeropsSessionProvider", () => ({ useZeropsSession: () => session.current }));
@@ -339,13 +335,8 @@ const mountInventory = Effect.fn(function* (
   let grantsWhenChildMounted: number | null = null;
   /** The first mount opened the gate: the product's child is there. */
   const mounted = signal();
-  let retryNow: (() => void) | null = null;
   function Consumer() {
     const value = useZeropsInventory();
-    const voice = useAccountVoice();
-    useEffect(() => {
-      retryNow = voice?.actions.find(({ kind }) => kind === "try-now")?.run ?? null;
-    }, [voice]);
     useEffect(() => {
       grantsWhenChildMounted ??= grants.length;
       mounted.resolve();
@@ -409,8 +400,6 @@ const mountInventory = Effect.fn(function* (
     organization,
     projectRef,
     inventory: () => inventory,
-    /** The account line's "Try now" (`useAccountVoice`), while it says anything. */
-    retry: () => retryNow,
     unmount: () => Effect.promise(async () => act(async () => root.unmount())),
     /** The held first round's reads answer; resolves once a grant reached the runtime. */
     verifyFirstRound: () =>
@@ -884,16 +873,25 @@ it.live(
         expect(loading.slice(-19, -1)).toEqual(Array.from({ length: 18 }, () => true));
         expect(harness.inventory()?.error).toBe("Zerops isn't answering. Trying again…");
         expect(harness.inventory()?.isLoading).toBe(true);
-        // Said once, at the menu's foot, with Try now and no Sign out.
-        expect(harness.container.textContent).toBe("Zerops isn't answering. Trying again…Try now");
+        // Said once, at the menu's foot, naming what isn't answering, with Try now and no Sign out.
+        expect(harness.container.textContent).toBe(
+          "Zerops isn't answering. Trying again…Organization's projects and servicesTry now",
+        );
         heard.length = 0;
         const reread = harness.refreshed().length;
 
-        yield* Effect.promise(async () => act(async () => harness.retry()!()));
+        const [tryNow] = buttonsLabelled(harness.container as never, "Try now");
+        yield* Effect.promise(async () => act(async () => press(tryNow!)));
         yield* harness.advance(250);
         expect(heard).toEqual([{ topic: "inventory", organization: harness.organization }]);
         expect(harness.refreshed().slice(reread)).toEqual([harness.organization]);
         expect(harness.client.fetchUser).toHaveBeenCalledTimes(1);
+        // Never a silent no-op: it says it is trying, and once that has run with the stall still
+        // on, the line says so and offers it again.
+        expect(harness.container.textContent).toContain("Trying…");
+        yield* harness.advance(TRY_NOW_SETTLE_MS);
+        expect(harness.container.textContent).toContain("Still not answering.");
+        expect(harness.container.textContent).toContain("Try now");
       }),
     ),
 );

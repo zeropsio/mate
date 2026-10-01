@@ -38,8 +38,8 @@ import { invalidateZerops } from "./accountInvalidations";
 import {
   HeldInventoryContext,
   InventoryContext,
-  AccountVoiceContext,
-  type AccountVoice,
+  AccountTroubleContext,
+  type AccountTrouble,
   inventoryProjectRefKey,
   type Inventory,
   type InventoryServiceOutcome,
@@ -47,8 +47,9 @@ import {
 import { useZeropsSession } from "./ZeropsSessionProvider";
 import {
   INVENTORY_TROUBLE_HOLD_MS,
-  accountFootLine,
   inventoryTroubleVoice,
+  organizationKnowledge,
+  troubleSubject,
 } from "./inventoryTrouble.logic";
 import { useHeldFor } from "./useHeldFor";
 import {
@@ -369,14 +370,15 @@ export function ZeropsInventoryProvider({ children }: { readonly children: React
     const previousOutcomes = prevServiceOutcomesRef.current;
     const resolvedOrCarried = (projectId: string, computed: InventoryServiceOutcome) =>
       carryForwardServiceOutcome(previousOutcomes, projectId, computed);
-    // Whether every project and its services are read.
-    let complete = evidence !== null;
+    /** The organizations some of whose projects or services are not read yet. */
+    const unread = new Set<string>();
     for (const ref of knownProjectRefs) {
       const key = inventoryProjectRefKey(ref);
       projectRefs.set(key, ref);
       // A project withheld until its denial is confirmed holds nothing open (G6).
       const incomplete = () => {
-        if (!denied.has(key)) complete = false;
+        if (denied.has(key)) return;
+        unread.add(ref.organization.organizationId);
       };
       const project = projectReads.get(key)?.value;
       if (project === undefined) {
@@ -437,6 +439,7 @@ export function ZeropsInventoryProvider({ children }: { readonly children: React
     const demanded = [
       ...organizationDescriptors.map((descriptor) => ({
         organization: descriptor.organization,
+        projectId: null,
         interest: demandedInterest(
           organizationReads.get(interestKeyOf(descriptor))?.observation,
           descriptor,
@@ -444,6 +447,7 @@ export function ZeropsInventoryProvider({ children }: { readonly children: React
       })),
       ...projectDescriptors.map((descriptor) => ({
         organization: descriptor.project.organization,
+        projectId: descriptor.project.projectId as string | null,
         interest: demandedInterest(
           serviceReads.get(inventoryProjectRefKey(descriptor.project))?.observation,
           descriptor,
@@ -453,17 +457,26 @@ export function ZeropsInventoryProvider({ children }: { readonly children: React
     const documentHidden = typeof document !== "undefined" && document.visibilityState === "hidden";
     /** The organizations whose data failed or stalled, once each. */
     const blocked = new Map<string, OrganizationRef>();
-    for (const { organization, interest } of demanded) {
+    /** Each failed or stalled read: its organization, and its project when it is one's. */
+    const blockedReads: Array<{ organizationId: string; projectId: string | null }> = [];
+    /** The organizations some of whose demanded reads are not observing yet: not answered. */
+    const pending = new Set<string>();
+    for (const { organization, projectId, interest } of demanded) {
+      if (interest?.status !== "observing" && interest?.status !== "paused")
+        pending.add(organization.organizationId);
       if (isInterestBlocked(interest, Date.now(), documentHidden)) {
         blocked.set(organizationKeyOf(organization), organization);
+        blockedReads.push({ organizationId: organization.organizationId, projectId });
       }
     }
     return {
       projects,
       services,
       projectRefs,
-      read: complete,
+      unreadOrganizations: [...unread],
       blockedOrganizations: [...blocked.values()],
+      blockedReads,
+      pendingOrganizations: pending,
     };
   }, [
     denied,
@@ -472,7 +485,6 @@ export function ZeropsInventoryProvider({ children }: { readonly children: React
     projectDescriptors,
     projectReads,
     serviceReads,
-    evidence,
     knownProjectRefs,
   ]);
 
@@ -516,15 +528,14 @@ export function ZeropsInventoryProvider({ children }: { readonly children: React
   // failed or stalled — another organization's is not what anyone is looking at, unless none is
   // chosen yet. It never covers or freezes the product; it speaks only once it has lasted
   // (`inventoryTroubleVoice`).
-  const trouble =
-    phase.phase === "unverified-failed"
-      ? ("grant" as const)
-      : projected.blockedOrganizations.some(
-            ({ organizationId }) =>
-              activeOrganization === null || organizationId === activeOrganization.id,
-          )
-        ? ("organization" as const)
-        : null;
+  const known = organizationKnowledge({
+    grantFailed: phase.phase === "unverified-failed",
+    blocked: projected.blockedOrganizations.map(({ organizationId }) => organizationId),
+    // No evidence yet reads nothing at all.
+    unread: evidence === null ? organizations.map(({ id }) => id) : projected.unreadOrganizations,
+    active: activeOrganization?.id ?? null,
+  });
+  const trouble = known.trouble;
   const troubleHeld = useHeldFor(ready && trouble !== null, INVENTORY_TROUBLE_HOLD_MS);
   const voice = inventoryTroubleVoice({
     mounted: ready,
@@ -551,26 +562,55 @@ export function ZeropsInventoryProvider({ children }: { readonly children: React
   });
   const retryNow = useCallback(() => retryRef.current(), []);
   const signOutNow = useCallback(() => void signOutRef.current(), []);
-  // The account speaks from one place, the menu's foot (`accountFootLine`): its lapse, which
-  // withholds every region meanwhile, or its inventory's lasting trouble. Never over the product.
-  const footLine = accountFootLine({ lapse, trouble: voice });
-  const footSentence = footLine?.sentence ?? null;
-  const footActions = footLine?.actions.join(" ") ?? "";
-  const accountVoice = useMemo(
-    (): AccountVoice | null =>
-      footSentence === null
-        ? null
-        : {
-            sentence: footSentence,
-            actions: footActions
-              .split(" ")
-              .map((kind) =>
-                kind === "try-now"
-                  ? { kind, label: "Try now" as const, run: retryNow }
-                  : { kind: "sign-out" as const, label: "Sign out" as const, run: signOutNow },
+  // The account speaks from one place, the menu's foot: its lapse, which withholds every region
+  // meanwhile, or its inventory's lasting trouble — never over the product. This publishes the
+  // facts and the actions; the line (`useAccountVoice`) owns what Try now says while it runs.
+  // Answered is the grant held and every read of the organization in view observing again.
+  const unanswered =
+    lapse !== null ||
+    voice !== null ||
+    [...projected.pendingOrganizations].some(
+      (organizationId) => activeOrganization === null || organizationId === activeOrganization.id,
+    );
+  // What isn't answering, named under the line's sentence (`troubleSubject`).
+  const inView = activeOrganization ?? null;
+  const subject =
+    lapse !== null || trouble === "grant"
+      ? "Your Zerops access"
+      : trouble === "organization"
+        ? troubleSubject({
+            organization:
+              inView?.name ??
+              organizations.find(({ id }) => id === projected.blockedReads[0]?.organizationId)
+                ?.name ??
+              "Zerops",
+            organizationList: projected.blockedReads.some(
+              ({ organizationId, projectId }) =>
+                projectId === null && (inView === null || organizationId === inView.id),
+            ),
+            projects: [
+              ...new Set(
+                projected.blockedReads.flatMap(({ organizationId, projectId }) =>
+                  projectId === null || (inView !== null && organizationId !== inView.id)
+                    ? []
+                    : [projected.projects.find(({ id }) => id === projectId)?.name ?? projectId],
+                ),
               ),
-          },
-    [footActions, footSentence, retryNow, signOutNow],
+            ],
+          })
+        : null;
+  const lapseSentence = lapse?.sentence ?? null;
+  const lapseRetry = lapse?.retry ?? false;
+  const accountTrouble = useMemo(
+    (): AccountTrouble => ({
+      lapse: lapseSentence === null ? null : { sentence: lapseSentence, retry: lapseRetry },
+      trouble: voice,
+      unanswered,
+      subject,
+      retry: retryNow,
+      signOut: signOutNow,
+    }),
+    [lapseRetry, lapseSentence, retryNow, signOutNow, subject, unanswered, voice],
   );
 
   // Withholding is applied here, at the inventory's one read (DESIGN law 5, §3.1): a withheld
@@ -601,8 +641,9 @@ export function ZeropsInventoryProvider({ children }: { readonly children: React
     lost,
     // A read failing or stalled is not known, spoken of yet or not: the 20 s silence decides only
     // when the account's line speaks, never what the data says (a Mate link settled "not found",
-    // "no projects" painted and taken back).
-    isLoading: !projected.read || trouble !== null,
+    // "no projects" painted and taken back). Scoped to the organization in view
+    // (`organizationKnowledge`): another organization's trouble changes nothing its consumers see.
+    isLoading: known.loading,
     error: shownError,
   });
   useEffect(() => {
@@ -652,7 +693,7 @@ export function ZeropsInventoryProvider({ children }: { readonly children: React
       ) : (
         <InventoryContext value={snapshot}>
           <HeldInventoryContext value={held}>
-            <AccountVoiceContext value={accountVoice}>{children}</AccountVoiceContext>
+            <AccountTroubleContext value={accountTrouble}>{children}</AccountTroubleContext>
           </HeldInventoryContext>
         </InventoryContext>
       )}

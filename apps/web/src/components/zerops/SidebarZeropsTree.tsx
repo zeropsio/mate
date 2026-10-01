@@ -1711,10 +1711,17 @@ export function SidebarNewProject({ onNewProject }: { readonly onNewProject: () 
  */
 export function SidebarAccountLine({
   sentence,
+  title,
   actions,
 }: {
   readonly sentence: string;
-  readonly actions: ReadonlyArray<{ readonly label: string; readonly run: () => void }>;
+  /** What isn't answering, named under the sentence. */
+  readonly title?: string | null | undefined;
+  readonly actions: ReadonlyArray<{
+    readonly label: string;
+    readonly run: () => void;
+    readonly busy?: boolean;
+  }>;
 }) {
   return (
     <div
@@ -1722,10 +1729,15 @@ export function SidebarAccountLine({
       data-zerops-surface="sidebar-account-line"
       role="status"
     >
-      <span className="me-1 min-w-0 truncate">{sentence}</span>
-      {actions.map(({ label, run }) => (
+      <span className="me-1 flex min-w-0 flex-col">
+        <span className="truncate">{sentence}</span>
+        {/* What isn't answering, named where a screenshot of the report carries it. */}
+        {title == null ? null : <span className="truncate opacity-75">{title}</span>}
+      </span>
+      {actions.map(({ label, run, busy = false }) => (
         <button
-          className="shrink-0 cursor-pointer rounded-md px-1.5 py-0.5 font-medium text-sidebar-foreground outline-none transition-colors hover:bg-sidebar-row-hover focus-visible:ring-2 focus-visible:ring-ring"
+          className="shrink-0 cursor-pointer rounded-md px-1.5 py-0.5 font-medium text-sidebar-foreground outline-none transition-colors hover:bg-sidebar-row-hover focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default disabled:text-sidebar-muted-foreground disabled:hover:bg-transparent"
+          disabled={busy}
           key={label}
           onClick={run}
           type="button"

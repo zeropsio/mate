@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { mountTab, unmountTabs, type MountedTab } from "./__fixtures__/harnessTabs";
 import { buttonsLabelled, press } from "./__fixtures__/testDom";
+import { TRY_NOW_SETTLE_MS } from "./inventoryTrouble.logic";
 
 vi.mock("../components/zerops/landing/ZeropsLandingShell", () => ({
   ZeropsLandingWait: ({ label }: { readonly label: string }) => label,
@@ -263,20 +264,25 @@ describe("ZeropsInventoryProvider renewal", () => {
         await pass(30_000);
         seen.push(tab.readable());
       }
-      // "Try now" joins a running round; pressed between rounds, it starts one at once, and it
-      // stays beside the sentence while that round runs.
-      const before = rounds();
-      for (let second = 0; second < 2 * MINUTE_MS && rounds() === before; second += 1_000) {
-        await tab.run(() => press(buttonsLabelled(tab.container(), "Try now")[0]!));
-        await pass(INVALIDATION_COALESCE_MS);
-        seen.push(tab.readable());
-        await pass(1_000 - INVALIDATION_COALESCE_MS);
-      }
-      expect(rounds()).toBe(before + 1);
-
       expect(new Set(seen).size).toBe(1);
       expect(seen[0]).toContain(CHILD);
       expect(seen[0]).toContain("Zerops isn't answering.");
+      // "Try now" joins a running round; pressed between rounds, it starts one at once. It is
+      // never a silent no-op: it says it is trying while it runs, and a lapse that outlives it
+      // says so, offering it again.
+      const before = rounds();
+      const said: Array<string> = [];
+      for (let second = 0; second < 2 * MINUTE_MS && rounds() === before; second += 1_000) {
+        const [tryNow] = buttonsLabelled(tab.container(), "Try now");
+        if (tryNow !== undefined) await tab.run(() => press(tryNow));
+        await pass(INVALIDATION_COALESCE_MS);
+        said.push(tab.readable());
+        await pass(1_000 - INVALIDATION_COALESCE_MS);
+      }
+      expect(rounds()).toBe(before + 1);
+      expect(said[0]!.match(/Try (again|now)|Trying…|Sign out/g)).toEqual(["Trying…", "Sign out"]);
+      await pass(TRY_NOW_SETTLE_MS);
+      expect(tab.readable()).toContain("Still not answering.");
       expect(seen[0]!.match(/Try (again|now)|Sign out/g)).toEqual(["Try now", "Sign out"]);
     },
   );
