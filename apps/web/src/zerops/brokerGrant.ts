@@ -20,9 +20,11 @@
  */
 
 import {
+  makeTokenWriteLock,
   planBrokerProjectGrant,
+  writeTokenProjectsFresh,
+  type TokenWriteHold,
   type ZeropsApiClient,
-  type ZeropsIntegrationToken,
 } from "@t3tools/client-runtime/zerops";
 import {
   ZeropsOrganizationId,
@@ -66,7 +68,13 @@ export type BrokerGrantOutcome =
 export type BrokerGrantClient = Pick<
   ZeropsApiClient,
   "listIntegrationTokens" | "setIntegrationTokenProjects"
->;
+> & {
+  /** Holds one token's read-then-write at a time, across this browser's tabs. */
+  readonly hold?: TokenWriteHold;
+};
+
+/** This page's token locks: one token's read-then-write at a time, in it and across tabs. */
+const tokenWrites = makeTokenWriteLock(globalThis.navigator?.locks);
 
 /**
  * The broker grant's token list and its one write, through the account's runtime. The write
@@ -82,18 +90,23 @@ export function brokerGrantTokens(runtime: ZeropsDataContextValue["runtime"]): B
     organizationId: ZeropsOrganizationId.make(clientId),
   });
   return {
-    listIntegrationTokens: async (clientId) =>
+    listIntegrationTokens: async (clientId, signal) =>
       integrationTokensFromGrantMetadata(
-        await runZeropsCommand(runtime.commands.listIntegrationTokenGrants(organization(clientId))),
+        await runZeropsCommand(
+          runtime.commands.listIntegrationTokenGrants(organization(clientId)),
+          signal,
+        ),
       ),
-    setIntegrationTokenProjects: async ({ clientId, ...input }) => {
+    setIntegrationTokenProjects: async ({ clientId, ...input }, signal) => {
       await runZeropsCommand(
         runtime.commands.setIntegrationTokenProjects({
           organization: organization(clientId),
           ...input,
         }),
+        signal,
       );
     },
+    hold: tokenWrites,
   };
 }
 
@@ -109,31 +122,37 @@ export async function grantBrokerProject(input: {
   readonly signal?: AbortSignal | undefined;
 }): Promise<BrokerGrantOutcome> {
   try {
-    const tokens: ReadonlyArray<ZeropsIntegrationToken> = await input.client.listIntegrationTokens(
-      input.clientId,
-      input.signal,
-    );
-    const plan = planBrokerProjectGrant(tokens, input.projectId);
-    switch (plan.kind) {
-      case "no-broker":
-        return { kind: "no-broker", reason: plan.reason };
-      case "refused":
-        return { kind: "failed", reason: plan.reason };
-      case "held":
-        return { kind: "granted" };
-      case "write":
-        await input.client.setIntegrationTokenProjects(
-          {
-            clientId: input.clientId,
-            tokenId: plan.broker.id,
-            name: plan.broker.name,
-            projects: plan.projects,
-            ...(plan.broker.roleCode === undefined ? {} : { roleCode: plan.broker.roleCode }),
-          },
+    input.signal?.throwIfAborted();
+    let outcome: BrokerGrantOutcome = { kind: "granted" };
+    // The write replaces the broker's whole project list: it is planned from the list read under
+    // the broker token's lock, so a grant made meanwhile, here or in another tab, is kept.
+    await writeTokenProjectsFresh({
+      read: () => input.client.listIntegrationTokens(input.clientId, input.signal),
+      plan: (tokens) => {
+        const plan = planBrokerProjectGrant(tokens, input.projectId);
+        switch (plan.kind) {
+          case "no-broker":
+            outcome = { kind: "no-broker", reason: plan.reason };
+            return [];
+          case "refused":
+            outcome = { kind: "failed", reason: plan.reason };
+            return [];
+          case "held":
+            outcome = { kind: "granted" };
+            return [];
+          case "write":
+            outcome = { kind: "granted" };
+            return [{ tokenId: plan.broker.id, name: plan.broker.name, projects: plan.projects }];
+        }
+      },
+      write: (write) =>
+        input.client.setIntegrationTokenProjects(
+          { clientId: input.clientId, ...write },
           input.signal,
-        );
-        return { kind: "granted" };
-    }
+        ),
+      ...(input.client.hold === undefined ? {} : { hold: input.client.hold }),
+    });
+    return outcome;
   } catch (cause) {
     return { kind: "failed", reason: zeropsErrorMessage(cause) };
   }

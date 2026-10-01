@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vite-plus/test";
 
-import { parseZeropsRegistry } from "@t3tools/client-runtime/zerops";
+import { parseZeropsRegistry, type ZeropsIntegrationToken } from "@t3tools/client-runtime/zerops";
 
 import {
   brokerGrantTokens,
@@ -271,11 +271,72 @@ describe("brokerGrantTokens", () => {
       });
 
       expect(outcome).toEqual({ kind: "granted" });
+      // One read finds the broker, the one under its lock plans the write.
       expect(calls.slice(1)).toEqual([
+        "list tokens of org-1",
         "list tokens of org-1",
         "grant p-gitea,p-mate,p-new in org-1 as READ_ONLY",
       ]);
       unmount();
+    } finally {
+      await store.close();
+    }
+  });
+});
+
+describe("two grants of one broker at once", () => {
+  it("both land: neither writes from the list the other is about to replace", async () => {
+    const calls: Array<string> = [];
+    let held: ReadonlyArray<ZeropsIntegrationToken> = [BROKER];
+    // Two tabs of one account, each its own runtime, over one platform.
+    const tab = () =>
+      makeTokenStore({
+        calls,
+        tokens: () => held,
+        // Each write lands a moment after it is sent: room for the other grant to read meanwhile.
+        beforeWrite: () => new Promise((resolve) => setTimeout(resolve, 20)),
+        onWrite: (write) => {
+          held = held.map((token) =>
+            token.id === write.tokenId ? { ...token, projects: write.projects } : token,
+          );
+        },
+      });
+    const stores = [await tab(), await tab()];
+    try {
+      const outcomes = await Promise.all(
+        stores.map((store, index) =>
+          grantBrokerProject({
+            client: brokerGrantTokens(store.runtime),
+            clientId: "org-1",
+            projectId: index === 0 ? "p-a" : "p-b",
+          }),
+        ),
+      );
+      expect(outcomes).toEqual([{ kind: "granted" }, { kind: "granted" }]);
+      expect((held[0]?.projects ?? []).map((project) => project.projectId).toSorted()).toEqual([
+        "p-a",
+        "p-b",
+        "p-gitea",
+      ]);
+    } finally {
+      await Promise.all(stores.map((store) => store.close()));
+    }
+  });
+
+  it("an aborted grant reads and writes nothing more", async () => {
+    const calls: Array<string> = [];
+    const store = await makeTokenStore({ calls, tokens: () => [BROKER] });
+    try {
+      const controller = new AbortController();
+      controller.abort();
+      const outcome = await grantBrokerProject({
+        client: brokerGrantTokens(store.runtime),
+        clientId: "org-1",
+        projectId: "p-a",
+        signal: controller.signal,
+      });
+      expect(outcome.kind).toBe("failed");
+      expect(calls).toEqual([]);
     } finally {
       await store.close();
     }
