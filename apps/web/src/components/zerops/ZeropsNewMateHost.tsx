@@ -50,6 +50,7 @@ import {
   newMateDoor,
   newMateDoorMates,
   newMateRecipeChange,
+  pressRegistrationRefused,
   pressSteps,
   pressThrough,
   proposedEnvironmentName,
@@ -217,6 +218,7 @@ function NewMateDialog({
         // The Mate needs no browser once its project is marked closed off: only then does the
         // dialog give way to it. A tab closed before is the person's choice; *Finish setup*
         // completes it, in any browser.
+        let refusedNow: string | undefined;
         const land = (projectId: string) => {
           if (landed) return;
           landed = true;
@@ -242,13 +244,22 @@ function NewMateDialog({
             setPressed((current) => (current === null ? current : { ...current, projectId }));
           },
           onProgress: (progress) => {
+            refusedNow = pressRegistrationRefused(name, progress);
             setPressed((current) => (current === null ? current : { ...current, progress }));
-            if (accepted !== undefined && pressThrough(progress)) land(accepted);
+            // Closed off and registered: it needs nobody. A refused registration stays said in
+            // the dialog, with the Mate to open.
+            if (
+              accepted !== undefined &&
+              pressThrough(progress) &&
+              pressRegistrationRefused(name, progress) === undefined
+            ) {
+              land(accepted);
+            }
           },
         }).then((run: EnvironmentCreationRun) => {
           if (accepted !== undefined) {
             if (run.kind === "ran" && run.outcome.ok) {
-              land(accepted);
+              if (refusedNow === undefined) land(accepted);
               return;
             }
             // Stopped after the platform took the project: the dialog stays on the step that
@@ -288,13 +299,24 @@ function NewMateDialog({
               name: pressed.name,
               steps: pressSteps(pressed.progress),
               ...pressFailedView(press),
+              ...refusedView(pressed, () => {
+                if (pressed.projectId === null) return;
+                const projectId = pressed.projectId;
+                setPressed(null);
+                setAdding(false);
+                dismiss();
+                void navigate(newMateView(projectId));
+              }),
             },
           })}
       onOpenChange={(open) => {
         // Half way through an Add there is nothing to close: the Mate needs this tab a few
         // seconds more. A press that stopped may be left, for Finish setup to complete.
         if (open) return;
-        if (adding && press?.state.kind !== "failed") return;
+        const refused =
+          pressed !== null &&
+          pressRegistrationRefused(pressed.name, pressed.progress) !== undefined;
+        if (adding && press?.state.kind !== "failed" && !refused) return;
         setPressed(null);
         setAdding(false);
         dismiss();
@@ -314,6 +336,18 @@ function NewMateDialog({
 }
 
 /** Where a press stopped, as the Add dialog says it: why, and Try again where it may resume. */
+/** A registration the platform refused: said in the dialog, with the Mate to open. */
+function refusedView(
+  pressed: {
+    readonly name: string;
+    readonly progress: ReadonlyArray<EnvironmentCreationStepProgress>;
+  },
+  open: () => void,
+): { readonly notice?: string; readonly onOpen?: () => void } {
+  const notice = pressRegistrationRefused(pressed.name, pressed.progress);
+  return notice === undefined ? {} : { notice, onOpen: open };
+}
+
 function pressFailedView(press: MatePress | undefined): {
   readonly failed?: string;
   readonly onTryAgain?: () => void;

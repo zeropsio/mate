@@ -5,7 +5,7 @@ import {
   type EnvironmentCreationStepProgress,
 } from "@t3tools/client-runtime/zerops";
 import * as Effect from "effect/Effect";
-import { describe, expect, it } from "vite-plus/test";
+import { describe, expect, it, vi } from "vite-plus/test";
 
 import {
   beginPress,
@@ -15,6 +15,7 @@ import {
   planShareReach,
   progressPress,
   shareGroupReach,
+  FINISHED_SHOWN_MS,
   PRESSED_ELSEWHERE,
   connectedPresses,
   finishMateSetup,
@@ -373,6 +374,21 @@ describe("runPress — a press settled, tried again, and one at a time", () => {
     forgetPress("p-1");
   });
 
+  // Finish setup's record ends too: its view says done for a moment, then the row is the Mate's
+  // again, ⋯ menu and all — it never waits for a connect that may not come (pass 28 review).
+  it("clears a Finish setup a moment after its view said it is done", async () => {
+    vi.useFakeTimers();
+    try {
+      begin(true);
+      await press(["ok"]);
+      expect(readMatePress("p-1")?.state).toEqual({ kind: "pressed" });
+      vi.advanceTimersByTime(FINISHED_SHOWN_MS);
+      expect(readMatePress("p-1")).toBeUndefined();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("ends an Add's press at its mark", async () => {
     begin();
     expect(await press(["ok"])).toMatchObject({ ok: true });
@@ -451,26 +467,12 @@ describe("a press's end", () => {
     STEPS.map((step, index) => ({ step, state: states[index]! }));
 
   it.each([
-    {
-      case: "an Add before its mark",
-      finishing: false,
-      states: ["done", "running", "queued"],
-      want: false,
-    },
-    {
-      case: "an Add at its mark",
-      finishing: false,
-      states: ["done", "done", "running"],
-      want: true,
-    },
-    {
-      case: "Finish setup at its mark: its view says when it is done",
-      finishing: true,
-      states: ["done", "done", "running"],
-      want: false,
-    },
-  ] as const)("$case: $want", ({ finishing, states, want }) => {
-    expect(pressDoneAt({ finishing }, at(states))).toBe(want);
+    { case: "before its mark", states: ["done", "running", "queued"], want: false },
+    { case: "marked, registering", states: ["done", "done", "running"], want: false },
+    { case: "marked and registered", states: ["done", "done", "done"], want: true },
+    { case: "marked, its registration refused", states: ["done", "done", "failed"], want: true },
+  ] as const)("$case: $want", ({ states, want }) => {
+    expect(pressDoneAt(at(states))).toBe(want);
   });
 
   it("ends every press whose Mate has connected", () => {

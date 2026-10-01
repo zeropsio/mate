@@ -106,6 +106,10 @@ export interface PressingView {
   readonly failed?: string | undefined;
   /** Resumes the press at the step that stopped, on the same project. */
   readonly onTryAgain?: (() => void) | undefined;
+  /** It runs, and something is left for somebody else: a refused registration, said. */
+  readonly notice?: string | undefined;
+  /** Opens the Mate, where the dialog stays only to say `notice`. */
+  readonly onOpen?: (() => void) | undefined;
 }
 
 const PRESS_STEP_STATES: Readonly<
@@ -145,17 +149,22 @@ export function PressingPanel({ pressing }: { readonly pressing: PressingView })
       <DialogHeader>
         <DialogTitle>Setting up {pressing.name}…</DialogTitle>
         <DialogDescription>
-          {pressing.failed === undefined
-            ? "Keep this open for a few seconds: after this it needs nobody."
-            : pressing.failed}
+          {pressing.failed ??
+            pressing.notice ??
+            "Keep this open for a few seconds: after this it needs nobody."}
         </DialogDescription>
       </DialogHeader>
       <DialogPanel>
         <PressSteps name={pressing.name} steps={pressing.steps} />
       </DialogPanel>
-      {pressing.onTryAgain === undefined ? null : (
+      {pressing.onTryAgain === undefined && pressing.onOpen === undefined ? null : (
         <DialogFooter>
-          <Button onClick={pressing.onTryAgain}>Try again</Button>
+          {pressing.onTryAgain === undefined ? null : (
+            <Button onClick={pressing.onTryAgain}>Try again</Button>
+          )}
+          {pressing.onOpen === undefined ? null : (
+            <Button onClick={pressing.onOpen}>Open {pressing.name}</Button>
+          )}
         </DialogFooter>
       )}
     </>

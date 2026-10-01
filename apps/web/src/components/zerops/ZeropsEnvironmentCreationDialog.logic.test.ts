@@ -26,6 +26,7 @@ import {
   validateCreationForm,
   type NewMateDoor,
   type RecipeOption,
+  pressRegistrationRefused,
   pressSteps,
   pressThrough,
 } from "./ZeropsEnvironmentCreationDialog.logic";
@@ -780,30 +781,72 @@ describe("pressSteps — the press as the Add dialog draws it", () => {
     {
       case: "creating the project",
       states: ["running", "queued", "queued", "queued", "queued", "queued"],
-      want: ["Project:active", "Container:waiting", "Closed off:waiting"],
+      want: ["Project:active", "Container:waiting", "Closed off:waiting", "Registered:waiting"],
     },
     {
-      case: "closing it off",
-      states: ["done", "done", "running", "queued", "queued", "queued"],
-      want: ["Project:done", "Container:done", "Closed off:active"],
+      case: "registering it, closed off",
+      states: ["done", "done", "done", "running", "queued", "queued"],
+      want: ["Project:done", "Container:done", "Closed off:done", "Registered:active"],
     },
     {
       case: "a container that would not come",
       states: ["done", "failed", "queued", "queued", "queued", "queued"],
-      want: ["Project:done", "Container:failed", "Closed off:waiting"],
+      want: ["Project:done", "Container:failed", "Closed off:waiting", "Registered:waiting"],
     },
   ] as const)("draws $case", ({ states, want }) => {
     expect(drawn(at(states))).toEqual(want);
   });
 
-  // The dialog goes at the close-off: what comes after — its registration, the group's sight of
-  // it, the wait for it — the Mate does without a browser, or waits for an owner.
-  it("says nothing of what comes after the close-off", () => {
-    expect(pressSteps(at(["done", "done", "done", "running", "queued", "queued"]))).toHaveLength(3);
+  // The dialog stays through the registration — a call or two — and goes before the group's
+  // sight of it and the wait for it, which the reconcile and the container cover.
+  it("says nothing of what comes after the registration", () => {
+    expect(pressSteps(at(["done", "done", "done", "done", "running", "queued"]))).toHaveLength(4);
   });
 
-  it("is through once the project is marked closed off", () => {
-    expect(pressThrough(at(["done", "done", "running", "queued", "queued", "queued"]))).toBe(false);
-    expect(pressThrough(at(["done", "done", "done", "running", "queued", "queued"]))).toBe(true);
+  it("leaves Registered out of a press that writes no registration", () => {
+    const progress = at(["done", "done", "done", "done", "running", "queued"]).filter(
+      (entry) => entry.step.kind !== "register",
+    );
+    expect(drawn(progress)).toEqual(["Project:done", "Container:done", "Closed off:done"]);
+  });
+
+  it.each([
+    {
+      case: "closing off",
+      states: ["done", "done", "running", "queued", "queued", "queued"],
+      want: false,
+    },
+    {
+      case: "registering",
+      states: ["done", "done", "done", "running", "queued", "queued"],
+      want: false,
+    },
+    {
+      case: "registered",
+      states: ["done", "done", "done", "done", "running", "queued"],
+      want: true,
+    },
+    {
+      case: "its registration refused",
+      states: ["done", "done", "done", "failed", "running", "queued"],
+      want: true,
+    },
+  ] as const)(
+    "is through once closed off and registered, or refused: $case",
+    ({ states, want }) => {
+      expect(pressThrough(at(states))).toBe(want);
+    },
+  );
+
+  it("says a refused registration in the dialog: the Mate runs, an owner registers it", () => {
+    expect(
+      pressRegistrationRefused(
+        "Ada",
+        at(["done", "done", "done", "failed", "running", "queued"], "No."),
+      ),
+    ).toBe("Ada is running. An owner needs to register it before it can use Git.");
+    expect(
+      pressRegistrationRefused("Ada", at(["done", "done", "done", "done", "running", "queued"])),
+    ).toBeUndefined();
   });
 });

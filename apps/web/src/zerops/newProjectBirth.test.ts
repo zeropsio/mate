@@ -606,33 +606,50 @@ describe("newProjectPressSteps — a New project's press, as its dialog draws it
         "Project registered:waiting",
         "Creating the project:waiting",
         "Closed off:waiting",
+        "Mate registered:waiting",
       ],
     },
     {
       case: "the project being created, its wait part of the press",
       made: birth({ step: "create" }),
       progress: null,
-      want: ["Project registered:done", "Creating the project:active", "Closed off:waiting"],
+      want: [
+        "Project registered:done",
+        "Creating the project:active",
+        "Closed off:waiting",
+        "Mate registered:waiting",
+      ],
     },
     {
       case: "its Mate being closed off",
       made: birth({ step: "created", projectId: "p-1" }),
       progress: press(["running", "queued", "queued", "queued"]),
-      want: ["Project registered:done", "Creating the project:done", "Closed off:active"],
+      want: [
+        "Project registered:done",
+        "Creating the project:done",
+        "Closed off:active",
+        "Mate registered:waiting",
+      ],
     },
     {
       case: "a creation the platform refused",
       made: birth({ step: "create", failed: NO_ROOM }),
       progress: null,
-      want: ["Project registered:done", "Creating the project:failed", "Closed off:waiting"],
+      want: [
+        "Project registered:done",
+        "Creating the project:failed",
+        "Closed off:waiting",
+        "Mate registered:waiting",
+      ],
     },
   ])("draws $case", ({ made, progress, want }) => {
     expect(drawn(made, progress)).toEqual(want);
   });
 
-  it("is through once its Mate is marked closed off, and not before", () => {
+  it("is through once its Mate is marked closed off and registered, and not before", () => {
     expect(newProjectPressThrough(press(["running", "queued", "queued", "queued"]))).toBe(false);
-    expect(newProjectPressThrough(press(["done", "running", "queued", "queued"]))).toBe(true);
+    expect(newProjectPressThrough(press(["done", "running", "queued", "queued"]))).toBe(false);
+    expect(newProjectPressThrough(press(["done", "done", "running", "queued"]))).toBe(true);
     expect(newProjectPressThrough(null)).toBe(false);
   });
 });

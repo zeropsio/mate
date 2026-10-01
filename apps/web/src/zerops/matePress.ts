@@ -142,15 +142,28 @@ export function progressPress(
 }
 
 /**
- * Whether a press is over at this progress: once its project is marked closed off the Mate needs
- * no browser, and its record goes — but *Finish setup*'s, whose view says when it is done, stays
- * until its Mate connects (`connectedPresses`).
+ * Whether a press is over at this progress: its project marked closed off — the Mate needs no
+ * browser — and its registration through or refused. Its record then goes; *Finish setup*'s after
+ * its view has said it is done for a moment ({@link FINISHED_SHOWN_MS}), never waiting for a
+ * connect that may not come.
  */
-export function pressDoneAt(
-  press: { readonly finishing?: boolean | undefined },
-  progress: ReadonlyArray<EnvironmentCreationStepProgress>,
-): boolean {
-  return press.finishing !== true && pressThrough(progress);
+export function pressDoneAt(progress: ReadonlyArray<EnvironmentCreationStepProgress>): boolean {
+  return pressThrough(progress);
+}
+
+/** How long Finish setup's view says it is done before its record goes. */
+export const FINISHED_SHOWN_MS = 4_000;
+
+/** A press is over: its record goes, Finish setup's after its view has said it is done. */
+function endPress(projectId: string, finishing: boolean): void {
+  if (!finishing) {
+    forgetPress(projectId);
+    return;
+  }
+  settlePress(projectId, { kind: "pressed" });
+  setTimeout(() => {
+    if (readMatePress(projectId)?.state.kind === "pressed") forgetPress(projectId);
+  }, FINISHED_SHOWN_MS);
 }
 
 /** The presses whose Mate has connected: nothing of them is left to say. */
@@ -206,10 +219,6 @@ export function pressFailure(press: MatePress | undefined): string | undefined {
   return press?.state.kind === "failed" ? press.state.reason : undefined;
 }
 
-const PRESS_STEP_VIEW_STATES: Readonly<
-  Record<EnvironmentCreationStepProgress["state"], PressStepView["state"]>
-> = { queued: "waiting", running: "active", done: "done", failed: "failed" };
-
 /** A Mate closed off and running whose registration was refused: an owner finishes it. */
 const AWAITING_OWNER_LINE = "It still needs an owner to register it.";
 
@@ -231,14 +240,8 @@ export function finishSetupView(press: MatePress | undefined):
   | undefined {
   if (press?.finishing !== true) return undefined;
   const progress = press.progress ?? [];
-  // Its registration comes after the close-off, and this view stays until the press is through.
   const registered = progress.find((entry) => entry.step.kind === "register");
-  const steps = [
-    ...pressSteps(progress),
-    ...(registered === undefined
-      ? []
-      : [{ label: "Registered", state: PRESS_STEP_VIEW_STATES[registered.state] }]),
-  ];
+  const steps = pressSteps(progress);
   const done = press.state.kind === "pressed";
   return {
     steps,
@@ -660,9 +663,11 @@ async function pressRun(
     onProgress: (progress) => {
       if (accepted !== undefined && input.isCurrent()) {
         const held = readMatePress(accepted);
-        // Marked closed off: the Mate needs no browser, and its press record goes.
-        if (held !== undefined && pressDoneAt(held, progress)) forgetPress(accepted);
-        else progressPress(accepted, progress);
+        progressPress(accepted, progress);
+        // Closed off and registered: the Mate needs no browser, and its press record goes —
+        // Finish setup's once its view has said so.
+        if (held !== undefined && pressDoneAt(progress))
+          endPress(accepted, held.finishing === true);
       }
       input.onProgress?.(progress);
     },
