@@ -32,6 +32,7 @@ import {
   holdListedProjects,
   inventoryDemand,
   inventoryProjectRefs,
+  listsMates,
 } from "./inventoryDemand.ts";
 
 const MINUTE = 60_000;
@@ -208,6 +209,7 @@ describe("inventoryDemand", () => {
       projectStatus: (ref) => status?.[ref.projectId],
       organizationListed: () => listed ?? false,
       organizationHasMates: () => false,
+      projectIsMate: () => false,
     });
     expect(demand.map(named)).toEqual(expected);
   });
@@ -222,10 +224,66 @@ describe("inventoryDemand", () => {
       projectStatus: () => undefined,
       organizationListed: () => true,
       organizationHasMates: () => mates,
+      projectIsMate: () => false,
     });
     const kinds = demand.map(({ kind }) => kind);
     expect(kinds.filter((kind) => kind === "organization-versions")).toHaveLength(mates ? 1 : 0);
     expect(kinds.filter((kind) => kind === "organization-variables")).toHaveLength(mates ? 1 : 0);
+  });
+
+  it("holds the streams for a Mate this tab just created, before its organization's list names it", () => {
+    const demand = inventoryDemand({
+      grant: drive(granted),
+      access: { status: "unverified" },
+      projectStatus: () => undefined,
+      organizationListed: () => true,
+      organizationHasMates: () => false,
+      // The press's own record of project A: tagged a Mate at birth.
+      projectIsMate: (ref) => ref.projectId === A.projectId,
+    });
+    expect(demand.map(({ kind }) => kind)).toContain("organization-variables");
+  });
+});
+
+describe("listsMates", () => {
+  const listed = (
+    projects: ReadonlyArray<{ readonly tags?: ReadonlyArray<string>; readonly observed?: boolean }>,
+  ) =>
+    ({
+      query: { status: "observed" },
+      value: projects.map(({ tags, observed = true }, index) =>
+        observed
+          ? {
+              knowledge: "observed",
+              record: {
+                ref: project(`project-${index}`),
+                identity: { knowledge: "observed", fields: { name: `p-${index}` } },
+                lifecycle: { knowledge: "observed", fields: { status: "ACTIVE" } },
+                presentation:
+                  tags === undefined
+                    ? { knowledge: "unread" }
+                    : { knowledge: "observed", fields: { tags } },
+                placement: { knowledge: "unread" },
+              },
+            }
+          : { knowledge: "unread" },
+      ),
+    }) as never;
+
+  it.each([
+    { name: "no project", projects: [], mates: false },
+    { name: "only untagged projects", projects: [{}, { tags: [] }], mates: false },
+    {
+      name: "a project of another product",
+      projects: [{ tags: ["zerops-tool:gitea"] }],
+      mates: false,
+    },
+    { name: "a tag that only starts like a Mate's", projects: [{ tags: ["mates"] }], mates: false },
+    { name: "a Mate", projects: [{}, { tags: ["mate"] }], mates: true },
+    { name: "a Mate's group", projects: [{ tags: ["mate:g:team"] }], mates: true },
+    { name: "a Mate not read yet", projects: [{ observed: false }], mates: false },
+  ])("says an organization listing $name has Mates: $mates", ({ projects, mates }) => {
+    expect(listsMates(listed(projects))).toBe(mates);
   });
 });
 
@@ -304,6 +362,65 @@ describe("holdInventoryDemand", () => {
         expect(published).toBe(1);
       }),
     ),
+  );
+  it.effect(
+    "holds a new Mate's streams from the press's own answer, before any list names it",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const { decodeProjectCommandResponse } = yield* Effect.promise(
+            () => import("../data/platformProtocol.ts"),
+          );
+          const registry = AtomRegistry.make();
+          let opaque = 0;
+          const created = {
+            id: "project-new",
+            clientId: organization.organizationId,
+            name: "new-mate",
+            status: "ACTIVE",
+            tagList: ["mate"],
+          };
+          const data = yield* makeZeropsDataRuntime({
+            scope: scope(),
+            adapter: {
+              ...silentAdapter,
+              execute: (command) =>
+                Effect.succeed({
+                  processRefs: [],
+                  observations: decodeProjectCommandResponse(command as never, created)
+                    .observations,
+                  result: {
+                    kind: "create-project-with-mate",
+                    value: { project: created, serviceName: "zcp" },
+                  },
+                } as never),
+            },
+            atomRegistry: registry,
+            makeOpaqueId: () => `opaque-${++opaque}`,
+          });
+          yield* Effect.addFinalizer(() =>
+            data
+              .shutdown("application-close")
+              .pipe(Effect.andThen(Effect.sync(() => registry.dispose()))),
+          );
+          yield* data.access.start({ verifier: verifying([A]), hidden: false, online: true });
+          yield* settle;
+          yield* holdInventoryDemand({ data, atomRegistry: registry });
+          yield* settle;
+          const streamed = () =>
+            Effect.map(data.state, (state) =>
+              [...state.interests.values()]
+                .filter(({ leases }) => leases > 0)
+                .map(({ descriptor }) => descriptor.kind)
+                .filter((kind) => kind === "organization-variables"),
+            );
+          expect(yield* streamed()).toEqual([]);
+
+          yield* data.commands.createProjectWithMate({ organization, name: "new-mate" });
+          yield* settle;
+          expect(yield* streamed()).toEqual(["organization-variables"]);
+        }),
+      ),
   );
 });
 
