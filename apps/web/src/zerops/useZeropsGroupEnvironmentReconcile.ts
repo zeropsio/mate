@@ -19,9 +19,8 @@
  * A failed one is tried again on a backoff (`RECONCILE_RETRY_MS`); what is
  * outstanding meanwhile shows as the row that still asks. The declaration is
  * written as the person, so no repair starts while Gitea holds no token for
- * them, and one that loses it part-way is given back unreported: the caller
- * enables the reconcile again once the token is back
- * (`GiteaSessionView.readable`).
+ * them, and one that loses it part-way is given back unreported and tried
+ * again on the backoff.
  */
 
 import type { HalfMadeGroupEnvironment, ZeropsApiClient } from "@t3tools/client-runtime/zerops";
@@ -159,8 +158,13 @@ export function useZeropsGroupEnvironmentReconcile(input: {
           // An abort — the page went — leaves it unfinished, so this entry is given back too.
           if (controller.signal.aborted) return release(index);
           // Its Gitea half ran without a token, or met a 401 no token recovered, and says only
-          // that: not an outcome, a repair the next enabled run makes.
-          if (gitea === null || unauthorized) return release(index);
+          // that: not an outcome, a repair tried again on the backoff — never on the gate's next
+          // opening, which a cold load's loading flips made a loop of the Zerops half's reads.
+          if (gitea === null || unauthorized) {
+            failed(entry);
+            release(index + 1);
+            return;
+          }
           if (outcome === undefined || outcome.failed !== undefined) failed(entry);
           else {
             const record = attempted.current.get(entry.projectId);

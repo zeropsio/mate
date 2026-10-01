@@ -22,6 +22,8 @@ const gitea = vi.hoisted(() => ({
   hold: null as Promise<void> | null,
   /** The next repair's outcome fails a step the page cannot fix by itself. */
   failNext: false,
+  /** Each registry read the page asked for after a repair. */
+  refreshes: 0,
 }));
 
 /** The fake client's side door: its request ended in a 401 no token recovered. */
@@ -149,6 +151,7 @@ describe("useZeropsGroupEnvironmentReconcile", () => {
     gitea.outwaitReacquireOnRepair = false;
     gitea.hold = null;
     gitea.failNext = false;
+    gitea.refreshes = 0;
     vi.useRealTimers();
     vi.unstubAllGlobals();
   });
@@ -165,7 +168,9 @@ describe("useZeropsGroupEnvironmentReconcile", () => {
         clientId: "org-1",
         giteaOrigin: "https://gitea.example.test",
         giteaProjectId: "gitea-project",
-        refreshRegistry: () => undefined,
+        refreshRegistry: () => {
+          gitea.refreshes += 1;
+        },
         halfMade: HALF_MADE,
         onOutcome: (_entry, outcome) => onOutcome(outcome),
       });
@@ -204,35 +209,51 @@ describe("useZeropsGroupEnvironmentReconcile", () => {
     await page.unmount();
   });
 
-  it("gives a repair that lost its Gitea token part-way back, unreported, for the next run", async () => {
+  it.each([
+    ["lost its Gitea token part-way", "loseTokenOnRepair"],
+    ["met a Gitea 401 that outlasted its wait", "outwaitReacquireOnRepair"],
+  ] as const)(
+    "a repair that %s is given back unreported, and tried again after its backoff, never on a loading flip",
+    async (_label, failure) => {
+      vi.useFakeTimers();
+      const outcomes: Array<AddGroupEnvironmentOutcome> = [];
+      const page = await mount((outcome) => outcomes.push(outcome));
+      gitea[failure] = true;
+      await page.render(true);
+      expect(gitea.repairs).toHaveLength(1);
+      expect(outcomes).toEqual([]);
+
+      gitea[failure] = false;
+      gitea.readable = true;
+      // A cold load's loading flips: none of them starts the repair over.
+      for (let flip = 0; flip < 3; flip++) {
+        await page.render(false);
+        await page.render(true);
+      }
+      expect(gitea.repairs).toHaveLength(1);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(RECONCILE_RETRY_MS[0]!);
+      });
+      expect(gitea.repairs).toHaveLength(2);
+      expect(outcomes.map((outcome) => outcome.failed)).toEqual([undefined]);
+      await page.unmount();
+    },
+  );
+
+  it("a cold load with a half-made environment repairs it once, reads the registry once, and settles", async () => {
+    vi.useFakeTimers();
     const outcomes: Array<AddGroupEnvironmentOutcome> = [];
     const page = await mount((outcome) => outcomes.push(outcome));
-    gitea.loseTokenOnRepair = true;
+    for (let flip = 0; flip < 5; flip++) {
+      await page.render(true);
+      await page.render(false);
+    }
     await page.render(true);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10 * 60_000);
+    });
     expect(gitea.repairs).toHaveLength(1);
-    expect(outcomes).toEqual([]);
-
-    gitea.loseTokenOnRepair = false;
-    gitea.readable = true;
-    await page.render(false);
-    await page.render(true);
-    expect(gitea.repairs).toHaveLength(2);
-    expect(outcomes.map((outcome) => outcome.failed)).toEqual([undefined]);
-    await page.unmount();
-  });
-
-  it("gives back a repair whose Gitea request's 401 outlasted its wait, though the token is back", async () => {
-    const outcomes: Array<AddGroupEnvironmentOutcome> = [];
-    const page = await mount((outcome) => outcomes.push(outcome));
-    gitea.outwaitReacquireOnRepair = true;
-    await page.render(true);
-    expect(gitea.repairs).toHaveLength(1);
-    expect(outcomes).toEqual([]);
-
-    gitea.outwaitReacquireOnRepair = false;
-    await page.render(false);
-    await page.render(true);
-    expect(gitea.repairs).toHaveLength(2);
+    expect(gitea.refreshes).toBe(1);
     expect(outcomes.map((outcome) => outcome.failed)).toEqual([undefined]);
     await page.unmount();
   });
