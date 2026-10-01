@@ -315,6 +315,7 @@ function projectFlow(
     groupId: group.groupId,
     slug: group.slug,
     declarations: deployed?.declarations ?? [],
+    declarationsRead: deployed !== undefined,
     environments: environmentInputs.map((entry) => stopRow(entry, releaseList)),
     environmentInputs,
     mainHeads: deployed?.mainHeads ?? EMPTY_HEADS,

@@ -466,10 +466,32 @@ describe("halfMadeGroupEnvironments", () => {
   });
 
   it("names a stage registered but not declared", () => {
-    expect(halfMadeGroupEnvironments({ projects, registry, declared: new Map() })).toEqual([
+    const declared = new Map([["g-1", new Set<string>()]]);
+    expect(halfMadeGroupEnvironments({ projects, registry, declared })).toEqual([
       { groupId: "g-1", projectId: "p-stage", displayName: "Acme - stage", tier: "stage" },
       { groupId: "g-1", projectId: "p-prod", displayName: "Acme - production", tier: "production" },
     ]);
+  });
+
+  it("names nothing in a group whose environments.yaml is not read yet", () => {
+    // A cold load: every environment of every group read as undeclared until its document came,
+    // and the page repaired each one, no write needed (measured 2026-10-01: six repairs, 36 reads).
+    const registered = parseZeropsRegistry([
+      "mate:gn:g-1:acme",
+      "mate:gm:g-1:p-stage:stage",
+      "mate:gm:g-1:p-prod:production",
+    ]);
+    expect(
+      halfMadeGroupEnvironments({ projects, registry: registered, declared: new Map() }),
+    ).toEqual([]);
+    expect(
+      halfMadeGroupEnvironments({
+        projects,
+        registry: registered,
+        declared: new Map([["g-2", new Set(["p-other"])]]),
+        withoutDeployToken: new Set(),
+      }),
+    ).toEqual([]);
   });
 
   it("leaves a group the registry does not know alone", () => {

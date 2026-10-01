@@ -554,7 +554,10 @@ export function halfMadeGroupEnvironments(input: {
     readonly tagList?: ReadonlyArray<string> | undefined;
   }>;
   readonly registry: ZeropsRegistry;
-  /** Per group, the projects its `environments.yaml` declares. */
+  /**
+   * Per group, the projects its `environments.yaml` declares. A group missing here has not had its
+   * document read: nothing is half-made in it yet.
+   */
   readonly declared: ReadonlyMap<string, ReadonlySet<string>>;
   /**
    * The declared projects whose deploy token the broker does not hold
@@ -574,7 +577,9 @@ export function halfMadeGroupEnvironments(input: {
     const registered = group.projects.some(
       (entry) => entry.projectId === project.id && entry.kind === tier,
     );
-    const declared = input.declared.get(tags.groupId)?.has(project.id) ?? false;
+    const declarations = input.declared.get(tags.groupId);
+    if (declarations === undefined) continue;
+    const declared = declarations.has(project.id);
     const keyed = !(input.withoutDeployToken?.has(project.id) ?? false);
     if (registered && declared && keyed) continue;
     out.push({ groupId: tags.groupId, projectId: project.id, displayName: project.name, tier });

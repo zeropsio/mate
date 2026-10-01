@@ -2154,13 +2154,16 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
   // registry, the broker's grant, the declaration — is finished here, off the
   // same list, once no creation is on its way in this tab
   // (`useZeropsGroupEnvironmentReconcile`).
+  // Only a group whose `environments.yaml` was read says what it declares: one still unread
+  // would read as declaring nothing, and every environment in it as half-made.
   const declaredByGroup = useMemo(
     () =>
       new Map(
-        [...groupDeploys].map(([groupId, state]) => [
-          groupId,
-          new Set(state.environments.map((entry) => entry.projectId)),
-        ]),
+        [...groupDeploys].flatMap(([groupId, state]) =>
+          state.declarationsRead
+            ? [[groupId, new Set(state.environments.map((entry) => entry.projectId))] as const]
+            : [],
+        ),
       ),
     [groupDeploys],
   );
