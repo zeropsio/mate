@@ -1052,13 +1052,26 @@ describe("the account runtime", () => {
           expect(yield* observing()).toBe(2);
           const roundsBefore = rounds().length;
 
-          // Someone else adds a Mate: its project appears in the organization's list.
-          rest.addProject({
+          const streamed = () =>
+            Effect.map(data.state, (state) =>
+              [...state.interests.values()]
+                .filter(({ interest }) => interest.status === "observing")
+                .map(({ descriptor }) => descriptor.kind)
+                .filter(
+                  (kind) => kind === "organization-versions" || kind === "organization-variables",
+                )
+                .toSorted(),
+            );
+          expect(yield* streamed()).toEqual([]);
+
+          // Someone else adds the organization's first Mate: its project appears in the list.
+          const mate = {
             id: "project-2",
             clientId: organization.organizationId,
             name: "project-2",
             status: "ACTIVE",
-          });
+          } as const;
+          rest.addProject({ ...mate, tagList: ["mate"] });
           yield* built.invalidations
             .invalidate({ topic: "inventory", organization })
             .pipe(Effect.provideService(Clock.Clock, clock));
@@ -1067,8 +1080,10 @@ describe("the account runtime", () => {
           yield* settle;
 
           expect(verifiedProjects()).toEqual(["project-1", "project-2"]);
-          // Its services are read: the organization's inventory and both projects'.
-          expect(yield* observing()).toBe(3);
+          // Its services are read: the organization's inventory and both projects'; and, with a
+          // Mate there now, what its services run and their Mate flags are streamed.
+          expect(yield* observing()).toBe(5);
+          expect(yield* streamed()).toEqual(["organization-variables", "organization-versions"]);
           expect(rounds()).toHaveLength(roundsBefore);
           // Both projects' rows are read the same way: the new one is no less known than the old.
           const listed = listing();
@@ -1078,6 +1093,17 @@ describe("the account runtime", () => {
             expect([first?.project.id, second?.project.id]).toEqual(["project-1", "project-2"]);
             expect(second?.presence).toBe(first?.presence);
           }
+
+          // The organization's last Mate stops being one: nothing reads the streams, so they go.
+          rest.addProject({ ...mate, tagList: [] });
+          yield* built.invalidations
+            .invalidate({ topic: "inventory", organization })
+            .pipe(Effect.provideService(Clock.Clock, clock));
+          yield* clock.advance(SECOND);
+          yield* settle;
+          yield* settle;
+          expect(yield* streamed()).toEqual([]);
+          expect(yield* observing()).toBe(3);
         }),
       ),
   );
