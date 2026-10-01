@@ -143,14 +143,6 @@ export interface AccountEnvironmentPorts {
   readonly records: RecordsStorage & { readonly listen: (changed: () => void) => () => void };
   /** The connection catalog: which environments are registered, and their links. */
   readonly catalog: { readonly listen: (listener: CatalogListener) => () => void };
-  /** The account's births (C9): whose Mate may not be wanted yet, and whose connect ends one. */
-  readonly births: {
-    /** Projects whose birth has not closed them off yet. */
-    readonly unhardened: () => ReadonlySet<string>;
-    readonly subscribe: (listener: () => void) => () => void;
-    /** The connect named the environment: the birth is over. */
-    readonly promote: (projectId: string) => void;
-  };
   /**
    * The environment the tab's route names as the stage starts — the reload's address — so the
    * route's target is wanted before the records and auto-connect fill the exchange slots; a
@@ -400,27 +392,8 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
     }
   };
 
-  /**
-   * The births the records end: a record is the exchange's word that it named the Mate's
-   * environment, so a birth this browser still holds for its project is over — however it was
-   * left behind. Each project once per stage.
-   */
-  const ended = new Set<string>();
-  const endBirth = (projectId: string) => {
-    if (ended.has(projectId)) return;
-    ended.add(projectId);
-    ports.births.promote(projectId);
-  };
-  const endRecordedBirths = () => {
-    if (stores === null || closed) return;
-    for (const record of stores.records.list()) {
-      if (record.projectRef !== null) endBirth(record.projectRef.projectId);
-    }
-  };
-
   /** The records, or the installs that write them, changed. */
   const registrationsChanged = () => {
-    endRecordedBirths();
     updateRoute();
     updateTargets();
     release();
@@ -449,8 +422,6 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
           organizationId === null ? null : { projectId: targetProject(key), orgId: organizationId },
         name: project?.name ?? null,
       });
-      // The birth is over: the exchange named its environment.
-      if (project !== undefined) endBirth(project.id);
       return outcome;
     } finally {
       if (at !== null) {
@@ -546,7 +517,7 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
     );
   };
 
-  /** The active organization's ready Mates, capped, none a birth still holds (D13). */
+  /** The active organization's ready Mates, capped (D13). */
   const updateAutoConnect = () => {
     if (stores === null || closed) return;
     const listed = listings.find(({ organizationId }) => organizationId === activeOrganization);
@@ -574,7 +545,6 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
       selectAutoConnectTargets({
         candidates,
         health: containerSnapshotOf(stores.containers.machines()).health,
-        birthProjectIds: ports.births.unhardened(),
         onScreenProjectId: onScreen,
       }),
     );
@@ -734,7 +704,6 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
   const start = (built: EnvironmentStores): EnvironmentStage => {
     stores = built;
     const { records, containers, driver } = built;
-    endRecordedBirths();
     route = ports.route?.() ?? route;
     preferRoute();
     const stops: Array<() => void> = [];
@@ -757,7 +726,6 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
         notify();
       }),
       ports.records.listen(registrationsChanged),
-      ports.births.subscribe(updateAutoConnect),
       ports.catalog.listen({
         environments: (next) => {
           registered = next;

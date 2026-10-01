@@ -1045,17 +1045,23 @@ describe("ZeropsDataAdapter receiver", () => {
     () =>
       Effect.gen(function* () {
         const bodies: Array<string> = [];
-        const client = clientFor((_url, init) => {
+        const client = clientFor((url, init) => {
           if (typeof init?.body === "string") bodies.push(init.body);
-          return new Response(
-            JSON.stringify({
-              id: "project",
-              name: "Acme Docs - Ada",
-              status: "CREATING",
-              clientId: organization.organizationId,
-            }),
-            { status: 200 },
-          );
+          // The container's key and its import answer as the platform does; the rest is the
+          // project.
+          const answer = url.includes("/integration-token/list")
+            ? { list: [] }
+            : url.endsWith("/integration-token")
+              ? { id: "token", token: ["test", "key"].join("-") }
+              : url.includes("/service-stack") || url.includes("/first-class-recipe/")
+                ? { list: [] }
+                : {
+                    id: "project",
+                    name: "Acme Docs - Ada",
+                    status: "CREATING",
+                    clientId: organization.organizationId,
+                  };
+          return new Response(JSON.stringify(answer), { status: 200 });
         });
         const adapter = makeZeropsDataAdapter({
           client,

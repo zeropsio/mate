@@ -9,22 +9,21 @@ function step(partial: Partial<BirthStep> & Pick<BirthStep, "id" | "state">): Bi
   return { label: "Container", ...partial };
 }
 
-const SIX_STEPS: ReadonlyArray<BirthStep> = [
+const FIVE_STEPS: ReadonlyArray<BirthStep> = [
   step({ id: "project", label: "Project", state: "done" }),
   step({ id: "container", label: "Container", state: "active", detail: "Building the container" }),
   step({ id: "public-access", label: "Public access", state: "waiting" }),
-  step({ id: "hardening", label: "Closing off", state: "waiting" }),
   step({ id: "mate", label: "Zerops Mate", state: "waiting" }),
   step({ id: "connect", label: "Opening", state: "waiting" }),
 ];
 
 function progress(partial: Partial<BirthProgress> = {}): BirthProgress {
   return {
-    steps: SIX_STEPS,
-    active: SIX_STEPS[1]!,
+    steps: FIVE_STEPS,
+    active: FIVE_STEPS[1]!,
     failed: null,
     doneCount: 1,
-    total: 6,
+    total: 5,
     complete: false,
     startedAt: "2026-09-22T10:00:00Z",
     ...partial,
@@ -45,16 +44,16 @@ describe("ZeropsBirthLine", () => {
     expect(html.indexOf("1:05")).toBeLessThan(html.indexOf('role="progressbar"'));
   });
 
-  it("draws one segment per step, six for the six-step birth", () => {
+  it("draws one segment per step, five for the five-step birth", () => {
     const html = renderToStaticMarkup(<ZeropsBirthLine nowMs={NOW} progress={progress()} />);
-    expect(html.match(/data-zerops-birth-step-state=/g)?.length).toBe(6);
+    expect(html.match(/data-zerops-birth-step-state=/g)?.length).toBe(5);
   });
 
   it("the meter is an accessible progressbar naming the active step's detail", () => {
     const html = renderToStaticMarkup(<ZeropsBirthLine nowMs={NOW} progress={progress()} />);
     expect(html).toContain('role="progressbar"');
     expect(html).toContain('aria-valuenow="1"');
-    expect(html).toContain('aria-valuemax="6"');
+    expect(html).toContain('aria-valuemax="5"');
     expect(html).toContain('aria-valuetext="Building the container"');
   });
 
@@ -71,7 +70,7 @@ describe("ZeropsBirthLine", () => {
         progress={progress({
           active: null,
           failed: failedStep,
-          steps: [failedStep, ...SIX_STEPS.slice(1)],
+          steps: [failedStep, ...FIVE_STEPS.slice(1)],
         })}
       />,
     );
@@ -103,21 +102,14 @@ describe("ZeropsBirthLine", () => {
 describe("ZeropsBirthChecklist", () => {
   it("lists every step by its own label", () => {
     const html = renderToStaticMarkup(<ZeropsBirthChecklist nowMs={NOW} progress={progress()} />);
-    for (const label of [
-      "Project",
-      "Container",
-      "Public access",
-      "Closing off",
-      "Zerops Mate",
-      "Opening",
-    ]) {
+    for (const label of ["Project", "Container", "Public access", "Zerops Mate", "Opening"]) {
       expect(html).toContain(label);
     }
   });
 
   it("nests the container step's build substeps, indented under it", () => {
     const withSubsteps: BirthStep = {
-      ...SIX_STEPS[1]!,
+      ...FIVE_STEPS[1]!,
       substeps: [
         { id: "RUN_BUILD_COMMANDS", label: "Build", state: "running", stateLabel: "Running" },
       ],
@@ -125,7 +117,7 @@ describe("ZeropsBirthChecklist", () => {
     const html = renderToStaticMarkup(
       <ZeropsBirthChecklist
         nowMs={NOW}
-        progress={progress({ steps: [SIX_STEPS[0]!, withSubsteps, ...SIX_STEPS.slice(2)] })}
+        progress={progress({ steps: [FIVE_STEPS[0]!, withSubsteps, ...FIVE_STEPS.slice(2)] })}
       />,
     );
     expect(html).toContain('data-zerops-surface="birth-build-substeps"');

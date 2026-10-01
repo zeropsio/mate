@@ -901,12 +901,7 @@ describe("mateComingRowView — a Mate coming up, or one that did not come", () 
   it.each([
     {
       case: "coming up: asleep, no time, no dot",
-      coming: { kind: "coming", line: "Coming up. A few minutes.", verb: undefined },
-      dot: undefined,
-    },
-    {
-      case: "slow: asleep, no time, no dot — its line says it",
-      coming: { kind: "coming", line: "Taking longer than usual.", verb: "keep-waiting" },
+      coming: { kind: "coming", line: "Coming up. A few minutes." },
       dot: undefined,
     },
     {
@@ -936,40 +931,28 @@ describe("mateBornLine — a Mate being born, as its row's one line", () => {
   it.each([
     {
       case: "coming up: the clock from the press",
-      coming: { kind: "coming", line: "Coming up. A few minutes.", verb: undefined, since: SINCE },
+      coming: { kind: "coming", line: "Coming up. A few minutes.", since: SINCE },
       nowMs: SINCE + 42_000,
       text: "Coming up · 0:42",
       tone: "muted",
     },
     {
       case: "its Mate waited on: still coming up, the clock running on",
-      coming: { kind: "coming", line: "Almost there.", verb: undefined, since: SINCE },
+      coming: { kind: "coming", line: "Almost there.", since: SINCE },
       nowMs: SINCE + 92_000,
       text: "Coming up · 1:32",
       tone: "muted",
     },
     {
-      case: "a step past its cap: says so, on the same clock",
-      coming: {
-        kind: "coming",
-        line: "Taking longer than usual.",
-        verb: "keep-waiting",
-        since: SINCE,
-      },
-      nowMs: SINCE + 372_000,
-      text: "Taking longer than usual · 6:12",
-      tone: "muted",
-    },
-    {
       case: "a clock not started yet reads 0:00, never a negative",
-      coming: { kind: "coming", line: "Coming up. A few minutes.", verb: undefined, since: SINCE },
+      coming: { kind: "coming", line: "Coming up. A few minutes.", since: SINCE },
       nowMs: SINCE - 800,
       text: "Coming up · 0:00",
       tone: "muted",
     },
     {
       case: "coming up with no birth held in this browser: no clock to count",
-      coming: { kind: "coming", line: "Coming up. A few minutes.", verb: undefined },
+      coming: { kind: "coming", line: "Coming up. A few minutes." },
       nowMs: SINCE,
       text: "Coming up",
       tone: "muted",
@@ -1009,7 +992,6 @@ describe("mateBornLine — a Mate being born, as its row's one line", () => {
     const coming = {
       kind: "coming",
       line: "Almost there.",
-      verb: undefined,
       since: SINCE,
     } as const;
     expect(mateBornLine(coming).words).toBe("Coming up");
@@ -1021,15 +1003,9 @@ describe("mateBornLine — a Mate being born, as its row's one line", () => {
 // reads as a listed Mate coming up does: on the clock from when the platform took it — a New
 // project's from its press — or stopped.
 describe("pendingBornLine — a Mate the listing does not hold yet", () => {
-  const MEMBER = { startedAt: 1_000, overdue: false } as const;
+  const MEMBER = { startedAt: 1_000 } as const;
   it.each([
     { case: "on its way", member: MEMBER, text: "Coming up · 0:42", tone: "muted" },
-    {
-      case: "past its step's cap",
-      member: { ...MEMBER, overdue: true },
-      text: "Taking longer than usual · 0:42",
-      tone: "muted",
-    },
     {
       case: "stopped",
       member: { ...MEMBER, failed: true },

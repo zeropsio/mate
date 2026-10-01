@@ -1,0 +1,421 @@
+/**
+ * The press: everything a new environment needs the person's rights for, done in the foreground
+ * before Add returns (pass 28; the owner: "this should never ever be tied to user having to have
+ * browser open"). For a Mate: its project, its key and its container (`ZCP_API_KEY`, with the
+ * tier's runtimes for zcp to import on boot), its project closed off, its registration written.
+ * Every step is safe to ask again, so a press that stopped resumes where it stopped, and a
+ * half-made Mate is finished from its ⋯ menu, in any browser, by an owner or an admin (*Finish
+ * setup*) — the same steps.
+ *
+ * After the press the container does the rest — zcp imports the runtimes, the broker delivers Git,
+ * the server starts the stand-up — and any browser, or none, reads where that stands off
+ * `/mate/setup.json` (`mateSetup.ts`).
+ *
+ * This tab keeps what it pressed, in memory, for as long as the screen needs it: where a new
+ * environment is drawn before the listing holds it, and where its press stopped and how to try
+ * again. Nothing is stored: a reload forgets it, and the listing — the project is tagged into its
+ * group at birth — draws the rest.
+ */
+import {
+  canWriteRegistry,
+  resumableEnvironmentCreationStep,
+  runEnvironmentCreation,
+  type BirthPlacement,
+  type EnvironmentCreationOutcome,
+  type EnvironmentCreationPlatform,
+  type EnvironmentCreationStep,
+  type RecipeRuntime,
+  type ZeropsAgentType,
+  type ZeropsApiClient,
+  type ZeropsPlacedBirth,
+} from "@t3tools/client-runtime/zerops";
+import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
+import type { RoleProjectKind } from "@t3tools/shared/zeropsRoles";
+import { useMemo } from "react";
+import { create } from "zustand";
+
+import { onAccountLifetimeClose } from "./accountLifetime";
+import { giteaClientFor } from "./accountGiteaSessions";
+import { addGroupEnvironment, writeRegistryMember } from "./addGroupEnvironment";
+import { brokerGrantTokens, grantBrokerProject, projectTagsWrite } from "./brokerGrant";
+import { placedNewProjects, type NewProjectBirth } from "./newProjectBirth";
+import { runZeropsCommand, type ZeropsDataContextValue } from "./zeropsDataContext";
+
+/** Where a press stands. */
+export type MatePressState =
+  | { readonly kind: "pressing" }
+  /** Every step is through: the container does the rest. */
+  | { readonly kind: "pressed" }
+  | {
+      readonly kind: "failed";
+      readonly step: EnvironmentCreationStep["kind"];
+      readonly reason: string;
+      /** Tries the press again from the step that stopped; null where that is not safe. */
+      readonly retry: (() => Promise<void>) | null;
+    };
+
+/** A press this tab made, from the moment the platform took its project. */
+export interface MatePress {
+  readonly projectId: string;
+  /** The organization the project was created in — never the one a tab has open now. */
+  readonly organizationId: string;
+  /** When the platform took the project, wall ms. */
+  readonly startedAt: number;
+  /** Its group, as the press knew it; null for a project already listed. */
+  readonly placement: BirthPlacement | null;
+  /** Whether a Mate container comes up at all: false for a stage or a production. */
+  readonly container: boolean;
+  /** Its copy's managed services, by hostname in the tier's order. */
+  readonly managed?: ReadonlyArray<string>;
+  /** The runtimes zcp imports on boot, as the plan named them. */
+  readonly runtimes?: ReadonlyArray<RecipeRuntime>;
+  readonly state: MatePressState;
+}
+
+interface MatePressStore {
+  readonly presses: Readonly<Record<string, MatePress>>;
+}
+
+const usePressStore = create<MatePressStore>(() => ({ presses: {} }));
+
+onAccountLifetimeClose(() => {
+  usePressStore.setState({ presses: {} });
+});
+
+/** The platform took the project of a press: it is drawn from now on. */
+export function beginPress(press: Omit<MatePress, "state">): void {
+  usePressStore.setState((store) => ({
+    presses: { ...store.presses, [press.projectId]: { ...press, state: { kind: "pressing" } } },
+  }));
+}
+
+/** A press ran to its end, or stopped. */
+export function settlePress(projectId: string, state: MatePressState): void {
+  usePressStore.setState((store) => {
+    const press = store.presses[projectId];
+    if (press === undefined) return store;
+    return { presses: { ...store.presses, [projectId]: { ...press, state } } };
+  });
+}
+
+/** The project is gone: nothing more is said of it. */
+export function forgetPress(projectId: string): void {
+  usePressStore.setState((store) => {
+    if (store.presses[projectId] === undefined) return store;
+    const { [projectId]: _gone, ...rest } = store.presses;
+    return { presses: rest };
+  });
+}
+
+/** Every press this tab made. */
+export function useMatePresses(): ReadonlyArray<MatePress> {
+  const presses = usePressStore((store) => store.presses);
+  return useMemo(() => Object.values(presses), [presses]);
+}
+
+/** The press this tab made for a project, if any. */
+export function useMatePress(projectId: string | undefined): MatePress | undefined {
+  return usePressStore((store) => (projectId === undefined ? undefined : store.presses[projectId]));
+}
+
+/** Why a press stopped, in words, while it is stopped. */
+export function pressFailure(press: MatePress | undefined): string | undefined {
+  return press?.state.kind === "failed" ? press.state.reason : undefined;
+}
+
+/** Each step of a press, as a person names it where it stopped. */
+const PRESS_STEP_NAMES: Readonly<Record<EnvironmentCreationStep["kind"], string>> = {
+  "create-project": "Creating the project",
+  "import-project": "Creating the project",
+  "import-managed": "Adding its services",
+  "import-recipe": "Adding its services",
+  "import-container": "Adding its container",
+  "close-off": "Closing the project off",
+  register: "Registering it",
+  "await-ready": "Waiting for it",
+};
+
+/** Where a press stopped and why, in one line: "Closing the project off stopped: …". */
+export function pressFailureLine(press: MatePress | undefined): string | undefined {
+  if (press?.state.kind !== "failed") return undefined;
+  return `${PRESS_STEP_NAMES[press.state.step]} stopped: ${press.state.reason}`;
+}
+
+/** A press as `mateComing` reads it. */
+export function pressComing(press: MatePress | undefined):
+  | {
+      readonly startedAt: number;
+      readonly container: boolean;
+      readonly retryable: boolean;
+    }
+  | undefined {
+  if (press === undefined) return undefined;
+  return {
+    startedAt: press.startedAt,
+    container: press.container,
+    retryable: press.state.kind === "failed" && press.state.retry !== null,
+  };
+}
+
+/** Where a Mate this tab pressed stands, as every surface asks `mateComing` about it. */
+export function pressComingInput(
+  presses: ReadonlyArray<MatePress>,
+  projectId: string,
+): {
+  readonly press: ReturnType<typeof pressComing>;
+  readonly setUpFailed: string | undefined;
+} {
+  const press = presses.find((entry) => entry.projectId === projectId);
+  return { press: pressComing(press), setUpFailed: pressFailure(press) };
+}
+
+/**
+ * The creations this tab pressed in the organization in view, as the group tree places them
+ * (`deriveZeropsGroups`' `births`): the projects page and the left menu read this one mapping, so
+ * the two draw the same pending members. A press on a project already listed places nothing. The
+ * New projects this tab is still making come after them, drawn from their press.
+ */
+export function placedPressesIn(
+  presses: ReadonlyArray<MatePress>,
+  organizationId: string | undefined,
+  made: ReadonlyArray<NewProjectBirth> = [],
+): ReadonlyArray<ZeropsPlacedBirth> {
+  return [
+    ...presses.flatMap(({ projectId, organizationId: madeIn, startedAt, placement }) =>
+      placement === null || organizationId === undefined || madeIn !== organizationId
+        ? []
+        : [{ projectId, startedAt, placement }],
+    ),
+    ...placedNewProjects(made, organizationId),
+  ];
+}
+
+// ── The press's ports ────────────────────────────────────────────────────────────────────────
+
+/** What a press acts through: the account's command layer and its API client. */
+export interface PressInputs {
+  readonly client: ZeropsApiClient;
+  readonly data: Pick<ZeropsDataContextValue, "runtime" | "organizationRef" | "projectRef">;
+  readonly organizationId: string;
+}
+
+/** The group registration a press writes, as the person who pressed may write it. */
+export interface PressRegistration {
+  /** The account's Gitea project, where the registry lives. */
+  readonly giteaProjectId: string;
+  /** The account's Gitea, where a stage or a production is declared. */
+  readonly giteaOrigin: string | null;
+  readonly groupId: string;
+  readonly kind: RoleProjectKind;
+  readonly displayName: string;
+}
+
+/**
+ * The `register` step: a Mate's registry entry and the broker's grant where an older broker needs
+ * one; for a stage or a production, `addGroupEnvironment` — the entry, the grant, its deploy token
+ * and its declaration. Each write reads what is there first, so asking again writes nothing twice.
+ */
+export function pressRegistration(
+  inputs: PressInputs,
+  registration: PressRegistration,
+): (projectId: string) => Promise<void> {
+  const writeTags = projectTagsWrite(inputs.data, inputs.organizationId);
+  return async (projectId) => {
+    if (registration.kind === "mate") {
+      const written = await writeRegistryMember({
+        client: inputs.client,
+        writeTags,
+        giteaProjectId: registration.giteaProjectId,
+        groupId: registration.groupId,
+        projectId,
+        member: "mate",
+      });
+      if (written.kind === "refused") throw new Error(written.refusal.reason);
+      const grant = await grantBrokerProject({
+        client: brokerGrantTokens(inputs.data.runtime),
+        clientId: inputs.organizationId,
+        projectId,
+      });
+      if (grant.kind === "failed") throw new Error(grant.reason);
+      return;
+    }
+    const added = await addGroupEnvironment({
+      client: inputs.client,
+      tokens: brokerGrantTokens(inputs.data.runtime),
+      writeTags,
+      gitea: registration.giteaOrigin === null ? null : giteaClientFor(registration.giteaOrigin),
+      clientId: inputs.organizationId,
+      giteaProjectId: registration.giteaProjectId,
+      groupId: registration.groupId,
+      environment: {
+        displayName: registration.displayName,
+        tier: registration.kind,
+        project: projectId,
+      },
+    });
+    if (added.failed !== undefined) throw new Error(added.failed.reason);
+  };
+}
+
+/** The press's platform calls, through the account's command layer. */
+export function pressPlatform(
+  inputs: PressInputs,
+  options: {
+    /** The group's other environments: the Mate's key reads them. */
+    readonly groupProjectIds: ReadonlyArray<string>;
+    /** Null where the press writes no registration. */
+    readonly register: ((projectId: string) => Promise<void>) | null;
+    readonly readObservedServices: EnvironmentCreationPlatform["readObservedServices"];
+  },
+): EnvironmentCreationPlatform {
+  const { client, data, organizationId } = inputs;
+  const organization = data.organizationRef(organizationId);
+  const projectOf = (projectId: string) => data.projectRef(organizationId, projectId);
+  return {
+    createProject: ({ clientId: _clientId, ...input }) =>
+      runZeropsCommand(data.runtime.commands.createProject({ organization, ...input })),
+    // Reads, not writes: the platform's verdict on what the press made, waited on by the runner.
+    readProjectCreation: (input) => client.readProjectCreation(input),
+    readProjectEnvWrites: (projectId) =>
+      client.readProjectEnvWrites({ clientId: organizationId, projectId }),
+    importDevelopmentContainer: ({ projectId, projectName, agents, setupRuntimesYaml }) =>
+      runZeropsCommand(
+        data.runtime.commands.importDevelopmentContainer({
+          project: projectOf(projectId),
+          projectName,
+          agents,
+          groupProjectIds: [...options.groupProjectIds, projectId],
+          ...(setupRuntimesYaml === undefined ? {} : { setupRuntimesYaml }),
+        }),
+      ),
+    importServices: (projectId, yaml) =>
+      runZeropsCommand(data.runtime.commands.importServices(projectOf(projectId), yaml)),
+    importProject: ({ clientId: _clientId, yaml }) =>
+      runZeropsCommand(data.runtime.commands.importProject(organization, yaml)),
+    // The same hardening a Mate made before this pass is finished with: for a key the press
+    // minted it writes nothing to the key, and closes the project off.
+    closeOff: async (projectId) => {
+      await runZeropsCommand(data.runtime.commands.isolateProjectEnv(projectOf(projectId)));
+    },
+    register: async (projectId) => {
+      await options.register?.(projectId);
+    },
+    readObservedServices: options.readObservedServices,
+  };
+}
+
+const sleep = (ms: number) =>
+  new Promise<void>((resolve) => {
+    setTimeout(resolve, ms);
+  });
+
+/**
+ * Runs a press's steps and settles its record: through, or stopped at a step with the reason and
+ * — where the step is safe to ask again — a way to try again from it, on the same project.
+ */
+export async function runPress(input: {
+  readonly organizationId: string;
+  readonly steps: ReadonlyArray<EnvironmentCreationStep>;
+  readonly platform: EnvironmentCreationPlatform;
+  readonly isCurrent: () => boolean;
+  readonly resume?: {
+    readonly from: number;
+    readonly projectId: string;
+    readonly projectName: string;
+  };
+  readonly onProjectAccepted?: (projectId: string, projectName: string) => void;
+  readonly onProgress?: Parameters<typeof runEnvironmentCreation>[0]["onProgress"];
+}): Promise<EnvironmentCreationOutcome> {
+  let projectName = input.resume?.projectName ?? "";
+  for (const step of input.steps) {
+    if (step.kind === "create-project" || step.kind === "import-project") projectName = step.name;
+  }
+  const outcome = await runEnvironmentCreation({
+    clientId: input.organizationId,
+    steps: input.steps,
+    platform: input.platform,
+    isCurrent: input.isCurrent,
+    describeError: zeropsErrorMessage,
+    sleep,
+    ...(input.resume === undefined ? {} : { resume: input.resume }),
+    onProjectAccepted: (projectId) => input.onProjectAccepted?.(projectId, projectName),
+    ...(input.onProgress === undefined ? {} : { onProgress: input.onProgress }),
+  });
+  const projectId = outcome.projectId;
+  if (projectId === undefined || !input.isCurrent()) return outcome;
+  if (outcome.ok) {
+    settlePress(projectId, { kind: "pressed" });
+    return outcome;
+  }
+  const from = input.steps.indexOf(outcome.failedStep);
+  const retry = resumableEnvironmentCreationStep(outcome.failedStep)
+    ? async () => {
+        settlePress(projectId, { kind: "pressing" });
+        await runPress({ ...input, resume: { from, projectId, projectName } });
+      }
+    : null;
+  settlePress(projectId, {
+    kind: "failed",
+    step: outcome.failedStep.kind,
+    reason: outcome.error,
+    retry,
+  });
+  return outcome;
+}
+
+/** Who may finish a Mate's setup: an owner or an admin, who may write its registration. */
+export const canFinishMateSetup = canWriteRegistry;
+
+/**
+ * The press's steps on a Mate whose project exists: its container with its key — nothing written
+ * where it has one — its project closed off, its registration. A New project's first Mate goes on
+ * with them once the platform took its project; *Finish setup* runs them on a half-made Mate, in
+ * any browser — for one made before this pass, the close-off also lowers a key still at `ADMIN`
+ * and moves it off the project's variables (`hardenMate`).
+ */
+export function finishMateSetup(input: {
+  readonly inputs: PressInputs;
+  readonly projectId: string;
+  readonly projectName: string;
+  /**
+   * The container to import where the project has none, with these agents; null where the
+   * caller just imported it — a listing read this soon may not show it yet, and a second import
+   * would make a second container.
+   */
+  readonly container: { readonly agents: ReadonlyArray<ZeropsAgentType> } | null;
+  /** The group's other environments: a key minted here reads them. */
+  readonly groupProjectIds: ReadonlyArray<string>;
+  /** Null where there is no registry to write it in. */
+  readonly registration: PressRegistration | null;
+  readonly isCurrent: () => boolean;
+  /** When its container was imported, where that was a moment ago. */
+  readonly containerAcceptedAtMs?: number;
+}): Promise<EnvironmentCreationOutcome> {
+  const steps: ReadonlyArray<EnvironmentCreationStep> = [
+    ...(input.container === null
+      ? []
+      : [{ kind: "import-container", agents: input.container.agents } as const]),
+    { kind: "close-off" },
+    ...(input.registration === null ? [] : [{ kind: "register" } as const]),
+    { kind: "await-ready", withAgent: true },
+  ];
+  return runPress({
+    organizationId: input.inputs.organizationId,
+    steps,
+    platform: pressPlatform(input.inputs, {
+      groupProjectIds: input.groupProjectIds,
+      register:
+        input.registration === null ? null : pressRegistration(input.inputs, input.registration),
+      readObservedServices: async () => [],
+    }),
+    isCurrent: input.isCurrent,
+    resume: {
+      from: 0,
+      projectId: input.projectId,
+      projectName: input.projectName,
+      ...(input.containerAcceptedAtMs === undefined
+        ? {}
+        : { containerAcceptedAtMs: input.containerAcceptedAtMs }),
+    },
+  });
+}

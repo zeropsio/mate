@@ -53,7 +53,6 @@ import {
 import type { RoleProjectKind } from "@t3tools/shared/zeropsRoles";
 
 import type { ZeropsProject } from "./api.ts";
-import type { BirthPlacement, BirthStep } from "./birth/birthStore.ts";
 import { compareZeropsHostnames } from "./listingOrder.ts";
 import type { RandomBytes } from "./newProject.ts";
 
@@ -456,9 +455,26 @@ export interface ZeropsGroupEnvironment {
 export type ZeropsGroupNameSource = "store" | "tag" | "birth" | "id";
 
 /**
- * A creation the organization's listing may not hold yet, placed in its group:
- * one the platform accepted (the birth store's record, `birth/birthStore.ts`),
- * or a New project the client is still making, which it places from the press.
+ * Where an environment being created stands in the account's projects, as the press that made it
+ * knows it — drawn in its group before the organization's listing holds the project.
+ */
+export interface BirthPlacement {
+  readonly groupId: string;
+  /** The group's name as the press knew it; names a group the listing does not hold yet. */
+  readonly groupName: string;
+  readonly kind: RoleProjectKind;
+  /** What the person called the environment. */
+  readonly displayName: string;
+  /** What a Mate is called — its name, not its environment's — drawn while it comes up. */
+  readonly botName?: string;
+  /** The face its person picked for a Mate, worn asleep while it comes up. */
+  readonly face?: ZeropsMateFace;
+}
+
+/**
+ * A creation the organization's listing may not hold yet, placed in its group: one this tab's
+ * press made (`matePresses.ts`), or a New project the client is still making, placed from the
+ * press.
  */
 export interface ZeropsPlacedBirth {
   /** The project the platform made for it; a creation still being made, the client's own id for it. */
@@ -466,8 +482,6 @@ export interface ZeropsPlacedBirth {
   /** When the platform accepted the creation, wall ms — or the client began it. */
   readonly startedAt: number;
   readonly placement: BirthPlacement;
-  readonly step: BirthStep;
-  readonly overdue: boolean;
   /** The client's creation stopped before the platform took it: it says so where it is drawn. */
   readonly failed?: boolean | undefined;
 }
@@ -480,8 +494,6 @@ export interface ZeropsGroupPendingMember {
   readonly name: string;
   /** When the platform accepted the creation, wall ms. */
   readonly startedAt: number;
-  readonly step: BirthStep;
-  readonly overdue: boolean;
   /** The face its person picked for a Mate, worn asleep until the listing holds it. */
   readonly face?: ZeropsMateFace | undefined;
   /** Its creation stopped before the platform took it (`ZeropsPlacedBirth.failed`). */
@@ -695,8 +707,6 @@ export function deriveZeropsGroups(
         kind: birth.placement.kind,
         name: birth.placement.botName ?? birth.placement.displayName,
         startedAt: birth.startedAt,
-        step: birth.step,
-        overdue: birth.overdue,
         ...(birth.placement.face === undefined ? {} : { face: birth.placement.face }),
         ...(birth.failed === true ? { failed: true } : {}),
       })),

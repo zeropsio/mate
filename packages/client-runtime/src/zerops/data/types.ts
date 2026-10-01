@@ -1842,9 +1842,14 @@ export interface SetProjectMemberRoleCommandIntent {
 export interface ImportDevelopmentContainerCommandIntent {
   readonly kind: "import-development-container";
   readonly project: ProjectRef;
-  readonly existingServiceNames?: ReadonlyArray<string>;
+  /** The project's name: the Mate's key is named after it (`zcp-<name>`). */
+  readonly projectName: string;
+  /** The group's environments, this one included: the key reads the others. */
+  readonly groupProjectIds?: ReadonlyArray<string>;
   readonly zcpVersion?: string;
   readonly agents?: ReadonlyArray<ZeropsAgentType>;
+  /** The tier's runtimes, for zcp to import on boot (`MATE_SETUP_RUNTIMES`). */
+  readonly setupRuntimesYaml?: string;
 }
 
 export interface EnableZeropsMateCommandIntent {
@@ -1869,7 +1874,6 @@ export interface CreateProjectWithMateCommandIntent {
   readonly kind: "create-project-with-mate";
   readonly organization: OrganizationRef;
   readonly name: string;
-  readonly existingServiceNames?: ReadonlyArray<string>;
   readonly location?: string;
   readonly zcpVersion?: string;
   readonly agents?: ReadonlyArray<ZeropsAgentType>;
@@ -2038,7 +2042,7 @@ export type PlatformCommandResult =
   | { readonly kind: "set-project-member-role"; readonly value: ZeropsProject }
   | {
       readonly kind: "import-development-container";
-      readonly value: { readonly serviceName: string };
+      readonly value: { readonly serviceName: string; readonly imported: boolean };
     }
   | { readonly kind: "enable-zerops-mate"; readonly value: void }
   | { readonly kind: "enable-subdomain-access"; readonly value: void }
@@ -2266,7 +2270,7 @@ export interface ZeropsDataCommands {
       readonly project: ProjectRef;
     },
   ) => Effect.Effect<
-    CommandExecution<{ readonly serviceName: string }>,
+    CommandExecution<{ readonly serviceName: string; readonly imported: boolean }>,
     CommandAdmissionError | AdapterError
   >;
   readonly enableZeropsMate: (

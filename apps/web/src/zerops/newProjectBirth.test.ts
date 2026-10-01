@@ -114,7 +114,7 @@ describe("a New project's own steps, before its first Mate's", () => {
 });
 
 describe("how far a New project's creation has got", () => {
-  const MATE_STEPS = ["project", "container", "public-access", "hardening", "mate", "connect"];
+  const MATE_STEPS = ["project", "container", "public-access", "mate", "connect"];
 
   it.each<{
     readonly case: string;
@@ -183,7 +183,6 @@ describe("how far a New project's creation has got", () => {
         container: { serviceId: "zcp-1", status: "CREATING", hasOrigin: false },
         processes: [],
         health: undefined,
-        provisioningPhase: null,
         connection: "none",
       },
       NOW,
@@ -214,7 +213,7 @@ describe("what its view says under the headline", () => {
     {
       case: "while it runs, it is coming up",
       birth: birth(),
-      coming: { kind: "coming", line: "Coming up. A few minutes.", verb: undefined },
+      coming: { kind: "coming", line: "Coming up. A few minutes." },
     },
     {
       case: "a step that stopped says why, and can be tried again",

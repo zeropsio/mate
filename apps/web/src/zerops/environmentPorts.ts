@@ -53,7 +53,6 @@ import { randomUUID } from "~/lib/utils";
 import { environmentIdFromAddress } from "~/routes/-environmentRoute";
 
 import { accountLocalStorage, accountStorageKey } from "./accountLifetime";
-import { birthsForEnvironments } from "./zeropsBirths";
 
 // ── The door, through the connection runtime ─────────────────────────────────────────────────
 
@@ -296,7 +295,6 @@ export function webEnvironmentPorts(input: {
     intents: intentStorage,
     records: recordsStorage,
     catalog: catalogPort(registry),
-    births: birthsForEnvironments,
     route: () => {
       const environmentId = environmentIdFromAddress(window.location.pathname, appBasePath());
       return environmentId === null ? null : EnvironmentId.make(environmentId);

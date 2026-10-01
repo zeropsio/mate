@@ -26,7 +26,6 @@ describe("selectAutoConnectTargets: auto-connect's WANT (DESIGN §4.4)", () => {
     readonly name: string;
     readonly candidate: AutoConnectCandidate;
     readonly health?: ZeropsContainerHealth;
-    readonly birth?: boolean;
     readonly wanted: boolean;
   }> = [
     {
@@ -61,13 +60,6 @@ describe("selectAutoConnectTargets: auto-connect's WANT (DESIGN §4.4)", () => {
       wanted: false,
     },
     {
-      name: "a project a birth is watching: the page's own Connect owns it",
-      candidate: candidate("a"),
-      health: "ready",
-      birth: true,
-      wanted: false,
-    },
-    {
       name: "a container with no address",
       candidate: (({ containerOrigin: _origin, ...noAddress }) => noAddress)(candidate("a")),
       health: "ready",
@@ -79,7 +71,6 @@ describe("selectAutoConnectTargets: auto-connect's WANT (DESIGN §4.4)", () => {
     const targets = selectAutoConnectTargets({
       candidates: [row.candidate],
       health: health(row.health === undefined ? [] : [["a", row.health]]),
-      birthProjectIds: new Set(row.birth ? ["a"] : []),
     });
     expect(targets).toEqual(row.wanted ? ["a:zcp"] : []);
   });
@@ -130,15 +121,11 @@ describe("selectAutoConnectTargets: auto-connect's WANT (DESIGN §4.4)", () => {
     expect(targets).toEqual(["shown:zcp"]);
   });
 
-  it("the Mate on screen still waits for its health and its birth", () => {
-    for (const [shownHealth, birth] of [
-      [undefined, false],
-      ["ready", true],
-    ] as const) {
+  it("the Mate on screen still waits for its health", () => {
+    for (const shownHealth of [undefined, "initializing"] as const) {
       const targets = selectAutoConnectTargets({
         candidates: [candidate("shown")],
         health: health(shownHealth === undefined ? [] : [["shown", shownHealth]]),
-        birthProjectIds: new Set(birth ? ["shown"] : []),
         limit: 0,
         onScreenProjectId: "shown",
       });

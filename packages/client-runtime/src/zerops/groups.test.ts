@@ -636,8 +636,6 @@ function birth(
   return {
     projectId,
     startedAt,
-    step: "tags",
-    overdue: false,
     placement: {
       groupId,
       groupName: "Todo",
@@ -702,7 +700,7 @@ describe("deriveZeropsGroups — creations under way", () => {
   it("carries what the creation knew of the pending member", () => {
     const [group] = deriveZeropsGroups([], {
       order: "name",
-      births: [{ ...birth("p-new", "aaa", 7, { kind: "production" }), overdue: true }],
+      births: [birth("p-new", "aaa", 7, { kind: "production" })],
     }).groups;
     expect(group?.pending).toEqual([
       {
@@ -710,8 +708,6 @@ describe("deriveZeropsGroups — creations under way", () => {
         kind: "production",
         name: "Todo - p-new",
         startedAt: 7,
-        step: "tags",
-        overdue: true,
       },
     ]);
   });

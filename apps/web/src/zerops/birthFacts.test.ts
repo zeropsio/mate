@@ -33,7 +33,6 @@ function input(partial: Partial<BirthFactsInput> = {}): BirthFactsInput {
     candidate: candidate(),
     processes: undefined,
     health: undefined,
-    provisioningPhase: null,
     connecting: false,
     connectionFailed: false,
     ...partial,
@@ -173,17 +172,9 @@ describe("deriveBirthFacts — processes", () => {
 });
 
 describe("deriveBirthFacts — straight-through reads", () => {
-  it("passes health, provisioningPhase and hardenError through unchanged", () => {
-    const facts = deriveBirthFacts(
-      input({
-        health: "ready",
-        provisioningPhase: "hardening",
-        hardenError: "token rotation failed",
-      }),
-    );
+  it("passes health through unchanged", () => {
+    const facts = deriveBirthFacts(input({ health: "ready" }));
     expect(facts.health).toBe("ready");
-    expect(facts.provisioningPhase).toBe("hardening");
-    expect(facts.hardenError).toBe("token rotation failed");
   });
 
   it("passes requestedAt through unchanged", () => {

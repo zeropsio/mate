@@ -44,8 +44,8 @@ describe("birthStepToProcessStep", () => {
   const NOW = Date.parse("2026-09-22T10:05:00Z");
 
   it("maps waiting to the queued glyph, hidden state word", () => {
-    const result = birthStepToProcessStep(step({ id: "hardening", state: "waiting" }), NOW);
-    expect(result).toMatchObject({ id: "hardening", state: "queued", stateLabel: "Waiting" });
+    const result = birthStepToProcessStep(step({ id: "mate", state: "waiting" }), NOW);
+    expect(result).toMatchObject({ id: "mate", state: "queued", stateLabel: "Waiting" });
   });
 
   it("maps done to the done glyph, hidden state word", () => {
@@ -108,7 +108,7 @@ describe("birthStepToProcessStep", () => {
     // own state is still waiting only in pathological input; the duration is
     // never guessed for anything but a running or already-ended step.
     const result = birthStepToProcessStep(
-      step({ id: "hardening", state: "waiting", startedAt: "2026-09-22T10:00:00Z" }),
+      step({ id: "mate", state: "waiting", startedAt: "2026-09-22T10:00:00Z" }),
       NOW,
     );
     expect(result.durationMs).toBeUndefined();
@@ -117,7 +117,7 @@ describe("birthStepToProcessStep", () => {
 
 describe("birthLineDetailStep", () => {
   const container = step({ id: "container", state: "active", detail: "Building the container" });
-  const hardening = step({ id: "hardening", state: "failed", detail: "token rotation failed" });
+  const hardening = step({ id: "mate", state: "failed", detail: "Zerops Mate never answered" });
 
   it("prefers the failed step over the active one", () => {
     expect(birthLineDetailStep({ active: container, failed: hardening })).toBe(hardening);

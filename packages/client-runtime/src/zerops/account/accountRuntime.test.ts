@@ -224,17 +224,16 @@ const answering = (environmentId: EnvironmentId, projectId: string): ProbeReadin
 /**
  * The Mate environments' ports as a tab hands them over, with no React: every exchange and probe
  * is recorded and left for the test to answer, the records hold what `remembered` names, and the
- * catalog, the births and the records' other tabs are the test's to drive.
+ * catalog and the records' other tabs are the test's to drive.
  */
 const environmentRig = (clock: DeadlineClock, remembered: ReadonlyArray<RegistrationRecord>) => {
   const exchanges: Array<Pending<DoorRequest, ExchangeAnswer<DoorCredential>>> = [];
   const descriptors: Array<Pending<string, DescriptorFacts>> = [];
   const probes: Array<Pending<string, ProbeReading>> = [];
   const removed: Array<EnvironmentId> = [];
-  const promoted: Array<string> = [];
   const storage = new Map<string, string>([[REGISTRATION_RECORDS_KEY, JSON.stringify(remembered)]]);
   /** What the stage listens to now, by port. */
-  const listening = { records: 0, catalog: 0, births: 0 };
+  const listening = { records: 0, catalog: 0 };
   /** How many times the records were read from storage. */
   let recordReads = 0;
   /** What the stage hears when another tab writes the records. */
@@ -242,7 +241,6 @@ const environmentRig = (clock: DeadlineClock, remembered: ReadonlyArray<Registra
   /** The tab's writes of the records do not land: a full or refusing storage, which the port swallows. */
   let writesLand = true;
   let catalog: CatalogListener | null = null;
-  let unhardened: ReadonlySet<string> = new Set();
   /** The environment the tab's route names, as its address bar holds it. */
   let route: EnvironmentId | null = null;
   /** Each environment the stage told the socket admission to open first. */
@@ -284,14 +282,6 @@ const environmentRig = (clock: DeadlineClock, remembered: ReadonlyArray<Registra
         return () => void (listening.catalog -= 1);
       },
     },
-    births: {
-      unhardened: () => unhardened,
-      subscribe: () => {
-        listening.births += 1;
-        return () => void (listening.births -= 1);
-      },
-      promote: (projectId) => void promoted.push(projectId),
-    },
     route: () => route,
     admission: {
       prefer: (environmentId) => void preferred.push(environmentId),
@@ -313,7 +303,6 @@ const environmentRig = (clock: DeadlineClock, remembered: ReadonlyArray<Registra
     descriptors,
     probes,
     removed,
-    promoted,
     listening,
     /** The records as they are stored now. */
     records: () =>
@@ -332,9 +321,6 @@ const environmentRig = (clock: DeadlineClock, remembered: ReadonlyArray<Registra
     /** Whether this tab's writes of the records land from now on. */
     landWrites: (land: boolean) => {
       writesLand = land;
-    },
-    setUnhardened: (next: ReadonlySet<string>) => {
-      unhardened = next;
     },
   };
 };
@@ -1495,7 +1481,7 @@ describe("the post-grant stage's Mate environments", () => {
         yield* settle;
         expect(rig.exchanges).toHaveLength(1);
         expect(rig.probes.length).toBeGreaterThan(0);
-        expect(rig.listening).toEqual({ records: 1, catalog: 1, births: 1 });
+        expect(rig.listening).toEqual({ records: 1, catalog: 1 });
         let heard = 0;
         environments.subscribe(() => {
           heard += 1;
@@ -1508,7 +1494,7 @@ describe("the post-grant stage's Mate environments", () => {
         expect(rig.probes.every(({ signal }) => signal.aborted)).toBe(true);
         expect(yield* Effect.promise(() => connect)).toEqual({ _tag: "Closed" });
         // The stage hears nothing more: no port, and nothing the tab does, reaches a machine.
-        expect(rig.listening).toEqual({ records: 0, catalog: 0, births: 0 });
+        expect(rig.listening).toEqual({ records: 0, catalog: 0 });
         yield* page.emit({ type: "visibility", hidden: true });
         yield* clock.advance(MINUTE);
         yield* page.emit({ type: "visibility", hidden: false });
@@ -1519,31 +1505,16 @@ describe("the post-grant stage's Mate environments", () => {
     ),
   );
 
-  // A browser that holds a Mate's record and still its birth — the record written, the birth
-  // left behind (a live run, 2026-10-01: "coming up" for an hour over a Mate that answered) —
-  // ends the birth: the record is the exchange's word that it named the environment.
-  it.effect("a birth this browser still holds for a recorded Mate ends when the stage starts", () =>
-    Effect.scoped(
-      Effect.gen(function* () {
-        const { rig } = yield* granted([REMEMBERED_A]);
-        yield* settle;
-        expect(rig.promoted).toEqual([A_MATE.projectId]);
-      }),
-    ),
-  );
-
   it.effect.each([
     {
-      name: "the registry takes it: its target is remembered and its birth ends",
+      name: "the registry takes it: its target is remembered",
       installed: true,
       records: [REMEMBERED_A],
-      promoted: [A_MATE.projectId],
     },
     {
       name: "the registry refuses it: nothing is written",
       installed: false,
       records: [],
-      promoted: [],
     },
   ])("an installed credential writes its target's record (H12): $name", (row) =>
     Effect.scoped(
@@ -1556,7 +1527,6 @@ describe("the post-grant stage's Mate environments", () => {
         yield* settle;
 
         expect(rig.records()).toEqual(row.records);
-        expect(rig.promoted).toEqual(row.promoted);
         if (row.installed) {
           expect(yield* Effect.promise(() => connect)).toEqual({
             _tag: "Connected",
@@ -1798,21 +1768,13 @@ describe("the post-grant stage's Mate environments", () => {
     {
       name: "a ready Mate of the organization the tab has open",
       open: "org-1",
-      born: [],
       wanted: 1,
     },
-    { name: "none while another organization is open", open: "org-2", born: [], wanted: 0 },
-    {
-      name: "none while its birth has not closed its project off",
-      open: "org-1",
-      born: [A_MATE.projectId],
-      wanted: 0,
-    },
+    { name: "none while another organization is open", open: "org-2", wanted: 0 },
   ])("auto-connect wants $name (D13)", (row) =>
     Effect.scoped(
       Effect.gen(function* () {
         const { rig, environments } = yield* granted([]);
-        rig.setUnhardened(new Set(row.born));
         yield* answerProbe(rig, MATE_ORIGIN, answering(ENV_A, A_MATE.projectId));
 
         environments.setActiveOrganization(row.open);

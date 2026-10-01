@@ -286,26 +286,32 @@ export function mateAwaitingRegistryLine(admins: ReadonlyArray<MateOwnerCandidat
 }
 
 /**
- * The verb an owner sees on a colleague's unregistered Mate (guide 4.2).
+ * *Finish setup*, on a half-made Mate's ⋯ menu (pass 28): the press's own steps run again on a
+ * Mate whose press did not finish — its container imported with its key where it has none, its
+ * project closed off, its registration written. A member with *can create projects* makes a Mate
+ * and cannot write the registry, so their Mate runs with no group reach and no bot until somebody
+ * who can finishes it; a press a closed tab cut short leaves the same. That somebody is an org
+ * owner or admin — the only people the platform lets write the Gitea project's tags (D3) — in any
+ * browser.
  *
- * A member with *can create projects* makes a Mate and cannot write the
- * registry, so their Mate runs with no group reach and no bot until somebody
- * who can adds it. That somebody is an org owner or admin — the only people the
- * platform lets write the Gitea project's tags (D3) — and this is the one verb
- * that finishes the job.
- *
- * `undefined` for everybody else, and for a Mate already in the registry: a
- * disabled button on a row a person can do nothing about is noise, and the row
- * already says who it is waiting for (`mateAwaitingRegistryLine`).
+ * `undefined` for everybody else, and for a Mate already whole: a disabled entry on a row a person
+ * can do nothing about is noise, and the row already says who it is waiting for
+ * (`mateAwaitingRegistryLine`).
  */
-export function registerMateVerb(input: {
+export function finishMateSetupVerb(input: {
   readonly registration: MateRegistration;
+  /** Its project has no container: its import never went through. */
+  readonly containerMissing: boolean;
+  /** A press this tab made for it stopped at a step. */
+  readonly pressStopped: boolean;
   /** The viewer's org role, as the platform spells it. */
   readonly viewerRole?: string | undefined;
-  /** What the group is called, for the verb itself. */
-  readonly groupName: string;
 }): string | undefined {
-  if (input.registration !== "awaiting-owner") return undefined;
+  const halfMade =
+    input.registration === "awaiting-owner" || input.containerMissing || input.pressStopped;
+  if (!halfMade) return undefined;
   if (input.viewerRole !== "OWNER" && input.viewerRole !== "ADMIN") return undefined;
-  return `Register in ${input.groupName}`;
+  return FINISH_MATE_SETUP_VERB;
 }
+
+export const FINISH_MATE_SETUP_VERB = "Finish setup";

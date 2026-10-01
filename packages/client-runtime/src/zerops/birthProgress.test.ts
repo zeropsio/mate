@@ -31,18 +31,17 @@ const SETTLED: BirthFacts = {
   container: { serviceId: "svc-1", status: "ACTIVE", hasOrigin: true },
   processes: [],
   health: "ready",
-  provisioningPhase: "ready",
   connection: "connected",
 };
 
 /**
- * Clears everything downstream of hardening. A test that overrides an
+ * Clears everything downstream of public access. A test that overrides an
  * earlier step (project/container/public-access) off SETTLED must spread
  * this too, or the later steps' own SETTLED-done facts (health ready,
- * provisioningPhase ready, connection connected) win the birth-wide
- * monotonic backfill and mask the very state under test.
+ * connection connected) win the birth-wide monotonic backfill and mask the
+ * very state under test.
  */
-const NOT_YET = { health: undefined, provisioningPhase: null, connection: "none" } as const;
+const NOT_YET = { health: undefined, connection: "none" } as const;
 
 function stepOf(facts: BirthFacts, id: BirthStepId) {
   return deriveBirthProgress(facts, NOW).steps.find((step) => step.id === id)!;
@@ -55,7 +54,6 @@ describe("project step", () => {
       container: undefined,
       processes: [],
       health: undefined,
-      provisioningPhase: null,
       connection: "none",
       requestedAt: "2026-09-22T09:59:00Z",
     };
@@ -414,126 +412,11 @@ describe("public-access step", () => {
   });
 });
 
-describe("hardening step", () => {
-  it("waits while public access — its own predecessor — isn't done yet", () => {
-    const facts: BirthFacts = {
-      ...SETTLED,
-      ...NOT_YET,
-      container: { serviceId: "svc-1", status: "CREATING", hasOrigin: false },
-    };
-    expect(stepOf(facts, "hardening").state).toBe("waiting");
-  });
-
-  it("is active while awaiting-settled once public access is done", () => {
-    const facts: BirthFacts = {
-      ...SETTLED,
-      provisioningPhase: "awaiting-settled",
-      health: undefined,
-      connection: "none",
-    };
-    expect(stepOf(facts, "hardening")).toMatchObject({
-      state: "active",
-      detail: "Closing the project off",
-    });
-  });
-
-  it("is active while the phase itself is hardening", () => {
-    const facts: BirthFacts = {
-      ...SETTLED,
-      provisioningPhase: "hardening",
-      health: undefined,
-      connection: "none",
-    };
-    expect(stepOf(facts, "hardening")).toMatchObject({
-      state: "active",
-      detail: "Closing the project off",
-    });
-  });
-
-  it("ignores stack.updateProjectEnvs — the creation writes the project's variables too", () => {
-    // Measured 2026-09-22: one runs at +24 s, while the project itself is
-    // still being created and no container exists; read as hardening, the
-    // checklist showed "Closing off" active beside "Creating the project".
-    for (const status of ["RUNNING", "FINISHED"] as const) {
-      const facts: BirthFacts = {
-        ...SETTLED,
-        ...NOT_YET,
-        project: { status: "CREATING" },
-        container: undefined,
-        processes: [process({ actionName: "stack.updateProjectEnvs", status })],
-      };
-      expect(stepOf(facts, "hardening").state).toBe("waiting");
-      expect(deriveBirthProgress(facts, NOW).active?.id).toBe("project");
-    }
-  });
-
-  /**
-   * Measured live: the Git broker fires three stack.updateUserData against
-   * the container ~90s after hardening's own updateProjectEnvs has already
-   * finished — GITEA_TOKEN/MATE_BROKER_URL, the group's "Setting up its
-   * repositories…". It must not reopen this step.
-   */
-  it("ignores stack.updateUserData — that is the Git broker, not hardening", () => {
-    const facts: BirthFacts = {
-      ...SETTLED,
-      ...NOT_YET,
-      // Public access not done yet either, so the null-phase fallback below
-      // cannot supply an "active" the updateUserData process didn't earn.
-      container: { serviceId: "svc-1", status: "CREATING", hasOrigin: false },
-      processes: [process({ actionName: "stack.updateUserData", status: "RUNNING" })],
-    };
-    expect(stepOf(facts, "hardening").state).toBe("waiting");
-  });
-
-  /**
-   * The gap: this tab's provisioning wait slot is not on the project — a
-   * second tab, or a reload before the resume seeds it — so there is no
-   * `provisioningPhase` to read hardening off. With
-   * public access already done, hardening must still read as the step
-   * actually running, not "waiting" alongside mate: the birth never skips it.
-   */
-  it("is active on no evidence at all, once public access is already done and this tab has no wait slot", () => {
-    const facts: BirthFacts = {
-      ...SETTLED,
-      provisioningPhase: null,
-      health: undefined,
-      connection: "none",
-      processes: [],
-    };
-    expect(stepOf(facts, "hardening")).toMatchObject({
-      state: "active",
-      detail: "Closing the project off",
-    });
-  });
-
-  it("is done once the phase has moved past it", () => {
-    for (const phase of ["awaiting-health", "needs-enable", "ready"] as const) {
-      const facts: BirthFacts = { ...SETTLED, provisioningPhase: phase };
-      expect(stepOf(facts, "hardening").state).toBe("done");
-    }
-  });
-
-  it("fails on a reported harden error", () => {
-    const facts: BirthFacts = {
-      ...SETTLED,
-      provisioningPhase: "hardening",
-      hardenError: "token rotation failed",
-    };
-    const progress = deriveBirthProgress(facts, NOW);
-    expect(progress.steps[3]).toMatchObject({
-      id: "hardening",
-      state: "failed",
-      detail: "token rotation failed",
-    });
-    expect(progress.steps.slice(4).every((step) => step.state === "waiting")).toBe(true);
-  });
-});
-
 describe("mate step", () => {
-  it("waits while hardening is not done", () => {
+  it("waits while public access is not done", () => {
     const facts: BirthFacts = {
       ...SETTLED,
-      provisioningPhase: "hardening",
+      container: { serviceId: "svc-1", status: "ACTIVE", hasOrigin: false },
       health: undefined,
       connection: "none",
     };
@@ -572,12 +455,12 @@ describe("mate step", () => {
   it("fails when health reports stalled", () => {
     const facts: BirthFacts = { ...SETTLED, health: "stalled", connection: "none" };
     const progress = deriveBirthProgress(facts, NOW);
-    expect(progress.steps[4]).toMatchObject({
+    expect(progress.steps[3]).toMatchObject({
       id: "mate",
       state: "failed",
       detail: "Zerops Mate never answered",
     });
-    expect(progress.steps[5]!.state).toBe("waiting");
+    expect(progress.steps[4]!.state).toBe("waiting");
   });
 });
 
@@ -605,12 +488,10 @@ describe("connect step", () => {
 describe("invariants", () => {
   it("backfills every earlier step to done rather than showing a gap (the inventory flapping mid-birth)", () => {
     // Container is ACTIVE with an origin and health reads ready, but this
-    // client never tracked a provisioning phase for it (e.g. a reload) — the
-    // inventory-only view of hardening must not show as unstarted.
-    const facts: BirthFacts = { ...SETTLED, provisioningPhase: null };
+    // client saw none of its processes (e.g. a reload).
+    const facts: BirthFacts = { ...SETTLED };
     const progress = deriveBirthProgress(facts, NOW);
     expect(progress.steps.map((step) => step.state)).toEqual([
-      "done",
       "done",
       "done",
       "done",
@@ -621,18 +502,17 @@ describe("invariants", () => {
   });
 
   it("is complete with everything done on a plain reload after birth, with no process facts at all", () => {
-    const facts: BirthFacts = { ...SETTLED, provisioningPhase: null, processes: [] };
+    const facts: BirthFacts = { ...SETTLED, processes: [] };
     const progress = deriveBirthProgress(facts, NOW);
-    expect(progress.doneCount).toBe(6);
+    expect(progress.doneCount).toBe(5);
     expect(progress.complete).toBe(true);
     expect(progress.active).toBeNull();
     expect(progress.failed).toBeNull();
   });
 
-  it("reads closing off active until the Mate answers when this tab has no wait slot", () => {
-    // provisioningPhase null (a second tab, or a reload before the resume
-    // seeds the wait): nothing on the platform says hardening is over, so
-    // the step stays the active one until an answering Mate proves it.
+  it("waits on the Mate once its container is up and reachable, whichever browser looks", () => {
+    // The press closed the project off before the container began: nothing between public access
+    // and the Mate answering is anyone's to wait on.
     const facts: BirthFacts = {
       project: { status: "ACTIVE" },
       container: { serviceId: "svc-1", status: "ACTIVE", hasOrigin: true },
@@ -644,12 +524,11 @@ describe("invariants", () => {
         }),
       ],
       health: "initializing",
-      provisioningPhase: null,
       connection: "none",
     };
     const progress = deriveBirthProgress(facts, NOW);
-    expect(progress.active?.id).toBe("hardening");
-    expect(stepOf({ ...facts, health: "ready" }, "hardening").state).toBe("done");
+    expect(progress.active?.id).toBe("mate");
+    expect(stepOf({ ...facts, health: "ready" }, "mate").state).toBe("done");
   });
 
   it("never shows more than one active step", () => {
@@ -666,7 +545,6 @@ describe("invariants", () => {
         }),
       ],
       health: undefined,
-      provisioningPhase: null,
       connection: "none",
     };
     const progress = deriveBirthProgress(facts, NOW);
@@ -701,7 +579,6 @@ describe("invariants", () => {
       container: undefined,
       processes: [],
       health: undefined,
-      provisioningPhase: null,
       connection: "none",
       requestedAt: "2026-09-22T09:59:00Z",
     };
@@ -714,13 +591,12 @@ describe("a wait phase ahead of the processes (measured 2026-09-22, +7 s)", () =
     const facts: BirthFacts = {
       ...SETTLED,
       ...NOT_YET,
-      provisioningPhase: "awaiting-settled",
       container: { serviceId: "svc-1", status: "READY_TO_DEPLOY", hasOrigin: false },
       processes: [process({ actionName: "stack.build", status: "PENDING", serviceIds: ["svc-1"] })],
     };
     const progress = deriveBirthProgress(facts, NOW);
     expect(progress.active?.id).toBe("container");
-    expect(stepOf(facts, "hardening").state).toBe("waiting");
+    expect(stepOf(facts, "mate").state).toBe("waiting");
     expect(progress.doneCount).toBe(1);
   });
 
@@ -728,7 +604,6 @@ describe("a wait phase ahead of the processes (measured 2026-09-22, +7 s)", () =
     const facts: BirthFacts = {
       ...SETTLED,
       ...NOT_YET,
-      provisioningPhase: "hardening",
       container: { serviceId: "svc-1", status: "READY_TO_DEPLOY", hasOrigin: false },
       processes: [process({ actionName: "stack.build", status: "RUNNING", serviceIds: ["svc-1"] })],
     };
@@ -739,11 +614,10 @@ describe("a wait phase ahead of the processes (measured 2026-09-22, +7 s)", () =
 });
 
 describe("steps that finish out of order (measured 2026-09-22, a cached container image)", () => {
-  it("keeps the container active when closing off is already done", () => {
+  it("keeps the container active when the project's variables are already written", () => {
     const facts: BirthFacts = {
       ...SETTLED,
       ...NOT_YET,
-      provisioningPhase: "awaiting-health",
       container: { serviceId: "svc-1", status: "CREATING", hasOrigin: false },
       processes: [
         process({ actionName: "stack.build", status: "RUNNING", serviceIds: ["svc-1"] }),
@@ -751,25 +625,22 @@ describe("steps that finish out of order (measured 2026-09-22, a cached containe
       ],
     };
     const progress = deriveBirthProgress(facts, NOW);
-    expect(stepOf(facts, "hardening").state).toBe("done");
     expect(stepOf(facts, "container").state).toBe("active");
     expect(stepOf(facts, "mate").state).toBe("waiting");
     expect(progress.active?.id).toBe("container");
-    expect(progress.doneCount).toBe(2);
+    expect(progress.doneCount).toBe(1);
   });
 
   it("still backfills everything from a Mate that answers", () => {
     const facts: BirthFacts = {
       ...SETTLED,
-      provisioningPhase: null,
       connection: "none",
       health: "ready",
       project: { status: "CREATING" },
       container: { serviceId: "svc-1", status: "CREATING", hasOrigin: false },
     };
     const progress = deriveBirthProgress(facts, NOW);
-    expect(progress.steps.slice(0, 5).map((step) => step.state)).toEqual([
-      "done",
+    expect(progress.steps.slice(0, 4).map((step) => step.state)).toEqual([
       "done",
       "done",
       "done",
@@ -780,7 +651,7 @@ describe("steps that finish out of order (measured 2026-09-22, a cached containe
 });
 
 /**
- * A Mate's runtimes come up beside it once its project is closed off (`createEnvironment.ts`):
+ * A Mate's runtimes come up beside it, imported by zcp on its first boot (`createEnvironment.ts`):
  * a track of their own the Mate's view can draw — never one of the six steps, which stay the
  * Mate's own, and never what the sign-in waits on.
  */
@@ -806,7 +677,7 @@ describe("the runtimes", () => {
 
   it.each([
     {
-      case: "waiting for the project to be closed off",
+      case: "waiting for zcp to begin",
       facts: { import: "waiting", runtimes: listed({}) },
       want: { state: "waiting", up: 0, total: 3 },
     },
@@ -896,7 +767,6 @@ describe("the runtimes", () => {
       "project",
       "container",
       "public-access",
-      "hardening",
       "mate",
       "connect",
     ]);
@@ -924,20 +794,33 @@ describe("birthRuntimesFacts", () => {
   });
 
   it.each([
-    { step: "tags", want: "waiting" },
-    { step: "harden", want: "waiting" },
-    { step: "runtimes", want: "importing" },
-    { step: "health", want: "imported" },
-  ] as const)("reads a birth at $step as $want", ({ step, want }) => {
-    expect(birthRuntimesFacts({ birth: { step, runtimes: RUNTIMES }, services: [] })?.import).toBe(
+    { setup: undefined, want: "waiting" },
+    { setup: "unknown", want: "waiting" },
+    { setup: "waiting", want: "waiting" },
+    { setup: "running", want: "importing" },
+    { setup: "done", want: "imported" },
+    { setup: "failed", want: { failed: "The runtimes could not be added." } },
+  ] as const)("reads zcp's import as the Mate's setup says it: $setup", ({ setup, want }) => {
+    expect(birthRuntimesFacts({ planned: RUNTIMES.services, setup, services: [] })?.import).toEqual(
       want,
     );
+  });
+
+  it("has no track for a Mate whose setup says it brings none", () => {
+    expect(
+      birthRuntimesFacts({
+        planned: RUNTIMES.services,
+        setup: "none",
+        services: [service("appdev", "ACTIVE")],
+      }),
+    ).toBeUndefined();
   });
 
   it("names each planned runtime with its service, once the project lists it", () => {
     expect(
       birthRuntimesFacts({
-        birth: { step: "health", runtimes: RUNTIMES },
+        planned: RUNTIMES.services,
+        setup: "done",
         services: [service("zcp", "ACTIVE"), service("appdev", "CREATING")],
       })?.runtimes,
     ).toEqual([
@@ -947,37 +830,27 @@ describe("birthRuntimesFacts", () => {
   });
 
   it("names its planned runtimes by hostname, the order its project's own read gives after it", () => {
-    // One order before and after the birth: the arrival's steps and the sign-in's line agree.
-    const planned = {
-      ...RUNTIMES,
-      services: [
-        { hostname: "mailpit", role: "utility" },
-        { hostname: "appstage", role: "stage" },
-        { hostname: "appdev", role: "dev" },
-      ],
-    } as const;
+    // One order before and after the press: the arrival's steps and the sign-in's line agree.
+    const planned = [
+      { hostname: "mailpit", role: "utility" },
+      { hostname: "appstage", role: "stage" },
+      { hostname: "appdev", role: "dev" },
+    ] as const;
     expect(
-      birthRuntimesFacts({
-        birth: { step: "health", runtimes: planned },
-        services: [],
-      })?.runtimes.map((runtime) => runtime.hostname),
+      birthRuntimesFacts({ planned, services: [] })?.runtimes.map((runtime) => runtime.hostname),
     ).toEqual(["appdev", "appstage", "mailpit"]);
   });
 
-  it("says the import failed in the platform's words", () => {
+  it("reads the listing's runtimes as still coming while the setup says zcp is importing them", () => {
     expect(
-      birthRuntimesFacts({
-        birth: { step: "health", runtimes: { ...RUNTIMES, failed: "No." } },
-        services: [],
-      })?.import,
-    ).toEqual({ failed: "No." });
+      birthRuntimesFacts({ setup: "running", services: [service("appdev", "CREATING")] })?.import,
+    ).toBe("importing");
   });
 
   it("reads a Mate whose birth is over off its project's own runtimes", () => {
-    // The connect ends the birth as the Mate answers, while its runtimes may still be coming up.
+    // Another browser, a reload, a Mate made before: no plan, its runtimes may still be coming up.
     expect(
       birthRuntimesFacts({
-        birth: undefined,
         services: [
           service("zcp", "ACTIVE"),
           service("appdev", "ACTIVE"),
@@ -1001,9 +874,7 @@ describe("birthRuntimesFacts", () => {
   it("reads a Mate whose birth is over in one order however the listing comes", () => {
     // The listing's order is its own and changes between reads (a live add, 2026-09-30, at 168 s).
     const names = (services: ReadonlyArray<ZeropsService>) =>
-      birthRuntimesFacts({ birth: undefined, services })?.runtimes.map(
-        (runtime) => runtime.hostname,
-      );
+      birthRuntimesFacts({ services })?.runtimes.map((runtime) => runtime.hostname);
     const listed = ["webdev", "appstage", "mailpit", "appdev", "webstage"].map((name) =>
       service(name, "ACTIVE"),
     );
@@ -1014,11 +885,11 @@ describe("birthRuntimesFacts", () => {
   });
 
   it.each([
-    { case: "a birth that imports none", birth: { step: "health" as const }, services: [] },
-    { case: "a project with no runtime", birth: undefined, services: [service("zcp", "ACTIVE")] },
-    { case: "a project not read yet", birth: undefined, services: undefined },
-  ])("has no runtimes for $case", ({ birth, services }) => {
-    expect(birthRuntimesFacts({ birth, services })).toBeUndefined();
+    { case: "a press that planned none", planned: [], services: [] },
+    { case: "a project with no runtime", planned: undefined, services: [service("zcp", "ACTIVE")] },
+    { case: "a project not read yet", planned: undefined, services: undefined },
+  ])("has no runtimes for $case", ({ planned, services }) => {
+    expect(birthRuntimesFacts({ planned, services })).toBeUndefined();
   });
 });
 

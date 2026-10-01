@@ -101,8 +101,6 @@ function creating(over: Partial<GroupFlowPending> = {}): GroupFlowPending {
     projectId: "p-new",
     kind: "mate",
     name: "Todo - Vera",
-    step: "tags",
-    overdue: false,
     ...over,
   };
 }
@@ -728,7 +726,7 @@ describe("groupFlow — creations under way", () => {
   it("draws a Mate being created after the listed ones, as coming and never asked anything", () => {
     const flow = groupFlow({
       ...SM_BIRTH_1,
-      pending: [creating({ step: "harden", overdue: true })],
+      pending: [creating()],
     });
     expect(flow.mates).toEqual([
       { projectId: "p-uma", name: "Uma", preview: undefined, waiting: false, talked: false },
@@ -738,7 +736,7 @@ describe("groupFlow — creations under way", () => {
         preview: undefined,
         waiting: false,
         talked: false,
-        coming: { step: "harden", overdue: true },
+        coming: {},
       },
     ]);
     // The first task is still the listed Mate's: one being created cannot take one yet.
@@ -748,11 +746,9 @@ describe("groupFlow — creations under way", () => {
   it("draws a Mate being created in the face its person picked", () => {
     const flow = groupFlow({
       ...SM_BIRTH_1,
-      pending: [{ ...creating({ step: "health" }), face: { tint: "sky", shape: "flower" } }],
+      pending: [{ ...creating(), face: { tint: "sky", shape: "flower" } }],
     });
     expect(flow.mates.find((mate) => mate.projectId === "p-new")?.coming).toEqual({
-      step: "health",
-      overdue: false,
       face: { tint: "sky", shape: "flower" },
     });
   });
@@ -763,8 +759,6 @@ describe("groupFlow — creations under way", () => {
       pending: [{ ...creating(), failed: true }],
     });
     expect(flow.mates.find((mate) => mate.projectId === "p-new")?.coming).toEqual({
-      step: "tags",
-      overdue: false,
       failed: true,
     });
   });

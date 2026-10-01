@@ -24,12 +24,12 @@
  */
 import {
   ZeropsApiError,
+  type BirthPlacement,
   type ZeropsAgentType,
   type ZeropsMateFace,
   type ZeropsPlacedBirth,
   type ZeropsProject,
 } from "@t3tools/client-runtime/zerops";
-import type { BirthPlacement } from "@t3tools/client-runtime/zerops/birth";
 import { deriveBirthProgress } from "@t3tools/client-runtime/zerops/birthProgress";
 import type { ProjectTagWrite } from "@t3tools/client-runtime/zerops/data";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
@@ -216,7 +216,6 @@ export function newProjectProgress(
         container: undefined,
         processes: [],
         health: undefined,
-        provisioningPhase: null,
         connection: "none",
       },
       nowMs,
@@ -245,7 +244,7 @@ export function newProjectProgress(
  * where it would be listed.
  */
 export function newProjectComing(birth: NewProjectBirth): MateComing {
-  if (birth.failed === null) return { kind: "coming", line: COMING_UP_LINE, verb: undefined };
+  if (birth.failed === null) return { kind: "coming", line: COMING_UP_LINE };
   const why = asSentence(birth.failed.reason);
   return {
     kind: "failed",

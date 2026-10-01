@@ -170,8 +170,6 @@ describe("a stage line", () => {
         projectId: "stage-new",
         kind: "stage" as const,
         name: "stage-us",
-        step: "tags" as const,
-        overdue: false,
       },
     ];
     const box = renderToStaticMarkup(
@@ -210,8 +208,6 @@ describe("a stage line's way in", () => {
       projectId: "stage-new",
       kind: "stage" as const,
       name: "stage-us",
-      step: "tags" as const,
-      overdue: false,
     },
   ];
   it.each(["line", "box"] as ReadonlyArray<Density>)(
@@ -298,14 +294,12 @@ describe("a group's Mates", () => {
     kind: "mate" as const,
     name: "Vera",
     startedAt: 5,
-    step: "harden" as const,
-    overdue: false,
   };
   const pairs = (value: ReturnType<typeof entry>) =>
     matesOf(value).map((entry) =>
       entry.kind === "listed"
         ? [entry.item.project.id, entry.mate.projectId, entry.mate.name, undefined]
-        : [undefined, entry.mate.projectId, entry.mate.name, entry.coming.step],
+        : [undefined, entry.mate.projectId, entry.mate.name, "coming"],
     );
   it.each([
     {
@@ -335,7 +329,7 @@ describe("a group's Mates", () => {
       value: entry([WREN], { pending: [VERA] }),
       want: [
         ["wren-dev", "wren-dev", "Wren", undefined],
-        [undefined, "vera-dev", "Vera", "harden"],
+        [undefined, "vera-dev", "Vera", "coming"],
       ],
     },
     {
@@ -403,8 +397,6 @@ describe("a production's way in", () => {
     projectId: "prod-new",
     kind: "production" as const,
     name: "production",
-    step: "tags" as const,
-    overdue: false,
   };
   const candidate = { tag: "v0.1.0", waiting: 1 };
   const productions: ReadonlyArray<readonly [GroupFlowProduction, boolean]> = [

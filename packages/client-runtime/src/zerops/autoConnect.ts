@@ -39,13 +39,6 @@ export function selectAutoConnectTargets(input: {
   readonly candidates: ReadonlyArray<AutoConnectCandidate>;
   /** What each container answered, by candidate key; absent = still asking. */
   readonly health: ReadonlyMap<string, ZeropsContainerHealth>;
-  /**
-   * Projects whose birth has not closed them off yet (`birth/birthStore.ts`
-   * `unhardenedBirths`). Skipped however long the birth takes: nobody is let
-   * into a Mate before its harden, and a birth past it is wanted like any
-   * other ready container.
-   */
-  readonly birthProjectIds?: ReadonlySet<string>;
   readonly limit?: number;
   /**
    * The project whose Mate is on screen: wanted first, and past the ceiling, which is for Mates
@@ -54,7 +47,6 @@ export function selectAutoConnectTargets(input: {
   readonly onScreenProjectId?: string | null;
 }): ReadonlyArray<string> {
   const limit = input.limit ?? ZEROPS_AUTO_CONNECT_LIMIT;
-  const birthProjectIds = input.birthProjectIds ?? new Set<string>();
 
   // Registered environments count against the ceiling whether or not their
   // socket is up right now; a reconnecting one is still one of ours.
@@ -74,7 +66,6 @@ export function selectAutoConnectTargets(input: {
     if (candidate.connection !== undefined || candidate.environmentId !== undefined) return null;
     if (input.health.get(candidate.key) !== "ready") return null;
     if (seen.has(origin)) return null;
-    if (birthProjectIds.has(candidate.project.id)) return null;
     return origin;
   };
   const onScreen = input.onScreenProjectId ?? null;

@@ -216,7 +216,7 @@ const EXPECTED_SURFACE_IDS = [
 const VALID_SURFACE_FIXTURE = {
   id: "fixture-surface",
   title: "Fixture surface",
-  components: ["packages/client-runtime/src/zerops/birth/birthStore.ts"],
+  components: ["packages/client-runtime/src/zerops/mateSetup.ts"],
   entryPoints: [{ kind: "inline", value: "fixture" }],
   clients: {
     web: "yes",
@@ -231,7 +231,7 @@ const VALID_SURFACE_FIXTURE = {
     { action: "Close", reverse: "Open" },
   ],
   docs: { none: "The fixture has no user documentation." },
-  tests: ["packages/client-runtime/src/zerops/birth/birthStore.test.ts"],
+  tests: ["packages/client-runtime/src/zerops/mateSetup.test.ts"],
   captures: [],
 } as const;
 
@@ -239,7 +239,7 @@ const VALID_COMPONENT_SET_FIXTURE = {
   id: "fixture-components",
   kind: "component-set",
   title: "Fixture components",
-  components: ["packages/client-runtime/src/zerops/birth/birthStore.ts"],
+  components: ["packages/client-runtime/src/zerops/mateSetup.ts"],
   clients: {
     web: "yes",
     desktop: "yes",
@@ -247,7 +247,7 @@ const VALID_COMPONENT_SET_FIXTURE = {
   },
   providers: "n/a",
   docs: { none: "The fixture has no user documentation." },
-  tests: ["packages/client-runtime/src/zerops/birth/birthStore.test.ts"],
+  tests: ["packages/client-runtime/src/zerops/mateSetup.test.ts"],
   captures: [],
 } as const;
 

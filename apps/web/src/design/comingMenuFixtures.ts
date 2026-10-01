@@ -128,8 +128,6 @@ function birth(over: Partial<ZeropsPlacedBirth> = {}): ZeropsPlacedBirth {
   return {
     projectId: "acme-quinn",
     startedAt: BORN_AT,
-    step: "harden",
-    overdue: false,
     placement: {
       groupId: "acme",
       groupName: "Acme Docs",
@@ -186,15 +184,9 @@ export function comingMenu(phase: ComingPhase): ComingMenu {
     }
   })();
   const births: ReadonlyArray<ZeropsPlacedBirth> =
-    phase === "pending"
-      ? [birth({ step: "tags" })]
-      : phase === "coming"
-        ? [birth()]
-        : phase === "slow"
-          ? [birth({ overdue: true })]
-          : phase === "almost"
-            ? [birth({ step: "health" })]
-            : [];
+    phase === "pending" || phase === "coming" || phase === "slow" || phase === "almost"
+      ? [birth()]
+      : [];
   const quinnWords =
     phase === "working" || phase === "blinking"
       ? QUINN_AT_WORK
@@ -223,7 +215,7 @@ export function comingMenu(phase: ComingPhase): ComingMenu {
     coming: (candidate) => {
       const held = births.find((entry) => entry.projectId === candidate.project.id);
       return mateComing({
-        birth: held === undefined ? undefined : { ...held, container: true },
+        press: held === undefined ? undefined : { startedAt: held.startedAt, container: true },
         candidate,
       });
     },

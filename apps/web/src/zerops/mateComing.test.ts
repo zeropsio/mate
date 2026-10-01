@@ -9,7 +9,7 @@ import {
   type MateComingInput,
 } from "./mateComing";
 
-const HELD = { step: "harden", overdue: false, container: true } as const;
+const HELD = { startedAt: 1_000, container: true, retryable: false } as const;
 
 // A new Mate's first minutes, as its row, its own view and the projects page say them: in the
 // projects page's words, and never "ready" before it is connected (the owner, 2026-09-29: "on the
@@ -21,53 +21,43 @@ describe("mateComing — a Mate in its first minutes, in one set of words", () =
     readonly expected: ReturnType<typeof mateComing>;
   }>([
     {
-      case: "a birth writing its group entries is coming up",
-      input: { birth: { ...HELD, step: "tags" }, candidate: undefined },
-      expected: { kind: "coming", line: "Coming up. A few minutes.", verb: undefined },
+      case: "a press under way is coming up, on its clock",
+      input: { press: HELD, candidate: undefined },
+      expected: { kind: "coming", line: "Coming up. A few minutes.", since: 1_000 },
     },
     {
-      case: "a birth being closed off is coming up, whatever the listing reads",
-      input: { birth: HELD, candidate: { group: "ready" } },
-      expected: { kind: "coming", line: "Coming up. A few minutes.", verb: undefined },
+      case: "a press is coming up whatever the listing reads",
+      input: { press: HELD, candidate: { group: "ready" } },
+      expected: { kind: "coming", line: "Coming up. A few minutes.", since: 1_000 },
     },
     {
-      case: "a birth whose Mate is being waited on is almost there",
-      input: { birth: { ...HELD, step: "health" }, candidate: { group: "ready" } },
-      expected: { kind: "coming", line: "Almost there.", verb: undefined },
-    },
-    {
-      case: "a birth past its step's cap says so, and waits on the person's Keep waiting",
-      input: { birth: { ...HELD, overdue: true }, candidate: { group: "provisioning" } },
-      expected: { kind: "coming", line: "Taking longer than usual.", verb: "keep-waiting" },
-    },
-    {
-      case: "a project on its way up with no birth held here is coming up",
+      case: "a project on its way up with no press made here is coming up",
       input: {
-        birth: undefined,
+        press: undefined,
         candidate: { group: "provisioning", service: { status: "CREATING" } },
       },
-      expected: { kind: "coming", line: "Coming up. A few minutes.", verb: undefined },
+      expected: { kind: "coming", line: "Coming up. A few minutes." },
     },
     {
       case: "a project the platform could not create says so, with Remove",
       input: {
-        birth: undefined,
+        press: undefined,
         candidate: { group: "unavailable", creationFailed: { message: "quota exceeded" } },
       },
       expected: { kind: "failed", line: "Could not be created. Quota exceeded.", verb: "remove" },
     },
     {
-      case: "a creation refused while its birth still runs is refused",
+      case: "a creation refused while its press still holds it is refused",
       input: {
-        birth: HELD,
+        press: HELD,
         candidate: { group: "unavailable", creationFailed: { message: undefined } },
       },
       expected: { kind: "failed", line: "Could not be created.", verb: "remove" },
     },
     {
-      case: "a creation that stopped after the platform took the project says why, with Remove",
+      case: "a press that stopped after the platform took the project says why, with Remove",
       input: {
-        birth: undefined,
+        press: undefined,
         candidate: { group: "unavailable" },
         setUpFailed: "The agent container could not be imported",
       },
@@ -77,32 +67,45 @@ describe("mateComing — a Mate in its first minutes, in one set of words", () =
         verb: "remove",
       },
     },
+    {
+      case: "a press that stopped at a step safe to ask again offers Try again",
+      input: {
+        press: { ...HELD, retryable: true },
+        candidate: { group: "ready" },
+        setUpFailed: "Zerops did not answer",
+      },
+      expected: {
+        kind: "failed",
+        line: "Could not be set up. Zerops did not answer.",
+        verb: "try-again",
+      },
+    },
   ])("$case", ({ input, expected }) => {
     expect(mateComing(input)).toEqual(expected);
   });
 
   it.each<{ readonly case: string; readonly input: MateComingInput }>([
-    { case: "nothing is known of it", input: { birth: undefined, candidate: undefined } },
+    { case: "nothing is known of it", input: { press: undefined, candidate: undefined } },
     {
-      case: "connected: it is up, even a moment before its birth is let go",
-      input: { birth: { ...HELD, step: "health" }, candidate: { group: "connected" } },
+      case: "connected: it is up, whatever this tab pressed",
+      input: { press: HELD, candidate: { group: "connected" } },
     },
     {
-      case: "a birth with no container to bring up (a stage, an import that failed)",
-      input: { birth: { ...HELD, container: false }, candidate: { group: "ready" } },
+      case: "a press with no container to bring up (a stage, a production)",
+      input: { press: { ...HELD, container: false }, candidate: { group: "ready" } },
     },
     {
       case: "a Mate restarting is not a Mate being made",
       input: {
-        birth: undefined,
+        press: undefined,
         candidate: { group: "provisioning", service: { status: "RESTARTING" } },
       },
     },
     {
       case: "a Mate that is up and not connected yet",
-      input: { birth: undefined, candidate: { group: "ready" } },
+      input: { press: undefined, candidate: { group: "ready" } },
     },
-    { case: "a stopped Mate", input: { birth: undefined, candidate: { group: "unavailable" } } },
+    { case: "a stopped Mate", input: { press: undefined, candidate: { group: "unavailable" } } },
   ])("says nothing for $case", ({ input }) => {
     expect(mateComing(input)).toBeUndefined();
   });
@@ -169,7 +172,7 @@ describe("mateComingHeadlineClauses — its own view's words", () => {
 // person to another screen on its own (the owner, 2026-09-30: "it just throws me at /zerops
 // page"): a Mate that cannot be opened says why where it stands.
 describe("mateComingPage — what a Mate's own view shows", () => {
-  const COMING = { kind: "coming", line: "Coming up. A few minutes.", verb: undefined } as const;
+  const COMING = { kind: "coming", line: "Coming up. A few minutes." } as const;
   const RECONNECTING = { kind: "reconnecting" } as const;
   const GONE = { kind: "gone", because: "complete-scope-omits-verified" } as const;
   const STOPPED = {
@@ -210,12 +213,12 @@ describe("mateComingPage — what a Mate's own view shows", () => {
       expected: { kind: "up" },
     },
     {
-      case: "a birth left behind in this browser, its environment registered: it hands over",
+      case: "a press this tab still holds, its environment registered: it hands over",
       input: { ...BASE, coming: COMING, linked: true },
       expected: { kind: "up" },
     },
     {
-      case: "a birth left behind in this browser, its row connected: it hands over",
+      case: "a press this tab still holds, its row connected: it hands over",
       input: { ...BASE, coming: COMING, candidate: { group: "connected" } },
       expected: { kind: "up" },
     },
@@ -341,30 +344,15 @@ describe("mateConnectKey — what a Mate's own view connects", () => {
       input: {
         reachingKey: "p:zcp-a",
         answering: false,
-        projectId: "p",
-        birthServiceId: null,
         candidateKey: "p:zcp-b",
       },
       expected: "p:zcp-a",
     },
     {
-      case: "its birth answering, its container named: the birth's target",
+      case: "answering: its listed row's target",
       input: {
         reachingKey: undefined,
         answering: true,
-        projectId: "p",
-        birthServiceId: "svc",
-        candidateKey: "p:zcp",
-      },
-      expected: "p:svc",
-    },
-    {
-      case: "answering, no container named by a birth: its listed row's target",
-      input: {
-        reachingKey: undefined,
-        answering: true,
-        projectId: "p",
-        birthServiceId: null,
         candidateKey: "p:zcp",
       },
       expected: "p:zcp",
@@ -374,8 +362,6 @@ describe("mateConnectKey — what a Mate's own view connects", () => {
       input: {
         reachingKey: undefined,
         answering: false,
-        projectId: "p",
-        birthServiceId: "svc",
         candidateKey: "p:zcp",
       },
       expected: null,

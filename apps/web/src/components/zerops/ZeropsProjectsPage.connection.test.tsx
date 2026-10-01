@@ -1,6 +1,4 @@
 import { EnvironmentId } from "@t3tools/contracts";
-import type { ProvisioningState } from "@t3tools/client-runtime/zerops/provisioning";
-import type { BirthRecord } from "@t3tools/client-runtime/zerops/birth";
 import {
   ZeropsAccountId,
   ZeropsOrganizationId,
@@ -30,11 +28,6 @@ const organizationRef = (organizationId: string): OrganizationRef => ({
 });
 
 const mocks = vi.hoisted(() => ({
-  births: {
-    births: [] as ReadonlyArray<unknown>,
-    waits: new Map<string, unknown>(),
-    outstanding: null,
-  },
   connect: async (_target: unknown): Promise<unknown> => undefined,
   navigated: [] as Array<unknown>,
 }));
@@ -49,9 +42,13 @@ vi.mock("~/zerops/zeropsDataContext", async (importOriginal) => ({
   ...(await importOriginal<object>()),
   useZeropsData: () => ({ organizationRef }),
 }));
-vi.mock("~/zerops/zeropsBirths", async (importOriginal) => ({
+vi.mock("~/zerops/matePress", async (importOriginal) => ({
   ...(await importOriginal<object>()),
-  useZeropsBirths: () => mocks.births,
+  useMatePresses: () => [],
+}));
+vi.mock("~/zerops/ZeropsSessionProvider", async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  useZeropsSession: () => ({ activeOrganization: null }),
 }));
 vi.mock("~/zerops/zeropsContainers", async (importOriginal) => ({
   ...(await importOriginal<object>()),
@@ -68,7 +65,6 @@ vi.mock("~/zerops/accountEnvironments", async (importOriginal) => ({
 vi.mock("~/zerops/useZeropsUpgradeRestart", () => ({ useZeropsUpgradeRestart: () => null }));
 
 afterEach(() => {
-  mocks.births = { births: [], waits: new Map(), outstanding: null };
   mocks.connect = async () => undefined;
   mocks.navigated = [];
   closeAccountLifetime();
@@ -113,107 +109,14 @@ function mountConnection() {
   };
 }
 
-const PROJECT = "project-new";
-const SERVICE = "service-zcp";
-const ORIGIN = "https://zcp-new-8080.prg1.zerops.app";
-
-/** A birth in another organization than any the tab has open, whose Mate answered ready. */
-function readyBirth(): void {
-  const birth: BirthRecord = {
-    projectId: PROJECT,
-    organizationId: "org-birth",
-    startedAt: 0,
-    step: "health",
-    overdue: false,
-    registration: null,
-    container: true,
-    serviceId: SERVICE,
-    origin: ORIGIN,
-    placement: null,
-  };
-  const wait: ProvisioningState = {
-    phase: "ready",
-    waitingFor: "",
-    capMs: null,
-    phaseStartedAtMs: 1,
-    projectId: PROJECT,
-    containerServiceId: SERVICE,
-    containerOrigin: ORIGIN,
-    overdue: false,
-    detail: null,
-    enabled: false,
-    processRunning: false,
-  };
-  mocks.births = { births: [birth], waits: new Map([[PROJECT, wait]]), outstanding: null };
-}
-
-const NOT_LISTED = {
-  _tag: "Failure",
-  error: "Could not connect to this container. Looking for this Mate…",
-  retryable: true,
-} as const;
-
 describe("useZeropsProjectConnection", () => {
-  it("a birth whose Mate answers ready before the inventory lists it connects by its target key and never sets connectError", async () => {
-    readyBirth();
-    const targets: Array<unknown> = [];
-    const answers = [NOT_LISTED, { _tag: "Success", environmentId: EnvironmentId.make("env-new") }];
-    mocks.connect = async (target) => {
-      targets.push(target);
-      return answers.shift();
-    };
-    const rig = mountConnection();
-    try {
-      await rig.advance(0);
-      expect(targets).toEqual([{ key: `${PROJECT}:${SERVICE}` }]);
-      expect(rig.connection().connectError).toBeNull();
-      expect(rig.connection().failedOrigin).toBeNull();
-
-      await rig.advance(2_000);
-      expect(targets).toEqual([{ key: `${PROJECT}:${SERVICE}` }, { key: `${PROJECT}:${SERVICE}` }]);
-      expect(rig.connection().connectError).toBeNull();
-      expect(mocks.navigated).toHaveLength(1);
-    } finally {
-      rig.unmount();
-    }
-  });
-
-  it("the first re-read sees the project NEW, no push arrives, and the birth still connects within the retry ladder", async () => {
-    readyBirth();
-    // The Mate's target is listed by the second read of the birth's organization, and by nothing
-    // else: the first still sees the project NEW, and no push follows it.
-    const birthRead = { topic: "inventory", organization: organizationRef("org-birth") } as const;
-    const heard: Array<Invalidation> = [];
-    let connects = 0;
-    mocks.connect = async () => {
-      connects += 1;
-      return heard.length >= 2
-        ? { _tag: "Success", environmentId: EnvironmentId.make("env-new") }
-        : NOT_LISTED;
-    };
-    const rig = mountConnection();
-    const stop = onZeropsInvalidation((invalidation) => heard.push(invalidation));
-    try {
-      await rig.advance(0);
-      expect(connects).toBe(1);
-      await rig.advance(2_000 + 4_000);
-      expect(heard).toEqual([birthRead, birthRead]);
-      expect(connects).toBe(3);
-      expect(mocks.navigated).toHaveLength(1);
-      expect(rig.connection().connectError).toBeNull();
-    } finally {
-      stop();
-      rig.unmount();
-    }
-  });
-
   it.each([
     {
-      name: "a finished birth reads its organization's inventory again",
+      name: "a finished opening reads its organization's inventory again",
       organizationId: "org-1",
       want: [{ topic: "inventory", organization: organizationRef("org-1") }],
     },
-    { name: "a connect that was no birth asks for nothing", organizationId: null, want: [] },
+    { name: "a connect of no known organization asks for nothing", organizationId: null, want: [] },
   ])("$name", async ({ organizationId, want }) => {
     const rig = mountConnection();
     try {

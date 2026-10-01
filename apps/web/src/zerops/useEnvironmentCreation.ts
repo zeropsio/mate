@@ -1,53 +1,40 @@
 /**
  * Stands one environment up in a group — a Mate, a stage or a production — from whatever surface
  * asked for it: the New Mate dialog over any view (`ZeropsNewMateHost`), and the projects page's
- * own adds. The plan is `planEnvironmentCreation`, the calls `runEnvironmentCreation`; this only
- * gathers the inputs — the group's agents, the account's Gitea, who asked — and makes the calls
- * through the account's command layer.
+ * own adds. The plan is `planEnvironmentCreation`, the press `matePress.ts`; this only gathers the
+ * inputs — the group's agents and environments, the account's Gitea, who asked — and presses.
  *
- * The project is a birth from the moment the platform accepts it (`zeropsBirths.ts`, DESIGN
- * §4.5), which the account's worker finishes whatever the surface does next — a reload or a
- * closed tab included. A Mate's birth carries its tier's runtimes, which the plan leaves for after
- * the project is closed off. It carries the group writes this person makes: a Mate an owner or an admin
- * makes is registered as soon as its project exists (without the entry the broker gives it no
- * bot; a member cannot write the registry, and their Mate waits on the card's *Register in
- * {group}*), and a stage or a production is a group environment the registry, the broker's token
- * and the group repo all learn about (guide 4.2, 5.2).
+ * The press does every step that needs this person's rights before it returns: the project, a
+ * Mate's key and container, its project closed off, and the group registration an owner or an
+ * admin — or anyone adding a stage or a production — writes. A member's Mate waits for one of
+ * them to *Finish setup*. The container does the rest whether this tab stays or not.
  */
 import {
   canWriteRegistry,
   planEnvironmentCreation,
-  runEnvironmentCreation,
+  recipeTierServices,
   unionAgents,
   type EnvironmentCreationOutcome,
   type EnvironmentCreationStep,
   type EnvironmentCreationStepProgress,
+  type RecipeRuntime,
   type ZeropsAgentType,
   type ZeropsEnvironmentRole,
   type ZeropsGroup,
 } from "@t3tools/client-runtime/zerops";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import { ZeropsServiceId, type AgentsCellRequest } from "@t3tools/client-runtime/zerops/data";
-import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 import { useCallback, useEffect, useRef } from "react";
 
 import type { EnvironmentCreationChoice } from "../components/zerops/ZeropsEnvironmentCreationDialog";
+import { invalidateZerops } from "./accountInvalidations";
 import { captureAccountLifetime } from "./accountLifetime";
 import { useAccountGitea } from "./giteaProject";
-import { tokenWrites } from "./tokenWriteLock";
-import { integrationTokensFromGrantMetadata } from "./useZeropsGroupReach";
+import { beginPress, pressPlatform, pressRegistration, runPress } from "./matePress";
 import { readZeropsCellOnce } from "./useZeropsDeployedVersion";
-import {
-  birthWithoutContainer,
-  bornOnAccept,
-  creationAccepted,
-  importedContainer,
-  managedLeftToBirth,
-  runtimesLeftToBirth,
-} from "./zeropsBirths";
 import { useZeropsInventory } from "./ZeropsInventoryProvider";
 import { useZeropsSession } from "./ZeropsSessionProvider";
-import { runZeropsCommand, useZeropsData } from "./zeropsDataContext";
+import { useZeropsData } from "./zeropsDataContext";
 
 /** One environment to stand up in a group, as the surface that asked for it knows it. */
 export interface EnvironmentCreationRequest {
@@ -59,7 +46,7 @@ export interface EnvironmentCreationRequest {
   /** The steps it will take, once planned. */
   readonly onPlanned?: (steps: ReadonlyArray<EnvironmentCreationStep>) => void;
   readonly onProgress?: (progress: ReadonlyArray<EnvironmentCreationStepProgress>) => void;
-  /** The platform took the project: its birth has begun. */
+  /** The platform took the project: the rest of the press acts on it. */
   readonly onAccepted?: (projectId: string) => void;
 }
 
@@ -70,9 +57,35 @@ export type EnvironmentCreationRun =
   | {
       readonly kind: "ran";
       readonly outcome: EnvironmentCreationOutcome;
-      /** The environment gets an agent: its container is brought up by its birth. */
+      /** The environment gets an agent: its container sets itself up after the press. */
       readonly withAgent: boolean;
     };
+
+/**
+ * What a press's plan brings, for the screen to name before the project lists it: the managed
+ * services its first import makes, in the tier's order, and the runtimes zcp imports on boot.
+ */
+export function pressPlanned(steps: ReadonlyArray<EnvironmentCreationStep>): {
+  readonly managed?: ReadonlyArray<string>;
+  readonly runtimes?: ReadonlyArray<RecipeRuntime>;
+} {
+  let managed: Array<string> = [];
+  let runtimes: ReadonlyArray<RecipeRuntime> | undefined;
+  for (const step of steps) {
+    if (step.kind === "import-managed" || step.kind === "import-project") {
+      managed = (recipeTierServices(step.yaml) ?? []).flatMap((service) =>
+        service.role === "managed" ? [service.hostname] : [],
+      );
+    }
+    if (step.kind === "import-container" && step.runtimes !== undefined) {
+      runtimes = step.runtimes.services;
+    }
+  }
+  return {
+    ...(managed.length === 0 ? {} : { managed }),
+    ...(runtimes === undefined ? {} : { runtimes }),
+  };
+}
 
 export function useEnvironmentCreation(): (
   request: EnvironmentCreationRequest,
@@ -134,6 +147,10 @@ export function useEnvironmentCreation(): (
       const { group, role, choice } = request;
       const { name } = choice;
       const tier = role === "prod" ? "production" : role === "stage" ? "stage" : null;
+      // A Mate's registration is an owner's or an admin's to write; a stage or a production's is
+      // anyone's who adds one. Without the account's Gitea there is no registry to write it in.
+      const registers =
+        giteaProjectId !== undefined && (tier !== null || canWriteRegistry(organization));
 
       const plan = planEnvironmentCreation({
         clientId: organization.id,
@@ -145,6 +162,7 @@ export function useEnvironmentCreation(): (
         agents: await readGroupAgents(request.environments),
         recipe: choice.recipe,
         withAgent: choice.withAgent,
+        register: registers,
         ...(choice.botName === undefined ? {} : { botName: choice.botName }),
         ...(asker ? { standUpBy: asker } : {}),
         ...(choice.face === undefined ? {} : { face: choice.face }),
@@ -152,32 +170,49 @@ export function useEnvironmentCreation(): (
       if (!isCurrent()) return { kind: "refused", reason: null };
       if (!plan.ok) return { kind: "refused", reason: plan.reason };
 
-      const registers = tier !== null || canWriteRegistry(organization);
       const withAgent = plan.steps.some((step) => step.kind === "import-container");
-      // What the birth imports once it has closed the project off, not this run.
-      const runtimes = runtimesLeftToBirth(plan.steps);
-      // What its first import brings: the arrival's first step names them from the press.
-      const managed = managedLeftToBirth(plan.steps);
-      // The listing is read again at once, so the group catches up with its birth.
-      const accepted = (projectId: string) => {
-        if (!isCurrent()) return;
-        creationAccepted(
-          {
+      const inputs = {
+        client,
+        data: { runtime, organizationRef, projectRef },
+        organizationId: organization.id,
+      };
+      const platform = pressPlatform(inputs, {
+        groupProjectIds: request.environments.map(({ item }) => item.project.id),
+        register:
+          registers && giteaProjectId !== undefined
+            ? pressRegistration(inputs, {
+                giteaProjectId,
+                giteaOrigin: tier === null ? null : (giteaOrigin ?? null),
+                groupId: group.groupId,
+                kind: tier ?? "mate",
+                displayName: name,
+              })
+            : null,
+        // Reads the latest shared-model projection; no platform request.
+        readObservedServices: async (projectId) => {
+          const services = inventoryRef.current.services.get(projectId);
+          return services?.status === "resolved"
+            ? services.services.map((service) => ({ name: service.name, status: service.status }))
+            : [];
+        },
+      });
+
+      request.onPlanned?.(plan.steps);
+      const outcome = await runPress({
+        organizationId: organization.id,
+        steps: plan.steps,
+        platform,
+        isCurrent,
+        // The project is drawn in its group from here, and the listing is read again at once so
+        // the group catches up with it.
+        onProjectAccepted: (projectId) => {
+          if (!isCurrent()) return;
+          beginPress({
             projectId,
             organizationId: organization.id,
-            registration:
-              registers && giteaProjectId !== undefined
-                ? {
-                    giteaProjectId,
-                    giteaOrigin: tier === null ? null : (giteaOrigin ?? null),
-                    groupId: group.groupId,
-                    kind: tier ?? "mate",
-                    displayName: name,
-                  }
-                : null,
+            startedAt: Date.now(),
             container: withAgent,
-            ...(runtimes === undefined ? {} : { runtimes }),
-            ...(managed.length === 0 ? {} : { managed }),
+            ...pressPlanned(plan.steps),
             placement: {
               groupId: group.groupId,
               groupName: group.name,
@@ -186,103 +221,14 @@ export function useEnvironmentCreation(): (
               ...(tier === null && choice.botName !== undefined ? { botName: choice.botName } : {}),
               ...(choice.face === undefined ? {} : { face: choice.face }),
             },
-          },
-          organizationRef(organization.id),
-        );
-        request.onAccepted?.(projectId);
-      };
-
-      request.onPlanned?.(plan.steps);
-      const outcome = await runEnvironmentCreation({
-        clientId: organization.id,
-        steps: plan.steps,
-        isCurrent,
-        platform: bornOnAccept(
-          {
-            createProject: ({ clientId: _clientId, ...input }) =>
-              runZeropsCommand(
-                runtime.commands.createProject({
-                  organization: organizationRef(organization.id),
-                  ...input,
-                }),
-              ),
-            // A read, not a write: the platform's verdict on the project the command above made,
-            // waited on by the executor.
-            readProjectCreation: (input) => client.readProjectCreation(input),
-            importDevelopmentContainer: ({ projectId, ...input }) =>
-              runZeropsCommand(
-                runtime.commands.importDevelopmentContainer({
-                  project: projectRef(organization.id, projectId),
-                  ...input,
-                }),
-              ),
-            importServices: (projectId, yaml) =>
-              runZeropsCommand(
-                runtime.commands.importServices(projectRef(organization.id, projectId), yaml),
-              ),
-            listIntegrationTokenGrants: async ({ clientId: _clientId }) =>
-              integrationTokensFromGrantMetadata(
-                await runZeropsCommand(
-                  runtime.commands.listIntegrationTokenGrants(organizationRef(organization.id)),
-                ),
-              ),
-            setIntegrationTokenProjects: ({ clientId: _clientId, ...input }) =>
-              runZeropsCommand(
-                runtime.commands.setIntegrationTokenProjects({
-                  organization: organizationRef(organization.id),
-                  ...input,
-                }),
-              ),
-            holdToken: tokenWrites,
-            listTokenDelegations: ({ clientId: _clientId, ...input }) =>
-              runZeropsCommand(
-                runtime.commands.listTokenDelegations({
-                  organization: organizationRef(organization.id),
-                  ...input,
-                }),
-              ),
-            deleteTokenDelegation: ({ clientId: _clientId, ...input }) =>
-              runZeropsCommand(
-                runtime.commands.deleteTokenDelegation({
-                  organization: organizationRef(organization.id),
-                  ...input,
-                }),
-              ),
-            importProject: ({ clientId: _clientId, yaml }) =>
-              runZeropsCommand(
-                runtime.commands.importProject(organizationRef(organization.id), yaml),
-              ),
-            readObservedServices: async (projectId) => {
-              const services = inventoryRef.current.services.get(projectId);
-              return services?.status === "resolved"
-                ? services.services.map((service) => ({
-                    name: service.name,
-                    status: service.status,
-                  }))
-                : [];
-            },
-          },
-          accepted,
-        ),
-        describeError: zeropsErrorMessage,
-        sleep: (ms) =>
-          new Promise<void>((resolve) => {
-            setTimeout(resolve, ms);
-          }),
+          });
+          invalidateZerops({ topic: "inventory", organization: organizationRef(organization.id) });
+          request.onAccepted?.(projectId);
+        },
         onProgress: (progress) => {
           if (isCurrent()) request.onProgress?.(progress);
         },
       });
-
-      // A container import that never went through leaves the birth nothing to bring up.
-      if (
-        isCurrent() &&
-        outcome.projectId !== undefined &&
-        withAgent &&
-        !importedContainer(plan.steps, outcome)
-      ) {
-        birthWithoutContainer(outcome.projectId);
-      }
       return { kind: "ran", outcome, withAgent };
     },
     [
@@ -293,7 +239,7 @@ export function useEnvironmentCreation(): (
       organizationRef,
       projectRef,
       readGroupAgents,
-      runtime.commands,
+      runtime,
       asker,
     ],
   );

@@ -6,9 +6,15 @@ import {
   buildCreateProjectBody,
   buildDevelopmentContainerImportBody,
   buildZcpServiceImportYaml,
+  encodeSetupRuntimes,
   generateVscodePassword,
   nextZcpServiceName,
 } from "./newProject.ts";
+
+/** The test's own decoder: base64 back to the UTF-8 document. */
+function decodeSetupRuntimes(encoded: string): string {
+  return new TextDecoder().decode(Uint8Array.from(atob(encoded), (char) => char.charCodeAt(0)));
+}
 
 /**
  * Traced from the platform GUI's own `ZeropsYamlBuilder` on 2026-08-28 for the
@@ -245,38 +251,251 @@ describe("buildCreateProjectBody", () => {
 });
 
 describe("buildDevelopmentContainerImportBody", () => {
-  it("names the recipe source and asks for the integration token", () => {
+  it("names the recipe source and asks the platform for no token: the Mate's key comes with it", () => {
     expect(buildDevelopmentContainerImportBody({ serviceImportYaml: "services: []" })).toEqual({
       serviceImportYaml: "services: []",
       recipeSource: "zeropsio/zcp",
-      createIntegrationToken: true,
+      createIntegrationToken: false,
     });
+  });
+});
+
+describe("the Mate's key and its runtimes in the container's document", () => {
+  const KEY = ["key", "for", "test"].join("-");
+  const RUNTIMES = "services:\n  - hostname: appdev\n    type: nodejs@22\n";
+
+  it.each([
+    { case: "neither", input: {}, key: undefined, runtimes: undefined },
+    // The marker the Mate server starts its own stand-up on: a press always sets it, to nothing
+    // to import where the tier has no runtimes.
+    { case: "the key alone", input: { apiKey: KEY }, key: KEY, runtimes: "services: []" },
+    {
+      case: "the key and the runtimes",
+      input: { apiKey: KEY, setupRuntimesYaml: RUNTIMES },
+      key: KEY,
+      runtimes: RUNTIMES,
+    },
+    {
+      case: "an empty runtimes plan, which is nothing to import",
+      input: { apiKey: KEY, setupRuntimesYaml: "" },
+      key: KEY,
+      runtimes: "services: []",
+    },
+  ])("carries $case", ({ input, key, runtimes }) => {
+    const yaml = buildZcpServiceImportYaml({
+      serviceName: "zcp",
+      vscodePassword: "PASSWORD0PASSWORD",
+      ...input,
+    });
+    const keyLine = /^ {6}ZCP_API_KEY: "([^"]*)"$/m.exec(yaml)?.[1];
+    const runtimesLine = /^ {6}MATE_SETUP_RUNTIMES: "([^"]*)"$/m.exec(yaml)?.[1];
+    expect(keyLine).toBe(key);
+    expect(runtimesLine === undefined ? undefined : decodeSetupRuntimes(runtimesLine)).toBe(
+      runtimes,
+    );
+    // Secrets, both: never a plain variable another service could be handed.
+    const secrets = yaml.slice(yaml.indexOf("envSecrets:"), yaml.indexOf("zeropsYaml:"));
+    if (key !== undefined) expect(secrets).toContain("ZCP_API_KEY");
+    if (runtimes !== undefined) expect(secrets).toContain("MATE_SETUP_RUNTIMES");
+  });
+
+  it("encodes the runtimes as base64 of their UTF-8 bytes, so any document survives the quotes", () => {
+    const document = 'services:\n  - hostname: "café"\n';
+    const encoded = encodeSetupRuntimes(document);
+    expect(encoded).toMatch(/^[A-Za-z0-9+/]+=*$/);
+    expect(decodeSetupRuntimes(encoded)).toBe(document);
+  });
+});
+
+/** The Mate's key as the platform hands it back, built from parts so no scanner takes it for one. */
+const MINTED_KEY = ["minted", "key", "value"].join("_");
+const REGENERATED_KEY = ["regenerated", "key", "value"].join("_");
+
+interface Recorded {
+  readonly url: string;
+  readonly method: string;
+  readonly body: string | null;
+}
+
+/**
+ * A platform that answers each route as a fresh account would: a new project with no services
+ * and no tokens, unless the case says otherwise.
+ */
+function platformClient(state: {
+  readonly services?: ReadonlyArray<Record<string, unknown>>;
+  readonly tokens?: ReadonlyArray<Record<string, unknown>>;
+}) {
+  const requests: Array<Recorded> = [];
+  const client = new ZeropsApiClient({
+    fetch: (input, init) => {
+      const method = init?.method ?? "GET";
+      requests.push({
+        url: input.replace(`${DEFAULT_ZEROPS_API_BASE}/api/rest/public`, ""),
+        method,
+        body: typeof init?.body === "string" ? init.body : null,
+      });
+      const payload = input.includes("/first-class-recipe/")
+        ? {}
+        : input.includes("/service-stack")
+          ? { list: state.services ?? [] }
+          : input.includes("/integration-token/list")
+            ? { list: state.tokens ?? [] }
+            : input.endsWith("/regenerate")
+              ? { token: REGENERATED_KEY }
+              : input.endsWith("/integration-token") && method === "POST"
+                ? { id: "token-new", token: MINTED_KEY }
+                : input.includes("/integration-token/")
+                  ? {}
+                  : { id: "project-9", name: "new", status: "CREATING", clientId: "org-1" };
+      return Promise.resolve(
+        new Response(JSON.stringify(payload), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+      );
+    },
+  });
+  client.restoreSession({ accessToken: "access-1" });
+  return { client, requests };
+}
+
+const importOf = (requests: ReadonlyArray<Recorded>) => {
+  const sent = requests.find((request) => request.url.includes("/first-class-recipe/"));
+  return sent === undefined ? undefined : JSON.parse(sent.body ?? "{}");
+};
+const writesOf = (requests: ReadonlyArray<Recorded>) =>
+  requests
+    .filter((request) => request.method !== "GET" && !request.url.endsWith("/search"))
+    .map((request) => `${request.method} ${request.url}`);
+
+describe("ZeropsApiClient.importDevelopmentContainer: the Mate's key comes with its container", () => {
+  const INPUT = {
+    clientId: "org-1",
+    projectId: "project-9",
+    projectName: "Acme Docs - Ada",
+    groupProjectIds: ["project-9", "project-stage"],
+    setupRuntimesYaml: "services:\n  - hostname: appdev\n",
+  };
+
+  it("mints the key with the Mate's reach and nothing more, then imports the container holding it", async () => {
+    const { client, requests } = platformClient({});
+
+    const result = await client.importDevelopmentContainer(INPUT);
+
+    expect(result).toEqual({ serviceName: "zcp", imported: true });
+    expect(writesOf(requests)).toEqual([
+      "POST /client/org-1/integration-token",
+      "PUT /project/project-9/first-class-recipe/development-container",
+    ]);
+    const mint = JSON.parse(requests.find((request) => request.method === "POST")?.body ?? "{}");
+    expect(mint).toEqual({
+      name: "zcp-Acme Docs - Ada",
+      roleCode: "NO_ACCESS",
+      canCreateProjects: false,
+      canViewFinances: false,
+      canEditFinances: false,
+      projects: [
+        { projectId: "project-9", roleCode: "BASIC_USER" },
+        { projectId: "project-stage", roleCode: "READ_ONLY" },
+      ],
+    });
+    const body = importOf(requests);
+    expect(body.createIntegrationToken).toBe(false);
+    expect(body.serviceImportYaml).toContain(`ZCP_API_KEY: "${MINTED_KEY}"`);
+    expect(body.serviceImportYaml).toContain("MATE_SETUP_RUNTIMES: ");
+  });
+
+  it("hands the key to nobody but the container", async () => {
+    const { client, requests } = platformClient({});
+    const logged: string[] = [];
+    const spies = (["log", "info", "warn", "error", "debug"] as const).map((level) =>
+      vi.spyOn(console, level).mockImplementation((...args: unknown[]) => {
+        logged.push(args.map(String).join(" "));
+      }),
+    );
+    try {
+      const result = await client.importDevelopmentContainer(INPUT);
+      expect(JSON.stringify(result)).not.toContain(MINTED_KEY);
+      expect(logged.join("\n")).not.toContain(MINTED_KEY);
+      const carrying = requests.filter((request) => request.body?.includes(MINTED_KEY));
+      expect(carrying.map((request) => request.url)).toEqual([
+        "/project/project-9/first-class-recipe/development-container",
+      ]);
+    } finally {
+      for (const spy of spies) spy.mockRestore();
+    }
+  });
+
+  it("writes nothing for a project that already has its container: a press tried again is safe", async () => {
+    const { client, requests } = platformClient({
+      services: [
+        {
+          id: "svc-1",
+          name: "zcp",
+          serviceStackTypeInfo: { serviceStackTypeVersionName: "zcp@1" },
+        },
+      ],
+    });
+
+    expect(await client.importDevelopmentContainer(INPUT)).toEqual({
+      serviceName: "zcp",
+      imported: false,
+    });
+    expect(writesOf(requests)).toEqual([]);
+  });
+
+  it("reuses a key a stopped press minted: its reach set again, its value replaced, never a second key", async () => {
+    const { client, requests } = platformClient({
+      tokens: [
+        {
+          id: "token-old",
+          name: "zcp-Acme Docs - Ada",
+          roleCode: "NO_ACCESS",
+          projects: [{ projectId: "project-9", roleCode: "BASIC_USER" }],
+        },
+      ],
+    });
+
+    await client.importDevelopmentContainer(INPUT);
+
+    expect(writesOf(requests)).toEqual([
+      "PUT /client/org-1/integration-token/token-old",
+      "PUT /client/org-1/integration-token/token-old/regenerate",
+      "PUT /project/project-9/first-class-recipe/development-container",
+    ]);
+    expect(importOf(requests).serviceImportYaml).toContain(`ZCP_API_KEY: "${REGENERATED_KEY}"`);
+  });
+
+  it("numbers the container around the services the project already has", async () => {
+    const { client, requests } = platformClient({
+      services: [
+        {
+          id: "svc-1",
+          name: "zcpx",
+          serviceStackTypeInfo: { serviceStackTypeVersionName: "nodejs@22" },
+        },
+      ],
+    });
+    await client.importDevelopmentContainer(INPUT);
+    expect(importOf(requests).serviceImportYaml).toContain("- hostname: zcp\n");
   });
 });
 
 describe("ZeropsApiClient.createProjectWithZeropsMate", () => {
   function recordingClient() {
-    const requests: Array<{ url: string; method: string; body: string | null }> = [];
-    const client = new ZeropsApiClient({
-      fetch: (input, init) => {
-        requests.push({
-          url: input,
-          method: init?.method ?? "GET",
-          body: typeof init?.body === "string" ? init.body : null,
-        });
-        const payload = input.includes("/first-class-recipe/")
-          ? {}
-          : { id: "project-9", name: "new", status: "CREATING", clientId: "org-1" };
-        return Promise.resolve(
-          new Response(JSON.stringify(payload), {
-            status: 200,
-            headers: { "content-type": "application/json" },
-          }),
-        );
+    const { client, requests } = platformClient({});
+    return {
+      client,
+      requests: {
+        get project() {
+          return requests[0];
+        },
+        get import() {
+          return requests.find((request) => request.url.includes("/first-class-recipe/"));
+        },
+        all: requests,
       },
-    });
-    client.restoreSession({ accessToken: "access-1" });
-    return { client, requests };
+    };
   }
 
   it("creates the project, then imports the container recipe into it", async () => {
@@ -287,18 +506,16 @@ describe("ZeropsApiClient.createProjectWithZeropsMate", () => {
     expect(result.project.id).toBe("project-9");
     expect(result.serviceName).toBe("zcp");
 
-    expect(requests[0]?.method).toBe("POST");
-    expect(requests[0]?.url).toBe(
-      `${DEFAULT_ZEROPS_API_BASE}/api/rest/public/client/org-1/project`,
-    );
-    expect(requests[1]?.method).toBe("PUT");
-    expect(requests[1]?.url).toBe(
-      `${DEFAULT_ZEROPS_API_BASE}/api/rest/public/project/project-9/first-class-recipe/development-container`,
-    );
+    expect(writesOf(requests.all)).toEqual([
+      "POST /client/org-1/project",
+      "POST /client/org-1/integration-token",
+      "PUT /project/project-9/first-class-recipe/development-container",
+    ]);
 
-    const importBody = JSON.parse(requests[1]?.body ?? "{}");
+    const importBody = JSON.parse(requests.import?.body ?? "{}");
     expect(importBody.recipeSource).toBe("zeropsio/zcp");
-    expect(importBody.createIntegrationToken).toBe(true);
+    expect(importBody.createIntegrationToken).toBe(false);
+    expect(importBody.serviceImportYaml).toContain(`ZCP_API_KEY: "${MINTED_KEY}"`);
     expect(importBody.serviceImportYaml).toMatch(/VSCODE_PASSWORD: "[A-Za-z0-9]{16}"/);
   });
 
@@ -315,14 +532,14 @@ describe("ZeropsApiClient.createProjectWithZeropsMate", () => {
       const result = await client.createProjectWithZeropsMate({ clientId: "org-1", name: "new" });
 
       const password = /VSCODE_PASSWORD: "([A-Za-z0-9]{16})"/.exec(
-        JSON.parse(requests[1]?.body ?? "{}").serviceImportYaml as string,
+        JSON.parse(requests.import?.body ?? "{}").serviceImportYaml as string,
       )?.[1];
       expect(password).toBeTruthy();
 
       // It exists only inside the one request that carries it.
       expect(JSON.stringify(result)).not.toContain(password);
       expect(logged.join("\n")).not.toContain(password);
-      expect(requests[0]?.body ?? "").not.toContain(password);
+      expect(requests.project?.body ?? "").not.toContain(password);
     } finally {
       for (const spy of spies) spy.mockRestore();
     }
@@ -342,7 +559,7 @@ describe("ZeropsApiClient.createProjectWithZeropsMate", () => {
       name: "Acme Docs - Ada",
       ...input,
     });
-    return JSON.parse(requests[0]?.body ?? "{}").tagList as ReadonlyArray<string>;
+    return JSON.parse(requests.project?.body ?? "{}").tagList as ReadonlyArray<string>;
   };
 
   it.each([
@@ -390,17 +607,5 @@ describe("ZeropsApiClient.createProjectWithZeropsMate", () => {
     if (!plan.ok || plan.steps[0]?.kind !== "create-project") throw new Error("no birth tags");
     const tags = await birthTags({ group: GROUP, botName: "Ada", face: FACE, standUpBy: "u-ada" });
     expect([...tags].sort()).toEqual([...plan.steps[0].tagList].sort());
-  });
-
-  it("names the container around the ones a project already has", async () => {
-    const { client, requests } = recordingClient();
-
-    await client.createProjectWithZeropsMate({
-      clientId: "org-1",
-      name: "new",
-      existingServiceNames: ["zcp", "zcp1"],
-    });
-
-    expect(JSON.parse(requests[1]?.body ?? "{}").serviceImportYaml).toContain("- hostname: zcp2");
   });
 });

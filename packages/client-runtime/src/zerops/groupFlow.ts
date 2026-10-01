@@ -49,7 +49,6 @@
 
 import type { RoleProjectKind } from "@t3tools/shared/zeropsRoles";
 
-import type { BirthStep } from "./birth/birthStore.ts";
 import {
   CHECKING_WHAT_RUNS,
   type Deployment,
@@ -87,11 +86,8 @@ export interface GroupFlowMate {
   readonly coming?: GroupFlowComing;
 }
 
-/** How far a creation under way has got (the birth store's step). */
+/** A creation under way, drawn until the listing holds it. */
 export interface GroupFlowComing {
-  readonly step: BirthStep;
-  /** The step outlasted its cap: the words say so. */
-  readonly overdue: boolean;
   /** The face its person picked for a Mate, worn asleep while it comes up. */
   readonly face?: ZeropsMateFace | undefined;
   /** Its creation stopped before the platform took it: the words say so. */
@@ -486,8 +482,6 @@ export function groupFlow(input: GroupFlowInput): GroupFlow {
       waiting: false,
       talked: false,
       coming: {
-        step: entry.step,
-        overdue: entry.overdue,
         ...(entry.face === undefined ? {} : { face: entry.face }),
         ...(entry.failed === true ? { failed: true } : {}),
       },

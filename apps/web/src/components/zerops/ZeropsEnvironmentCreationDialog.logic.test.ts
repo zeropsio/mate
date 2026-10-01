@@ -717,7 +717,7 @@ describe("newMateDoorMates — the project's Mates, listed and coming", () => {
     kind: ZeropsGroupPendingMember["kind"],
     name: string,
   ): ZeropsGroupPendingMember {
-    return { projectId, kind, name, startedAt: 0, step: "tags", overdue: false };
+    return { projectId, kind, name, startedAt: 0 };
   }
   it("names each Mate by its agent, then those still coming, and leaves the stops out", () => {
     const mates = newMateDoorMates({

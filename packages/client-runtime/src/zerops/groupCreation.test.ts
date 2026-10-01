@@ -8,8 +8,9 @@ import {
   planGroupRegistration,
   resolveAddProjectVerb,
   resolveGroupGitea,
-  registerMateVerb,
+  finishMateSetupVerb,
   resolveMateRegistration,
+  type MateRegistration,
 } from "./groupCreation.ts";
 import { parseZeropsRegistry } from "./groupRegistry.ts";
 import type { MateAccessViewer } from "./mateAccess.ts";
@@ -275,54 +276,64 @@ describe("resolveMateRegistration", () => {
   });
 });
 
-describe("registerMateVerb", () => {
+describe("finishMateSetupVerb", () => {
+  const HALF_MADE = {
+    registration: "registered" as MateRegistration,
+    containerMissing: false,
+    pressStopped: false,
+  };
   it.each([
     {
       name: "an owner, on a Mate nobody has registered",
-      registration: "awaiting-owner",
+      input: { ...HALF_MADE, registration: "awaiting-owner" },
       viewerRole: "OWNER",
-      expected: "Register in Acme CRM",
+      expected: "Finish setup",
     },
     {
       name: "an admin, who may write the registry too",
-      registration: "awaiting-owner",
+      input: { ...HALF_MADE, registration: "awaiting-owner" },
       viewerRole: "ADMIN",
-      expected: "Register in Acme CRM",
+      expected: "Finish setup",
+    },
+    {
+      name: "an owner, on a Mate whose container never came",
+      input: { ...HALF_MADE, containerMissing: true },
+      viewerRole: "OWNER",
+      expected: "Finish setup",
+    },
+    {
+      name: "an owner, on a Mate whose press in this tab stopped",
+      input: { ...HALF_MADE, pressStopped: true },
+      viewerRole: "OWNER",
+      expected: "Finish setup",
     },
     {
       name: "the member who made it, and cannot finish it",
-      registration: "awaiting-owner",
+      input: { ...HALF_MADE, registration: "awaiting-owner" },
       viewerRole: "READ_ONLY",
       expected: undefined,
     },
     {
       name: "a BASIC_USER, who still cannot write the Gitea project's tags",
-      registration: "awaiting-owner",
+      input: { ...HALF_MADE, containerMissing: true },
       viewerRole: "BASIC_USER",
       expected: undefined,
     },
     {
-      name: "an owner, on a Mate already in the registry",
-      registration: "registered",
+      name: "an owner, on a Mate already whole",
+      input: HALF_MADE,
       viewerRole: "OWNER",
       expected: undefined,
     },
     {
       name: "somebody whose role has not been read yet",
-      registration: "awaiting-owner",
+      input: { ...HALF_MADE, registration: "awaiting-owner" },
       viewerRole: undefined,
       expected: undefined,
     },
-  ] as const)(
-    "offers nothing but the right verb to $name",
-    ({ registration, viewerRole, expected }) => {
-      expect(
-        registerMateVerb({
-          registration,
-          ...(viewerRole === undefined ? {} : { viewerRole }),
-          groupName: "Acme CRM",
-        }),
-      ).toBe(expected);
-    },
-  );
+  ] as const)("offers nothing but the right verb to $name", ({ input, viewerRole, expected }) => {
+    expect(
+      finishMateSetupVerb({ ...input, ...(viewerRole === undefined ? {} : { viewerRole }) }),
+    ).toBe(expected);
+  });
 });

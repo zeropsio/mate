@@ -41,7 +41,6 @@ import { makeBrowserDataScheduler } from "./dataScheduler";
 import { webEnvironmentPorts } from "./environmentPorts";
 import { tabClock } from "./tabClock";
 import { useZeropsSession } from "./ZeropsSessionProvider";
-import { bindBirthInputs } from "./zeropsBirths";
 import { ZeropsDataContext, type ZeropsDataContextValue } from "./zeropsDataContext";
 
 export function connectZeropsDataSocket(url: string): PlatformWatchSocket {
@@ -279,18 +278,12 @@ export function ZeropsDataProvider({
             setOpened({ runtime: created, signals });
             // The post-grant stage stands on the epoch's first grant: surfaces read its Mate
             // environments and its project flow — the Gitea sessions, the forge, the deployments —
-            // from then on, and the account's births start beside them.
+            // from then on.
             void Effect.runPromise(built.postGrant).then(
               (stage) => {
                 if (cancelled) return;
                 unbindEnvironments = bindAccountEnvironments(stage.environments);
                 unbindFlow = bindAccountFlow(stage);
-                bindBirthInputs({
-                  client,
-                  runtime: created,
-                  ...accountRefs(created),
-                  atoms: registry,
-                });
               },
               // An epoch that closed before its first grant never had a post-grant stage.
               () => undefined,

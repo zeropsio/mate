@@ -42,7 +42,6 @@ const CREATING: BirthFacts = {
     },
   ],
   health: undefined,
-  provisioningPhase: "awaiting-settled",
   connection: "none",
 };
 
@@ -75,7 +74,6 @@ describe("arrivalSteps", () => {
           project: undefined,
           container: undefined,
           processes: [],
-          provisioningPhase: null,
         },
         NOW,
       ),
@@ -147,7 +145,6 @@ describe("arrivalSteps", () => {
               ? { ...process, status: "FINISHED" as const, finishedAt: AGO(10) }
               : process,
           ),
-          provisioningPhase: "awaiting-health",
           health: "stalled",
         },
         NOW,

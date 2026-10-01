@@ -625,22 +625,19 @@ export interface MateBornLine {
 
 /**
  * A Mate being born, in its row's one line (board D1, 2026-09-30): "Coming up" on a clock that
- * counts from the press — its Mate waited on included, the clock running on — a step past its
- * cap saying so on the same clock, and any step that stopped the one fact, in red. Where this
- * browser holds no birth for it there is no clock to count, and the words stand alone. Why it
- * stopped, and what to do, is its own view's to say.
+ * counts from the press, and any step that stopped the one fact, in red. Where this browser made
+ * no press for it there is no clock to count, and the words stand alone. Why it stopped, and what
+ * to do, is its own view's to say.
  */
 export function mateBornLine(coming: MateComing): MateBornLine {
   if (coming.kind === "failed") return BORN_STOPPED;
-  return { words: bornWords(coming.verb === "keep-waiting"), since: coming.since, tone: "muted" };
+  return { words: BORN_WORDS, since: coming.since, tone: "muted" };
 }
 
 const BORN_STOPPED: MateBornLine = { words: SETTING_UP_STOPPED, since: undefined, tone: "failed" };
 
-/** On its way, or past its step's cap: the clock beside them says for how long. */
-function bornWords(overdue: boolean): string {
-  return overdue ? "Taking longer than usual" : "Coming up";
-}
+/** On its way: the clock beside it says for how long. */
+const BORN_WORDS = "Coming up";
 
 /** The line as it reads at `nowMs`: its words, then its clock — "Coming up · 0:42". */
 export function mateBornLineText(line: MateBornLine, nowMs: number): string {
@@ -652,13 +649,13 @@ export function mateBornLineText(line: MateBornLine, nowMs: number): string {
 /**
  * A creation the listing does not hold yet (`ZeropsGroupPendingMember`), in its row's one line as
  * a listed Mate coming up says it: on its way since the platform took it — a New project's since
- * its press — past its step's cap, or stopped.
+ * its press — or stopped.
  */
 export function pendingBornLine(
-  member: Pick<ZeropsGroupPendingMember, "startedAt" | "overdue" | "failed">,
+  member: Pick<ZeropsGroupPendingMember, "startedAt" | "failed">,
 ): MateBornLine {
   if (member.failed === true) return BORN_STOPPED;
-  return { words: bornWords(member.overdue), since: member.startedAt, tone: "muted" };
+  return { words: BORN_WORDS, since: member.startedAt, tone: "muted" };
 }
 
 /**

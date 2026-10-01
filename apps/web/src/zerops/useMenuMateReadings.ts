@@ -21,7 +21,7 @@ import { mateComing, type MateComing } from "./mateComing";
 import { rememberedActivity } from "./menuMemory";
 import { useNewMate } from "./newMate";
 import { useZeropsCreationVerdicts } from "./useZeropsCreationVerdicts";
-import { useZeropsBirths } from "./zeropsBirths";
+import { pressComingInput, useMatePresses } from "./matePress";
 
 /**
  * What a Mate's row says: its conversation's reading while its socket is up or only blinking,
@@ -80,26 +80,28 @@ export function useMateConversationsRead(): (candidate: ZeropsCandidate) => bool
 }
 
 /**
- * Whether a Mate the menu lists is still in its first minutes, as its row says it: its birth held
+ * Whether a Mate the menu lists is still in its first minutes, as its row says it: its press made
  * in this browser, its project on the way up, the platform's verdict on its creation (read as the
  * projects page reads it), or a step of this tab's creation that failed.
  */
 export function useMateComingOf(
   candidates: ReadonlyArray<ZeropsCandidate>,
 ): (candidate: ZeropsCandidate) => MateComing | undefined {
-  const { births } = useZeropsBirths();
+  const presses = useMatePresses();
   const creations = useNewMate((state) => state.creations);
   const verdicts = useZeropsCreationVerdicts(
     candidates,
-    births.find((birth) => birth.container && birth.step !== "health")?.projectId ?? null,
+    presses.find((press) => press.container && press.state.kind === "pressing")?.projectId ?? null,
   );
   return useCallback(
-    (candidate: ZeropsCandidate) =>
-      mateComing({
-        birth: births.find((birth) => birth.projectId === candidate.project.id),
+    (candidate: ZeropsCandidate) => {
+      const { press, setUpFailed } = pressComingInput(presses, candidate.project.id);
+      return mateComing({
+        press,
         candidate: applyProjectCreationVerdict(candidate, verdicts.get(candidate.project.id)),
-        setUpFailed: creations[candidate.project.id]?.failed,
-      }),
-    [births, creations, verdicts],
+        setUpFailed: setUpFailed ?? creations[candidate.project.id]?.failed,
+      });
+    },
+    [presses, creations, verdicts],
   );
 }

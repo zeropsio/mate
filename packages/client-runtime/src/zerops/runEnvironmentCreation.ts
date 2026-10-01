@@ -11,13 +11,14 @@
  *
  * The last steps are where the two kinds of environment part ways:
  *
- * - An environment **with an agent** is handed back the moment its imports
- *   are accepted — at `import-runtimes` when its tier has runtimes, which its
- *   birth imports once it has closed the project off, else at `await-ready`.
- *   The container wait is already a product surface — the provisioning state
- *   machine, its panel, its retry and enable paths — and duplicating it here
- *   would be a second opinion about when a container is ready. The caller
- *   starts that wait for the returned project.
+ * - An environment **with an agent** is handed back at `await-ready`, every
+ *   step that needs the person's rights done: its container imported with
+ *   its key and its runtimes, its project closed off, its registration
+ *   written. The container then sets itself up (zcp imports the runtimes on
+ *   boot); the container wait is already a product surface — the
+ *   provisioning state machine, its panel, its retry and enable paths — and
+ *   duplicating it here would be a second opinion about when a container is
+ *   ready.
  * - An environment **without one** has nothing to hand off to: no container,
  *   no health probe. So this waits for its services itself, by reading the
  *   platform's own service status until every one of them is `ACTIVE`.
@@ -31,14 +32,6 @@
 import type { EnvironmentCreationStep } from "./createEnvironment.ts";
 import type { Deployment } from "./flow/deployment.ts";
 import { deployedVersion } from "./groupRows.ts";
-import {
-  findMateIntegrationToken,
-  planGroupReach,
-  type TokenWriteHold,
-  type ZeropsIntegrationToken,
-  type ZeropsProjectGrant,
-  type ZeropsTokenDelegation,
-} from "./groupReach.ts";
 import type { Known } from "./knowledge/known.ts";
 import type { ZeropsAgentType } from "./newProject.ts";
 import {
@@ -64,10 +57,18 @@ export interface EnvironmentCreationPlatform {
     readonly clientId: string;
     readonly projectId: string;
   }) => Promise<ZeropsProjectCreation | undefined>;
+  /**
+   * The container, holding the Mate's own key (`api.ts`): safe to ask again, a project that has
+   * its container already making no write.
+   */
   readonly importDevelopmentContainer: (input: {
     readonly projectId: string;
+    /** What the project is called: its key is named after it. */
+    readonly projectName: string;
     readonly agents: ReadonlyArray<ZeropsAgentType>;
-  }) => Promise<{ readonly serviceName: string }>;
+    /** The tier's runtimes, for zcp to import on its first boot. */
+    readonly setupRuntimesYaml?: string;
+  }) => Promise<{ readonly serviceName: string; readonly imported: boolean }>;
   readonly importServices: (projectId: string, yaml: string) => Promise<unknown>;
   /**
    * `POST /client/{id}/project/import` — a project and its services from one
@@ -78,42 +79,20 @@ export interface EnvironmentCreationPlatform {
     readonly yaml: string;
   }) => Promise<{ readonly projectId: string }>;
   /**
-   * `GET /client/{id}/integration-token/list`, as grant metadata — names and
-   * project grants, never a token value. The step needs the id of the token
-   * the container import just minted, and nothing else about it.
+   * The project's `stack.updateProjectEnvs` processes, by status: the container recipe writes the
+   * project's variables in one of these, and a close-off written before it is through is undone
+   * by it (ledger, 2026-09-20).
    */
-  readonly listIntegrationTokenGrants: (input: {
-    readonly clientId: string;
-  }) => Promise<ReadonlyArray<ZeropsIntegrationToken>>;
-  /** `PUT /client/{id}/integration-token/{tokenId}` — the whole record, replaced. */
-  readonly setIntegrationTokenProjects: (input: {
-    readonly clientId: string;
-    readonly tokenId: string;
-    readonly name: string;
-    readonly projects: ReadonlyArray<ZeropsProjectGrant>;
-  }) => Promise<void>;
+  readonly readProjectEnvWrites: (
+    projectId: string,
+  ) => Promise<ReadonlyArray<{ readonly status: string }>>;
+  /** The project closed off (`projectIsolation.ts`); safe to ask again. */
+  readonly closeOff: (projectId: string) => Promise<void>;
   /**
-   * Holds one token's read-then-write at a time (`mate:token:{id}`), shared with every other
-   * writer of the account's tokens; without it, nothing else writes this token meanwhile.
+   * The environment's group registration (`addGroupEnvironment.ts`); safe to ask again. Throws
+   * with the reason a write did not go through.
    */
-  readonly holdToken?: TokenWriteHold;
-  /** `GET /client/{id}/integration-token/{tokenId}/delegation`. */
-  readonly listTokenDelegations: (input: {
-    readonly clientId: string;
-    readonly tokenId: string;
-  }) => Promise<ReadonlyArray<ZeropsTokenDelegation>>;
-  /** `DELETE /client/{id}/integration-token/{tokenId}/delegation/{delegationId}`. */
-  readonly deleteTokenDelegation: (input: {
-    readonly clientId: string;
-    readonly tokenId: string;
-    readonly delegationId: string;
-  }) => Promise<void>;
-  /**
-   * The whole of `projectIsolation.ts`'s plan against one project — the read,
-   * the writes, the re-read and the restarts. One call rather than a port per
-   * platform verb: the decision is the pure planner's and is tested there,
-   * and the entry ids the writes need never leave the caller that read them.
-   */
+  readonly register: (projectId: string) => Promise<void>;
   /** Reads the latest shared-model projection; this callback performs no platform request. */
   readonly readObservedServices: (
     projectId: string,
@@ -195,6 +174,41 @@ export interface RunEnvironmentCreationInput {
   readonly projectCreatePollIntervalMs?: number;
   /** How long the platform is given to confirm the project before the step fails. */
   readonly projectCreateWaitCapMs?: number;
+  /**
+   * A press tried again: the step it resumes at, and the project the first press made. Only
+   * steps that are safe to ask again resume (`resumableEnvironmentCreationStep`).
+   */
+  readonly resume?: {
+    readonly from: number;
+    readonly projectId: string;
+    readonly projectName: string;
+    /** When the project's container was imported, where that was a moment ago. */
+    readonly containerAcceptedAtMs?: number;
+  };
+  /** The platform took the project: everything after this step acts on it. */
+  readonly onProjectAccepted?: (projectId: string) => void;
+}
+
+/**
+ * How long a close-off gives the container recipe's write of the project's variables to appear
+ * after the import was accepted: in the test org's process lists it began within a second or two
+ * of the import once the project stood (2026-10-01), and the process index trails.
+ */
+export const RECIPE_ENV_WRITE_GRACE_MS = 6_000;
+/** Past this, the close-off goes ahead whatever the recipe is doing: a stuck write is not ours. */
+export const RECIPE_ENV_WRITE_CAP_MS = 90_000;
+export const RECIPE_ENV_WRITE_POLL_MS = 1_500;
+/** The idempotent steps' tries: the platform's index catching up is the usual "not yet". */
+export const PRESS_STEP_ATTEMPTS = 4;
+export const PRESS_STEP_RETRY_MS = 2_000;
+
+/**
+ * The steps a press tried again may resume at: each is safe to ask again. An import of services
+ * is not — a second one is refused for the hostnames the first made — so a creation that stopped
+ * there, or at the project itself, is removed rather than resumed.
+ */
+export function resumableEnvironmentCreationStep(step: EnvironmentCreationStep): boolean {
+  return step.kind === "import-container" || step.kind === "close-off" || step.kind === "register";
 }
 
 /** Measured at ~2 minutes for a two-service recipe; a build can take longer. */
@@ -239,29 +253,37 @@ export async function runEnvironmentCreation(
     report();
   };
 
-  let projectId: string | undefined;
+  let projectId: string | undefined = input.resume?.projectId;
+  let projectName: string | undefined = input.resume?.projectName;
+  let containerAcceptedAtMs: number | undefined = input.resume?.containerAcceptedAtMs;
   let serviceName: string | undefined;
   let deployments: ReadonlyArray<ServiceDeployment> = [];
-  // Read once and shared by the two steps that need it: the account's token
-  // list does not change under a creation, and one read is one round trip
-  // fewer between the container coming up and its ADMIN going away.
-  let mateToken: ZeropsIntegrationToken | undefined;
-  const resolveMateToken = async (): Promise<ZeropsIntegrationToken> => {
-    if (mateToken !== undefined) return mateToken;
-    const tokens = await input.platform.listIntegrationTokenGrants({ clientId: input.clientId });
-    assertCurrent();
-    const found = findMateIntegrationToken(tokens, requireProject(projectId));
-    if (found === undefined) {
-      throw new Error(
-        "The container's own access token could not be found, so it still holds more of this project than it needs.",
-      );
+  /** An idempotent step, tried again while it answers "not yet". */
+  const withTries = async (attempt: () => Promise<void>): Promise<void> => {
+    for (let tried = 1; ; tried += 1) {
+      try {
+        await attempt();
+        return;
+      } catch (cause) {
+        if (tried >= PRESS_STEP_ATTEMPTS) throw cause;
+      }
+      assertCurrent();
+      await sleep(PRESS_STEP_RETRY_MS);
+      assertCurrent();
     }
-    mateToken = found;
-    return found;
+  };
+  const accept = (id: string) => {
+    projectId = id;
+    input.onProjectAccepted?.(id);
   };
   report();
 
-  for (let index = 0; index < input.steps.length; index += 1) {
+  const from = input.resume?.from ?? 0;
+  for (let index = 0; index < from; index += 1)
+    progress[index] = { ...progress[index]!, state: "done" };
+  if (from > 0) report();
+
+  for (let index = from; index < input.steps.length; index += 1) {
     const step = input.steps[index]!;
     const startedAtMs = now();
     mark(index, { state: "running", startedAtMs });
@@ -278,7 +300,8 @@ export async function runEnvironmentCreation(
           });
           // Named before the wait: a creation the platform then fails has
           // still made a project, and the outcome must say which one.
-          projectId = project.id;
+          projectName = step.name;
+          accept(project.id);
           await awaitProjectCreated({
             clientId: input.clientId,
             projectId: project.id,
@@ -299,65 +322,38 @@ export async function runEnvironmentCreation(
             clientId: input.clientId,
             yaml: step.yaml,
           });
-          projectId = imported.projectId;
+          projectName = step.name;
+          accept(imported.projectId);
           break;
         }
         case "import-container": {
           const imported = await input.platform.importDevelopmentContainer({
             projectId: requireProject(projectId),
+            projectName: projectName ?? "",
             agents: step.agents,
+            ...(step.runtimes === undefined ? {} : { setupRuntimesYaml: step.runtimes.yaml }),
           });
           serviceName = imported.serviceName;
+          // A container already there was imported long enough ago: nothing to wait out.
+          if (imported.imported) containerAcceptedAtMs = now();
           break;
         }
-        case "secure-container-token": {
-          const found = await resolveMateToken();
-          const hold = input.platform.holdToken ?? ((_tokenId, run) => run());
-          // The write replaces the token's whole project list: it is planned from the token as
-          // read under its lock, so a write another writer made meanwhile is seen.
-          await hold(found.id, async () => {
-            mateToken = undefined;
-            const token = await resolveMateToken();
-            const write = planGroupReach({
-              token,
-              selfProjectId: requireProject(projectId),
-              // A group of one: the new environment's siblings, if it has any,
-              // are the projects-screen reconcile's business — that one runs on
-              // every read and can see the whole account, while this runs once
-              // and can see only what it just made.
-              groupProjectIds: [requireProject(projectId)],
-            });
-            // Already exactly right — a platform that starts minting the lowered
-            // shape makes this step a read.
-            if (write !== undefined) {
-              await input.platform.setIntegrationTokenProjects({
-                clientId: input.clientId,
-                tokenId: write.tokenId,
-                name: token.name,
-                projects: write.projects,
-              });
-            }
+        case "close-off": {
+          const target = requireProject(projectId);
+          await awaitRecipeEnvWrite({
+            projectId: target,
+            platform: input.platform,
+            sinceMs: containerAcceptedAtMs ?? now() - RECIPE_ENV_WRITE_GRACE_MS,
+            now,
+            sleep,
+            assertCurrent,
           });
+          await withTries(() => input.platform.closeOff(target));
           break;
         }
-        case "drop-container-delegation": {
-          const token = await resolveMateToken();
-          const delegations = await input.platform.listTokenDelegations({
-            clientId: input.clientId,
-            tokenId: token.id,
-          });
-          assertCurrent();
-          // Every one of them, and only this token's. A Mate is never given a
-          // delegation on purpose, so there is no shape worth keeping; an
-          // account whose platform stopped granting them makes this a read.
-          for (const delegation of delegations) {
-            await input.platform.deleteTokenDelegation({
-              clientId: input.clientId,
-              tokenId: token.id,
-              delegationId: delegation.id,
-            });
-            assertCurrent();
-          }
+        case "register": {
+          const target = requireProject(projectId);
+          await withTries(() => input.platform.register(target));
           break;
         }
         case "import-recipe":
@@ -365,17 +361,6 @@ export async function runEnvironmentCreation(
           await input.platform.importServices(requireProject(projectId), step.yaml);
           break;
         }
-        case "import-runtimes":
-          // The birth's, not this run's: it imports them once it has closed
-          // the project off (`birthWorker.ts`), from the document its record
-          // was begun with, so neither a reload nor this run ending loses them.
-          // Handed off with the wait for the agent that follows.
-          return {
-            ok: true,
-            projectId: requireProject(projectId),
-            serviceName,
-            awaitingAgent: true,
-          };
         case "await-ready": {
           if (step.withAgent) {
             // Handed off, not finished: the caller's provisioning wait takes
@@ -416,6 +401,35 @@ export async function runEnvironmentCreation(
     awaitingAgent: false,
     deployments,
   };
+}
+
+/**
+ * Waits out the container recipe's own write of the project's variables: through once none is
+ * pending or running and the import is at least {@link RECIPE_ENV_WRITE_GRACE_MS} old, so a write
+ * the index has not listed yet is not missed; never past {@link RECIPE_ENV_WRITE_CAP_MS}.
+ */
+async function awaitRecipeEnvWrite(input: {
+  readonly projectId: string;
+  readonly platform: EnvironmentCreationPlatform;
+  readonly sinceMs: number;
+  readonly now: () => number;
+  readonly sleep: (ms: number) => Promise<void>;
+  readonly assertCurrent: () => void;
+}): Promise<void> {
+  // Bounded by reads as well as by the clock, so a clock that stands still never holds a press.
+  const reads = Math.ceil(RECIPE_ENV_WRITE_CAP_MS / RECIPE_ENV_WRITE_POLL_MS);
+  for (let read = 0; read < reads; read += 1) {
+    const writes = await input.platform.readProjectEnvWrites(input.projectId);
+    input.assertCurrent();
+    const elapsed = input.now() - input.sinceMs;
+    const inFlight = writes.some(
+      (write) => write.status === "PENDING" || write.status === "RUNNING",
+    );
+    if (elapsed >= RECIPE_ENV_WRITE_CAP_MS) return;
+    if (!inFlight && elapsed >= RECIPE_ENV_WRITE_GRACE_MS) return;
+    await input.sleep(RECIPE_ENV_WRITE_POLL_MS);
+    input.assertCurrent();
+  }
 }
 
 function requireProject(projectId: string | undefined): string {

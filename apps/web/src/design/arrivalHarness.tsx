@@ -10,7 +10,7 @@
  * of state plays the hand-over it would play live.
  *
  * Served by the dev server at `/design-arrival.html` — `?state=<id>` for the state it opens on
- * (coming, coming-new, slow, signin, signin-claude, signin-codex, checking-code, signin-failed,
+ * (coming, coming-new, signin, signin-claude, signin-codex, checking-code, signin-failed,
  * terminal, standing-up, conversation, stopped, not-created, colleague, crew, dialog), `?theme=dark`.
  * `window.__arrivalHarness.go(id)` moves to a state from a script. Fixtures only: nothing here
  * ships, and no route imports this module.
@@ -109,7 +109,6 @@ function creatingFacts(): BirthFacts {
       },
     ],
     health: undefined,
-    provisioningPhase: "awaiting-settled",
     connection: "none",
   };
 }
@@ -140,7 +139,7 @@ const RUNTIMES = {
 } as const;
 
 function comingProgress(
-  kind: "coming" | "coming-new" | "slow" | "not-created",
+  kind: "coming" | "coming-new" | "not-created",
   nowMs: number,
 ): ArrivalProgress {
   const mate = deriveBirthProgress(creatingFacts(), nowMs);
@@ -192,7 +191,7 @@ interface HarnessState {
   readonly label: string;
   readonly mate: ZeropsMateIdentity;
   readonly phase: MateStandUpPhase | null;
-  readonly coming?: "coming" | "coming-new" | "slow" | "not-created" | "reaching";
+  readonly coming?: "coming" | "coming-new" | "not-created" | "reaching";
   /** A Mate that is up, as its link's one voice says it (`mateVoice`). */
   readonly voice?: MateVoice;
   readonly logins?: Logins;
@@ -218,13 +217,6 @@ const STATES: ReadonlyArray<HarnessState> = [
     mate: VERA,
     phase: "sign-in",
     coming: "coming-new",
-  },
-  {
-    id: "slow",
-    label: "1 Coming up · a step past its cap",
-    mate: { ...WREN, connected: false },
-    phase: "sign-in",
-    coming: "slow",
   },
   {
     id: "connecting",
@@ -526,15 +518,13 @@ function comingOf(state: HarnessState, nowMs: number): MateEmptyComing | null {
     };
   }
   const coming: MateComing =
-    state.coming === "slow"
-      ? { kind: "coming", line: "Taking longer than usual.", verb: "keep-waiting" }
-      : state.coming === "not-created"
-        ? {
-            kind: "failed",
-            line: "Its workspace could not be created. Nothing was signed in yet.",
-            verb: "remove",
-          }
-        : { kind: "coming", line: "Coming up. A few minutes.", verb: undefined };
+    state.coming === "not-created"
+      ? {
+          kind: "failed",
+          line: "Its workspace could not be created. Nothing was signed in yet.",
+          verb: "remove",
+        }
+      : { kind: "coming", line: "Coming up. A few minutes." };
   const progress = comingProgress(state.coming, nowMs);
   return {
     kind: coming.kind,
@@ -544,7 +534,6 @@ function comingOf(state: HarnessState, nowMs: number): MateEmptyComing | null {
         coming={coming}
         mate={state.mate}
         nowMs={nowMs}
-        onKeepWaiting={() => undefined}
         onRemove={() => undefined}
         progress={progress}
         you={YOU}

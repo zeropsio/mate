@@ -28,8 +28,10 @@ import {
   type ZeropsProjectCreation,
 } from "./projectCreation.ts";
 import {
+  buildGroupGrants,
   findMateIntegrationToken,
   makeTokenWriteLock,
+  MATE_SELF_PROJECT_ROLE,
   planGroupReach,
   type TokenWriteHold,
 } from "./groupReach.ts";
@@ -801,6 +803,14 @@ async function readProjectPages<T extends { readonly id: string }>(
     } else if (response.items.length < limit) return projects;
   }
   throw incomplete();
+}
+
+/**
+ * A Mate's key is named as the platform named the one it used to mint with the container,
+ * `zcp-<project>`: `findMateIntegrationToken` finds either by that and its grant.
+ */
+function mateKeyName(projectName: string): string {
+  return `zcp-${projectName}`;
 }
 
 /**
@@ -1916,6 +1926,34 @@ export class ZeropsApiClient {
   }
 
   /**
+   * `POST /process/search` — the project's newest `stack.updateProjectEnvs`
+   * processes, by status: the container recipe writes the project's variables
+   * in one, and a close-off written before it is through is undone by it. One
+   * read; the waiting is the press's (`runEnvironmentCreation.ts`).
+   */
+  async readProjectEnvWrites(
+    input: { readonly clientId: string; readonly projectId: string },
+    signal?: AbortSignal,
+  ): Promise<ReadonlyArray<{ readonly status: string }>> {
+    const response = await this.#request<{ readonly items?: ReadonlyArray<unknown> }>(
+      "/process/search",
+      {
+        method: "POST",
+        signal: signal ?? null,
+        body: JSON.stringify(projectProcessSearchBody(input)),
+      },
+      { operationKind: "read" },
+    );
+    return (Array.isArray(response.items) ? response.items : []).flatMap((item) => {
+      if (typeof item !== "object" || item === null) return [];
+      const { actionName, status } = item as { actionName?: unknown; status?: unknown };
+      return actionName === "stack.updateProjectEnvs" && typeof status === "string"
+        ? [{ status }]
+        : [];
+    });
+  }
+
+  /**
    * `DELETE /project/{id}` — takes a project off the account. The platform
    * answers with the deleting process and the project is gone shortly after
    * (measured 2026-09-16). What the product deletes through this is a project
@@ -1939,21 +1977,99 @@ export class ZeropsApiClient {
 
   /**
    * `PUT /project/{id}/first-class-recipe/development-container` — the zcp
-   * that carries the agent, imported into a project that already exists.
+   * that carries the agent, imported into a project that already exists,
+   * holding the Mate's own key.
    *
-   * Returns the service name it chose, which is what the caller polls for.
+   * The key is minted here, by the person, with the Mate's reach and nothing
+   * more (`buildGroupGrants`): `BASIC_USER` on its project, `READ_ONLY` on
+   * the group's other environments, no delegation. It goes into the container
+   * as the secret `ZCP_API_KEY`, and the platform is asked for no token of
+   * its own (`createIntegrationToken: false`). The platform's would be
+   * `ADMIN`, a project variable every service can read, and a one-time
+   * delegation — three things a later step had to take back, from a browser
+   * that might have gone by then.
+   *
+   * Every write is safe to make again, so a press tried again finishes what
+   * the first one started:
+   * - a project that has its container already makes no write at all;
+   * - a key an earlier press minted, its container never imported, is reused
+   *   — its reach set again and its value regenerated, because the value is
+   *   shown once and nothing kept it — never a second key beside it.
+   *
+   * The value lives in this call alone: it is in the import's body and in no
+   * answer, no log and no error.
    */
   async importDevelopmentContainer(
     input: {
+      readonly clientId: string;
       readonly projectId: string;
-      readonly existingServiceNames?: ReadonlyArray<string>;
+      /** The project's name: the key is `zcp-<name>`, as the platform names its own. */
+      readonly projectName: string;
+      /** The group's environments, this one included: the key reads the others. */
+      readonly groupProjectIds?: ReadonlyArray<string>;
       readonly zcpVersion?: string;
       readonly agents?: ReadonlyArray<ZeropsAgentType>;
+      /** The tier's runtimes, for zcp to import on boot (`MATE_SETUP_RUNTIMES`). */
+      readonly setupRuntimesYaml?: string;
     },
     signal?: AbortSignal,
     beforeWrite?: () => Promise<void>,
-  ): Promise<{ readonly serviceName: string }> {
-    const serviceName = nextZcpServiceName(input.existingServiceNames ?? []);
+  ): Promise<{ readonly serviceName: string; readonly imported: boolean }> {
+    const services = await this.listProjectServices(input.projectId, signal);
+    const container = services.find(isZcpService);
+    if (container !== undefined) return { serviceName: container.name, imported: false };
+
+    const generation = this.#generation;
+    const grants = buildGroupGrants({
+      selfProjectId: input.projectId,
+      groupProjectIds: input.groupProjectIds ?? [input.projectId],
+    });
+    const tokens = await this.listIntegrationTokens(input.clientId, signal);
+    const earlier = findMateIntegrationToken(tokens, input.projectId);
+    this.#assertGeneration(generation);
+    let apiKey: string;
+    if (earlier === undefined) {
+      apiKey = (
+        await this.mintIntegrationToken(
+          {
+            clientId: input.clientId,
+            name: mateKeyName(input.projectName),
+            roleCode: "NO_ACCESS",
+            projects: grants,
+          },
+          signal,
+          beforeWrite,
+        )
+      ).token;
+    } else {
+      const reach = planGroupReach({
+        token: earlier,
+        selfProjectId: input.projectId,
+        groupProjectIds: input.groupProjectIds ?? [input.projectId],
+      });
+      if (reach !== undefined) {
+        await this.setIntegrationTokenProjects(
+          {
+            clientId: input.clientId,
+            tokenId: earlier.id,
+            name: earlier.name,
+            projects: reach.projects,
+            roleCode: earlier.roleCode,
+          },
+          signal,
+          beforeWrite,
+        );
+      }
+      this.#assertGeneration(generation);
+      apiKey = await this.regenerateIntegrationToken(
+        { clientId: input.clientId, tokenId: earlier.id },
+        signal,
+        beforeWrite,
+      );
+    }
+
+    const serviceName = nextZcpServiceName(services.map((service) => service.name));
+    this.#assertGeneration(generation);
     await this.#request(
       `/project/${input.projectId}/first-class-recipe/development-container`,
       {
@@ -1964,8 +2080,10 @@ export class ZeropsApiClient {
             serviceImportYaml: buildZcpServiceImportYaml({
               serviceName,
               vscodePassword: generateVscodePassword(),
+              apiKey,
               ...(input.zcpVersion ? { zcpVersion: input.zcpVersion } : {}),
               ...(input.agents ? { agents: input.agents } : {}),
+              ...(input.setupRuntimesYaml ? { setupRuntimesYaml: input.setupRuntimesYaml } : {}),
             }),
           }),
         ),
@@ -1975,14 +2093,13 @@ export class ZeropsApiClient {
         ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),
       },
     );
-    return { serviceName };
+    return { serviceName, imported: true };
   }
 
   async createProjectWithZeropsMate(
     input: {
       readonly clientId: string;
       readonly name: string;
-      readonly existingServiceNames?: ReadonlyArray<string>;
       readonly location?: string;
       readonly zcpVersion?: string;
       readonly agents?: ReadonlyArray<ZeropsAgentType>;
@@ -2035,42 +2152,30 @@ export class ZeropsApiClient {
     }
     const project = projectResponse;
 
-    const serviceName = nextZcpServiceName(input.existingServiceNames ?? []);
+    let serviceName: string;
     try {
       this.#assertGeneration(generation);
-      await this.#request(
-        `/project/${project.id}/first-class-recipe/development-container`,
+      // **Deliberately not the caller's signal.** What that signal cancels is
+      // the creation, and by this line the creation has happened: the project
+      // is on the account, tagged a Mate, named after one. Abandon the
+      // container here and what is left is a Mate with no agent in it —
+      // `Lighthouse - Enzo`, 2026-09-20, whose process list holds
+      // `project.create` and then nothing at all until a person ran the
+      // recovery five minutes later. Its *Finish setup* is the same call.
+      //
+      // The session generation is the one check that still stops it, and it
+      // should: a signed-out client must send nothing.
+      ({ serviceName } = await this.importDevelopmentContainer(
         {
-          method: "PUT",
-          // **Deliberately not the caller's signal.** What that signal cancels
-          // is the creation, and by this line the creation has happened: the
-          // project is on the account, tagged a Mate, named after one. Abandon
-          // the container here and what is left is a Mate with no agent in it,
-          // which nothing reconciles — `Lighthouse - Enzo`, 2026-09-20, whose
-          // process list holds `project.create` and then nothing at all until
-          // a person ran the recovery five minutes later. The adapter gives
-          // both writes one 15 s budget (`restAdapter.stageSignal`), so a slow
-          // project POST spends the container's half of it.
-          //
-          // The session generation above is the one check that still stops
-          // this write, and it should: a signed-out client must send nothing.
-          signal: null,
-          body: JSON.stringify(
-            buildDevelopmentContainerImportBody({
-              serviceImportYaml: buildZcpServiceImportYaml({
-                serviceName,
-                vscodePassword: generateVscodePassword(),
-                ...(input.zcpVersion ? { zcpVersion: input.zcpVersion } : {}),
-                ...(input.agents ? { agents: input.agents } : {}),
-              }),
-            }),
-          ),
+          clientId: input.clientId,
+          projectId: project.id,
+          projectName: project.name,
+          ...(input.zcpVersion ? { zcpVersion: input.zcpVersion } : {}),
+          ...(input.agents ? { agents: input.agents } : {}),
         },
-        {
-          operationKind: "project-write",
-          ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),
-        },
-      );
+        undefined,
+        beforeWrite,
+      ));
     } catch (cause) {
       // The guidance is the person's; the platform's own status, code and
       // detail ride along, because a swallowed cause is why the half-made Mate
@@ -2081,69 +2186,7 @@ export class ZeropsApiClient {
         : new ZeropsApiError(guidance, "uncertain");
     }
 
-    // Same rule as the container write, and for the same reason: the Mate is
-    // made, so nothing after this point may either be skipped by a budget that
-    // has run out or turn a creation that worked into one that reports a
-    // failure. This is the only place the wizard's path drops the delegation —
-    // the planned path has its own `drop-container-delegation` step — so it is
-    // run without the caller's signal, and a platform that refuses it leaves a
-    // delegation rather than a person retrying a Mate they already have.
-    try {
-      await this.#dropMateContainerDelegations(input.clientId, project.id, undefined, beforeWrite);
-    } catch {
-      // Deliberately swallowed. A delegation left on the container's own token
-      // is worth less than a completed creation reported as failed.
-    }
-
     return { project, serviceName };
-  }
-
-  /**
-   * Takes back the delegation the platform mints with a Mate's container.
-   *
-   * `planEnvironmentCreation` has always ended a with-agent creation on
-   * `drop-container-delegation`, and this one-call path — the wizard's since
-   * 0.11.2 — ran it never. Measured on a project minutes old (2026-09-19,
-   * primer §7.1): one delegation still on the container's own token, and
-   * nothing reconciles it afterwards.
-   *
-   * Isolation is **not** here, and the distinction is the container recipe's:
-   * the recipe that makes a zcp opens `envIsolation` itself, so that zcp can
-   * see the project (the owner, 2026-09-20). Closing it from here writes
-   * either into a read that has not caught up or under a recipe still
-   * running, and it was the second that failed the creation outright. It runs
-   * once the container answers instead (`connectContainer`), which is the
-   * first moment the recipe is provably done.
-   *
-   * Idempotent: a token with no delegation is a read, so a retried creation is
-   * safe. The token is the platform's to mint and is looked for once — this
-   * package holds no timers by design, `runEnvironmentCreation` takes its
-   * `sleep` from the caller — and a creation is never failed over one that has
-   * not appeared.
-   */
-  async #dropMateContainerDelegations(
-    clientId: string,
-    projectId: string,
-    signal?: AbortSignal,
-    beforeWrite?: () => Promise<void>,
-  ): Promise<void> {
-    const tokens = await this.listIntegrationTokens(clientId, signal);
-    const token = findMateIntegrationToken(tokens, projectId);
-    if (token !== undefined) {
-      const delegations = await this.listIntegrationTokenDelegations(
-        { clientId, tokenId: token.id },
-        signal,
-      );
-      // Every one of them: a Mate is never given a delegation on purpose, so
-      // there is no shape worth keeping.
-      for (const delegation of delegations) {
-        await this.deleteIntegrationTokenDelegation(
-          { clientId, tokenId: token.id, delegationId: delegation.id },
-          signal,
-          beforeWrite,
-        );
-      }
-    }
   }
 
   /**
@@ -2451,11 +2494,10 @@ export class ZeropsApiClient {
    * The birth's hardening (spec-mate §3 B-1/B-2/B-3), whole: the token half
    * and the isolation half, together, for one Mate's own project.
    *
-   * The token half reuses `planGroupReach`'s per-token rule with a group of
-   * exactly this Mate — the same lowering `planAccountGroupReach` plans for a
-   * solo Mate — so a birth and a later group-reach reconcile agree on what
-   * "reached" means without duplicating the rule. Every delegation the token
-   * carries is then dropped: the one-time mint the platform grants at
+   * The token half lowers the Mate's own grant to `BASIC_USER` and leaves
+   * every other grant as it is: what the Mate reads of its group is the
+   * group-reach reconcile's (`planAccountGroupReach`), and a key the press
+   * minted already has it. Every delegation the token carries is then dropped: the one-time mint the platform grants at
    * creation, which nothing here needs (`groupReach.ts`, guide 0.4).
    *
    * Idempotent, and cheap to prove so: a token already at `BASIC_USER` with
@@ -2490,7 +2532,9 @@ export class ZeropsApiClient {
     if (token !== undefined) {
       this.#assertGeneration(generation);
       // The write replaces the token's whole project list: it is planned from the token as read
-      // under its lock. It lowers the token's org role to none, whatever the token held.
+      // under its lock. Only the Mate's own grant is lowered; what else it reads is its group's,
+      // kept as it is (`planAccountGroupReach` keeps it). A key the press minted is already this
+      // and is left alone.
       tokenLowered = await this.#holdToken(token.id, async () => {
         const current = findMateIntegrationToken(
           await this.listIntegrationTokens(clientId, signal),
@@ -2498,19 +2542,14 @@ export class ZeropsApiClient {
         );
         if (current === undefined) return false;
         this.#assertGeneration(generation);
-        const plan = planGroupReach({
-          token: current,
-          selfProjectId: projectId,
-          groupProjectIds: [projectId],
-        });
-        if (plan === undefined) return false;
+        const projects = (current.projects ?? []).map((grant): ZeropsProjectGrant =>
+          grant.projectId === projectId && grant.roleCode !== MATE_SELF_PROJECT_ROLE
+            ? { ...grant, roleCode: MATE_SELF_PROJECT_ROLE }
+            : grant,
+        );
+        if (!projects.some((grant, index) => grant !== current.projects?.[index])) return false;
         await this.setIntegrationTokenProjects(
-          {
-            clientId,
-            tokenId: plan.tokenId,
-            name: current.name,
-            projects: plan.projects,
-          },
+          { clientId, tokenId: current.id, name: current.name, projects },
           signal,
           beforeWrite,
         );

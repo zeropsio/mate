@@ -2094,7 +2094,7 @@ describe("makeZeropsDataRuntime", () => {
                 return Effect.succeed({
                   processRefs: [],
                   observations: [],
-                  result: { kind: command.kind, value: { serviceName: "zcp" } },
+                  result: { kind: command.kind, value: { serviceName: "zcp", imported: true } },
                 });
               case "import-services":
                 return Effect.succeed({
@@ -2156,7 +2156,10 @@ describe("makeZeropsDataRuntime", () => {
           projects: [{ project: createdRef, role: "OWNER", mutationsAllowed: true }],
         });
 
-        yield* runtime.commands.importDevelopmentContainer({ project: createdRef });
+        yield* runtime.commands.importDevelopmentContainer({
+          project: createdRef,
+          projectName: "new",
+        });
         yield* runtime.commands.importServices(createdRef, "services: []");
         const imported = yield* runtime.commands.importProject(
           topologyDescriptor.project.organization,

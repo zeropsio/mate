@@ -36,11 +36,11 @@
  * from the press (`newProjectBirth.ts`, the owner, 2026-09-30): Git hosting
  * where the account has none, the project's registry entry and the Mate's
  * project are its progress's first steps, and a step that stops says why
- * there, with *Try again*. The rest is the Mate's birth (`zeropsBirths.ts`,
- * DESIGN §4.5), begun the moment the platform accepts its project: its
- * registry entry, the broker's grant, its harden and its health are the
- * account's birth worker's, so a reload, an organization switch or leaving the
- * page never strands them.
+ * there, with *Try again*. The rest of the press follows the moment the
+ * platform accepts its project (`matePress.ts`): its project closed off, its
+ * registry entry and the broker's grant. After that the container needs no
+ * browser at all; a press a closed tab cut short is finished from the Mate's
+ * ⋯ menu (*Finish setup*).
  */
 import { useNavigate } from "@tanstack/react-router";
 import {
@@ -69,7 +69,9 @@ import {
 } from "~/zerops/newProjectBirth";
 import { useNewProjectAsk } from "~/zerops/newProjectAsk";
 import { useTakenBotNames, useZeropsCandidates } from "~/zerops/useZeropsCandidates";
-import { creationAccepted } from "~/zerops/zeropsBirths";
+import { invalidateZerops } from "~/zerops/accountInvalidations";
+import { captureAccountLifetime } from "~/zerops/accountLifetime";
+import { beginPress, finishMateSetup } from "~/zerops/matePress";
 import { runZeropsCommand, useKnown, useZeropsData } from "~/zerops/zeropsDataContext";
 import type { ZeropsOrganizationStatus } from "~/zerops/ZeropsSessionProvider";
 import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
@@ -100,7 +102,7 @@ export function ZeropsNewProjectHost() {
 
 function NewProjectDialog() {
   const dismiss = useNewProjectAsk((state) => state.dismiss);
-  const { activeOrganization, organizationStatus, organizations, selectOrganization } =
+  const { activeOrganization, client, organizationStatus, organizations, selectOrganization } =
     useZeropsSession();
   const { organizationRef, projectRef, runtime } = useZeropsData();
   const navigate = useNavigate();
@@ -234,6 +236,7 @@ function NewProjectDialog() {
       // Every agent: an empty selection omits `ZCP_AGENTS` (`newProject.ts`).
       agents: [],
     };
+    const isCurrent = captureAccountLifetime();
     const birthId = beginNewProjectBirth({
       ask,
       gitea: gitea === undefined ? undefined : { projectId: gitea.projectId },
@@ -263,27 +266,36 @@ function NewProjectDialog() {
         createProject: (creation) =>
           runZeropsCommand(runtime.commands.createProjectWithMate({ organization, ...creation })),
         accepted: (projectId, giteaProjectId) => {
-          // The birth owes the Mate's registry entry and the broker's grant,
-          // then its harden and its health; the listing is read again so the
-          // project's group catches up with it. Its row stands where the
-          // creation's stood, with the same face and name.
+          // The press goes on: the project closed off, the Mate's registry entry and the
+          // broker's grant. The listing is read again so the project's group catches up with
+          // it. Its row stands where the creation's stood, with the same face and name.
           const placement = newProjectPlacement(ask);
-          creationAccepted(
-            {
-              projectId,
-              organizationId,
-              registration: {
-                giteaProjectId,
-                giteaOrigin: null,
-                groupId: ask.groupId,
-                kind: "mate",
-                displayName: placement.displayName,
-              },
-              container: true,
-              placement,
+          const acceptedAt = Date.now();
+          beginPress({
+            projectId,
+            organizationId,
+            startedAt: acceptedAt,
+            container: true,
+            placement,
+          });
+          invalidateZerops({ topic: "inventory", organization });
+          void finishMateSetup({
+            inputs: { client, data: { runtime, organizationRef, projectRef }, organizationId },
+            projectId,
+            projectName: placement.displayName,
+            // Imported a moment ago, with the project, by the one call that made it.
+            container: null,
+            groupProjectIds: [],
+            registration: {
+              giteaProjectId,
+              giteaOrigin: null,
+              groupId: ask.groupId,
+              kind: "mate",
+              displayName: placement.displayName,
             },
-            organization,
-          );
+            isCurrent,
+            containerAcceptedAtMs: acceptedAt,
+          });
           // Who it is until the listing names it, as Add a Mate's are: its
           // view's face, name and stand-up.
           created({ projectId, groupId: ask.groupId, groupName: name, botName, face });
