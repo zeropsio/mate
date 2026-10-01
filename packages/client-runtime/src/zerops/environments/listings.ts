@@ -18,7 +18,7 @@ import {
   evidenceProjectRefs,
   inventoryProjectRefs,
   pendingDenials,
-} from "../account/inventoryDemand.ts";
+} from "../data/access/grantProjects.ts";
 import type { Evidence, GrantMachine } from "../data/access/grant.ts";
 import { knownProjectsOf, knownServicesOf, servicesCheckOrdinalOf } from "../data/known.ts";
 import type { ManagedZeropsDataRuntime } from "../data/runtime.ts";
