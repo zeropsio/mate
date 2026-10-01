@@ -56,28 +56,46 @@ import { runZeropsCommand, ZeropsDataContext } from "./zeropsDataContext";
 import { useZeropsSession } from "./ZeropsSessionProvider";
 
 /**
- * The records this client wrote itself, agent to Zerops user id, held until
- * the server's snapshot carries them.
+ * The records this client wrote itself, signer key to Zerops user id, per Mate, held until the
+ * server's snapshot carries them.
  *
- * The server reads the signers when it publishes on the credential event,
- * which is before this client has written the record; it re-reads on its own
- * schedule (`ZeropsAgentAuth`'s `SIGNER_RECHECK_INTERVAL`), but the person
- * who just signed in should not sit in front of a closed composer for it.
- * They are the one person who already knows what the record says, so the
- * client remembers it for them, and forgets it the moment the snapshot says
- * the same thing.
+ * The server reads the signers when it publishes on the credential event, which is before this
+ * client has written the record, and its read of the tags is cached: a sign-in over an earlier
+ * record goes on naming the earlier one for a while after the new one is written. The person who
+ * just signed in should neither sit in front of a closed composer for it nor be told somebody
+ * else holds their agent. They are the one person who already knows what the record says, so the
+ * client remembers it for them — per Mate, a record of one is never another's — and forgets it
+ * the moment the snapshot says the same thing, or says somebody else has signed in since.
  */
 export type LocalAgentSigners = Readonly<Partial<Record<string, string>>>;
 
-let localAgentSigners: LocalAgentSigners = {};
+const NO_LOCAL_SIGNERS: LocalAgentSigners = {};
+let localAgentSigners: ReadonlyMap<string, LocalAgentSigners> = new Map();
 const localAgentSignerListeners = new Set<() => void>();
 
-function setLocalAgentSigners(next: LocalAgentSigners): void {
-  localAgentSigners = next;
+function setLocalAgentSigners(environmentId: string, next: LocalAgentSigners): void {
+  const all = new Map(localAgentSigners);
+  if (Object.keys(next).length === 0) all.delete(environmentId);
+  else all.set(environmentId, next);
+  localAgentSigners = all;
   for (const listener of localAgentSignerListeners) listener();
 }
 
-export function readLocalAgentSigners(): LocalAgentSigners {
+/** One Mate's records: absent is a fact here, nothing written for it from this client. */
+function signersOf(
+  all: ReadonlyMap<string, LocalAgentSigners>,
+  environmentId: string | null | undefined,
+): LocalAgentSigners {
+  const signers = environmentId ? all.get(environmentId) : undefined;
+  return signers === undefined ? NO_LOCAL_SIGNERS : signers;
+}
+
+/** The records this client wrote for one Mate's logins and the server has not read back yet. */
+export function readLocalAgentSigners(environmentId: string | null | undefined): LocalAgentSigners {
+  return signersOf(localAgentSigners, environmentId);
+}
+
+function readAllLocalAgentSigners(): ReadonlyMap<string, LocalAgentSigners> {
   return localAgentSigners;
 }
 
@@ -88,55 +106,113 @@ export function subscribeLocalAgentSigners(listener: () => void): () => void {
   };
 }
 
-export function rememberLocalAgentSigner(key: string, userId: string): void {
-  if (localAgentSigners[key] === userId) return;
-  setLocalAgentSigners({ ...localAgentSigners, [key]: userId });
+export function rememberLocalAgentSigner(environmentId: string, key: string, userId: string): void {
+  const current = readLocalAgentSigners(environmentId);
+  if (current[key] === userId) return;
+  setLocalAgentSigners(environmentId, { ...current, [key]: userId });
 }
 
 /** Forgets a record this client meant to write: its write failed. */
-export function forgetLocalAgentSigner(key: string): void {
-  if (localAgentSigners[key] === undefined) return;
-  const next: Partial<Record<string, string>> = { ...localAgentSigners };
+export function forgetLocalAgentSigner(environmentId: string, key: string): void {
+  const current = readLocalAgentSigners(environmentId);
+  if (current[key] === undefined) return;
+  const next: Partial<Record<string, string>> = { ...current };
   delete next[key];
-  setLocalAgentSigners(next);
+  setLocalAgentSigners(environmentId, next);
+}
+
+/** The latest sign-in that succeeded on a login, by whom — what a record on its way records. */
+const latestSignInBy = (login: AgentSignerFacts["login"]): string | undefined =>
+  login === undefined
+    ? undefined
+    : login.phase === "succeeded"
+      ? login.startedBy
+      : login.lastSucceeded?.startedBy;
+
+/**
+ * Whether the record this client wrote still speaks for the login: nothing is recorded yet, or
+ * the record names somebody else while the latest sign-in is the one this record is of — the
+ * server's read from before it. A record that names the same person is settled, and a sign-in
+ * by somebody else since leaves it behind.
+ */
+function localSignerStands(local: string, agent: AgentSignerFacts): boolean {
+  const recorded = agent.authorizedBy?.subject;
+  const latest = latestSignInBy(agent.login);
+  if (recorded === undefined) return latest === undefined || latest === local;
+  return recorded !== local && latest === local;
+}
+
+/** Every login's signer key and its facts, as the snapshot carries them. */
+function signerFacts(
+  snapshot: ZeropsAgentAuthSnapshot,
+): ReadonlyArray<readonly [string, AgentSignerFacts]> {
+  return [
+    ...snapshot.agents.map((agent) => [agent.agentId, agent] as const),
+    ...(snapshot.logins ?? [])
+      .filter((login) => !login.default)
+      .map(
+        (login) =>
+          [
+            login.id,
+            {
+              authorizedBy:
+                login.signedInBy === undefined ? undefined : { subject: login.signedInBy },
+              login: login.login,
+            },
+          ] as const,
+      ),
+  ];
 }
 
 /** Every login's signer key and its record, as the snapshot carries them. */
 function recordedSigners(
   snapshot: ZeropsAgentAuthSnapshot,
 ): ReadonlyArray<readonly [string, string | undefined]> {
-  return [
-    ...snapshot.agents.map((agent) => [agent.agentId, agent.authorizedBy?.subject] as const),
-    ...(snapshot.logins ?? [])
-      .filter((login) => !login.default)
-      .map((login) => [login.id, login.signedInBy] as const),
-  ];
+  return signerFacts(snapshot).map(([key, facts]) => [key, facts.authorizedBy?.subject] as const);
 }
 
-/** Forgets every entry the snapshot now carries itself: the server has caught up. */
-export function localSignersSettledBy(snapshot: ZeropsAgentAuthSnapshot): void {
-  const settled = recordedSigners(snapshot).filter(
-    ([key, signer]) => signer !== undefined && localAgentSigners[key] !== undefined,
-  );
+/** Forgets every entry of this Mate the snapshot has settled: the server has caught up. */
+export function localSignersSettledBy(
+  environmentId: string,
+  snapshot: ZeropsAgentAuthSnapshot,
+): void {
+  const current = readLocalAgentSigners(environmentId);
+  const settled = signerFacts(snapshot).filter(([key, facts]) => {
+    const local = current[key];
+    return local !== undefined && !localSignerStands(local, facts);
+  });
   if (settled.length === 0) return;
-  const next: Partial<Record<string, string>> = { ...localAgentSigners };
+  const next: Partial<Record<string, string>> = { ...current };
   for (const [key] of settled) delete next[key];
-  setLocalAgentSigners(next);
+  setLocalAgentSigners(environmentId, next);
 }
 
-export function useLocalAgentSigners(): LocalAgentSigners {
-  return useSyncExternalStore(
+/** This Mate's records written here and not read back yet. */
+export function useLocalAgentSigners(environmentId: string | null | undefined): LocalAgentSigners {
+  const read = () => readLocalAgentSigners(environmentId);
+  return useSyncExternalStore(subscribeLocalAgentSigners, read, read);
+}
+
+/** Every Mate's records written here and not read back yet: each Mate's, by its environment. */
+export function useLocalAgentSignersByEnvironment(): (environmentId: string) => LocalAgentSigners {
+  const all = useSyncExternalStore(
     subscribeLocalAgentSigners,
-    readLocalAgentSigners,
-    readLocalAgentSigners,
+    readAllLocalAgentSigners,
+    readAllLocalAgentSigners,
   );
+  return useCallback((environmentId) => signersOf(all, environmentId), [all]);
 }
 
 /** The login a signer comes from, as a snapshot row carries it. */
 export interface AgentSignerFacts {
   readonly authorizedBy?: { readonly subject: string } | undefined;
   readonly login?:
-    | { readonly phase: ZeropsAgentLoginPhase; readonly startedBy?: string | undefined }
+    | {
+        readonly phase: ZeropsAgentLoginPhase;
+        readonly startedBy?: string | undefined;
+        /** The latest attempt before this one that succeeded, where this one has not. */
+        readonly lastSucceeded?: { readonly startedBy?: string | undefined } | undefined;
+      }
     | undefined;
 }
 
@@ -153,11 +229,11 @@ const LOGIN_ENDED: ReadonlySet<ZeropsAgentLoginPhase> = new Set([
 ]);
 
 /**
- * Who signed this agent in, for ownership: the snapshot's own record when it has one, else the
- * record this client is writing or wrote and the server has not read back yet, else the viewer's
- * own login while its code is being checked — else nobody. The viewer is the one
- * person who knows what the record will say, so the seconds before it lands never read as a
- * sign-in nobody recorded.
+ * Who signed this agent in, for ownership: the record this client is writing or wrote for the
+ * latest sign-in, while the server has not read it back (`localSignerStands`), else the
+ * snapshot's own record, else the viewer's own login while its code is being checked — else
+ * nobody. The viewer is the one person who knows what the record will say, so the seconds before
+ * it lands never read as a sign-in nobody recorded, nor as the earlier signer's.
  */
 export function resolveAgentAuthorizer(
   key: string,
@@ -165,9 +241,9 @@ export function resolveAgentAuthorizer(
   local: LocalAgentSigners,
   viewer: string | undefined,
 ): { readonly subject: string } | undefined {
-  if (agent.authorizedBy !== undefined) return { subject: agent.authorizedBy.subject };
   const subject = local[key];
-  if (subject !== undefined) return { subject };
+  if (subject !== undefined && localSignerStands(subject, agent)) return { subject };
+  if (agent.authorizedBy !== undefined) return { subject: agent.authorizedBy.subject };
   const login = agent.login;
   if (
     viewer !== undefined &&
@@ -279,14 +355,22 @@ export function useZeropsAgentSignerRecord(input: {
   const [recordFailed, setRecordFailed] = useState<ReadonlySet<string>>(new Set());
 
   useEffect(() => {
-    if (snapshot !== null) localSignersSettledBy(snapshot);
-  }, [snapshot]);
+    if (snapshot !== null && environmentId !== null) localSignersSettledBy(environmentId, snapshot);
+  }, [environmentId, snapshot]);
 
   const writeRecord = useCallback(
     async (key: string, signal: AbortSignal): Promise<boolean> => {
-      if (projectId === undefined || orgId === undefined || !userId || data === null) return false;
+      if (
+        environmentId === null ||
+        projectId === undefined ||
+        orgId === undefined ||
+        !userId ||
+        data === null
+      ) {
+        return false;
+      }
       // The record counts as the viewer's while it is written, and stops counting if it fails.
-      rememberLocalAgentSigner(key, userId);
+      rememberLocalAgentSigner(environmentId, key, userId);
       try {
         // A patch the TagWriter applies to the project as it is now: a list that already names
         // this signer costs a read and nothing more.
@@ -297,7 +381,7 @@ export function useZeropsAgentSignerRecord(input: {
             userId,
           }),
         );
-        rememberLocalAgentSigner(key, userId);
+        rememberLocalAgentSigner(environmentId, key, userId);
         setRecordFailed((current) => {
           if (!current.has(key)) return current;
           const next = new Set(current);
@@ -306,7 +390,7 @@ export function useZeropsAgentSignerRecord(input: {
         });
         return true;
       } catch {
-        forgetLocalAgentSigner(key);
+        forgetLocalAgentSigner(environmentId, key);
         if (signal.aborted) return false;
         // Surfaced (H13): the card says nobody is recorded and the agent
         // refuses the turn, and `retry` is how signing in again would have
@@ -315,7 +399,7 @@ export function useZeropsAgentSignerRecord(input: {
         return false;
       }
     },
-    [data, orgId, projectId, userId],
+    [data, environmentId, orgId, projectId, userId],
   );
 
   // The writes live as long as the view, not as long as one snapshot: a

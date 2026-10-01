@@ -52,7 +52,7 @@ import {
   zeropsAgentAuthNeedsAttention,
   type ZeropsAgentLoginPresentation,
 } from "@t3tools/client-runtime/zerops/agentLogin";
-import { resolveAgentAuthorizer, useLocalAgentSigners } from "~/zerops/useZeropsAgentSigner";
+import { type LocalAgentSigners, resolveAgentAuthorizer } from "~/zerops/useZeropsAgentSigner";
 import { FlatCard, StatusDot } from "./primitives";
 
 const AGENT_NAMES: Record<ZeropsAgentId, string> = {
@@ -68,6 +68,7 @@ const AGENT_SIGN_IN_LABELS: Record<ZeropsAgentId, string> = {
 export function ZeropsAgentAuthCard({
   snapshot,
   viewerSubject,
+  localSigners,
   onSignIn,
   onCancel,
   recordFailed,
@@ -81,6 +82,8 @@ export function ZeropsAgentAuthCard({
   readonly snapshot: ZeropsAgentAuthSnapshot;
   /** The signed-in Zerops user id, so a row can say whose login it is (D6). */
   readonly viewerSubject?: string | undefined;
+  /** This Mate's signer records written here and not read back yet (`useLocalAgentSigners`). */
+  readonly localSigners?: LocalAgentSigners | undefined;
   readonly onSignIn: (agentId: ZeropsAgentId) => void;
   readonly onCancel: (agentId: ZeropsAgentId) => void;
   /** Logins, by signer key, whose signer-record write this browser tried and watched fail (H13). */
@@ -116,6 +119,7 @@ export function ZeropsAgentAuthCard({
         signOutSupported={signOutSupported}
         snapshot={snapshot}
         viewerSubject={viewerSubject}
+        localSigners={localSigners}
         {...loginProps}
       />
     </FlatCard>
@@ -124,6 +128,7 @@ export function ZeropsAgentAuthCard({
 
 /** No logins beyond the agent rows: a server that lists none. */
 const NO_LOGINS: ReadonlyArray<MateLoginRow> = [];
+const NO_LOCAL_SIGNERS: LocalAgentSigners = {};
 
 /** A login's pending action and its last failure, from `useMateLogins`. */
 export interface ZeropsLoginActionStatus {
@@ -159,6 +164,7 @@ interface ZeropsLoginsProps {
 export function ZeropsAgentAuthRows({
   snapshot,
   viewerSubject,
+  localSigners = NO_LOCAL_SIGNERS,
   onSignIn,
   onCancel,
   recordFailed,
@@ -179,6 +185,7 @@ export function ZeropsAgentAuthRows({
 }: {
   readonly snapshot: ZeropsAgentAuthSnapshot;
   readonly viewerSubject?: string | undefined;
+  readonly localSigners?: LocalAgentSigners | undefined;
   readonly onSignIn: (agentId: ZeropsAgentId) => void;
   readonly onCancel: (agentId: ZeropsAgentId) => void;
   readonly recordFailed?: ReadonlySet<string> | undefined;
@@ -212,6 +219,7 @@ export function ZeropsAgentAuthRows({
             signOutPending={signOutPending?.has(agent.agentId) ?? false}
             signOutSupported={signOutSupported ?? false}
             viewerSubject={viewerSubject}
+            localSigners={localSigners}
           />
           {logins
             .filter((login) => !login.default && login.agent === agent.agentId)
@@ -241,6 +249,7 @@ function ZeropsAgentAuthRow({
   agent,
   runsOn,
   viewerSubject,
+  localSigners,
   quiet,
   recordFailed,
   onSignIn,
@@ -255,6 +264,8 @@ function ZeropsAgentAuthRow({
   /** This agent's own login, for the crewmates that run on it. */
   readonly runsOn?: Pick<MateLoginRow, "crewmates" | "lead"> | undefined;
   readonly viewerSubject?: string | undefined;
+  /** The records written here and not read back yet: the one being written is the viewer's. */
+  readonly localSigners: LocalAgentSigners;
   /** Another agent is signed in, so this one's sign-in is an offer. */
   readonly quiet: boolean;
   /** This browser's own signer-record write for this agent failed (H13). */
@@ -273,7 +284,6 @@ function ZeropsAgentAuthRow({
   // Whose subscription a turn here would spend. Silent for your own agent —
   // telling someone their own login is theirs is noise on every screen.
   // The record this client wrote itself counts until the snapshot carries it.
-  const localSigners = useLocalAgentSigners();
   const ownership = resolveAgentOwnership({
     credPresent: agent.credPresent,
     authorizedBy: resolveAgentAuthorizer(agent.agentId, agent, localSigners, viewerSubject),

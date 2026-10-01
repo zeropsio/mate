@@ -2378,7 +2378,7 @@ export default function ChatView(props: ChatViewProps) {
   );
   const zeropsViewerSubject = useZeropsSessionOptional()?.user?.id;
   // The record this client wrote itself counts until the snapshot carries it.
-  const zeropsLocalSigners = useLocalAgentSigners();
+  const zeropsLocalSigners = useLocalAgentSigners(activeThreadEnvironmentId);
   // The environment, not the thread: a draft has one before it has the other,
   // and the header names the project either way. This host demands the
   // project's topology (`useProjectTopology`) — the panel demands the same

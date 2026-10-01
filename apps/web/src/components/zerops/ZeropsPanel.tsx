@@ -40,6 +40,7 @@ import { useMateLogins } from "../../zerops/useMateLogins";
 import { useProjectTopology } from "../../zerops/useProjectTopology";
 import { useZeropsAgentActivity } from "../../zerops/useZeropsAgentActivity";
 import {
+  useLocalAgentSigners,
   useZeropsAgentSignerRecordState,
   useZeropsEnvironmentProject,
 } from "../../zerops/useZeropsAgentSigner";
@@ -87,6 +88,7 @@ export function ZeropsPanel({
   const viewerSubject = useZeropsSessionOptional()?.user?.id;
   // D6: recorded by the conversation view, whichever door the sign-in used.
   const signerRecord = useZeropsAgentSignerRecordState(threadRef?.environmentId);
+  const localSigners = useLocalAgentSigners(threadRef?.environmentId);
   const crew = useCrew(threadRef?.environmentId ?? null);
   // A dev service's crew ports name their routes by whose app answers there.
   const view = buildZeropsServiceMap(
@@ -167,6 +169,7 @@ export function ZeropsPanel({
         signOutSupported={signOutSupported}
         snapshot={agentAuthCard}
         viewerSubject={viewerSubject}
+        localSigners={localSigners}
         logins={logins}
         nameOf={loginSignerName}
         onAddLogin={

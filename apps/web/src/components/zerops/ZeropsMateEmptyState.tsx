@@ -133,7 +133,7 @@ export function useMateEmptyState({
   // Only a known snapshot can ask for a sign-in; one still being read says so.
   const signInRequired = agentAuth !== null && zeropsAgentSignInRequired(agentAuth);
   const viewerSubject = useZeropsSessionOptional()?.user?.id;
-  const localSigners = useLocalAgentSigners();
+  const localSigners = useLocalAgentSigners(environmentId);
   const attempt = useMateStandUpAttempt(environmentId);
   // The stand-up goes into the Mate's main conversation, the one opening it lands on.
   const threads = useThreadShells();

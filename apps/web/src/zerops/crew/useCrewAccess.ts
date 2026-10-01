@@ -55,7 +55,7 @@ export function useCrewAccess(
     environmentId === null ? NO_PROJECTS : environmentProjects.projectsAtom,
   );
   const viewerSubject = useZeropsSessionOptional()?.user?.id;
-  const localSigners = useLocalAgentSigners();
+  const localSigners = useLocalAgentSigners(environmentId);
   const { recordFailed } = useZeropsAgentSignerRecordState(environmentId);
   // The Mate's project: the one whose tree the server works in, as the engine finds it.
   const defaultLogin =
