@@ -49,41 +49,6 @@ describe("mateNextStep", () => {
       },
     },
     {
-      case: "the newest where it has two, so the strip is stable",
-      pullRequests: [pull({ number: 4 }), pull({ number: 7, title: "Seven" }), pull({ number: 5 })],
-      mate: "p-wren",
-      mateName: "Wren",
-      step: { title: "Wren is waiting for your review of #7", detail: "Seven", number: 7 },
-    },
-    {
-      case: "two #1s in two repositories: the newest by its last move, named with its repository",
-      pullRequests: [
-        pull({
-          repository: "appdev",
-          title: "Build the storefront",
-          updatedAt: "2026-09-30T11:00:00Z",
-        }),
-        pull({ repository: "apidev", title: "Rebuild the API", updatedAt: "2026-09-30T12:00:00Z" }),
-      ],
-      mate: "p-wren",
-      mateName: "Wren",
-      step: {
-        title: "Wren is waiting for your review of apidev #1",
-        detail: "Rebuild the API",
-        number: 1,
-      },
-    },
-    {
-      case: "the newest by its last move, not its number",
-      pullRequests: [
-        pull({ number: 9, title: "Nine", updatedAt: "2026-09-30T11:00:00Z" }),
-        pull({ number: 3, title: "Three", updatedAt: "2026-09-30T12:00:00Z" }),
-      ],
-      mate: "p-wren",
-      mateName: "Wren",
-      step: { title: "Wren is waiting for your review of #3", detail: "Three", number: 3 },
-    },
-    {
       case: "a Mate whose name is not known yet",
       pullRequests: [pull()],
       mate: "p-wren",
@@ -160,5 +125,55 @@ describe("mateNextStep", () => {
         ? { title: next.title, detail: next.detail, number: next.pull.number }
         : next.kind,
     ).toEqual(step);
+  });
+});
+
+describe("mateNextStep: every change of its own waiting, newest first", () => {
+  const at = (hour: number) => `2026-09-30T${String(hour).padStart(2, "0")}:00:00Z`;
+  const app1 = pull({ repository: "appdev", number: 1, title: "Build the site", updatedAt: at(9) });
+  const api1 = pull({
+    repository: "apidev",
+    number: 1,
+    title: "Rebuild the API",
+    updatedAt: at(10),
+  });
+  const app2 = pull({ repository: "appdev", number: 2, title: "Add a footer", updatedAt: at(11) });
+  const app3 = pull({ repository: "appdev", number: 3, title: "Tune images", updatedAt: at(12) });
+  const app4 = pull({ repository: "appdev", number: 4, title: "Fix the menu", updatedAt: at(13) });
+
+  it.each([
+    ["one: the change itself, no list", [app1], "Wren is waiting for your review of #1", [], 0],
+    [
+      "two: a count, then each in its own line",
+      [app1, api1],
+      "Wren is waiting for your review of 2 changes",
+      ["apidev #1 Rebuild the API", "appdev #1 Build the site"],
+      0,
+    ],
+    [
+      "three: every one",
+      [app1, api1, app2],
+      "Wren is waiting for your review of 3 changes",
+      ["appdev #2 Add a footer", "apidev #1 Rebuild the API", "appdev #1 Build the site"],
+      0,
+    ],
+    [
+      "five: the newest three, and how many more",
+      [app1, api1, app2, app3, app4],
+      "Wren is waiting for your review of 5 changes",
+      ["appdev #4 Fix the menu", "appdev #3 Tune images", "appdev #2 Add a footer"],
+      2,
+    ],
+  ] as const)("%s", (_case, pullRequests, title, lines, more) => {
+    const next = mateNextStep({ pullRequests, mateProjectId: "p-wren", mateName: "Wren" });
+    expect(
+      next.kind === "review"
+        ? {
+            title: next.title,
+            lines: next.lines.map((line) => line.label),
+            more: next.more,
+          }
+        : next.kind,
+    ).toEqual({ title, lines, more });
   });
 });
