@@ -243,14 +243,19 @@ export async function readGroupDeploys(input: {
       activeVersionId: service.activeVersionId,
     })),
   );
+  // Asked all at once: what the services run is answered by the organization's searches in one
+  // batch (`deployedVersionBatch.ts`), where one at a time read each service by id.
+  signal.throwIfAborted();
   const versions = new Map<string, string>();
-  for (const read of planDeployedVersionReads({ declarations, services })) {
-    signal.throwIfAborted();
-    const name = await input
-      .readVersion(read.projectId, read.serviceId, signal, read.activeVersionId)
-      .catch(() => heldVersion(held, read));
-    if (name !== undefined) versions.set(read.serviceId, name);
-  }
+  const answered = await Promise.all(
+    planDeployedVersionReads({ declarations, services }).map(async (read) => ({
+      read,
+      name: await input
+        .readVersion(read.projectId, read.serviceId, signal, read.activeVersionId)
+        .catch(() => heldVersion(held, read)),
+    })),
+  );
+  for (const { read, name } of answered) if (name !== undefined) versions.set(read.serviceId, name);
 
   const statuses = new Map<string, ReadonlyArray<GiteaCommitStatus>>();
   const reads = planDeployStatusReads({
