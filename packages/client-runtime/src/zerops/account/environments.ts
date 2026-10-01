@@ -28,7 +28,8 @@ import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import type { AtomRegistry } from "effect/unstable/reactivity";
 
-import { selectAutoConnectTargets } from "../autoConnect.ts";
+import { closeOffGate, selectAutoConnectTargets, type DirectMarkerRead } from "../autoConnect.ts";
+import { settledValue, selectTokenGrants } from "../data/cellSelectors.ts";
 import { normalizeOrigin } from "../candidates.ts";
 import { identityMint } from "../data/access/capabilities.ts";
 import type { Instant } from "../data/access/grant.ts";
@@ -94,6 +95,7 @@ import {
 import type { ExchangeAnswer } from "../identityExchange.ts";
 import type { InvalidationBus } from "../knowledge/invalidation.ts";
 import type { PlatformSignal } from "../knowledge/signals.ts";
+import { mateNeedsHarden, type ZeropsIntegrationToken } from "../groupReach.ts";
 import { isZeropsMateClosedOff } from "../groups.ts";
 import { heldCandidates, type CandidateRow } from "../projections/candidates.ts";
 
@@ -153,6 +155,14 @@ export interface AccountEnvironmentPorts {
   readonly route?: () => EnvironmentId | null;
   /** The tab's socket admission (`connection/admission.ts`): the route's socket opens first. */
   readonly admission?: Pick<ConnectionAdmission, "prefer" | "down">;
+  /**
+   * The projects whose press or harden this browser is running: none is connected meanwhile. A
+   * surface with no press of its own leaves it out.
+   */
+  readonly pressing?: {
+    readonly read: () => ReadonlySet<string>;
+    readonly subscribe: (listener: () => void) => () => void;
+  };
 }
 
 // ── What surfaces read and ask ───────────────────────────────────────────────────────────────
@@ -521,15 +531,40 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
 
   /**
    * The press's marker (`MATE_SETUP_RUNTIMES`) on each listed Mate's container whose project has
-   * no `mate:closed-off`, by service id: a press stopped before its close-off, and nobody is let
-   * in until *Finish setup* closes it. Followed only while such a Mate is listed.
+   * no `mate:closed-off`, by service id: a press stopped before its close-off, and nobody is let in
+   * until *Finish setup* closes it. The gate fails closed (`closeOffGate`): a marker not read yet
+   * holds, and one the stream could not say is read from the service's own variables once.
+   * Followed only while such a Mate is listed.
    */
   interface FollowedMarker {
     readonly projectId: string;
-    marked: boolean;
+    marker: boolean | "unknown" | "unread";
+    direct: DirectMarkerRead | undefined;
     stop: () => void;
   }
   const markers = new Map<string, FollowedMarker>();
+  const readMarkerDirectly = (followed: FollowedMarker, ref: ServiceRef) => {
+    followed.direct = "reading";
+    void Effect.runPromiseWith(options.services)(
+      Effect.scoped(
+        data.cells
+          .acquire({ kind: "env", account: data.cells.scope, service: ref })
+          .pipe(Effect.flatMap((lease) => lease.awaitSettled)),
+      ),
+    )
+      .then(
+        (shown): DirectMarkerRead => {
+          const names = settledValue(shown);
+          return names === null ? "failed" : names.value.includes("MATE_SETUP_RUNTIMES");
+        },
+        (): DirectMarkerRead => "failed",
+      )
+      .then((direct) => {
+        if (markers.get(ref.serviceId) !== followed || closed) return;
+        followed.direct = direct;
+        updateAutoConnect();
+      });
+  };
   const followMarkers = (rows: ReadonlyArray<CandidateRow>): ReadonlySet<string> => {
     const open = new Map<string, { readonly projectId: string; readonly ref: ServiceRef }>();
     for (const row of rows) {
@@ -546,26 +581,89 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
       followed.stop();
       markers.delete(serviceId);
     }
+    const held = new Set<string>();
     for (const [serviceId, { projectId, ref }] of open) {
-      if (markers.has(serviceId)) continue;
-      const followed: FollowedMarker = { projectId, marked: false, stop: () => undefined };
-      markers.set(serviceId, followed);
-      let ready = false;
-      followed.stop = atomRegistry.subscribe(
-        data.reads.setupMarker(ref),
-        (marker) => {
-          const marked = marker === true;
-          if (followed.marked === marked) return;
-          followed.marked = marked;
-          if (ready) updateAutoConnect();
-        },
-        { immediate: true },
-      );
-      ready = true;
+      let followed = markers.get(serviceId);
+      if (followed === undefined) {
+        const entry: FollowedMarker = {
+          projectId,
+          marker: "unread",
+          direct: undefined,
+          stop: () => undefined,
+        };
+        markers.set(serviceId, entry);
+        let ready = false;
+        entry.stop = atomRegistry.subscribe(
+          data.reads.setupMarker(ref),
+          (marker) => {
+            if (entry.marker === marker) return;
+            entry.marker = marker;
+            if (ready) updateAutoConnect();
+          },
+          { immediate: true },
+        );
+        ready = true;
+        followed = entry;
+      }
+      const gate = closeOffGate(followed.marker, followed.direct);
+      if (gate === "read-env") readMarkerDirectly(followed, ref);
+      if (gate !== "connect") held.add(projectId);
     }
-    return new Set(
-      [...markers.values()].flatMap((followed) => (followed.marked ? [followed.projectId] : [])),
+    return held;
+  };
+
+  const integrationTokensOf = (
+    grants: ReadonlyArray<{
+      readonly tokenId: string;
+      readonly name: string;
+      readonly grants: ZeropsIntegrationToken["projects"];
+    }>,
+  ): ReadonlyArray<ZeropsIntegrationToken> =>
+    grants.map((token) => ({ id: token.tokenId, name: token.name, projects: token.grants }));
+
+  /**
+   * The active organization's Mates whose key the platform still lists at `ADMIN` on their own
+   * project (`mateNeedsHarden`), read off the organization's token list: none is connected until
+   * it is hardened. A list not read, or that failed, holds none back.
+   */
+  let listedTokens: ReadonlyArray<ZeropsIntegrationToken> = [];
+  let followedTokens: { readonly organizationId: string; readonly stop: () => void } | null = null;
+  const followTokens = () => {
+    if (followedTokens?.organizationId === activeOrganization) return;
+    followedTokens?.stop();
+    followedTokens = null;
+    listedTokens = [];
+    if (activeOrganization === null) return;
+    const organizationId = activeOrganization;
+    let ready = false;
+    const stop = atomRegistry.subscribe(
+      data.cells.known({
+        kind: "tokens",
+        account: data.cells.scope,
+        organization: organizationRef(organizationId),
+      }),
+      (shown) => {
+        const read = selectTokenGrants(shown);
+        listedTokens = read.status === "known" ? integrationTokensOf(read.grants) : [];
+        if (ready) updateAutoConnect();
+      },
+      { immediate: true },
     );
+    ready = true;
+    followedTokens = { organizationId, stop };
+  };
+
+  /**
+   * The Mates held back from auto-connect: a press left open, a key not hardened, a press or a
+   * harden this browser is running.
+   */
+  const heldBack = (candidates: ReadonlyArray<CandidateRow>): ReadonlySet<string> => {
+    followTokens();
+    const pressing = ports.pressing?.read() ?? new Set<string>();
+    const unhardened = candidates.flatMap((candidate) =>
+      mateNeedsHarden(listedTokens, candidate.project.id) ? [candidate.project.id] : [],
+    );
+    return new Set([...followMarkers(candidates), ...unhardened, ...pressing]);
   };
 
   /** The active organization's ready Mates, capped (D13), none a stopped press left open. */
@@ -596,7 +694,7 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
       selectAutoConnectTargets({
         candidates,
         health: containerSnapshotOf(stores.containers.machines()).health,
-        closeOffPendingProjectIds: followMarkers(candidates),
+        closeOffPendingProjectIds: heldBack(candidates),
         onScreenProjectId: onScreen,
       }),
     );
@@ -778,6 +876,7 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
         notify();
       }),
       ports.records.listen(registrationsChanged),
+      ports.pressing?.subscribe(updateAutoConnect) ?? (() => undefined),
       ports.catalog.listen({
         environments: (next) => {
           registered = next;
@@ -883,6 +982,8 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
         activity.clear();
         for (const followed of markers.values()) followed.stop();
         markers.clear();
+        followedTokens?.stop();
+        followedTokens = null;
         for (const release of checks.values()) release();
         checks.clear();
         driver.dispose();

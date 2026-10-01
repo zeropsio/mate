@@ -94,3 +94,23 @@ export function selectAutoConnectTargets(input: {
   }
   return targets;
 }
+
+/** What a Mate's service's own variables said of the press's marker, read once, directly. */
+export type DirectMarkerRead = "reading" | boolean | "failed";
+
+/**
+ * Whether a listed Mate whose project has no `mate:closed-off` may be connected, from the press's
+ * marker (`MATE_SETUP_RUNTIMES`) as the organization's streamed variables say it: fails closed.
+ * Present, or not read yet — hold. Unknown, the stream having failed — read the service's own
+ * variables once (`read-env`), and hold until they answer absent. Only a marker read absent — an
+ * older Mate's, made before the press — connects without the mark.
+ */
+export function closeOffGate(
+  marker: boolean | "unknown" | "unread",
+  direct: DirectMarkerRead | undefined,
+): "hold" | "read-env" | "connect" {
+  if (marker === false) return "connect";
+  if (marker !== "unknown") return "hold";
+  if (direct === undefined) return "read-env";
+  return direct === false ? "connect" : "hold";
+}

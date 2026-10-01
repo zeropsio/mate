@@ -1764,17 +1764,32 @@ describe("the post-grant stage's Mate environments", () => {
       ),
   );
 
+  /** A Mate whose press marked its project closed off: auto-connect may want it. */
+  const CLOSED_OFF_MATE = {
+    ...A_MATE,
+    project: { ...A_MATE.project, tagList: ["mate", "mate:closed-off"] },
+  };
+
   it.effect.each([
     {
       name: "a ready Mate of the organization the tab has open",
       open: "org-1",
+      mate: CLOSED_OFF_MATE,
       wanted: 1,
     },
-    { name: "none while another organization is open", open: "org-2", wanted: 0 },
+    {
+      name: "none while another organization is open",
+      open: "org-2",
+      mate: CLOSED_OFF_MATE,
+      wanted: 0,
+    },
+    // Not marked closed off, and its organization's variables not read yet: whether a press left
+    // it open is not known, and the gate fails closed (pass 28 review).
+    { name: "none whose press may have left it open", open: "org-1", mate: A_MATE, wanted: 0 },
   ])("auto-connect wants $name (D13)", (row) =>
     Effect.scoped(
       Effect.gen(function* () {
-        const { rig, environments } = yield* granted([]);
+        const { rig, environments } = yield* granted([], [row.mate]);
         yield* answerProbe(rig, MATE_ORIGIN, answering(ENV_A, A_MATE.projectId));
 
         environments.setActiveOrganization(row.open);

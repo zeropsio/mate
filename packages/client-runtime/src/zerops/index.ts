@@ -275,6 +275,7 @@ export {
 export {
   buildGroupGrants,
   findHeldMateKey,
+  mateNeedsHarden,
   findMateIntegrationToken,
   newestMateKey,
   MATE_SELF_PROJECT_ROLE,

@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { selectAutoConnectTargets, type AutoConnectCandidate } from "./autoConnect.ts";
+import {
+  closeOffGate,
+  selectAutoConnectTargets,
+  type AutoConnectCandidate,
+} from "./autoConnect.ts";
 import type { ZeropsContainerHealth } from "./provisioning.ts";
 
 function candidate(
@@ -161,5 +165,22 @@ describe("selectAutoConnectTargets: auto-connect's WANT (DESIGN §4.4)", () => {
       ]),
     });
     expect(targets).toEqual(["p:zcp"]);
+  });
+});
+
+// The gate on a Mate its press may have left open fails closed: only a marker read absent — an
+// older Mate's — lets it connect without its project's mark (pass 28 review).
+describe("closeOffGate — whether a Mate not marked closed off may be connected", () => {
+  it.each([
+    { marker: true, direct: undefined, want: "hold" },
+    { marker: "unread", direct: undefined, want: "hold" },
+    { marker: "unknown", direct: undefined, want: "read-env" },
+    { marker: "unknown", direct: "reading", want: "hold" },
+    { marker: "unknown", direct: true, want: "hold" },
+    { marker: "unknown", direct: "failed", want: "hold" },
+    { marker: "unknown", direct: false, want: "connect" },
+    { marker: false, direct: undefined, want: "connect" },
+  ] as const)("$marker, read directly $direct: $want", ({ marker, direct, want }) => {
+    expect(closeOffGate(marker, direct)).toBe(want);
   });
 });

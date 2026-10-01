@@ -174,6 +174,24 @@ export function findHeldMateKey(
   return newestFirst(keys.filter((key) => createdMs(key) <= container))[0];
 }
 
+/**
+ * A Mate not hardened yet, as the platform's token list says it: a key of its still `ADMIN` on its
+ * own project — a container the platform minted the key for (the pool's, an older press's) whose
+ * harden never ran.
+ */
+export function mateNeedsHarden(
+  tokens: ReadonlyArray<ZeropsIntegrationToken>,
+  projectId: string,
+): boolean {
+  return tokens.some(
+    (token) =>
+      isMateKeyOf(token, projectId) &&
+      (token.projects ?? []).some(
+        (grant) => grant.projectId === projectId && grant.roleCode === "ADMIN",
+      ),
+  );
+}
+
 /** The key a press reuses where no container holds one yet: the newest. */
 export function newestMateKey(
   tokens: ReadonlyArray<ZeropsIntegrationToken>,

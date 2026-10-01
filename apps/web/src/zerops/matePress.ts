@@ -190,6 +190,20 @@ export function useForgetConnectedPresses(
   }, [candidates, presses]);
 }
 
+/**
+ * The projects whose press or harden this tab is running — auto-connect holds them back
+ * (`environments.ts`'s `pressing` port) — and a way to hear them change.
+ */
+export const pressingProjects = {
+  read: (): ReadonlySet<string> =>
+    new Set(
+      Object.values(usePressStore.getState().presses).flatMap((press) =>
+        press.state.kind === "pressing" ? [press.projectId] : [],
+      ),
+    ),
+  subscribe: (listener: () => void): (() => void) => usePressStore.subscribe(listener),
+};
+
 /** The press this tab holds for a project, read outside a render. */
 export function readMatePress(projectId: string): MatePress | undefined {
   return usePressStore.getState().presses[projectId];

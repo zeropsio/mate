@@ -22,6 +22,7 @@ import {
   connectedPresses,
   finishMateSetup,
   pressDoneAt,
+  pressingProjects,
   readMatePress,
   runPress,
   withPressTries,
@@ -599,5 +600,27 @@ describe("finishMateSetup — the harden path", () => {
     await stopped.retry();
     expect(readMatePress("p-old")?.state).toEqual({ kind: "pressed" });
     forgetPress("p-old");
+  });
+});
+
+// A press or a harden this tab runs holds its Mate back from auto-connect (pass 28 review).
+describe("pressingProjects", () => {
+  it("names the projects whose press runs, and says when that changes", () => {
+    let heard = 0;
+    const stop = pressingProjects.subscribe(() => {
+      heard += 1;
+    });
+    beginPress({
+      projectId: "p-run",
+      organizationId: "org-acme",
+      startedAt: 0,
+      placement: null,
+      container: true,
+    });
+    expect([...pressingProjects.read()]).toEqual(["p-run"]);
+    forgetPress("p-run");
+    expect([...pressingProjects.read()]).toEqual([]);
+    expect(heard).toBe(2);
+    stop();
   });
 });

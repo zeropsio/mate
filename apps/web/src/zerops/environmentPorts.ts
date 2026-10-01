@@ -53,6 +53,7 @@ import { randomUUID } from "~/lib/utils";
 import { environmentIdFromAddress } from "~/routes/-environmentRoute";
 
 import { accountLocalStorage, accountStorageKey } from "./accountLifetime";
+import { pressingProjects } from "./matePress";
 
 // ── The door, through the connection runtime ─────────────────────────────────────────────────
 
@@ -300,5 +301,7 @@ export function webEnvironmentPorts(input: {
       return environmentId === null ? null : EnvironmentId.make(environmentId);
     },
     admission: connectionAdmission,
+    // A press or a harden this tab is running: its Mate is not connected meanwhile.
+    pressing: pressingProjects,
   };
 }

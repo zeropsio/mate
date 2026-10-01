@@ -3,6 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   buildGroupGrants,
   findHeldMateKey,
+  mateNeedsHarden,
   findMateIntegrationToken,
   newestMateKey,
   planAccountGroupReach,
@@ -482,5 +483,30 @@ describe("findHeldMateKey — the key a Mate's container holds", () => {
         "p-1",
       )?.id,
     ).toBe("k-new");
+  });
+});
+
+// A Mate not hardened yet — a pool-claimed one whose harden never ran, an older one — is read off
+// the platform's own token list, so any browser, after a reload too, knows it (pass 28 review).
+describe("mateNeedsHarden — a Mate's key still ADMIN on its own project", () => {
+  const key = (roleCode: "ADMIN" | "BASIC_USER") => ({
+    id: "k-1",
+    name: "zcp-acme",
+    projects: [
+      { projectId: "p-1", roleCode },
+      { projectId: "p-stage", roleCode: "READ_ONLY" as const },
+    ],
+  });
+  it.each([
+    { case: "a key at ADMIN", tokens: [key("ADMIN")], want: true },
+    { case: "a key lowered", tokens: [key("BASIC_USER")], want: false },
+    { case: "no key of its", tokens: [], want: false },
+    {
+      case: "another project's ADMIN key",
+      tokens: [{ ...key("ADMIN"), projects: [{ projectId: "p-2", roleCode: "ADMIN" as const }] }],
+      want: false,
+    },
+  ])("$case: $want", ({ tokens, want }) => {
+    expect(mateNeedsHarden(tokens, "p-1")).toBe(want);
   });
 });
