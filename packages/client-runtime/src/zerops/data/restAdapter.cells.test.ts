@@ -52,6 +52,7 @@ describe("makeZeropsCellReads", () => {
               id: "token-id",
               name: "zcp-project",
               token: "must-not-leave-adapter",
+              roleCode: "READ_ONLY",
               projects: [{ projectId: "project", roleCode: "ADMIN" }],
             },
           ],
@@ -67,6 +68,7 @@ describe("makeZeropsCellReads", () => {
           tokenId: "token-id",
           name: "zcp-project",
           grants: [{ projectId: "project", roleCode: "ADMIN" }],
+          roleCode: "READ_ONLY",
         },
       ]);
       expect(Object.keys(value[0] ?? {})).not.toContain("token");

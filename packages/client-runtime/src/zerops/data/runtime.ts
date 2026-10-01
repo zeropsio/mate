@@ -3740,6 +3740,14 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
       ),
     setIntegrationTokenProjects: (input) =>
       runCommand({ kind: "set-integration-token-projects", ...input }).pipe(
+        // Our own write changed the organization's token list: every reader of it reads again.
+        Effect.ensuring(
+          cells.invalidate({
+            kind: "tokens",
+            account: options.scope,
+            organization: input.organization,
+          }),
+        ),
         Effect.flatMap(({ attempt, result }) =>
           result.kind === "set-integration-token-projects"
             ? Effect.succeed({ attempt, value: result.value })

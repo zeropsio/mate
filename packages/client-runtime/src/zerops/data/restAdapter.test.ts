@@ -951,6 +951,32 @@ describe("ZeropsDataAdapter receiver", () => {
     }),
   );
 
+  it.effect("writes a token's projects with its own org role, so the write never lowers it", () =>
+    Effect.gen(function* () {
+      const bodies: unknown[] = [];
+      const client = clientFor((_url, init) => {
+        bodies.push(JSON.parse(String(init?.body)));
+        return new Response(JSON.stringify({}), { status: 200 });
+      });
+      const adapter = makeZeropsDataAdapter({ client, makeSocket: () => new FakeSocket(), timers });
+
+      yield* adapter.execute(
+        {
+          ...commandBase,
+          kind: "set-integration-token-projects",
+          organization,
+          tokenId: "token-broker",
+          name: "broker",
+          projects: [{ projectId: "project", roleCode: "BASIC_USER" }],
+          roleCode: "READ_ONLY",
+        },
+        context(),
+      );
+
+      expect(bodies).toMatchObject([{ roleCode: "READ_ONLY" }]);
+    }),
+  );
+
   it.effect("deletes a project the platform failed to create via DELETE /project/{id}", () =>
     Effect.gen(function* () {
       const requests: Array<{

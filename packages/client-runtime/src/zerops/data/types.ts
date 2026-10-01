@@ -1931,6 +1931,8 @@ export interface SetIntegrationTokenProjectsCommandIntent {
   readonly name: string;
   /** Whole-record replacement, never a partial project-grant patch. */
   readonly projects: ReadonlyArray<ZeropsProjectGrant>;
+  /** The token's own org role, round-tripped: the replacement would otherwise lower it. */
+  readonly roleCode?: string | undefined;
 }
 
 /**

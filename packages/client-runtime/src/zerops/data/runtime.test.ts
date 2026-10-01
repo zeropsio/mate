@@ -2272,6 +2272,71 @@ describe("makeZeropsDataRuntime", () => {
       registry.dispose();
     }),
   );
+  it.effect("reads an organization's tokens again once our own write changed them", () =>
+    Effect.gen(function* () {
+      const registry = AtomRegistry.make();
+      const base = makeAdapterHarness();
+      let reads = 0;
+      const unused = Effect.die("this test reads only tokens");
+      const runtime = yield* makeZeropsDataRuntime({
+        scope: runtimeScope,
+        adapter: {
+          ...base.adapter,
+          execute: (command) =>
+            command.kind === "set-integration-token-projects"
+              ? Effect.succeed({
+                  processRefs: [],
+                  observations: [],
+                  result: { kind: command.kind, value: undefined },
+                })
+              : Effect.die(`unexpected command ${command.kind}`),
+          cells: {
+            readOrganizationLocations: () => unused,
+            readServiceAuthorizedAgents: () => unused,
+            readServiceMateFlag: () => unused,
+            readOrganizationIntegrationTokenGrants: () =>
+              Effect.sync(() => void (reads += 1)).pipe(Effect.as([])),
+            readOrganizationMembers: () => unused,
+            readServiceVariableNames: () => unused,
+          },
+        },
+        atomRegistry: registry,
+        makeOpaqueId: makeIdFactory(),
+        initialAccess: {
+          status: "verified",
+          account: runtimeScope.account,
+          accountEpoch: runtimeScope.epoch,
+          verifiedAtMs: 0,
+          deadlineMs: 10_000,
+          mutationsAllowed: true,
+          organizations: [
+            { organization: topologyDescriptor.project.organization, mutationsAllowed: true },
+          ],
+          projects: [],
+        },
+      });
+      const organization = topologyDescriptor.project.organization;
+      const leaseScope = yield* Scope.make();
+      const lease = yield* runtime.cells
+        .acquire({ kind: "tokens", account: runtimeScope, organization })
+        .pipe(Scope.provide(leaseScope));
+      yield* lease.awaitSettled;
+      expect(reads).toBe(1);
+
+      yield* runtime.commands.setIntegrationTokenProjects({
+        organization,
+        tokenId: "token-a",
+        name: "broker",
+        projects: [],
+      });
+      for (let turn = 0; turn < 20; turn++) yield* Effect.yieldNow;
+
+      expect(reads).toBe(2);
+      yield* Scope.close(leaseScope, Exit.void);
+      yield* runtime.shutdown("application-close");
+      registry.dispose();
+    }),
+  );
 
   it.effect("does not preserve created-project continuation access past the grant deadline", () =>
     Effect.gen(function* () {
