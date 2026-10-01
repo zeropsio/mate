@@ -111,6 +111,41 @@ describe("selectAutoConnectTargets: auto-connect's WANT (DESIGN §4.4)", () => {
     expect(targets).toEqual(["two:zcp"]);
   });
 
+  // The ceiling is for Mates not on screen: the one whose page is open is wanted past it (a live
+  // run, 2026-10-01: a browser with 21 registered stayed on "coming up" for an hour).
+  it("wants the Mate on screen past the ceiling, and first", () => {
+    const targets = selectAutoConnectTargets({
+      candidates: [
+        candidate("one", { group: "connected", environmentId: "env-1" as never }),
+        candidate("two"),
+        candidate("shown"),
+      ],
+      health: health([
+        ["two", "ready"],
+        ["shown", "ready"],
+      ]),
+      limit: 1,
+      onScreenProjectId: "shown",
+    });
+    expect(targets).toEqual(["shown:zcp"]);
+  });
+
+  it("the Mate on screen still waits for its health and its birth", () => {
+    for (const [shownHealth, birth] of [
+      [undefined, false],
+      ["ready", true],
+    ] as const) {
+      const targets = selectAutoConnectTargets({
+        candidates: [candidate("shown")],
+        health: health(shownHealth === undefined ? [] : [["shown", shownHealth]]),
+        birthProjectIds: new Set(birth ? ["shown"] : []),
+        limit: 0,
+        onScreenProjectId: "shown",
+      });
+      expect(targets).toEqual([]);
+    }
+  });
+
   it("targets an origin once even when a project has two containers", () => {
     const targets = selectAutoConnectTargets({
       candidates: [

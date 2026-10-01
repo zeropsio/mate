@@ -241,3 +241,23 @@ export function mateOpeningPhrase(
     ? routeGatePhrase({ kind: "wait", reachability: null }, context)
     : waiting;
 }
+
+/**
+ * What a Mate's own view connects: its machine's target where a machine names it; else, once its
+ * container answers, its birth's target, or its listed row's. Always a target its machine holds,
+ * so a connect that fails is the machine's to try again on its own ladder — never an origin that
+ * a listing not caught up yet turns away once, with nothing asking again while the view stays.
+ * Null while there is nothing to connect yet.
+ */
+export function mateConnectKey(input: {
+  readonly reachingKey: string | undefined;
+  readonly answering: boolean;
+  readonly projectId: string;
+  readonly birthServiceId: string | null | undefined;
+  readonly candidateKey: string | undefined;
+}): string | null {
+  if (input.reachingKey !== undefined) return input.reachingKey;
+  if (!input.answering) return null;
+  if (input.birthServiceId != null) return `${input.projectId}:${input.birthServiceId}`;
+  return input.candidateKey ?? null;
+}
