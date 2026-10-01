@@ -315,6 +315,48 @@ describe("the press's marker, as the account's store states it", () => {
       expect(selectSetupMarker(testCase.state, ref)).toBe(testCase.expected);
     });
   }
+  // A container the stream has not delivered a single variable of yet, made within five minutes
+  // of the list's answer: its marker may be on its way, and it is not read as absent (pass 28).
+  const withService = (state: ZeropsDataState, createdAt: string): ZeropsDataState => ({
+    ...state,
+    inventory: {
+      ...state.inventory,
+      services: new Map([
+        [
+          serviceKeyOf(ref),
+          {
+            ref,
+            lifecycle: { knowledge: "observed", fields: { createdAt }, stamp: stamp(1) },
+          } as never,
+        ],
+      ]),
+    },
+  });
+  // The list answers at the fixtures' stamp(2): 20 ms past the epoch.
+  const MINUTE_BEFORE = "1969-12-31T23:59:00.020Z";
+  const HOUR_BEFORE = "1969-12-31T23:00:00.020Z";
+  it.each([
+    {
+      name: "a container made a minute before the list answered",
+      createdAt: MINUTE_BEFORE,
+      expected: "unread",
+    },
+    { name: "a container made an hour before", createdAt: HOUR_BEFORE, expected: false },
+  ])("is $expected for $name, with none of its variables delivered", ({ createdAt, expected }) => {
+    const state = withService(
+      answered(empty, variables, [{ ...variable("ZCP_MATE_ENABLED", "1"), serviceId: "s-other" }]),
+      createdAt,
+    );
+    expect(selectSetupMarker(state, ref)).toBe(expected);
+  });
+
+  it("is absent for a young container whose other variables arrived", () => {
+    const state = withService(
+      answered(empty, variables, [variable("ZCP_MATE_ENABLED", "1")]),
+      MINUTE_BEFORE,
+    );
+    expect(selectSetupMarker(state, ref)).toBe(false);
+  });
 });
 
 describe("a version a service runs that its organization's list lacks", () => {

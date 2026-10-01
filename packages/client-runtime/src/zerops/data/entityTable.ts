@@ -564,6 +564,23 @@ export function serviceVariableOf(
   };
 }
 
+/**
+ * Whether the organization's variables list delivered any variable of this service the app reads,
+ * and when that list last answered (`null` before it did).
+ */
+export function serviceVariablesDelivered(
+  state: EntityTableState,
+  organization: OrganizationRef,
+  serviceId: string,
+): { readonly any: boolean; readonly answeredAtMs: number | null } {
+  return {
+    any: (variablesByService(state).get(serviceId)?.size ?? 0) > 0,
+    answeredAtMs:
+      state.lists.get(queryKeyOf(serviceVariablesDescriptor(organization)))?.answered?.stamp
+        .observedAtMs ?? null,
+  };
+}
+
 /** Whether the organization's variables list has answered in full. */
 export function serviceVariablesAnswered(
   state: EntityTableState,

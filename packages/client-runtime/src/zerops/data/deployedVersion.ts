@@ -7,7 +7,12 @@
  */
 import { readsAsEnabled } from "../api.ts";
 import type { Shown } from "../knowledge/known.ts";
-import { activeVersionOf, askedAbsent, serviceVariableOf } from "./entityTable.ts";
+import {
+  activeVersionOf,
+  askedAbsent,
+  serviceVariableOf,
+  serviceVariablesDelivered,
+} from "./entityTable.ts";
 import type { ZeropsDataState } from "./state.ts";
 import type { IngestionStamp, RuntimeInterestDescriptor, ServiceRef } from "./types.ts";
 import { organizationKeyOf, serviceKeyOf } from "./types.ts";
@@ -153,8 +158,32 @@ export function selectSetupMarker(
     "MATE_SETUP_RUNTIMES",
   );
   // Its presence alone: the value is the tier's import document, and it goes nowhere.
-  if (marker.known) return marker.content !== null;
+  if (marker.known) {
+    if (marker.content !== null) return true;
+    return containerTooYoungToSay(state, service) ? "unread" : false;
+  }
   return streamFailure(state, "organization-variables", service) === null ? "unread" : "unknown";
+}
+
+/** How young a container is, at the list's answer, whose variables may still be on their way. */
+export const SETUP_MARKER_YOUNG_MS = 5 * 60_000;
+
+/**
+ * A container made within {@link SETUP_MARKER_YOUNG_MS} of the variables list's answer, none of
+ * whose variables the stream has delivered: its marker may be on its way, so absent says nothing.
+ */
+function containerTooYoungToSay(state: ZeropsDataState, service: ServiceRef): boolean {
+  const delivered = serviceVariablesDelivered(
+    state.table,
+    service.project.organization,
+    service.serviceId,
+  );
+  if (delivered.any || delivered.answeredAtMs === null) return false;
+  const lifecycle = state.inventory.services.get(serviceKeyOf(service))?.lifecycle;
+  const createdAt = lifecycle?.knowledge === "observed" ? lifecycle.fields.createdAt : undefined;
+  const created =
+    createdAt === null || createdAt === undefined ? Number.NaN : Date.parse(createdAt);
+  return !Number.isNaN(created) && created > delivered.answeredAtMs - SETUP_MARKER_YOUNG_MS;
 }
 
 export function selectMateFlag(
