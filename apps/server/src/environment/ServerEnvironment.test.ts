@@ -317,6 +317,7 @@ it.layer(NodeServices.layer)("ServerEnvironmentLive", (it) => {
       expect(descriptor.capabilities.dataConsole).toBe(false);
       expect(descriptor.capabilities.agentSignOut).toBe(false);
       expect(descriptor.capabilities.mateLogins).toBe(false);
+      expect(descriptor.capabilities.setup).toBeUndefined();
     }),
   );
 
@@ -375,6 +376,7 @@ it.layer(NodeServices.layer)("ServerEnvironmentLive", (it) => {
       expect(descriptor.capabilities.dataConsole).toBe(true);
       expect(descriptor.capabilities.agentSignOut).toBe(true);
       expect(descriptor.capabilities.mateLogins).toBe(true);
+      expect(descriptor.capabilities.setup).toEqual({ serverStandUp: true });
     }),
   );
 

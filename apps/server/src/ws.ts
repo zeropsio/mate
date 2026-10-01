@@ -146,6 +146,8 @@ import * as ZeropsLoginsModule from "./zerops/ZeropsLogins.ts";
 import * as ZeropsBrowserStreamModule from "./zerops/ZeropsBrowserStream.ts";
 import { ZeropsCli } from "./zerops/ZeropsCli.ts";
 import { isZeropsEnvironment } from "./zerops/ZeropsEnvironment.ts";
+import { ZeropsSetup } from "./zerops/ZeropsSetup.ts";
+import { isStandUpCommand } from "./zerops/zeropsSetupSteps.ts";
 import * as ZeropsDataConsoleModule from "./zerops/ZeropsDataConsole.ts";
 import * as ZeropsGitRemoteProbeModule from "./zerops/ZeropsGitRemoteProbe.ts";
 import * as ZeropsLifecycle from "./zerops/ZeropsLifecycle.ts";
@@ -650,6 +652,8 @@ const makeWsRpcLayer = (
       const zeropsLifecycle = yield* ZeropsLifecycle.ZeropsLifecycle;
       const zeropsAgentAuth = yield* ZeropsAgentAuth.ZeropsAgentAuth;
       const turnAdmission = yield* ZeropsTurnAdmission;
+      // A Mate's own server starts its stand-up; absent where no Zerops layer runs.
+      const zeropsSetup = yield* Effect.serviceOption(ZeropsSetup);
       const zeropsAgentLogin = yield* ZeropsAgentLoginModule.ZeropsAgentLogin;
       const zeropsAgentSignOut = yield* ZeropsAgentSignOutModule.ZeropsAgentSignOut;
       const zeropsLogins = yield* ZeropsLoginsModule.ZeropsLogins;
@@ -1276,7 +1280,7 @@ const makeWsRpcLayer = (
                 ),
               );
 
-        return turnAdmission
+        const admitted = turnAdmission
           .admit({
             command: normalizedCommand,
             principal: { kind: "session", subject: currentSession.subject },
@@ -1292,6 +1296,22 @@ const makeWsRpcLayer = (
                 ),
             ),
           );
+        if (Option.isNone(zeropsSetup) || !isStandUpCommand(normalizedCommand)) return admitted;
+        // A browser's stand-up — an older cached client still sends one — goes
+        // through only while the Mate has none; one more is answered as taken.
+        const setup = zeropsSetup.value;
+        return setup.browserStandUp(normalizedCommand).pipe(
+          Effect.flatMap((verdict) =>
+            verdict === "dispatch"
+              ? admitted.pipe(Effect.tapError(() => setup.browserStandUpFailed(normalizedCommand)))
+              : projectionSnapshotQuery.getSnapshotSequence().pipe(
+                  Effect.map(({ snapshotSequence }) => ({ sequence: snapshotSequence })),
+                  Effect.mapError((cause) =>
+                    toDispatchCommandError(cause, "Failed to dispatch orchestration command"),
+                  ),
+                ),
+          ),
+        );
       };
 
       /**

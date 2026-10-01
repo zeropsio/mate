@@ -6941,6 +6941,51 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
     }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
 
+  it.effect("a browser's stand-up the Mate already has is answered without running it", () =>
+    Effect.gen(function* () {
+      const dispatched: string[] = [];
+      yield* buildAppUnderTest({
+        layers: {
+          orchestrationEngine: {
+            dispatch: (command) =>
+              Effect.sync(() => dispatched.push(command.commandId)).pipe(
+                Effect.as({ sequence: 7 }),
+              ),
+          },
+          zeropsSetup: {
+            browserStandUp: (command) =>
+              Effect.succeed(command.commandId.endsWith("-1") ? "dispatch" : "ignore"),
+            browserStandUpFailed: () => Effect.void,
+          },
+        },
+      });
+      const standUp = (attempt: number) => ({
+        type: "thread.turn.start" as const,
+        commandId: CommandId.make(`mate-standup-thread-main-${attempt}`),
+        threadId: ThreadId.make("thread-main"),
+        message: {
+          messageId: MessageId.make(`mate-standup-thread-main-${attempt}`),
+          role: "user" as const,
+          text: "Stand up development of the project.",
+          attachments: [],
+        },
+        modelSelection: defaultModelSelection,
+        runtimeMode: "full-access" as const,
+        interactionMode: "default" as const,
+        createdAt: "2026-01-01T00:00:00.000Z",
+      });
+      yield* Effect.scoped(
+        withWsRpcClient(yield* getWsServerUrl("/ws"), (client) =>
+          Effect.gen(function* () {
+            yield* client[ORCHESTRATION_WS_METHODS.dispatchCommand](standUp(2));
+            yield* client[ORCHESTRATION_WS_METHODS.dispatchCommand](standUp(1));
+          }),
+        ),
+      );
+      assert.deepEqual(dispatched, ["mate-standup-thread-main-1"]);
+    }).pipe(Effect.provide(NodeHttpServer.layerTest)),
+  );
+
   it.effect("records thread analytics only after a client command succeeds", () =>
     Effect.gen(function* () {
       const effects: string[] = [];
