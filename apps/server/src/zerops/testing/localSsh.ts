@@ -8,11 +8,11 @@
  * collection - is production code. `env` is what the far side's login shell
  * would carry: pass `projectId` and `serviceId` so `identityGuard` passes, or
  * a `PATH` that supplies a tool the remote has and this machine lacks. GNU
- * `timeout`, which every remote has and macOS lacks, is supplied when missing.
+ * `timeout`, which every remote has and macOS lacks, is always this file's
+ * own, so a test's check runs alike on every machine.
  *
  * @module localSsh
  */
-import * as NodeChildProcess from "node:child_process";
 import * as NodeFS from "node:fs";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
@@ -26,7 +26,7 @@ import * as ProcessRunner from "../../processRunner.ts";
 
 /**
  * `timeout [-k grace] seconds command…` as GNU coreutils runs it (exit 124 when
- * it stops the command), for a machine without one.
+ * it stops the command).
  */
 const TIMEOUT_SHIM = `#!/bin/sh
 [ "$1" = "-k" ] && shift 2
@@ -43,13 +43,14 @@ exec perl -e '
 ' "$seconds" "$@"
 `;
 
-let shimmedPath: string | null | undefined;
+let shimmedPath: string | undefined;
 
-/** A `PATH` with a `timeout` on it, or `null` when this machine has one. */
-const pathWithTimeout = (): string | null => {
+/**
+ * A `PATH` whose `timeout` is this shim, on every machine alike: a host's own
+ * (GNU coreutils on Linux, none on macOS) never decides how a test's check runs.
+ */
+const pathWithTimeout = (): string => {
   if (shimmedPath !== undefined) return shimmedPath;
-  const has = NodeChildProcess.spawnSync("/bin/sh", ["-c", "command -v timeout"]).status === 0;
-  if (has) return (shimmedPath = null);
   const bin = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "t3-local-ssh-bin-"));
   NodeFS.writeFileSync(NodePath.join(bin, "timeout"), TIMEOUT_SHIM, { mode: 0o755 });
   process.once("exit", () => NodeFS.rmSync(bin, { recursive: true, force: true }));
@@ -67,7 +68,7 @@ export const localSshSpawner = (
     }
     const remote = command.args.at(-1) ?? "";
     const path = pathWithTimeout();
-    const remoteEnv = path === null ? env : { PATH: path, ...env };
+    const remoteEnv = { PATH: path, ...env };
     return inner.spawn(
       ChildProcess.make("/bin/sh", ["-c", remote], {
         ...command.options,

@@ -402,7 +402,10 @@ describe("CrewEngine", () => {
       const check = yield* world.holdSsh((script) => script.includes("test -f ok.txt"));
       yield* world.publish(spiEvent("turn.completed", thread, { state: "completed" }));
       yield* check.reached;
-      const taskId = (yield* latest).board.tasks[0]!.id;
+      // The board as the engine has rebuilt it, never a snapshot from before the turn end.
+      const taskId = (yield* snapshotWhere(
+        (snapshot) => snapshot.board.tasks[0]?.state === "checking",
+      )).board.tasks[0]!.id;
       return { thread, check, taskId };
     });
 
@@ -474,7 +477,12 @@ describe("CrewEngine", () => {
           mentions: [{ handle: "backend" }, { handle: "erik" }],
         }));
         refusedAsBusy(atOnce);
-        assert.strictEqual((yield* latest).board.tasks.length, 1, "a busy Tell made tasks");
+        // Read from the tables, not a snapshot that may not have caught up.
+        assert.strictEqual(
+          (yield* (yield* CrewStore).assignments(CREW_ID)).length,
+          1,
+          "a busy Tell made tasks",
+        );
       }),
     ),
   );
@@ -495,7 +503,9 @@ describe("CrewEngine", () => {
       yield* applied(world);
       const thread = yield* firstTurn(world, () => undefined);
       yield* world.publish(spiEvent("turn.completed", thread, { state: "completed" }));
-      const taskId = (yield* latest).board.tasks[0]!.id;
+      const taskId = (yield* snapshotWhere(
+        (snapshot) => snapshot.board.tasks[0]?.state === "working",
+      )).board.tasks[0]!.id;
       return { thread, taskId };
     });
 
@@ -609,7 +619,8 @@ describe("CrewEngine", () => {
         yield* snapshotWhere((snapshot) => snapshot.crewmates[0]!.lane?.ahead === 1);
         const lock = NodePath.join(world.root, ".git/worktrees/backend/index.lock");
         NodeFS.writeFileSync(lock, "");
-        const first = (yield* latest).board.tasks[0]!.id;
+        const first = (yield* snapshotWhere((snapshot) => snapshot.board.tasks.length === 2)).board
+          .tasks[0]!.id;
         const refused = yield* Effect.flip(command({ _tag: "discard", taskId: first }));
         assert.strictEqual(refused.reason, "io");
         NodeFS.rmSync(lock);
