@@ -296,6 +296,7 @@ export const makeZeropsSetup = (
         startedAt,
         gitAt: git,
         status: yield* status,
+        tagsRead: tagList !== undefined,
         requestedBy,
         signinAt: yield* latch(signinAt, signedIn),
         record: record === undefined ? undefined : { startedAt: record.startedAt },

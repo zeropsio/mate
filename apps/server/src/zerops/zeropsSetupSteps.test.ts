@@ -29,6 +29,7 @@ const facts = (overrides: Partial<SetupFacts> = {}): SetupFacts => ({
   startedAt: BOOT,
   gitAt: undefined,
   status: undefined,
+  tagsRead: true,
   requestedBy: "user-a",
   signinAt: undefined,
   record: undefined,
@@ -293,6 +294,11 @@ describe("setupDocument", () => {
       "failed",
     ],
     ["nothing asked, nothing started: nothing to wait for", { requestedBy: undefined }, "done"],
+    [
+      "the tags not read yet: it may yet be asked",
+      { requestedBy: undefined, tagsRead: false },
+      "waiting",
+    ],
   ];
   for (const [name, overrides, state] of standups) {
     it(`standup: ${name}`, () =>

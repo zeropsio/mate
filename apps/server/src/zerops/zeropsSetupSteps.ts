@@ -239,6 +239,8 @@ export interface SetupFacts {
   readonly gitAt: string | undefined;
   /** zcp's status file; `undefined` when absent (an older zcp) or unreadable. */
   readonly status: ZcpStatus | undefined;
+  /** Whether the project's tags have been read at all. */
+  readonly tagsRead: boolean;
   /** Who asked for the stand-up, by the project's tags. */
   readonly requestedBy: string | undefined;
   /** When the asker's sign-in — anybody's, when nobody asked — was first seen recorded. */
@@ -279,8 +281,9 @@ const standUpStep = (facts: SetupFacts): SetupStep => {
   if (facts.record === undefined) {
     if (zcpState !== undefined)
       return { id: "standup", state: zcpState, at: standup?.startedAt ?? "" };
-    // Nothing asked and nothing started: there is nothing to wait for.
-    return facts.requestedBy === undefined
+    // Nothing asked and nothing started: there is nothing to wait for — once
+    // the tags have been read to say so.
+    return facts.tagsRead && facts.requestedBy === undefined
       ? { id: "standup", state: "done", at: "" }
       : { id: "standup", state: "waiting", at: "" };
   }
