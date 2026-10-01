@@ -370,6 +370,53 @@ describe("connection admission", () => {
     });
   });
 
+  describe("an environment the platform says is down", () => {
+    it.each([
+      { name: "the route", route: true },
+      { name: "another environment", route: false },
+    ])("$name attempts no socket until it is up again", async ({ route }) => {
+      const admission = makeConnectionAdmission(manualTimers());
+      const environmentId = route ? ROUTE : OTHER;
+      if (route) admission.prefer(ROUTE);
+      const up = admission.down(environmentId);
+      const asked = ask(admission, environmentId);
+      await flush();
+      expect(asked.ticket).toBeNull();
+
+      up();
+      await flush();
+      expect(asked.ticket).not.toBeNull();
+    });
+
+    it("an attempt already connecting to it gives way, and others go on", async () => {
+      const admission = makeConnectionAdmission(manualTimers());
+      const other = ask(admission, OTHER);
+      await flush();
+      const third = ask(admission, THIRD);
+      await flush();
+      expect(third.ticket).toBeNull();
+
+      admission.down(OTHER);
+      await flush();
+      expect(other.ticket!.signal.aborted).toBe(true);
+      expect(third.ticket).not.toBeNull();
+    });
+
+    it("is up again only once every claim that it is down is released", async () => {
+      const admission = makeConnectionAdmission(manualTimers());
+      const first = admission.down(OTHER);
+      const second = admission.down(OTHER);
+      const asked = ask(admission, OTHER);
+      first();
+      first();
+      await flush();
+      expect(asked.ticket).toBeNull();
+      second();
+      await flush();
+      expect(asked.ticket).not.toBeNull();
+    });
+  });
+
   it("a page's hold and the route's naming are separate claims: the page leaving keeps the route", () => {
     const admission = makeConnectionAdmission(manualTimers());
     const release = admission.hold(ROUTE);
