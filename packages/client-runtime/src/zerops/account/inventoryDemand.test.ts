@@ -304,7 +304,7 @@ describe("holdListedProjects", () => {
                   sent.push(event.projects.map(({ projectId }) => projectId));
               }),
           },
-          reads: { projectsOf: () => list },
+          reads: { projectsOf: () => list, access: Atom.make({ status: "unverified" }) },
         } as unknown as ManagedZeropsDataRuntime;
         yield* holdListedProjects({ data, atomRegistry: registry });
         yield* settle;

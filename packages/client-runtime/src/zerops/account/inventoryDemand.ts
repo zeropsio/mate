@@ -191,8 +191,13 @@ export const holdInventoryDemand = (input: {
 export function unheldListedProjects(
   evidence: Evidence | null,
   lists: ReadonlyArray<CollectionRead<ProjectRecord>>,
+  access?: AccessState,
 ): ReadonlyArray<ProjectRef> {
   if (evidence === null) return [];
+  // A project this tab's own command established is the grant's already (`runtimeGrant`): put on
+  // the path for someone else's, it would leave the runtime's grant and the inventory until its
+  // own read answers — which a project the platform is still creating does not do.
+  const established = new Set(inventoryProjectRefs([], access).map((ref) => projectKeyOf(ref)));
   const organizations = new Set(
     evidence.account.organizations.map(({ organization }) => organization.organizationId),
   );
@@ -203,6 +208,7 @@ export function unheldListedProjects(
       const ref = entry.knowledge === "observed" ? entry.record.ref : entry.ref;
       if (
         organizations.has(ref.organization.organizationId) &&
+        !established.has(projectKeyOf(ref)) &&
         !evidence.projects.has(ref.projectId) &&
         !evidence.unverified.has(ref.projectId) &&
         !evidence.closedProjects.has(ref.projectId)
@@ -234,6 +240,7 @@ export const holdListedProjects = (input: {
           (evidence?.account.organizations ?? []).map(({ organization }) =>
             get(data.reads.projectsOf(organization)),
           ),
+          get(data.reads.access),
         ),
       };
     });
