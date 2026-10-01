@@ -8,6 +8,7 @@ import * as TestClock from "effect/testing/TestClock";
 import { AtomRegistry } from "effect/unstable/reactivity";
 
 import type { ZeropsLocation } from "../api.ts";
+import { settledValue } from "./cellSelectors.ts";
 import {
   makeZeropsCells,
   CELL_FRESH_MS,
@@ -18,6 +19,8 @@ import {
   type AgentsCellRequest,
   type ZeropsCellAdapter,
   type ZeropsCellSourceError,
+  type ZeropsCellRequest,
+  type ZeropsCells,
 } from "./cells.ts";
 import {
   AccountEpoch,
@@ -907,6 +910,8 @@ describe("makeZeropsCells", () => {
     Effect.gen(function* () {
       const scope = accountScope();
       let calls = 0;
+      // Both leases join the first read while it is out, so both hear it fail.
+      const gate = yield* Deferred.make<void>();
       const broker = yield* makeZeropsCells({
         scope,
         access: () => verifiedAccess(scope),
@@ -914,7 +919,14 @@ describe("makeZeropsCells", () => {
           readOrganizationLocations: () => {
             calls += 1;
             return calls === 1
-              ? Effect.fail({ ...transportFailure(false), message: "signed-url=do-not-publish" })
+              ? Deferred.await(gate).pipe(
+                  Effect.andThen(
+                    Effect.fail({
+                      ...transportFailure(false),
+                      message: "signed-url=do-not-publish",
+                    }),
+                  ),
+                )
               : Effect.succeed([]);
           },
         }),
@@ -924,6 +936,7 @@ describe("makeZeropsCells", () => {
       const request = locationsRequest(scope);
       const first = yield* broker.acquire(request).pipe(Scope.provide(firstScope));
       const second = yield* broker.acquire(request).pipe(Scope.provide(secondScope));
+      yield* Deferred.succeed(gate, undefined);
       const failed = yield* first.awaitSettled;
       expect(failed).toMatchObject({
         state: "failed",
@@ -1126,5 +1139,158 @@ describe("makeZeropsCells", () => {
       yield* Scope.close(cloneScope, Exit.void);
       yield* Scope.close(afterCloseScope, Exit.void);
     }),
+  );
+});
+
+describe("the cells' one-shot reads", () => {
+  /** A one-shot read: a lease held until the cell settles, then let go. */
+  const oneShot = (cells: ZeropsCells, request: ZeropsCellRequest) =>
+    Effect.gen(function* () {
+      const held = yield* Scope.make();
+      const lease = yield* cells.acquire(request).pipe(Scope.provide(held));
+      const settled = yield* lease.awaitSettled;
+      yield* Scope.close(held, Exit.void);
+      return settled;
+    });
+
+  it.effect("a reader joining a held cell past its freshness reads it again", () =>
+    Effect.gen(function* () {
+      const scope = accountScope();
+      let reads = 0;
+      const cells = yield* makeZeropsCells({
+        scope,
+        access: () => verifiedAccess(scope),
+        adapter: unusedAdapter({
+          readOrganizationMembers: () =>
+            Effect.sync(() => {
+              reads += 1;
+              return [{ id: `member-${reads}` }];
+            }),
+        }),
+      });
+      const request = membersRequest(scope);
+      // A surface holds the members all along.
+      const display = yield* Scope.make();
+      const held = yield* cells.acquire(request).pipe(Scope.provide(display));
+      yield* held.awaitSettled;
+
+      yield* TestClock.adjust(CELL_FRESH_MS["members"] - 1);
+      expect(yield* oneShot(cells, request)).toMatchObject({ value: [{ id: "member-1" }] });
+      expect(reads).toBe(1);
+      yield* TestClock.adjust(1);
+      expect(yield* oneShot(cells, request)).toMatchObject({
+        value: [{ id: "member-2" }],
+        freshness: { kind: "settled" },
+      });
+      expect(reads).toBe(2);
+      yield* Scope.close(display, Exit.void);
+      yield* cells.shutdown;
+    }).pipe(Effect.provide(TestClock.layer())),
+  );
+
+  it.effect("an invalidation that lands while the cell is first read reads it once more", () =>
+    Effect.gen(function* () {
+      const scope = accountScope();
+      const gate = yield* Deferred.make<void>();
+      let reads = 0;
+      const cells = yield* makeZeropsCells({
+        scope,
+        access: () => verifiedAccess(scope),
+        adapter: unusedAdapter({
+          readOrganizationIntegrationTokenGrants: () =>
+            Effect.suspend(() => {
+              reads += 1;
+              const answer = [{ tokenId: `token-${reads}`, name: "t", grants: [] }];
+              return reads === 1
+                ? Deferred.await(gate).pipe(Effect.as(answer))
+                : Effect.succeed(answer);
+            }),
+        }),
+      });
+      const request = tokenGrantsRequest(scope);
+      const held = yield* Scope.make();
+      const lease = yield* cells.acquire(request).pipe(Scope.provide(held));
+      expect(yield* lease.snapshot).toMatchObject({ state: "reading" });
+
+      // Our own write lands while the first read is out: that read may predate it.
+      yield* cells.invalidate(request);
+      yield* Deferred.succeed(gate, undefined);
+
+      expect(yield* lease.awaitSettled).toMatchObject({
+        value: [{ tokenId: "token-2" }],
+        freshness: { kind: "settled" },
+      });
+      expect(reads).toBe(2);
+      yield* Scope.close(held, Exit.void);
+      yield* cells.shutdown;
+    }).pipe(Effect.provide(TestClock.layer())),
+  );
+
+  it.effect("a reader of a cell being read again waits for the new value, never a rejection", () =>
+    Effect.gen(function* () {
+      const scope = accountScope();
+      const gate = yield* Deferred.make<void>();
+      let reads = 0;
+      const cells = yield* makeZeropsCells({
+        scope,
+        access: () => verifiedAccess(scope),
+        adapter: unusedAdapter({
+          readOrganizationIntegrationTokenGrants: () =>
+            Effect.suspend(() => {
+              reads += 1;
+              const answer = [{ tokenId: `token-${reads}`, name: "t", grants: [] }];
+              return reads === 2
+                ? Deferred.await(gate).pipe(Effect.as(answer))
+                : Effect.succeed(answer);
+            }),
+        }),
+      });
+      const request = tokenGrantsRequest(scope);
+      const display = yield* Scope.make();
+      const held = yield* cells.acquire(request).pipe(Scope.provide(display));
+      yield* held.awaitSettled;
+      // Our write starts a re-read; a second write lands while that read is out.
+      yield* cells.invalidate(request);
+      const reader = yield* Effect.forkChild(oneShot(cells, request));
+      yield* Effect.yieldNow;
+      yield* cells.invalidate(request);
+      yield* Deferred.succeed(gate, undefined);
+      const settled = yield* Fiber.join(reader);
+
+      expect(settled).toMatchObject({ value: [{ tokenId: "token-3" }] });
+      expect(settledValue(settled)).not.toBe(null);
+      expect(reads).toBe(3);
+      yield* Scope.close(display, Exit.void);
+      yield* cells.shutdown;
+    }).pipe(Effect.provide(TestClock.layer())),
+  );
+
+  it.effect("a reader of a held failed cell starts a fresh read rather than the old failure", () =>
+    Effect.gen(function* () {
+      const scope = accountScope();
+      let reads = 0;
+      const cells = yield* makeZeropsCells({
+        scope,
+        access: () => verifiedAccess(scope),
+        adapter: unusedAdapter({
+          readOrganizationMembers: () =>
+            Effect.suspend(() => {
+              reads += 1;
+              return reads === 1
+                ? Effect.fail(transportFailure(false))
+                : Effect.succeed([{ id: "member-1" }]);
+            }),
+        }),
+      });
+      const request = membersRequest(scope);
+      const display = yield* Scope.make();
+      const held = yield* cells.acquire(request).pipe(Scope.provide(display));
+      expect(yield* held.awaitSettled).toMatchObject({ state: "failed" });
+
+      expect(yield* oneShot(cells, request)).toMatchObject({ value: [{ id: "member-1" }] });
+      expect(reads).toBe(2);
+      yield* Scope.close(display, Exit.void);
+      yield* cells.shutdown;
+    }).pipe(Effect.provide(TestClock.layer())),
   );
 });

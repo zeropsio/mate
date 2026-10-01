@@ -482,8 +482,14 @@ const isSettled = (shown: AnyShown): boolean => {
     case "unread":
     case "reading":
       return false;
+    // A value being read again, or owed a read since our own write, is not an answer yet: a
+    // reader waits for the new one. One whose re-read failed is that failure.
     case "known":
-      return shown.freshness.kind !== "revalidating";
+      return (
+        shown.freshness.kind === "settled" ||
+        shown.freshness.kind === "live" ||
+        (shown.freshness.kind === "stale" && shown.freshness.reason.kind === "revalidation-failed")
+      );
     case "failed":
     case "gone":
     case "withheld":
@@ -728,6 +734,7 @@ export const makeZeropsCells = Effect.fn("ZeropsCells.make")(function* (
     if (
       entry.inFlight === null &&
       (held.state === "unread" ||
+        (newlyDemanded && held.state === "failed") ||
         (held.state === "known" &&
           (entry.cell.dirty ||
             entry.cell.lastInvalidation > held.asOf.ordinal ||
@@ -800,10 +807,10 @@ export const makeZeropsCells = Effect.fn("ZeropsCells.make")(function* (
     const held = entry;
     const id = ++nextDemandId;
     held.demands.set(id, demand);
-    if (held.demands.size === 1) {
-      cancelEviction(held);
-      reconcile(held, options.access(), now(), true);
-    }
+    if (held.demands.size === 1) cancelEviction(held);
+    // Every new demand, a first or one joining a held cell, gets a value inside its kind's
+    // freshness, and a failed cell is read afresh rather than answering its old failure.
+    reconcile(held, options.access(), now(), true);
     const active = () => !closed && held.demands.has(id);
     return {
       key,
@@ -975,7 +982,8 @@ export const makeZeropsCells = Effect.fn("ZeropsCells.make")(function* (
       Effect.sync(() => {
         if (closed) return;
         const entry = entries.get(zeropsCellKeyOf(request));
-        if (entry === undefined || entry.cell.held.state !== "known") return;
+        if (entry === undefined) return;
+        // A read out now — a first one included — began before the write: it reads once more.
         apply(entry, { kind: "invalidated", ordinal: ++ordinal });
         // A read in flight began before the write: it is read once more when it answers (M3).
         if (entry.demands.size > 0 && entry.inFlight === null)
