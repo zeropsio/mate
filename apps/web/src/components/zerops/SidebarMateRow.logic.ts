@@ -82,6 +82,7 @@ export interface MateOwnerView {
 
 const NOBODY_SIGNED_IN = "Nobody has signed in yet";
 const WAITING_FOR_YOUR_SIGN_IN = "Waiting for your sign-in";
+const WAITING_FOR_SIGN_IN = "Waiting for sign-in";
 const NOBODY_OWNS = "No owner yet. Whoever signs in its coding agent owns it.";
 
 /**
@@ -107,7 +108,9 @@ const NOBODY_OWNS = "No owner yet. Whoever signs in its coding agent owns it.";
  * To the person who added it — named by its stand-up's `mate:standup:` tag
  * until their sign-in sends the stand-up — the line says it waits on them:
  * "Waiting for your sign-in", in ink, with the amber dot of what needs them
- * (board D1, 2026-09-30). Anybody else reads the fact, quietly.
+ * (board D1, 2026-09-30). A Mate still being set up — its stand-up asked — never reads like a
+ * failure (the owner, 2026-10-01): anybody else reads that it waits for a sign-in, quietly, and a
+ * viewer not known yet reads nothing. A Mate nobody asked a stand-up of reads the fact.
  */
 export function mateOwnerView(input: {
   readonly owner:
@@ -136,11 +139,17 @@ export function mateOwnerView(input: {
         ? { kind: "unnamed" }
         : { kind: "nobody", label: NOBODY_OWNS };
   if (records.signedIn || input.asked) return { seat, signInLine: undefined, waitsOnViewer: false };
-  const yours =
-    input.viewer !== undefined && input.viewer.length > 0 && input.standUpBy === input.viewer;
+  const viewer = input.viewer !== undefined && input.viewer.length > 0 ? input.viewer : undefined;
+  if (input.standUpBy === undefined) {
+    return { seat, signInLine: NOBODY_SIGNED_IN, waitsOnViewer: false };
+  }
+  // Being set up: whose sign-in it waits for, never a failure — and nothing until it is known
+  // who is looking.
+  if (viewer === undefined) return { seat, signInLine: undefined, waitsOnViewer: false };
+  const yours = input.standUpBy === viewer;
   return {
     seat,
-    signInLine: yours ? WAITING_FOR_YOUR_SIGN_IN : NOBODY_SIGNED_IN,
+    signInLine: yours ? WAITING_FOR_YOUR_SIGN_IN : WAITING_FOR_SIGN_IN,
     waitsOnViewer: yours && input.linked === true,
   };
 }

@@ -8,10 +8,15 @@ import * as Fiber from "effect/Fiber";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Path from "effect/Path";
+import * as Ref from "effect/Ref";
 import * as TestClock from "effect/testing/TestClock";
 import { HttpClient, HttpClientResponse } from "effect/unstable/http";
 
-import type { TerminalAttachStreamEvent, TerminalSessionSnapshot } from "@t3tools/contracts";
+import type {
+  TerminalAttachStreamEvent,
+  TerminalSessionSnapshot,
+  ZeropsAgentLoginState,
+} from "@t3tools/contracts";
 
 import * as ServerConfig from "../config.ts";
 import { make as makeAgentLogin } from "./ZeropsAgentLogin.ts";
@@ -604,12 +609,14 @@ describe("the turn gate", () => {
     Effect.gen(function* () {
       let tags = initialTags;
       let projectReads = 0;
+      let answer = 200;
       const signers = yield* makeProjectSigners.pipe(
         Effect.provide(
           Layer.mergeAll(
             httpLayer((url) => {
               if (url.endsWith("/user/list")) return json({ message: "down" }, 500);
               projectReads += 1;
+              if (answer !== 200) return json({ code: "tooManyRequests" }, answer);
               return json({ id: PROJECT_ID, clientId: CLIENT_ID, tagList: tags });
             }).layer,
             ServerConfig.layer({ zerops: environment } as ServerConfig.ServerConfig["Service"]),
@@ -625,6 +632,10 @@ describe("the turn gate", () => {
           tags = next;
         },
         reads: () => projectReads,
+        /** What the platform answers every project read from now on. */
+        answerWith: (status: number) => {
+          answer = status;
+        },
       };
     });
 
@@ -731,6 +742,196 @@ describe("the turn gate", () => {
     }).pipe(Effect.scoped),
   );
 
+  // A live run (2026-10-01): Claude writes its credential before it prints its success line, so
+  // the agent reads signed in while its login still checks the code — and the stand-up left
+  // then, refused as "not recorded" before this server knew of the sign-in at all. A turn of the
+  // very person whose sign-in is under way waits for it to finish and for its record to land.
+  it.effect("a turn sent while its own person's code is still checked waits for the sign-in", () =>
+    Effect.gen(function* () {
+      // Eva signed in before: until Jan's sign-in settles, the credential reads as hers.
+      const { signers, setTags } = yield* gate([signerTag("claude-code", EVA)]);
+      const now = yield* DateTime.now;
+      const login = yield* Ref.make<ZeropsAgentLoginState>({
+        phase: "verifying-code",
+        terminalId: "t",
+        startedAt: now,
+        startedBy: JAN,
+        lastSucceeded: { startedAt: now, startedBy: EVA },
+      });
+      const fiber = yield* signers
+        .turnRefusal({
+          agentId: "claude-code",
+          agent: { ...signedIn, state: "local-only", providerAuth: "unknown" },
+          subject: JAN,
+          login: yield* Ref.get(login),
+          currentLogin: Ref.get(login),
+        })
+        .pipe(Effect.forkChild);
+      yield* TestClock.adjust(Duration.seconds(2));
+      yield* Ref.set(login, {
+        phase: "succeeded",
+        terminalId: "t",
+        startedAt: now,
+        startedBy: JAN,
+      });
+      yield* TestClock.adjust(Duration.seconds(18));
+      setTags([signerTag("claude-code", JAN)]);
+      yield* TestClock.adjust(Duration.seconds(2));
+
+      assert.isUndefined(yield* Fiber.join(fiber));
+    }).pipe(Effect.scoped),
+  );
+
+  // Eva signed in last; Jan's code is being checked, his credential already written over hers.
+  // Her turn would run on his credential: it waits for his sign-in to settle, then goes by it.
+  for (const [name, settled, expected] of [
+    ["his sign-in succeeds: refused", "succeeded", { kind: "someone-else" }],
+    ["his sign-in fails: hers again", "failed", undefined],
+  ] as const) {
+    it.effect(`another person's turn waits while a sign-in is checked — ${name}`, () =>
+      Effect.gen(function* () {
+        const { signers } = yield* gate([signerTag("claude-code", EVA)]);
+        const now = yield* DateTime.now;
+        const login = yield* Ref.make<ZeropsAgentLoginState>({
+          phase: "verifying-code",
+          terminalId: "t",
+          startedAt: now,
+          startedBy: JAN,
+          lastSucceeded: { startedAt: now, startedBy: EVA },
+        });
+        const fiber = yield* signers
+          .turnRefusal({
+            agentId: "claude-code",
+            agent: signedIn,
+            subject: EVA,
+            login: yield* Ref.get(login),
+            currentLogin: Ref.get(login),
+          })
+          .pipe(Effect.forkChild);
+        yield* TestClock.adjust(Duration.seconds(2));
+        assert.isUndefined(fiber.pollUnsafe(), "held while the code is checked");
+        yield* Ref.update(login, (current) => ({ ...current, phase: settled }));
+        yield* TestClock.adjust(Duration.seconds(2));
+
+        assert.deepStrictEqual(yield* Fiber.join(fiber), expected);
+      }).pipe(Effect.scoped),
+    );
+  }
+
+  // A login left at its menu, its page or its code prompt has written nothing: no turn waits on
+  // an abandoned sign-in. And a failed one is settled, whoever succeeded before it.
+  for (const [name, login] of [
+    ["at its code prompt", { phase: "awaiting-code" }],
+    ["at its page", { phase: "awaiting-browser" }],
+    ["failed after the same person's success", { phase: "failed", lastSucceededByJan: true }],
+  ] as const) {
+    it.effect(`a sign-in ${name} makes no turn wait`, () =>
+      Effect.gen(function* () {
+        const { signers } = yield* gate([]);
+        const now = yield* DateTime.now;
+        const state: ZeropsAgentLoginState = {
+          phase: login.phase,
+          terminalId: "t",
+          startedAt: now,
+          startedBy: JAN,
+          ...("lastSucceededByJan" in login
+            ? { lastSucceeded: { startedAt: now, startedBy: JAN } }
+            : {}),
+        };
+        const fiber = yield* signers
+          .turnRefusal({
+            agentId: "claude-code",
+            agent: { ...signedIn, state: "local-only", providerAuth: "unknown" },
+            subject: JAN,
+            login: state,
+            currentLogin: Effect.succeed(state),
+          })
+          .pipe(Effect.forkChild);
+        yield* TestClock.adjust(Duration.zero);
+
+        assert.deepStrictEqual(fiber.pollUnsafe()?._tag, "Success", "answered at once");
+        assert.deepStrictEqual(yield* Fiber.join(fiber), { kind: "unrecorded" });
+      }).pipe(Effect.scoped),
+    );
+  }
+
+  // Five turns wait for one record: the tags are read once a second between them, and a read the
+  // platform refuses (a 429) backs off instead of asking again every second.
+  it.effect("turns waiting for a record share their reads, and back off a refused one", () =>
+    Effect.gen(function* () {
+      const { signers, reads, answerWith } = yield* gate([]);
+      const { agent, login } = yield* justSignedIn(JAN);
+      const before = reads();
+      const fibers = yield* Effect.forEach([1, 2, 3, 4, 5], () =>
+        signers
+          .turnRefusal({ agentId: "claude-code", agent, subject: JAN, login })
+          .pipe(Effect.forkChild),
+      );
+      yield* TestClock.adjust(Duration.seconds(5));
+      assert.isAtMost(reads() - before, 7, "about one read a second, not five");
+
+      answerWith(429);
+      const refused = reads();
+      yield* TestClock.adjust(Duration.seconds(10));
+      assert.isAtMost(reads() - refused, 5, "backed off");
+      yield* Effect.forEach(fibers, (fiber) => Fiber.interrupt(fiber));
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect("a sign-in checked past the wait refuses another person's turn", () =>
+    Effect.gen(function* () {
+      const { signers } = yield* gate([]);
+      const now = yield* DateTime.now;
+      const login = {
+        phase: "verifying-code",
+        terminalId: "t",
+        startedAt: now,
+        startedBy: EVA,
+      } as const;
+      const fiber = yield* signers
+        .turnRefusal({
+          agentId: "claude-code",
+          agent: { ...signedIn, state: "local-only", providerAuth: "unknown" },
+          subject: JAN,
+          login,
+          currentLogin: Effect.succeed(login),
+        })
+        .pipe(Effect.forkChild);
+      yield* TestClock.adjust(SIGNER_RECORD_WAIT);
+      yield* TestClock.adjust(Duration.seconds(1));
+
+      assert.deepStrictEqual(yield* Fiber.join(fiber), { kind: "someone-else" });
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect("a sign-in under way that fails ends the wait with its refusal", () =>
+    Effect.gen(function* () {
+      const { signers } = yield* gate([]);
+      const now = yield* DateTime.now;
+      const login = yield* Ref.make<ZeropsAgentLoginState>({
+        phase: "verifying-code",
+        terminalId: "t",
+        startedAt: now,
+        startedBy: JAN,
+      });
+      const fiber = yield* signers
+        .turnRefusal({
+          agentId: "claude-code",
+          agent: { ...signedIn, state: "local-only", providerAuth: "unknown" },
+          subject: JAN,
+          login: yield* Ref.get(login),
+          currentLogin: Ref.get(login),
+        })
+        .pipe(Effect.forkChild);
+      yield* TestClock.adjust(Duration.seconds(2));
+      yield* Ref.update(login, (current) => ({ ...current, phase: "failed" as const }));
+      yield* TestClock.adjust(Duration.seconds(2));
+
+      assert.isTrue(fiber.pollUnsafe() !== undefined, "no wait past a failed sign-in");
+      assert.deepStrictEqual(yield* Fiber.join(fiber), { kind: "unrecorded" });
+    }).pipe(Effect.scoped),
+  );
+
   it.effect("a record that never lands refuses once the wait is over", () =>
     Effect.gen(function* () {
       const { signers } = yield* gate([]);
@@ -819,9 +1020,10 @@ describe("the turn gate", () => {
       }).pipe(Effect.scoped),
   );
 
-  // Eva signs in; Jan starts and cancels a sign-in before her record lands. The credential is
-  // still Eva's: the record from before (Jan's) runs nothing on it, and Eva waits for hers.
-  it.effect("an attempt cancelled after a sign-in leaves that sign-in standing", () =>
+  // Eva signs in; Jan starts and cancels a sign-in before her record lands. The cancelled
+  // attempt is the settled state: nobody's turn waits on it, Eva's credential runs for nobody but
+  // her, and hers runs once her record lands.
+  it.effect("an attempt cancelled after a sign-in waits for nothing; that sign-in stands", () =>
     Effect.gen(function* () {
       const { signers, setTags } = yield* gate([signerTag("claude-code", JAN)]);
       const { agent, login: evas } = yield* justSignedIn(EVA);
@@ -837,11 +1039,10 @@ describe("the turn gate", () => {
         signers.turnRefusal({ agentId: "claude-code", agent, subject, login });
 
       assert.deepStrictEqual(yield* on(JAN), { kind: "someone-else" });
-      const fiber = yield* on(EVA).pipe(Effect.forkChild);
-      yield* TestClock.adjust(Duration.seconds(2));
+      assert.deepStrictEqual(yield* on(EVA), { kind: "someone-else" }, "at once, no wait");
       setTags([signerTag("claude-code", EVA)]);
-      yield* TestClock.adjust(Duration.seconds(2));
-      assert.isUndefined(yield* Fiber.join(fiber));
+      yield* TestClock.adjust(SIGNERS_CACHE_TTL);
+      assert.isUndefined(yield* on(EVA));
     }).pipe(Effect.scoped),
   );
 
@@ -978,7 +1179,8 @@ describe("the turn gate", () => {
         login,
       });
       assert.deepStrictEqual(refusal, { kind: "unrecorded" });
-      assert.strictEqual(reads() - before, 1, "one re-read, no wait");
+      // The boot's read is under a second old: it is shared, not read again.
+      assert.isAtMost(reads() - before, 1, "at most one re-read, no wait");
     }).pipe(Effect.scoped),
   );
 
@@ -1052,15 +1254,17 @@ describe("a read that comes back late", () => {
   it.effect("never overwrites a newer read, nor answers with what it saw", () =>
     Effect.gen(function* () {
       const { signers, holdNextRead, setTags, releaseAll } = yield* slowProject();
+      yield* TestClock.adjust(Duration.seconds(2));
+      // The leave check's read sets out, and is slow to come back.
       holdNextRead();
-      const late = yield* signers.fresh.pipe(Effect.forkChild);
+      const late = yield* signers.checkLeaversNow.pipe(Effect.forkChild);
       yield* TestClock.adjust(Duration.zero);
 
       setTags([signerTag("claude-code", JAN)]);
       assert.deepStrictEqual(yield* signers.fresh, { "claude-code": JAN });
 
       yield* releaseAll();
-      assert.deepStrictEqual(yield* Fiber.join(late), { "claude-code": JAN });
+      yield* Fiber.join(late);
       assert.deepStrictEqual(yield* signers.signers, { "claude-code": JAN });
     }).pipe(Effect.scoped),
   );
