@@ -722,6 +722,7 @@ export const makeZeropsCells = Effect.fn("ZeropsCells.make")(function* (
     access: AccessState,
     nowMs: number,
     newlyDemanded = false,
+    passive = false,
   ): void {
     const admission = cellAdmission(options.scope, access, entry.request, nowMs);
     if (admission.kind === "withheld") {
@@ -731,10 +732,16 @@ export const makeZeropsCells = Effect.fn("ZeropsCells.make")(function* (
     scheduleAccessDeadline(admission.deadlineMs);
     if (entry.cell.withheld !== null) apply(entry, { kind: "restore-authority" });
     const held = entry.cell.held;
+    // A surface that starts watching a failed cell waits for its scheduled retry; a one-shot
+    // reader reads it at once.
+    const joinsRetry =
+      passive && held.state === "failed" && held.retryAtMs !== null && held.retryAtMs > nowMs;
+    if (newlyDemanded && joinsRetry && entry.retryWake === null && held.retryAtMs !== null)
+      scheduleRetryWake(entry, held.retryAtMs);
     if (
       entry.inFlight === null &&
       (held.state === "unread" ||
-        (newlyDemanded && held.state === "failed") ||
+        (newlyDemanded && held.state === "failed" && !joinsRetry) ||
         (held.state === "known" &&
           (entry.cell.dirty ||
             entry.cell.lastInvalidation > held.asOf.ordinal ||
@@ -780,9 +787,14 @@ export const makeZeropsCells = Effect.fn("ZeropsCells.make")(function* (
     return readAgain(entry);
   };
 
+  /**
+   * `passive`: a surface watching the cell, which waits out a failed cell's scheduled retry. A
+   * one-shot reader — a person's action awaits it — reads a failed cell at once.
+   */
   const open = (
     request: ZeropsCellRequest,
     demand: Demand,
+    passive: boolean,
   ): OpenDemand | ZeropsCellAdmissionError => {
     if (closed) return admissionError("runtime-closed");
     if (!requestInScope(options.scope, request)) return admissionError("account-mismatch");
@@ -810,7 +822,7 @@ export const makeZeropsCells = Effect.fn("ZeropsCells.make")(function* (
     if (held.demands.size === 1) cancelEviction(held);
     // Every new demand, a first or one joining a held cell, gets a value inside its kind's
     // freshness, and a failed cell is read afresh rather than answering its old failure.
-    reconcile(held, options.access(), now(), true);
+    reconcile(held, options.access(), now(), true, passive);
     const active = () => !closed && held.demands.has(id);
     return {
       key,
@@ -840,12 +852,16 @@ export const makeZeropsCells = Effect.fn("ZeropsCells.make")(function* (
       let capacity = { backoff: INITIAL_BACKOFF, attempt: 0 };
       atom = Atom.make((get): AnyShown => {
         let mounted = false;
-        const opened = open(request, {
-          publish: (shown) => {
-            if (mounted) get.setSelf(shown);
+        const opened = open(
+          request,
+          {
+            publish: (shown) => {
+              if (mounted) get.setSelf(shown);
+            },
+            close: () => get.setSelf(ACCOUNT_CLOSED),
           },
-          close: () => get.setSelf(ACCOUNT_CLOSED),
-        });
+          true,
+        );
         if ("_tag" in opened) {
           if (opened.reason !== "account-capacity") return ACCOUNT_CLOSED;
           // Capacity is the broker's own limit: the atom asks again at its retryAt.
@@ -888,12 +904,16 @@ export const makeZeropsCells = Effect.fn("ZeropsCells.make")(function* (
       const closeWaiters = () => {
         for (const waiter of waiters) waiter.close();
       };
-      const opened = open(request, {
-        publish: (shown) => {
-          for (const waiter of waiters) waiter.publish(shown);
+      const opened = open(
+        request,
+        {
+          publish: (shown) => {
+            for (const waiter of waiters) waiter.publish(shown);
+          },
+          close: closeWaiters,
         },
-        close: closeWaiters,
-      });
+        false,
+      );
       if ("_tag" in opened) return yield* Effect.fail(opened);
       // A released lease is told nothing more, so its waits end with it.
       const release = Effect.sync(() => {

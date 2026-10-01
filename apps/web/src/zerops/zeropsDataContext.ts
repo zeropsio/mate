@@ -33,6 +33,8 @@ export function useZeropsData(): ZeropsDataContextValue {
 /** Runs one typed command while preserving its domain failure for UI error handling. */
 export async function runZeropsCommand<Value, Failure>(
   command: Effect.Effect<{ readonly value: Value }, Failure>,
+  /** Ends the command where it stands: one not sent yet is never sent. */
+  signal?: AbortSignal,
 ): Promise<Value> {
   const outcome = await Effect.runPromise(
     command.pipe(
@@ -41,6 +43,7 @@ export async function runZeropsCommand<Value, Failure>(
         onSuccess: (execution) => ({ ok: true as const, value: execution.value }),
       }),
     ),
+    signal === undefined ? undefined : { signal },
   );
   if (outcome.ok) return outcome.value;
   throw outcome.error;

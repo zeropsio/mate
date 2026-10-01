@@ -4,8 +4,10 @@ import {
   buildGroupGrants,
   findMateIntegrationToken,
   planAccountGroupReach,
+  makeTokenWriteLock,
   planGroupReach,
   writeTokenProjectsFresh,
+  type TokenWriteLocks,
   type ZeropsGroupReachWrite,
   type ZeropsIntegrationToken,
 } from "./groupReach.ts";
@@ -260,79 +262,65 @@ describe("planAccountGroupReach", () => {
 
 describe("writeTokenProjectsFresh", () => {
   const grant = (projectId: string) => ({ projectId, roleCode: "BASIC_USER" as const });
+  /** Wants PROD on every token, keeping whatever it holds. */
+  const wantProd = (tokens: ReadonlyArray<ZeropsIntegrationToken>) =>
+    tokens.flatMap((token) =>
+      (token.projects ?? []).some((project) => project.projectId === PROD)
+        ? []
+        : [
+            {
+              tokenId: token.id,
+              name: token.name,
+              projects: [...(token.projects ?? []), grant(PROD)],
+            },
+          ],
+    );
 
-  it("plans each write from a list read right before it, never from an older one", async () => {
-    // What the platform holds changes between the reads: someone registered a Mate meanwhile.
+  it("writes from the list read under the token's lock, never from an older one", async () => {
+    // Between the read that found the token and the read under its lock, another writer gave
+    // it STAGE: the write keeps STAGE, as the platform holds it now.
     const answers: ReadonlyArray<ReadonlyArray<ZeropsIntegrationToken>> = [
       [{ id: "tok-a", name: "a", roleCode: "NO_ACCESS", projects: [grant(DEV)] }],
-      [{ id: "tok-a", name: "a", roleCode: "NO_ACCESS", projects: [grant(DEV), grant(STAGE)] }],
-      [
-        {
-          id: "tok-a",
-          name: "a",
-          roleCode: "NO_ACCESS",
-          projects: [grant(DEV), grant(STAGE), grant(PROD)],
-        },
-      ],
+      [{ id: "tok-a", name: "a", roleCode: "READ_ONLY", projects: [grant(DEV), grant(STAGE)] }],
     ];
     let reads = 0;
+    const held: string[] = [];
     const written: Array<ZeropsGroupReachWrite & { readonly roleCode?: string | undefined }> = [];
     const count = await writeTokenProjectsFresh({
       read: async () => answers[Math.min(reads++, answers.length - 1)]!,
-      // Wants PROD on the token, keeping whatever it holds now.
-      plan: (tokens) =>
-        tokens.flatMap((token) =>
-          (token.projects ?? []).some((project) => project.projectId === PROD)
-            ? []
-            : [
-                {
-                  tokenId: token.id,
-                  name: token.name,
-                  projects: [...(token.projects ?? []), grant(PROD)],
-                },
-              ],
-        ),
+      plan: wantProd,
+      hold: (tokenId, run) => {
+        held.push(tokenId);
+        return run();
+      },
       write: async (write) => {
         written.push(write);
       },
     });
 
     expect(count).toBe(1);
-    expect(reads).toBe(1);
+    expect(held).toEqual(["tok-a"]);
+    // As planned, no more: a Mate's token is lowered to no org role, whatever it held.
     expect(written).toEqual([
-      { tokenId: "tok-a", name: "a", roleCode: "NO_ACCESS", projects: [grant(DEV), grant(PROD)] },
+      { tokenId: "tok-a", name: "a", projects: [grant(DEV), grant(STAGE), grant(PROD)] },
     ]);
   });
 
-  it("reads afresh before every write, and carries the token's own role", async () => {
-    let held: ReadonlyArray<ZeropsIntegrationToken> = [
-      { id: "tok-a", name: "a", projects: [] },
-      { id: "tok-b", name: "b", roleCode: "READ_ONLY", projects: [] },
+  it("writes nothing for a token another writer already brought where it should be", async () => {
+    const answers: ReadonlyArray<ReadonlyArray<ZeropsIntegrationToken>> = [
+      [{ id: "tok-a", name: "a", projects: [grant(DEV)] }],
+      [{ id: "tok-a", name: "a", projects: [grant(DEV), grant(PROD)] }],
     ];
     let reads = 0;
-    const order: string[] = [];
-    await writeTokenProjectsFresh({
-      read: async () => {
-        reads += 1;
-        order.push("read");
-        return held;
-      },
-      plan: (tokens) =>
-        tokens
-          .filter((token) => (token.projects ?? []).length === 0)
-          .map((token) => ({ tokenId: token.id, name: token.name, projects: [grant(DEV)] })),
-      write: async (write) => {
-        order.push(
-          `write ${write.tokenId}${write.roleCode === undefined ? "" : ` ${write.roleCode}`}`,
-        );
-        held = held.map((token) =>
-          token.id === write.tokenId ? { ...token, projects: write.projects } : token,
-        );
+    let writes = 0;
+    const count = await writeTokenProjectsFresh({
+      read: async () => answers[Math.min(reads++, answers.length - 1)]!,
+      plan: wantProd,
+      write: async () => {
+        writes += 1;
       },
     });
-
-    expect(order).toEqual(["read", "write tok-a", "read", "write tok-b READ_ONLY"]);
-    expect(reads).toBe(2);
+    expect([count, writes]).toEqual([0, 0]);
   });
 
   it("writes no more than its first plan asked for, whatever the platform answers", async () => {
@@ -346,5 +334,95 @@ describe("writeTokenProjectsFresh", () => {
       },
     });
     expect(writes).toBe(1);
+  });
+});
+
+describe("writeTokenProjectsFresh with a write the platform refuses", () => {
+  it("still writes the other tokens, then fails so its caller backs off", async () => {
+    let held: ReadonlyArray<ZeropsIntegrationToken> = [
+      { id: "tok-a", name: "a", projects: [] },
+      { id: "tok-b", name: "b", projects: [] },
+    ];
+    const attempts: string[] = [];
+    const run = writeTokenProjectsFresh({
+      read: async () => held,
+      plan: (tokens) =>
+        tokens
+          .filter((token) => (token.projects ?? []).length === 0)
+          .map((token) => ({
+            tokenId: token.id,
+            name: token.name,
+            projects: [{ projectId: DEV, roleCode: "BASIC_USER" as const }],
+          })),
+      write: async (write) => {
+        attempts.push(write.tokenId);
+        if (write.tokenId === "tok-a") throw new Error("refused");
+        held = held.map((token) =>
+          token.id === write.tokenId ? { ...token, projects: write.projects } : token,
+        );
+      },
+    });
+    await expect(run).rejects.toThrow("refused");
+    expect(attempts).toEqual(["tok-a", "tok-b"]);
+  });
+});
+
+describe("makeTokenWriteLock", () => {
+  /** The browser's locks: one holder of a name at a time, across every page that asks. */
+  const browserLocks = (): TokenWriteLocks & { readonly names: string[] } => {
+    const chains = new Map<string, Promise<unknown>>();
+    const names: string[] = [];
+    return {
+      names,
+      request: <T>(name: string, hold: () => Promise<T>) => {
+        names.push(name);
+        const next = (chains.get(name) ?? Promise.resolve()).then(hold);
+        chains.set(
+          name,
+          next.catch(() => undefined),
+        );
+        return next;
+      },
+    };
+  };
+
+  it("holds one token's read-then-write at a time, across two tabs under the browser's lock", async () => {
+    const locks = browserLocks();
+    // Two tabs: each its own page queue, one browser.
+    const [tabA, tabB] = [makeTokenWriteLock(locks), makeTokenWriteLock(locks)];
+    const order: string[] = [];
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const first = tabA("tok-a", async () => {
+      order.push("first in");
+      await gate;
+      order.push("first out");
+    });
+    const second = tabB("tok-a", async () => {
+      order.push("second in");
+    });
+    const other = tabB("tok-b", async () => {
+      order.push("other in");
+    });
+    await other;
+    release();
+    await Promise.all([first, second]);
+
+    expect(order).toEqual(["first in", "other in", "first out", "second in"]);
+    expect(locks.names.toSorted()).toEqual([
+      "mate:token:tok-a",
+      "mate:token:tok-a",
+      "mate:token:tok-b",
+    ]);
+  });
+
+  it("lets go of a hold that outlives its bound, failing it, so the next writer goes on", async () => {
+    const hold = makeTokenWriteLock(browserLocks(), { timeoutMs: 10 });
+    const stuck = hold("tok-a", () => new Promise<void>(() => undefined));
+    const next = hold("tok-a", async () => "next");
+    await expect(stuck).rejects.toThrow(/tok-a/);
+    await expect(next).resolves.toBe("next");
   });
 });

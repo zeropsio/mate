@@ -2272,6 +2272,82 @@ describe("makeZeropsDataRuntime", () => {
       registry.dispose();
     }),
   );
+  /** A runtime over `execute`, granted one organization, for a command's own life. */
+  const commandRuntime = (
+    registry: AtomRegistry.AtomRegistry,
+    execute: ZeropsDataAdapter["execute"],
+  ) =>
+    makeZeropsDataRuntime({
+      scope: runtimeScope,
+      adapter: { ...makeAdapterHarness().adapter, execute },
+      atomRegistry: registry,
+      makeOpaqueId: makeIdFactory(),
+      initialAccess: {
+        status: "verified",
+        account: runtimeScope.account,
+        accountEpoch: runtimeScope.epoch,
+        verifiedAtMs: 0,
+        deadlineMs: 10_000,
+        mutationsAllowed: true,
+        organizations: [
+          { organization: topologyDescriptor.project.organization, mutationsAllowed: true },
+        ],
+        projects: [],
+      },
+    });
+  const tokenWrite = {
+    organization: topologyDescriptor.project.organization,
+    tokenId: "token-a",
+    name: "t",
+    projects: [],
+  };
+
+  it.effect(
+    "a command answered as the runtime shuts down settles rather than waiting for ever",
+    () =>
+      Effect.gen(function* () {
+        const registry = AtomRegistry.make();
+        let runtime!: Effect.Success<ReturnType<typeof commandRuntime>>;
+        runtime = yield* commandRuntime(registry, (command) =>
+          // The answer lands just as the account closes: its barrier is queued, then dropped.
+          Effect.forkDetach(runtime.shutdown("application-close")).pipe(
+            Effect.as({
+              processRefs: [],
+              observations: [],
+              result: { kind: command.kind, value: undefined },
+            } as never),
+          ),
+        );
+        const write = yield* Effect.forkChild(
+          Effect.exit(runtime.commands.setIntegrationTokenProjects(tokenWrite)),
+        );
+        for (let turn = 0; turn < 50; turn++) yield* Effect.yieldNow;
+        expect(write.pollUnsafe()).toBeDefined();
+        registry.dispose();
+      }),
+  );
+
+  it.effect("an interrupted command is no longer counted as pending", () =>
+    Effect.gen(function* () {
+      const registry = AtomRegistry.make();
+      const runtime = yield* commandRuntime(registry, () => Effect.never);
+      const write = yield* Effect.forkChild(
+        runtime.commands.setIntegrationTokenProjects(tokenWrite),
+      );
+      for (let turn = 0; turn < 20; turn++) yield* Effect.yieldNow;
+      yield* Fiber.interrupt(write);
+      for (let turn = 0; turn < 20; turn++) yield* Effect.yieldNow;
+
+      const statuses = [...registry.get(runtime.stateAtom).commands.values()].map(
+        (attempt) => attempt.status,
+      );
+      expect(statuses).toHaveLength(1);
+      expect(statuses).not.toContain("pending");
+      yield* runtime.shutdown("application-close");
+      registry.dispose();
+    }),
+  );
+
   it.effect("reads an organization's tokens again whenever a token of it is written", () =>
     Effect.gen(function* () {
       const registry = AtomRegistry.make();

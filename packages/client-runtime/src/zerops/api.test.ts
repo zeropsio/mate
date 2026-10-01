@@ -827,6 +827,70 @@ describe("ZeropsApiClient project reads", () => {
     expect(result).toEqual({ restarted: false, steps: 0 });
   });
 
+  it("hardening lowers the Mate's token from a read under the token's lock", async () => {
+    const log: string[] = [];
+    const stub = recordingFetch((request) => {
+      if (request.url.includes("integration-token"))
+        log.push(`${request.method} ${new URL(request.url).pathname.split("/").slice(-1)[0]}`);
+      if (request.url.endsWith("/integration-token/list?limit=100"))
+        return jsonResponse(200, {
+          list: [
+            {
+              id: "token-1",
+              name: "zcp-project-1",
+              roleCode: "ADMIN",
+              projects: [{ projectId: "project-1", roleCode: "ADMIN" }],
+            },
+          ],
+        });
+      if (request.method === "PUT" && request.url.endsWith("/integration-token/token-1"))
+        return jsonResponse(200, {});
+      if (request.url.endsWith("/integration-token/token-1/delegation") && request.method === "GET")
+        return jsonResponse(200, { list: [{ id: "del-1", tokenId: "token-1" }] });
+      if (request.url.endsWith("/integration-token/token-1/delegation/del-1"))
+        return jsonResponse(200, {});
+      if (request.url.endsWith("/project/search"))
+        return jsonResponse(200, {
+          items: [
+            {
+              envList: [
+                { id: "iso", key: "envIsolation", content: "none" },
+                { id: "key", key: "ZCP_API_KEY", content: "secret", sensitive: false },
+              ],
+            },
+          ],
+        });
+      if (request.url.includes("/service-stack")) {
+        return jsonResponse(200, {
+          list: [{ id: "svc-1", name: "zcp", serviceStackTypeId: "zcp" }],
+        });
+      }
+      return jsonResponse(200, {});
+    });
+    const client = new ZeropsApiClient({
+      fetch: stub.fetch,
+      holdToken: async (tokenId, run) => {
+        log.push(`hold ${tokenId}`);
+        try {
+          return await run();
+        } finally {
+          log.push(`let go ${tokenId}`);
+        }
+      },
+    });
+    client.restoreSession(SESSION);
+
+    await client.hardenMate("org-1", "project-1");
+
+    const held = log.slice(log.indexOf("hold token-1"), log.indexOf("let go token-1") + 1);
+    expect(held).toEqual(["hold token-1", "GET list", "PUT token-1", "let go token-1"]);
+    const write = stub.requests.find(
+      (request) => request.method === "PUT" && request.url.endsWith("/integration-token/token-1"),
+    );
+    // Lowered to no org role, whatever the token held when it was read.
+    expect(write?.body).toContain('"roleCode":"NO_ACCESS"');
+  });
+
   it("hardening lowers the Mate's token and drops its delegations before health is asked", async () => {
     const stub = recordingFetch((request) => {
       if (request.url.endsWith("/integration-token/list?limit=100"))
@@ -1677,6 +1741,57 @@ describe("ZeropsApiClient.exchangeWebSocketToken", () => {
     expect(writes[1]?.body).toContain('"projectId":"project-1","roleCode":"BASIC_USER"');
     expect(writes[1]?.body).toContain('"roleCode":"READ_ONLY"');
     expect(writes[2]?.body).toContain("fresh");
+  });
+
+  it("grant-broker-token plans from the broker token as it is right before the write", async () => {
+    const project = {
+      id: "project-1",
+      name: "Gitea",
+      status: "ACTIVE",
+      publicZone: "project-1.prg1-zerops.zone",
+      tagList: ["mate:tool:gitea"],
+    };
+    let tokenReads = 0;
+    const stub = recordingFetch((request) => {
+      if (request.url.includes("/integration-token/list")) {
+        tokenReads += 1;
+        // A Mate's birth granted the broker its project while the setup regenerated the token.
+        const projects =
+          tokenReads === 1 ? [] : [{ projectId: "project-mate", roleCode: "BASIC_USER" }];
+        return jsonResponse(200, {
+          list: [{ id: "tok-b", name: "mate-broker", roleCode: "READ_ONLY", projects }],
+        });
+      }
+      if (request.method === "GET" && request.url.includes("/client/org-1/project")) {
+        return jsonResponse(200, { list: [project], totalCount: 1 });
+      }
+      if (request.url.includes("/service-stack?")) return jsonResponse(200, { items: [] });
+      if (request.url.includes("/regenerate")) return jsonResponse(200, { token: "fresh" });
+      return jsonResponse(200, {});
+    });
+    const held: string[] = [];
+    let readsUnderLock = 0;
+    const client = new ZeropsApiClient({
+      fetch: stub.fetch,
+      holdToken: async (tokenId, run) => {
+        held.push(tokenId);
+        const before = tokenReads;
+        const value = await run();
+        readsUnderLock += tokenReads - before;
+        return value;
+      },
+    });
+    client.restoreSession(SESSION);
+
+    await client.createToolProject(TOOL_INPUT);
+
+    expect(held).toEqual(["tok-b"]);
+    expect(readsUnderLock).toBe(1);
+    const grant = stub.requests.find(
+      (request) => request.method === "PUT" && request.url.endsWith("/integration-token/tok-b"),
+    );
+    expect(grant?.body).toContain('"projectId":"project-mate"');
+    expect(grant?.body).toContain('"projectId":"project-1"');
   });
 
   it("grant-broker-token writes nothing when the org role covers the project", async () => {

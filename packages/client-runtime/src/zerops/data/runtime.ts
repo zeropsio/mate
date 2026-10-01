@@ -1387,10 +1387,14 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
       ? ingress.offerUncounted(input).pipe(Effect.asVoid)
       : ingress.offer(input, bytes).pipe(Effect.asVoid);
 
+  /** Barriers queued and not yet reached: a shutdown that drops them settles them. */
+  const barriers = new Set<Deferred.Deferred<void>>();
   const awaitIngress = Effect.gen(function* () {
     const deferred = yield* Deferred.make<void>();
+    barriers.add(deferred);
     const enqueued = yield* ingress.offerUncounted({ kind: "barrier", deferred, interest: null });
     if (enqueued) yield* Deferred.await(deferred);
+    barriers.delete(deferred);
   });
 
   const context = <Value, Error>(
@@ -3500,117 +3504,133 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
   const executePreparedCommand = (
     command: PlatformCommand,
   ): Effect.Effect<PlatformCommandReceipt, CommandAdmissionError | AdapterError> =>
-    commandSemaphore.withPermit(
-      Effect.gen(function* () {
-        const executionAdmission = yield* checkCommandAdmission(command).pipe(Effect.result);
-        if (Result.isFailure(executionAdmission)) {
-          const failure = executionAdmission.failure;
-          yield* enqueue({
-            kind: "command-completion",
-            completion: { kind: "command-rejected", command, reason: failure.message },
-            interest: null,
-          });
-          yield* awaitIngress;
-          return yield* Effect.fail(failure);
-        }
-        // The guard's refusal between writes reaches the adapter as a thrown
-        // cause it wraps in its own error; kept here so the command fails
-        // with the admission's reason — "not verified yet" is a wait, not an
-        // answer (`commands.ts`).
-        let midWriteAdmission: CommandAdmissionError | null = null;
-        const outcome = yield* context(policy.httpDeadlineMs, (requestContext) =>
-          options.adapter.execute(command, {
-            ...requestContext,
-            beforeProjectWrite: () =>
-              Effect.runPromiseWith(runtimeContext)(
-                checkCommandAdmission(command).pipe(
-                  Effect.tapError((admission) =>
-                    Effect.sync(() => {
-                      midWriteAdmission = admission;
-                    }),
+    commandSemaphore
+      .withPermit(
+        Effect.gen(function* () {
+          const executionAdmission = yield* checkCommandAdmission(command).pipe(Effect.result);
+          if (Result.isFailure(executionAdmission)) {
+            const failure = executionAdmission.failure;
+            yield* enqueue({
+              kind: "command-completion",
+              completion: { kind: "command-rejected", command, reason: failure.message },
+              interest: null,
+            });
+            yield* awaitIngress;
+            return yield* Effect.fail(failure);
+          }
+          // The guard's refusal between writes reaches the adapter as a thrown
+          // cause it wraps in its own error; kept here so the command fails
+          // with the admission's reason — "not verified yet" is a wait, not an
+          // answer (`commands.ts`).
+          let midWriteAdmission: CommandAdmissionError | null = null;
+          const outcome = yield* context(policy.httpDeadlineMs, (requestContext) =>
+            options.adapter.execute(command, {
+              ...requestContext,
+              beforeProjectWrite: () =>
+                Effect.runPromiseWith(runtimeContext)(
+                  checkCommandAdmission(command).pipe(
+                    Effect.tapError((admission) =>
+                      Effect.sync(() => {
+                        midWriteAdmission = admission;
+                      }),
+                    ),
                   ),
                 ),
-              ),
-          }),
-        ).pipe(Effect.result);
-        if (Result.isFailure(outcome) && midWriteAdmission !== null) {
-          const admission: CommandAdmissionError = midWriteAdmission;
-          yield* enqueue({
-            kind: "command-completion",
-            completion: { kind: "command-rejected", command, reason: admission.message },
-            interest: null,
-          });
-          yield* awaitIngress;
-          return yield* Effect.fail(admission);
-        }
-        if (Result.isFailure(outcome)) {
-          const uncertain = ["uncertain", "timeout", "network", "server"].includes(
-            outcome.failure.kind,
-          );
+            }),
+          ).pipe(Effect.result);
+          if (Result.isFailure(outcome) && midWriteAdmission !== null) {
+            const admission: CommandAdmissionError = midWriteAdmission;
+            yield* enqueue({
+              kind: "command-completion",
+              completion: { kind: "command-rejected", command, reason: admission.message },
+              interest: null,
+            });
+            yield* awaitIngress;
+            return yield* Effect.fail(admission);
+          }
+          if (Result.isFailure(outcome)) {
+            const uncertain = ["uncertain", "timeout", "network", "server"].includes(
+              outcome.failure.kind,
+            );
+            yield* enqueue({
+              kind: "command-completion",
+              completion: {
+                kind: uncertain ? "command-uncertain" : "command-rejected",
+                command,
+                reason: outcome.failure.message,
+              },
+              interest: null,
+            });
+            yield* awaitIngress;
+            return yield* Effect.fail(outcome.failure);
+          }
+          const result = outcome.success.result;
+          let createdProject: ProjectRef | null = null;
+          if (command.kind === "create-project" && result?.kind === command.kind) {
+            createdProject = {
+              kind: "project",
+              organization: command.organization,
+              projectId: ZeropsProjectId.make(result.value.id),
+            };
+          } else if (command.kind === "create-project-with-mate" && result?.kind === command.kind) {
+            createdProject = {
+              kind: "project",
+              organization: command.organization,
+              projectId: ZeropsProjectId.make(result.value.project.id),
+            };
+          } else if (command.kind === "create-tool-project" && result?.kind === command.kind) {
+            createdProject = {
+              kind: "project",
+              organization: command.organization,
+              projectId: ZeropsProjectId.make(result.value.project.id),
+            };
+          } else if (command.kind === "import-project" && result?.kind === command.kind) {
+            createdProject = {
+              kind: "project",
+              organization: command.organization,
+              projectId: ZeropsProjectId.make(result.value.projectId),
+            };
+          }
+          if (createdProject !== null) {
+            yield* enqueue({
+              kind: "access-observation",
+              observation: {
+                kind: "project-access-established",
+                accountEpoch: options.scope.epoch,
+                project: createdProject,
+              },
+              interest: null,
+            });
+          }
+          yield* enqueueObservations(outcome.success.observations, null);
           yield* enqueue({
             kind: "command-completion",
             completion: {
-              kind: uncertain ? "command-uncertain" : "command-rejected",
+              kind: "command-accepted",
               command,
-              reason: outcome.failure.message,
+              processRefs: outcome.success.processRefs,
             },
             interest: null,
           });
           yield* awaitIngress;
-          return yield* Effect.fail(outcome.failure);
-        }
-        const result = outcome.success.result;
-        let createdProject: ProjectRef | null = null;
-        if (command.kind === "create-project" && result?.kind === command.kind) {
-          createdProject = {
-            kind: "project",
-            organization: command.organization,
-            projectId: ZeropsProjectId.make(result.value.id),
-          };
-        } else if (command.kind === "create-project-with-mate" && result?.kind === command.kind) {
-          createdProject = {
-            kind: "project",
-            organization: command.organization,
-            projectId: ZeropsProjectId.make(result.value.project.id),
-          };
-        } else if (command.kind === "create-tool-project" && result?.kind === command.kind) {
-          createdProject = {
-            kind: "project",
-            organization: command.organization,
-            projectId: ZeropsProjectId.make(result.value.project.id),
-          };
-        } else if (command.kind === "import-project" && result?.kind === command.kind) {
-          createdProject = {
-            kind: "project",
-            organization: command.organization,
-            projectId: ZeropsProjectId.make(result.value.projectId),
-          };
-        }
-        if (createdProject !== null) {
-          yield* enqueue({
-            kind: "access-observation",
-            observation: {
-              kind: "project-access-established",
-              accountEpoch: options.scope.epoch,
-              project: createdProject,
+          return outcome.success;
+        }),
+      )
+      .pipe(
+        // Abandoned before it answered — its caller went — it may still have landed: it is
+        // uncertain, never left pending against the account's command queue.
+        Effect.onInterrupt(() =>
+          enqueue({
+            kind: "command-completion",
+            completion: {
+              kind: "command-uncertain",
+              command,
+              reason: "The request was abandoned before Zerops answered.",
             },
             interest: null,
-          });
-        }
-        yield* enqueueObservations(outcome.success.observations, null);
-        yield* enqueue({
-          kind: "command-completion",
-          completion: {
-            kind: "command-accepted",
-            command,
-            processRefs: outcome.success.processRefs,
-          },
-          interest: null,
-        });
-        yield* awaitIngress;
-        return outcome.success;
-      }),
-    );
+          }),
+        ),
+      );
 
   const startCommand: ZeropsDataRuntime["commands"]["startCommand"] = (intent) =>
     Effect.gen(function* () {
@@ -3863,6 +3883,9 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
         yield* applyControl({ kind: "runtime-closed" });
         yield* flushPublication;
         yield* ingress.shutdown;
+        // What the shutdown dropped is never reached: its waiters are let go now.
+        for (const barrier of barriers) yield* Deferred.succeed(barrier, undefined);
+        barriers.clear();
         stopTokenWrites();
         yield* cells.shutdown;
         logs.shutdown();

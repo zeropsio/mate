@@ -189,8 +189,10 @@ describe("runEnvironmentCreation", () => {
       // The group's agents reach the container import, not just the plan.
       "container:proj-1:claude-code",
       "tokens:client-1",
+      // Again under the token's lock: the write is planned from that read.
+      "tokens:client-1",
       "token:tok-mate:proj-1=BASIC_USER",
-      // The token list is read once and shared by the two steps that need it.
+      // The read under the lock is shared with the step that drops its delegations.
       "delegations:tok-mate",
       "delegation:tok-mate:del-1",
       // No runtime import: the birth makes it once the project is closed off,
@@ -206,18 +208,44 @@ describe("runEnvironmentCreation", () => {
     ]);
   });
 
-  it("lowers the container's token from its list as read in that step, keeping its own role", async () => {
-    const written: Array<{ readonly roleCode?: string | undefined }> = [];
+  it("lowers the container's token from a read under the token's lock", async () => {
+    const log: string[] = [];
     const { platform } = fakePlatform({
-      listIntegrationTokenGrants: () =>
-        Promise.resolve([{ ...MINTED_TOKEN, roleCode: "NO_ACCESS" }]),
+      listIntegrationTokenGrants: () => {
+        log.push("read");
+        return Promise.resolve([MINTED_TOKEN]);
+      },
+      setIntegrationTokenProjects: () => {
+        log.push("write");
+        return Promise.resolve();
+      },
+      holdToken: async (tokenId, run) => {
+        log.push(`hold ${tokenId}`);
+        try {
+          return await run();
+        } finally {
+          log.push(`let go ${tokenId}`);
+        }
+      },
+    });
+    await run(plan("dev"), platform);
+    const held = log.slice(log.indexOf("hold tok-mate"), log.indexOf("let go tok-mate") + 1);
+    expect(held).toEqual(["hold tok-mate", "read", "write", "let go tok-mate"]);
+  });
+
+  it("lowers the container's token to no org role, whatever role it was minted with", async () => {
+    const written: Array<object> = [];
+    const { platform } = fakePlatform({
+      listIntegrationTokenGrants: () => Promise.resolve([{ ...MINTED_TOKEN, roleCode: "ADMIN" }]),
       setIntegrationTokenProjects: (input) => {
         written.push(input);
         return Promise.resolve();
       },
     });
     await run(plan("dev"), platform);
-    expect(written).toMatchObject([{ tokenId: "tok-mate", roleCode: "NO_ACCESS" }]);
+    expect(written).toHaveLength(1);
+    // No role passed: the write lowers the token's org role to none.
+    expect(written[0]).not.toHaveProperty("roleCode");
   });
 
   it("hands an environment with an agent to its birth at the runtimes, waiting on nothing", async () => {

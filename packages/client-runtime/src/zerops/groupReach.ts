@@ -247,32 +247,108 @@ export function planAccountGroupReach(input: {
   return writes;
 }
 
+/** The page's exclusive locks (`navigator.locks`): `hold` runs once the lock is this tab's. */
+export interface TokenWriteLocks {
+  readonly request: <T>(name: string, hold: () => Promise<T>) => Promise<T>;
+}
+
+export const tokenWriteLockName = (tokenId: string): string => `mate:token:${tokenId}`;
+
+/** Holds one token's read-then-write at a time, until `run` settles. */
+export type TokenWriteHold = <T>(tokenId: string, run: () => Promise<T>) => Promise<T>;
+
+/** How long one token's read-then-write may hold its lock before it is let go and fails. */
+export const TOKEN_WRITE_HOLD_MS = 30_000;
+
 /**
- * Writes tokens' project lists, each planned from the list read right before it. A write replaces
- * a token's whole list, so it is never planned from a list read earlier — a shared, possibly old
- * one least of all — and it carries the token's own org role as read, which the replacement would
- * otherwise lower. It writes at most what its first plan asked for, and answers how many it wrote.
+ * One token's read-then-write at a time: in this page by a queue per token, and across the
+ * browser's tabs by the page's lock named `mate:token:{id}` where the platform has locks. A hold
+ * past `timeoutMs` is let go and fails, so a write that never answers blocks nobody for good.
+ */
+export function makeTokenWriteLock(
+  locks?: TokenWriteLocks,
+  options: { readonly timeoutMs?: number } = {},
+): TokenWriteHold {
+  const timeoutMs = options.timeoutMs ?? TOKEN_WRITE_HOLD_MS;
+  const queues = new Map<string, Promise<void>>();
+  return <T>(tokenId: string, run: () => Promise<T>): Promise<T> => {
+    const bounded = () =>
+      new Promise<T>((resolve, reject) => {
+        // @effect-diagnostics-next-line globalTimers:off -- a plain Promise bound, outside any Effect.
+        const timer = setTimeout(
+          () => reject(new Error(`The write to token ${tokenId} took too long; it was let go.`)),
+          timeoutMs,
+        );
+        run().then(
+          (value) => {
+            clearTimeout(timer);
+            resolve(value);
+          },
+          (cause: unknown) => {
+            clearTimeout(timer);
+            reject(cause);
+          },
+        );
+      });
+    const held = () =>
+      locks === undefined ? bounded() : locks.request(tokenWriteLockName(tokenId), bounded);
+    const next = (queues.get(tokenId) ?? Promise.resolve()).then(held);
+    const settled = next.then(
+      () => undefined,
+      () => undefined,
+    );
+    queues.set(tokenId, settled);
+    void settled.then(() => {
+      if (queues.get(tokenId) === settled) queues.delete(tokenId);
+    });
+    return next;
+  };
+}
+
+/**
+ * Writes tokens' project lists. A write replaces a token's whole list, so each is planned from
+ * the list read under that token's lock (`hold`), right before it — never from a list read
+ * earlier, a shared, possibly old one least of all. It writes the plan as it stands: an org role
+ * only where the plan names one (the broker's own, read under the lock), else the write lowers it
+ * to none. A read outside the lock only finds the next token to write. It writes at most what its first plan asked for, and answers how many it wrote.
  */
 export async function writeTokenProjectsFresh(input: {
   readonly read: () => Promise<ReadonlyArray<ZeropsIntegrationToken>>;
   readonly plan: (
     tokens: ReadonlyArray<ZeropsIntegrationToken>,
-  ) => ReadonlyArray<ZeropsGroupReachWrite>;
+  ) => ReadonlyArray<ZeropsGroupReachWrite & { readonly roleCode?: string | undefined }>;
   readonly write: (
     write: ZeropsGroupReachWrite & { readonly roleCode?: string | undefined },
   ) => Promise<void>;
+  /** Serializes each token's read-then-write; without it, nothing else writes these tokens. */
+  readonly hold?: TokenWriteHold;
 }): Promise<number> {
+  const hold: TokenWriteHold = input.hold ?? ((_tokenId, run) => run());
   let written = 0;
+  let attempts = 0;
   let most: number | null = null;
-  while (most === null || written < most) {
-    const tokens = await input.read();
-    const writes = input.plan(tokens);
+  /** Tokens whose write failed: the others are still written, and the run fails at its end. */
+  const refused = new Map<string, unknown>();
+  while (most === null || attempts < most) {
+    const writes = input.plan(await input.read());
     most ??= writes.length;
-    const next = writes[0];
+    const next = writes.find((planned) => !refused.has(planned.tokenId));
     if (next === undefined) break;
-    const roleCode = tokens.find((token) => token.id === next.tokenId)?.roleCode;
-    await input.write(roleCode === undefined ? next : { ...next, roleCode });
-    written += 1;
+    attempts += 1;
+    try {
+      const wrote = await hold(next.tokenId, async () => {
+        const tokens = await input.read();
+        const write = input.plan(tokens).find((planned) => planned.tokenId === next.tokenId);
+        if (write === undefined) return false;
+        await input.write(write);
+        return true;
+      });
+      if (wrote) written += 1;
+    } catch (cause) {
+      refused.set(next.tokenId, cause);
+    }
   }
+  const [failure] = refused.values();
+  if (refused.size > 0) throw failure;
   return written;
 }

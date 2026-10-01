@@ -7,7 +7,7 @@
  * Lives outside `*.test.*` on purpose: it runs `Effect.runPromise`, which
  * `no-manual-effect-runtime-in-tests` forbids in test files.
  */
-import type { ZeropsIntegrationToken } from "@t3tools/client-runtime/zerops";
+import type { ZeropsIntegrationToken, ZeropsProjectGrant } from "@t3tools/client-runtime/zerops";
 import {
   AccountEpoch,
   makeZeropsApiOrigin,
@@ -44,6 +44,13 @@ export async function makeTokenStore(input: {
   readonly calls: Array<string>;
   /** What the platform holds now; asked on every read. */
   readonly tokens: () => ReadonlyArray<ZeropsIntegrationToken>;
+  /** Runs before the platform takes a project list write: a test holds a write open with it. */
+  readonly beforeWrite?: () => Promise<void>;
+  /** The platform taking a project list write. */
+  readonly onWrite?: (write: {
+    readonly tokenId: string;
+    readonly projects: ReadonlyArray<ZeropsProjectGrant>;
+  }) => void;
   readonly organizationId?: string;
 }): Promise<TokenStore> {
   const scope: AccountScope = {
@@ -69,7 +76,7 @@ export async function makeTokenStore(input: {
         read: () => Effect.never,
         closeReceiver: () => Effect.void,
         execute: (command) =>
-          Effect.sync((): PlatformCommandReceipt => {
+          Effect.promise(async (): Promise<PlatformCommandReceipt> => {
             switch (command.kind) {
               case "list-integration-token-grants":
                 input.calls.push(`list tokens of ${command.organization.organizationId}`);
@@ -79,6 +86,8 @@ export async function makeTokenStore(input: {
                   result: { kind: command.kind, value: metadataOf(input.tokens()) },
                 };
               case "set-integration-token-projects":
+                await input.beforeWrite?.();
+                input.onWrite?.(command);
                 input.calls.push(
                   `grant ${command.projects.map((project) => project.projectId).join(",")} in ${command.organization.organizationId}${command.roleCode === undefined ? "" : ` as ${command.roleCode}`}`,
                 );

@@ -238,6 +238,7 @@ describe("the account's births", () => {
       expect(calls).toEqual([
         "registry-member on gitea-1",
         "list tokens of org-1",
+        "list tokens of org-1",
         "grant project-1 in org-1",
         "harden org-1/project-1",
       ]);
