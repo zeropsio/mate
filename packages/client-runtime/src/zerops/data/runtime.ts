@@ -871,6 +871,24 @@ function failureKind(error: AdapterError): ReadFailureKind {
  */
 const registrationRefused = (error: AdapterError): boolean => error.status !== undefined;
 
+/** A registration let go because a person asked to try again (Try now). */
+const RETRIED_BY_PERSON: AdapterError = {
+  _tag: "ZeropsDataAdapterError",
+  kind: "cancelled",
+  message: "Retried at a person's request.",
+  retryable: true,
+  accountRevocationEvidence: false,
+};
+
+/** An interest's establishment that outlived `establishmentDeadlineMs`: its own, not its socket's. */
+const ESTABLISHMENT_DEADLINE: AdapterError = {
+  _tag: "ZeropsDataAdapterError",
+  kind: "timeout",
+  message: "The interest establishment deadline expired.",
+  retryable: true,
+  accountRevocationEvidence: false,
+};
+
 /**
  * Creates one account-scoped owner. The returned runtime owns its Effect scope
  * and transports, while the caller continues to own the supplied AtomRegistry.
@@ -2211,17 +2229,25 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
     }).pipe(
       Effect.timeoutOrElse({
         duration: Duration.millis(policy.establishmentDeadlineMs),
-        orElse: () =>
-          Effect.fail({
-            _tag: "ZeropsDataAdapterError",
-            kind: "timeout",
-            message: "The interest establishment deadline expired.",
-            retryable: true,
-            accountRevocationEvidence: false,
-          } satisfies AdapterError),
+        orElse: () => Effect.fail(ESTABLISHMENT_DEADLINE),
       }),
       Effect.catch((error: AdapterError) => {
         const receiver = receiverFor(organizationOfInterest(runtimeInterest.descriptor));
+        // One subscription outliving its deadline on a socket that is open says nothing against
+        // the socket: it retries alone on its own backoff, and its siblings keep observing. A
+        // socket that is dead says so itself (its close, a missed pong) and is replaced then.
+        if (
+          error === ESTABLISHMENT_DEADLINE &&
+          receiver.handle !== null &&
+          runtimeInterest.identity.receiver.receiverId === receiver.identity.receiverId
+        ) {
+          return recoverInterest(
+            receiver,
+            runtimeInterest.identity,
+            "disconnect",
+            error.message,
+          ).pipe(Effect.as(interestFailed));
+        }
         return markRecovering(runtimeInterest.identity, "disconnect").pipe(
           Effect.andThen(scheduleRecovery(receiver, error.message)),
           Effect.as(receiverFailed(error.message)),
@@ -2910,6 +2936,43 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
         // cycle instead, which recomputes its wait from current state.
         const activeRecovery = recoveryCycles.get(organizationKey);
         if (activeRecovery !== undefined) {
+          // A person asked (Try now): every subscription of the organization not observing
+          // starts over now, past its backoff, on the socket the cycle already holds — which none
+          // of this replaces. Its registrations still unanswered are let go, so nothing waits on
+          // them. A socket that is not open is the cycle's: its login retries on its own backoff.
+          const current = receivers.get(organizationKey);
+          if (current !== undefined && current.handle !== null) {
+            const stalled = yield* Ref.get(model);
+            const restarting = [...interests.values()].filter((runtimeInterest) => {
+              const status = stalled.interests.get(runtimeInterest.key)?.interest.status;
+              return (
+                runtimeInterest.leases.size > 0 &&
+                runtimeInterest.identity.receiver.receiverId === current.identity.receiverId &&
+                (status === "establishing" || status === "recovering")
+              );
+            });
+            for (const registration of [...current.registrations.values()]) {
+              if (registration.status !== "registering") continue;
+              current.registrations.delete(registration.key);
+              const name = registration.request.subscriptionName;
+              if (current.registrationOwners.get(name) === registration)
+                current.registrationOwners.delete(name);
+              yield* Deferred.succeed(registration.outcome, {
+                kind: "failed",
+                error: RETRIED_BY_PERSON,
+              });
+            }
+            for (const runtimeInterest of restarting) {
+              runtimeInterest.recoveryAttempts = 0;
+              const desired = yield* updateInterestIdentity(runtimeInterest, current);
+              yield* applyControl({ kind: "interest-upserted", interest: desired });
+            }
+            yield* Effect.forEach(
+              restarting,
+              (runtimeInterest) => establishInterest(runtimeInterest).pipe(forkOwned),
+              { discard: true },
+            );
+          }
           yield* Deferred.succeed(activeRecovery.wake, undefined);
           return;
         }

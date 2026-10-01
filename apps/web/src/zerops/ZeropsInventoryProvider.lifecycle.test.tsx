@@ -262,6 +262,8 @@ const mountInventory = Effect.fn(function* (
   /** Every organization the runtime opened a receiver for, the mount's own first. */
   const receivers: Array<OrganizationRef> = [];
   const registrations = new Map<RegistrationRequest["subscriptionName"], RegistrationRequest>();
+  /** Every registration the runtime sent, answered or not. */
+  let registerCalls = 0;
   let delivered = yield* Deferred.make<void>();
   let nextId = 0;
   const actual = yield* makeZeropsDataRuntime({
@@ -285,6 +287,7 @@ const mountInventory = Effect.fn(function* (
         }),
       register: (_handle, request) =>
         Effect.gen(function* () {
+          registerCalls++;
           if (registrationGate !== null) yield* Deferred.await(registrationGate);
           registrations.set(request.subscriptionName, request);
           if (request.descriptor.kind === "entity-updates") return { responseObservations: [] };
@@ -397,6 +400,7 @@ const mountInventory = Effect.fn(function* (
     grants,
     /** Every organization re-read on a fresh receiver since the mount's own opened. */
     refreshed: () => receivers.slice(1),
+    registerCalls: () => registerCalls,
     organization,
     projectRef,
     inventory: () => inventory,
@@ -873,18 +877,24 @@ it.live(
         expect(loading.slice(-19, -1)).toEqual(Array.from({ length: 18 }, () => true));
         expect(harness.inventory()?.error).toBe("Zerops isn't answering. Trying again…");
         expect(harness.inventory()?.isLoading).toBe(true);
-        // Said once, at the menu's foot, naming what isn't answering, with Try now and no Sign out.
+        // Said once, at the menu's foot, naming what isn't answering — the one project whose
+        // subscription stalls, its siblings observing on the same socket — with Try now and no
+        // Sign out.
         expect(harness.container.textContent).toBe(
-          "Zerops isn't answering. Trying again…Organization's projects and servicesTry now",
+          "Zerops isn't answering. Trying again…kept in OrganizationTry now",
         );
         heard.length = 0;
-        const reread = harness.refreshed().length;
+        const reopened = harness.refreshed().length;
+        const sent = harness.registerCalls();
 
         const [tryNow] = buttonsLabelled(harness.container as never, "Try now");
         yield* Effect.promise(async () => act(async () => press(tryNow!)));
         yield* harness.advance(250);
         expect(heard).toEqual([{ topic: "inventory", organization: harness.organization }]);
-        expect(harness.refreshed().slice(reread)).toEqual([harness.organization]);
+        // The stalled subscriptions register again at once, past their backoff, on the socket
+        // that is open: none is replaced, and no grant round starts.
+        expect(harness.registerCalls()).toBeGreaterThan(sent);
+        expect(harness.refreshed().length).toBe(reopened);
         expect(harness.client.fetchUser).toHaveBeenCalledTimes(1);
         // Never a silent no-op: it says it is trying, and once that has run with the stall still
         // on, the line says so and offers it again.
