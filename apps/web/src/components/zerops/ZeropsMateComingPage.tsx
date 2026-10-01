@@ -62,6 +62,7 @@ import { useProjects, useThreadShells, useThreadStatus } from "~/state/entities"
 import { buildThreadRouteParams } from "~/threadRoutes";
 import { useAccountEnvironments, useConnectMate } from "~/zerops/accountEnvironments";
 import {
+  halfMadeFor,
   mateComing,
   mateComingPage,
   mateConnectKey,
@@ -491,9 +492,10 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
 
   // Up and not handed over yet — its conversation and its sign-in still being read — a new Mate
   // stays coming, its progress whole, until the words can turn into the conversation's own.
+  // A half-made Mate names Finish setup only where this viewer has it, and who can where not.
   const shown: MateComing | undefined =
     page?.kind === "coming"
-      ? page.coming
+      ? halfMadeFor(page.coming, finishSetup !== undefined)
       : page?.kind === "up" && cameUp
         ? UP_AND_OPENING
         : undefined;

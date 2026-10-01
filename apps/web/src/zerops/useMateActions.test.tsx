@@ -30,6 +30,8 @@ const mock = vi.hoisted(() => ({
   updateProjectTags: vi.fn(),
   roleCode: "OWNER",
   listing: { current: undefined as unknown },
+  /** The press's marker on each container, by service id, as the store states it. */
+  markers: new Map<string, boolean | "unknown" | "unread">(),
   dialog: { current: null as FaceDialogProps | null },
 }));
 
@@ -60,8 +62,9 @@ vi.mock("./zeropsDataContext", () => ({
   runZeropsCommand: (command: Promise<unknown>) => command,
   // The organization's token list, not read: no key here reads as unhardened.
   useKnown: () => ({ state: "unread" }),
-  // No container here carries the press's marker: no Finish setup for an interrupted press.
-  useZeropsAtomSelections: () => new Map(),
+  // The press's marker on each container, as the case states it: absent unless it says.
+  useZeropsAtomSelections: (selections: ReadonlyArray<readonly [string, unknown]>) =>
+    new Map(selections.map(([serviceId]) => [serviceId, mock.markers.get(serviceId) ?? false])),
 }));
 vi.mock("./useZeropsCandidates", () => ({
   useZeropsCandidates: () => ({ listing: mock.listing.current, refresh: () => {} }),
@@ -129,6 +132,7 @@ const mounted: ReactTestRenderer[] = [];
 beforeEach(() => {
   openAccountLifetime("user-ada");
   mock.roleCode = "OWNER";
+  mock.markers.clear();
   mock.dialog.current = null;
   mock.updateProjectTags.mockReset();
   seen.length = 0;
@@ -273,5 +277,68 @@ describe("useMateActions — Change face…", () => {
     });
     expect(mock.updateProjectTags).toHaveBeenCalledTimes(1);
     expect(actions().trouble).toBeNull();
+  });
+});
+
+// A Mate its press left open — marker present, no mate:closed-off, past the grace — is finished by
+// whoever may: an owner or an admin, or, for its close-off, the member who added it. Read off the
+// store's markers, so a reload keeps it (pass 28 review).
+describe("useMateActions — Finish setup on a Mate its press left open", () => {
+  const LONG_AGO = "2026-09-01T10:00:00Z";
+  const left = (made: { readonly by?: string; readonly container?: boolean } = {}) => {
+    const base = mate("Ivo", made.by === undefined ? [] : [`mate:standup:${made.by}`]);
+    const { service, ...rest } = base;
+    return {
+      ...rest,
+      group: "ready",
+      project: { ...base.project, created: LONG_AGO },
+      ...(made.container === false ? {} : { service }),
+    } as ZeropsCandidatePresentation;
+  };
+  const offered = (candidate: ZeropsCandidatePresentation) =>
+    verbs(candidate).some((verb) => verb.id === "finish-setup");
+  const listing = (candidate: ZeropsCandidatePresentation) => {
+    mock.listing.current = {
+      state: "known",
+      value: [candidate],
+      asOf: { ordinal: 1, atMs: 1_000 },
+      coverage: "complete",
+      freshness: { kind: "live" },
+    };
+  };
+
+  it.each([
+    { who: "an owner", role: "OWNER", by: "user-eva", container: true, want: true },
+    {
+      who: "the member who added it",
+      role: "BASIC_USER",
+      by: "user-ada",
+      container: true,
+      want: true,
+    },
+    { who: "another member", role: "BASIC_USER", by: "user-eva", container: true, want: false },
+    // Nothing for a close-off to finish: an owner or an admin makes its container.
+    {
+      who: "the member who added it, with no container",
+      role: "BASIC_USER",
+      by: "user-ada",
+      container: false,
+      want: false,
+    },
+  ])("$who: offered $want", ({ role, by, container, want }) => {
+    mock.roleCode = role;
+    const candidate = left({ by, container });
+    if (candidate.service !== undefined) mock.markers.set(candidate.service.id, true);
+    listing(candidate);
+    mount();
+    expect(offered(candidate)).toBe(want);
+  });
+
+  it("offers nothing where the marker reads absent: an older Mate, made before the press", () => {
+    mock.roleCode = "BASIC_USER";
+    const candidate = left({ by: "user-ada" });
+    listing(candidate);
+    mount();
+    expect(offered(candidate)).toBe(false);
   });
 });

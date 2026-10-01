@@ -286,6 +286,7 @@ describe("finishMateSetupVerb", () => {
     needsHarden: false,
     pastGrace: true,
     viewerIsAdder: false,
+    hasContainer: true,
   };
   it.each([
     {
@@ -345,9 +346,18 @@ describe("finishMateSetupVerb", () => {
       viewerRole: "OWNER",
       expected: "Finish setup",
     },
+    // `needsHarden` is the viewer's to fix — an org owner or the key's creator (`mateHardenableBy`).
     {
-      name: "nobody else, on a Mate whose key is still ADMIN",
+      name: "the member who created its key, on a Mate whose key is still ADMIN",
       input: { ...HALF_MADE, needsHarden: true, viewerIsAdder: true },
+      viewerRole: "BASIC_USER",
+      expected: "Finish setup",
+    },
+    // Closing off is all the adder may do, and a Mate with no container has nothing to close off:
+    // never reported finished (pass 28 review).
+    {
+      name: "nobody but an owner or admin, on a Mate whose press stopped before its container",
+      input: { ...HALF_MADE, pressStopped: true, viewerIsAdder: true, hasContainer: false },
       viewerRole: "BASIC_USER",
       expected: undefined,
     },

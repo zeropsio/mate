@@ -40,6 +40,7 @@ import {
   readZeropsGroupTags,
   finishMateSetupScope,
   finishMateSetupVerb,
+  mateHardenableBy,
   mateNeedsHarden,
   resolveMateRegistration,
   type ZeropsGroupTags,
@@ -219,20 +220,19 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
   const { organizationRef, projectRef, runtime } = useZeropsData();
   const { listing, refresh } = useZeropsCandidates();
   const candidates = useMemo(() => heldCandidates(listing).rows, [listing]);
-  // The organization's token list, as the platform holds it: a Mate whose key is still ADMIN on
-  // its own project needs its harden (`mateNeedsHarden`). Read where its viewer could finish it.
-  const viewerFinishes =
-    activeOrganization?.roleCode === "OWNER" || activeOrganization?.roleCode === "ADMIN";
+  // The organization's token list, as the platform holds it: a Mate whose keys are all still
+  // ADMIN on its own project needs its harden (`mateNeedsHarden`), which an org owner or the
+  // keys' creator may run (`mateHardenableBy`).
   const tokensRequest = useMemo<TokensCellRequest | null>(
     () =>
-      activeOrganization === null || !viewerFinishes
+      activeOrganization === null
         ? null
         : {
             kind: "tokens",
             account: runtime.scope,
             organization: organizationRef(activeOrganization.id),
           },
-    [activeOrganization, organizationRef, runtime.scope, viewerFinishes],
+    [activeOrganization, organizationRef, runtime.scope],
   );
   const tokenGrants = selectTokenGrants(
     useKnown(tokensRequest === null ? null : runtime.cells.known(tokensRequest)),
@@ -264,13 +264,9 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
 
   const giteaProjectId = useAccountGitea(activeOrganization?.id)?.projectId;
   const presses = useMatePresses();
-  // A press interrupted before its close-off, on a Mate made in any browser: read only for an
-  // owner or an admin, who could finish it.
-  const interrupted = useInterruptedPresses(
-    candidates,
-    { runtime, projectRef },
-    activeOrganization?.roleCode === "OWNER" || activeOrganization?.roleCode === "ADMIN",
-  );
+  // A press interrupted before its close-off, on a Mate made in any browser: the store's markers,
+  // at no cost of their own, for anyone who could finish it — its own adder too.
+  const interrupted = useInterruptedPresses(candidates, { runtime, projectRef });
   const groupTree = useMemo(
     () =>
       buildZeropsGroupTree(candidates, {
@@ -499,9 +495,13 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
           grouped && mateContainerMissing(candidate, press !== undefined, Date.now()),
         closedOffMissing: candidate.service !== undefined && interrupted.has(candidate.service.id),
         pressStopped: press?.state.kind === "failed",
-        needsHarden: mateNeedsHarden(listedTokens, candidate.project.id),
+        needsHarden: mateHardenableBy(listedTokens, candidate.project.id, {
+          userId: user?.id,
+          roleCode: activeOrganization?.roleCode,
+        }),
         pastGrace: mateProjectPastGrace(candidate.project, Date.now()),
-        viewerIsAdder: mateIsViewers(candidate.project, user?.id),
+        viewerIsAdder: mateAddedBy(candidate.project.tagList, user?.id),
+        hasContainer: candidate.service !== undefined,
         viewerRole: activeOrganization?.roleCode,
       });
     },
@@ -527,8 +527,16 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
           ? undefined
           : groupTree.groups.find((entry) => entry.group.groupId === groupId);
       const pressStopped = readMatePress(projectId)?.state.kind === "failed";
-      // An owner or an admin finishes all of it; the Mate's own adder, its close-off.
+      // An owner or an admin finishes all of it; the Mate's own adder, its close-off. The harden
+      // runs where it may: never on keys this viewer may not write.
       const whole = finishMateSetupScope(activeOrganization.roleCode) === "whole";
+      const hardenable = mateHardenableBy(listedTokens, projectId, {
+        userId: user?.id,
+        roleCode: activeOrganization.roleCode,
+      });
+      const harden = hardenable || (whole && !mateNeedsHarden(listedTokens, projectId));
+      // A close-off alone has nothing to finish on a Mate with no container.
+      if (!whole && !hardenable && candidate.service === undefined) return;
       // Its view draws the steps as they run, and their end (`finishSetupView`).
       beginPress({
         projectId,
@@ -559,7 +567,7 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
             ),
             viewer: pressViewer(user, activeOrganization),
             // A Mate made before the press: its key lowered from ADMIN.
-            harden: whole,
+            harden,
             // A Mate in no group — claimed from the pool — is hardened and closed off, no more.
             registration:
               !whole || giteaProjectId === undefined || groupId === undefined
@@ -1025,4 +1033,16 @@ export function mateContainerMissing(
 ): boolean {
   if (candidate.service !== undefined || pressedHere) return false;
   return mateProjectPastGrace(candidate.project, nowMs);
+}
+
+/** Whether the viewer added this Mate: its stand-up asked for by them, or its seat theirs. */
+export function mateAddedBy(
+  tagList: ReadonlyArray<string> | undefined,
+  viewer: string | undefined,
+): boolean {
+  if (viewer === undefined || viewer.length === 0) return false;
+  return (
+    readZeropsGroupTags(tagList).standUp?.by === viewer ||
+    mateIsViewers({ tagList: tagList ?? [] }, viewer)
+  );
 }

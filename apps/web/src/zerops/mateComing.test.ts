@@ -8,6 +8,8 @@ import {
   mateOpeningPhrase,
   type MateComingInput,
   HALF_MADE_LINE,
+  HALF_MADE_OWNER_LINE,
+  halfMadeFor,
 } from "./mateComing";
 
 const NOW = Date.parse("2026-10-01T20:00:00.000Z");
@@ -405,5 +407,22 @@ describe("mateConnectKey — what a Mate's own view connects", () => {
     },
   ])("$case", ({ input, expected }) => {
     expect(mateConnectKey(input)).toBe(expected);
+  });
+});
+
+// The view never says Finish setup completes it without a button the viewer can use (pass 28
+// review): a viewer who may not finish it reads who can.
+describe("halfMadeFor — a half-made Mate as its viewer may act on it", () => {
+  const HALF = { kind: "failed", line: HALF_MADE_LINE, verb: "finish-setup" } as const;
+  it.each([
+    { case: "a viewer who may finish it", canFinish: true, want: HALF_MADE_LINE },
+    { case: "a viewer who may not", canFinish: false, want: HALF_MADE_OWNER_LINE },
+  ])("$case", ({ canFinish, want }) => {
+    expect(halfMadeFor(HALF, canFinish)).toMatchObject({ line: want });
+  });
+
+  it("leaves any other state alone", () => {
+    const coming = { kind: "coming", line: "Coming up" } as const;
+    expect(halfMadeFor(coming, false)).toBe(coming);
   });
 });

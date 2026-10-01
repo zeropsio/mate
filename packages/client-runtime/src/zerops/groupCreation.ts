@@ -316,12 +316,15 @@ export function finishMateSetupVerb(input: {
    */
   readonly pastGrace: boolean;
   /**
-   * The platform's token list still shows a key of its at `ADMIN` on its own project
-   * (`mateNeedsHarden`): a pool-claimed or older Mate whose harden never ran.
+   * The platform's token list shows every key of its still `ADMIN` on its own project, and this
+   * viewer may write them — an org owner, or their creator (`mateHardenableBy`): a pool-claimed
+   * or older Mate whose harden never ran.
    */
   readonly needsHarden: boolean;
   /** The viewer added this Mate: closing it off needs no registry rights. */
   readonly viewerIsAdder: boolean;
+  /** Its project has its container: without one there is nothing for a close-off to finish. */
+  readonly hasContainer: boolean;
   /** The viewer's org role, as the platform spells it. */
   readonly viewerRole?: string | undefined;
 }): string | undefined {
@@ -335,9 +338,15 @@ export function finishMateSetupVerb(input: {
           input.needsHarden));
     return halfMade ? FINISH_MATE_SETUP_VERB : undefined;
   }
-  // The Mate's own adder may close it off — nothing more: its registration and its key are an
-  // owner's or an admin's to write.
-  if (input.viewerIsAdder && (input.pressStopped || (input.pastGrace && input.closedOffMissing))) {
+  // The key's creator may harden it.
+  if (input.pastGrace && input.needsHarden) return FINISH_MATE_SETUP_VERB;
+  // The Mate's own adder may close it off — nothing more: its registration and a container to
+  // make are an owner's or an admin's. With no container there is nothing to close off.
+  if (
+    input.viewerIsAdder &&
+    input.hasContainer &&
+    (input.pressStopped || (input.pastGrace && input.closedOffMissing))
+  ) {
     return FINISH_MATE_SETUP_VERB;
   }
   return undefined;

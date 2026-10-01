@@ -104,6 +104,19 @@ export const MATE_CONTAINER_GRACE_MS = 120_000;
 /** A Mate whose press stopped before its container: half-made, and *Finish setup* completes it. */
 export const HALF_MADE_LINE = "Its setup stopped before its container. Finish setup completes it.";
 
+/** The same Mate, for a viewer who may not finish it: who can. */
+export const HALF_MADE_OWNER_LINE =
+  "Its setup stopped before its container; an owner or admin can finish it.";
+
+/**
+ * A half-made Mate as its viewer may act on it: the line names Finish setup only where the
+ * viewer has it, and says who can where they do not.
+ */
+export function halfMadeFor(coming: MateComing, canFinish: boolean): MateComing {
+  if (coming.kind !== "failed" || coming.verb !== "finish-setup" || canFinish) return coming;
+  return { ...coming, line: HALF_MADE_OWNER_LINE };
+}
+
 /** A reason, as a sentence: capitalised, and ended; empty where it says nothing. */
 export function asSentence(reason: string): string {
   const said = reason.trim();

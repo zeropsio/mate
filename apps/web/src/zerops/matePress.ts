@@ -893,38 +893,34 @@ export function interruptedPresses(
 
 /**
  * Which of these Mates' presses were interrupted before their close-off, as the account's store
- * states their containers' variables — the organization's own stream, no read of its own. Only
- * where `enabled` (an owner or an admin, who could finish one), and only for a Mate whose project
- * lacks the mark.
+ * states their containers' variables — the organization's own stream, no read of its own — for
+ * every Mate whose project lacks the mark.
  */
 export function useInterruptedPresses(
   candidates: ReadonlyArray<
     MarkedCandidate & { readonly project: { readonly id: string; readonly clientId?: string } }
   >,
   data: Pick<ZeropsDataContextValue, "runtime" | "projectRef">,
-  enabled: boolean,
 ): ReadonlySet<string> {
   const selections = useMemo(
     () =>
-      enabled
-        ? candidates.flatMap((candidate) =>
-            candidate.service === undefined ||
-            candidate.project.clientId === undefined ||
-            isZeropsMateClosedOff(candidate.project.tagList)
-              ? []
-              : [
-                  [
-                    candidate.service.id,
-                    data.runtime.reads.setupMarker({
-                      kind: "service",
-                      project: data.projectRef(candidate.project.clientId, candidate.project.id),
-                      serviceId: ZeropsServiceId.make(candidate.service.id),
-                    }),
-                  ] as const,
-                ],
-          )
-        : [],
-    [candidates, data, enabled],
+      candidates.flatMap((candidate) =>
+        candidate.service === undefined ||
+        candidate.project.clientId === undefined ||
+        isZeropsMateClosedOff(candidate.project.tagList)
+          ? []
+          : [
+              [
+                candidate.service.id,
+                data.runtime.reads.setupMarker({
+                  kind: "service",
+                  project: data.projectRef(candidate.project.clientId, candidate.project.id),
+                  serviceId: ZeropsServiceId.make(candidate.service.id),
+                }),
+              ] as const,
+            ],
+      ),
+    [candidates, data],
   );
   const markers = useZeropsAtomSelections(selections);
   return useMemo(() => interruptedPresses(candidates, markers), [candidates, markers]);
