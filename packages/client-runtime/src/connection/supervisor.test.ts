@@ -649,7 +649,7 @@ describe("EnvironmentSupervisor", () => {
     }).pipe(Effect.provide(TestClock.layer())),
   );
 
-  it.effect("keeps a live session through an offline spell and probes it when online", () =>
+  it.effect("shows offline over a kept session, and connected the moment its probe answers", () =>
     Effect.gen(function* () {
       const probes = yield* Ref.make(0);
       const probed = yield* Deferred.make<void>();
@@ -668,21 +668,21 @@ describe("EnvironmentSupervisor", () => {
         (state) => state.phase === "connected" && state.generation === 1,
       );
       yield* harness.setNetworkStatus("offline");
-      yield* Effect.yieldNow;
+      // The face never claims a live link during an outage, though the socket stays.
+      yield* awaitState(supervisor.state, (state) => state.phase === "offline");
 
       expect(yield* Ref.get(probes)).toBe(0);
       expect(yield* Ref.get(harness.releaseCount)).toBe(0);
       expect(Option.isSome(yield* SubscriptionRef.get(supervisor.session))).toBe(true);
-      expect((yield* SubscriptionRef.get(supervisor.state)).phase).toBe("connected");
 
       yield* harness.setNetworkStatus("online");
       yield* Deferred.await(probed);
+      yield* awaitState(supervisor.state, (state) => state.phase === "connected");
 
       expect(yield* Ref.get(probes)).toBe(1);
       expect(yield* Ref.get(harness.sessionCount)).toBe(1);
       expect(yield* Ref.get(harness.releaseCount)).toBe(0);
-      const state = yield* SubscriptionRef.get(supervisor.state);
-      expect([state.phase, state.generation]).toEqual(["connected", 1]);
+      expect((yield* SubscriptionRef.get(supervisor.state)).generation).toBe(1);
     }),
   );
 

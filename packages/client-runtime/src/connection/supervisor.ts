@@ -580,10 +580,13 @@ export const make = Effect.fn("EnvironmentSupervisor.make")(function* (
   const monitorConnectedLease = Effect.fnUntraced(function* (
     lease: ConnectionDriver.EnvironmentConnectionLease,
   ) {
-    let wentOffline = false;
+    /** The live state an offline spell covered: the face shows offline, never a live link. */
+    let covered: SupervisorConnectionState | null = null;
     for (;;) {
       const next = yield* Queue.take(signals);
+      /** A probe's verdict; null when none ran or the socket answered it. */
       let ended: boolean | null = null;
+      let probed = false;
       switch (next._tag) {
         case "DisconnectRequested":
         case "RetryRequested":
@@ -593,9 +596,17 @@ export const make = Effect.fn("EnvironmentSupervisor.make")(function* (
           break;
         case "NetworkChanged":
           if (next.network === "offline") {
-            wentOffline = true;
-          } else if (wentOffline) {
-            wentOffline = false;
+            const current = yield* SubscriptionRef.get(state);
+            covered ??= current;
+            yield* setState({
+              ...current,
+              network: "offline",
+              phase: "offline",
+              stage: null,
+              retryAt: null,
+            });
+          } else if (covered !== null) {
+            probed = true;
             ended = yield* probeConnectedLease(lease, NETWORK_RETURN_PROBE_TIMEOUT);
           }
           break;
@@ -611,6 +622,7 @@ export const make = Effect.fn("EnvironmentSupervisor.make")(function* (
             return true;
           }
           if (next.reason === "application-active" || next.reason === "application-active-probe") {
+            probed = true;
             ended = yield* probeConnectedLease(
               lease,
               next.reason === "application-active-probe"
@@ -623,6 +635,12 @@ export const make = Effect.fn("EnvironmentSupervisor.make")(function* (
           break;
       }
       if (ended !== null) return ended;
+      // The socket answered a probe with the network back: the face is live again at once.
+      const network = (yield* Ref.get(intent)).network;
+      if (probed && covered !== null && network !== "offline") {
+        yield* setState({ ...covered, network });
+        covered = null;
+      }
     }
   });
 
