@@ -7166,3 +7166,41 @@ and the parts' harnesses and fake-timer probes where a state could not be made l
   which only the dev service carries, as a secret; the Mate's shell carries the bot's token as
   `GITEA_TOKEN`, and `GIT_TOKEN="$GITEA_TOKEN" git fetch origin` went through. Every Mate with a
   wired Gitea pair has it, latent until the model runs git on the mount.
+
+## After 0.11.74, as measured — 2026-10-01
+
+Live on mate.zerops.io (0.11.74–0.11.75, zcp v9.186.1) as the owner, a colleague and the test owner
+added and used Mates in the test org; read through the API, the broker's log, an audit browser and
+read-only Gitea calls.
+
+- **A project made in this tab was read as someone else's** — once the org's live list named the
+  person's own new project, it was handed to the grant as listed, left the runtime's grant and its
+  inventory until its own read answered, which a project still being created never does: the
+  arrival sat on "Building the container" (a colleague's new Mate, about 17 min until a reload).
+- **A Mate's setup ran in the creating browser** — the registry entry, broker grant, close-off,
+  runtimes and health all ran from that browser's storage; a registry step that answered "not yet"
+  for about 2 min was skipped for good, and any connect ended the setup at whatever step it stood.
+  The colleague's Mate never got its registry entry, so the broker never made its bot; Vera (09:14:51Z,
+  registered at once) never got its runtimes from the setup — its stand-up made them at 09:29.
+- **The creating browser held "coming up"** — Vera's page in the browser that made it stayed on
+  "Almost there" for over an hour, through a reload: a leftover setup record was read before the
+  registered environment, auto-connect stopped at 12 of the browser's 21 Mates, and the page's
+  one connect was never retried.
+- **A second browser's first ask was refused** — Vera signed in from another browser of the same
+  person: the signer tag landed at 09:22:43Z, after the server's 15 s wait; a reload sent it.
+- **A queued send that failed was held without a word** — on Milo the turn ended and the queued
+  follow-up stayed; a held message never went again, blocked those behind it, and looked like a
+  waiting one.
+- **A change's review never read the change** — it waited for its group's whole flow: after a reload
+  groups are read two at a time, that Mate's group third of eight; one group's read took 74 requests in 97 s.
+  `GET /repos/<org>/apidev/pulls/1` as the person answered 200 at once.
+- **A cold load made 672 Zerops calls** — local production build against the live API, 28 projects,
+  244 services, first 60 s: about half CORS preflights (the API sends no `Access-Control-Max-Age`),
+  `GET /service-stack/{id}` 109 + 109, `GET /project/{id}` 61 + 61, per-project service-stack 36 + 36
+  and process 28 + 28, and 22 housekeeping writes (a token sweep of 1 POST + 21 DELETE, a group-reach
+  PUT); deployed mate.zerops.io stalled at 216.
+- **One stalled subscription replaced the org's socket** — the test org's socket carries about 60
+  subscriptions (the list, 28 inventories, 28 activity feeds, metrics); one past its 60 s
+  establishment deadline replaced the whole socket and all re-registered four at a time. Forced
+  drops (12–15 s offline, seven times): three stalled about 55 s, one through two replacements, three
+  recovered in seconds; an idle 10:15–10:26Z session saw none.
