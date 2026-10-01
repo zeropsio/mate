@@ -8231,6 +8231,7 @@ export default function ChatView(props: ChatViewProps) {
                   usagePause: activeThreadShell?.usagePause ?? null,
                   onUsageAutoResumeChange,
                   onSteerQueuedMessage,
+                  queueBlockedByAnswer: queueBlockedByPendingRequest,
                   steerQueuedMessageShortcutLabel: shortcutLabelForCommand(
                     keybindings,
                     "thread.steerQueuedMessage",

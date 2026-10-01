@@ -594,6 +594,8 @@ type MessagesTimelineRowBody =
       queuedMessage: QueuedComposerMessage;
       /** Oldest queued message, the one the next boundary sends. */
       isNext: boolean;
+      /** A message ahead of it is held: it waits for that one. */
+      heldAhead: boolean;
     };
 
 /**
@@ -2157,6 +2159,9 @@ export function deriveMessagesTimelineRows(input: {
       createdAt: queuedMessage.createdAt,
       queuedMessage,
       isNext: index === 0,
+      heldAhead: (input.queuedMessages ?? [])
+        .slice(0, index)
+        .some((ahead) => ahead.holdUntilUserAction === true),
     });
   });
   const cards = new Map<number, CardSlice>();
