@@ -1786,9 +1786,6 @@ describe("the post-grant stage's Mate environments", () => {
       mate: CLOSED_OFF_MATE,
       wanted: 0,
     },
-    // Not marked closed off, and its organization's variables not read yet: whether a press left
-    // it open is not known, and the gate fails closed (pass 28 review).
-    { name: "none whose press may have left it open", open: "org-1", mate: A_MATE, wanted: 0 },
   ])("auto-connect wants $name (D13)", (row) =>
     Effect.scoped(
       Effect.gen(function* () {
@@ -1890,31 +1887,55 @@ describe("the post-grant stage's Mate environments", () => {
   const autoConnected = (rig: ReturnType<typeof environmentRig>) =>
     rig.exchanges.filter(({ input: { reason } }) => reason === "auto-connect").length;
 
-  // The gate on a Mate with no mate:closed-off, at the wiring: what the store and the cells say
-  // reaches auto-connect (pass 28 review).
+  /** A Mate with no mate:closed-off whose container was made at `created`. */
+  const openMate = (created: string) => ({
+    ...OPEN_MATE,
+    service: { ...OPEN_MATE.service, created },
+  });
+  /** Made a minute before the clock starts: a press may still be setting it up. */
+  const YOUNG = openMate("2026-09-23T09:59:00Z");
+  /** Made three hours before: an older Mate, never held for its marker. */
+  const OLDER = openMate("2026-09-23T07:00:00Z");
+
+  // The gate on a Mate with no mate:closed-off, at the wiring: an older Mate connects on a fresh
+  // load whatever its organization's variables stream says; a young one is held until its marker
+  // is known absent (pass 28 review: the owner's whole complaint was stalls).
   it.effect.each([
     {
-      name: "an older Mate whose marker reads absent connects",
+      name: "an older Mate whose marker reads absent",
+      mate: OLDER,
       stated: { variables: [onMate("ZCP_MATE_ENABLED")] },
       wanted: 1,
     },
+    { name: "an older Mate whose stream is unread", mate: OLDER, stated: {}, wanted: 1 },
     {
-      name: "a Mate its press left open is held",
+      name: "an older Mate whose stream fails on every try",
+      mate: OLDER,
+      stated: { variables: "fails" },
+      wanted: 1,
+    },
+    {
+      name: "an older Mate its press left open, marker present",
+      mate: OLDER,
       stated: { variables: [onMate("MATE_SETUP_RUNTIMES")] },
       wanted: 0,
     },
+    { name: "a young Mate whose stream is unread", mate: YOUNG, stated: {}, wanted: 0 },
     {
-      name: "a stream that failed: the service's own variables without the marker connect it",
+      name: "a young Mate whose stream failed, its own variables without the marker",
+      mate: YOUNG,
       stated: { variables: "fails", env: ["ZCP_MATE_ENABLED"] },
       wanted: 1,
     },
     {
-      name: "a stream that failed: the service's own variables with the marker hold it",
+      name: "a young Mate whose stream failed, its own variables with the marker",
+      mate: YOUNG,
       stated: { variables: "fails", env: ["MATE_SETUP_RUNTIMES"] },
       wanted: 0,
     },
     {
-      name: "a stream that failed and a 403 on its own variables: an older Mate connects",
+      name: "a young Mate whose stream failed, and a 403 on its own variables",
+      mate: YOUNG,
       stated: { variables: "fails", env: "forbidden" },
       wanted: 1,
     },
@@ -1923,8 +1944,8 @@ describe("the post-grant stage's Mate environments", () => {
       Effect.gen(function* () {
         const { clock, rig, environments } = yield* granted(
           [],
-          [OPEN_MATE],
-          statedPlatform([OPEN_MATE], row.stated),
+          [row.mate],
+          statedPlatform([row.mate], row.stated),
         );
         yield* answerProbe(rig, MATE_ORIGIN, answering(ENV_A, A_MATE.projectId));
         environments.setActiveOrganization("org-1");
@@ -1938,13 +1959,8 @@ describe("the post-grant stage's Mate environments", () => {
     ),
   );
 
-  // Every key of an older Mate still ADMIN on its project: held for who may harden it — an org
-  // owner, or the keys' creator — and for nobody else, who could do nothing about it.
-  it.effect.each([
-    { name: "an org owner", viewer: { userId: "u-zoe", role: "OWNER" }, wanted: 0 },
-    { name: "the keys' creator", viewer: { userId: "u-ada", role: "BASIC_USER" }, wanted: 0 },
-    { name: "another member", viewer: { userId: "u-eva", role: "BASIC_USER" }, wanted: 1 },
-  ])("the harden hold, for $name", (row) =>
+  // Its ⋯ menu offers its harden; auto-connect does not wait for it (pass 28 review).
+  it.effect("an older Mate whose keys are all still ADMIN connects", () =>
     Effect.scoped(
       Effect.gen(function* () {
         const { rig, environments } = yield* granted(
@@ -1960,14 +1976,12 @@ describe("the post-grant stage's Mate environments", () => {
               },
             ],
           }),
-          [CLOSED_OFF_MATE],
-          { viewer: () => ({ userId: row.viewer.userId, roleIn: () => row.viewer.role }) },
         );
         yield* answerProbe(rig, MATE_ORIGIN, answering(ENV_A, A_MATE.projectId));
         environments.setActiveOrganization("org-1");
         yield* settle;
         yield* settle;
-        expect(autoConnected(rig)).toBe(row.wanted);
+        expect(autoConnected(rig)).toBe(1);
       }),
     ),
   );

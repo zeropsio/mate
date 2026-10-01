@@ -26,6 +26,8 @@ export interface ZeropsCandidateService {
   readonly id: string;
   readonly name: string;
   readonly status: string;
+  /** When the platform made it: a young one may still be in its press's hands. */
+  readonly created?: string;
 }
 
 export interface ZeropsCandidate {
@@ -222,6 +224,7 @@ export function deriveZeropsCandidates(
       id: service.id,
       name: service.name,
       status: service.status,
+      ...(service.created === undefined ? {} : { created: service.created }),
     };
     if (service.status !== "ACTIVE") {
       if (SERVICE_PROVISIONING_STATUSES.has(service.status)) {

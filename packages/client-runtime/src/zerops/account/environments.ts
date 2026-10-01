@@ -33,9 +33,9 @@ import {
   directMarkerOf,
   markerRetryDelay,
   selectAutoConnectTargets,
+  zcpYoung,
   type DirectMarkerRead,
 } from "../autoConnect.ts";
-import { selectTokenGrants } from "../data/cellSelectors.ts";
 import { normalizeOrigin } from "../candidates.ts";
 import { identityMint } from "../data/access/capabilities.ts";
 import type { Instant } from "../data/access/grant.ts";
@@ -101,7 +101,6 @@ import {
 import type { ExchangeAnswer } from "../identityExchange.ts";
 import type { InvalidationBus } from "../knowledge/invalidation.ts";
 import type { PlatformSignal } from "../knowledge/signals.ts";
-import { mateHardenableBy, type ZeropsIntegrationToken } from "../groupReach.ts";
 import { isZeropsMateClosedOff } from "../groups.ts";
 import { heldCandidates, type CandidateRow } from "../projections/candidates.ts";
 
@@ -169,14 +168,6 @@ export interface AccountEnvironmentPorts {
     readonly read: () => ReadonlySet<string>;
     readonly subscribe: (listener: () => void) => () => void;
   };
-  /**
-   * Who is looking, and their role in an organization: an older Mate needing its harden is held
-   * only for who may run it. Absent: no such hold.
-   */
-  readonly viewer?: () => {
-    readonly userId: string;
-    readonly roleIn: (organizationId: string) => string | undefined;
-  } | null;
 }
 
 // ── What surfaces read and ask ───────────────────────────────────────────────────────────────
@@ -591,13 +582,21 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
       });
   };
   const followMarkers = (rows: ReadonlyArray<CandidateRow>): ReadonlySet<string> => {
-    const open = new Map<string, { readonly projectId: string; readonly ref: ServiceRef }>();
+    const open = new Map<
+      string,
+      {
+        readonly projectId: string;
+        readonly created: string | undefined;
+        readonly ref: ServiceRef;
+      }
+    >();
     for (const row of rows) {
       if (row.service === undefined || isZeropsMateClosedOff(row.project.tagList)) continue;
       const project = projectRefOf(row.project.id);
       if (project === undefined) continue;
       open.set(row.service.id, {
         projectId: row.project.id,
+        created: row.service.created,
         ref: { kind: "service", project, serviceId: ZeropsServiceId.make(row.service.id) },
       });
     }
@@ -607,7 +606,7 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
       markers.delete(serviceId);
     }
     const held = new Set<string>();
-    for (const [serviceId, { projectId, ref }] of open) {
+    for (const [serviceId, { projectId, created, ref }] of open) {
       let followed = markers.get(serviceId);
       if (followed === undefined) {
         const entry: FollowedMarker = {
@@ -636,82 +635,24 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
         ready = true;
         followed = entry;
       }
-      const gate = closeOffGate(followed.marker, followed.direct);
+      const gate = closeOffGate(
+        followed.marker,
+        followed.direct,
+        zcpYoung(created, ports.clock.now().wall),
+      );
       if (gate === "read-env") readMarkerDirectly(followed, ref);
       if (gate !== "connect") held.add(projectId);
     }
     return held;
   };
 
-  const integrationTokensOf = (
-    grants: ReadonlyArray<{
-      readonly tokenId: string;
-      readonly name: string;
-      readonly grants: ZeropsIntegrationToken["projects"];
-      readonly createdByUser?: string | undefined;
-    }>,
-  ): ReadonlyArray<ZeropsIntegrationToken> =>
-    grants.map((token) => ({
-      id: token.tokenId,
-      name: token.name,
-      projects: token.grants,
-      ...(token.createdByUser === undefined ? {} : { createdByUser: token.createdByUser }),
-    }));
-
   /**
-   * The active organization's Mates whose key the platform still lists at `ADMIN` on their own
-   * project (`mateNeedsHarden`), read off the organization's token list: none is connected until
-   * it is hardened. A list not read, or that failed, holds none back.
-   */
-  let listedTokens: ReadonlyArray<ZeropsIntegrationToken> = [];
-  let followedTokens: { readonly organizationId: string; readonly stop: () => void } | null = null;
-  const followTokens = () => {
-    if (followedTokens?.organizationId === activeOrganization) return;
-    followedTokens?.stop();
-    followedTokens = null;
-    listedTokens = [];
-    if (activeOrganization === null) return;
-    const organizationId = activeOrganization;
-    let ready = false;
-    const stop = atomRegistry.subscribe(
-      data.cells.known({
-        kind: "tokens",
-        account: data.cells.scope,
-        organization: organizationRef(organizationId),
-      }),
-      (shown) => {
-        const read = selectTokenGrants(shown);
-        listedTokens = read.status === "known" ? integrationTokensOf(read.grants) : [];
-        if (ready) updateAutoConnect();
-      },
-      { immediate: true },
-    );
-    ready = true;
-    followedTokens = { organizationId, stop };
-  };
-
-  /**
-   * The Mates held back from auto-connect: a press left open, a key not hardened, a press or a
-   * harden this browser is running.
+   * The Mates held back from auto-connect: a press left open, and a press or a harden this browser
+   * is running. An older Mate whose keys are still ADMIN connects: its ⋯ menu offers its harden.
    */
   const heldBack = (candidates: ReadonlyArray<CandidateRow>): ReadonlySet<string> => {
-    followTokens();
     const pressing = ports.pressing?.read() ?? new Set<string>();
-    // An older Mate is held for its harden only in the browser of who can run it — an org owner,
-    // or its keys' creator: anybody else could do nothing about it.
-    const viewer = ports.viewer?.() ?? null;
-    const unhardened =
-      viewer === null
-        ? []
-        : candidates.flatMap((candidate) =>
-            mateHardenableBy(listedTokens, candidate.project.id, {
-              userId: viewer.userId,
-              roleCode: viewer.roleIn(activeOrganization ?? ""),
-            })
-              ? [candidate.project.id]
-              : [],
-          );
-    return new Set([...followMarkers(candidates), ...unhardened, ...pressing]);
+    return new Set([...followMarkers(candidates), ...pressing]);
   };
 
   /** The active organization's ready Mates, capped (D13), none a stopped press left open. */
@@ -1030,8 +971,6 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
         activity.clear();
         for (const followed of markers.values()) followed.stop();
         markers.clear();
-        followedTokens?.stop();
-        followedTokens = null;
         for (const release of checks.values()) release();
         checks.clear();
         driver.dispose();

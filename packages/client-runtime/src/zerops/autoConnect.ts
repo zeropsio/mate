@@ -101,19 +101,30 @@ export type DirectMarkerRead = "reading" | boolean | "failed";
 
 /**
  * Whether a listed Mate whose project has no `mate:closed-off` may be connected, from the press's
- * marker (`MATE_SETUP_RUNTIMES`) as the organization's streamed variables say it: fails closed.
- * Present, or not read yet — hold. Unknown, the stream having failed — read the service's own
- * variables once (`read-env`), and hold until they answer absent. Only a marker read absent — an
- * older Mate's, made before the press — connects without the mark.
+ * marker (`MATE_SETUP_RUNTIMES`) as the organization's streamed variables say it. Present — hold.
+ * Absent — connect. Not known: a young container (`zcpYoung`) a press may still be setting up is
+ * held, an unknown one read from the service's own variables once (`read-env`); an older Mate is
+ * never held for its marker, whatever the stream says — a slow or stalled stream must not stall it.
  */
 export function closeOffGate(
   marker: boolean | "unknown" | "unread",
   direct: DirectMarkerRead | undefined,
+  young: boolean,
 ): "hold" | "read-env" | "connect" {
-  if (marker === false) return "connect";
-  if (marker !== "unknown") return "hold";
+  if (marker === true) return "hold";
+  if (marker === false || !young) return "connect";
+  if (marker === "unread") return "hold";
   if (direct === undefined) return "read-env";
   return direct === false ? "connect" : "hold";
+}
+
+/** How long after its container is made a Mate may still be in its press's hands. */
+export const ZCP_YOUNG_MS = 2 * 60 * 60_000;
+
+/** A container made within {@link ZCP_YOUNG_MS}; one of no known age is not young. */
+export function zcpYoung(created: string | undefined, nowMs: number): boolean {
+  const at = created === undefined ? Number.NaN : Date.parse(created);
+  return !Number.isNaN(at) && nowMs - at < ZCP_YOUNG_MS;
 }
 
 /**

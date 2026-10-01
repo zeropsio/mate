@@ -2,6 +2,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   closeOffGate,
+  zcpYoung,
   directMarkerOf,
   MARKER_RETRY_MS,
   markerRetryDelay,
@@ -175,16 +176,37 @@ describe("selectAutoConnectTargets: auto-connect's WANT (DESIGN §4.4)", () => {
 // older Mate's — lets it connect without its project's mark (pass 28 review).
 describe("closeOffGate — whether a Mate not marked closed off may be connected", () => {
   it.each([
-    { marker: true, direct: undefined, want: "hold" },
-    { marker: "unread", direct: undefined, want: "hold" },
-    { marker: "unknown", direct: undefined, want: "read-env" },
-    { marker: "unknown", direct: "reading", want: "hold" },
-    { marker: "unknown", direct: true, want: "hold" },
-    { marker: "unknown", direct: "failed", want: "hold" },
-    { marker: "unknown", direct: false, want: "connect" },
-    { marker: false, direct: undefined, want: "connect" },
-  ] as const)("$marker, read directly $direct: $want", ({ marker, direct, want }) => {
-    expect(closeOffGate(marker, direct)).toBe(want);
+    { marker: true, direct: undefined, young: false, want: "hold" },
+    { marker: true, direct: undefined, young: true, want: "hold" },
+    { marker: false, direct: undefined, young: true, want: "connect" },
+    // A young container's marker not known yet holds it; it fails closed.
+    { marker: "unread", direct: undefined, young: true, want: "hold" },
+    { marker: "unknown", direct: undefined, young: true, want: "read-env" },
+    { marker: "unknown", direct: "reading", young: true, want: "hold" },
+    { marker: "unknown", direct: true, young: true, want: "hold" },
+    { marker: "unknown", direct: "failed", young: true, want: "hold" },
+    { marker: "unknown", direct: false, young: true, want: "connect" },
+    // An older Mate is never held for its marker, whatever its stream says (pass 28 review).
+    { marker: "unread", direct: undefined, young: false, want: "connect" },
+    { marker: "unknown", direct: undefined, young: false, want: "connect" },
+    { marker: "unknown", direct: "failed", young: false, want: "connect" },
+  ] as const)(
+    "$marker, read directly $direct, young $young: $want",
+    ({ marker, direct, young, want }) => {
+      expect(closeOffGate(marker, direct, young)).toBe(want);
+    },
+  );
+});
+
+describe("zcpYoung — a container a press may still be setting up", () => {
+  const NOW = Date.parse("2026-09-23T10:00:00Z");
+  it.each([
+    { created: "2026-09-23T09:59:00Z", want: true },
+    { created: "2026-09-23T08:01:00Z", want: true },
+    { created: "2026-09-23T07:59:00Z", want: false },
+    { created: undefined, want: false },
+  ])("made $created: $want", ({ created, want }) => {
+    expect(zcpYoung(created, NOW)).toBe(want);
   });
 });
 
