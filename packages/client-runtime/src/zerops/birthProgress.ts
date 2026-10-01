@@ -10,21 +10,12 @@
  * reads ACTIVE at +25s; the zcp service goes NEW → READY_TO_DEPLOY (+25s) →
  * CREATING (+53s) → ACTIVE with an origin (+97s); `stack.build` RUNNING
  * (+93s) → FINISHED (+95s); `stack.enableSubdomainAccess` FINISHED (+100s);
- * hardening's `stack.updateProjectEnvs` RUNNING (+100s) → FINISHED (+103s);
  * Mate listening (+109s), first connect (+160s). `stack.create`,
  * `stack.build` and `stack.enableSubdomainAccess` all begin at the
  * container's own T0, so `public-access`'s own active condition is gated on
- * `container` being done — not stated as a separate clause in the source
- * rules, but required to keep true the invariant that at most one step is
- * ever active. `hardening` is gated the same way: `awaiting-settled` begins
- * the moment the container merely exists (measured: the build still queued),
- * so only the `hardening` phase itself, or `awaiting-settled`/no phase once
- * public access is done, makes it active. No platform process is
- * hardening's signature: the creation itself writes the project's variables
- * (a `stack.updateProjectEnvs` at +24 s, measured, before the container
- * exists), and the Git broker's three `stack.updateUserData` land ~90 s
- * after hardening (+187…+202s). Hardening is read off the provisioning
- * phase alone.
+ * `container` being done — required to keep true the invariant that at most
+ * one step is ever active. The project is closed off in the press, before any
+ * of these begins, so no step waits on it.
  *
  * A project's build helper service (named `build<serviceName>...`) is not
  * the Mate's own container; a caller resolving `BirthFacts.container` from a
@@ -34,14 +25,6 @@
  * `serviceIds` (measured: `stack.build` carries both) is harmless — matching
  * "targets the container" only ever requires the container's id to be one of
  * the ids listed, extra ids or not.
- *
- * `hardening`'s own evidence (`provisioningPhase`) is absent whenever this tab
- * does not drive the project's birth — another tab holds its lock, or its
- * driver has not read the project yet. Without a fallback, that
- * leaves both `hardening` and `mate` sitting on `waiting` once `public-access`
- * is done and before health answers: no step reads as active at all. So with
- * `provisioningPhase` null and `public-access` done, `hardening` reads
- * `active` on the absence of evidence rather than `waiting` on it.
  *
  * A step's `done`/`failed` never requires its predecessor's state — the
  * inventory flaps a creating project between buckets, so a later step can be
@@ -55,12 +38,12 @@
  */
 
 import type { ZeropsService } from "./api.ts";
-import type { BirthRuntimes, BirthStep as BirthRecordStep } from "./birth/birthStore.ts";
 import type { ProcessStatus } from "./data/types.ts";
 import type { ActivityAppVersion } from "./activity/dto.ts";
 import { type ObservedStep, observedSteps } from "./activity/observedSteps.ts";
-import type { ProvisioningPhase, ZeropsContainerHealth } from "./provisioning.ts";
-import type { RecipeRuntimeRole } from "./recipeTier.ts";
+import type { MateSetupRuntimesState } from "./mateSetup.ts";
+import type { ZeropsContainerHealth } from "./provisioning.ts";
+import type { RecipeRuntime, RecipeRuntimeRole } from "./recipeTier.ts";
 import { isManagedDataService, isRuntimeService } from "./topology.ts";
 
 export interface BirthProcessFact {
@@ -91,10 +74,6 @@ export interface BirthFacts {
   readonly processes: ReadonlyArray<BirthProcessFact>;
   /** The container's health probe; undefined = not probed/answered yet. */
   readonly health: ZeropsContainerHealth | undefined;
-  /** The birth's wait phase, when this tab drives the project's birth; null otherwise. */
-  readonly provisioningPhase: ProvisioningPhase | null;
-  /** The hardening's failure message, when provisioning reported one. */
-  readonly hardenError?: string | undefined;
   readonly connection: "none" | "connecting" | "connected" | "failed";
   /** When this client started the creation (the hand-off), ISO — the fallback start. */
   readonly requestedAt?: string | undefined;
@@ -112,7 +91,7 @@ export interface BirthRuntimeFact {
 
 export interface BirthRuntimesFacts {
   /**
-   * Where the import of them stands: `waiting` until the project is closed off, `importing` while
+   * Where zcp's import of them stands: `waiting` until it begins, `importing` while
    * the birth asks for it, `imported` once the platform took it, or the platform's words for why
    * it did not.
    */
@@ -121,13 +100,7 @@ export interface BirthRuntimesFacts {
   readonly runtimes: ReadonlyArray<BirthRuntimeFact>;
 }
 
-export type BirthStepId =
-  | "project"
-  | "container"
-  | "public-access"
-  | "hardening"
-  | "mate"
-  | "connect";
+export type BirthStepId = "project" | "container" | "public-access" | "mate" | "connect";
 export type BirthStepState = "waiting" | "active" | "done" | "failed";
 
 export interface BirthStep {
@@ -180,7 +153,6 @@ const STEP_LABEL: Readonly<Record<BirthStepId, string>> = {
   project: "Project",
   container: "Container",
   "public-access": "Public access",
-  hardening: "Closing off",
   mate: "Zerops Mate",
   connect: "Opening",
 };
@@ -397,43 +369,6 @@ function derivePublicAccessStep(facts: BirthFacts, containerDone: boolean): Step
   return { state: "waiting" };
 }
 
-const HARDENING_DONE_PHASES: ReadonlySet<ProvisioningPhase> = new Set([
-  "awaiting-health",
-  "needs-enable",
-  "ready",
-]);
-
-function deriveHardeningStep(facts: BirthFacts, publicAccessDone: boolean): StepDraft {
-  // The provisioning phase is this step's only evidence. Neither process that
-  // touches variables is it: the creation's own `stack.updateProjectEnvs`
-  // runs before the container exists, and the Git broker's
-  // `stack.updateUserData` long after hardening is over.
-  if (facts.hardenError !== undefined) {
-    return { state: "failed", detail: facts.hardenError };
-  }
-
-  const phase = facts.provisioningPhase;
-  if (phase !== null && HARDENING_DONE_PHASES.has(phase)) {
-    return { state: "done" };
-  }
-  if (phase === "hardening") {
-    return { state: "active", detail: "Closing the project off" };
-  }
-
-  // `awaiting-settled` starts as soon as the container exists — its build
-  // may not have begun — so it is this step only once public access is done;
-  // before that the container and public-access steps carry the birth. The
-  // same holds when this tab does not drive the birth (another tab does, or
-  // its driver has not read the project yet): once public access is done the
-  // platform is already into hardening, so absent evidence still reads as
-  // active rather than leaving neither hardening nor mate showing anything.
-  if ((phase === null || phase === "awaiting-settled") && publicAccessDone) {
-    return { state: "active", detail: "Closing the project off" };
-  }
-
-  return { state: "waiting" };
-}
-
 function deriveMateStep(facts: BirthFacts, predecessorsDone: boolean): StepDraft {
   const health = facts.health;
 
@@ -474,10 +409,8 @@ function deriveConnectStep(facts: BirthFacts, mateDone: boolean): StepDraft {
 /**
  * The steps whose being done proves every step before it is done too: a
  * container runs only in a project that exists, and a Mate that answers or
- * is open runs in a container that is up, reachable and closed off (B-1:
- * hardening precedes admission). Public access and closing off prove
- * nothing about the container — measured 2026-09-22, hardening finished at
- * +38 s while the container was still deploying — so they never backfill.
+ * is open runs in a container that is up and reachable. Public access proves
+ * nothing about the container, so it never backfills.
  */
 const PROOF_STEPS: ReadonlySet<BirthStepId> = new Set(["container", "mate", "connect"]);
 
@@ -588,41 +521,52 @@ function deriveRuntimes(
   return { ...base, state: "active", detail: "Bringing the runtimes up" };
 }
 
-/** Where a birth's runtime import stands, by the step its record is on. */
-const IMPORT_BY_STEP: Readonly<Record<BirthRecordStep, "waiting" | "importing" | "imported">> = {
-  tags: "waiting",
-  registry: "waiting",
-  harden: "waiting",
-  runtimes: "importing",
-  health: "imported",
+/** Where zcp's import of the runtimes stands, as the Mate's setup says it. */
+const IMPORT_BY_SETUP: Readonly<
+  Record<
+    Exclude<MateSetupRuntimesState, "none" | "unknown" | "failed">,
+    BirthRuntimesFacts["import"]
+  >
+> = {
+  waiting: "waiting",
+  running: "importing",
+  done: "imported",
 };
 
+/** The setup says no more than that it failed: the words are the app's. */
+export const RUNTIMES_IMPORT_FAILED = "The runtimes could not be added.";
+
 /**
- * The runtimes' facts, from what the Mate's view holds: the birth's record while it lasts — the
- * runtimes its plan named, and where their import stands — and the project's services as the
- * inventory lists them. A Mate whose birth is over (the connect ends it as the Mate answers,
- * while its runtimes may still be coming up) is read off its project's own runtimes, a stage half
- * by zcp's `stage` suffix. Undefined for a Mate that brings none up, or a project not read yet.
+ * The runtimes' facts, from what the Mate's view holds: the runtimes the press planned, where zcp's
+ * import of them stands (`/mate/setup.json`'s `runtimes`), and the project's services as the
+ * inventory lists them. Without a plan — another browser, a reload, a Mate made before — they are
+ * read off the project's own runtimes, a stage half by zcp's `stage` suffix. Undefined for a Mate
+ * that brings none up, or a project not read yet.
  */
 export function birthRuntimesFacts(input: {
-  readonly birth: { readonly step: BirthRecordStep; readonly runtimes?: BirthRuntimes } | undefined;
+  /** What this tab's press planned; undefined where it holds no press. */
+  readonly planned?: ReadonlyArray<RecipeRuntime> | undefined;
+  /** zcp's import as the Mate's setup reports it; undefined before the Mate answers it. */
+  readonly setup?: MateSetupRuntimesState | undefined;
   readonly services: ReadonlyArray<ZeropsService> | undefined;
 }): BirthRuntimesFacts | undefined {
   const services = input.services ?? [];
+  if (input.setup === "none") return undefined;
   const serviceOf = (hostname: string): Pick<BirthRuntimeFact, "service"> => {
     const listed = services.find((service) => service.name === hostname);
     return listed === undefined ? {} : { service: { id: listed.id, status: listed.status } };
   };
-  if (input.birth !== undefined) {
-    const planned = input.birth.runtimes;
-    if (planned === undefined) return undefined;
+  const reported: BirthRuntimesFacts["import"] | undefined =
+    input.setup === undefined || input.setup === "unknown"
+      ? undefined
+      : input.setup === "failed"
+        ? { failed: RUNTIMES_IMPORT_FAILED }
+        : IMPORT_BY_SETUP[input.setup];
+  if (input.planned !== undefined && input.planned.length > 0) {
     return {
-      import:
-        planned.failed === undefined
-          ? IMPORT_BY_STEP[input.birth.step]
-          : { failed: planned.failed },
+      import: reported ?? "waiting",
       // By hostname, as its project's own read gives them after it: one order on every surface.
-      runtimes: [...planned.services]
+      runtimes: [...input.planned]
         .sort((left, right) => left.hostname.localeCompare(right.hostname))
         .map((runtime) => ({ ...runtime, ...serviceOf(runtime.hostname) })),
     };
@@ -633,7 +577,7 @@ export function birthRuntimesFacts(input: {
     .sort(byName);
   if (runtimes.length === 0) return undefined;
   return {
-    import: "imported",
+    import: reported ?? "imported",
     runtimes: runtimes.map((service) => ({
       hostname: service.name,
       role: service.name.endsWith("stage") ? "stage" : "dev",
@@ -686,20 +630,15 @@ export function deriveBirthProgress(facts: BirthFacts, nowMs: number): BirthProg
   const project = deriveProjectStep(facts);
   const container = deriveContainerStep(facts, project.state === "done", nowMs);
   const publicAccess = derivePublicAccessStep(facts, container.state === "done");
-  const hardening = deriveHardeningStep(facts, publicAccess.state === "done");
-  // The steps before it finish in no fixed order (closing off can end before
-  // the container is up), so the Mate is waited on only once all of them are.
-  const mate = deriveMateStep(
-    facts,
-    container.state === "done" && publicAccess.state === "done" && hardening.state === "done",
-  );
+  // The steps before it finish in no fixed order, so the Mate is waited on only once all of them
+  // are. The project is closed off in the press, before any of them begins.
+  const mate = deriveMateStep(facts, container.state === "done" && publicAccess.state === "done");
   const connect = deriveConnectStep(facts, mate.state === "done");
 
   const raw: BirthStep[] = [
     toStep("project", project),
     toStep("container", container),
     toStep("public-access", publicAccess),
-    toStep("hardening", hardening),
     toStep("mate", mate),
     toStep("connect", connect),
   ];

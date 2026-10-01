@@ -19,9 +19,7 @@ import {
   autoConnectServedZeropsEnvironment,
   declaredEnvironmentSummary,
   hasNoZeropsProject,
-  isZeropsBirthConnectTarget,
   mateOpener,
-  nextZeropsBirthRetryDelayMs,
   projectsGroupLine,
   projectsListingNotice,
   projectsTroubleView,
@@ -38,6 +36,7 @@ import { onZeropsInvalidation } from "~/zerops/accountInvalidations";
 import { closeAccountLifetime, openAccountLifetime } from "~/zerops/accountLifetime";
 import { exchangeZeropsContainerIdentity } from "@t3tools/client-runtime/zerops/identityExchange";
 import projectsPageSource from "./ZeropsProjectsPage.tsx?raw";
+import pressSource from "../../zerops/matePress.ts?raw";
 import creationSource from "../../zerops/useEnvironmentCreation.ts?raw";
 import mateActionsSource from "../../zerops/useMateActions.tsx?raw";
 import groupDetailSource from "./ZeropsGroupDetail.tsx?raw";
@@ -106,9 +105,9 @@ describe("same-origin Zerops identity bootstrap", () => {
     }
     // The creation itself is the account's (`useEnvironmentCreation`), shared with the New Mate
     // dialog over any view.
-    expect(creationSource).toContain("runtime.commands.createProject(");
+    expect(pressSource).toContain("data.runtime.commands.createProject(");
     expect(projectsPageSource).toContain("runtime.commands.deleteProject(");
-    expect(creationSource).toContain("runtime.commands.importServices(");
+    expect(pressSource).toContain("data.runtime.commands.importServices(");
     expect(creationSource).toContain("readObservedServices:");
     expect(projectsPageSource).not.toContain("listProjectServices(");
     expect(creationSource).not.toContain("listProjectServices(");
@@ -364,19 +363,6 @@ describe("same-origin Zerops identity bootstrap", () => {
   });
 });
 
-describe("nextZeropsBirthRetryDelayMs", () => {
-  it.each([
-    [0, 2_000],
-    [1, 4_000],
-    [2, 8_000],
-    [3, 15_000],
-    [4, 15_000],
-    [10, 15_000],
-  ])("waits %ims after attempt %i", (attempt, delayMs) => {
-    expect(nextZeropsBirthRetryDelayMs(attempt)).toBe(delayMs);
-  });
-});
-
 // Opening a Mate that exists runs a wait and a connect too; the checklist
 // flashed on every click with a clock from the project's creation.
 describe("showsZeropsBirthLine", () => {
@@ -388,35 +374,6 @@ describe("showsZeropsBirthLine", () => {
     expect(showsZeropsBirthLine({ projectId: "p1", birthProjectIds: new Set(births) })).toBe(
       expected,
     );
-  });
-});
-
-describe("isZeropsBirthConnectTarget", () => {
-  const ORIGIN = "https://zcp-demo-8080.prg1.zerops.app";
-  it.each([
-    {
-      name: "the container a birth found is the birth's own connect",
-      births: [{ origin: ORIGIN }],
-      expected: true,
-    },
-    {
-      name: "the same origin written differently is the same container",
-      births: [{ origin: `${ORIGIN}/` }],
-      expected: true,
-    },
-    { name: "no birth — Open or Enable on a Mate that exists", births: [], expected: false },
-    {
-      name: "a birth of another container",
-      births: [{ origin: "https://another-container.example" }],
-      expected: false,
-    },
-    {
-      name: "a birth that has not found its container yet",
-      births: [{ origin: null }],
-      expected: false,
-    },
-  ])("$name", ({ births, expected }) => {
-    expect(isZeropsBirthConnectTarget({ containerOrigin: ORIGIN, births })).toBe(expected);
   });
 });
 
@@ -914,13 +871,11 @@ describe("a creation under way on the projects page", () => {
   it("is drawn in its group from the one placing the left menu reads, and feeds the flow", () => {
     // A New project this tab is making included, from the press, on both.
     expect(projectsPageSource).toContain(
-      "births: placedBirthsIn(births.births, activeOrganization?.id, Object.values(made)),",
+      "births: placedPressesIn(presses, activeOrganization?.id, Object.values(made)),",
     );
     expect(projectsPageSource).toContain("pending: group.pending,");
     expect(sidebarTreeSource).toContain("pending: group?.pending ?? [],");
-    expect(sidebarSource).toContain(
-      "placedBirthsIn(zeropsBirths, zeropsSession.activeOrganization?.id, Object.values(zeropsMade))",
-    );
+    expect(sidebarSource).toContain("placedPressesIn(\n        zeropsPresses,");
   });
 
   it("is under way from the click: the add verbs are off before the group's agents are read", () => {
@@ -944,10 +899,10 @@ describe("a creation under way on the projects page", () => {
   });
 
   it("lists the organization again the moment a creation is accepted, as New project does", () => {
-    expect(creationSource).toContain("creationAccepted(");
-    expect(creationSource).toContain("organizationRef(organization.id),");
-    expect(newProjectSource).toContain("creationAccepted(");
-    expect(newProjectSource).not.toContain("beginBirth(");
+    expect(creationSource).toContain("beginPress(");
+    expect(creationSource).toContain('invalidateZerops({ topic: "inventory"');
+    expect(newProjectSource).toContain("beginPress(");
+    expect(newProjectSource).toContain('invalidateZerops({ topic: "inventory", organization });');
   });
 
   it("says why a merge or a release was refused, in the page's own trouble line", () => {

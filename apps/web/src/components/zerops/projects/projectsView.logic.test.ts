@@ -517,21 +517,12 @@ describe("main's cell", () => {
 });
 
 describe("a Mate being created", () => {
-  it.each([
-    { step: "tags", overdue: false, line: "Coming up. A few minutes." },
-    { step: "registry", overdue: false, line: "Coming up. A few minutes." },
-    { step: "harden", overdue: false, line: "Coming up. A few minutes." },
-    { step: "health", overdue: false, line: "Almost there." },
-    { step: "harden", overdue: true, line: "Taking longer than usual." },
-    { step: "health", overdue: true, line: "Taking longer than usual." },
-  ] as const)("on $step, overdue $overdue, reads $line", ({ step, overdue, line }) => {
-    expect(comingMateLine({ step, overdue })).toBe(line);
+  it("reads as coming up while its press holds it", () => {
+    expect(comingMateLine({})).toBe("Coming up. A few minutes.");
   });
 
-  it("whose creation stopped before the platform took it says so, whatever its step", () => {
-    expect(comingMateLine({ step: "tags", overdue: false, failed: true })).toBe(
-      "Could not be set up.",
-    );
+  it("whose creation stopped before the platform took it says so", () => {
+    expect(comingMateLine({ failed: true })).toBe("Could not be set up.");
   });
 });
 
@@ -638,9 +629,7 @@ describe("production's cell", () => {
     {
       name: "a production being created, setting up",
       flow: flowOf({
-        pending: [
-          { projectId: "p-new", kind: "production", name: "prod", step: "tags", overdue: false },
-        ],
+        pending: [{ projectId: "p-new", kind: "production", name: "prod" }],
       }),
       want: { line: "Setting up production…", detail: undefined },
     },
@@ -938,8 +927,6 @@ describe("groupFlowInputOf", () => {
         kind: "mate" as const,
         name: "Vera",
         startedAt: 5,
-        step: "harden" as const,
-        overdue: false,
       },
     ];
     const input = groupFlowInputOf({

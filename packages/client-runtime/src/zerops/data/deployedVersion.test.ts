@@ -1,6 +1,11 @@
 import { describe, expect, it } from "@effect/vitest";
 
-import { selectDeployedVersion, selectMateFlag, statedDeployKey } from "./deployedVersion.ts";
+import {
+  selectDeployedVersion,
+  selectMateFlag,
+  selectSetupMarker,
+  statedDeployKey,
+} from "./deployedVersion.ts";
 import {
   ABSENT_BACKOFF_MS,
   reduceTableObservation,
@@ -277,6 +282,81 @@ describe("the Mate flag, as the account's store states it", () => {
       expect(selectMateFlag(testCase.state, ref)).toBe(testCase.expected);
     });
   }
+});
+
+describe("the press's marker, as the account's store states it", () => {
+  const empty = makeInitialZeropsDataState(scope());
+  // Base64 of an import document: only whether it is there matters.
+  const MARKER = ["c2Vy", "dmljZXM6IFtd"].join("");
+  const cases: ReadonlyArray<{
+    readonly name: string;
+    readonly state: ZeropsDataState;
+    readonly expected: boolean | "unknown" | "unread";
+  }> = [
+    { name: "is unread before the variables are", state: empty, expected: "unread" },
+    {
+      name: "is there on a container the press made",
+      state: answered(empty, variables, [variable("MATE_SETUP_RUNTIMES", MARKER)]),
+      expected: true,
+    },
+    {
+      name: "is absent on a container made before the press",
+      state: answered(empty, variables, [variable("ZCP_MATE_ENABLED", "1")]),
+      expected: false,
+    },
+    {
+      name: "is unknown when its stream failed",
+      state: failedInterest(empty, "organization-variables"),
+      expected: "unknown",
+    },
+  ];
+  for (const testCase of cases) {
+    it(testCase.name, () => {
+      expect(selectSetupMarker(testCase.state, ref)).toBe(testCase.expected);
+    });
+  }
+  // A container the stream has not delivered a single variable of yet, made within five minutes
+  // of the list's answer: its marker may be on its way, and it is not read as absent (pass 28).
+  const withService = (state: ZeropsDataState, createdAt: string): ZeropsDataState => ({
+    ...state,
+    inventory: {
+      ...state.inventory,
+      services: new Map([
+        [
+          serviceKeyOf(ref),
+          {
+            ref,
+            lifecycle: { knowledge: "observed", fields: { createdAt }, stamp: stamp(1) },
+          } as never,
+        ],
+      ]),
+    },
+  });
+  // The list answers at the fixtures' stamp(2): 20 ms past the epoch.
+  const MINUTE_BEFORE = "1969-12-31T23:59:00.020Z";
+  const HOUR_BEFORE = "1969-12-31T23:00:00.020Z";
+  it.each([
+    {
+      name: "a container made a minute before the list answered",
+      createdAt: MINUTE_BEFORE,
+      expected: "unread",
+    },
+    { name: "a container made an hour before", createdAt: HOUR_BEFORE, expected: false },
+  ])("is $expected for $name, with none of its variables delivered", ({ createdAt, expected }) => {
+    const state = withService(
+      answered(empty, variables, [{ ...variable("ZCP_MATE_ENABLED", "1"), serviceId: "s-other" }]),
+      createdAt,
+    );
+    expect(selectSetupMarker(state, ref)).toBe(expected);
+  });
+
+  it("is absent for a young container whose other variables arrived", () => {
+    const state = withService(
+      answered(empty, variables, [variable("ZCP_MATE_ENABLED", "1")]),
+      MINUTE_BEFORE,
+    );
+    expect(selectSetupMarker(state, ref)).toBe(false);
+  });
 });
 
 describe("a version a service runs that its organization's list lacks", () => {

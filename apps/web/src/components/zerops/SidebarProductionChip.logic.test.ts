@@ -224,8 +224,6 @@ describe("productionChip — production's chip: the word, its tone, its state in
             projectId: "prod",
             kind: "production",
             name: "production",
-            step: "tags",
-            overdue: false,
           },
         },
       }),

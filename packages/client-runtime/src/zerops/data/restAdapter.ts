@@ -1278,12 +1278,17 @@ export function makeZeropsDataAdapter(options: ZeropsDataAdapterOptions): Zerops
         return executeApi(context, (signal) =>
           options.client.importDevelopmentContainer(
             {
+              clientId: command.project.organization.organizationId,
               projectId: command.project.projectId,
-              ...(command.existingServiceNames === undefined
+              projectName: command.projectName,
+              ...(command.groupProjectIds === undefined
                 ? {}
-                : { existingServiceNames: command.existingServiceNames }),
+                : { groupProjectIds: command.groupProjectIds }),
               ...(command.zcpVersion === undefined ? {} : { zcpVersion: command.zcpVersion }),
               ...(command.agents === undefined ? {} : { agents: command.agents }),
+              ...(command.setupRuntimesYaml === undefined
+                ? {}
+                : { setupRuntimesYaml: command.setupRuntimesYaml }),
             },
             signal,
             context.beforeProjectWrite,
@@ -1350,9 +1355,6 @@ export function makeZeropsDataAdapter(options: ZeropsDataAdapterOptions): Zerops
             {
               clientId: command.organization.organizationId,
               name: command.name,
-              ...(command.existingServiceNames === undefined
-                ? {}
-                : { existingServiceNames: command.existingServiceNames }),
               ...(command.location === undefined ? {} : { location: command.location }),
               ...(command.zcpVersion === undefined ? {} : { zcpVersion: command.zcpVersion }),
               ...(command.agents === undefined ? {} : { agents: command.agents }),
@@ -1463,6 +1465,12 @@ export function makeZeropsDataAdapter(options: ZeropsDataAdapterOptions): Zerops
                 grants: token.projects ?? [],
                 ...(token.created === undefined ? {} : { created: token.created }),
                 ...(token.roleCode === undefined ? {} : { roleCode: token.roleCode }),
+                ...(token.createdByUser === undefined
+                  ? {}
+                  : { createdByUser: token.createdByUser }),
+                ...(token.createdByUser === undefined
+                  ? {}
+                  : { createdByUser: token.createdByUser }),
               })),
             },
           })),
@@ -1630,6 +1638,7 @@ export function makeZeropsCellReads(client: ZeropsApiClient): ZeropsCellAdapter 
           grants: token.projects ?? [],
           ...(token.created === undefined ? {} : { created: token.created }),
           ...(token.roleCode === undefined ? {} : { roleCode: token.roleCode }),
+          ...(token.createdByUser === undefined ? {} : { createdByUser: token.createdByUser }),
         })),
       ),
     readOrganizationMembers: (input, context) =>

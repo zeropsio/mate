@@ -96,6 +96,8 @@ export interface ZeropsIntegrationToken {
   readonly projects?: ReadonlyArray<ZeropsProjectGrant> | undefined;
   /** When the platform minted it. The start-up throwaway sweep dates rows by it. */
   readonly created?: string | undefined;
+  /** Who minted it: besides an org owner, the one person who may write it. */
+  readonly createdByUser?: string | undefined;
 }
 
 /**
@@ -130,13 +132,103 @@ export function findMateIntegrationToken(
   tokens: ReadonlyArray<ZeropsIntegrationToken>,
   projectId: string,
 ): ZeropsIntegrationToken | undefined {
-  return tokens.find(
-    (token) =>
-      token.name.startsWith(ZCP_TOKEN_NAME_PREFIX) &&
-      (token.projects ?? []).some(
-        (grant) => grant.projectId === projectId && MATE_SELF_GRANT_ROLES.has(grant.roleCode),
-      ),
+  return tokens.find((token) => isMateKeyOf(token, projectId));
+}
+
+function isMateKeyOf(token: ZeropsIntegrationToken, projectId: string): boolean {
+  return (
+    token.name.startsWith(ZCP_TOKEN_NAME_PREFIX) &&
+    (token.projects ?? []).some(
+      (grant) => grant.projectId === projectId && MATE_SELF_GRANT_ROLES.has(grant.roleCode),
+    )
   );
+}
+
+const createdMs = (token: ZeropsIntegrationToken): number =>
+  token.created === undefined ? Number.NaN : Date.parse(token.created);
+
+/** Newest first; a key with no readable age last. */
+function newestFirst(keys: ReadonlyArray<ZeropsIntegrationToken>): Array<ZeropsIntegrationToken> {
+  return [...keys].sort((left, right) => {
+    const l = createdMs(left);
+    const r = createdMs(right);
+    if (Number.isNaN(l)) return Number.isNaN(r) ? 0 : 1;
+    if (Number.isNaN(r)) return -1;
+    return r - l;
+  });
+}
+
+/**
+ * The key a Mate's container holds, out of every key that is its (`findMateIntegrationToken`):
+ * the one key, or — where a raced press or an older platform key left two — the newest made before
+ * its container. A key made after it is an orphan, and keys nothing tells apart are never guessed
+ * at: undefined.
+ */
+export function findHeldMateKey(
+  tokens: ReadonlyArray<ZeropsIntegrationToken>,
+  projectId: string,
+  containerCreated: string | undefined,
+): ZeropsIntegrationToken | undefined {
+  const keys = tokens.filter((token) => isMateKeyOf(token, projectId));
+  if (keys.length <= 1) return keys[0];
+  const container = containerCreated === undefined ? Number.NaN : Date.parse(containerCreated);
+  if (Number.isNaN(container)) return undefined;
+  return newestFirst(keys.filter((key) => createdMs(key) <= container))[0];
+}
+
+/**
+ * A Mate not hardened yet, as the platform's token list says it: it has keys, and none is below
+ * `ADMIN` on its own project — so the key its container holds surely is. A leftover `ADMIN` key
+ * beside a lowered one says nothing of the container's.
+ */
+export function mateNeedsHarden(
+  tokens: ReadonlyArray<ZeropsIntegrationToken>,
+  projectId: string,
+): boolean {
+  const keys = tokens.filter((token) => isMateKeyOf(token, projectId));
+  return keys.length > 0 && keys.every((key) => selfRoleOf(key, projectId) === "ADMIN");
+}
+
+/** A key's role on its Mate's own project. */
+function selfRoleOf(token: ZeropsIntegrationToken, projectId: string): string | undefined {
+  return (token.projects ?? []).find((grant) => grant.projectId === projectId)?.roleCode;
+}
+
+/**
+ * Whether this viewer may harden the Mate: it needs it (`mateNeedsHarden`), and the viewer may
+ * write its key — an org owner, or the key's creator.
+ */
+export function mateHardenableBy(
+  tokens: ReadonlyArray<ZeropsIntegrationToken>,
+  projectId: string,
+  viewer: { readonly userId: string | undefined; readonly roleCode: string | undefined },
+): boolean {
+  if (!mateNeedsHarden(tokens, projectId)) return false;
+  if (viewer.roleCode === "OWNER") return true;
+  return tokens.some(
+    (token) =>
+      isMateKeyOf(token, projectId) &&
+      viewer.userId !== undefined &&
+      token.createdByUser === viewer.userId,
+  );
+}
+
+/** Every key of a Mate still `ADMIN` on its own project: what a harden lowers. */
+export function mateAdminKeys(
+  tokens: ReadonlyArray<ZeropsIntegrationToken>,
+  projectId: string,
+): ReadonlyArray<ZeropsIntegrationToken> {
+  return tokens.filter(
+    (token) => isMateKeyOf(token, projectId) && selfRoleOf(token, projectId) === "ADMIN",
+  );
+}
+
+/** The key a press reuses where no container holds one yet: the newest. */
+export function newestMateKey(
+  tokens: ReadonlyArray<ZeropsIntegrationToken>,
+  projectId: string,
+): ZeropsIntegrationToken | undefined {
+  return newestFirst(tokens.filter((token) => isMateKeyOf(token, projectId)))[0];
 }
 
 /**

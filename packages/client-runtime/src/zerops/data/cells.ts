@@ -113,6 +113,8 @@ export interface ZeropsIntegrationTokenGrantMetadata {
   readonly created?: string | undefined;
   /** The token's own org role: the broker grant decides by it and writes it back unchanged. */
   readonly roleCode?: string | undefined;
+  /** Who minted it: besides an org owner, the one person who may write it. */
+  readonly createdByUser?: string | undefined;
 }
 
 export interface ZeropsCellValues {

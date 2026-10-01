@@ -286,26 +286,75 @@ export function mateAwaitingRegistryLine(admins: ReadonlyArray<MateOwnerCandidat
 }
 
 /**
- * The verb an owner sees on a colleague's unregistered Mate (guide 4.2).
+ * *Finish setup*, on a half-made Mate's ⋯ menu (pass 28): the press's own steps run again on a
+ * Mate whose press did not finish — its container imported with its key where it has none, its
+ * project closed off, its registration written. A member with *can create projects* makes a Mate
+ * and cannot write the registry, so their Mate runs with no group reach and no bot until somebody
+ * who can finishes it; a press a closed tab cut short leaves the same. That somebody is an org
+ * owner or admin — the only people the platform lets write the Gitea project's tags (D3) — in any
+ * browser.
  *
- * A member with *can create projects* makes a Mate and cannot write the
- * registry, so their Mate runs with no group reach and no bot until somebody
- * who can adds it. That somebody is an org owner or admin — the only people the
- * platform lets write the Gitea project's tags (D3) — and this is the one verb
- * that finishes the job.
- *
- * `undefined` for everybody else, and for a Mate already in the registry: a
- * disabled button on a row a person can do nothing about is noise, and the row
- * already says who it is waiting for (`mateAwaitingRegistryLine`).
+ * `undefined` for everybody else, and for a Mate already whole: a disabled entry on a row a person
+ * can do nothing about is noise, and the row already says who it is waiting for
+ * (`mateAwaitingRegistryLine`).
  */
-export function registerMateVerb(input: {
+export function finishMateSetupVerb(input: {
   readonly registration: MateRegistration;
+  /** Its project has no container: its import never went through. */
+  readonly containerMissing: boolean;
+  /** A press this tab made for it stopped at a step. */
+  readonly pressStopped: boolean;
+  /**
+   * Its container carries the press's marker (`MATE_SETUP_RUNTIMES`) and its project no
+   * `mate:closed-off`: a press interrupted before its close-off, whose runtimes zcp holds back.
+   */
+  readonly closedOffMissing: boolean;
+  /**
+   * Its project is older than the grace a press in another browser has (`MATE_CONTAINER_GRACE_MS`):
+   * before it, an unregistered or unmarked Mate may be a press still running, and finishing it
+   * would race that press. A press this tab made and saw stop needs no grace.
+   */
+  readonly pastGrace: boolean;
+  /**
+   * The platform's token list shows every key of its still `ADMIN` on its own project, and this
+   * viewer may write them — an org owner, or their creator (`mateHardenableBy`): a pool-claimed
+   * or older Mate whose harden never ran.
+   */
+  readonly needsHarden: boolean;
+  /** The viewer added this Mate: closing it off needs no registry rights. */
+  readonly viewerIsAdder: boolean;
+  /** Its project has its container: without one there is nothing for a close-off to finish. */
+  readonly hasContainer: boolean;
   /** The viewer's org role, as the platform spells it. */
   readonly viewerRole?: string | undefined;
-  /** What the group is called, for the verb itself. */
-  readonly groupName: string;
 }): string | undefined {
-  if (input.registration !== "awaiting-owner") return undefined;
-  if (input.viewerRole !== "OWNER" && input.viewerRole !== "ADMIN") return undefined;
-  return `Register in ${input.groupName}`;
+  if (input.viewerRole === "OWNER" || input.viewerRole === "ADMIN") {
+    const halfMade =
+      input.pressStopped ||
+      (input.pastGrace &&
+        (input.registration === "awaiting-owner" ||
+          input.containerMissing ||
+          input.closedOffMissing ||
+          input.needsHarden));
+    return halfMade ? FINISH_MATE_SETUP_VERB : undefined;
+  }
+  // The key's creator may harden it.
+  if (input.pastGrace && input.needsHarden) return FINISH_MATE_SETUP_VERB;
+  // The Mate's own adder may close it off — nothing more: its registration and a container to
+  // make are an owner's or an admin's. With no container there is nothing to close off.
+  if (
+    input.viewerIsAdder &&
+    input.hasContainer &&
+    (input.pressStopped || (input.pastGrace && input.closedOffMissing))
+  ) {
+    return FINISH_MATE_SETUP_VERB;
+  }
+  return undefined;
 }
+
+/** What a viewer's *Finish setup* runs: all of it for an owner or an admin, else the close-off. */
+export function finishMateSetupScope(viewerRole: string | undefined): "whole" | "close-off" {
+  return viewerRole === "OWNER" || viewerRole === "ADMIN" ? "whole" : "close-off";
+}
+
+export const FINISH_MATE_SETUP_VERB = "Finish setup";

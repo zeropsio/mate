@@ -101,8 +101,6 @@ export const VERA_COMING = {
   kind: "mate" as const,
   name: "Vera",
   startedAt: 5,
-  step: "harden" as const,
-  overdue: false,
 };
 
 /**
@@ -117,8 +115,6 @@ export function born(members: ReadonlyArray<Item> = []): ReadonlyArray<ProjectsF
         projectId: VERA_COMING.projectId,
         startedAt: Date.parse("2026-09-24T12:00:00.000Z"),
         placement: { groupId: "ccc", groupName: "Todo", kind: "mate", displayName: "Vera" },
-        step: VERA_COMING.step,
-        overdue: false,
       },
     ],
   });

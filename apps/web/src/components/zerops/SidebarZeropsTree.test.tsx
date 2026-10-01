@@ -788,8 +788,6 @@ describe("a creation under way in the menu", () => {
         displayName: "Vera",
         ...placement,
       },
-      step: "harden",
-      overdue: false,
     };
   };
   const comingRows = (html: string) =>

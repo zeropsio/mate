@@ -395,3 +395,31 @@ services:
     expect(doc.match(/^\s+name:/gmu)).toHaveLength(1);
   });
 });
+
+// A Mate's project is closed off by the press and by nothing else: a tier that names the project's
+// isolation would open it at birth, before the press reads it back (pass 28 review).
+describe("recipeProjectImportYaml never carries the project's isolation", () => {
+  it.each([
+    {
+      case: "a key of the project block",
+      yaml: "project:\n  name: Acme - dev\n  envIsolation: none\nservices:\n  - hostname: db\n    type: postgresql@17\n",
+    },
+    {
+      case: "a project variable",
+      yaml: "project:\n  name: Acme - dev\n  envVariables:\n    envIsolation: none\n    APP_KEY: k\nservices:\n  - hostname: db\n    type: postgresql@17\n",
+    },
+  ])("drops it as $case", ({ yaml }) => {
+    const doc = recipeProjectImportYaml(yaml, { name: "Acme - Ada" });
+    expect(doc).not.toMatch(/envIsolation/u);
+    expect(doc).toContain("name: Acme - Ada");
+    expect(doc).toContain("hostname: db");
+  });
+
+  it("keeps the project's other variables", () => {
+    const doc = recipeProjectImportYaml(
+      "project:\n  name: Acme - dev\n  envVariables:\n    envIsolation: none\n    APP_KEY: k\nservices: []\n",
+      { name: "Acme - Ada" },
+    );
+    expect(doc).toContain("    APP_KEY: k");
+  });
+});

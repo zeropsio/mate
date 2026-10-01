@@ -34,11 +34,15 @@ import type {
 import { organizationKeyOf, queryKeyOf, tableEntityOf } from "./types.ts";
 import { noOutcome, type DomainObservationOutcome } from "./inventory.ts";
 
-/** The service variables the app reads: the Mate flag, and the deploy a service last started. */
+/**
+ * The service variables the app reads: the Mate flag, the deploy a service last started, and the
+ * new press's marker on a Mate's container (`MATE_SETUP_RUNTIMES`), whose presence alone is read.
+ */
 export const SERVICE_VARIABLE_KEYS: ReadonlyArray<string> = [
   "ZCP_MATE_ENABLED",
   "appVersionId",
   "appVersionName",
+  "MATE_SETUP_RUNTIMES",
 ];
 
 /** How far a search's index may trail a push: a row pushed this soon before it is kept. */
@@ -557,6 +561,23 @@ export function serviceVariableOf(
       SERVICE_VARIABLE_KEYS.includes(key) &&
       answered(state, serviceVariablesDescriptor(organization)),
     content: variablesByService(state).get(serviceId)?.get(key)?.content ?? null,
+  };
+}
+
+/**
+ * Whether the organization's variables list delivered any variable of this service the app reads,
+ * and when that list last answered (`null` before it did).
+ */
+export function serviceVariablesDelivered(
+  state: EntityTableState,
+  organization: OrganizationRef,
+  serviceId: string,
+): { readonly any: boolean; readonly answeredAtMs: number | null } {
+  return {
+    any: (variablesByService(state).get(serviceId)?.size ?? 0) > 0,
+    answeredAtMs:
+      state.lists.get(queryKeyOf(serviceVariablesDescriptor(organization)))?.answered?.stamp
+        .observedAtMs ?? null,
   };
 }
 

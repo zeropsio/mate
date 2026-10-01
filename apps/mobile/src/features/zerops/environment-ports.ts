@@ -51,7 +51,7 @@ import { environmentCatalog } from "../../connection/catalog";
 import { connectionAtomRuntime } from "../../connection/runtime";
 import { uuidv4 } from "../../lib/uuid";
 import { appAtomRegistry } from "../../state/atom-registry";
-import { loadAccountRecords, memoryIntents, NO_BIRTHS } from "./account-ports";
+import { loadAccountRecords, memoryIntents } from "./account-ports";
 import { mobilePlatformSignals } from "./platform-signals";
 import { mobileZeropsStorage } from "./storage";
 
@@ -280,7 +280,6 @@ export async function mobileAccountPorts(input: {
       intents: memoryIntents(),
       records,
       catalog: catalogPort,
-      births: NO_BIRTHS,
     },
   };
 }

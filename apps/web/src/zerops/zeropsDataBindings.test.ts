@@ -50,7 +50,7 @@ describe("central Zerops data bindings", () => {
       "../components/zerops/ZeropsNewProjectHost.tsx",
       "../components/zerops/ZeropsProjectsPage.tsx",
       "./useZeropsGroupReach.ts",
-      "./zeropsBirths.ts",
+      "./matePress.ts",
       "./useZeropsUpgradeRestart.ts",
     ];
     const legacyMethods = [
@@ -68,10 +68,22 @@ describe("central Zerops data bindings", () => {
       "deleteProject",
     ];
 
+    // The press's sibling reach writes a key through the API itself: it needs each key's creator
+    // and org role, which the command's grant metadata does not carry, read live right before
+    // each write (pass 28) — the one exception, until the store's token cells carry them.
+    const direct: Readonly<Record<string, ReadonlyArray<string>>> = {
+      "./matePress.ts": ["setIntegrationTokenProjects"],
+    };
     for (const file of files) {
       const contents = source(file);
-      for (const method of legacyMethods) expect(contents).not.toContain(`client.${method}(`);
+      for (const method of legacyMethods) {
+        if (direct[file]?.includes(method) === true) continue;
+        expect(contents).not.toContain(`client.${method}(`);
+      }
     }
+    expect(source("./matePress.ts").split("client.setIntegrationTokenProjects(").length - 1).toBe(
+      1,
+    );
   });
 
   it("binds per-project views to projection families instead of the account root atom", () => {

@@ -94,41 +94,55 @@ describe("planEnvironmentCreation", () => {
     expect(stepKinds(plan.steps)).toEqual(["create-project", "import-recipe", "await-ready"]);
   });
 
-  it("gives a dev environment its agent, before the application", () => {
-    // The agent is what narrates the rest, and what fixes a failed import.
-    // Its token is lowered the moment it exists, before anything is imported
-    // beside it and before anyone can talk to it (guide 0.2).
+  it("gives a dev environment its agent, its key with it, and closes it off before the press returns", () => {
+    // The container comes with the key the person minted for it, and the project is closed off in
+    // the press: no browser is needed after it, and the runtimes zcp imports on boot never start
+    // in an open project.
     const plan = planEnvironmentCreation({ ...BASE, role: "dev", name: "dev" });
     if (!plan.ok) throw new Error("expected a plan");
     expect(stepKinds(plan.steps)).toEqual([
       "create-project",
       "import-container",
-      "secure-container-token",
-      "drop-container-delegation",
-      "import-runtimes",
+      "close-off",
+      "share-reach",
       "await-ready",
     ]);
   });
 
-  it("never closes the project from inside the creation", () => {
-    // The recipe that makes the container opens `envIsolation` itself so that
-    // zcp can see the project (the owner, 2026-09-20). A creation that closed
-    // it again wrote under a recipe still running, from an index that had not
-    // caught up — the platform refused the duplicate, and the refusal failed
-    // the creation: the wizard sat on its form and no project was ever
-    // connected (measured live 2026-09-20). The app closes it once the
-    // container answers instead.
-    const plan = planEnvironmentCreation({ ...BASE, role: "dev", name: "dev" });
-    if (!plan.ok) throw new Error("expected a plan");
-    expect(stepKinds(plan.steps)).not.toContain("isolate-project-env");
-  });
-
-  it("plans no token lowering for an environment with no container", () => {
-    // Nothing was minted, so there is nothing to lower.
+  it("closes off only an environment with a container: one without has no key to keep in", () => {
     const plan = planEnvironmentCreation(BASE);
     if (!plan.ok) throw new Error("expected a plan");
-    expect(stepKinds(plan.steps)).not.toContain("secure-container-token");
-    expect(stepKinds(plan.steps)).not.toContain("drop-container-delegation");
+    expect(stepKinds(plan.steps)).not.toContain("close-off");
+  });
+
+  it.each([
+    {
+      case: "a Mate",
+      input: { role: "dev" as const, name: "dev", register: true },
+      // Closed off before it is registered: a refused registration never keeps a Mate open.
+      steps: [
+        "create-project",
+        "import-container",
+        "close-off",
+        "register",
+        "share-reach",
+        "await-ready",
+      ],
+    },
+    {
+      case: "a production",
+      input: { register: true },
+      steps: ["create-project", "import-recipe", "register", "await-ready"],
+    },
+    {
+      case: "a Mate whose person may not write the registry",
+      input: { role: "dev" as const, name: "dev", register: false },
+      steps: ["create-project", "import-container", "close-off", "share-reach", "await-ready"],
+    },
+  ])("registers $case in the press, before anything is waited on", ({ input, steps }) => {
+    const plan = planEnvironmentCreation({ ...BASE, ...input });
+    if (!plan.ok) throw new Error("expected a plan");
+    expect(stepKinds(plan.steps)).toEqual(steps);
   });
 
   it("gives the new container the agents the group is signed in with", () => {
@@ -140,7 +154,7 @@ describe("planEnvironmentCreation", () => {
     });
     if (!plan.ok) throw new Error("expected a plan");
     const container = plan.steps.find((step) => step.kind === "import-container");
-    expect(container).toEqual({ kind: "import-container", agents: ["claude-code"] });
+    expect(container).toMatchObject({ kind: "import-container", agents: ["claude-code"] });
   });
 
   it("asks for no agent in particular when the group has authorized none", () => {
@@ -149,7 +163,7 @@ describe("planEnvironmentCreation", () => {
     const plan = planEnvironmentCreation({ ...BASE, role: "dev", name: "dev" });
     if (!plan.ok) throw new Error("expected a plan");
     const container = plan.steps.find((step) => step.kind === "import-container");
-    expect(container).toEqual({ kind: "import-container", agents: [] });
+    expect(container).toMatchObject({ kind: "import-container", agents: [] });
   });
 
   it("lets a caller ask for an agent in production explicitly", () => {
@@ -197,9 +211,8 @@ describe("environmentCreationStepLabel", () => {
       "Creating the environment",
       "Adding the managed services",
       "Adding the agent container",
-      "Locking the container's access",
-      "Taking back the container's one-time permit",
-      "Adding the runtimes",
+      "Closing the project off",
+      "Letting the project's other Mates see it",
       "Waiting for the agent",
     ]);
   });
@@ -210,7 +223,7 @@ describe("environmentCreationStepLabel", () => {
       label: "Creating the environment",
     },
     { step: { kind: "import-recipe", role: "prod", yaml: "" }, label: "Importing the application" },
-    { step: { kind: "import-runtimes", yaml: "", services: [] }, label: "Adding the runtimes" },
+    { step: { kind: "register" }, label: "Registering it in its project" },
   ] satisfies ReadonlyArray<{ step: EnvironmentCreationStep; label: string }>)(
     "labels $step.kind",
     ({ step, label }) => {
@@ -409,10 +422,12 @@ describe("the recipe choice", () => {
     expect(stepKinds(plan.steps)).toEqual([
       "create-project",
       "import-container",
-      "secure-container-token",
-      "drop-container-delegation",
+      "close-off",
+      "share-reach",
       "await-ready",
     ]);
+    const container = plan.steps.find((step) => step.kind === "import-container");
+    expect(container).toEqual({ kind: "import-container", agents: [] });
   });
 
   it("refuses an environment with neither an agent nor an application", () => {
@@ -423,8 +438,8 @@ describe("the recipe choice", () => {
 
 /**
  * A Mate's tier goes in as two imports: its project with the managed services first, and its
- * runtimes only once the Mate has closed the project off — which its birth does, not this run
- * (`birthWorker.ts`). Nothing that runs code ever starts holding the Mate's key.
+ * runtimes with its container, for zcp to import on boot once the press has closed the project
+ * off. Nothing that runs code ever starts in an open project.
  */
 describe("planEnvironmentCreation — a Mate's tier", () => {
   const MATE_TIER = `#zeropsPreprocessor=on
@@ -447,11 +462,7 @@ services:
     priority: 10
 `;
   const SERVICES_ONLY = MATE_TIER.replace(/^project:\n(?: {2}.*\n)+/mu, "");
-  const CONTAINER_STEPS = [
-    "import-container",
-    "secure-container-token",
-    "drop-container-delegation",
-  ] as const;
+  const CONTAINER_STEPS = ["import-container", "close-off", "share-reach"] as const;
 
   function plan(yaml: string, extra: Partial<EnvironmentCreationInput> = {}) {
     const result = planEnvironmentCreation({
@@ -472,37 +483,25 @@ services:
       case: "a tier that describes its project",
       yaml: MATE_TIER,
       extra: {},
-      steps: ["import-project", ...CONTAINER_STEPS, "import-runtimes", "await-ready"],
+      steps: ["import-project", ...CONTAINER_STEPS, "await-ready"],
     },
     {
       case: "a tier of services only",
       yaml: SERVICES_ONLY,
       extra: {},
-      steps: [
-        "create-project",
-        "import-managed",
-        ...CONTAINER_STEPS,
-        "import-runtimes",
-        "await-ready",
-      ],
+      steps: ["create-project", "import-managed", ...CONTAINER_STEPS, "await-ready"],
     },
     {
       case: "a tier placed in a region",
       yaml: MATE_TIER,
       extra: { location: "eu-central" },
-      steps: [
-        "create-project",
-        "import-managed",
-        ...CONTAINER_STEPS,
-        "import-runtimes",
-        "await-ready",
-      ],
+      steps: ["create-project", "import-managed", ...CONTAINER_STEPS, "await-ready"],
     },
     {
       case: "a tier of runtimes alone",
       yaml: "services:\n  - hostname: appdev\n    buildFromGit: https://gitea.test/acme/app\n",
       extra: {},
-      steps: ["create-project", ...CONTAINER_STEPS, "import-runtimes", "await-ready"],
+      steps: ["create-project", ...CONTAINER_STEPS, "await-ready"],
     },
     {
       case: "a tier of managed services alone",
@@ -514,14 +513,14 @@ services:
       case: "a stage given an agent",
       yaml: MATE_TIER,
       extra: { role: "stage", withAgent: true },
-      steps: ["import-project", ...CONTAINER_STEPS, "import-runtimes", "await-ready"],
+      steps: ["import-project", ...CONTAINER_STEPS, "await-ready"],
     },
   ] satisfies ReadonlyArray<{
     case: string;
     yaml: string;
     extra: Partial<EnvironmentCreationInput>;
     steps: ReadonlyArray<EnvironmentCreationStep["kind"]>;
-  }>)("plans $case: managed first, runtimes after closing off", ({ yaml, extra, steps }) => {
+  }>)("plans $case: managed first, runtimes with the container", ({ yaml, extra, steps }) => {
     expect(stepKinds(plan(yaml, extra))).toEqual(steps);
   });
 
@@ -552,10 +551,9 @@ services:
     );
   });
 
-  it("leaves the runtimes for after closing off, in one wave, each as it comes up", () => {
-    const runtimes = plan(MATE_TIER).find((step) => step.kind === "import-runtimes");
-    expect(runtimes).toEqual({
-      kind: "import-runtimes",
+  it("hands the runtimes to the container, in one wave, each as it comes up", () => {
+    const container = plan(MATE_TIER).find((step) => step.kind === "import-container");
+    expect(container?.kind === "import-container" && container.runtimes).toEqual({
       yaml: `#zeropsPreprocessor=on
 services:
   - hostname: appdev
@@ -628,8 +626,8 @@ services:
     expect(plan(WHOLE, { withAgent: true }).map((step) => step.kind)).toEqual([
       "import-project",
       "import-container",
-      "secure-container-token",
-      "drop-container-delegation",
+      "close-off",
+      "share-reach",
       "await-ready",
     ]);
   });

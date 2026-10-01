@@ -247,9 +247,9 @@
       "types": "./src/zerops/autoEnterProvisioning.ts",
       "default": "./src/zerops/autoEnterProvisioning.ts"
     },
-    "./zerops/birth": {
-      "types": "./src/zerops/birth/index.ts",
-      "default": "./src/zerops/birth/index.ts"
+    "./zerops/mateSetup": {
+      "types": "./src/zerops/mateSetup.ts",
+      "default": "./src/zerops/mateSetup.ts"
     },
     "./zerops/birthProgress": {
       "types": "./src/zerops/birthProgress.ts",

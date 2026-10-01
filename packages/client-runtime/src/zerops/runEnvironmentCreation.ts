@@ -11,13 +11,14 @@
  *
  * The last steps are where the two kinds of environment part ways:
  *
- * - An environment **with an agent** is handed back the moment its imports
- *   are accepted — at `import-runtimes` when its tier has runtimes, which its
- *   birth imports once it has closed the project off, else at `await-ready`.
- *   The container wait is already a product surface — the provisioning state
- *   machine, its panel, its retry and enable paths — and duplicating it here
- *   would be a second opinion about when a container is ready. The caller
- *   starts that wait for the returned project.
+ * - An environment **with an agent** is handed back at `await-ready`, every
+ *   step that needs the person's rights done: its container imported with
+ *   its key and its runtimes, its project closed off, its registration
+ *   written. The container then sets itself up (zcp imports the runtimes on
+ *   boot); the container wait is already a product surface — the
+ *   provisioning state machine, its panel, its retry and enable paths — and
+ *   duplicating it here would be a second opinion about when a container is
+ *   ready.
  * - An environment **without one** has nothing to hand off to: no container,
  *   no health probe. So this waits for its services itself, by reading the
  *   platform's own service status until every one of them is `ACTIVE`.
@@ -31,15 +32,8 @@
 import type { EnvironmentCreationStep } from "./createEnvironment.ts";
 import type { Deployment } from "./flow/deployment.ts";
 import { deployedVersion } from "./groupRows.ts";
-import {
-  findMateIntegrationToken,
-  planGroupReach,
-  type TokenWriteHold,
-  type ZeropsIntegrationToken,
-  type ZeropsProjectGrant,
-  type ZeropsTokenDelegation,
-} from "./groupReach.ts";
 import type { Known } from "./knowledge/known.ts";
+import { readsClosed } from "./projectIsolation.ts";
 import type { ZeropsAgentType } from "./newProject.ts";
 import {
   projectCreationFailureSentence,
@@ -64,10 +58,18 @@ export interface EnvironmentCreationPlatform {
     readonly clientId: string;
     readonly projectId: string;
   }) => Promise<ZeropsProjectCreation | undefined>;
+  /**
+   * The container, holding the Mate's own key (`api.ts`): safe to ask again, a project that has
+   * its container already making no write.
+   */
   readonly importDevelopmentContainer: (input: {
     readonly projectId: string;
+    /** What the project is called: its key is named after it. */
+    readonly projectName: string;
     readonly agents: ReadonlyArray<ZeropsAgentType>;
-  }) => Promise<{ readonly serviceName: string }>;
+    /** The tier's runtimes, for zcp to import on its first boot. */
+    readonly setupRuntimesYaml?: string;
+  }) => Promise<{ readonly serviceName: string; readonly imported: boolean }>;
   readonly importServices: (projectId: string, yaml: string) => Promise<unknown>;
   /**
    * `POST /client/{id}/project/import` — a project and its services from one
@@ -77,43 +79,25 @@ export interface EnvironmentCreationPlatform {
     readonly clientId: string;
     readonly yaml: string;
   }) => Promise<{ readonly projectId: string }>;
+  /** The project closed off (`projectIsolation.ts`); safe to ask again. */
+  readonly closeOff: (projectId: string) => Promise<void>;
+  /** The project's `envIsolation`, read back; undefined while the read has not caught up. */
+  readonly readIsolation: (projectId: string) => Promise<string | undefined>;
   /**
-   * `GET /client/{id}/integration-token/list`, as grant metadata — names and
-   * project grants, never a token value. The step needs the id of the token
-   * the container import just minted, and nothing else about it.
+   * `mate:closed-off` on the project, as the person: zcp's boot import of the runtimes waits for
+   * it (pass 28). Idempotent.
    */
-  readonly listIntegrationTokenGrants: (input: {
-    readonly clientId: string;
-  }) => Promise<ReadonlyArray<ZeropsIntegrationToken>>;
-  /** `PUT /client/{id}/integration-token/{tokenId}` — the whole record, replaced. */
-  readonly setIntegrationTokenProjects: (input: {
-    readonly clientId: string;
-    readonly tokenId: string;
-    readonly name: string;
-    readonly projects: ReadonlyArray<ZeropsProjectGrant>;
-  }) => Promise<void>;
+  readonly markClosedOff: (projectId: string) => Promise<void>;
   /**
-   * Holds one token's read-then-write at a time (`mate:token:{id}`), shared with every other
-   * writer of the account's tokens; without it, nothing else writes this token meanwhile.
+   * The group's other Mates' keys extended to `READ_ONLY` on the project, where this person may
+   * edit them; quietly nothing where they may not. Never fails the press.
    */
-  readonly holdToken?: TokenWriteHold;
-  /** `GET /client/{id}/integration-token/{tokenId}/delegation`. */
-  readonly listTokenDelegations: (input: {
-    readonly clientId: string;
-    readonly tokenId: string;
-  }) => Promise<ReadonlyArray<ZeropsTokenDelegation>>;
-  /** `DELETE /client/{id}/integration-token/{tokenId}/delegation/{delegationId}`. */
-  readonly deleteTokenDelegation: (input: {
-    readonly clientId: string;
-    readonly tokenId: string;
-    readonly delegationId: string;
-  }) => Promise<void>;
+  readonly shareReach: (projectId: string) => Promise<void>;
   /**
-   * The whole of `projectIsolation.ts`'s plan against one project — the read,
-   * the writes, the re-read and the restarts. One call rather than a port per
-   * platform verb: the decision is the pure planner's and is tested there,
-   * and the entry ids the writes need never leave the caller that read them.
+   * The environment's group registration (`addGroupEnvironment.ts`); safe to ask again. Throws
+   * with the reason a write did not go through.
    */
+  readonly register: (projectId: string) => Promise<void>;
   /** Reads the latest shared-model projection; this callback performs no platform request. */
   readonly readObservedServices: (
     projectId: string,
@@ -195,6 +179,44 @@ export interface RunEnvironmentCreationInput {
   readonly projectCreatePollIntervalMs?: number;
   /** How long the platform is given to confirm the project before the step fails. */
   readonly projectCreateWaitCapMs?: number;
+  /**
+   * A press tried again: the step it resumes at, and the project the first press made. Only
+   * steps that are safe to ask again resume (`resumableEnvironmentCreationStep`).
+   */
+  readonly resume?: {
+    readonly from: number;
+    readonly projectId: string;
+    readonly projectName: string;
+  };
+  /** The platform took the project: everything after this step acts on it. */
+  readonly onProjectAccepted?: (projectId: string) => void;
+}
+
+/** Between reads of a project's `envIsolation` while it has not caught up. */
+export const ISOLATION_READ_MS = 1_000;
+/** How many reads a close-off makes before it writes, or gives up: about ten seconds. */
+export const ISOLATION_READS = 10;
+
+/** A close-off's reads that must say closed before the mark, and the time between them. */
+export const ISOLATION_CONFIRM_READS = 2;
+export const ISOLATION_CONFIRM_MS = 2_000;
+
+/** The idempotent steps' tries: the platform's index catching up is the usual "not yet". */
+export const PRESS_STEP_ATTEMPTS = 4;
+export const PRESS_STEP_RETRY_MS = 2_000;
+
+/**
+ * The steps a press tried again may resume at: each is safe to ask again. An import of services
+ * is not — a second one is refused for the hostnames the first made — so a creation that stopped
+ * there, or at the project itself, is removed rather than resumed.
+ */
+export function resumableEnvironmentCreationStep(step: EnvironmentCreationStep): boolean {
+  return (
+    step.kind === "import-container" ||
+    step.kind === "close-off" ||
+    step.kind === "register" ||
+    step.kind === "share-reach"
+  );
 }
 
 /** Measured at ~2 minutes for a two-service recipe; a build can take longer. */
@@ -239,29 +261,85 @@ export async function runEnvironmentCreation(
     report();
   };
 
-  let projectId: string | undefined;
+  let projectId: string | undefined = input.resume?.projectId;
+  let projectName: string | undefined = input.resume?.projectName;
   let serviceName: string | undefined;
   let deployments: ReadonlyArray<ServiceDeployment> = [];
-  // Read once and shared by the two steps that need it: the account's token
-  // list does not change under a creation, and one read is one round trip
-  // fewer between the container coming up and its ADMIN going away.
-  let mateToken: ZeropsIntegrationToken | undefined;
-  const resolveMateToken = async (): Promise<ZeropsIntegrationToken> => {
-    if (mateToken !== undefined) return mateToken;
-    const tokens = await input.platform.listIntegrationTokenGrants({ clientId: input.clientId });
-    assertCurrent();
-    const found = findMateIntegrationToken(tokens, requireProject(projectId));
-    if (found === undefined) {
-      throw new Error(
-        "The container's own access token could not be found, so it still holds more of this project than it needs.",
+  /** This press imported a container: a harden before it is no longer the last word. */
+  let containerImported = false;
+  /**
+   * `envIsolation` as soon as it reads at all, a second apart for about ten seconds; undefined
+   * while it never did. A read that answers is the answer, open or closed.
+   */
+  const readIsolation = async (target: string): Promise<string | undefined> => {
+    for (let read = 1; ; read += 1) {
+      // A read that failed is asked again like one not caught up, and said once none is left.
+      const answer = await input.platform.readIsolation(target).then(
+        (isolation) => ({ isolation }),
+        (cause: unknown) => ({ cause }),
       );
+      assertCurrent();
+      if ("isolation" in answer && answer.isolation !== undefined) return answer.isolation;
+      if (read >= ISOLATION_READS) {
+        if ("cause" in answer) throw answer.cause;
+        return undefined;
+      }
+      await sleep(ISOLATION_READ_MS);
+      assertCurrent();
     }
-    mateToken = found;
-    return found;
+  };
+
+  /**
+   * Two reads two seconds apart that say closed, writing isolation wherever one says anything
+   * else — once, and the two reads asked again after it.
+   */
+  const confirmClosed = async (target: string): Promise<void> => {
+    let written = false;
+    for (let closedReads = 0; closedReads < ISOLATION_CONFIRM_READS;) {
+      if (closedReads > 0) {
+        await sleep(ISOLATION_CONFIRM_MS);
+        assertCurrent();
+      }
+      const isolation = await readIsolation(target);
+      if (isolation === undefined) throw new Error("The project's isolation could not be read.");
+      if (readsClosed(isolation)) {
+        closedReads += 1;
+        continue;
+      }
+      if (written) throw new Error("The project does not read as closed off yet.");
+      await input.platform.closeOff(target);
+      assertCurrent();
+      written = true;
+      closedReads = 0;
+    }
+  };
+
+  /** An idempotent step, tried again while it answers "not yet". */
+  const withTries = async (attempt: () => Promise<void>): Promise<void> => {
+    for (let tried = 1; ; tried += 1) {
+      try {
+        await attempt();
+        return;
+      } catch (cause) {
+        if (tried >= PRESS_STEP_ATTEMPTS) throw cause;
+      }
+      assertCurrent();
+      await sleep(PRESS_STEP_RETRY_MS);
+      assertCurrent();
+    }
+  };
+  const accept = (id: string) => {
+    projectId = id;
+    input.onProjectAccepted?.(id);
   };
   report();
 
-  for (let index = 0; index < input.steps.length; index += 1) {
+  const from = input.resume?.from ?? 0;
+  for (let index = 0; index < from; index += 1)
+    progress[index] = { ...progress[index]!, state: "done" };
+  if (from > 0) report();
+
+  for (let index = from; index < input.steps.length; index += 1) {
     const step = input.steps[index]!;
     const startedAtMs = now();
     mark(index, { state: "running", startedAtMs });
@@ -278,7 +356,8 @@ export async function runEnvironmentCreation(
           });
           // Named before the wait: a creation the platform then fails has
           // still made a project, and the outcome must say which one.
-          projectId = project.id;
+          projectName = step.name;
+          accept(project.id);
           await awaitProjectCreated({
             clientId: input.clientId,
             projectId: project.id,
@@ -299,64 +378,58 @@ export async function runEnvironmentCreation(
             clientId: input.clientId,
             yaml: step.yaml,
           });
-          projectId = imported.projectId;
+          projectName = step.name;
+          accept(imported.projectId);
           break;
         }
         case "import-container": {
           const imported = await input.platform.importDevelopmentContainer({
             projectId: requireProject(projectId),
+            projectName: projectName ?? "",
             agents: step.agents,
+            ...(step.runtimes === undefined ? {} : { setupRuntimesYaml: step.runtimes.yaml }),
           });
           serviceName = imported.serviceName;
+          if (imported.imported) containerImported = true;
           break;
         }
-        case "secure-container-token": {
-          const found = await resolveMateToken();
-          const hold = input.platform.holdToken ?? ((_tokenId, run) => run());
-          // The write replaces the token's whole project list: it is planned from the token as
-          // read under its lock, so a write another writer made meanwhile is seen.
-          await hold(found.id, async () => {
-            mateToken = undefined;
-            const token = await resolveMateToken();
-            const write = planGroupReach({
-              token,
-              selfProjectId: requireProject(projectId),
-              // A group of one: the new environment's siblings, if it has any,
-              // are the projects-screen reconcile's business — that one runs on
-              // every read and can see the whole account, while this runs once
-              // and can see only what it just made.
-              groupProjectIds: [requireProject(projectId)],
-            });
-            // Already exactly right — a platform that starts minting the lowered
-            // shape makes this step a read.
-            if (write !== undefined) {
-              await input.platform.setIntegrationTokenProjects({
-                clientId: input.clientId,
-                tokenId: write.tokenId,
-                name: token.name,
-                projects: write.projects,
-              });
-            }
-          });
+        case "close-off": {
+          const target = requireProject(projectId);
+          // The read trails the platform, and zcp imports the runtimes on the mark alone:
+          // isolation is written wherever a read says anything but closed, and the mark goes only
+          // on two reads, two seconds apart, whose first word is `service`. Nothing waits on a
+          // process: a platform that stalls one would stall every press (a live press,
+          // 2026-10-01). A harden's isolation is trusted only where no container came after it.
+          if (step.isolated !== true || containerImported) await confirmClosed(target);
+          await withTries(() => input.platform.markClosedOff(target));
           break;
         }
-        case "drop-container-delegation": {
-          const token = await resolveMateToken();
-          const delegations = await input.platform.listTokenDelegations({
-            clientId: input.clientId,
-            tokenId: token.id,
-          });
-          assertCurrent();
-          // Every one of them, and only this token's. A Mate is never given a
-          // delegation on purpose, so there is no shape worth keeping; an
-          // account whose platform stopped granting them makes this a read.
-          for (const delegation of delegations) {
-            await input.platform.deleteTokenDelegation({
-              clientId: input.clientId,
-              tokenId: token.id,
-              delegationId: delegation.id,
-            });
+        case "share-reach": {
+          const target = requireProject(projectId);
+          // Best-effort: what it could not do is said on its step, and the press goes on — the
+          // group-reach reconcile gives the sight later.
+          try {
+            await input.platform.shareReach(target);
+          } catch (cause) {
             assertCurrent();
+            mark(index, { state: "failed", error: describeError(cause), finishedAtMs: now() });
+            continue;
+          }
+          break;
+        }
+        case "register": {
+          const target = requireProject(projectId);
+          // A Mate is closed off by now: a refused registration leaves it running, waiting for
+          // an owner to register it (*Finish setup*). A stage or a production has nothing else
+          // that makes it whole, and stops here.
+          const stopsHere = !input.steps.slice(0, index).some((made) => made.kind === "close-off");
+          try {
+            await withTries(() => input.platform.register(target));
+          } catch (cause) {
+            if (stopsHere) throw cause;
+            assertCurrent();
+            mark(index, { state: "failed", error: describeError(cause), finishedAtMs: now() });
+            continue;
           }
           break;
         }
@@ -365,17 +438,6 @@ export async function runEnvironmentCreation(
           await input.platform.importServices(requireProject(projectId), step.yaml);
           break;
         }
-        case "import-runtimes":
-          // The birth's, not this run's: it imports them once it has closed
-          // the project off (`birthWorker.ts`), from the document its record
-          // was begun with, so neither a reload nor this run ending loses them.
-          // Handed off with the wait for the agent that follows.
-          return {
-            ok: true,
-            projectId: requireProject(projectId),
-            serviceName,
-            awaitingAgent: true,
-          };
         case "await-ready": {
           if (step.withAgent) {
             // Handed off, not finished: the caller's provisioning wait takes

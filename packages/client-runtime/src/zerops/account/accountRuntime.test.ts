@@ -224,17 +224,16 @@ const answering = (environmentId: EnvironmentId, projectId: string): ProbeReadin
 /**
  * The Mate environments' ports as a tab hands them over, with no React: every exchange and probe
  * is recorded and left for the test to answer, the records hold what `remembered` names, and the
- * catalog, the births and the records' other tabs are the test's to drive.
+ * catalog and the records' other tabs are the test's to drive.
  */
 const environmentRig = (clock: DeadlineClock, remembered: ReadonlyArray<RegistrationRecord>) => {
   const exchanges: Array<Pending<DoorRequest, ExchangeAnswer<DoorCredential>>> = [];
   const descriptors: Array<Pending<string, DescriptorFacts>> = [];
   const probes: Array<Pending<string, ProbeReading>> = [];
   const removed: Array<EnvironmentId> = [];
-  const promoted: Array<string> = [];
   const storage = new Map<string, string>([[REGISTRATION_RECORDS_KEY, JSON.stringify(remembered)]]);
   /** What the stage listens to now, by port. */
-  const listening = { records: 0, catalog: 0, births: 0 };
+  const listening = { records: 0, catalog: 0 };
   /** How many times the records were read from storage. */
   let recordReads = 0;
   /** What the stage hears when another tab writes the records. */
@@ -242,7 +241,6 @@ const environmentRig = (clock: DeadlineClock, remembered: ReadonlyArray<Registra
   /** The tab's writes of the records do not land: a full or refusing storage, which the port swallows. */
   let writesLand = true;
   let catalog: CatalogListener | null = null;
-  let unhardened: ReadonlySet<string> = new Set();
   /** The environment the tab's route names, as its address bar holds it. */
   let route: EnvironmentId | null = null;
   /** Each environment the stage told the socket admission to open first. */
@@ -284,14 +282,6 @@ const environmentRig = (clock: DeadlineClock, remembered: ReadonlyArray<Registra
         return () => void (listening.catalog -= 1);
       },
     },
-    births: {
-      unhardened: () => unhardened,
-      subscribe: () => {
-        listening.births += 1;
-        return () => void (listening.births -= 1);
-      },
-      promote: (projectId) => void promoted.push(projectId),
-    },
     route: () => route,
     admission: {
       prefer: (environmentId) => void preferred.push(environmentId),
@@ -313,7 +303,6 @@ const environmentRig = (clock: DeadlineClock, remembered: ReadonlyArray<Registra
     descriptors,
     probes,
     removed,
-    promoted,
     listening,
     /** The records as they are stored now. */
     records: () =>
@@ -332,9 +321,6 @@ const environmentRig = (clock: DeadlineClock, remembered: ReadonlyArray<Registra
     /** Whether this tab's writes of the records land from now on. */
     landWrites: (land: boolean) => {
       writesLand = land;
-    },
-    setUnhardened: (next: ReadonlySet<string>) => {
-      unhardened = next;
     },
   };
 };
@@ -1305,6 +1291,8 @@ describe("the post-grant stage's Mate environments", () => {
     adapter: ZeropsDataAdapter = platformAdapter(mates),
     /** The Mates the grant admits; the organization may list more. */
     admitted: ReadonlyArray<Mate> = mates,
+    /** Ports the case adds to the rig's. */
+    extra: Partial<AccountEnvironmentPorts> = {},
   ) {
     const clock = yield* makeDeadlineClock({ startWallMs: START_WALL_MS });
     const registry = AtomRegistry.make();
@@ -1331,7 +1319,7 @@ describe("the post-grant stage's Mate environments", () => {
         verifier: grant.verifier,
         signals: page.signals,
         atomRegistry: registry,
-        environments: rig.ports,
+        environments: { ...rig.ports, ...extra },
       });
     }).pipe(Effect.provideService(Clock.Clock, clock));
     yield* Effect.addFinalizer(() => built.close("application-close"));
@@ -1344,8 +1332,9 @@ describe("the post-grant stage's Mate environments", () => {
     mates: ReadonlyArray<Mate> = [A_MATE],
     adapter: ZeropsDataAdapter = platformAdapter(mates),
     admitted: ReadonlyArray<Mate> = mates,
+    extra: Partial<AccountEnvironmentPorts> = {},
   ) {
-    const opened = yield* openAccount(remembered, mates, adapter, admitted);
+    const opened = yield* openAccount(remembered, mates, adapter, admitted, extra);
     yield* opened.grant.answer();
     yield* opened.clock.advance(SECOND);
     yield* settle;
@@ -1495,7 +1484,7 @@ describe("the post-grant stage's Mate environments", () => {
         yield* settle;
         expect(rig.exchanges).toHaveLength(1);
         expect(rig.probes.length).toBeGreaterThan(0);
-        expect(rig.listening).toEqual({ records: 1, catalog: 1, births: 1 });
+        expect(rig.listening).toEqual({ records: 1, catalog: 1 });
         let heard = 0;
         environments.subscribe(() => {
           heard += 1;
@@ -1508,7 +1497,7 @@ describe("the post-grant stage's Mate environments", () => {
         expect(rig.probes.every(({ signal }) => signal.aborted)).toBe(true);
         expect(yield* Effect.promise(() => connect)).toEqual({ _tag: "Closed" });
         // The stage hears nothing more: no port, and nothing the tab does, reaches a machine.
-        expect(rig.listening).toEqual({ records: 0, catalog: 0, births: 0 });
+        expect(rig.listening).toEqual({ records: 0, catalog: 0 });
         yield* page.emit({ type: "visibility", hidden: true });
         yield* clock.advance(MINUTE);
         yield* page.emit({ type: "visibility", hidden: false });
@@ -1519,31 +1508,16 @@ describe("the post-grant stage's Mate environments", () => {
     ),
   );
 
-  // A browser that holds a Mate's record and still its birth — the record written, the birth
-  // left behind (a live run, 2026-10-01: "coming up" for an hour over a Mate that answered) —
-  // ends the birth: the record is the exchange's word that it named the environment.
-  it.effect("a birth this browser still holds for a recorded Mate ends when the stage starts", () =>
-    Effect.scoped(
-      Effect.gen(function* () {
-        const { rig } = yield* granted([REMEMBERED_A]);
-        yield* settle;
-        expect(rig.promoted).toEqual([A_MATE.projectId]);
-      }),
-    ),
-  );
-
   it.effect.each([
     {
-      name: "the registry takes it: its target is remembered and its birth ends",
+      name: "the registry takes it: its target is remembered",
       installed: true,
       records: [REMEMBERED_A],
-      promoted: [A_MATE.projectId],
     },
     {
       name: "the registry refuses it: nothing is written",
       installed: false,
       records: [],
-      promoted: [],
     },
   ])("an installed credential writes its target's record (H12): $name", (row) =>
     Effect.scoped(
@@ -1556,7 +1530,6 @@ describe("the post-grant stage's Mate environments", () => {
         yield* settle;
 
         expect(rig.records()).toEqual(row.records);
-        expect(rig.promoted).toEqual(row.promoted);
         if (row.installed) {
           expect(yield* Effect.promise(() => connect)).toEqual({
             _tag: "Connected",
@@ -1794,25 +1767,29 @@ describe("the post-grant stage's Mate environments", () => {
       ),
   );
 
+  /** A Mate whose press marked its project closed off: auto-connect may want it. */
+  const CLOSED_OFF_MATE = {
+    ...A_MATE,
+    project: { ...A_MATE.project, tagList: ["mate", "mate:closed-off"] },
+  };
+
   it.effect.each([
     {
       name: "a ready Mate of the organization the tab has open",
       open: "org-1",
-      born: [],
+      mate: CLOSED_OFF_MATE,
       wanted: 1,
     },
-    { name: "none while another organization is open", open: "org-2", born: [], wanted: 0 },
     {
-      name: "none while its birth has not closed its project off",
-      open: "org-1",
-      born: [A_MATE.projectId],
+      name: "none while another organization is open",
+      open: "org-2",
+      mate: CLOSED_OFF_MATE,
       wanted: 0,
     },
   ])("auto-connect wants $name (D13)", (row) =>
     Effect.scoped(
       Effect.gen(function* () {
-        const { rig, environments } = yield* granted([]);
-        rig.setUnhardened(new Set(row.born));
+        const { rig, environments } = yield* granted([], [row.mate]);
         yield* answerProbe(rig, MATE_ORIGIN, answering(ENV_A, A_MATE.projectId));
 
         environments.setActiveOrganization(row.open);
@@ -1821,6 +1798,190 @@ describe("the post-grant stage's Mate environments", () => {
         expect(rig.exchanges.map(({ input: { key, reason } }) => ({ key, reason }))).toEqual(
           Array.from({ length: row.wanted }, () => ({ key: MATE, reason: "auto-connect" })),
         );
+      }),
+    ),
+  );
+
+  /**
+   * A platform that states its Mates' variables, token list and services' variable names as the
+   * case says: the organization's variables stream answers, or fails; the token list and each
+   * service's own variable names are its cells.
+   */
+  const statedPlatform = (
+    mates: ReadonlyArray<Mate>,
+    stated: {
+      /** The organization's variables, or a stream that fails. */
+      readonly variables?: ReadonlyArray<Record<string, unknown>> | "fails";
+      readonly tokens?: ReadonlyArray<Record<string, unknown>>;
+      /** A service's own variable names, or a read the platform refuses (403). */
+      readonly env?: ReadonlyArray<string> | "forbidden";
+    },
+  ): ZeropsDataAdapter => {
+    const base = platformAdapter(mates);
+    const refused = {
+      _tag: "ZeropsCellSourceError",
+      kind: "permission",
+      retryable: false,
+    } as const;
+    const unstated = {
+      _tag: "ZeropsCellSourceError",
+      kind: "unavailable",
+      retryable: false,
+    } as const;
+    return {
+      ...base,
+      register: (receiver, request, context) => {
+        const descriptor = request.descriptor;
+        if (
+          descriptor.kind === "table-list" &&
+          descriptor.query.kind === "service-variables-of-organization" &&
+          stated.variables !== undefined
+        ) {
+          if (stated.variables === "fails") {
+            return Effect.fail({
+              _tag: "ZeropsDataAdapterError",
+              kind: "registration",
+              message: "The variables could not be listed.",
+              retryable: true,
+              accountRevocationEvidence: false,
+            } as const);
+          }
+          const items = stated.variables;
+          return Effect.succeed({
+            responseObservations: decodeRegistrationResponse(request, {
+              items,
+              totalHits: items.length,
+            }).observations,
+          });
+        }
+        return base.register(receiver, request, context);
+      },
+      cells: {
+        readOrganizationLocations: () => Effect.fail(unstated),
+        readServiceAuthorizedAgents: () => Effect.fail(unstated),
+        readServiceMateFlag: () => Effect.fail(unstated),
+        readOrganizationMembers: () => Effect.fail(unstated),
+        readOrganizationIntegrationTokenGrants: () =>
+          stated.tokens === undefined
+            ? Effect.fail(unstated)
+            : Effect.succeed(stated.tokens as never),
+        readServiceVariableNames: () =>
+          stated.env === "forbidden"
+            ? Effect.fail(refused)
+            : stated.env === undefined
+              ? Effect.fail(unstated)
+              : Effect.succeed(stated.env),
+      },
+    };
+  };
+  /** A Mate whose project has no mate:closed-off: its organization's streams state its marker. */
+  const OPEN_MATE = { ...A_MATE, project: { ...A_MATE.project, tagList: ["mate"] } };
+  /** A variable the app reads, on A_MATE's container. */
+  const onMate = (key: string) => ({
+    id: `var-${key}`,
+    serviceStackId: A_MATE.service.id,
+    projectId: A_MATE.projectId,
+    key,
+    content: "1",
+  });
+  const autoConnected = (rig: ReturnType<typeof environmentRig>) =>
+    rig.exchanges.filter(({ input: { reason } }) => reason === "auto-connect").length;
+
+  /** A Mate with no mate:closed-off whose container was made at `created`. */
+  const openMate = (created: string) => ({
+    ...OPEN_MATE,
+    service: { ...OPEN_MATE.service, created },
+  });
+  /** Made a minute before the clock starts: a press may still be setting it up. */
+  const YOUNG = openMate("2026-09-23T09:59:00Z");
+  /** Made three hours before: an older Mate, never held for its marker. */
+  const OLDER = openMate("2026-09-23T07:00:00Z");
+
+  // The gate on a Mate with no mate:closed-off, at the wiring: an older Mate connects on a fresh
+  // load whatever its organization's variables stream says; a young one is held until its marker
+  // is known absent (pass 28 review: the owner's whole complaint was stalls).
+  it.effect.each([
+    {
+      name: "an older Mate whose marker reads absent",
+      mate: OLDER,
+      stated: { variables: [onMate("ZCP_MATE_ENABLED")] },
+      wanted: 1,
+    },
+    { name: "an older Mate whose stream is unread", mate: OLDER, stated: {}, wanted: 1 },
+    {
+      name: "an older Mate whose stream fails on every try",
+      mate: OLDER,
+      stated: { variables: "fails" },
+      wanted: 1,
+    },
+    {
+      name: "an older Mate its press left open, marker present",
+      mate: OLDER,
+      stated: { variables: [onMate("MATE_SETUP_RUNTIMES")] },
+      wanted: 0,
+    },
+    { name: "a young Mate whose stream is unread", mate: YOUNG, stated: {}, wanted: 0 },
+    {
+      name: "a young Mate whose stream failed, its own variables without the marker",
+      mate: YOUNG,
+      stated: { variables: "fails", env: ["ZCP_MATE_ENABLED"] },
+      wanted: 1,
+    },
+    {
+      name: "a young Mate whose stream failed, its own variables with the marker",
+      mate: YOUNG,
+      stated: { variables: "fails", env: ["MATE_SETUP_RUNTIMES"] },
+      wanted: 0,
+    },
+    {
+      name: "a young Mate whose stream failed, and a 403 on its own variables",
+      mate: YOUNG,
+      stated: { variables: "fails", env: "forbidden" },
+      wanted: 1,
+    },
+  ] as const)("the close-off gate: $name", (row) =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const { clock, rig, environments } = yield* granted(
+          [],
+          [row.mate],
+          statedPlatform([row.mate], row.stated),
+        );
+        yield* answerProbe(rig, MATE_ORIGIN, answering(ENV_A, A_MATE.projectId));
+        environments.setActiveOrganization("org-1");
+        // A stream that fails is asked again before it is said to have failed.
+        for (let tick = 0; tick < 6; tick += 1) {
+          yield* clock.advance(30 * SECOND);
+          yield* settle;
+        }
+        expect(autoConnected(rig)).toBe(row.wanted);
+      }),
+    ),
+  );
+
+  // Its ⋯ menu offers its harden; auto-connect does not wait for it (pass 28 review).
+  it.effect("an older Mate whose keys are all still ADMIN connects", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const { rig, environments } = yield* granted(
+          [],
+          [CLOSED_OFF_MATE],
+          statedPlatform([CLOSED_OFF_MATE], {
+            tokens: [
+              {
+                tokenId: "k-1",
+                name: "zcp-shop a",
+                createdByUser: "u-ada",
+                grants: [{ projectId: A_MATE.projectId, roleCode: "ADMIN" }],
+              },
+            ],
+          }),
+        );
+        yield* answerProbe(rig, MATE_ORIGIN, answering(ENV_A, A_MATE.projectId));
+        environments.setActiveOrganization("org-1");
+        yield* settle;
+        yield* settle;
+        expect(autoConnected(rig)).toBe(1);
       }),
     ),
   );

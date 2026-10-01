@@ -143,3 +143,37 @@ export function pickProjectCreation(
   }
   return newest?.creation;
 }
+
+const UNDER_WAY = new Set(["PENDING", "RUNNING"]);
+const ZCP_SERVICE_NAME = /^zcp\d*$/u;
+
+/**
+ * Whether the platform is still creating a zcp in the project — a `stack.create` pending or
+ * running for a service named as `nextZcpServiceName` names one — out of its processes as
+ * `POST /process/search` answers them. A container being created holds the Mate's key though the
+ * services listing may not show it yet: its key is not regenerated under it.
+ */
+export function zcpCreationUnderWay(items: ReadonlyArray<unknown>): boolean {
+  return items.some((item) => {
+    if (typeof item !== "object" || item === null) return false;
+    const { actionName, status, serviceStacks } = item as {
+      readonly actionName?: unknown;
+      readonly status?: unknown;
+      readonly serviceStacks?: unknown;
+    };
+    if (actionName !== "stack.create" || typeof status !== "string" || !UNDER_WAY.has(status)) {
+      return false;
+    }
+    return (
+      Array.isArray(serviceStacks) &&
+      serviceStacks.some(
+        (service: unknown) =>
+          typeof service === "object" &&
+          service !== null &&
+          "name" in service &&
+          typeof service.name === "string" &&
+          ZCP_SERVICE_NAME.test(service.name),
+      )
+    );
+  });
+}

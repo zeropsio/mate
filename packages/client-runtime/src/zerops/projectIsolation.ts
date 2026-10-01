@@ -171,7 +171,7 @@ export function planProjectIsolation(input: ProjectIsolationInput): ProjectIsola
   // `is not unique`, which failed the creation that called it
   // (measured 2026-09-20).
   if (isolation === undefined) return { ok: false, reason: "read-incomplete" };
-  if (isolation.content !== PROJECT_ENV_ISOLATION_SERVICE) {
+  if (!readsClosed(isolation.content)) {
     steps.push({
       kind: "update-project-env",
       entryId: isolation.id,
@@ -218,6 +218,14 @@ export function planProjectIsolation(input: ProjectIsolationInput): ProjectIsola
   }
 
   return { ok: true, steps };
+}
+
+/**
+ * A project reads closed when its `envIsolation`'s first word is `service`: the container recipe's
+ * own `service service@zcp` (measured 2026-10-01) as well as a plain `service`.
+ */
+export function readsClosed(isolation: string | undefined): boolean {
+  return isolation?.trim().split(/\s+/u)[0] === PROJECT_ENV_ISOLATION_SERVICE;
 }
 
 /** A short, human label per step. Never prints a value (`planProjectIsolation`). */

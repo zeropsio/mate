@@ -2,7 +2,11 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   buildGroupGrants,
+  findHeldMateKey,
+  mateHardenableBy,
+  mateNeedsHarden,
   findMateIntegrationToken,
+  newestMateKey,
   planAccountGroupReach,
   makeTokenWriteLock,
   planGroupReach,
@@ -424,5 +428,133 @@ describe("makeTokenWriteLock", () => {
     const next = hold("tok-a", async () => "next");
     await expect(stuck).rejects.toThrow(/tok-a/);
     await expect(next).resolves.toBe("next");
+  });
+});
+
+// Two keys on one Mate — a press that raced another, a platform key beside the press's own: the
+// container holds the one made before it, newest first; a key made after it is an orphan, and a
+// key nothing can tell apart is never guessed at (pass 28 review).
+describe("findHeldMateKey — the key a Mate's container holds", () => {
+  const key = (id: string, created: string | undefined) => ({
+    id,
+    name: "zcp-acme",
+    roleCode: "NO_ACCESS",
+    ...(created === undefined ? {} : { created }),
+    projects: [{ projectId: "p-1", roleCode: "BASIC_USER" as const }],
+  });
+  const OTHER = { ...key("k-other", "2026-10-01T10:00:00Z"), name: "deploy-acme" };
+  it.each([
+    { case: "no key", tokens: [OTHER], container: "2026-10-01T10:05:00Z", want: undefined },
+    {
+      case: "the one key",
+      tokens: [key("k-1", undefined)],
+      container: undefined,
+      want: "k-1",
+    },
+    {
+      case: "the newest made before its container, not the orphan made after",
+      tokens: [
+        key("k-old", "2026-10-01T09:00:00Z"),
+        key("k-held", "2026-10-01T10:04:59Z"),
+        key("k-orphan", "2026-10-01T10:06:00Z"),
+      ],
+      container: "2026-10-01T10:05:00Z",
+      want: "k-held",
+    },
+    {
+      case: "nothing, where its container's age is unknown",
+      tokens: [key("k-a", "2026-10-01T09:00:00Z"), key("k-b", "2026-10-01T10:00:00Z")],
+      container: undefined,
+      want: undefined,
+    },
+    {
+      case: "nothing, where every key came after its container",
+      tokens: [key("k-a", "2026-10-01T11:00:00Z"), key("k-b", "2026-10-01T12:00:00Z")],
+      container: "2026-10-01T10:05:00Z",
+      want: undefined,
+    },
+  ])("$case", ({ tokens, container, want }) => {
+    expect(findHeldMateKey(tokens, "p-1", container)?.id).toBe(want);
+  });
+
+  it("reuses the newest key where no container holds one", () => {
+    expect(
+      newestMateKey(
+        [key("k-old", "2026-10-01T09:00:00Z"), key("k-new", "2026-10-01T10:00:00Z")],
+        "p-1",
+      )?.id,
+    ).toBe("k-new");
+  });
+});
+
+// A Mate not hardened yet — a pool-claimed one whose harden never ran, an older one — is read off
+// the platform's own token list, so any browser, after a reload too, knows it (pass 28 review).
+describe("mateNeedsHarden — a Mate's key still ADMIN on its own project", () => {
+  const key = (roleCode: "ADMIN" | "BASIC_USER") => ({
+    id: "k-1",
+    name: "zcp-acme",
+    projects: [
+      { projectId: "p-1", roleCode },
+      { projectId: "p-stage", roleCode: "READ_ONLY" as const },
+    ],
+  });
+  it.each([
+    { case: "a key at ADMIN", tokens: [key("ADMIN")], want: true },
+    { case: "a key lowered", tokens: [key("BASIC_USER")], want: false },
+    { case: "no key of its", tokens: [], want: false },
+    {
+      case: "another project's ADMIN key",
+      tokens: [{ ...key("ADMIN"), projects: [{ projectId: "p-2", roleCode: "ADMIN" as const }] }],
+      want: false,
+    },
+    // A leftover ADMIN key beside a lowered one: the container's may well be the lowered one, and
+    // an older Mate is not held for a key it may not use (pass 28 review).
+    {
+      case: "an ADMIN key beside a lowered one",
+      tokens: [key("ADMIN"), { ...key("BASIC_USER"), id: "k-2" }],
+      want: false,
+    },
+  ])("$case: $want", ({ tokens, want }) => {
+    expect(mateNeedsHarden(tokens, "p-1")).toBe(want);
+  });
+});
+
+// Only who may write the key may harden it: an org owner, or the key's creator (pass 28 review).
+describe("mateHardenableBy", () => {
+  const admin = (createdByUser: string) => ({
+    id: "k-1",
+    name: "zcp-acme",
+    createdByUser,
+    projects: [{ projectId: "p-1", roleCode: "ADMIN" as const }],
+  });
+  it.each([
+    {
+      case: "an org owner",
+      tokens: [admin("u-eva")],
+      viewer: { userId: "u-zoe", roleCode: "OWNER" },
+      want: true,
+    },
+    {
+      case: "the key's creator",
+      tokens: [admin("u-ada")],
+      viewer: { userId: "u-ada", roleCode: "BASIC_USER" },
+      want: true,
+    },
+    {
+      case: "an admin who did not create it",
+      tokens: [admin("u-eva")],
+      viewer: { userId: "u-ada", roleCode: "ADMIN" },
+      want: false,
+    },
+    {
+      case: "anybody, where nothing needs it",
+      tokens: [
+        { ...admin("u-ada"), projects: [{ projectId: "p-1", roleCode: "BASIC_USER" as const }] },
+      ],
+      viewer: { userId: "u-ada", roleCode: "OWNER" },
+      want: false,
+    },
+  ])("$case: $want", ({ tokens, viewer, want }) => {
+    expect(mateHardenableBy(tokens, "p-1", viewer)).toBe(want);
   });
 });

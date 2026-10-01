@@ -105,6 +105,7 @@ export function integrationTokensFromGrantMetadata(
     projects: token.grants,
     ...(token.roleCode === undefined ? {} : { roleCode: token.roleCode }),
     ...(token.created === undefined ? {} : { created: token.created }),
+    ...(token.createdByUser === undefined ? {} : { createdByUser: token.createdByUser }),
   }));
 }
 

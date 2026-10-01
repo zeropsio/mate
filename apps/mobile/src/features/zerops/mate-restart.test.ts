@@ -1,6 +1,6 @@
 /**
  * A Mate on mobile through the account runtime mobile hosts (DESIGN §7.5, A10): the account's
- * records over the device's storage, its intents in memory, no births, and a door, a probe and a
+ * records over the device's storage, its intents in memory, and a door, a probe and a
  * connection catalog the test answers — and the picker's rows as they read the runtime's machines.
  */
 import { describe, expect, it } from "@effect/vitest";
@@ -45,7 +45,7 @@ import * as Effect from "effect/Effect";
 import * as Stream from "effect/Stream";
 import { AtomRegistry } from "effect/unstable/reactivity";
 
-import { loadAccountRecords, memoryIntents, NO_BIRTHS } from "./account-ports";
+import { loadAccountRecords, memoryIntents } from "./account-ports";
 import { mobileCandidates } from "./candidate-listing";
 import { zeropsCandidatePresentation } from "./presentation";
 
@@ -257,7 +257,6 @@ const openMobileAccount = Effect.fnUntraced(function* (clock: DeadlineClock) {
         return () => undefined;
       },
     },
-    births: NO_BIRTHS,
   };
   const built = yield* Effect.gen(function* () {
     const data: ManagedZeropsDataRuntime = yield* makeZeropsDataRuntime({

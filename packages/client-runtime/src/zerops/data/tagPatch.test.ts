@@ -46,6 +46,20 @@ describe("applyProjectTagPatch", () => {
       removes: ["mate:standup:u1"],
     },
     {
+      name: "a project closed off says so, keeping every other tag",
+      tags: ["mate:g:g1", "mate", "person:own"],
+      patch: { kind: "closed-off" },
+      adds: ["mate:g:g1", "mate", "mate:closed-off"],
+      removes: [],
+    },
+    {
+      name: "a project already marked closed off is left as it is",
+      tags: ["mate", "mate:closed-off", "person:own"],
+      patch: { kind: "closed-off" },
+      adds: ["mate", "mate:closed-off"],
+      removes: [],
+    },
+    {
       name: "a face changed replaces the one before and keeps every other tag",
       tags: [
         "mate:g:g1",

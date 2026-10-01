@@ -1,7 +1,7 @@
 /**
  * Pure adapter from what the projects page already holds about a birth — a
- * `ZeropsCandidate`, its project's activity, its health probe, its
- * provisioning wait and the page's own connection judgement — into
+ * `ZeropsCandidate`, its project's activity, its health probe and the
+ * page's own connection judgement — into
  * `BirthFacts`, the shape `deriveBirthProgress`
  * (`@t3tools/client-runtime/zerops/birthProgress`) reads. No I/O, no React:
  * the birth-line hook builds these facts every render from whatever it
@@ -18,26 +18,21 @@ import type {
 } from "@t3tools/client-runtime/zerops/birthProgress";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import type { KnownProcessStatus, ProcessStatus } from "@t3tools/client-runtime/zerops/data";
-import type {
-  ProvisioningPhase,
-  ZeropsContainerHealth,
-} from "@t3tools/client-runtime/zerops/provisioning";
+import type { ZeropsContainerHealth } from "@t3tools/client-runtime/zerops/provisioning";
 
 export interface BirthFactsInput {
   readonly candidate: ZeropsCandidate;
   /** Every process this client has seen for the candidate's project — filtered here to just this project's own. */
   readonly processes: ReadonlyArray<ActivityProcess> | undefined;
   readonly health: ZeropsContainerHealth | undefined;
-  readonly provisioningPhase: ProvisioningPhase | null;
-  readonly hardenError?: string | undefined;
   /** The page's own connection judgement — "connecting" while the identity exchange is in flight. */
   readonly connecting?: boolean | undefined;
   /** A connect verdict the page reached, distinct from "not yet connected". */
   readonly connectionFailed?: boolean | undefined;
   readonly requestedAt?: string | undefined;
   /**
-   * The Mate's runtimes, from its birth and its project's services (`birthRuntimesFacts`): the
-   * import that follows closing off, and how many of them are up.
+   * The Mate's runtimes, from its press, its setup and its project's services
+   * (`birthRuntimesFacts`): zcp's import of them, and how many of them are up.
    */
   readonly runtimes?: BirthRuntimesFacts | undefined;
 }
@@ -120,8 +115,6 @@ export function deriveBirthFacts(input: BirthFactsInput): BirthFacts {
       .filter((process) => process.projectId === project.id)
       .map(toBirthProcessFact),
     health: input.health,
-    provisioningPhase: input.provisioningPhase,
-    ...(input.hardenError === undefined ? {} : { hardenError: input.hardenError }),
     connection: deriveConnection(input),
     ...(input.requestedAt === undefined ? {} : { requestedAt: input.requestedAt }),
     ...(input.runtimes === undefined ? {} : { runtimes: input.runtimes }),

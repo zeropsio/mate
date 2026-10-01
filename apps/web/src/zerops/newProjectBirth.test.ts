@@ -18,6 +18,9 @@ import {
   type NewProjectBirth,
   type NewProjectPatch,
   type NewProjectPorts,
+  newProjectPressFailure,
+  newProjectPressSteps,
+  newProjectPressThrough,
 } from "./newProjectBirth";
 
 /** What Create asked for: Acme CRM, and Vera in it. */
@@ -114,7 +117,7 @@ describe("a New project's own steps, before its first Mate's", () => {
 });
 
 describe("how far a New project's creation has got", () => {
-  const MATE_STEPS = ["project", "container", "public-access", "hardening", "mate", "connect"];
+  const MATE_STEPS = ["project", "container", "public-access", "mate", "connect"];
 
   it.each<{
     readonly case: string;
@@ -183,7 +186,6 @@ describe("how far a New project's creation has got", () => {
         container: { serviceId: "zcp-1", status: "CREATING", hasOrigin: false },
         processes: [],
         health: undefined,
-        provisioningPhase: null,
         connection: "none",
       },
       NOW,
@@ -214,7 +216,7 @@ describe("what its view says under the headline", () => {
     {
       case: "while it runs, it is coming up",
       birth: birth(),
-      coming: { kind: "coming", line: "Coming up. A few minutes.", verb: undefined },
+      coming: { kind: "coming", line: "Coming up. A few minutes." },
     },
     {
       case: "a step that stopped says why, and can be tried again",
@@ -580,5 +582,112 @@ describe("the tab holds a New project's creation until the platform takes it", (
     await new Promise((settled) => setTimeout(settled, 0));
     expect(fake.accepted).not.toHaveBeenCalled();
     expect(useNewProjectBirths.getState().births).toEqual({});
+  });
+});
+
+// The New project dialog stays on the press until the first Mate needs no browser (2026-10-01:
+// a tab closed after a dialog that had left stranded a Mate with no container).
+describe("newProjectPressSteps — a New project's press, as its dialog draws it", () => {
+  const press = (states: ReadonlyArray<"queued" | "running" | "done" | "failed">) =>
+    (["close-off", "register", "share-reach", "await-ready"] as const).map((kind, index) => ({
+      step: kind === "await-ready" ? { kind, withAgent: true } : { kind },
+      state: states[index]!,
+    }));
+  const drawn = (made: NewProjectBirth, progress: ReturnType<typeof press> | null) =>
+    newProjectPressSteps(made, progress).map((step) => `${step.label}:${step.state}`);
+
+  it.each([
+    {
+      case: "Git hosting stood up first, where the account has none",
+      made: bare(),
+      progress: null,
+      want: [
+        "Git hosting:active",
+        "Project registered:waiting",
+        "Creating the project:waiting",
+        "Closed off:waiting",
+        "Mate registered:waiting",
+      ],
+    },
+    {
+      case: "the project being created, its wait part of the press",
+      made: birth({ step: "create" }),
+      progress: null,
+      want: [
+        "Project registered:done",
+        "Creating the project:active",
+        "Closed off:waiting",
+        "Mate registered:waiting",
+      ],
+    },
+    {
+      case: "its Mate being closed off",
+      made: birth({ step: "created", projectId: "p-1" }),
+      progress: press(["running", "queued", "queued", "queued"]),
+      want: [
+        "Project registered:done",
+        "Creating the project:done",
+        "Closed off:active",
+        "Mate registered:waiting",
+      ],
+    },
+    {
+      case: "a creation the platform refused",
+      made: birth({ step: "create", failed: NO_ROOM }),
+      progress: null,
+      want: [
+        "Project registered:done",
+        "Creating the project:failed",
+        "Closed off:waiting",
+        "Mate registered:waiting",
+      ],
+    },
+  ])("draws $case", ({ made, progress, want }) => {
+    expect(drawn(made, progress)).toEqual(want);
+  });
+
+  it("is through once its Mate is marked closed off and registered, and not before", () => {
+    expect(newProjectPressThrough(press(["running", "queued", "queued", "queued"]))).toBe(false);
+    expect(newProjectPressThrough(press(["done", "running", "queued", "queued"]))).toBe(false);
+    expect(newProjectPressThrough(press(["done", "done", "running", "queued"]))).toBe(true);
+    expect(newProjectPressThrough(null)).toBe(false);
+  });
+});
+
+describe("newProjectPressFailure — what its dialog says when a step stops, and what Try again tries", () => {
+  const UNSURE = { reason: "The platform did not answer.", uncertain: true } as const;
+  const failedPress = (retryable: boolean) => ({
+    kind: "failed" as const,
+    reason: "Closing it off failed.",
+    retryable,
+  });
+  it.each([
+    { case: "a press under way", made: birth({ step: "create" }), press: null, want: null },
+    {
+      case: "a creation the platform refused: its own step again",
+      made: birth({ step: "create", failed: NO_ROOM }),
+      press: null,
+      want: { reason: NO_ROOM.reason, tryAgain: "creation" },
+    },
+    {
+      case: "a creation the platform may have taken: no second try",
+      made: birth({ step: "create", failed: UNSURE }),
+      press: null,
+      want: { reason: UNSURE.reason, tryAgain: null },
+    },
+    {
+      case: "its Mate's press stopped: the press again",
+      made: birth({ step: "created", projectId: "p-1" }),
+      press: failedPress(true),
+      want: { reason: "Closing it off failed.", tryAgain: "press" },
+    },
+    {
+      case: "its Mate's press stopped where trying again is not safe",
+      made: birth({ step: "created", projectId: "p-1" }),
+      press: failedPress(false),
+      want: { reason: "Closing it off failed.", tryAgain: null },
+    },
+  ])("$case", ({ made, press, want }) => {
+    expect(newProjectPressFailure(made, press)).toEqual(want);
   });
 });

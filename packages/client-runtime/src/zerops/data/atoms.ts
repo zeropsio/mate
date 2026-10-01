@@ -17,6 +17,7 @@ import type { Shown } from "../knowledge/known.ts";
 import {
   selectDeployedVersion,
   selectMateFlag,
+  selectSetupMarker,
   type ZeropsServiceDeployedVersion,
 } from "./deployedVersion.ts";
 import type { ZeropsDataState } from "./state.ts";
@@ -295,6 +296,15 @@ export function createZeropsDataAtoms(stateAtom: Atom.Atom<ZeropsDataState>): {
     ),
   );
 
+  const setupMarkerAtom = Atom.family((key: string) =>
+    stableAtom(
+      stateAtom,
+      (state) => selectSetupMarker(state, services.get(key)!),
+      Object.is,
+      `zerops-setup-marker:${key}`,
+    ),
+  );
+
   const attemptKey = (attempt: CommandAttemptRef): string =>
     JSON.stringify([
       attempt.account.apiOrigin,
@@ -320,6 +330,7 @@ export function createZeropsDataAtoms(stateAtom: Atom.Atom<ZeropsDataState>): {
       commandAttempt: (ref) => commandAtom(remember(attempts, attemptKey(ref), ref)),
       deployedVersion: (ref) => deployedVersionAtom(remember(services, serviceKeyOf(ref), ref)),
       mateFlag: (ref) => mateFlagAtom(remember(services, serviceKeyOf(ref), ref)),
+      setupMarker: (ref) => setupMarkerAtom(remember(services, serviceKeyOf(ref), ref)),
     },
   };
 }

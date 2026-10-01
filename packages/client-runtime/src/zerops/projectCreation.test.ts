@@ -6,6 +6,7 @@ import {
   projectCreationFailureSentence,
   projectCreationOutcome,
   projectProcessSearchBody,
+  zcpCreationUnderWay,
 } from "./projectCreation.ts";
 
 /** A process item as `POST /process/search` answers it (measured 2026-09-16). */
@@ -140,5 +141,43 @@ describe("pickProjectCreation", () => {
     expect(
       pickProjectCreation([null, 3, "x", { actionName: "project.create" }], "proj-1"),
     ).toBeUndefined();
+  });
+});
+
+// A Mate's key is regenerated only where no container holds it: a zcp the platform is still
+// creating does, though the services listing may not say so yet (pass 28 review).
+describe("zcpCreationUnderWay", () => {
+  const step = (actionName: string, status: string, names: ReadonlyArray<string>) => ({
+    id: `pr-${actionName}-${status}`,
+    actionName,
+    status,
+    serviceStacks: names.map((name) => ({ name })),
+  });
+  it.each([
+    { case: "nothing running", items: [], want: false },
+    { case: "a zcp being created", items: [step("stack.create", "RUNNING", ["zcp"])], want: true },
+    {
+      case: "a second zcp pending",
+      items: [step("stack.create", "PENDING", ["zcp1"])],
+      want: true,
+    },
+    {
+      case: "a zcp created already",
+      items: [step("stack.create", "FINISHED", ["zcp"])],
+      want: false,
+    },
+    {
+      case: "a database being created",
+      items: [step("stack.create", "RUNNING", ["db"])],
+      want: false,
+    },
+    { case: "a zcp being built", items: [step("stack.build", "RUNNING", ["zcp"])], want: false },
+    {
+      case: "an answer it cannot read",
+      items: [null, "x", { actionName: "stack.create" }],
+      want: false,
+    },
+  ])("$case: $want", ({ items, want }) => {
+    expect(zcpCreationUnderWay(items)).toBe(want);
   });
 });

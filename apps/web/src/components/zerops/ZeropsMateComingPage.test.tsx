@@ -8,7 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test"
 
 import { awaitMateConversation, takeMateConversation } from "~/zerops/mateOpening";
 
-import { ZeropsMateComingPage } from "./ZeropsMateComingPage";
+import { ComingBelow, ZeropsMateComingPage } from "./ZeropsMateComingPage";
 
 const ENV_QUINN = EnvironmentId.make("env-quinn");
 const KEY = "beviro-quinn:zcp";
@@ -90,11 +90,12 @@ vi.mock("~/zerops/useOpenMate", () => ({ useOpenMate: () => app.openMate }));
 vi.mock("~/zerops/useZeropsCandidates", () => ({
   useZeropsCandidates: () => ({ listing: app.listing }),
 }));
-vi.mock("~/zerops/zeropsBirths", () => ({
-  useZeropsBirths: () => ({ births: [], waits: new Map() }),
-  forgetBirth: () => undefined,
-  retryBirth: () => undefined,
+// The menu's verbs: none offered on these Mates, which are all whole.
+vi.mock("~/zerops/useMateActions", () => ({
+  useMateActions: () => ({ actionsFor: () => [], busyKey: null, trouble: null }),
 }));
+vi.mock("~/zerops/useZeropsRegistry", () => ({ useZeropsRegistry: () => null }));
+vi.mock("~/zerops/giteaProject", () => ({ useAccountGitea: () => undefined }));
 vi.mock("~/zerops/newMate", () => ({
   useNewMate: (select: (state: unknown) => unknown) =>
     select({ creations: {}, forget: () => undefined, handingOver: app.handingOver }),
@@ -503,5 +504,46 @@ describe("the header in a Mate's own view", () => {
     app.remembered = { subject: "Rename the orders column" };
     openView();
     expect(said()).toContain("Rename the orders column");
+  });
+});
+
+// A Mate whose press stopped before its container (live, 2026-10-01: its view sat on "Opening
+// Hugo…" with only its managed services, and nothing could finish it).
+describe("ComingBelow — a Mate half made", () => {
+  const HALF_MADE = {
+    kind: "failed",
+    line: "Its setup stopped before its container. Finish setup completes it.",
+    verb: "finish-setup",
+  } as const;
+  const render = (onFinishSetup: (() => void) | undefined) => {
+    let rendered: ReactTestRenderer | undefined;
+    act(() => {
+      rendered = create(
+        h(ComingBelow, {
+          coming: HALF_MADE,
+          progress: undefined,
+          nowMs: undefined,
+          mate: { name: "Quinn", project: "Acme" },
+          you: null,
+          ...(onFinishSetup === undefined ? {} : { onFinishSetup }),
+        }),
+      );
+    });
+    return rendered!;
+  };
+
+  it("offers Finish setup to whoever may finish it, and runs it on a press", () => {
+    let finished = 0;
+    const rendered = render(() => {
+      finished += 1;
+    });
+    const button = rendered.root.findByType("button");
+    expect(button.children).toEqual(["Finish setup"]);
+    act(() => button.props.onClick());
+    expect(finished).toBe(1);
+  });
+
+  it("offers nothing to anyone else", () => {
+    expect(render(undefined).root.findAllByType("button")).toHaveLength(0);
   });
 });

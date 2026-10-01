@@ -28,7 +28,14 @@ import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import type { AtomRegistry } from "effect/unstable/reactivity";
 
-import { selectAutoConnectTargets } from "../autoConnect.ts";
+import {
+  closeOffGate,
+  directMarkerOf,
+  markerRetryDelay,
+  selectAutoConnectTargets,
+  zcpYoung,
+  type DirectMarkerRead,
+} from "../autoConnect.ts";
 import { normalizeOrigin } from "../candidates.ts";
 import { identityMint } from "../data/access/capabilities.ts";
 import type { Instant } from "../data/access/grant.ts";
@@ -41,6 +48,7 @@ import {
   type OrganizationRef,
   type ProjectActivityRead,
   type ProjectRef,
+  type ServiceRef,
 } from "../data/types.ts";
 import type { IdentityExchangeReason } from "../diagnostics.ts";
 import {
@@ -93,6 +101,7 @@ import {
 import type { ExchangeAnswer } from "../identityExchange.ts";
 import type { InvalidationBus } from "../knowledge/invalidation.ts";
 import type { PlatformSignal } from "../knowledge/signals.ts";
+import { isZeropsMateClosedOff } from "../groups.ts";
 import { heldCandidates, type CandidateRow } from "../projections/candidates.ts";
 
 // ── Ports ────────────────────────────────────────────────────────────────────────────────────
@@ -143,14 +152,6 @@ export interface AccountEnvironmentPorts {
   readonly records: RecordsStorage & { readonly listen: (changed: () => void) => () => void };
   /** The connection catalog: which environments are registered, and their links. */
   readonly catalog: { readonly listen: (listener: CatalogListener) => () => void };
-  /** The account's births (C9): whose Mate may not be wanted yet, and whose connect ends one. */
-  readonly births: {
-    /** Projects whose birth has not closed them off yet. */
-    readonly unhardened: () => ReadonlySet<string>;
-    readonly subscribe: (listener: () => void) => () => void;
-    /** The connect named the environment: the birth is over. */
-    readonly promote: (projectId: string) => void;
-  };
   /**
    * The environment the tab's route names as the stage starts — the reload's address — so the
    * route's target is wanted before the records and auto-connect fill the exchange slots; a
@@ -159,6 +160,14 @@ export interface AccountEnvironmentPorts {
   readonly route?: () => EnvironmentId | null;
   /** The tab's socket admission (`connection/admission.ts`): the route's socket opens first. */
   readonly admission?: Pick<ConnectionAdmission, "prefer" | "down">;
+  /**
+   * The projects whose press or harden this browser is running: none is connected meanwhile. A
+   * surface with no press of its own leaves it out.
+   */
+  readonly pressing?: {
+    readonly read: () => ReadonlySet<string>;
+    readonly subscribe: (listener: () => void) => () => void;
+  };
 }
 
 // ── What surfaces read and ask ───────────────────────────────────────────────────────────────
@@ -400,27 +409,8 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
     }
   };
 
-  /**
-   * The births the records end: a record is the exchange's word that it named the Mate's
-   * environment, so a birth this browser still holds for its project is over — however it was
-   * left behind. Each project once per stage.
-   */
-  const ended = new Set<string>();
-  const endBirth = (projectId: string) => {
-    if (ended.has(projectId)) return;
-    ended.add(projectId);
-    ports.births.promote(projectId);
-  };
-  const endRecordedBirths = () => {
-    if (stores === null || closed) return;
-    for (const record of stores.records.list()) {
-      if (record.projectRef !== null) endBirth(record.projectRef.projectId);
-    }
-  };
-
   /** The records, or the installs that write them, changed. */
   const registrationsChanged = () => {
-    endRecordedBirths();
     updateRoute();
     updateTargets();
     release();
@@ -449,8 +439,6 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
           organizationId === null ? null : { projectId: targetProject(key), orgId: organizationId },
         name: project?.name ?? null,
       });
-      // The birth is over: the exchange named its environment.
-      if (project !== undefined) endBirth(project.id);
       return outcome;
     } finally {
       if (at !== null) {
@@ -546,7 +534,128 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
     );
   };
 
-  /** The active organization's ready Mates, capped, none a birth still holds (D13). */
+  /**
+   * The press's marker (`MATE_SETUP_RUNTIMES`) on each listed Mate's container whose project has
+   * no `mate:closed-off`, by service id: a press stopped before its close-off, and nobody is let in
+   * until *Finish setup* closes it. The gate fails closed (`closeOffGate`): a marker not read yet
+   * holds, and one the stream could not say is read from the service's own variables once.
+   * Followed only while such a Mate is listed.
+   */
+  interface FollowedMarker {
+    readonly projectId: string;
+    marker: boolean | "unknown" | "unread";
+    direct: DirectMarkerRead | undefined;
+    /** Direct checks that failed so far: each waits longer before the next (`markerRetryDelay`). */
+    failures: number;
+    /** Disarms the wait before the next direct check. */
+    retry: (() => void) | null;
+    stop: () => void;
+  }
+  const markers = new Map<string, FollowedMarker>();
+  const readMarkerDirectly = (followed: FollowedMarker, ref: ServiceRef) => {
+    followed.direct = "reading";
+    void Effect.runPromiseWith(options.services)(
+      Effect.scoped(
+        data.cells
+          .acquire({ kind: "env", account: data.cells.scope, service: ref })
+          .pipe(Effect.flatMap((lease) => lease.awaitSettled)),
+      ),
+    )
+      .then(
+        (shown): DirectMarkerRead => directMarkerOf(shown),
+        (): DirectMarkerRead => "failed",
+      )
+      .then((direct) => {
+        if (markers.get(ref.serviceId) !== followed || closed) return;
+        followed.direct = direct;
+        // A check that failed is asked again later and later: 30 s, 2 min, then every 10 min.
+        if (direct === "failed") {
+          followed.failures += 1;
+          followed.retry = ports.clock.setTimer(markerRetryDelay(followed.failures), () => {
+            followed.retry = null;
+            if (markers.get(ref.serviceId) !== followed || closed) return;
+            followed.direct = undefined;
+            updateAutoConnect();
+          });
+        }
+        updateAutoConnect();
+      });
+  };
+  const followMarkers = (rows: ReadonlyArray<CandidateRow>): ReadonlySet<string> => {
+    const open = new Map<
+      string,
+      {
+        readonly projectId: string;
+        readonly created: string | undefined;
+        readonly ref: ServiceRef;
+      }
+    >();
+    for (const row of rows) {
+      if (row.service === undefined || isZeropsMateClosedOff(row.project.tagList)) continue;
+      const project = projectRefOf(row.project.id);
+      if (project === undefined) continue;
+      open.set(row.service.id, {
+        projectId: row.project.id,
+        created: row.service.created,
+        ref: { kind: "service", project, serviceId: ZeropsServiceId.make(row.service.id) },
+      });
+    }
+    for (const [serviceId, followed] of markers) {
+      if (open.has(serviceId)) continue;
+      followed.stop();
+      markers.delete(serviceId);
+    }
+    const held = new Set<string>();
+    for (const [serviceId, { projectId, created, ref }] of open) {
+      let followed = markers.get(serviceId);
+      if (followed === undefined) {
+        const entry: FollowedMarker = {
+          projectId,
+          marker: "unread",
+          direct: undefined,
+          failures: 0,
+          retry: null,
+          stop: () => undefined,
+        };
+        markers.set(serviceId, entry);
+        let ready = false;
+        const unsubscribe = atomRegistry.subscribe(
+          data.reads.setupMarker(ref),
+          (marker) => {
+            if (entry.marker === marker) return;
+            entry.marker = marker;
+            if (ready) updateAutoConnect();
+          },
+          { immediate: true },
+        );
+        entry.stop = () => {
+          unsubscribe();
+          entry.retry?.();
+        };
+        ready = true;
+        followed = entry;
+      }
+      const gate = closeOffGate(
+        followed.marker,
+        followed.direct,
+        zcpYoung(created, ports.clock.now().wall),
+      );
+      if (gate === "read-env") readMarkerDirectly(followed, ref);
+      if (gate !== "connect") held.add(projectId);
+    }
+    return held;
+  };
+
+  /**
+   * The Mates held back from auto-connect: a press left open, and a press or a harden this browser
+   * is running. An older Mate whose keys are still ADMIN connects: its ⋯ menu offers its harden.
+   */
+  const heldBack = (candidates: ReadonlyArray<CandidateRow>): ReadonlySet<string> => {
+    const pressing = ports.pressing?.read() ?? new Set<string>();
+    return new Set([...followMarkers(candidates), ...pressing]);
+  };
+
+  /** The active organization's ready Mates, capped (D13), none a stopped press left open. */
   const updateAutoConnect = () => {
     if (stores === null || closed) return;
     const listed = listings.find(({ organizationId }) => organizationId === activeOrganization);
@@ -574,7 +683,7 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
       selectAutoConnectTargets({
         candidates,
         health: containerSnapshotOf(stores.containers.machines()).health,
-        birthProjectIds: ports.births.unhardened(),
+        closeOffPendingProjectIds: heldBack(candidates),
         onScreenProjectId: onScreen,
       }),
     );
@@ -734,7 +843,6 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
   const start = (built: EnvironmentStores): EnvironmentStage => {
     stores = built;
     const { records, containers, driver } = built;
-    endRecordedBirths();
     route = ports.route?.() ?? route;
     preferRoute();
     const stops: Array<() => void> = [];
@@ -757,7 +865,7 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
         notify();
       }),
       ports.records.listen(registrationsChanged),
-      ports.births.subscribe(updateAutoConnect),
+      ports.pressing?.subscribe(updateAutoConnect) ?? (() => undefined),
       ports.catalog.listen({
         environments: (next) => {
           registered = next;
@@ -861,6 +969,8 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
         for (const stop of stops) stop();
         for (const followed of activity.values()) followed.stop();
         activity.clear();
+        for (const followed of markers.values()) followed.stop();
+        markers.clear();
         for (const release of checks.values()) release();
         checks.clear();
         driver.dispose();

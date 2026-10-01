@@ -1,6 +1,14 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { selectAutoConnectTargets, type AutoConnectCandidate } from "./autoConnect.ts";
+import {
+  closeOffGate,
+  zcpYoung,
+  directMarkerOf,
+  MARKER_RETRY_MS,
+  markerRetryDelay,
+  selectAutoConnectTargets,
+  type AutoConnectCandidate,
+} from "./autoConnect.ts";
 import type { ZeropsContainerHealth } from "./provisioning.ts";
 
 function candidate(
@@ -26,7 +34,7 @@ describe("selectAutoConnectTargets: auto-connect's WANT (DESIGN §4.4)", () => {
     readonly name: string;
     readonly candidate: AutoConnectCandidate;
     readonly health?: ZeropsContainerHealth;
-    readonly birth?: boolean;
+    readonly closeOffPending?: boolean;
     readonly wanted: boolean;
   }> = [
     {
@@ -61,10 +69,12 @@ describe("selectAutoConnectTargets: auto-connect's WANT (DESIGN §4.4)", () => {
       wanted: false,
     },
     {
-      name: "a project a birth is watching: the page's own Connect owns it",
+      // Its press stopped before the mark: its container carries the press's marker and its
+      // project no `mate:closed-off`. Nobody is let in until Finish setup closes it off.
+      name: "a Mate whose press has not closed its project off",
       candidate: candidate("a"),
       health: "ready",
-      birth: true,
+      closeOffPending: true,
       wanted: false,
     },
     {
@@ -79,7 +89,7 @@ describe("selectAutoConnectTargets: auto-connect's WANT (DESIGN §4.4)", () => {
     const targets = selectAutoConnectTargets({
       candidates: [row.candidate],
       health: health(row.health === undefined ? [] : [["a", row.health]]),
-      birthProjectIds: new Set(row.birth ? ["a"] : []),
+      closeOffPendingProjectIds: new Set(row.closeOffPending === true ? ["a"] : []),
     });
     expect(targets).toEqual(row.wanted ? ["a:zcp"] : []);
   });
@@ -130,15 +140,16 @@ describe("selectAutoConnectTargets: auto-connect's WANT (DESIGN §4.4)", () => {
     expect(targets).toEqual(["shown:zcp"]);
   });
 
-  it("the Mate on screen still waits for its health and its birth", () => {
-    for (const [shownHealth, birth] of [
+  it("the Mate on screen still waits for its health and its close-off", () => {
+    for (const [shownHealth, pending] of [
       [undefined, false],
+      ["initializing", false],
       ["ready", true],
     ] as const) {
       const targets = selectAutoConnectTargets({
         candidates: [candidate("shown")],
         health: health(shownHealth === undefined ? [] : [["shown", shownHealth]]),
-        birthProjectIds: new Set(birth ? ["shown"] : []),
+        closeOffPendingProjectIds: new Set(pending ? ["shown"] : []),
         limit: 0,
         onScreenProjectId: "shown",
       });
@@ -158,5 +169,87 @@ describe("selectAutoConnectTargets: auto-connect's WANT (DESIGN §4.4)", () => {
       ]),
     });
     expect(targets).toEqual(["p:zcp"]);
+  });
+});
+
+// The gate on a Mate its press may have left open fails closed: only a marker read absent — an
+// older Mate's — lets it connect without its project's mark (pass 28 review).
+describe("closeOffGate — whether a Mate not marked closed off may be connected", () => {
+  it.each([
+    { marker: true, direct: undefined, young: false, want: "hold" },
+    { marker: true, direct: undefined, young: true, want: "hold" },
+    { marker: false, direct: undefined, young: true, want: "connect" },
+    // A young container's marker not known yet holds it; it fails closed.
+    { marker: "unread", direct: undefined, young: true, want: "hold" },
+    { marker: "unknown", direct: undefined, young: true, want: "read-env" },
+    { marker: "unknown", direct: "reading", young: true, want: "hold" },
+    { marker: "unknown", direct: true, young: true, want: "hold" },
+    { marker: "unknown", direct: "failed", young: true, want: "hold" },
+    { marker: "unknown", direct: false, young: true, want: "connect" },
+    // An older Mate is never held for its marker, whatever its stream says (pass 28 review).
+    { marker: "unread", direct: undefined, young: false, want: "connect" },
+    { marker: "unknown", direct: undefined, young: false, want: "connect" },
+    { marker: "unknown", direct: "failed", young: false, want: "connect" },
+  ] as const)(
+    "$marker, read directly $direct, young $young: $want",
+    ({ marker, direct, young, want }) => {
+      expect(closeOffGate(marker, direct, young)).toBe(want);
+    },
+  );
+});
+
+describe("zcpYoung — a container a press may still be setting up", () => {
+  const NOW = Date.parse("2026-09-23T10:00:00Z");
+  it.each([
+    { created: "2026-09-23T09:59:00Z", want: true },
+    { created: "2026-09-23T08:01:00Z", want: true },
+    { created: "2026-09-23T07:59:00Z", want: false },
+    { created: undefined, want: false },
+  ])("made $created: $want", ({ created, want }) => {
+    expect(zcpYoung(created, NOW)).toBe(want);
+  });
+});
+
+// The service's own variables, read once where the stream could not say: a viewer who may not read
+// them is no reason to hold an older Mate for good (pass 28 review).
+describe("directMarkerOf — the service's own variable names, as the gate reads them", () => {
+  const known = (names: ReadonlyArray<string>) =>
+    ({
+      state: "known",
+      value: names,
+      asOf: { ordinal: 1, atMs: 0 },
+      coverage: "complete",
+      freshness: { kind: "settled" },
+    }) as never;
+  const failed = (failure: object) =>
+    ({ state: "failed", failure, atMs: 0, attempt: 1, retryAtMs: null }) as never;
+  it.each([
+    {
+      case: "the marker among them",
+      shown: known(["MATE_SETUP_RUNTIMES", "ZCP_API_KEY"]),
+      want: true,
+    },
+    { case: "no marker", shown: known(["ZCP_MATE_ENABLED"]), want: false },
+    {
+      case: "a 403: the viewer may not read them",
+      shown: failed({ kind: "refused", code: "permission", words: "No." }),
+      want: false,
+    },
+    {
+      case: "a read that failed",
+      shown: failed({ kind: "transport", detail: "down" }),
+      want: "failed",
+    },
+  ])("$case: $want", ({ shown, want }) => {
+    expect(directMarkerOf(shown)).toBe(want);
+  });
+});
+
+describe("markerRetryDelay — a failed check, asked again later and later", () => {
+  it("waits 30 s, then 2 min, then 10 min, and 10 min from then on", () => {
+    expect([1, 2, 3, 4, 9].map(markerRetryDelay)).toEqual([
+      30_000, 120_000, 600_000, 600_000, 600_000,
+    ]);
+    expect(MARKER_RETRY_MS).toEqual([30_000, 120_000, 600_000]);
   });
 });

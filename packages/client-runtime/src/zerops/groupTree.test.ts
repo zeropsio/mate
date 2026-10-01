@@ -146,8 +146,6 @@ describe("buildZeropsGroupTree", () => {
         {
           projectId: "p-new",
           startedAt: 1,
-          step: "tags",
-          overdue: false,
           placement: {
             groupId: "new",
             groupName: "Todo",

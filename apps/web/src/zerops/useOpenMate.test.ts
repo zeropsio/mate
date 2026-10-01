@@ -56,8 +56,9 @@ vi.mock("../state/entities", () => ({
 vi.mock("./useZeropsCandidates", () => ({
   useZeropsCandidates: () => ({ listing: app.listing }),
 }));
-vi.mock("./zeropsBirths", () => ({
-  useZeropsBirths: () => ({ births: app.births, waits: new Map(), outstanding: null }),
+vi.mock("./matePress", async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  useMatePresses: () => app.births,
 }));
 vi.mock("../hooks/useHandleNewThread", () => ({
   useNewThreadHandler:
@@ -254,9 +255,16 @@ describe("useOpenMate — a Mate whose conversation cannot be opened yet", () =>
 describe("useOpenMate — a Mate still coming up", () => {
   it.each([
     {
-      case: "its birth held here",
+      case: "its press made here",
       candidate: { ...CANDIDATE, group: "ready" },
-      births: [{ projectId: "project-fen", step: "harden", overdue: false, container: true }],
+      births: [
+        {
+          projectId: "project-fen",
+          startedAt: 1,
+          container: true,
+          state: { kind: "pressing" },
+        },
+      ],
     },
     {
       case: "its project on the way up",

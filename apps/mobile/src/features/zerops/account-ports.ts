@@ -1,7 +1,7 @@
 /**
  * The account's personal context as mobile hands it to the account runtime (DESIGN §7.5): its
- * registration records over the device's storage adapter, its container intents in memory, and
- * no births — mobile creates no project. Plain values, no React Native: the device's adapter is
+ * registration records over the device's storage adapter and its container intents in memory.
+ * Plain values, no React Native: the device's adapter is
  * the one the session is stored through.
  */
 import type { ZeropsStorageAdapter } from "@t3tools/client-runtime/zerops";
@@ -49,12 +49,3 @@ export function memoryIntents(): AccountEnvironmentPorts["intents"] {
     },
   };
 }
-
-const UNHARDENED: ReadonlySet<string> = new Set();
-
-/** Mobile creates no project, so no birth holds a Mate back or ends with a connect. */
-export const NO_BIRTHS: AccountEnvironmentPorts["births"] = {
-  unhardened: () => UNHARDENED,
-  subscribe: () => () => undefined,
-  promote: () => undefined,
-};

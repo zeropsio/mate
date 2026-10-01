@@ -17,6 +17,7 @@
  * Pure: the words, the face and the steps; the views draw them.
  */
 import type { BirthRuntimeFact } from "@t3tools/client-runtime/zerops/birthProgress";
+import type { MateSetup } from "@t3tools/client-runtime/zerops/mateSetup";
 import type { MateMarkState } from "@t3tools/shared/brand";
 
 import {
@@ -209,7 +210,6 @@ const MATE_STEP_IDS: ReadonlySet<string> = new Set([
   "project",
   "container",
   "public-access",
-  "hardening",
   "mate",
   "connect",
 ]);
@@ -218,7 +218,6 @@ const MATE_STEP_IDS: ReadonlySet<string> = new Set([
 const WORKSPACE_STEP_IDS: ReadonlySet<string> = new Set([
   "container",
   "public-access",
-  "hardening",
   "mate",
   "connect",
 ]);
@@ -239,8 +238,9 @@ const timeOf = (startedAt: string | undefined, endedAt: string | undefined, nowM
  * New project's Git hosting and registration), then the Mate's copy of the project — the managed
  * services its first import brings, what it waits on, on a quiet line under it — then its
  * workspace (the container, its address, closing it off, the runtimes' import, Mate answering,
- * the first connect: one step to the person) with the runtimes it imports under it, then the
- * person's own sign-in, next. A New project's first Mate is the project, so its copy folds into
+ * the first connect: one step to the person) with the runtimes it imports under it, then — as
+ * the Mate's own setup says them, once it answers — its Git access, the person's own sign-in,
+ * next, and its stand-up. A New project's first Mate is the project, so its copy folds into
  * its workspace. A step's time is what its own facts measure; a step with none says none, and a
  * running one counts from the earliest start its facts hold, so a start read later never moves
  * its clock back.
@@ -252,6 +252,8 @@ export function arrivalSteps(
     readonly managed?: ReadonlyArray<BirthService> | undefined;
     /** The tier's runtimes, imported once the project is closed off (`birthRuntimesFacts`). */
     readonly runtimes?: { readonly runtimes: ReadonlyArray<BirthService> };
+    /** What the Mate's own setup says (`/mate/setup.json`); absent before it answers, or ever. */
+    readonly setup?: Pick<MateSetup, "git" | "signin" | "standup"> | undefined;
   },
   mate: Named,
   nowMs: number,
@@ -321,10 +323,38 @@ export function arrivalSteps(
       ),
     });
   }
+  const setup = progress.setup;
+  if (setup?.git !== undefined) {
+    steps.push({
+      id: "git",
+      label: `${mate.name}'s Git access`,
+      state: setup.git === "done" ? "done" : "active",
+    });
+  }
   const phrase = signInPhrase(mate.name);
-  steps.push({ id: "you", label: signInPhraseWords(phrase), phrase, state: "you" });
+  steps.push({
+    id: "you",
+    label: signInPhraseWords(phrase),
+    phrase,
+    state: setup?.signin === "done" ? "done" : "you",
+  });
+  if (setup?.standup !== undefined) {
+    steps.push({
+      id: "standup",
+      label: `${mate.name} stands up development`,
+      state: STANDUP_STATES[setup.standup],
+    });
+  }
   return steps;
 }
+
+/** The stand-up as the Mate's setup says it, as a step. */
+const STANDUP_STATES: Readonly<Record<NonNullable<MateSetup["standup"]>, ArrivalStep["state"]>> = {
+  waiting: "waiting",
+  running: "active",
+  done: "done",
+  failed: "failed",
+};
 
 function optional<Key extends string, Value>(
   key: Key,

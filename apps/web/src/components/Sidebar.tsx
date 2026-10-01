@@ -254,7 +254,7 @@ import { useOpenMate } from "../zerops/useOpenMate";
 import { SidebarWaitingStack } from "./zerops/SidebarWaitingStack";
 
 import { useZeropsProjectFlowOptional } from "../zerops/projectFlowContext";
-import { placedBirthsIn, useZeropsBirths } from "../zerops/zeropsBirths";
+import { placedPressesIn, useForgetConnectedPresses, useMatePresses } from "../zerops/matePress";
 import {
   canCreateProjectsInOrganization,
   readZeropsGroupTags,
@@ -1810,12 +1810,18 @@ export default function Sidebar() {
   // The creations under way in the organization in view, drawn in their
   // groups before the listing holds them — the projects page's own placing —
   // and the New projects this tab is making, from the press.
-  const { births: zeropsBirths } = useZeropsBirths();
+  const zeropsPresses = useMatePresses();
+  // A press ends once its Mate connects: nothing of it is left to say.
+  useForgetConnectedPresses(zeropsCandidates);
   const zeropsMade = useNewProjectBirths((state) => state.births);
   const zeropsPlacedBirths = useMemo(
     () =>
-      placedBirthsIn(zeropsBirths, zeropsSession.activeOrganization?.id, Object.values(zeropsMade)),
-    [zeropsBirths, zeropsMade, zeropsSession.activeOrganization?.id],
+      placedPressesIn(
+        zeropsPresses,
+        zeropsSession.activeOrganization?.id,
+        Object.values(zeropsMade),
+      ),
+    [zeropsPresses, zeropsMade, zeropsSession.activeOrganization?.id],
   );
   // Whose each Mate is, for the badge on the corner of its face.
   const zeropsMateOwner = useZeropsMateOwners({

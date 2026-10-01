@@ -171,7 +171,7 @@ export function useMateEmptyState({
   const runtimes = useMemo(
     () =>
       listed?.status === "resolved"
-        ? (birthRuntimesFacts({ birth: undefined, services: listed.services })?.runtimes ?? [])
+        ? (birthRuntimesFacts({ services: listed.services })?.runtimes ?? [])
         : undefined,
     [listed],
   );

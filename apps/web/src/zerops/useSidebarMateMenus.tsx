@@ -1,8 +1,8 @@
 /**
  * What a Mate's own menu in the left menu does, wired to the session.
  *
- * The verbs the projects screen offers too — *Restart* or *Start*, *Register
- * in …*, *Hand over…*, *Move to project…*, *Delete {name}…* — are
+ * The verbs the projects screen offers too — *Restart* or *Start*, *Finish
+ * setup*, *Hand over…*, *Move to project…*, *Delete {name}…* — are
  * `useMateActions`', one definition with its dialogs; *Rename* is its write
  * too, done where the name stands instead of in a dialog, and *Change face…*
  * its dialog, placed beside *Rename*. The rest is this viewer's own: a mute
@@ -12,7 +12,7 @@
  * able to stop an agent they may not start.
  *
  * The group registry is read only once somebody opens a Mate's menu: it is
- * what *Register in …* needs, and the menu is on every screen.
+ * what *Finish setup* needs to know a Mate unregistered, and the menu is on every screen.
  */
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { botDisplayName, readZeropsGroupTags } from "@t3tools/client-runtime/zerops";
@@ -46,7 +46,7 @@ import { useZeropsContainers } from "./zeropsContainers";
 const SHARED_VERBS: Readonly<Record<string, string | null>> = {
   start: null,
   restart: null,
-  register: null,
+  "finish-setup": null,
   assign: "Hand over…",
   move: "Move to project…",
   delete: null,

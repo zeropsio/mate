@@ -1,8 +1,8 @@
 /**
  * What can be done to a Mate, from wherever a Mate is listed.
  *
- * Nine verbs — *Start*, *Restart*, *Rename Mate*, *Change face…*, *Register
- * in …*, *Hand this Mate over*, *Change project or role*, *Leave the project*,
+ * Nine verbs — *Start*, *Restart*, *Rename Mate*, *Change face…*, *Finish
+ * setup*, *Hand this Mate over*, *Change project or role*, *Leave the project*,
  * *Delete {name}…* — and the server's version under them. Most lived inside
  * the projects screen's own row menu, wired to that page's state, so a
  * project's own page listed its Mates and could do nothing to any of them.
@@ -38,15 +38,23 @@ import {
   hasMate,
   rankZeropsCandidateForListing,
   readZeropsGroupTags,
-  registerMateVerb,
+  finishMateSetupScope,
+  finishMateSetupVerb,
+  mateHardenableBy,
+  mateNeedsHarden,
   resolveMateRegistration,
   type ZeropsGroupTags,
   type ZeropsMateFace,
 } from "@t3tools/client-runtime/zerops";
-import { ZeropsServiceId } from "@t3tools/client-runtime/zerops/data";
+import {
+  selectTokenGrants,
+  ZeropsServiceId,
+  type TokensCellRequest,
+} from "@t3tools/client-runtime/zerops/data";
 import { candidatesComplete, heldCandidates } from "@t3tools/client-runtime/zerops/projections";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 import {
+  mateIsViewers,
   resolveMateOwner,
   resolveMateVerbs,
   resolveMateVisibility,
@@ -82,7 +90,6 @@ import type { MoveMembership } from "../components/zerops/ZeropsMoveToGroupDialo
 import { useEnvironmentLinks } from "../routes/-environmentTargets";
 import { resolveThreadRouteTarget } from "../threadRoutes";
 import { invalidateZerops } from "./accountInvalidations";
-import { brokerGrantTokens, projectTagsWrite, registerMateInGroup } from "./brokerGrant";
 import {
   deletingMates,
   markMateDeleting,
@@ -102,9 +109,20 @@ import {
   type ZeropsCandidatePresentation,
 } from "./useZeropsCandidates";
 import { useZeropsOrganizationMembers, zeropsMateOwner } from "./useZeropsMateOwners";
-import { forgetBirth } from "./zeropsBirths";
+import { finishSetupContainer, mateProjectPastGrace } from "./finishSetup.logic";
+import {
+  beginPress,
+  finishMateSetup,
+  forgetPress,
+  pressViewer,
+  readMatePress,
+  useInterruptedPresses,
+  useMatePresses,
+} from "./matePress";
+import { mateRestartPorts, restartMateContainer } from "./mateRestart";
 import { intendContainer } from "./zeropsContainers";
-import { runZeropsCommand, useZeropsData } from "./zeropsDataContext";
+import { runZeropsCommand, useKnown, useZeropsData } from "./zeropsDataContext";
+import { integrationTokensFromGrantMetadata } from "./useZeropsGroupReach";
 import { useZeropsSession } from "./ZeropsSessionProvider";
 
 /** Which Mate a dialog is about, and which dialog it is. */
@@ -202,6 +220,28 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
   const { organizationRef, projectRef, runtime } = useZeropsData();
   const { listing, refresh } = useZeropsCandidates();
   const candidates = useMemo(() => heldCandidates(listing).rows, [listing]);
+  // The organization's token list, as the platform holds it: a Mate whose keys are all still
+  // ADMIN on its own project needs its harden (`mateNeedsHarden`), which an org owner or the
+  // keys' creator may run (`mateHardenableBy`).
+  const tokensRequest = useMemo<TokensCellRequest | null>(
+    () =>
+      activeOrganization === null
+        ? null
+        : {
+            kind: "tokens",
+            account: runtime.scope,
+            organization: organizationRef(activeOrganization.id),
+          },
+    [activeOrganization, organizationRef, runtime.scope],
+  );
+  const tokenGrants = selectTokenGrants(
+    useKnown(tokensRequest === null ? null : runtime.cells.known(tokensRequest)),
+  );
+  const grantList = tokenGrants.status === "known" ? tokenGrants.grants : null;
+  const listedTokens = useMemo(
+    () => (grantList === null ? [] : integrationTokensFromGrantMetadata(grantList)),
+    [grantList],
+  );
   const router = useRouter();
   const openMate = useOpenMate();
   const { linkTarget } = useEnvironmentLinks();
@@ -223,6 +263,10 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
   const projectOrder = useProjectOrderOptions();
 
   const giteaProjectId = useAccountGitea(activeOrganization?.id)?.projectId;
+  const presses = useMatePresses();
+  // A press interrupted before its close-off, on a Mate made in any browser: the store's markers,
+  // at no cost of their own, for anyone who could finish it — its own adder too.
+  const interrupted = useInterruptedPresses(candidates, { runtime, projectRef });
   const groupTree = useMemo(
     () =>
       buildZeropsGroupTree(candidates, {
@@ -339,23 +383,25 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
       const serviceId = candidate.service?.id;
       if (activeOrganization === null || serviceId === undefined) return;
       const project = projectRef(activeOrganization.id, candidate.project.id);
+      const service = {
+        kind: "service" as const,
+        project,
+        serviceId: ZeropsServiceId.make(serviceId),
+      };
+      // A container that failed is stopped and started: the platform refuses to restart it.
       void write(
         candidate.key,
         () =>
-          runZeropsCommand(
-            runtime.commands.restartService({
-              kind: "service",
-              project,
-              serviceId: ZeropsServiceId.make(serviceId),
-            }),
-          ).then((value) => {
+          restartMateContainer(
+            candidate.service?.status,
+            mateRestartPorts({ client, runtime, service }),
+          ).then(() => {
             intendContainer(candidate.key, { kind: "restart" });
-            return value;
           }),
         refresh,
       );
     },
-    [activeOrganization, projectRef, refresh, runtime.commands, write],
+    [activeOrganization, client, projectRef, refresh, runtime, write],
   );
 
   const rename = useCallback(
@@ -425,49 +471,136 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
   );
 
   /**
-   * *Register in {group}* — the write a colleague's Mate is waiting on. A
-   * member with *can create projects* makes a Mate and cannot write the
-   * registry, so it runs with no group reach until an owner adds it (guide 4.2).
+   * *Finish setup* — the press's own steps on a half-made Mate (`finishMateSetupVerb`): what a
+   * colleague's Mate waits on, what a press a closed tab cut short left, a container that never
+   * came. Every step is safe to ask again; for a Mate made before the press, its close-off also
+   * lowers a key still at `ADMIN` (`hardenMate`).
    */
-  const registerVerbFor = useCallback(
+  const finishSetupVerbFor = useCallback(
     (candidate: ZeropsCandidatePresentation, tags: ZeropsGroupTags): string | undefined => {
-      if (tags.groupId === undefined) return undefined;
+      const press = presses.find((entry) => entry.projectId === candidate.project.id);
+      // A Mate claimed from the pool is in no group: no registration of its, no container to make.
+      const grouped = tags.groupId !== undefined;
       const group = groupTree.groups.find((entry) => entry.group.groupId === tags.groupId)?.group;
-      if (group === undefined) return undefined;
-      return registerMateVerb({
-        registration: resolveMateRegistration({
-          registry: registry.registry,
-          projectId: candidate.project.id,
+      if (grouped && group === undefined) return undefined;
+      // Every fact from the platform, so any browser offers it, after a reload too.
+      return finishMateSetupVerb({
+        registration: grouped
+          ? resolveMateRegistration({
+              registry: registry.registry,
+              projectId: candidate.project.id,
+            })
+          : "registered",
+        containerMissing:
+          grouped && mateContainerMissing(candidate, press !== undefined, Date.now()),
+        closedOffMissing: candidate.service !== undefined && interrupted.has(candidate.service.id),
+        pressStopped: press?.state.kind === "failed",
+        needsHarden: mateHardenableBy(listedTokens, candidate.project.id, {
+          userId: user?.id,
+          roleCode: activeOrganization?.roleCode,
         }),
+        pastGrace: mateProjectPastGrace(candidate.project, Date.now()),
+        viewerIsAdder: mateAddedBy(candidate.project.tagList, user?.id),
+        hasContainer: candidate.service !== undefined,
         viewerRole: activeOrganization?.roleCode,
-        groupName: group.name,
       });
     },
-    [activeOrganization?.roleCode, groupTree.groups, registry.registry],
+    [
+      activeOrganization?.roleCode,
+      groupTree.groups,
+      interrupted,
+      listedTokens,
+      presses,
+      registry.registry,
+      user?.id,
+    ],
   );
 
-  const register = useCallback(
+  const finishSetup = useCallback(
     (candidate: ZeropsCandidatePresentation, tags: ZeropsGroupTags) => {
-      if (tags.groupId === undefined || giteaProjectId === undefined || activeOrganization === null)
-        return;
+      if (activeOrganization === null) return;
       const groupId = tags.groupId;
-      void write(candidate.key, async () => {
-        // The broker's rights loop runs off the registry and the grant, so the
-        // Mate gets its bot's access on the loop's next pass rather than on a
-        // step this verb has to sequence.
-        const outstanding = await registerMateInGroup({
-          client: brokerGrantTokens(runtime),
-          writeTags: projectTagsWrite({ runtime, projectRef }, activeOrganization.id),
-          clientId: activeOrganization.id,
-          giteaProjectId,
-          groupId,
-          projectId: candidate.project.id,
-        });
-        registry.refresh();
-        if (outstanding !== null) setTrouble(outstanding);
+      const organizationId = activeOrganization.id;
+      const projectId = candidate.project.id;
+      const group =
+        groupId === undefined
+          ? undefined
+          : groupTree.groups.find((entry) => entry.group.groupId === groupId);
+      const pressStopped = readMatePress(projectId)?.state.kind === "failed";
+      // An owner or an admin finishes all of it; the Mate's own adder, its close-off. The harden
+      // runs where it may: never on keys this viewer may not write.
+      const whole = finishMateSetupScope(activeOrganization.roleCode) === "whole";
+      const hardenable = mateHardenableBy(listedTokens, projectId, {
+        userId: user?.id,
+        roleCode: activeOrganization.roleCode,
       });
+      const harden = hardenable || (whole && !mateNeedsHarden(listedTokens, projectId));
+      // A close-off alone has nothing to finish on a Mate with no container.
+      if (!whole && !hardenable && candidate.service === undefined) return;
+      // Its view draws the steps as they run, and their end (`finishSetupView`).
+      beginPress({
+        projectId,
+        organizationId,
+        startedAt: Date.now(),
+        placement: null,
+        container: true,
+        finishing: true,
+      });
+      void write(
+        candidate.key,
+        async () => {
+          const finished = await finishMateSetup({
+            inputs: { client, data: { runtime, organizationRef, projectRef }, organizationId },
+            projectId,
+            projectName: candidate.project.name,
+            // A container only where its project has none and no press elsewhere may still be
+            // importing one (`finishSetupContainer`).
+            container: whole
+              ? finishSetupContainer({
+                  hasService: candidate.service !== undefined,
+                  pressStopped,
+                  pastGrace: mateProjectPastGrace(candidate.project, Date.now()),
+                })
+              : null,
+            groupProjectIds: (group?.environments ?? []).flatMap(({ item }) =>
+              item.project.id === projectId ? [] : [item.project.id],
+            ),
+            viewer: pressViewer(user, activeOrganization),
+            // A Mate made before the press: its key lowered from ADMIN.
+            harden,
+            // A Mate in no group — claimed from the pool — is hardened and closed off, no more.
+            registration:
+              !whole || giteaProjectId === undefined || groupId === undefined
+                ? null
+                : {
+                    giteaProjectId,
+                    giteaOrigin: null,
+                    groupId,
+                    kind: "mate",
+                    displayName: candidate.project.name,
+                  },
+            isCurrent: captureAccountLifetime(),
+          });
+          registry.refresh();
+          if (!finished.ok) throw new Error(finished.error);
+        },
+        refresh,
+      );
     },
-    [activeOrganization, giteaProjectId, projectRef, registry, runtime, write],
+    [
+      activeOrganization,
+      client,
+      giteaProjectId,
+      groupTree.groups,
+      listedTokens,
+      organizationRef,
+      projectRef,
+      refresh,
+      registry,
+      runtime,
+      user,
+      write,
+    ],
   );
 
   /** Whose Mate it is, where that is a colleague: "Ada's Mate", as its row says it. */
@@ -548,7 +681,7 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
           if (!isCurrent()) return;
           markMateDeleting(projectId);
           rememberMenu((memory) => withoutMate(memory, projectId));
-          forgetBirth(projectId);
+          forgetPress(projectId);
           invalidateZerops({ topic: "inventory", organization });
           setPress(UNPRESSED);
           setDialog(null);
@@ -625,7 +758,7 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
       const input = rowInputFor(candidate);
       const rowAction = deriveZeropsRowAction(input);
       const restartAction = deriveZeropsRestartAction(input);
-      const registerLabel = registerVerbFor(candidate, tags);
+      const finishSetupLabel = finishSetupVerbFor(candidate, tags);
       const serverVersion = serverVersions.get(candidate.key);
       const busy = busyKey === candidate.key;
       const quick: Array<ZeropsMenuEntry> = [];
@@ -661,14 +794,14 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
         ...(openFace === undefined
           ? []
           : [{ id: "face", label: CHANGE_FACE_VERB, onSelect: openFace }]),
-        ...(registerLabel === undefined
+        ...(finishSetupLabel === undefined
           ? []
           : [
               {
-                id: "register",
-                label: registerLabel,
+                id: "finish-setup",
+                label: finishSetupLabel,
                 disabled: busy,
-                onSelect: () => register(candidate, tags),
+                onSelect: () => finishSetup(candidate, tags),
               },
             ]),
         ...(verbs.assign
@@ -735,8 +868,8 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
       changeFace,
       deleting,
       move,
-      register,
-      registerVerbFor,
+      finishSetup,
+      finishSetupVerbFor,
       restart,
       rowInputFor,
       serverVersions,
@@ -887,4 +1020,30 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
   );
 
   return { actionsFor, dialogs, busyKey, trouble, renameInPlace, changeFace };
+}
+
+/**
+ * Whether a Mate's container never came: its project lists no zcp, it is past the moments a press
+ * takes to import one, and this tab is not pressing it — a listing read that soon may not show a
+ * container just imported, and importing one again would make a second.
+ */
+export function mateContainerMissing(
+  candidate: Pick<ZeropsCandidatePresentation, "service" | "project">,
+  pressedHere: boolean,
+  nowMs: number,
+): boolean {
+  if (candidate.service !== undefined || pressedHere) return false;
+  return mateProjectPastGrace(candidate.project, nowMs);
+}
+
+/** Whether the viewer added this Mate: its stand-up asked for by them, or its seat theirs. */
+export function mateAddedBy(
+  tagList: ReadonlyArray<string> | undefined,
+  viewer: string | undefined,
+): boolean {
+  if (viewer === undefined || viewer.length === 0) return false;
+  return (
+    readZeropsGroupTags(tagList).standUp?.by === viewer ||
+    mateIsViewers({ tagList: tagList ?? [] }, viewer)
+  );
 }

@@ -8,8 +8,10 @@ import {
   planGroupRegistration,
   resolveAddProjectVerb,
   resolveGroupGitea,
-  registerMateVerb,
+  finishMateSetupScope,
+  finishMateSetupVerb,
   resolveMateRegistration,
+  type MateRegistration,
 } from "./groupCreation.ts";
 import { parseZeropsRegistry } from "./groupRegistry.ts";
 import type { MateAccessViewer } from "./mateAccess.ts";
@@ -275,54 +277,147 @@ describe("resolveMateRegistration", () => {
   });
 });
 
-describe("registerMateVerb", () => {
+describe("finishMateSetupVerb", () => {
+  const HALF_MADE = {
+    registration: "registered" as MateRegistration,
+    containerMissing: false,
+    pressStopped: false,
+    closedOffMissing: false,
+    needsHarden: false,
+    pastGrace: true,
+    viewerIsAdder: false,
+    hasContainer: true,
+  };
   it.each([
     {
       name: "an owner, on a Mate nobody has registered",
-      registration: "awaiting-owner",
+      input: { ...HALF_MADE, registration: "awaiting-owner" },
       viewerRole: "OWNER",
-      expected: "Register in Acme CRM",
+      expected: "Finish setup",
     },
     {
       name: "an admin, who may write the registry too",
-      registration: "awaiting-owner",
+      input: { ...HALF_MADE, registration: "awaiting-owner" },
       viewerRole: "ADMIN",
-      expected: "Register in Acme CRM",
+      expected: "Finish setup",
+    },
+    {
+      name: "an owner, on a Mate whose container never came",
+      input: { ...HALF_MADE, containerMissing: true },
+      viewerRole: "OWNER",
+      expected: "Finish setup",
+    },
+    {
+      name: "an owner, on a Mate whose press in this tab stopped",
+      input: { ...HALF_MADE, pressStopped: true },
+      viewerRole: "OWNER",
+      expected: "Finish setup",
+    },
+    {
+      name: "an owner, on a Mate whose press stopped before its close-off was marked",
+      input: { ...HALF_MADE, closedOffMissing: true },
+      viewerRole: "OWNER",
+      expected: "Finish setup",
+    },
+    // A press may still be running in another browser for two minutes: its Mate reads
+    // unregistered, or not closed off, for those seconds, and finishing it then would race it.
+    {
+      name: "nobody, on a Mate made a moment ago that nobody has registered yet",
+      input: { ...HALF_MADE, registration: "awaiting-owner", pastGrace: false },
+      viewerRole: "OWNER",
+      expected: undefined,
+    },
+    {
+      name: "nobody, on a Mate made a moment ago whose close-off is not marked yet",
+      input: { ...HALF_MADE, closedOffMissing: true, pastGrace: false },
+      viewerRole: "OWNER",
+      expected: undefined,
+    },
+    {
+      name: "an owner, at once, on a Mate whose press in this tab stopped",
+      input: { ...HALF_MADE, pressStopped: true, pastGrace: false },
+      viewerRole: "OWNER",
+      expected: "Finish setup",
+    },
+    // Read off the platform's token list, in any browser, after a reload too.
+    {
+      name: "an owner, on a Mate whose key is still ADMIN — a pool claim whose harden never ran",
+      input: { ...HALF_MADE, needsHarden: true },
+      viewerRole: "OWNER",
+      expected: "Finish setup",
+    },
+    // `needsHarden` is the viewer's to fix — an org owner or the key's creator (`mateHardenableBy`).
+    {
+      name: "the member who created its key, on a Mate whose key is still ADMIN",
+      input: { ...HALF_MADE, needsHarden: true, viewerIsAdder: true },
+      viewerRole: "BASIC_USER",
+      expected: "Finish setup",
+    },
+    // Closing off is all the adder may do, and a Mate with no container has nothing to close off:
+    // never reported finished (pass 28 review).
+    {
+      name: "nobody but an owner or admin, on a Mate whose press stopped before its container",
+      input: { ...HALF_MADE, pressStopped: true, viewerIsAdder: true, hasContainer: false },
+      viewerRole: "BASIC_USER",
+      expected: undefined,
+    },
+    // Closing off needs no registry rights: the member who added it may close it off.
+    {
+      name: "the member who added it, on a Mate its press left open",
+      input: { ...HALF_MADE, closedOffMissing: true, viewerIsAdder: true },
+      viewerRole: "BASIC_USER",
+      expected: "Finish setup",
+    },
+    {
+      name: "another member, on a Mate a press left open",
+      input: { ...HALF_MADE, closedOffMissing: true },
+      viewerRole: "BASIC_USER",
+      expected: undefined,
+    },
+    {
+      name: "the member who added it, on a Mate nobody has registered: that is an owner's",
+      input: { ...HALF_MADE, registration: "awaiting-owner", viewerIsAdder: true },
+      viewerRole: "BASIC_USER",
+      expected: undefined,
     },
     {
       name: "the member who made it, and cannot finish it",
-      registration: "awaiting-owner",
+      input: { ...HALF_MADE, registration: "awaiting-owner" },
       viewerRole: "READ_ONLY",
       expected: undefined,
     },
     {
       name: "a BASIC_USER, who still cannot write the Gitea project's tags",
-      registration: "awaiting-owner",
+      input: { ...HALF_MADE, containerMissing: true },
       viewerRole: "BASIC_USER",
       expected: undefined,
     },
     {
-      name: "an owner, on a Mate already in the registry",
-      registration: "registered",
+      name: "an owner, on a Mate already whole",
+      input: HALF_MADE,
       viewerRole: "OWNER",
       expected: undefined,
     },
     {
       name: "somebody whose role has not been read yet",
-      registration: "awaiting-owner",
+      input: { ...HALF_MADE, registration: "awaiting-owner" },
       viewerRole: undefined,
       expected: undefined,
     },
-  ] as const)(
-    "offers nothing but the right verb to $name",
-    ({ registration, viewerRole, expected }) => {
-      expect(
-        registerMateVerb({
-          registration,
-          ...(viewerRole === undefined ? {} : { viewerRole }),
-          groupName: "Acme CRM",
-        }),
-      ).toBe(expected);
-    },
-  );
+  ] as const)("offers nothing but the right verb to $name", ({ input, viewerRole, expected }) => {
+    expect(
+      finishMateSetupVerb({ ...input, ...(viewerRole === undefined ? {} : { viewerRole }) }),
+    ).toBe(expected);
+  });
+});
+
+describe("finishMateSetupScope", () => {
+  it.each([
+    { role: "OWNER", want: "whole" },
+    { role: "ADMIN", want: "whole" },
+    { role: "BASIC_USER", want: "close-off" },
+    { role: undefined, want: "close-off" },
+  ])("$role: $want", ({ role, want }) => {
+    expect(finishMateSetupScope(role)).toBe(want);
+  });
 });

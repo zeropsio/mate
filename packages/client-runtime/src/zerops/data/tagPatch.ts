@@ -18,6 +18,7 @@ import { parseZeropsRegistry } from "../groupRegistry.ts";
 import {
   withZeropsBotTag,
   withZeropsChangedFace,
+  withZeropsClosedOffTag,
   withZeropsGroupTags,
   withZeropsMateTag,
   withoutZeropsStandUpTag,
@@ -44,6 +45,8 @@ export type ProjectTagPatch =
   | { readonly kind: "agent-signer"; readonly agentId: string; readonly userId: string }
   /** The Mate was asked to stand the project's development up: the ask (`mate:standup:`) goes. */
   | { readonly kind: "stand-up-done" }
+  /** The press closed the project off and read it back closed (`mate:closed-off`). */
+  | { readonly kind: "closed-off" }
   /** A group in the account's registry, on its Gitea project; its slug is derived here. */
   | { readonly kind: "registry-group"; readonly groupId: string; readonly name: string }
   /** A project in a registered group as a Mate, a stage or the production. */
@@ -94,6 +97,8 @@ export function applyProjectTagPatch(
       return changed(withMateSignerTag(tags, patch.agentId, patch.userId));
     case "stand-up-done":
       return changed(withoutZeropsStandUpTag(tags));
+    case "closed-off":
+      return changed(withZeropsClosedOffTag(tags));
     case "registry-group": {
       const registry = parseZeropsRegistry(tags);
       // The group is there: our own earlier write, read back.

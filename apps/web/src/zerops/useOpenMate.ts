@@ -42,7 +42,7 @@ import { mateComing } from "./mateComing";
 import { awaitMateConversation } from "./mateOpening";
 import { newMateView, useNewMate } from "./newMate";
 import { useZeropsCandidates } from "./useZeropsCandidates";
-import { useZeropsBirths } from "./zeropsBirths";
+import { pressComingInput, useMatePresses } from "./matePress";
 
 /** Opens a Mate — its row, or its project where the caller holds no row — as every door does. */
 export type OpenMate = (
@@ -56,7 +56,7 @@ export function useOpenMate(): OpenMate {
   const threads = useThreadShells();
   const projects = useProjects();
   const handleNewThread = useNewThreadHandler();
-  const { births } = useZeropsBirths();
+  const presses = useMatePresses();
   const creations = useNewMate((state) => state.creations);
   const { listing } = useZeropsCandidates();
   return useCallback<OpenMate>(
@@ -84,10 +84,12 @@ export function useOpenMate(): OpenMate {
         ownView();
         return;
       }
+      const pressed = pressComingInput(presses, projectId);
       const coming = mateComing({
-        birth: births.find((birth) => birth.projectId === projectId),
+        press: pressed.press,
         candidate,
-        setUpFailed: creations[projectId]?.failed,
+        setUpFailed: pressed.setUpFailed ?? creations[projectId]?.failed,
+        nowMs: Date.now(),
       });
       const environmentId = coming === undefined ? linkTarget(candidate) : undefined;
       if (environmentId === undefined) {
@@ -123,6 +125,6 @@ export function useOpenMate(): OpenMate {
         if (threadId !== undefined) then?.(scopeThreadRef(project.environmentId, threadId));
       });
     },
-    [births, creations, handleNewThread, linkTarget, listing, projects, router, threads],
+    [presses, creations, handleNewThread, linkTarget, listing, projects, router, threads],
   );
 }

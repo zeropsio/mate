@@ -1097,8 +1097,8 @@ const FORBIDDEN_PROTECTED_MODULES = new Map<string, string>([
   ["apps/web/src/zerops/useAgentLoginCancel.ts", "cancels a server-side agent login"],
   ["apps/web/src/zerops/ZeropsSessionProvider.tsx", "mutates the Zerops platform session"],
   [
-    "apps/web/src/zerops/zeropsBirths.ts",
-    "writes a birth's registry, broker grant and deploy token, and closes its project off",
+    "apps/web/src/zerops/matePress.ts",
+    "mints a Mate's key, imports its container, closes its project off and registers it",
   ],
   [
     "apps/web/src/components/zerops/ZeropsProjectsPage.tsx",

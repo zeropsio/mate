@@ -891,6 +891,51 @@ describe("ZeropsApiClient project reads", () => {
     expect(write?.body).toContain('"roleCode":"NO_ACCESS"');
   });
 
+  // A raced press, an older platform key: every key of the Mate still ADMIN on its project is
+  // lowered, whichever the container holds (pass 28 review).
+  it("hardening lowers every key of the Mate still ADMIN on its project", async () => {
+    const adminKey = (id: string, created: string) => ({
+      id,
+      name: "zcp-project-1",
+      created,
+      projects: [{ projectId: "project-1", roleCode: "ADMIN" }],
+    });
+    const stub = recordingFetch((request) => {
+      if (request.url.endsWith("/integration-token/list?limit=100"))
+        return jsonResponse(200, {
+          list: [
+            adminKey("token-1", "2026-10-01T09:00:00Z"),
+            adminKey("token-2", "2026-10-01T10:00:00Z"),
+            {
+              id: "token-3",
+              name: "zcp-project-1",
+              projects: [{ projectId: "project-1", roleCode: "BASIC_USER" }],
+            },
+          ],
+        });
+      if (request.url.includes("/delegation") && request.method === "GET")
+        return jsonResponse(200, { list: [] });
+      if (request.url.endsWith("/project/search"))
+        return jsonResponse(200, {
+          items: [{ envList: [{ id: "iso", key: "envIsolation", content: "service" }] }],
+        });
+      if (request.url.includes("/service-stack")) return jsonResponse(200, { list: [] });
+      return jsonResponse(200, {});
+    });
+    const client = new ZeropsApiClient({ fetch: stub.fetch });
+    client.restoreSession(SESSION);
+
+    await client.hardenMate("org-1", "project-1");
+
+    const lowered = stub.requests
+      .filter(
+        (request) =>
+          request.method === "PUT" && /\/integration-token\/token-\d$/u.test(request.url),
+      )
+      .map((request) => request.url.split("/").at(-1));
+    expect(lowered.toSorted()).toEqual(["token-1", "token-2"]);
+  });
+
   it("hardening lowers the Mate's token and drops its delegations before health is asked", async () => {
     const stub = recordingFetch((request) => {
       if (request.url.endsWith("/integration-token/list?limit=100"))
@@ -964,6 +1009,56 @@ describe("ZeropsApiClient project reads", () => {
       roleCode: "NO_ACCESS",
       projects: [{ projectId: "project-1", roleCode: "BASIC_USER" }],
     });
+  });
+
+  it.each([
+    {
+      case: "a key the platform minted: ADMIN lowered, the group's reach kept",
+      grants: [
+        { projectId: "project-1", roleCode: "ADMIN" },
+        { projectId: "project-stage", roleCode: "READ_ONLY" },
+      ],
+      written: [
+        { projectId: "project-1", roleCode: "BASIC_USER" },
+        { projectId: "project-stage", roleCode: "READ_ONLY" },
+      ],
+    },
+    {
+      case: "a key the press minted, already the Mate's reach",
+      grants: [
+        { projectId: "project-1", roleCode: "BASIC_USER" },
+        { projectId: "project-stage", roleCode: "READ_ONLY" },
+      ],
+      written: null,
+    },
+  ])("hardening lowers only the Mate's own grant: $case", async ({ grants, written }) => {
+    const stub = recordingFetch((request) => {
+      if (request.url.endsWith("/integration-token/list?limit=100"))
+        return jsonResponse(200, {
+          list: [{ id: "token-1", name: "zcp-project-1", roleCode: "NO_ACCESS", projects: grants }],
+        });
+      if (request.url.endsWith("/integration-token/token-1/delegation") && request.method === "GET")
+        return jsonResponse(200, { list: [] });
+      if (request.url.endsWith("/project/search"))
+        return jsonResponse(200, {
+          items: [{ envList: [{ id: "iso", key: "envIsolation", content: "service" }] }],
+        });
+      if (request.url.includes("/service-stack"))
+        return jsonResponse(200, {
+          list: [{ id: "svc-1", name: "zcp", serviceStackTypeId: "zcp" }],
+        });
+      return jsonResponse(200, {});
+    });
+    const client = new ZeropsApiClient({ fetch: stub.fetch });
+    client.restoreSession(SESSION);
+
+    const result = await client.hardenMate("org-1", "project-1");
+
+    const write = stub.requests.find(
+      (request) => request.method === "PUT" && request.url.endsWith("/integration-token/token-1"),
+    );
+    expect(result.tokenLowered).toBe(written !== null);
+    expect(write === undefined ? null : JSON.parse(write.body ?? "{}").projects).toEqual(written);
   });
 
   it("a hardened Mate is left alone", async () => {
@@ -1887,38 +1982,17 @@ describe("ZeropsApiClient.exchangeWebSocketToken", () => {
     ).rejects.toMatchObject({ kind: "uncertain" });
 
     expect(checks).toBe(2);
-    expect(stub.requests).toHaveLength(1);
+    // The project, then the reads the key's mint is planned from: the mint itself never left.
+    expect(stub.requests.map((request) => request.method)).toEqual(["POST", "GET", "GET"]);
   });
 
-  it("drops the container's delegation, and closes nothing", async () => {
-    // primer §7.1, measured on a project minutes old (2026-09-19): the wizard's
-    // one-call path created a Mate and left a delegation on its own token.
-    //
-    // Isolation is not here. The recipe that makes the container opens
-    // `envIsolation` itself so that zcp can see the project (the owner,
-    // 2026-09-20), so a creation that closed it wrote under a recipe still
-    // running; the app closes it once the container answers instead.
+  it("asks the platform for no token of its own, so there is no delegation to take back", async () => {
     const stub = recordingFetch((request) => {
-      if (request.url.includes("/integration-token/list")) {
-        return jsonResponse(200, {
-          list: [
-            {
-              id: "token-1",
-              name: "zcp-Mate",
-              roleCode: "NO_ACCESS",
-              projects: [{ projectId: "project-1", roleCode: "BASIC_USER" }],
-            },
-          ],
-        });
-      }
-      if (request.url.includes("/delegation/")) return jsonResponse(200, {});
-      if (request.url.includes("/delegation")) {
-        return jsonResponse(200, { list: [{ id: "delegation-1" }] });
-      }
-      if (request.url.includes("/project/search")) {
-        return jsonResponse(200, { items: [{ id: "project-1", envList: [] }] });
-      }
+      if (request.url.includes("/integration-token/list")) return jsonResponse(200, { list: [] });
+      if (request.method === "POST" && request.url.endsWith("/integration-token"))
+        return jsonResponse(200, { id: "token-1", token: ["k", "e", "y"].join("") });
       if (request.url.includes("/service-stack")) return jsonResponse(200, { list: [] });
+      if (request.url.includes("/first-class-recipe/")) return jsonResponse(200, {});
       return jsonResponse(200, { id: "project-1", name: "Mate", status: "ACTIVE" });
     });
     const client = new ZeropsApiClient({ fetch: stub.fetch });
@@ -1926,38 +2000,9 @@ describe("ZeropsApiClient.exchangeWebSocketToken", () => {
 
     await client.createProjectWithZeropsMate({ clientId: "org-1", name: "Mate" });
 
-    const urls = stub.requests.map((request) => `${request.method} ${request.url}`);
-    expect(
-      urls.some(
-        (url) =>
-          url.startsWith("DELETE") &&
-          url.includes("/integration-token/token-1/delegation/delegation-1"),
-      ),
-    ).toBe(true);
-    // The isolation would have read the project's env before planning, so the
-    // absence of the search is what proves it did not run.
-    expect(urls.some((url) => url.includes("/project/search"))).toBe(false);
-  });
-
-  it("does not fail a creation over a token the platform has not minted yet", async () => {
-    const stub = recordingFetch((request) => {
-      if (request.url.includes("/integration-token/list")) {
-        return jsonResponse(200, { list: [] });
-      }
-      if (request.url.includes("/project/search")) {
-        return jsonResponse(200, { items: [{ id: "project-1", envList: [] }] });
-      }
-      if (request.url.includes("/service-stack")) return jsonResponse(200, { list: [] });
-      return jsonResponse(200, { id: "project-1", name: "Mate", status: "ACTIVE" });
-    });
-    const client = new ZeropsApiClient({ fetch: stub.fetch });
-    client.restoreSession(SESSION);
-
-    const created = await client.createProjectWithZeropsMate({ clientId: "org-1", name: "Mate" });
-
-    expect(created.project.id).toBe("project-1");
+    const recipe = stub.requests.find((request) => request.url.includes("/first-class-recipe/"));
+    expect(JSON.parse(recipe?.body ?? "{}").createIntegrationToken).toBe(false);
     expect(stub.requests.some((request) => request.url.includes("/delegation"))).toBe(false);
-    expect(stub.requests.some((request) => request.url.includes("/project/search"))).toBe(false);
   });
 
   it("does not issue the container write after an incomplete project response", async () => {
@@ -1993,6 +2038,9 @@ describe("ZeropsApiClient.exchangeWebSocketToken", () => {
         }
         seen.push(`${init?.method ?? "GET"} ${input}`);
         if (input.includes("/integration-token/list")) return jsonResponse(200, { list: [] });
+        if (input.endsWith("/integration-token"))
+          return jsonResponse(200, { id: "token-1", token: ["k", "e", "y"].join("") });
+        if (input.includes("/service-stack")) return jsonResponse(200, { list: [] });
         if (input.includes("/first-class-recipe/development-container")) {
           return jsonResponse(200, {});
         }
@@ -2014,22 +2062,23 @@ describe("ZeropsApiClient.exchangeWebSocketToken", () => {
     );
   });
 
-  it("does not fail a creation that worked over the tidy-up after it", async () => {
+  it("stops before the container when the key cannot be read, saying the project exists", async () => {
     const stub = recordingFetch((request) => {
       if (request.url.includes("/integration-token/list")) {
         return jsonResponse(503, { error: { message: "Service unavailable." } });
       }
-      if (request.url.includes("/first-class-recipe/development-container")) {
-        return jsonResponse(200, {});
-      }
+      if (request.url.includes("/service-stack")) return jsonResponse(200, { list: [] });
       return jsonResponse(200, { id: "project-1", name: "Mate", status: "ACTIVE" });
     });
     const client = new ZeropsApiClient({ fetch: stub.fetch });
     client.restoreSession(SESSION);
 
-    const created = await client.createProjectWithZeropsMate({ clientId: "org-1", name: "Mate" });
-
-    expect(created.project.id).toBe("project-1");
+    await expect(
+      client.createProjectWithZeropsMate({ clientId: "org-1", name: "Mate" }),
+    ).rejects.toMatchObject({ kind: "uncertain" });
+    expect(stub.requests.some((request) => request.url.includes("/first-class-recipe/"))).toBe(
+      false,
+    );
   });
 
   it("keeps what the platform said when it is the platform that refused the container", async () => {
@@ -2037,6 +2086,10 @@ describe("ZeropsApiClient.exchangeWebSocketToken", () => {
       if (request.url.includes("/first-class-recipe/development-container")) {
         return jsonResponse(400, { error: { code: "invalidYaml", message: "Bad recipe." } });
       }
+      if (request.url.includes("/integration-token/list")) return jsonResponse(200, { list: [] });
+      if (request.url.endsWith("/integration-token"))
+        return jsonResponse(200, { id: "token-1", token: ["k", "e", "y"].join("") });
+      if (request.url.includes("/service-stack")) return jsonResponse(200, { list: [] });
       return jsonResponse(200, { id: "project-1", name: "Mate", status: "ACTIVE" });
     });
     const client = new ZeropsApiClient({ fetch: stub.fetch });
@@ -2045,6 +2098,24 @@ describe("ZeropsApiClient.exchangeWebSocketToken", () => {
     await expect(
       client.createProjectWithZeropsMate({ clientId: "org-1", name: "Mate" }),
     ).rejects.toMatchObject({ kind: "uncertain", status: 400, code: "invalidYaml" });
+  });
+});
+
+describe("ZeropsApiClient.stopService and readProcessStatus", () => {
+  it("stops a service and answers the stop's process, then reads where it stands", async () => {
+    const stub = recordingFetch((request) =>
+      request.url.endsWith("/stop")
+        ? jsonResponse(200, { id: "process-stop", status: "PENDING" })
+        : jsonResponse(200, { id: "process-stop", status: "FINISHED" }),
+    );
+    const client = new ZeropsApiClient({ fetch: stub.fetch });
+    client.restoreSession(SESSION);
+
+    expect(await client.stopService("svc-1")).toEqual({ processId: "process-stop" });
+    expect(await client.readProcessStatus("process-stop")).toBe("FINISHED");
+    expect(
+      stub.requests.map((request) => `${request.method} ${request.url.split("/public")[1]}`),
+    ).toEqual(["PUT /service-stack/svc-1/stop", "GET /process/process-stop"]);
   });
 });
 

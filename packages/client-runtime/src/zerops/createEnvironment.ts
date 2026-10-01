@@ -114,6 +114,12 @@ export interface EnvironmentCreationInput {
    * Omitted or empty leaves the container offering every agent.
    */
   readonly agents?: ReadonlyArray<ZeropsAgentType>;
+  /**
+   * The person writes the environment's group registration in the press (`register`): an owner
+   * or an admin, or anyone adding a stage or a production. A member's Mate waits for one of them
+   * (*Finish setup*).
+   */
+  readonly register?: boolean;
 }
 
 export type EnvironmentCreationStep =
@@ -126,7 +132,9 @@ export type EnvironmentCreationStep =
     }
   /**
    * `PUT /project/{id}/first-class-recipe/development-container` — the zcp
-   * that carries the agent.
+   * that carries the agent, holding the key the person mints for it with the
+   * Mate's reach (`api.ts`, `importDevelopmentContainer`), and the tier's
+   * runtimes for zcp to import on its first boot (`MATE_SETUP_RUNTIMES`).
    *
    * `agents` is the group's own selection, so a Mate added to a group comes up
    * offering what that group signed in with rather than the platform's whole
@@ -134,28 +142,41 @@ export type EnvironmentCreationStep =
    * document then omits `ZCP_AGENTS` entirely — absent offers every agent,
    * empty offers none (MC-11).
    */
-  | { readonly kind: "import-container"; readonly agents: ReadonlyArray<ZeropsAgentType> }
+  | {
+      readonly kind: "import-container";
+      readonly agents: ReadonlyArray<ZeropsAgentType>;
+      /** The tier's runtimes, in one wave (`splitRecipeTier`); absent when it has none. */
+      readonly runtimes?: RecipeRuntimes;
+    }
   /**
-   * `PUT /client/{clientId}/integration-token/{tokenId}` — the container's own
-   * token, lowered to what zcp actually needs (`groupReach.ts`).
-   *
-   * The platform mints it with `ADMIN` on the project, which is also what a
-   * shell in that container and the agent running there hold. Lowering it is
-   * the one step that has to happen while nobody has talked to the Mate yet,
-   * so it sits directly after the container import rather than at the end.
+   * The project closed off and marked so (`mate:closed-off`): read back at
+   * once — the container recipe leaves it `service service@zcp` within a
+   * second of the import, and a new project starts `service` — and written
+   * `service` only where it reads anything else (`projectIsolation.ts`). zcp
+   * imports the runtimes on the mark alone, so no service the project runs
+   * ever reads another's variables, the Mate's key among them.
    */
-  | { readonly kind: "secure-container-token" }
+  | {
+      readonly kind: "close-off";
+      /**
+       * The press has just isolated the project itself (`hardenMate`): the step trusts that and
+       * reads no trailing index to isolate it again.
+       */
+      readonly isolated?: true;
+    }
   /**
-   * `DELETE /client/{clientId}/integration-token/{tokenId}/delegation/{id}` —
-   * the one-time mint the platform hands every new Mate.
-   *
-   * It grants `NO_ACCESS` + *can create projects*, so the Mate can make one
-   * more project; and a token minted through a delegation names the
-   * **delegating person** as its creator, which is precisely the claim a
-   * throwaway at the door is trusted for. Lowering the token (above) does not
-   * touch it — it is a separate record — so it gets a step of its own.
+   * The group's other Mates given sight of the new project: each one's key
+   * extended to `READ_ONLY` on it, where this person may edit those keys (an
+   * org owner, or their creator). Anyone else's press skips it, and the
+   * group-reach reconcile gives the sight later.
    */
-  | { readonly kind: "drop-container-delegation" }
+  | { readonly kind: "share-reach" }
+  /**
+   * The environment's group registration: its registry entry, the broker's
+   * grant where an older broker needs one, and for a stage or a production
+   * its deploy token and its declaration. Each write is safe to make again.
+   */
+  | { readonly kind: "register" }
   /**
    * `POST /project/{id}/service-stack/import` with a stage's or a
    * production's tier, whole, services only, converted for the platform
@@ -172,25 +193,6 @@ export type EnvironmentCreationStep =
    * `import-project` does in one call for a tier that describes its project.
    */
   | { readonly kind: "import-managed"; readonly yaml: string }
-  /**
-   * `POST /project/{id}/service-stack/import` with the tier's runtimes, in one
-   * wave (`splitRecipeTier`): each dev half started empty, each stage half
-   * waiting for its first deploy, each utility built from its public
-   * repository.
-   *
-   * Not this run's to make. The Mate's birth imports them once it has closed
-   * the project off (`birthWorker.ts`, `projectIsolation.ts`), from the
-   * document its record was begun with — so a reload loses nothing. That order
-   * is what makes the import safe: a dev half starts at once and a utility's
-   * build runs, and closed off first, neither ever boots holding the Mate's
-   * key or its agent's login, and closing off has nothing of theirs to
-   * restart.
-   */
-  | {
-      readonly kind: "import-runtimes";
-      readonly yaml: string;
-      readonly services: ReadonlyArray<RecipeRuntime>;
-    }
   /**
    * `POST /client/{clientId}/project/import` — the project *and* its services
    * from one document, taken when the recipe carries a `project:` block.
@@ -234,12 +236,13 @@ export type EnvironmentCreationPlan =
  * An environment with an agent takes its tier in two imports
  * (`splitRecipeTier`). The project goes in with its managed services alone —
  * its variables and generated secrets evaluated there and nowhere else — and
- * then the container, its token lowered and its delegation dropped. The
- * runtimes wait for the Mate's birth to close the project off, which it does
- * once the container answers (`import-runtimes`). Measured on the add of
- * 2026-09-30, the whole tier in one import cost the container's build a queue
- * behind the services' priority waves, and closing off afterwards restarted
- * nine services, a storage's restart failing.
+ * then the container, holding its key and the runtimes for zcp to import on
+ * its first boot (`MATE_SETUP_RUNTIMES`). The press then closes the project
+ * off and registers it, so nothing after it needs this browser. Measured on
+ * the add of 2026-09-30, the whole tier in one import cost the container's
+ * build a queue behind the services' priority waves, and closing off
+ * afterwards restarted nine services, a storage's restart failing: closed off
+ * before any runtime exists, it restarts nothing.
  *
  * An environment without one — a stage, a production — has nothing to close
  * off, and takes its tier whole, as one import (`deployTargetTier`).
@@ -292,29 +295,21 @@ export function planEnvironmentCreation(input: EnvironmentCreationInput): Enviro
   }
 
   if (withAgent) {
-    steps.push({ kind: "import-container", agents: input.agents ?? [] });
-    // Only a container has a token to lower: an environment created without
-    // one is a deployment target, and the platform mints it nothing.
-    steps.push({ kind: "secure-container-token" });
-    steps.push({ kind: "drop-container-delegation" });
-    // No isolation step. The recipe that makes the container opens
-    // `envIsolation` itself so that zcp can see the project (the owner,
-    // 2026-09-20), so closing it from inside the creation writes under a
-    // recipe that is still running — and, planned from an index that has not
-    // caught up, it failed the whole creation. The Mate's birth closes it once
-    // the container answers, the first moment the recipe is provably done, and
-    // only then imports the runtimes (`birthWorker.ts`).
-    if (tier?.runtimes !== undefined) {
-      steps.push({
-        kind: "import-runtimes",
-        yaml: tier.runtimes.yaml,
-        services: tier.runtimes.services,
-      });
-    }
+    steps.push({
+      kind: "import-container",
+      agents: input.agents ?? [],
+      ...(tier?.runtimes === undefined ? {} : { runtimes: tier.runtimes }),
+    });
   }
-  // Last. A Mate's Gitea access is no step of its creation: the broker's
-  // rights loop writes it onto every registered Mate's `zcp` service with the
-  // token the app granted it (D20, `brokerGrant.ts`).
+  // The close-off first: it is what makes the Mate need no browser, and a registration the
+  // platform refuses — a member who may not write the registry, a broker grant that failed —
+  // never keeps the Mate open. The group's sight of it is best-effort, last, and the group-reach
+  // reconcile covers it anyway.
+  if (withAgent) steps.push({ kind: "close-off" });
+  if (input.register === true) steps.push({ kind: "register" });
+  if (withAgent) steps.push({ kind: "share-reach" });
+  // Last, and the only step that waits on anything: everything the person's rights are needed
+  // for is done before it.
   steps.push({ kind: "await-ready", withAgent });
 
   return { ok: true, steps };
@@ -329,7 +324,7 @@ function readTier(
       /** The first import's document, project block and all. */
       readonly withProject: string;
       readonly firstImportHasServices: boolean;
-      /** What the Mate's birth imports after closing the project off. */
+      /** What zcp imports on its first boot, once the press has closed the project off. */
       readonly runtimes: RecipeRuntimes | undefined;
     }
   | undefined {
@@ -360,16 +355,16 @@ export function environmentCreationStepLabel(step: EnvironmentCreationStep): str
       return "Creating the environment";
     case "import-container":
       return "Adding the agent container";
-    case "secure-container-token":
-      return "Locking the container's access";
-    case "drop-container-delegation":
-      return "Taking back the container's one-time permit";
+    case "close-off":
+      return "Closing the project off";
+    case "share-reach":
+      return "Letting the project's other Mates see it";
+    case "register":
+      return "Registering it in its project";
     case "import-recipe":
       return "Importing the application";
     case "import-managed":
       return "Adding the managed services";
-    case "import-runtimes":
-      return "Adding the runtimes";
     case "await-ready":
       return step.withAgent ? "Waiting for the agent" : "Waiting for the services";
   }
