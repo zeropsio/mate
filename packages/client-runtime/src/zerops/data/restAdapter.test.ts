@@ -1705,6 +1705,85 @@ describe("ZeropsDataAdapter receiver", () => {
   );
 });
 
+describe("an organization past one page of its search", () => {
+  it.effect(
+    "registers once and reads the rest page by page into one exhausted baseline of 2,500 services",
+    () =>
+      Effect.gen(function* () {
+        const sockets: FakeSocket[] = [];
+        const bodies: Array<Record<string, unknown>> = [];
+        const row = (index: number) => ({
+          id: `service-${index}`,
+          projectId: `project-${index % 40}`,
+          name: `app-${index}`,
+          status: "ACTIVE",
+        });
+        const client = clientFor((url, init) => {
+          if (url.endsWith("/web-socket/login"))
+            return new Response('{"webSocketToken":"socket-token"}', { status: 200 });
+          const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+          bodies.push(body);
+          const offset = (body.offset as number | undefined) ?? 0;
+          const limit = body.limit as number;
+          const items = Array.from(
+            { length: Math.max(0, Math.min(limit, 2500 - offset)) },
+            (_, index) => row(offset + index),
+          );
+          return new Response(JSON.stringify({ items, totalHits: 2500, limit, offset }), {
+            status: 200,
+          });
+        });
+        const adapter = makeZeropsDataAdapter({
+          client,
+          makeSocket: socketFactory(sockets),
+          timers,
+        });
+        const receipt = yield* Effect.scoped(
+          Effect.gen(function* () {
+            const receiver = yield* adapter.openReceiver(
+              scope,
+              organization,
+              receiverIdentity,
+              context(),
+            );
+            return yield* adapter.register(
+              receiver,
+              {
+                identity: interest,
+                subscriptionName: ZeropsWireSubscriptionName.make("opaque-services"),
+                descriptor: {
+                  kind: "query-membership",
+                  query: { kind: "services-of-organization", organization, schemaVersion: 1 },
+                },
+                baselineTicket: servicesTicket(),
+              } as RegistrationRequest,
+              context(),
+            );
+          }),
+        );
+        const baseline = receipt.responseObservations.at(-1) as {
+          readonly members: ReadonlyArray<{ readonly serviceId: string }>;
+        };
+
+        expect(baseline).toMatchObject({
+          kind: "query-baseline-observed",
+          coverage: { kind: "exhausted-traversal", observedTotal: 2500 },
+        });
+        expect(new Set(baseline.members.map((member) => member.serviceId)).size).toBe(2500);
+        // One registration, then plain searches for what is past its page: never a second one.
+        expect(
+          bodies.map((body) => ({
+            registers: "subscriptionName" in body,
+            offset: body.offset ?? 0,
+          })),
+        ).toEqual([
+          { registers: true, offset: 0 },
+          { registers: false, offset: 2000 },
+        ]);
+      }),
+  );
+});
+
 describe("one malformed row of the organization's", () => {
   const good = { id: "service", projectId: "project", name: "app", status: "ACTIVE" };
   /** A row of a project this person may not even see, missing its status. */

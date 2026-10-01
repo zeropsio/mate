@@ -788,6 +788,61 @@ export function makeZeropsDataAdapter(options: ZeropsDataAdapterOptions): Zerops
       return handle;
     });
 
+  /**
+   * An organization-wide registration answers one page of ORGANIZATION_SEARCH_LIMIT rows. When
+   * the organization holds more, the rest is read with the same search, page by page, without
+   * registering again, and the registration's baseline is every page: an array of pages, or the
+   * registration's own body when it was the whole.
+   */
+  const restOfOrganizationSearch = (
+    request: RegistrationRequest,
+    http: ReturnType<typeof registrationHttp>,
+    body: unknown,
+    context: RequestContext,
+  ): Effect.Effect<unknown, AdapterError> =>
+    Effect.gen(function* () {
+      const limit = (http.body as { readonly limit?: number }).limit;
+      if (request.descriptor.kind !== "query-membership" || limit !== ORGANIZATION_SEARCH_LIMIT)
+        return body;
+      const first = decodeSearchListPage(body);
+      if (
+        first === null ||
+        first.rows.length < limit ||
+        first.totalCount === null ||
+        first.totalCount <= first.rows.length
+      )
+        return body;
+      const { search, sort } = http.body as { readonly search: unknown; readonly sort: unknown };
+      const pages = [first];
+      let offset = first.rows.length;
+      while (offset < first.totalCount && pages.length < 100) {
+        const next = decodeSearchListPage(
+          yield* requestEffect(
+            options.client,
+            {
+              path: http.path,
+              method: "POST",
+              body: { search, sort, limit, offset },
+              operationKind: "read",
+              background: true,
+            },
+            context,
+            policy.httpDeadlineMs,
+            options.timers,
+            "network",
+          ),
+        );
+        if (next === null)
+          return yield* Effect.fail(
+            adapterError("malformed", "Entity traversal returned a malformed page."),
+          );
+        pages.push(next);
+        if (next.rows.length === 0) break;
+        offset += next.rows.length;
+      }
+      return pages;
+    });
+
   const register: ZeropsDataAdapter["register"] = (receiver, request, context) => {
     const internals = openReceivers.get(receiver);
     if (!internals) return Effect.fail(adapterError("socket-closed", "Receiver is not open."));
@@ -825,8 +880,20 @@ export function makeZeropsDataAdapter(options: ZeropsDataAdapterOptions): Zerops
       options.timers,
       "registration",
     ).pipe(
+      Effect.flatMap((body) => restOfOrganizationSearch(request, http, body, context)),
       Effect.flatMap((body) => {
-        const decoded = remember(decodeRegistrationResponse(request, body));
+        const decoded = remember(
+          Array.isArray(body) &&
+            request.descriptor.kind === "query-membership" &&
+            request.baselineTicket !== null
+            ? decodeEntityQueryPages(
+                request.descriptor.query,
+                request.baselineTicket,
+                body,
+                "indexed-search",
+              )
+            : decodeRegistrationResponse(request, body),
+        );
         reportDroppedRows(decoded.issues);
         const fatal = decoded.issues.find((issue) => !isRowIssue(issue));
         if (fatal !== undefined) return Effect.fail(adapterError("malformed", fatal.message));
