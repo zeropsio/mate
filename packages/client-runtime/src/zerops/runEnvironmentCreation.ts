@@ -307,9 +307,8 @@ export async function runEnvironmentCreation(
           break;
         }
         case "secure-container-token": {
-          // The write replaces the token's whole project list: it is planned from the list as
-          // the platform holds it now, never one read earlier.
-          mateToken = undefined;
+          // The first read of the token in the flow, so the write that replaces its whole project
+          // list is planned from the list as the platform holds it now.
           const token = await resolveMateToken();
           const write = planGroupReach({
             token,
