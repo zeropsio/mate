@@ -11,8 +11,13 @@
  * still on its way in this tab is not raced (the reconcile waits for it) and
  * one that finished elsewhere is a no-op.
  *
- * Failures are swallowed: a background repair, tried again on the next read;
- * what is outstanding shows as the row that still asks. The declaration is
+ * Each repair runs once per change in what it repairs — the half-made
+ * environment as the list states it — and never again because the page's
+ * gate flipped: a repair in flight is not aborted by the gate closing, and an
+ * entry already repaired is not started over when it opens (a cold load's
+ * loading flips repeated it, a `GET /project` and two broker reads each time).
+ * A failed one is tried again on a backoff (`RECONCILE_RETRY_MS`); what is
+ * outstanding meanwhile shows as the row that still asks. The declaration is
  * written as the person, so no repair starts while Gitea holds no token for
  * them, and one that loses it part-way is given back unreported: the caller
  * enables the reconcile again once the token is back
@@ -20,7 +25,7 @@
  */
 
 import type { HalfMadeGroupEnvironment, ZeropsApiClient } from "@t3tools/client-runtime/zerops";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { addGroupEnvironment, type AddGroupEnvironmentOutcome } from "./addGroupEnvironment";
 import { giteaClientFor } from "./accountGiteaSessions";
@@ -56,65 +61,123 @@ export function useZeropsGroupEnvironmentReconcile(input: {
   // does.
   const latest = useRef(halfMade);
   latest.current = halfMade;
-  // What this tab has already run a repair for. An entry is put in before its
-  // repair starts, so two effects cannot run the same one, and taken out again
-  // if the effect is torn down before that entry's turn — otherwise a page with
-  // two half-made environments repaired the first, was remounted, and never
-  // looked at the second again (measured 2026-09-18: the test org's stage kept
-  // its missing deploy token through reload after reload while its production
-  // got one).
-  const attempted = useRef(new Set<string>());
+  // What this tab has run a repair for, per project: the entry it repaired (a changed entry is
+  // repaired again), and how its last run ended. An entry is put in before its repair starts, so
+  // two runs cannot repair the same one; one given back (a Gitea token lost part-way, an unmount
+  // before its turn) is taken out, so the next enabled run reaches it — otherwise a page with two
+  // half-made environments repaired the first, was remounted, and never looked at the second
+  // again (measured 2026-09-18).
+  const attempted = useRef(
+    new Map<
+      string,
+      {
+        readonly entry: string;
+        state: "running" | "done" | "failed";
+        failures: number;
+        retryAtMs: number;
+      }
+    >(),
+  );
+  /** The repairs in flight, aborted only when the page goes, never by its gate closing. */
+  const running = useRef(new Set<AbortController>());
+  useEffect(() => {
+    const inFlight = running.current;
+    return () => {
+      for (const controller of inFlight) controller.abort();
+      inFlight.clear();
+    };
+  }, []);
+  /** Moves when a failed repair's backoff is over, so the effect looks again. */
+  const [due, setDue] = useState(0);
   const key = halfMade
-    .map((entry) => `${entry.groupId}:${entry.projectId}:${entry.tier}`)
+    .map((entry) => JSON.stringify(entry))
     .sort()
     .join(";");
 
   useEffect(() => {
     if (!enabled || clientId === undefined || giteaOrigin === undefined || key === "") return;
     if (giteaClientFor(giteaOrigin) === null) return;
-    const pending = latest.current.filter((entry) => !attempted.current.has(entry.projectId));
+    const now = Date.now();
+    const pending = latest.current.filter((entry) => {
+      const record = attempted.current.get(entry.projectId);
+      return (
+        record === undefined ||
+        record.entry !== JSON.stringify(entry) ||
+        (record.state === "failed" && now >= record.retryAtMs)
+      );
+    });
     if (pending.length === 0) return;
-    for (const entry of pending) attempted.current.add(entry.projectId);
+    for (const entry of pending) {
+      const before = attempted.current.get(entry.projectId);
+      attempted.current.set(entry.projectId, {
+        entry: JSON.stringify(entry),
+        state: "running",
+        failures: before?.entry === JSON.stringify(entry) ? before.failures : 0,
+        retryAtMs: 0,
+      });
+    }
     const controller = new AbortController();
+    running.current.add(controller);
     /** Gives back every entry this run will not reach, so the next one does. */
     const release = (from: number) => {
       for (const entry of pending.slice(from)) attempted.current.delete(entry.projectId);
     };
-    void (async () => {
-      for (const [index, entry] of pending.entries()) {
-        if (controller.signal.aborted) return release(index);
-        let unauthorized = false;
-        const gitea = giteaClientFor(giteaOrigin, () => {
-          unauthorized = true;
-        });
-        const outcome = await addGroupEnvironment({
-          client,
-          writeTags: projectTagsWrite(data.current, clientId),
-          gitea,
-          clientId,
-          giteaProjectId,
-          groupId: entry.groupId,
-          environment: {
-            displayName: entry.displayName,
-            tier: entry.tier,
-            project: entry.projectId,
-          },
-          signal: controller.signal,
-        }).catch((): AddGroupEnvironmentOutcome | undefined => undefined);
-        // An abort during the repair leaves it unfinished, so this entry is
-        // given back too: the next effect is what tries it again.
-        if (controller.signal.aborted) return release(index);
-        // Its Gitea half ran without a token, or met a 401 no token recovered,
-        // and says only that: not an outcome, a repair the next enabled run makes.
-        if (gitea === null || unauthorized) return release(index);
-        if (outcome !== undefined) onOutcome.current?.(entry, outcome);
-      }
-      if (!controller.signal.aborted) refresh.current();
-    })();
-    return () => {
-      controller.abort();
+    /** A repair that failed is tried again once its backoff is over. */
+    const failed = (entry: HalfMadeGroupEnvironment) => {
+      const record = attempted.current.get(entry.projectId);
+      if (record === undefined) return;
+      record.failures += 1;
+      const waitMs = RECONCILE_RETRY_MS[Math.min(record.failures, RECONCILE_RETRY_MS.length) - 1]!;
+      record.state = "failed";
+      record.retryAtMs = Date.now() + waitMs;
+      setTimeout(() => {
+        if (!controller.signal.aborted) setDue((count) => count + 1);
+      }, waitMs);
     };
-    // `key` is the half-made list; the list, the runtime and the refresh are
-    // read through refs so a re-render does not abort a repair in flight.
-  }, [client, clientId, enabled, giteaOrigin, giteaProjectId, key]);
+    void (async () => {
+      try {
+        for (const [index, entry] of pending.entries()) {
+          if (controller.signal.aborted) return release(index);
+          let unauthorized = false;
+          const gitea = giteaClientFor(giteaOrigin, () => {
+            unauthorized = true;
+          });
+          const outcome = await addGroupEnvironment({
+            client,
+            writeTags: projectTagsWrite(data.current, clientId),
+            gitea,
+            clientId,
+            giteaProjectId,
+            groupId: entry.groupId,
+            environment: {
+              displayName: entry.displayName,
+              tier: entry.tier,
+              project: entry.projectId,
+            },
+            signal: controller.signal,
+          }).catch((): AddGroupEnvironmentOutcome | undefined => undefined);
+          // An abort — the page went — leaves it unfinished, so this entry is given back too.
+          if (controller.signal.aborted) return release(index);
+          // Its Gitea half ran without a token, or met a 401 no token recovered, and says only
+          // that: not an outcome, a repair the next enabled run makes.
+          if (gitea === null || unauthorized) return release(index);
+          if (outcome === undefined || outcome.failed !== undefined) failed(entry);
+          else {
+            const record = attempted.current.get(entry.projectId);
+            if (record !== undefined) record.state = "done";
+          }
+          if (outcome !== undefined) onOutcome.current?.(entry, outcome);
+        }
+        if (!controller.signal.aborted) refresh.current();
+      } finally {
+        running.current.delete(controller);
+      }
+    })();
+    // No cleanup: the gate closing (a loading flip) does not abort a repair in flight; the
+    // page going does (above). `key` is the half-made list; the list, the runtime and the
+    // refresh are read through refs so a re-render does not abort a repair in flight either.
+  }, [client, clientId, due, enabled, giteaOrigin, giteaProjectId, key]);
 }
+
+/** How long a failed repair waits before it is tried again, by its count of failures. */
+export const RECONCILE_RETRY_MS: ReadonlyArray<number> = [30_000, 60_000, 120_000, 300_000];

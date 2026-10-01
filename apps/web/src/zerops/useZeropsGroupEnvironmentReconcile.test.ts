@@ -3,7 +3,10 @@ import { act, createElement } from "react";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
 import type { AddGroupEnvironmentOutcome } from "./addGroupEnvironment";
-import { useZeropsGroupEnvironmentReconcile } from "./useZeropsGroupEnvironmentReconcile";
+import {
+  RECONCILE_RETRY_MS,
+  useZeropsGroupEnvironmentReconcile,
+} from "./useZeropsGroupEnvironmentReconcile";
 
 /**
  * Whether this tab can read Gitea now, the repairs run, whether the next one loses the Gitea
@@ -15,6 +18,10 @@ const gitea = vi.hoisted(() => ({
   repairs: [] as Array<{ readonly gitea: unknown }>,
   loseTokenOnRepair: false,
   outwaitReacquireOnRepair: false,
+  /** While set, a repair waits for it before it answers. */
+  hold: null as Promise<void> | null,
+  /** The next repair's outcome fails a step the page cannot fix by itself. */
+  failNext: false,
 }));
 
 /** The fake client's side door: its request ended in a 401 no token recovered. */
@@ -32,6 +39,15 @@ vi.mock("./accountGiteaSessions", () => ({
 vi.mock("./addGroupEnvironment", () => ({
   addGroupEnvironment: async (input: { readonly gitea: FakeGitea | null }) => {
     gitea.repairs.push({ gitea: input.gitea });
+    if (gitea.hold !== null) await gitea.hold;
+    if (gitea.failNext) {
+      gitea.failNext = false;
+      return {
+        done: ["registry"],
+        failed: { step: "broker-grant", reason: "The broker did not answer." },
+        pullRequest: undefined,
+      } satisfies AddGroupEnvironmentOutcome;
+    }
     if (gitea.loseTokenOnRepair || gitea.outwaitReacquireOnRepair) {
       if (gitea.loseTokenOnRepair) gitea.readable = false;
       input.gitea?.unauthorized();
@@ -131,6 +147,9 @@ describe("useZeropsGroupEnvironmentReconcile", () => {
     gitea.repairs = [];
     gitea.loseTokenOnRepair = false;
     gitea.outwaitReacquireOnRepair = false;
+    gitea.hold = null;
+    gitea.failNext = false;
+    vi.useRealTimers();
     vi.unstubAllGlobals();
   });
 
@@ -215,6 +234,48 @@ describe("useZeropsGroupEnvironmentReconcile", () => {
     await page.render(true);
     expect(gitea.repairs).toHaveLength(2);
     expect(outcomes.map((outcome) => outcome.failed)).toEqual([undefined]);
+    await page.unmount();
+  });
+
+  it("runs a repair once however often the page's loading flips while it runs", async () => {
+    const outcomes: Array<AddGroupEnvironmentOutcome> = [];
+    const page = await mount((outcome) => outcomes.push(outcome));
+    let answer = () => undefined as void;
+    gitea.hold = new Promise<void>((resolve) => {
+      answer = resolve;
+    });
+    await page.render(true);
+    // A cold load: the inventory's loading flips the repair's gate three times over.
+    for (let flip = 0; flip < 3; flip++) {
+      await page.render(false);
+      await page.render(true);
+    }
+    gitea.hold = null;
+    await act(async () => answer());
+    for (let flip = 0; flip < 3; flip++) {
+      await page.render(false);
+      await page.render(true);
+    }
+    expect(gitea.repairs).toHaveLength(1);
+    expect(outcomes.map((outcome) => outcome.failed)).toEqual([undefined]);
+    await page.unmount();
+  });
+
+  it("tries a failed repair again only after its backoff", async () => {
+    vi.useFakeTimers();
+    const outcomes: Array<AddGroupEnvironmentOutcome> = [];
+    const page = await mount((outcome) => outcomes.push(outcome));
+    gitea.failNext = true;
+    await page.render(true);
+    expect(gitea.repairs).toHaveLength(1);
+    await page.render(false);
+    await page.render(true);
+    expect(gitea.repairs).toHaveLength(1);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(RECONCILE_RETRY_MS[0]!);
+    });
+    expect(gitea.repairs).toHaveLength(2);
+    expect(outcomes.map((outcome) => outcome.failed === undefined)).toEqual([false, true]);
     await page.unmount();
   });
 });
