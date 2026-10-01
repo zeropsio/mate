@@ -198,13 +198,13 @@ describe("container store (DESIGN §4.5)", () => {
     await clock.advance(60_000);
     expect(probes).toHaveLength(1);
 
-    // A status push reads it again at once; the push that ends the restart does too.
+    // A push that says the Mate is down reads nothing; the push that ends the restart reads it.
     store.setTargets([target("RESTARTING")]);
     await clock.advance(0);
-    expect(probes).toHaveLength(2);
+    expect(probes).toHaveLength(1);
     store.setTargets([target("ACTIVE")]);
     await clock.advance(0);
-    expect(probes).toHaveLength(3);
+    expect(probes).toHaveLength(2);
     expect(store.verdict(KEY)).toEqual({ level: "ready" });
 
     // A live socket is the liveness signal: nothing is read while it holds.
@@ -235,6 +235,55 @@ describe("container store (DESIGN §4.5)", () => {
       expect(probes).toHaveLength(attempt);
     }
     bound.dispose();
+    store.dispose();
+  });
+
+  // While the server is down the balancer answers without CORS headers: every probe would be a
+  // red console error and a wasted request, and every socket an attempt held until its 502.
+  it.each(["RESTARTING", "UPGRADING", "RELOADING", "STOPPED"])(
+    "a Mate whose service the platform says is %s is never read until the platform says ACTIVE",
+    async (status) => {
+      const setup = rig();
+      const { clock, store, probes } = setup;
+      store.setTargets([target("ACTIVE")]);
+      const bound = await boundDriver(setup);
+      bound.driver.link(ENVIRONMENT_ID, { phase: "connected" });
+      await clock.advance(0);
+      probes.length = 0;
+
+      // The service goes down under the socket, which falls into backoff and fails again.
+      store.setTargets([target(status)]);
+      bound.driver.link(ENVIRONMENT_ID, { phase: "backoff", retryAtMs: null });
+      await clock.advance(0);
+      bound.driver.link(ENVIRONMENT_ID, { phase: "connecting" });
+      bound.driver.link(ENVIRONMENT_ID, { phase: "backoff", retryAtMs: null });
+      store.request(KEY);
+      store.wake(true);
+      await clock.advance(120_000);
+      expect(probes).toEqual([]);
+
+      // The platform says it is back: one read, which finds it answering.
+      store.setTargets([target("ACTIVE")]);
+      await clock.advance(0);
+      expect(probes).toEqual([ORIGIN]);
+      await clock.advance(10_000);
+      expect(probes).toEqual([ORIGIN]);
+      expect(store.verdict(KEY)).toEqual({ level: "ready" });
+      bound.dispose();
+      store.dispose();
+    },
+  );
+
+  it("a Mate whose status is not read yet is read as before", async () => {
+    const { clock, store, probes } = rig();
+    store.setTargets([
+      { key: KEY, origin: ORIGIN, platform: { project: "ACTIVE", service: null } },
+    ]);
+    await clock.advance(0);
+    expect(probes).toEqual([ORIGIN]);
+    store.request(KEY);
+    await clock.advance(0);
+    expect(probes).toEqual([ORIGIN, ORIGIN]);
     store.dispose();
   });
 
