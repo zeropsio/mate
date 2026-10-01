@@ -2,6 +2,9 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   closeOffGate,
+  directMarkerOf,
+  MARKER_RETRY_MS,
+  markerRetryDelay,
   selectAutoConnectTargets,
   type AutoConnectCandidate,
 } from "./autoConnect.ts";
@@ -182,5 +185,49 @@ describe("closeOffGate — whether a Mate not marked closed off may be connected
     { marker: false, direct: undefined, want: "connect" },
   ] as const)("$marker, read directly $direct: $want", ({ marker, direct, want }) => {
     expect(closeOffGate(marker, direct)).toBe(want);
+  });
+});
+
+// The service's own variables, read once where the stream could not say: a viewer who may not read
+// them is no reason to hold an older Mate for good (pass 28 review).
+describe("directMarkerOf — the service's own variable names, as the gate reads them", () => {
+  const known = (names: ReadonlyArray<string>) =>
+    ({
+      state: "known",
+      value: names,
+      asOf: { ordinal: 1, atMs: 0 },
+      coverage: "complete",
+      freshness: { kind: "settled" },
+    }) as never;
+  const failed = (failure: object) =>
+    ({ state: "failed", failure, atMs: 0, attempt: 1, retryAtMs: null }) as never;
+  it.each([
+    {
+      case: "the marker among them",
+      shown: known(["MATE_SETUP_RUNTIMES", "ZCP_API_KEY"]),
+      want: true,
+    },
+    { case: "no marker", shown: known(["ZCP_MATE_ENABLED"]), want: false },
+    {
+      case: "a 403: the viewer may not read them",
+      shown: failed({ kind: "refused", code: "permission", words: "No." }),
+      want: false,
+    },
+    {
+      case: "a read that failed",
+      shown: failed({ kind: "transport", detail: "down" }),
+      want: "failed",
+    },
+  ])("$case: $want", ({ shown, want }) => {
+    expect(directMarkerOf(shown)).toBe(want);
+  });
+});
+
+describe("markerRetryDelay — a failed check, asked again later and later", () => {
+  it("waits 30 s, then 2 min, then 10 min, and 10 min from then on", () => {
+    expect([1, 2, 3, 4, 9].map(markerRetryDelay)).toEqual([
+      30_000, 120_000, 600_000, 600_000, 600_000,
+    ]);
+    expect(MARKER_RETRY_MS).toEqual([30_000, 120_000, 600_000]);
   });
 });

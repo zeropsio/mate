@@ -28,8 +28,14 @@ import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import type { AtomRegistry } from "effect/unstable/reactivity";
 
-import { closeOffGate, selectAutoConnectTargets, type DirectMarkerRead } from "../autoConnect.ts";
-import { settledValue, selectTokenGrants } from "../data/cellSelectors.ts";
+import {
+  closeOffGate,
+  directMarkerOf,
+  markerRetryDelay,
+  selectAutoConnectTargets,
+  type DirectMarkerRead,
+} from "../autoConnect.ts";
+import { selectTokenGrants } from "../data/cellSelectors.ts";
 import { normalizeOrigin } from "../candidates.ts";
 import { identityMint } from "../data/access/capabilities.ts";
 import type { Instant } from "../data/access/grant.ts";
@@ -95,7 +101,7 @@ import {
 import type { ExchangeAnswer } from "../identityExchange.ts";
 import type { InvalidationBus } from "../knowledge/invalidation.ts";
 import type { PlatformSignal } from "../knowledge/signals.ts";
-import { mateNeedsHarden, type ZeropsIntegrationToken } from "../groupReach.ts";
+import { mateHardenableBy, type ZeropsIntegrationToken } from "../groupReach.ts";
 import { isZeropsMateClosedOff } from "../groups.ts";
 import { heldCandidates, type CandidateRow } from "../projections/candidates.ts";
 
@@ -163,6 +169,14 @@ export interface AccountEnvironmentPorts {
     readonly read: () => ReadonlySet<string>;
     readonly subscribe: (listener: () => void) => () => void;
   };
+  /**
+   * Who is looking, and their role in an organization: an older Mate needing its harden is held
+   * only for who may run it. Absent: no such hold.
+   */
+  readonly viewer?: () => {
+    readonly userId: string;
+    readonly roleIn: (organizationId: string) => string | undefined;
+  } | null;
 }
 
 // ── What surfaces read and ask ───────────────────────────────────────────────────────────────
@@ -540,6 +554,10 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
     readonly projectId: string;
     marker: boolean | "unknown" | "unread";
     direct: DirectMarkerRead | undefined;
+    /** Direct checks that failed so far: each waits longer before the next (`markerRetryDelay`). */
+    failures: number;
+    /** Disarms the wait before the next direct check. */
+    retry: (() => void) | null;
     stop: () => void;
   }
   const markers = new Map<string, FollowedMarker>();
@@ -553,15 +571,22 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
       ),
     )
       .then(
-        (shown): DirectMarkerRead => {
-          const names = settledValue(shown);
-          return names === null ? "failed" : names.value.includes("MATE_SETUP_RUNTIMES");
-        },
+        (shown): DirectMarkerRead => directMarkerOf(shown),
         (): DirectMarkerRead => "failed",
       )
       .then((direct) => {
         if (markers.get(ref.serviceId) !== followed || closed) return;
         followed.direct = direct;
+        // A check that failed is asked again later and later: 30 s, 2 min, then every 10 min.
+        if (direct === "failed") {
+          followed.failures += 1;
+          followed.retry = ports.clock.setTimer(markerRetryDelay(followed.failures), () => {
+            followed.retry = null;
+            if (markers.get(ref.serviceId) !== followed || closed) return;
+            followed.direct = undefined;
+            updateAutoConnect();
+          });
+        }
         updateAutoConnect();
       });
   };
@@ -589,11 +614,13 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
           projectId,
           marker: "unread",
           direct: undefined,
+          failures: 0,
+          retry: null,
           stop: () => undefined,
         };
         markers.set(serviceId, entry);
         let ready = false;
-        entry.stop = atomRegistry.subscribe(
+        const unsubscribe = atomRegistry.subscribe(
           data.reads.setupMarker(ref),
           (marker) => {
             if (entry.marker === marker) return;
@@ -602,6 +629,10 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
           },
           { immediate: true },
         );
+        entry.stop = () => {
+          unsubscribe();
+          entry.retry?.();
+        };
         ready = true;
         followed = entry;
       }
@@ -666,9 +697,20 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
   const heldBack = (candidates: ReadonlyArray<CandidateRow>): ReadonlySet<string> => {
     followTokens();
     const pressing = ports.pressing?.read() ?? new Set<string>();
-    const unhardened = candidates.flatMap((candidate) =>
-      mateNeedsHarden(listedTokens, candidate.project.id) ? [candidate.project.id] : [],
-    );
+    // An older Mate is held for its harden only in the browser of who can run it — an org owner,
+    // or its keys' creator: anybody else could do nothing about it.
+    const viewer = ports.viewer?.() ?? null;
+    const unhardened =
+      viewer === null
+        ? []
+        : candidates.flatMap((candidate) =>
+            mateHardenableBy(listedTokens, candidate.project.id, {
+              userId: viewer.userId,
+              roleCode: viewer.roleIn(activeOrganization ?? ""),
+            })
+              ? [candidate.project.id]
+              : [],
+          );
     return new Set([...followMarkers(candidates), ...unhardened, ...pressing]);
   };
 

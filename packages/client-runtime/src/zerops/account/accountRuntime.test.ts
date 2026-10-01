@@ -1291,6 +1291,8 @@ describe("the post-grant stage's Mate environments", () => {
     adapter: ZeropsDataAdapter = platformAdapter(mates),
     /** The Mates the grant admits; the organization may list more. */
     admitted: ReadonlyArray<Mate> = mates,
+    /** Ports the case adds to the rig's. */
+    extra: Partial<AccountEnvironmentPorts> = {},
   ) {
     const clock = yield* makeDeadlineClock({ startWallMs: START_WALL_MS });
     const registry = AtomRegistry.make();
@@ -1317,7 +1319,7 @@ describe("the post-grant stage's Mate environments", () => {
         verifier: grant.verifier,
         signals: page.signals,
         atomRegistry: registry,
-        environments: rig.ports,
+        environments: { ...rig.ports, ...extra },
       });
     }).pipe(Effect.provideService(Clock.Clock, clock));
     yield* Effect.addFinalizer(() => built.close("application-close"));
@@ -1330,8 +1332,9 @@ describe("the post-grant stage's Mate environments", () => {
     mates: ReadonlyArray<Mate> = [A_MATE],
     adapter: ZeropsDataAdapter = platformAdapter(mates),
     admitted: ReadonlyArray<Mate> = mates,
+    extra: Partial<AccountEnvironmentPorts> = {},
   ) {
-    const opened = yield* openAccount(remembered, mates, adapter, admitted);
+    const opened = yield* openAccount(remembered, mates, adapter, admitted, extra);
     yield* opened.grant.answer();
     yield* opened.clock.advance(SECOND);
     yield* settle;
@@ -1798,6 +1801,173 @@ describe("the post-grant stage's Mate environments", () => {
         expect(rig.exchanges.map(({ input: { key, reason } }) => ({ key, reason }))).toEqual(
           Array.from({ length: row.wanted }, () => ({ key: MATE, reason: "auto-connect" })),
         );
+      }),
+    ),
+  );
+
+  /**
+   * A platform that states its Mates' variables, token list and services' variable names as the
+   * case says: the organization's variables stream answers, or fails; the token list and each
+   * service's own variable names are its cells.
+   */
+  const statedPlatform = (
+    mates: ReadonlyArray<Mate>,
+    stated: {
+      /** The organization's variables, or a stream that fails. */
+      readonly variables?: ReadonlyArray<Record<string, unknown>> | "fails";
+      readonly tokens?: ReadonlyArray<Record<string, unknown>>;
+      /** A service's own variable names, or a read the platform refuses (403). */
+      readonly env?: ReadonlyArray<string> | "forbidden";
+    },
+  ): ZeropsDataAdapter => {
+    const base = platformAdapter(mates);
+    const refused = {
+      _tag: "ZeropsCellSourceError",
+      kind: "permission",
+      retryable: false,
+    } as const;
+    const unstated = {
+      _tag: "ZeropsCellSourceError",
+      kind: "unavailable",
+      retryable: false,
+    } as const;
+    return {
+      ...base,
+      register: (receiver, request, context) => {
+        const descriptor = request.descriptor;
+        if (
+          descriptor.kind === "table-list" &&
+          descriptor.query.kind === "service-variables-of-organization" &&
+          stated.variables !== undefined
+        ) {
+          if (stated.variables === "fails") {
+            return Effect.fail({
+              _tag: "ZeropsDataAdapterError",
+              kind: "registration",
+              message: "The variables could not be listed.",
+              retryable: true,
+              accountRevocationEvidence: false,
+            } as const);
+          }
+          const items = stated.variables;
+          return Effect.succeed({
+            responseObservations: decodeRegistrationResponse(request, {
+              items,
+              totalHits: items.length,
+            }).observations,
+          });
+        }
+        return base.register(receiver, request, context);
+      },
+      cells: {
+        readOrganizationLocations: () => Effect.fail(unstated),
+        readServiceAuthorizedAgents: () => Effect.fail(unstated),
+        readServiceMateFlag: () => Effect.fail(unstated),
+        readOrganizationMembers: () => Effect.fail(unstated),
+        readOrganizationIntegrationTokenGrants: () =>
+          stated.tokens === undefined
+            ? Effect.fail(unstated)
+            : Effect.succeed(stated.tokens as never),
+        readServiceVariableNames: () =>
+          stated.env === "forbidden"
+            ? Effect.fail(refused)
+            : stated.env === undefined
+              ? Effect.fail(unstated)
+              : Effect.succeed(stated.env),
+      },
+    };
+  };
+  /** A Mate whose project has no mate:closed-off: its organization's streams state its marker. */
+  const OPEN_MATE = { ...A_MATE, project: { ...A_MATE.project, tagList: ["mate"] } };
+  /** A variable the app reads, on A_MATE's container. */
+  const onMate = (key: string) => ({
+    id: `var-${key}`,
+    serviceStackId: A_MATE.service.id,
+    projectId: A_MATE.projectId,
+    key,
+    content: "1",
+  });
+  const autoConnected = (rig: ReturnType<typeof environmentRig>) =>
+    rig.exchanges.filter(({ input: { reason } }) => reason === "auto-connect").length;
+
+  // The gate on a Mate with no mate:closed-off, at the wiring: what the store and the cells say
+  // reaches auto-connect (pass 28 review).
+  it.effect.each([
+    {
+      name: "an older Mate whose marker reads absent connects",
+      stated: { variables: [onMate("ZCP_MATE_ENABLED")] },
+      wanted: 1,
+    },
+    {
+      name: "a Mate its press left open is held",
+      stated: { variables: [onMate("MATE_SETUP_RUNTIMES")] },
+      wanted: 0,
+    },
+    {
+      name: "a stream that failed: the service's own variables without the marker connect it",
+      stated: { variables: "fails", env: ["ZCP_MATE_ENABLED"] },
+      wanted: 1,
+    },
+    {
+      name: "a stream that failed: the service's own variables with the marker hold it",
+      stated: { variables: "fails", env: ["MATE_SETUP_RUNTIMES"] },
+      wanted: 0,
+    },
+    {
+      name: "a stream that failed and a 403 on its own variables: an older Mate connects",
+      stated: { variables: "fails", env: "forbidden" },
+      wanted: 1,
+    },
+  ] as const)("the close-off gate: $name", (row) =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const { clock, rig, environments } = yield* granted(
+          [],
+          [OPEN_MATE],
+          statedPlatform([OPEN_MATE], row.stated),
+        );
+        yield* answerProbe(rig, MATE_ORIGIN, answering(ENV_A, A_MATE.projectId));
+        environments.setActiveOrganization("org-1");
+        // A stream that fails is asked again before it is said to have failed.
+        for (let tick = 0; tick < 6; tick += 1) {
+          yield* clock.advance(30 * SECOND);
+          yield* settle;
+        }
+        expect(autoConnected(rig)).toBe(row.wanted);
+      }),
+    ),
+  );
+
+  // Every key of an older Mate still ADMIN on its project: held for who may harden it — an org
+  // owner, or the keys' creator — and for nobody else, who could do nothing about it.
+  it.effect.each([
+    { name: "an org owner", viewer: { userId: "u-zoe", role: "OWNER" }, wanted: 0 },
+    { name: "the keys' creator", viewer: { userId: "u-ada", role: "BASIC_USER" }, wanted: 0 },
+    { name: "another member", viewer: { userId: "u-eva", role: "BASIC_USER" }, wanted: 1 },
+  ])("the harden hold, for $name", (row) =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const { rig, environments } = yield* granted(
+          [],
+          [CLOSED_OFF_MATE],
+          statedPlatform([CLOSED_OFF_MATE], {
+            tokens: [
+              {
+                tokenId: "k-1",
+                name: "zcp-shop a",
+                createdByUser: "u-ada",
+                grants: [{ projectId: A_MATE.projectId, roleCode: "ADMIN" }],
+              },
+            ],
+          }),
+          [CLOSED_OFF_MATE],
+          { viewer: () => ({ userId: row.viewer.userId, roleIn: () => row.viewer.role }) },
+        );
+        yield* answerProbe(rig, MATE_ORIGIN, answering(ENV_A, A_MATE.projectId));
+        environments.setActiveOrganization("org-1");
+        yield* settle;
+        yield* settle;
+        expect(autoConnected(rig)).toBe(row.wanted);
       }),
     ),
   );

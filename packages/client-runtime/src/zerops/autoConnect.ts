@@ -17,6 +17,7 @@
  * @module autoConnect
  */
 
+import type { Shown } from "./knowledge/known.ts";
 import type { EnvironmentConnectionPresentation } from "../connection/presentation.ts";
 import type { ZeropsCandidate } from "./candidates.ts";
 import type { ZeropsContainerHealth } from "./provisioning.ts";
@@ -113,4 +114,29 @@ export function closeOffGate(
   if (marker !== "unknown") return "hold";
   if (direct === undefined) return "read-env";
   return direct === false ? "connect" : "hold";
+}
+
+/**
+ * What the service's own variable names say of the press's marker: there, or not — and not for a
+ * viewer the platform will not show them to (a 403), which never holds an older Mate for good. Any
+ * other failure is `failed`, asked again later (`markerRetryDelay`).
+ */
+export function directMarkerOf(shown: Shown<ReadonlyArray<string>>): DirectMarkerRead {
+  if (shown.state === "known") return shown.value.includes("MATE_SETUP_RUNTIMES");
+  if (
+    shown.state === "failed" &&
+    shown.failure.kind === "refused" &&
+    shown.failure.code === "permission"
+  ) {
+    return false;
+  }
+  return "failed";
+}
+
+/** A failed check's waits: 30 s, then 2 min, then 10 min, and 10 min from then on. */
+export const MARKER_RETRY_MS: ReadonlyArray<number> = [30_000, 120_000, 600_000];
+
+/** How long a check that failed for the `attempt`th time waits before it is asked again. */
+export function markerRetryDelay(attempt: number): number {
+  return MARKER_RETRY_MS[Math.min(attempt, MARKER_RETRY_MS.length) - 1] ?? 600_000;
 }

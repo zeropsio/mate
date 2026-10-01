@@ -303,5 +303,18 @@ export function webEnvironmentPorts(input: {
     admission: connectionAdmission,
     // A press or a harden this tab is running: its Mate is not connected meanwhile.
     pressing: pressingProjects,
+    // Who is looking, as the session verified them: an older Mate needing its harden is held only
+    // for who may run it.
+    viewer: () => {
+      const verified = client.verifiedUser();
+      if (verified === null) return null;
+      const { user } = verified;
+      return {
+        userId: user.id,
+        roleIn: (organizationId) =>
+          user.clientUserList?.find((membership) => membership.clientId === organizationId)
+            ?.roleCode,
+      };
+    },
   };
 }
