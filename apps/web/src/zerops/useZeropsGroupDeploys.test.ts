@@ -285,6 +285,42 @@ describe("readGroupDeploys", () => {
     expect(again(held)?.environments[0]?.services[0]?.appVersionName).toBe(SHA);
   });
 
+  it("asks what each of an environment's services runs at once, so they are read together", async () => {
+    let inFlight = 0;
+    let most = 0;
+    const update = await readGroupDeploys({
+      client: groupRepo(),
+      group: {
+        ...GROUP,
+        projects: [
+          {
+            projectId: "p-stage",
+            name: "Harbor - stage",
+            services: ["app", "api", "web"].map((hostname) => ({
+              serviceId: `s-${hostname}`,
+              hostname,
+            })),
+          },
+        ],
+      },
+      scope: "group",
+      readVersion: async () => {
+        inFlight += 1;
+        most = Math.max(most, inFlight);
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        inFlight -= 1;
+        return SHA;
+      },
+      held: undefined,
+      signal: new AbortController().signal,
+    });
+
+    expect(most).toBe(3);
+    expect(
+      update(undefined)?.environments[0]?.services.map((service) => service.appVersionName),
+    ).toEqual([SHA, SHA, SHA]);
+  });
+
   it("answers that a group repo declaring nothing declares nothing, from its first read", async () => {
     const client = { ...groupRepo(), readFile: async () => undefined } as unknown as GiteaClient;
     const update = await readGroupDeploys({
