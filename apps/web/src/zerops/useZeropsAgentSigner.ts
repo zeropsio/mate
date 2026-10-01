@@ -106,13 +106,14 @@ export function subscribeLocalAgentSigners(listener: () => void): () => void {
   };
 }
 
+/** Remembers a record this client is writing: it speaks for its login until the write ends. */
 export function rememberLocalAgentSigner(environmentId: string, key: string, userId: string): void {
   const current = readLocalAgentSigners(environmentId);
   if (current[key] === userId) return;
   setLocalAgentSigners(environmentId, { ...current, [key]: userId });
 }
 
-/** Forgets a record this client meant to write: its write failed. */
+/** Forgets a record this client meant to write: its write failed, or it has been read back. */
 export function forgetLocalAgentSigner(environmentId: string, key: string): void {
   const current = readLocalAgentSigners(environmentId);
   if (current[key] === undefined) return;
@@ -231,8 +232,8 @@ const LOGIN_ENDED: ReadonlySet<ZeropsAgentLoginPhase> = new Set([
 /**
  * Who signed this agent in, for ownership: the record this client is writing or wrote for the
  * latest sign-in, while the server has not read it back (`localSignerStands`), else the
- * snapshot's own record, else the viewer's own login while its code is being checked — else
- * nobody. The viewer is the one person who knows what the record will say, so the seconds before
+ * snapshot's own record — or, where it names somebody other than whoever signed in last, that
+ * person — else the viewer's own login while its code is being checked — else nobody. The viewer is the one person who knows what the record will say, so the seconds before
  * it lands never read as a sign-in nobody recorded, nor as the earlier signer's.
  */
 export function resolveAgentAuthorizer(
@@ -243,7 +244,15 @@ export function resolveAgentAuthorizer(
 ): { readonly subject: string } | undefined {
   const subject = local[key];
   if (subject !== undefined && localSignerStands(subject, agent)) return { subject };
-  if (agent.authorizedBy !== undefined) return { subject: agent.authorizedBy.subject };
+  if (agent.authorizedBy !== undefined) {
+    // Whoever signed in last holds the credential: a record naming anybody else runs nothing
+    // (`ZeropsProjectSigners`' gate), so it is not whose the agent is.
+    const latest = latestSignInBy(agent.login);
+    if (latest !== undefined && latest.length > 0 && latest !== agent.authorizedBy.subject) {
+      return { subject: latest };
+    }
+    return { subject: agent.authorizedBy.subject };
+  }
   const login = agent.login;
   if (
     viewer !== undefined &&
@@ -292,6 +301,18 @@ export function agentSignersToRecord(
     )
     .map((login) => login.id);
   return [...agents, ...logins];
+}
+
+/** Whether the latest sign-in of this login is somebody other than `userId`'s. */
+function signedInSinceBySomebodyElse(
+  snapshot: ZeropsAgentAuthSnapshot | null,
+  key: string,
+  userId: string | undefined,
+): boolean {
+  if (snapshot === null) return false;
+  const facts = signerFacts(snapshot).find(([candidate]) => candidate === key)?.[1];
+  const latest = latestSignInBy(facts?.login);
+  return latest !== undefined && latest.length > 0 && latest !== userId;
 }
 
 /** How long after a failed signer-record write it is tried again on its own. */
@@ -353,6 +374,9 @@ export function useZeropsAgentSignerRecord(input: {
   const orgId = project?.orgId;
   const userId = user?.id;
   const [recordFailed, setRecordFailed] = useState<ReadonlySet<string>>(new Set());
+  // The snapshot as last read, for a write about to go out: somebody may have signed in since.
+  const latestSnapshot = useRef(snapshot);
+  latestSnapshot.current = snapshot;
 
   useEffect(() => {
     if (snapshot !== null && environmentId !== null) localSignersSettledBy(environmentId, snapshot);
@@ -367,6 +391,12 @@ export function useZeropsAgentSignerRecord(input: {
         !userId ||
         data === null
       ) {
+        return false;
+      }
+      // Somebody else has signed in since this person did: writing their record now would put it
+      // over the record of that later sign-in. Theirs is not this person's to write any more.
+      if (signedInSinceBySomebodyElse(latestSnapshot.current, key, userId)) {
+        forgetLocalAgentSigner(environmentId, key);
         return false;
       }
       // The record counts as the viewer's while it is written, and stops counting if it fails.
@@ -485,10 +515,13 @@ export function useZeropsAgentSignerRecord(input: {
   );
 
   // A record the project now carries for this person — another tab wrote it —
-  // is no longer a failure here.
+  // is no longer a failure here; nor one somebody else has signed in over since,
+  // whose retry would write this person's tag over theirs.
   const unsettledFailed = useMemo(() => {
     const settled = (snapshot === null ? [] : recordedSigners(snapshot)).filter(
-      ([key, signer]) => recordFailed.has(key) && signer === userId,
+      ([key, signer]) =>
+        recordFailed.has(key) &&
+        (signer === userId || signedInSinceBySomebodyElse(snapshot, key, userId)),
     );
     if (settled.length === 0) return recordFailed;
     const next = new Set(recordFailed);

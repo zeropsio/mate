@@ -90,8 +90,8 @@ export interface ZeropsAgentOwnershipInput {
   /**
    * True when this browser's own attempt to write the signer record for this
    * agent has failed and not yet succeeded (`useZeropsAgentSignerRecord`'s
-   * `recordFailed`). Checked before the recorded tag: the viewer's own
-   * failed attempt is what happened here, whatever the tag currently says.
+   * `recordFailed`). It speaks while the agent is recorded for nobody or for
+   * the viewer; one recorded for somebody else since is theirs, and says so.
    */
   readonly recordFailed?: boolean | undefined;
   /** The project records the sign-in for two or more people (`ZeropsAgentAuth.signerUnknown`). */
@@ -115,9 +115,16 @@ export function resolveOwnedAgentId(
 
 export function resolveAgentOwnership(input: ZeropsAgentOwnershipInput): ZeropsAgentOwnership {
   if (!input.credPresent) return "none";
-  if (input.recordFailed === true) return "record-failed";
-
   const recorded = input.authorizedBy?.subject;
+  // The viewer's own failed write is what happened here — unless the agent is somebody else's
+  // since: a retry would write the viewer's record over theirs.
+  if (
+    input.recordFailed === true &&
+    (recorded === undefined || recorded.length === 0 || recorded === input.viewerSubject)
+  ) {
+    return "record-failed";
+  }
+
   if (recorded === undefined || recorded.length === 0) {
     return input.signerUnknown === true ? "unsettled" : "unrecorded";
   }

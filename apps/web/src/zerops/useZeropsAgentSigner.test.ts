@@ -308,7 +308,10 @@ describe("local agent signers", () => {
 
   // Signing in over an earlier record: the server's read of the tags is cached, so its snapshot
   // names the record from before for a while after this client wrote the new one.
-  const signedInOver = (earlier: string, latestBy: string): ZeropsAgentAuthSnapshot => ({
+  const signedInOver = (
+    earlier: string | undefined,
+    latestBy: string,
+  ): ZeropsAgentAuthSnapshot => ({
     available: true,
     agents: [
       {
@@ -318,7 +321,7 @@ describe("local agent signers", () => {
         flagToken: false,
         providerAuth: "authenticated",
         state: "authorized",
-        authorizedBy: { subject: earlier },
+        ...(earlier === undefined ? {} : { authorizedBy: { subject: earlier } }),
         login: {
           phase: "succeeded",
           terminalId: "t",
@@ -377,6 +380,14 @@ describe("local agent signers", () => {
       agent: { login: login("succeeded", "user-b") },
       local: { "claude-code": "user-a" },
       expected: undefined,
+    },
+    {
+      // A record that names anybody but whoever signed in last runs nothing (the gate): the
+      // latest sign-in is whose the agent is, and that is who the viewer is told about.
+      name: "a record from before a later sign-in yields to that sign-in",
+      agent: { authorizedBy: { subject: "user-a" }, login: login("succeeded", "user-b") },
+      local: {},
+      expected: { subject: "user-b" },
     },
     {
       name: "a sign-in by somebody else since, recorded, is theirs",
@@ -567,6 +578,38 @@ describe("useZeropsAgentSignerRecord (H13: a failed write is surfaced, not swall
     expect(readLocalAgentSigners(ENV)).toMatchObject({ "claude-code": "user-a" });
 
     await unmount();
+  });
+
+  // user-a's write failed; user-b signs in since. Retrying would write user-a's tag over the
+  // record of user-b's sign-in: the failure is no longer user-a's to fix, and nothing is written.
+  it("a failed record is not offered again once somebody else has signed in since", async () => {
+    vi.useFakeTimers();
+    try {
+      mock.updateProjectTags.mockRejectedValueOnce(new Error("network"));
+      const { result, rerender, unmount } = await render(PROJECT, succeeded("claude-code"));
+      expect(result().recordFailed.has("claude-code")).toBe(true);
+
+      const bSignedIn = succeeded("claude-code");
+      await rerender({
+        ...bSignedIn,
+        agents: bSignedIn.agents.map((agent) => ({
+          ...agent,
+          login: { ...agent.login!, startedBy: "user-b" },
+        })),
+      });
+      expect(result().recordFailed.has("claude-code")).toBe(false);
+
+      mock.updateProjectTags.mockResolvedValue(undefined);
+      await act(async () => {
+        result().retry("claude-code");
+        await vi.advanceTimersByTimeAsync(30_000);
+      });
+      expect(mock.updateProjectTags).toHaveBeenCalledTimes(1);
+      expect(readLocalAgentSigners(ENV)).toEqual({});
+      await unmount();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("a failed write is tried again on its own, and clears when it lands", async () => {
