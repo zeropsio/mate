@@ -748,8 +748,8 @@ export const markFresh = (core: CrewCore, taskId: string) =>
 
 /**
  * Discards a task from any state; an open task's work is kept aside and its
- * copy reset. A press while its crewmate's turn end is handled waits for that
- * end.
+ * copy reset first, so a reset that fails leaves the task as it was. A press
+ * while its crewmate's turn end is handled waits for that end.
  */
 export const discard = (core: CrewCore, taskId: string) =>
   Effect.flatMap(requireTask(core, taskId), (pressed) =>
@@ -760,7 +760,6 @@ export const discard = (core: CrewCore, taskId: string) =>
         if (isOpenTask(row.state) && isWorking(core, applied, row.member)) {
           return yield* refuse("wrong-state", `@${row.member}'s turn is running`);
         }
-        const discarded = yield* stepTask(core, row, { type: "discard" });
         const member = memberOf(applied, row.member);
         if (isOpenTask(row.state) && member?.row.kind === "writer") {
           yield* asRefusal(
@@ -770,6 +769,7 @@ export const discard = (core: CrewCore, taskId: string) =>
             ),
           );
         }
+        const discarded = yield* stepTask(core, row, { type: "discard" });
         core.memory.cantStart.delete(discarded.assignment);
         yield* pump(core, row.member);
       }),

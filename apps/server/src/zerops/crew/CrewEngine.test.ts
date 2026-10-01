@@ -320,6 +320,40 @@ describe("CrewEngine", () => {
     ),
   );
 
+  it.live("a discard whose copy cannot be reset leaves its task as it was", () =>
+    withCrewEngine((world) =>
+      Effect.gen(function* () {
+        yield* applied(world);
+        const thread = yield* firstTurn(world, () =>
+          write(NodePath.join(world.root, ".crew/backend"), "a.txt", "changed\n"),
+        );
+        yield* command({
+          _tag: "taskCreate",
+          owner: "backend",
+          title: "Second",
+          brief: "Do the second thing.",
+          doneWhen: "",
+          dependsOn: [],
+        });
+        yield* world.publish(spiEvent("turn.completed", thread, { state: "completed" }));
+        yield* snapshotWhere((snapshot) => snapshot.crewmates[0]!.lane?.ahead === 1);
+        const lock = NodePath.join(world.root, ".git/worktrees/backend/index.lock");
+        NodeFS.writeFileSync(lock, "");
+        const first = (yield* latest).board.tasks[0]!.id;
+        const refused = yield* Effect.flip(command({ _tag: "discard", taskId: first }));
+        assert.strictEqual(refused.reason, "io");
+        NodeFS.rmSync(lock);
+        // Pressed again it discards: the refused press left the task open.
+        yield* command({ _tag: "discard", taskId: first });
+        yield* snapshotWhere(
+          (snapshot) =>
+            snapshot.board.tasks[0]?.state === "discarded" &&
+            snapshot.board.tasks[1]?.state === "working",
+        );
+      }),
+    ),
+  );
+
   it.live("a queued task admission refuses stays queued with a Can't start row", () =>
     withCrewEngine((world) =>
       Effect.gen(function* () {
