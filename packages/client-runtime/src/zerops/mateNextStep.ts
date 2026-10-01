@@ -20,13 +20,13 @@
  * @module mateNextStep
  */
 
-import type { FlowPullRequest } from "./projectFlow.ts";
+import { byNewest, changeNamesRepository, type FlowPullRequest } from "./projectFlow.ts";
 
 export type MateNextStep =
   | {
       readonly kind: "review";
       readonly pull: FlowPullRequest;
-      /** `Wren is waiting for your review of #1` */
+      /** `Wren is waiting for your review of #1` — `of apidev #1` where its changes span repositories */
       readonly title: string;
       /** What the change is: its own title. */
       readonly detail: string;
@@ -46,7 +46,8 @@ export function mateNextStep(input: {
   const { pullRequests, mateProjectId } = input;
   if (pullRequests === undefined || mateProjectId === undefined) return NONE;
 
-  // The newest where a Mate somehow has two, so the strip is stable.
+  // The newest by its last move where a Mate has two — its number is per repository, so two
+  // repositories' #1s would tie — and by number after that, so the strip is stable.
   const pull = pullRequests
     .filter(
       (entry) =>
@@ -55,12 +56,14 @@ export function mateNextStep(input: {
         !entry.merged &&
         entry.mergeability === "mergeable",
     )
-    .sort((left, right) => right.number - left.number)[0];
+    .sort(byNewest)[0];
   if (pull === undefined) return NONE;
   return {
     kind: "review",
     pull,
-    title: `${input.mateName ?? "This Mate"} is waiting for your review of #${String(pull.number)}`,
+    title: `${input.mateName ?? "This Mate"} is waiting for your review of ${
+      changeNamesRepository(pull, pullRequests) ? `${pull.repository} ` : ""
+    }#${String(pull.number)}`,
     detail: pull.title,
   };
 }

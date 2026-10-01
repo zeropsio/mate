@@ -56,6 +56,34 @@ describe("mateNextStep", () => {
       step: { title: "Wren is waiting for your review of #7", detail: "Seven", number: 7 },
     },
     {
+      case: "two #1s in two repositories: the newest by its last move, named with its repository",
+      pullRequests: [
+        pull({
+          repository: "appdev",
+          title: "Build the storefront",
+          updatedAt: "2026-09-30T11:00:00Z",
+        }),
+        pull({ repository: "apidev", title: "Rebuild the API", updatedAt: "2026-09-30T12:00:00Z" }),
+      ],
+      mate: "p-wren",
+      mateName: "Wren",
+      step: {
+        title: "Wren is waiting for your review of apidev #1",
+        detail: "Rebuild the API",
+        number: 1,
+      },
+    },
+    {
+      case: "the newest by its last move, not its number",
+      pullRequests: [
+        pull({ number: 9, title: "Nine", updatedAt: "2026-09-30T11:00:00Z" }),
+        pull({ number: 3, title: "Three", updatedAt: "2026-09-30T12:00:00Z" }),
+      ],
+      mate: "p-wren",
+      mateName: "Wren",
+      step: { title: "Wren is waiting for your review of #3", detail: "Three", number: 3 },
+    },
+    {
       case: "a Mate whose name is not known yet",
       pullRequests: [pull()],
       mate: "p-wren",
