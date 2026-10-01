@@ -108,6 +108,19 @@ describe("mateStandUpDecision", () => {
     },
     { name: "the agent is not signed in yet", input: { signedIn: false }, expected: "wait" },
     { name: "another send is on its way", input: { sendInFlight: true }, expected: "wait" },
+    // The server starts it itself (`capabilities.setup.serverStandUp`): no client sends it.
+    { name: "the server stands it up itself", input: { serverStandUp: true }, expected: "nothing" },
+    {
+      name: "the server stands it up itself, the agent not signed in yet",
+      input: { serverStandUp: true, signedIn: false },
+      expected: "nothing",
+    },
+    // An older server says nothing of it: the client still sends it.
+    {
+      name: "an older server, which says nothing",
+      input: { serverStandUp: false },
+      expected: "send",
+    },
     {
       name: "a reload that reads a conversation holding it",
       input: { conversation: "started", signedIn: true },

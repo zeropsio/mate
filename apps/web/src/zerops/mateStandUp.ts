@@ -65,6 +65,12 @@ export interface MateStandUpInput {
   readonly sentThisSession: boolean;
   /** A send is on its way in this conversation. */
   readonly sendInFlight: boolean;
+  /**
+   * The Mate's server starts the stand-up itself (`capabilities.setup.serverStandUp`, only on a
+   * Mate the new press made): no client sends it. Absent or false on an older server, where the
+   * client still does.
+   */
+  readonly serverStandUp?: boolean;
 }
 
 export type MateStandUpDecision = "send" | "wait" | "nothing";
@@ -110,6 +116,7 @@ export function mateArrivalHoldsComposer(input: {
  */
 export function mateStandUpDecision(input: MateStandUpInput): MateStandUpDecision {
   if (!askedOf(input.marker, input.viewer)) return "nothing";
+  if (input.serverStandUp === true) return "nothing";
   if (input.conversation === "started" || input.sentThisSession) return "nothing";
   if (input.conversation === "unknown" || !input.signedIn || input.sendInFlight) return "wait";
   return "send";

@@ -22,6 +22,7 @@ import { useContext, useEffect, useMemo, useSyncExternalStore } from "react";
 
 import { useComposerDraftStore } from "../composerDraftStore";
 import { useThreadShells } from "../state/entities";
+import { useEnvironment } from "../state/environments";
 import { onAccountLifetimeClose } from "./accountLifetime";
 import { zeropsMateAt } from "./mateIdentities";
 import {
@@ -146,6 +147,10 @@ export function useMateStandUp(input: {
   const marker = whoLivesHere?.kind === "mate" ? whoLivesHere.mate.standUp : undefined;
   const viewer = useZeropsSessionOptional()?.user?.id;
   const threads = useThreadShells();
+  // A server that stands the Mate up itself is never sent the stand-up; an older one still is.
+  const serverStandUp =
+    useEnvironment(environmentId)?.serverConfig?.environment.capabilities.setup?.serverStandUp ===
+    true;
   // The stand-up goes into the Mate's main conversation, the one opening the Mate lands on.
   const main = useMemo(
     () =>
@@ -166,6 +171,7 @@ export function useMateStandUp(input: {
     signedIn: canSend,
     sentThisSession: attempt !== undefined && attempt.state !== "due",
     sendInFlight: sendBusy,
+    serverStandUp,
   });
 
   useEffect(() => {
