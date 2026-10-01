@@ -17,6 +17,7 @@ import {
   giteaFileUrl,
   keyStaysInReview,
   pressesPrimary,
+  changeReadVerdict,
   releaseChangeRows,
   remarkFold,
   reviewDescription,
@@ -589,5 +590,72 @@ describe("keyStaysInReview: what is typed in the review acts on nothing behind i
     ["Escape, which closes the review", "Escape", false],
   ])("%s", (_case, key, stays) => {
     expect(keyStaysInReview(key)).toBe(stays);
+  });
+});
+
+describe("changeReadVerdict: a change the flow does not hold, until it is read", () => {
+  const base = {
+    repository: "apidev",
+    number: 1,
+    provided: true,
+    ownerKnown: true,
+    readable: true,
+    signInTrouble: null,
+    changesFailure: undefined,
+  } as const;
+  it.each([
+    ["a read in flight", { read: { kind: "reading" } }, "busy", "Reading this change"],
+    [
+      "no change by that number",
+      { read: { kind: "gone" } },
+      "attention",
+      "apidev has no change #1",
+    ],
+    [
+      "a read that failed",
+      { read: { kind: "failed", reason: "Gitea did not answer" } },
+      "attention",
+      "This change could not be read",
+    ],
+    [
+      "no read sent: Gitea refused the sign-in",
+      { read: { kind: "idle" }, readable: false, signInTrouble: "Gitea refused the sign-in" },
+      "attention",
+      "Gitea isn't signed in",
+    ],
+    [
+      "no read sent: the project's changes failed",
+      { read: { kind: "idle" }, ownerKnown: false, changesFailure: "403 on the org" },
+      "attention",
+      "This project's changes couldn't be read",
+    ],
+    [
+      "no read sent: signing in to Gitea",
+      { read: { kind: "idle" }, readable: false },
+      "quiet",
+      "Waiting for Gitea's sign-in",
+    ],
+    [
+      "no read sent: the project's Gitea is not known",
+      { read: { kind: "idle" }, ownerKnown: false },
+      "attention",
+      "This change's project isn't known here",
+    ],
+    [
+      "no read sent: nothing to read it with",
+      { read: { kind: "idle" }, provided: false },
+      "quiet",
+      "Nothing here reads this change",
+    ],
+  ] as const)("%s", (_case, over, tone, title) => {
+    const verdict = changeReadVerdict({ ...base, ...over });
+    expect({ tone: verdict.tone, title: verdict.title }).toEqual({ tone, title });
+  });
+
+  it("spins only while a read is in flight", () => {
+    const kinds = ["idle", "reading", "gone"] as const;
+    expect(
+      kinds.map((kind) => changeReadVerdict({ ...base, read: { kind } }).tone === "busy"),
+    ).toEqual([false, true, false]);
   });
 });

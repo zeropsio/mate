@@ -849,7 +849,12 @@ export function ZeropsGroupPane({
         ) : (
           <ul className="flex flex-col">
             {pullRequests.map((pull) => (
-              <ChangeLine groupId={groupId} key={`${pull.repository}#${pull.number}`} pull={pull} />
+              <ChangeLine
+                among={pullRequests}
+                groupId={groupId}
+                key={`${pull.repository}#${pull.number}`}
+                pull={pull}
+              />
             ))}
           </ul>
         )}
@@ -2028,8 +2033,11 @@ function StopLine({
 function ChangeLine({
   groupId,
   pull,
+  among,
 }: {
   readonly groupId: string;
+  /** The project's open changes: a Mate's in two repositories name theirs. */
+  readonly among: ReadonlyArray<FlowPullRequest>;
   readonly pull: FlowPullRequest;
 }) {
   const navigate = useNavigate();
@@ -2051,7 +2059,9 @@ function ChangeLine({
         onClick={open}
         type="button"
       >
-        <span className="min-w-0 truncate text-sm text-foreground">{sidebarChangeLabel(pull)}</span>
+        <span className="min-w-0 truncate text-sm text-foreground">
+          {sidebarChangeLabel(pull, among)}
+        </span>
         {state === undefined ? null : (
           <StatusDot
             className="shrink-0 text-xs text-muted-foreground"

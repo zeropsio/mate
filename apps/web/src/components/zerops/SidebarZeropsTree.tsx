@@ -928,13 +928,15 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
       );
     }
     if (input.changesDrawn) {
+      // Every open change of the project's, so a Mate's in two repositories name theirs.
+      const among = input.flow?.pullRequests;
       const change = (pull: FlowPullRequest, mateProjectId: string | undefined): JumpChange => ({
         key: changeRowKey(pull),
         groupId: id,
         repository: pull.repository,
         number: pull.number,
         projectName: groupName,
-        label: sidebarChangeLabel(pull),
+        label: sidebarChangeLabel(pull, among),
         checkTone: checkDotTone({ checks: pull.checks }),
         checkWord: pull.checkWord,
         mateProjectId,
@@ -1453,6 +1455,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
                 <ul className="flex flex-col" data-zerops-surface="sidebar-other-pull-requests">
                   {grouped.others.map((pull) => (
                     <PullRequestRow
+                      among={grouped.others}
                       groupId={id}
                       key={`${pull.repository}#${pull.number}`}
                       onOpenChange={changeRows.onOpenChange}
@@ -3386,6 +3389,7 @@ function PullRequestList({
         <ul className="flex flex-col">
           {pulls.map((pull) => (
             <PullRequestRow
+              among={pulls}
               groupId={groupId}
               key={`${pull.repository}#${pull.number}`}
               onOpenChange={onOpenChange}
@@ -3411,11 +3415,14 @@ function PullRequestList({
  */
 function PullRequestRow({
   pull,
+  among,
   groupId,
   onOpenChange,
   remembered = false,
 }: {
   readonly pull: FlowPullRequest;
+  /** The rows drawn with it: where its opener's span repositories, each names its own. */
+  readonly among: ReadonlyArray<FlowPullRequest>;
   /** The project whose repository it is open against, for *Review*. */
   readonly groupId: string;
   readonly onOpenChange?: ((pull: FlowPullRequest) => void) | undefined;
@@ -3423,7 +3430,7 @@ function PullRequestRow({
   readonly remembered?: boolean;
 }) {
   const openReview = useOpenReview();
-  const label = sidebarChangeLabel(pull);
+  const label = sidebarChangeLabel(pull, among);
   const tone = changeMarkTone(pull, remembered);
   return (
     <li

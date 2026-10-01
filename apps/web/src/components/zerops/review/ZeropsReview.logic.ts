@@ -10,7 +10,7 @@
  */
 import { sha1 } from "@noble/hashes/legacy";
 import { bytesToHex, utf8ToBytes } from "@noble/hashes/utils";
-import type { ReviewPrimary } from "@t3tools/client-runtime/zerops";
+import type { ReviewPrimary, ReviewVerdict } from "@t3tools/client-runtime/zerops";
 
 export type ReviewKind = "change" | "release" | "rollback" | "crew-task";
 
@@ -522,4 +522,53 @@ export function crewLandCommand(task: { readonly id: string; readonly state: str
     _tag: task.state === "working" || task.state === "rework" ? "landNow" : "land",
     taskId: task.id,
   };
+}
+
+/**
+ * What a change's review says before the change is read, when the project's flow does not hold
+ * it: it spins only while a read of it is in flight. A read never sent says why — the Gitea
+ * sign-in, the project's changes failing, a project not known here — never a spinner that does
+ * not end.
+ */
+export function changeReadVerdict(input: {
+  readonly repository: string;
+  readonly number: number;
+  /** The read of the change on its own. */
+  readonly read:
+    | { readonly kind: "idle" | "reading" | "gone" }
+    | { readonly kind: "failed"; readonly reason: string };
+  /** Whether there is an account's flow to read it through at all. */
+  readonly provided: boolean;
+  /** Whether the project's Gitea org is known. */
+  readonly ownerKnown: boolean;
+  /** Whether a Gitea request can go out as the person now. */
+  readonly readable: boolean;
+  readonly signInTrouble: string | null;
+  /** Why the project's changes were never read, where they failed. */
+  readonly changesFailure: string | undefined;
+}): ReviewVerdict {
+  const which = `${input.repository} #${String(input.number)}`;
+  const verdict = (
+    tone: ReviewVerdict["tone"],
+    title: string,
+    why: string = which,
+  ): ReviewVerdict => ({ state: "checking", tone, title, why, fix: undefined });
+  const { read } = input;
+  if (read.kind === "reading") return verdict("busy", "Reading this change");
+  if (read.kind === "gone") {
+    return verdict("attention", `${input.repository} has no change #${String(input.number)}`);
+  }
+  if (read.kind === "failed")
+    return verdict("attention", "This change could not be read", read.reason);
+  if (!input.provided) return verdict("quiet", "Nothing here reads this change");
+  if (input.signInTrouble !== null) {
+    return verdict("attention", "Gitea isn't signed in", input.signInTrouble);
+  }
+  if (!input.readable) return verdict("quiet", "Waiting for Gitea's sign-in");
+  if (input.changesFailure !== undefined) {
+    return verdict("attention", "This project's changes couldn't be read", input.changesFailure);
+  }
+  if (!input.ownerKnown) return verdict("attention", "This change's project isn't known here");
+  // About to be asked for: the read goes out after this frame.
+  return verdict("quiet", "Reading this change");
 }

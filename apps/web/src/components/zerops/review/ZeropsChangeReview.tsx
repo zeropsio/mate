@@ -63,6 +63,7 @@ import { useZeropsReviewMates } from "~/zerops/useZeropsReviewMates";
 import { MateFace } from "../primitives";
 import {
   changeConflict,
+  changeReadVerdict,
   giteaFileUrl,
   reviewKindLine,
   sizeWords,
@@ -132,13 +133,17 @@ export function ZeropsChangeReview({
     pull.repository === target.repository && pull.number === target.number;
   const open = flow?.pullRequests.find(matches);
   const merged = flow?.merged.find(matches);
-  // A change the flow no longer carries — landed before the flow was read — is read on its own.
+  // The project's Gitea org: known from the registry before its flow is read, which after a
+  // reload waits its turn behind the other projects'.
+  const owner = flow?.slug ?? flowValue?.slugs.get(target.groupId);
+  // A change the flow does not hold — landed before the flow was read, or a flow not read yet —
+  // is read on its own.
   const landed = useZeropsLandedChange(
-    flow === undefined || open !== undefined || merged !== undefined
+    open !== undefined || merged !== undefined
       ? null
       : {
           giteaOrigin: flowValue?.giteaOrigin,
-          owner: flow.slug,
+          owner,
           repository: target.repository,
           number: target.number,
         },
@@ -150,7 +155,7 @@ export function ZeropsChangeReview({
   if (current !== undefined && current !== held) setHeld(current);
   const pull = current ?? held;
 
-  if (flowValue === null || flow === undefined || pull === undefined) {
+  if (flowValue === null || owner === undefined || pull === undefined) {
     return (
       <ZeropsReviewSurface
         back={onBack === undefined ? undefined : { label: RELEASE_BACK, onPress: onBack }}
@@ -162,27 +167,23 @@ export function ZeropsChangeReview({
         onOpenPage={onOpenPage}
         title={`#${String(target.number)}`}
         titleId={titleId}
-        verdict={{
-          state: "checking",
-          tone: landed.kind === "failed" || landed.kind === "gone" ? "attention" : "busy",
-          title:
-            landed.kind === "gone"
-              ? `${target.repository} has no change #${String(target.number)}`
-              : landed.kind === "failed"
-                ? "This change could not be read"
-                : "Reading this change",
-          why:
-            landed.kind === "failed"
-              ? landed.reason
-              : `${target.repository} #${String(target.number)}`,
-          fix: undefined,
-        }}
+        verdict={changeReadVerdict({
+          repository: target.repository,
+          number: target.number,
+          read: landed.kind === "read" ? { kind: "reading" } : landed,
+          provided: flowValue !== null,
+          ownerKnown: owner !== undefined,
+          readable: flowValue?.readable ?? false,
+          signInTrouble: flowValue?.signInTrouble ?? null,
+          changesFailure: flow?.changesFailure,
+        })}
       />
     );
   }
   return (
     <ChangeReviewData
       flow={flow}
+      owner={owner}
       flowValue={flowValue}
       frame={frame}
       onBack={onBack}
@@ -198,6 +199,7 @@ export function ZeropsChangeReview({
 
 function ChangeReviewData({
   flow,
+  owner,
   flowValue,
   frame,
   onOpenPage,
@@ -208,7 +210,10 @@ function ChangeReviewData({
   onClose,
   onReplace,
 }: {
-  readonly flow: ZeropsProjectFlow;
+  /** The project's flow; `undefined` while it waits its turn to be read. */
+  readonly flow: ZeropsProjectFlow | undefined;
+  /** The project's Gitea org. */
+  readonly owner: string;
   /** The account's flow, which holds this one. */
   readonly flowValue: ZeropsProjectFlowValue;
   readonly frame: ReviewFrame;
@@ -240,7 +245,7 @@ function ChangeReviewData({
   const mine = fixers.some((option) => option.mateProjectId === pull.mateProjectId);
   const readout = useZeropsChangeReadout({
     giteaOrigin: flowValue.giteaOrigin,
-    owner: flow.slug,
+    owner,
     repository: pull.repository,
     number: pull.number,
     headSha: pull.headSha,
@@ -251,13 +256,13 @@ function ChangeReviewData({
   });
   const run = useZeropsChangeRun({
     mateProjectId: pull.mateProjectId,
-    owner: flow.slug,
+    owner,
     repository: pull.repository,
     number: pull.number,
   });
   const comments = useZeropsChangeComments({
     giteaOrigin: flowValue.giteaOrigin,
-    owner: flow.slug,
+    owner,
     repo: pull.repository,
     number: pull.number,
   });
@@ -288,19 +293,19 @@ function ChangeReviewData({
   const merge = async () => {
     setPress({ kind: "running" });
     // The head whose change was shown: one pushed since is Gitea's to refuse, never merged unseen.
-    const outcome = await flowValue.mergePullRequest(flow.slug, { ...pull, headSha: readout.head });
+    const outcome = await flowValue.mergePullRequest(owner, { ...pull, headSha: readout.head });
     setPress(outcome.ok ? { kind: "done" } : { kind: "refused", reason: outcome.reason });
   };
   const runRef = run.threadRef;
 
   return (
     <ChangeReviewView
-      environments={flow.environmentInputs}
+      environments={flow?.environmentInputs ?? NO_ENVIRONMENTS}
       frame={frame}
       giteaOrigin={flowValue.giteaOrigin}
       onBack={onBack}
       onOpenPage={onOpenPage}
-      live={flow.releases.find((entry) => entry.standing === "live")?.tag}
+      live={flow?.releases.find((entry) => entry.standing === "live")?.tag}
       mate={
         mate === undefined
           ? pull.mateProjectId === undefined
@@ -364,10 +369,15 @@ function ChangeReviewData({
       readout={readout}
       run={{ words: run.words, reading: run.reading && !runGaveUp }}
       titleId={titleId}
-      waitingForProduction={releaseContentsCommits(flow.release.contents).length}
+      waitingForProduction={
+        flow === undefined ? 0 : releaseContentsCommits(flow.release.contents).length
+      }
     />
   );
 }
+
+/** No environments known: the project's flow is not read yet. */
+const NO_ENVIRONMENTS: ReadonlyArray<{ readonly tier: GroupEnvironmentTier }> = [];
 
 /** Nothing said: the state before the conversation is read. */
 const NO_REMARKS: ReadonlyArray<ChangeRemark> = [];

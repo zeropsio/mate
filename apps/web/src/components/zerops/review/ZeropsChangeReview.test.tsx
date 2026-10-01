@@ -3,11 +3,85 @@
  * merge did to the project's environments, from the files it changed, and never offers a release;
  * a code change still hands over to the release production waits for.
  */
-import type { FlowPullRequest, GiteaChangedFile } from "@t3tools/client-runtime/zerops";
+import type {
+  FlowPullRequest,
+  GiteaChangedFile,
+  GiteaPullRequest,
+} from "@t3tools/client-runtime/zerops";
+import { act, createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it } from "vite-plus/test";
+import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
-import { ChangeReviewView, type ChangeReviewViewProps } from "./ZeropsChangeReview";
+import { TestNode } from "~/zerops/__fixtures__/testDom";
+
+import {
+  ChangeReviewView,
+  ZeropsChangeReview,
+  type ChangeReviewViewProps,
+} from "./ZeropsChangeReview";
+
+/** The account as a reload leaves it: the registry read, no project's flow read yet. */
+const account = vi.hoisted(() => ({
+  pulls: new Map<string, unknown>(),
+  reads: [] as Array<string>,
+}));
+
+vi.mock("~/zerops/projectFlowContext", () => ({
+  useZeropsProjectFlowOptional: () => ({
+    giteaOrigin: "https://gitea.example.test",
+    signedIn: true,
+    readable: true,
+    signInTrouble: null,
+    flows: new Map(),
+    deployments: new Map(),
+    slugs: new Map([["group-orchard", "orchard"]]),
+    mateNames: new Map(),
+    pending: new Set(),
+    trouble: null,
+  }),
+}));
+vi.mock("~/zerops/accountGiteaSessions", () => ({
+  useGiteaReadable: () => true,
+  giteaSessionLogin: () => undefined,
+  giteaClientFor: () => ({
+    getPullRequest: async (owner: string, repository: string, number: number) => {
+      const key = `${owner}/${repository}#${String(number)}`;
+      account.reads.push(key);
+      return account.pulls.get(key);
+    },
+    listCommitStatuses: async () => [],
+  }),
+}));
+vi.mock("@tanstack/react-router", () => ({ useRouter: () => ({ navigate: async () => {} }) }));
+vi.mock("~/zerops/useZeropsChangeReadout", () => ({
+  useZeropsChangeReadout: () => ({
+    files: { kind: "reading" },
+    diff: { kind: "none" },
+    commits: { kind: "reading" },
+    mainSince: { kind: "none" },
+    head: undefined,
+    retry: () => undefined,
+  }),
+}));
+vi.mock("~/zerops/useZeropsChangeComments", () => ({
+  useZeropsChangeComments: () => ({
+    state: { kind: "reading" },
+    say: async () => null,
+    saying: false,
+    retry: () => undefined,
+  }),
+}));
+vi.mock("~/zerops/useZeropsChangeRun", () => ({
+  useZeropsChangeRun: () => ({ words: undefined, reading: false, threadRef: undefined }),
+}));
+vi.mock("~/zerops/useGiteaPicture", () => ({
+  useGiteaPictureSource: () => undefined,
+  useGiteaPicture: () => ({ kind: "none" }),
+}));
+vi.mock("~/zerops/useAskMate", () => ({ useAskMate: () => () => undefined }));
+vi.mock("~/zerops/fixRequest", () => ({ useAskMateToFix: () => () => undefined }));
+vi.mock("~/zerops/fixMates", () => ({ useFixMates: () => [] }));
+vi.mock("~/zerops/useZeropsReviewMates", () => ({ useZeropsReviewMates: () => new Map() }));
 
 const NOW = Date.parse("2026-09-30T10:00:00Z");
 const noop = () => undefined;
@@ -115,5 +189,78 @@ describe("ChangeReviewView: a change after its merge", () => {
     const html = render(merged(), [changed("src/mail.ts")]);
     expect(textOf(html)).toContain("Production still serves v0.1.0 until you release.");
     expect(html).toContain('data-zerops-primary-action="Review release"');
+  });
+});
+
+/** The test DOM, able to hold an SVG. */
+class SvgDocument extends TestNode {
+  createElementNS(_namespace: string, name: string) {
+    return new TestNode(name, this);
+  }
+}
+
+function installTestDom(): void {
+  const document = new SvgDocument("#document", null, 9);
+  vi.stubGlobal("document", document);
+  vi.stubGlobal("window", {
+    document,
+    HTMLIFrameElement: TestNode,
+    Element: TestNode,
+    HTMLElement: TestNode,
+    Node: TestNode,
+    setTimeout: globalThis.setTimeout,
+    clearTimeout: globalThis.clearTimeout,
+    addEventListener() {},
+    removeEventListener() {},
+  });
+  vi.stubGlobal("HTMLIFrameElement", TestNode);
+  // The review's tooltips ask what an element is.
+  vi.stubGlobal("Element", TestNode);
+  vi.stubGlobal("HTMLElement", TestNode);
+  vi.stubGlobal("Node", TestNode);
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+}
+
+const API_CHANGE: GiteaPullRequest = {
+  number: 1,
+  title: "Rebuild the full API on the new schema",
+  state: "open",
+  html_url: "https://gitea.example.test/orchard/apidev/pulls/1",
+  mergeable: true,
+  head: { ref: "mate/mate-p-wren", sha: "d".repeat(40) },
+  base: { ref: "main" },
+  user: { login: "mate-p-wren" },
+  updated_at: "2026-09-30T09:00:00Z",
+};
+
+describe("ZeropsChangeReview: a change its project's flow does not hold yet", () => {
+  afterEach(() => {
+    account.pulls.clear();
+    account.reads.length = 0;
+    vi.unstubAllGlobals();
+  });
+
+  it("reads the change from Gitea by the project's org, before the flow is read", async () => {
+    account.pulls.set("orchard/apidev#1", API_CHANGE);
+    installTestDom();
+    const { createRoot } = await import("react-dom/client");
+    const host = document.createElement("div") as unknown as TestNode;
+    const root = createRoot(host as unknown as Element);
+    await act(async () => {
+      root.render(
+        createElement(ZeropsChangeReview, {
+          target: { kind: "change", groupId: "group-orchard", repository: "apidev", number: 1 },
+          titleId: "t",
+          onClose: noop,
+          onReplace: noop,
+        }),
+      );
+    });
+    expect(account.reads).toEqual(["orchard/apidev#1"]);
+    expect(host.textContent).toContain("Rebuild the full API on the new schema");
+    expect(host.textContent).not.toContain("Reading this change");
+    await act(async () => {
+      root.unmount();
+    });
   });
 });
