@@ -48,6 +48,7 @@ import {
   type FlowHalf,
 } from "@t3tools/client-runtime/zerops/flow";
 import {
+  statedDeployKey,
   ZeropsServiceId,
   type ZeropsServiceDeployedVersion,
 } from "@t3tools/client-runtime/zerops/data";
@@ -162,8 +163,7 @@ export function activeDeployOf(
 ): string | undefined {
   const version = service?.activeAppVersion;
   if (version === null || version === undefined) return undefined;
-  const statedName = stated?.state === "known" ? (stated.value.name ?? "") : "?";
-  return `${version.lastUpdate ?? ""} ${version.name ?? ""} ${statedName}`;
+  return `${version.lastUpdate ?? ""} ${version.name ?? ""} ${statedDeployKey(stated)}`;
 }
 
 /** Stands for a half a group has no answer for, as a key of {@link joinedFlows}. */

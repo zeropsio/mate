@@ -125,6 +125,14 @@ export function selectDeployedVersion(
 }
 
 /**
+ * The deploy name the store states for a service, as a key a read can follow: `"?"` until the
+ * store knows what the service runs, then the name it runs (`""` for a version without one).
+ */
+export function statedDeployKey(shown: Shown<ZeropsServiceDeployedVersion> | undefined): string {
+  return shown?.state === "known" ? `=${shown.value.name ?? ""}` : "?";
+}
+
+/**
  * `ZCP_MATE_ENABLED` on the service: absent reads as off, the way zcp reads it. `"unread"` until
  * the organization's variables are listed; `"unknown"` when their stream failed — never `false`,
  * a fact a row offers Enable on (H9).

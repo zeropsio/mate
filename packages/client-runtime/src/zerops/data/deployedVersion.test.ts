@@ -1,6 +1,6 @@
 import { describe, expect, it } from "@effect/vitest";
 
-import { selectDeployedVersion, selectMateFlag } from "./deployedVersion.ts";
+import { selectDeployedVersion, selectMateFlag, statedDeployKey } from "./deployedVersion.ts";
 import {
   ABSENT_BACKOFF_MS,
   reduceTableObservation,
@@ -334,5 +334,19 @@ describe("a version a service runs that its organization's list lacks", () => {
       state: "failed",
       retryAtMs: 2_000 + ABSENT_BACKOFF_MS[0]!,
     });
+  });
+});
+
+describe("the deploy name a group's read is keyed on", () => {
+  const version = { appVersionId: "v-1", source: "GIT", name: null };
+  it.each([
+    ["nothing read yet", undefined, "?"],
+    ["unread", { state: "unread", waitingFor: null }, "?"],
+    ["reading", { state: "reading" }, "?"],
+    ["failed", { state: "failed", failure: { kind: "timeout" }, retryAtMs: null }, "?"],
+    ["known without a name", { state: "known", value: version }, "="],
+    ["known with a name", { state: "known", value: { ...version, name: "d-1" } }, "=d-1"],
+  ] as const)("%s", (_, shown, expected) => {
+    expect(statedDeployKey(shown as never)).toBe(expected);
   });
 });
