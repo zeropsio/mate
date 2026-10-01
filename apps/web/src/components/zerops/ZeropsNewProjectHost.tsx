@@ -34,10 +34,10 @@
  * Create turns the dialog into the press, and it stays on it until the first Mate needs no
  * browser (`newProjectBirth.ts`, the owner, 2026-10-01): Git hosting where the account has none,
  * the project's registry entry, the Mate's project — its creation's wait part of the press — then
- * its registration and its close-off (`matePress.ts`). A step that stops says why there, with
- * *Try again*. Once its project is marked closed off the dialog gives way to the first Mate's own
- * view and the container needs no browser at all; a tab closed before that is the person's
- * choice, and the Mate's ⋯ menu finishes it (*Finish setup*).
+ * its close-off (`matePress.ts`); its registration follows, the dialog gone. A step that stops
+ * says why there, with *Try again*. Once its project is marked closed off the dialog gives way to
+ * the first Mate's own view and the container needs no browser at all; a tab closed before that
+ * is the person's choice, and the Mate's ⋯ menu finishes it (*Finish setup*).
  */
 import { useNavigate } from "@tanstack/react-router";
 import type { EnvironmentCreationStepProgress } from "@t3tools/client-runtime/zerops";

@@ -205,8 +205,8 @@ describe("shareGroupReach", () => {
 describe("finishSetupView — Finish setup on a Mate's own view", () => {
   const STEPS: ReadonlyArray<EnvironmentCreationStep> = [
     { kind: "import-container", agents: [] },
-    { kind: "register" },
     { kind: "close-off" },
+    { kind: "register" },
     { kind: "share-reach" },
   ];
   const progress = (
@@ -248,19 +248,19 @@ describe("finishSetupView — Finish setup on a Mate's own view", () => {
       want: {
         done: false,
         line: "Finishing its setup…",
-        steps: ["Container:active", "Registered:waiting", "Closed off:waiting"],
+        steps: ["Container:active", "Closed off:waiting", "Registered:waiting"],
       },
     },
     {
-      case: "closed off: it needs no browser now",
+      case: "closed off, being registered",
       made: press(
         { kind: "pressing" },
-        { progress: progress(["done", "done", "done", "running"]) },
+        { progress: progress(["done", "done", "running", "queued"]) },
       ),
       want: {
-        done: true,
-        line: "Its setup is finished. It comes up on its own now, with no browser needed.",
-        steps: ["Container:done", "Registered:done", "Closed off:done"],
+        done: false,
+        line: "Finishing its setup…",
+        steps: ["Container:done", "Closed off:done", "Registered:active"],
       },
     },
     {
@@ -269,7 +269,16 @@ describe("finishSetupView — Finish setup on a Mate's own view", () => {
       want: {
         done: true,
         line: "Its setup is finished. It comes up on its own now, with no browser needed.",
-        steps: ["Container:done", "Registered:done", "Closed off:done"],
+        steps: ["Container:done", "Closed off:done", "Registered:done"],
+      },
+    },
+    {
+      case: "through, its registration refused",
+      made: press({ kind: "pressed" }, { progress: progress(["done", "done", "failed", "done"]) }),
+      want: {
+        done: true,
+        line: "Its setup is finished. It comes up on its own now, with no browser needed. It still needs an owner to register it.",
+        steps: ["Container:done", "Closed off:done", "Registered:failed"],
       },
     },
   ])("$case", ({ made, want }) => {
@@ -288,8 +297,8 @@ describe("finishSetupView — Finish setup on a Mate's own view", () => {
     progressPress("p-hugo", progress(["done", "running", "queued", "queued"]));
     expect(drawn(finishSetupView(readMatePress("p-hugo")!))?.steps).toEqual([
       "Container:done",
-      "Registered:active",
-      "Closed off:waiting",
+      "Closed off:active",
+      "Registered:waiting",
     ]);
     forgetPress("p-hugo");
     // A press nobody holds keeps nothing.

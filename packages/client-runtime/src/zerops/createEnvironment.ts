@@ -294,14 +294,13 @@ export function planEnvironmentCreation(input: EnvironmentCreationInput): Enviro
       ...(tier?.runtimes === undefined ? {} : { runtimes: tier.runtimes }),
     });
   }
-  // At once: none of it waits for the close-off.
+  // The close-off first: it is what makes the Mate need no browser, and a registration the
+  // platform refuses — a member who may not write the registry, a broker grant that failed —
+  // never keeps the Mate open. The group's sight of it is best-effort, last, and the group-reach
+  // reconcile covers it anyway.
+  if (withAgent) steps.push({ kind: "close-off" });
   if (input.register === true) steps.push({ kind: "register" });
-  if (withAgent) {
-    // The close-off is what makes the Mate need no browser; the group's sight of it is
-    // best-effort, last, and the group-reach reconcile covers it anyway.
-    steps.push({ kind: "close-off" });
-    steps.push({ kind: "share-reach" });
-  }
+  if (withAgent) steps.push({ kind: "share-reach" });
   // Last, and the only step that waits on anything: everything the person's rights are needed
   // for is done before it.
   steps.push({ kind: "await-ready", withAgent });

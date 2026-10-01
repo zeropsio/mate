@@ -190,12 +190,12 @@ describe("runEnvironmentCreation", () => {
       // The group's agents reach the container import, not just the plan, and the runtimes ride
       // with it for zcp to import on boot: no runtime import of the press's own.
       `container:proj-1:Go Hello World - dev:claude-code:${"services:\n  - hostname: api\n    startWithoutCode: true\n".length}`,
-      // Registered at once, then read back closed — the recipe already left it so, nothing
-      // written — and marked: zcp imports the runtimes on the mark alone, and the Mate needs no
-      // browser any more.
-      "register:proj-1",
+      // Read back closed — the recipe already left it so, nothing written — and marked: zcp
+      // imports the runtimes on the mark alone, and the Mate needs no browser any more. Only then
+      // registered: a refused registration never keeps it open.
       "isolation:proj-1",
       "closedOff:proj-1",
+      "register:proj-1",
       // Last, and best-effort: the group-reach reconcile covers it anyway.
       "shareReach:proj-1",
     ]);
@@ -227,8 +227,8 @@ describe("runEnvironmentCreation", () => {
       ["create-project", "done"],
       ["import-managed", "done"],
       ["import-container", "done"],
-      ["register", "done"],
       ["close-off", "done"],
+      ["register", "done"],
       ["share-reach", "done"],
       ["await-ready", "running"],
     ]);
@@ -526,10 +526,38 @@ describe("runEnvironmentCreation — closing the project off", () => {
     expect(slept.filter((ms) => ms === 1_000).length).toBeLessThanOrEqual(2 * 10);
   });
 
-  it("closes off after the registration, which does not wait for it", async () => {
+  it("closes off before the registration", async () => {
     const { platform, calls } = fakePlatform();
     await run(plan("dev"), platform);
-    expect(calls.indexOf("register:proj-1")).toBeLessThan(calls.indexOf("isolation:proj-1"));
+    expect(calls.indexOf("closedOff:proj-1")).toBeLessThan(calls.indexOf("register:proj-1"));
+  });
+
+  // A member who may make a Mate but not write the registry, or a broker grant that failed: the
+  // Mate stays closed off and running, and waits for an owner (`brokerGrant.ts`).
+  it("keeps a Mate closed off and running when its registration is refused", async () => {
+    const { platform, calls } = fakePlatform({
+      register: async () => {
+        throw new Error("Only an owner may register it.");
+      },
+    });
+    const { outcome, reports } = await run(plan("dev"), platform);
+    expect(outcome).toMatchObject({ ok: true, projectId: "proj-1", awaitingAgent: true });
+    expect(calls).toContain("closedOff:proj-1");
+    expect(calls).toContain("shareReach:proj-1");
+    expect(reports.at(-1)!.find((entry) => entry.step.kind === "register")).toMatchObject({
+      state: "failed",
+      error: "Only an owner may register it.",
+    });
+  });
+
+  it("stops a stage's press at a refused registration: it has no close-off to keep", async () => {
+    const { platform } = fakePlatform({
+      register: async () => {
+        throw new Error("Only an owner may register it.");
+      },
+    });
+    const { outcome } = await run(plan("prod"), platform);
+    expect(outcome).toMatchObject({ ok: false, failedStep: { kind: "register" } });
   });
 });
 
@@ -548,8 +576,6 @@ describe("runEnvironmentCreation — a press tried again", () => {
     expect(outcome).toMatchObject({ ok: true, projectId: "proj-1" });
     expect(calls).toEqual([
       "register:proj-1",
-      "isolation:proj-1",
-      "closedOff:proj-1",
       // Last, and best-effort: the group-reach reconcile covers it anyway.
       "shareReach:proj-1",
     ]);

@@ -492,14 +492,13 @@ const PRESS_STEPS: ReadonlyArray<{
 }> = [
   { label: "Project", kinds: ["create-project", "import-project", "import-managed"] },
   { label: "Container", kinds: ["import-container"] },
-  { label: "Registered", kinds: ["register"] },
   { label: "Closed off", kinds: ["close-off"] },
 ];
 
 /**
- * The press as the Add dialog draws it: Project, Container, Registered, Closed off — what the
- * Mate needs before it needs no browser. The group's sight of it and the wait for it come after,
- * the dialog gone. A step a press does not make is left out.
+ * The press as the Add dialog draws it: Project, Container, Closed off — what the Mate needs
+ * before it needs no browser. Its registration, the group's sight of it and the wait for it come
+ * after, the dialog gone. A step a press does not make is left out.
  */
 export function pressSteps(
   progress: ReadonlyArray<EnvironmentCreationStepProgress>,

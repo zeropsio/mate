@@ -589,7 +589,7 @@ describe("the tab holds a New project's creation until the platform takes it", (
 // a tab closed after a dialog that had left stranded a Mate with no container).
 describe("newProjectPressSteps — a New project's press, as its dialog draws it", () => {
   const press = (states: ReadonlyArray<"queued" | "running" | "done" | "failed">) =>
-    (["register", "close-off", "share-reach", "await-ready"] as const).map((kind, index) => ({
+    (["close-off", "register", "share-reach", "await-ready"] as const).map((kind, index) => ({
       step: kind === "await-ready" ? { kind, withAgent: true } : { kind },
       state: states[index]!,
     }));
@@ -605,7 +605,6 @@ describe("newProjectPressSteps — a New project's press, as its dialog draws it
         "Git hosting:active",
         "Project registered:waiting",
         "Creating the project:waiting",
-        "Mate registered:waiting",
         "Closed off:waiting",
       ],
     },
@@ -613,42 +612,27 @@ describe("newProjectPressSteps — a New project's press, as its dialog draws it
       case: "the project being created, its wait part of the press",
       made: birth({ step: "create" }),
       progress: null,
-      want: [
-        "Project registered:done",
-        "Creating the project:active",
-        "Mate registered:waiting",
-        "Closed off:waiting",
-      ],
+      want: ["Project registered:done", "Creating the project:active", "Closed off:waiting"],
     },
     {
       case: "its Mate being closed off",
       made: birth({ step: "created", projectId: "p-1" }),
-      progress: press(["done", "running", "queued", "queued"]),
-      want: [
-        "Project registered:done",
-        "Creating the project:done",
-        "Mate registered:done",
-        "Closed off:active",
-      ],
+      progress: press(["running", "queued", "queued", "queued"]),
+      want: ["Project registered:done", "Creating the project:done", "Closed off:active"],
     },
     {
       case: "a creation the platform refused",
       made: birth({ step: "create", failed: NO_ROOM }),
       progress: null,
-      want: [
-        "Project registered:done",
-        "Creating the project:failed",
-        "Mate registered:waiting",
-        "Closed off:waiting",
-      ],
+      want: ["Project registered:done", "Creating the project:failed", "Closed off:waiting"],
     },
   ])("draws $case", ({ made, progress, want }) => {
     expect(drawn(made, progress)).toEqual(want);
   });
 
   it("is through once its Mate is marked closed off, and not before", () => {
-    expect(newProjectPressThrough(press(["done", "running", "queued", "queued"]))).toBe(false);
-    expect(newProjectPressThrough(press(["done", "done", "running", "queued"]))).toBe(true);
+    expect(newProjectPressThrough(press(["running", "queued", "queued", "queued"]))).toBe(false);
+    expect(newProjectPressThrough(press(["done", "running", "queued", "queued"]))).toBe(true);
     expect(newProjectPressThrough(null)).toBe(false);
   });
 });

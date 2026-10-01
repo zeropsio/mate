@@ -762,8 +762,8 @@ describe("pressSteps — the press as the Add dialog draws it", () => {
   const plan: ReadonlyArray<EnvironmentCreationStep> = [
     { kind: "create-project", name: "Beviro - Ivo", tagList: [], location: undefined },
     { kind: "import-container", agents: [] },
-    { kind: "register" },
     { kind: "close-off" },
+    { kind: "register" },
     { kind: "share-reach" },
     { kind: "await-ready", withAgent: true },
   ];
@@ -780,35 +780,30 @@ describe("pressSteps — the press as the Add dialog draws it", () => {
     {
       case: "creating the project",
       states: ["running", "queued", "queued", "queued", "queued", "queued"],
-      want: ["Project:active", "Container:waiting", "Registered:waiting", "Closed off:waiting"],
+      want: ["Project:active", "Container:waiting", "Closed off:waiting"],
     },
     {
       case: "closing it off",
-      states: ["done", "done", "done", "running", "queued", "queued"],
-      want: ["Project:done", "Container:done", "Registered:done", "Closed off:active"],
+      states: ["done", "done", "running", "queued", "queued", "queued"],
+      want: ["Project:done", "Container:done", "Closed off:active"],
     },
     {
       case: "a container that would not come",
       states: ["done", "failed", "queued", "queued", "queued", "queued"],
-      want: ["Project:done", "Container:failed", "Registered:waiting", "Closed off:waiting"],
+      want: ["Project:done", "Container:failed", "Closed off:waiting"],
     },
   ] as const)("draws $case", ({ states, want }) => {
     expect(drawn(at(states))).toEqual(want);
   });
 
-  it("says nothing of the group's sight of it, nor the wait after", () => {
-    expect(pressSteps(at(["done", "done", "done", "done", "running", "queued"]))).toHaveLength(4);
-  });
-
-  it("leaves Registered out of a press that writes no registration", () => {
-    const progress = at(["done", "done", "done", "done", "done", "queued"]).filter(
-      (entry) => entry.step.kind !== "register",
-    );
-    expect(drawn(progress)).toEqual(["Project:done", "Container:done", "Closed off:done"]);
+  // The dialog goes at the close-off: what comes after — its registration, the group's sight of
+  // it, the wait for it — the Mate does without a browser, or waits for an owner.
+  it("says nothing of what comes after the close-off", () => {
+    expect(pressSteps(at(["done", "done", "done", "running", "queued", "queued"]))).toHaveLength(3);
   });
 
   it("is through once the project is marked closed off", () => {
-    expect(pressThrough(at(["done", "done", "done", "running", "queued", "queued"]))).toBe(false);
-    expect(pressThrough(at(["done", "done", "done", "done", "running", "queued"]))).toBe(true);
+    expect(pressThrough(at(["done", "done", "running", "queued", "queued", "queued"]))).toBe(false);
+    expect(pressThrough(at(["done", "done", "done", "running", "queued", "queued"]))).toBe(true);
   });
 });

@@ -467,8 +467,8 @@ onAccountLifetimeClose(() => {
 /**
  * A New project's press as its dialog draws it, until the first Mate needs no browser: Git
  * hosting where the account has none, the project's registration, the project itself — its
- * creation's wait part of the press — then its Mate's registration and its close-off, from the
- * Mate's own press (`progress`, null before it begins).
+ * creation's wait part of the press — then its Mate's close-off, from the Mate's own press
+ * (`progress`, null before it begins). Its registration comes after, the dialog gone.
  */
 export function newProjectPressSteps(
   birth: NewProjectBirth,
@@ -494,7 +494,6 @@ export function newProjectPressSteps(
     ...(birth.withGitea ? [own("Git hosting", "gitea")] : []),
     own("Project registered", "registry"),
     own("Creating the project", "create"),
-    mate("Mate registered", "register"),
     mate("Closed off", "close-off"),
   ];
 }

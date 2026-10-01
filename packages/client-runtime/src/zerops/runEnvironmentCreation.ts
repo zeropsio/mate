@@ -387,7 +387,18 @@ export async function runEnvironmentCreation(
         }
         case "register": {
           const target = requireProject(projectId);
-          await withTries(() => input.platform.register(target));
+          // A Mate is closed off by now: a refused registration leaves it running, waiting for
+          // an owner to register it (*Finish setup*). A stage or a production has nothing else
+          // that makes it whole, and stops here.
+          const stopsHere = !input.steps.slice(0, index).some((made) => made.kind === "close-off");
+          try {
+            await withTries(() => input.platform.register(target));
+          } catch (cause) {
+            if (stopsHere) throw cause;
+            assertCurrent();
+            mark(index, { state: "failed", error: describeError(cause), finishedAtMs: now() });
+            continue;
+          }
           break;
         }
         case "import-recipe":

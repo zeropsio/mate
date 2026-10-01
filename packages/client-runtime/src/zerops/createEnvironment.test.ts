@@ -119,12 +119,12 @@ describe("planEnvironmentCreation", () => {
     {
       case: "a Mate",
       input: { role: "dev" as const, name: "dev", register: true },
-      // Registered at once: nothing in it waits for the close-off.
+      // Closed off before it is registered: a refused registration never keeps a Mate open.
       steps: [
         "create-project",
         "import-container",
-        "register",
         "close-off",
+        "register",
         "share-reach",
         "await-ready",
       ],

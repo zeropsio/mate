@@ -48,7 +48,6 @@ import { addGroupEnvironment, writeRegistryMember } from "./addGroupEnvironment"
 import { brokerGrantTokens, grantBrokerProject, projectTagsWrite } from "./brokerGrant";
 import {
   pressSteps,
-  pressThrough,
   type PressStepView,
 } from "../components/zerops/ZeropsEnvironmentCreationDialog.logic";
 import { placedNewProjects, type NewProjectBirth } from "./newProjectBirth";
@@ -161,6 +160,13 @@ export function pressFailure(press: MatePress | undefined): string | undefined {
   return press?.state.kind === "failed" ? press.state.reason : undefined;
 }
 
+const PRESS_STEP_VIEW_STATES: Readonly<
+  Record<EnvironmentCreationStepProgress["state"], PressStepView["state"]>
+> = { queued: "waiting", running: "active", done: "done", failed: "failed" };
+
+/** A Mate closed off and running whose registration was refused: an owner finishes it. */
+const AWAITING_OWNER_LINE = "It still needs an owner to register it.";
+
 /** *Finish setup* through its close-off: the container does the rest. */
 export const FINISHED_SETUP_LINE =
   "Its setup is finished. It comes up on its own now, with no browser needed.";
@@ -179,10 +185,22 @@ export function finishSetupView(press: MatePress | undefined):
   | undefined {
   if (press?.finishing !== true) return undefined;
   const progress = press.progress ?? [];
-  const done = press.state.kind === "pressed" || pressThrough(progress);
+  // Its registration comes after the close-off, and this view stays until the press is through.
+  const registered = progress.find((entry) => entry.step.kind === "register");
+  const steps = [
+    ...pressSteps(progress),
+    ...(registered === undefined
+      ? []
+      : [{ label: "Registered", state: PRESS_STEP_VIEW_STATES[registered.state] }]),
+  ];
+  const done = press.state.kind === "pressed";
   return {
-    steps: pressSteps(progress),
-    line: done ? FINISHED_SETUP_LINE : "Finishing its setup…",
+    steps,
+    line: !done
+      ? "Finishing its setup…"
+      : registered?.state === "failed"
+        ? `${FINISHED_SETUP_LINE} ${AWAITING_OWNER_LINE}`
+        : FINISHED_SETUP_LINE,
     done,
   };
 }
@@ -605,8 +623,9 @@ export async function finishMateSetup(input: {
     ...(input.container === null
       ? []
       : [{ kind: "import-container", agents: input.container.agents } as const]),
-    ...(input.registration === null ? [] : [{ kind: "register" } as const]),
     { kind: "close-off" },
+    // After the close-off: a refused registration leaves the Mate closed off and running.
+    ...(input.registration === null ? [] : [{ kind: "register" } as const]),
     { kind: "share-reach" },
     { kind: "await-ready", withAgent: true },
   ];
