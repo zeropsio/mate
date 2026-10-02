@@ -956,7 +956,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
   // a person the session does not name is offered none.
   const verbsOf = (candidate: ZeropsCandidate): MateVerbs =>
     viewer === null || user === null
-      ? { rename: false, tag: false, move: false, delete: false, assign: false }
+      ? { delete: false, assign: false }
       : resolveMateVerbs({ project: candidate.project, viewer });
   // The member list is read when a row would use a name — a Mate this person
   // may see and not open — and when they may hand a Mate over and so need

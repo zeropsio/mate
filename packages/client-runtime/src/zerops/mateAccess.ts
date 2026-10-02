@@ -114,8 +114,8 @@ export function resolveMateProjectRole(input: {
 }
 
 /**
- * What this person may do with a Mate besides open it — opening it is HQ's rule's
- * (`observe_mate`, `mateRowCan`).
+ * What this person may do to a Mate's project on the platform — opening it is HQ's rule's
+ * (`observe_mate`, `mateRowCan`), and so are its name, face and place (`mayOffer`).
  *
  * One rule for the whole screen (guide 0.8): **a verb a person cannot finish
  * is not offered**. Every one of these is a platform write that the platform
@@ -125,25 +125,18 @@ export function resolveMateProjectRole(input: {
  * - `create` — the app's *Add Mate* gate: `zeropsRoleAnswer(...).canCreate`,
  *   which is org `ADMIN`/`OWNER` or the *can create projects* flag. One rule,
  *   not the two the screen used to carry.
- * - `rename`, `tag`, `move` — writes to the project's own record, which need
- *   effective `OWNER` or `ADMIN` **there** (measured 2026-09-15: a project's
- *   env and tags are the owner's and the admins'; a `BASIC_USER` gets `403`).
- *   The creator of a Mate is its `OWNER`, so their own Mate is theirs to
- *   rename and to move.
- * - `delete` — taking the Mate's project off Zerops, the same standing on the
- *   project as its own record's writes (measured 2026-09-15: a member below
- *   `ADMIN`, the `OWNER` of the project they made, deleted it; the OpenAPI
- *   says the same for every role below `ADMIN`). Their own Mate is theirs to
- *   delete; an org owner or admin may delete anyone's.
+ * - `delete` — taking the Mate's project off Zerops, which needs effective
+ *   `OWNER` or `ADMIN` **there** (measured 2026-09-15: a member below `ADMIN`,
+ *   the `OWNER` of the project they made, deleted it; the OpenAPI says the same
+ *   for every role below `ADMIN`). The creator of a Mate is its `OWNER`, so
+ *   their own Mate is theirs to delete; an org owner or admin may delete
+ *   anyone's.
  * - `assign` — handing a Mate to somebody else, which writes a per-project
  *   role override and is therefore an org `OWNER`/`ADMIN` verb only (D11).
  *   The Mate's own owner cannot give it away; being able to would let anyone
  *   hand their Mate — and whatever is in its conversation — to anyone.
  */
 export interface MateVerbs {
-  readonly rename: boolean;
-  readonly tag: boolean;
-  readonly move: boolean;
   readonly delete: boolean;
   readonly assign: boolean;
 }
@@ -152,13 +145,9 @@ export function resolveMateVerbs(input: {
   readonly project: MateAccessProject;
   readonly viewer: MateAccessViewer;
 }): MateVerbs {
-  const writesHere = roleAtLeast(resolveMateProjectRole(input), "ADMIN");
   const orgAdmin = roleAtLeast(input.viewer.roleCode, "ADMIN");
   return {
-    rename: writesHere,
-    tag: writesHere,
-    move: writesHere,
-    delete: writesHere,
+    delete: roleAtLeast(resolveMateProjectRole(input), "ADMIN"),
     assign: orgAdmin && input.project.clientId === input.viewer.id,
   };
 }
