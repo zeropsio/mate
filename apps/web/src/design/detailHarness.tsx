@@ -657,6 +657,7 @@ function StopState({ fixture }: { readonly fixture: StopFixture }) {
         releasing: fixture.releasing,
         failed,
         waiting: waiting.length,
+        untold: [],
         release,
         releasedAge: fixture.releasedAge,
         since: view.activatedAt === null ? undefined : "2h ago",
@@ -672,6 +673,7 @@ function StopState({ fixture }: { readonly fixture: StopFixture }) {
         }),
       })}
       view={view}
+      untold={[]}
       waiting={waiting}
     />
   );

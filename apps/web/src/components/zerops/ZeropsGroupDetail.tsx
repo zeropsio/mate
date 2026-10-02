@@ -16,6 +16,7 @@
  * `groupHistory.ts`'s (rule R5).
  */
 import {
+  cannotTellWhatRuns,
   assignCandidateMateTints,
   botDisplayName,
   buildZeropsGroupTree,
@@ -990,6 +991,7 @@ export function ZeropsStopDetailPage({
     releasing: flow.release.inFlight ?? (release.releasing ? release.tag : undefined),
     failed: failedDeploy === undefined ? undefined : { ...failedDeploy, mayRunAgain },
     waiting: releaseContentsSummary(flow.release.contents, 20).total,
+    untold: production ? flow.release.untold : NO_UNTOLD,
     release,
     releasedAge: releasedAge.length === 0 ? undefined : releasedAge,
     since: view.activatedAt === null ? undefined : formatRelativeTimeLabel(view.activatedAt),
@@ -1048,6 +1050,7 @@ export function ZeropsStopDetailPage({
       trouble={flowValue.trouble}
       verdict={verdict}
       view={view}
+      untold={production ? flow.release.untold : NO_UNTOLD}
       waiting={production ? releaseContentsCommits(flow.release.contents) : NO_COMMITS}
     />
   );
@@ -1168,6 +1171,7 @@ export function ZeropsStopPane({
   services,
   stop,
   trouble,
+  untold,
   verdict,
   view,
   waiting,
@@ -1189,6 +1193,8 @@ export function ZeropsStopPane({
   readonly runAgain?: StopRunAgain | undefined;
   /** What `main` has that this production does not; empty for a stage. */
   readonly waiting: ReadonlyArray<WaitingCommit>;
+  /** A production's services whose commit cannot be told, said beside what waits. */
+  readonly untold: ReadonlyArray<string>;
   /** Every public address of the stop, for its menu; each service row lists its own. */
   readonly routes: ReadonlyArray<ZeropsPublicRoute>;
   readonly onOpenProject: () => void;
@@ -1298,6 +1304,9 @@ export function ZeropsStopPane({
                 </li>
               ))}
             </ul>
+            {untold.length === 0 ? null : (
+              <p className="py-2 text-sm text-muted-foreground">{cannotTellWhatRuns(untold)}.</p>
+            )}
           </CardGroup>
         )}
 
@@ -1585,6 +1594,8 @@ const NO_RELEASES: ReadonlyArray<FlowReleaseRow> = [];
 const NO_REPOSITORIES: ReadonlyMap<string, string> = new Map();
 const NO_CHANGES: ReturnType<typeof releasesCarried> = new Map();
 const NO_COMMITS: ReadonlyArray<WaitingCommit> = [];
+/** A stage, whose verdict never speaks of what production runs. */
+const NO_UNTOLD: ReadonlyArray<string> = [];
 
 /**
  * Where a detail page sits, outermost first — a containment trail, not a way

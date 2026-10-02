@@ -299,6 +299,7 @@ function groupFlowReadsOf(flow: SidebarProjectFlow): GroupFlowReads {
       suggestion: flow.releaseTag ?? "",
       inFlight: flow.releaseInFlight,
       contents: flow.releaseContents ?? [],
+      untold: flow.releaseUntold ?? [],
     },
   };
 }
@@ -335,6 +336,8 @@ export interface SidebarProjectFlow {
    * for production, the count the production chip wears.
    */
   readonly releaseContents?: ReadonlyArray<Moved> | undefined;
+  /** Production's services whose commit cannot be told: nothing is said to wait on them. */
+  readonly releaseUntold?: ReadonlyArray<string> | undefined;
   /**
    * The newest release that did not go through, newer than the one production
    * runs (`releaseFailureOf`): the production chip turns amber, and its menu

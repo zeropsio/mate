@@ -134,6 +134,8 @@ export interface GroupFlowInput {
     readonly suggestion: string;
     /** How many changes are merged and not live (`releaseContentsSummary(...).total`). */
     readonly waiting: number;
+    /** Production's services whose commit cannot be told (`releaseReads`' `untold`). */
+    readonly untold: ReadonlyArray<string>;
     /** The release tag on its way to production (`releaseInFlight`). */
     readonly inFlight?: string | undefined;
   };
@@ -363,8 +365,10 @@ function productionOf(
   return { kind: stop.state === "empty" ? "empty" : "live", stop, line };
 }
 
+/** Release is offered where something is counted, or where what production runs cannot be told. */
 function releaseOffered(input: GroupFlowInput): boolean {
-  return input.release.gate.allowed && input.release.waiting > 0;
+  const { gate, waiting, untold } = input.release;
+  return gate.allowed && (waiting > 0 || untold.length > 0);
 }
 
 /** The one step, worst first; `projectAttention` decides every kind it has. */

@@ -360,6 +360,8 @@ interface StopCase {
   readonly moving?: ReadonlyArray<string>;
   /** `repository → its read`, as the page reads a production's code repositories; none unless given. */
   readonly reads?: ReadonlyMap<string, ZeropsCommitsState> | undefined;
+  /** Production's services whose commit cannot be told. */
+  readonly untold?: ReadonlyArray<string>;
 }
 
 /** A stop's page with every read already done — the producers' words, the pane's drawing. */
@@ -397,6 +399,7 @@ function renderStop(input: StopCase): string {
     releasing: undefined,
     failed: input.failed,
     waiting: waiting.length,
+    untold: input.untold ?? [],
     release: {
       offered: input.offered !== undefined,
       tag: input.offered,
@@ -446,6 +449,7 @@ function renderStop(input: StopCase): string {
       stop={stop}
       trouble={null}
       verdict={verdict}
+      untold={input.untold ?? []}
       view={view}
       waiting={waiting}
     />,
@@ -474,6 +478,30 @@ describe("ZeropsStopPane", () => {
         "Live",
       ],
       lacks: ["Nothing needs you here.", "Tagged by"],
+    },
+    {
+      name: "a production with a service nobody can tell the commit of says so beside what waits",
+      input: {
+        tier: "production",
+        services: [service("api", "a1", "v0.1.13"), service("web", "b2", "hotfix")],
+        releases: 1,
+        waiting: [{ sha: fullSha("c1"), subject: "Two-step checkout" }],
+        untold: ["web"],
+        offered: "v0.1.14",
+      },
+      contains: ["1 change not live.", "Two-step checkout", "Can&#x27;t tell what web runs."],
+    },
+    {
+      name: "a production none of whose services can be told offers its release, never all clear",
+      input: {
+        tier: "production",
+        services: [service("api", "a1", "hotfix")],
+        releases: 1,
+        untold: ["api"],
+        offered: "v0.1.14",
+      },
+      contains: ["Can&#x27;t tell what api runs.", ">Review release</button>"],
+      lacks: ["Production already runs what is merged."],
     },
     {
       name: "a production three changes behind, with a release offered",

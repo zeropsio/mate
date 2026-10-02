@@ -322,7 +322,6 @@ export {
   groupStopsOf,
   releaseDeploys,
   statedVersionNames,
-  versionsStated,
   type AppRecipe,
   type GroupEnvironmentRowInput,
   type GroupEnvironmentService,
@@ -351,11 +350,12 @@ export {
   compareReadKey,
   movedCommits,
   releaseReads,
-  wholeProduction,
+  productionRuns,
   type CompareRead,
   type CompareReads,
   type Moved,
   type MovedCommits,
+  type ProductionRun,
 } from "./releaseCompare.ts";
 export {
   ADD_PRODUCTION_LABEL,
@@ -392,6 +392,7 @@ export {
   type StopChange,
 } from "./stageMarks.ts";
 export {
+  cannotTellWhatRuns,
   changesNotLive,
   PROJECT_ALL_CLEAR,
   projectAttention,

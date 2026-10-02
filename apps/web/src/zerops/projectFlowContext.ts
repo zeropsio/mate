@@ -46,6 +46,8 @@ export interface ZeropsReleaseOffer {
    * Nothing until all of it is known — the gate holds Release until then.
    */
   readonly contents: ReadonlyArray<Moved>;
+  /** Production's services whose commit cannot be told: what goes live on them is not said. */
+  readonly untold: ReadonlyArray<string>;
 }
 
 /** One project's flow: its environments, what is waiting, what was released. */

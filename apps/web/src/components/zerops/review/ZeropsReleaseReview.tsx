@@ -15,6 +15,7 @@
  * The views take every read handed in, so the harness shows each state.
  */
 import {
+  cannotTellWhatRuns,
   buildZeropsGroupTree,
   releaseContentsCommits,
   releaseReview,
@@ -305,6 +306,7 @@ function ReleaseData({
       outcome={outcome}
       press={press}
       rows={rows}
+      untold={flow.release.untold}
       services={
         moving.length === 0 ? (production?.services.map((entry) => entry.hostname) ?? []) : moving
       }
@@ -328,6 +330,8 @@ export interface ReleaseReviewViewProps {
   /** HQ's rule for this person, its refusal in words; `undefined` while it cannot be asked. */
   readonly permission: ReleaseGate | undefined;
   readonly rows: ReadonlyArray<ReviewReleaseRow>;
+  /** Production's services whose commit cannot be told: what goes live on them is not said. */
+  readonly untold: ReadonlyArray<string>;
   readonly where: ReadonlyArray<{ readonly service: string; readonly line: string }>;
   readonly hasStage: boolean;
   readonly services: ReadonlyArray<string>;
@@ -403,12 +407,15 @@ export function ReleaseReviewView(props: ReleaseReviewViewProps) {
       titleId={props.titleId}
       verdict={model.verdict}
     >
-      {rows.length === 0 ? null : (
+      {rows.length === 0 && props.untold.length === 0 ? null : (
         <ReviewSection
           aside={`${String(rows.length)} ${rows.length === 1 ? "change" : "changes"}`}
           title="What goes out"
         >
-          <ReviewReleaseRows onOpen={props.onOpenChange} rows={rows} />
+          {rows.length === 0 ? null : <ReviewReleaseRows onOpen={props.onOpenChange} rows={rows} />}
+          {props.untold.length === 0 ? null : (
+            <p className="text-sm text-muted-foreground">{cannotTellWhatRuns(props.untold)}.</p>
+          )}
         </ReviewSection>
       )}
       {props.where.length === 0 ? null : (

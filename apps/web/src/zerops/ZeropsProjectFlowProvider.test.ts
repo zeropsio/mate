@@ -63,7 +63,10 @@ function join(input: {
   readonly repos?: ReadonlyMap<string, ReadonlyArray<RepoListEntry>>;
   readonly recipes?: ReadonlyMap<string, AppRecipe>;
   readonly permissions?: ReadonlyMap<string, ReleaseGate | undefined>;
-  readonly live?: ReadonlyMap<string, MovedCommits>;
+  readonly live?: ReadonlyMap<
+    string,
+    { readonly moved: MovedCommits; readonly untold: ReadonlyArray<string> }
+  >;
   readonly withheld?: ReadonlyMap<string, string>;
 }) {
   return joinProjectFlows({
@@ -165,6 +168,7 @@ describe("joinProjectFlows", () => {
       readonly permission?: ReleaseGate | undefined;
       readonly repos?: ReadonlyArray<RepoListEntry> | undefined;
       readonly live?: MovedCommits;
+      readonly untold?: ReadonlyArray<string>;
       readonly withheld?: ReadonlyMap<string, string>;
     }) =>
       join({
@@ -173,7 +177,7 @@ describe("joinProjectFlows", () => {
         repos: over.repos === undefined ? new Map() : new Map([["g1", over.repos]]),
         recipes: new Map([["g1", recipe]]),
         permissions: new Map([["g1", over.permission]]),
-        live: new Map([["g1", over.live ?? COMPARED]]),
+        live: new Map([["g1", { moved: over.live ?? COMPARED, untold: over.untold ?? [] }]]),
         withheld: over.withheld ?? NOTHING_WITHHELD,
       }).get("g1")?.release;
 
@@ -205,6 +209,12 @@ describe("joinProjectFlows", () => {
       ],
     ] as const)("is checking while %s", (_case, over) => {
       expect(offered(over)?.gate).toEqual({ allowed: false, reason: RELEASE_CHECKING });
+    });
+
+    it("names the production services whose commit cannot be told", () => {
+      expect(offered({ permission: { allowed: true }, repos, untold: ["app"] })?.untold).toEqual([
+        "app",
+      ]);
     });
 
     it("says why where HQ could not compare what goes live", () => {

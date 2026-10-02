@@ -95,6 +95,7 @@ function flowOf(over: Partial<GroupFlowInput> = {}): GroupFlow {
       gate: { allowed: false, reason: "Nothing is merged to release." },
       suggestion: "v0.1.0",
       waiting: 0,
+      untold: [],
     },
     mainHasCode: undefined,
     mainHead: undefined,
@@ -119,7 +120,7 @@ const FLOWS = {
   merge: flowOf({ pullRequests: [pull()] }),
   release: flowOf({
     stops: [PRODUCTION],
-    release: { gate: { allowed: true }, suggestion: "v0.1.0", waiting: 1 },
+    release: { gate: { allowed: true }, suggestion: "v0.1.0", waiting: 1, untold: [] },
   }),
   answer: flowOf({ mates: [{ ...MATE, waiting: true }] }),
   stopped: flowOf({ mates: [{ ...MATE, waiting: true, failed: true }] }),
@@ -564,7 +565,7 @@ describe("main's cell", () => {
         mainHasCode: true,
         mainHead: MAIN_SHA,
         stops: [PRODUCTION],
-        release: { gate: { allowed: true }, suggestion: "v0.1.0", waiting: 1 },
+        release: { gate: { allowed: true }, suggestion: "v0.1.0", waiting: 1, untold: [] },
       }),
       landed,
       { empty: false, head: "055a7e8", title: "Mate: weatherdev (#4)", state: "1 change not live" },
@@ -580,7 +581,7 @@ describe("main's cell", () => {
       flowOf({
         merged: [landed],
         stops: [PRODUCTION],
-        release: { gate: { allowed: true }, suggestion: "v0.1.0", waiting: 3 },
+        release: { gate: { allowed: true }, suggestion: "v0.1.0", waiting: 3, untold: [] },
       }),
       landed,
       {
@@ -715,6 +716,7 @@ describe("production's cell", () => {
           gate: { allowed: false, reason: "Releasing v0.1.0…" },
           suggestion: "v0.1.1",
           waiting: 1,
+          untold: [],
           inFlight: "v0.1.0",
         },
       }),
@@ -1002,6 +1004,7 @@ describe("groupFlowInputOf", () => {
         release: {
           gate: { allowed: true },
           suggestion: "v0.1.1",
+          untold: [],
           contents: [
             compared([
               { sha: "a", subject: "one" },
@@ -1022,7 +1025,12 @@ describe("groupFlowInputOf", () => {
     expect(input.missing).toEqual([
       { kind: "missing-environment", tier: "production", name: "Production", line: "" },
     ]);
-    expect(input.release).toEqual({ gate: { allowed: true }, suggestion: "v0.1.1", waiting: 2 });
+    expect(input.release).toEqual({
+      gate: { allowed: true },
+      suggestion: "v0.1.1",
+      waiting: 2,
+      untold: [],
+    });
     expect(input.productionAddable).toBe(true);
   });
 
