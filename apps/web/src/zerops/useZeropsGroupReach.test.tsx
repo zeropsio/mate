@@ -277,11 +277,10 @@ describe("useZeropsGroupReach", () => {
         { organization, tokenId: "token-a", name: "zcp-a", projects: REACHING_GRANTS[0]!.grants },
       ]);
 
-      // Re-renders with new arrays, our own write's refresh of the list still showing the old
-      // grants, then showing the new ones: none of it plans a write.
+      // Re-renders with new arrays, then our own write's refresh of the list showing the new
+      // grants: none of it plans a write.
       for (let tick = 0; tick < 10; tick += 1) await view.render();
-      await publish(broker, knownGrants(structuredClone(NARROW_GRANTS), 2));
-      await publish(broker, knownGrants(REACHING_GRANTS, 3));
+      await publish(broker, knownGrants(REACHING_GRANTS, 2));
       for (let tick = 0; tick < 10; tick += 1) await view.render();
       expect(writes).toHaveLength(1);
     } finally {

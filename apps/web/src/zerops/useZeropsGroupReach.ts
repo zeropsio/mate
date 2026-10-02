@@ -101,6 +101,8 @@ export function useZeropsGroupReach(input: {
   const grants = selectTokenGrants(shown);
   const grantMetadata = grants.status === "known" ? grants.grants : null;
   const listingComplete = shown.state === "known" && shown.coverage === "complete";
+  // Which read the list is: a read newer than our write that still shows the old grants is repaired.
+  const listingRead = shown.state === "known" ? shown.asOf.ordinal : Number.NEGATIVE_INFINITY;
   const tokens = useMemo(
     () => (grantMetadata === null ? null : integrationTokensFromGrantMetadata(grantMetadata)),
     [grantMetadata],
@@ -136,6 +138,6 @@ export function useZeropsGroupReach(input: {
   useEffect(() => {
     // An account with no Mate has no token of ours to touch.
     if (driver === null || !enabled || !hasMate || tokens === null) return;
-    driver.observe({ groups, listing: tokens, complete: listingComplete });
-  }, [driver, enabled, groups, hasMate, listingComplete, tokens]);
+    driver.observe({ groups, listing: tokens, complete: listingComplete, read: listingRead });
+  }, [driver, enabled, groups, hasMate, listingComplete, listingRead, tokens]);
 }

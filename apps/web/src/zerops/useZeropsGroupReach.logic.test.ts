@@ -44,7 +44,9 @@ const seen = (
   groups: ReadonlyArray<ZeropsGroupReachGroup>,
   listing: ReadonlyArray<ZeropsIntegrationToken>,
   complete = true,
-): GroupReachObservation => ({ groups, listing, complete });
+  /** Which read of the token list it is: a later read is a larger number. */
+  read = 1,
+): GroupReachObservation => ({ groups, listing, complete, read });
 
 /** A copy with new arrays everywhere and the same content: what a re-render hands over. */
 const cloned = (observation: GroupReachObservation): GroupReachObservation =>
@@ -177,20 +179,12 @@ describe("makeGroupReachDriver", () => {
   }>([
     { name: "new arrays with the same keys", next: cloned },
     {
-      name: "the shared list read again after our own write, still showing the old grants",
-      next: (first) => seen(first.groups, [MINTED_A]),
+      name: "a lagging listing, read before our write settled, still showing the old grants",
+      next: (first) => seen(first.groups, [MINTED_A], true, 1),
     },
     {
-      name: "the shared list read again after our own write, showing what was written",
-      next: (first) => seen(first.groups, [REACHING_A]),
-    },
-    {
-      name: "another token appearing while this one still shows the old grants",
-      next: (first) =>
-        seen(first.groups, [
-          MINTED_A,
-          token("token-z", "z", [{ projectId: "project-z", roleCode: "ADMIN" }]),
-        ]),
+      name: "the list read again after our own write, showing what was written",
+      next: (first) => seen(first.groups, [REACHING_A], true, 2),
     },
   ])("does not write again for $name", async ({ next }) => {
     const reach = rig();
@@ -200,6 +194,46 @@ describe("makeGroupReachDriver", () => {
     expect(reach.writes).toHaveLength(1);
   });
 
+  it("repairs once when a list read after our write still shows the old grants", async () => {
+    const reach = rig();
+    await reach.observe(seen([GROUP], [MINTED_A], true, 1));
+    const after = seen([GROUP], [MINTED_A], true, 2);
+    await reach.observe(after);
+    expect(reach.writes).toHaveLength(2);
+    // The same read, handed over again: the repair is not repeated for it.
+    for (let render = 0; render < 10; render += 1) await reach.observe(cloned(after));
+    expect(reach.writes).toHaveLength(2);
+  });
+
+  it("repairs a token reverted to exactly its old grants after our write was confirmed", async () => {
+    const reach = rig();
+    await reach.observe(seen([GROUP], [MINTED_A], true, 1));
+    await reach.observe(seen([GROUP], [REACHING_A], true, 2));
+    await reach.observe(seen([GROUP], [MINTED_A], true, 3));
+    expect(reach.writes).toHaveLength(2);
+  });
+
+  it("a write the platform answers but never shows backs off after one repair, reported once", async () => {
+    const reach = rig();
+    await reach.observe(seen([GROUP], [MINTED_A], true, 1));
+    await reach.observe(seen([GROUP], [MINTED_A], true, 2));
+    expect(reach.writes).toHaveLength(2);
+    await reach.observe(seen([GROUP], [MINTED_A], true, 3));
+    expect(reach.writes).toHaveLength(2);
+    expect(reach.failures).toMatchObject([
+      { tokenId: "token-a", retryInMs: GROUP_REACH_BACKOFF_MS[0] },
+    ]);
+
+    await reach.advance(GROUP_REACH_BACKOFF_MS[0]!);
+    expect(reach.writes).toHaveLength(3);
+    await reach.observe(seen([GROUP], [MINTED_A], true, 4));
+    await reach.advance(GROUP_REACH_BACKOFF_MS[1]! - 1);
+    expect(reach.writes).toHaveLength(3);
+    await reach.advance(1);
+    expect(reach.writes).toHaveLength(4);
+    expect(reach.failures).toHaveLength(1);
+  });
+
   it("observations during a write never start a second run or a second write", async () => {
     const reach = rig();
     const release = reach.holdWrites();
@@ -207,7 +241,7 @@ describe("makeGroupReachDriver", () => {
     await reach.observe(first);
     for (let render = 0; render < 50; render += 1) await reach.observe(cloned(first));
     await release();
-    await reach.observe(seen([GROUP], [REACHING_A]));
+    await reach.observe(seen([GROUP], [REACHING_A], true, 2));
     expect(reach.writes).toHaveLength(1);
   });
 
@@ -235,7 +269,12 @@ describe("makeGroupReachDriver", () => {
     await reach.observe(seen([GROUP], [MINTED_A]));
     // Neither what it held before nor what was written: a later edit, not a stale read.
     await reach.observe(
-      seen([GROUP], [token("token-a", "a", [{ projectId: "project-a", roleCode: "BASIC_USER" }])]),
+      seen(
+        [GROUP],
+        [token("token-a", "a", [{ projectId: "project-a", roleCode: "BASIC_USER" }])],
+        true,
+        2,
+      ),
     );
     expect(reach.writes).toHaveLength(2);
   });
