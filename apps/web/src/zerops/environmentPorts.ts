@@ -21,7 +21,10 @@ import type {
   RegisteredEnvironment,
 } from "@t3tools/client-runtime/zerops/account/runtime";
 import { normalizeOrigin, zeropsMateBaseUrl } from "@t3tools/client-runtime/zerops/candidates";
-import { readZeropsContainer } from "@t3tools/client-runtime/zerops/containerHealth";
+import {
+  readZeropsContainer,
+  readZeropsInitAt,
+} from "@t3tools/client-runtime/zerops/containerHealth";
 import { zeropsThrowawayPlatform } from "@t3tools/client-runtime/zerops/doorThrowaway";
 import {
   REGISTRATION_RECORDS_KEY,
@@ -417,6 +420,8 @@ export function webEnvironmentPorts(input: {
         signal,
         ask,
       ),
+    readInitAt: (origin, signal) =>
+      readZeropsInitAt(origin, (url, init) => globalThis.fetch(url, init), signal),
     intents: intentStorage,
     records: recordsStorage,
     catalog: catalogPort(registry),

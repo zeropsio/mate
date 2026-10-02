@@ -23,7 +23,7 @@ import {
   inventoryCandidates,
   useZeropsInventory,
 } from "./inventoryContext";
-import { intendContainer, useTargetContainer } from "./zeropsContainers";
+import { intendContainer, readContainerInitAt, useTargetContainer } from "./zeropsContainers";
 import { runZeropsCommand, useZeropsData } from "./zeropsDataContext";
 
 export interface UpgradeRecovery {
@@ -141,10 +141,14 @@ export function useZeropsUpgradeRestart(
           { withinMs: CAPABILITY_WAIT_MS },
         ),
       )
-        .then(() => runZeropsCommand(runtime.commands.restartService(service)))
-        .then(() => {
+        // The container's initAt is read before the verb: the restart is over once it moves.
+        .then(() => readContainerInitAt(key))
+        .then((initAt) =>
+          runZeropsCommand(runtime.commands.restartService(service)).then(() => initAt),
+        )
+        .then((initAt) => {
           if (alive.current !== isCurrent || !isCurrent()) return;
-          if (intendContainer(key, { kind: "upgrade-restart" })) {
+          if (intendContainer(key, { kind: "upgrade-restart", initAt })) {
             setFollowing(true);
             return;
           }

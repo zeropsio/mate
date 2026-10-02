@@ -278,3 +278,16 @@ export async function readZeropsContainer(
     sentAt,
   };
 }
+
+/**
+ * The container's `/healthz` `initAt` alone, one read: a restart verb reads it just before it is
+ * sent, so the restart is judged over by that value moving. Null when it serves none.
+ */
+export async function readZeropsInitAt(
+  origin: string,
+  fetchImpl: FetchLike,
+  signal: AbortSignal,
+): Promise<string | null> {
+  const base = zeropsMateBaseUrl(origin.replace(/\/+$/, ""));
+  return initAtOf(await readMatePath(`${base}/healthz`, fetchImpl, signal));
+}

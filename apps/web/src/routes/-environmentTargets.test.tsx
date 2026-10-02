@@ -127,6 +127,7 @@ function shellStage(): AccountEnvironments {
     },
     connect: () => new Promise(() => undefined),
     intend: () => false,
+    initAt: async () => null,
     next: () => new Promise(() => undefined),
     setRoute: (environmentId) => {
       shell.routes.push(environmentId);
@@ -924,6 +925,7 @@ function descriptorRig(
         pending.set(origin, { resolve: (reading) => resolve({ reading, sentAt }), reject });
       });
     },
+    readInitAt: async () => null,
     readMateFlag: async () => "unknown",
     intents: {
       read: () => intents,
