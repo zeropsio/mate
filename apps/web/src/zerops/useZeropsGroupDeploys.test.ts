@@ -1,5 +1,6 @@
 import type { GiteaClient } from "@t3tools/client-runtime/zerops";
 import { createGroupAnswers, flowVerbInvalidations } from "@t3tools/client-runtime/zerops/flow";
+import { createCommitStatusMemo } from "@t3tools/client-runtime/zerops/forge";
 import { act, createElement } from "react";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
@@ -305,6 +306,30 @@ describe("readGroupDeploys", () => {
     expect(read).toContain("list group/@main");
     expect(read).not.toContain("group/environments.yaml@main");
     expect(update(held)?.declarations).toEqual([]);
+  });
+
+  it("asks about a settled deploy's checks once across reads", async () => {
+    const asked: string[] = [];
+    const client = {
+      ...groupRepo(),
+      listCommitStatuses: async (owner: string, repo: string, sha: string) => {
+        asked.push(`${owner}/${repo}@${sha}`);
+        return [{ context: "deploy", state: "success" }];
+      },
+    } as unknown as GiteaClient;
+    const statuses = createCommitStatusMemo();
+    for (let pass = 0; pass < 3; pass += 1) {
+      await readGroupDeploys({
+        client,
+        group: GROUP,
+        scope: "group",
+        readVersion: async () => SHA,
+        held: undefined,
+        signal: new AbortController().signal,
+        statuses,
+      });
+    }
+    expect(asked).toEqual([`harbor/app@${SHA}`]);
   });
 
   it("keeps the version the group last read when reading it again fails", async () => {

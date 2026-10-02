@@ -77,6 +77,7 @@ import {
 import { INITIAL_BACKOFF, scheduleRetry, type Backoff } from "../knowledge/retryPolicy.ts";
 import { ENVIRONMENTS_DOCUMENT_PATH } from "../recipeTier.ts";
 import type { GiteaSessions } from "./giteaSession.ts";
+import { statusesSettled } from "./statusMemo.ts";
 import {
   MERGE_RECHECK_AFTER_MS,
   mergeabilityAfter,
@@ -304,13 +305,6 @@ function keyOf(fact: ForgeFact): string {
       return JSON.stringify([fact.kind, fact.origin, fact.owner, fact.repo]);
   }
 }
-
-/**
- * Statuses no read changes: at least one, none pending. A commit read before CI posted anything
- * has none yet, and its first pending status is still to come.
- */
-const statusesDone = (statuses: ReadonlyArray<GiteaCommitStatus>): boolean =>
-  statuses.length > 0 && !statuses.some((status) => status.state === "pending");
 
 /** An org or a repository the broker has not made yet, which the ladder asks about again. */
 const notMadeYet = (fact: ForgeFact, value: unknown): boolean =>
@@ -598,7 +592,7 @@ export function makeForgeStore(ports: ForgeStorePorts): ForgeStore {
       case "pull":
         return holds<"pull">(entry, (fact) => fact.pull.merged === true);
       case "statuses":
-        return holds<"statuses">(entry, statusesDone);
+        return holds<"statuses">(entry, statusesSettled);
       case "organization":
         return holds<"organization">(entry, (organization) => organization.kind === "made");
       case "compare":
@@ -679,7 +673,7 @@ export function makeForgeStore(ports: ForgeStorePorts): ForgeStore {
       case "statuses": {
         const statuses = value as ReadonlyArray<GiteaCommitStatus>;
         if (statuses.length === 0) return mono + FORGE_LIST_BACKSTOP_MS;
-        if (statusesDone(statuses)) {
+        if (statusesSettled(statuses)) {
           entry.pendingSince = null;
           return null;
         }

@@ -7,6 +7,7 @@ import {
 } from "@t3tools/client-runtime/zerops";
 import { flowVerbInvalidations } from "@t3tools/client-runtime/zerops/flow";
 import {
+  createCommitStatusMemo,
   createMergeabilityTracker,
   type MergeabilityTracker,
 } from "@t3tools/client-runtime/zerops/forge";
@@ -269,6 +270,30 @@ describe("readForge", () => {
     expect("newest" in state.released ? state.released.newest?.taggedAt : undefined).toBe(
       "2026-09-25T07:00:00Z",
     );
+  });
+
+  it("asks about a commit once however many release tags point at it, and never again once settled", async () => {
+    const SHARED = "5".repeat(40);
+    const { client: base, calls } = forge();
+    const client = {
+      ...base,
+      listTags: async () =>
+        Array.from({ length: 30 }, (_, index) => ({
+          name: `v0.1.${String(index)}`,
+          commit: { sha: SHARED },
+        })),
+      listCommitStatuses: async (owner: string, repo: string, sha: string) => {
+        calls.push(`statuses ${owner}/${repo}@${sha}`);
+        return repo === "group" ? [{ context: "deploy", state: "success" }] : [];
+      },
+    } as unknown as GiteaClient;
+    const statuses = createCommitStatusMemo();
+    const tracker = createMergeabilityTracker();
+    await readForge(client, "harbor", "group", tracker, statuses);
+    await readForge(client, "harbor", "group", tracker, statuses);
+    expect(calls.filter((call) => call.startsWith("statuses harbor/group@"))).toEqual([
+      `statuses harbor/group@${SHARED}`,
+    ]);
   });
 
   it("reads a release's tags alone after a release", async () => {
