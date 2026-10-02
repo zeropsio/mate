@@ -977,8 +977,9 @@ export function makeZeropsDataAdapter(options: ZeropsDataAdapterOptions): Zerops
      * `POST /project/search` query the platform GUI uses for those
      * memberships applies that authorization server-side, at the cost of
      * Elasticsearch's indexing lag — so it seeds only unknown fields per the
-     * source-authority table, and is used solely to recover from a
-     * forbidden direct read, never as the first attempt.
+     * source-authority table, and is used only once the direct read
+     * refused this account (`ZeropsApiClient.projectListRefused`), never
+     * before.
      */
     const performSearch =
       (organizationId: string) =>
@@ -1048,19 +1049,19 @@ export function makeZeropsDataAdapter(options: ZeropsDataAdapterOptions): Zerops
         return { observations: decoded.observations } satisfies PlatformReadResult;
       }
       if (descriptor !== null && descriptor.kind === "projects-of-organization") {
-        const direct = yield* traversePages(perform, decodeDirectListPage).pipe(Effect.result);
+        const organizationId = queryOrganizationId(descriptor);
+        const search = traversePages(performSearch(organizationId), decodeSearchListPage);
+        // A refusal is the person's for the account epoch (`projectListRefused`): asked once.
+        const direct = options.client.projectListRefused(organizationId)
+          ? null
+          : yield* traversePages(perform, decodeDirectListPage).pipe(Effect.result);
         let pages: Array<NonNullable<ReturnType<typeof decodeDirectListPage>>>;
         let source: "direct-read" | "indexed-search" = "direct-read";
-        if (Result.isSuccess(direct)) pages = direct.success;
-        else if (
-          descriptor.kind === "projects-of-organization" &&
-          direct.failure.kind === "forbidden"
-        ) {
+        if (direct !== null && Result.isSuccess(direct)) pages = direct.success;
+        else if (direct === null || direct.failure.kind === "forbidden") {
+          if (direct !== null) options.client.noteProjectListRefused(organizationId);
           source = "indexed-search";
-          pages = yield* traversePages(
-            performSearch(queryOrganizationId(descriptor)),
-            decodeSearchListPage,
-          );
+          pages = yield* search;
         } else return yield* Effect.fail(direct.failure);
         const decoded = decodeEntityQueryPages(descriptor, ticket, pages, source);
         return { observations: decoded.observations } satisfies PlatformReadResult;

@@ -1134,6 +1134,24 @@ export class ZeropsApiClient {
   } | null = null;
 
   /**
+   * The organizations whose direct project list refused this account, each with the account epoch
+   * it refused in. Zerops answers `GET /client/{id}/project` with 403 for a Developer or Guest
+   * membership, whose access is per project, and that is its final answer for the person: their
+   * lists read `/project/search` from then on, the read the platform applies their roles to.
+   */
+  readonly #projectListRefusals = new Map<string, number>();
+
+  /** Whether `clientId`'s direct project list refused this account in this epoch. */
+  projectListRefused(clientId: string): boolean {
+    return this.#projectListRefusals.get(clientId) === this.#generation;
+  }
+
+  /** Keeps `clientId`'s direct project list refused for the rest of this account epoch. */
+  noteProjectListRefused(clientId: string): void {
+    this.#projectListRefusals.set(clientId, this.#generation);
+  }
+
+  /**
    * `GET /client/{id}/project` — the direct read. It is lag-free: a project is
    * visible here before its create call has even returned, while the
    * Elasticsearch-backed `POST /project/search` trails it. Anything just
@@ -1186,10 +1204,13 @@ export class ZeropsApiClient {
     clientId: string,
     options: ListProjectsOptions = {},
   ): Promise<{ readonly projects: ReadonlyArray<ZeropsProject>; readonly direct: boolean }> {
-    try {
-      return { projects: await this.listClientProjects(clientId, options), direct: true };
-    } catch (cause) {
-      if (!(cause instanceof ZeropsApiError) || cause.kind !== "forbidden") throw cause;
+    if (!this.projectListRefused(clientId)) {
+      try {
+        return { projects: await this.listClientProjects(clientId, options), direct: true };
+      } catch (cause) {
+        if (!(cause instanceof ZeropsApiError) || cause.kind !== "forbidden") throw cause;
+        this.noteProjectListRefused(clientId);
+      }
     }
 
     const limit = options.limit ?? 500;
