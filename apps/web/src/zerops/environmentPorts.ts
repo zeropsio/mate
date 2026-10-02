@@ -54,8 +54,8 @@ import { connectionAtomRuntime } from "~/connection/runtime";
 import { randomUUID } from "~/lib/utils";
 import { environmentIdFromAddress } from "~/routes/-environmentRoute";
 
-import { accountLocalStorage, accountStorageKey } from "./accountLifetime";
-import { keptSessions } from "./keptSessions";
+import { accountLocalStorage, accountStorageKey, captureAccountLifetime } from "./accountLifetime";
+import { endKeptSession, keptSessionHeld, keptSessions } from "./keptSessions";
 import { pressingProjects } from "./matePress";
 
 // ── The door, through the connection runtime ─────────────────────────────────────────────────
@@ -86,6 +86,12 @@ const installCommand = createRuntimeCommand(connectionAtomRuntime, {
   execute: installDoorRegistration,
 });
 
+/**
+ * How long a kept session's check may take: a Mate that answers its descriptor and stalls here
+ * must leave the exchange's deadline to the throwaway that follows.
+ */
+const KEPT_SESSION_CHECK_TIMEOUT_MS = 3_000;
+
 /** The Mate's own word on a session: `/api/auth/session` with it as the bearer. */
 const sessionStateCommand = createRuntimeCommand(connectionAtomRuntime, {
   label: "web:zerops:read-kept-session",
@@ -104,18 +110,23 @@ const servedApp = () => ({ origin: window.location.origin, basePath: appBasePath
 
 /**
  * An accepted registration, installed through `registry.rotateCredential` or `register`, and kept
- * for the target once installed, so the next load presents it again (`keptSessions.ts`).
+ * for the target once installed, so the next load presents it again (`keptSessions.ts`) — only
+ * for the account whose exchange opened it, and ending at its Mate whatever session it displaced.
  */
 function doorCredential(
   registry: AtomRegistry.AtomRegistry,
   key: string,
   registration: BearerConnectionRegistration,
+  sameAccount: () => boolean,
 ): DoorCredential {
   return {
     install: async () => {
       const result = await runAtomCommand(registry, installCommand, registration, quiet);
       if (result._tag === "Failure") return { ok: false };
-      keptSessions.keep(key, registration);
+      if (sameAccount()) {
+        const displaced = keptSessions.keep(key, registration);
+        if (displaced !== null) endKeptSession(displaced);
+      }
       return { ok: true };
     },
   };
@@ -144,17 +155,30 @@ function keptDoorSession(
   return {
     credential: registration,
     check: async (at) => {
-      if (!sameBaseUrl(httpBaseUrl, at.httpBaseUrl)) return false;
+      if (!sameBaseUrl(httpBaseUrl, at.httpBaseUrl)) {
+        // Kept at another address: ended there, and never presented here.
+        endKeptSession(registration);
+        return false;
+      }
       const result = await runAtomCommand(
         registry,
         sessionStateCommand,
-        { httpBaseUrl, bearerToken: registration.credential.token },
+        {
+          httpBaseUrl,
+          bearerToken: registration.credential.token,
+          timeoutMs: KEPT_SESSION_CHECK_TIMEOUT_MS,
+        },
         quiet,
       );
       if (result._tag === "Failure") throw squashAtomCommandFailure(result);
-      return result.value.authenticated;
+      if (keptSessionHeld(result.value)) return true;
+      // Live but short of a scope this client asks for now: ended, so a throwaway opens one.
+      if (result.value.authenticated) endKeptSession(registration);
+      return false;
     },
-    forget: () => keptSessions.forget(key, registration.credential.token),
+    forget: () => {
+      keptSessions.forget(key, registration.credential.token);
+    },
   };
 }
 
@@ -305,6 +329,7 @@ export function webEnvironmentPorts(input: {
     clock: systemExchangeClock,
     door: {
       exchange: async (request) => {
+        const sameAccount = captureAccountLifetime();
         const answer = await exchangeAtDoor(
           {
             // The token is minted in the organization that lists the Mate's project.
@@ -332,7 +357,10 @@ export function webEnvironmentPorts(input: {
           },
         );
         return answer.ok
-          ? { ...answer, credential: doorCredential(registry, request.key, answer.credential) }
+          ? {
+              ...answer,
+              credential: doorCredential(registry, request.key, answer.credential, sameAccount),
+            }
           : answer;
       },
       kept: (key) => keptSessions.read(key) !== null,

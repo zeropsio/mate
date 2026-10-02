@@ -17,7 +17,6 @@ import {
   CredentialRenewal,
   CredentialStore,
   ProfileStore,
-  type BearerConnectionRegistration,
 } from "@t3tools/client-runtime/connection";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
@@ -28,7 +27,7 @@ import * as Schema from "effect/Schema";
 import * as Semaphore from "effect/Semaphore";
 
 import { currentAccountId, onAccountLifetimeClose } from "../zerops/accountLifetime";
-import { keptSessions } from "../zerops/keptSessions";
+import { endMateSession } from "../zerops/keptSessions";
 
 const jsonCatalog = Schema.fromJsonString(ConnectionCatalogDocument);
 const catalogError = (cause: unknown) =>
@@ -131,35 +130,26 @@ export const makeCatalogStore = Effect.fn("web.connectionStorage.makeCatalogStor
 });
 
 /**
- * The logouts an account's close sends: one per session that may still be live — every stored
- * bearer, and every session kept for later loads (`keptSessions.ts`) — each once. A session past
- * its deadline has already ended on its Mate; presenting it would only be refused.
+ * The logouts an account's close sends: one per stored bearer whose session may still be live. A
+ * session past its deadline has already ended on its Mate; presenting it would only be refused.
+ * The sessions kept for later loads are ended by their own closer (`zerops/keptSessions.ts`).
  */
 export function accountCloseLogouts(
   document: ConnectionCatalogDocumentType,
   nowEpochMs: number,
-  kept: ReadonlyArray<BearerConnectionRegistration> = [],
 ): ReadonlyArray<{ readonly url: string; readonly token: string }> {
-  const stored = document.profiles.flatMap((profile) => {
+  return document.profiles.flatMap((profile) => {
     if (profile._tag !== "BearerConnectionProfile") return [];
     const credential = document.credentials.find(
       (entry) => entry.connectionId === profile.connectionId,
     )?.credential;
-    return credential ? [{ httpBaseUrl: profile.httpBaseUrl, credential }] : [];
-  });
-  const sessions = [
-    ...stored,
-    ...kept.map((registration) => ({
-      httpBaseUrl: registration.profile.httpBaseUrl,
-      credential: registration.credential,
-    })),
-  ];
-  const sent = new Set<string>();
-  return sessions.flatMap(({ httpBaseUrl, credential }) => {
-    if (sent.has(credential.token)) return [];
-    if (CredentialRenewal.credentialExpired(credential, nowEpochMs)) return [];
-    sent.add(credential.token);
-    return [{ url: `${httpBaseUrl.replace(/\/+$/, "")}/api/auth/logout`, token: credential.token }];
+    if (!credential || CredentialRenewal.credentialExpired(credential, nowEpochMs)) return [];
+    return [
+      {
+        url: `${profile.httpBaseUrl.replace(/\/+$/, "")}/api/auth/logout`,
+        token: credential.token,
+      },
+    ];
   });
 }
 
@@ -187,13 +177,7 @@ export const connectionStorageLayer = Layer.effectContext(
     const unregisterLogout = onAccountLifetimeClose(() => {
       // Start requests before disposing the Effect runtime. Each request uses
       // a captured credential; none can touch a subsequent login's catalog.
-      for (const logout of accountCloseLogouts(currentCatalog, Date.now(), keptSessions.drain())) {
-        void fetch(logout.url, {
-          method: "POST",
-          headers: { Authorization: `Bearer ${logout.token}` },
-          keepalive: true,
-        }).catch(() => undefined);
-      }
+      for (const logout of accountCloseLogouts(currentCatalog, Date.now())) endMateSession(logout);
     });
     yield* Effect.addFinalizer(() => Effect.sync(unregisterLogout));
     const targetStore = ConnectionTargetStore.of({
