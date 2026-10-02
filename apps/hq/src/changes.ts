@@ -143,7 +143,7 @@ export class Changes extends Context.Service<
       projectId: string,
       repo: string,
       title: string,
-    ) => Effect.Effect<OpenChangeResponse, MateError>;
+    ) => Effect.Effect<OpenChangeResponse, MateError | GitError>;
     /** The Mate's open change `number` in `repo`, retitled, described, or both. */
     readonly editChange: (
       projectId: string,
@@ -841,6 +841,7 @@ export const changesLayer: Layer.Layer<
         Effect.gen(function* () {
           const appId = yield* mateApp(projectId, "open_change");
           const columns = sql.literal(CHANGE_COLUMNS);
+          const git = yield* gitHost.git;
           return yield* touched(
             leader.write(
               Effect.gen(function* () {
@@ -853,9 +854,16 @@ export const changesLayer: Layer.Layer<
                 WHERE app_id = ${appId}::uuid AND repo = ${repo}
                   AND mate_project_id = ${projectId} AND state = 'open'`;
                 if (open !== undefined) return { change: changeOf(open), created: false };
+                // Past every change branch too, recorded or not: a branch a restore's records
+                // lack is never a new change's.
+                const branched = (yield* git.changeRefs({ appId, id: repo })).reduce(
+                  (highest, ref) => Math.max(highest, ref.number),
+                  0,
+                );
                 const [made] = yield* sql<ChangeRow>`
                 INSERT INTO hq_change (app_id, repo, number, mate_project_id, title)
-                SELECT ${appId}::uuid, ${repo}, COALESCE(MAX(number), 0) + 1, ${projectId}, ${title}
+                SELECT ${appId}::uuid, ${repo}, GREATEST(COALESCE(MAX(number), 0), ${branched}) + 1,
+                  ${projectId}, ${title}
                 FROM hq_change WHERE app_id = ${appId}::uuid AND repo = ${repo}
                 RETURNING ${columns}`;
                 // `INSERT … RETURNING` answers the row it inserted, or fails.
