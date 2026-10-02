@@ -51,6 +51,7 @@ import { GitHost, type PushedChange, mainOf } from "./gitHost.ts";
 import { heldOf } from "./held.ts";
 import { Leader, type NotLeader } from "./leader.ts";
 import { Roles } from "./roles.ts";
+import { squashesOnMain } from "./squashes.ts";
 import type { ZeropsError } from "./zerops/api.ts";
 
 export class ChangeRefused extends Schema.TaggedError<ChangeRefused>()("ChangeRefused", {
@@ -255,24 +256,11 @@ const onceEach = (trailers: ReadonlyArray<{ readonly key: string; readonly value
   return found;
 };
 
-/**
- * The squash of a Mate's change among `main`'s latest commits, by the `Mate-Change` trailer the git
- * layer gives every squash; none past them.
- */
+/** The squash of a Mate's change among `main`'s latest commits (`squashes.ts`); none past them. */
 const squashOnMain = (git: HqGit, repo: Repo, mateId: string, number: number) =>
   Effect.map(
-    git.log(repo, "refs/heads/main", { limit: 100 }),
-    (log) =>
-      log.items.find((commit) =>
-        (
-          commit.message
-            .trimEnd()
-            .split(/\n[ \t]*\n/u)
-            .at(-1) ?? ""
-        )
-          .split("\n")
-          .some((line) => line.trim() === `Mate-Change: ${mateId}/${String(number)}`),
-      )?.sha ?? null,
+    squashesOnMain(git, repo),
+    (found) => found.get(`${mateId}/${String(number)}`) ?? null,
   );
 
 /** What a try of a landing squashes onto — `main` as it read it — or why it stops short (`stop`). */
