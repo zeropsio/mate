@@ -266,7 +266,14 @@ export interface SetupFacts {
    * The durable record of the stand-up: `ran`, started here or by a browser;
    * else settled as never due (nobody asked, or the conversation was under way).
    */
-  readonly record: { readonly startedAt: string; readonly ran: boolean } | undefined;
+  readonly record:
+    | {
+        readonly startedAt: string;
+        readonly ran: boolean;
+        /** Claimed, its send not confirmed out yet: its turn may not exist yet. */
+        readonly claimed?: boolean;
+      }
+    | undefined;
   /** Steps this server cannot say: left out of the document rather than guessed. */
   readonly unknown?: ReadonlyArray<"signin" | "standup">;
   /**
@@ -333,7 +340,10 @@ const standUpStep = (facts: SetupFacts): SetupStep | null => {
   // zcp's word, else its own turn's; with neither — its thread gone, its turn not found, and a
   // zcp that writes nothing — the server cannot say, and says nothing rather than running for good.
   const state = zcpState ?? facts.standUpTurn;
-  if (state === undefined) return null;
+  // Claimed and not sent yet, its turn is still to come; only a stand-up confirmed out whose turn
+  // is gone leaves the step out.
+  if (state === undefined)
+    return facts.record.claimed === true ? { id: "standup", state: "waiting", at: "" } : null;
   const ended = state === "done" || state === "failed";
   const at =
     (ended ? standup?.endedAt : standup?.startedAt) || (ended ? "" : facts.record.startedAt);

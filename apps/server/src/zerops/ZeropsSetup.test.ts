@@ -961,6 +961,28 @@ describe("ZeropsSetup: the document", () => {
   }
 });
 
+describe("ZeropsSetup: a stand-up claimed and not sent yet", () => {
+  it.live("reads waiting, never left out while its send is on its way", () =>
+    Effect.gen(function* () {
+      const world = yield* makeWorld;
+      yield* Ref.set(world.tags, SIGNED);
+      // Its send never comes back: the claim stands, with no turn behind it yet.
+      yield* Ref.set(world.dispatchHangs, true);
+      yield* withServer(world, freshDatabase(), (setup) =>
+        Effect.gen(function* () {
+          const standup = Effect.map(
+            setup.document,
+            (document) => document.steps.find((step) => step.id === "standup")?.state,
+          );
+          yield* eventually(Ref.get(world.admitted), (admitted) => admitted.length > 0);
+          yield* ticks;
+          assert.strictEqual(yield* standup, "waiting");
+        }),
+      );
+    }),
+  );
+});
+
 /** A turn of the projection's, as the engine records one, written into the Mate's database. */
 const turnRow = (database: string, threadId: string, messageId: string, state: string) =>
   Effect.gen(function* () {

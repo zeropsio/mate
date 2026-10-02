@@ -481,7 +481,10 @@ export const makeZeropsSetup = (timings: ZeropsSetupTimings = TIMINGS) =>
         tagsRead: tagList !== undefined,
         requestedBy,
         signinAt: yield* latch(signinAt, signedIn),
-        record: record === undefined ? undefined : { startedAt: record.startedAt, ran },
+        record:
+          record === undefined
+            ? undefined
+            : { startedAt: record.startedAt, ran, claimed: record.source.endsWith(":claimed") },
         standUpTurn: ran ? yield* turnOf(record) : undefined,
         unknown: [
           ...(signinKnown ? [] : (["signin"] as const)),
