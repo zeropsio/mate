@@ -155,6 +155,11 @@ export const startCore = (
     readonly pgDump?: string;
     /** The store's quota; none by default. */
     readonly quotaGb?: number;
+    /** Where sets are staged; a fresh directory by default. */
+    readonly stagingDir?: string;
+    /** How long after the newest set the next is due, and how often that is checked; none. */
+    readonly backupEvery?: Duration.Duration;
+    readonly backupCheck?: Duration.Duration;
   } = {},
 ) =>
   Effect.gen(function* () {
@@ -170,7 +175,7 @@ export const startCore = (
       (dir) => Effect.sync(() => NodeFS.rmSync(dir, { recursive: true, force: true })),
     );
     const storeDir = given.storeDir ?? (yield* temporary);
-    const stagingDir = yield* temporary;
+    const stagingDir = given.stagingDir ?? (yield* temporary);
     const fake = world(yield* Clock.currentTimeMillis, anchored, given.orgId ?? "ORG");
     const options = {
       databaseUrl: Redacted.make(url),
@@ -181,6 +186,8 @@ export const startCore = (
         ...(given.afterDump === undefined ? {} : { afterDump: given.afterDump }),
         ...(given.pgDump === undefined ? {} : { pgDump: given.pgDump }),
         ...(given.quotaGb === undefined ? {} : { quotaGb: given.quotaGb }),
+        ...(given.backupEvery === undefined ? {} : { every: given.backupEvery }),
+        ...(given.backupCheck === undefined ? {} : { checkEvery: given.backupCheck }),
       },
       migrations: treeMigrations(),
       hqProjectId: HQ,

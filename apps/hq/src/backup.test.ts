@@ -5,9 +5,10 @@ import * as NodePath from "node:path";
 
 import { assert, describe, it } from "@effect/vitest";
 import * as DateTime from "effect/DateTime";
+import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Redacted from "effect/Redacted";
-import * as Stream from "effect/Stream";
+import * as Schedule from "effect/Schedule";
 
 import { mateWithChange, rowsWhere } from "../test/harness/mates.ts";
 import { type Call, sessionFor, startCore, untilHealth } from "../test/harness/runningCore.ts";
@@ -31,7 +32,10 @@ const temporaryDir = Effect.acquireRelease(
 const leading = (core: Effect.Success<ReturnType<typeof startCore>>) =>
   Effect.andThen(
     untilHealth(core.call, "active"),
-    Stream.runHead(Stream.filter(core.gitHost.recorded, (tick) => tick > 0)),
+    core.gitHost.git.pipe(
+      Effect.retry(Schedule.spaced(Duration.millis(50))),
+      Effect.timeout(Duration.seconds(10)),
+    ),
   );
 
 /** The bytes of every file under `dir`. */
@@ -52,6 +56,18 @@ const storedBefore = (storeDir: string, monthsAgo: ReadonlyArray<number>, bytes:
       NodeFS.writeFileSync(NodePath.join(dir, "manifest.json"), "{}");
       return id;
     }),
+  );
+
+/** The sets in the store `storeDir`, once it holds one. */
+const untilSets = (storeDir: string) =>
+  Effect.sync(() =>
+    NodeFS.existsSync(NodePath.join(storeDir, "sets"))
+      ? NodeFS.readdirSync(NodePath.join(storeDir, "sets"))
+      : [],
+  ).pipe(
+    Effect.filterOrFail((sets) => sets.length > 0),
+    Effect.retry(Schedule.spaced(Duration.millis(50))),
+    Effect.timeout(Duration.seconds(10)),
   );
 
 /** What `/health` says of backup. */
@@ -294,6 +310,55 @@ describe("a backup set, taken", () => {
         ]);
         assert.deepStrictEqual(NodeFS.readdirSync(NodePath.join(a.stagingDir, "sets")), [kept.id]);
         assert.deepStrictEqual(NodeFS.readdirSync(sets), [kept.id]);
+      }),
+    );
+
+    it.effect("asked for twice at once, is taken once", () =>
+      Effect.gen(function* () {
+        const a = yield* startCore(true);
+        yield* leading(a);
+        const [one, two] = yield* Effect.all([a.backup.take, a.backup.take], {
+          concurrency: 2,
+        });
+        assert.strictEqual(two?.id, one?.id);
+        assert.deepStrictEqual(NodeFS.readdirSync(NodePath.join(a.storeDir, "sets")), [one?.id]);
+      }),
+    );
+
+    it.effect("is taken by the leading Core on its own, at once when none is staged", () =>
+      Effect.gen(function* () {
+        const hourly = { backupEvery: Duration.hours(1), backupCheck: Duration.millis(100) };
+        const a = yield* startCore(true, hourly);
+        yield* leading(a);
+        const b = yield* startCore(true, { ...hourly, url: a.url });
+        yield* untilHealth(b.call, "standby");
+        const [set] = yield* untilSets(a.storeDir);
+        assert.deepStrictEqual(yield* backupHealth(a.call), [200, { state: "ok", set }]);
+        // The standby takes none.
+        yield* Effect.sleep("500 millis");
+        assert.deepStrictEqual(NodeFS.readdirSync(b.storeDir), []);
+        assert.deepStrictEqual(NodeFS.readdirSync(b.stagingDir), []);
+      }),
+    );
+
+    it.effect("is due an hour after the newest staged set, a restart between", () =>
+      Effect.gen(function* () {
+        const a = yield* startCore(true);
+        yield* leading(a);
+        const kept = yield* a.backup.take;
+        yield* a.stop;
+        // The next Core's takeover moves the database: a set taken now would be a new one.
+        const b = yield* startCore(true, {
+          url: a.url,
+          gitRoot: a.gitRoot,
+          storeDir: a.storeDir,
+          stagingDir: a.stagingDir,
+          backupEvery: Duration.hours(1),
+          backupCheck: Duration.millis(100),
+        });
+        yield* leading(b);
+        yield* Effect.sleep("500 millis");
+        assert.deepStrictEqual(NodeFS.readdirSync(NodePath.join(b.storeDir, "sets")), [kept.id]);
       }),
     );
 

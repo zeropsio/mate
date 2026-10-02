@@ -49,8 +49,8 @@ export interface CoreOptions {
   readonly databaseUrl: Redacted.Redacted;
   /** Where the bare repositories live: the volume's `/mnt/vol/git` in the container. */
   readonly gitRoot: string;
-  /** Where a backup set is staged, and the store it is kept in, none: backup off (`backup.ts`). */
-  readonly backup: Pick<BackupOptions, "stagingDir" | "store" | "quotaGb" | "pgDump" | "afterDump">;
+  /** Where a backup set is staged, the store it is kept in, and how often (`backup.ts`). */
+  readonly backup: Omit<BackupOptions, "databaseUrl">;
   readonly migrations: ReadonlyArray<Migration>;
   readonly hqProjectId: string;
   /** `HQ_ORG_TOKEN`. */

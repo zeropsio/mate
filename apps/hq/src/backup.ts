@@ -18,7 +18,9 @@
  * With no store, backup is off and a set is only staged. The database's address reaches `pg_dump` in
  * libpq's own environment variables, never in its arguments, and no log carries it.
  *
- * No set is taken while the database stands where the newest set left it: that set is still whole.
+ * The leading Core takes a set on its own `every` after the newest staged one, at once when none
+ * is staged; one set at a time. No set is taken while the database stands where the newest set
+ * left it: that set is still whole.
  * A set is refused before it begins when `pg_dump` is older than the server: a dump it writes might
  * not restore. A set that fails leaves nothing of itself staged. `status` tells the newest set's
  * outcome, for `/health`.
@@ -38,8 +40,10 @@ import * as NodePath from "node:path";
 
 import type { GitError, HqGit } from "@t3tools/hq-git";
 import * as Cause from "effect/Cause";
+import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";
+import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Layer from "effect/Layer";
@@ -47,6 +51,7 @@ import * as Option from "effect/Option";
 import * as Redacted from "effect/Redacted";
 import * as Ref from "effect/Ref";
 import * as Schema from "effect/Schema";
+import * as Semaphore from "effect/Semaphore";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
 import type { SqlError } from "effect/unstable/sql/SqlError";
 
@@ -243,6 +248,13 @@ export interface BackupOptions {
   readonly pgDump?: string;
   /** For tests: what happens between the dump and the bundles. */
   readonly afterDump?: Effect.Effect<void>;
+  /**
+   * How long after the newest set the next is due, taken by the leading Core on its own; none: a
+   * set only when `take` is asked.
+   */
+  readonly every?: Duration.Duration;
+  /** How often the leading Core looks whether a set is due; a minute. */
+  readonly checkEvery?: Duration.Duration;
 }
 
 /** A set refused before it begins: a dump this `pg_dump` writes might not restore. */
@@ -288,11 +300,11 @@ export type BackupStatus =
     }
   | {
       readonly state: "failed";
-      readonly reason: BackupError["reason"] | "git" | "not_leader" | "database" | "defect";
+      readonly reason: BackupError["reason"] | "git" | "database" | "defect";
     };
 
-const failedOf = (cause: Cause.Cause<TakeError>): BackupStatus => {
-  const error = Option.getOrUndefined(Cause.findErrorOption(cause));
+/** The status a set failed with, by its error; none: a defect. */
+const failedOf = (error: Exclude<TakeError, NotLeader> | undefined): BackupStatus => {
   switch (error?._tag) {
     case "PgDumpOlder":
       return {
@@ -313,8 +325,6 @@ const failedOf = (cause: Cause.Cause<TakeError>): BackupStatus => {
       return { state: "failed", reason: error.reason };
     case "GitError":
       return { state: "failed", reason: "git" };
-    case "NotLeader":
-      return { state: "failed", reason: "not_leader" };
     case "SqlError":
       return { state: "failed", reason: "database" };
     case undefined:
@@ -470,17 +480,22 @@ export const backupLayer = (
         ([row]): Position => ({ eventSeq: Number(row?.seq ?? 0), xmax: row?.xmax ?? "" }),
       );
 
-      /** The newest staged set's manifest, if the set is whole and, with a store, kept there. */
-      const newest = Effect.gen(function* () {
+      /** The newest staged set's manifest, if the set is whole. */
+      const newestStaged = Effect.gen(function* () {
         const id = (yield* io("staged", () => NodeFSP.readdir(staged).catch(() => [])))
           .sort()
           .at(-1);
         if (id === undefined) return undefined;
-        const manifest = yield* io("staged", () =>
+        return yield* io("staged", () =>
           NodeFSP.readFile(NodePath.join(staged, id, "manifest.json"), "utf8"),
         ).pipe(Effect.flatMap(decodeManifest), Effect.option, Effect.map(Option.getOrUndefined));
+      });
+
+      /** The newest staged set's manifest, if the set is whole and, with a store, kept there. */
+      const newest = Effect.gen(function* () {
+        const manifest = yield* newestStaged;
         if (manifest === undefined || options.store === null) return manifest;
-        const kept = yield* options.store.list(setKey(id, "manifest.json"));
+        const kept = yield* options.store.list(setKey(manifest.id, "manifest.json"));
         return kept.length > 0 ? manifest : undefined;
       });
 
@@ -634,26 +649,67 @@ export const backupLayer = (
         return { manifest, cut };
       });
 
+      // One set at a time: the second asked for waits, and finds the first.
+      const one = yield* Semaphore.make(1);
       const take = attempt.pipe(
-        Effect.onExit((exit) =>
-          Exit.isSuccess(exit)
-            ? Ref.set(
-                status,
-                options.store === null
-                  ? { state: "off" }
-                  : exit.value.cut === undefined
-                    ? { state: "ok", set: exit.value.manifest.id }
-                    : { state: "degraded", set: exit.value.manifest.id, ...exit.value.cut },
-              )
-            : Cause.hasInterruptsOnly(exit.cause)
-              ? Effect.void
-              : Effect.andThen(
-                  Ref.set(status, failedOf(exit.cause)),
-                  Effect.logError("backup set failed", exit.cause),
-                ),
-        ),
+        Effect.onExit((exit) => {
+          if (Exit.isSuccess(exit)) {
+            return Ref.set(
+              status,
+              options.store === null
+                ? { state: "off" }
+                : exit.value.cut === undefined
+                  ? { state: "ok", set: exit.value.manifest.id }
+                  : { state: "degraded", set: exit.value.manifest.id, ...exit.value.cut },
+            );
+          }
+          const error = Option.getOrUndefined(Cause.findErrorOption(exit.cause));
+          // Nor a Core that does not lead, nor one interrupted, tells of a set.
+          if (Cause.hasInterruptsOnly(exit.cause) || error?._tag === "NotLeader")
+            return Effect.void;
+          return Effect.andThen(
+            Ref.set(status, failedOf(error)),
+            Effect.logError("backup set failed", exit.cause),
+          );
+        }),
         Effect.map(({ manifest }) => manifest),
+        one.withPermits(1),
       );
+
+      if (options.every !== undefined) {
+        const every = Duration.toMillis(options.every);
+        // Due `every` after the newest staged set, which a deploy leaves on the volume; with none,
+        // at once. A Core that does not lead (`take` fails at once) looks again at the next check.
+        const due = yield* Ref.make<number | undefined>(undefined);
+        const dueAfterNewest = Effect.map(newestStaged, (manifest) =>
+          manifest === undefined
+            ? 0
+            : Option.match(DateTime.make(manifest.takenAt), {
+                onNone: () => 0,
+                onSome: (takenAt) => DateTime.toEpochMillis(takenAt) + every,
+              }),
+        );
+        yield* Effect.forkScoped(
+          Effect.forever(
+            Effect.andThen(
+              Effect.sleep(options.checkEvery ?? Duration.minutes(1)),
+              Effect.gen(function* () {
+                const now = yield* Clock.currentTimeMillis;
+                const at = (yield* Ref.get(due)) ?? (yield* dueAfterNewest);
+                if (now < at) return yield* Ref.set(due, at);
+                const taken = yield* Effect.exit(take);
+                if (
+                  Exit.isFailure(taken) &&
+                  Option.getOrUndefined(Cause.findErrorOption(taken.cause))?._tag === "NotLeader"
+                ) {
+                  return;
+                }
+                yield* Ref.set(due, now + every);
+              }).pipe(Effect.catch((error) => Effect.logWarning("backup check failed", error))),
+            ),
+          ),
+        );
+      }
 
       return Backup.of({ take, status: Ref.get(status) });
     }),
