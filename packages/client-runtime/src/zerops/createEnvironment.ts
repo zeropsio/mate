@@ -146,9 +146,9 @@ export type EnvironmentCreationStep =
    */
   | { readonly kind: "share-reach" }
   /**
-   * The environment's group registration: its registry entry, the broker's
-   * grant where an older broker needs one, and for a stage or a production
-   * its deploy token and its declaration. Each write is safe to make again.
+   * The environment's group registration: its registry entry, and for a stage
+   * or a production its deploy token and its declaration. Each write is safe to
+   * make again.
    */
   | { readonly kind: "register" }
   /**
@@ -275,9 +275,8 @@ export function planEnvironmentCreation(input: EnvironmentCreationInput): Enviro
       ...(tier?.runtimes === undefined ? {} : { runtimes: tier.runtimes }),
     });
   }
-  // The close-off first: it is what makes the Mate need no browser, and a registration the
-  // platform refuses — a member who may not write the registry, a broker grant that failed —
-  // never keeps the Mate open. The group's sight of it is best-effort, last, and the group-reach
+  // The close-off first: it is what makes the Mate need no browser, and a registration refused
+  // — a member who may not write the registry — never keeps the Mate open. The group's sight of it is best-effort, last, and the group-reach
   // reconcile covers it anyway.
   if (withAgent) steps.push({ kind: "close-off" });
   if (input.register === true) steps.push({ kind: "register" });

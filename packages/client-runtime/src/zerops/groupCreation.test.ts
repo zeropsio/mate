@@ -4,7 +4,6 @@ import {
   canWriteRegistry,
   onlyTheseCanAddAProject,
   resolveAddProjectVerb,
-  resolveGroupGitea,
   finishMateSetupScope,
   finishMateSetupVerb,
   resolveMateRegistration,
@@ -18,7 +17,6 @@ const ACME: ZeropsRegistry = {
     {
       groupId: "g-acme",
       name: "Acme",
-      slug: "g-acme",
       projects: [{ projectId: "p-fen", kind: "mate" }],
     },
   ],
@@ -83,16 +81,6 @@ describe("who may add a project", () => {
     { admins: [{ id: "a" }], expected: "Only an owner or admin adds a project." },
   ])("names who can: $expected", ({ admins, expected }) => {
     expect(onlyTheseCanAddAProject(admins)).toBe(expected);
-  });
-});
-
-describe("resolveGroupGitea", () => {
-  it.each([
-    { organizationExists: true, expected: "ready" },
-    { organizationExists: false, expected: "being-set-up" },
-    { organizationExists: undefined, expected: "unknown" },
-  ])("reads $organizationExists as $expected", ({ organizationExists, expected }) => {
-    expect(resolveGroupGitea({ organizationExists })).toBe(expected);
   });
 });
 
@@ -218,7 +206,7 @@ describe("finishMateSetupVerb", () => {
       expected: undefined,
     },
     {
-      name: "a BASIC_USER, who still cannot write the Gitea project's tags",
+      name: "a BASIC_USER, who may not finish it",
       input: { ...HALF_MADE, containerMissing: true },
       viewerRole: "BASIC_USER",
       expected: undefined,

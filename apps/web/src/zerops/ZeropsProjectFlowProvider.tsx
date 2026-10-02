@@ -276,7 +276,7 @@ const joinedFlows = new WeakMap<
  * answered.
  */
 export function joinProjectFlows(input: {
-  readonly groups: ReadonlyArray<{ readonly groupId: string; readonly slug: string }>;
+  readonly groups: ReadonlyArray<{ readonly groupId: string }>;
   /** Each group's stops, by its id, while HQ has told its environments. */
   readonly stops: ReadonlyMap<string, GroupStops>;
   /** Each group's releases as HQ records them, newest first, by its id, once HQ answered. */
@@ -342,7 +342,6 @@ export function joinProjectFlows(input: {
     const live = input.live.get(group.groupId) ?? NOT_ASKED;
     const key = JSON.stringify([
       group.groupId,
-      group.slug,
       inFlight ?? null,
       changes === undefined ? (input.changesFailure ?? null) : null,
       [...withheld],
@@ -389,7 +388,7 @@ function stopRow(
 }
 
 function projectFlow(
-  group: { readonly groupId: string; readonly slug: string },
+  group: { readonly groupId: string },
   halves: {
     readonly stops: GroupStops | undefined;
     /** Its releases as HQ records them, newest first; `undefined` until HQ answered. */
@@ -445,7 +444,6 @@ function projectFlow(
   });
   return {
     groupId: group.groupId,
-    slug: group.slug,
     declarations: stops?.declarations ?? [],
     declarationsRead: stops !== undefined,
     environments: environmentInputs.map((entry) => stopRow(entry, releaseList)),
@@ -550,7 +548,7 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
   }, [data, groupProjects, inventory.projectRefs]);
   const stated = useZeropsAtomSelections(statedServices);
   const flowGroups = useMemo(
-    () => registry.registry.groups.map(({ groupId, slug }) => ({ groupId, slug })),
+    () => registry.registry.groups.map(({ groupId }) => ({ groupId })),
     [registry.registry.groups],
   );
 

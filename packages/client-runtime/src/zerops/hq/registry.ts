@@ -23,11 +23,6 @@ export interface ZeropsRegistryProject {
 export interface ZeropsRegistryGroup {
   readonly groupId: string;
   readonly name: string;
-  /**
-   * The Gitea org the remaining Gitea reads — releases and deploys — key a group by. HQ names no
-   * Gitea org, so it is the group's id: no Gitea answers for it.
-   */
-  readonly slug: string;
   readonly projects: ReadonlyArray<ZeropsRegistryProject>;
 }
 
@@ -42,7 +37,6 @@ export function registryFromHq(structure: HqStructure): ZeropsRegistry {
     groups: structure.apps.map((app) => ({
       groupId: app.id,
       name: app.name,
-      slug: app.id,
       projects: app.projects.flatMap(({ projectId, kind }) =>
         isRoleProjectKind(kind) ? [{ projectId, kind }] : [],
       ),

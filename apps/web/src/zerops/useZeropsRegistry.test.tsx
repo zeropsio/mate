@@ -33,7 +33,6 @@ const KNOWN_REGISTRY = {
     {
       groupId: "shop",
       name: "Shop",
-      slug: "shop",
       projects: [
         { projectId: "p-vera", kind: "mate" },
         { projectId: "p-stage", kind: "stage" },

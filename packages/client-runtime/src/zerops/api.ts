@@ -181,9 +181,8 @@ export interface ZeropsProject {
   /**
    * Round-tripped by every tag write (`writeProjectTags`). `PUT
    * /project/{id}` replaces the record, so a tag write that omitted these two
-   * would quietly take a shared IPv4 away or reset somebody's credit limit —
-   * on any project, the Gitea project the whole account depends on among
-   * them.
+   * would quietly take a shared IPv4 away or reset somebody's credit limit on
+   * any project.
    */
   readonly publicIpV4Shared?: boolean;
   readonly maxCreditLimit?: number | null;
@@ -2063,9 +2062,7 @@ export class ZeropsApiClient {
       readonly projects: ReadonlyArray<ZeropsProjectGrant>;
       /**
        * The token's own org role, round-tripped. `PUT` replaces the record, so
-       * omitting it would lower the token — which matters for exactly one token
-       * on the account: an older broker token is org `READ_ONLY` and would
-       * stop being able to read the org at all (`docs/vocabulary.md`).
+       * omitting it would change the token's org role.
        */
       readonly roleCode?: string | undefined;
     },
@@ -2138,8 +2135,7 @@ export class ZeropsApiClient {
    * `GET /project/{id}/service-stack` — the project's own services.
    *
    * Answered under `list`, not the `items` the search endpoints use (measured
-   * 2026-09-18): reading only `items` made every project look empty, and the
-   * page could not find the broker to keep an environment's deploy token on.
+   * 2026-09-18): reading only `items` made every project look empty.
    */
   async listProjectServices(
     projectId: string,
@@ -2377,9 +2373,9 @@ export class ZeropsApiClient {
   }
 
   /**
-   * The names of a service's own variables — never a value. It is all the app
-   * ever learns about an environment's deploy token once it has written it:
-   * whether the broker's service carries it (`deployToken.ts`, D27).
+   * The names of a service's own variables — never a value: whether a
+   * variable the app wrote is there, as HQ's birth reads its own token's
+   * (`hq/birth.ts`).
    */
   async listServiceVariableNames(
     serviceId: string,

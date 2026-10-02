@@ -19,9 +19,10 @@
  * ## The check, in order
  *
  * Each step's failure is a {@link ZeropsThrowawayRefusedError} naming the rule
- * it broke. The same six rules and the same order the org's broker applies
- * (`gitea-mate/docs/broker-api.md`, *Proving a person*), with the prefix
- * `mate-door:{projectId}:` where the broker uses `gitea-signin:{host}:`.
+ * it broke: six rules, in the order main's broker proved a person
+ * (`gitea-mate/docs/broker-api.md`, *Proving a person*), over the prefix
+ * `mate-door:{projectId}:`. HQ's door applies the same rules
+ * (`@t3tools/shared/zeropsDoor`).
  *
  * 0. `GET /project/{own}` **with the Mate's own key** — the org this project
  *    belongs to, and this project's `userRoles`. Read first because the org is
@@ -51,8 +52,8 @@
  * The caller is `createdByUser`. Their effective role on this project — their
  * `userRoles` override there, or their org role — goes through the shared role
  * function (`@t3tools/shared/zeropsRoles`), the same one the app's list and
- * the broker's Gitea mirror call, so a person is never told one thing by the
- * list and another by the door.
+ * HQ call, so a person is never told one thing by the list and another by the
+ * door.
  *
  * ## Refusing beats guessing
  *
@@ -486,8 +487,7 @@ export const verifyThrowawayCaller = Effect.fn("ZeropsThrowaway.verifyCaller")(f
     return yield* refused("not_member");
   }
 
-  // The role function decides, on the same inputs the app's list and the
-  // broker's mirror use.
+  // The role function decides, on the same inputs the app's list and HQ use.
   const override = project.userRoles?.find(
     (entry) => entry.clientUserId === member.clientUserId && member.clientUserId.length > 0,
   )?.roleCode;

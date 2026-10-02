@@ -30,14 +30,13 @@ describe("registryFromHq", () => {
         {
           groupId: "app-1",
           name: "Acme CRM",
-          slug: "app-1",
           projects: [
             { projectId: "p1", kind: "mate" },
             { projectId: "p2", kind: "stage" },
             { projectId: "p3", kind: "production" },
           ],
         },
-        { groupId: "app-2", name: "Empty", slug: "app-2", projects: [] },
+        { groupId: "app-2", name: "Empty", projects: [] },
       ],
     });
   });

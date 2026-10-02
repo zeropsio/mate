@@ -152,10 +152,8 @@ export {
   type AutoConnectCandidate,
 } from "./autoConnect.ts";
 export {
-  deriveGiteaState,
   partitionZeropsToolProjects,
   readZeropsToolKind,
-  type ZeropsGiteaState,
   type ZeropsToolKind,
   type ZeropsToolProject,
 } from "./tools.ts";
@@ -495,9 +493,7 @@ export {
   finishMateSetupScope,
   finishMateSetupVerb,
   resolveAddProjectVerb,
-  resolveGroupGitea,
   resolveMateRegistration,
-  type GroupGiteaState,
   type GroupVerb,
   type MateRegistration,
 } from "./groupCreation.ts";
@@ -517,7 +513,6 @@ export {
   deployTone,
   environmentNameUnderGroup,
   environmentRow,
-  GROUP_BEING_SET_UP_LINE,
   type DeployedVersion,
   type EnvironmentRow,
   type EnvironmentServiceState,

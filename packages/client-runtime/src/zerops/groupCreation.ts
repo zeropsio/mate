@@ -71,33 +71,14 @@ export function onlyTheseCanAddAProject(admins: ReadonlyArray<MateOwnerCandidate
 }
 
 /**
- * How far the broker has got with a group's Gitea side.
- *
- * `asking` is not a spinner state to hide — the group is usable as a place to
- * put a Mate from the moment its tag lands, and the org matters only when
- * somebody wants the repositories. It is the difference between "we asked for
- * this" and "this exists", which is the line guide 4.5 draws through the whole
- * screen.
- */
-export type GroupGiteaState = "ready" | "being-set-up" | "unknown";
-
-export function resolveGroupGitea(input: {
-  /** What `GET /orgs/{slug}` answered as the person: the org, or nothing. */
-  readonly organizationExists: boolean | undefined;
-}): GroupGiteaState {
-  if (input.organizationExists === undefined) return "unknown";
-  return input.organizationExists ? "ready" : "being-set-up";
-}
-
-/**
  * Whether the registry knows about a Mate yet (guide 4.2).
  *
  * A member with *can create projects* may make a Mate, and may not write the
- * registry — so their new Mate exists, runs, and has neither group reach nor a
- * Gitea bot until an owner or admin adds it. That is a real state with a real
- * consequence (the broker refuses `POST /mate/credential` with
- * `not_registered`), and the row says it rather than showing a Mate that looks
- * finished and cannot push.
+ * registry — so their new Mate exists and runs, and HQ holds it in no
+ * application until an owner or admin adds it. That is a real state with a real
+ * consequence (HQ gives a repository only to a Mate it holds in an
+ * application), and the row says it rather than showing a Mate that looks
+ * finished and cannot deliver.
  *
  * An owner's own creation writes the entry in the same breath, so this is
  * `registered` before the row is ever painted.
@@ -118,10 +99,9 @@ export function resolveMateRegistration(input: {
  * *Finish setup*, on a half-made Mate's ⋯ menu (pass 28): the press's own steps run again on a
  * Mate whose press did not finish — its container imported with its key where it has none, its
  * project closed off, its registration written. A member with *can create projects* makes a Mate
- * and cannot write the registry, so their Mate runs with no group reach and no bot until somebody
- * who can finishes it; a press a closed tab cut short leaves the same. That somebody is an org
- * owner or admin — the only people the platform lets write the Gitea project's tags (D3) — in any
- * browser. A Mate HQ holds no record of has its record written, and its birth with it, by
+ * and cannot write the registry, so their Mate runs in no application until somebody who can
+ * finishes it; a press a closed tab cut short leaves the same. That somebody is an org owner or
+ * admin, in any browser. A Mate HQ holds no record of has its record written, and its birth with it, by
  * whoever HQ's rule lets create the record.
  *
  * `undefined` for everybody else, and for a Mate already whole: a disabled entry on a row a person

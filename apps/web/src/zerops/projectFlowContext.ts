@@ -62,8 +62,6 @@ export interface ZeropsReleaseOffer {
 /** One project's flow: its environments, what is waiting, what was released. */
 export interface ZeropsProjectFlow {
   readonly groupId: string;
-  /** The project's Gitea org. */
-  readonly slug: string;
   readonly declarations: ReadonlyArray<GroupEnvironment>;
   /**
    * Whether HQ has told the project's environments: until then `declarations` is empty for want of

@@ -111,7 +111,7 @@ export interface ZeropsIntegrationTokenGrantMetadata {
   readonly grants: ReadonlyArray<ZeropsProjectGrant>;
   /** When the platform minted it: the start-up throwaway sweep dates rows by it. */
   readonly created?: string | undefined;
-  /** The token's own org role: the broker grant decides by it and writes it back unchanged. */
+  /** The token's own org role, written back unchanged with its projects. */
   readonly roleCode?: string | undefined;
   /** Who minted it: besides an org owner, the one person who may write it. */
   readonly createdByUser?: string | undefined;
