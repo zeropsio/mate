@@ -494,6 +494,68 @@ describe("repositories and real smart HTTP", () => {
       ),
   );
 
+  it.live("imports a change's head from a bundle under its branch, at the commit named", () =>
+    fixture(
+      Effect.gen(function* () {
+        const initial = yield* Effect.promise(() => source());
+        const head = yield* Effect.promise(() => commit(initial.path, initial.sha));
+        // Every other mate/* of the source stays out: only a recorded change gets a branch.
+        for (const ref of [
+          "refs/hq-import/1",
+          "refs/heads/mate/alice/1",
+          "refs/heads/mate/bob/2",
+        ]) {
+          yield* Effect.promise(() => checked(initial.path, ["update-ref", ref, head]));
+        }
+        const bundle = NodePath.join(dir, "repo.bundle");
+        yield* Effect.promise(() =>
+          checked(initial.path, ["bundle", "create", bundle, "--branches", "refs/hq-import/1"]),
+        );
+        yield* git.import({ appId: "app", id: "repo" }, bundle, undefined, [
+          { mateId: "alice", number: 1, ref: "refs/hq-import/1", sha: head },
+        ]);
+        expect(
+          yield* Effect.promise(() =>
+            checked(repoDir(), ["for-each-ref", "--format=%(refname) %(objectname)"]),
+          ),
+        ).toBe([`refs/heads/main ${initial.sha}`, `refs/heads/mate/alice/1 ${head}`].join("\n"));
+      }),
+    ),
+  );
+
+  it.live.each([
+    ["names no change Core records", 2, "head", "not_found"],
+    ["is not at the commit named", 1, "main", "source_refused"],
+  ] as const)(
+    "refuses a change head that %s, and leaves nothing behind",
+    ([_name, number, at, reason]) =>
+      fixture(
+        Effect.gen(function* () {
+          const initial = yield* Effect.promise(() => source());
+          const head = yield* Effect.promise(() => commit(initial.path, initial.sha));
+          yield* Effect.promise(() =>
+            checked(initial.path, ["update-ref", `refs/hq-import/${String(number)}`, head]),
+          );
+          const bundle = NodePath.join(dir, "repo.bundle");
+          yield* Effect.promise(() =>
+            checked(initial.path, ["bundle", "create", bundle, "--branches", "--all"]),
+          );
+          const sha = at === "head" ? head : initial.sha;
+          expect(
+            yield* Effect.flip(
+              git.import({ appId: "app", id: "repo" }, bundle, undefined, [
+                { mateId: "alice", number, ref: `refs/hq-import/${String(number)}`, sha },
+              ]),
+            ),
+          ).toMatchObject({ reason });
+          expect(yield* git.list()).toEqual([]);
+          expect(
+            yield* Effect.promise(() => NodeFSP.readdir(NodePath.join(dir, "repos", "app"))),
+          ).toEqual([]);
+        }),
+      ),
+  );
+
   it.live("refuses a source without main and leaves nothing behind", () =>
     fixture(
       Effect.gen(function* () {
