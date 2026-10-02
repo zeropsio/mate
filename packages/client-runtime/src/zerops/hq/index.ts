@@ -50,6 +50,7 @@ export {
   type HqChanges,
   type HqStructureEvent,
 } from "./stream.ts";
+export { hqRefusalWords } from "./refusals.ts";
 export {
   EMPTY_REGISTRY,
   registryFromHq,
