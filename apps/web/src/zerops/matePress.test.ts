@@ -550,68 +550,67 @@ describe("a Finish setup that stopped", () => {
     });
 
   const atImport: MatePressState = { ...STOPPED, step: "import-container" };
+  const IMPORT: EnvironmentCreationStep = { kind: "import-container", agents: [] };
+  const CLOSE_OFF: EnvironmentCreationStep = { kind: "close-off" };
+  /** Its container came, and its close-off stopped. */
+  const BROUGHT: ReadonlyArray<EnvironmentCreationStepProgress> = [
+    { step: IMPORT, state: "done" },
+    { step: CLOSE_OFF, state: "failed" },
+  ];
+  /** Its import stopped. */
+  const NOT_BROUGHT: ReadonlyArray<EnvironmentCreationStepProgress> = [
+    { step: IMPORT, state: "failed" },
+    { step: CLOSE_OFF, state: "queued" },
+  ];
 
+  // Pass 32 reviews: whether a stop stands is read off what it brought, never off a step's name —
+  // its harden and the lock of another tab stop it before any step, naming its close-off.
   it.each([
     {
       case: "on a Mate with its container: said, then gone",
       container: false,
+      progress: undefined,
       stopped: STOPPED,
-      after: undefined,
+      stands: false,
     },
     {
-      // Pass 32 review: its container came, then its close-off stopped — the Mate has its
-      // container, and its row must not say it stopped for good.
-      case: "after bringing its container: said, then gone",
+      case: "after bringing its container: said, then gone, and no longer coming",
       container: true,
+      progress: BROUGHT,
       stopped: STOPPED,
-      after: undefined,
+      stands: false,
     },
     {
-      case: "at bringing its container: kept, for its own view's Try again",
+      case: "bringing its container, at its import: stands with its reason",
       container: true,
+      progress: NOT_BROUGHT,
       stopped: atImport,
-      after: "failed",
+      stands: true,
     },
-  ])("$case", ({ container, stopped, after }) => {
+    {
+      case: "bringing its container, before any step (its harden, another tab's lock): stands",
+      container: true,
+      progress: undefined,
+      stopped: STOPPED,
+      stands: true,
+    },
+  ])("$case", ({ container, progress, stopped, stands }) => {
     vi.useFakeTimers();
     try {
       begin(container);
+      if (progress !== undefined) progressPress("p-stop", progress);
       settlePress("p-stop", stopped);
-      expect(finishSetupRowLine(readMatePress("p-stop"))).toBe("Setup stopped");
+      const press = readMatePress("p-stop");
+      expect(finishSetupRowLine(press)).toBe("Setup stopped");
+      expect(pressComingInput([press!], "p-stop")).toEqual({
+        press: { startedAt: 0, container: stands, retryable: false },
+        setUpFailed: stands ? "Zerops refused the change" : undefined,
+      });
       vi.advanceTimersByTime(STOPPED_SHOWN_MS);
-      expect(readMatePress("p-stop")?.state.kind).toBe(after);
+      expect(readMatePress("p-stop")?.state.kind).toBe(stands ? "failed" : undefined);
     } finally {
       forgetPress("p-stop");
       vi.useRealTimers();
-    }
-  });
-
-  it.each([
-    {
-      case: "on a Mate with its container: it was set up already",
-      container: false,
-      stopped: STOPPED,
-      why: undefined,
-    },
-    {
-      case: "after bringing its container: it has its container",
-      container: true,
-      stopped: STOPPED,
-      why: undefined,
-    },
-    {
-      case: "at bringing its container: its container never came",
-      container: true,
-      stopped: atImport,
-      why: "Zerops refused the change",
-    },
-  ])("$case", ({ container, stopped, why }) => {
-    try {
-      begin(container);
-      settlePress("p-stop", stopped);
-      expect(pressComingInput([readMatePress("p-stop")!], "p-stop").setUpFailed).toBe(why);
-    } finally {
-      forgetPress("p-stop");
     }
   });
 

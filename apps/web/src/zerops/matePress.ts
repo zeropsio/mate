@@ -126,17 +126,25 @@ export function beginPress(press: Omit<MatePress, "state">): void {
 export const STOPPED_SHOWN_MS = 10_000;
 
 /**
- * A Finish setup that stopped while bringing its Mate's container: the one stop its own view
- * answers, with *Try again*. Any other stop leaves a Mate with its container.
+ * A Finish setup that stopped before the container it was bringing came — at its import, or
+ * before any step (its harden, another tab's lock): the one stop its own view answers, with
+ * *Try again*. Read off what it brought, never off a step's name: a stop before any step names
+ * its close-off. Any other stop leaves a Mate with its container.
  */
-function stoppedAtItsContainer(press: MatePress): boolean {
+function stopStands(press: MatePress): boolean {
   return (
     press.finishing === true &&
     press.container &&
     press.state.kind === "failed" &&
-    press.state.step === "import-container"
+    press.progress?.some(
+      (entry) => entry.step.kind === "import-container" && entry.state === "done",
+    ) !== true
   );
 }
+
+/** A Finish setup that stopped and goes once its row has said so (`stopStands`). */
+const stopGoes = (press: MatePress): boolean =>
+  press.finishing === true && press.state.kind === "failed" && !stopStands(press);
 
 /**
  * A press ran to its end, or stopped. A Finish setup that stopped on a Mate with its container —
@@ -150,9 +158,7 @@ export function settlePress(projectId: string, state: MatePressState): void {
     const press = store.presses[projectId];
     if (press === undefined) return store;
     const settled = { ...press, state };
-    if (state.kind === "failed" && press.finishing === true && !stoppedAtItsContainer(settled)) {
-      stopped = settled;
-    }
+    if (stopGoes(settled)) stopped = settled;
     return { presses: { ...store.presses, [projectId]: settled } };
   });
   if (stopped === undefined) return;
@@ -283,7 +289,7 @@ export function useMatePress(projectId: string | undefined): MatePress | undefin
  * (`finishSetupRowLine`).
  */
 export function pressFailure(press: MatePress | undefined): string | undefined {
-  if (press?.finishing === true && !stoppedAtItsContainer(press)) return undefined;
+  if (press?.finishing === true && !stopStands(press)) return undefined;
   return press?.state.kind === "failed" ? press.state.reason : undefined;
 }
 
@@ -374,7 +380,8 @@ export function pressComing(press: MatePress | undefined):
   if (press === undefined) return undefined;
   return {
     startedAt: press.startedAt,
-    container: press.container,
+    // A Finish setup that stopped with its Mate's container brings nothing more: it is not coming.
+    container: press.container && !stopGoes(press),
     retryable: press.state.kind === "failed" && press.state.retry !== null,
   };
 }
