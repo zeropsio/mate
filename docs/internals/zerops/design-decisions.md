@@ -3374,3 +3374,49 @@ no-cache`.
   recipe behind says so, and one call proposes it as a recipe change for Review.
   - _Why:_ a new Mate's catalog import ran Meilisearch out of memory at the recipe's 1 GB, and the
     fix its agent made stopped at that one Mate
+- **2026-10-02** — **A Mate names who made it** (the owner, on pass 34's open choices: "use
+  recommended"; the entries below take the same answer). New project and Add a Mate tag a
+  development Mate's project `mate:by:<userId>` at birth; the tag is never cleared and shows in the
+  Zerops dashboard. The Mate's row reads "Waiting for your sign-in" to its maker and "Waiting for
+  sign-in" to anyone else. Stage and production Mates name nobody and keep "Nobody has signed in
+  yet"; Mates made before 0.11.87 are not backfilled. The maker of a half-made New-project Mate gets
+  Finish setup on it, as Add a Mate already allowed.
+  - _Why:_ the two flows made the same Mate and said two things about it; the service's
+    `createdByUser` is on the REST record but not on the socket's, and a tag reaches every window
+    through the store the sockets feed
+- **2026-10-02** — **A merge reaches the other window within 15 s.** While a group has an open pull
+  request, each window lists that group's Gitea org every 15 s (`PULL_WATCH_MS`), one org a tick, at
+  most +4 requests a minute per window; a pull request that hasn't moved for 30 min leaves the
+  watch. Nothing runs while none is open or the page is hidden. The clock sits in the web forge hook
+  beside the 60 s Gitea refresh; the rule lives in client-runtime.
+  - _Why:_ a merge took 48 s to clear the Mate's "needs you" face in another window (run 4); run 5
+    measured 10.0 s
+- **2026-10-02** — **A stage's first deploy counts as asked for once the stage is declared and
+  `main` has code**, bounded at 15 min from the later of the stage's making and `main`'s last code
+  landing; past the bound the line reads "Nothing deployed yet". No new request.
+  - _Why:_ no reader held the broker's pending status on `main`, and the broker deploys exactly when
+    a declaration lands on a `main` with code
+- **2026-10-02** — **A release review holds the facts of its press.** From the press, or from the
+  first look at a release already on its way, the dialog keeps what it showed ("replaces v0.1.0 · 1
+  change" and its roll back) through the landing or the failure. A roll back that landed heads
+  "replaces v0.1.1", the shape of a release's; a production that no single release runs in full
+  reads "replaces what production runs", with the generic roll-back line.
+  - _Why:_ read from the project, "production runs v0.1.1" turned false the moment the release
+    landed, and the review turned to the next offer without saying how its own release ended
+- **2026-10-02** — **Every release review ends.** A tag with neither a landing nor a failure 30 min
+  after it was tagged reads "v0.1.1 hasn't landed · Tagged … · production doesn't run it", its next
+  step "find out why", and its clock stops. A newer tag above it reads "v0.1.2 was tagged after
+  v0.1.1", and the project's line in the menu follows the newer one.
+  - _Why:_ a release with no final state kept "Releasing" and its clock running for as long as the
+    dialog was open
+- **2026-10-02** — **A failure on the version a stop runs still reads Failed.** Until the broker
+  marks that version live, a rare Deployed → Failed → Deployed flicker stays; reading the failure on
+  the version the broker tried is a new read, for later.
+  - _Why:_ reading it as Deployed would switch off the failed deploy's next step (2026-09-25),
+    production's deploy-failed state and the stage chip's failed state
+- **2026-10-02** — **A reload during a Mate's arrival paints the asleep row.** A reload in the ~15 s
+  between ACTIVE and the Mate's first answer shows the asleep row with its sign-in line; the arrival
+  window stays 2 min from first seen ACTIVE. A Mate whose close-off is still pending arrives like
+  any other: "Coming up", Finish setup hidden, until its server answers its first probe.
+  - _Why:_ a reload paints nothing it takes back, and excluding a close-off-pending Mate would bring
+    the asleep row back for a normal press
