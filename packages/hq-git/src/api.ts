@@ -302,6 +302,16 @@ export interface HqGit {
    * for a lightweight tag, which has neither).
    */
   readonly tags: (repo: Repo) => Effect.Effect<Bounded<TagRead>, GitError>;
+  /**
+   * Every change branch, `refs/heads/mate/<mateId>/<number>`, by its Mate and number. Past the
+   * history ceiling it fails closed (`invalid_config`) rather than answer part.
+   */
+  readonly changeRefs: (
+    repo: Repo,
+  ) => Effect.Effect<
+    ReadonlyArray<{ readonly mateId: string; readonly number: number; readonly sha: string }>,
+    GitError
+  >;
   /** Which of `shas` the repository has no commit of: missing, or another kind of object. */
   readonly missingCommits: (
     repo: Repo,

@@ -441,6 +441,19 @@ describe("a repository's backup", () => {
       expect(Number.isNaN(Date.parse(tags.items[0]!.taggedAt))).toBe(false);
     }),
   );
+  it.live("lists every change branch by its Mate and number", () =>
+    fixture(async (git, dir) => {
+      expect(await value(git.changeRefs(repo))).toEqual([]);
+      const main = await write(git, { "a.txt": "a\n" }, null);
+      const one = await branch(git, dir, main, { "b.txt": "b\n" }, 1);
+      await native(dir, ["update-ref", "refs/heads/mate/bob/12", one]);
+      await native(dir, ["update-ref", "refs/heads/core/build", one]);
+      expect(await value(git.changeRefs(repo))).toEqual([
+        { mateId: "alice", number: 1, sha: one },
+        { mateId: "bob", number: 12, sha: one },
+      ]);
+    }),
+  );
   it.live("names the commits a repository lacks", () =>
     fixture(async (git, dir) => {
       const main = await write(git, { "a.txt": "a\n" }, null);

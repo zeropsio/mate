@@ -540,6 +540,28 @@ export const makeOperations = (
         }),
       };
     });
+  const changeRefs: HqGit["changeRefs"] = (repo) =>
+    inRepo("changeRefs", repo, async (dir, signal) => {
+      const read = await prefix(
+        dir,
+        [
+          "for-each-ref",
+          `--count=${readLimits.history + 1}`,
+          "--format=%(refname) %(objectname)",
+          "refs/heads/mate/",
+        ],
+        signal,
+        readLimits.bytes,
+      );
+      const lines = read.bytes.toString().split("\n").filter(Boolean);
+      if (read.truncated || lines.length > readLimits.history)
+        throw error("Change branches exceed safety bound");
+      return lines.flatMap((line) => {
+        const [ref = "", sha = ""] = line.split(" ");
+        const match = /^refs\/heads\/mate\/([^/]+)\/([1-9][0-9]*)$/u.exec(ref);
+        return match === null ? [] : [{ mateId: match[1]!, number: Number(match[2]), sha }];
+      });
+    });
   const missingCommits: HqGit["missingCommits"] = (repo, shas) =>
     inRepo("missingCommits", repo, async (dir, signal) => {
       if (shas.some((sha) => !validSha(sha))) throw error("Invalid commit");
@@ -929,6 +951,7 @@ export const makeOperations = (
     changeHead,
     bundle,
     tags,
+    changeRefs,
     missingCommits,
     onMain,
     mergeBase,
