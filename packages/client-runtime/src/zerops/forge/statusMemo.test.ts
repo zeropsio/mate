@@ -4,7 +4,6 @@ import type { GiteaCommitStatus } from "../giteaClient.ts";
 import {
   createCommitStatusMemo,
   newestStatusesSettled,
-  SETTLED_STATUS_KEEP_MS,
   STATUS_RECHECK_LADDER_MS,
   type CommitStatusMemo,
 } from "./statusMemo.ts";
@@ -15,26 +14,18 @@ const status = (state: GiteaCommitStatus["state"], context = "ci"): GiteaCommitS
 });
 const commit = { owner: "acme", repo: "group", sha: "a".repeat(40) };
 
-/**
- * Seconds since the start at which `load` ran, over `minutes` of a read asked for every second.
- * `maxAgeMs` is what the caller asks the read to be no older than.
- */
+/** Seconds since the start at which `load` ran, over `minutes` of a read asked for every second. */
 async function readsOver(
   answers: (call: number) => ReadonlyArray<GiteaCommitStatus>,
   minutes: number,
-  maxAgeMs?: number,
 ): Promise<ReadonlyArray<number>> {
   const memo = createCommitStatusMemo();
   const at: Array<number> = [];
   for (let second = 0; second <= minutes * 60; second += 1) {
-    await memo.read(
-      commit,
-      async () => {
-        at.push(second);
-        return answers(at.length - 1);
-      },
-      maxAgeMs === undefined ? undefined : { maxAgeMs },
-    );
+    await memo.read(commit, async () => {
+      at.push(second);
+      return answers(at.length - 1);
+    });
     await vi.advanceTimersByTimeAsync(1_000);
   }
   return at;
@@ -86,35 +77,8 @@ describe("commit status memo", () => {
     expect(newestStatusesSettled(statuses)).toBe(settled);
   });
 
-  it("keeps settled statuses for five minutes, then reads them again", async () => {
-    expect(SETTLED_STATUS_KEEP_MS).toBe(300_000);
-    expect(await readsOver(() => [status("success")], 15)).toEqual([0, 300, 600, 900]);
-  });
-
-  it("reads settled statuses at most once a minute where the caller asks for that", async () => {
-    expect(await readsOver(() => [status("success")], 4, 60_000)).toEqual([0, 60, 120, 180, 240]);
-  });
-
-  it("dates a read from when it was asked, so a minute's clock reads every minute", async () => {
-    const memo = createCommitStatusMemo();
-    let loads = 0;
-    // Gitea takes 300 ms to answer; the group readers ask on a 60 s clock.
-    for (let pass = 0; pass < 5; pass += 1) {
-      const answer = deferredLoad([status("success")]);
-      const read = memo.read(
-        commit,
-        () => {
-          loads += 1;
-          return answer.load();
-        },
-        { maxAgeMs: 60_000 },
-      );
-      await vi.advanceTimersByTimeAsync(300);
-      answer.answer();
-      await read;
-      await vi.advanceTimersByTimeAsync(59_700);
-    }
-    expect(loads).toBe(5);
+  it("never reads settled statuses again until they are forgotten", async () => {
+    expect(await readsOver(() => [status("success")], 60)).toEqual([0]);
   });
 
   it("re-reads pending statuses on a back-off no longer than a minute", async () => {

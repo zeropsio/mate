@@ -85,6 +85,7 @@ import {
   type ZeropsGroupDeploys,
 } from "./useZeropsGroupDeploys";
 import {
+  useForgeReads,
   useZeropsGroupForge,
   type ZeropsGroupForgeState,
   type ZeropsGroupForges,
@@ -503,6 +504,7 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
   const [pending, setPending] = useState<ReadonlySet<string>>(() => new Set());
   const readVersion = useZeropsDeployedVersionReader();
   const enabled = signedInToMate && signedIn;
+  const reads = useForgeReads(giteaOrigin);
   const {
     deploys,
     failures: deployFailures,
@@ -513,6 +515,7 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
     readVersion,
     enabled,
     readable,
+    reads,
   });
   const {
     forges,
@@ -523,6 +526,7 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
     groups: forgeGroups,
     enabled,
     readable,
+    reads,
   });
 
   /**

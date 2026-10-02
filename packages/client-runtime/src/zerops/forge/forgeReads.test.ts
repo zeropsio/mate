@@ -178,6 +178,15 @@ describe("createForgeReads", () => {
     expect(forge.take()).toEqual(["repos", "pulls group", "file group", "statuses group"]);
   });
 
+  it("never asks again for settled statuses while the listing stands", async () => {
+    const forge = org([repo("appdev")]);
+    for (let minute = 0; minute < 30; minute += 1) {
+      await forge.pass();
+      forge.advance(60_000);
+    }
+    expect(forge.take().filter((call) => call.startsWith("statuses"))).toEqual(["statuses appdev"]);
+  });
+
   it("shares one listing between the readers of one refresh", async () => {
     const forge = org([repo("appdev")]);
     await Promise.all([forge.pass(), forge.pass()]);

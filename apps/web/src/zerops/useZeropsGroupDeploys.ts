@@ -53,14 +53,14 @@ import {
 } from "@t3tools/client-runtime/zerops";
 import type { DeployScope, GroupUpdate } from "@t3tools/client-runtime/zerops/flow";
 import {
-  createCommitStatusMemo,
-  DEPLOY_STATUS_MAX_AGE_MS,
-  type CommitStatusMemo,
+  createForgeReads,
+  type ForgePart,
+  type ForgeReadRef,
+  type ForgeReads,
 } from "@t3tools/client-runtime/zerops/forge";
-import { useState } from "react";
 
 import type { ZeropsDeployedVersionReader } from "./useZeropsDeployedVersion";
-import { useGroupAnswers } from "./useZeropsGroupForge";
+import { pullsKey, useGroupAnswers } from "./useZeropsGroupForge";
 
 /** Where `environments.yaml` lives in the group repo. */
 const ENVIRONMENTS_PATH = "environments.yaml";
@@ -165,6 +165,10 @@ export function deployGroupKey(group: ZeropsDeployGroup): string {
   ]);
 }
 
+const STATUSES: ReadonlySet<ForgePart> = new Set(["statuses"]);
+const PULLS_AND_CODE: ReadonlySet<ForgePart> = new Set(["pulls", "code"]);
+const CODE: ReadonlySet<ForgePart> = new Set(["code"]);
+
 export function useZeropsGroupDeploys(input: {
   readonly groups: ReadonlyArray<ZeropsDeployGroup>;
   readonly giteaOrigin: string | undefined;
@@ -172,8 +176,10 @@ export function useZeropsGroupDeploys(input: {
   readonly enabled: boolean;
   /** A Gitea request can go out now (`GiteaSessionView.readable`); a read runs only then. */
   readonly readable: boolean;
+  /** What both group passes read through, shared (`useForgeReads`). */
+  readonly reads: ForgeReads;
 }): ZeropsGroupDeployAnswers {
-  const [statuses] = useState(() => createCommitStatusMemo());
+  const { reads } = input;
   const { answers, failures, invalidate } = useGroupAnswers<
     ZeropsDeployGroup,
     DeployScope,
@@ -194,11 +200,16 @@ export function useZeropsGroupDeploys(input: {
         readVersion: input.readVersion,
         held,
         signal,
-        statuses,
+        reads,
       }),
-    // A merge's re-read of a `main` head reads no statuses; a group read again whole forgets them.
+    // A group read again whole — its deploys moved, or a merge into the group repo — forgets what
+    // its deploys were told and what the group repo holds; a merge elsewhere, that repository's
+    // `main`.
     forget: (group, scope) => {
-      if (scope === "group") statuses.forget(group.slug);
+      if (scope === "group") {
+        reads.forget(group.slug, undefined, STATUSES);
+        reads.forget(group.slug, GROUP_REPOSITORY, PULLS_AND_CODE);
+      } else reads.forget(group.slug, scope.repository, CODE);
     },
   });
   return { deploys: answers, failures, invalidate };
@@ -218,10 +229,12 @@ export async function readGroupDeploys(input: {
   readonly readVersion: ZeropsDeployedVersionReader;
   readonly held: ZeropsGroupDeployState | undefined;
   readonly signal: AbortSignal;
-  /** What the group's deploys' checks said, kept while no read can change it (`statusMemo.ts`). */
-  readonly statuses?: CommitStatusMemo | undefined;
+  /** What was read of the group's repositories, kept while its org's listing stands (`forgeReads.ts`). */
+  readonly reads?: ForgeReads | undefined;
 }): Promise<GroupUpdate<ZeropsGroupDeployState>> {
-  const { client, group, held, scope, signal } = input;
+  const { group, held, scope, signal } = input;
+  const reads = input.reads ?? createForgeReads();
+  const client = keptClient(input.client, reads);
   if (scope !== "group") {
     if (held === undefined) return () => undefined;
     const moved = new Map(
@@ -239,6 +252,8 @@ export async function readGroupDeploys(input: {
     return (current) =>
       current === undefined ? undefined : withMainHeads(current, moved, heads, contents);
   }
+  // The org's listing first: what it says moved is read again below, and the rest is kept.
+  await reads.repositories(group.slug, () => input.client.listOrganizationRepositories(group.slug));
   const declarations = await readDeclarations(client, group.slug);
   const pullRequests = await client.listPullRequests(group.slug, GROUP_REPOSITORY, {
     state: "open",
@@ -278,9 +293,9 @@ export async function readGroupDeploys(input: {
   );
   for (const { read, name } of answered) if (name !== undefined) versions.set(read.serviceId, name);
 
-  const memo = input.statuses ?? createCommitStatusMemo();
+  const memo = reads.statuses;
   const statuses = new Map<string, ReadonlyArray<GiteaCommitStatus>>();
-  const reads = planDeployStatusReads({
+  const statusReads = planDeployStatusReads({
     owner: group.slug,
     versions: services.map((service) => ({
       hostname: service.hostname,
@@ -288,14 +303,12 @@ export async function readGroupDeploys(input: {
       repository: onMain.repositories.get(service.hostname),
     })),
   });
-  for (const read of reads) {
+  for (const read of statusReads) {
     signal.throwIfAborted();
     // A refusal is not an answer: the row says nothing about a deploy
     // it could not be told about, rather than calling it neutral.
     const answered = await memo
-      .read(read, () => client.listCommitStatuses(read.owner, read.repo, read.sha), {
-        maxAgeMs: DEPLOY_STATUS_MAX_AGE_MS,
-      })
+      .read(read, () => client.listCommitStatuses(read.owner, read.repo, read.sha))
       .catch(() => null);
     if (answered !== null) statuses.set(deployStatusKey(read), answered);
   }
@@ -340,6 +353,43 @@ export async function readGroupDeploys(input: {
     environments: rowInputs,
   };
   return () => state;
+}
+
+/**
+ * The client this half reads the group's repositories through: what it asks of them is answered
+ * from what the reads keep while the org's listing says nothing moved, and asked of Gitea
+ * otherwise. Only the asks this half makes are kept; every other one goes to Gitea.
+ */
+function keptClient(client: GiteaClient, reads: ForgeReads): GiteaClient {
+  const kept = <T>(ref: ForgeReadRef, load: () => Promise<T>) =>
+    reads.read(ref, load).then((read) => read.value);
+  return {
+    ...client,
+    listDirectory: (owner, repo, path, ref) =>
+      kept({ owner, repo, part: "code", key: `contents/${path}?ref=${ref ?? ""}` }, () =>
+        client.listDirectory(owner, repo, path, ref),
+      ),
+    readFile: (owner, repo, path, ref) =>
+      kept({ owner, repo, part: "code", key: `raw/${path}?ref=${ref ?? ""}` }, () =>
+        client.readFile(owner, repo, path, ref),
+      ),
+    listPullRequests: (owner, repo, options) =>
+      kept({ owner, repo, part: "pulls", key: pullsKey(options) }, () =>
+        client.listPullRequests(owner, repo, options),
+      ),
+    getBranch: (owner, repo, branch) =>
+      kept({ owner, repo, part: "code", key: `branches/${branch}` }, () =>
+        client.getBranch(owner, repo, branch),
+      ),
+    commitDetail: (owner, repo, sha) =>
+      kept({ owner, repo, part: "code", key: `git/commits/${sha}` }, () =>
+        client.commitDetail(owner, repo, sha),
+      ),
+    compareCommits: (owner, repo, base, head) =>
+      kept({ owner, repo, part: "code", key: `compare/${base}...${head}` }, () =>
+        client.compareCommits(owner, repo, base, head),
+      ),
+  };
 }
 
 /** A group whose repo declares nothing, has nothing open and offers no tier. */
