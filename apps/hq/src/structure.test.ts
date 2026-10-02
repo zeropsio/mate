@@ -100,6 +100,15 @@ const withStructure = <A, E>(
     return yield* Effect.andThen(untilActive, use(view, down)).pipe(Effect.provide(context));
   });
 
+/** The refusal's reason, or the success. */
+const reasonOf = <A, E extends { readonly _tag: string }>(effect: Effect.Effect<A, E>) =>
+  effect.pipe(
+    Effect.match({
+      onSuccess: () => "ok",
+      onFailure: (error) => ("reason" in error ? String(error.reason) : error._tag),
+    }),
+  );
+
 /** The refusal's code, or the success. */
 const outcome = <A, E extends { readonly _tag: string }>(effect: Effect.Effect<A, E>) =>
   effect.pipe(
@@ -111,6 +120,42 @@ const outcome = <A, E extends { readonly _tag: string }>(effect: Effect.Effect<A
 
 describe("structure", () => {
   it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+    it.effect(
+      "a project's admin who is no writer attaches it as an environment, into an empty place only",
+      () =>
+        withStructure(() =>
+          Effect.gen(function* () {
+            const structure = yield* Structure;
+            const shop = yield* structure.createApp("owner", "Shop");
+            // maker sees Shop through P_TEAM, its stage; maker is P_OWNED's owner (SPEC §3.3a).
+            yield* structure.attachProject("owner", shop.id, {
+              projectId: "P_TEAM",
+              kind: "stage",
+            });
+            assert.deepStrictEqual(
+              yield* Effect.all([
+                reasonOf(
+                  structure.attachProject("maker", shop.id, {
+                    projectId: "P_OWNED",
+                    kind: "stage",
+                  }),
+                ),
+                reasonOf(
+                  structure.attachProject("dev", shop.id, { projectId: "P_MATE", kind: "stage" }),
+                ),
+                reasonOf(
+                  structure.attachProject("maker", shop.id, {
+                    projectId: "P_OWNED",
+                    kind: "production",
+                  }),
+                ),
+              ]),
+              ["slot_taken", "not_project_admin", "ok"],
+            );
+          }),
+        ),
+    );
+
     it.effect(
       "an org owner or admin creates an application, nobody else; its name is its own",
       () =>

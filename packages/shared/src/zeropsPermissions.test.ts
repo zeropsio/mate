@@ -86,7 +86,11 @@ const place = (
   held: string,
   to: string,
   appProjectIds: ReadonlyArray<string> = [],
-): Request => ({ verb, target: { projectId: "P", held, to, appProjectIds } });
+  slotTaken = false,
+): Request =>
+  verb === "attach"
+    ? { verb, target: { projectId: "P", held, to, appProjectIds, slotTaken } }
+    : { verb, target: { projectId: "P", held, to, appProjectIds } };
 const onP = (
   verb: "detach" | "create_mate_record" | "edit_mate_record" | "enroll_mate",
   held: string,
@@ -340,13 +344,61 @@ const TABLES: Readonly<Record<Verb, ReadonlyArray<Row>>> = {
       "org Basic user, an environment",
       { orgRole: "BASIC_USER" },
       place("attach", "none", "stage"),
+      "not_project_admin",
+    ],
+    [
+      "P's admin, an environment to an application they do not see",
+      P_ADMIN,
+      place("attach", "none", "production"),
+      "app_not_seen",
+    ],
+    [
+      "P's admin, a stage into an empty place of an application they see",
+      P_ADMIN,
+      place("attach", "none", "stage", ["P_SEEN"]),
+      "allow",
+    ],
+    [
+      "a Developer attaches their new project as the production of an application without one",
+      MAKER,
+      place("attach", "none", "production", ["P_SEEN"]),
+      "allow",
+    ],
+    [
+      "a Developer, the application's production taken",
+      MAKER,
+      place("attach", "none", "production", ["P_SEEN"], true),
+      "slot_taken",
+    ],
+    [
+      "Read only on the project",
+      { override: "READ_ONLY" },
+      place("attach", "none", "production", ["P_SEEN"]),
+      "not_project_admin",
+    ],
+    [
+      "an org admin, the production taken",
+      { orgRole: "ADMIN" },
+      place("attach", "none", "production", [], true),
+      "allow",
+    ],
+    [
+      "a Developer replaces nothing: their project is a stage already",
+      MAKER,
+      place("attach", "stage", "production", ["P_SEEN"]),
       "not_structure_writer",
     ],
     [
-      "P's admin, an environment",
-      P_ADMIN,
-      place("attach", "none", "production"),
-      "not_structure_writer",
+      "a Developer turns their Mate into a production",
+      MAKER,
+      place("attach", "mate", "production", ["P_SEEN"]),
+      "kind_class_change",
+    ],
+    [
+      "a Developer whose new project is gone",
+      { ...MAKER, present: false },
+      place("attach", "none", "production", ["P_SEEN"]),
+      "not_project_admin",
     ],
     [
       "a maker attaches their own Mate to an application they see",
@@ -822,9 +874,12 @@ const REQUESTS: ReadonlyArray<Request> = [
   ...APPS.map((projectIds): Request => ({ verb: "read_app", target: { projectIds } })),
   { verb: "create_app", target: null },
   { verb: "rename_app", target: null },
-  ...(["attach", "move"] as const).flatMap((verb) =>
-    HELD.flatMap((held) => TO.flatMap((to) => APPS.map((app) => place(verb, held, to, app)))),
+  ...HELD.flatMap((held) =>
+    TO.flatMap((to) =>
+      APPS.flatMap((app) => [false, true].map((taken) => place("attach", held, to, app, taken))),
+    ),
   ),
+  ...HELD.flatMap((held) => TO.flatMap((to) => APPS.map((app) => place("move", held, to, app)))),
   ...(["detach", "create_mate_record", "edit_mate_record", "enroll_mate"] as const).flatMap(
     (verb) => HELD.map((held) => onP(verb, held)),
   ),
@@ -863,7 +918,15 @@ const writerOnly = (request: Request): boolean => {
     case "create_app":
     case "rename_app":
       return true;
-    case "attach":
+    case "attach": {
+      // An environment into an empty place is its project's admin's too (SPEC §3.3a).
+      const { held, to, slotTaken } = request.target;
+      const mate = (kind: string) => kind === "mate" || kind === "devstage";
+      return (
+        (held !== "none" && mate(held) !== mate(to)) ||
+        (!mate(to) && (held !== "none" || slotTaken))
+      );
+    }
     case "move": {
       const { held, to } = request.target;
       const mate = (kind: string) => kind === "mate" || kind === "devstage";
@@ -1012,10 +1075,17 @@ describe("can — over the whole input space", () => {
       const role = point.override ?? point.orgRole;
       return point.present && RANKED.indexOf(role as (typeof RANKED)[number]) >= 1;
     };
-    const asked = (verb: Request["verb"], held: string, to: string, app: ReadonlyArray<string>) =>
-      verb === "attach" || verb === "move"
-        ? place(verb, held, to, app)
-        : onP(verb as "detach" | "create_mate_record" | "edit_mate_record", held);
+    const asked = (
+      verb: Request["verb"],
+      held: string,
+      to: string,
+      app: ReadonlyArray<string>,
+    ): ReadonlyArray<Request> =>
+      verb === "attach"
+        ? [false, true].map((taken) => place(verb, held, to, app, taken))
+        : verb === "move"
+          ? [place(verb, held, to, app)]
+          : [onP(verb as "detach" | "create_mate_record" | "edit_mate_record", held)];
     for (const point of POINTS) {
       if (point.status !== "ACTIVE" || point.orgRole === "ADMIN" || point.orgRole === "OWNER") {
         continue;
@@ -1032,9 +1102,49 @@ describe("can — over the whole input space", () => {
         for (const to of TO) {
           for (const app of APPS) {
             const reasons = new Set(
-              HELD.map((held) => outcome(decide(PERSON, asked(verb, held, to, app), point))),
+              HELD.flatMap((held) =>
+                asked(verb, held, to, app).map((request) =>
+                  outcome(decide(PERSON, request, point)),
+                ),
+              ),
             );
             expect([...reasons], `${verb} to ${to} at ${JSON.stringify(point)}`).toHaveLength(1);
+          }
+        }
+      }
+    }
+  });
+
+  it("lets a member who is no writer attach only their project held nowhere, into an empty place, as its admin", () => {
+    const effective = (point: Point) => {
+      const role = point.present ? (point.override ?? point.orgRole) : "NO_ACCESS";
+      return RANKED.indexOf(role as (typeof RANKED)[number]);
+    };
+    for (const point of POINTS) {
+      if (point.status !== "ACTIVE" || point.orgRole === "ADMIN" || point.orgRole === "OWNER") {
+        continue;
+      }
+      for (const to of ["stage", "production"]) {
+        for (const app of APPS) {
+          const decisions = HELD.flatMap((held) =>
+            [false, true].map((taken) => ({
+              held,
+              taken,
+              outcome: outcome(decide(PERSON, place("attach", held, to, app, taken), point)),
+            })),
+          );
+          for (const { held, taken, outcome: decision } of decisions) {
+            if (decision === "allow") {
+              expect([held, taken, effective(point) >= RANKED.indexOf("ADMIN")]).toEqual([
+                "none",
+                false,
+                true,
+              ]);
+            }
+          }
+          // Without Full access on the project, neither its kind nor the place shows.
+          if (effective(point) < RANKED.indexOf("ADMIN")) {
+            expect(new Set(decisions.map((entry) => entry.outcome)).size).toBe(1);
           }
         }
       }

@@ -35,6 +35,8 @@ const PERMISSION_WORDS: { readonly [R in Reason]: string } = {
   not_your_app: "A Mate reaches only its own project's repositories.",
   changes_not_seen:
     "You need at least Basic user access to one of this project's Zerops projects to see its changes.",
+  slot_taken:
+    "This project has one of this kind already. Only an owner or admin of the organization replaces it.",
 };
 
 /** HQ's structure's own refusals (`StructureRefused` in `apps/hq/src/structure.ts`), in words. */

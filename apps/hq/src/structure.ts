@@ -391,8 +391,17 @@ export const structureLayer = (options: {
               return yield* refuse("invalid", "hq_project");
             }
             const view = yield* roles.fresh;
-            const appProjects = yield* sql<{ readonly project_id: string }>`
-              SELECT project_id FROM hq_app_project WHERE app_id::text = ${appId}`;
+            const appProjects = yield* sql<{ readonly project_id: string; readonly kind: string }>`
+              SELECT project_id, kind FROM hq_app_project WHERE app_id::text = ${appId}`;
+            // Whether the application has its project of this kind already: a devstage is its stage
+            // too, and a project Zerops no longer has holds no place.
+            const sameKind = (kind: string) =>
+              kind === input.kind || (input.kind === "stage" && kind === "devstage");
+            const slotTaken = appProjects.some(
+              (row) =>
+                sameKind(row.kind) &&
+                view.projects.some((project) => project.id === row.project_id),
+            );
             // Decided on the kind held now; the plain INSERT below is the fence: a project placed
             // since makes it a conflict.
             yield* allowed(
@@ -403,6 +412,7 @@ export const structureLayer = (options: {
                 held: yield* heldOf(sql, input.projectId),
                 to: input.kind,
                 appProjectIds: appProjects.map((row) => row.project_id),
+                slotTaken,
               },
               view,
             );
