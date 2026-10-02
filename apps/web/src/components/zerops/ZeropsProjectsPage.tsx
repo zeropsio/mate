@@ -2695,6 +2695,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
             }),
             pending: group.pending,
             runner: projectFlow.runners?.get(group.groupId),
+            nowMs,
           }),
         ),
         read: reads !== undefined,

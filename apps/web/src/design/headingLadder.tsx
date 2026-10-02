@@ -86,7 +86,7 @@ const RUNGS: ReadonlyArray<Rung> = [
     chips: [stageChip("ok"), HEALTHY],
     line: input({
       production: production(HEALTHY),
-      stages: [{ projectId: "stage", name: "stage", coming: undefined }],
+      stages: [{ projectId: "stage", name: "stage", coming: undefined, serves: true }],
       waiting: 3,
       allOnStage: true,
     }),
@@ -155,18 +155,21 @@ const RUNGS: ReadonlyArray<Rung> = [
     label: "14 A stage coming up",
     name: "ZIT",
     chips: [stageChip("creating")],
-    line: input({ stages: [{ projectId: "stage", name: "stage", coming: coming("build") }] }),
+    line: input({
+      stages: [{ projectId: "stage", name: "stage", coming: coming("build"), serves: false }],
+    }),
   },
   {
     label: "14″ A stage's first deploy waits for the group's runner",
-    name: "Larder",
+    name: "Brine",
     chips: [stageChip("creating")],
     line: input({
       stages: [
         {
           projectId: "stage",
           name: "stage",
-          coming: { kind: "coming", step: "runner", why: "failed" },
+          coming: { kind: "coming", step: "runner", why: "not-started" },
+          serves: false,
         },
       ],
     }),
@@ -175,8 +178,12 @@ const RUNGS: ReadonlyArray<Rung> = [
     label: "14′ the stage up (replays)",
     name: "ZIT",
     chips: [stageChip("ok")],
-    line: input({ stages: [{ projectId: "stage", name: "stage", coming: undefined }] }),
-    before: input({ stages: [{ projectId: "stage", name: "stage", coming: coming("address") }] }),
+    line: input({
+      stages: [{ projectId: "stage", name: "stage", coming: undefined, serves: true }],
+    }),
+    before: input({
+      stages: [{ projectId: "stage", name: "stage", coming: coming("address"), serves: false }],
+    }),
   },
   {
     label: "15 Didn’t come up",
@@ -188,6 +195,7 @@ const RUNGS: ReadonlyArray<Rung> = [
           projectId: "stage",
           name: "stage",
           coming: { kind: "failed", reason: "the app’s build failed" },
+          serves: false,
         },
       ],
     }),

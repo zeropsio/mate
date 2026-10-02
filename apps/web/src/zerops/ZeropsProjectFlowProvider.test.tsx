@@ -114,7 +114,7 @@ vi.mock("./ZeropsInventoryProvider", () => ({
 vi.mock("./useNowMs", () => ({ useNowMs: () => 0 }));
 vi.mock("./giteaProject", () => ({
   // The Gitea project's services, for each group's runner: none held here.
-  accountGiteaServices: () => undefined,
+  useAccountGiteaServices: () => undefined,
   useAccountGitea: () =>
     gitea.origin
       ? {

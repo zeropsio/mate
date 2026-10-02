@@ -42,10 +42,15 @@ const prod = (
     ...production,
   },
 });
-const stage = (coming: StopComing | undefined, projectId = "stage") => ({
+const stage = (
+  coming: StopComing | undefined,
+  projectId = "stage",
+  serves = coming === undefined,
+) => ({
   projectId,
   name: projectId,
   coming,
+  serves,
 });
 
 /** The line as its words, its tone, its spinner and its door. */
@@ -134,9 +139,9 @@ describe("headingLine — the heading's second line, the board's D′ ladder", (
       case: "14 a stage whose first deploy waits for the group's runner says why",
       over: {
         production: undefined,
-        stages: [stage({ kind: "coming", step: "runner", why: "failed" })],
+        stages: [stage({ kind: "coming", step: "runner", why: "not-started" })],
       },
-      line: ["Stage awaits the runner · it’s being rebuilt", "ink", "", ""],
+      line: ["Stage awaits the runner · it hasn’t started", "ink", "", ""],
     },
     {
       case: "15 a stage that didn't come up",
@@ -208,6 +213,8 @@ describe("headingLanding — what this tab watched land", () => {
   const stageComing = input({ stages: [stage({ kind: "coming", step: "address" })] });
   const stageUp = input({ stages: [stage(undefined)] });
   const stageFailed = input({ stages: [stage({ kind: "failed", reason: "x" })] });
+  const stageWaiting = input({ stages: [stage({ kind: "coming", step: "deploy-on-its-way" })] });
+  const windowOver = input({ stages: [stage(undefined, "stage", false)] });
   it.each([
     {
       case: "a release on its way, now served",
@@ -232,6 +239,12 @@ describe("headingLanding — what this tab watched land", () => {
       before: stageComing,
       after: stageUp,
       landing: { kind: "up", name: "Stage" },
+    },
+    {
+      case: "a stage whose window ended, serving nothing: never up",
+      before: stageWaiting,
+      after: windowOver,
+      landing: undefined,
     },
     {
       case: "a stage coming up that failed: no landing",

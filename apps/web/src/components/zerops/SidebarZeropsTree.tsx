@@ -63,12 +63,14 @@ import {
   readZeropsGroupTags,
   selectMateEnvironments,
   sidebarChangeLabel,
-  stopComing,
+  listedStopComing,
+  stopServes,
   type EnvironmentRow,
   type FlowPullRequest,
   type GroupFlow,
   type GroupEnvironmentTier,
   type GroupFlowStop,
+  type ListedStop,
   type MissingEnvironmentRow,
   type StopComing,
   type ZeropsEnvironmentRole,
@@ -81,7 +83,7 @@ import {
 import type { EnvironmentConnectionPresentation } from "@t3tools/client-runtime/connection";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import { mateIsViewers, mateOwnerRecords } from "@t3tools/client-runtime/zerops/mateAccess";
-import { deployActivatedAt, deployRuns } from "@t3tools/client-runtime/zerops/flow";
+import { deployActivatedAt } from "@t3tools/client-runtime/zerops/flow";
 import type { KnownAffordance } from "@t3tools/client-runtime/zerops/knowledge";
 import type { CandidatesNotice } from "@t3tools/client-runtime/zerops/projections";
 import type { ZeropsContainerHealth } from "@t3tools/client-runtime/zerops/provisioning";
@@ -1022,6 +1024,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
           }),
         pending: group?.pending ?? [],
         runner: runners?.get(id),
+        nowMs,
       }),
     );
     // Production and its stages are the chips on the heading (M2), never rows:
@@ -1227,25 +1230,19 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
       : [];
     // The heading's second line (D′): the release, and each environment coming up step by
     // step, from what the platform says of it (`stopComing`).
-    const comingOf = (
-      tier: "stage" | "production",
-      stop: GroupFlowStop,
-    ): StopComing | undefined => {
+    const listedOf = (stop: GroupFlowStop): ListedStop => {
       const item = stopItem(stop.projectId);
-      const deployment = deployments?.get(stop.projectId);
-      return stopComing({
-        tier,
-        pending: false,
+      return {
+        stop,
         projectStatus: item?.project.status,
         createdAt: item?.project.created,
-        nowMs,
         services: item?.services?.statuses,
-        building: buildingOf(deployment) !== undefined,
-        deployed: stop.version !== undefined || deployRuns(deployment),
+        building: buildingOf(deployments?.get(stop.projectId)) !== undefined,
         routes: item?.routes?.length ?? 0,
-        firstDeploy: stop.firstDeploy,
-      });
+      };
     };
+    const comingOf = (tier: "stage" | "production", stop: GroupFlowStop): StopComing | undefined =>
+      listedStopComing(tier, listedOf(stop), nowMs);
     const PENDING: StopComing = { kind: "coming", step: "project" };
     const line: HeadingLineInput | undefined =
       group === undefined
@@ -1270,11 +1267,13 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
                 projectId: stop.projectId,
                 name,
                 coming: comingOf("stage", stop),
+                serves: stopServes(listedOf(stop)),
               })),
               ...projectFlow.creatingStages.map((creation) => ({
                 projectId: creation.projectId,
                 name: creation.name,
                 coming: PENDING,
+                serves: false,
               })),
             ],
             waiting: projectFlow.main.notLive,
