@@ -3,6 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import type { ZeropsProject, ZeropsService } from "./api.ts";
 import {
+  applyFirstBuildGiveUp,
   firstBuildOverdue,
   applyProjectCreationVerdict,
   deriveZeropsCandidates,
@@ -380,5 +381,39 @@ describe("firstBuildOverdue", () => {
 
   it("is never said of a container in any other state", () => {
     expect(firstBuildOverdue(candidate("2020-01-01T00:00:00Z", "STARTING"), NOW)).toBe(false);
+  });
+});
+
+// Half an hour on, a first build nothing says is running has failed or is stuck for good: the
+// listing reads it as the platform leaves it — unavailable, naming its status, with what removes it.
+describe("applyFirstBuildGiveUp", () => {
+  const NOW = Date.parse("2026-10-02T12:00:00.000Z");
+  const candidate = (created: string, status = "READY_TO_DEPLOY") =>
+    deriveZeropsCandidates(PROJECT, [service({ id: "s1", status, created })], NO_CONNECTIONS)[0]!;
+
+  it.each([
+    {
+      case: "twenty minutes on: taking longer, still on its way",
+      created: "2026-10-02T11:40:00.000Z",
+      group: "provisioning",
+    },
+    {
+      case: "forty minutes on: not coming",
+      created: "2026-10-02T11:20:00.000Z",
+      group: "unavailable",
+    },
+  ])("$case", ({ created, group }) => {
+    expect(applyFirstBuildGiveUp(candidate(created), NOW).group).toBe(group);
+  });
+
+  it("names the platform's status, and keeps its service", () => {
+    const given = applyFirstBuildGiveUp(candidate("2026-10-02T11:20:00.000Z"), NOW);
+    expect(given.reason).toBe("container is READY_TO_DEPLOY");
+    expect(given.service?.id).toBe("s1");
+  });
+
+  it("never touches a container in any other state", () => {
+    const starting = candidate("2020-01-01T00:00:00.000Z", "STARTING");
+    expect(applyFirstBuildGiveUp(starting, NOW)).toBe(starting);
   });
 });
