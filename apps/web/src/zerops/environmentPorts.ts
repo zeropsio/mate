@@ -3,6 +3,7 @@
  * connection runtime, the connection catalog and its links, the probe over `fetch`, and this
  * account's storage. Adapters only: every decision is the runtime's.
  */
+import { fetchRemoteSessionState } from "@t3tools/client-runtime/authorization";
 import {
   connectionAdmission,
   type BearerConnectionRegistration,
@@ -33,6 +34,7 @@ import {
   installDoorRegistration,
   prepareDoorRegistration,
   readDoorDescriptor,
+  type KeptDoorSession,
 } from "@t3tools/client-runtime/zerops/identityExchange";
 import {
   createAtomCommandScheduler,
@@ -53,6 +55,7 @@ import { randomUUID } from "~/lib/utils";
 import { environmentIdFromAddress } from "~/routes/-environmentRoute";
 
 import { accountLocalStorage, accountStorageKey } from "./accountLifetime";
+import { keptSessions } from "./keptSessions";
 import { pressingProjects } from "./matePress";
 
 // ── The door, through the connection runtime ─────────────────────────────────────────────────
@@ -83,6 +86,12 @@ const installCommand = createRuntimeCommand(connectionAtomRuntime, {
   execute: installDoorRegistration,
 });
 
+/** The Mate's own word on a session: `/api/auth/session` with it as the bearer. */
+const sessionStateCommand = createRuntimeCommand(connectionAtomRuntime, {
+  label: "web:zerops:read-kept-session",
+  execute: fetchRemoteSessionState,
+});
+
 const retryLinkCommand = createRuntimeCommand(connectionAtomRuntime, {
   label: "web:zerops:retry-link",
   execute: (environmentId: EnvironmentId) =>
@@ -93,16 +102,59 @@ const quiet = { reportFailure: false } as const;
 
 const servedApp = () => ({ origin: window.location.origin, basePath: appBasePath() });
 
-/** An accepted registration, installed through `registry.rotateCredential` or `register`. */
+/**
+ * An accepted registration, installed through `registry.rotateCredential` or `register`, and kept
+ * for the target once installed, so the next load presents it again (`keptSessions.ts`).
+ */
 function doorCredential(
   registry: AtomRegistry.AtomRegistry,
+  key: string,
   registration: BearerConnectionRegistration,
 ): DoorCredential {
   return {
     install: async () => {
       const result = await runAtomCommand(registry, installCommand, registration, quiet);
-      return { ok: result._tag !== "Failure" };
+      if (result._tag === "Failure") return { ok: false };
+      keptSessions.keep(key, registration);
+      return { ok: true };
     },
+  };
+}
+
+/** Whether two base URLs name the same place; one that does not parse names none. */
+function sameBaseUrl(left: string, right: string): boolean {
+  try {
+    return new URL(left).href.replace(/\/+$/, "") === new URL(right).href.replace(/\/+$/, "");
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * The session an earlier load kept for this target, as one exchange presents it again: only at
+ * the base URL it was opened at, and only once its Mate says it still holds it.
+ */
+function keptDoorSession(
+  registry: AtomRegistry.AtomRegistry,
+  key: string,
+): KeptDoorSession<BearerConnectionRegistration> | null {
+  const registration = keptSessions.read(key);
+  if (registration === null) return null;
+  const { httpBaseUrl } = registration.profile;
+  return {
+    credential: registration,
+    check: async (at) => {
+      if (!sameBaseUrl(httpBaseUrl, at.httpBaseUrl)) return false;
+      const result = await runAtomCommand(
+        registry,
+        sessionStateCommand,
+        { httpBaseUrl, bearerToken: registration.credential.token },
+        quiet,
+      );
+      if (result._tag === "Failure") throw squashAtomCommandFailure(result);
+      return result.value.authenticated;
+    },
+    forget: () => keptSessions.forget(key, registration.credential.token),
   };
 }
 
@@ -270,6 +322,7 @@ export function webEnvironmentPorts(input: {
             readDescriptor: descriptorAt,
             prepare: (prepared) => runAtomCommand(registry, prepareCommand, prepared, quiet),
             environmentOf: (registration) => registration.target.environmentId,
+            kept: keptDoorSession(registry, request.key),
           },
           request.origin,
           {
@@ -279,9 +332,10 @@ export function webEnvironmentPorts(input: {
           },
         );
         return answer.ok
-          ? { ...answer, credential: doorCredential(registry, answer.credential) }
+          ? { ...answer, credential: doorCredential(registry, request.key, answer.credential) }
           : answer;
       },
+      kept: (key) => keptSessions.read(key) !== null,
       readDescriptor: async (origin) =>
         descriptorFacts(await descriptorAt(zeropsMateBaseUrl(origin, servedApp()))),
       retryLink: (environmentId) => {
