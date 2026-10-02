@@ -61,6 +61,10 @@ const VIEW: Org = {
     project("P_OTHER"),
     // maker made this Mate: Zerops left them its OWNER.
     project("P_OWNED", [{ clientUserId: "C-maker", roleCode: "OWNER" }]),
+    // maker's new projects, which race for one place.
+    ...["P_RACE1", "P_RACE2", "P_RACE3", "P_RACE4", "P_RACE5", "P_RACE6"].map((id) =>
+      project(id, [{ clientUserId: "C-maker", roleCode: "OWNER" }]),
+    ),
   ],
 };
 
@@ -154,6 +158,34 @@ describe("structure", () => {
             );
           }),
         ),
+    );
+
+    it.effect("of attaches racing for one empty place, exactly one lands", () =>
+      withStructure(() =>
+        Effect.gen(function* () {
+          const structure = yield* Structure;
+          const shop = yield* structure.createApp("owner", "Shop");
+          // maker sees Shop through P_TEAM, its production, and owns the racing projects.
+          yield* structure.attachProject("owner", shop.id, {
+            projectId: "P_TEAM",
+            kind: "production",
+          });
+          const racers = ["P_RACE1", "P_RACE2", "P_RACE3", "P_RACE4", "P_RACE5", "P_RACE6"];
+          // Every racer finds a connection open, so none starts late waiting for one.
+          const sql = yield* SqlClient.SqlClient;
+          yield* Effect.all(
+            Array.from({ length: 10 }, () => sql`SELECT pg_sleep(0.05)`),
+            { concurrency: "unbounded" },
+          );
+          const raced = yield* Effect.all(
+            racers.map((projectId) =>
+              reasonOf(structure.attachProject("maker", shop.id, { projectId, kind: "stage" })),
+            ),
+            { concurrency: "unbounded" },
+          );
+          assert.deepStrictEqual(raced.toSorted(), ["ok", ...Array(5).fill("slot_taken")]);
+        }),
+      ),
     );
 
     it.effect(

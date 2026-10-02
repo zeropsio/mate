@@ -391,31 +391,38 @@ export const structureLayer = (options: {
               return yield* refuse("invalid", "hq_project");
             }
             const view = yield* roles.fresh;
-            const appProjects = yield* sql<{ readonly project_id: string; readonly kind: string }>`
-              SELECT project_id, kind FROM hq_app_project WHERE app_id::text = ${appId}`;
-            // Whether the application has its project of this kind already: a devstage is its stage
-            // too, and a project Zerops no longer has holds no place.
-            const sameKind = (kind: string) =>
-              kind === input.kind || (input.kind === "stage" && kind === "devstage");
-            const slotTaken = appProjects.some(
-              (row) =>
-                sameKind(row.kind) &&
-                view.projects.some((project) => project.id === row.project_id),
-            );
-            // Decided on the kind held now; the plain INSERT below is the fence: a project placed
-            // since makes it a conflict.
-            yield* allowed(
-              userId,
-              "attach",
-              {
-                projectId: input.projectId,
-                held: yield* heldOf(sql, input.projectId),
-                to: input.kind,
-                appProjectIds: appProjects.map((row) => row.project_id),
-                slotTaken,
-              },
-              view,
-            );
+            /**
+             * `can`'s answer on the application's projects and the project's kind as they stand:
+             * whether the application has its project of this kind already counts too — a
+             * devstage is its stage, and a project Zerops no longer has holds no place.
+             */
+            const decided = Effect.gen(function* () {
+              const appProjects = yield* sql<{
+                readonly project_id: string;
+                readonly kind: string;
+              }>`SELECT project_id, kind FROM hq_app_project WHERE app_id::text = ${appId}`;
+              const sameKind = (kind: string) =>
+                kind === input.kind || (input.kind === "stage" && kind === "devstage");
+              yield* allowed(
+                userId,
+                "attach",
+                {
+                  projectId: input.projectId,
+                  held: yield* heldOf(sql, input.projectId),
+                  to: input.kind,
+                  appProjectIds: appProjects.map((row) => row.project_id),
+                  slotTaken: appProjects.some(
+                    (row) =>
+                      sameKind(row.kind) &&
+                      view.projects.some((project) => project.id === row.project_id),
+                  ),
+                },
+                view,
+              );
+            });
+            // Decided first on the structure as it stands, so a refusal spends nothing of Zerops;
+            // then again in the write, under the application's lock.
+            yield* decided;
             // What this write would conflict with — the project in any application, the
             // application's production. A row whose project Zerops no longer has (asked by its id)
             // stops counting and goes with this write; one Zerops cannot answer for refuses it.
@@ -427,7 +434,11 @@ export const structureLayer = (options: {
             yield* conflictOnUnique(
               leader.write(
                 Effect.gen(function* () {
-                  const apps = yield* sql`SELECT 1 FROM hq_app WHERE id::text = ${appId}`;
+                  // The application's row, locked: attaches into one application are decided one
+                  // after another, each on what the one before left — two never take one place.
+                  const apps = yield* sql`
+                    SELECT 1 FROM hq_app WHERE id::text = ${appId} FOR UPDATE`;
+                  yield* decided;
                   if (apps.length === 0) return yield* refuse("app_not_found", "app_not_found");
                   yield* dropRows(gone);
                   yield* sql`
