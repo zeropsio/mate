@@ -63,6 +63,18 @@ describe("mateLink", () => {
     // A field this build does not know is passed by, so an older Mate reads a newer HQ.
     expect(decodeDown(state({ releases: [] }))._tag).toBe("Success");
     expect(decodeDown(state({ changes: [{ repo: "appdev" }] }))._tag).toBe("Failure");
+
+    // Its application by name, as HQ names it now; an older HQ's state names none.
+    const appName = (extra: Record<string, unknown>) => {
+      const decoded = decodeDown(state(extra));
+      return decoded._tag === "Success" && decoded.value.type === "state"
+        ? decoded.value.mate.appName
+        : decoded._tag;
+    };
+    expect(appName({ appName: "Shop" })).toBe("Shop");
+    expect(appName({ appName: null })).toBeNull();
+    expect(appName({})).toBeNull();
+    expect(appName({ appName: 7 })).toBe("Failure");
   });
 
   it("cuts a text to what a summary carries", () => {

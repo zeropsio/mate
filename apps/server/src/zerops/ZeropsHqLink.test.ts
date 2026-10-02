@@ -71,6 +71,7 @@ const STATE: MateState = {
   standupRequestedBy: "owner",
   closedOff: true,
   appId: null,
+  appName: null,
   changes: [],
 };
 
@@ -168,6 +169,7 @@ describe("ZeropsHqLink", () => {
         const placed: MateState = {
           ...STATE,
           appId: "app-1",
+          appName: "Shop",
           changes: [
             {
               repo: "shop",
@@ -188,6 +190,28 @@ describe("ZeropsHqLink", () => {
           Effect.timeout(Duration.seconds(3)),
         );
         assert.deepStrictEqual(held, placed);
+      }),
+    ),
+  );
+
+  // An HQ older than the application's name sends none: the state is kept, naming none.
+  it.live("keeps an older HQ's state, its application named by none", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const { link, enrollment, sockets, until } = yield* rig;
+        yield* Ref.set(enrollment, Option.some({ hq: "https://hq.test", credential: "cred" }));
+        const socket = yield* until(() => sockets[0]);
+        socket.emit("open");
+        const { appName: _appName, ...older } = { ...STATE, appId: "app-1" };
+        socket.hear({ type: "state", mate: older });
+        const held = yield* link.standing.pipe(
+          Effect.flatMap((standing) =>
+            standing.kind === "linked" ? Effect.succeed(standing.mate) : Effect.fail("not yet"),
+          ),
+          Effect.retry(Schedule.spaced(Duration.millis(5))),
+          Effect.timeout(Duration.seconds(3)),
+        );
+        assert.deepStrictEqual(held, { ...older, appName: null });
       }),
     ),
   );

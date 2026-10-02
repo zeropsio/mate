@@ -151,8 +151,8 @@ export class Changes extends Context.Service<
       edit: { readonly title?: string; readonly body?: string },
     ) => Effect.Effect<HqChange, MateError>;
     /**
-     * What the Mate's own state carries of its changes: the application HQ holds it in, and there
-     * its latest changes per repository, newest first.
+     * What the Mate's own state carries of its changes: the application HQ holds it in, by id and
+     * name, and there its latest changes per repository, newest first.
      */
     readonly mateChanges: (projectId: string) => Effect.Effect<MateChanges, SqlError>;
     /** A picture for the Mate's open change: a PNG, kept for its description to show. */
@@ -862,10 +862,11 @@ export const changesLayer: Layer.Layer<
         }),
       mateChanges: (projectId) =>
         Effect.gen(function* () {
-          const [placed] = yield* sql<{ readonly app_id: string }>`
-            SELECT app_id::text AS app_id FROM hq_app_project
-            WHERE project_id = ${projectId} AND kind IN ('mate', 'devstage')`;
-          if (placed === undefined) return { appId: null, changes: [] };
+          const [placed] = yield* sql<{ readonly app_id: string; readonly name: string }>`
+            SELECT placed.app_id::text AS app_id, app.name FROM hq_app_project placed
+            JOIN hq_app app ON app.id = placed.app_id
+            WHERE placed.project_id = ${projectId} AND placed.kind IN ('mate', 'devstage')`;
+          if (placed === undefined) return { appId: null, appName: null, changes: [] };
           const rows = yield* sql<
             Pick<ChangeRow, "repo" | "number" | "state" | "head" | "merged_sha" | "landed_head">
           >`
@@ -878,6 +879,7 @@ export const changesLayer: Layer.Layer<
             ORDER BY repo, number DESC`;
           return {
             appId: placed.app_id,
+            appName: placed.name,
             changes: rows.map((row) => ({
               repo: row.repo,
               number: row.number,
