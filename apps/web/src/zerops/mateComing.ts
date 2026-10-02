@@ -13,7 +13,9 @@
  * - this tab made it (`newMate.ts`'s creation) and it has not connected yet: its press ends in
  *   seconds, at its close-off, long before its container answers;
  * - or, where this browser made no press — another device, a reload — the listing reads its
- *   project or its container on the way up (`provisioning`, never a restart).
+ *   project or its container on the way up (`provisioning`, never a restart), or its address
+ *   landed while this window watched it wait for it and its Mate does not answer yet
+ *   (`arriving`, `arrivalAwaitsAnswer`).
  *
  * It did not come when the platform refused its creation (`creationFailed`, the page's verdict),
  * or when this tab's press stopped after the platform took the project: both say so — a press
@@ -34,6 +36,7 @@ import {
 import {
   isTerminalReachability,
   routeGatePhrase,
+  type MateLink,
   type Reachability,
   type RouteGatePhrase,
 } from "@t3tools/client-runtime/zerops/environments";
@@ -99,6 +102,8 @@ export interface MateComingInput {
           | undefined;
         /** Its project lists no container. */
         readonly missingContainer?: true | undefined;
+        /** Its address landed where its reader watched it wait for it (`ZeropsCandidate.arriving`). */
+        readonly arriving?: { readonly until: number } | undefined;
         readonly project?: { readonly created?: string | undefined } | undefined;
       }
     | undefined;
@@ -117,6 +122,8 @@ export interface MateComingInput {
   readonly listingLacksIt?: boolean | undefined;
   /** Its container's first build, where its project's processes are read (`firstBuildState`). */
   readonly firstBuild?: FirstBuildState | undefined;
+  /** Its link still waits for its first answer (`arrivalAwaitsAnswer`). */
+  readonly answerAwaited?: boolean | undefined;
 }
 
 /** Whether `at` is within `graceMs` of now; an unknown time or now counts as young. */
@@ -233,6 +240,17 @@ export function mateComing(input: MateComingInput): MateComing | undefined {
       : candidate.group === "provisioning" || input.linkHolds === true)
   ) {
     return { kind: "coming", line: comingMateLine({}) };
+  }
+  // Its address landed where this window watched it wait for it, and its Mate does not answer yet:
+  // still on its way, in every window, until its listing's clock ends — past it a Mate that never
+  // answered reads as any other.
+  if (
+    candidate?.group === "ready" &&
+    candidate.arriving !== undefined &&
+    (input.nowMs === undefined || input.nowMs < candidate.arriving.until) &&
+    input.answerAwaited === true
+  ) {
+    return { kind: "coming", line: COMING_UP_LINE };
   }
   if (
     press === undefined &&
@@ -443,6 +461,16 @@ export function arrivalHoldsThrough(
       return false;
   }
 }
+
+/**
+ * Whether a Mate's link still waits for its first answer, on what an arrival holds through: it has
+ * not connected on this page, and nothing it waits for is a verdict — a Mate gone or refused, a
+ * restart asked for, its container down. Its failures do not count: a server still starting fails
+ * its probes until it answers, and its listing's clock (`ZeropsCandidate.arriving`) bounds the wait
+ * instead.
+ */
+export const arrivalAwaitsAnswer = (link: Pick<MateLink, "reachability" | "answered">): boolean =>
+  !link.answered && arrivalHoldsThrough(link.reachability, { failuresSinceConnect: 0 });
 
 /** Whether a Mate's link, as its machine reads it (`MateLink`), waits on what an arrival holds through. */
 export const arrivalLinkHolds = (link: {

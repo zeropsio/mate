@@ -38,7 +38,7 @@ import { useEnvironmentLinks } from "../routes/-environmentTargets";
 import { readThreadShells, useProjects, useThreadShells } from "../state/entities";
 import { buildThreadRouteParams } from "../threadRoutes";
 import { deletingMates, mateDeleting } from "./deletingMates";
-import { mateComing, arrivalLinkHolds } from "./mateComing";
+import { arrivalAwaitsAnswer, arrivalLinkHolds, mateComing } from "./mateComing";
 import { awaitMateConversation } from "./mateOpening";
 import { newMateView, useNewMate } from "./newMate";
 import { useZeropsCandidates } from "./useZeropsCandidates";
@@ -93,6 +93,8 @@ export function useOpenMate(): OpenMate {
         created: creations[projectId] !== undefined,
         linkHolds:
           creations[projectId] === undefined ? undefined : arrivalLinkHolds(mateLink(candidate)),
+        answerAwaited:
+          candidate.arriving === undefined ? undefined : arrivalAwaitsAnswer(mateLink(candidate)),
       });
       const environmentId = coming === undefined ? linkTarget(candidate) : undefined;
       if (environmentId === undefined) {

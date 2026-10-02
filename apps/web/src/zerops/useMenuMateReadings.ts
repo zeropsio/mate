@@ -18,7 +18,7 @@ import { environmentsWithSnapshotAtom } from "../state/shell";
 import { zeropsEnvironmentsAtom } from "../state/zerops";
 import type { ZeropsAgentActivity } from "./agentActivity";
 import { useEnvironmentLinks } from "../routes/-environmentTargets";
-import { arrivalLinkHolds, mateComing, type MateComing } from "./mateComing";
+import { arrivalAwaitsAnswer, arrivalLinkHolds, mateComing, type MateComing } from "./mateComing";
 import { rememberedActivity } from "./menuMemory";
 import { useNewMate } from "./newMate";
 import { useZeropsCreationVerdicts } from "./useZeropsCreationVerdicts";
@@ -82,8 +82,9 @@ export function useMateConversationsRead(): (candidate: ZeropsCandidate) => bool
 
 /**
  * Whether a Mate the menu lists is still in its first minutes, as its row says it: its press made
- * in this browser, its project on the way up, the platform's verdict on its creation (read as the
- * projects page reads it), or a step of this tab's creation that failed.
+ * in this browser, its project on the way up, its address landed and its Mate not answering yet,
+ * the platform's verdict on its creation (read as the projects page reads it), or a step of this
+ * tab's creation that failed.
  */
 export function useMateComingOf(
   candidates: ReadonlyArray<ZeropsCandidate>,
@@ -108,6 +109,8 @@ export function useMateComingOf(
           creations[candidate.project.id] === undefined
             ? undefined
             : arrivalLinkHolds(mateLink(candidate)),
+        answerAwaited:
+          candidate.arriving === undefined ? undefined : arrivalAwaitsAnswer(mateLink(candidate)),
       });
     },
     [presses, creations, mateLink, verdicts],
