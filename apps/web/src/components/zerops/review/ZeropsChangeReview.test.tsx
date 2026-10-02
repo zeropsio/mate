@@ -74,7 +74,7 @@ vi.mock("~/zerops/fixMates", () => ({ useFixMates: () => [] }));
 vi.mock("~/zerops/useZeropsReviewMates", () => ({ useZeropsReviewMates: () => new Map() }));
 /** What HQ's rule offers the person of the application's changes; the one function every render. */
 const offers = vi.hoisted(() => {
-  const held = { current: { read: true, comment: true } };
+  const held = { current: { read: true, comment: true, merge: true, close: true } };
   return { held, of: () => held.current };
 });
 vi.mock("~/zerops/useChangeOffers", () => ({ useChangeOffers: () => offers.of }));
@@ -255,7 +255,7 @@ describe("ZeropsChangeReview: a change its project's flow does not hold yet", ()
   afterEach(() => {
     account.changes.clear();
     account.reads.length = 0;
-    offers.held.current = { read: true, comment: true };
+    offers.held.current = { read: true, comment: true, merge: true, close: true };
     vi.unstubAllGlobals();
   });
 
@@ -292,7 +292,7 @@ describe("ZeropsChangeReview: a change its project's flow does not hold yet", ()
   });
 
   it("offers no box where HQ's rule does not let the person comment on it", async () => {
-    offers.held.current = { read: true, comment: false };
+    offers.held.current = { read: true, comment: false, merge: true, close: true };
     await reviewed((host) => {
       expect(host.textContent).toContain("Rebuild the full API on the new schema");
       expect(elementsOf(host, "textarea")).toHaveLength(0);
