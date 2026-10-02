@@ -66,14 +66,8 @@
  * @module recipeTier
  */
 
-/** The tier directories, spelled as the group repo spells them. */
-export const RECIPE_TIER_PATHS = {
-  mate: "0 — AI Agent/import.yaml",
-  stage: "3 — Stage/import.yaml",
-  production: "4 — Small Production/import.yaml",
-} as const;
-
-export type RecipeTier = keyof typeof RECIPE_TIER_PATHS;
+/** The tier directories, spelled as an application's recipe repository spells them in HQ. */
+export { RECIPE_TIER_PATHS, type RecipeTier } from "@t3tools/shared/hqRecipe";
 
 /** The environments document, beside the tiers (guide 5.1). */
 export const ENVIRONMENTS_DOCUMENT_PATH = "environments.yaml";

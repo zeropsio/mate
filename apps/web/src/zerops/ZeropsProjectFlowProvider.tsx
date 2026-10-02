@@ -17,7 +17,8 @@
  * in by itself, and until that lands the Gitea halves are empty and the
  * surfaces say so where they stand. A Mate's changes need no Gitea, nor does
  * what each stop runs: the account's deployment store's answer
- * (`flow/deploymentStore.ts`).
+ * (`flow/deploymentStore.ts`). A change is merged and closed in HQ, as the
+ * person, and comes back down HQ's stream.
  */
 import { useAtomValue } from "@effect/atom-react";
 import {
@@ -45,6 +46,7 @@ import {
   type FlowVerb,
   type ZeropsService,
 } from "@t3tools/client-runtime/zerops";
+import { HQ_NOT_OPEN, hqRefusalWords, type HqApi } from "@t3tools/client-runtime/zerops/hq";
 import {
   flowReleaseGate,
   flowVerbInvalidations,
@@ -58,8 +60,9 @@ import {
 } from "@t3tools/client-runtime/zerops/data";
 import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
 import { mateDiagnostics } from "@t3tools/client-runtime/zerops/diagnostics";
+import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 import { zeropsThrowawayPlatform } from "@t3tools/client-runtime/zerops/doorThrowaway";
-import type { HqChange } from "@t3tools/shared/hqChanges";
+import type { ChangeLink, HqChange } from "@t3tools/shared/hqChanges";
 import {
   useCallback,
   useContext,
@@ -72,7 +75,7 @@ import {
 
 import { hqChangesAtom, hqStructureAtom } from "../state/zerops";
 import { useStopDeployments } from "./accountForge";
-import { useAccountHq } from "./accountHq";
+import { accountHqApi, useAccountHq } from "./accountHq";
 import { useAccountGitea } from "./giteaProject";
 import { giteaClientFor, useGiteaSession } from "./accountGiteaSessions";
 import {
@@ -117,23 +120,39 @@ export const VERB_ALREADY_RUNNING = "It is already on its way.";
 
 const refused = (reason: string): FlowVerbOutcome => ({ ok: false, reason });
 
+/** A change's verb, merge or close, which HQ answers. */
+type ChangeVerb = Extract<FlowVerb, { readonly kind: "merge" | "close" }>;
+
+/** What a merge refused for a head nobody was shown says: HQ's own words for it. */
+const HEAD_NOT_SHOWN = hqRefusalWords({ code: "conflict", reason: "head_moved" });
+
 /**
- * A verb whose call landed (a tag), waiting for any forge answer of its group after the one it
- * landed against.
+ * A verb whose call landed, waiting until its effect is read: a tag, for any forge answer of its
+ * group after the one it landed against; a change merged or closed, for HQ's stream to no longer
+ * hold it open.
  */
 interface HeldVerb {
   readonly groupId: string;
-  readonly against: ZeropsGroupForgeState | undefined;
+  readonly against:
+    | { readonly kind: "forge"; readonly answer: ZeropsGroupForgeState | undefined }
+    | { readonly kind: "change"; readonly repository: string; readonly number: number };
   readonly sinceMs: number;
 }
 
-/** Whether the group's forge has answered since the held verb landed, or can no longer say. */
+/** Whether the held verb's effect is read, or its group's forge can no longer say. */
 function effectRead(
   held: HeldVerb,
   forge: ZeropsGroupForgeState | undefined,
   failed: boolean,
+  flow: ZeropsProjectFlow | undefined,
 ): boolean {
-  return failed || forge !== held.against;
+  const { against } = held;
+  if (against.kind === "forge") return failed || forge !== against.answer;
+  return !(
+    flow?.pullRequests.some(
+      (pull) => pull.repository === against.repository && pull.number === against.number,
+    ) ?? false
+  );
 }
 
 /** One group's changes as its flow shows them: the open ones a push reached, and the landed. */
@@ -591,6 +610,13 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
   // need no Gitea, so the flows stand on them wherever HQ answers.
   const accountHq = useAccountHq(clientId);
   const hqAddress = accountHq.hq.kind === "official" ? accountHq.hq.address : undefined;
+  const hqApi = useMemo(
+    () =>
+      accountHq.hq.kind === "official" && clientId !== undefined
+        ? accountHqApi(session.client, clientId, accountHq.hq)
+        : null,
+    [accountHq.hq, clientId, session.client],
+  );
   const hqChanges = useAtomValue(hqChangesAtom);
   const hqStructure = useAtomValue(hqStructureAtom);
   const changes = useMemo(
@@ -706,7 +732,10 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
     setAwaiting((current) =>
       new Map(current).set(flowVerbKey(verb), {
         groupId,
-        against: latestForges.current.get(groupId),
+        against:
+          verb.kind === "merge" || verb.kind === "close"
+            ? { kind: "change", repository: verb.repository, number: verb.number }
+            : { kind: "forge", answer: latestForges.current.get(groupId) },
         sinceMs: Date.now(),
       }),
     );
@@ -849,6 +878,54 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
     [actingClient, flows, hold, refuse, run, tagAs],
   );
 
+  /**
+   * A change merged or closed in HQ, as the person: held until HQ's stream no longer holds it open,
+   * nothing read again; HQ's refusal is handed back in its words to the review that pressed it.
+   */
+  const changeVerb = useCallback(
+    async (
+      verb: ChangeVerb,
+      act: (api: HqApi, link: ChangeLink) => Promise<unknown>,
+    ): Promise<FlowVerbOutcome> => {
+      if (hqApi === null) return refused(HQ_NOT_OPEN);
+      const link = { appId: verb.groupId, repo: verb.repository, number: verb.number };
+      return run(verb, verb.groupId, async () => {
+        try {
+          await act(hqApi, link);
+        } catch (cause) {
+          return refused(zeropsErrorMessage(cause));
+        }
+        hold(verb, verb.groupId);
+        return { ok: true };
+      });
+    },
+    [hold, hqApi, run],
+  );
+
+  const merge = useCallback(
+    (
+      groupId: string,
+      change: { readonly repository: string; readonly number: number },
+      expectedHead: string | undefined,
+    ): Promise<FlowVerbOutcome> => {
+      // Only the head whose change was shown: one nobody saw is never merged, and HQ is not asked.
+      if (expectedHead === undefined) return Promise.resolve(refused(HEAD_NOT_SHOWN));
+      return changeVerb({ kind: "merge", groupId, ...change }, (api, link) =>
+        api.mergeChange(link, expectedHead),
+      );
+    },
+    [changeVerb],
+  );
+
+  const close = useCallback(
+    (
+      groupId: string,
+      change: { readonly repository: string; readonly number: number },
+    ): Promise<FlowVerbOutcome> =>
+      changeVerb({ kind: "close", groupId, ...change }, (api, link) => api.closeChange(link)),
+    [changeVerb],
+  );
+
   // While the account's access lapses, the groups the registry names and what was read of them
   // are withheld with every project (§3.1); the reads themselves are kept for the next grant.
   const lapsed = inventory.account.kind === "withheld";
@@ -858,9 +935,14 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
   const settled = useMemo(
     () =>
       [...awaiting].filter(([, entry]) =>
-        effectRead(entry, forges.get(entry.groupId), forgeFailures.has(entry.groupId)),
+        effectRead(
+          entry,
+          forges.get(entry.groupId),
+          forgeFailures.has(entry.groupId),
+          flows.get(entry.groupId),
+        ),
       ),
-    [awaiting, forgeFailures, forges],
+    [awaiting, flows, forgeFailures, forges],
   );
   useEffect(() => {
     if (settled.length === 0) return;
@@ -890,14 +972,18 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
       trouble: (signedIn ? signInTrouble : null) ?? trouble,
       release,
       rollBack,
+      merge,
+      close,
     }),
     [
+      close,
       deployments,
       flows,
       giteaOrigin,
       hqAddress,
       lapsed,
       mateNames,
+      merge,
       pendingOrHeld,
       readable,
       release,

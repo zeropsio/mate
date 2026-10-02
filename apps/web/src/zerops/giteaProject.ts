@@ -65,19 +65,3 @@ export function useAccountGitea(clientId: string | undefined): AccountGitea | un
   // (`heldThroughBlink.ts`). No inventory at all is no scope — signed out — and holds nothing.
   return useHeldThroughBlink(found, held === null ? undefined : (clientId ?? ""));
 }
-
-/**
- * Whether the account holds a Gitea project in the org, its services read or not, withheld or
- * not: while it does, what is read from it is still coming.
- */
-export function useAccountHoldsGitea(clientId: string | undefined): boolean {
-  const held = useContext(HeldInventoryContext);
-  return (
-    held !== null &&
-    held.projects.some(
-      (project) =>
-        readZeropsToolKind(project.tagList) === "gitea" &&
-        (clientId === undefined || project.clientId === clientId),
-    )
-  );
-}

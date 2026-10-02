@@ -29,7 +29,6 @@ import * as HttpServer from "effect/unstable/http/HttpServer";
 
 import { coreApp } from "../../src/core.ts";
 import { treeMigrations } from "../../src/migrationFiles.ts";
-import { noRecipeTiersYet } from "../../src/recipeTiers.ts";
 import {
   ZeropsApi,
   ZeropsDeploy,
@@ -174,7 +173,6 @@ export const startCore = (
       coreApp(options).pipe(
         Layer.provide(Layer.succeed(ZeropsApi, fakeZeropsApi(fake))),
         Layer.provide(Layer.succeed(ZeropsDeploy, fakeZeropsDeploy(fake))),
-        Layer.provide(noRecipeTiersYet),
         Layer.provideMerge(NodeHttpServer.layer(() => NodeHttp.createServer(), { port: 0 })),
       ),
       scope,

@@ -29,7 +29,6 @@ import { useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 
 import { useThreadDetail, useThreadStatus } from "~/state/entities";
-import { useAccountGitea, useAccountHoldsGitea } from "~/zerops/giteaProject";
 import { newMateView, useNewMate } from "~/zerops/newMate";
 import { useZeropsProjectFlowOptional } from "~/zerops/projectFlowContext";
 import {
@@ -40,7 +39,6 @@ import { useOpenMate } from "~/zerops/useOpenMate";
 import { useTakenBotNames, useZeropsCandidates } from "~/zerops/useZeropsCandidates";
 import { useZeropsAgentAuth } from "~/zerops/useZeropsFeeds";
 import { useZeropsGroupRecipe } from "~/zerops/useZeropsGroupRecipe";
-import { registryGroupSlug, useZeropsRegistry } from "~/zerops/useZeropsRegistry";
 import { placedPressesIn, useMatePress, useMatePresses, type MatePress } from "~/zerops/matePress";
 import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
 
@@ -122,22 +120,13 @@ function NewMateDialog({
       }).groups.find((candidate) => candidate.group.groupId === groupId),
     [activeOrganization?.id, presses, candidates, groupId],
   );
-  const accountGitea = useAccountGitea(activeOrganization?.id);
-  const holdsGitea = useAccountHoldsGitea(activeOrganization?.id);
-  const registry = useZeropsRegistry();
-  // The account's flow: the group's org, known from its registry long before this opened, and
-  // the group's changes, open and landed, as the forge last read them.
+  // The account's flow: the application's changes, open and landed, as HQ's stream last said them.
   const flow = useZeropsProjectFlowOptional();
   const groupFlow = flow?.flows.get(groupId);
-  const slug = flow?.slugs.get(groupId) ?? registryGroupSlug(registry.registry, groupId);
   const recipe = useZeropsGroupRecipe({
-    giteaOrigin: accountGitea?.state.url,
-    slug,
+    appId: groupId,
     tier: "mate",
     enabled: true,
-    // No org is not yet no recipe while the account's Gitea, or the registry naming the org, is
-    // still being read.
-    pending: (holdsGitea && accountGitea === undefined) || (slug === undefined && registry.loading),
     // A proposal of the recipe landing while the dialog is open puts it on `main`: read again.
     revision:
       groupFlow?.changesKnown === true

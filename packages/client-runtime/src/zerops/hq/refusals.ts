@@ -8,6 +8,7 @@
  *
  * @module hq/refusals
  */
+import type { MERGE_REFUSALS } from "@t3tools/shared/hqChanges";
 import type { Reason } from "@t3tools/shared/zeropsPermissions";
 
 /** Every permission's refusal, in words: a reason left out does not compile. */
@@ -39,6 +40,26 @@ const PERMISSION_WORDS: { readonly [R in Reason]: string } = {
     "This project has one of this kind already. Only an owner or admin of the organization replaces it.",
   not_app_developer:
     "You need at least Basic user access to one of this project's Zerops projects to do this.",
+  not_recipe_repo: "Only the project's recipe lands by itself.",
+  author_not_in_app: "Only a Mate of this project proposes its recipe.",
+  recipe_empty: "This change changes nothing, so it was closed.",
+  recipe_changes_files:
+    "This change edits the project's recipe, so it waits for someone who develops the project to merge it.",
+};
+
+/**
+ * Why HQ did not merge a change (`MERGE_REFUSALS`), in words: what stopped it, so the person knows
+ * whether pressing again can help. A refusal left out does not compile.
+ */
+const MERGE_WORDS: { readonly [R in (typeof MERGE_REFUSALS)[number]]: string } = {
+  head_moved: "Its Mate pushed to it since you opened it. Review it again.",
+  conflict: "It no longer merges cleanly into main.",
+  empty: "There is nothing in it that main does not have.",
+  already_merged: "It is on main already.",
+  unrelated: "It shares no history with main.",
+  no_change: "Nothing was pushed to it yet.",
+  main_moved: "Other changes kept landing on main meanwhile. Try again.",
+  change_not_open: "This change is merged or closed already.",
 };
 
 /**
@@ -63,11 +84,17 @@ const STRUCTURE_WORDS: Readonly<Record<string, string>> = {
   repo_not_found: "HQ has no such repository.",
   change_not_found: "HQ has no such change.",
   attachment_not_found: "HQ has no such picture.",
-  change_not_open: "This change is merged or closed already.",
+  // An application's recipe (`@t3tools/shared/hqRecipe`).
+  recipe_too_large: "This project's recipe is too large to read here.",
 };
+
+/** What anything asked of the organization's HQ says where its official HQ is not open here. */
+export const HQ_NOT_OPEN = "This organization's HQ is not open here.";
 
 const isPermissionReason = (reason: string): reason is Reason =>
   Object.hasOwn(PERMISSION_WORDS, reason);
+const isMergeRefusal = (reason: string): reason is keyof typeof MERGE_WORDS =>
+  Object.hasOwn(MERGE_WORDS, reason);
 
 /** What HQ's refusal says to the person: its reason in words, else named by its reason or code. */
 export function hqRefusalWords(refusal: {
@@ -77,6 +104,7 @@ export function hqRefusalWords(refusal: {
   const { reason } = refusal;
   if (reason !== undefined) {
     if (isPermissionReason(reason)) return PERMISSION_WORDS[reason];
+    if (isMergeRefusal(reason)) return MERGE_WORDS[reason];
     const words = STRUCTURE_WORDS[reason];
     if (words !== undefined) return words;
   }

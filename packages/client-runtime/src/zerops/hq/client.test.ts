@@ -628,6 +628,70 @@ describe("makeHqApi — a Mate's changes, as the person reads them", () => {
     expect(hq.seen.at(-1)).toMatchObject({ method: "POST", body: { body: "Ship it" } });
   });
 
+  // A merge takes only the head the person was shown; HQ answers the change as it now stands.
+  it("merges a change as the person, with the head they were shown", async () => {
+    const MERGED = {
+      ...CHANGE,
+      state: "merged",
+      mergedSha: "c".repeat(40),
+      landedHead: SHA,
+      mergedAt: "2026-10-02T09:10:00.000Z",
+      mergeability: "already_merged",
+    } as const;
+    const { hq, api: hqApi } = api((seen) =>
+      seen.path === "/api/apps/app-1/changes/app/3/merge" ? json(200, MERGED) : undefined,
+    );
+    await expect(hqApi.mergeChange(LINK, SHA)).resolves.toEqual(MERGED);
+    expect(hq.seen.at(-1)).toMatchObject({
+      method: "POST",
+      authorization: "Bearer session-1",
+      body: { expectedHead: SHA },
+    });
+  });
+
+  it("closes a change without merging it, as the person", async () => {
+    const CLOSED = { ...CHANGE, state: "closed", closedAt: "2026-10-02T09:10:00.000Z" } as const;
+    const { hq, api: hqApi } = api((seen) =>
+      seen.path === "/api/apps/app-1/changes/app/3/close" ? json(200, CLOSED) : undefined,
+    );
+    await expect(hqApi.closeChange(LINK)).resolves.toEqual(CLOSED);
+    expect(hq.seen.at(-1)).toMatchObject({ method: "POST", authorization: "Bearer session-1" });
+  });
+
+  it("says why HQ did not merge in words of its own", async () => {
+    const { api: hqApi } = api(() => json(409, { code: "conflict", reason: "head_moved" }));
+    await expect(hqApi.mergeChange(LINK, SHA)).rejects.toMatchObject({
+      kind: "refused",
+      code: "conflict",
+      status: 409,
+      message: "Its Mate pushed to it since you opened it. Review it again.",
+    });
+  });
+
+  // The recipe a new environment starts from, on its recipe repository's `main` (SPEC §3.2c).
+  it.each([
+    [
+      "a tier main holds",
+      { state: "present", importYaml: "services:\n  - hostname: db\n", mainHead: SHA },
+    ],
+    ["a tier main does not", { state: "absent" }],
+  ] as const)("reads %s, as the person", async (_case, tier) => {
+    const { hq, api: hqApi } = api((seen) =>
+      seen.path === "/api/apps/app-1/recipe/mate" ? json(200, tier) : undefined,
+    );
+    await expect(hqApi.recipeTier("app-1", "mate")).resolves.toEqual(tier);
+    expect(hq.seen.at(-1)).toMatchObject({ method: "GET", authorization: "Bearer session-1" });
+  });
+
+  it("says a recipe too large to read in words of its own", async () => {
+    const { api: hqApi } = api(() => json(413, { code: "too_large", reason: "recipe_too_large" }));
+    await expect(hqApi.recipeTier("app-1", "stage")).rejects.toMatchObject({
+      kind: "refused",
+      code: "too_large",
+      message: "This project's recipe is too large to read here.",
+    });
+  });
+
   it("fetches a change's picture with the session, as the picture it is", async () => {
     const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47]);
     const { hq, api: hqApi } = api((seen) =>

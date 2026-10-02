@@ -11,6 +11,7 @@ import {
   MENU_MEMORY_STORAGE_KEY,
   menuMemory,
   rememberedChangeOf,
+  rememberedChanges,
   rememberedCrewOf,
   rememberedRowOf,
   rememberMenu,
@@ -43,7 +44,6 @@ const PULL: FlowPullRequest = {
   title: "Add a /status page",
   kind: "code",
   mateProjectId: "nova",
-  author: "nova-bot",
   url: "https://git.example/app/pulls/14",
   mergeability: "mergeable",
   behind: false,
@@ -151,7 +151,7 @@ describe("a remembered row", () => {
 });
 
 describe("a remembered change", () => {
-  it("is its title where it hung, with no verdict until Gitea says one again", () => {
+  it("is its title where it hung, with no verdict until HQ says one again", () => {
     expect(changeFromMemory(rememberedChangeOf(PULL))).toEqual({
       ...PULL,
       mergeability: "checking",
@@ -432,6 +432,37 @@ describe("the memory in this browser", () => {
     openAccountLifetime("user-ada");
     expect(menuMemory().crews).toEqual({});
     expect(menuMemory().rows.nova?.subject).toBe("Add a /status page");
+  });
+
+  // Only Mates open changes (SPEC §5.4): the author a change was once remembered with is not
+  // kept, and the change is.
+  it("reads a change remembered with its author, keeping the change and not the author", () => {
+    const key = `mate:account:user-ales:${MENU_MEMORY_STORAGE_KEY}`;
+    stored.set(
+      key,
+      JSON.stringify({
+        ...EMPTY_MENU_MEMORY,
+        changes: { g1: [{ ...rememberedChangeOf(PULL), author: "nova-bot" }] },
+      }),
+    );
+    openAccountLifetime("user-ales");
+    expect(menuMemory().changes.g1).toEqual([rememberedChangeOf(PULL)]);
+  });
+
+  // Only Mates open changes (SPEC §5.4): a change remembered with no Mate — a person's own branch,
+  // from before — reads, and is drawn nowhere; the rest of what was remembered still is.
+  it("reads a change remembered without its Mate, and draws it nowhere", () => {
+    const key = `mate:account:user-ales:${MENU_MEMORY_STORAGE_KEY}`;
+    const { mateProjectId: _mate, ...personal } = { ...rememberedChangeOf(PULL), number: 15 };
+    stored.set(
+      key,
+      JSON.stringify({
+        ...EMPTY_MENU_MEMORY,
+        changes: { g1: [personal, rememberedChangeOf(PULL)] },
+      }),
+    );
+    openAccountLifetime("user-ales");
+    expect(rememberedChanges("g1")?.map((pull) => pull.number)).toEqual([14]);
   });
 
   it("reads nothing another account remembered", () => {

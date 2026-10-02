@@ -496,13 +496,13 @@ const ACTIVITY = new Map<string, ZeropsAgentActivity>([
   ],
 ]);
 
-function pull(input: Partial<FlowPullRequest> & { number: number }): FlowPullRequest {
+function pull(
+  input: Partial<FlowPullRequest> & { number: number; mateProjectId: string },
+): FlowPullRequest {
   return {
     repository: "appdev",
     title: "Change",
     kind: "code",
-    mateProjectId: undefined,
-    author: undefined,
     url: "https://gitea.example/links/appdev/pulls/1",
     mergeability: "mergeable",
     behind: false,
@@ -517,7 +517,7 @@ function pull(input: Partial<FlowPullRequest> & { number: number }): FlowPullReq
 }
 
 /** A pull request whose branch has fallen behind `main` — Gitea refuses it. */
-const behindPull = (input: Partial<FlowPullRequest> & { number: number }) =>
+const behindPull = (input: Partial<FlowPullRequest> & { number: number; mateProjectId: string }) =>
   pull({ mergeability: "conflicting", ...input });
 
 function environment(
@@ -579,7 +579,6 @@ const FLOWS = new Map<string, SidebarProjectFlow>([
           merged: false,
           mergedAt: undefined,
         }),
-        pull({ number: 6, title: "Bump the linter", author: "ada", mateProjectId: undefined }),
       ],
       environments: new Map([
         ["links-stage", environment({ projectId: "links-stage", appVersionName: sha("3f9c1b2e") })],
@@ -649,8 +648,7 @@ const FLOWS = new Map<string, SidebarProjectFlow>([
           repository: "group",
           kind: "recipe",
           title: "Give the stage a bigger database",
-          author: "ales",
-          mateProjectId: undefined,
+          mateProjectId: "shop-otto",
         }),
       ],
       environments: new Map([

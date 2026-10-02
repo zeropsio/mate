@@ -79,8 +79,8 @@ describe("same-origin Zerops identity bootstrap", () => {
       "readZeropsCellOnce(runtime.cells, request, unmountRef.current?.signal)",
     );
     expect(projectsPageSource).not.toContain(".readAuthorizedAgents(");
-    // The recipe is the group repo's, read as the person over Gitea — there is
-    // no Zerops endpoint for it and no mock standing in for one any more.
+    // The recipe is the application's, read as the person through its HQ — there
+    // is no Zerops endpoint for it and no mock standing in for one any more.
     expect(projectsPageSource).not.toContain(".readRecipeGroup(");
     expect(projectsPageSource).toContain("useZeropsGroupRecipe(");
   });
@@ -784,9 +784,11 @@ describe("a project's next step on the projects page", () => {
     expect(groupDetailSource).toContain('openReview({ kind: "release", groupId }, { from });');
   });
 
-  it("merges, releases and rolls back from no row: every such verb opens a review", () => {
+  it("merges, closes, releases and rolls back from no row: every such verb opens a review", () => {
     for (const source of [projectsPageSource, groupDetailSource]) {
       expect(source).not.toContain("mergePullRequest(");
+      expect(source).not.toContain(".merge(");
+      expect(source).not.toContain(".close(");
       expect(source).not.toContain(".release(");
       expect(source).not.toContain(".rollBack(");
     }

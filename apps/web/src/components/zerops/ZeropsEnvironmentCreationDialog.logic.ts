@@ -4,7 +4,6 @@
 
 import {
   botDisplayName,
-  GROUP_REPOSITORY,
   hasMate,
   isRecipeProposal,
   readZeropsMembership,
@@ -20,6 +19,7 @@ import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates"
 import { crewPossessive } from "@t3tools/client-runtime/zerops/crew/phrases";
 import type { TakenBotNames } from "@t3tools/client-runtime/zerops/projections";
 import { MATE_SHAPE_OF_TINT, type MateShapeId, type MateTintId } from "@t3tools/shared/brand";
+import { RECIPE_REPO } from "@t3tools/shared/hqRecipe";
 
 export interface RecipeOption {
   readonly id: string;
@@ -298,7 +298,7 @@ export function newMateWords(input: {
   };
 }
 
-/** Where the recipe on the group repo's `main` stands, as it answered (`useZeropsGroupRecipe`). */
+/** Where the recipe on its repository's `main` stands, as HQ answered (`useZeropsGroupRecipe`). */
 export type NewMateRecipeRead = "loading" | "present" | "absent" | "unreadable";
 
 /** One of the project's Mates, as the door names it. */
@@ -446,8 +446,7 @@ export function newMateRecipeChange(input: {
     if (first === undefined || pull.number < first.number) first = pull;
   }
   if (first === undefined) return undefined;
-  const mate = first.mateProjectId === undefined ? undefined : input.mateName(first.mateProjectId);
-  return { number: first.number, mate };
+  return { number: first.number, mate: input.mateName(first.mateProjectId) };
 }
 
 /** The proposal of the recipe that landed last, by its number: another landing may put one on `main`. */
@@ -461,7 +460,7 @@ export function landedRecipeProposal(merged: ReadonlyArray<FlowPullRequest>): nu
   return newest;
 }
 
-/** Where *Review the change* goes: the recipe's change on the group repo, on its own page. */
+/** Where *Review the change* goes: the recipe's change in its recipe repository, on its own page. */
 export function recipeChangeView(
   groupId: string,
   number: number,
@@ -475,7 +474,7 @@ export function recipeChangeView(
 } {
   return {
     to: "/change/$groupId/$repository/$number",
-    params: { groupId, repository: GROUP_REPOSITORY, number: String(number) },
+    params: { groupId, repository: RECIPE_REPO, number: String(number) },
   };
 }
 

@@ -26,10 +26,18 @@ import {
   attachmentPath,
   mergeSubject,
 } from "@t3tools/shared/hqChanges";
+import {
+  RECIPE_REPO,
+  RECIPE_TIER_PATHS,
+  type RecipeTier,
+  type RecipeTierResponse,
+  hasServices,
+} from "@t3tools/shared/hqRecipe";
 import { type Decision, type Facts, REASONS, can } from "@t3tools/shared/zeropsPermissions";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Queue from "effect/Queue";
 import * as Schema from "effect/Schema";
 import * as Semaphore from "effect/Semaphore";
 import * as Stream from "effect/Stream";
@@ -38,7 +46,7 @@ import * as SqlClient from "effect/unstable/sql/SqlClient";
 import type { SqlError } from "effect/unstable/sql/SqlError";
 
 import { appendEvent } from "./gitEvents.ts";
-import { GitHost, mainOf } from "./gitHost.ts";
+import { GitHost, type PushedChange, mainOf } from "./gitHost.ts";
 import { heldOf } from "./held.ts";
 import { Leader, type NotLeader } from "./leader.ts";
 import { Roles } from "./roles.ts";
@@ -54,6 +62,7 @@ export class ChangeRefused extends Schema.TaggedError<ChangeRefused>()("ChangeRe
     "attachment_not_found",
     "conflict",
     "invalid",
+    "too_large",
   ]),
   /** Why: a permission's reason (`zeropsPermissions.ts`) or one of the changes' own. */
   reason: Schema.Literals([
@@ -64,8 +73,11 @@ export class ChangeRefused extends Schema.TaggedError<ChangeRefused>()("ChangeRe
     "change_not_found",
     "attachment_not_found",
     "not_png",
+    "recipe_too_large",
   ]),
 }) {}
+
+const isChangeRefused = Schema.is(ChangeRefused);
 
 /** The verbs a Mate does in its application, beside editing its change and fetching. */
 export type MateVerb = "ensure_repo" | "open_change";
@@ -90,7 +102,37 @@ export class Changes extends Context.Service<
       projectId: string,
       repoAppId: string,
     ) => Effect.Effect<string, ChangeRefused | SqlError | ZeropsError>;
-    /** The repository `name` in the Mate's application, made if new: `main` begins with HQ's commit. */
+    /**
+     * The application's recipe repository (`hqRecipe.ts` `RECIPE_REPO`), made if new, as Core makes
+     * it with the application, and on first need for one made before.
+     */
+    readonly ensureGroupRepo: (
+      appId: string,
+    ) => Effect.Effect<HqRepo, NotLeader | SqlError | GitError>;
+    /**
+     * A tier of the application's recipe as `main` holds it, bounded — what every reader of a tier
+     * reads, a person's, a Mate's, a deploy's: `absent` without the repository, the file, or a
+     * service in it.
+     */
+    readonly recipeTier: (
+      appId: string,
+      tier: RecipeTier,
+    ) => Effect.Effect<RecipeTierResponse, ChangeRefused | NotLeader | SqlError | GitError>;
+    /** A tier, read by whoever may read the application's changes (`read_change`). */
+    readonly readRecipe: (
+      userId: string,
+      appId: string,
+      tier: RecipeTier,
+    ) => Effect.Effect<RecipeTierResponse, ReadError | NotLeader | GitError>;
+    /** A tier of the Mate's own application's recipe, read as it fetches (`fetch_repo`). */
+    readonly mateRecipe: (
+      projectId: string,
+      tier: RecipeTier,
+    ) => Effect.Effect<RecipeTierResponse, ReadError | NotLeader | GitError>;
+    /**
+     * The repository `name` in the Mate's application, made if new: `main` begins with HQ's commit.
+     * The recipe's (`RECIPE_REPO`) is Core's, whichever Mate asks for it first.
+     */
     readonly ensureRepo: (
       projectId: string,
       name: string,
@@ -109,8 +151,8 @@ export class Changes extends Context.Service<
       edit: { readonly title?: string; readonly body?: string },
     ) => Effect.Effect<HqChange, MateError>;
     /**
-     * What the Mate's own state carries of its changes: the application HQ holds it in, and there
-     * its latest changes per repository, newest first.
+     * What the Mate's own state carries of its changes: the application HQ holds it in, by id and
+     * name, and there its latest changes per repository, newest first.
      */
     readonly mateChanges: (projectId: string) => Effect.Effect<MateChanges, SqlError>;
     /** A picture for the Mate's open change: a PNG, kept for its description to show. */
@@ -185,6 +227,9 @@ export class Changes extends Context.Service<
   }
 >()("@t3tools/hq/changes") {}
 
+/** The most of a tier's import file a read takes: the git layer's own ceiling. */
+const RECIPE_READ_MAX = 1024 * 1024;
+
 /** Who writes HQ's own commits. */
 const HQ_AUTHOR = { name: "HQ", email: "hq@hq.invalid" };
 
@@ -223,6 +268,9 @@ const squashOnMain = (git: HqGit, repo: Repo, mateId: string, number: number) =>
           .some((line) => line.trim() === `Mate-Change: ${mateId}/${String(number)}`),
       )?.sha ?? null,
   );
+
+/** What a try of a landing squashes onto — `main` as it read it — or why it stops short (`stop`). */
+type Aim<A> = { readonly main: string } | { readonly stop: A };
 
 /** The bytes every PNG begins with. */
 const PNG_SIGNATURE = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
@@ -478,40 +526,305 @@ export const changesLayer: Layer.Layer<
         if (change.state !== "open") return yield* refuse("conflict", "change_not_open");
       });
 
+    /**
+     * The change squashed into `main` by whoever `by` names — a person, or Core — with the head
+     * that was judged: one merge of a repository at a time. Each try squashes onto the `main` its
+     * `aim` reads under the repository's lock — a person's, `main` as it is now; Core's, the one it
+     * judged the change against — or stops short where the aim says; should anything else move
+     * `main` meanwhile, it is tried again from where it went.
+     */
+    const land = <A = never, E = never, R = never>(
+      change: HqChange,
+      expectedHead: string,
+      by: object,
+      aim: (git: HqGit, at: Repo) => Effect.Effect<Aim<A>, E, R>,
+    ) =>
+      Effect.gen(function* () {
+        const git = yield* gitHost.git;
+        const number = change.number;
+        // As the change's record names it, never as a path spelled it.
+        const at = { appId: change.appId, id: change.repo };
+        const mate = change.mateProjectId;
+        // Read before the squash, from every commit of the change; a push since moves the head
+        // the squash checks.
+        const crew = onceEach(yield* git.changeTrailers(at, mate, number, CREW_TRAILERS));
+        const [record] = yield* sql<{ readonly name: string }>`
+          SELECT name FROM hq_mate WHERE project_id = ${mate}`;
+        const message =
+          change.body.trim() === ""
+            ? mergeSubject(change.title, number)
+            : `${mergeSubject(change.title, number)}\n\n${change.body}`;
+        const attempt = Effect.gen(function* () {
+          const aimed = yield* aim(git, at);
+          if ("stop" in aimed) return aimed;
+          return yield* git.squashMerge(at, {
+            mateId: mate,
+            number,
+            expectedMain: aimed.main,
+            expectedHead,
+            message,
+            trailers: crew,
+            author: { name: record?.name ?? "Mate", email: `${mate}@mate.hq.invalid` },
+          });
+        });
+        return yield* touched(
+          leader.write(
+            Effect.gen(function* () {
+              // The repository's row, locked: its merges go one at a time.
+              yield* sql`
+                SELECT 1 FROM hq_repo WHERE app_id = ${at.appId}::uuid AND name = ${at.id}
+                FOR UPDATE`;
+              yield* openChangeLocked(at.appId, at.id, number);
+              let landed = yield* attempt;
+              for (
+                let tries = 1;
+                "kind" in landed && landed.kind === "main_moved" && tries < 3;
+                tries++
+              ) {
+                landed = yield* attempt;
+              }
+              if ("stop" in landed) return landed.stop;
+              // On main already, yet open here: this change's squash whose record never landed
+              // (its write failed after git moved main) is recorded now.
+              const found =
+                "kind" in landed && landed.kind === "already_merged"
+                  ? yield* squashOnMain(git, at, mate, number)
+                  : null;
+              if ("kind" in landed && found === null) {
+                return yield* refuse("conflict", landed.kind);
+              }
+              const mergedSha = "merged" in landed ? landed.merged : found!;
+              const [row] = yield* sql<ChangeRow>`
+                UPDATE hq_change
+                SET state = 'merged', merged_sha = ${mergedSha}, landed_head = ${expectedHead},
+                    head = ${expectedHead}, merged_at = now(), updated_at = now(),
+                    mergeability = 'already_merged', behind = false
+                WHERE app_id = ${at.appId}::uuid AND repo = ${at.id} AND number = ${number}
+                RETURNING ${sql.literal(CHANGE_COLUMNS)}`;
+              yield* appendEvent(sql, {
+                kind: "merged",
+                appId: at.appId,
+                repo: at.id,
+                number,
+                data: {
+                  mergedSha,
+                  landedHead: expectedHead,
+                  ...by,
+                  ...(found === null ? {} : { recovered: true }),
+                },
+              });
+              return changeOf(row!);
+            }),
+          ),
+        );
+      });
+
+    /** A person's try: the head they saw, onto `main` as it is now. */
+    const asItIs = (git: HqGit, at: Repo) =>
+      Effect.map(mainOf(git, at), (main) => ({ main: main ?? "" }));
+
+    /** In a fenced write, the change locked open: closed without merging, as `by` says. */
+    const closeLocked = (change: HqChange, by: object) =>
+      Effect.gen(function* () {
+        const [row] = yield* sql<ChangeRow>`
+          UPDATE hq_change
+          SET state = 'closed', closed_at = now(), updated_at = now()
+          WHERE app_id = ${change.appId}::uuid AND repo = ${change.repo}
+            AND number = ${change.number}
+          RETURNING ${sql.literal(CHANGE_COLUMNS)}`;
+        yield* appendEvent(sql, {
+          kind: "closed",
+          appId: change.appId,
+          repo: change.repo,
+          number: change.number,
+          data: by,
+        });
+        return changeOf(row!);
+      });
+
+    /** The change closed without merging, as `by` says; its branch stays. */
+    const close = (appId: string, repo: string, number: number, by: object) =>
+      touched(
+        leader.write(
+          Effect.gen(function* () {
+            const change = yield* changeIn(appId, repo, number);
+            yield* openChangeLocked(change.appId, change.repo, number);
+            return yield* closeLocked(change, by);
+          }),
+        ),
+      );
+
+    /**
+     * Core's try at a recipe change of `head`, under its repository's lock: judged (`can`'s
+     * `land_recipe`) by what its squash does to `main` now — the `main` it then squashes onto —
+     * never by a guess: names cut short, or a change that does not merge, stop it there. An empty
+     * one is closed here; one `main` has the squash of already is recorded by the squash's own way.
+     */
+    const recipeAim = (change: HqChange, head: string, facts: Facts) => (git: HqGit, at: Repo) =>
+      Effect.gen(function* () {
+        const mate = change.mateProjectId;
+        const named = yield* git.squashNames(at, mate, change.number);
+        if (!("files" in named)) {
+          return named.kind === "already_merged"
+            ? { main: (yield* mainOf(git, at)) ?? "" }
+            : { stop: named.kind };
+        }
+        // A push since is judged as its own, as it comes.
+        if (named.head !== head) return { stop: "head_moved" };
+        if (named.files.truncated) return { stop: "files_past_bound" };
+        const held = yield* mateHeld(mate);
+        const decision = can(
+          { kind: "core" },
+          "land_recipe",
+          {
+            repo: at.id,
+            author: { projectId: mate, held: held.held, appId: held.appId },
+            appId: at.appId,
+            onlyAdded: named.files.items.every((file) => file.status === "A"),
+            empty: named.files.items.length === 0,
+          },
+          facts,
+        );
+        if (decision.allow) return { main: named.main };
+        if (decision.reason === "recipe_empty") {
+          yield* closeLocked(change, { by: "core", reason: "empty" });
+        }
+        return { stop: decision.reason };
+      });
+
+    /**
+     * A pushed change of an application's recipe repository, landed by Core when `can` says so
+     * (`recipeAim`); any other waits for a person. A change no longer open, or with nothing pushed,
+     * is let be — so judging it again, at a takeover, is judging it once.
+     */
+    const judgeRecipe = ({ repo, mateId, number }: PushedChange) =>
+      Effect.gen(function* () {
+        if (repo.id !== RECIPE_REPO) return;
+        const git = yield* gitHost.git;
+        const [row] = yield* sql<{ readonly state: string }>`
+          SELECT state FROM hq_change
+          WHERE app_id::text = ${repo.appId} AND repo = ${repo.id} AND number = ${number}
+            AND mate_project_id = ${mateId}`;
+        if (row?.state !== "open") return;
+        const head = yield* git.changeHead(repo, mateId, number);
+        if (head === null) return;
+        // Read before the lock, never held across Zerops: the landing reads none of the org.
+        const facts = yield* roles.view;
+        const change = yield* changeIn(repo.appId, repo.id, number);
+        // Refused as git sees it — a conflict with main, a head moved since — it stays open, as
+        // main's broker left it: its record says how it merges, and its Mate proposes again.
+        const landed = yield* land(
+          change,
+          head,
+          { by: "core" },
+          recipeAim(change, head, facts),
+        ).pipe(
+          Effect.catchIf(isChangeRefused, (refused) =>
+            Effect.as(
+              Effect.logWarning("recipe change not landed", {
+                repo,
+                number,
+                reason: refused.reason,
+              }),
+              null,
+            ),
+          ),
+        );
+        if (typeof landed === "string" && landed !== "recipe_empty") {
+          yield* Effect.logInfo("recipe change waits", { repo, number, reason: landed });
+        }
+      });
+
+    /**
+     * A repository of the application, made if new: one at a time, so two first deliveries of one
+     * name meet here, not in git. Each step holds when it is done already, so a call cut short is
+     * finished by the next.
+     */
+    const makeRepo = (appId: string, name: string, createdBy: string) =>
+      Semaphore.withPermits(
+        making,
+        1,
+      )(
+        Effect.gen(function* () {
+          const git = yield* gitHost.git;
+          const repo = { appId, id: name };
+          yield* leader.write(sql`
+            INSERT INTO hq_repo (app_id, name, created_by)
+            VALUES (${appId}::uuid, ${name}, ${createdBy})
+            ON CONFLICT DO NOTHING`);
+          yield* git.create(repo).pipe(
+            Effect.catchIf(
+              (error) => error.reason === "exists",
+              () => Effect.void,
+            ),
+          );
+          // An empty tree's commit gives every change a base, as Gitea's first commit did; a main
+          // that is there already (`head_moved`) stays as it is.
+          yield* git.commitFiles(repo, "refs/heads/main", {
+            files: {},
+            expectedHead: null,
+            message: "Initial commit",
+            author: HQ_AUTHOR,
+          });
+          return { appId, name };
+        }),
+      );
+
+    const recipeTier = (appId: string, tier: RecipeTier) =>
+      Effect.gen(function* () {
+        const absent: RecipeTierResponse = { state: "absent" };
+        const known = yield* sql`
+          SELECT 1 FROM hq_repo WHERE app_id::text = ${appId} AND name = ${RECIPE_REPO}`;
+        if (known.length === 0) return absent;
+        const git = yield* gitHost.git;
+        const at = { appId, id: RECIPE_REPO };
+        const main = yield* mainOf(git, at);
+        if (main === null) return absent;
+        const path = RECIPE_TIER_PATHS[tier];
+        const [dir = "", file = ""] = path.split("/");
+        const listed = (tree: string, name: string, type: string) =>
+          Effect.map(git.tree(at, main, tree), (entries) =>
+            entries.items.some((entry) => entry.path === name && entry.type === type),
+          );
+        if (!(yield* listed("", dir, "tree")) || !(yield* listed(dir, file, "blob"))) {
+          return absent;
+        }
+        const read = yield* git.file(at, main, path, RECIPE_READ_MAX);
+        if (read.truncated) return yield* refuse("too_large", "recipe_too_large");
+        const importYaml = read.content.toString("utf8");
+        return hasServices(importYaml)
+          ? { state: "present" as const, importYaml, mainHead: main }
+          : absent;
+      });
+
+    // Every pushed change is judged as it comes, by the Core that leads (only it records pushes).
+    yield* Effect.forkScoped(
+      Effect.forever(
+        Effect.flatMap(Queue.take(gitHost.pushes), (pushed) =>
+          judgeRecipe(pushed).pipe(
+            Effect.catch((error) => Effect.logWarning("recipe change not judged", error)),
+          ),
+        ),
+      ),
+    );
+
     return Changes.of({
       mateApp,
       mateFetch,
       ensureRepo: (projectId, name) =>
-        Semaphore.withPermits(
-          making,
-          1,
-        )(
-          Effect.gen(function* () {
-            const appId = yield* mateApp(projectId, "ensure_repo");
-            const git = yield* gitHost.git;
-            const repo = { appId, id: name };
-            yield* leader.write(sql`
-              INSERT INTO hq_repo (app_id, name, created_by)
-              VALUES (${appId}::uuid, ${name}, ${projectId})
-              ON CONFLICT DO NOTHING`);
-            // Each step holds when it is done already, so a call cut short is finished by the next.
-            yield* git.create(repo).pipe(
-              Effect.catchIf(
-                (error) => error.reason === "exists",
-                () => Effect.void,
-              ),
-            );
-            // An empty tree's commit gives every change a base, as Gitea's first commit did; a main
-            // that is there already (`head_moved`) stays as it is.
-            yield* git.commitFiles(repo, "refs/heads/main", {
-              files: {},
-              expectedHead: null,
-              message: "Initial commit",
-              author: HQ_AUTHOR,
-            });
-            return { appId, name };
-          }),
+        Effect.flatMap(mateApp(projectId, "ensure_repo"), (appId) =>
+          // The recipe's is Core's, whoever asks for it first: a Mate joins it.
+          makeRepo(appId, name, name === RECIPE_REPO ? "core" : projectId),
         ),
+      ensureGroupRepo: (appId) => makeRepo(appId, RECIPE_REPO, "core"),
+      recipeTier,
+      readRecipe: (userId, appId, tier) =>
+        Effect.andThen(personApp(userId, appId, "read_change"), recipeTier(appId, tier)),
+      mateRecipe: (projectId, tier) =>
+        Effect.gen(function* () {
+          const { appId } = yield* mateHeld(projectId);
+          return yield* recipeTier(yield* mateFetch(projectId, appId ?? ""), tier);
+        }),
       openChange: (projectId, repo, title) =>
         Effect.gen(function* () {
           const appId = yield* mateApp(projectId, "open_change");
@@ -549,10 +862,11 @@ export const changesLayer: Layer.Layer<
         }),
       mateChanges: (projectId) =>
         Effect.gen(function* () {
-          const [placed] = yield* sql<{ readonly app_id: string }>`
-            SELECT app_id::text AS app_id FROM hq_app_project
-            WHERE project_id = ${projectId} AND kind IN ('mate', 'devstage')`;
-          if (placed === undefined) return { appId: null, changes: [] };
+          const [placed] = yield* sql<{ readonly app_id: string; readonly name: string }>`
+            SELECT placed.app_id::text AS app_id, app.name FROM hq_app_project placed
+            JOIN hq_app app ON app.id = placed.app_id
+            WHERE placed.project_id = ${projectId} AND placed.kind IN ('mate', 'devstage')`;
+          if (placed === undefined) return { appId: null, appName: null, changes: [] };
           const rows = yield* sql<
             Pick<ChangeRow, "repo" | "number" | "state" | "head" | "merged_sha" | "landed_head">
           >`
@@ -565,6 +879,7 @@ export const changesLayer: Layer.Layer<
             ORDER BY repo, number DESC`;
           return {
             appId: placed.app_id,
+            appName: placed.name,
             changes: rows.map((row) => ({
               repo: row.repo,
               number: row.number,
@@ -730,106 +1045,13 @@ export const changesLayer: Layer.Layer<
         Effect.gen(function* () {
           yield* personApp(userId, appId, "merge_change");
           const change = yield* changeIn(appId, repo, number);
-          const git = yield* gitHost.git;
-          // As the change's record names it, never as the path spelled it.
-          const at = { appId: change.appId, id: change.repo };
-          const mate = change.mateProjectId;
-          // Read before the squash, from every commit of the change; a push since moves the head
-          // the squash checks.
-          const crew = onceEach(yield* git.changeTrailers(at, mate, number, CREW_TRAILERS));
-          const [record] = yield* sql<{ readonly name: string }>`
-            SELECT name FROM hq_mate WHERE project_id = ${mate}`;
-          const message =
-            change.body.trim() === ""
-              ? mergeSubject(change.title, number)
-              : `${mergeSubject(change.title, number)}\n\n${change.body}`;
-          const squash = (expectedMain: string) =>
-            git.squashMerge(at, {
-              mateId: mate,
-              number,
-              expectedMain,
-              expectedHead,
-              message,
-              trailers: crew,
-              author: { name: record?.name ?? "Mate", email: `${mate}@mate.hq.invalid` },
-            });
-          return yield* touched(
-            leader.write(
-              Effect.gen(function* () {
-                // The repository's row, locked: its merges go one at a time.
-                yield* sql`
-                  SELECT 1 FROM hq_repo WHERE app_id = ${at.appId}::uuid AND name = ${at.id}
-                  FOR UPDATE`;
-                yield* openChangeLocked(at.appId, at.id, number);
-                // main as it is now; should anything else move it meanwhile, from where it went.
-                let landed = yield* squash((yield* mainOf(git, at)) ?? "");
-                for (
-                  let tries = 1;
-                  "kind" in landed && landed.kind === "main_moved" && tries < 3;
-                  tries++
-                ) {
-                  landed = yield* squash((yield* mainOf(git, at)) ?? "");
-                }
-                // On main already, yet open here: this change's squash whose record never landed
-                // (its write failed after git moved main) is recorded now.
-                const found =
-                  "kind" in landed && landed.kind === "already_merged"
-                    ? yield* squashOnMain(git, at, mate, number)
-                    : null;
-                if ("kind" in landed && found === null) {
-                  return yield* refuse("conflict", landed.kind);
-                }
-                const mergedSha = "merged" in landed ? landed.merged : found!;
-                const [row] = yield* sql<ChangeRow>`
-                  UPDATE hq_change
-                  SET state = 'merged', merged_sha = ${mergedSha}, landed_head = ${expectedHead},
-                      head = ${expectedHead}, merged_at = now(), updated_at = now(),
-                      mergeability = 'already_merged', behind = false
-                  WHERE app_id = ${at.appId}::uuid AND repo = ${at.id} AND number = ${number}
-                  RETURNING ${sql.literal(CHANGE_COLUMNS)}`;
-                yield* appendEvent(sql, {
-                  kind: "merged",
-                  appId: at.appId,
-                  repo: at.id,
-                  number,
-                  data: {
-                    mergedSha,
-                    landedHead: expectedHead,
-                    userId,
-                    ...(found === null ? {} : { recovered: true }),
-                  },
-                });
-                return changeOf(row!);
-              }),
-            ),
-          );
+          return yield* land(change, expectedHead, { userId }, asItIs);
         }),
       closeChange: (userId, appId, repo, number) =>
-        Effect.gen(function* () {
-          yield* personApp(userId, appId, "close_change");
-          return yield* touched(
-            leader.write(
-              Effect.gen(function* () {
-                const change = yield* changeIn(appId, repo, number);
-                yield* openChangeLocked(change.appId, change.repo, number);
-                const [row] = yield* sql<ChangeRow>`
-                  UPDATE hq_change
-                  SET state = 'closed', closed_at = now(), updated_at = now()
-                  WHERE app_id = ${change.appId}::uuid AND repo = ${change.repo}
-                    AND number = ${number}
-                  RETURNING ${sql.literal(CHANGE_COLUMNS)}`;
-                yield* appendEvent(sql, {
-                  kind: "closed",
-                  appId: change.appId,
-                  repo: change.repo,
-                  number,
-                  data: { userId },
-                });
-                return changeOf(row!);
-              }),
-            ),
-          );
-        }),
+        Effect.andThen(
+          personApp(userId, appId, "close_change"),
+          close(appId, repo, number, { userId }),
+        ),
       attachment: (userId, appId, repo, number, id) =>
         Effect.gen(function* () {
           yield* personApp(userId, appId, "read_change");

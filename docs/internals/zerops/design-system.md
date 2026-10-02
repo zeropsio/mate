@@ -483,9 +483,12 @@ conversation's state) Fen lives here` (`ZeropsMateOnMap`, from the panel), and t
     to the person's own Mate and both only with words, the dialog showing the newest three comments;
     its commits, one line each with its age and hash on the column's right edge, more than 7 folded
     to 5 with "Show all N"; and a foot on a 2 % fill saying what the one button does beside it
-    ("Squash-merges 1 commit into main. Production isn't touched until you release."), _Cancel_ or
+    ("Squash-merges 1 commit into main. Production isn't touched until you release."), a change's
+    _Close without merging…_ where HQ's rule offers it — the review then its one confirmation,
+    "Close #2 without merging?" in the verdict and _Keep it open_ beside the button — _Cancel_ or
     _Close_, and the button (34 px, radius 10): _Merge_, _Add to Fen's code_, _Release v0.1.57_,
-    _Roll back to v0.1.55_ (R5). After the press it stays and says what happened, then the next step
+    _Roll back to v0.1.55_ (R5), none where HQ's rule does not offer it, the foot saying what it
+    takes. After the press it stays and says what happened, then the next step
     — "Merged into main", "1 change now waits for production" with _Review release_, which hands
     over in place; a release's progress with its clock, then "Released" or the failure and its fix
     (R6). It grows from what was pressed (200 ms: scale .98, 6 px of lift, a fade) and closes in
@@ -497,9 +500,9 @@ conversation's state) Fen lives here` (`ZeropsMateOnMap`, from the panel), and t
     sliding in from the right in 220 ms as the release moves 30 % left and fades and the height
     eases; the first Esc steps back to the release where it was, the focus on the pressed row, the
     second closes, and ⌘↵ never reaches the release underneath (`ZeropsReleaseSteps.logic.ts`)
-  - _States:_ a change: ready · Gitea checking · behind main (amber, still merges) · conflicts
-    with main · its files still read · closed without
-    merging · merging · merged · refused; a release: ready · blocked · releasing · released ·
+  - _States:_ a change: ready · HQ checking · behind main (amber, still merges) · conflicts
+    with main · its files still read · not offered · merging · merged · refused · close asked ·
+    closing · close refused · closed without merging; a release: ready · blocked · releasing · released ·
     failed; a roll back: ready · rolling back · rolled back · refused; a crew task: ready · add what
     it has · conflict · check failed · in Fen's code
   - _Phrase source:_ client-runtime `reviewVerdict.ts` (`changeReview`, `releaseReview`,
@@ -658,12 +661,11 @@ conversation's state) Fen lives here` (`ZeropsMateOnMap`, from the panel), and t
   - _Anatomy (fixed part):_ one of a Mate's open pull requests, 2 px under its row (M8): 28 px tall,
     radius 10, 13/18 — the pull-request mark (14 px) in the faces' column, muted, red where its
     checks fail and amber where it fell behind `main` (S3); `#N title` on the words' edge, the way
-    to the change's page (a person's own pull request names them after the title); _Review_ as a
-    blue word on the right edge, the one door to merging it (R1, D8). No _Merge_, no _Ask_ and no
-    check dot on the row: the verdict is the review's. Past three, a Mate's changes fold behind "N
-    pull requests"
+    to the change's page; _Review_ as a blue word on the right edge, the one door to merging it
+    (R1, D8). No _Merge_, no _Ask_ and no check dot on the row: the verdict is the review's. Past
+    three, a Mate's changes fold behind "N pull requests"
   - _States:_ open · checks failing (red mark) · behind main (amber mark) · remembered (a reload,
-    until Gitea answers: its title untinted, _Review_ already there)
+    until HQ answers: its title untinted, _Review_ already there)
   - _Phrase source:_ `SidebarMateRow.logic.ts` (`changeMarkTone`); client-runtime
     `sidebarChangeLabel`, `pullRequestsFolded`
   - _Lands:_ landed 2026-09-29 (pass 16)

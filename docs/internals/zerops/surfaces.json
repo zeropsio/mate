@@ -354,6 +354,14 @@
       ],
       "reverseStates": [
         {
+          "action": "Merge",
+          "reverse": "none: a merge is undone by a revert, which is a new change."
+        },
+        {
+          "action": "Close without merging",
+          "reverse": "none: a closed change is not reopened."
+        },
+        {
           "action": "Release",
           "reverse": "Roll back"
         },

@@ -17,10 +17,12 @@ import {
   attachmentPath,
   ChangeDetailResponse,
   CommentListResponse,
+  HqChange,
   HqChangeComment,
   type AttachmentLink,
   type ChangeLink,
 } from "@t3tools/shared/hqChanges";
+import { RecipeTierResponse, type RecipeTier } from "@t3tools/shared/hqRecipe";
 import type { MateSummary } from "@t3tools/shared/mateLink";
 import type { RoleProjectKind } from "@t3tools/shared/zeropsRoles";
 import * as Option from "effect/Option";
@@ -156,8 +158,25 @@ export interface HqApi {
   ) => Promise<ReadonlyArray<HqChangeComment>>;
   /** Says `body` on a change, as the person. */
   readonly commentOnChange: (link: ChangeLink, body: string) => Promise<HqChangeComment>;
+  /**
+   * Squashes a change into `main` as the person, if its head is still `expectedHead` — the head
+   * they were shown; HQ answers the change merged, or refuses with one of `MERGE_REFUSALS`.
+   */
+  readonly mergeChange: (link: ChangeLink, expectedHead: string) => Promise<HqChange>;
+  /** Closes a change without merging it, as the person; its branch stays. */
+  readonly closeChange: (link: ChangeLink) => Promise<HqChange>;
   /** A picture of a change, read as the person (`attachmentPath`). */
   readonly changeAttachment: (link: AttachmentLink, signal?: AbortSignal) => Promise<Blob>;
+  /**
+   * A tier of an application's recipe as its recipe repository's `main` holds it, read as the
+   * person (`GET /api/apps/:appId/recipe/:tier`): `absent` where it is not there or declares no
+   * service.
+   */
+  readonly recipeTier: (
+    appId: string,
+    tier: RecipeTier,
+    signal?: AbortSignal,
+  ) => Promise<RecipeTierResponse>;
 }
 
 /** A socket the structure stream reads, opened by the host (`WebSocket` in a browser). */
@@ -278,6 +297,8 @@ const unreadable = () =>
 const readChangeDetail = decoded(ChangeDetailResponse);
 const readComments = decoded(CommentListResponse);
 const readComment = decoded(HqChangeComment);
+const readChange = decoded(HqChange);
+const readRecipeTier = decoded(RecipeTierResponse);
 
 /** A change's own path at HQ's API. */
 const changePath = ({ appId, repo, number }: ChangeLink): string =>
@@ -462,6 +483,15 @@ export function makeHqApi(input: {
           body: JSON.stringify({ body }),
         }),
       ),
+    mergeChange: async (link, expectedHead) =>
+      readChange(
+        await authorized(`${changePath(link)}/merge`, {
+          method: "POST",
+          body: JSON.stringify({ expectedHead }),
+        }),
+      ),
+    closeChange: async (link) =>
+      readChange(await authorized(`${changePath(link)}/close`, { method: "POST" })),
     changeAttachment: async (link, signal) =>
       (
         await authorized(attachmentPath(link.appId, link.repo, link.number, link.id), {
@@ -469,6 +499,13 @@ export function makeHqApi(input: {
           ...(signal === undefined ? {} : { signal }),
         })
       ).blob(),
+    recipeTier: async (appId, tier, signal) =>
+      readRecipeTier(
+        await authorized(
+          `/api/apps/${encodeURIComponent(appId)}/recipe/${tier}`,
+          signal === undefined ? {} : { signal },
+        ),
+      ),
     recordStandUp: async (projectId) => {
       await authorized(`/api/mates/${encodeURIComponent(projectId)}/standup`, { method: "POST" });
     },

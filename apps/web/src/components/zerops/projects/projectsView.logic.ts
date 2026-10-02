@@ -18,11 +18,14 @@ import {
   changesNotLive,
   deployWord,
   environmentNameUnderGroup,
+  flowVerbKey,
+  flowVerbLabel,
   hasMate,
   pairPreviewRoute,
   readZeropsMembership,
   releaseContentsSummary,
   releaseInFlightReason,
+  REVIEW_LABEL,
   type EnvironmentRow,
   type FlowPullRequest,
   type GroupEnvironmentTier,
@@ -300,6 +303,24 @@ export function foldUngrouped<E extends { readonly action: ZeropsRowAction["kind
     containers: rows.filter((row) => row.action !== "set-up-mate"),
     withoutMate: rows.filter((row) => row.action === "set-up-mate"),
   };
+}
+
+/**
+ * What a change's row offers: *Review*, the one door to merging it (R1) — and while its merge runs,
+ * or waits for HQ's stream to bring it merged, that it is merging. Its close says so in its review.
+ */
+export function changeRowVerb(
+  pending: ReadonlySet<string>,
+  groupId: string,
+  pull: Pick<FlowPullRequest, "repository" | "number">,
+): string {
+  const merge = flowVerbKey({
+    kind: "merge",
+    groupId,
+    repository: pull.repository,
+    number: pull.number,
+  });
+  return pending.has(merge) ? flowVerbLabel("merge", true) : REVIEW_LABEL;
 }
 
 /**

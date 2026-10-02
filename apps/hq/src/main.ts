@@ -21,7 +21,6 @@ import * as Layer from "effect/Layer";
 
 import { type CoreOptions, coreApp } from "./core.ts";
 import { bundledMigrations } from "./migrationFiles.ts";
-import { noRecipeTiersYet } from "./recipeTiers.ts";
 import { ZeropsApi, ZeropsDeploy } from "./zerops/api.ts";
 import { makeZeropsApiHttp, makeZeropsDeployHttp } from "./zerops/http.ts";
 
@@ -57,7 +56,6 @@ const core = Layer.unwrap(
     };
     return coreApp(options).pipe(
       Layer.provide(zerops),
-      Layer.provide(noRecipeTiersYet),
       Layer.provide(
         NodeHttpServer.layer(
           // A push may stream for as long as the git layer's own deadline (30 min); a request's

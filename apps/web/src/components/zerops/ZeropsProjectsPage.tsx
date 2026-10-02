@@ -161,7 +161,7 @@ import { officialHq, useAccountHq } from "~/zerops/accountHq";
 import { useAccountGitea } from "~/zerops/giteaProject";
 import { useZeropsGroupEnvironmentReconcile } from "~/zerops/useZeropsGroupEnvironmentReconcile";
 import { useZeropsGroupOrganizations } from "~/zerops/useZeropsGroupOrganizations";
-import { registryGroupSlug, useZeropsRegistry } from "~/zerops/useZeropsRegistry";
+import { useZeropsRegistry } from "~/zerops/useZeropsRegistry";
 import { useZeropsProjectFlow } from "~/zerops/projectFlowContext";
 import { REVIEW_LABEL, REVIEW_RELEASE_LABEL, useOpenReview } from "~/zerops/review";
 import { readZeropsCellOnce } from "~/zerops/useZeropsDeployedVersion";
@@ -181,6 +181,7 @@ import {
   type ProjectsFlowGroup,
 } from "./projects/ZeropsProjectsFlow";
 import {
+  changeRowVerb,
   changesUnknownOf,
   flowStepsAwaiting,
   groupFlowInputOf,
@@ -1585,12 +1586,11 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
   // a project's own page, which listed its Mates and could do nothing to them.
   const mateActions = useMateActions({ registry: registryState, serverVersions });
 
-  // The recipe is the group repo's, read as the person (guide 4.3) — never a
-  // sibling's export, which carried service shapes without their build setup
-  // and produced environments that could not build.
+  // The recipe is the application's, read as the person through its HQ (guide
+  // 4.3) — never a sibling's export, which carried service shapes without their
+  // build setup and produced environments that could not build.
   const groupRecipe = useZeropsGroupRecipe({
-    giteaOrigin,
-    slug: registryGroupSlug(registryState.registry, creationRequest?.groupId),
+    appId: creationRequest?.groupId,
     tier:
       creationRequest?.role === "prod"
         ? "production"
@@ -1722,11 +1722,11 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
 
   /**
    * One pull request's row, wherever it is drawn. Its verb is *Review*, the one
-   * door to merging (pass 16, R1): the review reads the change and says whether
-   * it is safe — nothing merges from a row. `withMerge` is
-   * false where the project's next step already offers that door on it: one
-   * verb, once. `compact` stacks title, state and verb for a flow step's narrow
-   * column.
+   * door to merging (pass 16, R1): the review reads the change, says whether it
+   * is safe and carries *Merge* — nothing merges from a row, which says
+   * "Merging…" while the review's merge is under way. `withMerge` is false where
+   * the project's next step already offers that door on it: one verb, once.
+   * `compact` stacks title, state and verb for a flow step's narrow column.
    */
   const pullRequestRowOf = (
     group: ZeropsGroup,
@@ -1739,7 +1739,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
     const state = changeState(pull);
     const action = withMerge ? (
       <ZeropsMateVerb
-        label={REVIEW_LABEL}
+        label={changeRowVerb(projectFlow.pending, group.groupId, pull)}
         onClick={(event) => {
           openReview(
             {
@@ -1754,7 +1754,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
       />
     ) : undefined;
     const key = `pull-${group.groupId}-${pull.repository}-${pull.number}`;
-    const line = pullRequestLineWith(pull, mateNames.get(pull.mateProjectId ?? ""));
+    const line = pullRequestLineWith(pull, mateNames.get(pull.mateProjectId));
     const open = () => {
       void navigate({
         to: "/change/$groupId/$repository/$number",

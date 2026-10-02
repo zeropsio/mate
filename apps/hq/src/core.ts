@@ -1,8 +1,7 @@
 /**
  * Core, composed once for `main.ts` and the tests: the routes served over its services, and the
- * drain that ends it. What it still needs is the HTTP server, the Zerops port (`ZeropsApi`,
- * `ZeropsDeploy`) — HTTP in production, the fake in tests — and the reader of an application's
- * recipe tiers (`RecipeTiers`).
+ * drain that ends it. What it still needs is the HTTP server and the Zerops port (`ZeropsApi`,
+ * `ZeropsDeploy`): HTTP in production, the fake in tests.
  *
  * On shutdown (`SIGTERM`, a deploy replacing this container) the drain runs before the server
  * stops: git closes, then the lead goes at once, so the next Core takes it within milliseconds and
@@ -32,6 +31,7 @@ import { mateCredentialsLayer } from "./mateCredentials.ts";
 import { mateLiveLayer } from "./mateLive.ts";
 import type { Migration } from "./migrations.ts";
 import { officialLayer } from "./official.ts";
+import { recipeTiersLayer } from "./recipeTiers.ts";
 import { doorRateLimitLayer } from "./rateLimit.ts";
 import { rolesLayer } from "./roles.ts";
 import { sessionsLayer } from "./sessions.ts";
@@ -104,7 +104,9 @@ const services = (options: CoreOptions) => {
     streamTicketsLayer,
     mateLinkTicketsLayer,
     liveSocketsLayer,
-    Layer.mergeAll(changesLayer, deploysLayer()).pipe(
+    deploysLayer().pipe(
+      Layer.provide(recipeTiersLayer),
+      Layer.provideMerge(changesLayer),
       Layer.provideMerge(gitHostLayer({ rootDir: options.gitRoot })),
     ),
   ).pipe(

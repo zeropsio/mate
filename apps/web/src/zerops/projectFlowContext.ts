@@ -140,6 +140,20 @@ export interface ZeropsProjectFlowValue {
   readonly release: (groupId: string) => Promise<FlowVerbOutcome>;
   /** A new tag listing an earlier release's commits (guide 5.6). */
   readonly rollBack: (groupId: string, tag: string) => Promise<FlowVerbOutcome>;
+  /**
+   * A change squashed into `main` in HQ, as the person, if its head is still `expectedHead` — the
+   * head its review showed; none shown, HQ is not asked. HQ's stream brings it merged.
+   */
+  readonly merge: (
+    groupId: string,
+    change: { readonly repository: string; readonly number: number },
+    expectedHead: string | undefined,
+  ) => Promise<FlowVerbOutcome>;
+  /** A change closed without merging in HQ, as the person; HQ's stream brings it closed. */
+  readonly close: (
+    groupId: string,
+    change: { readonly repository: string; readonly number: number },
+  ) => Promise<FlowVerbOutcome>;
 }
 
 export const ZeropsProjectFlowContext = createContext<ZeropsProjectFlowValue | null>(null);

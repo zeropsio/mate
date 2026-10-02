@@ -78,9 +78,9 @@ export interface JumpChange {
   readonly projectName: string | undefined;
   /** What the menu calls it (`sidebarChangeLabel`). */
   readonly label: string;
-  /** The Mate whose change it is, where it is one's. */
-  readonly mateProjectId: string | undefined;
-  /** The Mate's name, or the person's. */
+  /** The Mate whose change it is. */
+  readonly mateProjectId: string;
+  /** The Mate's name, where the menu knows it. */
   readonly whose: string | undefined;
 }
 

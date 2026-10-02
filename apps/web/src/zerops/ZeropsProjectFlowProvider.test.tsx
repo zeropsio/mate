@@ -29,6 +29,7 @@ import {
   activeDeployOf,
   HELD_VERB_MS,
   HQ_CHANGES_UNANSWERED,
+  VERB_ALREADY_RUNNING,
   ZeropsProjectFlowProvider,
 } from "./ZeropsProjectFlowProvider";
 
@@ -115,15 +116,30 @@ vi.mock("./giteaProject", () => ({
         }
       : undefined,
 }));
-/** The organization's official HQ; what its stream says is each test's. */
+/**
+ * The organization's official HQ; what its stream says is each test's, and what it answers a
+ * merge or a close (`answer`), with what it was asked.
+ */
 const hq = vi.hoisted(() => ({
   account: {
     hq: { kind: "official", projectId: "hq-project", address: "https://hq.example.test" },
   },
+  asked: [] as Array<readonly [string, unknown, string?]>,
+  answer: (): Promise<unknown> => Promise.resolve({}),
 }));
 vi.mock("./accountHq", async (importOriginal) => ({
   ...(await importOriginal<typeof import("./accountHq")>()),
   useAccountHq: () => hq.account,
+  accountHqApi: () => ({
+    mergeChange: (link: unknown, expectedHead: string) => {
+      hq.asked.push(["merge", link, expectedHead]);
+      return hq.answer();
+    },
+    closeChange: (link: unknown) => {
+      hq.asked.push(["close", link]);
+      return hq.answer();
+    },
+  }),
 }));
 vi.mock("./useZeropsRegistry", () => ({
   useZeropsRegistry: () => ({ registry: { groups: registryGroups.groups } }),
@@ -891,6 +907,162 @@ describe("a Mate's changes in a project's flow", () => {
     const flow = await flowOf(view({ current: false, unavailableSince: 1 }));
     expect(flow?.changesKnown).toBe(false);
     expect(flow?.changesFailure).toBe(HQ_CHANGES_UNANSWERED);
+  });
+});
+
+describe("merging and closing a change in HQ", () => {
+  const HEAD = "c0ffee";
+  const open = (number: number): HqChange => ({
+    appId: "g1",
+    repo: "app",
+    number,
+    mateProjectId: "mate-1",
+    title: "Add a /status page",
+    body: "",
+    state: "open",
+    head: HEAD,
+    mergedSha: null,
+    landedHead: null,
+    openedAt: "2026-10-02T09:00:00.000Z",
+    mergedAt: null,
+    closedAt: null,
+    updatedAt: "2026-10-02T09:00:00.000Z",
+    mergeability: "clean",
+    behind: false,
+  });
+  const streamed = (changes: ReadonlyArray<HqChange>): HqStructureView => ({
+    organizationId: "org-1",
+    structure: null,
+    changes: new Map([["g1", changes]]),
+    readAt: 1,
+    current: true,
+    unavailableSince: null,
+  });
+  const MERGE = flowVerbKey({ kind: "merge", groupId: "g1", repository: "app", number: 7 });
+  const CLOSE = flowVerbKey({ kind: "close", groupId: "g1", repository: "app", number: 7 });
+  const CHANGE = { repository: "app", number: 7 } as const;
+
+  afterEach(() => {
+    hq.asked = [];
+    hq.answer = () => Promise.resolve({});
+    vi.unstubAllGlobals();
+  });
+
+  /** The provider over HQ's stream saying `#7` is open; `say` moves what the stream says. */
+  async function mount() {
+    const atoms = AtomRegistry.make();
+    atoms.set(zeropsSessionAtom, {
+      status: "signed-in",
+      organizationStatus: "selected",
+      activeOrganization: { organizationId: "org-1" },
+    } as ZeropsSessionView);
+    atoms.set(hqStructureAtom, streamed([open(7)]));
+    installTestDom();
+    const { createRoot } = await import("react-dom/client");
+    const seen: Array<ZeropsProjectFlowValue> = [];
+    function Probe() {
+      seen.push(useZeropsProjectFlow());
+      return null;
+    }
+    const root = createRoot(document.createElement("div") as unknown as Element);
+    await act(async () => {
+      root.render(
+        createElement(
+          RegistryContext.Provider,
+          { value: atoms },
+          createElement(ZeropsProjectFlowProvider, null, createElement(Probe)),
+        ),
+      );
+    });
+    const say = (changes: ReadonlyArray<HqChange>) =>
+      act(async () => {
+        atoms.set(hqStructureAtom, streamed(changes));
+      });
+    const unmount = () =>
+      act(async () => {
+        root.unmount();
+      });
+    return { seen, say, unmount };
+  }
+
+  it("merges with the head its review showed, held until HQ's stream brings it merged", async () => {
+    const { seen, say, unmount } = await mount();
+    let outcome: unknown;
+    await act(async () => {
+      outcome = await seen.at(-1)!.merge("g1", CHANGE, HEAD);
+    });
+    expect(outcome).toEqual({ ok: true });
+    expect(hq.asked).toEqual([["merge", { appId: "g1", repo: "app", number: 7 }, HEAD]]);
+    // Nothing is read again: the change comes back down the stream.
+    expect(verbs.invalidated).toEqual([]);
+    expect(seen.at(-1)?.pending.has(MERGE)).toBe(true);
+    await say([
+      { ...open(7), state: "merged", mergedSha: "d00d", mergedAt: "2026-10-02T10:00:00Z" },
+    ]);
+    expect(seen.at(-1)?.pending.has(MERGE)).toBe(false);
+    await unmount();
+  });
+
+  it("closes a change, held until HQ's stream brings it closed", async () => {
+    const { seen, say, unmount } = await mount();
+    await act(async () => {
+      await seen.at(-1)!.close("g1", CHANGE);
+    });
+    expect(hq.asked).toEqual([["close", { appId: "g1", repo: "app", number: 7 }]]);
+    expect(seen.at(-1)?.pending.has(CLOSE)).toBe(true);
+    await say([{ ...open(7), state: "closed", closedAt: "2026-10-02T10:00:00Z" }]);
+    expect(seen.at(-1)?.pending.has(CLOSE)).toBe(false);
+    await unmount();
+  });
+
+  it("hands HQ's refusal back in its words, and holds nothing", async () => {
+    hq.answer = () =>
+      Promise.reject(new Error("Its Mate pushed to it since you opened it. Review it again."));
+    const { seen, unmount } = await mount();
+    let outcome: unknown;
+    await act(async () => {
+      outcome = await seen.at(-1)!.merge("g1", CHANGE, HEAD);
+    });
+    expect(outcome).toEqual({
+      ok: false,
+      reason: "Its Mate pushed to it since you opened it. Review it again.",
+    });
+    expect(seen.at(-1)?.pending.has(MERGE)).toBe(false);
+    await unmount();
+  });
+
+  // Main A04: a head nobody was shown is never merged; HQ is not asked.
+  it("asks HQ nothing for a change whose head was never shown", async () => {
+    const { seen, unmount } = await mount();
+    let outcome: unknown;
+    await act(async () => {
+      outcome = await seen.at(-1)!.merge("g1", CHANGE, undefined);
+    });
+    expect(outcome).toEqual({
+      ok: false,
+      reason: "Its Mate pushed to it since you opened it. Review it again.",
+    });
+    expect(hq.asked).toEqual([]);
+    await unmount();
+  });
+
+  it("takes one press of a merge while it runs", async () => {
+    let finish = () => {};
+    hq.answer = () =>
+      new Promise((resolve) => {
+        finish = () => resolve({});
+      });
+    const { seen, unmount } = await mount();
+    let second: unknown;
+    await act(async () => {
+      const first = seen.at(-1)!.merge("g1", CHANGE, HEAD);
+      second = await seen.at(-1)!.merge("g1", CHANGE, HEAD);
+      finish();
+      await first;
+    });
+    expect(hq.asked).toHaveLength(1);
+    expect(second).toEqual({ ok: false, reason: VERB_ALREADY_RUNNING });
+    await unmount();
   });
 });
 

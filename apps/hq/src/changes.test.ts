@@ -265,25 +265,30 @@ describe("a Mate's changes in HQ", () => {
           yield* git.checked(["push", "origin", "HEAD:refs/heads/mate/P_MATE/1"], work);
           const head = yield* git.checked(["rev-parse", "HEAD"], work);
           const main = yield* git.checked(["rev-parse", "origin/main"], work);
-          // The push reached the change's record, and main's start the repository's.
+          // The push reached the change's record, and main's start the repository's — this one's:
+          // the application has its recipe's beside it, whose start may be another commit.
           yield* rowsWhere(
             first.url,
-            "SELECT head FROM hq_change",
+            "SELECT head FROM hq_change WHERE repo = 'appdev'",
             (rows) => rows[0]?.["head"] === head,
           );
           yield* rowsWhere(
             first.url,
-            "SELECT main_head FROM hq_repo",
+            "SELECT main_head FROM hq_repo WHERE name = 'appdev'",
             (rows) => rows[0]?.["main_head"] === main,
           );
 
           // What a sweep removes: an earlier instance's staging. And what an event lost leaves.
           const debris = NodePath.join(first.gitRoot, appId, ".build-left");
           NodeFS.mkdirSync(debris);
-          yield* rowsWhere(first.url, "UPDATE hq_change SET head = NULL RETURNING 1; ", () => true);
           yield* rowsWhere(
             first.url,
-            "UPDATE hq_repo SET main_head = NULL RETURNING 1",
+            "UPDATE hq_change SET head = NULL WHERE repo = 'appdev' RETURNING 1",
+            () => true,
+          );
+          yield* rowsWhere(
+            first.url,
+            "UPDATE hq_repo SET main_head = NULL WHERE name = 'appdev' RETURNING 1",
             () => true,
           );
 
@@ -296,18 +301,18 @@ describe("a Mate's changes in HQ", () => {
           yield* untilHealth(next.call, "active");
           yield* rowsWhere(
             first.url,
-            "SELECT head FROM hq_change",
+            "SELECT head FROM hq_change WHERE repo = 'appdev'",
             (rows) => rows[0]?.["head"] === head,
           );
           yield* rowsWhere(
             first.url,
-            "SELECT main_head FROM hq_repo",
+            "SELECT main_head FROM hq_repo WHERE name = 'appdev'",
             (rows) => rows[0]?.["main_head"] === main,
           );
           assert.isFalse(NodeFS.existsSync(debris), "taking the lead, git swept nothing");
           const events = yield* rowsWhere(
             first.url,
-            "SELECT kind, number, data FROM hq_git_event ORDER BY seq",
+            "SELECT kind, number, data FROM hq_git_event WHERE repo = 'appdev' ORDER BY seq",
             (rows) => rows.length >= 5,
           );
           assert.deepStrictEqual(
@@ -471,6 +476,7 @@ describe("a Mate's changes in HQ", () => {
           assert.deepStrictEqual(yield* self, {
             ...record,
             appId,
+            appName: "Shop",
             changes: [change(1, "open")],
           });
 
@@ -520,7 +526,12 @@ describe("a Mate's changes in HQ", () => {
             session: owner,
             body: { appId: null, kind: "mate" },
           });
-          assert.deepStrictEqual(yield* self, { ...record, appId: null, changes: [] });
+          assert.deepStrictEqual(yield* self, {
+            ...record,
+            appId: null,
+            appName: null,
+            changes: [],
+          });
         }),
     );
 

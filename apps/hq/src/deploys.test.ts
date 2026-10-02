@@ -5,6 +5,7 @@ import * as NodePath from "node:path";
 import * as NodeZlib from "node:zlib";
 
 import { assert, describe, it } from "@effect/vitest";
+import type { RecipeTierResponse } from "@t3tools/shared/hqRecipe";
 import * as Context from "effect/Context";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
@@ -25,7 +26,7 @@ import {
 } from "../test/harness/zeropsFake.ts";
 import { Deploys, type DeploysOptions, deploysLayer } from "./deploys.ts";
 import { GitHost, gitHostLayer } from "./gitHost.ts";
-import { type RecipeTierRead, RecipeTiers } from "./recipeTiers.ts";
+import { RecipeTiers } from "./recipeTiers.ts";
 import { Roles } from "./roles.ts";
 import { ZeropsApi, ZeropsDeploy } from "./zerops/api.ts";
 
@@ -36,13 +37,13 @@ const FAST: DeploysOptions = {
   patience: Duration.millis(800),
   catchUpEvery: Duration.hours(1),
 };
-const ABSENT: RecipeTierRead = { state: "absent" };
+const ABSENT: RecipeTierResponse = { state: "absent" };
 
 /** A stage tier whose runtimes are `services`, each built from the application's repository of its name. */
 const stageTier = (
   appId: string,
   services: ReadonlyArray<{ readonly hostname: string; readonly priority?: number }>,
-): RecipeTierRead => ({
+): RecipeTierResponse => ({
   state: "present",
   mainHead: "0".repeat(40),
   importYaml: [
@@ -75,7 +76,7 @@ interface Rig {
   readonly appId: string;
   readonly world: FakeWorld;
   /** Each application's tiers, by `<appId>/<tier>`. */
-  readonly tiers: Map<string, RecipeTierRead>;
+  readonly tiers: Map<string, RecipeTierResponse>;
   /**
    * Commits `files` to `main` of `repo`, made with its first commit; the new head, once HQ has
    * recorded main moving.
@@ -113,7 +114,7 @@ const withDeploys = <A, E>(
       (dir) => Effect.sync(() => NodeFS.rmSync(dir, { recursive: true, force: true })),
     );
     const world = emptyWorld();
-    const tiers = new Map<string, RecipeTierRead>();
+    const tiers = new Map<string, RecipeTierResponse>();
     const context = yield* Layer.build(
       deploysLayer(options).pipe(
         Layer.provideMerge(gitHostLayer({ rootDir: root })),

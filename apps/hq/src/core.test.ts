@@ -3,11 +3,12 @@ import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Layer from "effect/Layer";
+import * as Queue from "effect/Queue";
 import * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
 
 import { drainLayer } from "./core.ts";
-import { GitHost } from "./gitHost.ts";
+import { GitHost, type PushedChange } from "./gitHost.ts";
 import { Leader, NotLeader } from "./leader.ts";
 import { LiveSockets } from "./stream.ts";
 
@@ -28,6 +29,7 @@ describe("the drain", () => {
           serve: () => Effect.die("no git"),
           close: note("git closed"),
           recorded: Stream.empty,
+          pushes: yield* Queue.unbounded<PushedChange>(),
         }),
         Layer.succeed(LiveSockets, {
           track: () => Effect.void,

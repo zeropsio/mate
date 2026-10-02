@@ -6,7 +6,6 @@ import { mateBotLogin, mateProjectOfBranch, mateProjectOfLogin } from "./mateIde
 
 import type { MergeabilityKind } from "./changeMergeability.ts";
 import {
-  changeAuthorName,
   changeState,
   pullRequestMergeLine,
   releaseContentsSentence,
@@ -38,7 +37,6 @@ function row(over: Partial<FlowPullRequest> = {}): FlowPullRequest {
     title: "Add a due date to each todo",
     kind: "code",
     mateProjectId: VERA,
-    author: undefined,
     url: "https://hq.example/changes/g1/appdev/4",
     mergeability: "mergeable",
     behind: false,
@@ -52,12 +50,6 @@ function row(over: Partial<FlowPullRequest> = {}): FlowPullRequest {
     ...over,
   };
 }
-
-/** A person's own change, named after them. */
-const persons = (over: Partial<FlowPullRequest> = {}): FlowPullRequest => {
-  const base = row({ mateProjectId: undefined, author: "ada", ...over });
-  return { ...base, line: `${base.repository} #${String(base.number)} · ada` };
-};
 
 describe("a Mate's changes in HQ, as the flow shows them", () => {
   const HQ = "https://hq-30db-8080.prg1.zerops.app";
@@ -83,6 +75,16 @@ describe("a Mate's changes in HQ, as the flow shows them", () => {
   });
   const flow = (changes: ReadonlyArray<HqChange>) => flowChanges({ changes, hqAddress: `${HQ}/` });
 
+  // SPEC §3.2c: the recipe repository's change is a recipe change; its row wears the tag, so its
+  // line is its number alone, and the one zcp titles is the Mate's proposal of the recipe.
+  it("draws a change in the recipe repository as a recipe change, its proposal known by title", () => {
+    const [proposal] = flow([
+      change({ repo: "group", number: 6, title: "Mate: the group's import files" }),
+    ]).pullRequests;
+    expect(proposal).toMatchObject({ kind: "recipe", repository: "group", line: "#6" });
+    expect(proposal !== undefined && isRecipeProposal(proposal)).toBe(true);
+  });
+
   it("draws an open change its Mate pushed to as a row, at HQ's own address", () => {
     const pushed = change({ updatedAt: "2026-10-02T09:30:00.000Z" });
     expect(flow([pushed]).pullRequests).toEqual([
@@ -92,7 +94,6 @@ describe("a Mate's changes in HQ, as the flow shows them", () => {
         title: "Add a due date to each todo",
         kind: "code",
         mateProjectId: VERA,
-        author: undefined,
         url: `${HQ}/changes/g1/appdev/3`,
         mergeability: "mergeable",
         behind: false,
@@ -185,31 +186,25 @@ describe("whose pull request it is", () => {
 });
 
 describe("naming a change", () => {
-  it("names the Mate on a row that does not sit under it, and a person once", () => {
+  it("names the Mate on a row that does not sit under it", () => {
     expect(pullRequestLineWith(row(), "Vera")).toBe("appdev #4 · Vera");
     expect(pullRequestLineWith(row(), undefined)).toBe("appdev #4");
-    expect(pullRequestLineWith(persons(), "Vera")).toBe("appdev #4 · ada");
   });
 
-  it("reads as its number and title in a menu row, a person's own naming them", () => {
+  it("reads as its number and title in a menu row", () => {
     // Stripped to its number under its Mate the change lost its name, which
     // cost more than echoing the task above it did. The fork carries the
     // distinction instead.
     expect(sidebarChangeLabel(row())).toBe("#4 Add a due date to each todo");
-    expect(sidebarChangeLabel(persons())).toBe("#4 Add a due date to each todo · ada");
   });
 });
 
 describe("sidebarChangeLabel: a Mate's changes in two repositories name their repository", () => {
-  const change = (repository: string, number: number, title: string, mate?: string) =>
-    mate === undefined
-      ? persons({ repository, number, title })
-      : row({ repository, number, title, mateProjectId: mate, line: `${repository} #${number}` });
+  const change = (repository: string, number: number, title: string, mate: string) =>
+    row({ repository, number, title, mateProjectId: mate, line: `${repository} #${number}` });
   const appdev = change("appdev", 1, "Build the storefront", VERA);
   const apidev = change("apidev", 1, "Rebuild the API", VERA);
   const fenApi = change("apidev", 2, "Add a health route", FEN);
-  const adaApp = change("appdev", 7, "Fix a typo");
-  const adaApi = change("apidev", 8, "Tune the pool");
 
   it.each([
     ["one repository: number and title", appdev, [appdev, fenApi], "#1 Build the storefront"],
@@ -232,18 +227,6 @@ describe("sidebarChangeLabel: a Mate's changes in two repositories name their re
       [appdev, apidev, fenApi],
       "#2 Add a health route",
     ],
-    [
-      "a person's change in one repository",
-      adaApp,
-      [adaApp, appdev, apidev],
-      "#7 Fix a typo · ada",
-    ],
-    [
-      "a person's changes in two repositories",
-      adaApi,
-      [adaApp, adaApi],
-      "apidev #8 Tune the pool · ada",
-    ],
   ] as const)("%s", (_case, row, among, label) => {
     expect(sidebarChangeLabel(row, among)).toBe(label);
   });
@@ -264,21 +247,19 @@ describe("the pull requests of each Mate", () => {
     line: "appdev #5",
     updatedAt: "2026-09-17T19:00:00Z",
   });
-  const ada = persons({ number: 7 });
-
-  it("puts each Mate's under it, newest first, and the rest after the Mates", () => {
+  it("puts each Mate's under it, newest first", () => {
     const older = row({ number: 3, line: "appdev #3", updatedAt: "2026-09-17T12:00:00Z" });
-    const grouped = pullRequestsByMate([older, ada, fen, vera, veraRecipe], [VERA, FEN]);
+    const grouped = pullRequestsByMate([older, fen, vera, veraRecipe], [VERA, FEN]);
     // #4 and #6 moved at the same moment; the higher number is the newer one.
-    expect(grouped.byMate.get(VERA)?.map((entry) => entry.number)).toEqual([6, 4, 3]);
-    expect(grouped.byMate.get(FEN)?.map((entry) => entry.number)).toEqual([5]);
-    expect(grouped.others.map((entry) => entry.number)).toEqual([7]);
+    expect(grouped.get(VERA)?.map((entry) => entry.number)).toEqual([6, 4, 3]);
+    expect(grouped.get(FEN)?.map((entry) => entry.number)).toEqual([5]);
   });
 
-  it("lists a pull request of a Mate the caller does not know among the rest", () => {
+  // Only Mates open changes (SPEC §5.4): one whose Mate the caller does not list has no row.
+  it("lists nothing of a Mate the caller does not know", () => {
     const grouped = pullRequestsByMate([vera], [FEN]);
-    expect(grouped.byMate.get(FEN)).toEqual([]);
-    expect(grouped.others.map((entry) => entry.number)).toEqual([4]);
+    expect(grouped.get(FEN)).toEqual([]);
+    expect(grouped.has(VERA)).toBe(false);
   });
 
   it("folds a Mate's pull requests only once there are more than three", () => {
@@ -290,13 +271,12 @@ describe("the pull requests of each Mate", () => {
 
 describe("a verb in flight", () => {
   it("keys each verb by its target, so one row's Merge is nobody else's", () => {
-    const merge4 = flowVerbKey({ kind: "merge", slug: "todo", repository: "appdev", number: 4 });
-    expect(merge4).toBe(
-      flowVerbKey({ kind: "merge", slug: "todo", repository: "appdev", number: 4 }),
-    );
-    expect(merge4).not.toBe(
-      flowVerbKey({ kind: "merge", slug: "todo", repository: "appdev", number: 3 }),
-    );
+    const change = { groupId: "g1", repository: "appdev", number: 4 } as const;
+    const merge4 = flowVerbKey({ kind: "merge", ...change });
+    expect(merge4).toBe("merge g1/appdev#4");
+    expect(merge4).not.toBe(flowVerbKey({ kind: "merge", ...change, number: 3 }));
+    expect(merge4).not.toBe(flowVerbKey({ kind: "merge", ...change, groupId: "g2" }));
+    expect(merge4).not.toBe(flowVerbKey({ kind: "close", ...change }));
     expect(flowVerbKey({ kind: "release", groupId: "g1" })).not.toBe(
       flowVerbKey({ kind: "roll-back", groupId: "g1", tag: "v0.1.0" }),
     );
@@ -507,22 +487,6 @@ describe("changeState", () => {
   });
 });
 
-describe("changeAuthorName", () => {
-  it("names the Mate, never the bot login a page has no business showing", () => {
-    const pull = { author: "mate-0bPLTRRSSTuV54WMpcLoww", mateProjectId: "0bPLTRRSSTuV54WMpcLoww" };
-    expect(changeAuthorName(pull, "Theo")).toBe("Theo");
-  });
-
-  it("says nothing rather than the bot login where the Mate cannot be named", () => {
-    const pull = { author: "mate-abc", mateProjectId: "abc" };
-    expect(changeAuthorName(pull, undefined)).toBeUndefined();
-  });
-
-  it("names a person by their login, which is their name here", () => {
-    expect(changeAuthorName({ author: "ales", mateProjectId: undefined }, undefined)).toBe("ales");
-  });
-});
-
 describe("changeLandedEvents", () => {
   const landed = (over: Partial<FlowPullRequest>): FlowPullRequest =>
     ({
@@ -531,7 +495,6 @@ describe("changeLandedEvents", () => {
       title: "Add the page",
       kind: "code",
       mateProjectId: "mate-1",
-      author: "otto",
       url: undefined,
       mergeability: "conflicting",
       merged: true,
@@ -560,8 +523,6 @@ describe("changeLandedEvents", () => {
     expect(changeLandedEvents([landed({ mateProjectId: "mate-2" })], "mate-1")).toEqual([]);
     expect(changeLandedEvents([landed({ merged: false })], "mate-1")).toEqual([]);
     expect(changeLandedEvents([landed({ mergedAt: undefined })], "mate-1")).toEqual([]);
-    // A person's own branch belongs to no conversation.
-    expect(changeLandedEvents([landed({ mateProjectId: undefined })], "mate-1")).toEqual([]);
     // A conversation with no Mate of its own claims nothing.
     expect(changeLandedEvents([landed({})], undefined)).toEqual([]);
   });

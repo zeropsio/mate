@@ -7,6 +7,7 @@ import {
   changeRemarks,
   type ChangeReadout,
   type FlowPullRequest,
+  type ReviewClose,
   type ReviewPress,
 } from "@t3tools/client-runtime/zerops";
 import type { CrewTask } from "@t3tools/contracts";
@@ -122,7 +123,6 @@ function pull(over: Partial<FlowPullRequest> = {}): FlowPullRequest {
     title: "Add a /status page with the uptime and the last deploy",
     kind: "code",
     mateProjectId: "p-nova",
-    author: "mate-p-nova",
     url: `${HARNESS_HQ}/changes/g-snap/appdev/2`,
     mergeability: "mergeable",
     behind: false,
@@ -264,6 +264,10 @@ const TALKING = comments({ kind: "read", comments: TALK });
 const NOVA = { name: "Nova", tint: "slate", mine: true } as const;
 
 const IDLE: ReviewPress = { kind: "idle" };
+/** Nobody asked to close it. */
+const OPEN: ReviewClose = { kind: "idle" };
+/** All HQ's rule offers a developer of the application: comment, Merge, Close. */
+const DEVELOPS = { read: true, comment: true, merge: true, close: true } as const;
 /** Merged a minute ago: the review says what happened, and offers the release's review. */
 const MERGED_NOW: Partial<FlowPullRequest> = {
   state: "closed",
@@ -407,6 +411,9 @@ function Change({
   run = RUN,
   conversation = TALKING,
   environments = STAGE_AND_PRODUCTION,
+  offers = DEVELOPS,
+  press = IDLE,
+  closing = OPEN,
   frame,
 }: {
   readonly over?: Partial<FlowPullRequest>;
@@ -416,19 +423,22 @@ function Change({
   readonly run?: { readonly words: string | undefined; readonly reading: boolean };
   readonly conversation?: ZeropsChangeComments;
   readonly environments?: ChangeReviewViewProps["environments"];
+  readonly offers?: ChangeReviewViewProps["offers"];
+  readonly press?: ReviewPress;
+  readonly closing?: ReviewClose;
   readonly frame?: ChangeReviewViewProps["frame"];
 }) {
   const value = pull(over);
   return (
     <ChangeReviewView
-      commentable
+      closing={closing}
       comments={conversation}
       environments={environments}
       frame={frame}
       hqAddress={HARNESS_HQ}
       initiallyOpen={open}
       live="v0.1.0"
-      mate={value.mateProjectId === undefined ? undefined : NOVA}
+      mate={NOVA}
       now={NOW}
       onAsk={async () => {}}
       onClose={noop}
@@ -436,9 +446,13 @@ function Change({
       onRetry={noop}
       remarks={remarksOf(conversation)}
       onFix={noop}
+      onClosing={noop}
+      onMerge={noop}
       onOpenRun={run.words === undefined && value.description === undefined ? undefined : noop}
       onReviewRelease={noop}
+      offers={offers}
       pictures={HARNESS_PICTURES}
+      press={press}
       pull={value}
       readout={readout}
       run={run}
@@ -716,19 +730,6 @@ export const REVIEW_STATES: ReadonlyArray<{
     node: <Change open={["server/index.ts"]} readout={WIDE} />,
   },
   {
-    id: "person",
-    label: "Ready, a person's own branch",
-    node: (
-      <Change
-        over={{
-          mateProjectId: undefined,
-          author: "ada",
-          headBranch: "ada/status-page",
-        }}
-      />
-    ),
-  },
-  {
     id: "behind-clean",
     label: "Behind main, still merges",
     node: <Change readout={detail({ mainHead: MAIN_NOW })} />,
@@ -759,7 +760,44 @@ export const REVIEW_STATES: ReadonlyArray<{
     label: "Nothing in it main does not have",
     node: <Change readout={detail({ mergeability: { kind: "empty" } })} />,
   },
+  {
+    id: "not-offered",
+    label: "Ready, to a person HQ's rule offers neither Merge nor Close",
+    node: <Change offers={{ read: true, comment: true, merge: false, close: false }} />,
+  },
+  { id: "merging", label: "Merging", node: <Change press={{ kind: "running" }} /> },
+  {
+    id: "refused",
+    label: "Not merged: HQ refused it",
+    node: (
+      <Change
+        press={{
+          kind: "refused",
+          reason: "Its Mate pushed to it since you opened it. Review it again.",
+        }}
+      />
+    ),
+  },
+  { id: "merged-now", label: "After Merge", node: <Change press={{ kind: "done" }} /> },
   { id: "merged", label: "Merged", node: <Change over={MERGED_NOW} /> },
+  {
+    id: "close-asked",
+    label: "Close without merging, asked",
+    node: <Change closing={{ kind: "asked" }} />,
+  },
+  { id: "closing", label: "Closing", node: <Change closing={{ kind: "running" }} /> },
+  {
+    id: "close-refused",
+    label: "Not closed: HQ refused it",
+    node: (
+      <Change closing={{ kind: "refused", reason: "This change is merged or closed already." }} />
+    ),
+  },
+  {
+    id: "closed-now",
+    label: "Closed without merging, by this press",
+    node: <Change closing={{ kind: "done" }} />,
+  },
   {
     id: "closed",
     label: "Closed without merging",
@@ -980,7 +1018,7 @@ export function ReviewDialogTry() {
         open={open}
       >
         <ChangeReviewView
-          commentable
+          closing={OPEN}
           comments={read ? TALKING : comments({ kind: "reading" })}
           environments={STAGE_AND_PRODUCTION}
           hqAddress={HARNESS_HQ}
@@ -997,8 +1035,12 @@ export function ReviewDialogTry() {
           }}
           onFix={noop}
           onOpenRun={noop}
+          onClosing={noop}
+          onMerge={noop}
           onReviewRelease={noop}
+          offers={DEVELOPS}
           pictures={HARNESS_PICTURES}
+          press={IDLE}
           pull={pull({
             description: harnessDescription({ after: TRY_READ_MS }),
           })}
@@ -1040,7 +1082,7 @@ function ReleaseTrySteps({ onClose }: { readonly onClose: () => void }) {
       change={
         shown === undefined ? null : (
           <ChangeReviewView
-            commentable
+            closing={OPEN}
             comments={TALKING}
             environments={STAGE_AND_PRODUCTION}
             hqAddress={HARNESS_HQ}
@@ -1053,8 +1095,12 @@ function ReleaseTrySteps({ onClose }: { readonly onClose: () => void }) {
             onFix={noop}
             onOpenPage={onClose}
             onOpenRun={noop}
+            onClosing={noop}
+            onMerge={noop}
             onReviewRelease={noop}
+            offers={DEVELOPS}
             pictures={HARNESS_PICTURES}
+            press={IDLE}
             pull={pull({
               ...RELEASED[shown.number],
               description: harnessDescription({ after: 0 }),
