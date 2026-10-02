@@ -93,6 +93,14 @@ const ROWS: ReadonlyArray<Row> = [
     targets: [{ key: KEY, presence: { kind: "transitioning", status: "RESTARTING" }, record: ENV }],
   },
   {
+    name: "a new Mate in its first build is on its way up, never inactive",
+    listings: [known([mateRow("READY_TO_DEPLOY", null)])],
+    records: [],
+    targets: [
+      { key: KEY, presence: { kind: "transitioning", status: "READY_TO_DEPLOY" }, record: null },
+    ],
+  },
+  {
     name: "services not read yet: a remembered Mate is looked for where its record kept it, never gone (A16)",
     listings: [known([unreadRow])],
     records: [KEY],
@@ -350,6 +358,21 @@ describe("containerTargetsOf", () => {
     expect(containerTargetsOf([mateRow("ACTIVE"), unreadRow], [], null)).toEqual([
       { key: KEY, origin: ORIGIN, platform: { project: "ACTIVE", service: "ACTIVE" } },
       { key: project.id, origin: null, platform: { project: "ACTIVE", service: null } },
+    ]);
+  });
+
+  it("carries when the row's container was made, for its first build's wait", () => {
+    const made = "2026-10-02T10:00:00.000Z";
+    const row: CandidateRow = {
+      ...mateRow("READY_TO_DEPLOY", null),
+      service: { id: "service-1", name: "zcp", status: "READY_TO_DEPLOY", created: made },
+    };
+    expect(containerTargetsOf([row], [], null)).toEqual([
+      {
+        key: KEY,
+        origin: null,
+        platform: { project: "ACTIVE", service: "READY_TO_DEPLOY", serviceCreated: made },
+      },
     ]);
   });
 

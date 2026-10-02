@@ -426,12 +426,25 @@ export const makeZeropsSetup = (timings: ZeropsSetupTimings = TIMINGS) =>
 
     const status = Effect.map(reads.statusFile, parseZcpStatus);
 
-    const turnOf = (threadId: string) =>
-      projection.getThreadShellById(ThreadId.make(threadId)).pipe(
-        Effect.map((thread) => {
-          const state = Option.getOrUndefined(thread)?.latestTurn?.state;
+    /**
+     * The recorded stand-up's own turn — the one its ask started, found by its message (its ids
+     * are the command's) — never the thread's latest, which a later message would make another's.
+     * Asked and not started yet, it runs; not found (its thread gone), it is not read.
+     */
+    const turnOf = (record: StandUpRow) =>
+      sql<{ readonly state: string }>`
+        SELECT state FROM projection_turns
+        WHERE thread_id = ${record.threadId} AND pending_message_id = ${record.commandId}
+        ORDER BY row_id DESC LIMIT 1
+      `.pipe(
+        Effect.map((rows) => {
+          const state = rows[0]?.state;
           if (state === undefined) return undefined;
-          return state === "running" ? "running" : state === "completed" ? "done" : "failed";
+          return state === "running" || state === "pending"
+            ? "running"
+            : state === "completed"
+              ? "done"
+              : "failed";
         }),
         Effect.catch(() => Effect.succeed(undefined)),
       );
@@ -442,9 +455,14 @@ export const makeZeropsSetup = (timings: ZeropsSetupTimings = TIMINGS) =>
       const marked = variables !== undefined && hasSetupMarker(variables);
       const record = yield* recordOf;
       const ran = record !== undefined && RAN.has(record.source);
-      // Only a marked Mate whose stand-up is still pending reads the tags: a Mate made
-      // before has its browser's stand-up, and a settled one has its record.
-      const tagList = marked && record === undefined ? yield* tags : undefined;
+      const signedInAt = yield* Ref.get(signinAt);
+      // Only a marked Mate reads the tags, and only for what its record cannot say: a stand-up
+      // still pending, or — settled as never due — a sign-in not seen yet. A Mate made before
+      // has its browser's stand-up, and one that ran has its sign-in in its record.
+      const tagList =
+        marked && (record === undefined || (!ran && signedInAt === undefined))
+          ? yield* tags
+          : undefined;
       const requestedBy = tagList === undefined ? undefined : standUpRequestedBy(tagList);
       const signedIn =
         ran ||
@@ -452,8 +470,9 @@ export const makeZeropsSetup = (timings: ZeropsSetupTimings = TIMINGS) =>
           (requestedBy === undefined
             ? Object.keys(parseSignerTags(tagList)).length > 0
             : standUpSigners(tagList, requestedBy).length > 0));
-      // The sign-in is known from a stand-up that ran, or from the tags read for one pending.
-      const signinKnown = ran || (marked && record === undefined);
+      // The sign-in is known from a stand-up that ran, from the tags read, or once seen: a step
+      // once done stays done.
+      const signinKnown = ran || marked || signedInAt !== undefined;
       return setupDocument({
         now: yield* nowIso,
         startedAt,
@@ -462,8 +481,11 @@ export const makeZeropsSetup = (timings: ZeropsSetupTimings = TIMINGS) =>
         tagsRead: tagList !== undefined,
         requestedBy,
         signinAt: yield* latch(signinAt, signedIn),
-        record: record === undefined ? undefined : { startedAt: record.startedAt, ran },
-        standUpTurn: ran ? yield* turnOf(record.threadId) : undefined,
+        record:
+          record === undefined
+            ? undefined
+            : { startedAt: record.startedAt, ran, claimed: record.source.endsWith(":claimed") },
+        standUpTurn: ran ? yield* turnOf(record) : undefined,
         unknown: [
           ...(signinKnown ? [] : (["signin"] as const)),
           ...(marked || record !== undefined ? [] : (["standup"] as const)),

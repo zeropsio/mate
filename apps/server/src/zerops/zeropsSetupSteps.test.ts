@@ -37,6 +37,33 @@ const facts = (overrides: Partial<SetupFacts> = {}): SetupFacts => ({
   ...overrides,
 });
 
+/** zcp's halves as its first call leaves them: the dev halves stood, the stages queued. */
+const half = (hostname: string, step: string, state: string) => ({
+  hostname,
+  step,
+  state,
+  processId: "",
+  at: "",
+  error: "",
+});
+const halvesAfterDev = [
+  half("apidev", "verify", "done"),
+  half("apistage", "build", "pending"),
+  half("webdev", "verify", "done"),
+  half("webstage", "build", "pending"),
+];
+const halvesStaging = [
+  half("apidev", "verify", "done"),
+  half("apistage", "build", "running"),
+  half("webdev", "verify", "done"),
+  half("webstage", "build", "pending"),
+];
+const halvesStood = halvesAfterDev.map((service) => ({
+  ...service,
+  step: "verify",
+  state: "done",
+}));
+
 const stepOf = (document: ReturnType<typeof setupDocument>, id: string) =>
   document.steps.find((step) => step.id === id);
 
@@ -256,9 +283,33 @@ describe("setupDocument", () => {
     });
   });
 
-  const standups: ReadonlyArray<[string, Partial<SetupFacts>, string]> = [
+  const standups: ReadonlyArray<[string, Partial<SetupFacts>, string | undefined]> = [
     ["asked, not started", {}, "waiting"],
-    ["started, zcp says nothing yet", { record: { startedAt: NOW, ran: true } }, "running"],
+    [
+      "started, zcp says nothing yet, its own turn asked",
+      { record: { startedAt: NOW, ran: true }, standUpTurn: "running" },
+      "running",
+    ],
+    [
+      "claimed, its send not out yet: waiting, never a step that comes and goes",
+      { record: { startedAt: NOW, ran: true, claimed: true } },
+      "waiting",
+    ],
+    [
+      "started, its own turn not found and zcp silent: nothing said, never a running of our own",
+      { record: { startedAt: NOW, ran: true } },
+      undefined,
+    ],
+    [
+      "started, its own turn not found, zcp between its two calls",
+      {
+        record: { startedAt: NOW, ran: true },
+        status: parseZcpStatus(
+          status({ standup: { state: "running", phase: "stage", services: halvesAfterDev } }),
+        ),
+      },
+      "running",
+    ],
     [
       "started, zcp running it",
       {
@@ -293,7 +344,7 @@ describe("setupDocument", () => {
       { record: { startedAt: NOW, ran: true }, standUpTurn: "failed" },
       "failed",
     ],
-    ["nothing asked, nothing started: nothing to wait for", { requestedBy: undefined }, "done"],
+    ["nothing asked, nothing started: no stand-up to run", { requestedBy: undefined }, "none"],
     [
       "started, zcp says running but stopped refreshing its file: its MCP server died",
       {
@@ -314,7 +365,82 @@ describe("setupDocument", () => {
       },
       "running",
     ],
-    ["settled with none ran: done", { record: { startedAt: NOW, ran: false } }, "done"],
+    ["settled with none ran: none", { record: { startedAt: NOW, ran: false } }, "none"],
+    [
+      "settled with none ran, then zcp ran one",
+      {
+        record: { startedAt: NOW, ran: false },
+        status: parseZcpStatus(status({ standup: { state: "running" } })),
+      },
+      "running",
+    ],
+    [
+      "started, the development half returned with the stage halves still to build",
+      {
+        record: { startedAt: NOW, ran: true },
+        standUpTurn: "running",
+        status: parseZcpStatus(status({ standup: { state: "done", services: halvesAfterDev } })),
+      },
+      "running",
+    ],
+    [
+      "started, the development half returned, its own turn not read: zcp's word",
+      {
+        record: { startedAt: NOW, ran: true },
+        status: parseZcpStatus(status({ standup: { state: "done", services: halvesAfterDev } })),
+      },
+      "done",
+    ],
+    [
+      "settled as never due, then zcp stood up the development half only: zcp's word",
+      {
+        record: { startedAt: NOW, ran: false },
+        status: parseZcpStatus(status({ standup: { state: "done", services: halvesAfterDev } })),
+      },
+      "done",
+    ],
+    [
+      "zcp keeping its own section running between the two calls",
+      {
+        record: { startedAt: NOW, ran: true },
+        standUpTurn: "running",
+        status: parseZcpStatus(
+          status({ standup: { state: "running", phase: "stage", services: halvesAfterDev } }),
+        ),
+      },
+      "running",
+    ],
+    [
+      "started, the stage half started after the development half",
+      {
+        record: { startedAt: NOW, ran: true },
+        standUpTurn: "running",
+        status: parseZcpStatus(
+          status({ standup: { state: "running", phase: "stage", services: halvesStaging } }),
+        ),
+      },
+      "running",
+    ],
+    [
+      "started, both halves returned",
+      {
+        record: { startedAt: NOW, ran: true },
+        standUpTurn: "running",
+        status: parseZcpStatus(
+          status({ standup: { state: "done", phase: "stage", services: halvesStood } }),
+        ),
+      },
+      "done",
+    ],
+    [
+      "started, the development half returned and its turn ended without the stage call",
+      {
+        record: { startedAt: NOW, ran: true },
+        standUpTurn: "done",
+        status: parseZcpStatus(status({ standup: { state: "done", services: halvesAfterDev } })),
+      },
+      "done",
+    ],
     [
       "the tags not read yet: it may yet be asked",
       { requestedBy: undefined, tagsRead: false },

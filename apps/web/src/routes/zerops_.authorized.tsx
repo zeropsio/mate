@@ -14,7 +14,7 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 
 import { ZeropsHandoverFailed } from "../components/zerops/landing/ZeropsHandoverFailed";
-import { ZeropsLandingWait } from "../components/zerops/landing/ZeropsLandingShell";
+import { ZeropsFrameWait } from "../components/zerops/landing/ZeropsLandingShell";
 import { completeZeropsHandover, readHandoverOnce, startZeropsHandover } from "../zerops/handover";
 import { useZeropsSession } from "../zerops/ZeropsSessionProvider";
 
@@ -100,7 +100,14 @@ function ZeropsHandoverCallback() {
   }, [adoptHandover, navigate, outcome]);
 
   if (state.kind === "working") {
-    return <ZeropsLandingWait data-zerops-handover="working" label="Signing you in…" />;
+    return (
+      <ZeropsFrameWait
+        data-zerops-handover="working"
+        label="Signing you in…"
+        line="Signing you in…"
+        signedIn
+      />
+    );
   }
   return (
     <ZeropsHandoverFailed

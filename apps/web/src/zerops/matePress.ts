@@ -62,6 +62,7 @@ import {
   pressThrough,
   type PressStepView,
 } from "../components/zerops/ZeropsEnvironmentCreationDialog.logic";
+import { useNewMate } from "./newMate";
 import { placedNewProjects, type NewProjectBirth } from "./newProjectBirth";
 import {
   runZeropsCommand,
@@ -167,9 +168,9 @@ function endPress(projectId: string, finishing: boolean): void {
   }, FINISHED_SHOWN_MS);
 }
 
-/** The presses whose Mate has connected: nothing of them is left to say. */
+/** The presses (or creations) whose Mate has connected: nothing of them is left to say. */
 export function connectedPresses(
-  presses: ReadonlyArray<MatePress>,
+  presses: ReadonlyArray<{ readonly projectId: string }>,
   candidates: ReadonlyArray<{ readonly project: { readonly id: string }; readonly group: string }>,
 ): ReadonlyArray<string> {
   const connected = new Set(
@@ -180,14 +181,24 @@ export function connectedPresses(
   return presses.flatMap((press) => (connected.has(press.projectId) ? [press.projectId] : []));
 }
 
-/** Ends the presses whose Mate has connected, as the listing reads them. */
+/**
+ * Ends the presses whose Mate has connected, as the listing reads them — and this tab's creations
+ * of them: a creation reads as coming up only until its Mate first connects (`mateComing`).
+ */
 export function useForgetConnectedPresses(
   candidates: ReadonlyArray<{ readonly project: { readonly id: string }; readonly group: string }>,
 ): void {
   const presses = useMatePresses();
+  const creations = useNewMate((state) => state.creations);
+  const forgetCreation = useNewMate((state) => state.forget);
   useEffect(() => {
     for (const projectId of connectedPresses(presses, candidates)) forgetPress(projectId);
   }, [candidates, presses]);
+  useEffect(() => {
+    for (const projectId of connectedPresses(Object.values(creations), candidates)) {
+      forgetCreation(projectId);
+    }
+  }, [candidates, creations, forgetCreation]);
 }
 
 /**

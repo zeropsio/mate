@@ -23,7 +23,7 @@ import { useUiStateStore } from "~/uiStateStore";
 import { useCrew } from "~/zerops/crew/useCrew";
 import { menuMemory } from "~/zerops/menuMemory";
 import { useRegistrationRecord } from "~/zerops/registrationRecords";
-import { useZeropsMate } from "~/zerops/useZeropsMates";
+import { useKnownMate, useZeropsMate } from "~/zerops/useZeropsMates";
 import {
   Menu,
   MenuItem,
@@ -701,14 +701,14 @@ export function ConversationStrip({
   onEditJob,
   onEditBrief,
 }: ConversationStripProps) {
-  const whoLivesHere = useZeropsMate(environmentId);
+  // Read, or remembered until read: a reload's header wears the Mate's face from its first frame.
+  const mate = useKnownMate(environmentId) ?? null;
   const shells = useThreadShells();
   const lastVisitedAtById = useUiStateStore((state) => state.threadLastVisitedAtById);
   const { view } = useCrew(environmentId);
   const projectId = useRegistrationRecord(environmentId)?.projectRef?.projectId;
   const router = useRouter();
   const { archiveThread } = useThreadActions();
-  const mate = whoLivesHere.kind === "mate" ? whoLivesHere.mate : null;
   const chats = useMemo(
     () => mateChats(shells.filter((thread) => thread.environmentId === environmentId)),
     [environmentId, shells],

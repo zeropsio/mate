@@ -33,7 +33,12 @@ import { MateFace, Pill } from "../primitives";
 import type { ZeropsRowAction } from "../ZeropsProjectRow.logic";
 import { NextStepsStrip, OnlyAMate, OtherContainers, Overview, QuietEnd } from "./OverviewView";
 import { useRememberGroupPlacements } from "./groupPlacementMemory";
-import { foldGroups, foldUngrouped, type GroupPlacement } from "./projectsView.logic";
+import {
+  foldGroups,
+  foldUngrouped,
+  nextStepsPending,
+  type GroupPlacement,
+} from "./projectsView.logic";
 import { ProjectCard } from "./ProjectsView";
 
 /** One group as the page lays it out: its flow and the carriers the slots draw. */
@@ -217,7 +222,7 @@ export function ZeropsProjectsFlow<T>(props: ZeropsProjectsFlowProps<T>) {
         <>
           <NextStepsStrip
             entries={folded.nextSteps}
-            pending={groups.some((entry) => entry.awaiting)}
+            pending={nextStepsPending(groups)}
             renderNextStep={props.renderNextStep}
           />
           <Overview active={folded.active} props={props} />

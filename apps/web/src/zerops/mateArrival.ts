@@ -338,7 +338,8 @@ export function arrivalSteps(
     phrase,
     state: setup?.signin === "done" ? "done" : "you",
   });
-  if (setup?.standup !== undefined) {
+  // A Mate with no stand-up to run (a New project's first) has no step for one.
+  if (setup?.standup !== undefined && setup.standup !== "none") {
     steps.push({
       id: "standup",
       label: `${mate.name} stands up development`,
@@ -349,7 +350,9 @@ export function arrivalSteps(
 }
 
 /** The stand-up as the Mate's setup says it, as a step. */
-const STANDUP_STATES: Readonly<Record<NonNullable<MateSetup["standup"]>, ArrivalStep["state"]>> = {
+const STANDUP_STATES: Readonly<
+  Record<Exclude<MateSetup["standup"], "none" | undefined>, ArrivalStep["state"]>
+> = {
   waiting: "waiting",
   running: "active",
   done: "done",

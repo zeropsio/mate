@@ -17,9 +17,10 @@ import { selectThreadTerminalUiState, useTerminalUiStateStore } from "../termina
 import { useThreadSelectionStore } from "../threadSelectionStore";
 import { primaryServerKeybindingsAtom } from "~/state/server";
 import { SidebarInset } from "~/components/ui/sidebar";
-import { ZeropsLandingWait } from "~/components/zerops/landing/ZeropsLandingShell";
+import { PageWaitLine } from "~/components/zerops/WaitLine";
 import { MateOpeningView } from "~/components/zerops/MateLinkStage";
 import { rememberedMateIdentity } from "~/zerops/mateIdentityMemory";
+import { BOOT_WAIT_LINE_MS, READING_PROJECTS_LINE } from "~/zerops/waitLine.logic";
 import { resolveDoor } from "./-door";
 import { environmentIdFromPathname } from "./-environmentRoute";
 import { resolveThreadRouteRef } from "../threadRoutes";
@@ -142,7 +143,7 @@ function ChatRoutePending() {
   }
   return (
     <SidebarInset className="h-svh min-h-0 overflow-hidden md:h-dvh">
-      <ZeropsLandingWait label="Checking your Zerops projects…" />
+      <PageWaitLine delayMs={BOOT_WAIT_LINE_MS} from="mount" text={READING_PROJECTS_LINE} />
     </SidebarInset>
   );
 }
@@ -164,8 +165,8 @@ export const Route = createFileRoute("/_chat")({
   },
   component: ChatRouteLayout,
   // Its guard waits on the environment catalog: meanwhile the layout draws what the reload was
-  // drawing — the Mate's own view where this browser remembers it, else the account's wait —
-  // never an empty pane, and hands over the moment the guard answers.
+  // drawing — the Mate's own view where this browser remembers it, else the page quiet with the
+  // boot's one line — and hands over the moment the guard answers.
   pendingComponent: ChatRoutePending,
   pendingMs: 0,
   pendingMinMs: 0,

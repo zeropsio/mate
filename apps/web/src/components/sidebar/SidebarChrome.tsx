@@ -97,8 +97,9 @@ function SidebarBrand() {
       className="ml-[max(var(--workspace-controls-left),1rem)] hidden h-8.25 w-fit min-w-0 shrink-0 items-center rounded-md text-foreground outline-hidden ring-ring focus-visible:ring-2 md:flex"
       to="/"
     >
-      {/* The live mark alone, 28 px wide: its 44 × 52 box stands 33 px tall. */}
-      <MateMark playful className="h-8.25 w-7" />
+      {/* The live mark alone, 28 px wide: its 44 × 52 box stands 33 px tall. Awake as it mounts:
+          the boot frame painted the open mark here, and this one takes over from it. */}
+      <MateMark awake playful className="h-8.25 w-7" />
     </Link>
   );
 }
@@ -123,7 +124,7 @@ export function SidebarCornerMark() {
       >
         {/* Live, as the open panel's lockup is: the same mark in the same
             corner, so closing the panel does not still it. */}
-        <MateMark playful className="h-6 w-auto" />
+        <MateMark awake playful className="h-6 w-auto" />
       </Link>
     </div>
   );

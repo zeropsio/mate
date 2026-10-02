@@ -3,6 +3,8 @@ import { describe, expect, it } from "vite-plus/test";
 
 import type { ZeropsProject, ZeropsService } from "./api.ts";
 import {
+  applyFirstBuildGiveUp,
+  firstBuildOverdue,
   applyProjectCreationVerdict,
   deriveZeropsCandidates,
   groupZeropsCandidates,
@@ -239,7 +241,16 @@ describe("deriveZeropsCandidates", () => {
   });
 
   it("reports a container that is starting as provisioning, naming its status", () => {
-    for (const status of ["NEW", "CREATING", "STARTING", "RESTARTING", "UPGRADING"]) {
+    // READY_TO_DEPLOY: a Mate's container is never deployed by hand — it waits for its first
+    // build, which the import started (measured 2026-10-02: 45 s of it on an Add).
+    for (const status of [
+      "NEW",
+      "CREATING",
+      "STARTING",
+      "RESTARTING",
+      "UPGRADING",
+      "READY_TO_DEPLOY",
+    ]) {
       const candidates = deriveZeropsCandidates(
         PROJECT,
         [service({ id: "s1", status })],
@@ -335,5 +346,74 @@ describe("groupZeropsCandidates", () => {
       "project-1",
       "project-2",
     ]);
+  });
+});
+
+// A Mate's first build that failed leaves its service READY_TO_DEPLOY for good (a failed
+// buildFromGit, the ledger); one that is merely slow looks the same from its status. Past the
+// build's grace it is overdue — still on its way, taking longer — never removed on a guess.
+describe("firstBuildOverdue", () => {
+  const NOW = Date.parse("2026-10-02T12:00:00.000Z");
+  /** Its service, in `status`, made at `created`. */
+  const candidate = (created: string | undefined, status = "READY_TO_DEPLOY") =>
+    deriveZeropsCandidates(
+      PROJECT,
+      [service({ id: "s1", status, ...(created === undefined ? {} : { created }) })],
+      NO_CONNECTIONS,
+    )[0]!;
+
+  it.each([
+    { case: "a minute into its first build", created: "2026-10-02T11:59:00.000Z", overdue: false },
+    { case: "its creation time unknown", created: undefined, overdue: false },
+    {
+      case: "made after this browser's now (its clock slow)",
+      created: "2026-10-02T12:03:00.000Z",
+      overdue: false,
+    },
+    { case: "twenty minutes on, never built", created: "2026-10-02T11:40:00.000Z", overdue: true },
+  ])("$case: $overdue", ({ created, overdue }) => {
+    expect(firstBuildOverdue(candidate(created), NOW)).toBe(overdue);
+  });
+
+  it("stays on its way, whatever its age", () => {
+    expect(candidate("2026-10-02T11:40:00.000Z").group).toBe("provisioning");
+  });
+
+  it("is never said of a container in any other state", () => {
+    expect(firstBuildOverdue(candidate("2020-01-01T00:00:00Z", "STARTING"), NOW)).toBe(false);
+  });
+});
+
+// Half an hour on, a first build nothing says is running has failed or is stuck for good: the
+// listing reads it as the platform leaves it — unavailable, naming its status, with what removes it.
+describe("applyFirstBuildGiveUp", () => {
+  const NOW = Date.parse("2026-10-02T12:00:00.000Z");
+  const candidate = (created: string, status = "READY_TO_DEPLOY") =>
+    deriveZeropsCandidates(PROJECT, [service({ id: "s1", status, created })], NO_CONNECTIONS)[0]!;
+
+  it.each([
+    {
+      case: "twenty minutes on: taking longer, still on its way",
+      created: "2026-10-02T11:40:00.000Z",
+      group: "provisioning",
+    },
+    {
+      case: "forty minutes on: not coming",
+      created: "2026-10-02T11:20:00.000Z",
+      group: "unavailable",
+    },
+  ])("$case", ({ created, group }) => {
+    expect(applyFirstBuildGiveUp(candidate(created), NOW).group).toBe(group);
+  });
+
+  it("names the platform's status, and keeps its service", () => {
+    const given = applyFirstBuildGiveUp(candidate("2026-10-02T11:20:00.000Z"), NOW);
+    expect(given.reason).toBe("container is READY_TO_DEPLOY");
+    expect(given.service?.id).toBe("s1");
+  });
+
+  it("never touches a container in any other state", () => {
+    const starting = candidate("2020-01-01T00:00:00.000Z", "STARTING");
+    expect(applyFirstBuildGiveUp(starting, NOW)).toBe(starting);
   });
 });

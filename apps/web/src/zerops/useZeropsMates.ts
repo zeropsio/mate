@@ -19,12 +19,15 @@ import { Atom } from "effect/unstable/reactivity";
 import { zeropsEnvironmentsAtom } from "../state/zerops";
 import { registeredZeropsOrigins } from "./environmentOrigins";
 import {
+  knownMate,
   withEnvironmentsOutsideZerops,
   zeropsMateAt,
   zeropsMateDecisions,
   type ZeropsMateAt,
   type ZeropsMateDirectory,
+  type ZeropsMateIdentity,
 } from "./mateIdentities";
+import { rememberedMateIdentity } from "./mateIdentityMemory";
 import { candidateListingAtom } from "./useZeropsCandidates";
 
 export const zeropsMatesAtom = Atom.make((get): ZeropsMateDirectory => {
@@ -43,6 +46,11 @@ export function useZeropsMateDirectory(): ZeropsMateDirectory {
 
 export function useZeropsMate(environmentId: EnvironmentId): ZeropsMateAt {
   return zeropsMateAt(useZeropsMateDirectory(), environmentId);
+}
+
+/** The Mate a page draws in `environmentId` now (`knownMate`): read, or remembered until read. */
+export function useKnownMate(environmentId: EnvironmentId): ZeropsMateIdentity | undefined {
+  return knownMate(useZeropsMate(environmentId), () => rememberedMateIdentity(environmentId));
 }
 
 /**

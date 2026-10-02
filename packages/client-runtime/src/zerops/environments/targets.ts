@@ -32,6 +32,7 @@ const SERVICE_TRANSITIONS: ReadonlySet<string> = new Set<ServiceTransition>([
   "STARTING",
   "RESTARTING",
   "UPGRADING",
+  "READY_TO_DEPLOY",
 ]);
 
 /** Region P for a target a listing row names (§4.4). */
@@ -202,7 +203,11 @@ export function containerTargetsOf(
   const listed = rows.map((row) => ({
     key: row.key,
     origin: row.containerOrigin ?? null,
-    platform: { project: row.project.status, service: row.service?.status ?? null },
+    platform: {
+      project: row.project.status,
+      service: row.service?.status ?? null,
+      ...(row.service?.created === undefined ? {} : { serviceCreated: row.service.created }),
+    },
   }));
   const all = [...remembered, ...listed];
   const route = all.find((target) => target.key === first);

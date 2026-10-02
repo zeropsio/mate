@@ -7,6 +7,7 @@ import {
 } from "@t3tools/client-runtime/zerops";
 import { flowVerbInvalidations } from "@t3tools/client-runtime/zerops/flow";
 import {
+  createCommitStatusMemo,
   createMergeabilityTracker,
   type MergeabilityTracker,
 } from "@t3tools/client-runtime/zerops/forge";
@@ -32,6 +33,8 @@ const gitea = vi.hoisted(() => ({
   listings: 0,
   loseTokenOnRead: false,
   outwaitReacquireOnRead: false,
+  /** Every commit whose statuses were read, as `repo@sha`. */
+  statusReads: [] as Array<string>,
 }));
 
 vi.mock("./accountGiteaSessions", () => ({
@@ -56,8 +59,11 @@ vi.mock("./accountGiteaSessions", () => ({
             query.state === "open"
               ? [{ number: 7, title: "Stage follows main", head: { sha: "abc" } }]
               : [],
-          listCommitStatuses: async () => [],
-          listTags: async () => [],
+          listCommitStatuses: async (_owner: string, repo: string, sha: string) => {
+            gitea.statusReads.push(`${repo}@${sha}`);
+            return [{ context: "ci", state: "success" }];
+          },
+          listTags: async () => [{ name: "v0.1.0", commit: { sha: "r1" } }],
         }
       : null,
 }));
@@ -271,6 +277,30 @@ describe("readForge", () => {
     );
   });
 
+  it("asks about a commit once however many release tags point at it", async () => {
+    const SHARED = "5".repeat(40);
+    const { client: base, calls } = forge();
+    const client = {
+      ...base,
+      listTags: async () =>
+        Array.from({ length: 30 }, (_, index) => ({
+          name: `v0.1.${String(index)}`,
+          commit: { sha: SHARED },
+        })),
+      listCommitStatuses: async (owner: string, repo: string, sha: string) => {
+        calls.push(`statuses ${owner}/${repo}@${sha}`);
+        return repo === "group" ? [{ context: "deploy", state: "success" }] : [];
+      },
+    } as unknown as GiteaClient;
+    const statuses = createCommitStatusMemo();
+    const tracker = createMergeabilityTracker();
+    await readForge(client, "harbor", "group", tracker, statuses);
+    await readForge(client, "harbor", "group", tracker, statuses);
+    expect(calls.filter((call) => call.startsWith("statuses harbor/group@"))).toEqual([
+      `statuses harbor/group@${SHARED}`,
+    ]);
+  });
+
   it("reads a release's tags alone after a release", async () => {
     const { client, calls } = forge();
     const held = await readAll(client);
@@ -353,8 +383,39 @@ describe("useZeropsGroupForge", () => {
     gitea.listings = 0;
     gitea.loseTokenOnRead = false;
     gitea.outwaitReacquireOnRead = false;
+    gitea.statusReads = [];
     vi.useRealTimers();
     vi.unstubAllGlobals();
+  });
+
+  it("keeps the checks it read while a pull request is rechecked for whether it merges", async () => {
+    vi.useFakeTimers();
+    installTestDom();
+    const { createRoot } = await import("react-dom/client");
+    function Probe() {
+      useZeropsGroupForge({
+        giteaOrigin: "https://gitea.example.test",
+        groups: GROUPS,
+        enabled: true,
+        readable: true,
+      });
+      return null;
+    }
+    const root = createRoot(document.createElement("div") as unknown as Element);
+    await act(async () => {
+      root.render(createElement(Probe));
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(gitea.statusReads).toEqual(["app@abc", "group@r1"]);
+    // Gitea says "checking" after a push: the pull request is read again at 2, 5 and 10 s, and
+    // nothing about any commit's checks has changed.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(11_000);
+    });
+    expect(gitea.statusReads).toEqual(["app@abc", "group@r1"]);
+    await act(async () => {
+      root.unmount();
+    });
   });
 
   it("keeps what it read when a 401 and a failed reacquire land inside one pass", async () => {

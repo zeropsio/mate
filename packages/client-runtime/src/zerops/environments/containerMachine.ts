@@ -28,6 +28,8 @@ import type { ProbeCadence, ProbeReading } from "./probeStore.ts";
 export interface PlatformStatus {
   readonly project: string;
   readonly service: string | null;
+  /** When the zcp service was made, as the listing reads it: a first build's wait runs from it. */
+  readonly serviceCreated?: string;
 }
 
 /** `ZCP_MATE_ENABLED` as read; `"unknown"` when the read could not say. */
@@ -252,7 +254,17 @@ export const unansweredSinceUp = (machine: ContainerMachine): boolean =>
 // ── Transition ────────────────────────────────────────────────────────────────────────────────
 
 const PROJECT_CREATING: ReadonlySet<string> = new Set(["NEW", "CREATING"]);
-const SERVICE_PROVISIONING: ReadonlySet<string> = new Set(["NEW", "CREATING", "STARTING"]);
+/**
+ * A zcp service on its way up. `READY_TO_DEPLOY` is its first build: a Mate's container is never
+ * deployed by hand, so one with no app version yet waits for the build its import started — it is
+ * coming up, never "not running" (measured 2026-10-02: 45 s of an Add read that way).
+ */
+const SERVICE_PROVISIONING: ReadonlySet<string> = new Set([
+  "NEW",
+  "CREATING",
+  "STARTING",
+  "READY_TO_DEPLOY",
+]);
 const SERVICE_RESTARTING: ReadonlySet<string> = new Set(["RESTARTING", "UPGRADING", "RELOADING"]);
 
 const after = (instant: Instant, ms: number): Instant => ({
@@ -424,6 +436,17 @@ const updateOver = (
   );
 };
 
+/**
+ * When a first build's wait began: the service's own creation, so every tab times it the same —
+ * one opened twenty minutes into a build that failed says at once that it is taking longer. Null
+ * where the listing gave no time, or one ahead of now.
+ */
+const firstBuildSince = (platform: PlatformStatus, now: Instant): Instant | null => {
+  const created = Date.parse(platform.serviceCreated ?? "");
+  if (Number.isNaN(created) || created > now.wall) return null;
+  return { wall: created, mono: now.mono - (now.wall - created) };
+};
+
 /** The level the facts held now put the container at; an intent lives only on its own level. */
 const settleLevel = (machine: ContainerMachine, now: Instant): ContainerMachine => {
   const next = settleFacts(machine, now);
@@ -452,10 +475,12 @@ const settleFacts = (machine: ContainerMachine, now: Instant): ContainerMachine 
     }
     const service = platform.service;
     if (service !== null && SERVICE_PROVISIONING.has(service)) {
-      return moveTo(
-        machine,
-        state.level === "provisioning" ? state : { level: "provisioning", since: now },
-      );
+      const since = state.level === "provisioning" ? state.since : now;
+      const built = service === "READY_TO_DEPLOY" ? firstBuildSince(platform, now) : null;
+      return moveTo(machine, {
+        level: "provisioning",
+        since: built !== null && built.wall < since.wall ? built : since,
+      });
     }
     if (service !== null && SERVICE_RESTARTING.has(service)) {
       // A socket connected since the platform began restarting outranks the status it still

@@ -121,6 +121,7 @@ import type { MateComing } from "~/zerops/mateComing";
 import { useZeropsProjectFlowOptional } from "~/zerops/projectFlowContext";
 import type { FixProblem } from "~/zerops/fixRequest";
 import { useOpenReview } from "~/zerops/review";
+import { useSentAsks } from "~/zerops/sentAsk";
 import { useCrewStatus } from "~/zerops/crew/useCrew";
 import { useCrewAccess } from "~/zerops/crew/useCrewAccess";
 import { useZeropsSessionOptional } from "~/zerops/ZeropsSessionProvider";
@@ -184,6 +185,8 @@ import {
   mateNotYours,
   mateOwnerView,
   mateRowAskLine,
+  mateRowSentAsk,
+  mateRowSentEchoed,
   mateRowDraft,
   mateRowReading,
   pendingBornLine,
@@ -2476,12 +2479,26 @@ function MateRow<T extends RosterCandidate>({
       threadKey: activity?.threadKey,
     }),
   );
+  // What this browser just sent it, until its conversation says it (`mateRowSentAsk`).
+  const sentAsk = useSentAsks((state) =>
+    candidate.environmentId === undefined
+      ? undefined
+      : state.byEnvironment[candidate.environmentId],
+  );
+  // Said by its conversation, the held message is let go (`mateRowSentEchoed`).
+  const sentEchoed = sentAsk !== undefined && mateRowSentEchoed(sentAsk, activity);
+  useEffect(() => {
+    if (sentEchoed && sentAsk !== undefined && candidate.environmentId !== undefined) {
+      useSentAsks.getState().forget(candidate.environmentId, sentAsk.messageId);
+    }
+  }, [sentEchoed, sentAsk, candidate.environmentId]);
   // The person's line (`mateRowAskLine`): what they asked, or are about to, or that nothing was.
   const askLine = mateRowAskLine({
     view,
     signIn:
       signIn === undefined ? undefined : { text: signIn, waitsOnViewer: seated.waitsOnViewer },
     draft,
+    sent: mateRowSentAsk(sentAsk, activity, conversationsRead),
     deleting,
     read: conversationsRead,
   });

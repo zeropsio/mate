@@ -23,15 +23,13 @@ vi.mock("~/uiStateStore", () => ({
   useUiStateStore: (select: (value: { threadLastVisitedAtById: object }) => unknown) =>
     select({ threadLastVisitedAtById: {} }),
 }));
-vi.mock("~/zerops/useZeropsMates", () => ({
-  useZeropsMate: () =>
-    state.mate
-      ? {
-          kind: "mate",
-          mate: { name: "Fen", tint: "amber", project: "shop", projectUrl: "", connected: true },
-        }
-      : { kind: "nobody" },
-}));
+vi.mock("~/zerops/useZeropsMates", () => {
+  const fen = { name: "Fen", tint: "amber", project: "shop", projectUrl: "", connected: true };
+  return {
+    useZeropsMate: () => (state.mate ? { kind: "mate", mate: fen } : { kind: "nobody" }),
+    useKnownMate: () => (state.mate ? fen : undefined),
+  };
+});
 vi.mock("~/zerops/crew/useCrew", () => ({ useCrew: () => ({ view: state.view }) }));
 vi.mock("~/zerops/registrationRecords", () => ({
   useRegistrationRecord: () => ({ projectRef: { projectId: "project-fen" } }),

@@ -20,6 +20,7 @@ import {
 } from "~/zerops/agentActivity";
 import type { MateComing } from "~/zerops/mateComing";
 import { MATE_STAND_UP_MESSAGE } from "~/zerops/mateStandUp";
+import type { SentAsk } from "~/zerops/sentAsk";
 
 import { formatWorkingTime } from "./SidebarZeropsTree.logic";
 
@@ -508,6 +509,7 @@ export type MateRowAskLine =
  * | deleting                               | the ask, where there was one; no draft       |
  * | nobody signed in                       | the sign-in, whatever is typed               |
  * | a draft typed                          | *Draft* and its words, over the ask if any   |
+ * | just sent, its conversation behind     | what was sent                                |
  * | asked                                  | the ask                                      |
  * | never asked, its conversations read    | "Nothing asked yet"                          |
  * | never asked, not read, or a step below | nothing                                      |
@@ -527,6 +529,8 @@ export function mateRowAskLine(input: {
   readonly signIn: { readonly text: string; readonly waitsOnViewer: boolean } | undefined;
   /** Its unsent message (`mateRowDraft`). */
   readonly draft: string | undefined;
+  /** What this browser just sent it, its conversation not caught up yet (`mateRowSentAsk`). */
+  readonly sent: string | undefined;
   readonly deleting: boolean;
   /** Its conversations are read: none there is a fact, not a socket still opening. */
   readonly read: boolean;
@@ -536,8 +540,42 @@ export function mateRowAskLine(input: {
   if (input.deleting) return view.ask === undefined ? undefined : { kind: "ask", text: view.ask };
   if (input.signIn !== undefined) return { kind: "sign-in", ...input.signIn };
   if (input.draft !== undefined) return { kind: "draft", text: input.draft, ask: view.ask };
+  if (input.sent !== undefined) return { kind: "ask", text: input.sent };
   if (view.ask !== undefined) return { kind: "ask", text: view.ask };
   return view.reply === undefined && input.read ? { kind: "nothing-asked" } : undefined;
+}
+
+/**
+ * Whether the row's conversation has said what this browser sent: the person's latest message in
+ * it is that one or newer — both times this browser's own stamp, so no two clocks meet.
+ */
+export function mateRowSentEchoed(
+  sent: SentAsk,
+  activity: ZeropsAgentActivity | undefined,
+): boolean {
+  return (
+    activity !== undefined &&
+    activity.threadId === sent.threadId &&
+    activity.askedAt !== undefined &&
+    activity.askedAt >= sent.at
+  );
+}
+
+/**
+ * What this browser just sent a Mate (`sentAsk.ts`), while its row's conversation has not said it
+ * yet. With no conversation, only where its conversations are read and none is there: the sent
+ * one is its first, and the row's. Sent into another of its conversations, it is not the row's
+ * to say.
+ */
+export function mateRowSentAsk(
+  sent: SentAsk | undefined,
+  activity: ZeropsAgentActivity | undefined,
+  read: boolean,
+): string | undefined {
+  if (sent === undefined) return undefined;
+  if (activity === undefined) return read ? sent.text : undefined;
+  if (activity.threadId !== sent.threadId) return undefined;
+  return mateRowSentEchoed(sent, activity) ? undefined : sent.text;
 }
 
 /** What `mateRowDraft` reads of the composer's store (`composerDraftStore.ts`). */

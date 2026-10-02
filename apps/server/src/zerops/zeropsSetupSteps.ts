@@ -266,10 +266,20 @@ export interface SetupFacts {
    * The durable record of the stand-up: `ran`, started here or by a browser;
    * else settled as never due (nobody asked, or the conversation was under way).
    */
-  readonly record: { readonly startedAt: string; readonly ran: boolean } | undefined;
+  readonly record:
+    | {
+        readonly startedAt: string;
+        readonly ran: boolean;
+        /** Claimed, its send not confirmed out yet: its turn may not exist yet. */
+        readonly claimed?: boolean;
+      }
+    | undefined;
   /** Steps this server cannot say: left out of the document rather than guessed. */
   readonly unknown?: ReadonlyArray<"signin" | "standup">;
-  /** How the stand-up's turn ended, for a zcp that writes no status file. */
+  /**
+   * The recorded stand-up's own turn — the one its ask started, never a later one: whether it
+   * runs, or how it ended; `undefined` where it is not read (no record that ran, its thread gone).
+   */
   readonly standUpTurn: "running" | "done" | "failed" | undefined;
 }
 
@@ -294,27 +304,46 @@ const runtimesStep = (status: ZcpStatus | undefined): SetupStep => {
   return { id: "runtimes", state, at };
 };
 
-const standUpStep = (facts: SetupFacts): SetupStep => {
+/**
+ * What zcp's stand-up section says of the whole stand-up. A zcp before its stage-call fix ends
+ * its first call `done` and leaves the stage halves `pending` for a second call; while the
+ * stand-up this server recorded still runs its own turn, that is not the stand-up's end. Anywhere
+ * else — a stand-up settled as never due, its own turn over or not read — zcp's word stands: a
+ * newer zcp keeps its section `running` between the two calls itself.
+ */
+const zcpStandUpState = (facts: SetupFacts): Exclude<StandUpState, "idle"> | undefined => {
+  if (isStaleStandUp(facts.status, Date.parse(facts.now))) return "failed";
   const standup = facts.status?.standup;
-  const zcpState = isStaleStandUp(facts.status, Date.parse(facts.now))
-    ? "failed"
-    : standup?.state === "running" || standup?.state === "done" || standup?.state === "failed"
-      ? standup.state
-      : undefined;
+  const state = standup?.state;
+  if (state !== "running" && state !== "done" && state !== "failed") return undefined;
+  const halvesLeft = standup!.services.some((service) => service.state === "pending");
+  const ownTurnRuns = facts.record?.ran === true && facts.standUpTurn === "running";
+  return state === "done" && halvesLeft && ownTurnRuns ? "running" : state;
+};
+
+const standUpStep = (facts: SetupFacts): SetupStep | null => {
+  const standup = facts.status?.standup;
+  const zcpState = zcpStandUpState(facts);
+  // Settled as never due: nothing ran here, so nothing is done — unless zcp ran one.
   if (facts.record !== undefined && !facts.record.ran) {
-    return { id: "standup", state: zcpState ?? "done", at: "" };
+    return { id: "standup", state: zcpState ?? "none", at: "" };
   }
   if (facts.record === undefined) {
     if (zcpState !== undefined)
       return { id: "standup", state: zcpState, at: standup?.startedAt ?? "" };
-    // Nothing asked and nothing started: there is nothing to wait for — once
+    // Nothing asked and nothing started: a Mate with no stand-up to run — once
     // the tags have been read to say so.
     return facts.tagsRead && facts.requestedBy === undefined
-      ? { id: "standup", state: "done", at: "" }
+      ? { id: "standup", state: "none", at: "" }
       : { id: "standup", state: "waiting", at: "" };
   }
-  const state =
-    zcpState ?? (facts.standUpTurn === "running" ? undefined : facts.standUpTurn) ?? "running";
+  // zcp's word, else its own turn's; with neither — its thread gone, its turn not found, and a
+  // zcp that writes nothing — the server cannot say, and says nothing rather than running for good.
+  const state = zcpState ?? facts.standUpTurn;
+  // Claimed and not sent yet, its turn is still to come; only a stand-up confirmed out whose turn
+  // is gone leaves the step out.
+  if (state === undefined)
+    return facts.record.claimed === true ? { id: "standup", state: "waiting", at: "" } : null;
   const ended = state === "done" || state === "failed";
   const at =
     (ended ? standup?.endedAt : standup?.startedAt) || (ended ? "" : facts.record.startedAt);
@@ -335,6 +364,9 @@ export const setupDocument = (facts: SetupFacts): SetupDocument => ({
         ? { id: "signin", state: "waiting", at: "" }
         : { id: "signin", state: "done", at: facts.signinAt },
       standUpStep(facts),
-    ] satisfies ReadonlyArray<SetupStep>
-  ).filter((step) => !(facts.unknown ?? []).some((id) => id === step.id)),
+    ] satisfies ReadonlyArray<SetupStep | null>
+  ).filter(
+    (step): step is SetupStep =>
+      step !== null && !(facts.unknown ?? []).some((id) => id === step.id),
+  ),
 });

@@ -18,6 +18,7 @@ import {
   containersSummary,
   flowStepsAwaiting,
   groupFlowInputOf,
+  nextStepsPending,
   groupMemberFactsOf,
   groupMetaLine,
   lastMergedCode,
@@ -180,6 +181,24 @@ describe("flowStepsAwaiting — which steps hold a skeleton while a read is out"
       steps,
       changes,
     });
+  });
+});
+
+describe("nextStepsPending — the Next steps strip holds its place until every next step is known", () => {
+  const group = (awaiting: boolean, changesAwaiting: boolean) => ({ awaiting, changesAwaiting });
+  it.each([
+    { case: "no groups", groups: [], pending: false },
+    { case: "every group answered whole", groups: [group(false, false)], pending: false },
+    { case: "a group's flow unread", groups: [group(true, true)], pending: true },
+    {
+      // Its deploys answered first and its pull requests came 14 s later: the strip went away
+      // and came back with a step, and the table jumped 90 px twice (pass 30, 2026-10-02).
+      case: "a group's deploys answered, its changes not yet",
+      groups: [group(false, false), group(false, true)],
+      pending: true,
+    },
+  ])("$case", ({ groups, pending }) => {
+    expect(nextStepsPending(groups)).toBe(pending);
   });
 });
 

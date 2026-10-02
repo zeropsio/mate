@@ -5,6 +5,7 @@ import { MATE_SHAPE_OF_TINT, type MateShapeId, type MateTintId } from "@t3tools/
 import { describe, expect, it } from "vite-plus/test";
 
 import {
+  knownMate,
   mateQuestion,
   withEnvironmentsOutsideZerops,
   zeropsMateAt,
@@ -172,6 +173,34 @@ describe("zeropsMateAt", () => {
     },
   ])("answers $name as $kind", ({ directory, environmentId, kind }) => {
     expect(zeropsMateAt(directory, environmentId).kind).toBe(kind);
+  });
+});
+
+describe("knownMate", () => {
+  const remembered = {
+    name: "Gita",
+    tint: "amber",
+    shape: MATE_SHAPE_OF_TINT.amber,
+    project: "Heron",
+    projectUrl: "https://example.test/project",
+    connected: false,
+  } as const;
+  const read = { ...remembered, name: "Gita", connected: true };
+
+  it.each([
+    { name: "the directory's Mate, read", at: { kind: "mate", mate: read }, known: read },
+    {
+      name: "nobody, read: none, whatever was remembered",
+      at: { kind: "nobody" },
+      known: undefined,
+    },
+    { name: "not read yet: the one remembered there", at: { kind: "unknown" }, known: remembered },
+  ] as const)("$name", ({ at, known }) => {
+    expect(knownMate(at, () => remembered)).toEqual(known);
+  });
+
+  it("knows none where the directory is not read and nothing is remembered", () => {
+    expect(knownMate({ kind: "unknown" }, () => undefined)).toBeUndefined();
   });
 });
 

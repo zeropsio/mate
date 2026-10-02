@@ -147,6 +147,9 @@ const SERVICE_PROVISIONING_STATUSES = new Set([
   "STARTING",
   "RESTARTING",
   "UPGRADING",
+  // A Mate's container is never deployed by hand: one ready to deploy waits for the first build
+  // its import started.
+  "READY_TO_DEPLOY",
 ]);
 
 /**
@@ -177,6 +180,50 @@ export function applyProjectCreationVerdict<Candidate extends ZeropsCandidate>(
     reason: "creation failed",
     creationFailed: { message: outcome.message },
   } as Candidate;
+}
+
+/**
+ * How long a Mate's container may wait for its first build (`READY_TO_DEPLOY`) before it is
+ * taking longer than usual: the build takes about a minute (measured 2026-10-02).
+ */
+export const FIRST_BUILD_GRACE_MS = 300_000;
+
+/**
+ * A container waiting for its first build past its grace: still on its way — a slow or queued
+ * build looks the same from its status as one that failed, so only its build's own process says
+ * which (`firstBuildState`) — and taking longer than usual. A creation time not known, or one
+ * ahead of this browser's clock, is not overdue.
+ */
+export function firstBuildOverdue(
+  candidate: Pick<ZeropsCandidate, "service">,
+  nowMs: number,
+): boolean {
+  if (candidate.service?.status !== "READY_TO_DEPLOY") return false;
+  const created = Date.parse(candidate.service.created ?? "");
+  return !Number.isNaN(created) && nowMs - created >= FIRST_BUILD_GRACE_MS;
+}
+
+/**
+ * How long a first build nothing says is running stays on its way at all: past it, it failed or
+ * is stuck for good, and reads as the platform leaves it.
+ */
+export const FIRST_BUILD_GIVE_UP_MS = 30 * 60_000;
+
+/**
+ * A container waiting for its first build past {@link FIRST_BUILD_GIVE_UP_MS}, where no process
+ * read says its build still runs: unavailable, naming its status, so its row offers what removes
+ * it — never "taking longer" for good. A creation time not known keeps it on its way.
+ */
+export function applyFirstBuildGiveUp<Candidate extends ZeropsCandidate>(
+  candidate: Candidate,
+  nowMs: number,
+): Candidate {
+  if (candidate.group !== "provisioning" || candidate.service?.status !== "READY_TO_DEPLOY") {
+    return candidate;
+  }
+  const created = Date.parse(candidate.service.created ?? "");
+  if (Number.isNaN(created) || nowMs - created < FIRST_BUILD_GIVE_UP_MS) return candidate;
+  return { ...candidate, group: "unavailable", reason: "container is READY_TO_DEPLOY" };
 }
 
 /**
