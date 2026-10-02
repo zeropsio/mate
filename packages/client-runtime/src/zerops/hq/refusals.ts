@@ -30,6 +30,11 @@ const PERMISSION_WORDS: { readonly [R in Reason]: string } = {
   held_as_environment: "This Zerops project is its project's stage or production, not a Mate.",
   not_a_mate: "HQ holds this Zerops project as no Mate.",
   mate_not_in_app: "This Mate is in no project in HQ yet.",
+  unknown_change: "HQ has no such change.",
+  not_your_change: "A Mate words only its own change.",
+  not_your_app: "A Mate reaches only its own project's repositories.",
+  changes_not_seen:
+    "You need at least Basic user access to one of this project's Zerops projects to see its changes.",
 };
 
 /** HQ's structure's own refusals (`StructureRefused` in `apps/hq/src/structure.ts`), in words. */

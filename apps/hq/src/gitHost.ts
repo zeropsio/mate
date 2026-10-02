@@ -48,11 +48,13 @@ export class GitHost extends Context.Service<
     readonly git: Effect.Effect<HqGit, NotLeader>;
     /**
      * Serves one git request for `principal` with the layer's smart HTTP; ends with the response.
-     * The layer serves only the principal's application's repositories.
+     * The layer serves a repository only where `mayRead` allows it, and then applies its own write
+     * rules to a push.
      */
     readonly serve: (
       principal: MatePrincipal,
       request: HttpServerRequest.HttpServerRequest,
+      mayRead: (repo: Repo) => Effect.Effect<boolean>,
     ) => Effect.Effect<void, NotLeader>;
     /** Closes the layer for good: on shutdown, before the lead is given up. */
     readonly close: Effect.Effect<void>;
@@ -102,8 +104,9 @@ export const gitHostLayer = (options: {
       const sql = yield* SqlClient.SqlClient;
       const services = yield* Effect.context<SqlClient.SqlClient | Leader>();
       const run = Effect.runPromiseWith(services);
-      /** Who each request in flight is, as Core decided it. */
+      /** Who each request in flight is, as Core decided it, and what it may read. */
       const principals = new WeakMap<NodeHttp.IncomingMessage, Principal>();
+      const readers = new WeakMap<Principal, (repo: Repo) => Effect.Effect<boolean>>();
 
       const event = (repo: Repo, kind: GitEventKind, number: number | null, data: object) =>
         appendEvent(sql, { kind, appId: repo.appId, repo: repo.id, number, data });
@@ -266,9 +269,10 @@ export const gitHostLayer = (options: {
           const git = yield* makeHqGit({
             rootDir: options.rootDir,
             authenticate: (request) => principals.get(request) ?? null,
-            // The application in the request's path must be the one HQ holds the Mate in.
-            canRead: (principal, repo) =>
-              principal.kind === "mate" && principal.appId === repo.appId,
+            canRead: (principal, repo) => {
+              const mayRead = readers.get(principal);
+              return mayRead === undefined ? false : run(mayRead(repo));
+            },
             lookupChange: (repo, _mateId, number) =>
               run(
                 Effect.map(
@@ -334,12 +338,13 @@ export const gitHostLayer = (options: {
       );
       return GitHost.of({
         git,
-        serve: (principal, request) =>
+        serve: (principal, request, mayRead) =>
           Effect.gen(function* () {
             const layer = yield* git;
             const req = NodeHttpServerRequest.toIncomingMessage(request);
             const res = NodeHttpServerRequest.toServerResponse(request);
             principals.set(req, principal);
+            readers.set(principal, mayRead);
             yield* Effect.callback<void>((resume) => {
               res.once("close", () => resume(Effect.void));
               layer.handler(req, res);

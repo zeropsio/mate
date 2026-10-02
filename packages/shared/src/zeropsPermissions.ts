@@ -6,8 +6,8 @@
  * - **The verbs** are the places that decide today: reading a project or an application, writing an
  *   application, attaching, moving or detaching a project, a Mate's record, a Mate's enrollment,
  *   following a Mate's live summary (who may operate it: open it, as its door does), and reading and
- *   commenting on an application's changes (`hqChanges.ts`), which whoever sees the application may.
- * - **A Mate's own verbs** — its enrollment, and its repositories, changes and git in the
+ *   commenting on an application's changes (`hqChanges.ts`), as main's Gitea read them.
+ * - **A Mate's own verbs** — its enrollment, and its repositories, its own changes and git in the
  *   application HQ holds it in — are a Mate's alone, for its own project only; it is refused every
  *   other verb.
  * - **The target carries its current kind** (`held`), never only the requested one: a change between a
@@ -79,6 +79,16 @@ export interface MateTarget extends ProjectTarget {
   readonly appId: string | null;
 }
 
+/** A change a Mate edits, as HQ records it (`null`: HQ has no such change). */
+export interface MateChangeTarget extends MateTarget {
+  readonly change: { readonly mateProjectId: string } | null;
+}
+
+/** A repository a Mate fetches: the application it is a repository of. */
+export interface MateFetchTarget extends MateTarget {
+  readonly repoAppId: string;
+}
+
 /** A project placed into an application as `to`, beside the application's projects. */
 export interface PlacementTarget extends ProjectTarget {
   readonly to: string;
@@ -89,7 +99,7 @@ export interface Targets {
   readonly read_project: { readonly projectId: string };
   readonly observe_mate: { readonly projectId: string };
   readonly read_app: { readonly projectIds: ReadonlyArray<string> };
-  /** An application's changes, as its projects: whoever sees the application. */
+  /** An application's changes, as its projects. */
   readonly read_change: { readonly projectIds: ReadonlyArray<string> };
   /** A comment on one of an application's changes: whoever reads the change. */
   readonly comment_change: { readonly projectIds: ReadonlyArray<string> };
@@ -103,13 +113,14 @@ export interface Targets {
   readonly enroll_mate: ProjectTarget;
   readonly ensure_repo: MateTarget;
   readonly open_change: MateTarget;
-  readonly edit_change: MateTarget;
+  readonly edit_change: MateChangeTarget;
+  readonly fetch_repo: MateFetchTarget;
 }
 
 export type Verb = keyof Targets;
 
 /** The verbs that only read; every other one writes and takes `Facts<"fresh">`. */
-export type ReadVerb = "read_project" | "read_app" | "read_change" | "observe_mate";
+export type ReadVerb = "read_project" | "read_app" | "read_change" | "observe_mate" | "fetch_repo";
 
 /** Not distributive: a verb known only as `Verb` may be a write, so it takes `Facts<"fresh">`. */
 export type FactsFor<V extends Verb> = [V] extends [ReadVerb] ? Facts : Facts<"fresh">;
@@ -130,6 +141,10 @@ export const REASONS = [
   "held_as_environment",
   "not_a_mate",
   "mate_not_in_app",
+  "unknown_change",
+  "not_your_change",
+  "not_your_app",
+  "changes_not_seen",
 ] as const;
 
 export type Reason = (typeof REASONS)[number];
@@ -178,16 +193,26 @@ function decide(principal: Principal, request: Request, facts: Facts): Decision 
   if (
     request.verb === "ensure_repo" ||
     request.verb === "open_change" ||
-    request.verb === "edit_change"
+    request.verb === "edit_change" ||
+    request.verb === "fetch_repo"
   ) {
     // A Mate's work on its application: its repositories, its changes and its git. Only for its
-    // own project, and only in the application HQ holds it in, which is the only one it can name.
+    // own project, and only in the application HQ holds it in.
     const { projectId, appId, held } = request.target;
     if (principal.kind !== "mate") return deny("wrong_principal");
     if (principal.projectId !== projectId) return deny("not_your_project");
     if (appId === null) return deny("mate_not_in_app");
     if (!knownHeld(held)) return deny("unknown_kind");
     if (!isMateKind(held)) return deny("not_a_mate");
+    if (request.verb === "edit_change") {
+      // Its own change only: a sibling Mate's is no change of its own to word.
+      const { change } = request.target;
+      if (change === null) return deny("unknown_change");
+      if (change.mateProjectId !== projectId) return deny("not_your_change");
+    }
+    if (request.verb === "fetch_repo" && request.target.repoAppId !== appId) {
+      return deny("not_your_app");
+    }
     return projectOf(projectId) === undefined ? deny("project_gone") : ALLOW;
   }
 
@@ -211,6 +236,14 @@ function decide(principal: Principal, request: Request, facts: Facts): Decision 
   /** An application is seen from org Read only up, or through one of its projects (#219). */
   const seesApp = (projectIds: ReadonlyArray<string>) =>
     roleAtLeast(member.roleCode, "READ_ONLY") || projectIds.some(readsProject);
+  /**
+   * An application's changes are read as main's Gitea read them: from org Read only up, or with
+   * Basic user or above on one of its projects — a Read only grant shows the application, not
+   * its changes.
+   */
+  const seesChanges = (projectIds: ReadonlyArray<string>) =>
+    roleAtLeast(member.roleCode, "READ_ONLY") ||
+    projectIds.some((projectId) => roleAtLeast(roleOn(projectId), "BASIC_USER"));
   const exists = (projectId: string) =>
     projectOf(projectId) === undefined ? deny("project_gone") : ALLOW;
   /**
@@ -224,9 +257,11 @@ function decide(principal: Principal, request: Request, facts: Facts): Decision 
     case "read_project":
       return readsProject(request.target.projectId) ? ALLOW : deny("not_project_reader");
     case "read_app":
+      return seesApp(request.target.projectIds) ? ALLOW : deny("app_not_seen");
     case "read_change":
     case "comment_change":
-      return seesApp(request.target.projectIds) ? ALLOW : deny("app_not_seen");
+      if (!seesApp(request.target.projectIds)) return deny("app_not_seen");
+      return seesChanges(request.target.projectIds) ? ALLOW : deny("changes_not_seen");
     case "observe_mate":
       // Who may operate a Mate is who its door opens for: Basic user or above there. No kind check:
       // HQ has a live summary only for a project it holds as a Mate.

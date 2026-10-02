@@ -94,10 +94,27 @@ const onP = (
 
 /** A Mate verb on P, held as `held` in the application `appId` (`null`: in none). */
 const ofMate = (
-  verb: "ensure_repo" | "open_change" | "edit_change",
+  verb: "ensure_repo" | "open_change",
   held: string,
   appId: string | null,
 ): Request => ({ verb, target: { projectId: "P", appId, held } });
+
+/** An edit by Mate P, held so, of a change of `owner`'s (`null`: no such change). */
+const editOf = (held: string, appId: string | null, owner: string | null = "P"): Request => ({
+  verb: "edit_change",
+  target: {
+    projectId: "P",
+    appId,
+    held,
+    change: owner === null ? null : { mateProjectId: owner },
+  },
+});
+
+/** A fetch by Mate P, held so, of a repository of the application `repoAppId`. */
+const fetchOf = (held: string, appId: string | null, repoAppId = "A"): Request => ({
+  verb: "fetch_repo",
+  target: { projectId: "P", appId, held, repoAppId },
+});
 
 /** The verbs a Mate asks for itself; every other one is a person's. */
 const MATE_VERBS: ReadonlySet<Verb> = new Set([
@@ -105,6 +122,7 @@ const MATE_VERBS: ReadonlySet<Verb> = new Set([
   "ensure_repo",
   "open_change",
   "edit_change",
+  "fetch_repo",
 ]);
 
 /** U as an org owner, a structure writer. */
@@ -633,10 +651,30 @@ const TABLES: Readonly<Record<Verb, ReadonlyArray<Row>>> = {
     ],
   ],
   edit_change: [
-    ["its Mate in an application", {}, ofMate("edit_change", "mate", "A"), "allow"],
-    ["its Mate in no application", {}, ofMate("edit_change", "mate", null), "mate_not_in_app"],
-    ["a production", {}, ofMate("edit_change", "production", "A"), "not_a_mate"],
-    ["a kind this build does not know", {}, ofMate("edit_change", "FUTURE", "A"), "unknown_kind"],
+    ["its own change", {}, editOf("mate", "A"), "allow"],
+    ["its own change, as a devstage", {}, editOf("devstage", "A"), "allow"],
+    ["a sibling Mate's change", {}, editOf("mate", "A", "Q"), "not_your_change"],
+    ["no such change", {}, editOf("mate", "A", null), "unknown_change"],
+    [
+      "a sibling's change, its project gone",
+      { present: false },
+      editOf("mate", "A", "Q"),
+      "not_your_change",
+    ],
+    ["its own change, its project gone", { present: false }, editOf("mate", "A"), "project_gone"],
+    ["its Mate in no application", {}, editOf("mate", null), "mate_not_in_app"],
+    ["a production", {}, editOf("production", "A"), "not_a_mate"],
+    ["a production, a sibling's change", {}, editOf("production", "A", "Q"), "not_a_mate"],
+    ["a kind this build does not know", {}, editOf("FUTURE", "A"), "unknown_kind"],
+  ],
+  fetch_repo: [
+    ["its own application's repository", {}, fetchOf("mate", "A"), "allow"],
+    ["as a devstage", {}, fetchOf("devstage", "A"), "allow"],
+    ["another application's repository", {}, fetchOf("mate", "A", "B"), "not_your_app"],
+    ["its Mate in no application", {}, fetchOf("mate", null), "mate_not_in_app"],
+    ["a stage", {}, fetchOf("stage", "A"), "not_a_mate"],
+    ["a kind this build does not know", {}, fetchOf("FUTURE", "A"), "unknown_kind"],
+    ["its project gone", { present: false }, fetchOf("mate", "A"), "project_gone"],
   ],
   read_change: [
     [
@@ -646,9 +684,27 @@ const TABLES: Readonly<Record<Verb, ReadonlyArray<Row>>> = {
       "allow",
     ],
     [
-      "org none reads them through a project they read",
+      "org none, a Read only grant on a project of it: sees the application, not its changes",
       {},
       { verb: "read_change", target: { projectIds: ["P_SEEN"] } },
+      "changes_not_seen",
+    ],
+    [
+      "org none, a Read only grant on P",
+      { override: "READ_ONLY" },
+      { verb: "read_change", target: { projectIds: ["P"] } },
+      "changes_not_seen",
+    ],
+    [
+      "org none, a Basic user grant on P",
+      { override: "BASIC_USER" },
+      { verb: "read_change", target: { projectIds: ["P", "P_HIDDEN"] } },
+      "allow",
+    ],
+    [
+      "org Read only lowered to none on its only project",
+      { orgRole: "READ_ONLY", override: "NO_ACCESS" },
+      { verb: "read_change", target: { projectIds: ["P"] } },
       "allow",
     ],
     [
@@ -672,9 +728,15 @@ const TABLES: Readonly<Record<Verb, ReadonlyArray<Row>>> = {
       "allow",
     ],
     [
-      "org none comments through a project they read",
+      "org none, a Read only grant on a project of it",
       {},
       { verb: "comment_change", target: { projectIds: ["P_SEEN"] } },
+      "changes_not_seen",
+    ],
+    [
+      "org none, a Basic user grant on P",
+      { override: "BASIC_USER" },
+      { verb: "comment_change", target: { projectIds: ["P"] } },
       "allow",
     ],
     [
@@ -725,6 +787,9 @@ describe("can — one table per verb", () => {
     can(PERSON, "comment_change", { projectIds: [] }, cached);
     // @ts-expect-error -- so is a Mate's change.
     can(MATE_P, "open_change", { projectId: "P", appId: "A", held: "mate" }, cached);
+    // A Mate's fetch is a read.
+    const fetched = { projectId: "P", appId: "A", held: "mate", repoAppId: "A" };
+    expect(can(MATE_P, "fetch_repo", fetched, cached).allow).toBe(true);
     // Nor when the verb is known only at run time: it may be a write.
     // @ts-expect-error -- `can` over any verb takes `Facts<"fresh">`.
     const anyVerb: Parameters<typeof can<Verb>>[3] = cached;
@@ -763,8 +828,14 @@ const REQUESTS: ReadonlyArray<Request> = [
   ...(["detach", "create_mate_record", "edit_mate_record", "enroll_mate"] as const).flatMap(
     (verb) => HELD.map((held) => onP(verb, held)),
   ),
-  ...(["ensure_repo", "open_change", "edit_change"] as const).flatMap((verb) =>
+  ...(["ensure_repo", "open_change"] as const).flatMap((verb) =>
     HELD.flatMap((held) => [null, "A"].map((appId) => ofMate(verb, held, appId))),
+  ),
+  ...HELD.flatMap((held) =>
+    [null, "A"].flatMap((appId) => [null, "P", "Q"].map((owner) => editOf(held, appId, owner))),
+  ),
+  ...HELD.flatMap((held) =>
+    [null, "A"].flatMap((appId) => ["A", "B"].map((repoAppId) => fetchOf(held, appId, repoAppId))),
   ),
   ...(["read_change", "comment_change"] as const).flatMap((verb) =>
     APPS.map((projectIds): Request => ({ verb, target: { projectIds } })),
@@ -862,10 +933,38 @@ describe("can — over the whole input space", () => {
         readonly projectId: string;
         readonly held: string;
         readonly appId?: string | null;
+        readonly change?: { readonly mateProjectId: string } | null;
+        readonly repoAppId?: string;
       };
       expect(target.projectId).toBe(principal.projectId);
       expect(["mate", "devstage"]).toContain(target.held);
       if (request.verb !== "enroll_mate") expect(target.appId).not.toBeNull();
+      if (request.verb === "edit_change")
+        expect(target.change?.mateProjectId).toBe(principal.projectId);
+      if (request.verb === "fetch_repo") expect(target.repoAppId).toBe(target.appId);
+    });
+  });
+
+  it("never lets a Mate edit another Mate's change, and tells it so once HQ holds it as a Mate in an application", () => {
+    for (const point of POINTS) {
+      for (const held of HELD) {
+        for (const appId of [null, "A"]) {
+          const decision = outcome(decide(MATE_P, editOf(held, appId, "Q"), point));
+          expect(decision).not.toBe("allow");
+          if (appId !== null && (held === "mate" || held === "devstage")) {
+            expect(decision, `${held} at ${JSON.stringify(point)}`).toBe("not_your_change");
+          }
+        }
+      }
+    }
+  });
+
+  it("lets a person read an application's changes only where they see the application", () => {
+    everywhere((principal, request, point) => {
+      if (request.verb !== "read_change" && request.verb !== "comment_change") return;
+      if (!decide(principal, request, point).allow) return;
+      const app: Request = { verb: "read_app", target: request.target };
+      expect(decide(principal, app, point).allow).toBe(true);
     });
   });
 
@@ -879,16 +978,26 @@ describe("can — over the whole input space", () => {
 
   it("tells a Mate asking for another project the same, whatever HQ holds it as, wherever", () => {
     for (const point of POINTS) {
-      for (const verb of ["enroll_mate", "ensure_repo", "open_change", "edit_change"] as const) {
+      for (const verb of [
+        "enroll_mate",
+        "ensure_repo",
+        "open_change",
+        "edit_change",
+        "fetch_repo",
+      ] as const) {
+        const asked = (held: string, appId: string | null): ReadonlyArray<Request> =>
+          verb === "enroll_mate"
+            ? [onP(verb, held)]
+            : verb === "edit_change"
+              ? [null, "P", "Q"].map((owner) => editOf(held, appId, owner))
+              : verb === "fetch_repo"
+                ? ["A", "B"].map((repoAppId) => fetchOf(held, appId, repoAppId))
+                : [ofMate(verb, held, appId)];
         const reasons = new Set(
           HELD.flatMap((held) =>
-            [null, "A"].map((appId) =>
-              outcome(
-                decide(
-                  { kind: "mate", projectId: "Q" },
-                  verb === "enroll_mate" ? onP(verb, held) : ofMate(verb, held, appId),
-                  point,
-                ),
+            [null, "A"].flatMap((appId) =>
+              asked(held, appId).map((request) =>
+                outcome(decide({ kind: "mate", projectId: "Q" }, request, point)),
               ),
             ),
           ),

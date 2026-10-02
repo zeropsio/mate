@@ -344,10 +344,24 @@ const gitCredential = (authorization: string | undefined) => {
   return decoded.startsWith("mate:") ? decoded.slice("mate:".length) : undefined;
 };
 
+/** Whether a git request pushes: `git-receive-pack`, or its advertisement `info/refs?service=`. */
+const pushes = (url: string) => {
+  const [path = "", query = ""] = url.split("?");
+  return (
+    path.endsWith("/git-receive-pack") ||
+    (path.endsWith("/info/refs") &&
+      new URLSearchParams(query).get("service") === "git-receive-pack")
+  );
+};
+
+/** The application a git path names: `/git/<appId>/…`. */
+const gitAppId = (url: string) => /^\/git\/([^/?]+)\//u.exec(url)?.[1] ?? "";
+
 /**
  * git at `/git/<appId>/<repo>.git` for a Mate, decided here before the git layer sees the request:
- * its credential (a `401` asks git for it), `can`'s `open_change` over the org read now, which
- * gives the application the layer serves it.
+ * its credential (a `401` asks git for it); a push by `can`'s `open_change` over the org read now,
+ * a fetch by `fetch_repo`, which also decides every repository the layer serves the request
+ * (`gitHost.ts`).
  */
 const serveGit = Effect.gen(function* () {
   const request = yield* HttpServerRequest.HttpServerRequest;
@@ -361,8 +375,13 @@ const serveGit = Effect.gen(function* () {
     });
   }
   const { projectId } = holder.value;
-  const appId = yield* (yield* Changes).mateApp(projectId, "open_change");
-  yield* (yield* GitHost).serve({ kind: "mate", mateId: projectId, appId }, request);
+  const changes = yield* Changes;
+  const appId = pushes(request.url)
+    ? yield* changes.mateApp(projectId, "open_change")
+    : yield* changes.mateFetch(projectId, gitAppId(request.url));
+  yield* (yield* GitHost).serve({ kind: "mate", mateId: projectId, appId }, request, (repo) =>
+    Effect.isSuccess(changes.mateFetch(projectId, repo.appId)),
+  );
   return HttpServerResponse.empty();
 });
 

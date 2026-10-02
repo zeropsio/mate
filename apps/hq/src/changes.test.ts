@@ -210,6 +210,21 @@ describe("a Mate's changes in HQ", () => {
         const elsewhere = yield* lsRemote(other.credential, shop.appId);
         assert.notStrictEqual(elsewhere.code, 0);
         assert.include(elsewhere.stderr, "403");
+        // A fetch is `fetch_repo`'s to refuse; a push passes `open_change` in its own application
+        // and is still refused the other's repository, by `fetch_repo` in the layer.
+        const refs = (service: string) =>
+          call("GET", `/git/${shop.appId}/appdev.git/info/refs?service=${service}`, {
+            headers: {
+              authorization: `Basic ${Buffer.from(`mate:${other.credential}`).toString("base64")}`,
+            },
+          });
+        const fetching = yield* refs("git-upload-pack");
+        assert.deepStrictEqual(
+          [fetching.status, fetching.body],
+          [403, { code: "forbidden", reason: "not_your_app" }],
+        );
+        const pushing = yield* refs("git-receive-pack");
+        assert.deepStrictEqual([pushing.status, pushing.body], [403, "App read access refused\n"]);
         // No credential, a forged one, or a user other than `mate`: git is asked for one.
         for (const remote of [
           `${origin}/git/${shop.appId}/appdev.git`,
@@ -407,10 +422,12 @@ describe("a Mate's changes in HQ", () => {
             });
             assert.deepStrictEqual([named.status, named.body], [400, { code: "invalid" }], path);
           }
-          assert.deepStrictEqual((yield* edit({ title: "Elsewhere" }, 9)).body, {
-            code: "change_not_found",
-            reason: "change_not_found",
-          });
+          // `can` decides: no such change to word.
+          const none = yield* edit({ title: "Elsewhere" }, 9);
+          assert.deepStrictEqual(
+            [none.status, none.body],
+            [404, { code: "change_not_found", reason: "unknown_change" }],
+          );
 
           const kept = yield* attach(PNG);
           assert.strictEqual(kept.status, 200);
@@ -439,9 +456,18 @@ describe("a Mate's changes in HQ", () => {
             headers: other,
             body: { title: "Mine now" },
           });
+          // `can` decides: a sibling Mate's change is none of its own, and no picture goes on it.
           assert.deepStrictEqual(
             [foreign.status, foreign.body],
-            [404, { code: "change_not_found", reason: "change_not_found" }],
+            [403, { code: "forbidden", reason: "not_your_change" }],
+          );
+          const foreignPicture = yield* call("POST", "/api/mate/changes/appdev/1/attachments", {
+            headers: { ...other, "content-type": "image/png" },
+            body: PNG,
+          });
+          assert.deepStrictEqual(
+            [foreignPicture.status, foreignPicture.body],
+            [403, { code: "forbidden", reason: "not_your_change" }],
           );
 
           // Merged (by a person, through HQ): its words and pictures are settled.
@@ -632,6 +658,23 @@ describe("a Mate's changes in HQ", () => {
           (yield* call("GET", `/api/apps/${appId}/changes/appdev/1`, { session: dev })).body,
           hidden,
         );
+        // As main's Gitea read: a Read only grant on the Mate shows the application, not its
+        // changes; Basic user shows them too.
+        const granted = (roleCode: string, status: number) =>
+          Effect.gen(function* () {
+            const project = fake.projects.find((candidate) => candidate.id === "P_MATE")!;
+            Object.assign(project, { userRoles: [{ clientUserId: "C-dev", roleCode }] });
+            return yield* list(dev).pipe(
+              Effect.filterOrFail((answer) => answer.status === status),
+              Effect.retry(Schedule.spaced(Duration.millis(50))),
+              Effect.timeout(Duration.seconds(5)),
+            );
+          });
+        assert.deepStrictEqual((yield* granted("READ_ONLY", 403)).body, {
+          code: "forbidden",
+          reason: "changes_not_seen",
+        });
+        yield* granted("BASIC_USER", 200);
         assert.deepStrictEqual(
           (yield* call("GET", `/api/apps/${appId}/changes/appdev/9`, { session: owner })).body,
           { code: "change_not_found", reason: "change_not_found" },

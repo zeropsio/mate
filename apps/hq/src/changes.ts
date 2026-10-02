@@ -3,9 +3,10 @@
  * application and the changes Mates deliver into them, the replacement of a pull request.
  *
  * A Mate works only in the application HQ holds it in: it names a repository by its name, and HQ
- * finds it there, so no Mate ever names another application. Whether it may is `can`
- * (`@t3tools/shared/zeropsPermissions`), asked in {@link Changes} `mateApp` — the one place a Mate's
- * verbs are decided — over the org read fresh. Every write is fenced by the leader.
+ * finds it there. Whether it may is `can` (`@t3tools/shared/zeropsPermissions`), asked here and
+ * nowhere else — a Mate's writes over the org read fresh (`mateApp`, `mateChange`), its fetches
+ * over the org up to 30 s old (`mateFetch`); a person's reads and comments in `personApp`. Every
+ * write is fenced by the leader.
  *
  * @module changes
  */
@@ -23,7 +24,7 @@ import {
   type OpenChangeResponse,
   attachmentPath,
 } from "@t3tools/shared/hqChanges";
-import { type Facts, REASONS, can } from "@t3tools/shared/zeropsPermissions";
+import { type Decision, type Facts, REASONS, can } from "@t3tools/shared/zeropsPermissions";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -64,8 +65,8 @@ export class ChangeRefused extends Schema.TaggedError<ChangeRefused>()("ChangeRe
   ]),
 }) {}
 
-/** The verbs a Mate does in its application. */
-export type MateVerb = "ensure_repo" | "open_change" | "edit_change";
+/** The verbs a Mate does in its application, beside editing its change and fetching. */
+export type MateVerb = "ensure_repo" | "open_change";
 
 type MateError = ChangeRefused | NotLeader | SqlError | ZeropsError;
 
@@ -79,6 +80,14 @@ export class Changes extends Context.Service<
      * decides it over the org read now.
      */
     readonly mateApp: (projectId: string, verb: MateVerb) => Effect.Effect<string, MateError>;
+    /**
+     * The application the Mate of `projectId` fetches a repository of `repoAppId` in, as `can`'s
+     * `fetch_repo` decides it over the org up to 30 s old.
+     */
+    readonly mateFetch: (
+      projectId: string,
+      repoAppId: string,
+    ) => Effect.Effect<string, ChangeRefused | SqlError | ZeropsError>;
     /** The repository `name` in the Mate's application, made if new: `main` begins with HQ's commit. */
     readonly ensureRepo: (
       projectId: string,
@@ -264,27 +273,80 @@ export const changesLayer: Layer.Layer<
     const touched = <A, E, R>(write: Effect.Effect<A, E, R>) =>
       Effect.tap(write, () => SubscriptionRef.update(ticks, (n) => n + 1));
 
-    const mateApp = (projectId: string, verb: MateVerb) =>
+    /** The Mate's project as HQ holds it: its kind, and its application if it is in one. */
+    const mateHeld = (projectId: string) =>
       Effect.gen(function* () {
-        const view = yield* roles.fresh;
         const [placed] = yield* sql<{ readonly app_id: string }>`
           SELECT app_id::text AS app_id FROM hq_app_project WHERE project_id = ${projectId}`;
+        return { projectId, appId: placed?.app_id ?? null, held: yield* heldOf(sql, projectId) };
+      });
+
+    /**
+     * `can`'s answer to a Mate, enforced: a refusal is logged with what it asked, and answered by
+     * its reason; an allowed verb answers the application, which `can` allows only when there is one.
+     */
+    const enforced = (
+      verb: string,
+      target: { readonly projectId: string; readonly appId: string | null },
+      decision: Decision,
+    ) =>
+      Effect.gen(function* () {
+        if (decision.allow) return target.appId!;
+        const { reason } = decision;
+        yield* Effect.logInfo("mate refused", { verb, target, reason });
+        return yield* refuse(
+          reason === "project_gone"
+            ? "project_not_found"
+            : reason === "unknown_change"
+              ? "change_not_found"
+              : "forbidden",
+          reason,
+        );
+      });
+
+    const mate = (projectId: string) => ({ kind: "mate", projectId }) as const;
+
+    const mateApp = (projectId: string, verb: MateVerb) =>
+      Effect.gen(function* () {
+        const target = yield* mateHeld(projectId);
+        return yield* enforced(
+          verb,
+          target,
+          can(mate(projectId), verb, target, yield* roles.fresh),
+        );
+      });
+
+    /** The application the Mate edits its change `number` of `repo` in: its own change only. */
+    const mateChange = (projectId: string, repo: string, number: number) =>
+      Effect.gen(function* () {
+        const held = yield* mateHeld(projectId);
+        const [row] =
+          held.appId === null
+            ? []
+            : yield* sql<{ readonly mate_project_id: string }>`
+                SELECT mate_project_id FROM hq_change
+                WHERE app_id = ${held.appId}::uuid AND repo = ${repo} AND number = ${number}`;
         const target = {
-          projectId,
-          appId: placed?.app_id ?? null,
-          held: yield* heldOf(sql, projectId),
+          ...held,
+          change: row === undefined ? null : { mateProjectId: row.mate_project_id },
         };
-        const decision = can({ kind: "mate", projectId }, verb, target, view);
-        if (!decision.allow) {
-          const { reason } = decision;
-          yield* Effect.logInfo("mate refused", { projectId, verb, target, reason });
-          return yield* refuse(
-            reason === "project_gone" ? "project_not_found" : "forbidden",
-            reason,
-          );
-        }
-        // `can` allows a Mate's verb only in an application.
-        return target.appId!;
+        const facts = yield* roles.fresh;
+        return yield* enforced(
+          "edit_change",
+          target,
+          can(mate(projectId), "edit_change", target, facts),
+        );
+      });
+
+    const mateFetch = (projectId: string, repoAppId: string) =>
+      Effect.gen(function* () {
+        const target = { ...(yield* mateHeld(projectId)), repoAppId };
+        const facts = yield* roles.view;
+        return yield* enforced(
+          "fetch_repo",
+          target,
+          can(mate(projectId), "fetch_repo", target, facts),
+        );
       });
 
     /**
@@ -348,16 +410,12 @@ export const changesLayer: Layer.Layer<
             (rows) => rows.map(changeOf),
           );
 
-    /**
-     * In a fenced write: the Mate's own change, locked, while it is open. Another Mate's change is
-     * none of its own.
-     */
-    const ownOpenChange = (appId: string, projectId: string, repo: string, number: number) =>
+    /** In a fenced write: the change, locked, while it is open. Whose it is, `can` has decided. */
+    const openChangeLocked = (appId: string, repo: string, number: number) =>
       Effect.gen(function* () {
         const [change] = yield* sql<{ readonly state: string }>`
           SELECT state FROM hq_change
           WHERE app_id = ${appId}::uuid AND repo = ${repo} AND number = ${number}
-            AND mate_project_id = ${projectId}
           FOR UPDATE`;
         if (change === undefined) return yield* refuse("change_not_found", "change_not_found");
         if (change.state !== "open") return yield* refuse("conflict", "change_not_open");
@@ -365,6 +423,7 @@ export const changesLayer: Layer.Layer<
 
     return Changes.of({
       mateApp,
+      mateFetch,
       ensureRepo: (projectId, name) =>
         Semaphore.withPermits(
           making,
@@ -461,11 +520,11 @@ export const changesLayer: Layer.Layer<
         }),
       editChange: (projectId, repo, number, edit) =>
         Effect.gen(function* () {
-          const appId = yield* mateApp(projectId, "edit_change");
+          const appId = yield* mateChange(projectId, repo, number);
           return yield* touched(
             leader.write(
               Effect.gen(function* () {
-                yield* ownOpenChange(appId, projectId, repo, number);
+                yield* openChangeLocked(appId, repo, number);
                 const [row] = yield* sql<ChangeRow>`
                 UPDATE hq_change
                 SET title = COALESCE(${edit.title ?? null}, title),
@@ -481,10 +540,10 @@ export const changesLayer: Layer.Layer<
       attach: (projectId, repo, number, png) =>
         Effect.gen(function* () {
           if (!isPng(png)) return yield* refuse("invalid", "not_png");
-          const appId = yield* mateApp(projectId, "edit_change");
+          const appId = yield* mateChange(projectId, repo, number);
           const id = yield* leader.write(
             Effect.gen(function* () {
-              yield* ownOpenChange(appId, projectId, repo, number);
+              yield* openChangeLocked(appId, repo, number);
               const [row] = yield* sql<{ readonly id: string }>`
                 INSERT INTO hq_change_attachment (app_id, repo, number, content)
                 VALUES (${appId}::uuid, ${repo}, ${number}, ${png})
