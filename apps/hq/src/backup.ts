@@ -285,7 +285,7 @@ type Position = Pick<Manifest, "eventSeq" | "xmax">;
 
 /**
  * Backup as `/health` tells it, the newest set's outcome: `off` with no store, `pending` before a
- * first set, `ok` with the newest set kept, `degraded` when a set the retention targets keep went to
+ * first set (on a volume with none staged), `ok` with the newest set kept, `degraded` when a set the retention targets keep went to
  * make its room, `failed` with why.
  */
 export type BackupStatus =
@@ -454,10 +454,6 @@ export const backupLayer = (
       const sql = yield* SqlClient.SqlClient;
       const gitHost = yield* GitHost;
       const pgDump = options.pgDump ?? "pg_dump";
-      const status = yield* Ref.make<BackupStatus>(
-        options.store === null ? { state: "off" } : { state: "pending" },
-      );
-
       const staged = NodePath.join(options.stagingDir, "sets");
 
       /** Refused unless `pg_dump` is at least the server's major version: a dump that restores. */
@@ -491,6 +487,16 @@ export const backupLayer = (
           NodeFSP.readFile(NodePath.join(staged, id, "manifest.json"), "utf8"),
         ).pipe(Effect.flatMap(decodeManifest), Effect.option, Effect.map(Option.getOrUndefined));
       });
+
+      // Before a set is taken, the newest staged one: a deploy leaves it on the volume.
+      const stagedAtStart = yield* Effect.orElseSucceed(newestStaged, () => undefined);
+      const status = yield* Ref.make<BackupStatus>(
+        options.store === null
+          ? { state: "off" }
+          : stagedAtStart === undefined
+            ? { state: "pending" }
+            : { state: "ok", set: stagedAtStart.id },
+      );
 
       /** The newest staged set's manifest, if the set is whole and, with a store, kept there. */
       const newest = Effect.gen(function* () {

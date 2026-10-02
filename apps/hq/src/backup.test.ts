@@ -341,7 +341,7 @@ describe("a backup set, taken", () => {
       }),
     );
 
-    it.effect("is due an hour after the newest staged set, a restart between", () =>
+    it.effect("is due an hour after the newest staged set, which a restart still tells", () =>
       Effect.gen(function* () {
         const a = yield* startCore(true);
         yield* leading(a);
@@ -357,6 +357,7 @@ describe("a backup set, taken", () => {
           backupCheck: Duration.millis(100),
         });
         yield* leading(b);
+        assert.deepStrictEqual(yield* backupHealth(b.call), [200, { state: "ok", set: kept.id }]);
         yield* Effect.sleep("500 millis");
         assert.deepStrictEqual(NodeFS.readdirSync(NodePath.join(b.storeDir, "sets")), [kept.id]);
       }),
