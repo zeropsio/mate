@@ -2,10 +2,12 @@
  * An application's releases to production in HQ (SPEC §3.2d). A release is an annotated tag
  * `v{x.y.z}` on the `main` of the application's recipe repository (`hqRecipe.ts` `RECIPE_REPO`),
  * the head read with the offer, whose message lists the commit each production service runs:
- * {@link releaseMessage}, read strictly by {@link parseReleaseMessage}. HQ judges a release as it
- * makes it: Core tags it for the person `can`'s `release` allows (`zeropsPermissions.ts`), so it is
- * approved and recorded; a refused one stays refused for ever. Production follows the newest
- * approved release.
+ * {@link releaseMessage}, read strictly by {@link parseReleaseMessage}. HQ judges a release before
+ * it tags: a release it refuses is only an answer, never a tag nor a record; one it makes, Core tags
+ * for the person `can`'s `release` allows (`zeropsPermissions.ts`), so every release Core records
+ * is approved. A refused record comes only from main's history, imported (T13), and stays refused
+ * for ever. Releases are ordered by version everywhere ({@link compareReleaseTags}): a new one must
+ * be newer than every release, and production follows the newest approved one.
  *
  * A person's side, `Authorization: Bearer <session>`:
  *
@@ -44,8 +46,8 @@ export type ReleaseEntry = typeof ReleaseEntry.Type;
 
 /**
  * A release as HQ records it: its name, the recipe repository's `main` head it tags, what it lists,
- * who asked for it and when, and HQ's verdict — the reason beside a refusal, none beside an
- * approval.
+ * who asked for it and when, HQ's verdict — the reason beside a refusal, none beside an approval —
+ * and, for a rollback, the release it goes back to.
  */
 export const Release = Schema.Struct({
   tag: ReleaseTag,
@@ -55,6 +57,7 @@ export const Release = Schema.Struct({
   at: Schema.String,
   state: Schema.Literals(["approved", "refused"]),
   reason: Schema.NullOr(Schema.String),
+  rollbackOf: Schema.NullOr(ReleaseTag),
 });
 export type Release = typeof Release.Type;
 
@@ -89,25 +92,32 @@ export const RollbackRequest = Schema.Struct({ groupHead: Sha });
 export type RollbackRequest = typeof RollbackRequest.Type;
 
 /**
- * Why HQ makes no release. Of a message, as a tag carries it: it lists no service, has a line that is
- * not `{service} {full sha}`, or lists a service at two commits. Of HQ's own reading: the recipe
- * repository's `main` moved since the offer, or it has none; a release has the name already; an
- * entry names no production service of the application, or a commit that is not its repository's
- * `main` nor before it; or the release rolled back to was refused.
+ * Why HQ makes no release: the recipe repository's `main` moved since the offer, or it has none; a
+ * release has the name already, or one is newer by version; an entry names no production service of
+ * the application, or a commit that is not its repository's `main` nor before it; or the release
+ * rolled back to was refused.
  */
 export const RELEASE_REFUSALS = [
-  "release_empty",
-  "release_line_unreadable",
-  "release_service_twice",
   "group_moved",
   "no_group_main",
   "tag_taken",
+  "tag_not_newer",
   "unknown_service",
   "entry_not_on_main",
   "release_not_approved",
 ] as const;
 
 export type ReleaseRefusal = (typeof RELEASE_REFUSALS)[number];
+
+/**
+ * Why a tag's message is no release: it lists no service, has a line that is not `{service} {full
+ * sha}`, or lists a service at two commits.
+ */
+export const RELEASE_MESSAGE_REFUSALS = [
+  "release_empty",
+  "release_line_unreadable",
+  "release_service_twice",
+] as const;
 
 /** The message of a release listing `entries`: one `{service} {sha}` line each, by service. */
 export function releaseMessage(entries: ReadonlyArray<ReleaseEntry>): string {
@@ -126,7 +136,7 @@ export function parseReleaseMessage(
   message: string,
 ):
   | { readonly entries: ReadonlyArray<ReleaseEntry> }
-  | { readonly refused: "release_empty" | "release_line_unreadable" | "release_service_twice" } {
+  | { readonly refused: (typeof RELEASE_MESSAGE_REFUSALS)[number] } {
   const found = new Map<string, string>();
   for (const raw of message.split("\n")) {
     const line = raw.trim();

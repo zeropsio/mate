@@ -3,6 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   CreateReleaseRequest,
+  RELEASE_MESSAGE_REFUSALS,
   RELEASE_REFUSALS,
   RELEASES_SHOWN,
   Release,
@@ -75,7 +76,7 @@ describe("hqRelease", () => {
     ["one odd line among good ones", `api ${A}\nweb ${B}\n# a comment`, "release_line_unreadable"],
   ])("refuses a release's message: %s", (_name, message, refused) => {
     expect(parseReleaseMessage(message)).toEqual({ refused });
-    expect(RELEASE_REFUSALS).toContain(refused);
+    expect(RELEASE_MESSAGE_REFUSALS).toContain(refused);
   });
 
   it("writes a release's message one sorted line per service, and reads it back", () => {
@@ -167,6 +168,22 @@ describe("hqRelease", () => {
         at: "2026-10-02T10:00:00.000Z",
         state: "approved",
         reason: null,
+        rollbackOf: null,
+      },
+      "Success",
+    ],
+    [
+      "a rollback, by the release it goes back to",
+      Release,
+      {
+        tag: "v0.1.2",
+        sha: A,
+        entries: [{ service: "api", sha: B }],
+        by: "U1",
+        at: "2026-10-02T10:00:00.000Z",
+        state: "approved",
+        reason: null,
+        rollbackOf: "v0.1.0",
       },
       "Success",
     ],
@@ -180,7 +197,8 @@ describe("hqRelease", () => {
         by: "U1",
         at: "2026-10-02T10:00:00.000Z",
         state: "refused",
-        reason: "entry_not_on_main",
+        reason: "release_line_unreadable",
+        rollbackOf: null,
       },
       "Success",
     ],
@@ -195,6 +213,7 @@ describe("hqRelease", () => {
         at: "2026-10-02T10:00:00.000Z",
         state: "pending",
         reason: null,
+        rollbackOf: null,
       },
       "Failure",
     ],
@@ -204,5 +223,17 @@ describe("hqRelease", () => {
 
   it("shows ten releases, as main's history did", () => {
     expect(RELEASES_SHOWN).toBe(10);
+  });
+
+  it("refuses a release by HQ's own reading, never by a message's", () => {
+    expect(RELEASE_REFUSALS).toEqual([
+      "group_moved",
+      "no_group_main",
+      "tag_taken",
+      "tag_not_newer",
+      "unknown_service",
+      "entry_not_on_main",
+      "release_not_approved",
+    ]);
   });
 });
