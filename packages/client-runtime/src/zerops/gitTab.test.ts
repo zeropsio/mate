@@ -150,15 +150,28 @@ describe("the line under the name", () => {
     expect(gitCheckoutLine(checkout({ changed: [FILE, OTHER] }))).toContain("2 files changed");
   });
 
-  it("names a Mate's own branch after the Mate, never after its project id", () => {
-    // `mate/mate-PXGYIVK9RLWlE3eTL3Qwow` is a project id inside a bot login
-    // inside a ref: three machine names and nothing a reader can use.
-    const own = checkout({ headRef: "mate/mate-0bPLTRRSSTuV54WMpcLoww" });
-    expect(gitCheckoutLine(own, "Theo")).toBe("Theo's branch");
-    expect(gitCheckoutLine(own)).toBe("the Mate's branch");
-    // A branch a person named means what they named it.
-    expect(gitCheckoutLine(checkout({ headRef: "feature/invoices" }), "Theo")).toBe(
-      "feature/invoices",
+  // A project id inside a ref is a machine name and nothing a reader can use; a branch a person
+  // named means what they named it.
+  it.each([
+    { name: "HQ's branch of a Mate", ref: "mate/0bPLTRRSSTuV54WMpcLoww", named: "Theo's branch" },
+    {
+      name: "main's branch of a Mate",
+      ref: "mate/mate-0bPLTRRSSTuV54WMpcLoww",
+      named: "Theo's branch",
+    },
+    { name: "a branch a person named", ref: "feature/invoices", named: "feature/invoices" },
+    {
+      name: "a branch named like a Mate's but not one",
+      ref: "mate/feature",
+      named: "mate/feature",
+    },
+  ])("names $name", ({ ref, named }) => {
+    expect(gitCheckoutLine(checkout({ headRef: ref }), "Theo")).toBe(named);
+  });
+
+  it("says the Mate's branch when it does not know the Mate's name", () => {
+    expect(gitCheckoutLine(checkout({ headRef: "mate/0bPLTRRSSTuV54WMpcLoww" }))).toBe(
+      "the Mate's branch",
     );
   });
 
