@@ -3,28 +3,57 @@
  * clock of their own rather than through the forge store (`useZeropsGroupForge`,
  * `useZeropsGroupDeploys`).
  *
- * Statuses that are settled (at least one, none pending) are what no read changes: they are read
- * once and kept. Pending ones, and a commit CI has posted nothing to yet, are read again on
+ * Statuses that are settled (every context's newest one done) are kept for
+ * {@link SETTLED_STATUS_KEEP_MS}, or as long as the caller's `maxAgeMs` allows where a deploy may be
+ * posting to the commit. Pending ones, and a commit CI has posted nothing to yet, are read again on
  * {@link STATUS_RECHECK_LADDER_MS}, a rung further each time the answer is the same and from the
- * bottom again when it moved. A release group whose thirty tags all point at one commit asked
- * Gitea about that commit thirty times a minute, every minute, in every open tab (pass 30, 2026-10-02:
- * 560 reads of one commit in 17.8 min); with the memo it is one read.
+ * bottom again when it moved, never more than a minute apart. A verb, or a group whose deploys
+ * moved, forgets an owner's commits and the reads running for them.
+ *
+ * A release group whose thirty tags all point at one commit asked Gitea about that commit thirty
+ * times a minute, every minute, in every open tab (pass 30, 2026-10-02: 560 reads of one commit in
+ * 17.8 min); with the memo it is one read.
  *
  * @module forge/statusMemo
  */
 import type { GiteaCommitStatus } from "../giteaClient.ts";
 
 /** How long statuses that may still move are kept before the next read, rung by rung. */
-export const STATUS_RECHECK_LADDER_MS: ReadonlyArray<number> = [
-  15_000, 30_000, 60_000, 120_000, 300_000, 600_000,
-];
+export const STATUS_RECHECK_LADDER_MS: ReadonlyArray<number> = [15_000, 30_000, 60_000];
+
+/**
+ * How long settled statuses are kept. Not for ever: a commit takes a new context when a stage's
+ * commit is released to production, and another tab's release posts to it too.
+ */
+export const SETTLED_STATUS_KEEP_MS = 5 * 60_000;
+
+/**
+ * How old statuses a deploy may still be posting to are let be: a commit a stage or production
+ * runs, and the newest release. The group readers' own clock, so they lag no more than it does.
+ */
+export const DEPLOY_STATUS_MAX_AGE_MS = 60_000;
 
 /**
  * Statuses no read changes: at least one, none pending. A commit read before CI posted anything
- * has none yet, and its first pending status is still to come.
+ * has none yet, and its first pending status is still to come. The forge store's finality.
  */
 export const statusesSettled = (statuses: ReadonlyArray<GiteaCommitStatus>): boolean =>
   statuses.length > 0 && !statuses.some((status) => status.state === "pending");
+
+/**
+ * Every context's newest status is done. Gitea lists a commit's statuses newest first and keeps
+ * every one it was ever given, so a context that went pending → success still lists its pending.
+ */
+export function newestStatusesSettled(statuses: ReadonlyArray<GiteaCommitStatus>): boolean {
+  const seen = new Set<string>();
+  let settled = statuses.length > 0;
+  for (const status of statuses) {
+    if (seen.has(status.context)) continue;
+    seen.add(status.context);
+    if (status.state === "pending") settled = false;
+  }
+  return settled;
+}
 
 export interface CommitRef {
   readonly owner: string;
@@ -34,15 +63,19 @@ export interface CommitRef {
 
 export interface CommitStatusMemo {
   /**
-   * The commit's statuses: what is kept while no read can have changed them yet, otherwise one
-   * `load` — shared with whoever asks for the same commit while it runs. A load that fails keeps
-   * nothing and rejects.
+   * The commit's statuses: what is kept while no read can have changed them yet and it is no older
+   * than `maxAgeMs`, otherwise one `load` — shared with whoever asks for the same commit while it
+   * runs. A load that fails keeps nothing and rejects.
    */
   readonly read: (
     commit: CommitRef,
     load: () => Promise<ReadonlyArray<GiteaCommitStatus>>,
+    options?: { readonly maxAgeMs?: number | undefined },
   ) => Promise<ReadonlyArray<GiteaCommitStatus>>;
-  /** Drops an owner's unsettled statuses: a verb changed something, and the next read asks. */
+  /**
+   * Drops everything kept and every read running for an owner: a verb changed its commits, and
+   * the next read asks Gitea, never a read that started before the verb.
+   */
   readonly forget: (owner: string) => void;
 }
 
@@ -50,8 +83,9 @@ interface Kept {
   readonly owner: string;
   readonly statuses: ReadonlyArray<GiteaCommitStatus>;
   readonly signature: string;
-  /** The ladder's rung the next read waits; `null` once settled. */
+  /** The back-off's rung the next read waits; `null` once settled. */
   readonly rung: number | null;
+  readonly readAtMs: number;
   readonly nextAtMs: number;
 }
 
@@ -66,14 +100,27 @@ export function createCommitStatusMemo(
 ): CommitStatusMemo {
   const now = options.now ?? Date.now;
   const kept = new Map<string, Kept>();
-  const inFlight = new Map<string, Promise<ReadonlyArray<GiteaCommitStatus>>>();
+  const inFlight = new Map<
+    string,
+    { readonly owner: string; readonly read: Promise<ReadonlyArray<GiteaCommitStatus>> }
+  >();
+  /** Bumped by `forget`: a read that started under an older one keeps nothing. */
+  const generations = new Map<string, number>();
   const keyOf = (commit: CommitRef) => `${commit.owner}/${commit.repo}@${commit.sha}`;
 
   const settle = (key: string, owner: string, statuses: ReadonlyArray<GiteaCommitStatus>) => {
     const previous = kept.get(key);
     const signature = signatureOf(statuses);
-    if (statusesSettled(statuses)) {
-      kept.set(key, { owner, statuses, signature, rung: null, nextAtMs: Number.POSITIVE_INFINITY });
+    const readAtMs = now();
+    if (newestStatusesSettled(statuses)) {
+      kept.set(key, {
+        owner,
+        statuses,
+        signature,
+        rung: null,
+        readAtMs,
+        nextAtMs: readAtMs + SETTLED_STATUS_KEEP_MS,
+      });
       return;
     }
     const last = STATUS_RECHECK_LADDER_MS.length - 1;
@@ -86,35 +133,44 @@ export function createCommitStatusMemo(
       statuses,
       signature,
       rung,
-      nextAtMs: now() + (STATUS_RECHECK_LADDER_MS[rung] ?? 0),
+      readAtMs,
+      nextAtMs: readAtMs + (STATUS_RECHECK_LADDER_MS[rung] ?? 0),
     });
   };
 
   return {
-    read: (commit, load) => {
+    read: (commit, load, readOptions) => {
       const key = keyOf(commit);
       const held = kept.get(key);
-      if (held !== undefined && now() < held.nextAtMs) return Promise.resolve(held.statuses);
+      const at = now();
+      const maxAgeMs = readOptions?.maxAgeMs ?? Number.POSITIVE_INFINITY;
+      if (held !== undefined && at < held.nextAtMs && at - held.readAtMs < maxAgeMs) {
+        return Promise.resolve(held.statuses);
+      }
       const running = inFlight.get(key);
-      if (running !== undefined) return running;
+      if (running !== undefined) return running.read;
+      const generation = generations.get(commit.owner) ?? 0;
+      const current = () => (generations.get(commit.owner) ?? 0) === generation;
       const read = load().then(
         (statuses) => {
-          inFlight.delete(key);
-          settle(key, commit.owner, statuses);
+          if (current()) {
+            inFlight.delete(key);
+            settle(key, commit.owner, statuses);
+          }
           return statuses;
         },
         (cause: unknown) => {
-          inFlight.delete(key);
+          if (current()) inFlight.delete(key);
           throw cause;
         },
       );
-      inFlight.set(key, read);
+      inFlight.set(key, { owner: commit.owner, read });
       return read;
     },
     forget: (owner) => {
-      for (const [key, entry] of kept) {
-        if (entry.owner === owner && entry.rung !== null) kept.delete(key);
-      }
+      generations.set(owner, (generations.get(owner) ?? 0) + 1);
+      for (const [key, entry] of kept) if (entry.owner === owner) kept.delete(key);
+      for (const [key, entry] of inFlight) if (entry.owner === owner) inFlight.delete(key);
     },
   };
 }

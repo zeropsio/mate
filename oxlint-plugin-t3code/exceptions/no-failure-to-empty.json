@@ -138,7 +138,7 @@
   {
     "path": "apps/web/src/zerops/useZeropsGroupDeploys.ts",
     "kind": "CallExpression",
-    "fingerprint": "memo .read(read, () => client.listCommitStatuses(read.owner, read.repo, read.sha)) .catch(() => null)",
+    "fingerprint": "memo .read(read, () => client.listCommitStatuses(read.owner, read.repo, read.sha), { maxAgeMs: DEPLOY_STATUS_MAX_AGE_MS, }) .catch(() => null)",
     "owner": "state-model 4.6",
     "reason": "null marks a status read that did not answer and the row stays silent; the forge store (4.1) holds statuses as Known and 4.6 deletes the hook",
     "expires": "never"
@@ -162,7 +162,7 @@
   {
     "path": "apps/web/src/zerops/useZeropsGroupForge.ts",
     "kind": "CallExpression",
-    "fingerprint": "memo .read({ owner: slug, repo: GROUP_REPOSITORY, sha }, () => client.listCommitStatuses(slug, GROUP_REPOSITORY, sha), ) .catch(() => [])",
+    "fingerprint": "memo .read( { owner: slug, repo: GROUP_REPOSITORY, sha }, () => client.listCommitStatuses(slug, GROUP_REPOSITORY, sha), age, ) .catch(() => [])",
     "owner": "state-model 4.6",
     "reason": "a failed status read reads as no checks; the forge store (4.1) holds statuses as Known and 4.6 deletes the hook",
     "expires": "never"

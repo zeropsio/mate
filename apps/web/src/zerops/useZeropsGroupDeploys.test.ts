@@ -23,6 +23,9 @@ import {
 const gitea = vi.hoisted(() => ({
   readable: true,
   pullReads: 0,
+  statusReads: 0,
+  /** The group repo declares a stage, so what it runs is read. */
+  declares: false,
   loseTokenOnRead: false,
   outwaitReacquireOnRead: false,
 }));
@@ -35,8 +38,14 @@ vi.mock("./accountGiteaSessions", () => ({
       return Promise.reject(new Error("Gitea answered 401."));
     };
     return {
-      listDirectory: async () => (gitea.readable ? undefined : refuse()),
-      readFile: async () => (gitea.readable ? undefined : refuse()),
+      listDirectory: async () =>
+        gitea.readable ? (gitea.declares ? ["environments.yaml"] : undefined) : refuse(),
+      readFile: async (_owner: string, _repo: string, path: string) =>
+        gitea.readable
+          ? gitea.declares && path === "environments.yaml"
+            ? { content: DECLARED_STAGE }
+            : undefined
+          : refuse(),
       listPullRequests: async () => {
         if (!gitea.readable) return refuse();
         gitea.pullReads += 1;
@@ -51,13 +60,26 @@ vi.mock("./accountGiteaSessions", () => ({
         }
         return [{ number: 7, title: "Stage follows main" }];
       },
-      listCommitStatuses: async () => (gitea.readable ? [] : refuse()),
+      listCommitStatuses: async () => {
+        if (!gitea.readable) return refuse();
+        gitea.statusReads += 1;
+        return [{ context: "deploy", state: "success" }];
+      },
       getBranch: async () => (gitea.readable ? undefined : refuse()),
     };
   },
 }));
 
 const SHA = "3f9c1b2000000000000000000000000000000000";
+
+const DECLARED_STAGE = `version: 1
+environments:
+  stage:
+    tier: stage
+    project: p-stage
+    sources: [main]
+    deploy: on-push
+`;
 
 const GROUP: ZeropsDeployGroup = {
   groupId: "g1",
@@ -308,7 +330,7 @@ describe("readGroupDeploys", () => {
     expect(update(held)?.declarations).toEqual([]);
   });
 
-  it("asks about a settled deploy's checks once across reads", async () => {
+  it("asks about a settled deploy's checks once across reads inside a minute", async () => {
     const asked: string[] = [];
     const client = {
       ...groupRepo(),
@@ -491,10 +513,57 @@ describe("useZeropsGroupDeploys", () => {
   afterEach(() => {
     gitea.readable = true;
     gitea.pullReads = 0;
+    gitea.statusReads = 0;
+    gitea.declares = false;
     gitea.loseTokenOnRead = false;
     gitea.outwaitReacquireOnRead = false;
     vi.useRealTimers();
     vi.unstubAllGlobals();
+  });
+
+  it("asks about a running commit again at once when the platform pushes a new deploy", async () => {
+    vi.useFakeTimers();
+    installTestDom();
+    gitea.declares = true;
+    const { createRoot } = await import("react-dom/client");
+    const running = (activeDeploy: string): ReadonlyArray<ZeropsDeployGroup> => [
+      {
+        ...GROUP,
+        projects: [
+          { ...GROUP.projects[0]!, services: [{ serviceId: "s1", hostname: "app", activeDeploy }] },
+        ],
+      },
+    ];
+    const readVersion = async () => SHA;
+    function Probe({ groups }: { readonly groups: ReadonlyArray<ZeropsDeployGroup> }) {
+      useZeropsGroupDeploys({
+        groups,
+        giteaOrigin: "https://gitea.example.test",
+        readVersion,
+        enabled: true,
+        readable: true,
+      });
+      return null;
+    }
+    const root = createRoot(document.createElement("div") as unknown as Element);
+    await act(async () => {
+      root.render(createElement(Probe, { groups: running("d1") }));
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10_000);
+    });
+    expect(gitea.statusReads).toBe(1);
+    // Production took the stage's commit: same sha, a status of its own on its way.
+    await act(async () => {
+      root.render(createElement(Probe, { groups: running("d2") }));
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(gitea.statusReads).toBe(2);
+    await act(async () => {
+      root.unmount();
+    });
   });
 
   it("keeps what it read while the Gitea session has no token to read with", async () => {

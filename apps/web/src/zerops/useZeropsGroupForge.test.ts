@@ -272,7 +272,7 @@ describe("readForge", () => {
     );
   });
 
-  it("asks about a commit once however many release tags point at it, and never again once settled", async () => {
+  it("asks about a commit once however many release tags point at it", async () => {
     const SHARED = "5".repeat(40);
     const { client: base, calls } = forge();
     const client = {

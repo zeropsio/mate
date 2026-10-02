@@ -1,29 +1,53 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 import type { GiteaCommitStatus } from "../giteaClient.ts";
-import { createCommitStatusMemo, STATUS_RECHECK_LADDER_MS, statusesSettled } from "./statusMemo.ts";
+import {
+  createCommitStatusMemo,
+  newestStatusesSettled,
+  SETTLED_STATUS_KEEP_MS,
+  STATUS_RECHECK_LADDER_MS,
+  type CommitStatusMemo,
+} from "./statusMemo.ts";
 
-const status = (state: GiteaCommitStatus["state"]): GiteaCommitStatus => ({
-  context: "ci",
+const status = (state: GiteaCommitStatus["state"], context = "ci"): GiteaCommitStatus => ({
+  context,
   state,
 });
 const commit = { owner: "acme", repo: "group", sha: "a".repeat(40) };
 
-/** Seconds since the start at which `load` ran, over `minutes` of a read asked for every second. */
+/**
+ * Seconds since the start at which `load` ran, over `minutes` of a read asked for every second.
+ * `maxAgeMs` is what the caller asks the read to be no older than.
+ */
 async function readsOver(
   answers: (call: number) => ReadonlyArray<GiteaCommitStatus>,
   minutes: number,
+  maxAgeMs?: number,
 ): Promise<ReadonlyArray<number>> {
   const memo = createCommitStatusMemo();
   const at: Array<number> = [];
   for (let second = 0; second <= minutes * 60; second += 1) {
-    await memo.read(commit, async () => {
-      at.push(second);
-      return answers(at.length - 1);
-    });
+    await memo.read(
+      commit,
+      async () => {
+        at.push(second);
+        return answers(at.length - 1);
+      },
+      maxAgeMs === undefined ? undefined : { maxAgeMs },
+    );
     await vi.advanceTimersByTimeAsync(1_000);
   }
   return at;
+}
+
+/** A load that answers only when told to. */
+function deferredLoad(statuses: ReadonlyArray<GiteaCommitStatus>) {
+  let answer: () => void = () => undefined;
+  const load = () =>
+    new Promise<ReadonlyArray<GiteaCommitStatus>>((resolve) => {
+      answer = () => resolve(statuses);
+    });
+  return { load, answer: () => answer() };
 }
 
 describe("commit status memo", () => {
@@ -34,43 +58,58 @@ describe("commit status memo", () => {
     vi.useRealTimers();
   });
 
+  // Gitea lists a commit's statuses newest first and keeps every one it was ever given.
   it.each([
     { name: "success", statuses: [status("success")], settled: true },
     {
       name: "a failure beside a success",
-      statuses: [status("success"), status("failure")],
+      statuses: [status("success"), status("failure", "deploy")],
       settled: true,
     },
-    { name: "one still pending", statuses: [status("success"), status("pending")], settled: false },
+    {
+      name: "a context that went pending, then passed",
+      statuses: [status("success"), status("pending")],
+      settled: true,
+    },
+    {
+      name: "a context rerun and pending again",
+      statuses: [status("pending"), status("success")],
+      settled: false,
+    },
+    {
+      name: "one context still pending beside another done",
+      statuses: [status("success"), status("pending", "deploy")],
+      settled: false,
+    },
     { name: "nothing posted yet", statuses: [], settled: false },
   ])("$name is settled: $settled", ({ statuses, settled }) => {
-    expect(statusesSettled(statuses)).toBe(settled);
+    expect(newestStatusesSettled(statuses)).toBe(settled);
   });
 
-  it("reads settled statuses once, however often they are asked for", async () => {
-    expect(await readsOver(() => [status("success")], 60)).toEqual([0]);
+  it("keeps settled statuses for five minutes, then reads them again", async () => {
+    expect(SETTLED_STATUS_KEEP_MS).toBe(300_000);
+    expect(await readsOver(() => [status("success")], 15)).toEqual([0, 300, 600, 900]);
   });
 
-  it("re-reads pending statuses on the back-off ladder, then never once they settle", async () => {
-    const ladder = STATUS_RECHECK_LADDER_MS.map((ms) => ms / 1_000);
-    expect(ladder).toEqual([15, 30, 60, 120, 300, 600]);
-    // Pending for six reads, then settled.
-    const at = await readsOver(
-      (call) => (call < 6 ? [status("pending")] : [status("success")]),
-      60,
-    );
-    expect(at).toEqual([0, 15, 45, 105, 225, 525, 1125]);
+  it("reads settled statuses at most once a minute where the caller asks for that", async () => {
+    expect(await readsOver(() => [status("success")], 4, 60_000)).toEqual([0, 60, 120, 180, 240]);
   });
 
-  it("holds the ladder at its last rung for a commit CI never posts to", async () => {
-    const at = await readsOver(() => [], 60);
-    expect(at).toEqual([0, 15, 45, 105, 225, 525, 1125, 1725, 2325, 2925, 3525]);
+  it("re-reads pending statuses on a back-off no longer than a minute", async () => {
+    expect(STATUS_RECHECK_LADDER_MS).toEqual([15_000, 30_000, 60_000]);
+    const at = await readsOver((call) => (call < 5 ? [status("pending")] : [status("success")]), 6);
+    // Pending five times — 15 s, 30 s, then a minute each — then settled and kept.
+    expect(at).toEqual([0, 15, 45, 105, 165, 225]);
   });
 
-  it("starts the ladder again when what a read answers changed", async () => {
+  it("holds the back-off at a minute for a commit CI never posts to", async () => {
+    expect(await readsOver(() => [], 5)).toEqual([0, 15, 45, 105, 165, 225, 285]);
+  });
+
+  it("starts the back-off again when what a read answers changed", async () => {
     const answers = [[], [], [status("pending")], [status("pending")], [status("success")]];
-    const at = await readsOver((call) => answers[call] ?? [status("success")], 10);
-    // Empty, empty (rung 2 next), pending — a change, so 15 s — pending, success.
+    const at = await readsOver((call) => answers[call] ?? [status("success")], 3);
+    // Empty, empty (30 s next), pending — a change, so 15 s — pending, success.
     expect(at).toEqual([0, 15, 45, 60, 90]);
   });
 
@@ -99,24 +138,52 @@ describe("commit status memo", () => {
     expect(loads).toBe(1);
   });
 
-  it("forgets an owner's unsettled statuses, so a verb's re-read asks again at once", async () => {
-    const memo = createCommitStatusMemo();
-    let loads = 0;
-    const pending = async () => {
-      loads += 1;
-      return [status("pending")];
+  describe("forget — a verb changed the owner's commits", () => {
+    const loadsAfterForget = async (first: ReadonlyArray<GiteaCommitStatus>) => {
+      const memo: CommitStatusMemo = createCommitStatusMemo();
+      await memo.read(commit, async () => first);
+      memo.forget("acme");
+      let loads = 0;
+      await memo.read(commit, async () => {
+        loads += 1;
+        return [status("success")];
+      });
+      return loads;
     };
-    const settled = { ...commit, sha: "b".repeat(40) };
-    await memo.read(commit, pending);
-    await memo.read(settled, async () => [status("success")]);
-    memo.forget("acme");
-    await memo.read(commit, pending);
-    expect(loads).toBe(2);
-    let settledLoads = 0;
-    await memo.read(settled, async () => {
-      settledLoads += 1;
-      return [];
+
+    it.each([
+      { name: "pending", first: [status("pending")] },
+      { name: "settled", first: [status("success")] },
+    ])("reads $name statuses again at once", async ({ first }) => {
+      expect(await loadsAfterForget(first)).toBe(1);
     });
-    expect(settledLoads).toBe(0);
+
+    it("leaves another owner's statuses kept", async () => {
+      const memo = createCommitStatusMemo();
+      const other = { ...commit, owner: "harbor" };
+      await memo.read(other, async () => [status("success")]);
+      memo.forget("acme");
+      let loads = 0;
+      await memo.read(other, async () => {
+        loads += 1;
+        return [];
+      });
+      expect(loads).toBe(0);
+    });
+
+    it("does not join a read that started before it, nor keep that read's answer", async () => {
+      const memo = createCommitStatusMemo();
+      const before = deferredLoad([status("pending")]);
+      const early = memo.read(commit, before.load);
+      memo.forget("acme");
+      const after = deferredLoad([status("success")]);
+      const fresh = memo.read(commit, after.load);
+      after.answer();
+      expect(await fresh).toEqual([status("success")]);
+      before.answer();
+      expect(await early).toEqual([status("pending")]);
+      // What is kept is the read made after the verb.
+      expect(await memo.read(commit, async () => [])).toEqual([status("success")]);
+    });
   });
 });

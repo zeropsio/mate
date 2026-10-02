@@ -11,8 +11,9 @@
  * forge store's rungs too — and a verb re-reads at once only the part it changed
  * (`flow/verbs.ts`). Gitea has no event stream, so a clock is the only
  * freshness there is, and it stops while the tab is hidden (`refreshClock.ts`).
- * A commit's checks are asked about once while settled, and on a back-off
- * while pending (`forge/statusMemo.ts`). Whether a pull request merges is what its reads so far
+ * A commit's checks are kept while settled, read again on a back-off while
+ * pending, and at the clock's pace where a deploy may still post to them
+ * (`forge/statusMemo.ts`). Whether a pull request merges is what its reads so far
  * came to (`forge/mergeState.ts`), never one answer: Gitea says "no" for a
  * moment after every push. A part that does not answer keeps what it had. A
  * repository never read is left out of what the answer holds, rather than
@@ -49,6 +50,7 @@ import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 import {
   createCommitStatusMemo,
   createMergeabilityTracker,
+  DEPLOY_STATUS_MAX_AGE_MS,
   MERGE_RECHECK_AFTER_MS,
   mergeReadOf,
   type CommitStatusMemo,
@@ -274,7 +276,20 @@ export function useGroupAnswers<Group extends { readonly groupId: string }, Scop
     };
   }, [enabled, giteaOrigin, pass, readable, refreshMs]);
 
+  // A group whose key moved — a new deploy the platform pushed, a project joining — is read again
+  // at once by the driver; what the reads keep beside the answer is dropped first, or that read
+  // would be answered from it.
+  const keys = useRef(new Map<string, string>());
   useEffect(() => {
+    const { forget, keyOf } = latest.current.input;
+    const next = new Map<string, string>();
+    for (const group of groups) {
+      const key = keyOf(group);
+      const before = keys.current.get(group.groupId);
+      if (forget !== undefined && before !== undefined && before !== key) forget(group);
+      next.set(group.groupId, key);
+    }
+    keys.current = next;
     driver.current?.setGroups(groups);
   }, [groups]);
 
@@ -442,12 +457,16 @@ async function readReleases(
   for (const tag of releaseTags) {
     const entries = readReleaseMessage(tag.message ?? "");
     const sha = tag.commit?.sha;
+    // The newest release is the one production may still be taking.
+    const age = newest === undefined ? { maxAgeMs: DEPLOY_STATUS_MAX_AGE_MS } : undefined;
     const statuses =
       sha === undefined
         ? []
         : await memo
-            .read({ owner: slug, repo: GROUP_REPOSITORY, sha }, () =>
-              client.listCommitStatuses(slug, GROUP_REPOSITORY, sha),
+            .read(
+              { owner: slug, repo: GROUP_REPOSITORY, sha },
+              () => client.listCommitStatuses(slug, GROUP_REPOSITORY, sha),
+              age,
             )
             .catch(() => []);
     const { verdict, detail } = releaseVerdict(tag.name, statuses);
