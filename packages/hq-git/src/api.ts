@@ -81,6 +81,11 @@ export interface HqGitOptions {
   readonly importTimeoutMs?: number;
   /** Per-request deadline (default 30 min); a client that stops reading cannot hold git longer. */
   readonly requestTimeoutMs?: number;
+  /**
+   * How long a ref write waits for another writer's lock before it answers `busy` (default 5 s):
+   * git's own 100 ms is shorter than a writer slowed by IO holds it.
+   */
+  readonly refLockTimeoutMs?: number;
 }
 export interface ImportCredentials {
   readonly username: string;
@@ -264,6 +269,11 @@ export interface HqGit {
     options: { readonly cursor?: string; readonly limit: number },
   ) => Effect.Effect<Bounded<CommitSummary> & { readonly cursor: string | null }, GitError>;
   readonly commit: (repo: Repo, sha: string) => Effect.Effect<CommitRead, GitError>;
+  /**
+   * Whether the commit `sha` is main's head or before it on main's history; false for an object
+   * that is no commit, one the repository lacks, or an unborn main.
+   */
+  readonly onMain: (repo: Repo, sha: string) => Effect.Effect<boolean, GitError>;
   /** The change's merge base with main; null without a change head, a main, or shared history. */
   readonly mergeBase: (
     repo: Repo,

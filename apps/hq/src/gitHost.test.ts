@@ -117,7 +117,14 @@ const hostWithChanges = (
       readonly mergeability: string;
       readonly behind: boolean;
     }>`SELECT number, mergeability, behind FROM hq_change ORDER BY number`;
-    return { moveMain, judged };
+    /** When HQ recorded `appdev`'s main last moving. */
+    const updatedAt = Effect.map(
+      sql<{ readonly at: string }>`
+        SELECT to_char(updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS at
+        FROM hq_repo WHERE name = 'appdev'`,
+      (rows) => rows[0]!.at,
+    );
+    return { moveMain, judged, updatedAt };
   });
 
 describe("gitHost", () => {
@@ -147,6 +154,15 @@ describe("gitHost", () => {
           Effect.retry(Schedule.spaced(Duration.millis(50))),
           Effect.timeout(Duration.seconds(10)),
         );
+      }),
+    );
+
+    it.effect("records when a repository's main last moved", () =>
+      Effect.gen(function* () {
+        const { moveMain, updatedAt } = yield* hostWithChanges([]);
+        const before = yield* updatedAt;
+        yield* moveMain;
+        assert.isAbove(Date.parse(yield* updatedAt), Date.parse(before));
       }),
     );
 

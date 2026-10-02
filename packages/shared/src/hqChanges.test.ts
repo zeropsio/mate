@@ -19,6 +19,7 @@ import {
   OpenChangeRequest,
   OpenChangeResponse,
   PostCommentRequest,
+  RepoListResponse,
   attachmentPath,
   changeRoutePath,
   changeUrl,
@@ -29,6 +30,7 @@ import {
 
 const HQ = "https://hqzone.prg1-zerops.zone";
 const APP = "0b7c4c1e-9f1d-4a43-8f43-6d2b8a1c2e10";
+const decodeComments = Schema.decodeUnknownSync(CommentListResponse);
 
 describe("hqChanges — the change link", () => {
   it("names a change at HQ's address, reads it back, and routes it in the client", () => {
@@ -168,6 +170,24 @@ describe("hqChanges — the wire", () => {
 
   it.each([
     [
+      "an application's repositories",
+      RepoListResponse,
+      {
+        repos: [
+          { name: "appdev", mainHead: SHA, updatedAt: "2026-10-02T10:00:00.000Z" },
+          { name: "group", mainHead: null, updatedAt: "2026-10-02T09:00:00.000Z" },
+        ],
+      },
+      "Success",
+    ],
+    ["an application with none", RepoListResponse, { repos: [] }, "Success"],
+    [
+      "a repository with a short head",
+      RepoListResponse,
+      { repos: [{ name: "appdev", mainHead: "abc1234", updatedAt: "2026-10-02T10:00:00.000Z" }] },
+      "Failure",
+    ],
+    [
       "a picture kept",
       AttachmentResponse,
       { id: "4f1c2b9a", path: `/api/apps/${APP}/changes/appdev/7/attachments/4f1c2b9a` },
@@ -286,11 +306,22 @@ describe("hqChanges — the wire", () => {
       "Failure",
     ],
     ["a change's comments", CommentListResponse, { comments: [comment("Looks good")] }, "Success"],
+    [
+      "a Mate's comment, brought over from Gitea",
+      CommentListResponse,
+      { comments: [{ ...comment("Done."), authorUserId: null, authorMateProjectId: "P_MATE" }] },
+      "Success",
+    ],
     ["say something", PostCommentRequest, { body: "Please rename it." }, "Success"],
     ["say nothing", PostCommentRequest, { body: " " }, "Failure"],
     ["say too much", PostCommentRequest, { body: "x".repeat(COMMENT_BODY_MAX + 1) }, "Failure"],
   ])("a person's read: %s", (_name, schema, value, expected) => {
     expect(read(schema as Schema.Codec<unknown, unknown>, value)).toBe(expected);
+  });
+
+  it("reads a comment from an HQ that kept only people's as a person's", () => {
+    const [said] = decodeComments({ comments: [comment("Looks good")] }).comments;
+    expect([said?.authorUserId, said?.authorMateProjectId]).toEqual(["owner", null]);
   });
 
   it.each([

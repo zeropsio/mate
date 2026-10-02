@@ -29,10 +29,12 @@ function remarks(count = 2): ReadonlyArray<ChangeRemark> {
     comments: Array.from({ length: count }, (_, index) => ({
       id: `c${String(index + 1)}`,
       authorUserId: index % 2 === 0 ? "u-ales" : "u-wren",
+      authorMateProjectId: null,
       body: index % 2 === 0 ? `The cache key ignores the locale (${String(index)}).` : "Fixed.",
       createdAt: "2026-09-29T11:00:00Z",
     })),
     nameOf: (userId) => MEMBERS.get(userId),
+    mateNameOf: () => undefined,
     me: "u-ales",
   });
 }

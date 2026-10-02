@@ -111,6 +111,7 @@ export const makeOperations = (
   attempt: Attempt,
   emit: (event: GitEvent) => void,
 ) => {
+  const refLockTimeoutMs = options.refLockTimeoutMs ?? 5000;
   const inRepo = <A>(
     operation: string,
     repo: Repo,
@@ -306,11 +307,22 @@ export const makeOperations = (
     signal: AbortSignal,
   ) => {
     try {
-      await run(dir, ["update-ref", ref, sha, old ?? "0".repeat(sha.length)], signal);
+      await run(
+        dir,
+        [
+          "-c",
+          `core.filesRefLockTimeout=${String(refLockTimeoutMs)}`,
+          "update-ref",
+          ref,
+          sha,
+          old ?? "0".repeat(sha.length),
+        ],
+        signal,
+      );
       return true;
     } catch {
       if ((await refHead(dir, ref, signal)) !== old) return false;
-      // Nothing moved: another writer held the ref lock past git's retry window.
+      // Nothing moved: another writer held the ref lock past the wait.
       throw new GitError({ operation: "update-ref", reason: "busy", message: "Ref is locked" });
     }
   };
@@ -558,6 +570,22 @@ export const makeOperations = (
     }
     return { items, cut };
   };
+  const onMain: HqGit["onMain"] = (repo, sha) =>
+    inRepo("onMain", repo, async (dir, signal) => {
+      if (!validSha(sha)) throw error("Invalid commit");
+      const main = await refHead(dir, "refs/heads/main", signal);
+      if (!main) return false;
+      const commit = await git.exec(["-C", dir, "cat-file", "-e", `${sha}^{commit}`], {
+        signal,
+        acceptExitCodes: [1, 128],
+      });
+      if (commit.code !== 0) return false;
+      const ancestor = await git.exec(["-C", dir, "merge-base", "--is-ancestor", sha, main], {
+        signal,
+        acceptExitCodes: [1],
+      });
+      return ancestor.code === 0;
+    });
   const mergeBase: HqGit["mergeBase"] = (repo, mateId, number) =>
     inRepo("mergeBase", repo, async (dir, signal) => {
       const head = await refHead(dir, changeRef(mateId, number), signal);
@@ -840,6 +868,7 @@ export const makeOperations = (
     });
   return {
     changeHead,
+    onMain,
     mergeBase,
     changeLog,
     squashNames,

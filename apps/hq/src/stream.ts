@@ -15,8 +15,9 @@
  *   sees one; the client answers `{ type: "pong" }`. Any message counts: a client silent through
  *   three pings is closed (4408).
  *
- * The view is computed again after every change of the structure or of a change, and every 30 s; with roles at most 30 s
- * old (`roles.ts`), a role change reaches an open socket within 60 s (SPEC §4). The socket closes
+ * The view is computed again after every change of the structure, of a change or of a deploy, and
+ * every 30 s; with roles at most 30 s old (`roles.ts`), a role change reaches an open socket within
+ * 60 s (SPEC §4). The socket closes
  * with `4401` when the caller's session ends (sign in again), `1001` when this Core stops leading
  * or shuts down (reconnect: another Core leads), `1011` when the view cannot be read (reconnect).
  *
@@ -42,6 +43,7 @@ import * as Socket from "effect/unstable/socket/Socket";
 import type { SqlError } from "effect/unstable/sql/SqlError";
 
 import { Changes } from "./changes.ts";
+import { Deploys } from "./deploys.ts";
 import { Structure, type StructureRead } from "./structure.ts";
 import type { ZeropsError } from "./zerops/api.ts";
 
@@ -80,11 +82,12 @@ export const structureMessages = <R>(
   userId: string,
   ending: Effect.Effect<Ending | undefined, never, R>,
   recheck: Duration.Duration,
-): Stream.Stream<Outgoing, SqlError | ZeropsError, Structure | Changes | R> =>
+): Stream.Stream<Outgoing, SqlError | ZeropsError, Structure | Changes | Deploys | R> =>
   Stream.unwrap(
     Effect.gen(function* () {
       const structure = yield* Structure;
       const changes = yield* Changes;
+      const deploys = yield* Deploys;
       const sent = yield* Ref.make<
         | {
             readonly structure: ReadonlyMap<string, string>;
@@ -99,7 +102,7 @@ export const structureMessages = <R>(
         );
       return Stream.merge(
         Stream.merge(structure.changes, changes.changes),
-        Stream.tick(recheck),
+        Stream.merge(deploys.changes, Stream.tick(recheck)),
       ).pipe(
         Stream.mapEffect(() =>
           Effect.gen(function* (): Generator<

@@ -132,6 +132,15 @@ const fetchOf = (held: string, appId: string | null, repoAppId = "A"): Request =
   target: { projectId: "P", appId, held, repoAppId },
 });
 
+/** A release of the application of `projectIds` to its production, `production` (`null`: none). */
+const releaseOf = (
+  projectIds: ReadonlyArray<string>,
+  production: string | null,
+): Extract<Request, { readonly verb: "release" }> => ({
+  verb: "release",
+  target: { projectIds, productionProjectId: production },
+});
+
 /** Core's landing of a recipe change in `repo` of the application A, its author P held so. */
 const landing = (
   patch: {
@@ -174,7 +183,77 @@ const MAKER = { orgRole: "NO_ACCESS", canCreate: true, override: "OWNER" } as co
 /** U with org NO_ACCESS and ADMIN on P alone: P's admin, nobody else's. */
 const P_ADMIN = { orgRole: "NO_ACCESS", override: "ADMIN" } as const;
 
+/** A deploy token handed to HQ for P, an environment's project. */
+const KEEP_TOKEN: Request = { verb: "keep_deploy_token", target: { projectId: "P" } };
+
+/** A person's "Run again" of a deploy of the application whose projects are `projectIds`. */
+const redeploy = (...projectIds: ReadonlyArray<string>): Request => ({
+  verb: "redeploy",
+  target: { projectIds },
+});
+
 const TABLES: Readonly<Record<Verb, ReadonlyArray<Row>>> = {
+  // "Run again" of a deploy (main B36): main re-ran a deploy's job with write on its repository —
+  // whoever develops the application, as a merge.
+  redeploy: [
+    [
+      "a developer of the application: Basic user on one of its projects",
+      {},
+      redeploy("P_SEEN", "P_DEV"),
+      "allow",
+    ],
+    ["org Basic user, through the org's role", { orgRole: "BASIC_USER" }, redeploy("P"), "allow"],
+    ["an org owner", WRITER, redeploy("P"), "allow"],
+    [
+      "org Read only sees it, does not develop it",
+      { orgRole: "READ_ONLY" },
+      redeploy("P"),
+      "not_app_developer",
+    ],
+    ["org none, a Read only grant on a project of it", {}, redeploy("P_SEEN"), "not_app_developer"],
+    ["org none, only a hidden project", {}, redeploy("P_HIDDEN"), "app_not_seen"],
+    // Seeing the application comes first: an application of no project is seen by nobody below
+    // org Read only.
+    ["org none, an application with no project", {}, redeploy(), "app_not_seen"],
+    ["an org owner, an application with no project left", WRITER, redeploy(), "not_app_developer"],
+    [
+      "an invited owner",
+      { orgRole: "OWNER", status: "INVITED" },
+      redeploy("P"),
+      "not_active_member",
+    ],
+  ],
+  // Who may hand HQ an environment's deploy token: who may attach it (Full access on its project),
+  // or the structure's writer (SPEC §3.2b, main E03).
+  keep_deploy_token: [
+    ["an org owner, a structure writer", WRITER, KEEP_TOKEN, "allow"],
+    ["an org admin", { orgRole: "ADMIN" }, KEEP_TOKEN, "allow"],
+    [
+      "a writer, a project the org no longer has",
+      { ...WRITER, present: false },
+      KEEP_TOKEN,
+      "project_gone",
+    ],
+    ["P's admin", P_ADMIN, KEEP_TOKEN, "allow"],
+    ["P's owner, who made it", MAKER, KEEP_TOKEN, "allow"],
+    ["a Basic user there", { override: "BASIC_USER" }, KEEP_TOKEN, "not_project_admin"],
+    // The writer's shortcut: an org admin lowered to Read only on P still hands it over.
+    [
+      "an org admin, Read only on P",
+      { orgRole: "ADMIN", override: "READ_ONLY" },
+      KEEP_TOKEN,
+      "allow",
+    ],
+    ["org Basic user", { orgRole: "BASIC_USER" }, KEEP_TOKEN, "not_project_admin"],
+    ["org Read only", { orgRole: "READ_ONLY" }, KEEP_TOKEN, "not_project_admin"],
+    [
+      "P's admin, a project the org no longer has",
+      { ...P_ADMIN, present: false },
+      KEEP_TOKEN,
+      "not_project_admin",
+    ],
+    ["an invited owner", { orgRole: "OWNER", status: "INVITED" }, KEEP_TOKEN, "not_active_member"],
+  ],
   read_project: [
     [
       "org Read only reads",
@@ -1015,6 +1094,79 @@ const TABLES: Readonly<Record<Verb, ReadonlyArray<Row>>> = {
       "not_active_member",
     ],
   ],
+  release: [
+    ["Basic user on its production", { override: "BASIC_USER" }, releaseOf(["P"], "P"), "allow"],
+    ["its production's owner, who made it", MAKER, releaseOf(["P"], "P"), "allow"],
+    ["the structure's writer", WRITER, releaseOf(["P"], "P"), "allow"],
+    [
+      "a grant on its production this build does not know",
+      { override: "FUTURE" },
+      releaseOf(["P_SEEN", "P"], "P"),
+      "not_releaser",
+    ],
+    // Its production is the application's, whatever else HQ named beside it.
+    [
+      "Basic user on its production, named apart from the projects",
+      { override: "BASIC_USER" },
+      releaseOf(["P_HIDDEN"], "P"),
+      "allow",
+    ],
+    ["Full access on its production", { override: "ADMIN" }, releaseOf(["P"], "P"), "allow"],
+    ["org Basic user, no grant there", { orgRole: "BASIC_USER" }, releaseOf(["P"], "P"), "allow"],
+    [
+      "Read access on its production",
+      { override: "READ_ONLY" },
+      releaseOf(["P"], "P"),
+      "not_releaser",
+    ],
+    // Main's client let an org admin release whatever their grant (C12); the deploy right decides.
+    [
+      "an org admin with Read access on its production",
+      { orgRole: "ADMIN", override: "READ_ONLY" },
+      releaseOf(["P"], "P"),
+      "not_releaser",
+    ],
+    [
+      "developing another project of it, not its production",
+      { override: "READ_ONLY" },
+      releaseOf(["P_DEV", "P"], "P"),
+      "not_releaser",
+    ],
+    ["no production yet", { override: "BASIC_USER" }, releaseOf(["P"], null), "no_production"],
+    // That it has none is told to whoever reads its changes, as its environments are.
+    [
+      "no production yet, to someone who only sees it",
+      { override: "READ_ONLY" },
+      releaseOf(["P"], null),
+      "not_releaser",
+    ],
+    ["an application they do not see", {}, releaseOf(["P_HIDDEN"], "P_HIDDEN"), "app_not_seen"],
+    // Seeing comes first: no production tells nothing to whoever does not see the application.
+    [
+      "no production, an application they do not see",
+      {},
+      releaseOf(["P_HIDDEN"], null),
+      "app_not_seen",
+    ],
+    [
+      "its production gone from Zerops",
+      { override: "BASIC_USER", present: false },
+      releaseOf(["P_SEEN", "P"], "P"),
+      "not_releaser",
+    ],
+    [
+      "its production gone, to a writer",
+      { orgRole: "OWNER", present: false },
+      releaseOf(["P"], "P"),
+      "project_gone",
+    ],
+    [
+      "an invited owner",
+      { orgRole: "OWNER", status: "INVITED" },
+      releaseOf(["P"], "P"),
+      "not_active_member",
+    ],
+  ],
 };
 
 const MATE_P: Principal = { kind: "mate", projectId: "P" };
@@ -1053,6 +1205,10 @@ describe("can — one table per verb", () => {
     can(PERSON, "merge_change", { projectIds: [] }, cached);
     // @ts-expect-error -- and a close.
     can(PERSON, "close_change", { projectIds: [] }, cached);
+    // @ts-expect-error -- and asking a deploy again.
+    can(PERSON, "redeploy", { projectIds: [] }, cached);
+    // @ts-expect-error -- and a release.
+    can(PERSON, "release", { projectIds: [], productionProjectId: null }, cached);
     // @ts-expect-error -- so is a Mate's change.
     can(MATE_P, "open_change", { projectId: "P", appId: "A", held: "mate" }, cached);
     // A Mate's fetch is a read.
@@ -1086,6 +1242,19 @@ const POINTS: ReadonlyArray<Point> = ROLES.flatMap((orgRole) =>
   ),
 );
 
+/**
+ * U's effective role on a project of the space, ranked: P's is the point's own (none once the org
+ * has no P), the others FIXTURE_GRANTS'; -1 for a role this build does not know.
+ */
+const rankOn = (point: Point, projectId: string) =>
+  RANKED.indexOf(
+    (projectId === "P"
+      ? point.present
+        ? (point.override ?? point.orgRole)
+        : "NO_ACCESS"
+      : FIXTURE_GRANTS[projectId as keyof typeof FIXTURE_GRANTS]) as (typeof RANKED)[number],
+  );
+
 const REQUESTS: ReadonlyArray<Request> = [
   ...["group", "appdev"].flatMap((repo) =>
     HELD.flatMap((held) =>
@@ -1101,6 +1270,7 @@ const REQUESTS: ReadonlyArray<Request> = [
   ...APPS.map((projectIds): Request => ({ verb: "read_app", target: { projectIds } })),
   { verb: "create_app", target: null },
   { verb: "rename_app", target: null },
+  KEEP_TOKEN,
   ...HELD.flatMap((held) =>
     TO.flatMap((to) =>
       APPS.flatMap((app) => [false, true].map((taken) => place("attach", held, to, app, taken))),
@@ -1119,8 +1289,13 @@ const REQUESTS: ReadonlyArray<Request> = [
   ...HELD.flatMap((held) =>
     [null, "A"].flatMap((appId) => ["A", "B"].map((repoAppId) => fetchOf(held, appId, repoAppId))),
   ),
-  ...(["read_change", "comment_change", "merge_change", "close_change"] as const).flatMap((verb) =>
-    APPS.map((projectIds): Request => ({ verb, target: { projectIds } })),
+  ...(
+    ["read_change", "comment_change", "merge_change", "close_change", "redeploy"] as const
+  ).flatMap((verb) => APPS.map((projectIds): Request => ({ verb, target: { projectIds } }))),
+  ...APPS.flatMap((projectIds) =>
+    [null, "P", "P_SEEN", "P_DEV", "P_HIDDEN"].map((production) =>
+      releaseOf(projectIds, production),
+    ),
   ),
 ];
 
@@ -1304,18 +1479,27 @@ describe("can — over the whole input space", () => {
         point.status === "ACTIVE" &&
         (point.orgRole === "ADMIN" || point.orgRole === "OWNER");
       if (request.verb === "close_change" && writer) return;
-      // Developing it: Basic user or above on one of its projects (P is the point's own).
-      const ranked = (role: string) => RANKED.indexOf(role as (typeof RANKED)[number]);
-      const roleIn = (projectId: string) =>
-        projectId === "P"
-          ? point.present
-            ? ranked(point.override ?? point.orgRole)
-            : 0
-          : ranked(FIXTURE_GRANTS[projectId as keyof typeof FIXTURE_GRANTS]);
+      // Developing it: Basic user or above on one of its projects.
       holds(
-        request.target.projectIds.some((projectId) => roleIn(projectId) >= 2),
+        request.target.projectIds.some((projectId) => rankOn(point, projectId) >= 2),
         "develops the application",
       );
+    });
+  });
+
+  it("lets a person release exactly where they see the application and may deploy to its production", () => {
+    everywhere((principal, request, point, holds) => {
+      if (request.verb !== "release" || principal.kind !== "person") return;
+      const { projectIds, productionProjectId } = request.target;
+      const app = productionProjectId === null ? projectIds : [...projectIds, productionProjectId];
+      const sees = decide(principal, { verb: "read_app", target: { projectIds: app } }, point);
+      const reads = decide(principal, { verb: "read_change", target: { projectIds: app } }, point);
+      const deploys = productionProjectId !== null && rankOn(point, productionProjectId) >= 2;
+      const decision = outcome(decide(principal, request, point));
+      holds((decision === "allow") === (sees.allow && deploys), "its production's");
+      holds(decision !== "allow" || reads.allow, "reads the changes it releases");
+      // That it has no production is told only to whoever reads its changes.
+      holds(decision !== "no_production" || reads.allow, "no production, told to a reader");
     });
   });
 

@@ -12,6 +12,7 @@ function comment(over: Partial<HqChangeComment> = {}): HqChangeComment {
   return {
     id: "c1",
     authorUserId: "u-ales",
+    authorMateProjectId: null,
     body: "Looks right to me.",
     createdAt: "2026-09-19T10:00:00Z",
     ...over,
@@ -24,10 +25,12 @@ const MEMBERS = new Map([
   ["u-wren", "Wren"],
 ]);
 const nameOf = (userId: string) => MEMBERS.get(userId);
+/** The application's Mates by their project. */
+const mateNameOf = (projectId: string) => (projectId === "P_ADA" ? "Ada" : undefined);
 
 describe("changeRemarks", () => {
   it("names who said it as the organization's members name them", () => {
-    const [remark] = changeRemarks({ comments: [comment()], nameOf, me: undefined });
+    const [remark] = changeRemarks({ comments: [comment()], nameOf, mateNameOf, me: undefined });
     expect(remark).toEqual({
       id: "c1",
       speaker: "Aleš Novák",
@@ -44,6 +47,7 @@ describe("changeRemarks", () => {
         comment({ id: "c2", authorUserId: "u-wren" }),
       ],
       nameOf,
+      mateNameOf,
       me: "u-ales",
     });
     expect(remarks.map((entry) => entry.mine)).toEqual([true, false]);
@@ -53,9 +57,20 @@ describe("changeRemarks", () => {
     const [remark] = changeRemarks({
       comments: [comment({ authorUserId: "u-gone" })],
       nameOf,
+      mateNameOf,
       me: undefined,
     });
     expect(remark?.speaker).toBe("somebody");
+  });
+
+  it("names a Mate's words by the Mate, never as the reader's own", () => {
+    const [remark] = changeRemarks({
+      comments: [comment({ authorUserId: null, authorMateProjectId: "P_ADA" })],
+      nameOf,
+      mateNameOf,
+      me: "u-ales",
+    });
+    expect([remark?.speaker, remark?.mine]).toEqual(["Ada", false]);
   });
 });
 
@@ -68,6 +83,7 @@ describe("changeConversationCount", () => {
     const remarks = changeRemarks({
       comments: Array.from({ length: count }, (_, index) => comment({ id: `c${String(index)}` })),
       nameOf,
+      mateNameOf,
       me: undefined,
     });
     expect(changeConversationCount(remarks)).toBe(expected);

@@ -345,19 +345,39 @@ describe("git operations", () => {
     }),
   );
   it.live("answers busy when a held ref lock stops the write and the ref has not moved", () =>
+    fixture(
+      async (git, dir) => {
+        const main = await write(git, { base: "base" }, null);
+        await branch(git, dir, main, { "new.txt": "new" });
+        const lock = NodePath.join(dir, "refs/heads/main.lock");
+        await NodeFSP.writeFile(lock, "");
+        try {
+          await expect(write(git, { more: "more" }, main)).rejects.toHaveProperty("reason", "busy");
+          await expect(merge(git, main)).rejects.toHaveProperty("reason", "busy");
+        } finally {
+          await NodeFSP.rm(lock);
+        }
+        expect(await native(dir, ["rev-parse", "main"])).toBe(main);
+        await write(git, { more: "more" }, main);
+      },
+      { refLockTimeoutMs: 100 },
+    ),
+  );
+  it.live("waits for a ref lock another writer holds a while, then writes", () =>
     fixture(async (git, dir) => {
       const main = await write(git, { base: "base" }, null);
-      await branch(git, dir, main, { "new.txt": "new" });
       const lock = NodePath.join(dir, "refs/heads/main.lock");
       await NodeFSP.writeFile(lock, "");
-      try {
-        await expect(write(git, { more: "more" }, main)).rejects.toHaveProperty("reason", "busy");
-        await expect(merge(git, main)).rejects.toHaveProperty("reason", "busy");
-      } finally {
-        await NodeFSP.rm(lock);
-      }
-      expect(await native(dir, ["rev-parse", "main"])).toBe(main);
-      await write(git, { more: "more" }, main);
+      // Held past git's own 100 ms retry, as a writer slowed by IO holds it.
+      const released = value(
+        Effect.andThen(
+          Effect.sleep("500 millis"),
+          Effect.promise(() => NodeFSP.rm(lock)),
+        ),
+      );
+      const written = await write(git, { more: "more" }, main);
+      await released;
+      expect(await native(dir, ["rev-parse", "main"])).toBe(written);
     }),
   );
   it.live("uses CAS for simultaneous merges", () =>
@@ -368,6 +388,33 @@ describe("git operations", () => {
       const results = await Promise.all([merge(git, main, 1), merge(git, main, 2)]);
       expect(results.filter((r) => "merged" in r)).toHaveLength(1);
       expect(results).toContainEqual({ kind: "main_moved" });
+    }),
+  );
+});
+
+describe("main's own history", () => {
+  it.live("says whether a commit is main's head or before it, and nothing else is", () =>
+    fixture(async (git, dir) => {
+      const first = await write(git, { "a.txt": "1\n" }, null);
+      expect(await value(git.onMain(repo, first))).toBe(true);
+      const second = await write(git, { "a.txt": "2\n" }, first);
+      expect(await value(git.onMain(repo, first))).toBe(true);
+      expect(await value(git.onMain(repo, second))).toBe(true);
+      // A branch's commit past main, an object that is no commit, and one the repository lacks.
+      const branched = await branch(git, dir, second, { "b.txt": "b\n" });
+      expect(await value(git.onMain(repo, branched))).toBe(false);
+      const tree = await native(dir, ["rev-parse", `${second}^{tree}`]);
+      expect(await value(git.onMain(repo, tree))).toBe(false);
+      expect(await value(git.onMain(repo, "f".repeat(40)))).toBe(false);
+      await expect(value(git.onMain(repo, "main"))).rejects.toHaveProperty(
+        "reason",
+        "invalid_config",
+      );
+    }),
+  );
+  it.live("says no commit is on an unborn main", () =>
+    fixture(async (git) => {
+      expect(await value(git.onMain(repo, "a".repeat(40)))).toBe(false);
     }),
   );
 });
@@ -790,11 +837,15 @@ describe("reads, tags, archive and ports", () => {
       expect(await value(git.createTag(repo, "v1", other, "Replace"))).toEqual({
         kind: "conflict",
       });
-      await vi.waitFor(() =>
-        expect(events).toEqual([
-          { kind: "main_moved", repo, old: null, new: head, by: "commit" },
-          { kind: "tagged", repo, name: "v1", sha: head },
-        ]),
+      // Delivered after the writes, on their own chain: a loaded CI worker may take more than
+      // waitFor's default second to get there.
+      await vi.waitFor(
+        () =>
+          expect(events).toEqual([
+            { kind: "main_moved", repo, old: null, new: head, by: "commit" },
+            { kind: "tagged", repo, name: "v1", sha: head },
+          ]),
+        { timeout: 15_000 },
       );
       expect(
         (

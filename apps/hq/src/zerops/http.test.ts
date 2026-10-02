@@ -9,7 +9,7 @@ import * as Layer from "effect/Layer";
 import * as Redacted from "effect/Redacted";
 
 import type { ZeropsError } from "./api.ts";
-import { makeZeropsApiHttp } from "./http.ts";
+import { makeZeropsApiHttp, makeZeropsDeployHttp } from "./http.ts";
 
 const MEMBERS = {
   clientUserList: [
@@ -104,6 +104,154 @@ describe("makeZeropsApiHttp", () => {
       assert.strictEqual(missing.requests(), 1);
       const removed = yield* stub(100, 410, "");
       assert.strictEqual(yield* read(removed.url, "project"), "not_found");
+    }),
+  );
+});
+
+interface Heard {
+  readonly method: string;
+  readonly path: string;
+  readonly contentType: string | undefined;
+  readonly authorization: string | undefined;
+  readonly body: string;
+}
+
+/** A stub API that records every request and answers each by `answer`. */
+const recording = (answer: (heard: Heard) => readonly [status: number, body: unknown]) =>
+  Effect.acquireRelease(
+    Effect.promise(
+      () =>
+        new Promise<{
+          readonly url: string;
+          readonly heard: Array<Heard>;
+          readonly server: NodeHttp.Server;
+        }>((resolve) => {
+          const heard: Array<Heard> = [];
+          const server = NodeHttp.createServer((request, response) => {
+            const chunks: Array<Buffer> = [];
+            request.on("data", (chunk: Buffer) => chunks.push(chunk));
+            request.on("end", () => {
+              const one: Heard = {
+                method: request.method ?? "",
+                path: request.url ?? "",
+                contentType: request.headers["content-type"],
+                authorization: request.headers.authorization,
+                body: Buffer.concat(chunks).toString("latin1"),
+              };
+              heard.push(one);
+              const [status, body] = answer(one);
+              response.writeHead(status, { "content-type": "application/json" });
+              response.end(JSON.stringify(body));
+            });
+          });
+          server.listen(0, "127.0.0.1", () => {
+            const { port } = server.address() as NodeNet.AddressInfo;
+            resolve({ url: `http://127.0.0.1:${String(port)}`, heard, server });
+          });
+        }),
+    ),
+    ({ server }) =>
+      Effect.promise(() => new Promise<void>((resolve) => server.close(() => resolve()))),
+  );
+
+const deployOver = (url: string) =>
+  Effect.flatMap(Layer.build(NodeHttpClient.layerNodeHttp), (client) =>
+    makeZeropsDeployHttp(url).pipe(Effect.provide(client)),
+  );
+
+describe("makeZeropsDeployHttp", () => {
+  // The rig's own flow (`nastroje/rig/hq-deploy.mjs`), with the environment's token.
+  it.live("deploys as the rig does: a named version, its archive, its build with the setup", () =>
+    Effect.gen(function* () {
+      const api = yield* recording((heard) =>
+        heard.method === "GET"
+          ? [200, { status: "FAILED", error: { code: "buildFailed", message: "Build failed" } }]
+          : [200, { id: heard.path.includes("build-and-deploy") ? "PROC-1" : "AV-1" }],
+      );
+      const deploy = yield* deployOver(api.url);
+      const key = Redacted.make("env-key");
+      const version = yield* deploy.createAppVersion("SVC-1", "main 7e2d4c1")(key);
+      yield* deploy.upload(version.id, new Uint8Array([0x1f, 0x8b, 0x08]))(key);
+      const job = yield* deploy.buildAndDeploy(version.id, "zerops: []\n", "web")(key);
+      const read = yield* deploy.process(job.processId)(key);
+      assert.deepStrictEqual(
+        [version, job, read],
+        [{ id: "AV-1" }, { processId: "PROC-1" }, { status: "FAILED", failure: "Build failed" }],
+      );
+      assert.deepStrictEqual(
+        api.heard.map(({ method, path, contentType, body }) => ({
+          method,
+          path,
+          contentType,
+          body,
+        })),
+        [
+          {
+            method: "POST",
+            path: "/service-stack/SVC-1/app-version",
+            contentType: "application/json",
+            body: '{"name":"main 7e2d4c1"}',
+          },
+          {
+            method: "PUT",
+            path: "/app-version/AV-1/upload",
+            contentType: "application/octet-stream",
+            body: "\u001f\u008b\u0008",
+          },
+          {
+            method: "PUT",
+            path: "/app-version/AV-1/build-and-deploy",
+            contentType: "application/json",
+            body: '{"zeropsYaml":"zerops: []\\n","zeropsYamlSetup":"web"}',
+          },
+          { method: "GET", path: "/process/PROC-1", contentType: undefined, body: "" },
+        ],
+      );
+      assert.isTrue(api.heard.every((heard) => heard.authorization === "Bearer env-key"));
+    }),
+  );
+
+  // A recipe delta (main D15): services added to the environment's project.
+  it.live("imports services into a project as the probe lib does", () =>
+    Effect.gen(function* () {
+      const api = yield* recording(() => [
+        200,
+        { projectId: "P1", serviceStacks: [{ id: "S1", name: "api", processes: [] }] },
+      ]);
+      const deploy = yield* deployOver(api.url);
+      const imported = yield* deploy.importServices(
+        "P1",
+        "services:\n  - hostname: api\n",
+      )(Redacted.make("env-key"));
+      assert.deepStrictEqual(imported, { services: ["api"] });
+      assert.deepStrictEqual(
+        api.heard.map(({ method, path, contentType, body }) => ({
+          method,
+          path,
+          contentType,
+          body,
+        })),
+        [
+          {
+            method: "POST",
+            path: "/project/P1/service-stack/import",
+            contentType: "application/json",
+            body: '{"yaml":"services:\\n  - hostname: api\\n"}',
+          },
+        ],
+      );
+    }),
+  );
+
+  it.live("asks a write once: a 503 is unavailable, never a second version", () =>
+    Effect.gen(function* () {
+      const api = yield* recording(() => [503, { error: { code: "" } }]);
+      const deploy = yield* deployOver(api.url);
+      const error = yield* Effect.flip(
+        deploy.createAppVersion("SVC-1", "main 7e2d4c1")(Redacted.make("env-key")),
+      );
+      assert.strictEqual(error._tag, "ZeropsUnavailable");
+      assert.strictEqual(api.heard.length, 1);
     }),
   );
 });
