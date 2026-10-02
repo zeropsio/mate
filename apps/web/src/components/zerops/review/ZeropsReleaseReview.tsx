@@ -21,6 +21,7 @@ import {
   releaseFacts,
   releaseFollows,
   releaseOutcomeOf,
+  releaseStageMarks,
   releaseStep,
   releaseContentsCommits,
   releaseReview,
@@ -29,7 +30,6 @@ import {
   rollbackReview,
   sameCommit,
   shortCommit,
-  stageMarks,
   stageStandings,
   type ReleaseFacts,
   type ReleaseGate,
@@ -49,7 +49,7 @@ import { useZeropsReviewMates } from "~/zerops/useZeropsReviewMates";
 
 import { ZeropsChangeReview } from "./ZeropsChangeReview";
 import { useReleaseSteps, ZeropsReleaseSteps } from "./ZeropsReleaseSteps";
-import { releaseChangeRows, reviewKindLine, type ReleaseChangeRow } from "./ZeropsReview.logic";
+import { releaseChangeRows, reviewKindLine } from "./ZeropsReview.logic";
 import {
   ReviewReleaseRows,
   ReviewSection,
@@ -184,7 +184,7 @@ function ReleaseData({
   const [made, setMade] = useState<string | undefined>(undefined);
   // What the release is — its tag, what it replaces, what goes out and where — held from the
   // press, or from the first look at it on its way: once it lands, the reads are the state it made.
-  const [held, setHeld] = useState<ReleaseFacts<ReleaseChangeRow> | undefined>(undefined);
+  const [held, setHeld] = useState<ReleaseFacts | undefined>(undefined);
   const follows = releaseFollows({
     made,
     held,
@@ -200,21 +200,6 @@ function ReleaseData({
       entry.tier === "stage" &&
       flow.environments.find((row) => row.projectId === entry.projectId)?.source === "main",
   );
-  const marks = useMemo(
-    () =>
-      stageMarks({
-        contents: flow.release.contents,
-        mainHeads: flow.mainHeads,
-        stage:
-          mainStage === undefined
-            ? undefined
-            : stageStandings({
-                environment: mainStage,
-                deployment: flowValue?.deployments.get(mainStage.projectId),
-              }),
-      }),
-    [flow.mainHeads, flow.release.contents, flowValue?.deployments, mainStage],
-  );
   const production = flow.environmentInputs.find((entry) => entry.tier === "production");
   const {
     outcome,
@@ -229,17 +214,30 @@ function ReleaseData({
       releaseFacts({
         tag,
         live: flow.releases.find((entry) => entry.standing === "live")?.tag,
-        rows: releaseChangeRows({
-          commits: releaseContentsCommits(flow.release.contents),
-          merged: flow.merged,
-          marks,
-        }),
+        contents: flow.release.contents,
+        mainHeads: flow.mainHeads,
         comparison: flow.release.comparison,
         productionServices: production?.services.map((entry) => entry.hostname) ?? [],
       }),
   });
   if (keep !== held) setHeld(keep);
-  const rows = facts.rows.map((row) => {
+  // The changes are the release's; where each stands on the stage is read as it stands now.
+  const stage = useMemo(
+    () =>
+      mainStage === undefined
+        ? undefined
+        : stageStandings({
+            environment: mainStage,
+            deployment: flowValue?.deployments.get(mainStage.projectId),
+          }),
+    [flowValue?.deployments, mainStage],
+  );
+  const marks = useMemo(() => releaseStageMarks(facts, stage), [facts, stage]);
+  const rows = releaseChangeRows({
+    commits: releaseContentsCommits(facts.contents),
+    merged: flow.merged,
+    marks,
+  }).map((row) => {
     const mate = row.mateProjectId === undefined ? undefined : mates.get(row.mateProjectId);
     const mateName =
       mate?.name ??

@@ -1,14 +1,17 @@
 // @effect-diagnostics globalDate:off -- fixture timestamps are offsets from a fixed instant, not wall-clock reads.
 import { describe, expect, it } from "vite-plus/test";
 
+import { releaseContentsCommits } from "./projectFlow.ts";
 import { compareForRelease, type FlowReleaseRow, type ReleaseGate } from "./release.ts";
 import {
   holdReleaseFacts,
   releaseFacts,
   releaseFollows,
+  releaseStageMarks,
   releaseStep,
   type ReleaseFacts,
 } from "./releaseFacts.ts";
+import type { ServiceChanges, StageStandings } from "./stageMarks.ts";
 import {
   releaseReview,
   rollbackReview,
@@ -21,24 +24,23 @@ const HEAD = ["5e1d", "0a7c", "93b2", "e46f", "1d08", "c7a5", "2b9e", "f031", "6
   "",
 );
 
-interface Row {
-  readonly key: string;
-  readonly title: string;
-}
-const ONE_CHANGE: ReadonlyArray<Row> = [{ key: HEAD, title: "#1 Shelf labels for the tins" }];
+const ONE_CHANGE: ReadonlyArray<ServiceChanges> = [
+  { service: "app", commits: [{ sha: HEAD, subject: "Shelf labels for the tins" }] },
+];
 
 /** What the project reads at one moment: the release that runs, what waits, what each service runs. */
 interface Moment {
   readonly live: string | undefined;
-  readonly rows: ReadonlyArray<Row>;
+  readonly contents: ReadonlyArray<ServiceChanges>;
   readonly production: string | undefined;
 }
 
-function current(tag: string, moment: Moment): ReleaseFacts<Row> {
+function current(tag: string, moment: Moment): ReleaseFacts {
   return releaseFacts({
     tag,
     live: moment.live,
-    rows: moment.rows,
+    contents: moment.contents,
+    mainHeads: new Map([["app", HEAD]]),
     comparison: compareForRelease({
       candidate: new Map([["app", HEAD]]),
       production:
@@ -81,7 +83,7 @@ function row(
 
 /** The review as each step shows it, its tag followed and its facts held the way the dialog does. */
 function walk(steps: ReadonlyArray<Step>) {
-  let held: ReleaseFacts<Row> | undefined;
+  let held: ReleaseFacts | undefined;
   return steps.map((step) => {
     const follows = releaseFollows({
       made: step.made,
@@ -104,7 +106,7 @@ function walk(steps: ReadonlyArray<Step>) {
     const model = releaseReview({
       tag: facts.tag,
       gate,
-      changes: facts.rows.length,
+      changes: releaseContentsCommits(facts.contents).length,
       onStage: undefined,
       services: facts.services,
       replaces: facts.replaces,
@@ -152,9 +154,9 @@ describe("a finished release keeps the facts it was made with", () => {
     release(
       "v0.1.0",
       "v0.1.1",
-      { live: undefined, rows: ONE_CHANGE, production: undefined },
+      { live: undefined, contents: ONE_CHANGE, production: undefined },
       // After: production runs the new tag, and nothing waits for it.
-      { live: "v0.1.0", rows: [], production: HEAD },
+      { live: "v0.1.0", contents: [], production: HEAD },
     ),
   );
 
@@ -162,7 +164,7 @@ describe("a finished release keeps the facts it was made with", () => {
     "a first release, %s: the first release, one change, app redeploys",
     (_name, step) => {
       expect(step.model.meta.join(" · ")).toBe("the first release · 1 change");
-      expect(step.facts.rows).toEqual(ONE_CHANGE);
+      expect(step.facts.contents).toEqual(ONE_CHANGE);
       expect(step.facts.where).toEqual([{ service: "app", line: "redeploys from 5e1d0a7" }]);
       // There is nothing it replaced: no roll back is offered, least of all to itself.
       expect(step.model.ifWrong).toBeUndefined();
@@ -184,8 +186,8 @@ describe("a finished release keeps the facts it was made with", () => {
     release(
       "v0.1.1",
       "v0.1.2",
-      { live: "v0.1.0", rows: ONE_CHANGE, production: "4c3b2a1" },
-      { live: "v0.1.1", rows: [], production: HEAD },
+      { live: "v0.1.0", contents: ONE_CHANGE, production: "4c3b2a1" },
+      { live: "v0.1.1", contents: [], production: HEAD },
       [row("v0.1.0", "live")],
     ),
   );
@@ -208,9 +210,42 @@ describe("a finished release keeps the facts it was made with", () => {
   });
 });
 
+describe("a held release's changes follow the stage as it stands now", () => {
+  const [, , , released] = walk(
+    release(
+      "v0.1.0",
+      "v0.1.1",
+      { live: undefined, contents: ONE_CHANGE, production: undefined },
+      { live: "v0.1.0", contents: [], production: HEAD },
+    ),
+  );
+  const OLDER = HEAD.replace(/^5e1d/u, "0b2c");
+  const stage = (over: Partial<StageStandings>): StageStandings => ({
+    runs: new Map([["app", OLDER]]),
+    deploying: undefined,
+    failed: new Set(),
+    ...over,
+  });
+
+  it.each<[string, StageStandings | undefined, string]>([
+    ["no stage", undefined, "none"],
+    ["the stage deploys it", stage({ deploying: HEAD }), "deploying-on-stage"],
+    ["the stage runs it", stage({ runs: new Map([["app", HEAD]]) }), "on-stage"],
+    [
+      "its stage deploy failed",
+      stage({ runs: new Map([["app", HEAD]]), failed: new Set(["app"]) }),
+      "failed-on-stage",
+    ],
+  ])("released, %s: %s", (_name, standing, mark) => {
+    if (released === undefined) throw new Error("no released step");
+    expect(released.model.verdict.state).toBe("released");
+    expect(releaseStageMarks(released.facts, standing).get(HEAD)).toBe(mark);
+  });
+});
+
 describe("a release opened on its way follows its own tag to the end", () => {
-  const before: Moment = { live: undefined, rows: ONE_CHANGE, production: undefined };
-  const after: Moment = { live: "v0.1.0", rows: [], production: HEAD };
+  const before: Moment = { live: undefined, contents: ONE_CHANGE, production: undefined };
+  const after: Moment = { live: "v0.1.0", contents: [], production: HEAD };
   // Opened in another window, after a reload, or reopened: no press here, only the tag on its way.
   const onItsWay: Step = {
     name: "on its way",
@@ -279,9 +314,9 @@ describe("a release opened on its way follows its own tag to the end", () => {
 });
 
 describe("holdReleaseFacts", () => {
-  const before = current("v0.1.1", { live: "v0.1.0", rows: ONE_CHANGE, production: "4c3b2a1" });
-  const after = current("v0.1.1", { live: "v0.1.1", rows: [], production: HEAD });
-  const other = current("v0.1.2", { live: "v0.1.1", rows: ONE_CHANGE, production: HEAD });
+  const before = current("v0.1.1", { live: "v0.1.0", contents: ONE_CHANGE, production: "4c3b2a1" });
+  const after = current("v0.1.1", { live: "v0.1.1", contents: [], production: HEAD });
+  const other = current("v0.1.2", { live: "v0.1.1", contents: ONE_CHANGE, production: HEAD });
   const idle: ReviewPress = { kind: "idle" };
   const done: ReviewPress = { kind: "done" };
   const releasing: ReleaseOutcome = { kind: "releasing" };
@@ -290,11 +325,11 @@ describe("holdReleaseFacts", () => {
   it.each<
     [
       string,
-      ReleaseFacts<Row> | undefined,
-      ReleaseFacts<Row>,
+      ReleaseFacts | undefined,
+      ReleaseFacts,
       ReviewPress,
       ReleaseOutcome,
-      ReleaseFacts<Row> | undefined,
+      ReleaseFacts | undefined,
     ]
   >([
     [

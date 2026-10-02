@@ -16,9 +16,15 @@
 
 import type { FlowReleaseRow, ReleaseComparison } from "./release.ts";
 import type { ReleaseOutcome, ReviewPress } from "./reviewVerdict.ts";
+import {
+  stageMarks,
+  type ServiceChanges,
+  type StageMark,
+  type StageStandings,
+} from "./stageMarks.ts";
 
-/** A release's own facts, as the review shows them. `Row` is the surface's change row. */
-export interface ReleaseFacts<Row> {
+/** A release's own facts, as the review shows them. */
+export interface ReleaseFacts {
   /** The version it tags. */
   readonly tag: string;
   /**
@@ -26,8 +32,10 @@ export interface ReleaseFacts<Row> {
    * goes. `undefined` for the first release.
    */
   readonly replaces: string | undefined;
-  /** What goes out, one row per change. */
-  readonly rows: ReadonlyArray<Row>;
+  /** What goes out, service by service (`releaseContents`). */
+  readonly contents: ReadonlyArray<ServiceChanges>;
+  /** Where each service's `main` was, which orients its commits (`stageMarks`). */
+  readonly mainHeads: ReadonlyMap<string, string> | undefined;
   /** Where: per service, what it redeploys from, or what it stays on. */
   readonly where: ReadonlyArray<{ readonly service: string; readonly line: string }>;
   /** The production services that redeploy — every one, when the comparison moves none. */
@@ -35,21 +43,23 @@ export interface ReleaseFacts<Row> {
 }
 
 /** The facts as the project reads them now. */
-export function releaseFacts<Row>(input: {
+export function releaseFacts(input: {
   readonly tag: string;
   /** The release production runs now. */
   readonly live: string | undefined;
-  readonly rows: ReadonlyArray<Row>;
+  readonly contents: ReadonlyArray<ServiceChanges>;
+  readonly mainHeads: ReadonlyMap<string, string> | undefined;
   /** Per service, `main` against production (`compareForRelease`). */
   readonly comparison: ReadonlyArray<ReleaseComparison>;
   /** Production's services, for a release that moves none of them. */
   readonly productionServices: ReadonlyArray<string>;
-}): ReleaseFacts<Row> {
+}): ReleaseFacts {
   const moving = input.comparison.filter((row) => row.changed).map((row) => row.service);
   return {
     tag: input.tag,
     replaces: input.live,
-    rows: input.rows,
+    contents: input.contents,
+    mainHeads: input.mainHeads,
     where: input.comparison.map((row) => ({
       service: row.service,
       line: row.changed
@@ -179,4 +189,17 @@ export function releaseStep<F extends { readonly tag: string }>(input: {
   const current = input.read(follows.tag);
   const held = holdReleaseFacts({ held: input.held, current, press, outcome });
   return { outcome, held, facts: held ?? current };
+}
+
+/**
+ * Where each change the release carries stands on the stage that follows `main`, keyed by the
+ * lower-case sha: the held changes, against the stage as it stands now. The changes are the
+ * release's; the stage keeps moving after the press — a change released while the stage was still
+ * deploying it is on stage, or failed there, later.
+ */
+export function releaseStageMarks(
+  facts: Pick<ReleaseFacts, "contents" | "mainHeads">,
+  stage: StageStandings | undefined,
+): ReadonlyMap<string, StageMark> {
+  return stageMarks({ contents: facts.contents, mainHeads: facts.mainHeads, stage });
 }
