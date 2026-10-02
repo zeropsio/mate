@@ -136,6 +136,39 @@ function sameBaseUrl(left: string, right: string): boolean {
   }
 }
 
+/** The tags of an answer the Mate gave about a session: it said something this client can act on. */
+const SESSION_ANSWER_TAGS: ReadonlySet<string> = new Set([
+  "RemoteEnvironmentAuthInvalidJsonError",
+  "EnvironmentRequestInvalidError",
+  "EnvironmentAuthInvalidError",
+  "EnvironmentScopeRequiredError",
+  "EnvironmentOperationForbiddenError",
+  "EnvironmentResourceNotFoundError",
+]);
+
+/**
+ * Whether a kept session's check failing is no word from its Mate — no answer in time, no answer
+ * at all, a server error — rather than an answer: a state this client cannot read, a refusal or a
+ * route it does not serve all say the session is not one this client can present.
+ */
+export function keptSessionUnanswered(cause: unknown): boolean {
+  if (typeof cause !== "object" || cause === null || !("_tag" in cause)) return true;
+  const tag = String(cause._tag);
+  if (tag === "RemoteEnvironmentAuthUndeclaredStatusError") {
+    return !("status" in cause) || typeof cause.status !== "number" || cause.status >= 500;
+  }
+  return !SESSION_ANSWER_TAGS.has(tag);
+}
+
+/** Kept sessions an exchange of this page got no word on: the next exchange of each mints. */
+const unansweredKept = new Set<string>();
+
+/** Whether the target's exchange presents a kept session first, past the mint pace. */
+function presentsKept(key: string): boolean {
+  const registration = keptSessions.read(key);
+  return registration !== null && !unansweredKept.has(registration.credential.token);
+}
+
 /**
  * The session an earlier load kept for this target, as one exchange presents it again: only at
  * the base URL it was opened at, and only once its Mate says it still holds it.
@@ -165,7 +198,12 @@ function keptDoorSession(
         },
         quiet,
       );
-      if (result._tag === "Failure") throw squashAtomCommandFailure(result);
+      if (result._tag === "Failure") {
+        const cause = squashAtomCommandFailure(result);
+        // An answer this client cannot use is not held: a throwaway opens a session it can.
+        if (!keptSessionUnanswered(cause)) return false;
+        throw cause;
+      }
       if (keptSessionHeld(result.value)) return true;
       // Live but short of a scope this client asks for now: ended, so a throwaway opens one.
       if (result.value.authenticated) endKeptSession(registration);
@@ -173,6 +211,11 @@ function keptDoorSession(
     },
     forget: () => {
       keptSessions.forget(key, registration.credential.token);
+    },
+    unanswered: unansweredKept.has(registration.credential.token),
+    answered: (answered) => {
+      if (answered) unansweredKept.delete(registration.credential.token);
+      else unansweredKept.add(registration.credential.token);
     },
   };
 }
@@ -354,7 +397,8 @@ export function webEnvironmentPorts(input: {
             }
           : answer;
       },
-      kept: (key) => keptSessions.read(key) !== null,
+      // A kept session its Mate gave no word on mints next time: that exchange waits on the pace.
+      kept: presentsKept,
       readDescriptor: async (origin, signal) =>
         descriptorFacts(
           await mateDescriptors.descriptor(zeropsMateBaseUrl(origin, servedApp()), signal),

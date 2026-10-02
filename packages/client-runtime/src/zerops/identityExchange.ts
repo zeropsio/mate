@@ -298,6 +298,10 @@ export interface KeptDoorSession<C> {
   }) => Promise<boolean>;
   /** Forgets the session: its Mate said it is not its own any more. */
   readonly forget: () => void;
+  /** An earlier exchange got no word on it: one more silence mints a throwaway after all. */
+  readonly unanswered: boolean;
+  /** Whether the Mate gave its word on it this time, held or ended. */
+  readonly answered: (answered: boolean) => void;
 }
 
 /**
@@ -325,9 +329,9 @@ async function keptSessionWord<C>(
  * The descriptor is read first, so a Mate that cannot answer for the person
  * (`zerops.identity = "failed"`), runs a server below the client floor or belongs to another
  * project costs no throwaway. A session kept from an earlier load is presented next, once its
- * Mate says it still holds it. A throwaway is minted only when no session is kept or the Mate ended
- * the kept one, which is forgotten; one the Mate gave no word on stays kept, and the exchange fails
- * retryable so the next one asks again.
+ * Mate says it still holds it. A throwaway is minted when no session is kept, when the Mate ended
+ * the kept one (forgotten), or when the Mate gave no word on it twice running: the first silence
+ * fails the exchange retryable so the next one asks again, and the session stays kept.
  */
 export async function exchangeAtDoor<C, E>(
   deps: DoorExchangeDeps<C, E>,
@@ -388,6 +392,7 @@ export async function exchangeAtDoor<C, E>(
       httpBaseUrl,
       environmentId: descriptor.environmentId,
     });
+    kept.answered(word === "held" || word === "ended");
     if (word === "held") {
       span.end({ outcome: "success", kept: true });
       return {
@@ -398,9 +403,9 @@ export async function exchangeAtDoor<C, E>(
       };
     }
     if (word === "ended") kept.forget();
-    else {
-      // A throwaway is minted only where no session is kept or the Mate ended the kept one: a
-      // Mate that gave no word on it is asked again, never handed a second session meanwhile.
+    else if (!kept.unanswered) {
+      // A Mate that gave no word on its kept session is asked once more before a second session is
+      // opened beside it; a second silence mints, and the session stays kept.
       const failure = exchangeFailureOf(word.noWord);
       return fail(
         failure.class === "retryable" ? failure : retryableFailure({ kind: "network" }),
