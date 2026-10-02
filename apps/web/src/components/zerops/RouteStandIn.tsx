@@ -12,6 +12,7 @@ import { useComposerDraftStore } from "~/composerDraftStore";
 import { standInForConversation } from "~/zerops/mateHandOver";
 import { standInToRestore, withStandIn, type StandInMemory } from "~/zerops/standInMemory";
 import { ComposerStandIn } from "../chat/ComposerStandIn";
+import { composerThreadControlKey, rememberedComposerControl } from "../chat/composerControlMemory";
 
 let memory: StandInMemory = new Map();
 const remember = (key: string, patch: Parameters<typeof withStandIn>[2]) => {
@@ -22,6 +23,8 @@ export function RouteStandIn({ threadRef }: { readonly threadRef: ScopedThreadRe
   const key = scopedThreadKey(threadRef);
   const draft = useComposerDraftStore((state) => state.getComposerDraft(threadRef)?.prompt ?? "");
   const [restore] = useState(() => standInToRestore(memory, key, Date.now()));
+  // The conversation's control as it last stood, so the toolbar has its look from the first frame.
+  const [control] = useState(() => rememberedComposerControl(composerThreadControlKey(key)));
   const [caret, setCaret] = useState(() => restore.caret ?? draft.length);
   const box = useRef<HTMLDivElement>(null);
   // Picked up where the last phase's stand-in went, in the same frame it is drawn.
@@ -59,6 +62,7 @@ export function RouteStandIn({ threadRef }: { readonly threadRef: ScopedThreadRe
       ref={box}
     >
       <ComposerStandIn
+        control={control ?? null}
         onType={(next) => {
           useComposerDraftStore.getState().setPrompt(threadRef, next.text);
           setCaret(next.caret);

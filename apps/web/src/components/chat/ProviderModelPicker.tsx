@@ -29,6 +29,13 @@ import {
   type ComposerModelControlLabel,
 } from "./ComposerModelControl.logic";
 import { shortcutLabelForCommand } from "../../keybindings";
+import {
+  composerControlKey,
+  rememberComposerControl,
+  rememberedComposerControl,
+  shownComposerControl,
+  type ComposerControlLook,
+} from "./composerControlMemory";
 
 /**
  * The composer's one quiet control (C4): the trigger says the model and its
@@ -63,6 +70,13 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
   /** The composer's one control: its label and menu (see `ProviderModelPickerComposer`). */
   composer?: ProviderModelPickerComposer;
   disabled?: boolean;
+  /**
+   * The agents' catalog is still read: the composer's control stands as it last looked for this
+   * model (`composerControlMemory`) rather than as the raw selection.
+   */
+  catalogPending?: boolean;
+  /** Also remembers the control's look under this key: its conversation's, for its stand-in. */
+  rememberAs?: string | undefined;
   terminalOpen?: boolean;
   open?: boolean;
   triggerClassName?: string;
@@ -130,6 +144,35 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
             modelName: triggerTitle,
             ...props.composer.traits,
           });
+
+  // The composer's control as it stands now, remembered for the next time the catalog is read.
+  const controlKey = composerControlKey(activeInstanceId, props.model);
+  const resolvedLook: ComposerControlLook | null =
+    props.composer !== undefined &&
+    activeEntry !== null &&
+    composerLabel !== null &&
+    selectedModel !== undefined &&
+    props.triggerLabelOverride === undefined
+      ? {
+          driverKind: activeEntry.driverKind,
+          displayName: activeEntry.displayName,
+          accentColor: activeEntry.accentColor,
+          label: composerLabel,
+        }
+      : null;
+  const resolvedLookText = resolvedLook === null ? null : JSON.stringify(resolvedLook);
+  const rememberAs = props.rememberAs;
+  useEffect(() => {
+    if (resolvedLookText === null) return;
+    const resolved = JSON.parse(resolvedLookText) as ComposerControlLook;
+    rememberComposerControl(controlKey, resolved);
+    if (rememberAs !== undefined) rememberComposerControl(rememberAs, resolved);
+  }, [controlKey, rememberAs, resolvedLookText]);
+  const look = shownComposerControl({
+    resolved: resolvedLook,
+    pending: props.catalogPending === true,
+    remembered: rememberedComposerControl(controlKey),
+  });
 
   const setIsMenuOpen = (open: boolean) => {
     props.onOpenChange?.(open);
@@ -220,7 +263,8 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
   );
 
   if (props.composer !== undefined) {
-    const text = composerLabel === null ? triggerLabel : composerModelControlText(composerLabel);
+    const shownLabel = look?.label ?? composerLabel;
+    const text = shownLabel === null ? triggerLabel : composerModelControlText(shownLabel);
     return (
       <Popover
         open={isMenuOpen}
@@ -239,12 +283,24 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
               className={cn("min-w-0 shrink", props.triggerClassName)}
               data-chat-provider-model-picker="true"
               data-composer-shortcut={props.composer.shortcuts}
-              disabled={props.disabled}
+              // A catalog still read is a beat, not a refusal: the control keeps its look,
+              // and the popover above stays shut until it is read.
+              disabled={props.disabled === true && props.catalogPending !== true}
               size="quiet"
             />
           }
         >
-          {activeEntry ? (
+          {look !== null ? (
+            <ProviderInstanceIcon
+              driverKind={look.driverKind}
+              displayName={look.displayName}
+              accentColor={look.accentColor}
+              showBadge={look === resolvedLook && showInstanceBadge}
+              className="size-3.5"
+              iconClassName={cn("size-3.5", props.activeProviderIconClassName)}
+              indicatorBackground="var(--contrast-input)"
+            />
+          ) : activeEntry ? (
             <ProviderInstanceIcon
               driverKind={activeEntry.driverKind}
               displayName={activeEntry.displayName}
@@ -257,16 +313,16 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
           ) : null}
           <Tooltip>
             <TooltipTrigger render={<span className="min-w-0 truncate" />}>
-              {composerLabel === null ? triggerTitle : composerLabel.model}
+              {shownLabel === null ? triggerTitle : shownLabel.model}
             </TooltipTrigger>
             <TooltipPopup side="top">{triggerTooltipContent}</TooltipPopup>
           </Tooltip>
-          {composerLabel === null || composerLabel.traits.length === 0 ? null : (
+          {shownLabel === null || shownLabel.traits.length === 0 ? null : (
             <span className="shrink-0 whitespace-nowrap">
-              {`· ${composerLabel.traits.join(" · ")}`}
+              {`· ${shownLabel.traits.join(" · ")}`}
             </span>
           )}
-          {composerLabel?.fast ? (
+          {shownLabel?.fast ? (
             <ZapIcon aria-label="Fast mode on" className="size-3.5 shrink-0 fill-current" />
           ) : null}
           {selectedModel?.isUnavailable ? (
@@ -348,3 +404,37 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
     </Popover>
   );
 });
+
+/**
+ * The composer's control as it stood last for a conversation (`composerControlMemory`), still and
+ * inert: drawn by the composer standing in before the conversation is read, so the toolbar has its
+ * one look from the first frame and the conversation's own control takes over in place.
+ */
+export function ComposerModelControlStill({ look }: { readonly look: ComposerControlLook }) {
+  return (
+    <ComposerControl
+      aria-hidden="true"
+      className="min-w-0 shrink"
+      data-composer-control-still=""
+      inert
+      size="quiet"
+      tabIndex={-1}
+    >
+      <ProviderInstanceIcon
+        driverKind={look.driverKind}
+        displayName={look.displayName}
+        accentColor={look.accentColor}
+        showBadge={false}
+        className="size-3.5"
+        iconClassName="size-3.5"
+        indicatorBackground="var(--contrast-input)"
+      />
+      <span className="min-w-0 truncate">{look.label.model}</span>
+      {look.label.traits.length === 0 ? null : (
+        <span className="shrink-0 whitespace-nowrap">{`· ${look.label.traits.join(" · ")}`}</span>
+      )}
+      {look.label.fast ? <ZapIcon className="size-3.5 shrink-0 fill-current" /> : null}
+      <ComposerControlChevron size="quiet" />
+    </ComposerControl>
+  );
+}
