@@ -441,5 +441,35 @@ describe("a change merged into main, or closed", () => {
           }
         }),
     );
+
+    it.effect(
+      "a change left in an application with no project is closed by the structure's writer; nobody merges it",
+      () =>
+        Effect.gen(function* () {
+          const { call, fake } = yield* startCore(true);
+          yield* untilHealth(call, "active");
+          const owner = yield* sessionFor(call, "door-owner");
+          const { appId } = yield* mateWithChange(call, fake, owner);
+          // The Mate leaves the application; its open change stays, in an application with none.
+          const left = yield* call("PUT", "/api/projects/P_MATE/app", {
+            session: owner,
+            body: { appId: null, kind: "mate" },
+          });
+          assert.strictEqual(left.status, 200);
+
+          const merged = yield* merge(call, owner, appId, 1, "a".repeat(40));
+          assert.deepStrictEqual(
+            [merged.status, merged.body],
+            [403, { code: "forbidden", reason: "not_app_developer" }],
+          );
+          const closed = yield* call("POST", `/api/apps/${appId}/changes/appdev/1/close`, {
+            session: owner,
+          });
+          assert.deepStrictEqual(
+            [closed.status, (closed.body as { readonly state: string }).state],
+            [200, "closed"],
+          );
+        }),
+    );
   });
 });
