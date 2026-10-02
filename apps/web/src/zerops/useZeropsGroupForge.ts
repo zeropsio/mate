@@ -199,10 +199,10 @@ export function useZeropsGroupForge(input: {
     });
     return () => timers.forEach(clearTimeout);
   }, [checking, invalidate]);
-  // A merge made in another window reaches this one within a watch tick, not the minute's: while
-  // a group has an open pull request its org's listing is looked at every `PULL_WATCH_MS`, and a
-  // repository whose open counter moved is read again (`forge/pullWatch.ts`). A group with none
-  // open costs nothing more, and the clock stops while no group has one.
+  // A merge made in another window reaches this one sooner than the minute's read: every
+  // `PULL_WATCH_MS` one org with an open pull request that moved lately is listed, in turn, and a
+  // repository whose pull requests that listing dropped is read again (`forge/pullWatch.ts`). At
+  // most four listings a minute whatever the count, and the clock stops while nothing is open.
   const watched = useMemo(() => pullWatchGroups(input.groups, answers), [input.groups, answers]);
   const watching = watched.some((group) => group.openPulls > 0);
   const latestWatched = useRef(watched);
@@ -222,8 +222,6 @@ export function useZeropsGroupForge(input: {
       },
       moved: (groupId, repository) => invalidate(groupId, { kind: "repository", repository }),
     });
-    // The first look takes the counters the forge pass just read, from its listing.
-    void watch.tick(latestWatched.current);
     return startRefreshClock({
       refresh: () => void watch.tick(latestWatched.current),
       everyMs: PULL_WATCH_MS,
