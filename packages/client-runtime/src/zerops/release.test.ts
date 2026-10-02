@@ -404,8 +404,6 @@ describe("the one word beside a release's dot", () => {
   it.each([
     { verdict: "approved", word: "Approved" },
     { verdict: "refused", word: "Refused" },
-    { verdict: "pending", word: "Checking" },
-    { verdict: "unknown", word: undefined },
   ] as const)("says $word for $verdict", ({ verdict, word }) => {
     expect(releaseWord(verdict)).toBe(word);
   });
@@ -419,6 +417,8 @@ describe("shortCommit", () => {
 
 describe("a release's row", () => {
   const TAGGED = "2026-09-25T07:00:00Z";
+  const EARLIER = "2026-09-25T06:00:00Z";
+  const EARLIEST = "2026-09-25T05:00:00Z";
   const release = (
     tag: string,
     over: Partial<FlowRelease> & { readonly api?: string; readonly web?: string } = {},
@@ -433,7 +433,7 @@ describe("a release's row", () => {
         { service: "api", commit: api },
         { service: "web", commit: web },
       ],
-      taggedAt: undefined,
+      taggedAt: TAGGED,
       ...rest,
     };
   };
@@ -442,17 +442,22 @@ describe("a release's row", () => {
       ["api", api],
       ["web", web],
     ]);
-  const NONE_FAILED = new Map<string, string | undefined>();
+  const NONE_FAILED = new Map<string, string>();
 
   /** The newest-first list's rows, each told whether it is the one `releaseRunBy` names. */
   const rows = (
     releases: ReadonlyArray<FlowRelease>,
     production: ReadonlyMap<string, string>,
-    failed: ReadonlyMap<string, string | undefined> = NONE_FAILED,
+    failed: ReadonlyMap<string, string> = NONE_FAILED,
   ) => {
     const live = releaseRunBy(releases, production);
     return releases.map((entry, index) =>
-      releaseRow(entry, index, { production, failed, live: entry.tag === live }),
+      releaseRow(entry, index, {
+        production,
+        failed,
+        live: entry.tag === live,
+        newer: releases.slice(0, index),
+      }),
     );
   };
   const brief = (row: FlowReleaseRow) => ({
@@ -500,8 +505,8 @@ describe("a release's row", () => {
       ],
     },
     {
-      name: "a commit it lists failed its production deploy after the tag: Deploy failed",
-      releases: [release("v1.3.0", { taggedAt: TAGGED }), release("v1.2.0", { web: OLD })],
+      name: "a commit it lists failed its production deploy after it was made: Deploy failed",
+      releases: [release("v1.3.0"), release("v1.2.0", { web: OLD, taggedAt: EARLIER })],
       production: runs(API, OLD),
       failed: new Map([[`web@${WEB}`, "2026-09-25T07:05:00Z"]]),
       expected: [
@@ -510,21 +515,13 @@ describe("a release's row", () => {
       ],
     },
     {
-      name: "a failure with no tag time to measure it against: Deploy failed",
-      releases: [release("v1.3.0", { verdict: "unknown" }), release("v1.2.0", { web: OLD })],
-      production: runs(API, OLD),
-      failed: new Map([[`web@${WEB}`, undefined]]),
-      expected: [
-        { tag: "v1.3.0", standing: "deploy-failed", word: "Deploy failed", rollBack: false },
-        { tag: "v1.2.0", standing: "live", word: "Live", rollBack: false },
-      ],
-    },
-    {
-      name: "an older release with no tag time lists the failed commit: its failure is the newest's",
+      // HQ deploys production to the newest release only: an older one listing the same commit
+      // did not fail with it.
+      name: "an older release lists the failed commit: its failure is the newest's that lists it",
       releases: [
-        release("v1.4.0", { taggedAt: TAGGED }),
-        release("v1.3.0", { web: OLD }),
-        release("v1.2.0"),
+        release("v1.4.0"),
+        release("v1.3.0", { web: OLD, taggedAt: EARLIER }),
+        release("v1.2.0", { taggedAt: EARLIEST }),
       ],
       production: runs(API, OLD),
       failed: new Map([[`web@${WEB}`, "2026-09-25T07:05:00Z"]]),
@@ -535,8 +532,8 @@ describe("a release's row", () => {
       ],
     },
     {
-      name: "a failure posted before the tag belongs to an earlier release of the commit",
-      releases: [release("v1.3.0", { taggedAt: TAGGED }), release("v1.2.0", { web: OLD })],
+      name: "a failure posted before it was made belongs to an earlier release of the commit",
+      releases: [release("v1.3.0"), release("v1.2.0", { web: OLD, taggedAt: EARLIER })],
       production: runs(API, OLD),
       failed: new Map([[`web@${WEB}`, "2026-09-25T06:55:00Z"]]),
       expected: [
@@ -545,15 +542,8 @@ describe("a release's row", () => {
       ],
     },
     {
-      name: "a failure whose time is not read does not outlast a tag whose time is",
-      releases: [release("v1.3.0", { taggedAt: TAGGED })],
-      production: runs(API, OLD),
-      failed: new Map([[`web@${WEB}`, undefined]]),
-      expected: [{ tag: "v1.3.0", standing: undefined, word: "Approved", rollBack: false }],
-    },
-    {
       name: "a failed commit production runs anyway is not what failed",
-      releases: [release("v1.3.0", { taggedAt: TAGGED }), release("v1.2.0", { web: OLD })],
+      releases: [release("v1.3.0"), release("v1.2.0", { web: OLD, taggedAt: EARLIER })],
       production: runs(OLD, WEB),
       failed: new Map([[`web@${WEB}`, "2026-09-25T07:05:00Z"]]),
       expected: [
@@ -569,7 +559,7 @@ describe("a release's row", () => {
         release("v1.2.0"),
       ],
       production: runs(API, WEB),
-      failed: new Map([[`web@${OLD}`, undefined]]),
+      failed: new Map([[`web@${OLD}`, "2026-09-25T07:05:00Z"]]),
       expected: [
         { tag: "v1.4.0", standing: undefined, word: "Refused", rollBack: false },
         { tag: "v1.3.0", standing: undefined, word: "Refused", rollBack: false },
@@ -577,17 +567,7 @@ describe("a release's row", () => {
       ],
     },
     {
-      name: "one the broker still judges reads Checking and offers no roll-back",
-      releases: [release("v1.3.0", { verdict: "pending", web: OLD }), release("v1.2.0")],
-      production: runs(API, WEB),
-      failed: NONE_FAILED,
-      expected: [
-        { tag: "v1.3.0", standing: undefined, word: "Checking", rollBack: false },
-        { tag: "v1.2.0", standing: "live", word: "Live", rollBack: false },
-      ],
-    },
-    {
-      name: "production runs none of them: every row keeps the broker's word",
+      name: "production runs none of them: every row keeps HQ's word",
       releases: [release("v1.3.0"), release("v1.2.0", { api: OLD })],
       production: new Map<string, string>(),
       failed: NONE_FAILED,
@@ -602,7 +582,7 @@ describe("a release's row", () => {
 
   it("says which of its commits failed, on which service, and nothing for any other row", () => {
     const [failed, live] = rows(
-      [release("v1.3.0", { taggedAt: TAGGED }), release("v1.2.0", { web: OLD })],
+      [release("v1.3.0"), release("v1.2.0", { web: OLD, taggedAt: EARLIER })],
       runs(API, OLD),
       new Map([[`web@${WEB}`, "2026-09-25T07:05:00Z"]]),
     );
@@ -731,7 +711,7 @@ describe("a release in flight", () => {
   const at = (minutes: number) => Date.parse(TAGGED) + minutes * 60_000;
   const newest = {
     tag: "v0.1.3",
-    verdict: "pending" as const,
+    verdict: "approved" as const,
     entries: [
       { service: "api", commit: API },
       { service: "web", commit: WEB },
@@ -745,29 +725,15 @@ describe("a release in flight", () => {
 
   it.each([
     {
-      name: "Release is not offered while the newest release tag is pending and production does not run it yet",
+      name: "Release is not offered while production does not run the newest release yet",
       release: newest,
       production: notYet,
       nowMs: at(2),
       inFlight: "v0.1.3",
     },
     {
-      name: "an approved tag production does not run yet is still in flight",
-      release: { ...newest, verdict: "approved" as const },
-      production: notYet,
-      nowMs: at(2),
-      inFlight: "v0.1.3",
-    },
-    {
-      name: "a tag the broker has not spoken about yet is in flight",
-      release: { ...newest, verdict: "unknown" as const },
-      production: notYet,
-      nowMs: at(0),
-      inFlight: "v0.1.3",
-    },
-    {
-      name: "a tag production runs is done",
-      release: { ...newest, verdict: "approved" as const },
+      name: "a release production runs is done",
+      release: newest,
       production: new Map([
         ["api", API],
         ["web", WEB],
@@ -776,24 +742,17 @@ describe("a release in flight", () => {
       inFlight: undefined,
     },
     {
-      name: "Release is offered again after the in-flight release failed",
+      name: "Release is offered again over a release HQ refused",
       release: { ...newest, verdict: "refused" as const },
       production: notYet,
       nowMs: at(2),
       inFlight: undefined,
     },
     {
-      name: "a tag older than 30 minutes with no final state stops counting",
+      name: "a release older than 30 minutes production still does not run stops counting",
       release: newest,
       production: notYet,
       nowMs: at(31),
-      inFlight: undefined,
-    },
-    {
-      name: "a tag whose time is not read is not held in flight",
-      release: { ...newest, taggedAt: undefined },
-      production: notYet,
-      nowMs: at(2),
       inFlight: undefined,
     },
     {
@@ -883,6 +842,7 @@ describe("a production whose version names spell short shas", () => {
       production: RUNS,
       failed: new Map([[`api@${short(OLD)}`, "2026-09-30T10:05:00Z"]]),
       live: false,
+      newer: [],
     });
     expect(row.standing).toBe("deploy-failed");
   });

@@ -713,7 +713,7 @@ describe("releaseFailureOf — the release that did not go through, newer than w
     detail: undefined,
     line: "app 3f9c1b2",
     entries: [],
-    taggedAt: undefined,
+    taggedAt: "2026-09-25T07:00:00Z",
     standing: undefined,
     word: "Approved",
     rollBack: false,

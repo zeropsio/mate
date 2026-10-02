@@ -970,12 +970,6 @@ describe("releaseRowTone", () => {
     ["a release whose deploy failed", { verdict: "approved", standing: "deploy-failed" }, "failed"],
     ["an approved release", { verdict: "approved", standing: undefined }, "ok"],
     ["a refused release", { verdict: "refused", standing: undefined }, "failed"],
-    ["a release still being judged", { verdict: "pending", standing: undefined }, "busy"],
-    [
-      "a release the broker has not spoken on",
-      { verdict: "unknown", standing: undefined },
-      undefined,
-    ],
   ] as const)("colours %s by where it stands first", (_case, release, tone) => {
     expect(releaseRowTone(release)).toBe(tone);
   });

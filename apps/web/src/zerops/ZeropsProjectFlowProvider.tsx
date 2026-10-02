@@ -407,6 +407,7 @@ function projectFlow(
       production: sides.production,
       failed: sides.failed,
       live: entry.tag === liveTag,
+      newer: releaseList.slice(0, index),
     }),
   );
   // Until HQ's releases, its repositories and the recipe are read, nothing is known to release:

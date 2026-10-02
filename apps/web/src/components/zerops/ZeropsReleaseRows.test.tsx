@@ -41,23 +41,24 @@ const release = (tag: string, overrides: Partial<FlowRelease> = {}): FlowRelease
   detail: undefined,
   line: `app ${tag}-sha`,
   entries: [{ service: "app", commit: RUNS }],
-  taggedAt: undefined,
+  taggedAt: "2026-09-25T07:00:00Z",
   ...overrides,
 });
 
 const PRODUCTION: ReadonlyMap<string, string> = new Map([["app", RUNS]]);
-const NO_FAILURES: ReadonlyMap<string, string | undefined> = new Map();
+const NO_FAILURES: ReadonlyMap<string, string> = new Map();
 
 /** The row as client-runtime words it: the component only draws it. */
 const row = (
   from: FlowRelease,
   index: number,
-  options: { live?: boolean; failed?: ReadonlyMap<string, string | undefined> } = {},
+  options: { live?: boolean; failed?: ReadonlyMap<string, string> } = {},
 ): FlowReleaseRow =>
   releaseRow(from, index, {
     production: PRODUCTION,
     failed: options.failed ?? NO_FAILURES,
     live: options.live ?? false,
+    newer: [],
   });
 
 const LIVE = row(release("v1.2.0"), 0, { live: true });
@@ -68,7 +69,7 @@ const EARLIER = row(
   1,
 );
 const DEPLOY_FAILED = row(release("v1.3.0", { entries: [{ service: "app", commit: BROKE }] }), 0, {
-  failed: new Map([[`app@${BROKE}`, undefined]]),
+  failed: new Map([[`app@${BROKE}`, "2026-09-25T07:05:00Z"]]),
 });
 const REFUSED = row(
   release("v1.4.0", { verdict: "refused", detail: "The build of app failed." }),

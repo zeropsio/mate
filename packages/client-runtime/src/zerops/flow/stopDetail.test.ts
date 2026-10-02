@@ -863,7 +863,7 @@ describe("stopFailedDeploy", () => {
     detail: undefined,
     line: "",
     entries: [],
-    taggedAt: undefined,
+    taggedAt: "2026-09-25T07:00:00Z",
     standing: undefined,
     word: "Approved",
     rollBack: false,

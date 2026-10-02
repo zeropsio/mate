@@ -290,10 +290,10 @@ const releases = (
                       : commit,
                   })),
               ],
-        taggedAt: undefined,
+        taggedAt: new Date(NOW - (index + 1) * 3_600_000).toISOString(),
       },
       index,
-      { production: running, failed: new Map(), live: index === 0 },
+      { production: running, failed: new Map(), live: index === 0, newer: [] },
     ),
   );
 
