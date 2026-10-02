@@ -4292,79 +4292,152 @@ code {
   font-variant-numeric: tabular-nums;
   color: var(--color-foreground);
 }
-/* Several at once — how many on the line, and one line each under it — and a
-   line opened to the whole of what runs: the face, the first words and the
-   clock, each one 20 px line, keep the places they had on one line, and the
-   rest grows under them. */
-.run-now:is([data-run-now="several"], [data-open]) {
-  align-items: start;
+/* p35/livecard */
+/* The live slot, the card's foot while the run goes on (pass 35): what the
+   Mate is doing this moment, each thing as the row it becomes — the same
+   bubble, inks and caps — under a hairline 16 px under the history, its rows
+   16 px under it. The Mate's face stands in the 28 px column and the run's
+   one clock on the right edge, both on the first row's first line, moving
+   with it as the first row changes. Heading the card, nothing above it yet,
+   it has no hairline. */
+.run-slot {
+  position: relative;
+  margin-top: 16px;
+  padding: 16px 0 4px;
+  border-top: 1px solid color-mix(in oklab, var(--color-foreground) 8%, transparent);
 }
-.run-now-several > li {
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-  font-size: 13px;
+.run-slot:first-child {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: 0;
 }
-.run-now-several .run-now-verb {
-  font-weight: 400;
-  color: var(--color-muted-foreground);
-}
-/* The words, where there is more than their one line holds (D4): a quiet
-   chevron after them, turning over as they open in place. */
-.run-now-reveal {
+.run-slot-list {
   display: flex;
-  align-items: flex-start;
-  gap: 6px;
-  width: 100%;
   min-width: 0;
-  border-radius: 6px;
-  text-align: start;
-  cursor: pointer;
+  flex-direction: column;
+  gap: 12px;
 }
-.run-now-reveal > .run-now-head {
-  flex: 1 1 auto;
+.run-slot-face,
+.run-slot-clock {
+  position: absolute;
+  top: var(--run-slot-line, 26px);
+  translate: 0 -50%;
+  z-index: 1;
+  transition: top 240ms var(--ease-out-strong);
 }
-.run-now-reveal:focus-visible {
-  outline: 2px solid color-mix(in oklab, var(--color-ring) 70%, transparent);
-  outline-offset: 2px;
+.run-slot-face {
+  left: 0;
+  display: flex;
+  width: 28px;
+  justify-content: center;
 }
-.run-now-reveal-icon {
-  flex: none;
-  width: 14px;
-  height: 14px;
-  margin-top: 3px;
-  color: color-mix(in oklab, var(--color-muted-foreground) 55%, transparent);
-  transition:
-    color 150ms ease,
-    rotate 220ms cubic-bezier(0.23, 1, 0.32, 1);
-}
-.run-now-reveal:hover .run-now-reveal-icon {
-  color: var(--color-foreground);
-}
-.run-now-reveal[aria-expanded="true"] .run-now-reveal-icon {
-  rotate: 180deg;
-}
-.run-now-head-open,
-.run-now[data-open] .run-now-several > li {
-  overflow: visible;
-  white-space: normal;
-  overflow-wrap: anywhere;
-}
-/* A command's whole code under its line, as its call row shows it opened. */
-.run-now-script {
-  display: block;
-  margin-top: 4px;
-  font-family: var(--font-mono);
+.run-slot-clock {
+  right: 14px;
   font-size: 13px;
   line-height: 20px;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-foreground);
+}
+/* A row's right edge in the slot, where the clock stands on the first. */
+.run-slot-clock-room {
+  width: 36px;
+  flex: none;
+}
+/* A thought keeps the clock's room on its right, live and in the history
+   alike, so its plop never rewraps it — and "Show full thought" stands there.
+   Words to the person keep it on their first line only, while live. */
+[data-run-chat] [data-chat-bubble="thought"] {
+  padding-right: 52px;
+}
+.run-slot [data-chat-bubble="speech"]::before {
+  content: "";
+  float: right;
+  width: 40px;
+  height: 1lh;
+}
+/* Nothing standing in it: its words on the first line, as a call's. */
+.run-slot-filler {
+  display: flex;
+  min-height: 34px;
+  align-items: center;
+  gap: 8px;
+  padding-block: 7px;
+  font-size: 14px;
+  line-height: 20px;
+}
+/* What the slot says between things, muted: "Thinking", "Writing", a wait. */
+.run-slot-word {
+  font-weight: 500;
+  color: var(--color-muted-foreground);
+}
+/* "Thinking" between steps comes a moment late, so a quick gap between two
+   steps never flashes it (the delay is set where it is drawn). */
+.run-slot-later {
+  animation: run-fade 200ms ease both;
+}
+.run-slot-more {
+  padding-left: 36px;
+  font-size: 13px;
+  line-height: 20px;
   color: var(--color-muted-foreground);
 }
 @media (prefers-reduced-motion: reduce) {
-  .run-now-reveal-icon {
+  .run-slot-face,
+  .run-slot-clock {
     transition: none;
   }
+}
+
+/* A thought as it streams: its newest four lines, the history's cap, and a
+   fade at its top once its words run past them. */
+.run-thought-live {
+  display: flex;
+  max-height: 4lh;
+  flex-direction: column;
+  justify-content: flex-end;
+  overflow: hidden;
+}
+.run-thought-live[data-over] {
+  mask-image: linear-gradient(to bottom, transparent, currentColor 22px);
+}
+/* A thought past its four lines says so at its foot, over its last words. */
+.run-thought-more {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  padding-left: 30px;
+  background: linear-gradient(
+    to right,
+    transparent,
+    color-mix(in oklab, var(--color-foreground) 3%, var(--run-tray)) 26px
+  );
+  font-style: normal;
+  color: var(--color-muted-foreground);
+}
+[data-chat-disclose]:hover > .run-thought-more {
+  color: var(--color-foreground);
+}
+
+/* The record while the run goes on: once it holds its height, the history
+   and the slot share it, so the card's outer box stands still — a slot that
+   grows takes its room from the history, never from the page. */
+[data-run-chat][data-run-live] {
+  display: flex;
+  max-height: min(560px, 60svh);
+  flex-direction: column;
+}
+[data-run-chat][data-run-live] > .run-above {
+  display: flex;
+  min-height: 0;
+  flex: 0 1 auto;
+  flex-direction: column;
+}
+[data-run-chat][data-run-live] > .run-above > .run-scroll {
+  min-height: 0;
+  flex: 0 1 auto;
+}
+[data-run-chat][data-run-live] > .run-slot {
+  flex: none;
 }
 
 /* What runs alongside while the run goes on, and the result once it is over,
@@ -4428,7 +4501,7 @@ button.run-bar:focus-visible {
    is kept whether or not it shows, so nothing rewraps as the run outgrows it,
    and it keeps its own place as earlier lines are drawn above. */
 .run-scroll {
-  max-height: min(440px, 52svh);
+  max-height: min(560px, 60svh);
   margin: -2px;
   padding: 2px;
   overflow-y: auto;

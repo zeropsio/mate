@@ -3,7 +3,7 @@ import { emptyAgentPanelModel } from "@t3tools/client-runtime/state/subagentRunt
 import { act, type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { create, type ReactTestRenderer } from "react-test-renderer";
-import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 import type { ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
 
@@ -11,6 +11,7 @@ import type { WorkLogEntry } from "../../session-logic";
 import type { ChatMessage } from "../../types";
 import type { MessagesTimelineRow, RecordItem, RunStatus } from "./MessagesTimeline.logic";
 import { foldsLikeAMessage, RunChat } from "./RunChat";
+import { SLOT_MIN_SHOW_MS } from "./liveSlot.logic";
 import { forgetRunFolds, setRunFold } from "./runCard.logic";
 import {
   TimelineRowActivityCtx,
@@ -102,6 +103,11 @@ function command(id: string, text: string, extra: Partial<WorkLogEntry> = {}): W
 const LONG = Array.from({ length: 12 }, (_, index) => `Line ${index + 1} of what it thought.`).join(
   "\n",
 );
+/** A thought past its four lines at any width. */
+const LONG_THOUGHT = Array.from(
+  { length: 16 },
+  (_, index) => `Line ${index + 1} of what it thought, and why it matters here.`,
+).join("\n");
 const SCRIPT = [
   "cat > status.ts <<'EOF'",
   ...Array.from({ length: 14 }, (_, i) => `line ${i}`),
@@ -232,60 +238,6 @@ describe("RunChat", () => {
     // What merely happened is no one's bubble: a caption across the chat.
     expect(markup).toMatch(/<div[^>]*data-chat-kind="event"[^>]*>/);
     expect(markup).toContain("Context condensed");
-  });
-
-  // Every element of the chat is one bubble (the owner, 2026-09-28: "the
-  // design of every element has to be largely the same, differences subtle but
-  // obvious"): one round, 14 px in, 10 px down, at the prose size. Only the
-  // surface tells them apart — its words the fullest fill, a thought half of
-  // it, what it did the card's white in a hairline — and the mark each wears
-  // in the Mate's column, beside it rather than in it, so every bubble's words
-  // start on one edge.
-  // Five weights, strongest first (K14): what anyone said at the prose size in
-  // its bubble; what the Mate did as compact 13 px rows in a light outline;
-  // what it thought quietest, 13 px on the faintest fill.
-  it("draws its words at the prose size, its calls and thoughts quieter", () => {
-    const markup = draw(
-      record([
-        {
-          kind: "note",
-          key: "note:a1",
-          at: at(10),
-          message: message("a1", "assistant", "Found it."),
-        },
-        thought("r1", "The build script is missing."),
-        step(command("w1", "npm test", { callInput: { description: "Run the tests" } })),
-      ]),
-    );
-    const classes = (tag: string | undefined) => /class="([^"]*)"/u.exec(tag ?? "")?.[1] ?? "";
-    const [said, thought_] = bubbles(markup);
-    const card = /<div class="([^"]*)" data-chat-calls="true">/u.exec(markup)?.[1] ?? "";
-    expect(classes(said?.tag).split(" ")).toEqual(
-      expect.arrayContaining(["w-full", "rounded-2xl", "text-prose", "px-3.5", "py-2.5"]),
-    );
-    expect(classes(thought_?.tag).split(" ")).toEqual(
-      expect.arrayContaining(["w-full", "rounded-2xl", "text-line", "px-3", "py-2"]),
-    );
-    expect(card.split(" ")).toEqual(expect.arrayContaining(["w-full", "rounded-2xl"]));
-    // Its words wear its tint, lightly; the face beside them says who spoke.
-    expect(classes(said?.tag)).toContain("run-speech");
-    expect(markup).toContain("--run-speaker-tint:var(--zerops-mate-tint-sky)");
-    expect(markup).toMatch(
-      /<span class="flex h-\[1lh\] items-center"><svg[^>]*class="[^"]*size-5[^"]*"[^>]*data-mate-face-tint="sky"/u,
-    );
-    expect(classes(thought_?.tag)).toContain("bg-foreground/3");
-    // Outlined on the tray, never filled: the composer keeps the only white.
-    expect(card).toContain("ring-1 ring-foreground/9");
-    expect(card).not.toContain("bg-card");
-    // Each mark stands in the Mate's column, out of its bubble.
-    const column = (line: string, icon: string) =>
-      new RegExp(
-        `<span aria-hidden="true" class="w-7 shrink-0 flex justify-center ${line}"><span class="flex h-\\[1lh\\] items-center"><svg[^>]*lucide-${icon}`,
-        "u",
-      );
-    expect(markup).toMatch(column("pt-2 text-line", "asterisk"));
-    expect(markup).toMatch(column("pt-1\\.75 text-line", "square-terminal"));
-    expect(markup).not.toMatch(/data-chat-bubble="speech"[^>]*>\s*<span aria-hidden/u);
   });
 
   // Open, the card is one scroll holding everything the run said and did
@@ -456,7 +408,6 @@ describe("RunChat", () => {
     expect(markup).toMatch(
       /data-chat-bubble="speech" data-chat-kind="question"><p[^>]*>Should \/status be public\?</u,
     );
-    expect(markup).toMatch(/<li class="[^"]*-mt-1\.5[^"]*" data-chat-row="true">/u);
     // Its answer stands nowhere else: whole, never cut to a line.
     expect(markup).toMatch(/<p class="[^"]*whitespace-pre-wrap[^"]*" data-chat-kind="person">/u);
     expect(markup).not.toMatch(/<p class="[^"]*truncate[^"]*" data-chat-kind="person">/u);
@@ -480,8 +431,9 @@ describe("RunChat", () => {
     expect(markup).toMatch(/<span class="sr-only" role="status">Thinking<\/span>/u);
   });
 
-  // Several at once (K10): how many on the line, a still line each under it.
-  it("says several steps at once by how many, a still line each under it", () => {
+  // Several at once (pass 35): a row each in the live slot, three at most,
+  // then how many more run.
+  it("draws several steps at once as a row each, three at most, then how many more", () => {
     const runningCommand = (id: string, text: string) =>
       stepOf(
         command(id, text, { toolLifecycleStatus: "inProgress", updatedAt: undefined as never }),
@@ -492,15 +444,24 @@ describe("RunChat", () => {
         status: status(),
         now: {
           kind: "step",
-          step: runningCommand("w3", "pnpm lint"),
-          others: [runningCommand("w1", "pnpm build"), runningCommand("w2", "pnpm test")],
+          step: runningCommand("w4", "pnpm typecheck"),
+          others: [
+            runningCommand("w1", "pnpm build"),
+            runningCommand("w2", "pnpm test"),
+            runningCommand("w3", "pnpm lint"),
+          ],
         },
       }),
     );
-    expect(markup).toContain('data-run-now="several"');
-    expect(markup).toContain(">Running 3 commands<");
-    expect(markup.match(/<li><span class="run-now-verb run-now-mono">/g)).toHaveLength(3);
-    expect(markup).not.toContain("data-run-shimmer");
+    expect(bubbles(markup).map(({ kind }) => kind)).toEqual([
+      "step:command",
+      "step:command",
+      "step:command",
+    ]);
+    expect(markup).toContain(">+1 more running<");
+    // Each one running sweeps; none wears a chevron or a time of its own.
+    expect(markup.match(/data-run-shimmer/g)).toHaveLength(3);
+    expect(markup).not.toContain("data-chat-disclose");
   });
 
   // Blue means something to click (S3): the run's clock counts in ink, and a
@@ -574,22 +535,21 @@ describe("RunChat", () => {
   // A thought is the quietest thing in the card: two lines of it, and where
   // it runs on, the thought itself is the way to the rest (D4) — never a
   // scroll inside the card.
-  it("clamps a thought to two lines, the whole of it a click away", () => {
-    const long = draw(record([thought("r1", LONG)]));
-    expect(long).toMatch(/<span class="line-clamp-2 italic" data-chat-folded="true">/u);
+  // One cap, live and in the history (pass 35): four lines, read from the
+  // head, "Show full thought" past them.
+  it("says Show full thought on a thought past its four lines, and nothing on a short one", () => {
+    const long = draw(record([thought("r1", LONG_THOUGHT)]));
+    expect(long).toContain(">Show full thought<");
     expect(long).toMatch(/<button aria-expanded="false" aria-label="[^"]*Show the whole thought"/u);
-    expect(long).not.toMatch(
-      /data-chat-bubble="thought"[^>]*>(?:(?!data-chat-row).)*overflow-y-auto/su,
-    );
     const short = draw(record([thought("r1", "The route and the check disagree.")]));
-    expect(short).toContain('<span class="line-clamp-2 italic">The route and the check disagree.');
-    expect(short).not.toContain("Show the whole thought");
+    expect(short).toContain("The route and the check disagree.");
+    expect(short).not.toContain("Show full thought");
   });
 
   it("folds what the chat opens onto past the limits, and leaves the rest whole", () => {
     const markup = draw(
       record([
-        thought("r1", LONG),
+        thought("r1", LONG_THOUGHT),
         thought("r2", "Short."),
         { kind: "note", key: "note:a1", at: at(10), message: message("a1", "assistant", LONG) },
       ]),
@@ -652,11 +612,11 @@ describe("RunChat", () => {
         },
       }),
     );
-    // Running, the command is the now line's: its words and code, not a row.
-    expect(running).not.toContain('data-chat-kind="step:command"');
-    expect(running).toContain(
-      '<span class="run-now-verb" data-run-shimmer="">Write the status route',
-    );
+    // Running, the command stands in the live slot as the row it becomes:
+    // its words sweeping, its code folded at the history's cap, nothing to open.
+    expect(bubbles(running).map(({ kind }) => kind)).toEqual(["step:command"]);
+    expect(running).toContain('data-chat-folded="true"');
+    expect(running).not.toContain(">Show all 16 lines<");
   });
 
   // The call running now is the card's "this, now": a light sweeps across
@@ -786,7 +746,8 @@ describe("RunChat", () => {
     const live = draw(
       record([], { live: true, now: { kind: "operation", operation: running }, status: status() }),
     );
-    expect(bubbles(live)).toEqual([]);
+    // Being taken, it stands in the live slot as the row it becomes.
+    expect(bubbles(live).map(({ kind }) => kind)).toEqual(["checks"]);
     expect(live).toContain(">Checking /health in the browser<");
     const done = draw(
       record([
@@ -811,33 +772,9 @@ describe("RunChat", () => {
   it("draws no scroll before anything is in the chat, so its status line stands alone", () => {
     const alone = draw(record([], { live: true, status: status() }));
     expect(alone).not.toContain("data-run-scroll");
-    expect(alone).not.toContain("<ol");
+    expect(alone).toContain(">Thinking<");
     const said = draw(record([thought("r1", "The route and the check disagree.")]));
     expect(said).toContain('data-run-scroll=""');
-    expect(said).toContain('<ol class="flex min-w-0 flex-col gap-3">');
-  });
-
-  // The Mate's column lines its bubbles up over the face at the chat's foot,
-  // and holds the marks that tell them apart: one grid for the whole card, a
-  // 28 px column 8 px off the bubbles (K1).
-  it("keeps the Mate's column beside every bubble, 8 px off it", () => {
-    const markup = draw(
-      record([
-        { kind: "note", key: "note:a1", at: at(10), message: message("a1", "assistant", "Hi.") },
-      ]),
-    );
-    // One container holds the chat's scroll and its status line, so both keep
-    // one gap; the scroll stands in the box it folds away in as the run settles.
-    expect(markup).toMatch(
-      /<div class="@container\/chat min-w-0" data-run-chat="true" style="[^"]*"><div class="run-above"><div [^>]*data-run-scroll=""[^>]*><ol /u,
-    );
-    const row =
-      /<li class="([^"]*)" data-chat-row="true"><span aria-hidden="true" class="([^"]*)"/u.exec(
-        markup,
-      );
-    expect(row?.[1]?.split(" ")).toContain("gap-2");
-    expect(row?.[1]).not.toContain("gap-2.5");
-    expect(row?.[2]?.split(" ").slice(0, 2)).toEqual(["w-7", "shrink-0"]);
   });
 
   // Two pages of one host are said by name, as one is; more by their count,
@@ -1202,63 +1139,6 @@ describe("RunChat, as the person uses it", () => {
     });
   });
 
-  // D4: what the now line holds is never out of reach while it runs — its
-  // one line opens to the whole of it in place: a script's every line, the
-  // thought so far; still one clock.
-  it("opens the now line to the whole of what runs, one clock still", () => {
-    const renderer = mount(
-      record([], {
-        live: true,
-        status: status(),
-        now: {
-          kind: "step",
-          step: stepOf(
-            command("w9", SCRIPT, {
-              callInput: { description: "Write the status route" },
-              toolLifecycleStatus: "inProgress",
-              updatedAt: undefined as never,
-            }),
-          ),
-        },
-      }),
-    );
-    const words = () =>
-      renderer.root.find(
-        (node) => node.type === "button" && node.props["data-run-now-words"] !== undefined,
-      );
-    expect(words().props["aria-expanded"]).toBe(false);
-    expect(JSON.stringify(renderer.toJSON())).not.toContain("line 13");
-    act(() => words().props.onClick());
-    expect(words().props["aria-expanded"]).toBe(true);
-    const shown = JSON.stringify(renderer.toJSON());
-    expect(shown).toContain("line 13");
-    expect(shown).toContain("EOF");
-    expect(
-      renderer.root.findAll((node) => node.props["data-work-line-clock"] !== undefined),
-    ).toHaveLength(1);
-  });
-
-  it("opens a thought on the now line to the whole of it so far", () => {
-    const thinking = "The app is a Hono server. So the page belongs on the server as its own route";
-    const renderer = mount(
-      record([], {
-        live: true,
-        status: status(),
-        now: {
-          kind: "thinking",
-          key: "thought:r9",
-          messages: [message("r9", "reasoning", thinking)],
-        },
-      }),
-    );
-    const words = renderer.root.find(
-      (node) => node.type === "button" && node.props["data-run-now-words"] !== undefined,
-    );
-    expect(JSON.stringify(renderer.toJSON())).not.toContain("The app is a Hono server.");
-    act(() => words.props.onClick());
-    expect(JSON.stringify(renderer.toJSON())).toContain(thinking);
-  });
-
   // A control that goes once pressed hands the focus on: the thought's way to
   // the rest to its "Show less" and back, the last "Show N earlier" to the
   // lines it drew — never to the page's body.
@@ -1332,6 +1212,7 @@ describe("RunChat, as the person uses it", () => {
   // mounted with nothing drew no box, the watch on its foot was never set,
   // and the scroll stood still as the run went on).
   it("follows its foot from the first line of a run that started empty", () => {
+    vi.useFakeTimers();
     const saved = (globalThis as { ResizeObserver?: unknown }).ResizeObserver;
     const list = { lines: true };
     // What each observer watches: the scroll's is the one on its list.
@@ -1374,6 +1255,9 @@ describe("RunChat, as the person uses it", () => {
           </Rows>,
         ),
       );
+      // Seen only once it returned, it stands its minimum in the live slot,
+      // then plops into the history: the scroll's first line.
+      act(() => vi.advanceTimersByTime(SLOT_MIN_SHOW_MS + 100));
       expect(heard).toHaveLength(1);
       box.scrollHeight = 900;
       box.clientHeight = 440;
@@ -1381,6 +1265,7 @@ describe("RunChat, as the person uses it", () => {
       expect(box.scrollTop).toBe(900);
     } finally {
       (globalThis as { ResizeObserver?: unknown }).ResizeObserver = saved;
+      vi.useRealTimers();
     }
   });
 

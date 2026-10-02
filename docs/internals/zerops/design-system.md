@@ -185,27 +185,34 @@ conversation's state) Fen lives here` (`ZeropsMateOnMap`, from the panel), and t
     px round with 16 px of room around its 18 px bubbles, 15 inside its 1 px ring (S4) — never
     white: the composer keeps the only white (S5); one grid (K1): a 28 px column of marks, the words
     8 px after it, and times, chevrons and the clock on one right edge 26 px in. Its lines stand 12
-    px apart in the order things happened, in five weights (K14), strongest first: the now line at
-    its foot (`NowLine`); what the Mate said, 14 px bubbles in its tint at 17 % (`.run-speech`, a
+    px apart in the order things happened, in five weights (K14), strongest first: the live slot at
+    its foot while it runs (`LiveSlot`), the worked line once it is over (`NowLine`); what the Mate said, 14 px bubbles in its tint at 17 % (`.run-speech`, a
     crewmate in its own) with its face as their mark; what the person said, their neutral bubble on
     their side — an answer to its question whole, 6 px under the question, a message sent into the
     run one line; what it did, compact 13 px rows in a 9 % outline, a run of calls one card with
-    hairlines between (`CallGroup`), each led by its kind's 16 px mark, a call that opens nothing
-    wearing no chevron; what it thought, the quietest, 13 px faint italics on a 3 % fill, two lines
-    of it that open whole on a click. A failure wears a red mark and "Failed" while it is still
+    hairlines between (`CallGroup`), each led by its kind's 16 px mark; what it thought, the
+    quietest, 13 px faint italics on a 3 % fill, four lines read from its head and "Show full
+    thought" past them. A control that opens is drawn only when what it opens shows something not
+    already on screen (`opensOnto`, one table-driven test, a row per control): a read, a search for
+    a pattern, a one-file edit, a command that printed nothing, one check with no picture, a helper
+    whose report is its state word, a to-do list of the one step its line names, a picture whose
+    file is gone — each is the whole of itself, no chevron. A failure wears a red mark and "Failed" while it is still
     broken and turns quiet once a later step undid it — the same command or the same words passing,
     a deploy of the same service going through (`recoveredFailures`) — never a pink row (K9); what
     merely happened (a context condensed, a change landed) is a caption between hairlines. Closed,
     the card is its summary line; open, one scroll holds every line (`RunScroll`, `.run-scroll`): at
-    most 440 px or 52 % of the window, opening at its foot, following what arrives while it stands
+    most 560 px or 60 % of the window — while the run goes on, the history and the live slot share
+    that height once the card holds it, so its outer box stands still and a slot that grows takes
+    its room from the history (`[data-run-live]`) — opening at its foot, following what arrives while it stands
     there and staying where the person scrolled or opened something once they leave it
     (`standsAtFoot`); a long run opens on its newest 40 lines and draws 200 more at a time as the
     scroll comes within 480 px of its top, the lines in view kept still (`reachesEarlier`); a 24 px
     fade at an edge says there is more past it. Inside it nothing is cut without a way to the rest
     (D4): a command folds at four lines and what it printed at twelve behind "Show all N lines", a
-    thought opens on a click, a long message of the Mate's folds behind "Show full message"; each
-    opens in place under the control, which stays where it was pressed. A live run's scroll stands
-    over its now line, a hairline between. As the run settles the scroll folds shut into the line —
+    thought past four lines opens on "Show full thought", a message of the Mate's past eight lines or
+    600 characters folds behind "Show full message", live and in the history alike, so a plop never
+    resizes a row; each opens in place under the control, which stays where it was pressed. A live
+    run's scroll stands over its live slot, a hairline between. As the run settles the scroll folds shut into the line —
     360 ms on the drawer's curve, the newest lines and the hairline the last to go, fading as it
     closes — while the line keeps its place in the list and becomes the summary, the result arriving
     under it; a person reading the work right then (scrolled up in it, or something in it opened)
@@ -213,44 +220,76 @@ conversation's state) Fen lives here` (`ZeropsMateOnMap`, from the panel), and t
     run under reduced motion, is simply folded (`runFoldOf`). Folded, its worked line stands alone,
     "Show work" easing the scroll open under a hairline over 220 ms. Only what arrives while the
     person watches rises in
+- **`LiveSlot`** — web
+  - _Anatomy (fixed part):_ the run's card's foot while the run goes on (pass 35, replacing the
+    one-line now line): what the Mate is doing this moment, drawn whole as the row it becomes in
+    the history — the same bubble, inks and caps (a command's code at four lines, a thought at four,
+    a message at eight) — 16 px of room and a hairline under the history, its rows 16 px under it.
+    Three things differ from the row: the Mate's face stands in the 28 px column on the first row's
+    first line (turning, looking up while it thinks and down while it writes, its "o" while it waits
+    on the person); a call's words carry a sweep while it runs; the run's one clock stands on the
+    first line's right edge, m:ss in ink (K3, S3), still while it waits on the person — a row gets
+    its time when it lands, and the slot wears no chevron: it shows the thing in full up to its cap.
+    What it holds is the newest batch's open calls (`stretchBatch`, the batch rule: a call started
+    after another returned belongs to a newer batch, and one an older batch left open is stale,
+    never shown); else the Mate's words as they stream (a thought as the thought, its newest four
+    lines with a fade at the top; its answer as "Writing"); else what it waits on from the person (a
+    question in its own words, the answer rising in under it; "Waiting for your approval"); else
+    "Thinking", muted, its word 300 ms late so a quick gap never flashes it. Several at once are a
+    row each, three at most, then "+N more running". An operation stands here only while its call
+    is open: a stand-up whose call returned runs on in the band. An item leaves as it ends once
+    shown 800 ms (a question 800 ms after its answer), and plops into the history: a translate on
+    the strong ease-out with a 1.5 px settle over 340 ms, its kind's mark fading in where the face
+    stood, the history's lines in view gliding where it moved them; under reduced motion it fades
+    in, in place. What starts and ends while an ended item stands never takes the slot: it joins
+    the history in that item's plop, so the slot is never more than 800 ms behind the Mate (the
+    board measured 0.7 s, against 4.7 s for a queue). What the record held when the slot was first
+    drawn is history at once: a reload never plops. One status span tells a screen reader its
+    words. Every state plays in the harness at `/design-live.html` (`?script=main|burst|stale|band|long`,
+    `?at=<s>`, `?speed=<x>`, `?theme=dark`)
+  - _States:_ a call · several calls · an operation it waits on · a thought streaming · a question
+    waiting · an item that ended, standing its minimum · thinking · writing · waiting for an
+    approval · condensing the context
+  - _Phrase source:_ `runCard.logic.ts` (`slotModelOf`, `nowLineOf`, `nowLineWords`,
+    `nowLineFace`); `liveSlot.logic.ts` (`slotOffer`, `slotSettle`, `slotHoldsIn`);
+    `MessagesTimeline.logic.ts` (`stretchBatch`, `liveActivity`); `@t3tools/shared/liveBatch`
+  - _Lands:_ pass 35
 - **`NowLine`** — web
-  - _Anatomy (fixed part):_ the run's card's foot, what the Mate is doing this moment (K10): 16 px
-    and a hairline under the chat, a 44 px line whose words stand 20 px from the hairline and 20 px
-    from whatever is under them — its face, the chat's 20 px, centred in the card's 28 px column
-    (turning, looking up while it thinks and down while it writes, its "o" while it waits on the
-    person), the words in 14 px, and the run's one clock on the right edge, m:ss in ink (K3, S3),
-    counting the Mate's own time and standing still while it waits on the person. The words are the
-    step itself while it runs — "Build the app `pnpm build`", "Reading `index.ts`", "Checking
-    /status in the browser" — its own time after them once it passes 30 s ("· 0:31"); several at
-    once are counted by their kind ("Running 3 commands") with a line each under the count, which
-    stands still as they end; thinking is "Thinking" and the latest of the thought in one muted
-    italic line; then "Waiting for your answer", "Waiting for your approval", "Writing" and the
-    dots, "Condensing the context". A step that ends lands in the chat above (a 320 ms rise) and the
-    line's words change in place, rising in over 260 ms. The line opens to the whole of what runs —
-    every line of a command, the thought so far — without moving its face, its first words or its
-    clock; one status span tells a screen reader its words. Once the run is over it is the worked
-    line: the face as the run left it, "Nova worked 1m 20s" and what the effort came to ("· 2
-    commands · 1 file read", "merged as #2 · …") — heading the card once its work has folded, with
-    "Show work" and "Hide work" on the right edge, its words 20 px under the card's top edge and no
-    hairline over them; at the foot of one a person keeps open to read
-  - _States:_ thinking · a step · a long step · several at once · waiting for an answer · waiting
-    for an approval · writing · condensing the context · worked
+  - _Anatomy (fixed part):_ the card's foot once the run is over — the worked line — and the line
+    of a run with no chat to end on (`RunLine`): 16 px and a hairline under the chat, a 44 px line
+    whose words stand 20 px from the hairline and 20 px from whatever is under them, its face
+    centred in the card's 28 px column, the words in 14 px. The worked line: the face as the run
+    left it, "Nova worked 1m 20s" and what the effort came to ("· 2 commands · 1 file read",
+    "merged as #2 · …") — heading the card once its work has folded, with "Show work" and "Hide
+    work" on the right edge (drawn only when the work shows something), its words 20 px under the
+    card's top edge and no hairline over them; at the foot of one a person keeps open to read. A run
+    with no chat says "Thinking", "Waiting for your approval" or "Condensing the context" here, with
+    the run's one clock; its words change in place, rising in over 180 ms. It never opens
+  - _States:_ worked · thinking · waiting for an approval · condensing the context
   - _Phrase source:_ `runCard.logic.ts` (`nowLineOf`, `nowLineWords`, `nowLineFace`, `workedWords`,
     `formatClock`); `runResult.logic.ts` (`runEffortWords`)
-  - _Lands:_ landed 2026-09-29 (pass 16); centred, its face 20 px, 2026-09-29 (pass 18)
+  - _Lands:_ landed 2026-09-29 (pass 16); centred, its face 20 px, 2026-09-29 (pass 18); the live
+    line became the live slot, pass 35
 - **`ConversationWorking`** — web
-  - _Anatomy (fixed part):_ what runs alongside the Mate while it works, under its chat, on a
-    hairline band in the card's grid: a status bar per thing that runs — a deploy (a segment per
+  - _Anatomy (fixed part):_ the band: what runs because of the Mate without the Mate waiting on it,
+    under its chat, on a hairline band in the card's grid — only what runs now (pass 35): a deploy,
+    import or stand-up whose call returned and runs on (one the Mate waits on is the live slot's),
+    helpers at work, background tasks, the to-do list in progress, a service in trouble. A bar that
+    ends shows how it ended for 800 ms, then its room eases shut (`useEndingsHeld`); a failure is
+    told once, as its row in the record, red until a later step undoes it, and the result lists
+    what is still broken. A status bar per thing — a deploy (a segment per
     step of its pipeline, the running one said in the Zerops GUI's sentence), a service in trouble,
     the to-do list, the helpers, the background tasks (a command sent to the background; a task
     tracking a command the Mate waits on is that command's step, never a bar) — its name one column
     in, its bar in its state's tones, where it is in words, and a figure (a time, a count) on the
     card's right edge; no icon: its name says what it is. Each running thing ticks in one place: its
-    bar, or the now line. A bar with more behind it opens it in place, under it (a deploy's card
+    bar, or the live slot's clock. A bar with more behind it opens it in place — the Background bar
+    only past one task, a deploy only once its card has steps, a log or a reason (`opensOnto`) — under it (a deploy's card
     headless with its build log, the list, each helper, each task), a chevron after its figure;
-    closing it gives the room back, and the bar pressed stays where it is. A batch deploy is a bar
-    per service (`splitBatchDeploy`). A check in the browser is no bar: while it runs it is the now
-    line's, and it lands in the chat as its row. Only what arrives after it was first drawn
+    closing it gives the room back, and the bar pressed stays where it is; a bar that no longer opens
+    closes with its chevron (`standsOpen`). A batch deploy is a bar per service
+    (`splitBatchDeploy`). A check in the browser is no bar: while it runs it is the live slot's, and
+    it lands in the chat as its row. Only what arrives after it was first drawn
     animates. It only grows while live; settling turns it into the result. After the turn, while
     work runs on (a helper, a background task, a watch loop), `ConversationAfterWork` keeps the bars
     at the conversation's bottom in a tray of the card's shape — a now line with its face and "Still
@@ -305,8 +344,8 @@ conversation's state) Fen lives here` (`ZeropsMateOnMap`, from the panel), and t
     background task, each in its state's tone, a running one stepped; a segment changes its colour
     in place as its step moves on, and the bar never moves
 - **`WorkStep`** — web
-  - _Anatomy (fixed part):_ one call of the Mate's, a row of the card of calls once it returned and
-    the now line's words while it runs: 13 px, its kind's 16 px mark in the card's column, its time
+  - _Anatomy (fixed part):_ one call of the Mate's, a row of the card of calls — drawn whole in the
+    live slot while it runs, plopping into the history once it returned and stood its minimum: 13 px, its kind's 16 px mark in the card's column, its time
     and, where it opens something, a chevron on the right edge. A command says what it is for — the
     call's own description (Claude Code writes one for every command) — then the code in mono, its
     shell wrapper (only where the quoted command is the whole call), its `cd … &&` and `NAME=…;`
@@ -318,8 +357,12 @@ conversation's state) Fen lives here` (`ZeropsMateOnMap`, from the panel), and t
     picture it looked at is the picture, opening the picture viewer. A failed call wears the red
     mark and "Failed" by its time while it is still broken, the muted mark once a later step undid
     it. What it printed or returned opens under it, folded past twelve lines behind "Show all N
-    lines". While it runs it says "Running" where its time will stand: the now line holds the one
-    clock. A command the runtime tracks as a task is that step — the task lends it its words and its
+    lines". It opens only onto more than its line says: a read, a search for a pattern alone, a
+    one-file edit and a command that printed nothing are the whole of themselves (`stepOutput`); an
+    edit of several files opens onto them, a search in a folder onto where it looked. A call that
+    never returned — its completion lost, a newer batch started — joins the record where it went
+    stale, with no time, and says "No result" once the run settles (`noResult`). In the history a
+    step still running says "Running" where its time will stand; the slot holds the one clock. A command the runtime tracks as a task is that step — the task lends it its words and its
     end and is no bubble or bar of its own; looks at pictures and edits one after another fold into
     one step ("4 edits")
 - **`StepGlyph`** — web

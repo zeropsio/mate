@@ -191,7 +191,8 @@ describe("what runs alongside the Mate", () => {
     { name: "apidev", opens: false },
     { name: "Tasks", opens: true },
     { name: "Helpers", opens: true },
-    { name: "Background", opens: true },
+    // One task: its row would say the bar's own title and time again (pass 35).
+    { name: "Background", opens: false },
   ])("opens $name's detail in place: $opens", ({ name, opens }) => {
     const bar = barsOf(render(DOCK, [INCIDENT])).find(({ label }) => label.startsWith(name));
     expect(bar?.opens).toBe(opens);

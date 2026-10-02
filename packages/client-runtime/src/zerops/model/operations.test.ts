@@ -1103,4 +1103,27 @@ describe("reduceZeropsOperations — the stand-up's two calls", () => {
       { kind: "standup", subject: "stage", phase: "running" },
     ]);
   });
+  // The live slot shows an operation only while the Mate waits on its call;
+  // once the call returned, what runs on is the band's (pass 35).
+  it("says when each call returned, and nothing for the one the Mate still waits on", () => {
+    const { operations } = reduceFrom([
+      {
+        id: "c1",
+        createdAt: "2026-09-01T00:00:00.000Z",
+        toolName: "zerops_standup",
+        status: "completed",
+        resultText: JSON.stringify({ standUp: "ready", services: [], next: "" }),
+      },
+      {
+        id: "c2",
+        createdAt: "2026-09-01T00:10:00.000Z",
+        toolName: "zerops_standup",
+        status: "inProgress",
+      },
+    ]);
+    expect(operations.map((operation) => operation.returnedAt)).toEqual([
+      "2026-09-01T00:00:00.000Z",
+      undefined,
+    ]);
+  });
 });

@@ -1161,7 +1161,9 @@ export type WorkLineFace = "working" | "idle" | "produced" | "failed" | "paused"
 export function operationLineWords(operation: ZeropsOperation): string {
   const voice = operation.voice.replace(/\.$/, "");
   const { subject, statusWord } = operation;
-  if (operation.kind === "error" || operation.phase === "running") return voice;
+  // A stand-up whose call returned says what it stood up while its builds run on.
+  const runsOn = operation.kind === "standup" && operation.returnedAt !== undefined;
+  if (operation.kind === "error" || (operation.phase === "running" && !runsOn)) return voice;
   const failed = operation.phase === "failed";
   switch (operation.kind) {
     case "verify": {
@@ -1214,6 +1216,14 @@ export function operationLineWords(operation: ZeropsOperation): string {
         ...(next.length === 0 ? [] : [`${namesInWords(next)} next`]),
       ].join(" · ");
     }
+    // "Done app" read oddly (pass 35): a process it followed to its end.
+    case "process":
+      if (failed) return `${subject}: ${statusWord.toLowerCase()}`;
+      return statusWord === "Done" ? `Followed ${subject}` : `${statusWord} ${subject}`;
+    // "Complete app" read oddly too: a set-up session stands its services up.
+    case "bootstrap":
+      if (failed) return `${subject}: ${statusWord.toLowerCase()}`;
+      return statusWord === "Complete" ? `Stood ${subject} up` : `${statusWord} ${subject}`;
     case "devServer":
       // What it came to, as its pill says it: "Running app" read as work
       // still going on, under a finished bar.

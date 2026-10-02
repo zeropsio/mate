@@ -17,11 +17,14 @@
  * leaves nothing behind. No persistence, no migration (same pattern as
  * ThreadPlanProgressService).
  *
- * The step follows the card's rule for its now line
- * (`MessagesTimeline.logic.ts` `liveActivity`): the newest call made since the
- * Mate last thought or spoke that still runs; else its words while they
- * stream; else thinking. A call it made before a thought is behind that
- * thought, however long it runs on.
+ * The step follows the card's rule for its live slot
+ * (`MessagesTimeline.logic.ts` `liveActivity`): the calls of the newest batch
+ * that still run; else its words while they stream; else thinking. A call it
+ * made before a thought is behind that thought, however long it runs on. The
+ * batch rule (`@t3tools/shared/liveBatch`): Claude waits for every call of a
+ * batch before it calls again, so a call that starts after another returned
+ * opens a newer batch, and a call an older batch left running lost its
+ * completion — it is dropped, never "Running" until the next thought.
  *
  * @module ThreadLiveStepService
  */
@@ -67,6 +70,8 @@ interface LiveState {
   readonly calls: ReadonlyArray<ThreadLiveCall>;
   /** What it does while none runs. */
   readonly between: "thinking" | "writing";
+  /** A call returned since the newest one started: the next call opens a newer batch. */
+  readonly returned: boolean;
   /** When what it is on began. */
   readonly since: string;
   /** The step as the shell carries it: the same value until it changes. */
@@ -89,7 +94,7 @@ function stateOf(
   between: LiveState["between"],
   since: string,
 ): LiveState {
-  return { calls, between, since, step: stepOf(calls, between, since) };
+  return { calls, between, since, returned: false, step: stepOf(calls, between, since) };
 }
 
 /** It turns to thinking or writing: a change of what it is on only if it was on something else. */
@@ -142,7 +147,10 @@ export function nextLiveState(
     case "call-running": {
       const index = state.calls.findIndex((call) => call.id === observation.call.id);
       if (index === -1) {
-        return stateOf([...state.calls, observation.call], state.between, state.since);
+        // A call after a return opens a newer batch: what the older left
+        // running lost its completion.
+        const batch = state.returned ? [] : state.calls;
+        return stateOf([...batch, observation.call], state.between, state.since);
       }
       const known = state.calls[index]!;
       const call = { ...observation.call, startedAt: known.startedAt };
@@ -151,12 +159,15 @@ export function nextLiveState(
       return { ...state, calls, step: stepOf(calls, state.between, state.since) };
     }
     case "call-ended": {
-      if (!state.calls.some((call) => call.id === observation.callId)) return state;
+      // A call returned — one it follows or not: the batch is done calling.
+      if (!state.calls.some((call) => call.id === observation.callId)) {
+        return state.returned || state.calls.length === 0 ? state : { ...state, returned: true };
+      }
       const calls = state.calls.filter((call) => call.id !== observation.callId);
       // The last call it was on ended: it thinks, from now.
       return calls.length === 0
         ? stateOf([], "thinking", observation.at)
-        : stateOf(calls, state.between, state.since);
+        : { ...stateOf(calls, state.between, state.since), returned: true };
     }
     case "thinking":
       return turnTo(state, "thinking", observation.at);

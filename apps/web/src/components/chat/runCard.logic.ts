@@ -12,6 +12,7 @@ import type { MateMarkState } from "@t3tools/shared/brand";
 
 import {
   browserCheckCaption,
+  checksStrip,
   devServerRunning,
   formatWorkDuration,
   operationLineWords,
@@ -199,6 +200,88 @@ export function nowLineOf(input: {
         : { kind: "step", step: now.step };
     case "operation":
       return { kind: "operation", operation: now.operation };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// The live slot
+// ---------------------------------------------------------------------------
+
+/** What the live slot says when no item stands in it. */
+export type SlotFiller =
+  | { readonly kind: "thinking" }
+  | { readonly kind: "writing" }
+  | { readonly kind: "condensing" }
+  | { readonly kind: "waiting"; readonly on: "answer" | "approval" };
+
+/**
+ * What the live slot holds (pass 35): what the Mate is doing this moment,
+ * each thing as the record item it becomes — the same key, so it plops into
+ * the history as itself — and what the slot says when nothing stands in it.
+ * A thought with no words yet is "Thinking", never an empty bubble.
+ */
+export interface SlotModel {
+  readonly live: ReadonlyArray<RecordItem>;
+  readonly filler: SlotFiller;
+}
+
+export function slotModelOf(input: {
+  readonly now: TurnHeaderActivity | null;
+  readonly answering: boolean;
+  readonly compacting: boolean;
+  readonly items: ReadonlyArray<RecordItem>;
+}): SlotModel {
+  const { now } = input;
+  if (input.compacting) return { live: [], filler: { kind: "condensing" } };
+  if (input.answering || now?.kind === "writing") return { live: [], filler: { kind: "writing" } };
+  const thinking: SlotModel = { live: [], filler: { kind: "thinking" } };
+  if (now === null) return thinking;
+  switch (now.kind) {
+    case "thinking":
+      return now.key !== null && now.messages.some((message) => message.text.trim().length > 0)
+        ? {
+            live: [
+              {
+                kind: "thought",
+                key: now.key,
+                at: now.messages[0]?.createdAt ?? "",
+                messages: now.messages,
+                durationMs: null,
+              },
+            ],
+            filler: thinking.filler,
+          }
+        : thinking;
+    case "waiting": {
+      const question =
+        now.key === undefined ? undefined : input.items.find((item) => item.key === now.key);
+      return question === undefined
+        ? { live: [], filler: { kind: "waiting", on: now.on } }
+        : { live: [question], filler: thinking.filler };
+    }
+    case "step":
+      return {
+        live: [...(now.others ?? []), now.step].map((step): RecordItem => ({
+          kind: "step",
+          key: `step:${step.key}`,
+          at: step.startedAt,
+          step,
+        })),
+        filler: thinking.filler,
+      };
+    case "operation": {
+      const op = now.operation;
+      const item: RecordItem =
+        op.kind === "browser"
+          ? {
+              kind: "strip",
+              key: `operation:${op.key}`,
+              at: op.anchorAt,
+              strip: checksStrip([op], true),
+            }
+          : { kind: "operation", key: `operation:${op.key}`, at: op.anchorAt, operation: op };
+      return { live: [item], filler: thinking.filler };
+    }
   }
 }
 

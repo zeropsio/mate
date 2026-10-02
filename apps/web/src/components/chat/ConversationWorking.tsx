@@ -47,10 +47,10 @@ import {
   detailLines,
   importLines,
   lineSegments,
-  opensTo,
   operationSubject,
   settledOperationWords,
 } from "./operationBar.logic";
+import { opensOnto, standsOpen } from "./opens.logic";
 import { StatusBar, type BarTone } from "./StatusBar";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import type { DockBackgroundTask, DockModel } from "./conversationDock.logic";
@@ -268,11 +268,14 @@ function DeployInstrument({
   environmentId,
   open,
   onToggle,
+  detail,
 }: {
   readonly operation: ZeropsOperation;
   readonly environmentId: EnvironmentId | null;
   readonly open: boolean;
   readonly onToggle: () => void;
+  /** What it opens to, under it. */
+  readonly detail: ReactNode;
 }) {
   const reading = useDeployReading(operation, environmentId);
   const { running } = reading;
@@ -282,28 +285,37 @@ function DeployInstrument({
   const words = (lines === null ? null : settledOperationWords(operation, lines)) ?? reading.words;
   const failed = lines === null ? reading.failed : lines.some((line) => line.state === "failed");
   const subject = operationSubject(operation);
-  const opens = opensTo({ lines: detailLines(operation, null), reasonCut: false });
+  const opens = opensOnto({
+    control: "operation",
+    lines: detailLines(operation, null),
+    reasonCut: false,
+  });
   const settledMs =
     operation.settledAt === undefined
       ? null
       : Date.parse(operation.settledAt) - Date.parse(operation.anchorAt);
+  // Open only while it opens onto something: rows that dropped to none close it.
+  const shown = standsOpen(open, opens);
   return (
-    <Instrument
-      bar={bar}
-      failed={failed}
-      figure={
-        running ? (
-          <ElapsedSince since={operation.anchorAt} />
-        ) : settledMs !== null && Number.isFinite(settledMs) ? (
-          formatWorkDuration(settledMs)
-        ) : null
-      }
-      label={`${subject}: ${words}.${opens ? ` ${open ? "Hide" : "Show"} ${lines === null ? "the pipeline" : "each service"}` : ""}`}
-      onToggle={opens ? onToggle : null}
-      open={open}
-      subject={subject}
-      words={words}
-    />
+    <>
+      <Instrument
+        bar={bar}
+        failed={failed}
+        figure={
+          running ? (
+            <ElapsedSince since={operation.anchorAt} />
+          ) : settledMs !== null && Number.isFinite(settledMs) ? (
+            formatWorkDuration(settledMs)
+          ) : null
+        }
+        label={`${subject}: ${words}.${opens ? ` ${shown ? "Hide" : "Show"} ${lines === null ? "the pipeline" : "each service"}` : ""}`}
+        onToggle={opens ? onToggle : null}
+        open={shown}
+        subject={subject}
+        words={words}
+      />
+      {shown ? <InstrumentDetail>{detail}</InstrumentDetail> : null}
+    </>
   );
 }
 
@@ -318,31 +330,39 @@ function StandupInstrument({
   environmentId,
   open,
   onToggle,
+  detail,
 }: {
   readonly operation: ZeropsOperation;
   readonly environmentId: EnvironmentId | null;
   readonly open: boolean;
   readonly onToggle: () => void;
+  /** What it opens to, under it. */
+  readonly detail: ReactNode;
 }) {
   const reading = useStandupReading(operation, environmentId);
   const { words, figure, segments, failed } = standupBar(reading);
   const subject = operationSubject(operation);
   // No service read yet: nothing to open to.
-  const opens = opensTo({
+  const opens = opensOnto({
+    control: "operation",
     lines: detailLines(operation, reading?.rows.length ?? null),
     reasonCut: false,
   });
+  const shown = standsOpen(open, opens);
   return (
-    <Instrument
-      bar={segments}
-      failed={failed && reading !== null && reading.building === 0}
-      figure={figure}
-      label={`${subject}: ${words}${figure === null ? "" : `, ${figure}`}.${opens ? ` ${open ? "Hide" : "Show"} each service` : ""}`}
-      onToggle={opens ? onToggle : null}
-      open={open}
-      subject={subject}
-      words={words}
-    />
+    <>
+      <Instrument
+        bar={segments}
+        failed={failed && reading !== null && reading.building === 0}
+        figure={figure}
+        label={`${subject}: ${words}${figure === null ? "" : `, ${figure}`}.${opens ? ` ${shown ? "Hide" : "Show"} each service` : ""}`}
+        onToggle={opens ? onToggle : null}
+        open={shown}
+        subject={subject}
+        words={words}
+      />
+      {shown ? <InstrumentDetail>{detail}</InstrumentDetail> : null}
+    </>
   );
 }
 
@@ -528,6 +548,10 @@ function Instruments({
   const background = dock?.background ?? null;
   if (!dockDraws(dock) && standing.length === 0) return null;
   const runningTask = background?.tasks.findLast((task) => task.state === "running");
+  // One task's row would say the bar's own title and time again.
+  const backgroundOpens =
+    background !== null && opensOnto({ control: "background-bar", tasks: background.tasks.length });
+  const backgroundShown = standsOpen(open.has("background"), backgroundOpens);
   const toggle = (key: string) => {
     // What the person opened is theirs to read: the conversation stops
     // following its end, so the bar they pressed stays where it is (K12).
@@ -551,34 +575,36 @@ function Instruments({
           .join(" · ");
   return (
     <ul className="run-band grid" data-working-instruments>
-      {operations.map((operation) => (
-        <Arriving key={operation.key}>
-          {operation.kind === "standup" ? (
-            <StandupInstrument
-              environmentId={environmentId}
-              onToggle={() => toggle(operation.key)}
-              open={open.has(operation.key)}
-              operation={operation}
-            />
-          ) : (
-            <DeployInstrument
-              environmentId={environmentId}
-              onToggle={() => toggle(operation.key)}
-              open={open.has(operation.key)}
-              operation={operation}
-            />
-          )}
-          {open.has(operation.key) ? (
-            <InstrumentDetail>
-              <OperationDetail
+      {operations.map((operation) => {
+        const detail = (
+          <OperationDetail
+            environmentId={environmentId}
+            operation={operation}
+            threadRef={threadRef}
+          />
+        );
+        return (
+          <Arriving key={operation.key}>
+            {operation.kind === "standup" ? (
+              <StandupInstrument
+                detail={detail}
                 environmentId={environmentId}
+                onToggle={() => toggle(operation.key)}
+                open={open.has(operation.key)}
                 operation={operation}
-                threadRef={threadRef}
               />
-            </InstrumentDetail>
-          ) : null}
-        </Arriving>
-      ))}
+            ) : (
+              <DeployInstrument
+                detail={detail}
+                environmentId={environmentId}
+                onToggle={() => toggle(operation.key)}
+                open={open.has(operation.key)}
+                operation={operation}
+              />
+            )}
+          </Arriving>
+        );
+      })}
       {standing.map((incident) => (
         <Arriving key={incident.key}>
           <Instrument
@@ -665,9 +691,9 @@ function Instruments({
                   ? spanOf(runningTask.startedAt, null)
                   : null
             }
-            label={`Background tasks: ${background.running} running, ${background.done} done, ${background.failed} failed. ${open.has("background") ? "Hide" : "Show"} each one`}
-            onToggle={() => toggle("background")}
-            open={open.has("background")}
+            label={`Background tasks: ${background.running} running, ${background.done} done, ${background.failed} failed.${backgroundOpens ? ` ${backgroundShown ? "Hide" : "Show"} each one` : ""}`}
+            onToggle={backgroundOpens ? () => toggle("background") : null}
+            open={backgroundShown}
             subject="Background"
             words={
               runningTask?.title ??
@@ -678,7 +704,7 @@ function Instruments({
                 : "All done")
             }
           />
-          {open.has("background") ? (
+          {backgroundShown ? (
             <InstrumentDetail>
               <ul className="grid gap-px">
                 {background.tasks.map((task) => (

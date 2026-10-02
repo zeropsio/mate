@@ -108,13 +108,21 @@ import {
 } from "./conversation.logic";
 import { calmClockMs } from "./nowLineCalm.logic";
 import { useCalmLine } from "./useCalmLine";
+import {
+  SLOT_MAX_ROWS,
+  slotHolds,
+  slotHoldsIn,
+  type LiveSlot as LiveSlotState,
+} from "./liveSlot.logic";
+import { useLiveSlot } from "./useLiveSlot";
 import { useRunEffortWords } from "./runResultFacts";
 import { drawerEase, LIST_LAYS_OUT_FRAMES, stepHeight } from "./stepHeight";
 import { StatusBar } from "./StatusBar";
 import { versionText } from "../zerops/operation/version";
 import { ImportDetail } from "./ImportDetail";
 import { useStandupReading } from "../../zerops/activity/useStandupReading";
-import { detailLines, opensTo, settledOperationBar } from "./operationBar.logic";
+import { detailLines, liveOperationBar, settledOperationBar } from "./operationBar.logic";
+import { helperReportPreview, opensOnto, stepOutput } from "./opens.logic";
 import { StandupDetail } from "./StandupDetail";
 import type { ExpandedImagePreview } from "./ExpandedImagePreview";
 import {
@@ -141,6 +149,8 @@ import {
   runFoldOf,
   setRunFold,
   severalWords,
+  slotModelOf,
+  type SlotFiller,
   standsAtFoot,
   stepNowWords,
   subscribeRunFolds,
@@ -233,17 +243,27 @@ const TIMED: ReadonlySet<StepKind> = new Set(["command", "web", "tool"]);
  */
 const STILL_RUNNING = "Running";
 
-/** How long a step took; one still running says so. */
+/** What a call that never returned says once its run settled, where its time would be. */
+const NO_RESULT = "No result";
+
+/** How long a step took; one still running says so, one that never returned says that. */
 function stepTime(step: WorkStep): ReactNode {
+  if (step.noResult === "closed") return NO_RESULT;
+  if (step.noResult === "stale") return null;
   if (step.state === "running") return STILL_RUNNING;
   if (!TIMED.has(step.kind) || step.endedAt === null) return null;
   const ms = Date.parse(step.endedAt) - Date.parse(step.startedAt);
   return Number.isFinite(ms) && ms >= 1000 ? formatWorkDuration(ms) : null;
 }
 
-/** How long a platform operation took; one still running says so. */
+/**
+ * How long a platform operation took; one still running says so — one whose
+ * call returned while it runs on says nothing: the band times it.
+ */
 function operationTime(operation: ZeropsOperation): ReactNode {
-  if (operation.phase === "running") return STILL_RUNNING;
+  if (operation.phase === "running") {
+    return operation.returnedAt === undefined ? STILL_RUNNING : null;
+  }
   if (operation.settledAt === undefined) return null;
   const ms = Date.parse(operation.settledAt) - Date.parse(operation.anchorAt);
   return Number.isFinite(ms) && ms >= 1000 ? formatWorkDuration(ms) : null;
@@ -289,11 +309,34 @@ const ChatShownContext = createContext<{ readonly current: boolean } | null>(nul
  */
 const RunScrollHoldContext = createContext<(() => void) | null>(null);
 
+/**
+ * Whether a bubble stands in the live slot (pass 35): drawn as the row it
+ * becomes in the history, with no mark, time or chevron of its own — the
+ * slot's face, clock and caps stand for them — and nothing to open.
+ */
+const InSlotContext = createContext(false);
+
+/** The key of the chat's line a bubble is drawn for: what its plop finds it by. */
+const ChatLineContext = createContext<string | null>(null);
+
+/** Whether the line lands by a plop from the live slot: then it never rises in on its own. */
+const PlopsContext = createContext(false);
+
 /** Whether this bubble arrived while the person watched: what the chat opened onto is simply there. */
 function useArrivedLive(): boolean {
   const shown = use(ChatShownContext);
   const [arrived] = useState(() => shown?.current ?? false);
   return arrived;
+}
+
+/** Whether a bubble rises in as it arrives: not in the slot, and not one landing by a plop. */
+function useRisesIn(): boolean {
+  const arrived = useArrivedLive();
+  const inSlot = use(InSlotContext);
+  // As it mounted: a line that landed by a plop never rises in later.
+  const plopping = use(PlopsContext);
+  const [plops] = useState(plopping);
+  return arrived && !inSlot && !plops;
 }
 
 const HOLD_NOTHING = () => {};
@@ -415,10 +458,10 @@ interface Fold {
  * nothing folds while the person is looking (K12). Once the person opened or
  * closed it, it stays as they left it.
  */
-function useFold(eligible: boolean): Fold {
+function useFold(eligible: boolean, foldsLive = false): Fold {
   const arrived = useArrivedLive();
   const hold = useHoldReading();
-  const [folded, setFolded] = useState(() => eligible && !arrived);
+  const [folded, setFolded] = useState(() => eligible && (foldsLive || !arrived));
   const [opened, setOpened] = useState(false);
   return {
     eligible,
@@ -472,6 +515,8 @@ function MoreToggle({
   readonly ref?: Ref<HTMLButtonElement>;
   readonly children: ReactNode;
 }) {
+  // The slot shows a thing whole up to its cap, the history's: nothing opens there.
+  if (use(InSlotContext)) return null;
   return (
     <button
       ref={ref}
@@ -557,6 +602,9 @@ function DisclosureButton({
   readonly className?: string;
   readonly children: ReactNode;
 }) {
+  if (use(InSlotContext)) {
+    return <div className={cn("block w-full min-w-0", className)}>{children}</div>;
+  }
   return (
     <button
       aria-expanded={open}
@@ -672,6 +720,17 @@ function Headline({
    */
   readonly running?: boolean;
 }) {
+  // In the slot, the right edge is the run's one clock: a row gets its time when it lands.
+  if (use(InSlotContext)) {
+    return (
+      <span className={cn("flex min-w-0 items-start gap-2", META)}>
+        <span className="min-w-0 flex-1" data-run-shimmer={running ? "" : undefined}>
+          {children}
+        </span>
+        <span aria-hidden="true" className="run-slot-clock-room" />
+      </span>
+    );
+  }
   return (
     <span className={cn("flex min-w-0 items-start gap-2", META)}>
       <span className="min-w-0 flex-1" data-run-shimmer={running ? "" : undefined}>
@@ -748,9 +807,15 @@ function Mark({
   readonly line?: MarkLine | undefined;
   readonly children: ReactNode;
 }) {
+  const inSlot = use(InSlotContext);
   return (
-    <span aria-hidden="true" className={cn(MARK_COLUMN, "flex justify-center", MARK_LINE[line])}>
-      <span className="flex h-[1lh] items-center">{children}</span>
+    <span
+      aria-hidden="true"
+      className={cn(MARK_COLUMN, "flex justify-center", MARK_LINE[line])}
+      data-run-mark=""
+      data-slot-mark={inSlot ? "" : undefined}
+    >
+      <span className="flex h-[1lh] items-center">{inSlot ? null : children}</span>
     </span>
   );
 }
@@ -857,7 +922,9 @@ function QuestionBubble({ questions }: { readonly questions: ReadonlyArray<strin
 
 /** Its words to the person on the way: the chat's bubble in its fullest fill. */
 function NoteBubble({ message }: { readonly message: ChatMessage }) {
-  const fold = useFold(foldsLikeAMessage(message.text));
+  // One cap live and in the history: a note past it stands folded in both,
+  // so its plop moves it and never resizes it.
+  const fold = useFold(foldsLikeAMessage(message.text), true);
   return (
     <Bubble className={BUBBLE_PAD} kind="note" tone="speech">
       <FoldBody fold={fold} height="max-h-44">
@@ -902,19 +969,39 @@ function useRunsPast(
   return [past, watch];
 }
 
+/** How many lines of a thought show, live and in the history alike (pass 35): a whole sentence. */
+const THOUGHT_CAP_LINES = 4;
+
+/**
+ * A thought as it streams in the live slot: its newest lines in view, four
+ * at most — the history's cap, so its plop never resizes it — and a fade at
+ * its top once its words run past them.
+ */
+function LiveThought({ run }: { readonly run: string }) {
+  const [over, watch] = useTallerThan(THOUGHT_CAP_LINES * 20, run.length > THOUGHT_GUESS_CHARS * 2);
+  return (
+    <div className="run-thought-live" data-over={over ? "" : undefined}>
+      <span ref={watch} className="block italic">
+        {run}
+      </span>
+    </div>
+  );
+}
+
 /**
  * A stretch of its thinking, the quietest thing in the card (K14): 13 px,
- * faint and italic on the faintest fill, two lines of it at most. One that
- * runs on is the way to the rest of itself — a click opens the whole thought
- * in place, and "Show less" closes it (D4: nothing is cut without a way to
- * reach it).
+ * faint and italic on the faintest fill, four lines of it at most, read from
+ * its head. One that runs on says "Show full thought" — a click opens the
+ * whole thought in place, and "Show less" closes it (D4: nothing is cut
+ * without a way to reach it). In the live slot it shows its newest lines.
  */
 function ThoughtBubble({ messages }: { readonly messages: ReadonlyArray<ChatMessage> }) {
   const text = messages.map((message) => message.text).join("\n\n");
   const run = thoughtRunText(text);
+  const inSlot = use(InSlotContext);
   const hold = useHoldReading();
   const [open, setOpen] = useState(false);
-  const [past, watch] = useRunsPast(run.length > THOUGHT_GUESS_CHARS);
+  const [past, watch] = useRunsPast(run.length > THOUGHT_GUESS_CHARS * 2);
   // Opening swaps the thought's button for "Show less", and closing swaps it
   // back: the focus goes with the person's press to the one that stands.
   const toggleRef = useRef<HTMLButtonElement>(null);
@@ -930,8 +1017,15 @@ function ThoughtBubble({ messages }: { readonly messages: ReadonlyArray<ChatMess
     setOpen(next);
   };
   if (text.trim().length === 0) return null;
+  if (inSlot) {
+    return (
+      <Bubble className={THOUGHT_PAD} kind="thought" size={META} tone="thought">
+        <LiveThought run={run} />
+      </Bubble>
+    );
+  }
   const clamped = (
-    <span ref={watch} className="line-clamp-2 italic" data-chat-folded={past ? "true" : undefined}>
+    <span ref={watch} className="line-clamp-4 italic" data-chat-folded={past ? "true" : undefined}>
       {run}
     </span>
   );
@@ -949,12 +1043,15 @@ function ThoughtBubble({ messages }: { readonly messages: ReadonlyArray<ChatMess
           ref={toggleRef}
           aria-expanded={false}
           aria-label={`${run.slice(0, 80)}… Show the whole thought`}
-          className="block w-full min-w-0 cursor-pointer rounded-sm text-start focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70"
+          className="relative block w-full min-w-0 cursor-pointer rounded-sm text-start focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70"
           data-chat-disclose
           onClick={() => toggle(true)}
           type="button"
         >
           {clamped}
+          <span aria-hidden="true" className="run-thought-more">
+            Show full thought
+          </span>
         </button>
       ) : (
         clamped
@@ -966,61 +1063,6 @@ function ThoughtBubble({ messages }: { readonly messages: ReadonlyArray<ChatMess
 // ---------------------------------------------------------------------------
 // Its calls
 // ---------------------------------------------------------------------------
-
-/** The runtime's `Name: {json}` detail of a call: its arguments, never output to show. */
-const CALL_ARGUMENTS = /^[A-Za-z][\w-]*:\s*[{[]/;
-
-interface StepOutput {
-  readonly key: string;
-  readonly label: string | null;
-  readonly text: string;
-}
-
-/**
- * What a step holds besides what its bubble says: what it printed or
- * returned, the files an edit touched where they are, what a search or a read
- * of the web was asked. Nothing for a call that returned nothing to read.
- */
-export function stepOutput(step: WorkStep): ReadonlyArray<StepOutput> {
-  const blocks: StepOutput[] = [];
-  step.entries.forEach((entry, index) => {
-    const command = (entry.rawCommand ?? entry.command)?.trim();
-    if (step.kind === "edit") {
-      const files = [
-        ...new Set([
-          ...(entry.changedFiles ?? []),
-          ...(entry.callInput?.filePath ? [entry.callInput.filePath] : []),
-        ]),
-      ];
-      if (files.length > 0)
-        blocks.push({ key: `${index}:files`, label: "Files", text: files.join("\n") });
-    }
-    const asked = [
-      entry.callInput?.pattern ? `pattern  ${entry.callInput.pattern}` : null,
-      entry.callInput?.glob ? `glob     ${entry.callInput.glob}` : null,
-      entry.callInput?.path ? `in       ${entry.callInput.path}` : null,
-      entry.callInput?.url ? `address  ${entry.callInput.url}` : null,
-      entry.callInput?.query ? `query    ${entry.callInput.query}` : null,
-    ].filter((line): line is string => line !== null);
-    if (asked.length > 0 && (step.kind === "search" || step.kind === "web")) {
-      blocks.push({ key: `${index}:asked`, label: "Asked", text: asked.join("\n") });
-    }
-    const detail = entry.detail?.trim();
-    if (
-      detail &&
-      detail !== command &&
-      !CALL_ARGUMENTS.test(detail) &&
-      !(step.kind === "look" && step.images.includes(detail))
-    ) {
-      blocks.push({
-        key: `${index}:output`,
-        label: step.kind === "command" && blocks.length === 0 ? null : "Returned",
-        text: detail,
-      });
-    }
-  });
-  return blocks;
-}
 
 /**
  * A call said plainly: the verb in the secondary ink, the names it took in
@@ -1203,16 +1245,22 @@ function CallRow({
 }) {
   const group = use(CallGroupContext);
   const [joined] = useState(() => group?.current ?? false);
+  const lineKey = use(ChatLineContext);
+  const inSlot = use(InSlotContext);
+  // As it mounted: a call that landed by a plop never rises in later.
+  const plopping = use(PlopsContext);
+  const [plops] = useState(plopping);
   return (
     <div
       className={cn(
         "relative min-w-0 first:rounded-t-2xl last:rounded-b-2xl",
-        joined && "run-rise",
+        joined && !inSlot && !plops && "run-rise",
       )}
       data-chat-bubble={failure === null ? "tool" : "failed"}
       data-chat-failed={failure ?? undefined}
       data-chat-kind={kind}
       data-chat-row
+      data-run-key={lineKey ?? undefined}
     >
       {/* Its mark stands off the bubble, over the row's empty column. */}
       <span className="absolute end-full top-0 me-2">
@@ -1290,7 +1338,7 @@ function StepBubble({
   const [taller, watchCode] = useTallerThan(CODE_CAP_PX, step.codeLines > CODE_CAP_LINES);
   const cut = script !== null && (bare ? step.codeLines > 1 : taller);
   const showsCode = script !== null && (!bare || disclosure.open);
-  const opens = outputs.length > 0 || cut;
+  const opens = opensOnto({ control: "step", step, codeCut: cut });
   const title = step.words ?? step.code ?? "A command";
   const headline = (
     <Headline
@@ -1453,14 +1501,17 @@ function OperationBubble({
   readonly operation: ZeropsOperation;
   /** It failed, and a later one on the same service went through: quiet (K9). */
   readonly undone?: boolean;
-  /** How many lines it opens to; null, its own card (`detailLines`). */
-  readonly lines?: number | null;
+  /** How much it opens to: its services' lines, its card's parts (`detailLines`). */
+  readonly lines?: number;
 }) {
   const ctx = use(TimelineRowCtx);
   const disclosure = useDisclosure();
+  const inSlot = use(InSlotContext);
   const failed = operation.phase === "failed";
   const failure: Failure | null = !failed ? null : undone ? "undone" : "broken";
   const running = operation.phase === "running";
+  // Live in the slot, its pipeline as it goes and the step it is on.
+  const live = running && inSlot ? liveOperationBar(operation) : null;
   const words = operationLineWords(operation);
   const reason = failed ? (operation.explanation?.reason ?? operation.closing ?? null) : null;
   const detail =
@@ -1471,7 +1522,7 @@ function OperationBubble({
   const [cut, watchDetail] = useRunsPast(false, true);
   const reasonCut = reason !== null && (cut || disclosure.open);
   // Nothing to add: no chevron, and it does not press.
-  const opens = opensTo({ lines, reasonCut });
+  const opens = opensOnto({ control: "operation", lines, reasonCut });
   const head = (
     <Headline
       column
@@ -1480,8 +1531,15 @@ function OperationBubble({
       timeTone={failure === "broken" ? "failed" : "muted"}
     >
       <span className="flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-0.5">
-        <span className="text-foreground/75">{words}</span>
-        {running ? null : (
+        <span className="text-foreground/75" data-run-shimmer={live === null ? undefined : ""}>
+          {words}
+        </span>
+        {live !== null ? (
+          <>
+            <StatusBar className="w-12" segments={live.segments} />
+            {live.word === null ? null : <span className="text-muted-foreground">{live.word}</span>}
+          </>
+        ) : running ? null : (
           <StatusBar className="w-12" segments={settledOperationBar(operation, undone)} />
         )}
         {detail !== null ? (
@@ -1590,29 +1648,47 @@ function ChecksBubble({ strip }: { readonly strip: BrowserStripModel }) {
       check.phase === "running" ||
       browserTakeState(check, strip.checks) === "failed",
   );
+  // One take with no picture and nothing read opens onto the same check.
+  const opens = opensOnto({
+    control: "checks",
+    checks: strip.checks.length,
+    shown: strip.checks.filter(
+      (check) =>
+        check.screenshot !== undefined ||
+        check.browserRead !== undefined ||
+        check.explanation !== undefined,
+    ).length,
+  });
+  const head = (
+    <Headline column opens={opens} time={time} timeTone={failed ? "failed" : "muted"}>
+      <span>
+        <span className="text-foreground/75">{words}</span>
+        {verdict === null ? null : (
+          <span className={failed ? "text-status-failed-text" : "text-muted-foreground"}>
+            {` · ${verdict}`}
+          </span>
+        )}
+      </span>
+    </Headline>
+  );
   return (
     <CallRow
       failure={failed ? "broken" : null}
       kind="checks"
       mark={failed ? <FailedMark failure="broken" /> : <DidMark icon={AppWindowIcon} />}
     >
-      <DisclosureButton
-        className={CALL_PAD}
-        label={`${words}${verdict === null ? "" : `, ${verdict}`}. ${disclosure.open ? "Hide" : "Show"} the checks`}
-        onToggle={disclosure.toggle}
-        open={disclosure.open}
-      >
-        <Headline column opens time={time} timeTone={failed ? "failed" : "muted"}>
-          <span>
-            <span className="text-foreground/75">{words}</span>
-            {verdict === null ? null : (
-              <span className={failed ? "text-status-failed-text" : "text-muted-foreground"}>
-                {` · ${verdict}`}
-              </span>
-            )}
-          </span>
-        </Headline>
-      </DisclosureButton>
+      {opens ? (
+        <DisclosureButton
+          className={CALL_PAD}
+          label={`${words}${verdict === null ? "" : `, ${verdict}`}. ${disclosure.open ? "Hide" : "Show"} the checks`}
+          onToggle={disclosure.toggle}
+          open={disclosure.open}
+        >
+          {head}
+        </DisclosureButton>
+      ) : (
+        <div className={CALL_PAD}>{head}</div>
+      )}
       {disclosure.open || !takes ? null : (
         <div className="px-3 pb-2">
           <BrowserTakes
@@ -1622,7 +1698,7 @@ function ChecksBubble({ strip }: { readonly strip: BrowserStripModel }) {
           />
         </div>
       )}
-      {disclosure.open ? (
+      {opens && disclosure.open ? (
         <div className="animate-detail-in px-3 pb-2 motion-reduce:animate-none" data-chat-detail>
           <BrowserStrip
             bare
@@ -1699,7 +1775,11 @@ function HelperRow({ agent }: { readonly agent: RuntimeSubagent }) {
     !active && durationMs !== null && durationMs >= 1000
       ? `${AGENT_STATUS_WORD[agent.status]} · ${formatWorkDuration(durationMs)}`
       : AGENT_STATUS_WORD[agent.status];
-  const firstLine = said?.split("\n").find((line) => line.trim().length > 0) ?? null;
+  const word = AGENT_STATUS_WORD[agent.status];
+  // Its report's first line under it, unless it says its state again; it
+  // opens only onto more than that line says.
+  const firstLine = helperReportPreview(said ?? null, word);
+  const opens = opensOnto({ control: "helper", report: said ?? null, state: word });
   const line = (
     <span className={cn("flex min-w-0 items-baseline gap-3", META)}>
       <span
@@ -1715,7 +1795,7 @@ function HelperRow({ agent }: { readonly agent: RuntimeSubagent }) {
   );
   return (
     <li className="grid min-w-0 gap-1">
-      {said ? (
+      {opens ? (
         <button
           aria-expanded={open}
           className="grid min-w-0 cursor-pointer gap-0.5 rounded-lg px-1.5 py-1 text-start transition-colors hover:bg-foreground/4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70"
@@ -1731,9 +1811,14 @@ function HelperRow({ agent }: { readonly agent: RuntimeSubagent }) {
           )}
         </button>
       ) : (
-        <div className="px-1.5 py-1">{line}</div>
+        <div className="grid min-w-0 gap-0.5 px-1.5 py-1">
+          {line}
+          {firstLine === null ? null : (
+            <span className={cn("truncate text-muted-foreground", META)}>{firstLine}</span>
+          )}
+        </div>
       )}
-      {open && said ? <OutputBlock mono={false} text={said} /> : null}
+      {open && opens && said ? <OutputBlock mono={false} text={said} /> : null}
     </li>
   );
 }
@@ -1774,26 +1859,35 @@ function HelpersBubble({ entry }: { readonly entry: WorkLogEntry }) {
     workflowName ??
     (agents.length === 1 ? agents[0]!.title : agents.map((agent) => agent.title).join(" · "));
   const failed = summary.tone === "failed";
+  // Helpers not known yet: nothing to open onto.
+  const opens = opensOnto({ control: "helpers", agents: agents.length });
+  const head = (
+    <Headline column opens={opens} timeTone="muted" time={summary.live ? "Working" : null}>
+      <span>
+        <span className="text-foreground/75">{words}</span>
+        {what ? <span className="text-muted-foreground">{` · ${what}`}</span> : null}
+      </span>
+    </Headline>
+  );
   return (
     <CallRow
       failure={failed ? "broken" : null}
       kind="helpers"
       mark={failed ? <FailedMark failure="broken" /> : <DidMark icon={BotIcon} />}
     >
-      <DisclosureButton
-        className={CALL_PAD}
-        label={`${words}. ${disclosure.open ? "Hide" : "Show"} them`}
-        onToggle={disclosure.toggle}
-        open={disclosure.open}
-      >
-        <Headline column opens timeTone="muted" time={summary.live ? "Working" : null}>
-          <span>
-            <span className="text-foreground/75">{words}</span>
-            {what ? <span className="text-muted-foreground">{` · ${what}`}</span> : null}
-          </span>
-        </Headline>
-      </DisclosureButton>
-      {disclosure.open ? (
+      {opens ? (
+        <DisclosureButton
+          className={CALL_PAD}
+          label={`${words}. ${disclosure.open ? "Hide" : "Show"} them`}
+          onToggle={disclosure.toggle}
+          open={disclosure.open}
+        >
+          {head}
+        </DisclosureButton>
+      ) : (
+        <div className={CALL_PAD}>{head}</div>
+      )}
+      {opens && disclosure.open ? (
         // Its helpers' words on the bubble's text edge: 8 px in, and their own 6.
         <div
           className="grid animate-detail-in gap-2 px-2 pb-2.5 motion-reduce:animate-none"
@@ -1892,24 +1986,31 @@ function PlanBubble({ plan }: { readonly plan: TurnPlanEntry }) {
     steps.find((step) => step.status === "inProgress")?.step ??
     steps.find((step) => step.status === "pending")?.step ??
     null;
+  // A list of the one step its line names is the whole of it.
+  const opens = opensOnto({ control: "plan", steps: steps.map((step) => step.step), current });
+  const head = (
+    <Headline column opens={opens} time={`${done}/${steps.length}`}>
+      <span>
+        <span className="text-foreground/75">To-do list</span>
+        {current !== null ? <span className="text-muted-foreground">{` · ${current}`}</span> : null}
+      </span>
+    </Headline>
+  );
   return (
     <CallRow kind="plan" mark={<DidMark icon={ListTodoIcon} />}>
-      <DisclosureButton
-        className={CALL_PAD}
-        label={`To-do list, ${done} of ${steps.length} done. ${disclosure.open ? "Hide" : "Show"} it`}
-        onToggle={disclosure.toggle}
-        open={disclosure.open}
-      >
-        <Headline column opens time={`${done}/${steps.length}`}>
-          <span>
-            <span className="text-foreground/75">To-do list</span>
-            {current !== null ? (
-              <span className="text-muted-foreground">{` · ${current}`}</span>
-            ) : null}
-          </span>
-        </Headline>
-      </DisclosureButton>
-      {disclosure.open ? (
+      {opens ? (
+        <DisclosureButton
+          className={CALL_PAD}
+          label={`To-do list, ${done} of ${steps.length} done. ${disclosure.open ? "Hide" : "Show"} it`}
+          onToggle={disclosure.toggle}
+          open={disclosure.open}
+        >
+          {head}
+        </DisclosureButton>
+      ) : (
+        <div className={CALL_PAD}>{head}</div>
+      )}
+      {opens && disclosure.open ? (
         <div className="animate-detail-in px-3 pb-2 motion-reduce:animate-none" data-chat-detail>
           <PlanSteps steps={steps} />
         </div>
@@ -2032,6 +2133,8 @@ interface ChatLine {
   readonly asks?: boolean;
   /** An answer under its question, 6 px under it — a pair, not two lines (K14). */
   readonly pairs?: boolean;
+  /** It lands from the live slot by a plop, rather than rising in. */
+  readonly plops?: boolean;
 }
 
 /** A thought's mark: a small asterisk, fainter than a call's. */
@@ -2170,6 +2273,8 @@ function itemLine(item: RecordItem, undone: ReadonlySet<string>): ChatLine | nul
         call: true,
       };
     case "thought":
+      // A thought with no words shows nothing: no line of the chat.
+      if (item.messages.every((message) => message.text.trim().length === 0)) return null;
       return {
         key: item.key,
         bubble: <ThoughtBubble messages={item.messages} />,
@@ -2244,6 +2349,7 @@ function itemLine(item: RecordItem, undone: ReadonlySet<string>): ChatLine | nul
  * the person's words on their own side; or a caption across both.
  */
 function ChatRow({
+  lineKey,
   across,
   theirs,
   pairs = false,
@@ -2251,6 +2357,8 @@ function ChatRow({
   markLine,
   children,
 }: {
+  /** The line it draws: what its plop finds it by. */
+  readonly lineKey: string;
   readonly across: boolean;
   readonly theirs: boolean;
   /** It answers the question right above it: 6 px under it, not 12. */
@@ -2259,16 +2367,20 @@ function ChatRow({
   readonly markLine?: MarkLine | undefined;
   readonly children: ReactNode;
 }) {
-  const arrived = useArrivedLive();
+  const rises = useRisesIn();
   if (across) {
     return (
-      <li className="min-w-0" data-chat-row>
+      <li className="min-w-0" data-chat-row data-run-key={lineKey}>
         {children}
       </li>
     );
   }
   return (
-    <li className={cn("flex min-w-0 items-start", MARK_GAP, pairs && "-mt-1.5")} data-chat-row>
+    <li
+      className={cn("flex min-w-0 items-start", MARK_GAP, pairs && "-mt-1.5")}
+      data-chat-row
+      data-run-key={lineKey}
+    >
       {/* The Mate's column, on a phone's card too: it holds the marks that
           tell the bubbles apart, so every bubble keeps one edge. */}
       {mark === undefined ? (
@@ -2277,7 +2389,7 @@ function ChatRow({
         <Mark line={markLine}>{mark}</Mark>
       )}
       {/* Only what arrives while the person watches rises in. */}
-      <div className={cn("flex min-w-0 flex-1", theirs && "justify-end", arrived && "run-rise")}>
+      <div className={cn("flex min-w-0 flex-1", theirs && "justify-end", rises && "run-rise")}>
         {children}
       </div>
     </li>
@@ -2369,50 +2481,18 @@ function StepNowWords({
   );
 }
 
-/** Whether a step's one line leaves some of what it runs unsaid: a command's lines past its first. */
-function saysLess(step: WorkStep): boolean {
-  return step.kind === "command" && step.script !== null && step.codeLines > 1;
-}
-
-/**
- * A command's code under its words on the opened now line, as its call row
- * shows it opened: in mono, in the muted ink, every line of it — past the
- * first where the command, saying nothing of itself, leads with it.
- */
-function NowScript({ step }: { readonly step: WorkStep }) {
-  if (!saysLess(step) || step.script === null) return null;
-  const script = step.words === null ? step.script.split("\n").slice(1).join("\n") : step.script;
-  return <code className="run-now-script">{script}</code>;
-}
-
 /** The now line's words, by what the run is doing. */
-function NowWords({
-  line,
-  open = false,
-  thoughtSoFar = null,
-}: {
-  readonly line: NowLineModel;
-  /** Opened to the whole of what runs: the thought so far, a command's code under its words. */
-  readonly open?: boolean;
-  /** The thought so far, where the line shows only its latest words. */
-  readonly thoughtSoFar?: string | null;
-}) {
+function NowWords({ line }: { readonly line: NowLineModel }) {
   switch (line.kind) {
-    case "thinking": {
-      const thought = open && thoughtSoFar !== null ? thoughtSoFar : line.thought;
+    case "thinking":
       return (
         <>
           <span className="run-now-verb">Thinking</span>
-          {thought === null ? null : <span className="run-now-thought">{thought}</span>}
+          {line.thought === null ? null : <span className="run-now-thought">{line.thought}</span>}
         </>
       );
-    }
     case "step":
-      return (
-        <>
-          <StepNowWords codeAfter={!(open && saysLess(line.step))} step={line.step} />
-        </>
-      );
+      return <StepNowWords step={line.step} />;
     case "operation":
       return (
         <>
@@ -2527,37 +2607,14 @@ function NowLine({
   // same line saying something new.
   const wordsChanged = useChangedSinceShown(words);
   const leaving = useLeavingLine(line, words);
-  // D4: its one line opens to the whole of what runs — a command every line
-  // of it, the thought so far — for as long as the line says the same.
-  const hold = useHoldReading();
-  const [openFor, setOpenFor] = useState<string | null>(null);
-  if (openFor !== null && openFor !== words) setOpenFor(null);
-  const open = status.live && openFor === words;
-  const [clipped, watchHead] = useRunsPast(false, true);
-  const thoughtSoFar =
-    now?.kind === "thinking"
-      ? thoughtRunText(now.messages.map((message) => message.text).join("\n\n"))
-      : null;
-  const opens =
-    status.live &&
-    (clipped ||
-      (line.kind === "thinking" && thoughtSoFar !== null && thoughtSoFar !== line.thought) ||
-      (line.kind === "step" && saysLess(line.step)) ||
-      (line.kind === "several" && line.steps.some(saysLess)));
   const head = (
-    <span
-      ref={watchHead}
-      key={words}
-      className={cn("run-now-head", open && "run-now-head-open")}
-      data-run-now-change={wordsChanged ? "" : undefined}
-    >
-      <NowWords line={line} open={open} thoughtSoFar={thoughtSoFar} />
+    <span key={words} className="run-now-head" data-run-now-change={wordsChanged ? "" : undefined}>
+      <NowWords line={line} />
     </span>
   );
   return (
     <div
       className="run-now"
-      data-open={open ? "" : undefined}
       data-run-now={line.kind}
       data-run-status={
         line.kind === "worked" ? status.face : line.kind === "waiting" ? "waiting" : "working"
@@ -2578,40 +2635,13 @@ function NowLine({
             <NowWords line={leaving.line} />
           </span>
         )}
-        {opens || open ? (
-          <button
-            aria-expanded={open}
-            className="run-now-reveal"
-            data-run-now-words=""
-            onClick={() => {
-              hold();
-              setOpenFor(open ? null : words);
-            }}
-            type="button"
-          >
-            {head}
-            <ChevronDownIcon aria-hidden="true" className="run-now-reveal-icon" />
-          </button>
-        ) : (
-          head
-        )}
-        {open && line.kind === "step" ? <NowScript step={line.step} /> : null}
+        {head}
         {/* What a screen reader hears: the line's words as they change —
             never the thought's latest words or a step's ticking time. */}
         {status.live ? (
           <span className="sr-only" role="status">
             {words}
           </span>
-        ) : null}
-        {line.kind === "several" ? (
-          <ul className="run-now-several">
-            {line.steps.map((step) => (
-              <li key={step.key}>
-                <StepNowWords codeAfter={!(open && saysLess(step))} step={step} sweeps={false} />
-                {open ? <NowScript step={step} /> : null}
-              </li>
-            ))}
-          </ul>
         ) : null}
       </div>
       {status.live ? <RunTicker status={status} /> : (end ?? <span />)}
@@ -2625,6 +2655,240 @@ function NowLine({
  */
 export function RunLine({ status }: { readonly status: RunStatus }) {
   return <NowLine answering={false} now={null} outcome={null} status={status} />;
+}
+
+const NO_KEYS: ReadonlyArray<string> = [];
+const NO_HOLDS: ReadonlySet<string> = new Set();
+
+/** Lines landing from the live slot: where each stood, and where the history's lines stood. */
+interface Landing {
+  /** Each line leaving the slot by its key, by where its row stood (NaN: it rode along unseen). */
+  readonly from: ReadonlyMap<string, number>;
+  /** Where the slot stood: what lands above it moves it, and it glides there. */
+  readonly slot: number | null;
+  /** How tall the card's row stood: a list that follows its end moves it a frame late. */
+  readonly card: number | null;
+  /** The history's scroll stood at its foot: it follows it to where the landed line ends. */
+  readonly atFoot: boolean;
+  /** The history's lines by their key, by where each stood on screen. */
+  readonly rows: ReadonlyMap<string, number>;
+}
+
+/** Where each of the chat's lines under `root` stands on screen, by its key. */
+function lineTops(root: HTMLElement | null): ReadonlyMap<string, number> {
+  const tops = new Map<string, number>();
+  if (typeof root?.querySelectorAll !== "function") return tops;
+  for (const line of root.querySelectorAll<HTMLElement>("li[data-chat-row][data-run-key]")) {
+    tops.set(line.dataset.runKey!, line.getBoundingClientRect().top);
+  }
+  return tops;
+}
+
+/** The row drawn for the chat's line `key` under `root`, if one is. */
+function rowByKey(root: HTMLElement | null, key: string): HTMLElement | null {
+  if (typeof root?.querySelectorAll !== "function") return null;
+  for (const row of root.querySelectorAll<HTMLElement>("[data-run-key]")) {
+    if (row.dataset.runKey === key) return row;
+  }
+  return null;
+}
+
+/** How long a "Thinking" between steps waits before its word shows: a quick gap never flashes. */
+const THINKING_WORD_DELAY_MS = 300;
+
+/**
+ * What the slot says when no item stands in it: "Thinking" — muted, its word
+ * a moment late, so a quick gap between two steps never flashes it — its
+ * words on their way, a wait on the person, the context condensing.
+ */
+function SlotFillerWords({ filler }: { readonly filler: SlotFiller }) {
+  switch (filler.kind) {
+    case "thinking":
+      return (
+        <span
+          className="run-slot-word run-slot-later"
+          style={{ animationDelay: `${THINKING_WORD_DELAY_MS}ms` }}
+        >
+          Thinking
+        </span>
+      );
+    case "writing":
+      return (
+        <>
+          <span className="run-slot-word">Writing</span>
+          <TypingDots className="run-now-dots" />
+        </>
+      );
+    case "condensing":
+      return (
+        <>
+          <span className="run-slot-word">Condensing the context</span>
+          <TypingDots className="run-now-dots" />
+        </>
+      );
+    case "waiting":
+      return (
+        <span className="run-slot-word">{nowLineWords({ kind: "waiting", on: filler.on })}</span>
+      );
+  }
+}
+
+/**
+ * The live slot, the card's foot while the run goes on (pass 35, replacing
+ * the one-line now line): the Mate's face in the 28 px column, the run's one
+ * clock on its first line's right edge, and what the Mate is doing this
+ * moment drawn whole, as the row it becomes in the history — the same
+ * bubble, inks and caps, with a sweep over a call's words while it runs and
+ * no chevron: it shows the thing in full up to its cap. Several at once are
+ * a row each, three at most, then "+N more running". Nothing standing in it,
+ * it says what the Mate does between things: "Thinking", "Writing", a wait.
+ */
+function LiveSlot({
+  ref,
+  slot,
+  live,
+  items,
+  filler,
+  now,
+  answering,
+  status,
+  undone,
+}: {
+  readonly ref: Ref<HTMLDivElement>;
+  readonly slot: LiveSlotState;
+  /** What is live now, as the items they become. */
+  readonly live: ReadonlyArray<RecordItem>;
+  /** The record: what an item that ended and stands its minimum is drawn from. */
+  readonly items: ReadonlyArray<RecordItem>;
+  readonly filler: SlotFiller;
+  readonly now: TurnHeaderActivity | null;
+  readonly answering: boolean;
+  readonly status: RunStatus;
+  readonly undone: ReadonlySet<string>;
+}) {
+  const ctx = use(TimelineRowCtx);
+  const { isCompacting } = use(TimelineRowActivityCtx);
+  const latest = nowLineOf({
+    status,
+    now,
+    answering,
+    compacting: isCompacting,
+    speaker: ctx.speaker.name,
+    effort: null,
+  });
+  const face = nowLineFace(latest, status);
+  const byKey = new Map<string, RecordItem>();
+  for (const item of items) byKey.set(item.key, item);
+  for (const item of live) byKey.set(item.key, item);
+  const shown = slot.entries.flatMap((entry) => {
+    // One the record drew into another line (a check joining the row of the
+    // one before it) is drawn there already.
+    const item = byKey.get(entry.key);
+    if (item === undefined) return [];
+    // A question's answer rises in under it, and the pair plops as one.
+    const answer =
+      item.kind === "question"
+        ? entry.riders.flatMap((key) => {
+            const rider = byKey.get(key);
+            return rider?.kind === "person" ? [{ entry, item: rider }] : [];
+          })
+        : [];
+    return [{ entry, item }, ...answer];
+  });
+  const drawn = shown.slice(0, SLOT_MAX_ROWS);
+  const more = slot.entries.slice(SLOT_MAX_ROWS).filter((entry) => entry.endedAt === null).length;
+  const lines = drawn
+    .flatMap(({ item }) => {
+      const line = itemLine(item, undone);
+      return line === null ? [] : [line];
+    })
+    .map((line, index, all) =>
+      line.theirs === true && all[index - 1]?.asks === true ? { ...line, pairs: true } : line,
+    );
+  const listRef = useRef<HTMLOListElement>(null);
+  // The face and the clock stand on the first line, whatever bubble it is in.
+  useLayoutEffect(() => {
+    const list = listRef.current;
+    // Drawn outside a page (a test's renderer), it has no layout to read.
+    if (typeof list?.querySelector !== "function") return;
+    const mark = list.querySelector<HTMLElement>("[data-slot-mark] > span");
+    const slotBox = list.parentElement;
+    if (slotBox === null) return;
+    const line = mark?.getBoundingClientRect();
+    const top = slotBox.getBoundingClientRect().top;
+    const y = line === undefined ? null : line.top + line.height / 2 - top;
+    if (y === null) slotBox.style.removeProperty("--run-slot-line");
+    else slotBox.style.setProperty("--run-slot-line", `${y}px`);
+  });
+  return (
+    <div
+      ref={ref}
+      className="run-slot"
+      data-run-now={lines.length === 0 ? filler.kind : "items"}
+      data-run-status={latest.kind === "waiting" ? "waiting" : "working"}
+      data-work-line={status.face}
+    >
+      <span className="run-slot-face">
+        <MateFace
+          gaze={face.gaze}
+          greets
+          known={ctx.arrivedAfter !== null && !ctx.syncing}
+          shape={ctx.speaker.shape}
+          size="sm"
+          state={face.state}
+          tint={ctx.speaker.tint}
+        />
+      </span>
+      <InSlotContext value>
+        <ol ref={listRef} className="run-slot-list">
+          {lines.length === 0 ? (
+            <li key={`filler:${filler.kind}`} className="run-slot-filler">
+              <span aria-hidden="true" className={MARK_COLUMN} data-slot-mark="">
+                <span className="flex h-[1lh] items-center" />
+              </span>
+              <span className="run-now-words">
+                <SlotFillerWords filler={filler} />
+              </span>
+            </li>
+          ) : (
+            gatherCalls(lines).map((entry) =>
+              "calls" in entry ? (
+                <ChatRow key={entry.key} across={false} lineKey={entry.key} theirs={false}>
+                  <CallGroup>
+                    {entry.calls.map((line) => (
+                      <ChatLineContext key={line.key} value={line.key}>
+                        {line.bubble}
+                      </ChatLineContext>
+                    ))}
+                  </CallGroup>
+                </ChatRow>
+              ) : (
+                <ChatRow
+                  key={entry.key}
+                  across={entry.across === true}
+                  lineKey={entry.key}
+                  mark={entry.mark}
+                  markLine={entry.markLine}
+                  pairs={entry.pairs === true}
+                  theirs={entry.theirs === true}
+                >
+                  {entry.bubble}
+                </ChatRow>
+              ),
+            )
+          )}
+          {more > 0 ? <li className="run-slot-more">{`+${more} more running`}</li> : null}
+        </ol>
+      </InSlotContext>
+      <span className="run-slot-clock">
+        <RunTicker status={status} />
+      </span>
+      {/* What a screen reader hears: what the Mate is on, as it changes. */}
+      <span className="sr-only" role="status">
+        {nowLineWords(latest)}
+      </span>
+    </div>
+  );
 }
 
 /**
@@ -2662,6 +2926,87 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
   const above = shows.work === "above";
   // What a later step undid, read once per record, not once per redraw.
   const undone = useMemo(() => recoveredFailures(row.items), [row.items]);
+  // The live slot (pass 35): what the Mate is doing this moment, each thing
+  // as the row it becomes; it plops into the history once it ended and
+  // stood its minimum. Only the run's last record, while it runs, has one.
+  const { isCompacting } = use(TimelineRowActivityCtx);
+  const slotted = row.live && row.status !== null;
+  const model = useMemo(
+    () =>
+      slotModelOf({
+        now: row.now,
+        answering: row.answering,
+        compacting: isCompacting,
+        items: row.items,
+      }),
+    [row.now, row.answering, isCompacting, row.items],
+  );
+  const recordKeys = useMemo(() => row.items.map((item) => item.key), [row.items]);
+  const slotRef = useRef<HTMLDivElement>(null);
+  // Where each row leaving the slot stood, and each line of the history, read
+  // before they move: the plop starts there, and the history glides from there.
+  const [landing, setLanding] = useState<Landing | null>(null);
+  const slot = useLiveSlot({
+    live: slotted ? model.live.map((item) => item.key) : NO_KEYS,
+    record: recordKeys,
+    final: !slotted,
+    onChange: (from, to) => {
+      const after = slotHolds(to);
+      const leaving = [...slotHolds(from)].filter((key) => !after.has(key));
+      if (leaving.length === 0) return;
+      const stood = new Map<string, number>();
+      for (const key of leaving) {
+        const row = rowByKey(slotRef.current, key);
+        stood.set(key, row === null || !slotted ? Number.NaN : row.getBoundingClientRect().top);
+      }
+      const scroll = scrollIn(aboveRef.current);
+      setLanding({
+        from: stood,
+        rows: slotted ? lineTops(aboveRef.current) : new Map(),
+        slot: slotted ? (boxOf(slotRef.current)?.top ?? null) : null,
+        card: boxOf(cardRowOf(rootRef.current))?.height ?? null,
+        atFoot: scroll === null || standsAtFoot(scroll),
+      });
+    },
+  });
+  // What left the slot lands: the history at its foot, its lines gliding
+  // where the landing moved them, each landed line plopping from where it
+  // stood in the slot. Once the card holds its height the slot glides to its
+  // new place too; growing, the card grows at its bottom, and a list that
+  // follows its end moves it — a frame late, as for any row that grows.
+  useLayoutEffect(() => {
+    // Each landing once: it stays the last one heard until the next.
+    if (landing === null) return;
+    if (prefersReducedMotion()) {
+      for (const key of landing.from.keys()) {
+        rowByKey(aboveRef.current, key)?.animate([{ opacity: 0 }, { opacity: 1 }], {
+          duration: 200,
+          easing: "ease",
+        });
+      }
+      return;
+    }
+    const grew = (boxOf(cardRowOf(rootRef.current))?.height ?? 0) - (landing.card ?? 0);
+    const scroll = scrollIn(aboveRef.current);
+    if (scroll !== null && landing.atFoot) scroll.scrollTop = scroll.scrollHeight;
+    const list = scroll?.querySelector<HTMLElement>(":scope > ol") ?? null;
+    if (scroll !== null && list !== null) glideLines(scroll, list, landing.rows);
+    for (const [key, from] of landing.from) {
+      const line = rowByKey(list, key);
+      if (line === null) continue;
+      // A call that opened a card of its own lands with its card.
+      const card = line.closest<HTMLElement>("[data-chat-calls]");
+      const alone = card !== null && card.childElementCount === 1;
+      plop(alone ? (card.closest<HTMLElement>("[data-chat-row]") ?? line) : line, from);
+    }
+    const element = slotRef.current;
+    const box = boxOf(element);
+    if (landing.slot === null || landing.card === null || element === null || box === null) return;
+    if (grew > 0.5) return;
+    glide(element, landing.slot - box.top);
+  }, [landing]);
+  const holds = slotted ? slotHoldsIn(slot, recordKeys) : NO_HOLDS;
+  const history = holds.size === 0 ? row.items : row.items.filter((item) => !holds.has(item.key));
   const feedRef = useRef<HTMLDivElement>(null);
   const fromHeightRef = useRef<number | null>(null);
   // A toggle leaves the height the work stood at: once the new fold is laid
@@ -2673,13 +3018,14 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
     if (from === null || feed === null) return;
     easeFeedHeight(feed, from);
   });
-  const lines = above || !folded ? chatLines(row.items, undone) : [];
+  const lines = above || !folded ? chatLines(history, undone) : [];
   // The scroll mounts with its first line, so its box is there from its
   // first frame for what keeps it at its foot.
   const scroll =
     lines.length === 0 ? null : (
       <RunScroll
         label={`${ctx.speaker.name}'s work`}
+        landing={landing?.from ?? null}
         lines={lines}
         {...(above ? { readingRef } : {})}
       />
@@ -2693,6 +3039,7 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
       className="@container/chat min-w-0"
       data-run-chat
       data-run-fold={settled ? fold : undefined}
+      data-run-live={slotted ? "" : undefined}
       style={
         { "--run-speaker-tint": `var(--zerops-mate-tint-${ctx.speaker.tint})` } as CSSProperties
       }
@@ -2715,8 +3062,10 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
           answering={false}
           outcome={row.outcome}
           end={
-            // A chat opens from its first thing the Mate did (`chatLines`).
-            shows.toggle !== null && row.items.some((item) => item.kind !== "person") ? (
+            // A chat opens from its first thing the Mate did (`chatLines`),
+            // and only onto a line that shows something.
+            shows.toggle !== null &&
+            opensOnto({ control: "work", lines: chatLines(row.items, undone).length }) ? (
               <WorkToggle
                 onToggle={() => {
                   hold();
@@ -2737,12 +3086,17 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
           status={row.status}
         />
       ) : (
-        <NowLine
-          key="line"
-          answering={row.answering}
-          outcome={row.outcome}
+        <LiveSlot
+          key="slot"
+          ref={slotRef}
+          items={row.items}
+          live={model.live}
+          filler={model.filler}
           now={row.now}
+          answering={row.answering}
+          slot={slot}
           status={row.status}
+          undone={undone}
         />
       )}
       <div key="below" ref={feedRef} className="run-later-feed">
@@ -2846,6 +3200,8 @@ function nowWordsOf(chat: HTMLElement | null): HTMLElement | null {
 }
 
 function prefersReducedMotion(): boolean {
+  // Drawn outside a page (a test's renderer) nothing moves.
+  if (typeof window === "undefined" || typeof window.matchMedia !== "function") return true;
   return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 }
 
@@ -2953,11 +3309,14 @@ function RunScroll({
   label,
   lines,
   readingRef,
+  landing = null,
 }: {
   readonly label: string;
   readonly lines: ReadonlyArray<ChatLine>;
   /** Told whether the person reads the work: scrolled up in it, or something in it opened. */
   readonly readingRef?: { current: boolean };
+  /** The lines landing from the live slot this draw: they plop into place, never rise in. */
+  readonly landing?: ReadonlyMap<string, number> | null;
 }) {
   // Drawn once: from here on, what arrives arrives while the person watches.
   const shownRef = useRef(false);
@@ -3004,8 +3363,9 @@ function RunScroll({
     if (from > 0 && element.scrollHeight <= element.clientHeight) setFrom(earlierShown(from).next);
     markEdges(element);
   }, [from]);
-  // A line arriving, a bubble growing as its words stream, a call opening:
-  // a scroll that follows its foot stays at it.
+  // A line arriving, a bubble growing as its words stream, a call opening,
+  // the live slot under it growing into its room: a scroll that follows its
+  // foot stays at it.
   useLayoutEffect(() => {
     const element = scrollRef.current;
     const list = listRef.current;
@@ -3015,9 +3375,14 @@ function RunScroll({
       markEdges(element);
     });
     observer.observe(list);
+    observer.observe(element);
     return () => observer.disconnect();
   }, []);
-  const shown = gatherCalls(from > 0 ? lines.slice(from) : lines);
+  const shown = gatherCalls(
+    (from > 0 ? lines.slice(from) : lines).map((line) =>
+      plopsIn(landing, line.key) ? { ...line, plops: true } : line,
+    ),
+  );
   return (
     <RunScrollHoldContext value={hold}>
       <ChatShownContext value={shownRef}>
@@ -3039,24 +3404,28 @@ function RunScroll({
           <ol ref={listRef} className="flex min-w-0 flex-col gap-3">
             {shown.map((entry) =>
               "calls" in entry ? (
-                <ChatRow key={entry.key} across={false} theirs={false}>
+                <ChatRow key={entry.key} across={false} lineKey={entry.key} theirs={false}>
                   <CallGroup>
                     {entry.calls.map((line) => (
-                      <Fragment key={line.key}>{line.bubble}</Fragment>
+                      <ChatLineContext key={line.key} value={line.key}>
+                        <PlopsContext value={line.plops === true}>{line.bubble}</PlopsContext>
+                      </ChatLineContext>
                     ))}
                   </CallGroup>
                 </ChatRow>
               ) : (
-                <ChatRow
-                  key={entry.key}
-                  across={entry.across === true}
-                  mark={entry.mark}
-                  markLine={entry.markLine}
-                  pairs={entry.pairs === true}
-                  theirs={entry.theirs === true}
-                >
-                  {entry.bubble}
-                </ChatRow>
+                <PlopsContext key={entry.key} value={entry.plops === true}>
+                  <ChatRow
+                    across={entry.across === true}
+                    lineKey={entry.key}
+                    mark={entry.mark}
+                    markLine={entry.markLine}
+                    pairs={entry.pairs === true}
+                    theirs={entry.theirs === true}
+                  >
+                    {entry.bubble}
+                  </ChatRow>
+                </PlopsContext>
               ),
             )}
           </ol>
@@ -3064,6 +3433,130 @@ function RunScroll({
       </ChatShownContext>
     </RunScrollHoldContext>
   );
+}
+
+/** Where an element stands on screen; null drawn outside a page (a test's renderer). */
+function boxOf(element: HTMLElement | null): DOMRect | null {
+  return typeof element?.getBoundingClientRect === "function"
+    ? element.getBoundingClientRect()
+    : null;
+}
+
+/** The history's scroll under `above`, if it is drawn. */
+function scrollIn(above: HTMLElement | null): HTMLElement | null {
+  if (typeof above?.querySelector !== "function") return null;
+  return above.querySelector<HTMLElement>("[data-run-scroll]");
+}
+
+/** The list's row a run's chat stands in: its card's slice. */
+function cardRowOf(chat: HTMLElement | null): HTMLElement | null {
+  if (typeof chat?.closest !== "function") return null;
+  return chat.closest<HTMLElement>("[data-card-slice]");
+}
+
+/** An element gliding from `moved` px off its place to it, on the plop's curve. */
+function glide(element: HTMLElement, moved: number): void {
+  if (Math.abs(moved) < 0.5) return;
+  element.animate([{ translate: `0 ${moved}px` }, { translate: "0 0" }], {
+    duration: PLOP_MS,
+    easing: "cubic-bezier(0.23, 1, 0.32, 1)",
+  }).currentTime = 0;
+}
+
+/**
+ * The lines in the scroll's view that moved on screen since `before`, gliding
+ * from where they stood on the plop's curve — the room a plop takes moves them,
+ * and they move as it does, never in one frame.
+ */
+function glideLines(
+  scroll: HTMLElement,
+  list: HTMLElement,
+  before: ReadonlyMap<string, number>,
+): void {
+  if (before.size === 0 || prefersReducedMotion()) return;
+  const view = scroll.getBoundingClientRect();
+  for (const line of list.children) {
+    if (!(line instanceof HTMLElement)) continue;
+    const stood = line.dataset.runKey === undefined ? undefined : before.get(line.dataset.runKey);
+    if (stood === undefined) continue;
+    const box = line.getBoundingClientRect();
+    const moved = stood - box.top;
+    if (Math.abs(moved) < 0.5 || box.bottom + moved < view.top || box.top + moved > view.bottom) {
+      continue;
+    }
+    glide(line, moved);
+  }
+}
+
+/** Whether a line lands by a plop: it stood in the slot (a rider rises in on its own). */
+function plopsIn(landing: ReadonlyMap<string, number> | null, key: string): boolean {
+  const from = landing?.get(key);
+  return from !== undefined && Number.isFinite(from);
+}
+
+/** The plop (pass 35, the board's "Plop"): a translate on the strong ease-out, then a 1.5 px settle. */
+const PLOP_MS = 340;
+const PLOP_SETTLE_PX = 1.5;
+/** The settle starts this far into the plop, and swings once past the place and back. */
+const PLOP_SETTLE_FROM = 0.42;
+/** How many frames the plop is drawn in: WAAPI eases linearly between them. */
+const PLOP_FRAMES = 24;
+
+/** The strong ease-out, `cubic-bezier(0.23, 1, 0.32, 1)`, at progress `t`. */
+function strongEaseOut(t: number): number {
+  const [x1, y1, x2, y2] = [0.23, 1, 0.32, 1];
+  const at = (a: number, b: number, u: number) =>
+    3 * a * u * (1 - u) * (1 - u) + 3 * b * u * u * (1 - u) + u * u * u;
+  let low = 0;
+  let high = 1;
+  for (let step = 0; step < 24; step += 1) {
+    const middle = (low + high) / 2;
+    if (at(x1, x2, middle) < t) low = middle;
+    else high = middle;
+  }
+  return at(y1, y2, (low + high) / 2);
+}
+
+/**
+ * A row that left the live slot lands where the history drew it: it starts
+ * where it stood (`from`, its top on screen) and travels to its place on the
+ * strong ease-out, settling 1.5 px past it and back; its kind's mark fades in
+ * where the slot's face stood. Under reduced motion it fades in, in place.
+ */
+function plop(row: HTMLElement, from: number) {
+  const mark = row.querySelector<HTMLElement>("[data-run-mark] > span");
+  if (prefersReducedMotion() || !Number.isFinite(from)) {
+    row.animate([{ opacity: 0 }, { opacity: 1 }], {
+      duration: 200,
+      easing: "ease",
+    }).currentTime = 0;
+    return;
+  }
+  const travel = from - row.getBoundingClientRect().top;
+  if (Math.abs(travel) < 0.5) {
+    mark?.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 240, easing: "ease" });
+    return;
+  }
+  // Past its place on the side it travels towards, and back.
+  const past = travel > 0 ? -PLOP_SETTLE_PX : PLOP_SETTLE_PX;
+  const frames = Array.from({ length: PLOP_FRAMES + 1 }, (_, frame) => {
+    const progress = frame / PLOP_FRAMES;
+    const settle =
+      progress > PLOP_SETTLE_FROM
+        ? Math.sin((Math.PI * (progress - PLOP_SETTLE_FROM)) / (1 - PLOP_SETTLE_FROM))
+        : 0;
+    return { translate: `0 ${travel * (1 - strongEaseOut(progress)) + past * settle}px` };
+  });
+  // In effect from this frame: a new animation waits a frame for its start
+  // time, and the row would stand a frame at its place before travelling.
+  row.animate(frames, { duration: PLOP_MS, easing: "linear" }).currentTime = 0;
+  const fade = mark?.animate([{ opacity: 0 }, { opacity: 1 }], {
+    duration: 240,
+    delay: 60,
+    easing: "ease",
+    fill: "backwards",
+  });
+  if (fade !== undefined) fade.currentTime = 0;
 }
 
 /**

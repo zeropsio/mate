@@ -150,6 +150,7 @@ import { SkillInlineText } from "./SkillInlineText";
 import { LAST_WORDS_GRACE_MS, latestFinishedWordsAt } from "./conversation.logic";
 import { TurnReport } from "./TurnReport";
 import { ConversationAfterWork, ConversationWorking, dockDraws } from "./ConversationWorking";
+import { useEndingsHeld } from "./useEndingsHeld";
 import { BackgroundLine, FOLD_FADE_MASK, foldsLikeAMessage, RunChat, RunLine } from "./RunChat";
 import { forgetRunFolds } from "./runCard.logic";
 import { KeptTimelineContext } from "./keptTimelineContext";
@@ -327,7 +328,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   activeTurnStartedAt,
   agentPanelModel,
   onOpenAgents = NOOP_OPEN_AGENTS,
-  working = null,
+  working: workingNow = null,
   afterTurnWork = null,
   onStopBackgroundWork = NOOP_STOP_BACKGROUND_WORK,
   stoppingBackgroundWork = false,
@@ -369,6 +370,8 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   queueBlockedByAnswer = false,
   onRemoveQueuedMessage = NOOP_QUEUED_MESSAGE_ACTION,
 }: MessagesTimelineProps) {
+  // What runs alongside, a bar that ended showing its ending a moment (pass 35).
+  const working = useEndingsHeld(workingNow);
   // The timeline mounts once per thread; a thread left mid-read comes back at
   // the same row.
   const rememberedPosition = useMemo(() => readTimelinePosition(routeThreadKey), [routeThreadKey]);

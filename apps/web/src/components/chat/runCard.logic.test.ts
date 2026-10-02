@@ -22,6 +22,7 @@ import {
   runFoldOf,
   setRunFold,
   severalWords,
+  slotModelOf,
   standsAtFoot,
   subscribeRunFolds,
   thoughtRunText,
@@ -198,6 +199,82 @@ const deploy = (() => {
   });
   return entry.kind === "operation" ? entry.operation : null;
 })()!;
+
+// The live slot (pass 35): what the Mate is doing, each thing as the record
+// item it becomes — the same key, so it plops into the history as itself —
+// and what the slot says when nothing stands in it.
+describe("the live slot's model", () => {
+  const question: RecordItem = {
+    kind: "question",
+    key: "question:q1",
+    at: at(3),
+    questions: ["Should /status be public?"],
+  };
+  it.each<{
+    readonly name: string;
+    readonly now: TurnHeaderActivity | null;
+    readonly answering?: boolean;
+    readonly compacting?: boolean;
+    readonly items?: ReadonlyArray<RecordItem>;
+    readonly live: ReadonlyArray<string>;
+    readonly filler: string;
+  }>([
+    { name: "nothing yet: it thinks", now: null, live: [], filler: "thinking" },
+    {
+      name: "a thought with words: the thought, keyed as the record keys it",
+      now: thinking("The app is a Hono server."),
+      live: ["thought:r1"],
+      filler: "thinking",
+    },
+    {
+      name: "a thought with no words yet: Thinking, never an empty bubble",
+      now: thinking("  "),
+      live: [],
+      filler: "thinking",
+    },
+    {
+      name: "calls at once: a row each, oldest first",
+      now: {
+        kind: "step",
+        step: command("w2", "pnpm test"),
+        others: [read("w1", "index.ts")],
+      },
+      live: ["step:w1", "step:w2"],
+      filler: "thinking",
+    },
+    {
+      name: "a deploy it waits on: the operation's row",
+      now: { kind: "operation", operation: deploy },
+      live: ["operation:op:d1"],
+      filler: "thinking",
+    },
+    {
+      name: "a check in the browser: the row of takes it becomes",
+      now: { kind: "operation", operation: browser },
+      live: ["operation:op:b1"],
+      filler: "thinking",
+    },
+    {
+      name: "a question in its own words: the question waits in the slot",
+      now: { kind: "waiting", on: "answer", key: "question:q1" },
+      items: [question],
+      live: ["question:q1"],
+      filler: "thinking",
+    },
+    {
+      name: "an approval: what it waits on, in words",
+      now: { kind: "waiting", on: "approval" },
+      live: [],
+      filler: "waiting",
+    },
+    { name: "its answer on its way", now: null, answering: true, live: [], filler: "writing" },
+    { name: "condensing its context", now: null, compacting: true, live: [], filler: "condensing" },
+  ])("$name", ({ now, answering = false, compacting = false, items = [], live, filler }) => {
+    const model = slotModelOf({ now, answering, compacting, items });
+    expect(model.live.map((item) => item.key)).toEqual(live);
+    expect(model.filler.kind).toBe(filler);
+  });
+});
 
 // The now line, the card's foot, says what is happening in words (K10): the
 // step itself, never "Nova is working"; the face and the one clock beside it.

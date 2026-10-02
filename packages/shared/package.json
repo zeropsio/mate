@@ -326,6 +326,10 @@
     "./crewTemplates": {
       "types": "./src/crewTemplates.ts",
       "import": "./src/crewTemplates.ts"
+    },
+    "./liveBatch": {
+      "types": "./src/liveBatch.ts",
+      "import": "./src/liveBatch.ts"
     }
   },
   "scripts": {

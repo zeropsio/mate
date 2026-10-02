@@ -76,6 +76,57 @@ describe("ThreadLiveStep", () => {
       ],
       step: { kind: "calls", since: at(7), calls: [call("c1", 5), call("c3", 7)] },
     },
+    // The batch rule (pass 35): Claude waits for every call of a batch before
+    // it calls again, so a call started after another returned is a newer
+    // batch's, and one an older batch left open lost its completion.
+    {
+      name: "a call started after another returned puts an older open call behind it",
+      observations: [
+        started,
+        { type: "call-running", call: call("c1", 5) },
+        { type: "call-running", call: call("c2", 6) },
+        { type: "call-ended", callId: "c2", at: at(8) },
+        { type: "call-running", call: call("c3", 9) },
+      ],
+      step: { kind: "calls", since: at(9), calls: [call("c3", 9)] },
+    },
+    {
+      name: "two batches with no thought between: the newer batch, every call of it",
+      observations: [
+        started,
+        { type: "call-running", call: call("c1", 5) },
+        { type: "call-running", call: call("c2", 6) },
+        { type: "call-ended", callId: "c2", at: at(7) },
+        { type: "call-running", call: call("c3", 8) },
+        { type: "call-running", call: call("c4", 9) },
+      ],
+      step: { kind: "calls", since: at(9), calls: [call("c3", 8), call("c4", 9)] },
+    },
+    {
+      name: "a completion of a call it never saw start still ends the batch",
+      observations: [
+        started,
+        { type: "call-running", call: call("c1", 5) },
+        { type: "call-ended", callId: "c0", at: at(6) },
+        { type: "call-running", call: call("c2", 7) },
+      ],
+      step: { kind: "calls", since: at(7), calls: [call("c2", 7)] },
+    },
+    {
+      name: "a call's own update after a return is no new batch",
+      observations: [
+        started,
+        { type: "call-running", call: call("c1", 5) },
+        { type: "call-running", call: call("c2", 6) },
+        { type: "call-ended", callId: "c2", at: at(7) },
+        { type: "call-running", call: call("c1", 8, { detail: "Bash: pnpm test" }) },
+      ],
+      step: {
+        kind: "calls",
+        since: at(5),
+        calls: [call("c1", 5, { detail: "Bash: pnpm test" })],
+      },
+    },
     {
       name: "a thought after a call puts the call behind it, though it still runs",
       observations: [
