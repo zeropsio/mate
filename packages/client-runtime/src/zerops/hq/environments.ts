@@ -24,6 +24,8 @@ export const HqDeploy = Schema.Struct({
   /** The platform's version and job it is read by: its log. */
   appVersionId: Schema.NullOr(Schema.String),
   processId: Schema.NullOr(Schema.String),
+  /** Who last asked for it again ("Run again"); none while only HQ asked. */
+  requestedBy: Schema.NullOr(Schema.String),
   /** When it last changed, ISO 8601. */
   at: Schema.String,
 });

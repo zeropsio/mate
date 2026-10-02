@@ -38,6 +38,7 @@ const STAGE: HqEnvironment = {
         message: null,
         appVersionId: "av-2",
         processId: "pr-2",
+        requestedBy: "u-ada",
         at: "2026-10-02T10:00:00.000Z",
       },
       live: {
@@ -47,6 +48,7 @@ const STAGE: HqEnvironment = {
         message: null,
         appVersionId: "av-1",
         processId: "pr-1",
+        requestedBy: null,
         at: "2026-10-02T09:00:00.000Z",
       },
     },
