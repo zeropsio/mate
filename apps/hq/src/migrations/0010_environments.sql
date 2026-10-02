@@ -1,7 +1,8 @@
 -- An application's environments (SPEC §3.2b), where main declared them in `environments.yaml`: a
 -- stage or production project of the application, its name, the branches it follows and its place
 -- in the order they were declared in. Its tier is its project's kind there, by the key: it goes
--- with its project's row, and a move to another place records it anew.
+-- with its project's row, and a move to another place records it anew. A devstage holds the
+-- stage's place but is no environment: its stage half is its Mate's own, never HQ's to deploy.
 CREATE UNIQUE INDEX hq_app_project_placement ON hq_app_project (project_id, app_id, kind);
 
 CREATE TABLE hq_environment (
