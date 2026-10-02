@@ -28,6 +28,7 @@ import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../
 import { Spinner } from "../ui/spinner";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { environmentsWithSnapshotAtom } from "~/state/shell";
+import { hqEnvironmentsAtom } from "~/state/zerops";
 import {
   PROJECT_ORDER_CHOICES,
   readProjectsOnScreen,
@@ -91,7 +92,6 @@ import { useZeropsCreationVerdicts } from "~/zerops/useZeropsCreationVerdicts";
 import { useNowMs } from "~/zerops/useNowMs";
 import { mateUpdateStatus } from "~/zerops/mateUpdate";
 import { useZeropsMateUpdateStates } from "~/zerops/useZeropsMateUpdate";
-import { useZeropsDeployTokenGaps } from "~/zerops/useZeropsDeployTokenGaps";
 import { runZeropsCommand, useZeropsData } from "~/zerops/zeropsDataContext";
 import type { AuthGateState } from "~/environments/primary/auth";
 import { mateFaceOf, mateReviewWaits, type ZeropsAgentActivity } from "~/zerops/agentActivity";
@@ -129,6 +129,7 @@ import {
   type ZeropsGroup,
   type ZeropsMembership,
   type ZeropsProjectOrder,
+  mayOffer,
   offerAsker,
 } from "@t3tools/client-runtime/zerops";
 import { invalidateZerops } from "~/zerops/accountInvalidations";
@@ -164,7 +165,7 @@ import { useZeropsGroupOrganizations } from "~/zerops/useZeropsGroupOrganization
 import { useZeropsRegistry } from "~/zerops/useZeropsRegistry";
 import { useZeropsProjectFlow } from "~/zerops/projectFlowContext";
 import { REVIEW_LABEL, REVIEW_RELEASE_LABEL, useOpenReview } from "~/zerops/review";
-import { readZeropsCellOnce } from "~/zerops/useZeropsDeployedVersion";
+import { readZeropsCellOnce } from "~/zerops/readZeropsCell";
 import { deployRowTone, TAKING_LONGER_LINE } from "./ZeropsProjectRow.logic";
 import { ZeropsReleaseRows } from "./ZeropsReleaseRows";
 import { ZeropsReleaseVerb } from "./ZeropsGroupDetail";
@@ -1112,7 +1113,6 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
               : {
                   hq,
                   kind: "mate-record",
-                  displayName: candidate.project.name,
                   record,
                   birth: { standUp: false, closedOff: true },
                 },
@@ -1577,7 +1577,6 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
   // project states it: an account on a devel region or behind a custom domain is read, never
   // guessed.
   const accountGitea = useAccountGitea(activeOrganization?.id);
-  const giteaProjectId = accountGitea?.projectId;
   const giteaOrigin = accountGitea?.state.url;
   // The registry — which groups exist and which projects are in them (ADR 0002), read from HQ.
   const registryState = useZeropsRegistry();
@@ -1938,62 +1937,35 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
     ),
   });
 
-  // A stage or a production whose creation lost its last writes — the
-  // registry, the broker's grant, the declaration — is finished here, off the
-  // same list, once no creation is on its way in this tab
-  // (`useZeropsGroupEnvironmentReconcile`).
-  // Only a group whose `environments.yaml` was read says what it declares: one still unread
-  // would read as declaring nothing, and every environment in it as half-made.
-  const declaredByGroup = useMemo(
-    () =>
-      new Map(
-        [...groupDeploys].flatMap(([groupId, state]) =>
-          state.declarationsRead
-            ? [[groupId, new Set(state.environments.map((entry) => entry.projectId))] as const]
-            : [],
-        ),
-      ),
-    [groupDeploys],
-  );
-  // An environment made before a job deployed (D27) has no deploy token on
-  // the broker; a person who may mint one finishes it here like any other
-  // write a creation lost.
-  const declaredProjects = useMemo(
-    () => [...declaredByGroup.values()].flatMap((projects) => [...projects]),
-    [declaredByGroup],
-  );
-  const [deployTokenGeneration, setDeployTokenGeneration] = useState(0);
-  const withoutDeployToken = useZeropsDeployTokenGaps({
-    giteaProjectId,
-    declaredProjects,
-    enabled:
-      status === "signed-in" &&
-      (activeOrganization?.roleCode === "ADMIN" || activeOrganization?.roleCode === "OWNER"),
-    generation: deployTokenGeneration,
-  });
+  // A stage or a production whose creation lost its last writes — its attach to its application,
+  // its deploy key — or whose key HQ does not hold, or holds broken (main E07), is finished here,
+  // off the same list, once no creation is on its way in this tab
+  // (`useZeropsGroupEnvironmentReconcile`). Only an application whose environments HQ has said says
+  // what it holds: one still unsaid would read as holding nothing, and every environment in it as
+  // half-made.
+  const heldEnvironments = useAtomValue(hqEnvironmentsAtom);
   const halfMade = useMemo(
     () =>
-      halfMadeGroupEnvironments({
-        projects: candidates.map((candidate) => candidate.project),
-        registry: registryState.registry,
-        declared: declaredByGroup,
-        withoutDeployToken,
-      }),
-    [candidates, declaredByGroup, registryState.registry, withoutDeployToken],
+      heldEnvironments === null
+        ? []
+        : halfMadeGroupEnvironments({
+            projects: candidates.map((candidate) => candidate.project),
+            registry: registryState.registry,
+            environments: heldEnvironments,
+            // A key is minted only by somebody HQ's rule lets keep it (`keep_deploy_token`).
+            mayKey: (projectId) => mayOffer(asker, "keep_deploy_token", { projectId }),
+          }),
+    [asker, candidates, heldEnvironments, registryState.registry],
   );
   useZeropsGroupEnvironmentReconcile({
-    enabled: status === "signed-in" && projectFlow.readable && !isLoading && !creationRunning,
+    enabled: status === "signed-in" && !isLoading && !creationRunning,
     client,
-    data: { runtime },
     clientId: activeOrganization?.id,
     hq,
-    giteaOrigin,
-    giteaProjectId,
     halfMade,
     // Not a failed creation: the project runs, and what is outstanding is
     // said on its group's row (`projectsGroupLine`), not under the page.
     onOutcome: (entry, outcome) => {
-      setDeployTokenGeneration((current) => current + 1);
       setUnfinished((current) => {
         const next = new Map(current);
         if (outcome.failed === undefined) next.delete(entry.groupId);

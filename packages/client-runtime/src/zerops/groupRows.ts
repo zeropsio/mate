@@ -1,63 +1,31 @@
 /**
- * What a group shows on the projects screen — one row model for all three
- * kinds of thing in it (guide 4.4, 5.2).
+ * What a group's stages and production show on the projects screen (guide 4.4, 5.2): each
+ * environment's row, and the version a service runs as a person talks about it.
  *
- * A group holds its **Mates** (who you talk to), its **stages and its
- * production** (where the code runs) and the **open pull requests** on its
- * group repo (changes to what those environments are made of). Each is a
- * different question, so each gets its own row kind — but one module decides
- * every one of them, because the three sit in one list and a second opinion
- * about the same fact is what rule R5 exists to prevent.
+ * ## One line, and the dot carries the state
  *
- * ## One line, and the face carries the state
- *
- * A row says one thing under its name, and only when it adds something. A Mate
- * the person opens says nothing: its face and its last message already say
- * where it is. A Mate they cannot open says whose it is. A stage says the
- * branch and the commit it actually runs. No row carries the word "deployed",
- * "running" or "ok" — that is what {@link GroupRowTone} is for, and what a
- * `StatusDot` renders.
+ * A stage says the branch and the commit it actually runs. No row carries the word "deployed",
+ * "running" or "ok" — that is what {@link GroupRowTone} is for, and what a `StatusDot` renders.
  *
  * ## Every fact from the party that can prove it
  *
  * The sha comes from the service's **app-version name**, which spells the
- * commit the broker built from (`versionName.ts`, `docs/group-repo.md`) —
- * never from the branch head, which says what *should* be there.
- * The deploy outcome comes from the commit status the broker wrote,
- * `mate/deploy/{environment}/{service}` — never from the version's existence.
- * Whether a group's Gitea is ready comes from `GET /orgs/{slug}` answering as
- * the person, never from the registry tag that asked for it
- * (`groupCreation.ts`).
+ * commit it was built from (`versionName.ts`) — never from the branch head,
+ * which says what *should* be there. How the deploy went is HQ's record of it
+ * (`HqEnvironment.deploys`) — never the version's existence.
  *
  * Pure: no network, no clock, no platform globals (rule R1).
  *
  * @module groupRows
  */
 
-import type { GiteaCommitStatus, GiteaPullRequest } from "./giteaClient.ts";
-import {
-  mateAwaitingRegistryLine,
-  type GroupGiteaState,
-  type MateRegistration,
-} from "./groupCreation.ts";
-import type { GroupEnvironmentTier, MissingEnvironmentRow } from "./groupEnvironments.ts";
-import { mateOnlyOwnerOpensIt, type MateOwnerCandidate } from "./mateAccess.ts";
+import type { GroupEnvironmentTier } from "./groupEnvironments.ts";
+import type { HqDeploy } from "./hq/environments.ts";
 import { isReleaseTag, shortCommit } from "./release.ts";
 import { isWholeSha, parseVersionName } from "./versionName.ts";
-import type { RoleMateVisibility } from "@t3tools/shared/zeropsRoles";
 
 /** What a row's dot says, for the four things a dot can honestly mean. */
 export type GroupRowTone = "neutral" | "pending" | "good" | "bad";
-
-export interface MateRow {
-  readonly kind: "mate";
-  readonly projectId: string;
-  readonly name: string;
-  readonly visibility: RoleMateVisibility;
-  /** Empty when the row has nothing to add — the usual case for one you open. */
-  readonly line: string;
-  readonly tone: GroupRowTone;
-}
 
 export interface EnvironmentRow {
   readonly kind: "environment";
@@ -78,24 +46,6 @@ export interface EnvironmentRow {
   readonly versionRepository: string | undefined;
   readonly line: string;
   readonly tone: GroupRowTone;
-}
-
-export interface PullRequestRow {
-  readonly kind: "pull-request";
-  readonly number: number;
-  readonly title: string;
-  readonly line: string;
-  readonly tone: GroupRowTone;
-}
-
-export type GroupRow = MateRow | EnvironmentRow | PullRequestRow | MissingEnvironmentRow;
-
-export interface GroupRows {
-  readonly groupId: string;
-  readonly slug: string;
-  /** Empty unless the group's Gitea side is not there yet. */
-  readonly line: string;
-  readonly rows: ReadonlyArray<GroupRow>;
 }
 
 /**
@@ -213,11 +163,6 @@ export function deployedVersion(appVersionName: string | undefined): DeployedVer
   };
 }
 
-/** The commit status the broker writes for one service of one environment. */
-export function deployStatusContext(environment: string, service: string): string {
-  return `mate/deploy/${environment}/${service}`;
-}
-
 /** As much of one service as a row needs. */
 export interface EnvironmentServiceState {
   readonly hostname: string;
@@ -225,9 +170,23 @@ export interface EnvironmentServiceState {
   readonly repository?: string | undefined;
   /** The deployed version's name — the sha first (`appVersionName`). */
   readonly appVersionName?: string | undefined;
-  /** Every commit status on that commit, as Gitea returned them. */
-  readonly statuses?: ReadonlyArray<GiteaCommitStatus> | undefined;
+  /** Its newest deploy as HQ records it, and the newest that went live. */
+  readonly deploy?: ServiceDeploys | undefined;
 }
+
+/** A service's deploys as HQ records them (`HqEnvironment.deploys`). */
+export interface ServiceDeploys {
+  readonly latest: HqDeploy;
+  readonly live: HqDeploy | null;
+}
+
+/** How a deploy went, by the state HQ records it in. */
+const DEPLOY_TONES: Record<HqDeploy["state"], GroupRowTone> = {
+  pending: "pending",
+  deploying: "pending",
+  live: "good",
+  failed: "bad",
+};
 
 /**
  * The state of one environment's last deploy, across its services.
@@ -236,18 +195,13 @@ export interface EnvironmentServiceState {
  * that is not running what it says it runs, and averaging that away is how a
  * screen ends up saying "configured" for a broken setup.
  */
-export function deployTone(input: {
-  readonly environment: string;
-  readonly services: ReadonlyArray<EnvironmentServiceState>;
-}): GroupRowTone {
+export function deployTone(services: ReadonlyArray<EnvironmentServiceState>): GroupRowTone {
   let seen: GroupRowTone = "neutral";
-  for (const service of input.services) {
-    const status = (service.statuses ?? []).find(
-      (entry) => entry.context === deployStatusContext(input.environment, service.hostname),
-    );
-    if (status?.state === "failure" || status?.state === "error") return "bad";
-    if (status?.state === "pending") seen = "pending";
-    else if (status?.state === "success" && seen !== "pending") seen = "good";
+  for (const { deploy } of services) {
+    if (deploy === undefined) continue;
+    const tone = DEPLOY_TONES[deploy.latest.state];
+    if (tone === "bad") return "bad";
+    if (tone === "pending" || seen !== "pending") seen = tone;
   }
   return seen;
 }
@@ -266,8 +220,6 @@ export function environmentRow(input: {
   readonly tier: GroupEnvironmentTier;
   readonly sources: ReadonlyArray<string> | "release";
   readonly services: ReadonlyArray<EnvironmentServiceState>;
-  /** The environment's name in `environments.yaml`, which the statuses name. */
-  readonly environment: string;
 }): EnvironmentRow {
   const source = input.sources === "release" ? "release" : input.sources.join(" + ") || "—";
   // The first service that is running something names the environment: in a
@@ -277,7 +229,7 @@ export function environmentRow(input: {
     .map((service) => ({ service, version: deployedVersion(service.appVersionName) }))
     .find((entry) => entry.version.label !== undefined);
   const version = named?.version ?? NO_VERSION;
-  const tone = deployTone({ environment: input.environment, services: input.services });
+  const tone = deployTone(input.services);
   return {
     kind: "environment",
     projectId: input.projectId,
@@ -296,126 +248,5 @@ export function environmentRow(input: {
   };
 }
 
-/** As much of one Mate as a row needs. */
-export interface MateRowState {
-  readonly projectId: string;
-  readonly name: string;
-  readonly visibility: RoleMateVisibility;
-  readonly registration: MateRegistration;
-  /** Who owns it, when the account can be read for a name. */
-  readonly ownerName?: string | undefined;
-}
-
-/**
- * One Mate's row.
- *
- * Three cases, and only two of them say anything. A Mate the person opens gets
- * an empty line on purpose: its face, its name and its last message are the
- * row, and a status word beside them would be the same fact twice.
- */
-export function mateRow(
-  mate: MateRowState,
-  admins: ReadonlyArray<MateOwnerCandidate> = [],
-): MateRow {
-  if (mate.visibility !== "open") {
-    return {
-      kind: "mate",
-      projectId: mate.projectId,
-      name: mate.name,
-      visibility: mate.visibility,
-      line: mateOnlyOwnerOpensIt(mate.ownerName),
-      tone: "neutral",
-    };
-  }
-  if (mate.registration === "awaiting-owner") {
-    return {
-      kind: "mate",
-      projectId: mate.projectId,
-      name: mate.name,
-      visibility: mate.visibility,
-      line: mateAwaitingRegistryLine(admins),
-      tone: "pending",
-    };
-  }
-  return {
-    kind: "mate",
-    projectId: mate.projectId,
-    name: mate.name,
-    visibility: mate.visibility,
-    line: "",
-    tone: "neutral",
-  };
-}
-
-/** A recipe change waiting on somebody — the group repo's open pull requests. */
-export function pullRequestRow(pull: GiteaPullRequest): PullRequestRow {
-  const who = pull.user?.login;
-  return {
-    kind: "pull-request",
-    number: pull.number,
-    title: pull.title,
-    line: who === undefined ? `#${pull.number}` : `#${pull.number} · ${who}`,
-    tone: "pending",
-  };
-}
-
 /** What a group whose Gitea the broker has not finished says about itself. */
 export const GROUP_BEING_SET_UP_LINE = "Setting up its repositories…";
-
-/**
- * Every row of one group, in the order they are read: who you talk to, where
- * the code runs, what is waiting to change.
- */
-export function buildGroupRows(input: {
-  readonly groupId: string;
-  readonly slug: string;
-  readonly gitea: GroupGiteaState;
-  readonly mates: ReadonlyArray<MateRowState>;
-  readonly environments: ReadonlyArray<Parameters<typeof environmentRow>[0]>;
-  readonly pullRequests: ReadonlyArray<GiteaPullRequest>;
-  readonly admins?: ReadonlyArray<MateOwnerCandidate> | undefined;
-}): GroupRows {
-  const environments = [...input.environments].sort(byTierThenName);
-  return {
-    groupId: input.groupId,
-    slug: input.slug,
-    // `unknown` says nothing: the org has not been asked about yet, and a line
-    // that appears and then disappears is the layout shift this screen refuses.
-    line: input.gitea === "being-set-up" ? GROUP_BEING_SET_UP_LINE : "",
-    rows: [
-      ...input.mates.map((mate) => mateRow(mate, input.admins ?? [])),
-      ...environments.map((environment) => environmentRow(environment)),
-      ...input.pullRequests.map((pull) => pullRequestRow(pull)),
-    ],
-  };
-}
-
-/** Stages first, in name order, then the production — the order code travels. */
-function byTierThenName(
-  left: { readonly tier: GroupEnvironmentTier; readonly name: string },
-  right: { readonly tier: GroupEnvironmentTier; readonly name: string },
-): number {
-  if (left.tier !== right.tier) return left.tier === "stage" ? -1 : 1;
-  return left.name.localeCompare(right.name, "en");
-}
-
-/**
- * How long a build step took — `4s`, `1m 32s`, `1h 04m`.
- *
- * A run with no duration on it is the one thing every other forge shows and
- * this one was dropping; a step still going has none to show yet.
- */
-export function jobDuration(
-  startedAt: string | undefined,
-  completedAt: string | undefined,
-): string | undefined {
-  if (startedAt === undefined || completedAt === undefined) return undefined;
-  const from = Date.parse(startedAt);
-  const to = Date.parse(completedAt);
-  if (Number.isNaN(from) || Number.isNaN(to)) return undefined;
-  const seconds = Math.max(0, Math.round((to - from) / 1000));
-  if (seconds < 60) return `${String(seconds)}s`;
-  const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${String(minutes)}m ${String(seconds % 60).padStart(2, "0")}s`;
-  return `${String(Math.floor(minutes / 60))}h ${String(minutes % 60).padStart(2, "0")}m`;
-}

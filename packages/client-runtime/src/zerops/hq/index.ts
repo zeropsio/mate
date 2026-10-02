@@ -50,6 +50,7 @@ export {
   type HqChanges,
   type HqStructureEvent,
 } from "./stream.ts";
+export { environmentsOf, type HqDeploy, type HqEnvironment } from "./environments.ts";
 export { HQ_NOT_OPEN, hqRefusalWords } from "./refusals.ts";
 export {
   EMPTY_REGISTRY,

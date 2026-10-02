@@ -5,6 +5,7 @@ import type {
   GroupFlowProduction,
   GroupFlowStop,
 } from "@t3tools/client-runtime/zerops";
+import type { HqDeploy } from "@t3tools/client-runtime/zerops/hq";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
@@ -720,6 +721,17 @@ describe("releaseFailureOf — the release that did not go through, newer than w
     ...over,
   });
   const failedSha = "a".repeat(40);
+  const record = (over: Partial<HqDeploy>): HqDeploy => ({
+    sha: "b".repeat(40),
+    state: "live",
+    failure: null,
+    message: null,
+    appVersionId: null,
+    processId: null,
+    requestedBy: null,
+    at: "2026-09-28T09:00:00Z",
+    ...over,
+  });
   const environments: ReadonlyArray<GroupEnvironmentRowInput> = [
     {
       projectId: "stage",
@@ -727,21 +739,9 @@ describe("releaseFailureOf — the release that did not go through, newer than w
       tier: "stage",
       sources: ["main"],
       environment: "shop-stage",
-      services: [
-        {
-          hostname: "app",
-          appVersionName: failedSha,
-          statuses: [
-            {
-              context: "mate/deploy/shop-production/app",
-              state: "failure",
-              description: "The build step exited with code 2 while installing packages.",
-              created_at: "2026-09-29T10:41:00Z",
-            },
-            { context: "mate/deploy/shop-stage/app", state: "success" },
-          ],
-        },
-      ],
+      keyHeld: true,
+      keyInvalid: false,
+      services: [{ hostname: "app", appVersionName: failedSha }],
     },
     {
       projectId: "prod",
@@ -749,11 +749,28 @@ describe("releaseFailureOf — the release that did not go through, newer than w
       tier: "production",
       sources: "release",
       environment: "shop-production",
-      services: [{ hostname: "app", appVersionName: `${"b".repeat(40)} v0.1.56 ada` }],
+      keyHeld: true,
+      keyInvalid: false,
+      services: [
+        {
+          hostname: "app",
+          appVersionName: `${"b".repeat(40)} v0.1.56 ada`,
+          deploy: {
+            latest: record({
+              sha: failedSha,
+              state: "failed",
+              failure: "job",
+              message: "The build step exited with code 2 while installing packages.",
+              at: "2026-09-29T10:41:00Z",
+            }),
+            live: record({}),
+          },
+        },
+      ],
     },
   ];
 
-  it("names the newest release whose production deploy failed, with the broker's words and time", () => {
+  it("names the newest release whose production deploy failed, with HQ's words and time", () => {
     expect(
       releaseFailureOf({
         releases: [
@@ -776,18 +793,7 @@ describe("releaseFailureOf — the release that did not go through, newer than w
     });
   });
 
-  it("reads the broker's words on a stage whose version name spells the commit short", () => {
-    const shortNamed = environments.map((environment) =>
-      environment.tier === "stage"
-        ? {
-            ...environment,
-            services: environment.services.map((service) => ({
-              ...service,
-              appVersionName: `main ${failedSha.slice(0, 7)}`,
-            })),
-          }
-        : environment,
-    );
+  it("reads HQ's words for a release that lists the commit short", () => {
     expect(
       releaseFailureOf({
         releases: [
@@ -795,10 +801,10 @@ describe("releaseFailureOf — the release that did not go through, newer than w
             tag: "v0.1.57",
             standing: "deploy-failed",
             word: "Deploy failed",
-            failedEntry: { service: "app", commit: failedSha },
+            failedEntry: { service: "app", commit: failedSha.slice(0, 7) },
           }),
         ],
-        environmentInputs: shortNamed,
+        environmentInputs: environments,
       }),
     ).toMatchObject({
       tag: "v0.1.57",
@@ -848,7 +854,7 @@ describe("releaseFailureOf — the release that did not go through, newer than w
     expect(releaseFailureOf({ releases, environmentInputs: environments })).toBeUndefined();
   });
 
-  it("keeps the failure when nothing it could read carries the broker's words", () => {
+  it("keeps the failure when HQ records no failed deploy of its commit", () => {
     expect(
       releaseFailureOf({
         releases: [

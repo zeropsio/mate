@@ -1,7 +1,7 @@
 import * as Effect from "effect/Effect";
 import { describe, expect, it } from "vite-plus/test";
 
-import { readZeropsCell, readZeropsCellOnce } from "./useZeropsDeployedVersion";
+import { readZeropsCell, readZeropsCellOnce } from "./readZeropsCell";
 
 describe("readZeropsCellOnce", () => {
   it("releases the lease and resolves undefined when the signal aborts before settling", async () => {

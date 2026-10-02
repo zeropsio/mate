@@ -1,8 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
 import {
-  base64Decode,
-  base64Encode,
   createGiteaClient,
   GiteaApiError,
   GITEA_REQUEST_DEADLINE_MS,
@@ -58,25 +56,11 @@ function fake(answers: ReadonlyArray<{ status?: number; body?: unknown; text?: s
   return { client, calls };
 }
 
-describe("base64", () => {
-  it.each(["", "a", "ab", "abc", "version: 1\nenvironments: {}\n", "naïve — ✓"])(
-    "round-trips %j",
-    (text) => {
-      expect(base64Decode(base64Encode(text))).toBe(text);
-    },
-  );
-
-  it("decodes what Gitea sends, newlines and all", () => {
-    const encoded = base64Encode("hello world");
-    expect(base64Decode(`${encoded.slice(0, 4)}\n${encoded.slice(4)}`)).toBe("hello world");
-  });
-});
-
 describe("GiteaClient request shapes", () => {
   it("bearers the token on every call, under /api/v1", async () => {
-    const { client, calls } = fake([{ body: { id: 1, login: "u-jan" } }]);
-    await client.currentUser();
-    expect(calls[0]?.url).toBe(`${ORIGIN}/api/v1/user`);
+    const { client, calls } = fake([{ body: [] }]);
+    await client.listTags("acme", "group");
+    expect(calls[0]?.url).toBe(`${ORIGIN}/api/v1/repos/acme/group/tags`);
     expect(calls[0]?.headers.authorization).toBe("Bearer t-1");
   });
 
@@ -88,12 +72,12 @@ describe("GiteaClient request shapes", () => {
       token: () => token,
       fetch: (_input, init) => {
         calls.push(((init?.headers ?? {}) as Record<string, string>).authorization ?? "");
-        return Promise.resolve(new Response("{}", { status: 200 }));
+        return Promise.resolve(new Response("[]", { status: 200 }));
       },
     });
-    await client.currentUser();
+    await client.listTags("acme", "group");
     token = "second";
-    await client.currentUser();
+    await client.listTags("acme", "group");
     expect(calls).toEqual(["Bearer first", "Bearer second"]);
   });
 
@@ -147,15 +131,15 @@ describe("GiteaClient request shapes", () => {
       call: (c: GiteaClient) => c.getRepository("acme", "group"),
     },
     {
-      what: "a file the group repo does not carry yet",
-      call: (c: GiteaClient) => c.readFile("acme", "group", "environments.yaml"),
+      what: "a branch that is not there",
+      call: (c: GiteaClient) => c.getBranch("acme", "group", "main"),
     },
   ])("answers undefined for $what rather than throwing", async ({ call }) => {
     const { client } = fake([{ status: 404, body: { message: "Not found" } }]);
     await expect(call(client)).resolves.toBeUndefined();
   });
 
-  it("a 404 on a contents read is not re-requested and aborted", async () => {
+  it("a 404 is read to its end, not re-requested and aborted", async () => {
     // A browser logs a cancelled body as its own aborted request of the same URL.
     let cancelled = false;
     let drained = false;
@@ -182,9 +166,7 @@ describe("GiteaClient request shapes", () => {
       },
     });
 
-    await expect(
-      client.readFile("acme", "group", "3 — Stage/import.yaml", "main"),
-    ).resolves.toBeUndefined();
+    await expect(client.getBranch("acme", "group", "main")).resolves.toBeUndefined();
 
     expect(signals).toHaveLength(1);
     expect(signals[0]?.aborted).toBe(false);
@@ -194,7 +176,7 @@ describe("GiteaClient request shapes", () => {
 
   it("throws Gitea's own status and message on anything else", async () => {
     const { client } = fake([{ status: 403, body: { message: "user does not have push access" } }]);
-    const failure = await client.listBranches("acme", "group").catch((cause: unknown) => cause);
+    const failure = await client.listTags("acme", "group").catch((cause: unknown) => cause);
     expect(failure).toBeInstanceOf(GiteaApiError);
     expect((failure as GiteaApiError).status).toBe(403);
     expect((failure as GiteaApiError).detail).toBe("user does not have push access");
@@ -202,107 +184,14 @@ describe("GiteaClient request shapes", () => {
     // conversation, a toast — would otherwise say "Gitea refused to …" and
     // nothing a person could act on (the owner, 2026-09-18).
     expect((failure as GiteaApiError).message).toBe(
-      "Gitea refused to list the branches. user does not have push access",
+      "Gitea refused to list the tags. user does not have push access",
     );
   });
 
   it("says only what it refused where Gitea sent no words", async () => {
     const { client } = fake([{ status: 500, body: {} }]);
-    const failure = await client.listBranches("acme", "group").catch((cause: unknown) => cause);
-    expect((failure as GiteaApiError).message).toBe("Gitea refused to list the branches.");
-  });
-
-  it("decodes a file's content and keeps its blob sha", async () => {
-    const { client, calls } = fake([
-      { body: { content: base64Encode("version: 1\n"), sha: "blob-1", encoding: "base64" } },
-    ]);
-    const file = await client.readFile("acme", "group", "0 — AI Agent/import.yaml", "main");
-    expect(calls[0]?.url).toBe(
-      `${ORIGIN}/api/v1/repos/acme/group/contents/0%20%E2%80%94%20AI%20Agent/import.yaml?ref=main`,
-    );
-    expect(file).toEqual({
-      path: "0 — AI Agent/import.yaml",
-      content: "version: 1\n",
-      sha: "blob-1",
-    });
-  });
-
-  it("writes files[] base64-encoded, on a branch it creates", async () => {
-    const { client, calls } = fake([{ status: 201, body: {} }]);
-    await client.changeFiles("acme", "group", {
-      message: "Add the stage environment",
-      branch: "main",
-      newBranch: "mate-app/env-stage",
-      files: [
-        { operation: "update", path: "environments.yaml", content: "version: 1\n", sha: "blob-1" },
-      ],
-    });
-    expect(calls[0]?.method).toBe("POST");
-    expect(calls[0]?.url).toBe(`${ORIGIN}/api/v1/repos/acme/group/contents`);
-    expect(calls[0]?.body).toEqual({
-      message: "Add the stage environment",
-      branch: "main",
-      new_branch: "mate-app/env-stage",
-      files: [
-        {
-          operation: "update",
-          path: "environments.yaml",
-          content: base64Encode("version: 1\n"),
-          sha: "blob-1",
-        },
-      ],
-    });
-  });
-
-  it.each([
-    { what: "one that is there", status: 204 },
-    { what: "one that is already gone, which is what was asked", status: 404 },
-  ])("deletes a branch by its name: $what", async ({ status }) => {
-    const { client, calls } = fake([{ status, text: "" }]);
-    await expect(
-      client.deleteBranch("acme", "group", "mate-app/env-production"),
-    ).resolves.toBeUndefined();
-    expect(calls[0]?.method).toBe("DELETE");
-    expect(calls[0]?.url).toBe(
-      `${ORIGIN}/api/v1/repos/acme/group/branches/mate-app%2Fenv-production`,
-    );
-  });
-
-  it("throws Gitea's refusal to delete a branch", async () => {
-    const { client } = fake([{ status: 403, body: { message: "branch is protected" } }]);
-    const failure = await client
-      .deleteBranch("acme", "group", "main")
-      .catch((cause: unknown) => cause);
-    expect(failure).toBeInstanceOf(GiteaApiError);
-    expect((failure as GiteaApiError).message).toBe(
-      "Gitea refused to delete the branch. branch is protected",
-    );
-  });
-
-  it("merge sends the shown head and squash, so `main` is one commit per task", async () => {
-    const { client, calls } = fake([{ body: {} }]);
-    await client.mergePullRequest("acme", "appdev", 3, "c0ffee");
-    expect(calls[0]?.body).toEqual({ Do: "squash", head_commit_id: "c0ffee" });
-  });
-
-  it("opens a pull request and merges one by its number", async () => {
-    const { client, calls } = fake([
-      { body: { number: 12, title: "t", state: "open" } },
-      { body: {} },
-    ]);
-    const pull = await client.createPullRequest("acme", "group", {
-      head: "mate-app/env-stage",
-      base: "main",
-      title: "Add the stage environment",
-    });
-    await client.mergePullRequest("acme", "group", pull.number, "c0ffee");
-    expect(calls[0]?.body).toEqual({
-      head: "mate-app/env-stage",
-      base: "main",
-      title: "Add the stage environment",
-    });
-    expect(calls[1]?.url).toBe(`${ORIGIN}/api/v1/repos/acme/group/pulls/12/merge`);
-    expect(calls[1]?.body).toEqual({ Do: "squash", head_commit_id: "c0ffee" });
+    const failure = await client.listTags("acme", "group").catch((cause: unknown) => cause);
+    expect((failure as GiteaApiError).message).toBe("Gitea refused to list the tags.");
   });
 
   it("reads when an annotated tag was made from its tagger", async () => {
@@ -311,12 +200,6 @@ describe("GiteaClient request shapes", () => {
     ]);
     expect(await client.tagDate("acme", "group", "t-sha")).toBe("2026-09-24T10:00:00Z");
     expect(calls[0]?.url).toBe(`${ORIGIN}/api/v1/repos/acme/group/git/tags/t-sha`);
-  });
-
-  it("lists open pull requests by default", async () => {
-    const { client, calls } = fake([{ body: [] }]);
-    await client.listPullRequests("acme", "group");
-    expect(calls[0]?.url).toBe(`${ORIGIN}/api/v1/repos/acme/group/pulls?state=open`);
   });
 
   it("lists the repositories this person has access to page by page, until a page comes back short", async () => {
@@ -346,33 +229,17 @@ describe("GiteaClient request shapes", () => {
     ]);
   });
 
-  it("reads commit statuses, runs, jobs, a rerun and logs", async () => {
+  it("reads a commit's statuses", async () => {
     const { client, calls } = fake([
       // Gitea sends a status's state under `status` (the owner's Git tab,
       // 2026-09-17: read as `state`, an approved release said "Checking").
-      { body: [{ context: "mate/deploy/stage/api", status: "success" }] },
-      { body: { workflow_runs: [{ id: 7 }] } },
-      { body: { jobs: [{ id: 9, run_id: 7 }] } },
-      { status: 200, body: {} },
-      { text: "step 1\nstep 2\n" },
+      { body: [{ context: "mate/release/v1.0.0", status: "success" }] },
     ]);
-    expect(await client.listCommitStatuses("acme", "api", "abc")).toEqual([
-      { context: "mate/deploy/stage/api", state: "success" },
+    expect(await client.listCommitStatuses("acme", "group", "abc")).toEqual([
+      { context: "mate/release/v1.0.0", state: "success" },
     ]);
-    expect(await client.listActionRuns("acme", "api", { branch: "main", limit: 5 })).toEqual([
-      { id: 7 },
-    ]);
-    expect(await client.listActionJobs("acme", "api", 7)).toEqual([{ id: 9, run_id: 7 }]);
-    await client.rerunActionJob("acme", "api", 7, 9);
-    expect(await client.actionJobLogs("acme", "api", 9)).toBe("step 1\nstep 2\n");
-
     expect(calls.map((call) => `${call.method} ${call.url.slice(ORIGIN.length)}`)).toEqual([
-      "GET /api/v1/repos/acme/api/commits/abc/statuses",
-      "GET /api/v1/repos/acme/api/actions/runs?branch=main&limit=5",
-      "GET /api/v1/repos/acme/api/actions/runs/7/jobs",
-      // Gitea 1.27.2 reruns a job under its run; it has no `/actions/jobs/{id}/rerun`.
-      "POST /api/v1/repos/acme/api/actions/runs/7/jobs/9/rerun",
-      "GET /api/v1/repos/acme/api/actions/jobs/9/logs",
+      "GET /api/v1/repos/acme/group/commits/abc/statuses",
     ]);
   });
 });
@@ -395,12 +262,9 @@ describe("GiteaClient deadlines (DESIGN §2.D D3)", () => {
     });
   }
 
-  it.each([
-    { what: "a read", read: (client: GiteaClient) => client.listTags("acme", "group") },
-    { what: "a job's log", read: (client: GiteaClient) => client.actionJobLogs("acme", "app", 7) },
-  ])("$what Gitea has not answered in 15 s ends as a timeout", async ({ read: send }) => {
+  it("a read Gitea has not answered in 15 s ends as a timeout", async () => {
     vi.useFakeTimers();
-    const read = send(silent());
+    const read = silent().listTags("acme", "group");
     const outcome = read.then(
       () => "answered",
       (cause: unknown) => (cause instanceof DOMException ? cause.name : "other"),
@@ -416,11 +280,11 @@ describe("GiteaClient deadlines (DESIGN §2.D D3)", () => {
     expect(await outcome).toBe("TimeoutError");
   });
 
-  it("a write has no deadline: a merge Gitea is slow to answer may still land", async () => {
+  it("a write has no deadline: a tag Gitea is slow to answer may still land", async () => {
     vi.useFakeTimers();
-    const merge = silent().mergePullRequest("acme", "app", 4, "c0ffee");
+    const tagging = silent().createTag("acme", "group", { tag: "v1.0.0", target: "c0ffee" });
     let settled = false;
-    void merge.then(
+    void tagging.then(
       () => {
         settled = true;
       },
@@ -432,51 +296,6 @@ describe("GiteaClient deadlines (DESIGN §2.D D3)", () => {
     expect(settled).toBe(false);
   });
 
-  /** A job's log whose chunks arrive `gapMs` apart, and that stops after `chunks` of them. */
-  function trickling(gapMs: number, chunks: number, close: boolean): GiteaClient {
-    return createGiteaClient({
-      origin: ORIGIN,
-      token: "t-1",
-      fetch: async (_input, init) =>
-        new Response(
-          new ReadableStream<Uint8Array>({
-            start(stream) {
-              init?.signal?.addEventListener("abort", () => stream.error(init.signal?.reason));
-              for (let chunk = 1; chunk <= chunks; chunk += 1) {
-                // @effect-diagnostics-next-line globalTimers:off -- the log's body, late on vitest's fake clock.
-                setTimeout(() => {
-                  if (init?.signal?.aborted === true) return;
-                  stream.enqueue(new TextEncoder().encode(`step ${String(chunk)} done\n`));
-                  if (chunk === chunks && close) stream.close();
-                }, gapMs * chunk);
-              }
-            },
-          }),
-        ),
-    });
-  }
-
-  const outcomeOf = (logs: Promise<string>) =>
-    logs.then(
-      (text) => text,
-      (cause: unknown) => (cause instanceof DOMException ? cause.name : "other"),
-    );
-
-  it("a job's log Gitea keeps sending may take longer than 15 s to arrive", async () => {
-    vi.useFakeTimers();
-    const gap = GITEA_REQUEST_DEADLINE_MS - 1_000;
-    const outcome = outcomeOf(trickling(gap, 4, true).actionJobLogs("acme", "app", 7));
-    await vi.advanceTimersByTimeAsync(gap * 4);
-    expect(await outcome).toBe("step 1 done\nstep 2 done\nstep 3 done\nstep 4 done\n");
-  });
-
-  it("a job's log that stops arriving for 15 s ends as a timeout", async () => {
-    vi.useFakeTimers();
-    const outcome = outcomeOf(trickling(1_000, 2, false).actionJobLogs("acme", "app", 7));
-    await vi.advanceTimersByTimeAsync(2_000 + GITEA_REQUEST_DEADLINE_MS);
-    expect(await outcome).toBe("TimeoutError");
-  });
-
   it("the caller's signal still ends a request before its deadline", async () => {
     const controller = new AbortController();
     const read = silent(controller.signal).listTags("acme", "group");
@@ -485,13 +304,7 @@ describe("GiteaClient deadlines (DESIGN §2.D D3)", () => {
   });
 });
 
-describe("GiteaClient pull request shas (DESIGN A7)", () => {
-  it("reads one page of pull requests as long as it is asked for", async () => {
-    const { client, calls } = fake([{ body: [] }]);
-    await client.listPullRequests("acme", "app", { state: "closed", limit: 20 });
-    expect(calls[0]?.url).toBe(`${ORIGIN}/api/v1/repos/acme/app/pulls?state=closed&limit=20`);
-  });
-
+describe("GiteaClient pages", () => {
   it("lists every tag, page by page, until a page comes back short", async () => {
     const full = Array.from({ length: 50 }, (_, index) => ({ name: `v0.0.${index}` }));
     const { client, calls } = fake([{ body: full }, { body: [{ name: "v0.1.0" }] }]);
@@ -499,35 +312,6 @@ describe("GiteaClient pull request shas (DESIGN A7)", () => {
     expect(calls.map((call) => call.url.slice(ORIGIN.length))).toEqual([
       "/api/v1/repos/acme/group/tags?limit=50&page=1",
       "/api/v1/repos/acme/group/tags?limit=50&page=2",
-    ]);
-  });
-});
-
-describe("GiteaClient comparing commits", () => {
-  it("keeps what each compared commit touched and when it was written", async () => {
-    const { client } = fake([
-      {
-        body: {
-          commits: [
-            {
-              sha: "c1",
-              commit: {
-                message: "Add routes (#5)\n\nbody",
-                author: { name: "mate-p1", date: "2026-09-29T08:00:00Z" },
-              },
-              files: [{ filename: "src/server/index.ts", status: "modified" }],
-            },
-          ],
-        },
-      },
-    ]);
-    expect(await client.compareCommits("acme", "appdev", "base", "main")).toEqual([
-      {
-        sha: "c1",
-        subject: "Add routes (#5)",
-        at: "2026-09-29T08:00:00Z",
-        files: ["src/server/index.ts"],
-      },
     ]);
   });
 });

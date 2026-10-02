@@ -8,14 +8,11 @@ import { describe, expect, it, vi } from "vite-plus/test";
 import { project, service } from "../data/__fixtures__/index.ts";
 import type { ManagedZeropsDataRuntime } from "../data/runtime.ts";
 import type { LeaseAdmissionError } from "../data/types.ts";
-import type { FlowCommands } from "../flow/flowCommands.ts";
-import type { ForgeStore } from "../forge/forgeStore.ts";
 import type { GiteaSessions } from "../forge/giteaSession.ts";
-import type { InvalidationBus } from "../knowledge/invalidation.ts";
 import type { PlatformSignal, PlatformSignals } from "../knowledge/signals.ts";
 import { deploymentStorePorts, makeForgeWiring } from "./flow.ts";
 
-/** The forge's stores, as spies. */
+/** The Gitea sessions, as spies. */
 function forge() {
   const sessions = {
     resume: vi.fn(),
@@ -23,18 +20,7 @@ function forge() {
     online: vi.fn(),
     close: vi.fn(),
   };
-  const store = { setVisible: vi.fn(), wake: vi.fn(), dispose: vi.fn() };
-  const commands = { dispose: vi.fn() };
-  return {
-    sessions,
-    store,
-    commands,
-    stores: {
-      sessions: sessions as unknown as GiteaSessions,
-      store: store as unknown as ForgeStore,
-      commands: commands as unknown as FlowCommands,
-    },
-  };
+  return { sessions, stores: { sessions: sessions as unknown as GiteaSessions } };
 }
 
 const tab = (hidden: boolean): PlatformSignals => ({
@@ -53,67 +39,36 @@ const wiring = (hidden: boolean) =>
       setTimer: () => () => undefined,
     },
     signals: tab(hidden),
-    invalidations: {} as InvalidationBus,
-    services: undefined as never,
   });
 
-describe("the post-grant stage's forge and the tab (DESIGN §6.4)", () => {
-  it("starts as visible as the tab is", () => {
-    const hiddenTab = forge();
-    wiring(true).start(hiddenTab.stores);
-    expect(hiddenTab.store.setVisible.mock.calls).toEqual([[false]]);
-  });
-
+describe("the post-grant stage's Gitea sessions and the tab (DESIGN §6.4)", () => {
   it.each([
-    [
-      "a visible wake tries every wait and re-reads what is old",
-      { type: "wake", visible: true, cause: "shown" },
-      { sessions: ["wake"], store: ["wake"] },
-    ],
+    ["a visible wake tries every wait", { type: "wake", visible: true, cause: "shown" }, ["wake"]],
     [
       "a hidden wake evaluates what came due",
       { type: "wake", visible: false, cause: "resume" },
-      { sessions: ["resume"], store: [] },
+      ["resume"],
     ],
-    [
-      "shown again runs what came due",
-      { type: "visibility", hidden: false },
-      { sessions: ["resume"], store: ["setVisible"] },
-    ],
-    [
-      "hidden starts nothing more",
-      { type: "visibility", hidden: true },
-      { sessions: [], store: ["setVisible"] },
-    ],
-    [
-      "online tries the sessions again",
-      { type: "network", online: true },
-      { sessions: ["online"], store: [] },
-    ],
+    ["shown again runs what came due", { type: "visibility", hidden: false }, ["resume"]],
+    ["hidden starts nothing more", { type: "visibility", hidden: true }, []],
+    ["online tries the sessions again", { type: "network", online: true }, ["online"]],
   ] as const)("%s", (_case, signal: PlatformSignal, expected) => {
-    const { sessions, store, stores } = forge();
+    const { sessions, stores } = forge();
     const stage = wiring(false).start(stores);
-    store.setVisible.mockClear();
 
     stage.hear(signal);
 
-    const called = (spies: Record<string, { readonly mock: { readonly calls: unknown[] } }>) =>
-      Object.entries(spies)
+    expect(
+      Object.entries(sessions)
         .filter(([, spy]) => spy.mock.calls.length > 0)
-        .map(([method]) => method);
-    expect({ sessions: called(sessions), store: called(store) }).toEqual(expected);
+        .map(([method]) => method),
+    ).toEqual(expected);
   });
 
-  it("forgets the Gitea tokens before it ends the stores (§5 L9)", () => {
-    const { sessions, store, commands, stores } = forge();
-    const order: Array<string> = [];
-    sessions.close.mockImplementation(() => order.push("sessions"));
-    commands.dispose.mockImplementation(() => order.push("commands"));
-    store.dispose.mockImplementation(() => order.push("store"));
-
+  it("forgets the Gitea tokens when it ends (§5 L9)", () => {
+    const { sessions, stores } = forge();
     wiring(false).start(stores).dispose();
-
-    expect(order).toEqual(["sessions", "commands", "store"]);
+    expect(sessions.close).toHaveBeenCalledTimes(1);
   });
 });
 

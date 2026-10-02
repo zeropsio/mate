@@ -236,7 +236,6 @@ function ReleaseData({
     () =>
       stageMarks({
         contents: flow.release.contents,
-        mainHeads: flow.mainHeads,
         stage:
           mainStage === undefined
             ? undefined
@@ -245,7 +244,7 @@ function ReleaseData({
                 deployment: flowValue?.deployments.get(mainStage.projectId),
               }),
       }),
-    [flow.mainHeads, flow.release.contents, flowValue?.deployments, mainStage],
+    [flow.release.contents, flowValue?.deployments, mainStage],
   );
   const rows = releaseChangeRows({
     commits: releaseContentsCommits(flow.release.contents),

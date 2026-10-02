@@ -642,7 +642,6 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
                 ? {
                     hq: officialHq(accountHq),
                     kind: "mate-record",
-                    displayName: candidate.project.name,
                     record,
                     birth: {
                       standUp:
@@ -656,7 +655,6 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
                       hq: officialHq(accountHq),
                       groupId,
                       kind: "mate",
-                      displayName: candidate.project.name,
                       mate: {
                         name: tags.bot ?? candidate.project.name,
                         face:

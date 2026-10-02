@@ -270,7 +270,6 @@ describe("changeReview: a recipe change says what its merge does, and is never r
     production: false,
     later: [],
     unused: [],
-    declarations: false,
     ...over,
   });
   const recipe = (over: Partial<ChangeReviewInput["pull"]> = {}) =>
@@ -334,18 +333,6 @@ describe("changeReview: a recipe change says what its merge does, and is never r
       { later: ["mate", "stage", "production"], unused: ["Local"] },
       "No environment changes. A Mate, a stage or a production added later is made from the new recipe.",
       "no environment changes",
-    ],
-    [
-      "the declarations",
-      { declarations: true },
-      "The project deploys to the environments it declares.",
-      "the project deploys to what it declares",
-    ],
-    [
-      "the stage's recipe and the declarations",
-      { stages: 1, declarations: true },
-      "The stage gets any service added to its recipe, created empty; the services it has stay as they are. The project deploys to the environments it declares.",
-      "the stage gets any new service",
     ],
     [
       "nothing anything is made from: its READMEs",

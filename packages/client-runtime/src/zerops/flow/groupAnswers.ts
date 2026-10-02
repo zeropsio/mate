@@ -1,7 +1,7 @@
 /**
  * Per-group retaining publication for the project flow (DESIGN §4.7, M3, M4, M8).
  *
- * The flow's two halves are read two groups at a time, and each group is its
+ * The flow's Gitea half is read two groups at a time, and each group is its
  * own fact: it is published the moment its read completes, a read that fails
  * keeps the group's last answer, and a group whose inputs change is read again
  * without touching its neighbours. A clock tick asks for every group again
@@ -47,7 +47,7 @@ export interface GroupAnswers<Group, Scope> {
 
 export function createGroupAnswers<Group, Scope, Answer>(options: {
   /** Which half of the flow this is, for the `flow-pass` diagnostic. */
-  readonly pass: "forge" | "deploys";
+  readonly pass: "forge";
   readonly idOf: (group: Group) => string;
   /** Everything a group's read depends on; a change reads that group again. */
   readonly keyOf: (group: Group) => string;

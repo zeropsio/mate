@@ -299,7 +299,6 @@ function NewProjectDialog() {
               hq,
               groupId: appId,
               kind: "mate",
-              displayName: placement.displayName,
               mate: { name: botName, face },
               // Closed off by the close-off before its registration.
               birth: { standUp: false, closedOff: true },

@@ -29,9 +29,8 @@ import type { EnvironmentCreationChoice } from "../components/zerops/ZeropsEnvir
 import { officialHq, useAccountHq } from "./accountHq";
 import { invalidateZerops } from "./accountInvalidations";
 import { captureAccountLifetime } from "./accountLifetime";
-import { useAccountGitea } from "./giteaProject";
 import { beginPress, pressPlatform, pressRegistration, pressViewer, runPress } from "./matePress";
-import { readZeropsCellOnce } from "./useZeropsDeployedVersion";
+import { readZeropsCellOnce } from "./readZeropsCell";
 import { useZeropsInventory } from "./ZeropsInventoryProvider";
 import { useZeropsSession } from "./ZeropsSessionProvider";
 import { useZeropsData } from "./zeropsDataContext";
@@ -98,11 +97,6 @@ export function useEnvironmentCreation(): (
     inventoryRef.current = inventory;
   }, [inventory]);
   const accountHq = useAccountHq(activeOrganization?.id);
-  // A stage or a production is still declared where the organization has a Gitea project: read
-  // exactly as that project states it, never guessed.
-  const accountGitea = useAccountGitea(activeOrganization?.id);
-  const giteaProjectId = accountGitea?.projectId;
-  const giteaOrigin = accountGitea?.state.url;
 
   /**
    * The agents a group's existing environments are signed in with, so a Mate born into that group
@@ -175,21 +169,13 @@ export function useEnvironmentCreation(): (
             ? {
                 hq,
                 groupId: group.groupId,
-                displayName: name,
                 kind: "mate",
                 mate: { name: choice.botName ?? name, face: choice.face },
                 // The person adding a dev Mate with its agent asks for its stand-up; the press
                 // closed its project off before it registers it (`planEnvironmentCreation`).
                 birth: { standUp: role === "dev" && withAgent, closedOff: withAgent },
               }
-            : {
-                hq,
-                groupId: group.groupId,
-                displayName: name,
-                kind: tier,
-                giteaProjectId,
-                giteaOrigin: giteaOrigin ?? null,
-              },
+            : { hq, groupId: group.groupId, kind: tier },
         ),
         hq,
         // Reads the latest shared-model projection; no platform request.
@@ -239,8 +225,6 @@ export function useEnvironmentCreation(): (
       accountHq,
       activeOrganization,
       client,
-      giteaOrigin,
-      giteaProjectId,
       organizationRef,
       projectRef,
       readGroupAgents,

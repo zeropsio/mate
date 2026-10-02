@@ -105,13 +105,13 @@ describe("useChangeOffers", () => {
       who: "a Read only member of the organization",
       roleCode: "READ_ONLY",
       grants: [],
-      want: { read: true, comment: true, merge: false, close: false },
+      want: { read: true, comment: true, merge: false, close: false, redeploy: false },
     },
     {
       who: "a No access member with Basic user on the application's stage",
       roleCode: "NO_ACCESS",
       grants: [{ projectId: "p-stage", roleCode: "BASIC_USER" }],
-      want: { read: true, comment: true, merge: true, close: true },
+      want: { read: true, comment: true, merge: true, close: true, redeploy: true },
     },
     {
       who: "a No access member with only Read only on its projects",
@@ -120,7 +120,7 @@ describe("useChangeOffers", () => {
         { projectId: "p-mate", roleCode: "READ_ONLY" },
         { projectId: "p-stage", roleCode: "READ_ONLY" },
       ],
-      want: { read: false, comment: false, merge: false, close: false },
+      want: { read: false, comment: false, merge: false, close: false, redeploy: false },
     },
   ])("offers $who what HQ's rule allows", ({ roleCode, grants, want }) => {
     expect(offersOf({ roleCode, grants, placed: true })("app-shop")).toEqual(want);

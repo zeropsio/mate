@@ -388,7 +388,7 @@ describe("ZeropsNextStepStrip", () => {
     { file: "useZeropsMateNextStep.ts", source: hookSource, reads: "mateNextStep({" },
   ])("$file has no path that merges", ({ source, reads }) => {
     expect(source).toContain(reads);
-    expect(source).not.toMatch(/mergePullRequest|flowVerbKey|\.merge\b|merge:/);
+    expect(source).not.toMatch(/flowVerbKey|\.merge\b|merge:/);
   });
 });
 

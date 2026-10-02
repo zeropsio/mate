@@ -2,7 +2,6 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   canWriteRegistry,
-  mateAwaitingRegistryLine,
   onlyTheseCanAddAProject,
   resolveAddProjectVerb,
   resolveGroupGitea,
@@ -104,27 +103,6 @@ describe("resolveMateRegistration", () => {
 
   it("waits for an owner for a Mate a member created", () => {
     expect(resolveMateRegistration({ registry: ACME, projectId: "p-new" })).toBe("awaiting-owner");
-  });
-
-  it.each([
-    {
-      admins: [],
-      expected:
-        "Waiting for an owner or admin to add it to the project — until then it cannot push.",
-    },
-    {
-      admins: [{ id: "a", user: { fullName: "Jan" } }],
-      expected: "Waiting for Jan to add it to the project — until then it cannot push.",
-    },
-    {
-      admins: [
-        { id: "a", user: { fullName: "Jan" } },
-        { id: "b", user: { fullName: "Eva" } },
-      ],
-      expected: "Waiting for Jan or Eva to add it to the project — until then it cannot push.",
-    },
-  ])("says $expected", ({ admins, expected }) => {
-    expect(mateAwaitingRegistryLine(admins)).toBe(expected);
   });
 });
 

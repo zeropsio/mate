@@ -13,7 +13,6 @@ const NOTHING: RecipeReach = {
   production: false,
   later: [],
   unused: [],
-  declarations: false,
 };
 
 describe("recipeReach: what merging a change to the group repo does", () => {
@@ -78,12 +77,8 @@ describe("recipeReach: what merging a change to the group repo does", () => {
       [stage, production],
       {},
     ],
-    [
-      "the declarations change where the project deploys",
-      [file("environments.yaml")],
-      [stage],
-      { declarations: true },
-    ],
+    // HQ holds an application's environments itself (SPEC §3.2b): a file of them changes nothing.
+    ["an environments.yaml changes nothing", [file("environments.yaml")], [stage], {}],
     [
       "a directory that is no tier holds no recipe",
       [file(".gitea/workflows/release.yml"), file("docs/import.yaml"), file("import.yaml")],

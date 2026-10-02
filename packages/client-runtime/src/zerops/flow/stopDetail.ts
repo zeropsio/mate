@@ -23,6 +23,7 @@ import type { ZeropsPublicRoute, ZeropsRouteOffer } from "../publicRoutes.ts";
 import { sameCommit } from "../versionName.ts";
 import {
   releaseInFlightReason,
+  shortCommit,
   RELEASE_NOTHING_NEW_ON_MAIN,
   type FlowReleaseRow,
 } from "../release.ts";
@@ -52,15 +53,20 @@ export interface StopVerdict {
 export interface StopFailedDeploy {
   readonly label: string;
   readonly service: string;
-  /** The commit it deployed, whose build is the job that failed. */
+  /** The commit it deployed. */
   readonly sha: string | undefined;
   /** What still runs on that service, when something other than the failed deploy is known to. */
   readonly running: ServiceRuns | undefined;
+  /**
+   * The deploy *Run again* asks HQ for: the service's newest deploy, while HQ records it failed
+   * and it is this one. `undefined` for any other.
+   */
+  readonly redeploy: { readonly service: string; readonly sha: string } | undefined;
 }
 
 export interface StopFailure extends StopFailedDeploy {
-  /** Whether the failed job is known, so it can be run again. */
-  readonly jobKnown: boolean;
+  /** Whether this person may ask HQ to run it again (`redeploy`). */
+  readonly mayRunAgain: boolean;
 }
 
 /** `text · since`, or the text alone while how long is not known. */
@@ -69,6 +75,27 @@ const withSince = (text: string, since: string | undefined): string =>
 
 const plural = (count: number, one: string, many: string): string =>
   `${count} ${count === 1 ? one : many}`;
+
+/** The deploy key a stop's verdict speaks of (`stopVerdict`'s `keyGap`). */
+export type StopKeyGap = NonNullable<Parameters<typeof stopVerdict>[0]["keyGap"]>;
+
+/**
+ * What a stop's verdict says of its deploy key, as HQ records it (main E07): a key that no longer
+ * works, to anyone; no key, only to one HQ's rule does not let keep one (`keep_deploy_token`) —
+ * one it does is offered the mint itself — and nothing while that is not known.
+ */
+export function stopKeyGap(input: {
+  readonly keyHeld: boolean;
+  readonly keyInvalid: boolean;
+  /** Whether this person may keep the stop's deploy key; `undefined` while not known. */
+  readonly mayKeep: boolean | undefined;
+  /** The Zerops project's name. */
+  readonly project: string;
+}): StopKeyGap | undefined {
+  if (input.keyInvalid) return { kind: "invalid", project: input.project };
+  if (!input.keyHeld && input.mayKeep === false) return { kind: "missing", project: input.project };
+  return undefined;
+}
 
 /** What a stop's page says first: the first state that holds, in the order a person needs them. */
 export function stopVerdict(input: {
@@ -79,27 +106,49 @@ export function stopVerdict(input: {
   readonly failed: StopFailure | undefined;
   /** Changes merged to main that production does not run. */
   readonly waiting: number;
-  readonly release: { readonly offered: boolean; readonly tag: string | undefined };
+  readonly release: {
+    readonly offered: boolean;
+    readonly tag: string | undefined;
+    /** Why it is not offered, as its gate says; `undefined` while it is. */
+    readonly reason: string | undefined;
+  };
   /** How long ago production's release went out, already said (e.g. `2h ago`). */
   readonly releasedAge: string | undefined;
   /** How long the stop's version has run, already said; a stage's detail. */
   readonly since: string | undefined;
   /** Whether a stage runs main's head commit; stage only. */
   readonly atMainHead: boolean;
+  /**
+   * The deploy key HQ deploys the stop with, where it keeps HQ from deploying — missing, or no
+   * longer working — and the Zerops project whose Full access mints one; `undefined` while it
+   * works.
+   */
+  readonly keyGap: { readonly kind: "missing" | "invalid"; readonly project: string } | undefined;
 }): StopVerdict {
   const { tier, view } = input;
   const quiet = { detail: undefined, verb: null } as const;
   if (tier === "production" && input.releasing !== undefined)
     return { tone: "busy", text: releaseInFlightReason(input.releasing), ...quiet };
   if (view.tone === "pending") return { tone: "busy", text: view.word, ...quiet };
+  // HQ deploys nothing without a key that works, so the failures that follow are not said, and
+  // nothing is asked again.
+  if (input.keyGap !== undefined) {
+    const { kind, project } = input.keyGap;
+    return {
+      tone: "failed",
+      text: kind === "missing" ? "It has no deploy key yet." : "Its deploy key no longer works.",
+      detail: `Someone with Full access to the ${project} project in Zerops mints ${kind === "missing" ? "one" : "a new one"} here.`,
+      verb: null,
+    };
+  }
   if (input.failed !== undefined) {
-    const { label, service, running, jobKnown } = input.failed;
+    const { label, service, running, redeploy, mayRunAgain } = input.failed;
     return {
       tone: "failed",
       text: `The deploy of ${label} failed on ${service}.`,
       detail:
         running === undefined ? undefined : withSince(`${running.label} still runs`, running.since),
-      verb: jobKnown ? { kind: "run-again" } : null,
+      verb: redeploy !== undefined && mayRunAgain ? { kind: "run-again" } : null,
     };
   }
   const releaseVerb =
@@ -139,9 +188,11 @@ export function stopVerdict(input: {
       detail: `Production runs ${label}`,
       verb: releaseVerb,
     };
+  // Nothing waits: production runs what is merged — unless the release is not offered, whose gate
+  // says why, and what is merged is not known to be what runs.
   return {
     tone: "ok",
-    text: RELEASE_NOTHING_NEW_ON_MAIN,
+    text: input.release.reason ?? RELEASE_NOTHING_NEW_ON_MAIN,
     detail: input.releasedAge === undefined ? label : `${label} · released ${input.releasedAge}`,
     verb: null,
   };
@@ -186,11 +237,6 @@ export const NONE_YET = "None yet";
 /** A service with no public address and none to offer. */
 export const NOT_PUBLIC_YET = "Not public yet";
 
-/** What a service row's chevron does, for a screen reader. */
-export function serviceBuildToggleLabel(hostname: string, open: boolean): string {
-  return `${open ? "Hide" : "Show"} how ${hostname} was deployed`;
-}
-
 /** What a link into a stop's page says on hover, wherever it stands. */
 export function openStopLabel(tier: GroupEnvironmentTier): string {
   return `Open ${tier}`;
@@ -225,6 +271,8 @@ export interface StopServiceRow {
   readonly runs: ServiceRuns | undefined;
   readonly routes: ReadonlyArray<ZeropsPublicRoute>;
   readonly offers: ReadonlyArray<ZeropsRouteOffer>;
+  /** The commit of its newest deploy, while HQ records that deploy as failed. */
+  readonly failedSha: string | undefined;
 }
 
 /** A version a service runs, and how long it has run, already said. */
@@ -304,7 +352,7 @@ function platformDeployments(
  * (`stopView` over that one service), so a service reads the same word on the page as in the menu.
  */
 export function serviceRows(input: {
-  /** The environment's name in `environments.yaml`, which the statuses name. */
+  /** HQ's name for the environment. */
   readonly environment: string;
   readonly services: ReadonlyArray<EnvironmentServiceState>;
   readonly platform: Shown<ReadonlyArray<StopService>>;
@@ -329,14 +377,13 @@ export function serviceRows(input: {
     const settled = settledOf(deployment);
     const version = settledVersionOf(deployment, settled, read);
     // The service's own row: `stopView` reads only its version and tone, which the one service
-    // and the environment's statuses decide; the row's name, tier and source go unread.
+    // and HQ's record of its deploys decide; the row's name, tier and source go unread.
     const row = environmentRow({
       projectId: "",
       name: input.environment,
       tier: "stage",
       sources: [],
       services: [state],
-      environment: input.environment,
     });
     const { tone, word, activatedAt } = stopView({ deployment, row, nowMs: input.nowMs });
     return {
@@ -358,6 +405,7 @@ export function serviceRows(input: {
       runs: runsOf(deployment, settled, read, input.age),
       routes: input.routes.filter((route) => route.service === hostname),
       offers: input.offers.filter((offer) => offer.service === hostname),
+      failedSha: state.deploy?.latest.state === "failed" ? state.deploy.latest.sha : undefined,
     };
   });
 }
@@ -370,8 +418,10 @@ export function serviceRows(input: {
  * failure sits on a commit none of the stop's rows carries, and the service runs on what it ran.
  * A release that failed before the live one is history.
  *
- * Otherwise — and always on a stage — a service whose own running commit carries a failed deploy:
- * it names the version that failed, which is what it runs, so nothing else is said to run on.
+ * Otherwise — and always on a stage — a service whose newest deploy HQ records as failed: it names
+ * that commit, and what the service still runs, where that is another one.
+ *
+ * Either is asked again (`redeploy`) only while it is the service's newest deploy and failed.
  */
 export function stopFailedDeploy(input: {
   readonly tier: GroupEnvironmentTier;
@@ -379,6 +429,12 @@ export function stopFailedDeploy(input: {
   /** The group's releases, newest first. */
   readonly releases: ReadonlyArray<FlowReleaseRow>;
 }): StopFailedDeploy | undefined {
+  const redeployOf = (service: string, commit: string | undefined) => {
+    const failedSha = input.rows.find((row) => row.hostname === service)?.failedSha;
+    return failedSha !== undefined && sameCommit(commit, failedSha)
+      ? { service, sha: failedSha }
+      : undefined;
+  };
   if (input.tier === "production") {
     const live = input.releases.findIndex((release) => release.standing === "live");
     const newer = live === -1 ? input.releases : input.releases.slice(0, live);
@@ -390,13 +446,20 @@ export function stopFailedDeploy(input: {
         service,
         sha: commit,
         running: input.rows.find((row) => row.hostname === service)?.runs,
+        redeploy: redeployOf(service, commit),
       };
     }
   }
-  const row = input.rows.find((entry) => entry.tone === "bad");
-  const label = row?.runs?.label ?? row?.commit;
-  if (row === undefined || label === undefined) return undefined;
-  return { label, service: row.hostname, sha: row.sha, running: undefined };
+  const row = input.rows.find((entry) => entry.failedSha !== undefined);
+  if (row?.failedSha === undefined) return undefined;
+  const { failedSha, hostname } = row;
+  return {
+    label: shortCommit(failedSha),
+    service: hostname,
+    sha: failedSha,
+    running: sameCommit(row.sha, failedSha) ? undefined : row.runs,
+    redeploy: { service: hostname, sha: failedSha },
+  };
 }
 
 /** What a stage's deploy history says beside the commit that stage runs. */

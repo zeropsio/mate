@@ -134,18 +134,6 @@ interface GiteaListCommitWire {
   readonly author?: { readonly login?: string | undefined } | null | undefined;
 }
 
-/** Gitea's own shape for a commit inside a comparison. */
-interface GiteaCompareCommitWire {
-  readonly sha: string;
-  readonly commit?:
-    | {
-        readonly message?: string | undefined;
-        readonly author?: { readonly date?: string | undefined } | undefined;
-      }
-    | undefined;
-  readonly files?: ReadonlyArray<{ readonly filename?: string | undefined }> | undefined;
-}
-
 export interface GiteaBranch {
   readonly name: string;
   readonly commit?: { readonly id?: string | undefined } | undefined;
@@ -157,63 +145,6 @@ export interface GiteaBranch {
    */
   readonly user_can_merge?: boolean | undefined;
   readonly user_can_push?: boolean | undefined;
-}
-
-export interface GiteaFile {
-  readonly path: string;
-  /** Decoded. Gitea sends base64; nothing downstream wants that. */
-  readonly content: string;
-  /** The blob sha, which an update of this file has to quote. */
-  readonly sha: string;
-}
-
-/** One entry of `POST /repos/{o}/{r}/contents`'s `files[]`. */
-export interface GiteaFileChange {
-  readonly operation: "create" | "update" | "delete";
-  readonly path: string;
-  /** Plain text; encoded on the way out. Omitted for a delete. */
-  readonly content?: string | undefined;
-  /** Required by Gitea for `update` and `delete`. */
-  readonly sha?: string | undefined;
-}
-
-export interface GiteaPullRequest {
-  readonly number: number;
-  readonly title: string;
-  readonly state: string;
-  readonly html_url?: string | undefined;
-  /**
-   * Gitea's answer to "does it merge", which it recomputes after every push to
-   * either side: `false` or `null` for a while after one is not yet a verdict.
-   */
-  readonly mergeable?: boolean | null | undefined;
-  readonly merged?: boolean | undefined;
-  readonly head?: {
-    readonly ref?: string | undefined;
-    readonly sha?: string | undefined;
-    /** The repository the branch lives in: a fork's for one opened from a fork; `null` once deleted. */
-    readonly repo?: { readonly full_name?: string | undefined } | null | undefined;
-  };
-  readonly base?: { readonly ref?: string | undefined; readonly sha?: string | undefined };
-  readonly user?: { readonly login?: string | undefined } | undefined;
-  readonly updated_at?: string | undefined;
-  /** Its description as its author wrote it, Markdown; empty where they wrote none. */
-  readonly body?: string | undefined;
-  /** How many comments were said on it. */
-  readonly comments?: number | undefined;
-  /** How many lines it adds and removes, and how many files it touches — Gitea's own count. */
-  readonly additions?: number | undefined;
-  readonly deletions?: number | undefined;
-  readonly changed_files?: number | undefined;
-  /**
-   * The commit its branch and the base last had in common, as Gitea last tested it: a base head
-   * past it is `main` having moved on since.
-   */
-  readonly merge_base?: string | undefined;
-  /** When it landed. Absent on a change that is still open, or was closed unmerged. */
-  readonly merged_at?: string | undefined;
-  /** The commit it landed as. Absent unless it merged. */
-  readonly merge_commit_sha?: string | null | undefined;
 }
 
 /** One tag of a repository — `GET /repos/{o}/{r}/tags`. */
@@ -250,34 +181,6 @@ function commitStatusFromWire(wire: GiteaCommitStatusWire): GiteaCommitStatus {
   return { ...rest, state: state ?? status ?? "pending" };
 }
 
-export interface GiteaActionRun {
-  readonly id: number;
-  readonly status?: string | undefined;
-  readonly conclusion?: string | undefined;
-  readonly head_branch?: string | undefined;
-  readonly head_sha?: string | undefined;
-  readonly run_number?: number | undefined;
-}
-
-export interface GiteaActionJob {
-  readonly id: number;
-  readonly name?: string | undefined;
-  readonly status?: string | undefined;
-  readonly conclusion?: string | undefined;
-  readonly run_id?: number | undefined;
-  /** ISO-8601, when the runner picked it up. */
-  readonly started_at?: string | undefined;
-  /** ISO-8601, when it stopped — absent while it is still going. */
-  readonly completed_at?: string | undefined;
-}
-
-export interface GiteaUser {
-  readonly id: number;
-  readonly login: string;
-  readonly full_name?: string | undefined;
-  readonly avatar_url?: string | undefined;
-}
-
 export interface GiteaClientOptions {
   /** Gitea's public origin. */
   readonly origin: string;
@@ -289,16 +192,6 @@ export interface GiteaClientOptions {
 
 export interface GiteaClient {
   readonly origin: string;
-  /** The escape hatch, typed — for a call the next slice adds before this one does. */
-  request<T>(input: {
-    readonly method: string;
-    readonly path: string;
-    readonly query?: Readonly<Record<string, string | number | undefined>> | undefined;
-    readonly body?: unknown;
-    readonly signal?: AbortSignal | undefined;
-  }): Promise<T>;
-
-  currentUser(): Promise<GiteaUser>;
 
   /** `undefined` while the broker has not made the group's org yet. */
   getOrganization(slug: string): Promise<GiteaOrganization | undefined>;
@@ -306,69 +199,8 @@ export interface GiteaClient {
   getRepository(owner: string, repo: string): Promise<GiteaRepository | undefined>;
   /** Every repository this person has access to, page by page. */
   listUserRepositories(): Promise<ReadonlyArray<GiteaRepository>>;
-  listBranches(owner: string, repo: string): Promise<ReadonlyArray<GiteaBranch>>;
   /** `undefined` when the branch is not there — a group repo with no `main` yet. */
   getBranch(owner: string, repo: string, branch: string): Promise<GiteaBranch | undefined>;
-  /**
-   * Deletes a branch; one that is not there is already what was asked for. A leftover
-   * `mate-app/env-*` that declares another project goes this way before the declaration is
-   * written afresh (`addGroupEnvironment.ts`, 2026-09-24).
-   */
-  deleteBranch(owner: string, repo: string, branch: string): Promise<void>;
-
-  /**
-   * The names in a directory of that ref — `""` for the root — or `undefined` when it is not
-   * there. Asked before a file that may not exist, so its absence is a listing, never a 404.
-   */
-  listDirectory(
-    owner: string,
-    repo: string,
-    path: string,
-    ref?: string | undefined,
-  ): Promise<ReadonlyArray<string> | undefined>;
-  /** `undefined` when the path is not in that ref — an empty group repo, say. */
-  readFile(
-    owner: string,
-    repo: string,
-    path: string,
-    ref?: string | undefined,
-  ): Promise<GiteaFile | undefined>;
-  changeFiles(
-    owner: string,
-    repo: string,
-    change: {
-      readonly files: ReadonlyArray<GiteaFileChange>;
-      readonly message: string;
-      /** The branch written to; it must exist. */
-      readonly branch?: string | undefined;
-      /** Created from `branch` and written to instead, when given. */
-      readonly newBranch?: string | undefined;
-    },
-  ): Promise<void>;
-
-  /** One page: Gitea's default length, or `limit` where it is given. */
-  listPullRequests(
-    owner: string,
-    repo: string,
-    options?:
-      | { readonly state?: "open" | "closed" | "all"; readonly limit?: number | undefined }
-      | undefined,
-  ): Promise<ReadonlyArray<GiteaPullRequest>>;
-  createPullRequest(
-    owner: string,
-    repo: string,
-    input: {
-      readonly head: string;
-      readonly base: string;
-      readonly title: string;
-      readonly body?: string | undefined;
-    },
-  ): Promise<GiteaPullRequest>;
-  /**
-   * Squash-merges the pull request only while its head is still `head` — the commit the person
-   * was shown; a head that moved since is refused with `409 head out of date`.
-   */
-  mergePullRequest(owner: string, repo: string, index: number, head: string): Promise<void>;
 
   createTag(
     owner: string,
@@ -394,17 +226,6 @@ export interface GiteaClient {
   ): Promise<ReadonlyArray<GiteaCommitStatus>>;
 
   /**
-   * The commits `head` has and `base` does not — what a release would carry.
-   * Empty where the two are the same commit or Gitea cannot compare them.
-   */
-  compareCommits(
-    owner: string,
-    repo: string,
-    base: string,
-    head: string,
-  ): Promise<ReadonlyArray<GiteaCommit>>;
-
-  /**
    * A branch's commits, newest first — the spine a group's history is drawn on.
    *
    * `compareCommits` cannot answer this: it needs two refs and reports what
@@ -427,20 +248,6 @@ export interface GiteaClient {
    * one question a diff answers and a list of subjects cannot.
    */
   commitDetail(owner: string, repo: string, sha: string): Promise<GiteaCommitDetail | undefined>;
-
-  listActionRuns(
-    owner: string,
-    repo: string,
-    options?: { readonly branch?: string; readonly limit?: number } | undefined,
-  ): Promise<ReadonlyArray<GiteaActionRun>>;
-  listActionJobs(
-    owner: string,
-    repo: string,
-    runId: number,
-  ): Promise<ReadonlyArray<GiteaActionJob>>;
-  /** Runs one job of a run again (`POST …/actions/runs/{run}/jobs/{job}/rerun`, Gitea 1.27.2). */
-  rerunActionJob(owner: string, repo: string, runId: number, jobId: number): Promise<void>;
-  actionJobLogs(owner: string, repo: string, jobId: number): Promise<string>;
 }
 
 const API_PREFIX = "/api/v1";
@@ -455,22 +262,16 @@ export function createGiteaClient(options: GiteaClientOptions): GiteaClient {
   const base = `${options.origin.trim().replace(/\/+$/u, "")}${API_PREFIX}`;
   const tokenOf = () => (typeof options.token === "function" ? options.token() : options.token);
 
-  /**
-   * Sends one request and reads its answer with `answer`, both inside a read's deadline — or, for
-   * a read whose `deadline` is `"idle"`, with the deadline starting over whenever `answer` says
-   * more of the answer arrived.
-   */
+  /** Sends one request and reads its answer with `answer`, both inside a read's deadline. */
   async function send<T>(
     input: {
       readonly method: string;
       readonly path: string;
       readonly query?: Readonly<Record<string, string | number | undefined>> | undefined;
       readonly body?: unknown;
-      readonly accept?: string;
       readonly signal?: AbortSignal | undefined;
-      readonly deadline?: "answer" | "idle";
     },
-    answer: (response: Response, arrived: () => void) => Promise<T>,
+    answer: (response: Response) => Promise<T>,
   ): Promise<T> {
     const query = new URLSearchParams();
     for (const [key, value] of Object.entries(input.query ?? {})) {
@@ -480,24 +281,20 @@ export function createGiteaClient(options: GiteaClientOptions): GiteaClient {
     const caller = input.signal ?? options.signal;
     // A write Gitea is slow to answer may still land: ending it would report a merge or a tag as
     // failed that then exists. Only a read has a deadline.
-    const { signal, rearm, done } =
-      input.method === "GET"
-        ? withDeadline(caller)
-        : { signal: caller, rearm: () => undefined, done: () => undefined };
-    const arrived = input.deadline === "idle" ? rearm : () => undefined;
+    const { signal, done } =
+      input.method === "GET" ? withDeadline(caller) : { signal: caller, done: () => undefined };
     try {
       const response = await options.fetch(`${base}${input.path}${suffix}`, {
         method: input.method,
         headers: {
           authorization: `Bearer ${tokenOf()}`,
-          accept: input.accept ?? "application/json",
+          accept: "application/json",
           ...(input.body === undefined ? {} : { "content-type": "application/json" }),
         },
         ...(input.body === undefined ? {} : { body: JSON.stringify(input.body) }),
         ...(signal === undefined ? {} : { signal }),
       });
-      arrived();
-      return await answer(response, arrived);
+      return await answer(response);
     } finally {
       done();
     }
@@ -565,9 +362,6 @@ export function createGiteaClient(options: GiteaClientOptions): GiteaClient {
 
   return {
     origin: options.origin,
-    request: (input) => json(input, `answer ${input.method} ${input.path}`),
-
-    currentUser: () => json<GiteaUser>({ method: "GET", path: "/user" }, "say who you are"),
 
     getOrganization: (slug) =>
       optional<GiteaOrganization>({ method: "GET", path: `/orgs/${enc(slug)}` }, "read the group"),
@@ -581,129 +375,10 @@ export function createGiteaClient(options: GiteaClientOptions): GiteaClient {
     listUserRepositories: () =>
       paged<GiteaRepository>({ method: "GET", path: "/user/repos" }, "list your repositories"),
 
-    listBranches: (owner, repo) =>
-      json<ReadonlyArray<GiteaBranch>>(
-        { method: "GET", path: `/repos/${enc(owner)}/${enc(repo)}/branches` },
-        "list the branches",
-      ),
-
     getBranch: (owner, repo, branch) =>
       optional<GiteaBranch>(
         { method: "GET", path: `/repos/${enc(owner)}/${enc(repo)}/branches/${enc(branch)}` },
         "read the branch",
-      ),
-
-    deleteBranch: (owner, repo, branch) =>
-      send(
-        { method: "DELETE", path: `/repos/${enc(owner)}/${enc(repo)}/branches/${enc(branch)}` },
-        async (response) => {
-          // Not there is what a delete asks for; read to its end, as `optional` does.
-          if (response.status === 404) {
-            await response.arrayBuffer().catch(() => undefined);
-            return;
-          }
-          if (!response.ok) await fail(response, "delete the branch");
-        },
-      ),
-
-    listDirectory: async (owner, repo, path, ref) => {
-      const answer = await optional<unknown>(
-        {
-          method: "GET",
-          path: `/repos/${enc(owner)}/${enc(repo)}/contents${path === "" ? "" : `/${encodePath(path)}`}`,
-          ...(ref === undefined ? {} : { query: { ref } }),
-        },
-        "list the directory",
-      );
-      if (!Array.isArray(answer)) return undefined;
-      return answer.flatMap((entry: unknown) =>
-        typeof entry === "object" &&
-        entry !== null &&
-        "name" in entry &&
-        typeof entry.name === "string"
-          ? [entry.name]
-          : [],
-      );
-    },
-
-    readFile: async (owner, repo, path, ref) => {
-      const answer = await optional<{
-        readonly content?: unknown;
-        readonly sha?: unknown;
-        readonly encoding?: unknown;
-      }>(
-        {
-          method: "GET",
-          path: `/repos/${enc(owner)}/${enc(repo)}/contents/${encodePath(path)}`,
-          ...(ref === undefined ? {} : { query: { ref } }),
-        },
-        "read the file",
-      );
-      if (answer === undefined) return undefined;
-      if (typeof answer.content !== "string" || typeof answer.sha !== "string") return undefined;
-      return { path, sha: answer.sha, content: base64Decode(answer.content) };
-    },
-
-    changeFiles: (owner, repo, change) =>
-      nothing(
-        {
-          method: "POST",
-          path: `/repos/${enc(owner)}/${enc(repo)}/contents`,
-          body: {
-            message: change.message,
-            files: change.files.map((file) => ({
-              operation: file.operation,
-              path: file.path,
-              ...(file.content === undefined ? {} : { content: base64Encode(file.content) }),
-              ...(file.sha === undefined ? {} : { sha: file.sha }),
-            })),
-            ...(change.branch === undefined ? {} : { branch: change.branch }),
-            ...(change.newBranch === undefined ? {} : { new_branch: change.newBranch }),
-          },
-        },
-        "write the files",
-      ),
-
-    listPullRequests: (owner, repo, listOptions) =>
-      json<ReadonlyArray<GiteaPullRequest>>(
-        {
-          method: "GET",
-          path: `/repos/${enc(owner)}/${enc(repo)}/pulls`,
-          query: { state: listOptions?.state ?? "open", limit: listOptions?.limit },
-        },
-        "list the pull requests",
-      ),
-
-    createPullRequest: (owner, repo, input) =>
-      json<GiteaPullRequest>(
-        {
-          method: "POST",
-          path: `/repos/${enc(owner)}/${enc(repo)}/pulls`,
-          body: {
-            head: input.head,
-            base: input.base,
-            title: input.title,
-            ...(input.body === undefined ? {} : { body: input.body }),
-          },
-        },
-        "open the pull request",
-      ),
-
-    mergePullRequest: (owner, repo, index, head) =>
-      nothing(
-        {
-          method: "POST",
-          path: `/repos/${enc(owner)}/${enc(repo)}/pulls/${index}/merge`,
-          body: {
-            // Squash, because a pull request here is one task: its title is
-            // what the person asked for, its commits are the agent's working
-            // steps, and `main` reads as the list of tasks delivered rather
-            // than as the inside of each one (the owner, 2026-09-18).
-            Do: "squash",
-            head_commit_id: head,
-          },
-        },
-        "merge the pull request",
       ),
 
     createTag: (owner, repo, input) =>
@@ -748,32 +423,6 @@ export function createGiteaClient(options: GiteaClientOptions): GiteaClient {
         )
       ).map(commitStatusFromWire),
 
-    compareCommits: async (owner, repo, base, head) => {
-      if (base === head || base === "" || head === "") return [];
-      const answer = await optional<{ readonly commits?: ReadonlyArray<GiteaCompareCommitWire> }>(
-        {
-          method: "GET",
-          // Gitea takes the two refs as one path segment, `base...head`, and
-          // answers `404` for a pair it cannot compare — a commit the
-          // repository has lost, a fork with no common history.
-          path: `/repos/${enc(owner)}/${enc(repo)}/compare/${enc(base)}...${enc(head)}`,
-        },
-        "compare the commits",
-      );
-      return (answer?.commits ?? []).map((entry) => {
-        const at = entry.commit?.author?.date;
-        const files = entry.files?.flatMap((file) =>
-          file.filename === undefined || file.filename.length === 0 ? [] : [file.filename],
-        );
-        return {
-          sha: entry.sha,
-          subject: (entry.commit?.message ?? "").split("\n")[0]?.trim() ?? "",
-          ...(at === undefined ? {} : { at }),
-          ...(files === undefined ? {} : { files }),
-        };
-      });
-    },
-
     listCommits: async (owner, repo, listOptions) => {
       const answer = await optional<ReadonlyArray<GiteaListCommitWire>>(
         {
@@ -817,75 +466,15 @@ export function createGiteaClient(options: GiteaClientOptions): GiteaClient {
         deletions: answer.stats?.deletions,
       };
     },
-
-    listActionRuns: (owner, repo, listOptions) =>
-      json<{ readonly workflow_runs?: ReadonlyArray<GiteaActionRun> }>(
-        {
-          method: "GET",
-          path: `/repos/${enc(owner)}/${enc(repo)}/actions/runs`,
-          query: {
-            ...(listOptions?.branch === undefined ? {} : { branch: listOptions.branch }),
-            ...(listOptions?.limit === undefined ? {} : { limit: listOptions.limit }),
-          },
-        },
-        "list the runs",
-      ).then((answer) => answer.workflow_runs ?? []),
-
-    listActionJobs: (owner, repo, runId) =>
-      json<{ readonly jobs?: ReadonlyArray<GiteaActionJob> }>(
-        { method: "GET", path: `/repos/${enc(owner)}/${enc(repo)}/actions/runs/${runId}/jobs` },
-        "list the jobs",
-      ).then((answer) => answer.jobs ?? []),
-
-    rerunActionJob: (owner, repo, runId, jobId) =>
-      nothing(
-        {
-          method: "POST",
-          path: `/repos/${enc(owner)}/${enc(repo)}/actions/runs/${runId}/jobs/${jobId}/rerun`,
-        },
-        "rerun the job",
-      ),
-
-    actionJobLogs: (owner, repo, jobId) =>
-      send(
-        {
-          method: "GET",
-          path: `/repos/${enc(owner)}/${enc(repo)}/actions/jobs/${jobId}/logs`,
-          accept: "text/plain",
-          // A job's log can run to megabytes; on a slow link its body alone outlasts the deadline,
-          // so only a log that stops arriving ends.
-          deadline: "idle",
-        },
-        async (response, arrived) => {
-          if (!response.ok) await fail(response, "hand over the logs");
-          return textOf(response, arrived);
-        },
-      ),
   };
-}
-
-/** The body as text, saying each time more of it arrived. */
-async function textOf(response: Response, arrived: () => void): Promise<string> {
-  if (response.body === null) return response.text();
-  const reader = response.body.getReader();
-  const decoder = new TextDecoder();
-  let text = "";
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) return text + decoder.decode();
-    arrived();
-    text += decoder.decode(value, { stream: true });
-  }
 }
 
 /**
  * The caller's signal, ended as well by {@link GITEA_REQUEST_DEADLINE_MS} as a `TimeoutError`.
- * `rearm` starts the deadline over; `done` lets it and the caller's signal go once the answer has
- * been read.
+ * `done` lets it and the caller's signal go once the answer has been read.
  */
 function withDeadline(caller: AbortSignal | undefined): {
   readonly signal: AbortSignal;
-  readonly rearm: () => void;
   readonly done: () => void;
 } {
   const controller = new AbortController();
@@ -898,17 +487,12 @@ function withDeadline(caller: AbortSignal | undefined): {
     );
   };
   // @effect-diagnostics-next-line globalTimers:off -- plain promises: a read's deadline, no Effect runtime here.
-  let timer = setTimeout(expire, GITEA_REQUEST_DEADLINE_MS);
+  const timer = setTimeout(expire, GITEA_REQUEST_DEADLINE_MS);
   const onCaller = () => controller.abort(caller?.reason);
   if (caller?.aborted === true) onCaller();
   else caller?.addEventListener("abort", onCaller, { once: true });
   return {
     signal: controller.signal,
-    rearm: () => {
-      clearTimeout(timer);
-      // @effect-diagnostics-next-line globalTimers:off -- plain promises: a read's deadline, no Effect runtime here.
-      timer = setTimeout(expire, GITEA_REQUEST_DEADLINE_MS);
-    },
     done: () => {
       clearTimeout(timer);
       caller?.removeEventListener("abort", onCaller);
@@ -918,96 +502,4 @@ function withDeadline(caller: AbortSignal | undefined): {
 
 function enc(segment: string): string {
   return encodeURIComponent(segment);
-}
-
-/** A file path keeps its separators; every other character is escaped. */
-function encodePath(path: string): string {
-  return path.split("/").map(encodeURIComponent).join("/");
-}
-
-const BASE64_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-
-/**
- * UTF-8 text to standard base64, written out for the same reason
- * `base64UrlEncode` is: `btoa` is a platform global this package may not read,
- * and it mangles anything outside Latin-1 besides.
- */
-export function base64Encode(text: string): string {
-  const bytes = utf8Bytes(text);
-  let out = "";
-  for (let index = 0; index < bytes.length; index += 3) {
-    const a = bytes[index] ?? 0;
-    const b = bytes[index + 1];
-    const c = bytes[index + 2];
-    out += BASE64_ALPHABET[a >> 2];
-    out += BASE64_ALPHABET[((a & 0b11) << 4) | ((b ?? 0) >> 4)];
-    out += b === undefined ? "=" : BASE64_ALPHABET[((b & 0b1111) << 2) | ((c ?? 0) >> 6)];
-    out += c === undefined ? "=" : BASE64_ALPHABET[c & 0b111111];
-  }
-  return out;
-}
-
-/** Base64 (with or without newlines, as Gitea sends it) back to UTF-8 text. */
-export function base64Decode(encoded: string): string {
-  const clean = encoded.replace(/[^A-Za-z0-9+/]/gu, "");
-  const bytes: Array<number> = [];
-  for (let index = 0; index < clean.length; index += 4) {
-    // `indexOf("")` is 0, not -1, so a missing character has to be spotted
-    // before the lookup — otherwise a three-character tail decodes a spurious
-    // NUL byte and every file this reads ends in one.
-    const chunk = [0, 1, 2, 3].map((offset) => {
-      const character = clean[index + offset];
-      return character === undefined ? -1 : BASE64_ALPHABET.indexOf(character);
-    });
-    const a = chunk[0] ?? -1;
-    const b = chunk[1] ?? -1;
-    if (a < 0 || b < 0) break;
-    bytes.push((a << 2) | (b >> 4));
-    const c = chunk[2] ?? -1;
-    if (c < 0) break;
-    bytes.push(((b & 0b1111) << 4) | (c >> 2));
-    const d = chunk[3] ?? -1;
-    if (d < 0) break;
-    bytes.push(((c & 0b11) << 6) | d);
-  }
-  return utf8Text(Uint8Array.from(bytes));
-}
-
-function utf8Bytes(text: string): Uint8Array {
-  const out: Array<number> = [];
-  for (const character of text) {
-    const point = character.codePointAt(0) ?? 0;
-    if (point < 0x80) out.push(point);
-    else if (point < 0x800) out.push(0xc0 | (point >> 6), 0x80 | (point & 0x3f));
-    else if (point < 0x10000) {
-      out.push(0xe0 | (point >> 12), 0x80 | ((point >> 6) & 0x3f), 0x80 | (point & 0x3f));
-    } else {
-      out.push(
-        0xf0 | (point >> 18),
-        0x80 | ((point >> 12) & 0x3f),
-        0x80 | ((point >> 6) & 0x3f),
-        0x80 | (point & 0x3f),
-      );
-    }
-  }
-  return Uint8Array.from(out);
-}
-
-function utf8Text(bytes: Uint8Array): string {
-  let out = "";
-  for (let index = 0; index < bytes.length;) {
-    const byte = bytes[index] ?? 0;
-    let point: number;
-    let size: number;
-    if (byte < 0x80) [point, size] = [byte, 1];
-    else if (byte < 0xe0) [point, size] = [byte & 0x1f, 2];
-    else if (byte < 0xf0) [point, size] = [byte & 0x0f, 3];
-    else [point, size] = [byte & 0x07, 4];
-    for (let offset = 1; offset < size; offset += 1) {
-      point = (point << 6) | ((bytes[index + offset] ?? 0) & 0x3f);
-    }
-    out += String.fromCodePoint(point);
-    index += size;
-  }
-  return out;
 }

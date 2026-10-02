@@ -14,7 +14,7 @@ import { useContext, useEffect, useMemo, useState } from "react";
 
 import { usualAgentOf } from "../components/zerops/ZeropsAgentSignIn.logic";
 import { onAccountLifetimeClose } from "./accountLifetime";
-import { readZeropsCellOnce } from "./useZeropsDeployedVersion";
+import { readZeropsCellOnce } from "./readZeropsCell";
 import { useZeropsCandidates } from "./useZeropsCandidates";
 import { ZeropsDataContext } from "./zeropsDataContext";
 import { useZeropsSessionOptional } from "./ZeropsSessionProvider";

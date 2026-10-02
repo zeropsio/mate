@@ -88,7 +88,7 @@ interface MateDiagnosticSpans {
   };
   /** One pass over every group of the project flow; `answered` is how many groups it read. */
   readonly "flow-pass": {
-    readonly start: { readonly pass: "forge" | "deploys"; readonly groups: number };
+    readonly start: { readonly pass: "forge"; readonly groups: number };
     readonly end: { readonly answered: number };
   };
 }

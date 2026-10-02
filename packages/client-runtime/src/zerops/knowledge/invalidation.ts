@@ -45,11 +45,9 @@ const ServiceRef = Schema.Struct({
 export const TargetKey = Schema.TemplateLiteral([Schema.String, ":", Schema.String]);
 export type TargetKey = typeof TargetKey.Type;
 
-/** The origin a Gitea instance answers on; an address that keys its session and forge facts. */
+/** The origin a Gitea instance answers on; an address that keys its session. */
 export const GiteaOrigin = Schema.String.check(Schema.isNonEmpty());
 export type GiteaOrigin = typeof GiteaOrigin.Type;
-
-const Repository = { origin: GiteaOrigin, owner: Schema.String, repo: Schema.String };
 
 export const Invalidation = Schema.Union([
   Schema.Struct({
@@ -71,8 +69,6 @@ export const Invalidation = Schema.Union([
   Schema.Struct({ topic: Schema.Literal("container"), target: TargetKey }),
   Schema.Struct({ topic: Schema.Literal("deployment"), service: ServiceRef }),
   Schema.Struct({ topic: Schema.Literal("gitea-session"), origin: GiteaOrigin }),
-  Schema.Struct({ topic: Schema.Literal("forge-org"), origin: GiteaOrigin, org: Schema.String }),
-  Schema.Struct({ topic: Schema.Literal("forge-repo"), ...Repository }),
 ]);
 /** "Facts under this key may have changed at the source." */
 export type Invalidation = typeof Invalidation.Type;
@@ -126,15 +122,6 @@ function keyOf(invalidation: Invalidation): string {
       return JSON.stringify([invalidation.topic, serviceKeyOf(invalidation.service)]);
     case "gitea-session":
       return JSON.stringify([invalidation.topic, invalidation.origin]);
-    case "forge-org":
-      return JSON.stringify([invalidation.topic, invalidation.origin, invalidation.org]);
-    case "forge-repo":
-      return JSON.stringify([
-        invalidation.topic,
-        invalidation.origin,
-        invalidation.owner,
-        invalidation.repo,
-      ]);
   }
 }
 

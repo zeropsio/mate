@@ -19,6 +19,7 @@ import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 
 import type { HqStructure } from "./client.ts";
+import { environmentsOf } from "./environments.ts";
 
 type HqApp = HqStructure["apps"][number];
 type HqUngrouped = HqStructure["ungrouped"];
@@ -65,6 +66,13 @@ const isUngrouped = (value: unknown): value is HqUngrouped =>
       (entry as { readonly mate?: unknown }).mate !== null,
   );
 
+/** An application as HQ sent it, its environments read through their shape or not known. */
+function appOf(value: HqApp): HqApp {
+  const { environments: sent, ...app } = value as HqApp & { readonly environments?: unknown };
+  const environments = sent === undefined ? undefined : environmentsOf(sent);
+  return environments === undefined ? app : { ...app, environments };
+}
+
 /** A message from the socket, parsed, as a structure event; nothing for one that is not. */
 export function structureEventOf(message: unknown): HqStructureEvent | undefined {
   if (typeof message !== "object" || message === null) return undefined;
@@ -83,7 +91,7 @@ export function structureEventOf(message: unknown): HqStructureEvent | undefined
     if (!(Array.isArray(apps) && apps.every(isApp) && isUngrouped(ungrouped))) return undefined;
     return {
       kind: "snapshot",
-      structure: { ungrouped, apps },
+      structure: { ungrouped, apps: apps.map(appOf) },
       changes: Option.match(readSnapshotChanges(changes), {
         onNone: () => null,
         onSome: (byApp) => new Map(Object.entries(byApp)),
@@ -103,7 +111,7 @@ export function structureEventOf(message: unknown): HqStructureEvent | undefined
       return isUngrouped(value) ? { kind: "ungrouped", mates: value } : undefined;
     }
     if (value === null) return { kind: "change", appId: key, app: null };
-    return isApp(value) ? { kind: "change", appId: key, app: value } : undefined;
+    return isApp(value) ? { kind: "change", appId: key, app: appOf(value) } : undefined;
   }
   return undefined;
 }

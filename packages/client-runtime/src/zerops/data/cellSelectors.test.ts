@@ -7,7 +7,6 @@ import {
   selectLocationChoice,
   selectMembers,
   selectTokenGrants,
-  selectVariableNames,
   settledValue,
 } from "./cellSelectors.ts";
 
@@ -104,21 +103,5 @@ describe("selectMembers", () => {
   };
   it.each(everyState(members))("%s", (name, shown) => {
     expect(selectMembers(shown)).toEqual(expected[name]);
-  });
-});
-
-describe("selectVariableNames", () => {
-  const names = ["ZEROPS_TOKEN_project-a"];
-  const expected: Readonly<Record<string, ReturnType<typeof selectVariableNames>>> = {
-    unread: { status: "pending" },
-    reading: { status: "pending" },
-    failed: { status: "pending" },
-    "known settled": { status: "known", names },
-    "known revalidating": { status: "known", names },
-    "known stale": { status: "known", names },
-    withheld: { status: "pending" },
-  };
-  it.each(everyState<ReadonlyArray<string>>(names))("%s", (name, shown) => {
-    expect(selectVariableNames(shown)).toEqual(expected[name]);
   });
 });
