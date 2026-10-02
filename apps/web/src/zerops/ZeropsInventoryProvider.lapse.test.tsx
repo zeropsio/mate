@@ -11,7 +11,13 @@ import { mountTab, unmountTabs, type MountedTab } from "./__fixtures__/harnessTa
 import { buttonsLabelled, press } from "./__fixtures__/testDom";
 
 vi.mock("../components/zerops/landing/ZeropsLandingShell", () => ({
-  ZeropsLandingWait: ({ label }: { readonly label: string }) => label,
+  ZeropsFrameWait: ({
+    label,
+    children,
+  }: {
+    readonly label: string;
+    readonly children?: import("react").ReactNode;
+  }) => children ?? label,
 }));
 
 // The route gate's "Go to projects" is a router link; no router runs under these tabs.

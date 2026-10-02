@@ -66,13 +66,12 @@ describe("ZeropsHostedLanding entry action", () => {
 });
 
 describe("ZeropsHostedLanding while the session is checked", () => {
-  it("shows the mark and a spinner, and writes nothing the next frame replaces", () => {
+  it("draws nothing into the page: the frame the load painted stands until the answer", () => {
     session.status = "loading";
     try {
       const markup = renderLanding();
 
-      expect(markup).toContain("data-mate-mark");
-      expect(markup).toContain("Checking your Zerops account…");
+      expect(markup).toBe("");
       expect(markup).not.toContain("<h1");
       expect(markup).not.toContain(">Zerops Mate<");
       expect(markup).not.toContain("Continue with your Zerops account");

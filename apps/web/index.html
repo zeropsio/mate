@@ -30,11 +30,13 @@
             background: "#eceff3",
             foreground: "#1a1a1a",
             accent: "#0077cc",
+            sidebar: "#eceff3",
           },
           dark: {
             background: "#0c0f0e",
             foreground: "#e9eeec",
             accent: "#58a6ff",
+            sidebar: "#0c0f0e",
           },
         };
         // These are the runtime defaults used to complete a custom palette
@@ -47,12 +49,14 @@
             foreground: "oklch(0.217787 0 0)",
             accent: "oklch(0.560114 0.15773 249.804)",
             chrome: "oklch(0.950987 0.006266 255.476)",
+            sidebar: "oklch(0.950987 0.006266 255.476)",
           },
           dark: {
             background: "oklch(0.164609 0.005276 173.621)",
             foreground: "oklch(0.944756 0.005952 170.443)",
             accent: "oklch(0.715252 0.15181 253.306)",
             chrome: "oklch(0.164609 0.005276 173.621)",
+            sidebar: "oklch(0.164609 0.005276 173.621)",
           },
         };
         // This generated boot-time copy makes the selected theme visible before
@@ -64,12 +68,14 @@
               foreground: "oklch(0.217787 0 0)",
               accent: "oklch(0.560114 0.15773 249.804)",
               chrome: "oklch(0.950987 0.006266 255.476)",
+              sidebar: "oklch(0.950987 0.006266 255.476)",
             },
             dark: {
               background: "oklch(0.164609 0.005276 173.621)",
               foreground: "oklch(0.944756 0.005952 170.443)",
               accent: "oklch(0.715252 0.15181 253.306)",
               chrome: "oklch(0.164609 0.005276 173.621)",
+              sidebar: "oklch(0.164609 0.005276 173.621)",
             },
           },
           "t3-chat": {
@@ -78,12 +84,14 @@
               foreground: "oklch(0.325698 0.116116 325.037)",
               accent: "oklch(0.591646 0.217985 0.584)",
               chrome: "oklch(0.982446 0.010114 325.653)",
+              sidebar: "oklch(0.928886 0.031178 322.592)",
             },
             dark: {
               background: "oklch(0.22813 0.020366 307.469)",
               foreground: "oklch(0.980735 0.004092 301.426)",
               accent: "oklch(0.460685 0.185347 4.099)",
               chrome: "oklch(0.22813 0.020366 307.469)",
+              sidebar: "oklch(0.185778 0.019368 322.159)",
             },
           },
           grove: {
@@ -92,12 +100,14 @@
               foreground: "oklch(0.222003 0.03479 328.979)",
               accent: "oklch(0.523295 0.112292 158.089)",
               chrome: "oklch(0.972369 0.005497 157.15)",
+              sidebar: "oklch(0.936464 0.014601 163.554)",
             },
             dark: {
               background: "oklch(0.260865 0.02152 162.75)",
               foreground: "oklch(0.990339 0.008411 325.64)",
               accent: "oklch(0.796228 0.133058 157.319)",
               chrome: "oklch(0.260865 0.02152 162.75)",
+              sidebar: "oklch(0.309925 0.032827 160.944)",
             },
           },
           ocean: {
@@ -106,12 +116,14 @@
               foreground: "oklch(0.222003 0.03479 328.979)",
               accent: "oklch(0.536684 0.120219 247.01)",
               chrome: "oklch(0.974199 0.002856 241.597)",
+              sidebar: "oklch(0.939254 0.01193 241.729)",
             },
             dark: {
               background: "oklch(0.242641 0.024125 250.573)",
               foreground: "oklch(0.990339 0.008411 325.64)",
               accent: "oklch(0.758933 0.105833 241.548)",
               chrome: "oklch(0.242641 0.024125 250.573)",
+              sidebar: "oklch(0.290387 0.032043 247.274)",
             },
           },
           ember: {
@@ -120,12 +132,14 @@
               foreground: "oklch(0.222003 0.03479 328.979)",
               accent: "oklch(0.552831 0.129438 44.656)",
               chrome: "oklch(0.976527 0.002685 60.725)",
+              sidebar: "oklch(0.942267 0.01151 50.785)",
             },
             dark: {
               background: "oklch(0.245899 0.019144 42.044)",
               foreground: "oklch(0.990339 0.008411 325.64)",
               accent: "oklch(0.762174 0.124117 52.082)",
               chrome: "oklch(0.245899 0.019144 42.044)",
+              sidebar: "oklch(0.293349 0.029554 46.882)",
             },
           },
           iris: {
@@ -134,12 +148,14 @@
               foreground: "oklch(0.222003 0.03479 328.979)",
               accent: "oklch(0.525348 0.15373 294.176)",
               chrome: "oklch(0.976531 0.003855 303.226)",
+              sidebar: "oklch(0.941387 0.014687 300.474)",
             },
             dark: {
               background: "oklch(0.225975 0.031062 293.741)",
               foreground: "oklch(0.990339 0.008411 325.64)",
               accent: "oklch(0.671712 0.169136 293.929)",
               chrome: "oklch(0.225975 0.031062 293.741)",
+              sidebar: "oklch(0.266743 0.044689 294.138)",
             },
           },
         };
@@ -252,8 +268,19 @@
             "t3-iris": "iris",
           };
           const isLegacyT3ChatDark = storedTheme === "t3-chat-dark";
-          const themeId =
+          const storedThemeId =
             storedTheme === null ? "" : (LEGACY_THEME_IDS[storedTheme] ?? storedTheme);
+          // No preference, or one this build does not know, is the runtime's
+          // default — the Zerops palette following the OS (`readThemePreference`)
+          // — so the first frame is painted in what React then paints.
+          const themeId =
+            storedTheme === "light" ||
+            storedTheme === "dark" ||
+            storedTheme === "system" ||
+            BUILT_IN_THEME_MODES[storedThemeId] !== undefined ||
+            findCustomTheme(storedThemeId) !== null
+              ? storedThemeId
+              : "zerops";
           const legacyMode = isLegacyT3ChatDark ? "dark" : null;
           const builtInModes = BUILT_IN_THEME_MODES[themeId] ?? null;
           const customTheme = builtInModes ? null : findCustomTheme(themeId);
@@ -371,6 +398,9 @@
                 accent: isThemeColor(customColors.accent)
                   ? customColors.accent
                   : (customDefaults?.accent ?? fallbackSplash.accent),
+                sidebar: isThemeColor(customColors.sidebar)
+                  ? customColors.sidebar
+                  : (customDefaults?.sidebar ?? fallbackSplash.sidebar),
               }
             : null;
           if (effectiveIsThemed) {
@@ -383,7 +413,7 @@
           // A resolved half is a selection even when the base theme is gone
           // (deleting the base leaves the mix pointing at a real theme).
           const hasSelection = halfThemeId !== null || (isKnownTheme && storedTheme !== null);
-          if (hasSelection) {
+          if (hasSelection || effectiveIsThemed) {
             document.documentElement.dataset.themeSelected = "true";
           } else {
             delete document.documentElement.dataset.themeSelected;
@@ -399,7 +429,9 @@
                 ? DARK_BACKGROUND
                 : LIGHT_BACKGROUND;
           document.documentElement.style.backgroundColor = chromeColor;
-          if (hasSelection) {
+          // The splash takes the palette React will paint: a chosen theme's, or
+          // the default one's.
+          if (hasSelection || effectiveIsThemed) {
             const splashColors = customSplash ?? builtInSplash ?? fallbackSplash;
             for (const [name, value] of Object.entries(splashColors)) {
               document.documentElement.style.setProperty(`--boot-${name}`, value);
@@ -443,15 +475,24 @@
         color: #f5f5f5;
       }
 
+      /* The first frame, kept until the app draws into #root: the sign-in's
+         centred mark, or — for a browser signed in last time — the app's own
+         frame, the menu column with its mark where the menu draws it
+         (SidebarChrome's 28 x 33 at 16, 16) and a quiet page. The app's waits
+         draw their one line into #boot-shell-page (bootFrame.ts). */
       #boot-shell {
-        position: relative;
+        position: fixed;
+        inset: 0;
         overflow: hidden;
         display: flex;
-        min-height: 100%;
         align-items: center;
         justify-content: center;
         background: inherit;
         color: inherit;
+      }
+
+      #boot-shell[hidden] {
+        display: none;
       }
 
       html[data-theme-selected="true"] #boot-shell {
@@ -474,44 +515,124 @@
         height: 64px;
         object-fit: contain;
       }
+
+      #boot-shell-menu,
+      #boot-shell-page {
+        display: none;
+      }
+
+      html[data-boot-frame="app"] #boot-shell-card {
+        display: none;
+      }
+
+      html[data-boot-frame="app"] #boot-shell-page {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      @media (min-width: 768px) {
+        html[data-boot-frame="app"] #boot-shell-menu {
+          position: absolute;
+          inset: 0 auto 0 0;
+          display: block;
+          box-sizing: border-box;
+          width: var(--boot-menu-width, 304px);
+          /* The menu's edge: its text at 10 % (8 % dark), as [data-app-sidebar] draws it. */
+          border-right: 1px solid
+            color-mix(in srgb, var(--boot-foreground, currentColor) 10%, transparent);
+          background-color: var(--boot-sidebar, transparent);
+          background-clip: padding-box;
+          background-image: var(--surface-grain, none);
+          background-size: var(--surface-grain-size, auto);
+        }
+
+        html.dark[data-boot-frame="app"] #boot-shell-menu {
+          border-right-color: color-mix(
+            in srgb,
+            var(--boot-foreground, currentColor) 8%,
+            transparent
+          );
+        }
+
+        html[data-boot-frame="app"] #boot-shell-page {
+          left: var(--boot-menu-width, 304px);
+        }
+
+        html[data-boot-frame="app"] #boot-shell-card {
+          position: absolute;
+          top: 16px;
+          left: 16px;
+          display: block;
+          width: 28px;
+          height: 33px;
+        }
+
+        html[data-boot-frame="app"] #boot-shell-logo {
+          display: block;
+          width: 28px;
+          height: 33px;
+        }
+      }
     </style>
+    <script>
+      // Which first frame: the app's, for a browser whose last session was
+      // signed in (`mate:boot-frame`, written by the session, cleared on sign
+      // out) or one coming back from the Zerops sign-in; else the sign-in's
+      // centred mark. The menu column takes the width the menu will
+      // (`resolveInitialThreadSidebarWidth`). Mirrored by bootFrame.logic.ts.
+      (() => {
+        const root = document.documentElement;
+        let remembered = null;
+        try {
+          remembered = window.localStorage.getItem("mate:boot-frame");
+        } catch {
+          // Storage refused: the sign-in's frame, unless this is its return.
+        }
+        const returning = /\/zerops\/authorized\/?$/i.test(window.location.pathname);
+        if (remembered !== "app" && !returning) return;
+        root.dataset.bootFrame = "app";
+        let stored = null;
+        try {
+          const raw = JSON.parse(
+            window.localStorage.getItem("chat_thread_sidebar_width") ?? "null",
+          );
+          stored = typeof raw === "number" && Number.isFinite(raw) ? raw : null;
+        } catch {
+          stored = null;
+        }
+        const minimum = 13 * 16;
+        const maximum = Math.max(minimum, Math.floor(window.innerWidth) - 40 * 16);
+        const preferred = stored === null ? 19 * 16 : Math.max(minimum, stored);
+        root.style.setProperty("--boot-menu-width", `${Math.min(preferred, maximum)}px`);
+      })();
+    </script>
     <title>Zerops Mate (Alpha)</title>
   </head>
   <body>
-    <div id="root">
-      <div id="boot-shell">
-        <div id="boot-shell-card" aria-label="Zerops Mate splash screen">
-          <!-- generated:boot-mark start -->
-          <svg id="boot-shell-logo" viewBox="0 0 44 52" role="img" aria-label="Zerops Mate">
-            <path
-              d="M0.46,27.54 V11 A4,4 0 0 1 3,7.27 L20.19,0.7 A4,4 0 0 1 23,0.7 L40.2,7.27 A4,4 0 0 1 42.74,11 V17.99 L34.84,22.54 V13.71 L21.6,8.62 L8.36,13.7 V23 Z"
-              fill="#45a29a"
-            />
-            <path
-              d="M42.74,23.7 V40.41 A4,4 0 0 1 40.2,44.1 L23,50.67 A4,4 0 0 1 20.19,50.67 L3,44.1 A4,4 0 0 1 0.46,40.41 V33.26 L8.5,28.62 V37.74 L21.6,42.75 L34.84,37.69 V28.26 Z"
-              fill="#45a29a"
-            />
-            <rect
-              x="12.332"
-              y="19.06"
-              width="5.296"
-              height="10.592"
-              rx="2.648"
-              fill="currentColor"
-            />
-            <rect
-              x="25.572"
-              y="19.06"
-              width="5.296"
-              height="10.592"
-              rx="2.648"
-              fill="currentColor"
-            />
-          </svg>
-          <!-- generated:boot-mark end -->
-        </div>
+    <div id="boot-shell">
+      <div id="boot-shell-menu"></div>
+      <div id="boot-shell-page"></div>
+      <div id="boot-shell-card" aria-label="Zerops Mate splash screen">
+        <!-- generated:boot-mark start -->
+        <svg id="boot-shell-logo" viewBox="0 0 44 52" role="img" aria-label="Zerops Mate">
+          <path
+            d="M0.46,27.54 V11 A4,4 0 0 1 3,7.27 L20.19,0.7 A4,4 0 0 1 23,0.7 L40.2,7.27 A4,4 0 0 1 42.74,11 V17.99 L34.84,22.54 V13.71 L21.6,8.62 L8.36,13.7 V23 Z"
+            fill="#45a29a"
+          />
+          <path
+            d="M42.74,23.7 V40.41 A4,4 0 0 1 40.2,44.1 L23,50.67 A4,4 0 0 1 20.19,50.67 L3,44.1 A4,4 0 0 1 0.46,40.41 V33.26 L8.5,28.62 V37.74 L21.6,42.75 L34.84,37.69 V28.26 Z"
+            fill="#45a29a"
+          />
+          <rect x="12.332" y="19.06" width="5.296" height="10.592" rx="2.648" fill="currentColor" />
+          <rect x="25.572" y="19.06" width="5.296" height="10.592" rx="2.648" fill="currentColor" />
+        </svg>
+        <!-- generated:boot-mark end -->
       </div>
     </div>
+    <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

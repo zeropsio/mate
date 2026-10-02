@@ -73,6 +73,7 @@ type BootPalette = Readonly<{
   foreground: string;
   accent: string;
   chrome: string;
+  sidebar: string;
 }>;
 
 const countOccurrences = (source: string, marker: string): number => {
@@ -147,6 +148,8 @@ const bootPalette = (colors: ThemeColors): BootPalette => ({
   foreground: colors.text,
   accent: colors.accent,
   chrome: colors.chrome,
+  // The menu column of the app's frame, painted before React by a signed-in boot.
+  sidebar: colors.sidebar,
 });
 
 const renderBootPaletteProperties = (palette: BootPalette, indentation: string): string =>
@@ -155,6 +158,7 @@ const renderBootPaletteProperties = (palette: BootPalette, indentation: string):
     `${indentation}foreground: ${JSON.stringify(palette.foreground)},`,
     `${indentation}accent: ${JSON.stringify(palette.accent)},`,
     `${indentation}chrome: ${JSON.stringify(palette.chrome)},`,
+    `${indentation}sidebar: ${JSON.stringify(palette.sidebar)},`,
   ].join("\n");
 
 const renderDefaultThemePalettes = (): string => {
@@ -182,6 +186,7 @@ const renderSplashColors = (): string => {
       `            background: ${JSON.stringify(themeColorToNativeColor(colors.canvas))},`,
       `            foreground: ${JSON.stringify(themeColorToNativeColor(colors.text))},`,
       `            accent: ${JSON.stringify(themeColorToNativeColor(colors.accent))},`,
+      `            sidebar: ${JSON.stringify(themeColorToNativeColor(colors.sidebar))},`,
       "          },",
     );
   }
@@ -242,24 +247,19 @@ const renderWebThemeTokens = (): string =>
 // per theme, so they are ink on paper and paper on dark without a rule here.
 const renderWebBootMark = (): string =>
   [
-    `          <svg id="boot-shell-logo" viewBox="${MATE_MARK.viewBox}" role="img" aria-label="Zerops Mate">`,
+    `        <svg id="boot-shell-logo" viewBox="${MATE_MARK.viewBox}" role="img" aria-label="Zerops Mate">`,
     ...MATE_MARK.paths.flatMap((d) => [
-      "            <path",
-      `              d="${d}"`,
-      `              fill="${MATE_MARK.color}"`,
-      "            />",
+      "          <path",
+      `            d="${d}"`,
+      `            fill="${MATE_MARK.color}"`,
+      "          />",
     ]),
-    ...MATE_MARK.eyeXs.flatMap((x) => [
-      "            <rect",
-      `              x="${x}"`,
-      `              y="${MATE_MARK.eyeY}"`,
-      `              width="${MATE_MARK.eyeWidth}"`,
-      `              height="${MATE_MARK.eyeHeight}"`,
-      `              rx="${MATE_MARK.eyeWidth / 2}"`,
-      '              fill="currentColor"',
-      "            />",
-    ]),
-    "          </svg>",
+    // One line each, as the formatter keeps an element that fits.
+    ...MATE_MARK.eyeXs.map(
+      (x) =>
+        `          <rect x="${x}" y="${MATE_MARK.eyeY}" width="${MATE_MARK.eyeWidth}" height="${MATE_MARK.eyeHeight}" rx="${MATE_MARK.eyeWidth / 2}" fill="currentColor" />`,
+    ),
+    "        </svg>",
   ].join("\n");
 
 const renderZeropsFaviconSvg = (): string =>

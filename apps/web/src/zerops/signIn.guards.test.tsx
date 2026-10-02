@@ -49,7 +49,13 @@ vi.mock("../components/zerops/landing/ZeropsHostedLanding", async () => {
 });
 
 vi.mock("../components/zerops/landing/ZeropsLandingShell", () => ({
-  ZeropsLandingWait: ({ label }: { readonly label: string }) => label,
+  ZeropsFrameWait: ({
+    label,
+    children,
+  }: {
+    readonly label: string;
+    readonly children?: import("react").ReactNode;
+  }) => children ?? label,
 }));
 
 vi.mock("./ZeropsDataProvider", seams.dataProvider);

@@ -10,8 +10,17 @@
  * product and one next action, while the legacy pairing route stays separate.
  */
 
+import { EnvironmentId } from "@t3tools/contracts";
 import { ExternalLinkIcon } from "lucide-react";
-import type { FormEvent, ReactNode } from "react";
+import { useLayoutEffect, type FormEvent, type ReactNode } from "react";
+import { createPortal } from "react-dom";
+
+import { appBasePath } from "~/basePath";
+import { environmentIdFromAddress } from "~/routes/-environmentRoute";
+import { bootFrameSlot, showAppFrame } from "~/zerops/bootFrame";
+import { rememberedMateIdentity } from "~/zerops/mateIdentityMemory";
+import { useWaitLine } from "~/zerops/useWaitLine";
+import { BOOT_WAIT_LINE_MS, bootWaitLine } from "~/zerops/waitLine.logic";
 
 import { Button } from "../../ui/button";
 import { Input } from "../../ui/input";
@@ -19,6 +28,7 @@ import { Label } from "../../ui/label";
 import { Spinner } from "../../ui/spinner";
 import { MateMark } from "../../MateMark";
 import { ZeropsMark } from "../../ZeropsMark";
+import { WaitLine } from "../WaitLine";
 import { ZeropsHostedFrame } from "./ZeropsHostedFrame";
 
 export function ZeropsLandingShell({
@@ -83,23 +93,54 @@ export function ZeropsByline() {
 }
 
 /**
- * A landing state that is only waiting — the session check on a reload, the
- * sign-in callback spending its token. The mark and a spinner, no words the
- * next frame would replace; the words go to assistive technology alone.
+ * A wait before the app can draw — the session check on a load, the account's data and inventory,
+ * the sign-in's return spending its token. It draws nothing into the page: the first frame
+ * index.html painted (`bootFrame.ts`) stands as it was, and the wait's one line, past its beat,
+ * goes into that frame's page. A wait that knows the person is signed in draws the app's frame
+ * there, the menu column and its mark, even where the load painted the sign-in's.
  */
-export function ZeropsLandingWait({
+export function ZeropsFrameWait({
   label,
+  signedIn,
+  children,
   ...props
-}: { readonly label: string } & Record<`data-${string}`, string>) {
-  return (
-    <ZeropsHostedFrame bar={false} centered footer={<ZeropsByline />}>
-      <div {...props} aria-live="polite" className="flex flex-col items-center gap-6" role="status">
-        <MateMark playful className="h-20 w-auto" />
-        <Spinner size="lg" />
+}: {
+  /** What assistive technology hears at once. */
+  readonly label: string;
+  readonly signedIn: boolean;
+  /** What the wait has to say in place of its line: a read that failed, or one that is late. */
+  readonly children?: ReactNode;
+} & Record<`data-${string}`, string>) {
+  useLayoutEffect(() => {
+    if (signedIn) showAppFrame();
+  }, [signedIn]);
+  const line = useFrameWaitLine(signedIn && children === undefined);
+  const slot = bootFrameSlot();
+  if (slot === null) return null;
+  return createPortal(
+    children ?? (
+      <div {...props} aria-live="polite" role="status">
+        {line === null ? null : <WaitLine text={line} />}
         <span className="sr-only">{label}</span>
       </div>
-    </ZeropsHostedFrame>
+    ),
+    slot,
   );
+}
+
+/** The frame's line (`bootWaitLine`), shown past the boot's beat from the page's load. */
+function useFrameWaitLine(signedIn: boolean): string | null {
+  const pathname = typeof window === "undefined" ? "" : window.location.pathname;
+  const routed = environmentIdFromAddress(pathname, appBasePath());
+  const text = signedIn
+    ? bootWaitLine({
+        conversationRoute: routed !== null,
+        mateName:
+          routed === null ? undefined : rememberedMateIdentity(EnvironmentId.make(routed))?.name,
+      })
+    : null;
+  const showing = useWaitLine(text, { delayMs: BOOT_WAIT_LINE_MS, from: "load" });
+  return showing ? text : null;
 }
 
 function FormError({ message }: { readonly message: string | null }) {

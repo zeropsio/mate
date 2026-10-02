@@ -39,6 +39,7 @@ import {
   type ZeropsSessionState,
 } from "@t3tools/client-runtime/zerops/account";
 import { closeAccountLifetime, openAccountLifetime } from "./accountLifetime";
+import { rememberBootFrame } from "./bootFrame";
 import { endEveryKeptSession } from "./keptSessions";
 import {
   useCallback,
@@ -220,6 +221,13 @@ export function ZeropsSessionProvider({
   const user = machine.status === "signed-in" ? machine.user : null;
 
   useEffect(() => driver.start(), [driver]);
+  // The next load's first frame (`bootFrame.ts`): the app's once the session is signed in, the
+  // sign-in's once it is signed out. Written as the state changes, ahead of any reload it causes.
+  useEffect(() => {
+    const remember = () => rememberBootFrame(statusOf(driver.state()));
+    remember();
+    return driver.subscribe(remember);
+  }, [driver]);
 
   // Identity is shared across tabs; organization and navigation are not. A
   // session another tab writes is verified before this tab holds it, and a

@@ -15,7 +15,6 @@ import {
   ZeropsByline,
   ZeropsHandedOffBanner,
   ZeropsHandoverActions,
-  ZeropsLandingWait,
   ZeropsPasswordDisclosure,
   ZeropsLandingShell,
   ZeropsRegisterForm,
@@ -137,21 +136,6 @@ describe("ZeropsByline", () => {
     expect(markup).toContain('data-zerops-mark-tone="brand"');
     expect(markup).toContain('target="_blank"');
     expect(markup).toContain('rel="noreferrer"');
-  });
-});
-
-describe("ZeropsLandingWait", () => {
-  it("shows the mark and a spinner and says what it waits for to assistive technology only", () => {
-    const markup = renderToStaticMarkup(
-      <ZeropsLandingWait data-zerops-session-check="true" label="Checking your Zerops session…" />,
-    );
-    expect(markup).toContain('data-zerops-session-check="true"');
-    expect(markup).toContain('role="status"');
-    expect(markup).toContain('data-mate-mark="live"');
-    expect(markup).toContain("Checking your Zerops session…");
-    expect(markup).toContain("Mate by Zerops");
-    expect(markup).not.toContain("<h1");
-    expect(markup).not.toContain("<header");
   });
 });
 
