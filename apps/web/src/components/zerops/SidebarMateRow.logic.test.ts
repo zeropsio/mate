@@ -1417,7 +1417,8 @@ describe("mateRowOffersMenu", () => {
 
 // A message sent from this browser stands in the row's second line until its echo reaches the
 // row's conversation (live, 2026-10-02: the draft cleared on send 0.4 s before the echo, and the
-// row read "Nothing asked yet" in between).
+// row read "Nothing asked yet" in between). The echo carries the message's own time, the one this
+// browser stamped it with: compared with it, no two clocks meet.
 describe("mateRowSentAsk — what this browser just sent, until the conversation says it", () => {
   const SENT = {
     messageId: "message-2",
@@ -1432,6 +1433,7 @@ describe("mateRowSentAsk — what this browser just sent, until the conversation
     face: "idle",
     subject: "Speed up the photo gallery",
     at: "2026-10-02T09:00:00.000Z",
+    askedAt: "2026-10-02T08:59:00.000Z",
     snippet: "Thumbnails load lazily now.",
     unread: false,
     pausedUntil: undefined,
@@ -1441,38 +1443,57 @@ describe("mateRowSentAsk — what this browser just sent, until the conversation
   });
 
   it.each([
-    { case: "nothing sent", sent: undefined, activity: activity(), text: undefined },
-    { case: "sent, no conversation yet", sent: SENT, activity: undefined, text: SENT.text },
+    { case: "nothing sent", sent: undefined, activity: activity(), read: true, text: undefined },
+    {
+      case: "sent, its conversations read and none there: the first, the row's",
+      sent: SENT,
+      activity: undefined,
+      read: true,
+      text: SENT.text,
+    },
+    {
+      case: "sent, its conversations not read: nothing to say it is the row's",
+      sent: SENT,
+      activity: undefined,
+      read: false,
+      text: undefined,
+    },
     {
       case: "sent, the conversation not caught up",
       sent: SENT,
       activity: activity(),
+      read: true,
       text: SENT.text,
     },
     {
-      case: "sent, its run started",
+      case: "sent, the conversation says it",
       sent: SENT,
-      activity: activity({
-        kind: "working",
-        subject: SENT.text,
-        task: SENT.text,
-        at: "2026-10-02T10:00:00.400Z",
-      }),
+      activity: activity({ kind: "working", task: SENT.text, askedAt: SENT.at }),
+      read: true,
       text: undefined,
     },
     {
-      case: "sent, the conversation says it at the very moment",
+      case: "sent, said, the server's clock behind this browser's",
       sent: SENT,
-      activity: activity({ subject: SENT.text, task: SENT.text, at: SENT.at }),
+      activity: activity({ task: SENT.text, at: "2026-10-02T09:59:58.000Z", askedAt: SENT.at }),
+      read: true,
       text: undefined,
+    },
+    {
+      case: "sent, not said yet, the server's clock ahead of this browser's",
+      sent: SENT,
+      activity: activity({ at: "2026-10-02T10:00:03.000Z" }),
+      read: true,
+      text: SENT.text,
     },
     {
       case: "sent into another conversation than the row's",
       sent: { ...SENT, threadId: "thread-2" },
       activity: activity(),
+      read: true,
       text: undefined,
     },
-  ])("$case", ({ sent, activity, text }) => {
-    expect(mateRowSentAsk(sent, activity)).toBe(text);
+  ])("$case", ({ sent, activity, read, text }) => {
+    expect(mateRowSentAsk(sent, activity, read)).toBe(text);
   });
 });
