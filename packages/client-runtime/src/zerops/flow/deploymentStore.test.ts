@@ -312,6 +312,30 @@ describe("the deployment store (DESIGN §2.D D6)", () => {
       expect(deploymentOf(store.stop(STAGE), "app")).toMatchObject({ value: { kind: "running" } });
     });
 
+    it("a re-check of the whole listing keeps the grace's timer armed", () => {
+      const { platform, clock, store } = clocked();
+      platform.publishProcesses(STAGE, building());
+      expect(platform.armed()).toEqual([AFTER_BUILD_GRACE_MS]);
+      clock.ms += 5_000;
+      platform.publish(
+        STAGE,
+        servicesRead([record("app-id", "app", deployed(NEVER_DEPLOYED), { project: STAGE })], {
+          project: STAGE,
+          coverage: { kind: "none" },
+        }),
+      );
+      expect(deploymentOf(store.stop(STAGE), "app")).toMatchObject({
+        value: { kind: "deploying" },
+      });
+      expect(platform.armed()).toEqual([AFTER_BUILD_GRACE_MS - 5_000]);
+      // The listing lands with nothing running once the grace ran out: the first deploy failed.
+      clock.ms += AFTER_BUILD_GRACE_MS;
+      platform.publish(STAGE, stage(NEVER_DEPLOYED));
+      expect(deploymentOf(store.stop(STAGE), "app")).toMatchObject({
+        value: { kind: "none", afterBuild: true },
+      });
+    });
+
     it("a version still unknown when the grace runs out: Checking, never deploying for ever", () => {
       const { platform, clock, store } = clocked();
       platform.publishProcesses(STAGE, building());

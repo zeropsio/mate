@@ -437,7 +437,8 @@ export function stopLine(stop: GroupFlowStop): {
 } {
   const tone = STOP_TONE[stop.state];
   // Its own import still runs: set up first, as the menu says, before any first deploy.
-  if (stop.settingUp === true) return { word: STAGE_SETTING_UP, version: undefined, tone: "busy" };
+  if (stop.firstDeploy?.kind === "setting-up")
+    return { word: STAGE_SETTING_UP, version: undefined, tone: "busy" };
   switch (stop.state) {
     case "checking":
       return { word: CHECKING_WHAT_RUNS, version: undefined, tone };

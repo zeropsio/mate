@@ -359,6 +359,10 @@
       "types": "./src/zerops/model/index.ts",
       "default": "./src/zerops/model/index.ts"
     },
+    "./zerops/flow/fixtures": {
+      "types": "./src/zerops/flow/__fixtures__/index.ts",
+      "default": "./src/zerops/flow/__fixtures__/index.ts"
+    },
     "./zerops/operations/fixtures": {
       "types": "./src/zerops/operations/__fixtures__/index.ts",
       "default": "./src/zerops/operations/__fixtures__/index.ts"

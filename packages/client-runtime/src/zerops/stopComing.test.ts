@@ -48,9 +48,19 @@ describe("stopComing — where a stage or a production coming up has got", () =>
       coming: { kind: "coming", step: "project" },
     },
     {
-      case: "its services unread",
-      over: { services: undefined },
-      coming: { kind: "coming", step: "project" },
+      case: "a reload: its services unread under an active project, never making the project",
+      over: { services: undefined, deployed: undefined, routes: 0 },
+      coming: undefined,
+    },
+    {
+      case: "its project being deleted: never making the project",
+      over: { projectStatus: "DELETING", routes: 0 },
+      coming: undefined,
+    },
+    {
+      case: "its project being made a window ago: the pill's, not coming up",
+      over: { projectStatus: "CREATING", createdAt: ago(COMING_UP_WINDOW_MS) },
+      coming: undefined,
     },
     {
       case: "the database not running yet",
@@ -343,7 +353,18 @@ describe("stopImport — where an environment's own import has got, the one orde
   const made = { projectStatus: "ACTIVE", createdAt: ago(60_000), nowMs: NOW };
   const cases = [
     { case: "its project being made", over: { projectStatus: "CREATING" }, step: "project" },
-    { case: "its services unread", over: { services: undefined }, step: "project" },
+    { case: "a reload: its services unread", over: { services: undefined }, step: undefined },
+    {
+      case: "its project being made, its services not listed",
+      over: { projectStatus: "CREATING", services: undefined },
+      step: "project",
+    },
+    { case: "its project being deleted", over: { projectStatus: "DELETING" }, step: undefined },
+    {
+      case: "its project being made a window ago",
+      over: { projectStatus: "CREATING", createdAt: ago(COMING_UP_WINDOW_MS) },
+      step: undefined,
+    },
     { case: "no runtime listed yet", over: { services: [] }, step: "app" },
     { case: "its runtime new", over: { services: [app("NEW")] }, step: "app" },
     { case: "its runtime being made", over: { services: [app("CREATING")] }, step: "app" },

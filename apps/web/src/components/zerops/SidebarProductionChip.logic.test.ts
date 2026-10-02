@@ -1038,6 +1038,22 @@ describe("stageMenu — each stage, as production's menu says production", () =>
   const menu = (over: Partial<Parameters<typeof stageMenu>[0]>) =>
     stageMenu({ stages: [entry("stage")], creating: [], nowMs: NOW, ...over });
 
+  it("says a stage being set up as the stages being created, whatever runs there is unread", () => {
+    for (const state of ["empty", "checking"] as const) {
+      const making = {
+        ...stage({ projectId: "shop-stage", state }),
+        version: undefined,
+        firstDeploy: { kind: "setting-up", step: "app" } as const,
+      };
+      for (const chip of [undefined, { label: "stage", state: "empty" } as const]) {
+        expect(menu({ stages: [entry("stage", { stop: making, chip })] }).stops[0]).toMatchObject({
+          word: "Setting up…",
+          dot: "spinner",
+        });
+      }
+    }
+  });
+
   it.each([
     { case: "nothing asked for", firstDeploy: undefined, word: "Not deployed yet" },
     {

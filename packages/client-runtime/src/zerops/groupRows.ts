@@ -242,25 +242,99 @@ export interface MainHeadStatuses {
   readonly statuses: ReadonlyArray<GiteaCommitStatus>;
 }
 
-/** A stage's first deploy failing on `main`'s head, before any build of it ran. */
+/** A stage's first deploy failing on `main`'s head (`firstDeployOnHead`). */
 export interface FirstDeployFailure {
-  /** When the failure was posted: a commit landing after it starts the deploy again. */
-  readonly at: string;
   /** What the job reported, where the broker's status carries its words; `undefined` otherwise. */
   readonly reason: string | undefined;
 }
 
-/** How the broker opens a job's own failure report on its status (gitea-mate `DescriptionFailed`). */
+/** What the statuses on the head a stage deploys say of its first deploy. */
+export type FirstDeployOnHead =
+  /** `final`: the job's own report, which nothing after it changes for this commit. */
+  | { readonly kind: "failed"; readonly reason: string | undefined; readonly final: boolean }
+  /** The job got past its own steps and holds the broker's grant: the build shows next. */
+  | { readonly kind: "granted" }
+  /** The broker deployed it. */
+  | { readonly kind: "deployed" }
+  /** Nothing says it failed or got past its steps: pass 34's words stand. */
+  | { readonly kind: "open" };
+
+/** How the broker opens a job's own failure report (gitea-mate `DescriptionFailed`). */
 const JOB_REPORT = "failed: ";
+/** How the broker opens the status its grant writes (gitea-mate `DescriptionDeploying`). */
+const GRANTED = "deploying";
+
+const failing = (status: GiteaCommitStatus) =>
+  status.state === "failure" || status.state === "error";
 
 /**
- * Whether a stage's first deploy failed on `main`'s head, from the statuses there: the newest of
- * the broker's `mate/deploy/{environment}/{service}`, or of a context the broker does not write —
- * the group's workflow's own (run 5: its Test step failed on a bare runner, and the job never
- * asked the broker for its grant, whose status stayed pending) — failing or erroring. The newest
- * such, with the job's own words where the broker's status carries them ("failed: …"); Gitea's
- * own description of a workflow ("Failing after 9s") is no reason. A failure that says not when
- * it was posted is none: nothing could tell it from one before the stage asked for its deploy.
+ * Whether `candidate` is newer than `held`, by when it was posted, then by id; by Gitea's own
+ * order — newest first — only where neither says.
+ */
+function newer(candidate: GiteaCommitStatus, held: GiteaCommitStatus): boolean {
+  const [at, heldAt] = [candidate.created_at, held.created_at].map((value) =>
+    value === undefined ? Number.NaN : Date.parse(value),
+  ) as [number, number];
+  if (!Number.isNaN(at) && !Number.isNaN(heldAt) && at !== heldAt) return at > heldAt;
+  if (candidate.id !== undefined && held.id !== undefined) return candidate.id > held.id;
+  return false;
+}
+
+/** Each context's newest status, whatever order Gitea listed them in. */
+export function newestByContext(
+  statuses: ReadonlyArray<GiteaCommitStatus>,
+): ReadonlyMap<string, GiteaCommitStatus> {
+  const newest = new Map<string, GiteaCommitStatus>();
+  for (const status of statuses) {
+    const held = newest.get(status.context);
+    if (held === undefined || newer(status, held)) newest.set(status.context, status);
+  }
+  return newest;
+}
+
+/**
+ * The one truth table for the head `H` a stage deploys (pass 35, after run 5), on each context's
+ * newest status:
+ *
+ * 1. The broker's `mate/deploy/{environment}/{service}` is a `failure` opening "failed: " — the
+ *    job's own report: failed, final, and the rest is why.
+ * 2. The broker's is `pending` opening "deploying" — the job got past its steps and holds the
+ *    grant: not failed, whatever else failed (and `success`: deployed).
+ * 3. The group's workflow's own context — any the broker does not write — is a `failure`, posted at
+ *    any time: failed, not final. Gitea posts no status for the broker's `workflow_dispatch` run,
+ *    which runs the same workflow on the same commit (run 5: run 280 failed beside the push run's
+ *    status and left none), so the push run's failure is the one sign of it; a dispatch that gets
+ *    past its steps turns it by rule 2.
+ * 4. The broker's is a `failure` or `error` without "failed: " — a refusal it retries: not failed.
+ * 5. Otherwise nothing is said.
+ *
+ * The exact signal would be the broker writing its own `failure` with "failed: <step>" as the run
+ * it dispatched fails (a later gitea-mate pass); rule 1 reads it as it lands.
+ */
+export function firstDeployOnHead(input: {
+  readonly environment: string;
+  readonly hostname: string;
+  readonly statuses: ReadonlyArray<GiteaCommitStatus>;
+}): FirstDeployOnHead {
+  const newest = newestByContext(input.statuses);
+  const broker = newest.get(deployStatusContext(input.environment, input.hostname));
+  const words = broker?.description?.trim() ?? "";
+  if (broker !== undefined && failing(broker) && words.startsWith(JOB_REPORT)) {
+    const reason = words.slice(JOB_REPORT.length).trim();
+    return { kind: "failed", reason: reason.length === 0 ? undefined : reason, final: true };
+  }
+  if (broker?.state === "success") return { kind: "deployed" };
+  if (broker?.state === "pending" && words.startsWith(GRANTED)) return { kind: "granted" };
+  for (const [context, status] of newest) {
+    if (!context.startsWith("mate/") && failing(status))
+      return { kind: "failed", reason: undefined, final: false };
+  }
+  return { kind: "open" };
+}
+
+/**
+ * Whether a stage's first deploy failed on the head of any of its services' repositories
+ * (`firstDeployOnHead`), with the job's own words where one says them.
  */
 export function firstDeployFailure(input: {
   readonly environment: string;
@@ -268,24 +342,15 @@ export function firstDeployFailure(input: {
 }): FirstDeployFailure | undefined {
   let failure: FirstDeployFailure | undefined;
   for (const service of input.services) {
-    const broker = deployStatusContext(input.environment, service.hostname);
-    const seen = new Set<string>();
-    // Gitea lists a commit's statuses newest first and keeps every one it was given.
-    for (const status of service.head?.statuses ?? []) {
-      if (seen.has(status.context)) continue;
-      seen.add(status.context);
-      if (status.context !== broker && status.context.startsWith("mate/")) continue;
-      if (status.state !== "failure" && status.state !== "error") continue;
-      if (status.created_at === undefined || Number.isNaN(Date.parse(status.created_at))) continue;
-      if (failure !== undefined && Date.parse(failure.at) >= Date.parse(status.created_at))
-        continue;
-      const description = status.description?.trim() ?? "";
-      const reported =
-        status.context === broker && description.startsWith(JOB_REPORT)
-          ? description.slice(JOB_REPORT.length).trim()
-          : "";
-      failure = { at: status.created_at, reason: reported.length === 0 ? undefined : reported };
-    }
+    if (service.head === undefined) continue;
+    const verdict = firstDeployOnHead({
+      environment: input.environment,
+      hostname: service.hostname,
+      statuses: service.head.statuses,
+    });
+    if (verdict.kind !== "failed") continue;
+    if (failure === undefined || (failure.reason === undefined && verdict.reason !== undefined))
+      failure = { reason: verdict.reason };
   }
   return failure;
 }

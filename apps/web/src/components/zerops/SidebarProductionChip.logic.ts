@@ -687,6 +687,9 @@ export const STOP_DOT: Record<GroupFlowStop["state"], ChipDot> = {
   checking: "off",
 };
 
+/** A stage being set up, in the stages' menu: created and not listed yet, or its import running. */
+const STAGE_SETTING_UP_WORD = "Setting up…";
+
 function stopWord(stop: GroupFlowStop, deployedAt: string | undefined, nowMs: number): string {
   switch (stop.state) {
     case "deployed": {
@@ -808,6 +811,16 @@ export function stageMenu(input: {
       version: serving,
       routes: stage.routes,
     };
+    // Its own import still runs: said as the stages being created are, whatever runs there.
+    if (stop.firstDeploy?.kind === "setting-up")
+      return {
+        ...base,
+        dot: "spinner",
+        word: STAGE_SETTING_UP_WORD,
+        tone: "muted",
+        note: undefined,
+        fix: undefined,
+      };
     if (chip === undefined) {
       return {
         ...base,
@@ -836,7 +849,7 @@ export function stageMenu(input: {
     name: stage.name,
     version: undefined,
     dot: "spinner",
-    word: "Setting up…",
+    word: STAGE_SETTING_UP_WORD,
     tone: "muted",
     note: undefined,
     fix: undefined,

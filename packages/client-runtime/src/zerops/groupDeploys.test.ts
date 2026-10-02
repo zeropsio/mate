@@ -461,37 +461,105 @@ describe("how often a first deploy's head is read again", () => {
       },
     ],
   });
+  const madeAgo = (minutes: number) =>
+    DateTime.formatIso(DateTime.makeUnsafe(NOW - minutes * 60_000));
   it.each([
-    { case: "a head not read before", previous: undefined, sha: API, ladder: "busy" },
-    { case: "a new head on main", previous: head(40), sha: WEB, ladder: "busy" },
-    { case: "a head whose job posted a minute ago", previous: head(1), sha: API, ladder: "busy" },
-    { case: "a head quiet past the window", previous: head(15), sha: API, ladder: "quiet" },
-    { case: "a head that says not when", previous: head(undefined), sha: API, ladder: "quiet" },
-  ])("$case", ({ previous, sha, ladder }) => {
-    expect(firstDeployHeadLadder(previous, sha, NOW)).toBe(
-      ladder === "busy" ? STATUS_RECHECK_LADDER_MS : VERDICT_RECHECK_LADDER_MS,
+    {
+      case: "a head not read before",
+      previous: undefined,
+      sha: API,
+      asked: undefined,
+      ladder: "busy",
+    },
+    {
+      case: "a new head on main",
+      previous: head(60),
+      sha: WEB,
+      asked: madeAgo(60),
+      ladder: "busy",
+    },
+    {
+      case: "a head whose job posted a minute ago",
+      previous: head(1),
+      sha: API,
+      asked: undefined,
+      ladder: "busy",
+    },
+    {
+      // H1: the push job failed long before; the stage made a moment ago asks for its deploy now.
+      case: "an old head, the stage just made",
+      previous: head(50),
+      sha: API,
+      asked: madeAgo(1),
+      ladder: "busy",
+    },
+    {
+      case: "a head quiet past the window",
+      previous: head(15),
+      sha: API,
+      asked: undefined,
+      ladder: "quiet",
+    },
+    {
+      case: "a head quiet past the broker's patience: no more reads",
+      previous: head(35),
+      sha: API,
+      asked: madeAgo(40),
+      ladder: "resting",
+    },
+    {
+      case: "a head that says not when, its ask unknown: no more reads",
+      previous: head(undefined),
+      sha: API,
+      asked: undefined,
+      ladder: "resting",
+    },
+  ])("$case", ({ previous, sha, asked, ladder }) => {
+    expect(firstDeployHeadLadder(previous, sha, asked, NOW)).toBe(
+      ladder === "busy"
+        ? STATUS_RECHECK_LADDER_MS
+        : ladder === "quiet"
+          ? VERDICT_RECHECK_LADDER_MS
+          : undefined,
     );
   });
 
   it.each([
     { case: "still pending", statuses: [status("mate/deploy/stage/api", "pending")], done: false },
     {
-      case: "this stage's deploy failed: nothing more to read",
+      // Rule 3: a dispatch that gets past its steps after a push failure turns it.
+      case: "the push job failed: read on",
       statuses: [
-        {
-          context: "Zerops deploy / deploy (push)",
-          state: "failure" as const,
-          created_at: "2026-10-02T22:12:00Z",
-        },
+        { context: "Zerops deploy / deploy (push)", state: "failure" as const },
         status("mate/deploy/stage/api", "pending"),
+      ],
+      done: false,
+    },
+    {
+      case: "the push job failed and nothing else is posted: read on",
+      statuses: [{ context: "Zerops deploy / deploy (push)", state: "failure" as const }],
+      done: false,
+    },
+    {
+      case: "the broker's own job report: final",
+      statuses: [
+        { context: "mate/deploy/stage/api", state: "failure" as const, description: "failed: x" },
       ],
       done: true,
     },
     {
-      case: "every context done",
-      statuses: [status("mate/deploy/stage/api", "success")],
-      done: true,
+      // H2: the broker retries a refusal; its retry must be read.
+      case: "a refusal the broker retries: read on",
+      statuses: [
+        {
+          context: "mate/deploy/stage/api",
+          state: "failure" as const,
+          description: "has no workflow zerops.yml",
+        },
+      ],
+      done: false,
     },
+    { case: "deployed", statuses: [status("mate/deploy/stage/api", "success")], done: true },
     { case: "nothing posted yet", statuses: [], done: false },
   ])("is settled where $case", ({ statuses, done }) => {
     expect(firstDeployHeadSettled({ environment: "stage", hostname: "api" }, statuses)).toBe(done);

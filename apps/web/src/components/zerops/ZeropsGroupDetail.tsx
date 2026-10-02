@@ -52,7 +52,6 @@ import {
   firstDeployLine,
   firstDeployTone,
   stageFirstDeploy,
-  summarizeEnvironmentServices,
   type FirstDeploy,
 } from "@t3tools/client-runtime/zerops";
 import {
@@ -616,28 +615,27 @@ export function ZeropsReleaseVerb({
 function useStageFirstDeploys(groupId: string): (projectId: string) => FirstDeploy | undefined {
   const flowValue = useZeropsProjectFlowOptional();
   const flow = flowValue?.flows.get(groupId);
-  const inventory = useZeropsInventory();
+  // The project and its services as the menu and the projects page read them: the candidate
+  // listing, which lists a project not active yet with none of its services.
+  const { listing } = useZeropsCandidates();
+  const candidates = useMemo(() => heldCandidates(listing).rows, [listing]);
   const nowMs = useNowMs();
   return (projectId) => {
     if (flow === undefined) return undefined;
-    const project = inventory.projects.find((entry) => entry.id === projectId);
-    const services = inventory.services.get(projectId);
+    const candidate = candidates.find((entry) => entry.project.id === projectId);
     const row = flow.environments.find(
       (entry) => entry.projectId === projectId && entry.tier === "stage",
     );
     return stageFirstDeploy({
-      projectStatus: project?.status,
-      services:
-        services?.status === "resolved"
-          ? summarizeEnvironmentServices(services.services).statuses
-          : undefined,
+      projectStatus: candidate?.project.status,
+      services: candidate?.services?.statuses,
       deployment: flowValue?.deployments.get(projectId),
       headFailure: row?.firstDeployFailure,
       declared: row !== undefined,
       mainHasCode: undefined,
       merged: flow.merged,
       runner: flowValue?.runners?.get(groupId),
-      createdAt: project?.created,
+      createdAt: candidate?.project.created,
       nowMs,
     });
   };
