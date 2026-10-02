@@ -2051,14 +2051,15 @@ export class ZeropsApiClient {
    *
    * The bare `…/integration-token` GET answers 405; the listing is under
    * `/list` (measured 2026-09-06). `groupReach.ts` picks a Mate's own token
-   * out of this.
+   * out of this. The platform answers the whole list: `limit` and `offset`
+   * are ignored (measured 2026-10-03).
    */
   async listIntegrationTokens(
     clientId: string,
     signal?: AbortSignal,
   ): Promise<ReadonlyArray<ZeropsIntegrationToken>> {
     const body = await this.#request<{ readonly list?: ReadonlyArray<ZeropsIntegrationToken> }>(
-      `/client/${clientId}/integration-token/list?limit=100`,
+      `/client/${clientId}/integration-token/list`,
       { signal: signal ?? null },
     );
     return body.list ?? [];
