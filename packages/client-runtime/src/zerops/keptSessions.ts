@@ -12,9 +12,14 @@
  * the Mate says it is still its own (`identityExchange.ts`). Anything else mints, as before.
  *
  * - Nothing here outweighs what the same storage already holds: the account's Zerops token sits
- *   beside it and can mint a throwaway for every Mate.
- * - The account's close ends every kept session at its Mate and forgets them all (`drain`).
- * - A refusal forgets only the session it was about: another tab may have kept a newer one.
+ *   beside it and can mint a throwaway for every Mate. So no session stays kept once that token is
+ *   gone: every way out of the account ends them at their Mates (`drain`), and so does a stored
+ *   login the platform refuses.
+ * - A session one keeps or forgets in place of another answers the one it displaced, for the
+ *   caller to end at its Mate: a session dropped from here is never left live for its day.
+ * - A refusal forgets only the session it was about: another tab may have kept a newer one. Two
+ *   tabs writing at once can still lose one entry; its session ends with its day, as every session
+ *   did before any was kept.
  *
  * @module keptSessions
  */
@@ -43,10 +48,16 @@ export interface KeptSessionStorage {
 export interface KeptSessions {
   /** The session kept for this target, unless it would end within the lead. */
   readonly read: (key: string) => BearerConnectionRegistration | null;
-  /** Keeps the session a target was just connected with, in place of any before it. */
-  readonly keep: (key: string, registration: BearerConnectionRegistration) => void;
-  /** Forgets this target's session while it is still the one with this token. */
-  readonly forget: (key: string, token: string) => void;
+  /**
+   * Keeps the session a target was just connected with, in place of any before it; answers the
+   * session it displaced, or null when there was none or it was this one.
+   */
+  readonly keep: (
+    key: string,
+    registration: BearerConnectionRegistration,
+  ) => BearerConnectionRegistration | null;
+  /** Forgets this target's session while it is still the one with this token; answers it. */
+  readonly forget: (key: string, token: string) => BearerConnectionRegistration | null;
   /** Every session still live, for the account's close to end; nothing stays kept. */
   readonly drain: () => ReadonlyArray<BearerConnectionRegistration>;
 }
@@ -58,21 +69,36 @@ export function makeKeptSessions(
   storage: KeptSessionStorage,
   nowEpochMs: () => number,
 ): KeptSessions {
+  /** The last text read and what it decoded to: the driver asks many times per pass. */
+  let decoded: {
+    readonly text: string;
+    readonly kept: ReadonlyMap<string, BearerConnectionRegistration>;
+  } | null = null;
+
   /** Every entry that decodes, in the order it was kept; a storage that refuses holds none. */
   const load = (): Map<string, BearerConnectionRegistration> => {
+    let text: string | null;
+    try {
+      text = storage.getItem(KEPT_SESSIONS_KEY);
+    } catch {
+      return new Map();
+    }
+    if (text === null) return new Map();
+    if (decoded?.text === text) return new Map(decoded.kept);
     const kept = new Map<string, BearerConnectionRegistration>();
     let raw: unknown;
     try {
-      const text = storage.getItem(KEPT_SESSIONS_KEY);
-      raw = text === null ? null : JSON.parse(text);
+      raw = JSON.parse(text);
     } catch {
-      return kept;
+      raw = null;
     }
-    if (typeof raw !== "object" || raw === null) return kept;
-    for (const [key, value] of Object.entries(raw)) {
-      const registration = decodeRegistration(value);
-      if (Option.isSome(registration)) kept.set(key, registration.value);
+    if (typeof raw === "object" && raw !== null) {
+      for (const [key, value] of Object.entries(raw)) {
+        const registration = decodeRegistration(value);
+        if (Option.isSome(registration)) kept.set(key, registration.value);
+      }
     }
+    decoded = { text, kept: new Map(kept) };
     return kept;
   };
 
@@ -108,15 +134,21 @@ export function makeKeptSessions(
     },
     keep: (key, registration) => {
       const kept = load();
+      const before = kept.get(key) ?? null;
       kept.delete(key);
       kept.set(key, registration);
       save(kept);
+      return before !== null && before.credential.token !== registration.credential.token
+        ? before
+        : null;
     },
     forget: (key, token) => {
       const kept = load();
-      if (kept.get(key)?.credential.token !== token) return;
+      const before = kept.get(key) ?? null;
+      if (before === null || before.credential.token !== token) return null;
       kept.delete(key);
       save(kept);
+      return before;
     },
     drain: () => {
       const live = [...load().values()].filter((registration) => !ended(registration, 0));

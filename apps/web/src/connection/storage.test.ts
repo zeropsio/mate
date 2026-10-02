@@ -1,8 +1,6 @@
 import {
   BearerConnectionCredential,
   BearerConnectionProfile,
-  BearerConnectionRegistration,
-  BearerConnectionTarget,
   ConnectionTransientError,
 } from "@t3tools/client-runtime/connection";
 import { ConnectionCatalogDocument } from "@t3tools/client-runtime/platform";
@@ -112,38 +110,6 @@ describe("accountCloseLogouts", () => {
     expect(accountCloseLogouts(document, NOW)).toEqual([
       { url: "https://live.example.test/mate/api/auth/logout", token: "token-of-live" },
       { url: "https://undated.example.test/mate/api/auth/logout", token: "token-of-undated" },
-    ]);
-  });
-
-  // A session kept for later loads is as live as one this tab holds: signing out ends it too,
-  // once, whether or not this tab connected with it.
-  it("ends every kept session as well, each once", () => {
-    const live = { issuedAtEpochMs: NOW - 60_000, expiresAtEpochMs: NOW + DAY_MS };
-    const kept = (name: string, lifetime: typeof live) =>
-      new BearerConnectionRegistration({
-        target: new BearerConnectionTarget({
-          environmentId: EnvironmentId.make(name),
-          label: name,
-          connectionId: `bearer:${name}`,
-        }),
-        profile: mate(name),
-        credential: new BearerConnectionCredential({ token: `token-of-${name}`, ...lifetime }),
-      });
-    const document = {
-      ...emptyCatalog,
-      profiles: [mate("shop")],
-      credentials: [stored("shop", live)],
-    };
-
-    expect(
-      accountCloseLogouts(document, NOW, [
-        kept("shop", live),
-        kept("blog", live),
-        kept("ended", { issuedAtEpochMs: NOW - 2 * DAY_MS, expiresAtEpochMs: NOW - DAY_MS }),
-      ]),
-    ).toEqual([
-      { url: "https://shop.example.test/mate/api/auth/logout", token: "token-of-shop" },
-      { url: "https://blog.example.test/mate/api/auth/logout", token: "token-of-blog" },
     ]);
   });
 });

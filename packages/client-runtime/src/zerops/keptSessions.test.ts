@@ -101,16 +101,35 @@ describe("kept sessions", () => {
     });
   });
 
-  it("forgets a session only while it is still the one refused", () => {
+  it("forgets a session only while it is still the one refused, and answers it", () => {
     const sessions = kept();
     sessions.keep("p1:zcp", session("shop"));
 
     // Another tab kept a newer session for the same Mate: this tab's refusal is not about it.
-    sessions.forget("p1:zcp", "an-older-session");
+    expect(sessions.forget("p1:zcp", "an-older-session")).toBeNull();
     expect(sessions.read("p1:zcp")).toEqual(session("shop"));
 
-    sessions.forget("p1:zcp", session("shop").credential.token);
+    expect(sessions.forget("p1:zcp", session("shop").credential.token)).toEqual(session("shop"));
     expect(sessions.read("p1:zcp")).toBeNull();
+  });
+
+  // A session dropped from here must be ended at its Mate, or it stays live there for its day.
+  it("answers the session a keep displaced, never the one it keeps", () => {
+    const sessions = kept();
+    expect(sessions.keep("p1:zcp", session("shop"))).toBeNull();
+    expect(sessions.keep("p1:zcp", session("shop"))).toBeNull();
+    expect(sessions.keep("p1:zcp", session("shop-again"))).toEqual(session("shop"));
+    expect(sessions.read("p1:zcp")).toEqual(session("shop-again"));
+  });
+
+  it("reads what another tab kept since", () => {
+    const storage = memoryStorage();
+    const here = kept(storage);
+    expect(here.read("p1:zcp")).toBeNull();
+
+    kept(storage).keep("p1:zcp", session("shop"));
+
+    expect(here.read("p1:zcp")).toEqual(session("shop"));
   });
 
   it("drains every session still live, for the account's close to end, and keeps none", () => {
