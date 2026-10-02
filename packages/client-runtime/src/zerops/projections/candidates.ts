@@ -198,6 +198,11 @@ export const STILL_READING_PATIENCE_MS = 20_000;
 export interface CandidatesNoticeOptions {
   /** The listing has been partial for less than `STILL_READING_PATIENCE_MS`. */
   readonly patient?: boolean;
+  /**
+   * The region holds its rows' room and says nothing while they are read — the menu, beside a page
+   * that says it once (pass 30) — so only a failed read speaks there.
+   */
+  readonly readingSilent?: boolean;
 }
 
 /**
@@ -218,6 +223,7 @@ export function candidatesNotice<Row extends CandidateRow>(
   const presentation = knownPresentation(listing, surface, { nowMs, updateOffered: false });
   const message = presentation.message;
   if (message === null) return null;
+  if (options.readingSilent === true && message.tone === "quiet") return null;
   const reading = listing.state === "known" && message.tone === "quiet";
   if (reading && options.patient === false && listing.value.length > 0) return null;
   return {
