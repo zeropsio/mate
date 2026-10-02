@@ -183,6 +183,30 @@ export function applyProjectCreationVerdict<Candidate extends ZeropsCandidate>(
 }
 
 /**
+ * How long a Mate's container may wait for its first build (`READY_TO_DEPLOY`) and still be on
+ * its way up: the build takes about a minute (measured 2026-10-02). One that has not landed by
+ * then failed — a failed first build leaves the service READY_TO_DEPLOY for good — or is stuck.
+ */
+export const FIRST_BUILD_GRACE_MS = 300_000;
+
+/**
+ * A container waiting for its first build, read against the time: past its grace it is not on
+ * its way up any more, and reads as the platform leaves it — unavailable, naming its status, so
+ * its row offers what removes it. A creation time not known keeps it on its way.
+ */
+export function applyFirstBuildGrace<Candidate extends ZeropsCandidate>(
+  candidate: Candidate,
+  nowMs: number,
+): Candidate {
+  if (candidate.group !== "provisioning" || candidate.service?.status !== "READY_TO_DEPLOY") {
+    return candidate;
+  }
+  const created = Date.parse(candidate.service.created ?? "");
+  if (Number.isNaN(created) || nowMs - created < FIRST_BUILD_GRACE_MS) return candidate;
+  return { ...candidate, group: "unavailable", reason: "container is READY_TO_DEPLOY" };
+}
+
+/**
  * Every candidate one project contributes — one per zcp container, so a project
  * holding two of them offers both rather than collapsing into "ambiguous".
  * `services` is null when the project's service list could not be read; that is
