@@ -21,6 +21,8 @@
  * **A person's side**, `Authorization: Bearer <session>`, wherever they may read the application:
  *
  * - `GET /api/apps/:appId/repos` → {@link RepoListResponse};
+ * - `GET /api/apps/:appId/repos/:repo/compare` {@link CompareQuery} → {@link CompareResponse}: the
+ *   commits between two of a repository's commits, each with the change that landed it;
  * - `GET /api/apps/:appId/changes` → {@link ChangeListResponse};
  * - `GET /api/apps/:appId/changes/:repo/:n` → {@link ChangeDetailResponse};
  * - `GET`, `POST /api/apps/:appId/changes/:repo/:n/comments` → {@link CommentListResponse},
@@ -33,7 +35,8 @@
  *   (`302`) to the first client origin HQ answers, at {@link changeRoutePath}.
  *
  * **Answers.** A refusal is `{ code, reason }`: `403 forbidden` with a permission's reason
- * (`zeropsPermissions.ts`), `404` `repo_not_found` / `change_not_found` / `attachment_not_found`,
+ * (`zeropsPermissions.ts`), `404` `repo_not_found` / `change_not_found` / `attachment_not_found` /
+ * `commit_not_found`,
  * `409 conflict` `change_not_open` for a change merged or closed, `400 invalid` for a body these
  * schemas refuse, `413 too_large`. Only the HQ that leads serves any of it: a standby answers `503
  * not_active` with `Retry-After` (two instances overlap through a deploy), which is "try again",
@@ -282,6 +285,52 @@ export const ChangeCommit = Schema.Struct({
   at: Instant,
 });
 export type ChangeCommit = typeof ChangeCommit.Type;
+
+/** How many commits a comparison names at most: the git layer's bound on a log (`@t3tools/hq-git`). */
+export const COMPARE_COMMITS_MAX = 100;
+
+/** How far a comparison counts: the git layer's bound on a walk of history. */
+export const COMPARE_COUNT_MAX = 10000;
+
+/**
+ * `GET /api/apps/:appId/repos/:repo/compare?base=<sha>&head=<sha>`, by the repository's name: the
+ * commits git's `base..head` names — reachable from `head`, not from `base` — and with no
+ * `base`, every commit up to `head`. Both are commits anywhere in the repository's history, and
+ * `base` need not come before `head`: a rollback asks both ways, what leaves (`target..running`)
+ * and what comes back (`running..target`). Either one not a commit of the repository is `404
+ * commit_not_found`.
+ */
+export const CompareQuery = Schema.Struct({ base: Schema.optionalKey(Sha), head: Sha });
+export type CompareQuery = typeof CompareQuery.Type;
+
+/** A commit a comparison names, and the change whose merge it is, where one of this application's is. */
+export const CompareCommit = Schema.Struct({
+  sha: Sha,
+  /** Its message's first line. */
+  subject: Schema.String,
+  authorName: Schema.String,
+  /** When it was committed. */
+  at: Instant,
+  /** None for a commit no change of HQ's landed: a recipe's, a person's, one from before HQ. */
+  change: Schema.NullOr(
+    Schema.Struct({ number: ChangeNumber, title: ChangeTitle, mateProjectId: Schema.String }),
+  ),
+});
+export type CompareCommit = typeof CompareCommit.Type;
+
+/**
+ * The comparison: its commits newest first, at most {@link COMPARE_COMMITS_MAX} (`truncated` when
+ * more lie between), and how many lie between, counted up to {@link COMPARE_COUNT_MAX} — that many
+ * means at least as many. None between is an answer too.
+ */
+export const CompareResponse = Schema.Struct({
+  base: Schema.NullOr(Sha),
+  head: Sha,
+  commits: Schema.Array(CompareCommit),
+  truncated: Schema.Boolean,
+  total: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
+});
+export type CompareResponse = typeof CompareResponse.Type;
 
 /**
  * `GET /api/apps/:appId/changes/:repo/:n`: the change and what its review reads — `main`'s head and
