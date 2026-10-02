@@ -443,6 +443,7 @@ export {
   FIRST_DEPLOY_ON_ITS_WAY,
   firstDeploy,
   firstDeployLine,
+  firstDeployTone,
   groupRunner,
   RUNNER_TROUBLE_WORDS,
   runnerHostname,

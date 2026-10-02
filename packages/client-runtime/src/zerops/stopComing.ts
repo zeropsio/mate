@@ -358,6 +358,14 @@ export function comingLine(
     : { fact: `${subject} coming up`, rest: STEP_WORDS[coming.step] };
 }
 
+/**
+ * The tone a stage's first deploy line wears beside its dot: busy while on its way, failed where it
+ * failed, off while it waits.
+ */
+export function firstDeployTone(first: FirstDeploy | undefined): "busy" | "failed" | "off" {
+  return first?.kind === "on-its-way" ? "busy" : first?.kind === "failed" ? "failed" : "off";
+}
+
 /** A stage whose first build was seen to end with nothing running. */
 export const FIRST_DEPLOY_FAILED = "First deploy failed";
 
