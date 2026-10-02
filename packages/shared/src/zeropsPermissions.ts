@@ -8,7 +8,7 @@
  *   record, a Mate's enrollment, following a Mate's live summary (who may operate it: open it, as
  *   its door does), and reading and commenting on an application's changes (`hqChanges.ts`), as
  *   main's Gitea read them, and merging or closing one, as its write team did — closing also the
- *   structure's writer.
+ *   structure's writer — and asking a deploy again, as that team re-ran its job.
  * - **A Mate's own verbs** — its enrollment, and its repositories, its own changes and git in the
  *   application HQ holds it in — are a Mate's alone, for its own project only; it is refused every
  *   other verb.
@@ -114,6 +114,8 @@ export interface Targets {
   readonly merge_change: { readonly projectIds: ReadonlyArray<string> };
   /** A change of an application closed without merging: whoever may merge it, or a writer. */
   readonly close_change: { readonly projectIds: ReadonlyArray<string> };
+  /** A deploy of one of an application's environments asked again ("Run again"): whoever develops it. */
+  readonly redeploy: { readonly projectIds: ReadonlyArray<string> };
   readonly create_app: null;
   readonly rename_app: null;
   /** An environment's deploy token handed to HQ (SPEC §3.2b): by who may attach the project. */
@@ -289,6 +291,11 @@ function decide(principal: Principal, request: Request, facts: Facts): Decision 
     case "close_change":
       if (!seesApp(request.target.projectIds)) return deny("app_not_seen");
       if (request.verb === "close_change" && writer) return ALLOW;
+      return writesApp(request.target.projectIds) ? ALLOW : deny("not_app_developer");
+    // Main re-ran a deploy's job with write on its repository (B36): whoever develops the
+    // application, as a merge.
+    case "redeploy":
+      if (!seesApp(request.target.projectIds)) return deny("app_not_seen");
       return writesApp(request.target.projectIds) ? ALLOW : deny("not_app_developer");
     case "observe_mate":
       // Who may operate a Mate is who its door opens for: Basic user or above there. No kind check:
