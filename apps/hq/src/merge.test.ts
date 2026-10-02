@@ -193,6 +193,56 @@ describe("a change merged into main, or closed", () => {
         }),
     );
 
+    it.effect("a merge carries every task of the change, however many commits it took", () =>
+      Effect.gen(function* () {
+        const { call, fake, origin, url } = yield* startCore(true);
+        yield* untilHealth(call, "active");
+        const owner = yield* sessionFor(call, "door-owner");
+        const { appId, credential } = yield* mateWithChange(call, fake, owner);
+        const git = yield* gitClient;
+        const ada = yield* checkout(git, origin, credential, appId, "ada");
+        for (let i = 1; i <= 150; i++) {
+          yield* git.checked(
+            [
+              "commit",
+              "--allow-empty",
+              "-q",
+              "-m",
+              `Task ${String(i)}`,
+              "-m",
+              `Crew-Lane: ada\nCrew-Assignment: task-${String(i)}`,
+            ],
+            ada.work,
+          );
+        }
+        yield* ada.commit("a.txt", "a\n", "Fold\n\nCrew-Assignment: a long\n  task");
+        const { head } = yield* ada.push("P_MATE", 1);
+        yield* recorded(url, 1, head);
+        assert.strictEqual((yield* merge(call, owner, appId, 1, head)).status, 200);
+        yield* ada.main;
+        const assignments = yield* git.checked(
+          [
+            "log",
+            "-1",
+            "--format=%(trailers:key=Crew-Assignment,valueonly,separator=%x0A)",
+            "origin/main",
+          ],
+          ada.work,
+        );
+        assert.deepStrictEqual(assignments.split("\n"), [
+          ...Array.from({ length: 150 }, (_, i) => `task-${String(i + 1)}`),
+          "a long task",
+        ]);
+        assert.strictEqual(
+          yield* git.checked(
+            ["log", "-1", "--format=%(trailers:key=Crew-Lane,valueonly)", "origin/main"],
+            ada.work,
+          ),
+          "ada",
+        );
+      }),
+    );
+
     it.effect(
       "a merge is refused as git sees the change, and to whoever does not develop the application",
       () =>

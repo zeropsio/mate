@@ -10,7 +10,7 @@
  *
  * @module changes
  */
-import type { CommitSummary, GitError, HqGit, Repo } from "@t3tools/hq-git";
+import type { GitError, HqGit, Repo } from "@t3tools/hq-git";
 import {
   type AttachmentResponse,
   type ChangeDetailResponse,
@@ -194,24 +194,14 @@ const refuse = (code: ChangeRefused["code"], reason: ChangeRefused["reason"]) =>
 /** The crew's trailers a squash carries over from the change's own commits (SPEC §9). */
 const CREW_TRAILERS = ["Crew-Lane", "Crew-Assignment"] as const;
 
-/**
- * The crew's trailers of a change's commits, each value once, oldest first: what a crew's landing
- * wrote as its message's last paragraph (`apps/server/src/zerops/crew/crewTrailers.ts`).
- */
-const crewTrailers = (commits: ReadonlyArray<CommitSummary>) => {
+/** Trailers as a squash takes them: by key, each value once, in the order first written. */
+const onceEach = (trailers: ReadonlyArray<{ readonly key: string; readonly value: string }>) => {
   const found: Record<string, Array<string>> = {};
-  for (const commit of commits.toReversed()) {
-    const paragraphs = commit.message.trimEnd().split(/\n[ \t]*\n/u);
-    if (paragraphs.length < 2) continue;
-    for (const line of paragraphs.at(-1)!.split("\n")) {
-      for (const key of CREW_TRAILERS) {
-        const value = line.startsWith(`${key}:`) ? line.slice(key.length + 1).trim() : "";
-        const values = (found[key] ??= []);
-        if (value !== "" && !values.includes(value)) values.push(value);
-      }
-    }
+  for (const { key, value } of trailers) {
+    const values = (found[key] ??= []);
+    if (value !== "" && !values.includes(value)) values.push(value);
   }
-  return Object.fromEntries(Object.entries(found).filter(([, values]) => values.length > 0));
+  return found;
 };
 
 /**
@@ -744,8 +734,9 @@ export const changesLayer: Layer.Layer<
           // As the change's record names it, never as the path spelled it.
           const at = { appId: change.appId, id: change.repo };
           const mate = change.mateProjectId;
-          // Read before the squash; a push since moves the head the squash checks.
-          const log = yield* git.changeLog(at, mate, number, { limit: 100 });
+          // Read before the squash, from every commit of the change; a push since moves the head
+          // the squash checks.
+          const crew = onceEach(yield* git.changeTrailers(at, mate, number, CREW_TRAILERS));
           const [record] = yield* sql<{ readonly name: string }>`
             SELECT name FROM hq_mate WHERE project_id = ${mate}`;
           const message =
@@ -759,7 +750,7 @@ export const changesLayer: Layer.Layer<
               expectedMain,
               expectedHead,
               message,
-              trailers: crewTrailers(log.items),
+              trailers: crew,
               author: { name: record?.name ?? "Mate", email: `${mate}@mate.hq.invalid` },
             });
           return yield* touched(
