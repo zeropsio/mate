@@ -116,7 +116,7 @@ export type GroupPlacement = "row" | "tile";
  */
 export interface FoldedGroupInput {
   readonly flow: GroupFlow;
-  /** Its Gitea side answered. Unread is not empty: a group is folded only on an answer. */
+  /** Its flow answered. Unread is not empty: a group is folded only on an answer. */
   readonly read: boolean;
   /** Every Mate's talk is known (`GroupMemberFacts.mate.talked`), so a first task is one. */
   readonly talkSettled: boolean;

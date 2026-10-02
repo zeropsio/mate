@@ -11,10 +11,10 @@ export const ServiceBrowserLinkContext = createContext<ServicePreviewResolver | 
 /**
  * A link this app can answer itself, rather than hand to the browser.
  *
- * A Mate writes a Gitea pull request address into its conversation, and that
+ * A Mate writes its change's address at HQ into its conversation, and that
  * address names a change this app draws in full — with its conversation, its
- * commits and its *Merge*. Following it out to a forge the reader has to sign
- * into is the long way round to a worse copy (the owner, 2026-09-19).
+ * commits and its *Merge*. Following it out of the app is the long way round to
+ * a worse copy (the owner, 2026-09-19).
  *
  * Separate from the preview resolver above because the two go to different
  * places: a preview opens the side panel, this opens a page. It wears no

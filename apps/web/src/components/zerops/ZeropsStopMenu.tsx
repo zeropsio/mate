@@ -66,12 +66,10 @@ export function ZeropsStopMenu({
       <MenuPopup align="end" className="max-w-[24rem] min-w-56">
         <MenuGroup data-zerops-surface="stop-menu-running">
           <MenuGroupLabel>Running</MenuGroupLabel>
-          {/* A fact, not a door: the commit's page in Gitea is a sign-in page
-              for everybody, and the environment's own page is right below. */}
+          {/* A fact, not a door: the environment's own page is right below. */}
           <MenuItem disabled>{detail}</MenuItem>
           {/* The question people actually ask of a version is what came before
-              it, and a commit page answers only for one — and, with no Gitea
-              session in the browser, answers it with a sign-in page. */}
+              it, and a commit page answers only for one. */}
           {onOpenStop === undefined ? null : (
             <MenuItem onClick={onOpenStop}>Open this environment</MenuItem>
           )}

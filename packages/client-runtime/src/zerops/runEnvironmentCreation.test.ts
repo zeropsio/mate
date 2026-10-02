@@ -195,7 +195,7 @@ describe("runEnvironmentCreation", () => {
     ]);
   });
 
-  it("imports a stage's or a production's tier whole, every runtime empty for the broker", async () => {
+  it("imports a stage's or a production's tier whole, every runtime empty for HQ", async () => {
     const { platform, calls } = fakePlatform();
     await run(plan("prod"), platform);
     expect(calls.filter((call) => call.startsWith("import:"))).toEqual([

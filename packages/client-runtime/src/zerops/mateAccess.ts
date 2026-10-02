@@ -16,8 +16,8 @@
  * ## One rule, three consumers
  *
  * The answer comes from `@t3tools/shared/zeropsRoles`, the same function the
- * Mate's door runs before it refuses and the broker runs before it writes a
- * Gitea team. A list that invented its own rule would tell a person one thing
+ * Mate's door runs before it refuses and HQ runs over its structure. A list
+ * that invented its own rule would tell a person one thing
  * and the door another.
  *
  * Pure: no clock, no network, no platform types (rule R1). The caller reads
@@ -244,8 +244,8 @@ export function mateMemberName(member: MateOwnerCandidate): string | undefined {
  * The `OWNER` entry is there only where somebody put it — a creator below
  * `ADMIN` (verified.md, 2026-09-15) or an _Assign_ hand-over — and so wins. An
  * org owner or admin who creates a Mate gets no entry at all: the project's
- * roles are then only the broker's and the container's token users (measured
- * 2026-09-24), and the one record naming a person is D6's signer, as the
+ * roles are then only token users' — the container's key (measured 2026-09-24,
+ * main's broker's beside it) — and the one record naming a person is D6's signer, as the
  * Mate's server saw them sign in and HQ relays it. With two agents signed in,
  * Claude Code's signer names the owner.
  *

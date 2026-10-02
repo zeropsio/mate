@@ -1113,10 +1113,8 @@ describe("the project's flow under it", () => {
     expect(html.indexOf('data-zerops-surface="sidebar-mate"')).toBeLessThan(
       html.indexOf("#4 Change 4"),
     );
-    // Nothing here opens Gitea: the app holds the only token, so every one of
-    // its pages is a sign-in page for the person reading this menu. The title
-    // opens the change's own page, and the verdict lives in the review: no
-    // check dot on the row.
+    // Nothing here opens a forge: the title opens the change's own page, and
+    // the verdict lives in the review: no check dot on the row.
     expect(html).not.toContain("gitea.example");
     expect(html).not.toContain('aria-label="Passing"');
     expect(html).toContain('data-zerops-surface="sidebar-pull-request-review"');
@@ -1996,7 +1994,7 @@ describe("a project collapsed to its heading", () => {
     const open = render([mine(CRM_DEV_CONNECTED)], props);
     expect(open).not.toContain("sidebar-project-faces");
     expect(open).toContain('data-mate-face-state="needs"');
-    // Still being checked, it waits on Gitea, not on the person: at rest.
+    // Still being checked, it waits on HQ, not on the person: at rest.
     const checking = render([mine(CRM_DEV_CONNECTED)], {
       ...props,
       getFlow: (): SidebarProjectFlow => ({
@@ -3762,21 +3760,21 @@ describe("a reload paints what the menu last drew (menuMemory)", () => {
     expect(html).not.toContain('data-zerops-surface="sidebar-mate-stop"');
   });
 
-  it("draws the change rows it remembers until Gitea answers: their titles, and no verb", () => {
+  it("draws the change rows it remembers until HQ answers: their titles, and no verb", () => {
     const html = render([CRM_DEV, CRM_PROD], {
       getFlow: () => flowOf({ changesKnown: false }),
       remembered: remembering([pull(14, { title: "Add a /status page" })]),
     });
     expect(html).toContain("#14 Add a /status page");
     // No verdict it may no longer have: the mark is untinted, and the title
-    // opens nothing until Gitea answers. *Review* stands, so nothing appears
+    // opens nothing until HQ answers. *Review* stands, so nothing appears
     // on the row when the answer comes.
     expect(html).not.toContain("data-zerops-change-tone");
     expect(html).not.toContain("sidebar-pull-request-open");
     expect(html).toContain('data-zerops-surface="sidebar-pull-request-review"');
   });
 
-  it("draws Gitea's change rows once it answered, and never the remembered ones", () => {
+  it("draws HQ's change rows once it answered, and never the remembered ones", () => {
     const html = render([CRM_DEV, CRM_PROD], {
       getFlow: () => flowOf({ changesKnown: true, pullRequests: [pull(15, { title: "Live" })] }),
       remembered: remembering([pull(14, { title: "Remembered" })]),

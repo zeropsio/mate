@@ -16,7 +16,7 @@
  * stacked on the first. It comes back once the answer is in.
  *
  * A reload paints the strip the conversation showed last
- * (`composerTopMemory.ts`), and Gitea's answer, seconds later, confirms it,
+ * (`composerTopMemory.ts`), and HQ's answer, seconds later, confirms it,
  * changes its words or takes it away: the composer grew 61 px under a
  * conversation pinned to its end when the strip only arrived with the answer.
  *
@@ -71,7 +71,7 @@ export interface ZeropsComposerTop {
   readonly strip: ZeropsNextStepStripModel | null;
   /**
    * What the conversation remembers after this answer: the strip as shown,
-   * nothing (`null`) once nothing waits, or — Gitea not having answered —
+   * nothing (`null`) once nothing waits, or — HQ not having answered —
    * whatever it remembered (`undefined`).
    */
   readonly remember: RememberedComposerTop | null | undefined;
@@ -107,7 +107,7 @@ function stripOf(top: RememberedComposerTop): ZeropsNextStepStripModel {
 }
 
 /**
- * The composer's top for `nextStep`: Gitea's answer once it has given one,
+ * The composer's top for `nextStep`: HQ's answer once it has given one,
  * and until then what this conversation showed last — so a reload paints the
  * strip it will keep. Nothing while a question or an approval waits on the
  * person first.
@@ -250,13 +250,13 @@ export function useZeropsNextStepStrip(
     remembered: threadKey === null ? undefined : rememberedComposerTop(threadKey),
     pending,
   });
-  // Gitea's answer is what the next reload paints first.
+  // HQ's answer is what the next reload paints first.
   useEffect(() => {
     if (threadKey === null || remember === undefined) return;
     rememberComposerTop(threadKey, remember);
   }, [remember, threadKey]);
   // The composer is memoised: the strip keeps its identity while what it
-  // says does — a remembered strip Gitea confirms is the same node, so the
+  // says does — a remembered strip HQ confirms is the same node, so the
   // answer re-renders nothing — and a conversation's re-render never
   // re-renders the composer.
   const shown = strip === null ? null : JSON.stringify(strip);

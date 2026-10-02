@@ -626,7 +626,7 @@ describe("stageChip — one chip for the project's stage or stages", () => {
     expect(chipFace(drawn!).tone).toBe("red");
   });
 
-  it("says what the platform alone says of a stage until Gitea answers", () => {
+  it("says what the platform alone says of a stage until HQ answers", () => {
     const view = read([staged("stage")], { releases: { kind: "waiting" } });
     expect(view).toEqual({
       kind: "unknown",

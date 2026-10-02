@@ -1171,7 +1171,7 @@ export interface MarkdownPicture {
 
 /**
  * Draws a text's pictures that come from an address of their own, where the text's host reads
- * them its own way: a change's description reads its Gitea's pictures as the person, sized to its
+ * them its own way: a change's description reads its pictures from HQ as the person, sized to its
  * column. Absent, they load as any page's pictures do.
  */
 export const MarkdownPictureContext = React.createContext<

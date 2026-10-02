@@ -864,7 +864,7 @@ describe("serviceRows", () => {
     { hostname: "api", tone: "good", status: "Deployed" },
     { hostname: "web", tone: "neutral", status: "Deployed" },
   ])(
-    "reads $hostname from Gitea alone while the platform is unread",
+    "reads $hostname from the flow alone while the platform is unread",
     ({ hostname, ...expected }) => {
       const row = rowsOf({ state: "unread", waitingFor: null }).find(
         (entry) => entry.hostname === hostname,

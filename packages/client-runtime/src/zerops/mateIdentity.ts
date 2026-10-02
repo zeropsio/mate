@@ -2,8 +2,8 @@
  * How a Mate is named by the machinery around it, and how to read those names
  * back.
  *
- * zcp registers a Mate's bot in Gitea as `mate-{projectId}` and works on
- * `mate/{login}` (gitea-mate `mate.go`, zcp `gitea_repo.go`). Those two shapes
+ * Main's zcp registered a Mate's bot in Gitea as `mate-{projectId}` and worked
+ * on `mate/{login}` (gitea-mate `mate.go`, main's zcp `gitea_repo.go`). Those two shapes
  * are the only place a Mate's project id leaks into somebody else's namespace,
  * and four modules have to turn them back into a Mate — whose change this is,
  * who said this, whose branch this is.
@@ -20,7 +20,7 @@
 const BOT_LOGIN_PREFIX = "mate-";
 const MATE_BRANCH_PREFIX = "mate/";
 
-/** The bot login of a Mate's project — what the broker registers it as. */
+/** The bot login of a Mate's project — what main's broker registered it as. */
 export function mateBotLogin(projectId: string): string {
   return `${BOT_LOGIN_PREFIX}${projectId}`;
 }

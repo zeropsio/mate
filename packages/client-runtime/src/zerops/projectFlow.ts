@@ -64,7 +64,7 @@ export interface FlowPullRequest {
    */
   readonly mergeCommitSha?: string | undefined;
   /**
-   * `open` or `closed`, as Gitea says. A change read on its own by number may be closed without
+   * `open` or `closed`, as HQ says. A change read on its own by number may be closed without
    * ever merging: its review must not offer to merge it. Optional, as every flow built before a
    * review read it carries none.
    */

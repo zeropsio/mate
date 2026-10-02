@@ -88,7 +88,7 @@ const laneGit = (lane: string) => (args: ReadonlyArray<string | ShellVariable>) 
 /** A staged blob larger than this parks the lane unless the crewmate raises it. */
 export const DEFAULT_MAX_BLOB_BYTES = 10 * 1024 * 1024;
 
-/** Delivery's unignored-dependency guard (zcp `ops/gitea_branch.go`). */
+/** Delivery's unignored-dependency guard (zcp `ops/delivery_git.go`). */
 const DEPENDENCY_DIRECTORIES = ["node_modules", "vendor", ".venv"] as const;
 
 /** DM-7's `.env`/`.env.*` and key files, committed whatever their ignore state. */

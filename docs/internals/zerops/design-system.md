@@ -611,7 +611,9 @@ conversation's state) Fen lives here` (`ZeropsMateOnMap`, from the panel), and t
   - _States:_ a chip: neutral (healthy, changes waiting, releasing or deploying, setting up, nothing
     released or deployed yet) · amber (the last release or deploy did not go through) · red (down) ·
     hollow (stopped on purpose) · unknown (the remembered chip, or what the platform alone says
-    while HQ's answer is read, or nothing) · none (no such tier); several
+    while HQ's releases are coming, or nothing) · unlit (production serves, but what a service
+    runs cannot be told: "Production v0.1.44, can't tell what api runs" where it would say healthy,
+    changes waiting or a release that did not go out) · none (no such tier); several
     stages wear the worst of them: down, then a failed deploy, then one deploying
   - _Phrase source:_ `SidebarProductionChip.logic.ts` (`projectChips`, `productionChip`,
     `stageChip`, `chipFace`, `productionMenu`, `stageMenu`, `stopServing`)

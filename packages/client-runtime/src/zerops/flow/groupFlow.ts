@@ -109,7 +109,7 @@ export function stopDeploymentOf(services: Shown<ReadonlyArray<StopService>>): S
 }
 
 /**
- * How many of the newest releases the flow lists, and so reads the broker's verdict on (D5): one
- * read per release tag ever made grows with the group's age.
+ * How many of the newest releases the flow lists, each with HQ's verdict on it (D5): as many as
+ * HQ answers (`@t3tools/shared/hqRelease`).
  */
 export const RELEASES_SHOWN = 10;

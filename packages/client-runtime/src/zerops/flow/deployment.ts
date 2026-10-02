@@ -2,7 +2,7 @@
  * What a stop runs, as a fact (DESIGN §4.7 "Deployment", D6).
  *
  * Existence comes from the platform's deployment facet, not from the group's
- * deploy pass, and without Gitea. A native frame states the active version's
+ * deploy pass, and without HQ. A native frame states the active version's
  * id, status and times but not its source or name (A14): a version whose
  * source nobody has stated yet is pending, never running and never none. The
  * pass's REST read (`userData`) names a version only where nothing else does.

@@ -178,9 +178,10 @@ describe("resolveMateOwner", () => {
     ).toBe(jan);
   });
 
-  // What an org owner's Mate looks like on the wire (measured 2026-09-24):
-  // the only per-project roles are the broker's and the container's token
-  // users, and the person is named only by the agent they signed in.
+  // What an org owner's Mate looked like on the wire under main (measured
+  // 2026-09-24): the only per-project roles were the broker's and the
+  // container's token users, and the person was named only by the agent they
+  // signed in.
   const eva = { id: "cu-eva", user: { id: "u-eva", fullName: "Eva Dvořák" } };
   const services = [
     { clientUserId: "cu-broker", roleCode: "BASIC_USER" },

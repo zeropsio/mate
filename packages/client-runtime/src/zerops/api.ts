@@ -1368,12 +1368,12 @@ export class ZeropsApiClient {
   }
 
   /**
-   * Mints a throwaway — `NO_ACCESS`, no projects, no flags — for one door or
-   * one Gitea sign-in (`authorization/zeropsThrowaway.ts`).
+   * Mints a throwaway — `NO_ACCESS`, no projects, no flags — for one door
+   * (`authorization/zeropsThrowaway.ts`).
    *
    * It carries no rights, so it is an `account-write` that a closed account
-   * window does not hold up (spec-mate C6): the door and the broker decide
-   * what it opens, with their own keys, when it is presented.
+   * window does not hold up (spec-mate C6): the door decides what it opens,
+   * with its own key, when it is presented.
    *
    * `beforeMint` is a wait of the caller's own — a rate budget — that the
    * mint queues behind. The wait belongs to the account epoch the mint was

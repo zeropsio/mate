@@ -281,12 +281,12 @@ describe("changeMarkTone — the one colour a change row's mark may wear", () =>
   it.each([
     { case: "merges", pull: change(), tone: undefined },
     { case: "behind main", pull: change({ mergeability: "conflicting" }), tone: "attention" },
-    { case: "Gitea still checking", pull: change({ mergeability: "checking" }), tone: undefined },
+    { case: "HQ still checking", pull: change({ mergeability: "checking" }), tone: undefined },
   ] as const)("$case: $tone", ({ pull, tone }) => {
     expect(changeMarkTone(pull, false)).toBe(tone);
   });
 
-  it("says nothing for a change drawn from memory: its verdict is Gitea's to say again", () => {
+  it("says nothing for a change drawn from memory: its verdict is HQ's to say again", () => {
     expect(changeMarkTone(change({ mergeability: "conflicting" }), true)).toBeUndefined();
   });
 });

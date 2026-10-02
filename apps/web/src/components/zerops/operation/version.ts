@@ -1,7 +1,7 @@
 /**
  * A version as a person reads it, wherever a deploy names the version it
- * shipped — its card, its row in the chat, its result row: the name zcp or
- * the broker wrote read through the one reader (`parseVersionName`), its
+ * shipped — its card, its row in the chat, its result row: the name zcp, HQ's
+ * Core or main's broker wrote read through the one reader (`parseVersionName`), its
  * branch or tag and its short sha — `main 7e2d4c1`, `v0.1.0 7e2d4c1` — and a
  * Mate's own working branch (`mate/mate-<project>`: machine names, nothing a
  * reader can use) as its sha alone; zcp's push of uncommitted changes as its

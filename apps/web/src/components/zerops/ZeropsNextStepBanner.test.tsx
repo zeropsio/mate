@@ -171,7 +171,7 @@ describe("zeropsComposerTop", () => {
     expect(zeropsComposerTop({ nextStep, remembered: undefined, pending }).strip).toEqual(shown);
   });
 
-  // A reload paints the strip the conversation showed last, and Gitea's answer
+  // A reload paints the strip the conversation showed last, and HQ's answer
   // — seconds later — confirms it, changes its words, or takes it away: the
   // composer grows 61 px only where nothing was remembered.
   it.each<{
@@ -275,7 +275,7 @@ describe("zeropsComposerTop", () => {
       shape: "seal",
     },
     {
-      name: "paints a remembered shape until Gitea answers",
+      name: "paints a remembered shape until HQ answers",
       nextStep: UNANSWERED,
       remembered: { ...REMEMBERED, tint: "rose", shape: "seal" },
       shape: "seal",
@@ -392,7 +392,7 @@ describe("ZeropsNextStepStrip", () => {
   });
 });
 
-/** A reload's first render: the inventory, the registry and Gitea all still unread. */
+/** A reload's first render: the inventory, the registry and HQ all still unread. */
 const UNREAD: Inventory = {
   projects: [],
   services: new Map(),
@@ -430,7 +430,7 @@ describe("the composer's top on a reload's first render", () => {
     vi.unstubAllGlobals();
   });
 
-  // The strip is painted before Gitea answers, from what the conversation
+  // The strip is painted before HQ answers, from what the conversation
   // showed last, so the composer never grows 61 px under a settled page.
   it.each<{
     readonly case: string;

@@ -1,6 +1,6 @@
 # Zerops Mate and HQ — the primer
 
-2026-10-02, `rebuild/int` at `7cd89a21a6`. The one page that says what this project is, where each
+2026-10-02, `rebuild/int` at `04d73b1557`. The one page that says what this project is, where each
 piece lives, what is built, what is proven on the platform, and what is open — slice by slice. It
 carries **state** and nothing else: design is the spec (`../../../../zcp/docs/spec-mate.md`), the
 decisions and their reasons are [`design-decisions.md`](design-decisions.md), measured facts are the
@@ -75,9 +75,11 @@ HQ's repositories of Todo, at /git/<appId>/<repo>.git
 
 An organization that ran the release keeps its Gitea project, the broker's token, the `deploy-*`
 tokens and each Mate's `GITEA_TOKEN` as they are. Nothing writes to them, and the client keeps a
-project tagged `mate:tool:gitea` out of the applications; retiring them is a decision of its own,
-later. The client writes nothing there — its Gitea client only reads (`giteaClient.ts`) — but until
-T12's token flows go it still opens a Gitea session through the old broker (§7).
+project tagged `mate:tool:gitea` out of the applications (`tools.ts`); retiring them is a decision
+of its own, later. The client neither reads nor writes the old Gitea and calls no broker: it only
+takes back the person's own `gitea-signin:` throwaways that main's client leaves in the organization
+(`zeropsThrowaway.ts:71`). A pair main's zcp wired to the old Gitea moves to HQ at its first
+delivery (§5, T13).
 
 ## 2. The parts and where they live
 
@@ -101,8 +103,9 @@ T12's token flows go it still opens a Gitea session through the old broker (§7)
     — squash merges against the head that was reviewed, bounded reads, archives, the event log. Git
     runs with `core.hooksPath=/dev/null` and `core.fsmonitor=false`
 - **The shared rules** — `packages/shared/src`: `zeropsPermissions.ts` (`can`, the one rule HQ
-  enforces and the client offers by), `zeropsDoor.ts` (the throwaway check behind HQ's door and a
-  Mate's), `zeropsRoles.ts`, and the wire contracts `hqChanges.ts`, `hqRecipe.ts`, `hqRelease.ts`,
+  enforces and the client offers by), `zeropsDoor.ts` (the throwaway check behind HQ's door; the
+  Mate server's door keeps its own copy of the same rules, `zeropsDoor.ts:1-4`), `zeropsRoles.ts`,
+  and the wire contracts `hqChanges.ts`, `hqRecipe.ts`, `hqRelease.ts`,
   `mateLink.ts`
 - **The Mate server** — `apps/server/src/zerops`, installed into every Mate by zcp from the release
   manifest
@@ -141,11 +144,12 @@ the root `zerops.yml`), so an HQ is born with the Core of the client that bore i
   `hq`, minted by the owner's or admin's client at the birth
   - _Reaches:_ reads of the org, its members and projects, and a project's env (a Mate's challenge);
     it writes nothing on the platform
-- **a Mate's Zerops key `ZCP_API_KEY`** — `NO_ACCESS` at the org, `BASIC_USER` on its own project
-  and `READ_ONLY` on its application's other projects (`groupReach.ts`); a sensitive variable of its
-  `zcp` service
+- **a Mate's Zerops key `ZCP_API_KEY`** — `NO_ACCESS` at the org and `BASIC_USER` on its own
+  project, nothing more (`api.ts:1791`, ADR 0003); a sensitive variable of its `zcp` service. A key
+  the platform minted `ADMIN` is lowered by the projects page (`useZeropsMateKeys`); a `READ_ONLY`
+  grant on a sibling that an earlier client gave a key stays until it is taken off by hand
   - _Reaches:_ its own project — the door's role reads, zcp's every platform call, the challenge it
-    writes for HQ — and reads of its application's stage and production
+    writes for HQ
 - **a Mate credential** — issued by HQ for a challenge whose nonce it finds in the Mate's own
   project env (`MATE_HQ_CHALLENGE`); 256 bits, HQ keeping only the hash; one live per project, no
   expiry, revoked by the next issue or when the project goes; kept by zcp in
@@ -164,21 +168,22 @@ the root `zerops.yml`), so an HQ is born with the Core of the client that bore i
 - **a deploy credential in CI, a runner or a repository** — none
 - **the old Gitea's tokens** — the broker's, the `deploy-*` keys on its service, each Mate's
   `GITEA_TOKEN`: left where they are; zcp still masks `GITEA_TOKEN` and keeps it out of a recipe
-  (`isControlPlaneEnv`). Until T12's token flows go, the client still mints a `gitea-signin`
-  throwaway for the old broker, whose answer is a Gitea session that reads only the old Gitea's
-  organizations (§7)
+  (`isControlPlaneEnv`). The client mints no `gitea-signin` throwaway; main's client still does
+  until the switch
 
 ## 4. How a run goes
 
-On `rebuild/int`, in KRLS's `mate-rig-*` projects and its `Headquarters`, 2026-10-02 (the ledger's
-entry for these runs is pending):
+On `rebuild/int`, in KRLS's `mate-rig-*` projects and its `Headquarters`, 2026-10-01/02 (the
+ledger's _The HQ rebuild, as measured_):
 
 1. **The organization's HQ.** An owner opening KRLS saw its HQ born in seven steps, which this
    browser keeps so that a reload goes on from the step it reached: the `Headquarters` project from
-   an import sent at most once, its three services, `HQ_ORG_TOKEN`, Core deployed from the client's
-   own build, the project's domain routed to Core with its certificate (about ten seconds), the
-   anchor, and `/health` answering `official: ok`. A Developer of KRLS sees the product; in an
-   organization without HQ anybody but an owner or an admin is told whom to ask (`hqGate.ts`).
+   an import sent at most once, its services, `HQ_ORG_TOKEN` once the import's variables have
+   synced, Core deployed from the client's own build — uploaded once, its build asked again while
+   Zerops still syncs the variables (`birth.ts:13-21`) — the project's domain routed to Core with
+   its certificate (about ten seconds), the anchor, and `/health` answering `official: ok`. A
+   Developer of KRLS sees the product; in an organization without HQ anybody but an owner or an
+   admin is told whom to ask (`hqGate.ts`).
 2. **A Mate joins HQ.** HQ holds the Mate's record from the client that made it; zcp finds the
    official HQ from the member list, writes its challenge into its project's env and enrolls
    (`mate-rig-a - Gita`); the Mate server opens its link and sends its summary, and the menu draws
@@ -208,13 +213,14 @@ still to come says so.
 ### HQ
 
 - **T0** — The platform's facts HQ stands on
-  - _State:_ measured 2026-10-01 and 02 in KRLS (ledger entry pending): an unmarked project env a
-    `BASIC_USER` token writes is read at once by an org Read only token's direct `env-file` read,
-    while the project search trails it by up to about 1.6 s; an org-Admin token named `mate-hq:…` is
-    listed among the members to every reader; a version deployed with `readinessCheck` and
-    `temporaryShutdown: false` takes over without a failed request, and one whose check never passes
-    fails while the old one serves; a project with Postgres and a runtime imports in 54–66 s. The
-    hostname `core` is reserved: an import under it made a project that could not be deleted
+  - _State:_ measured 2026-10-01 and 02 in KRLS (the ledger's _The HQ rebuild, as measured_): an
+    unmarked project env a `BASIC_USER` token writes is read at once by an org Read only token's
+    direct `env-file` read, while the project search trails it by up to about 1.6 s; an org-Admin
+    token named `mate-hq:…` is listed among the members to every reader; a version deployed with
+    `readinessCheck` and `temporaryShutdown: false` takes over without a failed request, and one
+    whose check never passes fails while the old one serves; a project with Postgres and a runtime
+    imports in 54–66 s. The hostname `core` is reserved: an import under it made a project that
+    could not be deleted
   - _Proven by:_ what leans on them says so — `mateCredentials.ts`, `apps/hq/zerops.yml`,
     `hq/birth.ts`
 - **T2a, T2b** — The git layer: repositories, smart HTTP and the write rule; changes, squash, reads,
@@ -265,10 +271,10 @@ still to come says so.
     "never lets a grant on the target stand in for the structure's writer", "never allows more after
     a lowering…"; `roles.test.ts`, `structure.test.ts`
 - **T6a** — A Mate proves itself to HQ through its own project's env
-  - _State:_ live — `mate-rig-a - Gita` enrolled, 2026-10-02 (ledger entry pending). zcp keeps the
-    enrollment (`hq.Keep`): retried with a growing wait while there is no official HQ or no record
-    of the Mate yet, and asked again every 10 min, which enrolls anew once HQ no longer knows the
-    credential
+  - _State:_ live — `mate-rig-a - Gita` enrolled, 2026-10-02 (the ledger's _The HQ rebuild, as
+    measured_). zcp keeps the enrollment (`hq.Keep`): retried with a growing wait while there is no
+    official HQ or no record of the Mate yet, and asked again every 10 min, which enrolls anew once
+    HQ no longer knows the credential
   - _Built in:_ `be33fff375`; zcp `0af31ed28`, `abd07e960`
   - _Proven by:_ `mateCredentials.test.ts`; zcp `internal/hq/enroll_test.go`, `keep_test.go`,
     `official_test.go`, `store_test.go`
@@ -290,10 +296,11 @@ still to come says so.
   - _Built in:_ `1e57d21699`; a Mate's own changes with their titles in its state, `1a936d7272`
   - _Proven by:_ `changes.test.ts`, `api.test.ts`, `gitHost.test.ts`; `hqChanges.test.ts`
 - **T7b** — zcp delivers into HQ
-  - _State:_ live on the rig, 2026-10-02 (ledger entry pending): a delivery opened the Mate's
-    change; the next delivery took the merged squash into its branch, its change carrying only the
-    new file; a change opened under the default title took the work session's first line. Not run
-    live: a delivery owed while HQ did not answer, finished afterwards (`FinishPendingDeliveries`)
+  - _State:_ live on the rig, 2026-10-02 (the ledger's _The HQ rebuild, as measured_): a delivery
+    opened the Mate's change; the next delivery took the merged squash into its branch, its change
+    carrying only the new file; a change opened under the default title took the work session's
+    first line. Not run live: a delivery owed while HQ did not answer, finished afterwards
+    (`FinishPendingDeliveries`)
   - _Built in:_ zcp `3e2d569d7`…`d4637b69e`
   - _Proven by:_ zcp `internal/hq/changes_test.go`, `gitcredential_test.go`;
     `internal/tools/hq_delivery_test.go`, `hq_git_push_test.go`, `hq_pending_test.go`,
@@ -306,33 +313,35 @@ still to come says so.
     `ZeropsReview.logic.test.ts`, `useZeropsChangeDetail.test.ts`,
     `useZeropsChangeComments.test.ts`, `useOpenZeropsChange.test.tsx`
 - **T8a** — Merge and close in HQ
-  - _State:_ live — a change merged by the button in the browser on the rig, 2026-10-02 (ledger
-    entry pending). A squash onto `main` carries the change's and the crew's trailers and is refused
-    as `head_moved` if the branch moved since the review; one merge of a repository runs at a time
+  - _State:_ live — a change merged by the button in the browser on the rig, 2026-10-02 (the
+    ledger's _The HQ rebuild, as measured_). A squash onto `main` carries the change's and the
+    crew's trailers and is refused as `head_moved` if the branch moved since the review; one merge
+    of a repository runs at a time
   - _Built in:_ `d97d83e90a`, `bf727bd498`
   - _Proven by:_ `merge.test.ts`, `mergeRetry.test.ts`; `ZeropsChangeReview.test.tsx`,
     `ZeropsReviewDoors.test.tsx`
 - **T8b** — Environments, deploy tokens, stage deploys
-  - _State:_ live — a stage on the rig twice, 2026-10-02 (ledger entry pending): attached with its
-    token, a merge deploying about 10 s later and live about 81 s later as `main <7 hex>`, its
-    subdomain answering. Only the leading Core deploys; one queue per environment, the newest commit
-    winning; every pass — at takeover and every 5 min — catches up; a build's own failure is final
-    until a person asks again, while HQ's own refusals are asked again by the next pass; a tier
-    whose import file changed adds to each environment the services it lacks and reports, never
-    applies, a changed declaration. The broker grant and the Gitea deploy path are gone from the
-    client
+  - _State:_ live — a stage on the rig twice, 2026-10-02 (the ledger's _The HQ rebuild, as
+    measured_): attached with its token, a merge deploying about 10 s later and live about 81 s
+    later as `main <7 hex>`, its subdomain answering. Only the leading Core deploys; one queue per
+    environment, the newest commit winning; every pass — at takeover and every 5 min — catches up; a
+    build's own failure is final until a person asks again, while HQ's own refusals are asked again
+    by the next pass; a tier whose import file changed adds to each environment the services it
+    lacks and reports, never applies, a changed declaration. The broker grant and the Gitea deploy
+    path are gone from the client
   - _Built in:_ `2d93cc977d`, `bfc003b9fb`
   - _Proven by:_ `deploys.test.ts`, `environments.test.ts`, `tierRuntimes.test.ts`,
     `recipeDeltas.test.ts`, `versionNames.test.ts`, `zerops/deploy.test.ts`;
     `addGroupEnvironment.test.ts`, `deployToken.test.ts`, `ZeropsProjectFlowProvider.test.tsx`,
     `SidebarProductionChip.logic.test.ts`, `ZeropsGroupDetail.test.tsx`
 - **T10a** — The application's recipe in HQ
-  - _State:_ live on the rig, 2026-10-02 (ledger entry pending): zcp proposed the tiers `main`
-    lacked as the Mate's change of `group` at the bootstrap's close, Core landed it by itself, and
-    every tier read back as the Mate and as the owner. A recipe change that edits a file waits for a
-    person, an empty one Core closes. A scale a Mate learned is proposed, when asked, as a change of
-    its own that a person merges; with one open change per Mate and repository, it and the additive
-    proposal never write over each other. _Add Mate_ and a new environment read their tier from HQ
+  - _State:_ live on the rig, 2026-10-02 (the ledger's _The HQ rebuild, as measured_): zcp proposed
+    the tiers `main` lacked as the Mate's change of `group` at the bootstrap's close, Core landed it
+    by itself, and every tier read back as the Mate and as the owner. A recipe change that edits a
+    file waits for a person, an empty one Core closes. A scale a Mate learned is proposed, when
+    asked, as a change of its own that a person merges; with one open change per Mate and
+    repository, it and the additive proposal never write over each other. _Add Mate_ and a new
+    environment read their tier from HQ
   - _Built in:_ `69502d179b`, `a2daa87881`, `7e41c9e963`; zcp `deab144c3`…`5865657ce`; the
     proposal's title from the Mate's state, zcp `5697ab07c`
   - _Proven by:_ `recipe.test.ts`, `hqRecipe.test.ts`; `useZeropsAppRecipes.test.tsx`,
@@ -362,13 +371,16 @@ still to come says so.
     (`HqApi.release`), what it would put live read from HQ's comparisons; _Roll back to this_ is a
     release HQ makes (`HqApi.rollback`); a project's releases, a repository's history and what each
     release carried are HQ's records and comparisons; a release's verdict is HQ's, and a failed
-    production deploy is the newest release's. The release path that tagged Gitea is gone, and the
-    Gitea client only reads. Not run live; the proof that nothing writes to the old Gitea is open
-    (§7)
-  - _Built in:_ the compare route `fdd2f82cd0`; `17b5f14e3d`, `f2ac9f4ef8`
+    production deploy is the newest release's. A roll back lists what leaves production and what
+    comes back, each row opening its change's review, and redeploys the services `rollbackServices`
+    names (`releaseCompare.ts:189`); the production chip never says healthy over a service whose
+    version cannot be told (`SidebarProductionChip.logic.ts`). No release, stop, history or review
+    surface reads or writes the old Gitea. Not run live
+  - _Built in:_ the compare route `fdd2f82cd0`; `17b5f14e3d`, `f2ac9f4ef8`, `c602ed6d80`,
+    `3cbebe4e90`, `2bf7dbf48e`, `690a9997b2`, `a6cf7aeb87`, `fe416b2b05`
   - _Proven by:_ `compare.test.ts`; `hq/client.test.ts`, `releaseCompare.test.ts`,
     `useZeropsAppReleases.test.tsx`, `useZeropsCompares.test.tsx`, `useZeropsHistory.test.tsx`,
-    `ZeropsReleaseReview.test.tsx`
+    `ZeropsReleaseReview.test.tsx`, `SidebarProductionChip.logic.test.ts`, `menuMemory.test.ts`
 - **T11** — The Git page and the Git tab over HQ
   - _State:_ built — `/git` lists every application's repositories and the changes open on them; the
     Git tab keeps the Mate's checkout and its change
@@ -376,12 +388,22 @@ still to come says so.
   - _Proven by:_ `ZeropsGitPage.test.tsx`, `ZeropsGitPage.logic.test.ts`, `gitOverview.test.ts`,
     `ZeropsGitPanel.test.tsx`
 - **T12** — Nothing of Gitea or the broker left but what the old system needs
-  - _State:_ partial — the Gitea tool card and what only it read are gone, and with T9b every
-    release read and write. Left: the Gitea session through the old broker
-    (`accountGiteaSessions.ts`, `giteaBroker.ts`, the `/gitea-signin` route) and the projects page's
-    read of the old Gitea's organizations (§7). Kept by the owner's rule: zcp's masking of
-    `GITEA_TOKEN` and `isControlPlaneEnv`, while the old token stays on a Mate's container
-  - _Built in:_ `7cd89a21a6`; the release path, `7418440275`
+  - _State:_ built — the client opens no Gitea session, calls no broker and has no Gitea client: the
+    `/gitea-signin` page, the session store and machine, the broker call, the Gitea client and the
+    projects page's read of the old Gitea's organizations are gone, and with them the group's Gitea
+    state. It mints no `gitea-signin:` throwaway; the start-up sweep still takes back the person's
+    own that main's client leaves (`zeropsThrowaway.ts:71`), until the switch. A Mate's key holds
+    no grant on its application's other projects (ADR 0003, see 0.2 below). The copy says _change_,
+    never _pull request_, and a change in conflict asks its Mate to merge `main` in and deliver it
+    again (`gitTab.ts`, `reviewVerdict.ts`), as HQ takes a Mate's push only forward. Kept by the
+    owner's rule: the tool partition (`tools.ts`), and zcp's masking of `GITEA_TOKEN` and
+    `isControlPlaneEnv`, while the old token stays on a Mate's container
+  - _Built in:_ `7cd89a21a6`; the release path `7418440275`; the sign-in page `bb9fc20db8`; the
+    session, the broker, the Gitea client and its state `23762ac9b3`; the keys and the copy
+    `04d73b1557`
+  - _Proven by:_ `-accountGate.test.ts`, `ZeropsProjectFlowProvider.test.tsx` ("opens no Gitea
+    session: the flow names no sign-in to Gitea and no Gitea org"), `accountRuntime.test.ts` (the
+    post-grant stage holds no forge), `zeropsThrowaway.test.ts`, `doorThrowaway.test.ts`
 - **T13** — The migration of an organization that ran the release
   - _State:_ partial — Core's side is in: a bundle the `import` command queues is brought in item by
     item, resumably, and verified — applications with their projects, Mates and environments,
@@ -398,14 +420,14 @@ still to come says so.
   - _Proven by:_ `importJob.test.ts`, `importBundle.test.ts`, `importCli.test.ts`,
     `importTiers.test.ts`, `deploys.test.ts`; zcp `internal/tools/hq_main_gitea_test.go`
 - **TB** — HQ's git backed up, and restored in step with Postgres
-  - _State:_ live — on KRLS's `Headquarters`, 2026-10-02 (ledger entry pending): `/health` said
-    `backup: ok` 36 s after the build answered, a whole set of five repositories in the bucket and
-    on the volume; `hq restore <set> --replace` ran in 8.3 s, HQ down 2 min 50 s in all, and Core
-    came back active at epoch 14. The leading Core takes a set every hour: the database's
-    dump, then a bundle of every repository, the manifest last. It stages the newest on the volume
-    and keeps in the bucket the newest set of each hour for a day, of each day for 14 days and of
-    each month for 6 months; `/health` tells the newest set's outcome. An HQ born before TB gains
-    its bucket by hand
+  - _State:_ live — on KRLS's `Headquarters`, 2026-10-02 (the ledger's _The HQ rebuild, as
+    measured_): `/health` said `backup: ok` 36 s after the build answered, a whole set of five
+    repositories in the bucket and on the volume; `hq restore <set> --replace` ran in 8.3 s, HQ down
+    2 min 50 s in all, and Core came back active at epoch 14. The leading Core takes a set every
+    hour: the database's dump, then a bundle of every repository, the manifest last. It stages the
+    newest on the volume and keeps in the bucket the newest set of each hour for a day, of each day
+    for 14 days and of each month for 6 months; `/health` tells the newest set's outcome. An HQ born
+    before TB gains its bucket by hand
   - _Built in:_ `d5b54a9d4c`, `ec1ae73186`
   - _Proven by:_ `backup.test.ts`, `bucketStore.test.ts`, `restore.test.ts`, `reconcile.test.ts`
 - **T14** — The switch
@@ -419,12 +441,15 @@ still to come says so.
 - **0.1** — zcp on a `BASIC_USER` container token
   - _State:_ live
   - _Proven by:_ ledger 2026-09-16 _A `BASIC_USER` project token does everything zcp does_
-- **0.2, 0.3** — Each Mate's key lowered to `NO_ACCESS` + `BASIC_USER` on its project, and reaching
-  its application's other projects read-only
-  - _State:_ live — the projects page lowers a key minted `ADMIN` and keeps the reach on every read
-    (`useZeropsGroupReach`); the application is HQ's now. Whether the reach stays is open (§7)
-  - _Built in:_ mate 0.11.0 `04a8468d5`
-  - _Proven by:_ `groupReach.test.ts`, `useZeropsGroupReach.test.tsx`
+- **0.2** — Each Mate's key lowered to `NO_ACCESS` + `BASIC_USER` on its own project, and nothing
+  more (0.3's read-only reach of its application's other projects is gone, ADR 0003)
+  - _State:_ built — a new Mate's key is minted with its own project alone (`api.ts:1791`); the
+    projects page lowers a key minted `ADMIN` on every read, for Mates HQ places in an application
+    (`useZeropsMateKeys`, `ZeropsProjectsPage.tsx:1906`), adds no grant and keeps any other grant a
+    key already holds (`planMateKey`, `groupReach.ts:233`)
+  - _Built in:_ mate 0.11.0 `04a8468d5`; without the reach `04d73b1557`
+  - _Proven by:_ `groupReach.test.ts`, `useZeropsMateKeys.test.tsx`, `newProject.test.ts`,
+    `matePress.test.ts` ("writes no other Mate's key")
 - **0.4, 0.10** — A new Mate's key on `zcp` and its project closed off before anyone is admitted
   - _State:_ live — the press does it in the foreground before _Add_ returns, and records the
     close-off in HQ (`matePress.ts`, `hqMateBirth.ts`)
@@ -482,10 +507,10 @@ still to come says so.
   - _Built in:_ mate 0.11.2 `68634f145` `e090a363b` `7abefe78f` `938de7167`; 0.11.3 `682ce19ed`
   - _Proven by:_ ledger _A project creation that the platform failed after answering 200_
 - **—** — The client state model: fact owners, machines, lifetimes
-  - _State:_ partial — Phases 0 to 3 built except 2.5; of Phase 4 the forge store with one
-    `MergeState`, the registry as a projection of tags and the one tag writer; Phase 5 open. Item by
-    item: [`client-state-model.md`](client-state-model.md#status-by-phase), which still describes
-    the registry and the forge as before HQ and is brought to HQ once T9b lands
+  - _State:_ partial — Phases 0 to 3 built except 2.5; of Phase 4 the one tag writer
+    (`data/tagWriter.ts`), the registry now HQ's structure (`hq/registry.ts`), and the forge store
+    gone with the Gitea session (T12); Phase 5 open. Item by item:
+    [`client-state-model.md`](client-state-model.md#status-by-phase)
   - _Built in:_ mate `main`, merged wave by wave from `e22e38db0`
   - _Proven by:_ the sign-in guards (`ZeropsInventoryProvider.lifecycle.test.tsx`); the zone tests
     (`scripts/mate-zone-architecture.test.ts`)
@@ -808,7 +833,7 @@ still to come says so.
     had dropped it); a card holding nothing but its line — live at its first thought, or closed — is
     the composer's rounded rectangle, never a full-width pill, its corners easing to the full card's
     as rows arrive; what ran alongside the live line gives its room back when it ends (the owner's
-    "big space … at the bottom"). **Open**: §7, 40
+    "big space … at the bottom"). **Open**: §7, 25
   - _Built in:_ mate 0.11.69 (PR #39): `240c770ef` `8385fc6bf` `40a435519`
   - _Proven by:_ `MessagesTimeline.test.tsx`, `RunChat.test.tsx`; the harnesses
     `/design-working.html` and `/design-switch.html`
@@ -870,6 +895,9 @@ lands.
   Actions and runners — D4, D18, D20–D23, D27 — went with it.
 - **The old Gitea stays as it is** (the owner, 2026-10-02): nothing writes to it, and the client
   keeps it out of the applications (`tools.ts`). Retiring it is a decision of its own, later.
+- **A Mate's key reaches its own project and nothing more** (the owner, ADR 0003, 2026-10-02): a
+  `READ_ONLY` grant on production reads its unmarked secrets, and grants are writes somebody must
+  keep in step; an agent reaches past its project only through HQ, later.
 - **HQ is born at the first visit of an owner or an admin**, never adopted: a project is HQ's only
   by the anchor, never by its name or the `mate:hq` tag (`hq/birth.ts`).
 - **HQ's address is its project's own domain** — the one the anchor names, Core serving it over
@@ -902,20 +930,18 @@ lands.
 
 ### The rebuild's
 
-1. **T9b's last step** — the proof that nothing in the client writes to the old Gitea. Its release
-   path is in and the Gitea client only reads; a release and a roll back have not run live.
-2. **T12's token flows.** In an organization with the old Gitea the client still opens a Gitea
-   session through the old broker on every load (`ZeropsProjectFlowProvider.tsx`,
-   `useGiteaSession`): a call to the broker, a `gitea-signin` throwaway minted in the organization
-   and the broker's sign-in, again on renewal (`forge/giteaSession.ts`, `giteaBroker.ts`); the
-   `/gitea-signin` route signs in by itself. With that session the projects page reads the old
-   Gitea's organizations (`useZeropsGroupOrganizations`), and as an application's slug is HQ's id
-   now, each reads "Setting up its repositories…" and is asked again every 10 s. The production
-   chip still waits while such a session is coming (`giteaComing`). All of it goes once T9b's last
-   step is in.
-3. **A Mate's reach past its own project.** The projects page still keeps every Mate's key
-   `READ_ONLY` on its application's other projects (`useZeropsGroupReach`), where the owner's
-   decision of 2026-10-02 has an agent reach past its project only through HQ, later.
+1. **What main's client leaves behind.** It gave each Mate's key `READ_ONLY` on its application's
+   other projects, and int's client did until `04d73b1557`: the client adds no such grant now and
+   takes none off, so each is removed by hand, Mate by Mate. It mints `gitea-signin:` throwaways in
+   the organizations it still serves until the switch; the start-up sweep takes the person's own
+   back (`zeropsThrowaway.ts:71`), and that recognition goes after T14.
+2. **The pairs main's zcp wired to the old Gitea.** zcp moves each to HQ at its first delivery,
+   git-push or repository pass, its open pull request continued as its change (zcp `38c4695c6`);
+   not yet run live — the migration of Snap in Mate s.r.o. is its first run. Its code goes once no
+   Mate has such a pair.
+3. **An agent's reach past its own project** comes only through HQ, later (ADR 0003): a zcp tool
+   that asks HQ, and HQ's rule over what the people who control the Mate may see. Until then an
+   agent sees its own project alone.
 4. **T13 — the exporter and the rehearsal.** The exporter reads the old Gitea as the migrating admin
    and waits for the owner's token; the rehearsal runs on a `mate-rig-*` HQ. An admin mints every
    environment's deploy key anew after the import.

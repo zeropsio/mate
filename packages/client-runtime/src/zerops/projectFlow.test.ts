@@ -163,7 +163,7 @@ describe("a Mate's changes in HQ, as the flow shows them", () => {
 });
 
 describe("whose pull request it is", () => {
-  it("names the bot after the project, the way the broker does", () => {
+  it("names the bot after the project, the way main's broker did", () => {
     expect(mateBotLogin(VERA)).toBe(`mate-${VERA}`);
   });
 

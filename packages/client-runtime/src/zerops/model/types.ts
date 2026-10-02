@@ -117,7 +117,7 @@ export interface ZeropsOperationStep {
   readonly kind?: "tail";
 }
 
-/** A pull request on the group's Gitea: its repository in the group's org, and its number. */
+/** A change in HQ: its repository's name in the application, and its number. */
 export interface ZeropsOperationPullRequest {
   readonly repository: string;
   readonly number: number;
@@ -282,9 +282,9 @@ export interface ZeropsOperation {
   /** `deploy` only: the call delivered by pushing to a git remote (zcp's git-push strategy). */
   readonly strategy?: "git-push";
   /**
-   * `deploy` with the git-push strategy only: the pull request the pushed
-   * branch lands through on the account's Gitea — the change a run's result
-   * follows — by its repository in the group's org and its number.
+   * `deploy` with the git-push strategy only: the change the push lands through
+   * in HQ — the change a run's result follows — by its repository's name and its
+   * number.
    */
   readonly pullRequest?: ZeropsOperationPullRequest;
   readonly resultStatus?: string;

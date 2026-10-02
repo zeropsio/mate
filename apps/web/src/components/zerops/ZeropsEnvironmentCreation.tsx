@@ -67,7 +67,7 @@ function upNote(
  * What to say about services an environment came up without.
  *
  * Every tier fills itself, and each from somewhere different: a stage tracks
- * `main` and the broker deploys the difference on its own; a production runs
+ * `main` and HQ deploys the difference on its own; a production runs
  * what a release names; a Mate's own services are the agent's to set up. The
  * one sentence for all three sent the reader to the Zerops dashboard for work
  * that was already on its way (measured 2026-09-20).

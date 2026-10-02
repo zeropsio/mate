@@ -82,14 +82,14 @@ describe("mateNextStep", () => {
       step: "none",
     },
     {
-      case: "its own change Gitea is still checking",
+      case: "its own change HQ is still checking",
       pullRequests: [pull({ mergeability: "checking" })],
       mate: "p-wren",
       mateName: "Wren",
       step: "none",
     },
     {
-      case: "its own landed change Gitea still calls mergeable",
+      case: "its own landed change HQ still calls mergeable",
       pullRequests: [pull({ merged: true })],
       mate: "p-wren",
       mateName: "Wren",

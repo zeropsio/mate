@@ -468,7 +468,7 @@ describe("every state of a block", () => {
     },
   );
 
-  it("a merged pull request is the broker's business now, and offers nothing", () => {
+  it("a merged change is HQ's business now, and offers nothing", () => {
     const answer = block(
       checkout({ headRef: "feature/invoices" }),
       changes({ change: change("checking", LANDED) }),

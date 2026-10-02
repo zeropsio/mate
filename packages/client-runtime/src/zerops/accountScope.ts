@@ -51,7 +51,7 @@ export function resolveActiveZeropsOrganization(
  * `canCreateProjects === true` where the data runtime decided whether an
  * organization takes writes — so an org admin without the flag was offered the
  * verb on one screen and refused it on the next. Both now call the shared role
- * function, which is also what the Mate's door and the broker run.
+ * function, which is also what the Mate's door and HQ run.
  */
 export function canCreateProjectsInOrganization(organization: ZeropsOrganization): boolean {
   return canCreateMates(organization);
