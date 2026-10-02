@@ -15,18 +15,48 @@ import {
   THREAD_SIDEBAR_WIDTH_STORAGE_KEY,
 } from "~/components/threadSidebarWidth";
 import type { ZeropsSessionStatus } from "./ZeropsSessionProvider";
-import { BOOT_FRAME_SIGNED_IN, BOOT_FRAME_STORAGE_KEY, bootFrameMemory } from "./bootFrame.logic";
+import {
+  BOOT_FRAME_SIGNED_IN,
+  BOOT_FRAME_STORAGE_KEY,
+  bootFrameMemory,
+  bootFrameSync,
+  livePalette,
+} from "./bootFrame.logic";
 
 /** Shows the frame while #root is empty, from now on. Called once, before the app renders. */
 export function keepBootFrame(root: HTMLElement): void {
   const shell = document.getElementById("boot-shell");
   if (shell === null) return;
   // A mutation's callback runs before the next paint: the frame goes in the frame the app draws.
+  let drawn = false;
   const sync = () => {
-    shell.hidden = root.childElementCount > 0;
+    const next = bootFrameSync({ rootChildren: root.childElementCount, drawn });
+    drawn = next.drawn;
+    if (next.repaint) repaintFromApp();
+    shell.hidden = !next.shown;
   };
   new MutationObserver(sync).observe(root, { childList: true });
   sync();
+}
+
+/** The app's colours and menu width as they are now, for a frame shown again after it drew. */
+function repaintFromApp(): void {
+  const root = document.documentElement;
+  const style = getComputedStyle(root);
+  const palette = livePalette((name) => style.getPropertyValue(name));
+  for (const [name, value] of Object.entries(palette)) root.style.setProperty(name, value);
+  if (palette["--boot-background"] !== undefined) root.dataset.themeSelected = "true";
+  root.style.setProperty("--boot-menu-width", `${menuWidthNow()}px`);
+}
+
+function menuWidthNow(): number {
+  let stored: number | null = null;
+  try {
+    stored = getLocalStorageItem(THREAD_SIDEBAR_WIDTH_STORAGE_KEY, Schema.Finite);
+  } catch {
+    stored = null;
+  }
+  return resolveInitialThreadSidebarWidth(stored, window.innerWidth);
 }
 
 /** Where a wait's line stands in the frame's page; null where there is no frame (tests, SSR). */
@@ -42,16 +72,7 @@ export function showAppFrame(): void {
   const root = document.documentElement;
   // A desktop window keeps the sign-in's mark (`bootFrameMode`).
   if (isElectron || root.dataset.bootFrame === "app") return;
-  let stored: number | null = null;
-  try {
-    stored = getLocalStorageItem(THREAD_SIDEBAR_WIDTH_STORAGE_KEY, Schema.Finite);
-  } catch {
-    stored = null;
-  }
-  root.style.setProperty(
-    "--boot-menu-width",
-    `${resolveInitialThreadSidebarWidth(stored, window.innerWidth)}px`,
-  );
+  root.style.setProperty("--boot-menu-width", `${menuWidthNow()}px`);
   root.dataset.bootFrame = "app";
 }
 
@@ -60,9 +81,13 @@ export function rememberBootFrame(status: ZeropsSessionStatus): void {
   const memory = bootFrameMemory(status);
   if (memory === "keep") return;
   try {
-    if (memory === "remember")
+    if (memory === "remember") {
       window.localStorage.setItem(BOOT_FRAME_STORAGE_KEY, BOOT_FRAME_SIGNED_IN);
-    else window.localStorage.removeItem(BOOT_FRAME_STORAGE_KEY);
+    } else {
+      window.localStorage.removeItem(BOOT_FRAME_STORAGE_KEY);
+      // Signed out, a frame shown again is the sign-in's.
+      delete document.documentElement.dataset.bootFrame;
+    }
   } catch {
     // Storage refused: the next load paints the sign-in's mark, and the app takes over from it.
   }

@@ -6,7 +6,13 @@ import {
   resolveInitialThreadSidebarWidth,
   THREAD_SIDEBAR_WIDTH_STORAGE_KEY,
 } from "../components/threadSidebarWidth";
-import { BOOT_FRAME_STORAGE_KEY, bootFrameMemory, bootFrameMode } from "./bootFrame.logic";
+import {
+  BOOT_FRAME_STORAGE_KEY,
+  bootFrameMemory,
+  bootFrameMode,
+  bootFrameSync,
+  livePalette,
+} from "./bootFrame.logic";
 
 const frameScript = (() => {
   const scripts = [...indexHtml.matchAll(/<script>([\s\S]*?)<\/script>/g)].map((match) => match[1]);
@@ -162,5 +168,40 @@ describe("the boot frame", () => {
     { status: "totp-required", memory: "keep" },
   ] as const)("a session $status leaves the next load's frame: $memory", (row) => {
     expect(bootFrameMemory(row.status)).toBe(row.memory);
+  });
+});
+
+describe("the boot frame later in the session", () => {
+  it.each([
+    {
+      name: "the first load, nothing drawn yet",
+      children: 0,
+      drawn: false,
+      shown: true,
+      repaint: false,
+    },
+    { name: "the app drawn", children: 1, drawn: false, shown: false, repaint: false },
+    { name: "a wait after the app drew", children: 0, drawn: true, shown: true, repaint: true },
+  ])(
+    "$name: shown $shown, repainted from the app $repaint",
+    ({ children, drawn, shown, repaint }) => {
+      expect(bootFrameSync({ rootChildren: children, drawn })).toEqual({
+        shown,
+        repaint,
+        drawn: drawn || children > 0,
+      });
+    },
+  );
+
+  it("takes the app's colours as they are now, and leaves out what it cannot read", () => {
+    const live: Record<string, string> = {
+      "--background": " oklch(0.16 0.005 173) ",
+      "--foreground": "oklch(0.94 0.006 170)",
+      "--sidebar": "",
+    };
+    expect(livePalette((name) => live[name] ?? "")).toEqual({
+      "--boot-background": "oklch(0.16 0.005 173)",
+      "--boot-foreground": "oklch(0.94 0.006 170)",
+    });
   });
 });

@@ -46,3 +46,33 @@ export function bootFrameMemory(status: ZeropsSessionStatus): "remember" | "forg
       return "keep";
   }
 }
+
+/**
+ * The frame against what the app has drawn into #root: shown while it draws nothing; and where it
+ * drew before (a wait later in the session — an account switched, a sign-in from the page), the
+ * frame takes the app's colours and menu width as they are now, not the load's.
+ */
+export function bootFrameSync(input: { readonly rootChildren: number; readonly drawn: boolean }): {
+  readonly shown: boolean;
+  readonly repaint: boolean;
+  readonly drawn: boolean;
+} {
+  const shown = input.rootChildren === 0;
+  return { shown, repaint: shown && input.drawn, drawn: input.drawn || !shown };
+}
+
+const LIVE_ROLES = [
+  ["--background", "--boot-background"],
+  ["--foreground", "--boot-foreground"],
+  ["--sidebar", "--boot-sidebar"],
+] as const;
+
+/** The frame's colours from the app's live roles; a role it cannot read keeps the load's. */
+export function livePalette(read: (name: string) => string): Record<string, string> {
+  const palette: Record<string, string> = {};
+  for (const [live, boot] of LIVE_ROLES) {
+    const value = read(live).trim();
+    if (value !== "") palette[boot] = value;
+  }
+  return palette;
+}
