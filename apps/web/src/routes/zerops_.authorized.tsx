@@ -100,7 +100,14 @@ function ZeropsHandoverCallback() {
   }, [adoptHandover, navigate, outcome]);
 
   if (state.kind === "working") {
-    return <ZeropsFrameWait data-zerops-handover="working" label="Signing you in…" signedIn />;
+    return (
+      <ZeropsFrameWait
+        data-zerops-handover="working"
+        label="Signing you in…"
+        line="Signing you in…"
+        signedIn
+      />
+    );
   }
   return (
     <ZeropsHandoverFailed
