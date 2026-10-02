@@ -22,7 +22,6 @@ import {
   releaseFollows,
   releaseOutcomeOf,
   releaseStageMarks,
-  releaseStalled,
   releaseStep,
   releaseContentsCommits,
   releaseReview,
@@ -208,11 +207,13 @@ function ReleaseData({
     outcome,
     held: keep,
     facts,
+    productionMoved,
   } = releaseStep({
     follows,
     held,
     press,
     clockMs,
+    nowMs: now,
     read: (tag) =>
       releaseFacts({
         tag,
@@ -292,6 +293,7 @@ function ReleaseData({
       }}
       outcome={outcome}
       press={press}
+      productionMoved={productionMoved}
       replaces={facts.replaces}
       rows={rows}
       services={facts.services}
@@ -313,6 +315,8 @@ export interface ReleaseReviewViewProps {
   readonly services: ReadonlyArray<string>;
   /** What production ran as this one was offered. */
   readonly replaces: ReleaseReplaces;
+  /** After a failure, whether production no longer runs what it replaced. */
+  readonly productionMoved?: boolean | undefined;
   readonly outcome: ReleaseOutcome;
   readonly press: ReviewPress;
   /** The person's own Mate a failure is handed to, the one they used last. */
@@ -338,6 +342,7 @@ export function ReleaseReviewView(props: ReleaseReviewViewProps) {
     services: props.services,
     replaces: props.replaces,
     outcome: props.outcome,
+    productionMoved: props.productionMoved,
     now: props.now,
   });
   const fix = model.verdict.fix;
@@ -416,23 +421,35 @@ function RollbackData({
   readonly onClose: () => void;
 }) {
   const flowValue = useZeropsProjectFlowOptional();
+  const askMateToFix = useAskMateToFix();
   const now = useNowMs();
   const [press, setPress] = useState<ReviewPress>({ kind: "idle" });
   // The tag the roll back made — its own read of the tags, not the flow's guess — which the
-  // review follows through the broker's verdict and production's deploy, as a release's.
-  const [made, setMade] = useState<string | undefined>(undefined);
-  const tagged = made === undefined ? undefined : flow.releases.find((entry) => entry.tag === made);
-  // Past the wait for it with no landing and no failure, the roll back says it hasn't landed.
-  const stalled = press.kind === "done" && releaseStalled(tagged, now);
-  const clockMs = useSecondsNowMs(
-    press.kind === "done" && tagged?.standing === undefined && !stalled,
+  // review follows through the broker's verdict and production's deploy, as a release's, and
+  // when it was pressed, for a tag whose date is never read.
+  const [made, setMade] = useState<{ readonly tag: string; readonly seenAt: number } | undefined>(
+    undefined,
   );
+  const follows = releaseFollows({
+    made: made?.tag,
+    held: made,
+    press,
+    inFlight: undefined,
+    suggestion: flow.release.suggestion,
+    releases: flow.releases,
+    nowMs: now,
+  });
+  const tagged = made === undefined ? undefined : follows.tagged;
+  const done = press.kind === "done";
+  const clockMs = useSecondsNowMs(done && follows.ticking);
   const outcome = releaseOutcomeOf({
     tagged,
-    releasing: press.kind === "done",
-    stalled,
+    releasing: done,
+    stalled: done && follows.stalled,
+    superseded: done ? follows.superseded : undefined,
+    sinceMs: follows.sinceMs,
     pressing: false,
-    tag: made ?? flow.release.suggestion,
+    tag: made?.tag ?? flow.release.suggestion,
     clockMs,
   });
   // What production ran as it was offered, held from the press: once it lands, production runs
@@ -450,21 +467,33 @@ function RollbackData({
   const moving = (earlier?.entries ?? [])
     .filter((entry) => !sameCommit(deployedCommit(running.get(entry.service)), entry.commit))
     .map((entry) => entry.service);
+  // A roll back that hasn't landed is anybody's to look into, as a release's (S6, `fixMates.ts`).
+  const [fixer] = useFixMates({
+    projectId: production?.projectId ?? flow.groupId,
+    groupId: flow.groupId,
+  });
   const rollBack = async () => {
     if (flowValue === null) return;
     setPress({ kind: "running" });
+    const pressedAt = now;
     const answer = await flowValue.rollBack(flow.groupId, tag);
     setPress(answer.ok ? { kind: "done" } : { kind: "refused", reason: answer.reason });
-    if (answer.ok) setMade(answer.tag);
+    if (answer.ok && answer.tag !== undefined) setMade({ tag: answer.tag, seenAt: pressedAt });
   };
   return (
     <RollbackReviewView
+      fixer={fixer?.name}
+      onFix={(problem) => {
+        if (fixer === undefined) return;
+        askMateToFix(fixer.mateProjectId, problem);
+        onClose();
+      }}
       line={earlier?.line}
       live={live}
       // Rolling back is a release: only a releaser tags, whatever else holds Release back now.
       mayRelease={flow.release.gate.allowed || flow.release.gate.reason !== RELEASE_NOT_A_RELEASER}
       name={name}
-      nextTag={made ?? flow.release.suggestion}
+      nextTag={made?.tag ?? flow.release.suggestion}
       now={now}
       onClose={onClose}
       onRollBack={() => {
@@ -498,6 +527,9 @@ export interface RollbackReviewViewProps {
   readonly where: ReadonlyArray<{ readonly service: string; readonly line: string }>;
   readonly mayRelease: boolean;
   readonly press: ReviewPress;
+  /** The person's own Mate a roll back that hasn't landed is handed to, the one they used last. */
+  readonly fixer?: string | undefined;
+  readonly onFix?: ((problem: FixProblem) => void) | undefined;
   /** Where the tag it made stands, once it was made. */
   readonly outcome: ReleaseOutcome;
   readonly now: number;
@@ -518,10 +550,22 @@ export function RollbackReviewView(props: RollbackReviewViewProps) {
     outcome: props.outcome,
     now: props.now,
   });
+  const fix = model.verdict.fix;
+  const onFix = props.onFix;
   return (
     <ZeropsReviewSurface
       consequence={model.consequence}
       dismiss={model.primary === undefined ? "Close" : "Cancel"}
+      fix={
+        fix === undefined || props.fixer === undefined || onFix === undefined
+          ? undefined
+          : {
+              label: `Ask ${props.fixer} to ${fix.verb}`,
+              onPress: () => {
+                onFix(fix.problem);
+              },
+            }
+      }
       kind="rollback"
       kindLabel={reviewKindLine("rollback")}
       meta={

@@ -526,7 +526,7 @@ describe("releaseReview", () => {
         state: "released",
         tone: "done",
         title: "Released v0.1.57",
-        why: "Production runs it · 3 minutes ago",
+        why: "Production runs it · tagged 3 minutes ago",
       },
     ],
     [
@@ -721,7 +721,7 @@ describe("rollbackReview: roll back gets the same review, naming where it goes b
         state: "rolled-back",
         tone: "done",
         title: "Rolled back to v0.1.55",
-        why: "Production runs its commits again, as v0.1.58 · 3 minutes ago",
+        why: "Production runs its commits again, as v0.1.58 · tagged 3 minutes ago",
       },
       "Production runs v0.1.55's commits again, as v0.1.58.",
     ],
@@ -738,6 +738,20 @@ describe("rollbackReview: roll back gets the same review, naming where it goes b
         why: "The deploy of app failed",
       },
       "Production still runs v0.1.57.",
+    ],
+    [
+      "a newer tag sits above the one it made",
+      {
+        press: { kind: "done" },
+        outcome: { kind: "superseded", by: "v0.1.59", live: "v0.1.59" },
+      },
+      {
+        state: "rollback-superseded",
+        tone: "quiet",
+        title: "v0.1.59 was tagged after v0.1.58",
+        why: "Production runs v0.1.59",
+      },
+      "The project's line in the menu follows v0.1.59.",
     ],
     [
       "tagged, and past the wait for it with no landing",
