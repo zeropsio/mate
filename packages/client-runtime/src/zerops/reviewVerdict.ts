@@ -670,16 +670,28 @@ export interface ReleaseReviewInput {
   readonly onStage: { readonly total: number; readonly running: number } | undefined;
   /** The production services that redeploy. */
   readonly services: ReadonlyArray<string>;
-  /** The release production runs now. */
-  readonly live: string | undefined;
+  /**
+   * The release production ran as this one was offered: what it replaces, and where a roll back
+   * goes; `undefined` for the first release. Held from the press (`holdReleaseFacts`): read after
+   * the release lands, production runs the release itself.
+   */
+  readonly replaces: string | undefined;
   readonly outcome: ReleaseOutcome;
   readonly now: number;
+}
+
+/** A release's review: its verdict and foot, the header's facts, and where to go if it goes wrong. */
+export interface ReleaseReviewModel extends ReviewModel {
+  /** Beside the title: `the first release` or `replaces v0.1.0`, and how many changes. */
+  readonly meta: ReadonlyArray<string>;
+  /** Where a roll back goes; `undefined` for a first release, which replaced nothing. */
+  readonly ifWrong: string | undefined;
 }
 
 const RELEASE_FOLLOWS = "You can close this. The project's line in the menu follows the release.";
 
 function stageWhy(input: ReleaseReviewInput): string {
-  const since = input.live === undefined ? "since the last release" : `since ${input.live}`;
+  const since = input.replaces === undefined ? "since the last release" : `since ${input.replaces}`;
   const onStage = input.onStage;
   if (onStage === undefined || onStage.total === 0) {
     return `${count(input.changes, "change", "changes")} merged ${since}`;
@@ -696,12 +708,29 @@ function stageWhy(input: ReleaseReviewInput): string {
   return `Stage runs ${String(onStage.running)} of ${count(onStage.total, "change", "changes")}`;
 }
 
-export function releaseReview(input: ReleaseReviewInput): ReviewModel {
+export function releaseReview(input: ReleaseReviewInput): ReleaseReviewModel {
+  const { tag } = input;
+  // Never a roll back to the tag itself: that is a release read after it landed.
+  const before = input.replaces === tag ? undefined : input.replaces;
+  const facts = {
+    meta: [
+      input.replaces === undefined ? "the first release" : `replaces ${input.replaces}`,
+      count(input.changes, "change", "changes"),
+    ],
+    ifWrong:
+      before === undefined
+        ? undefined
+        : `Roll back to ${before} from production's menu. It gets its own review.`,
+  };
+  return { ...releaseVerdictOf(input, before), ...facts };
+}
+
+function releaseVerdictOf(input: ReleaseReviewInput, before: string | undefined): ReviewModel {
   const { tag, outcome } = input;
   const keeps =
-    input.live === undefined
+    input.replaces === undefined
       ? "Production keeps running what it runs."
-      : `Production keeps running ${input.live}.`;
+      : `Production keeps running ${input.replaces}.`;
   switch (outcome.kind) {
     case "releasing":
       return {
@@ -726,7 +755,10 @@ export function releaseReview(input: ReleaseReviewInput): ReviewModel {
           why: age === undefined ? "Production runs it" : `Production runs it · ${age}`,
           fix: undefined,
         },
-        consequence: `Production runs ${tag}. If it misbehaves, roll back from production's menu.`,
+        consequence:
+          before === undefined
+            ? `Production runs ${tag}.`
+            : `Production runs ${tag}. If it misbehaves, roll back to ${before} from production's menu.`,
         primary: undefined,
       };
     }
@@ -749,9 +781,9 @@ export function releaseReview(input: ReleaseReviewInput): ReviewModel {
           },
         },
         consequence:
-          input.live === undefined
+          input.replaces === undefined
             ? "Production still runs what it ran before."
-            : `Production still runs ${input.live}.`,
+            : `Production still runs ${input.replaces}.`,
         primary: undefined,
       };
     }
@@ -805,6 +837,7 @@ export interface RollbackReviewInput {
   readonly tag: string;
   /** The tag it makes, listing that release's commits — the one made, once it was. */
   readonly nextTag: string;
+  /** The release production ran as the roll back was offered, held from the press. */
   readonly live: string | undefined;
   readonly services: ReadonlyArray<string>;
   readonly mayRelease: boolean;
@@ -818,7 +851,27 @@ export interface RollbackReviewInput {
   readonly now: number;
 }
 
-export function rollbackReview(input: RollbackReviewInput): ReviewModel {
+export interface RollbackReviewModel extends ReviewModel {
+  /**
+   * Beside the title: what production runs as it goes back — `production runs v0.1.1` — and,
+   * once it went back, what it replaced; `undefined` when it went back from a release not read.
+   */
+  readonly meta: string | undefined;
+}
+
+export function rollbackReview(input: RollbackReviewInput): RollbackReviewModel {
+  const meta =
+    input.live === undefined
+      ? input.outcome.kind === "released"
+        ? undefined
+        : "production runs a later release"
+      : input.outcome.kind === "released"
+        ? `replaces ${input.live}`
+        : `production runs ${input.live}`;
+  return { ...rollbackVerdictOf(input), meta };
+}
+
+function rollbackVerdictOf(input: RollbackReviewInput): ReviewModel {
   const { tag, nextTag, outcome, press } = input;
   const keeps =
     input.live === undefined

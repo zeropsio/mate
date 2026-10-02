@@ -470,7 +470,7 @@ function release(over: Partial<ReleaseReviewInput> = {}): ReleaseReviewInput {
     changes: 2,
     onStage: { total: 2, running: 2 },
     services: ["app", "api"],
-    live: "v0.1.56",
+    replaces: "v0.1.56",
     outcome: { kind: "offered" },
     now: NOW,
     ...over,
@@ -575,7 +575,7 @@ describe("releaseReview", () => {
     [
       "released",
       { outcome: { kind: "released", at: undefined } },
-      "Production runs v0.1.57. If it misbehaves, roll back from production's menu.",
+      "Production runs v0.1.57. If it misbehaves, roll back to v0.1.56 from production's menu.",
       undefined,
     ],
     [
