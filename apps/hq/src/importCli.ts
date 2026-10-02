@@ -7,7 +7,8 @@
  *   leave as it is follows as notes.
  * - `import <bundle>` checks it, queues it in `hq_import` and follows it until the leader has done
  *   it or it failed (`importJob.ts`). The command writes no record of its own: the leader imports.
- *   The same bundle again resumes a run that failed, or verifies a done one once more. Accounts
+ *   The same bundle again resumes a run that failed; for a done one it takes only the steps a
+ *   later Core added, its first verification standing, as its application lived since. Accounts
  *   move an application at a time: another application's bundle imports beside the ones done
  *   (`hq_import_app`), while a bundle bringing an application another import brought is refused,
  *   and so is any bundle while another import is not done.

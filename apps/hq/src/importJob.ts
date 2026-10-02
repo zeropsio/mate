@@ -107,6 +107,7 @@ const encodeTarget = Schema.encodeSync(
   Schema.fromJsonString(Schema.Record(Schema.String, Schema.String)),
 );
 const encodeReport = Schema.encodeSync(Schema.fromJsonString(ImportReport));
+const decodeReport = Schema.decodeUnknownSync(ImportReport);
 const decodeTarget = Schema.decodeUnknownSync(Schema.Record(Schema.String, Schema.String));
 const HeldEnvironments = Schema.Array(
   Schema.Struct({
@@ -343,6 +344,11 @@ export const importsLayer = (
             }),
           );
           const kept = decodeHeld(done.get("hold")?.["held"] ?? "[]");
+          // An import done once was verified then: its application has lived since, so a run again
+          // takes only the steps it lacked (a later Core's), and its first verification stands.
+          const [once] = yield* sql<{ readonly report: unknown }>`
+            SELECT report FROM hq_import WHERE digest = ${job.digest} AND report IS NOT NULL`;
+          if (once !== undefined) return decodeReport(once.report);
           return yield* verify(
             git,
             bundle,

@@ -662,6 +662,73 @@ describe("the migration's import", () => {
     );
 
     it.effect(
+      "a done import run again after its application lived takes the step it lacked and stays done",
+      () =>
+        Effect.gen(function* () {
+          const importRoot = yield* tempDir("hq-import-");
+          const gitRoot = yield* tempDir("hq-git-");
+          const { call, fake, url } = yield* startCore(true, { importRoot, gitRoot });
+          for (const id of ["P_BEA", "P_STAGE", "P_PROD"]) addProject(fake, id);
+          yield* untilHealth(call, "active");
+          const written = yield* syntheticBundle(importRoot, undefined, undefined, undefined, [
+            { number: 1, state: "open", stage: underBuild },
+          ]);
+          assert.strictEqual(
+            (yield* importAs(url, written.dir)).lines[1],
+            `import ${written.digest} done and verified`,
+          );
+          const [app] = yield* rowsWhere(
+            url,
+            "SELECT id::text AS id FROM hq_app",
+            (rows) => rows.length === 1,
+          );
+          const appId = String(app?.["id"]);
+          const healedHead = changeHeadAt(gitRoot, appId, "group", "P_MATE", 1);
+          // As an HQ imported before the step existed: the change as brought, the step not taken.
+          gitAt(
+            gitRoot,
+            appId,
+            "group",
+            "update-ref",
+            "refs/heads/mate/P_MATE/1",
+            written.groupHeads[1]!,
+            healedHead,
+          );
+          yield* rowsWhere(
+            url,
+            `WITH gone AS (DELETE FROM hq_import_item WHERE key = 'heal:g1/group#1' RETURNING 1)
+             UPDATE hq_change SET head = '${written.groupHeads[1]}'
+             WHERE repo = 'group' AND number = 1 RETURNING (SELECT count(*) FROM gone)::int AS n`,
+            (rows) => rows[0]?.["n"] === 1,
+          );
+          // The application lived since: a Mate opened a change the bundle never knew.
+          yield* rowsWhere(
+            url,
+            `INSERT INTO hq_change (app_id, repo, number, mate_project_id, title, state, head)
+             VALUES ('${appId}', 'appdev', 4, 'P_BEA', 'Live work', 'open', '${written.shas.squash}')
+             RETURNING number`,
+            (rows) => rows.length === 1,
+          );
+
+          assert.strictEqual(
+            (yield* importAs(url, written.dir)).lines[1],
+            `import ${written.digest} done and verified`,
+          );
+          const head = changeHeadAt(gitRoot, appId, "group", "P_MATE", 1);
+          assert.deepStrictEqual(
+            commitAt(gitRoot, appId, "group", head).parents[0],
+            written.groupHeads[1],
+          );
+          const [state] = yield* rowsWhere(
+            url,
+            "SELECT state FROM hq_import",
+            (rows) => rows.length === 1,
+          );
+          assert.strictEqual(state?.["state"], "done");
+        }).pipe(Effect.scoped),
+    );
+
+    it.effect(
       "imports a second application's bundle beside the first, each verified on its own",
       () =>
         Effect.gen(function* () {
