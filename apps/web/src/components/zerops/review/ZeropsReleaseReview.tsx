@@ -22,7 +22,6 @@ import {
   releaseFollows,
   releaseOutcomeOf,
   releaseStageMarks,
-  releaseStalled,
   releaseStep,
   releaseContentsCommits,
   releaseReview,
@@ -213,6 +212,7 @@ function ReleaseData({
     held,
     press,
     clockMs,
+    nowMs: now,
     read: (tag) =>
       releaseFacts({
         tag,
@@ -419,20 +419,31 @@ function RollbackData({
   const now = useNowMs();
   const [press, setPress] = useState<ReviewPress>({ kind: "idle" });
   // The tag the roll back made — its own read of the tags, not the flow's guess — which the
-  // review follows through the broker's verdict and production's deploy, as a release's.
-  const [made, setMade] = useState<string | undefined>(undefined);
-  const tagged = made === undefined ? undefined : flow.releases.find((entry) => entry.tag === made);
-  // Past the wait for it with no landing and no failure, the roll back says it hasn't landed.
-  const stalled = press.kind === "done" && releaseStalled(tagged, now);
-  const clockMs = useSecondsNowMs(
-    press.kind === "done" && tagged?.standing === undefined && !stalled,
+  // review follows through the broker's verdict and production's deploy, as a release's, and
+  // when it was pressed, for a tag whose date is never read.
+  const [made, setMade] = useState<{ readonly tag: string; readonly seenAt: number } | undefined>(
+    undefined,
   );
+  const follows = releaseFollows({
+    made: made?.tag,
+    held: made,
+    press,
+    inFlight: undefined,
+    suggestion: flow.release.suggestion,
+    releases: flow.releases,
+    nowMs: now,
+  });
+  const tagged = made === undefined ? undefined : follows.tagged;
+  const done = press.kind === "done";
+  const clockMs = useSecondsNowMs(done && follows.ticking);
   const outcome = releaseOutcomeOf({
     tagged,
-    releasing: press.kind === "done",
-    stalled,
+    releasing: done,
+    stalled: done && follows.stalled,
+    superseded: done ? follows.superseded : undefined,
+    sinceMs: follows.sinceMs,
     pressing: false,
-    tag: made ?? flow.release.suggestion,
+    tag: made?.tag ?? flow.release.suggestion,
     clockMs,
   });
   // What production ran as it was offered, held from the press: once it lands, production runs
@@ -453,9 +464,10 @@ function RollbackData({
   const rollBack = async () => {
     if (flowValue === null) return;
     setPress({ kind: "running" });
+    const pressedAt = now;
     const answer = await flowValue.rollBack(flow.groupId, tag);
     setPress(answer.ok ? { kind: "done" } : { kind: "refused", reason: answer.reason });
-    if (answer.ok) setMade(answer.tag);
+    if (answer.ok && answer.tag !== undefined) setMade({ tag: answer.tag, seenAt: pressedAt });
   };
   return (
     <RollbackReviewView
@@ -464,7 +476,7 @@ function RollbackData({
       // Rolling back is a release: only a releaser tags, whatever else holds Release back now.
       mayRelease={flow.release.gate.allowed || flow.release.gate.reason !== RELEASE_NOT_A_RELEASER}
       name={name}
-      nextTag={made ?? flow.release.suggestion}
+      nextTag={made?.tag ?? flow.release.suggestion}
       now={now}
       onClose={onClose}
       onRollBack={() => {

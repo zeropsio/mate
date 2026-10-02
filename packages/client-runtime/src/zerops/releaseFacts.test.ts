@@ -106,6 +106,7 @@ function walk(steps: ReadonlyArray<Step>) {
       held,
       press: step.press,
       clockMs: step.nowMs ?? NOW,
+      nowMs: step.nowMs ?? NOW,
       read: (tag) => current(tag, step.moment, step.releases),
     });
     held = shown.held;
@@ -353,7 +354,6 @@ describe("a release that never lands ends: past the cutoff it says so", () => {
         ask: "Find out why production hasn't deployed it, and fix what holds it.",
       },
     });
-    // The roll back it offers is to what production ran before — never to the tag that didn't land.
     expect(last?.model.ifWrong).toBe(
       "Roll back to v0.1.0 from production's menu. It gets its own review.",
     );
@@ -371,6 +371,115 @@ describe("a release that never lands ends: past the cutoff it says so", () => {
       state: "released",
       title: "Released v0.1.1",
     });
+  });
+
+  it("a newest tag whose date is never read still ends, measured from the press", () => {
+    const unread = (tagged: FlowReleaseRow): FlowReleaseRow => ({ ...tagged, taggedAt: undefined });
+    const steps = walk([
+      tagging,
+      { ...onItsWay, inFlight: undefined, releases: onItsWay.releases.map(unread) },
+      { ...later(10, unread(row("v0.1.1", undefined))), inFlight: undefined },
+      later(31, unread(row("v0.1.1", undefined))),
+    ]);
+    expect(steps.map((step) => step.model.verdict.state)).toEqual([
+      "releasing",
+      "releasing",
+      "releasing",
+      "release-stalled",
+    ]);
+    expect(steps.at(-1)?.follows.ticking).toBe(false);
+    expect(steps.at(-1)?.model.verdict.why).toBe(
+      "Tagged 31 minutes ago · production doesn't run it",
+    );
+  });
+});
+
+describe("a followed release ends when a newer tag sits above it", () => {
+  const before: Moment = { live: "v0.1.0", contents: ONE_CHANGE, production: "4c3b2a1" };
+  const after: Moment = { live: "v0.1.1", contents: [], production: HEAD };
+  const [, tagging, onItsWay, released] = release("v0.1.1", "v0.1.2", before, after, [
+    row("v0.1.0", "live"),
+  ]);
+  if (tagging === undefined || onItsWay === undefined || released === undefined)
+    throw new Error("no steps");
+  // Only the newest tag's date is read: v0.1.1's is gone once v0.1.2 sits above it.
+  const above = (
+    minutes: number,
+    newer: FlowReleaseRow,
+    below: ReadonlyArray<FlowReleaseRow>,
+    live: string | undefined,
+  ): Step => ({
+    ...onItsWay,
+    name: `${String(minutes)} minutes on`,
+    nowMs: NOW + minutes * 60_000,
+    inFlight: newer.standing === undefined ? newer.tag : undefined,
+    suggestion: "v0.1.3",
+    moment: { ...before, live },
+    releases: [newer, ...below],
+  });
+  const v011 = row("v0.1.1", undefined, { taggedAt: undefined });
+
+  it("A: stalled, then v0.1.2 is tagged in another window: it ends, and never ticks again", () => {
+    const steps = walk([
+      tagging,
+      onItsWay,
+      { ...onItsWay, nowMs: NOW + 31 * 60_000, inFlight: undefined },
+      above(33, row("v0.1.2", undefined), [v011, row("v0.1.0", "live")], "v0.1.0"),
+      above(40, row("v0.1.2", "live"), [v011, row("v0.1.0", undefined)], "v0.1.2"),
+      above(120, row("v0.1.2", "live"), [v011, row("v0.1.0", undefined)], "v0.1.2"),
+    ]);
+    expect(steps.map((step) => step.model.verdict.state)).toEqual([
+      "releasing",
+      "releasing",
+      "release-stalled",
+      "release-superseded",
+      "release-superseded",
+      "release-superseded",
+    ]);
+    expect(steps.slice(2).map((step) => step.follows.ticking)).toEqual([
+      false,
+      false,
+      false,
+      false,
+    ]);
+    expect(steps[3]?.model.verdict).toMatchObject({
+      title: "v0.1.2 was tagged after v0.1.1",
+      why: "Production runs v0.1.0",
+    });
+    expect(steps.at(-1)?.model.verdict.why).toBe("Production runs v0.1.2");
+    expect(steps.at(-1)?.model.consequence).toBe("The project's line in the menu follows v0.1.2.");
+    expect(steps.at(-1)?.model.primary).toBeUndefined();
+  });
+
+  it("B: released, then rolled back in another window as v0.1.2: it ends, never Releasing", () => {
+    const steps = walk([
+      tagging,
+      onItsWay,
+      released,
+      above(10, row("v0.1.2", "live"), [v011, row("v0.1.0", undefined)], "v0.1.2"),
+    ]);
+    expect(steps.map((step) => step.model.verdict.state)).toEqual([
+      "releasing",
+      "releasing",
+      "released",
+      "release-superseded",
+    ]);
+    expect(steps.at(-1)?.follows.ticking).toBe(false);
+    expect(steps.at(-1)?.model.verdict.title).toBe("v0.1.2 was tagged after v0.1.1");
+  });
+
+  it("a refused tag above it is no newer release", () => {
+    const steps = walk([
+      tagging,
+      onItsWay,
+      above(
+        5,
+        row("v0.1.2", undefined, { verdict: "refused" }),
+        [row("v0.1.1", undefined), row("v0.1.0", "live")],
+        "v0.1.0",
+      ),
+    ]);
+    expect(steps.at(-1)?.model.verdict.state).toBe("releasing");
   });
 });
 

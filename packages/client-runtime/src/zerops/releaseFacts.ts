@@ -37,6 +37,13 @@ export interface ReleaseFacts {
   readonly where: ReadonlyArray<{ readonly service: string; readonly line: string }>;
   /** The production services that redeploy — every one, when the comparison moves none. */
   readonly services: ReadonlyArray<string>;
+  /**
+   * When it was tagged, as first read once held. Only the newest tag's date is read, and a read
+   * can fail: held, the age outlives a newer tag above it.
+   */
+  readonly taggedAt?: string | undefined;
+  /** When the review first held it — the press, or the first look — for a tag whose date is unread. */
+  readonly seenAt?: number | undefined;
 }
 
 /** The facts as the project reads them now. */
@@ -93,7 +100,8 @@ export function holdReleaseFacts<F extends { readonly tag: string }>(input: {
   const pressed = input.press.kind === "running" || input.press.kind === "done";
   if (!pressed && outcome.kind === "offered") return undefined;
   if (held !== undefined && held.tag === current.tag) return held;
-  return outcome.kind === "released" || outcome.kind === "failed" ? undefined : current;
+  // A release that ended before anything was held has nothing true left to hold.
+  return outcome.kind === "releasing" || outcome.kind === "offered" ? current : undefined;
 }
 
 /**
@@ -109,7 +117,7 @@ export function holdReleaseFacts<F extends { readonly tag: string }>(input: {
 export function releaseFollows(input: {
   /** The tag this review's own press made. */
   readonly made: string | undefined;
-  readonly held: { readonly tag: string } | undefined;
+  readonly held: Pick<ReleaseFacts, "tag" | "taggedAt" | "seenAt"> | undefined;
   readonly press: ReviewPress;
   /** The release tag on its way to production (`releaseInFlight`). */
   readonly inFlight: string | undefined;
@@ -122,12 +130,19 @@ export function releaseFollows(input: {
   readonly tag: string;
   readonly tagged: FlowReleaseRow | undefined;
   readonly releasing: boolean;
+  /** When the followed tag was tagged, else when the review first held it; `undefined` before. */
+  readonly sinceMs: number | undefined;
   /**
    * On its way longer than {@link RELEASE_IN_FLIGHT_MS} and neither live nor failed: the wait is
    * over, and the review says the tag hasn't landed.
    */
   readonly stalled: boolean;
-  /** Whether the release's clock runs: on its way, neither live, failed nor stalled. */
+  /**
+   * The newer tag the broker did not refuse that sits above the followed one, and what production
+   * runs in full: the follow is over. `undefined` while the followed tag is the newest, or live.
+   */
+  readonly superseded: { readonly by: string; readonly live: string | undefined } | undefined;
+  /** Whether the release's clock runs: on its way, and not yet live, failed, stalled or followed. */
   readonly ticking: boolean;
 } {
   const pinned = input.press.kind === "refused" ? undefined : input.held?.tag;
@@ -138,26 +153,50 @@ export function releaseFollows(input: {
     input.press.kind === "done" ||
     input.inFlight === tag ||
     pinned === tag;
-  const stalled = releasing && releaseStalled(tagged, input.nowMs);
+  const held = pinned === tag ? input.held : undefined;
+  const sinceMs =
+    [tagged?.taggedAt, held?.taggedAt]
+      .map((at) => (at === undefined ? Number.NaN : Date.parse(at)))
+      .find((ms) => !Number.isNaN(ms)) ?? held?.seenAt;
+  const at = input.releases.findIndex((entry) => entry.tag === tag);
+  const newer =
+    releasing && at > 0 && tagged?.standing !== "live"
+      ? input.releases.slice(0, at).find((entry) => entry.verdict !== "refused")
+      : undefined;
+  const superseded =
+    newer === undefined
+      ? undefined
+      : { by: newer.tag, live: input.releases.find((entry) => entry.standing === "live")?.tag };
+  const stalled =
+    releasing &&
+    superseded === undefined &&
+    releaseStalled({ tagged, sinceMs, nowMs: input.nowMs });
   return {
     tag,
     tagged,
     releasing,
+    sinceMs,
     stalled,
-    ticking: releasing && tagged?.standing === undefined && !stalled,
+    superseded,
+    ticking: releasing && tagged?.standing === undefined && !stalled && superseded === undefined,
   };
 }
 
 /**
  * Whether a tag on its way has waited out {@link RELEASE_IN_FLIGHT_MS} with neither a landing nor
- * a failure — the cutoff `releaseInFlight` stops holding Release back at. A tag whose time is not
- * read has no age to measure.
+ * a failure — the cutoff `releaseInFlight` stops holding Release back at. Measured from `sinceMs`:
+ * the tag's date, else when the review first held it, so a tag whose date is never read still
+ * ends. A tag not read at all yet counts from there too.
  */
-export function releaseStalled(tagged: FlowReleaseRow | undefined, nowMs: number): boolean {
-  if (tagged === undefined || tagged.standing !== undefined || tagged.verdict === "refused")
+export function releaseStalled(input: {
+  readonly tagged: FlowReleaseRow | undefined;
+  readonly sinceMs: number | undefined;
+  readonly nowMs: number;
+}): boolean {
+  const { tagged, sinceMs } = input;
+  if (tagged !== undefined && (tagged.standing !== undefined || tagged.verdict === "refused"))
     return false;
-  const taggedMs = tagged.taggedAt === undefined ? Number.NaN : Date.parse(tagged.taggedAt);
-  return nowMs - taggedMs >= RELEASE_IN_FLIGHT_MS;
+  return sinceMs !== undefined && input.nowMs - sinceMs >= RELEASE_IN_FLIGHT_MS;
 }
 
 /** Where the tag it made stands: on its way, live, or failed — `offered` before it was made. */
@@ -166,6 +205,10 @@ export function releaseOutcomeOf(input: {
   readonly releasing: boolean;
   /** Past the cutoff with no landing and no failure (`releaseFollows`). */
   readonly stalled?: boolean | undefined;
+  /** A newer tag above it (`releaseFollows`). */
+  readonly superseded?: { readonly by: string; readonly live: string | undefined } | undefined;
+  /** When it was tagged, or first held (`releaseFollows`), for its clock. */
+  readonly sinceMs?: number | undefined;
   readonly pressing: boolean;
   readonly tag: string;
   readonly clockMs: number;
@@ -187,11 +230,18 @@ export function releaseOutcomeOf(input: {
     };
   }
   if (!input.releasing) return { kind: "offered" };
-  if (input.stalled === true) return { kind: "stalled", at: tagged?.taggedAt };
+  if (input.superseded !== undefined) return { kind: "superseded", ...input.superseded };
+  const since =
+    input.sinceMs ?? (tagged?.taggedAt === undefined ? Number.NaN : Date.parse(tagged.taggedAt));
+  if (input.stalled === true)
+    return {
+      kind: "stalled",
+      at: tagged?.taggedAt,
+      ...(Number.isNaN(since) ? {} : { sinceMs: since }),
+    };
   if (input.pressing && tagged === undefined) {
     return { kind: "releasing", progress: `Tagging main as ${input.tag}` };
   }
-  const since = tagged?.taggedAt === undefined ? Number.NaN : Date.parse(tagged.taggedAt);
   if (Number.isNaN(since)) {
     return { kind: "releasing", progress: `Production redeploys from ${input.tag}` };
   }
@@ -204,25 +254,41 @@ export function releaseOutcomeOf(input: {
  * One look at a release's review: where its tag stands, the facts to hold, and the facts shown.
  * `read` gives the facts of a tag as the project reads them now.
  */
-export function releaseStep<F extends { readonly tag: string }>(input: {
+export function releaseStep(input: {
   readonly follows: ReturnType<typeof releaseFollows>;
-  readonly held: F | undefined;
+  readonly held: ReleaseFacts | undefined;
   readonly press: ReviewPress;
   readonly clockMs: number;
-  readonly read: (tag: string) => F;
-}): { readonly outcome: ReleaseOutcome; readonly held: F | undefined; readonly facts: F } {
+  /** The minute clock: when a review first holds a release. */
+  readonly nowMs: number;
+  readonly read: (tag: string) => ReleaseFacts;
+}): {
+  readonly outcome: ReleaseOutcome;
+  readonly held: ReleaseFacts | undefined;
+  readonly facts: ReleaseFacts;
+} {
   const { follows, press } = input;
   const outcome = releaseOutcomeOf({
     tagged: follows.tagged,
     releasing: follows.releasing,
     stalled: follows.stalled,
+    superseded: follows.superseded,
+    sinceMs: follows.sinceMs,
     pressing: press.kind === "running",
     tag: follows.tag,
     clockMs: input.clockMs,
   });
   const current = input.read(follows.tag);
-  const held = holdReleaseFacts({ held: input.held, current, press, outcome });
-  return { outcome, held, facts: held ?? current };
+  const kept = holdReleaseFacts({ held: input.held, current, press, outcome });
+  // Held, it keeps when it was first held and the tag's date once read: only the newest tag's
+  // date is read, and the age has to outlive a newer tag above it.
+  const taggedAt = kept?.taggedAt ?? follows.tagged?.taggedAt;
+  const held =
+    kept === undefined || (kept.seenAt !== undefined && kept.taggedAt === taggedAt)
+      ? kept
+      : { ...kept, seenAt: kept.seenAt ?? input.nowMs, taggedAt };
+  const facts = held ?? current;
+  return { outcome, held, facts };
 }
 
 /**
