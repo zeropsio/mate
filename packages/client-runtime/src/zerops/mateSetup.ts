@@ -1,9 +1,9 @@
 /**
  * A Mate's setup as its own server tells it: `GET /mate/setup.json`, public, beside
  * `/mate/healthz` (the setup contract, pass 28). The press does every step that needs the person's
- * rights; the container does the rest — zcp imports the tier's runtimes on boot, the broker
- * delivers Git, the server starts the stand-up — and this is how any browser, or none, sees where
- * that stands.
+ * rights; the container does the rest — zcp imports the tier's runtimes on boot and enrolls the
+ * Mate with its HQ, which is its Git access, the server starts the stand-up — and this is how any
+ * browser, or none, sees where that stands.
  *
  * ```json
  * { "version": 1, "at": "RFC3339", "steps": [
@@ -11,8 +11,11 @@
  *   { "id": "git",       "state": "waiting|done", "at": "" },
  *   { "id": "runtimes",  "state": "none|waiting|running|done|failed|unknown", "at": "" },
  *   { "id": "signin",    "state": "waiting|done", "at": "" },
- *   { "id": "standup",   "state": "waiting|running|done|failed", "at": "" } ] }
+ *   { "id": "standup",   "state": "none|waiting|running|done|failed", "at": "" } ] }
  * ```
+ *
+ * A step that has not run is never `done`: a Mate nobody asked a stand-up of (a New project's
+ * first) says `none`, as its runtimes do with nothing to import.
  *
  * It carries no names, no error text and no secrets. A `404` is an older Mate, whose server has
  * no such route — and so is an answer that is not this document: an older server's catch-all
@@ -39,7 +42,7 @@ export interface MateSetup {
   readonly git?: "waiting" | "done";
   readonly runtimes?: MateSetupRuntimesState;
   readonly signin?: "waiting" | "done";
-  readonly standup?: "waiting" | "running" | "done" | "failed";
+  readonly standup?: "none" | "waiting" | "running" | "done" | "failed";
 }
 
 const STATES: { readonly [Id in MateSetupStepId]: ReadonlySet<string> } = {
@@ -47,7 +50,7 @@ const STATES: { readonly [Id in MateSetupStepId]: ReadonlySet<string> } = {
   git: new Set(["waiting", "done"]),
   runtimes: new Set(["none", "waiting", "running", "done", "failed", "unknown"]),
   signin: new Set(["waiting", "done"]),
-  standup: new Set(["waiting", "running", "done", "failed"]),
+  standup: new Set(["none", "waiting", "running", "done", "failed"]),
 };
 
 const isStepId = (id: unknown): id is MateSetupStepId =>

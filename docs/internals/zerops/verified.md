@@ -7204,3 +7204,47 @@ read-only Gitea calls.
   establishment deadline replaced the whole socket and all re-registered four at a time. Forced
   drops (12–15 s offline, seven times): three stalled about 55 s, one through two replacements, three
   recovered in seconds; an idle 10:15–10:26Z session saw none.
+
+## Pass 28 and after, as measured — 2026-10-02
+
+- **A cold open's repairs were no-ops** — every group's environments.yaml was unread when the
+  projects page first listed half-made environments, so each registered stage and production ran a
+  repair that read tokens, the Gitea project, its services and the broker env: 72 real calls in the
+  first 60 s, 42 after PR #67.
+- **A FAILED zcp takes stop and start, not a restart** — after the 2026-10-01 outage
+  `PUT /service-stack/{id}/restart` answered 400 `serviceStackIsFailed`; stop then start revived
+  all three.
+- **Service variables are unique case-insensitively, and listed 30 a page** — a second key that
+  differs only in case is refused 400 `userDataDuplicateKey`; paging past 30 hid keys and caused 264
+  refusals on 2026-09-30 until the paging fix.
+- **The broker's reads** — `GET /project/{id}` carries `tagList` in about 0.09 s (the search index
+  lags 0.5–2.6 s); registry tag to Git variables went from about 96 s to about 14 s with gitea-mate
+  PR #6.
+- **Door mints are not rate-limited at 80 a minute** — in Onboarding, NO_ACCESS integration tokens
+  minted and deleted at once in bursts up to 80 a minute all answered 200. The client's own pace held
+  the 11th mint of a load for 60.7 s; after PR #68 a clicked Mate's mint left within 44–123 ms.
+- **An import overlapping zcp's first deploy empties its app version's user data** — on three new
+  Mates the runtimes import ran while zcp's own deploy was live; zcp's active app version read 0
+  user-data keys, so the next restart skipped RUN.INIT and mate refused to start. One user-data PUT
+  re-snapshots the same app version (0 → 18 keys within 10 s) and a restart recovers it with
+  `/home/zerops` kept. zcp v9.187.2 waits for its own deploy; on a new Mate it logged the wait at
+  +109.6 s and imported 9.3 s after its deploy finished, its app version at 18 keys throughout.
+- **A reload with kept sessions** — local production build, the test account, 12 Mates: a cold load
+  minted and deleted 13 tokens (one is Gitea's), ran 12 door and 12 token exchanges and started the
+  last Mate's socket at 5.5 s; a reload minted 1 (Gitea's), ran no door exchange, checked 12 sessions
+  at their Mates by 1.3 s and started the last socket at 1.5 s. Sign-out: 12 of 12 kept sessions read
+  `authenticated: false` at their Mates afterwards, and the store was empty.
+- **A full-access Mate still asks its questions** — with `@anthropic-ai/claude-agent-sdk` 0.3.276,
+  `permissionMode: "bypassPermissions"` logs `[CLAUDE_SDK_CAN_USE_TOOL_SHADOWED]` on the first turn,
+  yet `AskUserQuestion` reaches `canUseTool`: the card showed in about 10 s and the answer came back.
+- **Adding a Mate to a group, timed** — the press's close-off waits for the new project to leave
+  CREATING (about 32 s of the dialog's 35 s); zcp's own deploy took about 74 s; the sign-in was
+  offered at +132 s; a storefront's stand-up with four runtimes took about 12 min, 16 with one failed
+  deploy its agent fixed.
+- **Meilisearch needs more than 1 GB to reindex** — Meilisearch 1.44 at a 1 GB floor with 0.25 GB
+  free was OOM-killed twice during a Medusa catalog import; at 2 GB with 0.5 GB free it completed.
+- **A recipe-only merge deploys nothing** — merging tier `import.yaml` changes to a group repo's
+  `main` started no process in any of the group's 14 projects, stage and production included.
+- **Valkey's eviction policy is set through its profile** — the live import schema accepts
+  `profileOverrides: {maxmemory-policy: …}` on every Valkey profile (hobby, staging, production).
+  Medusa's job queue (BullMQ) warns on `allkeys-lru` and wants `noeviction`.

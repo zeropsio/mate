@@ -7,7 +7,7 @@ import {
   type ZeropsNativeSignInState,
 } from "~/zerops/nativeSignIn";
 import { ZeropsProjectsPage } from "../ZeropsProjectsPage";
-import { ZeropsHandoverActions, ZeropsLandingShell, ZeropsLandingWait } from "./ZeropsLandingShell";
+import { ZeropsFrameWait, ZeropsHandoverActions, ZeropsLandingShell } from "./ZeropsLandingShell";
 
 /** Registration and second factors belong to the Zerops account application. */
 export function ZeropsHostedLanding() {
@@ -15,7 +15,8 @@ export function ZeropsHostedLanding() {
   const [nativeState, setNativeState] = useState<ZeropsNativeSignInState>({ kind: "idle" });
   const generation = useRef(0);
   if (status === "signed-in") return <ZeropsProjectsPage />;
-  if (status === "loading") return <ZeropsLandingWait label="Checking your Zerops account…" />;
+  if (status === "loading")
+    return <ZeropsFrameWait label="Checking your Zerops account…" signedIn={false} />;
   if (status === "unavailable")
     return (
       <ZeropsLandingShell

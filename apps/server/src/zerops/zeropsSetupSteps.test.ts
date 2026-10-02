@@ -2,7 +2,6 @@ import { assert, describe, it } from "@effect/vitest";
 
 import {
   STAND_UP_MESSAGE,
-  hasGitVariables,
   parseZcpStatus,
   setupDocument,
   standUpCommandIds,
@@ -27,7 +26,7 @@ const status = (overrides: Record<string, unknown> = {}) => ({
 const facts = (overrides: Partial<SetupFacts> = {}): SetupFacts => ({
   now: NOW,
   startedAt: BOOT,
-  gitAt: undefined,
+  git: { state: "waiting" },
   status: undefined,
   requestedBy: "user-a",
   standUpWait: undefined,
@@ -36,6 +35,33 @@ const facts = (overrides: Partial<SetupFacts> = {}): SetupFacts => ({
   standUpTurn: undefined,
   ...overrides,
 });
+
+/** zcp's halves as its first call leaves them: the dev halves stood, the stages queued. */
+const half = (hostname: string, step: string, state: string) => ({
+  hostname,
+  step,
+  state,
+  processId: "",
+  at: "",
+  error: "",
+});
+const halvesAfterDev = [
+  half("apidev", "verify", "done"),
+  half("apistage", "build", "pending"),
+  half("webdev", "verify", "done"),
+  half("webstage", "build", "pending"),
+];
+const halvesStaging = [
+  half("apidev", "verify", "done"),
+  half("apistage", "build", "running"),
+  half("webdev", "verify", "done"),
+  half("webstage", "build", "pending"),
+];
+const halvesStood = halvesAfterDev.map((service) => ({
+  ...service,
+  step: "verify",
+  state: "done",
+}));
 
 const stepOf = (document: ReturnType<typeof setupDocument>, id: string) =>
   document.steps.find((step) => step.id === id);
@@ -98,13 +124,6 @@ describe("the stand-up command", () => {
       commandId: "mate-standup-thread-1-1",
       messageId: "mate-standup-thread-1-1",
     });
-  });
-});
-
-describe("hasGitVariables", () => {
-  it("needs all three of the broker's variables", () => {
-    assert.isTrue(hasGitVariables(["A", "GITEA_URL", "GITEA_TOKEN", "MATE_BROKER_URL"]));
-    assert.isFalse(hasGitVariables(["GITEA_URL", "GITEA_TOKEN"]));
   });
 });
 
@@ -190,18 +209,27 @@ describe("setupDocument", () => {
     }
   });
 
-  it("git waits until the broker's variables arrive", () => {
-    assert.deepStrictEqual(stepOf(setupDocument(facts()), "git"), {
-      id: "git",
-      state: "waiting",
-      at: "",
+  // The Mate's Git access is its enrollment with HQ (zcp's `outcome.json`, C-7): done once
+  // enrolled, waiting while zcp has said nothing, failed with zcp's reason where it said why not.
+  const gitSteps: ReadonlyArray<[string, SetupFacts["git"], SetupStep]> = [
+    ["enrolled", { state: "done", at: NOW }, { id: "git", state: "done", at: NOW }],
+    ["pending", { state: "waiting" }, { id: "git", state: "waiting", at: "" }],
+    [
+      "no official HQ",
+      { state: "failed", reason: "no_hq" },
+      { id: "git", state: "failed", at: "", reason: "no_hq" },
+    ],
+    [
+      "HQ refused",
+      { state: "failed", reason: "refused", code: "not_a_mate" },
+      { id: "git", state: "failed", at: "", reason: "refused", code: "not_a_mate" },
+    ],
+  ];
+  for (const [name, git, step] of gitSteps) {
+    it(`git: ${name}`, () => {
+      assert.deepStrictEqual(stepOf(setupDocument(facts({ git })), "git"), step);
     });
-    assert.deepStrictEqual(stepOf(setupDocument(facts({ gitAt: NOW })), "git"), {
-      id: "git",
-      state: "done",
-      at: NOW,
-    });
-  });
+  }
 
   const runtimes: ReadonlyArray<[string, unknown, string, string]> = [
     ["no status file: an older zcp", undefined, "unknown", ""],
@@ -233,9 +261,33 @@ describe("setupDocument", () => {
     });
   });
 
-  const standups: ReadonlyArray<[string, Partial<SetupFacts>, string]> = [
+  const standups: ReadonlyArray<[string, Partial<SetupFacts>, string | undefined]> = [
     ["asked, not started", {}, "waiting"],
-    ["started, zcp says nothing yet", { record: { startedAt: NOW, ran: true } }, "running"],
+    [
+      "started, zcp says nothing yet, its own turn asked",
+      { record: { startedAt: NOW, ran: true }, standUpTurn: "running" },
+      "running",
+    ],
+    [
+      "claimed, its send not out yet: waiting, never a step that comes and goes",
+      { record: { startedAt: NOW, ran: true, claimed: true } },
+      "waiting",
+    ],
+    [
+      "started, its own turn not found and zcp silent: nothing said, never a running of our own",
+      { record: { startedAt: NOW, ran: true } },
+      undefined,
+    ],
+    [
+      "started, its own turn not found, zcp between its two calls",
+      {
+        record: { startedAt: NOW, ran: true },
+        status: parseZcpStatus(
+          status({ standup: { state: "running", phase: "stage", services: halvesAfterDev } }),
+        ),
+      },
+      "running",
+    ],
     [
       "started, zcp running it",
       {
@@ -290,7 +342,87 @@ describe("setupDocument", () => {
       },
       "running",
     ],
-    ["settled with none ran: done", { record: { startedAt: NOW, ran: false } }, "done"],
+    [
+      "HQ's birth names nobody who asked, its project closed off: no stand-up to run",
+      { requestedBy: undefined, nobodyAsked: true },
+      "none",
+    ],
+    ["settled with none ran: none", { record: { startedAt: NOW, ran: false } }, "none"],
+    [
+      "settled with none ran, then zcp ran one",
+      {
+        record: { startedAt: NOW, ran: false },
+        status: parseZcpStatus(status({ standup: { state: "running" } })),
+      },
+      "running",
+    ],
+    [
+      "started, the development half returned with the stage halves still to build",
+      {
+        record: { startedAt: NOW, ran: true },
+        standUpTurn: "running",
+        status: parseZcpStatus(status({ standup: { state: "done", services: halvesAfterDev } })),
+      },
+      "running",
+    ],
+    [
+      "started, the development half returned, its own turn not read: zcp's word",
+      {
+        record: { startedAt: NOW, ran: true },
+        status: parseZcpStatus(status({ standup: { state: "done", services: halvesAfterDev } })),
+      },
+      "done",
+    ],
+    [
+      "settled as never due, then zcp stood up the development half only: zcp's word",
+      {
+        record: { startedAt: NOW, ran: false },
+        status: parseZcpStatus(status({ standup: { state: "done", services: halvesAfterDev } })),
+      },
+      "done",
+    ],
+    [
+      "zcp keeping its own section running between the two calls",
+      {
+        record: { startedAt: NOW, ran: true },
+        standUpTurn: "running",
+        status: parseZcpStatus(
+          status({ standup: { state: "running", phase: "stage", services: halvesAfterDev } }),
+        ),
+      },
+      "running",
+    ],
+    [
+      "started, the stage half started after the development half",
+      {
+        record: { startedAt: NOW, ran: true },
+        standUpTurn: "running",
+        status: parseZcpStatus(
+          status({ standup: { state: "running", phase: "stage", services: halvesStaging } }),
+        ),
+      },
+      "running",
+    ],
+    [
+      "started, both halves returned",
+      {
+        record: { startedAt: NOW, ran: true },
+        standUpTurn: "running",
+        status: parseZcpStatus(
+          status({ standup: { state: "done", phase: "stage", services: halvesStood } }),
+        ),
+      },
+      "done",
+    ],
+    [
+      "started, the development half returned and its turn ended without the stage call",
+      {
+        record: { startedAt: NOW, ran: true },
+        standUpTurn: "done",
+        status: parseZcpStatus(status({ standup: { state: "done", services: halvesAfterDev } })),
+      },
+      "done",
+    ],
   ];
   for (const [name, overrides, state] of standups) {
     it(`standup: ${name}`, () =>
@@ -335,7 +467,11 @@ describe("setupDocument", () => {
     assert.deepStrictEqual(
       stepOf(
         setupDocument(
-          facts({ standUpWait: { reason: "not_linked" }, record: { startedAt: NOW, ran: true } }),
+          facts({
+            standUpWait: { reason: "not_linked" },
+            record: { startedAt: NOW, ran: true },
+            standUpTurn: "running",
+          }),
         ),
         "standup",
       ),

@@ -27,6 +27,16 @@ const mateRow = (status: string, origin: string | null = ORIGIN): CandidateRow =
   presence: "known",
 });
 
+/** The project's Mate ACTIVE without its address: young and on its way to it, or past its wait. */
+const addressRow = (group: "provisioning" | "unavailable"): CandidateRow => ({
+  key: KEY,
+  project,
+  group,
+  service: { id: "service-1", name: "zcp", status: "ACTIVE" },
+  ...(group === "provisioning" ? { addressAwaited: { since: 1_000, until: 121_000 } } : {}),
+  presence: "known",
+});
+
 /** The project whose services are not read yet: nothing is said of any Mate in it. */
 const unreadRow: CandidateRow = {
   key: project.id,
@@ -91,6 +101,26 @@ const ROWS: ReadonlyArray<Row> = [
     listings: [known([mateRow("RESTARTING", null)])],
     records: [KEY],
     targets: [{ key: KEY, presence: { kind: "transitioning", status: "RESTARTING" }, record: ENV }],
+  },
+  {
+    name: "a new Mate in its first build is on its way up, never inactive",
+    listings: [known([mateRow("READY_TO_DEPLOY", null)])],
+    records: [],
+    targets: [
+      { key: KEY, presence: { kind: "transitioning", status: "READY_TO_DEPLOY" }, record: null },
+    ],
+  },
+  {
+    name: "a young Mate ACTIVE before its address landed is on its way to it, never without one",
+    listings: [known([addressRow("provisioning")])],
+    records: [],
+    targets: [{ key: KEY, presence: { kind: "address-pending" }, record: null }],
+  },
+  {
+    name: "a Mate ACTIVE without an address past its wait has no public address",
+    listings: [known([addressRow("unavailable")])],
+    records: [KEY],
+    targets: [{ key: KEY, presence: { kind: "no-origin", reason: "no-subdomain" }, record: ENV }],
   },
   {
     name: "services not read yet: a remembered Mate is looked for where its record kept it, never gone (A16)",
@@ -350,6 +380,21 @@ describe("containerTargetsOf", () => {
     expect(containerTargetsOf([mateRow("ACTIVE"), unreadRow], [], null)).toEqual([
       { key: KEY, origin: ORIGIN, platform: { project: "ACTIVE", service: "ACTIVE" } },
       { key: project.id, origin: null, platform: { project: "ACTIVE", service: null } },
+    ]);
+  });
+
+  it("carries when the row's container was made, for its first build's wait", () => {
+    const made = "2026-10-02T10:00:00.000Z";
+    const row: CandidateRow = {
+      ...mateRow("READY_TO_DEPLOY", null),
+      service: { id: "service-1", name: "zcp", status: "READY_TO_DEPLOY", created: made },
+    };
+    expect(containerTargetsOf([row], [], null)).toEqual([
+      {
+        key: KEY,
+        origin: null,
+        platform: { project: "ACTIVE", service: "READY_TO_DEPLOY", serviceCreated: made },
+      },
     ]);
   });
 

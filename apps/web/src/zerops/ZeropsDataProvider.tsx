@@ -31,7 +31,7 @@ import * as Scheduler from "effect/Scheduler";
 import { type AtomRegistry } from "effect/unstable/reactivity";
 import { useContext, useEffect, useEffectEvent, useMemo, useState, type ReactNode } from "react";
 
-import { ZeropsLandingWait } from "../components/zerops/landing/ZeropsLandingShell";
+import { ZeropsFrameWait } from "../components/zerops/landing/ZeropsLandingShell";
 import { bindAccountEnvironments, useAccountEnvironments } from "./accountEnvironments";
 import { bindAccountFlow, webForgePorts } from "./accountForge";
 import { bindAccountInvalidations } from "./accountInvalidations";
@@ -332,7 +332,7 @@ export function ZeropsDataProvider({
   const startupError = startupFailure?.accountId === accountId ? startupFailure.message : null;
   if (value === null)
     return startupError === null ? (
-      <ZeropsLandingWait label="Starting Zerops data…" />
+      <ZeropsFrameWait label="Starting Zerops data…" signedIn />
     ) : (
       <ZeropsDataStartupFailure
         message={startupError}

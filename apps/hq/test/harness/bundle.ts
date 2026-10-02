@@ -4,6 +4,8 @@
  * application, `Shop`, with two Mates, a stage and a production; its `group` repository, tagged
  * `v0.1.0`, and `appdev`, holding a merged change (1, Ada's, with a person's comment), a closed one
  * (2, Bea's) and an open one (3, Ada's, with her own comment and a picture its description links).
+ * Its recipe's stage tier builds two runtimes, `appstage` and `workerstage`, and its production
+ * tier `app`, all from `appdev` on main's Gitea (`gitea.example`, the org `shop`).
  * `tweak` changes the files' contents, and `picture` the picture's bytes, before they are frozen.
  *
  * @module test/harness/bundle
@@ -24,6 +26,36 @@ export const PICTURE = new Uint8Array([
   0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13,
 ]);
 
+/** Main's Gitea, as Shop's tiers name it. */
+export const GITEA = { host: "gitea.example", owner: "shop" };
+
+/** Shop's stage tier as main wrote it: two runtimes built from its own `appdev`, and a database. */
+export const STAGE_TIER = [
+  "# Shop's stage.",
+  "services:",
+  "  - hostname: appstage",
+  "    type: nodejs@22",
+  "    buildFromGit: https://gitea.example/shop/appdev.git",
+  "    zeropsSetup: app",
+  "  - hostname: workerstage",
+  "    type: nodejs@22",
+  "    buildFromGit: https://gitea.example/shop/appdev",
+  "    zeropsSetup: worker",
+  "  - hostname: db",
+  "    type: postgresql@16",
+  "",
+].join("\n");
+
+/** Shop's production tier: `app`, built from `appdev`. */
+export const PRODUCTION_TIER = [
+  "services:",
+  "  - hostname: app",
+  "    type: nodejs@22",
+  "    buildFromGit: https://gitea.example/shop/appdev.git",
+  "    zeropsSetup: app",
+  "",
+].join("\n");
+
 /** Where main's Gitea served the picture: as the description spells it. */
 export const PICTURE_URL = "https://gitea.example/attachments/5f1c2b9a-0d3e-4c55-9b8f-2a7e6d1c0b3a";
 
@@ -40,6 +72,7 @@ export const syntheticBundle = (
   root: string,
   tweak: (parts: BundleParts) => BundleParts = (parts) => parts,
   picture: Uint8Array = PICTURE,
+  stageTier: string = STAGE_TIER,
 ) =>
   Effect.gen(function* () {
     const git = yield* gitClient;
@@ -73,8 +106,17 @@ export const syntheticBundle = (
     }
 
     const group = yield* repo("group");
-    const recipe = yield* group.commit("Recipe");
-    yield* group.ref("refs/heads/main", recipe);
+    const tiers = [
+      { path: "3 — Stage/import.yaml", content: stageTier },
+      { path: "4 — Small Production/import.yaml", content: PRODUCTION_TIER },
+    ];
+    for (const tier of tiers) {
+      NodeFS.mkdirSync(NodePath.join(group.path, NodePath.dirname(tier.path)), { recursive: true });
+      NodeFS.writeFileSync(NodePath.join(group.path, tier.path), tier.content);
+    }
+    yield* git.checked(["add", "-A"], group.path);
+    yield* git.checked(["commit", "-q", "-m", "Recipe"], group.path);
+    const recipe = yield* git.checked(["rev-parse", "HEAD"], group.path);
     const message = `app ${squash}`;
     yield* git.checked(["tag", "-a", "v0.1.0", "-m", message, recipe], group.path);
 
@@ -112,6 +154,8 @@ export const syntheticBundle = (
           {
             key: "g1",
             name: "Shop",
+            gitea: GITEA,
+            tiers,
             projects: [
               {
                 projectId: "P_MATE",

@@ -12,7 +12,10 @@ import {
 } from "./remote.ts";
 import { environmentMismatchError, mapRemoteEnvironmentError } from "../connection/errors.ts";
 import { ConnectionBlockedError, type ConnectionAttemptError } from "../connection/model.ts";
-import { fetchRemoteEnvironmentDescriptor } from "../environment/descriptor.ts";
+import {
+  fetchRemoteEnvironmentDescriptor,
+  RecentEnvironmentDescriptorsRef,
+} from "../environment/descriptor.ts";
 import { environmentEndpointUrl } from "../environment/endpoint.ts";
 import * as ClientCapabilities from "../platform/capabilities.ts";
 import * as ManagedRelay from "../relay/managedRelay.ts";
@@ -100,6 +103,7 @@ export const make = Effect.gen(function* () {
   const presentation = yield* ClientCapabilities.ClientPresentation;
   const tokenStore = yield* TokenStore.RemoteDpopAccessTokenStore;
   const httpClient = yield* HttpClient.HttpClient;
+  const recentDescriptors = yield* RecentEnvironmentDescriptorsRef;
   const bearerDescriptors = yield* Ref.make<
     ReadonlyMap<
       EnvironmentId,
@@ -126,11 +130,14 @@ export const make = Effect.gen(function* () {
       const canReuseDescriptor =
         cachedDescriptor?.httpBaseUrl === input.httpBaseUrl &&
         cachedDescriptor.validatedAtEpochMs + BEARER_DESCRIPTOR_CACHE_TTL_MS > now;
+      // One another reader of this client read moments ago is as good as a read now.
+      const recent = canReuseDescriptor ? null : recentDescriptors.recent(input.httpBaseUrl);
       const descriptor = canReuseDescriptor
         ? cachedDescriptor.descriptor
-        : yield* fetchDescriptor(input.httpBaseUrl).pipe(
+        : (recent ??
+          (yield* fetchDescriptor(input.httpBaseUrl).pipe(
             Effect.provideService(HttpClient.HttpClient, httpClient),
-          );
+          )));
       if (descriptor.environmentId !== input.expectedEnvironmentId) {
         return yield* environmentMismatchError({
           expected: input.expectedEnvironmentId,

@@ -138,6 +138,8 @@ import {
   ComposerPromptEditor,
 } from "../ComposerPromptEditor";
 import { ProviderModelPicker } from "./ProviderModelPicker";
+import { composerThreadControlKey } from "./composerControlMemory";
+import { scopedThreadKey } from "@t3tools/client-runtime/environment";
 import { type ComposerCommandItem, ComposerCommandMenu } from "./ComposerCommandMenu";
 import { ComposerPendingApprovalActions } from "./ComposerPendingApprovalActions";
 import { ComposerPrimaryActions } from "./ComposerPrimaryActions";
@@ -1499,10 +1501,12 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     planModeEnabled: settings.planModeEnabled,
   });
   // The access lives in the one control's menu, which opens only where the
-  // control stands and is enabled: with the provider's setup in its place, or
-  // while the catalog is read, the access keeps a control of its own.
+  // control stands: with the provider's setup in its place, the access keeps a
+  // control of its own. A catalog still read is a beat before the menu opens,
+  // not a place of its own: the toolbar keeps the one look it will have
+  // (pass 30), where a "Full access" control stood for that beat and went.
   const accessInToolbar = showsAccessControl(runtimeMode, {
-    modelMenuOpens: !(showProviderUnavailable && !zeropsSignInRequired) && !providerCatalogPending,
+    modelMenuOpens: !(showProviderUnavailable && !zeropsSignInRequired),
   });
   const pendingPrimaryAction = useMemo(
     () =>
@@ -3618,6 +3622,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                             : "composer.effort composer.mode",
                         }}
                         disabled={providerCatalogPending}
+                        catalogPending={providerCatalogPending}
+                        rememberAs={composerThreadControlKey(scopedThreadKey(routeThreadRef))}
                         activeInstanceId={
                           providerCatalogPending
                             ? (activeThreadModelSelection?.instanceId ?? selectedInstanceId)

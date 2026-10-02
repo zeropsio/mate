@@ -1,6 +1,19 @@
+import { EnvironmentId } from "@t3tools/contracts";
+import type { ZeropsProject, ZeropsService } from "@t3tools/client-runtime/zerops";
+import {
+  ADDRESS_GRACE_MS,
+  deriveZeropsCandidates,
+} from "@t3tools/client-runtime/zerops/candidates";
+import {
+  candidatePresence,
+  initialEnvironment,
+  reachabilityPhrase,
+  selectReachability,
+} from "@t3tools/client-runtime/zerops/environments";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
+  arrivalLinkHolds,
   mateComing,
   mateComingHeadlineClauses,
   mateComingPage,
@@ -10,7 +23,12 @@ import {
   HALF_MADE_LINE,
   HALF_MADE_OWNER_LINE,
   halfMadeFor,
+  firstBuildState,
+  listingLacksCreation,
+  mateArrivalShown,
+  type MateComingPage,
 } from "./mateComing";
+import type { Reachability } from "@t3tools/client-runtime/zerops/environments";
 
 const NOW = Date.parse("2026-10-01T20:00:00.000Z");
 const HELD = { startedAt: 1_000, container: true, retryable: false } as const;
@@ -98,6 +116,119 @@ describe("mateComing — a Mate in its first minutes, in one set of words", () =
       expected: { kind: "failed", line: HALF_MADE_LINE, verb: "finish-setup" },
     },
     {
+      case: "a Mate this tab made, its press over, before the listing holds it",
+      input: { press: undefined, candidate: undefined, created: true },
+      expected: { kind: "coming", line: "Coming up. A few minutes." },
+    },
+    {
+      case: "a Mate this tab made, up and its link on its way",
+      input: { press: undefined, candidate: { group: "ready" }, created: true, linkHolds: true },
+      expected: { kind: "coming", line: "Coming up. A few minutes." },
+    },
+    {
+      case: "a Mate in its first build, minutes young",
+      input: {
+        press: undefined,
+        candidate: {
+          group: "provisioning",
+          service: { status: "READY_TO_DEPLOY", created: new Date(NOW - 60_000).toISOString() },
+        },
+        nowMs: NOW,
+      },
+      expected: { kind: "coming", line: "Coming up. A few minutes." },
+    },
+    {
+      case: "a Mate whose first build failed: it never came, with Remove",
+      input: {
+        press: undefined,
+        candidate: {
+          group: "provisioning",
+          service: { status: "READY_TO_DEPLOY", created: new Date(NOW - 60_000).toISOString() },
+        },
+        created: true,
+        firstBuild: { kind: "failed", why: "the build failed" },
+        nowMs: NOW,
+      },
+      expected: {
+        kind: "failed",
+        line: "Could not be set up. The build failed.",
+        verb: "remove",
+      },
+    },
+    {
+      case: "a Mate this tab made whose container went before it came: half-made, with Finish setup",
+      input: {
+        press: undefined,
+        candidate: {
+          group: "unavailable",
+          missingContainer: true,
+          project: { created: new Date(NOW - 3 * 60_000).toISOString() },
+        },
+        created: true,
+        nowMs: NOW,
+      },
+      expected: { kind: "failed", line: HALF_MADE_LINE, verb: "finish-setup" },
+    },
+    {
+      case: "a Mate this tab made, in its first build",
+      input: {
+        press: undefined,
+        candidate: { group: "provisioning", service: { status: "READY_TO_DEPLOY" } },
+        created: true,
+      },
+      expected: { kind: "coming", line: "Coming up. A few minutes." },
+    },
+    // Past its grace a first build is still on its way: slow or queued looks the same from its
+    // status as failed, and only its build's process tells — never a restart, never removed.
+    ...[true, undefined].map((created) => ({
+      case: `a first build past its grace, nothing known of it${created === true ? ", made here" : ""}`,
+      input: {
+        press: undefined,
+        candidate: {
+          group: "provisioning" as const,
+          service: {
+            status: "READY_TO_DEPLOY",
+            created: new Date(NOW - 20 * 60_000).toISOString(),
+          },
+        },
+        created,
+        nowMs: NOW,
+      },
+      expected: { kind: "coming" as const, line: "Taking longer than usual." },
+    })),
+    {
+      case: "a first build past its grace, its build still queued or running: taking longer too",
+      input: {
+        press: undefined,
+        candidate: {
+          group: "provisioning",
+          service: {
+            status: "READY_TO_DEPLOY",
+            created: new Date(NOW - 20 * 60_000).toISOString(),
+          },
+        },
+        firstBuild: { kind: "running" },
+        nowMs: NOW,
+      },
+      expected: { kind: "coming", line: "Taking longer than usual." },
+    },
+    {
+      case: "a first build half an hour on, its build still running: on its way",
+      input: {
+        press: undefined,
+        candidate: {
+          group: "provisioning",
+          service: {
+            status: "READY_TO_DEPLOY",
+            created: new Date(NOW - 40 * 60_000).toISOString(),
+          },
+        },
+        firstBuild: { kind: "running" },
+        nowMs: NOW,
+      },
+      expected: { kind: "coming", line: "Taking longer than usual." },
+    },
+    {
       case: "a Mate with no container yet, moments after its press: still coming up",
       input: {
         press: undefined,
@@ -136,6 +267,51 @@ describe("mateComing — a Mate in its first minutes, in one set of words", () =
       input: { press: undefined, candidate: { group: "ready" } },
     },
     { case: "a stopped Mate", input: { press: undefined, candidate: { group: "unavailable" } } },
+    {
+      case: "a Mate this tab made, up, its link wanting someone (a restart, a cap passed)",
+      input: { press: undefined, candidate: { group: "ready" }, created: true, linkHolds: false },
+    },
+    {
+      case: "a Mate this tab made, up, nothing known of its link",
+      input: { press: undefined, candidate: { group: "ready" }, created: true },
+    },
+    {
+      case: "a Mate this tab made that a whole listing, read well after, lacks",
+      input: { press: undefined, candidate: undefined, created: true, listingLacksIt: true },
+    },
+    // Half an hour on with nothing known of its build — another person's, a months-old one whose
+    // build failed — it is not coming up: its own row and menu say what it is, with their verbs.
+    ...[true, undefined].map((created) => ({
+      case: `a first build half an hour on, nothing known of it${created === true ? ", made here" : ""}`,
+      input: {
+        press: undefined,
+        candidate: {
+          group: "provisioning" as const,
+          service: {
+            status: "READY_TO_DEPLOY",
+            created: new Date(NOW - 40 * 60_000).toISOString(),
+          },
+        },
+        created,
+        nowMs: NOW,
+      },
+    })),
+    {
+      case: "a Mate this tab made whose project is gone",
+      input: { press: undefined, candidate: undefined, created: true, linkHolds: false },
+    },
+    {
+      case: "a Mate this tab made, connected",
+      input: { press: undefined, candidate: { group: "connected" }, created: true },
+    },
+    {
+      case: "a Mate this tab made whose container stopped",
+      input: {
+        press: undefined,
+        candidate: { group: "unavailable", service: { status: "STOPPED" } },
+        created: true,
+      },
+    },
     // A press this tab made does not make a container that failed, stopped or is restarting read
     // as coming up: it shows its own state (pass 28 review).
     ...(["ACTION_FAILED", "STOPPED", "RESTARTING", "UPGRADING"] as const).map((status) => ({
@@ -424,5 +600,439 @@ describe("halfMadeFor — a half-made Mate as its viewer may act on it", () => {
   it("leaves any other state alone", () => {
     const coming = { kind: "coming", line: "Coming up" } as const;
     expect(halfMadeFor(coming, false)).toBe(coming);
+  });
+});
+
+// The arrival is one surface from the press to the sign-in: once a Mate's own view has shown it
+// coming up, a wait on its way to its conversation keeps the board — never "Almost there." under
+// its name alone with a composer, and back (measured 2026-10-02: 10 s of it on a New project,
+// 0.6 s on an Add).
+describe("mateArrivalShown — what a Mate's own view keeps saying once it came up", () => {
+  const OPENING = { kind: "coming", line: "Almost there." } as const;
+  const COMING = { kind: "coming", line: "Coming up. A few minutes." } as const;
+  const reaching = (reachability: Reachability | null): MateComingPage => ({
+    kind: "reaching",
+    reachability,
+  });
+  const container = (level: string, overdue = false): Reachability =>
+    ({ kind: "container", container: { level, overdue } }) as Reachability;
+  it.each<{
+    readonly case: string;
+    readonly page: MateComingPage | undefined;
+    readonly cameUp: boolean;
+    readonly failuresSinceConnect?: number;
+    readonly expected: ReturnType<typeof mateArrivalShown>;
+  }>([
+    {
+      case: "coming up: its words",
+      page: { kind: "coming", coming: COMING },
+      cameUp: false,
+      expected: COMING,
+    },
+    {
+      case: "up, having come up here: opening",
+      page: { kind: "up" },
+      cameUp: true,
+      expected: OPENING,
+    },
+    {
+      case: "up, never shown coming: nothing",
+      page: { kind: "up" },
+      cameUp: false,
+      expected: undefined,
+    },
+    {
+      case: "reaching, never shown coming: its link's words",
+      page: reaching(null),
+      cameUp: false,
+      expected: undefined,
+    },
+    { case: "reaching, no machine yet", page: reaching(null), cameUp: true, expected: OPENING },
+    {
+      case: "reaching, its container booting",
+      page: reaching(container("booting")),
+      cameUp: true,
+      expected: OPENING,
+    },
+    {
+      case: "reaching, its container provisioning",
+      page: reaching(container("provisioning")),
+      cameUp: true,
+      expected: OPENING,
+    },
+    {
+      case: "reaching, its container restarting",
+      page: reaching({
+        kind: "container",
+        container: { level: "restarting", by: "platform", overdue: false },
+      }),
+      cameUp: true,
+      expected: OPENING,
+    },
+    {
+      case: "reaching, connecting",
+      page: reaching({ kind: "connecting", waitingOn: "exchange" }),
+      cameUp: true,
+      expected: OPENING,
+    },
+    {
+      case: "reaching, reconnecting",
+      page: reaching({ kind: "reconnecting" }),
+      cameUp: true,
+      expected: OPENING,
+    },
+    {
+      case: "reaching, resolving",
+      page: reaching({ kind: "resolving" }),
+      cameUp: true,
+      expected: OPENING,
+    },
+    {
+      case: "reaching, ready",
+      page: reaching({ kind: "ready", notice: null }),
+      cameUp: true,
+      expected: OPENING,
+    },
+    {
+      case: "reaching, waiting for Zerops",
+      page: reaching({ kind: "waiting-for-zerops" }),
+      cameUp: true,
+      expected: OPENING,
+    },
+    {
+      case: "reaching, retrying on its own",
+      page: reaching({
+        kind: "retrying",
+        retryAtMs: NOW,
+        last: { kind: "network" },
+        restart: false,
+      } as Reachability),
+      cameUp: true,
+      expected: OPENING,
+    },
+    // Failing since it last connected: past its first three failures (the ladder's 2, 4 and 8 s),
+    // no wait of its link holds the board — its retries and the attempts between them alike, so
+    // the two never take turns.
+    ...(
+      [
+        { kind: "retrying", retryAtMs: NOW, last: { kind: "network" }, restart: false },
+        { kind: "connecting", waitingOn: "exchange" },
+        { kind: "reconnecting" },
+      ] as ReadonlyArray<Reachability>
+    ).map((reachability) => ({
+      case: `reaching, ${reachability.kind} after its fourth failure since it connected`,
+      page: reaching(reachability),
+      cameUp: true,
+      failuresSinceConnect: 4,
+      expected: undefined,
+    })),
+    {
+      case: "reaching, connecting again after its third failure (a fresh server warming up)",
+      page: reaching({ kind: "connecting", waitingOn: "exchange" }),
+      cameUp: true,
+      failuresSinceConnect: 3,
+      expected: OPENING,
+    },
+    // Waiting on its access or its presence is a wait on Zerops, never its link not answering.
+    ...(["access", "presence"] as const).map((waitingOn) => ({
+      case: `reaching, connecting on its ${waitingOn} however often its link failed`,
+      page: reaching({ kind: "connecting", waitingOn }),
+      cameUp: true,
+      failuresSinceConnect: 6,
+      expected: OPENING,
+    })),
+    {
+      case: "reaching, its container booting whatever its link failed",
+      page: reaching({ kind: "container", container: { level: "booting", overdue: false } }),
+      cameUp: true,
+      failuresSinceConnect: 3,
+      expected: OPENING,
+    },
+    {
+      case: "reaching, retrying with a restart to offer",
+      page: reaching({
+        kind: "retrying",
+        retryAtMs: NOW,
+        last: { kind: "identity-failed" },
+        restart: true,
+      } as Reachability),
+      cameUp: true,
+      expected: undefined,
+    },
+    {
+      case: "reaching, booting past its cap",
+      page: reaching(container("booting", true)),
+      cameUp: true,
+      expected: undefined,
+    },
+    {
+      case: "reaching, its container stopped",
+      page: reaching({ kind: "container", container: { level: "inactive", status: "STOPPED" } }),
+      cameUp: true,
+      expected: undefined,
+    },
+    {
+      case: "reaching, no public address",
+      page: reaching({ kind: "no-address", reason: "subdomain-off" }),
+      cameUp: true,
+      expected: undefined,
+    },
+    {
+      case: "reaching, an update required",
+      page: reaching({ kind: "update-required", actual: "0.1.0", minimum: "0.2.0" }),
+      cameUp: true,
+      expected: undefined,
+    },
+    {
+      case: "not to be opened",
+      page: { kind: "unreachable", reachability: null },
+      cameUp: true,
+      expected: undefined,
+    },
+    { case: "nothing known yet", page: undefined, cameUp: true, expected: undefined },
+  ])("$case", ({ page, cameUp, failuresSinceConnect = 0, expected }) => {
+    expect(mateArrivalShown({ page, cameUp, failuresSinceConnect })).toEqual(expected);
+  });
+});
+
+// A first build that failed leaves the Mate's service READY_TO_DEPLOY for good (the ledger,
+// 2026-09: a failed buildFromGit): its newest build for that service says so.
+describe("firstBuildState — a Mate's first build, as its project's processes say it", () => {
+  const build = (status: string, created: string, extra: object = {}) => ({
+    actionName: "stack.build",
+    serviceStackIds: ["zcp", "buildzcp"],
+    status,
+    created,
+    ...extra,
+  });
+  it.each<{
+    readonly case: string;
+    readonly processes: ReadonlyArray<ReturnType<typeof build>> | undefined;
+    readonly expected: ReturnType<typeof firstBuildState>;
+  }>([
+    { case: "nothing read", processes: undefined, expected: undefined },
+    {
+      case: "building",
+      processes: [build("RUNNING", "2026-10-02T10:00:00Z")],
+      expected: { kind: "running" },
+    },
+    {
+      case: "queued",
+      processes: [build("PENDING", "2026-10-02T10:00:00Z")],
+      expected: { kind: "running" },
+    },
+    {
+      case: "built",
+      processes: [build("FINISHED", "2026-10-02T10:00:00Z")],
+      expected: undefined,
+    },
+    {
+      case: "failed, with the platform's reason",
+      processes: [build("FAILED", "2026-10-02T10:00:00Z", { failReason: "npm ci failed" })],
+      expected: { kind: "failed", why: "npm ci failed" },
+    },
+    {
+      case: "failed, with no reason",
+      processes: [build("CANCELED", "2026-10-02T10:00:00Z")],
+      expected: { kind: "failed", why: "Its container's first build did not finish" },
+    },
+    {
+      case: "failed, then built again: the newest counts",
+      processes: [
+        build("FAILED", "2026-10-02T10:00:00Z"),
+        build("RUNNING", "2026-10-02T10:05:00Z"),
+      ],
+      expected: { kind: "running" },
+    },
+    {
+      case: "another service's build failed",
+      processes: [{ ...build("FAILED", "2026-10-02T10:00:00Z"), serviceStackIds: ["appdev"] }],
+      expected: undefined,
+    },
+  ])("$case", ({ processes, expected }) => {
+    expect(firstBuildState(processes, "zcp")).toEqual(expected);
+  });
+});
+
+// A Mate this tab made whose project went before it ever connected: a whole listing read well
+// after the creation that lacks it means it is gone, never coming up for good — one read before
+// the platform's listing could hold it says nothing.
+describe("listingLacksCreation — a whole listing that no longer holds this tab's creation", () => {
+  const MADE = 1_000_000;
+  it.each([
+    { case: "listed", listed: true, complete: true, listedAtMs: MADE + 120_000, lacks: false },
+    {
+      case: "a partial listing",
+      listed: false,
+      complete: false,
+      listedAtMs: MADE + 120_000,
+      lacks: false,
+    },
+    {
+      case: "a whole listing read moments after",
+      listed: false,
+      complete: true,
+      listedAtMs: MADE + 5_000,
+      lacks: false,
+    },
+    {
+      case: "a whole listing read well after",
+      listed: false,
+      complete: true,
+      listedAtMs: MADE + 120_000,
+      lacks: true,
+    },
+    {
+      case: "no creation time",
+      listed: false,
+      complete: true,
+      listedAtMs: MADE + 120_000,
+      madeAtMs: undefined,
+      lacks: false,
+    },
+  ])("$case: $lacks", ({ listed, complete, listedAtMs, lacks, ...rest }) => {
+    const madeAtMs = "madeAtMs" in rest ? rest.madeAtMs : MADE;
+    expect(listingLacksCreation({ listed, complete, listedAtMs, madeAtMs })).toBe(lacks);
+  });
+});
+
+// Live run 3 (2026-10-02), replayed: the platform makes a Mate's container ACTIVE a moment before
+// it enables its address, and the tab held ACTIVE without an address for 5.6 s. Its row and its
+// own view said "no public address" and an asleep face in that gap, then took it back. Each step
+// here is a listing derivation, the target's presence and the machine's verdict, as this browser
+// draws them.
+describe("a new Mate whose container is ACTIVE before its address landed", () => {
+  const CREATED_AT = "2026-10-02T12:00:00.000Z";
+  const CREATED = Date.parse(CREATED_AT);
+  const ENV = EnvironmentId.make("environment-new");
+  const PROJECT: ZeropsProject = {
+    id: "project-new",
+    name: "Acme Docs",
+    status: "ACTIVE",
+    clientId: "org-1",
+    publicZone: "fte2334ab.prg1-zerops.zone",
+    zeropsSubdomainHost: "9f1c",
+  };
+  const zcp = (status: string, subdomainAccess: boolean): ZeropsService => ({
+    id: "service-new",
+    name: "zcp",
+    status,
+    subdomainAccess,
+    ports: [{ port: 8080, httpSupport: true }],
+    serviceStackTypeInfo: { serviceStackTypeVersionName: "zcp@1" },
+    created: CREATED_AT,
+  });
+  const ORIGIN = "https://zcp-9f1c-8080.prg1.zerops.app";
+
+  /** How each tab reads it at `atMs` since its creation, first seen without its address at `seenMs`. */
+  const reading = (input: {
+    readonly atMs: number;
+    readonly service: ZeropsService;
+    readonly seenMs?: number;
+    readonly connected?: boolean;
+    readonly created: boolean;
+  }) => {
+    const nowMs = CREATED + input.atMs;
+    const candidate = deriveZeropsCandidates(
+      PROJECT,
+      [input.service],
+      new Map(input.connected === true ? [[ORIGIN, ENV]] : []),
+      undefined,
+      {
+        nowMs,
+        addressSeen: () =>
+          input.seenMs === undefined
+            ? undefined
+            : { addressed: false, since: CREATED + input.seenMs },
+      },
+    )[0]!;
+    const presence = candidatePresence({ ...candidate, presence: "known" });
+    const reachability = selectReachability(
+      { ...initialEnvironment({ record: null }), presence },
+      null,
+    );
+    const linkHolds = arrivalLinkHolds({ reachability, failuresSinceConnect: 0 });
+    const coming = mateComing({
+      press: undefined,
+      candidate,
+      nowMs,
+      created: input.created,
+      ...(input.created ? { linkHolds } : {}),
+    });
+    const page = mateComingPage({
+      coming,
+      candidate,
+      complete: true,
+      linked: false,
+      reachability,
+    });
+    return {
+      reachability,
+      coming,
+      arrival: mateArrivalShown({ page, cameUp: true, failuresSinceConnect: 0 }),
+    };
+  };
+
+  const STEPS: ReadonlyArray<{
+    readonly step: string;
+    readonly atMs: number;
+    readonly service: ZeropsService;
+    readonly seenMs?: number;
+  }> = [
+    { step: "its first build", atMs: 60_000, service: zcp("READY_TO_DEPLOY", false) },
+    { step: "ACTIVE, its address not enabled yet", atMs: 109_700, service: zcp("ACTIVE", false) },
+    {
+      step: "ACTIVE, its address still on its way",
+      atMs: 113_000,
+      service: zcp("ACTIVE", false),
+      seenMs: 109_700,
+    },
+    { step: "its address landed", atMs: 115_300, service: zcp("ACTIVE", true) },
+  ];
+
+  describe.each([
+    { viewer: "the tab that made it", created: true },
+    { viewer: "another tab", created: false },
+  ])("in $viewer", ({ created }) => {
+    it.each(STEPS.filter((step) => step.service.subdomainAccess === false))(
+      "$step: coming up, never without an address nor asleep",
+      (step) => {
+        const read = reading({ ...step, created });
+        expect(read.reachability.kind).not.toBe("no-address");
+        // Its row draws a coming Mate (`mateComingRowView`); asleep is a row with nothing coming.
+        expect(read.coming?.kind).toBe("coming");
+        expect(read.arrival?.kind).toBe("coming");
+      },
+    );
+
+    it("its address landed: its view holds the board until it connects, then hands over", () => {
+      const landed = reading({ ...STEPS[3]!, created });
+      expect(landed.reachability.kind).not.toBe("no-address");
+      expect(landed.arrival?.kind).toBe("coming");
+
+      const connected = reading({ ...STEPS[3]!, atMs: 127_000, connected: true, created });
+      expect(connected.coming).toBeUndefined();
+    });
+  });
+
+  it("an old Mate whose access is off says it has no public address, with Open in Zerops", () => {
+    const read = reading({ atMs: 3 * 60 * 60_000, service: zcp("ACTIVE", false), created: false });
+    expect(read.coming).toBeUndefined();
+    expect(read.reachability).toEqual({ kind: "no-address", reason: "no-subdomain" });
+    expect(reachabilityPhrase(read.reachability, { nowMs: 0, mateName: "Quinn" })).toEqual({
+      text: "This Mate has no public address.",
+      actions: ["open-in-zerops"],
+    });
+  });
+
+  it("a young Mate whose address never came says so once its wait ends", () => {
+    const read = reading({
+      atMs: 109_700 + ADDRESS_GRACE_MS,
+      service: zcp("ACTIVE", false),
+      seenMs: 109_700,
+      created: false,
+    });
+    expect(read.coming).toBeUndefined();
+    expect(read.reachability.kind).toBe("no-address");
   });
 });

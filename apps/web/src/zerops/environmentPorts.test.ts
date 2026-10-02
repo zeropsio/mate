@@ -10,11 +10,26 @@ import {
   type ExchangeClock,
   type ExchangeDriver,
 } from "@t3tools/client-runtime/zerops/environments";
-import { EnvironmentId } from "@t3tools/contracts";
+import {
+  RemoteEnvironmentAuthFetchError,
+  RemoteEnvironmentAuthInvalidJsonError,
+  RemoteEnvironmentAuthTimeoutError,
+  RemoteEnvironmentAuthUndeclaredStatusError,
+} from "@t3tools/client-runtime/rpc";
+import {
+  EnvironmentAuthInvalidError,
+  EnvironmentId,
+  EnvironmentInternalError,
+} from "@t3tools/contracts";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { closeAccountLifetime, openAccountLifetime } from "./accountLifetime";
-import { closedOffPort, linkPhaseOf, recordsStorage } from "./environmentPorts";
+import {
+  closedOffPort,
+  keptSessionUnanswered,
+  linkPhaseOf,
+  recordsStorage,
+} from "./environmentPorts";
 import { hqStructureAtom, zeropsSessionAtom } from "../state/zerops";
 import { AtomRegistry } from "effect/unstable/reactivity";
 
@@ -275,5 +290,52 @@ describe("the closed-off port: HQ's record of each project", () => {
 
   it("reads every project as unknown while HQ's structure is not known", () => {
     expect(closedOffPort(registryWith(false)).read("p-closed")).toBe("unknown");
+  });
+});
+
+describe("keptSessionUnanswered: what a kept session's check failing says", () => {
+  const URL = "https://zcp-1-8080.prg1.zerops.app/mate/api/auth/session";
+  it.each([
+    ["the check ran past its 3 s", true, new RemoteEnvironmentAuthTimeoutError(URL, 3_000)],
+    [
+      "the request never reached the Mate",
+      true,
+      new RemoteEnvironmentAuthFetchError({ message: "offline", cause: null }),
+    ],
+    [
+      "the balancer answered for a server that is down",
+      true,
+      new RemoteEnvironmentAuthUndeclaredStatusError(URL, 502),
+    ],
+    [
+      "the Mate failed inside",
+      true,
+      new EnvironmentInternalError({
+        code: "internal_error",
+        reason: "bootstrap_validation_failed",
+        traceId: "trace",
+      }),
+    ],
+    [
+      "the Mate answered with a state this client cannot read",
+      false,
+      new RemoteEnvironmentAuthInvalidJsonError({ message: "invalid", cause: null }),
+    ],
+    [
+      "the Mate refused the session",
+      false,
+      new EnvironmentAuthInvalidError({
+        code: "auth_invalid",
+        reason: "invalid_credential",
+        traceId: "trace",
+      }),
+    ],
+    [
+      "the Mate does not serve the check",
+      false,
+      new RemoteEnvironmentAuthUndeclaredStatusError(URL, 404),
+    ],
+  ])("%s → no word: %s", (_name, unanswered, cause) => {
+    expect(keptSessionUnanswered(cause)).toBe(unanswered);
   });
 });

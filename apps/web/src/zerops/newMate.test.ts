@@ -47,7 +47,12 @@ describe("the creations this tab made", () => {
   ])("keeps one that ran $case", ({ failed }) => {
     useNewMate.getState().created(QUINN);
     useNewMate.getState().settled("p-quinn", failed);
-    expect(useNewMate.getState().creations["p-quinn"]).toEqual({ ...QUINN, failed });
+    expect(useNewMate.getState().creations["p-quinn"]).toEqual({
+      ...QUINN,
+      failed,
+      // When the platform took it, as this tab stamped it.
+      at: expect.any(Number),
+    });
   });
 
   it("says nothing of a project it did not make", () => {

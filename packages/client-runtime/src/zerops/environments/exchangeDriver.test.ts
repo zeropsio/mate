@@ -129,6 +129,8 @@ function rig(
     readonly failedInstalls?: ReadonlyArray<"answers" | "throws">;
     /** How many of the first mints the platform answers 429. */
     readonly throttledMints?: number;
+    /** The targets whose session an earlier load kept, and their Mates still hold. */
+    readonly kept?: ReadonlySet<TargetKey>;
   } = {},
 ): Rig {
   const platform = platformThrottling(options.throttledMints ?? 0);
@@ -156,11 +158,21 @@ function rig(
           readDescriptor: mate.readDescriptor,
           prepare: mate.prepare,
           environmentOf: (credential) => credential.environmentId,
+          kept: options.kept?.has(request.key)
+            ? {
+                credential: { environmentId: mate.descriptor().environmentId, generation: 100 },
+                check: async () => true,
+                forget: () => undefined,
+                unanswered: false,
+                answered: () => undefined,
+              }
+            : null,
         },
         request.origin,
         { reason: request.reason, expectedProjectId: mate.projectId },
       );
     },
+    kept: (key) => options.kept?.has(key) ?? false,
     install: async ({ key, environmentId, credential }) => {
       installs.push({ key, credential });
       const failure = failedInstalls.shift();
@@ -521,6 +533,24 @@ describe("exchange driver (DESIGN §4.4)", () => {
     expect(exchanges).toHaveLength(DOOR_MINT_BURST + 2);
     expect(exchanges.every((request) => request.reason === "auto-connect")).toBe(true);
     expect(exchanges.every((request) => !request.asked)).toBe(true);
+  });
+
+  it("a Mate whose session was kept starts past the mint pace, and spends none of it", async () => {
+    const restored = Array.from({ length: DOOR_MINT_BURST + 2 }, (_, index) => mate(`k${index}`));
+    const fresh = Array.from({ length: DOOR_MINT_BURST }, (_, index) => mate(`f${index}`));
+    const { driver, exchanges, start } = rig([...restored, ...fresh], {
+      kept: new Set(restored.map(keyOf)),
+    });
+    await start({ records: restored });
+
+    expect(exchanges).toHaveLength(restored.length);
+    for (const each of restored) {
+      expect(driver.machine(keyOf(each))?.credential).toMatchObject({ kind: "held" });
+    }
+    // The bucket is still full: a whole burst of Mates that need a throwaway starts at once.
+    driver.setDemand("auto-connect", fresh.map(keyOf));
+    await flush();
+    expect(exchanges).toHaveLength(restored.length + DOOR_MINT_BURST);
   });
 
   describe("a Mate the person asks for never waits on the mint budget", () => {

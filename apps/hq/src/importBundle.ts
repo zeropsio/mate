@@ -31,6 +31,7 @@ import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 
 import { TIER_SOURCES } from "./environments.ts";
+import { rewriteTier } from "./importTiers.ts";
 
 export const BUNDLE_VERSION = 1;
 export const MANIFEST = "manifest.json";
@@ -97,14 +98,25 @@ export const BundleRepo = Schema.Struct({
   refs: Schema.Array(BundleRef),
 });
 
+/** A tier of the application's recipe as main's `group` repository holds it: `<n> — <Title>/import.yaml`. */
+export const BundleTier = Schema.Struct({
+  path: Schema.String.check(Schema.isPattern(/^[^/]+\/import\.yaml$/u)),
+  content: Schema.String,
+});
+
 export const BundleApp = Schema.Struct({
   /** The group's id on main: what the bundle's other files name the application by. */
   key: Id,
   name: Name,
+  /** Where main's tiers name the application's repositories: Gitea's host and the group's org. */
+  gitea: Schema.Struct({ host: Schema.String, owner: Id }),
   projects: Schema.Array(BundleProject),
   environments: Schema.Array(BundleEnvironment),
   repos: Schema.Array(BundleRepo),
+  /** Its `group` repository's tiers at the bundle's `main`, which the import makes build from HQ. */
+  tiers: Schema.Array(BundleTier),
 });
+export type BundleApp = typeof BundleApp.Type;
 
 export const Mapping = Schema.Struct({ apps: Schema.Array(BundleApp) });
 export type Mapping = typeof Mapping.Type;
@@ -350,6 +362,10 @@ export const bundleProblems = (bundle: Omit<Bundle, "dir" | "digest">): Readonly
     }
     for (const name of duplicates(app.repos.map((repo) => repo.name)))
       problems.push(`${at}: repository ${name} twice`);
+    for (const path of duplicates(app.tiers.map((tier) => tier.path)))
+      problems.push(`${at}: tier ${path} twice`);
+    if (app.tiers.length > 0 && !app.repos.some((repo) => repo.name === RECIPE_REPO))
+      problems.push(`${at}: tiers with no ${RECIPE_REPO} repository`);
     for (const repo of app.repos) {
       const where = `${at}/${repo.name}`;
       if (bundle.manifest.files[repo.bundle] === undefined)
@@ -427,6 +443,23 @@ export const bundleProblems = (bundle: Omit<Bundle, "dir" | "digest">): Readonly
   }
   return problems;
 };
+
+/**
+ * What a tier names of Gitea that the import leaves as it is (`importTiers.ts`): another org's
+ * repository, one the bundle lacks, another host, Gitea named outside a build. Notes, not
+ * findings: the import brings the bundle whole and says them again.
+ */
+export const bundleNotes = (bundle: Omit<Bundle, "dir" | "digest">): ReadonlyArray<string> =>
+  bundle.mapping.apps.flatMap((app) =>
+    app.tiers.flatMap((tier) =>
+      rewriteTier(tier.content, {
+        host: app.gitea.host,
+        owner: app.gitea.owner,
+        repos: app.repos.map((repo) => repo.name),
+        to: (repo) => `hq/${repo}`,
+      }).notes.map((note) => `app ${app.key} ${tier.path}: ${note}`),
+    ),
+  );
 
 /** The bundle in `dir` checked whole — files, shape, sense — or every finding against it. */
 export const checkBundle = (dir: string) =>

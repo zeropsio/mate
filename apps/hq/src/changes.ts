@@ -15,6 +15,9 @@ import {
   type AttachmentResponse,
   type ChangeDetailResponse,
   type ChangesSnapshot,
+  COMPARE_COMMITS_MAX,
+  type CompareQuery,
+  type CompareResponse,
   type HqChange,
   type HqChangeComment,
   type HqRepo,
@@ -61,6 +64,7 @@ export class ChangeRefused extends Schema.TaggedError<ChangeRefused>()("ChangeRe
     "repo_not_found",
     "change_not_found",
     "attachment_not_found",
+    "commit_not_found",
     "conflict",
     "invalid",
     "too_large",
@@ -73,6 +77,7 @@ export class ChangeRefused extends Schema.TaggedError<ChangeRefused>()("ChangeRe
     "repo_not_found",
     "change_not_found",
     "attachment_not_found",
+    "commit_not_found",
     "not_png",
     "recipe_too_large",
   ]),
@@ -176,6 +181,17 @@ export class Changes extends Context.Service<
       userId: string,
       appId: string,
     ) => Effect.Effect<ReadonlyArray<RepoListEntry>, ReadError>;
+    /**
+     * What lies between two of a repository's commits, git's `base..head` (`CompareQuery`), each
+     * commit with the change whose merge it is; `commit_not_found` for either end the repository
+     * lacks.
+     */
+    readonly compare: (
+      userId: string,
+      appId: string,
+      repo: string,
+      query: CompareQuery,
+    ) => Effect.Effect<CompareResponse, ReadError | NotLeader | GitError>;
     /** A change and what its review reads, from git. */
     readonly changeDetail: (
       userId: string,
@@ -983,6 +999,54 @@ export const changesLayer: Layer.Layer<
               })),
           ),
         ),
+      compare: (userId, appId, repo, query) =>
+        Effect.gen(function* () {
+          yield* personApp(userId, appId, "read_change");
+          const known = yield* sql`
+            SELECT 1 FROM hq_repo WHERE app_id::text = ${appId} AND name = ${repo}`;
+          if (known.length === 0) return yield* refuse("repo_not_found", "repo_not_found");
+          const git = yield* gitHost.git;
+          const base = query.base ?? null;
+          const between = yield* git
+            .range({ appId, id: repo }, base, query.head, { limit: COMPARE_COMMITS_MAX })
+            .pipe(
+              Effect.catchIf(
+                (error) => error.reason === "not_found",
+                () => refuse("commit_not_found", "commit_not_found"),
+              ),
+            );
+          const shas = between.items.map((commit) => commit.sha);
+          const landed = new Map(
+            (shas.length === 0
+              ? []
+              : yield* sql<{
+                  readonly merged_sha: string;
+                  readonly number: number;
+                  readonly title: string;
+                  readonly mate_project_id: string;
+                }>`
+                  SELECT merged_sha, number, title, mate_project_id FROM hq_change
+                  WHERE app_id::text = ${appId} AND repo = ${repo}
+                    AND ${sql.in("merged_sha", shas)}`
+            ).map((row) => [
+              row.merged_sha,
+              { number: row.number, title: row.title, mateProjectId: row.mate_project_id },
+            ]),
+          );
+          return {
+            base,
+            head: query.head,
+            commits: between.items.map((commit) => ({
+              sha: commit.sha,
+              subject: commit.message.split("\n")[0] ?? "",
+              authorName: commit.author.name,
+              at: commit.committedAt,
+              change: landed.get(commit.sha) ?? null,
+            })),
+            truncated: between.truncated,
+            total: between.total,
+          };
+        }),
       changeDetail: (userId, appId, repo, number) =>
         Effect.gen(function* () {
           yield* personApp(userId, appId, "read_change");

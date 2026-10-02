@@ -20,11 +20,17 @@ import {
   FINISHED_SHOWN_MS,
   PRESSED_ELSEWHERE,
   connectedPresses,
+  finishSetupRowLine,
+  finishSetupRunning,
+  birthPresses,
   finishMateSetup,
+  pressComingInput,
   pressDoneAt,
   pressingProjects,
   readMatePress,
   runPress,
+  settlePress,
+  STOPPED_SHOWN_MS,
   withPressTries,
   type MatePress,
   type MatePressState,
@@ -527,6 +533,168 @@ describe("a press's end", () => {
       ),
     ).toEqual(["p-up"]);
   });
+
+  // Live, 2026-10-02: Finish setup on a Mate whose container was up — its press was ended the
+  // moment it began, so nothing anywhere said its setup was being finished.
+  it("leaves a Finish setup on a connected Mate to end on its own", () => {
+    const made = (projectId: string, finishing: boolean): MatePress => ({
+      projectId,
+      organizationId: "org-acme",
+      startedAt: 0,
+      placement: null,
+      container: true,
+      ...(finishing ? { finishing: true } : {}),
+      state: { kind: "pressing" },
+    });
+    expect(
+      connectedPresses(
+        [made("p-finishing", true), made("p-added", false)],
+        [
+          { project: { id: "p-finishing" }, group: "connected" },
+          { project: { id: "p-added" }, group: "connected" },
+        ],
+      ),
+    ).toEqual(["p-added"]);
+  });
+});
+
+// Review, pass 32: a Finish setup that stopped on a Mate with its container stood for good — its
+// row said "Setup stopped" in place of its sign-in line, and once its link dropped the Mate read
+// "Could not be set up". It says it stopped, then the row is the Mate's again; its menu still
+// offers Finish setup, from the platform's facts.
+describe("a Finish setup that stopped", () => {
+  const STOPPED: MatePressState = {
+    kind: "failed",
+    step: "close-off",
+    reason: "Zerops refused the change",
+    retry: null,
+  };
+  const begin = (container: boolean) =>
+    beginPress({
+      projectId: "p-stop",
+      organizationId: "org-acme",
+      startedAt: 0,
+      placement: null,
+      container,
+      finishing: true,
+    });
+
+  const atImport: MatePressState = { ...STOPPED, step: "import-container" };
+  const IMPORT: EnvironmentCreationStep = { kind: "import-container", agents: [] };
+  const CLOSE_OFF: EnvironmentCreationStep = { kind: "close-off" };
+  /** Its container came, and its close-off stopped. */
+  const BROUGHT: ReadonlyArray<EnvironmentCreationStepProgress> = [
+    { step: IMPORT, state: "done" },
+    { step: CLOSE_OFF, state: "failed" },
+  ];
+  /** Its import stopped. */
+  const NOT_BROUGHT: ReadonlyArray<EnvironmentCreationStepProgress> = [
+    { step: IMPORT, state: "failed" },
+    { step: CLOSE_OFF, state: "queued" },
+  ];
+
+  // Pass 32 reviews: whether a stop stands is read off what it brought, never off a step's name —
+  // its harden and the lock of another tab stop it before any step, naming its close-off.
+  it.each([
+    {
+      case: "on a Mate with its container: said, then gone",
+      container: false,
+      progress: undefined,
+      stopped: STOPPED,
+      stands: false,
+    },
+    {
+      case: "after bringing its container: said, then gone, and no longer coming",
+      container: true,
+      progress: BROUGHT,
+      stopped: STOPPED,
+      stands: false,
+    },
+    {
+      case: "bringing its container, at its import: stands with its reason",
+      container: true,
+      progress: NOT_BROUGHT,
+      stopped: atImport,
+      stands: true,
+    },
+    {
+      case: "bringing its container, before any step (its harden, another tab's lock): stands",
+      container: true,
+      progress: undefined,
+      stopped: STOPPED,
+      stands: true,
+    },
+  ])("$case", ({ container, progress, stopped, stands }) => {
+    vi.useFakeTimers();
+    try {
+      begin(container);
+      if (progress !== undefined) progressPress("p-stop", progress);
+      settlePress("p-stop", stopped);
+      const press = readMatePress("p-stop");
+      expect(finishSetupRowLine(press)).toBe("Setup stopped");
+      expect(pressComingInput([press!], "p-stop")).toEqual({
+        press: { startedAt: 0, container: stands, retryable: false },
+        setUpFailed: stands ? "Zerops refused the change" : undefined,
+      });
+      vi.advanceTimersByTime(STOPPED_SHOWN_MS);
+      expect(readMatePress("p-stop")?.state.kind).toBe(stands ? "failed" : undefined);
+    } finally {
+      forgetPress("p-stop");
+      vi.useRealTimers();
+    }
+  });
+
+  it("is running only between its press and its end", () => {
+    try {
+      begin(false);
+      expect(finishSetupRunning(readMatePress("p-stop"))).toBe(true);
+      settlePress("p-stop", STOPPED);
+      expect(finishSetupRunning(readMatePress("p-stop"))).toBe(false);
+    } finally {
+      forgetPress("p-stop");
+    }
+    expect(finishSetupRunning(undefined)).toBe(false);
+  });
+});
+
+describe("finishSetupRowLine — Finish setup as its Mate's row says it, from any screen", () => {
+  const press = (state: MatePressState, finishing: boolean): MatePress => ({
+    projectId: "p-hugo",
+    organizationId: "org-acme",
+    startedAt: 0,
+    placement: null,
+    container: true,
+    ...(finishing ? { finishing: true } : {}),
+    state,
+  });
+  const failed: MatePressState = {
+    kind: "failed",
+    step: "close-off",
+    reason: "Zerops refused the change",
+    retry: null,
+  };
+
+  it.each([
+    { case: "no press", press: undefined, line: undefined },
+    {
+      case: "an Add's press: its dialog and its view say it",
+      press: press({ kind: "pressing" }, false),
+      line: undefined,
+    },
+    { case: "finishing", press: press({ kind: "pressing" }, true), line: "Finishing setup…" },
+    {
+      case: "finished, for the moment its record stays",
+      press: press({ kind: "pressed" }, true),
+      line: "Setup finished",
+    },
+    {
+      case: "stopped: Finish setup is on its menu again",
+      press: press(failed, true),
+      line: "Setup stopped",
+    },
+  ])("$case", ({ press, line }) => {
+    expect(finishSetupRowLine(press)).toBe(line);
+  });
 });
 
 // Finish setup on an older Mate, or a pool-claimed one: its harden first, tried again; then its
@@ -650,5 +818,25 @@ describe("pressingProjects", () => {
     expect([...pressingProjects.read()]).toEqual([]);
     expect(heard).toBe(2);
     stop();
+  });
+});
+
+// Re-check of pass 32, live: Finish setup pressed on the projects page pulled the person into the
+// Mate's conversation once it connected, as an Add's press does — pressed anywhere else it did not.
+describe("birthPresses — the presses that make a Mate, whose conversation the press lands in", () => {
+  const press = (projectId: string, finishing: boolean): MatePress => ({
+    projectId,
+    organizationId: "org-acme",
+    startedAt: 0,
+    placement: null,
+    container: true,
+    ...(finishing ? { finishing: true } : {}),
+    state: { kind: "pressing" },
+  });
+
+  it("names an Add's or a New project's press, never a Finish setup", () => {
+    expect(birthPresses([press("p-added", false), press("p-finishing", true)])).toEqual([
+      "p-added",
+    ]);
   });
 });
