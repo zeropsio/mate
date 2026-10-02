@@ -64,22 +64,6 @@
     "expires": "never"
   },
   {
-    "path": "apps/web/src/zerops/ZeropsProjectFlowProvider.tsx",
-    "kind": "CallExpression",
-    "fingerprint": "client.getBranch(slug, GROUP_REPOSITORY, \"main\").catch(() => undefined)",
-    "owner": "state-model 4.6",
-    "reason": "a failed main-branch read is told as \"no main to tag\"; per-verb attempts (4.5) name the cause and 4.6 deletes the provider",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/ZeropsProjectFlowProvider.tsx",
-    "kind": "CallExpression",
-    "fingerprint": "client.listTags(flow.slug, GROUP_REPOSITORY).catch(() => [])",
-    "owner": "state-model 4.6",
-    "reason": "a failed tag read reads as the release not existing; per-verb attempts (4.5) name the cause and 4.6 deletes the provider",
-    "expires": "never"
-  },
-  {
     "path": "apps/web/src/zerops/useZeropsDataMentions.ts",
     "kind": "ConditionalExpression",
     "fingerprint": "result._tag === \"Success\" ? result.value : undefined",

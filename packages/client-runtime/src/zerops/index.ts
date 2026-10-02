@@ -297,6 +297,7 @@ export {
 export { mateNextStep, type MateNextStep } from "./mateNextStep.ts";
 export {
   compareForRelease,
+  flowReleaseOf,
   isReleaseTag,
   releaseRunBy,
   nameStopByRelease,

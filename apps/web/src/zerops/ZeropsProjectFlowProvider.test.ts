@@ -1,8 +1,8 @@
 import type { GroupEnvironmentRowInput, GroupStops } from "@t3tools/client-runtime/zerops";
 import type { HqDeploy } from "@t3tools/client-runtime/zerops/hq";
+import type { Release } from "@t3tools/shared/hqRelease";
 import { describe, expect, it } from "vite-plus/test";
 
-import type { ZeropsGroupForgeState } from "./useZeropsGroupForge";
 import { joinProjectFlows, RELEASE_MOVES_TO_HQ } from "./ZeropsProjectFlowProvider";
 
 const GROUPS = [
@@ -24,9 +24,18 @@ const stopsOf = (environments: ReadonlyArray<GroupEnvironmentRowInput> = []): Gr
 const NOW = Date.parse("2026-09-24T10:05:00Z");
 const NOTHING_WITHHELD: ReadonlyMap<string, string> = new Map();
 
-const forgeState = (): ZeropsGroupForgeState => ({
-  released: { releases: [], tags: ["v0.1.0"] },
+/** A release HQ approved of `entries` (`{service: sha}`), made at `at`. */
+const approved = (tag: string, entries: Record<string, string>, at: string): Release => ({
+  tag,
+  sha: "9".repeat(40),
+  entries: Object.entries(entries).map(([service, sha]) => ({ service, sha })),
+  by: "u1",
+  at,
+  state: "approved",
+  reason: null,
+  rollbackOf: null,
 });
+const FIRST = approved("v0.1.0", { app: "1".repeat(40) }, "2026-09-24T09:00:00Z");
 
 /** HQ's record of a production deploy of `sha`. */
 const record = (sha: string, state: HqDeploy["state"], at: string): HqDeploy => ({
@@ -42,13 +51,13 @@ const record = (sha: string, state: HqDeploy["state"], at: string): HqDeploy => 
 
 function join(input: {
   readonly stops?: ReadonlyMap<string, GroupStops>;
-  readonly forges?: ReadonlyMap<string, ZeropsGroupForgeState>;
+  readonly releases?: ReadonlyMap<string, ReadonlyArray<Release>>;
   readonly withheld?: ReadonlyMap<string, string>;
 }) {
   return joinProjectFlows({
     groups: GROUPS,
     stops: input.stops ?? new Map(),
-    forges: input.forges ?? new Map(),
+    releases: input.releases ?? new Map(),
     changes: null,
     changesFailure: undefined,
     nowMs: NOW,
@@ -59,17 +68,17 @@ function join(input: {
 describe("joinProjectFlows", () => {
   it("G2 resolving leaves G1's flow", () => {
     const g1Stops = stopsOf();
-    const g1Forge = forgeState();
+    const g1Releases = [FIRST];
     const before = join({
       stops: new Map([["g1", g1Stops]]),
-      forges: new Map([["g1", g1Forge]]),
+      releases: new Map([["g1", g1Releases]]),
     });
     const after = join({
       stops: new Map([
         ["g1", g1Stops],
         ["g2", stopsOf()],
       ]),
-      forges: new Map([["g1", g1Forge]]),
+      releases: new Map([["g1", g1Releases]]),
     });
     expect(after.get("g2")).toBeDefined();
     expect(after.get("g1")).toBe(before.get("g1"));
@@ -86,9 +95,7 @@ describe("joinProjectFlows", () => {
       keyInvalid: false,
       services: [],
     };
-    expect(join({ forges: new Map([["g1", forgeState()]]) }).get("g1")?.declarationsRead).toBe(
-      false,
-    );
+    expect(join({ releases: new Map([["g1", [FIRST]]]) }).get("g1")?.declarationsRead).toBe(false);
     const flow = join({ stops: new Map([["g1", stopsOf([stage])]]) }).get("g1");
     expect(flow?.declarationsRead).toBe(true);
     expect(flow?.declarations.map(({ project }) => project)).toEqual(["stage-1"]);
@@ -115,7 +122,7 @@ describe("joinProjectFlows", () => {
     };
     const release = join({
       stops: new Map([["g1", stopsOf([production])]]),
-      forges: new Map([["g1", forgeState()]]),
+      releases: new Map([["g1", [FIRST]]]),
       withheld,
     }).get("g1")?.release;
     expect(release?.gate).toEqual({ allowed: false, reason });
@@ -148,17 +155,12 @@ describe("joinProjectFlows", () => {
     },
   ])("$name", ({ tier, nextstore, label }) => {
     const MEDUSA = "a".repeat(40);
-    const release = (patch: number) => ({
-      tag: `v0.1.${String(patch)}`,
-      verdict: "approved" as const,
-      detail: undefined,
-      line: "",
-      entries: [
-        { service: "medusa", commit: MEDUSA },
-        { service: "nextstore", commit: String(patch - 8).repeat(40) },
-      ],
-      taggedAt: undefined,
-    });
+    const release = (patch: number) =>
+      approved(
+        `v0.1.${String(patch)}`,
+        { medusa: MEDUSA, nextstore: String(patch - 8).repeat(40) },
+        `2026-09-2${String(patch - 9)}T09:00:00Z`,
+      );
     const flow = join({
       stops: new Map([
         [
@@ -180,18 +182,7 @@ describe("joinProjectFlows", () => {
           ]),
         ],
       ]),
-      forges: new Map([
-        [
-          "g1",
-          {
-            ...forgeState(),
-            released: {
-              releases: [13, 12, 11, 10, 9].map(release),
-              tags: ["v0.1.9", "v0.1.10", "v0.1.11", "v0.1.12", "v0.1.13"],
-            },
-          },
-        ],
-      ]),
+      releases: new Map([["g1", [13, 12, 11, 10, 9].map(release)]]),
     }).get("g1");
     expect(flow?.environments.map(({ version }) => version.label)).toEqual([label]);
     expect(flow?.environments[0]?.version.sha).toBe(MEDUSA);
@@ -202,11 +193,7 @@ describe("joinProjectFlows", () => {
   const RUNNING = "1".repeat(40);
   const MERGED = "2".repeat(40);
   const TAGGED_AT = "2026-09-24T10:00:00Z";
-  function flowWithProductionDeploy(
-    latest: HqDeploy | undefined,
-    productionRuns: string = RUNNING,
-    verdict: "approved" | "pending" = "approved",
-  ) {
+  function flowWithProductionDeploy(latest: HqDeploy | undefined, productionRuns = RUNNING) {
     return join({
       stops: new Map([
         [
@@ -231,41 +218,7 @@ describe("joinProjectFlows", () => {
           ]),
         ],
       ]),
-      forges: new Map([
-        [
-          "g1",
-          {
-            ...forgeState(),
-            released: {
-              releases: [
-                {
-                  tag: "v0.1.1",
-                  verdict,
-                  detail: undefined,
-                  line: "",
-                  entries: [{ service: "app", commit: MERGED }],
-                  taggedAt: TAGGED_AT,
-                },
-                {
-                  tag: "v0.1.0",
-                  verdict: "approved",
-                  detail: undefined,
-                  line: "",
-                  entries: [{ service: "app", commit: RUNNING }],
-                  taggedAt: undefined,
-                },
-              ],
-              tags: ["v0.1.0", "v0.1.1"],
-              newest: {
-                tag: "v0.1.1",
-                verdict,
-                entries: [{ service: "app", commit: MERGED }],
-                taggedAt: TAGGED_AT,
-              },
-            },
-          },
-        ],
-      ]),
+      releases: new Map([["g1", [approved("v0.1.1", { app: MERGED }, TAGGED_AT), FIRST]]]),
     }).get("g1");
   }
 
@@ -304,13 +257,9 @@ describe("joinProjectFlows", () => {
     expect(rowsOf(flowWithProductionDeploy(latest, runs))).toEqual(rows);
   });
 
-  it("holds a pending release tag in flight until production runs it", () => {
-    expect(flowWithProductionDeploy(undefined, RUNNING, "pending")?.release.inFlight).toBe(
-      "v0.1.1",
-    );
-    expect(flowWithProductionDeploy(undefined, MERGED, "pending")?.release.inFlight).toBe(
-      undefined,
-    );
+  it("holds the newest release in flight until production runs it", () => {
+    expect(flowWithProductionDeploy(undefined, RUNNING)?.release.inFlight).toBe("v0.1.1");
+    expect(flowWithProductionDeploy(undefined, MERGED)?.release.inFlight).toBe(undefined);
   });
 
   it.each([
