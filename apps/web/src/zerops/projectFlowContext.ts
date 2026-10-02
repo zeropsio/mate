@@ -136,16 +136,6 @@ export interface ZeropsProjectFlowValue {
    * verb's refusal said, until the next verb.
    */
   readonly trouble: string | null;
-  /** Opens one in Gitea as the person, from a branch onto the repository's default. */
-  readonly createPullRequest: (
-    slug: string,
-    input: {
-      readonly repository: string;
-      readonly head: string;
-      readonly base: string;
-      readonly title: string;
-    },
-  ) => Promise<void>;
   /** Tags what the stage runs as the next release (`release.ts`). */
   readonly release: (groupId: string) => Promise<FlowVerbOutcome>;
   /** A new tag listing an earlier release's commits (guide 5.6). */

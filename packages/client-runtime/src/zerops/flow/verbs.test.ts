@@ -22,10 +22,6 @@ describe("flowVerbInvalidations", () => {
       expected: { forge: null, deploys: "group" },
     },
     {
-      verb: { kind: "open", slug: "harbor", repository: "appdev", head: "mate/ada" },
-      expected: { forge: null, deploys: null },
-    },
-    {
       verb: { kind: "release", groupId: "g1" },
       expected: { forge: { kind: "tags" }, deploys: null },
     },

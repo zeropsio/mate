@@ -59,7 +59,6 @@ import {
 import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
 import { mateDiagnostics } from "@t3tools/client-runtime/zerops/diagnostics";
 import { zeropsThrowawayPlatform } from "@t3tools/client-runtime/zerops/doorThrowaway";
-import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 import type { HqChange } from "@t3tools/shared/hqChanges";
 import {
   useCallback,
@@ -116,7 +115,6 @@ export const HELD_VERB_MS = 30_000;
 /** What a second press of a verb that is still running says: the first one is the one that counts. */
 export const VERB_ALREADY_RUNNING = "It is already on its way.";
 
-const DONE: FlowVerbOutcome = { ok: true };
 const refused = (reason: string): FlowVerbOutcome => ({ ok: false, reason });
 
 /**
@@ -642,11 +640,6 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
     }
   }, [flows]);
 
-  const groupOfSlug = useMemo(
-    () => new Map(registry.registry.groups.map((entry) => [entry.slug, entry.groupId])),
-    [registry.registry.groups],
-  );
-
   /** Re-reads what a settled verb changed, in its own group and nothing else (`flow/verbs.ts`). */
   const reread = useCallback(
     (verb: FlowVerb, groupId: string | undefined) => {
@@ -772,39 +765,6 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
     return refused(reason);
   }, []);
 
-  const createPullRequest = useCallback(
-    async (
-      slug: string,
-      input: {
-        readonly repository: string;
-        readonly head: string;
-        readonly base: string;
-        readonly title: string;
-      },
-    ) => {
-      const client = actingClient();
-      if (client === null) return;
-      await run(
-        { kind: "open", slug, repository: input.repository, head: input.head },
-        groupOfSlug.get(slug),
-        async () => {
-          try {
-            await client.createPullRequest(slug, input.repository, {
-              head: input.head,
-              base: input.base,
-              title: input.title,
-            });
-            setTrouble(null);
-            return DONE;
-          } catch (cause) {
-            return refuse(`Gitea would not open the pull request: ${zeropsErrorMessage(cause)}`);
-          }
-        },
-      );
-    },
-    [actingClient, groupOfSlug, refuse, run],
-  );
-
   /**
    * A tag on a commit of the group repo's `main`, as the person; Gitea's tag protection is the
    * real gate. Whether the tag was made, or why not.
@@ -928,12 +888,10 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
       pending: pendingOrHeld,
       // Flows that stand with no token say why where the verbs are, ahead of what a verb said.
       trouble: (signedIn ? signInTrouble : null) ?? trouble,
-      createPullRequest,
       release,
       rollBack,
     }),
     [
-      createPullRequest,
       deployments,
       flows,
       giteaOrigin,

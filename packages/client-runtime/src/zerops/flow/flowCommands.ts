@@ -1,7 +1,7 @@
 /**
- * The flow's verbs as command attempts (DESIGN §4.9, §4.7 "Verbs", §2.D D8): Open, Release and
- * Roll back, each keyed by its target, so a refusal on one branch or group never shows on
- * another. A Mate's change merges in HQ, not here.
+ * The flow's verbs as command attempts (DESIGN §4.9, §4.7 "Verbs", §2.D D8): Release and Roll
+ * back, each keyed by its group, so a refusal on one group never shows on another. A Mate's
+ * change is opened by its push and merged in HQ, not here.
  *
  * ```
  *  requested ─[capability waitable]─► awaiting-capability (≤ 30 s) ─allowed─► pending
@@ -13,8 +13,7 @@
  *
  * - The capability is the Gitea session's (§4.3 `forge(origin)`), asked before the attempt and
  *   again before each write of a compound command; waiting for it never counts against a write.
- * - Settlement invalidates exactly what the verb changed: opening a pull request, its repository;
- *   a release or a roll back, the group repo.
+ * - Settlement invalidates exactly what the verb changed: the group repo.
  * - A write is never sent twice: a second press while one runs is the same attempt, and an
  *   attempt whose answer was lost is `uncertain`, never retried.
  *
@@ -34,16 +33,6 @@ import { RELEASE_NOT_A_RELEASER, releaseMessage, releaseTagName, rollbackTo } fr
 import type { GroupFlow } from "./groupFlow.ts";
 
 export type FlowCommand =
-  | {
-      readonly kind: "open";
-      readonly origin: string;
-      readonly slug: string;
-      readonly repository: string;
-      /** The branch it opens from, onto `base`. */
-      readonly head: string;
-      readonly base: string;
-      readonly title: string;
-    }
   | {
       readonly kind: "release";
       readonly origin: string;
@@ -114,15 +103,6 @@ export interface FlowCommands {
 /** What a settled verb changed at its source (§4.7 "Verbs"). */
 export function flowCommandInvalidations(command: FlowCommand): ReadonlyArray<Invalidation> {
   switch (command.kind) {
-    case "open":
-      return [
-        {
-          topic: "forge-repo",
-          origin: command.origin,
-          owner: command.slug,
-          repo: command.repository,
-        },
-      ];
     case "release":
     case "roll-back":
       return [
@@ -150,9 +130,8 @@ export function releaseCommand(flow: GroupFlow, origin: string): FlowCommand | n
   };
 }
 
-/** A verb as a surface asks for it: a pull request by its group's slug, a release by its group. */
+/** A verb as a surface asks for it: by its group. */
 export type FlowRequest =
-  | Omit<Extract<FlowCommand, { readonly kind: "open" }>, "origin">
   | { readonly kind: "release"; readonly groupId: string }
   | { readonly kind: "roll-back"; readonly groupId: string; readonly tag: string };
 
@@ -167,8 +146,6 @@ export function flowCommandFor(
 ): FlowCommand | null {
   const groups = [...flows];
   switch (request.kind) {
-    case "open":
-      return { ...request, origin };
     case "release": {
       const flow = groups.find(({ groupId }) => groupId === request.groupId);
       return flow === undefined ? null : releaseCommand(flow, origin);
@@ -310,20 +287,6 @@ export function makeFlowCommands(ports: FlowCommandPorts): FlowCommands {
 
   const act = async (command: FlowCommand, client: GiteaClient): Promise<FlowAttempt> => {
     switch (command.kind) {
-      case "open":
-        try {
-          await client.createPullRequest(command.slug, command.repository, {
-            head: command.head,
-            base: command.base,
-            title: command.title,
-          });
-          return { phase: "accepted" };
-        } catch (cause) {
-          return writeSettled(
-            cause,
-            (error) => `Gitea would not open the pull request: ${error.detail ?? error.message}`,
-          );
-        }
       case "release":
         return tag(command, client, command.tag, command.message);
       case "roll-back": {

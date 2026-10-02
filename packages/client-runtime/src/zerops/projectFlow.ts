@@ -40,10 +40,7 @@ export interface FlowPullRequest {
   readonly mateProjectId: string | undefined;
   readonly author: string | undefined;
   readonly url: string | undefined;
-  /**
-   * Gitea's answers over the reads so far (`forge/mergeState.ts`), never the
-   * app's: Merge is offered only where it is `mergeable`.
-   */
+  /** HQ's word on whether it merges (`changeMergeability.ts`), never the app's. */
   readonly mergeability: MergeabilityKind;
   /**
    * Whether it has already landed.
@@ -489,12 +486,6 @@ export type FlowVerb =
       readonly repository: string;
       readonly number: number;
     }
-  | {
-      readonly kind: "open";
-      readonly slug: string;
-      readonly repository: string;
-      readonly head: string;
-    }
   | { readonly kind: "release"; readonly groupId: string }
   | { readonly kind: "roll-back"; readonly groupId: string; readonly tag: string };
 
@@ -507,8 +498,6 @@ export function flowVerbKey(verb: FlowVerb): string {
   switch (verb.kind) {
     case "merge":
       return `merge ${verb.slug}/${verb.repository}#${verb.number}`;
-    case "open":
-      return `open ${verb.slug}/${verb.repository} ${verb.head}`;
     case "release":
       return `release ${verb.groupId}`;
     case "roll-back":
@@ -521,8 +510,6 @@ export function flowVerbLabel(kind: FlowVerb["kind"], running: boolean): string 
   switch (kind) {
     case "merge":
       return running ? "Merging…" : "Merge";
-    case "open":
-      return running ? "Opening…" : "Open pull request";
     case "release":
       return running ? "Releasing…" : "Release";
     case "roll-back":

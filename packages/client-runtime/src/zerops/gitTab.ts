@@ -1,40 +1,33 @@
 /**
- * The Git tab's join: a branch, the pull request open from it, and the
- * environment that picks it up (guide 4.5).
+ * The Git tab's join: a branch, the Mate's change in HQ, and the environment
+ * that picks it up (guide 4.5; SPEC §3.2a).
  *
  * ## Two sources, and neither may answer for the other
  *
  * Which branch a Mate is on is the **working copy's** fact. It lives in the dev
- * container and the Mate server streams it (`subscribeVcsStatus`). What that
- * branch *means* outside the container is **Gitea's**: whether a pull request
- * is open from it, what this person may do in that repository. And which environment would pick it up on merge is the **group
- * repo's**, from `environments.yaml`.
+ * container and the Mate server streams it (`subscribeVcsStatus`). What the
+ * Mate's work *means* outside the container is **HQ's**: its newest change in
+ * the repository, open or landed, as HQ's stream tells it. And which
+ * environment would pick it up on merge is the **group repo's**, from
+ * `environments.yaml`.
  *
- * Nothing here infers one from another. In particular:
- *
- * - *what the person may do* comes from the repository probe's `permissions`,
- *   never from the role the app happens to know — the mirror lags a role
- *   change by minutes;
- * - *that the remote is healthy* — which is also the only proof the Mate holds
- *   the Gitea access the broker's rights loop writes onto it — comes from a
- *   live `git ls-remote`, never from the last push having worked or from a
- *   `GITEA_TOKEN` key being present.
- *
- * A tab that mixes them shows "configured" for a broken setup, which is the one
- * outcome 4.5 names.
+ * Nothing here infers one from another. In particular, *that the remote is
+ * healthy* comes from a live `git ls-remote`, never from the last push having
+ * worked. A tab that mixes them shows "configured" for a broken setup, which is
+ * the one outcome 4.5 names.
  *
  * ## One block per repository, one answer, one verb
  *
- * A block opens with where the work stands — `Open as #12, waiting for
- * somebody to merge it.` — and carries the verb that moves it. Under the
- * answer, quietly, the checkout it was read from: the branch, what is unpushed
- * and what is uncommitted, and which environment the work lands on.
+ * A block opens with where the work stands — `Nothing is stopping it.` — and
+ * carries the verb that moves it. Under the answer, quietly, the checkout it
+ * was read from: the branch, what is unpushed and what is uncommitted, and
+ * which environment the work lands on.
  *
- * At most one verb, and it is the one the work needs next: you cannot open a
- * pull request for a branch you have not pushed, and updating from `main`
- * before pushing is how a person loses work, so the order the verbs are
- * offered in is the order the work actually happens in. A state that offers no
- * verb says why it offers none.
+ * At most one verb, and it is the one the work needs next: updating from `main`
+ * before pushing is how a person loses work, so the order the verbs are offered
+ * in is the order the work actually happens in. A Mate's push opens its change
+ * (SPEC §3.2a), so nobody opens one here. A state that offers no verb says why
+ * it offers none.
  *
  * A block whose setup has been *proved* broken says what was proved — git's own
  * line for a remote that refused — and offers no verb that would run against it.
@@ -48,9 +41,9 @@ import { ZEROPS_GIT_REMOTE_DETAIL_MAX_CHARS } from "@t3tools/contracts";
 import type { ServiceStatusToneId } from "@t3tools/shared/brand";
 
 import type { MergeabilityKind } from "./changeMergeability.ts";
-import type { GiteaPullRequest, GiteaRepository } from "./giteaClient.ts";
 import type { GroupEnvironment } from "./groupEnvironments.ts";
 import { branchLabel } from "./mateIdentity.ts";
+import type { FlowPullRequest } from "./projectFlow.ts";
 import { REVIEW_LABEL } from "./reviewVerdict.ts";
 import { foldedStageHostnames } from "./serviceMap.ts";
 import type { ZeropsTopologyService } from "./topology.ts";
@@ -83,29 +76,42 @@ export interface GitChangedFile {
   readonly deletions: number;
 }
 
-/** What Gitea says about that repository and branch, answering as the person. */
-export interface GitForgeState {
+/** What HQ says of the Mate's work in that repository. */
+export interface GitChangeState {
   /**
-   * Whether the forge answered at all.
+   * Whether HQ's stream has told the application's changes at all.
    *
-   * `false` is not an answer about the repository, it is the absence of one.
-   * The field below has always said so in a comment, and `stateOf` read it as
-   * "there is none" anyway: the Git tab opened by telling a person their work
-   * did not exist, listed five of their commits under that sentence, and then
-   * took the whole thing back (measured on the live account, 2026-09-19).
+   * `false` is not an answer about the work, it is the absence of one: the Git
+   * tab once opened by telling a person their work did not exist, listed five
+   * of their commits under that sentence, and then took the whole thing back
+   * (measured on the live account, 2026-09-19).
    */
   readonly read: boolean;
-  /** `undefined` while nothing has been asked — not "it is not there". */
-  readonly repository: GiteaRepository | undefined;
-  /** The pull request whose head is this branch, open or freshly merged. */
-  readonly pullRequest: GitForgePullRequest | undefined;
+  /** The Mate's newest change in the repository, open or landed (`mateChangeIn`). */
+  readonly change: FlowPullRequest | undefined;
 }
 
-/** A pull request as Gitea sent it, with how it merges over the reads so far. */
-export interface GitForgePullRequest {
-  readonly pull: GiteaPullRequest;
-  /** From `forge/mergeState.ts`, never from `pull.mergeable` on its own. */
-  readonly mergeability: MergeabilityKind;
+/**
+ * A Mate's newest change in a repository, as the flow carries its application's — the open one,
+ * if any, being the newest, since a Mate opens a number only while none is open. A change closed
+ * without landing is no work of anybody's any more.
+ */
+export function mateChangeIn(
+  flow: {
+    readonly pullRequests: ReadonlyArray<FlowPullRequest>;
+    readonly merged: ReadonlyArray<FlowPullRequest>;
+  },
+  mateProjectId: string | undefined,
+  repository: string,
+): FlowPullRequest | undefined {
+  const own = (change: FlowPullRequest) =>
+    change.mateProjectId === mateProjectId && change.repository === repository;
+  return [...flow.pullRequests.filter(own), ...flow.merged.filter(own)].reduce<
+    FlowPullRequest | undefined
+  >(
+    (newest, change) => (newest === undefined || change.number > newest.number ? change : newest),
+    undefined,
+  );
 }
 
 /**
@@ -125,10 +131,10 @@ export interface GitBlockEvidence {
 
 /** What the person is looking at, in one word the block is built around. */
 export type GitBlockState =
-  /** The forge has not answered. Says nothing, and must not be made to. */
+  /** HQ has not told the changes. Says nothing, and must not be made to. */
   "unread" | "no-repository" | "untouched" | "unpushed" | "behind" | "in-review" | "merged";
 
-export type GitBlockActionKind = "open-pull-request" | "update-from-main" | "push" | "review";
+export type GitBlockActionKind = "update-from-main" | "push" | "review";
 
 export interface GitBlockAction {
   readonly kind: GitBlockActionKind;
@@ -137,8 +143,8 @@ export interface GitBlockAction {
   readonly running: string;
   /**
    * The verb runs in the container, through the Mate server, as the agent's
-   * user — so only the Mate's owner may press it (D11). A verb that runs in
-   * Gitea as the person is not owner-only: Gitea polices it.
+   * user — so only the Mate's owner may press it (D11). *Review* only opens
+   * the review, which polices what it offers.
    */
   readonly ownerOnly: boolean;
 }
@@ -149,7 +155,7 @@ export interface GitBlock {
   readonly branch: string;
   /**
    * Where this repository's work stands, and in what colour. `undefined`
-   * while the forge has not answered — the block holds the place open rather
+   * while HQ has not told the changes — the block holds the place open rather
    * than filling it with a sentence it would have to withdraw.
    */
   readonly verdict: GitVerdict | undefined;
@@ -158,11 +164,11 @@ export interface GitBlock {
   readonly state: GitBlockState;
   /** What is changed on disk and not committed — the container's own fact. */
   readonly changed: ReadonlyArray<GitChangedFile>;
+  /** The Mate's change in it, by its number, head and address at HQ. */
   readonly pullRequestNumber: number | undefined;
-  /** The pull request's head as read — the only commit *Merge* lands. */
   readonly pullRequestHead: string | undefined;
   readonly pullRequestUrl: string | undefined;
-  /** The branch a pull request from `branch` targets — the repository's default, `main` until Gitea says. */
+  /** The branch the work goes onto: `main`, which every change in HQ goes onto. */
   readonly baseBranch: string;
   /** `stage picks it up on merge`, or empty when nothing would. */
   readonly destination: string;
@@ -174,8 +180,8 @@ export interface GitBlock {
   readonly trouble: string;
 }
 
-/** The default branch when Gitea has not been asked yet. */
-const FALLBACK_DEFAULT_BRANCH = "main";
+/** Where every change in HQ goes. */
+const MAIN = "main";
 
 /**
  * Which environment picks a branch up, from `environments.yaml`.
@@ -194,12 +200,12 @@ export function environmentForBranch(
 }
 
 /**
- * Why a pull request offers no *Merge*, in the words a row has space for —
- * `null` where Gitea says it merges and the verb speaks for itself.
+ * Why a change offers no *Merge*, in the words a row has space for — `null`
+ * where HQ says it merges and the verb speaks for itself.
  *
- * A row that simply dropped its verb was a dead end: Gitea had refused, and
- * the menu said nothing about it, so the person was left to open the request
- * to find out. Gitea's own answer is the only authority here (MU-1's
+ * A row that simply dropped its verb was a dead end: the merge had been
+ * refused, and the menu said nothing about it, so the person was left to open
+ * the change to find out. HQ's own answer is the only authority here (MU-1's
  * discipline applied to merges): nothing recomputes whether a branch merges.
  *
  * Every refusal has a word, including the red one. A row whose right edge is
@@ -247,9 +253,8 @@ export function pullRequestBlocked(pull: {
   // Nothing in it that `main` lacks: nothing is in anybody's way, and nobody is asked anything.
   if (pull.mergeability === "empty")
     return { kind: "empty", word: "nothing to merge", tone: "off", ask: undefined };
-  // Gitea answers "no" for a moment after every push while it works the
-  // answer out again (A11): that is nobody's to act on, and a rebase asked for
-  // on the strength of it would be work invented by the surface.
+  // Not said yet whether it merges: that is nobody's to act on, and a rebase
+  // asked for on the strength of it would be work invented by the surface.
   if (pull.mergeability === "checking")
     return { kind: "checking", word: "checking", tone: "busy", ask: undefined };
   return {
@@ -329,7 +334,7 @@ export function gitVerdict(input: {
   readonly state: GitBlockState;
   readonly checkout: GitCheckoutState;
   readonly pullRequestNumber: number | undefined;
-  /** Whether the forge would take the merge. Not whether it is a good idea. */
+  /** Whether HQ would take the merge. Not whether it is a good idea. */
   readonly mergeability: MergeabilityKind;
   readonly baseBranch: string;
   readonly trouble: string;
@@ -400,10 +405,10 @@ export function gitVerdict(input: {
 }
 
 /**
- * A pull request's answer, by whether the forge would take it, in this tab's
- * words. While Gitea is still working out whether it merges, that is what it
- * says, never a rebase. Grey for one nothing stops: no signal about it is not a
- * good signal, the same quiet its own page gives it.
+ * A change's answer, by whether HQ would take it, in this tab's words. While it
+ * is not said yet whether it merges, that is what it says, never a rebase. Grey
+ * for one nothing stops: no signal about it is not a good signal, the same
+ * quiet its own page gives it.
  */
 const IN_REVIEW: Record<MergeabilityKind, Omit<GitVerdict, "ask">> = {
   mergeable: { tone: "off", text: "Nothing is stopping it." },
@@ -434,18 +439,18 @@ export function gitTrouble(evidence: GitBlockEvidence): string {
  * run as the agent's user, over the container's own credential. A setup proved
  * broken is exactly the setup those verbs need, so they are not offered:
  * pressing one would spend a round trip to arrive at the sentence the block is
- * already showing. Gitea-side verbs are unaffected — they run as the person,
- * from the browser, and the container's remote is not in their path.
+ * already showing. *Review* is unaffected — the container's remote is not in
+ * its path.
  */
 function runsInTheContainer(action: GitBlockAction): boolean {
   return action.kind === "push" || action.kind === "update-from-main";
 }
 
-function stateOf(checkout: GitCheckoutState, forge: GitForgeState): GitBlockState {
-  if (!forge.read) return "unread";
-  if (!checkout.isRepo || forge.repository === undefined) return "no-repository";
-  if (forge.pullRequest?.pull.merged === true) return "merged";
-  if (forge.pullRequest?.pull.state === "open") return "in-review";
+function stateOf(checkout: GitCheckoutState, changes: GitChangeState): GitBlockState {
+  if (!changes.read) return "unread";
+  if (!checkout.isRepo) return "no-repository";
+  if (changes.change?.merged === true) return "merged";
+  if (changes.change?.state === "open") return "in-review";
   if (!checkout.hasUpstream || checkout.aheadCount > 0) return "unpushed";
   if (checkout.behindCount > 0) return "behind";
   return "untouched";
@@ -455,17 +460,12 @@ function stateOf(checkout: GitCheckoutState, forge: GitForgeState): GitBlockStat
  * The one verb, in the order the work happens: push what is local, then take
  * what is remote, then review what is open.
  *
- * An open pull request offers *Review* whatever Gitea says about it — the one
- * door to merging (pass 16, R1): the review says whether it can merge and why
- * not, and carries *Merge*. A branch that *is* the default never offers a pull
- * request — there would be nothing to merge it into — and a merged one offers
- * nothing at all: the broker is deploying it, and the person's part is over.
+ * An open change offers *Review* whatever is said about it — the one door to
+ * merging (pass 16, R1): the review says whether it can merge and why not. A
+ * merged one offers nothing at all, and neither does pushed work with no
+ * change open: the Mate's push opens its change (SPEC §3.2a).
  */
-function actionOf(
-  checkout: GitCheckoutState,
-  forge: GitForgeState,
-  state: GitBlockState,
-): GitBlockAction | undefined {
+function actionOf(checkout: GitCheckoutState, state: GitBlockState): GitBlockAction | undefined {
   if (state === "unread" || state === "no-repository" || state === "merged") return undefined;
   if (state === "unpushed" && checkout.isRepo) {
     return { kind: "push", label: "Push", running: "Pushing…", ownerOnly: true };
@@ -481,35 +481,29 @@ function actionOf(
   if (state === "in-review") {
     return { kind: "review", label: REVIEW_LABEL, running: REVIEW_LABEL, ownerOnly: false };
   }
-  const defaultBranch = forge.repository?.default_branch ?? FALLBACK_DEFAULT_BRANCH;
-  if (checkout.headRef === null || checkout.headRef === defaultBranch) return undefined;
-  return {
-    kind: "open-pull-request",
-    label: "Open pull request",
-    running: "Opening…",
-    ownerOnly: false,
-  };
+  return undefined;
 }
 
 /** One repository's block — the two lines and the verb. */
 export function gitBlock(input: {
   readonly checkout: GitCheckoutState;
-  readonly forge: GitForgeState;
+  readonly changes: GitChangeState;
   readonly declarations: ReadonlyArray<GroupEnvironment>;
   readonly evidence: GitBlockEvidence;
   /** Whose Mate this is, so its own branch reads as a name rather than an id. */
   readonly mateName?: string | undefined;
 }): GitBlock {
-  const { checkout, forge } = input;
-  const state = stateOf(checkout, forge);
-  // A merge lands on the pull request's base; without one, on the branch
-  // itself — which is what a push to a source branch already does.
-  const target = forge.pullRequest?.pull.base?.ref ?? checkout.headRef;
+  const { checkout, changes } = input;
+  const change = changes.change;
+  const state = stateOf(checkout, changes);
+  // A merge lands on the change's base; without one, on the branch itself —
+  // which is what a push to a source branch already does.
+  const target = change?.baseBranch ?? checkout.headRef;
   const environment =
     state === "unread" || state === "no-repository"
       ? // Where the branch lands is local knowledge, but its wording is not:
-        // the same branch reads "runs this branch" before the forge answers
-        // and "picks it up on merge" after. Said once, when it is settled.
+        // the same branch reads "runs this branch" before HQ answers and
+        // "picks it up on merge" after. Said once, when it is settled.
         undefined
       : environmentForBranch(input.declarations, target);
   const picksUp =
@@ -523,27 +517,27 @@ export function gitBlock(input: {
           ? `${environment} runs it`
           : `${environment} runs this branch`;
   const trouble = gitTrouble(input.evidence);
-  const action = actionOf(checkout, forge, state);
-  const baseBranch = forge.repository?.default_branch ?? FALLBACK_DEFAULT_BRANCH;
+  const action = actionOf(checkout, state);
+  const baseBranch = change?.baseBranch ?? MAIN;
   const verdict = gitVerdict({
     state,
     checkout,
-    pullRequestNumber: forge.pullRequest?.pull.number,
-    // Read only in review, which has a pull request.
-    mergeability: forge.pullRequest?.mergeability ?? "checking",
+    pullRequestNumber: change?.number,
+    // Read only in review, which has a change.
+    mergeability: change?.mergeability ?? "checking",
     baseBranch,
     trouble,
   });
   return {
     repository: checkout.repository,
-    branch: checkout.headRef ?? FALLBACK_DEFAULT_BRANCH,
+    branch: checkout.headRef ?? MAIN,
     verdict,
     checkoutLine: gitCheckoutLine(checkout, input.mateName),
     state,
     changed: checkout.changed,
-    pullRequestNumber: forge.pullRequest?.pull.number,
-    pullRequestHead: forge.pullRequest?.pull.head?.sha,
-    pullRequestUrl: forge.pullRequest?.pull.html_url,
+    pullRequestNumber: change?.number,
+    pullRequestHead: change?.headSha,
+    pullRequestUrl: change?.url,
     baseBranch,
     destination: picksUp,
     action:
@@ -557,8 +551,8 @@ export function gitBlock(input: {
  *
  * Checkout-side verbs run in the Mate's container as the agent's user, so they
  * are the **owner's** alone (D11) — an org admin who can open the Mate is not
- * the person whose agent that is. Everything else runs in Gitea as the person,
- * where Gitea's own permissions are the gate and the app adds none.
+ * the person whose agent that is. *Review* opens the review, which polices
+ * what it offers; the app adds no gate of its own.
  */
 export function gitActionAllowed(
   action: GitBlockAction | undefined,

@@ -31,8 +31,6 @@ export function flowVerbInvalidations(verb: FlowVerb): FlowInvalidation {
             ? "group"
             : { kind: "main-head", repository: verb.repository },
       };
-    case "open":
-      return { forge: null, deploys: null };
     case "release":
     case "roll-back":
       return { forge: { kind: "tags" }, deploys: null };

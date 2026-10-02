@@ -1,13 +1,14 @@
 /**
  * The Git tab, given everything it needs from the account.
  *
- * The tab itself joins a checkout with a forge (`ZeropsGitTab`); this is what
- * tells it *which* forge: the account's Gitea, the group this Mate's project
- * belongs to, and whether this person is the Mate's owner (D11). The group's
- * side — its Gitea org, the declarations that say which environment picks a
- * branch up, the session with Gitea — is the project flow's, read once for
- * the whole account (`ZeropsProjectFlowProvider`); the tab adds only what is
- * this Mate's: its checkouts, and the pull request open from each.
+ * The tab itself joins a checkout with the Mate's change in HQ (`ZeropsGitTab`);
+ * this is what tells it *whose*: the group this Mate's project belongs to, and
+ * whether this person is the Mate's owner (D11). The group's side — its
+ * changes as HQ's stream tells them, the declarations that say which
+ * environment picks a branch up, its Gitea org and the session with Gitea — is
+ * the project flow's, read once for the whole account
+ * (`ZeropsProjectFlowProvider`); the tab adds only what is this Mate's: its
+ * checkouts, and its change in each.
  *
  * Signed out of Gitea, only the checkout half can speak; the tab says so.
  */
@@ -68,25 +69,6 @@ export function ZeropsGitSurface({ threadRef }: { readonly threadRef: ScopedThre
       },
     }) === "OWNER";
 
-  /**
-   * The verb that runs in Gitea as the person (D21), where Gitea's own
-   * permissions are the gate: a pull request from the Mate's branch onto the
-   * repository's default branch. The flow's, so the left menu's timeline moves
-   * the moment it settles. Its merge is the review's (pass 16, R1).
-   */
-  const onCreatePullRequest = useCallback(
-    async (block: GitBlock) => {
-      if (owner === undefined) return;
-      await flow.createPullRequest(owner, {
-        repository: block.repository,
-        head: block.branch,
-        base: block.baseBranch,
-        title: `${block.repository}: ${block.branch}`,
-      });
-    },
-    [flow, owner],
-  );
-
   const openReview = useOpenReview();
   const onReviewPullRequest = useCallback(
     (block: GitBlock, from: HTMLElement) => {
@@ -140,11 +122,12 @@ export function ZeropsGitSurface({ threadRef }: { readonly threadRef: ScopedThre
         </p>
       )}
       <ZeropsGitTab
+        changes={projectFlow?.changesKnown === true ? projectFlow : undefined}
         declarations={projectFlow?.declarations ?? []}
         giteaOrigin={flow.giteaOrigin}
         isOwner={isOwner}
         mateName={mateName}
-        onCreatePullRequest={onCreatePullRequest}
+        mateProjectId={project?.id}
         onReviewPullRequest={onReviewPullRequest}
         onOpenChange={onOpenChange}
         owner={owner}

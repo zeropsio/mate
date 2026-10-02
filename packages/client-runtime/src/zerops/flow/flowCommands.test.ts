@@ -40,8 +40,6 @@ function rig(initial: Capability = { allowed: true }) {
     createTag: (owner: string, repo: string, input: { readonly tag: string }) =>
       call(`tag ${owner}/${repo} ${input.tag}`),
     listTags: (owner: string, repo: string) => call(`tags ${owner}/${repo}`),
-    createPullRequest: (owner: string, repo: string, input: { readonly head: string }) =>
-      call(`open ${owner}/${repo} ${input.head}`),
   } as unknown as GiteaClient;
   const ports: FlowCommandPorts = {
     capability: () => capability,
@@ -115,26 +113,6 @@ describe("flow commands (DESIGN §4.9, §4.7 verbs)", () => {
     ).toEqual({ phase: "accepted" });
     const group = { topic: "forge-repo", origin: GITEA, owner: "harbor", repo: "group" };
     expect(invalidated).toEqual([group, group]);
-  });
-
-  it("Open re-reads only that repo's pull requests", async () => {
-    const { commands, invalidated, calls } = rig();
-
-    const attempt = await commands.run({
-      kind: "open",
-      origin: GITEA,
-      slug: "harbor",
-      repository: "appdev",
-      head: "mate/ada",
-      base: "main",
-      title: "Add cart",
-    });
-
-    expect(attempt).toEqual({ phase: "accepted" });
-    expect(calls).toEqual(["open harbor/appdev mate/ada"]);
-    expect(invalidated).toEqual([
-      { topic: "forge-repo", origin: GITEA, owner: "harbor", repo: "appdev" },
-    ]);
   });
 
   it("a capability nothing can bring back refuses at once, typed, and writes nothing", async () => {
@@ -307,7 +285,7 @@ describe("a group flow's commands", () => {
     expect(releaseCommand(flow({ state: "reading", sinceMs: 1, attempt: 1 }), GITEA)).toBeNull();
   });
 
-  it("verbs are addressed as surfaces call them: a branch by its group's slug, a release by its group", () => {
+  it("verbs are addressed as surfaces call them: by their group", () => {
     const flows = [
       flow({
         state: "known",
@@ -318,15 +296,6 @@ describe("a group flow's commands", () => {
       }),
     ];
 
-    const open = {
-      kind: "open",
-      slug: "harbor",
-      repository: "appdev",
-      head: "mate/ada",
-      base: "main",
-      title: "Add cart",
-    } as const;
-    expect(flowCommandFor(open, flows, GITEA)).toEqual({ ...open, origin: GITEA });
     expect(flowCommandFor({ kind: "release", groupId: "g1" }, flows, GITEA)).toEqual(RELEASE);
     expect(
       flowCommandFor({ kind: "roll-back", groupId: "g1", tag: "v1.0.0" }, flows, GITEA),

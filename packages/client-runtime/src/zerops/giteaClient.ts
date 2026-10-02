@@ -212,8 +212,7 @@ export interface GiteaPullRequest {
   readonly html_url?: string | undefined;
   /**
    * Gitea's answer to "does it merge", which it recomputes after every push to
-   * either side: `false` or `null` for a while after one is not yet a verdict
-   * (`forge/mergeState.ts`).
+   * either side: `false` or `null` for a while after one is not yet a verdict.
    */
   readonly mergeable?: boolean | null | undefined;
   readonly merged?: boolean | undefined;

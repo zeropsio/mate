@@ -279,14 +279,6 @@
       ],
       "reverseStates": [
         {
-          "action": "Open pull request",
-          "reverse": "none: a pull request is closed in Gitea, which owns it."
-        },
-        {
-          "action": "Merge",
-          "reverse": "none: a merge is undone by a revert, which is a new change."
-        },
-        {
           "action": "Release",
           "reverse": "Roll back to this"
         },

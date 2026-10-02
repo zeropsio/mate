@@ -283,7 +283,6 @@ describe("a verb in flight", () => {
 
   it.each([
     ["merge", "Merge", "Merging…"],
-    ["open", "Open pull request", "Opening…"],
     ["release", "Release", "Releasing…"],
     ["roll-back", "Roll back to this", "Rolling back…"],
   ] as const)("says what %s does, then that it is doing it", (kind, idle, running) => {

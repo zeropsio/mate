@@ -5,10 +5,10 @@
  * per repository, because a hook cannot be called in a loop and because each
  * mount's subscription then lives and dies with its own row. Each status is
  * also a push: commits leaving a checkout for its remote re-read that
- * repository in the account's forge (`useCheckoutPushes`, DESIGN §6.1). The forge half is
- * `useZeropsGitForge`, re-read on open, after each action and every sixty
- * seconds. What the two mean together is `gitTab.ts`, which this file does not
- * second-guess.
+ * repository in the account's forge (`useCheckoutPushes`, DESIGN §6.1). The
+ * change half is the Mate's newest change in each repository, from the
+ * project's flow, which HQ's stream keeps (`mateChangeIn`). What the two mean
+ * together is `gitTab.ts`, which this file does not second-guess.
  *
  * Which repositories there are comes from the project's own topology: a runtime
  * service is a codebase, its hostname is its repository's name in the group's
@@ -16,8 +16,8 @@
  * path zcp mounts every sibling service at.
  *
  * Checkout-side verbs (`vcs.*`) run in the container as the agent's user, so
- * they are the Mate's owner's alone (D11); Gitea-side verbs are Gitea's to
- * police and are offered to whoever can open this Mate.
+ * they are the Mate's owner's alone (D11); *Review* is offered to whoever can
+ * open this Mate, and the review polices what it offers.
  *
  * Whether each remote answers is the third read here, and the only one that is
  * neither live nor on a clock: `zerops.git.probeRemote` on open and after each
@@ -29,6 +29,8 @@ import {
   historyAge,
   gitBlock,
   gitCheckoutHostnames,
+  mateChangeIn,
+  type FlowPullRequest,
   type GitBlock,
   type GitChangedFile,
   type GitCheckoutState,
@@ -45,7 +47,6 @@ import { useNowMs } from "../../zerops/useNowMs";
 
 import { useProjectTopology } from "../../zerops/useProjectTopology";
 import { checkoutPathFor, useZeropsGitRemoteProbes } from "../../zerops/useZeropsGitRemoteProbe";
-import { useZeropsGitForge } from "../../zerops/useZeropsGitForge";
 import { useVcsPullAction } from "../../state/sourceControlActions";
 import { useEnvironmentQuery } from "../../state/query";
 import { vcsEnvironment } from "../../state/vcs";
@@ -173,6 +174,18 @@ export interface ZeropsGitTabProps {
   readonly owner: string | undefined;
   /** `environments.yaml` on the group repo, when it could be read. */
   readonly declarations: ReadonlyArray<GroupEnvironment>;
+  /**
+   * The project's changes as its flow carries them, once HQ's stream has told them; `undefined`
+   * before.
+   */
+  readonly changes:
+    | {
+        readonly pullRequests: ReadonlyArray<FlowPullRequest>;
+        readonly merged: ReadonlyArray<FlowPullRequest>;
+      }
+    | undefined;
+  /** The Mate whose panel this is, by its project: its changes are the ones drawn. */
+  readonly mateProjectId: string | undefined;
   /** Whether this Mate is the viewer's own (D11). */
   readonly isOwner: boolean;
   /** The Mate whose panel this is, so a request names who it is going to. */
@@ -182,8 +195,6 @@ export interface ZeropsGitTabProps {
   readonly signInTrouble?: string | undefined;
   /** Opens a block's change on its own page. */
   readonly onOpenChange?: ((block: GitBlock) => void) | undefined;
-  /** Opens the pull request in Gitea as the person; the forge is read again once it settles. */
-  readonly onCreatePullRequest?: ((block: GitBlock) => Promise<void> | void) | undefined;
   /**
    * Opens the change's review from the verb pressed — the one door to merging (pass 16, R1):
    * nothing merges from the tab.
@@ -223,29 +234,12 @@ export function ZeropsGitTab(props: ZeropsGitTabProps) {
     [topology.view],
   );
 
-  const targets = useMemo(
-    () =>
-      repositories.map((repository) => ({
-        repository,
-        branch: checkouts.get(repository)?.headRef ?? null,
-      })),
-    [checkouts, repositories],
-  );
-
   /**
    * Whether each remote answers, asked here rather than passed in: the probe
    * needs the repositories, and they come from this Mate's own topology. One
    * round on open, one more after each verb (`generation`), never on a clock.
    */
   const remotes = useZeropsGitRemoteProbes({ environmentId, repositories, generation });
-
-  const forges = useZeropsGitForge({
-    giteaOrigin: props.giteaOrigin,
-    owner: props.owner,
-    targets,
-    generation,
-    enabled: props.signedIn,
-  });
 
   const blocks = useMemo(
     () =>
@@ -261,12 +255,14 @@ export function ZeropsGitTab(props: ZeropsGitTabProps) {
             hasUpstream: false,
             changed: EMPTY_CHANGED,
           },
-          // Nothing in the map yet is nothing asked yet, never "no repository".
-          forge: forges.get(repository) ?? {
-            read: false,
-            repository: undefined,
-            pullRequest: undefined,
-          },
+          // Changes not told yet are nothing asked yet, never "no repository".
+          changes:
+            props.changes === undefined
+              ? { read: false, change: undefined }
+              : {
+                  read: true,
+                  change: mateChangeIn(props.changes, props.mateProjectId, repository),
+                },
           declarations: props.declarations,
           ...(props.mateName === undefined ? {} : { mateName: props.mateName }),
           evidence: {
@@ -275,7 +271,15 @@ export function ZeropsGitTab(props: ZeropsGitTabProps) {
           },
         }),
       ),
-    [checkouts, forges, props.declarations, props.mateName, remotes, repositories],
+    [
+      checkouts,
+      props.changes,
+      props.declarations,
+      props.mateName,
+      props.mateProjectId,
+      remotes,
+      repositories,
+    ],
   );
 
   /**
@@ -300,9 +304,9 @@ export function ZeropsGitTab(props: ZeropsGitTabProps) {
   const renderBlockAction = (block: GitBlock) => {
     const action = block.action;
     if (!gitActionAllowed(action, { isOwner: props.isOwner }) || action === undefined) return null;
-    // The forge is read again once the verb has settled, not when it was
-    // pressed: a read racing the request it asks about would show the row as
-    // it was (2026-09-17, the request opened and the row kept offering it).
+    // The remote is probed again once the verb has settled, not when it was
+    // pressed: a probe racing the verb it asks about would show the row as it
+    // was.
     const key = `${block.repository} ${action.kind}`;
     const isRunning = running === key;
     const settled = () => {
@@ -315,12 +319,8 @@ export function ZeropsGitTab(props: ZeropsGitTabProps) {
           setRunning(key);
           void pull.run().finally(settled);
           return;
-        case "open-pull-request":
-          setRunning(key);
-          void Promise.resolve(props.onCreatePullRequest?.(block)).finally(settled);
-          return;
         case "review":
-          // The review holds the merge and reads the forge again itself.
+          // The review reads the change itself.
           props.onReviewPullRequest?.(block, event.currentTarget);
           return;
         case "push":

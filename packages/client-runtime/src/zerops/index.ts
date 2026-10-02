@@ -276,6 +276,7 @@ export {
   gitCheckoutLine,
   gitTrouble,
   gitVerdict,
+  mateChangeIn,
   pullRequestBlocked,
   pullRequestBlockedReason,
   type GitBlock,
@@ -285,8 +286,7 @@ export {
   type GitBlockState,
   type GitChangedFile,
   type GitCheckoutState,
-  type GitForgePullRequest,
-  type GitForgeState,
+  type GitChangeState,
   type GitVerdict,
   type PullRequestBlocked,
 } from "./gitTab.ts";

@@ -78,7 +78,6 @@ function stage() {
   const store = {
     read: (fact: ForgeFact) =>
       held.get(JSON.stringify(fact)) ?? { state: "unread", waitingFor: null },
-    mergeState: () => ({ state: "unread", waitingFor: null }),
     demand: (fact: ForgeFact) => {
       const key = JSON.stringify(fact);
       demanded.set(key, (demanded.get(key) ?? 0) + 1);
