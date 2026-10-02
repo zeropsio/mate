@@ -46,12 +46,15 @@ export type IntentKind = ContainerIntent["kind"];
 /**
  * The `/healthz` `initAt` a restart started from, so a re-init reads as a change and never as a
  * comparison of the container's clock with the browser's: `held` (another value is a re-init),
- * `absent` (the container served no `/mate/healthz`: any value is), or `unread` (the first value
- * read after the restart began becomes `held`, unless it is plainly later than the start).
+ * `absent` (the container served no `/mate/healthz`: any value is), `next` (the Mate answered
+ * before it, read without its `initAt`: the first value a fresh read after the restart began finds
+ * becomes `held`), or `unread` (nothing was read before it, as after a reload: the first value
+ * becomes `held` unless it is plainly later than the start).
  */
 export type InitAtBaseline =
   | { readonly kind: "held"; readonly initAt: string }
   | { readonly kind: "absent" }
+  | { readonly kind: "next" }
   | { readonly kind: "unread" };
 
 // ── Levels ────────────────────────────────────────────────────────────────────────────────────
@@ -340,9 +343,12 @@ const readingSince = (machine: ContainerMachine, since: Instant): ProbeReading |
 const baselineOf = (machine: ContainerMachine): InitAtBaseline => {
   const reading = machine.reading?.reading;
   if (reading?.kind === "predates-mate") return { kind: "absent" };
-  return (reading?.kind === "ready" || reading?.kind === "initializing") && reading.initAt !== null
-    ? { kind: "held", initAt: reading.initAt }
-    : { kind: "unread" };
+  if ((reading?.kind === "ready" || reading?.kind === "initializing") && reading.initAt !== null) {
+    return { kind: "held", initAt: reading.initAt };
+  }
+  // A Mate read on demand answered with its descriptor alone: the restart polls fresh, and its
+  // first read finds the server the restart started from.
+  return reading?.kind === "ready" ? { kind: "next" } : { kind: "unread" };
 };
 
 /**
@@ -404,7 +410,9 @@ const restartOver = (
   const baseline = state.baseline;
   const reinitialized =
     baseline.kind === "absent" ||
-    (baseline.kind === "held" ? initAt !== baseline.initAt : Date.parse(initAt) > state.since.wall);
+    (baseline.kind === "held"
+      ? initAt !== baseline.initAt
+      : baseline.kind === "unread" && Date.parse(initAt) > state.since.wall);
   return reinitialized ? reading : null;
 };
 
@@ -418,7 +426,7 @@ const withBaseline = (
 ): ContainerMachine => {
   const reading = readingSince(machine, state.since);
   const initAt = reading === null ? null : readInitAt(reading);
-  return state.baseline.kind !== "unread" || initAt === null
+  return (state.baseline.kind !== "unread" && state.baseline.kind !== "next") || initAt === null
     ? machine
     : moveTo(machine, { ...state, baseline: { kind: "held", initAt } });
 };

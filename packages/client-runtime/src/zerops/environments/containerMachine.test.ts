@@ -550,12 +550,33 @@ describe("container machine (DESIGN §4.5)", () => {
       ],
     },
     {
-      name: "no initAt held: one later than the restart's start is new at once",
-      held: [active, probed(READY, START_MS)],
+      name: "nothing read before it (a reload): one later than the restart's start is new at once",
+      held: [active],
       intent: "restart",
       after: [{ kind: "initializing", initAt: "2027-01-15T08:10:00.000Z" }],
     },
   ];
+
+  it("a restart of a Mate read without its initAt is judged by the next initAt read, never by the clocks", () => {
+    // The container's clock runs ahead of the browser's: its old initAt is later than the start.
+    const up = drive([active, probed(READY, START_MS)]);
+    const asked = drive(
+      [{ type: "INTENT", intent: { kind: "restart", since: instant(up.nowMs + 1_000) } }],
+      up,
+    );
+    const old = drive(
+      [probed({ ...READY, initAt: "2027-01-15T09:00:00.000Z" }, asked.nowMs)],
+      asked,
+    );
+    expect(containerVerdict(old.machine).level).toBe("restarting");
+    const again = drive([probed({ ...READY, initAt: "2027-01-15T09:00:00.000Z" }, old.nowMs)], old);
+    expect(containerVerdict(again.machine).level).toBe("restarting");
+    const reinit = drive(
+      [probed({ kind: "initializing", initAt: "2027-01-15T09:05:00.000Z" }, again.nowMs)],
+      again,
+    );
+    expect(containerVerdict(reinit.machine)).toEqual({ level: "booting", overdue: false });
+  });
 
   for (const row of REINIT_ROWS) {
     it(`a re-init ends our ${row.intent} whatever the browser's clock says: ${row.name}`, () => {
