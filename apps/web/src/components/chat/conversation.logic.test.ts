@@ -2978,6 +2978,16 @@ describe("deriveOutcome: a service's standing is the latest word on it", () => {
       standing: { shopdev: "failed" },
     },
     {
+      // A deploy replaces what ran: the dev server found before it is not this one.
+      name: "a dev server running, a deploy, then a check that timed out",
+      ops: [
+        devServer("d1", 1, "shopdev"),
+        operation("x1", "t1", 2, { kind: "deploy", subject: "shopdev" }),
+        verify("v1", 3, "shopdev", [timedOut("http_public", "shopdev-1a2b-9000.example.app")]),
+      ],
+      standing: { shopdev: "failed" },
+    },
+    {
       name: "a check that timed out with no dev server found running before it",
       ops: [verify("v1", 1, "shopdev", [timedOut("http_public", "shopdev-1a2b-9000.example.app")])],
       standing: { shopdev: "failed" },
