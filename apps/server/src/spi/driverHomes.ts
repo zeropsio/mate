@@ -1,10 +1,10 @@
 /**
  * driverHomes — the owned, typed "where is this provider's config home"
- * capability. `textGeneration/**` (Claude's launch environment) and
- * `usage/**` (transcript scanning) both need to know where the Claude /
- * Codex CLIs keep their config, but that resolution is filesystem/home-dir
- * knowledge that belongs to the ported drivers
- * (`provider/Drivers/ClaudeHome.ts`, `provider/Drivers/CodexHomeLayout.ts`).
+ * capability. `textGeneration/**` (Claude's launch environment),
+ * `usage/**` (transcript scanning) and `zerops/**` (a sign-in's scratch home)
+ * need to know where the Claude / Codex CLIs keep their config, but that
+ * resolution is filesystem/home-dir knowledge that belongs to the ported
+ * drivers (`provider/Drivers/ClaudeHome.ts`, `provider/Drivers/CodexHomeLayout.ts`).
  *
  * This module is the ONE place that imports those driver files. A port that
  * renames/removes a field this module reads (or changes what
@@ -25,10 +25,14 @@ import type {
   ProviderInstanceId,
 } from "@t3tools/contracts";
 import type * as Effect from "effect/Effect";
+import type * as FileSystem from "effect/FileSystem";
 import type * as Path from "effect/Path";
 
 import { makeClaudeEnvironment, resolveClaudeHomePath } from "../provider/Drivers/ClaudeHome.ts";
-import { resolveCodexHomeLayout } from "../provider/Drivers/CodexHomeLayout.ts";
+import {
+  materializeCodexShadowHome,
+  resolveCodexHomeLayout,
+} from "../provider/Drivers/CodexHomeLayout.ts";
 import { resolveAntigravityProfileDirectory } from "../provider/antigravityAuthSupport.ts";
 import { mergeProviderInstanceEnvironment } from "../provider/ProviderInstanceEnvironment.ts";
 
@@ -84,6 +88,16 @@ export function codexHomeLayout(
   config: CodexSettings,
 ): Effect.Effect<CodexHomeLayout, never, Path.Path> {
   return resolveCodexHomeLayout(config);
+}
+
+/**
+ * Lays an `authOverlay` layout's shadow home over its shared one: every
+ * shared entry linked, `auth.json` the shadow's own.
+ */
+export function codexShadowHome(
+  layout: CodexHomeLayout,
+): Effect.Effect<void, Error, FileSystem.FileSystem | Path.Path> {
+  return materializeCodexShadowHome(layout);
 }
 
 /**
