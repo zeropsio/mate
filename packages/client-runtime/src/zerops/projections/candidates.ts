@@ -144,6 +144,26 @@ export function addressWaitEnd(rows: ReadonlyArray<ZeropsCandidate>): number | n
 }
 
 /**
+ * What a reader's listings teach its address memory, and when the soonest wait among them ends —
+ * read off the known ones, so a reader never reads a listing's value itself (web and mobile never
+ * read a Known's value).
+ */
+export function learnAddresses(
+  memory: AddressMemory,
+  listings: ReadonlyArray<Known<ReadonlyArray<ZeropsCandidate>>>,
+): { readonly memory: AddressMemory; readonly waitEnd: number | null } {
+  let learned = memory;
+  let waitEnd: number | null = null;
+  for (const listing of listings) {
+    if (listing.state !== "known") continue;
+    learned = rememberAddresses(learned, listing.value);
+    const end = addressWaitEnd(listing.value);
+    if (end !== null && (waitEnd === null || end < waitEnd)) waitEnd = end;
+  }
+  return { memory: learned, waitEnd };
+}
+
+/**
  * The listing of known projects out of each project's rows, in the projects' order; a project
  * with no rows yet (`null`) leaves it partial.
  */

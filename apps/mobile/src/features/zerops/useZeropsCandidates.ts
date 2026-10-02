@@ -14,9 +14,8 @@ import type { EnvironmentMachine, TargetKey } from "@t3tools/client-runtime/zero
 import type { Known } from "@t3tools/client-runtime/zerops/knowledge";
 import {
   addressClockOf,
-  addressWaitEnd,
   NO_ADDRESS_MEMORY,
-  rememberAddresses,
+  learnAddresses,
   selectCandidates,
   type AddressMemory,
   type CandidateRow,
@@ -227,18 +226,13 @@ export function useZeropsCandidates(): {
           clock,
         ),
       );
-      const ends: number[] = [];
-      for (const listing of listings) {
-        if (listing.state !== "known") continue;
-        addresses.current = rememberAddresses(addresses.current, listing.value);
-        const end = addressWaitEnd(listing.value);
-        if (end !== null) ends.push(end);
-      }
+      const learned = learnAddresses(addresses.current, listings);
+      addresses.current = learned.memory;
       // A wait ends on a clock, not on a read: the rows are derived again then.
       disarmWait?.();
       disarmWait = null;
-      if (ends.length > 0) {
-        const handle = setTimeout(publish, Math.max(0, Math.min(...ends) - atMs));
+      if (learned.waitEnd !== null) {
+        const handle = setTimeout(publish, Math.max(0, learned.waitEnd - atMs));
         disarmWait = () => clearTimeout(handle);
       }
       setReads({ projects: projectReads, services: serviceReads, listings, atMs });
