@@ -747,17 +747,18 @@ export function runningVersion(
  * page (`stopView`), the menu, the chips and the projects page's cards (`groupFlow`'s `stopOf`,
  * {@link stopTone}).
  *
- * A deploy of a commit only moves forward: a stop that runs a version is deployed. The row's
- * statuses are on the commit a service runs — its active version — and the broker never deploys
- * a commit a service already runs (gitea-mate grants it as live). So a `pending` there was read
- * before the version went active (run 4, 2026-10-02: active at +1478.7 s, success by +1482.9 s),
- * and never moves a running stop back to deploying, whether or not the platform's own answer is
- * known just now. A newer commit starts its own sequence, from the platform's build.
+ * A deploy of a commit only moves forward: a stop that runs a version is deployed. The row's tone
+ * is HQ's record of each service's newest deploy; HQ never asks for a commit a service already
+ * runs, and records a deploy live only once it reads that version back (B17). So a record still
+ * queued or deploying where the platform runs the version was read before HQ saw it go active
+ * (run 4, 2026-10-02: active at +1478.7 s, its status success by +1482.9 s), and never moves a
+ * running stop back to deploying, whether or not the platform's own answer is known just now. A
+ * newer commit starts its own sequence, from the platform's build.
  *
  * A failure on the version the stop runs still says Failed. A row read at another version — the
  * one before, or a build that failed after its name moved (A11, A14) — names nothing there
  * (`runningVersion`) and fails nothing there; the platform says the stop runs, so it is deployed.
- * What the row still says is whether Gitea was read at all: a stop with no status read has no
+ * What the row still says is whether HQ recorded a deploy there at all: a stop with none has no
  * colour and no word (`deployWord`).
  */
 export function runningTone(

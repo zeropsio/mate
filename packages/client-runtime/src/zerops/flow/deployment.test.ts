@@ -270,7 +270,7 @@ describe("stopView", () => {
         },
         "good",
       ),
-      // Named by the platform; Gitea was read, and the platform says it runs.
+      // Named by the platform; HQ recorded a deploy, and the platform says it runs.
       expected: { tone: "good", word: "Deployed", line: "v1.4.0" },
     },
   ])("$name", ({ row: read, expected }) => {
