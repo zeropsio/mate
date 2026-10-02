@@ -7315,3 +7315,20 @@ KRLS rigs and KRLS `Headquarters` `XpjD3GggSOmPrk2Xm7N8Kg`, unless named. Each r
   `tagger Gitea <gitea@fake.local>`; the person who released is in the broker's verdict status,
   `approved: u-<login>`, as for all 94 verdicts in Mate s.r.o.
   - _How it was established:_ the T13 export of Snap, read-only.
+- **An HQ born from the app** (T4b/T4c, KRLS, 2026-10-02): `Headquarters` reported `official: ok`;
+  a KRLS member with the Developer preset saw the product with no gate; an owner opening an
+  organization with no HQ saw it born. `mate-rig-a - Gita` linked to it live: online, its summary
+  arriving over the link (T6b).
+- **A birth in Mate s.r.o. hit Zerops' variable sync** (2026-10-03): the build-and-deploy right after
+  `HQ_ORG_TOKEN` was written, with the backup service's five references also syncing, was refused
+  with 400 `userDataSyncRunning` ("Service environment variable synchronization is already
+  running."). A Try again a few seconds later deployed, and the HQ answered `official: ok`,
+  `backup: ok`.
+- **Importing one application** (Snap into Mate s.r.o.'s new HQ, 2026-10-03): `import` finished and
+  verified about 2.5 s after it was queued, the environment `at its target`. An admin's open client
+  minted HQ's deploy key for that environment 1 s after the import ended, through its environment
+  reconcile, before anyone pressed anything.
+- **A Mate switched to HQ by a unit restart** (Nova and Kai, 2026-10-03): with zcp and the Mate
+  server replaced and only the unit restarted, each enrolled with the new HQ, showed online in its
+  application, and seeded `signed-in.json` with one key from its one `mate:signer:` tag. Its git
+  remote stayed on the old Gitea until a delivery or git-push.
