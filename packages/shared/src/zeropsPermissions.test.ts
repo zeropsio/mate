@@ -79,8 +79,15 @@ const PERSON: Principal = { kind: "person", userId: "U" };
 
 type Request = { readonly [V in Verb]: { readonly verb: V; readonly target: Targets[V] } }[Verb];
 
-const decide = (principal: Principal, request: Request, point: Point): Decision =>
-  can(principal, request.verb, request.target as never, factsOf(point));
+/** Each point's facts, made once: the properties decide the whole space over 504 points. */
+const FACTS = new Map<string, Facts<"fresh">>();
+
+const decide = (principal: Principal, request: Request, point: Point): Decision => {
+  const key = `${point.orgRole}|${point.override}|${point.status}|${point.canCreate}|${point.present}`;
+  let facts = FACTS.get(key);
+  if (facts === undefined) FACTS.set(key, (facts = factsOf(point)));
+  return can(principal, request.verb, request.target as never, facts);
+};
 
 const outcome = (decision: Decision) => (decision.allow ? "allow" : decision.reason);
 
@@ -1125,12 +1132,39 @@ const PRINCIPALS: ReadonlyArray<Principal> = [
   CORE,
 ];
 
-const everywhere = (check: (principal: Principal, request: Request, point: Point) => void) => {
+/**
+ * `check` at every input of the space, 1.8 million of them. What it finds that does not hold is
+ * collected, not thrown — an `expect` per input cost a property 15 s where deciding the whole space
+ * takes well under one — and the property fails once, with how many inputs fail and the first few.
+ */
+const everywhere = (
+  check: (
+    principal: Principal,
+    request: Request,
+    point: Point,
+    holds: (ok: boolean, what: string) => void,
+  ) => void,
+) => {
+  const failed: Array<string> = [];
+  let count = 0;
+  let broken: string | null = null;
+  const holds = (ok: boolean, what: string) => {
+    if (!ok) broken ??= what;
+  };
   for (const point of POINTS) {
     for (const request of REQUESTS) {
-      for (const principal of PRINCIPALS) check(principal, request, point);
+      for (const principal of PRINCIPALS) {
+        broken = null;
+        check(principal, request, point, holds);
+        if (broken === null) continue;
+        count += 1;
+        if (failed.length < 5) {
+          failed.push(`${broken}: ${JSON.stringify({ principal, request, point })}`);
+        }
+      }
     }
   }
+  expect({ count, failed }).toEqual({ count: 0, failed: [] });
 };
 
 /** What placing or holding a project does to the structure's own writing. */
@@ -1162,54 +1196,53 @@ const writerOnly = (request: Request): boolean => {
 
 describe("can — over the whole input space", () => {
   it("is total: every input is allowed or denied with a reason of the catalogue", () => {
-    everywhere((principal, request, point) => {
+    everywhere((principal, request, point, holds) => {
       const decision = decide(principal, request, point);
-      if (!decision.allow) expect(REASONS).toContain(decision.reason);
+      holds(decision.allow || REASONS.includes(decision.reason), "a reason of the catalogue");
     });
   });
 
   it("refuses a person who is not a member every verb, whoever else the org has", () => {
-    everywhere((principal, request, point) => {
+    everywhere((principal, request, point, holds) => {
       if (principal.kind === "person" && principal.userId === "STRANGER") {
-        expect(decide(principal, request, point).allow).toBe(false);
+        holds(!decide(principal, request, point).allow, "a stranger refused");
       }
     });
   });
 
   it("decides an unknown role as none, and denies an unknown status or kind", () => {
-    everywhere((principal, request, point) => {
+    everywhere((principal, request, point, holds) => {
       const decision = outcome(decide(principal, request, point));
       if (point.orgRole === "FUTURE") {
-        expect(decision).toBe(
-          outcome(decide(principal, request, { ...point, orgRole: "NO_ACCESS" })),
-        );
+        const none = outcome(decide(principal, request, { ...point, orgRole: "NO_ACCESS" }));
+        holds(decision === none, "an unknown role decides as none");
       }
       if (point.override === "FUTURE") {
-        expect(decision).toBe(
-          outcome(decide(principal, request, { ...point, override: "NO_ACCESS" })),
-        );
+        const none = outcome(decide(principal, request, { ...point, override: "NO_ACCESS" }));
+        holds(decision === none, "an unknown grant decides as none");
       }
       if (point.status === "OTHER" && principal.kind === "person")
-        expect(decision).not.toBe("allow");
+        holds(decision !== "allow", "an unknown status denies");
       const target = request.target as { readonly held?: string; readonly to?: string } | null;
-      if (target?.held === "FUTURE" || target?.to === "FUTURE") expect(decision).not.toBe("allow");
+      if (target?.held === "FUTURE" || target?.to === "FUTURE")
+        holds(decision !== "allow", "an unknown kind denies");
     });
   });
 
   it("never lets a grant on the target stand in for the structure's writer", () => {
-    everywhere((principal, request, point) => {
+    everywhere((principal, request, point, holds) => {
       if (principal.kind !== "person" || !writerOnly(request)) return;
       if (point.orgRole === "ADMIN" || point.orgRole === "OWNER") return;
-      expect(outcome(decide(principal, request, point))).not.toBe("allow");
+      holds(!decide(principal, request, point).allow, "the structure's writer's alone");
     });
   });
 
   it("lets a Mate only its own verbs, for its own project, in the application HQ holds it in", () => {
-    everywhere((principal, request, point) => {
+    everywhere((principal, request, point, holds) => {
       if (principal.kind !== "mate") return;
       const decision = outcome(decide(principal, request, point));
       if (!MATE_VERBS.has(request.verb)) {
-        expect(decision).toBe("wrong_principal");
+        holds(decision === "wrong_principal", "a Mate refused another's verb");
         return;
       }
       if (decision !== "allow") return;
@@ -1220,12 +1253,13 @@ describe("can — over the whole input space", () => {
         readonly change?: { readonly mateProjectId: string } | null;
         readonly repoAppId?: string;
       };
-      expect(target.projectId).toBe(principal.projectId);
-      expect(["mate", "devstage"]).toContain(target.held);
-      if (request.verb !== "enroll_mate") expect(target.appId).not.toBeNull();
+      holds(target.projectId === principal.projectId, "its own project");
+      holds(target.held === "mate" || target.held === "devstage", "held as a Mate");
+      if (request.verb !== "enroll_mate") holds(target.appId != null, "in an application");
       if (request.verb === "edit_change")
-        expect(target.change?.mateProjectId).toBe(principal.projectId);
-      if (request.verb === "fetch_repo") expect(target.repoAppId).toBe(target.appId);
+        holds(target.change?.mateProjectId === principal.projectId, "its own change");
+      if (request.verb === "fetch_repo")
+        holds(target.repoAppId === target.appId, "its own application's repository");
     });
   });
 
@@ -1244,26 +1278,26 @@ describe("can — over the whole input space", () => {
   });
 
   it("lets a person read an application's changes only where they see the application", () => {
-    everywhere((principal, request, point) => {
+    everywhere((principal, request, point, holds) => {
       if (request.verb !== "read_change" && request.verb !== "comment_change") return;
       if (!decide(principal, request, point).allow) return;
       const app: Request = { verb: "read_app", target: request.target };
-      expect(decide(principal, app, point).allow).toBe(true);
+      holds(decide(principal, app, point).allow, "sees the application");
     });
   });
 
   it("lets a person merge a change only where they develop the application, and close it there or as the structure's writer", () => {
-    everywhere((principal, request, point) => {
+    everywhere((principal, request, point, holds) => {
       if (request.verb !== "merge_change" && request.verb !== "close_change") return;
       const decision = decide(principal, request, point);
       // Close is allowed wherever merge is, not the reverse (Gitea's split: an admin closes).
       if (request.verb === "merge_change" && decision.allow) {
         const close: Request = { verb: "close_change", target: request.target };
-        expect(decide(principal, close, point).allow).toBe(true);
+        holds(decide(principal, close, point).allow, "closes what it merges");
       }
       if (!decision.allow) return;
       const read: Request = { verb: "read_change", target: request.target };
-      expect(decide(principal, read, point).allow).toBe(true);
+      holds(decide(principal, read, point).allow, "reads it");
       const writer =
         principal.kind === "person" &&
         principal.userId === "U" &&
@@ -1278,49 +1312,54 @@ describe("can — over the whole input space", () => {
             ? ranked(point.override ?? point.orgRole)
             : 0
           : ranked(FIXTURE_GRANTS[projectId as keyof typeof FIXTURE_GRANTS]);
-      expect(request.target.projectIds.some((projectId) => roleIn(projectId) >= 2)).toBe(true);
+      holds(
+        request.target.projectIds.some((projectId) => roleIn(projectId) >= 2),
+        "develops the application",
+      );
     });
   });
 
   it("lets Core land a recipe and do nothing else, and only as the rule says", () => {
-    everywhere((principal, request, point) => {
+    everywhere((principal, request, point, holds) => {
       if (principal.kind !== "core") return;
       const decision = outcome(decide(principal, request, point));
       if (request.verb !== "land_recipe") {
-        expect(decision).toBe("wrong_principal");
+        holds(decision === "wrong_principal", "Core refused every other verb");
         return;
       }
       if (decision !== "allow") return;
       const { repo, author, appId, onlyAdded, empty } = request.target;
-      expect([
-        repo,
-        ["mate", "devstage"].includes(author.held),
-        author.appId,
-        onlyAdded,
-        empty,
-      ]).toEqual(["group", true, appId, true, false]);
+      holds(
+        repo === "group" &&
+          (author.held === "mate" || author.held === "devstage") &&
+          author.appId === appId &&
+          onlyAdded &&
+          !empty,
+        "as the rule says",
+      );
     });
   });
 
   it("decides Core's landing by the change alone, whoever the org has", () => {
-    for (const request of REQUESTS) {
-      const first = outcome(decide(CORE, request, POINTS[0]!));
-      for (const point of POINTS) expect(outcome(decide(CORE, request, point))).toBe(first);
-    }
+    everywhere((principal, request, point, holds) => {
+      if (principal.kind !== "core") return;
+      const first = outcome(decide(principal, request, POINTS[0]!));
+      holds(outcome(decide(principal, request, point)) === first, "as at every other point");
+    });
   });
 
   it("refuses a person or a Mate the landing of a recipe: it is Core's", () => {
-    everywhere((principal, request, point) => {
+    everywhere((principal, request, point, holds) => {
       if (principal.kind !== "core" && request.verb === "land_recipe") {
-        expect(outcome(decide(principal, request, point))).toBe("wrong_principal");
+        holds(outcome(decide(principal, request, point)) === "wrong_principal", "Core's alone");
       }
     });
   });
 
   it("refuses a person every verb a Mate asks for itself", () => {
-    everywhere((principal, request, point) => {
+    everywhere((principal, request, point, holds) => {
       if (principal.kind === "person" && MATE_VERBS.has(request.verb)) {
-        expect(outcome(decide(principal, request, point))).toBe("wrong_principal");
+        holds(outcome(decide(principal, request, point)) === "wrong_principal", "a Mate's alone");
       }
     });
   });
@@ -1462,10 +1501,10 @@ describe("can — over the whole input space", () => {
         ...(point.present ? [{ ...point, present: false }] : []),
       ];
     };
-    everywhere((principal, request, point) => {
+    everywhere((principal, request, point, holds) => {
       if (decide(principal, request, point).allow) return;
-      for (const lower of lowered(point))
-        expect(decide(principal, request, lower).allow).toBe(false);
+      const allowed = lowered(point).find((lower) => decide(principal, request, lower).allow);
+      if (allowed !== undefined) holds(false, `allowed lowered to ${JSON.stringify(allowed)}`);
     });
   });
 });
