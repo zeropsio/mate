@@ -466,6 +466,8 @@ interface StopFixture {
   readonly releasing?: string;
   /** Whether the person may ask HQ to run the failed deploy again, so the verdict offers it. */
   readonly mayRunAgain?: boolean;
+  /** Whether the deploy key HQ holds for the stop no longer works. */
+  readonly keyInvalid?: boolean;
   readonly commits?: ZeropsCommitsState;
   /** A production's releases, newest first. */
   readonly releases?: ReadonlyArray<FlowRelease>;
@@ -643,6 +645,7 @@ function StopState({ fixture }: { readonly fixture: StopFixture }) {
           !production &&
           commits.kind === "read" &&
           sameCommit(view.version?.sha, commits.commits[0]?.sha),
+        brokenKey: fixture.keyInvalid === true ? { project: stop.name } : undefined,
       })}
       view={view}
       waiting={waiting}
@@ -853,6 +856,25 @@ function Harness() {
             deployment: STAGE_RUNNING,
             routes: ROUTES,
             mayRunAgain: true,
+          }}
+        />
+      </State>
+
+      <State
+        label="A stage whose deploy key no longer works"
+        note="HQ records the key it deploys the stage with as broken: the verdict names who mints a new one, and offers no Run again — HQ would refuse it."
+      >
+        <StopState
+          fixture={{
+            tier: "stage",
+            services: [
+              service("api", "b21d904c", undefined, "failed"),
+              service("app", "5c3ea18b", undefined),
+            ],
+            deployment: STAGE_RUNNING,
+            routes: ROUTES,
+            mayRunAgain: true,
+            keyInvalid: true,
           }}
         />
       </State>

@@ -342,6 +342,8 @@ interface StopCase {
   readonly waiting?: ReadonlyArray<{ readonly sha: string; readonly subject: string }>;
   readonly offered?: string;
   readonly failed?: StopFailure;
+  /** Whether the deploy key HQ holds for the stop no longer works. */
+  readonly keyInvalid?: boolean;
   readonly releases?: number;
   readonly atMainHead?: boolean;
   readonly commits?: ZeropsCommitsState;
@@ -361,6 +363,7 @@ function renderStop(input: StopCase): string {
     sources: input.tier === "production" ? ("release" as const) : ["main"],
     services: input.services,
     environment: name,
+    keyInvalid: input.keyInvalid ?? false,
   };
   const stop = environmentRow(declared);
   const view = stopView({ deployment: input.deployment ?? UNREAD, row: stop, nowMs: NOW });
@@ -388,6 +391,7 @@ function renderStop(input: StopCase): string {
     releasedAge: undefined,
     since: undefined,
     atMainHead: input.atMainHead ?? false,
+    brokenKey: declared.keyInvalid ? { project: stop.name } : undefined,
   });
   return renderToStaticMarkup(
     <ZeropsStopPane
@@ -494,6 +498,19 @@ describe("ZeropsStopPane", () => {
         },
       },
       contains: ["The deploy of v0.1.14 failed on api."],
+    },
+    {
+      name: "a stage whose deploy key no longer works",
+      input: {
+        tier: "stage",
+        services: [service("api", "a1", undefined, "failed")],
+        keyInvalid: true,
+      },
+      contains: [
+        "Its deploy key no longer works.",
+        "Someone with Full access to the stage project in Zerops mints a new one here.",
+      ],
+      lacks: ["Run again"],
     },
     {
       name: "a stage at the head of main",

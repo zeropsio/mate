@@ -83,6 +83,7 @@ describe("joinProjectFlows", () => {
       tier: "stage",
       sources: ["main"],
       environment: "stage",
+      keyInvalid: false,
       services: [],
     };
     expect(join({ forges: new Map([["g1", forgeState()]]) }).get("g1")?.declarationsRead).toBe(
@@ -108,6 +109,7 @@ describe("joinProjectFlows", () => {
       tier: "production",
       sources: "release",
       environment: "production",
+      keyInvalid: false,
       services: [{ hostname: "app", appVersionName: "1".repeat(40) }],
     };
     const release = join({
@@ -167,6 +169,7 @@ describe("joinProjectFlows", () => {
               tier,
               sources: tier === "production" ? "release" : ["main"],
               environment: tier,
+              keyInvalid: false,
               services: [
                 { hostname: "medusa", appVersionName: `${MEDUSA} v0.1.9 broker` },
                 { hostname: "nextstore", appVersionName: `${nextstore} v0.1.13 broker` },
@@ -213,6 +216,7 @@ describe("joinProjectFlows", () => {
               tier: "production",
               sources: "release",
               environment: "production",
+              keyInvalid: false,
               services: [
                 {
                   hostname: "app",

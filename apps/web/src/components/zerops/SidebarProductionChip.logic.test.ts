@@ -739,6 +739,7 @@ describe("releaseFailureOf — the release that did not go through, newer than w
       tier: "stage",
       sources: ["main"],
       environment: "shop-stage",
+      keyInvalid: false,
       services: [{ hostname: "app", appVersionName: failedSha }],
     },
     {
@@ -747,6 +748,7 @@ describe("releaseFailureOf — the release that did not go through, newer than w
       tier: "production",
       sources: "release",
       environment: "shop-production",
+      keyInvalid: false,
       services: [
         {
           hostname: "app",

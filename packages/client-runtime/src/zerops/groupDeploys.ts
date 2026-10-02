@@ -54,6 +54,8 @@ export interface GroupEnvironmentRowInput {
   readonly services: ReadonlyArray<EnvironmentServiceState>;
   /** HQ's name for it, which a deploy asked again names. */
   readonly environment: string;
+  /** Whether the deploy key HQ holds for it no longer answers, or reaches more than its project. */
+  readonly keyInvalid: boolean;
 }
 
 /** What an application's recipe on `main` offers: the tiers a person can add, and where code lives. */
@@ -142,6 +144,7 @@ export function environmentRowInputsOf(input: {
         tier: environment.tier,
         sources: environment.tier === "production" ? "release" : environment.sources,
         environment: environment.name,
+        keyInvalid: environment.keyInvalid,
         services: [
           ...listed.map((service) => state(service.hostname, service.serviceId)),
           ...unlisted.map((hostname) => state(hostname)),

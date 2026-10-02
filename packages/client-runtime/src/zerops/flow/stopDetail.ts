@@ -92,12 +92,25 @@ export function stopVerdict(input: {
   readonly since: string | undefined;
   /** Whether a stage runs main's head commit; stage only. */
   readonly atMainHead: boolean;
+  /**
+   * The stop's deploy key no longer works, as HQ records it, and the Zerops project whose Full
+   * access mints a new one; `undefined` while it works.
+   */
+  readonly brokenKey: { readonly project: string } | undefined;
 }): StopVerdict {
   const { tier, view } = input;
   const quiet = { detail: undefined, verb: null } as const;
   if (tier === "production" && input.releasing !== undefined)
     return { tone: "busy", text: releaseInFlightReason(input.releasing), ...quiet };
   if (view.tone === "pending") return { tone: "busy", text: view.word, ...quiet };
+  // HQ refuses every deploy made with it, so its failures follow from it and are not said.
+  if (input.brokenKey !== undefined)
+    return {
+      tone: "failed",
+      text: "Its deploy key no longer works.",
+      detail: `Someone with Full access to the ${input.brokenKey.project} project in Zerops mints a new one here.`,
+      verb: null,
+    };
   if (input.failed !== undefined) {
     const { label, service, running, redeploy, mayRunAgain } = input.failed;
     return {

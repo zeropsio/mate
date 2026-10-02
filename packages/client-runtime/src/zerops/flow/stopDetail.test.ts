@@ -89,6 +89,7 @@ const BASE: VerdictInput = {
   releasedAge: undefined,
   since: undefined,
   atMainHead: false,
+  brokenKey: undefined,
 };
 
 const FAILED: StopFailure = {
@@ -135,6 +136,18 @@ describe("stopVerdict", () => {
         text: "The deploy of v0.1.14 failed on nextstore.",
         detail: "v0.1.13 still runs · 6m ago",
         verb: { kind: "run-again" },
+      },
+    },
+    {
+      // HQ refuses every deploy with it, so its failures follow from it and are not said.
+      name: "a deploy key that no longer works, over the deploy it failed",
+      input: { tier: "stage", failed: FAILED, brokenKey: { project: "Shop - stage" } },
+      expected: {
+        tone: "failed",
+        text: "Its deploy key no longer works.",
+        detail:
+          "Someone with Full access to the Shop - stage project in Zerops mints a new one here.",
+        verb: null,
       },
     },
     {

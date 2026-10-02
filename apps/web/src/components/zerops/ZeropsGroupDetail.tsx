@@ -991,6 +991,7 @@ export function ZeropsStopDetailPage({
     since: view.activatedAt === null ? undefined : formatRelativeTimeLabel(view.activatedAt),
     atMainHead:
       stage && commits.kind === "read" && sameCommit(view.version?.sha, commits.commits[0]?.sha),
+    brokenKey: declared?.keyInvalid === true ? { project: stop.name } : undefined,
   });
 
   return (
