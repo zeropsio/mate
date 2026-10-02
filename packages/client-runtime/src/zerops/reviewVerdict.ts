@@ -64,11 +64,13 @@ export type ReviewState =
   | "releasing"
   | "released"
   | "release-failed"
+  | "release-stalled"
   | "rollback-ready"
   | "rollback-blocked"
   | "rolling-back"
   | "rolled-back"
   | "rollback-failed"
+  | "rollback-stalled"
   | "rollback-refused"
   | "land-ready"
   | "land-now"
@@ -681,6 +683,8 @@ export type ReleaseOutcome =
   | { readonly kind: "offered" }
   | { readonly kind: "releasing"; readonly progress?: string | undefined }
   | { readonly kind: "released"; readonly at: string | undefined }
+  /** Made longer ago than the wait for it, and production doesn't run it: the wait is over. */
+  | { readonly kind: "stalled"; readonly at: string | undefined }
   | {
       readonly kind: "failed";
       readonly detail?: string | undefined;
@@ -839,6 +843,15 @@ function releaseVerdictOf(input: ReleaseReviewInput, back: string | undefined): 
         primary: undefined,
       };
     }
+    case "stalled":
+      return stalledModel({
+        state: "release-stalled",
+        tag,
+        what: "release",
+        at: outcome.at,
+        ran,
+        now: input.now,
+      });
     case "offered":
       break;
   }
@@ -874,6 +887,46 @@ function releaseVerdictOf(input: ReleaseReviewInput, back: string | undefined): 
     },
     consequence: `Tags main as ${tag}. Production redeploys ${listed(input.services)} from it.`,
     primary,
+  };
+}
+
+/**
+ * A tag that went out and that production hasn't run past the wait for it: what is true — when it
+ * was tagged, that production doesn't run it, what production still runs — and the person's Mate
+ * to find out why. No clock, nothing to press: another tag would wait behind the same cause.
+ */
+function stalledModel(input: {
+  readonly state: "release-stalled" | "rollback-stalled";
+  /** The tag that hasn't landed. */
+  readonly tag: string;
+  readonly what: "release" | "roll back";
+  readonly at: string | undefined;
+  /** What production still runs, where one release names it. */
+  readonly ran: string | undefined;
+  readonly now: number;
+}): ReviewModel {
+  const age = input.at === undefined ? undefined : reviewAge(input.at, input.now)?.toLowerCase();
+  const tagged = age === undefined ? "Tagged" : `Tagged ${age}`;
+  return {
+    verdict: {
+      state: input.state,
+      tone: "attention",
+      title: `${input.tag} hasn't landed`,
+      why: `${tagged} · production doesn't run it`,
+      fix: {
+        verb: "find out why",
+        problem: {
+          what: `Production doesn't run ${input.what} ${input.tag}`,
+          ...(input.at === undefined ? {} : { at: input.at }),
+          ask: "Find out why production hasn't deployed it, and fix what holds it.",
+        },
+      },
+    },
+    consequence:
+      input.ran === undefined
+        ? "Production still runs what it ran before."
+        : `Production still runs ${input.ran}.`,
+    primary: undefined,
   };
 }
 
@@ -980,6 +1033,15 @@ function rollbackVerdictOf(input: RollbackReviewInput): ReviewModel {
         primary: undefined,
       };
     }
+    case "stalled":
+      return stalledModel({
+        state: "rollback-stalled",
+        tag: nextTag,
+        what: "roll back",
+        at: outcome.at,
+        ran: input.live,
+        now: input.now,
+      });
     case "failed":
       return {
         verdict: {

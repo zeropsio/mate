@@ -14,7 +14,7 @@
  * @module releaseFacts
  */
 
-import type { FlowReleaseRow, ReleaseComparison } from "./release.ts";
+import { RELEASE_IN_FLIGHT_MS, type FlowReleaseRow, type ReleaseComparison } from "./release.ts";
 import type { Moved } from "./releaseCompare.ts";
 import type { ReleaseOutcome, ReleaseReplaces, ReviewPress } from "./reviewVerdict.ts";
 import { stageMarks, type StageMark, type StageStandings } from "./stageMarks.ts";
@@ -109,11 +109,18 @@ export function releaseFollows(input: {
   /** The version offered next. */
   readonly suggestion: string;
   readonly releases: ReadonlyArray<FlowReleaseRow>;
+  /** The minute clock, for the cutoff. */
+  readonly nowMs: number;
 }): {
   readonly tag: string;
   readonly tagged: FlowReleaseRow | undefined;
   readonly releasing: boolean;
-  /** Whether the release's clock runs: on its way, neither live nor failed yet. */
+  /**
+   * On its way longer than {@link RELEASE_IN_FLIGHT_MS} and neither live nor failed: the wait is
+   * over, and the review says the tag hasn't landed.
+   */
+  readonly stalled: boolean;
+  /** Whether the release's clock runs: on its way, neither live, failed nor stalled. */
   readonly ticking: boolean;
 } {
   const pinned = input.press.kind === "refused" ? undefined : input.held?.tag;
@@ -124,13 +131,33 @@ export function releaseFollows(input: {
     input.press.kind === "done" ||
     input.inFlight === tag ||
     pinned === tag;
-  return { tag, tagged, releasing, ticking: releasing && tagged?.standing === undefined };
+  const stalled = releasing && releaseStalled(tagged, input.nowMs);
+  return {
+    tag,
+    tagged,
+    releasing,
+    stalled,
+    ticking: releasing && tagged?.standing === undefined && !stalled,
+  };
+}
+
+/**
+ * Whether a tag on its way has waited out {@link RELEASE_IN_FLIGHT_MS} since HQ made it, with
+ * neither a landing nor a failure — the cutoff `releaseInFlight` stops holding Release back at. A
+ * release HQ has not listed yet has no age to measure.
+ */
+export function releaseStalled(tagged: FlowReleaseRow | undefined, nowMs: number): boolean {
+  if (tagged === undefined || tagged.standing !== undefined || tagged.verdict === "refused")
+    return false;
+  return nowMs - Date.parse(tagged.taggedAt) >= RELEASE_IN_FLIGHT_MS;
 }
 
 /** Where the tag it made stands: on its way, live, or failed — `offered` before it was made. */
 export function releaseOutcomeOf(input: {
   readonly tagged: FlowReleaseRow | undefined;
   readonly releasing: boolean;
+  /** Past the cutoff with no landing and no failure (`releaseFollows`). */
+  readonly stalled?: boolean | undefined;
   readonly pressing: boolean;
   readonly tag: string;
   readonly clockMs: number;
@@ -152,6 +179,7 @@ export function releaseOutcomeOf(input: {
     };
   }
   if (!input.releasing) return { kind: "offered" };
+  if (input.stalled === true) return { kind: "stalled", at: tagged?.taggedAt };
   if (input.pressing && tagged === undefined) {
     return { kind: "releasing", progress: `Tagging main as ${input.tag}` };
   }
@@ -183,6 +211,7 @@ export function releaseStep(input: {
   const outcome = releaseOutcomeOf({
     tagged: follows.tagged,
     releasing: follows.releasing,
+    stalled: follows.stalled,
     pressing: press.kind === "running",
     tag: follows.tag,
     clockMs: input.clockMs,

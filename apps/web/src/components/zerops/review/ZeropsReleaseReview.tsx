@@ -28,6 +28,7 @@ import {
   releaseOutcomeOf,
   releaseReview,
   releaseStageMarks,
+  releaseStalled,
   releaseStep,
   reviewAge,
   rollbackReads,
@@ -257,6 +258,7 @@ function ReleaseData({
     inFlight: flow.release.inFlight,
     suggestion: flow.release.suggestion,
     releases: flow.releases,
+    nowMs: now,
   });
   const clockMs = useSecondsNowMs(follows.ticking);
 
@@ -545,10 +547,15 @@ function RollbackData({
   // through HQ's record of it and production's deploy, as a release's.
   const [made, setMade] = useState<string | undefined>(undefined);
   const tagged = made === undefined ? undefined : flow.releases.find((entry) => entry.tag === made);
-  const clockMs = useSecondsNowMs(press.kind === "done" && tagged?.standing === undefined);
+  // Past the wait for it with no landing and no failure, the roll back says it hasn't landed.
+  const stalled = press.kind === "done" && releaseStalled(tagged, now);
+  const clockMs = useSecondsNowMs(
+    press.kind === "done" && tagged?.standing === undefined && !stalled,
+  );
   const outcome = releaseOutcomeOf({
     tagged,
     releasing: press.kind === "done",
+    stalled,
     pressing: false,
     tag: made ?? flow.release.suggestion,
     clockMs,

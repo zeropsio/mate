@@ -712,6 +712,17 @@ describe("rollbackReview: roll back gets the same review, naming where it goes b
       "Production still runs v0.1.57.",
     ],
     [
+      "tagged, and past the wait for it with no landing",
+      { press: { kind: "done" }, outcome: { kind: "stalled", at: minutesAgo(34) } },
+      {
+        state: "rollback-stalled",
+        tone: "attention",
+        title: "v0.1.58 hasn't landed",
+        why: "Tagged 34 minutes ago · production doesn't run it",
+      },
+      "Production still runs v0.1.57.",
+    ],
+    [
       "refused",
       { press: { kind: "refused", reason: "Gitea would not create the tag." } },
       { state: "rollback-refused", tone: "attention", why: "Gitea would not create the tag." },
