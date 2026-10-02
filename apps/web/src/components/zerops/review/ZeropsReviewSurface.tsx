@@ -111,6 +111,8 @@ export interface ZeropsReviewSurfaceProps {
   readonly consequence: string;
   /** "Cancel" before anything was pressed, "Close" after. */
   readonly dismiss?: string | undefined;
+  /** A quiet word beside the button: a change's "Close without merging…", then "Keep it open". */
+  readonly secondary?: (ReviewButton & { readonly enabled: boolean }) | undefined;
   readonly primary?: ReviewPrimaryButton | undefined;
   /** What was already done, said where the button would stand: "Merged". */
   readonly settled?: string | undefined;
@@ -136,6 +138,7 @@ export function ZeropsReviewSurface({
   children,
   consequence,
   dismiss,
+  secondary,
   primary,
   settled,
   back,
@@ -199,6 +202,17 @@ export function ZeropsReviewSurface({
       <div className="rv-body">{children}</div>
       <footer className="rv-foot">
         <span className="rv-conseq">{consequence}</span>
+        {secondary === undefined ? null : (
+          <button
+            className="rv-btn2"
+            data-review-secondary=""
+            disabled={!secondary.enabled}
+            onClick={secondary.onPress}
+            type="button"
+          >
+            {secondary.label}
+          </button>
+        )}
         {dismiss === undefined || frame === "page" ? null : (
           <button className="rv-btn2" onClick={onClose} type="button">
             {dismiss}

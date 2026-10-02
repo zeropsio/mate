@@ -784,9 +784,11 @@ describe("a project's next step on the projects page", () => {
     expect(groupDetailSource).toContain('openReview({ kind: "release", groupId }, { from });');
   });
 
-  it("merges, releases and rolls back from no row: every such verb opens a review", () => {
+  it("merges, closes, releases and rolls back from no row: every such verb opens a review", () => {
     for (const source of [projectsPageSource, groupDetailSource]) {
       expect(source).not.toContain("mergePullRequest(");
+      expect(source).not.toContain(".merge(");
+      expect(source).not.toContain(".close(");
       expect(source).not.toContain(".release(");
       expect(source).not.toContain(".rollBack(");
     }
