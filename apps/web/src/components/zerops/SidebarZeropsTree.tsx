@@ -123,6 +123,7 @@ import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { mateReviewWaits, type ZeropsAgentActivity } from "~/zerops/agentActivity";
 import type { MateComing } from "~/zerops/mateComing";
 import { useZeropsProjectFlowOptional } from "~/zerops/projectFlowContext";
+import { useNowMs } from "~/zerops/useNowMs";
 import type { FixProblem } from "~/zerops/fixRequest";
 import { useOpenReview } from "~/zerops/review";
 import { useSentAsks } from "~/zerops/sentAsk";
@@ -635,6 +636,9 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
   });
   // What "a week untouched" is measured from: the moment the menu was drawn.
   const [nowMs] = useState(Date.now);
+  // What closes a stage's coming-up and first-deploy windows: the shared minute clock, so the
+  // menu and the projects page close them together (no request of its own).
+  const minuteMs = useNowMs();
   // The projects whose quiet Mates somebody unfolded; not remembered.
   const [openQuiet, setOpenQuiet] = useState<ReadonlySet<string>>(() => new Set());
   // The projects a heading's press set unfolding or folding, until they settle:
@@ -1024,7 +1028,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
           }),
         pending: group?.pending ?? [],
         runner: runners?.get(id),
-        nowMs,
+        nowMs: minuteMs,
       }),
     );
     // Production and its stages are the chips on the heading (M2), never rows:
@@ -1242,7 +1246,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
       };
     };
     const comingOf = (tier: "stage" | "production", stop: GroupFlowStop): StopComing | undefined =>
-      listedStopComing(tier, listedOf(stop), nowMs);
+      listedStopComing(tier, listedOf(stop), minuteMs);
     const PENDING: StopComing = { kind: "coming", step: "project" };
     const line: HeadingLineInput | undefined =
       group === undefined
