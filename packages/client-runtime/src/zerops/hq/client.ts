@@ -162,6 +162,15 @@ export interface HqApi {
    * /api/apps/:appId/environments/:name/deploy-token`); the structure says only that it holds one.
    */
   readonly keepDeployToken: (appId: string, environment: string, token: string) => Promise<void>;
+  /**
+   * "Run again": the environment's newest deploy of `service`, at `sha`, failed, asked again as
+   * the person (`POST /api/apps/:appId/environments/:name/redeploy`); HQ's stream brings it.
+   */
+  readonly redeploy: (
+    appId: string,
+    environment: string,
+    deploy: { readonly service: string; readonly sha: string },
+  ) => Promise<void>;
   /** A Mate's change with what its review reads (`GET /api/apps/:appId/changes/:repo/:n`). */
   readonly change: (link: ChangeLink, signal?: AbortSignal) => Promise<ChangeDetailResponse>;
   /** What was said on a change, oldest first. */
@@ -464,6 +473,12 @@ export function makeHqApi(input: {
       await authorized(
         `/api/apps/${encodeURIComponent(appId)}/environments/${encodeURIComponent(environment)}/deploy-token`,
         { method: "PUT", body: JSON.stringify({ token }) },
+      );
+    },
+    redeploy: async (appId, environment, deploy) => {
+      await authorized(
+        `/api/apps/${encodeURIComponent(appId)}/environments/${encodeURIComponent(environment)}/redeploy`,
+        { method: "POST", body: JSON.stringify(deploy) },
       );
     },
     updateMate: async (projectId, change) => {

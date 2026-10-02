@@ -36,6 +36,10 @@ describe("hqRefusalWords — HQ's refusal, in the person's words", () => {
     ["environment_not_found", "environment_not_found", "HQ has no such environment."],
     ["deploy_token_refused", "invalid", "Zerops did not accept this deploy key."],
     ["deploy_token_scope", "invalid", "This deploy key reaches more than its own project."],
+    // A deploy asked again ("Run again").
+    ["deploy_not_found", "deploy_not_found", "HQ has no such deploy."],
+    ["deploy_superseded", "conflict", "A newer deploy took this one's place."],
+    ["deploy_not_failed", "conflict", "This deploy has not failed."],
   ])("says the structure's own %s in words", (reason, code, words) => {
     expect(hqRefusalWords({ code, reason })).toBe(words);
   });
