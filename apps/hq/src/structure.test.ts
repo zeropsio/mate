@@ -1,9 +1,11 @@
 import { assert, describe, it } from "@effect/vitest";
 import * as Deferred from "effect/Deferred";
+import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as Ref from "effect/Ref";
+import * as Schedule from "effect/Schedule";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
 
 import { activeCoreLayer, untilActive } from "../test/harness/activeCore.ts";
@@ -184,6 +186,59 @@ describe("structure", () => {
             { concurrency: "unbounded" },
           );
           assert.deepStrictEqual(raced.toSorted(), ["ok", ...Array(5).fill("slot_taken")]);
+        }),
+      ),
+    );
+
+    it.effect("a Mate record and an environment racing for one project: exactly one lands", () =>
+      withStructure(() =>
+        Effect.gen(function* () {
+          const structure = yield* Structure;
+          const shop = yield* structure.createApp("owner", "Shop");
+          // maker sees Shop through P_TEAM, its production, and owns P_RACE1, held nowhere.
+          yield* structure.attachProject("owner", shop.id, {
+            projectId: "P_TEAM",
+            kind: "production",
+          });
+          const sql = yield* SqlClient.SqlClient;
+          // The Mate's record is held back at its write, once it has decided: a lock on hq_mate
+          // that reads pass and an insert waits for.
+          const locked = yield* Deferred.make<void>();
+          const release = yield* Deferred.make<void>();
+          const holder = yield* Effect.forkChild(
+            sql.withTransaction(
+              Effect.gen(function* () {
+                yield* sql`LOCK TABLE hq_mate IN SHARE MODE`;
+                yield* Deferred.succeed(locked, undefined);
+                yield* Deferred.await(release);
+              }),
+            ),
+          );
+          yield* Deferred.await(locked);
+          const mate = yield* Effect.forkChild(
+            reasonOf(
+              structure.createMate("maker", { projectId: "P_RACE1", name: "Ada", face: "f" }),
+            ),
+          );
+          yield* sql<{ readonly waiting: number }>`
+            SELECT count(*)::int AS waiting FROM pg_stat_activity
+            WHERE wait_event_type = 'Lock' AND query LIKE '%INSERT INTO hq_mate%'`.pipe(
+            Effect.filterOrFail((rows) => (rows[0]?.waiting ?? 0) > 0),
+            Effect.retry(Schedule.spaced(Duration.millis(20))),
+            Effect.timeout(Duration.seconds(5)),
+          );
+          // Meanwhile the environment goes as far as it may: through, or waiting for the Mate.
+          const environment = yield* Effect.forkChild(
+            reasonOf(
+              structure.attachProject("maker", shop.id, { projectId: "P_RACE1", kind: "stage" }),
+            ),
+          );
+          yield* Effect.sleep(Duration.millis(300));
+          yield* Deferred.succeed(release, undefined);
+          yield* Fiber.join(holder);
+          const raced = [yield* Fiber.join(mate), yield* Fiber.join(environment)];
+          // A Mate first: no environment of it; an environment first: no Mate of it.
+          assert.oneOf(raced.join(" "), ["ok kind_class_change", "held_as_environment ok"]);
         }),
       ),
     );

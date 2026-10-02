@@ -34,7 +34,7 @@ import * as SubscriptionRef from "effect/SubscriptionRef";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
 import type { SqlError } from "effect/unstable/sql/SqlError";
 
-import { heldOf } from "./held.ts";
+import { heldOf, lockProject } from "./held.ts";
 import { Leader, type NotLeader } from "./leader.ts";
 import { MateLive, type MateLiveEntry } from "./mateLive.ts";
 import { Roles } from "./roles.ts";
@@ -434,10 +434,13 @@ export const structureLayer = (options: {
             yield* conflictOnUnique(
               leader.write(
                 Effect.gen(function* () {
-                  // The application's row, locked: attaches into one application are decided one
-                  // after another, each on what the one before left — two never take one place.
+                  // The project, then the application's row, locked: attaches of one project, or
+                  // into one application, are decided one after another, each on what the one
+                  // before left — two never take one place. The row lock lets a reference to the
+                  // application pass.
+                  yield* lockProject(sql, input.projectId);
                   const apps = yield* sql`
-                    SELECT 1 FROM hq_app WHERE id::text = ${appId} FOR UPDATE`;
+                    SELECT 1 FROM hq_app WHERE id::text = ${appId} FOR NO KEY UPDATE`;
                   yield* decided;
                   if (apps.length === 0) return yield* refuse("app_not_found", "app_not_found");
                   yield* dropRows(gone);
@@ -470,6 +473,7 @@ export const structureLayer = (options: {
             if (appId === null) {
               const removed = yield* leader.write(
                 Effect.gen(function* () {
+                  yield* lockProject(sql, projectId);
                   const held = yield* heldOf(sql, projectId);
                   yield* allowed(userId, "detach", { projectId, held }, view);
                   return yield* sql`
@@ -492,6 +496,7 @@ export const structureLayer = (options: {
             yield* conflictOnUnique(
               leader.write(
                 Effect.gen(function* () {
+                  yield* lockProject(sql, projectId);
                   const held = yield* heldOf(sql, projectId);
                   yield* allowed(
                     userId,
@@ -542,9 +547,8 @@ export const structureLayer = (options: {
             yield* conflictOnUnique(
               leader.write(
                 Effect.gen(function* () {
-                  // Held as decided until this write ends: a writer changing the project's kind
-                  // waits for it.
-                  yield* sql`SELECT 1 FROM hq_app_project WHERE project_id = ${mate.projectId} FOR SHARE`;
+                  // Held as decided until this write ends: a placement of the project waits.
+                  yield* lockProject(sql, mate.projectId);
                   const held = yield* heldOf(sql, mate.projectId);
                   yield* allowed(
                     userId,
