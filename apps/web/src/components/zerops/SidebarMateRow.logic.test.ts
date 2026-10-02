@@ -1,4 +1,5 @@
 import { ThreadId } from "@t3tools/contracts";
+import { readZeropsGroupTags, withZeropsMateAtBirth } from "@t3tools/client-runtime/zerops";
 import { describe, expect, it } from "vite-plus/test";
 
 import type { ZeropsAgentActivity } from "~/zerops/agentActivity";
@@ -228,6 +229,46 @@ describe("mateOwnerView — whose seat, and whether anybody signed its agent in"
     });
     expect(view.signInLine).toBe("Waiting for your sign-in");
     expect(view.waitsOnViewer).toBe(waits);
+  });
+
+  // Run 4 (2026-10-02): one person made two Mates and both waited for that person's sign-in, yet
+  // the one New project made read "Nobody has signed in yet" and the one Add a Mate made "Waiting
+  // for your sign-in". One state, one phrase: both name their maker at birth.
+  describe("one wording whichever flow made it", () => {
+    const BORN = {
+      "New project": withZeropsMateAtBirth(["mate:g:larch", "mate:role:dev"], {
+        role: "dev",
+        botName: "Ada",
+        madeBy: "user-petra",
+      }),
+      "Add a Mate": withZeropsMateAtBirth(["mate:g:larch", "mate:role:dev"], {
+        role: "dev",
+        botName: "Fen",
+        madeBy: "user-petra",
+        standUpBy: "user-petra",
+      }),
+    };
+    const words = (flow: keyof typeof BORN, viewer: string) => {
+      const tags = readZeropsGroupTags(BORN[flow]);
+      const view = mateOwnerView({
+        owner: undefined,
+        records: NOBODY,
+        asked: false,
+        standUpBy: tags.standUp?.by,
+        madeBy: tags.madeBy,
+        viewer,
+        linked: true,
+      });
+      return { line: view.signInLine, waits: view.waitsOnViewer };
+    };
+
+    it.each([
+      { viewer: "user-petra", line: "Waiting for your sign-in", waits: true },
+      { viewer: "user-karel", line: "Waiting for sign-in", waits: false },
+    ])("to $viewer: $line", ({ viewer, line, waits }) => {
+      expect(words("New project", viewer)).toEqual({ line, waits });
+      expect(words("Add a Mate", viewer)).toEqual({ line, waits });
+    });
   });
 
   it("says the empty seat in words, and draws a person as their mark", () => {

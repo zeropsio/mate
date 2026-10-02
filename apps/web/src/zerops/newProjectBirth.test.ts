@@ -409,6 +409,18 @@ describe("runNewProjectBirth — the project, then its first Mate", () => {
         face: { tint: "rose", shape: "seal" },
       },
     },
+    {
+      case: "naming who pressed Create, whose sign-in it waits for",
+      ask: { madeBy: "user-ada" },
+      args: {
+        name: "Acme CRM - Vera",
+        agents: [],
+        group: { groupId: "g-acme", role: "dev", label: "Acme CRM" },
+        botName: "Vera",
+        face: { tint: "rose", shape: "seal" },
+        madeBy: "user-ada",
+      },
+    },
   ])("creates its first Mate $case", async ({ ask, args }) => {
     const { ports: made } = ports();
     await runNewProjectBirth(birth({ step: "create", ...ask }), made, () => undefined);

@@ -12,7 +12,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test"
 
 import type { ZeropsMenuAction } from "../components/zerops/ZeropsProjectMenu";
 import { closeAccountLifetime, openAccountLifetime } from "./accountLifetime";
-import { useMateActions, type MateActions } from "./useMateActions";
+import { mateAddedBy, useMateActions, type MateActions } from "./useMateActions";
 import type { ZeropsCandidatePresentation } from "./useZeropsCandidates";
 
 interface FaceDialogProps {
@@ -340,5 +340,26 @@ describe("useMateActions — Finish setup on a Mate its press left open", () => 
     listing(candidate);
     mount();
     expect(offered(candidate)).toBe(false);
+  });
+});
+
+// Whether the viewer added a Mate reads the one fact both flows write at birth (`mate:by:`), so a
+// Mate made by New project is its maker's to finish as one made by Add a Mate is.
+describe("mateAddedBy — whether the viewer added this Mate", () => {
+  it.each([
+    {
+      case: "named its maker at birth (New project)",
+      tags: ["mate", "mate:by:user-ada"],
+      added: true,
+    },
+    {
+      case: "its stand-up asked by them (Add a Mate, before the maker tag)",
+      tags: ["mate", "mate:standup:user-ada"],
+      added: true,
+    },
+    { case: "somebody else made it", tags: ["mate", "mate:by:user-fen"], added: false },
+    { case: "nothing names anybody", tags: ["mate"], added: false },
+  ])("$case: $added", ({ tags, added }) => {
+    expect(mateAddedBy(tags, "user-ada")).toBe(added);
   });
 });
