@@ -281,6 +281,16 @@ describe("an application's releases in HQ", () => {
               "a commit of another repository",
               ask("dev", { entries: [{ service: "app", sha: groupHead }] }),
             ],
+            // What it names comes before where it is: every service, then every commit.
+            [
+              "a commit main has not, beside a service production has not",
+              ask("dev", {
+                entries: [
+                  { service: "app", sha: branched },
+                  { service: "web", sha: app },
+                ],
+              }),
+            ],
             ["Read access on production", ask("viewer")],
             ["nothing in the org there", ask("stranger")],
             ["an application HQ has not", ask("owner", {}, "00000000-0000-0000-0000-000000000000")],
@@ -296,6 +306,11 @@ describe("an application's releases in HQ", () => {
             ["a service no repository of the application builds", "conflict", "unknown_service"],
             ["a commit main has not", "conflict", "entry_not_on_main"],
             ["a commit of another repository", "conflict", "entry_not_on_main"],
+            [
+              "a commit main has not, beside a service production has not",
+              "conflict",
+              "unknown_service",
+            ],
             ["Read access on production", "forbidden", "not_releaser"],
             ["nothing in the org there", "forbidden", "app_not_seen"],
             ["an application HQ has not", "app_not_found", "app_not_found"],

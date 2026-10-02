@@ -212,10 +212,13 @@ export const releasesLayer: Layer.Layer<
                 ? read.runtimes.map((runtime) => [runtime.hostname, runtime.repo] as const)
                 : [],
             );
+            // What it names before where it is: every service, then every commit.
+            if (wanted.entries.some((entry) => !repoOf.has(entry.service))) {
+              return yield* refuse("conflict", "unknown_service");
+            }
             for (const entry of wanted.entries) {
-              const repo = repoOf.get(entry.service);
-              if (repo === undefined) return yield* refuse("conflict", "unknown_service");
-              if (!(yield* git.onMain({ appId, id: repo }, entry.sha))) {
+              const repo = { appId, id: repoOf.get(entry.service)! };
+              if (!(yield* git.onMain(repo, entry.sha))) {
                 return yield* refuse("conflict", "entry_not_on_main");
               }
             }
