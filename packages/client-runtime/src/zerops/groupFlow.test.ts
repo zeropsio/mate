@@ -991,12 +991,13 @@ describe("groupFlow — a stage's first deploy, while it runs nothing (run 4)", 
   });
 
   describe("a failure on main's head (run 5: the workflow failed before any build)", () => {
-    const failing = (minutesAgo: number, reason?: string) =>
+    const failing = (reason?: string, over: Partial<GroupFlowStopInput> = {}) =>
       stageStop({
         row: {
           ...declared({ projectId: "p-pantry-stage", name: "Pantry - stage", tier: "stage" }),
-          firstDeployFailure: { at: at(minutesAgo * MINUTE), reason },
+          firstDeployFailure: { reason },
         },
+        ...over,
       });
     const first = (stop: GroupFlowStopInput, over: Partial<GroupFlowInput> = {}) =>
       groupFlow(group({ stops: [stop], mainHasCode: true, runner: able, nowMs: NOW, ...over }))
@@ -1004,48 +1005,53 @@ describe("groupFlow — a stage's first deploy, while it runs nothing (run 4)", 
 
     it.each([
       {
-        case: "posted after the stage asked for it: failed, never on its way",
-        stop: failing(1),
+        // H1: the push job failed before Add stage; the broker's dispatch of the same workflow on
+        // the same commit fails too and posts nothing.
+        case: "the push job failed before the stage was made: failed once its import is done",
+        stop: failing(undefined, { createdAt: at(MINUTE) }),
+        over: {},
         first: { kind: "failed" },
       },
       {
         case: "with the job's own words: failed, and why",
-        stop: failing(1, "the build step exited with 1"),
+        stop: failing("the build step exited with 1"),
+        over: {},
         first: { kind: "failed", reason: "the build step exited with 1" },
       },
       {
-        case: "posted before the stage was made: not this stage's deploy",
-        stop: failing(3),
-        first: { kind: "on-its-way" },
+        case: "a merge into another repository after it: still failed",
+        stop: failing(),
+        over: {
+          merged: [
+            pull({ kind: "code", merged: true, mergedAt: at(MINUTE / 2), repository: "workerdev" }),
+          ],
+        },
+        first: { kind: "failed" },
       },
       {
         case: "past the window: still failed — a fact, however long ago",
-        stop: { ...failing(1), createdAt: at(40 * MINUTE) },
+        stop: failing(undefined, { createdAt: at(40 * MINUTE) }),
+        over: {},
         first: { kind: "failed" },
       },
       {
         case: "while the stage is still being made: the import first",
-        stop: { ...failing(1), services: [{ hostname: "app", status: "CREATING", runtime: true }] },
+        stop: failing(undefined, {
+          services: [{ hostname: "app", status: "CREATING", runtime: true }],
+        }),
+        over: {},
         first: { kind: "setting-up", step: "app" },
       },
-    ])("$case", ({ stop, first: expected }) => {
-      expect(first(stop)).toEqual(expected);
+    ])("$case", ({ stop, over, first: expected }) => {
+      expect(first(stop, over)).toEqual(expected);
     });
 
-    it("starts again as a newer commit lands on main: on its way, then building", () => {
+    it("starts again with a newer commit on main: its head has no failure, then it builds", () => {
       const fix = [pull({ kind: "code", merged: true, mergedAt: at(MINUTE / 2) })];
-      expect(first(failing(1), { merged: fix })).toEqual({ kind: "on-its-way" });
-      expect(
-        groupFlow(
-          group({
-            stops: [{ ...failing(1), deployment: runs(STAGE_SHA) }],
-            merged: fix,
-            mainHasCode: true,
-            runner: able,
-            nowMs: NOW,
-          }),
-        ).stages[0]?.firstDeploy,
-      ).toBeUndefined();
+      expect(first(stageStop(), { merged: fix })).toEqual({ kind: "on-its-way" });
+      expect(first(failing(undefined, { deployment: runs(STAGE_SHA) }), { merged: fix })).toBe(
+        undefined,
+      );
     });
   });
 

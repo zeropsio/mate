@@ -405,8 +405,7 @@ export function stageSettingUp(
 /**
  * Where a stage's first deploy stands (`firstDeploy`), the one reading every surface says it by —
  * its cell, the menu, its own page: only for a stage known to run nothing, once its own import is
- * done — a first deploy seen to fail, failing on `main`'s head after it was asked for, held by the
- * runner, or on its way — asked for from the
+ * done — a first deploy seen to fail, failing on `main`'s head, held by the runner, or on its way — asked for from the
  * later of its making and `main`'s last code landing. `undefined` while nothing asked for one, or
  * nothing can be promised.
  */
@@ -445,15 +444,11 @@ export function stageFirstDeploy(input: {
   if (step !== undefined) return { kind: "setting-up", step };
   if (deployment?.state !== "known" || input.nowMs === undefined) return undefined;
   const askedAt = firstDeployAskedAt(input.createdAt, input.merged);
-  // The job that deploys it failed on main's head after it was asked for — a fact, like a build
-  // seen to fail; a commit landing after it asks again, and a failure from before is another's.
+  // The job that deploys main's head failed there (`firstDeployOnHead`), whenever it was posted:
+  // the broker's dispatch runs the same workflow on the same commit. A newer commit on main is a
+  // new head with nothing on it yet, and the sequence starts again.
   const failure = input.headFailure;
-  if (
-    input.declared &&
-    failure !== undefined &&
-    askedAt !== undefined &&
-    Date.parse(failure.at) >= Date.parse(askedAt)
-  ) {
+  if (input.declared && failure !== undefined) {
     return failure.reason === undefined
       ? { kind: "failed" }
       : { kind: "failed", reason: failure.reason };

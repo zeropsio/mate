@@ -308,6 +308,8 @@ export interface GiteaTag {
 }
 
 export interface GiteaCommitStatus {
+  /** Gitea's id: later statuses get larger ones. */
+  readonly id?: number | undefined;
   readonly context: string;
   readonly state: "pending" | "success" | "error" | "failure" | "warning";
   readonly description?: string | undefined;

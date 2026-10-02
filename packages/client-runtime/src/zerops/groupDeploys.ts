@@ -42,16 +42,12 @@ import {
   deployedCommit,
   deployStatusContext,
   environmentRow,
-  firstDeployFailure,
+  firstDeployOnHead,
   type EnvironmentServiceState,
   type GroupRowTone,
   type MainHeadStatuses,
 } from "./groupRows.ts";
-import {
-  newestStatusesSettled,
-  STATUS_RECHECK_LADDER_MS,
-  VERDICT_RECHECK_LADDER_MS,
-} from "./forge/statusMemo.ts";
+import { STATUS_RECHECK_LADDER_MS, VERDICT_RECHECK_LADDER_MS } from "./forge/statusMemo.ts";
 import { COMING_UP_WINDOW_MS } from "./stopComing.ts";
 
 /** One runtime service of one Zerops project, as the reads need it. */
@@ -237,43 +233,53 @@ export function planFirstDeployHeadReads(input: {
 }
 
 /**
- * Whether what a first-deploy head read answered can no longer change for it: its stage's deploy
- * failed there (`firstDeployFailure`), or every context's newest status is done. Until then it is
- * read again on the reader's back-off.
+ * Whether what a first-deploy head read answered can no longer change for it
+ * (`firstDeployOnHead`): the broker's own job report, or the broker deployed it. A push job's
+ * failure is not — a dispatch that gets past its steps turns it — nor a refusal the broker retries.
  */
 export function firstDeployHeadSettled(
   read: Pick<FirstDeployHeadRead, "environment" | "hostname">,
   statuses: ReadonlyArray<GiteaCommitStatus>,
 ): boolean {
-  if (newestStatusesSettled(statuses)) return true;
-  return (
-    firstDeployFailure({
-      environment: read.environment,
-      services: [{ hostname: read.hostname, head: { sha: "", statuses } }],
-    }) !== undefined
-  );
+  const verdict = firstDeployOnHead({
+    environment: read.environment,
+    hostname: read.hostname,
+    statuses,
+  });
+  return verdict.kind === "deployed" || (verdict.kind === "failed" && verdict.final);
 }
 
 /**
- * How often a first-deploy head's statuses are read again while it waits: on the pending back-off
- * (15 s, 30 s, then a minute — one read a minute on the reader's clock) for a head not read before,
- * or one whose newest status is younger than the coming-up window, where a job is likely running;
- * on the verdict back-off (to one read every five minutes) for a head quiet longer than that.
+ * How long a first deploy's head is read at all after the later of its ask (the stage's making)
+ * and its newest status: the coming-up window, then the broker's 20 minutes of patience with a
+ * job that has not reported (gitea-mate). A push makes a new head, read again from the start.
+ */
+export const FIRST_DEPLOY_PATIENCE_MS = COMING_UP_WINDOW_MS + 20 * 60_000;
+
+/**
+ * How often a first-deploy head's statuses are read again while it waits, from the later of the
+ * stage's making and the head's newest status: on the pending back-off (15 s, 30 s, then a minute —
+ * one read a minute on the reader's clock) within the coming-up window, or for a head not read
+ * before; on the verdict back-off (to one read every five minutes) until
+ * {@link FIRST_DEPLOY_PATIENCE_MS}; then not at all (`undefined`) until a push makes a new head.
  */
 export function firstDeployHeadLadder(
   previous: MainHeadStatuses | undefined,
   sha: string,
+  askedAt: string | undefined,
   nowMs: number,
-): ReadonlyArray<number> {
+): ReadonlyArray<number> | undefined {
   if (previous === undefined || previous.sha !== sha) return STATUS_RECHECK_LADDER_MS;
-  let newest = Number.NaN;
+  let latest = askedAt === undefined ? Number.NaN : Date.parse(askedAt);
   for (const status of previous.statuses) {
     const at = status.created_at === undefined ? Number.NaN : Date.parse(status.created_at);
-    if (!Number.isNaN(at) && !(at <= newest)) newest = at;
+    if (!Number.isNaN(at) && !(at <= latest)) latest = at;
   }
-  return !Number.isNaN(newest) && nowMs - newest < COMING_UP_WINDOW_MS
-    ? STATUS_RECHECK_LADDER_MS
-    : VERDICT_RECHECK_LADDER_MS;
+  // Nothing says when anything happened there: read no more until a push.
+  if (Number.isNaN(latest)) return undefined;
+  const quiet = nowMs - latest;
+  if (quiet < COMING_UP_WINDOW_MS) return STATUS_RECHECK_LADDER_MS;
+  return quiet < FIRST_DEPLOY_PATIENCE_MS ? VERDICT_RECHECK_LADDER_MS : undefined;
 }
 
 /** What one environment's row is built from, before the row itself. */
