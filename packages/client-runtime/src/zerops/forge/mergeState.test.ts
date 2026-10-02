@@ -1,11 +1,9 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import type { GiteaPullRequest } from "../giteaClient.ts";
 import {
   createMergeabilityTracker,
   MERGE_CHECKING_WINDOW_MS,
   mergeabilityAfter,
-  mergeStateOf,
   type MergeabilityTrack,
   type MergeRead,
 } from "./mergeState.ts";
@@ -121,41 +119,5 @@ describe("MergeState over Gitea's mergeable reads (DESIGN §4.7, A7, A11)", () =
     expect(tracker.after("app#5", read(false, 5_000)).kind).toBe("checking");
     expect(tracker.after("app#4", read(false, 5_000)).kind).toBe("conflicting");
     expect(tracker.after("app#5", read(true, 6_000)).kind).toBe("mergeable");
-  });
-
-  it("a landed pull request says when and as what, a closed one only that it closed", () => {
-    const pull = (over: Partial<GiteaPullRequest>): GiteaPullRequest => ({
-      number: 4,
-      title: "Add a due date",
-      state: "open",
-      ...over,
-    });
-    const { mergeability } = mergeabilityAfter(null, read(true, 0));
-    const checks = { state: "unread", waitingFor: null } as const;
-    expect(
-      mergeStateOf(
-        pull({
-          state: "closed",
-          merged: true,
-          merged_at: "2026-09-20T10:00:00Z",
-          merge_commit_sha: "m1",
-        }),
-        mergeability,
-        checks,
-      ),
-    ).toEqual({ kind: "merged", atMs: Date.parse("2026-09-20T10:00:00Z"), sha: "m1" });
-    expect(mergeStateOf(pull({ state: "closed", merged: true }), mergeability, checks)).toEqual({
-      kind: "merged",
-      atMs: null,
-      sha: null,
-    });
-    expect(mergeStateOf(pull({ state: "closed" }), mergeability, checks)).toEqual({
-      kind: "closed",
-    });
-    expect(mergeStateOf(pull({}), mergeability, checks)).toEqual({
-      kind: "open",
-      mergeability: { kind: "mergeable" },
-      checks,
-    });
   });
 });

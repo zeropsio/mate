@@ -177,7 +177,6 @@ export const makeAccountRuntime = Effect.fnUntraced(function* (
         );
       case "forge-org":
       case "forge-repo":
-      case "forge-pr":
         return stage?.forge?.shows(invalidation) ?? false;
       case "deployment":
         return stage?.deployments.shows(invalidation.service) ?? false;
@@ -249,7 +248,6 @@ export const makeAccountRuntime = Effect.fnUntraced(function* (
               return;
             case "forge-org":
             case "forge-repo":
-            case "forge-pr":
               forge?.invalidate(invalidation);
               return;
             default:

@@ -504,15 +504,18 @@ describe("the account's project flow in the web", () => {
     try {
       root.render(<Surface />);
       await vi.waitFor(() =>
-        expect(rig.demanded()).toEqual(["repos", "declarations", "tags", "file", "file"]),
+        expect(rig.demanded()).toEqual(["declarations", "tags", "file", "file"]),
       );
       expect(rig.stopDemands).toEqual(["p-stage"]);
-      expect(flow()?.pullRequests.state).toBe("unread");
+      expect(flow()?.releases.state).toBe("unread");
 
-      rig.hold({ kind: "repos", origin: GITEA, org: "harbor" }, known([{ name: "appdev" }]));
-      await vi.waitFor(() => expect(rig.demanded()).toContain("open-pulls"));
-      rig.hold({ kind: "open-pulls", origin: GITEA, owner: "harbor", repo: "appdev" }, known([]));
-      await vi.waitFor(() => expect(flow()?.pullRequests.state).toBe("known"));
+      rig.hold(
+        { kind: "tags", origin: GITEA, owner: "harbor", repo: "group" },
+        known([{ name: "v1.0.0", message: "", commit: { sha: "s1" } }]),
+      );
+      // A release tag names the commit whose statuses carry the broker's verdict on it.
+      await vi.waitFor(() => expect(rig.demanded()).toContain("statuses"));
+      await vi.waitFor(() => expect(flow()?.releases.state).toBe("known"));
     } finally {
       root.unmount();
       await nextMacrotask();

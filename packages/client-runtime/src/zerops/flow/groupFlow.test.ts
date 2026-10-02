@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import { project, service } from "../data/__fixtures__/index.ts";
-import type { GiteaCommitStatus, GiteaPullRequest, GiteaTag } from "../giteaClient.ts";
+import type { GiteaCommitStatus, GiteaTag } from "../giteaClient.ts";
 import type { GroupEnvironment, GroupEnvironmentTier } from "../groupEnvironments.ts";
 import { deployedVersion, deployStatusContext, environmentRow } from "../groupRows.ts";
 import type { ZeropsRegistryGroup } from "../hq/registry.ts";
@@ -12,7 +12,6 @@ import type { Deployment, SettledDeployment, StopService } from "./deployment.ts
 import {
   groupFlow,
   groupFlowStatusReads,
-  pullKey,
   RELEASES_SHOWN,
   releaseContentKey,
   releaseContentReads,
@@ -20,7 +19,6 @@ import {
   tiersOnMain,
   type GroupFlowInputs,
   type GroupFlowMember,
-  type GroupFlowPull,
 } from "./groupFlow.ts";
 
 const NOW = 1_000_000;
@@ -96,25 +94,6 @@ const stopService = (
   deployment,
 });
 
-const pull = (number: number, overrides: Partial<GiteaPullRequest> = {}): GiteaPullRequest => ({
-  number,
-  title: `Change ${number}`,
-  state: "open",
-  head: { ref: "mate/ada", sha: "c".repeat(40) },
-  base: { ref: "main", sha: MAIN_SHA },
-  mergeable: true,
-  ...overrides,
-});
-
-const openPull = (number: number): GroupFlowPull => ({
-  pull: pull(number),
-  state: {
-    kind: "open",
-    mergeability: { kind: "mergeable" },
-    checks: known("passing" as const),
-  },
-});
-
 const TAGS: ReadonlyArray<GiteaTag> = [{ name: "v1.0.0", message: "" }];
 
 /** A group whose every input is known: production runs `b…`, `main` holds `a…`. */
@@ -122,16 +101,6 @@ const inputs = (overrides: Partial<GroupFlowInputs> = {}): GroupFlowInputs => ({
   entry: ENTRY,
   members: known(MEMBERS),
   declarations: known(DECLARATIONS),
-  repos: known(["appdev", "group"]),
-  openPulls: new Map([
-    ["appdev", known([4])],
-    ["group", known([])],
-  ]),
-  pulls: new Map([[pullKey("appdev", 4), known(openPull(4))]]),
-  merged: new Map([
-    ["appdev", known([])],
-    ["group", known([])],
-  ]),
   tags: known(TAGS),
   tiers: known({ tiers: ["stage", "production"], repositories: new Map([["appdev", "appdev"]]) }),
   mainHeads: new Map([["appdev", known(MAIN_SHA)]]),
@@ -183,19 +152,6 @@ describe("groupFlow (DESIGN §4.7)", () => {
       allowed: false,
       reason: "Couldn't read what can be released. Zerops didn't answer.",
     });
-  });
-
-  it("a stop that fails or waits holds the release, never the pull requests", () => {
-    const flow = groupFlow(
-      inputs({ stops: new Map([["p-prod", failed({ kind: "server", status: 502 })]]) }),
-      RELEASER,
-      NOW,
-    );
-
-    expect(flow.pullRequests.state).toBe("known");
-    expect(flow.pullRequests.state === "known" ? flow.pullRequests.value : []).toEqual([
-      { repository: "appdev", pull: openPull(4).pull, state: openPull(4).state },
-    ]);
   });
 
   it("a Gitea read that failed names Gitea, and a stale input holds the release", () => {
@@ -273,20 +229,6 @@ describe("groupFlow (DESIGN §4.7)", () => {
     expect(flow.release.state === "known" ? flow.release.value.entries : []).toEqual([
       { service: "appdev", commit: MAIN_SHA },
     ]);
-  });
-
-  it("the pull requests wait for every repository's open list, not for the other half", () => {
-    const flow = groupFlow(
-      inputs({
-        openPulls: new Map([["appdev", known([4])]]),
-        declarations: READING,
-        stops: new Map(),
-      }),
-      RELEASER,
-      NOW,
-    );
-
-    expect(flow.pullRequests.state).toBe("unread");
   });
 
   it("a stop is declared, missing its project, or not declared yet (D7)", () => {
@@ -721,32 +663,6 @@ describe("groupFlow (DESIGN §4.7)", () => {
     expect(releases.state === "known" ? releases.value.map(({ tag }) => tag) : []).toEqual(
       newest.map((minor) => `v1.${String(minor)}.0`),
     );
-  });
-
-  it("the landed pull requests come from each repository's recent landings, in the org's order", () => {
-    const landed = (number: number) =>
-      pull(number, { state: "closed", merged: true, merge_commit_sha: `m${String(number)}` });
-    const merged = new Map([
-      ["appdev", known([landed(3)])],
-      ["group", known([landed(2), landed(1)])],
-    ]);
-
-    expect(groupFlow(inputs({ merged }), RELEASER, NOW).merged).toMatchObject({
-      state: "known",
-      value: [
-        { repository: "appdev", pull: { number: 3 } },
-        { repository: "group", pull: { number: 2 } },
-        { repository: "group", pull: { number: 1 } },
-      ],
-    });
-    // One repository still being read holds the landings, never the pull requests.
-    const reading = groupFlow(
-      inputs({ merged: new Map(merged).set("group", READING) }),
-      RELEASER,
-      NOW,
-    );
-    expect(reading.merged.state).toBe("reading");
-    expect(reading.pullRequests.state).toBe("known");
   });
 
   it("a declared stop's environment row names what each service runs and how its deploy went", () => {

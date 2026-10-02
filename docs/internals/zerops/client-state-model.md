@@ -511,7 +511,7 @@ Observations flow only into owners; surfaces read only projections and send back
 **The invalidation bus** is a `PubSub` owned by the account runtime: a closed, typed set of
 revalidation requests with no data and no merge semantics. Topics: `access` (granted, lapsed,
 renew-now), `inventory(org)`, `project`, `environment(target, why)`, `container(target)`,
-`deployment(service)`, `gitea-session(origin)`, `forge-org`, `forge-repo`, `forge-pr`. Only owners
+`deployment(service)`, `gitea-session(origin)`, `forge-org`, `forge-repo`. Only owners
 of pull-based facts subscribe; the runtime accepts only `inventory` and `access`. Invalidations
 coalesce per key over 250 ms; in a hidden tab they collect into a dirty set flushed, visible first,
 on the next visible wake.
@@ -642,7 +642,7 @@ carries it. "Live" means it holds on `main` today.
 | Session machine: cross-tab sign-in without reload, owner record, verified adoption                | Live                                                                                   |
 | `Deployment` from the pushed facet; per-group publication                                         | Live; `deploying` in 4.4                                                               |
 | Gitea session machine                                                                             | Live                                                                                   |
-| `MergeState` shared by the flow, Git tab, banner and change page                                  | Live, in the forge store                                                               |
+| `MergeState` shared by the flow, Git tab, banner and change page                                  | Live, over each surface's reads (`forge/mergeState.ts`)                                |
 | Broker leases as cells, withheld and re-admitted per scope                                        | Live                                                                                   |
 | Invalidation bus and cross-tab channel                                                            | Live                                                                                   |
 | Inventory selectors return `Known`; presence `unknown`                                            | Live                                                                                   |

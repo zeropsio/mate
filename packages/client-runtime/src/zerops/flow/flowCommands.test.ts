@@ -313,8 +313,6 @@ describe("a group flow's commands", () => {
   ): GroupFlow => ({
     groupId: "g1",
     slug: "harbor",
-    pullRequests: { state: "unread", waitingFor: null },
-    merged: { state: "unread", waitingFor: null },
     stops: { state: "unread", waitingFor: null },
     missing: { state: "unread", waitingFor: null },
     release,

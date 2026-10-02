@@ -1,22 +1,18 @@
 /**
- * Whether a pull request merges, as one projection for every surface that asks (DESIGN §4.7
- * "MergeState", A7, A11).
+ * Whether a pull request merges, over the reads of it so far (DESIGN §4.7 "MergeState", A7, A11).
  *
  * Gitea recomputes `mergeable` after every push to either side of a pull request, and answers
  * `false` for about two seconds while it does (A11, measured 2026-09-23) — so a `false` that soon
  * after a push is not a verdict. `true` is mergeable at once. `false`, `null` or no answer is
  * `checking`; a `false` is `conflicting` only once {@link MERGE_CHECKING_WINDOW_MS} have passed
  * since these head and base shas were first read, and a read that knows neither sha can never be
- * one. The forge store reads a pull request that is checking again at
- * {@link MERGE_RECHECK_AFTER_MS} while it is demanded.
+ * one. A surface reads a pull request that is checking again at {@link MERGE_RECHECK_AFTER_MS}.
  *
  * Pure: no network, no clock, no platform globals (rule R1).
  *
  * @module forge/mergeState
  */
 import type { GiteaPullRequest } from "../giteaClient.ts";
-import type { GitCheckTone } from "../gitTab.ts";
-import type { Shown } from "../knowledge/known.ts";
 
 /** A `false` this soon after the head or base sha changed is Gitea still checking. */
 export const MERGE_CHECKING_WINDOW_MS = 5_000;
@@ -31,21 +27,6 @@ export type Mergeability =
 
 /** How an open pull request merges, as far as a surface that draws it needs to know. */
 export type MergeabilityKind = Mergeability["kind"];
-
-export type MergeState =
-  | {
-      readonly kind: "merged";
-      /** When it landed; `null` where Gitea sent no time. */
-      readonly atMs: number | null;
-      /** The commit it landed as; `null` where Gitea sent none. */
-      readonly sha: string | null;
-    }
-  | { readonly kind: "closed" }
-  | {
-      readonly kind: "open";
-      readonly mergeability: Mergeability;
-      readonly checks: Shown<GitCheckTone>;
-    };
 
 /** One read of a pull request, as far as whether it merges goes. */
 export interface MergeRead {
@@ -104,9 +85,8 @@ export function mergeabilityAfter(
 }
 
 /**
- * The mergeability of every pull request one surface reads, over the reads it has made — for a
- * surface that reads Gitea itself rather than through the forge store. Keys are the surface's
- * own, one per pull request.
+ * The mergeability of every pull request one surface reads, over the reads it has made. Keys are
+ * the surface's own, one per pull request.
  */
 export interface MergeabilityTracker {
   readonly after: (key: string, read: MergeRead) => Mergeability;
@@ -121,22 +101,4 @@ export function createMergeabilityTracker(): MergeabilityTracker {
       return track.mergeability;
     },
   };
-}
-
-/** The pull request as every surface sees it: landed, closed, or open and how it merges. */
-export function mergeStateOf(
-  pull: GiteaPullRequest,
-  mergeability: Mergeability,
-  checks: Shown<GitCheckTone>,
-): MergeState {
-  if (pull.merged === true) {
-    const atMs = pull.merged_at === undefined ? Number.NaN : Date.parse(pull.merged_at);
-    return {
-      kind: "merged",
-      atMs: Number.isNaN(atMs) ? null : atMs,
-      sha: pull.merge_commit_sha ?? null,
-    };
-  }
-  if (pull.state !== "open") return { kind: "closed" };
-  return { kind: "open", mergeability, checks };
 }
