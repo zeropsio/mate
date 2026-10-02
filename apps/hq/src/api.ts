@@ -34,6 +34,7 @@
  *   itself at `/git/<appId>/<repo>.git`, Basic auth with the user `mate` and the Mate's credential
  *   (`gitHost.ts`).
  * - A person's side of the changes: `GET /api/apps/:appId/repos` → `{ repos }`, its repositories;
+ *   `GET /api/apps/:appId/repos/:repo/compare?base=&head=` → what lies between two commits;
  *   `GET /api/apps/:appId/changes` → `{ changes }`; `GET
  *   /api/apps/:appId/changes/:repo/:n` → the change's review; `GET`, `POST …/comments`; `GET
  *   …/attachments/:id` → a picture; `POST …/merge` `{ expectedHead }` and `POST …/close` → the
@@ -75,6 +76,7 @@ import {
   ATTACHMENT_CONTENT_TYPE,
   ATTACHMENT_MAX_BYTES,
   ChangeNumber,
+  CompareQuery,
   EditChangeRequest,
   EnsureRepoRequest,
   MergeChangeRequest,
@@ -182,6 +184,7 @@ const CHANGE_STATUS = {
   repo_not_found: 404,
   change_not_found: 404,
   attachment_not_found: 404,
+  commit_not_found: 404,
   conflict: 409,
   invalid: 400,
   too_large: 413,
@@ -340,6 +343,10 @@ const mateHolding = (presented: string | undefined) =>
 const mate = Effect.flatMap(HttpServerRequest.HttpServerRequest, (request) =>
   mateHolding(/^Mate (\S+)$/u.exec(request.headers["authorization"] ?? "")?.[1]),
 );
+
+/** A repository as a path names it, `:repo`, and a comparison as its query asks it. */
+const decodeRepoName = Schema.decodeUnknownEffect(RepoName);
+const decodeCompareQuery = Schema.decodeUnknownEffect(CompareQuery);
 
 /** A recipe's tier as a path names it, `:tier`: `mate`, `stage` or `production`. */
 const decodeRecipeTier = Schema.decodeUnknownEffect(RecipeTier);
@@ -841,6 +848,28 @@ const routes = (
           const { userId } = yield* principal;
           const appId = (yield* HttpRouter.params)["appId"] ?? "";
           return json({ repos: yield* (yield* Changes).listRepos(userId, appId) }, 200);
+        }),
+      ),
+    ),
+    HttpRouter.add(
+      "GET",
+      "/api/apps/:appId/repos/:repo/compare",
+      handle(
+        Effect.gen(function* () {
+          const { userId } = yield* principal;
+          const params = yield* HttpRouter.params;
+          const repo = yield* decodeRepoName(params["repo"]);
+          const search = new URL((yield* HttpServerRequest.HttpServerRequest).url, "http://hq")
+            .searchParams;
+          const base = search.get("base");
+          const query = yield* decodeCompareQuery({
+            ...(base === null ? {} : { base }),
+            head: search.get("head"),
+          });
+          return json(
+            yield* (yield* Changes).compare(userId, params["appId"] ?? "", repo, query),
+            200,
+          );
         }),
       ),
     ),

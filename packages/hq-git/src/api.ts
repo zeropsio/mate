@@ -292,6 +292,18 @@ export interface HqGit {
     number: number,
   ) => Effect.Effect<string | null, GitError>;
   /**
+   * The commits `base..head` names — reachable from `head` and not from `base`, every one up to
+   * `head` without a `base` — children before parents, at most `limit`; and how many there are,
+   * counted up to the history bound (that many means at least as many). `base` need not come before
+   * `head`. Both are full shas, and a commit the repository lacks is `not_found`.
+   */
+  readonly range: (
+    repo: Repo,
+    base: string | null,
+    head: string,
+    options: { readonly limit: number },
+  ) => Effect.Effect<Bounded<CommitSummary> & { readonly total: number }, GitError>;
+  /**
    * The change's commits not on main (`main..head`), children before parents, at most `limit`;
    * without a main, all of the change's. None without a change head.
    */
