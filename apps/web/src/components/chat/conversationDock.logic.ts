@@ -283,19 +283,20 @@ export function deriveDock(input: {
     };
   }
 
-  // A bar stands for what runs: the running turn's pipelines while they run,
-  // and one that failed until the turn ends. A finished one leaves — its
-  // line stays in the stream, its result goes to the report. A batch deploy
-  // is a row per service.
+  // A bar stands for what runs without the Mate waiting on it: the running
+  // turn's pipelines whose call returned while they run on (a stand-up's
+  // builds). One the Mate waits on is the live slot's; one that ended leaves
+  // — its line stays in the record, what is still broken goes to the result.
+  // A batch deploy is a row per service.
   const operations =
     input.isWorking && input.runningTurnId !== null
       ? input.timelineEntries.flatMap((entry) =>
           entry.kind === "operation" &&
           DOCKED_KINDS.has(entry.operation.kind) &&
-          entry.operation.turnId === input.runningTurnId
-            ? splitBatchDeploy(entry.operation).filter(
-                (operation) => operation.phase === "running" || operation.phase === "failed",
-              )
+          entry.operation.turnId === input.runningTurnId &&
+          entry.operation.phase === "running" &&
+          entry.operation.returnedAt !== undefined
+            ? splitBatchDeploy(entry.operation).filter((operation) => operation.phase === "running")
             : [],
         )
       : [];
@@ -329,18 +330,10 @@ export function deriveDock(input: {
         }
       : null;
 
-  // What runs in the background, from this turn or before, and the running
-  // turn's that failed.
+  // What runs in the background now, from this turn or before: one that
+  // failed is told once, as its row in the record.
   const background = input.isWorking
-    ? backgroundGroup(
-        backgroundTasks.filter(
-          (task) =>
-            task.state === "running" ||
-            (task.state === "failed" &&
-              input.runningTurnId !== null &&
-              task.turnId === input.runningTurnId),
-        ),
-      )
+    ? backgroundGroup(backgroundTasks.filter((task) => task.state === "running"))
     : null;
 
   const pause = input.isWorking ? null : input.pause;
