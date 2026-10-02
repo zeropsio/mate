@@ -1050,6 +1050,9 @@ describe("groupFlow — a stage's first deploy, while it runs nothing (run 4)", 
     // Done, unread or long ago: what it runs says it.
     expect(settingUp({ services: [{ ...making, status: "ACTIVE" }] })).toBeUndefined();
     expect(settingUp({ services: undefined })).toBeUndefined();
+    // Its project's own status first: one being made is set up whatever its services say.
+    expect(settingUp({ projectStatus: "CREATING", services: undefined })).toBe(true);
+    expect(settingUp({ projectStatus: "DELETING", services: [making] })).toBeUndefined();
     expect(settingUp({ services: [making], createdAt: at(20 * MINUTE) })).toBeUndefined();
     // Something runs there: never setting up again.
     expect(settingUp({ services: [making], deployment: runs(STAGE_SHA) })).toBeUndefined();

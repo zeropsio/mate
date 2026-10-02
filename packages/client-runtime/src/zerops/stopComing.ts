@@ -195,6 +195,9 @@ const coming = (step: ComingStep): StopComing => ({ kind: "coming", step });
 
 const AWAITED: FirstDeploy = { kind: "awaited" };
 
+/** A project the platform is still making; any other status but ACTIVE is no step of coming up. */
+const MAKING_PROJECT = "CREATING";
+
 /** A runtime the platform is still making: its container, then the import's no-code deploy. */
 const MAKING: ReadonlySet<string> = new Set(["NEW", "CREATING"]);
 
@@ -228,13 +231,13 @@ export function stopComing(input: {
   readonly firstDeploy: FirstDeploy | undefined;
 }): StopComing | undefined {
   if (input.pending) return coming("project");
-  if (input.projectStatus === "STOPPED") return undefined;
-  if (input.projectStatus !== undefined && input.projectStatus !== "ACTIVE") {
-    return coming("project");
-  }
   const made = input.createdAt === undefined ? Number.NaN : Date.parse(input.createdAt);
   if (Number.isNaN(made) || input.nowMs - made >= COMING_UP_WINDOW_MS) return undefined;
-  if (input.services === undefined) return coming("project");
+  if (input.projectStatus === MAKING_PROJECT) return coming("project");
+  // Stopped, being deleted, or a status nobody named: not a step of its coming up.
+  if (input.projectStatus !== undefined && input.projectStatus !== "ACTIVE") return undefined;
+  // Its services unread (a reload): nothing is said until they are, never "making the project".
+  if (input.services === undefined) return undefined;
   const runtimes = input.services.filter((service) => service.runtime);
   const others = input.services.filter((service) => !service.runtime);
   const running = (status: string) => status === "ACTIVE";
@@ -292,8 +295,9 @@ export interface PlatformService {
 /**
  * Where an environment's own import has got, from what the platform says of it alone — the
  * coming-up steps that come before any word about its first deploy, in {@link stopComing}'s order:
- * its project being made, a database not running yet, its app being added (none listed yet, or
- * being made). `undefined` once the import is done, where something failed, it is stopped, or its
+ * its project being made (CREATING), a database not running yet, its app being added (none listed
+ * yet, or being made). `undefined` once the import is done, where something failed, its project
+ * is stopped or being deleted, its services are unread under an active project (a reload), or its
  * window went by. A surface that cannot read the platform's steps still keeps their order by it:
  * the projects page's cell says nothing of a first deploy, or of the runner, before this is done.
  */
@@ -304,11 +308,11 @@ export function stopImport(input: {
   /** Its services as the platform lists them; `undefined` while unread. */
   readonly services: ReadonlyArray<PlatformService> | undefined;
 }): "project" | "database" | "app" | undefined {
-  if (input.projectStatus === "STOPPED") return undefined;
-  if (input.projectStatus !== undefined && input.projectStatus !== "ACTIVE") return "project";
   const made = input.createdAt === undefined ? Number.NaN : Date.parse(input.createdAt);
   if (Number.isNaN(made) || input.nowMs - made >= COMING_UP_WINDOW_MS) return undefined;
-  if (input.services === undefined) return "project";
+  if (input.projectStatus === MAKING_PROJECT) return "project";
+  if (input.projectStatus !== undefined && input.projectStatus !== "ACTIVE") return undefined;
+  if (input.services === undefined) return undefined;
   if (input.services.some(({ status }) => failing(status))) return undefined;
   const runtimes = input.services.filter((service) => service.runtime);
   if (input.services.some((service) => !service.runtime && service.status !== "ACTIVE")) {

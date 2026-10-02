@@ -389,7 +389,8 @@ function withFirstDeploy(
 
 /**
  * Whether a stage's own import still runs, as far as the platform's listing of it says
- * (`stopImport`): never where its services are unread, or without a clock.
+ * (`stopImport`): its project's status first, then its services; never where those are unread
+ * under an active project, or without a clock.
  */
 export function stageSettingUp(
   input: {
@@ -400,7 +401,6 @@ export function stageSettingUp(
   nowMs: number | undefined,
 ): boolean {
   return (
-    input.services !== undefined &&
     nowMs !== undefined &&
     stopImport({
       projectStatus: input.projectStatus,
