@@ -237,6 +237,12 @@ describe("readHqHealth", () => {
       { kind: "healthy", build: "b1" },
     ],
     [
+      // Inside HQ's grace (`official.ts`): it leads and serves, Zerops just does not answer its check.
+      "the official HQ leading, its check of Zerops unanswered",
+      json(200, { state: "active", official: "unknown", db: "up", epoch: 8, build: "b1" }),
+      { kind: "unchecked", build: "b1" },
+    ],
+    [
       "a standby that is not the official HQ yet",
       json(200, { state: "standby", official: "anchor_missing", db: "up", epoch: 0, build: "b1" }),
       { kind: "not-ready", state: "standby", official: "anchor_missing" },
