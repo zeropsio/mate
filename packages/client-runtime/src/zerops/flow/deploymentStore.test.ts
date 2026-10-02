@@ -275,7 +275,12 @@ describe("the deployment store (DESIGN §2.D D6)", () => {
     // No build of it was seen: the push names only the new version's id (A14).
     platform.publish(STAGE, stage({ ...NEVER_DEPLOYED, id: "version-2", source: null }));
     expect(platform.asked()).toContain("app-id");
-    expect(deploymentOf(store.stop(STAGE), "app")?.state).toBe("unread");
+    // Until it states the new one, the stop keeps the version it ran, checking it again.
+    expect(deploymentOf(store.stop(STAGE), "app")).toMatchObject({
+      state: "known",
+      value: { kind: "running", version: { label: "v1.0.0" } },
+      freshness: { kind: "revalidating" },
+    });
 
     platform.answer(stated({ activeId: "version-2", source: "GIT", name: `${SHA} v1.1.0 ada` }));
 
@@ -366,6 +371,53 @@ describe("the deployment store (DESIGN §2.D D6)", () => {
       state: "known",
       value: { kind: "none" },
     });
+  });
+
+  it("a re-check keeps the last answer: the import's no-code version never reads Checking again", () => {
+    const platform = listings();
+    const store = makeDeploymentStore(platform.ports);
+    store.demand(STAGE);
+    platform.publishProcesses(STAGE, building());
+    platform.publish(STAGE, stage(NEVER_DEPLOYED));
+    expect(deploymentOf(store.stop(STAGE), "app")).toMatchObject({ value: { kind: "none" } });
+
+    // The import's own deploy activates a version the push names only by its id (A14).
+    platform.publish(STAGE, stage({ ...NEVER_DEPLOYED, id: "version-2", source: null }));
+    expect(deploymentOf(store.stop(STAGE), "app")).toMatchObject({
+      state: "known",
+      value: { kind: "none" },
+      freshness: { kind: "revalidating", sinceMs: NOW },
+    });
+
+    platform.answer(stated({ activeId: "version-2", source: "NONE", name: null }));
+    expect(deploymentOf(store.stop(STAGE), "app")).toMatchObject({
+      state: "known",
+      value: { kind: "none" },
+      freshness: { kind: "live" },
+    });
+  });
+
+  it("a re-check of the whole listing keeps the services it showed", () => {
+    const platform = listings();
+    const store = makeDeploymentStore(platform.ports);
+    store.demand(STAGE);
+    platform.publishProcesses(STAGE, building());
+    platform.publish(STAGE, stage(NEVER_DEPLOYED));
+
+    // The listing is read again: its coverage is not stated until it lands.
+    platform.publish(
+      STAGE,
+      servicesRead([record("app-id", "app", deployed(NEVER_DEPLOYED), { project: STAGE })], {
+        project: STAGE,
+        coverage: { kind: "none" },
+      }),
+    );
+
+    expect(store.stop(STAGE)).toMatchObject({
+      state: "known",
+      freshness: { kind: "revalidating", sinceMs: NOW },
+    });
+    expect(deploymentOf(store.stop(STAGE), "app")).toMatchObject({ value: { kind: "none" } });
   });
 
   it("a refused process demand fails the none it could not prove until it is taken again", () => {
