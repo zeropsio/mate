@@ -101,6 +101,15 @@ describe("changeReview: the verdict comes first (R2)", () => {
         why: "main moved on since Nova branched · it still merges cleanly",
       },
     ],
+    // Only Mates open changes (SPEC §5.4): one whose name is not known yet is still a Mate.
+    [
+      "behind main, its Mate not named",
+      { pull: pull({ behind: true }), mateName: undefined },
+      {
+        state: "behind-clean",
+        why: "main moved on since the Mate branched · it still merges cleanly",
+      },
+    ],
     [
       "nothing main does not have",
       { pull: pull({ mergeability: "empty" }) },

@@ -190,7 +190,7 @@ export interface ChangeReviewInput {
     /** Whether `main` has moved on past the commit it was cut from. */
     readonly behind: boolean;
   };
-  /** The Mate that wrote it; `undefined` for a person's own branch. */
+  /** The name of the Mate that wrote it — only Mates open changes; `undefined` until it is known. */
   readonly mateName: string | undefined;
   /**
    * How far its files were read for the head it is at. Merge takes only a head whose change was
@@ -332,7 +332,7 @@ function changeVerdictOf(input: ChangeReviewInput): {
 } {
   const { pull } = input;
   const base = pull.baseBranch;
-  const who = input.mateName ?? "this";
+  const who = input.mateName ?? "the Mate";
 
   if (pull.mergeability === "conflicting") {
     const files = input.conflict?.files ?? [];
