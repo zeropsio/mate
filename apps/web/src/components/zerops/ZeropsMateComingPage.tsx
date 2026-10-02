@@ -63,7 +63,7 @@ import { buildThreadRouteParams } from "~/threadRoutes";
 import { useAccountEnvironments, useConnectMate } from "~/zerops/accountEnvironments";
 import {
   arrivalHoldsThrough,
-  firstBuildFailure,
+  firstBuildState,
   halfMadeFor,
   listingLacksCreation,
   mateArrivalShown,
@@ -214,8 +214,8 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
     created: creation !== undefined,
     listingLacksIt,
     linkHolds: arrivalHoldsThrough(link.reachability, { failuresSinceConnect }),
-    firstBuildFailed: firstBuilding
-      ? firstBuildFailure(firstBuildProcesses, candidate?.service?.id)
+    firstBuild: firstBuilding
+      ? firstBuildState(firstBuildProcesses, candidate?.service?.id)
       : undefined,
   });
   const page = mateComingPage({

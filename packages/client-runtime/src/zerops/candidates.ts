@@ -183,27 +183,24 @@ export function applyProjectCreationVerdict<Candidate extends ZeropsCandidate>(
 }
 
 /**
- * How long a Mate's container may wait for its first build (`READY_TO_DEPLOY`) and still be on
- * its way up: the build takes about a minute (measured 2026-10-02). One that has not landed by
- * then failed — a failed first build leaves the service READY_TO_DEPLOY for good — or is stuck.
+ * How long a Mate's container may wait for its first build (`READY_TO_DEPLOY`) before it is
+ * taking longer than usual: the build takes about a minute (measured 2026-10-02).
  */
 export const FIRST_BUILD_GRACE_MS = 300_000;
 
 /**
- * A container waiting for its first build, read against the time: past its grace it is not on
- * its way up any more, and reads as the platform leaves it — unavailable, naming its status, so
- * its row offers what removes it. A creation time not known keeps it on its way.
+ * A container waiting for its first build past its grace: still on its way — a slow or queued
+ * build looks the same from its status as one that failed, so only its build's own process says
+ * which (`firstBuildState`) — and taking longer than usual. A creation time not known, or one
+ * ahead of this browser's clock, is not overdue.
  */
-export function applyFirstBuildGrace<Candidate extends ZeropsCandidate>(
-  candidate: Candidate,
+export function firstBuildOverdue(
+  candidate: Pick<ZeropsCandidate, "service">,
   nowMs: number,
-): Candidate {
-  if (candidate.group !== "provisioning" || candidate.service?.status !== "READY_TO_DEPLOY") {
-    return candidate;
-  }
+): boolean {
+  if (candidate.service?.status !== "READY_TO_DEPLOY") return false;
   const created = Date.parse(candidate.service.created ?? "");
-  if (Number.isNaN(created) || nowMs - created < FIRST_BUILD_GRACE_MS) return candidate;
-  return { ...candidate, group: "unavailable", reason: "container is READY_TO_DEPLOY" };
+  return !Number.isNaN(created) && nowMs - created >= FIRST_BUILD_GRACE_MS;
 }
 
 /**

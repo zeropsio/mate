@@ -43,6 +43,7 @@ import {
   COMING_UP_LINE,
   creationFailedLine,
   NOT_SET_UP_LINE,
+  TAKING_LONGER_LINE,
   RESTARTING_SERVICE_STATUSES,
 } from "../components/zerops/ZeropsProjectRow.logic";
 
@@ -113,8 +114,8 @@ export interface MateComingInput {
   readonly linkHolds?: boolean | undefined;
   /** A whole listing read well after this tab made it lacks it (`listingLacksCreation`). */
   readonly listingLacksIt?: boolean | undefined;
-  /** Why its container's first build failed, where its project's processes say so. */
-  readonly firstBuildFailed?: string | undefined;
+  /** Its container's first build, where its project's processes are read (`firstBuildState`). */
+  readonly firstBuild?: FirstBuildState | undefined;
 }
 
 /** Whether `at` is within `graceMs` of now; an unknown time or now counts as young. */
@@ -181,10 +182,10 @@ export function mateComing(input: MateComingInput): MateComing | undefined {
     };
   }
   // Its container waits for its first build: one that failed never brings it (the platform leaves
-  // the service READY_TO_DEPLOY), and one waiting past its grace is not a birth any more.
+  // the service READY_TO_DEPLOY), and says so with Remove wherever its build's process is read.
   const firstBuild = candidate?.service?.status === "READY_TO_DEPLOY";
-  if (firstBuild && input.firstBuildFailed !== undefined) {
-    const why = asSentence(input.firstBuildFailed);
+  if (firstBuild && input.firstBuild?.kind === "failed") {
+    const why = asSentence(input.firstBuild.why);
     return {
       kind: "failed",
       line: why.length === 0 ? NOT_SET_UP_LINE : `${NOT_SET_UP_LINE} ${why}`,
@@ -207,8 +208,14 @@ export function mateComing(input: MateComingInput): MateComing | undefined {
       ? { kind: "coming", line: COMING_UP_LINE }
       : { kind: "failed", line: HALF_MADE_LINE, verb: "finish-setup" };
   }
-  if (firstBuild && !youngAt(candidate?.service?.created, input.nowMs, FIRST_BUILD_GRACE_MS)) {
-    return undefined;
+  // Past its grace a first build is still on its way — a slow or queued one looks the same from
+  // its status as one that failed — taking longer, with no verb that cannot work on a service
+  // never deployed; its build still running keeps it simply coming up.
+  if (firstBuild) {
+    const overdue =
+      input.firstBuild?.kind !== "running" &&
+      !youngAt(candidate?.service?.created, input.nowMs, FIRST_BUILD_GRACE_MS);
+    return { kind: "coming", line: overdue ? TAKING_LONGER_LINE : COMING_UP_LINE };
   }
   // Made here and not connected yet: its press is over and its container on its way — while
   // nothing is listed for it yet, or its link waits on nothing but time. A link that wants
@@ -232,12 +239,18 @@ export function mateComing(input: MateComingInput): MateComing | undefined {
 }
 
 const FAILED_PROCESS_STATUSES: ReadonlySet<string> = new Set(["FAILED", "CANCELED"]);
+const LIVE_PROCESS_STATUSES: ReadonlySet<string> = new Set(["PENDING", "RUNNING"]);
+
+/** A Mate's first build as its project's processes say it: still running, or failed and why. */
+export type FirstBuildState =
+  | { readonly kind: "running" }
+  | { readonly kind: "failed"; readonly why: string };
 
 /**
- * Why a Mate's container's first build failed, as its project's processes say it: its newest
- * build for that service ended failed or cancelled. `undefined` while nothing says so.
+ * Its container's first build, as its project's processes say it: its newest build for that
+ * service queued or running, or ended failed or cancelled. `undefined` while nothing says either.
  */
-export function firstBuildFailure(
+export function firstBuildState(
   processes:
     | ReadonlyArray<{
         readonly actionName: string;
@@ -248,7 +261,7 @@ export function firstBuildFailure(
       }>
     | undefined,
   serviceId: string | undefined,
-): string | undefined {
+): FirstBuildState | undefined {
   if (processes === undefined || serviceId === undefined) return undefined;
   const newest = processes
     .filter(
@@ -256,8 +269,10 @@ export function firstBuildFailure(
         process.actionName === "stack.build" && process.serviceStackIds.includes(serviceId),
     )
     .toSorted((left, right) => Date.parse(right.created) - Date.parse(left.created))[0];
-  if (newest === undefined || !FAILED_PROCESS_STATUSES.has(newest.status)) return undefined;
-  return newest.failReason ?? "Its container's first build did not finish";
+  if (newest === undefined) return undefined;
+  if (LIVE_PROCESS_STATUSES.has(newest.status)) return { kind: "running" };
+  if (!FAILED_PROCESS_STATUSES.has(newest.status)) return undefined;
+  return { kind: "failed", why: newest.failReason ?? "Its container's first build did not finish" };
 }
 
 /**

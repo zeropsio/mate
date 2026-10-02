@@ -816,6 +816,25 @@ describe("giteaToolLine", () => {
   });
 });
 
+// A first build past its grace (measured 2026-10-02: about a minute) is still on its way: a slow
+// or queued build looks the same from its status as one that failed, so the row says it is taking
+// longer, never that it is gone.
+describe("a first build past its grace", () => {
+  it.each([
+    { case: "within it", overdue: false, detail: "Coming up. A few minutes." },
+    { case: "past it", overdue: true, detail: "Taking longer than usual." },
+  ])("$case: $detail", ({ overdue, detail }) => {
+    const presentation = deriveZeropsRowPresentation({
+      candidate: { ...READY, group: "provisioning" },
+      health: undefined,
+      can: ALL,
+      firstBuildOverdue: overdue,
+    });
+    expect(presentation.status.label).toBe("Preparing");
+    expect(presentation.detail).toBe(detail);
+  });
+});
+
 describe("a Mate on its way says one thing", () => {
   const creating = (reason: string): ZeropsRowInput => ({
     candidate: { ...READY, group: "unavailable", reason },
