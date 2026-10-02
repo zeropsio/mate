@@ -40,13 +40,15 @@ const member = (userId: string, roleCode: string): ZeropsMember => ({
 });
 
 /**
- * The org as HQ reads it: its owner; dev, Basic user on Shop's production project, who may deploy
- * there; viewer, who sees it through Read access; stranger, who has nothing there.
+ * The org as HQ reads it: its owner; admin, an org admin with Read access on Shop's production
+ * project; dev, Basic user on Shop's production and stage projects, who may deploy there; viewer,
+ * who sees them through Read access; stranger, who has nothing there.
  */
 const ORG_VIEW = {
   orgId: "ORG",
   members: [
     member("owner", "OWNER"),
+    member("admin", "ADMIN"),
     member("dev", "NO_ACCESS"),
     member("viewer", "NO_ACCESS"),
     member("stranger", "NO_ACCESS"),
@@ -59,10 +61,23 @@ const ORG_VIEW = {
       status: "ACTIVE",
       tags: [],
       userRoles: [
+        { clientUserId: "C-admin", roleCode: "READ_ONLY" },
         { clientUserId: "C-dev", roleCode: "BASIC_USER" },
         { clientUserId: "C-viewer", roleCode: "READ_ONLY" },
       ],
       publicZone: "pprod.prg1-zerops.zone",
+    },
+    {
+      id: "P_STAGE",
+      orgId: "ORG",
+      name: "Shop - stage",
+      status: "ACTIVE",
+      tags: [],
+      userRoles: [
+        { clientUserId: "C-dev", roleCode: "BASIC_USER" },
+        { clientUserId: "C-viewer", roleCode: "READ_ONLY" },
+      ],
+      publicZone: "pstage.prg1-zerops.zone",
     },
   ],
 };
@@ -100,8 +115,8 @@ interface Rig {
 
 /**
  * Releases over a leading Core's database and git: the application Shop with its production
- * project P_PROD, its recipe repository's first commit and its repository `appdev`'s; its production
- * tier declares the runtime `app`, built from `appdev`.
+ * project P_PROD and its stage P_STAGE; its production tier declares the runtime `app`, built from
+ * its repository `appdev`.
  */
 const withReleases = <A, E>(
   use: (rig: Rig) => Effect.Effect<A, E, Releases | SqlClient.SqlClient>,
@@ -143,7 +158,8 @@ const withReleases = <A, E>(
     const appId = app!.id;
     yield* sql`
       INSERT INTO hq_app_project (project_id, app_id, kind, created_by)
-      VALUES ('P_PROD', ${appId}::uuid, 'production', 'owner')`;
+      VALUES ('P_PROD', ${appId}::uuid, 'production', 'owner'),
+             ('P_STAGE', ${appId}::uuid, 'stage', 'owner')`;
     tiers.set(`${appId}/production`, productionTier(appId, [{ hostname: "app", repo: "appdev" }]));
 
     const heads = new Map<string, string>();
@@ -337,6 +353,42 @@ describe("an application's releases in HQ", () => {
           );
         }),
       ),
+    );
+
+    it.effect(
+      "asks the same of a rollback as of a release, and tells no production only to a developer",
+      () =>
+        withReleases(({ appId, commit }) =>
+          Effect.gen(function* () {
+            const releases = yield* Releases;
+            const sql = yield* SqlClient.SqlClient;
+            const groupHead = yield* commit("group", { "README.md": "# Shop\n" });
+            const app = yield* commit("appdev", { "index.js": "1\n" });
+            const entries = [{ service: "app", sha: app }];
+            yield* releases.release("dev", appId, { tag: "v0.1.0", groupHead, entries });
+            const both = (userId: string) =>
+              Effect.map(
+                Effect.all([
+                  refusal(releases.release(userId, appId, { tag: "v0.2.0", groupHead, entries })),
+                  refusal(releases.rollback(userId, appId, "v0.1.0", { groupHead })),
+                ]),
+                (answers): ReadonlyArray<unknown> => answers,
+              );
+            const refused = (code: string, reason: string) => [
+              [code, reason],
+              [code, reason],
+            ];
+            // An org admin with Read access on production deploys nothing there (main C12).
+            assert.deepStrictEqual(yield* both("admin"), refused("forbidden", "not_releaser"));
+            assert.deepStrictEqual(yield* both("viewer"), refused("forbidden", "not_releaser"));
+            assert.deepStrictEqual(yield* both("stranger"), refused("forbidden", "app_not_seen"));
+            // With no production, a developer hears so; who only sees the application, not.
+            yield* sql`DELETE FROM hq_app_project WHERE project_id = 'P_PROD'`;
+            assert.deepStrictEqual(yield* both("dev"), refused("forbidden", "no_production"));
+            assert.deepStrictEqual(yield* both("admin"), refused("forbidden", "no_production"));
+            assert.deepStrictEqual(yield* both("viewer"), refused("forbidden", "not_releaser"));
+          }),
+        ),
     );
 
     it.effect(
