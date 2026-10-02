@@ -1990,12 +1990,16 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
   }, [activeOrganization, organizationRef, runtime.commands]);
 
   // A Mate's group is its token: every environment in the group readable,
-  // its own writable. Reconciled off the list this screen already has, on
-  // every read — a grant write restarts nothing, and a group that has not
-  // moved is not written (`groupReach.ts`).
+  // its own writable. Reconciled off the list this screen already has, once
+  // it is a complete read, whenever the groups or the tokens move — a grant
+  // write restarts nothing, and a group that has not moved is not written.
   useZeropsGroupReach({
     clientId: activeOrganization?.id,
-    enabled: status === "signed-in" && !isLoading,
+    enabled:
+      status === "signed-in" &&
+      !isLoading &&
+      listing.state === "known" &&
+      listing.coverage === "complete",
     groups: useMemo(
       () =>
         groupTree.groups.map((entry) => ({
