@@ -267,7 +267,7 @@ const IDLE: ReviewPress = { kind: "idle" };
 /** Nobody asked to close it. */
 const OPEN: ReviewClose = { kind: "idle" };
 /** All HQ's rule offers a developer of the application: comment, Merge, Close. */
-const DEVELOPS = { read: true, comment: true, merge: true, close: true } as const;
+const DEVELOPS = { read: true, comment: true, merge: true, close: true, redeploy: true } as const;
 /** Merged a minute ago: the review says what happened, and offers the release's review. */
 const MERGED_NOW: Partial<FlowPullRequest> = {
   state: "closed",
@@ -763,7 +763,9 @@ export const REVIEW_STATES: ReadonlyArray<{
   {
     id: "not-offered",
     label: "Ready, to a person HQ's rule offers neither Merge nor Close",
-    node: <Change offers={{ read: true, comment: true, merge: false, close: false }} />,
+    node: (
+      <Change offers={{ read: true, comment: true, merge: false, close: false, redeploy: false }} />
+    ),
   },
   { id: "merging", label: "Merging", node: <Change press={{ kind: "running" }} /> },
   {
