@@ -117,11 +117,7 @@ export function createGiteaClient(options: GiteaClientOptions): GiteaClient {
       typeof (body as { message?: unknown }).message === "string"
         ? (body as { message: string }).message
         : undefined;
-    // Gitea's own words, where it sent any: "This pull request has merge
-    // conflicts", "The merge is blocked" — the sentence that tells a person
-    // what to do. Wrapping it in a generic refusal and dropping the detail is
-    // how a failed merge became "Gitea would not merge it" and nothing more
-    // (the owner, 2026-09-18).
+    // Gitea's own words, where it sent any: the sentence that says what went wrong.
     const said = detail === undefined || detail.trim().length === 0 ? "" : ` ${detail.trim()}`;
     throw new GiteaApiError(`Gitea refused to ${what}.${said}`, response.status, detail);
   }

@@ -42,7 +42,6 @@ const GITEA = "https://forge-7c1d-3000.prg1.zerops.app";
 
 /** The person's group, with change #7 open on its site repository. */
 const FLOW = {
-  giteaOrigin: GITEA,
   slugs: new Map([["group-1", "orchard"]]),
   flows: new Map([
     [

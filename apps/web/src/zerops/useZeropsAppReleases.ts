@@ -2,6 +2,7 @@
  * Each application's releases (`GET /api/apps/:appId/releases`), and the repositories a release
  * reads with them (`GET /api/apps/:appId/repos`: each production runtime's `main`, and the
  * recipe's, which a release tags), read as the person through the organization's official HQ.
+ * The one read of an application's repositories: the Git page lists them from the flow.
  *
  * An application whose read fails keeps what it read before and says why beside it, and never
  * takes another's answer with it — nor ever answers "no releases".

@@ -256,7 +256,7 @@ function ChangeReviewData({
     enabled: comments.state.kind === "read" && comments.state.comments.length > 0,
   });
   const me = session?.user?.id;
-  // A Mate's words brought over from Gitea, as the application names its Mates.
+  // A Mate's words brought over from HQ, as the application names its Mates.
   const mateNameOf = useCallback((projectId: string) => mates.get(projectId)?.name, [mates]);
   const remarks = useMemo(
     () =>
