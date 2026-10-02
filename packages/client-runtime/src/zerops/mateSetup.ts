@@ -1,9 +1,9 @@
 /**
  * A Mate's setup as its own server tells it: `GET /mate/setup.json`, public, beside
  * `/mate/healthz` (the setup contract, pass 28). The press does every step that needs the person's
- * rights; the container does the rest — zcp imports the tier's runtimes on boot, the broker
- * delivers Git, the server starts the stand-up — and this is how any browser, or none, sees where
- * that stands.
+ * rights; the container does the rest — zcp imports the tier's runtimes on boot and enrolls the
+ * Mate with its HQ, which is its Git access, the server starts the stand-up — and this is how any
+ * browser, or none, sees where that stands.
  *
  * ```json
  * { "version": 1, "at": "RFC3339", "steps": [

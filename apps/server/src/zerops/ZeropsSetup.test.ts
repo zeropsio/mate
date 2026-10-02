@@ -588,6 +588,7 @@ describe("ZeropsSetup: the document", () => {
   it.live("follows the Mate from a bare container to a stood-up one", () =>
     Effect.gen(function* () {
       const world = yield* makeWorld;
+      yield* Ref.set(world.hq, { kind: "not-enrolled", outcome: Option.none() });
       yield* withServer(world, freshDatabase(), (setup) =>
         Effect.gen(function* () {
           const states = Effect.all(
@@ -600,12 +601,8 @@ describe("ZeropsSetup: the document", () => {
             "waiting",
             "waiting",
           ]);
-          yield* Ref.update(world.variables, (now) => [
-            ...now,
-            "GITEA_URL",
-            "GITEA_TOKEN",
-            "MATE_BROKER_URL",
-          ]);
+          // zcp enrolled the Mate, and HQ sent it with who asked for its stand-up.
+          yield* Ref.set(world.hq, ASKED);
           yield* Ref.set(world.statusFile, {
             version: 1,
             runtimes: { state: "importing", startedAt: "2026-10-01T10:01:00Z" },
@@ -622,12 +619,49 @@ describe("ZeropsSetup: the document", () => {
           });
           assert.deepStrictEqual(yield* states, ["done", "done", "done", "done", "done"]);
           // A git step once done stays done: the setup is a record, not a live probe.
-          yield* Ref.set(world.variables, []);
+          yield* Ref.set(world.hq, { kind: "not-enrolled", outcome: Option.none() });
           assert.strictEqual(yield* stateOf(setup, "git"), "done");
         }),
       );
     }),
   );
+});
+
+describe("ZeropsSetup: the git step reads the Mate's enrollment with HQ", () => {
+  const steps: ReadonlyArray<[string, HqStanding, Record<string, string>]> = [
+    ["enrolled and sent", ASKED, { state: "done" }],
+    ["enrolled, HQ has not sent the Mate", { kind: "not-linked" }, { state: "done" }],
+    [
+      "pending: zcp has said nothing",
+      { kind: "not-enrolled", outcome: Option.none() },
+      { state: "waiting" },
+    ],
+    [
+      "no official HQ",
+      { kind: "not-enrolled", outcome: Option.some({ state: "no_hq" }) },
+      { state: "failed", reason: "no_hq" },
+    ],
+    [
+      "HQ refused",
+      { kind: "not-enrolled", outcome: Option.some({ state: "refused", code: "not_a_mate" }) },
+      { state: "failed", reason: "refused", code: "not_a_mate" },
+    ],
+  ];
+  for (const [name, hq, said] of steps) {
+    it.live(name, () =>
+      Effect.gen(function* () {
+        const world = yield* makeWorld;
+        yield* Ref.set(world.hq, hq);
+        yield* withServer(world, freshDatabase(), (setup) =>
+          Effect.gen(function* () {
+            const git = (yield* setup.document).steps.find((step) => step.id === "git");
+            const { id: _id, at: _at, ...rest } = git ?? { id: "", at: "" };
+            assert.deepStrictEqual(rest, said);
+          }),
+        );
+      }),
+    );
+  }
 });
 
 describe("standUpPollDelay", () => {

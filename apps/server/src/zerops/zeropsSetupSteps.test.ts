@@ -2,7 +2,6 @@ import { assert, describe, it } from "@effect/vitest";
 
 import {
   STAND_UP_MESSAGE,
-  hasGitVariables,
   parseZcpStatus,
   setupDocument,
   standUpCommandIds,
@@ -27,7 +26,7 @@ const status = (overrides: Record<string, unknown> = {}) => ({
 const facts = (overrides: Partial<SetupFacts> = {}): SetupFacts => ({
   now: NOW,
   startedAt: BOOT,
-  gitAt: undefined,
+  git: { state: "waiting" },
   status: undefined,
   requestedBy: "user-a",
   standUpWait: undefined,
@@ -98,13 +97,6 @@ describe("the stand-up command", () => {
       commandId: "mate-standup-thread-1-1",
       messageId: "mate-standup-thread-1-1",
     });
-  });
-});
-
-describe("hasGitVariables", () => {
-  it("needs all three of the broker's variables", () => {
-    assert.isTrue(hasGitVariables(["A", "GITEA_URL", "GITEA_TOKEN", "MATE_BROKER_URL"]));
-    assert.isFalse(hasGitVariables(["GITEA_URL", "GITEA_TOKEN"]));
   });
 });
 
@@ -190,18 +182,27 @@ describe("setupDocument", () => {
     }
   });
 
-  it("git waits until the broker's variables arrive", () => {
-    assert.deepStrictEqual(stepOf(setupDocument(facts()), "git"), {
-      id: "git",
-      state: "waiting",
-      at: "",
+  // The Mate's Git access is its enrollment with HQ (zcp's `outcome.json`, C-7): done once
+  // enrolled, waiting while zcp has said nothing, failed with zcp's reason where it said why not.
+  const gitSteps: ReadonlyArray<[string, SetupFacts["git"], SetupStep]> = [
+    ["enrolled", { state: "done", at: NOW }, { id: "git", state: "done", at: NOW }],
+    ["pending", { state: "waiting" }, { id: "git", state: "waiting", at: "" }],
+    [
+      "no official HQ",
+      { state: "failed", reason: "no_hq" },
+      { id: "git", state: "failed", at: "", reason: "no_hq" },
+    ],
+    [
+      "HQ refused",
+      { state: "failed", reason: "refused", code: "not_a_mate" },
+      { id: "git", state: "failed", at: "", reason: "refused", code: "not_a_mate" },
+    ],
+  ];
+  for (const [name, git, step] of gitSteps) {
+    it(`git: ${name}`, () => {
+      assert.deepStrictEqual(stepOf(setupDocument(facts({ git })), "git"), step);
     });
-    assert.deepStrictEqual(stepOf(setupDocument(facts({ gitAt: NOW })), "git"), {
-      id: "git",
-      state: "done",
-      at: NOW,
-    });
-  });
+  }
 
   const runtimes: ReadonlyArray<[string, unknown, string, string]> = [
     ["no status file: an older zcp", undefined, "unknown", ""],

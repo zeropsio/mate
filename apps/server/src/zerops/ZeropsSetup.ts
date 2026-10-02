@@ -4,9 +4,10 @@
  * Two jobs, both from facts this container holds:
  *
  * - **It reports the setup** (`GET /setup.json`, `zeropsSetupSteps.ts`): the
- *   container is up; the broker's Git variables have reached the zcp service
- *   (the platform's live env store, rewritten seconds after a change); zcp's
- *   status file (`ZCP_STATUS_FILE`) for the runtimes; who asked for the
+ *   container is up; zcp enrolled the Mate with its HQ, whose credential is
+ *   its Git access — or zcp's word on why not (`outcome.json`, through
+ *   `ZeropsHqLink`); zcp's status file (`ZCP_STATUS_FILE`) for the runtimes;
+ *   who asked for the
  *   stand-up (the Mate's birth record at its HQ, `ZeropsHqLink`) and who
  *   signed an agent in here (`ZeropsProjectSigners`) for the sign-in; the
  *   durable record for the stand-up.
@@ -62,12 +63,12 @@ import { hasSetupMarker, readServiceVariableKeys } from "./zeropsSetupMarker.ts"
 import { ZeropsTurnAdmission, type TurnPrincipal } from "./ZeropsTurnAdmission.ts";
 import {
   STAND_UP_MESSAGE,
-  hasGitVariables,
   parseZcpStatus,
   setupDocument,
   standUpCommandIds,
   standUpDecision,
   standUpSigners,
+  type GitAccess,
   type SetupDocument,
   type StandUpWait,
   type ZcpStatus,
@@ -298,14 +299,15 @@ export const makeZeropsSetup = (timings: ZeropsSetupTimings = TIMINGS) =>
 
     const document = Effect.gen(function* () {
       const variables = yield* reads.serviceVariables;
-      const git = yield* latch(gitAt, variables !== undefined && hasGitVariables(variables));
+      const standing = yield* reads.hq;
+      const git = gitAccessOf(standing, yield* latch(gitAt, standing.kind !== "not-enrolled"));
       const marked = variables !== undefined && hasSetupMarker(variables);
       const record = yield* recordOf;
       const ran = record !== undefined && RAN.has(record.source);
       // Only a marked Mate whose stand-up is still pending asks who asked for it: a Mate made
       // before has no stand-up of the server's, and a settled one has its record.
       const pending = marked && record === undefined;
-      const hq = pending ? yield* reads.hq : undefined;
+      const hq = pending ? standing : undefined;
       const mate = hq?.kind === "linked" ? Option.some(hq.mate) : Option.none<MateState>();
       const requestedBy = Option.getOrUndefined(mate)?.standupRequestedBy ?? undefined;
       const signers = yield* reads.signers;
@@ -320,7 +322,7 @@ export const makeZeropsSetup = (timings: ZeropsSetupTimings = TIMINGS) =>
       return setupDocument({
         now: yield* nowIso,
         startedAt,
-        gitAt: git,
+        git,
         status: yield* status,
         requestedBy,
         standUpWait: hq === undefined ? undefined : standUpWaitOf(hq),
@@ -524,6 +526,21 @@ export const makeZeropsSetup = (timings: ZeropsSetupTimings = TIMINGS) =>
 
     return ZeropsSetup.of({ document, status });
   });
+
+/**
+ * The Mate's Git access, from where it stands with its HQ: granted since `at` once zcp holds an
+ * enrollment — and still, once granted, whatever the standing says later (`at` is latched) —
+ * else failed where zcp said why not, else on its way.
+ */
+const gitAccessOf = (standing: HqStanding, at: string | undefined): GitAccess => {
+  if (at !== undefined) return { state: "done", at };
+  const outcome =
+    standing.kind === "not-enrolled" ? Option.getOrUndefined(standing.outcome) : undefined;
+  if (outcome === undefined) return { state: "waiting" };
+  return outcome.code === undefined
+    ? { state: "failed", reason: outcome.state }
+    : { state: "failed", reason: outcome.state, code: outcome.code };
+};
 
 /** Why a stand-up nothing started waits, from where the Mate stands with its HQ. */
 const standUpWaitOf = (hq: HqStanding): StandUpWait | undefined => {

@@ -4,7 +4,7 @@
  *
  * Pure. `ZeropsSetup` gathers the facts — zcp's status file
  * (`ZCP_STATUS_FILE`), who asked for the stand-up (HQ), who signed an agent in
- * here, the broker's variables, the durable stand-up record — and these
+ * here, the Mate's enrollment with HQ, the durable stand-up record — and these
  * functions decide what they mean.
  *
  * The document is public, so it carries steps and times only: no names, no
@@ -66,16 +66,6 @@ export const standUpDecision = (input: {
   if (agentId === undefined) return { kind: "wait" };
   if (input.spoken) return { kind: "spoken" };
   return { kind: "start", userId: input.requestedBy, agentId };
-};
-
-/* ------------------------------------------------------------ git */
-
-/** What the broker delivers onto the zcp service once the Mate is registered. */
-export const GIT_VARIABLES: ReadonlyArray<string> = ["GITEA_URL", "GITEA_TOKEN", "MATE_BROKER_URL"];
-
-export const hasGitVariables = (keys: Iterable<string>): boolean => {
-  const present = new Set(keys);
-  return GIT_VARIABLES.every((key) => present.has(key));
 };
 
 /* ------------------------------------------------------------ zcp's status file */
@@ -217,9 +207,12 @@ export interface SetupStep {
   readonly state: string;
   /** When the step reached its state, RFC 3339; empty when not known. */
   readonly at: string;
-  /** Why a waiting stand-up waits, where the server knows ({@link StandUpWait}). */
-  readonly reason?: StandUpWait["reason"];
-  /** HQ's refusal code, with `not_enrolled`. */
+  /**
+   * Why a waiting stand-up waits, where the server knows ({@link StandUpWait}); why the Git
+   * access failed ({@link GitAccess}).
+   */
+  readonly reason?: StandUpWait["reason"] | "refused";
+  /** HQ's refusal code, with `not_enrolled` or `refused`. */
   readonly code?: string;
 }
 
@@ -235,6 +228,17 @@ export type StandUpWait =
   | { readonly reason: "not_linked" }
   | { readonly reason: "awaiting_request" };
 
+/**
+ * The Mate's Git access: its enrollment with HQ, whose credential reaches its application's
+ * repositories there. Granted once zcp holds an enrollment, since `at`; on its way while zcp has
+ * said nothing; failed where zcp said why not (`~/.zcp/hq/outcome.json`, spec-mate §2.8 C-7): no
+ * official HQ in the org, or HQ's refusal with its code.
+ */
+export type GitAccess =
+  | { readonly state: "done"; readonly at: string }
+  | { readonly state: "waiting" }
+  | { readonly state: "failed"; readonly reason: "no_hq" | "refused"; readonly code?: string };
+
 export interface SetupDocument {
   readonly version: 1;
   readonly at: string;
@@ -245,8 +249,8 @@ export interface SetupFacts {
   readonly now: string;
   /** When this server started: the container is up. */
   readonly startedAt: string;
-  /** When the broker's variables were first seen on the zcp service. */
-  readonly gitAt: string | undefined;
+  /** The Mate's Git access, as its enrollment with HQ stands. */
+  readonly git: GitAccess;
   /** zcp's status file; `undefined` when absent (an older zcp) or unreadable. */
   readonly status: ZcpStatus | undefined;
   /** Who asked for the stand-up, by the Mate's birth record at HQ. */
@@ -310,15 +314,30 @@ const standUpStep = (facts: SetupFacts): SetupStep => {
   return { id: "standup", state, at };
 };
 
+const gitStep = (git: GitAccess): SetupStep => {
+  switch (git.state) {
+    case "done":
+      return { id: "git", state: "done", at: git.at };
+    case "waiting":
+      return { id: "git", state: "waiting", at: "" };
+    case "failed":
+      return {
+        id: "git",
+        state: "failed",
+        at: "",
+        reason: git.reason,
+        ...(git.code === undefined ? {} : { code: git.code }),
+      };
+  }
+};
+
 export const setupDocument = (facts: SetupFacts): SetupDocument => ({
   version: 1,
   at: facts.now,
   steps: (
     [
       { id: "container", state: "done", at: facts.startedAt },
-      facts.gitAt === undefined
-        ? { id: "git", state: "waiting", at: "" }
-        : { id: "git", state: "done", at: facts.gitAt },
+      gitStep(facts.git),
       runtimesStep(facts.status),
       facts.signinAt === undefined
         ? { id: "signin", state: "waiting", at: "" }

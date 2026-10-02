@@ -7,9 +7,9 @@
  * half-made Mate is finished from its ⋯ menu, in any browser, by an owner or an admin (*Finish
  * setup*) — the same steps.
  *
- * After the press the container does the rest — zcp imports the runtimes, the broker delivers Git,
- * the server starts the stand-up — and any browser, or none, reads where that stands off
- * `/mate/setup.json` (`mateSetup.ts`).
+ * After the press the container does the rest — zcp imports the runtimes and enrolls the Mate with
+ * its HQ, which is its Git access, the server starts the stand-up — and any browser, or none, reads
+ * where that stands off `/mate/setup.json` (`mateSetup.ts`).
  *
  * This tab keeps what it pressed, in memory, for as long as the screen needs it: where a new
  * environment is drawn before the listing holds it, and where its press stopped and how to try
