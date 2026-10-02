@@ -528,6 +528,8 @@ describe("container machine (DESIGN §4.5)", () => {
     readonly name: string;
     readonly held: ReadonlyArray<ContainerEvent>;
     readonly intent: "restart" | "enable";
+    /** The initAt read just before the verb was sent; absent when that read could not say. */
+    readonly initAt?: string;
     readonly after: ReadonlyArray<ProbeReading>;
   }> = [
     {
@@ -541,48 +543,54 @@ describe("container machine (DESIGN §4.5)", () => {
       after: [{ kind: "initializing", initAt: "2026-09-23T09:00:00Z" }],
     },
     {
-      name: "no initAt held: the first one read is the old server's, a different one is new",
+      name: "the old server answers after the verb with the initAt read before it, then a new one",
       held: [active, probed(READY, START_MS)],
       intent: "restart",
+      initAt: "2026-09-23T08:00:00Z",
       after: [
         { ...READY, initAt: "2026-09-23T08:00:00Z" },
         { kind: "initializing", initAt: "2026-09-23T09:00:00Z" },
       ],
     },
     {
-      name: "nothing read before it (a reload): one later than the restart's start is new at once",
-      held: [active],
+      name: "the first read after the verb is already the new server",
+      held: [active, probed(READY, START_MS)],
+      intent: "restart",
+      initAt: "2026-09-23T08:00:00Z",
+      after: [{ kind: "initializing", initAt: "2026-09-23T09:00:00Z" }],
+    },
+    {
+      name: "the container's clock runs ahead of the browser's: still the initAt read before the verb",
+      held: [active, probed(READY, START_MS)],
+      intent: "restart",
+      initAt: "2027-01-15T09:00:00.000Z",
+      after: [
+        { ...READY, initAt: "2027-01-15T09:00:00.000Z" },
+        { kind: "initializing", initAt: "2027-01-15T09:05:00.000Z" },
+      ],
+    },
+    {
+      name: "nothing said the initAt before the verb: one later than the restart's start is new",
+      held: [active, probed(READY, START_MS)],
       intent: "restart",
       after: [{ kind: "initializing", initAt: "2027-01-15T08:10:00.000Z" }],
     },
   ];
 
-  it("a restart of a Mate read without its initAt is judged by the next initAt read, never by the clocks", () => {
-    // The container's clock runs ahead of the browser's: its old initAt is later than the start.
-    const up = drive([active, probed(READY, START_MS)]);
-    const asked = drive(
-      [{ type: "INTENT", intent: { kind: "restart", since: instant(up.nowMs + 1_000) } }],
-      up,
-    );
-    const old = drive(
-      [probed({ ...READY, initAt: "2027-01-15T09:00:00.000Z" }, asked.nowMs)],
-      asked,
-    );
-    expect(containerVerdict(old.machine).level).toBe("restarting");
-    const again = drive([probed({ ...READY, initAt: "2027-01-15T09:00:00.000Z" }, old.nowMs)], old);
-    expect(containerVerdict(again.machine).level).toBe("restarting");
-    const reinit = drive(
-      [probed({ kind: "initializing", initAt: "2027-01-15T09:05:00.000Z" }, again.nowMs)],
-      again,
-    );
-    expect(containerVerdict(reinit.machine)).toEqual({ level: "booting", overdue: false });
-  });
-
   for (const row of REINIT_ROWS) {
     it(`a re-init ends our ${row.intent} whatever the browser's clock says: ${row.name}`, () => {
       const up = drive(row.held);
+      const since = instant(up.nowMs + 1_000);
       let run = drive(
-        [{ type: "INTENT", intent: { kind: row.intent, since: instant(up.nowMs + 1_000) } }],
+        [
+          {
+            type: "INTENT",
+            intent:
+              row.initAt === undefined
+                ? { kind: row.intent, since }
+                : { kind: row.intent, since, initAt: row.initAt },
+          },
+        ],
         up,
       );
       for (const reading of row.after) {
@@ -592,4 +600,22 @@ describe("container machine (DESIGN §4.5)", () => {
       expect(containerVerdict(run.machine)).toEqual({ level: "booting", overdue: false });
     });
   }
+
+  it("a read sent after the verb is never the restart's baseline", () => {
+    // Nothing said the initAt before the verb, and the container's clock runs behind the browser's.
+    const up = drive([active, probed(READY, START_MS)]);
+    const asked = drive(
+      [{ type: "INTENT", intent: { kind: "restart", since: instant(up.nowMs + 1_000) } }],
+      up,
+    );
+    const first = drive([probed({ ...READY, initAt: "2026-09-23T08:00:00Z" }, asked.nowMs)], asked);
+    const second = drive(
+      [probed({ ...READY, initAt: "2026-09-23T09:00:00Z" }, first.nowMs)],
+      first,
+    );
+    // Neither read is judged against the other: the platform's word or a connect ends it.
+    expect(containerVerdict(second.machine).level).toBe("restarting");
+    const connected = drive([{ type: "LINK", connected: true }], second);
+    expect(containerVerdict(connected.machine)).toEqual({ level: "ready" });
+  });
 });

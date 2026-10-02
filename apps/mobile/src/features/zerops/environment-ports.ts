@@ -20,7 +20,10 @@ import type {
   RegisteredEnvironment,
 } from "@t3tools/client-runtime/zerops/account/runtime";
 import { normalizeOrigin, zeropsMateBaseUrl } from "@t3tools/client-runtime/zerops/candidates";
-import { readZeropsContainer } from "@t3tools/client-runtime/zerops/containerHealth";
+import {
+  readZeropsContainer,
+  readZeropsInitAt,
+} from "@t3tools/client-runtime/zerops/containerHealth";
 import {
   DEFAULT_ZEROPS_GRANT_POLICY,
   makeRestAccessVerifier,
@@ -266,6 +269,8 @@ export async function mobileAccountPorts(input: {
           signal,
           ask,
         ),
+      readInitAt: (origin, signal) =>
+        readZeropsInitAt(origin, (url, init) => globalThis.fetch(url, init), signal),
       intents: memoryIntents(),
       records,
       catalog: catalogPort,

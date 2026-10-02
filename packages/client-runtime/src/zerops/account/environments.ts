@@ -151,6 +151,8 @@ export interface AccountEnvironmentPorts {
   };
   /** Reads a Mate origin's descriptor and `/healthz`; rejects when the signal aborts it. */
   readonly probe: ContainerStorePorts["probe"];
+  /** Reads a Mate origin's `/healthz` `initAt` alone, before a restart verb is sent. */
+  readonly readInitAt: ContainerStorePorts["readInitAt"];
   /** This tab's container intents (C8). */
   readonly intents: IntentStorage;
   /** The account's storage of its records (C1), and another tab's write of them. */
@@ -199,6 +201,11 @@ export interface AccountEnvironments {
    * already overrule it — so nothing will say when it is over.
    */
   readonly intend: (key: TargetKey, intent: IntentRequest) => boolean;
+  /**
+   * The target's `/healthz` `initAt`, read now: a restart verb reads it just before it is sent and
+   * hands it to `intend` as the restart's baseline. Null when it could not say.
+   */
+  readonly initAt: (key: TargetKey) => Promise<string | null>;
   /** The reading of a probe of this origin started from now on, through the account's pool. */
   readonly next: (origin: string) => Promise<ProbeReading>;
   /** The route's environment, whose target is exchanged first (§4.4); null off a thread route. */
@@ -376,6 +383,7 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
   const containerPorts: ContainerStorePorts = {
     clock: ports.clock,
     probe: ports.probe,
+    readInitAt: ports.readInitAt,
     readMateFlag,
     intents: ports.intents,
   };
@@ -918,6 +926,7 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
         containers.intend(key, intent);
         return (containers.machine(key)?.intent ?? null) !== null;
       },
+      initAt: (key) => (closed ? Promise.resolve(null) : containers.initAt(key)),
       next: containers.next,
       setRoute: (environmentId) => {
         route = environmentId;

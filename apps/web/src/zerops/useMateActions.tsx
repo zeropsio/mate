@@ -120,7 +120,7 @@ import {
   useMatePresses,
 } from "./matePress";
 import { mateRestartPorts, restartMateContainer } from "./mateRestart";
-import { intendContainer } from "./zeropsContainers";
+import { intendContainer, readContainerInitAt } from "./zeropsContainers";
 import { runZeropsCommand, useKnown, useZeropsData } from "./zeropsDataContext";
 import { integrationTokensFromGrantMetadata } from "./useZeropsGroupReach";
 import { useZeropsSession } from "./ZeropsSessionProvider";
@@ -391,13 +391,16 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
       // A container that failed is stopped and started: the platform refuses to restart it.
       void write(
         candidate.key,
+        // The container's initAt is read before the verb: the restart is over once it moves.
         () =>
-          restartMateContainer(
-            candidate.service?.status,
-            mateRestartPorts({ client, runtime, service }),
-          ).then(() => {
-            intendContainer(candidate.key, { kind: "restart" });
-          }),
+          readContainerInitAt(candidate.key).then((initAt) =>
+            restartMateContainer(
+              candidate.service?.status,
+              mateRestartPorts({ client, runtime, service }),
+            ).then(() => {
+              intendContainer(candidate.key, { kind: "restart", initAt });
+            }),
+          ),
         refresh,
       );
     },

@@ -60,12 +60,19 @@ interface IntentRecord {
   readonly kind: IntentKind;
   readonly since: number;
   readonly from?: string | null;
+  /** The `/healthz` `initAt` read before a restart verb was sent. */
+  readonly initAt?: string;
 }
 
 export interface ContainerStorePorts {
   readonly clock: Pick<ExchangeClock, "now" | "setTimer">;
   /** Reads the origin's container (`readZeropsContainer`); rejects when the signal aborts it. */
   readonly probe: ProbeStorePorts["probe"];
+  /**
+   * The origin's `/healthz` `initAt`, read now; null when it serves none. Rejects when the signal
+   * aborts it.
+   */
+  readonly readInitAt: (origin: string, signal: AbortSignal) => Promise<string | null>;
   /** `ZCP_MATE_ENABLED` for the target's service; `"unknown"` when it could not be read. */
   readonly readMateFlag: (key: TargetKey) => Promise<MateFlag>;
   readonly intents: IntentStorage;
@@ -73,8 +80,15 @@ export interface ContainerStorePorts {
 
 /** What our verb asks: the store stamps it with the time it was accepted. */
 export type IntentRequest =
-  | { readonly kind: "restart" | "enable" | "upgrade-restart" }
+  | {
+      readonly kind: "restart" | "enable" | "upgrade-restart";
+      /** The `initAt` read before the verb was sent (`initAt`); null when it could not say. */
+      readonly initAt?: string | null;
+    }
   | { readonly kind: "update"; readonly from: string | null };
+
+/** How long the read before a restart verb may hold the verb back. */
+export const INIT_AT_READ_DEADLINE_MS = 3_000;
 
 export interface ContainerStore {
   /** Every target the platform lists, as it stands now; a target left out is forgotten. */
@@ -85,6 +99,12 @@ export interface ContainerStore {
   readonly link: (key: TargetKey, connected: boolean) => void;
   /** Our verb was accepted: its level holds until a read fact settles it. */
   readonly intend: (key: TargetKey, intent: IntentRequest) => void;
+  /**
+   * The target's `/healthz` `initAt`, read now: a restart verb reads it just before it is sent, and
+   * its intent carries it as the baseline. Null when the target has no address, the container
+   * serves none, or it does not answer within `INIT_AT_READ_DEADLINE_MS`.
+   */
+  readonly initAt: (key: TargetKey) => Promise<string | null>;
   /**
    * Reads the target's container once more, with a read started now — unless `fresh: false` lets
    * it take one another reader made a moment ago (an exchange about to read it anyway).
@@ -137,7 +157,8 @@ const isRecord = (value: unknown): value is IntentRecord => {
     typeof record.kind === "string" &&
     INTENT_KINDS.has(record.kind) &&
     typeof record.since === "number" &&
-    (record.from === undefined || record.from === null || typeof record.from === "string")
+    (record.from === undefined || record.from === null || typeof record.from === "string") &&
+    (record.initAt === undefined || typeof record.initAt === "string")
   );
 };
 
@@ -153,7 +174,9 @@ const readRecords = (storage: IntentStorage): ReadonlyArray<IntentRecord> => {
 const toRecord = (target: TargetKey, intent: ContainerIntent): IntentRecord =>
   intent.kind === "update"
     ? { target, kind: intent.kind, since: intent.since.wall, from: intent.from }
-    : { target, kind: intent.kind, since: intent.since.wall };
+    : intent.initAt === undefined
+      ? { target, kind: intent.kind, since: intent.since.wall }
+      : { target, kind: intent.kind, since: intent.since.wall, initAt: intent.initAt };
 
 const sameJson = (left: unknown, right: unknown): boolean =>
   JSON.stringify(left) === JSON.stringify(right);
@@ -335,9 +358,10 @@ export function makeContainerStore(ports: ContainerStorePorts): ContainerStore {
   const restore = (record: IntentRecord): ContainerIntent => {
     const now = clock.now();
     const since: Instant = { wall: record.since, mono: now.mono - (now.wall - record.since) };
-    return record.kind === "update"
-      ? { kind: "update", since, from: record.from ?? null }
-      : { kind: record.kind, since };
+    if (record.kind === "update") return { kind: "update", since, from: record.from ?? null };
+    return record.initAt === undefined
+      ? { kind: record.kind, since }
+      : { kind: record.kind, since, initAt: record.initAt };
   };
 
   return {
@@ -403,9 +427,24 @@ export function makeContainerStore(ports: ContainerStorePorts): ContainerStore {
           intent:
             intent.kind === "update"
               ? { kind: "update", since, from: intent.from }
-              : { kind: intent.kind, since },
+              : typeof intent.initAt === "string"
+                ? { kind: intent.kind, since, initAt: intent.initAt }
+                : { kind: intent.kind, since },
         });
       }),
+    initAt: async (key) => {
+      const origin = entries.get(key)?.origin ?? null;
+      if (origin === null || disposed) return null;
+      const controller = new AbortController();
+      const cancel = clock.setTimer(INIT_AT_READ_DEADLINE_MS, () => controller.abort());
+      try {
+        return await ports.readInitAt(origin, controller.signal);
+      } catch {
+        return null;
+      } finally {
+        cancel();
+      }
+    },
     request: (key, ask = { fresh: true }) =>
       batch(() => {
         const entry = entries.get(key);

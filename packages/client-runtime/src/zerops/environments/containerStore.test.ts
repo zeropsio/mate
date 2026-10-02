@@ -6,6 +6,7 @@ import { makeDescriptorShare } from "../descriptorShare.ts";
 import type { MateFlag, PlatformStatus } from "./containerMachine.ts";
 import {
   bindContainerStore,
+  INIT_AT_READ_DEADLINE_MS,
   makeContainerStore,
   type ContainerStore,
   type ContainerTarget,
@@ -98,6 +99,10 @@ interface Rig {
   readonly asks: Array<boolean>;
   /** What the next probes answer. */
   answer: ProbeReading;
+  /** Every `/healthz` read for a verb's baseline, by origin. */
+  readonly initAtReads: Array<string>;
+  /** What those reads answer: an initAt, null, or never. */
+  initAt: string | null | "never";
 }
 
 function memoryStorage(): IntentStorage & { value: string | null } {
@@ -121,10 +126,13 @@ function rig(
   const clock = options.clock ?? manualClock();
   const probes: Array<string> = [];
   const asks: Array<boolean> = [];
+  const initAtReads: Array<string> = [];
   const result: Rig = {
     clock,
     probes,
     asks,
+    initAtReads,
+    initAt: null,
     answer: ready("0.11.40"),
     store: makeContainerStore({
       clock,
@@ -132,6 +140,15 @@ function rig(
         probes.push(origin);
         asks.push(ask.fresh);
         return Promise.resolve({ reading: result.answer, sentAt: clock.now() });
+      },
+      readInitAt: (origin, signal) => {
+        initAtReads.push(origin);
+        const initAt = result.initAt;
+        return initAt === "never"
+          ? new Promise((_resolve, reject) =>
+              signal.addEventListener("abort", () => reject(new Error("aborted"))),
+            )
+          : Promise.resolve(initAt);
       },
       readMateFlag: () => Promise.resolve(options.flag ?? "unknown"),
       intents: options.intents ?? memoryStorage(),
@@ -345,6 +362,7 @@ describe("container store (DESIGN §4.5)", () => {
           signal.addEventListener("abort", () => reject(new Error("aborted"))),
         );
       },
+      readInitAt: () => Promise.resolve(null),
       readMateFlag: () => Promise.resolve("unknown"),
       intents: memoryStorage(),
     });
@@ -685,6 +703,7 @@ describe("container store: a reading counts only from when its read was sent", (
       clock,
       probe: (origin, signal, ask) =>
         readZeropsContainer(origin, { descriptor: share.read, fetch }, signal, ask),
+      readInitAt: () => Promise.resolve(null),
       readMateFlag: () => Promise.resolve("unknown"),
       intents: memoryStorage(),
     });
@@ -709,5 +728,53 @@ describe("container store: a reading counts only from when its read was sent", (
     expect(requests.length).toBeGreaterThan(0);
     expect(store.verdict(KEY)).not.toEqual({ level: "ready" });
     store.dispose();
+  });
+});
+
+describe("container store: a restart's baseline is read before its verb", () => {
+  it("reads /healthz once before the verb, and judges the restart by it across a reload", async () => {
+    const intents = memoryStorage();
+    const clock = manualClock();
+    const before = rig({ clock, intents });
+    before.store.setTargets([target("ACTIVE")]);
+    await clock.advance(0);
+    before.initAt = "2026-09-23T08:00:00Z";
+    const initAt = await before.store.initAt(KEY);
+    expect(initAt).toBe("2026-09-23T08:00:00Z");
+    expect(before.initAtReads).toEqual([ORIGIN]);
+    before.store.intend(KEY, { kind: "restart", initAt });
+    await clock.advance(1_000);
+    before.store.dispose();
+
+    // The tab reloads; the first read is already the restarted server.
+    clock.reload();
+    const after = rig({ clock, intents });
+    after.answer = { kind: "initializing", initAt: "2026-09-23T09:00:00Z" };
+    after.store.setTargets([target("ACTIVE")]);
+    await clock.advance(0);
+    expect(after.store.verdict(KEY)).toEqual({ level: "booting", overdue: false });
+    after.store.dispose();
+  });
+
+  it.each([
+    { name: "a Mate that answers no initAt", initAt: null, deadline: false },
+    { name: "a Mate that never answers, by its deadline", initAt: "never", deadline: true },
+  ] as const)("names no baseline for $name", async ({ initAt, deadline }) => {
+    const setup = rig();
+    setup.store.setTargets([target("ACTIVE")]);
+    await setup.clock.advance(0);
+    setup.initAt = initAt;
+    const read = setup.store.initAt(KEY);
+    if (deadline) await setup.clock.advance(INIT_AT_READ_DEADLINE_MS);
+    expect(await read).toBeNull();
+    expect(setup.initAtReads).toHaveLength(1);
+    setup.store.dispose();
+  });
+
+  it("reads nothing for a target it does not hold", async () => {
+    const setup = rig();
+    expect(await setup.store.initAt(KEY)).toBeNull();
+    expect(setup.initAtReads).toEqual([]);
+    setup.store.dispose();
   });
 });
