@@ -75,6 +75,33 @@ describe("mateLink", () => {
     expect(appName({ appName: null })).toBeNull();
     expect(appName({})).toBeNull();
     expect(appName({ appName: 7 })).toBe("Failure");
+
+    // Each change by its title, so zcp tells its proposals apart; an older HQ's names none.
+    const titles = (change: Record<string, unknown>) => {
+      const decoded = decodeDown(
+        state({
+          changes: [
+            {
+              repo: "group",
+              number: 2,
+              state: "open",
+              head: null,
+              mergedSha: null,
+              landedHead: null,
+              ...change,
+            },
+          ],
+        }),
+      );
+      return decoded._tag === "Success" && decoded.value.type === "state"
+        ? decoded.value.mate.changes.map((each) => each.title)
+        : decoded._tag;
+    };
+    expect(titles({ title: "Mate: the group's import files" })).toEqual([
+      "Mate: the group's import files",
+    ]);
+    expect(titles({})).toEqual([null]);
+    expect(titles({ title: 7 })).toBe("Failure");
   });
 
   it("cuts a text to what a summary carries", () => {

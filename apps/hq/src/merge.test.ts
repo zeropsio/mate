@@ -177,6 +177,7 @@ describe("a change merged into main, or closed", () => {
           assert.deepStrictEqual(self.changes[0], {
             repo: "appdev",
             number: 1,
+            title: "Add a login page",
             state: "merged",
             head,
             mergedSha: main,

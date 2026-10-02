@@ -205,10 +205,15 @@ export type AttachmentResponse = typeof AttachmentResponse.Type;
 /** How many of a Mate's changes in a repository its own state carries, newest first. */
 export const MATE_CHANGES_PER_REPO = 10;
 
-/** One of a Mate's own changes, as the Mate reads its outcome: open, merged, or closed. */
+/**
+ * One of a Mate's own changes, as the Mate reads its outcome: open, merged, or closed — and its
+ * title, so a Mate tells its changes in one repository apart without opening one.
+ */
 export const MateChange = Schema.Struct({
   repo: RepoName,
   number: ChangeNumber,
+  /** Added after the rest: an older HQ's change names none. */
+  title: Schema.NullOr(Schema.String).pipe(Schema.withDecodingDefaultKey(Effect.succeed(null))),
   state: ChangeState,
   head: Schema.NullOr(Sha),
   mergedSha: Schema.NullOr(Sha),
