@@ -129,31 +129,6 @@ export interface GiteaCommitFile {
   readonly status: string;
 }
 
-/**
- * One thing somebody said on a change.
- *
- * Gitea keeps a pull request's conversation on the issue of the same number,
- * so this is `/issues/{index}/comments` rather than anything under `/pulls`.
- * The body is Markdown as it was typed; nothing here renders it.
- */
-export interface GiteaIssueComment {
-  readonly id: number;
-  /** The login that wrote it — a Mate's is `mate-{projectId}`. */
-  readonly author: string | undefined;
-  readonly avatarUrl: string | undefined;
-  readonly body: string;
-  /** ISO-8601. */
-  readonly at: string | undefined;
-}
-
-/** Gitea's own shape for a comment. */
-interface GiteaIssueCommentWire {
-  readonly id?: number | undefined;
-  readonly user?: GiteaUser | undefined;
-  readonly body?: string | undefined;
-  readonly created_at?: string | undefined;
-}
-
 /** What a commit changed, as a page showing one needs it. */
 export interface GiteaCommitDetail {
   readonly sha: string;
@@ -304,17 +279,6 @@ function commitStatusFromWire(wire: GiteaCommitStatusWire): GiteaCommitStatus {
   return { ...rest, state: state ?? status ?? "pending" };
 }
 
-/** A comment as the surfaces want it: who, what, when, and nothing else. */
-function issueComment(wire: GiteaIssueCommentWire): GiteaIssueComment {
-  return {
-    id: wire.id ?? 0,
-    author: wire.user?.login,
-    avatarUrl: wire.user?.avatar_url,
-    body: wire.body ?? "",
-    at: wire.created_at,
-  };
-}
-
 export interface GiteaActionRun {
   readonly id: number;
   readonly status?: string | undefined;
@@ -463,20 +427,6 @@ export interface GiteaClient {
    * person's token to Gitea and answers every origin; it relays raster pictures only.
    */
   picture(url: string): Promise<Blob>;
-
-  /** What has been said on a change, oldest first — Gitea's own order. */
-  listIssueComments(
-    owner: string,
-    repo: string,
-    index: number,
-  ): Promise<ReadonlyArray<GiteaIssueComment>>;
-  /** Says something on a change, as the person. */
-  createIssueComment(
-    owner: string,
-    repo: string,
-    index: number,
-    body: string,
-  ): Promise<GiteaIssueComment>;
 
   createTag(
     owner: string,
@@ -868,29 +818,6 @@ export function createGiteaClient(options: GiteaClientOptions): GiteaClient {
         },
       );
     },
-
-    listIssueComments: async (owner, repo, index) => {
-      const wire = await json<ReadonlyArray<GiteaIssueCommentWire>>(
-        {
-          method: "GET",
-          path: `/repos/${enc(owner)}/${enc(repo)}/issues/${index}/comments`,
-        },
-        "list what was said on the change",
-      );
-      return wire.map(issueComment);
-    },
-
-    createIssueComment: async (owner, repo, index, body) =>
-      issueComment(
-        await json<GiteaIssueCommentWire>(
-          {
-            method: "POST",
-            path: `/repos/${enc(owner)}/${enc(repo)}/issues/${index}/comments`,
-            body: { body },
-          },
-          "say that on the change",
-        ),
-      ),
 
     createTag: (owner, repo, input) =>
       nothing(

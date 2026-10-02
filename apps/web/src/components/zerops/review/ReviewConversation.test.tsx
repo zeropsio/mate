@@ -3,11 +3,7 @@
  * the words on the change, Ask hands them to the person's own Mate, who changes the code — told
  * apart by what they do, with no line explaining them.
  */
-import {
-  changeRemarks,
-  preferredMateTint,
-  type ChangeRemark,
-} from "@t3tools/client-runtime/zerops";
+import { changeRemarks, type ChangeRemark } from "@t3tools/client-runtime/zerops";
 import { act } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
@@ -22,17 +18,22 @@ import { ReviewConversation } from "./ReviewConversation";
 
 const NOW = Date.parse("2026-09-29T12:00:00Z");
 
+/** The organization's members by their Zerops user id. */
+const MEMBERS = new Map([
+  ["u-ales", "Aleš"],
+  ["u-wren", "Wren"],
+]);
+
 function remarks(count = 2): ReadonlyArray<ChangeRemark> {
   return changeRemarks({
     comments: Array.from({ length: count }, (_, index) => ({
-      id: index + 1,
-      author: index % 2 === 0 ? "ales" : "mate-p-nova",
-      avatarUrl: undefined,
+      id: `c${String(index + 1)}`,
+      authorUserId: index % 2 === 0 ? "u-ales" : "u-wren",
       body: index % 2 === 0 ? `The cache key ignores the locale (${String(index)}).` : "Fixed.",
-      at: "2026-09-29T11:00:00Z",
+      createdAt: "2026-09-29T11:00:00Z",
     })),
-    mateNames: new Map([["p-nova", "Nova"]]),
-    me: "ales",
+    nameOf: (userId) => MEMBERS.get(userId),
+    me: "u-ales",
   });
 }
 
@@ -48,7 +49,6 @@ function html(props: Partial<Parameters<typeof ReviewConversation>[0]> = {}): st
     <ReviewConversation
       asker={{ name: "Nova", tint: "slate" }}
       comments={comments({ kind: "read", comments: [] })}
-      count={2}
       draftKey="appdev#2"
       frame="page"
       now={NOW}
@@ -60,11 +60,11 @@ function html(props: Partial<Parameters<typeof ReviewConversation>[0]> = {}): st
 }
 
 describe("a change's conversation in its review", () => {
-  it("shows what was said, the Mate by its name and never its bot login", () => {
+  it("shows what was said, each person by their name and never their id", () => {
     const markup = html();
     expect(markup).toContain("The cache key ignores the locale (0).");
-    expect(markup).toContain("Nova");
-    expect(markup).not.toContain("mate-p-nova");
+    expect(markup).toContain("Wren");
+    expect(markup).not.toContain("u-wren");
     expect(markup).toContain("2 comments");
   });
 
@@ -75,25 +75,6 @@ describe("a change's conversation in its review", () => {
     const markup = html({ asker });
     expect(markup).toContain(">Comment</button>");
     expect(markup.includes("Ask Nova")).toBe(asks);
-  });
-
-  /**
-   * A Mate's remark wears the face the menu gives it — its person's pick — rather than the tint
-   * its name alone asks for; a Mate the project no longer lists still gets that one.
-   */
-  it.each([
-    {
-      case: "the face the project gives it",
-      mateFaces: new Map([["p-nova", { tint: "rose" as const, shape: "seal" as const }]]),
-      face: 'data-mate-face-shape="seal" data-mate-face-size="sm" data-mate-face-state="idle" data-mate-face-tint="rose"',
-    },
-    {
-      case: "the tint its name asks for once the project no longer lists it",
-      mateFaces: new Map(),
-      face: `data-mate-face-tint="${preferredMateTint("Nova")}"`,
-    },
-  ])("draws a Mate's remark in $case", ({ mateFaces, face }) => {
-    expect(html({ mateFaces })).toContain(face);
   });
 
   it("draws Ask in the face its person picked", () => {
@@ -119,36 +100,29 @@ describe("a change's conversation in its review", () => {
     ["the page: every comment", "page", 9, 9, false],
     ["the dialog: the newest three, the rest one press away", "dialog", 9, 3, true],
   ] as const)("shows, on %s", (_case, frame, count, shown, folded) => {
-    const markup = html({ frame, remarks: remarks(count), count });
+    const markup = html({ frame, remarks: remarks(count) });
     expect(markup.match(/data-zerops-surface="zerops-change-remark"/gu)?.length).toBe(shown);
     expect(markup.includes("Show 6 earlier")).toBe(folded);
   });
 
-  it("holds the room of the comments it has while they are read", () => {
-    const markup = html({ comments: comments({ kind: "reading" }), count: 2, remarks: [] });
-    expect(markup.match(/class="rv-remark-skeleton"/gu)?.length).toBe(2);
-    // The box is there from the first frame: nothing under it moves when what was said arrives.
+  it("takes words from the first frame, while what was said is still read", () => {
+    const markup = html({ comments: comments({ kind: "reading" }), remarks: [] });
     expect(markup).toContain("rv-say-box");
+    expect(markup).not.toMatch(/<textarea[^>]*disabled=""/u);
   });
 
   it("says what could not be read, with Try again, and still takes words", () => {
     const markup = html({
-      comments: comments({ kind: "failed", reason: "Gitea did not answer in time." }),
+      comments: comments({ kind: "failed", reason: "HQ is not answering right now." }),
       remarks: [],
     });
     expect(markup).toContain("The conversation couldn&#x27;t be read.");
-    expect(markup).toContain("Gitea did not answer in time.");
+    expect(markup).toContain("HQ is not answering right now.");
     expect(markup).toContain(">Try again</button>");
     expect(markup).toContain("rv-say-box");
   });
 
-  it("asks for a sign-in with no Gitea to read from, and takes nothing", () => {
-    const markup = html({ comments: comments({ kind: "no-gitea" }), remarks: [] });
-    expect(markup).toContain("Sign in to Gitea to read what was said here.");
-    expect(markup).toMatch(/<textarea[^>]*disabled=""/u);
-  });
-
-  it("never sends anybody to Gitea to take part", () => {
+  it("sends nobody elsewhere to take part", () => {
     expect(html()).not.toContain("<a ");
   });
 });
@@ -194,7 +168,6 @@ describe("the box", () => {
         <ReviewConversation
           asker={{ name: "Nova", tint: "slate" }}
           comments={conversation}
-          count={0}
           draftKey={`appdev#${String(Math.random())}`}
           frame="dialog"
           now={NOW}

@@ -501,15 +501,7 @@ describe("keyStaysInReview: what is typed in the review acts on nothing behind i
 });
 
 describe("changeReadVerdict: a change the flow does not hold, until it is read", () => {
-  const base = {
-    repository: "apidev",
-    number: 1,
-    provided: true,
-    ownerKnown: true,
-    readable: true,
-    signInTrouble: null,
-    changesFailure: undefined,
-  } as const;
+  const base = { repository: "apidev", number: 1, provided: true } as const;
   it.each([
     ["a read in flight", { read: { kind: "reading" } }, "busy", "Reading this change"],
     [
@@ -520,33 +512,15 @@ describe("changeReadVerdict: a change the flow does not hold, until it is read",
     ],
     [
       "a read that failed",
-      { read: { kind: "failed", reason: "Gitea did not answer" } },
+      { read: { kind: "failed", reason: "HQ is not answering right now." } },
       "attention",
       "This change could not be read",
     ],
     [
-      "no read sent: Gitea refused the sign-in",
-      { read: { kind: "idle" }, readable: false, signInTrouble: "Gitea refused the sign-in" },
-      "attention",
-      "Gitea isn't signed in",
-    ],
-    [
-      "no read sent: the project's changes failed",
-      { read: { kind: "idle" }, ownerKnown: false, changesFailure: "403 on the org" },
-      "attention",
-      "This project's changes couldn't be read",
-    ],
-    [
-      "no read sent: signing in to Gitea",
-      { read: { kind: "idle" }, readable: false },
+      "no read sent: the organization's HQ is not known yet",
+      { read: { kind: "idle" } },
       "quiet",
-      "Waiting for Gitea's sign-in",
-    ],
-    [
-      "no read sent: the project's Gitea is not known",
-      { read: { kind: "idle" }, ownerKnown: false },
-      "attention",
-      "This change's project isn't known here",
+      "Waiting for the organization's HQ",
     ],
     [
       "no read sent: nothing to read it with",

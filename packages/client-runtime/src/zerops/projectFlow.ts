@@ -79,8 +79,6 @@ export interface FlowPullRequest {
    * written. What a review reads first.
    */
   readonly description?: string | undefined;
-  /** How many comments were said on it, as Gitea counts them: the room its conversation takes. */
-  readonly commentCount?: number | undefined;
 }
 
 /**

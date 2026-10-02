@@ -37,7 +37,6 @@ vi.mock("~/zerops/projectFlowContext", () => ({
     trouble: null,
   }),
 }));
-vi.mock("~/zerops/accountGiteaSessions", () => ({ giteaSessionLogin: () => undefined }));
 /** The organization's official HQ, the same one on every render, as `useOfficialHq` keeps it. */
 const hq = vi.hoisted(() => ({
   address: "https://hq.example.test",

@@ -7,7 +7,6 @@ import {
   changeRemarks,
   type ChangeReadout,
   type FlowPullRequest,
-  type GiteaIssueComment,
   type ReviewPress,
 } from "@t3tools/client-runtime/zerops";
 import type { CrewTask } from "@t3tools/contracts";
@@ -16,6 +15,7 @@ import type {
   ChangeDetailResponse,
   ChangeFile,
   HqChange,
+  HqChangeComment,
 } from "@t3tools/shared/hqChanges";
 import { useEffect, useState, type ReactNode } from "react";
 
@@ -204,46 +204,54 @@ function detail(over: Partial<ChangeDetailResponse> = {}): ReadoutPart<ChangeRea
 
 const READ = detail();
 
-function said(id: number, author: string, body: string, minutes: number): GiteaIssueComment {
-  return { id, author, avatarUrl: undefined, body, at: minutesAgo(minutes) };
+function said(id: number, author: string, body: string, minutes: number): HqChangeComment {
+  return { id: `c${String(id)}`, authorUserId: author, body, createdAt: minutesAgo(minutes) };
 }
 
-const TALK: ReadonlyArray<GiteaIssueComment> = [
+const TALK: ReadonlyArray<HqChangeComment> = [
   said(
     1,
-    "ales",
+    "u-ales",
     "Does the page still load when the database is down? That is when I'd open it.",
     95,
   ),
   said(
     2,
-    "mate-p-nova",
-    "It does now: the uptime and the version come from the process, and the requests card says it could not read them.",
+    "u-wren",
+    "It does: the uptime and the version come from the process, and the requests card says it could not read them.",
     41,
   ),
 ];
 
 /** A long thread, as a change that went back and forth gathers. */
-const LONG_TALK: ReadonlyArray<GiteaIssueComment> = Array.from({ length: 9 }, (_, index) =>
+const LONG_TALK: ReadonlyArray<HqChangeComment> = Array.from({ length: 9 }, (_, index) =>
   index % 2 === 0
     ? said(
         index + 1,
-        "ales",
+        "u-ales",
         `Round ${String(index / 2 + 1)}: the cards still jump on a phone.`,
         400 - index * 40,
       )
-    : said(index + 1, "mate-p-nova", "Fixed, and checked on a 390 px screen.", 390 - index * 40),
+    : said(index + 1, "u-wren", "Checked again on a 390 px screen: still fine.", 390 - index * 40),
 );
 
 function comments(state: ZeropsChangeCommentsState): ZeropsChangeComments {
   return { state, say: async () => null, saying: false, retry: noop };
 }
 
-const MATE_NAMES = new Map([["p-nova", "Nova"]]);
+/** The organization's members by their Zerops user id. */
+const MEMBERS = new Map([
+  ["u-ales", "Aleš"],
+  ["u-wren", "Wren"],
+]);
 
 function remarksOf(conversation: ZeropsChangeComments) {
   return conversation.state.kind === "read"
-    ? changeRemarks({ comments: conversation.state.comments, mateNames: MATE_NAMES, me: "ales" })
+    ? changeRemarks({
+        comments: conversation.state.comments,
+        nameOf: (userId) => MEMBERS.get(userId),
+        me: "u-ales",
+      })
     : [];
 }
 
@@ -576,7 +584,6 @@ function Settling({
       frame={frame}
       over={{
         description: harnessDescription({ after, unreadable: true }),
-        commentCount: TALK.length,
       }}
       readout={read ? detail({ commits: commits(19) }) : READING}
     />
@@ -619,7 +626,6 @@ export const REVIEW_STATES: ReadonlyArray<{
       <Change
         conversation={comments({ kind: "reading" })}
         frame="page"
-        over={{ commentCount: 2 }}
         readout={READING}
         run={{ words: undefined, reading: true }}
       />
@@ -668,7 +674,6 @@ export const REVIEW_STATES: ReadonlyArray<{
     node: (
       <Change
         conversation={comments({ kind: "reading" })}
-        over={{ commentCount: 2 }}
         readout={READING}
         run={{ words: undefined, reading: true }}
       />
@@ -991,7 +996,6 @@ export function ReviewDialogTry() {
           pictures={HARNESS_PICTURES}
           pull={pull({
             description: harnessDescription({ after: TRY_READ_MS }),
-            commentCount: TALK.length,
           })}
           readout={read ? READ : READING}
           run={RUN}
@@ -1048,7 +1052,6 @@ function ReleaseTrySteps({ onClose }: { readonly onClose: () => void }) {
             pull={pull({
               ...RELEASED[shown.number],
               description: harnessDescription({ after: 0 }),
-              commentCount: TALK.length,
             })}
             readout={READ}
             remarks={remarksOf(TALKING)}

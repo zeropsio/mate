@@ -34,7 +34,6 @@ import { useRouter } from "@tanstack/react-router";
 import { Fragment, useEffect, useMemo, useState, type ReactNode } from "react";
 
 import { buildThreadRouteParams } from "~/threadRoutes";
-import { giteaSessionLogin } from "~/zerops/accountGiteaSessions";
 import { useAskMateToFix, type FixProblem } from "~/zerops/fixRequest";
 import {
   useZeropsProjectFlowOptional,
@@ -54,6 +53,8 @@ import { useZeropsLandedChange } from "~/zerops/useZeropsLandedChange";
 import { useNowMs } from "~/zerops/useNowMs";
 import { useFixMates } from "~/zerops/fixMates";
 import { useZeropsReviewMates } from "~/zerops/useZeropsReviewMates";
+import { useZeropsMemberNames } from "~/zerops/useZeropsMateOwners";
+import { useZeropsSessionOptional } from "~/zerops/ZeropsSessionProvider";
 
 import { MateFace } from "../primitives";
 import {
@@ -64,7 +65,7 @@ import {
   type ReviewKind,
 } from "./ZeropsReview.logic";
 import { ReviewCommits } from "./ReviewCommits";
-import { ReviewConversation, type MateFaceOf } from "./ReviewConversation";
+import { ReviewConversation } from "./ReviewConversation";
 import { ReviewDescription } from "./ReviewDescription";
 import {
   ReviewFiles,
@@ -125,9 +126,6 @@ export function ZeropsChangeReview({
     pull.repository === target.repository && pull.number === target.number;
   const open = flow?.pullRequests.find(matches);
   const merged = flow?.merged.find(matches);
-  // The project's Gitea org: known from the registry before its flow is read, which after a
-  // reload waits its turn behind the other projects'.
-  const owner = flow?.slug ?? flowValue?.slugs.get(target.groupId);
   // A change the flow does not hold — landed before the flow was read, or a flow not read yet —
   // is read on its own.
   const landed = useZeropsLandedChange(
@@ -142,7 +140,7 @@ export function ZeropsChangeReview({
   if (current !== undefined && current !== held) setHeld(current);
   const pull = current ?? held;
 
-  if (flowValue === null || owner === undefined || pull === undefined) {
+  if (flowValue === null || pull === undefined) {
     return (
       <ZeropsReviewSurface
         back={onBack === undefined ? undefined : { label: RELEASE_BACK, onPress: onBack }}
@@ -159,10 +157,6 @@ export function ZeropsChangeReview({
           number: target.number,
           read: landed.kind === "read" ? { kind: "reading" } : landed,
           provided: flowValue !== null,
-          ownerKnown: owner !== undefined,
-          readable: flowValue?.readable ?? false,
-          signInTrouble: flowValue?.signInTrouble ?? null,
-          changesFailure: flow?.changesFailure,
         })}
       />
     );
@@ -170,7 +164,6 @@ export function ZeropsChangeReview({
   return (
     <ChangeReviewData
       flow={flow}
-      owner={owner}
       flowValue={flowValue}
       frame={frame}
       onBack={onBack}
@@ -186,7 +179,6 @@ export function ZeropsChangeReview({
 
 function ChangeReviewData({
   flow,
-  owner,
   flowValue,
   frame,
   onOpenPage,
@@ -199,8 +191,6 @@ function ChangeReviewData({
 }: {
   /** The project's flow; `undefined` while it waits its turn to be read. */
   readonly flow: ZeropsProjectFlow | undefined;
-  /** The project's Gitea org. */
-  readonly owner: string;
   /** The account's flow, which holds this one. */
   readonly flowValue: ZeropsProjectFlowValue;
   readonly frame: ReviewFrame;
@@ -241,23 +231,23 @@ function ChangeReviewData({
     number: pull.number,
   });
   const comments = useZeropsChangeComments({
-    giteaOrigin: flowValue.giteaOrigin,
-    owner,
+    appId: target.groupId,
     repo: pull.repository,
     number: pull.number,
   });
-  const giteaOrigin = flowValue.giteaOrigin;
-  const mateNames = flowValue.mateNames;
+  // Who said it, as the organization's members name them; the reader's own words marked.
+  const session = useZeropsSessionOptional();
+  const nameOf = useZeropsMemberNames({
+    clientId: session?.activeOrganization?.id,
+    enabled: comments.state.kind === "read" && comments.state.comments.length > 0,
+  });
+  const me = session?.user?.id;
   const remarks = useMemo(
     () =>
       comments.state.kind === "read"
-        ? changeRemarks({
-            comments: comments.state.comments,
-            mateNames,
-            me: giteaOrigin === undefined ? undefined : giteaSessionLogin(giteaOrigin),
-          })
+        ? changeRemarks({ comments: comments.state.comments, nameOf, me })
         : NO_REMARKS,
-    [comments.state, giteaOrigin, mateNames],
+    [comments.state, me, nameOf],
   );
   // A conversation that never answers is not waited on for ever: its lines give way.
   const [runGaveUp, setRunGaveUp] = useState(false);
@@ -291,7 +281,6 @@ function ChangeReviewData({
               }
           : { name: mate.name, tint: mate.tint, shape: mate.shape, mine }
       }
-      mateFaces={mates}
       now={now}
       comments={comments}
       remarks={remarks}
@@ -362,8 +351,6 @@ export interface ChangeReviewViewProps {
         readonly mine: boolean;
       }
     | undefined;
-  /** The project's Mates by project, so a remark a Mate made wears its face. */
-  readonly mateFaces?: ReadonlyMap<string, MateFaceOf> | undefined;
   /** HQ's detail of it: its files and diffs, its commits, how it merges. */
   readonly readout: ReadoutPart<ChangeReadout>;
   /** What was said on it, and the way to say something back. */
@@ -533,11 +520,9 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
           mine === undefined ? undefined : { name: mine.name, tint: mine.tint, shape: mine.shape }
         }
         comments={props.comments}
-        count={pull.commentCount}
         draftKey={`${pull.url ?? pull.repository}#${String(pull.number)}`}
         frame={props.frame ?? "dialog"}
         now={props.now}
-        mateFaces={props.mateFaces}
         onAsk={props.onAsk}
         remarks={props.remarks}
       />

@@ -466,7 +466,6 @@ export {
   type GiteaCommitStatus,
   type GiteaFile,
   type GiteaFileChange,
-  type GiteaIssueComment,
   type GiteaIssueSearchHit,
   type GiteaOrganization,
   type GiteaPullRequest,
