@@ -407,7 +407,12 @@ export const deploysLayer = (
           (rows) => rows[0],
         );
 
-      /** The record of `target` now `state`: written by the leader, told to the structure. */
+      /**
+       * The record of `target` now `state`: written by the leader, told to the structure. `over`
+       * says what record it may replace, judged in the write itself, so a record written between a
+       * read and this write is never lost: `any`; `none`, a first record only; `unsettled`, neither
+       * a live one nor a build's own failure (a hold's, B37). What it does not replace stays, untold.
+       */
       const record = (
         target: Target,
         row:
@@ -418,8 +423,9 @@ export const deploysLayer = (
               readonly processId: string;
             }
           | Ended,
+        over: "any" | "none" | "unsettled" = "any",
       ) =>
-        Effect.andThen(
+        Effect.flatMap(
           leader.write(sql`
             INSERT INTO hq_deploy (project_id, service, sha, repo, state, failure, message,
               app_version_id, process_id, started_at)
@@ -429,13 +435,24 @@ export const deploysLayer = (
               ${row.state === "deploying" ? row.appVersionId : null},
               ${row.state === "deploying" ? row.processId : null},
               ${row.state === "deploying" ? sql`now()` : null})
-            ON CONFLICT (project_id, service, sha) DO UPDATE SET
+            ON CONFLICT (project_id, service, sha) ${
+              over === "none"
+                ? sql`DO NOTHING`
+                : sql`DO UPDATE SET
               state = EXCLUDED.state, failure = EXCLUDED.failure, message = EXCLUDED.message,
               app_version_id = COALESCE(EXCLUDED.app_version_id, hq_deploy.app_version_id),
               process_id = COALESCE(EXCLUDED.process_id, hq_deploy.process_id),
               started_at = COALESCE(EXCLUDED.started_at, hq_deploy.started_at),
-              updated_at = now()`),
-          tick,
+              updated_at = now()
+              ${
+                over === "unsettled"
+                  ? sql`WHERE hq_deploy.state <> 'live' AND hq_deploy.failure IS DISTINCT FROM 'job'`
+                  : sql``
+              }`
+            }
+            RETURNING 1`),
+          // Told only when it wrote.
+          (written) => (written.length > 0 ? tick : Effect.void),
         );
 
       const tokenOf = (projectId: string) =>
@@ -523,13 +540,7 @@ export const deploysLayer = (
         });
 
       /** A refusal of HQ's own on `target`, unless it is live or its build's own failure stands. */
-      const refuseUnsettled = (target: Target, ended: Ended) =>
-        Effect.gen(function* () {
-          const existing = yield* recordOf(target);
-          if (existing?.state === "live") return;
-          if (existing?.state === "failed" && existing.failure === "job") return;
-          yield* record(target, ended);
-        });
+      const refuseUnsettled = (target: Target, ended: Ended) => record(target, ended, "unsettled");
 
       /**
        * The environment's key, checked as each pass hands its deploys over: none, one that no longer
@@ -858,7 +869,8 @@ export const deploysLayer = (
               for (const target of targets) {
                 if ((yield* recordOf(target)) === undefined) {
                   fresh = true;
-                  yield* record(target, { state: "pending" });
+                  // A hold written since the read stands.
+                  yield* record(target, { state: "pending" }, "none");
                 }
               }
               if (all || fresh) yield* enqueue(projectId, targets);
