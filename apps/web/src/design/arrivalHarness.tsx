@@ -199,6 +199,8 @@ interface HarnessState {
   readonly unknown?: KnownMessage;
   readonly conversation?: boolean;
   readonly dialog?: ZeropsAgentId;
+  /** The dialog's agent holds a colleague's sign-in: their name. */
+  readonly heldBy?: string;
   readonly crew?: boolean;
   readonly watching?: boolean;
 }
@@ -337,6 +339,15 @@ const STATES: ReadonlyArray<HarnessState> = [
     conversation: true,
     dialog: "claude-code",
   },
+  {
+    id: "dialog-held",
+    label: "6 The sign-in in a dialog, over a colleague's sign-in",
+    mate: WREN,
+    phase: null,
+    conversation: true,
+    dialog: "codex",
+    heldBy: "Ann",
+  },
 ];
 
 const SHARED: TimelineRowSharedState = {
@@ -445,6 +456,9 @@ function useFixtureSignIn(initial: Logins, onSignedIn: () => void, fail: boolean
   return { logins, onStart, onSubmitCode, onCancel };
 }
 
+/** The colleague whose sign-in a dialog's agent holds. */
+const HOLDER = "u-holder";
+
 function FixtureSignIn({
   state,
   onSignedIn,
@@ -468,6 +482,9 @@ function FixtureSignIn({
     .map((agentId) => ({
       agentId,
       login: logins[agentId],
+      ...(state.heldBy === undefined || agentId !== fixed
+        ? {}
+        : { credPresent: true, authorizedBy: { subject: HOLDER } }),
     }));
   return (
     <AgentSignInView
@@ -475,6 +492,7 @@ function FixtureSignIn({
       codeField
       fixed={fixed !== null}
       mateName={state.mate.name}
+      nameOf={(subject) => (subject === HOLDER ? state.heldBy : undefined)}
       onCancel={onCancel}
       onStart={onStart}
       onSubmitCode={onSubmitCode}
@@ -484,6 +502,7 @@ function FixtureSignIn({
         </pre>
       )}
       usual={state.id === "colleague" ? null : "claude-code"}
+      viewerSubject="u-harness"
       watching={state.watching === true}
     />
   );
