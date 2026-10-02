@@ -6,7 +6,7 @@ import * as NodePath from "node:path";
 import { assert, describe, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 
-import { syntheticBundle } from "../test/harness/bundle.ts";
+import { STAGE_TIER, syntheticBundle } from "../test/harness/bundle.ts";
 import { checkCommand, importArgs } from "./importCli.ts";
 
 const tempDir = Effect.acquireRelease(
@@ -39,6 +39,26 @@ describe("hq import", () => {
           ],
         });
       }).pipe(Effect.scoped),
+  );
+
+  it.effect("--check notes a tier building from a repository the bundle does not bring", () =>
+    Effect.gen(function* () {
+      const lacking =
+        "  - hostname: admin\n    buildFromGit: https://gitea.example/shop/admin.git\n    zeropsSetup: admin\n";
+      const written = yield* syntheticBundle(
+        yield* tempDir,
+        undefined,
+        undefined,
+        STAGE_TIER + lacking,
+      );
+      assert.deepStrictEqual(yield* checkCommand(written.dir), {
+        code: 0,
+        lines: [
+          `bundle ${written.digest}: 1 application, 2 repositories, 3 changes, 1 picture, 1 release`,
+          "  note: app g1 3 — Stage/import.yaml: line 14 builds from shop/admin on Gitea, which the bundle does not bring",
+        ],
+      });
+    }).pipe(Effect.scoped),
   );
 
   it.each([

@@ -134,6 +134,12 @@ export class Deploys extends Context.Service<
       projectIds: ReadonlyArray<string>,
       credential: Redacted.Redacted,
     ) => Effect.Effect<ReadonlyArray<HeldEnvironment>, NotLeader | SqlError | ZeropsError>;
+    /**
+     * Migration only (T13; it goes with T14): every tier of the applications `appIds`' environments
+     * seen as it is now, as a tier first seen would be — so the recipe the import rewrote is the
+     * baseline, and no pass takes the rewrite for a change to import.
+     */
+    readonly baseline: (appIds: ReadonlyArray<string>) => Effect.Effect<void, NotLeader | SqlError>;
   }
 >()("@t3tools/hq/deploys") {}
 
@@ -612,9 +618,7 @@ export const deploysLayer = (
             yield* Effect.logWarning("tier refused", { appId, tier, problem: declared.problem });
             continue;
           }
-          const digest = NodeCrypto.createHash("sha256")
-            .update(read.value.importYaml)
-            .digest("hex");
+          const digest = digestOf(read.value.importYaml);
           const [seen] = yield* sql<{
             readonly digest: string;
             readonly blocks: Readonly<Record<string, string>>;
@@ -633,18 +637,27 @@ export const deploysLayer = (
             if (!done) everywhere = false;
           }
           if (!everywhere) continue;
-          const blocks = encodeBlocks(
-            Object.fromEntries(
-              declared.services.map((service) => [service.hostname, service.block]),
-            ),
-          );
-          yield* leader.write(sql`
-            INSERT INTO hq_recipe_seen (app_id, tier, digest, blocks)
-            VALUES (${appId}::uuid, ${tier}, ${digest}, ${blocks}::jsonb)
-            ON CONFLICT (app_id, tier) DO UPDATE SET
-              digest = EXCLUDED.digest, blocks = EXCLUDED.blocks, seen_at = now()`);
+          yield* see(appId, tier, digest, declared.services);
         }
       });
+
+      /** A tier's import file as HQ compares it with what it last saw. */
+      const digestOf = (importYaml: string) =>
+        NodeCrypto.createHash("sha256").update(importYaml).digest("hex");
+
+      /** What HQ saw of a tier now `digest`, declaring `services`. */
+      const see = (
+        appId: string,
+        tier: "stage" | "production",
+        digest: string,
+        services: ReadonlyArray<TierService>,
+      ) =>
+        leader.write(sql`
+          INSERT INTO hq_recipe_seen (app_id, tier, digest, blocks)
+          VALUES (${appId}::uuid, ${tier}, ${digest},
+            ${encodeBlocks(Object.fromEntries(services.map((service) => [service.hostname, service.block])))}::jsonb)
+          ON CONFLICT (app_id, tier) DO UPDATE SET
+            digest = EXCLUDED.digest, blocks = EXCLUDED.blocks, seen_at = now()`);
 
       /**
        * One environment against its tier: the services it lacks imported — none where HQ sees the
@@ -878,6 +891,23 @@ export const deploysLayer = (
         ),
       );
 
+      const baseline: Deploys["Service"]["baseline"] = (appIds) =>
+        Effect.gen(function* () {
+          const tiers = yield* sql<{
+            readonly app_id: string;
+            readonly tier: "stage" | "production";
+          }>`
+            SELECT DISTINCT app_id::text AS app_id, tier FROM hq_environment
+            WHERE ${sql.in("app_id", appIds)}`;
+          for (const { app_id: appId, tier } of tiers) {
+            const read = yield* recipes.read(appId, tier).pipe(Effect.option);
+            if (Option.isNone(read) || read.value.state === "absent") continue;
+            const declared = tierServices(read.value.importYaml);
+            if (!declared.ok) continue;
+            yield* see(appId, tier, digestOf(read.value.importYaml), declared.services);
+          }
+        });
+
       const hold: Deploys["Service"]["hold"] = (projectIds, credential) =>
         Effect.gen(function* () {
           const held: Array<HeldEnvironment> = [];
@@ -910,6 +940,7 @@ export const deploysLayer = (
         });
 
       return Deploys.of({
+        baseline,
         hold,
         catchUp: Effect.flatMap(Ref.get(leading), (pass) =>
           Option.isSome(pass)

@@ -3,7 +3,8 @@
  * (T13). Migration-only: it goes with T14.
  *
  * - `import --check <bundle>` checks a bundle whole (`importBundle.ts`) and writes nothing: the
- *   exporter's contract test, needing no database.
+ *   exporter's contract test, needing no database. What a tier names of Gitea that the import will
+ *   leave as it is follows as notes.
  * - `import <bundle>` checks it, queues it in `hq_import` and follows it until the leader has done
  *   it or it failed (`importJob.ts`). The command writes no record of its own: the leader imports.
  *   The same bundle again resumes a run that failed, or verifies a done one once more; another
@@ -17,7 +18,7 @@ import * as Schedule from "effect/Schedule";
 import * as Schema from "effect/Schema";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
 
-import { type Bundle, type BundleRefused, checkBundle } from "./importBundle.ts";
+import { type Bundle, type BundleRefused, bundleNotes, checkBundle } from "./importBundle.ts";
 import { ImportReport } from "./importJob.ts";
 
 export interface CommandResult {
@@ -68,7 +69,10 @@ const refusedResult = (refused: BundleRefused): CommandResult => ({
 
 export const checkCommand = (dir: string) =>
   checkBundle(dir).pipe(
-    Effect.map((bundle): CommandResult => ({ code: 0, lines: [bundleSummary(bundle)] })),
+    Effect.map((bundle): CommandResult => ({
+      code: 0,
+      lines: [bundleSummary(bundle), ...bundleNotes(bundle).map((note) => `  note: ${note}`)],
+    })),
     Effect.catchTag("BundleRefused", (refused) => Effect.succeed(refusedResult(refused))),
   );
 
@@ -116,6 +120,9 @@ export const queueCommand = (dir: string, options: { readonly follow?: Duration.
         `import ${bundle.digest} done and verified`,
         `  merged otherwise than by HQ's squash: ${listed(report.mergedOtherwise)}`,
         `  Mates not enrolled yet: ${listed(report.notEnrolled)}`,
+        ...(report.recipeNotes.length === 0
+          ? ["  recipe notes: none"]
+          : ["  recipe notes:", ...report.recipeNotes.map((note) => `    ${note}`)]),
         ...(report.environments.length === 0 ? [] : ["  environments:"]),
         ...report.environments.map(
           (env) =>

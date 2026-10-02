@@ -1,5 +1,6 @@
 // @effect-diagnostics nodeBuiltinImport:off -- bundles are temp directories; the repositories are read on disk.
 import * as NodeChildProcess from "node:child_process";
+import * as NodeCrypto from "node:crypto";
 import * as NodeFS from "node:fs";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
@@ -10,10 +11,11 @@ import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Redacted from "effect/Redacted";
 
-import { PICTURE, PICTURE_URL, syntheticBundle } from "../test/harness/bundle.ts";
+import { PICTURE, PICTURE_URL, STAGE_TIER, syntheticBundle } from "../test/harness/bundle.ts";
 import { addProject, rowsWhere } from "../test/harness/mates.ts";
 import { sessionFor, startCore, untilHealth } from "../test/harness/runningCore.ts";
 import { tempPostgresLayer } from "../test/harness/tempPostgres.ts";
+import type { FakeWorld } from "../test/harness/zeropsFake.ts";
 import { queueCommand } from "./importCli.ts";
 
 const tempDir = (prefix: string) =>
@@ -43,16 +45,56 @@ const refsOf = (gitRoot: string, appId: string, repo: string) =>
     .trim()
     .split("\n");
 
+/** A file of a repository's `main` in Core's git root. */
+const fileAt = (gitRoot: string, appId: string, repo: string, path: string) =>
+  NodeChildProcess.execFileSync(
+    "git",
+    ["-C", NodePath.join(gitRoot, appId, `${repo}.git`), "show", `main:${path}`],
+    { encoding: "utf8" },
+  );
+
+/** `git log -1` of a repository's `main` in Core's git root: its message and its parents. */
+const mainCommit = (gitRoot: string, appId: string, repo: string) => {
+  const [parents = "", ...message] = NodeChildProcess.execFileSync(
+    "git",
+    ["-C", NodePath.join(gitRoot, appId, `${repo}.git`), "log", "-1", "--format=%P%n%B", "main"],
+    { encoding: "utf8" },
+  )
+    .trim()
+    .split("\n");
+  return { parents: parents.split(" "), message: message.join("\n") };
+};
+
+/** A service of an imported environment's project, running the version named `name`. */
+const serviceIn = (world: FakeWorld, projectId: string, service: string, name: string) =>
+  world.services.push({
+    id: `S-${projectId}-${service}`,
+    projectId,
+    name: service,
+    status: "ACTIVE",
+    isSystem: false,
+    subdomainAccess: false,
+    http: true,
+    named: { id: `V-${projectId}-${service}`, name },
+    activeVersionId: `V-${projectId}-${service}`,
+  });
+
 describe("the migration's import", () => {
   it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
     it.effect("brings a bundle in whole, as the leader writes, and verifies it", () =>
       Effect.gen(function* () {
         const importRoot = yield* tempDir("hq-import-");
         const gitRoot = yield* tempDir("hq-git-");
-        const { call, fake, url } = yield* startCore(true, { gitRoot, importRoot });
+        const { call, fake, url, gitHost } = yield* startCore(true, { gitRoot, importRoot });
         for (const id of ["P_BEA", "P_STAGE", "P_PROD"]) addProject(fake, id);
         yield* untilHealth(call, "active");
         const written = yield* syntheticBundle(importRoot);
+        const short = (sha: string) => sha.slice(0, 7);
+        // Main's stage runs appdev's head in one runtime and its first commit in the other;
+        // production runs its release.
+        serviceIn(fake, "P_STAGE", "appstage", `main ${short(written.shas.squash)}`);
+        serviceIn(fake, "P_STAGE", "workerstage", `main ${short(written.shas.start)}`);
+        serviceIn(fake, "P_PROD", "app", `v0.1.0 ${short(written.shas.squash)}`);
 
         const done = yield* importAs(url, written.dir);
         assert.deepStrictEqual(done, {
@@ -62,10 +104,11 @@ describe("the migration's import", () => {
             `import ${written.digest} done and verified`,
             "  merged otherwise than by HQ's squash: none",
             "  Mates not enrolled yet: P_MATE, P_BEA",
-            // Its tiers name no runtime: nothing is wanted anywhere, so nothing is held.
+            "  recipe notes: none",
+            // Its tiers build from HQ now: what each environment runs is weighed against them.
             "  environments:",
-            "    shop-stage: nothing to deploy yet",
-            "    shop-production: nothing to deploy yet",
+            `    shop-stage: held: workerstage runs ${short(written.shas.start)}, wanted ${short(written.shas.squash)}`,
+            "    shop-production: at its target",
           ],
         });
 
@@ -147,6 +190,90 @@ describe("the migration's import", () => {
           `refs/heads/mate/P_MATE/1 ${written.shas.merged}`,
           `refs/heads/mate/P_MATE/3 ${written.shas.open}`,
         ]);
+        // The recipe builds from HQ: one commit of Core's on the bundle's main, its tiers' builds moved.
+        const recipe = mainCommit(gitRoot, appId, "group");
+        assert.deepStrictEqual(recipe, {
+          parents: [written.shas.recipe],
+          message: `Core: the recipe builds from HQ\n\nHQ-Import: ${written.digest}`,
+        });
+        const hq = `https://hqzone.prg1-zerops.zone/git/${appId}/appdev.git`;
+        assert.strictEqual(
+          fileAt(gitRoot, appId, "group", "3 — Stage/import.yaml"),
+          STAGE_TIER.replace("https://gitea.example/shop/appdev.git", hq).replace(
+            "https://gitea.example/shop/appdev",
+            hq,
+          ),
+        );
+        // What HQ saw of each tier is the rewritten one: the baseline later changes are weighed against.
+        const digest = (path: string) =>
+          NodeCrypto.createHash("sha256")
+            .update(fileAt(gitRoot, appId, "group", path))
+            .digest("hex");
+        const seen = yield* rowsWhere(
+          url,
+          "SELECT tier, digest FROM hq_recipe_seen ORDER BY tier",
+          (rows) => rows.length === 2,
+        );
+        assert.deepStrictEqual(
+          seen.map((row) => [row["tier"], row["digest"]]),
+          [
+            ["production", digest("4 — Small Production/import.yaml")],
+            ["stage", digest("3 — Stage/import.yaml")],
+          ],
+        );
+        // An admin's first key: the pass that follows imports no service and deploys nothing.
+        yield* rowsWhere(
+          url,
+          "INSERT INTO hq_deploy_token (project_id, token, kept_by) VALUES ('P_STAGE', 'key-stage', 'owner') RETURNING 1",
+          (rows) => rows.length === 1,
+        );
+        fake.tokens.set("key-stage", {
+          id: "T_STAGE",
+          name: "deploy-shop-stage",
+          orgId: "ORG",
+          roleCode: "NO_ACCESS",
+          canCreateProjects: false,
+          canViewFinances: false,
+          canEditFinances: false,
+          projects: [{ projectId: "P_STAGE", roleCode: "BASIC_USER" }],
+          createdMs: 0,
+          createdByUser: "owner",
+        });
+        const git = yield* gitHost.git;
+        const noted = yield* git
+          .commitFiles({ appId, id: "group" }, "refs/heads/main", {
+            files: { "README.md": "Shop\n" },
+            message: "A note",
+            author: { name: "Ada", email: "ada@mate.test" },
+            expectedHead: NodeChildProcess.execFileSync(
+              "git",
+              ["-C", NodePath.join(gitRoot, appId, "group.git"), "rev-parse", "main"],
+              { encoding: "utf8" },
+            ).trim(),
+          })
+          .pipe(Effect.orElseSucceed(() => ({ kind: "head_moved" as const })));
+        assert.notProperty(noted, "kind");
+        yield* rowsWhere(
+          url,
+          `SELECT 1 FROM hq_repo WHERE name = 'group' AND main_head = '${"sha" in noted ? noted.sha : ""}'`,
+          (rows) => rows.length === 1,
+        );
+        yield* Effect.sleep(Duration.millis(500));
+        assert.deepStrictEqual([fake.imports, fake.appVersions.size], [[], 0]);
+        const records = yield* rowsWhere(
+          url,
+          "SELECT service, state, failure FROM hq_deploy ORDER BY service",
+          () => true,
+        );
+        assert.deepStrictEqual(
+          records.map((row) => Object.values(row)),
+          [
+            ["app", "live", null],
+            ["appstage", "live", null],
+            ["workerstage", "failed", "job"],
+          ],
+        );
+
         const mates = yield* rowsWhere(
           url,
           `SELECT project_id, name, face, standup_requested_by, closed_off_at IS NOT NULL AS closed
@@ -245,10 +372,47 @@ describe("the migration's import", () => {
         }).pipe(Effect.scoped),
     );
 
+    it.effect("leaves a tier's build from another org's repository as it is, and says so", () =>
+      Effect.gen(function* () {
+        const importRoot = yield* tempDir("hq-import-");
+        const gitRoot = yield* tempDir("hq-git-");
+        const { call, fake, url } = yield* startCore(true, { importRoot, gitRoot });
+        for (const id of ["P_BEA", "P_STAGE", "P_PROD"]) addProject(fake, id);
+        yield* untilHealth(call, "active");
+        const borrowed = [
+          "  - hostname: shared",
+          "    buildFromGit: https://gitea.example/heron/appdev.git",
+          "    zeropsSetup: shared",
+          "",
+        ].join("\n");
+        const written = yield* syntheticBundle(
+          importRoot,
+          undefined,
+          undefined,
+          STAGE_TIER + borrowed,
+        );
+        const done = yield* importAs(url, written.dir);
+        assert.include(done.lines, "  recipe notes:");
+        assert.include(
+          done.lines,
+          "    g1 3 — Stage/import.yaml: line 14 builds from heron/appdev on Gitea, no repository of this application's",
+        );
+        const [app] = yield* rowsWhere(
+          url,
+          "SELECT id::text AS id FROM hq_app",
+          (rows) => rows.length === 1,
+        );
+        const stage = fileAt(gitRoot, String(app?.["id"]), "group", "3 — Stage/import.yaml");
+        assert.include(stage, "    buildFromGit: https://gitea.example/heron/appdev.git\n");
+        assert.notInclude(stage, "https://gitea.example/shop/");
+      }).pipe(Effect.scoped),
+    );
+
     it.effect("takes one bundle: another is refused, and the same again only verifies", () =>
       Effect.gen(function* () {
         const importRoot = yield* tempDir("hq-import-");
-        const { call, fake, url } = yield* startCore(true, { importRoot });
+        const gitRoot = yield* tempDir("hq-git-");
+        const { call, fake, url } = yield* startCore(true, { importRoot, gitRoot });
         for (const id of ["P_BEA", "P_STAGE", "P_PROD"]) addProject(fake, id);
         yield* untilHealth(call, "active");
         const under = (name: string) => {
@@ -258,6 +422,12 @@ describe("the migration's import", () => {
         };
         const shop = yield* syntheticBundle(under("shop"));
         assert.strictEqual((yield* importAs(url, shop.dir)).code, 0);
+        const [app] = yield* rowsWhere(
+          url,
+          "SELECT id::text AS id FROM hq_app",
+          (rows) => rows.length === 1,
+        );
+        const recipe = mainCommit(gitRoot, String(app?.["id"]), "group");
 
         const other = yield* syntheticBundle(under("other"), (parts) => ({
           ...parts,
@@ -278,6 +448,8 @@ describe("the migration's import", () => {
         });
 
         const again = yield* importAs(url, shop.dir);
+        // The recipe was rewritten once: the same run again commits nothing more.
+        assert.deepStrictEqual(mainCommit(gitRoot, String(app?.["id"]), "group"), recipe);
         assert.strictEqual(again.lines[1], `import ${shop.digest} done and verified`);
         const [counts] = yield* rowsWhere(
           url,
