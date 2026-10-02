@@ -20,7 +20,7 @@
 import type { Shown } from "./knowledge/known.ts";
 import type { EnvironmentConnectionPresentation } from "../connection/presentation.ts";
 import type { ZeropsCandidate } from "./candidates.ts";
-import type { ZeropsContainerHealth } from "./provisioning.ts";
+import type { ZeropsContainerHealth } from "./containerHealth.ts";
 
 /**
  * A bound, not a budget: every ready Mate the roster lists connects on its own, so each row says

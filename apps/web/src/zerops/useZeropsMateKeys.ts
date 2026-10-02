@@ -20,14 +20,14 @@
  * fine. The next read tries again.
  *
  * This reconcile never restarts a Mate (spec-mate §3 B-1/B-2/B-3): a birth
- * has exactly one restart and it runs before anyone is admitted, in
- * `provisioning.ts`'s `hardening` phase. A reconcile running from a page a
+ * has exactly one restart and it runs before anyone is admitted, in the
+ * press's close-off (`matePress.ts`). A reconcile running from a page a
  * person is already in must not carry that restart along with it —
  * `isolateProjectEnv` used to run here too and would throw someone already
  * inside a conversation out of it mid-session.
  *
  * The delegation drop (guide 0.4) lives in the birth too
- * (`ZeropsApiClient.hardenMate`, run from `hardening`): the one-time mint is
+ * (`ZeropsApiClient.hardenMate`, run by the press): the one-time mint is
  * dropped once, at birth, never re-read here.
  *
  * The re-run key covers the token set, not only the Mates: a token that
