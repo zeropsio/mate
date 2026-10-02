@@ -113,18 +113,25 @@ export interface NewProjectPorts {
     readonly hq: HqEndpoint;
     readonly name: string;
   }) => Promise<{ readonly appId: string }>;
-  readonly createProject: (
-    creation: NewProjectCreation,
-  ) => Promise<{ readonly project: Pick<ZeropsProject, "id"> }>;
+  /**
+   * Creates the first Mate's project and its container: the container's service name, or null
+   * where the project was made and its container not confirmed (`createProjectWithZeropsMate`).
+   */
+  readonly createProject: (creation: NewProjectCreation) => Promise<{
+    readonly project: Pick<ZeropsProject, "id">;
+    readonly serviceName: string | null;
+  }>;
   /** The platform took the first Mate's project: its birth begins (`creationAccepted`). */
   /**
    * The platform took the first Mate's project: its birth begins, on the creation's own clock —
-   * `startedAt` is the press's, so its row counts on, never from 0:00.
+   * `startedAt` is the press's, so its row counts on, never from 0:00 — and its press imports its
+   * container where the creation did not confirm it (`containerImported`).
    */
   readonly accepted: (
     projectId: string,
     registration: NewProjectRegistration,
     startedAt: number,
+    containerImported: boolean,
   ) => void;
 }
 
@@ -324,21 +331,22 @@ export async function runNewProjectBirth(
     moved({ step: "create", appId });
   }
 
-  let projectId: string;
+  let created: Awaited<ReturnType<NewProjectPorts["createProject"]>>;
   try {
-    const created = await ports.createProject({
+    created = await ports.createProject({
       name: newProjectPlacement(birth).displayName,
       ...(birth.locationId === null ? {} : { location: birth.locationId }),
       agents: birth.agents,
     });
-    projectId = created.project.id;
   } catch (cause) {
     stop(zeropsErrorMessage(cause), isUncertain(cause));
     return;
   }
+  const projectId = created.project.id;
   // Its birth begins, and its view moves to it, in one breath: the menu draws its row from one or
-  // the other, never neither.
-  ports.accepted(projectId, { hq, appId }, birth.startedAt);
+  // the other, never neither. A project whose container was not confirmed is handed over all the
+  // same: its press imports it, as *Finish setup* would.
+  ports.accepted(projectId, { hq, appId }, birth.startedAt, created.serviceName !== null);
   moved({ step: "created", projectId });
 }
 
@@ -377,8 +385,10 @@ async function drive(birthId: string): Promise<void> {
       birth,
       {
         ...held.ports,
-        accepted: (projectId, registration, startedAt) => {
-          if (held.isCurrent()) held.ports.accepted(projectId, registration, startedAt);
+        accepted: (projectId, registration, startedAt, containerImported) => {
+          if (held.isCurrent()) {
+            held.ports.accepted(projectId, registration, startedAt, containerImported);
+          }
         },
       },
       (patch) => {

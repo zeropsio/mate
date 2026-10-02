@@ -304,7 +304,7 @@ function ports(over: Partial<NewProjectPorts> = {}) {
     }),
     createProject: vi.fn(async () => {
       order.push("create");
-      return { project: PROJECT };
+      return { project: PROJECT, serviceName: "zcp" };
     }),
     accepted: vi.fn((...[projectId, { hq, appId }]: AcceptedArgs) => {
       order.push(`accepted:${projectId}:${hq.projectId}:${appId}`);
@@ -322,16 +322,36 @@ describe("runNewProjectBirth — the project, then its first Mate", () => {
     // The registry lives in HQ: the project is registered there before anything is created in it,
     // and its Mate goes into the application HQ named.
     expect(order).toEqual(["register:hq-1:Acme CRM", "create", "accepted:p-vera:hq-1:app-acme"]);
-    // Its Mate's row counts on from the press, not from when the platform answered.
+    // Its Mate's row counts on from the press, not from when the platform answered; its container
+    // came with it.
     expect(made.accepted).toHaveBeenCalledWith(
       "p-vera",
       expect.objectContaining({ appId: "app-acme" }),
       PRESSED_AT,
+      true,
     );
     expect(moved).toEqual([
       { step: "create", appId: "app-acme" },
       { step: "created", projectId: "p-vera" },
     ]);
+  });
+
+  // `mate-rig-e2e-a - Ada`, 2026-10-02: the project was made, its container never asked for, and
+  // the creation stopped on a deadline — a project nobody could finish, its application empty.
+  it("hands over a project whose container was not confirmed, for its press to import", async () => {
+    const { order, ports: made } = ports({
+      createProject: vi.fn(async () => ({ project: PROJECT, serviceName: null })),
+    });
+    const moved: Array<NewProjectPatch> = [];
+    await runNewProjectBirth(birth(), made, (patch) => moved.push(patch));
+    expect(order).toEqual(["register:hq-1:Acme CRM", "accepted:p-vera:hq-1:app-acme"]);
+    expect(made.accepted).toHaveBeenCalledWith(
+      "p-vera",
+      expect.objectContaining({ appId: "app-acme" }),
+      PRESSED_AT,
+      false,
+    );
+    expect(moved.at(-1)).toEqual({ step: "created", projectId: "p-vera" });
   });
 
   it.each<{ readonly case: string; readonly ask: Partial<NewProjectAsk>; readonly args: object }>([
@@ -490,20 +510,25 @@ describe("the tab holds a New project's creation until the platform takes it", (
   });
 
   it("forgets every creation, and lets none land, once its account is signed out", async () => {
-    let accept: (value: { readonly project: typeof PROJECT }) => void = () => undefined;
+    let accept: (value: {
+      readonly project: typeof PROJECT;
+      readonly serviceName: string;
+    }) => void = () => undefined;
     const { ports: fake } = ports({
       createProject: vi.fn(
         () =>
-          new Promise<{ readonly project: typeof PROJECT }>((resolve) => {
-            accept = resolve;
-          }),
+          new Promise<{ readonly project: typeof PROJECT; readonly serviceName: string }>(
+            (resolve) => {
+              accept = resolve;
+            },
+          ),
       ),
     });
     beginNewProjectBirth({ ask: ASK, hq: HQ, ports: fake, now: 0 });
     await vi.waitFor(() => expect(fake.createProject).toHaveBeenCalled());
     closeAccountLifetime();
     expect(useNewProjectBirths.getState().births).toEqual({});
-    accept({ project: PROJECT });
+    accept({ project: PROJECT, serviceName: "zcp" });
     await new Promise((settled) => setTimeout(settled, 0));
     expect(fake.accepted).not.toHaveBeenCalled();
     expect(useNewProjectBirths.getState().births).toEqual({});

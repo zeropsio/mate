@@ -267,7 +267,7 @@ function NewProjectDialog() {
         }),
         createProject: (creation) =>
           runZeropsCommand(runtime.commands.createProjectWithMate({ organization, ...creation })),
-        accepted: (projectId, { hq, appId }, startedAt) => {
+        accepted: (projectId, { hq, appId }, startedAt, containerImported) => {
           // The press goes on: the project closed off and the Mate attached to its application in
           // HQ. The listing is read again so the project's group catches
           // up with it. Its row stands where the creation's stood, with the same face and name.
@@ -284,8 +284,9 @@ function NewProjectDialog() {
             inputs: { client, data: { runtime, organizationRef, projectRef }, organizationId },
             projectId,
             projectName: placement.displayName,
-            // Imported a moment ago, with the project, by the one call that made it.
-            container: null,
+            // Imported a moment ago, with the project, by the one call that made it — or, where
+            // that call could not confirm it, imported by this press, as *Finish setup* would.
+            container: containerImported ? null : { agents: ask.agents },
             registration: {
               hq,
               groupId: appId,
