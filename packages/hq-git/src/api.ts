@@ -138,6 +138,11 @@ export interface SquashOptions {
   readonly trailers: Readonly<Record<string, string | ReadonlyArray<string>>>;
   readonly author: Author;
 }
+export interface SquashNames {
+  readonly main: string;
+  readonly head: string;
+  readonly files: Bounded<{ readonly path: string; readonly status: string }>;
+}
 export interface CommitFilesOptions {
   /** Content or null to delete an existing file; a path git or a case-folding checkout refuses is `invalid_path`. */
   readonly files: Readonly<Record<string, string | Uint8Array | null>>;
@@ -285,6 +290,22 @@ export interface HqGit {
     mateId: string,
     number: number,
   ) => Effect.Effect<Bounded<{ readonly path: string; readonly status: string }>, GitError>;
+  /**
+   * What squashing the change into main would do to main now: each file of the merged tree that
+   * differs from main's, and how — git's name-status letter, `A` added, `M` modified, `D` deleted,
+   * `T` its type changed — renames never detected; a change that would do nothing names none. Named
+   * against the `main` and change `head` it read, which a squash takes as expected, so what lands is
+   * what was named. A change that does not merge so is its verdict instead; an unborn main is
+   * `no_main`. Bounded like every read.
+   */
+  readonly squashNames: (
+    repo: Repo,
+    mateId: string,
+    number: number,
+  ) => Effect.Effect<
+    SquashNames | Exclude<Mergeability, { readonly kind: "clean" | "empty" }>,
+    GitError
+  >;
   /**
    * The trailers of `keys` across every commit of the change not on main (`main..head`), oldest
    * commit first, as git's own trailer parser reads each message: folded values unfolded, keys

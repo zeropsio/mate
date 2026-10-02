@@ -402,6 +402,85 @@ describe("a change's own history", () => {
     }),
   );
 
+  it.live("names what squashing the change does to main now, against the main and head read", () =>
+    fixture(async (git, dir) => {
+      expect(await value(git.squashNames(repo, "alice", 1))).toEqual({ kind: "no_change" });
+      const main = await write(
+        git,
+        { "kept.txt": "kept\n", "edited.txt": "one\n", "gone.txt": "x\n" },
+        null,
+      );
+      const head = await branch(git, dir, main, {
+        "added.txt": "new\n",
+        "edited.txt": "two\n",
+        "gone.txt": null,
+      });
+      // main moving on is no part of the change.
+      const moved = await write(git, { "later.txt": "later\n" }, main);
+      const names = await value(git.squashNames(repo, "alice", 1));
+      expect(names).toEqual({
+        main: moved,
+        head,
+        files: {
+          items: [
+            { path: "added.txt", status: "A" },
+            { path: "edited.txt", status: "M" },
+            { path: "gone.txt", status: "D" },
+          ],
+          truncated: false,
+        },
+      });
+      // What was named is what lands: the squash takes the main and head it was named against.
+      expect(await merge(git, moved, 1, "Change", head)).toHaveProperty("merged");
+    }),
+  );
+  it.live(
+    "names no addition of a file main gained meanwhile, and nothing for a change of nothing",
+    () =>
+      fixture(async (git, dir) => {
+        const main = await write(git, { "base.txt": "base\n" }, null);
+        const both = await branch(git, dir, main, { "same.txt": "same\n", "own.txt": "own\n" }, 1);
+        await branch(git, dir, main, { "same.txt": "same\n" }, 2);
+        await branch(git, dir, main, { "same.txt": "other\n" }, 3);
+        // A sibling's merge adds the same file first.
+        const moved = await write(git, { "same.txt": "same\n", "sibling.txt": "sibling\n" }, main);
+        expect(await value(git.squashNames(repo, "alice", 1))).toEqual({
+          main: moved,
+          head: both,
+          files: { items: [{ path: "own.txt", status: "A" }], truncated: false },
+        });
+        expect(await value(git.squashNames(repo, "alice", 2))).toMatchObject({
+          main: moved,
+          files: { items: [], truncated: false },
+        });
+        // Added otherwise, it does not merge: git's verdict, no names.
+        expect(await value(git.squashNames(repo, "alice", 3))).toEqual({
+          kind: "conflict",
+          paths: ["same.txt"],
+        });
+      }),
+  );
+  it.live("bounds the names of a change of many files, and says so", () =>
+    fixture(async (git, dir) => {
+      const main = await write(git, { "base.txt": "base\n" }, null);
+      const blob = await native(dir, ["hash-object", "-w", "--stdin"], "x");
+      const paths = Array.from({ length: 1001 }, (_, i) => `f${i.toString().padStart(4, "0")}`);
+      const tree = await native(
+        dir,
+        ["mktree"],
+        [
+          `100644 blob ${blob}\tbase.txt\n`,
+          ...paths.map((p) => `100644 blob ${blob}\t${p}\n`),
+        ].join(""),
+      );
+      const head = await native(dir, ["commit-tree", tree, "-p", main], "many");
+      await native(dir, ["update-ref", "refs/heads/mate/alice/1", head]);
+      const names = await value(git.squashNames(repo, "alice", 1));
+      expect(names).toMatchObject({ files: { truncated: true } });
+      expect("files" in names && names.files.items).toHaveLength(1000);
+    }),
+  );
+
   it.live(
     "reads every trailer of the change's commits as git parses them, oldest first, however many",
     () =>
