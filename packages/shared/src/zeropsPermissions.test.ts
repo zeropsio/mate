@@ -288,6 +288,12 @@ const TABLES: Readonly<Record<Verb, ReadonlyArray<Row>>> = {
     ],
   ],
   attach: [
+    [
+      "can create projects, no grant of their own, held as a production: told only the role",
+      { orgRole: "BASIC_USER", canCreate: true },
+      place("attach", "production", "mate", ["P_SEEN"]),
+      "not_own_new_mate",
+    ],
     ["a writer attaches an environment", WRITER, place("attach", "none", "stage"), "allow"],
     ["a writer attaches a production", WRITER, place("attach", "none", "production"), "allow"],
     ["a writer attaches a Mate as devstage", WRITER, place("attach", "mate", "devstage"), "allow"],
@@ -371,6 +377,18 @@ const TABLES: Readonly<Record<Verb, ReadonlyArray<Row>>> = {
     ],
   ],
   move: [
+    [
+      "no role on P, held as a production: told only the role",
+      { orgRole: "BASIC_USER" },
+      place("move", "production", "mate", ["P"]),
+      "not_project_admin",
+    ],
+    [
+      "no role on P, held as a kind this build does not know: told only the role",
+      { orgRole: "READ_ONLY" },
+      place("move", "FUTURE", "mate"),
+      "not_project_admin",
+    ],
     [
       "P's admin moves its Mate into an application they see",
       P_ADMIN,
@@ -463,6 +481,12 @@ const TABLES: Readonly<Record<Verb, ReadonlyArray<Row>>> = {
     ],
   ],
   detach: [
+    [
+      "no role on P, held as a stage: told only the role",
+      { orgRole: "BASIC_USER" },
+      onP("detach", "stage"),
+      "not_project_admin",
+    ],
     ["P's admin takes its Mate out", P_ADMIN, onP("detach", "mate"), "allow"],
     ["P's admin takes its devstage out", P_ADMIN, onP("detach", "devstage"), "allow"],
     ["a Basic user of P", { override: "BASIC_USER" }, onP("detach", "mate"), "not_project_admin"],
@@ -716,8 +740,7 @@ describe("can — over the whole input space", () => {
     });
   });
 
-  it("never tells a member who cannot read a project what HQ holds it as", () => {
-    const known = HELD.filter((held) => held !== "FUTURE");
+  it("tells a member without the role on a project the same, whatever HQ holds it as", () => {
     const readsP = (point: Point) => {
       const role = point.override ?? point.orgRole;
       return point.present && RANKED.indexOf(role as (typeof RANKED)[number]) >= 1;
@@ -727,9 +750,11 @@ describe("can — over the whole input space", () => {
         ? place(verb, held, to, app)
         : onP(verb as "detach" | "create_mate_record" | "edit_mate_record", held);
     for (const point of POINTS) {
-      if (point.status !== "ACTIVE" || point.orgRole === "ADMIN" || point.orgRole === "OWNER")
+      if (point.status !== "ACTIVE" || point.orgRole === "ADMIN" || point.orgRole === "OWNER") {
         continue;
-      if (readsP(point)) continue;
+      }
+      // No grant of their own and an org role below the writers', or no read of the project at all.
+      if (point.override !== null && readsP(point)) continue;
       for (const verb of [
         "attach",
         "move",
@@ -740,7 +765,7 @@ describe("can — over the whole input space", () => {
         for (const to of TO) {
           for (const app of APPS) {
             const reasons = new Set(
-              known.map((held) => outcome(decide(PERSON, asked(verb, held, to, app), point))),
+              HELD.map((held) => outcome(decide(PERSON, asked(verb, held, to, app), point))),
             );
             expect([...reasons], `${verb} to ${to} at ${JSON.stringify(point)}`).toHaveLength(1);
           }

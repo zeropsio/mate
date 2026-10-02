@@ -206,9 +206,13 @@ function decide(principal: Principal, request: Request, facts: Facts): Decision 
     case "attach":
     case "move": {
       const { projectId, held, to, appProjectIds } = request.target;
-      if (!knownHeld(held) || !KINDS.has(to)) return deny("unknown_kind");
-      if (writer && (classChange(held, to) || !isMateKind(to))) return exists(projectId);
-      if (writer && request.verb === "attach") return exists(projectId);
+      if (!KINDS.has(to)) return deny("unknown_kind");
+      if (writer) {
+        if (!knownHeld(held)) return deny("unknown_kind");
+        if (classChange(held, to) || !isMateKind(to) || request.verb === "attach") {
+          return exists(projectId);
+        }
+      }
       // A member who can create projects attaches their own new Mate: their own grant there, never
       // the org role's fallback (parity B #42, #53). Moving takes the project's admin.
       const lacksRole =
@@ -222,6 +226,7 @@ function decide(principal: Principal, request: Request, facts: Facts): Decision 
           ? deny("not_own_new_mate")
           : lacking(projectId, "not_project_admin");
       }
+      if (!knownHeld(held)) return deny("unknown_kind");
       // A change between a Mate and an environment is the writers' alone too.
       if (classChange(held, to)) return deny("kind_class_change");
       if (!isMateKind(to)) return deny("not_structure_writer");
@@ -230,6 +235,7 @@ function decide(principal: Principal, request: Request, facts: Facts): Decision 
     }
     case "detach": {
       const { projectId, held } = request.target;
+      if (!writer && !roleAtLeast(roleOn(projectId), "ADMIN")) return deny("not_project_admin");
       if (!knownHeld(held)) return deny("unknown_kind");
       if (writer && !isMateKind(held)) return exists(projectId);
       if (!roleAtLeast(roleOn(projectId), "ADMIN")) return lacking(projectId, "not_project_admin");
@@ -238,8 +244,8 @@ function decide(principal: Principal, request: Request, facts: Facts): Decision 
     case "create_mate_record":
     case "edit_mate_record": {
       const { projectId, held } = request.target;
-      if (!knownHeld(held)) return deny("unknown_kind");
       if (!roleAtLeast(roleOn(projectId), "ADMIN")) return lacking(projectId, "not_project_admin");
+      if (!knownHeld(held)) return deny("unknown_kind");
       // An application's environment is no Mate, whoever asks (S-1).
       if (request.verb === "create_mate_record" && held !== "none" && !isMateKind(held)) {
         return deny("held_as_environment");
