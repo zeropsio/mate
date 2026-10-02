@@ -68,17 +68,17 @@ describe("updateProjectTags' writer", () => {
     expect(rest.log).toEqual(row.requests);
   });
 
-  it("a project closed off puts back every tag the platform holds, and only adds its mark", async () => {
-    const held = ["mate", "mate:standup:u-ada", "mate:signer:codex:u1", "person:own"];
+  it("a Mate declared puts back every tag the platform holds, and only adds its marker", async () => {
+    const held = ["mate:tool:gitea", "person:own"];
     const rest = platform(held, {
       beforeRead: (tags: ReadonlyArray<string>) => [...tags, "theirs"],
     });
     const writer = makeProjectTagWriter({ source: rest.source });
 
-    const written = await writer.write("p1", { kind: "closed-off" });
+    const written = await writer.write("p1", { kind: "mate" });
 
     expect(written.kind).toBe("written");
-    expect([...rest.tags()].sort()).toEqual([...held, "theirs", "mate:closed-off"].sort());
+    expect([...rest.tags()].sort()).toEqual([...held, "theirs", "mate"].sort());
     expect(rest.log).toEqual(["GET", "PUT", "GET"]);
   });
 
@@ -113,16 +113,17 @@ describe("updateProjectTags' writer", () => {
     const rest = platform([]);
     const writer = makeProjectTagWriter({ source: rest.source });
 
-    await Promise.all([
-      writer.write("p1", { kind: "agent-signer", agentId: "codex", userId: "u1" }),
+    const [first, second] = await Promise.all([
+      writer.write("p1", { kind: "mate" }),
       writer.write("p1", { kind: "mate" }),
     ]);
 
-    expect(rest.tags()).toEqual(expect.arrayContaining(["mate:signer:codex:u1", "mate"]));
-    expect(rest.log).toEqual(["GET", "PUT", "GET", "GET", "PUT", "GET"]);
+    expect([first.kind, second.kind]).toEqual(["written", "unchanged"]);
+    expect(rest.tags()).toEqual(["mate"]);
+    expect(rest.log).toEqual(["GET", "PUT", "GET", "GET"]);
   });
 
-  it("two tabs write different tags to one project; neither is lost", async () => {
+  it("two tabs declare one Mate at once: one writes, the other finds it written", async () => {
     const rest = makeFakeZeropsRest();
     rest.addUser({
       user: {
@@ -148,22 +149,18 @@ describe("updateProjectTags' writer", () => {
     const first = browser.openTab();
     const second = browser.openTab();
 
-    const [declared, signed] = await Promise.all([
+    const [declared, again] = await Promise.all([
       writerIn(first).write("p1", { kind: "mate" }),
-      writerIn(second).write("p1", { kind: "agent-signer", agentId: "codex", userId: "u1" }),
+      writerIn(second).write("p1", { kind: "mate" }),
     ]);
 
-    expect([declared.kind, signed.kind]).toEqual(["written", "written"]);
-    expect(rest.project("p1")?.tagList).toEqual(
-      expect.arrayContaining(["person:own", "mate", "mate:signer:codex:u1"]),
-    );
-    // One tab's read, write and read-back, then the other's: never interleaved.
+    expect([declared.kind, again.kind]).toEqual(["written", "unchanged"]);
+    expect(rest.project("p1")?.tagList).toEqual(["person:own", "mate"]);
+    // One tab's read, write and read-back, then the other's read: never interleaved.
     expect(rest.requests().map(({ route, tab }) => `${tab} ${route}`)).toEqual([
       `${first.id} GET /project/p1`,
       `${first.id} PUT /project/p1`,
       `${first.id} GET /project/p1`,
-      `${second.id} GET /project/p1`,
-      `${second.id} PUT /project/p1`,
       `${second.id} GET /project/p1`,
     ]);
   });

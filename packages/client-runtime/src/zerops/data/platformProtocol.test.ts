@@ -826,7 +826,7 @@ describe("Zerops platform protocol decoding", () => {
     const command: PlatformCommand = {
       kind: "update-project-tags",
       project,
-      patch: { kind: "closed-off" },
+      patch: { kind: "mate" },
       attemptId: ZeropsCommandAttemptId.make("tags-attempt"),
       accountEpoch: AccountEpoch.make(1),
       startedAtReceiptOrdinal: ReceiptOrdinal.make(2),

@@ -18,8 +18,8 @@
 import type { ZeropsOrganizationMember } from "@t3tools/client-runtime/zerops";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import {
-  MATE_SIGNER_TAG_PREFIX,
   mateMemberName,
+  mateOwnerRecords,
   resolveMateOwner,
   type MateOwnerCandidate,
 } from "@t3tools/client-runtime/zerops/mateAccess";
@@ -62,7 +62,7 @@ export function zeropsMateOwner(
   };
 }
 
-/** The name of the member whose Zerops user id a signer tag names, when the list has one. */
+/** The name of the member whose Zerops user id a signer is, when the list has one. */
 export function zeropsMemberNameByUserId(
   members: ReadonlyArray<MateOwnerCandidate>,
   userId: string,
@@ -157,11 +157,7 @@ export function useZeropsMateOwners(input: {
     clientId: activeOrganization?.id,
     enabled:
       input.enabled &&
-      input.candidates.some(
-        (candidate) =>
-          candidate.project.userRoles?.some((entry) => entry.roleCode === "OWNER") === true ||
-          candidate.project.tagList?.some((tag) => tag.startsWith(MATE_SIGNER_TAG_PREFIX)) === true,
-      ),
+      input.candidates.some((candidate) => mateOwnerRecords(candidate.project).named),
   });
   return useCallback(
     (candidate: ZeropsCandidate) =>

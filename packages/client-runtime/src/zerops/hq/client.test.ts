@@ -282,6 +282,8 @@ describe("attachToApp", () => {
       renameApp: async () => undefined,
       moveProject: async () => undefined,
       createMate: async () => undefined,
+      recordStandUp: async () => undefined,
+      recordClosedOff: async () => undefined,
     };
     return made;
   };
@@ -501,6 +503,16 @@ describe("makeHqApi — application name and a project's application", () => {
         path: "/api/mates",
         body: { projectId: "p1", name: "Ada", face: "sky:flower:named" },
       },
+    ],
+    [
+      "records who asks for a Mate's stand-up: the caller",
+      (api) => api.recordStandUp("p1"),
+      { method: "POST", path: "/api/mates/p1/standup" },
+    ],
+    [
+      "records that a Mate's project is closed off",
+      (api) => api.recordClosedOff("p1"),
+      { method: "POST", path: "/api/mates/p1/closed-off" },
     ],
   ])("%s", async (_name, act, expected) => {
     const hq = fakeHq();

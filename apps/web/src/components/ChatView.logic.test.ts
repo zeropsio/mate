@@ -998,8 +998,6 @@ describe("resolveZeropsProviderAvailability", () => {
         entries: [],
         agentAuth: undefined,
         viewerSubject: "user-a",
-        localSigners: {},
-        recordFailed: new Set(),
       }),
     ).toBeUndefined();
   });
@@ -1010,8 +1008,6 @@ describe("resolveZeropsProviderAvailability", () => {
         entries: [],
         agentAuth: knownAgentAuth({ available: false, agents: [] }),
         viewerSubject: "user-a",
-        localSigners: {},
-        recordFailed: new Set(),
       }),
     ).toBeUndefined();
   });
@@ -1036,8 +1032,6 @@ describe("resolveZeropsProviderAvailability", () => {
       entries: [claude],
       agentAuth: knownAgentAuth(claudeAgentAuth()),
       viewerSubject: "user-a",
-      localSigners: {},
-      recordFailed: new Set(),
     });
 
     expect(map?.get(claude.instanceId)).toEqual({
@@ -1075,15 +1069,11 @@ describe("resolveZeropsProviderAvailability", () => {
     const availability = (input: {
       readonly signedInBy: string | undefined;
       readonly viewer: string;
-      readonly localSigners?: Readonly<Record<string, string>>;
-      readonly recordFailed?: ReadonlySet<string>;
     }) =>
       resolveZeropsProviderAvailability({
         entries: [claude, work],
         agentAuth: knownAgentAuth(feed(input.signedInBy)),
         viewerSubject: input.viewer,
-        localSigners: input.localSigners ?? {},
-        recordFailed: input.recordFailed ?? new Set(),
       });
 
     it("is runnable for its own signer while its agent's own login is not", () => {
@@ -1101,20 +1091,9 @@ describe("resolveZeropsProviderAvailability", () => {
       ).toEqual({ kind: "someone-else", signerId: "user-eva" });
     });
 
-    it("reads this browser's own record of it, and its own failed write", () => {
+    it("is nobody's while nothing records who signed it in", () => {
       expect(
-        availability({
-          signedInBy: undefined,
-          viewer: "user-eva",
-          localSigners: { "claudeAgent-work": "user-eva" },
-        })?.get(work.instanceId),
-      ).toEqual({ kind: "ready" });
-      expect(
-        availability({
-          signedInBy: undefined,
-          viewer: "user-eva",
-          recordFailed: new Set(["claudeAgent-work"]),
-        })?.get(work.instanceId),
+        availability({ signedInBy: undefined, viewer: "user-eva" })?.get(work.instanceId),
       ).toEqual({ kind: "unrecorded" });
     });
   });
@@ -1125,8 +1104,6 @@ describe("resolveZeropsProviderAvailability", () => {
       entries: [work],
       agentAuth: knownAgentAuth(claudeAgentAuth()),
       viewerSubject: "user-a",
-      localSigners: {},
-      recordFailed: new Set(),
     });
 
     expect(map?.get(work.instanceId)).toEqual({
@@ -1146,8 +1123,6 @@ describe("resolveZeropsProviderAvailability", () => {
         entries: [claude],
         agentAuth: read,
         viewerSubject: "user-a",
-        localSigners: {},
-        recordFailed: new Set(),
       });
 
       expect(map?.get(claude.instanceId)).toEqual({ kind: "unknown", read });
@@ -1168,8 +1143,6 @@ describe("resolveZeropsProviderAvailability", () => {
         entries: [claudeEntry()],
         agentAuth: { state: "failed", failure, atMs: 2_000, attempt: 1, retryAtMs: null },
         viewerSubject: "user-a",
-        localSigners: {},
-        recordFailed: new Set(),
       }),
     ).toBeUndefined();
   });
@@ -1194,8 +1167,6 @@ describe("resolveZeropsProviderAvailability", () => {
       entries: [ollama],
       agentAuth: knownAgentAuth(claudeAgentAuth()),
       viewerSubject: "user-a",
-      localSigners: {},
-      recordFailed: new Set(),
     });
 
     expect(map?.has(ollama.instanceId)).toBe(false);
@@ -1314,8 +1285,6 @@ describe("resolveZeropsOwnedAgentSendBlockReason", () => {
           entries: [claude],
           agentAuth: { state: "reading", sinceMs: 1_000, attempt: 1 },
           viewerSubject: "user-a",
-          localSigners: {},
-          recordFailed: new Set(),
         }),
       }),
     ).toBe("Checking whether Claude Code is signed in…");
@@ -2169,7 +2138,6 @@ describe("resolveZeropsConversationReadOnly", () => {
     ["someone else's personal login", personal, "someone-else", readOnly],
     ["the viewer's own login", personal, "mine", null],
     ["an unrecorded login", personal, "unrecorded", null],
-    ["a login whose record failed", personal, "record-failed", null],
     ["no credential", personal, "none", null],
     ["a project token whose signer is someone else", token, "someone-else", null],
     ["a project token", token, "mine", null],

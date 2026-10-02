@@ -16,6 +16,8 @@ function hqFake(attachProject: HqApi["attachProject"] = vi.fn(async () => undefi
     renameApp: vi.fn(async () => undefined),
     moveProject: vi.fn(async () => undefined),
     createMate: vi.fn(async () => undefined),
+    recordStandUp: vi.fn(async () => undefined),
+    recordClosedOff: vi.fn(async () => undefined),
   };
   return api;
 }

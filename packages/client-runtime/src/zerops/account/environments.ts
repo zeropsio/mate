@@ -101,7 +101,6 @@ import {
 import type { ExchangeAnswer } from "../identityExchange.ts";
 import type { InvalidationBus } from "../knowledge/invalidation.ts";
 import type { PlatformSignal } from "../knowledge/signals.ts";
-import { isZeropsMateClosedOff } from "../groups.ts";
 import { heldCandidates, type CandidateRow } from "../projections/candidates.ts";
 
 // ── Ports ────────────────────────────────────────────────────────────────────────────────────
@@ -166,6 +165,16 @@ export interface AccountEnvironmentPorts {
    */
   readonly pressing?: {
     readonly read: () => ReadonlySet<string>;
+    readonly subscribe: (listener: () => void) => () => void;
+  };
+  /**
+   * Whether HQ's record of each project's Mate says its project is closed off: `unknown` while
+   * HQ's structure is not known, and for a project it holds no record of. HQ's word decides
+   * where it has one — `true` connects, `false` holds, the press's marker or not; `unknown`
+   * leaves it to the marker (`closeOffGate`). Without it, nothing is known either way.
+   */
+  readonly closedOff?: {
+    readonly read: (projectId: string) => boolean | "unknown";
     readonly subscribe: (listener: () => void) => () => void;
   };
 }
@@ -535,11 +544,11 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
   };
 
   /**
-   * The press's marker (`MATE_SETUP_RUNTIMES`) on each listed Mate's container whose project has
-   * no `mate:closed-off`, by service id: a press stopped before its close-off, and nobody is let in
-   * until *Finish setup* closes it. The gate fails closed (`closeOffGate`): a marker not read yet
-   * holds, and one the stream could not say is read from the service's own variables once.
-   * Followed only while such a Mate is listed.
+   * The press's marker (`MATE_SETUP_RUNTIMES`) on each listed Mate's container whose project HQ
+   * holds no word on (`ports.closedOff` reads `unknown`), by service id: a press stopped before
+   * its close-off, and nobody is let in until *Finish setup* closes it. The gate fails closed
+   * (`closeOffGate`): a marker not read yet holds, and one the stream could not say is read from
+   * the service's own variables once. Followed only while such a Mate is listed.
    */
   interface FollowedMarker {
     readonly projectId: string;
@@ -590,8 +599,16 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
         readonly ref: ServiceRef;
       }
     >();
+    const held = new Set<string>();
     for (const row of rows) {
-      if (row.service === undefined || isZeropsMateClosedOff(row.project.tagList)) continue;
+      if (row.service === undefined) continue;
+      const closedOff = ports.closedOff?.read(row.project.id) ?? "unknown";
+      if (closedOff === true) continue;
+      // A record that says its project is not closed off holds the Mate, its marker or not.
+      if (closedOff === false) {
+        held.add(row.project.id);
+        continue;
+      }
       const project = projectRefOf(row.project.id);
       if (project === undefined) continue;
       open.set(row.service.id, {
@@ -605,7 +622,6 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
       followed.stop();
       markers.delete(serviceId);
     }
-    const held = new Set<string>();
     for (const [serviceId, { projectId, created, ref }] of open) {
       let followed = markers.get(serviceId);
       if (followed === undefined) {
@@ -866,6 +882,7 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
       }),
       ports.records.listen(registrationsChanged),
       ports.pressing?.subscribe(updateAutoConnect) ?? (() => undefined),
+      ports.closedOff?.subscribe(updateAutoConnect) ?? (() => undefined),
       ports.catalog.listen({
         environments: (next) => {
           registered = next;

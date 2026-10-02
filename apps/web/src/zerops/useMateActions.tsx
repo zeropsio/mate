@@ -29,6 +29,7 @@
  * *Change face…* writes the Mate's face to HQ, where every surface reads it from: offered where
  * *Rename Mate* is, its dialog open until HQ answers, a refusal said there.
  */
+import { useAtomValue } from "@effect/atom-react";
 import {
   assignCandidateMateTints,
   botDisplayName,
@@ -57,6 +58,7 @@ import {
 } from "@t3tools/client-runtime/zerops/data";
 import { candidatesComplete, heldCandidates } from "@t3tools/client-runtime/zerops/projections";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
+import type { HqPlacement } from "@t3tools/client-runtime/zerops/hq";
 import {
   mateIsViewers,
   resolveMateOwner,
@@ -72,6 +74,7 @@ import {
   deriveZeropsRestartAction,
   deriveZeropsRowAction,
   mateRowCan,
+  setUpMateRecord,
   type ZeropsRowInput,
 } from "../components/zerops/ZeropsProjectRow.logic";
 import type { ZeropsMenuEntry } from "../components/zerops/ZeropsProjectMenu";
@@ -99,6 +102,7 @@ import {
 } from "../components/zerops/ZeropsMoveToGroupDialog.logic";
 import { useEnvironmentLinks } from "../routes/-environmentTargets";
 import { resolveThreadRouteTarget } from "../threadRoutes";
+import { hqPlacementsAtom, hqStructureAtom } from "../state/zerops";
 import { invalidateZerops } from "./accountInvalidations";
 import {
   deletingMates,
@@ -267,6 +271,10 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
   const projectOrder = useProjectOrderOptions();
 
   const accountHq = useAccountHq(activeOrganization?.id);
+  // Whether HQ's structure is known: only then does a Mate it places nowhere have no record.
+  const hqPlacements = useAtomValue(hqPlacementsAtom);
+  const hqStructure = useAtomValue(hqStructureAtom);
+  const hqKnown = hqPlacements !== null && hqStructure?.current === true;
   const presses = useMatePresses();
   // A press interrupted before its close-off, on a Mate made in any browser: the store's markers,
   // at no cost of their own, for anyone who could finish it — its own adder too.
@@ -507,6 +515,17 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
    * came. Every step is safe to ask again; for a Mate made before the press, its close-off also
    * lowers a key still at `ADMIN` (`hardenMate`).
    */
+  /** HQ holds no record of this Mate, as its structure says once it is known. */
+  const recordMissing = useCallback(
+    (candidate: ZeropsCandidatePresentation) => hqKnown && heldOf(candidate.project) === "none",
+    [hqKnown],
+  );
+  /** Whether HQ's rule lets the viewer write the record of a Mate it holds none of. */
+  const mayCreateRecord = useCallback(
+    (candidate: ZeropsCandidatePresentation) =>
+      mayOffer(asker, "create_mate_record", { projectId: candidate.project.id, held: "none" }),
+    [asker],
+  );
   const finishSetupVerbFor = useCallback(
     (candidate: ZeropsCandidatePresentation, tags: ZeropsMembership): string | undefined => {
       const press = presses.find((entry) => entry.projectId === candidate.project.id);
@@ -534,6 +553,8 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
         viewerIsAdder: mateAddedBy(candidate.project, user?.id),
         hasContainer: candidate.service !== undefined,
         writer: canWriteRegistry(sessionOfferViewer(user, activeOrganization)),
+        recordMissing: recordMissing(candidate),
+        mayCreateRecord: mayCreateRecord(candidate),
       });
     },
     [
@@ -541,7 +562,9 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
       groupTree.groups,
       interrupted,
       listedTokens,
+      mayCreateRecord,
       presses,
+      recordMissing,
       registry.registry,
       user,
     ],
@@ -568,8 +591,19 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
         roleCode: activeOrganization.roleCode,
       });
       const harden = hardenable || (whole && !mateNeedsHarden(listedTokens, projectId));
+      // Its record in HQ where it has none, a name nobody goes by and its face: written after the
+      // close-off, with its birth — the stand-up asked by whoever finishes a Mate its press made.
+      const record =
+        recordMissing(candidate) && mayCreateRecord(candidate)
+          ? setUpMateRecord({
+              project: candidate.project,
+              candidates,
+              taken: taken.names,
+              random: (bytes) => crypto.getRandomValues(bytes),
+            })
+          : undefined;
       // A close-off alone has nothing to finish on a Mate with no container.
-      if (!whole && !hardenable && candidate.service === undefined) return;
+      if (!whole && !hardenable && record === undefined && candidate.service === undefined) return;
       // Its view draws the steps as they run, and their end (`finishSetupView`).
       beginPress({
         projectId,
@@ -601,23 +635,39 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
             viewer: pressViewer(user, activeOrganization),
             // A Mate made before the press: its key lowered from ADMIN.
             harden,
-            // A Mate in no group — claimed from the pool — is hardened and closed off, no more.
+            // A Mate HQ holds no record of has it written; a Mate in no group, its record there,
+            // is hardened and closed off, no more.
             registration:
-              !whole || groupId === undefined
-                ? null
-                : {
+              record !== undefined
+                ? {
                     hq: officialHq(accountHq),
-                    groupId,
-                    kind: "mate",
+                    kind: "mate-record",
                     displayName: candidate.project.name,
-                    mate: {
-                      name: tags.bot ?? candidate.project.name,
-                      face:
-                        tags.face?.tint === undefined || tags.face.shape === undefined
-                          ? undefined
-                          : { tint: tags.face.tint, shape: tags.face.shape },
+                    record,
+                    birth: {
+                      standUp:
+                        candidate.service !== undefined && interrupted.has(candidate.service.id),
+                      closedOff: true,
                     },
-                  },
+                  }
+                : !whole || groupId === undefined
+                  ? null
+                  : {
+                      hq: officialHq(accountHq),
+                      groupId,
+                      kind: "mate",
+                      displayName: candidate.project.name,
+                      mate: {
+                        name: tags.bot ?? candidate.project.name,
+                        face:
+                          tags.face?.tint === undefined || tags.face.shape === undefined
+                            ? undefined
+                            : { tint: tags.face.tint, shape: tags.face.shape },
+                      },
+                      // Closed off by the close-off before its registration.
+                      birth: { standUp: false, closedOff: true },
+                    },
+            hq: accountHq.hq.kind === "official" ? accountHq.hq : null,
             isCurrent: captureAccountLifetime(),
           });
           if (!finished.ok) throw new Error(finished.error);
@@ -628,14 +678,19 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
     [
       accountHq,
       activeOrganization,
+      candidates,
       client,
       groupTree.groups,
+      interrupted,
       listedTokens,
+      mayCreateRecord,
       organizationRef,
       projectRef,
+      recordMissing,
       refresh,
       registry,
       runtime,
+      taken.names,
       user,
       write,
     ],
@@ -1069,14 +1124,14 @@ export function mateContainerMissing(
   return mateProjectPastGrace(candidate.project, nowMs);
 }
 
-/** Whether the viewer added this Mate: its stand-up asked for by them, or its seat theirs. */
+/**
+ * Whether the viewer added this Mate: its stand-up asked for by them, or its seat theirs — as
+ * HQ's record of it says.
+ */
 export function mateAddedBy(
-  project: { readonly tagList?: ReadonlyArray<string> | undefined },
+  project: { readonly hq?: HqPlacement | undefined },
   viewer: string | undefined,
 ): boolean {
   if (viewer === undefined || viewer.length === 0) return false;
-  return (
-    readZeropsMembership(project).standUp?.by === viewer ||
-    mateIsViewers({ tagList: project.tagList ?? [] }, viewer)
-  );
+  return readZeropsMembership(project).standUp?.by === viewer || mateIsViewers(project, viewer);
 }

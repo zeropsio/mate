@@ -58,10 +58,11 @@ describe("zeropsMateIdentities", () => {
   });
 
   it.each([
-    { name: "names who asked for it", tags: ["mate", "mate:standup:u-ada"], by: "u-ada" },
-    { name: "is absent once it was sent", tags: ["mate"], by: undefined },
-  ])("carries the project's stand-up ask: $name", ({ tags, by }) => {
-    const mate = zeropsMateIdentities([candidate("acme-docs-dev", tags, FEN, fen())]).get(FEN);
+    { name: "names who asked for it", asker: "u-ada", by: "u-ada" },
+    { name: "is absent once it was sent", asker: null, by: undefined },
+  ])("carries the stand-up ask HQ records: $name", ({ asker, by }) => {
+    const placed = acme("mate", { name: "Fen", face: "", standupRequestedBy: asker });
+    const mate = zeropsMateIdentities([candidate("acme-docs-dev", ["mate"], FEN, placed)]).get(FEN);
     expect(mate?.standUp).toEqual(by === undefined ? undefined : { by });
   });
 

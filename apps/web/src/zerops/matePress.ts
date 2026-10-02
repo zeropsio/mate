@@ -18,7 +18,6 @@
  */
 import {
   findHeldMateKey,
-  isZeropsMateClosedOff,
   planGroupReach,
   PRESS_STEP_ATTEMPTS,
   PRESS_STEP_RETRY_MS,
@@ -42,7 +41,7 @@ import {
 } from "@t3tools/client-runtime/zerops";
 import { ZeropsServiceId } from "@t3tools/client-runtime/zerops/data";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
-import { attachToApp, type HqEndpoint } from "@t3tools/client-runtime/zerops/hq";
+import { attachToApp, type HqEndpoint, type HqPlacement } from "@t3tools/client-runtime/zerops/hq";
 import { useEffect, useMemo } from "react";
 import { create } from "zustand";
 
@@ -58,6 +57,12 @@ import {
 import { giteaClientFor } from "./accountGiteaSessions";
 import { accountHqApi } from "./accountHq";
 import { addGroupEnvironment } from "./addGroupEnvironment";
+import {
+  createMateRecord,
+  markClosedOffAtHq,
+  recordMateBirth,
+  type MateBirth,
+} from "./hqMateBirth";
 import { brokerGrantTokens, grantBrokerProject } from "./brokerGrant";
 import {
   pressSteps,
@@ -350,23 +355,34 @@ export interface PressInputs {
 
 /**
  * The group registration a press writes, as the person who pressed may write it: into the
- * organization's HQ, a Mate with its name and face, a stage or a production with what its Gitea
- * project still holds for it where the organization has one.
+ * organization's HQ, a Mate with its name, its face and its birth — in its application, or in
+ * none where HQ holds no record of it — a stage or a production with what its Gitea project still
+ * holds for it where the organization has one.
  */
 export type PressRegistration = {
   /** The organization's HQ, where the registry lives. */
   readonly hq: HqEndpoint;
-  /** The project's group: its application in HQ. */
-  readonly groupId: string;
   readonly displayName: string;
 } & (
   | {
       readonly kind: "mate";
+      /** The project's group: its application in HQ. */
+      readonly groupId: string;
       /** Its face as picked; none where the press gives it its name's own. */
       readonly mate: { readonly name: string; readonly face: ZeropsMateFace | undefined };
+      readonly birth: MateBirth;
+    }
+  | {
+      /** A Mate HQ holds no record of, set up in no application (`POST /api/mates`). */
+      readonly kind: "mate-record";
+      /** Its name and its face as HQ records them (`setUpMateRecord`). */
+      readonly record: { readonly name: string; readonly face: string };
+      readonly birth: MateBirth;
     }
   | {
       readonly kind: "stage" | "production";
+      /** The project's group: its application in HQ. */
+      readonly groupId: string;
       /** The organization's Gitea project, where the broker is, if it has one. */
       readonly giteaProjectId: string | undefined;
       /** The account's Gitea, where a stage or a production is declared. */
@@ -375,10 +391,11 @@ export type PressRegistration = {
 );
 
 /**
- * The `register` step: a Mate attached to its application in HQ, and the broker's grant where an
- * older broker needs one; for a stage or a production, `addGroupEnvironment` — the attachment,
- * the grant, its deploy token and its declaration. Each write reads what is there first, so asking
- * again writes nothing twice.
+ * The `register` step: a Mate's record in HQ — attached to its application, or in none — then its
+ * birth (`recordMateBirth`), and the broker's grant where an older broker needs one for a Mate in
+ * an application; for a stage or a production, `addGroupEnvironment` — the attachment, the grant,
+ * its deploy token and its declaration. Each write reads what is there first, so asking again
+ * writes nothing twice.
  */
 export function pressRegistration(
   inputs: PressInputs,
@@ -386,6 +403,11 @@ export function pressRegistration(
 ): (projectId: string) => Promise<void> {
   const hq = accountHqApi(inputs.client, inputs.organizationId, registration.hq);
   return async (projectId) => {
+    if (registration.kind === "mate-record") {
+      await createMateRecord(hq, { projectId, ...registration.record });
+      await recordMateBirth(hq, projectId, registration.birth);
+      return;
+    }
     if (registration.kind === "mate") {
       await attachToApp(hq, registration.groupId, {
         projectId,
@@ -396,6 +418,7 @@ export function pressRegistration(
           face: registration.mate.face === undefined ? "" : formatMateFace(registration.mate.face),
         },
       });
+      await recordMateBirth(hq, projectId, registration.birth);
       const grant = await grantBrokerProject({
         client: brokerGrantTokens(inputs.data.runtime),
         clientId: inputs.organizationId,
@@ -539,6 +562,11 @@ export function pressPlatform(
     readonly viewer: PressViewer | null;
     /** Null where the press writes no registration. */
     readonly register: ((projectId: string) => Promise<void>) | null;
+    /**
+     * The organization's HQ, where the close-off is marked. Null where it is not open here: the
+     * close-off is then not marked, the press's marker holds the Mate, and *Finish setup* marks it.
+     */
+    readonly hq: HqEndpoint | null;
     readonly readObservedServices: EnvironmentCreationPlatform["readObservedServices"];
   },
 ): EnvironmentCreationPlatform {
@@ -574,9 +602,8 @@ export function pressPlatform(
         (entry) => entry.key === PROJECT_ENV_ISOLATION_KEY,
       )?.content,
     markClosedOff: async (projectId) => {
-      await runZeropsCommand(
-        data.runtime.commands.updateProjectTags(projectOf(projectId), { kind: "closed-off" }),
-      );
+      if (options.hq === null) return;
+      await markClosedOffAtHq(accountHqApi(client, organizationId, options.hq), projectId);
     },
     register: async (projectId) => {
       await options.register?.(projectId);
@@ -751,6 +778,8 @@ export async function finishMateSetup(input: {
   readonly viewer: PressViewer | null;
   /** Null where there is no registry to write it in. */
   readonly registration: PressRegistration | null;
+  /** The organization's HQ, where the close-off is marked; null where it is not open here. */
+  readonly hq: HqEndpoint | null;
   readonly isCurrent: () => boolean;
   /**
    * A Mate made before the press: its key lowered from `ADMIN`, its delegations dropped and its
@@ -867,6 +896,7 @@ async function finishLocked(
       viewer: input.viewer,
       register:
         input.registration === null ? null : pressRegistration(input.inputs, input.registration),
+      hq: input.hq,
       readObservedServices: async () => [],
     }),
     isCurrent: input.isCurrent,
@@ -882,12 +912,16 @@ async function finishLocked(
 
 interface MarkedCandidate {
   readonly service?: { readonly id: string } | undefined;
-  readonly project: { readonly tagList?: ReadonlyArray<string> | undefined };
+  readonly project: { readonly hq?: HqPlacement | undefined };
 }
+
+/** Whether HQ's record of the project's Mate says it is closed off. */
+const closedOffAtHq = (candidate: MarkedCandidate): boolean =>
+  candidate.project.hq?.mate?.closedOff === true;
 
 /**
  * The zcp services of the Mates whose press was interrupted before its close-off: the container
- * carries the press's marker (`MATE_SETUP_RUNTIMES`) while the project has no `mate:closed-off`.
+ * carries the press's marker (`MATE_SETUP_RUNTIMES`) while HQ does not know the project closed off.
  * A marker the store has not read, or could not, says nothing.
  */
 export function interruptedPresses(
@@ -897,7 +931,7 @@ export function interruptedPresses(
   return new Set(
     candidates.flatMap((candidate) =>
       candidate.service !== undefined &&
-      !isZeropsMateClosedOff(candidate.project.tagList) &&
+      !closedOffAtHq(candidate) &&
       markers.get(candidate.service.id) === true
         ? [candidate.service.id]
         : [],
@@ -908,7 +942,7 @@ export function interruptedPresses(
 /**
  * Which of these Mates' presses were interrupted before their close-off, as the account's store
  * states their containers' variables — the organization's own stream, no read of its own — for
- * every Mate whose project lacks the mark.
+ * every Mate HQ does not know closed off.
  */
 export function useInterruptedPresses(
   candidates: ReadonlyArray<
@@ -921,7 +955,7 @@ export function useInterruptedPresses(
       candidates.flatMap((candidate) =>
         candidate.service === undefined ||
         candidate.project.clientId === undefined ||
-        isZeropsMateClosedOff(candidate.project.tagList)
+        closedOffAtHq(candidate)
           ? []
           : [
               [

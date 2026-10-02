@@ -15,8 +15,8 @@
  *   `hq/placement.ts`). Delete a project in Zerops and HQ lets it go.
  * - **That a Mate lives here** is the project's own `mate` marker, for the
  *   Zerops GUI too, and a Mate HQ places is one whatever its tags say.
- * - **Who asked for the project's development to be stood up** is its
- *   `mate:standup:` tag, until the Mate's birth record holds it (T6).
+ * - **Who asked for the project's development to be stood up** is the Mate's
+ *   birth record at HQ (`standupRequestedBy`), placed with the rest of it.
  *
  * A project HQ does not place is in no group: ungrouped.
  *
@@ -44,13 +44,6 @@ import type { RandomBytes } from "./newProject.ts";
 
 /** Namespace every tag this product writes shares, so nothing collides with a user's own tags. */
 export const MATE_TAG_NAMESPACE = "mate";
-
-/**
- * A Mate whose project's development is still to be stood up, and the Zerops user who asked for
- * it by adding the Mate: their first sign-in sends "Stand up development of the project."
- * (`mateStandUp.ts` in the web app), and the send clears the tag.
- */
-const STAND_UP_TAG_PREFIX = `${MATE_TAG_NAMESPACE}:standup:`;
 
 /**
  * The marker: this project has a Mate. The bare namespace word, so the Zerops
@@ -84,7 +77,7 @@ export interface ZeropsMembership {
   readonly label: string | undefined;
   /** The Mate's own name, the thing a person addresses. */
   readonly bot: string | undefined;
-  /** Who asked for the project's development to be stood up (`mate:standup:`), while it waits. */
+  /** Who asked for the project's development to be stood up, as HQ's birth record names them. */
   readonly standUp?: { readonly by: string } | undefined;
   /** The face its person picked; absent where HQ's record says nothing this client knows. */
   readonly face: ZeropsMateFaceTag | undefined;
@@ -110,7 +103,7 @@ export function kindOfRole(role: ZeropsEnvironmentRole): RoleProjectKind {
 }
 
 /**
- * Where a project belongs and who lives in it, from where HQ places it (`hq`) and its own tags.
+ * Where a project belongs and who lives in it, from where HQ places it (`hq`) and its marker tag.
  * Permissive on read: a face part this client does not know is left out, never guessed at.
  */
 export function readZeropsMembership(
@@ -121,16 +114,9 @@ export function readZeropsMembership(
       }
     | undefined,
 ): ZeropsMembership {
-  let marker = false;
-  let standUp: { readonly by: string } | undefined;
-  for (const tag of project?.tagList ?? []) {
-    if (tag === MATE_MARKER_TAG) marker = true;
-    else if (standUp === undefined && tag.startsWith(STAND_UP_TAG_PREFIX)) {
-      const by = tag.slice(STAND_UP_TAG_PREFIX.length).trim();
-      if (by.length > 0) standUp = { by };
-    }
-  }
+  const marker = (project?.tagList ?? []).includes(MATE_MARKER_TAG);
   const placed = project?.hq;
+  const asker = placed?.mate?.standupRequestedBy?.trim();
   // A Mate HQ holds in no application has its record, and no place.
   const app = placed?.appId === null ? undefined : placed;
   const label = app?.appName.trim();
@@ -142,7 +128,7 @@ export function readZeropsMembership(
     role: app === undefined ? undefined : ROLE_OF_KIND[app.kind],
     label: label === undefined || label === "" ? undefined : label,
     bot: name === undefined || name === "" ? undefined : name,
-    standUp,
+    standUp: asker === undefined || asker === "" ? undefined : { by: asker },
     face:
       placed?.mate === null || placed === undefined ? undefined : readMateFace(placed.mate.face),
   };
@@ -218,68 +204,6 @@ export function withZeropsMateTag(
 ): ReadonlyArray<string> {
   const existing = tagList ?? [];
   return existing.includes(MATE_MARKER_TAG) ? existing : [...existing, MATE_MARKER_TAG];
-}
-
-/**
- * Asks for the project's development to be stood up, on behalf of `userId` — the person adding
- * the Mate, whose first sign-in sends the ask. Written at birth; one ask per project, so one naming
- * somebody else is replaced. A blank user asks for nothing.
- */
-export function withZeropsStandUpTag(
-  tagList: ReadonlyArray<string> | undefined,
-  userId: string,
-): ReadonlyArray<string> {
-  const kept = withoutZeropsStandUpTag(tagList);
-  const by = userId.trim();
-  return by.length === 0 ? kept : [...kept, `${STAND_UP_TAG_PREFIX}${by}`];
-}
-
-/**
- * The press closed the project off and read it back closed (`mate:closed-off`, pass 28): zcp's
- * boot import of the tier's runtimes, and its import refusal, wait for this tag, read with the
- * Mate's own key. A new project starts `envIsolation: service` before the container recipe opens
- * it, so the setting alone could be read too early; the tag is written only after the close-off.
- */
-export const MATE_CLOSED_OFF_TAG = `${MATE_TAG_NAMESPACE}:closed-off`;
-
-/** Whether the press marked the project closed off. */
-export function isZeropsMateClosedOff(tagList: ReadonlyArray<string> | undefined): boolean {
-  return (tagList ?? []).includes(MATE_CLOSED_OFF_TAG);
-}
-
-/** The project marked closed off, every other tag kept. Idempotent. */
-export function withZeropsClosedOffTag(
-  tagList: ReadonlyArray<string> | undefined,
-): ReadonlyArray<string> {
-  const tags = tagList ?? [];
-  return tags.includes(MATE_CLOSED_OFF_TAG) ? tags : [...tags, MATE_CLOSED_OFF_TAG];
-}
-
-/** The ask answered: every stand-up tag goes, every other tag stays. Idempotent. */
-export function withoutZeropsStandUpTag(
-  tagList: ReadonlyArray<string> | undefined,
-): ReadonlyArray<string> {
-  return (tagList ?? []).filter((tag) => !tag.startsWith(STAND_UP_TAG_PREFIX));
-}
-
-/**
- * A Mate as it is born: the marker, and — for a dev Mate — who asked for the project's
- * development to be stood up. The one birth whichever call creates the project: *New Mate*
- * (`planEnvironmentCreation`) and the New project wizard's first Mate (`createProjectWithZeropsMate`).
- * Its name, its face and its application are HQ's, written by the press's registration. A stage
- * or a production with an agent is a target, not a place development is stood up.
- */
-export function withZeropsMateAtBirth(
-  tagList: ReadonlyArray<string> | undefined,
-  mate: {
-    readonly role?: ZeropsEnvironmentRole | undefined;
-    readonly standUpBy?: string | undefined;
-  },
-): ReadonlyArray<string> {
-  const declared = withZeropsMateTag(tagList);
-  return mate.role === "dev" && mate.standUpBy !== undefined
-    ? withZeropsStandUpTag(declared, mate.standUpBy)
-    : declared;
 }
 
 export const ZEROPS_GROUP_ID_LENGTH = 12;

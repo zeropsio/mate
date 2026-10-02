@@ -69,8 +69,8 @@ describe("selectAutoConnectTargets: auto-connect's WANT (DESIGN §4.4)", () => {
       wanted: false,
     },
     {
-      // Its press stopped before the mark: its container carries the press's marker and its
-      // project no `mate:closed-off`. Nobody is let in until Finish setup closes it off.
+      // Its press stopped before the mark: its container carries the press's marker and HQ does
+      // not say its project is closed off. Nobody is let in until Finish setup closes it off.
       name: "a Mate whose press has not closed its project off",
       candidate: candidate("a"),
       health: "ready",

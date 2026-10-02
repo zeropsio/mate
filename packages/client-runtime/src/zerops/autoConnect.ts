@@ -42,8 +42,8 @@ export function selectAutoConnectTargets(input: {
   readonly health: ReadonlyMap<string, ZeropsContainerHealth>;
   /**
    * Projects whose press stopped before its close-off: the container carries the press's marker
-   * (`MATE_SETUP_RUNTIMES`) and the project no `mate:closed-off`. Skipped, on screen or not: nobody
-   * is let into a Mate before its project is closed off, and *Finish setup* does that.
+   * (`MATE_SETUP_RUNTIMES`) and HQ does not know the project closed off. Skipped, on screen or
+   * not: nobody is let into a Mate before its project is closed off, and *Finish setup* does that.
    */
   readonly closeOffPendingProjectIds?: ReadonlySet<string>;
   readonly limit?: number;
@@ -100,11 +100,12 @@ export function selectAutoConnectTargets(input: {
 export type DirectMarkerRead = "reading" | boolean | "failed";
 
 /**
- * Whether a listed Mate whose project has no `mate:closed-off` may be connected, from the press's
- * marker (`MATE_SETUP_RUNTIMES`) as the organization's streamed variables say it. Present — hold.
- * Absent — connect. Not known: a young container (`zcpYoung`) a press may still be setting up is
- * held, an unknown one read from the service's own variables once (`read-env`); an older Mate is
- * never held for its marker, whatever the stream says — a slow or stalled stream must not stall it.
+ * Whether a listed Mate whose project HQ holds no word on (no record, or HQ not known yet) may be
+ * connected, from the press's marker (`MATE_SETUP_RUNTIMES`) as the organization's streamed
+ * variables say it. Present — hold. Absent — connect. Not known: a young container (`zcpYoung`) a
+ * press may still be setting up is held, an unknown one read from the service's own variables once
+ * (`read-env`); an older Mate is never held for its marker, whatever the stream says — a slow or
+ * stalled stream must not stall it.
  */
 export function closeOffGate(
   marker: boolean | "unknown" | "unread",

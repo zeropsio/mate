@@ -6,7 +6,6 @@ import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 const feedState = vi.hoisted(() => ({
   agentAuth: undefined as unknown,
   viewer: undefined as string | undefined,
-  attempt: "none" as "none" | "sending" | "failed",
   threads: [] as ReadonlyArray<Record<string, unknown>>,
   names: new Map<string, string>(),
 }));
@@ -20,18 +19,11 @@ vi.mock("../../zerops/ZeropsSessionProvider", () => ({
     feedState.viewer === undefined ? null : { user: { id: feedState.viewer } },
 }));
 
-vi.mock("../../zerops/useMateStandUp", () => ({
-  useMateStandUpAttempt: () => feedState.attempt,
-  retryMateStandUp: () => {},
-}));
-
 vi.mock("../../state/entities", () => ({
   useThreadShells: () => feedState.threads,
 }));
 
-vi.mock("../../zerops/useZeropsAgentSigner", async (importActual) => ({
-  ...(await importActual<typeof import("../../zerops/useZeropsAgentSigner")>()),
-  useLocalAgentSigners: () => ({}),
+vi.mock("../../zerops/useZeropsEnvironmentProject", () => ({
   useZeropsEnvironmentProject: () => ({ projectId: "p-fen", orgId: "org-acme" }),
 }));
 
@@ -130,14 +122,12 @@ const stage = (html: string) => ({
   sentence: readable(/<p class="arrival-sentence">(.*?)<\/p>/u.exec(html)?.[1] ?? ""),
   face: /data-mate-face-state="(\w+)"/u.exec(html)?.[1],
   signIn: html.includes("data-sign-in-module"),
-  tryAgain: html.includes("data-mate-standup-retry"),
 });
 
 describe("ZeropsMateEmptyState", () => {
   beforeEach(() => {
     feedState.agentAuth = undefined;
     feedState.viewer = ADA;
-    feedState.attempt = "none";
     feedState.names = new Map();
     feedState.threads = [
       shell("thread-main", "2026-09-29T10:00:00.000Z"),
@@ -193,26 +183,6 @@ describe("ZeropsMateEmptyState", () => {
       signIn: false,
     },
     {
-      name: "the send asked of the composer",
-      mate: ASKED,
-      auth: known(SIGNED_IN_BY_ADA),
-      attempt: "sending" as const,
-      headline: "Fen is standing up development on Acme Docs.",
-      sentence: "Signed in. It starts in a moment.",
-      face: "working",
-      signIn: false,
-    },
-    {
-      name: "the send did not go through",
-      mate: ASKED,
-      auth: known(SIGNED_IN_BY_ADA),
-      attempt: "failed" as const,
-      headline: "The message to Fen didn't go through.",
-      sentence: "Fen is signed in, but your ask to stand up development didn't reach it.",
-      face: "needs",
-      signIn: false,
-    },
-    {
       name: "a colleague opening a Mate its person has not signed in",
       mate: ASKED,
       viewer: "u-mira",
@@ -264,7 +234,6 @@ describe("ZeropsMateEmptyState", () => {
     },
   ])("says, for $name: $headline", (row) => {
     feedState.agentAuth = row.auth;
-    if (row.attempt !== undefined) feedState.attempt = row.attempt;
     if (row.viewer !== undefined) feedState.viewer = row.viewer;
     if (row.names !== undefined) feedState.names = new Map(row.names);
     const html = render(row.mate, row.thread);
@@ -274,8 +243,6 @@ describe("ZeropsMateEmptyState", () => {
       sentence: row.sentence,
       face: row.face,
       signIn: row.signIn,
-      // Try again is there to press only when the send did not go through.
-      tryAgain: row.attempt === "failed",
     });
     // One heading, and no second voice: no status rows under a sign-in (the owner: "this state
     // shouldn't exist").
@@ -308,7 +275,6 @@ describe("MateEmptyStateView — a Mate coming up", () => {
     renderToStaticMarkup(
       <MateEmptyStateView
         mate={COMING_UP}
-        onRetry={() => {}}
         phase="sign-in"
         signIn={null}
         signInRequired={false}

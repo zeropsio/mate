@@ -49,7 +49,7 @@ import { useAgentLogin } from "~/zerops/useAgentLogin";
 import { useAgentLoginCancel } from "~/zerops/useAgentLoginCancel";
 import { useAgentLoginSubmitCode } from "~/zerops/useAgentLoginSubmitCode";
 import { useUsualAgent } from "~/zerops/useUsualAgent";
-import { useZeropsEnvironmentProject } from "~/zerops/useZeropsAgentSigner";
+import { useZeropsEnvironmentProject } from "~/zerops/useZeropsEnvironmentProject";
 import { useZeropsAgentAuth } from "~/zerops/useZeropsFeeds";
 
 import { ArrivalSpinner } from "./ZeropsArrivalSteps";

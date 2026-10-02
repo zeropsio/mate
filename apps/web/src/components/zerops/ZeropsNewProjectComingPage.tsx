@@ -118,7 +118,6 @@ export function ZeropsNewProjectComingPage({ birthId }: { readonly birthId: stri
       <MateEmptyStateView
         coming={view}
         mate={mate}
-        onRetry={() => undefined}
         phase={null}
         signIn={null}
         signInRequired={false}

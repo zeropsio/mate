@@ -154,8 +154,28 @@ describe("mateFaceOf — the face a Mate wears wherever it is drawn", () => {
   // owner: it wears no needs face here, though its change can still be reviewed and merged.
   describe("waits on you only when it is yours", () => {
     const VIEWER = "u-petra";
-    const signed = (...users: ReadonlyArray<string>) =>
-      users.map((user) => `mate:signer:claude-code:${user}`);
+    /** The Mate as HQ places it, its summary naming who signed its agents in. */
+    const signed = (...users: ReadonlyArray<string>) => ({
+      appId: null,
+      appName: null,
+      kind: "mate" as const,
+      mate: {
+        name: "Sana",
+        face: "",
+        live: {
+          online: true,
+          at: "2026-10-02T10:00:00.000Z",
+          summary: {
+            main: null,
+            running: 0,
+            waiting: 0,
+            signers: Object.fromEntries(
+              users.map((user, index) => [index === 0 ? "claude-code" : "codex", user]),
+            ),
+          },
+        },
+      },
+    });
     it.each([
       {
         case: "own Mate, its change waits",
@@ -187,24 +207,25 @@ describe("mateFaceOf — the face a Mate wears wherever it is drawn", () => {
       },
       {
         case: "nobody signed in, its change waits",
-        tags: [],
+        tags: signed(),
         face: "idle",
         review: true,
         shown: "idle",
       },
       {
         case: "nobody signed in, its question waits",
-        tags: [],
+        tags: signed(),
         face: "needs",
         review: false,
         shown: "idle",
       },
       {
-        case: "its signers disagree",
+        // One signer per login, as the Mate's server witnessed it: Claude Code's person first.
+        case: "Claude signed in by the viewer, Codex by another",
         tags: signed(VIEWER, "u-karlos"),
         face: "needs",
         review: true,
-        shown: "idle",
+        shown: "needs",
       },
       {
         case: "the viewer not known yet",
@@ -228,7 +249,7 @@ describe("mateFaceOf — the face a Mate wears wherever it is drawn", () => {
           connected: true,
           activity: { face },
           reviewWaits: review,
-          mine: mateIsViewers({ tagList: tags }, viewer),
+          mine: mateIsViewers({ hq: tags }, viewer),
         }),
       ).toBe(shown);
     });

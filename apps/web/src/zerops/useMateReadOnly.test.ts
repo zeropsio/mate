@@ -22,7 +22,6 @@ describe("mateReadOnly — whether the viewer only reads a Mate's conversation (
   const base = {
     snapshot: snapshot(claude({ authorizedBy: { subject: "petra" } })),
     instanceId: "claudeAgent",
-    localSigners: {},
     viewerSubject: "ada",
   } as const;
 
@@ -44,16 +43,6 @@ describe("mateReadOnly — whether the viewer only reads a Mate's conversation (
       case: "an agent whose sign-in nobody recorded",
       input: { snapshot: snapshot(claude()) },
       readOnly: false,
-    },
-    {
-      case: "an agent this browser watched the viewer sign in, not read back yet",
-      input: { snapshot: snapshot(claude()), localSigners: { "claude-code": "ada" } },
-      readOnly: false,
-    },
-    {
-      case: "an agent this browser watched somebody else sign in",
-      input: { snapshot: snapshot(claude()), localSigners: { "claude-code": "petra" } },
-      readOnly: true,
     },
     { case: "an agent whose sign-in is not read yet", input: { snapshot: null }, readOnly: false },
     {

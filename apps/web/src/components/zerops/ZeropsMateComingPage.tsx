@@ -502,7 +502,6 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
     viewer: user?.id,
     main: true,
     signIn: "unknown",
-    attempt: "none",
   });
   // Any other Mate: its name — "This Mate" where nothing names it, as on its conversation's route —
   // and under it what its link waits for, or why it cannot be opened.
@@ -615,7 +614,6 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
         <MateEmptyStateView
           coming={view}
           mate={{ ...(shown === undefined ? named : mate), connected: environmentId !== null }}
-          onRetry={empty.onRetry}
           phase={handing && cameUp ? empty.phase : phaseAhead}
           signIn={handing && cameUp ? empty.signIn : null}
           runtimes={empty.runtimes}

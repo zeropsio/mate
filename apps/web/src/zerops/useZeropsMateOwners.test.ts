@@ -70,7 +70,7 @@ describe("zeropsMateOwner", () => {
   }
 });
 
-// A login's signer tag names a Zerops user id; the member list turns it into
+// A login's signer is a Zerops user id; the member list turns it into
 // the name the coding-agents card shows ("Signed in by Cleo").
 describe("zeropsMemberNameByUserId", () => {
   const members = [

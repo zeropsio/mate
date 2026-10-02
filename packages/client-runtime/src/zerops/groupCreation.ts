@@ -136,7 +136,8 @@ export function mateAwaitingRegistryLine(admins: ReadonlyArray<MateOwnerCandidat
  * and cannot write the registry, so their Mate runs with no group reach and no bot until somebody
  * who can finishes it; a press a closed tab cut short leaves the same. That somebody is an org
  * owner or admin — the only people the platform lets write the Gitea project's tags (D3) — in any
- * browser.
+ * browser. A Mate HQ holds no record of has its record written, and its birth with it, by
+ * whoever HQ's rule lets create the record.
  *
  * `undefined` for everybody else, and for a Mate already whole: a disabled entry on a row a person
  * can do nothing about is noise, and the row already says who it is waiting for
@@ -149,8 +150,8 @@ export function finishMateSetupVerb(input: {
   /** A press this tab made for it stopped at a step. */
   readonly pressStopped: boolean;
   /**
-   * Its container carries the press's marker (`MATE_SETUP_RUNTIMES`) and its project no
-   * `mate:closed-off`: a press interrupted before its close-off, whose runtimes zcp holds back.
+   * Its container carries the press's marker (`MATE_SETUP_RUNTIMES`) and HQ does not know its
+   * project closed off: a press interrupted before its close-off, whose runtimes zcp holds back.
    */
   readonly closedOffMissing: boolean;
   /**
@@ -171,7 +172,18 @@ export function finishMateSetupVerb(input: {
   readonly hasContainer: boolean;
   /** The viewer writes the registry (`canWriteRegistry`). */
   readonly writer: boolean;
+  /**
+   * HQ, its structure known, holds no record of this Mate: the record's write failed mid-way, or
+   * it sits in no application with none — and its birth with it.
+   */
+  readonly recordMissing: boolean;
+  /** HQ's rule lets the viewer create its record (`create_mate_record`). */
+  readonly mayCreateRecord: boolean;
 }): string | undefined {
+  // Its record, and its birth after it, are whoever HQ's rule lets create the record.
+  if (input.recordMissing && input.mayCreateRecord && (input.pressStopped || input.pastGrace)) {
+    return FINISH_MATE_SETUP_VERB;
+  }
   if (input.writer) {
     const halfMade =
       input.pressStopped ||

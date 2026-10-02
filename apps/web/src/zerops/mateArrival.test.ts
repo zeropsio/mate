@@ -388,12 +388,6 @@ describe("the stage's words", () => {
       face: "working",
     },
     {
-      kind: "failed",
-      headline: "The message to Wren didn't go through.",
-      sentence: "Wren is signed in, but your ask to stand up development didn't reach it.",
-      face: "needs",
-    },
-    {
       kind: "question",
       headline: "What should Wren do on Beviro?",
       sentence: "",

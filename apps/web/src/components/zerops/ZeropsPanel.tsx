@@ -39,11 +39,7 @@ import { useCrew } from "../../zerops/crew/useCrew";
 import { useMateLogins } from "../../zerops/useMateLogins";
 import { useProjectTopology } from "../../zerops/useProjectTopology";
 import { useZeropsAgentActivity } from "../../zerops/useZeropsAgentActivity";
-import {
-  useLocalAgentSigners,
-  useZeropsAgentSignerRecordState,
-  useZeropsEnvironmentProject,
-} from "../../zerops/useZeropsAgentSigner";
+import { useZeropsEnvironmentProject } from "../../zerops/useZeropsEnvironmentProject";
 import { useZeropsMemberNames } from "../../zerops/useZeropsMateOwners";
 import { useZeropsLifecycle } from "../../zerops/useZeropsFeeds";
 import { zeropsMateAt } from "../../zerops/mateIdentities";
@@ -86,9 +82,6 @@ export function ZeropsPanel({
       .agentSignOut === true;
   // Whose login each agent is, so a row can say so (D6). Silent for your own.
   const viewerSubject = useZeropsSessionOptional()?.user?.id;
-  // D6: recorded by the conversation view, whichever door the sign-in used.
-  const signerRecord = useZeropsAgentSignerRecordState(threadRef?.environmentId);
-  const localSigners = useLocalAgentSigners(threadRef?.environmentId);
   const crew = useCrew(threadRef?.environmentId ?? null);
   // A dev service's crew ports name their routes by whose app answers there.
   const view = buildZeropsServiceMap(
@@ -160,16 +153,13 @@ export function ZeropsPanel({
     ) : (
       <ZeropsAgentAuthCard
         onCancel={cancelAgentLogin}
-        onRetryRecord={signerRecord.retry}
         onSignIn={setAuthorizationAgentId}
         onSignOut={agentSignOut.signOut}
-        recordFailed={signerRecord.recordFailed}
         signOutError={signOutError}
         signOutPending={signOutPending}
         signOutSupported={signOutSupported}
         snapshot={agentAuthCard}
         viewerSubject={viewerSubject}
-        localSigners={localSigners}
         logins={logins}
         nameOf={loginSignerName}
         onAddLogin={

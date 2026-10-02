@@ -1041,7 +1041,7 @@ describe("ZeropsDataAdapter receiver", () => {
   );
 
   it.effect(
-    "creates the New project wizard's first Mate with the stand-up it asks, and nothing of its place",
+    "creates the New project wizard's first Mate with its marker, and nothing of its place",
     () =>
       Effect.gen(function* () {
         const bodies: Array<string> = [];
@@ -1074,15 +1074,14 @@ describe("ZeropsDataAdapter receiver", () => {
             kind: "create-project-with-mate",
             organization,
             name: "Acme Docs - Ada",
-            standUpBy: "u-ada",
             ...commandBase,
           },
           context(),
         );
 
         // The project's own POST: the one body the platform creates it with. Its application,
-        // name and face are HQ's.
-        expect(bodies[0]).toContain('"tagList":["mate","mate:standup:u-ada"]');
+        // name, face and birth are HQ's.
+        expect(bodies[0]).toContain('"tagList":["mate"]');
       }),
   );
 

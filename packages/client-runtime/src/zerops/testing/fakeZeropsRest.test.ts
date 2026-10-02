@@ -188,12 +188,12 @@ describe("FakeZeropsRest", () => {
 
     const client = clientOf(rest);
     const read = await client.fetchProject("p1");
-    await client.writeProjectTags(read, ["mate:closed-off"]);
+    await client.writeProjectTags(read, ["mate"]);
 
     // The whole-list PUT lands on the other writer's list and drops its tag.
     const tags = rest.project("p1")?.tagList ?? [];
     expect(seen).toEqual([[]]);
-    expect(tags).toEqual(["mate:closed-off"]);
+    expect(tags).toEqual(["mate"]);
     expect(rest.requests().map(({ route }) => route)).toEqual([
       "GET /project/p1",
       "PUT /project/p1",

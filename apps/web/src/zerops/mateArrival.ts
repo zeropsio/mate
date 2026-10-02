@@ -57,8 +57,6 @@ export type ArrivalKind =
   | "sign-in-colleague"
   /** Signed in, the ask on its way. */
   | "standing-up"
-  /** The ask did not go through. */
-  | "failed"
   /** Ready: the question the composer answers. */
   | "question";
 
@@ -80,8 +78,6 @@ export function arrivalHeadlineClauses(mate: Named, kind: ArrivalKind): Readonly
       return mate.project === undefined
         ? [`${keptWhole(mate.name)} is standing up development.`]
         : [`${keptWhole(mate.name)} is standing up development on ${keptWhole(mate.project)}.`];
-    case "failed":
-      return [`The message to ${keptWhole(mate.name)} didn't go through.`];
     case "question":
       return [mateQuestion(mate)];
   }
@@ -142,8 +138,6 @@ export function arrivalSentence(
         : `${context.addedBy} added ${name} but hasn't signed it in. Sign it in with your own account and it's yours.`;
     case "standing-up":
       return "Signed in. It starts in a moment.";
-    case "failed":
-      return `${name} is signed in, but your ask to stand up development didn't reach it.`;
     case "reaching":
     case "unreachable":
     case "question":
@@ -159,7 +153,6 @@ export function arrivalFace(kind: ArrivalKind, connected: boolean): MateMarkStat
     case "unreachable":
       return "sleep";
     case "coming-failed":
-    case "failed":
       return "needs";
     case "standing-up":
       return "working";

@@ -560,7 +560,6 @@ function Pane({
         {timeline === null ? (
           <MateEmptyStateView
             mate={FEN}
-            onRetry={noop}
             phase={null}
             signIn={null}
             signInRequired={false}
