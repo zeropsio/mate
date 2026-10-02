@@ -233,8 +233,13 @@ const TIMED: ReadonlySet<StepKind> = new Set(["command", "web", "tool"]);
  */
 const STILL_RUNNING = "Running";
 
-/** How long a step took; one still running says so. */
+/** What a call that never returned says once its run settled, where its time would be. */
+const NO_RESULT = "No result";
+
+/** How long a step took; one still running says so, one that never returned says that. */
 function stepTime(step: WorkStep): ReactNode {
+  if (step.noResult === "closed") return NO_RESULT;
+  if (step.noResult === "stale") return null;
   if (step.state === "running") return STILL_RUNNING;
   if (!TIMED.has(step.kind) || step.endedAt === null) return null;
   const ms = Date.parse(step.endedAt) - Date.parse(step.startedAt);

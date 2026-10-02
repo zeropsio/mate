@@ -514,6 +514,109 @@ describe("deriveMessagesTimelineRows", () => {
     });
   });
 
+  // The live field reads the newest batch only: Claude makes its calls, then
+  // waits for every result, so a call started after another returned belongs
+  // to a newer batch, and one still marked open from an older batch is stale
+  // (pass 35, the owner: "sometimes it shows something that failed 4
+  // iterations ago").
+  const open = (id: string, minute: number, second = 0) =>
+    tool(id, "t1", minute, {
+      createdAt: at(minute, second),
+      startedAt: at(minute, second),
+      toolLifecycleStatus: "inProgress",
+      sourceActivityKind: "tool.started",
+    });
+  const returned = (id: string, minute: number, second: number, back: number, backSecond = 0) => ({
+    ...tool(id, "t1", minute, {
+      createdAt: at(minute, second),
+      startedAt: at(minute, second),
+      updatedAt: at(back, backSecond),
+    }),
+    createdAt: at(minute, second),
+  });
+  it.each([
+    {
+      name: "a call whose completion never came is behind the batch after it",
+      entries: [open("w1", 1), returned("w2", 2, 0, 2, 5), open("w3", 3)],
+      now: { kind: "step", step: { key: "w3" } },
+    },
+    {
+      name: "a dropped completion between later steps: it thinks, never the old call",
+      entries: [open("w1", 1), returned("w2", 2, 0, 2, 5), returned("w3", 3, 0, 3, 5)],
+      now: { kind: "thinking", key: null, messages: [] },
+    },
+    {
+      name: "a completion filed apart from its start closes it",
+      entries: [
+        tool("w1", "t1", 1, {
+          turnId: null,
+          toolLifecycleStatus: "inProgress",
+          sourceActivityKind: "tool.started",
+        }),
+        tool("w1-done", "t1", 1, { createdAt: at(1, 30), toolCallId: "call-w1" }),
+      ],
+      now: { kind: "thinking", key: null, messages: [] },
+    },
+    {
+      name: "two batches with no thought between: the newer batch only",
+      entries: [open("w1", 1), returned("w2", 1, 10, 2), open("w3", 3), open("w4", 3, 5)],
+      now: { kind: "step", step: { key: "w4" }, others: [{ key: "w3" }] },
+    },
+    {
+      name: "parallel calls in one batch: the open ones, oldest first under the newest",
+      entries: [open("w1", 1), open("w2", 1, 5), open("w3", 1, 10)],
+      now: { kind: "step", step: { key: "w3" }, others: [{ key: "w1" }, { key: "w2" }] },
+    },
+    {
+      name: "a call of the batch returned first: the one still open",
+      entries: [open("w1", 1), returned("w2", 1, 5, 1, 20)],
+      now: { kind: "step", step: { key: "w1" } },
+    },
+    {
+      name: "an operation whose call returned runs on in the band: it thinks",
+      entries: [
+        operation("s1", "t1", 1, {
+          kind: "standup",
+          phase: "running",
+          hasResult: true,
+          returnedAt: at(1, 5),
+        }),
+        returned("w2", 2, 0, 2, 5),
+      ],
+      now: { kind: "thinking", key: null, messages: [] },
+    },
+    {
+      name: "an operation whose call is open is what it waits on",
+      entries: [
+        returned("w1", 1, 0, 1, 5),
+        operation("d1", "t1", 2, { kind: "deploy", phase: "running", hasResult: false }),
+      ],
+      now: { kind: "operation", operation: { key: "op:d1" } },
+    },
+  ])("reads the live field from the newest batch: $name", ({ entries, now }) => {
+    const record = recordOf(rows({ entries: [user("m0", 0), ...entries], live: "t1" }));
+    expect(record?.now).toMatchObject(now);
+    if (now.kind === "step" && !("others" in now)) {
+      expect(record?.now).not.toHaveProperty("others");
+    }
+  });
+
+  it("lands a stale call in the record once the newer batch starts, and closes it as no result", () => {
+    const entries = [user("m0", 0), open("w1", 1), returned("w2", 2, 0, 2, 5), open("w3", 3)];
+    const live = recordOf(rows({ entries, live: "t1" }));
+    const stale = live?.items.find((item) => item.key === "step:w1");
+    expect(stale).toMatchObject({ kind: "step", step: { noResult: "stale" } });
+    // Where it became stale: when the newer batch started, after the call that returned.
+    expect(live?.items.map((item) => item.key)).toEqual(["step:w2", "step:w1"]);
+    const settled = recordOf(rows({ entries, settled: "t1" }));
+    expect(settled?.items.find((item) => item.key === "step:w1")).toMatchObject({
+      step: { noResult: "closed" },
+    });
+    expect(settled?.items.find((item) => item.key === "step:w3")).toMatchObject({
+      step: { noResult: "closed" },
+    });
+  });
+
   // The thought it is thinking is beside its face and nowhere else: the
   // record takes it once it ends (the owner, 2026-09-27: "it literally
   // duplicates what's the mate bubbles").

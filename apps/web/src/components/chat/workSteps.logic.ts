@@ -58,6 +58,12 @@ export interface WorkStep {
   readonly entries: ReadonlyArray<WorkLogEntry>;
   /** The pictures it looked at, by path. */
   readonly images: ReadonlyArray<string>;
+  /**
+   * A call that never returned (`liveBatch`): "stale" once a newer batch
+   * started while it still ran — it stands in the record with no time — and
+   * "closed" once the run settled without it: "No result".
+   */
+  readonly noResult?: "stale" | "closed";
 }
 
 /** A command a task tracked: the task's words, and the task (its end is the command's). */
@@ -474,9 +480,12 @@ export function stepOf(
   const taskRuns = track !== undefined && live && track.task.toolLifecycleStatus === "inProgress";
   const state = taskRuns ? "running" : stepState(entry, live);
   const running = state === "running";
-  const ended = running
-    ? null
-    : new Date(Math.max(endOf(entry), track === undefined ? 0 : endOf(track.task))).toISOString();
+  // The run is over and the call never returned: it has no end to time.
+  const unreturned = !running && state !== "failed" && entry.toolLifecycleStatus === "inProgress";
+  const ended =
+    running || unreturned
+      ? null
+      : new Date(Math.max(endOf(entry), track === undefined ? 0 : endOf(track.task))).toISOString();
   // The command as it was written, out of the shell the runtime ran it in.
   const unwrapped =
     kind === "command" && entry.command ? unwrapShell(entry.rawCommand ?? entry.command) : null;
@@ -497,6 +506,7 @@ export function stepOf(
     endedAt: ended,
     entries: [entry],
     images: look === null ? [] : [look],
+    ...(unreturned ? { noResult: "closed" as const } : {}),
   };
 }
 
