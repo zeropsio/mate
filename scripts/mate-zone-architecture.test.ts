@@ -755,8 +755,7 @@ function collectOneWayViolations(
 // Rule 6, its construction half: the account runtime's modules — its invalidation bus, which one
 // owner holds (§6.2), and the post-grant stage's, built on the epoch's first grant: the
 // registration records, the container store (with its probe store), the exchange driver, the Gitea
-// sessions, the forge store, the flow's command attempts and the deployment store — are
-// constructed by the account runtime only. A call of a constructor anywhere else is reported; its
+// sessions and the deployment store — are constructed by the account runtime only. A call of a constructor anywhere else is reported; its
 // declaration is not, nor a test's or a test fixture's.
 const ACCOUNT_RUNTIME_FILE = `${CLIENT_RUNTIME_ZEROPS_DIR}/account/accountRuntime.ts`;
 const ACCOUNT_RUNTIME_CONSTRUCTORS: ReadonlyArray<string> = [
@@ -766,8 +765,6 @@ const ACCOUNT_RUNTIME_CONSTRUCTORS: ReadonlyArray<string> = [
   "makeContainerStore",
   "makeExchangeDriver",
   "makeGiteaSessions",
-  "makeForgeStore",
-  "makeFlowCommands",
   "makeDeploymentStore",
 ];
 
@@ -2907,7 +2904,7 @@ it.layer(NodeServices.layer)("mate zone architecture", (it) => {
           "export function makeGiteaSessions(ports) { return ports; }\n",
         [`${zerops}/environments/exchangeDriver.test.ts`]: "makeExchangeDriver(ports);\n",
         [`${zerops}/flow/groupFlow.ts`]: "const bus = makeInvalidationBus (options);\n",
-        "apps/web/src/zerops/accountForge.ts": "const store = makeForgeStore(ports);\n",
+        "apps/web/src/zerops/accountForge.ts": "const store = makeDeploymentStore(ports);\n",
         "apps/web/src/zerops/AccountShell.tsx": [
           "const driver = makeExchangeDriver(ports);",
           "const sessions = makeGiteaSessions(ports);",
@@ -2936,7 +2933,7 @@ it.layer(NodeServices.layer)("mate zone architecture", (it) => {
         },
         {
           file: "apps/web/src/zerops/accountForge.ts",
-          reason: "constructs makeForgeStore, a module of the account runtime, outside it",
+          reason: "constructs makeDeploymentStore, a module of the account runtime, outside it",
         },
         {
           file: "apps/web/src/zerops/accountInvalidations.ts",

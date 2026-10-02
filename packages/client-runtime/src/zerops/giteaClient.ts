@@ -80,10 +80,9 @@ export interface GiteaRepository {
 
 /**
  * One hit of `GET /repos/issues/search` — an issue or a pull request across
- * every repository the person can see, with the repository named on it. Not
- * a `GiteaPullRequest`: the search carries neither the head nor whether it
- * merges, which is why the overview lists and links, and a project's flow
- * reads each repository's own pull requests.
+ * every repository the person can see, with the repository named on it. It
+ * carries neither the head nor whether it merges, which is why the overview
+ * lists and links.
  */
 export interface GiteaIssueSearchHit {
   readonly number: number;
@@ -173,45 +172,6 @@ export interface GiteaBranch {
    */
   readonly user_can_merge?: boolean | undefined;
   readonly user_can_push?: boolean | undefined;
-}
-
-export interface GiteaPullRequest {
-  readonly number: number;
-  readonly title: string;
-  readonly state: string;
-  readonly html_url?: string | undefined;
-  /**
-   * Gitea's answer to "does it merge", which it recomputes after every push to
-   * either side: `false` or `null` for a while after one is not yet a verdict.
-   */
-  readonly mergeable?: boolean | null | undefined;
-  readonly merged?: boolean | undefined;
-  readonly head?: {
-    readonly ref?: string | undefined;
-    readonly sha?: string | undefined;
-    /** The repository the branch lives in: a fork's for one opened from a fork; `null` once deleted. */
-    readonly repo?: { readonly full_name?: string | undefined } | null | undefined;
-  };
-  readonly base?: { readonly ref?: string | undefined; readonly sha?: string | undefined };
-  readonly user?: { readonly login?: string | undefined } | undefined;
-  readonly updated_at?: string | undefined;
-  /** Its description as its author wrote it, Markdown; empty where they wrote none. */
-  readonly body?: string | undefined;
-  /** How many comments were said on it. */
-  readonly comments?: number | undefined;
-  /** How many lines it adds and removes, and how many files it touches — Gitea's own count. */
-  readonly additions?: number | undefined;
-  readonly deletions?: number | undefined;
-  readonly changed_files?: number | undefined;
-  /**
-   * The commit its branch and the base last had in common, as Gitea last tested it: a base head
-   * past it is `main` having moved on since.
-   */
-  readonly merge_base?: string | undefined;
-  /** When it landed. Absent on a change that is still open, or was closed unmerged. */
-  readonly merged_at?: string | undefined;
-  /** The commit it landed as. Absent unless it merged. */
-  readonly merge_commit_sha?: string | null | undefined;
 }
 
 /** One tag of a repository — `GET /repos/{o}/{r}/tags`. */

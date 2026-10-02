@@ -1,16 +1,15 @@
 /**
  * The web's binding to the account runtime's project flow (DESIGN §7.3): the post-grant stage's
- * forge — the person's Gitea sessions, the forge store and the flow's command attempts — and its
- * deployment store, bound once the epoch's first grant built them, and the hooks surfaces read
- * them through. The stores are the runtime's; nothing here holds a fact of its own.
+ * Gitea sessions and its deployment store, bound once the epoch's first grant built them, and the
+ * hooks surfaces read them through. The stores are the runtime's; nothing here holds a fact of its
+ * own.
  *
- * It also carries the Mates' pushes into the account's bus: a lifecycle envelope and a checkout's
- * VCS status name the forge and deployment facts they made old (`flow/envelopeInvalidations.ts`).
+ * It also carries the Mates' pushes into the account's bus: a lifecycle envelope names the
+ * deployment facts it made old (`flow/envelopeInvalidations.ts`).
  *
  * Closing the account lifetime unbinds it at once: a reader after sign-out sees nothing of it.
  */
 import type {
-  AccountForge,
   AccountForgePorts,
   PostGrantStage,
 } from "@t3tools/client-runtime/zerops/account/runtime";
@@ -48,7 +47,6 @@ export const webForgePorts: AccountForgePorts = {
 // ── The binding ──────────────────────────────────────────────────────────────────────────────
 
 interface AccountFlow {
-  readonly forge: AccountForge | null;
   readonly deployments: DeploymentStore;
   readonly services: EnvelopeServices;
 }
@@ -73,7 +71,6 @@ export function bindAccountFlow(
   stage: Pick<PostGrantStage, "forge" | "deployments" | "services">,
 ): () => void {
   const flow: AccountFlow = {
-    forge: stage.forge,
     deployments: stage.deployments,
     services: stage.services,
   };
@@ -125,15 +122,9 @@ function useFlowSubscription(flow: AccountFlow | null): (listener: () => void) =
         versions.set(flow, (versions.get(flow) ?? 0) + 1);
         listener();
       });
-      const unsubscribes = [flow.deployments.subscribe(batched.notify)];
-      if (flow.forge !== null) {
-        unsubscribes.push(
-          flow.forge.store.subscribe(batched.notify),
-          flow.forge.sessions.subscribe(batched.notify),
-        );
-      }
+      const unsubscribe = flow.deployments.subscribe(batched.notify);
       return () => {
-        for (const unsubscribe of unsubscribes) unsubscribe();
+        unsubscribe();
         batched.cancel();
       };
     },

@@ -115,21 +115,6 @@ export function resolveMateRegistration(input: {
 }
 
 /**
- * The one line such a Mate carries, in place of its Gitea facts.
- *
- * It names the consequence, not the plumbing: "not in the registry" means
- * nothing to the person who made it, and "cannot push yet" is what they will
- * actually run into.
- */
-export function mateAwaitingRegistryLine(admins: ReadonlyArray<MateOwnerCandidate> = []): string {
-  const names = admins
-    .map((admin) => mateMemberName(admin))
-    .filter((name): name is string => name !== undefined);
-  const who = names.length === 0 ? "an owner or admin" : names.join(" or ");
-  return `Waiting for ${who} to add it to the project — until then it cannot push.`;
-}
-
-/**
  * *Finish setup*, on a half-made Mate's ⋯ menu (pass 28): the press's own steps run again on a
  * Mate whose press did not finish — its container imported with its key where it has none, its
  * project closed off, its registration written. A member with *can create projects* makes a Mate
@@ -140,8 +125,7 @@ export function mateAwaitingRegistryLine(admins: ReadonlyArray<MateOwnerCandidat
  * whoever HQ's rule lets create the record.
  *
  * `undefined` for everybody else, and for a Mate already whole: a disabled entry on a row a person
- * can do nothing about is noise, and the row already says who it is waiting for
- * (`mateAwaitingRegistryLine`).
+ * can do nothing about is noise.
  */
 export function finishMateSetupVerb(input: {
   readonly registration: MateRegistration;

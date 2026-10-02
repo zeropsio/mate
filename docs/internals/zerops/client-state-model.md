@@ -195,7 +195,6 @@ not the person's.
 | Server session validity and revocation                                                                                                                 | Mate server `ZeropsMembershipWatch`                                                   | Socket close, auth block                                                 | Per session                  |
 | Gitea discovery per org                                                                                                                                | Selector over the records                                                             | Derived                                                                  | Epoch                        |
 | Gitea person session                                                                                                                                   | `cr/zerops/forge/giteaSession.ts`, one per (epoch, Gitea origin)                      | Broker `POST /person/token` via a throwaway                              | Epoch                        |
-| Repositories, a group's org, tags, recent commits                                                                                                      | `cr/zerops/forge/forgeStore.ts`                                                       | Gitea REST as the person                                                 | Epoch; bounded LRU unleased  |
 | Deployment per service                                                                                                                                 | `cr/zerops/flow/deploymentStore.ts`                                                   | Pushed `activeDeploy`; REST for the version name; Gitea for build status | Epoch, per service           |
 | Group flow, release offer, mergeability                                                                                                                | Pure projections                                                                      | Derived                                                                  | —                            |
 | Verb attempts                                                                                                                                          | Command attempts keyed by target                                                      | Our verbs                                                                | Epoch                        |
@@ -511,7 +510,7 @@ Observations flow only into owners; surfaces read only projections and send back
 **The invalidation bus** is a `PubSub` owned by the account runtime: a closed, typed set of
 revalidation requests with no data and no merge semantics. Topics: `access` (granted, lapsed,
 renew-now), `inventory(org)`, `project`, `environment(target, why)`, `container(target)`,
-`deployment(service)`, `gitea-session(origin)`, `forge-org`, `forge-repo`. Only owners
+`deployment(service)`, `gitea-session(origin)`. Only owners
 of pull-based facts subscribe; the runtime accepts only `inventory` and `access`. Invalidations
 coalesce per key over 250 ms; in a hidden tab they collect into a dirty set flushed, visible first,
 on the next visible wake.
@@ -578,7 +577,7 @@ data/          the data runtime, plus access/grant.ts, access/verifier.ts, acces
 environments/  records.ts, probeStore.ts, containerMachine.ts, environmentMachine.ts,
                exchangeDriver.ts, reachability.ts, gate.ts, descriptorIndex.ts
 birth/         birthStore.ts
-forge/         giteaSession.ts, forgeStore.ts
+forge/         giteaSession.ts
 flow/          deploymentStore.ts, groupFlow.ts, envelopeInvalidations.ts
                (projectFlow.ts, release.ts, groupDeploys.ts)
 reconcilers/   groupReach.ts, deployTokenGaps.ts, throwawaySweep.ts

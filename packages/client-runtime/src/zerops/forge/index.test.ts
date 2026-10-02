@@ -14,8 +14,4 @@ describe("@t3tools/client-runtime/zerops/forge", () => {
       trouble: null,
     });
   });
-
-  it("exports the forge store", () => {
-    expect(typeof forge.makeForgeStore).toBe("function");
-  });
 });

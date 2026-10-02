@@ -2,21 +2,15 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   environmentNameUnderGroup,
-  buildGroupRows,
   deployedCommit,
   deployedVersion,
   deployTone,
   environmentRow,
-  GROUP_BEING_SET_UP_LINE,
-  mateRow,
-  pullRequestRow,
   type EnvironmentServiceState,
-  type MateRowState,
 } from "./groupRows.ts";
 import type { HqDeploy } from "./hq/environments.ts";
 
 const SHA = "3f9c1b2e5d7a4c6f8e0b1d2a3c4f5e6d7a8b9c0d";
-const OTHER = "77ab0e1f2d3c4b5a69788796a5b4c3d2e1f0a9b8";
 
 function service(
   hostname: string,
@@ -296,136 +290,6 @@ describe("environmentRow", () => {
     expect(row.line).toBe("main · hotfix");
     expect(row.version.label).toBe("hotfix");
     expect(row.commit).toBeUndefined();
-  });
-});
-
-describe("mateRow", () => {
-  const mate: MateRowState = {
-    projectId: "p-fen",
-    name: "Fen",
-    visibility: "open",
-    registration: "registered",
-  };
-
-  it("says nothing about a Mate you open — the face carries that", () => {
-    expect(mateRow(mate)).toEqual({
-      kind: "mate",
-      projectId: "p-fen",
-      name: "Fen",
-      visibility: "open",
-      line: "",
-      tone: "neutral",
-    });
-  });
-
-  it("says whose it is for a Mate you cannot open", () => {
-    const row = mateRow({ ...mate, visibility: "listed", ownerName: "Jan Novák" });
-    expect(row.line).toBe("Jan Novák's Mate — only Jan Novák opens it.");
-    expect(row.tone).toBe("neutral");
-  });
-
-  it("says what a Mate waiting for an owner's registry write is missing", () => {
-    const row = mateRow({ ...mate, registration: "awaiting-owner" }, [
-      { id: "cu-1", user: { fullName: "Jan" } },
-    ]);
-    expect(row.line).toBe("Waiting for Jan to add it to the project — until then it cannot push.");
-    expect(row.tone).toBe("pending");
-  });
-
-  it("says whose it is before it says anything about the registry", () => {
-    // A row they cannot open is not the place to explain the registry.
-    const row = mateRow({ ...mate, visibility: "listed", registration: "awaiting-owner" });
-    expect(row.line).toBe("Only its owner opens this Mate.");
-  });
-});
-
-describe("pullRequestRow", () => {
-  it("names the change and who proposed it", () => {
-    expect(
-      pullRequestRow({
-        number: 12,
-        title: "Add a worker",
-        state: "open",
-        user: { login: "mate-p1" },
-      }),
-    ).toEqual({
-      kind: "pull-request",
-      number: 12,
-      title: "Add a worker",
-      line: "#12 · mate-p1",
-      tone: "pending",
-    });
-  });
-
-  it("names the change alone when Gitea did not say who", () => {
-    expect(pullRequestRow({ number: 12, title: "Add a worker", state: "open" }).line).toBe("#12");
-  });
-});
-
-describe("buildGroupRows", () => {
-  const rows = buildGroupRows({
-    groupId: "g-1",
-    slug: "acme",
-    gitea: "ready",
-    mates: [
-      { projectId: "p-fen", name: "Fen", visibility: "open", registration: "registered" },
-      { projectId: "p-nova", name: "Nova", visibility: "listed", registration: "registered" },
-    ],
-    environments: [
-      {
-        projectId: "p-prod",
-        name: "Acme - production",
-        tier: "production",
-        sources: "release",
-        services: [service("api", "live", { version: SHA })],
-      },
-      {
-        projectId: "p-stage",
-        name: "Acme - stage",
-        tier: "stage",
-        sources: ["main"],
-        services: [service("api", "live", { version: OTHER })],
-      },
-    ],
-    pullRequests: [{ number: 12, title: "Add a worker", state: "open" }],
-  });
-
-  it("reads Mates, then where the code runs, then what is waiting to change", () => {
-    expect(rows.rows.map((row) => row.kind)).toEqual([
-      "mate",
-      "mate",
-      "environment",
-      "environment",
-      "pull-request",
-    ]);
-  });
-
-  it("puts the stages before the production — the order code travels", () => {
-    const environments = rows.rows.filter((row) => row.kind === "environment");
-    expect(environments.map((row) => row.name)).toEqual(["Acme - stage", "Acme - production"]);
-  });
-
-  it("says nothing about a group whose Gitea is up", () => {
-    expect(rows.line).toBe("");
-  });
-
-  it.each([
-    { gitea: "being-set-up" as const, expected: GROUP_BEING_SET_UP_LINE },
-    // Not asked yet: a line that appears and then disappears is the layout
-    // shift this screen refuses.
-    { gitea: "unknown" as const, expected: "" },
-    { gitea: "ready" as const, expected: "" },
-  ])("says $expected while its Gitea is $gitea", ({ gitea, expected }) => {
-    const group = buildGroupRows({
-      groupId: "g-1",
-      slug: "acme",
-      gitea,
-      mates: [],
-      environments: [],
-      pullRequests: [],
-    });
-    expect(group.line).toBe(expected);
-    expect(group.rows).toEqual([]);
   });
 });
 

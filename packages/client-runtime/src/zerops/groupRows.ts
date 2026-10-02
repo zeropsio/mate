@@ -1,22 +1,11 @@
 /**
- * What a group shows on the projects screen — one row model for all three
- * kinds of thing in it (guide 4.4, 5.2).
+ * What a group's stages and production show on the projects screen (guide 4.4, 5.2): each
+ * environment's row, and the version a service runs as a person talks about it.
  *
- * A group holds its **Mates** (who you talk to), its **stages and its
- * production** (where the code runs) and the **open pull requests** on its
- * group repo (changes to what those environments are made of). Each is a
- * different question, so each gets its own row kind — but one module decides
- * every one of them, because the three sit in one list and a second opinion
- * about the same fact is what rule R5 exists to prevent.
+ * ## One line, and the dot carries the state
  *
- * ## One line, and the face carries the state
- *
- * A row says one thing under its name, and only when it adds something. A Mate
- * the person opens says nothing: its face and its last message already say
- * where it is. A Mate they cannot open says whose it is. A stage says the
- * branch and the commit it actually runs. No row carries the word "deployed",
- * "running" or "ok" — that is what {@link GroupRowTone} is for, and what a
- * `StatusDot` renders.
+ * A stage says the branch and the commit it actually runs. No row carries the word "deployed",
+ * "running" or "ok" — that is what {@link GroupRowTone} is for, and what a `StatusDot` renders.
  *
  * ## Every fact from the party that can prove it
  *
@@ -24,40 +13,19 @@
  * commit it was built from (`versionName.ts`) — never from the branch head,
  * which says what *should* be there. How the deploy went is HQ's record of it
  * (`HqEnvironment.deploys`) — never the version's existence.
- * Whether a group's Gitea is ready comes from `GET /orgs/{slug}` answering as
- * the person, never from the registry tag that asked for it
- * (`groupCreation.ts`).
  *
  * Pure: no network, no clock, no platform globals (rule R1).
  *
  * @module groupRows
  */
 
-import type { GiteaPullRequest } from "./giteaClient.ts";
-import {
-  mateAwaitingRegistryLine,
-  type GroupGiteaState,
-  type MateRegistration,
-} from "./groupCreation.ts";
-import type { GroupEnvironmentTier, MissingEnvironmentRow } from "./groupEnvironments.ts";
+import type { GroupEnvironmentTier } from "./groupEnvironments.ts";
 import type { HqDeploy } from "./hq/environments.ts";
-import { mateOnlyOwnerOpensIt, type MateOwnerCandidate } from "./mateAccess.ts";
 import { isReleaseTag, shortCommit } from "./release.ts";
 import { isWholeSha, parseVersionName } from "./versionName.ts";
-import type { RoleMateVisibility } from "@t3tools/shared/zeropsRoles";
 
 /** What a row's dot says, for the four things a dot can honestly mean. */
 export type GroupRowTone = "neutral" | "pending" | "good" | "bad";
-
-export interface MateRow {
-  readonly kind: "mate";
-  readonly projectId: string;
-  readonly name: string;
-  readonly visibility: RoleMateVisibility;
-  /** Empty when the row has nothing to add — the usual case for one you open. */
-  readonly line: string;
-  readonly tone: GroupRowTone;
-}
 
 export interface EnvironmentRow {
   readonly kind: "environment";
@@ -78,24 +46,6 @@ export interface EnvironmentRow {
   readonly versionRepository: string | undefined;
   readonly line: string;
   readonly tone: GroupRowTone;
-}
-
-export interface PullRequestRow {
-  readonly kind: "pull-request";
-  readonly number: number;
-  readonly title: string;
-  readonly line: string;
-  readonly tone: GroupRowTone;
-}
-
-export type GroupRow = MateRow | EnvironmentRow | PullRequestRow | MissingEnvironmentRow;
-
-export interface GroupRows {
-  readonly groupId: string;
-  readonly slug: string;
-  /** Empty unless the group's Gitea side is not there yet. */
-  readonly line: string;
-  readonly rows: ReadonlyArray<GroupRow>;
 }
 
 /**
@@ -298,105 +248,5 @@ export function environmentRow(input: {
   };
 }
 
-/** As much of one Mate as a row needs. */
-export interface MateRowState {
-  readonly projectId: string;
-  readonly name: string;
-  readonly visibility: RoleMateVisibility;
-  readonly registration: MateRegistration;
-  /** Who owns it, when the account can be read for a name. */
-  readonly ownerName?: string | undefined;
-}
-
-/**
- * One Mate's row.
- *
- * Three cases, and only two of them say anything. A Mate the person opens gets
- * an empty line on purpose: its face, its name and its last message are the
- * row, and a status word beside them would be the same fact twice.
- */
-export function mateRow(
-  mate: MateRowState,
-  admins: ReadonlyArray<MateOwnerCandidate> = [],
-): MateRow {
-  if (mate.visibility !== "open") {
-    return {
-      kind: "mate",
-      projectId: mate.projectId,
-      name: mate.name,
-      visibility: mate.visibility,
-      line: mateOnlyOwnerOpensIt(mate.ownerName),
-      tone: "neutral",
-    };
-  }
-  if (mate.registration === "awaiting-owner") {
-    return {
-      kind: "mate",
-      projectId: mate.projectId,
-      name: mate.name,
-      visibility: mate.visibility,
-      line: mateAwaitingRegistryLine(admins),
-      tone: "pending",
-    };
-  }
-  return {
-    kind: "mate",
-    projectId: mate.projectId,
-    name: mate.name,
-    visibility: mate.visibility,
-    line: "",
-    tone: "neutral",
-  };
-}
-
-/** A recipe change waiting on somebody — the group repo's open pull requests. */
-export function pullRequestRow(pull: GiteaPullRequest): PullRequestRow {
-  const who = pull.user?.login;
-  return {
-    kind: "pull-request",
-    number: pull.number,
-    title: pull.title,
-    line: who === undefined ? `#${pull.number}` : `#${pull.number} · ${who}`,
-    tone: "pending",
-  };
-}
-
 /** What a group whose Gitea the broker has not finished says about itself. */
 export const GROUP_BEING_SET_UP_LINE = "Setting up its repositories…";
-
-/**
- * Every row of one group, in the order they are read: who you talk to, where
- * the code runs, what is waiting to change.
- */
-export function buildGroupRows(input: {
-  readonly groupId: string;
-  readonly slug: string;
-  readonly gitea: GroupGiteaState;
-  readonly mates: ReadonlyArray<MateRowState>;
-  readonly environments: ReadonlyArray<Parameters<typeof environmentRow>[0]>;
-  readonly pullRequests: ReadonlyArray<GiteaPullRequest>;
-  readonly admins?: ReadonlyArray<MateOwnerCandidate> | undefined;
-}): GroupRows {
-  const environments = [...input.environments].sort(byTierThenName);
-  return {
-    groupId: input.groupId,
-    slug: input.slug,
-    // `unknown` says nothing: the org has not been asked about yet, and a line
-    // that appears and then disappears is the layout shift this screen refuses.
-    line: input.gitea === "being-set-up" ? GROUP_BEING_SET_UP_LINE : "",
-    rows: [
-      ...input.mates.map((mate) => mateRow(mate, input.admins ?? [])),
-      ...environments.map((environment) => environmentRow(environment)),
-      ...input.pullRequests.map((pull) => pullRequestRow(pull)),
-    ],
-  };
-}
-
-/** Stages first, in name order, then the production — the order code travels. */
-function byTierThenName(
-  left: { readonly tier: GroupEnvironmentTier; readonly name: string },
-  right: { readonly tier: GroupEnvironmentTier; readonly name: string },
-): number {
-  if (left.tier !== right.tier) return left.tier === "stage" ? -1 : 1;
-  return left.name.localeCompare(right.name, "en");
-}

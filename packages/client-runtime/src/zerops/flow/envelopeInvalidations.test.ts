@@ -4,14 +4,8 @@ import { describe, expect, it } from "vite-plus/test";
 import { project, service } from "../data/__fixtures__/index.ts";
 import type { ServiceRef } from "../data/types.ts";
 import type { Invalidation } from "../knowledge/invalidation.ts";
-import {
-  envelopeInvalidations,
-  forgeRepositoryOf,
-  type EnvelopeServices,
-} from "./envelopeInvalidations.ts";
+import { envelopeInvalidations, type EnvelopeServices } from "./envelopeInvalidations.ts";
 
-const GITEA = "https://gitea-1-3000.prg1.zerops.app";
-const APPDEV_REMOTE = `${GITEA}/harbor/appdev.git`;
 const APPSTAGE: ServiceRef = service("service-appstage", project("project-stage"));
 
 /** The account holds project-stage's `appstage`; nothing else resolves. */
@@ -26,7 +20,6 @@ const snapshot = (overrides: Partial<ZeropsServiceSnapshot> = {}): ZeropsService
   runtimeClass: "dynamic",
   status: "ACTIVE",
   bootstrapped: true,
-  remoteUrl: APPDEV_REMOTE,
   ...overrides,
 });
 
@@ -48,12 +41,6 @@ const workSession = (deploys: Record<string, ReadonlyArray<ReturnType<typeof att
   deploys,
 });
 
-const APPDEV_REPO: Invalidation = {
-  topic: "forge-repo",
-  origin: GITEA,
-  owner: "harbor",
-  repo: "appdev",
-};
 const APPSTAGE_DEPLOYMENT: Invalidation = { topic: "deployment", service: APPSTAGE };
 
 describe("envelopeInvalidations (DESIGN §6.1, G3)", () => {
@@ -70,32 +57,9 @@ describe("envelopeInvalidations (DESIGN §6.1, G3)", () => {
       expected: [],
     },
     {
-      name: "a service's git push state changing re-reads its remote's repository",
+      name: "a service's git push state changing re-reads nothing",
       previous: envelope({ services: [snapshot({ gitPushState: "unpushed" })] }),
       next: envelope({ services: [snapshot({ gitPushState: "pushed" })] }),
-      expected: [APPDEV_REPO],
-    },
-    {
-      name: "a push state that appears for the first time is a change",
-      previous: envelope({ services: [snapshot()] }),
-      next: envelope({ services: [snapshot({ gitPushState: "pushed" })] }),
-      expected: [APPDEV_REPO],
-    },
-    {
-      name: "an unchanged push state re-reads nothing",
-      previous: envelope({ services: [snapshot({ gitPushState: "pushed" })] }),
-      next: envelope({
-        services: [snapshot({ gitPushState: "pushed" })],
-        generated: "2026-09-23T10:05:00Z",
-      }),
-      expected: [],
-    },
-    {
-      name: "a push state on a service with no remote names no repository",
-      previous: envelope({ services: [snapshot({ remoteUrl: undefined })] }),
-      next: envelope({
-        services: [snapshot({ remoteUrl: undefined, gitPushState: "pushed" })],
-      }),
       expected: [],
     },
     {
@@ -137,7 +101,7 @@ describe("envelopeInvalidations (DESIGN §6.1, G3)", () => {
       expected: [],
     },
     {
-      name: "a push and a deploy in one envelope re-read both",
+      name: "a push and a deploy in one envelope re-read the deployment",
       previous: envelope({
         services: [snapshot({ gitPushState: "unpushed" })],
         workSession: workSession({ appstage: [] }),
@@ -146,7 +110,7 @@ describe("envelopeInvalidations (DESIGN §6.1, G3)", () => {
         services: [snapshot({ gitPushState: "pushed" })],
         workSession: workSession({ appstage: [attempt("2026-09-23T09:20:00Z", true)] }),
       }),
-      expected: [APPDEV_REPO, APPSTAGE_DEPLOYMENT],
+      expected: [APPSTAGE_DEPLOYMENT],
     },
     {
       name: "an envelope that went away re-reads nothing",
@@ -158,21 +122,5 @@ describe("envelopeInvalidations (DESIGN §6.1, G3)", () => {
 
   it.each(cases)("$name", ({ previous, next, expected }) => {
     expect(envelopeInvalidations(previous, next, services)).toEqual(expected);
-  });
-});
-
-describe("forgeRepositoryOf", () => {
-  it.each([
-    [APPDEV_REMOTE, { origin: GITEA, owner: "harbor", repo: "appdev" }],
-    [`${GITEA}/harbor/appdev`, { origin: GITEA, owner: "harbor", repo: "appdev" }],
-    [
-      "https://mate:secret@gitea-1-3000.prg1.zerops.app/harbor/appdev.git",
-      { origin: GITEA, owner: "harbor", repo: "appdev" },
-    ],
-    ["git@gitea-1-3000.prg1.zerops.app:harbor/appdev.git", null],
-    [`${GITEA}/harbor`, null],
-    ["not a url", null],
-  ] as const)("%s names %j", (remote, expected) => {
-    expect(forgeRepositoryOf(remote)).toEqual(expected);
   });
 });

@@ -1,12 +1,7 @@
 import type { AccountForge } from "@t3tools/client-runtime/zerops/account/runtime";
 import type { ProjectRef, ServiceRef } from "@t3tools/client-runtime/zerops/data";
-import type {
-  Deployment,
-  DeploymentStore,
-  FlowCommands,
-  StopService,
-} from "@t3tools/client-runtime/zerops/flow";
-import type { ForgeStore, GiteaSessions } from "@t3tools/client-runtime/zerops/forge";
+import type { Deployment, DeploymentStore, StopService } from "@t3tools/client-runtime/zerops/flow";
+import type { GiteaSessions } from "@t3tools/client-runtime/zerops/forge";
 import type { Known, Shown } from "@t3tools/client-runtime/zerops/knowledge";
 import type { ZeropsStateEnvelope } from "@t3tools/contracts";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
@@ -70,7 +65,6 @@ function stage() {
       listeners.delete(listener);
     };
   };
-  const store = { subscribe } as unknown as ForgeStore;
   const sessions = { subscribe, close: vi.fn() } as unknown as GiteaSessions;
   const stopDemands: Array<string> = [];
   let stopDemandCalls = 0;
@@ -85,11 +79,7 @@ function stage() {
     },
     subscribe,
   } as unknown as DeploymentStore;
-  const forge: AccountForge = {
-    sessions,
-    store,
-    commands: { subscribe } as unknown as FlowCommands,
-  };
+  const forge: AccountForge = { sessions };
   return {
     stage: {
       forge,

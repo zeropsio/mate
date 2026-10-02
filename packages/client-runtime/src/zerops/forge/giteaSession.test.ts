@@ -9,7 +9,6 @@ import {
   HARNESS_GITEA_ORIGIN,
   makeAccountHarness,
 } from "../testing/accountHarness.ts";
-import { makeForgeStore, type ForgeFact } from "./forgeStore.ts";
 import {
   BROKER_DEADLINE_MS,
   makeGiteaSessions,
@@ -305,7 +304,7 @@ describe("the account's Gitea sessions", () => {
     expect(w.throwaways.removed).toEqual(["throwaway-1", "throwaway-2", "throwaway-3"]);
   });
 
-  it("a network failure of the first person-token call is retried after ~2 s and the forge reads appear", async () => {
+  it("a network failure of the first person-token call is retried after ~2 s, and the session reads", async () => {
     // As a browser sees a 502 in front of the broker that carries no CORS headers: fetch rejects.
     let corsFailures = 1;
     const w = world({
@@ -316,38 +315,15 @@ describe("the account's Gitea sessions", () => {
             corsFailures -= 1;
             throw new TypeError("Failed to fetch");
           }
-          if (
-            url.pathname === "/api/v1/repos/acme/app/tags" &&
-            new Headers(init?.headers).get("authorization") === "Bearer gitea-token-1"
-          ) {
-            return new Response(JSON.stringify([{ name: "v1.0.0", message: "" }]), {
-              status: 200,
-              headers: { "content-type": "application/json" },
-            });
-          }
           return fetch(input, init);
         }) as Fetch,
     });
-    const forge = makeForgeStore({
-      now: w.time.now,
-      random: () => 0.5,
-      setTimer: w.time.setTimer,
-      sessions: w.sessions,
-    });
-    const tags: ForgeFact = {
-      kind: "tags",
-      origin: HARNESS_GITEA_ORIGIN,
-      owner: "acme",
-      repo: "app",
-    };
     w.demand();
-    forge.demand(tags, "route");
     await w.time.advance(0);
 
     // One failure is not a cause yet: the surfaces say "Signing in to Gitea…".
     expect(w.throwaways.removed).toEqual(["throwaway-1"]);
     expect(w.view()).toEqual({ signedIn: false, readable: false, login: undefined, trouble: null });
-    expect(forge.read(tags).state).not.toBe("known");
 
     await w.time.advance(2 * S - 1);
     expect(livenessChecks(w)).toEqual([]);
@@ -356,10 +332,6 @@ describe("the account's Gitea sessions", () => {
     expect(livenessChecks(w)).toHaveLength(1);
     expect(brokerPosts(w)).toHaveLength(1);
     expect(w.view()).toEqual({ signedIn: true, readable: true, login: "u-person", trouble: null });
-    const shown = forge.read(tags);
-    expect(shown.state).toBe("known");
-    if (shown.state === "known") expect(shown.value).toEqual([{ name: "v1.0.0", message: "" }]);
-    forge.dispose();
   });
 
   it.each([
