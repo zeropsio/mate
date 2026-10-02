@@ -33,6 +33,9 @@ const BASE: Point = {
   present: true,
 };
 
+/** U's grant on each project beside P: one table, the facts' and the properties' alike. */
+const FIXTURE_GRANTS = { P_SEEN: "READ_ONLY", P_DEV: "BASIC_USER", P_HIDDEN: "NO_ACCESS" } as const;
+
 const factsOf = (point: Point): Facts<"fresh"> => ({
   freshness: "fresh",
   members: [
@@ -65,9 +68,10 @@ const factsOf = (point: Point): Facts<"fresh"> => ({
           },
         ]
       : []),
-    { id: "P_SEEN", userRoles: [{ clientUserId: "C-U", roleCode: "READ_ONLY" }] },
-    { id: "P_DEV", userRoles: [{ clientUserId: "C-U", roleCode: "BASIC_USER" }] },
-    { id: "P_HIDDEN", userRoles: [{ clientUserId: "C-U", roleCode: "NO_ACCESS" }] },
+    ...Object.entries(FIXTURE_GRANTS).map(([id, roleCode]) => ({
+      id,
+      userRoles: [{ clientUserId: "C-U", roleCode }],
+    })),
   ],
 });
 
@@ -855,6 +859,24 @@ const TABLES: Readonly<Record<Verb, ReadonlyArray<Row>>> = {
       "not_app_developer",
     ],
     [
+      "an org owner, an application with no project left: merging is a developer's",
+      { orgRole: "OWNER" },
+      { verb: "merge_change", target: { projectIds: [] } },
+      "not_app_developer",
+    ],
+    [
+      "an org admin with Read only on its only project: the org's role falls back per project",
+      { orgRole: "ADMIN", override: "READ_ONLY" },
+      { verb: "merge_change", target: { projectIds: ["P"] } },
+      "not_app_developer",
+    ],
+    [
+      "a Basic user grant on P beside a hidden project",
+      { override: "BASIC_USER" },
+      { verb: "merge_change", target: { projectIds: ["P", "P_HIDDEN"] } },
+      "allow",
+    ],
+    [
       "org none, only a hidden project",
       {},
       { verb: "merge_change", target: { projectIds: ["P_HIDDEN"] } },
@@ -893,10 +915,28 @@ const TABLES: Readonly<Record<Verb, ReadonlyArray<Row>>> = {
       "not_app_developer",
     ],
     [
-      "an org owner lowered to none on its only project",
+      "an org owner lowered to none on its only project: closes as the structure's writer",
       { orgRole: "OWNER", override: "NO_ACCESS" },
       { verb: "close_change", target: { projectIds: ["P"] } },
-      "not_app_developer",
+      "allow",
+    ],
+    [
+      "an org owner, an application with no project left: still closes its changes",
+      { orgRole: "OWNER" },
+      { verb: "close_change", target: { projectIds: [] } },
+      "allow",
+    ],
+    [
+      "an org admin with Read only on its only project",
+      { orgRole: "ADMIN", override: "READ_ONLY" },
+      { verb: "close_change", target: { projectIds: ["P"] } },
+      "allow",
+    ],
+    [
+      "a Basic user grant on P beside a hidden project",
+      { override: "BASIC_USER" },
+      { verb: "close_change", target: { projectIds: ["P", "P_HIDDEN"] } },
+      "allow",
     ],
     [
       "org none, only a hidden project",
@@ -1142,19 +1182,24 @@ describe("can — over the whole input space", () => {
     });
   });
 
-  it("lets a person merge or close a change only where they develop the application", () => {
+  it("lets a person merge a change only where they develop the application, and close it there or as the structure's writer", () => {
     everywhere((principal, request, point) => {
       if (request.verb !== "merge_change" && request.verb !== "close_change") return;
       const decision = decide(principal, request, point);
-      // The same people, merge or close; each of them reads the changes too.
-      const other: Request = {
-        verb: request.verb === "merge_change" ? "close_change" : "merge_change",
-        target: request.target,
-      };
-      expect(decide(principal, other, point).allow).toBe(decision.allow);
+      // Close is allowed wherever merge is, not the reverse (Gitea's split: an admin closes).
+      if (request.verb === "merge_change" && decision.allow) {
+        const close: Request = { verb: "close_change", target: request.target };
+        expect(decide(principal, close, point).allow).toBe(true);
+      }
       if (!decision.allow) return;
       const read: Request = { verb: "read_change", target: request.target };
       expect(decide(principal, read, point).allow).toBe(true);
+      const writer =
+        principal.kind === "person" &&
+        principal.userId === "U" &&
+        point.status === "ACTIVE" &&
+        (point.orgRole === "ADMIN" || point.orgRole === "OWNER");
+      if (request.verb === "close_change" && writer) return;
       // Developing it: Basic user or above on one of its projects (P is the point's own).
       const ranked = (role: string) => RANKED.indexOf(role as (typeof RANKED)[number]);
       const roleIn = (projectId: string) =>
@@ -1162,11 +1207,7 @@ describe("can — over the whole input space", () => {
           ? point.present
             ? ranked(point.override ?? point.orgRole)
             : 0
-          : ranked(
-              ({ P_SEEN: "READ_ONLY", P_DEV: "BASIC_USER", P_HIDDEN: "NO_ACCESS" } as const)[
-                projectId as "P_SEEN" | "P_DEV" | "P_HIDDEN"
-              ],
-            );
+          : ranked(FIXTURE_GRANTS[projectId as keyof typeof FIXTURE_GRANTS]);
       expect(request.target.projectIds.some((projectId) => roleIn(projectId) >= 2)).toBe(true);
     });
   });
@@ -1274,16 +1315,11 @@ describe("can — over the whole input space", () => {
             })),
           );
           // Who sees the application, and who develops it: a role on one of its projects (P's
-          // is the point's own; P_SEEN is Read only, P_DEV Basic user, P_HIDDEN none), or for
-          // seeing, the org's Read only.
+          // is the point's own, the others FIXTURE_GRANTS'), or for seeing, the org's Read only.
           const roleIn = (projectId: string) =>
             projectId === "P"
               ? effective(point)
-              : RANKED.indexOf(
-                  ({ P_SEEN: "READ_ONLY", P_DEV: "BASIC_USER", P_HIDDEN: "NO_ACCESS" } as const)[
-                    projectId as "P_SEEN" | "P_DEV" | "P_HIDDEN"
-                  ],
-                );
+              : RANKED.indexOf(FIXTURE_GRANTS[projectId as keyof typeof FIXTURE_GRANTS]);
           const sees =
             RANKED.indexOf(point.orgRole as (typeof RANKED)[number]) >= 1 ||
             app.some((projectId) => roleIn(projectId) >= 1);
