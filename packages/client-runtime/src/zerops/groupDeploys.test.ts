@@ -155,7 +155,30 @@ describe("what a release compares, from HQ's records", () => {
     });
     const { failed, production } = releaseDeploys(inputs);
     expect([...failed]).toEqual([[`api@${API}`, "2026-10-02T10:00:00.000Z"]]);
-    expect([...production]).toEqual([["api", OLD.slice(0, 7)]]);
+    expect([...production]).toEqual([["api", OLD]]);
+  });
+
+  it("spells production's commit whole where HQ's record of its deploy names it, else as its name does", () => {
+    const inputs = environmentRowInputsOf({
+      environments: [
+        environment({
+          projectId: "p-prod",
+          tier: "production",
+          name: "production",
+          deploys: [{ service: "api", latest: record("live", API), live: record("live", API) }],
+        }),
+      ],
+      projectNames: new Map(),
+      services: [...services, { projectId: "p-prod", serviceId: "s5", hostname: "web" }],
+      versions: new Map([
+        ["s3", `v1.0.1 ${API.slice(0, 7)}`],
+        ["s5", `v1.0.1 ${WEB.slice(0, 7)}`],
+      ]),
+    });
+    expect([...releaseDeploys(inputs).production]).toEqual([
+      ["api", API],
+      ["web", WEB.slice(0, 7)],
+    ]);
   });
 });
 

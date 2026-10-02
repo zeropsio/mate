@@ -32,12 +32,18 @@ import {
   type GroupEnvironmentTier,
   type MissingEnvironmentRow,
 } from "./groupEnvironments.ts";
-import { deployedCommit, type EnvironmentServiceState, type GroupRowTone } from "./groupRows.ts";
+import {
+  deployedCommit,
+  type EnvironmentServiceState,
+  type GroupRowTone,
+  type ServiceDeploys,
+} from "./groupRows.ts";
 import type { ZeropsEnvironmentRole } from "./groups.ts";
 import type { ZeropsServiceDeployedVersion } from "./data/deployedVersion.ts";
 import type { HqEnvironment } from "./hq/environments.ts";
 import type { Shown } from "./knowledge/known.ts";
 import { recipeTierRepositories } from "./recipeTier.ts";
+import { sameCommit } from "./versionName.ts";
 
 /** One runtime service of one Zerops project, as an environment's row needs it. */
 export interface GroupEnvironmentService {
@@ -240,7 +246,10 @@ export function groupStopsOf(input: {
   };
 }
 
-/** `{service hostname: sha}` per side of a release, whole or short as the name spells it. */
+/**
+ * `{service hostname: sha}` per side of a release: whole where HQ's record of the service's deploy
+ * names the commit whole, else whole or short as the version's name spells it.
+ */
 export interface ReleaseDeploys {
   /** What the stage runs. Several stages: the first HQ records (D16). */
   readonly stage: ReadonlyMap<string, string>;
@@ -258,6 +267,8 @@ export interface ReleaseDeploys {
  * the newest release tag, which is what the broker was asked to deploy rather
  * than what is running. A service whose name is not a commit has no side: it
  * was deployed by hand, and a tag listing a guess is a tag the broker deploys.
+ * HQ names a version `{label} {7 hex}` and compares whole shas only, so the
+ * commit is taken whole from HQ's record of the deploy that names it.
  *
  * With several stages (D16) the first one HQ records wins for a service they
  * both run: the order they were declared in is the group's own, and picking by
@@ -275,12 +286,21 @@ export function releaseDeploys(
       const latest = service.deploy?.latest;
       if (environment.tier === "production" && latest?.state === "failed")
         failed.set(`${service.hostname}@${latest.sha}`, latest.at);
-      const sha = deployedCommit(service.appVersionName);
+      const sha = recordedWhole(deployedCommit(service.appVersionName), service.deploy);
       if (sha === undefined || side.has(service.hostname)) continue;
       side.set(service.hostname, sha);
     }
   }
   return { stage, production, failed };
+}
+
+/** The commit a name spells, whole where HQ's record of the service's deploy names it. */
+function recordedWhole(
+  named: string | undefined,
+  deploy: ServiceDeploys | undefined,
+): string | undefined {
+  if (named === undefined || deploy === undefined) return named;
+  return [deploy.live?.sha, deploy.latest.sha].find((sha) => sameCommit(named, sha)) ?? named;
 }
 
 /**
