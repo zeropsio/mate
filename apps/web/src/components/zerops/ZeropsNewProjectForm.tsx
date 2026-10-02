@@ -35,7 +35,7 @@ import { Label } from "../ui/label";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
 import { Spinner } from "../ui/spinner";
 import { MateFacePicker } from "./MateFacePicker";
-import { PressingPanel, type PressingView } from "./ZeropsEnvironmentCreationDialog";
+import { FormOrPress, type PressingView } from "./ZeropsEnvironmentCreationDialog";
 import { MateNameInput } from "./MateNameInput";
 import { WhatHappensNext } from "./WhatHappensNext";
 import { newProjectNext } from "./whatHappensNext.logic";
@@ -311,11 +311,9 @@ export function ZeropsNewProjectDialog({
   return (
     <Dialog onOpenChange={onOpenChange} open>
       <DialogPopup className="max-w-lg">
-        {pressing === undefined ? (
+        <FormOrPress pressing={pressing}>
           <ZeropsNewProjectForm {...form} />
-        ) : (
-          <PressingPanel pressing={pressing} />
-        )}
+        </FormOrPress>
       </DialogPopup>
     </Dialog>
   );
