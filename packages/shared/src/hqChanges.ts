@@ -12,7 +12,7 @@
  * - `POST /api/mate/changes` {@link OpenChangeRequest} → {@link OpenChangeResponse};
  * - `PATCH /api/mate/changes/:repo/:n` {@link EditChangeRequest} → {@link HqChange};
  * - `POST /api/mate/changes/:repo/:n/attachments`, a PNG → {@link AttachmentResponse};
- * - `GET /api/mate/self` → its state with {@link MateChanges};
+ * - `GET /api/mate/self` → its state (`mateLink.ts` `MateState`), {@link MateChanges} included;
  * - git over HTTPS at `/git/<appId>/<repo>.git`, Basic auth with the user `mate` and the credential
  *   as the password. A Mate fetches its application's repositories and pushes only to the branch of
  *   its own open change, only forward; nobody deletes a branch and `main` moves only by HQ's merge.
@@ -166,7 +166,7 @@ export type MateChange = typeof MateChange.Type;
 
 /**
  * What a Mate's own state carries of its changes, beside its record (`@t3tools/shared/mateLink`
- * `MateState`): `GET /api/mate/self` answers both in one object. The application HQ holds the Mate
+ * `MateState`, which `GET /api/mate/self` answers and its link brings down). The application HQ holds the Mate
  * in, none for a Mate in no application; and in each of that application's repositories, the
  * Mate's latest {@link MATE_CHANGES_PER_REPO} changes, newest first — its open one, if any, is the
  * newest, since a number is opened only while none is.

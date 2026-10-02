@@ -2,8 +2,8 @@
  * HQ's side of a Mate's link (SPEC §3.4, `@t3tools/shared/mateLink`). A Mate server opens it with a
  * ticket minted for its Mate credential (`POST /api/mate/link-ticket`) and keeps it open:
  *
- * - **down**, the Mate's state (`state`) at once and after every change of its record or birth, and
- *   `ping` every 20 s;
+ * - **down**, the Mate's state (`state`) at once and after every change of its record, its birth or
+ *   its changes (`changes.ts`), and `ping` every 20 s;
  * - **up**, `pong`, and its summary (`summary`), kept in memory (`mateLive.ts`) for whoever may
  *   operate the Mate to follow on their structure socket.
  *
@@ -14,7 +14,12 @@
  *
  * @module link
  */
-import { MATE_LINK_FRAME_MAX, type MateLinkDown, MateLinkUp } from "@t3tools/shared/mateLink";
+import {
+  MATE_LINK_FRAME_MAX,
+  type MateLinkDown,
+  MateLinkUp,
+  type MateState,
+} from "@t3tools/shared/mateLink";
 import * as Clock from "effect/Clock";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
@@ -24,6 +29,7 @@ import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 import * as Socket from "effect/unstable/socket/Socket";
 
+import { Changes } from "./changes.ts";
 import { Leader } from "./leader.ts";
 import { MateCredentials } from "./mateCredentials.ts";
 import { MateLive } from "./mateLive.ts";
@@ -53,6 +59,7 @@ export const serveMateLink = (
       const pull = yield* Socket.readerString(socket);
       const live = yield* MateLive;
       const structure = yield* Structure;
+      const changes = yield* Changes;
       const credentials = yield* MateCredentials;
       const leader = yield* Leader;
       const pingEvery = options.pingEvery ?? Duration.seconds(20);
@@ -61,19 +68,24 @@ export const serveMateLink = (
       yield* (yield* LiveSockets).track(close);
       yield* live.connect(projectId);
 
-      const sendState = Effect.flatMap(structure.mateState(projectId), (state) =>
-        Option.isSome(state)
-          ? writer.write(encodeDown({ type: "state", mate: state.value }))
-          : Effect.void,
-      );
+      const sent = yield* Ref.make<string | undefined>(undefined);
+      /** The Mate's state now — its record and its changes — when it differs from the last sent. */
+      const sendState = Effect.gen(function* () {
+        const record = yield* structure.mateState(projectId);
+        if (Option.isNone(record)) return;
+        const mate: MateState = { ...record.value, ...(yield* changes.mateChanges(projectId)) };
+        const frame = encodeDown({ type: "state", mate });
+        if ((yield* Ref.getAndSet(sent, frame)) !== frame) yield* writer.write(frame);
+      });
       const heard = yield* Ref.make(yield* Clock.currentTimeMillis);
 
-      const states = Effect.andThen(
-        sendState,
-        Stream.runForEach(
+      // Every change's tick, starting with the current one: its state at once, then as it moves.
+      const states = Stream.runForEach(
+        Stream.merge(
           Stream.filter(structure.mateChanges, (changed) => changed === projectId),
-          () => sendState,
+          changes.changes,
         ),
+        () => sendState,
       ).pipe(Effect.catch(() => close(1011, "the Mate's state could not be read")));
 
       const listen = Effect.gen(function* () {

@@ -3,7 +3,11 @@
  * A caller's structure over a WebSocket (KONCEPT §3 rule 4: the whole state, then changes by key;
  * after a break, the whole state again). JSON messages:
  *
- * - `{ type: "snapshot", ungrouped, apps }` — exactly what `GET /api/structure` answers;
+ * - `{ type: "snapshot", ungrouped, apps, changes }` — what `GET /api/structure` answers, and
+ *   beside it the changes of every application the caller may read them of, by application id
+ *   (`@t3tools/shared/hqChanges` `ChangesSnapshot`);
+ * - `{ type: "changes", appId, changes }` — one application's changes as the caller now reads them
+ *   (`changes: null` once they no longer may), sent before the structure's own changes of a tick;
  * - `{ type: "change", key, value }` — one application by id as the caller now sees it (`value:
  *   null` once it is gone from their view), or, under the key `ungrouped`, the whole list of the
  *   Mates in no application;
@@ -11,7 +15,7 @@
  *   sees one; the client answers `{ type: "pong" }`. Any message counts: a client silent through
  *   three pings is closed (4408).
  *
- * The view is computed again after every structure change and every 30 s; with roles at most 30 s
+ * The view is computed again after every change of the structure or of a change, and every 30 s; with roles at most 30 s
  * old (`roles.ts`), a role change reaches an open socket within 60 s (SPEC §4). The socket closes
  * with `4401` when the caller's session ends (sign in again), `1001` when this Core stops leading
  * or shuts down (reconnect: another Core leads), `1011` when the view cannot be read (reconnect).
@@ -23,6 +27,7 @@
  */
 import * as NodeCrypto from "node:crypto";
 
+import type { ChangesMessage, ChangesSnapshot } from "@t3tools/shared/hqChanges";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Duration from "effect/Duration";
@@ -36,6 +41,7 @@ import * as Stream from "effect/Stream";
 import * as Socket from "effect/unstable/socket/Socket";
 import type { SqlError } from "effect/unstable/sql/SqlError";
 
+import { Changes } from "./changes.ts";
 import { Structure, type StructureRead } from "./structure.ts";
 import type { ZeropsError } from "./zerops/api.ts";
 
@@ -50,7 +56,8 @@ export type Ending = "session" | "lead";
 type Outgoing = StructureMessage | { readonly type: "end"; readonly ending: Ending };
 
 export type StructureMessage =
-  | ({ readonly type: "snapshot" } & StructureRead)
+  | ({ readonly type: "snapshot"; readonly changes: ChangesSnapshot } & StructureRead)
+  | ChangesMessage
   | { readonly type: "change"; readonly key: string; readonly value: unknown };
 
 /** The key of the Mates in no application; an application's key is its id, never this. */
@@ -73,38 +80,68 @@ export const structureMessages = <R>(
   userId: string,
   ending: Effect.Effect<Ending | undefined, never, R>,
   recheck: Duration.Duration,
-): Stream.Stream<Outgoing, SqlError | ZeropsError, Structure | R> =>
+): Stream.Stream<Outgoing, SqlError | ZeropsError, Structure | Changes | R> =>
   Stream.unwrap(
     Effect.gen(function* () {
       const structure = yield* Structure;
-      const sent = yield* Ref.make<ReadonlyMap<string, string> | undefined>(undefined);
-      return Stream.merge(structure.changes, Stream.tick(recheck)).pipe(
+      const changes = yield* Changes;
+      const sent = yield* Ref.make<
+        | {
+            readonly structure: ReadonlyMap<string, string>;
+            readonly changes: ReadonlyMap<string, string>;
+          }
+        | undefined
+      >(undefined);
+      /** The keys whose value differs between what was sent and what is now. */
+      const differing = (before: ReadonlyMap<string, string>, now: ReadonlyMap<string, string>) =>
+        [...new Set([...before.keys(), ...now.keys()])].filter(
+          (key) => before.get(key) !== now.get(key),
+        );
+      return Stream.merge(
+        Stream.merge(structure.changes, changes.changes),
+        Stream.tick(recheck),
+      ).pipe(
         Stream.mapEffect(() =>
           Effect.gen(function* (): Generator<
-            Effect.Effect<unknown, SqlError | ZeropsError, Structure | R>,
+            Effect.Effect<unknown, SqlError | ZeropsError, Structure | Changes | R>,
             ReadonlyArray<Outgoing>,
             unknown
           > {
             const ends = yield* ending;
             if (ends !== undefined) return [{ type: "end" as const, ending: ends }];
             const view = yield* structure.read(userId);
-            const now = new Map([
-              [UNGROUPED, toJson(view.ungrouped)],
-              ...view.apps.map((app): [string, string] => [app.id, toJson(app)]),
-            ]);
+            const readable = yield* changes.readable(userId);
+            const now = {
+              structure: new Map([
+                [UNGROUPED, toJson(view.ungrouped)],
+                ...view.apps.map((app): [string, string] => [app.id, toJson(app)]),
+              ]),
+              changes: new Map(
+                Object.entries(readable).map(([appId, list]): [string, string] => [
+                  appId,
+                  toJson(list),
+                ]),
+              ),
+            };
             const before = yield* Ref.getAndSet(sent, now);
-            if (before === undefined) return [{ type: "snapshot" as const, ...view }];
-            const keys = new Set([...before.keys(), ...now.keys()]);
-            return [...keys]
-              .filter((key) => before.get(key) !== now.get(key))
-              .map((key) => ({
-                type: "change" as const,
+            if (before === undefined) {
+              return [{ type: "snapshot" as const, ...view, changes: readable }];
+            }
+            return [
+              ...differing(before.changes, now.changes).map((appId): Outgoing => ({
+                type: "changes",
+                appId,
+                changes: readable[appId] ?? null,
+              })),
+              ...differing(before.structure, now.structure).map((key): Outgoing => ({
+                type: "change",
                 key,
                 value:
                   key === UNGROUPED
                     ? view.ungrouped
                     : (view.apps.find((app) => app.id === key) ?? null),
-              }));
+              })),
+            ];
           }),
         ),
         Stream.flatMap((batch) => Stream.fromIterable(batch)),

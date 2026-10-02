@@ -222,10 +222,11 @@ describe("HQ API", () => {
           const owner = yield* socket(
             `/api/structure/ws?ticket=${yield* ticketFor(call, session)}`,
           );
-          assert.deepStrictEqual(
-            yield* owner.next("snapshot"),
-            (yield* call("GET", "/api/structure", { session })).body,
-          );
+          // What `GET /api/structure` answers, and beside it the changes of what the caller reads.
+          assert.deepStrictEqual(yield* owner.next("snapshot"), {
+            ...((yield* call("GET", "/api/structure", { session })).body as object),
+            changes: {},
+          });
           const appId = (
             (yield* call("POST", "/api/apps", { session, body: { name: "Shop" } })).body as {
               readonly id: string;
@@ -284,7 +285,11 @@ describe("HQ API", () => {
           const owner = yield* socket(
             `/api/structure/ws?ticket=${yield* ticketFor(call, session)}`,
           );
-          assert.deepStrictEqual(yield* owner.next("snapshot"), { ungrouped: [], apps: [] });
+          assert.deepStrictEqual(yield* owner.next("snapshot"), {
+            ungrouped: [],
+            apps: [],
+            changes: {},
+          });
           const ada = { name: "Ada", face: "sky:flower" };
           const lone = [{ projectId: "P_MATE", name: "P_MATE", mate: ada }];
 
@@ -365,7 +370,11 @@ describe("HQ API", () => {
         const owner = yield* sessionFor(call, "door-owner");
         const dev = yield* sessionFor(call, "door-dev");
         const devSocket = yield* socket(`/api/structure/ws?ticket=${yield* ticketFor(call, dev)}`);
-        assert.deepStrictEqual(yield* devSocket.next("snapshot"), { ungrouped: [], apps: [] });
+        assert.deepStrictEqual(yield* devSocket.next("snapshot"), {
+          ungrouped: [],
+          apps: [],
+          changes: {},
+        });
         const appId = (
           (yield* call("POST", "/api/apps", { session: owner, body: { name: "Shop" } })).body as {
             readonly id: string;
@@ -411,6 +420,7 @@ describe("HQ API", () => {
         assert.deepStrictEqual(yield* readerSocket.next("snapshot"), {
           ungrouped: [],
           apps: [{ id: appId, name: "Shop", projects: [] }],
+          changes: { [appId]: [] },
         });
 
         // Zerops lowers the reader to no access: the open socket drops the application.
@@ -459,7 +469,11 @@ describe("HQ API", () => {
           const session = yield* sessionFor(call, "door-owner");
           const ticket = yield* ticketFor(call, session);
           const opened = yield* socket(`/api/structure/ws?ticket=${ticket}`);
-          assert.deepStrictEqual(yield* opened.next("snapshot"), { ungrouped: [], apps: [] });
+          assert.deepStrictEqual(yield* opened.next("snapshot"), {
+            ungrouped: [],
+            apps: [],
+            changes: {},
+          });
           assert.deepStrictEqual(
             [
               (yield* socket(`/api/structure/ws?ticket=${ticket}`)).opened,
@@ -690,7 +704,14 @@ describe("HQ API", () => {
             .body as { readonly ticket: string; readonly expiresIn: number };
           assert.strictEqual(ticket.expiresIn, 60);
           const link = yield* socket(`/api/mate/link?ticket=${ticket.ticket}`);
-          const state = { projectId: "P_MATE", name: "Ada", face: "face-1" };
+          // A Mate in no application: no changes beside its record.
+          const state = {
+            projectId: "P_MATE",
+            name: "Ada",
+            face: "face-1",
+            appId: null,
+            changes: [],
+          };
           assert.deepStrictEqual(yield* link.next("state"), {
             mate: { ...state, standupRequestedBy: null, closedOff: false },
           });

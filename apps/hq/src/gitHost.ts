@@ -28,6 +28,7 @@ import * as Ref from "effect/Ref";
 import * as Scope from "effect/Scope";
 import * as Semaphore from "effect/Semaphore";
 import * as Stream from "effect/Stream";
+import * as SubscriptionRef from "effect/SubscriptionRef";
 import type * as HttpServerRequest from "effect/unstable/http/HttpServerRequest";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
 
@@ -52,6 +53,8 @@ export class GitHost extends Context.Service<
     ) => Effect.Effect<void, NotLeader>;
     /** Closes the layer for good: on shutdown, before the lead is given up. */
     readonly close: Effect.Effect<void>;
+    /** Ticks after the log has followed a ref that moved, starting with the current tick. */
+    readonly recorded: Stream.Stream<number>;
   }
 >()("@t3tools/hq/gitHost") {}
 
@@ -106,18 +109,23 @@ export const gitHostLayer = (options: {
           event(repo, "main_moved", null, { old, new: head, by }),
         );
 
+      const ticks = yield* SubscriptionRef.make(0);
+      const tick = SubscriptionRef.update(ticks, (n) => n + 1);
+
       const record = (event: GitEvent) =>
-        leader.write(
-          Effect.gen(function* () {
-            if (event.kind === "pushed") {
-              for (const update of event.updates) {
-                yield* pushed(event.repo, update.ref, update.oldSha, update.newSha, {});
+        leader
+          .write(
+            Effect.gen(function* () {
+              if (event.kind === "pushed") {
+                for (const update of event.updates) {
+                  yield* pushed(event.repo, update.ref, update.oldSha, update.newSha, {});
+                }
+              } else if (event.kind === "main_moved") {
+                yield* mainMoved(event.repo, event.old, event.new, event.by);
               }
-            } else if (event.kind === "main_moved") {
-              yield* mainMoved(event.repo, event.old, event.new, event.by);
-            }
-          }),
-        );
+            }),
+          )
+          .pipe(Effect.andThen(tick));
 
       /** On taking the lead: every repository converged, and what the refs show the log missed. */
       const takeover = (git: HqGit) =>
@@ -158,6 +166,7 @@ export const gitHostLayer = (options: {
               yield* leader.write(pushed(repo, ref, row.head, head.value, { reconciled: true }));
             }
           }
+          yield* tick;
         });
 
       const current = yield* Ref.make<
@@ -254,6 +263,7 @@ export const gitHostLayer = (options: {
             });
           }),
         close: Effect.andThen(Ref.set(stopped, true), shut),
+        recorded: SubscriptionRef.changes(ticks),
       });
     }),
   );

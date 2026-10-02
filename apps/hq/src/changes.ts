@@ -13,6 +13,7 @@ import type { GitError } from "@t3tools/hq-git";
 import {
   type AttachmentResponse,
   type ChangeDetailResponse,
+  type ChangesSnapshot,
   type HqChange,
   type HqChangeComment,
   type HqRepo,
@@ -22,12 +23,14 @@ import {
   type OpenChangeResponse,
   attachmentPath,
 } from "@t3tools/shared/hqChanges";
-import { REASONS, can } from "@t3tools/shared/zeropsPermissions";
+import { type Facts, REASONS, can } from "@t3tools/shared/zeropsPermissions";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
 import * as Semaphore from "effect/Semaphore";
+import * as Stream from "effect/Stream";
+import * as SubscriptionRef from "effect/SubscriptionRef";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
 import type { SqlError } from "effect/unstable/sql/SqlError";
 
@@ -135,6 +138,13 @@ export class Changes extends Context.Service<
       number: number,
       body: string,
     ) => Effect.Effect<HqChangeComment, ReadError | NotLeader>;
+    /**
+     * The changes of every application the person may read them of, by application id: what the
+     * structure socket carries (`stream.ts`).
+     */
+    readonly readable: (userId: string) => Effect.Effect<ChangesSnapshot, SqlError | ZeropsError>;
+    /** Ticks after any change's record moved, starting with the current tick. */
+    readonly changes: Stream.Stream<number>;
     /** A picture of a change, its PNG's bytes. */
     readonly attachment: (
       userId: string,
@@ -240,6 +250,10 @@ export const changesLayer: Layer.Layer<
     const sql = yield* SqlClient.SqlClient;
     // One repository is made at a time: two first deliveries of one name meet here, not in git.
     const making = yield* Semaphore.make(1);
+    const ticks = yield* SubscriptionRef.make(0);
+    /** After a write that changed a change's record has committed. */
+    const touched = <A, E, R>(write: Effect.Effect<A, E, R>) =>
+      Effect.tap(write, () => SubscriptionRef.update(ticks, (n) => n + 1));
 
     const mateApp = (projectId: string, verb: MateVerb) =>
       Effect.gen(function* () {
@@ -271,16 +285,19 @@ export const changesLayer: Layer.Layer<
      * it names an application. Applications are compared by their id's text, which a path may
      * spell any way.
      */
+    /** Whether the person may read the changes of an application of these projects. */
+    const readsChanges = (userId: string, projectIds: ReadonlyArray<string>, facts: Facts) =>
+      can({ kind: "person", userId }, "read_change", { projectIds }, facts);
+
     const personApp = (userId: string, appId: string, verb: "read_change" | "comment_change") =>
       Effect.gen(function* () {
         const projects = yield* sql<{ readonly project_id: string }>`
           SELECT project_id FROM hq_app_project WHERE app_id::text = ${appId}`;
-        const target = { projectIds: projects.map((row) => row.project_id) };
-        const person = { kind: "person", userId } as const;
+        const projectIds = projects.map((row) => row.project_id);
         const decision =
           verb === "read_change"
-            ? can(person, "read_change", target, yield* roles.view)
-            : can(person, "comment_change", target, yield* roles.fresh);
+            ? readsChanges(userId, projectIds, yield* roles.view)
+            : can({ kind: "person", userId }, "comment_change", { projectIds }, yield* roles.fresh);
         if (!decision.allow) {
           yield* Effect.logInfo("change refused", { userId, verb, appId, reason: decision.reason });
           return yield* refuse("forbidden", decision.reason);
@@ -374,33 +391,35 @@ export const changesLayer: Layer.Layer<
         Effect.gen(function* () {
           const appId = yield* mateApp(projectId, "open_change");
           const columns = sql.literal(CHANGE_COLUMNS);
-          return yield* leader.write(
-            Effect.gen(function* () {
-              // The repository's row, locked: its next number is taken by one opening at a time.
-              const repos = yield* sql`
+          return yield* touched(
+            leader.write(
+              Effect.gen(function* () {
+                // The repository's row, locked: its next number is taken by one opening at a time.
+                const repos = yield* sql`
                 SELECT 1 FROM hq_repo WHERE app_id = ${appId}::uuid AND name = ${repo} FOR UPDATE`;
-              if (repos.length === 0) return yield* refuse("repo_not_found", "repo_not_found");
-              const [open] = yield* sql<ChangeRow>`
+                if (repos.length === 0) return yield* refuse("repo_not_found", "repo_not_found");
+                const [open] = yield* sql<ChangeRow>`
                 SELECT ${columns} FROM hq_change
                 WHERE app_id = ${appId}::uuid AND repo = ${repo}
                   AND mate_project_id = ${projectId} AND state = 'open'`;
-              if (open !== undefined) return { change: changeOf(open), created: false };
-              const [made] = yield* sql<ChangeRow>`
+                if (open !== undefined) return { change: changeOf(open), created: false };
+                const [made] = yield* sql<ChangeRow>`
                 INSERT INTO hq_change (app_id, repo, number, mate_project_id, title)
                 SELECT ${appId}::uuid, ${repo}, COALESCE(MAX(number), 0) + 1, ${projectId}, ${title}
                 FROM hq_change WHERE app_id = ${appId}::uuid AND repo = ${repo}
                 RETURNING ${columns}`;
-              // `INSERT … RETURNING` answers the row it inserted, or fails.
-              const change = changeOf(made!);
-              yield* appendEvent(sql, {
-                kind: "opened",
-                appId,
-                repo,
-                number: change.number,
-                data: { mateProjectId: projectId },
-              });
-              return { change, created: true };
-            }),
+                // `INSERT … RETURNING` answers the row it inserted, or fails.
+                const change = changeOf(made!);
+                yield* appendEvent(sql, {
+                  kind: "opened",
+                  appId,
+                  repo,
+                  number: change.number,
+                  data: { mateProjectId: projectId },
+                });
+                return { change, created: true };
+              }),
+            ),
           );
         }),
       mateChanges: (projectId) =>
@@ -434,17 +453,19 @@ export const changesLayer: Layer.Layer<
       editChange: (projectId, repo, number, edit) =>
         Effect.gen(function* () {
           const appId = yield* mateApp(projectId, "edit_change");
-          return yield* leader.write(
-            Effect.gen(function* () {
-              yield* ownOpenChange(appId, projectId, repo, number);
-              const [row] = yield* sql<ChangeRow>`
+          return yield* touched(
+            leader.write(
+              Effect.gen(function* () {
+                yield* ownOpenChange(appId, projectId, repo, number);
+                const [row] = yield* sql<ChangeRow>`
                 UPDATE hq_change
                 SET title = COALESCE(${edit.title ?? null}, title),
                     body = COALESCE(${edit.body ?? null}, body)
                 WHERE app_id = ${appId}::uuid AND repo = ${repo} AND number = ${number}
                 RETURNING ${sql.literal(CHANGE_COLUMNS)}`;
-              return changeOf(row!);
-            }),
+                return changeOf(row!);
+              }),
+            ),
           );
         }),
       attach: (projectId, repo, number, png) =>
@@ -462,6 +483,27 @@ export const changesLayer: Layer.Layer<
             }),
           );
           return { id, path: attachmentPath(appId, repo, number, id) };
+        }),
+      changes: Stream.merge(SubscriptionRef.changes(ticks), gitHost.recorded),
+      readable: (userId) =>
+        Effect.gen(function* () {
+          const view = yield* roles.view;
+          const rows = yield* sql<{ readonly app_id: string; readonly project_id: string | null }>`
+            SELECT a.id::text AS app_id, p.project_id
+            FROM hq_app a LEFT JOIN hq_app_project p ON p.app_id = a.id`;
+          const projects = new Map<string, Array<string>>();
+          for (const row of rows) {
+            const list = projects.get(row.app_id) ?? [];
+            if (row.project_id !== null) list.push(row.project_id);
+            projects.set(row.app_id, list);
+          }
+          const apps = [...projects]
+            .filter(([, projectIds]) => readsChanges(userId, projectIds, view).allow)
+            .map(([appId]) => appId);
+          const changes = yield* windowOf(apps);
+          return Object.fromEntries(
+            apps.map((appId) => [appId, changes.filter((change) => change.appId === appId)]),
+          );
         }),
       listChanges: (userId, appId) =>
         Effect.andThen(personApp(userId, appId, "read_change"), windowOf([appId])),

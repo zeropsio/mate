@@ -15,6 +15,7 @@ import {
   enrollMate,
   sessionFor,
   startCore,
+  ticketFor,
   untilHealth,
 } from "../test/harness/runningCore.ts";
 import { tempPostgresLayer } from "../test/harness/tempPostgres.ts";
@@ -698,6 +699,86 @@ describe("a Mate's changes in HQ", () => {
           assert.strictEqual((yield* call("GET", path)).status, 404, path);
         }
       }),
+    );
+
+    it.effect(
+      "a person's socket carries the changes they read as they move, and a Mate's link its own",
+      () =>
+        Effect.gen(function* () {
+          const { call, fake, origin, socket } = yield* startCore(true);
+          yield* untilHealth(call, "active");
+          const owner = yield* sessionFor(call, "door-owner");
+          const { appId, credential, auth } = yield* mateWithChange(call, fake, owner);
+          const ownerSocket = yield* socket(
+            `/api/structure/ws?ticket=${yield* ticketFor(call, owner)}`,
+          );
+          const dev = yield* sessionFor(call, "door-dev");
+          const devSocket = yield* socket(
+            `/api/structure/ws?ticket=${yield* ticketFor(call, dev)}`,
+          );
+          const ticket = (yield* call("POST", "/api/mate/link-ticket", { headers: auth })).body as {
+            readonly ticket: string;
+          };
+          const link = yield* socket(`/api/mate/link?ticket=${ticket.ticket}`);
+
+          type Change = Record<string, unknown>;
+          const snapshot = (yield* ownerSocket.next("snapshot")) as {
+            readonly changes: Record<string, ReadonlyArray<Change>>;
+          };
+          assert.deepStrictEqual(
+            Object.keys(snapshot.changes).map((key) => [key, snapshot.changes[key]?.length]),
+            [[appId, 1]],
+          );
+          assert.deepStrictEqual(
+            ((yield* devSocket.next("snapshot")) as { readonly changes: object }).changes,
+            {},
+          );
+          const own = (head: string | null) => ({
+            repo: "appdev",
+            number: 1,
+            state: "open",
+            head,
+            mergedSha: null,
+            landedHead: null,
+          });
+          const state = (yield* link.next("state")) as {
+            readonly mate: { readonly appId: string; readonly changes: ReadonlyArray<Change> };
+          };
+          assert.deepStrictEqual([state.mate.appId, state.mate.changes], [appId, [own(null)]]);
+
+          // The Mate pushes: the change's head moves on the socket and down the link.
+          const git = yield* gitClient;
+          yield* git.checked(["clone", remoteOf(origin, credential, appId, "appdev"), "work"]);
+          const work = NodePath.join(git.dir, "work");
+          yield* git.checked(["commit", "--allow-empty", "-m", "Add a login page"], work);
+          yield* git.checked(["push", "origin", "HEAD:refs/heads/mate/P_MATE/1"], work);
+          const head = yield* git.checked(["rev-parse", "HEAD"], work);
+          const pushed = (yield* ownerSocket.next("changes")) as {
+            readonly appId: string;
+            readonly changes: ReadonlyArray<Change>;
+          };
+          assert.deepStrictEqual(
+            [pushed.appId, pushed.changes.map((change) => change["head"])],
+            [appId, [head]],
+          );
+          assert.deepStrictEqual(
+            ((yield* link.next("state")) as { readonly mate: { readonly changes: unknown } }).mate
+              .changes,
+            [own(head)],
+          );
+
+          // Retitled: the socket shows it; the link, whose state it does not touch, stays quiet.
+          yield* call("PATCH", "/api/mate/changes/appdev/1", {
+            headers: auth,
+            body: { title: "Add a login page" },
+          });
+          const retitled = (yield* ownerSocket.next("changes")) as {
+            readonly changes: ReadonlyArray<Change>;
+          };
+          assert.strictEqual(retitled.changes[0]?.["title"], "Add a login page");
+          assert.deepStrictEqual(yield* link.quiet("300 millis"), []);
+          assert.deepStrictEqual(yield* devSocket.quiet("1 millis"), []);
+        }),
     );
   });
 });

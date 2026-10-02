@@ -19,6 +19,7 @@ import {
   type Verb,
   can,
 } from "@t3tools/shared/zeropsPermissions";
+import type { MateChanges } from "@t3tools/shared/hqChanges";
 import type { MateState } from "@t3tools/shared/mateLink";
 import { type RoleProjectKind, isMateKind } from "@t3tools/shared/zeropsRoles";
 import * as Context from "effect/Context";
@@ -71,6 +72,9 @@ export interface AttachInput {
   readonly kind: RoleProjectKind;
   readonly mate?: { readonly name: string; readonly face: string };
 }
+
+/** A Mate's state as the structure holds it: its record and its birth; its changes are `changes.ts`'. */
+export type MateRecordState = Omit<MateState, keyof MateChanges>;
 
 export interface MateRecord {
   readonly projectId: string;
@@ -163,9 +167,11 @@ export class Structure extends Context.Service<
       userId: string,
       projectId: string,
       mark: "standup" | "closed_off",
-    ) => Effect.Effect<MateState, WriteError>;
-    /** A Mate's state as HQ holds it — its record and its birth — when HQ has its record. */
-    readonly mateState: (projectId: string) => Effect.Effect<Option.Option<MateState>, SqlError>;
+    ) => Effect.Effect<MateRecordState, WriteError>;
+    /** A Mate's record and birth, when HQ has its record. */
+    readonly mateState: (
+      projectId: string,
+    ) => Effect.Effect<Option.Option<MateRecordState>, SqlError>;
     /** The projects whose Mate state changes, as they change. */
     readonly mateChanges: Stream.Stream<string>;
     readonly read: (userId: string) => Effect.Effect<StructureRead, SqlError | ZeropsError>;
@@ -248,7 +254,7 @@ export const structureLayer = (options: {
             SELECT name, face, standup_requested_by, closed_off_at IS NOT NULL AS closed_off
             FROM hq_mate WHERE project_id = ${projectId}`,
           (rows) =>
-            Option.map(Option.fromNullishOr(rows[0]), (row): MateState => ({
+            Option.map(Option.fromNullishOr(rows[0]), (row): MateRecordState => ({
               projectId,
               name: row.name,
               face: row.face,
