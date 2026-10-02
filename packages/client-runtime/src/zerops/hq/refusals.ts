@@ -37,6 +37,8 @@ const PERMISSION_WORDS: { readonly [R in Reason]: string } = {
     "You need at least Basic user access to one of this project's Zerops projects to see its changes.",
   slot_taken:
     "This project has one of this kind already. Only an owner or admin of the organization replaces it.",
+  not_app_developer:
+    "You need at least Basic user access to one of this project's Zerops projects to add an environment to it.",
 };
 
 /** HQ's structure's own refusals (`StructureRefused` in `apps/hq/src/structure.ts`), in words. */

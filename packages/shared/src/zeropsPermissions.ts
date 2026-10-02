@@ -151,6 +151,7 @@ export const REASONS = [
   "not_your_app",
   "changes_not_seen",
   "slot_taken",
+  "not_app_developer",
 ] as const;
 
 export type Reason = (typeof REASONS)[number];
@@ -243,13 +244,18 @@ function decide(principal: Principal, request: Request, facts: Facts): Decision 
   const seesApp = (projectIds: ReadonlyArray<string>) =>
     roleAtLeast(member.roleCode, "READ_ONLY") || projectIds.some(readsProject);
   /**
+   * An application is developed with Basic user or above on one of its projects: main's Gitea
+   * write team, who may merge its changes.
+   */
+  const writesApp = (projectIds: ReadonlyArray<string>) =>
+    projectIds.some((projectId) => roleAtLeast(roleOn(projectId), "BASIC_USER"));
+  /**
    * An application's changes are read as main's Gitea read them: from org Read only up, or with
    * Basic user or above on one of its projects — a Read only grant shows the application, not
    * its changes.
    */
   const seesChanges = (projectIds: ReadonlyArray<string>) =>
-    roleAtLeast(member.roleCode, "READ_ONLY") ||
-    projectIds.some((projectId) => roleAtLeast(roleOn(projectId), "BASIC_USER"));
+    roleAtLeast(member.roleCode, "READ_ONLY") || writesApp(projectIds);
   const exists = (projectId: string) =>
     projectOf(projectId) === undefined ? deny("project_gone") : ALLOW;
   /**
@@ -295,13 +301,14 @@ function decide(principal: Principal, request: Request, facts: Facts): Decision 
         return exists(projectId);
       }
       // An environment, by Full access on its project (SPEC §3.3a): only a project held nowhere,
-      // only into an application they see, only into its empty place. Replacing one, or a Mate
-      // turned environment, stays the writers'.
+      // only into an application they develop, only into its empty place. Replacing one, or a
+      // Mate turned environment, stays the writers'.
       if (!roleAtLeast(roleOn(projectId), "ADMIN")) return deny("not_project_admin");
       if (!knownHeld(held)) return deny("unknown_kind");
       if (classChange(held, to)) return deny("kind_class_change");
       if (held !== "none") return deny("not_structure_writer");
       if (!seesApp(appProjectIds)) return deny("app_not_seen");
+      if (!writesApp(appProjectIds)) return deny("not_app_developer");
       if (slotTaken) return deny("slot_taken");
       return exists(projectId);
     }

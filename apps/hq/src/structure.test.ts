@@ -36,8 +36,8 @@ const project = (id: string, userRoles: ZeropsProject["userRoles"] = []): Zerops
 
 /**
  * owner, admin; dev is NO_ACCESS with a grant on P_MATE; reader is org READ_ONLY; nobody is
- * NO_ACCESS; maker is NO_ACCESS who can create projects, Basic user on their new Mate P_OWN and
- * Read only on P_TEAM; basic is org Basic user who can create projects, with no grant of their own.
+ * NO_ACCESS; maker is NO_ACCESS who can create projects, Basic user on their new Mate P_OWN and on
+ * P_DEV, and Read only on P_TEAM; basic is org Basic user who can create projects, with no grant of their own.
  */
 type Org = Omit<OrgView, "freshness">;
 
@@ -60,6 +60,8 @@ const VIEW: Org = {
     project("P_PROD2"),
     project("P_OWN", [{ clientUserId: "C-maker", roleCode: "BASIC_USER" }]),
     project("P_TEAM", [{ clientUserId: "C-maker", roleCode: "READ_ONLY" }]),
+    // maker develops it: an application holding it is maker's to add an environment to.
+    project("P_DEV", [{ clientUserId: "C-maker", roleCode: "BASIC_USER" }]),
     project("P_OTHER"),
     // maker made this Mate: Zerops left them its OWNER.
     project("P_OWNED", [{ clientUserId: "C-maker", roleCode: "OWNER" }]),
@@ -133,13 +135,22 @@ describe("structure", () => {
           Effect.gen(function* () {
             const structure = yield* Structure;
             const shop = yield* structure.createApp("owner", "Shop");
-            // maker sees Shop through P_TEAM, its stage; maker is P_OWNED's owner (SPEC §3.3a).
-            yield* structure.attachProject("owner", shop.id, {
+            const team = yield* structure.createApp("owner", "Team");
+            // maker develops Shop through P_DEV, its stage, and only sees Team through P_TEAM;
+            // maker is P_OWNED's owner (SPEC §3.3a).
+            yield* structure.attachProject("owner", shop.id, { projectId: "P_DEV", kind: "stage" });
+            yield* structure.attachProject("owner", team.id, {
               projectId: "P_TEAM",
               kind: "stage",
             });
             assert.deepStrictEqual(
               yield* Effect.all([
+                reasonOf(
+                  structure.attachProject("maker", team.id, {
+                    projectId: "P_OWNED",
+                    kind: "production",
+                  }),
+                ),
                 reasonOf(
                   structure.attachProject("maker", shop.id, {
                     projectId: "P_OWNED",
@@ -156,10 +167,45 @@ describe("structure", () => {
                   }),
                 ),
               ]),
-              ["slot_taken", "not_project_admin", "ok"],
+              ["not_app_developer", "slot_taken", "not_project_admin", "ok"],
             );
           }),
         ),
+    );
+
+    it.effect("a devstage holds the stage's place; a project Zerops no longer has holds none", () =>
+      withStructure((view) =>
+        Effect.gen(function* () {
+          const structure = yield* Structure;
+          const shop = yield* structure.createApp("owner", "Shop");
+          // maker develops Shop through P_DEV, its production; P_MATE is its devstage.
+          yield* structure.attachProject("owner", shop.id, {
+            projectId: "P_DEV",
+            kind: "production",
+          });
+          yield* structure.attachProject("owner", shop.id, {
+            projectId: "P_MATE",
+            kind: "devstage",
+            mate: { name: "Ada", face: "face-1" },
+          });
+          const attach = (projectId: string, kind: "stage" | "production") =>
+            reasonOf(structure.attachProject("maker", shop.id, { projectId, kind }));
+          assert.strictEqual(yield* attach("P_OWNED", "stage"), "slot_taken");
+          assert.strictEqual(yield* attach("P_OWNED", "production"), "slot_taken");
+          // Zerops no longer has the production: its place is free, and its row goes.
+          yield* Ref.update(view, (org) => ({
+            ...org,
+            projects: org.projects.filter((project) => project.id !== "P_DEV"),
+          }));
+          // maker still develops Shop: P_OWN is its Mate now.
+          yield* structure.attachProject("owner", shop.id, {
+            projectId: "P_OWN",
+            kind: "mate",
+            mate: { name: "Bo", face: "face-2" },
+          });
+          assert.strictEqual(yield* attach("P_OWNED", "production"), "ok");
+        }),
+      ),
     );
 
     it.effect("of attaches racing for one empty place, exactly one lands", () =>
@@ -167,9 +213,9 @@ describe("structure", () => {
         Effect.gen(function* () {
           const structure = yield* Structure;
           const shop = yield* structure.createApp("owner", "Shop");
-          // maker sees Shop through P_TEAM, its production, and owns the racing projects.
+          // maker develops Shop through P_DEV, its production, and owns the racing projects.
           yield* structure.attachProject("owner", shop.id, {
-            projectId: "P_TEAM",
+            projectId: "P_DEV",
             kind: "production",
           });
           const racers = ["P_RACE1", "P_RACE2", "P_RACE3", "P_RACE4", "P_RACE5", "P_RACE6"];
@@ -195,9 +241,9 @@ describe("structure", () => {
         Effect.gen(function* () {
           const structure = yield* Structure;
           const shop = yield* structure.createApp("owner", "Shop");
-          // maker sees Shop through P_TEAM, its production, and owns P_RACE1, held nowhere.
+          // maker develops Shop through P_DEV, its production, and owns P_RACE1, held nowhere.
           yield* structure.attachProject("owner", shop.id, {
-            projectId: "P_TEAM",
+            projectId: "P_DEV",
             kind: "production",
           });
           const sql = yield* SqlClient.SqlClient;

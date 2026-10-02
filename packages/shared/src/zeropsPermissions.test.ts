@@ -12,7 +12,7 @@ import {
 
 /**
  * The person `U` (member row `C-U`) and one target project `P`; beside it `P_SEEN` (U reads it
- * through a grant) and `P_HIDDEN` (a grant of none). `OTHER`, an active org owner with an owner's
+ * through a grant), `P_DEV` (U develops it: a Basic user grant) and `P_HIDDEN` (a grant of none). `OTHER`, an active org owner with an owner's
  * grant on P, is there so that nothing of anyone else's ever counts as U's.
  */
 interface Point {
@@ -66,6 +66,7 @@ const factsOf = (point: Point): Facts<"fresh"> => ({
         ]
       : []),
     { id: "P_SEEN", userRoles: [{ clientUserId: "C-U", roleCode: "READ_ONLY" }] },
+    { id: "P_DEV", userRoles: [{ clientUserId: "C-U", roleCode: "BASIC_USER" }] },
     { id: "P_HIDDEN", userRoles: [{ clientUserId: "C-U", roleCode: "NO_ACCESS" }] },
   ],
 });
@@ -353,22 +354,40 @@ const TABLES: Readonly<Record<Verb, ReadonlyArray<Row>>> = {
       "app_not_seen",
     ],
     [
-      "P's admin, a stage into an empty place of an application they see",
+      "P's admin, a stage into an empty place of an application they develop",
+      P_ADMIN,
+      place("attach", "none", "stage", ["P_DEV"]),
+      "allow",
+    ],
+    [
+      "P's admin, a stage into an application they only see",
       P_ADMIN,
       place("attach", "none", "stage", ["P_SEEN"]),
-      "allow",
+      "not_app_developer",
     ],
     [
       "a Developer attaches their new project as the production of an application without one",
       MAKER,
-      place("attach", "none", "production", ["P_SEEN"]),
+      place("attach", "none", "production", ["P_DEV"]),
       "allow",
     ],
     [
       "a Developer, the application's production taken",
       MAKER,
-      place("attach", "none", "production", ["P_SEEN"], true),
+      place("attach", "none", "production", ["P_DEV"], true),
       "slot_taken",
+    ],
+    [
+      "a Developer of an application they only see",
+      MAKER,
+      place("attach", "none", "production", ["P_SEEN"]),
+      "not_app_developer",
+    ],
+    [
+      "a Developer's own Mate into an application they only see: seeing it is enough",
+      MAKER,
+      place("attach", "mate", "mate", ["P_SEEN"]),
+      "allow",
     ],
     [
       "Read only on the project",
@@ -856,7 +875,7 @@ const ROLES = ["NO_ACCESS", "READ_ONLY", "BASIC_USER", "ADMIN", "OWNER", "FUTURE
 const RANKED = ["NO_ACCESS", "READ_ONLY", "BASIC_USER", "ADMIN", "OWNER"] as const;
 const HELD = ["none", "mate", "devstage", "stage", "production", "FUTURE"] as const;
 const TO = ["mate", "devstage", "stage", "production", "FUTURE"] as const;
-const APPS = [[], ["P"], ["P_SEEN"], ["P_HIDDEN"]] as const;
+const APPS = [[], ["P"], ["P_SEEN"], ["P_DEV"], ["P_HIDDEN"]] as const;
 
 const POINTS: ReadonlyArray<Point> = ROLES.flatMap((orgRole) =>
   [null, ...ROLES].flatMap((override) =>
@@ -1133,13 +1152,30 @@ describe("can — over the whole input space", () => {
               outcome: outcome(decide(PERSON, place("attach", held, to, app, taken), point)),
             })),
           );
+          // Who sees the application, and who develops it: a role on one of its projects (P's
+          // is the point's own; P_SEEN is Read only, P_DEV Basic user, P_HIDDEN none), or for
+          // seeing, the org's Read only.
+          const roleIn = (projectId: string) =>
+            projectId === "P"
+              ? effective(point)
+              : RANKED.indexOf(
+                  ({ P_SEEN: "READ_ONLY", P_DEV: "BASIC_USER", P_HIDDEN: "NO_ACCESS" } as const)[
+                    projectId as "P_SEEN" | "P_DEV" | "P_HIDDEN"
+                  ],
+                );
+          const sees =
+            RANKED.indexOf(point.orgRole as (typeof RANKED)[number]) >= 1 ||
+            app.some((projectId) => roleIn(projectId) >= 1);
+          const develops = app.some((projectId) => roleIn(projectId) >= 2);
           for (const { held, taken, outcome: decision } of decisions) {
             if (decision === "allow") {
-              expect([held, taken, effective(point) >= RANKED.indexOf("ADMIN")]).toEqual([
-                "none",
-                false,
-                true,
-              ]);
+              expect([
+                held,
+                taken,
+                effective(point) >= RANKED.indexOf("ADMIN"),
+                sees,
+                develops,
+              ]).toEqual(["none", false, true, true, true]);
             }
           }
           // Without Full access on the project, neither its kind nor the place shows.
