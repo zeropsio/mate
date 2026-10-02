@@ -122,30 +122,6 @@ export interface GiteaCommit {
   readonly files?: ReadonlyArray<string> | undefined;
 }
 
-/**
- * One file a pull request changes, with the lines it adds and removes —
- * `GET /repos/{o}/{r}/pulls/{index}/files`.
- */
-export interface GiteaChangedFile {
-  /** Its path after the change; a deleted file's last path. */
-  readonly filename: string;
-  /** The path it had before a rename or a copy; absent otherwise. */
-  readonly previousFilename: string | undefined;
-  /** Gitea's word: `added`, `modified`, `deleted`, `renamed`, `copied`, `changed`. */
-  readonly status: string;
-  readonly additions: number;
-  readonly deletions: number;
-}
-
-/** Gitea's own shape for a changed file. */
-interface GiteaChangedFileWire {
-  readonly filename?: string | undefined;
-  readonly previous_filename?: string | undefined;
-  readonly status?: string | undefined;
-  readonly additions?: number | undefined;
-  readonly deletions?: number | undefined;
-}
-
 /** One file a commit touched. */
 export interface GiteaCommitFile {
   readonly filename: string;
@@ -472,25 +448,6 @@ export interface GiteaClient {
    * was shown; a head that moved since is refused with `409 head out of date`.
    */
   mergePullRequest(owner: string, repo: string, index: number, head: string): Promise<void>;
-  /**
-   * Every file a pull request changes, with its +/−, page by page — what a review lists before
-   * anyone merges it.
-   */
-  pullRequestFiles(
-    owner: string,
-    repo: string,
-    index: number,
-  ): Promise<ReadonlyArray<GiteaChangedFile>>;
-  /**
-   * The pull request's unified diff, as git writes it (`/pulls/{index}.diff`), read no further
-   * than `maxBytes`: a change that regenerates a lockfile can run to hundreds of megabytes.
-   */
-  pullRequestDiff(
-    owner: string,
-    repo: string,
-    index: number,
-    maxBytes: number,
-  ): Promise<GiteaDiffText>;
 
   /**
    * A picture this Gitea serves — an attachment of a change, its description's screenshots — read
@@ -892,44 +849,6 @@ export function createGiteaClient(options: GiteaClientOptions): GiteaClient {
         "merge the pull request",
       ),
 
-    pullRequestFiles: async (owner, repo, index) =>
-      (
-        await paged<GiteaChangedFileWire>(
-          {
-            method: "GET",
-            path: `/repos/${enc(owner)}/${enc(repo)}/pulls/${String(index)}/files`,
-          },
-          "list the pull request's files",
-        )
-      )
-        .filter((file) => (file.filename ?? "").length > 0)
-        .map((file) => ({
-          filename: file.filename ?? "",
-          previousFilename:
-            file.previous_filename === undefined || file.previous_filename.length === 0
-              ? undefined
-              : file.previous_filename,
-          status: file.status ?? "modified",
-          additions: file.additions ?? 0,
-          deletions: file.deletions ?? 0,
-        })),
-
-    pullRequestDiff: (owner, repo, index, maxBytes) =>
-      send(
-        {
-          method: "GET",
-          path: `/repos/${enc(owner)}/${enc(repo)}/pulls/${String(index)}.diff`,
-          accept: "text/plain",
-          // A change of fifty files is a long answer on a slow link; only a diff that stops
-          // arriving ends, as a job's log does.
-          deadline: "idle",
-        },
-        async (response, arrived) => {
-          if (!response.ok) await fail(response, "hand over the pull request's diff");
-          return textUpTo(response, arrived, maxBytes);
-        },
-      ),
-
     picture: (url) => {
       if (!onOrigin(url, options.origin)) {
         return Promise.reject(new GiteaApiError("That picture is not on this Gitea.", 0));
@@ -1153,46 +1072,6 @@ async function blobOf(response: Response, arrived: () => void): Promise<Blob> {
     parts.push(new Uint8Array(value));
   }
   return new Blob(parts, { type });
-}
-
-/** A diff as far as it was read: `cut` where it went on past what was read. */
-export interface GiteaDiffText {
-  readonly text: string;
-  readonly cut: boolean;
-}
-
-/**
- * The body as text, no further than `maxBytes`: past them the read stops, and the rest of the
- * body is never fetched. The text may end inside a line, or a character, where it was cut.
- */
-async function textUpTo(
-  response: Response,
-  arrived: () => void,
-  maxBytes: number,
-): Promise<GiteaDiffText> {
-  if (response.body === null) {
-    const text = await response.text();
-    return text.length > maxBytes
-      ? { text: text.slice(0, maxBytes), cut: true }
-      : { text, cut: false };
-  }
-  const reader = response.body.getReader();
-  const decoder = new TextDecoder();
-  let text = "";
-  let bytes = 0;
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) return { text: text + decoder.decode(), cut: false };
-    arrived();
-    const room = maxBytes - bytes;
-    if (value.byteLength > room) {
-      text += decoder.decode(value.subarray(0, room));
-      await reader.cancel().catch(() => undefined);
-      return { text, cut: true };
-    }
-    bytes += value.byteLength;
-    text += decoder.decode(value, { stream: true });
-  }
 }
 
 /** The body as text, saying each time more of it arrived. */

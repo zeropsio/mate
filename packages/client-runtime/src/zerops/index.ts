@@ -438,6 +438,12 @@ export {
   type RollbackReviewInput,
 } from "./reviewVerdict.ts";
 export {
+  changeReadout,
+  type ChangeReadout,
+  type ChangeReadoutCommit,
+  type ChangeReadoutFile,
+} from "./changeReadout.ts";
+export {
   changeFileParts,
   parseChangeDiff,
   type ChangeDiffFile,
@@ -452,14 +458,12 @@ export {
   type GiteaActionJob,
   type GiteaActionRun,
   type GiteaBranch,
-  type GiteaChangedFile,
   type GiteaClient,
   type GiteaClientOptions,
   type GiteaCommit,
   type GiteaCommitDetail,
   type GiteaCommitFile,
   type GiteaCommitStatus,
-  type GiteaDiffText,
   type GiteaFile,
   type GiteaFileChange,
   type GiteaIssueComment,

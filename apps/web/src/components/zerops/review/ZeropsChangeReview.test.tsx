@@ -3,8 +3,8 @@
  * merge did to the project's environments, from the files it changed, and never offers a release;
  * a code change still hands over to the release production waits for.
  */
-import type { FlowPullRequest, GiteaChangedFile } from "@t3tools/client-runtime/zerops";
-import type { HqChange } from "@t3tools/shared/hqChanges";
+import { changeReadout, type FlowPullRequest } from "@t3tools/client-runtime/zerops";
+import type { ChangeFile, HqChange } from "@t3tools/shared/hqChanges";
 import { act, createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
@@ -51,14 +51,8 @@ const hq = vi.hoisted(() => ({
 }));
 vi.mock("~/zerops/accountHq", () => ({ useOfficialHq: () => hq }));
 vi.mock("@tanstack/react-router", () => ({ useRouter: () => ({ navigate: async () => {} }) }));
-vi.mock("~/zerops/useZeropsChangeReadout", () => ({
-  useZeropsChangeReadout: () => ({
-    files: { kind: "reading" },
-    diff: { kind: "none" },
-    commits: { kind: "reading" },
-    mainSince: { kind: "none" },
-    retry: () => undefined,
-  }),
+vi.mock("~/zerops/useZeropsChangeDetail", () => ({
+  useZeropsChangeDetail: () => ({ readout: { kind: "reading" }, retry: () => undefined }),
 }));
 vi.mock("~/zerops/useZeropsChangeComments", () => ({
   useZeropsChangeComments: () => ({
@@ -105,24 +99,33 @@ function merged(over: Partial<FlowPullRequest> = {}): FlowPullRequest {
 
 const recipe = merged({ repository: "group", kind: "recipe", line: "#7 · ada" });
 
-const changed = (filename: string): GiteaChangedFile => ({
-  filename,
-  previousFilename: undefined,
-  status: "modified",
-  additions: 6,
-  deletions: 0,
+const MAIN = "a".repeat(40);
+const changed = (path: string): ChangeFile => ({
+  path,
+  added: 6,
+  deleted: 0,
+  hunks: "",
+  binary: false,
+  truncated: false,
 });
 
 /** The review of `pull` in a project with a stage and a production two changes behind `main`. */
-function render(pull: FlowPullRequest, files: ReadonlyArray<GiteaChangedFile>): string {
+function render(pull: FlowPullRequest, files: ReadonlyArray<ChangeFile>): string {
   const props: ChangeReviewViewProps = {
     pull,
     mate: undefined,
     readout: {
-      files: { kind: "read", value: files },
-      diff: { kind: "none" },
-      commits: { kind: "read", value: [] },
-      mainSince: { kind: "none" },
+      kind: "read",
+      value: changeReadout({
+        change: {} as HqChange,
+        mainHead: MAIN,
+        mergeBase: MAIN,
+        mergeability: { kind: "clean" },
+        files,
+        filesTruncated: false,
+        commits: [],
+        commitsTruncated: false,
+      }),
     },
     comments: {
       state: { kind: "read", comments: [] },

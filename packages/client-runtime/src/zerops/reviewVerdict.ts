@@ -405,7 +405,7 @@ function changeVerdictOf(input: ChangeReviewInput): {
         state: "checking",
         tone: "busy",
         title: "Checking whether it merges cleanly",
-        why: "Gitea works it out again after every push",
+        why: "HQ works it out after every push",
         fix: undefined,
       },
     };

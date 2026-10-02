@@ -5,7 +5,6 @@ import {
   REVIEW_DIFF_LINES_MAX,
   REVIEW_DIFF_LINES_SHOWN,
   absoluteDescription,
-  changeConflict,
   changeFileLetter,
   changeRunMessage,
   commitFold,
@@ -13,7 +12,6 @@ import {
   descriptionPicture,
   focusesPrimaryLate,
   diffFold,
-  giteaFileUrl,
   keyStaysInReview,
   pressesPrimary,
   changeReadVerdict,
@@ -274,7 +272,7 @@ describe("runWords: what it does, in the Mate's words (R3)", () => {
   });
 });
 
-describe("diffFold: a long file's diff folds, the fold opens, and past what fits it says where the rest is (D4)", () => {
+describe("diffFold: a long file's diff folds, the fold opens, and past what fits it says so (D4)", () => {
   const SHOWN = REVIEW_DIFF_LINES_SHOWN;
   const MAX = REVIEW_DIFF_LINES_MAX;
   it.each<[string, { total: number; all: boolean; cut: boolean }, ReturnType<typeof diffFold>]>([
@@ -290,12 +288,12 @@ describe("diffFold: a long file's diff folds, the fold opens, and past what fits
       { shown: SHOWN + 1, rest: undefined },
     ],
     [
-      "one too long to show here: the rest is on Gitea",
+      "one too long to show here",
       { total: MAX + 1, all: false, cut: false },
       {
         shown: SHOWN,
         rest: {
-          kind: "gitea",
+          kind: "cut",
           words: `${String(MAX + 1 - SHOWN)} more lines, too many to show here.`,
         },
       },
@@ -303,12 +301,12 @@ describe("diffFold: a long file's diff folds, the fold opens, and past what fits
     [
       "one the read stopped inside, short",
       { total: 40, all: false, cut: true },
-      { shown: 40, rest: { kind: "gitea", words: "The rest is too long to read here." } },
+      { shown: 40, rest: { kind: "cut", words: "The rest is too long to read here." } },
     ],
     [
       "one the read stopped inside, opened",
       { total: SHOWN + 1, all: true, cut: true },
-      { shown: SHOWN + 1, rest: { kind: "gitea", words: "The rest is too long to read here." } },
+      { shown: SHOWN + 1, rest: { kind: "cut", words: "The rest is too long to read here." } },
     ],
     [
       "one too long to show that the read stopped inside",
@@ -316,33 +314,13 @@ describe("diffFold: a long file's diff folds, the fold opens, and past what fits
       {
         shown: SHOWN,
         rest: {
-          kind: "gitea",
+          kind: "cut",
           words: `${String(MAX + 1 - SHOWN)}+ more lines, too many to show here.`,
         },
       },
     ],
   ])("%s", (_case, input, fold) => {
     expect(diffFold(input)).toEqual(fold);
-  });
-});
-
-describe("giteaFileUrl: a file's diff on Gitea, where the review cannot show it all", () => {
-  it.each([
-    [
-      "the change's files page, at the file",
-      "https://git.example.test/acme/appdev/pulls/2",
-      "src/server/index.ts",
-      "https://git.example.test/acme/appdev/pulls/2/files#diff-408bfb63e4d90c09d55141f33cb31d40842d79c0",
-    ],
-    [
-      "a path with more than ASCII in it",
-      "https://git.example.test/acme/appdev/pulls/2",
-      "docs/café menu.md",
-      "https://git.example.test/acme/appdev/pulls/2/files#diff-703f1bfa43b096a5c1ef12d5a2c86f9c593d2952",
-    ],
-    ["nothing where the change has no page", undefined, "src/server/index.ts", undefined],
-  ])("%s", (_case, pullUrl, path, url) => {
-    expect(giteaFileUrl(pullUrl, path)).toBe(url);
   });
 });
 
@@ -459,69 +437,6 @@ describe("releaseChangeRows: what goes out, one row per change", () => {
       marks: new Map(),
     });
     expect(row?.mateProjectId).toBe(mate);
-  });
-});
-
-describe("changeConflict: which files main moved under a change that no longer merges", () => {
-  const files = [{ filename: "src/server/index.ts" }, { filename: "src/routes/status.ts" }];
-  const HEAD = "c".repeat(40);
-  const routes = {
-    sha: "a".repeat(40),
-    subject: "Routes (#3)",
-    at: "2026-09-29T07:00:00Z",
-    files: ["src/server/index.ts"],
-  };
-  const tidy = {
-    sha: "b".repeat(40),
-    subject: "Tidy (#4)",
-    at: "2026-09-29T08:00:00Z",
-    files: ["README.md"],
-  };
-  // main's head, the newest of them.
-  const health = {
-    sha: HEAD,
-    subject: "Health routes (#5)",
-    at: "2026-09-29T09:40:00Z",
-    files: ["src/server/index.ts"],
-  };
-  const oldestFirst = [routes, tidy, health];
-  const newest = {
-    files: ["src/server/index.ts"],
-    by: { subject: "Health routes (#5)", at: "2026-09-29T09:40:00Z" },
-  };
-  it.each([
-    [
-      "names the overlap and the newest commit that made it, main's commits oldest first",
-      { mergeability: "conflicting", files, mainSince: oldestFirst, head: HEAD },
-      newest,
-    ],
-    [
-      "names the same newest commit with main's commits newest first",
-      { mergeability: "conflicting", files, mainSince: [health, tidy, routes], head: HEAD },
-      newest,
-    ],
-    [
-      "names no commit where main's head is not among them to tell which is newest",
-      { mergeability: "conflicting", files, mainSince: oldestFirst, head: "d".repeat(40) },
-      { files: ["src/server/index.ts"], by: undefined },
-    ],
-    [
-      "says nothing for a change that merges",
-      { mergeability: "mergeable", files, mainSince: oldestFirst, head: HEAD },
-      undefined,
-    ],
-    [
-      "waits for main's side",
-      { mergeability: "conflicting", files, mainSince: undefined, head: HEAD },
-      undefined,
-    ],
-    [
-      "finds no overlap where main's commits named no files",
-      { mergeability: "conflicting", files, mainSince: [{ sha: HEAD, subject: "x" }], head: HEAD },
-      { files: [], by: undefined },
-    ],
-  ])("%s", (_name, input, expected) => {
-    expect(changeConflict(input)).toEqual(expected);
   });
 });
 

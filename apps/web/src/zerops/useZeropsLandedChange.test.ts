@@ -13,10 +13,10 @@ import {
  * What HQ answers each read of the change, in order — the last answer repeats — and whether the
  * organization's official HQ is known yet.
  */
-type Answer = "change" | "absent" | "unavailable" | "forbidden";
+type Answer = "change" | "unpushed" | "absent" | "unavailable" | "forbidden";
 const hq = vi.hoisted(() => ({
   official: false,
-  answers: [] as Array<"change" | "absent" | "unavailable" | "forbidden">,
+  answers: [] as Array<"change" | "unpushed" | "absent" | "unavailable" | "forbidden">,
   reads: 0,
 }));
 
@@ -53,6 +53,9 @@ const api: Pick<HqApi, "change"> = {
         code: "network",
         message: "HQ could not be reached.",
       });
+    }
+    if (answer === "unpushed") {
+      return { change: { ...CHANGE, state: "open", head: null } } as ChangeDetailResponse;
     }
     return { change: CHANGE } as ChangeDetailResponse;
   },
@@ -204,6 +207,12 @@ describe("useZeropsLandedChange", () => {
     const seen = await settle({ ...LINK, number: 999 }, true);
     expect(seen.at(-1)).toEqual({ kind: "gone" });
     expect(hq.reads).toBe(1 + LANDED_CHANGE_RETRY_MS.length);
+  });
+
+  it("draws no change no push reached, as nothing else does", async () => {
+    hq.answers = ["unpushed"];
+    const seen = await settle(LINK, true);
+    expect(seen.at(-1)).toEqual({ kind: "gone" });
   });
 
   it("says why when HQ will not let the person read it", async () => {

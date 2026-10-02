@@ -1,10 +1,9 @@
 /**
  * A change's review: a pull request, read before it is merged (R2–R6).
  *
- * The verdict comes from the flow the moment it opens — the flow already knows whether the change
- * merges, and carries the change's description — and
- * what the flow does not carry is read as it opens (`useZeropsChangeReadout`): its files, the
- * commits it squashes, and what `main` changed under it; its diff once a file is opened. The run
+ * Its row comes from the flow the moment it opens, with the change's description; what the flow
+ * does not carry is HQ's detail of it, read as it opens (`useZeropsChangeDetail`): its files with
+ * their diffs, the commits it squashes, how it merges and whether `main` moved on under it. The run
  * that made it is its Mate's newest answer linking it: what it said stands in for a description
  * nobody wrote.
  *
@@ -24,10 +23,10 @@ import {
   recipeReach,
   releaseContentsCommits,
   REVIEW_RELEASE_LABEL,
+  type ChangeReadout,
+  type ChangeReadoutCommit,
   type ChangeRemark,
   type FlowPullRequest,
-  type GiteaChangedFile,
-  type GiteaCommit,
   type GroupEnvironmentTier,
 } from "@t3tools/client-runtime/zerops";
 import type { MateShapeId, MateTintId } from "@t3tools/shared/brand";
@@ -44,11 +43,7 @@ import {
 } from "~/zerops/projectFlowContext";
 import type { ReviewTarget } from "~/zerops/review";
 import { useAskMate } from "~/zerops/useAskMate";
-import {
-  useZeropsChangeReadout,
-  type ChangeDiffRead,
-  type ReadoutPart,
-} from "~/zerops/useZeropsChangeReadout";
+import { useZeropsChangeDetail, type ReadoutPart } from "~/zerops/useZeropsChangeDetail";
 import {
   useZeropsChangeComments,
   type ZeropsChangeComments,
@@ -62,9 +57,7 @@ import { useZeropsReviewMates } from "~/zerops/useZeropsReviewMates";
 
 import { MateFace } from "../primitives";
 import {
-  changeConflict,
   changeReadVerdict,
-  giteaFileUrl,
   reviewKindLine,
   sizeWords,
   type ReviewFrame,
@@ -224,7 +217,6 @@ function ChangeReviewData({
   const askMate = useAskMate();
   const askMateToFix = useAskMateToFix();
   const mates = useZeropsReviewMates(target.groupId);
-  const [diffWanted, setDiffWanted] = useState(false);
   const pictures = useGiteaPictureSource(flowValue.giteaOrigin);
 
   const mate = pull.mateProjectId === undefined ? undefined : mates.get(pull.mateProjectId);
@@ -236,16 +228,11 @@ function ChangeReviewData({
       : { projectId: pull.mateProjectId, groupId: target.groupId },
   );
   const mine = fixers.some((option) => option.mateProjectId === pull.mateProjectId);
-  const readout = useZeropsChangeReadout({
-    giteaOrigin: flowValue.giteaOrigin,
-    owner,
-    repository: pull.repository,
-    number: pull.number,
-    headSha: pull.headSha,
-    baseBranch: pull.baseBranch,
-    mergeBase: pull.mergeBase,
-    baseSha: pull.baseSha,
-    diff: diffWanted,
+  const detail = useZeropsChangeDetail({
+    link: { appId: target.groupId, repo: pull.repository, number: pull.number },
+    head: pull.headSha,
+    // `main` moves only by HQ's merge, which lands a change: the newest one's commit says where.
+    main: flow?.merged[0]?.mergeCommitSha,
   });
   const run = useZeropsChangeRun({
     mateProjectId: pull.mateProjectId,
@@ -324,14 +311,11 @@ function ChangeReviewData({
         if (refusal === null) onClose();
       }}
       onClose={onClose}
-      onRetry={readout.retry}
+      onRetry={detail.retry}
       onFix={(problem) => {
         if (pull.mateProjectId === undefined) return;
         askMateToFix(pull.mateProjectId, problem);
         onClose();
-      }}
-      onOpenFile={() => {
-        setDiffWanted(true);
       }}
       onOpenRun={
         runRef === undefined
@@ -349,7 +333,7 @@ function ChangeReviewData({
       }}
       pictures={pictures}
       pull={pull}
-      readout={readout}
+      readout={detail.readout}
       run={{ words: run.words, reading: run.reading && !runGaveUp }}
       titleId={titleId}
       waitingForProduction={
@@ -380,12 +364,8 @@ export interface ChangeReviewViewProps {
     | undefined;
   /** The project's Mates by project, so a remark a Mate made wears its face. */
   readonly mateFaces?: ReadonlyMap<string, MateFaceOf> | undefined;
-  readonly readout: {
-    readonly files: ReadoutPart<ReadonlyArray<GiteaChangedFile>>;
-    readonly diff: ReadoutPart<ChangeDiffRead>;
-    readonly commits: ReadoutPart<ReadonlyArray<GiteaCommit>>;
-    readonly mainSince: ReadoutPart<ReadonlyArray<GiteaCommit>>;
-  };
+  /** HQ's detail of it: its files and diffs, its commits, how it merges. */
+  readonly readout: ReadoutPart<ChangeReadout>;
   /** What was said on it, and the way to say something back. */
   readonly comments: ZeropsChangeComments;
   readonly remarks: ReadonlyArray<ChangeRemark>;
@@ -407,8 +387,6 @@ export interface ChangeReviewViewProps {
   readonly titleId?: string | undefined;
   /** Files whose diff stands open from the start — the harness's. */
   readonly initiallyOpen?: ReadonlyArray<string> | undefined;
-  /** A file was opened: its diff is wanted. */
-  readonly onOpenFile?: (() => void) | undefined;
   readonly onFix: (problem: FixProblem) => void;
   /** Keeps the words on the change and hands them to its Mate, who changes the code. */
   readonly onAsk: (said: string) => Promise<void>;
@@ -425,54 +403,55 @@ export interface ChangeReviewViewProps {
 
 export function ChangeReviewView(props: ChangeReviewViewProps) {
   const { pull, readout, mate } = props;
-  const files = readout.files.kind === "read" ? readout.files.value : undefined;
-  const mainSince = readout.mainSince.kind === "read" ? readout.mainSince.value : undefined;
+  const read = readout.kind === "read" ? readout.value : undefined;
   const downstream = {
     production: props.environments.some((entry) => entry.tier === "production"),
     stage: props.environments.some((entry) => entry.tier === "stage"),
   };
   const model = changeReview({
-    pull,
+    // How it merges, and where `main` stands against it, are HQ's detail once it is read.
+    pull:
+      read === undefined
+        ? pull
+        : {
+            ...pull,
+            mergeability: read.mergeability,
+            mergeBase: read.mergeBase,
+            baseSha: read.mainHead,
+          },
     mateName: mate?.name,
-    readout:
-      readout.files.kind === "read"
-        ? "read"
-        : readout.files.kind === "failed"
-          ? "failed"
-          : "reading",
-    commits: readout.commits.kind === "read" ? readout.commits.value.length : undefined,
-    conflict: changeConflict({
-      mergeability: pull.mergeability,
-      files,
-      mainSince,
-      head: pull.baseSha,
-    }),
-    behindBy: mainSince?.length,
+    readout: readout.kind === "read" ? "read" : readout.kind === "failed" ? "failed" : "reading",
+    commits: read?.commits.length,
+    conflict:
+      read === undefined || read.mergeability !== "conflicting"
+        ? undefined
+        : { files: read.conflict, by: undefined },
     downstream,
     waiting: { count: props.waitingForProduction, live: props.live },
     releaseOffered: downstream.production,
     recipe:
-      pull.kind === "recipe" && files !== undefined
-        ? recipeReach({ files, environments: props.environments })
+      pull.kind === "recipe" && read !== undefined
+        ? recipeReach({
+            files: read.files.map((file) => ({ filename: file.path })),
+            environments: props.environments,
+          })
         : undefined,
     now: props.now,
   });
   const size = sizeWords({
-    files: pull.changedFiles ?? files?.length,
-    additions: pull.additions ?? files?.reduce((sum, file) => sum + file.additions, 0),
-    deletions: pull.deletions ?? files?.reduce((sum, file) => sum + file.deletions, 0),
+    files: read?.files.length,
+    additions: read?.files.reduce((sum, file) => sum + file.additions, 0),
+    deletions: read?.files.reduce((sum, file) => sum + file.deletions, 0),
   });
-  const diffOf = (path: string): ReviewDiffState => {
-    if (readout.diff.kind === "read") {
-      return {
-        kind: "read",
-        file: readout.diff.value.files.get(path),
-        cut: readout.diff.value.cut,
-      };
-    }
-    if (readout.diff.kind === "failed") return { kind: "failed", reason: readout.diff.reason };
-    return { kind: "reading" };
-  };
+  // A file missing from what HQ read lies past where its read stopped.
+  const diffOf = (path: string): ReviewDiffState =>
+    readout.kind === "read"
+      ? { kind: "read", file: readout.value.diff.get(path), cut: readout.value.filesCut }
+      : readout.kind === "failed"
+        ? { kind: "failed", reason: readout.reason }
+        : { kind: "reading" };
+  const commits: ReadoutPart<ReadonlyArray<ChangeReadoutCommit>> =
+    readout.kind === "read" ? { kind: "read", value: readout.value.commits } : readout;
   const mine = mate?.mine === true ? mate : undefined;
   const fix = model.verdict.fix;
   // Its one button is the release's review once it is merged; Merge is not offered here (T8).
@@ -543,19 +522,10 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
       >
         <ReviewFiles
           diffOf={diffOf}
-          failed={readout.files.kind === "failed" ? readout.files.reason : undefined}
-          files={files?.map((file) => ({
-            path: file.filename,
-            status: file.status,
-            additions: file.additions,
-            deletions: file.deletions,
-            previousPath: file.previousFilename,
-          }))}
-          giteaOf={(path) => giteaFileUrl(pull.url, path)}
+          failed={readout.kind === "failed" ? readout.reason : undefined}
+          files={read?.files}
           initiallyOpen={props.initiallyOpen}
-          onOpen={props.onOpenFile}
           onRetry={props.onRetry}
-          pending={pull.changedFiles ?? 1}
         />
       </ReviewSection>
       <ReviewConversation
@@ -571,7 +541,7 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
         onAsk={props.onAsk}
         remarks={props.remarks}
       />
-      <ReviewCommits commits={readout.commits} now={props.now} onRetry={props.onRetry} />
+      <ReviewCommits commits={commits} now={props.now} onRetry={props.onRetry} />
     </ZeropsReviewSurface>
   );
 }

@@ -114,12 +114,13 @@ describe("changeReview: the verdict comes first (R2)", () => {
       },
     ],
     [
-      "Gitea still working out whether it merges",
+      "HQ not having said yet whether it merges",
       { pull: pull({ mergeability: "checking" }) },
       {
         state: "checking",
         tone: "busy",
         title: "Checking whether it merges cleanly",
+        why: "HQ works it out after every push",
         fix: undefined,
       },
     ],

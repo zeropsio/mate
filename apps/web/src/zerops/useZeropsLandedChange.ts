@@ -29,15 +29,19 @@ export type ZeropsLandedChangeState =
 /** How long after each read that did not find the change it is read again. */
 export const LANDED_CHANGE_RETRY_MS: ReadonlyArray<number> = [2_000, 5_000, 10_000];
 
-/** One read of the change as the person: HQ's 404 is a change not there, any other no a failure. */
+/**
+ * One read of the change as the person: HQ's 404 is a change not there, any other no a failure.
+ * An open change no push reached is drawn nowhere (SPEC §3.2a), here neither.
+ */
 async function readChange(
   hq: { readonly address: string; readonly api: Pick<HqApi, "change"> },
   link: ChangeLink,
   signal: AbortSignal,
 ): Promise<Exclude<ZeropsLandedChangeState, { kind: "idle" | "reading" }>> {
   try {
-    const detail = await hq.api.change(link, signal);
-    return { kind: "read", pull: flowChange(detail.change, hq.address) };
+    const { change } = await hq.api.change(link, signal);
+    if (change.state === "open" && change.head === null) return { kind: "gone" };
+    return { kind: "read", pull: flowChange(change, hq.address) };
   } catch (cause) {
     return cause instanceof HqError && cause.kind === "refused" && cause.status === 404
       ? { kind: "gone" }

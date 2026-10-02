@@ -3,15 +3,20 @@
  * the app runs, with made-up reads. Fixtures only — no route imports this module.
  */
 import {
+  changeReadout,
   changeRemarks,
-  parseChangeDiff,
+  type ChangeReadout,
   type FlowPullRequest,
-  type GiteaChangedFile,
-  type GiteaCommit,
   type GiteaIssueComment,
   type ReviewPress,
 } from "@t3tools/client-runtime/zerops";
 import type { CrewTask } from "@t3tools/contracts";
+import type {
+  ChangeCommit,
+  ChangeDetailResponse,
+  ChangeFile,
+  HqChange,
+} from "@t3tools/shared/hqChanges";
 import { useEffect, useState, type ReactNode } from "react";
 
 import {
@@ -35,6 +40,7 @@ import type {
   ZeropsChangeComments,
   ZeropsChangeCommentsState,
 } from "~/zerops/useZeropsChangeComments";
+import type { ReadoutPart } from "~/zerops/useZeropsChangeDetail";
 
 import { HARNESS_GITEA, HARNESS_PICTURES, harnessDescription } from "./reviewHarnessPictures";
 
@@ -74,32 +80,40 @@ const DIFF = [
   "+22",
 ].join("\n");
 
-const FILES: ReadonlyArray<GiteaChangedFile> = [
-  {
-    filename: "src/server/routes/status.ts",
-    previousFilename: undefined,
-    status: "added",
-    additions: 38,
-    deletions: 0,
-  },
-  {
-    filename: "src/server/index.ts",
-    previousFilename: undefined,
-    status: "modified",
-    additions: 3,
-    deletions: 2,
-  },
-  {
-    filename: ".nvmrc",
-    previousFilename: undefined,
-    status: "modified",
-    additions: 1,
-    deletions: 1,
-  },
-];
+/**
+ * A `git diff` of several files as HQ hands it over: one patch per file, with the lines it adds
+ * and deletes. Where HQ's read stopped (`cutAt`), that file's patch is cut, and the ones after it
+ * were not read.
+ */
+function hqFiles(
+  diff: string,
+  counts: ReadonlyArray<readonly [path: string, added: number, deleted: number]>,
+  cutAt?: number,
+): ReadonlyArray<ChangeFile> {
+  const patches = diff.split(/\n(?=diff --git )/u);
+  return counts.map(([path, added, deleted], index) => ({
+    path,
+    added,
+    deleted,
+    hunks: cutAt !== undefined && index > cutAt ? "" : (patches[index] ?? ""),
+    binary: false,
+    truncated: cutAt !== undefined && index >= cutAt,
+  }));
+}
+
+const FILES = hqFiles(DIFF, [
+  ["src/server/routes/status.ts", 38, 0],
+  ["src/server/index.ts", 3, 2],
+  [".nvmrc", 1, 1],
+]);
 
 const WORDS =
   "Adds a /status route that lists the app's uptime and its last deploy, refreshed on each visit. It stays behind the sign-in, like the rest of the admin pages.";
+
+const HEAD = "b21d904cb21d904cb21d904cb21d904cb21d904c";
+/** `main` as the change was cut from it, and `main` two changes later. */
+const BASE = "ba5e000ba5e000ba5e000ba5e000ba5e000ba5e";
+const MAIN_NOW = "c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2";
 
 function pull(over: Partial<FlowPullRequest> = {}): FlowPullRequest {
   return {
@@ -113,16 +127,11 @@ function pull(over: Partial<FlowPullRequest> = {}): FlowPullRequest {
     mergeability: "mergeable",
     merged: false,
     mergedAt: undefined,
-    headSha: "b21d904cb21d904cb21d904cb21d904cb21d904c",
+    headSha: HEAD,
     baseBranch: "main",
     line: "appdev #2",
     updatedAt: minutesAgo(4),
-    headBranch: "mate/mate-p-nova",
-    additions: 42,
-    deletions: 3,
-    changedFiles: 3,
-    mergeBase: "base-sha",
-    baseSha: "base-sha",
+    headBranch: "mate/p-nova/2",
     ...over,
   };
 }
@@ -150,20 +159,50 @@ const COMMIT_SUBJECTS = [
   "Start the status page",
 ];
 
-function commits(count: number): ReadonlyArray<GiteaCommit> {
+function commits(count: number): ReadonlyArray<ChangeCommit> {
   return COMMIT_SUBJECTS.slice(0, count).map((subject, index) => ({
     sha: `${(0xb21d904 + index * 7919).toString(16)}${"c".repeat(33)}`,
     subject,
+    authorName: "Nova",
     at: minutesAgo(4 + index * 95),
   }));
 }
 
-const READ = {
-  files: { kind: "read", value: FILES },
-  diff: { kind: "read", value: { files: parseChangeDiff(DIFF), cut: false } },
-  commits: { kind: "read", value: commits(3) },
-  mainSince: { kind: "none" },
-} as const;
+const CHANGE: HqChange = {
+  appId: "g-snap",
+  repo: "appdev",
+  number: 2,
+  mateProjectId: "p-nova",
+  title: "Add a /status page with the uptime and the last deploy",
+  body: "",
+  state: "open",
+  head: HEAD,
+  mergedSha: null,
+  landedHead: null,
+  openedAt: minutesAgo(400),
+  mergedAt: null,
+  closedAt: null,
+};
+
+/** HQ's detail of the change, `over` it, as its review reads it (`changeReadout`). */
+function detail(over: Partial<ChangeDetailResponse> = {}): ReadoutPart<ChangeReadout> {
+  return {
+    kind: "read",
+    value: changeReadout({
+      change: CHANGE,
+      mainHead: BASE,
+      mergeBase: BASE,
+      mergeability: { kind: "clean" },
+      files: FILES,
+      filesTruncated: false,
+      commits: commits(3),
+      commitsTruncated: false,
+      ...over,
+    }),
+  };
+}
+
+const READ = detail();
 
 function said(id: number, author: string, body: string, minutes: number): GiteaIssueComment {
   return { id, author, avatarUrl: undefined, body, at: minutesAgo(minutes) };
@@ -225,29 +264,6 @@ const RUN = { words: WORDS, reading: false } as const;
 const OFFERED = { kind: "offered" } as const;
 
 /** A change whose diff was too long to read whole: a lockfile first, the read stopping after. */
-const LONG_FILES: ReadonlyArray<GiteaChangedFile> = [
-  {
-    filename: "pnpm-lock.yaml",
-    previousFilename: undefined,
-    status: "modified",
-    additions: 2_600,
-    deletions: 0,
-  },
-  {
-    filename: "src/server/index.ts",
-    previousFilename: undefined,
-    status: "modified",
-    additions: 3,
-    deletions: 2,
-  },
-  {
-    filename: "src/web/app.tsx",
-    previousFilename: undefined,
-    status: "modified",
-    additions: 12,
-    deletions: 4,
-  },
-];
 const LONG_DIFF = [
   "diff --git a/pnpm-lock.yaml b/pnpm-lock.yaml",
   "--- a/pnpm-lock.yaml",
@@ -264,13 +280,18 @@ const LONG_DIFF = [
   " const app = new Hono();",
   ' app.route("/he',
 ].join("\n");
-const LONG = {
-  files: { kind: "read", value: LONG_FILES },
-  diff: {
-    kind: "read",
-    value: { files: parseChangeDiff(LONG_DIFF, { cut: true }), cut: true },
-  },
-} as const;
+const LONG = detail({
+  files: hqFiles(
+    LONG_DIFF,
+    [
+      ["pnpm-lock.yaml", 2_600, 0],
+      ["src/server/index.ts", 3, 2],
+      ["src/web/app.tsx", 12, 4],
+    ],
+    1,
+  ),
+  filesTruncated: true,
+});
 
 /** A change whose diff holds lines far wider than the review: an import list and an inlined SVG. */
 const WIDE_IMPORT = `import { pool, migrate, ensureInbox, boardCols, itemCols, bus, changed, listenForChanges, ${Array.from(
@@ -281,37 +302,22 @@ const WIDE_SVG = `const logo = '<svg xmlns="http://www.w3.org/2000/svg" viewBox=
   { length: 40 },
   (_, index) => `M${String(index)} ${String(index * 2)}L${String(index + 3)} ${String(index)}`,
 ).join(" ")}"/></svg>';`;
-const WIDE_FILES: ReadonlyArray<GiteaChangedFile> = [
-  {
-    filename: "server/index.ts",
-    previousFilename: undefined,
-    status: "modified",
-    additions: 2,
-    deletions: 1,
-  },
-];
-const WIDE = {
-  files: { kind: "read", value: WIDE_FILES },
-  diff: {
-    kind: "read",
-    value: {
-      files: parseChangeDiff(
-        [
-          "diff --git a/server/index.ts b/server/index.ts",
-          "--- a/server/index.ts",
-          "+++ b/server/index.ts",
-          `@@ -1,3 +1,4 @@ ${WIDE_IMPORT.slice(0, 60)}`,
-          '-import { pool } from "./db";',
-          `+${WIDE_IMPORT}`,
-          `+${WIDE_SVG}`,
-          " ",
-          " const app = new Hono();",
-        ].join("\n"),
-      ),
-      cut: false,
-    },
-  },
-} as const;
+const WIDE = detail({
+  files: hqFiles(
+    [
+      "diff --git a/server/index.ts b/server/index.ts",
+      "--- a/server/index.ts",
+      "+++ b/server/index.ts",
+      `@@ -1,3 +1,4 @@ ${WIDE_IMPORT.slice(0, 60)}`,
+      '-import { pool } from "./db";',
+      `+${WIDE_IMPORT}`,
+      `+${WIDE_SVG}`,
+      " ",
+      " const app = new Hono();",
+    ].join("\n"),
+    [["server/index.ts", 2, 1]],
+  ),
+});
 
 /** A project with a stage and a production, as `environments.yaml` declares them. */
 const STAGE_AND_PRODUCTION: ChangeReviewViewProps["environments"] = [
@@ -329,9 +335,6 @@ const RECIPE: Partial<FlowPullRequest> = {
   title: "Add a mail service to the Remote (CDE) and Local recipes",
   line: "#7",
   url: "https://gitea.example/snap/group/pulls/7",
-  additions: 12,
-  deletions: 0,
-  changedFiles: 2,
 };
 
 /** The same service added to two tiers, as git names a path with an em dash in it. */
@@ -359,26 +362,21 @@ function recipeDiff(tiers: ReadonlyArray<string>): string {
 }
 
 /** What a recipe change touching `tiers` reads as: each tier's recipe, and its diff. */
-function recipeRead(tiers: ReadonlyArray<string>): Partial<ChangeReviewViewProps["readout"]> {
-  return {
-    files: {
-      kind: "read",
-      value: tiers.map((tier) => ({
-        filename: `${tier}/import.yaml`,
-        previousFilename: undefined,
-        status: "modified",
-        additions: 6,
-        deletions: 0,
-      })),
-    },
-    diff: { kind: "read", value: { files: parseChangeDiff(recipeDiff(tiers)), cut: false } },
-    commits: {
-      kind: "read",
-      value: [
-        { sha: `7d1e0a4${"d".repeat(33)}`, subject: "Add a mail service", at: minutesAgo(6) },
-      ],
-    },
-  };
+function recipeRead(tiers: ReadonlyArray<string>): ReadoutPart<ChangeReadout> {
+  return detail({
+    files: hqFiles(
+      recipeDiff(tiers),
+      tiers.map((tier) => [`${tier}/import.yaml`, 6, 0] as const),
+    ),
+    commits: [
+      {
+        sha: `7d1e0a4${"d".repeat(33)}`,
+        subject: "Add a mail service",
+        authorName: "Nova",
+        at: minutesAgo(6),
+      },
+    ],
+  });
 }
 
 /** The owner's case: two recipes nothing in the project is made from. */
@@ -386,20 +384,13 @@ const UNUSED_TIERS = ["1 — Remote (CDE)", "2 — Local"];
 /** The two recipes a stage and a production are made from. */
 const MADE_FROM_TIERS = ["3 — Stage", "4 — Small Production"];
 
-/** Everything Gitea answers, still on its way: what the flow knew paints, the rest holds its room. */
-const ALL_READING = {
-  files: { kind: "reading" },
-  commits: { kind: "reading" },
-} as const;
-const ALL_FAILED = {
-  files: { kind: "failed", reason: "Gitea did not answer in time." },
-  commits: { kind: "failed", reason: "Gitea did not answer in time." },
-} as const;
+/** HQ's detail, still on its way: what the flow knew paints, the rest holds its room. */
+const READING = { kind: "reading" } as const;
+const UNREAD = { kind: "failed", reason: "HQ is not answering right now." } as const;
 
 function Change({
   over,
-  mainSince,
-  readout,
+  readout = READ,
   open = NONE_OPEN,
   run = RUN,
   conversation = TALKING,
@@ -407,9 +398,8 @@ function Change({
   frame,
 }: {
   readonly over?: Partial<FlowPullRequest>;
-  readonly mainSince?: ReadonlyArray<GiteaCommit>;
-  /** What was read of it, where that is not everything. */
-  readonly readout?: Partial<ChangeReviewViewProps["readout"]>;
+  /** HQ's detail of it, where it is not the one every state shares. */
+  readonly readout?: ChangeReviewViewProps["readout"];
   readonly open?: ReadonlyArray<string>;
   readonly run?: { readonly words: string | undefined; readonly reading: boolean };
   readonly conversation?: ZeropsChangeComments;
@@ -437,11 +427,7 @@ function Change({
       onReviewRelease={noop}
       pictures={HARNESS_PICTURES}
       pull={value}
-      readout={{
-        ...READ,
-        ...readout,
-        mainSince: mainSince === undefined ? READ.mainSince : { kind: "read", value: mainSince },
-      }}
+      readout={readout}
       run={run}
       waitingForProduction={0}
     />
@@ -592,7 +578,7 @@ function Settling({
         description: harnessDescription({ after, unreadable: true }),
         commentCount: TALK.length,
       }}
-      readout={read ? { commits: { kind: "read", value: commits(19) } } : ALL_READING}
+      readout={read ? detail({ commits: commits(19) }) : READING}
     />
   );
 }
@@ -615,7 +601,7 @@ export const REVIEW_STATES: ReadonlyArray<{
       <Change
         frame="page"
         over={{ description: harnessDescription({ after: 0 }) }}
-        readout={{ commits: { kind: "read", value: commits(19) } }}
+        readout={detail({ commits: commits(19) })}
       />
     ),
   },
@@ -627,14 +613,14 @@ export const REVIEW_STATES: ReadonlyArray<{
   },
   {
     id: "page-reading",
-    label: "The change's page, everything Gitea answers still being read",
+    label: "The change's page, everything HQ answers still being read",
     page: true,
     node: (
       <Change
         conversation={comments({ kind: "reading" })}
         frame="page"
         over={{ commentCount: 2 }}
-        readout={ALL_READING}
+        readout={READING}
         run={{ words: undefined, reading: true }}
       />
     ),
@@ -643,14 +629,7 @@ export const REVIEW_STATES: ReadonlyArray<{
     id: "page-wide",
     label: "The change's page, a diff with lines wider than its column open",
     page: true,
-    node: (
-      <Change
-        frame="page"
-        open={["server/index.ts"]}
-        over={{ additions: 2, deletions: 1, changedFiles: 1 }}
-        readout={WIDE}
-      />
-    ),
+    node: <Change frame="page" open={["server/index.ts"]} readout={WIDE} />,
   },
   {
     id: "settle",
@@ -685,30 +664,30 @@ export const REVIEW_STATES: ReadonlyArray<{
   },
   {
     id: "reading",
-    label: "Everything Gitea answers, still being read",
+    label: "Everything HQ answers, still being read",
     node: (
       <Change
         conversation={comments({ kind: "reading" })}
         over={{ commentCount: 2 }}
-        readout={ALL_READING}
+        readout={READING}
         run={{ words: undefined, reading: true }}
       />
     ),
   },
   {
     id: "unread",
-    label: "Nothing Gitea answers could be read",
+    label: "Nothing HQ answers could be read",
     node: (
       <Change
-        conversation={comments({ kind: "failed", reason: "Gitea did not answer in time." })}
-        readout={ALL_FAILED}
+        conversation={comments({ kind: "failed", reason: "HQ is not answering right now." })}
+        readout={UNREAD}
       />
     ),
   },
   {
     id: "many-commits",
     label: "Nineteen commits, the newest five shown",
-    node: <Change readout={{ commits: { kind: "read", value: commits(19) } }} />,
+    node: <Change readout={detail({ commits: commits(19) })} />,
   },
   {
     id: "long-conversation",
@@ -719,23 +698,13 @@ export const REVIEW_STATES: ReadonlyArray<{
     id: "long",
     label: "A diff too long for here",
     node: (
-      <Change
-        open={["pnpm-lock.yaml", "src/server/index.ts", "src/web/app.tsx"]}
-        over={{ additions: 2_615, deletions: 6 }}
-        readout={LONG}
-      />
+      <Change open={["pnpm-lock.yaml", "src/server/index.ts", "src/web/app.tsx"]} readout={LONG} />
     ),
   },
   {
     id: "wide",
     label: "A diff with lines wider than the review",
-    node: (
-      <Change
-        open={["server/index.ts"]}
-        over={{ additions: 2, deletions: 1, changedFiles: 1 }}
-        readout={WIDE}
-      />
-    ),
+    node: <Change open={["server/index.ts"]} readout={WIDE} />,
   },
   {
     id: "person",
@@ -753,37 +722,33 @@ export const REVIEW_STATES: ReadonlyArray<{
   {
     id: "behind-clean",
     label: "Behind main, still merges",
-    node: (
-      <Change
-        mainSince={[
-          { sha: "c1", subject: "Tidy the README (#4)", files: ["README.md"] },
-          { sha: "c2", subject: "Health routes (#5)", files: ["src/server/health.ts"] },
-        ]}
-        over={{ baseSha: "c2" }}
-      />
-    ),
+    node: <Change readout={detail({ mainHead: MAIN_NOW })} />,
   },
   {
     id: "conflict",
     label: "A change, blocked: a conflict",
     node: (
       <Change
-        mainSince={[
-          {
-            sha: "c2",
-            subject: "Health routes (#5)",
-            at: minutesAgo(20),
-            files: ["src/server/index.ts"],
-          },
-        ]}
-        over={{ mergeability: "conflicting", baseSha: "c2" }}
+        readout={detail({
+          mainHead: MAIN_NOW,
+          mergeability: { kind: "conflict", paths: ["src/server/index.ts"] },
+        })}
       />
     ),
   },
   {
     id: "behind",
     label: "Behind main, no longer merges",
-    node: <Change over={{ mergeability: "conflicting", baseSha: "main-now" }} />,
+    node: (
+      <Change
+        readout={detail({ mainHead: MAIN_NOW, mergeability: { kind: "conflict", paths: [] } })}
+      />
+    ),
+  },
+  {
+    id: "empty",
+    label: "Nothing in it main does not have",
+    node: <Change readout={detail({ mergeability: { kind: "empty" } })} />,
   },
   { id: "merged", label: "Merged", node: <Change over={MERGED_NOW} /> },
   {
@@ -1028,7 +993,7 @@ export function ReviewDialogTry() {
             description: harnessDescription({ after: TRY_READ_MS }),
             commentCount: TALK.length,
           })}
-          readout={read ? READ : { ...READ, ...ALL_READING }}
+          readout={read ? READ : READING}
           run={RUN}
           titleId="review-try-title"
           waitingForProduction={0}

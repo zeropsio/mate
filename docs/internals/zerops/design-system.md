@@ -477,8 +477,8 @@ conversation's state) Fen lives here` (`ZeropsMateOnMap`, from the panel), and t
     read settles on one line with _Open on Gitea_) — else what the run that made it said, under
     "What it does", with a link to that run where one names the change (R3); its files with a letter
     and +/− each, a file's diff opening in place (12/19 mono, hunk headers, one number column; 400
-    lines, then "Show all N lines" up to 2,000, past that a link to the rest on Gitea) (R4); its
-    checks by name, each with its words and _Open_; its conversation — one box that grows as it is
+    lines, then "Show all N lines" up to 2,000, past that a line saying the rest is too long to
+    show here) (R4); its conversation — one box that grows as it is
     typed in ("Comment, or tell Nova what to change…") with _Comment_ and _Ask Nova_, the ask only
     to the person's own Mate and both only with words, the dialog showing the newest three comments;
     its commits, one line each with its age and hash on the column's right edge, more than 7 folded

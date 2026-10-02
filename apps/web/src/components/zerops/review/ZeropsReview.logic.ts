@@ -8,8 +8,6 @@
  *
  * Pure: no DOM, no clock.
  */
-import { sha1 } from "@noble/hashes/legacy";
-import { bytesToHex, utf8ToBytes } from "@noble/hashes/utils";
 import {
   linksChange,
   type ReviewPrimary,
@@ -320,18 +318,17 @@ export function runWords(text: string): string | undefined {
 
 /** How many lines of one file's diff stand before "Show all N lines" opens the rest. */
 export const REVIEW_DIFF_LINES_SHOWN = 400;
-/** A file's diff longer than this is never drawn whole here: the rest is on Gitea. */
+/** A file's diff longer than this is never drawn whole here. */
 export const REVIEW_DIFF_LINES_MAX = 2_000;
 
-/** What follows the lines a file's diff shows: a way to the rest, here or on Gitea. */
+/** What follows the lines a file's diff shows: the way to the rest, or that it is not here. */
 export type DiffRest =
   | { readonly kind: "show"; readonly label: string }
-  | { readonly kind: "gitea"; readonly words: string };
+  | { readonly kind: "cut"; readonly words: string };
 
 /**
  * How much of one file's diff stands (D4): its first lines, all of them once opened — and where
- * it is too long to show here, or the read stopped inside it (`cut`), what is missing, said,
- * with the rest one link away on Gitea. Everything stays reachable one way or another.
+ * it is too long to show here, or the read stopped inside it (`cut`), what is missing, said.
  */
 export function diffFold(input: {
   readonly total: number;
@@ -343,24 +340,15 @@ export function diffFold(input: {
   const shown = input.all && !tooMany ? total : Math.min(total, REVIEW_DIFF_LINES_SHOWN);
   if (tooMany) {
     const more = `${String(total - shown)}${cut ? "+" : ""}`;
-    return { shown, rest: { kind: "gitea", words: `${more} more lines, too many to show here.` } };
+    return { shown, rest: { kind: "cut", words: `${more} more lines, too many to show here.` } };
   }
   if (shown < total) {
     return { shown, rest: { kind: "show", label: `Show all ${String(total)} lines` } };
   }
   return {
     shown,
-    rest: cut ? { kind: "gitea", words: "The rest is too long to read here." } : undefined,
+    rest: cut ? { kind: "cut", words: "The rest is too long to read here." } : undefined,
   };
-}
-
-/**
- * A file's diff on Gitea: the change's files page, scrolled to the file — Gitea names each file's
- * box `diff-` and the SHA-1 of its path.
- */
-export function giteaFileUrl(pullUrl: string | undefined, path: string): string | undefined {
-  if (pullUrl === undefined) return undefined;
-  return `${pullUrl}/files#diff-${bytesToHex(sha1(utf8ToBytes(path)))}`;
 }
 
 /** The status letter in a file row's 16 px box. */
@@ -461,46 +449,6 @@ export function releaseChangeRows(input: {
       stage: input.marks.get(key) ?? "none",
     };
   });
-}
-
-/**
- * Which of a change's files `main` moved under it, and the newest commit that did — for a change
- * that no longer merges; `undefined` for one that does, or while either read is out.
- *
- * Which end of `main`'s commits is the newest is told by where `main`'s head sits among them
- * (`head`), as the stage marks tell it (`stageMarks.ts`), never by the order a read happens to
- * list them in; with the head not among them, no commit is named.
- */
-export function changeConflict(input: {
-  readonly mergeability: string;
-  readonly files: ReadonlyArray<{ readonly filename: string }> | undefined;
-  readonly mainSince:
-    | ReadonlyArray<{
-        readonly sha: string;
-        readonly subject: string;
-        readonly at?: string | undefined;
-        readonly files?: ReadonlyArray<string> | undefined;
-      }>
-    | undefined;
-  /** `main`'s head, as the change was read against it. */
-  readonly head: string | undefined;
-}):
-  | {
-      readonly files: ReadonlyArray<string>;
-      readonly by: { readonly subject: string; readonly at: string | undefined } | undefined;
-    }
-  | undefined {
-  if (input.mergeability !== "conflicting" || input.files === undefined) return undefined;
-  const commits = input.mainSince;
-  if (commits === undefined) return undefined;
-  const touched = new Set(commits.flatMap((commit) => commit.files ?? []));
-  const overlap = input.files.map((file) => file.filename).filter((path) => touched.has(path));
-  const moved = (commit: (typeof commits)[number]) =>
-    (commit.files ?? []).some((path) => overlap.includes(path));
-  const head = input.head?.toLowerCase();
-  const at = commits.findIndex((commit) => commit.sha.toLowerCase() === head);
-  const by = at === -1 ? undefined : at === 0 ? commits.find(moved) : commits.findLast(moved);
-  return { files: overlap, by: by === undefined ? undefined : { subject: by.subject, at: by.at } };
 }
 
 /**

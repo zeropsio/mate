@@ -365,28 +365,20 @@ export type ReviewDiffState =
 
 /**
  * The files it changes, 36 px each with a status letter, the folder dimmed and the +/−; a file
- * opens its diff in place (R4), and the diff is asked for only then (`onOpen`). `pending` rows
- * hold the list's height while it is read.
+ * opens its diff in place (R4). A row holds the list's place while it is read.
  */
 export function ReviewFiles({
   files,
-  pending,
   failed,
   diffOf,
-  giteaOf,
-  onOpen,
   onRetry,
   initiallyOpen,
 }: {
   readonly files: ReadonlyArray<ReviewFileRow> | undefined;
-  readonly pending: number;
   /** Why the files could not be read, where they could not. */
   readonly failed?: string | undefined;
   readonly diffOf: (path: string) => ReviewDiffState;
-  /** Where the file's diff is on Gitea, for what is too long to show here. */
-  readonly giteaOf?: ((path: string) => string | undefined) | undefined;
-  readonly onOpen?: ((path: string) => void) | undefined;
-  /** Reads what could not be read again: the files, a diff. */
+  /** Reads what could not be read again. */
   readonly onRetry?: (() => void) | undefined;
   readonly initiallyOpen?: ReadonlyArray<string> | undefined;
 }) {
@@ -401,11 +393,9 @@ export function ReviewFiles({
   if (files === undefined) {
     return (
       <div aria-busy="true" className="rv-files">
-        {Array.from({ length: Math.max(1, pending) }, (_, index) => (
-          <div className="rv-file-skeleton" key={index}>
-            <span />
-          </div>
-        ))}
+        <div className="rv-file-skeleton">
+          <span />
+        </div>
       </div>
     );
   }
@@ -421,13 +411,11 @@ export function ReviewFiles({
             dir={dir}
             expanded={expanded}
             file={file}
-            gitea={expanded ? giteaOf?.(file.path) : undefined}
             key={file.path}
             letter={letter}
             name={name}
             onRetry={onRetry}
             onToggle={() => {
-              if (!expanded) onOpen?.(file.path);
               setOpen((current) => {
                 const next = new Set(current);
                 if (next.has(file.path)) next.delete(file.path);
@@ -449,7 +437,6 @@ function FileRow({
   letter,
   expanded,
   diff,
-  gitea,
   onToggle,
   onRetry,
 }: {
@@ -459,7 +446,6 @@ function FileRow({
   readonly letter: string;
   readonly expanded: boolean;
   readonly diff: ReviewDiffState | undefined;
-  readonly gitea: string | undefined;
   readonly onToggle: () => void;
   readonly onRetry: (() => void) | undefined;
 }) {
@@ -483,48 +469,22 @@ function FileRow({
         </span>
       </button>
       {diff === undefined ? null : (
-        <ReviewDiff diff={diff} gitea={gitea} onRetry={onRetry} previousPath={file.previousPath} />
+        <ReviewDiff diff={diff} onRetry={onRetry} previousPath={file.previousPath} />
       )}
     </>
   );
 }
 
-/** What is missing from a file's diff here, said, with the way to it on Gitea. */
-function DiffElsewhere({
-  words,
-  gitea,
-}: {
-  readonly words: string;
-  readonly gitea: string | undefined;
-}) {
-  return (
-    <p className="rv-diff-note">
-      {words}
-      {gitea === undefined ? null : (
-        <>
-          {" "}
-          <a className="rv-link" href={gitea} rel="noopener noreferrer" target="_blank">
-            Open it on Gitea
-          </a>
-        </>
-      )}
-    </p>
-  );
-}
-
 /**
  * One file's diff: hunk headers, numbers, + green and − red; a long line wraps under its code,
- * so nothing ever scrolls sideways. What is too long to show here says so, and links the file's
- * diff on Gitea (`gitea`).
+ * so nothing ever scrolls sideways. What is too long to show here says so.
  */
 export function ReviewDiff({
   diff,
-  gitea,
   previousPath,
   onRetry,
 }: {
   readonly diff: ReviewDiffState;
-  readonly gitea?: string | undefined;
   readonly previousPath?: string | undefined;
   readonly onRetry?: (() => void) | undefined;
 }) {
@@ -547,7 +507,7 @@ export function ReviewDiff({
   if (file === undefined && diff.cut) {
     return (
       <div className="rv-diff">
-        <DiffElsewhere gitea={gitea} words="Too long to read here." />
+        <p className="rv-diff-note">Too long to read here.</p>
       </div>
     );
   }
@@ -604,7 +564,7 @@ export function ReviewDiff({
           {rest.label}
         </button>
       ) : null}
-      {rest?.kind === "gitea" ? <DiffElsewhere gitea={gitea} words={rest.words} /> : null}
+      {rest?.kind === "cut" ? <p className="rv-diff-note">{rest.words}</p> : null}
     </div>
   );
 }

@@ -2,17 +2,17 @@
  * The commits a change squashes, one line each — what it did, its age and its hash on the right
  * edge — a long run folded after its newest five, the rows' room held while they are read.
  */
-import type { GiteaCommit } from "@t3tools/client-runtime/zerops";
+import type { ChangeReadoutCommit } from "@t3tools/client-runtime/zerops";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vite-plus/test";
 
-import type { ReadoutPart } from "~/zerops/useZeropsChangeReadout";
+import type { ReadoutPart } from "~/zerops/useZeropsChangeDetail";
 
 import { ReviewCommits } from "./ReviewCommits";
 
 const NOW = Date.parse("2026-09-29T12:00:00Z");
 
-function commits(count: number): ReadoutPart<ReadonlyArray<GiteaCommit>> {
+function commits(count: number): ReadoutPart<ReadonlyArray<ChangeReadoutCommit>> {
   return {
     kind: "read",
     value: Array.from({ length: count }, (_, index) => ({
@@ -23,7 +23,7 @@ function commits(count: number): ReadoutPart<ReadonlyArray<GiteaCommit>> {
   };
 }
 
-function html(part: ReadoutPart<ReadonlyArray<GiteaCommit>>, onRetry?: () => void): string {
+function html(part: ReadoutPart<ReadonlyArray<ChangeReadoutCommit>>, onRetry?: () => void): string {
   return renderToStaticMarkup(<ReviewCommits commits={part} now={NOW} onRetry={onRetry} />);
 }
 
@@ -51,7 +51,7 @@ describe("a change's commits in its review", () => {
   });
 
   it("says they could not be read, with Try again where it can try", () => {
-    const failed = { kind: "failed", reason: "Gitea did not answer in time." } as const;
+    const failed = { kind: "failed", reason: "HQ is not answering right now." } as const;
     expect(html(failed, () => {})).toContain(">Try again</button>");
     expect(html(failed)).not.toContain("Try again");
     expect(html(failed)).toContain("The commits couldn&#x27;t be read.");
