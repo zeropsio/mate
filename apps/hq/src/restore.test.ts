@@ -13,7 +13,13 @@ import * as Stream from "effect/Stream";
 import { gitClient } from "../test/harness/gitClient.ts";
 import { addProject, mateWithChange, remoteOf, rowsWhere } from "../test/harness/mates.ts";
 import { groupCheckout, propose, stateBecomes } from "../test/harness/recipe.ts";
-import { type Call, sessionFor, startCore, untilHealth } from "../test/harness/runningCore.ts";
+import {
+  type Call,
+  sessionFor,
+  startCore,
+  ticketFor,
+  untilHealth,
+} from "../test/harness/runningCore.ts";
 import { TempPostgres, tempPostgresLayer } from "../test/harness/tempPostgres.ts";
 import { directoryStore } from "./backup.ts";
 import { restoreDatabase, restoreRepos, restoreSet } from "./restore.ts";
@@ -309,6 +315,77 @@ describe("a backup set, restored", () => {
           assert.strictEqual(
             (health.body as { readonly reason?: string }).reason,
             "restore_mismatch",
+          );
+        }),
+    );
+
+    // No subscriber resumes past a restore: every one reconnects to the restored state, whole.
+    it.effect(
+      "gives a socket and a Mate link the restored state whole, never what came after the set",
+      () =>
+        Effect.gen(function* () {
+          const a = yield* startCore(true);
+          yield* untilHealth(a.call, "active");
+          const owner = yield* sessionFor(a.call, "door-owner");
+          const { appId, auth } = yield* mateWithChange(a.call, a.fake, owner);
+          const manifest = yield* a.backup.take;
+          // After the set: a change in another repository, which A's subscribers see.
+          yield* a.call("POST", "/api/mate/repos", { headers: auth, body: { name: "api" } });
+          yield* a.call("POST", "/api/mate/changes", {
+            headers: auth,
+            body: { repo: "api", title: "After the set" },
+          });
+          const repos = (changes: ReadonlyArray<{ readonly repo: string }>) =>
+            changes.map((change) => change.repo).sort();
+          const openSocket = (core: typeof a, session: string) =>
+            Effect.gen(function* () {
+              const socket = yield* core.socket(
+                `/api/structure/ws?ticket=${yield* ticketFor(core.call, session)}`,
+              );
+              const snapshot = (yield* socket.next("snapshot")) as {
+                readonly changes: Readonly<
+                  Record<string, ReadonlyArray<{ readonly repo: string }>>
+                >;
+              };
+              return { socket, changes: repos(snapshot.changes[appId] ?? []) };
+            });
+          const openLink = (core: typeof a) =>
+            Effect.gen(function* () {
+              const ticket = (yield* core.call("POST", "/api/mate/link-ticket", { headers: auth }))
+                .body as { readonly ticket: string };
+              const link = yield* core.socket(`/api/mate/link?ticket=${ticket.ticket}`);
+              const state = (yield* link.next("state")) as {
+                readonly mate: { readonly changes: ReadonlyArray<{ readonly repo: string }> };
+              };
+              return { link, changes: repos(state.mate.changes) };
+            });
+          const beforeSocket = yield* openSocket(a, owner);
+          const beforeLink = yield* openLink(a);
+          assert.deepStrictEqual(
+            [beforeSocket.changes, beforeLink.changes],
+            [
+              ["api", "appdev"],
+              ["api", "appdev"],
+            ],
+          );
+          yield* a.stop;
+          // Told to reconnect: this Core no longer leads.
+          assert.strictEqual(yield* beforeSocket.socket.closedWith, 1001);
+
+          const url = yield* (yield* TempPostgres).createDatabase;
+          const gitRoot = yield* temporaryDir;
+          yield* restoreSet(directoryStore(a.storeDir), manifest.id, {
+            databaseUrl: Redacted.make(url),
+            gitRoot,
+            workDir: yield* temporaryDir,
+          });
+          const b = yield* startCore(true, { url, gitRoot });
+          yield* Stream.runHead(Stream.filter(b.gitHost.recorded, (tick) => tick > 0));
+          const afterSocket = yield* openSocket(b, yield* sessionFor(b.call, "door-owner-2"));
+          const afterLink = yield* openLink(b);
+          assert.deepStrictEqual(
+            [afterSocket.changes, afterLink.changes],
+            [["appdev"], ["appdev"]],
           );
         }),
     );
