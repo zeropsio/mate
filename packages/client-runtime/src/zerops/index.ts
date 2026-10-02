@@ -508,6 +508,13 @@ export {
   type DeployTokenPlan,
 } from "./deployToken.ts";
 export {
+  gitOverview,
+  gitRepositoryLine,
+  type GitOverviewApp,
+  type GitOverviewChange,
+  type GitOverviewRepository,
+} from "./gitOverview.ts";
+export {
   giteaOverview,
   giteaPullRequestLine,
   giteaRepositoryLine,
