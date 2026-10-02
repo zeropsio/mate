@@ -38,6 +38,7 @@
 
 import type { GiteaCommitStatus } from "./giteaClient.ts";
 import type { GroupEnvironment } from "./groupEnvironments.ts";
+import type { HqEnvironment } from "./hq/environments.ts";
 import {
   deployedCommit,
   deployStatusContext,
@@ -236,6 +237,53 @@ export function buildGroupEnvironmentRowInputs(input: {
 }
 
 /**
+ * Every environment HQ records for an application, in the order they were declared, in the shape
+ * `environmentRow` takes: each service the account lists in its project, with what it runs and the
+ * deploys HQ records for it by its hostname.
+ *
+ * Named by the Zerops project when the account can see it, and by HQ's name for it when it cannot:
+ * an environment in a project this person may not read is still one the application has.
+ */
+export function environmentRowInputsOf(input: {
+  readonly environments: ReadonlyArray<HqEnvironment>;
+  /** What each Zerops project is called, by id. */
+  readonly projectNames: ReadonlyMap<string, string>;
+  readonly services: ReadonlyArray<GroupEnvironmentService>;
+  /** The version name each service runs, by service id. */
+  readonly versions: ReadonlyMap<string, string>;
+  /** The repository each service is built from, by hostname (the tier's `buildFromGit`). */
+  readonly repositories?: ReadonlyMap<string, string> | undefined;
+}): ReadonlyArray<GroupEnvironmentRowInput> {
+  return [...input.environments]
+    .sort((left, right) => left.order - right.order)
+    .map((environment) => {
+      const deploys = new Map(
+        environment.deploys.map(({ service, latest, live }) => [service, { latest, live }]),
+      );
+      return {
+        projectId: environment.projectId,
+        name: input.projectNames.get(environment.projectId) ?? environment.name,
+        tier: environment.tier,
+        sources: environment.tier === "production" ? "release" : environment.sources,
+        environment: environment.name,
+        services: input.services
+          .filter((service) => service.projectId === environment.projectId)
+          .map((service): EnvironmentServiceState => {
+            const repository = input.repositories?.get(service.hostname);
+            const appVersionName = input.versions.get(service.serviceId);
+            const deploy = deploys.get(service.hostname);
+            return {
+              hostname: service.hostname,
+              ...(repository === undefined ? {} : { repository }),
+              ...(appVersionName === undefined ? {} : { appVersionName }),
+              ...(deploy === undefined ? {} : { deploy }),
+            };
+          }),
+      };
+    });
+}
+
+/**
  * The rows themselves, in the file's order — `buildGroupRows` is what puts the
  * stages before the production, because it is what holds the whole list.
  */
@@ -255,7 +303,8 @@ export interface ReleaseDeploys {
    * `{service}@{sha}` → when the failure was posted (`undefined`: not
    * read), for every commit whose newest production status for that service is
    * a failure, from every status read — a stage running the commit a release
-   * lists carries the broker's production status on it too.
+   * lists carries the broker's production status on it too — and for every
+   * production service whose newest deploy HQ records as failed.
    */
   readonly failed: ReadonlyMap<string, string | undefined>;
 }
@@ -285,6 +334,9 @@ export function releaseDeploys(
   for (const environment of environments) {
     const side = environment.tier === "production" ? production : stage;
     for (const service of environment.services) {
+      const latest = service.deploy?.latest;
+      if (environment.tier === "production" && latest?.state === "failed")
+        failed.set(`${service.hostname}@${latest.sha}`, latest.at);
       const sha = deployedCommit(service.appVersionName);
       if (sha === undefined) continue;
       // Gitea keeps every status a commit was ever given, newest first: only the

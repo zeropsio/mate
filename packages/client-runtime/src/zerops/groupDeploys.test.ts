@@ -6,12 +6,14 @@ import {
   buildGroupEnvironmentRows,
   deployStatusKey,
   deployWord,
+  environmentRowInputsOf,
   planDeployStatusReads,
   planDeployedVersionReads,
   planMainHeadReads,
   releaseDeploys,
 } from "./groupDeploys.ts";
 import type { GroupEnvironment } from "./groupEnvironments.ts";
+import type { HqDeploy, HqEnvironment } from "./hq/environments.ts";
 
 const API = "3f9c1b2e5d7a4c6f8e0b1d2a3c4f5e6d7a8b9c0d";
 const WEB = "77ab0e1f2d3c4b5a69788796a5b4c3d2e1f0a9b8";
@@ -281,6 +283,108 @@ describe("the join — a declaration, a version and a status", () => {
       declarations: [production, { ...stage, name: "stage-client-x", project: "p-stage" }, stage],
     });
     expect(rows.map((row) => row.tier)).toEqual(["production", "stage", "stage"]);
+  });
+});
+
+function record(state: HqDeploy["state"], sha: string): HqDeploy {
+  return {
+    sha,
+    state,
+    failure: state === "failed" ? "job" : null,
+    message: null,
+    appVersionId: null,
+    processId: null,
+    requestedBy: null,
+    at: "2026-10-02T10:00:00.000Z",
+  };
+}
+
+function environment(
+  overrides: Partial<HqEnvironment> & Pick<HqEnvironment, "projectId" | "tier" | "name">,
+): HqEnvironment {
+  return {
+    sources: overrides.tier === "production" ? ["release"] : ["main"],
+    order: 1,
+    keyHeld: true,
+    keyInvalid: false,
+    deploys: [],
+    ...overrides,
+  };
+}
+
+describe("the join — HQ's record of an environment, a version and a deploy", () => {
+  it("reads each environment HQ records, in its order, with each service's deploys", () => {
+    const apiDeploys = { service: "api", latest: record("failed", API), live: record("live", OLD) };
+    const inputs = environmentRowInputsOf({
+      environments: [
+        environment({ projectId: "p-prod", tier: "production", name: "production", order: 2 }),
+        environment({
+          projectId: "p-stage",
+          tier: "stage",
+          name: "stage",
+          order: 1,
+          deploys: [apiDeploys],
+        }),
+      ],
+      projectNames: new Map([["p-stage", "Acme - stage"]]),
+      services,
+      versions: new Map([["s1", `main ${OLD.slice(0, 7)}`]]),
+      repositories: new Map([["api", "apidev"]]),
+    });
+    expect(inputs).toEqual([
+      {
+        projectId: "p-stage",
+        name: "Acme - stage",
+        tier: "stage",
+        sources: ["main"],
+        environment: "stage",
+        services: [
+          {
+            hostname: "api",
+            repository: "apidev",
+            appVersionName: `main ${OLD.slice(0, 7)}`,
+            deploy: { latest: apiDeploys.latest, live: apiDeploys.live },
+          },
+          { hostname: "web" },
+        ],
+      },
+      {
+        projectId: "p-prod",
+        name: "production",
+        tier: "production",
+        sources: "release",
+        environment: "production",
+        services: [{ hostname: "api", repository: "apidev" }],
+      },
+    ]);
+  });
+});
+
+describe("what a release compares, from HQ's records", () => {
+  it("holds a production deploy HQ records as failed, under its service and commit", () => {
+    const inputs = environmentRowInputsOf({
+      environments: [
+        environment({
+          projectId: "p-stage",
+          tier: "stage",
+          name: "stage",
+          deploys: [{ service: "api", latest: record("failed", WEB), live: null }],
+        }),
+        environment({
+          projectId: "p-prod",
+          tier: "production",
+          name: "production",
+          order: 2,
+          deploys: [{ service: "api", latest: record("failed", API), live: record("live", OLD) }],
+        }),
+      ],
+      projectNames: new Map(),
+      services,
+      versions: new Map([["s3", `v1.0.0 ${OLD.slice(0, 7)}`]]),
+    });
+    const { failed, production } = releaseDeploys(inputs);
+    expect([...failed]).toEqual([[`api@${API}`, "2026-10-02T10:00:00.000Z"]]);
+    expect([...production]).toEqual([["api", OLD.slice(0, 7)]]);
   });
 });
 

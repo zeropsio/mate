@@ -15,6 +15,7 @@ import {
   type EnvironmentServiceState,
   type MateRowState,
 } from "./groupRows.ts";
+import type { HqDeploy } from "./hq/environments.ts";
 
 const SHA = "3f9c1b2e5d7a4c6f8e0b1d2a3c4f5e6d7a8b9c0d";
 const OTHER = "77ab0e1f2d3c4b5a69788796a5b4c3d2e1f0a9b8";
@@ -34,6 +35,19 @@ function service(
             { context: deployStatusContext(options.environment ?? "stage", hostname), state },
           ],
         }),
+  };
+}
+
+function deployRecord(state: HqDeploy["state"], sha = SHA): HqDeploy {
+  return {
+    sha,
+    state,
+    failure: state === "failed" ? "job" : null,
+    message: null,
+    appVersionId: null,
+    processId: null,
+    requestedBy: null,
+    at: "2026-10-02T10:00:00.000Z",
   };
 }
 
@@ -178,6 +192,22 @@ describe("deployTone", () => {
       expected: "pending",
     },
   ])("reads $name as $expected", ({ services, expected }) => {
+    expect(deployTone({ environment: "stage", services })).toBe(expected);
+  });
+
+  it.each([
+    { name: "a deploy HQ has yet to start", states: ["pending"], expected: "pending" },
+    { name: "a deploy HQ runs", states: ["deploying"], expected: "pending" },
+    { name: "a deploy that went live", states: ["live"], expected: "good" },
+    { name: "a deploy that failed", states: ["failed"], expected: "bad" },
+    { name: "one service failing among live ones", states: ["live", "failed"], expected: "bad" },
+    { name: "one service still deploying", states: ["live", "deploying"], expected: "pending" },
+    { name: "a failure behind one still going", states: ["deploying", "failed"], expected: "bad" },
+  ] as const)("reads HQ's record of $name as $expected", ({ states, expected }) => {
+    const services = states.map((state, index): EnvironmentServiceState => ({
+      hostname: `app${String(index)}`,
+      deploy: { latest: deployRecord(state), live: null },
+    }));
     expect(deployTone({ environment: "stage", services })).toBe(expected);
   });
 

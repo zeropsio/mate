@@ -41,6 +41,7 @@ import {
   type MateRegistration,
 } from "./groupCreation.ts";
 import type { GroupEnvironmentTier, MissingEnvironmentRow } from "./groupEnvironments.ts";
+import type { HqDeploy } from "./hq/environments.ts";
 import { mateOnlyOwnerOpensIt, type MateOwnerCandidate } from "./mateAccess.ts";
 import { isReleaseTag, shortCommit } from "./release.ts";
 import { isWholeSha, parseVersionName } from "./versionName.ts";
@@ -227,7 +228,23 @@ export interface EnvironmentServiceState {
   readonly appVersionName?: string | undefined;
   /** Every commit status on that commit, as Gitea returned them. */
   readonly statuses?: ReadonlyArray<GiteaCommitStatus> | undefined;
+  /** Its newest deploy as HQ records it, and the newest that went live. */
+  readonly deploy?: ServiceDeploys | undefined;
 }
+
+/** A service's deploys as HQ records them (`HqEnvironment.deploys`). */
+export interface ServiceDeploys {
+  readonly latest: HqDeploy;
+  readonly live: HqDeploy | null;
+}
+
+/** How a deploy went, by the state HQ records it in. */
+const DEPLOY_TONES: Record<HqDeploy["state"], GroupRowTone> = {
+  pending: "pending",
+  deploying: "pending",
+  live: "good",
+  failed: "bad",
+};
 
 /**
  * The state of one environment's last deploy, across its services.
@@ -242,6 +259,12 @@ export function deployTone(input: {
 }): GroupRowTone {
   let seen: GroupRowTone = "neutral";
   for (const service of input.services) {
+    if (service.deploy !== undefined) {
+      const tone = DEPLOY_TONES[service.deploy.latest.state];
+      if (tone === "bad") return "bad";
+      if (tone === "pending" || seen !== "pending") seen = tone;
+      continue;
+    }
     const status = (service.statuses ?? []).find(
       (entry) => entry.context === deployStatusContext(input.environment, service.hostname),
     );
