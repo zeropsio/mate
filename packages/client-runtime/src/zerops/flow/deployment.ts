@@ -680,7 +680,18 @@ export function afterBuilds(
   readonly shown: Known<ReadonlyArray<StopService>>;
   readonly wakeAtMs: number | null;
 } {
-  if (next.state !== "known") return { built, shown: next, wakeAtMs: null };
+  if (next.state !== "known") {
+    // A re-check of the whole listing is no news of a build's end: a grace already running keeps
+    // its end, so the stop is read again as it runs out.
+    let wakeAtMs: number | null = null;
+    for (const { endedAtMs } of built.values()) {
+      if (endedAtMs === null) continue;
+      const graceEndsAtMs = endedAtMs + AFTER_BUILD_GRACE_MS;
+      if (nowMs < graceEndsAtMs && (wakeAtMs === null || graceEndsAtMs < wakeAtMs))
+        wakeAtMs = graceEndsAtMs;
+    }
+    return { built, shown: next, wakeAtMs };
+  }
   const seen = new Map(built);
   let changed = false;
   let wakeAtMs: number | null = null;
