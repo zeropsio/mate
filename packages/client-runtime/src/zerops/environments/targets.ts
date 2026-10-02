@@ -32,6 +32,7 @@ const SERVICE_TRANSITIONS: ReadonlySet<string> = new Set<ServiceTransition>([
   "STARTING",
   "RESTARTING",
   "UPGRADING",
+  "READY_TO_DEPLOY",
 ]);
 
 /** Region P for a target a listing row names (§4.4). */

@@ -29,8 +29,17 @@ import {
 
 // ── Region P: presence ────────────────────────────────────────────────────────────────────────
 
-/** The platform statuses a service passes through on its way up (`candidates.ts`). */
-export type ServiceTransition = "NEW" | "CREATING" | "STARTING" | "RESTARTING" | "UPGRADING";
+/**
+ * The platform statuses a service passes through on its way up (`candidates.ts`) — a Mate's
+ * `READY_TO_DEPLOY` among them, its first build.
+ */
+export type ServiceTransition =
+  | "NEW"
+  | "CREATING"
+  | "STARTING"
+  | "RESTARTING"
+  | "UPGRADING"
+  | "READY_TO_DEPLOY";
 
 export type NoOriginReason = "subdomain-off" | "no-port" | "no-subdomain";
 

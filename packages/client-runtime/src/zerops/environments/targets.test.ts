@@ -93,6 +93,14 @@ const ROWS: ReadonlyArray<Row> = [
     targets: [{ key: KEY, presence: { kind: "transitioning", status: "RESTARTING" }, record: ENV }],
   },
   {
+    name: "a new Mate in its first build is on its way up, never inactive",
+    listings: [known([mateRow("READY_TO_DEPLOY", null)])],
+    records: [],
+    targets: [
+      { key: KEY, presence: { kind: "transitioning", status: "READY_TO_DEPLOY" }, record: null },
+    ],
+  },
+  {
     name: "services not read yet: a remembered Mate is looked for where its record kept it, never gone (A16)",
     listings: [known([unreadRow])],
     records: [KEY],
