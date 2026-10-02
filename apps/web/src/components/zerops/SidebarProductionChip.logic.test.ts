@@ -72,6 +72,7 @@ const input = (over: Partial<ChipInput> = {}): ChipInput => ({
   building: undefined,
   waiting: 0,
   waitingAtLeast: false,
+  untold: [],
   serving: SERVING,
   releases: ANSWERED,
   ...over,
@@ -113,6 +114,7 @@ describe("projectChips — the chips a project's heading wears", () => {
       building: undefined,
       waiting: 0,
       waitingAtLeast: false,
+      untold: [],
       serving: SERVING,
       stages,
       stagesBeingCreated: false,
@@ -336,6 +338,42 @@ describe("productionChip — production's chip: the word, its tone, its state in
         ),
       )?.state,
     ).toBe("down");
+  });
+
+  // What a service runs that no comparison can start from is not known to be healthy: the chip
+  // says so in its words, as the stop's verdict does, whatever else it says.
+  it.each([
+    {
+      name: "a production one of whose services cannot be told",
+      given: input({ untold: ["api"] }),
+      chip: { label: "prod", state: "ok", version: "v0.1.44", untold: ["api"] },
+      words: "Production v0.1.44, can't tell what api runs",
+    },
+    {
+      name: "changes waiting on a production two of whose services cannot be told",
+      given: input({ waiting: 2, untold: ["api", "web"] }),
+      chip: {
+        label: "prod",
+        state: "waiting",
+        version: "v0.1.44",
+        waiting: 2,
+        untold: ["api", "web"],
+      },
+      words: "Production v0.1.44, can't tell what api and web run",
+    },
+    {
+      name: "a release that did not go out over a service that cannot be told",
+      given: input({
+        releases: { kind: "answered", failure: FAILED_RELEASE },
+        untold: ["api"],
+      }),
+      chip: { label: "prod", state: "failed", version: "v0.1.44", untold: ["api"] },
+      words: "Production v0.1.44, can't tell what api runs",
+    },
+  ])("never says healthy over $name", ({ given, chip: expected, words }) => {
+    const drawn = chip(productionChip(given));
+    expect(drawn).toEqual(expected);
+    expect(chipFace(drawn!).words).toBe(words);
   });
 
   // Down or stopped is the loudest thing the chip can say, and it says it at
@@ -915,6 +953,12 @@ describe("productionMenu — what production's menu says, per state", () => {
       name: "healthy",
       chip: { label: "prod", state: "ok", version: "v0.1.0" },
       row: { version: "v0.1.0", dot: "ok", word: "Healthy", tone: "muted" },
+      fixes: false,
+    },
+    {
+      name: "serving what one service runs, which cannot be told",
+      chip: { label: "prod", state: "ok", version: "v0.1.0", untold: ["api"] },
+      row: { version: "v0.1.0", dot: "off", word: "Can't tell what api runs", tone: "muted" },
       fixes: false,
     },
     {

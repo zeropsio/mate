@@ -378,6 +378,17 @@ describe("the memory in this browser", () => {
     expect(menuMemory().chips.g1?.prod).toEqual(prod);
   });
 
+  it("reads back a chip that cannot tell what a service runs", () => {
+    const key = `mate:account:user-ales:${MENU_MEMORY_STORAGE_KEY}`;
+    const prod = { label: "prod", state: "ok", version: "v0.1.44", untold: ["api"] } as const;
+    stored.set(
+      key,
+      JSON.stringify({ rows: {}, changes: {}, chips: { g1: { prod } }, crews: {}, members: {} }),
+    );
+    openAccountLifetime("user-ales");
+    expect(menuMemory().chips.g1?.prod).toEqual(prod);
+  });
+
   it("reads a memory written before HQ structures were kept, with none", () => {
     const key = `mate:account:user-ales:${MENU_MEMORY_STORAGE_KEY}`;
     stored.set(key, JSON.stringify({ rows: {}, changes: {}, chips: {}, crews: {}, members: {} }));
