@@ -13,6 +13,7 @@ import {
   pendingBornLine,
   mateCrewItem,
   mateDeletingView,
+  mateFinishingView,
   mateOwnerView,
   mateNotYours,
   ownerBadge,
@@ -690,6 +691,42 @@ describe("mateDeletingView — a Mate on its way off Zerops", () => {
   });
 });
 
+// Finish setup runs in place: its row says so where its last line stood, so the row keeps its
+// height — and the Mate is not going anywhere, so its face, its time and its name stay as they were.
+describe("mateFinishingView — a Mate whose setup is being finished", () => {
+  const activity = (overrides: Partial<ZeropsAgentActivity> = {}): ZeropsAgentActivity => ({
+    threadId: ThreadId.make("thread-1"),
+    kind: "idle",
+    status: null,
+    face: "idle",
+    subject: "Speed up the photo gallery",
+    at: "2026-09-29T08:00:00.000Z",
+    snippet: "Thumbnails load lazily now.",
+    unread: false,
+    pausedUntil: undefined,
+    threadKey: "env:thread-1",
+    task: "Speed up the photo gallery",
+    ...overrides,
+  });
+
+  it.each([
+    {
+      case: "asked, with words back: the ask stays, the words give way",
+      input: activity(),
+      ask: "Speed up the photo gallery",
+    },
+    {
+      case: "asked, with no words back: the ask gives way",
+      input: activity({ snippet: undefined }),
+      ask: undefined,
+    },
+    { case: "never spoken to", input: undefined, ask: undefined },
+  ])("$case", ({ input, ask }) => {
+    const view = mateRowView(input, input?.face ?? "sleep");
+    expect(mateFinishingView(view)).toEqual({ ...view, ask, reply: undefined });
+  });
+});
+
 // The owner, 2026-09-29, of a new Mate at work on its first job: its row read "Working on a
 // reply" under an asleep face. The words came from one reading — what this browser remembered the
 // row saying, while its candidate was not connected that instant — and the face from another.
@@ -1267,6 +1304,7 @@ describe("mateRowAskLine — the row's second line: what the person asked, or is
     draft: undefined,
     sent: undefined,
     deleting: false,
+    finishing: false,
     read: true,
   };
 
@@ -1382,6 +1420,26 @@ describe("mateRowAskLine — the row's second line: what the person asked, or is
       case: "deleting, never asked: its deleting line says it",
       input: { ...base, deleting: true },
       line: undefined,
+    },
+    {
+      // Live, 2026-10-02: Finish setup on a Mate waiting for its sign-in, and its row said nothing.
+      case: "finishing its setup, waiting for a sign-in: its finishing line in the sign-in's place",
+      input: {
+        ...base,
+        finishing: true,
+        signIn: { text: "Nobody has signed in yet", waitsOnViewer: false },
+      },
+      line: undefined,
+    },
+    {
+      case: "finishing its setup, asked: the ask, and no draft waits on it",
+      input: {
+        ...base,
+        view: { ask: ASK, reply: undefined, coming: undefined },
+        finishing: true,
+        draft: "hi",
+      },
+      line: { kind: "ask", text: ASK },
     },
   ])("$case", ({ input, line }) => {
     expect(mateRowAskLine(input)).toEqual(line);

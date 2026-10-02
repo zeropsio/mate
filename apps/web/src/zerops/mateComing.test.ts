@@ -1,6 +1,19 @@
+import { EnvironmentId } from "@t3tools/contracts";
+import type { ZeropsProject, ZeropsService } from "@t3tools/client-runtime/zerops";
+import {
+  ADDRESS_GRACE_MS,
+  deriveZeropsCandidates,
+} from "@t3tools/client-runtime/zerops/candidates";
+import {
+  candidatePresence,
+  initialEnvironment,
+  reachabilityPhrase,
+  selectReachability,
+} from "@t3tools/client-runtime/zerops/environments";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
+  arrivalLinkHolds,
   mateComing,
   mateComingHeadlineClauses,
   mateComingPage,
@@ -880,5 +893,146 @@ describe("listingLacksCreation — a whole listing that no longer holds this tab
   ])("$case: $lacks", ({ listed, complete, listedAtMs, lacks, ...rest }) => {
     const madeAtMs = "madeAtMs" in rest ? rest.madeAtMs : MADE;
     expect(listingLacksCreation({ listed, complete, listedAtMs, madeAtMs })).toBe(lacks);
+  });
+});
+
+// Live run 3 (2026-10-02), replayed: the platform makes a Mate's container ACTIVE a moment before
+// it enables its address, and the tab held ACTIVE without an address for 5.6 s. Its row and its
+// own view said "no public address" and an asleep face in that gap, then took it back. Each step
+// here is a listing derivation, the target's presence and the machine's verdict, as this browser
+// draws them.
+describe("a new Mate whose container is ACTIVE before its address landed", () => {
+  const CREATED_AT = "2026-10-02T12:00:00.000Z";
+  const CREATED = Date.parse(CREATED_AT);
+  const ENV = EnvironmentId.make("environment-new");
+  const PROJECT: ZeropsProject = {
+    id: "project-new",
+    name: "Acme Docs",
+    status: "ACTIVE",
+    clientId: "org-1",
+    publicZone: "fte2334ab.prg1-zerops.zone",
+    zeropsSubdomainHost: "9f1c",
+  };
+  const zcp = (status: string, subdomainAccess: boolean): ZeropsService => ({
+    id: "service-new",
+    name: "zcp",
+    status,
+    subdomainAccess,
+    ports: [{ port: 8080, httpSupport: true }],
+    serviceStackTypeInfo: { serviceStackTypeVersionName: "zcp@1" },
+    created: CREATED_AT,
+  });
+  const ORIGIN = "https://zcp-9f1c-8080.prg1.zerops.app";
+
+  /** How each tab reads it at `atMs` since its creation, first seen without its address at `seenMs`. */
+  const reading = (input: {
+    readonly atMs: number;
+    readonly service: ZeropsService;
+    readonly seenMs?: number;
+    readonly connected?: boolean;
+    readonly created: boolean;
+  }) => {
+    const nowMs = CREATED + input.atMs;
+    const candidate = deriveZeropsCandidates(
+      PROJECT,
+      [input.service],
+      new Map(input.connected === true ? [[ORIGIN, ENV]] : []),
+      undefined,
+      {
+        nowMs,
+        addressSeen: () =>
+          input.seenMs === undefined
+            ? undefined
+            : { addressed: false, since: CREATED + input.seenMs },
+      },
+    )[0]!;
+    const presence = candidatePresence({ ...candidate, presence: "known" });
+    const reachability = selectReachability(
+      { ...initialEnvironment({ record: null }), presence },
+      null,
+    );
+    const linkHolds = arrivalLinkHolds({ reachability, failuresSinceConnect: 0 });
+    const coming = mateComing({
+      press: undefined,
+      candidate,
+      nowMs,
+      created: input.created,
+      ...(input.created ? { linkHolds } : {}),
+    });
+    const page = mateComingPage({
+      coming,
+      candidate,
+      complete: true,
+      linked: false,
+      reachability,
+    });
+    return {
+      reachability,
+      coming,
+      arrival: mateArrivalShown({ page, cameUp: true, failuresSinceConnect: 0 }),
+    };
+  };
+
+  const STEPS: ReadonlyArray<{
+    readonly step: string;
+    readonly atMs: number;
+    readonly service: ZeropsService;
+    readonly seenMs?: number;
+  }> = [
+    { step: "its first build", atMs: 60_000, service: zcp("READY_TO_DEPLOY", false) },
+    { step: "ACTIVE, its address not enabled yet", atMs: 109_700, service: zcp("ACTIVE", false) },
+    {
+      step: "ACTIVE, its address still on its way",
+      atMs: 113_000,
+      service: zcp("ACTIVE", false),
+      seenMs: 109_700,
+    },
+    { step: "its address landed", atMs: 115_300, service: zcp("ACTIVE", true) },
+  ];
+
+  describe.each([
+    { viewer: "the tab that made it", created: true },
+    { viewer: "another tab", created: false },
+  ])("in $viewer", ({ created }) => {
+    it.each(STEPS.filter((step) => step.service.subdomainAccess === false))(
+      "$step: coming up, never without an address nor asleep",
+      (step) => {
+        const read = reading({ ...step, created });
+        expect(read.reachability.kind).not.toBe("no-address");
+        // Its row draws a coming Mate (`mateComingRowView`); asleep is a row with nothing coming.
+        expect(read.coming?.kind).toBe("coming");
+        expect(read.arrival?.kind).toBe("coming");
+      },
+    );
+
+    it("its address landed: its view holds the board until it connects, then hands over", () => {
+      const landed = reading({ ...STEPS[3]!, created });
+      expect(landed.reachability.kind).not.toBe("no-address");
+      expect(landed.arrival?.kind).toBe("coming");
+
+      const connected = reading({ ...STEPS[3]!, atMs: 127_000, connected: true, created });
+      expect(connected.coming).toBeUndefined();
+    });
+  });
+
+  it("an old Mate whose access is off says it has no public address, with Open in Zerops", () => {
+    const read = reading({ atMs: 3 * 60 * 60_000, service: zcp("ACTIVE", false), created: false });
+    expect(read.coming).toBeUndefined();
+    expect(read.reachability).toEqual({ kind: "no-address", reason: "no-subdomain" });
+    expect(reachabilityPhrase(read.reachability, { nowMs: 0, mateName: "Quinn" })).toEqual({
+      text: "This Mate has no public address.",
+      actions: ["open-in-zerops"],
+    });
+  });
+
+  it("a young Mate whose address never came says so once its wait ends", () => {
+    const read = reading({
+      atMs: 109_700 + ADDRESS_GRACE_MS,
+      service: zcp("ACTIVE", false),
+      seenMs: 109_700,
+      created: false,
+    });
+    expect(read.coming).toBeUndefined();
+    expect(read.reachability.kind).toBe("no-address");
   });
 });

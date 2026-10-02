@@ -54,6 +54,7 @@ import {
 import type { DeployScope, GroupUpdate } from "@t3tools/client-runtime/zerops/flow";
 import {
   createForgeReads,
+  giteaNotFound,
   giteaUnauthorized,
   type ForgePart,
   type ForgeReadRef,
@@ -261,16 +262,22 @@ export async function readGroupDeploys(input: {
   // The org's listing first: what it says moved is read again below, and the rest is kept. One
   // that does not answer is no reason for this half to fail, which never needed it: it reads the
   // group repo itself, this once. A 401 is the session's, and ends the read.
+  // Read before the listing is asked: its own 404 is recorded as "not made" (`ForgeReads`).
+  const made = reads.organizations().get(group.slug) === true;
   const listed = await reads
     .repositories(group.slug, () => input.client.listOrganizationRepositories(group.slug))
     .then(
-      () => true,
+      () => "listed" as const,
       (cause: unknown) => {
         if (giteaUnauthorized(cause)) throw cause;
-        return false;
+        // The broker has not made the group's org yet: no group repo to read, and nothing failed
+        // (`readForge`).
+        if (giteaNotFound(cause) && !made) return "not-made" as const;
+        return "unlisted" as const;
       },
     );
-  const client = listed ? kept : input.client;
+  if (listed === "not-made") return () => NOTHING_DECLARED;
+  const client = listed === "listed" ? kept : input.client;
   const declarations = await readDeclarations(client, group.slug);
   const pullRequests = await client.listPullRequests(group.slug, GROUP_REPOSITORY, {
     state: "open",

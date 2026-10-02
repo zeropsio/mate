@@ -184,14 +184,6 @@
     "expires": "never"
   },
   {
-    "path": "apps/web/src/zerops/useZeropsGroupOrganizations.ts",
-    "kind": "CallExpression",
-    "fingerprint": "client.getOrganization(slug).catch(() => null)",
-    "owner": "state-model 4.1",
-    "reason": "null marks an organization read that did not answer and the pair is left out, never taken as absent; the forge store holds it as Known",
-    "expires": "never"
-  },
-  {
     "path": "apps/web/src/zerops/useZeropsMateNextStep.ts",
     "kind": "LogicalExpression",
     "fingerprint": "project?.tagList ?? []",

@@ -923,7 +923,7 @@ describe("a listed Mate still coming up", () => {
   it("offers no menu while it comes up: nothing on it is about a Mate still being made", () => {
     const html = render([CRM_DEV], {
       getComing: () => COMING,
-      getMateActions: () => ({ onMenuOpen: () => {} }),
+      getMateActions: () => ({}),
     });
     expect(html).not.toContain('data-zerops-surface="sidebar-mate-actions"');
   });

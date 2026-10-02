@@ -1,5 +1,6 @@
 import {
   flowPullRequest,
+  GiteaApiError,
   releaseInFlight,
   releaseMessage,
   type GiteaClient,
@@ -9,6 +10,7 @@ import { flowVerbInvalidations } from "@t3tools/client-runtime/zerops/flow";
 import {
   createForgeReads,
   createMergeabilityTracker,
+  GATE_FRESH_MS,
   TAGS_MAX_AGE_MS,
   type MergeabilityTracker,
 } from "@t3tools/client-runtime/zerops/forge";
@@ -188,6 +190,51 @@ describe("readForge", () => {
     // appdev is not among what the answer read, so nothing says it has no pull requests.
     expect(state?.repositories).toEqual(["apidev"]);
     expect(state?.pullRequests.map((row) => [row.repository, row.number])).toEqual([["apidev", 7]]);
+  });
+
+  // Live, 2026-10-02: a project made a moment ago is read at once now, before the broker has made
+  // its group's org (its `404` is "not made yet", `ForgeReads.organizations`) — nothing to read
+  // there, and nothing failed.
+  it("reads a group whose org the broker has not made yet as nothing yet, never a failure", async () => {
+    const client = {
+      listOrganizationRepositories: async () => {
+        throw new GiteaApiError("Gitea answered 404.", 404);
+      },
+    } as unknown as GiteaClient;
+    const update = await readForge(client, "harbor", "group", createMergeabilityTracker());
+    expect(update(undefined)).toEqual({
+      repositories: [],
+      pullRequests: [],
+      merged: [],
+      released: { releases: [], tags: [] },
+    });
+  });
+
+  it("fails the read of an org it listed before that answers 404 now, keeping what it held", async () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(Date.parse("2026-10-02T12:00:00Z"));
+      const reads = createForgeReads();
+      const { client } = forge();
+      await readForge(client, "harbor", "group", createMergeabilityTracker(), reads);
+      vi.advanceTimersByTime(GATE_FRESH_MS + 1);
+      const gone = {
+        ...client,
+        listOrganizationRepositories: async () => {
+          throw new GiteaApiError("Gitea answered 404.", 404);
+        },
+      } as unknown as GiteaClient;
+      await expect(
+        readForge(gone, "harbor", "group", createMergeabilityTracker(), reads),
+      ).rejects.toThrow("404");
+      // And on the next refresh too: the first 404 does not make it "not made yet".
+      vi.advanceTimersByTime(GATE_FRESH_MS + 1);
+      await expect(
+        readForge(gone, "harbor", "group", createMergeabilityTracker(), reads),
+      ).rejects.toThrow("404");
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("shows the pull requests, and why the releases are missing, when the tags never answered", async () => {

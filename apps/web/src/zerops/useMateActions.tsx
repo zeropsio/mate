@@ -112,6 +112,7 @@ import { useZeropsOrganizationMembers, zeropsMateOwner } from "./useZeropsMateOw
 import { finishSetupContainer, mateProjectPastGrace } from "./finishSetup.logic";
 import {
   beginPress,
+  finishSetupRunning,
   finishMateSetup,
   forgetPress,
   pressViewer,
@@ -197,13 +198,7 @@ export interface MateRenameInPlace {
   readonly commit: (value: string) => void;
 }
 
-/**
- * The two reads a caller must already hold.
- *
- * Both are per-instance — a second `useZeropsRegistry` is a second poll of the
- * account's registry, not a shared one — so they are passed in rather than
- * taken again here. Each surface reads them once and hands them over.
- */
+/** The two reads a caller already holds, handed over rather than taken again here. */
 export interface MateActionsInput {
   readonly registry: RegistryState;
   /** `candidate.key → "0.11.25"`, from `useZeropsContainers`. */
@@ -212,7 +207,6 @@ export interface MateActionsInput {
 
 interface RegistryState {
   readonly registry: Parameters<typeof resolveMateRegistration>[0]["registry"];
-  readonly refresh: () => void;
 }
 
 export function useMateActions({ registry, serverVersions }: MateActionsInput): MateActions {
@@ -540,13 +534,23 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
       const harden = hardenable || (whole && !mateNeedsHarden(listedTokens, projectId));
       // A close-off alone has nothing to finish on a Mate with no container.
       if (!whole && !hardenable && candidate.service === undefined) return;
-      // Its view draws the steps as they run, and their end (`finishSetupView`).
+      // A container only where its project has none and no press elsewhere may still be importing
+      // one (`finishSetupContainer`).
+      const container = whole
+        ? finishSetupContainer({
+            hasService: candidate.service !== undefined,
+            pressStopped,
+            pastGrace: mateProjectPastGrace(candidate.project, Date.now()),
+          })
+        : null;
+      // Its row says it runs and ends (`finishSetupRowLine`), on any screen; its view draws the
+      // steps while a container comes up (`finishSetupView`). Only then is it coming.
       beginPress({
         projectId,
         organizationId,
         startedAt: Date.now(),
         placement: null,
-        container: true,
+        container: container !== null,
         finishing: true,
       });
       void write(
@@ -556,15 +560,7 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
             inputs: { client, data: { runtime, organizationRef, projectRef }, organizationId },
             projectId,
             projectName: candidate.project.name,
-            // A container only where its project has none and no press elsewhere may still be
-            // importing one (`finishSetupContainer`).
-            container: whole
-              ? finishSetupContainer({
-                  hasService: candidate.service !== undefined,
-                  pressStopped,
-                  pastGrace: mateProjectPastGrace(candidate.project, Date.now()),
-                })
-              : null,
+            container,
             groupProjectIds: (group?.environments ?? []).flatMap(({ item }) =>
               item.project.id === projectId ? [] : [item.project.id],
             ),
@@ -584,7 +580,6 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
                   },
             isCurrent: captureAccountLifetime(),
           });
-          registry.refresh();
           if (!finished.ok) throw new Error(finished.error);
         },
         refresh,
@@ -599,7 +594,6 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
       organizationRef,
       projectRef,
       refresh,
-      registry,
       runtime,
       user,
       write,
@@ -803,7 +797,11 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
               {
                 id: "finish-setup",
                 label: finishSetupLabel,
-                disabled: busy,
+                disabled:
+                  busy ||
+                  finishSetupRunning(
+                    presses.find((press) => press.projectId === candidate.project.id),
+                  ),
                 onSelect: () => finishSetup(candidate, tags),
               },
             ]),

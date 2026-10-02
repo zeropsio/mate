@@ -13,7 +13,14 @@
 import type { EnvironmentId } from "@t3tools/contracts";
 
 import type { ZeropsService } from "../api.ts";
-import { deriveZeropsCandidates, isZcpService, type ZeropsCandidate } from "../candidates.ts";
+import {
+  addressSeenAfter,
+  deriveZeropsCandidates,
+  isZcpService,
+  type AddressClock,
+  type AddressSeen,
+  type ZeropsCandidate,
+} from "../candidates.ts";
 import { readZeropsGroupTags } from "../groups.ts";
 import { projectRecordToZeropsProject, serviceRecordToZeropsService } from "../data/dto.ts";
 import type { ProjectRecord, ProjectRef, ServiceRecord } from "../data/types.ts";
@@ -57,11 +64,13 @@ const known = (candidates: ReadonlyArray<ZeropsCandidate>): ReadonlyArray<Candid
 
 /**
  * One project's candidates; null while its name or status is not read yet. Only an active
- * project's services are read (`servicesOf`): any other status decides its one row alone.
+ * project's services are read (`servicesOf`): any other status decides its one row alone. A reader
+ * that holds a clock judges a young container's wait for its address by it (`AddressClock`).
  */
 export function projectCandidates(
   record: ProjectRecord,
   servicesOf: (project: ProjectRef) => Known<ReadonlyArray<ServiceRecord>>,
+  clock?: AddressClock,
 ): ReadonlyArray<CandidateRow> | null {
   const project = projectRecordToZeropsProject(record);
   if (project === null) return null;
@@ -71,7 +80,7 @@ export function projectCandidates(
   if (services === null) {
     return [{ key: project.id, project, group: "unavailable", presence: "unknown" }];
   }
-  return known(deriveZeropsCandidates(project, services, NO_CONNECTIONS));
+  return known(deriveZeropsCandidates(project, services, NO_CONNECTIONS, undefined, clock));
 }
 
 /**
@@ -82,12 +91,76 @@ export function projectCandidates(
 export function selectCandidates(
   projects: Known<ReadonlyArray<ProjectRecord>>,
   servicesOf: (project: ProjectRef) => Known<ReadonlyArray<ServiceRecord>>,
+  clock?: AddressClock,
 ): Known<ReadonlyArray<CandidateRow>> {
   if (projects.state !== "known") return projects;
   return candidateListing(
     projects,
-    projects.value.map((record) => projectCandidates(record, servicesOf)),
+    projects.value.map((record) => projectCandidates(record, servicesOf, clock)),
   );
+}
+
+/**
+ * What a reader remembers of its containers' addresses, by service id (`AddressSeen`). It outlives
+ * every read — a listing that blinks unread, a project not admitted for a moment — so a wait never
+ * begins again and a container once seen with its address never waits for it.
+ */
+export type AddressMemory = ReadonlyMap<string, AddressSeen>;
+
+export const NO_ADDRESS_MEMORY: AddressMemory = new Map();
+
+/** The clock a reader derives its rows by, over what it remembers. */
+export const addressClockOf = (memory: AddressMemory, nowMs: number): AddressClock => ({
+  nowMs,
+  addressSeen: (serviceId) => memory.get(serviceId),
+});
+
+/** The memory after rows a reader derived; the same memory when they taught it nothing. */
+export function rememberAddresses(
+  memory: AddressMemory,
+  rows: ReadonlyArray<ZeropsCandidate>,
+): AddressMemory {
+  let next: Map<string, AddressSeen> | null = null;
+  for (const row of rows) {
+    if (row.service === undefined) continue;
+    const held = memory.get(row.service.id);
+    const kept = addressSeenAfter(row, held);
+    if (kept === held) continue;
+    next ??= new Map(memory);
+    if (kept === undefined) next.delete(row.service.id);
+    else next.set(row.service.id, kept);
+  }
+  return next ?? memory;
+}
+
+/** When the first of the rows' address waits ends, wall ms; null when none waits. */
+export function addressWaitEnd(rows: ReadonlyArray<ZeropsCandidate>): number | null {
+  let end: number | null = null;
+  for (const row of rows) {
+    const until = row.addressAwaited?.until;
+    if (until !== undefined && (end === null || until < end)) end = until;
+  }
+  return end;
+}
+
+/**
+ * What a reader's listings teach its address memory, and when the soonest wait among them ends —
+ * read off the known ones, so a reader never reads a listing's value itself (web and mobile never
+ * read a Known's value).
+ */
+export function learnAddresses(
+  memory: AddressMemory,
+  listings: ReadonlyArray<Known<ReadonlyArray<ZeropsCandidate>>>,
+): { readonly memory: AddressMemory; readonly waitEnd: number | null } {
+  let learned = memory;
+  let waitEnd: number | null = null;
+  for (const listing of listings) {
+    if (listing.state !== "known") continue;
+    learned = rememberAddresses(learned, listing.value);
+    const end = addressWaitEnd(listing.value);
+    if (end !== null && (waitEnd === null || end < waitEnd)) waitEnd = end;
+  }
+  return { memory: learned, waitEnd };
 }
 
 /**

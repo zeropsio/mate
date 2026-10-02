@@ -53,6 +53,11 @@ export type Presence =
    */
   | { readonly kind: "remembered"; readonly origin: string }
   | { readonly kind: "transitioning"; readonly status: ServiceTransition }
+  /**
+   * ACTIVE and young, its address not landed yet (`ZeropsCandidate.addressAwaited`): on its way,
+   * like a transition — never `no-origin` while the platform is still enabling it.
+   */
+  | { readonly kind: "address-pending" }
   | { readonly kind: "inactive"; readonly status: string }
   | { readonly kind: "no-origin"; readonly reason: NoOriginReason }
   /** Only with absence evidence (§3.1): a confirmed project denial, or a confirmed service removal. */

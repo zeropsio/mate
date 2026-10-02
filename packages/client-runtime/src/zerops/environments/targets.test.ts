@@ -27,6 +27,16 @@ const mateRow = (status: string, origin: string | null = ORIGIN): CandidateRow =
   presence: "known",
 });
 
+/** The project's Mate ACTIVE without its address: young and on its way to it, or past its wait. */
+const addressRow = (group: "provisioning" | "unavailable"): CandidateRow => ({
+  key: KEY,
+  project,
+  group,
+  service: { id: "service-1", name: "zcp", status: "ACTIVE" },
+  ...(group === "provisioning" ? { addressAwaited: { since: 1_000, until: 121_000 } } : {}),
+  presence: "known",
+});
+
 /** The project whose services are not read yet: nothing is said of any Mate in it. */
 const unreadRow: CandidateRow = {
   key: project.id,
@@ -99,6 +109,18 @@ const ROWS: ReadonlyArray<Row> = [
     targets: [
       { key: KEY, presence: { kind: "transitioning", status: "READY_TO_DEPLOY" }, record: null },
     ],
+  },
+  {
+    name: "a young Mate ACTIVE before its address landed is on its way to it, never without one",
+    listings: [known([addressRow("provisioning")])],
+    records: [],
+    targets: [{ key: KEY, presence: { kind: "address-pending" }, record: null }],
+  },
+  {
+    name: "a Mate ACTIVE without an address past its wait has no public address",
+    listings: [known([addressRow("unavailable")])],
+    records: [KEY],
+    targets: [{ key: KEY, presence: { kind: "no-origin", reason: "no-subdomain" }, record: ENV }],
   },
   {
     name: "services not read yet: a remembered Mate is looked for where its record kept it, never gone (A16)",

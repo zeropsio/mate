@@ -172,7 +172,6 @@ import { useMateActions } from "~/zerops/useMateActions";
 import { useZeropsGroupRecipe } from "~/zerops/useZeropsGroupRecipe";
 import { useAccountGitea, useAccountHoldsGitea } from "~/zerops/giteaProject";
 import { useZeropsGroupEnvironmentReconcile } from "~/zerops/useZeropsGroupEnvironmentReconcile";
-import { useZeropsGroupOrganizations } from "~/zerops/useZeropsGroupOrganizations";
 import { registryGroupSlug, useZeropsRegistry } from "~/zerops/useZeropsRegistry";
 import { useZeropsProjectFlow } from "~/zerops/projectFlowContext";
 import { REVIEW_LABEL, REVIEW_RELEASE_LABEL, useOpenReview } from "~/zerops/review";
@@ -1604,22 +1603,8 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
   // devel region or behind a custom domain is read, never guessed.
   const giteaOrigin = accountGitea?.state.url;
   // The registry — which groups exist, and what each one's Gitea org is called
-  // (guide 4.1). One project read, on the one screen that sees the account.
-  const registryState = useZeropsRegistry({
-    giteaProjectId: giteaProjectId,
-    enabled: status === "signed-in",
-  });
-
-  // A press's group writes change the registry: it is read again as each
-  // press settles, so the tree is not left one version behind.
-  const birthSteps = presses.map((press) => `${press.projectId}:${press.state.kind}`).join(",");
-  const readBirthStepsRef = useRef(birthSteps);
-  const refreshRegistry = registryState.refresh;
-  useEffect(() => {
-    if (readBirthStepsRef.current === birthSteps) return;
-    readBirthStepsRef.current = birthSteps;
-    refreshRegistry();
-  }, [birthSteps, refreshRegistry]);
+  // (guide 4.1) — as the store holds the account's Gitea project's tags.
+  const registryState = useZeropsRegistry(activeOrganization?.id);
 
   // Every verb a Mate has, from the one place that defines them — shared with
   // a project's own page, which listed its Mates and could do nothing to them.
@@ -1638,14 +1623,6 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
           ? "stage"
           : "mate",
     enabled: creationRequest !== null,
-  });
-
-  // The registry says which groups were asked for; `GET /orgs/{slug}` says
-  // which the broker has actually made (guide 4.5).
-  const giteaOrganizations = useZeropsGroupOrganizations({
-    giteaOrigin,
-    slugs: registryState.registry.groups.map((group) => group.slug),
-    enabled: status === "signed-in",
   });
 
   // Every group's flow — its declared environments and what they run, what
@@ -1846,9 +1823,13 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
 
   /**
    * The one line a group says about itself: that the broker has not finished
-   * its Gitea side yet (`groupRows.ts`). A group whose org has not been asked
-   * about says nothing, so the heading never grows a line and then loses it.
+   * its Gitea side yet (`groupRows.ts`). The registry says which groups were
+   * asked for; the forge's listing of each org, on its own clock and on every
+   * screen, says which the broker has made (guide 4.5). A group whose org has
+   * not been answered for says nothing, so the heading never grows a line and
+   * then loses it.
    */
+  const giteaOrganizations = projectFlow.organizations;
   const groupLines = useMemo(() => {
     const lines = new Map<string, string>();
     for (const entry of registryState.registry.groups) {
@@ -2069,7 +2050,6 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
     clientId: activeOrganization?.id,
     giteaOrigin,
     giteaProjectId,
-    refreshRegistry: registryState.refresh,
     halfMade,
     // Not a failed creation: the project runs, and what is outstanding is
     // said on its group's row (`projectsGroupLine`), not under the page.

@@ -85,6 +85,7 @@ import {
   type ZeropsGroupDeploys,
 } from "./useZeropsGroupDeploys";
 import {
+  useForgeOrganizations,
   useForgeReads,
   useZeropsGroupForge,
   type ZeropsGroupForgeState,
@@ -103,6 +104,7 @@ import { useZeropsSession } from "./ZeropsSessionProvider";
 const EMPTY_FLOWS: ReadonlyMap<string, ZeropsProjectFlow> = new Map();
 const EMPTY_HEADS: ReadonlyMap<string, string> = new Map();
 const EMPTY_SLUGS: ReadonlyMap<string, string> = new Map();
+const EMPTY_ORGANIZATIONS: ReadonlyMap<string, boolean> = new Map();
 /** What a verb says when it is pressed while the flows stand and no Gitea token is held. */
 const SIGNING_IN_AGAIN = "Signing in to Gitea again. Try it again in a moment.";
 /** A merge Gitea refused because the pull request's head moved since the person was shown it. */
@@ -366,11 +368,7 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
   const brokerOrigin = accountGitea?.state.brokerUrl;
   const signedInToMate = session.status === "signed-in";
 
-  const registry = useZeropsRegistry({
-    giteaProjectId: accountGitea?.projectId,
-    enabled: signedInToMate,
-  });
-  const { askForOwner } = registry;
+  const registry = useZeropsRegistry(clientId);
   const platform = useMemo(() => zeropsThrowawayPlatform(session.client), [session.client]);
   const {
     signedIn,
@@ -505,6 +503,7 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
   const readVersion = useZeropsDeployedVersionReader();
   const enabled = signedInToMate && signedIn;
   const reads = useForgeReads(giteaOrigin);
+  const organizations = useForgeOrganizations(reads);
   const {
     deploys,
     failures: deployFailures,
@@ -895,7 +894,7 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
       flows: lapsed ? EMPTY_FLOWS : flows,
       deployments,
       slugs: lapsed ? EMPTY_SLUGS : slugs,
-      askForOwner,
+      organizations: lapsed ? EMPTY_ORGANIZATIONS : organizations,
       mateNames,
       pending: pendingOrHeld,
       // Flows that stand with no token say why where the verbs are, ahead of what a verb said.
@@ -906,7 +905,6 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
       rollBack,
     }),
     [
-      askForOwner,
       createPullRequest,
       deployments,
       flows,
@@ -914,6 +912,7 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
       lapsed,
       mateNames,
       mergePullRequest,
+      organizations,
       pendingOrHeld,
       readable,
       release,
