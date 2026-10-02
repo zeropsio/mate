@@ -468,6 +468,7 @@ export {
   type ChangeReviewInput,
   type CrewTaskReviewInput,
   type ReleaseOutcome,
+  type ReleaseReplaces,
   type ReleaseReviewInput,
   type ReleaseReviewModel,
   type ReviewFix,

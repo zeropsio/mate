@@ -33,6 +33,7 @@ import {
   stageStandings,
   type ReleaseFacts,
   type ReleaseGate,
+  type ReleaseReplaces,
   type ReleaseOutcome,
   type ReviewPress,
 } from "@t3tools/client-runtime/zerops";
@@ -214,6 +215,7 @@ function ReleaseData({
       releaseFacts({
         tag,
         live: flow.releases.find((entry) => entry.standing === "live")?.tag,
+        releases: flow.releases,
         contents: flow.release.contents,
         mainHeads: flow.mainHeads,
         comparison: flow.release.comparison,
@@ -307,8 +309,8 @@ export interface ReleaseReviewViewProps {
   readonly where: ReadonlyArray<{ readonly service: string; readonly line: string }>;
   readonly hasStage: boolean;
   readonly services: ReadonlyArray<string>;
-  /** The release production ran as this one was offered; `undefined` for the first release. */
-  readonly replaces: string | undefined;
+  /** What production ran as this one was offered. */
+  readonly replaces: ReleaseReplaces;
   readonly outcome: ReleaseOutcome;
   readonly press: ReviewPress;
   /** The person's own Mate a failure is handed to, the one they used last. */

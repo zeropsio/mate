@@ -15,7 +15,7 @@
  */
 
 import type { FlowReleaseRow, ReleaseComparison } from "./release.ts";
-import type { ReleaseOutcome, ReviewPress } from "./reviewVerdict.ts";
+import type { ReleaseOutcome, ReleaseReplaces, ReviewPress } from "./reviewVerdict.ts";
 import {
   stageMarks,
   type ServiceChanges,
@@ -27,11 +27,8 @@ import {
 export interface ReleaseFacts {
   /** The version it tags. */
   readonly tag: string;
-  /**
-   * The release production ran as it was offered: what this one replaces, and where a roll back
-   * goes. `undefined` for the first release.
-   */
-  readonly replaces: string | undefined;
+  /** What production ran as it was offered: what this one replaces, and where a roll back goes. */
+  readonly replaces: ReleaseReplaces;
   /** What goes out, service by service (`releaseContents`). */
   readonly contents: ReadonlyArray<ServiceChanges>;
   /** Where each service's `main` was, which orients its commits (`stageMarks`). */
@@ -45,8 +42,10 @@ export interface ReleaseFacts {
 /** The facts as the project reads them now. */
 export function releaseFacts(input: {
   readonly tag: string;
-  /** The release production runs now. */
+  /** The release production runs in full now (`releaseRunBy`), if any does. */
   readonly live: string | undefined;
+  /** Every release of the group: the first release is one with none before it. */
+  readonly releases: ReadonlyArray<Pick<FlowReleaseRow, "tag" | "verdict">>;
   readonly contents: ReadonlyArray<ServiceChanges>;
   readonly mainHeads: ReadonlyMap<string, string> | undefined;
   /** Per service, `main` against production (`compareForRelease`). */
@@ -57,7 +56,12 @@ export function releaseFacts(input: {
   const moving = input.comparison.filter((row) => row.changed).map((row) => row.service);
   return {
     tag: input.tag,
-    replaces: input.live,
+    replaces:
+      input.live !== undefined && input.live !== input.tag
+        ? { kind: "release", tag: input.live }
+        : input.releases.some((entry) => entry.verdict !== "refused" && entry.tag !== input.tag)
+          ? { kind: "unnamed" }
+          : { kind: "first" },
     contents: input.contents,
     mainHeads: input.mainHeads,
     where: input.comparison.map((row) => ({
