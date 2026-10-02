@@ -19,7 +19,7 @@ import { mateLiveLayer } from "./mateLive.ts";
 import { treeMigrations } from "./migrationFiles.ts";
 import { migrate } from "./migrations.ts";
 import { type OrgView, Roles } from "./roles.ts";
-import { Structure, structureLayer } from "./structure.ts";
+import { type MateRecord, Structure, structureLayer } from "./structure.ts";
 import { type FakeWorld, emptyWorld, fakeZeropsApi } from "../test/harness/zeropsFake.ts";
 import {
   ZeropsApi,
@@ -600,7 +600,7 @@ describe("structure", () => {
                     projectId: "P_MATE",
                     name: "name of P_MATE",
                     kind: "devstage",
-                    mate: { ...mate, ...UNBORN },
+                    mate: { ...mate, madeBy: "owner", ...UNBORN },
                   },
                   { projectId: "P_STAGE", name: "name of P_STAGE", kind: "stage", mate: null },
                 ],
@@ -618,7 +618,7 @@ describe("structure", () => {
                     projectId: "P_OWNED",
                     name: "name of P_OWNED",
                     kind: "devstage",
-                    mate: { name: "Bo", face: "face-1", ...UNBORN },
+                    mate: { name: "Bo", face: "face-1", madeBy: "maker", ...UNBORN },
                   },
                 ],
                 environments: [environmentRow("P_TEAM", "stage", "name-of-p-team", 1)],
@@ -765,7 +765,7 @@ describe("structure", () => {
             const read = yield* structure.read("owner");
             assert.deepStrictEqual(
               read.apps[0]?.projects.find((project) => project.projectId === "P_OWN")?.mate,
-              { name: "Ada", face: "face-3", ...UNBORN },
+              { name: "Ada", face: "face-3", madeBy: "owner", ...UNBORN },
             );
           }),
         ),
@@ -794,12 +794,14 @@ describe("structure", () => {
               assert.deepStrictEqual(yield* mateOf("P_MATE"), {
                 name: "Ada",
                 face: "face-3",
+                madeBy: null,
                 standupRequestedBy: null,
                 closedOff: true,
               });
               assert.deepStrictEqual(yield* mateOf("P_OWN"), {
                 name: "Bo",
                 face: "face-1",
+                madeBy: "owner",
                 ...UNBORN,
               });
 
@@ -831,6 +833,7 @@ describe("structure", () => {
           assert.deepStrictEqual(yield* mateOf("reader"), {
             name: "Ada",
             face: "face-3",
+            madeBy: "owner",
             standupRequestedBy: null,
             closedOff: false,
           });
@@ -846,9 +849,56 @@ describe("structure", () => {
           assert.deepStrictEqual(yield* mateOf("reader"), {
             name: "Ada",
             face: "face-3",
+            madeBy: "owner",
             standupRequestedBy: "owner",
             closedOff: true,
           });
+        }),
+      ),
+    );
+
+    // The person whose sign-in a Mate waits for: whoever set its record up, by their session —
+    // never a field a client sends. Attaching a Mate set up already keeps its maker.
+    it.effect("records who made a Mate: whoever creates or attaches it, and only them", () =>
+      withStructure(() =>
+        Effect.gen(function* () {
+          const structure = yield* Structure;
+          const madeByOf = (projectId: string) =>
+            Effect.map(
+              structure.read("owner"),
+              (read) =>
+                [
+                  ...read.ungrouped.map((entry) => ({
+                    projectId: entry.projectId,
+                    mate: entry.mate,
+                  })),
+                  ...read.apps.flatMap((app) => app.projects),
+                ].find((entry) => entry.projectId === projectId)?.mate?.madeBy,
+            );
+          yield* structure.createMate("owner", {
+            projectId: "P_MATE",
+            name: "Ada",
+            face: "face-3",
+            madeBy: "dev",
+          } as MateRecord);
+          assert.strictEqual(yield* madeByOf("P_MATE"), "owner");
+
+          const team = yield* structure.createApp("owner", "Team");
+          yield* structure.attachProject("owner", team.id, { projectId: "P_TEAM", kind: "stage" });
+          yield* structure.attachProject("maker", team.id, {
+            projectId: "P_OWN",
+            kind: "mate",
+            mate: { name: "Bo", face: "face-1" },
+          });
+          assert.strictEqual(yield* madeByOf("P_OWN"), "maker");
+
+          // Attached by somebody else, a Mate set up already keeps the person who made it.
+          yield* structure.attachProject("admin", team.id, {
+            projectId: "P_MATE",
+            kind: "mate",
+            mate: { name: "Ada", face: "face-3" },
+          });
+          assert.strictEqual(yield* madeByOf("P_MATE"), "owner");
         }),
       ),
     );
@@ -894,8 +944,8 @@ describe("structure", () => {
           );
           const mates = (yield* structure.read("owner")).apps[0]?.projects.map((p) => p.mate);
           assert.deepStrictEqual(mates, [
-            { name: "Ada 2", face: "face-3", ...UNBORN },
-            { name: "Mine", face: "olive:clover", ...UNBORN },
+            { name: "Ada 2", face: "face-3", madeBy: "owner", ...UNBORN },
+            { name: "Mine", face: "olive:clover", madeBy: "owner", ...UNBORN },
             null,
           ]);
         }),
@@ -1418,7 +1468,7 @@ describe("structure", () => {
               {
                 projectId: "P_OWNED",
                 name: "name of P_OWNED",
-                mate: { name: "Bo 2", face: "olive:clover", ...UNBORN },
+                mate: { name: "Bo 2", face: "olive:clover", madeBy: "maker", ...UNBORN },
               },
             ];
             assert.deepStrictEqual(yield* ungrouped("maker"), listed);
@@ -1530,7 +1580,7 @@ describe("structure", () => {
             projectId: "P_MATE",
             name: "name of P_MATE",
             kind: "mate",
-            mate: { name: "Ada", face: "face-3", ...UNBORN },
+            mate: { name: "Ada", face: "face-3", madeBy: "owner", ...UNBORN },
           });
 
           yield* Ref.update(view, (current) => ({

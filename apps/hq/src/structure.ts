@@ -149,6 +149,11 @@ export interface MateRecord {
 export interface MateView {
   readonly name: string;
   readonly face: string;
+  /**
+   * Who made it: whoever set its record up, by their session (`createMate`, `attachProject`) —
+   * the person whose sign-in it waits for. Nobody for a Mate recorded before HQ kept it.
+   */
+  readonly madeBy: string | null;
   /** Who asked for its stand-up (`markBirth`), or nobody yet. */
   readonly standupRequestedBy: string | null;
   /** Whether its project is closed off, so its runtimes may be imported. */
@@ -160,6 +165,7 @@ export interface MateView {
 interface MateRow {
   readonly name: string;
   readonly face: string;
+  readonly madeBy: string | null;
   readonly standupRequestedBy: string | null;
   readonly closedOff: boolean;
 }
@@ -685,8 +691,8 @@ export const structureLayer = (options: {
                   // (`edit_mate_record`), not an attacher's.
                   if (input.mate !== undefined) {
                     yield* sql`
-                      INSERT INTO hq_mate (project_id, name, face)
-                      VALUES (${input.projectId}, ${input.mate.name}, ${input.mate.face})
+                      INSERT INTO hq_mate (project_id, name, face, made_by)
+                      VALUES (${input.projectId}, ${input.mate.name}, ${input.mate.face}, ${userId})
                       ON CONFLICT (project_id) DO NOTHING`;
                   }
                 }),
@@ -820,8 +826,8 @@ export const structureLayer = (options: {
                     view,
                   );
                   yield* sql`
-                    INSERT INTO hq_mate (project_id, name, face)
-                    VALUES (${mate.projectId}, ${name}, ${mate.face})`;
+                    INSERT INTO hq_mate (project_id, name, face, made_by)
+                    VALUES (${mate.projectId}, ${name}, ${mate.face}, ${userId})`;
                 }),
               ),
               "mate_record_exists",
@@ -871,14 +877,14 @@ export const structureLayer = (options: {
             }>`
               SELECT p.project_id, p.app_id::text AS app_id, p.kind,
                      CASE WHEN m.project_id IS NULL THEN NULL ELSE json_build_object(
-                       'name', m.name, 'face', m.face,
+                       'name', m.name, 'face', m.face, 'madeBy', m.made_by,
                        'standupRequestedBy', m.standup_requested_by,
                        'closedOff', m.closed_off_at IS NOT NULL) END AS mate
               FROM hq_app_project p LEFT JOIN hq_mate m USING (project_id)
               ORDER BY p.seq`;
             const alone = yield* sql<{ readonly project_id: string; readonly mate: MateRow }>`
               SELECT m.project_id, json_build_object(
-                       'name', m.name, 'face', m.face,
+                       'name', m.name, 'face', m.face, 'madeBy', m.made_by,
                        'standupRequestedBy', m.standup_requested_by,
                        'closedOff', m.closed_off_at IS NOT NULL) AS mate
               FROM hq_mate m

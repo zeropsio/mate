@@ -71,6 +71,7 @@ describe("HQ API", () => {
                     mate: {
                       name: "Ada",
                       face: "face-3",
+                      madeBy: "owner",
                       standupRequestedBy: null,
                       closedOff: false,
                     },
@@ -545,7 +546,7 @@ describe("HQ API", () => {
                   projectId: "P_MATE",
                   name: "P_MATE",
                   kind: "mate",
-                  mate: { ...mate, standupRequestedBy: null, closedOff: false },
+                  mate: { ...mate, madeBy: "owner", standupRequestedBy: null, closedOff: false },
                 },
               ],
               environments: [],
@@ -594,12 +595,13 @@ describe("HQ API", () => {
             changes: {},
           });
           const ada = { name: "Ada", face: "sky:flower" };
-          const adaView = { ...ada, standupRequestedBy: null, closedOff: false };
+          // Who made it is the session that set it up, never a field the client sends.
+          const adaView = { ...ada, madeBy: "owner", standupRequestedBy: null, closedOff: false };
           const lone = [{ projectId: "P_MATE", name: "P_MATE", mate: adaView }];
 
           const setUp = yield* call("POST", "/api/mates", {
             session,
-            body: { projectId: "P_MATE", ...ada },
+            body: { projectId: "P_MATE", ...ada, madeBy: "dev" },
           });
           assert.deepStrictEqual(
             [setUp.status, setUp.body],
