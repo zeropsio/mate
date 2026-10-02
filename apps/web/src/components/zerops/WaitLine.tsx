@@ -47,15 +47,22 @@ export function PageWaitLine({
   const box = useRef<HTMLDivElement>(null);
   const [across, setAcross] = useState<{ left: number; right: number } | null>(null);
   useLayoutEffect(() => {
-    const pane = within === "pane" ? box.current?.parentElement : null;
-    if (pane === null || pane === undefined) return;
+    if (within !== "pane") return;
+    // The pane is the nearest box that has a width: a wrapper drawn as `contents` has none.
+    let pane = box.current?.parentElement ?? null;
+    while (pane !== null && pane.getBoundingClientRect().width === 0) pane = pane.parentElement;
+    if (pane === null) return;
+    const measured = pane;
     const measure = () => {
-      const rect = pane.getBoundingClientRect();
-      setAcross({ left: rect.left, right: window.innerWidth - rect.right });
+      const rect = measured.getBoundingClientRect();
+      // Not laid out yet: the page's centre until it is.
+      setAcross(
+        rect.width === 0 ? null : { left: rect.left, right: window.innerWidth - rect.right },
+      );
     };
     measure();
     const observer = new ResizeObserver(measure);
-    observer.observe(pane);
+    observer.observe(measured);
     window.addEventListener("resize", measure);
     return () => {
       observer.disconnect();
