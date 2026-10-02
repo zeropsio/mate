@@ -53,12 +53,13 @@ import {
   CHECKING_WHAT_RUNS,
   type Deployment,
   NOTHING_DEPLOYED,
+  runningTone,
   runningVersion,
 } from "./flow/deployment.ts";
 import { pullRequestBlocked, type PullRequestBlocked } from "./gitTab.ts";
 import type { GroupEnvironmentTier, MissingEnvironmentRow } from "./groupEnvironments.ts";
 import type { ZeropsMateFace } from "./groups.ts";
-import type { DeployedVersion, EnvironmentRow } from "./groupRows.ts";
+import type { DeployedVersion, EnvironmentRow, GroupRowTone } from "./groupRows.ts";
 import type { Shown } from "./knowledge/known.ts";
 import {
   PROJECT_ALL_CLEAR,
@@ -289,7 +290,7 @@ function flowPullRequestOf(pull: FlowPullRequest): GroupFlowPullRequest {
   return { pull, blocked: pullRequestBlocked(pull), state: changeState(pull) };
 }
 
-/** What a stop runs, by the precedence `stopView` draws the menu with (`runningVersion`). */
+/** What a stop runs and how it went, by the rules `stopView` draws the page with (`runningVersion`, `runningTone`). */
 function stopOf(input: GroupFlowStopInput): GroupFlowStop {
   const { deployment, row } = input;
   const named = row !== undefined && row.version.label !== undefined ? row.version : undefined;
@@ -312,16 +313,17 @@ function stopOf(input: GroupFlowStopInput): GroupFlowStop {
     }
     return {
       ...base,
-      state: runningState(row),
+      state: runningState(runningTone(deployment.value.version, row)),
       version: runningVersion(deployment.value.version, row),
     };
   }
-  if (named !== undefined) return { ...base, state: runningState(row), version: named };
+  if (named !== undefined)
+    return { ...base, state: runningState(runningTone(undefined, row)), version: named };
   return { ...base, state: "checking", version: undefined };
 }
 
-function runningState(row: EnvironmentRow | undefined): GroupFlowStopState {
-  switch (row?.tone) {
+function runningState(tone: GroupRowTone): GroupFlowStopState {
+  switch (tone) {
     case "bad":
       return "failed";
     case "pending":

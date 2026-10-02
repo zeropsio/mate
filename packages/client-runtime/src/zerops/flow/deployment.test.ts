@@ -9,7 +9,8 @@ import type {
 } from "../data/types.ts";
 import { ReceiptOrdinal } from "../data/types.ts";
 import { serviceRecordToZeropsService } from "../data/dto.ts";
-import { deployedVersion, type EnvironmentRow } from "../groupRows.ts";
+import { groupFlow } from "../groupFlow.ts";
+import { deployedVersion, environmentRow, type EnvironmentRow } from "../groupRows.ts";
 import type { Freshness, Shown, WithheldReason } from "../knowledge/known.ts";
 import { projectTopology } from "../topology.ts";
 import {
@@ -865,5 +866,112 @@ describe("what a surface reads off a stop's deployment", () => {
   ])("$name", ({ deployment, activatedAt, building: expected }) => {
     expect(deployActivatedAt(deployment)).toBe(activatedAt);
     expect(deployBuilding(deployment)).toEqual(expected);
+  });
+});
+
+describe("a deploy of a commit only moves forward", () => {
+  // Invented commits: the one a stage ran, the one deployed over it, and a newer one after.
+  const OLD = "a11ce5e0b0c0d0e0f0a1b2c3d4e5f60718293a4b";
+  const NEW = "b0b5c0de1f2e3d4c5b6a79881726354453627180";
+  const NEWER = "c4fe0011223344556677889900aabbccddeeff00";
+  const runs = (sha: string): Shown<Deployment> =>
+    known({ kind: "running", activatedAt: null, version: deployedVersion(sha) });
+  const building = (sha: string, ran: string): Shown<Deployment> =>
+    known({
+      kind: "deploying",
+      version: deployedVersion(sha),
+      previous: { kind: "running", activatedAt: null, version: deployedVersion(ran) },
+    });
+  /** The deploy half's row: the commit a service runs and the broker's status on it, as read. */
+  const read = (sha: string, state: "pending" | "success" | "failure"): EnvironmentRow =>
+    environmentRow({
+      projectId: "p-stage",
+      name: "stage",
+      tier: "stage",
+      sources: ["main"],
+      environment: "stage",
+      services: [
+        {
+          hostname: "app",
+          appVersionName: sha,
+          statuses: [{ context: "mate/deploy/stage/app", state }],
+        },
+      ],
+    });
+  /** What the menu and the chips read: the group flow's stop. */
+  const flowState = (deployment: Shown<Deployment>, row: EnvironmentRow) =>
+    groupFlow({
+      groupId: "g",
+      mates: [],
+      pullRequests: [],
+      merged: [],
+      stops: [
+        { projectId: "p-stage", name: "stage", tier: "stage", row, deployment, route: undefined },
+      ],
+      missing: [],
+      release: { gate: { allowed: false, reason: "" }, suggestion: "v0.1.0", waiting: 0 },
+      mainHasCode: true,
+      mainHead: undefined,
+      productionAddable: false,
+      pending: [],
+    }).stages[0]?.state;
+
+  // The measured order: the platform's version went active before the broker's status turned
+  // success, and the forge's read from before that moment arrived after it.
+  const STEPS = [
+    {
+      step: "the build runs",
+      deployment: building(NEW, OLD),
+      row: read(OLD, "success"),
+      word: "Deploying…",
+      state: "deploying",
+    },
+    {
+      step: "the platform runs it, the row still reads the commit before",
+      deployment: runs(NEW),
+      row: read(OLD, "success"),
+      word: "Deployed",
+      state: "deployed",
+    },
+    {
+      step: "a status read before that moment arrives after it",
+      deployment: runs(NEW),
+      row: read(NEW, "pending"),
+      word: "Deployed",
+      state: "deployed",
+    },
+    {
+      step: "the broker's success lands",
+      deployment: runs(NEW),
+      row: read(NEW, "success"),
+      word: "Deployed",
+      state: "deployed",
+    },
+    {
+      step: "a newer commit's deploy starts its own sequence",
+      deployment: building(NEWER, NEW),
+      row: read(NEW, "success"),
+      word: "Deploying…",
+      state: "deploying",
+    },
+    {
+      step: "the newer commit runs before its status says so",
+      deployment: runs(NEWER),
+      row: read(NEWER, "pending"),
+      word: "Deployed",
+      state: "deployed",
+    },
+    {
+      step: "a failure after Deployed is a failed redeploy, a new fact",
+      deployment: runs(NEWER),
+      row: read(NEWER, "failure"),
+      word: "Failed",
+      state: "failed",
+    },
+  ] as const;
+
+  it.each(STEPS)("$step: $word", ({ deployment, row, word, state }) => {
+    expect(stopView({ deployment, row, nowMs: NOW }).word).toBe(word);
+    expect(flowState(deployment, row)).toBe(state);
   });
 });
