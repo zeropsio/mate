@@ -272,8 +272,10 @@ export function environmentRow(input: {
   const source = input.sources === "release" ? "release" : input.sources.join(" + ") || "—";
   // The first service that is running something names the environment: in a
   // monorepo they all carry the same release, and in a split one the row has
-  // width for one answer.
-  const named = input.services
+  // width for one answer. First by hostname, as the platform's answer for the
+  // stop is (`stopDeploymentOf`): the two are compared, so they name one service.
+  const named = [...input.services]
+    .sort((left, right) => left.hostname.localeCompare(right.hostname))
     .map((service) => ({ service, version: deployedVersion(service.appVersionName) }))
     .find((entry) => entry.version.label !== undefined);
   const version = named?.version ?? NO_VERSION;
