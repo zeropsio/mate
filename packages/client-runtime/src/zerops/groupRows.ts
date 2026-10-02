@@ -48,6 +48,11 @@ export interface EnvironmentRow {
   readonly tone: GroupRowTone;
   /** HQ's newest deploy of each of its services HQ records one for (`ServiceDeploys.latest`). */
   readonly deploys: ReadonlyArray<HqDeploy>;
+  /**
+   * HQ holds no deploy key that works for it (`HqEnvironment.keyHeld`, `keyInvalid`): it deploys
+   * nothing there until somebody mints one.
+   */
+  readonly keyGap: boolean;
 }
 
 /**
@@ -223,6 +228,9 @@ export function environmentRow(input: {
   readonly tier: GroupEnvironmentTier;
   readonly sources: ReadonlyArray<string> | "release";
   readonly services: ReadonlyArray<EnvironmentServiceState>;
+  /** Whether HQ holds its deploy key, and whether that key no longer works; unknown works. */
+  readonly keyHeld?: boolean | undefined;
+  readonly keyInvalid?: boolean | undefined;
 }): EnvironmentRow {
   const source = input.sources === "release" ? "release" : input.sources.join(" + ") || "—";
   // The first service that is running something names the environment: in a
@@ -251,5 +259,6 @@ export function environmentRow(input: {
     line: version.label === undefined ? source : `${source} · ${version.label}`,
     tone,
     deploys: input.services.flatMap(({ deploy }) => (deploy === undefined ? [] : [deploy.latest])),
+    keyGap: input.keyHeld === false || input.keyInvalid === true,
   };
 }

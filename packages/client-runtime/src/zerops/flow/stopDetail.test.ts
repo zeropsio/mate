@@ -237,6 +237,16 @@ describe("stopVerdict", () => {
       expected: { tone: "failed", text: "First deploy failed.", detail: undefined, verb: null },
     },
     {
+      name: "a stage whose first deploy waits on Zerops says so",
+      input: { tier: "stage", view: EMPTY, firstDeploy: { kind: "held", why: "zerops" } },
+      expected: {
+        tone: "off",
+        text: "Zerops not answering, retrying.",
+        detail: undefined,
+        verb: null,
+      },
+    },
+    {
       name: "a stage whose first deploy is on its way says so",
       input: { tier: "stage", view: EMPTY, firstDeploy: { kind: "on-its-way" } },
       expected: { tone: "busy", text: "First deploy on its way.", detail: undefined, verb: null },

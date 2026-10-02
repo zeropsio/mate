@@ -14,12 +14,15 @@
  * queued, deploying, live or failed — by the build (final) or by HQ (asked again on its next pass).
  * "On its way" is said only while HQ's record has it queued or deploying, and only for a window
  * after that record last changed: a first deploy that never comes reads "Nothing deployed yet"
- * again, never on its way for ever.
+ * again, never on its way for ever. What holds it, the line says, as main said its runner did: HQ
+ * holds no deploy key that works for the stage, or Zerops did not answer and HQ asks again.
  *
  * Pure: no network, no clock of its own, no platform globals (rule R1).
  *
  * @module stopComing
  */
+import { saysZeropsDidNotAnswer } from "@t3tools/shared/hqDeploys";
+
 import type { HqDeploy } from "./hq/environments.ts";
 
 /** Where an environment coming up has got. */
@@ -33,6 +36,10 @@ export type ComingStep =
   | "awaiting-deploy"
   /** HQ has a deploy of it queued or under way. */
   | "deploy-on-its-way"
+  /** HQ holds no deploy key that works for it, and deploys nothing until somebody mints one. */
+  | "awaiting-key"
+  /** HQ refused its deploy because Zerops did not answer, and asks again on its next pass. */
+  | "zerops-retrying"
   | "address";
 
 /** An environment coming up, or one that did not come up. */
@@ -46,6 +53,11 @@ export type FirstDeploy =
   | { readonly kind: "awaited" }
   /** HQ has it queued or deploying, its record changed within the window. */
   | { readonly kind: "on-its-way" }
+  /**
+   * HQ cannot deploy it now: it holds no deploy key that works for the stage, or Zerops did not
+   * answer and HQ asks again — its record changed within the window.
+   */
+  | { readonly kind: "held"; readonly why: "key" | "zerops" }
   /**
    * A build of it was seen to end with nothing running (`Deployment.afterBuild`), or HQ says its
    * build failed.
@@ -64,20 +76,27 @@ const failing = (status: string) => /FAIL/u.test(status);
 
 /**
  * Where a stage's first deploy stands by HQ's records of it: failed where HQ says a build of it
- * failed, which is final; on its way while HQ has it queued or deploying, for
- * {@link COMING_UP_WINDOW_MS} after the record last changed.
+ * failed, which is final; held while HQ holds no deploy key that works for the stage; held while
+ * Zerops did not answer and HQ asks again; on its way while HQ has it queued or deploying. Each but
+ * the failure and the key only for {@link COMING_UP_WINDOW_MS} after the record last changed.
  */
 export function firstDeploy(input: {
   /** HQ's newest deploy of each of the stage's services (`EnvironmentRow.deploys`). */
   readonly deploys: ReadonlyArray<HqDeploy>;
+  /** HQ holds no deploy key that works for the stage (`EnvironmentRow.keyGap`). */
+  readonly keyGap: boolean;
   readonly nowMs: number;
 }): FirstDeploy {
   if (input.deploys.some(({ failure }) => failure === "job")) return { kind: "failed" };
-  const asked = input.deploys.some(
-    ({ state, at }) =>
-      (state === "pending" || state === "deploying") &&
-      input.nowMs - Date.parse(at) < COMING_UP_WINDOW_MS,
+  if (input.keyGap) return { kind: "held", why: "key" };
+  const recent = input.deploys.filter(
+    ({ at }) => input.nowMs - Date.parse(at) < COMING_UP_WINDOW_MS,
   );
+  if (
+    recent.some(({ failure, message }) => failure === "refused" && saysZeropsDidNotAnswer(message))
+  )
+    return { kind: "held", why: "zerops" };
+  const asked = recent.some(({ state }) => state === "pending" || state === "deploying");
   return asked ? { kind: "on-its-way" } : { kind: "awaited" };
 }
 
@@ -185,6 +204,8 @@ export function stopComing(input: {
         return coming("awaiting-deploy");
       case "on-its-way":
         return coming("deploy-on-its-way");
+      case "held":
+        return coming(first.why === "key" ? "awaiting-key" : "zerops-retrying");
       case "failed":
         return { kind: "failed", reason: "its first deploy failed" };
     }
@@ -245,6 +266,8 @@ const STEP_WORDS: Record<ComingStep, string> = {
   build: "building the app",
   "awaiting-deploy": "awaiting a first deploy",
   "deploy-on-its-way": "first deploy on its way",
+  "awaiting-key": "awaits a deploy key",
+  "zerops-retrying": "Zerops not answering, retrying",
   address: "turning its address on",
 };
 
@@ -274,6 +297,12 @@ export const FIRST_DEPLOY_FAILED = "First deploy failed";
 /** A stage's first deploy on its way, where its line would say nothing is deployed. */
 export const FIRST_DEPLOY_ON_ITS_WAY = "First deploy on its way";
 
+/** A stage's first deploy held: HQ holds no deploy key that works for it. */
+const FIRST_DEPLOY_AWAITS_KEY = "Awaiting a deploy key";
+
+/** A stage's first deploy held: Zerops did not answer, and HQ asks again. */
+const FIRST_DEPLOY_ZEROPS_RETRYING = "Zerops not answering, retrying";
+
 /**
  * What a stage that runs nothing says of its first deploy, where its line says what it runs:
  * `undefined` while nothing asked for one — the line's own "Nothing deployed yet" stands.
@@ -282,6 +311,8 @@ export function firstDeployLine(first: FirstDeploy | undefined): string | undefi
   switch (first?.kind) {
     case "on-its-way":
       return FIRST_DEPLOY_ON_ITS_WAY;
+    case "held":
+      return first.why === "key" ? FIRST_DEPLOY_AWAITS_KEY : FIRST_DEPLOY_ZEROPS_RETRYING;
     case "failed":
       return FIRST_DEPLOY_FAILED;
     default:

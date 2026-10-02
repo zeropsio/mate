@@ -542,6 +542,7 @@ function environment(
     line: version.label === undefined ? source : `${source} · ${version.label}`,
     tone: "good",
     deploys: [],
+    keyGap: false,
     ...rest,
   };
 }

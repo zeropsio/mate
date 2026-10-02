@@ -1114,6 +1114,16 @@ describe("stageMenu — each stage, as production's menu says production", () =>
       word: "First deploy on its way",
     },
     { case: "failed", firstDeploy: { kind: "failed" } as const, word: "First deploy failed" },
+    {
+      case: "held for a deploy key",
+      firstDeploy: { kind: "held", why: "key" } as const,
+      word: "Awaiting a deploy key",
+    },
+    {
+      case: "held while Zerops does not answer",
+      firstDeploy: { kind: "held", why: "zerops" } as const,
+      word: "Zerops not answering, retrying",
+    },
   ])("says an empty stage's first deploy as its cell does: $case", ({ firstDeploy, word }) => {
     const empty = {
       ...stage({ projectId: "shop-stage", state: "empty" }),

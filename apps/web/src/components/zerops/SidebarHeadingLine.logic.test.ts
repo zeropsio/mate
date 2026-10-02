@@ -150,6 +150,19 @@ describe("headingLine — the heading's second line, the board's D′ ladder", (
       line: ["Stage coming up · first deploy on its way", "ink", "", ""],
     },
     {
+      case: "14 a stage whose first deploy waits for a deploy key",
+      over: { production: undefined, stages: [stage({ kind: "coming", step: "awaiting-key" })] },
+      line: ["Stage coming up · awaits a deploy key", "ink", "", ""],
+    },
+    {
+      case: "14 a stage whose first deploy waits on Zerops",
+      over: {
+        production: undefined,
+        stages: [stage({ kind: "coming", step: "zerops-retrying" })],
+      },
+      line: ["Stage coming up · Zerops not answering, retrying", "ink", "", ""],
+    },
+    {
       case: "15 a stage that didn't come up",
       over: {
         production: undefined,

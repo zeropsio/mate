@@ -413,6 +413,7 @@ describe("where a group's next step sits", () => {
             line: "",
             tone: "bad",
             deploys: [],
+            keyGap: false,
           },
         },
       ],
@@ -712,6 +713,14 @@ describe("a stop's line", () => {
     [
       { state: "empty", version: undefined, firstDeploy: { kind: "on-its-way" } },
       { word: "First deploy on its way", version: undefined, tone: "busy" },
+    ],
+    [
+      { state: "empty", version: undefined, firstDeploy: { kind: "held", why: "key" } },
+      { word: "Awaiting a deploy key", version: undefined, tone: "off" },
+    ],
+    [
+      { state: "empty", version: undefined, firstDeploy: { kind: "held", why: "zerops" } },
+      { word: "Zerops not answering, retrying", version: undefined, tone: "off" },
     ],
   ] as const)("reads %j as %j", (over, expected) => {
     expect(stopLine(stop(over))).toEqual(expected);
@@ -1041,6 +1050,7 @@ describe("groupFlowInputOf", () => {
       line: "",
       tone: "good" as const,
       deploys: [],
+      keyGap: false,
     };
     const input = groupFlowInputOf({
       groupId: "g",

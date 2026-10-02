@@ -430,6 +430,7 @@ function row(
     line: version.label === undefined ? source : `${source} · ${version.label}`,
     tone,
     deploys: [],
+    keyGap: false,
   };
 }
 
