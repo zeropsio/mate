@@ -11,6 +11,7 @@ import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
+import * as Redacted from "effect/Redacted";
 import * as Schedule from "effect/Schedule";
 import * as Stream from "effect/Stream";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
@@ -659,6 +660,121 @@ describe("deploys", () => {
           // Only a failed deploy is asked for again.
           assert.strictEqual(yield* ask("dev"), "deploy_not_failed");
           assert.lengthOf(yield* deploys, 1);
+        }),
+      ),
+    );
+
+    // T13: an environment the migration brought, held until a person asks where it does not run what
+    // it is wanted at; its first key deploys nothing either way.
+    const imported = (world: FakeWorld) =>
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        // Keyless, as the import leaves it; HQ reads it with its own org credential.
+        yield* sql`DELETE FROM hq_deploy_token WHERE project_id = 'P_STAGE'`;
+        world.tokens.set("hq", {
+          id: "T_HQ",
+          name: "mate-hq-org:HQ",
+          orgId: "ORG",
+          roleCode: "READ_ONLY",
+          canCreateProjects: false,
+          canViewFinances: false,
+          canEditFinances: false,
+          projects: [],
+          createdMs: 0,
+          createdByUser: "owner",
+        });
+        const firstKey = Effect.andThen(
+          sql`
+            INSERT INTO hq_deploy_token (project_id, token, kept_by)
+            VALUES ('P_STAGE', 'key-stage', 'owner')`,
+          (yield* Deploys).catchUp,
+        );
+        return { firstKey };
+      }).pipe(Effect.orDie);
+    const running = (world: FakeWorld, name: string) => {
+      const web = world.services.find((service) => service.id === "S-web")!;
+      Object.assign(web, { named: { id: "V-imported", name }, activeVersionId: "V-imported" });
+    };
+
+    it.effect(
+      "holds an imported environment that runs another commit; a Run brings it to that one",
+      () =>
+        withDeploys(({ appId, world, tiers, commit, deploys, until }) =>
+          Effect.gen(function* () {
+            const { firstKey } = yield* imported(world);
+            tiers.set(`${appId}/stage`, stageTier(appId, [{ hostname: "web" }]));
+            const older = yield* commit("web", { "zerops.yaml": ZEROPS_YAML });
+            const sha = yield* commit("web", { "zerops.yaml": ZEROPS_YAML, "a.txt": "a\n" });
+            // A keyless pass came first: its record is HQ's own, pending or refused for want of a key,
+            // which the next pass would ask again.
+            yield* until((rows) => rows.some((row) => row.sha === sha));
+            const before = (yield* deploys).find((row) => row.sha === sha);
+            assert.notStrictEqual(before?.failure, "job");
+            running(world, `main ${older.slice(0, 7)}`);
+            const report = yield* (yield* Deploys).hold(["P_STAGE"], Redacted.make("hq"));
+            const message = `Held at migration: web runs ${older.slice(0, 7)}; Run brings it to ${sha.slice(0, 7)}.`;
+            assert.deepStrictEqual(report, [
+              {
+                projectId: "P_STAGE",
+                name: "shop-stage",
+                services: [{ service: "web", sha, state: "held", runs: older.slice(0, 7) }],
+              },
+            ]);
+            yield* firstKey;
+            assert.deepStrictEqual(
+              (yield* deploys)
+                .filter((row) => row.sha === sha)
+                .map((row) => [row.state, row.failure, row.message]),
+              [["failed", "job", message]],
+            );
+            assert.deepStrictEqual(versions(world), []);
+            yield* (yield* Deploys).redeploy("owner", appId, "shop-stage", "web", sha);
+            yield* until((rows) => rows.some((row) => row.sha === sha && row.state === "live"));
+            assert.deepStrictEqual(versions(world), [`main ${sha.slice(0, 7)}`]);
+          }),
+        ),
+    );
+
+    it.effect(
+      "calls an imported environment at its target live, and its first key deploys nothing",
+      () =>
+        withDeploys(({ appId, world, tiers, commit, deploys }) =>
+          Effect.gen(function* () {
+            const { firstKey } = yield* imported(world);
+            tiers.set(`${appId}/stage`, stageTier(appId, [{ hostname: "web" }]));
+            const sha = yield* commit("web", { "zerops.yaml": ZEROPS_YAML });
+            // Main's own broker named it so: the bare whole sha.
+            running(world, sha);
+            const report = yield* (yield* Deploys).hold(["P_STAGE"], Redacted.make("hq"));
+            assert.deepStrictEqual(report, [
+              {
+                projectId: "P_STAGE",
+                name: "shop-stage",
+                services: [{ service: "web", sha, state: "live", runs: sha.slice(0, 7) }],
+              },
+            ]);
+            yield* firstKey;
+            assert.deepStrictEqual(
+              (yield* deploys).map((row) => [row.sha, row.state]),
+              [[sha, "live"]],
+            );
+            assert.deepStrictEqual(versions(world), []);
+          }),
+        ),
+    );
+
+    it.effect("says what an imported service runs when its version's name spells no commit", () =>
+      withDeploys(({ appId, world, tiers, commit, deploys }) =>
+        Effect.gen(function* () {
+          yield* imported(world);
+          tiers.set(`${appId}/stage`, stageTier(appId, [{ hostname: "web" }]));
+          const sha = yield* commit("web", { "zerops.yaml": ZEROPS_YAML });
+          running(world, "hotfix by hand");
+          yield* (yield* Deploys).hold(["P_STAGE"], Redacted.make("hq"));
+          assert.deepStrictEqual(
+            (yield* deploys).map((row) => row.message),
+            [`Held at migration: web runs hotfix by hand; Run brings it to ${sha.slice(0, 7)}.`],
+          );
         }),
       ),
     );

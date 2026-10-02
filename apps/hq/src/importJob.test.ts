@@ -62,6 +62,10 @@ describe("the migration's import", () => {
             `import ${written.digest} done and verified`,
             "  merged otherwise than by HQ's squash: none",
             "  Mates not enrolled yet: P_MATE, P_BEA",
+            // Its tiers name no runtime: nothing is wanted anywhere, so nothing is held.
+            "  environments:",
+            "    shop-stage: nothing to deploy yet",
+            "    shop-production: nothing to deploy yet",
           ],
         });
 

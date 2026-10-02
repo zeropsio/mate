@@ -116,6 +116,17 @@ export const queueCommand = (dir: string, options: { readonly follow?: Duration.
         `import ${bundle.digest} done and verified`,
         `  merged otherwise than by HQ's squash: ${listed(report.mergedOtherwise)}`,
         `  Mates not enrolled yet: ${listed(report.notEnrolled)}`,
+        ...(report.environments.length === 0 ? [] : ["  environments:"]),
+        ...report.environments.map(
+          (env) =>
+            `    ${env.name}: ${
+              env.state === "at_target"
+                ? "at its target"
+                : env.state === "nothing_wanted"
+                  ? "nothing to deploy yet"
+                  : `held: ${env.gaps.map((gap) => `${gap.service} runs ${gap.runs}, wanted ${gap.wanted}`).join("; ")}`
+            }`,
+        ),
       ],
     } satisfies CommandResult;
   }).pipe(

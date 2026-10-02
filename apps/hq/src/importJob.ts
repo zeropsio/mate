@@ -13,7 +13,9 @@
  * finding stops the run with its item named: nothing is patched over.
  *
  * The run writes what the records say and no more: no deploy token (an admin mints each anew), no
- * event beyond `main` as the repository brought it, and the people it names are the bundle's.
+ * event beyond `main` as the repository brought it, and the people it names are the bundle's. Its
+ * last item holds every environment it brought where a service does not run what it is wanted at
+ * (`Deploys.hold`): an admin's first key then deploys nothing nobody asked for.
  *
  * @module importJob
  */
@@ -35,6 +37,7 @@ import * as SqlClient from "effect/unstable/sql/SqlClient";
 
 import { TIER_SOURCES } from "./environments.ts";
 import { appendEvent } from "./gitEvents.ts";
+import { Deploys, type HeldEnvironment } from "./deploys.ts";
 import { GitHost, mainOf } from "./gitHost.ts";
 import {
   type Bundle,
@@ -53,6 +56,19 @@ export const ImportReport = Schema.Struct({
   mergedOtherwise: Schema.Array(Schema.String),
   /** The Mates whose container has not enrolled with this HQ yet. */
   notEnrolled: Schema.Array(Schema.String),
+  /**
+   * Each environment brought, in the bundle's order: at its target (every service runs what it is
+   * wanted at), held (with each service's gap), or with nothing wanted yet.
+   */
+  environments: Schema.Array(
+    Schema.Struct({
+      name: Schema.String,
+      state: Schema.Literals(["at_target", "held", "nothing_wanted"]),
+      gaps: Schema.Array(
+        Schema.Struct({ service: Schema.String, runs: Schema.String, wanted: Schema.String }),
+      ),
+    }),
+  ),
 });
 export type ImportReport = typeof ImportReport.Type;
 
@@ -83,6 +99,22 @@ const encodeTarget = Schema.encodeSync(
 );
 const encodeReport = Schema.encodeSync(Schema.fromJsonString(ImportReport));
 const decodeTarget = Schema.decodeUnknownSync(Schema.Record(Schema.String, Schema.String));
+const HeldEnvironments = Schema.Array(
+  Schema.Struct({
+    projectId: Schema.String,
+    name: Schema.String,
+    services: Schema.Array(
+      Schema.Struct({
+        service: Schema.String,
+        sha: Schema.String,
+        state: Schema.Literals(["live", "held"]),
+        runs: Schema.String,
+      }),
+    ),
+  }),
+);
+const encodeHeld = Schema.encodeSync(Schema.fromJsonString(HeldEnvironments));
+const decodeHeld = Schema.decodeUnknownSync(Schema.fromJsonString(HeldEnvironments));
 
 const changeKey = (change: Pick<BundleChange, "app" | "repo" | "number">) =>
   `${change.app}/${change.repo}#${String(change.number)}`;
@@ -102,13 +134,14 @@ export interface ImportsOptions {
 
 export const importsLayer = (
   options: ImportsOptions,
-): Layer.Layer<never, never, Leader | SqlClient.SqlClient | GitHost | ZeropsApi> =>
+): Layer.Layer<never, never, Leader | SqlClient.SqlClient | GitHost | ZeropsApi | Deploys> =>
   Layer.effectDiscard(
     Effect.gen(function* () {
       const leader = yield* Leader;
       const sql = yield* SqlClient.SqlClient;
       const gitHost = yield* GitHost;
       const api = yield* ZeropsApi;
+      const deploys = yield* Deploys;
 
       const address = Effect.gen(function* () {
         if (Option.isNone(options.credential)) return yield* failed("HQ has no credential");
@@ -213,7 +246,21 @@ export const importsLayer = (
               released(git, appIdOf(release.app), release),
             );
           }
-          return yield* verify(git, bundle, appIdOf).pipe(
+          // Held before the run is done: no environment it brought deploys what nobody asked for.
+          let held: ReadonlyArray<HeldEnvironment> = [];
+          yield* item(
+            "hold",
+            Effect.sync(() => ({ held: encodeHeld(held) })),
+            Effect.gen(function* () {
+              if (Option.isNone(options.credential)) return yield* failed("HQ has no credential");
+              held = yield* deploys.hold(
+                bundle.mapping.apps.flatMap((app) => app.environments.map((env) => env.projectId)),
+                options.credential.value,
+              );
+            }),
+          );
+          const kept = decodeHeld(done.get("hold")?.["held"] ?? "[]");
+          return yield* verify(git, bundle, appIdOf, kept).pipe(
             Effect.mapError((error) =>
               error._tag === "ImportFailed" ? error : failed(`verification: ${wordsOf(error)}`),
             ),
@@ -385,7 +432,12 @@ export const importsLayer = (
         });
 
       /** The bundle's counts, numbers, refs and verdicts as HQ now holds them; a difference fails. */
-      const verify = (git: HqGit, bundle: Bundle, appIdOf: (key: string) => string) =>
+      const verify = (
+        git: HqGit,
+        bundle: Bundle,
+        appIdOf: (key: string) => string,
+        held: ReadonlyArray<HeldEnvironment>,
+      ) =>
         Effect.gen(function* () {
           const differences: Array<string> = [];
           const appIds = bundle.mapping.apps.map((app) => appIdOf(app.key));
@@ -519,6 +571,28 @@ export const importsLayer = (
             notEnrolled: mates
               .map((mate) => mate.projectId)
               .filter((projectId) => !enrolled.has(projectId)),
+            environments: bundle.mapping.apps.flatMap((app) =>
+              app.environments.map((env) => {
+                const found = held.find((entry) => entry.projectId === env.projectId);
+                const gaps = (found?.services ?? [])
+                  .filter((service) => service.state === "held")
+                  .map((service) => ({
+                    service: service.service,
+                    runs: service.runs,
+                    wanted: service.sha.slice(0, 7),
+                  }));
+                return {
+                  name: env.name,
+                  state:
+                    found === undefined || found.services.length === 0
+                      ? ("nothing_wanted" as const)
+                      : gaps.length > 0
+                        ? ("held" as const)
+                        : ("at_target" as const),
+                  gaps,
+                };
+              }),
+            ),
           } satisfies ImportReport;
         });
 

@@ -109,19 +109,19 @@ const services = (options: CoreOptions) => {
     streamTicketsLayer,
     mateLinkTicketsLayer,
     liveSocketsLayer,
-    Layer.mergeAll(
-      deploysLayer().pipe(
-        Layer.provideMerge(releasesLayer),
-        Layer.provide(recipeTiersLayer),
-        Layer.provideMerge(changesLayer),
+    importsLayer({
+      importRoot: options.importRoot,
+      hqProjectId: options.hqProjectId,
+      credential: options.credential,
+      ...(options.importPoll === undefined ? {} : { poll: options.importPoll }),
+    }).pipe(
+      Layer.provideMerge(
+        deploysLayer().pipe(
+          Layer.provideMerge(releasesLayer),
+          Layer.provide(recipeTiersLayer),
+          Layer.provideMerge(changesLayer),
+        ),
       ),
-      importsLayer({
-        importRoot: options.importRoot,
-        hqProjectId: options.hqProjectId,
-        credential: options.credential,
-        ...(options.importPoll === undefined ? {} : { poll: options.importPoll }),
-      }),
-    ).pipe(
       Layer.provideMerge(
         gitHostLayer({
           rootDir: options.gitRoot,
