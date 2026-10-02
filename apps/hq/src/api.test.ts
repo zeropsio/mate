@@ -125,6 +125,7 @@ describe("HQ API", () => {
                 sources: ["release"],
                 order: 1,
                 keyHeld: false,
+                keyInvalid: false,
                 deploys: [],
               },
             ],
@@ -226,12 +227,65 @@ describe("HQ API", () => {
               sources: ["main"],
               order: 1,
               keyHeld: true,
+              keyInvalid: false,
               deploys: [],
             },
           ],
         );
         assert.notInclude(new TextDecoder().decode(read.bytes), "key-stage");
       }),
+    );
+
+    // Fable round 9: an application's environments and deploys go to whoever reads its changes. A
+    // Read only grant shows the application, and none of them; a developer's snapshot carries them.
+    it.effect(
+      "a snapshot carries an application's environments only to who reads its changes",
+      () =>
+        Effect.gen(function* () {
+          const { call, fake, socket } = yield* startCore(true);
+          yield* untilHealth(call, "active");
+          const owner = yield* sessionFor(call, "door-owner");
+          const created = yield* call("POST", "/api/apps", {
+            session: owner,
+            body: { name: "Shop" },
+          });
+          const appId = (created.body as { readonly id: string }).id;
+          yield* call("POST", `/api/apps/${appId}/projects`, {
+            session: owner,
+            body: { projectId: "P_MATE", kind: "stage", environment: { name: "stage" } },
+          });
+          const project = fake.projects.find((candidate) => candidate.id === "P_MATE")!;
+          const dev = yield* sessionFor(call, "door-dev");
+          const snapshotAs = (roleCode: string) =>
+            Effect.gen(function* () {
+              Object.assign(project, { userRoles: [{ clientUserId: "C-dev", roleCode }] });
+              // The roles' cache (200 ms here) has the grant once it passes.
+              yield* Effect.sleep(Duration.millis(400));
+              const watching = yield* socket(
+                `/api/structure/ws?ticket=${yield* ticketFor(call, dev)}`,
+              );
+              const snapshot = (yield* watching.next("snapshot")) as {
+                readonly apps: ReadonlyArray<{ readonly environments: ReadonlyArray<unknown> }>;
+              };
+              yield* watching.close;
+              return snapshot.apps.map((app) => app.environments);
+            });
+          assert.deepStrictEqual(yield* snapshotAs("READ_ONLY"), [[]]);
+          assert.deepStrictEqual(yield* snapshotAs("BASIC_USER"), [
+            [
+              {
+                projectId: "P_MATE",
+                tier: "stage",
+                name: "stage",
+                sources: ["main"],
+                order: 1,
+                keyHeld: false,
+                keyInvalid: false,
+                deploys: [],
+              },
+            ],
+          ]);
+        }),
     );
 
     it.effect(
@@ -597,6 +651,7 @@ describe("HQ API", () => {
                 sources: ["main"],
                 order: 1,
                 keyHeld: false,
+                keyInvalid: false,
                 deploys: [],
               },
             ],

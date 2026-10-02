@@ -5,5 +5,8 @@ CREATE TABLE hq_deploy_token (
   project_id text PRIMARY KEY REFERENCES hq_environment (project_id) ON DELETE CASCADE,
   token text NOT NULL,
   kept_by text NOT NULL,
-  kept_at timestamptz NOT NULL DEFAULT now()
+  kept_at timestamptz NOT NULL DEFAULT now(),
+  -- Since when HQ's check before a deploy found it no longer answering, or reaching more than its
+  -- project: an admin must mint a new one. HQ cannot revoke it (its own token is org Read only).
+  invalid_since timestamptz
 );

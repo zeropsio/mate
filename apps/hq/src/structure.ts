@@ -117,6 +117,11 @@ export interface EnvironmentView {
   readonly order: number;
   /** Whether HQ holds its deploy token (main E05); the token itself is never answered. */
   readonly keyHeld: boolean;
+  /**
+   * Whether the token held no longer answers, or reaches more than its project, as HQ's check
+   * before a deploy found it (`deploys.ts`): an admin must mint a new one.
+   */
+  readonly keyInvalid: boolean;
   /** Per service, by its hostname: its newest deploy, and the newest that went live. */
   readonly deploys: ReadonlyArray<{
     readonly service: string;
@@ -174,7 +179,8 @@ export interface StructureRead {
     }>;
     /**
      * Its stage and production, in the order they were declared, with their deploys: to whoever
-     * reads the application, as main's commit statuses went to whoever read its repositories.
+     * reads its changes (`read_change`), as main's commit statuses and `environments.yaml` went to
+     * whoever read its repositories; none to one who only sees the application.
      */
     readonly environments: ReadonlyArray<EnvironmentView>;
   }>;
@@ -510,7 +516,8 @@ export const structureLayer = (options: {
                   SELECT project_id, ${Redacted.value(token)}, ${userId} FROM hq_environment
                   WHERE project_id = ${projectId} AND app_id::text = ${appId} AND name = ${name}
                   ON CONFLICT (project_id)
-                  DO UPDATE SET token = EXCLUDED.token, kept_by = EXCLUDED.kept_by, kept_at = now()
+                  DO UPDATE SET token = EXCLUDED.token, kept_by = EXCLUDED.kept_by, kept_at = now(),
+                    invalid_since = NULL
                   RETURNING 1`;
               }),
             );
@@ -882,10 +889,12 @@ export const structureLayer = (options: {
               readonly sources: ReadonlyArray<string>;
               readonly order: number;
               readonly key_held: boolean;
+              readonly key_invalid: boolean;
             }>`
               SELECT e.project_id, e.app_id::text AS app_id, e.tier, e.name, e.sources,
                      (rank() OVER (PARTITION BY e.app_id ORDER BY e.declared_seq))::int AS "order",
-                     t.project_id IS NOT NULL AS key_held
+                     t.project_id IS NOT NULL AS key_held,
+                     t.invalid_since IS NOT NULL AS key_invalid
               FROM hq_environment e LEFT JOIN hq_deploy_token t USING (project_id)
               ORDER BY e.declared_seq`;
             const deploys = yield* sql<{
@@ -932,6 +941,7 @@ export const structureLayer = (options: {
                 sources: row.sources,
                 order: row.order,
                 keyHeld: row.key_held,
+                keyInvalid: row.key_invalid,
                 deploys: of.flatMap((deploy) => {
                   if (deploy.live) return [];
                   const live = of.find(
@@ -980,9 +990,18 @@ export const structureLayer = (options: {
                       kind: row.kind,
                       mate: row.mate === null ? null : mateView(row.project_id, row.mate),
                     })),
-                  environments: environments
-                    .filter((row) => row.app_id === app.id)
-                    .map(environmentView),
+                  environments: can(
+                    person,
+                    "read_change",
+                    {
+                      projectIds: rows
+                        .filter((row) => row.app_id === app.id)
+                        .map((row) => row.project_id),
+                    },
+                    view,
+                  ).allow
+                    ? environments.filter((row) => row.app_id === app.id).map(environmentView)
+                    : [],
                 }))
                 .filter(
                   (app) =>

@@ -159,6 +159,7 @@ const environmentRow = (
   sources: tier === "stage" ? ["main"] : ["release"],
   order,
   keyHeld: false,
+  keyInvalid: false,
   deploys: [],
 });
 
@@ -1219,6 +1220,16 @@ describe("structure", () => {
             // maker owns P_OWNED: Full access there is enough.
             assert.strictEqual(yield* keep("maker", "stage", "key-stage"), "ok");
             assert.strictEqual(yield* keyHeld, true);
+            // A key HQ's check before a deploy found no longer usable shows until a new one is kept.
+            const keyInvalid = Effect.map(
+              structure.read("owner"),
+              (read) => read.apps[0]?.environments[0]?.keyInvalid,
+            );
+            assert.strictEqual(yield* keyInvalid, false);
+            yield* sql`UPDATE hq_deploy_token SET invalid_since = now()`;
+            assert.strictEqual(yield* keyInvalid, true);
+            assert.strictEqual(yield* keep("maker", "stage", "key-stage"), "ok");
+            assert.strictEqual(yield* keyInvalid, false);
             const [kept] = yield* sql<{ readonly token: string }>`
               SELECT token FROM hq_deploy_token WHERE project_id = 'P_OWNED'`;
             assert.strictEqual(kept?.token, "key-stage");
@@ -1228,9 +1239,11 @@ describe("structure", () => {
     );
 
     // An application's environments and their deploys (SPEC §3.2b, main B26–B36) go to whoever
-    // reads the application, as main's commit statuses went to whoever read its repositories — its
-    // environment's project unseen or not. Per service, the newest deploy and the one live.
-    it.effect("reads an application's environments and their deploys to whoever reads it", () =>
+    // reads its changes, as main's commit statuses and environments.yaml went to whoever read its
+    // repositories — its environment's project unseen or not. One who sees the application through
+    // a Read only grant alone reads none of them (Fable round 9). Per service, the newest deploy and
+    // the one live.
+    it.effect("reads an application's environments and deploys to whoever reads its changes", () =>
       withStructure(() =>
         Effect.gen(function* () {
           const structure = yield* Structure;
@@ -1245,6 +1258,11 @@ describe("structure", () => {
             projectId: "P_STAGE",
             kind: "stage",
             environment: { name: "stage" },
+          });
+          yield* structure.attachProject("owner", shop.id, {
+            projectId: "P_TEAM",
+            kind: "mate",
+            mate: { name: "Bo", face: "face-2" },
           });
           const [one, two, three] = ["1".repeat(40), "2".repeat(40), "3".repeat(40)] as const;
           yield* sql`
@@ -1294,8 +1312,12 @@ describe("structure", () => {
               ],
             },
           ];
-          // dev reads Shop through P_MATE, not its stage's project.
+          // dev develops Shop through P_MATE (Basic user there), and does not read its stage's
+          // project; maker sees Shop only through a Read only grant on P_TEAM.
           assert.deepStrictEqual(yield* read("dev"), seen);
+          assert.deepStrictEqual(yield* read("maker"), [
+            { projects: ["P_TEAM"], environments: [] },
+          ]);
           assert.deepStrictEqual(yield* read("nobody"), []);
         }),
       ),

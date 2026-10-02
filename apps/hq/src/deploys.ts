@@ -40,7 +40,7 @@ import * as SubscriptionRef from "effect/SubscriptionRef";
 import * as Ref from "effect/Ref";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
 
-import { noDeployToken, reachesOnly } from "./deployTokens.ts";
+import { deadDeployToken, noDeployToken, reachesOnly, widenedDeployToken } from "./deployTokens.ts";
 import { GitHost } from "./gitHost.ts";
 import { Leader, NotLeader } from "./leader.ts";
 import { RecipeTiers } from "./recipeTiers.ts";
@@ -365,24 +365,76 @@ export const deploysLayer = (
           return { zeropsYaml: yaml.content.toString("utf8"), archive };
         });
 
-      /** One service of an environment brought to `target.sha`, as far as it goes now. */
-      const deployOne = (target: Target) =>
+      /** A refusal of HQ's own on `target`, unless it is live or its build's own failure stands. */
+      const refuseUnsettled = (target: Target, ended: Ended) =>
+        Effect.gen(function* () {
+          const existing = yield* recordOf(target);
+          if (existing?.state === "live") return;
+          if (existing?.state === "failed" && existing.failure === "job") return;
+          yield* record(target, ended);
+        });
+
+      /**
+       * The environment's key, checked as each pass hands its deploys over: none, one that no longer
+       * answers or now reaches more than its project — marked invalid, logged once, for an admin
+       * must mint a new one — or one HQ may deploy with. A Zerops that does not answer says nothing
+       * of the key.
+       */
+      const keyOf = (projectId: string, envName: string) =>
+        Effect.gen(function* () {
+          const token = yield* tokenOf(projectId);
+          if (token === undefined) return refused(noDeployToken(envName));
+          const checked = yield* Effect.gen(function* () {
+            const own = yield* zerops.ownToken(token).pipe(
+              Effect.map(Option.some),
+              Effect.catchTag("ZeropsRefused", () => Effect.succeed(Option.none())),
+            );
+            if (Option.isNone(own)) return deadDeployToken(envName);
+            const { orgId } = yield* roles.view;
+            return reachesOnly(own.value, orgId, projectId)
+              ? undefined
+              : widenedDeployToken(envName);
+          }).pipe(
+            Effect.catch((error) =>
+              Effect.succeed(
+                refused(
+                  error._tag === "ZeropsUnavailable"
+                    ? `Zerops did not answer: ${error.message}`
+                    : `HQ could not read its org: ${error.code}`,
+                ),
+              ),
+            ),
+          );
+          if (typeof checked === "object") return checked;
+          const marked = yield* leader.write(
+            checked === undefined
+              ? sql`
+                  UPDATE hq_deploy_token SET invalid_since = NULL
+                  WHERE project_id = ${projectId} AND invalid_since IS NOT NULL RETURNING 1`
+              : sql`
+                  UPDATE hq_deploy_token SET invalid_since = now()
+                  WHERE project_id = ${projectId} AND invalid_since IS NULL RETURNING 1`,
+          );
+          if (marked.length > 0) {
+            yield* tick;
+            if (checked !== undefined) {
+              yield* Effect.logWarning("deploy token no longer usable", {
+                environment: envName,
+                project: projectId,
+                why: checked,
+              });
+            }
+          }
+          return checked === undefined ? { token } : refused(checked);
+        });
+
+      /** One service of an environment brought to `target.sha` with its key, as far as it goes now. */
+      const deployOne = (target: Target, token: Redacted.Redacted) =>
         Effect.gen(function* () {
           const existing = yield* recordOf(target);
           // A build's own failure is final (B37).
           if (existing?.state === "failed" && existing.failure === "job") return;
-          const token = yield* tokenOf(target.projectId);
-          if (token === undefined) {
-            return yield* record(target, refused(noDeployToken(target.envName)));
-          }
           const ended = yield* Effect.gen(function* () {
-            // Checked again at every hand-over: a key that no longer answers, or now reaches more
-            // than its project, is no key.
-            const own = yield* zerops.ownToken(token).pipe(Effect.option);
-            const { orgId } = yield* roles.view;
-            if (Option.isNone(own) || !reachesOnly(own.value, orgId, target.projectId)) {
-              return refused(noDeployToken(target.envName));
-            }
             const services = yield* zerops.services(target.projectId)(token);
             const service = services.find((candidate) => candidate.name === target.service);
             if (service === undefined) {
@@ -455,9 +507,16 @@ export const deploysLayer = (
               const queue = queues.get(projectId);
               if (queue === undefined) return;
               const { targets, version } = queue;
+              const key = yield* keyOf(projectId, targets[0]?.envName ?? "").pipe(
+                Effect.catch((error) =>
+                  Effect.as(Effect.logWarning("deploy key not checked", error), undefined),
+                ),
+              );
               for (const target of targets) {
-                if (queue.version !== version) break;
-                yield* deployOne(target).pipe(
+                if (queue.version !== version || key === undefined) break;
+                yield* (
+                  "token" in key ? deployOne(target, key.token) : refuseUnsettled(target, key)
+                ).pipe(
                   Effect.catch((error) =>
                     Effect.logWarning("deploy not recorded", {
                       environment: target.envName,

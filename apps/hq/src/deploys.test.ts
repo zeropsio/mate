@@ -359,24 +359,55 @@ describe("deploys", () => {
       withDeploys(({ appId, world, tiers, commit, deploys, until }) =>
         Effect.gen(function* () {
           const deploysService = yield* Deploys;
+          const sql = yield* SqlClient.SqlClient;
           const kept = world.tokens.get("key-stage")!;
-          const refusedInMainsWords = (rows: Effect.Success<typeof deploys>) =>
-            rows.length === 1 &&
-            rows[0]?.failure === "refused" &&
-            rows[0].message ===
-              "shop-stage has no deploy token yet; an admin who opens the projects page in Zerops Mate mints it";
+          const invalid = Effect.map(
+            sql<{ readonly invalid: boolean }>`
+              SELECT invalid_since IS NOT NULL AS invalid FROM hq_deploy_token`,
+            (rows) => rows[0]?.invalid,
+          );
+          const refusedWith = (message: string) => (rows: Effect.Success<typeof deploys>) =>
+            rows.length === 1 && rows[0]?.failure === "refused" && rows[0].message === message;
           tiers.set(`${appId}/stage`, stageTier(appId, [{ hostname: "web" }]));
+          // Widened past its project (the platform lets a token raise its own role).
           world.tokens.set("key-stage", { ...kept, roleCode: "READ_ONLY" });
           yield* commit("web", { "zerops.yaml": ZEROPS_YAML });
-          yield* until(refusedInMainsWords);
+          yield* until(
+            refusedWith(
+              "shop-stage's deploy token reaches more than its project; an admin who opens the projects page in Zerops Mate mints a new one",
+            ),
+          );
+          assert.isTrue(yield* invalid);
+          // Dead.
           world.tokens.delete("key-stage");
           yield* deploysService.catchUp;
-          yield* Effect.sleep(Duration.millis(200));
-          assert.isTrue(refusedInMainsWords(yield* deploys));
+          yield* until(
+            refusedWith(
+              "shop-stage's deploy token no longer answers; an admin who opens the projects page in Zerops Mate mints a new one",
+            ),
+          );
           assert.deepStrictEqual(versions(world), []);
+          // Zerops not answering says nothing of the key: refused, not marked.
           world.tokens.set("key-stage", kept);
           yield* deploysService.catchUp;
           yield* until(settled("live"));
+          assert.isFalse(yield* invalid);
+        }),
+      ),
+    );
+
+    it.effect("does not mark a key Zerops could not be asked about", () =>
+      withDeploys(({ appId, world, tiers, commit, deploys, until }) =>
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          tiers.set(`${appId}/stage`, stageTier(appId, [{ hostname: "web" }]));
+          world.down = true;
+          yield* commit("web", { "zerops.yaml": ZEROPS_YAML });
+          yield* until(settled("failed"));
+          assert.match((yield* deploys)[0]?.message ?? "", /^Zerops did not answer/u);
+          const [token] = yield* sql<{ readonly invalid: boolean }>`
+            SELECT invalid_since IS NOT NULL AS invalid FROM hq_deploy_token`;
+          assert.isFalse(token?.invalid);
         }),
       ),
     );

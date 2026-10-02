@@ -203,6 +203,9 @@ const TABLES: Readonly<Record<Verb, ReadonlyArray<Row>>> = {
     ],
     ["org none, a Read only grant on a project of it", {}, redeploy("P_SEEN"), "not_app_developer"],
     ["org none, only a hidden project", {}, redeploy("P_HIDDEN"), "app_not_seen"],
+    // Seeing the application comes first: an application of no project is seen by nobody below
+    // org Read only.
+    ["org none, an application with no project", {}, redeploy(), "app_not_seen"],
     ["an org owner, an application with no project left", WRITER, redeploy(), "not_app_developer"],
     [
       "an invited owner",
