@@ -103,10 +103,12 @@ access.
 The client reaches a Mate only through the throwaway door
 ([spec §10.4](../../../../zcp/docs/spec-mate.md#104-the-door-post-apiauthzerops-throwaway)): it
 mints a rights-less integration token as the person, presents it once, and deletes it whether the
-door admitted or refused. The client checks no organization or project role for the mint; the door
-and the broker decide roles. From 2.4 a mint of `NO_ACCESS` with no projects and no flags is an
-account write: it runs only after the sign-in's first access grant, and a verification window that
-has closed since does not hold it up. Any mint that grants a project stays a project write and is
+door admitted or refused. HQ's door takes the same throwaway, named for HQ's project
+(`apps/hq/src/door.ts`), and so does the old Gitea's broker for the sign-in the client still makes
+to read releases until T9b. The client checks no organization or project role for the mint; the
+door it is presented to decides roles. From 2.4 a mint of `NO_ACCESS` with no projects and no flags is an account write: it runs
+only after the sign-in's first access grant, and a verification window that has closed since does
+not hold it up. Any mint that grants a project stays a project write and is
 refused while the window is closed. The delete carries the minting token, never the current
 session, with its own 15 s timeout and outside the exchange's cancellation, so it can neither run
 under another account nor end anyone's session. A token it could not delete is removed by the same
@@ -114,8 +116,8 @@ account's next sweep.
 
 The window guards against a person whose access lapsed acting on the platform past it. Minting a
 token with no role, no project grant and no flag while project writes are closed cannot grant
-anything: the door and the broker decide what it opens when it is presented, re-reading the
-person's role with their own keys, and refuse a token that carries a grant or a flag. A mint that
+anything: the door it is presented to decides what it opens, re-reading the person's role with
+its own key, and refuses a token that carries a grant or a flag. A mint that
 grants a project would add authority, so it keeps the window.
 
 `packages/client-runtime/src/zerops/serverCompatibility.ts` defines the GUI's minimum supported
