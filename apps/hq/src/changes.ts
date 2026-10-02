@@ -77,6 +77,8 @@ export class ChangeRefused extends Schema.TaggedError<ChangeRefused>()("ChangeRe
   ]),
 }) {}
 
+const isChangeRefused = Schema.is(ChangeRefused);
+
 /** The verbs a Mate does in its application, beside editing its change and fetching. */
 export type MateVerb = "ensure_repo" | "open_change";
 
@@ -657,8 +659,18 @@ export const changesLayer: Layer.Layer<
           yield* roles.fresh,
         );
         if (decision.allow) {
+          // Refused as git sees it — a conflict with main, a head moved since — it stays open, as
+          // main's broker left it: its record says how it merges, and its Mate proposes again.
           const change = yield* changeIn(repo.appId, repo.id, number);
-          yield* land(change, head, { by: "core" });
+          yield* land(change, head, { by: "core" }).pipe(
+            Effect.catchIf(isChangeRefused, (refused) =>
+              Effect.logWarning("recipe change not landed", {
+                repo,
+                number,
+                reason: refused.reason,
+              }),
+            ),
+          );
         } else if (decision.reason === "recipe_empty") {
           yield* close(repo.appId, repo.id, number, { by: "core", reason: "empty" });
         } else {

@@ -180,13 +180,25 @@ describe("an application's recipe in HQ", () => {
         yield* group.write({ [AI_AGENT]: edited, [STAGE]: TIER }, "Newer node");
         yield* group.push("P_MATE", second);
         const head = yield* git.checked(["rev-parse", "HEAD"], group.work);
+        // Changes are judged one after another as pushed: once another Mate's later, add-only
+        // change has landed, this one was judged before it.
+        addProject(fake, "P_MATE2");
+        yield* call("POST", `/api/apps/${appId}/projects`, {
+          session: owner,
+          body: { projectId: "P_MATE2", kind: "mate", mate: { name: "Bo", face: "face-2" } },
+        });
+        const boCredential = yield* enrollMate(call, fake, "P_MATE2");
+        const third = yield* propose(call, { authorization: `Mate ${boCredential}` });
+        const bo = yield* groupCheckout(git, origin, boCredential, appId, "bo");
+        yield* bo.write({ "4 — Small Production/import.yaml": TIER }, "The production's");
+        yield* bo.push("P_MATE2", third);
+        yield* stateBecomes(call, owner, appId, third, "merged");
+        yield* stateBecomes(call, owner, appId, second, "open");
         yield* rowsWhere(
           url,
           `SELECT head FROM hq_change WHERE repo = 'group' AND number = ${String(second)}`,
           (rows) => rows[0]?.["head"] === head,
         );
-        yield* Effect.sleep(Duration.millis(500));
-        yield* stateBecomes(call, owner, appId, second, "open");
 
         const merged = yield* call(
           "POST",
@@ -198,6 +210,51 @@ describe("an application's recipe in HQ", () => {
           .body as { readonly importYaml: string };
         assert.strictEqual(read.importYaml, edited);
       }),
+    );
+
+    it.effect(
+      "an add-only recipe change that conflicts with main is left open, its record saying so",
+      () =>
+        Effect.gen(function* () {
+          const { call, fake, origin } = yield* startCore(true);
+          yield* untilHealth(call, "active");
+          const owner = yield* sessionFor(call, "door-owner");
+          const ada = yield* mateInApp(call, fake, owner, "P_MATE", "Shop");
+          addProject(fake, "P_MATE2");
+          yield* call("POST", `/api/apps/${ada.appId}/projects`, {
+            session: owner,
+            body: { projectId: "P_MATE2", kind: "mate", mate: { name: "Bo", face: "face-2" } },
+          });
+          const boCredential = yield* enrollMate(call, fake, "P_MATE2");
+          const adaNumber = yield* propose(call, ada.auth);
+          const boNumber = yield* propose(call, { authorization: `Mate ${boCredential}` });
+          const git = yield* gitClient;
+          const adaWork = yield* groupCheckout(git, origin, ada.credential, ada.appId, "ada");
+          const boWork = yield* groupCheckout(git, origin, boCredential, ada.appId, "bo");
+          // Both add the AI Agent tier, each its own.
+          yield* adaWork.write({ [AI_AGENT]: TIER }, "Ada's tier");
+          yield* boWork.write({ [AI_AGENT]: TIER.replace("api", "web") }, "Bo's tier");
+          yield* adaWork.push("P_MATE", adaNumber);
+          yield* stateBecomes(call, owner, ada.appId, adaNumber, "merged");
+          yield* boWork.push("P_MATE2", boNumber);
+          // Not landed, and not closed: open for its Mate to propose again, and said to conflict.
+          const left = yield* call("GET", `/api/apps/${ada.appId}/changes`, {
+            session: owner,
+          }).pipe(
+            Effect.map(
+              (answer) =>
+                (
+                  answer.body as { readonly changes: ReadonlyArray<Record<string, unknown>> }
+                ).changes.find(
+                  (change) => change["repo"] === "group" && change["number"] === boNumber,
+                ) ?? {},
+            ),
+            Effect.filterOrFail((change) => change["mergeability"] === "conflict"),
+            Effect.retry(Schedule.spaced(Duration.millis(50))),
+            Effect.timeout(Duration.seconds(10)),
+          );
+          assert.strictEqual(left["state"], "open");
+        }),
     );
 
     it.effect("an empty recipe change is closed by Core", () =>
