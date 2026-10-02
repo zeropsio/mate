@@ -36,6 +36,7 @@ import {
   type OrchestrationThreadShell,
   type ZeropsAgentId,
 } from "@t3tools/contracts";
+import { resolvePrimaryConversation } from "@t3tools/shared/primaryConversation";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Crypto from "effect/Crypto";
@@ -201,32 +202,6 @@ export const standUpModelSelection = (
     instanceId: ProviderInstanceId.make(instance),
     model: DEFAULT_MODEL_BY_PROVIDER[ProviderDriverKind.make(instance)] ?? DEFAULT_MODEL,
   };
-};
-
-/**
- * The Mate's main conversation, by the client's rule (`primaryConversation.ts`):
- * pinned, else spoken in most recently, else the newest; never archived, never
- * a crewmate's.
- */
-export const mainConversation = (
-  threads: ReadonlyArray<OrchestrationThreadShell>,
-): OrchestrationThreadShell | undefined => {
-  const time = (value: string | null | undefined) => (value ? Date.parse(value) || 0 : 0);
-  return threads
-    .filter((thread) => thread.archivedAt === null && thread.crew === undefined)
-    .toSorted((left, right) => {
-      const pinned = Number(right.pinnedAt != null) - Number(left.pinnedAt != null);
-      if (pinned !== 0) return pinned;
-      const spoken =
-        Number(time(right.latestUserMessageAt) > 0) - Number(time(left.latestUserMessageAt) > 0);
-      if (spoken !== 0) return spoken;
-      return (
-        time(right.latestUserMessageAt) - time(left.latestUserMessageAt) ||
-        time(right.updatedAt) - time(left.updatedAt) ||
-        time(right.createdAt) - time(left.createdAt) ||
-        left.id.localeCompare(right.id)
-      );
-    })[0];
 };
 
 export interface ZeropsSetupTimings {
@@ -543,7 +518,7 @@ export const makeZeropsSetup = (timings: ZeropsSetupTimings = TIMINGS) =>
         );
         const main =
           resuming === undefined
-            ? mainConversation(threads)
+            ? resolvePrimaryConversation(threads).primary
             : threads.find((thread) => thread.id === resuming.threadId);
         // Resumed, and its stand-up is already in the conversation: it went out before.
         if (resuming !== undefined && main?.latestUserMessageAt != null) {

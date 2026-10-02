@@ -2,7 +2,6 @@ import { EnvironmentId, OrchestrationThreadShell } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
 import { describe, expect, it } from "vite-plus/test";
 
-import { scopeThreadShell } from "../state/models.ts";
 import {
   resolvePrimaryConversation,
   type ZeropsConversationCandidate,
@@ -177,28 +176,27 @@ describe("resolvePrimaryConversation", () => {
   it("never opens a crewmate's thread, nor counts it among the hidden ones", () => {
     // Shells as the wire delivers them, so a crew field the candidate names
     // differently from the shell fails here instead of passing silently.
-    const shell = (id: string, extra: object) =>
-      scopeThreadShell(
-        EnvironmentId.make("environment-1"),
-        decodeThreadShell({
-          id,
-          projectId: "project-1",
-          title: id,
-          modelSelection: { instanceId: "claudeAgent", model: "claude-opus-5" },
-          runtimeMode: "approval-required",
-          branch: null,
-          worktreePath: null,
-          latestTurn: null,
-          createdAt: "2026-09-01T00:00:00Z",
-          updatedAt: "2026-09-01T00:00:00Z",
-          session: null,
-          latestUserMessageAt: null,
-          hasPendingApprovals: false,
-          hasPendingUserInput: false,
-          hasActionableProposedPlan: false,
-          ...extra,
-        }),
-      );
+    const shell = (id: string, extra: object) => ({
+      environmentId: EnvironmentId.make("environment-1"),
+      ...decodeThreadShell({
+        id,
+        projectId: "project-1",
+        title: id,
+        modelSelection: { instanceId: "claudeAgent", model: "claude-opus-5" },
+        runtimeMode: "approval-required",
+        branch: null,
+        worktreePath: null,
+        latestTurn: null,
+        createdAt: "2026-09-01T00:00:00Z",
+        updatedAt: "2026-09-01T00:00:00Z",
+        session: null,
+        latestUserMessageAt: null,
+        hasPendingApprovals: false,
+        hasPendingUserInput: false,
+        hasActionableProposedPlan: false,
+        ...extra,
+      }),
+    });
     // The server writes a task card to a stint as a user message, so a stint
     // looks spoken, and more recently than the person's own conversation.
     const stint = shell("stint", {

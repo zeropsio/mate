@@ -177,7 +177,7 @@ export {
   type ZeropsConversationCandidate,
   type ZeropsPrimaryConversation,
   type ZeropsPrimaryConversationReason,
-} from "./primaryConversation.ts";
+} from "@t3tools/shared/primaryConversation";
 export {
   agentOwnershipNeedsAttention,
   agentOwnershipNotice,
