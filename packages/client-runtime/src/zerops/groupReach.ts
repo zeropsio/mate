@@ -255,14 +255,20 @@ export function buildGroupGrants(input: {
   ];
 }
 
+/**
+ * The same project → role pairs, in any order. The platform's ids are base64, so two orderings
+ * that disagree on case — `localeCompare` against the code-unit sort the write uses — never
+ * matched what was just written, and every read rewrote the token (pass 30, 2026-10-02).
+ */
 function sameGrants(
-  left: ReadonlyArray<ZeropsProjectGrant>,
-  right: ReadonlyArray<ZeropsProjectGrant>,
+  current: ReadonlyArray<ZeropsProjectGrant>,
+  wanted: ReadonlyArray<ZeropsProjectGrant>,
 ): boolean {
-  if (left.length !== right.length) return false;
-  return left.every(
-    (grant, index) =>
-      grant.projectId === right[index]?.projectId && grant.roleCode === right[index]?.roleCode,
+  const roles = new Map(current.map((grant) => [grant.projectId, grant.roleCode]));
+  return (
+    current.length === wanted.length &&
+    roles.size === wanted.length &&
+    wanted.every((grant) => roles.get(grant.projectId) === grant.roleCode)
   );
 }
 
@@ -271,9 +277,9 @@ function sameGrants(
  * group — so opening a screen that reconciles this is not a write, and a group
  * that has not moved is not touched.
  *
- * Comparison is order-insensitive on the token's side: the platform returns
- * grants in its own order, and re-sorting it before comparing is what keeps an
- * unchanged group from being rewritten on every read.
+ * Comparison is order-insensitive: the platform returns grants in its own
+ * order, and comparing them as pairs is what keeps an unchanged group from
+ * being rewritten on every read.
  */
 export function planGroupReach(input: {
   readonly token: ZeropsIntegrationToken;
@@ -284,14 +290,7 @@ export function planGroupReach(input: {
     selfProjectId: input.selfProjectId,
     groupProjectIds: input.groupProjectIds,
   });
-  const current = [...(input.token.projects ?? [])].sort((left, right) =>
-    left.projectId === input.selfProjectId
-      ? -1
-      : right.projectId === input.selfProjectId
-        ? 1
-        : left.projectId.localeCompare(right.projectId),
-  );
-  if (sameGrants(current, wanted)) return undefined;
+  if (sameGrants(input.token.projects ?? [], wanted)) return undefined;
   return { tokenId: input.token.id, projects: wanted };
 }
 
@@ -402,7 +401,8 @@ export function makeTokenWriteLock(
  * the list read under that token's lock (`hold`), right before it — never from a list read
  * earlier, a shared, possibly old one least of all. It writes the plan as it stands: an org role
  * only where the plan names one (the broker's own, read under the lock), else the write lowers it
- * to none. A read outside the lock only finds the next token to write. It writes at most what its first plan asked for, and answers how many it wrote.
+ * to none. A read outside the lock only finds the next token to write. It writes each token at
+ * most once and at most what its first plan asked for, and answers how many it wrote.
  */
 export async function writeTokenProjectsFresh(input: {
   readonly read: () => Promise<ReadonlyArray<ZeropsIntegrationToken>>;
@@ -421,12 +421,17 @@ export async function writeTokenProjectsFresh(input: {
   let most: number | null = null;
   /** Tokens whose write failed: the others are still written, and the run fails at its end. */
   const refused = new Map<string, unknown>();
+  /** Tokens this run already asked about under their lock: a write that did not show is not repeated. */
+  const tried = new Set<string>();
   while (most === null || attempts < most) {
     const writes = input.plan(await input.read());
     most ??= writes.length;
-    const next = writes.find((planned) => !refused.has(planned.tokenId));
+    const next = writes.find(
+      (planned) => !refused.has(planned.tokenId) && !tried.has(planned.tokenId),
+    );
     if (next === undefined) break;
     attempts += 1;
+    tried.add(next.tokenId);
     try {
       const wrote = await hold(next.tokenId, async () => {
         const tokens = await input.read();

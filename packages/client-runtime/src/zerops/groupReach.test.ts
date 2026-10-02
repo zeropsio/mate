@@ -164,6 +164,33 @@ describe("planGroupReach", () => {
     ).toBeUndefined();
   });
 
+  it.each([
+    { name: "upper case before lower", siblings: ["zSib", "Asib"] },
+    { name: "lower case before upper", siblings: ["aSib", "Zsib"] },
+    { name: "a shared prefix", siblings: ["m1Vr", "M1vr", "m1vR"] },
+  ])(
+    "writes nothing for the grants it wrote itself, whatever case the ids are in: $name",
+    ({ siblings }) => {
+      // The platform's ids are base64: their order depends on case, and a comparison that orders
+      // them differently from the write rewrote one token sixty times a load (pass 30, 2026-10-02).
+      const groupProjectIds = [DEV, ...siblings];
+      const written: ZeropsIntegrationToken = {
+        ...MATE_TOKEN,
+        projects: buildGroupGrants({ selfProjectId: DEV, groupProjectIds }),
+      };
+      expect(
+        planGroupReach({ token: written, selfProjectId: DEV, groupProjectIds }),
+      ).toBeUndefined();
+      const shuffled: ZeropsIntegrationToken = {
+        ...written,
+        projects: (written.projects ?? []).toReversed(),
+      };
+      expect(
+        planGroupReach({ token: shuffled, selfProjectId: DEV, groupProjectIds }),
+      ).toBeUndefined();
+    },
+  );
+
   it("narrows a Mate when an environment leaves the group", () => {
     const widened: ZeropsIntegrationToken = {
       ...MATE_TOKEN,
@@ -325,6 +352,22 @@ describe("writeTokenProjectsFresh", () => {
       },
     });
     expect([count, writes]).toEqual([0, 0]);
+  });
+
+  it("writes each token once a run, even where the platform never shows a write", async () => {
+    const written: string[] = [];
+    await writeTokenProjectsFresh({
+      read: async () => [
+        { id: "tok-a", name: "a", projects: [] },
+        { id: "tok-b", name: "b", projects: [] },
+      ],
+      plan: (tokens) =>
+        tokens.map((token) => ({ tokenId: token.id, name: token.name, projects: [] })),
+      write: async (write) => {
+        written.push(write.tokenId);
+      },
+    });
+    expect(written).toEqual(["tok-a", "tok-b"]);
   });
 
   it("writes no more than its first plan asked for, whatever the platform answers", async () => {

@@ -52,6 +52,11 @@ import {
   type ZeropsEnvironmentRole,
 } from "@t3tools/client-runtime/zerops";
 import type { DeployScope, GroupUpdate } from "@t3tools/client-runtime/zerops/flow";
+import {
+  createCommitStatusMemo,
+  type CommitStatusMemo,
+} from "@t3tools/client-runtime/zerops/forge";
+import { useState } from "react";
 
 import type { ZeropsDeployedVersionReader } from "./useZeropsDeployedVersion";
 import { useGroupAnswers } from "./useZeropsGroupForge";
@@ -167,6 +172,7 @@ export function useZeropsGroupDeploys(input: {
   /** A Gitea request can go out now (`GiteaSessionView.readable`); a read runs only then. */
   readonly readable: boolean;
 }): ZeropsGroupDeployAnswers {
+  const [statuses] = useState(() => createCommitStatusMemo());
   const { answers, failures, invalidate } = useGroupAnswers<
     ZeropsDeployGroup,
     DeployScope,
@@ -180,7 +186,16 @@ export function useZeropsGroupDeploys(input: {
     refreshMs: GROUP_DEPLOYS_REFRESH_MS,
     keyOf: deployGroupKey,
     read: (client, group, scope, signal, held) =>
-      readGroupDeploys({ client, group, scope, readVersion: input.readVersion, held, signal }),
+      readGroupDeploys({
+        client,
+        group,
+        scope,
+        readVersion: input.readVersion,
+        held,
+        signal,
+        statuses,
+      }),
+    forget: (group) => statuses.forget(group.slug),
   });
   return { deploys: answers, failures, invalidate };
 }
@@ -199,6 +214,8 @@ export async function readGroupDeploys(input: {
   readonly readVersion: ZeropsDeployedVersionReader;
   readonly held: ZeropsGroupDeployState | undefined;
   readonly signal: AbortSignal;
+  /** What the group's deploys' checks said, kept while no read can change it (`statusMemo.ts`). */
+  readonly statuses?: CommitStatusMemo | undefined;
 }): Promise<GroupUpdate<ZeropsGroupDeployState>> {
   const { client, group, held, scope, signal } = input;
   if (scope !== "group") {
@@ -257,6 +274,7 @@ export async function readGroupDeploys(input: {
   );
   for (const { read, name } of answered) if (name !== undefined) versions.set(read.serviceId, name);
 
+  const memo = input.statuses ?? createCommitStatusMemo();
   const statuses = new Map<string, ReadonlyArray<GiteaCommitStatus>>();
   const reads = planDeployStatusReads({
     owner: group.slug,
@@ -270,8 +288,8 @@ export async function readGroupDeploys(input: {
     signal.throwIfAborted();
     // A refusal is not an answer: the row says nothing about a deploy
     // it could not be told about, rather than calling it neutral.
-    const answered = await client
-      .listCommitStatuses(read.owner, read.repo, read.sha)
+    const answered = await memo
+      .read(read, () => client.listCommitStatuses(read.owner, read.repo, read.sha))
       .catch(() => null);
     if (answered !== null) statuses.set(deployStatusKey(read), answered);
   }
