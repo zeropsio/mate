@@ -63,12 +63,15 @@ const summary = (lastRequest: string): MateSummary => ({
   signers: {},
 });
 
+/** A Mate in no application, with no changes yet. */
 const STATE: MateState = {
   projectId: "P_MATE",
   name: "Ada",
   face: "face-1",
   standupRequestedBy: "owner",
   closedOff: true,
+  appId: null,
+  changes: [],
 };
 
 /** A link over a fake HQ: tickets for `cred` while `refusing` is off, a socket per connect. */
@@ -152,6 +155,41 @@ describe("ZeropsHqLink", () => {
           assert.deepStrictEqual(held, STATE);
         }),
       ),
+  );
+
+  // HQ's state carries the application the Mate is in and its changes there: kept whole, as sent.
+  it.live("keeps HQ's state with the application and the changes it carries", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const { link, enrollment, sockets, until } = yield* rig;
+        yield* Ref.set(enrollment, Option.some({ hq: "https://hq.test", credential: "cred" }));
+        const socket = yield* until(() => sockets[0]);
+        socket.emit("open");
+        const placed: MateState = {
+          ...STATE,
+          appId: "app-1",
+          changes: [
+            {
+              repo: "shop",
+              number: 3,
+              state: "open",
+              head: "a".repeat(40),
+              mergedSha: null,
+              landedHead: null,
+            },
+          ],
+        };
+        socket.hear({ type: "state", mate: placed });
+        const held = yield* link.standing.pipe(
+          Effect.flatMap((standing) =>
+            standing.kind === "linked" ? Effect.succeed(standing.mate) : Effect.fail("not yet"),
+          ),
+          Effect.retry(Schedule.spaced(Duration.millis(5))),
+          Effect.timeout(Duration.seconds(3)),
+        );
+        assert.deepStrictEqual(held, placed);
+      }),
+    ),
   );
 
   // Until zcp enrolls, the Mate says why it is not linked as far as zcp said: its last word on

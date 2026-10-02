@@ -90,6 +90,8 @@ const linked = (standupRequestedBy: string | null): HqStanding => ({
     face: "coral:gem",
     standupRequestedBy,
     closedOff: true,
+    appId: null,
+    changes: [],
   },
 });
 const ASKED = linked("user-a");
