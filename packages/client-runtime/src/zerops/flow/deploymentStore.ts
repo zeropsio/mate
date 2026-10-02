@@ -41,6 +41,7 @@ import {
   stopServices,
   unnamedVersions,
   type ProcessRefusal,
+  type SeenBuild,
   type StopService,
 } from "./deployment.ts";
 
@@ -100,7 +101,9 @@ interface Entry {
   disarm: () => void;
   shown: Known<ReadonlyArray<StopService>>;
   /** The services seen building while demanded and not seen running since (`afterBuilds`). */
-  built: ReadonlySet<string>;
+  built: ReadonlyMap<string, SeenBuild>;
+  /** Disarms the read again that ends a build's grace (`AFTER_BUILD_GRACE_MS`). */
+  disarmGrace: () => void;
   unfollow: () => void;
 }
 
@@ -138,8 +141,16 @@ export function makeDeploymentStore(ports: DeploymentStorePorts): DeploymentStor
       ports.nowMs(),
     );
     // A build seen to end with nothing running is the first deploy failing; no listing keeps it.
-    const after = afterBuilds(entry.built, next);
+    const after = afterBuilds(entry.built, next, ports.nowMs());
     entry.built = after.built;
+    // A grace running: read the stop again as it ends, so a failure shows without a push.
+    entry.disarmGrace();
+    entry.disarmGrace = () => undefined;
+    if (after.wakeAtMs !== null) {
+      entry.disarmGrace = ports.setTimer(after.wakeAtMs - ports.nowMs(), () => {
+        if (!disposed && entries.get(projectKeyOf(entry.project)) === entry) publish(entry);
+      });
+    }
     // A stop read again keeps its last answer while nothing new is known (F5).
     entry.shown = heldThroughRecheck(entry.shown, after.shown, ports.nowMs());
   };
@@ -201,7 +212,8 @@ export function makeDeploymentStore(ports: DeploymentStorePorts): DeploymentStor
           backoff: INITIAL_BACKOFF,
           disarm: () => undefined,
           shown: UNREAD,
-          built: new Set(),
+          built: new Map(),
+          disarmGrace: () => undefined,
           unfollow: () => undefined,
         };
         // Held before it is followed: a demand refused as it is taken reaches the entry.
@@ -220,6 +232,7 @@ export function makeDeploymentStore(ports: DeploymentStorePorts): DeploymentStor
         held.leases -= 1;
         if (held.leases > 0) return;
         held.disarm();
+        held.disarmGrace();
         held.unfollow();
         entries.delete(key);
       };
@@ -242,6 +255,7 @@ export function makeDeploymentStore(ports: DeploymentStorePorts): DeploymentStor
       disposed = true;
       for (const entry of entries.values()) {
         entry.disarm();
+        entry.disarmGrace();
         entry.unfollow();
       }
       entries.clear();
