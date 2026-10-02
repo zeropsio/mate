@@ -17,7 +17,8 @@ import { mateRowActivity } from "../components/zerops/SidebarMateRow.logic";
 import { environmentsWithSnapshotAtom } from "../state/shell";
 import { zeropsEnvironmentsAtom } from "../state/zerops";
 import type { ZeropsAgentActivity } from "./agentActivity";
-import { mateComing, type MateComing } from "./mateComing";
+import { useEnvironmentLinks } from "../routes/-environmentTargets";
+import { arrivalHoldsThrough, mateComing, type MateComing } from "./mateComing";
 import { rememberedActivity } from "./menuMemory";
 import { useNewMate } from "./newMate";
 import { useZeropsCreationVerdicts } from "./useZeropsCreationVerdicts";
@@ -89,6 +90,7 @@ export function useMateComingOf(
 ): (candidate: ZeropsCandidate) => MateComing | undefined {
   const presses = useMatePresses();
   const creations = useNewMate((state) => state.creations);
+  const { mateLink } = useEnvironmentLinks();
   const verdicts = useZeropsCreationVerdicts(
     candidates,
     presses.find((press) => press.container && press.state.kind === "pressing")?.projectId ?? null,
@@ -102,8 +104,13 @@ export function useMateComingOf(
         setUpFailed: setUpFailed ?? creations[candidate.project.id]?.failed,
         nowMs: Date.now(),
         created: creations[candidate.project.id] !== undefined,
+        // No clock for a row: a link retrying is past an arrival's patience.
+        linkHolds:
+          creations[candidate.project.id] === undefined
+            ? undefined
+            : arrivalHoldsThrough(mateLink(candidate).reachability, { retryingPast: true }),
       });
     },
-    [presses, creations, verdicts],
+    [presses, creations, mateLink, verdicts],
   );
 }

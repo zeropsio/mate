@@ -26,7 +26,10 @@
  *
  * Pure: the reading and the words; the menu, the view and the page draw them.
  */
-import type { ZeropsCandidateGroup } from "@t3tools/client-runtime/zerops/candidates";
+import {
+  FIRST_BUILD_GRACE_MS,
+  type ZeropsCandidateGroup,
+} from "@t3tools/client-runtime/zerops/candidates";
 import {
   isTerminalReachability,
   routeGatePhrase,
@@ -89,7 +92,9 @@ export interface MateComingInput {
     | {
         readonly group: ZeropsCandidateGroup;
         readonly creationFailed?: { readonly message: string | undefined } | undefined;
-        readonly service?: { readonly status: string } | undefined;
+        readonly service?:
+          | { readonly status: string; readonly created?: string | undefined }
+          | undefined;
         /** Its project lists no container. */
         readonly missingContainer?: true | undefined;
         readonly project?: { readonly created?: string | undefined } | undefined;
@@ -101,6 +106,19 @@ export interface MateComingInput {
   readonly setUpFailed?: string | undefined;
   /** This tab made it, and it has not connected since (`newMate.ts`'s creation). */
   readonly created?: boolean | undefined;
+  /**
+   * Its link's wait is one an arrival holds through (`arrivalHoldsThrough`); `undefined` where
+   * the caller does not read its link.
+   */
+  readonly linkHolds?: boolean | undefined;
+  /** Why its container's first build failed, where its project's processes say so. */
+  readonly firstBuildFailed?: string | undefined;
+}
+
+/** Whether `at` is within `graceMs` of now; an unknown time or now counts as young. */
+function youngAt(at: string | undefined, nowMs: number | undefined, graceMs: number): boolean {
+  const ms = Date.parse(at ?? "");
+  return nowMs === undefined || Number.isNaN(ms) || nowMs - ms < graceMs;
 }
 
 /** How long a Mate's project may stand without its container before that is no longer its press. */
@@ -160,6 +178,17 @@ export function mateComing(input: MateComingInput): MateComing | undefined {
       verb: press?.retryable === true ? "try-again" : "remove",
     };
   }
+  // Its container waits for its first build: one that failed never brings it (the platform leaves
+  // the service READY_TO_DEPLOY), and one waiting past its grace is not a birth any more.
+  const firstBuild = candidate?.service?.status === "READY_TO_DEPLOY";
+  if (firstBuild && input.firstBuildFailed !== undefined) {
+    const why = asSentence(input.firstBuildFailed);
+    return {
+      kind: "failed",
+      line: why.length === 0 ? NOT_SET_UP_LINE : `${NOT_SET_UP_LINE} ${why}`,
+      verb: "remove",
+    };
+  }
   // A container that failed, stopped or is restarting shows that, whatever this tab pressed.
   if (containerDown(candidate?.service?.status)) return undefined;
   if (press !== undefined && press.container) {
@@ -169,19 +198,26 @@ export function mateComing(input: MateComingInput): MateComing | undefined {
       ...(press.startedAt === undefined ? {} : { since: press.startedAt }),
     };
   }
-  // Made here and not connected yet: its press is over, its container on its way.
-  if (input.created === true) return { kind: "coming", line: comingMateLine({}) };
   if (press === undefined && candidate?.missingContainer === true) {
     // A press in another browser is still importing it a moment after the project; past that,
     // the press stopped before its container — the tab closed — and nothing will bring it.
-    const created = Date.parse(candidate.project?.created ?? "");
-    const young =
-      input.nowMs === undefined ||
-      Number.isNaN(created) ||
-      input.nowMs - created < MATE_CONTAINER_GRACE_MS;
-    return young
+    return youngAt(candidate.project?.created, input.nowMs, MATE_CONTAINER_GRACE_MS)
       ? { kind: "coming", line: COMING_UP_LINE }
       : { kind: "failed", line: HALF_MADE_LINE, verb: "finish-setup" };
+  }
+  if (firstBuild && !youngAt(candidate?.service?.created, input.nowMs, FIRST_BUILD_GRACE_MS)) {
+    return undefined;
+  }
+  // Made here and not connected yet: its press is over and its container on its way — while
+  // nothing is listed for it yet, or its link waits on nothing but time. A link that wants
+  // somebody, or a project gone, says so in its own words.
+  if (
+    input.created === true &&
+    (candidate === undefined
+      ? input.linkHolds !== false
+      : candidate.group === "provisioning" || input.linkHolds === true)
+  ) {
+    return { kind: "coming", line: comingMateLine({}) };
   }
   if (
     press === undefined &&
@@ -191,6 +227,35 @@ export function mateComing(input: MateComingInput): MateComing | undefined {
     return { kind: "coming", line: COMING_UP_LINE };
   }
   return undefined;
+}
+
+const FAILED_PROCESS_STATUSES: ReadonlySet<string> = new Set(["FAILED", "CANCELED"]);
+
+/**
+ * Why a Mate's container's first build failed, as its project's processes say it: its newest
+ * build for that service ended failed or cancelled. `undefined` while nothing says so.
+ */
+export function firstBuildFailure(
+  processes:
+    | ReadonlyArray<{
+        readonly actionName: string;
+        readonly serviceStackIds: ReadonlyArray<string>;
+        readonly status: string;
+        readonly created: string;
+        readonly failReason?: string | undefined;
+      }>
+    | undefined,
+  serviceId: string | undefined,
+): string | undefined {
+  if (processes === undefined || serviceId === undefined) return undefined;
+  const newest = processes
+    .filter(
+      (process) =>
+        process.actionName === "stack.build" && process.serviceStackIds.includes(serviceId),
+    )
+    .toSorted((left, right) => Date.parse(right.created) - Date.parse(left.created))[0];
+  if (newest === undefined || !FAILED_PROCESS_STATUSES.has(newest.status)) return undefined;
+  return newest.failReason ?? "Its container's first build did not finish";
 }
 
 /** A name the headline never breaks inside. */
@@ -275,6 +340,12 @@ export function mateComingPage(input: {
   return { kind: "reaching", reachability };
 }
 
+/**
+ * How long an arrival holds its board through a link retrying on its own: about its first
+ * back-off steps; past it, its link's words say it is not answering, with *Try now*.
+ */
+export const ARRIVAL_RETRY_HOLD_MS = 20_000;
+
 /** Up, its conversation and its sign-in being read: the last of its coming words. */
 const ARRIVAL_OPENING: MateComing = { kind: "coming", line: ALMOST_THERE_LINE };
 
@@ -291,7 +362,13 @@ const ON_ITS_WAY_LEVELS: ReadonlySet<string> = new Set([
  * Whether a link's wait is one the arrival holds through: anything on its way that needs nobody —
  * never one past its cap, one that wants a restart, or a container down or not to be reached.
  */
-function arrivalHoldsThrough(reachability: Reachability | null): boolean {
+export function arrivalHoldsThrough(
+  reachability: Reachability | null,
+  context: {
+    /** Its link has been retrying longer than an arrival waits (`ARRIVAL_RETRY_HOLD_MS`). */
+    readonly retryingPast: boolean;
+  },
+): boolean {
   if (reachability === null) return true;
   switch (reachability.kind) {
     case "connecting":
@@ -301,7 +378,7 @@ function arrivalHoldsThrough(reachability: Reachability | null): boolean {
     case "waiting-for-zerops":
       return true;
     case "retrying":
-      return !reachability.restart;
+      return !reachability.restart && !context.retryingPast;
     case "container":
       return (
         ON_ITS_WAY_LEVELS.has(reachability.container.level) &&
@@ -322,12 +399,16 @@ function arrivalHoldsThrough(reachability: Reachability | null): boolean {
 export function mateArrivalShown(input: {
   readonly page: MateComingPage | undefined;
   readonly cameUp: boolean;
+  /** Its link has been retrying longer than an arrival waits (`ARRIVAL_RETRY_HOLD_MS`). */
+  readonly retryingPast: boolean;
 }): MateComing | undefined {
   const { page } = input;
   if (page?.kind === "coming") return page.coming;
   if (!input.cameUp) return undefined;
   if (page?.kind === "up") return ARRIVAL_OPENING;
-  if (page?.kind === "reaching" && arrivalHoldsThrough(page.reachability)) return ARRIVAL_OPENING;
+  if (page?.kind === "reaching" && arrivalHoldsThrough(page.reachability, input)) {
+    return ARRIVAL_OPENING;
+  }
   return undefined;
 }
 

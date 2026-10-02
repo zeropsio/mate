@@ -3,6 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import type { ZeropsProject, ZeropsService } from "./api.ts";
 import {
+  applyFirstBuildGrace,
   applyProjectCreationVerdict,
   deriveZeropsCandidates,
   groupZeropsCandidates,
@@ -344,5 +345,55 @@ describe("groupZeropsCandidates", () => {
       "project-1",
       "project-2",
     ]);
+  });
+});
+
+// A Mate's first build that failed leaves its service READY_TO_DEPLOY for good (a failed
+// buildFromGit, the ledger): past the build's grace it is not on its way up any more.
+describe("applyFirstBuildGrace", () => {
+  const NOW = Date.parse("2026-10-02T12:00:00.000Z");
+  /** Its service, made at `created`. */
+  const firstBuild = (created: string | undefined) =>
+    deriveZeropsCandidates(
+      PROJECT,
+      [
+        service({
+          id: "s1",
+          status: "READY_TO_DEPLOY",
+          ...(created === undefined ? {} : { created }),
+        }),
+      ],
+      NO_CONNECTIONS,
+    )[0]!;
+
+  it.each([
+    {
+      case: "a minute into its first build",
+      created: "2026-10-02T11:59:00.000Z",
+      group: "provisioning",
+    },
+    { case: "its creation time unknown", created: undefined, group: "provisioning" },
+    {
+      case: "twenty minutes on, never built",
+      created: "2026-10-02T11:40:00.000Z",
+      group: "unavailable",
+    },
+  ])("$case: $group", ({ created, group }) => {
+    expect(applyFirstBuildGrace(firstBuild(created), NOW).group).toBe(group);
+  });
+
+  it("names the platform's status once past its grace, and keeps its service", () => {
+    const settled = applyFirstBuildGrace(firstBuild("2026-10-02T11:40:00.000Z"), NOW);
+    expect(settled.reason).toBe("container is READY_TO_DEPLOY");
+    expect(settled.service?.id).toBe("s1");
+  });
+
+  it("never touches a container in any other state", () => {
+    const starting = deriveZeropsCandidates(
+      PROJECT,
+      [service({ id: "s1", status: "STARTING", created: "2020-01-01T00:00:00Z" })],
+      NO_CONNECTIONS,
+    )[0]!;
+    expect(applyFirstBuildGrace(starting, NOW)).toBe(starting);
   });
 });

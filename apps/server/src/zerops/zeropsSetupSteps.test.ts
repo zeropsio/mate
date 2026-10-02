@@ -360,10 +360,29 @@ describe("setupDocument", () => {
       "running",
     ],
     [
-      "started, the development half returned, its turn not read",
+      "started, the development half returned, its own turn not read: zcp's word",
       {
         record: { startedAt: NOW, ran: true },
         status: parseZcpStatus(status({ standup: { state: "done", services: halvesAfterDev } })),
+      },
+      "done",
+    ],
+    [
+      "settled as never due, then zcp stood up the development half only: zcp's word",
+      {
+        record: { startedAt: NOW, ran: false },
+        status: parseZcpStatus(status({ standup: { state: "done", services: halvesAfterDev } })),
+      },
+      "done",
+    ],
+    [
+      "zcp keeping its own section running between the two calls",
+      {
+        record: { startedAt: NOW, ran: true },
+        standUpTurn: "running",
+        status: parseZcpStatus(
+          status({ standup: { state: "running", phase: "stage", services: halvesAfterDev } }),
+        ),
       },
       "running",
     ],

@@ -46,7 +46,10 @@ vi.mock("@tanstack/react-router", () => ({
   useRouter: () => ({ navigate: app.navigate }),
 }));
 vi.mock("../routes/-environmentTargets", () => ({
-  useEnvironmentLinks: () => ({ linkTarget: () => (app.reachable ? ENVIRONMENT : undefined) }),
+  useEnvironmentLinks: () => ({
+    linkTarget: () => (app.reachable ? ENVIRONMENT : undefined),
+    mateLink: () => ({ key: undefined, environmentId: undefined, reachability: null }),
+  }),
 }));
 vi.mock("../state/entities", () => ({
   useThreadShells: () => app.threads,
