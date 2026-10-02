@@ -14,8 +14,11 @@ import { makeZeropsApiHttp } from "./http.ts";
 const MEMBERS = {
   clientUserList: [
     {
+      id: "C1",
+      userId: "T1",
       roleCode: "READ_ONLY",
       status: "ACTIVE",
+      canCreateProjects: false,
       user: { fullName: "mate-hq-org:P1", email: "token-abc@zerops.io" },
     },
   ],
@@ -69,7 +72,15 @@ describe("makeZeropsApiHttp", () => {
     Effect.gen(function* () {
       const api = yield* stub(2, 400, "userNotFound");
       assert.deepStrictEqual(yield* read(api.url, "members"), [
-        { name: "mate-hq-org:P1", kind: "token", roleCode: "READ_ONLY", status: "ACTIVE" },
+        {
+          name: "mate-hq-org:P1",
+          kind: "token",
+          roleCode: "READ_ONLY",
+          status: "ACTIVE",
+          userId: "T1",
+          clientUserId: "C1",
+          canCreateProjects: false,
+        },
       ]);
       assert.strictEqual(api.requests(), 3);
     }),

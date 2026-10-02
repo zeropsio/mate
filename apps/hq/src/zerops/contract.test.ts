@@ -10,6 +10,7 @@ import * as NodeNet from "node:net";
 
 import * as NodeHttpClient from "@effect/platform-node/NodeHttpClient";
 import { assert, describe, it } from "@effect/vitest";
+import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Redacted from "effect/Redacted";
@@ -42,7 +43,11 @@ const contract = (name: string, subject: Effect.Effect<Subject, never, Scope.Sco
       Effect.gen(function* () {
         const { api, credential, orgId } = yield* subject;
         const own = yield* api.ownToken(credential);
+        const now = yield* Clock.currentTimeMillis;
         assert.strictEqual(own.orgId, orgId);
+        // Read at the API's own clock, minted before it.
+        assert.isBelow(Math.abs((own.readAtMs ?? 0) - now), 5 * 60_000);
+        assert.isAtMost(own.createdMs, own.readAtMs ?? 0);
         assert.deepStrictEqual(
           [
             own.roleCode,
@@ -63,8 +68,33 @@ const contract = (name: string, subject: Effect.Effect<Subject, never, Scope.Sco
         const members = yield* api.members(orgId)(credential);
         assert.isTrue(members.some((member) => member.kind === "person"));
         assert.deepStrictEqual(
-          members.filter((member) => member.name === own.name),
-          [{ name: own.name, kind: "token", roleCode: "READ_ONLY", status: "ACTIVE" }],
+          members
+            .filter((member) => member.name === own.name)
+            .map(({ name, kind, roleCode, status, canCreateProjects }) => ({
+              name,
+              kind,
+              roleCode,
+              status,
+              canCreateProjects,
+            })),
+          [
+            {
+              name: own.name,
+              kind: "token",
+              roleCode: "READ_ONLY",
+              status: "ACTIVE",
+              canCreateProjects: own.canCreateProjects,
+            },
+          ],
+        );
+        assert.isTrue(
+          members.every((member) => member.userId !== "" && member.clientUserId !== ""),
+        );
+        // The member row's id is what a project's grants name; it is not the user id.
+        assert.isTrue(members.every((member) => member.clientUserId !== member.userId));
+        // Whoever minted the credential is a member, by user id.
+        assert.isTrue(
+          members.some((member) => member.userId === own.createdByUser && member.kind === "person"),
         );
       }),
     );
@@ -153,11 +183,29 @@ const fakeSubject = (down: boolean) =>
       canViewFinances: false,
       canEditFinances: false,
       projects: [],
+      createdMs: 0,
+      createdByUser: "U-owner",
     };
     world.tokens.set("fake-token", own);
     world.members.set(KRLS, [
-      { name: "Org Owner", kind: "person", roleCode: "OWNER", status: "ACTIVE" },
-      { name: own.name, kind: "token", roleCode: "READ_ONLY", status: "ACTIVE" },
+      {
+        name: "Org Owner",
+        kind: "person",
+        roleCode: "OWNER",
+        status: "ACTIVE",
+        userId: "U-owner",
+        clientUserId: "C-owner",
+        canCreateProjects: true,
+      },
+      {
+        name: own.name,
+        kind: "token",
+        roleCode: "READ_ONLY",
+        status: "ACTIVE",
+        userId: "T1",
+        clientUserId: "C-t1",
+        canCreateProjects: false,
+      },
     ]);
     world.projects.push({
       id: "P1",

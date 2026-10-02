@@ -7,6 +7,7 @@
  *
  * @module test/harness/zeropsFake
  */
+import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 import * as Redacted from "effect/Redacted";
 
@@ -29,9 +30,11 @@ export interface FakeWorld {
     string,
     Array<{ readonly key: string; readonly value: string; readonly sensitive: boolean }>
   >;
-  /** Integration tokens by their value. */
-  tokens: Map<string, ZeropsOwnToken>;
+  /** Integration tokens by their value; the fake's clock stamps `readAtMs` on each read. */
+  tokens: Map<string, Omit<ZeropsOwnToken, "readAtMs">>;
   down: boolean;
+  /** Every call, as `<operation>:<credential>`, for a test that counts what a credential spent. */
+  calls: Array<string>;
 }
 
 export const emptyWorld = (): FakeWorld => ({
@@ -40,12 +43,14 @@ export const emptyWorld = (): FakeWorld => ({
   env: new Map(),
   tokens: new Map(),
   down: false,
+  calls: [],
 });
 
 export const fakeZeropsApi = (world: FakeWorld): ZeropsApi["Service"] => {
   /** The token behind `credential`, as the platform would judge the call. */
   const caller = (operation: string, credential: Redacted.Redacted) =>
-    Effect.suspend((): Effect.Effect<ZeropsOwnToken, ZeropsError> => {
+    Effect.suspend((): Effect.Effect<Omit<ZeropsOwnToken, "readAtMs">, ZeropsError> => {
+      world.calls.push(`${operation}:${Redacted.value(credential)}`);
       if (world.down) {
         return Effect.fail(new ZeropsUnavailable({ operation, message: "fake: platform down" }));
       }
@@ -113,6 +118,10 @@ export const fakeZeropsApi = (world: FakeWorld): ZeropsApi["Service"] => {
             ),
         ),
       ),
-    ownToken: (credential) => caller("ownToken", credential),
+    ownToken: (credential) =>
+      Effect.zipWith(caller("ownToken", credential), Clock.currentTimeMillis, (token, now) => ({
+        ...token,
+        readAtMs: now,
+      })),
   };
 };

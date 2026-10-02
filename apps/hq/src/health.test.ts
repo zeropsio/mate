@@ -28,7 +28,10 @@ const getHealth = (
       ),
       Effect.provide(
         Layer.mergeAll(
-          Layer.succeed(Leader, { status: Effect.succeed(status) }),
+          Layer.succeed(Leader, {
+            status: Effect.succeed(status),
+            write: () => Effect.die("no writes"),
+          }),
           Layer.succeed(Official, {
             status: Effect.succeed({ official, allowed: official === "ok" }),
           }),

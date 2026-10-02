@@ -20,7 +20,9 @@ import * as Layer from "effect/Layer";
 import type * as Redacted from "effect/Redacted";
 import * as Ref from "effect/Ref";
 import * as Schedule from "effect/Schedule";
-import type * as SqlClient from "effect/unstable/sql/SqlClient";
+import * as Schema from "effect/Schema";
+import * as SqlClient from "effect/unstable/sql/SqlClient";
+import type { SqlError } from "effect/unstable/sql/SqlError";
 
 import { type Migration, migrate } from "./migrations.ts";
 import { Official } from "./official.ts";
@@ -38,9 +40,24 @@ export interface LeaderStatus {
   readonly epoch: number | null;
 }
 
+/** A write refused: this instance does not lead, or another took the lead under a later epoch. */
+export class NotLeader extends Schema.TaggedError<NotLeader>()("NotLeader", {
+  reason: Schema.Literals(["standby", "fenced"]),
+}) {}
+
 export class Leader extends Context.Service<
   Leader,
-  { readonly status: Effect.Effect<LeaderStatus> }
+  {
+    readonly status: Effect.Effect<LeaderStatus>;
+    /**
+     * Runs `effect` in a transaction that first takes the epoch row `FOR SHARE` and checks it is
+     * still this instance's. The next holder's raise waits for every such transaction, and one
+     * that starts after it sees the new epoch: no write of an old leader lands after a takeover.
+     */
+    readonly write: <A, E, R>(
+      effect: Effect.Effect<A, E, R>,
+    ) => Effect.Effect<A, E | NotLeader | SqlError, R>;
+  }
 >()("@t3tools/hq/leader") {}
 
 export interface LeaderOptions {
@@ -103,6 +120,7 @@ export const leaderLayer = (
       const heartbeatTimeout = options.heartbeatTimeout ?? Duration.seconds(5);
       const retryAfter = options.retryAfter ?? Duration.seconds(2);
       const official = yield* Official;
+      const sql = yield* SqlClient.SqlClient;
       const allowed = Effect.map(official.status, (current) => current.allowed);
       const stillOfficial = Effect.flatMap(allowed, (ok) =>
         ok ? Effect.void : Effect.fail(new NotOfficial()),
@@ -190,6 +208,21 @@ export const leaderLayer = (
       yield* Effect.forkScoped(Effect.forever(Effect.andThen(session, Effect.sleep(retryAfter))));
       return Leader.of({
         status: Effect.map(Ref.get(status), ({ state, epoch }) => ({ state, epoch })),
+        write: (effect) =>
+          Effect.gen(function* () {
+            const { state, epoch } = yield* Ref.get(status);
+            if (state !== "active" || epoch === null) {
+              return yield* new NotLeader({ reason: "standby" });
+            }
+            return yield* sql.withTransaction(
+              Effect.gen(function* () {
+                const [row] = yield* sql<{ readonly epoch: string }>`
+                  SELECT epoch FROM hq_leader WHERE id = 1 FOR SHARE`;
+                if (Number(row?.epoch) !== epoch) return yield* new NotLeader({ reason: "fenced" });
+                return yield* effect;
+              }),
+            );
+          }),
       });
     }),
   );

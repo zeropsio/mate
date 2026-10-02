@@ -1,0 +1,217 @@
+/**
+ * HQ's API: JSON over HTTP, for the client origins only (CORS, `HQ_CLIENT_ORIGINS`).
+ *
+ * - `POST /api/door` `{ token }`: a throwaway through the door (`door.ts`) → `{ session, expiresAt }`.
+ * - `DELETE /api/session`: revokes the presented session.
+ * - `POST /api/apps` `{ name }` → the application.
+ * - `POST /api/apps/:id/projects` `{ projectId, kind, mate? }`: attaches a project.
+ * - `GET /api/structure` → `{ apps }`, as the caller sees them in Zerops.
+ *
+ * Every call but the door carries `Authorization: Bearer <session>`, of a session issued for this
+ * HQ's org. Only the leading HQ answers: a standby or an HQ that is not the official one answers
+ * `503 not_active`. A refusal answers one code; a door refusal says nothing of which rule the token
+ * broke. Bodies are bounded (8 KiB at the door, 64 KiB elsewhere: `413 too_large`), and the door
+ * is limited per client address (`rateLimit.ts`: `429 too_many_requests`).
+ *
+ * @module api
+ */
+import * as ByteSize from "effect/ByteSize";
+import * as Effect from "effect/Effect";
+import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
+import * as Redacted from "effect/Redacted";
+import * as Schema from "effect/Schema";
+import * as HttpIncomingMessage from "effect/unstable/http/HttpIncomingMessage";
+import * as HttpRouter from "effect/unstable/http/HttpRouter";
+import * as HttpServerRequest from "effect/unstable/http/HttpServerRequest";
+import * as HttpServerResponse from "effect/unstable/http/HttpServerResponse";
+
+import { Door } from "./door.ts";
+import { Leader, NotLeader } from "./leader.ts";
+import { DoorRateLimit } from "./rateLimit.ts";
+import { Roles } from "./roles.ts";
+import { Sessions } from "./sessions.ts";
+import { Structure, StructureRefused } from "./structure.ts";
+
+class SessionRequired extends Schema.TaggedError<SessionRequired>()("SessionRequired", {}) {}
+class TooLarge extends Schema.TaggedError<TooLarge>()("TooLarge", {}) {}
+class TooManyRequests extends Schema.TaggedError<TooManyRequests>()("TooManyRequests", {}) {}
+
+const DOOR_BODY_LIMIT = 8 * 1024;
+const BODY_LIMIT = 64 * 1024;
+
+const DoorBody = Schema.Struct({ token: Schema.String });
+const AppBody = Schema.Struct({ name: Schema.String });
+const AttachBody = Schema.Struct({
+  projectId: Schema.String,
+  kind: Schema.Literals(["mate", "stage", "production"]),
+  mate: Schema.optionalKey(Schema.Struct({ name: Schema.String, face: Schema.String })),
+});
+
+const STRUCTURE_STATUS = {
+  forbidden: 403,
+  app_not_found: 404,
+  project_not_found: 404,
+  invalid: 400,
+  conflict: 409,
+} as const;
+
+const json = (body: unknown, status: number) => HttpServerResponse.jsonUnsafe(body, { status });
+
+const isStructureRefused = Schema.is(StructureRefused);
+
+/**
+ * A JSON body of at most `limit` bytes. A declared `Content-Length` above it is refused before a
+ * byte is read; past `MaxBodySize` the Node server stops reading a body that declared none (and
+ * drops its connection); the check after the read holds for any other host.
+ */
+const jsonBody = <A, RD>(schema: Schema.Codec<A, unknown, RD>, limit: number) =>
+  Effect.gen(function* () {
+    const request = yield* HttpServerRequest.HttpServerRequest;
+    if (Number(request.headers["content-length"] ?? 0) > limit) return yield* new TooLarge();
+    const text = yield* request.text.pipe(
+      Effect.provideService(HttpIncomingMessage.MaxBodySize, ByteSize.bytes(limit)),
+    );
+    if (text.length > limit) return yield* new TooLarge();
+    return yield* Schema.decodeEffect(Schema.fromJsonString(schema))(text);
+  });
+
+/** Every failure as one status and one code. */
+const failure = (error: {
+  readonly _tag: string;
+}): Effect.Effect<HttpServerResponse.HttpServerResponse> => {
+  if (isStructureRefused(error)) {
+    return Effect.succeed(
+      json({ code: error.code, message: error.message }, STRUCTURE_STATUS[error.code]),
+    );
+  }
+  switch (error._tag) {
+    case "DoorRefused":
+      return Effect.as(
+        Effect.logInfo("door refused", error),
+        json({ code: "zerops_throwaway_required" }, 401),
+      );
+    case "SessionRequired":
+      return Effect.succeed(json({ code: "session_required" }, 401));
+    case "NotLeader":
+      return Effect.succeed(json({ code: "not_active" }, 503));
+    case "ZeropsUnavailable":
+    case "ZeropsRefused":
+      return Effect.as(
+        Effect.logWarning("zerops read failed", error),
+        json({ code: "zerops_unavailable" }, 503),
+      );
+    case "TooLarge":
+      return Effect.succeed(json({ code: "too_large" }, 413));
+    case "TooManyRequests":
+      return Effect.succeed(json({ code: "too_many_requests" }, 429));
+    case "SchemaError":
+    case "HttpServerError":
+      return Effect.succeed(json({ code: "invalid" }, 400));
+    default:
+      return Effect.as(Effect.logError("api failed", error), json({ code: "unavailable" }, 503));
+  }
+};
+
+const handle = <E extends { readonly _tag: string }, R>(
+  effect: Effect.Effect<HttpServerResponse.HttpServerResponse, E, R>,
+) =>
+  Effect.gen(function* () {
+    const { state } = yield* (yield* Leader).status;
+    if (state !== "active") return yield* new NotLeader({ reason: "standby" });
+    return yield* effect;
+  }).pipe(Effect.catch(failure));
+
+const bearer = Effect.map(
+  HttpServerRequest.HttpServerRequest,
+  (request) => /^Bearer (\S+)$/u.exec(request.headers["authorization"] ?? "")?.[1],
+);
+
+/** The session's holder, while the session lives and was issued for this HQ's org. */
+const principal = Effect.gen(function* () {
+  const token = yield* bearer;
+  const found = token === undefined ? Option.none() : yield* (yield* Sessions).resolve(token);
+  if (Option.isNone(found)) return yield* new SessionRequired();
+  const { orgId } = yield* (yield* Roles).view;
+  return found.value.orgId === orgId ? found.value : yield* new SessionRequired();
+});
+
+const routes = Layer.mergeAll(
+  HttpRouter.add(
+    "POST",
+    "/api/door",
+    handle(
+      Effect.gen(function* () {
+        // `X-Real-IP` is the client address the Zerops L7 balancer sets.
+        const request = yield* HttpServerRequest.HttpServerRequest;
+        const address =
+          request.headers["x-real-ip"] ?? Option.getOrElse(request.remoteAddress, () => "unknown");
+        if (!(yield* (yield* DoorRateLimit).take(address))) return yield* new TooManyRequests();
+        const { token } = yield* jsonBody(DoorBody, DOOR_BODY_LIMIT);
+        const caller = yield* (yield* Door).admit(Redacted.make(token));
+        const session = yield* (yield* Sessions).issue(caller, caller.doorTokenId);
+        return json(
+          { session: session.token, expiresAt: session.expiresAt, userId: caller.userId },
+          200,
+        );
+      }),
+    ),
+  ),
+  HttpRouter.add(
+    "DELETE",
+    "/api/session",
+    handle(
+      Effect.gen(function* () {
+        yield* principal;
+        const token = yield* bearer;
+        if (token !== undefined) yield* (yield* Sessions).revoke(token);
+        return HttpServerResponse.empty({ status: 204 });
+      }),
+    ),
+  ),
+  HttpRouter.add(
+    "POST",
+    "/api/apps",
+    handle(
+      Effect.gen(function* () {
+        const { userId } = yield* principal;
+        const { name } = yield* jsonBody(AppBody, BODY_LIMIT);
+        return json(yield* (yield* Structure).createApp(userId, name), 201);
+      }),
+    ),
+  ),
+  HttpRouter.add(
+    "POST",
+    "/api/apps/:id/projects",
+    handle(
+      Effect.gen(function* () {
+        const { userId } = yield* principal;
+        const appId = (yield* HttpRouter.params)["id"] ?? "";
+        const input = yield* jsonBody(AttachBody, BODY_LIMIT);
+        yield* (yield* Structure).attachProject(userId, appId, input);
+        return json({ appId, projectId: input.projectId, kind: input.kind }, 201);
+      }),
+    ),
+  ),
+  HttpRouter.add(
+    "GET",
+    "/api/structure",
+    handle(
+      Effect.gen(function* () {
+        const { userId } = yield* principal;
+        return json(yield* (yield* Structure).read(userId), 200);
+      }),
+    ),
+  ),
+);
+
+export const apiRoutes = (options: { readonly clientOrigins: ReadonlyArray<string> }) =>
+  Layer.mergeAll(
+    routes,
+    HttpRouter.cors({
+      allowedOrigins: options.clientOrigins,
+      allowedMethods: ["GET", "POST", "DELETE"],
+      allowedHeaders: ["authorization", "content-type"],
+      maxAge: 600,
+    }),
+  );

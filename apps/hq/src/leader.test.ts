@@ -13,7 +13,7 @@ import * as Scope from "effect/Scope";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
 
 import { TempPostgres, tempPostgresLayer } from "../test/harness/tempPostgres.ts";
-import { LOCK_KEY, Leader, type LeaderStatus, leaderLayer } from "./leader.ts";
+import { LOCK_KEY, Leader, type LeaderStatus, NotLeader, leaderLayer } from "./leader.ts";
 import { type Migration, MIGRATIONS_TABLE } from "./migrations.ts";
 import { Official } from "./official.ts";
 import { treeMigrations } from "./migrationFiles.ts";
@@ -221,6 +221,41 @@ describe("leaderLayer", () => {
           assert.deepStrictEqual(
             yield* statusWhere(core.leader, (status) => status.state === "active"),
             { state: "active", epoch: 2 },
+          );
+          yield* core.stop;
+        }),
+    );
+    it.effect(
+      "fences every write: none lands once the epoch moved past this instance's, none without the lead",
+      () =>
+        Effect.gen(function* () {
+          const url = yield* (yield* TempPostgres).createDatabase;
+          const allowed = yield* Ref.make(false);
+          const core = yield* startInstance(url, treeMigrations(), allowed);
+          yield* statusWhere(core.leader, (status) => status.state === "standby");
+          const write = (name: string) =>
+            core.leader.write(
+              core.sql`INSERT INTO hq_app (name, created_by) VALUES (${name}, 'U1')`,
+            );
+          assert.deepStrictEqual(
+            yield* Effect.flip(write("before")),
+            new NotLeader({ reason: "standby" }),
+          );
+
+          yield* Ref.set(allowed, true);
+          yield* statusWhere(core.leader, (status) => status.state === "active");
+          yield* write("while leading");
+          yield* core.sql`UPDATE hq_leader SET epoch = epoch + 1`;
+          assert.deepStrictEqual(
+            yield* Effect.flip(write("after")),
+            new NotLeader({ reason: "fenced" }),
+          );
+          const names = yield* core.sql<{
+            readonly name: string;
+          }>`SELECT name FROM hq_app ORDER BY name`;
+          assert.deepStrictEqual(
+            names.map((row) => row.name),
+            ["while leading"],
           );
           yield* core.stop;
         }),

@@ -19,6 +19,9 @@ const token = (name: string, roleCode = "ADMIN", status = "ACTIVE"): ZeropsMembe
   kind: "token",
   roleCode,
   status,
+  userId: `U-${name}`,
+  clientUserId: `C-${name}`,
+  canCreateProjects: false,
 });
 
 describe("anchorVerdict", () => {
@@ -105,6 +108,9 @@ describe("credentialFits", () => {
     canViewFinances: false,
     canEditFinances: false,
     projects: [],
+    createdMs: 0,
+    createdByUser: null,
+    readAtMs: 0,
   };
   const cases: ReadonlyArray<readonly [string, ZeropsOwnToken, boolean]> = [
     ["org Read only, no grant, no flag", fitting, true],
@@ -138,6 +144,8 @@ const world = () => {
     canViewFinances: false,
     canEditFinances: false,
     projects: [],
+    createdMs: 0,
+    createdByUser: null,
   });
   fake.tokens.set("admin-token", { ...fake.tokens.get("org-token")!, id: "T2", roleCode: "ADMIN" });
   fake.members.set("ORG", [token("mate-hq-org:P1", "READ_ONLY")]);

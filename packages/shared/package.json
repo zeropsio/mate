@@ -55,6 +55,10 @@
       "types": "./src/threadStatus.ts",
       "import": "./src/threadStatus.ts"
     },
+    "./zeropsDoor": {
+      "types": "./src/zeropsDoor.ts",
+      "import": "./src/zeropsDoor.ts"
+    },
     "./zeropsRoles": {
       "types": "./src/zeropsRoles.ts",
       "import": "./src/zeropsRoles.ts"

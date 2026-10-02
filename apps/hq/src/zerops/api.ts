@@ -20,6 +20,10 @@ export interface ZeropsMember {
   readonly kind: "person" | "token";
   readonly roleCode: string;
   readonly status: string;
+  readonly userId: string;
+  /** The member row's own id: what a project's `userRoles` name. */
+  readonly clientUserId: string;
+  readonly canCreateProjects: boolean;
 }
 
 export interface ZeropsProject {
@@ -42,6 +46,11 @@ export interface ZeropsOwnToken {
   readonly canViewFinances: boolean;
   readonly canEditFinances: boolean;
   readonly projects: ReadonlyArray<{ readonly projectId: string; readonly roleCode: string }>;
+  readonly createdMs: number;
+  /** The user who minted it. */
+  readonly createdByUser: string | null;
+  /** The API's own clock (its `Date` header) on the answer that carried the record. */
+  readonly readAtMs: number | undefined;
 }
 
 export class ZeropsRefused extends Schema.TaggedError<ZeropsRefused>()("ZeropsRefused", {

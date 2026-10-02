@@ -12,6 +12,7 @@
     "@effect/platform-node": "catalog:",
     "@effect/sql-pg": "catalog:",
     "@t3tools/hq-git": "workspace:*",
+    "@t3tools/shared": "workspace:*",
     "effect": "catalog:"
   },
   "devDependencies": {
