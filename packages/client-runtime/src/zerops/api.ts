@@ -458,7 +458,7 @@ export type ZeropsApiErrorKind =
  * The tags a project is created with when Mate makes it: its group, its role
  * in that group, the group's name, then the Mate as *New Mate* makes one
  * (`withZeropsMateAtBirth`): the `mate` marker, the agent's own name, the face
- * its person picked and who asked for its development to be stood up.
+ * its person picked, who made it and who asked for its development to be stood up.
  *
  * A project made from the wizard **is** a group with one dev environment in
  * it — that is what a project is (`spec-mate.md` §10). Creating it ungrouped
@@ -474,6 +474,7 @@ function taggedProjectAtBirth(input: {
   readonly botName?: string;
   readonly face?: ZeropsMateFace;
   readonly standUpBy?: string;
+  readonly madeBy?: string;
 }): ReadonlyArray<string> {
   const membership = input.group
     ? withZeropsGroupTags([], {
@@ -2103,6 +2104,8 @@ export class ZeropsApiClient {
       readonly face?: ZeropsMateFace;
       /** Who asks, by adding it, for the project's development to be stood up (`mate:standup:`). */
       readonly standUpBy?: string;
+      /** Who makes it: whose sign-in it waits for until somebody signs it in (`mate:by:`). */
+      readonly madeBy?: string;
     },
     signal?: AbortSignal,
     beforeWrite?: () => Promise<void>,

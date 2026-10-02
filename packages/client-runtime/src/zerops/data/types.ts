@@ -1887,6 +1887,8 @@ export interface CreateProjectWithMateCommandIntent {
   readonly face?: ZeropsMateFace;
   /** Who asks, by making it, for the project's development to be stood up (`mate:standup:`). */
   readonly standUpBy?: string;
+  /** Who makes it: whose sign-in it waits for until somebody signs it in (`mate:by:`). */
+  readonly madeBy?: string;
 }
 
 export interface ImportProjectCommandIntent {

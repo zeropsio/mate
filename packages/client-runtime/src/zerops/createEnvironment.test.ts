@@ -341,6 +341,29 @@ describe("the stand-up ask", () => {
   });
 });
 
+describe("the maker", () => {
+  it.each([
+    {
+      name: "a Mate added to a project names who added it",
+      role: "dev" as const,
+      by: "mate:by:u-ada",
+    },
+    { name: "a stage with an agent names nobody", role: "stage" as const, by: undefined },
+  ])("$name", ({ role, by }) => {
+    const plan = planEnvironmentCreation({
+      ...BASE,
+      recipe: { ...TIER, tier: "stage" as const },
+      role,
+      withAgent: true,
+      madeBy: "u-ada",
+    });
+    const step = plan.ok ? plan.steps[0] : undefined;
+    const tags =
+      step?.kind === "create-project" || step?.kind === "import-project" ? step.tagList : [];
+    expect(tags.find((tag) => tag.startsWith("mate:by:"))).toBe(by);
+  });
+});
+
 /**
  * The face its person picked is the Mate's from its first moment: written with
  * its name, onto the project the platform creates, whichever call creates it.
