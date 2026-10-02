@@ -1,7 +1,8 @@
 // @effect-diagnostics globalDate:off -- fixture timestamps are offsets from a fixed instant, not wall-clock reads.
 import { describe, expect, it } from "vite-plus/test";
 
-import type { RecipeReach } from "./recipeReach.ts";
+import { isRecipeProposal } from "./projectFlow.ts";
+import { recipeReach, type RecipeReach } from "./recipeReach.ts";
 import { RELEASE_NOT_A_RELEASER, RELEASE_NOTHING_NEW_ON_MAIN } from "./release.ts";
 import {
   changeReview,
@@ -354,6 +355,24 @@ describe("changeReview: a recipe change says what its merge does, and is never r
     });
     expect(after.consequence).toBe(sentence);
     expect(after.primary).toBeUndefined();
+  });
+
+  // zcp's second kind of recipe change modifies a tier — a host's verticalAutoscaling — rather
+  // than adding one, and a person merges it: what the stage has keeps the scale it was made with.
+  // A review reads no title, so it reads as any recipe change; it is no recipe proposal.
+  it("a scale change to a tier says the stage's services stay as they are, and merges as any change", () => {
+    const reached = recipeReach({
+      files: [{ filename: "3 — Stage/import.yaml" }],
+      environments: [{ tier: "stage" }],
+    });
+    const review = changeReview(change({ pull: recipe(), recipe: reached, ...releasable }));
+    expect(review.consequence).toBe(
+      "Squash-merges 1 commit into main. The stage gets any service added to its recipe, created empty; the services it has stay as they are.",
+    );
+    expect(review.primary).toEqual({ label: "Merge", enabled: true, safe: true });
+    expect(
+      isRecipeProposal({ kind: "recipe", title: "Mate: app's scale in the group recipe" }),
+    ).toBe(false);
   });
 
   const UNREAD =
