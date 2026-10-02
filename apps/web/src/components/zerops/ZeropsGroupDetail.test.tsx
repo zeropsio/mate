@@ -508,10 +508,31 @@ describe("ZeropsStopPane", () => {
           sha: undefined,
           running: undefined,
           redeploy: undefined,
+          message: undefined,
           mayRunAgain: false,
         },
       },
       contains: ["The deploy of v0.1.14 failed on api."],
+    },
+    {
+      name: "a production the migration holds, in HQ's words under the failure",
+      input: {
+        tier: "production",
+        services: [service("api", "a1", "v0.1.13", "failed")],
+        failed: {
+          label: "v0.1.14",
+          service: "api",
+          sha: undefined,
+          running: undefined,
+          redeploy: undefined,
+          message: "Held at migration: api runs a100000; Run brings it to b200000.",
+          mayRunAgain: false,
+        },
+      },
+      contains: [
+        "The deploy of v0.1.14 failed on api.",
+        "Held at migration: api runs a100000; Run brings it to b200000.",
+      ],
     },
     {
       name: "a stage with no deploy key yet, to one who may not mint it",

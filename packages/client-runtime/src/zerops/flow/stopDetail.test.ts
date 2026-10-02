@@ -99,6 +99,7 @@ const FAILED: StopFailure = {
   sha: undefined,
   running: { label: "v0.1.13", since: undefined },
   redeploy: { service: "nextstore", sha: "9c41d2e000000000000000000000000000000000" },
+  message: undefined,
   mayRunAgain: true,
 };
 
@@ -136,6 +137,25 @@ describe("stopVerdict", () => {
         tone: "failed",
         text: "The deploy of v0.1.14 failed on nextstore.",
         detail: "v0.1.13 still runs · 6m ago",
+        verb: { kind: "run-again" },
+      },
+    },
+    {
+      // The migration holds a service it brought where it does not run its target (T13): HQ's
+      // final failed record says what runs and what Run brings, so it is the detail.
+      name: "held at migration, in HQ's words, run by one who may",
+      input: {
+        tier: "stage",
+        failed: {
+          ...FAILED,
+          label: "9c41d2e",
+          message: "Held at migration: nextstore runs 47ae139; Run brings it to 9c41d2e.",
+        },
+      },
+      expected: {
+        tone: "failed",
+        text: "The deploy of 9c41d2e failed on nextstore.",
+        detail: "Held at migration: nextstore runs 47ae139; Run brings it to 9c41d2e.",
         verb: { kind: "run-again" },
       },
     },
@@ -516,7 +536,7 @@ describe("serviceRows", () => {
     expect(rowsOf(PLATFORM).map((row) => row.hostname)).toEqual(["api", "docs", "web"]);
   });
 
-  it("carries the commit of a service's newest deploy HQ records as failed, and of no other", () => {
+  it("carries a service's newest deploy HQ records as failed, its commit and HQ's words", () => {
     const rows = serviceRows({
       environment: "stage",
       services: [
@@ -524,7 +544,10 @@ describe("serviceRows", () => {
           hostname: "api",
           repository: "api",
           appVersionName: SHA_API,
-          deploy: { latest: { ...deployRecord("failed"), sha: SHA_DOCS }, live: null },
+          deploy: {
+            latest: { ...deployRecord("failed"), sha: SHA_DOCS, message: "No zerops.yaml." },
+            live: null,
+          },
         },
         {
           hostname: "web",
@@ -540,8 +563,8 @@ describe("serviceRows", () => {
       nowMs: 100_000,
       age: (iso) => iso,
     });
-    expect(rows.map(({ hostname, failedSha }) => [hostname, failedSha])).toEqual([
-      ["api", SHA_DOCS],
+    expect(rows.map(({ hostname, failed }) => [hostname, failed])).toEqual([
+      ["api", { sha: SHA_DOCS, message: "No zerops.yaml." }],
       ["web", undefined],
     ]);
   });
@@ -576,7 +599,7 @@ describe("serviceRows", () => {
       runs: { label: "v0.1.13", since: "since 2026-09-25T10:00:00Z" },
       routes: [route("api")],
       offers: [],
-      failedSha: undefined,
+      failed: undefined,
     },
     {
       hostname: "docs",
@@ -590,7 +613,7 @@ describe("serviceRows", () => {
       runs: { label: "v0.1.9", since: undefined },
       routes: [],
       offers: [OFFERS[0]!],
-      failedSha: undefined,
+      failed: undefined,
     },
     {
       hostname: "web",
@@ -604,7 +627,7 @@ describe("serviceRows", () => {
       runs: undefined,
       routes: [],
       offers: [],
-      failedSha: undefined,
+      failed: undefined,
     },
   ])("$hostname", (expected) => {
     expect(rowsOf(PLATFORM).find((row) => row.hostname === expected.hostname)).toEqual(expected);
@@ -831,7 +854,7 @@ describe("stopFailedDeploy", () => {
     runs: { label: "v0.1.13", since: "6m ago" },
     routes: [],
     offers: [],
-    failedSha: undefined,
+    failed: undefined,
     ...over,
   });
   const releaseRow = (tag: string, over: Partial<FlowReleaseRow> = {}): FlowReleaseRow => ({
@@ -872,12 +895,15 @@ describe("stopFailedDeploy", () => {
         sha: SHA_N14,
         running: { label: "v0.1.13", since: "6m ago" },
         redeploy: undefined,
+        message: undefined,
       },
     },
     {
       name: "a failed release HQ records as the service's newest failed deploy is asked again",
       tier: "production",
-      rows: [serviceRow("nextstore", { tone: "bad", failedSha: SHA_N14 })],
+      rows: [
+        serviceRow("nextstore", { tone: "bad", failed: { sha: SHA_N14, message: undefined } }),
+      ],
       releases: [FAILED_14, LIVE_13],
       expected: {
         label: "v0.1.14",
@@ -885,6 +911,7 @@ describe("stopFailedDeploy", () => {
         sha: SHA_N14,
         running: { label: "v0.1.13", since: "6m ago" },
         redeploy: { service: "nextstore", sha: SHA_N14 },
+        message: undefined,
       },
     },
     {
@@ -897,7 +924,9 @@ describe("stopFailedDeploy", () => {
     {
       name: "a production whose newest deploy failed, with no release that did",
       tier: "production",
-      rows: [serviceRow("nextstore", { tone: "bad", failedSha: SHA_N14 })],
+      rows: [
+        serviceRow("nextstore", { tone: "bad", failed: { sha: SHA_N14, message: undefined } }),
+      ],
       releases: [LIVE_13],
       expected: {
         label: "9c41d2e",
@@ -905,6 +934,7 @@ describe("stopFailedDeploy", () => {
         sha: SHA_N14,
         running: { label: "v0.1.13", since: "6m ago" },
         redeploy: { service: "nextstore", sha: SHA_N14 },
+        message: undefined,
       },
     },
     {
@@ -913,7 +943,7 @@ describe("stopFailedDeploy", () => {
       rows: [
         serviceRow("api", {
           tone: "bad",
-          failedSha: SHA_N14,
+          failed: { sha: SHA_N14, message: undefined },
           runs: { label: "47ae139", since: undefined },
         }),
       ],
@@ -924,12 +954,13 @@ describe("stopFailedDeploy", () => {
         sha: SHA_N14,
         running: { label: "47ae139", since: undefined },
         redeploy: { service: "api", sha: SHA_N14 },
+        message: undefined,
       },
     },
     {
       name: "a service whose failed commit is what it runs names nothing else as running",
       tier: "stage",
-      rows: [serviceRow("api", { tone: "bad", failedSha: SHA_N13 })],
+      rows: [serviceRow("api", { tone: "bad", failed: { sha: SHA_N13, message: undefined } })],
       releases: [],
       expected: {
         label: "47ae139",
@@ -937,6 +968,29 @@ describe("stopFailedDeploy", () => {
         sha: SHA_N13,
         running: undefined,
         redeploy: { service: "api", sha: SHA_N13 },
+        message: undefined,
+      },
+    },
+    {
+      name: "a service the migration holds carries HQ's words for it, and is run again",
+      tier: "production",
+      rows: [
+        serviceRow("nextstore", {
+          tone: "bad",
+          failed: {
+            sha: SHA_N14,
+            message: "Held at migration: nextstore runs 47ae139; Run brings it to 9c41d2e.",
+          },
+        }),
+      ],
+      releases: [FAILED_14, LIVE_13],
+      expected: {
+        label: "v0.1.14",
+        service: "nextstore",
+        sha: SHA_N14,
+        running: { label: "v0.1.13", since: "6m ago" },
+        redeploy: { service: "nextstore", sha: SHA_N14 },
+        message: "Held at migration: nextstore runs 47ae139; Run brings it to 9c41d2e.",
       },
     },
     {
