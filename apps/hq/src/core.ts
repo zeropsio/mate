@@ -23,6 +23,7 @@ import { apiRoutes } from "./api.ts";
 import { doorLayer } from "./door.ts";
 import { healthRoute } from "./health.ts";
 import { Leader, leaderLayer } from "./leader.ts";
+import { mateCredentialsLayer } from "./mateCredentials.ts";
 import type { Migration } from "./migrations.ts";
 import { officialLayer } from "./official.ts";
 import { doorRateLimitLayer } from "./rateLimit.ts";
@@ -84,6 +85,7 @@ const services = (options: CoreOptions) => {
       reconcileEvery: options.reconcileEvery ?? Duration.seconds(60),
     }),
     doorLayer({ hqProjectId: options.hqProjectId }),
+    mateCredentialsLayer({ credential: options.credential }),
     doorRateLimitLayer,
     streamTicketsLayer,
     liveSocketsLayer,

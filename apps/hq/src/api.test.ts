@@ -699,6 +699,101 @@ describe("HQ API", () => {
       }),
     );
 
+    it.effect(
+      "a Mate proves its project through the project's env and HQ knows it by its credential",
+      () =>
+        Effect.gen(function* () {
+          const { call, fake } = yield* startCore(true);
+          yield* untilHealth(call, "active");
+          const challenge = yield* call("POST", "/api/mate/challenge", {
+            body: { projectId: "P_MATE" },
+          });
+          assert.strictEqual(challenge.status, 200);
+          const { nonce, expiresIn } = challenge.body as {
+            readonly nonce: string;
+            readonly expiresIn: number;
+          };
+          assert.strictEqual(expiresIn, 120);
+          fake.env.set("P_MATE", [{ key: "MATE_HQ_CHALLENGE", value: nonce, sensitive: false }]);
+
+          const issued = yield* call("POST", "/api/mate/credential", {
+            body: { projectId: "P_MATE", nonce },
+          });
+          assert.strictEqual(issued.status, 200);
+          const { credential } = issued.body as { readonly credential: string };
+          const whoami = (authorization: string) =>
+            Effect.map(
+              call("GET", "/api/mate/whoami", { headers: { authorization } }),
+              (answer) => [answer.status, answer.body],
+            );
+          assert.deepStrictEqual(yield* whoami(`Mate ${credential}`), [
+            200,
+            { projectId: "P_MATE" },
+          ]);
+          for (const forged of [`Mate ${credential}x`, `Bearer ${credential}`, ""]) {
+            assert.deepStrictEqual(yield* whoami(forged), [
+              401,
+              { code: "mate_credential_required" },
+            ]);
+          }
+        }),
+    );
+
+    it.effect(
+      "answers each refusal of a Mate's proof with its code, and limits the Mate's door per address",
+      () =>
+        Effect.gen(function* () {
+          const { call, fake } = yield* startCore(true);
+          yield* untilHealth(call, "active");
+          fake.projects.push({
+            id: "P_ELSE",
+            orgId: "ORG2",
+            name: "P_ELSE",
+            status: "ACTIVE",
+            tags: [],
+            userRoles: [],
+          });
+          const { nonce } = (yield* call("POST", "/api/mate/challenge", {
+            body: { projectId: "P_MATE" },
+          })).body as { readonly nonce: string };
+          const answers = yield* Effect.forEach(
+            [
+              ["/api/mate/challenge", { projectId: "P_ELSE" }],
+              ["/api/mate/challenge", { projectId: "P_NONE" }],
+              ["/api/mate/credential", { projectId: "P_MATE", nonce: "never-handed-out" }],
+              ["/api/mate/credential", { projectId: "P_MATE", nonce }],
+              ["/api/mate/credential", { projectId: "P_MATE" }],
+            ] as const,
+            ([path, body]) => call("POST", path, { body }),
+          );
+          assert.deepStrictEqual(
+            answers.map((answer) => [
+              answer.status,
+              (answer.body as { readonly code: string }).code,
+            ]),
+            [
+              [403, "project_not_in_org"],
+              [404, "project_gone"],
+              [401, "unknown_nonce"],
+              [401, "env_mismatch"],
+              [400, "invalid"],
+            ],
+          );
+
+          const knock = (path: string, body: unknown) =>
+            Effect.map(
+              call("POST", path, { body, headers: { "x-real-ip": "10.0.0.9" } }),
+              (answer) => answer.status,
+            );
+          const statuses = yield* Effect.forEach(Array.from({ length: 11 }), () =>
+            knock("/api/mate/credential", { projectId: "P_MATE", nonce: "never-handed-out" }),
+          );
+          assert.deepStrictEqual(statuses, [...Array(10).fill(401), 429]);
+          // A person's door at the same address keeps its own bucket.
+          assert.strictEqual(yield* knock("/api/door", { token: "unknown" }), 401);
+        }),
+    );
+
     it.effect("an HQ that is not the official one answers its API 503 not_active", () =>
       Effect.gen(function* () {
         const { call } = yield* startCore(false);

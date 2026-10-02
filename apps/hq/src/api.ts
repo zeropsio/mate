@@ -13,11 +13,14 @@
  *   moves a project into an application, or out of any.
  * - `POST /api/mates` `{ projectId, name, face }`, `PATCH /api/mates/:projectId` `{ name?, face? }`
  *   → `{ projectId, name, face }`: a Mate's record, in an application or not.
+ * - The Mate's own door (`mateCredentials.ts`): `POST /api/mate/challenge` `{ projectId }` →
+ *   `{ nonce, expiresIn }`; `POST /api/mate/credential` `{ projectId, nonce }` → `{ credential }`;
+ *   `GET /api/mate/whoami` with `Authorization: Mate <credential>` → `{ projectId }`.
  *
- * Every call but the door carries `Authorization: Bearer <session>`, of a session issued for this
+ * Every call but the doors carries `Authorization: Bearer <session>`, of a session issued for this
  * HQ's org. Only the leading HQ answers: a standby or an HQ that is not the official one answers
- * `503 not_active`. A refusal answers one code; a door refusal says nothing of which rule the token
- * broke. Bodies are bounded (8 KiB at the door, 64 KiB elsewhere: `413 too_large`), and the door
+ * `503 not_active`. A refusal answers one code; a refusal at the person's door says nothing of which
+ * rule the token broke. Bodies are bounded (8 KiB at the doors, 64 KiB elsewhere: `413 too_large`), and each door
  * is limited per client address (`rateLimit.ts`: `429 too_many_requests`).
  *
  * @module api
@@ -36,6 +39,7 @@ import * as HttpServerResponse from "effect/unstable/http/HttpServerResponse";
 
 import { Door } from "./door.ts";
 import { Leader, NotLeader } from "./leader.ts";
+import { MateCredentials, MateRefused } from "./mateCredentials.ts";
 import { DoorRateLimit } from "./rateLimit.ts";
 import { Roles } from "./roles.ts";
 import { Sessions } from "./sessions.ts";
@@ -48,6 +52,10 @@ import {
 import { Structure, StructureRefused } from "./structure.ts";
 
 class SessionRequired extends Schema.TaggedError<SessionRequired>()("SessionRequired", {}) {}
+class MateCredentialRequired extends Schema.TaggedError<MateCredentialRequired>()(
+  "MateCredentialRequired",
+  {},
+) {}
 class TooLarge extends Schema.TaggedError<TooLarge>()("TooLarge", {}) {}
 class TooManyRequests extends Schema.TaggedError<TooManyRequests>()("TooManyRequests", {}) {}
 
@@ -55,6 +63,8 @@ const DOOR_BODY_LIMIT = 8 * 1024;
 const BODY_LIMIT = 64 * 1024;
 
 const DoorBody = Schema.Struct({ token: Schema.String });
+const ChallengeBody = Schema.Struct({ projectId: Schema.String });
+const CredentialBody = Schema.Struct({ projectId: Schema.String, nonce: Schema.String });
 const AppBody = Schema.Struct({ name: Schema.String });
 const MoveBody = Schema.Struct({
   appId: Schema.NullOr(Schema.String),
@@ -84,9 +94,18 @@ const STRUCTURE_STATUS = {
   conflict: 409,
 } as const;
 
+const MATE_STATUS = {
+  unknown_nonce: 401,
+  expired: 401,
+  env_mismatch: 401,
+  project_not_in_org: 403,
+  project_gone: 404,
+} as const;
+
 const json = (body: unknown, status: number) => HttpServerResponse.jsonUnsafe(body, { status });
 
 const isStructureRefused = Schema.is(StructureRefused);
+const isMateRefused = Schema.is(MateRefused);
 
 /**
  * A JSON body of at most `limit` bytes. A declared `Content-Length` above it is refused before a
@@ -113,6 +132,12 @@ const failure = (error: {
       json({ code: error.code, message: error.message }, STRUCTURE_STATUS[error.code]),
     );
   }
+  if (isMateRefused(error)) {
+    return Effect.as(
+      Effect.logInfo("mate refused", error),
+      json({ code: error.code }, MATE_STATUS[error.code]),
+    );
+  }
   switch (error._tag) {
     case "DoorRefused":
       return Effect.as(
@@ -121,6 +146,8 @@ const failure = (error: {
       );
     case "SessionRequired":
       return Effect.succeed(json({ code: "session_required" }, 401));
+    case "MateCredentialRequired":
+      return Effect.succeed(json({ code: "mate_credential_required" }, 401));
     case "NotLeader":
       return Effect.succeed(json({ code: "not_active" }, 503));
     case "ZeropsUnavailable":
@@ -166,6 +193,27 @@ const holderOf = (token: string | undefined) =>
 
 const principal = Effect.flatMap(bearer, holderOf);
 
+/** A token of the client address's bucket at `door`; none left is `429`. */
+const knock = (door: "person" | "mate") =>
+  Effect.gen(function* () {
+    // `X-Real-IP` is the client address the Zerops L7 balancer sets.
+    const request = yield* HttpServerRequest.HttpServerRequest;
+    const address =
+      request.headers["x-real-ip"] ?? Option.getOrElse(request.remoteAddress, () => "unknown");
+    if (!(yield* (yield* DoorRateLimit).take(`${door} ${address}`))) {
+      return yield* new TooManyRequests();
+    }
+  });
+
+/** The project of the Mate credential presented as `Authorization: Mate <credential>`. */
+const mate = Effect.gen(function* () {
+  const request = yield* HttpServerRequest.HttpServerRequest;
+  const presented = /^Mate (\S+)$/u.exec(request.headers["authorization"] ?? "")?.[1];
+  const found =
+    presented === undefined ? Option.none() : yield* (yield* MateCredentials).whoami(presented);
+  return Option.isSome(found) ? found.value : yield* new MateCredentialRequired();
+});
+
 const routes = (options: StreamOptions) =>
   Layer.mergeAll(
     HttpRouter.add(
@@ -173,12 +221,7 @@ const routes = (options: StreamOptions) =>
       "/api/door",
       handle(
         Effect.gen(function* () {
-          // `X-Real-IP` is the client address the Zerops L7 balancer sets.
-          const request = yield* HttpServerRequest.HttpServerRequest;
-          const address =
-            request.headers["x-real-ip"] ??
-            Option.getOrElse(request.remoteAddress, () => "unknown");
-          if (!(yield* (yield* DoorRateLimit).take(address))) return yield* new TooManyRequests();
+          yield* knock("person");
           const { token } = yield* jsonBody(DoorBody, DOOR_BODY_LIMIT);
           const caller = yield* (yield* Door).admit(Redacted.make(token));
           const session = yield* (yield* Sessions).issue(caller, caller.doorTokenId);
@@ -188,6 +231,33 @@ const routes = (options: StreamOptions) =>
           );
         }),
       ),
+    ),
+    HttpRouter.add(
+      "POST",
+      "/api/mate/challenge",
+      handle(
+        Effect.gen(function* () {
+          yield* knock("mate");
+          const { projectId } = yield* jsonBody(ChallengeBody, DOOR_BODY_LIMIT);
+          return json(yield* (yield* MateCredentials).challenge(projectId), 200);
+        }),
+      ),
+    ),
+    HttpRouter.add(
+      "POST",
+      "/api/mate/credential",
+      handle(
+        Effect.gen(function* () {
+          yield* knock("mate");
+          const { projectId, nonce } = yield* jsonBody(CredentialBody, DOOR_BODY_LIMIT);
+          return json(yield* (yield* MateCredentials).issue(projectId, nonce), 200);
+        }),
+      ),
+    ),
+    HttpRouter.add(
+      "GET",
+      "/api/mate/whoami",
+      handle(Effect.map(mate, (found) => json(found, 200))),
     ),
     HttpRouter.add(
       "DELETE",
