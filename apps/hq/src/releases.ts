@@ -13,7 +13,8 @@
  *   repositories (`tierRuntimes.ts`); each commit is on that repository's `main`, its head or
  *   before.
  * - **A rollback is a new release** (main C29): named the patch over every release, listing an
- *   approved release's entries, which stays as it was.
+ *   approved release's entries as they were — a service production no longer builds included, for
+ *   its deploy to report (C16) — and the earlier release stays as it was.
  * - **Read** by whoever reads the application's changes, as main's group repository's tags were:
  *   newest first by version, at most ten.
  *
@@ -219,13 +220,19 @@ export const releasesLayer: Layer.Layer<
                 ? read.runtimes.map((runtime) => [runtime.hostname, runtime.repo] as const)
                 : [],
             );
-            // What it names before where it is: every service, then every commit.
-            if (wanted.entries.some((entry) => !repoOf.has(entry.service))) {
+            // What it names before where it is: every service, then every commit. A rollback carries
+            // the earlier release's entries as they were (main C16): one production no longer
+            // builds, its deploy reports, and deploys the rest.
+            if (
+              wanted.rollbackOf === null &&
+              wanted.entries.some((entry) => !repoOf.has(entry.service))
+            ) {
               return yield* refuse("conflict", "unknown_service");
             }
             for (const entry of wanted.entries) {
-              const repo = { appId, id: repoOf.get(entry.service)! };
-              if (!(yield* git.onMain(repo, entry.sha))) {
+              const repo = repoOf.get(entry.service);
+              if (repo === undefined) continue;
+              if (!(yield* git.onMain({ appId, id: repo }, entry.sha))) {
                 return yield* refuse("conflict", "entry_not_on_main");
               }
             }

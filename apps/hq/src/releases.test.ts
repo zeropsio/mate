@@ -394,7 +394,7 @@ describe("an application's releases in HQ", () => {
     it.effect(
       "rolls back with a new release of an earlier one's commits, the earlier left as it was",
       () =>
-        withReleases(({ appId, commit, bare }) =>
+        withReleases(({ appId, commit, bare, tiers }) =>
           Effect.gen(function* () {
             const releases = yield* Releases;
             const sql = yield* SqlClient.SqlClient;
@@ -450,6 +450,28 @@ describe("an application's releases in HQ", () => {
             assert.deepStrictEqual(
               yield* refusal(releases.rollback("viewer", appId, "v0.1.0", { groupHead: moved })),
               ["forbidden", "not_releaser"],
+            );
+
+            // Production no longer builds `app`: a rollback still carries it as it was (main C16 —
+            // its deploy reports it and deploys the rest); a new release of it is refused.
+            tiers.set(
+              `${appId}/production`,
+              productionTier(appId, [{ hostname: "web", repo: "appdev" }]),
+            );
+            const kept = yield* releases.rollback("dev", appId, "v0.1.0", { groupHead: moved });
+            assert.deepStrictEqual(
+              [kept.tag, kept.entries, kept.rollbackOf],
+              ["v0.9.2", [{ service: "app", sha: one }], "v0.1.0"],
+            );
+            assert.deepStrictEqual(
+              yield* refusal(
+                releases.release("dev", appId, {
+                  tag: "v1.0.0",
+                  groupHead: moved,
+                  entries: [{ service: "app", sha: one }],
+                }),
+              ),
+              ["conflict", "unknown_service"],
             );
           }),
         ),

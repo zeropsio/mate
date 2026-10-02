@@ -268,7 +268,8 @@ export const deploysLayer = (
 
       /**
        * A production's: each runtime at the commit the newest approved release lists (C16) — none
-       * before a release, which is no failure; one it does not list is reported, the rest deploy.
+       * before a release, which is no failure; a runtime it does not list, and a service it lists
+       * that production no longer builds, are reported, and the rest deploy.
        */
       const productionWanted = (appId: string): Effect.Effect<Wanted, SqlError> =>
         Effect.gen(function* () {
@@ -282,6 +283,15 @@ export const deploysLayer = (
               appId,
               release: release.tag,
               services: unlisted.map((runtime) => runtime.hostname),
+            });
+          }
+          const built = new Set(runtimes.map((runtime) => runtime.hostname));
+          const gone = release.entries.filter((entry) => !built.has(entry.service));
+          if (gone.length > 0) {
+            yield* Effect.logWarning("release services production no longer builds", {
+              appId,
+              release: release.tag,
+              services: gone.map((entry) => entry.service),
             });
           }
           return runtimes.flatMap((runtime) => {

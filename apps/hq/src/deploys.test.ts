@@ -940,6 +940,29 @@ describe("deploys", () => {
               .map(({ service, sha, state }) => [service, sha, state]),
             [["web", web, "live"]],
           );
+
+          // A rollback carries a service production no longer builds: reported, the rest deploy.
+          const next = yield* commit("web", { "index.js": "next\n" });
+          yield* sql`
+            INSERT INTO hq_release (app_id, tag, sha, entries, released_by, state, rollback_of)
+            VALUES (${appId}::uuid, 'v0.1.1', ${groupHead},
+              ${`[{"service":"web","sha":"${next}"},{"service":"gone","sha":"${web}"}]`}::jsonb,
+              'dev', 'approved', 'v0.0.9')`;
+          yield* (yield* Deploys).catchUp;
+          yield* until((rows) =>
+            rows.some(
+              (row) => row.project === "P_PROD" && row.sha === next && row.state === "live",
+            ),
+          );
+          assert.deepStrictEqual(
+            (yield* deploys)
+              .filter((row) => row.project === "P_PROD")
+              .map(({ service, sha }) => [service, sha]),
+            [
+              ["web", web],
+              ["web", next],
+            ],
+          );
         }),
       ),
     );
