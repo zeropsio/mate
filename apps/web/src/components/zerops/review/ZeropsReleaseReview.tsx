@@ -11,7 +11,8 @@
  *
  * A roll back is the same review, naming the version production goes back to and the new tag
  * that carries it: what leaves production and what comes back, each change by its title and its
- * Mate, as HQ compares them from what production runs (`rollbackReads`).
+ * Mate, as HQ compares them from what production runs (`rollbackReads`), each opening its review
+ * in place with "← Roll back".
  *
  * The views take every read handed in, so the harness shows each state.
  */
@@ -25,7 +26,7 @@ import {
   reviewAge,
   rollbackReads,
   rollbackReview,
-  sameCommit,
+  rollbackServices,
   shortCommit,
   stageMarks,
   stageStandings,
@@ -114,34 +115,64 @@ export function ZeropsReleaseReview({
     );
   }
   return target.kind === "release" ? (
-    <ReleaseSteps
-      flow={flow}
+    <ChangeSteps
+      back="Release"
       groupId={target.groupId}
-      name={name}
       onClose={onClose}
+      review={(onOpenChange, shownTitleId) => (
+        <ReleaseData
+          flow={flow}
+          name={name}
+          onClose={onClose}
+          onOpenChange={onOpenChange}
+          titleId={shownTitleId}
+        />
+      )}
       titleId={titleId}
     />
   ) : (
-    <RollbackData flow={flow} name={name} onClose={onClose} tag={target.tag} titleId={titleId} />
+    <ChangeSteps
+      back="Roll back"
+      groupId={target.groupId}
+      onClose={onClose}
+      review={(onOpenChange, shownTitleId) => (
+        <RollbackData
+          flow={flow}
+          name={name}
+          onClose={onClose}
+          onOpenChange={onOpenChange}
+          tag={target.tag}
+          titleId={shownTitleId}
+        />
+      )}
+      titleId={titleId}
+    />
   );
 }
 
-/** A change read from its release hands over to nothing: it is already in the release. */
+/** A change read from its release or roll back hands over to nothing: it is already merged. */
 const STAYS = () => {};
 
-/** The release, and a change it carries read in place: the title is the shown step's. */
-function ReleaseSteps({
-  flow,
+/**
+ * A release or a roll back, and a change it lists read in place, "← {back}" its way back: the
+ * title is the shown step's.
+ */
+function ChangeSteps({
+  back,
   groupId,
-  name,
   titleId,
   onClose,
+  review,
 }: {
-  readonly flow: ZeropsProjectFlow;
+  readonly back: string;
   readonly groupId: string;
-  readonly name: string | undefined;
   readonly titleId: string;
   readonly onClose: () => void;
+  /** The release's or the roll back's review, its rows opening their change, titled while shown. */
+  readonly review: (
+    onOpenChange: (row: ReviewReleaseRow) => void,
+    titleId: string | undefined,
+  ) => ReactNode;
 }) {
   const steps = useReleaseSteps();
   const onChange = steps.step.view === "change";
@@ -150,7 +181,7 @@ function ReleaseSteps({
       change={
         steps.shown === undefined ? null : (
           <ZeropsChangeReview
-            onBack={steps.back}
+            back={{ label: back, onPress: steps.back }}
             onClose={onClose}
             onReplace={STAYS}
             target={{ kind: "change", groupId, ...steps.shown }}
@@ -158,15 +189,7 @@ function ReleaseSteps({
           />
         )
       }
-      release={
-        <ReleaseData
-          flow={flow}
-          name={name}
-          onClose={onClose}
-          onOpenChange={steps.open}
-          titleId={onChange ? undefined : titleId}
-        />
-      }
+      release={review(steps.open, onChange ? undefined : titleId)}
       steps={steps}
     />
   );
@@ -480,6 +503,8 @@ interface RollbackLists {
 }
 
 const NO_ASKS: ReadonlyMap<string, ReadonlyArray<CompareRead>> = new Map();
+/** What a roll back to a release not listed goes back to: nothing. */
+const NO_ENTRIES: ReadonlyArray<ReleaseEntry> = [];
 const COMPARING: MovedCommits = { state: "reading" };
 const LISTS_UNREAD: RollbackLists = { leaving: COMPARING, comingBack: COMPARING, untold: [] };
 /** A roll back's rows are never marked by the stage: nothing it brings back is new to `main`. */
@@ -528,12 +553,14 @@ function RollbackData({
   tag,
   titleId,
   onClose,
+  onOpenChange,
 }: {
   readonly flow: ZeropsProjectFlow;
   readonly name: string | undefined;
   readonly tag: string;
-  readonly titleId: string;
+  readonly titleId: string | undefined;
   readonly onClose: () => void;
+  readonly onOpenChange: (row: ReviewReleaseRow) => void;
 }) {
   const flowValue = useZeropsProjectFlowOptional();
   const mates = useZeropsReviewMates(flow.groupId);
@@ -566,13 +593,6 @@ function RollbackData({
           }),
           ...movedCount(moved.moved),
         };
-  // A service moves where production runs another commit than the release lists, or none.
-  const moving = (earlier?.entries ?? [])
-    .filter(({ service, commit }) => {
-      const run = runs?.get(service);
-      return run?.kind === "nothing" || (run?.kind === "commit" && !sameCommit(run.sha, commit));
-    })
-    .map((entry) => entry.service);
   const rollBack = async () => {
     if (flowValue === null) return;
     setPress({ kind: "running" });
@@ -593,18 +613,17 @@ function RollbackData({
       nextTag={made ?? flow.release.suggestion}
       now={now}
       onClose={onClose}
+      onOpenChange={onOpenChange}
       onRollBack={() => {
         void rollBack();
       }}
       outcome={outcome}
       press={press}
-      services={
-        moving.length === 0 ? (earlier?.entries.map((entry) => entry.service) ?? []) : moving
-      }
+      services={rollbackServices({ entries: earlier?.entries ?? NO_ENTRIES, runs })}
       tag={tag}
       titleId={titleId}
       untold={lists.untold}
-      where={(earlier?.entries ?? []).map((entry) => ({
+      where={(earlier?.entries ?? NO_ENTRIES).map((entry) => ({
         service: entry.service,
         line: `goes back to ${shortCommit(entry.commit)}`,
       }))}
@@ -629,6 +648,8 @@ export interface RollbackReviewViewProps {
   readonly comingBack: RollbackList;
   /** Production's services whose commit cannot be told: what moves on them is not said. */
   readonly untold: ReadonlyArray<string>;
+  /** A change row pressed: its review, in place. */
+  readonly onOpenChange?: ((row: ReviewReleaseRow) => void) | undefined;
   /** HQ's rule for this person, its refusal in words; `undefined` while it cannot be asked. */
   readonly permission: ReleaseGate | undefined;
   readonly press: ReviewPress;
@@ -645,11 +666,13 @@ function RollbackListSection({
   title,
   side,
   list,
+  onOpen,
   children,
 }: {
   readonly title: string;
   readonly side: RollbackSide;
   readonly list: RollbackList;
+  readonly onOpen: ((row: ReviewReleaseRow) => void) | undefined;
   readonly children?: ReactNode;
 }) {
   const listed = list.state === "known" && list.rows.length > 0;
@@ -659,7 +682,7 @@ function RollbackListSection({
       title={title}
     >
       {listed ? (
-        <ReviewReleaseRows rows={list.rows} />
+        <ReviewReleaseRows onOpen={onOpen} rows={list.rows} />
       ) : (
         <p className="text-sm text-muted-foreground">{rollbackListNote(side, list)}</p>
       )}
@@ -713,12 +736,22 @@ export function RollbackReviewView(props: RollbackReviewViewProps) {
       titleId={props.titleId}
       verdict={model.verdict}
     >
-      <RollbackListSection list={props.leaving} side="leaving" title="Leaves production">
+      <RollbackListSection
+        list={props.leaving}
+        onOpen={props.onOpenChange}
+        side="leaving"
+        title="Leaves production"
+      >
         {props.untold.length === 0 ? null : (
           <p className="text-sm text-muted-foreground">{cannotTellWhatRuns(props.untold)}.</p>
         )}
       </RollbackListSection>
-      <RollbackListSection list={props.comingBack} side="coming-back" title="Comes back" />
+      <RollbackListSection
+        list={props.comingBack}
+        onOpen={props.onOpenChange}
+        side="coming-back"
+        title="Comes back"
+      />
       {props.where.length === 0 ? null : (
         <ReviewSection title="Where">
           <ReviewWhere rows={props.where} />

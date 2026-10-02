@@ -2503,8 +2503,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
         read: reads !== undefined,
         changesKnown: reads?.changesKnown === true,
         changesUnknown,
-        // Out and expected back: the organization's HQ is known, whose answer
-        // the group's changes are.
+        // Out and expected back: an HQ is open, whose stream tells its changes.
         readOut: projectFlow.hqAddress !== undefined,
       });
       const members = groupMemberFactsOf(

@@ -30,7 +30,7 @@ import { ReleaseTag, parseReleaseMessage } from "@t3tools/shared/hqRelease";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 
-import { TIER_SOURCES } from "./environments.ts";
+import { ENVIRONMENT_NAME_MAX, TIER_SOURCES } from "./environments.ts";
 import { rewriteTier } from "./importTiers.ts";
 
 export const BUNDLE_VERSION = 1;
@@ -352,6 +352,11 @@ export const bundleProblems = (bundle: Omit<Bundle, "dir" | "digest">): Readonly
     for (const id of duplicates(app.environments.map((env) => env.projectId)))
       problems.push(`${at}: project ${id} has two environments`);
     for (const env of app.environments) {
+      // As HQ names its own: a deploy key is named after it, and Zerops caps a token's name.
+      if (env.name.length > ENVIRONMENT_NAME_MAX)
+        problems.push(
+          `${at}: environment ${env.name} is longer than ${String(ENVIRONMENT_NAME_MAX)} characters`,
+        );
       const project = app.projects.find((candidate) => candidate.projectId === env.projectId);
       if (project === undefined || project.kind === "mate") {
         problems.push(`${at}: environment ${env.name} is on no stage or production of its own`);

@@ -107,6 +107,7 @@ const STRUCTURE_WORDS: Readonly<Record<string, string>> = {
   // An application's environments and their deploy keys (`apps/hq/src/environments.ts`).
   environment_with_kind: "Only a stage or a production is an environment.",
   environment_name_missing: "An environment needs a name.",
+  environment_name_long: "An environment's name has at most 63 characters.",
   environment_name_invalid:
     "An environment's name starts with a letter and has only small letters, digits and dashes.",
   environment_name_taken: "This project has an environment of that name already.",

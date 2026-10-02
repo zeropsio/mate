@@ -18,6 +18,7 @@ import {
   releaseReads,
   productionRuns,
   rollbackReads,
+  rollbackServices,
   type CompareRead,
   type Moved,
   type ProductionRun,
@@ -102,6 +103,58 @@ describe("what a release would put live: the comparisons to ask HQ for", () => {
       { repository: "mono", query: { base: OLD, head: API }, services: ["api", "web"] },
       { repository: "mono", query: { base: WEB, head: API }, services: ["worker"] },
     ]);
+  });
+});
+
+describe("rollbackServices: the services a roll back redeploys, as its review names them", () => {
+  const ENTRIES = [
+    { service: "api", commit: OLD },
+    { service: "web", commit: WEB },
+  ];
+  it.each<{
+    readonly name: string;
+    readonly runs: ReadonlyMap<string, ProductionRun> | undefined;
+    readonly services: ReadonlyArray<string>;
+  }>([
+    {
+      name: "the one running another commit than the release lists",
+      runs: new Map([
+        ["api", runs(API)],
+        ["web", runs(WEB)],
+      ]),
+      services: ["api"],
+    },
+    {
+      name: "one running nothing, which the release brings back",
+      runs: new Map([
+        ["api", NOTHING],
+        ["web", runs(WEB)],
+      ]),
+      services: ["api"],
+    },
+    {
+      name: "none said to move whose commit cannot be told",
+      runs: new Map([
+        ["api", UNTOLD],
+        ["web", runs(API)],
+      ]),
+      services: ["web"],
+    },
+    {
+      name: "every service listed while what production runs is not known",
+      runs: undefined,
+      services: ["api", "web"],
+    },
+    {
+      name: "every service listed where none is known to move",
+      runs: new Map([
+        ["api", runs(OLD)],
+        ["web", runs(WEB)],
+      ]),
+      services: ["api", "web"],
+    },
+  ])("names $name", ({ runs: running, services }) => {
+    expect(rollbackServices({ entries: ENTRIES, runs: running })).toEqual(services);
   });
 });
 

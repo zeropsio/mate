@@ -343,6 +343,7 @@ export {
   movedCount,
   releaseReads,
   rollbackReads,
+  rollbackServices,
   productionRuns,
   type CompareRead,
   type CompareReads,

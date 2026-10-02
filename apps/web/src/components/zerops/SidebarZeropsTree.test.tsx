@@ -1483,6 +1483,15 @@ describe("production and the stages are two chips on the project's heading (M2, 
       words: /aria-label="([^"]*)"/u.exec(button)?.[1],
     }));
 
+  it("never calls production healthy where what a service runs cannot be told", () => {
+    const html = render([CRM_DEV, up(CRM_PROD)], {
+      getFlow: () => flow({ releaseUntold: ["api"] }),
+    });
+    expect(chipsOf(html)).toEqual([
+      { word: "prod", tone: "neutral", words: "Production v2.4.0, can&#x27;t tell what api runs" },
+    ]);
+  });
+
   it("wears a chip for the stage and one for production, each its word alone", () => {
     const html = render([CRM_DEV, up(CRM_STAGE), up(CRM_PROD)], { getFlow: () => flow() });
     expect(chipsOf(html)).toEqual([

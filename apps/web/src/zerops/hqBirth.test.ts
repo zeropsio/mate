@@ -291,4 +291,19 @@ describe("accountHqBirthStorage — what this browser keeps of a birth", () => {
     expect(accountHqBirthStorage.read("org-1")).toBeUndefined();
     expect(accountHqBirthStorage.read("org-2")).toEqual(HQ_BIRTH_START);
   });
+
+  it("keeps the app version a deploy uploaded", () => {
+    openAccountLifetime("u-ada");
+    accountHqBirthStorage.write("org-1", { ...AT_DEPLOY, appVersionId: "av-1" });
+    expect(accountHqBirthStorage.read("org-1")?.appVersionId).toBe("av-1");
+  });
+
+  // Mate s.r.o., 2026-10-03: a birth stopped at its deploy was kept before the record named its
+  // app version. Read as none uploaded, it goes on from its deploy rather than from nothing.
+  it("reads a birth kept before its app version was, as none uploaded", () => {
+    openAccountLifetime("u-ada");
+    const { appVersionId: _none, ...before } = AT_DEPLOY;
+    stored.set("mate:account:u-ada:mate:zerops:hq-births", JSON.stringify({ "org-1": before }));
+    expect(accountHqBirthStorage.read("org-1")).toEqual(AT_DEPLOY);
+  });
 });

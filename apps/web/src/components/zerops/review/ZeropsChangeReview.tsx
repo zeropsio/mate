@@ -75,12 +75,11 @@ import {
   ReviewSection,
   ReviewSize,
   ZeropsReviewSurface,
+  type ReviewButton,
   type ReviewDiffState,
 } from "./ZeropsReviewSurface";
 
 const KIND: ReviewKind = "change";
-/** The way back from a change read in its release. */
-const RELEASE_BACK = "Release";
 /** How long a change with no description holds the room of its run's words for them. */
 const RUN_WORDS_WAIT_MS = 3_000;
 
@@ -92,7 +91,7 @@ export function ZeropsChangeReview({
   titleId,
   onClose,
   onReplace,
-  onBack,
+  back,
 }: {
   /** In a dialog over the conversation, or as the change's own page. */
   readonly frame?: ReviewFrame;
@@ -100,10 +99,10 @@ export function ZeropsChangeReview({
   readonly titleId: string | undefined;
   readonly onClose: () => void;
   /**
-   * Read from the release that carries it: already merged, it offers no button, and "← Release"
-   * goes back.
+   * Read from the release or the roll back that lists it: already merged, it offers no button,
+   * and "← Release" or "← Roll back" goes back.
    */
-  readonly onBack?: (() => void) | undefined;
+  readonly back?: ReviewButton | undefined;
   /** Opens another review in this one's place — the release, once this merged. */
   readonly onReplace: (target: ReviewTarget) => void;
 }) {
@@ -146,7 +145,7 @@ export function ZeropsChangeReview({
   if (flowValue === null || pull === undefined) {
     return (
       <ZeropsReviewSurface
-        back={onBack === undefined ? undefined : { label: RELEASE_BACK, onPress: onBack }}
+        back={back}
         consequence="Nothing is merged from here until the change is read."
         frame={frame}
         kind={KIND}
@@ -169,7 +168,7 @@ export function ZeropsChangeReview({
       flow={flow}
       flowValue={flowValue}
       frame={frame}
-      onBack={onBack}
+      back={back}
       onOpenPage={onOpenPage}
       onClose={onClose}
       onReplace={onReplace}
@@ -185,7 +184,7 @@ function ChangeReviewData({
   flowValue,
   frame,
   onOpenPage,
-  onBack,
+  back,
   pull,
   target,
   titleId,
@@ -198,7 +197,7 @@ function ChangeReviewData({
   readonly flowValue: ZeropsProjectFlowValue;
   readonly frame: ReviewFrame;
   readonly onOpenPage: (() => void) | undefined;
-  readonly onBack: (() => void) | undefined;
+  readonly back: ReviewButton | undefined;
   readonly pull: FlowPullRequest;
   readonly target: ChangeTarget;
   readonly titleId: string | undefined;
@@ -283,7 +282,7 @@ function ChangeReviewData({
       environments={flow?.environmentInputs ?? NO_ENVIRONMENTS}
       frame={frame}
       hqAddress={flowValue.hqAddress}
-      onBack={onBack}
+      back={back}
       onOpenPage={onOpenPage}
       live={flow?.releases.find((entry) => entry.standing === "live")?.tag}
       mate={
@@ -415,8 +414,11 @@ export interface ChangeReviewViewProps {
   readonly onClosing: (step: "ask" | "keep" | "press") => void;
   /** The dialog's way to this review as the change's own page. */
   readonly onOpenPage?: (() => void) | undefined;
-  /** Read from the release that carries it: "Merged" in the button's place, and the way back. */
-  readonly onBack?: (() => void) | undefined;
+  /**
+   * Read from the release or the roll back that lists it: "Merged" in the button's place, and the
+   * way back.
+   */
+  readonly back?: ReviewButton | undefined;
   readonly onClose: () => void;
 }
 
@@ -490,13 +492,13 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
     closing.kind === "asked" || closing.kind === "running" || closing.kind === "refused";
   // Merged or closed: nothing more to ask of it here.
   const over = model.verdict.state === "merged" || model.verdict.state === "closed";
-  // Read from its release: merged already, and the release is the next review.
-  const fromRelease = props.onBack !== undefined;
+  // Read from the release or roll back that lists it: merged already, and that is the next review.
+  const fromRelease = props.back !== undefined;
   const primary = fromRelease ? undefined : model.primary;
   const secondary = model.secondary;
   return (
     <ZeropsReviewSurface
-      back={props.onBack === undefined ? undefined : { label: RELEASE_BACK, onPress: props.onBack }}
+      back={props.back}
       consequence={model.consequence}
       dismiss={over && !fromRelease ? "Close" : undefined}
       frame={props.frame}

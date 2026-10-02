@@ -348,7 +348,7 @@ export function flowStepsAwaiting(input: {
    * forever.
    */
   readonly changesUnknown?: ChangesUnknown | undefined;
-  /** Its read is out: the organization's HQ is known, whose answer its changes are. */
+  /** Its read is out: an HQ is open, whose stream tells its changes. */
   readonly readOut: boolean;
 }): { readonly steps: boolean; readonly changes: boolean } {
   const { read, changesKnown, changesUnknown, readOut } = input;

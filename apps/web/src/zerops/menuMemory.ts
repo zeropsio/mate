@@ -74,6 +74,7 @@ const ChipSchema = Schema.Struct({
   next: Schema.optionalKey(Schema.String),
   waiting: Schema.optionalKey(Schema.Number),
   waitingAtLeast: Schema.optionalKey(Schema.Literals([true])),
+  untold: Schema.optionalKey(Schema.Array(Schema.String)),
   stages: Schema.optionalKey(
     Schema.Array(Schema.Struct({ name: Schema.String, state: ChipStateSchema })),
   ),
