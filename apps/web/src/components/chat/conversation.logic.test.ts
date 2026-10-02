@@ -2816,3 +2816,199 @@ describe("tool calls in words", () => {
     expect(toolCallWords(name)).toBe(words);
   });
 });
+
+describe("deriveOutcome: a service's standing is the latest word on it", () => {
+  const settled = { latest: { id: "t1", state: "completed", completed: true } } as const;
+  type Check = { readonly id: string; readonly note?: string };
+  const standUp = (id: string, minute: number, half: "development" | "stage") =>
+    operation(id, "t1", minute, {
+      kind: "standup",
+      subject: half,
+      statusWord: "Stood up",
+      steps:
+        half === "development"
+          ? [
+              { id: "shopdev", label: "shopdev", state: "done", stateLabel: "Deployed" },
+              { id: "webdev", label: "webdev", state: "done", stateLabel: "Deployed" },
+              { id: "shopstage", label: "shopstage", state: "queued", stateLabel: "Next" },
+              { id: "webstage", label: "webstage", state: "queued", stateLabel: "Next" },
+            ]
+          : [
+              { id: "shopstage", label: "shopstage", state: "done", stateLabel: "Deployed" },
+              { id: "webstage", label: "webstage", state: "done", stateLabel: "Deployed" },
+            ],
+    });
+  const devServer = (id: string, minute: number, host: string, action = "Start") =>
+    operation(id, "t1", minute, {
+      kind: "devServer",
+      subject: host,
+      statusWord: "Running",
+      steps: [
+        { id: "dev-server", label: action, state: "done", stateLabel: "Done", note: "HTTP 200" },
+      ],
+    });
+  const verify = (id: string, minute: number, host: string, failed: ReadonlyArray<Check> = []) => {
+    const passed = ["service_running", "error_logs", "http_internal", "http_public"].filter(
+      (check) => !failed.some((step) => step.id === check),
+    );
+    const steps = [
+      ...passed.map((check) => ({
+        id: check,
+        label: check,
+        state: "done" as const,
+        stateLabel: "Done",
+      })),
+      ...failed.map((step) => ({
+        id: step.id,
+        label: step.id,
+        state: "failed" as const,
+        stateLabel: "Failed",
+        ...(step.note === undefined ? {} : { note: step.note }),
+      })),
+    ];
+    return operation(id, "t1", minute, {
+      kind: "verify",
+      subject: host,
+      phase: failed.length > 0 ? "failed" : "done",
+      statusWord: failed.length > 0 ? "Checks failed" : "Healthy",
+      closing:
+        failed.length > 0
+          ? `${String(failed.length)} of 4 checks failed.`
+          : "4 of 4 checks passed.",
+      steps,
+    });
+  };
+  const noProcess: ReadonlyArray<Check> = [{ id: "http_public", note: "502 · HTTP 502" }];
+  // zcp's words for a probe that got no answer in its time (`probeHTTP`).
+  const timedOut = (id: string, host: string): Check => ({
+    id,
+    note: `request failed: Get "http://${host}/": context deadline exceeded (Client.Timeout exceeded while awaiting headers)`,
+  });
+  // The internal address answered, as the card writes zcp's note: a dev
+  // server's host check turning the project's own hostname away.
+  const hostCheck = (status: number): Check => ({
+    id: "http_internal",
+    note: `${String(status)} · HTTP ${String(status)}: Blocked request. This host ("shopdev") is not allowed.`,
+  });
+
+  it.each([
+    {
+      name: "checked before its dev server ran, then the dev server started",
+      ops: [
+        standUp("s1", 1, "development"),
+        verify("v1", 2, "shopdev", noProcess),
+        devServer("d1", 3, "shopdev"),
+      ],
+      standing: { shopdev: "ok", webdev: "ok" },
+    },
+    {
+      name: "checked before its dev server ran, the dev server started, the stage stood up and checked",
+      ops: [
+        standUp("s1", 1, "development"),
+        verify("v1", 2, "shopdev", noProcess),
+        verify("v2", 3, "webdev", [
+          ...noProcess,
+          { id: "http_internal", note: "request failed: connection refused" },
+        ]),
+        devServer("d1", 4, "shopdev"),
+        devServer("d2", 5, "webdev"),
+        standUp("s2", 6, "stage"),
+        verify("v3", 7, "shopstage"),
+        verify("v4", 8, "webstage"),
+      ],
+      standing: { shopdev: "ok", webdev: "ok", shopstage: "ok", webstage: "ok" },
+    },
+    {
+      name: "a failed check, then one that passed",
+      ops: [verify("v1", 1, "shopdev", noProcess), verify("v2", 2, "shopdev")],
+      standing: { shopdev: "ok" },
+    },
+    {
+      name: "a failed check, then a deploy",
+      ops: [
+        verify("v1", 1, "shopdev", noProcess),
+        operation("x1", "t1", 2, { kind: "deploy", subject: "shopdev" }),
+      ],
+      standing: { shopdev: "ok" },
+    },
+    {
+      // As a stand-up ran (2026-10-02): the dev servers started and answered;
+      // the check right after timed out on one's first compile and met the
+      // other's host check on its internal address; both answered 200 later.
+      name: "dev servers started, the checks right after timed out or met a host check, the stage stood up and checked",
+      ops: [
+        standUp("s1", 1, "development"),
+        devServer("d1", 2, "shopdev"),
+        devServer("d2", 3, "webdev"),
+        verify("v1", 4, "webdev", [
+          timedOut("http_internal", "webdev:3000"),
+          timedOut("http_public", "webdev-1a2b-3000.example.app"),
+        ]),
+        verify("v2", 5, "shopdev", [hostCheck(403)]),
+        standUp("s2", 6, "stage"),
+        verify("v3", 7, "shopstage"),
+        verify("v4", 8, "webstage"),
+      ],
+      standing: { shopdev: "ok", webdev: "ok", shopstage: "ok", webstage: "ok" },
+    },
+    {
+      name: "a dev server running, then a check whose internal address answered 403 and public served",
+      ops: [devServer("d1", 1, "shopdev"), verify("v1", 2, "shopdev", [hostCheck(403)])],
+      standing: { shopdev: "ok" },
+    },
+    {
+      name: "a dev server running, then a check whose internal address answered 502",
+      ops: [devServer("d1", 1, "shopdev"), verify("v1", 2, "shopdev", [hostCheck(502)])],
+      standing: { shopdev: "failed" },
+    },
+    {
+      name: "a dev server running, then a check whose internal address answered 403 and public was refused",
+      ops: [
+        devServer("d1", 1, "shopdev"),
+        verify("v1", 2, "shopdev", [
+          hostCheck(403),
+          { id: "http_public", note: "request failed: dial tcp: connection refused" },
+        ]),
+      ],
+      standing: { shopdev: "failed" },
+    },
+    {
+      name: "a check whose internal address answered 403 with no dev server found running before it",
+      ops: [verify("v1", 1, "shopdev", [hostCheck(403)])],
+      standing: { shopdev: "failed" },
+    },
+    {
+      name: "a check that timed out with no dev server found running before it",
+      ops: [verify("v1", 1, "shopdev", [timedOut("http_public", "shopdev-1a2b-9000.example.app")])],
+      standing: { shopdev: "failed" },
+    },
+    {
+      name: "a dev server running, then a check that timed out and one that answered an error",
+      ops: [
+        devServer("d1", 1, "shopdev"),
+        verify("v1", 2, "shopdev", [
+          timedOut("http_internal", "shopdev:9000"),
+          { id: "http_public", note: "500 · HTTP 500" },
+        ]),
+      ],
+      standing: { shopdev: "failed" },
+    },
+    {
+      name: "a dev server running, then a check that failed",
+      ops: [
+        devServer("d1", 1, "shopdev"),
+        verify("v1", 2, "shopdev", [{ id: "http_public", note: "500 · HTTP 500" }]),
+      ],
+      standing: { shopdev: "failed" },
+    },
+  ])("$name", ({ ops, standing }) => {
+    const outcome = deriveOutcome({
+      turn: structure([user("m0", 0), ...ops, assistant("a1", "t1", 20)], settled).turns[0]!,
+      landed: [],
+      diff: null,
+    });
+    expect(
+      Object.fromEntries((outcome?.live ?? []).map((service) => [service.hostname, service.tone])),
+    ).toEqual(standing);
+  });
+});

@@ -1935,6 +1935,58 @@ function standingPhase(operation: ZeropsOperation): ZeropsOperation["phase"] {
   return failed.length > 0 && failed.every(reachedOnly) ? "done" : operation.phase;
 }
 
+/** zcp's checks of an address: inside the project, its subdomain, its domain. */
+const HTTP_CHECK_IDS: ReadonlySet<string> = new Set([
+  "http_internal",
+  "http_public",
+  "public_domain",
+]);
+
+/**
+ * A failed check that got no answer in its time: zcp's probe gives up after
+ * five seconds (`probeHTTP`), and a dev server compiling its first page takes
+ * longer. No answer is no word on how the service runs — an address that
+ * answers an error, or refuses, is.
+ */
+function unanswered(step: ZeropsOperation["steps"][number]): boolean {
+  return (
+    HTTP_CHECK_IDS.has(step.id) &&
+    /request failed: .*(?:deadline exceeded|timeout)/iu.test(step.note ?? "")
+  );
+}
+
+/**
+ * The status an address check got, from its note: "403 · HTTP 403: …" as the
+ * card writes it, or zcp's own "HTTP 403: …" (`probeHTTP`). Null where it got
+ * none — refused, timed out.
+ */
+function answeredStatus(step: ZeropsOperation["steps"][number]): number | null {
+  const match = /^(?:(\d{3}) · |HTTP (\d{3}))/u.exec(step.note ?? "");
+  const code = match?.[1] ?? match?.[2];
+  return code === undefined ? null : Number(code);
+}
+
+/**
+ * A failed check that says nothing against a dev server the run found
+ * running: each failure went unanswered, or is the internal address answering
+ * short of an error while the public one passed — a dev server's host check
+ * turning the project's own hostname away (Pax, 2026-10-02: Vite's allowed
+ * hosts answered the internal check 403, its public address served). An
+ * address that answers an error, refuses, or a public check that failed, does.
+ */
+function saysNothingAgainstDevServer(operation: ZeropsOperation): boolean {
+  if (operation.kind !== "verify") return false;
+  const failed = operation.steps.filter((step) => step.state === "failed");
+  const publicServed = operation.steps.some(
+    (step) => step.id === "http_public" && step.state === "done",
+  );
+  const hostTurnedAway = (step: ZeropsOperation["steps"][number]) => {
+    const status = answeredStatus(step);
+    return step.id === "http_internal" && publicServed && status !== null && status < 500;
+  };
+  return failed.length > 0 && failed.every((step) => unanswered(step) || hostTurnedAway(step));
+}
+
 /** A service a failure left broken, in a few words: where it broke, not the call's status word. */
 function brokenWord(operation: ZeropsOperation): string {
   if (operation.kind === "verify") return "Not healthy";
@@ -2212,6 +2264,11 @@ export function deriveOutcome(input: {
   const settled = operations.filter((operation) => operation.phase !== "running");
 
   const services = new Map<string, OutcomeService>();
+  // Services whose latest dev-server call found the dev server running: a
+  // check after it that got no answer in its time leaves it there (the
+  // stand-up of 2026-10-02: both dev servers started, the check after timed
+  // out on their first pages, both answered 200 a minute later).
+  const devServerRuns = new Set<string>();
   for (const operation of settled) {
     if (
       operation.kind !== "deploy" &&
@@ -2223,7 +2280,13 @@ export function deriveOutcome(input: {
     if (isGitPushOnly(operation)) continue;
     const host = operationTargetKey(operation);
     const known = services.get(host);
+    if (operation.kind === "devServer") {
+      if (devServerRunning(operation) === true) devServerRuns.add(host);
+      else devServerRuns.delete(host);
+    }
     const phase = standingPhase(operation);
+    if (phase === "failed" && devServerRuns.has(host) && saysNothingAgainstDevServer(operation))
+      continue;
     if (phase === "failed") {
       services.set(host, {
         hostname: host,
