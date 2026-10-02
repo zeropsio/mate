@@ -93,7 +93,10 @@ function render(
       mate("iris", "Iris", "Split the checkout"),
     ],
   },
-  stops: Pick<React.ComponentProps<typeof ZeropsGroupPane>, "environments" | "withheldNotice"> = {
+  stops: Pick<
+    React.ComponentProps<typeof ZeropsGroupPane>,
+    "environments" | "withheldNotice" | "firstDeployOf"
+  > = {
     environments: [environment("stage", "stage"), environment("prod", "production")],
   },
   waiting: ReleaseContentsSummary = releaseContentsSummary([], 20),
@@ -166,6 +169,19 @@ describe("ZeropsGroupPane", () => {
 
     expect(markup).toContain("Merged, not live · 10000+");
     expect(markup).toContain("+9999+ more");
+  });
+
+  it("says an empty stage's first deploy on its line, as its cell does", () => {
+    const empty = {
+      ...environment("stage", "stage"),
+      version: { ...environment("stage", "stage").version, label: undefined, commit: undefined },
+    } as EnvironmentRow;
+    const markup = render(undefined, {
+      environments: [empty],
+      firstDeployOf: (projectId) =>
+        projectId === "stage" ? { kind: "runner", why: "waking" } : undefined,
+    });
+    expect(markup).toContain("Waiting for the runner · it’s waking up");
   });
 
   // SPEC §1: the page stands in the frame /zerops stands in, its trail in the bar.

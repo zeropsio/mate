@@ -53,12 +53,13 @@ import {
   CHECKING_WHAT_RUNS,
   type Deployment,
   NOTHING_DEPLOYED,
+  runningTone,
   runningVersion,
 } from "./flow/deployment.ts";
 import { pullRequestBlocked, type PullRequestBlocked } from "./gitTab.ts";
 import type { GroupEnvironmentTier, MissingEnvironmentRow } from "./groupEnvironments.ts";
 import type { ZeropsMateFace } from "./groups.ts";
-import type { DeployedVersion, EnvironmentRow } from "./groupRows.ts";
+import type { DeployedVersion, EnvironmentRow, GroupRowTone } from "./groupRows.ts";
 import type { Shown } from "./knowledge/known.ts";
 import {
   PROJECT_ALL_CLEAR,
@@ -69,6 +70,7 @@ import { changeState, type ChangeState, type FlowPullRequest } from "./projectFl
 import type { ZeropsPublicRoute } from "./publicRoutes.ts";
 import { shortCommit, type ReleaseGate } from "./release.ts";
 import { REVIEW_LABEL, REVIEW_RELEASE_LABEL } from "./reviewVerdict.ts";
+import { firstDeploy, type FirstDeploy, type GroupRunner } from "./stopComing.ts";
 
 /** One Mate of the project, as the flow's first column shows it. */
 export interface GroupFlowMate {
@@ -113,6 +115,8 @@ export interface GroupFlowStopInput {
   readonly deployment: Shown<Deployment> | undefined;
   /** Its first public route's URL. */
   readonly route: string | undefined;
+  /** When its project was made; a first deploy is asked for from then on. */
+  readonly createdAt?: string | undefined;
 }
 
 export interface GroupFlowInput {
@@ -158,6 +162,13 @@ export interface GroupFlowInput {
   readonly productionAddable: boolean;
   /** Its creations under way the listing does not hold yet (the group tree's `pending`). */
   readonly pending: ReadonlyArray<GroupFlowPending>;
+  /**
+   * The group's runner, from the Gitea project's services the account holds (`groupRunner`);
+   * `undefined` while they are unread.
+   */
+  readonly runner?: GroupRunner | undefined;
+  /** The clock a first deploy on its way is bounded by; without one, none is promised. */
+  readonly nowMs?: number | undefined;
 }
 
 /** An open pull request, with what is stopping it and the one word for where it stands. */
@@ -190,6 +201,11 @@ export interface GroupFlowStop {
   /** What feeds it — `main` for a stage, `release` for a production; `undefined` undeclared. */
   readonly source: string | undefined;
   readonly route: string | undefined;
+  /**
+   * A stage that runs nothing, its first deploy asked for: on its way, or held by the group's
+   * runner (`firstDeploy`). `undefined` while nothing asked for one.
+   */
+  readonly firstDeploy?: Exclude<FirstDeploy, { readonly kind: "awaited" }> | undefined;
 }
 
 export type GroupFlowProduction =
@@ -294,7 +310,7 @@ function flowPullRequestOf(pull: FlowPullRequest): GroupFlowPullRequest {
   return { pull, blocked: pullRequestBlocked(pull), state: changeState(pull) };
 }
 
-/** What a stop runs, by the precedence `stopView` draws the menu with (`runningVersion`). */
+/** What a stop runs and how it went, by the rules `stopView` draws the page with (`runningVersion`, `runningTone`). */
 function stopOf(input: GroupFlowStopInput): GroupFlowStop {
   const { deployment, row } = input;
   const named = row !== undefined && row.version.label !== undefined ? row.version : undefined;
@@ -317,16 +333,92 @@ function stopOf(input: GroupFlowStopInput): GroupFlowStop {
     }
     return {
       ...base,
-      state: runningState(row),
+      state: runningState(runningTone(deployment.value.version, row)),
       version: runningVersion(deployment.value.version, row),
     };
   }
-  if (named !== undefined) return { ...base, state: runningState(row), version: named };
+  if (named !== undefined)
+    return { ...base, state: runningState(runningTone(undefined, row)), version: named };
   return { ...base, state: "checking", version: undefined };
 }
 
-function runningState(row: EnvironmentRow | undefined): GroupFlowStopState {
-  switch (row?.tone) {
+/** A stage known to run nothing, with where its first deploy stands (`firstDeploy`). */
+function withFirstDeploy(
+  stop: GroupFlowStop,
+  input: GroupFlowStopInput,
+  main: GroupFlowMain,
+  flow: GroupFlowInput,
+): GroupFlowStop {
+  if (input.tier !== "stage") return stop;
+  const first = stageFirstDeploy({
+    deployment: input.deployment,
+    declared: input.row !== undefined,
+    mainHasCode: main.hasCode,
+    merged: flow.merged,
+    runner: flow.runner,
+    createdAt: input.createdAt,
+    nowMs: flow.nowMs,
+  });
+  return first === undefined ? stop : { ...stop, firstDeploy: first };
+}
+
+/**
+ * Where a stage's first deploy stands (`firstDeploy`), the one reading every surface says it by —
+ * its cell, the menu, its own page: only for a stage known to run nothing — a first deploy seen to
+ * fail, held by the runner, or on its way — asked for from the
+ * later of its making and `main`'s last code landing. `undefined` while nothing asked for one, or
+ * nothing can be promised.
+ */
+export function stageFirstDeploy(input: {
+  /** What it runs, as the platform pushed it (`ZeropsProjectFlowValue.deployments`). */
+  readonly deployment: Shown<Deployment> | undefined;
+  /** The group's environments declare it. */
+  readonly declared: boolean;
+  /** Whether `main` has code, where it was read; a merged code change proves it either way. */
+  readonly mainHasCode: boolean | undefined;
+  readonly merged: ReadonlyArray<FlowPullRequest>;
+  readonly runner: GroupRunner | undefined;
+  /** When its project was made. */
+  readonly createdAt: string | undefined;
+  /** Without a clock, nothing is promised. */
+  readonly nowMs: number | undefined;
+}): Exclude<FirstDeploy, { readonly kind: "awaited" }> | undefined {
+  const { deployment } = input;
+  if (deployment?.state !== "known" || deployment.value.kind !== "none") return undefined;
+  // A build of it was seen to end with nothing running: a fact, however long ago it was asked.
+  if (deployment.value.afterBuild === true) return { kind: "failed" };
+  if (input.nowMs === undefined) return undefined;
+  const landedCode = input.merged.some((pull) => pull.kind === "code");
+  const first = firstDeploy({
+    declared: input.declared,
+    mainHasCode: input.mainHasCode ?? (landedCode ? true : undefined),
+    runner: input.runner,
+    askedAt: firstDeployAskedAt(input.createdAt, input.merged),
+    nowMs: input.nowMs,
+  });
+  return first.kind === "awaited" ? undefined : first;
+}
+
+/**
+ * When a stage's first deploy was asked for, as far as the flow can say: the later of the stage's
+ * making and `main`'s last code landing — the broker deploys `main` to a stage as it is declared,
+ * and again as code lands. `undefined` where the stage's making is not known.
+ */
+function firstDeployAskedAt(
+  createdAt: string | undefined,
+  merged: ReadonlyArray<FlowPullRequest>,
+): string | undefined {
+  if (createdAt === undefined) return undefined;
+  let latest = createdAt;
+  for (const pull of merged) {
+    if (pull.kind !== "code" || pull.mergedAt === undefined) continue;
+    if (Date.parse(pull.mergedAt) > Date.parse(latest)) latest = pull.mergedAt;
+  }
+  return latest;
+}
+
+function runningState(tone: GroupRowTone): GroupFlowStopState {
+  switch (tone) {
     case "bad":
       return "failed";
     case "pending":
@@ -475,7 +567,7 @@ export function groupFlow(input: GroupFlowInput): GroupFlow {
     notLive: input.release.waiting,
     notLiveAtLeast: input.release.waitingAtLeast,
   };
-  const stops = input.stops.map(stopOf);
+  const stops = input.stops.map((stop) => withFirstDeploy(stopOf(stop), stop, main, input));
   const stages = stops.filter((_, index) => input.stops[index]?.tier === "stage");
   const productionStop = stops.find((_, index) => input.stops[index]?.tier === "production");
   const production = productionOf(productionStop, input, main);

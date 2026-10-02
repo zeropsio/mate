@@ -566,19 +566,98 @@ describe("a young container ACTIVE before its address landed", () => {
   });
 });
 
+// Run 4, 2 Oct 2026: in a window that did not make it, a new Mate's row read asleep for the 15 s
+// between its address landing and its server answering. A reader that watched it wait for its
+// address holds it on its way to answering on the same clock; one that first sees it with its
+// address — a reload — never says so, so it paints nothing it takes back.
+describe("a young container whose address landed, its Mate not answering yet", () => {
+  const CREATED_AT = "2026-10-02T12:00:00.000Z";
+  const CREATED = Date.parse(CREATED_AT);
+  const at = (ms: number) => CREATED + ms;
+  const MINUTE = 60_000;
+
+  it.each<{
+    readonly case: string;
+    /** Since its creation, ms; undefined when no clock judges it. */
+    readonly now: number | undefined;
+    readonly seen?: AddressSeen;
+    readonly arriving?: { readonly since: number; readonly until: number };
+  }>([
+    {
+      case: "its address lands while this reader waits for it: on its way, on the wait's clock",
+      now: 115_300,
+      seen: { addressed: false, since: at(110_000) },
+      arriving: { since: 110_000, until: 110_000 + ADDRESS_GRACE_MS },
+    },
+    {
+      case: "seen with its address since that wait: still on its way",
+      now: 125_000,
+      seen: { addressed: true, since: at(110_000) },
+      arriving: { since: 110_000, until: 110_000 + ADDRESS_GRACE_MS },
+    },
+    {
+      case: "a slow first build turned ACTIVE late: its wait ends with its first minutes",
+      now: 31 * MINUTE + 10_000,
+      seen: { addressed: true, since: at(31 * MINUTE) },
+      arriving: { since: 31 * MINUTE, until: FIRST_BUILD_GIVE_UP_MS + ADDRESS_GRACE_MS },
+    },
+    {
+      case: "seen in its first build, then ACTIVE with its address at once: on its way from now",
+      now: 152_000,
+      seen: { addressed: false, building: true },
+      arriving: { since: 152_000, until: 152_000 + ADDRESS_GRACE_MS },
+    },
+    {
+      case: "past its wait: ready, and nothing says it is on its way",
+      now: 110_000 + ADDRESS_GRACE_MS,
+      seen: { addressed: true, since: at(110_000) },
+    },
+    {
+      case: "first seen with its address, as a reload sees it: nothing on its way",
+      now: 125_000,
+    },
+    {
+      case: "seen with its address and never waiting for it: nothing on its way",
+      now: 125_000,
+      seen: { addressed: true },
+    },
+    {
+      case: "no clock judges it: as the platform leaves it",
+      now: undefined,
+      seen: { addressed: true, since: at(110_000) },
+    },
+  ])("$case", (row) => {
+    const [candidate] = deriveZeropsCandidates(
+      PROJECT,
+      [service({ id: "s1", created: CREATED_AT })],
+      NO_CONNECTIONS,
+      undefined,
+      row.now === undefined ? undefined : { nowMs: at(row.now), addressSeen: () => row.seen },
+    );
+    expect(candidate?.group).toBe("ready");
+    expect(candidate?.containerOrigin).toBeDefined();
+    expect(candidate?.arriving).toEqual(
+      row.arriving === undefined
+        ? undefined
+        : { since: at(row.arriving.since), until: at(row.arriving.until) },
+    );
+  });
+});
+
 // What a reader keeps of each container's address once a derivation read it: a container seen with
 // its address never waits for it again, and a wait's first moment is kept — after its end too.
 describe("addressSeenAfter", () => {
   const CREATED_AT = "2026-10-02T12:00:00.000Z";
   const CREATED = Date.parse(CREATED_AT);
-  const derive = (subdomainAccess: boolean, nowMs: number, held?: AddressSeen) =>
+  const derive = (subdomainAccess: boolean, nowMs: number, held?: AddressSeen, status = "ACTIVE") =>
     deriveZeropsCandidates(
       PROJECT,
-      [service({ id: "s1", created: CREATED_AT, subdomainAccess })],
+      [service({ id: "s1", created: CREATED_AT, subdomainAccess, status })],
       NO_CONNECTIONS,
       undefined,
       { nowMs, addressSeen: () => held },
     )[0]!;
+  const BUILDING = { addressed: false, building: true } as const;
   const WITHOUT = { addressed: false, since: CREATED + 110_000 } as const;
 
   it.each<{
@@ -586,8 +665,47 @@ describe("addressSeenAfter", () => {
     readonly held: AddressSeen | undefined;
     readonly subdomainAccess: boolean;
     readonly now: number;
+    readonly status?: string;
     readonly kept: AddressSeen | undefined;
   }>([
+    {
+      case: "first seen in its first build: its arrival is this reader's to see",
+      held: undefined,
+      subdomainAccess: false,
+      now: 60_000,
+      status: "READY_TO_DEPLOY",
+      kept: BUILDING,
+    },
+    {
+      case: "seen in its first build again: kept",
+      held: BUILDING,
+      subdomainAccess: false,
+      now: 90_000,
+      status: "READY_TO_DEPLOY",
+      kept: BUILDING,
+    },
+    {
+      case: "a restart is never a first build: nothing to keep",
+      held: undefined,
+      subdomainAccess: true,
+      now: 60_000,
+      status: "RESTARTING",
+      kept: undefined,
+    },
+    {
+      case: "seen building, then ACTIVE without its address: its wait begins now",
+      held: BUILDING,
+      subdomainAccess: false,
+      now: 152_000,
+      kept: { addressed: false, since: CREATED + 152_000 },
+    },
+    {
+      case: "seen building, then ACTIVE with its address at once: seen with it, from now",
+      held: BUILDING,
+      subdomainAccess: true,
+      now: 152_000,
+      kept: { addressed: true, since: CREATED + 152_000 },
+    },
     {
       case: "first seen without its address: its wait begins now",
       held: undefined,
@@ -610,8 +728,15 @@ describe("addressSeenAfter", () => {
       kept: WITHOUT,
     },
     {
-      case: "its address landed: seen with it",
+      case: "its address landed: seen with it, on the clock its wait began",
       held: WITHOUT,
+      subdomainAccess: true,
+      now: 115_300,
+      kept: { addressed: true, since: WITHOUT.since },
+    },
+    {
+      case: "first seen with its address: seen with it, and no wait to date it by",
+      held: undefined,
       subdomainAccess: true,
       now: 115_300,
       kept: { addressed: true },
@@ -630,7 +755,9 @@ describe("addressSeenAfter", () => {
       now: 3 * 60 * 60_000,
       kept: undefined,
     },
-  ])("$case", ({ held, subdomainAccess, now, kept }) => {
-    expect(addressSeenAfter(derive(subdomainAccess, CREATED + now, held), held)).toEqual(kept);
+  ])("$case", ({ held, subdomainAccess, now, status, kept }) => {
+    expect(addressSeenAfter(derive(subdomainAccess, CREATED + now, held, status), held)).toEqual(
+      kept,
+    );
   });
 });

@@ -7332,3 +7332,47 @@ KRLS rigs and KRLS `Headquarters` `XpjD3GggSOmPrk2Xm7N8Kg`, unless named. Each r
   server replaced and only the unit restarted, each enrolled with the new HQ, showed online in its
   application, and seeded `signed-in.json` with one key from its one `mate:signer:` tag. Its git
   remote stayed on the old Gitea until a delivery or git-push.
+
+## Run 4 as measured — 2026-10-02
+
+- **New project to production, timed** — mate 0.11.86, two windows on mate.zerops.io as the test
+  account. Larder's Mate opened its pull request about 6 min after its first task, and the merge took 2 s.
+  The stage answered 200 427 s after Set up stage, held behind its group's runner (below). Production
+  answered 97 s after Release; its build ran 71.5 s. Of the 70 platform processes in the run's
+  projects, 1 FAILED. The other group's existing Mate, watched read-only, ran no process.
+- **A runner's build downloads once, and the broker never rebuilds a failed runner** — the group's
+  first workflow job (the merge's, +1017.6 s) imported `runnerlarder` into the Gitea project. Its
+  build failed after 54.1 s: its one download of gitea-runner (`curl -fsSL`, no retry) hit a dropped
+  TLS handshake (curl exit 35), and the service stayed READY_TO_DEPLOY. The broker imports a runner only when no `runner{slug}` service
+  exists; otherwise it only starts it. So the group's deploy job waited until the runner was deleted
+  and imported again by hand at +1263 s. That build took 121.5 s, and the stage's first build
+  started at +1405.7 s.
+- **A stage's address comes on only after its first build** — `Larder - stage`:
+  - project.create +1054.3 → +1082.4 s;
+  - the import's own `stack.deploy app`, without code, +1054.4 → +1113.3 s;
+  - nothing until the first real build, +1405.7 → +1478.7 s;
+  - `stack.enableSubdomainAccess app` +1480.2 → +1480.6 s;
+  - 200 at +1481.8 s.
+
+  The broker's `mate/deploy/larder-stage/app` status on `main` read `pending` from +1092.8 s and
+  `success` by +1482.9 s. 0.11.86's menu said "turning its address on" from +1115 s to about +1393 s.
+
+- **The platform runs a version before the forge says so** — the stage ran 102c2af from +1478.7 s
+  while the forge reader's last read of its status was `pending`. The main cell showed "Deployed",
+  then "Deploying…" for 27 s, until the next read.
+- **A merge reached the other window 48 s late** — the merging window cleared the Mate's "needs
+  you" face 0.8 s after the merge (+1013.7 s), and the other window at +1062.9 s. Gitea listed the
+  pull request as merged by +1032 s (by the rig's 30 s poll). The forge reader refreshes every 60 s.
+- **The release dialog re-derived its facts from the release it had just made** — after v0.1.0,
+  Larder's first release, landed, the dialog read "replaces v0.1.0 · 0 changes" and "app stays on
+  102c2af", and offered "Roll back to v0.1.0".
+- **A new Mate looked asleep in the other window** — Drew's zcp build finished at +265.0 s, and his
+  Mate answered at about +280 s. In between, the container was ACTIVE with its address but the Mate
+  was not answering. For 12–18 s of that, the window that had not made him showed the asleep face;
+  the window that made him held "Coming up".
+- **One wait, two wordings** — a New project's Mate read "Nobody has signed in yet" and an added
+  Mate "Waiting for your sign-in", both waiting for the person who made them. Add a Mate tags the
+  project `mate:standup:<userId>`; New project writes no such tag.
+- **An idle window made 16 requests a minute** (per window, after the flows; run 3 measured 20 and 21).
+- **The build queue** — a new Mate's zcp build queued 27–46 s and ran 109–122 s. The service's
+  address and user-data writes queued behind it for 128–156 s.

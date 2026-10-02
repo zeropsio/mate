@@ -1106,6 +1106,31 @@ describe("stageMenu — each stage, as production's menu says production", () =>
   const menu = (over: Partial<Parameters<typeof stageMenu>[0]>) =>
     stageMenu({ stages: [entry("stage")], creating: [], nowMs: NOW, ...over });
 
+  it.each([
+    { case: "nothing asked for", firstDeploy: undefined, word: "Not deployed yet" },
+    {
+      case: "held by the runner",
+      firstDeploy: { kind: "runner", why: "waking" } as const,
+      word: "Waiting for the runner · it’s waking up",
+    },
+    {
+      case: "on its way",
+      firstDeploy: { kind: "on-its-way" } as const,
+      word: "First deploy on its way",
+    },
+    { case: "failed", firstDeploy: { kind: "failed" } as const, word: "First deploy failed" },
+  ])("says an empty stage's first deploy as its cell does: $case", ({ firstDeploy, word }) => {
+    const empty = {
+      ...stage({ projectId: "shop-stage", state: "empty" }),
+      version: undefined,
+      firstDeploy,
+    };
+    for (const chip of [undefined, { label: "stage", state: "empty" } as const]) {
+      const [row] = menu({ stages: [entry("stage", { stop: empty, chip })] }).stops;
+      expect(row?.word).toBe(word);
+    }
+  });
+
   it("says one stage's state in words, its version, when it was deployed, and its links", () => {
     expect(menu({}).stops).toEqual([
       {

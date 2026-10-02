@@ -1,119 +1,14 @@
 import { describe, expect, it } from "vite-plus/test";
 
+import type { StopComing } from "@t3tools/client-runtime/zerops";
+
 import {
-  COMING_UP_WINDOW_MS,
   headingLanding,
   headingLine,
   headingMark,
-  stopComing,
   type HeadingLineInput,
-  type StopComing,
 } from "./SidebarHeadingLine.logic";
 import type { ProductionChip } from "./SidebarProductionChip.logic";
-
-const NOW = Date.parse("2026-09-30T18:00:00.000Z");
-const ago = (ms: number) => new Date(NOW - ms).toISOString();
-
-describe("stopComing — where a stage or a production coming up has got", () => {
-  const app = (status: string) => ({ hostname: "app", status, runtime: true });
-  const db = (status: string) => ({ hostname: "db", status, runtime: false });
-  const base = {
-    tier: "stage" as const,
-    pending: false,
-    projectStatus: "ACTIVE",
-    createdAt: ago(60_000),
-    nowMs: NOW,
-    services: [db("ACTIVE"), app("ACTIVE")],
-    building: false,
-    deployed: true,
-    routes: 1,
-  };
-  it.each([
-    {
-      case: "accepted, not listed yet",
-      over: { pending: true },
-      coming: { kind: "coming", step: "project" },
-    },
-    {
-      case: "its project being made",
-      over: { projectStatus: "CREATING" },
-      coming: { kind: "coming", step: "project" },
-    },
-    {
-      case: "its services unread",
-      over: { services: undefined },
-      coming: { kind: "coming", step: "project" },
-    },
-    {
-      case: "the database not running yet",
-      over: { services: [db("CREATING"), app("READY_TO_DEPLOY")], deployed: false },
-      coming: { kind: "coming", step: "database" },
-    },
-    {
-      case: "a build running",
-      over: { services: [db("ACTIVE"), app("READY_TO_DEPLOY")], building: true, deployed: false },
-      coming: { kind: "coming", step: "build" },
-    },
-    {
-      case: "a stage's runtime not running yet: its first build is on its way",
-      over: { services: [db("ACTIVE"), app("READY_TO_DEPLOY")], deployed: false },
-      coming: { kind: "coming", step: "build" },
-    },
-    {
-      case: "running, no address yet",
-      over: { routes: 0 },
-      coming: { kind: "coming", step: "address" },
-    },
-    { case: "running at its address: up", over: {}, coming: undefined },
-    {
-      case: "its first build failed",
-      over: { services: [db("ACTIVE"), app("ACTION_FAILED")], deployed: false },
-      coming: { kind: "failed", reason: "the app’s build failed" },
-    },
-    {
-      case: "the database did not start",
-      over: { services: [db("ACTION_FAILED"), app("READY_TO_DEPLOY")], deployed: false },
-      coming: { kind: "failed", reason: "the db didn’t start" },
-    },
-    {
-      case: "a later deploy failed: the pill's, not coming up",
-      over: { services: [db("ACTIVE"), app("ACTION_FAILED")] },
-      coming: undefined,
-    },
-    {
-      case: "made long ago: the pill says what it lacks",
-      over: { createdAt: ago(COMING_UP_WINDOW_MS), routes: 0 },
-      coming: undefined,
-    },
-    {
-      case: "when it was made unknown",
-      over: { createdAt: undefined, routes: 0 },
-      coming: undefined,
-    },
-    { case: "stopped", over: { projectStatus: "STOPPED" }, coming: undefined },
-    {
-      case: "production waiting for its first release",
-      over: {
-        tier: "production" as const,
-        services: [db("ACTIVE"), app("READY_TO_DEPLOY")],
-        deployed: false,
-      },
-      coming: undefined,
-    },
-    {
-      case: "production's first release building",
-      over: {
-        tier: "production" as const,
-        services: [db("ACTIVE"), app("READY_TO_DEPLOY")],
-        building: true,
-        deployed: false,
-      },
-      coming: { kind: "coming", step: "build" },
-    },
-  ])("$case", ({ over, coming }) => {
-    expect(stopComing({ ...base, ...over })).toEqual(coming);
-  });
-});
 
 const chip = (
   state: ProductionChip["state"],
@@ -148,10 +43,15 @@ const prod = (
     ...production,
   },
 });
-const stage = (coming: StopComing | undefined, projectId = "stage") => ({
+const stage = (
+  coming: StopComing | undefined,
+  projectId = "stage",
+  serves = coming === undefined,
+) => ({
   projectId,
   name: projectId,
   coming,
+  serves,
 });
 
 /** The line as its words, its tone, its spinner and its door. */
@@ -242,6 +142,14 @@ describe("headingLine — the heading's second line, the board's D′ ladder", (
       line: ["Stage coming up · building the app", "ink", "", ""],
     },
     {
+      case: "14 a stage whose first deploy waits for the group's runner says why",
+      over: {
+        production: undefined,
+        stages: [stage({ kind: "coming", step: "runner", why: "not-started" })],
+      },
+      line: ["Stage awaits the runner · it hasn’t started", "ink", "", ""],
+    },
+    {
       case: "15 a stage that didn't come up",
       over: {
         production: undefined,
@@ -311,6 +219,8 @@ describe("headingLanding — what this tab watched land", () => {
   const stageComing = input({ stages: [stage({ kind: "coming", step: "address" })] });
   const stageUp = input({ stages: [stage(undefined)] });
   const stageFailed = input({ stages: [stage({ kind: "failed", reason: "x" })] });
+  const stageWaiting = input({ stages: [stage({ kind: "coming", step: "deploy-on-its-way" })] });
+  const windowOver = input({ stages: [stage(undefined, "stage", false)] });
   it.each([
     {
       case: "a release on its way, now served",
@@ -335,6 +245,12 @@ describe("headingLanding — what this tab watched land", () => {
       before: stageComing,
       after: stageUp,
       landing: { kind: "up", name: "Stage" },
+    },
+    {
+      case: "a stage whose window ended, serving nothing: never up",
+      before: stageWaiting,
+      after: windowOver,
+      landing: undefined,
     },
     {
       case: "a stage coming up that failed: no landing",
