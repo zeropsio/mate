@@ -14,7 +14,7 @@
  *   seconds, at its close-off, long before its container answers;
  * - or, where this browser made no press — another device, a reload — the listing reads its
  *   project or its container on the way up (`provisioning`, never a restart), or its address
- *   landed while this window watched it wait for it and its Mate does not answer yet
+ *   landed while this window watched it come up and its Mate does not answer yet
  *   (`arriving`, `arrivalAwaitsAnswer`).
  *
  * It did not come when the platform refused its creation (`creationFailed`, the page's verdict),
@@ -241,10 +241,12 @@ export function mateComing(input: MateComingInput): MateComing | undefined {
   ) {
     return { kind: "coming", line: comingMateLine({}) };
   }
-  // Its address landed where this window watched it wait for it, and its Mate does not answer yet:
-  // still on its way, in every window, until its listing's clock ends — past it a Mate that never
-  // answered reads as any other.
+  // Its address landed where this window watched it come up, and its Mate does not answer yet:
+  // still on its way, in every other window, until its listing's clock ends — past it a Mate that
+  // never answered reads as any other. The window that made it reads its creation above: past an
+  // arrival's held failures its link's words speak there, with *Try now*.
   if (
+    input.created !== true &&
     candidate?.group === "ready" &&
     candidate.arriving !== undefined &&
     (input.nowMs === undefined || input.nowMs < candidate.arriving.until) &&
@@ -462,15 +464,32 @@ export function arrivalHoldsThrough(
   }
 }
 
+/** The failures that say a Mate's server has not answered at all: it is still starting. */
+const NOT_ANSWERING_CAUSES: ReadonlySet<string> = new Set([
+  "network",
+  "timeout",
+  "descriptor-unreachable",
+]);
+
 /**
  * Whether a Mate's link still waits for its first answer, on what an arrival holds through: it has
- * not connected on this page, and nothing it waits for is a verdict — a Mate gone or refused, a
- * restart asked for, its container down. Its failures do not count: a server still starting fails
- * its probes until it answers, and its listing's clock (`ZeropsCandidate.arriving`) bounds the wait
- * instead.
+ * not answered on this page, and nothing it waits for is a verdict — a Mate gone or refused, a
+ * restart asked for, its container down. A server still starting fails its probes until it
+ * answers, so failures that say nothing answered do not count — its listing's clock
+ * (`ZeropsCandidate.arriving`) bounds the wait instead; a server that answered with an error is
+ * held through an arrival's first failures only, as the window that made it holds it.
  */
-export const arrivalAwaitsAnswer = (link: Pick<MateLink, "reachability" | "answered">): boolean =>
-  !link.answered && arrivalHoldsThrough(link.reachability, { failuresSinceConnect: 0 });
+export const arrivalAwaitsAnswer = (
+  link: Pick<MateLink, "reachability" | "answered" | "failuresSinceConnect">,
+): boolean => {
+  if (link.answered) return false;
+  const { reachability } = link;
+  const silent =
+    reachability?.kind !== "retrying" || NOT_ANSWERING_CAUSES.has(reachability.last.kind);
+  return arrivalHoldsThrough(reachability, {
+    failuresSinceConnect: silent ? 0 : link.failuresSinceConnect,
+  });
+};
 
 /** Whether a Mate's link, as its machine reads it (`MateLink`), waits on what an arrival holds through. */
 export const arrivalLinkHolds = (link: {
