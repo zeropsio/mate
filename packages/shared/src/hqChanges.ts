@@ -40,6 +40,7 @@
  *
  * @module hqChanges
  */
+import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 
 /** An id the git layer takes for an application or a repository (`@t3tools/hq-git`, mirrored). */
@@ -202,12 +203,14 @@ export type MateChange = typeof MateChange.Type;
 /**
  * What a Mate's own state carries of its changes, beside its record (`@t3tools/shared/mateLink`
  * `MateState`, which `GET /api/mate/self` answers and its link brings down). The application HQ holds the Mate
- * in, none for a Mate in no application; and in each of that application's repositories, the
+ * in, by id and by its name now, none for a Mate in no application; and in each of that application's repositories, the
  * Mate's latest {@link MATE_CHANGES_PER_REPO} changes, newest first — its open one, if any, is the
  * newest, since a number is opened only while none is.
  */
 export const MateChanges = Schema.Struct({
   appId: Schema.NullOr(Schema.String),
+  /** Added after `appId`: an older HQ's state, without it, names none. */
+  appName: Schema.NullOr(Schema.String).pipe(Schema.withDecodingDefaultKey(Effect.succeed(null))),
   changes: Schema.Array(MateChange),
 });
 export type MateChanges = typeof MateChanges.Type;

@@ -389,6 +389,14 @@ export const structureLayer = (options: {
             );
             if (rows[0] === undefined) return yield* refuse("app_not_found", "app_not_found");
             yield* changed;
+            // Its Mates' states name it.
+            const mates = yield* sql<{ readonly project_id: string }>`
+              SELECT project_id FROM hq_app_project
+              WHERE app_id::text = ${appId} AND kind IN ('mate', 'devstage')`;
+            yield* PubSub.publishAll(
+              mateChanged,
+              mates.map((row) => row.project_id),
+            );
             return rows[0];
           }),
 

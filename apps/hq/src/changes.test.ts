@@ -471,6 +471,7 @@ describe("a Mate's changes in HQ", () => {
           assert.deepStrictEqual(yield* self, {
             ...record,
             appId,
+            appName: "Shop",
             changes: [change(1, "open")],
           });
 
@@ -520,7 +521,12 @@ describe("a Mate's changes in HQ", () => {
             session: owner,
             body: { appId: null, kind: "mate" },
           });
-          assert.deepStrictEqual(yield* self, { ...record, appId: null, changes: [] });
+          assert.deepStrictEqual(yield* self, {
+            ...record,
+            appId: null,
+            appName: null,
+            changes: [],
+          });
         }),
     );
 

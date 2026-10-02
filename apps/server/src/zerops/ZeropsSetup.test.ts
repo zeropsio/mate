@@ -91,6 +91,7 @@ const linked = (standupRequestedBy: string | null): HqStanding => ({
     standupRequestedBy,
     closedOff: true,
     appId: null,
+    appName: null,
     changes: [],
   },
 });
