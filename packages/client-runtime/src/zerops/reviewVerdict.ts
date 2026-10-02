@@ -671,27 +671,37 @@ export interface ReleaseReviewInput {
   /** The production services that redeploy. */
   readonly services: ReadonlyArray<string>;
   /**
-   * The release production ran as this one was offered: what it replaces, and where a roll back
-   * goes; `undefined` for the first release. Held from the press (`holdReleaseFacts`): read after
-   * the release lands, production runs the release itself.
+   * What production ran as this one was offered — what it replaces, and where a roll back goes.
+   * Held from the press (`holdReleaseFacts`): read after the release lands, production runs the
+   * release itself.
    */
-  readonly replaces: string | undefined;
+  readonly replaces: ReleaseReplaces;
   readonly outcome: ReleaseOutcome;
   readonly now: number;
 }
 
+/**
+ * What a release replaces: nothing, for the first one; the release production runs in full; or a
+ * production no one release names — one whose deploy moved some services and failed in another.
+ */
+export type ReleaseReplaces =
+  | { readonly kind: "first" }
+  | { readonly kind: "release"; readonly tag: string }
+  | { readonly kind: "unnamed" };
+
 /** A release's review: its verdict and foot, the header's facts, and where to go if it goes wrong. */
 export interface ReleaseReviewModel extends ReviewModel {
-  /** Beside the title: `the first release` or `replaces v0.1.0`, and how many changes. */
+  /** Beside the title: `the first release`, `replaces v0.1.0`, and how many changes. */
   readonly meta: ReadonlyArray<string>;
-  /** Where a roll back goes; `undefined` for a first release, which replaced nothing. */
+  /** Where a roll back goes; `undefined` for the first release, which replaced nothing. */
   readonly ifWrong: string | undefined;
 }
 
 const RELEASE_FOLLOWS = "You can close this. The project's line in the menu follows the release.";
 
 function stageWhy(input: ReleaseReviewInput): string {
-  const since = input.replaces === undefined ? "since the last release" : `since ${input.replaces}`;
+  const since =
+    input.replaces.kind === "release" ? `since ${input.replaces.tag}` : "since the last release";
   const onStage = input.onStage;
   if (onStage === undefined || onStage.total === 0) {
     return `${count(input.changes, "change", "changes")} merged ${since}`;
@@ -709,28 +719,39 @@ function stageWhy(input: ReleaseReviewInput): string {
 }
 
 export function releaseReview(input: ReleaseReviewInput): ReleaseReviewModel {
-  const { tag } = input;
-  // Never a roll back to the tag itself: that is a release read after it landed.
-  const before = input.replaces === tag ? undefined : input.replaces;
+  const { tag, replaces } = input;
+  // The release a roll back goes to — never the tag itself, which is a release read after it
+  // landed; none for the first release, and production's menu for one no release names.
+  const back =
+    replaces.kind === "first"
+      ? undefined
+      : replaces.kind === "release" && replaces.tag !== tag
+        ? `roll back to ${replaces.tag} from production's menu`
+        : "roll back from production's menu";
   const facts = {
     meta: [
-      input.replaces === undefined ? "the first release" : `replaces ${input.replaces}`,
+      replaces.kind === "first"
+        ? "the first release"
+        : replaces.kind === "release"
+          ? `replaces ${replaces.tag}`
+          : "replaces what production runs",
       count(input.changes, "change", "changes"),
     ],
     ifWrong:
-      before === undefined
+      back === undefined
         ? undefined
-        : `Roll back to ${before} from production's menu. It gets its own review.`,
+        : `${back.charAt(0).toUpperCase()}${back.slice(1)}. It gets its own review.`,
   };
-  return { ...releaseVerdictOf(input, before), ...facts };
+  return { ...releaseVerdictOf(input, back), ...facts };
 }
 
-function releaseVerdictOf(input: ReleaseReviewInput, before: string | undefined): ReviewModel {
+function releaseVerdictOf(input: ReleaseReviewInput, back: string | undefined): ReviewModel {
   const { tag, outcome } = input;
+  const ran = input.replaces.kind === "release" ? input.replaces.tag : undefined;
   const keeps =
-    input.replaces === undefined
+    ran === undefined
       ? "Production keeps running what it runs."
-      : `Production keeps running ${input.replaces}.`;
+      : `Production keeps running ${ran}.`;
   switch (outcome.kind) {
     case "releasing":
       return {
@@ -756,9 +777,9 @@ function releaseVerdictOf(input: ReleaseReviewInput, before: string | undefined)
           fix: undefined,
         },
         consequence:
-          before === undefined
+          back === undefined
             ? `Production runs ${tag}.`
-            : `Production runs ${tag}. If it misbehaves, roll back to ${before} from production's menu.`,
+            : `Production runs ${tag}. If it misbehaves, ${back}.`,
         primary: undefined,
       };
     }
@@ -781,9 +802,9 @@ function releaseVerdictOf(input: ReleaseReviewInput, before: string | undefined)
           },
         },
         consequence:
-          input.replaces === undefined
+          ran === undefined
             ? "Production still runs what it ran before."
-            : `Production still runs ${input.replaces}.`,
+            : `Production still runs ${ran}.`,
         primary: undefined,
       };
     }

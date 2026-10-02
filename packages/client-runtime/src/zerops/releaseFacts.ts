@@ -14,20 +14,25 @@
  * @module releaseFacts
  */
 
-import type { ReleaseComparison } from "./release.ts";
-import type { ReleaseOutcome, ReviewPress } from "./reviewVerdict.ts";
+import type { FlowReleaseRow, ReleaseComparison } from "./release.ts";
+import type { ReleaseOutcome, ReleaseReplaces, ReviewPress } from "./reviewVerdict.ts";
+import {
+  stageMarks,
+  type ServiceChanges,
+  type StageMark,
+  type StageStandings,
+} from "./stageMarks.ts";
 
-/** A release's own facts, as the review shows them. `Row` is the surface's change row. */
-export interface ReleaseFacts<Row> {
+/** A release's own facts, as the review shows them. */
+export interface ReleaseFacts {
   /** The version it tags. */
   readonly tag: string;
-  /**
-   * The release production ran as it was offered: what this one replaces, and where a roll back
-   * goes. `undefined` for the first release.
-   */
-  readonly replaces: string | undefined;
-  /** What goes out, one row per change. */
-  readonly rows: ReadonlyArray<Row>;
+  /** What production ran as it was offered: what this one replaces, and where a roll back goes. */
+  readonly replaces: ReleaseReplaces;
+  /** What goes out, service by service (`releaseContents`). */
+  readonly contents: ReadonlyArray<ServiceChanges>;
+  /** Where each service's `main` was, which orients its commits (`stageMarks`). */
+  readonly mainHeads: ReadonlyMap<string, string> | undefined;
   /** Where: per service, what it redeploys from, or what it stays on. */
   readonly where: ReadonlyArray<{ readonly service: string; readonly line: string }>;
   /** The production services that redeploy — every one, when the comparison moves none. */
@@ -35,21 +40,30 @@ export interface ReleaseFacts<Row> {
 }
 
 /** The facts as the project reads them now. */
-export function releaseFacts<Row>(input: {
+export function releaseFacts(input: {
   readonly tag: string;
-  /** The release production runs now. */
+  /** The release production runs in full now (`releaseRunBy`), if any does. */
   readonly live: string | undefined;
-  readonly rows: ReadonlyArray<Row>;
+  /** Every release of the group: the first release is one with none before it. */
+  readonly releases: ReadonlyArray<Pick<FlowReleaseRow, "tag" | "verdict">>;
+  readonly contents: ReadonlyArray<ServiceChanges>;
+  readonly mainHeads: ReadonlyMap<string, string> | undefined;
   /** Per service, `main` against production (`compareForRelease`). */
   readonly comparison: ReadonlyArray<ReleaseComparison>;
   /** Production's services, for a release that moves none of them. */
   readonly productionServices: ReadonlyArray<string>;
-}): ReleaseFacts<Row> {
+}): ReleaseFacts {
   const moving = input.comparison.filter((row) => row.changed).map((row) => row.service);
   return {
     tag: input.tag,
-    replaces: input.live,
-    rows: input.rows,
+    replaces:
+      input.live !== undefined && input.live !== input.tag
+        ? { kind: "release", tag: input.live }
+        : input.releases.some((entry) => entry.verdict !== "refused" && entry.tag !== input.tag)
+          ? { kind: "unnamed" }
+          : { kind: "first" },
+    contents: input.contents,
+    mainHeads: input.mainHeads,
     where: input.comparison.map((row) => ({
       service: row.service,
       line: row.changed
@@ -80,4 +94,116 @@ export function holdReleaseFacts<F extends { readonly tag: string }>(input: {
   if (!pressed && outcome.kind === "offered") return undefined;
   if (held !== undefined && held.tag === current.tag) return held;
   return outcome.kind === "released" || outcome.kind === "failed" ? undefined : current;
+}
+
+/**
+ * Which tag the review follows, and whether that tag is on its way.
+ *
+ * The tag this review made, else the one it held — the tag on its way when it was first looked at
+ * — else the one on its way now, else the next version offered. Held, because the tag on its way
+ * is read from production not running it yet: it ends the moment the release lands or fails, and
+ * a review opened on it (another window, a reload, reopened after "You can close this") would
+ * otherwise turn to the next offer and never say how its own release ended. A refused press holds
+ * nothing: the offer is back.
+ */
+export function releaseFollows(input: {
+  /** The tag this review's own press made. */
+  readonly made: string | undefined;
+  readonly held: { readonly tag: string } | undefined;
+  readonly press: ReviewPress;
+  /** The release tag on its way to production (`releaseInFlight`). */
+  readonly inFlight: string | undefined;
+  /** The version offered next. */
+  readonly suggestion: string;
+  readonly releases: ReadonlyArray<FlowReleaseRow>;
+}): {
+  readonly tag: string;
+  readonly tagged: FlowReleaseRow | undefined;
+  readonly releasing: boolean;
+  /** Whether the release's clock runs: on its way, neither live nor failed yet. */
+  readonly ticking: boolean;
+} {
+  const pinned = input.press.kind === "refused" ? undefined : input.held?.tag;
+  const tag = input.made ?? pinned ?? input.inFlight ?? input.suggestion;
+  const tagged = input.releases.find((entry) => entry.tag === tag);
+  const releasing =
+    input.press.kind === "running" ||
+    input.press.kind === "done" ||
+    input.inFlight === tag ||
+    pinned === tag;
+  return { tag, tagged, releasing, ticking: releasing && tagged?.standing === undefined };
+}
+
+/** Where the tag it made stands: on its way, live, or failed — `offered` before it was made. */
+export function releaseOutcomeOf(input: {
+  readonly tagged: FlowReleaseRow | undefined;
+  readonly releasing: boolean;
+  readonly pressing: boolean;
+  readonly tag: string;
+  readonly clockMs: number;
+}): ReleaseOutcome {
+  const { tagged } = input;
+  if (tagged?.standing === "live") return { kind: "released", at: tagged.taggedAt };
+  if (tagged?.standing === "deploy-failed" || tagged?.verdict === "refused") {
+    const service = tagged.failedEntry?.service;
+    return {
+      kind: "failed",
+      detail:
+        tagged.verdict === "refused"
+          ? (tagged.detail ?? "The broker refused the tag")
+          : service === undefined
+            ? "Its production deploy failed"
+            : `The deploy of ${service} failed`,
+      service,
+      at: tagged.taggedAt,
+    };
+  }
+  if (!input.releasing) return { kind: "offered" };
+  if (input.pressing && tagged === undefined) {
+    return { kind: "releasing", progress: `Tagging main as ${input.tag}` };
+  }
+  const since = tagged?.taggedAt === undefined ? Number.NaN : Date.parse(tagged.taggedAt);
+  if (Number.isNaN(since)) {
+    return { kind: "releasing", progress: `Production redeploys from ${input.tag}` };
+  }
+  const elapsed = Math.max(0, Math.floor((input.clockMs - since) / 1000));
+  const clock = `${String(Math.floor(elapsed / 60))}:${String(elapsed % 60).padStart(2, "0")}`;
+  return { kind: "releasing", progress: `Production redeploys from ${input.tag} · ${clock}` };
+}
+
+/**
+ * One look at a release's review: where its tag stands, the facts to hold, and the facts shown.
+ * `read` gives the facts of a tag as the project reads them now.
+ */
+export function releaseStep<F extends { readonly tag: string }>(input: {
+  readonly follows: ReturnType<typeof releaseFollows>;
+  readonly held: F | undefined;
+  readonly press: ReviewPress;
+  readonly clockMs: number;
+  readonly read: (tag: string) => F;
+}): { readonly outcome: ReleaseOutcome; readonly held: F | undefined; readonly facts: F } {
+  const { follows, press } = input;
+  const outcome = releaseOutcomeOf({
+    tagged: follows.tagged,
+    releasing: follows.releasing,
+    pressing: press.kind === "running",
+    tag: follows.tag,
+    clockMs: input.clockMs,
+  });
+  const current = input.read(follows.tag);
+  const held = holdReleaseFacts({ held: input.held, current, press, outcome });
+  return { outcome, held, facts: held ?? current };
+}
+
+/**
+ * Where each change the release carries stands on the stage that follows `main`, keyed by the
+ * lower-case sha: the held changes, against the stage as it stands now. The changes are the
+ * release's; the stage keeps moving after the press — a change released while the stage was still
+ * deploying it is on stage, or failed there, later.
+ */
+export function releaseStageMarks(
+  facts: Pick<ReleaseFacts, "contents" | "mainHeads">,
+  stage: StageStandings | undefined,
+): ReadonlyMap<string, StageMark> {
+  return stageMarks({ contents: facts.contents, mainHeads: facts.mainHeads, stage });
 }
