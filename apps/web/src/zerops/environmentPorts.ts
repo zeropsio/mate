@@ -33,7 +33,6 @@ import {
   exchangeAtDoor,
   installDoorRegistration,
   prepareDoorRegistration,
-  readDoorDescriptor,
   type KeptDoorSession,
 } from "@t3tools/client-runtime/zerops/identityExchange";
 import {
@@ -56,16 +55,12 @@ import { environmentIdFromAddress } from "~/routes/-environmentRoute";
 
 import { accountLocalStorage, accountStorageKey, captureAccountLifetime } from "./accountLifetime";
 import { endKeptSession, keptSessionHeld, keptSessions } from "./keptSessions";
+import { mateDescriptors } from "./mateDescriptors";
 import { pressingProjects } from "./matePress";
 
 // ── The door, through the connection runtime ─────────────────────────────────────────────────
 
 const doorScheduler = createAtomCommandScheduler();
-
-const readDescriptorCommand = createRuntimeCommand(connectionAtomRuntime, {
-  label: "web:zerops:read-door-descriptor",
-  execute: readDoorDescriptor,
-});
 
 /**
  * The Zerops door. Single-flight on the container's base URL so two exchanges can never mint
@@ -320,11 +315,6 @@ export function webEnvironmentPorts(input: {
   readonly registry: AtomRegistry.AtomRegistry;
 }): AccountEnvironmentPorts {
   const { client, registry } = input;
-  const descriptorAt = async (httpBaseUrl: string) => {
-    const result = await runAtomCommand(registry, readDescriptorCommand, { httpBaseUrl }, quiet);
-    if (result._tag === "Failure") throw squashAtomCommandFailure(result);
-    return result.value;
-  };
   return {
     clock: systemExchangeClock,
     door: {
@@ -344,7 +334,8 @@ export function webEnvironmentPorts(input: {
                   nonce: randomUUID(),
                 }
               : null,
-            readDescriptor: descriptorAt,
+            readDescriptor: (httpBaseUrl) =>
+              mateDescriptors.descriptor(httpBaseUrl, request.signal),
             prepare: (prepared) => runAtomCommand(registry, prepareCommand, prepared, quiet),
             environmentOf: (registration) => registration.target.environmentId,
             kept: keptDoorSession(registry, request.key),
@@ -364,8 +355,10 @@ export function webEnvironmentPorts(input: {
           : answer;
       },
       kept: (key) => keptSessions.read(key) !== null,
-      readDescriptor: async (origin) =>
-        descriptorFacts(await descriptorAt(zeropsMateBaseUrl(origin, servedApp()))),
+      readDescriptor: async (origin, signal) =>
+        descriptorFacts(
+          await mateDescriptors.descriptor(zeropsMateBaseUrl(origin, servedApp()), signal),
+        ),
       retryLink: (environmentId) => {
         void runAtomCommand(registry, retryLinkCommand, environmentId, quiet);
       },
@@ -373,8 +366,13 @@ export function webEnvironmentPorts(input: {
         void runAtomCommand(registry, environmentCatalog.remove, environmentId, quiet);
       },
     },
-    probe: (origin, signal) =>
-      readZeropsContainer(origin, globalThis.fetch.bind(globalThis), signal),
+    probe: (origin, signal, ask) =>
+      readZeropsContainer(
+        origin,
+        { descriptor: mateDescriptors.read, fetch: (url, init) => globalThis.fetch(url, init) },
+        signal,
+        ask,
+      ),
     intents: intentStorage,
     records: recordsStorage,
     catalog: catalogPort(registry),

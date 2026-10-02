@@ -31,7 +31,12 @@ import {
 } from "./containerMachine.ts";
 import type { ContainerVerdict } from "./environmentMachine.ts";
 import type { ExchangeClock, ExchangeDriver, TargetKey } from "./exchangeDriver.ts";
-import { makeProbeStore, type ProbeCadence, type ProbeReading } from "./probeStore.ts";
+import {
+  makeProbeStore,
+  type ProbeCadence,
+  type ProbeReading,
+  type ProbeStorePorts,
+} from "./probeStore.ts";
 
 /** One target as the platform describes it now. */
 export interface ContainerTarget {
@@ -58,8 +63,8 @@ interface IntentRecord {
 
 export interface ContainerStorePorts {
   readonly clock: Pick<ExchangeClock, "now" | "setTimer">;
-  /** Reads the origin's descriptor and `/healthz`; rejects when the signal aborts it. */
-  readonly probe: (origin: string, signal: AbortSignal) => Promise<ProbeReading>;
+  /** Reads the origin's container (`readZeropsContainer`); rejects when the signal aborts it. */
+  readonly probe: ProbeStorePorts["probe"];
   /** `ZCP_MATE_ENABLED` for the target's service; `"unknown"` when it could not be read. */
   readonly readMateFlag: (key: TargetKey) => Promise<MateFlag>;
   readonly intents: IntentStorage;

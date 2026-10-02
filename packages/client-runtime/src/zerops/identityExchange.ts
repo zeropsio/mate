@@ -4,7 +4,6 @@ import type { BearerConnectionRegistration } from "../connection/catalog.ts";
 import { ConnectionBlockedError, ConnectionTransientError } from "../connection/model.ts";
 import { prepareZeropsIdentityRegistration } from "../connection/onboarding.ts";
 import * as EnvironmentRegistry from "../connection/registry.ts";
-import { fetchRemoteEnvironmentDescriptor } from "../environment/descriptor.ts";
 /**
  * The container's `/mate` door, shared by every client.
  *
@@ -433,10 +432,6 @@ export async function exchangeAtDoor<C, E>(
 }
 
 // ── The door's steps as the connection runtime runs them ─────────────────────────────────────
-
-/** `/.well-known/t3/environment` at a Mate's base URL. */
-export const readDoorDescriptor = (input: { readonly httpBaseUrl: string }) =>
-  fetchRemoteEnvironmentDescriptor(input);
 
 /** The door and the token exchange: a registration for the Mate, installed nowhere yet. */
 export const prepareDoorRegistration = prepareZeropsIdentityRegistration;

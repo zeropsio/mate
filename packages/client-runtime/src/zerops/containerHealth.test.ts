@@ -1,6 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
-import { probeZeropsContainerHealth, readZeropsContainer } from "./containerHealth.ts";
+import {
+  probeZeropsContainerHealth,
+  readMatePath,
+  readZeropsContainer,
+} from "./containerHealth.ts";
 
 const ORIGIN = "https://zcp-26a7-8080.prg1.zerops.app";
 const HEALTHZ = `${ORIGIN}/mate/healthz`;
@@ -227,25 +231,42 @@ describe("probeZeropsContainerHealth", () => {
 
 describe("readZeropsContainer", () => {
   const signal = new AbortController().signal;
+  /** The probe's ports over one stubbed fetch, the descriptor read straight through. */
+  const ports = (read: ReturnType<typeof stub>) => ({
+    fetch: read.fetch,
+    descriptor: (base: string, options: { readonly signal: AbortSignal }) =>
+      readMatePath(`${base}/.well-known/t3/environment`, read.fetch, options.signal),
+  });
 
-  it("reads the descriptor and /healthz as one reading: the descriptor's facts and initAt", async () => {
+  const FACTS = {
+    environmentId: LIVE_DESCRIPTOR.environmentId,
+    serverVersion: "0.0.35",
+    update: null,
+    identity: "unknown",
+    identityCheckedAt: null,
+  };
+
+  it.each([
+    {
+      name: "on demand, a Mate that answers costs its descriptor alone",
+      fresh: false,
+      reading: { kind: "ready", descriptor: FACTS, projectId: null, initAt: null },
+      asked: [DESCRIPTOR],
+    },
+    {
+      name: "fresh, it reads /healthz beside it, so a re-init shows a new initAt",
+      fresh: true,
+      reading: { kind: "ready", descriptor: FACTS, projectId: null, initAt: LIVE_HEALTHZ.initAt },
+      asked: [DESCRIPTOR, HEALTHZ],
+    },
+  ])("$name", async ({ fresh, reading, asked }) => {
     const read = stub({
       [DESCRIPTOR]: () => json(LIVE_DESCRIPTOR),
       [HEALTHZ]: () => json(LIVE_HEALTHZ),
     });
-    expect(await readZeropsContainer(ORIGIN, read.fetch, signal)).toEqual({
-      kind: "ready",
-      descriptor: {
-        environmentId: LIVE_DESCRIPTOR.environmentId,
-        serverVersion: "0.0.35",
-        update: null,
-        identity: "unknown",
-        identityCheckedAt: null,
-      },
-      // A descriptor outside Zerops mode states no project.
-      projectId: null,
-      initAt: LIVE_HEALTHZ.initAt,
-    });
+    // A descriptor outside Zerops mode states no project.
+    expect(await readZeropsContainer(ORIGIN, ports(read), signal, { fresh })).toEqual(reading);
+    expect(read.calls.map((call) => call.url)).toEqual(asked);
     expect(read.calls.every((call) => call.init?.signal === signal)).toBe(true);
   });
 
@@ -262,7 +283,7 @@ describe("readZeropsContainer", () => {
         }),
       [HEALTHZ]: corsBlocked,
     });
-    const reading = await readZeropsContainer(ORIGIN, read.fetch, signal);
+    const reading = await readZeropsContainer(ORIGIN, ports(read), signal, { fresh: true });
     expect(reading).toMatchObject({
       kind: "ready",
       descriptor: { identity: "failed", identityCheckedAt: "2026-09-23T10:00:00Z" },
@@ -271,24 +292,23 @@ describe("readZeropsContainer", () => {
     });
   });
 
-  it("reads what the health probe concludes when the descriptor does not answer", async () => {
-    const initializing = stub({
-      [DESCRIPTOR]: () => html(404),
-      [HEALTHZ]: () => json(LIVE_HEALTHZ),
-    });
-    expect(await readZeropsContainer(ORIGIN, initializing.fetch, signal)).toEqual({
-      kind: "initializing",
-      initAt: LIVE_HEALTHZ.initAt,
-    });
-    const predates = stub({ [DESCRIPTOR]: opaqueRedirect, [HEALTHZ]: opaqueRedirect });
-    expect(await readZeropsContainer(ORIGIN, predates.fetch, signal)).toEqual({
-      kind: "predates-mate",
-    });
-    const restarting = stub({ [DESCRIPTOR]: () => html(502), [HEALTHZ]: () => html(502) });
-    expect(await readZeropsContainer(ORIGIN, restarting.fetch, signal)).toEqual({
-      kind: "unreachable",
-    });
-    const away = stub({ [DESCRIPTOR]: corsBlocked, [HEALTHZ]: corsBlocked });
-    expect(await readZeropsContainer(ORIGIN, away.fetch, signal)).toEqual({ kind: "unreachable" });
-  });
+  it.each([false, true])(
+    "reads what the health probe concludes when the descriptor does not answer (fresh: %s)",
+    async (fresh) => {
+      const read = (routes: Record<string, () => Response>) =>
+        readZeropsContainer(ORIGIN, ports(stub(routes)), signal, { fresh });
+      expect(
+        await read({ [DESCRIPTOR]: () => html(404), [HEALTHZ]: () => json(LIVE_HEALTHZ) }),
+      ).toEqual({ kind: "initializing", initAt: LIVE_HEALTHZ.initAt });
+      expect(await read({ [DESCRIPTOR]: opaqueRedirect, [HEALTHZ]: opaqueRedirect })).toEqual({
+        kind: "predates-mate",
+      });
+      expect(await read({ [DESCRIPTOR]: () => html(502), [HEALTHZ]: () => html(502) })).toEqual({
+        kind: "unreachable",
+      });
+      expect(await read({ [DESCRIPTOR]: corsBlocked, [HEALTHZ]: corsBlocked })).toEqual({
+        kind: "unreachable",
+      });
+    },
+  );
 });
