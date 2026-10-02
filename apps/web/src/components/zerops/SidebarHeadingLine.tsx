@@ -6,6 +6,7 @@
  * It opens and folds as a height reveal the Mates ride on (220 ms, a strong ease-out), never a
  * jump cut; its words stay while it folds. What it says is `SidebarHeadingLine.logic.ts`'s.
  */
+import { changesCountWords } from "@t3tools/client-runtime/zerops";
 import { TagIcon } from "lucide-react";
 import { useEffect, useState } from "react";
 
@@ -155,9 +156,7 @@ export function headingLineWords(line: HeadingLine): string {
 function markWords(mark: HeadingMark): string {
   switch (mark.kind) {
     case "waiting":
-      return mark.count === 1
-        ? "1 change not released"
-        : `${String(mark.count)} changes not released`;
+      return `${changesCountWords(mark.count, mark.atLeast)} not released`;
     case "releasing":
       return mark.version === undefined ? "Releasing" : `Releasing ${mark.version}`;
     case "live":
@@ -200,7 +199,7 @@ export function HeadingReleaseMark({
           <TagIcon aria-hidden="true" className="size-3.5" />
         )}
         {mark.kind === "waiting" ? (
-          <span aria-hidden="true">{mark.count}</span>
+          <span aria-hidden="true">{`${String(mark.count)}${mark.atLeast ? "+" : ""}`}</span>
         ) : mark.kind === "releasing" && mark.version !== undefined ? (
           <span aria-hidden="true">{mark.version}</span>
         ) : null}

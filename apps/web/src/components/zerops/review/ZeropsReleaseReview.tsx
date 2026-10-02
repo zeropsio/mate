@@ -18,6 +18,7 @@
 import {
   cannotTellWhatRuns,
   buildZeropsGroupTree,
+  changesCountWords,
   movedCommits,
   movedCount,
   releaseReview,
@@ -52,7 +53,6 @@ import { useZeropsReviewMates, type ZeropsReviewMate } from "~/zerops/useZeropsR
 import { ZeropsChangeReview } from "./ZeropsChangeReview";
 import { useReleaseSteps, ZeropsReleaseSteps } from "./ZeropsReleaseSteps";
 import {
-  changesCountWords,
   releaseChangeRows,
   reviewKindLine,
   rollbackListNote,

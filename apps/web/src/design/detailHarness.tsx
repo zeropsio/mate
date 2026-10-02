@@ -669,6 +669,7 @@ function StopState({ fixture }: { readonly fixture: StopFixture }) {
         releasing: fixture.releasing,
         failed,
         waiting: waiting.length,
+        waitingAtLeast: false,
         untold: [],
         release,
         releasedAge: fixture.releasedAge,
@@ -683,7 +684,7 @@ function StopState({ fixture }: { readonly fixture: StopFixture }) {
       })}
       view={view}
       untold={[]}
-      waiting={waiting}
+      waiting={{ commits: waiting, total: waiting.length, atLeast: false }}
     />
   );
 }

@@ -86,6 +86,7 @@ const BASE: VerdictInput = {
   releasing: undefined,
   failed: undefined,
   waiting: 0,
+  waitingAtLeast: false,
   untold: [],
   release: { offered: false, tag: undefined, reason: undefined },
   releasedAge: undefined,
@@ -241,6 +242,20 @@ describe("stopVerdict", () => {
       expected: {
         tone: "busy",
         text: "3 changes not live.",
+        detail: "Production runs v0.1.13",
+        verb: { kind: "release", tag: "v0.1.14" },
+      },
+    },
+    {
+      name: "production behind by more than HQ counts",
+      input: {
+        waiting: 10000,
+        waitingAtLeast: true,
+        release: { offered: true, tag: "v0.1.14", reason: undefined },
+      },
+      expected: {
+        tone: "busy",
+        text: "10000+ changes not live.",
         detail: "Production runs v0.1.13",
         verb: { kind: "release", tag: "v0.1.14" },
       },
@@ -461,15 +476,18 @@ describe("stopCardTitle", () => {
   it.each<{
     group: Parameters<typeof stopCardTitle>[0];
     count: number | undefined;
+    atLeast?: boolean;
     expected: string;
   }>([
     { group: "waiting", count: 3, expected: "Waiting for release · 3" },
+    // HQ stopped counting, as the verdict above it says.
+    { group: "waiting", count: 10000, atLeast: true, expected: "Waiting for release · 10000+" },
     { group: "services", count: 2, expected: "Services · 2" },
     { group: "releases", count: 12, expected: "Releases · 12" },
     { group: "deploys", count: 0, expected: "Deploys · 0" },
     { group: "deploys", count: undefined, expected: "Deploys" },
-  ])("$group with $count", ({ group, count, expected }) => {
-    expect(stopCardTitle(group, count)).toBe(expected);
+  ])("$group with $count", ({ group, count, atLeast, expected }) => {
+    expect(stopCardTitle(group, count, atLeast)).toBe(expected);
   });
 });
 

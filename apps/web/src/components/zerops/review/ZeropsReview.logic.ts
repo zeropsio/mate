@@ -429,11 +429,6 @@ export function releaseChangeRows(input: {
   return [...rows.values()];
 }
 
-/** How many changes: `1 change`, `12 changes`, `10000+ changes` where HQ stopped counting. */
-export function changesCountWords(count: number, atLeast: boolean): string {
-  return count === 1 && !atLeast ? "1 change" : `${String(count)}${atLeast ? "+" : ""} changes`;
-}
-
 /** A roll back's two lists: what production runs that it takes off, and what it brings back. */
 export type RollbackSide = "leaving" | "coming-back";
 

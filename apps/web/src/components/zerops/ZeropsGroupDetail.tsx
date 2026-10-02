@@ -34,6 +34,7 @@ import {
   releaseContentsSummary,
   carriedReads,
   movedCommits,
+  movedCount,
   releaseTagsByCommit,
   type MovedCommits,
   type ReleaseContentsSummary,
@@ -486,6 +487,7 @@ function useProjectAttention(
     readonly environments: ReadonlyArray<EnvironmentRow>;
     readonly pullRequests: ReadonlyArray<FlowPullRequest>;
     readonly notLive: number;
+    readonly notLiveAtLeast: boolean;
     readonly canRelease: boolean;
   },
 ): {
@@ -496,7 +498,7 @@ function useProjectAttention(
   const mateNames = flowValue?.mateNames;
   const openMate = useOpenMateOf();
   const navigate = useNavigate();
-  const { environments, pullRequests, notLive, canRelease } = input;
+  const { environments, pullRequests, notLive, notLiveAtLeast, canRelease } = input;
 
   const items = useMemo(
     () =>
@@ -518,10 +520,11 @@ function useProjectAttention(
           })),
         pullRequests,
         notLive,
+        notLiveAtLeast,
         canRelease,
         mateNames: mateNames ?? EMPTY_MATE_NAMES,
       }),
-    [canRelease, environments, mateNames, mates, notLive, pullRequests],
+    [canRelease, environments, mateNames, mates, notLive, notLiveAtLeast, pullRequests],
   );
 
   const onAct = useCallback(
@@ -626,6 +629,7 @@ export function ZeropsGroupDetailPage({ groupId }: { readonly groupId: string })
     environments: shown,
     pullRequests: flow?.pullRequests ?? EMPTY_PULLS,
     notLive: waiting.total,
+    notLiveAtLeast: waiting.atLeast,
     canRelease: release.offered,
   });
 
@@ -856,7 +860,7 @@ export function ZeropsGroupPane({
       </Section>
 
       {waiting.total === 0 ? null : (
-        <Section title={`Merged, not live · ${String(waiting.total)}`}>
+        <Section title={`Merged, not live · ${String(waiting.total)}${waiting.atLeast ? "+" : ""}`}>
           <ul className="mb-3 flex flex-col gap-1">
             {waiting.subjects.map((subject) => (
               <li className="truncate text-sm text-foreground" key={subject}>
@@ -864,7 +868,9 @@ export function ZeropsGroupPane({
               </li>
             ))}
             {waiting.more === 0 ? null : (
-              <li className="text-sm text-muted-foreground">+{waiting.more} more</li>
+              <li className="text-sm text-muted-foreground">
+                {`+${String(waiting.more)}${waiting.atLeast ? "+" : ""} more`}
+              </li>
             )}
           </ul>
         </Section>
@@ -989,12 +995,15 @@ export function ZeropsStopDetailPage({
   const live = flow.releases.find((entry) => entry.standing === "live");
   const releasedAge = live?.taggedAt === undefined ? "" : formatRelativeTimeLabel(live.taggedAt);
   const redeploy = failedDeploy?.redeploy;
+  // How many changes production lacks, at least that many where HQ stopped counting.
+  const notLive = movedCount(flow.release.contents);
   const verdict = stopVerdict({
     tier: stop.tier,
     view,
     releasing: flow.release.inFlight ?? (release.releasing ? release.tag : undefined),
     failed: failedDeploy === undefined ? undefined : { ...failedDeploy, mayRunAgain },
-    waiting: releaseContentsSummary(flow.release.contents, 20).total,
+    waiting: notLive.count,
+    waitingAtLeast: notLive.atLeast,
     untold: production ? flow.release.untold : NO_UNTOLD,
     release,
     releasedAge: releasedAge.length === 0 ? undefined : releasedAge,
@@ -1055,7 +1064,15 @@ export function ZeropsStopDetailPage({
       verdict={verdict}
       view={view}
       untold={production ? flow.release.untold : NO_UNTOLD}
-      waiting={production ? releaseContentsCommits(flow.release.contents) : NO_COMMITS}
+      waiting={
+        production
+          ? {
+              commits: releaseContentsCommits(flow.release.contents),
+              total: notLive.count,
+              atLeast: notLive.atLeast,
+            }
+          : NOTHING_WAITING
+      }
     />
   );
 }
@@ -1064,6 +1081,16 @@ export function ZeropsStopDetailPage({
 interface WaitingCommit {
   readonly sha: string;
   readonly subject: string;
+}
+
+/**
+ * What `main` has that a production does not: the commits HQ listed, and how many there are in
+ * all — at least that many where HQ stopped counting.
+ */
+interface StopWaiting {
+  readonly commits: ReadonlyArray<WaitingCommit>;
+  readonly total: number;
+  readonly atLeast: boolean;
 }
 
 /** *Run again* on the verdict: the failed deploy, asked again in HQ. */
@@ -1214,8 +1241,8 @@ export function ZeropsStopPane({
   /** Offered on a production that is behind — the one stop a release moves. */
   readonly release: ReleaseOffer;
   readonly runAgain?: StopRunAgain | undefined;
-  /** What `main` has that this production does not; empty for a stage. */
-  readonly waiting: ReadonlyArray<WaitingCommit>;
+  /** What `main` has that this production does not; nothing for a stage. */
+  readonly waiting: StopWaiting;
   /** A production's services whose commit cannot be told, said beside what waits. */
   readonly untold: ReadonlyArray<string>;
   /** Every public address of the stop, for its menu; each service row lists its own. */
@@ -1301,10 +1328,10 @@ export function ZeropsStopPane({
       </div>
 
       <FlatCard className="flex flex-col divide-y divide-border px-4">
-        {waiting.length === 0 ? null : (
-          <CardGroup title={stopCardTitle("waiting", waiting.length)}>
+        {waiting.commits.length === 0 ? null : (
+          <CardGroup title={stopCardTitle("waiting", waiting.total, waiting.atLeast)}>
             <ul className="flex flex-col">
-              {waiting.map((commit) => (
+              {waiting.commits.map((commit) => (
                 <li
                   className={cn(CARD_ROW_CLASS, "grid-cols-[4.5rem_minmax(0,1fr)]")}
                   key={commit.sha}
@@ -1599,7 +1626,7 @@ const NO_RELEASES: ReadonlyArray<FlowReleaseRow> = [];
 /** What a release carried while HQ is asked: nothing is known yet. */
 const CARRIED_READING: MovedCommits = { state: "reading" };
 const NO_ASKS: ReadonlyMap<string, ReadonlyArray<CompareRead>> = new Map();
-const NO_COMMITS: ReadonlyArray<WaitingCommit> = [];
+const NOTHING_WAITING: StopWaiting = { commits: [], total: 0, atLeast: false };
 /** A stage, whose verdict never speaks of what production runs. */
 const NO_UNTOLD: ReadonlyArray<string> = [];
 

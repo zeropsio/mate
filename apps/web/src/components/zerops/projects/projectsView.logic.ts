@@ -435,7 +435,7 @@ export function mainCell(
     main.head === undefined && title === undefined && main.notLive === 0 && main.hasCode !== true;
   const state =
     main.notLive > 0
-      ? changesNotLive(main.notLive)
+      ? changesNotLive(main.notLive, main.notLiveAtLeast)
       : empty
         ? changesUnknown === undefined
           ? "Nothing merged"
@@ -686,6 +686,19 @@ const STOP_TIER: Partial<Record<ZeropsEnvironmentRole, GroupEnvironmentTier>> = 
   prod: "production",
 };
 
+/** What `groupFlow` is told of a release: how many changes it would put live, and how sure. */
+function releaseInputOf(release: GroupFlowReads["release"]): GroupFlowInput["release"] {
+  const { total, atLeast } = releaseContentsSummary(release.contents);
+  return {
+    gate: release.gate,
+    suggestion: release.suggestion,
+    waiting: total,
+    waitingAtLeast: atLeast,
+    untold: release.untold,
+    inFlight: release.inFlight,
+  };
+}
+
 /**
  * `groupFlow`'s input, from what the page holds: the group tree's members and
  * its creations under way, the account-wide project flow (`undefined` while
@@ -744,14 +757,8 @@ export function groupFlowInputOf(input: {
     missing: flow?.missing ?? [],
     release:
       flow === undefined
-        ? { gate: FLOW_NOT_READ, suggestion: "", waiting: 0, untold: [] }
-        : {
-            gate: flow.release.gate,
-            suggestion: flow.release.suggestion,
-            waiting: releaseContentsSummary(flow.release.contents).total,
-            untold: flow.release.untold,
-            inFlight: flow.release.inFlight,
-          },
+        ? { gate: FLOW_NOT_READ, suggestion: "", waiting: 0, waitingAtLeast: false, untold: [] }
+        : releaseInputOf(flow.release),
     mainHasCode: undefined,
     mainHead: undefined,
     productionAddable: input.productionAddable,

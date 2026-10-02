@@ -7,7 +7,6 @@ import {
   absoluteDescription,
   changeFileLetter,
   changeRunMessage,
-  changesCountWords,
   commitFold,
   crewLandCommand,
   descriptionPicture,
@@ -443,16 +442,6 @@ describe("releaseChangeRows: what goes out, one row per change", () => {
       [{ repository: "recipe", number: 54 }, "p-uma"],
       [{ repository: "appdev", number: 54 }, "p-juno"],
     ]);
-  });
-});
-
-describe("changesCountWords: how many, and at least how many where HQ stopped counting", () => {
-  it.each([
-    [1, false, "1 change"],
-    [12, false, "12 changes"],
-    [10000, true, "10000+ changes"],
-  ] as const)("%i (at least: %s) reads %s", (count, atLeast, words) => {
-    expect(changesCountWords(count, atLeast)).toBe(words);
   });
 });
 

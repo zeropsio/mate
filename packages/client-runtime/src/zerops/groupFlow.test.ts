@@ -95,7 +95,7 @@ function group(over: Partial<GroupFlowInput>): GroupFlowInput {
     merged: [],
     stops: [],
     missing: [],
-    release: { gate: CLOSED, suggestion: "v0.1.0", waiting: 0, untold: [] },
+    release: { gate: CLOSED, suggestion: "v0.1.0", waiting: 0, waitingAtLeast: false, untold: [] },
     mainHasCode: undefined,
     mainHead: undefined,
     productionAddable: true,
@@ -135,7 +135,13 @@ const FSADFDASFSA = group({
       route: undefined,
     },
   ],
-  release: { gate: { allowed: true }, suggestion: "v0.1.0", waiting: 1, untold: [] },
+  release: {
+    gate: { allowed: true },
+    suggestion: "v0.1.0",
+    waiting: 1,
+    waitingAtLeast: false,
+    untold: [],
+  },
   mainHasCode: true,
   mainHead: MAIN_SHA,
 });
@@ -208,6 +214,15 @@ const ZEROPS_MATE = group({
 });
 
 describe("groupFlow", () => {
+  it("says how many at least are not live where HQ stopped counting", () => {
+    const flow = groupFlow({
+      ...FSADFDASFSA,
+      release: { ...FSADFDASFSA.release, waiting: 10000, waitingAtLeast: true },
+    });
+    expect(flow.main.notLiveAtLeast).toBe(true);
+    expect(flow.nextStep.text).toBe("10000+ changes not live");
+  });
+
   it("offers the release where production runs nothing and one change is merged (fsadfdasfsa)", () => {
     const flow = groupFlow(FSADFDASFSA);
     expect(flow.production).toMatchObject({
@@ -216,7 +231,12 @@ describe("groupFlow", () => {
       line: "Nothing deployed yet",
       stop: { projectId: "p-prod", state: "empty", version: undefined },
     });
-    expect(flow.main).toEqual({ head: "055a7e8", hasCode: true, notLive: 1 });
+    expect(flow.main).toEqual({
+      head: "055a7e8",
+      hasCode: true,
+      notLive: 1,
+      notLiveAtLeast: false,
+    });
     expect(flow.nextStep).toEqual({
       kind: "release",
       text: "1 change not live",
@@ -268,7 +288,12 @@ describe("groupFlow", () => {
       line: "After the first merge",
       addable: false,
     });
-    expect(flow.main).toEqual({ head: undefined, hasCode: false, notLive: 0 });
+    expect(flow.main).toEqual({
+      head: undefined,
+      hasCode: false,
+      notLive: 0,
+      notLiveAtLeast: false,
+    });
     expect(flow.mates[0]?.preview).toBe("https://appstage-1a2b-3000.prg1.zerops.app");
     expect(flow.nextStep).toEqual({
       kind: "none",
@@ -464,6 +489,7 @@ describe("groupFlow", () => {
       gate: CLOSED,
       suggestion: "v0.1.1",
       waiting: 0,
+      waitingAtLeast: false,
       untold: [],
     },
   ) => {
@@ -547,7 +573,13 @@ describe("groupFlow", () => {
           }),
           deployment: runs(MAIN_SHA),
         },
-        { gate: { allowed: true }, suggestion: "v0.1.1", waiting: 2, untold: [] },
+        {
+          gate: { allowed: true },
+          suggestion: "v0.1.1",
+          waiting: 2,
+          waitingAtLeast: false,
+          untold: [],
+        },
       ),
       // The failure does not swallow the release that might clear it (D28):
       // a broken production still carries the candidate a new tag would cut.
@@ -617,7 +649,13 @@ describe("groupFlow", () => {
   it("offers the release where what production runs cannot be told, though nothing is counted", () => {
     const flow = groupFlow({
       ...FSADFDASFSA,
-      release: { gate: { allowed: true }, suggestion: "v0.1.0", waiting: 0, untold: ["app"] },
+      release: {
+        gate: { allowed: true },
+        suggestion: "v0.1.0",
+        waiting: 0,
+        waitingAtLeast: false,
+        untold: ["app"],
+      },
     });
     expect(flow.production).toMatchObject({
       kind: "ready-to-release",
@@ -632,6 +670,7 @@ describe("groupFlow", () => {
         gate: { allowed: false, reason: "Releasing v0.1.0…" },
         suggestion: "v0.1.1",
         waiting: 1,
+        waitingAtLeast: false,
         untold: [],
         inFlight: "v0.1.0",
       },
@@ -832,7 +871,13 @@ describe("groupFlow — creations under way", () => {
     const flow = groupFlow({
       ...LANDED,
       merged: [pull({ merged: true })],
-      release: { gate: { allowed: true }, suggestion: "v0.1.0", waiting: 1, untold: [] },
+      release: {
+        gate: { allowed: true },
+        suggestion: "v0.1.0",
+        waiting: 1,
+        waitingAtLeast: false,
+        untold: [],
+      },
       pending: [creating({ kind: "production" })],
     });
     expect(flow.production.kind).toBe("creating");

@@ -134,6 +134,8 @@ export interface GroupFlowInput {
     readonly suggestion: string;
     /** How many changes are merged and not live (`releaseContentsSummary(...).total`). */
     readonly waiting: number;
+    /** Whether that is only how many at least (`releaseContentsSummary(...).atLeast`). */
+    readonly waitingAtLeast: boolean;
     /** Production's services whose commit cannot be told (`releaseReads`' `untold`). */
     readonly untold: ReadonlyArray<string>;
     /** The release tag on its way to production (`releaseInFlight`). */
@@ -172,6 +174,8 @@ export interface GroupFlowMain {
   readonly hasCode: boolean | undefined;
   /** Changes merged and not live. */
   readonly notLive: number;
+  /** Whether that is only how many at least: HQ stopped counting. */
+  readonly notLiveAtLeast: boolean;
 }
 
 /** Where one stop's last deploy stands. */
@@ -395,6 +399,7 @@ function nextStepOf(
     failedStops: [...failedProduction, ...failedStages],
     pullRequests: input.pullRequests,
     notLive: input.release.waiting,
+    notLiveAtLeast: input.release.waitingAtLeast,
     canRelease:
       production.kind !== "absent" && production.kind !== "creating" && input.release.gate.allowed,
     mateNames: new Map(input.mates.map((mate) => [mate.projectId, mate.name])),
@@ -468,6 +473,7 @@ export function groupFlow(input: GroupFlowInput): GroupFlow {
     head: input.mainHead === undefined ? undefined : shortCommit(input.mainHead),
     hasCode: input.mainHasCode ?? (landedCode ? true : undefined),
     notLive: input.release.waiting,
+    notLiveAtLeast: input.release.waitingAtLeast,
   };
   const stops = input.stops.map(stopOf);
   const stages = stops.filter((_, index) => input.stops[index]?.tier === "stage");

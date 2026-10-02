@@ -109,6 +109,8 @@ export function stopVerdict(input: {
   readonly failed: StopFailure | undefined;
   /** Changes merged to main that production does not run. */
   readonly waiting: number;
+  /** Whether that is only how many at least: HQ stopped counting (`movedCount`). */
+  readonly waitingAtLeast: boolean;
   /** Production's services whose commit cannot be told (`releaseReads`' `untold`). */
   readonly untold: ReadonlyArray<string>;
   readonly release: {
@@ -193,7 +195,7 @@ export function stopVerdict(input: {
   if (input.waiting > 0)
     return {
       tone: "busy",
-      text: `${changesNotLive(input.waiting)}.`,
+      text: `${changesNotLive(input.waiting, input.waitingAtLeast)}.`,
       detail: `Production runs ${label}`,
       verb: releaseVerb,
     };
@@ -240,9 +242,18 @@ const CARD_GROUPS = {
   deploys: "Deploys",
 } as const;
 
-/** A group of the stop's card, under its label: `Services · 2`; the label alone while uncounted. */
-export function stopCardTitle(group: keyof typeof CARD_GROUPS, count: number | undefined): string {
-  return count === undefined ? CARD_GROUPS[group] : `${CARD_GROUPS[group]} · ${String(count)}`;
+/**
+ * A group of the stop's card, under its label: `Services · 2`; the label alone while uncounted, and
+ * `+` where the count is only how many at least.
+ */
+export function stopCardTitle(
+  group: keyof typeof CARD_GROUPS,
+  count: number | undefined,
+  atLeast?: boolean,
+): string {
+  return count === undefined
+    ? CARD_GROUPS[group]
+    : `${CARD_GROUPS[group]} · ${String(count)}${atLeast === true ? "+" : ""}`;
 }
 
 /** Said, muted, beside a stage's Deploys: what they are read from. */

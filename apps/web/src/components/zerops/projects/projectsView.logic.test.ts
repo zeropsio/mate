@@ -95,6 +95,7 @@ function flowOf(over: Partial<GroupFlowInput> = {}): GroupFlow {
       gate: { allowed: false, reason: "Nothing is merged to release." },
       suggestion: "v0.1.0",
       waiting: 0,
+      waitingAtLeast: false,
       untold: [],
     },
     mainHasCode: undefined,
@@ -120,7 +121,13 @@ const FLOWS = {
   merge: flowOf({ pullRequests: [pull()] }),
   release: flowOf({
     stops: [PRODUCTION],
-    release: { gate: { allowed: true }, suggestion: "v0.1.0", waiting: 1, untold: [] },
+    release: {
+      gate: { allowed: true },
+      suggestion: "v0.1.0",
+      waiting: 1,
+      waitingAtLeast: false,
+      untold: [],
+    },
   }),
   answer: flowOf({ mates: [{ ...MATE, waiting: true }] }),
   stopped: flowOf({ mates: [{ ...MATE, waiting: true, failed: true }] }),
@@ -565,7 +572,13 @@ describe("main's cell", () => {
         mainHasCode: true,
         mainHead: MAIN_SHA,
         stops: [PRODUCTION],
-        release: { gate: { allowed: true }, suggestion: "v0.1.0", waiting: 1, untold: [] },
+        release: {
+          gate: { allowed: true },
+          suggestion: "v0.1.0",
+          waiting: 1,
+          waitingAtLeast: false,
+          untold: [],
+        },
       }),
       landed,
       { empty: false, head: "055a7e8", title: "Mate: weatherdev (#4)", state: "1 change not live" },
@@ -577,11 +590,38 @@ describe("main's cell", () => {
       { empty: false, head: "055a7e8", title: undefined, state: "Nothing waiting to release" },
     ],
     [
+      "more than HQ counts says at least how many",
+      flowOf({
+        merged: [landed],
+        stops: [PRODUCTION],
+        release: {
+          gate: { allowed: true },
+          suggestion: "v0.1.0",
+          waiting: 10000,
+          waitingAtLeast: true,
+          untold: [],
+        },
+      }),
+      landed,
+      {
+        empty: false,
+        head: undefined,
+        title: "Mate: weatherdev (#4)",
+        state: "10000+ changes not live",
+      },
+    ],
+    [
       "several waiting are counted",
       flowOf({
         merged: [landed],
         stops: [PRODUCTION],
-        release: { gate: { allowed: true }, suggestion: "v0.1.0", waiting: 3, untold: [] },
+        release: {
+          gate: { allowed: true },
+          suggestion: "v0.1.0",
+          waiting: 3,
+          waitingAtLeast: false,
+          untold: [],
+        },
       }),
       landed,
       {
@@ -716,6 +756,7 @@ describe("production's cell", () => {
           gate: { allowed: false, reason: "Releasing v0.1.0…" },
           suggestion: "v0.1.1",
           waiting: 1,
+          waitingAtLeast: false,
           untold: [],
           inFlight: "v0.1.0",
         },
@@ -1029,6 +1070,7 @@ describe("groupFlowInputOf", () => {
       gate: { allowed: true },
       suggestion: "v0.1.1",
       waiting: 2,
+      waitingAtLeast: false,
       untold: [],
     });
     expect(input.productionAddable).toBe(true);
