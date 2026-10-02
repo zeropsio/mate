@@ -12,8 +12,11 @@
 import type { GitError } from "@t3tools/hq-git";
 import {
   type AttachmentResponse,
+  type ChangeDetailResponse,
   type HqChange,
+  type HqChangeComment,
   type HqRepo,
+  CHANGE_LIST_SETTLED,
   MATE_CHANGES_PER_REPO,
   type MateChanges,
   type OpenChangeResponse,
@@ -29,7 +32,7 @@ import * as SqlClient from "effect/unstable/sql/SqlClient";
 import type { SqlError } from "effect/unstable/sql/SqlError";
 
 import { appendEvent } from "./gitEvents.ts";
-import { GitHost } from "./gitHost.ts";
+import { GitHost, mainOf } from "./gitHost.ts";
 import { heldOf } from "./held.ts";
 import { Leader, type NotLeader } from "./leader.ts";
 import { Roles } from "./roles.ts";
@@ -39,6 +42,7 @@ export class ChangeRefused extends Schema.TaggedError<ChangeRefused>()("ChangeRe
   code: Schema.Literals([
     "forbidden",
     "project_not_found",
+    "app_not_found",
     "repo_not_found",
     "change_not_found",
     "attachment_not_found",
@@ -48,6 +52,7 @@ export class ChangeRefused extends Schema.TaggedError<ChangeRefused>()("ChangeRe
   /** Why: a permission's reason (`zeropsPermissions.ts`) or one of the changes' own. */
   reason: Schema.Literals([
     ...REASONS,
+    "app_not_found",
     "repo_not_found",
     "change_not_found",
     "attachment_not_found",
@@ -60,6 +65,8 @@ export class ChangeRefused extends Schema.TaggedError<ChangeRefused>()("ChangeRe
 export type MateVerb = "ensure_repo" | "open_change" | "edit_change";
 
 type MateError = ChangeRefused | NotLeader | SqlError | ZeropsError;
+
+type ReadError = ChangeRefused | SqlError | ZeropsError;
 
 export class Changes extends Context.Service<
   Changes,
@@ -99,6 +106,43 @@ export class Changes extends Context.Service<
       number: number,
       png: Uint8Array,
     ) => Effect.Effect<AttachmentResponse, MateError>;
+    /**
+     * An application's changes as a person reads them: its open ones and its latest
+     * {@link CHANGE_LIST_SETTLED} merged or closed ones, newest first.
+     */
+    readonly listChanges: (
+      userId: string,
+      appId: string,
+    ) => Effect.Effect<ReadonlyArray<HqChange>, ReadError>;
+    /** A change and what its review reads, from git. */
+    readonly changeDetail: (
+      userId: string,
+      appId: string,
+      repo: string,
+      number: number,
+    ) => Effect.Effect<ChangeDetailResponse, ReadError | NotLeader | GitError>;
+    /** What people said about a change, oldest first. */
+    readonly listComments: (
+      userId: string,
+      appId: string,
+      repo: string,
+      number: number,
+    ) => Effect.Effect<ReadonlyArray<HqChangeComment>, ReadError>;
+    readonly postComment: (
+      userId: string,
+      appId: string,
+      repo: string,
+      number: number,
+      body: string,
+    ) => Effect.Effect<HqChangeComment, ReadError | NotLeader>;
+    /** A picture of a change, its PNG's bytes. */
+    readonly attachment: (
+      userId: string,
+      appId: string,
+      repo: string,
+      number: number,
+      id: string,
+    ) => Effect.Effect<Uint8Array, ReadError>;
   }
 >()("@t3tools/hq/changes") {}
 
@@ -148,6 +192,24 @@ interface ChangeRow {
   readonly merged_at: string | null;
   readonly closed_at: string | null;
 }
+
+const COMMENT_COLUMNS = ["id::text AS id", "author_user_id", "body", instant("created_at")].join(
+  ", ",
+);
+
+interface CommentRow {
+  readonly id: string;
+  readonly author_user_id: string;
+  readonly body: string;
+  readonly created_at: string;
+}
+
+const commentOf = (row: CommentRow): HqChangeComment => ({
+  id: row.id,
+  authorUserId: row.author_user_id,
+  body: row.body,
+  createdAt: row.created_at,
+});
 
 const changeOf = (row: ChangeRow): HqChange => ({
   appId: row.app_id,
@@ -201,6 +263,64 @@ export const changesLayer: Layer.Layer<
         // `can` allows a Mate's verb only in an application.
         return target.appId!;
       });
+
+    /**
+     * Whether the person `userId` may `verb` the changes of the application `appId`: `can` over
+     * all of its projects — a read over the org up to 30 s old, a comment over the org read now.
+     * Decided before the application's existence, so an id tells nobody without the right whether
+     * it names an application. Applications are compared by their id's text, which a path may
+     * spell any way.
+     */
+    const personApp = (userId: string, appId: string, verb: "read_change" | "comment_change") =>
+      Effect.gen(function* () {
+        const projects = yield* sql<{ readonly project_id: string }>`
+          SELECT project_id FROM hq_app_project WHERE app_id::text = ${appId}`;
+        const target = { projectIds: projects.map((row) => row.project_id) };
+        const person = { kind: "person", userId } as const;
+        const decision =
+          verb === "read_change"
+            ? can(person, "read_change", target, yield* roles.view)
+            : can(person, "comment_change", target, yield* roles.fresh);
+        if (!decision.allow) {
+          yield* Effect.logInfo("change refused", { userId, verb, appId, reason: decision.reason });
+          return yield* refuse("forbidden", decision.reason);
+        }
+        const apps = yield* sql`SELECT 1 FROM hq_app WHERE id::text = ${appId}`;
+        if (apps.length === 0) return yield* refuse("app_not_found", "app_not_found");
+      });
+
+    /** A change of the application, or `change_not_found`. */
+    const changeIn = (appId: string, repo: string, number: number) =>
+      Effect.flatMap(
+        sql<ChangeRow>`
+          SELECT ${sql.literal(CHANGE_COLUMNS)} FROM hq_change
+          WHERE app_id::text = ${appId} AND repo = ${repo} AND number = ${number}`,
+        (rows) =>
+          rows[0] === undefined
+            ? refuse("change_not_found", "change_not_found")
+            : Effect.succeed(changeOf(rows[0])),
+      );
+
+    /**
+     * The changes of the applications `appIds`: each one's open changes and its latest settled
+     * ones, newest first.
+     */
+    const windowOf = (appIds: ReadonlyArray<string>) =>
+      appIds.length === 0
+        ? Effect.succeed([])
+        : Effect.map(
+            sql<ChangeRow>`
+              SELECT ${sql.literal(CHANGE_COLUMNS)} FROM (
+                SELECT hq_change.*, row_number() OVER (
+                  PARTITION BY app_id, state = 'open'
+                  ORDER BY COALESCE(merged_at, closed_at) DESC NULLS LAST, number DESC
+                ) AS settled_rank
+                FROM hq_change WHERE app_id::text IN ${sql.in(appIds)}
+              ) hq_change
+              WHERE state = 'open' OR settled_rank <= ${CHANGE_LIST_SETTLED}
+              ORDER BY hq_change.opened_at DESC, repo, number DESC`,
+            (rows) => rows.map(changeOf),
+          );
 
     /**
      * In a fenced write: the Mate's own change, locked, while it is open. Another Mate's change is
@@ -342,6 +462,87 @@ export const changesLayer: Layer.Layer<
             }),
           );
           return { id, path: attachmentPath(appId, repo, number, id) };
+        }),
+      listChanges: (userId, appId) =>
+        Effect.andThen(personApp(userId, appId, "read_change"), windowOf([appId])),
+      changeDetail: (userId, appId, repo, number) =>
+        Effect.gen(function* () {
+          yield* personApp(userId, appId, "read_change");
+          const change = yield* changeIn(appId, repo, number);
+          const git = yield* gitHost.git;
+          // As the change's record names it, never as the path spelled it.
+          const at = { appId: change.appId, id: change.repo };
+          const mate = change.mateProjectId;
+          const diff = yield* git.changeDiff(at, mate, number, {
+            maxFiles: 300,
+            maxBytesPerFile: 256 * 1024,
+          });
+          const log = yield* git.changeLog(at, mate, number, { limit: 100 });
+          return {
+            change,
+            mainHead: yield* mainOf(git, at),
+            mergeBase: yield* git.mergeBase(at, mate, number),
+            mergeability: yield* git.mergeability(at, mate, number),
+            files: diff.items.map((file) => ({
+              path: file.path,
+              added: file.added,
+              deleted: file.deleted,
+              hunks: file.hunks,
+              binary: file.binary,
+              truncated: file.truncated,
+            })),
+            filesTruncated: diff.truncated,
+            commits: log.items.map((commit) => ({
+              sha: commit.sha,
+              subject: commit.message.split("\n")[0] ?? "",
+              authorName: commit.author.name,
+              at: commit.committedAt,
+            })),
+            commitsTruncated: log.truncated,
+          };
+        }),
+      listComments: (userId, appId, repo, number) =>
+        Effect.gen(function* () {
+          yield* personApp(userId, appId, "read_change");
+          yield* changeIn(appId, repo, number);
+          const rows = yield* sql<CommentRow>`
+            SELECT ${sql.literal(COMMENT_COLUMNS)} FROM hq_change_comment
+            WHERE app_id::text = ${appId} AND repo = ${repo} AND number = ${number}
+            ORDER BY created_at, id`;
+          return rows.map(commentOf);
+        }),
+      postComment: (userId, appId, repo, number, body) =>
+        Effect.gen(function* () {
+          yield* personApp(userId, appId, "comment_change");
+          return yield* leader.write(
+            Effect.gen(function* () {
+              const change = yield* changeIn(appId, repo, number);
+              const [row] = yield* sql<CommentRow>`
+                INSERT INTO hq_change_comment (app_id, repo, number, author_user_id, body)
+                VALUES (${change.appId}::uuid, ${change.repo}, ${number}, ${userId}, ${body})
+                RETURNING ${sql.literal(COMMENT_COLUMNS)}`;
+              const comment = commentOf(row!);
+              yield* appendEvent(sql, {
+                kind: "commented",
+                appId: change.appId,
+                repo: change.repo,
+                number,
+                data: { commentId: comment.id, userId },
+              });
+              return comment;
+            }),
+          );
+        }),
+      attachment: (userId, appId, repo, number, id) =>
+        Effect.gen(function* () {
+          yield* personApp(userId, appId, "read_change");
+          const [row] = yield* sql<{ readonly content: Uint8Array }>`
+            SELECT content FROM hq_change_attachment
+            WHERE id::text = ${id} AND app_id::text = ${appId} AND repo = ${repo}
+              AND number = ${number}`;
+          if (row === undefined)
+            return yield* refuse("attachment_not_found", "attachment_not_found");
+          return row.content;
         }),
     });
   }),

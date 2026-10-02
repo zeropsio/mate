@@ -23,8 +23,13 @@
  * - A Mate's changes (`changes.ts`, the wire in `@t3tools/shared/hqChanges`): `POST /api/mate/repos`
  *   `{ name }` → the repository; `POST /api/mate/changes` `{ repo, title }` → `{ change, created }`;
  *   `PATCH /api/mate/changes/:repo/:n` `{ title?, body? }` → the change; `POST
- *   /api/mate/changes/:repo/:n/attachments`, a PNG of at most 20 MiB → `{ id, path }`; and git itself at `/git/<appId>/<repo>.git`, Basic auth with the user `mate` and the Mate's
- *   credential (`gitHost.ts`).
+ *   /api/mate/changes/:repo/:n/attachments`, a PNG of at most 20 MiB → `{ id, path }`; and git
+ *   itself at `/git/<appId>/<repo>.git`, Basic auth with the user `mate` and the Mate's credential
+ *   (`gitHost.ts`).
+ * - A person's side of the changes: `GET /api/apps/:appId/changes` → `{ changes }`; `GET
+ *   /api/apps/:appId/changes/:repo/:n` → the change's review; `GET`, `POST …/comments`; `GET
+ *   …/attachments/:id` → a picture. And `GET /changes/:appId/:repo/:n`, a change's address at HQ,
+ *   redirects to the change in the first client origin.
  *
  * Every call but the doors carries `Authorization: Bearer <session>`, of a session issued for this
  * HQ's org. Only the leading HQ answers: a standby or an HQ that is not the official one answers
@@ -56,7 +61,9 @@ import {
   EditChangeRequest,
   EnsureRepoRequest,
   OpenChangeRequest,
+  PostCommentRequest,
   RepoName,
+  changeRoutePath,
 } from "@t3tools/shared/hqChanges";
 
 import { ChangeRefused, Changes } from "./changes.ts";
@@ -132,6 +139,7 @@ const MATE_STATUS = {
 const CHANGE_STATUS = {
   forbidden: 403,
   project_not_found: 404,
+  app_not_found: 404,
   repo_not_found: 404,
   change_not_found: 404,
   attachment_not_found: 404,
@@ -283,6 +291,27 @@ const changePath = Effect.map(
 );
 
 /**
+ * A change of an application as a person's path names it, `/api/apps/:appId/changes/:repo/:n`.
+ * The application's id is taken as given: HQ compares it as text, so any spelling is no match.
+ */
+const appChangePath = Effect.gen(function* () {
+  const appId = (yield* HttpRouter.params)["appId"] ?? "";
+  return { appId, ...(yield* changePath) };
+});
+
+/**
+ * HQ's address of a change, `/changes/:appId/:repo/:n`, as it leads into the client: an
+ * application's id meets the git layer's id pattern, as a repository's name does.
+ */
+const decodeChangeAddress = Schema.decodeUnknownEffect(
+  Schema.Struct({
+    appId: RepoName,
+    repo: RepoName,
+    n: Schema.NumberFromString.pipe(Schema.decodeTo(ChangeNumber)),
+  }),
+);
+
+/**
  * A picture as a Mate sends it: the body itself, `Content-Type: image/png`, at most 20 MiB — a
  * declared length above it refused before a byte is read.
  */
@@ -330,8 +359,92 @@ const serveGit = Effect.gen(function* () {
   return HttpServerResponse.empty();
 });
 
-const routes = (options: StreamOptions & { readonly link?: LinkOptions }) =>
+const routes = (
+  options: { readonly clientOrigins: ReadonlyArray<string> } & StreamOptions & {
+      readonly link?: LinkOptions;
+    },
+) =>
   Layer.mergeAll(
+    // No state is read, so any Core answers it, standby or not.
+    HttpRouter.add(
+      "GET",
+      "/changes/:appId/:repo/:n",
+      Effect.flatMap(HttpRouter.params, decodeChangeAddress).pipe(
+        Effect.map(({ appId, repo, n }) =>
+          HttpServerResponse.redirect(
+            `${options.clientOrigins[0] ?? ""}${changeRoutePath(appId, repo, n)}`,
+            { status: 302 },
+          ),
+        ),
+        Effect.orElseSucceed(() => HttpServerResponse.text("No such change\n", { status: 404 })),
+      ),
+    ),
+    HttpRouter.add(
+      "GET",
+      "/api/apps/:appId/changes",
+      handle(
+        Effect.gen(function* () {
+          const { userId } = yield* principal;
+          const appId = (yield* HttpRouter.params)["appId"] ?? "";
+          return json({ changes: yield* (yield* Changes).listChanges(userId, appId) }, 200);
+        }),
+      ),
+    ),
+    HttpRouter.add(
+      "GET",
+      "/api/apps/:appId/changes/:repo/:n",
+      handle(
+        Effect.gen(function* () {
+          const { userId } = yield* principal;
+          const { appId, repo, number } = yield* appChangePath;
+          return json(yield* (yield* Changes).changeDetail(userId, appId, repo, number), 200);
+        }),
+      ),
+    ),
+    HttpRouter.add(
+      "GET",
+      "/api/apps/:appId/changes/:repo/:n/comments",
+      handle(
+        Effect.gen(function* () {
+          const { userId } = yield* principal;
+          const { appId, repo, number } = yield* appChangePath;
+          const comments = yield* (yield* Changes).listComments(userId, appId, repo, number);
+          return json({ comments }, 200);
+        }),
+      ),
+    ),
+    HttpRouter.add(
+      "POST",
+      "/api/apps/:appId/changes/:repo/:n/comments",
+      handle(
+        Effect.gen(function* () {
+          const { userId } = yield* principal;
+          const { appId, repo, number } = yield* appChangePath;
+          const { body } = yield* jsonBody(PostCommentRequest, BODY_LIMIT);
+          return json(yield* (yield* Changes).postComment(userId, appId, repo, number, body), 200);
+        }),
+      ),
+    ),
+    HttpRouter.add(
+      "GET",
+      "/api/apps/:appId/changes/:repo/:n/attachments/:id",
+      handle(
+        Effect.gen(function* () {
+          const { userId } = yield* principal;
+          const { appId, repo, number } = yield* appChangePath;
+          const id = (yield* HttpRouter.params)["id"] ?? "";
+          const png = yield* (yield* Changes).attachment(userId, appId, repo, number, id);
+          // A picture is kept once and never changes; nosniff keeps it a picture.
+          return HttpServerResponse.uint8Array(png, {
+            contentType: ATTACHMENT_CONTENT_TYPE,
+            headers: {
+              "cache-control": "private, max-age=31536000, immutable",
+              "x-content-type-options": "nosniff",
+            },
+          });
+        }),
+      ),
+    ),
     HttpRouter.add(
       "POST",
       "/api/door",

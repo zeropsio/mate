@@ -180,8 +180,10 @@ export const startCore = (
     ) =>
       Effect.promise(async () => {
         const raw = options.body instanceof Uint8Array;
+        // A redirect is an answer to see, never one to follow.
         const response = await fetch(`http://${base}${path}`, {
           method,
+          redirect: "manual",
           headers: {
             ...(options.body === undefined || raw ? {} : { "content-type": "application/json" }),
             ...(options.session === undefined

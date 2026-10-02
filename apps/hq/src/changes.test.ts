@@ -521,5 +521,183 @@ describe("a Mate's changes in HQ", () => {
           assert.deepStrictEqual(yield* self, { ...record, appId: null, changes: [] });
         }),
     );
+
+    it.effect("whoever sees the application reads its changes and a change's review", () =>
+      Effect.gen(function* () {
+        const { call, fake, origin } = yield* startCore(true);
+        yield* untilHealth(call, "active");
+        const owner = yield* sessionFor(call, "door-owner");
+        const { appId, credential } = yield* mateWithChange(call, fake, owner);
+        const git = yield* gitClient;
+        yield* git.checked(["clone", remoteOf(origin, credential, appId, "appdev"), "work"]);
+        const work = NodePath.join(git.dir, "work");
+        const main = yield* git.checked(["rev-parse", "origin/main"], work);
+        NodeFS.writeFileSync(NodePath.join(work, "login.ts"), "export const login = 1;\n");
+        yield* git.checked(["add", "login.ts"], work);
+        yield* git.checked(["commit", "-m", "Add a login page\n\nWith a form."], work);
+        const first = yield* git.checked(["rev-parse", "HEAD"], work);
+        yield* git.checked(["commit", "--allow-empty", "-m", "Tidy it"], work);
+        const second = yield* git.checked(["rev-parse", "HEAD"], work);
+        yield* git.checked(["push", "origin", "HEAD:refs/heads/mate/P_MATE/1"], work);
+
+        const list = (session: string, app = appId) =>
+          call("GET", `/api/apps/${app}/changes`, { session });
+        const listed = yield* Effect.filterOrFail(
+          list(owner),
+          (answer) =>
+            (answer.body as { readonly changes: ReadonlyArray<{ head: string }> }).changes[0]
+              ?.head === second,
+        ).pipe(
+          Effect.retry(Schedule.spaced(Duration.millis(50))),
+          Effect.timeout(Duration.seconds(5)),
+        );
+        const { changes } = listed.body as {
+          readonly changes: ReadonlyArray<Record<string, unknown>>;
+        };
+        assert.deepStrictEqual(
+          changes.map((change) => [change["repo"], change["number"], change["state"]]),
+          [["appdev", 1, "open"]],
+        );
+
+        const detail = yield* call("GET", `/api/apps/${appId}/changes/appdev/1`, {
+          session: owner,
+        });
+        assert.strictEqual(detail.status, 200);
+        const review = detail.body as Record<string, unknown> & {
+          readonly files: ReadonlyArray<Record<string, unknown>>;
+          readonly commits: ReadonlyArray<Record<string, unknown>>;
+        };
+        assert.deepStrictEqual(review["change"], changes[0]);
+        assert.deepStrictEqual(
+          [review["mainHead"], review["mergeBase"], review["mergeability"]],
+          [main, main, { kind: "clean" }],
+        );
+        assert.deepStrictEqual(
+          review.files.map((file) => [
+            file["path"],
+            file["added"],
+            file["deleted"],
+            file["binary"],
+          ]),
+          [["login.ts", 1, 0, false]],
+        );
+        assert.include(String(review.files[0]?.["hunks"]), "+export const login = 1;");
+        assert.deepStrictEqual(
+          review.commits.map((commit) => [commit["sha"], commit["subject"], commit["authorName"]]),
+          [
+            [second, "Tidy it", "Ada"],
+            [first, "Add a login page", "Ada"],
+          ],
+        );
+        assert.match(String(review.commits[0]?.["at"]), /^\d{4}-\d\d-\d\dT/u);
+        assert.deepStrictEqual(
+          [review["filesTruncated"], review["commitsTruncated"]],
+          [false, false],
+        );
+
+        // Org Read only sees every application; a Developer without a project there sees none.
+        const reader = yield* sessionFor(call, "door-reader");
+        assert.strictEqual((yield* list(reader)).status, 200);
+        const dev = yield* sessionFor(call, "door-dev");
+        const hidden = { code: "forbidden", reason: "app_not_seen" };
+        assert.deepStrictEqual([(yield* list(dev)).status, (yield* list(dev)).body], [403, hidden]);
+        assert.deepStrictEqual(
+          (yield* call("GET", `/api/apps/${appId}/changes/appdev/1`, { session: dev })).body,
+          hidden,
+        );
+        assert.deepStrictEqual(
+          (yield* call("GET", `/api/apps/${appId}/changes/appdev/9`, { session: owner })).body,
+          { code: "change_not_found", reason: "change_not_found" },
+        );
+        assert.deepStrictEqual((yield* list(owner, "0b7c4c1e-9f1d-4a43-8f43-6d2b8a1c2e10")).body, {
+          code: "app_not_found",
+          reason: "app_not_found",
+        });
+        assert.deepStrictEqual((yield* list(owner, "not-an-app")).body, {
+          code: "app_not_found",
+          reason: "app_not_found",
+        });
+      }),
+    );
+
+    it.effect("whoever reads a change comments on it and sees its pictures", () =>
+      Effect.gen(function* () {
+        const { call, fake, url } = yield* startCore(true);
+        yield* untilHealth(call, "active");
+        const owner = yield* sessionFor(call, "door-owner");
+        const { appId, auth } = yield* mateWithChange(call, fake, owner);
+        const comments = `/api/apps/${appId}/changes/appdev/1/comments`;
+        const say = (session: string, body: string) =>
+          call("POST", comments, { session, body: { body } });
+
+        const said = yield* say(owner, "Looks good");
+        assert.strictEqual(said.status, 200);
+        const comment = said.body as Record<string, unknown>;
+        assert.deepStrictEqual([comment["authorUserId"], comment["body"]], ["owner", "Looks good"]);
+        const reader = yield* sessionFor(call, "door-reader");
+        assert.strictEqual((yield* say(reader, "Rename it, please.")).status, 200);
+        const dev = yield* sessionFor(call, "door-dev");
+        assert.deepStrictEqual((yield* say(dev, "Me too")).body, {
+          code: "forbidden",
+          reason: "app_not_seen",
+        });
+        assert.strictEqual((yield* say(owner, "  ")).status, 400);
+        const read = (yield* call("GET", comments, { session: reader })).body as {
+          readonly comments: ReadonlyArray<{
+            readonly authorUserId: string;
+            readonly body: string;
+          }>;
+        };
+        assert.deepStrictEqual(
+          read.comments.map((entry) => [entry.authorUserId, entry.body]),
+          [
+            ["owner", "Looks good"],
+            ["reader", "Rename it, please."],
+          ],
+        );
+        yield* rowsWhere(
+          url,
+          "SELECT kind FROM hq_git_event WHERE kind = 'commented'",
+          (rows) => rows.length === 2,
+        );
+
+        const kept = (yield* call("POST", "/api/mate/changes/appdev/1/attachments", {
+          headers: { ...auth, "content-type": "image/png" },
+          body: PNG,
+        })).body as { readonly path: string };
+        const picture = yield* call("GET", kept.path, { session: reader });
+        assert.deepStrictEqual(
+          [
+            picture.status,
+            picture.headers.get("content-type"),
+            picture.headers.get("x-content-type-options"),
+            [...picture.bytes],
+          ],
+          [200, "image/png", "nosniff", [...PNG]],
+        );
+        assert.strictEqual((yield* call("GET", kept.path, { session: dev })).status, 403);
+        const missing = kept.path.replace(/[^/]+$/u, "4f1c2b9a-0d3e-4c55-9b8f-2a7e6d1c0b3a");
+        assert.deepStrictEqual((yield* call("GET", missing, { session: reader })).body, {
+          code: "attachment_not_found",
+          reason: "attachment_not_found",
+        });
+      }),
+    );
+
+    it.effect("a change's address at HQ leads into the client", () =>
+      Effect.gen(function* () {
+        const { call } = yield* startCore(true);
+        yield* untilHealth(call, "active");
+        const app = "0b7c4c1e-9f1d-4a43-8f43-6d2b8a1c2e10";
+        const redirect = yield* call("GET", `/changes/${app}/appdev/7`);
+        assert.deepStrictEqual(
+          [redirect.status, redirect.headers.get("location")],
+          [302, `https://mate.zerops.io/change/${app}/appdev/7`],
+        );
+        for (const path of [`/changes/${app}/appdev/0`, `/changes/${app}/app.dev/7`]) {
+          assert.strictEqual((yield* call("GET", path)).status, 404, path);
+        }
+      }),
+    );
   });
 });

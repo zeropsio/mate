@@ -58,7 +58,7 @@ export class GitHost extends Context.Service<
 const CHANGE_REF = /^refs\/heads\/mate\/([^/]+)\/([1-9][0-9]*)$/u;
 
 /** `main`'s head in `repo`, none while it is unborn. */
-const mainOf = (git: HqGit, repo: Repo) =>
+export const mainOf = (git: HqGit, repo: Repo) =>
   Effect.map(
     git.branches(repo),
     (branches) => branches.items.find((branch) => branch.ref === "refs/heads/main")?.sha ?? null,
