@@ -7292,3 +7292,43 @@ read-only Gitea calls.
 - **An idle window made 16 requests a minute** (per window, after the flows; run 3 measured 20 and 21).
 - **The build queue** — a new Mate's zcp build queued 27–46 s and ran 109–122 s. The service's
   address and user-data writes queued behind it for 128–156 s.
+
+## Run 5 as measured — 2026-10-03
+
+- **Pass 34's fixes, re-checked live** — mate 0.11.87 and gitea-mate #7, two windows on
+  mate.zerops.io as the test account, 24 minutes.
+  - A New project "Tally" went through its first stage.
+  - Larder took a merge and a release.
+  - Each Mate read the same "Waiting for your sign-in" whichever flow made it.
+  - A merge cleared the Mate's "needs you" face in the other window 10.0 s after the press (run 4:
+    48 s).
+  - v0.1.1's dialog kept "replaces v0.1.0 · 1 change" and its roll back to v0.1.0 through Released.
+  - A stage's "Deployed 61907df" held through the 6.5 s before the broker's status turned success.
+  - The 42 platform processes in our projects all finished.
+  - The other group's existing Mate, watched read-only, ran nothing.
+- **A group's first runner, timed** — imported 9.2 s after the merge that queued its first job, built
+  at the first try in 103 s.
+- **A stage's first deploy, timed** — Add stage at +664.9 s.
+  - project.create ran +670.4 → +700.0 s.
+  - The import's no-code `stack.deploy app` ran +699.5 → +710.5 s.
+  - With the workflow fixed, the first build ran +1033.8 → +1097.3 s, and the address was on at
+    +1097.3 s.
+  - "Stage is up" showed at +1100.7 s, and the stage answered 200 by +1111.8 s (6 s poll).
+- **A deploy job can fail before the broker sees it** — the group workflow's own Test step ran `npm
+test` on the runner, a bare Ubuntu 26.04 with git and no language runtime, and exited 127 (`npm:
+command not found`).
+  - Both runs failed 23 s after the runner came up: the push run, and the broker's dispatch of the
+    same commit.
+  - The commit on `main` carried the workflow's own status, `Zerops deploy / deploy (push)`:
+    `failure`. The broker's `mate/deploy/<stage>/app` stayed `pending`, because the job never asked
+    for its grant.
+  - The app read neither status and said "first deploy on its way" for 4.3 min.
+  - zcp's template defaults that step to `echo "no test command configured"`. The Mate replaced it.
+- **The platform's process list** — `GET /project/{id}/process` answers newest first, with or
+  without `offset`, and carries no `totalCount`.
+  - `actionNameContains=stack.build` filters before paging.
+  - The Gitea project held 22 processes in all: `limit=1000` returned them in 78 KB, in 0.75 s.
+- **Idle cost** — 16 and 18 requests a minute per window over 280 s with no fresh open pull request
+  (run 4: 16). Gitea's org listings ran once a minute per group, and the pull watch added none.
+- **Production blinked twice** — Larder's production answered `unreachable: timeout` for about 20 s
+  at +872 s and again at +1318 s, then 200. Nothing deployed there at either moment.
