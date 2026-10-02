@@ -3335,3 +3335,13 @@ no-cache`.
   names what isn't; one organization's trouble holds no other's screens.
   - _Why:_ one stall re-registered all ~60 of the org's subscriptions four at a time, and Try now
     looked like it did nothing
+- **2026-10-02** — **A Mate's session outlives the load** (the owner, on the per-load throwaway: it
+  "feels like it's making the system brittle"). The session a throwaway opened is kept per account
+  and presented again on the next load, once the Mate's descriptor names the same project and
+  environment and the Mate answers that it still holds it; it is never sent anywhere else. A kept
+  session spends no mint and waits on no mint pace; signing out ends every kept session at its Mate.
+  - _Why:_ memory-only sessions (2026-09-07) cost nothing while the door took the person's own
+    token; once it took a throwaway (0.11.0) every load minted and deleted one per Mate — 38 of ~57
+    Zerops calls on a Mate page — waited on the pace and the Zerops API to reach Mates that were up,
+    and left each dropped session live on its Mate for a day, while the same storage keeps the
+    Zerops token that can open every Mate
