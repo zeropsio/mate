@@ -81,6 +81,9 @@ const STRUCTURE_WORDS: Readonly<Record<string, string>> = {
   attachment_not_found: "HQ has no such picture.",
 };
 
+/** What anything asked of the organization's HQ says where its official HQ is not open here. */
+export const HQ_NOT_OPEN = "This organization's HQ is not open here.";
+
 const isPermissionReason = (reason: string): reason is Reason =>
   Object.hasOwn(PERMISSION_WORDS, reason);
 const isMergeRefusal = (reason: string): reason is keyof typeof MERGE_WORDS =>
