@@ -126,6 +126,11 @@ export class Roles extends Context.Service<
     readonly view: Effect.Effect<OrgView, ZeropsError>;
     /** The org's view read now, for a write. */
     readonly fresh: Effect.Effect<OrgView, ZeropsError>;
+    /**
+     * Whether Zerops still has a project, read by its id: a `not_found` refusal is gone, any other
+     * failure no answer.
+     */
+    readonly exists: (projectId: string) => Effect.Effect<boolean, ZeropsError>;
   }
 >()("@t3tools/hq/roles") {}
 
@@ -144,19 +149,30 @@ export const rolesLayer = (options: {
         undefined,
       );
       const permit = yield* Semaphore.make(1);
+      const credential = Effect.fromOption(options.credential).pipe(
+        Effect.mapError(
+          () =>
+            new ZeropsRefused({
+              operation: "view",
+              reason: "unauthorized",
+              status: 0,
+              code: "noCredential",
+            }),
+        ),
+      );
+      const exists = (projectId: string) =>
+        Effect.flatMap(credential, (own) => api.project(projectId)(own)).pipe(
+          Effect.as(true),
+          Effect.catchIf(
+            (error) => error._tag === "ZeropsRefused" && error.reason === "not_found",
+            () => Effect.succeed(false),
+          ),
+        );
       const read = Effect.gen(function* () {
-        if (Option.isNone(options.credential)) {
-          return yield* new ZeropsRefused({
-            operation: "view",
-            reason: "unauthorized",
-            status: 0,
-            code: "noCredential",
-          });
-        }
-        const credential = options.credential.value;
-        const { orgId } = yield* api.project(options.hqProjectId)(credential);
+        const own = yield* credential;
+        const { orgId } = yield* api.project(options.hqProjectId)(own);
         const [members, projects] = yield* Effect.all(
-          [api.members(orgId)(credential), api.projects(orgId)(credential)],
+          [api.members(orgId)(own), api.projects(orgId)(own)],
           { concurrency: 2 },
         );
         // An org always has its owner: an empty list is an outage dressed as an answer.
@@ -190,6 +206,6 @@ export const rolesLayer = (options: {
       const view = Effect.flatMap(Clock.currentTimeMillis, (now) =>
         readSince(now - Duration.toMillis(VIEW_TTL) + 1),
       );
-      return Roles.of({ view, fresh });
+      return Roles.of({ view, fresh, exists });
     }),
   );

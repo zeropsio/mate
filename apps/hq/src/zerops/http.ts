@@ -107,7 +107,7 @@ const toProject = (row: typeof ProjectRow.Type): ZeropsProject => ({
 const reasonOf = (status: number, code: string): ZeropsRefused["reason"] => {
   if (status === 401) return "unauthorized";
   if (status === 403) return "forbidden";
-  if (status === 404 || code.endsWith("NotFound")) return "not_found";
+  if (status === 404 || status === 410 || code.endsWith("NotFound")) return "not_found";
   return "invalid";
 };
 

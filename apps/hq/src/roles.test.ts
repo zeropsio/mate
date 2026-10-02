@@ -150,3 +150,38 @@ describe("rolesLayer", () => {
       }),
   );
 });
+
+describe("Roles.exists", () => {
+  it.effect(
+    "asks Zerops for a project by id: gone when refused not found, unknown when unreachable",
+    () =>
+      Effect.gen(function* () {
+        const world = emptyWorld();
+        world.tokens.set("t", {
+          id: "T",
+          name: "mate-hq-org:HQ",
+          orgId: "ORG",
+          roleCode: "READ_ONLY",
+          canCreateProjects: false,
+          canViewFinances: false,
+          canEditFinances: false,
+          projects: [],
+          createdMs: 0,
+          createdByUser: "owner",
+        });
+        world.projects.push(project("HQ"), project("P1"));
+        const context = yield* Layer.build(
+          rolesLayer({ hqProjectId: "HQ", credential: Option.some(Redacted.make("t")) }).pipe(
+            Layer.provide(Layer.succeed(ZeropsApi, fakeZeropsApi(world))),
+          ),
+        );
+        const roles = Context.get(context, Roles);
+        assert.deepStrictEqual(yield* Effect.all([roles.exists("P1"), roles.exists("P_GONE")]), [
+          true,
+          false,
+        ]);
+        world.down = true;
+        assert.strictEqual((yield* Effect.flip(roles.exists("P1")))._tag, "ZeropsUnavailable");
+      }),
+  );
+});

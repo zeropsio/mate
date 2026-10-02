@@ -102,6 +102,8 @@ describe("makeZeropsApiHttp", () => {
       const missing = yield* stub(100, 400, "projectNotFound");
       assert.strictEqual(yield* read(missing.url, "project"), "not_found");
       assert.strictEqual(missing.requests(), 1);
+      const removed = yield* stub(100, 410, "");
+      assert.strictEqual(yield* read(removed.url, "project"), "not_found");
     }),
   );
 });

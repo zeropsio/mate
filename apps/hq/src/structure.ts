@@ -150,12 +150,28 @@ export const structureLayer = (options: {
             if (!view.projects.some((project) => project.id === input.projectId)) {
               return yield* refuse("project_not_found", "No such project in this organization.");
             }
+            // What this write would conflict with — the project in any application, the
+            // application's production. A row whose project Zerops no longer has (asked by its id)
+            // stops counting and goes with this write; one Zerops cannot answer for refuses it.
+            const holders = yield* sql<{ readonly project_id: string }>`
+              SELECT project_id FROM hq_app_project
+              WHERE project_id = ${input.projectId}
+                 OR (${input.kind} = 'production' AND kind = 'production' AND app_id::text = ${appId})`;
+            const gone = (yield* Effect.forEach(holders, (row) =>
+              Effect.map(roles.exists(row.project_id), (exists) =>
+                exists ? [] : [row.project_id],
+              ),
+            )).flat();
             yield* conflictOnUnique(
               leader.write(
                 Effect.gen(function* () {
                   const apps = yield* sql`SELECT 1 FROM hq_app WHERE id::text = ${appId}`;
                   if (apps.length === 0)
                     return yield* refuse("app_not_found", "No such application.");
+                  if (gone.length > 0) {
+                    yield* sql`DELETE FROM hq_mate WHERE ${sql.in("project_id", gone)}`;
+                    yield* sql`DELETE FROM hq_app_project WHERE ${sql.in("project_id", gone)}`;
+                  }
                   yield* sql`
                     INSERT INTO hq_app_project (project_id, app_id, kind, created_by)
                     VALUES (${input.projectId}, ${appId}::uuid, ${input.kind}, ${userId})`;

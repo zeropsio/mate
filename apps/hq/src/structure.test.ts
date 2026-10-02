@@ -7,7 +7,7 @@ import { activeCoreLayer, untilActive } from "../test/harness/activeCore.ts";
 import { TempPostgres, tempPostgresLayer } from "../test/harness/tempPostgres.ts";
 import { type OrgView, Roles } from "./roles.ts";
 import { Structure, structureLayer } from "./structure.ts";
-import type { ZeropsMember, ZeropsProject } from "./zerops/api.ts";
+import { type ZeropsMember, type ZeropsProject, ZeropsUnavailable } from "./zerops/api.ts";
 
 const member = (userId: string, roleCode: string, canCreateProjects = false): ZeropsMember => ({
   name: userId,
@@ -55,18 +55,36 @@ const VIEW: OrgView = {
   ],
 };
 
-const withStructure = <A, E>(use: (view: Ref.Ref<OrgView>) => Effect.Effect<A, E, Structure>) =>
+/**
+ * Structure over a fresh database and a Zerops whose view is `view`; a project exists while the
+ * view has it, and `down` makes asking for one unanswerable.
+ */
+const withStructure = <A, E>(
+  use: (view: Ref.Ref<OrgView>, down: Ref.Ref<boolean>) => Effect.Effect<A, E, Structure>,
+) =>
   Effect.gen(function* () {
     const url = yield* (yield* TempPostgres).createDatabase;
     const view = yield* Ref.make(VIEW);
-    const roles = Layer.succeed(Roles, { view: Ref.get(view), fresh: Ref.get(view) });
+    const down = yield* Ref.make(false);
+    const roles = Layer.succeed(Roles, {
+      view: Ref.get(view),
+      fresh: Ref.get(view),
+      exists: (projectId) =>
+        Effect.flatMap(Ref.get(down), (isDown) =>
+          isDown
+            ? Effect.fail(new ZeropsUnavailable({ operation: "project", message: "down" }))
+            : Effect.map(Ref.get(view), (current) =>
+                current.projects.some((candidate) => candidate.id === projectId),
+              ),
+        ),
+    });
     const context = yield* Layer.build(
       structureLayer({ hqProjectId: "HQ" }).pipe(
         Layer.provideMerge(activeCoreLayer(url)),
         Layer.provide(roles),
       ),
     );
-    return yield* Effect.andThen(untilActive, use(view)).pipe(Effect.provide(context));
+    return yield* Effect.andThen(untilActive, use(view, down)).pipe(Effect.provide(context));
   });
 
 /** The refusal's code, or the success. */
@@ -242,6 +260,38 @@ describe("structure", () => {
               }),
             );
             assert.include(refused.message, "their own new Mate");
+          }),
+        ),
+    );
+
+    it.effect(
+      "a project Zerops no longer has stops counting: the next production takes its place",
+      () =>
+        withStructure((view, down) =>
+          Effect.gen(function* () {
+            const structure = yield* Structure;
+            const shop = yield* structure.createApp("owner", "Shop");
+            const attach = (projectId: string) =>
+              outcome(structure.attachProject("owner", shop.id, { projectId, kind: "production" }));
+            assert.deepStrictEqual(yield* Effect.all([attach("P_PROD"), attach("P_PROD2")]), [
+              "ok",
+              "conflict",
+            ]);
+            // P_PROD deleted in Zerops; while Zerops cannot say so, nothing moves.
+            yield* Ref.update(view, (current) => ({
+              ...current,
+              projects: current.projects.filter((candidate) => candidate.id !== "P_PROD"),
+            }));
+            yield* Ref.set(down, true);
+            assert.strictEqual(yield* attach("P_PROD2"), "ZeropsUnavailable");
+            yield* Ref.set(down, false);
+            assert.strictEqual(yield* attach("P_PROD2"), "ok");
+            assert.deepStrictEqual(
+              (yield* structure.read("owner")).apps.map((app) =>
+                app.projects.map((p) => p.projectId),
+              ),
+              [["P_PROD2"]],
+            );
           }),
         ),
     );
