@@ -33,6 +33,7 @@ describe("hqRefusalWords — HQ's refusal, in the person's words", () => {
       "invalid",
       "An environment's name starts with a letter and has only small letters, digits and dashes.",
     ],
+    ["environment_name_long", "invalid", "An environment's name has at most 63 characters."],
     ["environment_name_taken", "conflict", "This project has an environment of that name already."],
     ["environment_not_found", "environment_not_found", "HQ has no such environment."],
     ["deploy_token_refused", "invalid", "Zerops did not accept this deploy key."],

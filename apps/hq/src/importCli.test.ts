@@ -61,6 +61,25 @@ describe("hq import", () => {
     }).pipe(Effect.scoped),
   );
 
+  // A deploy key is named `mate-hq-deploy:<env>:<projectId>`, and Zerops caps a token's name at 255:
+  // an environment is named as HQ names its own, 63 characters at most (`environments.ts`).
+  it.effect("--check refuses an environment named past 63 characters", () =>
+    Effect.gen(function* () {
+      const long = `shop-${"s".repeat(59)}`;
+      const written = yield* syntheticBundle(yield* tempDir, (parts) => {
+        const [app] = parts.mapping["apps"] as Array<Record<string, unknown>>;
+        const environments = ((app?.["environments"] ?? []) as Array<Record<string, unknown>>).map(
+          (env) => (env["projectId"] === "P_STAGE" ? { ...env, name: long } : env),
+        );
+        return { ...parts, mapping: { apps: [{ ...app, environments }] } };
+      });
+      assert.deepStrictEqual(yield* checkCommand(written.dir), {
+        code: 1,
+        lines: ["bundle refused:", `  app g1: environment ${long} is longer than 63 characters`],
+      });
+    }).pipe(Effect.scoped),
+  );
+
   it.each([
     [["--check", "/b"], { kind: "check", dir: "/b" }],
     [["/b"], { kind: "import", dir: "/b" }],

@@ -76,6 +76,7 @@ export class StructureRefused extends Schema.TaggedError<StructureRefused>()("St
     "held_changed",
     "environment_with_kind",
     "environment_name_missing",
+    "environment_name_long",
     "environment_name_invalid",
     "environment_name_taken",
     "environment_not_found",
