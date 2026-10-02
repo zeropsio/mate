@@ -1,4 +1,5 @@
 import { Connection } from "@t3tools/client-runtime/connection";
+import { RecentEnvironmentDescriptorsRef } from "@t3tools/client-runtime/environment";
 import { shellSnapshotLoaderLayer } from "@t3tools/client-runtime/state/shell";
 import { threadSnapshotLoaderLayer } from "@t3tools/client-runtime/state/threads";
 import * as Layer from "effect/Layer";
@@ -7,6 +8,7 @@ import { Atom } from "effect/unstable/reactivity";
 import type { FoundationHotModule } from "../lib/foundation-fast-refresh";
 import { hotSwappableAtomRuntime } from "../lib/hot-swappable-atom-runtime";
 import { runtimeContextLayer } from "../lib/runtime";
+import { mateDescriptors } from "../features/zerops/mate-descriptors";
 import { appAtomRegistry } from "../state/atom-registry";
 import {
   mobileBackgroundActivityObserverLayer,
@@ -39,6 +41,8 @@ const providedClientConnectionLayer = Layer.merge(
       runtimeContextLayer,
       providedConnectionPlatformLayer,
       mobileBackgroundActivityObserverLayer,
+      // A Mate's connect presents the descriptor its door just read, never reading it again.
+      Layer.succeed(RecentEnvironmentDescriptorsRef, { recent: mateDescriptors.recent }),
     ),
   ),
 );

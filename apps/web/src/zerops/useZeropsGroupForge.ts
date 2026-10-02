@@ -11,8 +11,10 @@
  * forge store's rungs too — and a verb re-reads at once only the part it changed
  * (`flow/verbs.ts`). Gitea has no event stream, so a clock is the only
  * freshness there is, and it stops while the tab is hidden (`refreshClock.ts`).
- * A commit's checks are kept while settled, read again on a back-off while
- * pending, and at the clock's pace where a deploy may still post to them
+ * On each tick a group costs one listing of its org, shared with the deploy
+ * half; only what that listing says moved is asked again, and the rest is
+ * answered from what was read (`forge/forgeReads.ts`). A commit's checks are
+ * kept while settled and read again on a back-off while pending
  * (`forge/statusMemo.ts`). Whether a pull request merges is what its reads so far
  * came to (`forge/mergeState.ts`), never one answer: Gitea says "no" for a
  * moment after every push. A part that does not answer keeps what it had. A
@@ -31,6 +33,7 @@ import {
   isReleaseTag,
   readReleaseMessage,
   readSemver,
+  RELEASE_IN_FLIGHT_MS,
   releaseVerdict,
   shortCommit,
   type FlowPullRequest,
@@ -48,13 +51,17 @@ import {
 } from "@t3tools/client-runtime/zerops/flow";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 import {
-  createCommitStatusMemo,
+  createForgeReads,
   createMergeabilityTracker,
-  DEPLOY_STATUS_MAX_AGE_MS,
+  giteaUnauthorized,
   MERGE_RECHECK_AFTER_MS,
   mergeReadOf,
-  type CommitStatusMemo,
+  TAGS_MAX_AGE_MS,
+  VERDICT_RECHECK_LADDER_MS,
+  type ForgePart,
+  type ForgeReads,
   type MergeabilityTracker,
+  type StatusReadOptions,
 } from "@t3tools/client-runtime/zerops/forge";
 import { useCallback, useEffect, useRef, useState } from "react";
 
@@ -102,15 +109,42 @@ export interface ZeropsGroupForge {
  */
 const MERGED_PER_REPOSITORY = 20;
 
+/** How long an open pull request Gitea says does not merge is kept while nothing was pushed. */
+export const UNMERGEABLE_MAX_AGE_MS = 5 * 60_000;
+
+/**
+ * What both group passes read through (`forge/forgeReads.ts`), one per Gitea: another Gitea
+ * starts from nothing.
+ */
+export function useForgeReads(giteaOrigin: string | undefined): ForgeReads {
+  const [held, setHeld] = useState(() => ({ giteaOrigin, reads: createForgeReads() }));
+  if (held.giteaOrigin === giteaOrigin) return held.reads;
+  const next = { giteaOrigin, reads: createForgeReads() };
+  setHeld(next);
+  return next.reads;
+}
+
+/** What a pull request listing asks, as both passes key it: one ask, kept once for both. */
+export const pullsKey = (options?: {
+  readonly state?: string;
+  readonly limit?: number | undefined;
+}): string =>
+  `pulls?state=${options?.state ?? "open"}${options?.limit === undefined ? "" : `&limit=${String(options.limit)}`}`;
+
+const PULLS: ReadonlySet<ForgePart> = new Set(["pulls"]);
+const RELEASED: ReadonlySet<ForgePart> = new Set(["code", "statuses"]);
+
 export function useZeropsGroupForge(input: {
   readonly giteaOrigin: string | undefined;
   readonly groups: ReadonlyArray<{ readonly groupId: string; readonly slug: string }>;
   readonly enabled: boolean;
   /** A Gitea request can go out now (`GiteaSessionView.readable`); a read runs only then. */
   readonly readable: boolean;
+  /** What both group passes read through, shared (`useForgeReads`). */
+  readonly reads: ForgeReads;
 }): ZeropsGroupForge {
   const [mergeability] = useState(createMergeabilityTracker);
-  const [statuses] = useState(() => createCommitStatusMemo());
+  const { reads } = input;
   const { answers, failures, invalidate } = useGroupAnswers<
     { readonly groupId: string; readonly slug: string },
     ForgeScope,
@@ -123,13 +157,15 @@ export function useZeropsGroupForge(input: {
     groups: input.groups,
     refreshMs: GROUP_FORGE_REFRESH_MS,
     keyOf: (group) => group.slug,
-    read: (client, group, scope) => readForge(client, group.slug, scope, mergeability, statuses),
-    // A release changes what its tags' commits are told; a group read again whole forgets all. A
-    // repository read again — a merge, or Gitea saying "checking" after a push — changes no
-    // commit's checks: its pull requests' heads are new commits.
+    unauthorizedReads: reads.unauthorized,
+    read: (client, group, scope) => readForge(client, group.slug, scope, mergeability, reads),
+    // A release changes the group repo's tags and what their commits are told; a group read again
+    // whole forgets all. A repository read again — a merge, or Gitea saying "checking" after a
+    // push — is its pull requests again, and changes no commit's checks: their heads are new.
     forget: (group, scope) => {
-      if (scope === "group") statuses.forget(group.slug);
-      else if (scope.kind === "tags") statuses.forget(group.slug, GROUP_REPOSITORY);
+      if (scope === "group") reads.forget(group.slug);
+      else if (scope.kind === "tags") reads.forget(group.slug, GROUP_REPOSITORY, RELEASED);
+      else reads.forget(group.slug, scope.repository, PULLS);
     },
   });
   const checking = checkingRepositories(answers).join("\n");
@@ -188,6 +224,8 @@ export function useGroupAnswers<Group extends { readonly groupId: string }, Scop
   ) => Promise<GroupUpdate<Answer>>;
   /** Drops what the reads keep about a group beside its answer: a verb, or its key, changed it. */
   readonly forget?: (group: Group, scope: Scope | "group") => void;
+  /** How many shared reads met a 401 no token recovered (`ForgeReads.unauthorized`). */
+  readonly unauthorizedReads: () => number;
 }): {
   readonly answers: ReadonlyMap<string, Answer>;
   readonly failures: ReadonlyMap<string, string>;
@@ -213,8 +251,10 @@ export function useGroupAnswers<Group extends { readonly groupId: string }, Scop
   useEffect(() => {
     if (!enabled || giteaOrigin === undefined || !readable) return;
     if (giteaClientFor(giteaOrigin) === null) return;
-    const kept =
-      latest.current.held.origin === giteaOrigin ? latest.current.held.answers : undefined;
+    const same = latest.current.held.origin === giteaOrigin;
+    const kept = same ? latest.current.held.answers : undefined;
+    // What the last driver said is failing is this one's to take back, or it would stand for good.
+    const failing = same ? latest.current.held.failures : undefined;
     const answers = createGroupAnswers<Group, Scope, Answer>({
       pass,
       idOf: (group) => group.groupId,
@@ -222,17 +262,22 @@ export function useGroupAnswers<Group extends { readonly groupId: string }, Scop
       read: async (group, scope, signal, previous) => {
         // A read that met a 401 no token recovered answered nothing for what
         // came after it: it is not an answer, even if the token is back by its
-        // end, and the group keeps what it had without a cause of its own.
+        // end, and the group keeps what it had without a cause of its own. A
+        // read shared with the other pass met it too, though only the client
+        // that sent it was told.
         let unauthorized = false;
         const client = giteaClientFor(giteaOrigin, () => {
           unauthorized = true;
         });
         if (client === null) return () => undefined;
+        const { unauthorizedReads } = latest.current.input;
+        const before = unauthorizedReads();
+        const met = () => unauthorized || unauthorizedReads() !== before;
         try {
           const update = await latest.current.input.read(client, group, scope, signal, previous);
-          return unauthorized ? () => undefined : update;
+          return met() ? () => undefined : update;
         } catch (cause) {
-          if (unauthorized) return () => undefined;
+          if (met() || giteaUnauthorized(cause)) return () => undefined;
           throw cause;
         }
       },
@@ -271,6 +316,7 @@ export function useGroupAnswers<Group extends { readonly groupId: string }, Scop
         });
       },
       ...(kept === undefined ? {} : { initial: kept }),
+      ...(failing === undefined ? {} : { initialFailures: failing }),
     });
     driver.current = answers;
     answers.setGroups(latest.current.input.groups);
@@ -329,6 +375,8 @@ async function answered<T>(read: () => Promise<T>): Promise<Answered<T>> {
   try {
     return { value: await read() };
   } catch (cause) {
+    // A 401 no token recovered is no part's answer: the whole read answered nothing.
+    if (giteaUnauthorized(cause)) throw cause;
     return { failure: zeropsErrorMessage(cause) };
   }
 }
@@ -345,10 +393,10 @@ export async function readForge(
   slug: string,
   scope: ForgeScope | "group",
   mergeability: MergeabilityTracker,
-  statuses: CommitStatusMemo = createCommitStatusMemo(),
+  reads: ForgeReads = createForgeReads(),
 ): Promise<GroupUpdate<ZeropsGroupForgeState>> {
   if (scope !== "group" && scope.kind === "repository") {
-    const pulls = await readRepositoryPulls(client, slug, scope.repository, mergeability, statuses);
+    const pulls = await readRepositoryPulls(client, slug, scope.repository, mergeability, reads);
     return (held) =>
       held === undefined
         ? undefined
@@ -361,20 +409,20 @@ export async function readForge(
           );
   }
   if (scope !== "group") {
-    const released = await readReleases(client, slug, statuses);
+    const released = await readReleases(client, slug, reads);
     return (held) => (held === undefined ? undefined : { ...held, released });
   }
-  const repositories = (await client.listOrganizationRepositories(slug)).map(
-    (repository) => repository.name,
-  );
+  const repositories = (
+    await reads.repositories(slug, () => client.listOrganizationRepositories(slug))
+  ).map((repository) => repository.name);
   const read = new Map<string, RepositoryPulls>();
   for (const repository of repositories) {
     const pulls = await answered(() =>
-      readRepositoryPulls(client, slug, repository, mergeability, statuses),
+      readRepositoryPulls(client, slug, repository, mergeability, reads),
     );
     if ("value" in pulls) read.set(repository, pulls.value);
   }
-  const releases = await answered(() => readReleases(client, slug, statuses));
+  const releases = await answered(() => readReleases(client, slug, reads));
   return (held) => {
     const covered = repositories.filter(
       (repository) => read.has(repository) || (held?.repositories.includes(repository) ?? false),
@@ -411,7 +459,7 @@ async function readRepositoryPulls(
   slug: string,
   repository: string,
   mergeability: MergeabilityTracker,
-  statuses: CommitStatusMemo,
+  reads: ForgeReads,
 ): Promise<RepositoryPulls> {
   const row = (pull: GiteaPullRequest, atMs: number, checks: ReadonlyArray<GiteaCommitStatus>) =>
     flowPullRequest({
@@ -423,39 +471,59 @@ async function readRepositoryPulls(
         mergeReadOf(pull, atMs),
       ).kind,
     });
+  const pulls = (state: "open" | "closed", maxAgeMs?: number) =>
+    reads.read(
+      { owner: slug, repo: repository, part: "pulls", key: pullsKey({ state }) },
+      () => client.listPullRequests(slug, repository, { state }),
+      { maxAgeMs },
+    );
   const pullRequests: Array<FlowPullRequest> = [];
-  const openAt = Date.now();
-  for (const pull of await client.listPullRequests(slug, repository, { state: "open" })) {
+  // A kept answer is the read it was, at the time it was asked: replayed at a later time, Gitea's
+  // "no" just after a push would read as a conflict.
+  let open = await pulls("open");
+  // A "no" may be a check that outlasted the rechecks, and its end moves nothing the org's listing
+  // shows: one that does not merge is asked again now and then.
+  if (open.value.some((pull) => pull.mergeable !== true)) {
+    open = await pulls("open", UNMERGEABLE_MAX_AGE_MS);
+  }
+  for (const pull of open.value) {
     const head = pull.head?.sha;
     const checks =
       head === undefined
         ? []
-        : await statuses
-            .read({ owner: slug, repo: repository, sha: head }, () =>
-              client.listCommitStatuses(slug, repository, head),
+        : await reads.statuses
+            .read(
+              { owner: slug, repo: repository, sha: head },
+              () => client.listCommitStatuses(slug, repository, head),
+              LIVE,
             )
             .catch(() => []);
-    pullRequests.push(row(pull, openAt, checks));
+    pullRequests.push(row(pull, open.atMs, checks));
   }
   // The landed ones, so a conversation can place its own work landing on its
   // timeline. No checks are read for them: a change that is over is not waiting
   // on CI. Capped, because a long-lived group's closed list is unbounded and
   // only the recent ones sit inside a conversation anybody still has open.
-  const closedAt = Date.now();
-  const closed = await client.listPullRequests(slug, repository, { state: "closed" });
-  const merged = closed
+  const closed = await pulls("closed");
+  const merged = closed.value
     .slice(0, MERGED_PER_REPOSITORY)
     .filter((pull) => pull.merged === true)
-    .map((pull) => row(pull, closedAt, []));
+    .map((pull) => row(pull, closed.atMs, []));
   return { pullRequests, merged };
 }
 
 async function readReleases(
   client: GiteaClient,
   slug: string,
-  memo: CommitStatusMemo,
+  reads: ForgeReads,
 ): Promise<ForgeReleases> {
-  const tags = await client.listTags(slug, GROUP_REPOSITORY);
+  const code = <T>(key: string, load: () => Promise<T>, maxAgeMs?: number) =>
+    reads.read({ owner: slug, repo: GROUP_REPOSITORY, part: "code", key }, load, { maxAgeMs });
+  // A release made through the API moves nothing the org's listing shows, so the tags are read
+  // again on their own clock; new ones may point at a commit already told about an older one.
+  const listed = await code("tags", () => client.listTags(slug, GROUP_REPOSITORY), TAGS_MAX_AGE_MS);
+  if (listed.changed) reads.statuses.forget(slug, GROUP_REPOSITORY);
+  const tags = listed.value;
   // Filtered into a fresh array, so the sort touches nothing else.
   const releaseTags = tags.filter((tag) => isReleaseTag(tag.name)).sort(byVersionDescending);
   const releases: Array<FlowRelease> = [];
@@ -463,27 +531,36 @@ async function readReleases(
   for (const tag of releaseTags) {
     const entries = readReleaseMessage(tag.message ?? "");
     const sha = tag.commit?.sha;
-    // The newest release is the one production may still be taking.
-    const age = newest === undefined ? { maxAgeMs: DEPLOY_STATUS_MAX_AGE_MS } : undefined;
-    const statuses =
-      sha === undefined
-        ? []
-        : await memo
-            .read(
-              { owner: slug, repo: GROUP_REPOSITORY, sha },
-              () => client.listCommitStatuses(slug, GROUP_REPOSITORY, sha),
-              age,
-            )
-            .catch(() => []);
-    const { verdict, detail } = releaseVerdict(tag.name, statuses);
     // Only the newest can be in flight; when it was made bounds how long it holds Release, and
     // tells its own deploy's failure from an earlier release's. A lightweight tag has no tagger
     // to read, and lists nothing a release deploys. A date that does not answer holds nothing:
     // Release stays offered.
+    const tagId = tag.id;
     const taggedAt =
-      newest !== undefined || tag.id === undefined || entries.length === 0
+      newest !== undefined || tagId === undefined || entries.length === 0
         ? undefined
-        : await client.tagDate(slug, GROUP_REPOSITORY, tag.id).catch(() => undefined);
+        : await code(`tags/${tagId}/date`, () => client.tagDate(slug, GROUP_REPOSITORY, tagId))
+            .then((read) => read.value)
+            .catch(() => undefined);
+    // The newest waits for its own verdict, which may land on a commit an older tag's already
+    // settled, and still takes production's after it; an older one is over. A verdict that never
+    // comes — no broker, a tag pushed by hand — is waited for on a lengthening back-off, and not
+    // past the time a release holds Release at all.
+    const asked =
+      newest === undefined
+        ? { settled: judged(tag.name, taggedAt), waiting: VERDICT_RECHECK_LADDER_MS, live: true }
+        : undefined;
+    const statuses =
+      sha === undefined
+        ? []
+        : await reads.statuses
+            .read(
+              { owner: slug, repo: GROUP_REPOSITORY, sha },
+              () => client.listCommitStatuses(slug, GROUP_REPOSITORY, sha),
+              asked,
+            )
+            .catch(() => []);
+    const { verdict, detail } = releaseVerdict(tag.name, statuses);
     releases.push({
       tag: tag.name,
       verdict,
@@ -496,6 +573,22 @@ async function readReleases(
   }
   return { releases, tags: releaseTags.map((tag) => tag.name), newest };
 }
+
+/** A pull request's head still takes checks after its first ones pass: a second workflow, a rerun. */
+const LIVE: StatusReadOptions = { live: true };
+
+/**
+ * Statuses that carry the broker's final word on `tag` — or a tag made so long ago that it holds
+ * nothing back whatever they say, and is waited on no longer.
+ */
+const judged =
+  (tag: string, taggedAt: string | undefined) =>
+  (statuses: ReadonlyArray<GiteaCommitStatus>): boolean => {
+    const { verdict } = releaseVerdict(tag, statuses);
+    if (verdict === "approved" || verdict === "refused") return true;
+    const at = taggedAt === undefined ? Number.NaN : Date.parse(taggedAt);
+    return Date.now() - at >= RELEASE_IN_FLIGHT_MS;
+  };
 
 /** Newest release first, by version rather than by name. */
 function byVersionDescending(left: { readonly name: string }, right: { readonly name: string }) {

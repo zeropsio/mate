@@ -1,3 +1,4 @@
+import * as Cause from "effect/Cause";
 import * as Clock from "effect/Clock";
 import * as Deferred from "effect/Deferred";
 import * as Duration from "effect/Duration";
@@ -223,9 +224,14 @@ export interface ZeropsBoundedIngress<Input> {
 
 /**
  * Account-wide serialized ingress with independent decoded-event and raw-byte
- * limits. The overflow callback runs while admission is locked and before the
- * rejected event is counted as discarded, so callers can publish recovering
- * state before losing data.
+ * limits. The overflow callback runs before the rejected event is counted as
+ * discarded, so callers can publish recovering state before losing data.
+ *
+ * The limits are the counters', never the queue's: a bounded queue suspended an
+ * admitted producer that held admission while the one consumer needed admission to
+ * count its take, and a burst that filled it stopped every input of the account for
+ * good (measured on mate.zerops.io, pass 31). Nothing here waits while holding
+ * anything, and an uncounted marker is never refused nor kept waiting.
  */
 export const makeZeropsBoundedIngress = Effect.fn("ZeropsDataRuntime.makeBoundedIngress")(
   function* <Input>(options: {
@@ -234,8 +240,9 @@ export const makeZeropsBoundedIngress = Effect.fn("ZeropsDataRuntime.makeBounded
     readonly maxFrameBytes: number;
     readonly onOverflow: (input: Input) => Effect.Effect<void>;
   }) {
-    const queue = yield* Queue.bounded<QueuedIngress<Input>>(options.maxEvents);
-    const admission = yield* Semaphore.make(1);
+    const queue = yield* Queue.unbounded<QueuedIngress<Input>>();
+    // Overflows publish one at a time; a take never waits for it.
+    const overflow = yield* Semaphore.make(1);
     const counters = yield* Ref.make<ZeropsIngressSnapshot>({
       events: 0,
       bytes: 0,
@@ -245,52 +252,71 @@ export const makeZeropsBoundedIngress = Effect.fn("ZeropsDataRuntime.makeBounded
     });
 
     const offer = (input: Input, bytes: number): Effect.Effect<boolean> =>
-      admission.withPermit(
-        Effect.gen(function* () {
-          const current = yield* Ref.get(counters);
-          const admissible =
-            Number.isSafeInteger(bytes) &&
-            bytes >= 0 &&
-            bytes <= options.maxFrameBytes &&
-            current.events < options.maxEvents &&
-            current.bytes + bytes <= options.maxBytes;
-          if (!admissible) {
-            yield* options.onOverflow(input);
+      Effect.gen(function* () {
+        // Reserving the budget and queueing the input are one step: an interrupt between them
+        // kept the reservation for good, and enough of them overflowed every later offer.
+        const admitted = yield* Effect.uninterruptible(
+          Effect.gen(function* () {
+            const reserved = yield* Ref.modify(counters, (state) => {
+              const admissible =
+                Number.isSafeInteger(bytes) &&
+                bytes >= 0 &&
+                bytes <= options.maxFrameBytes &&
+                state.events < options.maxEvents &&
+                state.bytes + bytes <= options.maxBytes;
+              if (!admissible) return [false, state] as const;
+              const events = state.events + 1;
+              const nextBytes = state.bytes + bytes;
+              return [
+                true,
+                {
+                  ...state,
+                  events,
+                  bytes: nextBytes,
+                  peakEvents: Math.max(state.peakEvents, events),
+                  peakBytes: Math.max(state.peakBytes, nextBytes),
+                },
+              ] as const;
+            });
+            if (!reserved) return "refused" as const;
+            if (yield* Queue.offer(queue, { input, bytes, budgeted: true }))
+              return "queued" as const;
+            // A shut-down queue keeps nothing: the reservation goes back.
             yield* Ref.update(counters, (state) => ({
               ...state,
-              discardedEvents: state.discardedEvents + 1,
+              events: state.events - 1,
+              bytes: state.bytes - bytes,
             }));
-            return false;
-          }
-
-          const queued = yield* Queue.offer(queue, { input, bytes, budgeted: true });
-          if (!queued) return false;
-          yield* Ref.update(counters, (state) => {
-            const events = state.events + 1;
-            const nextBytes = state.bytes + bytes;
-            return {
-              ...state,
-              events,
-              bytes: nextBytes,
-              peakEvents: Math.max(state.peakEvents, events),
-              peakBytes: Math.max(state.peakBytes, nextBytes),
-            };
-          });
-          return true;
-        }),
-      );
-
-    const take = Queue.take(queue).pipe(
-      Effect.flatMap((entry) =>
-        entry.budgeted
-          ? admission.withPermit(
+            return "closed" as const;
+          }),
+        );
+        if (admitted !== "refused") return admitted === "queued";
+        yield* overflow.withPermit(
+          options.onOverflow(input).pipe(
+            Effect.andThen(
               Ref.update(counters, (state) => ({
+                ...state,
+                discardedEvents: state.discardedEvents + 1,
+              })),
+            ),
+          ),
+        );
+        return false;
+      });
+
+    // Waiting for an input can be interrupted; taking it and giving its budget back cannot.
+    const take = Effect.uninterruptibleMask((restore) =>
+      restore(Queue.take(queue)).pipe(
+        Effect.tap((entry) =>
+          entry.budgeted
+            ? Ref.update(counters, (state) => ({
                 ...state,
                 events: state.events - 1,
                 bytes: state.bytes - entry.bytes,
-              })).pipe(Effect.as(entry.input)),
-            )
-          : Effect.succeed(entry.input),
+              }))
+            : Effect.void,
+        ),
+        Effect.map((entry) => entry.input),
       ),
     );
 
@@ -1056,13 +1082,32 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
 
   let pendingPublication: ZeropsDataState | null = null;
   let publicationEvents = 0;
-  const flushPendingPublication = () => {
+  /**
+   * The atoms notify their subscribers inside `set`, on whichever fiber published: the ingress's
+   * one consumer, a command, a scheduler task. The registry reports a subscriber's or a
+   * projection's own throw itself and still updates every other one (the `effect` patch); anything
+   * that escapes `set` regardless is handed back to be logged, so no fiber or task dies of it.
+   */
+  const flushPendingPublication = (): { readonly subscriberError: unknown } | null => {
     const next = pendingPublication;
     pendingPublication = null;
     publicationEvents = 0;
-    if (next !== null) options.atomRegistry.set(rootAtom, next);
+    if (next === null) return null;
+    try {
+      options.atomRegistry.set(rootAtom, next);
+      return null;
+    } catch (subscriberError) {
+      return { subscriberError };
+    }
   };
-  const flushPublication = Effect.sync(flushPendingPublication);
+  const logSubscriberError = (failed: { readonly subscriberError: unknown } | null) =>
+    failed === null
+      ? Effect.void
+      : Effect.logError(
+          "Zerops data: a subscriber failed while the account published",
+          failed.subscriberError,
+        );
+  const flushPublication = Effect.suspend(() => logSubscriberError(flushPendingPublication()));
   // Every change a task makes reaches the atoms in one publication, after the task: each
   // publication recomputes every projection, so the leases of a whole account taken one by one
   // must not recompute them once per lease.
@@ -1073,7 +1118,8 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
     publicationScheduled = true;
     publicationDispatcher.scheduleTask(() => {
       publicationScheduled = false;
-      flushPendingPublication();
+      const failed = flushPendingPublication();
+      if (failed !== null) Effect.runForkWith(runtimeContext)(logSubscriberError(failed));
     }, 0);
   };
 
@@ -1186,8 +1232,8 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
   const applyIngress = (input: RuntimeIngressInput): Effect.Effect<void> =>
     Effect.gen(function* () {
       if (input.kind === "barrier") {
-        yield* flushPublication;
-        yield* Deferred.succeed(input.deferred, undefined);
+        // Whatever the flush does, the command or read waiting on the barrier goes on.
+        yield* flushPublication.pipe(Effect.ensuring(Deferred.succeed(input.deferred, undefined)));
         return;
       }
       const followUps = yield* modelLock.withPermit(
@@ -1360,9 +1406,16 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
     onOverflow: recoverOverflow,
   });
 
+  // Every read, write and event of the account completes through this one loop, so it outlives a
+  // defect in any one input: the input is logged and the loop goes on.
   yield* Effect.forever(
     Effect.gen(function* () {
-      yield* applyIngress(yield* ingress.take);
+      yield* applyIngress(yield* ingress.take).pipe(
+        Effect.catchCauseIf(
+          (cause) => !Cause.hasInterruptsOnly(cause),
+          (cause) => Effect.logError("Zerops data: an input could not be applied", cause),
+        ),
+      );
       if (
         pendingPublication !== null &&
         (publicationEvents >= policy.ingressPublicationBatchEvents ||
@@ -3470,6 +3523,56 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
       }),
     );
 
+  /**
+   * A read the platform answers with a value alone — a token listing: admitted as a command is,
+   * on the same grant and target, but never queued behind the account's writes, never waiting on
+   * its ingress, never counted against its command queue. Run as commands, group reach's listings
+   * filled that queue and refused a New project's close-off (measured live, pass 31).
+   */
+  const runReadIntent = (
+    intent: Extract<
+      PlatformCommandIntent,
+      { readonly kind: "list-integration-token-grants" | "list-token-delegations" }
+    >,
+  ): Effect.Effect<
+    { readonly attempt: ReturnType<typeof attemptRef>; readonly result: PlatformCommandResult },
+    CommandAdmissionError | AdapterError
+  > =>
+    Effect.gen(function* () {
+      const command = yield* modelLock.withPermit(
+        Effect.gen(function* () {
+          const current = yield* Ref.get(model);
+          if ((yield* Ref.get(closed)) || current.closed) {
+            return yield* Effect.fail({
+              _tag: "ZeropsCommandAdmissionError",
+              reason: "runtime-closed",
+              message: "The Zerops account data runtime is closed.",
+            } satisfies CommandAdmissionError);
+          }
+          const admission = commandAdmissionError(
+            options.scope,
+            current.access,
+            commandTarget(intent),
+            yield* Clock.currentTimeMillis,
+            yield* accountCapability,
+          );
+          if (admission !== null) return yield* Effect.fail(admission);
+          return {
+            ...intent,
+            attemptId: ZeropsCommandAttemptId.make(options.makeOpaqueId()),
+            accountEpoch: options.scope.epoch,
+            startedAtReceiptOrdinal: ReceiptOrdinal.make(receiptOrdinal),
+            dispatchOrdinal: DispatchOrdinal.make(dispatchOrdinal),
+          } satisfies PlatformCommand;
+        }),
+      );
+      const receipt = yield* context(policy.httpDeadlineMs, (requestContext) =>
+        options.adapter.execute(command, requestContext),
+      );
+      if (receipt.result === undefined) return yield* Effect.fail(missingCommandResult());
+      return { attempt: attemptRef(command), result: receipt.result };
+    });
+
   const attemptRef = (command: PlatformCommand) => ({
     account: options.scope.account,
     accountEpoch: options.scope.epoch,
@@ -3767,7 +3870,7 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
         ),
       ),
     listIntegrationTokenGrants: (organization) =>
-      runCommand({ kind: "list-integration-token-grants", organization }).pipe(
+      runReadIntent({ kind: "list-integration-token-grants", organization }).pipe(
         Effect.flatMap(({ attempt, result }) =>
           result.kind === "list-integration-token-grants"
             ? Effect.succeed({ attempt, value: result.value })
@@ -3783,7 +3886,7 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
         ),
       ),
     listTokenDelegations: (input) =>
-      runCommand({ kind: "list-token-delegations", ...input }).pipe(
+      runReadIntent({ kind: "list-token-delegations", ...input }).pipe(
         Effect.flatMap(({ attempt, result }) =>
           result.kind === "list-token-delegations"
             ? Effect.succeed({ attempt, value: result.value })

@@ -119,8 +119,11 @@ export interface NewProjectPorts {
   readonly createProject: (
     creation: NewProjectCreation,
   ) => Promise<{ readonly project: Pick<ZeropsProject, "id"> }>;
-  /** The platform took the first Mate's project: its birth begins (`creationAccepted`). */
-  readonly accepted: (projectId: string, giteaProjectId: string) => void;
+  /**
+   * The platform took the first Mate's project: its birth begins (`creationAccepted`), on the
+   * creation's own clock — `startedAt` is the press's, so its row counts on, never from 0:00.
+   */
+  readonly accepted: (projectId: string, giteaProjectId: string, startedAt: number) => void;
 }
 
 // ── What its surfaces draw ───────────────────────────────────────────────────────────────────
@@ -162,6 +165,7 @@ export function placedNewProjects(
             // The first thing its Mate's birth will owe.
             step: "tags" as const,
             overdue: false,
+            awaitingProject: true,
             ...(birth.failed === null ? {} : { failed: true }),
           },
         ],
@@ -359,7 +363,7 @@ export async function runNewProjectBirth(
   }
   // Its birth begins, and its view moves to it, in one breath: the menu draws its row from one or
   // the other, never neither.
-  ports.accepted(projectId, giteaProjectId);
+  ports.accepted(projectId, giteaProjectId, birth.startedAt);
   moved({ step: "created", projectId });
 }
 
@@ -398,8 +402,8 @@ async function drive(birthId: string): Promise<void> {
       birth,
       {
         ...held.ports,
-        accepted: (projectId, giteaProjectId) => {
-          if (held.isCurrent()) held.ports.accepted(projectId, giteaProjectId);
+        accepted: (projectId, giteaProjectId, startedAt) => {
+          if (held.isCurrent()) held.ports.accepted(projectId, giteaProjectId, startedAt);
         },
       },
       (patch) => {

@@ -70,7 +70,11 @@ import { useSetUpEnvironment } from "~/zerops/setUpEnvironment";
 import { askNewProject } from "~/zerops/newProjectAsk";
 import { useEnvironmentCreation } from "~/zerops/useEnvironmentCreation";
 import { useConnectMate, type MateConnectTarget } from "~/zerops/accountEnvironments";
-import { intendContainer, useZeropsContainers } from "~/zerops/zeropsContainers";
+import {
+  intendContainer,
+  readContainerInitAt,
+  useZeropsContainers,
+} from "~/zerops/zeropsContainers";
 import {
   beginPress,
   finishMateSetup,
@@ -1514,17 +1518,20 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
         setConnectError(null);
         setRestartingCandidateKey(candidate.key);
         const project = projectRef(activeOrganization.id, candidate.project.id);
+        // The container's initAt is read before the verb: the restart is over once it moves.
         void readContainerAfter(
           candidate,
-          runZeropsCommand(
-            runtime.commands.restartService({
-              kind: "service",
-              project,
-              serviceId: ZeropsServiceId.make(serviceId),
+          readContainerInitAt(candidate.key).then((initAt) =>
+            runZeropsCommand(
+              runtime.commands.restartService({
+                kind: "service",
+                project,
+                serviceId: ZeropsServiceId.make(serviceId),
+              }),
+            ).then(() => {
+              intendContainer(candidate.key, { kind: "restart", initAt });
             }),
-          ).then(() => {
-            intendContainer(candidate.key, { kind: "restart" });
-          }),
+          ),
         )
           .catch((cause: unknown) => {
             setConnectError(zeropsErrorMessage(cause));
@@ -1990,12 +1997,16 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
   }, [activeOrganization, organizationRef, runtime.commands]);
 
   // A Mate's group is its token: every environment in the group readable,
-  // its own writable. Reconciled off the list this screen already has, on
-  // every read — a grant write restarts nothing, and a group that has not
-  // moved is not written (`groupReach.ts`).
+  // its own writable. Reconciled off the list this screen already has, once
+  // it is a complete read, whenever the groups or the tokens move — a grant
+  // write restarts nothing, and a group that has not moved is not written.
   useZeropsGroupReach({
     clientId: activeOrganization?.id,
-    enabled: status === "signed-in" && !isLoading,
+    enabled:
+      status === "signed-in" &&
+      !isLoading &&
+      listing.state === "known" &&
+      listing.coverage === "complete",
     groups: useMemo(
       () =>
         groupTree.groups.map((entry) => ({

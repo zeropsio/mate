@@ -610,6 +610,10 @@ describe("exchangeAtDoor: a kept session is presented again before any throwaway
     readonly keptFor?: EnvironmentId;
     /** What the Mate says of the kept session: still its own, ended, or nothing at all. */
     readonly check: "held" | "ended" | "no-answer";
+    /** An earlier exchange of this page already got no word on it. */
+    readonly unansweredBefore?: boolean;
+    /** What this exchange noted of the Mate's word: answered, or not; none when never asked. */
+    readonly noted?: ReadonlyArray<boolean>;
     readonly answer: unknown;
     readonly checked: boolean;
     readonly minted: boolean;
@@ -622,6 +626,7 @@ describe("exchangeAtDoor: a kept session is presented again before any throwaway
       checked: true,
       minted: false,
       forgotten: false,
+      noted: [true],
     },
     {
       name: "the Mate has ended it: forgotten, and a throwaway opens a new one",
@@ -630,14 +635,26 @@ describe("exchangeAtDoor: a kept session is presented again before any throwaway
       checked: true,
       minted: true,
       forgotten: true,
+      noted: [true],
     },
     {
-      name: "the Mate gave no answer about it: a throwaway connects, and it stays kept",
+      name: "the Mate gave no answer about it: nothing minted, it stays kept for the retry",
       check: "no-answer",
+      answer: { ok: false, failure: { class: "retryable" }, descriptor: { identity: "ok" } },
+      checked: true,
+      minted: false,
+      forgotten: false,
+      noted: [false],
+    },
+    {
+      name: "the Mate gave no answer about it again: a throwaway connects, and it stays kept",
+      check: "no-answer",
+      unansweredBefore: true,
       answer: { ok: true, credential: { environmentId: ENV, generation: 1 } },
       checked: true,
       minted: true,
       forgotten: false,
+      noted: [false],
     },
     {
       name: "it was kept for an environment this Mate no longer is: forgotten unasked, and minted",
@@ -647,6 +664,7 @@ describe("exchangeAtDoor: a kept session is presented again before any throwaway
       checked: false,
       minted: true,
       forgotten: true,
+      noted: [true],
     },
     {
       name: "the origin serves another project's Mate: never presented",
@@ -703,6 +721,7 @@ describe("exchangeAtDoor: a kept session is presented again before any throwaway
     const recording = recordingPlatform();
     const checks: Array<unknown> = [];
     let forgotten = 0;
+    const noted: Array<boolean> = [];
     const answer = await exchangeAtDoor(
       {
         throwaway: row.signedOut ? null : throwaway(recording.platform),
@@ -719,6 +738,10 @@ describe("exchangeAtDoor: a kept session is presented again before any throwaway
           forget: () => {
             forgotten += 1;
           },
+          unanswered: row.unansweredBefore ?? false,
+          answered: (answered) => {
+            noted.push(answered);
+          },
         },
       },
       CONTAINER_ORIGIN,
@@ -731,6 +754,7 @@ describe("exchangeAtDoor: a kept session is presented again before any throwaway
     );
     expect(recording.minted.length > 0).toBe(row.minted);
     expect(forgotten > 0).toBe(row.forgotten);
+    expect(noted).toEqual(row.noted ?? []);
   });
 });
 

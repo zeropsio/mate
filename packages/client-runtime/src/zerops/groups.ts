@@ -505,6 +505,11 @@ export interface ZeropsPlacedBirth {
   readonly placement: BirthPlacement;
   /** The client's creation stopped before the platform took it: it says so where it is drawn. */
   readonly failed?: boolean | undefined;
+  /**
+   * The platform has not answered with its project yet, so `projectId` is the creation's own id.
+   * The listing can hold the project first; its group's Mate of the creation's name is then it.
+   */
+  readonly awaitingProject?: boolean | undefined;
 }
 
 /** A member of a group still being created: drawn until the listing holds its project. */
@@ -685,9 +690,26 @@ export function deriveZeropsGroups(
   // A creation stays pending until a group of the listing holds its project;
   // its group exists from the moment it started, members listed or not.
   const listed = new Set([...members.values()].flat().map(({ project }) => project.id));
+  const listedMates = new Set(
+    [...members.entries()].flatMap(([groupId, environments]) =>
+      environments.flatMap(({ project }) => {
+        const bot = readZeropsGroupTags(project.tagList).bot;
+        return bot === undefined ? [] : [`${groupId}\n${bot.toLowerCase()}`];
+      }),
+    ),
+  );
   const pending = new Map<string, Array<ZeropsPlacedBirth>>();
   for (const birth of births) {
     if (listed.has(birth.projectId)) continue;
+    const { botName } = birth.placement;
+    // A creation that stopped keeps its own row, and its Try again, whatever the listing holds.
+    if (
+      birth.awaitingProject === true &&
+      birth.failed !== true &&
+      botName !== undefined &&
+      listedMates.has(`${birth.placement.groupId}\n${botName.trim().toLowerCase()}`)
+    )
+      continue;
     const { groupId } = birth.placement;
     const bucket = pending.get(groupId);
     if (bucket) bucket.push(birth);
