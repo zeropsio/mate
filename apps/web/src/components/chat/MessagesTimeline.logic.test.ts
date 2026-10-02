@@ -558,6 +558,25 @@ describe("deriveMessagesTimelineRows", () => {
       now: { kind: "thinking", key: null, messages: [] },
     },
     {
+      // Its own only activity, the completion carries the time it arrived as
+      // its start: it is no call started after the others returned.
+      name: "a completion filed apart from its start opens no newer batch for the calls beside it",
+      entries: [
+        tool("w1", "t1", 1, {
+          turnId: null,
+          toolLifecycleStatus: "inProgress",
+          sourceActivityKind: "tool.started",
+        }),
+        open("w2", 1, 10),
+        tool("w1-done", "t1", 1, {
+          createdAt: at(1, 30),
+          startedAt: at(1, 30),
+          toolCallId: "call-w1",
+        }),
+      ],
+      now: { kind: "step", step: { key: "w2" } },
+    },
+    {
       name: "two batches with no thought between: the newer batch only",
       entries: [open("w1", 1), returned("w2", 1, 10, 2), open("w3", 3), open("w4", 3, 5)],
       now: { kind: "step", step: { key: "w4" }, others: [{ key: "w3" }] },

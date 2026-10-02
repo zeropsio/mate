@@ -1064,9 +1064,10 @@ function batchCallOf(
   if (work.toolLifecycleStatus === "inProgress") {
     return { startedAt: epoch(work.startedAt ?? work.createdAt), returnedAt: null };
   }
-  // A completion seen on its own — no start merged into it — tells that a
-  // call returned, never when one started.
-  const alone = work.startedAt === undefined && work.updatedAt === undefined;
+  // A completion seen on its own — no start merged into it, so no later
+  // activity stamped it (`updatedAt`) — tells that a call returned, never
+  // when one started.
+  const alone = work.updatedAt === undefined;
   return {
     startedAt: alone ? null : epoch(work.startedAt ?? work.createdAt),
     returnedAt: epoch(work.updatedAt ?? work.createdAt),
