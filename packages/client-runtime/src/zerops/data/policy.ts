@@ -130,8 +130,8 @@ function assertPositiveInteger(name: keyof ZeropsDataPolicy, value: number): voi
 /**
  * The commands that make several requests: a project with its first Mate's container, and a
  * container into a project — its services, the org's keys (17 s measured on a 193-key org, cold),
- * a key, the import (`api.ts`). One request's 15 s cannot hold them; main gave its commands a
- * minute.
+ * a key, then the container itself, all in `api.ts`. One request's 15 s cannot hold them; main
+ * gave its commands a minute.
  */
 const SEVERAL_REQUESTS: ReadonlySet<string> = new Set([
   "create-project-with-mate",
