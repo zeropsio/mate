@@ -17,6 +17,7 @@ import {
   attachmentPath,
   ChangeDetailResponse,
   CommentListResponse,
+  HqChange,
   HqChangeComment,
   type AttachmentLink,
   type ChangeLink,
@@ -156,6 +157,13 @@ export interface HqApi {
   ) => Promise<ReadonlyArray<HqChangeComment>>;
   /** Says `body` on a change, as the person. */
   readonly commentOnChange: (link: ChangeLink, body: string) => Promise<HqChangeComment>;
+  /**
+   * Squashes a change into `main` as the person, if its head is still `expectedHead` — the head
+   * they were shown; HQ answers the change merged, or refuses with one of `MERGE_REFUSALS`.
+   */
+  readonly mergeChange: (link: ChangeLink, expectedHead: string) => Promise<HqChange>;
+  /** Closes a change without merging it, as the person; its branch stays. */
+  readonly closeChange: (link: ChangeLink) => Promise<HqChange>;
   /** A picture of a change, read as the person (`attachmentPath`). */
   readonly changeAttachment: (link: AttachmentLink, signal?: AbortSignal) => Promise<Blob>;
 }
@@ -278,6 +286,7 @@ const unreadable = () =>
 const readChangeDetail = decoded(ChangeDetailResponse);
 const readComments = decoded(CommentListResponse);
 const readComment = decoded(HqChangeComment);
+const readChange = decoded(HqChange);
 
 /** A change's own path at HQ's API. */
 const changePath = ({ appId, repo, number }: ChangeLink): string =>
@@ -462,6 +471,15 @@ export function makeHqApi(input: {
           body: JSON.stringify({ body }),
         }),
       ),
+    mergeChange: async (link, expectedHead) =>
+      readChange(
+        await authorized(`${changePath(link)}/merge`, {
+          method: "POST",
+          body: JSON.stringify({ expectedHead }),
+        }),
+      ),
+    closeChange: async (link) =>
+      readChange(await authorized(`${changePath(link)}/close`, { method: "POST" })),
     changeAttachment: async (link, signal) =>
       (
         await authorized(attachmentPath(link.appId, link.repo, link.number, link.id), {

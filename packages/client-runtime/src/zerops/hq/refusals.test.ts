@@ -1,4 +1,5 @@
 import { describe, expect, it } from "@effect/vitest";
+import { MERGE_REFUSALS } from "@t3tools/shared/hqChanges";
 import { REASONS } from "@t3tools/shared/zeropsPermissions";
 
 import { hqRefusalWords } from "./refusals.ts";
@@ -24,6 +25,27 @@ describe("hqRefusalWords — HQ's refusal, in the person's words", () => {
     ["change_not_open", "conflict", "This change is merged or closed already."],
   ])("says the structure's own %s in words", (reason, code, words) => {
     expect(hqRefusalWords({ code, reason })).toBe(words);
+  });
+
+  it.each([...MERGE_REFUSALS])("says why HQ did not merge, %s, in words of its own", (reason) => {
+    const words = hqRefusalWords({ code: "conflict", reason });
+    expect(words).not.toContain(reason);
+    expect(words).toMatch(/^[A-Z].*\.$/u);
+  });
+
+  // A merge refused (`MERGE_REFUSALS`): what stopped it, so the person knows whether pressing again
+  // can help — only where main moved meanwhile.
+  it.each([
+    ["head_moved", "Its Mate pushed to it since you opened it. Review it again."],
+    ["conflict", "It no longer merges cleanly into main."],
+    ["empty", "There is nothing in it that main does not have."],
+    ["already_merged", "It is on main already."],
+    ["unrelated", "It shares no history with main."],
+    ["no_change", "Nothing was pushed to it yet."],
+    ["main_moved", "Other changes kept landing on main meanwhile. Try again."],
+    ["change_not_open", "This change is merged or closed already."],
+  ])("says %s as it stands", (reason, words) => {
+    expect(hqRefusalWords({ code: "conflict", reason })).toBe(words);
   });
 
   it("names a refusal this build has no words for by its code", () => {
