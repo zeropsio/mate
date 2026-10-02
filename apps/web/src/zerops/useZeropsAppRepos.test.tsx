@@ -40,8 +40,12 @@ vi.mock("./accountHq", () => ({
   useOfficialHq: () => (hq.state.open ? hq.official : null),
 }));
 
-const APPDEV: HqAppRepo = { name: "appdev", mainHead: "a".repeat(40), updatedAt: null };
-const API: HqAppRepo = { name: "api", mainHead: null, updatedAt: null };
+const APPDEV: HqAppRepo = {
+  name: "appdev",
+  mainHead: "a".repeat(40),
+  updatedAt: "2026-10-02T09:00:00.000Z",
+};
+const API: HqAppRepo = { name: "api", mainHead: null, updatedAt: "2026-10-02T08:00:00.000Z" };
 
 /** What the hook said, render by render. */
 const renders: ZeropsAppRepos[] = [];

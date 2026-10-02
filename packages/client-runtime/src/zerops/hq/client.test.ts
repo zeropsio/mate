@@ -694,12 +694,13 @@ describe("makeHqApi — a Mate's changes, as the person reads them", () => {
 
   // The Git page's repositories: an application's, each with its main as HQ holds it.
   it("lists an application's repositories, as the person", async () => {
+    // `updatedAt` is when its main last moved, or when it was made where nothing has landed yet.
     const REPOS = [
       { name: "appdev", mainHead: SHA, updatedAt: "2026-10-02T09:00:00.000Z" },
-      { name: "group", mainHead: null, updatedAt: null },
+      { name: "group", mainHead: null, updatedAt: "2026-10-02T08:00:00.000Z" },
     ];
     const { hq, api: hqApi } = api((seen) =>
-      seen.path === "/api/apps/app-1/repos" ? json(200, REPOS) : undefined,
+      seen.path === "/api/apps/app-1/repos" ? json(200, { repos: REPOS }) : undefined,
     );
     await expect(hqApi.appRepos("app-1")).resolves.toEqual(REPOS);
     expect(hq.seen.at(-1)).toMatchObject({ method: "GET", authorization: "Bearer session-1" });

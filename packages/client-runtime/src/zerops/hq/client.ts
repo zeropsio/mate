@@ -306,16 +306,17 @@ const readChange = decoded(HqChange);
 const readRecipeTier = decoded(RecipeTierResponse);
 
 /**
- * One of an application's repositories as `GET /api/apps/:appId/repos` answers it: its name, and
- * its `main` — none yet in a repository nothing was pushed to.
+ * One of an application's repositories as `GET /api/apps/:appId/repos` answers it: its name, its
+ * `main` — none yet in a repository nothing has landed in — and when that last moved, or when the
+ * repository was made.
  */
 const HqAppRepo = Schema.Struct({
   name: Schema.String,
   mainHead: Schema.NullOr(Schema.String),
-  updatedAt: Schema.NullOr(Schema.String),
+  updatedAt: Schema.String,
 });
 export type HqAppRepo = typeof HqAppRepo.Type;
-const readAppRepos = decoded(Schema.Array(HqAppRepo));
+const readAppRepos = decoded(Schema.Struct({ repos: Schema.Array(HqAppRepo) }));
 
 /** A change's own path at HQ's API. */
 const changePath = ({ appId, repo, number }: ChangeLink): string =>
@@ -517,12 +518,14 @@ export function makeHqApi(input: {
         })
       ).blob(),
     appRepos: async (appId, signal) =>
-      readAppRepos(
-        await authorized(
-          `/api/apps/${encodeURIComponent(appId)}/repos`,
-          signal === undefined ? {} : { signal },
-        ),
-      ),
+      (
+        await readAppRepos(
+          await authorized(
+            `/api/apps/${encodeURIComponent(appId)}/repos`,
+            signal === undefined ? {} : { signal },
+          ),
+        )
+      ).repos,
     recipeTier: async (appId, tier, signal) =>
       readRecipeTier(
         await authorized(
