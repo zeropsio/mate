@@ -1861,7 +1861,7 @@ export default function Sidebar() {
       if (zeropsProjectFlow === null || flow === undefined) return undefined;
       return {
         pullRequests: flow.pullRequests,
-        // Until Gitea answers, the tree draws the change rows it remembers.
+        // Until HQ tells them, the tree draws the change rows it remembers.
         changesKnown: flow.changesKnown,
         // The pull requests that have landed on `main`: without it `groupFlow`
         // never sees a group's own merged code, so it read `main` as empty and
@@ -1875,6 +1875,8 @@ export default function Sidebar() {
         // chips' menus say waits for production.
         releaseContents: flow.release.contents,
         releaseUntold: flow.release.untold,
+        // Until HQ answers the releases, production's chip says only what the platform says.
+        releasesKnown: flow.releasesKnown,
         // The release that did not go through, which turns the chip amber.
         releaseFailure: releaseFailureOf({
           releases: flow.releases,

@@ -4,6 +4,7 @@ import {
   type GroupEnvironmentRowInput,
   type GroupStops,
   type MovedCommits,
+  type ProductionRun,
   type ReleaseGate,
 } from "@t3tools/client-runtime/zerops";
 import type { HqDeploy } from "@t3tools/client-runtime/zerops/hq";
@@ -65,7 +66,11 @@ function join(input: {
   readonly permissions?: ReadonlyMap<string, ReleaseGate | undefined>;
   readonly live?: ReadonlyMap<
     string,
-    { readonly moved: MovedCommits; readonly untold: ReadonlyArray<string> }
+    {
+      readonly moved: MovedCommits;
+      readonly untold: ReadonlyArray<string>;
+      readonly runs: ReadonlyMap<string, ProductionRun> | undefined;
+    }
   >;
   readonly withheld?: ReadonlyMap<string, string>;
 }) {
@@ -121,6 +126,11 @@ describe("joinProjectFlows", () => {
     expect(flow?.environments.map(({ name }) => name)).toEqual(["harbor stage"]);
   });
 
+  it("knows a group's releases once HQ has answered them", () => {
+    expect(join({ stops: new Map([["g1", stopsOf()]]) }).get("g1")?.releasesKnown).toBe(false);
+    expect(join({ releases: new Map([["g1", []]]) }).get("g1")?.releasesKnown).toBe(true);
+  });
+
   describe("the release offered", () => {
     const MERGED = "2".repeat(40);
     const GROUP_MAIN = "9".repeat(40);
@@ -169,6 +179,7 @@ describe("joinProjectFlows", () => {
       readonly repos?: ReadonlyArray<RepoListEntry> | undefined;
       readonly live?: MovedCommits;
       readonly untold?: ReadonlyArray<string>;
+      readonly runs?: ReadonlyMap<string, ProductionRun>;
       readonly withheld?: ReadonlyMap<string, string>;
     }) =>
       join({
@@ -177,7 +188,9 @@ describe("joinProjectFlows", () => {
         repos: over.repos === undefined ? new Map() : new Map([["g1", over.repos]]),
         recipes: new Map([["g1", recipe]]),
         permissions: new Map([["g1", over.permission]]),
-        live: new Map([["g1", { moved: over.live ?? COMPARED, untold: over.untold ?? [] }]]),
+        live: new Map([
+          ["g1", { moved: over.live ?? COMPARED, untold: over.untold ?? [], runs: over.runs }],
+        ]),
         withheld: over.withheld ?? NOTHING_WITHHELD,
       }).get("g1")?.release;
 
@@ -217,6 +230,15 @@ describe("joinProjectFlows", () => {
       ]);
     });
 
+    it("carries what production runs and the repositories it builds from: what a roll back compares from", () => {
+      const runs = new Map<string, ProductionRun>([
+        ["app", { kind: "commit", sha: "1".repeat(40) }],
+      ]);
+      const release = offered({ permission: { allowed: true }, repos, runs });
+      expect(release?.runs).toBe(runs);
+      expect(release?.repositories).toEqual(new Map([["app", "appdev"]]));
+    });
+
     it("says why where HQ could not compare what goes live", () => {
       const release = offered({
         permission: { allowed: true },
@@ -242,6 +264,29 @@ describe("joinProjectFlows", () => {
       });
       expect(release?.entries).toEqual([]);
       expect(release?.contents).toEqual([]);
+      expect(release?.runs).toBeUndefined();
+    });
+
+    it("draws a new flow once what production runs changes", () => {
+      const stops = new Map([["g1", stopsOf([production])]]);
+      const releases = new Map([["g1", [FIRST]]]);
+      const runsOf = (sha: string) =>
+        join({
+          stops,
+          releases,
+          live: new Map([
+            [
+              "g1",
+              {
+                moved: COMPARED,
+                untold: [],
+                runs: new Map<string, ProductionRun>([["app", { kind: "commit", sha }]]),
+              },
+            ],
+          ]),
+        }).get("g1")?.release.runs;
+      expect(runsOf("1".repeat(40))?.get("app")).toEqual({ kind: "commit", sha: "1".repeat(40) });
+      expect(runsOf("3".repeat(40))?.get("app")).toEqual({ kind: "commit", sha: "3".repeat(40) });
     });
   });
 

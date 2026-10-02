@@ -51,6 +51,7 @@ import {
   type FlowVerb,
   type CompareReads,
   type MovedCommits,
+  type ProductionRun,
   type ReleaseGate,
 } from "@t3tools/client-runtime/zerops";
 import { HQ_NOT_OPEN, hqRefusalWords, type HqApi } from "@t3tools/client-runtime/zerops/hq";
@@ -231,15 +232,24 @@ function groupStopsFor(groupId: string, input: Parameters<typeof groupStopsOf>[0
 /** What a release lists while HQ's repositories or the recipe are not read. */
 const NOTHING_TO_LIST: ReadonlyMap<string, string> = new Map();
 
-/** What a release of a group would put live, and the production services nothing is told of. */
+/**
+ * What a release of a group would put live, the production services nothing is told of, and what
+ * each production service runs (`productionRuns`) — what a roll back compares from.
+ */
 interface ReleaseLive {
   readonly moved: MovedCommits;
   readonly untold: ReadonlyArray<string>;
+  readonly runs: ReadonlyMap<string, ProductionRun> | undefined;
+}
+
+/** What to ask HQ of a group's release, and what production runs, which it is asked from. */
+interface ReleasePlan extends CompareReads {
+  readonly running: ReadonlyMap<string, ProductionRun>;
 }
 
 /** What goes live while nothing has been asked of HQ: what production runs is not known yet. */
 const NOT_COMPARED: MovedCommits = { state: "reading" };
-const NOT_ASKED: ReleaseLive = { moved: NOT_COMPARED, untold: [] };
+const NOT_ASKED: ReleaseLive = { moved: NOT_COMPARED, untold: [], runs: undefined };
 
 /** What a flow's key says of what goes live: the commits each comparison moves, or its state. */
 function liveKey(live: MovedCommits): unknown {
@@ -344,6 +354,7 @@ export function joinProjectFlows(input: {
       permission ?? null,
       liveKey(live.moved),
       live.untold,
+      live.runs === undefined ? null : [...live.runs],
     ]);
     let flow = byGroup.get(key);
     if (flow === undefined) {
@@ -448,11 +459,20 @@ function projectFlow(
     changesFailure: changes === undefined ? halves.changesFailure : undefined,
     merged: changes?.merged ?? [],
     releases: releaseRows,
+    releasesKnown: records !== undefined,
     repos,
     // A production the grant withholds is measured against nothing, and offers nothing.
     release:
       productionWithheld === undefined
-        ? { ...offer, permission, groupHead: read?.groupHead, inFlight, untold: live.untold }
+        ? {
+            ...offer,
+            permission,
+            groupHead: read?.groupHead,
+            inFlight,
+            untold: live.untold,
+            runs: live.runs,
+            repositories: recipe?.productionRepositories,
+          }
         : {
             ...offer,
             gate: { allowed: false, reason: productionWithheld },
@@ -463,6 +483,8 @@ function projectFlow(
             inFlight,
             contents: [],
             untold: [],
+            runs: undefined,
+            repositories: undefined,
           },
   };
 }
@@ -701,7 +723,7 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
   // runtime's `main` (`releaseReads`) — asked only once the store has stated what each production
   // service runs, as a version not read yet would read as running nothing.
   const releasePlans = useMemo(() => {
-    const plans = new Map<string, CompareReads>();
+    const plans = new Map<string, ReleasePlan>();
     for (const { groupId } of flowGroups) {
       const recipe = recipes.get(groupId);
       const repos = appRepos.get(groupId);
@@ -733,14 +755,14 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
       });
       if (running === undefined) continue;
       const { productionRepositories } = recipe;
-      plans.set(
-        groupId,
-        releaseReads({
+      plans.set(groupId, {
+        ...releaseReads({
           productionRepositories,
           candidate: releaseCandidate({ productionRepositories, repos }).candidate,
           running,
         }),
-      );
+        running,
+      });
     }
     return plans;
   }, [
@@ -772,6 +794,7 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
                   ? NOT_COMPARED
                   : movedCommits({ reads: plan.reads, ...answered }),
               untold: plan.untold,
+              runs: plan.running,
             },
           ];
         }),

@@ -24,7 +24,7 @@ import {
   stageMenu,
   stopServing,
   type ChipView,
-  type GiteaAnswer,
+  type ReleasesAnswer,
   type ProductionChip,
   type ReleaseFailure,
   type StopServing,
@@ -57,7 +57,7 @@ const live = (label: string): GroupFlowProduction => ({
 const ABSENT: GroupFlowProduction = { kind: "absent", line: "Not set up", addable: false };
 const SERVING: StopServing = { kind: "serving" };
 const DOWN: StopServing = { kind: "down", services: ["web"] };
-const ANSWERED: GiteaAnswer = { kind: "answered", failure: undefined };
+const ANSWERED: ReleasesAnswer = { kind: "answered", failure: undefined };
 const FAILED_RELEASE: ReleaseFailure = {
   tag: "v0.1.57",
   kind: "deploy-failed",
@@ -72,7 +72,7 @@ const input = (over: Partial<ChipInput> = {}): ChipInput => ({
   building: undefined,
   waiting: 0,
   serving: SERVING,
-  gitea: ANSWERED,
+  releases: ANSWERED,
   ...over,
 });
 
@@ -114,7 +114,7 @@ describe("projectChips — the chips a project's heading wears", () => {
       serving: SERVING,
       stages,
       stagesBeingCreated: false,
-      gitea: ANSWERED,
+      releases: ANSWERED,
     });
     expect((["stage", "prod"] as const).filter((label) => read[label].kind === "chip")).toEqual(
       chips,
@@ -181,7 +181,7 @@ describe("productionChip — production's chip: the word, its tone, its state in
       state: "the last release failed, the old one still serving",
       given: input({
         production: live("v0.1.56"),
-        gitea: { kind: "answered", failure: FAILED_RELEASE },
+        releases: { kind: "answered", failure: FAILED_RELEASE },
       }),
       chip: { label: "prod", state: "failed", version: "v0.1.56" },
       tone: "neutral",
@@ -284,19 +284,19 @@ describe("productionChip — production's chip: the word, its tone, its state in
     expect(productionChip(input(given))).toEqual({ kind: "unknown" });
   });
 
-  // Gitea may keep not answering — its reads failing while the person is
-  // signed in. The platform alone still says there is a production and what
-  // it runs: drawn where nothing is remembered, never remembered itself.
+  // HQ may keep not answering the releases. The platform alone still says
+  // there is a production and what it runs: drawn where nothing is
+  // remembered, never remembered itself.
   it.each([
     {
       name: "a production",
-      given: input({ gitea: { kind: "waiting" }, waiting: 0 }),
+      given: input({ releases: { kind: "waiting" }, waiting: 0 }),
       partial: { label: "prod", state: "ok", version: "v0.1.44" },
     },
     {
       name: "a production nothing was deployed to",
       given: input({
-        gitea: { kind: "waiting" },
+        releases: { kind: "waiting" },
         production: {
           kind: "empty",
           stop: stop({ state: "empty", version: undefined }),
@@ -306,7 +306,7 @@ describe("productionChip — production's chip: the word, its tone, its state in
       partial: { label: "prod", state: "empty" },
     },
   ] as const)(
-    "says what the platform alone says of $name until Gitea answers",
+    "says what the platform alone says of $name until HQ answers the releases",
     ({ given, partial }) => {
       const view = productionChip(given);
       expect(view).toEqual({ kind: "unknown", partial });
@@ -318,8 +318,8 @@ describe("productionChip — production's chip: the word, its tone, its state in
     },
   );
 
-  it("settles on the platform's facts alone where Gitea is not coming", () => {
-    expect(chip(productionChip(input({ gitea: { kind: "absent" } })))).toEqual({
+  it("settles on the platform's facts alone where no HQ is open", () => {
+    expect(chip(productionChip(input({ releases: { kind: "absent" } })))).toEqual({
       label: "prod",
       state: "ok",
       version: "v0.1.44",
@@ -330,7 +330,7 @@ describe("productionChip — production's chip: the word, its tone, its state in
     expect(
       chip(
         productionChip(
-          input({ gitea: { kind: "waiting" }, serving: { kind: "down", services: ["app"] } }),
+          input({ releases: { kind: "waiting" }, serving: { kind: "down", services: ["app"] } }),
         ),
       )?.state,
     ).toBe("down");
@@ -372,7 +372,7 @@ describe("productionChip — production's chip: the word, its tone, its state in
     {
       name: "down, the last release failed too",
       given: input({
-        gitea: { kind: "answered", failure: FAILED_RELEASE },
+        releases: { kind: "answered", failure: FAILED_RELEASE },
         serving: { kind: "down", services: ["app"] },
       }),
       chip: { label: "prod", state: "down", version: "v0.1.44" },
@@ -404,7 +404,7 @@ describe("stageChip — one chip for the project's stage or stages", () => {
   const read = (
     stages: ReturnType<typeof staged>[],
     over: Partial<Parameters<typeof stageChip>[0]> = {},
-  ) => stageChip({ stages, beingCreated: false, gitea: ANSWERED, ...over });
+  ) => stageChip({ stages, beingCreated: false, releases: ANSWERED, ...over });
 
   it.each([
     {
@@ -571,7 +571,7 @@ describe("stageChip — one chip for the project's stage or stages", () => {
   });
 
   it("says what the platform alone says of a stage until Gitea answers", () => {
-    const view = read([staged("stage")], { gitea: { kind: "waiting" } });
+    const view = read([staged("stage")], { releases: { kind: "waiting" } });
     expect(view).toEqual({
       kind: "unknown",
       partial: { label: "stage", state: "ok", version: "main" },
@@ -812,7 +812,7 @@ describe("releaseFailureOf — the release that did not go through, newer than w
     });
   });
 
-  it("names a release the broker refused, with its reason", () => {
+  it("names a release HQ refused, with its reason", () => {
     expect(
       releaseFailureOf({
         releases: [
@@ -946,7 +946,7 @@ describe("productionMenu — what production's menu says, per state", () => {
     },
   );
 
-  it("says what failed, when, the broker's words, and what still serves", () => {
+  it("says what failed, when, HQ's words, and what still serves", () => {
     expect(
       menu({
         chip: { label: "prod", state: "failed", version: "v0.1.56" },

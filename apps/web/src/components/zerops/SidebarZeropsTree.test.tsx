@@ -1423,8 +1423,8 @@ describe("a Mate and its crew, one unit in the menu", () => {
   });
 });
 
-// Signed in, so Gitea is coming — but none of its reads has answered.
-const SIGNED_IN = {
+// An HQ is open, so its releases are coming — but it has not answered them.
+const HQ_OPEN = {
   deployments: new Map([
     [
       "crm-prod",
@@ -1445,7 +1445,7 @@ const SIGNED_IN = {
     ],
   ]),
   flows: new Map(),
-  signedIn: true,
+  hqAddress: "https://hq.example.test",
 } as unknown as ZeropsProjectFlowValue;
 
 describe("production and the stages are two chips on the project's heading (M2, M1)", () => {
@@ -1670,10 +1670,10 @@ describe("production and the stages are two chips on the project's heading (M2, 
     );
   });
 
-  it("draws what the platform alone says while Gitea keeps not answering, and never keeps it", () => {
+  it("draws what the platform alone says while HQ has not answered the releases, and never keeps it", () => {
     const drawn: SidebarDrawn[] = [];
     const tree = mount(
-      <ZeropsProjectFlowContext.Provider value={SIGNED_IN}>
+      <ZeropsProjectFlowContext.Provider value={HQ_OPEN}>
         <SidebarZeropsTree
           candidates={[CRM_DEV, up(CRM_PROD)]}
           complete

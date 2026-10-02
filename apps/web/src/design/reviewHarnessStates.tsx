@@ -28,6 +28,7 @@ import { CrewTaskReviewView } from "~/components/zerops/review/ZeropsCrewTaskRev
 import {
   ReleaseReviewView,
   RollbackReviewView,
+  type RollbackList,
 } from "~/components/zerops/review/ZeropsReleaseReview";
 import { useReleaseSteps, ZeropsReleaseSteps } from "~/components/zerops/review/ZeropsReleaseSteps";
 import { ZeropsReviewDialog } from "~/components/zerops/review/ZeropsReviewDialog";
@@ -491,6 +492,44 @@ const RELEASE_ROWS = [
   },
 ];
 
+/** What a roll back to v0.1.55 takes off production: the two changes v0.1.57 put live. */
+const LEAVING: RollbackList = { state: "known", rows: RELEASE_ROWS, count: 2, atLeast: false };
+const NOTHING_BACK: RollbackList = { state: "known", rows: [], count: 0, atLeast: false };
+
+function Rollback({
+  leaving = LEAVING,
+  comingBack = NOTHING_BACK,
+  untold = NONE_OPEN,
+}: {
+  readonly leaving?: RollbackList;
+  readonly comingBack?: RollbackList;
+  readonly untold?: ReadonlyArray<string>;
+}) {
+  return (
+    <RollbackReviewView
+      comingBack={comingBack}
+      leaving={leaving}
+      line="app 7e1c0d2 · api 7e1c0d2"
+      live="v0.1.57"
+      permission={{ allowed: true }}
+      name="Beviro"
+      nextTag="v0.1.58"
+      now={NOW}
+      onClose={noop}
+      onRollBack={noop}
+      outcome={OFFERED}
+      press={IDLE}
+      services={["app", "api"]}
+      tag="v0.1.55"
+      untold={untold}
+      where={[
+        { service: "app", line: "goes back to 7e1c0d2" },
+        { service: "api", line: "goes back to 7e1c0d2" },
+      ]}
+    />
+  );
+}
+
 const WHERE = [
   { service: "app", line: "redeploys from 3fa9c21" },
   { service: "api", line: "redeploys from 3fa9c21" },
@@ -903,27 +942,20 @@ export const REVIEW_STATES: ReadonlyArray<{
       />
     ),
   },
+  { id: "rollback", label: "Roll back", node: <Rollback /> },
   {
-    id: "rollback",
-    label: "Roll back",
+    id: "rollback-comparing",
+    label: "Roll back, HQ comparing",
+    node: <Rollback comingBack={{ state: "reading" }} leaving={{ state: "reading" }} />,
+  },
+  {
+    id: "rollback-uncompared",
+    label: "Roll back, HQ could not compare",
     node: (
-      <RollbackReviewView
-        line="app 7e1c0d2 · api 7e1c0d2"
-        live="v0.1.57"
-        permission={{ allowed: true }}
-        name="Beviro"
-        nextTag="v0.1.58"
-        now={NOW}
-        onClose={noop}
-        onRollBack={noop}
-        outcome={OFFERED}
-        press={IDLE}
-        services={["app", "api"]}
-        tag="v0.1.55"
-        where={[
-          { service: "app", line: "goes back to 7e1c0d2" },
-          { service: "api", line: "goes back to 7e1c0d2" },
-        ]}
+      <Rollback
+        comingBack={{ state: "failed", reason: "HQ has no such commit." }}
+        leaving={{ state: "failed", reason: "HQ has no such commit." }}
+        untold={["web"]}
       />
     ),
   },

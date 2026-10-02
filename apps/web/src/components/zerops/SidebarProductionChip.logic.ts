@@ -16,9 +16,9 @@
  * for each stage, on the stages' chip.
  *
  * Every fact comes from what the menu already reads — `groupFlow`'s stops, the
- * platform's services, Gitea's releases — and a chip is drawn only once what
+ * platform's services, HQ's releases — and a chip is drawn only once what
  * decides it is read: until then it is unknown, and the menu draws the chip it
- * remembers (`menuMemory.ts`) — else, where only Gitea's answer is missing,
+ * remembers (`menuMemory.ts`) — else, where only HQ's releases answer is missing,
  * what the platform alone says; else nothing. A reload never paints a chip it
  * then takes back.
  *
@@ -99,7 +99,7 @@ export function stopServing(input: {
 /** A release that did not go through, newer than what production serves. */
 export interface ReleaseFailure {
   readonly tag: string;
-  /** Its production deploy failed, or the broker refused the tag. */
+  /** Its production deploy failed, or HQ refused the release. */
   readonly kind: "deploy-failed" | "refused";
   /** When: the failed deploy's, as HQ records it, or the refused tag's; `undefined` where unread. */
   readonly at: string | undefined;
@@ -191,14 +191,17 @@ export type ChipView =
   | { readonly kind: "none" }
   /**
    * Not all of it read. `partial` is what the platform alone says while
-   * Gitea has not answered — drawn where nothing is remembered, and never
-   * remembered itself.
+   * HQ has not answered the releases — drawn where nothing is remembered, and
+   * never remembered itself.
    */
   | { readonly kind: "unknown"; readonly partial?: ProductionChip }
   | { readonly kind: "chip"; readonly chip: ProductionChip };
 
-/** What Gitea said of the group: answered (with the failed release it read), not yet, or never. */
-export type GiteaAnswer =
+/**
+ * What HQ said of the application's releases: answered (with the failed release it read), not
+ * yet, or never — no HQ open here.
+ */
+export type ReleasesAnswer =
   | { readonly kind: "answered"; readonly failure: ReleaseFailure | undefined }
   | { readonly kind: "waiting" }
   | { readonly kind: "absent" };
@@ -207,10 +210,10 @@ const NONE: ChipView = { kind: "none" };
 const UNKNOWN: ChipView = { kind: "unknown" };
 
 /**
- * Gitea has not answered — or keeps failing while the person is signed in:
- * the chip the platform's facts alone make, as where Gitea is not coming.
+ * HQ has not answered the releases yet: the chip the platform's facts alone make, as where no HQ
+ * is coming.
  */
-function untilGitea(alone: ChipView): ChipView {
+function untilReleases(alone: ChipView): ChipView {
   return alone.kind === "chip" ? { kind: "unknown", partial: alone.chip } : UNKNOWN;
 }
 
@@ -239,7 +242,7 @@ function chipOf(
  * Production's chip, worst first: being set up; down or stopped, from the
  * platform alone and at once — with a release on its way, or changes
  * waiting, beside it, since those are true as well; unknown while what runs
- * or how its services stand is unread, and while Gitea's answer is, where it
+ * or how its services stand is unread, and while HQ's releases answer is, where it
  * is coming — with what the platform alone says as its `partial`; a release
  * on its way; a release that failed (amber: the old one still serves);
  * nothing released yet; changes waiting (nothing is wrong); healthy. No chip
@@ -254,7 +257,7 @@ export function productionChip(input: {
   /** Changes merged and not live (`GroupFlowMain.notLive`). */
   readonly waiting: number;
   readonly serving: StopServing;
-  readonly gitea: GiteaAnswer;
+  readonly releases: ReleasesAnswer;
 }): ChipView {
   const { production } = input;
   if (production.kind === "creating") return chipOf("prod", "creating");
@@ -273,8 +276,8 @@ export function productionChip(input: {
     });
   }
   if (production.kind === "checking" || serving.kind === "unknown") return UNKNOWN;
-  if (input.gitea.kind === "waiting") {
-    return untilGitea(productionChip({ ...input, gitea: { kind: "absent" } }));
+  if (input.releases.kind === "waiting") {
+    return untilReleases(productionChip({ ...input, releases: { kind: "absent" } }));
   }
   if (production.kind === "releasing") {
     return chipOf("prod", "releasing", { version: served, next: production.tag });
@@ -287,7 +290,7 @@ export function productionChip(input: {
     });
   }
   if (
-    (input.gitea.kind === "answered" && input.gitea.failure !== undefined) ||
+    (input.releases.kind === "answered" && input.releases.failure !== undefined) ||
     production.kind === "deploy-failed"
   ) {
     return chipOf("prod", "failed", { version: served });
@@ -335,15 +338,15 @@ export interface StageInput {
 export function stageStopChip(input: {
   readonly stop: GroupFlowStop;
   readonly serving: StopServing;
-  readonly gitea: GiteaAnswer;
+  readonly releases: ReleasesAnswer;
 }): ChipView {
   const { stop, serving } = input;
   const version = stageVersion(stop);
   if (serving.kind === "down") return chipOf("stage", "down", { version });
   if (serving.kind === "stopped") return chipOf("stage", "stopped", { version });
   if (stop.state === "checking" || serving.kind === "unknown") return UNKNOWN;
-  if (input.gitea.kind === "waiting") {
-    return untilGitea(stageStopChip({ ...input, gitea: { kind: "absent" } }));
+  if (input.releases.kind === "waiting") {
+    return untilReleases(stageStopChip({ ...input, releases: { kind: "absent" } }));
   }
   switch (stop.state) {
     case "deploying":
@@ -394,11 +397,11 @@ export function stageChip(input: {
   readonly stages: ReadonlyArray<StageInput>;
   /** A stage is being created that the listing does not hold yet. */
   readonly beingCreated: boolean;
-  readonly gitea: GiteaAnswer;
+  readonly releases: ReleasesAnswer;
 }): ChipView {
   const views = input.stages.map((stage) => ({
     name: stage.name,
-    view: stageStopChip({ stop: stage.stop, serving: stage.serving, gitea: input.gitea }),
+    view: stageStopChip({ stop: stage.stop, serving: stage.serving, releases: input.releases }),
   }));
   const [first] = views;
   if (first === undefined) return input.beingCreated ? chipOf("stage", "creating") : NONE;
@@ -432,14 +435,14 @@ export function projectChips(input: {
   readonly serving: StopServing;
   readonly stages: ReadonlyArray<StageInput>;
   readonly stagesBeingCreated: boolean;
-  readonly gitea: GiteaAnswer;
+  readonly releases: ReleasesAnswer;
 }): { readonly prod: ChipView; readonly stage: ChipView } {
   return {
     prod: productionChip(input),
     stage: stageChip({
       stages: input.stages,
       beingCreated: input.stagesBeingCreated,
-      gitea: input.gitea,
+      releases: input.releases,
     }),
   };
 }
@@ -690,7 +693,7 @@ function stopWord(stop: GroupFlowStop, deployedAt: string | undefined, nowMs: nu
   }
 }
 
-/** "Release v0.1.57 failed 12 min ago: <the broker's words>." */
+/** "Release v0.1.57 failed 12 min ago: <HQ's words>." */
 function failureSentence(failure: ReleaseFailure, nowMs: number): string {
   const ago = failure.at === undefined ? undefined : deployedAgo(failure.at, nowMs);
   const verb = failure.kind === "refused" ? "was refused" : "failed";
@@ -835,7 +838,7 @@ function failedHow(failure: ReleaseFailure): string {
 
 /**
  * What "Ask <your Mate> to fix it" writes into the Mate's composer (S6):
- * what failed, when, the broker's words, and the ask — for a release that
+ * what failed, when, HQ's words, and the ask — for a release that
  * did not go through and for production down, both at once where both are
  * true; for a stage whose last deploy failed, or which is down, by its name.
  * Nothing to fix otherwise: a stop stopped on purpose is fine.
