@@ -19,6 +19,9 @@ import {
   holdReleaseFacts,
   RELEASE_NOT_A_RELEASER,
   releaseFacts,
+  releaseFollows,
+  releaseOutcomeOf,
+  releaseStep,
   releaseContentsCommits,
   releaseReview,
   reviewAge,
@@ -28,7 +31,6 @@ import {
   shortCommit,
   stageMarks,
   stageStandings,
-  type FlowReleaseRow,
   type ReleaseFacts,
   type ReleaseGate,
   type ReleaseOutcome,
@@ -160,43 +162,6 @@ function ReleaseSteps({
   );
 }
 
-/** Where the tag it made stands: on its way, live, or failed — `undefined` before it was made. */
-export function releaseOutcomeOf(input: {
-  readonly tagged: FlowReleaseRow | undefined;
-  readonly releasing: boolean;
-  readonly pressing: boolean;
-  readonly tag: string;
-  readonly clockMs: number;
-}): ReleaseOutcome {
-  const { tagged } = input;
-  if (tagged?.standing === "live") return { kind: "released", at: tagged.taggedAt };
-  if (tagged?.standing === "deploy-failed" || tagged?.verdict === "refused") {
-    const service = tagged.failedEntry?.service;
-    return {
-      kind: "failed",
-      detail:
-        tagged.verdict === "refused"
-          ? (tagged.detail ?? "The broker refused the tag")
-          : service === undefined
-            ? "Its production deploy failed"
-            : `The deploy of ${service} failed`,
-      service,
-      at: tagged.taggedAt,
-    };
-  }
-  if (!input.releasing) return { kind: "offered" };
-  if (input.pressing && tagged === undefined) {
-    return { kind: "releasing", progress: `Tagging main as ${input.tag}` };
-  }
-  const since = tagged?.taggedAt === undefined ? Number.NaN : Date.parse(tagged.taggedAt);
-  if (Number.isNaN(since)) {
-    return { kind: "releasing", progress: `Production redeploys from ${input.tag}` };
-  }
-  const elapsed = Math.max(0, Math.floor((input.clockMs - since) / 1000));
-  const clock = `${String(Math.floor(elapsed / 60))}:${String(elapsed % 60).padStart(2, "0")}`;
-  return { kind: "releasing", progress: `Production redeploys from ${input.tag} · ${clock}` };
-}
-
 function ReleaseData({
   flow,
   name,
@@ -217,18 +182,18 @@ function ReleaseData({
   const [press, setPress] = useState<ReviewPress>({ kind: "idle" });
   // The version this review tags — the suggestion when it was pressed, or the one on its way.
   const [made, setMade] = useState<string | undefined>(undefined);
-  const inFlight = flow.release.inFlight;
-  const tag = made ?? inFlight ?? flow.release.suggestion;
-  const tagged = flow.releases.find((entry) => entry.tag === tag);
-  const releasing = press.kind === "running" || press.kind === "done" || inFlight === tag;
-  const clockMs = useSecondsNowMs(releasing && tagged?.standing === undefined);
-  const outcome = releaseOutcomeOf({
-    tagged,
-    releasing,
-    pressing: press.kind === "running",
-    tag,
-    clockMs,
+  // What the release is — its tag, what it replaces, what goes out and where — held from the
+  // press, or from the first look at it on its way: once it lands, the reads are the state it made.
+  const [held, setHeld] = useState<ReleaseFacts<ReleaseChangeRow> | undefined>(undefined);
+  const follows = releaseFollows({
+    made,
+    held,
+    press,
+    inFlight: flow.release.inFlight,
+    suggestion: flow.release.suggestion,
+    releases: flow.releases,
   });
+  const clockMs = useSecondsNowMs(follows.ticking);
 
   const mainStage = flow.environmentInputs.find(
     (entry) =>
@@ -251,23 +216,29 @@ function ReleaseData({
     [flow.mainHeads, flow.release.contents, flowValue?.deployments, mainStage],
   );
   const production = flow.environmentInputs.find((entry) => entry.tier === "production");
-  // What the release is — its tag, what it replaces, what goes out and where — as read now…
-  const current = releaseFacts({
-    tag,
-    live: flow.releases.find((entry) => entry.standing === "live")?.tag,
-    rows: releaseChangeRows({
-      commits: releaseContentsCommits(flow.release.contents),
-      merged: flow.merged,
-      marks,
-    }),
-    comparison: flow.release.comparison,
-    productionServices: production?.services.map((entry) => entry.hostname) ?? [],
+  const {
+    outcome,
+    held: keep,
+    facts,
+  } = releaseStep({
+    follows,
+    held,
+    press,
+    clockMs,
+    read: (tag) =>
+      releaseFacts({
+        tag,
+        live: flow.releases.find((entry) => entry.standing === "live")?.tag,
+        rows: releaseChangeRows({
+          commits: releaseContentsCommits(flow.release.contents),
+          merged: flow.merged,
+          marks,
+        }),
+        comparison: flow.release.comparison,
+        productionServices: production?.services.map((entry) => entry.hostname) ?? [],
+      }),
   });
-  // …and as it was pressed, from then on: once it lands, the reads are the state it made.
-  const [held, setHeld] = useState<ReleaseFacts<ReleaseChangeRow> | undefined>(undefined);
-  const keep = holdReleaseFacts({ held, current, press, outcome });
   if (keep !== held) setHeld(keep);
-  const facts = keep ?? current;
   const rows = facts.rows.map((row) => {
     const mate = row.mateProjectId === undefined ? undefined : mates.get(row.mateProjectId);
     const mateName =

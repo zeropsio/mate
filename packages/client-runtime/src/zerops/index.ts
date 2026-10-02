@@ -481,7 +481,14 @@ export {
   type RollbackReviewInput,
   type RollbackReviewModel,
 } from "./reviewVerdict.ts";
-export { holdReleaseFacts, releaseFacts, type ReleaseFacts } from "./releaseFacts.ts";
+export {
+  holdReleaseFacts,
+  releaseFacts,
+  releaseFollows,
+  releaseOutcomeOf,
+  releaseStep,
+  type ReleaseFacts,
+} from "./releaseFacts.ts";
 export {
   changeFileParts,
   parseChangeDiff,
