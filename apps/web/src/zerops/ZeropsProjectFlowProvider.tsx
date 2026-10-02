@@ -60,7 +60,6 @@ import { ZeropsProjectId, ZeropsServiceId } from "@t3tools/client-runtime/zerops
 import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
 import { mateDiagnostics } from "@t3tools/client-runtime/zerops/diagnostics";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
-import { zeropsThrowawayPlatform } from "@t3tools/client-runtime/zerops/doorThrowaway";
 import type { ChangeLink, HqChange, RepoListEntry } from "@t3tools/shared/hqChanges";
 import { RECIPE_REPO } from "@t3tools/shared/hqRecipe";
 import type { Release } from "@t3tools/shared/hqRelease";
@@ -77,8 +76,6 @@ import {
 import { hqChangesAtom, hqEnvironmentsAtom, hqStructureAtom } from "../state/zerops";
 import { useStopDeployments } from "./accountForge";
 import { accountHqApi, useAccountHq } from "./accountHq";
-import { useAccountGitea } from "./giteaProject";
-import { useGiteaSession } from "./accountGiteaSessions";
 import {
   ZeropsProjectFlowContext,
   type FlowVerbOutcome,
@@ -102,7 +99,6 @@ import { useZeropsInventory } from "./ZeropsInventoryProvider";
 import { useZeropsSession } from "./ZeropsSessionProvider";
 
 const EMPTY_FLOWS: ReadonlyMap<string, ZeropsProjectFlow> = new Map();
-const EMPTY_SLUGS: ReadonlyMap<string, string> = new Map();
 const NO_FAILURES: ReadonlyMap<string, string> = new Map();
 /** How long a verb whose call landed stays pending while the flow has not read its effect back. */
 export const HELD_VERB_MS = 30_000;
@@ -495,19 +491,9 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
   const inventory = useZeropsInventory();
   const organization = session.activeOrganization;
   const clientId = organization?.id;
-  const accountGitea = useAccountGitea(clientId);
-  const giteaOrigin = accountGitea?.state.url;
-  const brokerOrigin = accountGitea?.state.brokerUrl;
   const signedInToMate = session.status === "signed-in";
 
   const registry = useZeropsRegistry();
-  const platform = useMemo(() => zeropsThrowawayPlatform(session.client), [session.client]);
-  const { trouble: signInTrouble } = useGiteaSession({
-    giteaOrigin,
-    brokerOrigin,
-    clientId,
-    platform,
-  });
 
   /**
    * Every group the registry knows, with the projects the account tags into
@@ -904,10 +890,6 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
     };
   }, [awaiting, letGo]);
 
-  const slugs = useMemo(
-    () => new Map(registry.registry.groups.map((entry) => [entry.groupId, entry.slug])),
-    [registry.registry.groups],
-  );
   const mateNames = useMemo(
     () =>
       new Map(
@@ -1091,11 +1073,9 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
   const value = useMemo<ZeropsProjectFlowValue>(
     () => ({
       hqAddress,
-      signInTrouble,
       flows: lapsed ? EMPTY_FLOWS : flows,
       releaseFailures: lapsed ? NO_FAILURES : releaseFailures,
       deployments,
-      slugs: lapsed ? EMPTY_SLUGS : slugs,
       mateNames,
       pending: pendingOrHeld,
       trouble,
@@ -1118,8 +1098,6 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
       release,
       releaseFailures,
       rollBack,
-      signInTrouble,
-      slugs,
       trouble,
     ],
   );
