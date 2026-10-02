@@ -1137,7 +1137,7 @@ describe("a Mate whose address landed, not answering yet, in a window that did n
   ];
 
   /** The steps in order, the listing's memory carried from each to the next. */
-  const replay = (steps: typeof STEPS) => {
+  const replay = (steps: typeof STEPS, created = false) => {
     let memory: AddressMemory = NO_ADDRESS_MEMORY;
     return steps.map((step) => {
       const nowMs = CREATED + step.atMs;
@@ -1153,6 +1153,7 @@ describe("a Mate whose address landed, not answering yet, in a window that did n
         press: undefined,
         candidate,
         nowMs,
+        ...(created ? { created, linkHolds: arrivalLinkHolds(step.link) } : {}),
         answerAwaited: arrivalAwaitsAnswer(step.link),
       });
     });
@@ -1203,6 +1204,40 @@ describe("a Mate whose address landed, not answering yet, in a window that did n
       "coming",
       "up",
     ]);
+  });
+
+  // Review, pass 34: a server that answers with an error is not one still starting — an arrival
+  // holds through its first failures only, as the making window's does, and then its words speak.
+  it.each([
+    {
+      case: "a 5xx, its first failure",
+      last: { kind: "server", status: 502 },
+      failures: 1,
+      coming: true,
+    },
+    {
+      case: "a 5xx past an arrival's held failures",
+      last: { kind: "server", status: 502 },
+      failures: 5,
+      coming: false,
+    },
+    {
+      case: "its fresh credentials refused past them",
+      last: { kind: "rejected" },
+      failures: 4,
+      coming: false,
+    },
+    { case: "no answer at all, past them", last: { kind: "timeout" }, failures: 5, coming: true },
+  ] as const)("inside its two minutes, $case: coming up $coming", ({ last, failures, coming }) => {
+    const errored = link({ ...NOT_ANSWERING, last } as Reachability, false, failures);
+    const [, , , read] = replay([...STEPS.slice(0, 3), { ...STEPS[3]!, link: errored }]);
+    expect(read?.kind === "coming").toBe(coming);
+  });
+
+  it("in the window that made it, past an arrival's held failures, its link's words speak", () => {
+    // Pass 31: "This Mate isn't answering" with Try now — never "Coming up" over it.
+    const [, , , read] = replay(STEPS.slice(0, 4), true);
+    expect(read).toBeUndefined();
   });
 
   it("an old Mate that stops answering still reads as asleep, never coming up", () => {
