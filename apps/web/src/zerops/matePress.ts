@@ -122,13 +122,29 @@ export function beginPress(press: Omit<MatePress, "state">): void {
   }));
 }
 
-/** A press ran to its end, or stopped. */
+/** How long a Mate's row says its Finish setup stopped before the row is the Mate's again. */
+export const STOPPED_SHOWN_MS = 10_000;
+
+/**
+ * A press ran to its end, or stopped. A Finish setup that stopped on a Mate with its container
+ * goes once its row has said so: that Mate was set up already, nothing of it waits on the press,
+ * and its menu offers Finish setup again from the platform's facts. One that was bringing its
+ * container stays, for its own view's *Try again*.
+ */
 export function settlePress(projectId: string, state: MatePressState): void {
+  let stopped: MatePress | undefined;
   usePressStore.setState((store) => {
     const press = store.presses[projectId];
     if (press === undefined) return store;
-    return { presses: { ...store.presses, [projectId]: { ...press, state } } };
+    const settled = { ...press, state };
+    if (state.kind === "failed" && press.finishing === true && !press.container) stopped = settled;
+    return { presses: { ...store.presses, [projectId]: settled } };
   });
+  if (stopped === undefined) return;
+  const said = stopped;
+  setTimeout(() => {
+    if (readMatePress(projectId) === said) forgetPress(projectId);
+  }, STOPPED_SHOWN_MS);
 }
 
 /** A press moved on: each step's state, kept on a press this tab holds. */
@@ -246,8 +262,13 @@ export function useMatePress(projectId: string | undefined): MatePress | undefin
   return usePressStore((store) => (projectId === undefined ? undefined : store.presses[projectId]));
 }
 
-/** Why a press stopped, in words, while it is stopped. */
+/**
+ * Why a press stopped, in words, while it is stopped — never a Finish setup on a Mate with its
+ * container: that Mate was set up already, and its row says the setup stopped
+ * (`finishSetupRowLine`).
+ */
 export function pressFailure(press: MatePress | undefined): string | undefined {
+  if (press?.finishing === true && !press.container) return undefined;
   return press?.state.kind === "failed" ? press.state.reason : undefined;
 }
 
@@ -284,6 +305,11 @@ export function finishSetupView(press: MatePress | undefined):
         : FINISHED_SETUP_LINE,
     done,
   };
+}
+
+/** Whether a Finish setup runs on this Mate now: its menu does not offer it again meanwhile. */
+export function finishSetupRunning(press: MatePress | undefined): boolean {
+  return press?.finishing === true && press.state.kind === "pressing";
 }
 
 /**

@@ -112,6 +112,7 @@ import { useZeropsOrganizationMembers, zeropsMateOwner } from "./useZeropsMateOw
 import { finishSetupContainer, mateProjectPastGrace } from "./finishSetup.logic";
 import {
   beginPress,
+  finishSetupRunning,
   finishMateSetup,
   forgetPress,
   pressViewer,
@@ -796,7 +797,11 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
               {
                 id: "finish-setup",
                 label: finishSetupLabel,
-                disabled: busy,
+                disabled:
+                  busy ||
+                  finishSetupRunning(
+                    presses.find((press) => press.projectId === candidate.project.id),
+                  ),
                 onSelect: () => finishSetup(candidate, tags),
               },
             ]),

@@ -21,11 +21,15 @@ import {
   PRESSED_ELSEWHERE,
   connectedPresses,
   finishSetupRowLine,
+  finishSetupRunning,
   finishMateSetup,
+  pressComingInput,
   pressDoneAt,
   pressingProjects,
   readMatePress,
   runPress,
+  settlePress,
+  STOPPED_SHOWN_MS,
   withPressTries,
   type MatePress,
   type MatePressState,
@@ -521,6 +525,82 @@ describe("a press's end", () => {
         ],
       ),
     ).toEqual(["p-added"]);
+  });
+});
+
+// Review, pass 32: a Finish setup that stopped on a Mate with its container stood for good — its
+// row said "Setup stopped" in place of its sign-in line, and once its link dropped the Mate read
+// "Could not be set up". It says it stopped, then the row is the Mate's again; its menu still
+// offers Finish setup, from the platform's facts.
+describe("a Finish setup that stopped", () => {
+  const STOPPED: MatePressState = {
+    kind: "failed",
+    step: "close-off",
+    reason: "Zerops refused the change",
+    retry: null,
+  };
+  const begin = (container: boolean) =>
+    beginPress({
+      projectId: "p-stop",
+      organizationId: "org-acme",
+      startedAt: 0,
+      placement: null,
+      container,
+      finishing: true,
+    });
+
+  it.each([
+    { case: "on a Mate with its container: said, then gone", container: false, after: undefined },
+    {
+      case: "bringing its container: kept, for its own view's Try again",
+      container: true,
+      after: "failed",
+    },
+  ])("$case", ({ container, after }) => {
+    vi.useFakeTimers();
+    try {
+      begin(container);
+      settlePress("p-stop", STOPPED);
+      expect(finishSetupRowLine(readMatePress("p-stop"))).toBe("Setup stopped");
+      vi.advanceTimersByTime(STOPPED_SHOWN_MS);
+      expect(readMatePress("p-stop")?.state.kind).toBe(after);
+    } finally {
+      forgetPress("p-stop");
+      vi.useRealTimers();
+    }
+  });
+
+  it.each([
+    {
+      case: "on a Mate with its container: it was not set up already",
+      container: false,
+      why: undefined,
+    },
+    {
+      case: "bringing its container: its container never came",
+      container: true,
+      why: "Zerops refused the change",
+    },
+  ])("$case", ({ container, why }) => {
+    try {
+      begin(container);
+      settlePress("p-stop", STOPPED);
+      expect(pressComingInput([readMatePress("p-stop")!], "p-stop").setUpFailed).toBe(why);
+    } finally {
+      forgetPress("p-stop");
+    }
+  });
+
+  it("is running only between its press and its end", () => {
+    try {
+      begin(false);
+      expect(finishSetupRunning(readMatePress("p-stop"))).toBe(true);
+      settlePress("p-stop", STOPPED);
+      expect(finishSetupRunning(readMatePress("p-stop"))).toBe(false);
+    } finally {
+      forgetPress("p-stop");
+    }
+    expect(finishSetupRunning(undefined)).toBe(false);
   });
 });
 
