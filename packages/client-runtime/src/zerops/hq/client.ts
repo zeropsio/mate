@@ -21,6 +21,7 @@ import {
   type AttachmentLink,
   type ChangeLink,
 } from "@t3tools/shared/hqChanges";
+import type { MateSummary } from "@t3tools/shared/mateLink";
 import type { RoleProjectKind } from "@t3tools/shared/zeropsRoles";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
@@ -36,9 +37,26 @@ export interface HqEndpoint {
 }
 
 /** A Mate's record in HQ: its name, and its face in the grammar `readMateFace` reads. */
-export interface HqMate {
+export interface HqMateRecord {
   readonly name: string;
   readonly face: string;
+}
+
+/** A Mate's live summary, as HQ relays it to whoever may operate it (`observe_mate`). */
+export interface HqMateLive {
+  readonly online: boolean;
+  /** When the summary was sent, or the Mate last went online or offline: ISO. */
+  readonly at: string;
+  readonly summary: MateSummary | null;
+}
+
+/** A Mate as HQ reads it: its record, its birth, and its live summary where HQ relays one. */
+export interface HqMate extends HqMateRecord {
+  /** Who asked for its stand-up (`recordStandUp`): nobody yet is null; an older HQ says nothing. */
+  readonly standupRequestedBy?: string | null;
+  /** Whether its project is closed off (`recordClosedOff`); an older HQ says nothing. */
+  readonly closedOff?: boolean;
+  readonly live?: HqMateLive;
 }
 
 /** What `GET /api/structure` answers: the applications as the reader sees them in Zerops. */
@@ -65,7 +83,7 @@ export interface HqAttach {
   readonly projectId: string;
   readonly kind: RoleProjectKind;
   /** The Mate's name and face; with kind `mate`, and only with it. */
-  readonly mate?: { readonly name: string; readonly face: string };
+  readonly mate?: HqMateRecord;
 }
 
 export class HqError extends Error {
@@ -118,7 +136,15 @@ export interface HqApi {
     to: { readonly appId: string | null; readonly kind: RoleProjectKind },
   ) => Promise<void>;
   /** A Mate set up on a project of its own, in no application (`POST /api/mates`). */
-  readonly createMate: (mate: { readonly projectId: string } & HqMate) => Promise<void>;
+  readonly createMate: (mate: { readonly projectId: string } & HqMateRecord) => Promise<void>;
+  /**
+   * The Mate's birth, as its project's owner or admin records it: who asks for its stand-up — the
+   * caller (`POST /api/mates/{projectId}/standup`) — and that its project is closed off (`POST
+   * /api/mates/{projectId}/closed-off`). HQ refuses either on a Mate it holds no record of
+   * (`mate_not_found`).
+   */
+  readonly recordStandUp: (projectId: string) => Promise<void>;
+  readonly recordClosedOff: (projectId: string) => Promise<void>;
   readonly createApp: (name: string) => Promise<{ readonly id: string; readonly name: string }>;
   readonly attachProject: (appId: string, attach: HqAttach) => Promise<void>;
   /** A Mate's change with what its review reads (`GET /api/apps/:appId/changes/:repo/:n`). */
@@ -443,6 +469,14 @@ export function makeHqApi(input: {
           ...(signal === undefined ? {} : { signal }),
         })
       ).blob(),
+    recordStandUp: async (projectId) => {
+      await authorized(`/api/mates/${encodeURIComponent(projectId)}/standup`, { method: "POST" });
+    },
+    recordClosedOff: async (projectId) => {
+      await authorized(`/api/mates/${encodeURIComponent(projectId)}/closed-off`, {
+        method: "POST",
+      });
+    },
   };
 }
 

@@ -653,15 +653,8 @@ describe("ZeropsApiClient.createProjectWithZeropsMate", () => {
     return JSON.parse(requests.project?.body ?? "{}").tagList as ReadonlyArray<string>;
   };
 
-  it.each([
-    {
-      case: "the marker and who asked for the stand-up",
-      input: { standUpBy: "u-ada" },
-      tags: ["mate", "mate:standup:u-ada"],
-    },
-    { case: "the marker alone, where nobody is named as asking", input: {}, tags: ["mate"] },
-  ])("tags the first Mate at birth with $case", async ({ input, tags }) => {
-    expect(await birthTags(input)).toEqual(tags);
+  it("tags the first Mate at birth with the marker alone", async () => {
+    expect(await birthTags({})).toEqual(["mate"]);
   });
 
   it("tags it exactly as New Mate tags a Mate it adds", async () => {
@@ -669,10 +662,9 @@ describe("ZeropsApiClient.createProjectWithZeropsMate", () => {
       clientId: "org-1",
       role: "dev",
       name: "Acme Docs - Ada",
-      standUpBy: "u-ada",
     });
     if (!plan.ok || plan.steps[0]?.kind !== "create-project") throw new Error("no birth tags");
-    const tags = await birthTags({ standUpBy: "u-ada" });
+    const tags = await birthTags({});
     expect([...tags].sort()).toEqual([...plan.steps[0].tagList].sort());
   });
 });

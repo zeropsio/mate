@@ -6,18 +6,18 @@
  * - **It reports the setup** (`GET /setup.json`, `zeropsSetupSteps.ts`): the
  *   container is up; the broker's Git variables have reached the zcp service
  *   (the platform's live env store, rewritten seconds after a change); zcp's
- *   status file (`ZCP_STATUS_FILE`) for the runtimes; the project's tags for
- *   the sign-in; the durable record for the stand-up.
- * - **It starts the stand-up**: once the project carries `mate:standup:<userId>`
- *   and that person's signer tag (`mate:signer:{agent}:{userId}`), it sends the
- *   browser's own ask into the Mate's main conversation, admitted as that
- *   person's session exactly as their send would be (D6). Once: the record
- *   lives in the server's database, so a restart repeats nothing, and a
- *   browser's stand-up — an older cached client still sends one — is let
- *   through only while there is none, and recorded too (`browserStandUp`).
+ *   status file (`ZCP_STATUS_FILE`) for the runtimes; who asked for the
+ *   stand-up (the Mate's birth record at its HQ, `ZeropsHqLink`) and who
+ *   signed an agent in here (`ZeropsProjectSigners`) for the sign-in; the
+ *   durable record for the stand-up.
+ * - **It starts the stand-up**: once HQ names the person who asked for it and
+ *   that person signed an agent in here, it sends the ask into the Mate's main
+ *   conversation, admitted as that person's session exactly as their send
+ *   would be (D6). Once: the record lives in the server's database, so a
+ *   restart repeats nothing. No client sends one.
  *
- * The Mate's key reads the tags; it cannot write them, so the stand-up tag
- * stays and the record is what says it ran.
+ * HQ keeps naming who asked after the stand-up ran; the record is what says
+ * it ran.
  *
  * @module ZeropsSetup
  */
@@ -36,30 +36,28 @@ import {
   type OrchestrationThreadShell,
   type ZeropsAgentId,
 } from "@t3tools/contracts";
+import type { MateState } from "@t3tools/shared/mateLink";
 import { resolvePrimaryConversation } from "@t3tools/shared/primaryConversation";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Crypto from "effect/Crypto";
 import * as DateTime from "effect/DateTime";
-import * as Deferred from "effect/Deferred";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Ref from "effect/Ref";
-import * as Semaphore from "effect/Semaphore";
-import * as HttpClient from "effect/unstable/http/HttpClient";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
 
 import * as ServerConfig from "../config.ts";
 import { OrchestrationEngineService } from "../orchestration/Services/OrchestrationEngine.ts";
 import { ProjectionSnapshotQuery } from "../orchestration/Services/ProjectionSnapshotQuery.ts";
 import { ServerCommandReadiness } from "../spi/serverCommandReadiness.ts";
-import { isZeropsEnvironment, type ZeropsEnvironment } from "./ZeropsEnvironment.ts";
-import * as ZeropsMateKeyModule from "./ZeropsMateKey.ts";
+import { isZeropsEnvironment } from "./ZeropsEnvironment.ts";
+import { ZeropsHqLink, type HqStanding } from "./ZeropsHqLink.ts";
 import { ZEROPS_SUBJECT_PREFIX } from "./ZeropsMembershipWatch.ts";
-import { parseSignerTags, readProjectTagList } from "./ZeropsProjectSigners.ts";
+import { ZeropsProjectSigners, type ProjectSigners } from "./ZeropsProjectSigners.ts";
 import { hasSetupMarker, readServiceVariableKeys } from "./zeropsSetupMarker.ts";
 import { ZeropsTurnAdmission, type TurnPrincipal } from "./ZeropsTurnAdmission.ts";
 import {
@@ -69,9 +67,9 @@ import {
   setupDocument,
   standUpCommandIds,
   standUpDecision,
-  standUpRequestedBy,
   standUpSigners,
   type SetupDocument,
+  type StandUpWait,
   type ZcpStatus,
 } from "./zeropsSetupSteps.ts";
 
@@ -85,49 +83,26 @@ export const STAND_UP_FAST_FOR = Duration.minutes(30);
 /** …and then, until the stand-up is settled. */
 export const STAND_UP_SLOW_POLL = Duration.seconds(60);
 /**
- * Tags with no `mate:standup:` tag settle the stand-up as `none` only after
- * this long up: the press writes the tag after it imports zcp, never later.
+ * HQ naming nobody who asked settles the stand-up as `none` only after this
+ * long up: the press records its ask as it makes the Mate, and that record
+ * may still be on its way.
  */
 export const STAND_UP_NONE_AFTER = Duration.minutes(5);
-
-/**
- * How long one read of the project's tags serves: the setup document is public, so
- * however often it is fetched, the platform is asked at most this often.
- */
-export const SETUP_TAGS_TTL = Duration.seconds(15);
-
-/**
- * How long a browser's send may stand claimed: one its server lost track of
- * (a restart mid-send) is then the server's to send, under the same ids, so
- * the engine takes it once whichever got through.
- */
-export const STAND_UP_CLAIM_MAX_AGE = Duration.minutes(2);
-
-/** How long a failed read of the tags stands before another is tried. */
-export const SETUP_TAGS_FAILED_TTL = Duration.seconds(30);
 
 /** The reads this needs from outside the process; a test hands in its own. */
 export class ZeropsSetupReads extends Context.Service<
   ZeropsSetupReads,
   {
-    /** The project's tags, as the Mate; `undefined` when they cannot be read. */
-    readonly tags: Effect.Effect<ReadonlyArray<string> | undefined>;
+    /** Where the Mate stands with its HQ (`ZeropsHqLink`): who asked, or why nobody is known to. */
+    readonly hq: Effect.Effect<HqStanding>;
+    /** Who this server saw sign each login in (`ZeropsProjectSigners`). */
+    readonly signers: Effect.Effect<ProjectSigners>;
     /** The zcp service's variables as they stand now; `undefined` when unknown. */
     readonly serviceVariables: Effect.Effect<ReadonlyArray<string> | undefined>;
     /** zcp's status file, parsed as JSON; `undefined` when absent or unreadable. */
     readonly statusFile: Effect.Effect<unknown>;
   }
 >()("t3/zerops/ZeropsSetup/ZeropsSetupReads") {}
-
-/**
- * What a browser's stand-up comes to (`browserStandUp`): `claimed`, the
- * Mate's stand-up is this send's until it ends (`browserStandUpEnded`);
- * `dispatch`, it goes through owning nothing; `ignore`, another runs or ran.
- */
-export type BrowserStandUp = "claimed" | "dispatch" | "ignore";
-
-/** How a browser's claimed send ended (`browserStandUpEnded`). */
-export type BrowserStandUpOutcome = "through" | "failed" | "unknown";
 
 export class ZeropsSetup extends Context.Service<
   ZeropsSetup,
@@ -136,28 +111,6 @@ export class ZeropsSetup extends Context.Service<
     readonly document: Effect.Effect<SetupDocument>;
     /** zcp's status file, as this build reads it. */
     readonly status: Effect.Effect<ZcpStatus | undefined>;
-    /**
-     * A browser's stand-up: `claimed` when there is none yet (it is recorded
-     * as this one, on its way); `dispatch` when it is the very command already
-     * recorded (the engine takes a command id once) or none ran; `ignore`
-     * while another runs or ran.
-     */
-    readonly browserStandUp: (
-      command: OrchestrationCommand,
-      /** The Zerops user whose session sends it, when it is one. */
-      userId?: string,
-    ) => Effect.Effect<BrowserStandUp>;
-    /**
-     * How a `claimed` send ended: `through`, its record stands; `failed`, it
-     * surely did not go out, and its own claim, only that, is withdrawn;
-     * `unknown` (interrupted, a defect: it may have gone out), the claim
-     * stands until {@link STAND_UP_CLAIM_MAX_AGE}, when the server sends it
-     * under the same ids.
-     */
-    readonly browserStandUpEnded: (
-      command: OrchestrationCommand,
-      outcome: BrowserStandUpOutcome,
-    ) => Effect.Effect<void>;
   }
 >()("t3/zerops/ZeropsSetup") {}
 
@@ -209,9 +162,6 @@ export interface ZeropsSetupTimings {
   readonly fastFor: Duration.Duration;
   readonly slowPoll: Duration.Duration;
   readonly noneAfter: Duration.Duration;
-  readonly tagsTtl: Duration.Duration;
-  readonly tagsFailedTtl: Duration.Duration;
-  readonly claimMaxAge: Duration.Duration;
 }
 
 const TIMINGS: ZeropsSetupTimings = {
@@ -219,9 +169,6 @@ const TIMINGS: ZeropsSetupTimings = {
   fastFor: STAND_UP_FAST_FOR,
   slowPoll: STAND_UP_SLOW_POLL,
   noneAfter: STAND_UP_NONE_AFTER,
-  tagsTtl: SETUP_TAGS_TTL,
-  tagsFailedTtl: SETUP_TAGS_FAILED_TTL,
-  claimMaxAge: STAND_UP_CLAIM_MAX_AGE,
 };
 
 /** How long to wait before the next look, this far (ms) into the wait for the stand-up. */
@@ -231,21 +178,26 @@ export const standUpPollDelay = (
 ): Duration.Duration =>
   elapsedMs < Duration.toMillis(timings.fastFor) ? timings.poll : timings.slowPoll;
 
-/** A record's source: a stand-up that ran (here or from a browser), or one settled as never due. */
 /**
- * A record's source. `server:claimed`, `browser:claimed`: a send on its way,
- * the first resumed after a restart (its ids make it go out once), the second
- * withdrawn unless it went through. `server`, `browser`: it went out. `none`
- * (nobody asked), `skipped` (the conversation was under way): settled without one.
+ * A record's source. `server:claimed`: a send on its way, resumed after a restart (its ids make
+ * it go out once). `server`: it went out. `none` (nobody asked), `skipped` (the conversation was
+ * under way): settled without one. `browser`, `browser:claimed`: a stand-up a browser sent before
+ * the server stood every Mate up itself — one that ran, whatever came of it.
  */
 const RAN: ReadonlySet<string> = new Set([
   "server",
-  "browser",
   "server:claimed",
+  "browser",
   "browser:claimed",
 ]);
 /** The sources after which nothing is left to do. */
-const TERMINAL: ReadonlySet<string> = new Set(["server", "browser", "none", "skipped"]);
+const TERMINAL: ReadonlySet<string> = new Set([
+  "server",
+  "browser",
+  "browser:claimed",
+  "none",
+  "skipped",
+]);
 
 export const makeZeropsSetup = (timings: ZeropsSetupTimings = TIMINGS) =>
   Effect.gen(function* () {
@@ -263,19 +215,6 @@ export const makeZeropsSetup = (timings: ZeropsSetupTimings = TIMINGS) =>
     const startedAt = yield* nowIso;
     const gitAt = yield* Ref.make<string | undefined>(undefined);
     const signinAt = yield* Ref.make<string | undefined>(undefined);
-    /** The last read of the tags, and the last that succeeded. */
-    const tagsRead = yield* Ref.make<{
-      readonly at: number;
-      readonly failed: boolean;
-      readonly tags: ReadonlyArray<string> | undefined;
-    } | null>(null);
-    const reading = yield* Semaphore.make(1);
-    const inFlight = yield* Ref.make<Deferred.Deferred<ReadonlyArray<string> | undefined> | null>(
-      null,
-    );
-    const scope = yield* Effect.scope;
-    /** Whether the stand-up loop runs: it takes over a claim whose send never ended. */
-    const looping = yield* Ref.make(false);
 
     /* ---------------------------------------------------------- the record */
 
@@ -307,25 +246,16 @@ export const makeZeropsSetup = (timings: ZeropsSetupTimings = TIMINGS) =>
         Effect.catch(() => Effect.succeed(false)),
       );
 
-    /** Withdraws a claim on its way, `source` naming whose: never any other record. */
-    const withdraw = (commandId: string, source: "server:claimed" | "browser:claimed") =>
+    /** Withdraws this server's claim on its way: never any other record. */
+    const withdraw = (commandId: string) =>
       sql`DELETE FROM zerops_stand_ups
-        WHERE project_id = ${projectId} AND command_id = ${commandId} AND source = ${source}`.pipe(
+        WHERE project_id = ${projectId} AND command_id = ${commandId}
+          AND source = 'server:claimed'`.pipe(
         Effect.asVoid,
         Effect.catch(() => Effect.void),
       );
 
-    /** A browser's claim its send never ended becomes the server's to send. */
-    const takeOver = (commandId: string) =>
-      sql`UPDATE zerops_stand_ups SET source = 'server:claimed'
-        WHERE project_id = ${projectId} AND command_id = ${commandId}
-          AND source = 'browser:claimed'
-        RETURNING project_id`.pipe(
-        Effect.map((rows) => rows.length === 1),
-        Effect.catch(() => Effect.succeed(false)),
-      );
-
-    /** A claim taken over that nobody can be sent as: settled, as nobody asked. */
+    /** A claim resumed that nobody can be sent as: settled, as nobody asked. */
     const settleTaken = (commandId: string) =>
       sql`UPDATE zerops_stand_ups SET source = 'none'
         WHERE project_id = ${projectId} AND command_id = ${commandId}
@@ -335,60 +265,15 @@ export const makeZeropsSetup = (timings: ZeropsSetupTimings = TIMINGS) =>
       );
 
     /** A claim on its way went out: its record stands for good. */
-    const confirm = (commandId: string, from: "server:claimed" | "browser:claimed") =>
-      sql`UPDATE zerops_stand_ups SET source = ${from === "server:claimed" ? "server" : "browser"}
-        WHERE project_id = ${projectId} AND command_id = ${commandId} AND source = ${from}`.pipe(
+    const confirm = (commandId: string) =>
+      sql`UPDATE zerops_stand_ups SET source = 'server'
+        WHERE project_id = ${projectId} AND command_id = ${commandId}
+          AND source = 'server:claimed'`.pipe(
         Effect.asVoid,
         Effect.catch(() => Effect.void),
       );
 
     /* ---------------------------------------------------------- the facts */
-
-    /**
-     * The tags, one read at a time, at most once per {@link SETUP_TAGS_TTL} —
-     * once per {@link SETUP_TAGS_FAILED_TTL} after a failure, which answers
-     * with the last good read. However often `/setup.json` is asked, the
-     * Mate's key reads the platform at most this often.
-     */
-    const tags = Effect.gen(function* () {
-      const next = yield* Effect.uninterruptible(
-        reading.withPermits(1)(
-          Effect.gen(function* () {
-            const now = yield* Clock.currentTimeMillis;
-            const held = yield* Ref.get(tagsRead);
-            const ttl = held?.failed === true ? timings.tagsFailedTtl : timings.tagsTtl;
-            if (held !== null && now - held.at < Duration.toMillis(ttl)) {
-              return { held: held.tags } as const;
-            }
-            const running = yield* Ref.get(inFlight);
-            if (running !== null) return { awaiting: running } as const;
-            // Detached from whoever asked: it finishes and stamps the cache even when
-            // they give up, so a request that aborts never costs another read.
-            const done = yield* Deferred.make<ReadonlyArray<string> | undefined>();
-            yield* Ref.set(inFlight, done);
-            yield* Effect.forkIn(
-              Effect.gen(function* () {
-                const read = yield* reads.tags.pipe(
-                  Effect.catchCause(() => Effect.succeed(undefined)),
-                );
-                const at = yield* Clock.currentTimeMillis;
-                yield* Ref.set(
-                  tagsRead,
-                  read === undefined
-                    ? { at, failed: true, tags: held?.tags }
-                    : { at, failed: false, tags: read },
-                );
-                yield* Ref.set(inFlight, null);
-                yield* Deferred.succeed(done, read ?? held?.tags);
-              }),
-              scope,
-            );
-            return { awaiting: done } as const;
-          }),
-        ),
-      );
-      return "held" in next ? next.held : yield* Deferred.await(next.awaiting);
-    });
 
     const latch = (ref: Ref.Ref<string | undefined>, reached: boolean) =>
       Effect.gen(function* () {
@@ -417,25 +302,28 @@ export const makeZeropsSetup = (timings: ZeropsSetupTimings = TIMINGS) =>
       const marked = variables !== undefined && hasSetupMarker(variables);
       const record = yield* recordOf;
       const ran = record !== undefined && RAN.has(record.source);
-      // Only a marked Mate whose stand-up is still pending reads the tags: a Mate made
-      // before has its browser's stand-up, and a settled one has its record.
-      const tagList = marked && record === undefined ? yield* tags : undefined;
-      const requestedBy = tagList === undefined ? undefined : standUpRequestedBy(tagList);
+      // Only a marked Mate whose stand-up is still pending asks who asked for it: a Mate made
+      // before has no stand-up of the server's, and a settled one has its record.
+      const pending = marked && record === undefined;
+      const hq = pending ? yield* reads.hq : undefined;
+      const mate = hq?.kind === "linked" ? Option.some(hq.mate) : Option.none<MateState>();
+      const requestedBy = Option.getOrUndefined(mate)?.standupRequestedBy ?? undefined;
+      const signers = yield* reads.signers;
       const signedIn =
         ran ||
-        (tagList !== undefined &&
+        (Option.isSome(mate) &&
           (requestedBy === undefined
-            ? Object.keys(parseSignerTags(tagList)).length > 0
-            : standUpSigners(tagList, requestedBy).length > 0));
-      // The sign-in is known from a stand-up that ran, or from the tags read for one pending.
-      const signinKnown = ran || (marked && record === undefined);
+            ? Object.keys(signers).length > 0
+            : standUpSigners(signers, requestedBy).length > 0));
+      // The sign-in is known from a stand-up that ran, or from HQ's word on one pending.
+      const signinKnown = ran || pending;
       return setupDocument({
         now: yield* nowIso,
         startedAt,
         gitAt: git,
         status: yield* status,
-        tagsRead: tagList !== undefined,
         requestedBy,
+        standUpWait: hq === undefined ? undefined : standUpWaitOf(hq),
         signinAt: yield* latch(signinAt, signedIn),
         record: record === undefined ? undefined : { startedAt: record.startedAt, ran },
         standUpTurn: ran ? yield* turnOf(record.threadId) : undefined,
@@ -465,31 +353,24 @@ export const makeZeropsSetup = (timings: ZeropsSetupTimings = TIMINGS) =>
       Effect.gen(function* () {
         const held = yield* recordOf;
         if (held !== undefined && TERMINAL.has(held.source)) return true;
-        // A browser's send is on its way: it ends in a record, or leaves the stand-up to
-        // us — and one that never ends is ours after a while, under its own ids.
-        if (held?.source === "browser:claimed") {
-          const age = (yield* Clock.currentTimeMillis) - Date.parse(held.startedAt);
-          if (!(age >= Duration.toMillis(timings.claimMaxAge))) return false;
-          if (!(yield* takeOver(held.commandId))) return false;
-        }
-        const resuming =
-          held?.source === "server:claimed" || held?.source === "browser:claimed"
-            ? held
-            : undefined;
-        const tagList = yield* tags;
-        if (tagList === undefined) return false;
-        // A claim taken over is sent as whoever can send it now: its sender, else the person
-        // who asked for the stand-up — the first of them who holds an agent here. When none
-        // does, it went out (its message is in the conversation) or it is settled as none:
-        // a claim never waits on a sign-in that may never come.
+        const resuming = held?.source === "server:claimed" ? held : undefined;
+        // Until the link brings the Mate, who asked is not known: nothing is settled on that.
+        const hq = yield* reads.hq;
+        if (hq.kind !== "linked") return false;
+        const asker = hq.mate.standupRequestedBy ?? undefined;
+        const signers = yield* reads.signers;
+        // A claim resumed is sent as whoever can send it now: the person it was claimed for,
+        // else the person who asked for the stand-up — the first of them who holds an agent
+        // here. When none does, it went out (its message is in the conversation) or it is
+        // settled as none: a claim never waits on a sign-in that may never come.
         const requestedBy =
           resuming === undefined
-            ? standUpRequestedBy(tagList)
-            : [resuming.userId, standUpRequestedBy(tagList)].find(
+            ? asker
+            : [resuming.userId, asker].find(
                 (userId): userId is string =>
                   userId !== undefined &&
                   userId !== "" &&
-                  standUpSigners(tagList, userId).length > 0,
+                  standUpSigners(signers, userId).length > 0,
               );
         if (requestedBy === undefined && resuming !== undefined) {
           const thread = Option.getOrUndefined(
@@ -498,7 +379,7 @@ export const makeZeropsSetup = (timings: ZeropsSetupTimings = TIMINGS) =>
               .pipe(Effect.catch(() => Effect.succeed(Option.none()))),
           );
           if (thread?.latestUserMessageAt != null) {
-            yield* confirm(resuming.commandId, "server:claimed");
+            yield* confirm(resuming.commandId);
           } else {
             yield* settleTaken(resuming.commandId);
           }
@@ -522,13 +403,13 @@ export const makeZeropsSetup = (timings: ZeropsSetupTimings = TIMINGS) =>
             : threads.find((thread) => thread.id === resuming.threadId);
         // Resumed, and its stand-up is already in the conversation: it went out before.
         if (resuming !== undefined && main?.latestUserMessageAt != null) {
-          yield* confirm(resuming.commandId, "server:claimed");
+          yield* confirm(resuming.commandId);
           return true;
         }
         const decision = standUpDecision({
           recorded: false,
           requestedBy,
-          signers: standUpSigners(tagList, requestedBy),
+          signers: standUpSigners(signers, requestedBy),
           spoken: resuming === undefined && main?.latestUserMessageAt != null,
         });
         if (decision.kind === "spoken") return yield* settle("skipped");
@@ -609,13 +490,13 @@ export const makeZeropsSetup = (timings: ZeropsSetupTimings = TIMINGS) =>
           Effect.as(true),
           Effect.catch((error) =>
             Effect.logWarning("zerops setup: the stand-up did not go out", { error }).pipe(
-              Effect.andThen(withdraw(ids.commandId, "server:claimed")),
+              Effect.andThen(withdraw(ids.commandId)),
               Effect.as(false),
             ),
           ),
         );
         if (!sent) return false;
-        yield* confirm(ids.commandId, "server:claimed");
+        yield* confirm(ids.commandId);
         yield* Effect.logInfo("zerops setup: the stand-up went out", { threadId });
         return true;
       }).pipe(
@@ -626,9 +507,8 @@ export const makeZeropsSetup = (timings: ZeropsSetupTimings = TIMINGS) =>
     /** Until the stand-up is settled: fast while the Mate is new, slower after. */
     const wait = Effect.gen(function* () {
       const variables = yield* reads.serviceVariables;
-      // A Mate the new press did not make keeps its browser's stand-up, and never polls.
+      // A Mate the new press did not make has no stand-up of the server's, and never polls.
       if (variables === undefined || !hasSetupMarker(variables)) return;
-      yield* Ref.set(looping, true);
       yield* readiness.await;
       const since = yield* Clock.currentTimeMillis;
       while (true) {
@@ -639,51 +519,28 @@ export const makeZeropsSetup = (timings: ZeropsSetupTimings = TIMINGS) =>
     });
 
     if (environment !== undefined && isZeropsEnvironment(config)) {
-      yield* Effect.forkScoped(wait.pipe(Effect.ensuring(Ref.set(looping, false))));
+      yield* Effect.forkScoped(wait);
     }
 
-    const browserStandUp = (command: OrchestrationCommand, userId?: string) =>
-      Effect.gen(function* () {
-        if (command.type !== "thread.turn.start") return "dispatch" as const;
-        // Where the server never stands up, a browser's stand-up passes as it always did.
-        const variables = yield* reads.serviceVariables;
-        if (variables === undefined || !hasSetupMarker(variables)) return "dispatch" as const;
-        let held = yield* recordOf;
-        // A claim whose send never ended, with no loop to take it over: withdrawn after a while.
-        if (
-          held?.source === "browser:claimed" &&
-          !(yield* Ref.get(looping)) &&
-          (yield* Clock.currentTimeMillis) - Date.parse(held.startedAt) >=
-            Duration.toMillis(timings.claimMaxAge)
-        ) {
-          yield* withdraw(held.commandId, "browser:claimed");
-          held = undefined;
-        }
-        // Settled without one (`none`, `skipped`): nothing ran, so a browser's is the only one.
-        if (held !== undefined && !RAN.has(held.source)) return "dispatch" as const;
-        if (held !== undefined) return held.commandId === command.commandId ? "dispatch" : "ignore";
-        const claimed = yield* claim({
-          threadId: command.threadId,
-          commandId: command.commandId,
-          userId: userId ?? "",
-          source: "browser:claimed",
-          startedAt: yield* nowIso,
-        });
-        return claimed ? ("claimed" as const) : ("ignore" as const);
-      });
-
-    return ZeropsSetup.of({
-      document,
-      status,
-      browserStandUp,
-      browserStandUpEnded: (command, outcome) =>
-        outcome === "through"
-          ? confirm(command.commandId, "browser:claimed")
-          : outcome === "failed"
-            ? withdraw(command.commandId, "browser:claimed")
-            : Effect.void,
-    });
+    return ZeropsSetup.of({ document, status });
   });
+
+/** Why a stand-up nothing started waits, from where the Mate stands with its HQ. */
+const standUpWaitOf = (hq: HqStanding): StandUpWait | undefined => {
+  switch (hq.kind) {
+    case "not-enrolled": {
+      const outcome = Option.getOrUndefined(hq.outcome);
+      if (outcome?.state === "no_hq") return { reason: "no_hq" };
+      return outcome?.code === undefined
+        ? { reason: "not_enrolled" }
+        : { reason: "not_enrolled", code: outcome.code };
+    }
+    case "not-linked":
+      return { reason: "not_linked" };
+    case "linked":
+      return hq.mate.standupRequestedBy === null ? { reason: "awaiting_request" } : undefined;
+  }
+};
 
 /* ------------------------------------------------------------ the live reads */
 
@@ -700,28 +557,22 @@ const readFileJson = (fs: FileSystem.FileSystem, path: string) =>
   );
 
 /**
- * The live reads: the tags with the Mate's own key; the zcp service's
- * variables from the platform's live env store (`/etc/zerops-zembed/env.json`,
- * rewritten seconds after a change, no restart) and this process's own
- * environment; zcp's status file from where `ZCP_STATUS_FILE` names it.
+ * The live reads: who asked for the stand-up, from the link to HQ; who signed
+ * each login in, as this server saw it; the zcp service's variables from the
+ * platform's live env store (`/etc/zerops-zembed/env.json`, rewritten seconds
+ * after a change, no restart) and this process's own environment; zcp's
+ * status file from where `ZCP_STATUS_FILE` names it.
  */
-export const makeLiveReads = (input: {
-  readonly environment: ZeropsEnvironment | undefined;
-  readonly statusFilePath: string | undefined;
-}) =>
+export const liveReadsLayer = Layer.effect(
+  ZeropsSetupReads,
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem;
-    const httpClient = yield* HttpClient.HttpClient;
-    const mateKey = yield* ZeropsMateKeyModule.ZeropsMateKey;
-    const { environment, statusFilePath } = input;
+    const link = yield* ZeropsHqLink;
+    const projectSigners = yield* ZeropsProjectSigners;
+    const statusFilePath = process.env[ZCP_STATUS_FILE_VARIABLE];
     return ZeropsSetupReads.of({
-      tags:
-        environment === undefined
-          ? Effect.succeed(undefined)
-          : readProjectTagList({ environment }).pipe(
-              Effect.provideService(HttpClient.HttpClient, httpClient),
-              Effect.provideService(ZeropsMateKeyModule.ZeropsMateKey, mateKey),
-            ),
+      hq: link.standing,
+      signers: projectSigners.signers,
       serviceVariables: readServiceVariableKeys.pipe(
         Effect.provideService(FileSystem.FileSystem, fs),
       ),
@@ -729,16 +580,6 @@ export const makeLiveReads = (input: {
         statusFilePath === undefined || statusFilePath.length === 0
           ? Effect.succeed(undefined)
           : readFileJson(fs, statusFilePath),
-    });
-  });
-
-export const liveReadsLayer = Layer.effect(
-  ZeropsSetupReads,
-  Effect.gen(function* () {
-    const config = yield* ServerConfig.ServerConfig;
-    return yield* makeLiveReads({
-      environment: config.zerops,
-      statusFilePath: process.env[ZCP_STATUS_FILE_VARIABLE],
     });
   }),
 );

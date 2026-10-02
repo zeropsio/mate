@@ -138,6 +138,8 @@ describe("finishMateSetupVerb", () => {
     pastGrace: true,
     viewerIsAdder: false,
     hasContainer: true,
+    recordMissing: false,
+    mayCreateRecord: false,
   };
   it.each([
     {
@@ -246,6 +248,26 @@ describe("finishMateSetupVerb", () => {
     {
       name: "an owner, on a Mate already whole",
       input: HALF_MADE,
+      viewerRole: "OWNER",
+      expected: undefined,
+    },
+    // A Mate HQ holds no record of — its record's write failed mid-way, or it sits in no
+    // application with none — is finished by whoever HQ's rule lets create its record.
+    {
+      name: "whoever may create its record, on a Mate HQ holds no record of",
+      input: { ...HALF_MADE, recordMissing: true, mayCreateRecord: true },
+      viewerRole: "BASIC_USER",
+      expected: "Finish setup",
+    },
+    {
+      name: "nobody else, on a Mate HQ holds no record of",
+      input: { ...HALF_MADE, recordMissing: true },
+      viewerRole: "OWNER",
+      expected: undefined,
+    },
+    {
+      name: "nobody, on a Mate made a moment ago whose record is not written yet",
+      input: { ...HALF_MADE, recordMissing: true, mayCreateRecord: true, pastGrace: false },
       viewerRole: "OWNER",
       expected: undefined,
     },

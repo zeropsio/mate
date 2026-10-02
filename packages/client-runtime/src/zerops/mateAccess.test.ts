@@ -5,14 +5,13 @@ import {
   mateMemberName,
   mateOnlyOwnerOpensIt,
   mateOwnerRecords,
-  mateSignerTag,
   resolveMateOwner,
   resolveMateOwnerName,
   resolveMateVerbs,
   resolveMateVisibility,
   withMateProjectRole,
-  withMateSignerTag,
 } from "./mateAccess.ts";
+import type { HqPlacement } from "./hq/placement.ts";
 
 const ORG = "org-1";
 const PROJECT = "project-1";
@@ -135,6 +134,22 @@ describe("resolveMateOwnerName", () => {
   });
 });
 
+/** A Mate HQ places in no application, its summary naming who signed each login in. */
+const placedWith = (signers: Readonly<Record<string, string>>): HqPlacement => ({
+  appId: null,
+  appName: null,
+  kind: "mate",
+  mate: {
+    name: "Ada",
+    face: "",
+    live: {
+      online: true,
+      at: "2026-10-02T10:00:00.000Z",
+      summary: { main: null, running: 0, waiting: 0, signers },
+    },
+  },
+});
+
 describe("resolveMateOwner", () => {
   const jan = {
     id: "cu-jan",
@@ -171,21 +186,21 @@ describe("resolveMateOwner", () => {
     { clientUserId: "cu-broker", roleCode: "BASIC_USER" },
     { clientUserId: "cu-zcp", roleCode: "BASIC_USER" },
   ];
-  const signedIn = (...tags: ReadonlyArray<string>) => ({ ...owned(services), tagList: tags });
+  const signedIn = (signers: Readonly<Record<string, string>>) => ({
+    ...owned(services),
+    hq: placedWith(signers),
+  });
 
   it("is whoever signed the agent in, when the project raised nobody to OWNER", () => {
     expect(
-      resolveMateOwner({
-        project: signedIn("mate", "mate:signer:claude-code:u-eva"),
-        members: [jan, eva],
-      }),
+      resolveMateOwner({ project: signedIn({ "claude-code": "u-eva" }), members: [jan, eva] }),
     ).toBe(eva);
   });
 
-  it("is the first agent's signer when two agents were signed in", () => {
+  it("is Claude Code's signer when two agents were signed in", () => {
     expect(
       resolveMateOwner({
-        project: signedIn("mate:signer:codex:u-eva", "mate:signer:claude-code:u-jan"),
+        project: signedIn({ codex: "u-jan", "claude-code": "u-eva" }),
         members: [{ ...jan, user: { ...jan.user, id: "u-jan" } }, eva],
       }),
     ).toBe(eva);
@@ -195,7 +210,7 @@ describe("resolveMateOwner", () => {
   it("is an agent's signer, never the signer of a login added beside it", () => {
     expect(
       resolveMateOwner({
-        project: signedIn("mate:signer:claudeAgent-work:u-jan", "mate:signer:codex:u-eva"),
+        project: signedIn({ "claudeAgent-work": "u-jan", codex: "u-eva" }),
         members: [{ ...jan, user: { ...jan.user, id: "u-jan" } }, eva],
       }),
     ).toBe(eva);
@@ -206,7 +221,7 @@ describe("resolveMateOwner", () => {
       resolveMateOwner({
         project: {
           ...owned([{ clientUserId: "cu-jan", roleCode: "OWNER" }]),
-          tagList: ["mate:signer:claude-code:u-eva"],
+          hq: placedWith({ "claude-code": "u-eva" }),
         },
         members: [jan, eva],
       }),
@@ -215,10 +230,7 @@ describe("resolveMateOwner", () => {
 
   it("is nobody when the signer is not in the member list", () => {
     expect(
-      resolveMateOwner({
-        project: signedIn("mate:signer:claude-code:u-gone"),
-        members: [jan, eva],
-      }),
+      resolveMateOwner({ project: signedIn({ "claude-code": "u-gone" }), members: [jan, eva] }),
     ).toBeUndefined();
   });
 
@@ -233,9 +245,8 @@ describe("resolveMateOwner", () => {
   }
 });
 
-// What the menu knows of a Mate's person from its first paint, before the
-// member list is read: whether its records name anybody, and whether anybody
-// signed its agent in.
+// What the menu knows of a Mate's person before the member list is read: whether its records
+// name anybody, and whether anybody signed its agent in — as HQ relays the Mate's signers.
 describe("mateOwnerRecords — what a Mate's own records say of its person", () => {
   const OWNER = { clientUserId: "cu-jan", roleCode: "OWNER" };
   const SERVICE = { clientUserId: "cu-zcp", roleCode: "BASIC_USER" };
@@ -243,150 +254,53 @@ describe("mateOwnerRecords — what a Mate's own records say of its person", () 
     {
       name: "an OWNER entry and its agent's signer",
       userRoles: [OWNER],
-      tagList: ["mate", "mate:signer:claude-code:u-jan"],
+      signers: { "claude-code": "u-jan" },
       records: { named: true, signedIn: true, signer: "u-jan" },
     },
     {
       name: "an OWNER entry, nobody signed in (a creator below ADMIN, a hand-over)",
       userRoles: [OWNER, SERVICE],
-      tagList: ["mate"],
+      signers: {},
       records: { named: true, signedIn: false },
     },
     {
       name: "no OWNER entry, the signer names the person (an org owner's Mate)",
       userRoles: [SERVICE],
-      tagList: ["mate", "mate:signer:codex:u-eva"],
+      signers: { codex: "u-eva" },
       records: { named: true, signedIn: true, signer: "u-eva" },
     },
     {
       name: "no OWNER entry and nobody signed in: nobody's",
       userRoles: [SERVICE],
-      tagList: ["mate"],
+      signers: {},
       records: { named: false, signedIn: false },
     },
     {
       name: "only a login added beside the agents: nobody's",
       userRoles: [],
-      tagList: ["mate:signer:claudeAgent-work:u-jan"],
+      signers: { "claudeAgent-work": "u-jan" },
       records: { named: false, signedIn: false },
     },
     {
-      name: "a signer tag that names no user",
+      name: "a signer that names no user",
       userRoles: undefined,
-      tagList: ["mate:signer:codex:"],
+      signers: { codex: "" },
       records: { named: false, signedIn: false },
     },
     {
-      name: "no records at all",
+      name: "no summary relayed: no signer known",
       userRoles: undefined,
-      tagList: undefined,
+      signers: undefined,
       records: { named: false, signedIn: false },
     },
-    // Two records for one login (two sign-ins racing their tag writes): signed in, by somebody
-    // the records do not settle — never the first tag's person (the server reads it the same way).
-    {
-      name: "two people's records on one login: signed in, whose not known",
-      userRoles: [SERVICE],
-      tagList: ["mate:signer:claude-code:u-jan", "mate:signer:claude-code:u-eva"],
-      records: { named: true, signedIn: true },
-    },
-    {
-      name: "one person twice on one login: theirs",
-      userRoles: [SERVICE],
-      tagList: ["mate:signer:claude-code:u-jan", "mate:signer:claude-code:u-jan"],
-      records: { named: true, signedIn: true, signer: "u-jan" },
-    },
-    {
-      name: "one login not known, the other one person's: not known",
-      userRoles: [SERVICE],
-      tagList: [
-        "mate:signer:codex:u-eva",
-        "mate:signer:claude-code:u-jan",
-        "mate:signer:claude-code:u-eva",
-      ],
-      records: { named: true, signedIn: true },
-    },
-  ])("$name", ({ userRoles, tagList, records }) => {
-    expect(mateOwnerRecords({ userRoles, tagList })).toEqual(records);
-  });
-
-  it("names no owner from records that name two people on one login", () => {
-    const members = [
-      { id: "cu-jan", user: { id: "u-jan" } },
-      { id: "cu-eva", user: { id: "u-eva" } },
-    ];
-    const tagList = ["mate:signer:claude-code:u-jan", "mate:signer:claude-code:u-eva"];
+  ])("$name", ({ userRoles, signers, records }) => {
     expect(
-      resolveMateOwner({ project: { id: "p1", tagList, userRoles: [SERVICE] }, members }),
-    ).toBe(undefined);
+      mateOwnerRecords({
+        userRoles,
+        ...(signers === undefined ? {} : { hq: placedWith(signers) }),
+      }),
+    ).toEqual(records);
   });
-});
-
-describe("the signer tag (D6)", () => {
-  const OTHER = "person:own";
-
-  it("keeps every other tag and replaces this agent's signer", () => {
-    expect(
-      withMateSignerTag(
-        [OTHER, mateSignerTag("claude-code", "old"), "mate:closed-off"],
-        "claude-code",
-        "jan",
-      ),
-    ).toEqual([OTHER, "mate:closed-off", mateSignerTag("claude-code", "jan")]);
-  });
-
-  it("leaves the other agent's signer alone", () => {
-    expect(withMateSignerTag([mateSignerTag("codex", "eva")], "claude-code", "jan")).toEqual([
-      mateSignerTag("codex", "eva"),
-      mateSignerTag("claude-code", "jan"),
-    ]);
-  });
-
-  // A sign-in settles a login recorded for two people: its one record replaces every older one,
-  // and never touches a login whose key merely starts the same.
-  it.each([
-    {
-      case: "two people's records on the login become the signer's one",
-      tags: [mateSignerTag("claude-code", "eva"), mateSignerTag("claude-code", "ida")],
-      expected: [mateSignerTag("claude-code", "jan")],
-    },
-    {
-      case: "a login beyond the defaults keeps its own record",
-      tags: [mateSignerTag("claudeAgent-work", "eva"), mateSignerTag("claude-code", "eva")],
-      expected: [mateSignerTag("claudeAgent-work", "eva"), mateSignerTag("claude-code", "jan")],
-    },
-  ])("$case", ({ tags, expected }) => {
-    expect(withMateSignerTag(tags, "claude-code", "jan")).toEqual(expected);
-  });
-
-  it("records a signer on a project that had no tags at all", () => {
-    expect(withMateSignerTag(undefined, "codex", "jan")).toEqual([mateSignerTag("codex", "jan")]);
-  });
-
-  // Signing in again with the same account must cost a read and nothing else:
-  // the TagWriter writes nothing when the list keeps the same tags.
-  it("keeps the tags of a list that already records exactly this signer", () => {
-    expect(
-      [...withMateSignerTag([mateSignerTag("codex", "jan"), OTHER], "codex", "jan")].sort(),
-    ).toEqual([OTHER, mateSignerTag("codex", "jan")].sort());
-  });
-
-  for (const [name, tagList] of [
-    ["a different signer", [mateSignerTag("codex", "eva")]],
-    ["no signer at all", [OTHER]],
-    [
-      "two signers for the same agent",
-      [mateSignerTag("codex", "jan"), mateSignerTag("codex", "eva")],
-    ],
-  ] as const) {
-    it(`rewrites over ${name}`, () => {
-      const written = withMateSignerTag(tagList, "codex", "jan");
-      expect(written.filter((tag) => tag.startsWith("mate:signer:codex:"))).toEqual([
-        mateSignerTag("codex", "jan"),
-      ]);
-      expect([...written].sort()).not.toEqual([...tagList].sort());
-    });
-  }
 });
 
 describe("the verbs a Mate offers (guide 0.8)", () => {

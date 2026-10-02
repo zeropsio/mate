@@ -45,6 +45,8 @@ const core = Layer.unwrap(
         yield* Config.Int("HQ_DRAIN_SECONDS").pipe(Config.withDefault(10)),
       ),
       databaseUrl: yield* Config.Redacted("DATABASE_URL"),
+      // The volume `vol` (zerops.yml) survives a deploy: the repositories live on it.
+      gitRoot: "/mnt/vol/git",
       migrations: bundledMigrations(),
       hqProjectId: yield* Config.String("projectId"),
       credential: yield* Config.option(Config.Redacted("HQ_ORG_TOKEN")),
@@ -53,7 +55,14 @@ const core = Layer.unwrap(
     };
     return coreApp(options).pipe(
       Layer.provide(zerops),
-      Layer.provide(NodeHttpServer.layer(() => NodeHttp.createServer(), { port })),
+      Layer.provide(
+        NodeHttpServer.layer(
+          // A push may stream for as long as the git layer's own deadline (30 min); a request's
+          // headers still come within Node's 60 s.
+          () => NodeHttp.createServer({ requestTimeout: 30 * 60 * 1000 }),
+          { port },
+        ),
+      ),
     );
   }),
 );

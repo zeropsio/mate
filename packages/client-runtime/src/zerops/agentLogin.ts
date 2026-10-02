@@ -247,8 +247,8 @@ const loginInFlight = (phase: ZeropsAgentLoginPhase | undefined): boolean =>
 /** The agent-auth feed as its surfaces read it (DESIGN §2.C C13, §3.4). */
 export interface ZeropsAgentAuthView {
   /**
-   * The snapshot once known, kept while stale: what the card lists and what a sign-in, the
-   * dialog and the signer record act on. `null` until then.
+   * The snapshot once known, kept while stale: what the card lists and what a sign-in and the
+   * dialog act on. `null` until then.
    */
   readonly snapshot: ZeropsAgentAuthSnapshot | null;
   /**

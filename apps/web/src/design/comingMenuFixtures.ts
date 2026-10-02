@@ -16,7 +16,7 @@
  */
 import type { ZeropsPlacedBirth } from "@t3tools/client-runtime/zerops";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
-import type { HqPlacement } from "@t3tools/client-runtime/zerops/hq";
+import type { HqMate, HqPlacement } from "@t3tools/client-runtime/zerops/hq";
 import { EnvironmentId, ThreadId } from "@t3tools/contracts";
 
 import type { ZeropsAgentActivity } from "~/zerops/agentActivity";
@@ -39,20 +39,27 @@ export type ComingPhase = (typeof COMING_PHASES)[number];
 
 const minutesAgo = (minutes: number) => new Date(Date.now() - minutes * 60_000).toISOString();
 
-/** A Mate of Acme Docs as HQ places it, wearing `face`. */
-const acme = (name: string, face: string): HqPlacement => ({
+/** A Mate of Acme Docs as HQ places it, wearing `face`, its record saying `record` too. */
+const acme = (name: string, face: string, record: Partial<HqMate>): HqPlacement => ({
   appId: "acme",
   appName: "Acme Docs",
   kind: "mate",
-  mate: { name, face },
+  mate: { name, face, ...record },
 });
-const SIGNED = "mate:signer:claude-code:u-harness";
+/** Signed in by the harness's person, as the Mate's summary at HQ names them. */
+const SIGNED: Partial<HqMate> = {
+  live: {
+    online: true,
+    at: "2026-10-02T10:00:00.000Z",
+    summary: { main: null, running: 0, waiting: 0, signers: { "claude-code": "u-harness" } },
+  },
+};
 
 function mate(
   id: string,
   bot: string,
   face: string,
-  tags: ReadonlyArray<string>,
+  record: Partial<HqMate>,
   over: {
     readonly status?: string;
     readonly group?: ZeropsCandidate["group"];
@@ -73,8 +80,8 @@ function mate(
       id,
       name: `Acme Docs - ${bot}`,
       status,
-      tagList: ["mate", ...tags],
-      hq: acme(bot, face),
+      tagList: ["mate"],
+      hq: acme(bot, face, record),
     },
     group,
     ...(service === null ? {} : { service: { id: "zcp", name: "zcp", status: service.status } }),
@@ -84,10 +91,11 @@ function mate(
   };
 }
 
-const FEN = mate("acme-fen", "Fen", "olive:clover", [SIGNED]);
-const ADA = mate("acme-ada", "Ada", "sky:flower", [SIGNED]);
+const FEN = mate("acme-fen", "Fen", "olive:clover", SIGNED);
+const ADA = mate("acme-ada", "Ada", "sky:flower", SIGNED);
 const QUINN_FACE = "coral:gem";
-const QUINN_TAGS = ["mate:standup:u-harness"];
+/** Its stand-up asked by the harness's person, as HQ's birth record names them. */
+const QUINN_ASKED: Partial<HqMate> = { standupRequestedBy: "u-harness" };
 
 const words = (
   id: string,
@@ -165,13 +173,13 @@ export function comingMenu(phase: ComingPhase): ComingMenu {
         return undefined;
       case "coming":
       case "slow":
-        return mate("acme-quinn", "Quinn", QUINN_FACE, QUINN_TAGS, {
+        return mate("acme-quinn", "Quinn", QUINN_FACE, QUINN_ASKED, {
           group: "provisioning",
           service: { status: "CREATING" },
           reached: false,
         });
       case "failed":
-        return mate("acme-quinn", "Quinn", QUINN_FACE, QUINN_TAGS, {
+        return mate("acme-quinn", "Quinn", QUINN_FACE, QUINN_ASKED, {
           status: "NEW",
           group: "unavailable",
           service: null,
@@ -185,13 +193,13 @@ export function comingMenu(phase: ComingPhase): ComingMenu {
           "acme-quinn",
           "Quinn",
           QUINN_FACE,
-          [...QUINN_TAGS, ...(phase === "almost" ? [] : [SIGNED])],
+          { ...QUINN_ASKED, ...(phase === "almost" ? {} : SIGNED) },
           { group: "ready" },
         );
       case "ready":
-        return mate("acme-quinn", "Quinn", QUINN_FACE, QUINN_TAGS);
+        return mate("acme-quinn", "Quinn", QUINN_FACE, QUINN_ASKED);
       case "working":
-        return mate("acme-quinn", "Quinn", QUINN_FACE, [...QUINN_TAGS, SIGNED]);
+        return mate("acme-quinn", "Quinn", QUINN_FACE, { ...QUINN_ASKED, ...SIGNED });
     }
   })();
   const births: ReadonlyArray<ZeropsPlacedBirth> =

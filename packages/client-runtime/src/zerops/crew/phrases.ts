@@ -335,21 +335,15 @@ export const crewSendToWord = (name: string | null): string =>
  * the conversation's own words (`agentOwnershipComposerNotice`, pinned to
  * these by the phrases' test), the crew named where the conversation names
  * its agent — in the Crew tab the crew is what they may not run — its dash
- * held to the word before it, so no line starts with it. Why nobody runs it,
- * or why the viewer's own record failed, reads as the conversation says it.
+ * held to the word before it, so no line starts with it. Why nobody runs it
+ * reads as the conversation says it.
  */
-export function crewLockWords(
-  ownership: "someone-else" | "unrecorded" | "record-failed" | "unsettled",
-): string {
+export function crewLockWords(ownership: "someone-else" | "unrecorded"): string {
   switch (ownership) {
     case "someone-else":
       return "Signed in by another project member\u00a0— only they can run this crew.";
     case "unrecorded":
       return "This agent's sign-in was not recorded by Zerops Mate, so nobody can run it.";
-    case "record-failed":
-      return "Your sign-in could not be recorded.";
-    case "unsettled":
-      return "This Mate's sign-in is recorded for more than one person. Sign it in again to make it yours.";
   }
 }
 

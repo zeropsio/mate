@@ -379,13 +379,12 @@ services:
     - hostname: db
       type: postgresql:single@18
 `,
-      { name: "Imperial Titan - stage", tagList: ["mate", "mate:standup:u-ada"] },
+      { name: "Imperial Titan - stage", tagList: ["mate"] },
     );
     expect(doc).toBe(`project:
     name: Imperial Titan - stage
     tags:
       - mate
-      - mate:standup:u-ada
     envVariables:
         APP_KEY: <@generateRandomString(<32>)>
 services:

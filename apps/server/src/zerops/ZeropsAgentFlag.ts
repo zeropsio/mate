@@ -142,7 +142,7 @@ export interface MarkSignedInResult {
 /**
  * Tolerant row decode: an entry missing a required field, or of the wrong
  * shape, drops out rather than poisoning the whole read — the same
- * tolerance `ZeropsProjectSigners.ts`'s tag/member parsing uses for a
+ * tolerance `ZeropsProjectSigners.ts`'s member parsing uses for a
  * platform list this server does not fully own.
  */
 export const readServiceEnvRows = (body: unknown): ReadonlyArray<ServiceEnvRow> | undefined => {

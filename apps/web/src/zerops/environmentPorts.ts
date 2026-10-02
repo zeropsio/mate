@@ -52,6 +52,7 @@ import { connectionAtomRuntime } from "~/connection/runtime";
 import { randomUUID } from "~/lib/utils";
 import { environmentIdFromAddress } from "~/routes/-environmentRoute";
 
+import { hqPlacementsAtom } from "~/state/zerops";
 import { accountLocalStorage, accountStorageKey } from "./accountLifetime";
 import { pressingProjects } from "./matePress";
 
@@ -128,6 +129,21 @@ export function linkPhaseOf(state: SupervisorConnectionState): LinkPhase | null 
         ? { phase: "blocked", reason: state.lastFailure.reason }
         : null;
   }
+}
+
+/**
+ * Whether HQ's record of each project's Mate says its project is closed off, as its structure
+ * stands in the registry: `unknown` while the structure is not known, and for a project it holds
+ * no record of — the auto-connect gate then leaves it to the press's marker.
+ */
+export function closedOffPort(
+  registry: AtomRegistry.AtomRegistry,
+): NonNullable<AccountEnvironmentPorts["closedOff"]> {
+  return {
+    read: (projectId) =>
+      registry.get(hqPlacementsAtom)?.get(projectId)?.mate?.closedOff ?? "unknown",
+    subscribe: (listener) => registry.subscribe(hqPlacementsAtom, listener),
+  };
 }
 
 /**
@@ -303,5 +319,7 @@ export function webEnvironmentPorts(input: {
     admission: connectionAdmission,
     // A press or a harden this tab is running: its Mate is not connected meanwhile.
     pressing: pressingProjects,
+    // A Mate its press marked waits for HQ to say its project is closed off.
+    closedOff: closedOffPort(registry),
   };
 }

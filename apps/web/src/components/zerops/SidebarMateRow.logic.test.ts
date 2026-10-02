@@ -150,8 +150,8 @@ describe("mateOwnerView — whose seat, and whether anybody signed its agent in"
     expect(view.signInLine).toBe(line);
   });
 
-  // Whose sign-in a new Mate waits for (board D1, 2026-09-30): the person who added it — the
-  // stand-up's `mate:standup:` tag names them until their sign-in sends it — reads that it waits
+  // Whose sign-in a new Mate waits for (board D1, 2026-09-30): the person who added it — HQ's
+  // stand-up record names them until their sign-in lets it run — reads that it waits
   // on them, with the amber dot of what needs them. A Mate still being set up never reads like a
   // failure (the owner, 2026-10-01, of "none signed in" on a Mate setting up): anybody else reads
   // that it waits for a sign-in, quietly, and a viewer not known yet reads nothing.

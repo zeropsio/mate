@@ -161,13 +161,28 @@ function candidate(
   } = {},
 ): ZeropsCandidate {
   const { connected = true, container = true, routes: theRoutes } = options;
-  // Every Mate here has its agent signed in (D6's tag) — by the viewer, or by a colleague where
-  // its owner is not the viewer; the plan set's Hollin holds the ones nobody has.
+  // Every Mate here has its agent signed in (D6), as its summary at HQ names them — by the
+  // viewer, or by a colleague where its owner is not the viewer; the plan set's Hollin holds the
+  // ones nobody has.
   const signer = COLLEAGUES_MATES.has(id) ? "u-colleague" : "u-harness";
-  const tagList = hq.kind === "mate" ? ["mate", `mate:signer:claude-code:${signer}`] : [];
+  const signed: HqPlacement =
+    hq.kind !== "mate" || hq.mate === null
+      ? hq
+      : {
+          ...hq,
+          mate: {
+            ...hq.mate,
+            live: {
+              online: true,
+              at: hoursAgo(1),
+              summary: { main: null, running: 0, waiting: 0, signers: { "claude-code": signer } },
+            },
+          },
+        };
+  const tagList = hq.kind === "mate" ? ["mate"] : [];
   const base = {
     key: `${id}:zcp`,
-    project: { id, name, status: "ACTIVE", tagList, hq },
+    project: { id, name, status: "ACTIVE", tagList, hq: signed },
     group: connected ? ("connected" as const) : ("ready" as const),
     // Where its conversation lives: what the jump box searches.
     ...(connected && container ? { environmentId: EnvironmentId.make(`env-${id}`) } : {}),

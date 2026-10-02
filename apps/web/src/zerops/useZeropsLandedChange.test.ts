@@ -36,6 +36,9 @@ const CHANGE: HqChange = {
   openedAt: "2026-10-02T09:00:00.000Z",
   mergedAt: "2026-10-02T10:00:00.000Z",
   closedAt: null,
+  updatedAt: "2026-10-02T09:00:00.000Z",
+  mergeability: "clean",
+  behind: false,
 };
 
 const refusal = (status: number, code: string, message: string) =>

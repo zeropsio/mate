@@ -12,7 +12,7 @@ import {
   type Repo,
 } from "./api.ts";
 import { GitRunner, converge, terminate } from "./git.ts";
-import { HttpError, pkt, readPush, refusalReport } from "./protocol.ts";
+import { HttpError, gitTarget, pkt, readPush, refusalReport } from "./protocol.ts";
 import { PushReport } from "./report.ts";
 import { allowRefUpdate } from "./rules.ts";
 
@@ -96,18 +96,9 @@ export const makeHandler = (
     };
     res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
     try {
-      // Match the raw path: a URL parser would resolve `..` and `%2e%2e` into another repository.
-      const target = req.url ?? "";
-      const mark = target.includes("?") ? target.indexOf("?") : target.length;
-      const [path, query] = [target.slice(0, mark), target.slice(mark + 1)];
-      if (!path.startsWith(`${prefix}/`)) throw new HttpError(404, "Repository not found");
-      const match =
-        /^([A-Za-z0-9][A-Za-z0-9_-]{0,127})\/([A-Za-z0-9][A-Za-z0-9_-]{0,127})\.git\/(info\/refs|git-upload-pack|git-receive-pack)$/.exec(
-          path.slice(prefix.length + 1),
-        );
-      if (!match) throw new HttpError(404, "Repository not found");
-      const repo = { appId: match[1]!, id: match[2]! };
-      const operation = match[3]!;
+      const target = gitTarget(prefix, req.url ?? "");
+      if (!target) throw new HttpError(404, "Repository not found");
+      const { repo, operation, service } = target;
       const principal = await options.authenticate(req);
       if (!principal) throw new HttpError(401, "Authentication required");
       if (!(await options.canRead(principal, repo)))
@@ -117,9 +108,7 @@ export const makeHandler = (
       const advertise = operation === "info/refs";
       if (req.method !== (advertise ? "GET" : "POST"))
         throw new HttpError(405, "Invalid git request method");
-      const service = advertise ? new URLSearchParams(query).get("service") : operation;
-      if (service !== "git-upload-pack" && service !== "git-receive-pack")
-        throw new HttpError(400, "Invalid git service");
+      if (service === null) throw new HttpError(400, "Invalid git service");
       const command = service.slice(4);
       const protocol =
         service === "git-upload-pack" && req.headers["git-protocol"] === "version=2"

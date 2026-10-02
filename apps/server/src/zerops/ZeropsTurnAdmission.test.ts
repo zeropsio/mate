@@ -29,12 +29,7 @@ import { resolveZeropsEnvironment } from "./ZeropsEnvironment.ts";
 import * as ZeropsLoginsModule from "./ZeropsLogins.ts";
 import { ZEROPS_SUBJECT_PREFIX } from "./ZeropsMembershipWatch.ts";
 import * as ZeropsProjectSignersModule from "./ZeropsProjectSigners.ts";
-import {
-  loginRefusalMessage,
-  make as makeAdmission,
-  turnRefusalMessage,
-  type TurnPrincipal,
-} from "./ZeropsTurnAdmission.ts";
+import { make as makeAdmission, type TurnPrincipal } from "./ZeropsTurnAdmission.ts";
 
 const JAN = "jan-user-id";
 const EVA = "eva-user-id";
@@ -769,24 +764,4 @@ describe("ZeropsTurnAdmission.admitOperator", () => {
       }),
     );
   }
-});
-
-// Two signer records for one login: the refused turn tells the person the one way out.
-describe("the refusal of a login whose sign-in is recorded for two people", () => {
-  const words =
-    "This Mate's sign-in is recorded for more than one person. Sign it in again to make it yours.";
-  it("an agent's own login", () => {
-    assert.strictEqual(turnRefusalMessage("claude-code", { kind: "unsettled" }), words);
-  });
-  it("a login beyond the defaults", () => {
-    assert.strictEqual(
-      loginRefusalMessage(
-        { agent: "claude-code", kind: "subscription", label: "work" },
-        {
-          kind: "unsettled",
-        },
-      ),
-      words,
-    );
-  });
 });

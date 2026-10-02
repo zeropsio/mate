@@ -14,7 +14,9 @@ import { EnvironmentId } from "@t3tools/contracts";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { closeAccountLifetime, openAccountLifetime } from "./accountLifetime";
-import { linkPhaseOf, recordsStorage } from "./environmentPorts";
+import { closedOffPort, linkPhaseOf, recordsStorage } from "./environmentPorts";
+import { hqStructureAtom, zeropsSessionAtom } from "../state/zerops";
+import { AtomRegistry } from "effect/unstable/reactivity";
 
 const ENVIRONMENT_ID = EnvironmentId.make("environment-1");
 const ORIGIN = "https://zcp-1-8080.prg1.zerops.app";
@@ -219,5 +221,59 @@ describe("the records port: the account's own storage", () => {
 
     openAccountLifetime("user-a");
     expect(records.list().map((entry) => entry.targetKey)).toEqual(["project-a:service-a"]);
+  });
+});
+
+// The auto-connect gate's word on a Mate its press marked: HQ's record of its project, as the
+// structure stands — nothing known, or nothing recorded, holds the connect.
+describe("the closed-off port: HQ's record of each project", () => {
+  const mate = (closedOff: boolean | undefined) => ({
+    name: "Ada",
+    face: "",
+    ...(closedOff === undefined ? {} : { closedOff }),
+  });
+  const registryWith = (structure: boolean) => {
+    const registry = AtomRegistry.make();
+    registry.set(zeropsSessionAtom, {
+      status: "signed-in",
+      organizationStatus: "selected",
+      activeOrganization: { organizationId: "org-1" },
+    } as never);
+    if (structure) {
+      registry.set(hqStructureAtom, {
+        organizationId: "org-1",
+        structure: {
+          ungrouped: [{ projectId: "p-closed", name: "", mate: mate(true) }],
+          apps: [
+            {
+              id: "app-1",
+              name: "Acme",
+              projects: [
+                { projectId: "p-open", name: "", kind: "mate", mate: mate(false) },
+                { projectId: "p-older-hq", name: "", kind: "mate", mate: mate(undefined) },
+              ],
+            },
+          ],
+        },
+        changes: null,
+        readAt: 1_000,
+        current: true,
+        unavailableSince: null,
+      });
+    }
+    return registry;
+  };
+
+  it.each([
+    ["p-closed", true],
+    ["p-open", false],
+    ["p-older-hq", "unknown"],
+    ["p-unplaced", "unknown"],
+  ] as const)("reads %s as %s", (projectId, expected) => {
+    expect(closedOffPort(registryWith(true)).read(projectId)).toBe(expected);
+  });
+
+  it("reads every project as unknown while HQ's structure is not known", () => {
+    expect(closedOffPort(registryWith(false)).read("p-closed")).toBe("unknown");
   });
 });

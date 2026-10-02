@@ -156,7 +156,7 @@ import { useRenameGroup } from "~/zerops/useRenameGroup";
 import { useEnableRoute } from "~/zerops/useEnableRoute";
 import { useMateActions } from "~/zerops/useMateActions";
 import { useZeropsGroupRecipe } from "~/zerops/useZeropsGroupRecipe";
-import { accountHqApi, officialHq, useAccountHq } from "~/zerops/accountHq";
+import { officialHq, useAccountHq } from "~/zerops/accountHq";
 import { useAccountGitea } from "~/zerops/giteaProject";
 import { useZeropsGroupEnvironmentReconcile } from "~/zerops/useZeropsGroupEnvironmentReconcile";
 import { useZeropsGroupOrganizations } from "~/zerops/useZeropsGroupOrganizations";
@@ -1079,6 +1079,16 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
           container: true,
           placement: null,
         });
+        const hq = officialHq(accountHq);
+        // Its record in HQ — in no application until somebody moves it into one: a name nobody
+        // goes by and the face a new Mate of that name is born with. Written by the press's
+        // registration, after the close-off its birth records.
+        const record = setUpMateRecord({
+          project: candidate.project,
+          candidates,
+          taken: taken.names,
+          random: (bytes) => crypto.getRandomValues(bytes),
+        });
         // Its container with its own key, and its project closed off before anyone is let in.
         const pressed = await finishMateSetup({
           inputs: {
@@ -1093,26 +1103,23 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
             item.project.id === projectId ? [] : [item.project.id],
           ),
           viewer: pressViewer(user, activeOrganization),
-          registration: null,
+          registration:
+            record === undefined
+              ? null
+              : {
+                  hq,
+                  kind: "mate-record",
+                  displayName: candidate.project.name,
+                  record,
+                  birth: { standUp: false, closedOff: true },
+                },
+          hq,
           isCurrent,
         });
         if (!pressed.ok) throw new Error(pressed.error);
         if (!isCurrent()) return;
-        // Declared a Mate, and its record in HQ — in no application until somebody moves it into
-        // one: a name nobody goes by and the face a new Mate of that name is born with.
+        // Declared a Mate.
         await runZeropsCommand(runtime.commands.updateProjectTags(project, { kind: "mate" }));
-        const record = setUpMateRecord({
-          project: candidate.project,
-          candidates,
-          taken: taken.names,
-          random: (bytes) => crypto.getRandomValues(bytes),
-        });
-        if (record !== undefined) {
-          await accountHqApi(client, activeOrganization.id, officialHq(accountHq)).createMate({
-            projectId,
-            ...record,
-          });
-        }
       } catch (cause) {
         if (isCurrent()) setConnectError(zeropsErrorMessage(cause));
       } finally {
@@ -2074,11 +2081,13 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
       groupProjectIds: [],
       viewer: null,
       registration: null,
+      hq: accountHq.hq.kind === "official" ? accountHq.hq : null,
       isCurrent: captureAccountLifetime(),
       // A container the pool made: its key at ADMIN, lowered.
       harden: true,
     });
   }, [
+    accountHq,
     clearLastRegistration,
     client,
     inventory.projects,

@@ -2256,7 +2256,7 @@ describe("ZeropsApiClient.writeProjectTags — the TagWriter's one PUT", () => {
     status: "ACTIVE",
     clientId: "org-1",
     description: "A Mate",
-    tagList: ["mate", "mate:signer:claude-code:old-user"],
+    tagList: ["billing:team-a"],
     publicIpV4Shared: true,
     maxCreditLimit: 40,
     userRoles: [{ clientUserId: "cu-jan", roleCode: "OWNER" }],
@@ -2267,7 +2267,7 @@ describe("ZeropsApiClient.writeProjectTags — the TagWriter's one PUT", () => {
     const client = new ZeropsApiClient({ fetch: stub.fetch });
     client.restoreSession(SESSION);
 
-    await client.writeProjectTags(project, ["mate", "mate:signer:claude-code:jan"]);
+    await client.writeProjectTags(project, ["billing:team-a", "mate"]);
 
     expect(stub.requests.map((request) => request.method)).toEqual(["PUT"]);
     // A tag write must never carry `userRoles`: the platform replaces what it
@@ -2275,7 +2275,7 @@ describe("ZeropsApiClient.writeProjectTags — the TagWriter's one PUT", () => {
     expect(JSON.parse(stub.requests[0]?.body ?? "{}")).toEqual({
       name: "Fen",
       description: "A Mate",
-      tagList: ["mate", "mate:signer:claude-code:jan"],
+      tagList: ["billing:team-a", "mate"],
       publicIpV4Shared: true,
       maxCreditLimit: 40,
     });

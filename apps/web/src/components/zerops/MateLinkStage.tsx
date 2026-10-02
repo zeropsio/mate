@@ -99,7 +99,6 @@ function MateLinkStageOf({
           ),
         }}
         mate={mate}
-        onRetry={() => undefined}
         phase={null}
         signIn={null}
         signInRequired={false}

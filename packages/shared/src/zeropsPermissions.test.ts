@@ -12,7 +12,7 @@ import {
 
 /**
  * The person `U` (member row `C-U`) and one target project `P`; beside it `P_SEEN` (U reads it
- * through a grant) and `P_HIDDEN` (a grant of none). `OTHER`, an active org owner with an owner's
+ * through a grant), `P_DEV` (U develops it: a Basic user grant) and `P_HIDDEN` (a grant of none). `OTHER`, an active org owner with an owner's
  * grant on P, is there so that nothing of anyone else's ever counts as U's.
  */
 interface Point {
@@ -66,6 +66,7 @@ const factsOf = (point: Point): Facts<"fresh"> => ({
         ]
       : []),
     { id: "P_SEEN", userRoles: [{ clientUserId: "C-U", roleCode: "READ_ONLY" }] },
+    { id: "P_DEV", userRoles: [{ clientUserId: "C-U", roleCode: "BASIC_USER" }] },
     { id: "P_HIDDEN", userRoles: [{ clientUserId: "C-U", roleCode: "NO_ACCESS" }] },
   ],
 });
@@ -86,11 +87,48 @@ const place = (
   held: string,
   to: string,
   appProjectIds: ReadonlyArray<string> = [],
-): Request => ({ verb, target: { projectId: "P", held, to, appProjectIds } });
+  slotTaken = false,
+): Request =>
+  verb === "attach"
+    ? { verb, target: { projectId: "P", held, to, appProjectIds, slotTaken } }
+    : { verb, target: { projectId: "P", held, to, appProjectIds } };
 const onP = (
   verb: "detach" | "create_mate_record" | "edit_mate_record" | "enroll_mate",
   held: string,
 ): Request => ({ verb, target: { projectId: "P", held } });
+
+/** A Mate verb on P, held as `held` in the application `appId` (`null`: in none). */
+const ofMate = (
+  verb: "ensure_repo" | "open_change",
+  held: string,
+  appId: string | null,
+): Request => ({ verb, target: { projectId: "P", appId, held } });
+
+/** An edit by Mate P, held so, of a change of `owner`'s (`null`: no such change). */
+const editOf = (held: string, appId: string | null, owner: string | null = "P"): Request => ({
+  verb: "edit_change",
+  target: {
+    projectId: "P",
+    appId,
+    held,
+    change: owner === null ? null : { mateProjectId: owner },
+  },
+});
+
+/** A fetch by Mate P, held so, of a repository of the application `repoAppId`. */
+const fetchOf = (held: string, appId: string | null, repoAppId = "A"): Request => ({
+  verb: "fetch_repo",
+  target: { projectId: "P", appId, held, repoAppId },
+});
+
+/** The verbs a Mate asks for itself; every other one is a person's. */
+const MATE_VERBS: ReadonlySet<Verb> = new Set([
+  "enroll_mate",
+  "ensure_repo",
+  "open_change",
+  "edit_change",
+  "fetch_repo",
+]);
 
 /** U as an org owner, a structure writer. */
 const WRITER = { orgRole: "OWNER" } as const;
@@ -307,13 +345,79 @@ const TABLES: Readonly<Record<Verb, ReadonlyArray<Row>>> = {
       "org Basic user, an environment",
       { orgRole: "BASIC_USER" },
       place("attach", "none", "stage"),
+      "not_project_admin",
+    ],
+    [
+      "P's admin, an environment to an application they do not see",
+      P_ADMIN,
+      place("attach", "none", "production"),
+      "app_not_seen",
+    ],
+    [
+      "P's admin, a stage into an empty place of an application they develop",
+      P_ADMIN,
+      place("attach", "none", "stage", ["P_DEV"]),
+      "allow",
+    ],
+    [
+      "P's admin, a stage into an application they only see",
+      P_ADMIN,
+      place("attach", "none", "stage", ["P_SEEN"]),
+      "not_app_developer",
+    ],
+    [
+      "a Developer attaches their new project as the production of an application without one",
+      MAKER,
+      place("attach", "none", "production", ["P_DEV"]),
+      "allow",
+    ],
+    [
+      "a Developer, the application's production taken",
+      MAKER,
+      place("attach", "none", "production", ["P_DEV"], true),
+      "slot_taken",
+    ],
+    [
+      "a Developer of an application they only see",
+      MAKER,
+      place("attach", "none", "production", ["P_SEEN"]),
+      "not_app_developer",
+    ],
+    [
+      "a Developer's own Mate into an application they only see: seeing it is enough",
+      MAKER,
+      place("attach", "mate", "mate", ["P_SEEN"]),
+      "allow",
+    ],
+    [
+      "Read only on the project",
+      { override: "READ_ONLY" },
+      place("attach", "none", "production", ["P_SEEN"]),
+      "not_project_admin",
+    ],
+    [
+      "an org admin, the production taken",
+      { orgRole: "ADMIN" },
+      place("attach", "none", "production", [], true),
+      "allow",
+    ],
+    [
+      "a Developer replaces nothing: their project is a stage already",
+      MAKER,
+      place("attach", "stage", "production", ["P_SEEN"]),
       "not_structure_writer",
     ],
     [
-      "P's admin, an environment",
-      P_ADMIN,
-      place("attach", "none", "production"),
-      "not_structure_writer",
+      "a Developer turns their Mate into a production",
+      MAKER,
+      place("attach", "mate", "production", ["P_SEEN"]),
+      "kind_class_change",
+    ],
+    [
+      "a Developer whose new project is gone",
+      { ...MAKER, present: false },
+      place("attach", "none", "production", ["P_SEEN"]),
+      "not_project_admin",
     ],
     [
       "a maker attaches their own Mate to an application they see",
@@ -584,6 +688,141 @@ const TABLES: Readonly<Record<Verb, ReadonlyArray<Row>>> = {
     ],
     ["a kind this build does not know", {}, onP("enroll_mate", "FUTURE"), "unknown_kind"],
   ],
+  ensure_repo: [
+    ["its Mate in an application", {}, ofMate("ensure_repo", "mate", "A"), "allow"],
+    ["its devstage", {}, ofMate("ensure_repo", "devstage", "A"), "allow"],
+    ["its Mate in no application", {}, ofMate("ensure_repo", "mate", null), "mate_not_in_app"],
+    ["nothing held", {}, ofMate("ensure_repo", "none", null), "mate_not_in_app"],
+    ["a stage", {}, ofMate("ensure_repo", "stage", "A"), "not_a_mate"],
+    ["a production", {}, ofMate("ensure_repo", "production", "A"), "not_a_mate"],
+    ["a kind this build does not know", {}, ofMate("ensure_repo", "FUTURE", "A"), "unknown_kind"],
+    [
+      "its Mate whose project is gone",
+      { present: false },
+      ofMate("ensure_repo", "mate", "A"),
+      "project_gone",
+    ],
+    [
+      "a stage whose project is gone",
+      { present: false },
+      ofMate("ensure_repo", "stage", "A"),
+      "not_a_mate",
+    ],
+  ],
+  open_change: [
+    ["its Mate in an application", {}, ofMate("open_change", "mate", "A"), "allow"],
+    ["its devstage", {}, ofMate("open_change", "devstage", "A"), "allow"],
+    ["its Mate in no application", {}, ofMate("open_change", "mate", null), "mate_not_in_app"],
+    ["a stage", {}, ofMate("open_change", "stage", "A"), "not_a_mate"],
+    [
+      "its Mate whose project is gone",
+      { present: false },
+      ofMate("open_change", "devstage", "A"),
+      "project_gone",
+    ],
+  ],
+  edit_change: [
+    ["its own change", {}, editOf("mate", "A"), "allow"],
+    ["its own change, as a devstage", {}, editOf("devstage", "A"), "allow"],
+    ["a sibling Mate's change", {}, editOf("mate", "A", "Q"), "not_your_change"],
+    ["no such change", {}, editOf("mate", "A", null), "unknown_change"],
+    [
+      "a sibling's change, its project gone",
+      { present: false },
+      editOf("mate", "A", "Q"),
+      "not_your_change",
+    ],
+    ["its own change, its project gone", { present: false }, editOf("mate", "A"), "project_gone"],
+    ["its Mate in no application", {}, editOf("mate", null), "mate_not_in_app"],
+    ["a production", {}, editOf("production", "A"), "not_a_mate"],
+    ["a production, a sibling's change", {}, editOf("production", "A", "Q"), "not_a_mate"],
+    ["a kind this build does not know", {}, editOf("FUTURE", "A"), "unknown_kind"],
+  ],
+  fetch_repo: [
+    ["its own application's repository", {}, fetchOf("mate", "A"), "allow"],
+    ["as a devstage", {}, fetchOf("devstage", "A"), "allow"],
+    ["another application's repository", {}, fetchOf("mate", "A", "B"), "not_your_app"],
+    ["its Mate in no application", {}, fetchOf("mate", null), "mate_not_in_app"],
+    ["a stage", {}, fetchOf("stage", "A"), "not_a_mate"],
+    ["a kind this build does not know", {}, fetchOf("FUTURE", "A"), "unknown_kind"],
+    ["its project gone", { present: false }, fetchOf("mate", "A"), "project_gone"],
+  ],
+  read_change: [
+    [
+      "org Read only reads an empty application's changes",
+      { orgRole: "READ_ONLY" },
+      { verb: "read_change", target: { projectIds: [] } },
+      "allow",
+    ],
+    [
+      "org none, a Read only grant on a project of it: sees the application, not its changes",
+      {},
+      { verb: "read_change", target: { projectIds: ["P_SEEN"] } },
+      "changes_not_seen",
+    ],
+    [
+      "org none, a Read only grant on P",
+      { override: "READ_ONLY" },
+      { verb: "read_change", target: { projectIds: ["P"] } },
+      "changes_not_seen",
+    ],
+    [
+      "org none, a Basic user grant on P",
+      { override: "BASIC_USER" },
+      { verb: "read_change", target: { projectIds: ["P", "P_HIDDEN"] } },
+      "allow",
+    ],
+    [
+      "org Read only lowered to none on its only project",
+      { orgRole: "READ_ONLY", override: "NO_ACCESS" },
+      { verb: "read_change", target: { projectIds: ["P"] } },
+      "allow",
+    ],
+    [
+      "org none, only a hidden project",
+      {},
+      { verb: "read_change", target: { projectIds: ["P_HIDDEN"] } },
+      "app_not_seen",
+    ],
+    [
+      "an invited owner",
+      { orgRole: "OWNER", status: "INVITED" },
+      { verb: "read_change", target: { projectIds: [] } },
+      "not_active_member",
+    ],
+  ],
+  comment_change: [
+    [
+      "org Read only comments on whatever change they read",
+      { orgRole: "READ_ONLY" },
+      { verb: "comment_change", target: { projectIds: [] } },
+      "allow",
+    ],
+    [
+      "org none, a Read only grant on a project of it",
+      {},
+      { verb: "comment_change", target: { projectIds: ["P_SEEN"] } },
+      "changes_not_seen",
+    ],
+    [
+      "org none, a Basic user grant on P",
+      { override: "BASIC_USER" },
+      { verb: "comment_change", target: { projectIds: ["P"] } },
+      "allow",
+    ],
+    [
+      "org none, only a hidden project",
+      {},
+      { verb: "comment_change", target: { projectIds: ["P_HIDDEN"] } },
+      "app_not_seen",
+    ],
+    [
+      "an invited owner",
+      { orgRole: "OWNER", status: "INVITED" },
+      { verb: "comment_change", target: { projectIds: [] } },
+      "not_active_member",
+    ],
+  ],
 };
 
 const MATE_P: Principal = { kind: "mate", projectId: "P" };
@@ -593,7 +832,7 @@ describe("can — one table per verb", () => {
     it.each(rows.map((row) => [row[0], row] as const))(
       `${verb}: %s`,
       (_name, [, point, request, expected]) => {
-        const principal = verb === "enroll_mate" ? MATE_P : PERSON;
+        const principal = MATE_VERBS.has(verb as Verb) ? MATE_P : PERSON;
         expect(outcome(decide(principal, request, { ...BASE, ...point }))).toBe(expected);
       },
     );
@@ -614,6 +853,14 @@ describe("can — one table per verb", () => {
     expect(can(PERSON, "read_app", { projectIds: [] }, cached).allow).toBe(false);
     // @ts-expect-error -- creating an application is a write: it takes `Facts<"fresh">`.
     can(PERSON, "create_app", null, cached);
+    expect(can(PERSON, "read_change", { projectIds: [] }, cached).allow).toBe(false);
+    // @ts-expect-error -- a comment is a write.
+    can(PERSON, "comment_change", { projectIds: [] }, cached);
+    // @ts-expect-error -- so is a Mate's change.
+    can(MATE_P, "open_change", { projectId: "P", appId: "A", held: "mate" }, cached);
+    // A Mate's fetch is a read.
+    const fetched = { projectId: "P", appId: "A", held: "mate", repoAppId: "A" };
+    expect(can(MATE_P, "fetch_repo", fetched, cached).allow).toBe(true);
     // Nor when the verb is known only at run time: it may be a write.
     // @ts-expect-error -- `can` over any verb takes `Facts<"fresh">`.
     const anyVerb: Parameters<typeof can<Verb>>[3] = cached;
@@ -628,7 +875,7 @@ const ROLES = ["NO_ACCESS", "READ_ONLY", "BASIC_USER", "ADMIN", "OWNER", "FUTURE
 const RANKED = ["NO_ACCESS", "READ_ONLY", "BASIC_USER", "ADMIN", "OWNER"] as const;
 const HELD = ["none", "mate", "devstage", "stage", "production", "FUTURE"] as const;
 const TO = ["mate", "devstage", "stage", "production", "FUTURE"] as const;
-const APPS = [[], ["P"], ["P_SEEN"], ["P_HIDDEN"]] as const;
+const APPS = [[], ["P"], ["P_SEEN"], ["P_DEV"], ["P_HIDDEN"]] as const;
 
 const POINTS: ReadonlyArray<Point> = ROLES.flatMap((orgRole) =>
   [null, ...ROLES].flatMap((override) =>
@@ -646,11 +893,26 @@ const REQUESTS: ReadonlyArray<Request> = [
   ...APPS.map((projectIds): Request => ({ verb: "read_app", target: { projectIds } })),
   { verb: "create_app", target: null },
   { verb: "rename_app", target: null },
-  ...(["attach", "move"] as const).flatMap((verb) =>
-    HELD.flatMap((held) => TO.flatMap((to) => APPS.map((app) => place(verb, held, to, app)))),
+  ...HELD.flatMap((held) =>
+    TO.flatMap((to) =>
+      APPS.flatMap((app) => [false, true].map((taken) => place("attach", held, to, app, taken))),
+    ),
   ),
+  ...HELD.flatMap((held) => TO.flatMap((to) => APPS.map((app) => place("move", held, to, app)))),
   ...(["detach", "create_mate_record", "edit_mate_record", "enroll_mate"] as const).flatMap(
     (verb) => HELD.map((held) => onP(verb, held)),
+  ),
+  ...(["ensure_repo", "open_change"] as const).flatMap((verb) =>
+    HELD.flatMap((held) => [null, "A"].map((appId) => ofMate(verb, held, appId))),
+  ),
+  ...HELD.flatMap((held) =>
+    [null, "A"].flatMap((appId) => [null, "P", "Q"].map((owner) => editOf(held, appId, owner))),
+  ),
+  ...HELD.flatMap((held) =>
+    [null, "A"].flatMap((appId) => ["A", "B"].map((repoAppId) => fetchOf(held, appId, repoAppId))),
+  ),
+  ...(["read_change", "comment_change"] as const).flatMap((verb) =>
+    APPS.map((projectIds): Request => ({ verb, target: { projectIds } })),
   ),
 ];
 
@@ -675,7 +937,15 @@ const writerOnly = (request: Request): boolean => {
     case "create_app":
     case "rename_app":
       return true;
-    case "attach":
+    case "attach": {
+      // An environment into an empty place is its project's admin's too (SPEC §3.3a).
+      const { held, to, slotTaken } = request.target;
+      const mate = (kind: string) => kind === "mate" || kind === "devstage";
+      return (
+        (held !== "none" && mate(held) !== mate(to)) ||
+        (!mate(to) && (held !== "none" || slotTaken))
+      );
+    }
     case "move": {
       const { held, to } = request.target;
       const mate = (kind: string) => kind === "mate" || kind === "devstage";
@@ -732,12 +1002,91 @@ describe("can — over the whole input space", () => {
     });
   });
 
-  it("refuses a Mate every verb but its own enrollment", () => {
+  it("lets a Mate only its own verbs, for its own project, in the application HQ holds it in", () => {
     everywhere((principal, request, point) => {
-      if (principal.kind === "mate" && request.verb !== "enroll_mate") {
+      if (principal.kind !== "mate") return;
+      const decision = outcome(decide(principal, request, point));
+      if (!MATE_VERBS.has(request.verb)) {
+        expect(decision).toBe("wrong_principal");
+        return;
+      }
+      if (decision !== "allow") return;
+      const target = request.target as {
+        readonly projectId: string;
+        readonly held: string;
+        readonly appId?: string | null;
+        readonly change?: { readonly mateProjectId: string } | null;
+        readonly repoAppId?: string;
+      };
+      expect(target.projectId).toBe(principal.projectId);
+      expect(["mate", "devstage"]).toContain(target.held);
+      if (request.verb !== "enroll_mate") expect(target.appId).not.toBeNull();
+      if (request.verb === "edit_change")
+        expect(target.change?.mateProjectId).toBe(principal.projectId);
+      if (request.verb === "fetch_repo") expect(target.repoAppId).toBe(target.appId);
+    });
+  });
+
+  it("never lets a Mate edit another Mate's change, and tells it so once HQ holds it as a Mate in an application", () => {
+    for (const point of POINTS) {
+      for (const held of HELD) {
+        for (const appId of [null, "A"]) {
+          const decision = outcome(decide(MATE_P, editOf(held, appId, "Q"), point));
+          expect(decision).not.toBe("allow");
+          if (appId !== null && (held === "mate" || held === "devstage")) {
+            expect(decision, `${held} at ${JSON.stringify(point)}`).toBe("not_your_change");
+          }
+        }
+      }
+    }
+  });
+
+  it("lets a person read an application's changes only where they see the application", () => {
+    everywhere((principal, request, point) => {
+      if (request.verb !== "read_change" && request.verb !== "comment_change") return;
+      if (!decide(principal, request, point).allow) return;
+      const app: Request = { verb: "read_app", target: request.target };
+      expect(decide(principal, app, point).allow).toBe(true);
+    });
+  });
+
+  it("refuses a person every verb a Mate asks for itself", () => {
+    everywhere((principal, request, point) => {
+      if (principal.kind === "person" && MATE_VERBS.has(request.verb)) {
         expect(outcome(decide(principal, request, point))).toBe("wrong_principal");
       }
     });
+  });
+
+  it("tells a Mate asking for another project the same, whatever HQ holds it as, wherever", () => {
+    for (const point of POINTS) {
+      for (const verb of [
+        "enroll_mate",
+        "ensure_repo",
+        "open_change",
+        "edit_change",
+        "fetch_repo",
+      ] as const) {
+        const asked = (held: string, appId: string | null): ReadonlyArray<Request> =>
+          verb === "enroll_mate"
+            ? [onP(verb, held)]
+            : verb === "edit_change"
+              ? [null, "P", "Q"].map((owner) => editOf(held, appId, owner))
+              : verb === "fetch_repo"
+                ? ["A", "B"].map((repoAppId) => fetchOf(held, appId, repoAppId))
+                : [ofMate(verb, held, appId)];
+        const reasons = new Set(
+          HELD.flatMap((held) =>
+            [null, "A"].flatMap((appId) =>
+              asked(held, appId).map((request) =>
+                outcome(decide({ kind: "mate", projectId: "Q" }, request, point)),
+              ),
+            ),
+          ),
+        );
+        expect([...reasons], `${verb} at ${JSON.stringify(point)}`).toEqual(["not_your_project"]);
+      }
+    }
   });
 
   it("tells a member without the role on a project the same, whatever HQ holds it as", () => {
@@ -745,10 +1094,17 @@ describe("can — over the whole input space", () => {
       const role = point.override ?? point.orgRole;
       return point.present && RANKED.indexOf(role as (typeof RANKED)[number]) >= 1;
     };
-    const asked = (verb: Request["verb"], held: string, to: string, app: ReadonlyArray<string>) =>
-      verb === "attach" || verb === "move"
-        ? place(verb, held, to, app)
-        : onP(verb as "detach" | "create_mate_record" | "edit_mate_record", held);
+    const asked = (
+      verb: Request["verb"],
+      held: string,
+      to: string,
+      app: ReadonlyArray<string>,
+    ): ReadonlyArray<Request> =>
+      verb === "attach"
+        ? [false, true].map((taken) => place(verb, held, to, app, taken))
+        : verb === "move"
+          ? [place(verb, held, to, app)]
+          : [onP(verb as "detach" | "create_mate_record" | "edit_mate_record", held)];
     for (const point of POINTS) {
       if (point.status !== "ACTIVE" || point.orgRole === "ADMIN" || point.orgRole === "OWNER") {
         continue;
@@ -765,9 +1121,66 @@ describe("can — over the whole input space", () => {
         for (const to of TO) {
           for (const app of APPS) {
             const reasons = new Set(
-              HELD.map((held) => outcome(decide(PERSON, asked(verb, held, to, app), point))),
+              HELD.flatMap((held) =>
+                asked(verb, held, to, app).map((request) =>
+                  outcome(decide(PERSON, request, point)),
+                ),
+              ),
             );
             expect([...reasons], `${verb} to ${to} at ${JSON.stringify(point)}`).toHaveLength(1);
+          }
+        }
+      }
+    }
+  });
+
+  it("lets a member who is no writer attach only their project held nowhere, into an empty place, as its admin", () => {
+    const effective = (point: Point) => {
+      const role = point.present ? (point.override ?? point.orgRole) : "NO_ACCESS";
+      return RANKED.indexOf(role as (typeof RANKED)[number]);
+    };
+    for (const point of POINTS) {
+      if (point.status !== "ACTIVE" || point.orgRole === "ADMIN" || point.orgRole === "OWNER") {
+        continue;
+      }
+      for (const to of ["stage", "production"]) {
+        for (const app of APPS) {
+          const decisions = HELD.flatMap((held) =>
+            [false, true].map((taken) => ({
+              held,
+              taken,
+              outcome: outcome(decide(PERSON, place("attach", held, to, app, taken), point)),
+            })),
+          );
+          // Who sees the application, and who develops it: a role on one of its projects (P's
+          // is the point's own; P_SEEN is Read only, P_DEV Basic user, P_HIDDEN none), or for
+          // seeing, the org's Read only.
+          const roleIn = (projectId: string) =>
+            projectId === "P"
+              ? effective(point)
+              : RANKED.indexOf(
+                  ({ P_SEEN: "READ_ONLY", P_DEV: "BASIC_USER", P_HIDDEN: "NO_ACCESS" } as const)[
+                    projectId as "P_SEEN" | "P_DEV" | "P_HIDDEN"
+                  ],
+                );
+          const sees =
+            RANKED.indexOf(point.orgRole as (typeof RANKED)[number]) >= 1 ||
+            app.some((projectId) => roleIn(projectId) >= 1);
+          const develops = app.some((projectId) => roleIn(projectId) >= 2);
+          for (const { held, taken, outcome: decision } of decisions) {
+            if (decision === "allow") {
+              expect([
+                held,
+                taken,
+                effective(point) >= RANKED.indexOf("ADMIN"),
+                sees,
+                develops,
+              ]).toEqual(["none", false, true, true, true]);
+            }
+          }
+          // Without Full access on the project, neither its kind nor the place shows.
+          if (effective(point) < RANKED.indexOf("ADMIN")) {
+            expect(new Set(decisions.map((entry) => entry.outcome)).size).toBe(1);
           }
         }
       }

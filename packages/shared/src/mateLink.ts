@@ -8,14 +8,16 @@
  *   logins in. Bounded: every text is cut to {@link MATE_LINK_TEXT_MAX} characters, a frame to
  *   {@link MATE_LINK_FRAME_MAX} bytes, and a Mate sends at most one summary per
  *   {@link MATE_SUMMARY_EVERY_MS}.
- * - **Down**, the Mate's own state in HQ: its record and its birth (who asked for its stand-up,
- *   whether its project is closed off).
+ * - **Down**, the Mate's own state in HQ: its record, its birth (who asked for its stand-up,
+ *   whether its project is closed off), and its changes with their outcome (`hqChanges.ts`).
  *
  * HQ pings every 20 s and the Mate answers; either side reconnects or closes on silence.
  *
  * @module mateLink
  */
 import * as Schema from "effect/Schema";
+
+import { MateChanges } from "./hqChanges.ts";
 
 export const MATE_LINK_TEXT_MAX = 280;
 export const MATE_LINK_FRAME_MAX = 16 * 1024;
@@ -67,7 +69,10 @@ export const MateSummary = Schema.Struct({
 });
 export type MateSummary = typeof MateSummary.Type;
 
-/** The Mate as HQ holds it: its record and its birth. */
+/**
+ * The Mate as HQ holds it: its record, its birth, and the application it is in with its changes
+ * there. A field this build does not know is passed by, so an older Mate reads a newer HQ.
+ */
 export const MateState = Schema.Struct({
   projectId: Schema.String,
   name: Schema.String,
@@ -76,6 +81,7 @@ export const MateState = Schema.Struct({
   standupRequestedBy: Schema.NullOr(Schema.String),
   /** Whether the Mate's project is closed off: its runtimes may be imported. */
   closedOff: Schema.Boolean,
+  ...MateChanges.fields,
 });
 export type MateState = typeof MateState.Type;
 

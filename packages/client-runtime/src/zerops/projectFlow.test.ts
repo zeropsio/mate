@@ -75,6 +75,9 @@ describe("a Mate's changes in HQ, as the flow shows them", () => {
     openedAt: "2026-10-02T09:00:00.000Z",
     mergedAt: null,
     closedAt: null,
+    updatedAt: "2026-10-02T09:00:00.000Z",
+    mergeability: "clean",
+    behind: false,
     ...over,
   });
   const flow = (changes: ReadonlyArray<HqChange>) => flowChanges({ changes, hqAddress: `${HQ}/` });

@@ -15,7 +15,6 @@ import type {
   ZeropsAgentAvailability,
   ZeropsAgentSignInKind,
 } from "@t3tools/client-runtime/zerops/agentAvailability";
-import { agentOwnershipComposerNotice } from "@t3tools/client-runtime/zerops/agentOwnership";
 import { knownPresentation } from "@t3tools/client-runtime/zerops/knowledge";
 import type { ZeropsAgentId } from "@t3tools/contracts";
 
@@ -165,14 +164,6 @@ export function resolveZeropsAgentPickerPanelView(input: {
       return {
         agentName,
         statusLine: "This agent's sign-in was not recorded by Zerops Mate, so nobody can run it.",
-        primaryAction: { kind: "use-my-account", label: "Use my account", disabled: false },
-        showCancel: false,
-        sessionLockNotice,
-      };
-    case "unsettled":
-      return {
-        agentName,
-        statusLine: agentOwnershipComposerNotice("unsettled") ?? "",
         primaryAction: { kind: "use-my-account", label: "Use my account", disabled: false },
         showCancel: false,
         sessionLockNotice,

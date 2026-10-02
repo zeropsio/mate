@@ -22,12 +22,7 @@ import { useMemo } from "react";
 
 import { resolveZeropsConversationReadOnly } from "../components/ChatView.logic";
 import { zeropsFeeds } from "../state/zerops";
-import {
-  resolveAgentAuthorizer,
-  useLocalAgentSigners,
-  useLocalAgentSignersByEnvironment,
-  type LocalAgentSigners,
-} from "./useZeropsAgentSigner";
+import { resolveAgentAuthorizer } from "./agentSigner";
 import { useZeropsAgentAuth } from "./useZeropsFeeds";
 import { useZeropsSessionOptional } from "./ZeropsSessionProvider";
 
@@ -36,7 +31,6 @@ export function mateReadOnly(input: {
   readonly snapshot: ZeropsAgentAuthSnapshot | null;
   /** The provider instance the conversation runs on (its model selection's). */
   readonly instanceId: string | undefined;
-  readonly localSigners: LocalAgentSigners;
   readonly viewerSubject: string | undefined;
 }): boolean {
   const agentId = agentIdForProviderInstance(input.instanceId);
@@ -47,11 +41,8 @@ export function mateReadOnly(input: {
       ownership: resolveAgentOwnership({
         credPresent: agent?.credPresent ?? false,
         authorizedBy:
-          agent === undefined
-            ? undefined
-            : resolveAgentAuthorizer(agent.agentId, agent, input.localSigners, input.viewerSubject),
+          agent === undefined ? undefined : resolveAgentAuthorizer(agent, input.viewerSubject),
         viewerSubject: input.viewerSubject,
-        signerUnknown: agent?.signerUnknown,
       }),
     }) !== null
   );
@@ -63,9 +54,8 @@ export function useMateReadOnly(
   instanceId: string | undefined,
 ): boolean {
   const { snapshot } = zeropsAgentAuthView(useZeropsAgentAuth(environmentId));
-  const localSigners = useLocalAgentSigners(environmentId);
   const viewerSubject = useZeropsSessionOptional()?.user?.id;
-  return mateReadOnly({ snapshot, instanceId, localSigners, viewerSubject });
+  return mateReadOnly({ snapshot, instanceId, viewerSubject });
 }
 
 /** One Mate's conversation, for {@link useMatesReadOnly}. */
@@ -103,7 +93,6 @@ export function useMatesReadOnly(mates: ReadonlyArray<MateConversationRef>): Rea
       [environments, key],
     ),
   );
-  const localSigners = useLocalAgentSignersByEnvironment();
   const viewerSubject = useZeropsSessionOptional()?.user?.id;
   return useMemo(() => {
     const snapshots = new Map(
@@ -116,12 +105,11 @@ export function useMatesReadOnly(mates: ReadonlyArray<MateConversationRef>): Rea
       mateReadOnly({
         snapshot: snapshots.get(mate.environmentId) ?? null,
         instanceId: mate.instanceId,
-        localSigners: localSigners(mate.environmentId),
         viewerSubject,
       })
         ? [mate.projectId]
         : [],
     );
     return theirs.length === 0 ? NONE : new Set(theirs);
-  }, [environments, localSigners, mates, reads, viewerSubject]);
+  }, [environments, mates, reads, viewerSubject]);
 }

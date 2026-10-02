@@ -11,18 +11,10 @@
  *
  * Pure: no I/O, no clock.
  */
-import { withZeropsClosedOffTag, withZeropsMateTag, withoutZeropsStandUpTag } from "../groups.ts";
-import { withMateSignerTag } from "../mateAccess.ts";
+import { withZeropsMateTag } from "../groups.ts";
 
-export type ProjectTagPatch =
-  /** Declares the Mate: the `mate` marker, for the Zerops GUI and this client alike. */
-  | { readonly kind: "mate" }
-  /** Records who signed an agent in (D6). */
-  | { readonly kind: "agent-signer"; readonly agentId: string; readonly userId: string }
-  /** The Mate was asked to stand the project's development up: the ask (`mate:standup:`) goes. */
-  | { readonly kind: "stand-up-done" }
-  /** The press closed the project off and read it back closed (`mate:closed-off`). */
-  | { readonly kind: "closed-off" };
+/** Declares the Mate: the `mate` marker, for the Zerops GUI and this client alike. */
+export type ProjectTagPatch = { readonly kind: "mate" };
 
 /** The list the patch leaves. */
 export function applyProjectTagPatch(
@@ -32,12 +24,6 @@ export function applyProjectTagPatch(
   switch (patch.kind) {
     case "mate":
       return withZeropsMateTag(tags);
-    case "agent-signer":
-      return withMateSignerTag(tags, patch.agentId, patch.userId);
-    case "stand-up-done":
-      return withoutZeropsStandUpTag(tags);
-    case "closed-off":
-      return withZeropsClosedOffTag(tags);
   }
 }
 

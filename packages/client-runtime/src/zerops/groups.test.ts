@@ -10,16 +10,11 @@ import {
   kindOfRole,
   readMateFace,
   readZeropsMembership,
-  withZeropsClosedOffTag,
-  withZeropsMateAtBirth,
   withZeropsMateTag,
-  withZeropsStandUpTag,
-  withoutZeropsStandUpTag,
   ZEROPS_GROUP_ID_LENGTH,
   type ZeropsPlacedBirth,
 } from "./groups.ts";
 import type { HqPlacement } from "./hq/placement.ts";
-import { withMateSignerTag } from "./mateAccess.ts";
 
 /** Where HQ places a project: in application `appId`, as `kind`, with its Mate's record. */
 function placed(
@@ -101,7 +96,7 @@ describe("readZeropsMembership", () => {
     {
       name: "does not mistake a namespaced tag for the marker",
       input: { tagList: ["mate:standup:u-ada", "mate:signer:codex:u-ada", "mate:closed-off"] },
-      expected: { standUp: { by: "u-ada" } },
+      expected: {},
     },
     {
       name: "reads the Mate's name HQ records, trimmed",
@@ -178,103 +173,29 @@ describe("withZeropsMateTag", () => {
   });
 });
 
-/** A Mate's birth writes the marker and, for a dev Mate, who asked for its stand-up — no more. */
-describe("withZeropsMateAtBirth", () => {
+describe("who asked for a Mate's stand-up, as HQ's birth record names them", () => {
+  const born = (standupRequestedBy: string | null | undefined) =>
+    placed("abc", "mate", {
+      mate: {
+        name: "Ada",
+        face: "",
+        ...(standupRequestedBy === undefined ? {} : { standupRequestedBy }),
+      },
+    });
   it.each([
-    {
-      case: "a dev Mate somebody asked for",
-      mate: { role: "dev", standUpBy: "u-ada" },
-      expected: ["keep", "mate", "mate:standup:u-ada"],
-    },
-    { case: "a dev Mate nobody asked for", mate: { role: "dev" }, expected: ["keep", "mate"] },
-    {
-      case: "a stage with an agent: a target, not a place development is stood up",
-      mate: { role: "stage", standUpBy: "u-ada" },
-      expected: ["keep", "mate"],
-    },
-  ] as const)("$case", ({ mate, expected }) => {
-    expect(withZeropsMateAtBirth(["keep"], mate)).toEqual(expected);
-  });
-});
-
-describe("the stand-up marker (mate:standup:)", () => {
-  it.each([
-    {
-      name: "names who asked for it",
-      tagList: ["mate", "mate:standup:u-ada"],
-      standUp: { by: "u-ada" },
-    },
-    {
-      name: "is absent on a Mate nobody asked it of",
-      tagList: ["mate"],
-      standUp: undefined,
-    },
-    {
-      name: "names nobody when blank",
-      tagList: ["mate:standup:", "mate:standup:  "],
-      standUp: undefined,
-    },
-    {
-      name: "takes the first when a list carries two",
-      tagList: ["mate:standup:u-ada", "mate:standup:u-fen"],
-      standUp: { by: "u-ada" },
-    },
-    {
-      name: "is not a foreign tag that merely looks alike",
-      tagList: ["standup:u-ada"],
-      standUp: undefined,
-    },
-  ])("$name", ({ tagList, standUp }) => {
-    expect(readZeropsMembership({ tagList }).standUp).toEqual(standUp);
+    { name: "names who asked for it", hq: born("u-ada"), standUp: { by: "u-ada" } },
+    { name: "is absent on a Mate nobody asked it of", hq: born(null), standUp: undefined },
+    { name: "is absent where an older HQ says nothing", hq: born(undefined), standUp: undefined },
+    { name: "names nobody when blank", hq: born("  "), standUp: undefined },
+    { name: "is absent on a project HQ does not place", hq: undefined, standUp: undefined },
+  ])("$name", ({ hq, standUp }) => {
+    expect(readZeropsMembership({ hq }).standUp).toEqual(standUp);
   });
 
-  it.each([
-    {
-      name: "is written after every other tag",
-      tagList: ["keep", "mate"],
-      userId: "u-ada",
-      expected: ["keep", "mate", "mate:standup:u-ada"],
-    },
-    {
-      name: "replaces one naming somebody else",
-      tagList: ["mate:standup:u-fen", "keep"],
-      userId: "u-ada",
-      expected: ["keep", "mate:standup:u-ada"],
-    },
-    { name: "is not written for nobody", tagList: ["keep"], userId: "  ", expected: ["keep"] },
-  ])("$name", ({ tagList, userId, expected }) => {
-    expect(withZeropsStandUpTag(tagList, userId)).toEqual(expected);
-  });
-
-  it("clears every stand-up and nothing else, and clearing again changes nothing", () => {
-    const cleared = withoutZeropsStandUpTag([
-      "person:own",
-      "mate:standup:u-ada",
-      "mate:signer:codex:u-ada",
-      "mate:standup:u-fen",
-      "mate:closed-off",
-      "mate",
-    ]);
-    expect(cleared).toEqual(["person:own", "mate:signer:codex:u-ada", "mate:closed-off", "mate"]);
-    expect(withoutZeropsStandUpTag(cleared)).toEqual(cleared);
-  });
-
-  it.each([
-    {
-      name: "declaring the Mate again",
-      write: (tags: ReadonlyArray<string>) => withZeropsMateTag(tags),
-    },
-    {
-      name: "closing the project off",
-      write: (tags: ReadonlyArray<string>) => withZeropsClosedOffTag(tags),
-    },
-    {
-      name: "a signer recorded",
-      write: (tags: ReadonlyArray<string>) => withMateSignerTag(tags, "claude", "user-1"),
-    },
-  ])("stands through $name", ({ write }) => {
-    const asked = withZeropsStandUpTag(["mate"], "u-ada");
-    expect(readZeropsMembership({ tagList: write(asked) }).standUp).toEqual({ by: "u-ada" });
+  it("is never read off the project's tags", () => {
+    expect(readZeropsMembership({ tagList: ["mate", "mate:standup:u-ada"] }).standUp).toBe(
+      undefined,
+    );
   });
 });
 

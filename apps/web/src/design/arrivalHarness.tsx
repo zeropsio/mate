@@ -11,7 +11,7 @@
  *
  * Served by the dev server at `/design-arrival.html` — `?state=<id>` for the state it opens on
  * (coming, coming-new, signin, signin-claude, signin-codex, checking-code, signin-failed,
- * terminal, standing-up, conversation, stopped, not-created, colleague, crew, dialog), `?theme=dark`.
+ * terminal, standing-up, conversation, not-created, colleague, crew, dialog), `?theme=dark`.
  * `window.__arrivalHarness.go(id)` moves to a state from a script. Fixtures only: nothing here
  * ships, and no route imports this module.
  */
@@ -305,7 +305,6 @@ const STATES: ReadonlyArray<HarnessState> = [
     phase: null,
     conversation: true,
   },
-  { id: "stopped", label: "4 Stopped · the ask didn't go through", mate: WREN, phase: "failed" },
   {
     id: "not-created",
     label: "4 Stopped · it could not be added",
@@ -614,7 +613,6 @@ function Pane({ state, go }: { readonly state: HarnessState; readonly go: (id: s
       addedBy={state.addedBy}
       coming={comingOf(state, nowMs)}
       mate={state.mate}
-      onRetry={() => go("standing-up")}
       phase={state.phase}
       runtimes={signInRuntimes(nowMs - openedAt)}
       signIn={

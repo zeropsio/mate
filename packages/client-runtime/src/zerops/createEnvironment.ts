@@ -28,7 +28,7 @@
  */
 
 import type { ZeropsAgentType } from "./newProject.ts";
-import { withZeropsMateAtBirth, type ZeropsEnvironmentRole } from "./groups.ts";
+import { withZeropsMateTag, type ZeropsEnvironmentRole } from "./groups.ts";
 import {
   deployTargetTier,
   hasProjectBlock,
@@ -84,12 +84,6 @@ export interface EnvironmentCreationInput {
   /** Overrides {@link defaultAgentForRole}. */
   readonly withAgent?: boolean;
   /**
-   * The Zerops user adding this Mate. A dev environment with an agent is born asking for its
-   * development to be stood up on their behalf (`mate:standup:`): the services arrive empty
-   * (`startWithoutCode`), and their first sign-in sends the Mate the ask that finishes the setup.
-   */
-  readonly standUpBy?: string;
-  /**
    * The coding agents the new container offers, normally the ones this
    * group's existing environments are signed in with (`agentSelection.ts`).
    * Omitted or empty leaves the container offering every agent.
@@ -129,7 +123,7 @@ export type EnvironmentCreationStep =
       readonly runtimes?: RecipeRuntimes;
     }
   /**
-   * The project closed off and marked so (`mate:closed-off`): read back at
+   * The project closed off and marked so at HQ (`markClosedOff`): read back at
    * once — the container recipe leaves it `service service@zcp` within a
    * second of the import, and a new project starts `service` — and written
    * `service` only where it reads anything else (`projectIsolation.ts`). zcp
@@ -244,7 +238,7 @@ export function planEnvironmentCreation(input: EnvironmentCreationInput): Enviro
 
   // Membership first, then the name: naming is not a membership write, and
   // routing it through one clears the group (`groups.ts`).
-  const tagList = taggedAtBirth(input, withAgent);
+  const tagList = taggedAtBirth(withAgent);
 
   // A recipe that describes a whole project creates one in a single call. Not
   // taken when the caller placed the environment in a region: the project
@@ -351,12 +345,11 @@ export function environmentCreationStepLabel(step: EnvironmentCreationStep): str
 }
 
 /**
- * The tags a new environment is created with: when it gets an agent, the `mate` marker and who
- * asked for its development to be stood up. The marker is written here, at birth, rather than
- * after the container import, so a creation that fails between the two still leaves a project
- * that says what it was meant to be. Its application, kind, name and face are HQ's, written by
- * the press's registration.
+ * The tags a new environment is created with: when it gets an agent, the `mate` marker. It is
+ * written here, at birth, rather than after the container import, so a creation that fails
+ * between the two still leaves a project that says what it was meant to be. Its application,
+ * kind, name, face and birth are HQ's, written by the press's registration.
  */
-function taggedAtBirth(input: EnvironmentCreationInput, withAgent: boolean): ReadonlyArray<string> {
-  return withAgent ? withZeropsMateAtBirth([], input) : [];
+function taggedAtBirth(withAgent: boolean): ReadonlyArray<string> {
+  return withAgent ? withZeropsMateTag([]) : [];
 }

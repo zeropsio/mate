@@ -1874,8 +1874,6 @@ export interface CreateProjectWithMateCommandIntent {
   readonly location?: string;
   readonly zcpVersion?: string;
   readonly agents?: ReadonlyArray<ZeropsAgentType>;
-  /** Who asks, by making it, for the project's development to be stood up (`mate:standup:`). */
-  readonly standUpBy?: string;
 }
 
 export interface ImportProjectCommandIntent {

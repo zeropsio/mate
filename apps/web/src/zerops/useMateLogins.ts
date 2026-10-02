@@ -3,10 +3,8 @@
  * (crew mode's *Runs on*, PRD §2.3): add one, sign one out, remove one.
  *
  * Adding an account returns its id, and the card then signs it in through the
- * same dialog a default login uses. Adding an API key is signed in the moment
- * the key is stored, so the person who added it records its signer at once —
- * no login will succeed to trigger the record, as it does for an account
- * (`useZeropsAgentSigner`).
+ * same dialog a default login uses. An API key is signed in the moment the key
+ * is stored, by whoever stored it: the Mate's server records that person.
  *
  * Offered only where the environment advertises `capabilities.mateLogins`;
  * the caller checks.
@@ -28,7 +26,6 @@ import { useCallback, useState } from "react";
 import { requestConfirmDialog } from "../confirmDialog";
 import { zeropsCommands } from "../state/zeropsCommands";
 import { useAtomCommand } from "../state/use-atom-command";
-import { useZeropsAgentSignerRecordState } from "./useZeropsAgentSigner";
 
 const isZeropsAgentLoginError = Schema.is(ZeropsAgentLoginError);
 const isEnvironmentAuthorizationError = Schema.is(EnvironmentAuthorizationError);
@@ -60,24 +57,19 @@ export function useMateLogins(environmentId: EnvironmentId | null): UseMateLogin
   const runAdd = useAtomCommand(zeropsCommands.loginAdd, "zerops login add");
   const runRemove = useAtomCommand(zeropsCommands.loginRemove, "zerops login remove");
   const runSignOut = useAtomCommand(zeropsCommands.agentSignOut, "zerops login sign out");
-  const signerRecord = useZeropsAgentSignerRecordState(environmentId);
 
   const add = useCallback(
     async (input: ZeropsLoginAddInput) => {
       if (environmentId === null) return undefined;
       setAddError(undefined);
       const result = await runAdd({ environmentId, input });
-      if (result._tag === "Success") {
-        // The one write that says whose key it is: nothing else will.
-        if (input.kind === "apiKey") signerRecord.retry(result.value.id);
-        return result.value.id;
-      }
+      if (result._tag === "Success") return result.value.id;
       if (!isAtomCommandInterrupted(result)) {
         setAddError(failureMessage(squashAtomCommandFailure(result)));
       }
       return undefined;
     },
-    [environmentId, runAdd, signerRecord],
+    [environmentId, runAdd],
   );
 
   /** Confirms, then runs `action` for the login, keeping its pending state and failure. */

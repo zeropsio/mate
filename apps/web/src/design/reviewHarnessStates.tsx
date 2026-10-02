@@ -182,6 +182,9 @@ const CHANGE: HqChange = {
   openedAt: minutesAgo(400),
   mergedAt: null,
   closedAt: null,
+  updatedAt: minutesAgo(400),
+  mergeability: "clean",
+  behind: false,
 };
 
 /** HQ's detail of the change, `over` it, as its review reads it (`changeReadout`). */

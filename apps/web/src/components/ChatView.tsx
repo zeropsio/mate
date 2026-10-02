@@ -340,12 +340,7 @@ import {
   zeropsAgentAuthView,
   zeropsAgentSignInRequired,
 } from "@t3tools/client-runtime/zerops/agentLogin";
-import {
-  resolveAgentAuthorizer,
-  useLocalAgentSigners,
-  useZeropsAgentSignerRecord,
-  useZeropsEnvironmentProject,
-} from "~/zerops/useZeropsAgentSigner";
+import { resolveAgentAuthorizer } from "~/zerops/agentSigner";
 import { mateArrivalHoldsComposer } from "~/zerops/mateStandUp";
 import { useMateStandUp } from "~/zerops/useMateStandUp";
 import { takeHandedOverCaret } from "~/zerops/mateHandOver";
@@ -2385,16 +2380,13 @@ export default function ChatView(props: ChatViewProps) {
     [zeropsAgentAuthRead],
   );
   const zeropsViewerSubject = useZeropsSessionOptional()?.user?.id;
-  // The record this client wrote itself counts until the snapshot carries it.
-  const zeropsLocalSigners = useLocalAgentSigners(activeThreadEnvironmentId);
   // The environment, not the thread: a draft has one before it has the other,
   // and the header names the project either way. This host demands the
   // project's topology (`useProjectTopology`) — the panel demands the same
   // ref-counted interest, so opening it costs nothing extra.
   const zeropsTopology = useProjectTopology(activeThreadEnvironmentId).view;
   // The one sign-in dialog, shared with the model picker's per-agent panels
-  // and the Crew tab — see `useZeropsAgentSignInDialog`. Its `recordFailed`
-  // set (H13) also feeds the availability map below.
+  // and the Crew tab — see `useZeropsAgentSignInDialog`.
   const zeropsSignInDialog = useZeropsAgentSignInDialog(activeThreadEnvironmentId, activeThreadRef);
   const zeropsAgentAvailabilityByInstanceId = useMemo(
     () =>
@@ -2402,16 +2394,8 @@ export default function ChatView(props: ChatViewProps) {
         entries: providerInstanceEntries,
         agentAuth: zeropsAgentAuthRead,
         viewerSubject: zeropsViewerSubject,
-        localSigners: zeropsLocalSigners,
-        recordFailed: zeropsSignInDialog.recordFailed,
       }),
-    [
-      providerInstanceEntries,
-      zeropsAgentAuthRead,
-      zeropsLocalSigners,
-      zeropsSignInDialog.recordFailed,
-      zeropsViewerSubject,
-    ],
+    [providerInstanceEntries, zeropsAgentAuthRead, zeropsViewerSubject],
   );
   const zeropsIsAgentRunnable = useCallback(
     (instanceId: ProviderInstanceId) =>
@@ -3827,14 +3811,6 @@ export default function ChatView(props: ChatViewProps) {
     const first = tabs[0];
     if (first) useRightPanelStore.getState().openService(activeThreadRef, first.service, first.url);
   }, [activeThreadRef, zeropsTopology]);
-  // D6: the one place a successful sign-in's signer is recorded, whichever
-  // door it went through (the panel's card, the band's dialog, the empty
-  // conversation); every row reads how it went by environment.
-  useZeropsAgentSignerRecord({
-    environmentId: activeThreadEnvironmentId,
-    snapshot: zeropsAgentAuth.snapshot,
-    project: useZeropsEnvironmentProject(activeThreadEnvironmentId),
-  });
   const zeropsChrome = resolveZeropsChatChrome(activeThreadRef, {
     topology: zeropsTopology,
     agentAuth: zeropsAgentAuth,
@@ -3868,16 +3844,8 @@ export default function ChatView(props: ChatViewProps) {
     authorizedBy:
       zeropsSpentLogin === undefined
         ? undefined
-        : resolveAgentAuthorizer(
-            zeropsSpentLogin.key,
-            zeropsSpentLogin.agent,
-            zeropsLocalSigners,
-            zeropsViewerSubject,
-          ),
+        : resolveAgentAuthorizer(zeropsSpentLogin.agent, zeropsViewerSubject),
     viewerSubject: zeropsViewerSubject,
-    recordFailed:
-      zeropsSpentLogin !== undefined && zeropsSignInDialog.recordFailed.has(zeropsSpentLogin.key),
-    signerUnknown: zeropsOwnedAgent?.signerUnknown,
   });
   // Someone else's agent: the conversation is read, not run — the composer
   // gives way to `ZeropsReadOnlyConversationFooter`.
@@ -3898,17 +3866,11 @@ export default function ChatView(props: ChatViewProps) {
     providers: providerStatuses,
     availabilityByInstanceId: zeropsAgentAvailabilityByInstanceId,
   });
-  // Beside the signer record: a new Mate's first sign-in sends its stand-up, as this person,
-  // through this composer, into a conversation read live and still empty.
+  // A new Mate's stand-up holds the composer while its person waits on it; its server sends it.
   const mateStandUp = useMateStandUp({
     environmentId: activeThreadEnvironmentId,
     threadRef: isServerThread && threadSyncPhase === null ? activeThreadRef : null,
     messageCount: activeThread?.messages.length ?? 0,
-    canSend:
-      !activeEnvironmentUnavailable &&
-      selectedProviderEntry !== undefined &&
-      zeropsSendBlockReason === undefined,
-    sendBusy: isSendBusy,
   });
   // A Mate's empty conversation with no agent signed in is its arrival's sign-in: nothing typed
   // there could be acted on, so the composer waits with the stand-up's.

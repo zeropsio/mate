@@ -29,6 +29,16 @@ const PERMISSION_WORDS: { readonly [R in Reason]: string } = {
   project_gone: "This Zerops project is gone.",
   held_as_environment: "This Zerops project is its project's stage or production, not a Mate.",
   not_a_mate: "HQ holds this Zerops project as no Mate.",
+  mate_not_in_app: "This Mate is in no project in HQ yet.",
+  unknown_change: "HQ has no such change.",
+  not_your_change: "A Mate words only its own change.",
+  not_your_app: "A Mate reaches only its own project's repositories.",
+  changes_not_seen:
+    "You need at least Basic user access to one of this project's Zerops projects to see its changes.",
+  slot_taken:
+    "This project has one of this kind already. Only an owner or admin of the organization replaces it.",
+  not_app_developer:
+    "You need at least Basic user access to one of this project's Zerops projects to add an environment to it.",
 };
 
 /**

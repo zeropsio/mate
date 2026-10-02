@@ -1,9 +1,9 @@
 /**
  * What this viewer may run or change on an environment's crew (D6), read as
  * `ChatView` reads its own agent: each login resolved as admission resolves
- * it (`resolveSpentLogin`), its signer with the record this browser wrote
- * itself (`resolveAgentAuthorizer`), its own failed record (H13) — then
- * decided by `crewAccess`, the answer the server's door reaches.
+ * it (`resolveSpentLogin`), its signer as the server recorded it
+ * (`resolveAgentAuthorizer`) — then decided by `crewAccess`, the answer the
+ * server's door reaches.
  *
  * While the agent-auth feed is being read, nothing is closed and `reading`
  * holds the presses; a feed that failed, or a Mate outside Zerops, gates
@@ -26,11 +26,7 @@ import { useMemo } from "react";
 
 import { environmentProjects } from "../../state/projects";
 import { environmentServerConfigsAtom } from "../../state/server";
-import {
-  resolveAgentAuthorizer,
-  useLocalAgentSigners,
-  useZeropsAgentSignerRecordState,
-} from "../useZeropsAgentSigner";
+import { resolveAgentAuthorizer } from "../agentSigner";
 import { useZeropsAgentAuth } from "../useZeropsFeeds";
 import { useZeropsSessionOptional } from "../ZeropsSessionProvider";
 
@@ -55,8 +51,6 @@ export function useCrewAccess(
     environmentId === null ? NO_PROJECTS : environmentProjects.projectsAtom,
   );
   const viewerSubject = useZeropsSessionOptional()?.user?.id;
-  const localSigners = useLocalAgentSigners(environmentId);
-  const { recordFailed } = useZeropsAgentSignerRecordState(environmentId);
   // The Mate's project: the one whose tree the server works in, as the engine finds it.
   const defaultLogin =
     projects.find(
@@ -78,17 +72,11 @@ export function useCrewAccess(
             ? undefined
             : {
                 agent: spent.agent,
-                authorizedBy: resolveAgentAuthorizer(
-                  spent.key,
-                  spent.agent,
-                  localSigners,
-                  viewerSubject,
-                ),
-                recordFailed: recordFailed.has(spent.key),
+                authorizedBy: resolveAgentAuthorizer(spent.agent, viewerSubject),
               },
           viewerSubject,
         );
       },
     });
-  }, [agentAuth, defaultLogin, localSigners, providers, recordFailed, snapshot, viewerSubject]);
+  }, [agentAuth, defaultLogin, providers, snapshot, viewerSubject]);
 }

@@ -9,7 +9,7 @@ import {
   type ZeropsPlacedBirth,
 } from "@t3tools/client-runtime/zerops";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
-import type { HqPlacement } from "@t3tools/client-runtime/zerops/hq";
+import type { HqMate, HqPlacement } from "@t3tools/client-runtime/zerops/hq";
 import { crewSnapshotFixture } from "@t3tools/client-runtime/zerops/crew/testing/fixtures";
 import type { Deployment } from "@t3tools/client-runtime/zerops/flow";
 import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
@@ -140,14 +140,28 @@ function candidate(
       };
 }
 
-/** D6's record of who signed a Mate's agent in: its person, somebody signed in. */
-const SIGNER = "mate:signer:claude-code:u-ada";
+/** D6's record of who signed a Mate's agent in, as its summary at HQ names them. */
+const SIGNER = "u-ada";
+
+/** `placed`, its Mate's record at HQ saying `over` too. */
+function recorded(placed: HqPlacement, over: Partial<HqMate>): HqPlacement {
+  return { ...placed, mate: { name: "", face: "", ...placed.mate, ...over } };
+}
+
+/** A Mate's summary at HQ, naming `signer` as who signed Claude in. */
+const signedBy = (signer: string): Partial<HqMate> => ({
+  live: {
+    online: true,
+    at: "2026-10-02T10:00:00.000Z",
+    summary: { main: null, running: 0, waiting: 0, signers: { "claude-code": signer } },
+  },
+});
 
 /** A Mate signed in by `u-ada` — the viewer's own, where a test makes her the viewer. */
 function mine(item: ZeropsCandidate, signer = SIGNER): ZeropsCandidate {
   return {
     ...item,
-    project: { ...item.project, tagList: [...(item.project.tagList ?? []), signer] },
+    project: { ...item.project, hq: recorded(item.project.hq!, signedBy(signer)) },
   };
 }
 
@@ -327,7 +341,10 @@ describe("SidebarZeropsTree", () => {
     // Somebody its records name, whom the member list has not named: it may be
     // the viewer, so the face waits whole — the badge only ever arrives, and
     // in the face's box, so nothing moves when it does.
-    const signed = candidate("crm-dev", { tags: [...CRM_DEV.project.tagList!, SIGNER], hq: AAA() });
+    const signed = candidate("crm-dev", {
+      tags: CRM_DEV.project.tagList!,
+      hq: recorded(AAA(), signedBy(SIGNER)),
+    });
     const unnamed = render([signed], { getOwner: () => undefined });
     expect(unnamed).not.toContain('data-zerops-surface="sidebar-mate-owner"');
     expect(unnamed).not.toContain("menu-face-cut");
@@ -618,7 +635,7 @@ const productionRow: EnvironmentRow = {
 describe("a Mate with no owner, or nobody signed in", () => {
   const OWNER_ROLE = (clientUserId: string) => ({ clientUserId, roleCode: "OWNER" });
   const mate = (
-    tags: ReadonlyArray<string>,
+    record: Partial<HqMate> | null,
     options: {
       readonly group?: ZeropsCandidate["group"];
       readonly userRoles?: ReadonlyArray<{ clientUserId: string; roleCode: string }>;
@@ -626,7 +643,7 @@ describe("a Mate with no owner, or nobody signed in", () => {
   ): ZeropsCandidate => {
     const base = candidate(
       "crm-dev",
-      { tags: [...CRM_DEV.project.tagList!, ...tags], hq: AAA() },
+      { tags: CRM_DEV.project.tagList!, hq: record === null ? AAA() : recorded(AAA(), record) },
       options.group,
     );
     return {
@@ -654,7 +671,7 @@ describe("a Mate with no owner, or nobody signed in", () => {
     },
   ])("says whose sign-in it waits for: $case", ({ viewer, says, dot }) => {
     session.viewer = viewer;
-    const html = render([mate(["mate:standup:u-petra"], { group: "connected" })], {
+    const html = render([mate({ standupRequestedBy: "u-petra" }, { group: "connected" })], {
       getOwner: () => undefined,
     });
     expect(line(html)?.[1]).toBe(says);
@@ -663,7 +680,7 @@ describe("a Mate with no owner, or nobody signed in", () => {
   });
 
   it("seats nobody's Mate on a dashed ring, and says so in words, never as a person", () => {
-    const html = render([mate([], { group: "connected" })], { getOwner: () => undefined });
+    const html = render([mate(null, { group: "connected" })], { getOwner: () => undefined });
     expect(seat(html)).toBe("nobody");
     const ring = /<span[^>]*data-zerops-avatar="nobody"[^>]*>(.*?)<\/span><\/span>/u.exec(
       html,
@@ -682,7 +699,7 @@ describe("a Mate with no owner, or nobody signed in", () => {
   ] as const)(
     "says nobody has signed in under the name, one muted line with nothing to press: $case",
     ({ group, roles, owner }) => {
-      const html = render([mate([], { group, userRoles: roles.map((id) => OWNER_ROLE(id)) })], {
+      const html = render([mate(null, { group, userRoles: roles.map((id) => OWNER_ROLE(id)) })], {
         getOwner: () => owner,
       });
       const found = line(html);
@@ -696,7 +713,9 @@ describe("a Mate with no owner, or nobody signed in", () => {
   );
 
   it("says nothing of signing in once somebody has, or once it was asked something", () => {
-    const signed = render([mate([SIGNER], { group: "connected" })], { getOwner: () => KAREL });
+    const signed = render([mate(signedBy(SIGNER), { group: "connected" })], {
+      getOwner: () => KAREL,
+    });
     expect(signed).not.toContain("sidebar-mate-sign-in");
     const asked: ZeropsAgentActivity = {
       threadId: "thread-1" as ZeropsAgentActivity["threadId"],
@@ -711,7 +730,7 @@ describe("a Mate with no owner, or nobody signed in", () => {
       threadKey: "env-crm-dev:thread-1",
       task: undefined,
     };
-    const html = render([mate([], { group: "connected" })], {
+    const html = render([mate(null, { group: "connected" })], {
       getOwner: () => undefined,
       getActivity: () => asked,
     });
@@ -725,7 +744,7 @@ describe("a Mate with no owner, or nobody signed in", () => {
     const opened: string[] = [];
     const mounted = mount(
       <SidebarZeropsTree
-        candidates={[mate([], { group: "connected" })]}
+        candidates={[mate(null, { group: "connected" })]}
         complete
         onBrowseProjects={() => {}}
         onSelect={(item) => {
@@ -771,7 +790,7 @@ describe("a Mate with no owner, or nobody signed in", () => {
       <>
         <Asked />
         <SidebarZeropsTree
-          candidates={[mate([], { group: "connected" })]}
+          candidates={[mate(null, { group: "connected" })]}
           complete
           getActivity={() => activity}
           onBrowseProjects={() => {}}
@@ -1979,7 +1998,7 @@ describe("a project collapsed to its heading", () => {
   // its change keeps its Review, for anybody with write on the group to merge.
   it("claims nothing of the viewer for another's Mate whose change waits, and keeps its Review", () => {
     session.viewer = "u-ada";
-    const theirs = mine(CRM_DEV_CONNECTED, "mate:signer:claude-code:u-karlos");
+    const theirs = mine(CRM_DEV_CONNECTED, "u-karlos");
     const props = {
       getActivity: (): ZeropsAgentActivity => ({
         threadId: "thread-crm" as ZeropsAgentActivity["threadId"],
@@ -2660,7 +2679,7 @@ describe("a Mate's row says more without words", () => {
     ...CRM_DEV_CONNECTED,
     project: {
       ...CRM_DEV_CONNECTED.project,
-      tagList: [...(CRM_DEV_CONNECTED.project.tagList ?? []), SIGNER],
+      hq: recorded(CRM_DEV_CONNECTED.project.hq!, signedBy(SIGNER)),
     },
   } as ZeropsCandidate;
   const live = (overrides: Partial<ZeropsAgentActivity> = {}): ZeropsAgentActivity => ({

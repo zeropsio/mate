@@ -3,66 +3,43 @@
  * reports, and the rule that starts the stand-up here rather than in a browser.
  *
  * Pure. `ZeropsSetup` gathers the facts — zcp's status file
- * (`ZCP_STATUS_FILE`), the project's tags, the broker's variables, the durable
- * stand-up record — and these functions decide what they mean.
+ * (`ZCP_STATUS_FILE`), who asked for the stand-up (HQ), who signed an agent in
+ * here, the broker's variables, the durable stand-up record — and these
+ * functions decide what they mean.
  *
  * The document is public, so it carries steps and times only: no names, no
  * error text, no ids (the setup contract, pass 28).
  *
  * @module zeropsSetupSteps
  */
-import type { OrchestrationCommand, ZeropsAgentId } from "@t3tools/contracts";
-import { readSignerTags } from "@t3tools/shared/zeropsAgentAuth";
+import type { ZeropsAgentId } from "@t3tools/contracts";
+
+import type { ProjectSigners } from "./ZeropsProjectSigners.ts";
 
 /* ------------------------------------------------------------ the stand-up */
 
 /** The ask, word for word, as the browser has sent it (`apps/web/src/zerops/mateStandUp.ts`). */
 export const STAND_UP_MESSAGE = "Stand up development of the project.";
 
-/** Who asked for the stand-up: `mate:standup:<userId>`, written by the press that made the Mate. */
-export const STAND_UP_TAG_PREFIX = "mate:standup:";
-
 const STAND_UP_ID_PREFIX = "mate-standup-";
 
 /**
- * The stand-up's command and message ids — the browser's own for its first
- * attempt, so a browser that sends it too is the same command, which the
- * engine takes once (its receipts).
+ * The stand-up's command and message ids: the same for a send resumed after a restart, which the
+ * engine takes once (its receipts), and the prefix the client draws the ask as a quiet line by.
  */
 export const standUpCommandIds = (threadId: string, attempt = 1) => {
   const id = `${STAND_UP_ID_PREFIX}${threadId}-${attempt}`;
   return { commandId: id, messageId: id };
 };
 
-/** Whether a command is a browser's stand-up, any attempt of it. */
-export const isStandUpCommand = (command: OrchestrationCommand): boolean =>
-  command.type === "thread.turn.start" && command.commandId.startsWith(STAND_UP_ID_PREFIX);
-
-export const standUpRequestedBy = (tags: ReadonlyArray<string>): string | undefined => {
-  for (const tag of tags) {
-    if (!tag.startsWith(STAND_UP_TAG_PREFIX)) continue;
-    const userId = tag.slice(STAND_UP_TAG_PREFIX.length);
-    if (userId.length > 0) return userId;
-  }
-  return undefined;
-};
-
 /** The order an agent is chosen in when a person signed in both. */
 const AGENT_ORDER: ReadonlyArray<ZeropsAgentId> = ["claude-code", "codex"];
 
-/**
- * The agents `userId` alone signed in on this project (`mate:signer:{agent}:{userId}`).
- * An agent recorded for two people is nobody's until signed in again (D6).
- */
+/** The agents this server saw `userId` sign in. */
 export const standUpSigners = (
-  tags: ReadonlyArray<string>,
+  signers: ProjectSigners,
   userId: string,
-): ReadonlyArray<ZeropsAgentId> => {
-  const signers = readSignerTags(tags, (key) =>
-    (AGENT_ORDER as ReadonlyArray<string>).includes(key),
-  );
-  return AGENT_ORDER.filter((agentId) => signers[agentId] === userId);
-};
+): ReadonlyArray<ZeropsAgentId> => AGENT_ORDER.filter((agentId) => signers[agentId] === userId);
 
 export type StandUpDecision =
   | { readonly kind: "start"; readonly userId: string; readonly agentId: ZeropsAgentId }
@@ -240,7 +217,23 @@ export interface SetupStep {
   readonly state: string;
   /** When the step reached its state, RFC 3339; empty when not known. */
   readonly at: string;
+  /** Why a waiting stand-up waits, where the server knows ({@link StandUpWait}). */
+  readonly reason?: StandUpWait["reason"];
+  /** HQ's refusal code, with `not_enrolled`. */
+  readonly code?: string;
 }
+
+/**
+ * Why a stand-up nothing started waits, as far as the server knows: zcp found no official HQ;
+ * zcp holds no enrollment (with HQ's refusal code, where it refused); HQ has not sent the Mate;
+ * HQ names nobody who asked. A stand-up asked for waits on its asker's sign-in, which the
+ * sign-in step says.
+ */
+export type StandUpWait =
+  | { readonly reason: "no_hq" }
+  | { readonly reason: "not_enrolled"; readonly code?: string }
+  | { readonly reason: "not_linked" }
+  | { readonly reason: "awaiting_request" };
 
 export interface SetupDocument {
   readonly version: 1;
@@ -256,10 +249,10 @@ export interface SetupFacts {
   readonly gitAt: string | undefined;
   /** zcp's status file; `undefined` when absent (an older zcp) or unreadable. */
   readonly status: ZcpStatus | undefined;
-  /** Whether the project's tags have been read at all. */
-  readonly tagsRead: boolean;
-  /** Who asked for the stand-up, by the project's tags. */
+  /** Who asked for the stand-up, by the Mate's birth record at HQ. */
   readonly requestedBy: string | undefined;
+  /** Why a stand-up nothing started waits, where nobody's sign-in is what it waits on. */
+  readonly standUpWait: StandUpWait | undefined;
   /** When the asker's sign-in — anybody's, when nobody asked — was first seen recorded. */
   readonly signinAt: string | undefined;
   /**
@@ -307,11 +300,7 @@ const standUpStep = (facts: SetupFacts): SetupStep => {
   if (facts.record === undefined) {
     if (zcpState !== undefined)
       return { id: "standup", state: zcpState, at: standup?.startedAt ?? "" };
-    // Nothing asked and nothing started: there is nothing to wait for — once
-    // the tags have been read to say so.
-    return facts.tagsRead && facts.requestedBy === undefined
-      ? { id: "standup", state: "done", at: "" }
-      : { id: "standup", state: "waiting", at: "" };
+    return { id: "standup", state: "waiting", at: "", ...facts.standUpWait };
   }
   const state =
     zcpState ?? (facts.standUpTurn === "running" ? undefined : facts.standUpTurn) ?? "running";

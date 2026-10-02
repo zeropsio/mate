@@ -105,8 +105,8 @@ const NOBODY_OWNS = "No owner yet. Whoever signs in its coding agent owns it.";
  * 2026-09-29, of a *Sign in* on the row: it did nothing there, and stood on
  * the row's edge).
  *
- * To the person who added it — named by its stand-up's `mate:standup:` tag
- * until their sign-in sends the stand-up — the line says it waits on them:
+ * To the person who added it — named by HQ's stand-up record until their
+ * sign-in lets the stand-up run — the line says it waits on them:
  * "Waiting for your sign-in", in ink, with the amber dot of what needs them
  * (board D1, 2026-09-30). A Mate still being set up — its stand-up asked — never reads like a
  * failure (the owner, 2026-10-01): anybody else reads that it waits for a sign-in, quietly, and a
@@ -120,7 +120,7 @@ export function mateOwnerView(input: {
   readonly records: { readonly named: boolean; readonly signedIn: boolean };
   /** The row already says what was asked under the name. */
   readonly asked: boolean;
-  /** Who added it, as its stand-up tag names them (`readZeropsMembership(…).standUp`). */
+  /** Who added it, as HQ's stand-up record names them (`readZeropsMembership(…).standUp`). */
   readonly standUpBy?: string | undefined;
   /** The Zerops user looking, when known. */
   readonly viewer?: string | undefined;
@@ -174,13 +174,14 @@ export function ownerBadge(seat: OwnerSeat, isViewer: boolean): BadgeSeat | null
  * owner's badge (the owner, 2026-09-30: "the not yours should have the avatar
  * bigger and maybe some other small visual diff also"): a colleague's, and
  * nobody's until somebody signs it in. Known from the first paint: the owner
- * the member list names, or before the list has named them, the signer tag
- * against the viewer's own id; a Mate that may be the viewer's reads as theirs.
+ * the member list names, or before the list has named them, the signer HQ's
+ * summary names against the viewer's own id; a Mate that may be the viewer's
+ * reads as theirs.
  */
 export function mateNotYours(input: {
   readonly seat: OwnerSeat;
   readonly isViewer: boolean;
-  /** The user id its signer tag names (`mateOwnerRecords`). */
+  /** The user id its signer is, as HQ's summary names them (`mateOwnerRecords`). */
   readonly signer: string | undefined;
   readonly viewer: string | undefined;
 }): boolean {

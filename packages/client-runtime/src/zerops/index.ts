@@ -90,8 +90,6 @@ export {
   readZeropsMembership,
   ZEROPS_BOT_NAME_MAX_LENGTH,
   withZeropsMateTag,
-  isZeropsMateClosedOff,
-  MATE_CLOSED_OFF_TAG,
   type BirthPlacement,
   type DeriveZeropsGroupsOptions,
   type ZeropsEnvironmentRole,

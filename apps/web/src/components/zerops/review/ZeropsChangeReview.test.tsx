@@ -239,6 +239,9 @@ const API_CHANGE: HqChange = {
   openedAt: "2026-09-30T09:00:00Z",
   mergedAt: null,
   closedAt: null,
+  updatedAt: "2026-09-30T09:00:00Z",
+  mergeability: "clean",
+  behind: false,
 };
 
 describe("ZeropsChangeReview: a change its project's flow does not hold yet", () => {

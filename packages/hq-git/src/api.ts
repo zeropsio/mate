@@ -13,6 +13,14 @@ export interface Repo {
   readonly appId: string;
   readonly id: string;
 }
+/** A smart HTTP service: a fetch's or a push's. */
+export type GitService = "git-upload-pack" | "git-receive-pack";
+/** What a request asks: its repository, its operation, and the service it is of (none: unknown). */
+export interface GitTarget {
+  readonly repo: Repo;
+  readonly operation: "info/refs" | "git-upload-pack" | "git-receive-pack";
+  readonly service: GitService | null;
+}
 export interface RefUpdate {
   readonly oldSha: string;
   readonly newSha: string;
@@ -158,6 +166,8 @@ export interface CommitSummary {
   readonly message: string;
   readonly author: Author;
   readonly parents: ReadonlyArray<string>;
+  /** The committer date, ISO 8601 with its offset. */
+  readonly committedAt: string;
 }
 export interface FileStat {
   readonly path: string;
@@ -248,6 +258,22 @@ export interface HqGit {
     options: { readonly cursor?: string; readonly limit: number },
   ) => Effect.Effect<Bounded<CommitSummary> & { readonly cursor: string | null }, GitError>;
   readonly commit: (repo: Repo, sha: string) => Effect.Effect<CommitRead, GitError>;
+  /** The change's merge base with main; null without a change head, a main, or shared history. */
+  readonly mergeBase: (
+    repo: Repo,
+    mateId: string,
+    number: number,
+  ) => Effect.Effect<string | null, GitError>;
+  /**
+   * The change's commits not on main (`main..head`), children before parents, at most `limit`;
+   * without a main, all of the change's. None without a change head.
+   */
+  readonly changeLog: (
+    repo: Repo,
+    mateId: string,
+    number: number,
+    options: { readonly limit: number },
+  ) => Effect.Effect<Bounded<CommitSummary>, GitError>;
   readonly changeDiff: (
     repo: Repo,
     mateId: string,

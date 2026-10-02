@@ -21,9 +21,9 @@
  * shape, asked with the picker *New Mate* uses (`MateFacePicker`) and the same
  * rules — the face follows the name until a pick sticks, the name is new on
  * the account (`ZeropsNewProjectForm`). The Mate is born as *New Mate* makes
- * one: its face on its project, and asking, on behalf of the person who made
- * it, for the project's development to be stood up, which their first sign-in
- * sends (`mateStandUp.ts`). No brief and no agent pick: the container offers
+ * one — its record in HQ, its project closed off — but asks for no stand-up:
+ * a new project has no code to stand up, and its person says what to build.
+ * No brief and no agent pick: the container offers
  * every agent when `ZCP_AGENTS` is absent, which an empty selection is
  * (`newProject.ts`). Where it lives is asked only where the account has more
  * than one place.
@@ -301,7 +301,10 @@ function NewProjectDialog() {
               kind: "mate",
               displayName: placement.displayName,
               mate: { name: botName, face },
+              // Closed off by the close-off before its registration.
+              birth: { standUp: false, closedOff: true },
             },
+            hq,
             isCurrent,
             onProgress: (progress) => {
               setPressed((current) => (current === null ? current : { ...current, progress }));

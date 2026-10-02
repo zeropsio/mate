@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { extraLoginAgent, isLoginSignerKey, makeExtraLoginId } from "./zeropsLoginIds.ts";
+import { extraLoginAgent, makeExtraLoginId } from "./zeropsLoginIds.ts";
 
 describe("extraLoginAgent", () => {
   it.each([
@@ -14,18 +14,6 @@ describe("extraLoginAgent", () => {
     ["claudeAgent-", undefined],
   ] as const)("%s is another login of %s", (id, agent) => {
     expect(extraLoginAgent(id)).toBe(agent);
-  });
-});
-
-describe("isLoginSignerKey", () => {
-  it.each([
-    ["claude-code", true],
-    ["codex", true],
-    ["claudeAgent-work", true],
-    ["claudeAgent", false],
-    ["cursor", false],
-  ] as const)("%s → %s", (key, expected) => {
-    expect(isLoginSignerKey(key)).toBe(expected);
   });
 });
 

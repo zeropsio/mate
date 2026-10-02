@@ -83,7 +83,6 @@ import { isZeropsEnvironment } from "./ZeropsEnvironment.ts";
 import * as ZeropsAgentFlagModule from "./ZeropsAgentFlag.ts";
 import { ZeropsAgentFlag, type ZeropsAgentFlagError } from "./ZeropsAgentFlag.ts";
 import { watchWithFallback, type WatcherHandle } from "./ZeropsAgentAuthWatcher.ts";
-import { knownSigner } from "@t3tools/shared/zeropsAgentAuth";
 import * as ZeropsProjectSignersModule from "./ZeropsProjectSigners.ts";
 import { turnAuthFailureAgent } from "./zeropsTurnAuthFailure.ts";
 import {
@@ -132,14 +131,10 @@ export const computeAgentAuthState = (inputs: {
 export type ZembedEnv = Readonly<Record<string, string>>;
 
 /**
- * Which Zerops user signed an agent in here, read from the Mate's project tag
- * `mate:signer:{agent}:{userId}` (`ZeropsProjectSigners`). The subject is the
- * Zerops user id — never anything read out of the credential, whose contents
- * this module still never opens.
- *
- * The record lives on the project rather than in this container because a
- * Mate's own key cannot write tags: neither it nor its agent can forge whose
- * login this is (D6).
+ * Which Zerops user signed an agent in here, as this server saw it
+ * (`ZeropsProjectSigners`, `zeropsSignIns`). The subject is the Zerops user
+ * id — never anything read out of the credential, whose contents this module
+ * still never opens.
  */
 export type ZeropsAgentAuthorizer = NonNullable<ZeropsAgentAuthContract["authorizedBy"]>;
 
@@ -157,8 +152,6 @@ export const buildSnapshot = (
   credPresence: Readonly<Record<ZeropsAgentId, boolean>>,
   providerAuth: Readonly<Record<ZeropsAgentId, ServerProviderAuthStatus>>,
   authorizers: Readonly<Partial<Record<ZeropsAgentId, ZeropsAgentAuthorizer>>> = {},
-  /** Agents whose signer tags name two or more people: whose login it is is not known. */
-  unknownSigners: ReadonlySet<ZeropsAgentId> = new Set(),
 ): ZeropsAgentAuthSnapshot => {
   const agents = KNOWN_AGENT_IDS.map((agentId) => {
     const suffix = AGENT_OAUTH_SUFFIX[agentId];
@@ -177,7 +170,6 @@ export const buildSnapshot = (
       // for a credential that has since been removed would name an owner for
       // nothing.
       ...(credPresent && authorizedBy ? { authorizedBy } : {}),
-      ...(credPresent && unknownSigners.has(agentId) ? { signerUnknown: true } : {}),
     };
   });
   return { available: true, agents };
@@ -236,19 +228,6 @@ const MARK_OAUTH_RETRY_ATTEMPTS = 2;
 export const MARK_SIGNED_IN_FAILURE_RECHECK_INTERVAL = Duration.minutes(2);
 
 /**
- * How often the feed re-reads the signer record for an agent that has a
- * credential but no recorded signer (see the catch-up fiber in {@link make}).
- * Just past `ZeropsProjectSigners`'s `SIGNERS_CACHE_TTL` (30 s), so every
- * tick's read is a fresh one and never the cached miss the login's own
- * publish saw. Pinned by `ZeropsAgentAuth.test.ts`.
- */
-export const SIGNER_RECHECK_INTERVAL = Duration.seconds(35);
-
-/** The fresh reads after a sign-in walked here: see `ZeropsProjectSigners`' own. */
-export const SIGNER_RECORD_POLL = ZeropsProjectSignersModule.SIGNER_RECORD_FRESH_POLL;
-export const SIGNER_RECORD_AWAIT = ZeropsProjectSignersModule.SIGNER_RECORD_FRESH_AWAIT;
-
-/**
  * How often an agent whose credential is present but whose last check could
  * not answer (`unknown`: the CLI timed out, was missing, printed something
  * unrecognized) is checked again. Without it nothing re-asks until the next
@@ -262,14 +241,6 @@ export const UNKNOWN_AUTH_RECHECK_INTERVAL = Duration.seconds(15);
  * (missing, changed its output) is not spawned every 15 s forever.
  */
 const UNKNOWN_AUTH_RECHECK_BACKOFF: ReadonlyArray<number> = [1, 4, 20];
-
-/**
- * An agent whose login somebody could still turn out to own: it has a
- * credential, is not on a project token (an API key belongs to the project,
- * not a person) and names no signer yet.
- */
-const awaitsSigner = (agent: ZeropsAgentAuthSnapshot["agents"][number]): boolean =>
-  agent.credPresent && !agent.flagToken && agent.authorizedBy === undefined;
 
 export class ZeropsAgentAuth extends Context.Service<
   ZeropsAgentAuth,
@@ -292,7 +263,7 @@ export class ZeropsAgentAuth extends Context.Service<
      * single-flight + latch machinery instead of duplicating it). A no-op
      * when the feed is off (`isZeropsEnvironment: false`).
      */
-    readonly recheckNow: (agentId: ZeropsAgentId, signedInBy?: string) => Effect.Effect<void>;
+    readonly recheckNow: (agentId: ZeropsAgentId) => Effect.Effect<void>;
     /**
      * Called by sign-out BEFORE it clears the platform flag (`ZeropsAgentSignOut.ts`):
      * bumps this agent's epoch and resets `markedOAuth` directly, so a
@@ -330,21 +301,11 @@ export interface ZeropsAgentAuthOptions {
   readonly homeDir: string;
   readonly envStorePath: string;
   /**
-   * Who signed each agent in, from the Mate's project tags
-   * (`ZeropsProjectSigners`). Re-read per publish rather than cached here: a
-   * login is the same event that changes the credential, so the read that
-   * follows it must see the new record — and re-read every
-   * {@link SIGNER_RECHECK_INTERVAL} for an agent still without one, since the
-   * client writes the record only after it sees the login succeed. Absent
-   * disables provenance entirely — every snapshot then omits `authorizedBy`.
+   * Who this server saw sign each agent in (`ZeropsProjectSigners.signers`), read per publish:
+   * the walker keeps a sign-in before it asks for the re-check whose publish names its person.
+   * Absent disables provenance entirely — every snapshot then omits `authorizedBy`.
    */
   readonly readSigners?: Effect.Effect<ZeropsProjectSignersModule.ProjectSigners>;
-  /**
-   * The signer tags read now, past the cache (`ZeropsProjectSigners.fresh`): what the feed reads
-   * while the record of a sign-in made here is on its way ({@link SIGNER_RECORD_AWAIT}).
-   * Absent, it waits for the cached read like any other.
-   */
-  readonly readSignersFresh?: Effect.Effect<ZeropsProjectSignersModule.ProjectSigners>;
   /**
    * The agents whose turn just failed because they are not signed in
    * (`zeropsTurnAuthFailure.ts` over the provider runtime event bus at
@@ -400,10 +361,6 @@ interface FeedState {
   readonly env: ZembedEnv | undefined;
   /** The last snapshot actually published, so an event that changes nothing does not repaint. */
   readonly lastPublished: ZeropsAgentAuthSnapshot | undefined;
-  /** A sign-in walked here whose record is on its way: who signed in, and until when it is read for. */
-  readonly recordAwaited: Readonly<
-    Partial<Record<ZeropsAgentId, { readonly by: string; readonly until: number }>>
-  >;
 }
 
 /** Only these prefixes leave the file: the store also carries `ZCP_API_KEY` and `VSCODE_PASSWORD`, which mate never reads (spec §0 touchpoints, MA-7). */
@@ -448,8 +405,7 @@ const agentAuthEqual = (
   a.flagToken === b.flagToken &&
   a.providerAuth === b.providerAuth &&
   a.state === b.state &&
-  a.authorizedBy?.subject === b.authorizedBy?.subject &&
-  a.signerUnknown === b.signerUnknown;
+  a.authorizedBy?.subject === b.authorizedBy?.subject;
 
 /** Field-by-field equality — avoids a JSON round-trip for what is only ever an internal dedup check. */
 const snapshotsEqual = (a: ZeropsAgentAuthSnapshot, b: ZeropsAgentAuthSnapshot): boolean =>
@@ -467,7 +423,6 @@ export const make = (options: ZeropsAgentAuthOptions) =>
       homeDir,
       envStorePath,
       readSigners,
-      readSignersFresh,
       turnAuthFailures,
       watch,
       unknownAuthRecheckInterval = UNKNOWN_AUTH_RECHECK_INTERVAL,
@@ -507,7 +462,6 @@ export const make = (options: ZeropsAgentAuthOptions) =>
       signOutEpoch: { "claude-code": 0, codex: 0 },
       env: undefined,
       lastPublished: undefined,
-      recordAwaited: {},
     });
 
     const probeCredential = (agentId: ZeropsAgentId): Effect.Effect<boolean> =>
@@ -517,39 +471,26 @@ export const make = (options: ZeropsAgentAuthOptions) =>
 
     // One publish at a time: a read and its publish are never overtaken by a newer read's.
     const publishMutex = yield* Semaphore.make(1);
-    const publishWith = (
-      read: Effect.Effect<ZeropsProjectSignersModule.ProjectSigners> | undefined,
-    ) =>
-      Effect.gen(function* () {
-        // Re-read per publish rather than cached: a login writing the file is
-        // the same event that changes the credential, so the read that follows
-        // it must see the write. The document is a handful of bytes.
-        const signers = read === undefined ? {} : yield* read;
-        const current = yield* Ref.get(state);
-        const authorizers: Partial<Record<ZeropsAgentId, ZeropsAgentAuthorizer>> = {};
-        const unknownSigners = new Set<ZeropsAgentId>();
-        for (const [agentId, record] of Object.entries(signers)) {
-          const subject = knownSigner(record);
-          if (subject !== undefined) authorizers[agentId as ZeropsAgentId] = { subject };
-          else if (typeof record === "object") unknownSigners.add(agentId as ZeropsAgentId);
-        }
-        const snapshot = buildSnapshot(
-          current.env,
-          current.credPresence,
-          current.providerAuth,
-          authorizers,
-          unknownSigners,
-        );
-        if (
-          current.lastPublished !== undefined &&
-          snapshotsEqual(snapshot, current.lastPublished)
-        ) {
-          return;
-        }
-        yield* Ref.update(state, (previous) => ({ ...previous, lastPublished: snapshot }));
-        yield* PubSub.publish(changes, snapshot);
-      }).pipe(publishMutex.withPermits(1));
-    const publish = publishWith(readSigners);
+    const publish = Effect.gen(function* () {
+      const signers = readSigners === undefined ? {} : yield* readSigners;
+      const current = yield* Ref.get(state);
+      const authorizers: Partial<Record<ZeropsAgentId, ZeropsAgentAuthorizer>> = {};
+      for (const agentId of KNOWN_AGENT_IDS) {
+        const subject = signers[agentId];
+        if (subject !== undefined && subject.length > 0) authorizers[agentId] = { subject };
+      }
+      const snapshot = buildSnapshot(
+        current.env,
+        current.credPresence,
+        current.providerAuth,
+        authorizers,
+      );
+      if (current.lastPublished !== undefined && snapshotsEqual(snapshot, current.lastPublished)) {
+        return;
+      }
+      yield* Ref.update(state, (previous) => ({ ...previous, lastPublished: snapshot }));
+      yield* PubSub.publish(changes, snapshot);
+    }).pipe(publishMutex.withPermits(1));
 
     /**
      * Writes the platform flag once (`ZeropsAgentFlag.markSignedIn` — a
@@ -836,65 +777,6 @@ export const make = (options: ZeropsAgentAuthOptions) =>
     }
     yield* runWatcher(envStorePath, path.dirname(envStorePath), recomputeEnvStore);
 
-    // The signer record lands AFTER the login it belongs to: the client
-    // writes the project tag once it sees the login succeed, which is after
-    // the credential event's own publish has already read the signers.
-    // Nothing else republishes on its own, so an agent that has a credential
-    // but no signer is re-read every SIGNER_RECHECK_INTERVAL until it has
-    // one. `publish` dedups, so an unchanged read publishes nothing; an agent
-    // with its signer, or one on a project token, costs no read at all.
-    if (readSigners !== undefined) {
-      yield* Effect.gen(function* () {
-        const { lastPublished } = yield* Ref.get(state);
-        if (lastPublished?.agents.some(awaitsSigner)) {
-          yield* publish;
-        }
-      }).pipe(
-        Effect.delay(SIGNER_RECHECK_INTERVAL),
-        Effect.forever,
-        Effect.catchCause((cause) =>
-          Effect.logWarning("zerops agent auth: signer recheck stopped", { cause }),
-        ),
-        Effect.forkScoped,
-      );
-    }
-
-    // A sign-in walked here is read for afresh until its record names the person who signed in,
-    // or the wait is over: see SIGNER_RECORD_AWAIT.
-    if (readSignersFresh !== undefined) {
-      yield* Effect.gen(function* () {
-        const now = yield* Clock.currentTimeMillis;
-        const awaited = (yield* Ref.get(state)).recordAwaited;
-        const due = KNOWN_AGENT_IDS.filter((agentId) => (awaited[agentId]?.until ?? 0) > now);
-        if (due.length > 0) yield* publishWith(readSignersFresh);
-        const published = (yield* Ref.get(state)).lastPublished;
-        // Done with: landed, or waited for long enough. An entry a newer sign-in replaced
-        // meanwhile is that sign-in's, and stays.
-        const done = KNOWN_AGENT_IDS.filter((agentId) => {
-          const entry = awaited[agentId];
-          if (entry === undefined) return false;
-          if (!due.includes(agentId)) return true;
-          const signer = published?.agents.find((agent) => agent.agentId === agentId)?.authorizedBy;
-          return signer?.subject === entry.by;
-        });
-        if (done.length === 0) return;
-        yield* Ref.update(state, (current) => {
-          const next = { ...current.recordAwaited };
-          for (const agentId of done) {
-            if (next[agentId] === awaited[agentId]) delete next[agentId];
-          }
-          return { ...current, recordAwaited: next };
-        });
-      }).pipe(
-        Effect.delay(SIGNER_RECORD_POLL),
-        Effect.forever,
-        Effect.catchCause((cause) =>
-          Effect.logWarning("zerops agent auth: signer record wait stopped", { cause }),
-        ),
-        Effect.forkScoped,
-      );
-    }
-
     // A turn refused for want of a login is the agent's own answer arriving
     // before any check asked for it: re-ask now, so the card stops saying
     // "Authorized" over a login that no longer works.
@@ -954,18 +836,11 @@ export const make = (options: ZeropsAgentAuthOptions) =>
       // no longer an answer: until the check says otherwise the agent is
       // being checked, never "signed out" (the row would offer Sign in again
       // over a login that just succeeded).
-      recheckNow: (agentId: ZeropsAgentId, signedInBy?: string) =>
-        Effect.gen(function* () {
-          const until = (yield* Clock.currentTimeMillis) + Duration.toMillis(SIGNER_RECORD_AWAIT);
-          yield* Ref.update(state, (current) => ({
-            ...current,
-            providerAuth: { ...current.providerAuth, [agentId]: "unknown" },
-            recordAwaited:
-              signedInBy === undefined || signedInBy.length === 0
-                ? current.recordAwaited
-                : { ...current.recordAwaited, [agentId]: { by: signedInBy, until } },
-          }));
-        }).pipe(
+      recheckNow: (agentId: ZeropsAgentId) =>
+        Ref.update(state, (current) => ({
+          ...current,
+          providerAuth: { ...current.providerAuth, [agentId]: "unknown" },
+        })).pipe(
           Effect.andThen(publish),
           Effect.andThen(requestProviderCheck(agentId, { fromCredential: true })),
         ),
@@ -1009,7 +884,6 @@ export const layer = Layer.effect(
       homeDir: NodeOS.homedir(),
       envStorePath: ZEMBED_ENV_FILE,
       readSigners: projectSigners.signers,
-      readSignersFresh: projectSigners.fresh,
       turnAuthFailures: bus.events.pipe(
         Stream.map(turnAuthFailureAgent),
         Stream.filter((agentId) => agentId !== undefined),

@@ -42,7 +42,7 @@ import type {
   ZeropsProjectRole,
   ZeropsTokenDelegation,
 } from "./groupReach.ts";
-import { withZeropsMateAtBirth } from "./groups.ts";
+import { withZeropsMateTag } from "./groups.ts";
 import type { HqPlacement } from "./hq/placement.ts";
 import { agentsFromOAuthFlags } from "./agentSelection.ts";
 import {
@@ -1898,8 +1898,6 @@ export class ZeropsApiClient {
       readonly location?: string;
       readonly zcpVersion?: string;
       readonly agents?: ReadonlyArray<ZeropsAgentType>;
-      /** Who asks, by adding it, for the project's development to be stood up (`mate:standup:`). */
-      readonly standUpBy?: string;
     },
     signal?: AbortSignal,
     beforeWrite?: () => Promise<void>,
@@ -1919,10 +1917,7 @@ export class ZeropsApiClient {
             // Born a Mate: the marker goes on before the container does, so a creation that
             // fails halfway still leaves a project that says what it was meant to be. Its
             // application, name and face are HQ's, written by the press's registration.
-            tagList: withZeropsMateAtBirth([], {
-              role: "dev",
-              ...(input.standUpBy === undefined ? {} : { standUpBy: input.standUpBy }),
-            }),
+            tagList: withZeropsMateTag([]),
           }),
         ),
       },

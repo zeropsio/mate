@@ -29,7 +29,6 @@ import type {
   ZeropsLoginKind,
 } from "@t3tools/contracts";
 import {
-  AGENT_OWNERSHIP_RETRY_RECORD_LABEL,
   agentOwnershipNeedsAttention,
   agentOwnershipNotice,
   resolveAgentOwnership,
@@ -52,7 +51,7 @@ import {
   zeropsAgentAuthNeedsAttention,
   type ZeropsAgentLoginPresentation,
 } from "@t3tools/client-runtime/zerops/agentLogin";
-import { type LocalAgentSigners, resolveAgentAuthorizer } from "~/zerops/useZeropsAgentSigner";
+import { resolveAgentAuthorizer } from "~/zerops/agentSigner";
 import { FlatCard, StatusDot } from "./primitives";
 
 const AGENT_NAMES: Record<ZeropsAgentId, string> = {
@@ -68,11 +67,8 @@ const AGENT_SIGN_IN_LABELS: Record<ZeropsAgentId, string> = {
 export function ZeropsAgentAuthCard({
   snapshot,
   viewerSubject,
-  localSigners,
   onSignIn,
   onCancel,
-  recordFailed,
-  onRetryRecord,
   signOutSupported,
   onSignOut,
   signOutPending,
@@ -82,13 +78,8 @@ export function ZeropsAgentAuthCard({
   readonly snapshot: ZeropsAgentAuthSnapshot;
   /** The signed-in Zerops user id, so a row can say whose login it is (D6). */
   readonly viewerSubject?: string | undefined;
-  /** This Mate's signer records written here and not read back yet (`useLocalAgentSigners`). */
-  readonly localSigners?: LocalAgentSigners | undefined;
   readonly onSignIn: (agentId: ZeropsAgentId) => void;
   readonly onCancel: (agentId: ZeropsAgentId) => void;
-  /** Logins, by signer key, whose signer-record write this browser tried and watched fail (H13). */
-  readonly recordFailed?: ReadonlySet<string> | undefined;
-  readonly onRetryRecord?: ((agentId: ZeropsAgentId) => void) | undefined;
   /** Whether the environment advertises `capabilities.agentSignOut`; absent or false hides Sign out (older servers). */
   readonly signOutSupported?: boolean | undefined;
   readonly onSignOut?: ((agentId: ZeropsAgentId) => void) | undefined;
@@ -110,16 +101,13 @@ export function ZeropsAgentAuthCard({
       </header>
       <ZeropsAgentAuthRows
         onCancel={onCancel}
-        onRetryRecord={onRetryRecord}
         onSignIn={onSignIn}
         onSignOut={onSignOut}
-        recordFailed={recordFailed}
         signOutError={signOutError}
         signOutPending={signOutPending}
         signOutSupported={signOutSupported}
         snapshot={snapshot}
         viewerSubject={viewerSubject}
-        localSigners={localSigners}
         {...loginProps}
       />
     </FlatCard>
@@ -128,7 +116,6 @@ export function ZeropsAgentAuthCard({
 
 /** No logins beyond the agent rows: a server that lists none. */
 const NO_LOGINS: ReadonlyArray<MateLoginRow> = [];
-const NO_LOCAL_SIGNERS: LocalAgentSigners = {};
 
 /** A login's pending action and its last failure, from `useMateLogins`. */
 export interface ZeropsLoginActionStatus {
@@ -164,11 +151,8 @@ interface ZeropsLoginsProps {
 export function ZeropsAgentAuthRows({
   snapshot,
   viewerSubject,
-  localSigners = NO_LOCAL_SIGNERS,
   onSignIn,
   onCancel,
-  recordFailed,
-  onRetryRecord,
   signOutSupported,
   onSignOut,
   signOutPending,
@@ -185,11 +169,8 @@ export function ZeropsAgentAuthRows({
 }: {
   readonly snapshot: ZeropsAgentAuthSnapshot;
   readonly viewerSubject?: string | undefined;
-  readonly localSigners?: LocalAgentSigners | undefined;
   readonly onSignIn: (agentId: ZeropsAgentId) => void;
   readonly onCancel: (agentId: ZeropsAgentId) => void;
-  readonly recordFailed?: ReadonlySet<string> | undefined;
-  readonly onRetryRecord?: ((agentId: ZeropsAgentId) => void) | undefined;
   readonly signOutSupported?: boolean | undefined;
   readonly onSignOut?: ((agentId: ZeropsAgentId) => void) | undefined;
   readonly signOutPending?: ReadonlySet<ZeropsAgentId> | undefined;
@@ -210,16 +191,13 @@ export function ZeropsAgentAuthRows({
             agent={agent}
             runsOn={logins.find((login) => login.default && login.agent === agent.agentId)}
             onCancel={onCancel}
-            onRetryRecord={onRetryRecord}
             onSignIn={onSignIn}
             onSignOut={onSignOut}
             quiet={anotherAuthorized(agent)}
-            recordFailed={recordFailed?.has(agent.agentId) ?? false}
             signOutError={signOutError?.get(agent.agentId)}
             signOutPending={signOutPending?.has(agent.agentId) ?? false}
             signOutSupported={signOutSupported ?? false}
             viewerSubject={viewerSubject}
-            localSigners={localSigners}
           />
           {logins
             .filter((login) => !login.default && login.agent === agent.agentId)
@@ -249,12 +227,9 @@ function ZeropsAgentAuthRow({
   agent,
   runsOn,
   viewerSubject,
-  localSigners,
   quiet,
-  recordFailed,
   onSignIn,
   onCancel,
-  onRetryRecord,
   signOutSupported,
   onSignOut,
   signOutPending,
@@ -264,15 +239,10 @@ function ZeropsAgentAuthRow({
   /** This agent's own login, for the crewmates that run on it. */
   readonly runsOn?: Pick<MateLoginRow, "crewmates" | "lead"> | undefined;
   readonly viewerSubject?: string | undefined;
-  /** The records written here and not read back yet: the one being written is the viewer's. */
-  readonly localSigners: LocalAgentSigners;
   /** Another agent is signed in, so this one's sign-in is an offer. */
   readonly quiet: boolean;
-  /** This browser's own signer-record write for this agent failed (H13). */
-  readonly recordFailed: boolean;
   readonly onSignIn: (agentId: ZeropsAgentId) => void;
   readonly onCancel: (agentId: ZeropsAgentId) => void;
-  readonly onRetryRecord?: ((agentId: ZeropsAgentId) => void) | undefined;
   readonly signOutSupported: boolean;
   readonly onSignOut?: ((agentId: ZeropsAgentId) => void) | undefined;
   readonly signOutPending: boolean;
@@ -283,13 +253,10 @@ function ZeropsAgentAuthRow({
   const status = agentStatusPresentation(agent, login, quiet);
   // Whose subscription a turn here would spend. Silent for your own agent —
   // telling someone their own login is theirs is noise on every screen.
-  // The record this client wrote itself counts until the snapshot carries it.
   const ownership = resolveAgentOwnership({
     credPresent: agent.credPresent,
-    authorizedBy: resolveAgentAuthorizer(agent.agentId, agent, localSigners, viewerSubject),
+    authorizedBy: resolveAgentAuthorizer(agent, viewerSubject),
     viewerSubject,
-    recordFailed,
-    signerUnknown: agent.signerUnknown,
   });
   const ownershipNotice = agentOwnershipNotice(ownership);
 
@@ -329,30 +296,17 @@ function ZeropsAgentAuthRow({
             {ownershipNotice}
           </p>
         )}
-        {ownership === "record-failed" && onRetryRecord !== undefined ? (
-          <Button
-            data-zerops-agent-retry-record
-            onClick={() => {
-              onRetryRecord(agent.agentId);
-            }}
-            size="compact"
-            variant="pill"
-          >
-            {AGENT_OWNERSHIP_RETRY_RECORD_LABEL}
-          </Button>
-        ) : (
-          <ZeropsAgentAuthActionSlot
-            agent={agent}
-            login={login}
-            onCancel={onCancel}
-            onSignIn={onSignIn}
-            onSignOut={onSignOut}
-            ownership={ownership}
-            signOutError={signOutError}
-            signOutPending={signOutPending}
-            signOutSupported={signOutSupported}
-          />
-        )}
+        <ZeropsAgentAuthActionSlot
+          agent={agent}
+          login={login}
+          onCancel={onCancel}
+          onSignIn={onSignIn}
+          onSignOut={onSignOut}
+          ownership={ownership}
+          signOutError={signOutError}
+          signOutPending={signOutPending}
+          signOutSupported={signOutSupported}
+        />
       </div>
     </div>
   );

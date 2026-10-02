@@ -1,6 +1,6 @@
 import { isTransportConnectionErrorMessage } from "@t3tools/client-runtime/errors";
 import { onAccountLifetimeClose } from "../zerops/accountLifetime";
-import { resolveAgentAuthorizer, type LocalAgentSigners } from "../zerops/useZeropsAgentSigner";
+import { resolveAgentAuthorizer } from "../zerops/agentSigner";
 import { resolveZeropsAgentPickerPanelView } from "./zerops/ZeropsAgentPickerPanel.logic";
 import {
   resolveZeropsAgentAvailability,
@@ -429,21 +429,18 @@ export function resolveZeropsProviderAvailability(input: {
   readonly entries: ReadonlyArray<ProviderInstanceEntry>;
   readonly agentAuth: Known<ZeropsAgentAuthSnapshot> | undefined;
   readonly viewerSubject: string | undefined;
-  readonly localSigners: LocalAgentSigners;
-  readonly recordFailed: ReadonlySet<string>;
 }): ReadonlyMap<ProviderInstanceId, ZeropsAgentAvailability> | undefined {
   if (input.agentAuth === undefined) return undefined;
-  /** A row's facts, its signer resolved under `key` — the agent id, or a login's own id. */
-  const factsOf = (agent: ZeropsAgentAuthSnapshot["agents"][number], key: string) => ({
+  /** A row's facts, its signer resolved — an agent's own, or a login's (`mateLoginAsAgentRow`). */
+  const factsOf = (agent: ZeropsAgentAuthSnapshot["agents"][number]) => ({
     credPresent: agent.credPresent,
     flagToken: agent.flagToken,
     providerAuth: agent.providerAuth,
     state: agent.state,
     loginPhase: agent.login?.phase,
-    signerUnknown: agent.signerUnknown,
-    authorizedBy: resolveAgentAuthorizer(key, agent, input.localSigners, input.viewerSubject),
+    authorizedBy: resolveAgentAuthorizer(agent, input.viewerSubject),
   });
-  const reads = zeropsAgentAuthReads(input.agentAuth, (agent) => factsOf(agent, agent.agentId));
+  const reads = zeropsAgentAuthReads(input.agentAuth, factsOf);
   if (reads === undefined) return undefined;
   // A login beyond the defaults answers for itself, as the server's admission
   // resolves it; until the feed is known, its driver's agent says `unknown`
@@ -455,11 +452,7 @@ export function resolveZeropsProviderAvailability(input: {
     if (login !== undefined) {
       map.set(
         entry.instanceId,
-        resolveZeropsAgentAvailability({
-          agent: login,
-          viewerSubject: input.viewerSubject,
-          recordFailed: input.recordFailed.has(entry.instanceId),
-        }),
+        resolveZeropsAgentAvailability({ agent: login, viewerSubject: input.viewerSubject }),
       );
       continue;
     }
@@ -469,11 +462,7 @@ export function resolveZeropsProviderAvailability(input: {
     if (agent === undefined) continue;
     map.set(
       entry.instanceId,
-      resolveZeropsAgentAvailability({
-        agent,
-        viewerSubject: input.viewerSubject,
-        recordFailed: input.recordFailed.has(agentId),
-      }),
+      resolveZeropsAgentAvailability({ agent, viewerSubject: input.viewerSubject }),
     );
   }
   return map;
@@ -540,8 +529,8 @@ export interface ZeropsConversationReadOnly {
  * would act on the agent renders — no composer, no answers to its questions,
  * no approvals — and the timeline stays browsable. A token-authorized agent
  * belongs to the project, so it never makes a conversation read-only;
- * `unrecorded` and `record-failed` keep the composer with their banner,
- * because the viewer's own sign-in is the way out of both.
+ * `unrecorded` keeps the composer with its banner, because the viewer's own
+ * sign-in is the way out of it.
  */
 export function resolveZeropsConversationReadOnly(input: {
   readonly agent: { readonly flagToken: boolean } | undefined;

@@ -970,12 +970,9 @@ describe("a crew closed to the viewer (D6)", () => {
     );
   });
 
-  it.each(["unrecorded", "record-failed"] as const)(
-    "says %s in the conversation's own words",
-    (ownership) => {
-      expect(crewLockWords(ownership)).toBe(agentOwnershipComposerNotice(ownership));
-    },
-  );
+  it("says unrecorded in the conversation's own words", () => {
+    expect(crewLockWords("unrecorded")).toBe(agentOwnershipComposerNotice("unrecorded"));
+  });
 
   it("offers the conversation's one way out", () => {
     expect(CREW_LOCK_ACTION).toBe(AGENT_OWNERSHIP_RECOVERY_LABEL);

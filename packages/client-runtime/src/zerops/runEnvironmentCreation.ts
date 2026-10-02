@@ -84,8 +84,8 @@ export interface EnvironmentCreationPlatform {
   /** The project's `envIsolation`, read back; undefined while the read has not caught up. */
   readonly readIsolation: (projectId: string) => Promise<string | undefined>;
   /**
-   * `mate:closed-off` on the project, as the person: zcp's boot import of the runtimes waits for
-   * it (pass 28). Idempotent.
+   * The close-off recorded in the Mate's birth at HQ, as the person: zcp's boot import of the
+   * runtimes waits for it (pass 28). Idempotent.
    */
   readonly markClosedOff: (projectId: string) => Promise<void>;
   /**

@@ -269,7 +269,7 @@ export const registerZeropsRpc = (deps: RegisterZeropsRpcDeps): ZeropsRpcHandler
     // The API key rides only into the settings' secret store: no span
     // attribute or log line here names it.
     [WS_METHODS.zeropsLoginAdd]: (input) =>
-      observeRpcEffect(WS_METHODS.zeropsLoginAdd, zeropsLogins.add(input), {
+      observeRpcEffect(WS_METHODS.zeropsLoginAdd, zeropsLogins.add(input, subject), {
         "rpc.aggregate": "zerops",
       }),
     [WS_METHODS.zeropsLoginRemove]: (input) =>

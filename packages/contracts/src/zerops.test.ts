@@ -343,7 +343,7 @@ describe("ZeropsLogin", () => {
   it.each([
     { name: "an unknown kind", patch: { kind: "oauth" } },
     { name: "a state outside the classification", patch: { state: "local-only" } },
-    { name: "an id a signer tag could not carry", patch: { id: "claude:work" } },
+    { name: "an id outside the instance-id slug rules", patch: { id: "claude:work" } },
   ])("rejects $name", ({ patch }) => {
     expect(() =>
       decodeLogin({
@@ -420,7 +420,7 @@ describe("login-targeted agent login inputs", () => {
     expect(decode().loginId).toBe("codex-work");
   });
 
-  it("rejects a login id a signer tag could not carry", () => {
+  it("rejects a login id outside the instance-id slug rules", () => {
     expect(() => decodeLoginCancelInput({ agentId: "codex", loginId: "codex:work" })).toThrow();
   });
 });

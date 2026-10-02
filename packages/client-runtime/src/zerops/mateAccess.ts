@@ -33,7 +33,8 @@ import {
   type RoleMateVisibility,
   type ZeropsOrgRole,
 } from "@t3tools/shared/zeropsRoles";
-import { knownSigner, readSignerTags } from "@t3tools/shared/zeropsAgentAuth";
+
+import type { HqPlacement } from "./hq/placement.ts";
 
 export type { RoleMateVisibility };
 
@@ -41,11 +42,14 @@ export type { RoleMateVisibility };
 export interface MateAccessProject {
   readonly id: string;
   readonly clientId?: string | undefined;
-  /** Read for D6's signer tag, the one place a Mate names its person. */
-  readonly tagList?: ReadonlyArray<string> | undefined;
   readonly userRoles?:
     | ReadonlyArray<{ readonly clientUserId: string; readonly roleCode: string }>
     | undefined;
+  /**
+   * Where HQ places it: its Mate's live summary names who signed each of its agents in (D6),
+   * relayed to whoever may operate it (`observe_mate`).
+   */
+  readonly hq?: HqPlacement | undefined;
 }
 
 /** As much of the viewer's org membership as this decision needs. */
@@ -203,7 +207,7 @@ export interface MateOwnerCandidate {
   readonly id: string;
   readonly user?:
     | {
-        /** The user id — what a `mate:signer` tag names. */
+        /** The user id — what a Mate's signers name. */
         readonly id?: string | undefined;
         readonly fullName?: string | undefined;
         readonly firstName?: string | undefined;
@@ -241,8 +245,9 @@ export function mateMemberName(member: MateOwnerCandidate): string | undefined {
  * `ADMIN` (verified.md, 2026-09-15) or an _Assign_ hand-over — and so wins. An
  * org owner or admin who creates a Mate gets no entry at all: the project's
  * roles are then only the broker's and the container's token users (measured
- * 2026-09-24), and the one record naming a person is D6's signer tag, written
- * as that person. With two agents signed in, the first tag names the owner.
+ * 2026-09-24), and the one record naming a person is D6's signer, as the
+ * Mate's server saw them sign in and HQ relays it. With two agents signed in,
+ * Claude Code's signer names the owner.
  *
  * `undefined` when neither names anybody the member list has. A row then says
  * the same thing without a name, and a face goes without the owner's beside it.
@@ -255,7 +260,7 @@ export function resolveMateOwner<M extends MateOwnerCandidate>(input: {
   if (ownerEntry !== undefined) {
     return input.members.find((entry) => entry.id === ownerEntry.clientUserId);
   }
-  const signer = mateOwnerSigner(input.project.tagList).signer;
+  const signer = mateOwnerSigner(input.project).signer;
   if (signer === undefined) return undefined;
   return input.members.find((entry) => entry.user?.id === signer);
 }
@@ -264,60 +269,60 @@ export function resolveMateOwner<M extends MateOwnerCandidate>(input: {
  * What a Mate's own records say of its person before anybody is looked up —
  * the records `resolveMateOwner` reads, as facts: whether they name anybody at
  * all (an `OWNER` entry, or the signer of its agent), and whether anybody has
- * signed its agent in (D6's tag of the agent's own login; a login added
+ * signed its agent in (D6's signer of the agent's own login; a login added
  * beside it names only who uses that one).
  *
- * Read off the project alone, so a list knows them from its first paint: a
- * Mate whose records name nobody is nobody's whether or not the member list
- * has been read, and the first person to sign its agent in makes it theirs.
- * The tag says who signed in, not whether the agent is signed in this minute
- * — a sign-out keeps it — but the app writes it at every sign-in, and a
- * credential nobody recorded is refused a turn (`unrecorded`).
+ * Read off the project and where HQ places it, so a list knows them as soon as
+ * HQ relays the Mate's summary: a Mate whose records name nobody is nobody's
+ * whether or not the member list has been read, and the first person to sign
+ * its agent in makes it theirs. A viewer HQ relays no summary to sees no
+ * signer.
  */
-export function mateOwnerRecords(project: Pick<MateAccessProject, "tagList" | "userRoles">): {
+export function mateOwnerRecords(project: Pick<MateAccessProject, "hq" | "userRoles">): {
   readonly named: boolean;
   readonly signedIn: boolean;
-  /** The Zerops user id its signer tag names, where somebody signed its agent in. */
+  /** The Zerops user id who signed its agent in, where somebody did. */
   readonly signer: string | undefined;
 } {
-  const { signedIn, signer } = mateOwnerSigner(project.tagList);
+  const { signedIn, signer } = mateOwnerSigner(project);
   const owned = project.userRoles?.some((entry) => entry.roleCode === "OWNER") === true;
   return { named: owned || signedIn, signedIn, signer };
 }
 
 /**
- * Whether a Mate is the viewer's own: they signed its agent in (D6's signer tag, read as
+ * Whether a Mate is the viewer's own: they signed its agent in (D6's signer, read as
  * `mateOwnerRecords` reads it). Only what one's own Mate waits on waits on them — its question,
  * its change's review; a colleague's waits on its owner (the owner, 2026-09-30: "sana doesn't
- * wait for me, it waits for karlos"). Nobody's Mate, one whose signers disagree, and any Mate
- * while the viewer is not known yet, are nobody's to be waited on.
+ * wait for me, it waits for karlos"). Nobody's Mate, and any Mate while the viewer is not known
+ * yet, are nobody's to be waited on.
  */
 export function mateIsViewers(
-  project: Pick<MateAccessProject, "tagList">,
+  project: Pick<MateAccessProject, "hq">,
   viewer: string | undefined,
 ): boolean {
-  const { signer } = mateOwnerSigner(project.tagList);
+  const { signer } = mateOwnerSigner(project);
   return signer !== undefined && viewer !== undefined && viewer.length > 0 && signer === viewer;
 }
 
-/** The agents whose own signer speaks for the Mate; a login added beside them names only who uses it. */
-const MATE_OWNER_SIGNER_KEYS: ReadonlySet<string> = new Set(["claude-code", "codex"]);
+/**
+ * The agents whose own signer speaks for the Mate, in the order it is named by; a login added
+ * beside them names only who uses it.
+ */
+const MATE_OWNER_SIGNER_KEYS: ReadonlyArray<string> = ["claude-code", "codex"];
 
 /**
- * What the signer tags of the agents' own logins say (`readSignerTags`, the derivation the
- * server's gate reads): whether anybody signed in, and who — the first login's person, in tag
- * order — or nobody named where any of them records two people, since whose it is is not known.
+ * What the Mate's summary at HQ says of its agents' own logins: whether anybody signed one in,
+ * and who — Claude Code's person first.
  */
-function mateOwnerSigner(tagList: ReadonlyArray<string> | undefined): {
+function mateOwnerSigner(project: Pick<MateAccessProject, "hq">): {
   readonly signedIn: boolean;
   readonly signer: string | undefined;
 } {
-  const records = Object.values(readSignerTags(tagList, (key) => MATE_OWNER_SIGNER_KEYS.has(key)));
-  if (records.length === 0) return { signedIn: false, signer: undefined };
-  if (records.some((record) => typeof record === "object")) {
-    return { signedIn: true, signer: undefined };
-  }
-  return { signedIn: true, signer: knownSigner(records[0]) };
+  const signers = project.hq?.mate?.live?.summary?.signers ?? {};
+  const signer = MATE_OWNER_SIGNER_KEYS.map((key) => signers[key]).find(
+    (userId): userId is string => userId !== undefined && userId.length > 0,
+  );
+  return { signedIn: signer !== undefined, signer };
 }
 
 /** The owner's name, for "Jan's Mate — only Jan opens it" (D5). */
@@ -327,42 +332,6 @@ export function resolveMateOwnerName(input: {
 }): string | undefined {
   const member = resolveMateOwner(input);
   return member === undefined ? undefined : mateMemberName(member);
-}
-
-/**
- * D6's record of who signed an agent in: a tag on the Mate's own project,
- * `mate:signer:{agent}:{userId}`.
- *
- * It lives there and not in the container because a Mate's own key is
- * `BASIC_USER` on its project and cannot write tags (measured 2026-09-16): the
- * app writes it **as the person**, and neither the Mate nor its agent can
- * forge it. The server reads it with its own key and refuses a turn from
- * anybody else.
- */
-export const MATE_SIGNER_TAG_PREFIX = "mate:signer";
-
-export function mateSignerTag(agentId: string, userId: string): string {
-  return `${MATE_SIGNER_TAG_PREFIX}:${agentId}:${userId}`;
-}
-
-/**
- * The project's tag list with this agent's signer replaced.
- *
- * Every other tag survives, this agent's previous signer does not, and a list
- * that already says the right thing comes back with the same tags — the
- * TagWriter finds nothing to write, so signing in again with the same account
- * costs a read and nothing else.
- */
-export function withMateSignerTag(
-  tagList: ReadonlyArray<string> | undefined,
-  agentId: string,
-  userId: string,
-): ReadonlyArray<string> {
-  const wanted = mateSignerTag(agentId, userId);
-  const kept = (tagList ?? []).filter(
-    (tag) => !tag.startsWith(`${MATE_SIGNER_TAG_PREFIX}:${agentId}:`),
-  );
-  return [...kept, wanted];
 }
 
 /**

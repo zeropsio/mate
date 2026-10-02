@@ -31,50 +31,79 @@ import {
 } from "./matePress";
 import type { LockManagerLike } from "./mateLocks";
 
-const mate = (serviceId: string | undefined, tags: ReadonlyArray<string>) => ({
+/** What HQ heard of the press: each close-off it was asked to mark. */
+const hq = vi.hoisted(() => ({ calls: null as Array<string> | null }));
+vi.mock("./accountHq", () => ({
+  accountHqApi: () => ({
+    recordClosedOff: async () => {
+      hq.calls?.push("mark");
+    },
+  }),
+}));
+
+const mate = (serviceId: string | undefined, closedOff: boolean | undefined) => ({
   ...(serviceId === undefined ? {} : { service: { id: serviceId } }),
-  project: { tagList: tags },
+  project: {
+    hq: {
+      appId: null,
+      appName: null,
+      kind: "mate" as const,
+      mate: { name: "Ada", face: "", ...(closedOff === undefined ? {} : { closedOff }) },
+    },
+  },
 });
 
-// A press interrupted before its close-off: the container carries the press's marker, its
-// project no `mate:closed-off` (pass 28). *Finish setup* finishes it.
+// A press interrupted before its close-off: the container carries the press's marker, and HQ does
+// not know its project closed off (pass 28). *Finish setup* finishes it.
 describe("interruptedPresses", () => {
   it.each([
     {
       case: "a marked container whose project was never marked closed off",
-      mate: mate("zcp-a", ["mate"]),
+      mate: mate("zcp-a", false),
       marker: true,
       interrupted: true,
     },
     {
       case: "a press that got as far as its close-off",
-      mate: mate("zcp-a", ["mate", "mate:closed-off"]),
+      mate: mate("zcp-a", true),
       marker: true,
       interrupted: false,
     },
     {
       case: "a Mate made before the press: no marker",
-      mate: mate("zcp-a", ["mate"]),
+      mate: mate("zcp-a", false),
       marker: false,
       interrupted: false,
     },
     {
       case: "a marker the store has not read yet",
-      mate: mate("zcp-a", ["mate"]),
+      mate: mate("zcp-a", false),
       marker: "unread" as const,
       interrupted: false,
     },
     {
       case: "a marker whose stream failed",
-      mate: mate("zcp-a", ["mate"]),
+      mate: mate("zcp-a", false),
       marker: "unknown" as const,
       interrupted: false,
     },
     {
       case: "a Mate with no container listed",
-      mate: mate(undefined, ["mate"]),
+      mate: mate(undefined, false),
       marker: true,
       interrupted: false,
+    },
+    {
+      case: "a marked container HQ has said nothing of: an older HQ",
+      mate: mate("zcp-a", undefined),
+      marker: true,
+      interrupted: true,
+    },
+    {
+      case: "a marked container HQ holds no record of",
+      mate: { service: { id: "zcp-a" }, project: {} },
+      marker: true,
+      interrupted: true,
     },
   ])("$case", ({ mate: candidate, marker, interrupted }) => {
     const markers = new Map([["zcp-a", marker]]);
@@ -529,10 +558,6 @@ describe("finishMateSetup — the harden path", () => {
                     message: "The isolation was refused.",
                   });
             },
-            updateProjectTags: () => {
-              calls.push("mark");
-              return Effect.succeed({ value: { kind: "written" } });
-            },
           },
         },
       },
@@ -541,8 +566,9 @@ describe("finishMateSetup — the harden path", () => {
     harden: () => boolean,
     calls: Array<string>,
     made: { readonly harden?: boolean } = {},
-  ) =>
-    finishMateSetup({
+  ) => {
+    hq.calls = calls;
+    return finishMateSetup({
       inputs: inputs(harden, calls),
       projectId: "p-old",
       projectName: "Acme - Ada",
@@ -550,11 +576,13 @@ describe("finishMateSetup — the harden path", () => {
       groupProjectIds: [],
       viewer: null,
       registration: null,
+      hq: { projectId: "hq-project", address: "https://hq.test" },
       isCurrent: () => true,
       harden: made.harden ?? true,
       locks: undefined,
       sleep: async () => undefined,
     });
+  };
   const begin = () =>
     beginPress({
       projectId: "p-old",

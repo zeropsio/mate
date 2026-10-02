@@ -25,6 +25,7 @@ import * as ZeropsAgentFlagModule from "./ZeropsAgentFlag.ts";
 import * as ZeropsAgentLoginModule from "./ZeropsAgentLogin.ts";
 import * as ZeropsAgentSignOutModule from "./ZeropsAgentSignOut.ts";
 import * as ZeropsBrowserStreamModule from "./ZeropsBrowserStream.ts";
+import * as ZeropsHqLinkModule from "./ZeropsHqLink.ts";
 import * as ZeropsCliModule from "./ZeropsCli.ts";
 import * as ZeropsDataConsoleModule from "./ZeropsDataConsole.ts";
 import * as ZeropsGitRemoteProbeModule from "./ZeropsGitRemoteProbe.ts";
@@ -37,6 +38,7 @@ import * as ZeropsMateUpdateModule from "./ZeropsMateUpdate.ts";
 import * as ZeropsMembershipWatchModule from "./ZeropsMembershipWatch.ts";
 import * as ZeropsProjectSignersModule from "./ZeropsProjectSigners.ts";
 import * as ZeropsSetupModule from "./ZeropsSetup.ts";
+import * as ZeropsSignInsModule from "./zeropsSignIns.ts";
 import * as ZeropsStandUpRelayModule from "./ZeropsStandUpRelay.ts";
 import * as ZeropsTurnAdmissionModule from "./ZeropsTurnAdmission.ts";
 
@@ -64,12 +66,20 @@ const ZeropsTurnAdmissionLive = ZeropsTurnAdmissionModule.layer.pipe(
   Layer.provide(providerInstancesLayer),
 );
 
+/**
+ * The Mate's one link to its HQ (SPEC §3.4): its summary up, its state down. The setup reads the
+ * state it brings, and the merge below runs it — the same instance, memoized by reference.
+ */
+const ZeropsHqLinkLive = ZeropsHqLinkModule.layer.pipe(
+  Layer.provide(ZeropsProjectSignersModule.layer),
+);
+
 const liveLayer = Layer.mergeAll(
   ZeropsLifecycle.layer.pipe(Layer.provide(ZeropsThreadLifecycle.layer)),
   // `ZeropsProjectSigners` is merged rather than hidden: the agent-auth feed
   // reads who signed each agent in for its snapshot, and the turn gate below
-  // asks the same service before it lets a turn start (D6). One reader, one
-  // cache.
+  // asks the same service before it lets a turn start (D6). Both go by the
+  // one store of sign-ins provided at the bottom.
   ZeropsAgentLoginModule.layer.pipe(
     Layer.provideMerge(ZeropsAgentAuthLive),
     Layer.provideMerge(ZeropsLoginsLive),
@@ -118,11 +128,17 @@ const liveLayer = Layer.mergeAll(
   ZeropsStandUpRelayModule.layer.pipe(
     Layer.provideMerge(
       ZeropsSetupModule.layer.pipe(
-        Layer.provide(ZeropsSetupModule.liveReadsLayer),
+        Layer.provide(
+          ZeropsSetupModule.liveReadsLayer.pipe(
+            Layer.provide(ZeropsHqLinkLive),
+            Layer.provide(ZeropsProjectSignersModule.layer),
+          ),
+        ),
         Layer.provide(ZeropsTurnAdmissionLive),
       ),
     ),
   ),
+  ZeropsHqLinkLive,
   ZeropsBrowserStreamModule.layer,
   ZeropsMateUpdateModule.layer.pipe(Layer.provideMerge(ZeropsCliModule.layer)),
   ZeropsDataConsoleModule.layer,
@@ -142,6 +158,9 @@ const liveLayer = Layer.mergeAll(
   // — providing a second instance here would shadow that one for everything
   // under this tree and break the sharing the descriptor (S4) depends on.
   Layer.provideMerge(ZeropsMateKeyModule.layer),
+  // Who signed each login in, as this server saw it: one store, written by the login walker
+  // and read by the gate, the feeds, the setup and the link to HQ.
+  Layer.provide(ZeropsSignInsModule.layer),
 );
 
 export const selectZeropsFeedsLayer = (selector: string | undefined) =>

@@ -34,13 +34,26 @@ const JAN_OWNER = {
 };
 const EVA_OWNER = { id: "user-eva", name: "Eva Dvorak", initials: "ED", avatarUrl: null };
 
-/** A Mate HQ places in application `appId`, named `appName`, as `name`. */
-function placedMate(appId: string, appName: string, name: string): HqPlacement {
-  return { appId, appName, kind: "mate", mate: { name, face: "" } };
+/**
+ * A Mate HQ places in application `appId`, named `appName`, as `name`; its summary names who
+ * signed Claude in where `signer` is given.
+ */
+function placedMate(appId: string, appName: string, name: string, signer?: string): HqPlacement {
+  const live =
+    signer === undefined
+      ? {}
+      : {
+          live: {
+            online: true,
+            at: "2026-10-02T10:00:00.000Z",
+            summary: { main: null, running: 0, waiting: 0, signers: { "claude-code": signer } },
+          },
+        };
+  return { appId, appName, kind: "mate", mate: { name, face: "", ...live } };
 }
 
 const titan = (name: string) => placedMate("titan", "Imperial Titan", name);
-const docs = (name: string) => placedMate("docs", "Acme Docs", name);
+const docs = (name: string, signer?: string) => placedMate("docs", "Acme Docs", name, signer);
 
 function candidate(input: {
   readonly id: string;
@@ -232,8 +245,8 @@ describe("usageEnvironmentIdentities", () => {
         }),
         candidate({
           id: "docs-fen",
-          tags: ["mate", "mate:signer:claude-code:user-eva"],
-          hq: docs("Fen"),
+          tags: ["mate"],
+          hq: docs("Fen", "user-eva"),
           environmentId: FEN,
         }),
       ],

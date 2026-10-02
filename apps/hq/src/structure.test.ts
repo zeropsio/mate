@@ -1,14 +1,22 @@
+import * as PgClient from "@effect/sql-pg/PgClient";
 import { assert, describe, it } from "@effect/vitest";
 import * as Deferred from "effect/Deferred";
+import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
+import * as Redacted from "effect/Redacted";
 import * as Ref from "effect/Ref";
+import * as Schedule from "effect/Schedule";
+import * as Stream from "effect/Stream";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
 
 import { activeCoreLayer, untilActive } from "../test/harness/activeCore.ts";
 import { TempPostgres, tempPostgresLayer } from "../test/harness/tempPostgres.ts";
 import { mateLiveLayer } from "./mateLive.ts";
+import { treeMigrations } from "./migrationFiles.ts";
+import { migrate } from "./migrations.ts";
 import { type OrgView, Roles } from "./roles.ts";
 import { Structure, structureLayer } from "./structure.ts";
 import { type ZeropsMember, type ZeropsProject, ZeropsUnavailable } from "./zerops/api.ts";
@@ -34,10 +42,13 @@ const project = (id: string, userRoles: ZeropsProject["userRoles"] = []): Zerops
 
 /**
  * owner, admin; dev is NO_ACCESS with a grant on P_MATE; reader is org READ_ONLY; nobody is
- * NO_ACCESS; maker is NO_ACCESS who can create projects, Basic user on their new Mate P_OWN and
- * Read only on P_TEAM; basic is org Basic user who can create projects, with no grant of their own.
+ * NO_ACCESS; maker is NO_ACCESS who can create projects, Basic user on their new Mate P_OWN and on
+ * P_DEV, and Read only on P_TEAM; basic is org Basic user who can create projects, with no grant of their own.
  */
 type Org = Omit<OrgView, "freshness">;
+
+/** A Mate's birth before anything marked it. */
+const UNBORN = { standupRequestedBy: null, closedOff: false } as const;
 
 const VIEW: Org = {
   orgId: "ORG",
@@ -58,24 +69,35 @@ const VIEW: Org = {
     project("P_PROD2"),
     project("P_OWN", [{ clientUserId: "C-maker", roleCode: "BASIC_USER" }]),
     project("P_TEAM", [{ clientUserId: "C-maker", roleCode: "READ_ONLY" }]),
+    // maker develops it: an application holding it is maker's to add an environment to.
+    project("P_DEV", [{ clientUserId: "C-maker", roleCode: "BASIC_USER" }]),
     project("P_OTHER"),
     // maker made this Mate: Zerops left them its OWNER.
     project("P_OWNED", [{ clientUserId: "C-maker", roleCode: "OWNER" }]),
+    // maker's new projects, which race for one place.
+    ...["P_RACE1", "P_RACE2", "P_RACE3", "P_RACE4", "P_RACE5", "P_RACE6"].map((id) =>
+      project(id, [{ clientUserId: "C-maker", roleCode: "OWNER" }]),
+    ),
   ],
 };
 
 /**
  * Structure over a fresh database and a Zerops whose view is `view`; a project exists while the
- * view has it, and `down` makes asking for one unanswerable.
+ * view has it, and `down` makes asking for one unanswerable. `before` writes the database over
+ * its own pool before the core migrates it.
  */
-const withStructure = <A, E>(
+const withStructure = <A, E, B = never>(
   use: (
     view: Ref.Ref<Org>,
     down: Ref.Ref<boolean>,
   ) => Effect.Effect<A, E, Structure | SqlClient.SqlClient>,
+  before?: Effect.Effect<void, B, SqlClient.SqlClient>,
 ) =>
   Effect.gen(function* () {
     const url = yield* (yield* TempPostgres).createDatabase;
+    if (before !== undefined) {
+      yield* before.pipe(Effect.provide(PgClient.layer({ url: Redacted.make(url) })));
+    }
     const view = yield* Ref.make(VIEW);
     const down = yield* Ref.make(false);
     const roles = Layer.succeed(Roles, {
@@ -100,6 +122,15 @@ const withStructure = <A, E>(
     return yield* Effect.andThen(untilActive, use(view, down)).pipe(Effect.provide(context));
   });
 
+/** The refusal's reason, or the success. */
+const reasonOf = <A, E extends { readonly _tag: string }>(effect: Effect.Effect<A, E>) =>
+  effect.pipe(
+    Effect.match({
+      onSuccess: () => "ok",
+      onFailure: (error) => ("reason" in error ? String(error.reason) : error._tag),
+    }),
+  );
+
 /** The refusal's code, or the success. */
 const outcome = <A, E extends { readonly _tag: string }>(effect: Effect.Effect<A, E>) =>
   effect.pipe(
@@ -111,6 +142,167 @@ const outcome = <A, E extends { readonly _tag: string }>(effect: Effect.Effect<A
 
 describe("structure", () => {
   it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+    it.effect(
+      "a project's admin who is no writer attaches it as an environment, into an empty place only",
+      () =>
+        withStructure(() =>
+          Effect.gen(function* () {
+            const structure = yield* Structure;
+            const shop = yield* structure.createApp("owner", "Shop");
+            const team = yield* structure.createApp("owner", "Team");
+            // maker develops Shop through P_DEV, its stage, and only sees Team through P_TEAM;
+            // maker is P_OWNED's owner (SPEC §3.3a).
+            yield* structure.attachProject("owner", shop.id, { projectId: "P_DEV", kind: "stage" });
+            yield* structure.attachProject("owner", team.id, {
+              projectId: "P_TEAM",
+              kind: "stage",
+            });
+            assert.deepStrictEqual(
+              yield* Effect.all([
+                reasonOf(
+                  structure.attachProject("maker", team.id, {
+                    projectId: "P_OWNED",
+                    kind: "production",
+                  }),
+                ),
+                reasonOf(
+                  structure.attachProject("maker", shop.id, {
+                    projectId: "P_OWNED",
+                    kind: "stage",
+                  }),
+                ),
+                reasonOf(
+                  structure.attachProject("dev", shop.id, { projectId: "P_MATE", kind: "stage" }),
+                ),
+                reasonOf(
+                  structure.attachProject("maker", shop.id, {
+                    projectId: "P_OWNED",
+                    kind: "production",
+                  }),
+                ),
+              ]),
+              ["not_app_developer", "slot_taken", "not_project_admin", "ok"],
+            );
+          }),
+        ),
+    );
+
+    it.effect("a devstage holds the stage's place; a project Zerops no longer has holds none", () =>
+      withStructure((view) =>
+        Effect.gen(function* () {
+          const structure = yield* Structure;
+          const shop = yield* structure.createApp("owner", "Shop");
+          // maker develops Shop through P_DEV, its production; P_MATE is its devstage.
+          yield* structure.attachProject("owner", shop.id, {
+            projectId: "P_DEV",
+            kind: "production",
+          });
+          yield* structure.attachProject("owner", shop.id, {
+            projectId: "P_MATE",
+            kind: "devstage",
+            mate: { name: "Ada", face: "face-1" },
+          });
+          const attach = (projectId: string, kind: "stage" | "production") =>
+            reasonOf(structure.attachProject("maker", shop.id, { projectId, kind }));
+          assert.strictEqual(yield* attach("P_OWNED", "stage"), "slot_taken");
+          assert.strictEqual(yield* attach("P_OWNED", "production"), "slot_taken");
+          // Zerops no longer has the production: its place is free, and its row goes.
+          yield* Ref.update(view, (org) => ({
+            ...org,
+            projects: org.projects.filter((project) => project.id !== "P_DEV"),
+          }));
+          // maker still develops Shop: P_OWN is its Mate now.
+          yield* structure.attachProject("owner", shop.id, {
+            projectId: "P_OWN",
+            kind: "mate",
+            mate: { name: "Bo", face: "face-2" },
+          });
+          assert.strictEqual(yield* attach("P_OWNED", "production"), "ok");
+        }),
+      ),
+    );
+
+    it.effect("of attaches racing for one empty place, exactly one lands", () =>
+      withStructure(() =>
+        Effect.gen(function* () {
+          const structure = yield* Structure;
+          const shop = yield* structure.createApp("owner", "Shop");
+          // maker develops Shop through P_DEV, its production, and owns the racing projects.
+          yield* structure.attachProject("owner", shop.id, {
+            projectId: "P_DEV",
+            kind: "production",
+          });
+          const racers = ["P_RACE1", "P_RACE2", "P_RACE3", "P_RACE4", "P_RACE5", "P_RACE6"];
+          // Every racer finds a connection open, so none starts late waiting for one.
+          const sql = yield* SqlClient.SqlClient;
+          yield* Effect.all(
+            Array.from({ length: 10 }, () => sql`SELECT pg_sleep(0.05)`),
+            { concurrency: "unbounded" },
+          );
+          const raced = yield* Effect.all(
+            racers.map((projectId) =>
+              reasonOf(structure.attachProject("maker", shop.id, { projectId, kind: "stage" })),
+            ),
+            { concurrency: "unbounded" },
+          );
+          assert.deepStrictEqual(raced.toSorted(), ["ok", ...Array(5).fill("slot_taken")]);
+        }),
+      ),
+    );
+
+    it.effect("a Mate record and an environment racing for one project: exactly one lands", () =>
+      withStructure(() =>
+        Effect.gen(function* () {
+          const structure = yield* Structure;
+          const shop = yield* structure.createApp("owner", "Shop");
+          // maker develops Shop through P_DEV, its production, and owns P_RACE1, held nowhere.
+          yield* structure.attachProject("owner", shop.id, {
+            projectId: "P_DEV",
+            kind: "production",
+          });
+          const sql = yield* SqlClient.SqlClient;
+          // The Mate's record is held back at its write, once it has decided: a lock on hq_mate
+          // that reads pass and an insert waits for.
+          const locked = yield* Deferred.make<void>();
+          const release = yield* Deferred.make<void>();
+          const holder = yield* Effect.forkChild(
+            sql.withTransaction(
+              Effect.gen(function* () {
+                yield* sql`LOCK TABLE hq_mate IN SHARE MODE`;
+                yield* Deferred.succeed(locked, undefined);
+                yield* Deferred.await(release);
+              }),
+            ),
+          );
+          yield* Deferred.await(locked);
+          const mate = yield* Effect.forkChild(
+            reasonOf(
+              structure.createMate("maker", { projectId: "P_RACE1", name: "Ada", face: "f" }),
+            ),
+          );
+          yield* sql<{ readonly waiting: number }>`
+            SELECT count(*)::int AS waiting FROM pg_stat_activity
+            WHERE wait_event_type = 'Lock' AND query LIKE '%INSERT INTO hq_mate%'`.pipe(
+            Effect.filterOrFail((rows) => (rows[0]?.waiting ?? 0) > 0),
+            Effect.retry(Schedule.spaced(Duration.millis(20))),
+            Effect.timeout(Duration.seconds(5)),
+          );
+          // Meanwhile the environment goes as far as it may: through, or waiting for the Mate.
+          const environment = yield* Effect.forkChild(
+            reasonOf(
+              structure.attachProject("maker", shop.id, { projectId: "P_RACE1", kind: "stage" }),
+            ),
+          );
+          yield* Effect.sleep(Duration.millis(300));
+          yield* Deferred.succeed(release, undefined);
+          yield* Fiber.join(holder);
+          const raced = [yield* Fiber.join(mate), yield* Fiber.join(environment)];
+          // A Mate first: no environment of it; an environment first: no Mate of it.
+          assert.oneOf(raced.join(" "), ["ok kind_class_change", "held_as_environment ok"]);
+        }),
+      ),
+    );
+
     it.effect(
       "an org owner or admin creates an application, nobody else; its name is its own",
       () =>
@@ -345,7 +537,12 @@ describe("structure", () => {
                 name: "Shop",
                 projects: [
                   { projectId: "P_PROD", name: "name of P_PROD", kind: "production", mate: null },
-                  { projectId: "P_MATE", name: "name of P_MATE", kind: "devstage", mate },
+                  {
+                    projectId: "P_MATE",
+                    name: "name of P_MATE",
+                    kind: "devstage",
+                    mate: { ...mate, ...UNBORN },
+                  },
                   { projectId: "P_STAGE", name: "name of P_STAGE", kind: "stage", mate: null },
                 ],
               },
@@ -358,7 +555,7 @@ describe("structure", () => {
                     projectId: "P_OWNED",
                     name: "name of P_OWNED",
                     kind: "devstage",
-                    mate: { name: "Bo", face: "face-1" },
+                    mate: { name: "Bo", face: "face-1", ...UNBORN },
                   },
                 ],
               },
@@ -504,10 +701,92 @@ describe("structure", () => {
             const read = yield* structure.read("owner");
             assert.deepStrictEqual(
               read.apps[0]?.projects.find((project) => project.projectId === "P_OWN")?.mate,
-              { name: "Ada", face: "face-3" },
+              { name: "Ada", face: "face-3", ...UNBORN },
             );
           }),
         ),
+    );
+
+    // A Mate HQ recorded before births were was set up whole, as clients did then: 0007 records it
+    // closed off, or the client's close-off gate would hold it for good. A Mate recorded after
+    // reads as not closed off until its press marks it.
+    it.effect(
+      "reads a Mate recorded before 0007 as closed off, and one recorded after as not",
+      () =>
+        withStructure(
+          () =>
+            Effect.gen(function* () {
+              const structure = yield* Structure;
+              yield* structure.createMate("owner", {
+                projectId: "P_OWN",
+                name: "Bo",
+                face: "face-1",
+              });
+              const mateOf = (projectId: string) =>
+                Effect.map(
+                  structure.read("owner"),
+                  (read) => read.ungrouped.find((entry) => entry.projectId === projectId)?.mate,
+                );
+              assert.deepStrictEqual(yield* mateOf("P_MATE"), {
+                name: "Ada",
+                face: "face-3",
+                standupRequestedBy: null,
+                closedOff: true,
+              });
+              assert.deepStrictEqual(yield* mateOf("P_OWN"), {
+                name: "Bo",
+                face: "face-1",
+                ...UNBORN,
+              });
+
+              yield* structure.markBirth("owner", "P_OWN", "closed_off");
+              assert.strictEqual((yield* mateOf("P_OWN"))?.closedOff, true);
+            }),
+          Effect.gen(function* () {
+            const applied = yield* migrate(treeMigrations().filter(({ name }) => name < "0007"));
+            assert.strictEqual(applied.at(-1), "0006_devstage.sql");
+            const sql = yield* SqlClient.SqlClient;
+            yield* sql`INSERT INTO hq_mate (project_id, name, face) VALUES ('P_MATE', 'Ada', 'face-3')`;
+          }),
+        ),
+    );
+
+    // The press records its ask and the close-off as the Mate is born (`markBirth`); whoever reads
+    // the project reads them with the record, and the structure is told at once.
+    it.effect("reads a Mate's birth with its record, and says so as it is marked", () =>
+      withStructure(() =>
+        Effect.gen(function* () {
+          const structure = yield* Structure;
+          yield* structure.createMate("owner", {
+            projectId: "P_MATE",
+            name: "Ada",
+            face: "face-3",
+          });
+          const mateOf = (userId: string) =>
+            Effect.map(structure.read(userId), (read) => read.ungrouped[0]?.mate);
+          assert.deepStrictEqual(yield* mateOf("reader"), {
+            name: "Ada",
+            face: "face-3",
+            standupRequestedBy: null,
+            closedOff: false,
+          });
+
+          const told = yield* Stream.runHead(Stream.drop(structure.changes, 1)).pipe(
+            Effect.forkChild,
+          );
+          yield* Effect.yieldNow;
+          yield* structure.markBirth("owner", "P_MATE", "standup");
+          assert.isTrue(Option.isSome(yield* Fiber.join(told)));
+          yield* structure.markBirth("owner", "P_MATE", "closed_off");
+
+          assert.deepStrictEqual(yield* mateOf("reader"), {
+            name: "Ada",
+            face: "face-3",
+            standupRequestedBy: "owner",
+            closedOff: true,
+          });
+        }),
+      ),
     );
 
     it.effect("renames a Mate and changes its face: whoever is owner or admin on its project", () =>
@@ -551,8 +830,8 @@ describe("structure", () => {
           );
           const mates = (yield* structure.read("owner")).apps[0]?.projects.map((p) => p.mate);
           assert.deepStrictEqual(mates, [
-            { name: "Ada 2", face: "face-3" },
-            { name: "Mine", face: "olive:clover" },
+            { name: "Ada 2", face: "face-3", ...UNBORN },
+            { name: "Mine", face: "olive:clover", ...UNBORN },
             null,
           ]);
         }),
@@ -688,7 +967,7 @@ describe("structure", () => {
               {
                 projectId: "P_OWNED",
                 name: "name of P_OWNED",
-                mate: { name: "Bo 2", face: "olive:clover" },
+                mate: { name: "Bo 2", face: "olive:clover", ...UNBORN },
               },
             ];
             assert.deepStrictEqual(yield* ungrouped("maker"), listed);
@@ -800,7 +1079,7 @@ describe("structure", () => {
             projectId: "P_MATE",
             name: "name of P_MATE",
             kind: "mate",
-            mate: { name: "Ada", face: "face-3" },
+            mate: { name: "Ada", face: "face-3", ...UNBORN },
           });
 
           yield* Ref.update(view, (current) => ({

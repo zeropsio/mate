@@ -91,8 +91,6 @@ export function useEnvironmentCreation(): (
   request: EnvironmentCreationRequest,
 ) => Promise<EnvironmentCreationRun> {
   const { activeOrganization, client, user } = useZeropsSession();
-  // Who asks for the stand-up of a Mate they add (`mate:standup:`).
-  const asker = user?.id;
   const { organizationRef, projectRef, runtime } = useZeropsData();
   const inventory = useZeropsInventory();
   const inventoryRef = useRef(inventory);
@@ -158,7 +156,6 @@ export function useEnvironmentCreation(): (
         recipe: choice.recipe,
         withAgent: choice.withAgent,
         register: true,
-        ...(asker ? { standUpBy: asker } : {}),
       });
       if (!isCurrent()) return { kind: "refused", reason: null };
       if (!plan.ok) return { kind: "refused", reason: plan.reason };
@@ -181,6 +178,9 @@ export function useEnvironmentCreation(): (
                 displayName: name,
                 kind: "mate",
                 mate: { name: choice.botName ?? name, face: choice.face },
+                // The person adding a dev Mate with its agent asks for its stand-up; the press
+                // closed its project off before it registers it (`planEnvironmentCreation`).
+                birth: { standUp: role === "dev" && withAgent, closedOff: withAgent },
               }
             : {
                 hq,
@@ -191,6 +191,7 @@ export function useEnvironmentCreation(): (
                 giteaOrigin: giteaOrigin ?? null,
               },
         ),
+        hq,
         // Reads the latest shared-model projection; no platform request.
         readObservedServices: async (projectId) => {
           const services = inventoryRef.current.services.get(projectId);
@@ -244,7 +245,6 @@ export function useEnvironmentCreation(): (
       projectRef,
       readGroupAgents,
       runtime,
-      asker,
       user,
     ],
   );

@@ -4,8 +4,12 @@
  * HQ holds it now. HQ enforces it; the client asks it what to offer.
  *
  * - **The verbs** are the places that decide today: reading a project or an application, writing an
- *   application, attaching, moving or detaching a project, a Mate's record, a Mate's enrollment, and
- *   following a Mate's live summary (who may operate it: open it, as its door does).
+ *   application, attaching, moving or detaching a project, a Mate's record, a Mate's enrollment,
+ *   following a Mate's live summary (who may operate it: open it, as its door does), and reading and
+ *   commenting on an application's changes (`hqChanges.ts`), as main's Gitea read them.
+ * - **A Mate's own verbs** — its enrollment, and its repositories, its own changes and git in the
+ *   application HQ holds it in — are a Mate's alone, for its own project only; it is refused every
+ *   other verb.
  * - **The target carries its current kind** (`held`), never only the requested one: a change between a
  *   Mate and an environment is the structure's writers' alone, whoever owns the project.
  * - **Freshness is a type:** every verb that writes takes `Facts<"fresh">`, read at the moment of
@@ -70,30 +74,58 @@ export interface ProjectTarget {
   readonly held: Held;
 }
 
+/** A Mate's own project as HQ holds it: its kind and the application it is in (`null`: none). */
+export interface MateTarget extends ProjectTarget {
+  readonly appId: string | null;
+}
+
+/** A change a Mate edits, as HQ records it (`null`: HQ has no such change). */
+export interface MateChangeTarget extends MateTarget {
+  readonly change: { readonly mateProjectId: string } | null;
+}
+
+/** A repository a Mate fetches: the application it is a repository of. */
+export interface MateFetchTarget extends MateTarget {
+  readonly repoAppId: string;
+}
+
 /** A project placed into an application as `to`, beside the application's projects. */
 export interface PlacementTarget extends ProjectTarget {
   readonly to: string;
   readonly appProjectIds: ReadonlyArray<string>;
 }
 
+/** A project attached to an application: and whether the application has a project of `to` already. */
+export interface AttachTarget extends PlacementTarget {
+  readonly slotTaken: boolean;
+}
+
 export interface Targets {
   readonly read_project: { readonly projectId: string };
   readonly observe_mate: { readonly projectId: string };
   readonly read_app: { readonly projectIds: ReadonlyArray<string> };
+  /** An application's changes, as its projects. */
+  readonly read_change: { readonly projectIds: ReadonlyArray<string> };
+  /** A comment on one of an application's changes: whoever reads the change. */
+  readonly comment_change: { readonly projectIds: ReadonlyArray<string> };
   readonly create_app: null;
   readonly rename_app: null;
-  readonly attach: PlacementTarget;
+  readonly attach: AttachTarget;
   readonly move: PlacementTarget;
   readonly detach: ProjectTarget;
   readonly create_mate_record: ProjectTarget;
   readonly edit_mate_record: ProjectTarget;
   readonly enroll_mate: ProjectTarget;
+  readonly ensure_repo: MateTarget;
+  readonly open_change: MateTarget;
+  readonly edit_change: MateChangeTarget;
+  readonly fetch_repo: MateFetchTarget;
 }
 
 export type Verb = keyof Targets;
 
 /** The verbs that only read; every other one writes and takes `Facts<"fresh">`. */
-export type ReadVerb = "read_project" | "read_app" | "observe_mate";
+export type ReadVerb = "read_project" | "read_app" | "read_change" | "observe_mate" | "fetch_repo";
 
 /** Not distributive: a verb known only as `Verb` may be a write, so it takes `Facts<"fresh">`. */
 export type FactsFor<V extends Verb> = [V] extends [ReadVerb] ? Facts : Facts<"fresh">;
@@ -113,6 +145,13 @@ export const REASONS = [
   "project_gone",
   "held_as_environment",
   "not_a_mate",
+  "mate_not_in_app",
+  "unknown_change",
+  "not_your_change",
+  "not_your_app",
+  "changes_not_seen",
+  "slot_taken",
+  "not_app_developer",
 ] as const;
 
 export type Reason = (typeof REASONS)[number];
@@ -158,6 +197,32 @@ function decide(principal: Principal, request: Request, facts: Facts): Decision 
     return projectOf(projectId) === undefined ? deny("project_gone") : ALLOW;
   }
 
+  if (
+    request.verb === "ensure_repo" ||
+    request.verb === "open_change" ||
+    request.verb === "edit_change" ||
+    request.verb === "fetch_repo"
+  ) {
+    // A Mate's work on its application: its repositories, its changes and its git. Only for its
+    // own project, and only in the application HQ holds it in.
+    const { projectId, appId, held } = request.target;
+    if (principal.kind !== "mate") return deny("wrong_principal");
+    if (principal.projectId !== projectId) return deny("not_your_project");
+    if (appId === null) return deny("mate_not_in_app");
+    if (!knownHeld(held)) return deny("unknown_kind");
+    if (!isMateKind(held)) return deny("not_a_mate");
+    if (request.verb === "edit_change") {
+      // Its own change only: a sibling Mate's is no change of its own to word.
+      const { change } = request.target;
+      if (change === null) return deny("unknown_change");
+      if (change.mateProjectId !== projectId) return deny("not_your_change");
+    }
+    if (request.verb === "fetch_repo" && request.target.repoAppId !== appId) {
+      return deny("not_your_app");
+    }
+    return projectOf(projectId) === undefined ? deny("project_gone") : ALLOW;
+  }
+
   if (principal.kind !== "person") return deny("wrong_principal");
   const member = facts.members.find(
     (candidate) =>
@@ -178,6 +243,19 @@ function decide(principal: Principal, request: Request, facts: Facts): Decision 
   /** An application is seen from org Read only up, or through one of its projects (#219). */
   const seesApp = (projectIds: ReadonlyArray<string>) =>
     roleAtLeast(member.roleCode, "READ_ONLY") || projectIds.some(readsProject);
+  /**
+   * An application is developed with Basic user or above on one of its projects: main's Gitea
+   * write team, who may merge its changes.
+   */
+  const writesApp = (projectIds: ReadonlyArray<string>) =>
+    projectIds.some((projectId) => roleAtLeast(roleOn(projectId), "BASIC_USER"));
+  /**
+   * An application's changes are read as main's Gitea read them: from org Read only up, or with
+   * Basic user or above on one of its projects — a Read only grant shows the application, not
+   * its changes.
+   */
+  const seesChanges = (projectIds: ReadonlyArray<string>) =>
+    roleAtLeast(member.roleCode, "READ_ONLY") || writesApp(projectIds);
   const exists = (projectId: string) =>
     projectOf(projectId) === undefined ? deny("project_gone") : ALLOW;
   /**
@@ -192,6 +270,10 @@ function decide(principal: Principal, request: Request, facts: Facts): Decision 
       return readsProject(request.target.projectId) ? ALLOW : deny("not_project_reader");
     case "read_app":
       return seesApp(request.target.projectIds) ? ALLOW : deny("app_not_seen");
+    case "read_change":
+    case "comment_change":
+      if (!seesApp(request.target.projectIds)) return deny("app_not_seen");
+      return seesChanges(request.target.projectIds) ? ALLOW : deny("changes_not_seen");
     case "observe_mate":
       // Who may operate a Mate is who its door opens for: Basic user or above there. No kind check:
       // HQ has a live summary only for a project it holds as a Mate.
@@ -203,28 +285,44 @@ function decide(principal: Principal, request: Request, facts: Facts): Decision 
       return writer ? ALLOW : deny("not_structure_writer");
     // Who a person is on the project comes before what HQ holds it as, so a refusal never tells
     // someone without that role the project's kind; the kind asked for is their own input.
-    case "attach":
+    case "attach": {
+      const { projectId, held, to, appProjectIds, slotTaken } = request.target;
+      if (!KINDS.has(to)) return deny("unknown_kind");
+      if (writer) return knownHeld(held) ? exists(projectId) : deny("unknown_kind");
+      if (isMateKind(to)) {
+        // A member who can create projects attaches their own new Mate: their own grant there,
+        // never the org role's fallback (parity B #42, #53).
+        if (!(member.canCreateProjects && roleAtLeast(grantOn(projectId), "BASIC_USER"))) {
+          return deny("not_own_new_mate");
+        }
+        if (!knownHeld(held)) return deny("unknown_kind");
+        if (classChange(held, to)) return deny("kind_class_change");
+        if (!seesApp(appProjectIds)) return deny("app_not_seen");
+        return exists(projectId);
+      }
+      // An environment, by Full access on its project (SPEC §3.3a): only a project held nowhere,
+      // only into an application they develop, only into its empty place. Replacing one, or a
+      // Mate turned environment, stays the writers'.
+      if (!roleAtLeast(roleOn(projectId), "ADMIN")) return deny("not_project_admin");
+      if (!knownHeld(held)) return deny("unknown_kind");
+      if (classChange(held, to)) return deny("kind_class_change");
+      if (held !== "none") return deny("not_structure_writer");
+      if (!seesApp(appProjectIds)) return deny("app_not_seen");
+      if (!writesApp(appProjectIds)) return deny("not_app_developer");
+      if (slotTaken) return deny("slot_taken");
+      return exists(projectId);
+    }
     case "move": {
       const { projectId, held, to, appProjectIds } = request.target;
       if (!KINDS.has(to)) return deny("unknown_kind");
       if (writer) {
         if (!knownHeld(held)) return deny("unknown_kind");
-        if (classChange(held, to) || !isMateKind(to) || request.verb === "attach") {
-          return exists(projectId);
-        }
+        if (classChange(held, to) || !isMateKind(to)) return exists(projectId);
       }
-      // A member who can create projects attaches their own new Mate: their own grant there, never
-      // the org role's fallback (parity B #42, #53). Moving takes the project's admin.
-      const lacksRole =
-        request.verb === "attach"
-          ? !(member.canCreateProjects && roleAtLeast(grantOn(projectId), "BASIC_USER"))
-          : !roleAtLeast(roleOn(projectId), "ADMIN");
-      if (lacksRole) {
-        // Placing an environment is the writers' alone, whoever asks.
+      // Moving takes the project's admin; moving an environment, the writers' alone, whoever asks.
+      if (!roleAtLeast(roleOn(projectId), "ADMIN")) {
         if (!isMateKind(to)) return deny("not_structure_writer");
-        return request.verb === "attach"
-          ? deny("not_own_new_mate")
-          : lacking(projectId, "not_project_admin");
+        return lacking(projectId, "not_project_admin");
       }
       if (!knownHeld(held)) return deny("unknown_kind");
       // A change between a Mate and an environment is the writers' alone too.

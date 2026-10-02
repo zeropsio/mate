@@ -1357,7 +1357,6 @@ export function makeZeropsDataAdapter(options: ZeropsDataAdapterOptions): Zerops
               ...(command.location === undefined ? {} : { location: command.location }),
               ...(command.zcpVersion === undefined ? {} : { zcpVersion: command.zcpVersion }),
               ...(command.agents === undefined ? {} : { agents: command.agents }),
-              ...(command.standUpBy === undefined ? {} : { standUpBy: command.standUpBy }),
             },
             signal,
             context.beforeProjectWrite,

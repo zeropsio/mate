@@ -1767,10 +1767,14 @@ describe("the post-grant stage's Mate environments", () => {
       ),
   );
 
-  /** A Mate whose press marked its project closed off: auto-connect may want it. */
-  const CLOSED_OFF_MATE = {
-    ...A_MATE,
-    project: { ...A_MATE.project, tagList: ["mate", "mate:closed-off"] },
+  /** A Mate HQ knows closed off: auto-connect may want it. */
+  const CLOSED_OFF_MATE = A_MATE;
+  /** HQ's record of A_MATE says its project is closed off. */
+  const HQ_CLOSED_OFF: Partial<AccountEnvironmentPorts> = {
+    closedOff: {
+      read: (projectId) => (projectId === A_MATE.projectId ? true : "unknown"),
+      subscribe: () => () => undefined,
+    },
   };
 
   it.effect.each([
@@ -1789,7 +1793,13 @@ describe("the post-grant stage's Mate environments", () => {
   ])("auto-connect wants $name (D13)", (row) =>
     Effect.scoped(
       Effect.gen(function* () {
-        const { rig, environments } = yield* granted([], [row.mate]);
+        const { rig, environments } = yield* granted(
+          [],
+          [row.mate],
+          platformAdapter([row.mate]),
+          [row.mate],
+          HQ_CLOSED_OFF,
+        );
         yield* answerProbe(rig, MATE_ORIGIN, answering(ENV_A, A_MATE.projectId));
 
         environments.setActiveOrganization(row.open);
@@ -1874,7 +1884,7 @@ describe("the post-grant stage's Mate environments", () => {
       },
     };
   };
-  /** A Mate whose project has no mate:closed-off: its organization's streams state its marker. */
+  /** A Mate HQ does not know closed off: its organization's streams state its marker. */
   const OPEN_MATE = { ...A_MATE, project: { ...A_MATE.project, tagList: ["mate"] } };
   /** A variable the app reads, on A_MATE's container. */
   const onMate = (key: string) => ({
@@ -1887,7 +1897,7 @@ describe("the post-grant stage's Mate environments", () => {
   const autoConnected = (rig: ReturnType<typeof environmentRig>) =>
     rig.exchanges.filter(({ input: { reason } }) => reason === "auto-connect").length;
 
-  /** A Mate with no mate:closed-off whose container was made at `created`. */
+  /** A Mate HQ does not know closed off, whose container was made at `created`. */
   const openMate = (created: string) => ({
     ...OPEN_MATE,
     service: { ...OPEN_MATE.service, created },
@@ -1897,7 +1907,7 @@ describe("the post-grant stage's Mate environments", () => {
   /** Made three hours before: an older Mate, never held for its marker. */
   const OLDER = openMate("2026-09-23T07:00:00Z");
 
-  // The gate on a Mate with no mate:closed-off, at the wiring: an older Mate connects on a fresh
+  // The gate on a Mate HQ does not know closed off, at the wiring: an older Mate connects on a fresh
   // load whatever its organization's variables stream says; a young one is held until its marker
   // is known absent (pass 28 review: the owner's whole complaint was stalls).
   it.effect.each([
@@ -1959,6 +1969,73 @@ describe("the post-grant stage's Mate environments", () => {
     ),
   );
 
+  // HQ's word decides where it has one: closed off connects and not closed off holds, marker or
+  // not — another browser or person never connects to a half-made Mate. Where HQ holds no word (no
+  // record: a legacy Mate, or HQ not loaded), the press's marker decides.
+  it.effect.each([
+    { hq: true, marker: true, wanted: 1 },
+    { hq: true, marker: false, wanted: 1 },
+    { hq: false, marker: true, wanted: 0 },
+    { hq: false, marker: false, wanted: 0 },
+    { hq: "unknown", marker: true, wanted: 0 },
+    { hq: "unknown", marker: false, wanted: 1 },
+  ] as const)("the close-off gate where HQ says $hq and the marker is $marker", (row) =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const { clock, rig, environments } = yield* granted(
+          [],
+          [OLDER],
+          statedPlatform([OLDER], {
+            variables: [onMate(row.marker ? "MATE_SETUP_RUNTIMES" : "ZCP_MATE_ENABLED")],
+          }),
+          [OLDER],
+          { closedOff: { read: () => row.hq, subscribe: () => () => undefined } },
+        );
+        yield* answerProbe(rig, MATE_ORIGIN, answering(ENV_A, A_MATE.projectId));
+        environments.setActiveOrganization("org-1");
+        yield* clock.advance(30 * SECOND);
+        yield* settle;
+        expect(autoConnected(rig)).toBe(row.wanted);
+      }),
+    ),
+  );
+
+  // HQ's word that the project is closed off lets a Mate its press marked in, as it comes: before
+  // it the marker holds the Mate, whatever else is known.
+  it.effect("a Mate its press marked connects once HQ says its project is closed off", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        let closed: boolean | "unknown" = "unknown";
+        const heard = { listener: (): void => undefined };
+        const { clock, rig, environments } = yield* granted(
+          [],
+          [YOUNG],
+          statedPlatform([YOUNG], { variables: [onMate("MATE_SETUP_RUNTIMES")] }),
+          [YOUNG],
+          {
+            closedOff: {
+              read: () => closed,
+              subscribe: (listener) => {
+                heard.listener = listener;
+                return () => undefined;
+              },
+            },
+          },
+        );
+        yield* answerProbe(rig, MATE_ORIGIN, answering(ENV_A, A_MATE.projectId));
+        environments.setActiveOrganization("org-1");
+        yield* clock.advance(30 * SECOND);
+        yield* settle;
+        expect(autoConnected(rig)).toBe(0);
+
+        closed = true;
+        heard.listener();
+        yield* settle;
+        expect(autoConnected(rig)).toBe(1);
+      }),
+    ),
+  );
+
   // Its ⋯ menu offers its harden; auto-connect does not wait for it (pass 28 review).
   it.effect("an older Mate whose keys are all still ADMIN connects", () =>
     Effect.scoped(
@@ -1976,6 +2053,8 @@ describe("the post-grant stage's Mate environments", () => {
               },
             ],
           }),
+          [CLOSED_OFF_MATE],
+          HQ_CLOSED_OFF,
         );
         yield* answerProbe(rig, MATE_ORIGIN, answering(ENV_A, A_MATE.projectId));
         environments.setActiveOrganization("org-1");

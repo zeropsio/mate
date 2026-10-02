@@ -12,7 +12,7 @@
  * - `POST /api/mate/changes` {@link OpenChangeRequest} → {@link OpenChangeResponse};
  * - `PATCH /api/mate/changes/:repo/:n` {@link EditChangeRequest} → {@link HqChange};
  * - `POST /api/mate/changes/:repo/:n/attachments`, a PNG → {@link AttachmentResponse};
- * - `GET /api/mate/self` → its state with {@link MateChanges};
+ * - `GET /api/mate/self` → its state (`mateLink.ts` `MateState`), {@link MateChanges} included;
  * - git over HTTPS at `/git/<appId>/<repo>.git`, Basic auth with the user `mate` and the credential
  *   as the password. A Mate fetches its application's repositories and pushes only to the branch of
  *   its own open change, only forward; nobody deletes a branch and `main` moves only by HQ's merge.
@@ -50,11 +50,15 @@ export const CHANGE_BODY_MAX = 20_000;
 /** A comment on a change, at most this many characters. */
 export const COMMENT_BODY_MAX = 20_000;
 
-/** Text of at most `max` characters, counted as code points. */
+/** Text of at most `max` characters, counted as code points, and no NUL, which no text in HQ keeps. */
 const upTo = (max: number) =>
   Schema.String.check(
     Schema.makeFilter((text: string) =>
-      [...text].length <= max ? undefined : `Expected at most ${String(max)} characters`,
+      text.includes("\u0000")
+        ? "Expected no NUL"
+        : [...text].length <= max
+          ? undefined
+          : `Expected at most ${String(max)} characters`,
     ),
   );
 
@@ -83,6 +87,26 @@ export type ChangeState = typeof ChangeState.Type;
 const Instant = Schema.String;
 
 /**
+ * Whether a change merges into `main`, as its record keeps it ({@link Mergeability} without the
+ * conflict's paths): `unknown` until HQ has judged it.
+ */
+export const MergeabilityKind = Schema.Literals([
+  "clean",
+  "conflict",
+  "empty",
+  "already_merged",
+  "unrelated",
+  "unknown",
+]);
+export type MergeabilityKind = typeof MergeabilityKind.Type;
+
+/**
+ * How many open changes of a repository HQ judges again when its `main` moves, newest first; the
+ * rest read `unknown` until their detail is read. A push judges its own change.
+ */
+export const JUDGED_PER_MAIN_MOVE = 20;
+
+/**
  * A change as HQ records it. Its branch is `mate/<mateProjectId>/<number>`; `head` is the commit
  * that branch was last pushed to, none until the first push lands. Once merged, `mergedSha` is the
  * squash on `main` and `landedHead` the head it squashed.
@@ -104,6 +128,15 @@ export const HqChange = Schema.Struct({
   openedAt: Instant,
   mergedAt: Schema.NullOr(Instant),
   closedAt: Schema.NullOr(Instant),
+  /** Its last push, edit of its words, or comment. */
+  updatedAt: Instant,
+  /**
+   * As HQ judged it on the last push to it or move of `main`
+   * ({@link JUDGED_PER_MAIN_MOVE}), or the last read of its detail.
+   */
+  mergeability: MergeabilityKind,
+  /** Whether `main` has moved past the change's merge base, judged with `mergeability`. */
+  behind: Schema.Boolean,
 });
 export type HqChange = typeof HqChange.Type;
 
@@ -166,7 +199,7 @@ export type MateChange = typeof MateChange.Type;
 
 /**
  * What a Mate's own state carries of its changes, beside its record (`@t3tools/shared/mateLink`
- * `MateState`): `GET /api/mate/self` answers both in one object. The application HQ holds the Mate
+ * `MateState`, which `GET /api/mate/self` answers and its link brings down). The application HQ holds the Mate
  * in, none for a Mate in no application; and in each of that application's repositories, the
  * Mate's latest {@link MATE_CHANGES_PER_REPO} changes, newest first — its open one, if any, is the
  * newest, since a number is opened only while none is.

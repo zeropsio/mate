@@ -24,7 +24,7 @@ services:
 describe("recipeProjectImportYaml", () => {
   const out = recipeProjectImportYaml(TIER, {
     name: "Aurora - production",
-    tagList: ["mate", "mate:standup:u-ada"],
+    tagList: ["mate"],
   });
 
   it("keeps the project-level env the strip would have taken", () => {
@@ -46,7 +46,6 @@ describe("recipeProjectImportYaml", () => {
 
   it("replaces the recipe's tags with the ones the environment is born with", () => {
     expect(out).toContain("    - mate\n");
-    expect(out).toContain("    - mate:standup:u-ada");
     // The published tag and its key go together; a stray item is rejected.
     expect(out).not.toContain("- published");
     expect(out.match(/^\s+tags:/gmu)).toHaveLength(1);

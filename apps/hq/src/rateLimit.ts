@@ -1,8 +1,8 @@
 /**
  * The doors' limit per client address: a token bucket of ten, refilled at ten a minute, for each
- * door and address (`api.ts` keys it so: a person's door and a Mate's do not share one). The doors
- * are unauthenticated, and what passes their first check costs HQ's own credential reads; the
- * limit keeps one address from spending them. The address is the L7 balancer's `X-Real-IP`. The
+ * door and address (`api.ts` keys it so: a person's door, a Mate's, and git's credential misses do
+ * not share one). The doors are unauthenticated, and what passes their first check costs HQ's own
+ * credential reads; the limit keeps one address from spending them, or from guessing at git. The address is the L7 balancer's `X-Real-IP`. The
  * buckets live in memory: a restart forgets them.
  *
  * @module rateLimit

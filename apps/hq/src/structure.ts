@@ -19,6 +19,7 @@ import {
   type Verb,
   can,
 } from "@t3tools/shared/zeropsPermissions";
+import type { MateChanges } from "@t3tools/shared/hqChanges";
 import type { MateState } from "@t3tools/shared/mateLink";
 import { type RoleProjectKind, isMateKind } from "@t3tools/shared/zeropsRoles";
 import * as Context from "effect/Context";
@@ -33,7 +34,7 @@ import * as SubscriptionRef from "effect/SubscriptionRef";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
 import type { SqlError } from "effect/unstable/sql/SqlError";
 
-import { heldOf } from "./held.ts";
+import { heldOf, lockProject } from "./held.ts";
 import { Leader, type NotLeader } from "./leader.ts";
 import { MateLive, type MateLiveEntry } from "./mateLive.ts";
 import { Roles } from "./roles.ts";
@@ -72,6 +73,9 @@ export interface AttachInput {
   readonly mate?: { readonly name: string; readonly face: string };
 }
 
+/** A Mate's state as the structure holds it: its record and its birth; its changes are `changes.ts`'. */
+export type MateRecordState = Omit<MateState, keyof MateChanges>;
+
 export interface MateRecord {
   readonly projectId: string;
   readonly name: string;
@@ -79,13 +83,25 @@ export interface MateRecord {
 }
 
 /**
- * A Mate as a reader sees it: its record, and — to whoever may operate it (`observe_mate`), once
- * HQ has heard from it — its live summary (`mateLive.ts`).
+ * A Mate as a reader sees it: its record and its birth, and — to whoever may operate it
+ * (`observe_mate`), once HQ has heard from it — its live summary (`mateLive.ts`).
  */
 export interface MateView {
   readonly name: string;
   readonly face: string;
+  /** Who asked for its stand-up (`markBirth`), or nobody yet. */
+  readonly standupRequestedBy: string | null;
+  /** Whether its project is closed off, so its runtimes may be imported. */
+  readonly closedOff: boolean;
   readonly live?: MateLiveEntry;
+}
+
+/** A Mate's record and birth as its row holds them. */
+interface MateRow {
+  readonly name: string;
+  readonly face: string;
+  readonly standupRequestedBy: string | null;
+  readonly closedOff: boolean;
 }
 
 export interface StructureRead {
@@ -163,9 +179,11 @@ export class Structure extends Context.Service<
       userId: string,
       projectId: string,
       mark: "standup" | "closed_off",
-    ) => Effect.Effect<MateState, WriteError>;
-    /** A Mate's state as HQ holds it — its record and its birth — when HQ has its record. */
-    readonly mateState: (projectId: string) => Effect.Effect<Option.Option<MateState>, SqlError>;
+    ) => Effect.Effect<MateRecordState, WriteError>;
+    /** A Mate's record and birth, when HQ has its record. */
+    readonly mateState: (
+      projectId: string,
+    ) => Effect.Effect<Option.Option<MateRecordState>, SqlError>;
     /** The projects whose Mate state changes, as they change. */
     readonly mateChanges: Stream.Stream<string>;
     readonly read: (userId: string) => Effect.Effect<StructureRead, SqlError | ZeropsError>;
@@ -248,7 +266,7 @@ export const structureLayer = (options: {
             SELECT name, face, standup_requested_by, closed_off_at IS NOT NULL AS closed_off
             FROM hq_mate WHERE project_id = ${projectId}`,
           (rows) =>
-            Option.map(Option.fromNullishOr(rows[0]), (row): MateState => ({
+            Option.map(Option.fromNullishOr(rows[0]), (row): MateRecordState => ({
               projectId,
               name: row.name,
               face: row.face,
@@ -336,6 +354,7 @@ export const structureLayer = (options: {
               }),
             );
             if (marked.length === 0) return yield* refuse("mate_not_found", "mate_not_found");
+            yield* changed;
             yield* PubSub.publish(mateChanged, projectId);
             const state = yield* stateOf(projectId);
             if (Option.isNone(state)) return yield* refuse("mate_not_found", "mate_not_found");
@@ -385,21 +404,38 @@ export const structureLayer = (options: {
               return yield* refuse("invalid", "hq_project");
             }
             const view = yield* roles.fresh;
-            const appProjects = yield* sql<{ readonly project_id: string }>`
-              SELECT project_id FROM hq_app_project WHERE app_id::text = ${appId}`;
-            // Decided on the kind held now; the plain INSERT below is the fence: a project placed
-            // since makes it a conflict.
-            yield* allowed(
-              userId,
-              "attach",
-              {
-                projectId: input.projectId,
-                held: yield* heldOf(sql, input.projectId),
-                to: input.kind,
-                appProjectIds: appProjects.map((row) => row.project_id),
-              },
-              view,
-            );
+            /**
+             * `can`'s answer on the application's projects and the project's kind as they stand:
+             * whether the application has its project of this kind already counts too — a
+             * devstage is its stage, and a project Zerops no longer has holds no place.
+             */
+            const decided = Effect.gen(function* () {
+              const appProjects = yield* sql<{
+                readonly project_id: string;
+                readonly kind: string;
+              }>`SELECT project_id, kind FROM hq_app_project WHERE app_id::text = ${appId}`;
+              const sameKind = (kind: string) =>
+                kind === input.kind || (input.kind === "stage" && kind === "devstage");
+              yield* allowed(
+                userId,
+                "attach",
+                {
+                  projectId: input.projectId,
+                  held: yield* heldOf(sql, input.projectId),
+                  to: input.kind,
+                  appProjectIds: appProjects.map((row) => row.project_id),
+                  slotTaken: appProjects.some(
+                    (row) =>
+                      sameKind(row.kind) &&
+                      view.projects.some((project) => project.id === row.project_id),
+                  ),
+                },
+                view,
+              );
+            });
+            // Decided first on the structure as it stands, so a refusal spends nothing of Zerops;
+            // then again in the write, under the application's lock.
+            yield* decided;
             // What this write would conflict with — the project in any application, the
             // application's production. A row whose project Zerops no longer has (asked by its id)
             // stops counting and goes with this write; one Zerops cannot answer for refuses it.
@@ -411,7 +447,14 @@ export const structureLayer = (options: {
             yield* conflictOnUnique(
               leader.write(
                 Effect.gen(function* () {
-                  const apps = yield* sql`SELECT 1 FROM hq_app WHERE id::text = ${appId}`;
+                  // The project, then the application's row, locked: attaches of one project, or
+                  // into one application, are decided one after another, each on what the one
+                  // before left — two never take one place. The row lock lets a reference to the
+                  // application pass.
+                  yield* lockProject(sql, input.projectId);
+                  const apps = yield* sql`
+                    SELECT 1 FROM hq_app WHERE id::text = ${appId} FOR NO KEY UPDATE`;
+                  yield* decided;
                   if (apps.length === 0) return yield* refuse("app_not_found", "app_not_found");
                   yield* dropRows(gone);
                   yield* sql`
@@ -443,6 +486,7 @@ export const structureLayer = (options: {
             if (appId === null) {
               const removed = yield* leader.write(
                 Effect.gen(function* () {
+                  yield* lockProject(sql, projectId);
                   const held = yield* heldOf(sql, projectId);
                   yield* allowed(userId, "detach", { projectId, held }, view);
                   return yield* sql`
@@ -465,6 +509,7 @@ export const structureLayer = (options: {
             yield* conflictOnUnique(
               leader.write(
                 Effect.gen(function* () {
+                  yield* lockProject(sql, projectId);
                   const held = yield* heldOf(sql, projectId);
                   yield* allowed(
                     userId,
@@ -515,9 +560,8 @@ export const structureLayer = (options: {
             yield* conflictOnUnique(
               leader.write(
                 Effect.gen(function* () {
-                  // Held as decided until this write ends: a writer changing the project's kind
-                  // waits for it.
-                  yield* sql`SELECT 1 FROM hq_app_project WHERE project_id = ${mate.projectId} FOR SHARE`;
+                  // Held as decided until this write ends: a placement of the project waits.
+                  yield* lockProject(sql, mate.projectId);
                   const held = yield* heldOf(sql, mate.projectId);
                   yield* allowed(
                     userId,
@@ -573,19 +617,21 @@ export const structureLayer = (options: {
               readonly project_id: string;
               readonly app_id: string;
               readonly kind: string;
-              readonly mate_name: string | null;
-              readonly mate_face: string | null;
+              readonly mate: MateRow | null;
             }>`
               SELECT p.project_id, p.app_id::text AS app_id, p.kind,
-                     m.name AS mate_name, m.face AS mate_face
+                     CASE WHEN m.project_id IS NULL THEN NULL ELSE json_build_object(
+                       'name', m.name, 'face', m.face,
+                       'standupRequestedBy', m.standup_requested_by,
+                       'closedOff', m.closed_off_at IS NOT NULL) END AS mate
               FROM hq_app_project p LEFT JOIN hq_mate m USING (project_id)
               ORDER BY p.seq`;
-            const alone = yield* sql<{
-              readonly project_id: string;
-              readonly name: string;
-              readonly face: string;
-            }>`
-              SELECT m.project_id, m.name, m.face FROM hq_mate m
+            const alone = yield* sql<{ readonly project_id: string; readonly mate: MateRow }>`
+              SELECT m.project_id, json_build_object(
+                       'name', m.name, 'face', m.face,
+                       'standupRequestedBy', m.standup_requested_by,
+                       'closedOff', m.closed_off_at IS NOT NULL) AS mate
+              FROM hq_mate m
               WHERE NOT EXISTS (SELECT 1 FROM hq_app_project p WHERE p.project_id = m.project_id)
               ORDER BY m.seq`;
             const names = new Map(view.projects.map((project) => [project.id, project.name]));
@@ -594,12 +640,12 @@ export const structureLayer = (options: {
               can(person, "read_project", { projectId }, view).allow;
             const visible = rows.filter((row) => reads(row.project_id));
             const summaries = yield* live.all;
-            /** The Mate's record, with its live summary for whoever may operate it. */
-            const mateView = (projectId: string, name: string, face: string): MateView => {
+            /** The Mate's record and birth, with its live summary for whoever may operate it. */
+            const mateView = (projectId: string, mate: MateRow): MateView => {
               const entry = summaries.get(projectId);
               return entry !== undefined && can(person, "observe_mate", { projectId }, view).allow
-                ? { name, face, live: entry }
-                : { name, face };
+                ? { ...mate, live: entry }
+                : mate;
             };
             return {
               ungrouped: alone
@@ -607,7 +653,7 @@ export const structureLayer = (options: {
                 .map((row) => ({
                   projectId: row.project_id,
                   name: names.get(row.project_id) ?? "",
-                  mate: mateView(row.project_id, row.name, row.face),
+                  mate: mateView(row.project_id, row.mate),
                 })),
               apps: apps
                 .map((app) => ({
@@ -619,10 +665,7 @@ export const structureLayer = (options: {
                       projectId: row.project_id,
                       name: names.get(row.project_id) ?? "",
                       kind: row.kind,
-                      mate:
-                        row.mate_name === null
-                          ? null
-                          : mateView(row.project_id, row.mate_name, row.mate_face ?? ""),
+                      mate: row.mate === null ? null : mateView(row.project_id, row.mate),
                     })),
                 }))
                 .filter(

@@ -21,6 +21,9 @@ const change: HqChange = {
   openedAt: "2026-10-02T09:00:00.000Z",
   mergedAt: null,
   closedAt: null,
+  updatedAt: "2026-10-02T09:00:00.000Z",
+  mergeability: "clean",
+  behind: false,
 };
 
 /** `git diff` for one path, as HQ hands a file's patch over: its header, then its hunks. */

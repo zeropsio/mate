@@ -55,7 +55,6 @@
  * amount of retained memory across a very long server lifetime is an
  * accepted trade-off against a scheduler crash.
  */
-import * as NodeOS from "node:os";
 
 import type {
   TerminalAttachInput,
@@ -76,7 +75,6 @@ import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
-import * as Path from "effect/Path";
 import * as PubSub from "effect/PubSub";
 import * as Queue from "effect/Queue";
 import * as Ref from "effect/Ref";
@@ -90,10 +88,10 @@ import { subscribeBeforeSnapshot } from "../utils/subscribeBeforeSnapshot.ts";
 import { ZeropsAgentAuth } from "./ZeropsAgentAuth.ts";
 import { withLogins, ZeropsLogins } from "./ZeropsLogins.ts";
 import { isZeropsEnvironment } from "./ZeropsEnvironment.ts";
-import { ZEROPS_SUBJECT_PREFIX } from "./ZeropsMembershipWatch.ts";
+import { zeropsUserIdOf } from "./ZeropsMembershipWatch.ts";
 import { ZEROPS_AGENT_LOGIN_HANDLERS } from "./zeropsAgentLoginHandlers.ts";
 import { stallLoginAction, stepLoginOutput } from "./zeropsAgentLoginWalker.ts";
-import { fileSignInStore, signInsPath, type SignInStore } from "./zeropsSignIns.ts";
+import { ZeropsSignIns, type SignInStore } from "./zeropsSignIns.ts";
 
 /** How long a burst of terminal output coalesces into one stall countdown — mirrors the GUI walker's `STALL_TIMEOUT_MS`. */
 const STALL_TIMEOUT_MS = 1000;
@@ -115,12 +113,15 @@ const AWAITING_CODE_PHASES: ReadonlySet<ZeropsAgentLoginState["phase"]> = new Se
   "awaiting-code",
 ]);
 
-/** The Zerops user id behind a session subject; any other subject is kept whole, and matches no Zerops user. */
-const startedByOf = (subject: string): string =>
-  subject.startsWith(ZEROPS_SUBJECT_PREFIX) ? subject.slice(ZEROPS_SUBJECT_PREFIX.length) : subject;
-
 /** The sshfs-mounted project root every mate terminal defaults to — matches `AGENT_LOGIN_CWD` in the web's (now-deleted) direct-typing path. */
 const AGENT_LOGIN_CWD = "/var/www";
+
+/**
+ * How long a login's credential must stay gone before its kept sign-in goes with it: a CLI that
+ * removes its credential before it writes the new one reads absent for a moment, and that moment
+ * must not leave the login nobody's.
+ */
+export const CREDENTIAL_GONE_AFTER = Duration.seconds(10);
 
 /** Deterministic per-login terminal id (the agent id for a default login), distinct from the user's own `term-1` primary shell. */
 export const loginTerminalId = (key: string): string => `agent-login-${key}`;
@@ -270,6 +271,8 @@ export interface ZeropsAgentLoginOptions {
    * credential goes takes its kept sign-in with it. Absent, nothing is cleared.
    */
   readonly credentialsHeld?: Stream.Stream<ReadonlyArray<readonly [string, boolean]>>;
+  /** Defaults to {@link CREDENTIAL_GONE_AFTER}; shortened by tests on a live clock. */
+  readonly credentialGoneAfter?: Duration.Duration;
 }
 
 interface FeedState {
@@ -314,6 +317,7 @@ export const make = (options: ZeropsAgentLoginOptions) =>
       isZeropsEnvironment: enabled,
       signIns,
       credentialsHeld,
+      credentialGoneAfter = CREDENTIAL_GONE_AFTER,
     } = options;
     const changes = yield* PubSub.sliding<ZeropsAgentLoginByAgent>(4);
     const subscribeMutex = yield* Semaphore.make(1);
@@ -335,7 +339,7 @@ export const make = (options: ZeropsAgentLoginOptions) =>
     }
 
     // A restart picks up who signed each login in last: the credential lives on, and so does
-    // whose it is — the turn gate goes by it whatever the signer tag says.
+    // whose it is.
     const kept = signIns === undefined ? {} : yield* signIns.load;
     const state = yield* Ref.make<FeedState>({
       logins: {
@@ -361,17 +365,34 @@ export const make = (options: ZeropsAgentLoginOptions) =>
         ),
       },
     });
-    // A login whose credential goes takes its kept sign-in with it: on the first reading
-    // without one (a credential gone while the server was down), and when one is seen to go.
-    // Not on a reading that never had one, which is every sign-in's own first moments.
+    // A login whose credential goes takes its kept sign-in with it: from the first reading
+    // without one (a credential gone while the server was down), or one seen to go — once the
+    // absence still stands CREDENTIAL_GONE_AFTER on, and no sign-in was kept meanwhile. Not
+    // from a reading that never had one, which is every sign-in's own first moments.
     if (signIns !== undefined && credentialsHeld !== undefined) {
       const held = new Map<string, boolean>();
+      /** Each absence's own mark: any reading of the credential since ends the wait on it. */
+      const absences = new Map<string, symbol>();
+      const letGoUnlessBack = (key: string, absence: symbol) =>
+        Effect.gen(function* () {
+          const kept = (yield* signIns.load)[key];
+          yield* Effect.sleep(credentialGoneAfter);
+          if (absences.get(key) !== absence || (yield* signIns.load)[key] !== kept) return;
+          yield* signIns.clear(key);
+        });
       yield* credentialsHeld.pipe(
         Stream.runForEach((rows) =>
           Effect.forEach(rows, ([key, now]) => {
             const before = held.get(key);
             held.set(key, now);
-            return !now && before !== false ? signIns.clear(key) : Effect.void;
+            if (now) {
+              absences.delete(key);
+              return Effect.void;
+            }
+            if (before === false) return Effect.void;
+            const absence = Symbol(key);
+            absences.set(key, absence);
+            return Effect.forkScoped(letGoUnlessBack(key, absence)).pipe(Effect.asVoid);
           }),
         ),
         Effect.catchCause((cause) =>
@@ -478,8 +499,8 @@ export const make = (options: ZeropsAgentLoginOptions) =>
         }
 
         if (result.nextPhase === "succeeded" && signIns !== undefined) {
-          // Kept before anything else hears of the success: whose the credential is outlives
-          // this process (`zeropsSignIns`).
+          // Kept before anything else hears of the success: the gate, the rows and the Mate's
+          // summary go by it, and it outlives this process (`zeropsSignIns`).
           yield* signIns.save(key, {
             by: session.startedBy,
             at: DateTime.toEpochMillis(before?.startedAt ?? (yield* DateTime.now)),
@@ -487,15 +508,11 @@ export const make = (options: ZeropsAgentLoginOptions) =>
         }
 
         if (result.nextPhase === "succeeded") {
-          // The record of WHO signed in is a tag on the Mate's project, written
-          // by the app as the person (D6, `ZeropsProjectSigners`): this
-          // container's own key cannot write tags, which is the whole reason
-          // the record moved off its disk. All this does is republish the
-          // snapshot, which reads the tags afresh until the record names who
-          // signed in. A login beyond the defaults is its own feed's to re-check.
+          // The re-check republishes the login with who signed it in. A login beyond the
+          // defaults is its own feed's to re-check.
           yield* key === session.agentId
-            ? zeropsAgentAuth.recheckNow(session.agentId, session.startedBy)
-            : (zeropsLogins?.recheckNow(key, session.startedBy) ?? Effect.void);
+            ? zeropsAgentAuth.recheckNow(session.agentId)
+            : (zeropsLogins?.recheckNow(key) ?? Effect.void);
         }
 
         yield* setLoginState(key, {
@@ -575,7 +592,7 @@ export const make = (options: ZeropsAgentLoginOptions) =>
         const terminalId = loginTerminalId(key);
         const token = Symbol(key);
         const startedAt = yield* DateTime.now;
-        const startedBy = startedByOf(subject);
+        const startedBy = zeropsUserIdOf(subject);
         const before = (yield* Ref.get(state)).logins[key];
 
         yield* setLoginState(key, { phase: "starting", terminalId, startedAt, startedBy });
@@ -744,8 +761,7 @@ export const layer = Layer.effect(
     const zeropsAgentAuth = yield* ZeropsAgentAuth;
     const zeropsLogins = yield* ZeropsLogins;
     const config = yield* ServerConfig;
-    const path = yield* Path.Path;
-    const signIns = yield* fileSignInStore(signInsPath(path, NodeOS.homedir()));
+    const signIns = yield* ZeropsSignIns;
     return yield* make({
       terminalManager,
       zeropsAgentAuth,

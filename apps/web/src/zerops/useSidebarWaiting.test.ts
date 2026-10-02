@@ -20,8 +20,31 @@ const mate = (
       id,
       name: id,
       status: "ACTIVE",
-      tagList: ["mate", ...(signer === null ? [] : [`mate:signer:claude-code:${signer}`])],
-      hq: { appId: "aaa", appName: "Acme", kind: "mate", mate: { name: bot, face } },
+      tagList: ["mate"],
+      hq: {
+        appId: "aaa",
+        appName: "Acme",
+        kind: "mate",
+        mate: {
+          name: bot,
+          face,
+          // Who signed it in, as its summary at HQ names them.
+          ...(signer === null
+            ? {}
+            : {
+                live: {
+                  online: true,
+                  at: "2026-10-02T10:00:00.000Z",
+                  summary: {
+                    main: null,
+                    running: 0,
+                    waiting: 0,
+                    signers: { "claude-code": signer },
+                  },
+                },
+              }),
+        },
+      },
     },
     group,
     service: { id: "zcp", name: "zcp", status: "ACTIVE" },

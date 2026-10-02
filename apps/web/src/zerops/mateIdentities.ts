@@ -50,8 +50,8 @@ export interface ZeropsMateIdentity {
    */
   readonly connected: boolean;
   /**
-   * Who asked for the project's development to be stood up (`mate:standup:`), while the ask
-   * waits for their first sign-in: their empty conversation says so and sends it (`mateStandUp.ts`).
+   * Who asked for the project's development to be stood up (HQ's `standupRequestedBy`), while the
+   * ask waits for their first sign-in: their empty conversation says so (`mateStandUp.ts`).
    */
   readonly standUp?: { readonly by: string } | undefined;
 }

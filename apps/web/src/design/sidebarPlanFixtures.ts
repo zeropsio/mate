@@ -43,7 +43,7 @@ function routes(...hosts: ReadonlyArray<string>): ReadonlyArray<ZeropsPublicRout
 }
 
 /**
- * A Mate's container, connected, its agent signed in (D6's tag) — or, with
+ * A Mate's container, connected, its agent signed in (D6, as HQ's summary names) — or, with
  * `signer: null`, nobody signed in yet; `owner` is its project's `OWNER`
  * entry, and `connected: false` a Mate whose socket is not open yet.
  */
@@ -64,8 +64,30 @@ function mate(
       id,
       name: `${bot} - dev`,
       status: "ACTIVE",
-      tagList: ["mate", ...(signer === null ? [] : [`mate:signer:claude-code:${signer}`])],
-      hq: { ...app, kind: "mate", mate: { name: bot, face: "" } } satisfies HqPlacement,
+      tagList: ["mate"],
+      hq: {
+        ...app,
+        kind: "mate",
+        mate: {
+          name: bot,
+          face: "",
+          // Who signed it in, as its summary at HQ names them.
+          ...(signer === null
+            ? {}
+            : {
+                live: {
+                  online: true,
+                  at: "2026-10-02T10:00:00.000Z",
+                  summary: {
+                    main: null,
+                    running: 0,
+                    waiting: 0,
+                    signers: { "claude-code": signer },
+                  },
+                },
+              }),
+        },
+      } satisfies HqPlacement,
       ...(owner === undefined ? {} : { userRoles: [{ clientUserId: owner, roleCode: "OWNER" }] }),
     },
     group: connected ? "connected" : "ready",
