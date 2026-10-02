@@ -7,10 +7,8 @@ export {
 export * as TokenStore from "./tokenStore.ts";
 export {
   acquireGiteaPersonToken,
-  completeGiteaSignIn,
   MateCredentialError,
   type AcquireGiteaPersonTokenInput,
-  type CompleteGiteaSignInInput,
   type GiteaPersonToken,
 } from "./giteaBroker.ts";
 export {
