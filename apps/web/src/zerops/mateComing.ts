@@ -341,10 +341,11 @@ export function mateComingPage(input: {
 }
 
 /**
- * How long an arrival holds its board through a link retrying on its own: about its first
- * back-off steps; past it, its link's words say it is not answering, with *Try now*.
+ * How many failures of its link since it last connected an arrival holds its board through: its
+ * first back-off step; past it, its link's words say it is not answering, with *Try now*, and
+ * keep saying so through the attempts between the retries until it connects.
  */
-export const ARRIVAL_RETRY_HOLD_MS = 20_000;
+export const ARRIVAL_FAILURES_HELD = 1;
 
 /** Up, its conversation and its sign-in being read: the last of its coming words. */
 const ARRIVAL_OPENING: MateComing = { kind: "coming", line: ALMOST_THERE_LINE };
@@ -365,20 +366,22 @@ const ON_ITS_WAY_LEVELS: ReadonlySet<string> = new Set([
 export function arrivalHoldsThrough(
   reachability: Reachability | null,
   context: {
-    /** Its link has been retrying longer than an arrival waits (`ARRIVAL_RETRY_HOLD_MS`). */
-    readonly retryingPast: boolean;
+    /** Its link's failures since it last connected (`MateLink.failuresSinceConnect`). */
+    readonly failuresSinceConnect: number;
   },
 ): boolean {
   if (reachability === null) return true;
+  const failing = context.failuresSinceConnect > ARRIVAL_FAILURES_HELD;
   switch (reachability.kind) {
-    case "connecting":
-    case "reconnecting":
     case "resolving":
     case "ready":
     case "waiting-for-zerops":
       return true;
+    case "connecting":
+    case "reconnecting":
+      return !failing;
     case "retrying":
-      return !reachability.restart && !context.retryingPast;
+      return !reachability.restart && !failing;
     case "container":
       return (
         ON_ITS_WAY_LEVELS.has(reachability.container.level) &&
@@ -388,6 +391,12 @@ export function arrivalHoldsThrough(
       return false;
   }
 }
+
+/** Whether a Mate's link, as its machine reads it (`MateLink`), waits on what an arrival holds through. */
+export const arrivalLinkHolds = (link: {
+  readonly reachability: Reachability | null;
+  readonly failuresSinceConnect: number;
+}): boolean => arrivalHoldsThrough(link.reachability, link);
 
 /**
  * What a Mate's own view says as its arrival, if anything: its coming words while it comes up,
@@ -399,8 +408,8 @@ export function arrivalHoldsThrough(
 export function mateArrivalShown(input: {
   readonly page: MateComingPage | undefined;
   readonly cameUp: boolean;
-  /** Its link has been retrying longer than an arrival waits (`ARRIVAL_RETRY_HOLD_MS`). */
-  readonly retryingPast: boolean;
+  /** Its link's failures since it last connected (`MateLink.failuresSinceConnect`). */
+  readonly failuresSinceConnect: number;
 }): MateComing | undefined {
   const { page } = input;
   if (page?.kind === "coming") return page.coming;

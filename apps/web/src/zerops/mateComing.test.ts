@@ -551,7 +551,7 @@ describe("mateArrivalShown — what a Mate's own view keeps saying once it came 
     readonly case: string;
     readonly page: MateComingPage | undefined;
     readonly cameUp: boolean;
-    readonly retryingPast?: boolean;
+    readonly failuresSinceConnect?: number;
     readonly expected: ReturnType<typeof mateArrivalShown>;
   }>([
     {
@@ -641,17 +641,34 @@ describe("mateArrivalShown — what a Mate's own view keeps saying once it came 
       cameUp: true,
       expected: OPENING,
     },
-    {
-      case: "reaching, retrying on its own past the arrival's patience",
-      page: reaching({
-        kind: "retrying",
-        retryAtMs: NOW,
-        last: { kind: "network" },
-        restart: false,
-      } as Reachability),
+    // Failing since it last connected: past its first failure, no wait of its link holds the board
+    // — its retries and the attempts between them alike, so the two never take turns.
+    ...(
+      [
+        { kind: "retrying", retryAtMs: NOW, last: { kind: "network" }, restart: false },
+        { kind: "connecting", waitingOn: "exchange" },
+        { kind: "reconnecting" },
+      ] as ReadonlyArray<Reachability>
+    ).map((reachability) => ({
+      case: `reaching, ${reachability.kind} after its second failure since it connected`,
+      page: reaching(reachability),
       cameUp: true,
-      retryingPast: true,
+      failuresSinceConnect: 2,
       expected: undefined,
+    })),
+    {
+      case: "reaching, connecting again after its first failure",
+      page: reaching({ kind: "connecting", waitingOn: "exchange" }),
+      cameUp: true,
+      failuresSinceConnect: 1,
+      expected: OPENING,
+    },
+    {
+      case: "reaching, its container booting whatever its link failed",
+      page: reaching({ kind: "container", container: { level: "booting", overdue: false } }),
+      cameUp: true,
+      failuresSinceConnect: 3,
+      expected: OPENING,
     },
     {
       case: "reaching, retrying with a restart to offer",
@@ -695,8 +712,8 @@ describe("mateArrivalShown — what a Mate's own view keeps saying once it came 
       expected: undefined,
     },
     { case: "nothing known yet", page: undefined, cameUp: true, expected: undefined },
-  ])("$case", ({ page, cameUp, retryingPast = false, expected }) => {
-    expect(mateArrivalShown({ page, cameUp, retryingPast })).toEqual(expected);
+  ])("$case", ({ page, cameUp, failuresSinceConnect = 0, expected }) => {
+    expect(mateArrivalShown({ page, cameUp, failuresSinceConnect })).toEqual(expected);
   });
 });
 
