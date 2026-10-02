@@ -44,10 +44,15 @@ interface Moment {
   readonly production: string | undefined;
 }
 
-function current(tag: string, moment: Moment): ReleaseFacts {
+function current(
+  tag: string,
+  moment: Moment,
+  releases: ReadonlyArray<FlowReleaseRow> = [],
+): ReleaseFacts {
   return releaseFacts({
     tag,
     live: moment.live,
+    releases,
     contents: moment.contents,
     comparison: compareForRelease({
       candidate: new Map([["app", HEAD]]),
@@ -106,7 +111,7 @@ function walk(steps: ReadonlyArray<Step>) {
       held,
       press: step.press,
       clockMs: NOW,
-      read: (tag) => current(tag, step.moment),
+      read: (tag) => current(tag, step.moment, step.releases),
     });
     held = shown.held;
     const { facts } = shown;
@@ -215,6 +220,63 @@ describe("a finished release keeps the facts it was made with", () => {
   it("a second release, released: the foot names the release to roll back to", () => {
     expect(second.at(-1)?.model.consequence).toBe(
       "Production runs v0.1.1. If it misbehaves, roll back to v0.1.0 from production's menu.",
+    );
+  });
+});
+
+describe("what a release replaces: the first only when nothing was released before", () => {
+  const moment = (live: string | undefined): Moment => ({
+    live,
+    contents: ONE_CHANGE,
+    production: "4c3b2a1",
+  });
+  it.each<[string, string | undefined, ReadonlyArray<FlowReleaseRow>, ReleaseFacts["replaces"]]>([
+    ["nothing released", undefined, [], { kind: "first" }],
+    [
+      "only a refused release",
+      undefined,
+      [row("v0.1.0", undefined, { verdict: "refused" })],
+      { kind: "first" },
+    ],
+    ["only itself, on its way", undefined, [row("v0.1.2", undefined)], { kind: "first" }],
+    ["one runs in full", "v0.1.1", [row("v0.1.1", "live")], { kind: "release", tag: "v0.1.1" }],
+    [
+      // v0.1.1 moved app and failed in api: production runs v0.1.1's app and v0.1.0's api.
+      "none runs in full",
+      undefined,
+      [row("v0.1.1", "deploy-failed"), row("v0.1.0", undefined)],
+      { kind: "unnamed" },
+    ],
+    [
+      "read after it landed",
+      "v0.1.2",
+      [row("v0.1.2", "live"), row("v0.1.1", undefined)],
+      { kind: "unnamed" },
+    ],
+  ])("%s", (_name, live, releases, replaces) => {
+    expect(current("v0.1.2", moment(live), releases).replaces).toEqual(replaces);
+  });
+
+  it("a release after a mixed production: says what is true, and keeps the roll back", () => {
+    const earlier = [
+      row("v0.1.1", "deploy-failed", { failedEntry: { service: "app", commit: HEAD } }),
+      row("v0.1.0", undefined),
+    ];
+    const steps = walk(
+      release(
+        "v0.1.2",
+        "v0.1.3",
+        { live: undefined, contents: ONE_CHANGE, production: "4c3b2a1" },
+        { live: "v0.1.2", contents: [], production: HEAD },
+        earlier,
+      ),
+    );
+    for (const step of steps) {
+      expect(step.model.meta.join(" · ")).toBe("replaces what production runs · 1 change");
+      expect(step.model.ifWrong).toBe("Roll back from production's menu. It gets its own review.");
+    }
+    expect(steps.at(-1)?.model.consequence).toBe(
+      "Production runs v0.1.2. If it misbehaves, roll back from production's menu.",
     );
   });
 });

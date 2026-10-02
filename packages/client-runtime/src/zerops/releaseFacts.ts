@@ -16,18 +16,15 @@
 
 import type { FlowReleaseRow, ReleaseComparison } from "./release.ts";
 import type { Moved } from "./releaseCompare.ts";
-import type { ReleaseOutcome, ReviewPress } from "./reviewVerdict.ts";
+import type { ReleaseOutcome, ReleaseReplaces, ReviewPress } from "./reviewVerdict.ts";
 import { stageMarks, type StageMark, type StageStandings } from "./stageMarks.ts";
 
 /** A release's own facts, as the review shows them. */
 export interface ReleaseFacts {
   /** The version it tags. */
   readonly tag: string;
-  /**
-   * The release production ran as it was offered: what this one replaces, and where a roll back
-   * goes. `undefined` for the first release.
-   */
-  readonly replaces: string | undefined;
+  /** What production ran as it was offered: what this one replaces, and where a roll back goes. */
+  readonly replaces: ReleaseReplaces;
   /** What goes out, per comparison HQ answered (`ZeropsReleaseOffer.contents`). */
   readonly contents: ReadonlyArray<Moved>;
   /** Where: per service, what it redeploys from, or what it stays on. */
@@ -39,8 +36,10 @@ export interface ReleaseFacts {
 /** The facts as the project reads them now. */
 export function releaseFacts(input: {
   readonly tag: string;
-  /** The release production runs now. */
+  /** The release production runs in full now (`releaseRunBy`), if any does. */
   readonly live: string | undefined;
+  /** Every release of the application: the first release is one with none before it. */
+  readonly releases: ReadonlyArray<Pick<FlowReleaseRow, "tag" | "verdict">>;
   readonly contents: ReadonlyArray<Moved>;
   /** Per service, `main` against production (`compareForRelease`). */
   readonly comparison: ReadonlyArray<ReleaseComparison>;
@@ -50,7 +49,12 @@ export function releaseFacts(input: {
   const moving = input.comparison.filter((row) => row.changed).map((row) => row.service);
   return {
     tag: input.tag,
-    replaces: input.live,
+    replaces:
+      input.live !== undefined && input.live !== input.tag
+        ? { kind: "release", tag: input.live }
+        : input.releases.some((entry) => entry.verdict !== "refused" && entry.tag !== input.tag)
+          ? { kind: "unnamed" }
+          : { kind: "first" },
     contents: input.contents,
     where: input.comparison.map((row) => ({
       service: row.service,

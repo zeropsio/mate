@@ -420,7 +420,7 @@ function release(over: Partial<ReleaseReviewInput> = {}): ReleaseReviewInput {
     changes: 2,
     onStage: { total: 2, running: 2 },
     services: ["app", "api"],
-    replaces: "v0.1.56",
+    replaces: { kind: "release", tag: "v0.1.56" },
     outcome: { kind: "offered" },
     now: NOW,
     ...over,
@@ -548,25 +548,32 @@ describe("releaseReview", () => {
   it.each<[string, ReleaseReviewInput["replaces"], string, string | undefined, string]>([
     [
       "the first release",
-      undefined,
+      { kind: "first" },
       "the first release · 2 changes",
       undefined,
       "Production runs v0.1.57.",
     ],
     [
-      "after a release production runs",
-      "v0.1.56",
+      "after a release production runs in full",
+      { kind: "release", tag: "v0.1.56" },
       "replaces v0.1.56 · 2 changes",
       "Roll back to v0.1.56 from production's menu. It gets its own review.",
       "Production runs v0.1.57. If it misbehaves, roll back to v0.1.56 from production's menu.",
     ],
     [
+      "after releases none of which production runs in full",
+      { kind: "unnamed" },
+      "replaces what production runs · 2 changes",
+      "Roll back from production's menu. It gets its own review.",
+      "Production runs v0.1.57. If it misbehaves, roll back from production's menu.",
+    ],
+    [
       // Read after it landed: production runs the release itself, never a roll back to it.
       "naming itself",
-      "v0.1.57",
+      { kind: "release", tag: "v0.1.57" },
       "replaces v0.1.57 · 2 changes",
-      undefined,
-      "Production runs v0.1.57.",
+      "Roll back from production's menu. It gets its own review.",
+      "Production runs v0.1.57. If it misbehaves, roll back from production's menu.",
     ],
   ])(
     "released, %s: the header, the roll back line and the foot",

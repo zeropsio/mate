@@ -29,7 +29,7 @@ function render(over: Partial<ReleaseReviewViewProps>): string {
       outcome={{ kind: "offered" }}
       permission={{ allowed: true }}
       press={{ kind: "idle" }}
-      replaces="v0.1.56"
+      replaces={{ kind: "release", tag: "v0.1.56" }}
       rows={[]}
       services={["app"]}
       tag="v0.1.57"
