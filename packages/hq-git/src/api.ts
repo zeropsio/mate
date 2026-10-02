@@ -148,6 +148,12 @@ export interface SquashNames {
   readonly head: string;
   readonly files: Bounded<{ readonly path: string; readonly status: string }>;
 }
+export interface TagRead {
+  readonly name: string;
+  readonly sha: string;
+  readonly message: string;
+  readonly taggedAt: string;
+}
 export interface CommitFilesOptions {
   /** Content or null to delete an existing file; a path git or a case-folding checkout refuses is `invalid_path`. */
   readonly files: Readonly<Record<string, string | Uint8Array | null>>;
@@ -197,6 +203,12 @@ export interface DiffFile extends FileStat {
 /** All reads have hard ceilings; optional requested bounds may only narrow them. */
 export interface HqGit {
   readonly create: (repo: Repo) => Effect.Effect<Repo, GitError>;
+  /**
+   * A repository made from a bundle `bundle` wrote: every ref as it was, its objects checked as a
+   * push's are, then converged like every repository; an empty one for `null` (a repository that had
+   * no ref). An existing repository is `exists`.
+   */
+  readonly restore: (repo: Repo, bundle: string | null) => Effect.Effect<Repo, GitError>;
   /**
    * Fetches branches (except `mate/*`) and tags; HEAD is always main, so a source without main is
    * refused. Credentials travel in environment config, never in a URL or argv.
@@ -274,6 +286,27 @@ export interface HqGit {
    * that is no commit, one the repository lacks, or an unborn main.
    */
   readonly onMain: (repo: Repo, sha: string) => Effect.Effect<boolean, GitError>;
+  /**
+   * The repository whole, as one git bundle written to `file`: every ref and every object they
+   * reach, with the refs it holds. A repository with no ref writes no file and names none.
+   */
+  readonly bundle: (
+    repo: Repo,
+    file: string,
+  ) => Effect.Effect<
+    { readonly refs: ReadonlyArray<{ readonly ref: string; readonly sha: string }> },
+    GitError
+  >;
+  /**
+   * The repository's tags: each by the commit it names, its message and when it was tagged (empty
+   * for a lightweight tag, which has neither).
+   */
+  readonly tags: (repo: Repo) => Effect.Effect<Bounded<TagRead>, GitError>;
+  /** Which of `shas` the repository has no commit of: missing, or another kind of object. */
+  readonly missingCommits: (
+    repo: Repo,
+    shas: ReadonlyArray<string>,
+  ) => Effect.Effect<ReadonlyArray<string>, GitError>;
   /** The change's merge base with main; null without a change head, a main, or shared history. */
   readonly mergeBase: (
     repo: Repo,
