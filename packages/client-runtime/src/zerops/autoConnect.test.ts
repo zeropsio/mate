@@ -10,7 +10,7 @@ import {
   ZEROPS_AUTO_CONNECT_LIMIT,
   type AutoConnectCandidate,
 } from "./autoConnect.ts";
-import type { ZeropsContainerHealth } from "./provisioning.ts";
+import type { ZeropsContainerHealth } from "./containerHealth.ts";
 
 function candidate(
   id: string,

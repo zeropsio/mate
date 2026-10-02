@@ -18,7 +18,7 @@ import type {
 } from "@t3tools/client-runtime/zerops/birthProgress";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import type { KnownProcessStatus, ProcessStatus } from "@t3tools/client-runtime/zerops/data";
-import type { ZeropsContainerHealth } from "@t3tools/client-runtime/zerops/provisioning";
+import type { ZeropsContainerHealth } from "@t3tools/client-runtime/zerops/containerHealth";
 
 export interface BirthFactsInput {
   readonly candidate: ZeropsCandidate;

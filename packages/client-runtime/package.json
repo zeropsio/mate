@@ -367,10 +367,6 @@
       "types": "./src/zerops/identityExchange.ts",
       "default": "./src/zerops/identityExchange.ts"
     },
-    "./zerops/provisioning": {
-      "types": "./src/zerops/provisioning.ts",
-      "default": "./src/zerops/provisioning.ts"
-    },
     "./zerops/quickActions": {
       "types": "./src/zerops/quickActions.ts",
       "default": "./src/zerops/quickActions.ts"

@@ -151,9 +151,8 @@ export interface ContainerContext {
 // ── Caps ──────────────────────────────────────────────────────────────────────────────────────
 
 /**
- * How long each waiting level is given before it is `overdue`. Creation and provisioning match
- * `provisioning.ts`'s caps; booting's 90 s runs from the moment the last process ends; an intent's
- * budget is its level's cap, run from the verb's acceptance.
+ * How long each waiting level is given before it is `overdue`. Booting's 90 s runs from the moment
+ * the last process ends; an intent's budget is its level's cap, run from the verb's acceptance.
  */
 export const CONTAINER_CAPS_MS = {
   creating: 60_000,

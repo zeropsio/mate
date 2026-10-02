@@ -46,7 +46,15 @@ import { zeropsMateBaseUrl } from "./candidates.ts";
 import type { DescriptorFacts } from "./environments/environmentMachine.ts";
 import type { Instant } from "./data/access/grant.ts";
 import type { ProbeAnswer, ProbeRead } from "./environments/probeStore.ts";
-import type { ZeropsContainerHealth } from "./provisioning.ts";
+
+/** What a `/healthz` probe concluded about a container. */
+export type ZeropsContainerHealth =
+  | "ready"
+  | "initializing"
+  | "predates-mate"
+  | "unreachable"
+  /** The container is up but Mate never answered. */
+  | "stalled";
 
 export type FetchLike = (url: string, init?: RequestInit) => Promise<Response>;
 

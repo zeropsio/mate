@@ -304,7 +304,7 @@ descriptor → exchange → thread state.
 
 An exchange runs when the key is wanted (the route targets it, a registration record exists, the
 user pressed Connect, a live intent of ours, auto-connect for ready Mates in the active org, or a
-pressed Mate past its provisioning wait's hardening, `provisioning.ts`) and all of these hold: the
+Mate the press made, once its container answers) and all of these hold: the
 post-grant stage runs, the session is signed in, P is `present`, C is `ready` or `unknown`, no
 exchange is in flight for the origin, the tab is visible or this is the route's target, the tab's
 exchange budget has a token, and `identityMint` is allowed. One driver per store serves them route

@@ -35,7 +35,7 @@ import {
   mateOnlyOwnerOpensIt,
   type RoleMateVisibility,
 } from "@t3tools/client-runtime/zerops/mateAccess";
-import type { ZeropsContainerHealth } from "@t3tools/client-runtime/zerops/provisioning";
+import type { ZeropsContainerHealth } from "@t3tools/client-runtime/zerops/containerHealth";
 import { MATE_SHAPE_OF_TINT, type ServiceStatusToneId } from "@t3tools/shared/brand";
 
 export type ZeropsRowCandidate = ZeropsCandidate & {

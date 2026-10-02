@@ -144,8 +144,8 @@ function contextFor(
           ? Effect.fail({ _tag: "ZeropsDataAdapterError", kind: "rejected", message: "refused" })
           : Effect.succeed({ attempt: {} as never, value: undefined });
       },
-      // A birth's one restart, and its delegation drop, both run in
-      // `provisioning.ts`'s `hardening` phase (`ZeropsApiClient.hardenMate`)
+      // A birth's one restart, and its delegation drop, both run in the
+      // press's close-off (`ZeropsApiClient.hardenMate`, `matePress.ts`)
       // — gated on a READ proof and before anyone is admitted, never from a
       // background reconcile a person may already be inside. If this hook
       // ever called any of these again, the command would throw and fail
@@ -404,7 +404,7 @@ describe("useZeropsMateKeys", () => {
 
   it("never reads or drops a token's delegations — the birth owns that now", async () => {
     // The one-time mint (guide 0.4) is dropped once, at birth
-    // (`ZeropsApiClient.hardenMate`, `provisioning.ts`'s `hardening` phase),
+    // (`ZeropsApiClient.hardenMate`, the press's close-off),
     // never re-read from a background reconcile. `contextFor`'s
     // `listTokenDelegations`/`deleteTokenDelegation` throw if this hook ever
     // calls either, so this test's pass is itself the assertion.
@@ -504,7 +504,7 @@ describe("useZeropsMateKeys", () => {
 
   it("the reconcile never restarts a project", async () => {
     // The birth's one restart runs before anyone is admitted
-    // (`provisioning.ts`'s `hardening` phase, spec-mate §3 B-1/B-2/B-3); a
+    // (the press's close-off, spec-mate §3 B-1/B-2/B-3); a
     // background reconcile that runs on every read of the projects screen,
     // possibly with the person already inside a conversation, must not carry
     // it along. `contextFor`'s `isolateProjectEnv` throws if this hook ever

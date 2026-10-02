@@ -1,6 +1,6 @@
 import { newMateTint, offerAsker, type RandomBytes } from "@t3tools/client-runtime/zerops";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
-import type { ZeropsContainerHealth } from "@t3tools/client-runtime/zerops/provisioning";
+import type { ZeropsContainerHealth } from "@t3tools/client-runtime/zerops/containerHealth";
 import { MATE_SHAPE_OF_TINT } from "@t3tools/shared/brand";
 import { describe, expect, it } from "vite-plus/test";
 

@@ -42,7 +42,7 @@ import type { ProcessStatus } from "./data/types.ts";
 import type { ActivityAppVersion } from "./activity/dto.ts";
 import { type ObservedStep, observedSteps } from "./activity/observedSteps.ts";
 import type { MateSetupRuntimesState } from "./mateSetup.ts";
-import type { ZeropsContainerHealth } from "./provisioning.ts";
+import type { ZeropsContainerHealth } from "./containerHealth.ts";
 import type { RecipeRuntime, RecipeRuntimeRole } from "./recipeTier.ts";
 import { isManagedDataService, isRuntimeService } from "./topology.ts";
 

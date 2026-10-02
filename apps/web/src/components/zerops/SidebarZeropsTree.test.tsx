@@ -15,7 +15,7 @@ import type { Deployment } from "@t3tools/client-runtime/zerops/flow";
 import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
 import type { CandidatesNotice } from "@t3tools/client-runtime/zerops/projections";
 import { deriveCrewView } from "@t3tools/client-runtime/zerops/projections/crew";
-import type { ZeropsContainerHealth } from "@t3tools/client-runtime/zerops/provisioning";
+import type { ZeropsContainerHealth } from "@t3tools/client-runtime/zerops/containerHealth";
 import * as NodeFS from "node:fs";
 import { act, act as act_, type ReactElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";

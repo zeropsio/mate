@@ -81,7 +81,7 @@ import { mateIsViewers, mateOwnerRecords } from "@t3tools/client-runtime/zerops/
 import { deployActivatedAt, deployRuns } from "@t3tools/client-runtime/zerops/flow";
 import type { KnownAffordance } from "@t3tools/client-runtime/zerops/knowledge";
 import type { CandidatesNotice } from "@t3tools/client-runtime/zerops/projections";
-import type { ZeropsContainerHealth } from "@t3tools/client-runtime/zerops/provisioning";
+import type { ZeropsContainerHealth } from "@t3tools/client-runtime/zerops/containerHealth";
 import type { TimestampFormat } from "@t3tools/contracts/settings";
 import type { MateShapeId, MateTintId } from "@t3tools/shared/brand";
 import {

@@ -355,7 +355,7 @@ const byName = compareZeropsHostnames;
 
 /**
  * Descending by `created` (an ISO timestamp, lexically sortable — the same
- * assumption `autoEnterProvisioning.ts` and `provisioning.ts` make), missing
+ * assumption `autoEnterProvisioning.ts` makes), missing
  * always last regardless of which side of the comparison it is on.
  */
 function byCreatedNewestFirst(left: string | undefined, right: string | undefined): number {
