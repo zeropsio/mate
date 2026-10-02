@@ -9,12 +9,15 @@
  * on each project — and a screen that can see a group is the only thing that
  * can keep a container's reach honest.
  *
- * Running on every read is deliberate and cheap. A token write changes grants,
- * never a container's environment, so nothing restarts, and an account whose
- * groups have not moved plans no writes at all. That is the whole reason this
- * lives here rather than at creation time: an environment added, renamed or
- * removed from anywhere — this client, another device, the Zerops GUI — is
- * reconciled the next time somebody looks at their projects.
+ * It plans whenever what it decides on moves — the groups' shape or the token
+ * list's grants — and only then. A token write changes grants, never a
+ * container's environment, so nothing restarts, and an account whose groups
+ * have not moved plans no writes at all. That is the whole reason this lives
+ * here rather than at creation time: an environment added, renamed or removed
+ * from anywhere — this client, another device, the Zerops GUI — is reconciled
+ * the next time somebody looks at their projects. When, what is remembered,
+ * and what a refusal costs is the driver's (`useZeropsGroupReach.logic.ts`);
+ * it reads nothing itself, only the shared token list this hook is shown.
  *
  * Every Mate is read, solo ones included. Reach is not the only thing the plan
  * decides any more: it also lowers the token the platform minted with `ADMIN`
@@ -23,10 +26,9 @@
  * group of one used to be skipped because it had no sibling to reach; it has a
  * token to lower.
  *
- * Failures are swallowed on purpose. This is a background repair of something
- * the user did not ask for; a token the account is not allowed to rewrite, or
- * a network that dropped, must not put an error on a screen that is otherwise
- * fine. The next read tries again.
+ * A refused write never puts an error on a screen that is otherwise fine —
+ * this is a background repair the person did not ask for. It is logged once
+ * and planned again after its back-off.
  *
  * This reconcile never restarts a Mate (spec-mate §3 B-1/B-2/B-3): a birth
  * has exactly one restart and it runs before anyone is admitted, in
@@ -41,12 +43,10 @@
  * token-widening plan below, but the delegation itself is dropped once, at
  * birth, never re-read here.
  *
- * The re-run key covers the token set, not only the group shape: a token
+ * The plan's key covers the token set, not only the group shape: a token
  * that appears after a Mate finishes hardening changes nothing about which
- * projects are in which group, so a key built from `groups` alone never
- * changed and the reconcile never re-ran for it (measured live 2026-09-22,
- * a hardened Mate's token still carrying a delegation because its
- * `lastKey` had not moved).
+ * projects are in which group, and is still a reason to plan (measured live
+ * 2026-09-22, a hardened Mate's token still carrying a delegation).
  */
 
 import {
@@ -54,46 +54,12 @@ import {
   type TokensCellRequest,
   type ZeropsIntegrationTokenGrantMetadata,
 } from "@t3tools/client-runtime/zerops/data";
-import { useEffect, useMemo, useRef, useState } from "react";
+import type { ZeropsGroupReachGroup, ZeropsIntegrationToken } from "@t3tools/client-runtime/zerops";
+import { useEffect, useMemo } from "react";
 
-import {
-  planAccountGroupReach,
-  writeTokenProjectsFresh,
-  type ZeropsGroupReachGroup,
-  type ZeropsIntegrationToken,
-} from "@t3tools/client-runtime/zerops";
 import { tokenWrites } from "./tokenWriteLock";
+import { groupReachDriverFor, makeGroupReachDriver } from "./useZeropsGroupReach.logic";
 import { runZeropsCommand, useKnown, useZeropsData } from "./zeropsDataContext";
-
-/** Serialises a plan input so an unchanged account is not re-read. */
-function groupsKey(groups: ReadonlyArray<ZeropsGroupReachGroup>): string {
-  return groups
-    .map(
-      (group) =>
-        `${[...group.projectIds].sort().join(",")}|${[...group.mateProjectIds].sort().join(",")}`,
-    )
-    .sort()
-    .join(";");
-}
-
-/**
- * Serialises the token set the plan reads from: which tokens exist and what
- * they currently grant. A token that appears, disappears, or has its grants
- * changed by anything other than this reconcile (a hardened birth, a manual
- * edit) is a reason to re-plan even when the group shape itself did not move.
- */
-function tokensKey(tokens: ReadonlyArray<ZeropsIntegrationToken>): string {
-  return [...tokens]
-    .map(
-      (token) =>
-        `${token.id}:${(token.projects ?? [])
-          .map((grant) => `${grant.projectId}=${grant.roleCode}`)
-          .sort()
-          .join(",")}`,
-    )
-    .sort()
-    .join(";");
-}
 
 /** Restores the existing planner shape from credential-free grant metadata. */
 export function integrationTokensFromGrantMetadata(
@@ -109,125 +75,67 @@ export function integrationTokensFromGrantMetadata(
   }));
 }
 
-/** How long a reach the platform refused waits before it is planned again. */
-export const GROUP_REACH_BACKOFF_MS: ReadonlyArray<number> = [30_000, 120_000, 600_000];
-
 export function useZeropsGroupReach(input: {
   readonly clientId: string | undefined;
   readonly groups: ReadonlyArray<ZeropsGroupReachGroup>;
+  /** The group listing is a complete read: a part of one would strip siblings from tokens. */
   readonly enabled: boolean;
 }): void {
   const { clientId, groups, enabled } = input;
   const { organizationRef, runtime } = useZeropsData();
-  const lastKey = useRef<string | null>(null);
-  /** A reach the platform refused: when it may be planned again, and how often it was. */
-  const refused = useRef<{
-    readonly key: string;
-    readonly attempts: number;
-    readonly retryAtMs: number;
-  } | null>(null);
-  const [wake, setWake] = useState(0);
-  const wakeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  useEffect(
-    () => () => {
-      if (wakeTimer.current !== null) clearTimeout(wakeTimer.current);
-    },
-    [],
-  );
-  const key = groupsKey(groups);
   const hasMate = groups.some((group) => group.mateProjectIds.length > 0);
+  // Held while the screen shows a Mate, not only while it may plan: a demand dropped and taken
+  // again past the list's freshness would read it again on every inventory refresh.
   const request = useMemo<TokensCellRequest | null>(
     () =>
-      enabled && clientId !== undefined && hasMate
+      clientId !== undefined && hasMate
         ? {
             kind: "tokens",
             account: runtime.scope,
             organization: organizationRef(clientId),
           }
         : null,
-    [clientId, enabled, hasMate, organizationRef, runtime.scope],
+    [clientId, hasMate, organizationRef, runtime.scope],
   );
-  const grants = selectTokenGrants(
-    useKnown(request === null ? null : runtime.cells.known(request)),
-  );
+  const shown = useKnown(request === null ? null : runtime.cells.known(request));
+  const grants = selectTokenGrants(shown);
   const grantMetadata = grants.status === "known" ? grants.grants : null;
-
+  const listingComplete = shown.state === "known" && shown.coverage === "complete";
   const tokens = useMemo(
     () => (grantMetadata === null ? null : integrationTokensFromGrantMetadata(grantMetadata)),
     [grantMetadata],
   );
-  const tokenSetKey = tokens === null ? null : tokensKey(tokens);
 
+  const driver = useMemo(
+    () =>
+      clientId === undefined
+        ? null
+        : groupReachDriverFor(runtime, clientId, () => makeGroupReachDriver({ hold: tokenWrites })),
+    [clientId, runtime],
+  );
+
+  // Declared before the observation: a screen opened again lends its writes first, then plans.
+  useEffect(() => {
+    if (driver === null || clientId === undefined) return;
+    const organization = organizationRef(clientId);
+    return driver.attach({
+      write: (write) =>
+        runZeropsCommand(
+          runtime.commands.setIntegrationTokenProjects({ organization, ...write }),
+        ).then(() => undefined),
+      report: ({ name, cause, retryInMs }) => {
+        console.warn(
+          `The group reach of ${name} was refused; it is planned again in ${Math.round(retryInMs / 1000)} s.`,
+          cause,
+        );
+      },
+    });
+  }, [clientId, driver, organizationRef, runtime.commands]);
+
+  // Every render may hand over new arrays; the driver plans only when their keys moved.
   useEffect(() => {
     // An account with no Mate has no token of ours to touch.
-    if (!enabled || clientId === undefined || !hasMate) return;
-    if (grants.status === "failed") {
-      lastKey.current = null;
-      return;
-    }
-    if (tokens === null || tokenSetKey === null) return;
-    // A reach the platform refused waits out its back-off, however often the list is read again.
-    const reachKey = `${clientId}:${key}`;
-    if (refused.current?.key === reachKey && performance.now() < refused.current.retryAtMs) return;
-    const runKey = `${clientId}:${key}:${tokenSetKey}`;
-    if (lastKey.current === runKey) return;
-    lastKey.current = runKey;
-
-    let cancelled = false;
-    let finished = false;
-    void (async () => {
-      try {
-        // The shared list says whether anything is owed; each write replaces a token's whole
-        // project list, so it is planned from the list read live right before it.
-        const organization = organizationRef(clientId);
-        await writeTokenProjectsFresh({
-          read: async () =>
-            integrationTokensFromGrantMetadata(
-              await runZeropsCommand(runtime.commands.listIntegrationTokenGrants(organization)),
-            ),
-          plan: (fresh) => (cancelled ? [] : planAccountGroupReach({ groups, tokens: fresh })),
-          write: (write) =>
-            runZeropsCommand(
-              runtime.commands.setIntegrationTokenProjects({ organization, ...write }),
-            ).then(() => undefined),
-          hold: tokenWrites,
-        });
-        finished = true;
-        if (refused.current?.key === reachKey) refused.current = null;
-      } catch {
-        finished = true;
-        // Background repair: never an error the person did not ask for, and never a loop on a
-        // write the platform keeps refusing — it is planned again after 30 s, 2 min, then 10 min.
-        const attempts = (refused.current?.key === reachKey ? refused.current.attempts : 0) + 1;
-        const waitMs =
-          GROUP_REACH_BACKOFF_MS[Math.min(attempts, GROUP_REACH_BACKOFF_MS.length) - 1]!;
-        refused.current = { key: reachKey, attempts, retryAtMs: performance.now() + waitMs };
-        lastKey.current = null;
-        if (wakeTimer.current !== null) clearTimeout(wakeTimer.current);
-        wakeTimer.current = setTimeout(() => {
-          wakeTimer.current = null;
-          setWake((count) => count + 1);
-        }, waitMs);
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-      // Cut short — the list was read again, or the page went — what it had left is still owed:
-      // the next run plans it again, whatever key the list shows.
-      if (!finished) lastKey.current = null;
-    };
-  }, [
-    clientId,
-    enabled,
-    tokens,
-    tokenSetKey,
-    grants.status,
-    groups,
-    hasMate,
-    key,
-    organizationRef,
-    runtime.commands,
-    wake,
-  ]);
+    if (driver === null || !enabled || !hasMate || tokens === null) return;
+    driver.observe({ groups, listing: tokens, complete: listingComplete });
+  }, [driver, enabled, groups, hasMate, listingComplete, tokens]);
 }
