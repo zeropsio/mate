@@ -573,8 +573,10 @@ function useReleaseOffer(groupId: string): ReleaseOffer {
     },
     [groupId, openReview],
   );
+  const gate = flow?.release.gate;
   return {
-    offered: flow?.release.gate.allowed ?? false,
+    offered: gate?.allowed ?? false,
+    reason: gate === undefined || gate.allowed ? undefined : gate.reason,
     releasing:
       flow?.release.inFlight !== undefined ||
       (flowValue?.pending.has(flowVerbKey({ kind: "release", groupId })) ?? false),
@@ -1643,6 +1645,8 @@ export interface ReleaseOffer {
   readonly releasing: boolean;
   /** The version it would cut, where the flow suggested one. */
   readonly tag: string | undefined;
+  /** Why it is not offered, as the flow's gate says; `undefined` while it is. */
+  readonly reason: string | undefined;
   /** Opens the release's review from what was pressed: nothing is tagged from a page (R1). */
   readonly onReview: (from: HTMLElement) => void;
 }

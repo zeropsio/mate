@@ -236,7 +236,6 @@ function ReleaseData({
     () =>
       stageMarks({
         contents: flow.release.contents,
-        mainHeads: undefined,
         stage:
           mainStage === undefined
             ? undefined

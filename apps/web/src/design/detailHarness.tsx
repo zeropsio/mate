@@ -209,6 +209,7 @@ const RELEASE_WAITING: ReleaseOffer = {
   offered: true,
   releasing: false,
   tag: "v1.5.0",
+  reason: undefined,
   onReview: () => {},
 };
 
@@ -217,6 +218,7 @@ const RELEASE_NONE: ReleaseOffer = {
   offered: false,
   releasing: false,
   tag: undefined,
+  reason: undefined,
   onReview: () => {},
 };
 
@@ -362,6 +364,7 @@ const BEVIRO_BEHIND: ReleaseOffer = {
   offered: true,
   releasing: false,
   tag: "v0.1.14",
+  reason: undefined,
   onReview: () => {},
 };
 

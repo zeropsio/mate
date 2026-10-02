@@ -85,7 +85,7 @@ const BASE: VerdictInput = {
   releasing: undefined,
   failed: undefined,
   waiting: 0,
-  release: { offered: false, tag: undefined },
+  release: { offered: false, tag: undefined, reason: undefined },
   releasedAge: undefined,
   since: undefined,
   atMainHead: false,
@@ -167,7 +167,11 @@ describe("stopVerdict", () => {
     },
     {
       name: "production with nothing deployed and changes merged offers its first release",
-      input: { view: EMPTY, waiting: 3, release: { offered: true, tag: "v0.1.0" } },
+      input: {
+        view: EMPTY,
+        waiting: 3,
+        release: { offered: true, tag: "v0.1.0", reason: undefined },
+      },
       expected: {
         tone: "off",
         text: "Nothing deployed yet.",
@@ -192,7 +196,7 @@ describe("stopVerdict", () => {
     },
     {
       name: "production behind with the release offered",
-      input: { waiting: 3, release: { offered: true, tag: "v0.1.14" } },
+      input: { waiting: 3, release: { offered: true, tag: "v0.1.14", reason: undefined } },
       expected: {
         tone: "busy",
         text: "3 changes not live.",
@@ -202,7 +206,7 @@ describe("stopVerdict", () => {
     },
     {
       name: "production one change behind, release not offered",
-      input: { waiting: 1, release: { offered: false, tag: "v0.1.14" } },
+      input: { waiting: 1, release: { offered: false, tag: "v0.1.14", reason: undefined } },
       expected: {
         tone: "busy",
         text: "1 change not live.",
@@ -212,11 +216,27 @@ describe("stopVerdict", () => {
     },
     {
       name: "production behind, offered but no tag known",
-      input: { waiting: 2, release: { offered: true, tag: undefined } },
+      input: { waiting: 2, release: { offered: true, tag: undefined, reason: undefined } },
       expected: {
         tone: "busy",
         text: "2 changes not live.",
         detail: "Production runs v0.1.13",
+        verb: null,
+      },
+    },
+    {
+      name: "production whose release is not offered says why, not what main has",
+      input: {
+        release: {
+          offered: false,
+          tag: "v0.1.14",
+          reason: "Releases move to HQ next; none is offered until then.",
+        },
+      },
+      expected: {
+        tone: "ok",
+        text: "Releases move to HQ next; none is offered until then.",
+        detail: "v0.1.13",
         verb: null,
       },
     },

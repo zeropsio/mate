@@ -85,7 +85,12 @@ export function stopVerdict(input: {
   readonly failed: StopFailure | undefined;
   /** Changes merged to main that production does not run. */
   readonly waiting: number;
-  readonly release: { readonly offered: boolean; readonly tag: string | undefined };
+  readonly release: {
+    readonly offered: boolean;
+    readonly tag: string | undefined;
+    /** Why it is not offered, as its gate says; `undefined` while it is. */
+    readonly reason: string | undefined;
+  };
   /** How long ago production's release went out, already said (e.g. `2h ago`). */
   readonly releasedAge: string | undefined;
   /** How long the stop's version has run, already said; a stage's detail. */
@@ -158,9 +163,11 @@ export function stopVerdict(input: {
       detail: `Production runs ${label}`,
       verb: releaseVerb,
     };
+  // Nothing waits: production runs what is merged — unless the release is not offered, whose gate
+  // says why, and what is merged is not known to be what runs.
   return {
     tone: "ok",
-    text: RELEASE_NOTHING_NEW_ON_MAIN,
+    text: input.release.reason ?? RELEASE_NOTHING_NEW_ON_MAIN,
     detail: input.releasedAge === undefined ? label : `${label} · released ${input.releasedAge}`,
     verb: null,
   };

@@ -113,6 +113,7 @@ function render(
         offered: false,
         releasing: false,
         tag: undefined,
+        reason: undefined,
         onReview: () => {},
       }}
       repo={undefined}
@@ -253,6 +254,7 @@ const RELEASE_OFF = {
   offered: false,
   releasing: false,
   tag: undefined,
+  reason: undefined,
   onReview: () => {},
 };
 
@@ -341,6 +343,8 @@ interface StopCase {
   readonly platform?: Shown<ReadonlyArray<StopService>>;
   readonly waiting?: ReadonlyArray<{ readonly sha: string; readonly subject: string }>;
   readonly offered?: string;
+  /** Why the release is not offered, as the flow's gate says. */
+  readonly releaseReason?: string;
   readonly failed?: StopFailure;
   /** Whether the deploy key HQ holds for the stop no longer works. */
   readonly keyInvalid?: boolean;
@@ -387,7 +391,11 @@ function renderStop(input: StopCase): string {
     releasing: undefined,
     failed: input.failed,
     waiting: waiting.length,
-    release: { offered: input.offered !== undefined, tag: input.offered },
+    release: {
+      offered: input.offered !== undefined,
+      tag: input.offered,
+      reason: input.releaseReason,
+    },
     releasedAge: undefined,
     since: undefined,
     atMainHead: input.atMainHead ?? false,
@@ -498,6 +506,16 @@ describe("ZeropsStopPane", () => {
         },
       },
       contains: ["The deploy of v0.1.14 failed on api."],
+    },
+    {
+      name: "a production whose release is not offered says why",
+      input: {
+        tier: "production",
+        services: [service("api", "a1", "v0.1.13")],
+        releaseReason: "Releases move to HQ next; none is offered until then.",
+      },
+      contains: ["Releases move to HQ next; none is offered until then."],
+      lacks: ["Production already runs what is merged."],
     },
     {
       name: "a stage whose deploy key no longer works",
