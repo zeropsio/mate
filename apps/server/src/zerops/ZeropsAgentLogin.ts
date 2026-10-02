@@ -525,6 +525,10 @@ export const make = (options: ZeropsAgentLoginOptions) =>
                 ),
               )
             : stepped;
+        // A cancel while the success waited for its credential has the last word.
+        if (sessions.get(key)?.token !== token) {
+          return;
+        }
 
         if (result.nextPhase === "succeeded" && signIns !== undefined) {
           // Kept before anything else hears of the success: the gate, the rows and the Mate's

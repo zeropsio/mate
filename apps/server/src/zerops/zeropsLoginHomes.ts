@@ -11,9 +11,12 @@
  * @module zeropsLoginHomes
  */
 import { type ZeropsAgentId, ZeropsAgentLoginError } from "@t3tools/contracts";
+import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
+import * as Option from "effect/Option";
 import * as Path from "effect/Path";
+import * as Schedule from "effect/Schedule";
 import * as Schema from "effect/Schema";
 
 import { codexShadowHome } from "../spi/driverHomes.ts";
@@ -39,6 +42,18 @@ export interface LoginHomes {
   readonly discard: (key: string) => Effect.Effect<void>;
 }
 
+/**
+ * How long a success waits for the credential its CLI writes: Codex writes it before it prints its
+ * success (measured), Claude stages it and renames it in, and nobody measured which comes first.
+ */
+export const CREDENTIAL_WAIT = Duration.seconds(5);
+const CREDENTIAL_POLL = Duration.millis(200);
+
+export interface LoginHomesOptions {
+  /** Defaults to {@link CREDENTIAL_WAIT}; shortened by tests on a live clock. */
+  readonly credentialWait?: Duration.Duration;
+}
+
 /** Where every sign-in's scratch home lives. */
 const pendingRoot = (homeDir: string): string => `${homeDir}/.mate/pending`;
 
@@ -52,7 +67,10 @@ const isRecord = (value: unknown): value is Readonly<Record<string, unknown>> =>
  * The scratch homes under `homeDir`. A server starts with none: whatever an earlier process left
  * there was an attempt it never finished.
  */
-export const makeLoginHomes = (homeDir: string) =>
+export const makeLoginHomes = (
+  homeDir: string,
+  { credentialWait = CREDENTIAL_WAIT }: LoginHomesOptions = {},
+) =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem;
     const path = yield* Path.Path;
@@ -118,7 +136,15 @@ export const makeLoginHomes = (homeDir: string) =>
         const agent = target.agentId;
         const scratch = pending(target.key);
         const written = mateLoginCredentialPath({ agent, home: scratch });
-        if (!(yield* fs.exists(written))) {
+        const landed = yield* fs.exists(written).pipe(
+          Effect.repeat({
+            until: (exists) => exists,
+            schedule: Schedule.spaced(CREDENTIAL_POLL),
+          }),
+          Effect.timeoutOption(credentialWait),
+          Effect.map(Option.isSome),
+        );
+        if (!landed) {
           return yield* unavailable(
             "The sign-in finished without leaving a credential. Start it again.",
           );
