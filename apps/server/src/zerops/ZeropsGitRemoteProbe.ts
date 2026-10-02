@@ -3,7 +3,7 @@
  *
  * The Git tab may not decide this from anything else (guide 4.5, "each fact
  * from the party that can prove it"). A remote being configured proves
- * nothing: a Mate whose Gitea credential was never written has one, and so
+ * nothing: a Mate whose HQ credential was never written has one, and so
  * does a Mate pointed at an instance that no longer exists. The last push
  * proves nothing either — it says the remote answered once. Only asking it
  * says it answers.
@@ -48,8 +48,8 @@ export const GIT_COMMAND = "git";
 
 /**
  * A remote that has not answered in ten seconds is one the person is waiting
- * on a page for. `ls-remote` against a healthy Gitea on the same region
- * answers in well under a second.
+ * on a page for. `ls-remote` against a healthy HQ on the same region answers
+ * in well under a second.
  */
 const PROBE_TIMEOUT = Duration.seconds(10);
 
