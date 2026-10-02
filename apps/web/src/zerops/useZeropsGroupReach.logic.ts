@@ -58,6 +58,8 @@ export interface GroupReachObservation {
   readonly listing: ReadonlyArray<ZeropsIntegrationToken>;
   /** Both the group listing and the token listing are complete reads, not a part of one. */
   readonly complete: boolean;
+  /** Which read of the token list it is (the cell's read ordinal): a later read is larger. */
+  readonly read: number;
 }
 
 export interface GroupReachFailure {
@@ -109,24 +111,50 @@ export function makeGroupReachDriver(options: {
   let lastKey: string | null = null;
   let running = false;
   let cancelWake: (() => void) | null = null;
-  /** Writes the platform answered, by token: the grants it held, and the grants written over them. */
-  const written = new Map<string, { readonly before: string; readonly after: string }>();
+  /** The newest read of the token list observed. */
+  let lastRead = Number.NEGATIVE_INFINITY;
+  /**
+   * Writes the platform answered, by token: the grants it held, the grants written over them,
+   * and the newest read observed when it answered — a read no newer may predate the write.
+   */
+  const written = new Map<
+    string,
+    { readonly before: string; readonly after: string; readonly seenRead: number }
+  >();
+  /** Tokens repaired once because a read after our write still showed the old grants. */
+  const repaired = new Map<string, string>();
+  /** Refusals planning found, told by the run that planned them. */
+  const notices: Array<GroupReachFailure> = [];
   /** Writes the platform refused, by token: for which grants, how often, and when to try again. */
   const refused = new Map<
     string,
     { readonly after: string; readonly attempts: number; readonly retryAtMs: number }
   >();
 
+  /** Backs a token's write off and answers the failure to tell, on the first of a streak. */
+  const refuse = (write: ZeropsGroupReachWrite, after: string, cause: unknown) => {
+    const prior = refused.get(write.tokenId);
+    const attempts = (prior?.after === after ? prior.attempts : 0) + 1;
+    const retryInMs =
+      GROUP_REACH_BACKOFF_MS[Math.min(attempts, GROUP_REACH_BACKOFF_MS.length) - 1]!;
+    refused.set(write.tokenId, { after, attempts, retryAtMs: now() + retryInMs });
+    return attempts === 1 ? { tokenId: write.tokenId, name: write.name, cause, retryInMs } : null;
+  };
+
   const owedBy = (observation: GroupReachObservation): ReadonlyArray<Owed> => {
     if (!observation.complete) return [];
     const byId = new Map(observation.listing.map((token) => [token.id, token]));
-    // A remembered write stands while the listing still shows what it replaced; once the listing
-    // shows anything else — what was written, or a later edit — the listing speaks for itself.
+    /** Our writes a read after them still shows undone: the platform answered, and did not keep it. */
+    const undone = new Map<string, string>();
+    // A remembered write explains away only a read that may predate it: one no newer than the
+    // reads observed when it answered, still showing what it replaced. A newer read speaks for
+    // itself — what was written, a later edit, or the old grants back.
     for (const [tokenId, memo] of written) {
       const shown = byId.get(tokenId);
-      if (shown === undefined || grantsKey(shown.projects ?? []) !== memo.before) {
-        written.delete(tokenId);
-      }
+      const showsBefore = shown !== undefined && grantsKey(shown.projects ?? []) === memo.before;
+      if (showsBefore && observation.read <= memo.seenRead) continue;
+      written.delete(tokenId);
+      if (showsBefore) undone.set(tokenId, memo.after);
     }
     const owed = planAccountGroupReach({
       groups: observation.groups,
@@ -136,8 +164,24 @@ export function makeGroupReachDriver(options: {
       before: grantsKey(byId.get(write.tokenId)?.projects ?? []),
       after: grantsKey(write.projects),
     }));
-    for (const tokenId of refused.keys()) {
-      if (!owed.some(({ write }) => write.tokenId === tokenId)) refused.delete(tokenId);
+    for (const tracked of [refused, repaired]) {
+      for (const tokenId of tracked.keys()) {
+        if (!owed.some(({ write }) => write.tokenId === tokenId)) tracked.delete(tokenId);
+      }
+    }
+    // Undone once is repaired once; undone again after the repair is a refusal, backed off.
+    for (const { write, after } of owed) {
+      if (undone.get(write.tokenId) !== after) continue;
+      if (repaired.get(write.tokenId) !== after) {
+        repaired.set(write.tokenId, after);
+        continue;
+      }
+      const notice = refuse(
+        write,
+        after,
+        new Error(`Zerops answered the write to ${write.name} but does not show it.`),
+      );
+      if (notice !== null) notices.push(notice);
     }
     return owed.filter(({ write, before, after }) => {
       const memo = written.get(write.tokenId);
@@ -167,16 +211,11 @@ export function makeGroupReachDriver(options: {
     const { write, before, after } = owed;
     try {
       await options.hold(write.tokenId, () => target.write(write));
-      written.set(write.tokenId, { before, after });
-      refused.delete(write.tokenId);
+      // A refusal streak ends when a read shows the grants, not when a write answers.
+      written.set(write.tokenId, { before, after, seenRead: lastRead });
     } catch (cause) {
-      const prior = refused.get(write.tokenId);
-      const attempts = (prior?.after === after ? prior.attempts : 0) + 1;
-      const retryInMs =
-        GROUP_REACH_BACKOFF_MS[Math.min(attempts, GROUP_REACH_BACKOFF_MS.length) - 1]!;
-      refused.set(write.tokenId, { after, attempts, retryAtMs: now() + retryInMs });
-      if (attempts === 1)
-        target.report({ tokenId: write.tokenId, name: write.name, cause, retryInMs });
+      const notice = refuse(write, after, cause);
+      if (notice !== null) target.report(notice);
     }
   };
 
@@ -184,16 +223,19 @@ export function makeGroupReachDriver(options: {
     try {
       // Each pass plans from the newest observation: one that arrived during a write is
       // planned after it, and what was just written is remembered rather than read back.
-      // A run writes each (token, grants) pair at most once, whatever it is shown meanwhile.
+      // A run writes each (token, grants) pair at most once per read, whatever it is shown.
       const done = new Set<string>();
       for (;;) {
         const target = port;
         if (target === null || latest === null) return;
-        const next = owedBy(latest).find(
-          ({ write, after }) => !done.has(`${write.tokenId}>${after}`),
+        const { read } = latest;
+        const owed = owedBy(latest);
+        for (const notice of notices.splice(0)) target.report(notice);
+        const next = owed.find(
+          ({ write, after }) => !done.has(`${write.tokenId}>${after}@${read}`),
         );
         if (next === undefined) return;
-        done.add(`${next.write.tokenId}>${next.after}`);
+        done.add(`${next.write.tokenId}>${next.after}@${read}`);
         await writeOne(target, next);
       }
     } finally {
@@ -222,7 +264,8 @@ export function makeGroupReachDriver(options: {
       };
     },
     observe: (observation) => {
-      const key = `${observation.complete}|${groupsKey(observation.groups)}|${listingKey(observation.listing)}`;
+      const key = `${observation.complete}|${observation.read}|${groupsKey(observation.groups)}|${listingKey(observation.listing)}`;
+      lastRead = Math.max(lastRead, observation.read);
       if (key === lastKey) return;
       lastKey = key;
       latest = observation;
