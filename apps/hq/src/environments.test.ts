@@ -21,6 +21,19 @@ describe("deriveEnvironmentName", () => {
     assert.strictEqual(deriveEnvironmentName("Shop", "stage", ["shop", "shop-2"]), "shop-3");
   });
 
+  // At most 63 characters, as an environment's own name (`environmentNameProblem`).
+  it("cuts a long project's name to 63 characters, and numbers it within them", () => {
+    const long = `${"a".repeat(70)} shop`;
+    const name = deriveEnvironmentName(long, "stage", []);
+    assert.strictEqual(name, "a".repeat(63));
+    const next = deriveEnvironmentName(long, "stage", [name ?? ""]);
+    assert.strictEqual(next, `${"a".repeat(61)}-2`);
+    assert.strictEqual(
+      deriveEnvironmentName(`${"a".repeat(62)}-shop`, "stage", []),
+      "a".repeat(62),
+    );
+  });
+
   it("has no name to give past -999", () => {
     const taken = ["shop", ...Array.from({ length: 998 }, (_, i) => `shop-${String(i + 2)}`)];
     assert.strictEqual(deriveEnvironmentName("Shop", "stage", taken), undefined);
@@ -36,6 +49,9 @@ describe("environmentNameProblem", () => {
     { name: "2shop", problem: "environment_name_invalid" },
     { name: "shop stage", problem: "environment_name_invalid" },
     { name: "shop-stage-2", problem: undefined },
+    // A deploy key is named `mate-hq-deploy:<env>:<projectId>`, and Zerops caps a token's name at 255.
+    { name: `s${"a".repeat(62)}`, problem: undefined },
+    { name: `s${"a".repeat(63)}`, problem: "environment_name_long" },
   ] as const)("says $problem of '$name'", ({ name, problem }) => {
     assert.strictEqual(environmentNameProblem(name), problem);
   });
