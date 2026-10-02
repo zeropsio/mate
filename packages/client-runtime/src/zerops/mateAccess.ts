@@ -334,6 +334,26 @@ export function resolveMateOwnerName(input: {
   return member === undefined ? undefined : mateMemberName(member);
 }
 
+/** A member row is an integration token when its address is the token's own (`token-<id>@zerops.io`). */
+const TOKEN_EMAIL = /^token-[^@]+@zerops\.io$/iu;
+
+/** Whether a member row is one of the organization's integration tokens, not a person. */
+export function isTokenMember(member: {
+  readonly user?: { readonly email?: string | undefined } | undefined;
+}): boolean {
+  return TOKEN_EMAIL.test(member.user?.email ?? "");
+}
+
+/**
+ * Whom a Mate may be handed to: the organization's people who have joined it. Its integration
+ * tokens are members too (`isTokenMember`), and a person still invited is not one yet.
+ */
+export function handOverCandidates<
+  M extends MateOwnerCandidate & { readonly status?: string | undefined },
+>(members: ReadonlyArray<M>): ReadonlyArray<M> {
+  return members.filter((member) => member.status === "ACTIVE" && !isTokenMember(member));
+}
+
 /**
  * Handing a Mate over: the project's `userRoles` with one person raised (or
  * lowered) and everybody else's override untouched (guide 0.8, D11).
