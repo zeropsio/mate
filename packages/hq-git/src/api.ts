@@ -275,6 +275,18 @@ export interface HqGit {
     number: number,
     options: { readonly limit: number },
   ) => Effect.Effect<Bounded<CommitSummary>, GitError>;
+  /**
+   * The trailers of `keys` across every commit of the change not on main (`main..head`), oldest
+   * commit first, as git's own trailer parser reads each message: folded values unfolded, keys
+   * matched without case and answered as asked. Past the history ceiling it fails closed
+   * (`invalid_config`) rather than answer part; none without a change head.
+   */
+  readonly changeTrailers: (
+    repo: Repo,
+    mateId: string,
+    number: number,
+    keys: ReadonlyArray<string>,
+  ) => Effect.Effect<ReadonlyArray<{ readonly key: string; readonly value: string }>, GitError>;
   readonly changeDiff: (
     repo: Repo,
     mateId: string,

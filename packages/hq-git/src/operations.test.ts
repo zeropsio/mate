@@ -374,6 +374,68 @@ describe("git operations", () => {
 
 describe("a change's own history", () => {
   it.live(
+    "reads every trailer of the change's commits as git parses them, oldest first, however many",
+    () =>
+      fixture(async (git, dir) => {
+        const main = await write(git, { base: "base\n" }, null);
+        const tree = await native(dir, ["rev-parse", `${main}^{tree}`]);
+        let parent = main;
+        for (let i = 1; i <= 150; i++) {
+          parent = await native(dir, [
+            "commit-tree",
+            tree,
+            "-p",
+            parent,
+            "-m",
+            `Task ${i}`,
+            "-m",
+            `Crew-Lane: ada\nCrew-Assignment: task-${i}`,
+          ]);
+        }
+        // A folded trailer is read whole; a key in another case is the key asked.
+        parent = await native(dir, [
+          "commit-tree",
+          tree,
+          "-p",
+          parent,
+          "-m",
+          "Long",
+          "-m",
+          "Crew-Assignment: a long\n  task\ncrew-lane: bo",
+        ]);
+        // A paragraph before the last is no trailer.
+        parent = await native(dir, [
+          "commit-tree",
+          tree,
+          "-p",
+          parent,
+          "-m",
+          "Prose",
+          "-m",
+          "Crew-Assignment: not a trailer",
+          "-m",
+          "Just words.",
+        ]);
+        await native(dir, ["update-ref", "refs/heads/mate/alice/1", parent]);
+        // On main, past the change's base: not the change's.
+        await write(git, { base: "moved\n" }, main);
+
+        const trailers = await value(
+          git.changeTrailers(repo, "alice", 1, ["Crew-Lane", "Crew-Assignment"]),
+        );
+        const of = (key: string) =>
+          trailers.filter((entry) => entry.key === key).map((entry) => entry.value);
+        expect(of("Crew-Assignment")).toEqual([
+          ...Array.from({ length: 150 }, (_, i) => `task-${i + 1}`),
+          "a long task",
+        ]);
+        expect(of("Crew-Lane")).toEqual([...Array(150).fill("ada"), "bo"]);
+        expect(trailers).toHaveLength(302);
+        expect(await value(git.changeTrailers(repo, "alice", 2, ["Crew-Lane"]))).toEqual([]);
+      }),
+  );
+
+  it.live(
     "reads the change's commits not on main, newest first with their dates, and its merge base",
     () =>
       fixture(async (git, dir) => {
