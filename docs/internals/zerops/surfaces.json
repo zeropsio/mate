@@ -249,6 +249,7 @@
       "title": "Zerops Git tab",
       "components": [
         "apps/web/src/components/zerops/ZeropsGitBlock.tsx",
+        "apps/web/src/components/zerops/ZeropsGitBlockCommits.tsx",
         "apps/web/src/components/zerops/ZeropsGitPanel.tsx",
         "apps/web/src/components/zerops/ZeropsGitSurface.tsx",
         "apps/web/src/components/zerops/ZeropsGitTab.tsx",
@@ -289,10 +290,6 @@
         {
           "action": "Update from main",
           "reverse": "none: the checkout keeps what it pulled."
-        },
-        {
-          "action": "Sign in to Gitea",
-          "reverse": "none: the session ends with the tab (nothing is persisted)."
         }
       ],
       "docs": {
@@ -300,6 +297,7 @@
       },
       "tests": [
         "apps/web/src/components/zerops/ZeropsGitBlock.test.tsx",
+        "apps/web/src/components/zerops/ZeropsGitBlockCommits.test.tsx",
         "apps/web/src/components/zerops/ZeropsGitPanel.test.tsx",
         "packages/client-runtime/src/zerops/gitTab.test.ts",
         "packages/client-runtime/src/zerops/release.test.ts"

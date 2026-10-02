@@ -6,7 +6,6 @@
  * |---|---|---|
  * | zcp lifecycle envelope | a service's `gitPushState` changed | `forge-repo` of its `remoteUrl` |
  * | zcp lifecycle envelope | a new successful `workSession.deploys[host]` attempt | `deployment` of that service |
- * | the Git tab's VCS status | commits left the checkout for its remote, or it gained its upstream | `forge-repo` of the checkout |
  *
  * A push compares with the one before it on the same feed; the first a feed hears has nothing to
  * compare with and invalidates nothing — whatever it would change is read on demand anyway.
@@ -18,7 +17,6 @@
 import type { ZeropsAttemptInfo, ZeropsStateEnvelope } from "@t3tools/contracts";
 
 import type { ServiceRef } from "../data/types.ts";
-import type { GitCheckoutState } from "../gitTab.ts";
 import type { Invalidation } from "../knowledge/invalidation.ts";
 
 /** A repository on one Gitea, as a forge fact is keyed. */
@@ -91,15 +89,4 @@ export function envelopeInvalidations(
     if (ref !== null) invalidations.push({ topic: "deployment", service: ref });
   }
   return invalidations;
-}
-
-export function checkoutInvalidations(
-  previous: GitCheckoutState | undefined,
-  next: GitCheckoutState,
-  repository: ForgeRepository | null,
-): ReadonlyArray<Invalidation> {
-  if (previous === undefined || repository === null) return [];
-  const pushed =
-    next.aheadCount < previous.aheadCount || (next.hasUpstream && !previous.hasUpstream);
-  return pushed ? [repositoryInvalidation(repository)] : [];
 }

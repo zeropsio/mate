@@ -5,12 +5,9 @@
  * this is what tells it *whose*: the group this Mate's project belongs to, and
  * whether this person is the Mate's owner (D11). The group's side — its
  * changes as HQ's stream tells them, the declarations that say which
- * environment picks a branch up, its Gitea org and the session with Gitea — is
- * the project flow's, read once for the whole account
- * (`ZeropsProjectFlowProvider`); the tab adds only what is this Mate's: its
- * checkouts, and its change in each.
- *
- * Signed out of Gitea, only the checkout half can speak; the tab says so.
+ * environment picks a branch up — is the project flow's, read once for the
+ * whole account (`ZeropsProjectFlowProvider`); the tab adds only what is this
+ * Mate's: its checkouts, and its change in each.
  */
 import {
   botDisplayName,
@@ -48,7 +45,6 @@ export function ZeropsGitSurface({ threadRef }: { readonly threadRef: ScopedThre
     project === undefined
       ? undefined
       : botDisplayName({ bot: tags.bot, projectName: project.name });
-  const owner = groupId === undefined ? undefined : flow.slugs.get(groupId);
   const projectFlow = groupId === undefined ? undefined : flow.flows.get(groupId);
 
   /**
@@ -122,17 +118,14 @@ export function ZeropsGitSurface({ threadRef }: { readonly threadRef: ScopedThre
         </p>
       )}
       <ZeropsGitTab
+        appId={groupId}
         changes={projectFlow?.changesKnown === true ? projectFlow : undefined}
         declarations={projectFlow?.declarations ?? []}
-        giteaOrigin={flow.giteaOrigin}
         isOwner={isOwner}
         mateName={mateName}
         mateProjectId={project?.id}
         onReviewPullRequest={onReviewPullRequest}
         onOpenChange={onOpenChange}
-        owner={owner}
-        signedIn={flow.signedIn}
-        signInTrouble={flow.signInTrouble ?? undefined}
         threadRef={threadRef}
       />
     </div>

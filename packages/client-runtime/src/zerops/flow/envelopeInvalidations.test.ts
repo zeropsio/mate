@@ -3,10 +3,8 @@ import { describe, expect, it } from "vite-plus/test";
 
 import { project, service } from "../data/__fixtures__/index.ts";
 import type { ServiceRef } from "../data/types.ts";
-import type { GitCheckoutState } from "../gitTab.ts";
 import type { Invalidation } from "../knowledge/invalidation.ts";
 import {
-  checkoutInvalidations,
   envelopeInvalidations,
   forgeRepositoryOf,
   type EnvelopeServices,
@@ -160,67 +158,6 @@ describe("envelopeInvalidations (DESIGN §6.1, G3)", () => {
 
   it.each(cases)("$name", ({ previous, next, expected }) => {
     expect(envelopeInvalidations(previous, next, services)).toEqual(expected);
-  });
-});
-
-describe("checkoutInvalidations (DESIGN §6.1, the Git tab's VCS status)", () => {
-  const REPOSITORY = { origin: GITEA, owner: "harbor", repo: "appdev" };
-  const checkout = (overrides: Partial<GitCheckoutState> = {}): GitCheckoutState => ({
-    repository: "appdev",
-    isRepo: true,
-    hasRemote: true,
-    headRef: "mate/ada",
-    aheadCount: 0,
-    behindCount: 0,
-    hasUpstream: true,
-    changed: [],
-    ...overrides,
-  });
-
-  const cases: ReadonlyArray<{
-    readonly name: string;
-    readonly previous: GitCheckoutState | undefined;
-    readonly next: GitCheckoutState;
-    readonly expected: ReadonlyArray<Invalidation>;
-  }> = [
-    {
-      name: "the first status a mount hears changes nothing it can compare",
-      previous: undefined,
-      next: checkout(),
-      expected: [],
-    },
-    {
-      name: "commits leaving the checkout for its remote re-read the repository",
-      previous: checkout({ aheadCount: 2 }),
-      next: checkout({ aheadCount: 0 }),
-      expected: [APPDEV_REPO],
-    },
-    {
-      name: "a branch gaining its upstream re-reads the repository",
-      previous: checkout({ hasUpstream: false, aheadCount: 1 }),
-      next: checkout({ hasUpstream: true, aheadCount: 0 }),
-      expected: [APPDEV_REPO],
-    },
-    {
-      name: "a local commit re-reads nothing",
-      previous: checkout({ aheadCount: 0 }),
-      next: checkout({ aheadCount: 1 }),
-      expected: [],
-    },
-    {
-      name: "a file edited in the working tree re-reads nothing",
-      previous: checkout(),
-      next: checkout({ changed: [{ path: "src/app.ts", insertions: 1, deletions: 0 }] }),
-      expected: [],
-    },
-  ];
-
-  it.each(cases)("$name", ({ previous, next, expected }) => {
-    expect(checkoutInvalidations(previous, next, REPOSITORY)).toEqual(expected);
-  });
-
-  it("a checkout with no Gitea repository re-reads nothing", () => {
-    expect(checkoutInvalidations(checkout({ aheadCount: 2 }), checkout(), null)).toEqual([]);
   });
 });
 
