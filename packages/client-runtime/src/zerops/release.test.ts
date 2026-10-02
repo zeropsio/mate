@@ -4,6 +4,7 @@ import type { GiteaCommitStatus } from "./giteaClient.ts";
 import { environmentRow, type EnvironmentRow } from "./groupRows.ts";
 import {
   compareForRelease,
+  flowReleaseOf,
   isReleaseTag,
   releaseRunBy,
   nameStopByRelease,
@@ -11,6 +12,7 @@ import {
   readReleaseMessage,
   releaseEntries,
   releaseGate,
+  releaseCandidate,
   releaseInFlight,
   releaseInFlightReason,
   releaseMessage,
@@ -19,6 +21,7 @@ import {
   releaseStatusContext,
   releaseVerdict,
   releaseWord,
+  RELEASE_CHECKING,
   RELEASE_NOTHING_MERGED,
   RELEASE_NOTHING_NEW_ON_MAIN,
   RELEASE_NOT_A_RELEASER,
@@ -150,27 +153,38 @@ describe("what Release shows before it is pressed", () => {
   });
 });
 
-describe("the app's own gate", () => {
+/** HQ's rule, in its words (`releasePermission`, `hqRefusalWords`). */
+const RELEASER = { allowed: true } as const;
+const NOT_RELEASER = { allowed: false, reason: "Only somebody with Basic user can." } as const;
+
+describe("the gate HQ's rule decides", () => {
   const entries = [{ service: "api", commit: API }];
 
   it.each([
-    { name: "a releaser with something to release", mayRelease: true, entries, allowed: true },
+    { name: "a releaser with something to release", permission: RELEASER, entries, allowed: true },
     {
-      name: "somebody who is not in the release right",
-      mayRelease: false,
+      name: "somebody HQ's rule refuses, in its words",
+      permission: NOT_RELEASER,
       entries,
       allowed: false,
-      reason: RELEASE_NOT_A_RELEASER,
+      reason: NOT_RELEASER.reason,
+    },
+    {
+      name: "somebody HQ's rule cannot be asked about yet",
+      permission: undefined,
+      entries,
+      allowed: false,
+      reason: RELEASE_CHECKING,
     },
     {
       name: "a releaser with nothing merged",
-      mayRelease: true,
+      permission: RELEASER,
       entries: [],
       allowed: false,
       reason: RELEASE_NOTHING_MERGED,
     },
-  ])("for $name", ({ mayRelease, entries: list, allowed, reason }) => {
-    const gate = releaseGate({ mayRelease, entries: list });
+  ])("for $name", ({ permission, entries: list, allowed, reason }) => {
+    const gate = releaseGate({ permission, entries: list });
     expect(gate.allowed).toBe(allowed);
     if (!gate.allowed) expect(gate.reason).toBe(reason);
   });
@@ -184,7 +198,7 @@ describe("what Release offers, from what the environments run", () => {
 
   it("compares the stage against production, per service, and offers the next patch", () => {
     const offer = releaseOffer({
-      mayRelease: true,
+      permission: RELEASER,
       candidate: stage,
       production: new Map([
         ["api", OLD],
@@ -203,14 +217,14 @@ describe("what Release offers, from what the environments run", () => {
   it.each([
     {
       name: "a stage two services ahead of production",
-      mayRelease: true,
+      permission: RELEASER,
       stage,
       production: new Map([["api", OLD]]),
       allowed: true,
     },
     {
       name: "a production already running everything main holds",
-      mayRelease: true,
+      permission: RELEASER,
       stage,
       production: new Map(stage),
       allowed: false,
@@ -218,7 +232,7 @@ describe("what Release offers, from what the environments run", () => {
     },
     {
       name: "repositories with nothing merged",
-      mayRelease: true,
+      permission: RELEASER,
       stage: new Map<string, string>(),
       production: new Map([["api", OLD]]),
       allowed: false,
@@ -226,15 +240,15 @@ describe("what Release offers, from what the environments run", () => {
     },
     {
       name: "somebody who is not a releaser",
-      mayRelease: false,
+      permission: NOT_RELEASER,
       stage,
       production: new Map<string, string>(),
       allowed: false,
-      reason: RELEASE_NOT_A_RELEASER,
+      reason: NOT_RELEASER.reason,
     },
-  ])("answers, for $name", ({ mayRelease, stage: stageCommits, production, allowed, reason }) => {
+  ])("answers, for $name", ({ permission, stage: stageCommits, production, allowed, reason }) => {
     const gate = releaseOffer({
-      mayRelease,
+      permission,
       candidate: stageCommits,
       production,
       tags: [],
@@ -245,7 +259,7 @@ describe("what Release offers, from what the environments run", () => {
 
   it("carries the entries the tag would list, so the verb tags what the offer showed", () => {
     const offer = releaseOffer({
-      mayRelease: true,
+      permission: RELEASER,
       candidate: new Map([
         ["api", API.toUpperCase()],
         ["web", "hotfix"],
@@ -294,7 +308,7 @@ describe("a release lists what is merged", () => {
     },
   ])("answers, for $name", ({ candidate, production, allowed, reason }) => {
     const offer = releaseOffer({
-      mayRelease: true,
+      permission: RELEASER,
       candidate,
       production,
       tags: [],
@@ -314,6 +328,78 @@ describe("a release lists what is merged", () => {
     ]) {
       expect(reason).not.toMatch(/stage/iu);
     }
+  });
+});
+
+describe("what a release lists, from HQ's repositories", () => {
+  const repos = [
+    { name: "appdev", mainHead: API, updatedAt: "2026-10-02T09:00:00.000Z" },
+    { name: "webdev", mainHead: null, updatedAt: "2026-10-02T08:00:00.000Z" },
+    { name: "group", mainHead: OLD, updatedAt: "2026-10-02T09:30:00.000Z" },
+  ];
+
+  it("takes each production runtime at its repository's main, and the recipe's main to tag", () => {
+    expect(
+      releaseCandidate({
+        productionRepositories: new Map([
+          ["app", "appdev"],
+          ["web", "webdev"],
+          ["mail", "mailer"],
+        ]),
+        repos,
+      }),
+    ).toEqual({ candidate: new Map([["app", API]]), groupHead: OLD });
+  });
+
+  it("has nothing to tag where the recipe has no main", () => {
+    expect(
+      releaseCandidate({ productionRepositories: new Map(), repos: repos.slice(0, 2) }).groupHead,
+    ).toBeUndefined();
+  });
+});
+
+describe("a release as HQ records it", () => {
+  it("reads as the flow lists it: its verdict, its entries and when it was made", () => {
+    expect(
+      flowReleaseOf({
+        tag: "v0.1.2",
+        sha: OLD,
+        entries: [
+          { service: "api", sha: API },
+          { service: "web", sha: WEB },
+        ],
+        by: "u1",
+        at: "2026-10-02T10:00:00.000Z",
+        state: "approved",
+        reason: null,
+        rollbackOf: null,
+      }),
+    ).toEqual({
+      tag: "v0.1.2",
+      verdict: "approved",
+      detail: undefined,
+      line: "api 3f9c1b2 · web 77ab0e1",
+      entries: [
+        { service: "api", commit: API },
+        { service: "web", commit: WEB },
+      ],
+      taggedAt: "2026-10-02T10:00:00.000Z",
+    });
+  });
+
+  it("carries why a refused one was refused", () => {
+    expect(
+      flowReleaseOf({
+        tag: "v0.1.1",
+        sha: OLD,
+        entries: [{ service: "api", sha: API }],
+        by: "u1",
+        at: "2026-10-01T10:00:00.000Z",
+        state: "refused",
+        reason: "the tag's commit failed its checks",
+        rollbackOf: null,
+      }),
+    ).toMatchObject({ verdict: "refused", detail: "the tag's commit failed its checks" });
   });
 });
 
@@ -781,7 +867,7 @@ describe("a release in flight", () => {
 
   it("keeps Release from being offered, and says which tag is on its way", () => {
     const gate = releaseOffer({
-      mayRelease: true,
+      permission: RELEASER,
       candidate: new Map([["api", API]]),
       production: new Map([["api", OLD]]),
       inFlight: "v0.1.3",

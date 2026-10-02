@@ -175,7 +175,11 @@ describe("an application's stops, as HQ records them", () => {
       environments: [environment({ projectId: "p-stage", tier: "stage", name: "stage" })],
       projects,
       versions: new Map([["s1", `main ${API.slice(0, 7)}`]]),
-      recipe: { tiers: ["stage", "production"], repositories: new Map([["api", "apidev"]]) },
+      recipe: {
+        tiers: ["stage", "production"],
+        repositories: new Map([["api", "apidev"]]),
+        productionRepositories: new Map(),
+      },
     });
     expect(stops.declarations).toEqual([
       { name: "stage", tier: "stage", project: "p-stage", sources: ["main"] },
@@ -238,6 +242,22 @@ describe("what the recipe on main offers", () => {
     expect(appRecipeOf({ stage: stageTier, production: null })).toEqual({
       tiers: ["stage"],
       repositories: new Map([["app", "appdev"]]),
+      productionRepositories: new Map(),
+    });
+  });
+
+  // What a release lists: each production runtime at its repository's main (C01).
+  it("names the repository each production runtime builds from, apart", () => {
+    const productionTier = stageTier
+      .replace("appdev", "appprod")
+      .replace("hostname: app", "hostname: web");
+    expect(appRecipeOf({ stage: stageTier, production: productionTier })).toEqual({
+      tiers: ["stage", "production"],
+      repositories: new Map([
+        ["app", "appdev"],
+        ["web", "appprod"],
+      ]),
+      productionRepositories: new Map([["web", "appprod"]]),
     });
   });
 });

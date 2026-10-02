@@ -34,11 +34,9 @@
  *
  * ## Who may
  *
- * Two gates, and only one of them is real. Gitea's tag protection lets the
- * `release` team create `v*` and refuses everybody else — that is the one that
- * decides. The app's own gate (`groups[slug].release` from the shared role
- * function) only keeps the button from being offered to somebody it would
- * refuse; a `403` that arrives anyway is shown as what it is.
+ * HQ's rule (SPEC §3.3a): Basic user or above on the application's production. The client asks it
+ * over what it holds only to offer the button (`releasePermission`); HQ asks it again at the
+ * press, and a refusal that arrives anyway is shown in HQ's words.
  *
  * ## Rollback
  *
@@ -51,6 +49,10 @@
  *
  * @module release
  */
+
+import type { RepoListEntry } from "@t3tools/shared/hqChanges";
+import { RECIPE_REPO } from "@t3tools/shared/hqRecipe";
+import type { Release } from "@t3tools/shared/hqRelease";
 
 import type { GiteaCommitStatus } from "./giteaClient.ts";
 import type { EnvironmentRow } from "./groupRows.ts";
@@ -217,6 +219,29 @@ export function compareForRelease(input: {
   });
 }
 
+/**
+ * What a release would list, from the application's repositories as HQ answers them (C01): each
+ * production runtime at its repository's `main` — a runtime whose repository has nothing on `main`
+ * yet lists nothing — and the recipe repository's `main`, which the release tags; `undefined` where
+ * it has none.
+ */
+export function releaseCandidate(input: {
+  /** The repository each production runtime builds from, by hostname (`AppRecipe`). */
+  readonly productionRepositories: ReadonlyMap<string, string>;
+  readonly repos: ReadonlyArray<RepoListEntry>;
+}): { readonly candidate: ReadonlyMap<string, string>; readonly groupHead: string | undefined } {
+  const heads = new Map(
+    input.repos.flatMap((repo) => (repo.mainHead === null ? [] : [[repo.name, repo.mainHead]])),
+  );
+  const candidate = new Map(
+    [...input.productionRepositories].flatMap(([hostname, repo]) => {
+      const head = heads.get(repo);
+      return head === undefined ? [] : [[hostname, head] as const];
+    }),
+  );
+  return { candidate, groupHead: heads.get(RECIPE_REPO) };
+}
+
 /** What a release would list: every service the basis has a commit for. */
 export function releaseEntries(
   candidate: ReadonlyMap<string, string>,
@@ -241,6 +266,8 @@ export const RELEASE_NOTHING_MERGED = "Nothing is merged to release.";
  * release where *nothing* moved is not a release.
  */
 export const RELEASE_NOTHING_NEW_ON_MAIN = "Production already runs what is merged.";
+/** Who may release is not known yet: HQ's rule has nothing to be asked over. */
+export const RELEASE_CHECKING = "Checking what can be released…";
 /** A release tagged and not yet running: another tag now would be a second release of it. */
 export function releaseInFlightReason(tag: string): string {
   return `Releasing ${tag}…`;
@@ -249,13 +276,12 @@ export function releaseInFlightReason(tag: string): string {
 /**
  * Whether to offer *Release* at all.
  *
- * The app's own gate, from the role function's `groups[slug].release`. It is
- * not the real one — Gitea's tag protection is, and a `403` from it is shown
- * with this same sentence, because it means the same thing and the mirror
- * simply had not caught up.
+ * Who may is HQ's rule (`releasePermission`), in its words; HQ asks it again at the press. Then a
+ * release in flight, nothing merged, and nothing that would move hold it, in that order.
  */
 export function releaseGate(input: {
-  readonly mayRelease: boolean;
+  /** HQ's rule for this person, its refusal in words; `undefined` while it cannot be asked. */
+  readonly permission: ReleaseGate | undefined;
   readonly entries: ReadonlyArray<ReleaseEntry>;
   /**
    * Per service, the stage against production. Omitted where production's
@@ -265,7 +291,8 @@ export function releaseGate(input: {
   /** The release tag on its way to production (`releaseInFlight`). */
   readonly inFlight?: string | undefined;
 }): ReleaseGate {
-  if (!input.mayRelease) return { allowed: false, reason: RELEASE_NOT_A_RELEASER };
+  if (input.permission === undefined) return { allowed: false, reason: RELEASE_CHECKING };
+  if (!input.permission.allowed) return input.permission;
   if (input.inFlight !== undefined)
     return { allowed: false, reason: releaseInFlightReason(input.inFlight) };
   if (input.entries.length === 0) return { allowed: false, reason: RELEASE_NOTHING_MERGED };
@@ -286,7 +313,8 @@ export function releaseGate(input: {
  * exactly what the offer showed.
  */
 export function releaseOffer(input: {
-  readonly mayRelease: boolean;
+  /** HQ's rule for this person (`releaseGate`). */
+  readonly permission: ReleaseGate | undefined;
   /** `{service: full sha}` each repository's default branch holds. */
   readonly candidate: ReadonlyMap<string, string>;
   /** `{service: sha}` production runs, whole or short (`deployedCommit`). */
@@ -308,7 +336,7 @@ export function releaseOffer(input: {
   });
   return {
     gate: releaseGate({
-      mayRelease: input.mayRelease,
+      permission: input.permission,
       entries,
       comparison,
       inFlight: input.inFlight,
@@ -429,6 +457,19 @@ export function releaseWord(verdict: ReleaseVerdict): string | undefined {
     case "unknown":
       return undefined;
   }
+}
+
+/** A release as HQ records it, as the flow lists it: approved or refused, and when it was made. */
+export function flowReleaseOf(release: Release): FlowRelease {
+  const entries = release.entries.map(({ service, sha }) => ({ service, commit: sha }));
+  return {
+    tag: release.tag,
+    verdict: release.state,
+    detail: release.reason ?? undefined,
+    line: entries.map((entry) => `${entry.service} ${shortCommit(entry.commit)}`).join(" · "),
+    entries,
+    taggedAt: release.at,
+  };
 }
 
 /** One release of the group, as the broker judged it. */

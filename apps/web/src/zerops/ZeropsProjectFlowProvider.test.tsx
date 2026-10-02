@@ -502,7 +502,14 @@ describe("ZeropsProjectFlowProvider", () => {
       services: new Map(),
     };
     recipes.read = new Map([
-      ["g1", { tiers: ["stage", "production"], repositories: new Map([["app", "appdev"]]) }],
+      [
+        "g1",
+        {
+          tiers: ["stage", "production"],
+          repositories: new Map([["app", "appdev"]]),
+          productionRepositories: new Map(),
+        },
+      ],
     ]);
     const atoms = signedInAtoms();
     atoms.set(hqStructureAtom, structureWith([environment("prod-1", "production")]));

@@ -86,6 +86,8 @@ export interface AppRecipe {
    * the hostname: `appdev` builds `app`. A later tier names a hostname's repository over an earlier.
    */
   readonly repositories: ReadonlyMap<string, string>;
+  /** The production tier's alone: what a release lists, each at its repository's `main` (C01). */
+  readonly productionRepositories: ReadonlyMap<string, string>;
 }
 
 /** `appdev` from `https://hq…/git/app-1/appdev.git`. */
@@ -102,16 +104,19 @@ export function appRecipeOf(files: {
 }): AppRecipe {
   const tiers: Array<GroupEnvironmentTier> = [];
   const repositories = new Map<string, string>();
+  const productionRepositories = new Map<string, string>();
   for (const tier of ["stage", "production"] as const) {
     const file = files[tier];
     if (file === null) continue;
     tiers.push(tier);
     for (const [hostname, cloneUrl] of recipeTierRepositories(file)) {
       const name = repositoryName(cloneUrl);
-      if (name !== undefined) repositories.set(hostname, name);
+      if (name === undefined) continue;
+      repositories.set(hostname, name);
+      if (tier === "production") productionRepositories.set(hostname, name);
     }
   }
-  return { tiers, repositories };
+  return { tiers, repositories, productionRepositories };
 }
 
 /**
