@@ -30,7 +30,6 @@ import { useZeropsProjectFlow, type ZeropsProjectFlowValue } from "./projectFlow
 import {
   HELD_VERB_MS,
   HQ_CHANGES_UNANSWERED,
-  RELEASE_MOVES_TO_HQ,
   VERB_ALREADY_RUNNING,
   ZeropsProjectFlowProvider,
 } from "./ZeropsProjectFlowProvider";
@@ -147,6 +146,10 @@ vi.mock("./accountHq", async (importOriginal) => ({
       hq.asked.push(["rollback", { appId, tag, request }]);
       return hq.answer();
     },
+    release: (appId: string, request: unknown) => {
+      hq.asked.push(["release", { appId, request }]);
+      return hq.answer();
+    },
   }),
 }));
 vi.mock("./useZeropsRegistry", () => ({
@@ -156,6 +159,16 @@ vi.mock("./useZeropsRegistry", () => ({
 const recipes = vi.hoisted(() => ({ read: new Map<string, AppRecipe>() }));
 vi.mock("./useZeropsAppRecipes", () => ({
   useZeropsAppRecipes: () => recipes.read,
+}));
+/** HQ's rule for this person releasing `g1`, in its words; `undefined` while it cannot be asked. */
+const permission = vi.hoisted(() => ({
+  gate: { allowed: true } as
+    | { readonly allowed: true }
+    | { readonly allowed: false; readonly reason: string }
+    | undefined,
+}));
+vi.mock("./useChangeOffers", () => ({
+  useReleasePermission: () => () => permission.gate,
 }));
 vi.mock("./useZeropsAppReleases", () => ({
   useZeropsAppReleases: () => ({
@@ -287,6 +300,7 @@ describe("ZeropsProjectFlowProvider", () => {
     released.repos = [];
     released.failures = new Map();
     released.refreshed = [];
+    permission.gate = { allowed: true };
     hq.asked = [];
     hq.answer = () => Promise.resolve({});
     vi.unstubAllGlobals();
@@ -578,29 +592,123 @@ describe("ZeropsProjectFlowProvider", () => {
     });
   });
 
-  it("refuses a release: its offer moves to HQ next", async () => {
-    installTestDom();
-    const { createRoot } = await import("react-dom/client");
-    const seen: Array<ZeropsProjectFlowValue> = [];
-    function Probe() {
-      seen.push(useZeropsProjectFlow());
-      return null;
+  describe("release", () => {
+    const MERGED = "2".repeat(40);
+    const GROUP_MAIN = "b".repeat(40);
+    const RELEASE = flowVerbKey({ kind: "release", groupId: "g1" });
+    /** What HQ makes of the offer: the release it was named. */
+    const MADE: Release = {
+      tag: "v0.1.0",
+      sha: GROUP_MAIN,
+      entries: [{ service: "app", sha: MERGED }],
+      by: "u1",
+      at: "2026-10-02T10:00:00.000Z",
+      state: "approved",
+      reason: null,
+      rollbackOf: null,
+    };
+
+    /** A group whose production builds `app` from appdev, merged at MERGED, the recipe at GROUP_MAIN. */
+    async function mountRelease() {
+      recipes.read = new Map([
+        [
+          "g1",
+          {
+            tiers: ["production"],
+            repositories: new Map([["app", "appdev"]]),
+            productionRepositories: new Map([["app", "appdev"]]),
+          },
+        ],
+      ]);
+      released.repos = [
+        { name: "appdev", mainHead: MERGED, updatedAt: "2026-10-02T09:00:00.000Z" },
+        { name: "group", mainHead: GROUP_MAIN, updatedAt: "2026-10-02T09:00:00.000Z" },
+      ];
+      hq.answer = () => Promise.resolve(MADE);
+      installTestDom();
+      const { createRoot } = await import("react-dom/client");
+      const seen: Array<ZeropsProjectFlowValue> = [];
+      function Probe() {
+        seen.push(useZeropsProjectFlow());
+        return null;
+      }
+      const root = createRoot(document.createElement("div") as unknown as Element);
+      const render = () =>
+        act(async () => {
+          root.render(createElement(ZeropsProjectFlowProvider, null, createElement(Probe)));
+        });
+      await render();
+      return { seen, render, root };
     }
-    const root = createRoot(document.createElement("div") as unknown as Element);
-    await act(async () => {
-      root.render(createElement(ZeropsProjectFlowProvider, null, createElement(Probe)));
+
+    it("releases what its offer shows, held until the releases list what HQ made", async () => {
+      const { seen, render, root } = await mountRelease();
+      expect(seen.at(-1)?.flows.get("g1")?.release.gate).toEqual({ allowed: true });
+      let outcome: unknown;
+      await act(async () => {
+        outcome = await seen.at(-1)!.release("g1");
+      });
+      expect(hq.asked).toEqual([
+        [
+          "release",
+          {
+            appId: "g1",
+            request: {
+              tag: "v0.1.0",
+              groupHead: GROUP_MAIN,
+              entries: [{ service: "app", sha: MERGED }],
+            },
+          },
+        ],
+      ]);
+      expect(outcome).toEqual({ ok: true, tag: "v0.1.0" });
+      expect(released.refreshed).toEqual(["g1"]);
+      expect(seen.at(-1)?.pending.has(RELEASE)).toBe(true);
+      released.releases = [MADE];
+      await render();
+      expect(seen.at(-1)?.pending.has(RELEASE)).toBe(false);
+      await act(async () => {
+        root.unmount();
+      });
     });
-    expect(seen.at(-1)?.flows.get("g1")?.release.gate).toEqual({
-      allowed: false,
-      reason: RELEASE_MOVES_TO_HQ,
+
+    it("refuses what its offer refuses, in HQ's words for who may, and asks HQ nothing", async () => {
+      permission.gate = {
+        allowed: false,
+        reason: "You need at least Basic user access to this project's production to release it.",
+      };
+      const { seen, root } = await mountRelease();
+      let outcome: unknown;
+      await act(async () => {
+        outcome = await seen.at(-1)!.release("g1");
+      });
+      expect(hq.asked).toEqual([]);
+      expect(outcome).toEqual({
+        ok: false,
+        reason: "You need at least Basic user access to this project's production to release it.",
+      });
+      await act(async () => {
+        root.unmount();
+      });
     });
-    let outcome: unknown;
-    await act(async () => {
-      outcome = await seen.at(-1)?.release("g1");
-    });
-    expect(outcome).toEqual({ ok: false, reason: RELEASE_MOVES_TO_HQ });
-    await act(async () => {
-      root.unmount();
+
+    it("says HQ's refusal in its words, where the verbs are, and holds nothing", async () => {
+      const { seen, root } = await mountRelease();
+      hq.answer = () =>
+        Promise.reject(new Error("Main moved since you opened this. Review it again."));
+      let outcome: unknown;
+      await act(async () => {
+        outcome = await seen.at(-1)!.release("g1");
+      });
+      expect(outcome).toEqual({
+        ok: false,
+        reason: "Main moved since you opened this. Review it again.",
+      });
+      expect(seen.at(-1)?.trouble).toBe("Main moved since you opened this. Review it again.");
+      expect(seen.at(-1)?.pending.has(RELEASE)).toBe(false);
+      await act(async () => {
+        root.unmount();
+      });
     });
   });
 

@@ -24,7 +24,6 @@ import {
   RELEASE_CHECKING,
   RELEASE_NOTHING_MERGED,
   RELEASE_NOTHING_NEW_ON_MAIN,
-  RELEASE_NOT_A_RELEASER,
   rollbackTo,
   shortCommit,
   suggestReleaseTags,
@@ -321,11 +320,7 @@ describe("a release lists what is merged", () => {
   });
 
   it("never says a sentence about a stage, which a release does not depend on", () => {
-    for (const reason of [
-      RELEASE_NOTHING_MERGED,
-      RELEASE_NOTHING_NEW_ON_MAIN,
-      RELEASE_NOT_A_RELEASER,
-    ]) {
+    for (const reason of [RELEASE_NOTHING_MERGED, RELEASE_NOTHING_NEW_ON_MAIN]) {
       expect(reason).not.toMatch(/stage/iu);
     }
   });

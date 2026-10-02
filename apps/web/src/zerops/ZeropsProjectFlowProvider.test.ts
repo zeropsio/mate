@@ -1,9 +1,16 @@
-import type { GroupEnvironmentRowInput, GroupStops } from "@t3tools/client-runtime/zerops";
+import {
+  RELEASE_CHECKING,
+  type AppRecipe,
+  type GroupEnvironmentRowInput,
+  type GroupStops,
+  type ReleaseGate,
+} from "@t3tools/client-runtime/zerops";
 import type { HqDeploy } from "@t3tools/client-runtime/zerops/hq";
+import type { RepoListEntry } from "@t3tools/shared/hqChanges";
 import type { Release } from "@t3tools/shared/hqRelease";
 import { describe, expect, it } from "vite-plus/test";
 
-import { joinProjectFlows, RELEASE_MOVES_TO_HQ } from "./ZeropsProjectFlowProvider";
+import { joinProjectFlows } from "./ZeropsProjectFlowProvider";
 
 const GROUPS = [
   { groupId: "g1", slug: "harbor" },
@@ -52,12 +59,18 @@ const record = (sha: string, state: HqDeploy["state"], at: string): HqDeploy => 
 function join(input: {
   readonly stops?: ReadonlyMap<string, GroupStops>;
   readonly releases?: ReadonlyMap<string, ReadonlyArray<Release>>;
+  readonly repos?: ReadonlyMap<string, ReadonlyArray<RepoListEntry>>;
+  readonly recipes?: ReadonlyMap<string, AppRecipe>;
+  readonly permissions?: ReadonlyMap<string, ReleaseGate | undefined>;
   readonly withheld?: ReadonlyMap<string, string>;
 }) {
   return joinProjectFlows({
     groups: GROUPS,
     stops: input.stops ?? new Map(),
     releases: input.releases ?? new Map(),
+    repos: input.repos ?? new Map(),
+    recipes: input.recipes ?? new Map(),
+    permissions: input.permissions ?? new Map(),
     changes: null,
     changesFailure: undefined,
     nowMs: NOW,
@@ -102,14 +115,9 @@ describe("joinProjectFlows", () => {
     expect(flow?.environments.map(({ name }) => name)).toEqual(["harbor stage"]);
   });
 
-  it.each([
-    ["a production shown", NOTHING_WITHHELD, RELEASE_MOVES_TO_HQ],
-    [
-      "a production the grant withholds",
-      new Map([["prod-1", "Checking your access to this project…"]]),
-      "Checking your access to this project…",
-    ],
-  ] as const)("offers no release against %s, and says why", (_case, withheld, reason) => {
+  describe("the release offered", () => {
+    const MERGED = "2".repeat(40);
+    const GROUP_MAIN = "9".repeat(40);
     const production: GroupEnvironmentRowInput = {
       projectId: "prod-1",
       name: "harbor production",
@@ -118,17 +126,69 @@ describe("joinProjectFlows", () => {
       environment: "production",
       keyHeld: true,
       keyInvalid: false,
-      services: [{ hostname: "app", appVersionName: "1".repeat(40) }],
+      services: [{ hostname: "app", appVersionName: `v0.1.0 ${"1".repeat(7)}` }],
     };
-    const release = join({
-      stops: new Map([["g1", stopsOf([production])]]),
-      releases: new Map([["g1", [FIRST]]]),
-      withheld,
-    }).get("g1")?.release;
-    expect(release?.gate).toEqual({ allowed: false, reason });
-    expect(release?.entries).toEqual([]);
-    expect(release?.contents).toEqual([]);
-    expect(release?.suggestion).toBe("v0.1.1");
+    const repos: ReadonlyArray<RepoListEntry> = [
+      { name: "appdev", mainHead: MERGED, updatedAt: "2026-09-24T09:30:00Z" },
+      { name: "group", mainHead: GROUP_MAIN, updatedAt: "2026-09-24T09:30:00Z" },
+    ];
+    const recipe: AppRecipe = {
+      tiers: ["stage", "production"],
+      repositories: new Map([["app", "appdev"]]),
+      productionRepositories: new Map([["app", "appdev"]]),
+    };
+    const offered = (over: {
+      readonly permission?: ReleaseGate | undefined;
+      readonly repos?: ReadonlyArray<RepoListEntry> | undefined;
+      readonly withheld?: ReadonlyMap<string, string>;
+    }) =>
+      join({
+        stops: new Map([["g1", stopsOf([production])]]),
+        releases: new Map([["g1", [FIRST]]]),
+        repos: over.repos === undefined ? new Map() : new Map([["g1", over.repos]]),
+        recipes: new Map([["g1", recipe]]),
+        permissions: new Map([["g1", over.permission]]),
+        withheld: over.withheld ?? NOTHING_WITHHELD,
+      }).get("g1")?.release;
+
+    it("lists each production runtime at its repository's main, to tag the recipe's main", () => {
+      const release = offered({ permission: { allowed: true }, repos });
+      expect(release?.gate).toEqual({ allowed: true });
+      expect(release?.entries).toEqual([{ service: "app", commit: MERGED }]);
+      expect(release?.groupHead).toBe(GROUP_MAIN);
+      expect(release?.suggestion).toBe("v0.1.1");
+    });
+
+    it("says HQ's rule in its words to one it does not let release", () => {
+      const refusal = {
+        allowed: false,
+        reason: "You need at least Basic user access to this project's production to release it.",
+      } as const;
+      const release = offered({ permission: refusal, repos });
+      expect(release?.gate).toEqual(refusal);
+      expect(release?.permission).toEqual(refusal);
+    });
+
+    it.each([
+      ["HQ's rule cannot be asked yet", { permission: undefined, repos }],
+      ["HQ's repositories are not read yet", { permission: { allowed: true }, repos: undefined }],
+    ] as const)("is checking while %s", (_case, over) => {
+      expect(offered(over)?.gate).toEqual({ allowed: false, reason: RELEASE_CHECKING });
+    });
+
+    it("offers nothing against a production the grant withholds, and says why", () => {
+      const release = offered({
+        permission: { allowed: true },
+        repos,
+        withheld: new Map([["prod-1", "Checking your access to this project…"]]),
+      });
+      expect(release?.gate).toEqual({
+        allowed: false,
+        reason: "Checking your access to this project…",
+      });
+      expect(release?.entries).toEqual([]);
+      expect(release?.contents).toEqual([]);
+    });
   });
 
   // A production runs several releases at once when its services were released at different

@@ -3,7 +3,13 @@ import { describe, expect, it } from "vite-plus/test";
 
 import { isRecipeProposal } from "./projectFlow.ts";
 import { recipeReach, type RecipeReach } from "./recipeReach.ts";
-import { RELEASE_NOT_A_RELEASER, RELEASE_NOTHING_NEW_ON_MAIN } from "./release.ts";
+import { RELEASE_NOTHING_NEW_ON_MAIN } from "./release.ts";
+
+/** HQ's rule refusing the person the release, in its words (`releasePermission`). */
+const NOT_A_RELEASER = {
+  allowed: false,
+  reason: "You need at least Basic user access to this project's production to release it.",
+} as const;
 import {
   changeReview,
   crewTaskReview,
@@ -410,6 +416,7 @@ function release(over: Partial<ReleaseReviewInput> = {}): ReleaseReviewInput {
   return {
     tag: "v0.1.57",
     gate: { allowed: true },
+    permission: { allowed: true },
     changes: 2,
     onStage: { total: 2, running: 2 },
     services: ["app", "api"],
@@ -443,9 +450,14 @@ describe("releaseReview", () => {
       { state: "release-ready", why: "1 change merged since v0.1.56" },
     ],
     [
-      "not a releaser",
-      { gate: { allowed: false, reason: RELEASE_NOT_A_RELEASER } },
-      { state: "release-blocked", tone: "attention", title: "Only releasers can release" },
+      "not a releaser, in HQ's words for who may",
+      { gate: NOT_A_RELEASER, permission: NOT_A_RELEASER },
+      {
+        state: "release-blocked",
+        tone: "attention",
+        title: "Only releasers can release",
+        why: "You need at least Basic user access to this project's production to release it",
+      },
     ],
     [
       "nothing new",
@@ -505,7 +517,7 @@ describe("releaseReview", () => {
   it.each<[string, Partial<ReleaseReviewInput>, string, boolean | undefined]>([
     [
       "blocked",
-      { gate: { allowed: false, reason: RELEASE_NOT_A_RELEASER } },
+      { gate: NOT_A_RELEASER, permission: NOT_A_RELEASER },
       "Production keeps running v0.1.56.",
       false,
     ],
@@ -562,7 +574,7 @@ function rollback(over: Partial<RollbackReviewInput> = {}): RollbackReviewInput 
     nextTag: "v0.1.58",
     live: "v0.1.57",
     services: ["app", "api"],
-    mayRelease: true,
+    permission: { allowed: true },
     press: { kind: "idle" },
     outcome: { kind: "offered" },
     now: NOW,
@@ -584,10 +596,27 @@ describe("rollbackReview: roll back gets the same review, naming where it goes b
       "Tags main as v0.1.58 with v0.1.55's commits. Production redeploys app and api from them.",
     ],
     [
-      "not a releaser",
-      { mayRelease: false },
-      { state: "rollback-blocked", tone: "attention", title: "Only releasers can roll back" },
+      "not a releaser, in HQ's words for who may",
+      { permission: NOT_A_RELEASER },
+      {
+        state: "rollback-blocked",
+        tone: "attention",
+        title: "Only releasers can roll back",
+        why: "You need at least Basic user access to this project's production to release it",
+      },
       "Production keeps running v0.1.57.",
+    ],
+    [
+      // HQ asks its rule again at the press, so a rule not asked yet holds nothing back.
+      "while who may is not known yet",
+      { permission: undefined },
+      {
+        state: "rollback-ready",
+        tone: "quiet",
+        title: "Goes back to v0.1.55",
+        why: "Production runs v0.1.57 now",
+      },
+      "Tags main as v0.1.58 with v0.1.55's commits. Production redeploys app and api from them.",
     ],
     [
       "tagging",

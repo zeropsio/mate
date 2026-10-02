@@ -12,14 +12,18 @@ import { afterEach, describe, expect, it } from "vite-plus/test";
 import { hqStructureAtom, zeropsSessionAtom } from "../state/zerops";
 import { InventoryContext, type Inventory } from "./inventoryContext";
 import { ZeropsSessionContext } from "./sessionContext";
-import { useChangeOffers, type ZeropsChangeOffersOf } from "./useChangeOffers";
+import {
+  useChangeOffers,
+  useReleasePermission,
+  type ZeropsChangeOffersOf,
+} from "./useChangeOffers";
 import type { ZeropsSessionValue } from "./ZeropsSessionProvider";
 
 const MEMBERSHIP = "member-ada";
 
 const mounted: ReactTestRenderer[] = [];
 /** What the hook handed back, render by render. */
-const seen: ZeropsChangeOffersOf[] = [];
+const seen: unknown[] = [];
 afterEach(() => {
   for (const tree of mounted.splice(0)) {
     act(() => {
@@ -29,18 +33,25 @@ afterEach(() => {
   seen.length = 0;
 });
 
-function Probe() {
-  seen.push(useChangeOffers());
+function Probe({ use }: { readonly use: () => unknown }) {
+  seen.push(use());
   return null;
 }
 
-/** The hook's answer, with the session's role, the grants listed, and HQ's structure where `placed`. */
-function offersOf(input: {
+interface Facts {
   readonly roleCode: string;
   readonly grants: ReadonlyArray<{ readonly projectId: string; readonly roleCode: string }>;
   readonly placed: boolean;
   readonly listed?: boolean;
-}): ZeropsChangeOffersOf {
+}
+
+/** The hook's answer, with the session's role, the grants listed, and HQ's structure where `placed`. */
+function offersOf(input: Facts): ZeropsChangeOffersOf {
+  return answerOf(input, useChangeOffers);
+}
+
+/** `use`'s answer over the same facts: HQ places a Mate, a stage and a production in the application. */
+function answerOf<T>(input: Facts, use: () => T): T {
   const registry = AtomRegistry.make();
   registry.set(zeropsSessionAtom, {
     status: "signed-in",
@@ -59,6 +70,7 @@ function offersOf(input: {
             projects: [
               { projectId: "p-mate", kind: "mate", mate: null },
               { projectId: "p-stage", kind: "stage", mate: null },
+              { projectId: "p-prod", kind: "production", mate: null },
             ],
           },
         ],
@@ -87,16 +99,15 @@ function offersOf(input: {
         <RegistryContext.Provider value={registry}>
           <ZeropsSessionContext.Provider value={session}>
             <InventoryContext.Provider value={inventory}>
-              <Probe />
+              <Probe use={use} />
             </InventoryContext.Provider>
           </ZeropsSessionContext.Provider>
         </RegistryContext.Provider>,
       ),
     );
   });
-  const answer = seen.at(-1);
-  if (answer === undefined) throw new Error("the probe never rendered");
-  return answer;
+  if (seen.length === 0) throw new Error("the probe never rendered");
+  return seen.at(-1) as T;
 }
 
 describe("useChangeOffers", () => {
@@ -138,5 +149,36 @@ describe("useChangeOffers", () => {
     expect(
       offersOf({ roleCode: "NO_ACCESS", grants: [], placed: true, listed: false })("app-shop"),
     ).toBe(undefined);
+  });
+});
+
+describe("useReleasePermission", () => {
+  it.each([
+    {
+      who: "a No access member with Basic user on its production",
+      roleCode: "NO_ACCESS",
+      grants: [{ projectId: "p-prod", roleCode: "BASIC_USER" }],
+      want: { allowed: true },
+    },
+    {
+      who: "a Read only member of the organization, in HQ's words",
+      roleCode: "READ_ONLY",
+      grants: [],
+      want: {
+        allowed: false,
+        reason: "You need at least Basic user access to this project's production to release it.",
+      },
+    },
+  ])("decides for $who by HQ's rule", ({ roleCode, grants, want }) => {
+    const permission = answerOf({ roleCode, grants, placed: true }, useReleasePermission);
+    expect(permission("app-shop")).toEqual(want);
+  });
+
+  it("says nothing while HQ has not placed the projects", () => {
+    const permission = answerOf(
+      { roleCode: "READ_ONLY", grants: [], placed: false },
+      useReleasePermission,
+    );
+    expect(permission("app-shop")).toBe(undefined);
   });
 });

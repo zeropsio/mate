@@ -52,7 +52,7 @@
 
 import type { RepoListEntry } from "@t3tools/shared/hqChanges";
 import { RECIPE_REPO } from "@t3tools/shared/hqRecipe";
-import type { Release } from "@t3tools/shared/hqRelease";
+import { nextPatch, type Release } from "@t3tools/shared/hqRelease";
 
 import type { GiteaCommitStatus } from "./giteaClient.ts";
 import type { EnvironmentRow } from "./groupRows.ts";
@@ -255,8 +255,6 @@ export type ReleaseGate =
   | { readonly allowed: true }
   | { readonly allowed: false; readonly reason: string };
 
-/** What the app says when it will not offer the button. */
-export const RELEASE_NOT_A_RELEASER = "Only releasers can tag.";
 /** Nothing is on `main` to release — a group whose Mates have landed nothing. */
 export const RELEASE_NOTHING_MERGED = "Nothing is merged to release.";
 /**
@@ -321,7 +319,7 @@ export function releaseOffer(input: {
   readonly production: ReadonlyMap<string, string>;
   /** The release tag on its way to production (`releaseInFlight`). */
   readonly inFlight?: string | undefined;
-  /** Every `v*` tag on the group repo, so no name is suggested twice. */
+  /** Every release's name, so the next one is suggested over the newest (`nextPatch`). */
   readonly tags: ReadonlyArray<string>;
 }): {
   readonly gate: ReleaseGate;
@@ -341,7 +339,7 @@ export function releaseOffer(input: {
       comparison,
       inFlight: input.inFlight,
     }),
-    suggestion: suggestReleaseTags(input.tags).patch,
+    suggestion: nextPatch(input.tags),
     comparison,
     entries,
   };

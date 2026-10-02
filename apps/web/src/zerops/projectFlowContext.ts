@@ -25,6 +25,13 @@ import { createContext, useContext } from "react";
 /** What *Release* offers on a project, when it is offered at all. */
 export interface ZeropsReleaseOffer {
   readonly gate: ReleaseGate;
+  /**
+   * HQ's rule for this person (`releasePermission`), its refusal in words; `undefined` while it
+   * cannot be asked. HQ asks it again at the press.
+   */
+  readonly permission: ReleaseGate | undefined;
+  /** The recipe's `main` as read with the offer: what the release tags; HQ refuses one that moved. */
+  readonly groupHead: string | undefined;
   /** The next patch, suggested from the newest existing tag. */
   readonly suggestion: string;
   readonly comparison: ReadonlyArray<ReleaseComparison>;
@@ -125,9 +132,12 @@ export interface ZeropsProjectFlowValue {
    * verb's refusal said, until the next verb.
    */
   readonly trouble: string | null;
-  /** Tags what the stage runs as the next release (`release.ts`). */
+  /**
+   * A release made in HQ as the person, of what the offer shows: its `entries`, named its
+   * `suggestion`, tagging the `groupHead` it was read with (`release.ts`).
+   */
   readonly release: (groupId: string) => Promise<FlowVerbOutcome>;
-  /** A new tag listing an earlier release's commits (guide 5.6). */
+  /** A new release made in HQ as the person, listing an earlier release's entries (guide 5.6). */
   readonly rollBack: (groupId: string, tag: string) => Promise<FlowVerbOutcome>;
   /**
    * A change squashed into `main` in HQ, as the person, if its head is still `expectedHead` — the

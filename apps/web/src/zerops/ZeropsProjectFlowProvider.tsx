@@ -13,11 +13,11 @@
  * Each group's flow is the same object until one of its own parts changes, so
  * one group answering never republishes another.
  *
- * Release is not offered: its offer moves to HQ next, and until then the
- * gate says so. A rollback is made in HQ, as the person. What each stop runs
- * is the account's deployment store's answer (`flow/deploymentStore.ts`). A
- * change is merged and closed in HQ, as the person, and comes back down HQ's
- * stream.
+ * A release is offered by HQ's rule (`useReleasePermission`) of each production
+ * runtime at its repository's `main` as HQ lists it, and made — or rolled
+ * back — in HQ, as the person. What each stop runs is the account's
+ * deployment store's answer (`flow/deploymentStore.ts`). A change is merged
+ * and closed in HQ, as the person, and comes back down HQ's stream.
  */
 import { useAtomValue } from "@effect/atom-react";
 import {
@@ -33,9 +33,12 @@ import {
   readZeropsMembership,
   releaseDeploys,
   releaseInFlight,
+  releaseCandidate,
+  releaseOffer,
   releaseRow,
   statedVersionNames,
   summarizeEnvironmentServices,
+  type AppRecipe,
   type EnvironmentRow,
   type FlowPullRequest,
   type FlowRelease,
@@ -43,6 +46,7 @@ import {
   type GroupStopProject,
   type GroupStops,
   type FlowVerb,
+  type ReleaseGate,
 } from "@t3tools/client-runtime/zerops";
 import { HQ_NOT_OPEN, hqRefusalWords, type HqApi } from "@t3tools/client-runtime/zerops/hq";
 import { flowVerbInvalidations, type Deployment } from "@t3tools/client-runtime/zerops/flow";
@@ -51,9 +55,9 @@ import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
 import { mateDiagnostics } from "@t3tools/client-runtime/zerops/diagnostics";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 import { zeropsThrowawayPlatform } from "@t3tools/client-runtime/zerops/doorThrowaway";
-import type { ChangeLink, HqChange } from "@t3tools/shared/hqChanges";
+import type { ChangeLink, HqChange, RepoListEntry } from "@t3tools/shared/hqChanges";
 import { RECIPE_REPO } from "@t3tools/shared/hqRecipe";
-import { nextPatch, type Release } from "@t3tools/shared/hqRelease";
+import type { Release } from "@t3tools/shared/hqRelease";
 import {
   useCallback,
   useContext,
@@ -79,6 +83,7 @@ import { useNowMs } from "./useNowMs";
 import { useZeropsAtomSelections, ZeropsDataContext } from "./zeropsDataContext";
 import { useZeropsAppRecipes } from "./useZeropsAppRecipes";
 import { useZeropsAppReleases } from "./useZeropsAppReleases";
+import { useReleasePermission } from "./useChangeOffers";
 import { useZeropsRegistry } from "./useZeropsRegistry";
 import {
   HeldInventoryContext,
@@ -103,6 +108,8 @@ type ChangeVerb = Extract<FlowVerb, { readonly kind: "merge" | "close" }>;
 
 /** What a merge refused for a head nobody was shown says: HQ's own words for it. */
 const HEAD_NOT_SHOWN = hqRefusalWords({ code: "conflict", reason: "head_moved" });
+/** What a verb says when its project's flow has not been read at all. */
+const NOT_READ_YET = "This project has not been read yet.";
 /** What a release says while the recipe has nothing on `main` to tag: HQ's own words for it. */
 const NO_GROUP_MAIN = hqRefusalWords({ code: "conflict", reason: "no_group_main" });
 
@@ -215,8 +222,8 @@ function groupStopsFor(groupId: string, input: Parameters<typeof groupStopsOf>[0
   return stops;
 }
 
-/** What *Release* says while its offer is not built: it moves to HQ next. */
-export const RELEASE_MOVES_TO_HQ = "Releases move to HQ next; none is offered until then.";
+/** What a release lists while HQ's repositories or the recipe are not read. */
+const NOTHING_TO_LIST: ReadonlyMap<string, string> = new Map();
 
 /** Stands for a part a group has no answer for, as a key of {@link joinedFlows}. */
 const UNREAD_HALF = {};
@@ -240,6 +247,12 @@ export function joinProjectFlows(input: {
   readonly stops: ReadonlyMap<string, GroupStops>;
   /** Each group's releases as HQ records them, newest first, by its id, once HQ answered. */
   readonly releases: ReadonlyMap<string, ReadonlyArray<Release>>;
+  /** Each group's repositories with their `main`, read with its releases. */
+  readonly repos: ReadonlyMap<string, ReadonlyArray<RepoListEntry>>;
+  /** Each group's recipe on `main`: the repository each production runtime builds from. */
+  readonly recipes: ReadonlyMap<string, AppRecipe>;
+  /** HQ's rule for this person releasing each group, in its words; absent while it cannot be asked. */
+  readonly permissions: ReadonlyMap<string, ReleaseGate | undefined>;
   /** Each group's changes, by its id; `null` while HQ has told nothing of them. */
   readonly changes: ReadonlyMap<string, GroupChanges> | null;
   /** Why HQ has told nothing of them, while it does not answer. */
@@ -284,18 +297,25 @@ export function joinProjectFlows(input: {
       failed,
       nowMs: input.nowMs,
     });
+    const repos = input.repos.get(group.groupId);
+    const recipe = input.recipes.get(group.groupId);
+    const permission = input.permissions.get(group.groupId);
     const key = JSON.stringify([
       group.groupId,
       group.slug,
       inFlight ?? null,
       changes === undefined ? (input.changesFailure ?? null) : null,
       [...withheld],
+      repos ?? null,
+      recipe === undefined ? null : [...recipe.productionRepositories],
+      permission ?? null,
     ]);
     let flow = byGroup.get(key);
     if (flow === undefined) {
       flow = projectFlow(
         group,
         { stops, records, changes, changesFailure: input.changesFailure },
+        { repos, recipe, permission },
         inFlight,
         withheld,
       );
@@ -334,6 +354,12 @@ function projectFlow(
     readonly changes: GroupChanges | undefined;
     readonly changesFailure: string | undefined;
   },
+  /** What a release is offered from; each `undefined` until it is read or can be asked. */
+  offered: {
+    readonly repos: ReadonlyArray<RepoListEntry> | undefined;
+    readonly recipe: AppRecipe | undefined;
+    readonly permission: ReleaseGate | undefined;
+  },
   inFlight: string | undefined,
   /** Why the grant withholds each of the group's projects it withholds alone. */
   withheld: ReadonlyMap<string, string>,
@@ -357,6 +383,20 @@ function projectFlow(
       live: entry.tag === live,
     }),
   );
+  // Until HQ's releases, its repositories and the recipe are read, nothing is known to release:
+  // the gate says it is checking.
+  const { repos, recipe, permission } = offered;
+  const read =
+    records === undefined || repos === undefined || recipe === undefined
+      ? undefined
+      : releaseCandidate({ productionRepositories: recipe.productionRepositories, repos });
+  const offer = releaseOffer({
+    permission: read === undefined ? undefined : permission,
+    candidate: read === undefined ? NOTHING_TO_LIST : read.candidate,
+    production: sides.production,
+    inFlight,
+    tags: releaseList.map(({ tag }) => tag),
+  });
   return {
     groupId: group.groupId,
     slug: group.slug,
@@ -370,14 +410,20 @@ function projectFlow(
     changesFailure: changes === undefined ? halves.changesFailure : undefined,
     merged: changes?.merged ?? [],
     releases: releaseRows,
-    release: {
-      gate: { allowed: false, reason: productionWithheld ?? RELEASE_MOVES_TO_HQ },
-      suggestion: nextPatch((records ?? []).map(({ tag }) => tag)),
-      comparison: [],
-      entries: [],
-      inFlight,
-      contents: [],
-    },
+    // A production the grant withholds is measured against nothing, and offers nothing.
+    release:
+      productionWithheld === undefined
+        ? { ...offer, permission, groupHead: read?.groupHead, inFlight, contents: [] }
+        : {
+            ...offer,
+            gate: { allowed: false, reason: productionWithheld },
+            permission,
+            groupHead: undefined,
+            comparison: [],
+            entries: [],
+            inFlight,
+            contents: [],
+          },
   };
 }
 
@@ -605,6 +651,12 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
     hqStructure?.unavailableSince === null || hqStructure === null
       ? undefined
       : HQ_CHANGES_UNANSWERED;
+  // HQ's rule for this person releasing each group, in its words.
+  const releasePermissionOf = useReleasePermission();
+  const permissions = useMemo(
+    () => new Map(flowGroups.map(({ groupId }) => [groupId, releasePermissionOf(groupId)])),
+    [flowGroups, releasePermissionOf],
+  );
   const flows = useMemo<ReadonlyMap<string, ZeropsProjectFlow>>(
     () =>
       signedInToMate
@@ -612,6 +664,9 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
             groups: flowGroups,
             stops: groupStops,
             releases: releaseRecords,
+            repos: appRepos,
+            recipes,
+            permissions,
             changes,
             changesFailure,
             nowMs,
@@ -619,12 +674,15 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
           })
         : EMPTY_FLOWS,
     [
-      releaseRecords,
+      appRepos,
       changes,
       changesFailure,
       flowGroups,
       groupStops,
       nowMs,
+      permissions,
+      recipes,
+      releaseRecords,
       signedInToMate,
       withheld,
     ],
@@ -727,10 +785,36 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
     return refused(reason);
   }, []);
 
-  // Release's offer moves to HQ next (`RELEASE_MOVES_TO_HQ`): until then nothing is released.
+  /**
+   * A release made in HQ as the person, of exactly what its offer shows: its entries, named its
+   * suggestion, tagging the recipe's `main` it was read with — HQ refuses one that moved since.
+   * Held until the application's releases list it; HQ's refusal is said in its words.
+   */
   const release = useCallback(
-    async (): Promise<FlowVerbOutcome> => refused(RELEASE_MOVES_TO_HQ),
-    [],
+    async (groupId: string): Promise<FlowVerbOutcome> => {
+      if (hqApi === null) return refused(HQ_NOT_OPEN);
+      const offer = flows.get(groupId)?.release;
+      if (offer === undefined) return refused(NOT_READ_YET);
+      if (!offer.gate.allowed) return refused(offer.gate.reason);
+      const { groupHead } = offer;
+      if (groupHead === undefined) return refuse(NO_GROUP_MAIN);
+      const verb: FlowVerb = { kind: "release", groupId };
+      return run(verb, groupId, async () => {
+        try {
+          const made = await hqApi.release(groupId, {
+            tag: offer.suggestion,
+            groupHead,
+            entries: offer.entries.map(({ service, commit }) => ({ service, sha: commit })),
+          });
+          setTrouble(null);
+          hold(verb, groupId, { kind: "release", tag: made.tag });
+          return { ok: true, tag: made.tag };
+        } catch (cause) {
+          return refuse(zeropsErrorMessage(cause));
+        }
+      });
+    },
+    [flows, hold, hqApi, refuse, run],
   );
 
   /**
@@ -822,8 +906,7 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
       const environment = flows
         .get(groupId)
         ?.environmentInputs.find((entry) => entry.projectId === projectId)?.environment;
-      if (environment === undefined)
-        return Promise.resolve(refused("This project has not been read yet."));
+      if (environment === undefined) return Promise.resolve(refused(NOT_READ_YET));
       const verb: FlowVerb = { kind: "redeploy", groupId, projectId, service: deploy.service };
       return run(verb, groupId, async () => {
         try {

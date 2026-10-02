@@ -515,6 +515,7 @@ function Release({
       titleId={titleId}
       fixer="Juno"
       gate={{ allowed: true }}
+      permission={{ allowed: true }}
       hasStage
       live="v0.1.56"
       name="Beviro"
@@ -908,7 +909,7 @@ export const REVIEW_STATES: ReadonlyArray<{
       <RollbackReviewView
         line="app 7e1c0d2 · api 7e1c0d2"
         live="v0.1.57"
-        mayRelease
+        permission={{ allowed: true }}
         name="Beviro"
         nextTag="v0.1.58"
         now={NOW}
