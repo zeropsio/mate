@@ -603,7 +603,7 @@ conversation's state) Fen lives here` (`ZeropsMateOnMap`, from the panel), and t
     name, then each stop as a group — its row, opening the environment's page: a dot, the name, the
     version and the state in words ("Healthy", "Releasing v1.2.1", "Release failed", "Deployed 40
     min ago", "Deploy failed", "Down", "Stopped", "Setting up…"); a note of what went wrong, as far
-    as the platform and HQ's deploys say, and Gitea for a release until T9b; "Ask Nova to fix it"
+    as the platform and HQ's deploys and releases say; "Ask Nova to fix it"
     while it is in trouble, a stage's fix naming the stage (S6); the public links, each led by the
     service it reaches (`app`, `api:3000` where one service answers on several ports); among several
     stages, each its own _Open in Zerops_ — then "N changes wait for production" with _Review_, the
@@ -611,7 +611,7 @@ conversation's state) Fen lives here` (`ZeropsMateOnMap`, from the panel), and t
   - _States:_ a chip: neutral (healthy, changes waiting, releasing or deploying, setting up, nothing
     released or deployed yet) · amber (the last release or deploy did not go through) · red (down) ·
     hollow (stopped on purpose) · unknown (the remembered chip, or what the platform alone says
-    while Gitea's release answer is read, until T9b, or nothing) · none (no such tier); several
+    while HQ's answer is read, or nothing) · none (no such tier); several
     stages wear the worst of them: down, then a failed deploy, then one deploying
   - _Phrase source:_ `SidebarProductionChip.logic.ts` (`projectChips`, `productionChip`,
     `stageChip`, `chipFace`, `productionMenu`, `stageMenu`, `stopServing`)
