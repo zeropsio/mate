@@ -53,6 +53,11 @@ export interface ZeropsCandidate {
   readonly service?: ZeropsCandidateService;
   readonly containerOrigin?: string;
   readonly environmentId?: EnvironmentId;
+  /**
+   * A young container ACTIVE before its address landed (`addressWaitEnds`): on its way, from when
+   * its reader first saw it so until its wait ends, wall ms. Its reader derives it again then.
+   */
+  readonly addressAwaited?: { readonly since: number; readonly until: number };
 }
 
 /**
@@ -227,6 +232,42 @@ export function applyFirstBuildGiveUp<Candidate extends ZeropsCandidate>(
 }
 
 /**
+ * How long a container ACTIVE without its address stays on its way to it, from when its reader
+ * first saw it so. The platform enables a new Mate's address a second or two after its first build
+ * makes it ACTIVE, and the push of that lands seconds later (measured 2026-10-02: 5.6 s from
+ * ACTIVE to the address in the tab, under 20 s in the REST record; 2026-09-22: 3 s): two minutes
+ * is ample for both, and short enough that an address that will not come says so soon.
+ */
+export const ADDRESS_GRACE_MS = 120_000;
+
+/**
+ * When a container's wait for its address ends, wall ms, given when its reader first saw it ACTIVE
+ * without one; null when it is not waiting. Only a young container waits: a Mate turns ACTIVE at
+ * the end of its first build, which is given up {@link FIRST_BUILD_GIVE_UP_MS} after its creation,
+ * so one ACTIVE without an address past that and the grace is not being born — its access is off,
+ * and a reload never paints it "coming up". A creation time not known says nothing young.
+ */
+export function addressWaitEnds(
+  service: Pick<ZeropsService, "status" | "created">,
+  sinceMs: number,
+): number | null {
+  if (service.status !== "ACTIVE") return null;
+  const created = Date.parse(service.created ?? "");
+  if (Number.isNaN(created)) return null;
+  return Math.min(sinceMs, created + FIRST_BUILD_GIVE_UP_MS) + ADDRESS_GRACE_MS;
+}
+
+/** The clock a reader judges an address wait by (`addressWaitEnds`). */
+export interface AddressClock {
+  readonly nowMs: number;
+  /**
+   * When this reader first saw the container ACTIVE without its address, by service id; one it
+   * has not seen so is first seen now.
+   */
+  readonly addressAwaitedSince?: (serviceId: string) => number | undefined;
+}
+
+/**
  * Every candidate one project contributes — one per zcp container, so a project
  * holding two of them offers both rather than collapsing into "ambiguous".
  * `services` is null when the project's service list could not be read; that is
@@ -239,6 +280,7 @@ export function deriveZeropsCandidates(
   services: ReadonlyArray<ZeropsService> | null,
   connectedOrigins: ReadonlyMap<string, EnvironmentId>,
   creation?: ZeropsProjectCreation | undefined,
+  clock?: AddressClock | undefined,
 ): ReadonlyArray<ZeropsCandidate> {
   if (project.status !== "ACTIVE") {
     if (PROJECT_PROVISIONING_STATUSES.has(project.status)) {
@@ -294,6 +336,21 @@ export function deriveZeropsCandidates(
 
     const origin = containerOrigin(project, service);
     if (!origin.ok) {
+      // A young container ACTIVE before its address landed is on its way to it, never without one.
+      if (clock !== undefined) {
+        const since = clock.addressAwaitedSince?.(service.id) ?? clock.nowMs;
+        const until = addressWaitEnds(service, since);
+        if (until !== null && clock.nowMs < until) {
+          return {
+            key,
+            project,
+            group: "provisioning",
+            reason: `its address is on its way (${origin.reason})`,
+            service: candidateService,
+            addressAwaited: { since, until },
+          };
+        }
+      }
       return {
         key,
         project,

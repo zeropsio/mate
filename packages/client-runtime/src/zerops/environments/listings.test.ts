@@ -1,12 +1,20 @@
 import { Atom, AtomRegistry } from "effect/unstable/reactivity";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
-import { identity, organization, project, scope } from "../data/__fixtures__/index.ts";
+import { ADDRESS_GRACE_MS } from "../candidates.ts";
+import {
+  identity,
+  organization,
+  project,
+  scope,
+  service,
+  stamp,
+} from "../data/__fixtures__/index.ts";
 import { selectProjectsOf } from "../data/projection.ts";
 import { interestKeyOf } from "../data/runtime.ts";
 import type { ManagedZeropsDataRuntime } from "../data/runtime.ts";
 import { makeInitialZeropsDataState } from "../data/state.ts";
-import type { CollectionRead, InterestState, ProjectRecord } from "../data/types.ts";
+import type { CollectionRead, InterestState, ProjectRecord, ServiceRecord } from "../data/types.ts";
 import { ReceiptOrdinal } from "../data/types.ts";
 import { candidateListingsAtom } from "./listings.ts";
 
@@ -140,5 +148,159 @@ describe("candidateListingsAtom: a read with no value yet", () => {
 
     expect(account.listings()).toBe(before);
     expect(account.listing()).toEqual({ state: "reading", sinceMs: 1_000, attempt: 2 });
+  });
+});
+
+describe("candidateListingsAtom: a young container ACTIVE before its address landed", () => {
+  const CREATED_AT = "2026-10-02T12:00:00.000Z";
+  const CREATED = Date.parse(CREATED_AT);
+
+  const admission = {
+    lastNativeReceiptOrdinal: null,
+    lastAppliedAuthoritativeDispatchOrdinal: null,
+    hasAuthoritativeObservation: true,
+  };
+  const observed = <Fields>(fields: Fields) => ({
+    knowledge: "observed" as const,
+    fields,
+    unresolvedRequiredFields: [] as const,
+    source: "direct-read" as const,
+    stamp: stamp(1),
+    admission,
+  });
+  const unresolved = {
+    knowledge: "unresolved",
+    fields: {},
+    unresolvedRequiredFields: [],
+    admission,
+  };
+
+  const projectRecord: ProjectRecord = {
+    ref: project(),
+    identity: observed({ name: "shop", createdAt: null }),
+    lifecycle: observed({ status: "ACTIVE" }),
+    presentation: observed({ tags: [], description: null }),
+    placement: observed({
+      publicZone: "fte2334ab.prg1-zerops.zone",
+      zeropsSubdomainHost: "24cb",
+      mode: "LIGHT" as const,
+    }),
+  } as unknown as ProjectRecord;
+
+  /** The project's zcp service, ACTIVE, its address enabled or not yet. */
+  const zcp = (subdomainAccess: boolean): ServiceRecord =>
+    ({
+      ref: service("service-1", project()),
+      identity: observed({
+        hostname: "zcp",
+        type: { versionName: "zcp@1", displayName: "Zerops Mate", category: "runtime" },
+      }),
+      lifecycle: observed({
+        status: "ACTIVE",
+        createdAt: CREATED_AT,
+        updatedAt: null,
+      }),
+      routing: observed({
+        subdomainAccess,
+        ports: [{ port: 8080, protocol: "TCP", scheme: "http", httpSupport: true }],
+      }),
+      deployment: unresolved,
+      scaling: unresolved,
+    }) as unknown as ServiceRecord;
+
+  /** A read the platform answered whole. */
+  const read = <R>(records: ReadonlyArray<R>, slice?: ReturnType<typeof project>) =>
+    ({
+      value: records.map((record) => ({ knowledge: "observed", record })),
+      query: {
+        status: "observed",
+        unresolvedMemberKeys: [],
+        stamp: stamp(1),
+        coverage: { kind: "exhausted-traversal" },
+        descriptor: { organization },
+      },
+      observation: { required: [], optional: [] },
+      ...(slice === undefined ? {} : { project: slice }),
+    }) as unknown;
+
+  const listingOver = (services: ServiceRecord) => {
+    const registry = AtomRegistry.make();
+    const servicesRead = Atom.make(read([services], project()));
+    const data = {
+      access: {
+        view: Atom.make({
+          machine: {
+            phase: {
+              phase: "granted",
+              evidence: {
+                account: { organizations: [{ organization }] },
+                projects: new Map(),
+                unverified: new Map(),
+                closedProjects: new Map(),
+              },
+            },
+          },
+        }),
+      },
+      reads: {
+        access: Atom.make({
+          status: "verified",
+          projects: [{ project: project(), role: "OWNER" }],
+        }),
+        projectsOf: () => Atom.make(read([projectRecord])),
+        servicesOf: () => servicesRead,
+      },
+    } as unknown as ManagedZeropsDataRuntime;
+    const listings = candidateListingsAtom(data);
+    registry.mount(listings);
+    return {
+      push: (next: ServiceRecord) => registry.set(servicesRead, read([next], project())),
+      row: () => {
+        const listing = registry.get(listings)[0]!.listing;
+        return listing.state === "known" ? listing.value[0] : undefined;
+      },
+    };
+  };
+
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["Date", "setTimeout", "clearTimeout"] });
+    vi.setSystemTime(CREATED + 110_000);
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("is on its way, its wait dated where this listing first saw it, through a push", () => {
+    const account = listingOver(zcp(false));
+    expect(account.row()).toMatchObject({
+      group: "provisioning",
+      addressAwaited: { since: CREATED + 110_000 },
+    });
+
+    vi.setSystemTime(CREATED + 113_000);
+    account.push(zcp(false));
+
+    expect(account.row()).toMatchObject({
+      group: "provisioning",
+      addressAwaited: { since: CREATED + 110_000 },
+    });
+  });
+
+  it("is ready the moment its address lands", () => {
+    const account = listingOver(zcp(false));
+    vi.setSystemTime(CREATED + 115_300);
+    account.push(zcp(true));
+    expect(account.row()).toMatchObject({ group: "ready" });
+    expect(account.row()?.addressAwaited).toBeUndefined();
+  });
+
+  it("reads as the platform leaves it once its wait ends, with no read changing", () => {
+    const account = listingOver(zcp(false));
+    expect(account.row()?.group).toBe("provisioning");
+
+    vi.advanceTimersByTime(ADDRESS_GRACE_MS);
+
+    expect(account.row()).toMatchObject({ group: "unavailable", reason: expect.any(String) });
+    expect(account.row()?.addressAwaited).toBeUndefined();
   });
 });
