@@ -3,6 +3,8 @@ import { describe, expect, it } from "vite-plus/test";
 
 import type { ZeropsProject, ZeropsService } from "./api.ts";
 import {
+  ADDRESS_GRACE_MS,
+  FIRST_BUILD_GIVE_UP_MS,
   applyFirstBuildGiveUp,
   firstBuildOverdue,
   applyProjectCreationVerdict,
@@ -415,5 +417,134 @@ describe("applyFirstBuildGiveUp", () => {
   it("never touches a container in any other state", () => {
     const starting = candidate("2020-01-01T00:00:00.000Z", "STARTING");
     expect(applyFirstBuildGiveUp(starting, NOW)).toBe(starting);
+  });
+});
+
+// A Mate's container turns ACTIVE a second or more before the platform enables its address, and
+// the record of it lands later still (measured 2026-10-02: the tab held ACTIVE without an address
+// for 5.6 s). While it is young, that is a container on its way to its address — never one without
+// any; past the grace, the same facts read as the platform leaves them.
+describe("a young container ACTIVE before its address landed", () => {
+  const CREATED_AT = "2026-10-02T12:00:00.000Z";
+  const CREATED = Date.parse(CREATED_AT);
+  const at = (ms: number) => CREATED + ms;
+  const MINUTE = 60_000;
+
+  const table: ReadonlyArray<{
+    readonly case: string;
+    readonly service: Partial<ZeropsService>;
+    readonly project?: Partial<ZeropsProject>;
+    /** Since its creation, ms; undefined when no clock judges it. */
+    readonly now: number | undefined;
+    /** When this reader first saw it ACTIVE without its address, since its creation. */
+    readonly seen?: number;
+    readonly created?: string | null;
+    readonly group: "provisioning" | "unavailable";
+    readonly awaited?: { readonly since: number; readonly until: number };
+    readonly reason?: RegExp;
+  }> = [
+    {
+      case: "seen so for the first time, its access not enabled yet: on its way",
+      service: { subdomainAccess: false },
+      now: 110_000,
+      group: "provisioning",
+      awaited: { since: 110_000, until: 110_000 + ADDRESS_GRACE_MS },
+    },
+    {
+      case: "seen so a moment ago: still on its way, its wait dated where it began",
+      service: { subdomainAccess: false },
+      now: 115_000,
+      seen: 110_000,
+      group: "provisioning",
+      awaited: { since: 110_000, until: 110_000 + ADDRESS_GRACE_MS },
+    },
+    {
+      case: "its port not read yet: on its way the same",
+      service: { ports: [] },
+      now: 110_000,
+      group: "provisioning",
+      awaited: { since: 110_000, until: 110_000 + ADDRESS_GRACE_MS },
+    },
+    {
+      case: "its project's subdomain not read yet: on its way the same",
+      service: {},
+      project: { zeropsSubdomainHost: "" },
+      now: 110_000,
+      group: "provisioning",
+      awaited: { since: 110_000, until: 110_000 + ADDRESS_GRACE_MS },
+    },
+    {
+      case: "a slow first build turned ACTIVE late: its wait ends with its first minutes",
+      service: { subdomainAccess: false },
+      now: 31 * MINUTE,
+      group: "provisioning",
+      awaited: { since: 31 * MINUTE, until: FIRST_BUILD_GIVE_UP_MS + ADDRESS_GRACE_MS },
+    },
+    {
+      case: "seen so past its grace: no public address",
+      service: { subdomainAccess: false },
+      now: 110_000 + ADDRESS_GRACE_MS,
+      seen: 110_000,
+      group: "unavailable",
+      reason: /public access/i,
+    },
+    {
+      case: "an old Mate whose access is off, on a reload: no public address at once",
+      service: { subdomainAccess: false },
+      now: 3 * 60 * MINUTE,
+      group: "unavailable",
+      reason: /public access/i,
+    },
+    {
+      case: "its creation time unknown: no public address, as the platform leaves it",
+      service: { subdomainAccess: false },
+      created: null,
+      now: 110_000,
+      group: "unavailable",
+    },
+    {
+      case: "no clock judges it: as the platform leaves it",
+      service: { subdomainAccess: false },
+      now: undefined,
+      group: "unavailable",
+    },
+  ];
+
+  it.each(table)("$case", (row) => {
+    const created = row.created === null ? {} : { created: row.created ?? CREATED_AT };
+    const [candidate] = deriveZeropsCandidates(
+      { ...PROJECT, ...row.project },
+      [service({ id: "s1", ...created, ...row.service })],
+      NO_CONNECTIONS,
+      undefined,
+      row.now === undefined
+        ? undefined
+        : {
+            nowMs: at(row.now),
+            addressAwaitedSince: (serviceId) =>
+              serviceId === "s1" && row.seen !== undefined ? at(row.seen) : undefined,
+          },
+    );
+    expect(candidate?.group).toBe(row.group);
+    expect(candidate?.service?.id).toBe("s1");
+    expect(candidate?.containerOrigin).toBeUndefined();
+    expect(candidate?.addressAwaited).toEqual(
+      row.awaited === undefined
+        ? undefined
+        : { since: at(row.awaited.since), until: at(row.awaited.until) },
+    );
+    if (row.reason !== undefined) expect(candidate?.reason).toMatch(row.reason);
+  });
+
+  it("is ready the moment its address lands, its wait over", () => {
+    const [candidate] = deriveZeropsCandidates(
+      PROJECT,
+      [service({ id: "s1", created: CREATED_AT })],
+      NO_CONNECTIONS,
+      undefined,
+      { nowMs: at(115_300), addressAwaitedSince: () => at(110_000) },
+    );
+    expect(candidate?.group).toBe("ready");
+    expect(candidate?.addressAwaited).toBeUndefined();
   });
 });
