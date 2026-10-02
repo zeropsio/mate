@@ -33,6 +33,8 @@ const gitea = vi.hoisted(() => ({
   listings: 0,
   loseTokenOnRead: false,
   outwaitReacquireOnRead: false,
+  /** Every commit whose statuses were read, as `repo@sha`. */
+  statusReads: [] as Array<string>,
 }));
 
 vi.mock("./accountGiteaSessions", () => ({
@@ -57,8 +59,11 @@ vi.mock("./accountGiteaSessions", () => ({
             query.state === "open"
               ? [{ number: 7, title: "Stage follows main", head: { sha: "abc" } }]
               : [],
-          listCommitStatuses: async () => [],
-          listTags: async () => [],
+          listCommitStatuses: async (_owner: string, repo: string, sha: string) => {
+            gitea.statusReads.push(`${repo}@${sha}`);
+            return [{ context: "ci", state: "success" }];
+          },
+          listTags: async () => [{ name: "v0.1.0", commit: { sha: "r1" } }],
         }
       : null,
 }));
@@ -378,8 +383,39 @@ describe("useZeropsGroupForge", () => {
     gitea.listings = 0;
     gitea.loseTokenOnRead = false;
     gitea.outwaitReacquireOnRead = false;
+    gitea.statusReads = [];
     vi.useRealTimers();
     vi.unstubAllGlobals();
+  });
+
+  it("keeps the checks it read while a pull request is rechecked for whether it merges", async () => {
+    vi.useFakeTimers();
+    installTestDom();
+    const { createRoot } = await import("react-dom/client");
+    function Probe() {
+      useZeropsGroupForge({
+        giteaOrigin: "https://gitea.example.test",
+        groups: GROUPS,
+        enabled: true,
+        readable: true,
+      });
+      return null;
+    }
+    const root = createRoot(document.createElement("div") as unknown as Element);
+    await act(async () => {
+      root.render(createElement(Probe));
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(gitea.statusReads).toEqual(["app@abc", "group@r1"]);
+    // Gitea says "checking" after a push: the pull request is read again at 2, 5 and 10 s, and
+    // nothing about any commit's checks has changed.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(11_000);
+    });
+    expect(gitea.statusReads).toEqual(["app@abc", "group@r1"]);
+    await act(async () => {
+      root.unmount();
+    });
   });
 
   it("keeps what it read when a 401 and a failed reacquire land inside one pass", async () => {
