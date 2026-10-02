@@ -63,6 +63,7 @@ import { buildThreadRouteParams } from "~/threadRoutes";
 import { useAccountEnvironments, useConnectMate } from "~/zerops/accountEnvironments";
 import {
   halfMadeFor,
+  mateArrivalShown,
   mateComing,
   mateComingPage,
   mateConnectKey,
@@ -115,7 +116,6 @@ import { draftWithTyped, handOverMateConversation } from "~/zerops/mateHandOver"
 import type { BirthLineProgress } from "./ZeropsBirthProgress.logic";
 import { ZeropsArrivalSteps, type ArrivalYou } from "./ZeropsArrivalSteps";
 import { PressSteps } from "./ZeropsEnvironmentCreationDialog";
-import { ALMOST_THERE_LINE } from "./ZeropsProjectRow.logic";
 import {
   MateEmptyStateView,
   useMateEmptyState,
@@ -123,9 +123,6 @@ import {
 } from "./ZeropsMateEmptyState";
 import { removeFailedZeropsProject } from "./ZeropsProjectsPage";
 import { usePreferredConnection } from "~/zerops/mateConnectionPreference";
-
-/** Up, its conversation being opened: the last of its coming words. */
-const UP_AND_OPENING: MateComing = { kind: "coming", line: ALMOST_THERE_LINE };
 
 /** The coming page reads no server version: its *Finish setup* is all it takes of the menu. */
 const NO_VERSIONS: ReadonlyMap<string, string> = new Map();
@@ -188,6 +185,7 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
     candidate,
     setUpFailed: pressFailure(press) ?? creation?.failed,
     nowMs: Date.now(),
+    created: creation !== undefined,
   });
   // What opens it is its machine (`mateLink`): found by its project while its row stands for the
   // project, and before the listing names it at all.
@@ -207,6 +205,9 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
   // Whether this view has shown it coming up: its hand-over is then the stand-up's, in place.
   const [cameUp, setCameUp] = useState(false);
   if (page?.kind === "coming" && !cameUp) setCameUp(true);
+  // Its arrival, once shown, holds the board through every wait on its way to its conversation:
+  // one surface from the press to the sign-in (`mateArrivalShown`).
+  const arrival = mateArrivalShown({ page, cameUp });
 
   // Who it is: its listing's, the moment it is listed — the name and the tint the menu gives it —
   // and until then what its creation or its press knew.
@@ -398,7 +399,7 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
   // What its container says of its own setup, in any browser (`/mate/setup.json`): read only
   // while its card is on screen and its setup is under way — every read of an older Mate costs
   // it a tag read of its own.
-  const setup = useMateSetup(page?.kind === "coming" ? candidate?.containerOrigin : undefined);
+  const setup = useMateSetup(arrival !== undefined ? candidate?.containerOrigin : undefined);
   // How far it has got, as the projects page's card draws it.
   const progress = useZeropsBirthProgress(
     candidate === undefined && press === undefined
@@ -490,15 +491,15 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
     });
   };
 
-  // Up and not handed over yet — its conversation and its sign-in still being read — a new Mate
-  // stays coming, its progress whole, until the words can turn into the conversation's own.
-  // A half-made Mate names Finish setup only where this viewer has it, and who can where not.
+  // On its way to its conversation and not handed over yet — its link being made, its conversation
+  // and its sign-in still being read — a new Mate stays coming, its progress whole, until the words
+  // can turn into the conversation's own. A half-made Mate names Finish setup only where this
+  // viewer has it, and who can where not.
   const shown: MateComing | undefined =
-    page?.kind === "coming"
-      ? halfMadeFor(page.coming, finishSetup !== undefined)
-      : page?.kind === "up" && cameUp
-        ? UP_AND_OPENING
-        : undefined;
+    arrival === undefined ? undefined : halfMadeFor(arrival, finishSetup !== undefined);
+  // The hand-over: the words turn into the conversation's own, and the header with them — its way
+  // into Zerops and its actions arrive here, in place, so the route changes under an unchanged frame.
+  const handingArrival = handing && cameUp;
   const phaseAhead = mateStandUpPhase({
     marker: mate.standUp,
     viewer: user?.id,
@@ -607,9 +608,9 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
       composer={standsInComposer ? <ComposerStandIn onType={type} typed={typed} /> : null}
       header={
         <MateComingHeader
-          arriving={shown !== undefined}
+          arriving={shown !== undefined && !handingArrival}
           mate={{ ...mate, connected: environmentId !== null }}
-          standsIn={standsInComposer ? { subject: standInSubject } : null}
+          standsIn={standsInComposer || handingArrival ? { subject: standInSubject } : null}
         />
       }
     >
@@ -618,11 +619,11 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
           coming={view}
           mate={{ ...(shown === undefined ? named : mate), connected: environmentId !== null }}
           onRetry={empty.onRetry}
-          phase={handing && cameUp ? empty.phase : phaseAhead}
-          signIn={handing && cameUp ? empty.signIn : null}
+          phase={handingArrival ? empty.phase : phaseAhead}
+          signIn={handingArrival ? empty.signIn : null}
           runtimes={empty.runtimes}
           signInRequired={empty.signInRequired}
-          unknown={handing && cameUp ? empty.unknown : null}
+          unknown={handingArrival ? empty.unknown : null}
         />
       )}
     </MateComingFrame>

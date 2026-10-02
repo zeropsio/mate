@@ -59,6 +59,7 @@ const app = vi.hoisted(() => ({
   threads: [] as Array<unknown>,
   projects: [] as Array<unknown>,
   remembered: undefined as { readonly subject: string; readonly threadKey?: string } | undefined,
+  creations: {} as Record<string, unknown>,
 }));
 vi.mock("~/zerops/menuMemory", () => ({ rememberedActivity: () => app.remembered }));
 
@@ -98,7 +99,7 @@ vi.mock("~/zerops/useZeropsRegistry", () => ({ useZeropsRegistry: () => null }))
 vi.mock("~/zerops/giteaProject", () => ({ useAccountGitea: () => undefined }));
 vi.mock("~/zerops/newMate", () => ({
   useNewMate: (select: (state: unknown) => unknown) =>
-    select({ creations: {}, forget: () => undefined, handingOver: app.handingOver }),
+    select({ creations: app.creations, forget: () => undefined, handingOver: app.handingOver }),
 }));
 vi.mock("~/zerops/useZeropsCreationVerdicts", () => ({
   useZeropsCreationVerdicts: () => new Map(),
@@ -114,6 +115,7 @@ vi.mock("~/zerops/ZeropsSessionProvider", () => ({
   useZeropsSession: () => ({ activeOrganization: null, user: { id: "u-ada" } }),
 }));
 vi.mock("~/zerops/useZeropsBirthProgress", () => ({ useZeropsBirthProgress: () => null }));
+vi.mock("~/zerops/useMateSetup", () => ({ useMateSetup: () => undefined }));
 vi.mock("~/zerops/useUsualAgent", () => ({
   useUsualAgent: () => ({ usual: null, settled: true }),
 }));
@@ -208,6 +210,7 @@ beforeEach(() => {
   app.projects = [];
   app.link = { key: undefined, environmentId: undefined, reachability: null };
   app.remembered = undefined;
+  app.creations = {};
 });
 afterEach(async () => {
   const { useComposerDraftStore } = await import("~/composerDraftStore");
@@ -504,6 +507,93 @@ describe("the header in a Mate's own view", () => {
     app.remembered = { subject: "Rename the orders column" };
     openView();
     expect(said()).toContain("Rename the orders column");
+  });
+});
+
+// The arrival is one surface from the press to the sign-in (measured 2026-10-02): a Mate this tab
+// made read "This Mate isn't running." for 45 s, and one that came up here flashed its name alone
+// with a composer — "Almost there." for 10 s on a New project — before its sign-in.
+describe("a new Mate's arrival, from the press to the sign-in", () => {
+  const composer = () =>
+    tree?.root.findAll((node) => typeof node.type === "string" && node.type === "textarea") ?? [];
+  const kind = () => tree?.root.findAll((node) => node.type === "section")[0]?.props["data-kind"];
+  const coming = {
+    ...QUINN,
+    group: "provisioning",
+    service: { id: "zcp", name: "zcp", status: "CREATING" },
+  } as unknown as ZeropsCandidate;
+  const QUINN_MADE = {
+    projectId: PROJECT,
+    groupId: "beviro",
+    groupName: "Beviro",
+    botName: "Quinn",
+    face: { tint: "sky", shape: "pick" },
+  };
+
+  it("a Mate this tab made is coming up from its first frame, its container up or not", () => {
+    app.creations = { [PROJECT]: QUINN_MADE };
+    app.link = { key: KEY, environmentId: undefined, reachability: { kind: "reconnecting" } };
+    openView();
+    expect(kind()).toBe("coming");
+    expect(said()).not.toContain("Reconnecting");
+    expect(composer()).toHaveLength(0);
+  });
+
+  it.each([
+    {
+      case: "its container booting",
+      reachability: { kind: "container", container: { level: "booting", overdue: false } },
+    },
+    { case: "its link being made", reachability: { kind: "connecting", waitingOn: "exchange" } },
+    { case: "its link reconnecting", reachability: { kind: "reconnecting" } },
+    { case: "no machine naming it yet", reachability: null },
+  ])("keeps the board once it came up here, through $case", ({ reachability }) => {
+    app.listing = listingOf([coming]);
+    openView();
+    expect(kind()).toBe("coming");
+    // Its container is up and its link not made yet: still the board, never its name alone.
+    app.listing = listingOf([QUINN]);
+    app.link = { key: KEY, environmentId: undefined, reachability } as MateLink;
+    act(() => tree?.update(h(ZeropsMateComingPage, { projectId: PROJECT })));
+    act(() => vi.advanceTimersByTime(MATE_VOICE_QUIET_MS * 3));
+    expect(kind()).toBe("coming");
+    expect(composer()).toHaveLength(0);
+    expect(app.navigate).not.toHaveBeenCalled();
+  });
+
+  it("says why once it came up here and its container stopped", () => {
+    app.listing = listingOf([coming]);
+    openView();
+    app.listing = listingOf([QUINN]);
+    app.link = {
+      key: KEY,
+      environmentId: undefined,
+      reachability: { kind: "container", container: { level: "inactive", status: "STOPPED" } },
+    } as MateLink;
+    act(() => tree?.update(h(ZeropsMateComingPage, { projectId: PROJECT })));
+    expect(kind()).toBe("reaching");
+  });
+
+  it("hands over once, its header turning into the conversation's with its words", () => {
+    // The header's actions as the conversation draws them, standing in until it takes the route.
+    const headerActions = () =>
+      tree?.root.findAllByType("button").filter((node) => node.props.inert === true) ?? [];
+    app.listing = listingOf([coming]);
+    openView();
+    expect(headerActions()).toHaveLength(0);
+    app.listing = listingOf([QUINN]);
+    app.link = {
+      key: KEY,
+      environmentId: ENV_QUINN,
+      reachability: { kind: "ready", notice: null },
+    };
+    app.threads = [MAIN];
+    act(() => tree?.update(h(ZeropsMateComingPage, { projectId: PROJECT })));
+    expect(kind()).toBe("coming");
+    expect(headerActions()).toHaveLength(1);
+    expect(app.navigate).not.toHaveBeenCalled();
+    act(() => vi.advanceTimersByTime(1_000));
+    expect(app.navigate).toHaveBeenCalledOnce();
   });
 });
 

@@ -10,7 +10,10 @@ import {
   HALF_MADE_LINE,
   HALF_MADE_OWNER_LINE,
   halfMadeFor,
+  mateArrivalShown,
+  type MateComingPage,
 } from "./mateComing";
+import type { Reachability } from "@t3tools/client-runtime/zerops/environments";
 
 const NOW = Date.parse("2026-10-01T20:00:00.000Z");
 const HELD = { startedAt: 1_000, container: true, retryable: false } as const;
@@ -98,6 +101,25 @@ describe("mateComing — a Mate in its first minutes, in one set of words", () =
       expected: { kind: "failed", line: HALF_MADE_LINE, verb: "finish-setup" },
     },
     {
+      case: "a Mate this tab made, its press over, before the listing holds it",
+      input: { press: undefined, candidate: undefined, created: true },
+      expected: { kind: "coming", line: "Coming up. A few minutes." },
+    },
+    {
+      case: "a Mate this tab made, up and not connected yet",
+      input: { press: undefined, candidate: { group: "ready" }, created: true },
+      expected: { kind: "coming", line: "Coming up. A few minutes." },
+    },
+    {
+      case: "a Mate this tab made, in its first build",
+      input: {
+        press: undefined,
+        candidate: { group: "provisioning", service: { status: "READY_TO_DEPLOY" } },
+        created: true,
+      },
+      expected: { kind: "coming", line: "Coming up. A few minutes." },
+    },
+    {
       case: "a Mate with no container yet, moments after its press: still coming up",
       input: {
         press: undefined,
@@ -136,6 +158,18 @@ describe("mateComing — a Mate in its first minutes, in one set of words", () =
       input: { press: undefined, candidate: { group: "ready" } },
     },
     { case: "a stopped Mate", input: { press: undefined, candidate: { group: "unavailable" } } },
+    {
+      case: "a Mate this tab made, connected",
+      input: { press: undefined, candidate: { group: "connected" }, created: true },
+    },
+    {
+      case: "a Mate this tab made whose container stopped",
+      input: {
+        press: undefined,
+        candidate: { group: "unavailable", service: { status: "STOPPED" } },
+        created: true,
+      },
+    },
     // A press this tab made does not make a container that failed, stopped or is restarting read
     // as coming up: it shows its own state (pass 28 review).
     ...(["ACTION_FAILED", "STOPPED", "RESTARTING", "UPGRADING"] as const).map((status) => ({
@@ -424,5 +458,158 @@ describe("halfMadeFor — a half-made Mate as its viewer may act on it", () => {
   it("leaves any other state alone", () => {
     const coming = { kind: "coming", line: "Coming up" } as const;
     expect(halfMadeFor(coming, false)).toBe(coming);
+  });
+});
+
+// The arrival is one surface from the press to the sign-in: once a Mate's own view has shown it
+// coming up, a wait on its way to its conversation keeps the board — never "Almost there." under
+// its name alone with a composer, and back (measured 2026-10-02: 10 s of it on a New project,
+// 0.6 s on an Add).
+describe("mateArrivalShown — what a Mate's own view keeps saying once it came up", () => {
+  const OPENING = { kind: "coming", line: "Almost there." } as const;
+  const COMING = { kind: "coming", line: "Coming up. A few minutes." } as const;
+  const reaching = (reachability: Reachability | null): MateComingPage => ({
+    kind: "reaching",
+    reachability,
+  });
+  const container = (level: string, overdue = false): Reachability =>
+    ({ kind: "container", container: { level, overdue } }) as Reachability;
+  it.each<{
+    readonly case: string;
+    readonly page: MateComingPage | undefined;
+    readonly cameUp: boolean;
+    readonly expected: ReturnType<typeof mateArrivalShown>;
+  }>([
+    {
+      case: "coming up: its words",
+      page: { kind: "coming", coming: COMING },
+      cameUp: false,
+      expected: COMING,
+    },
+    {
+      case: "up, having come up here: opening",
+      page: { kind: "up" },
+      cameUp: true,
+      expected: OPENING,
+    },
+    {
+      case: "up, never shown coming: nothing",
+      page: { kind: "up" },
+      cameUp: false,
+      expected: undefined,
+    },
+    {
+      case: "reaching, never shown coming: its link's words",
+      page: reaching(null),
+      cameUp: false,
+      expected: undefined,
+    },
+    { case: "reaching, no machine yet", page: reaching(null), cameUp: true, expected: OPENING },
+    {
+      case: "reaching, its container booting",
+      page: reaching(container("booting")),
+      cameUp: true,
+      expected: OPENING,
+    },
+    {
+      case: "reaching, its container provisioning",
+      page: reaching(container("provisioning")),
+      cameUp: true,
+      expected: OPENING,
+    },
+    {
+      case: "reaching, its container restarting",
+      page: reaching({
+        kind: "container",
+        container: { level: "restarting", by: "platform", overdue: false },
+      }),
+      cameUp: true,
+      expected: OPENING,
+    },
+    {
+      case: "reaching, connecting",
+      page: reaching({ kind: "connecting", waitingOn: "exchange" }),
+      cameUp: true,
+      expected: OPENING,
+    },
+    {
+      case: "reaching, reconnecting",
+      page: reaching({ kind: "reconnecting" }),
+      cameUp: true,
+      expected: OPENING,
+    },
+    {
+      case: "reaching, resolving",
+      page: reaching({ kind: "resolving" }),
+      cameUp: true,
+      expected: OPENING,
+    },
+    {
+      case: "reaching, ready",
+      page: reaching({ kind: "ready", notice: null }),
+      cameUp: true,
+      expected: OPENING,
+    },
+    {
+      case: "reaching, waiting for Zerops",
+      page: reaching({ kind: "waiting-for-zerops" }),
+      cameUp: true,
+      expected: OPENING,
+    },
+    {
+      case: "reaching, retrying on its own",
+      page: reaching({
+        kind: "retrying",
+        retryAtMs: NOW,
+        last: { kind: "network" },
+        restart: false,
+      } as Reachability),
+      cameUp: true,
+      expected: OPENING,
+    },
+    {
+      case: "reaching, retrying with a restart to offer",
+      page: reaching({
+        kind: "retrying",
+        retryAtMs: NOW,
+        last: { kind: "identity-failed" },
+        restart: true,
+      } as Reachability),
+      cameUp: true,
+      expected: undefined,
+    },
+    {
+      case: "reaching, booting past its cap",
+      page: reaching(container("booting", true)),
+      cameUp: true,
+      expected: undefined,
+    },
+    {
+      case: "reaching, its container stopped",
+      page: reaching({ kind: "container", container: { level: "inactive", status: "STOPPED" } }),
+      cameUp: true,
+      expected: undefined,
+    },
+    {
+      case: "reaching, no public address",
+      page: reaching({ kind: "no-address", reason: "subdomain-off" }),
+      cameUp: true,
+      expected: undefined,
+    },
+    {
+      case: "reaching, an update required",
+      page: reaching({ kind: "update-required", actual: "0.1.0", minimum: "0.2.0" }),
+      cameUp: true,
+      expected: undefined,
+    },
+    {
+      case: "not to be opened",
+      page: { kind: "unreachable", reachability: null },
+      cameUp: true,
+      expected: undefined,
+    },
+    { case: "nothing known yet", page: undefined, cameUp: true, expected: undefined },
+  ])("$case", ({ page, cameUp, expected }) => {
+    expect(mateArrivalShown({ page, cameUp })).toEqual(expected);
   });
 });
