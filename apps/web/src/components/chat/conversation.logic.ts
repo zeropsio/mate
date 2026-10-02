@@ -1935,6 +1935,33 @@ function standingPhase(operation: ZeropsOperation): ZeropsOperation["phase"] {
   return failed.length > 0 && failed.every(reachedOnly) ? "done" : operation.phase;
 }
 
+/** zcp's checks of an address: inside the project, its subdomain, its domain. */
+const HTTP_CHECK_IDS: ReadonlySet<string> = new Set([
+  "http_internal",
+  "http_public",
+  "public_domain",
+]);
+
+/**
+ * A failed check that got no answer in its time: zcp's probe gives up after
+ * five seconds (`probeHTTP`), and a dev server compiling its first page takes
+ * longer. No answer is no word on how the service runs — an address that
+ * answers an error, or refuses, is.
+ */
+function unanswered(step: ZeropsOperation["steps"][number]): boolean {
+  return (
+    HTTP_CHECK_IDS.has(step.id) &&
+    /request failed: .*(?:deadline exceeded|timeout)/iu.test(step.note ?? "")
+  );
+}
+
+/** A failed check whose every failure went unanswered (`unanswered`). */
+function onlyUnanswered(operation: ZeropsOperation): boolean {
+  if (operation.kind !== "verify") return false;
+  const failed = operation.steps.filter((step) => step.state === "failed");
+  return failed.length > 0 && failed.every(unanswered);
+}
+
 /** A service a failure left broken, in a few words: where it broke, not the call's status word. */
 function brokenWord(operation: ZeropsOperation): string {
   if (operation.kind === "verify") return "Not healthy";
@@ -2212,6 +2239,11 @@ export function deriveOutcome(input: {
   const settled = operations.filter((operation) => operation.phase !== "running");
 
   const services = new Map<string, OutcomeService>();
+  // Services whose latest dev-server call found the dev server running: a
+  // check after it that got no answer in its time leaves it there (the
+  // stand-up of 2026-10-02: both dev servers started, the check after timed
+  // out on their first pages, both answered 200 a minute later).
+  const devServerRuns = new Set<string>();
   for (const operation of settled) {
     if (
       operation.kind !== "deploy" &&
@@ -2223,7 +2255,12 @@ export function deriveOutcome(input: {
     if (isGitPushOnly(operation)) continue;
     const host = operationTargetKey(operation);
     const known = services.get(host);
+    if (operation.kind === "devServer") {
+      if (devServerRunning(operation) === true) devServerRuns.add(host);
+      else devServerRuns.delete(host);
+    }
     const phase = standingPhase(operation);
+    if (phase === "failed" && devServerRuns.has(host) && onlyUnanswered(operation)) continue;
     if (phase === "failed") {
       services.set(host, {
         hostname: host,
