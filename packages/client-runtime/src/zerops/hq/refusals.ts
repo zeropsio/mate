@@ -84,6 +84,8 @@ const STRUCTURE_WORDS: Readonly<Record<string, string>> = {
   repo_not_found: "HQ has no such repository.",
   change_not_found: "HQ has no such change.",
   attachment_not_found: "HQ has no such picture.",
+  // An application's recipe (`@t3tools/shared/hqRecipe`).
+  recipe_too_large: "This project's recipe is too large to read here.",
 };
 
 /** What anything asked of the organization's HQ says where its official HQ is not open here. */

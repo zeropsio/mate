@@ -668,6 +668,30 @@ describe("makeHqApi — a Mate's changes, as the person reads them", () => {
     });
   });
 
+  // The recipe a new environment starts from, on its recipe repository's `main` (SPEC §3.2c).
+  it.each([
+    [
+      "a tier main holds",
+      { state: "present", importYaml: "services:\n  - hostname: db\n", mainHead: SHA },
+    ],
+    ["a tier main does not", { state: "absent" }],
+  ] as const)("reads %s, as the person", async (_case, tier) => {
+    const { hq, api: hqApi } = api((seen) =>
+      seen.path === "/api/apps/app-1/recipe/mate" ? json(200, tier) : undefined,
+    );
+    await expect(hqApi.recipeTier("app-1", "mate")).resolves.toEqual(tier);
+    expect(hq.seen.at(-1)).toMatchObject({ method: "GET", authorization: "Bearer session-1" });
+  });
+
+  it("says a recipe too large to read in words of its own", async () => {
+    const { api: hqApi } = api(() => json(413, { code: "too_large", reason: "recipe_too_large" }));
+    await expect(hqApi.recipeTier("app-1", "stage")).rejects.toMatchObject({
+      kind: "refused",
+      code: "too_large",
+      message: "This project's recipe is too large to read here.",
+    });
+  });
+
   it("fetches a change's picture with the session, as the picture it is", async () => {
     const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47]);
     const { hq, api: hqApi } = api((seen) =>
