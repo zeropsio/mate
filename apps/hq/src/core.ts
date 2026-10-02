@@ -123,7 +123,7 @@ const services = (options: CoreOptions) => {
  * On shutdown, before the server stops: git, the lead and the sockets go, the server answers
  * `drainFor` more.
  */
-const drainLayer = (drainFor: Duration.Duration) =>
+export const drainLayer = (drainFor: Duration.Duration) =>
   Layer.effectDiscard(
     Effect.gen(function* () {
       const leader = yield* Leader;
