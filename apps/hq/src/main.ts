@@ -55,7 +55,14 @@ const core = Layer.unwrap(
     };
     return coreApp(options).pipe(
       Layer.provide(zerops),
-      Layer.provide(NodeHttpServer.layer(() => NodeHttp.createServer(), { port })),
+      Layer.provide(
+        NodeHttpServer.layer(
+          // A push may stream for as long as the git layer's own deadline (30 min); a request's
+          // headers still come within Node's 60 s.
+          () => NodeHttp.createServer({ requestTimeout: 30 * 60 * 1000 }),
+          { port },
+        ),
+      ),
     );
   }),
 );
