@@ -87,15 +87,6 @@ export function selectMembers(shown: Shown<ReadonlyArray<ZeropsOrganizationMembe
   }
 }
 
-/** A service's variable names (never a value), once a read answered them. */
-export type VariableNamesRead =
-  | { readonly status: "pending" }
-  | { readonly status: "known"; readonly names: ReadonlyArray<string> };
-
-export function selectVariableNames(shown: Shown<ReadonlyArray<string>>): VariableNamesRead {
-  return shown.state === "known" ? { status: "known", names: shown.value } : { status: "pending" };
-}
-
 /**
  * A one-shot reader's answer: the value the read that settled the resource
  * succeeded with. A failure, a withholding and a value whose revalidation

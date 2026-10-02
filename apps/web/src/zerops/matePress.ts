@@ -54,7 +54,6 @@ import {
   withLockIfFree,
   type LockManagerLike,
 } from "./mateLocks";
-import { giteaClientFor } from "./accountGiteaSessions";
 import { accountHqApi } from "./accountHq";
 import { addGroupEnvironment } from "./addGroupEnvironment";
 import {
@@ -63,7 +62,6 @@ import {
   recordMateBirth,
   type MateBirth,
 } from "./hqMateBirth";
-import { brokerGrantTokens, grantBrokerProject } from "./brokerGrant";
 import {
   pressSteps,
   pressThrough,
@@ -356,13 +354,12 @@ export interface PressInputs {
 /**
  * The group registration a press writes, as the person who pressed may write it: into the
  * organization's HQ, a Mate with its name, its face and its birth — in its application, or in
- * none where HQ holds no record of it — a stage or a production with what its Gitea project still
- * holds for it where the organization has one.
+ * none where HQ holds no record of it — a stage or a production as an environment of its
+ * application, keyed.
  */
 export type PressRegistration = {
   /** The organization's HQ, where the registry lives. */
   readonly hq: HqEndpoint;
-  readonly displayName: string;
 } & (
   | {
       readonly kind: "mate";
@@ -383,19 +380,13 @@ export type PressRegistration = {
       readonly kind: "stage" | "production";
       /** The project's group: its application in HQ. */
       readonly groupId: string;
-      /** The organization's Gitea project, where the broker is, if it has one. */
-      readonly giteaProjectId: string | undefined;
-      /** The account's Gitea, where a stage or a production is declared. */
-      readonly giteaOrigin: string | null;
     }
 );
 
 /**
  * The `register` step: a Mate's record in HQ — attached to its application, or in none — then its
- * birth (`recordMateBirth`), and the broker's grant where an older broker needs one for a Mate in
- * an application; for a stage or a production, `addGroupEnvironment` — the attachment, the grant,
- * its deploy token and its declaration. Each write reads what is there first, so asking again
- * writes nothing twice.
+ * birth (`recordMateBirth`); for a stage or a production, `addGroupEnvironment` — the attachment
+ * and its deploy key. Each write reads what is there first, so asking again writes nothing twice.
  */
 export function pressRegistration(
   inputs: PressInputs,
@@ -419,27 +410,14 @@ export function pressRegistration(
         },
       });
       await recordMateBirth(hq, projectId, registration.birth);
-      const grant = await grantBrokerProject({
-        client: brokerGrantTokens(inputs.data.runtime),
-        clientId: inputs.organizationId,
-        projectId,
-      });
-      if (grant.kind === "failed") throw new Error(grant.reason);
       return;
     }
     const added = await addGroupEnvironment({
       client: inputs.client,
-      tokens: brokerGrantTokens(inputs.data.runtime),
       hq,
-      gitea: registration.giteaOrigin === null ? null : giteaClientFor(registration.giteaOrigin),
       clientId: inputs.organizationId,
-      giteaProjectId: registration.giteaProjectId,
       groupId: registration.groupId,
-      environment: {
-        displayName: registration.displayName,
-        tier: registration.kind,
-        project: projectId,
-      },
+      environment: { tier: registration.kind, project: projectId },
     });
     if (added.failed !== undefined) throw new Error(added.failed.reason);
   };

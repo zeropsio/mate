@@ -26,6 +26,7 @@ import {
   placeListing,
   placementsOf,
   type HqChanges,
+  type HqEnvironment,
   type HqPlacement,
   type HqStructure,
 } from "@t3tools/client-runtime/zerops/hq";
@@ -127,6 +128,25 @@ export const hqPlacementsAtom = Atom.make((get): ReadonlyMap<string, HqPlacement
     ? null
     : placementsOf(view.structure);
 }).pipe(Atom.withLabel("zerops:hq-placements"));
+
+/**
+ * Each application's stage and production as HQ last said them, with their deploys, by its id
+ * (SPEC §3.2b); an application HQ sent none this build can read for is missing. Null while nothing
+ * is known of the organization's structure.
+ */
+export const hqEnvironmentsAtom = Atom.make(
+  (get): ReadonlyMap<string, ReadonlyArray<HqEnvironment>> | null => {
+    const view = get(hqStructureAtom);
+    const organizationId = get(zeropsSessionAtom)?.activeOrganization?.organizationId;
+    return view === null || view.organizationId !== organizationId || view.structure === null
+      ? null
+      : new Map(
+          view.structure.apps.flatMap((app) =>
+            app.environments === undefined ? [] : [[app.id, app.environments] as const],
+          ),
+        );
+  },
+).pipe(Atom.withLabel("zerops:hq-environments"));
 
 /**
  * Each application's changes in the organization in view, as HQ last said them (SPEC §3.2a); null

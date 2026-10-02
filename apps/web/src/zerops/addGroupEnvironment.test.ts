@@ -1,597 +1,147 @@
+/**
+ * *Add stage* and *Add production* through HQ (SPEC §3.2b, main D14): the project attached to its
+ * application as its stage or production — HQ records the environment with it — then the
+ * environment's deploy key minted by the person's client and handed to HQ. No pull request, no
+ * broker; each step reports rather than throws, and asking again writes nothing twice.
+ */
 import { describe, expect, it, vi } from "vite-plus/test";
 
-import { ZeropsApiError, type GiteaClient } from "@t3tools/client-runtime/zerops";
+import type { HqEnvironment } from "@t3tools/client-runtime/zerops/hq";
 import { HqError, type HqApi } from "@t3tools/client-runtime/zerops/hq";
 
 import { addGroupEnvironment } from "./addGroupEnvironment";
 
 /** As much of HQ as adding an environment calls. */
-type HqFake = Pick<HqApi, "attachProject" | "structure">;
+type HqFake = Pick<HqApi, "attachProject" | "structure" | "keepDeployToken">;
 
-/** HQ, taking every attachment unless told otherwise. */
-function hqFake(attachProject: HqApi["attachProject"] = vi.fn(async () => undefined)): HqFake {
-  const api: HqFake = {
-    structure: vi.fn(async () => ({ ungrouped: [], apps: [] })),
-    attachProject: vi.fn(attachProject),
-  };
-  return api;
-}
-
-const STAGE = {
-  displayName: "Acme - stage",
-  tier: "stage" as const,
-  project: "p-stage",
+/** HQ's record of the stage of `g-1`, as its structure answers once the stage is attached. */
+const RECORDED: HqEnvironment = {
+  projectId: "p-stage",
+  tier: "stage",
+  name: "acme-stage",
+  sources: ["main"],
+  order: 1,
+  keyHeld: false,
+  keyInvalid: false,
+  deploys: [],
 };
 
-function giteaFake(overrides: Partial<GiteaClient> = {}): GiteaClient {
+/** HQ, taking every attachment and every key, its structure holding `environments` for `g-1`. */
+function hqFake(
+  environments: ReadonlyArray<HqEnvironment> = [RECORDED],
+  over: Partial<HqFake> = {},
+): HqFake {
   return {
-    origin: "https://gitea.test",
-    readFile: vi.fn().mockResolvedValue(undefined),
-    changeFiles: vi.fn().mockResolvedValue(undefined),
-    getBranch: vi.fn(async (_owner: string, _repo: string, name: string) =>
-      name === "main" ? { name: "main", user_can_merge: false } : undefined,
-    ),
-    listPullRequests: vi.fn().mockResolvedValue([]),
-    createPullRequest: vi.fn().mockResolvedValue({ number: 12, title: "t", state: "open" }),
-    mergePullRequest: vi.fn().mockResolvedValue(undefined),
-    deleteBranch: vi.fn().mockResolvedValue(undefined),
-    ...overrides,
-  } as unknown as GiteaClient;
-}
-
-function apiFake(overrides: Record<string, unknown> = {}) {
-  return {
-    listIntegrationTokens: vi.fn().mockResolvedValue([
-      {
-        id: "t-2",
-        name: "mate-broker",
-        roleCode: "READ_ONLY",
-        projects: [{ projectId: "p-gitea", roleCode: "BASIC_USER" }],
-      },
-    ]),
-    setIntegrationTokenProjects: vi.fn().mockResolvedValue(undefined),
-    listProjectServices: vi.fn().mockResolvedValue([{ id: "svc-broker", name: "broker" }]),
-    listServiceVariableNames: vi.fn().mockResolvedValue(["MATE_ZEROPS_TOKEN"]),
-    mintIntegrationToken: vi.fn().mockResolvedValue({ id: "t-deploy", token: "the-stage-key" }),
-    writeServiceSecret: vi.fn().mockResolvedValue(undefined),
-    deleteIntegrationToken: vi.fn().mockResolvedValue(undefined),
-    // Every project asked about still runs.
-    fetchProject: vi.fn(async (id: string) => ({ id, name: id, status: "ACTIVE" })),
-    ...overrides,
+    structure: vi.fn(async () => ({
+      ungrouped: [],
+      apps: [
+        {
+          id: "g-1",
+          name: "Acme",
+          projects: [{ projectId: "p-stage", name: "Acme - stage", kind: "stage", mate: null }],
+          environments,
+        },
+      ],
+    })),
+    attachProject: vi.fn(async () => undefined),
+    keepDeployToken: vi.fn(async () => undefined),
+    ...over,
   };
 }
 
-const base = (
-  api: ReturnType<typeof apiFake>,
-  gitea: GiteaClient | null,
-  hq: HqFake = hqFake(),
-) => ({
-  client: api as never,
-  tokens: api as never,
-  hq,
-  gitea,
-  clientId: "org-1",
-  giteaProjectId: "p-gitea",
-  groupId: "g-1",
-  environment: STAGE,
-});
+function apiFake() {
+  return {
+    mintIntegrationToken: vi.fn().mockResolvedValue({ id: "t-deploy", token: "the-stage-key" }),
+    deleteIntegrationToken: vi.fn().mockResolvedValue(undefined),
+  };
+}
+
+const add = (api: ReturnType<typeof apiFake>, hq: HqFake) =>
+  addGroupEnvironment({
+    client: api as never,
+    hq,
+    clientId: "org-1",
+    groupId: "g-1",
+    environment: { tier: "stage", project: "p-stage" },
+  });
 
 describe("addGroupEnvironment", () => {
-  it("writes the registry, the broker's grant and the environments document, in that order", async () => {
+  it("attaches the project as its tier, then hands HQ the key minted for that one project", async () => {
     const api = apiFake();
-    const gitea = giteaFake();
     const hq = hqFake();
-    const outcome = await addGroupEnvironment(base(api, gitea, hq));
-
-    expect(outcome.done).toEqual([
-      "registry",
-      "broker-grant",
-      "deploy-token",
-      "environments-document",
-    ]);
-    expect(outcome.failed).toBeUndefined();
+    expect(await add(api, hq)).toEqual({ done: ["registry", "deploy-token"], failed: undefined });
     expect(hq.attachProject).toHaveBeenCalledWith("g-1", { projectId: "p-stage", kind: "stage" });
-  });
-
-  it("declares on the group repo the registry keys the group by", async () => {
-    const gitea = giteaFake();
-    const outcome = await addGroupEnvironment(base(apiFake(), gitea));
-
-    expect(outcome.failed).toBeUndefined();
-    expect(gitea.readFile).toHaveBeenCalledWith("g-1", "group", "environments.yaml", "main");
-  });
-
-  it("registers the environment in HQ and is done, in an organization with no Gitea project", async () => {
-    const api = apiFake();
-    const gitea = giteaFake();
-    const hq = hqFake();
-    const outcome = await addGroupEnvironment({
-      ...base(api, gitea, hq),
-      giteaProjectId: undefined,
-    });
-
-    expect(outcome).toEqual({ done: ["registry"], failed: undefined, pullRequest: undefined });
-    expect(hq.attachProject).toHaveBeenCalledTimes(1);
-    expect(api.listIntegrationTokens).not.toHaveBeenCalled();
-    expect(gitea.readFile).not.toHaveBeenCalled();
-  });
-
-  it("adds the broker's grant without touching the rest, or its org role", async () => {
-    const api = apiFake();
-    await addGroupEnvironment(base(api, giteaFake()));
-
-    expect(api.setIntegrationTokenProjects).toHaveBeenCalledWith(
-      {
-        clientId: "org-1",
-        tokenId: "t-2",
-        name: "mate-broker",
-        // The Gitea project's grant survives; the new one is added at BASIC_USER.
-        projects: [
-          { projectId: "p-gitea", roleCode: "BASIC_USER" },
-          { projectId: "p-stage", roleCode: "BASIC_USER" },
-        ],
-        roleCode: "READ_ONLY",
-      },
-      undefined,
-    );
-    // The write carries the token's id, its name, its grants and its role —
-    // and no `value`/`token` field, because nothing ever reads one.
-    const [body] = api.setIntegrationTokenProjects.mock.calls[0] as [Record<string, unknown>];
-    expect(Object.keys(body).sort()).toEqual([
-      "clientId",
-      "name",
-      "projects",
-      "roleCode",
-      "tokenId",
-    ]);
-  });
-
-  it("writes nothing to the broker when it already reaches the project", async () => {
-    const api = apiFake({
-      listIntegrationTokens: vi.fn().mockResolvedValue([
-        {
-          id: "t-2",
-          name: "mate-broker",
-          projects: [{ projectId: "p-stage", roleCode: "BASIC_USER" }],
-        },
-      ]),
-    });
-    const outcome = await addGroupEnvironment(base(api, giteaFake()));
-
-    expect(api.setIntegrationTokenProjects).not.toHaveBeenCalled();
-    expect(outcome.done).toContain("broker-grant");
-  });
-
-  it("opens a pull request on a branch of its own and leaves it for a releaser", async () => {
-    const gitea = giteaFake();
-    const outcome = await addGroupEnvironment(base(apiFake(), gitea));
-
-    expect(gitea.changeFiles).toHaveBeenCalledWith("g-1", "group", {
-      message: "Add the acme-stage stage environment",
-      branch: "main",
-      newBranch: "mate-app/env-acme-stage",
-      files: [
-        {
-          operation: "create",
-          path: "environments.yaml",
-          content:
-            "version: 1\nenvironments:\n  acme-stage:\n    tier: stage\n    project: p-stage\n    sources: [main]\n    deploy: on-push\n",
-        },
-      ],
-    });
-    expect(gitea.createPullRequest).toHaveBeenCalledWith("g-1", "group", {
-      head: "mate-app/env-acme-stage",
-      base: "main",
-      title: "Add the acme-stage stage environment",
-    });
-    expect(gitea.mergePullRequest).not.toHaveBeenCalled();
-    expect(outcome.pullRequest).toEqual({ number: 12, merged: false });
-  });
-
-  it("merges it at once when Gitea says this person may", async () => {
-    const gitea = giteaFake({
-      getBranch: vi
-        .fn()
-        .mockResolvedValue({ name: "main", user_can_merge: true, commit: { id: "c0ffee" } }),
-    });
-    const outcome = await addGroupEnvironment(base(apiFake(), gitea));
-
-    expect(gitea.mergePullRequest).toHaveBeenCalledWith("g-1", "group", 12, "c0ffee");
-    expect(outcome.pullRequest).toEqual({ number: 12, merged: true });
-  });
-
-  it("updates an existing document, quoting the blob it read", async () => {
-    const gitea = giteaFake({
-      readFile: vi.fn().mockResolvedValue({
-        path: "environments.yaml",
-        sha: "blob-1",
-        content:
-          "version: 1\nenvironments:\n  production:\n    tier: production\n    project: p-prod\n    sources: release\n",
-      }),
-    });
-    await addGroupEnvironment(base(apiFake(), gitea));
-
-    const [, , change] = (gitea.changeFiles as ReturnType<typeof vi.fn>).mock.calls[0]!;
-    expect(change.files[0].operation).toBe("update");
-    expect(change.files[0].sha).toBe("blob-1");
-    expect(change.files[0].content).toContain("  production:");
-    expect(change.files[0].content).toContain("  acme-stage:");
-  });
-
-  it("refuses a second production before it writes anything", async () => {
-    const api = apiFake();
-    const gitea = giteaFake({
-      readFile: vi.fn().mockResolvedValue({
-        path: "environments.yaml",
-        sha: "blob-1",
-        content:
-          "environments:\n  production:\n    tier: production\n    project: p-prod\n    sources: release\n",
-      }),
-    });
-    const outcome = await addGroupEnvironment({
-      ...base(api, gitea),
-      environment: {
-        ...STAGE,
-        displayName: "Acme - production",
-        tier: "production" as const,
-        project: "p-prod-2",
-      },
-    });
-
-    expect(outcome.failed).toEqual({
-      step: "environments-document",
-      reason: "This project already has a production.",
-    });
-    expect(gitea.changeFiles).not.toHaveBeenCalled();
-  });
-
-  it.each([
-    {
-      name: "an attachment HQ refuses",
-      hq: hqFake(async () => {
-        throw new HqError({
-          kind: "refused",
-          code: "forbidden",
-          status: 403,
-          message: "Only an org owner or admin changes the structure.",
-        });
-      }),
-      patch: {},
-      step: "registry",
-      reason: "Only an org owner or admin changes the structure.",
-      done: [],
-    },
-    {
-      name: "an HQ that does not answer",
-      hq: hqFake(async () => {
-        throw new HqError({
-          kind: "unavailable",
-          code: "network",
-          message: "HQ could not be reached.",
-        });
-      }),
-      patch: {},
-      step: "registry",
-      reason: "HQ could not be reached.",
-      done: [],
-    },
-    {
-      name: "an account with no broker yet",
-      patch: { listIntegrationTokens: vi.fn().mockResolvedValue([]) },
-      step: "broker-grant",
-      reason: "This account has no broker to deploy with yet.",
-      done: ["registry"],
-    },
-    {
-      name: "a deploy key the platform would not mint",
-      patch: {
-        mintIntegrationToken: vi.fn().mockRejectedValue(new Error("Only admins mint tokens.")),
-      },
-      step: "deploy-token",
-      reason: "Only admins mint tokens.",
-      done: ["registry", "broker-grant"],
-    },
-  ])("stops at $name and says which step", async ({ hq, patch, step, reason, done }) => {
-    const outcome = await addGroupEnvironment(base(apiFake(patch), giteaFake(), hq));
-    expect(outcome.failed).toEqual({ step, reason });
-    expect(outcome.done).toEqual(done);
-  });
-
-  it("keeps the project when nobody is signed in to Gitea yet", async () => {
-    const outcome = await addGroupEnvironment(base(apiFake(), null));
-    expect(outcome.done).toEqual(["registry", "broker-grant", "deploy-token"]);
-    expect(outcome.failed?.step).toBe("environments-document");
-  });
-});
-
-describe("the environment's deploy token (D27)", () => {
-  it("is minted for that one project and written on the broker's service, before the declaration", async () => {
-    const api = apiFake();
-    const gitea = giteaFake();
-    await addGroupEnvironment(base(api, gitea));
-
     expect(api.mintIntegrationToken).toHaveBeenCalledWith(
       {
         clientId: "org-1",
-        name: `deploy-${STAGE.displayName}`,
+        name: "deploy-acme-stage",
         roleCode: "NO_ACCESS",
-        projects: [{ projectId: STAGE.project, roleCode: "BASIC_USER" }],
+        projects: [{ projectId: "p-stage", roleCode: "BASIC_USER" }],
       },
       undefined,
     );
-    const [secret] = api.writeServiceSecret.mock.calls[0] as [Record<string, string>];
-    expect(secret.serviceId).toBe("svc-broker");
-    expect(secret.key).toMatch(/^MATE_DEPLOY_TOKEN_[0-9A-F]+$/u);
-    expect(secret.content).toBe("the-stage-key");
-    expect(api.writeServiceSecret.mock.invocationCallOrder[0]).toBeLessThan(
-      (gitea.changeFiles as ReturnType<typeof vi.fn>).mock.invocationCallOrder[0] ?? 0,
-    );
+    // Under the name HQ gave the environment.
+    expect(hq.keepDeployToken).toHaveBeenCalledWith("g-1", "acme-stage", "the-stage-key");
   });
 
-  it("is left alone when the broker already holds it", async () => {
-    const { deployTokenVariable } = await import("@t3tools/client-runtime/zerops");
-    const api = apiFake({
-      listServiceVariableNames: vi.fn().mockResolvedValue([deployTokenVariable(STAGE.project)]),
-    });
-    const outcome = await addGroupEnvironment(base(api, giteaFake()));
-    expect(outcome.failed).toBeUndefined();
+  it("mints nothing for an environment whose key HQ holds and finds working", async () => {
+    const api = apiFake();
+    const hq = hqFake([{ ...RECORDED, keyHeld: true }]);
+    expect(await add(api, hq)).toEqual({ done: ["registry", "deploy-token"], failed: undefined });
     expect(api.mintIntegrationToken).not.toHaveBeenCalled();
   });
 
-  it("is taken back when the broker could not be given it", async () => {
-    const api = apiFake({
-      writeServiceSecret: vi.fn().mockRejectedValue(new Error("The service is not ready.")),
+  // Main E07: a key HQ found broken is minted anew.
+  it("mints a new key where HQ found the one it holds broken", async () => {
+    const api = apiFake();
+    const hq = hqFake([{ ...RECORDED, keyHeld: true, keyInvalid: true }]);
+    await add(api, hq);
+    expect(hq.keepDeployToken).toHaveBeenCalledTimes(1);
+  });
+
+  it("stops at the registry with HQ's refusal, minting nothing", async () => {
+    const api = apiFake();
+    const hq = hqFake([RECORDED], {
+      attachProject: vi.fn(async () => {
+        throw new HqError({
+          kind: "refused",
+          code: "forbidden",
+          message: "You need Admin access to this Zerops project.",
+        });
+      }),
     });
-    const outcome = await addGroupEnvironment(base(api, giteaFake()));
-    expect(outcome.failed).toEqual({ step: "deploy-token", reason: "The service is not ready." });
+    expect(await add(api, hq)).toEqual({
+      done: [],
+      failed: { step: "registry", reason: "You need Admin access to this Zerops project." },
+    });
+    expect(api.mintIntegrationToken).not.toHaveBeenCalled();
+  });
+
+  it("stops where HQ holds the project as no environment after the attach", async () => {
+    const outcome = await add(apiFake(), hqFake([]));
+    expect(outcome.done).toEqual(["registry"]);
+    expect(outcome.failed?.step).toBe("deploy-token");
+  });
+
+  // Main E06: a key HQ never got is taken back, so no orphan of a failed write stays.
+  it("takes the minted key back when HQ did not take it", async () => {
+    const api = apiFake();
+    const hq = hqFake([RECORDED], {
+      keepDeployToken: vi.fn(async () => {
+        throw new HqError({
+          kind: "refused",
+          code: "invalid",
+          message: "Zerops did not accept this deploy key.",
+        });
+      }),
+    });
+    expect(await add(api, hq)).toEqual({
+      done: ["registry"],
+      failed: { step: "deploy-token", reason: "Zerops did not accept this deploy key." },
+    });
     expect(api.deleteIntegrationToken).toHaveBeenCalledWith(
       { clientId: "org-1", tokenId: "t-deploy" },
       undefined,
     );
   });
-
-  it("stops where an account's Gitea project has no broker service", async () => {
-    const api = apiFake({
-      listProjectServices: vi.fn().mockResolvedValue([{ id: "svc-web", name: "web" }]),
-    });
-    const outcome = await addGroupEnvironment(base(api, giteaFake()));
-    expect(outcome.failed?.step).toBe("deploy-token");
-    expect(api.mintIntegrationToken).not.toHaveBeenCalled();
-  });
-});
-
-describe("a project already declared", () => {
-  it("declares nothing twice — the write run again is a no-op past the registry and the grant", async () => {
-    const gitea = giteaFake({
-      readFile: vi.fn().mockResolvedValue({
-        sha: "abc",
-        content: `version: 1
-environments:
-  acme-stage:
-    tier: stage
-    project: p-stage
-    sources: [main]
-    deploy: on-push
-`,
-      }),
-    });
-    const outcome = await addGroupEnvironment(base(apiFake(), gitea));
-    expect(outcome.failed).toBeUndefined();
-    expect(outcome.done).toEqual([
-      "registry",
-      "broker-grant",
-      "deploy-token",
-      "environments-document",
-    ]);
-    expect(gitea.changeFiles).not.toHaveBeenCalled();
-    expect(gitea.createPullRequest).not.toHaveBeenCalled();
-  });
-});
-
-describe("an attempt an earlier one left half done", () => {
-  const declaring = (project: string) => `version: 1
-environments:
-  acme-stage:
-    tier: stage
-    project: ${project}
-    sources: [main]
-    deploy: on-push
-`;
-  /** `main` declares nothing yet; the leftover branch carries `onBranch`. */
-  const leftover = (onBranch: string | undefined) => ({
-    getBranch: vi.fn(async (_owner: string, _repo: string, name: string) =>
-      name === "main" ? { name: "main", user_can_merge: true } : { name, commit: { id: "c0ffee" } },
-    ),
-    readFile: vi.fn(async (_owner: string, _repo: string, path: string, ref?: string) =>
-      ref === "main" || onBranch === undefined
-        ? undefined
-        : { path, sha: "blob-b", content: onBranch },
-    ),
-  });
-
-  // Only a branch that already declares this project is an earlier attempt's. Beviro's re-added
-  // production met the branch of its deleted predecessor's merged declaration, and reused it would
-  // have declared the deleted project again (2026-09-24).
-  it.each([
-    { carries: "declares this project", onBranch: declaring("p-stage"), reused: true },
-    { carries: "declares a project since deleted", onBranch: declaring("p-dead"), reused: false },
-    { carries: "holds no environments document", onBranch: undefined, reused: false },
-  ])("a leftover branch that $carries is reused: $reused", async ({ onBranch, reused }) => {
-    const gitea = giteaFake({
-      ...leftover(onBranch),
-      listPullRequests: vi.fn().mockResolvedValue([]),
-    });
-    const outcome = await addGroupEnvironment(base(apiFake(), gitea));
-
-    expect(outcome.failed).toBeUndefined();
-    expect(gitea.readFile).toHaveBeenCalledWith(
-      "g-1",
-      "group",
-      "environments.yaml",
-      "mate-app/env-acme-stage",
-    );
-    if (reused) {
-      expect(gitea.deleteBranch).not.toHaveBeenCalled();
-      expect(gitea.changeFiles).not.toHaveBeenCalled();
-    } else {
-      expect(gitea.deleteBranch).toHaveBeenCalledWith("g-1", "group", "mate-app/env-acme-stage");
-      const [deleted] = (gitea.deleteBranch as ReturnType<typeof vi.fn>).mock.invocationCallOrder;
-      const [written] = (gitea.changeFiles as ReturnType<typeof vi.fn>).mock.invocationCallOrder;
-      expect(deleted).toBeLessThan(written ?? 0);
-      expect(gitea.changeFiles).toHaveBeenCalledWith(
-        "g-1",
-        "group",
-        expect.objectContaining({
-          branch: "main",
-          newBranch: "mate-app/env-acme-stage",
-          files: [expect.objectContaining({ content: declaring("p-stage") })],
-        }),
-      );
-    }
-    expect(gitea.createPullRequest).toHaveBeenCalledTimes(1);
-    expect(outcome.pullRequest).toEqual({ number: 12, merged: true });
-  });
-
-  it("reuses the request it left rather than opening a second", async () => {
-    const gitea = giteaFake({
-      ...leftover(declaring("p-stage")),
-      listPullRequests: vi
-        .fn()
-        .mockResolvedValue([
-          { number: 7, state: "open", head: { ref: "mate-app/env-acme-stage" } },
-        ]),
-    });
-    const outcome = await addGroupEnvironment(base(apiFake(), gitea));
-    expect(outcome.failed).toBeUndefined();
-    expect(gitea.createPullRequest).not.toHaveBeenCalled();
-    expect(gitea.mergePullRequest).toHaveBeenCalledWith("g-1", "group", 7, "c0ffee");
-    expect(outcome.pullRequest).toEqual({ number: 7, merged: true });
-  });
-});
-
-describe("a production deleted outside the app (Beviro, 2026-09-24)", () => {
-  const PRODUCTION = {
-    displayName: "Beviro - production",
-    tier: "production" as const,
-    project: "p-new",
-  };
-  const HELD_DOCUMENT = `version: 1
-environments:
-  beviro-production:
-    tier: production
-    project: p-dead
-    sources: release
-`;
-  /** What `GET /project/{id}` answers for a deleted project (verified 2026-09-20). */
-  const deleted = () =>
-    Promise.reject(
-      new ZeropsApiError(
-        "Project not found.",
-        "not-found",
-        400,
-        "projectNotFound",
-        "Project not found.",
-      ),
-    );
-  const documentOnMain = (content: string) =>
-    vi.fn(async (_owner: string, _repo: string, path: string, ref?: string) =>
-      ref === "main" ? { path, sha: "blob-1", content } : undefined,
-    );
-
-  it("is replaced by the new one in the document, its name kept", async () => {
-    const api = apiFake({ fetchProject: vi.fn(deleted) });
-    const hq = hqFake();
-    // The branch the deleted production's merged declaration left, still declaring it.
-    const gitea = giteaFake({
-      readFile: vi.fn(async (_owner: string, _repo: string, path: string) => ({
-        path,
-        sha: "blob-1",
-        content: HELD_DOCUMENT,
-      })),
-      getBranch: vi.fn(async (_owner: string, _repo: string, name: string) =>
-        name === "main" ? { name: "main", user_can_merge: false } : { name },
-      ),
-    });
-    const outcome = await addGroupEnvironment({
-      ...base(api, gitea, hq),
-      environment: PRODUCTION,
-    });
-
-    expect(outcome.failed).toBeUndefined();
-    expect(outcome.done).toEqual([
-      "registry",
-      "broker-grant",
-      "deploy-token",
-      "environments-document",
-    ]);
-    expect(api.fetchProject).toHaveBeenCalledWith("p-dead", undefined);
-    expect(hq.attachProject).toHaveBeenCalledWith("g-1", {
-      projectId: "p-new",
-      kind: "production",
-    });
-    expect(gitea.deleteBranch).toHaveBeenCalledWith(
-      "g-1",
-      "group",
-      "mate-app/env-beviro-production",
-    );
-    expect(gitea.changeFiles).toHaveBeenCalledWith("g-1", "group", {
-      message: "Add the beviro-production production environment",
-      branch: "main",
-      newBranch: "mate-app/env-beviro-production",
-      files: [
-        {
-          operation: "update",
-          path: "environments.yaml",
-          content: HELD_DOCUMENT.replace("project: p-dead", "project: p-new"),
-          sha: "blob-1",
-        },
-      ],
-    });
-  });
-
-  // Only `projectNotFound` says a project is gone: any other answer leaves a production that may
-  // still run where it is, and the new one refused.
-  const NOT_DELETED = [
-    {
-      answer: "the project, which still runs",
-      fetchProject: async (id: string) => ({ id, name: id, status: "ACTIVE" }),
-    },
-    {
-      answer: "403 insufficientPermissions",
-      fetchProject: () =>
-        Promise.reject(
-          new ZeropsApiError(
-            "This Zerops account is not allowed to do that.",
-            "forbidden",
-            403,
-            "insufficientPermissions",
-          ),
-        ),
-    },
-    {
-      answer: "a 500",
-      fetchProject: () =>
-        Promise.reject(new ZeropsApiError("Zerops API request failed (500).", "server", 500)),
-    },
-    {
-      answer: "no answer at all",
-      fetchProject: () => Promise.reject(new TypeError("Failed to fetch")),
-    },
-  ];
-  it.each(NOT_DELETED)(
-    "keeps refusing a second production held in environments.yaml when the platform answers $answer",
-    async ({ fetchProject }) => {
-      const api = apiFake({ fetchProject: vi.fn(fetchProject) });
-      const gitea = giteaFake({ readFile: documentOnMain(HELD_DOCUMENT) });
-      const outcome = await addGroupEnvironment({ ...base(api, gitea), environment: PRODUCTION });
-
-      expect(api.fetchProject).toHaveBeenCalledWith("p-dead", undefined);
-      expect(outcome.failed).toEqual({
-        step: "environments-document",
-        reason: "This project already has a production.",
-      });
-      expect(outcome.done).toEqual(["registry", "broker-grant", "deploy-token"]);
-      expect(gitea.changeFiles).not.toHaveBeenCalled();
-    },
-  );
 });
