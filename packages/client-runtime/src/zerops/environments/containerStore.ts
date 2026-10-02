@@ -6,8 +6,10 @@
  *   the link (`link`), the Mate flag's read — and every probe reading lands on each target whose
  *   origin it read. Each target's machine decides its level; the store runs its effects.
  * - Probes follow each machine's cadence, the route's target first. A ready container is read
- *   again on a status push, on its socket dropping or a connect to it failing, on a visible wake
- *   and whenever someone asks (`request`): ready is never terminal.
+ *   again when its service's status moves, on its socket dropping or a connect to it failing, on
+ *   a visible wake that finds it unread for `WAKE_REREAD_MS` and whenever someone asks
+ *   (`request`): ready is never terminal. A container behind a live socket is never read: the
+ *   socket proves it up.
  * - Intents are persisted in this tab's storage as `{target, kind, since, from?}`, so a reload
  *   inside an intent's budget shows `restarting(you)` or `updating` again instead of guesses. An
  *   intent restored for a target not yet listed waits for it.
@@ -29,7 +31,13 @@ import {
 } from "./containerMachine.ts";
 import type { ContainerVerdict } from "./environmentMachine.ts";
 import type { ExchangeClock, ExchangeDriver, TargetKey } from "./exchangeDriver.ts";
-import { makeProbeStore, type ProbeCadence, type ProbeReading } from "./probeStore.ts";
+import {
+  makeProbeStore,
+  type ProbeAsk,
+  type ProbeCadence,
+  type ProbeReading,
+  type ProbeStorePorts,
+} from "./probeStore.ts";
 
 /** One target as the platform describes it now. */
 export interface ContainerTarget {
@@ -52,12 +60,19 @@ interface IntentRecord {
   readonly kind: IntentKind;
   readonly since: number;
   readonly from?: string | null;
+  /** The `/healthz` `initAt` read before a restart verb was sent. */
+  readonly initAt?: string;
 }
 
 export interface ContainerStorePorts {
   readonly clock: Pick<ExchangeClock, "now" | "setTimer">;
-  /** Reads the origin's descriptor and `/healthz`; rejects when the signal aborts it. */
-  readonly probe: (origin: string, signal: AbortSignal) => Promise<ProbeReading>;
+  /** Reads the origin's container (`readZeropsContainer`); rejects when the signal aborts it. */
+  readonly probe: ProbeStorePorts["probe"];
+  /**
+   * The origin's `/healthz` `initAt`, read now; null when it serves none. Rejects when the signal
+   * aborts it.
+   */
+  readonly readInitAt: (origin: string, signal: AbortSignal) => Promise<string | null>;
   /** `ZCP_MATE_ENABLED` for the target's service; `"unknown"` when it could not be read. */
   readonly readMateFlag: (key: TargetKey) => Promise<MateFlag>;
   readonly intents: IntentStorage;
@@ -65,8 +80,15 @@ export interface ContainerStorePorts {
 
 /** What our verb asks: the store stamps it with the time it was accepted. */
 export type IntentRequest =
-  | { readonly kind: "restart" | "enable" | "upgrade-restart" }
+  | {
+      readonly kind: "restart" | "enable" | "upgrade-restart";
+      /** The `initAt` read before the verb was sent (`initAt`); null when it could not say. */
+      readonly initAt?: string | null;
+    }
   | { readonly kind: "update"; readonly from: string | null };
+
+/** How long the read before a restart verb may hold the verb back. */
+export const INIT_AT_READ_DEADLINE_MS = 3_000;
 
 export interface ContainerStore {
   /** Every target the platform lists, as it stands now; a target left out is forgotten. */
@@ -77,14 +99,26 @@ export interface ContainerStore {
   readonly link: (key: TargetKey, connected: boolean) => void;
   /** Our verb was accepted: its level holds until a read fact settles it. */
   readonly intend: (key: TargetKey, intent: IntentRequest) => void;
-  /** Reads the target's container once more. */
-  readonly request: (key: TargetKey) => void;
+  /**
+   * The target's `/healthz` `initAt`, read now: a restart verb reads it just before it is sent, and
+   * its intent carries it as the baseline. Null when the target has no address, the container
+   * serves none, or it does not answer within `INIT_AT_READ_DEADLINE_MS`.
+   */
+  readonly initAt: (key: TargetKey) => Promise<string | null>;
+  /**
+   * Reads the target's container once more, with a read started now — unless `fresh: false` lets
+   * it take one another reader made a moment ago (an exchange about to read it anyway).
+   */
+  readonly request: (key: TargetKey, ask?: ProbeAsk) => void;
   /** The targets whose containers are read ahead of every other: the route's (§4.5). */
   readonly setFirst: (keys: ReadonlySet<TargetKey>) => void;
   /** The reading of a probe of this origin started from now on. */
   readonly next: (origin: string) => Promise<ProbeReading>;
   readonly setVisible: (visible: boolean) => void;
-  /** §6.4's coalesced wake: deadlines settle, and a visible one reads what no socket proves. */
+  /**
+   * §6.4's coalesced wake: deadlines settle, and a visible one reads what no socket proves and no
+   * reading of the last `WAKE_REREAD_MS` says.
+   */
   readonly wake: (visible: boolean) => void;
   readonly verdict: (key: TargetKey) => ContainerVerdict;
   readonly machine: (key: TargetKey) => ContainerMachine | undefined;
@@ -98,6 +132,11 @@ export interface ContainerStore {
 interface Entry {
   machine: ContainerMachine;
   origin: string | null;
+  /**
+   * The project's status and the service's as last read: a service the listing could not say
+   * (its target held only by a record) keeps the status read before.
+   */
+  known: { readonly project: string; readonly service: string | null };
   cancelTimer: (() => void) | null;
   /** A Mate flag read is in flight. */
   readingFlag: boolean;
@@ -118,7 +157,8 @@ const isRecord = (value: unknown): value is IntentRecord => {
     typeof record.kind === "string" &&
     INTENT_KINDS.has(record.kind) &&
     typeof record.since === "number" &&
-    (record.from === undefined || record.from === null || typeof record.from === "string")
+    (record.from === undefined || record.from === null || typeof record.from === "string") &&
+    (record.initAt === undefined || typeof record.initAt === "string")
   );
 };
 
@@ -134,10 +174,45 @@ const readRecords = (storage: IntentStorage): ReadonlyArray<IntentRecord> => {
 const toRecord = (target: TargetKey, intent: ContainerIntent): IntentRecord =>
   intent.kind === "update"
     ? { target, kind: intent.kind, since: intent.since.wall, from: intent.from }
-    : { target, kind: intent.kind, since: intent.since.wall };
+    : intent.initAt === undefined
+      ? { target, kind: intent.kind, since: intent.since.wall }
+      : { target, kind: intent.kind, since: intent.since.wall, initAt: intent.initAt };
 
 const sameJson = (left: unknown, right: unknown): boolean =>
   JSON.stringify(left) === JSON.stringify(right);
+
+/** A visible wake reads a container no socket holds once its last reading is this old. */
+export const WAKE_REREAD_MS = 60_000;
+
+/**
+ * The platform moved the target's status: its project's, or its service's from one read before
+ * to another. A service read for the first time, or one the listing could not say this time, is
+ * no move.
+ */
+const statusMoved = (known: Entry["known"], platform: PlatformStatus): boolean =>
+  platform.project !== known.project ||
+  (platform.service !== null && known.service !== null && platform.service !== known.service);
+
+const knownStatus = (known: Entry["known"] | null, platform: PlatformStatus): Entry["known"] => ({
+  project: platform.project,
+  service: platform.service ?? known?.service ?? null,
+});
+
+/** The target's status as the machine takes it: a service the listing could not say keeps its last. */
+const platformOf = (entry: Entry, target: ContainerTarget): PlatformStatus =>
+  target.platform.service === null && entry.known.service !== null
+    ? { ...target.platform, service: entry.known.service }
+    : target.platform;
+
+/** Its last reading is `WAKE_REREAD_MS` old, or it has none. */
+const unreadSince = (machine: ContainerMachine, now: Instant): boolean => {
+  const sentAt = machine.reading?.sentAt;
+  return (
+    sentAt === undefined ||
+    now.mono - sentAt.mono >= WAKE_REREAD_MS ||
+    now.wall - sentAt.wall >= WAKE_REREAD_MS
+  );
+};
 
 export function makeContainerStore(ports: ContainerStorePorts): ContainerStore {
   const { clock } = ports;
@@ -246,7 +321,10 @@ export function makeContainerStore(ports: ContainerStorePorts): ContainerStore {
     }
     if (depth > 0) return;
     probes.setFirst(new Set([...first].flatMap((key) => entries.get(key)?.origin ?? [])));
-    probes.setCadences(cadences());
+    // Asked only now, so each probe reads by the cadence its container ended the batch on.
+    const asked = new Map([...requests].map(([origin, fresh]) => [origin, { fresh }] as const));
+    requests.clear();
+    probes.setCadences(cadences(), asked);
     persist();
     const machines = new Map([...entries].map(([key, entry]) => [key, entry.machine] as const));
     if (sameJson([...machines], [...published])) return;
@@ -254,9 +332,19 @@ export function makeContainerStore(ports: ContainerStorePorts): ContainerStore {
     for (const listener of listeners) listener();
   }
 
-  /** Reads the container now, unless the platform says it is down: its push back reads it. */
-  const requestFor = (entry: Entry) => {
-    if (entry.origin !== null && !platformSaysDown(entry.machine)) probes.request(entry.origin);
+  /** The reads this batch asked for, by origin, and whether one of them must be started now. */
+  const requests = new Map<string, boolean>();
+
+  /**
+   * Reads the container once this batch ends, unless its socket is live — that proves it up — or
+   * the platform says it is down: its push back reads it. `fresh` unless the ask is content with a
+   * descriptor another reader made a moment ago: a read after a status move, a drop or a failure
+   * must be sent after it.
+   */
+  const requestFor = (entry: Entry, ask: ProbeAsk) => {
+    if (entry.origin === null || entry.machine.connectedSince !== null) return;
+    if (platformSaysDown(entry.machine)) return;
+    requests.set(entry.origin, (requests.get(entry.origin) ?? false) || ask.fresh);
   };
 
   const unsubscribeProbes = probes.subscribe((origin, reading, sentAt) =>
@@ -270,9 +358,10 @@ export function makeContainerStore(ports: ContainerStorePorts): ContainerStore {
   const restore = (record: IntentRecord): ContainerIntent => {
     const now = clock.now();
     const since: Instant = { wall: record.since, mono: now.mono - (now.wall - record.since) };
-    return record.kind === "update"
-      ? { kind: "update", since, from: record.from ?? null }
-      : { kind: record.kind, since };
+    if (record.kind === "update") return { kind: "update", since, from: record.from ?? null };
+    return record.initAt === undefined
+      ? { kind: record.kind, since }
+      : { kind: record.kind, since, initAt: record.initAt };
   };
 
   return {
@@ -290,6 +379,7 @@ export function makeContainerStore(ports: ContainerStorePorts): ContainerStore {
             const entry: Entry = {
               machine: initialContainer(),
               origin: target.origin,
+              known: knownStatus(null, target.platform),
               cancelTimer: null,
               readingFlag: false,
             };
@@ -300,15 +390,18 @@ export function makeContainerStore(ports: ContainerStorePorts): ContainerStore {
               restored.delete(target.key);
               step(target.key, entry, { type: "INTENT", intent: restore(record) });
             }
-            requestFor(entry);
+            // A Mate seen for the first time: the read its connect makes will do.
+            requestFor(entry, { fresh: false });
             continue;
           }
           const moved = existing.origin !== target.origin;
           existing.origin = target.origin;
-          const pushed = !sameJson(existing.machine.platform, target.platform);
-          step(target.key, existing, { type: "PLATFORM", status: target.platform });
-          // A status push, or a new address, reads the container again: ready is never terminal.
-          if (pushed || moved) requestFor(existing);
+          const pushed = statusMoved(existing.known, target.platform);
+          existing.known = knownStatus(existing.known, target.platform);
+          step(target.key, existing, { type: "PLATFORM", status: platformOf(existing, target) });
+          // A status that moved, or a new address, reads the container again: ready is never
+          // terminal. The same status listed again, or one the listing could not say, reads nothing.
+          if (pushed || moved) requestFor(existing, { fresh: true });
         }
       }),
     process: (key, running) =>
@@ -322,7 +415,7 @@ export function makeContainerStore(ports: ContainerStorePorts): ContainerStore {
         if (entry === undefined) return;
         const dropped = !connected && entry.machine.connectedSince !== null;
         step(key, entry, { type: "LINK", connected });
-        if (dropped) requestFor(entry);
+        if (dropped) requestFor(entry, { fresh: true });
       }),
     intend: (key, intent) =>
       batch(() => {
@@ -334,13 +427,28 @@ export function makeContainerStore(ports: ContainerStorePorts): ContainerStore {
           intent:
             intent.kind === "update"
               ? { kind: "update", since, from: intent.from }
-              : { kind: intent.kind, since },
+              : typeof intent.initAt === "string"
+                ? { kind: intent.kind, since, initAt: intent.initAt }
+                : { kind: intent.kind, since },
         });
       }),
-    request: (key) =>
+    initAt: async (key) => {
+      const origin = entries.get(key)?.origin ?? null;
+      if (origin === null || disposed) return null;
+      const controller = new AbortController();
+      const cancel = clock.setTimer(INIT_AT_READ_DEADLINE_MS, () => controller.abort());
+      try {
+        return await ports.readInitAt(origin, controller.signal);
+      } catch {
+        return null;
+      } finally {
+        cancel();
+      }
+    },
+    request: (key, ask = { fresh: true }) =>
       batch(() => {
         const entry = entries.get(key);
-        if (entry !== undefined) requestFor(entry);
+        if (entry !== undefined) requestFor(entry, ask);
       }),
     setFirst: (keys) =>
       batch(() => {
@@ -351,9 +459,17 @@ export function makeContainerStore(ports: ContainerStorePorts): ContainerStore {
     wake: (visible) =>
       batch(() => {
         if (visible) probes.setVisible(true);
+        const now = clock.now();
         for (const [key, entry] of entries) {
           step(key, entry, { type: "TICK" });
-          if (visible && probeCadence(entry.machine).kind === "on-demand") requestFor(entry);
+          // A container on a poll is read on its own cadence; one read on demand, once its last
+          // reading is old enough to say nothing any more.
+          if (
+            visible &&
+            probeCadence(entry.machine).kind === "on-demand" &&
+            unreadSince(entry.machine, now)
+          )
+            requestFor(entry, { fresh: false });
         }
       }),
     verdict: (key) => {
@@ -372,6 +488,7 @@ export function makeContainerStore(ports: ContainerStorePorts): ContainerStore {
       if (disposed) return;
       disposed = true;
       unsubscribeProbes();
+      requests.clear();
       probes.dispose();
       for (const entry of entries.values()) entry.cancelTimer?.();
       entries.clear();
@@ -421,8 +538,8 @@ export function bindContainerStore(store: ContainerStore, driver: ExchangeDriver
   /** Whether each target's last read found its Mate answering. */
   const answering = new Map<TargetKey, boolean>();
   /** Reads the container once each time `now` turns true for the key. */
-  const onEdge = (seen: Set<TargetKey>, key: TargetKey, now: boolean) => {
-    if (now && !seen.has(key)) store.request(key);
+  const onEdge = (seen: Set<TargetKey>, key: TargetKey, now: boolean, ask: ProbeAsk) => {
+    if (now && !seen.has(key)) store.request(key, ask);
     if (now) seen.add(key);
     else seen.delete(key);
   };
@@ -434,11 +551,12 @@ export function bindContainerStore(store: ContainerStore, driver: ExchangeDriver
     for (const [key, machine] of machines) {
       store.link(key, machine.link.phase === "connected");
       // An exchange starting reads the container it is about to meet.
-      onEdge(exchanging, key, machine.credential.kind === "exchanging");
+      // It may take the descriptor the exchange itself reads.
+      onEdge(exchanging, key, machine.credential.kind === "exchanging", { fresh: false });
       // A connect failing, connected before or not, reads it again: ready is never terminal.
-      onEdge(failing, key, machine.link.phase === "backoff");
+      onEdge(failing, key, machine.link.phase === "backoff", { fresh: true });
       // So does an exchange backing off: the read that finds the Mate back ends the wait.
-      onEdge(backingOff, key, machine.credential.kind === "backoff");
+      onEdge(backingOff, key, machine.credential.kind === "backoff", { fresh: true });
     }
   };
   const unsubscribeStore = store.subscribe(toDriver);

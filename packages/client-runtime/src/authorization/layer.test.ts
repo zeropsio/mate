@@ -1,4 +1,8 @@
-import { AuthStandardClientScopes, EnvironmentId } from "@t3tools/contracts";
+import {
+  AuthStandardClientScopes,
+  EnvironmentId,
+  type ExecutionEnvironmentDescriptor,
+} from "@t3tools/contracts";
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -7,6 +11,7 @@ import * as Ref from "effect/Ref";
 import * as TestClock from "effect/testing/TestClock";
 
 import * as ManagedRelay from "../relay/managedRelay.ts";
+import { RecentEnvironmentDescriptorsRef } from "../environment/descriptor.ts";
 import { remoteHttpClientLayer } from "../rpc/http.ts";
 import * as ClientCapabilities from "../platform/capabilities.ts";
 import * as RemoteEnvironmentAuthorization from "./service.ts";
@@ -78,6 +83,8 @@ const authInvalid = () =>
 const makeHarness = Effect.fn("TestRemoteAuthorization.makeHarness")(function* (input: {
   readonly initialToken?: TokenStore.RemoteDpopAccessToken;
   readonly responses: ReadonlyArray<Response>;
+  /** What the client read moments ago, by base URL: another reader's descriptor. */
+  readonly recent?: (httpBaseUrl: string) => typeof DESCRIPTOR | null;
 }) {
   const tokens = yield* Ref.make(
     new Map(
@@ -127,6 +134,10 @@ const makeHarness = Effect.fn("TestRemoteAuthorization.makeHarness")(function* (
         remoteHttpClientLayer(fetch.fetchFn),
         Layer.succeed(ManagedRelay.ManagedRelayDpopSigner, signer),
         Layer.succeed(TokenStore.RemoteDpopAccessTokenStore, tokenStore),
+        Layer.succeed(RecentEnvironmentDescriptorsRef, {
+          recent: (httpBaseUrl) =>
+            (input.recent?.(httpBaseUrl) ?? null) as ExecutionEnvironmentDescriptor | null,
+        }),
         Layer.succeed(
           ClientCapabilities.ClientPresentation,
           ClientCapabilities.ClientPresentation.of({
@@ -156,6 +167,44 @@ const makeHarness = Effect.fn("TestRemoteAuthorization.makeHarness")(function* (
 });
 
 describe("RemoteEnvironmentAuthorization", () => {
+  it.effect.each([
+    {
+      name: "takes the descriptor another reader read at that URL moments ago",
+      recent: (httpBaseUrl: string) => (httpBaseUrl === ENDPOINT.httpBaseUrl ? DESCRIPTOR : null),
+      reads: 0,
+    },
+    {
+      name: "reads it when no reader holds one for that URL",
+      recent: () => null,
+      reads: 1,
+    },
+  ])("$name", ({ recent, reads }) =>
+    Effect.gen(function* () {
+      const harness = yield* makeHarness({
+        recent,
+        responses: [...(reads === 0 ? [] : [Response.json(DESCRIPTOR)]), websocketTicket("ticket")],
+      });
+
+      const authorized = yield* RemoteEnvironmentAuthorization.RemoteEnvironmentAuthorization.pipe(
+        Effect.flatMap((remote) =>
+          remote.authorizeBearer({
+            expectedEnvironmentId: ENVIRONMENT_ID,
+            httpBaseUrl: ENDPOINT.httpBaseUrl,
+            wsBaseUrl: ENDPOINT.wsBaseUrl,
+            bearerToken: "bearer-token",
+            connectionMethod: "direct",
+          }),
+        ),
+        Effect.provide(harness.layer),
+      );
+
+      expect(authorized.environmentId).toBe(ENVIRONMENT_ID);
+      expect(
+        harness.fetch.calls.filter(([url]) => String(url).endsWith("/.well-known/t3/environment")),
+      ).toHaveLength(reads);
+    }),
+  );
+
   it.effect("reuses a validated bearer descriptor while issuing fresh websocket tickets", () =>
     Effect.gen(function* () {
       const harness = yield* makeHarness({

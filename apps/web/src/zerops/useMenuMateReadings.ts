@@ -17,7 +17,8 @@ import { mateRowActivity } from "../components/zerops/SidebarMateRow.logic";
 import { environmentsWithSnapshotAtom } from "../state/shell";
 import { zeropsEnvironmentsAtom } from "../state/zerops";
 import type { ZeropsAgentActivity } from "./agentActivity";
-import { mateComing, type MateComing } from "./mateComing";
+import { useEnvironmentLinks } from "../routes/-environmentTargets";
+import { arrivalLinkHolds, mateComing, type MateComing } from "./mateComing";
 import { rememberedActivity } from "./menuMemory";
 import { useNewMate } from "./newMate";
 import { useZeropsCreationVerdicts } from "./useZeropsCreationVerdicts";
@@ -89,6 +90,7 @@ export function useMateComingOf(
 ): (candidate: ZeropsCandidate) => MateComing | undefined {
   const presses = useMatePresses();
   const creations = useNewMate((state) => state.creations);
+  const { mateLink } = useEnvironmentLinks();
   const verdicts = useZeropsCreationVerdicts(
     candidates,
     presses.find((press) => press.container && press.state.kind === "pressing")?.projectId ?? null,
@@ -101,8 +103,13 @@ export function useMateComingOf(
         candidate: applyProjectCreationVerdict(candidate, verdicts.get(candidate.project.id)),
         setUpFailed: setUpFailed ?? creations[candidate.project.id]?.failed,
         nowMs: Date.now(),
+        created: creations[candidate.project.id] !== undefined,
+        linkHolds:
+          creations[candidate.project.id] === undefined
+            ? undefined
+            : arrivalLinkHolds(mateLink(candidate)),
       });
     },
-    [presses, creations, verdicts],
+    [presses, creations, mateLink, verdicts],
   );
 }

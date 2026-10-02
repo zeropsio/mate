@@ -38,7 +38,7 @@ import { useEnvironmentLinks } from "../routes/-environmentTargets";
 import { readThreadShells, useProjects, useThreadShells } from "../state/entities";
 import { buildThreadRouteParams } from "../threadRoutes";
 import { deletingMates, mateDeleting } from "./deletingMates";
-import { mateComing } from "./mateComing";
+import { mateComing, arrivalLinkHolds } from "./mateComing";
 import { awaitMateConversation } from "./mateOpening";
 import { newMateView, useNewMate } from "./newMate";
 import { useZeropsCandidates } from "./useZeropsCandidates";
@@ -52,7 +52,7 @@ export type OpenMate = (
 
 export function useOpenMate(): OpenMate {
   const router = useRouter();
-  const { linkTarget } = useEnvironmentLinks();
+  const { linkTarget, mateLink } = useEnvironmentLinks();
   const threads = useThreadShells();
   const projects = useProjects();
   const handleNewThread = useNewThreadHandler();
@@ -90,6 +90,9 @@ export function useOpenMate(): OpenMate {
         candidate,
         setUpFailed: pressed.setUpFailed ?? creations[projectId]?.failed,
         nowMs: Date.now(),
+        created: creations[projectId] !== undefined,
+        linkHolds:
+          creations[projectId] === undefined ? undefined : arrivalLinkHolds(mateLink(candidate)),
       });
       const environmentId = coming === undefined ? linkTarget(candidate) : undefined;
       if (environmentId === undefined) {
@@ -125,6 +128,6 @@ export function useOpenMate(): OpenMate {
         if (threadId !== undefined) then?.(scopeThreadRef(project.environmentId, threadId));
       });
     },
-    [presses, creations, handleNewThread, linkTarget, listing, projects, router, threads],
+    [presses, creations, handleNewThread, linkTarget, listing, mateLink, projects, router, threads],
   );
 }

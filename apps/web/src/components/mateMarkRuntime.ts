@@ -334,6 +334,7 @@ export function registerLiveMark(
   root: SVGSVGElement,
   parts: LiveMarkParts,
   forced: MateMarkState | undefined,
+  options: { readonly awake?: boolean } = {},
 ): () => void {
   const now = typeof performance === "undefined" ? 0 : performance.now();
   const reduced = prefersReducedMotion();
@@ -346,8 +347,9 @@ export function registerLiveMark(
     visible: true,
     rect: null,
     rectAt: -1,
-    // Reduced motion opens the mark at once and never animates it shut.
-    band: reduced ? 1 : 0,
+    // Reduced motion opens the mark at once and never animates it shut; so does a mark that
+    // takes over from the still one, already open.
+    band: reduced || options.awake === true ? 1 : 0,
     gazeX: 0,
     gazeY: 0,
     targetX: 0,

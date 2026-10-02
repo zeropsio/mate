@@ -6,8 +6,9 @@
  *
  * The times:
  * - a Mate is up in about 1½–2 minutes, ready to be signed in;
- * - a Mate added to a project with code then sets up development, deploying that code, in about
- *   6–10 minutes, by itself.
+ * - a Mate added to a project with code then sets up development, deploying that code, by itself:
+ *   6–10 minutes for a small app, about 12 for a storefront with four runtimes (SPN's Bruno,
+ *   2026-10-02: 16 with one failed deploy its agent fixed), so it says up to 15.
  *
  * Pure: the words; `WhatHappensNext.tsx` draws them.
  */
@@ -32,7 +33,7 @@ export interface WhatHappensNext {
 }
 
 const MATE_UP = "about 1½–2 min";
-const DEVELOPMENT_UP = "about 6–10 min";
+const DEVELOPMENT_UP = "up to 15 min";
 
 /** The Mate as the steps name it: its name as it will be called, or the Mate until it has one. */
 function named(botName: string): { readonly subject: string; readonly object: string } {

@@ -84,6 +84,11 @@ export interface ZeropsRowInput {
    * the conversation, not on a click.
    */
   readonly waiting?: boolean | undefined;
+  /**
+   * Its container's first build is past its grace (`firstBuildOverdue`): still on its way, taking
+   * longer than usual.
+   */
+  readonly firstBuildOverdue?: boolean | undefined;
   /** Which verbs the caller can actually perform; a verb it cannot is never offered. */
   readonly can: {
     /** Opening covers connecting: a ready Mate opens by connecting first. */
@@ -356,7 +361,10 @@ export function deriveZeropsRowPresentation(input: ZeropsRowInput): ZeropsRowPre
         detail: RESTARTING_PHRASE,
       };
     }
-    return { status: { label: "Preparing", pulse: true, tone: "busy" }, detail: COMING_UP_LINE };
+    return {
+      status: { label: "Preparing", pulse: true, tone: "busy" },
+      detail: input.firstBuildOverdue === true ? TAKING_LONGER_LINE : COMING_UP_LINE,
+    };
   }
   if (candidate.group === "unavailable") {
     // The platform failed to make the project: it will sit in NEW for good,

@@ -28,6 +28,8 @@ import type { ProbeCadence, ProbeReading } from "./probeStore.ts";
 export interface PlatformStatus {
   readonly project: string;
   readonly service: string | null;
+  /** When the zcp service was made, as the listing reads it: a first build's wait runs from it. */
+  readonly serviceCreated?: string;
 }
 
 /** `ZCP_MATE_ENABLED` as read; `"unknown"` when the read could not say. */
@@ -35,17 +37,25 @@ export type MateFlag = boolean | "unknown";
 
 /** A local, time-boxed expectation our own verb created (C8). */
 export type ContainerIntent =
-  | { readonly kind: "restart" | "enable" | "upgrade-restart"; readonly since: Instant }
+  | {
+      readonly kind: "restart" | "enable" | "upgrade-restart";
+      readonly since: Instant;
+      /** The `/healthz` `initAt` read just before the verb was sent; absent when it could not say. */
+      readonly initAt?: string;
+    }
   /** `from` is the server version the update started on; null when it was not known. */
   | { readonly kind: "update"; readonly since: Instant; readonly from: string | null };
 
 export type IntentKind = ContainerIntent["kind"];
 
 /**
- * The `/healthz` `initAt` a restart started from, so a re-init reads as a change and never as a
- * comparison of the container's clock with the browser's: `held` (another value is a re-init),
- * `absent` (the container served no `/mate/healthz`: any value is), or `unread` (the first value
- * read after the restart began becomes `held`, unless it is plainly later than the start).
+ * The `/healthz` `initAt` a restart started from, read before it began — the verb's own read, or
+ * the reading held then — so a re-init reads as a change and never as a comparison of the
+ * container's clock with the browser's: `held` (another value is a re-init), `absent` (the
+ * container served no `/mate/healthz`: any value is), or `unread` (nothing said it: a value plainly
+ * later than the start is a re-init, and otherwise only the platform's word or a connect ends the
+ * restart). A read sent after the restart began is never its baseline: it may already be the new
+ * server's.
  */
 export type InitAtBaseline =
   | { readonly kind: "held"; readonly initAt: string }
@@ -252,7 +262,17 @@ export const unansweredSinceUp = (machine: ContainerMachine): boolean =>
 // ── Transition ────────────────────────────────────────────────────────────────────────────────
 
 const PROJECT_CREATING: ReadonlySet<string> = new Set(["NEW", "CREATING"]);
-const SERVICE_PROVISIONING: ReadonlySet<string> = new Set(["NEW", "CREATING", "STARTING"]);
+/**
+ * A zcp service on its way up. `READY_TO_DEPLOY` is its first build: a Mate's container is never
+ * deployed by hand, so one with no app version yet waits for the build its import started — it is
+ * coming up, never "not running" (measured 2026-10-02: 45 s of an Add read that way).
+ */
+const SERVICE_PROVISIONING: ReadonlySet<string> = new Set([
+  "NEW",
+  "CREATING",
+  "STARTING",
+  "READY_TO_DEPLOY",
+]);
 const SERVICE_RESTARTING: ReadonlySet<string> = new Set(["RESTARTING", "UPGRADING", "RELOADING"]);
 
 const after = (instant: Instant, ms: number): Instant => ({
@@ -399,18 +419,6 @@ const restartOver = (
 const readInitAt = (reading: ProbeReading): string | null =>
   reading.kind === "ready" || reading.kind === "initializing" ? reading.initAt : null;
 
-/** A restart still on: the first `initAt` read after it began is the one it started from. */
-const withBaseline = (
-  machine: ContainerMachine,
-  state: Extract<ContainerLevel, { readonly level: "restarting" }>,
-): ContainerMachine => {
-  const reading = readingSince(machine, state.since);
-  const initAt = reading === null ? null : readInitAt(reading);
-  return state.baseline.kind !== "unread" || initAt === null
-    ? machine
-    : moveTo(machine, { ...state, baseline: { kind: "held", initAt } });
-};
-
 const updateOver = (
   machine: ContainerMachine,
   state: Extract<ContainerLevel, { readonly level: "updating" }>,
@@ -422,6 +430,17 @@ const updateOver = (
     state.from !== null &&
     reading.descriptor.serverVersion !== state.from
   );
+};
+
+/**
+ * When a first build's wait began: the service's own creation, so every tab times it the same —
+ * one opened twenty minutes into a build that failed says at once that it is taking longer. Null
+ * where the listing gave no time, or one ahead of now.
+ */
+const firstBuildSince = (platform: PlatformStatus, now: Instant): Instant | null => {
+  const created = Date.parse(platform.serviceCreated ?? "");
+  if (Number.isNaN(created) || created > now.wall) return null;
+  return { wall: created, mono: now.mono - (now.wall - created) };
 };
 
 /** The level the facts held now put the container at; an intent lives only on its own level. */
@@ -452,10 +471,12 @@ const settleFacts = (machine: ContainerMachine, now: Instant): ContainerMachine 
     }
     const service = platform.service;
     if (service !== null && SERVICE_PROVISIONING.has(service)) {
-      return moveTo(
-        machine,
-        state.level === "provisioning" ? state : { level: "provisioning", since: now },
-      );
+      const since = state.level === "provisioning" ? state.since : now;
+      const built = service === "READY_TO_DEPLOY" ? firstBuildSince(platform, now) : null;
+      return moveTo(machine, {
+        level: "provisioning",
+        since: built !== null && built.wall < since.wall ? built : since,
+      });
     }
     if (service !== null && SERVICE_RESTARTING.has(service)) {
       // A socket connected since the platform began restarting outranks the status it still
@@ -502,7 +523,7 @@ const settleReads = (machine: ContainerMachine): ContainerMachine => {
   switch (state.level) {
     case "restarting": {
       const over = restartOver(machine, state);
-      if (over === null) return withBaseline(machine, state);
+      if (over === null) return machine;
       const settled: ContainerMachine = {
         ...machine,
         restartTried: machine.intent !== null || machine.restartTried,
@@ -536,7 +557,8 @@ const intend = (machine: ContainerMachine, intent: ContainerIntent): ContainerMa
     level: "restarting",
     by: "you",
     since: intent.since,
-    baseline: baselineOf(machine),
+    baseline:
+      intent.initAt === undefined ? baselineOf(machine) : { kind: "held", initAt: intent.initAt },
     platformEnded: null,
   });
 };

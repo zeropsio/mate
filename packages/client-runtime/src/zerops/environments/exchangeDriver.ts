@@ -13,8 +13,10 @@
  * - A target the person asked for — the route's, or one whose Connect they pressed — starts the
  *   moment it can, past every budget. The rest, the background, start in priority order —
  *   remembered targets, then auto-connect — at most `EXCHANGE_CONCURRENCY` at once and at the
- *   door's mint pace (`DOOR_MINT_PACE`, I12), which every exchange spends; every other wanted
- *   target waits `on: budget`. A mint the platform answers 429 holds the background a while.
+ *   door's mint pace (`DOOR_MINT_PACE`, I12), which every exchange that may mint spends; every
+ *   other wanted target waits `on: budget`. A target with a session kept from an earlier load
+ *   mints nothing while its Mate still holds it, so it neither waits on the pace nor spends it.
+ *   A mint the platform answers 429 holds the background a while.
  * - An exchange whose attempt ends without it (its deadline, a retirement) is aborted.
  */
 import type { EnvironmentId } from "@t3tools/contracts";
@@ -118,6 +120,11 @@ export interface ExchangeDriverPorts<C> {
     readonly credential: C;
   }) => Promise<InstallOutcome>;
   readonly readDescriptor: (origin: string, signal: AbortSignal) => Promise<DescriptorFacts>;
+  /**
+   * Whether this target's exchange presents a session kept from an earlier load first
+   * (`keptSessions.ts`): it starts past the mint pace and spends none of it.
+   */
+  readonly kept?: (key: TargetKey) => boolean;
   /** The supervisor's `retryNow` for a link in backoff. */
   readonly retryLink: (environmentId: EnvironmentId) => void;
   /** The inventory re-reads this target's presence. */
@@ -309,7 +316,7 @@ export function makeExchangeDriver<C>(ports: ExchangeDriverPorts<C>): ExchangeDr
       case "exchange": {
         const controller = new AbortController();
         entry.inFlight.set(attempt, controller);
-        pace.spend(clock.now().mono);
+        if (!kept(key)) pace.spend(clock.now().mono);
         ports
           .exchange({
             key,
@@ -458,10 +465,19 @@ export function makeExchangeDriver<C>(ports: ExchangeDriverPorts<C>): ExchangeDr
     return rank(key) <= ASKED_RANK;
   }
 
+  /** Whether the target's exchange presents a kept session first (`ports.kept`). */
+  function kept(key: TargetKey): boolean {
+    return ports.kept?.(key) ?? false;
+  }
+
   /** An exchange still reading a remembered Mate's descriptor: its mint is still to come (A16). */
   const probing = (machine: EnvironmentMachine): boolean =>
     machine.credential.kind === "exchanging" &&
     machine.probing?.attempt === machine.credential.attempt;
+
+  /** The mints the descriptor probes in flight may still spend; a kept session's spends none. */
+  const owedMints = (): number =>
+    [...entries].filter(([key, entry]) => probing(entry.machine) && !kept(key)).length;
 
   /**
    * Hands the free slots, in priority order, to the targets a slot would start, and takes the
@@ -478,12 +494,12 @@ export function makeExchangeDriver<C>(ports: ExchangeDriverPorts<C>): ExchangeDr
       const entry = entries.get(key)!;
       const running = [...entries.values()].map((other) => other.machine);
       const exchanging = running.filter((other) => other.credential.kind === "exchanging").length;
-      const owed = running.filter(probing).length;
+      const owed = owedMints();
       const paced = pace.readyAt(now.mono, owed) <= now.mono;
       let budget = false;
       if (entry.machine.credential.kind === "exchanging") {
         budget = entry.machine.guards.budget;
-      } else if (asked(key) || (exchanging < EXCHANGE_CONCURRENCY && paced)) {
+      } else if (asked(key) || (exchanging < EXCHANGE_CONCURRENCY && (paced || kept(key)))) {
         const trial = transitionEnvironment(
           entry.machine,
           { type: "GUARDS", guards: guardsFor(key, true) },
@@ -500,7 +516,7 @@ export function makeExchangeDriver<C>(ports: ExchangeDriverPorts<C>): ExchangeDr
     cancelMintTimer = null;
     // A target held back by the pace gets its slot back when the pace has a mint for it.
     if (paceBound) {
-      const owed = [...entries.values()].filter((other) => probing(other.machine)).length;
+      const owed = owedMints();
       cancelMintTimer = clock.setTimer(pace.readyAt(now.mono, owed) - now.mono, () =>
         enqueue(() => undefined),
       );

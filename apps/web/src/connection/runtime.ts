@@ -4,6 +4,7 @@ import {
   EnvironmentRegistry,
   connectionAdmission,
 } from "@t3tools/client-runtime/connection";
+import { RecentEnvironmentDescriptorsRef } from "@t3tools/client-runtime/environment";
 import { shellSnapshotLoaderLayer } from "@t3tools/client-runtime/state/shell";
 import { threadSnapshotLoaderLayer } from "@t3tools/client-runtime/state/threads";
 import { mateDiagnostics } from "@t3tools/client-runtime/zerops/diagnostics";
@@ -19,6 +20,7 @@ import {
   backgroundActivityObserverLayer,
   backgroundActivityReporterLayer,
 } from "../lib/backgroundActivityReporter";
+import { mateDescriptors } from "../zerops/mateDescriptors";
 import { connectionPlatformLayer } from "./platform";
 
 const providedConnectionPlatformLayer = connectionPlatformLayer.pipe(
@@ -46,6 +48,8 @@ const providedClientConnectionLayer = Layer.merge(
       backgroundActivityObserverLayer,
       // The browser opens one socket at a time per address: the tab's sockets take turns.
       Layer.succeed(ConnectionAdmissionRef, connectionAdmission),
+      // A Mate's connect presents the descriptor its door just read, never reading it again.
+      Layer.succeed(RecentEnvironmentDescriptorsRef, { recent: mateDescriptors.recent }),
     ),
   ),
 );

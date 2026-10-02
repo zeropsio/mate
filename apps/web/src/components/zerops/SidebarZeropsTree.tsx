@@ -119,6 +119,7 @@ import type { MateComing } from "~/zerops/mateComing";
 import { useZeropsProjectFlowOptional } from "~/zerops/projectFlowContext";
 import type { FixProblem } from "~/zerops/fixRequest";
 import { useOpenReview } from "~/zerops/review";
+import { useSentAsks } from "~/zerops/sentAsk";
 import { useCrewStatus } from "~/zerops/crew/useCrew";
 import { useCrewAccess } from "~/zerops/crew/useCrewAccess";
 import { useZeropsSessionOptional } from "~/zerops/ZeropsSessionProvider";
@@ -179,9 +180,12 @@ import {
   mateRowOffersMenu,
   mateCrewItem,
   mateDeletingView,
+  mateFinishingView,
   mateNotYours,
   mateOwnerView,
   mateRowAskLine,
+  mateRowSentAsk,
+  mateRowSentEchoed,
   mateRowDraft,
   mateRowReading,
   pendingBornLine,
@@ -193,6 +197,7 @@ import {
   type BadgeSeat,
 } from "./SidebarMateRow.logic";
 import { MATE_DELETING_WORD } from "./ZeropsDeleteMateDialog.logic";
+import { finishSetupRowLine, useMatePress } from "~/zerops/matePress";
 import { mateDeleting, useDeletingMates } from "~/zerops/deletingMates";
 import { useSidebarJump } from "~/zerops/sidebarJump";
 import { useSidebarReveal, type SidebarRevealTarget } from "~/zerops/sidebarReveal";
@@ -2427,6 +2432,10 @@ function MateRow<T extends RosterCandidate>({
   // offers no menu and does not open, until the listing lets it go.
   const deletingIds = useDeletingMates();
   const deleting = mateDeleting(candidate.project, deletingIds);
+  // *Finish setup* running on it, from whichever screen it was pressed (`finishSetupRowLine`):
+  // its own view draws the steps only while its container is missing, so its row says so.
+  const press = useMatePress(candidate.project.id);
+  const finishing = deleting || coming !== undefined ? undefined : finishSetupRowLine(press);
   // What the row says in its state (`mateRowView`, M7): the face, the right of
   // the name, what was asked and the third line — the face and the words from
   // the one reading of it (`mateRowReading`): what it is on, or was last on,
@@ -2442,9 +2451,11 @@ function MateRow<T extends RosterCandidate>({
   });
   const view = deleting
     ? mateDeletingView(read)
-    : coming === undefined
-      ? read
-      : mateComingRowView(read, coming);
+    : coming !== undefined
+      ? mateComingRowView(read, coming)
+      : finishing !== undefined
+        ? mateFinishingView(read)
+        : read;
   // Nothing on its menu is about a Mate still being made, or one going: it
   // offers none — until its setup stopped, when *Finish setup* is on it.
   const actions = mateRowOffersMenu({ deleting, coming }) ? offered : undefined;
@@ -2462,7 +2473,10 @@ function MateRow<T extends RosterCandidate>({
   });
   // The sign-in line stands where nothing else is said of a Mate that is up: to the person who
   // added it, that it waits on them — with the amber dot of what needs them.
-  const signIn = deleting || view.coming !== undefined ? undefined : seated.signInLine;
+  const signIn =
+    deleting || finishing !== undefined || view.coming !== undefined
+      ? undefined
+      : seated.signInLine;
   const dot = view.dot ?? (signIn !== undefined && seated.waitsOnViewer ? "attention" : undefined);
   // What its face's corner wears (`ownerBadge`), and whether its face is paler: not the viewer's.
   const badge = ownerBadge(seated.seat, owner?.isViewer === true);
@@ -2482,13 +2496,28 @@ function MateRow<T extends RosterCandidate>({
       threadKey: activity?.threadKey,
     }),
   );
+  // What this browser just sent it, until its conversation says it (`mateRowSentAsk`).
+  const sentAsk = useSentAsks((state) =>
+    candidate.environmentId === undefined
+      ? undefined
+      : state.byEnvironment[candidate.environmentId],
+  );
+  // Said by its conversation, the held message is let go (`mateRowSentEchoed`).
+  const sentEchoed = sentAsk !== undefined && mateRowSentEchoed(sentAsk, activity);
+  useEffect(() => {
+    if (sentEchoed && sentAsk !== undefined && candidate.environmentId !== undefined) {
+      useSentAsks.getState().forget(candidate.environmentId, sentAsk.messageId);
+    }
+  }, [sentEchoed, sentAsk, candidate.environmentId]);
   // The person's line (`mateRowAskLine`): what they asked, or are about to, or that nothing was.
   const askLine = mateRowAskLine({
     view,
     signIn:
       signIn === undefined ? undefined : { text: signIn, waitsOnViewer: seated.waitsOnViewer },
     draft,
+    sent: mateRowSentAsk(sentAsk, activity, conversationsRead),
     deleting,
+    finishing: finishing !== undefined,
     read: conversationsRead,
   });
   const warmIntent = useWarmIntent(activity?.threadKey);
@@ -2766,6 +2795,7 @@ function MateRow<T extends RosterCandidate>({
           )}
           {view.reply === undefined ? null : <MateReply known={known} reply={view.reply} />}
           {deleting ? <MateDeletingLine /> : null}
+          {finishing === undefined ? null : <MateFinishingLine words={finishing} />}
         </span>
       </button>
       {actions === undefined ? null : (
@@ -3255,6 +3285,21 @@ function MateDeletingLine() {
       data-zerops-surface="sidebar-mate-deleting"
     >
       {MATE_DELETING_WORD}
+    </span>
+  );
+}
+
+/**
+ * The row's last line while *Finish setup* runs on its Mate (`mateFinishingView`): what is being
+ * done, in the muted ink, where its words stood.
+ */
+function MateFinishingLine({ words }: { readonly words: string }) {
+  return (
+    <span
+      className="truncate text-line leading-4.5 text-muted-foreground"
+      data-zerops-surface="sidebar-mate-finishing"
+    >
+      {words}
     </span>
   );
 }

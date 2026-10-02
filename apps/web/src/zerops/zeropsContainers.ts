@@ -33,6 +33,14 @@ export function intendContainer(key: TargetKey, intent: IntentRequest): boolean 
   return currentAccountEnvironments()?.intend(key, intent) ?? false;
 }
 
+/**
+ * The container's `/healthz` `initAt`, read just before a restart verb is sent: its intent carries
+ * it, so the restart is over when that value moves. Null when nothing could say.
+ */
+export async function readContainerInitAt(key: TargetKey): Promise<string | null> {
+  return (await currentAccountEnvironments()?.initAt(key)) ?? null;
+}
+
 /** The reading of a probe of this origin started from now on, through the account's one pool. */
 export async function nextContainerReading(origin: string): Promise<ProbeReading> {
   return (await accountEnvironmentsReady()).next(origin);

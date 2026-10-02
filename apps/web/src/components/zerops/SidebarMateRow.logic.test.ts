@@ -13,11 +13,13 @@ import {
   pendingBornLine,
   mateCrewItem,
   mateDeletingView,
+  mateFinishingView,
   mateOwnerView,
   mateNotYours,
   ownerBadge,
   mateRowActivity,
   mateRowAskLine,
+  mateRowSentAsk,
   mateRowDraft,
   mateRowReading,
   mateRowView,
@@ -671,6 +673,42 @@ describe("mateDeletingView — a Mate on its way off Zerops", () => {
   });
 });
 
+// Finish setup runs in place: its row says so where its last line stood, so the row keeps its
+// height — and the Mate is not going anywhere, so its face, its time and its name stay as they were.
+describe("mateFinishingView — a Mate whose setup is being finished", () => {
+  const activity = (overrides: Partial<ZeropsAgentActivity> = {}): ZeropsAgentActivity => ({
+    threadId: ThreadId.make("thread-1"),
+    kind: "idle",
+    status: null,
+    face: "idle",
+    subject: "Speed up the photo gallery",
+    at: "2026-09-29T08:00:00.000Z",
+    snippet: "Thumbnails load lazily now.",
+    unread: false,
+    pausedUntil: undefined,
+    threadKey: "env:thread-1",
+    task: "Speed up the photo gallery",
+    ...overrides,
+  });
+
+  it.each([
+    {
+      case: "asked, with words back: the ask stays, the words give way",
+      input: activity(),
+      ask: "Speed up the photo gallery",
+    },
+    {
+      case: "asked, with no words back: the ask gives way",
+      input: activity({ snippet: undefined }),
+      ask: undefined,
+    },
+    { case: "never spoken to", input: undefined, ask: undefined },
+  ])("$case", ({ input, ask }) => {
+    const view = mateRowView(input, input?.face ?? "sleep");
+    expect(mateFinishingView(view)).toEqual({ ...view, ask, reply: undefined });
+  });
+});
+
 // The owner, 2026-09-29, of a new Mate at work on its first job: its row read "Working on a
 // reply" under an asleep face. The words came from one reading — what this browser remembered the
 // row saying, while its candidate was not connected that instant — and the face from another.
@@ -1246,7 +1284,9 @@ describe("mateRowAskLine — the row's second line: what the person asked, or is
     view: { ask: undefined, reply: undefined, coming: undefined },
     signIn: undefined,
     draft: undefined,
+    sent: undefined,
     deleting: false,
+    finishing: false,
     read: true,
   };
 
@@ -1255,6 +1295,26 @@ describe("mateRowAskLine — the row's second line: what the person asked, or is
       case: "no messages, its conversations read: nothing asked yet",
       input: base,
       line: { kind: "nothing-asked" },
+    },
+    {
+      // Live, 2026-10-02: the row read Draft → "Nothing asked yet" → the task, for 0.4 s.
+      case: "no messages, a message just sent: the sent message, never nothing asked",
+      input: { ...base, sent: "Build a minimal todo app" },
+      line: { kind: "ask", text: "Build a minimal todo app" },
+    },
+    {
+      case: "asked before, a message just sent: the sent message over the old ask",
+      input: {
+        ...base,
+        view: { ask: ASK, reply: WORDS, coming: undefined },
+        sent: "and the logo",
+      },
+      line: { kind: "ask", text: "and the logo" },
+    },
+    {
+      case: "a message just sent, then a draft typed: the draft",
+      input: { ...base, sent: "Build a minimal todo app", draft: "and dark mode" },
+      line: { kind: "draft", text: "and dark mode", ask: undefined },
     },
     {
       case: "no messages, its conversations not read yet: nothing painted to take back",
@@ -1343,6 +1403,26 @@ describe("mateRowAskLine — the row's second line: what the person asked, or is
       input: { ...base, deleting: true },
       line: undefined,
     },
+    {
+      // Live, 2026-10-02: Finish setup on a Mate waiting for its sign-in, and its row said nothing.
+      case: "finishing its setup, waiting for a sign-in: its finishing line in the sign-in's place",
+      input: {
+        ...base,
+        finishing: true,
+        signIn: { text: "Nobody has signed in yet", waitsOnViewer: false },
+      },
+      line: undefined,
+    },
+    {
+      case: "finishing its setup, asked: the ask, and no draft waits on it",
+      input: {
+        ...base,
+        view: { ask: ASK, reply: undefined, coming: undefined },
+        finishing: true,
+        draft: "hi",
+      },
+      line: { kind: "ask", text: ASK },
+    },
   ])("$case", ({ input, line }) => {
     expect(mateRowAskLine(input)).toEqual(line);
   });
@@ -1372,5 +1452,88 @@ describe("mateRowOffersMenu", () => {
     },
   ])("$case: $want", ({ deleting, coming, want }) => {
     expect(mateRowOffersMenu({ deleting, coming })).toBe(want);
+  });
+});
+
+// A message sent from this browser stands in the row's second line until its echo reaches the
+// row's conversation (live, 2026-10-02: the draft cleared on send 0.4 s before the echo, and the
+// row read "Nothing asked yet" in between). The echo carries the message's own time, the one this
+// browser stamped it with: compared with it, no two clocks meet.
+describe("mateRowSentAsk — what this browser just sent, until the conversation says it", () => {
+  const SENT = {
+    messageId: "message-2",
+    threadId: "thread-1",
+    text: "Build a minimal todo app",
+    at: "2026-10-02T10:00:00.000Z",
+  };
+  const activity = (overrides: Partial<ZeropsAgentActivity> = {}): ZeropsAgentActivity => ({
+    threadId: ThreadId.make("thread-1"),
+    kind: "idle",
+    status: null,
+    face: "idle",
+    subject: "Speed up the photo gallery",
+    at: "2026-10-02T09:00:00.000Z",
+    askedAt: "2026-10-02T08:59:00.000Z",
+    snippet: "Thumbnails load lazily now.",
+    unread: false,
+    pausedUntil: undefined,
+    threadKey: "env:thread-1",
+    task: "Speed up the photo gallery",
+    ...overrides,
+  });
+
+  it.each([
+    { case: "nothing sent", sent: undefined, activity: activity(), read: true, text: undefined },
+    {
+      case: "sent, its conversations read and none there: the first, the row's",
+      sent: SENT,
+      activity: undefined,
+      read: true,
+      text: SENT.text,
+    },
+    {
+      case: "sent, its conversations not read: nothing to say it is the row's",
+      sent: SENT,
+      activity: undefined,
+      read: false,
+      text: undefined,
+    },
+    {
+      case: "sent, the conversation not caught up",
+      sent: SENT,
+      activity: activity(),
+      read: true,
+      text: SENT.text,
+    },
+    {
+      case: "sent, the conversation says it",
+      sent: SENT,
+      activity: activity({ kind: "working", task: SENT.text, askedAt: SENT.at }),
+      read: true,
+      text: undefined,
+    },
+    {
+      case: "sent, said, the server's clock behind this browser's",
+      sent: SENT,
+      activity: activity({ task: SENT.text, at: "2026-10-02T09:59:58.000Z", askedAt: SENT.at }),
+      read: true,
+      text: undefined,
+    },
+    {
+      case: "sent, not said yet, the server's clock ahead of this browser's",
+      sent: SENT,
+      activity: activity({ at: "2026-10-02T10:00:03.000Z" }),
+      read: true,
+      text: SENT.text,
+    },
+    {
+      case: "sent into another conversation than the row's",
+      sent: { ...SENT, threadId: "thread-2" },
+      activity: activity(),
+      read: true,
+      text: undefined,
+    },
+  ])("$case", ({ sent, activity, read, text }) => {
+    expect(mateRowSentAsk(sent, activity, read)).toBe(text);
   });
 });

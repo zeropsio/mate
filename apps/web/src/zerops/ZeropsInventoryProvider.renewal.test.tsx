@@ -9,7 +9,13 @@ import { buttonsLabelled, press } from "./__fixtures__/testDom";
 import { TRY_NOW_SETTLE_MS } from "./inventoryTrouble.logic";
 
 vi.mock("../components/zerops/landing/ZeropsLandingShell", () => ({
-  ZeropsLandingWait: ({ label }: { readonly label: string }) => label,
+  ZeropsFrameWait: ({
+    label,
+    children,
+  }: {
+    readonly label: string;
+    readonly children?: import("react").ReactNode;
+  }) => children ?? label,
 }));
 
 const MINUTE_MS = 60_000;

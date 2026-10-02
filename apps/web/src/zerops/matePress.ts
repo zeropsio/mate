@@ -67,6 +67,7 @@ import {
   pressThrough,
   type PressStepView,
 } from "../components/zerops/ZeropsEnvironmentCreationDialog.logic";
+import { useNewMate } from "./newMate";
 import { placedNewProjects, type NewProjectBirth } from "./newProjectBirth";
 import {
   runZeropsCommand,
@@ -126,13 +127,50 @@ export function beginPress(press: Omit<MatePress, "state">): void {
   }));
 }
 
-/** A press ran to its end, or stopped. */
+/** How long a Mate's row says its Finish setup stopped before the row is the Mate's again. */
+export const STOPPED_SHOWN_MS = 10_000;
+
+/**
+ * A Finish setup that stopped before the container it was bringing came — at its import, or
+ * before any step (its harden, another tab's lock): the one stop its own view answers, with
+ * *Try again*. Read off what it brought, never off a step's name: a stop before any step names
+ * its close-off. Any other stop leaves a Mate with its container.
+ */
+function stopStands(press: MatePress): boolean {
+  return (
+    press.finishing === true &&
+    press.container &&
+    press.state.kind === "failed" &&
+    press.progress?.some(
+      (entry) => entry.step.kind === "import-container" && entry.state === "done",
+    ) !== true
+  );
+}
+
+/** A Finish setup that stopped and goes once its row has said so (`stopStands`). */
+const stopGoes = (press: MatePress): boolean =>
+  press.finishing === true && press.state.kind === "failed" && !stopStands(press);
+
+/**
+ * A press ran to its end, or stopped. A Finish setup that stopped on a Mate with its container —
+ * one it had, or one it brought before a later step stopped — goes once its row has said so:
+ * nothing of that Mate waits on the press, and its menu offers Finish setup again from the
+ * platform's facts. One that stopped bringing its container stays, for its own view's *Try again*.
+ */
 export function settlePress(projectId: string, state: MatePressState): void {
+  let stopped: MatePress | undefined;
   usePressStore.setState((store) => {
     const press = store.presses[projectId];
     if (press === undefined) return store;
-    return { presses: { ...store.presses, [projectId]: { ...press, state } } };
+    const settled = { ...press, state };
+    if (stopGoes(settled)) stopped = settled;
+    return { presses: { ...store.presses, [projectId]: settled } };
   });
+  if (stopped === undefined) return;
+  const said = stopped;
+  setTimeout(() => {
+    if (readMatePress(projectId) === said) forgetPress(projectId);
+  }, STOPPED_SHOWN_MS);
 }
 
 /** A press moved on: each step's state, kept on a press this tab holds. */
@@ -172,9 +210,13 @@ function endPress(projectId: string, finishing: boolean): void {
   }, FINISHED_SHOWN_MS);
 }
 
-/** The presses whose Mate has connected: nothing of them is left to say. */
+/**
+ * The presses (or creations) whose Mate has connected: nothing of them is left to say. A *Finish
+ * setup* is not one of them: it runs on a Mate that may have been up all along, and ends on its own
+ * (`endPress`) once its row has said so.
+ */
 export function connectedPresses(
-  presses: ReadonlyArray<MatePress>,
+  presses: ReadonlyArray<{ readonly projectId: string; readonly finishing?: boolean }>,
   candidates: ReadonlyArray<{ readonly project: { readonly id: string }; readonly group: string }>,
 ): ReadonlyArray<string> {
   const connected = new Set(
@@ -182,17 +224,29 @@ export function connectedPresses(
       candidate.group === "connected" ? [candidate.project.id] : [],
     ),
   );
-  return presses.flatMap((press) => (connected.has(press.projectId) ? [press.projectId] : []));
+  return presses.flatMap((press) =>
+    connected.has(press.projectId) && press.finishing !== true ? [press.projectId] : [],
+  );
 }
 
-/** Ends the presses whose Mate has connected, as the listing reads them. */
+/**
+ * Ends the presses whose Mate has connected, as the listing reads them — and this tab's creations
+ * of them: a creation reads as coming up only until its Mate first connects (`mateComing`).
+ */
 export function useForgetConnectedPresses(
   candidates: ReadonlyArray<{ readonly project: { readonly id: string }; readonly group: string }>,
 ): void {
   const presses = useMatePresses();
+  const creations = useNewMate((state) => state.creations);
+  const forgetCreation = useNewMate((state) => state.forget);
   useEffect(() => {
     for (const projectId of connectedPresses(presses, candidates)) forgetPress(projectId);
   }, [candidates, presses]);
+  useEffect(() => {
+    for (const projectId of connectedPresses(Object.values(creations), candidates)) {
+      forgetCreation(projectId);
+    }
+  }, [candidates, creations, forgetCreation]);
 }
 
 /**
@@ -234,8 +288,13 @@ export function useMatePress(projectId: string | undefined): MatePress | undefin
   return usePressStore((store) => (projectId === undefined ? undefined : store.presses[projectId]));
 }
 
-/** Why a press stopped, in words, while it is stopped. */
+/**
+ * Why a press stopped, in words, while it is stopped — of a Finish setup only a stop bringing its
+ * container: any other leaves a Mate with its container, whose row says its setup stopped
+ * (`finishSetupRowLine`).
+ */
 export function pressFailure(press: MatePress | undefined): string | undefined {
+  if (press?.finishing === true && !stopStands(press)) return undefined;
   return press?.state.kind === "failed" ? press.state.reason : undefined;
 }
 
@@ -274,6 +333,37 @@ export function finishSetupView(press: MatePress | undefined):
   };
 }
 
+/**
+ * The presses that make a Mate — an Add's, a New project's — whose conversation the press lands the
+ * person in once it connects. Never a Finish setup: it runs on a Mate that is there already, its
+ * row says how it went, and the person stays where they pressed it.
+ */
+export function birthPresses(presses: ReadonlyArray<MatePress>): ReadonlyArray<string> {
+  return presses.flatMap((press) => (press.finishing === true ? [] : [press.projectId]));
+}
+
+/** Whether a Finish setup runs on this Mate now: its menu does not offer it again meanwhile. */
+export function finishSetupRunning(press: MatePress | undefined): boolean {
+  return press?.finishing === true && press.state.kind === "pressing";
+}
+
+/**
+ * *Finish setup* as its Mate's row says it, on every screen — its own view draws the steps only
+ * while its container is missing: running, through for the moment its record stays
+ * (`FINISHED_SHOWN_MS`), or stopped, when its menu offers it again. Undefined for any other press.
+ */
+export function finishSetupRowLine(press: MatePress | undefined): string | undefined {
+  if (press?.finishing !== true) return undefined;
+  switch (press.state.kind) {
+    case "pressing":
+      return "Finishing setup…";
+    case "pressed":
+      return "Setup finished";
+    case "failed":
+      return "Setup stopped";
+  }
+}
+
 /** Each step of a press, as a person names it where it stopped. */
 const PRESS_STEP_NAMES: Readonly<Record<EnvironmentCreationStep["kind"], string>> = {
   "create-project": "Creating the project",
@@ -304,7 +394,8 @@ export function pressComing(press: MatePress | undefined):
   if (press === undefined) return undefined;
   return {
     startedAt: press.startedAt,
-    container: press.container,
+    // A Finish setup that stopped with its Mate's container brings nothing more: it is not coming.
+    container: press.container && !stopGoes(press),
     retryable: press.state.kind === "failed" && press.state.retry !== null,
   };
 }

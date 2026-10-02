@@ -36,6 +36,7 @@ import {
   foldGroups,
   foldUngrouped,
   type ChangesUnknown,
+  nextStepsPending,
   type GroupPlacement,
 } from "./projectsView.logic";
 import { ProjectCard } from "./ProjectsView";
@@ -220,7 +221,7 @@ export function ZeropsProjectsFlow<T>(props: ZeropsProjectsFlowProps<T>) {
         <>
           <NextStepsStrip
             entries={folded.nextSteps}
-            pending={groups.some((entry) => entry.awaiting)}
+            pending={nextStepsPending(groups)}
             renderNextStep={props.renderNextStep}
           />
           <Overview active={folded.active} props={props} />

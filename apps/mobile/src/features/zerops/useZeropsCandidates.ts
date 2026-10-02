@@ -12,11 +12,18 @@ import {
 } from "@t3tools/client-runtime/zerops/data";
 import type { EnvironmentMachine, TargetKey } from "@t3tools/client-runtime/zerops/environments";
 import type { Known } from "@t3tools/client-runtime/zerops/knowledge";
-import { selectCandidates, type CandidateRow } from "@t3tools/client-runtime/zerops/projections";
+import {
+  addressClockOf,
+  NO_ADDRESS_MEMORY,
+  learnAddresses,
+  selectCandidates,
+  type AddressMemory,
+  type CandidateRow,
+} from "@t3tools/client-runtime/zerops/projections";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Scope from "effect/Scope";
-import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 
 import { mobileCandidates, type MobileCandidate } from "./candidate-listing";
 import { useZeropsData, type ZeropsDataBinding } from "./ZeropsDataProvider";
@@ -34,6 +41,8 @@ interface InventoryReads {
   readonly projects: ReadonlyArray<StampedRead<CollectionRead<ProjectRecord>>>;
   /** The services of each project this view holds the inventory of, by project key. */
   readonly services: ReadonlyMap<string, StampedRead<CollectionRead<ServiceRecord>>>;
+  /** Each organization's candidates, derived from these reads at `atMs`. */
+  readonly listings: ReadonlyArray<Known<ReadonlyArray<CandidateRow>>>;
   readonly atMs: number;
 }
 
@@ -86,6 +95,10 @@ export function useZeropsCandidates(): {
   const [error, setError] = useState<string | null>(null);
   const [demandAttempt, setDemandAttempt] = useState(0);
   const organizationIdsKey = organizations.map((organization) => organization.id).join(",");
+  // What this view saw of each container's address, for as long as it lives: a young container
+  // ACTIVE before its address landed is on its way, and its wait never begins again
+  // (`AddressMemory`). Read and written only where the rows are derived, in the demand's publish.
+  const addresses = useRef<AddressMemory>(NO_ADDRESS_MEMORY);
 
   // The view's demand on the inventory: each organization's projects and each active project's
   // services. It follows the account and its organizations only — never a connection's phase.
@@ -108,6 +121,8 @@ export function useZeropsCandidates(): {
     let desiredInventory = new Map<string, ProjectRef>();
     let projectReads: ReadonlyArray<StampedRead<CollectionRead<ProjectRecord>>> = [];
     let serviceReads = new Map<string, StampedRead<CollectionRead<ServiceRecord>>>();
+    /** Disarms the publish due when the first address wait ends. */
+    let disarmWait: (() => void) | null = null;
 
     // Scope creation is asynchronous. Cleanup can win that race, so closing is
     // centralized and guarded before this hook starts any demand acquisition.
@@ -199,7 +214,28 @@ export function useZeropsCandidates(): {
             stamped(serviceReads.get(key), registry.get(runtime.reads.servicesOf(project))),
           ]),
       );
-      setReads({ projects: projectReads, services: serviceReads, atMs: Date.now() });
+      const atMs = Date.now();
+      const clock = addressClockOf(addresses.current, atMs);
+      const listings = projectReads.map(({ read, atMs: projectsAtMs }) =>
+        selectCandidates(
+          knownProjectsOf(read, projectsAtMs),
+          (project) => {
+            const services = serviceReads.get(projectKeyOf(project));
+            return services === undefined ? UNREAD : knownServicesOf(services.read, services.atMs);
+          },
+          clock,
+        ),
+      );
+      const learned = learnAddresses(addresses.current, listings);
+      addresses.current = learned.memory;
+      // A wait ends on a clock, not on a read: the rows are derived again then.
+      disarmWait?.();
+      disarmWait = null;
+      if (learned.waitEnd !== null) {
+        const handle = setTimeout(publish, Math.max(0, learned.waitEnd - atMs));
+        disarmWait = () => clearTimeout(handle);
+      }
+      setReads({ projects: projectReads, services: serviceReads, listings, atMs });
     }
 
     setError(null);
@@ -237,6 +273,7 @@ export function useZeropsCandidates(): {
 
     return () => {
       cancelled = true;
+      disarmWait?.();
       unsubscribeAll();
       desiredInventory = new Map();
       for (const lease of inventoryLeases.values()) void Effect.runPromise(lease.release);
@@ -245,20 +282,7 @@ export function useZeropsCandidates(): {
     };
   }, [binding, demandAttempt, organizationIdsKey, runtimeError, status]);
 
-  const organizationListings = useMemo(
-    (): ReadonlyArray<Known<ReadonlyArray<CandidateRow>>> | null =>
-      reads === null
-        ? null
-        : reads.projects.map(({ read, atMs }) =>
-            selectCandidates(knownProjectsOf(read, atMs), (project) => {
-              const services = reads.services.get(projectKeyOf(project));
-              return services === undefined
-                ? UNREAD
-                : knownServicesOf(services.read, services.atMs);
-            }),
-          ),
-    [reads],
-  );
+  const organizationListings = reads?.listings ?? null;
 
   // Every Mate's machine, as the account runtime's exchange driver holds it (§4.4).
   const machines = useSyncExternalStore(

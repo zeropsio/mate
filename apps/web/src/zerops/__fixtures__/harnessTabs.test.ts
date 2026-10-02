@@ -1,4 +1,4 @@
-import type { ZeropsUser } from "@t3tools/client-runtime/zerops";
+import { ZEROPS_SESSION_STORAGE_KEY, type ZeropsUser } from "@t3tools/client-runtime/zerops";
 import { makeAccountHarness } from "@t3tools/client-runtime/zerops/testing";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
@@ -10,12 +10,14 @@ const person: ZeropsUser = {
   clientUserList: [{ id: "cu-1", clientId: "org-1", roleCode: "OWNER" }],
 };
 
-/** A page that reloads itself when another tab writes storage. */
+/** A page that reloads itself when another tab writes the session. */
 async function reloadingOnStorage() {
   const { createElement, useEffect } = await import("react");
   function ReloadOnStorage() {
     useEffect(() => {
-      const reload = () => window.location.reload();
+      const reload = (event: StorageEvent) => {
+        if (event.key === ZEROPS_SESSION_STORAGE_KEY) window.location.reload();
+      };
       window.addEventListener("storage", reload);
       return () => window.removeEventListener("storage", reload);
     }, []);

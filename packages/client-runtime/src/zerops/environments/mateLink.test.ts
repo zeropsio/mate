@@ -133,7 +133,10 @@ describe("mateLink — what a door opens of a Mate, and what its own view waits 
     readonly machines: ReadonlyArray<readonly [string, EnvironmentMachine]>;
     readonly registered: ReadonlyArray<EnvironmentId>;
     readonly index?: DescriptorIndex;
-    readonly link: MateLink;
+    /** What it opens and waits for; its failures since it last connected are none unless said. */
+    readonly link: Omit<MateLink, "failuresSinceConnect"> & {
+      readonly failuresSinceConnect?: number;
+    };
   }>([
     {
       case: "held, connected and registered: its conversation opens",
@@ -209,6 +212,18 @@ describe("mateLink — what a door opens of a Mate, and what its own view waits 
       link: { key: KEY, environmentId: undefined, reachability: { kind: "replaced", by: ENV_B } },
     },
     {
+      case: "failing since it last connected: how often, for its arrival",
+      key: KEY,
+      machines: [[KEY, { ...machine(), record: null, failuresSinceConnect: 2 }]],
+      registered: [],
+      link: {
+        key: KEY,
+        environmentId: undefined,
+        reachability: { kind: "connecting", waitingOn: "exchange" },
+        failuresSinceConnect: 2,
+      },
+    },
+    {
       case: "no machine names it yet (the stage not bound)",
       key: KEY,
       machines: [],
@@ -225,6 +240,6 @@ describe("mateLink — what a door opens of a Mate, and what its own view waits 
         records: [],
         registered: new Set(registered),
       }),
-    ).toEqual(link);
+    ).toEqual({ failuresSinceConnect: 0, ...link });
   });
 });
