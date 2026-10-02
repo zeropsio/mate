@@ -1064,7 +1064,7 @@ describe("a Mate whose address landed, not answering yet, in a window that did n
     status: "ACTIVE",
     clientId: "org-1",
     publicZone: "fte2334ab.prg1-zerops.zone",
-    zeropsSubdomainHost: "7c2e",
+    zeropsSubdomainHost: "1",
   };
   const ORIGIN = "https://zcp-1-8080.prg1.zerops.app";
   const zcp = (status: string, subdomainAccess: boolean): ZeropsService => ({
