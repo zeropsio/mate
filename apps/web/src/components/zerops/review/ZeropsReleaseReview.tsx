@@ -20,27 +20,33 @@ import {
   cannotTellWhatRuns,
   buildZeropsGroupTree,
   changesCountWords,
+  holdReleaseFacts,
   movedCommits,
   movedCount,
+  releaseFacts,
+  releaseFollows,
+  releaseOutcomeOf,
   releaseReview,
+  releaseStageMarks,
+  releaseStep,
   reviewAge,
   rollbackReads,
   rollbackReview,
   rollbackServices,
   shortCommit,
-  stageMarks,
   stageStandings,
   type CompareRead,
-  type FlowReleaseRow,
   type MovedCommits,
   type ProductionRun,
   type ReleaseEntry,
+  type ReleaseFacts,
   type ReleaseGate,
   type ReleaseOutcome,
+  type ReleaseReplaces,
   type ReviewPress,
 } from "@t3tools/client-runtime/zerops";
 import { heldCandidates } from "@t3tools/client-runtime/zerops/projections";
-import { useMemo, useState, type ReactNode } from "react";
+import { Fragment, useMemo, useState, type ReactNode } from "react";
 
 import { useFixMates } from "~/zerops/fixMates";
 import { useAskMateToFix, type FixProblem } from "~/zerops/fixRequest";
@@ -195,43 +201,6 @@ function ChangeSteps({
   );
 }
 
-/** Where the tag it made stands: on its way, live, or failed — `undefined` before it was made. */
-export function releaseOutcomeOf(input: {
-  readonly tagged: FlowReleaseRow | undefined;
-  readonly releasing: boolean;
-  readonly pressing: boolean;
-  readonly tag: string;
-  readonly clockMs: number;
-}): ReleaseOutcome {
-  const { tagged } = input;
-  if (tagged?.standing === "live") return { kind: "released", at: tagged.taggedAt };
-  if (tagged?.standing === "deploy-failed" || tagged?.verdict === "refused") {
-    const service = tagged.failedEntry?.service;
-    return {
-      kind: "failed",
-      detail:
-        tagged.verdict === "refused"
-          ? (tagged.detail ?? "HQ refused the release")
-          : service === undefined
-            ? "Its production deploy failed"
-            : `The deploy of ${service} failed`,
-      service,
-      at: tagged.taggedAt,
-    };
-  }
-  if (!input.releasing) return { kind: "offered" };
-  if (input.pressing && tagged === undefined) {
-    return { kind: "releasing", progress: `Tagging main as ${input.tag}` };
-  }
-  const since = tagged?.taggedAt === undefined ? Number.NaN : Date.parse(tagged.taggedAt);
-  if (Number.isNaN(since)) {
-    return { kind: "releasing", progress: `Production redeploys from ${input.tag}` };
-  }
-  const elapsed = Math.max(0, Math.floor((input.clockMs - since) / 1000));
-  const clock = `${String(Math.floor(elapsed / 60))}:${String(elapsed % 60).padStart(2, "0")}`;
-  return { kind: "releasing", progress: `Production redeploys from ${input.tag} · ${clock}` };
-}
-
 /** Each row with its Mate's face, and under its title whose Mate it is and when it merged. */
 function reviewRowsOf(
   rows: ReadonlyArray<ReleaseChangeRow>,
@@ -278,45 +247,64 @@ function ReleaseData({
   const [press, setPress] = useState<ReviewPress>({ kind: "idle" });
   // The version this review tags — the suggestion when it was pressed, or the one on its way.
   const [made, setMade] = useState<string | undefined>(undefined);
-  const inFlight = flow.release.inFlight;
-  const tag = made ?? inFlight ?? flow.release.suggestion;
-  const tagged = flow.releases.find((entry) => entry.tag === tag);
-  const releasing = press.kind === "running" || press.kind === "done" || inFlight === tag;
-  const clockMs = useSecondsNowMs(releasing && tagged?.standing === undefined);
-  const outcome = releaseOutcomeOf({
-    tagged,
-    releasing,
-    pressing: press.kind === "running",
-    tag,
-    clockMs,
+  // What the release is — its tag, what it replaces, what goes out and where — held from the
+  // press, or from the first look at it on its way: once it lands, the reads are the state it made.
+  const [held, setHeld] = useState<ReleaseFacts | undefined>(undefined);
+  const follows = releaseFollows({
+    made,
+    held,
+    press,
+    inFlight: flow.release.inFlight,
+    suggestion: flow.release.suggestion,
+    releases: flow.releases,
+    nowMs: now,
   });
+  const clockMs = useSecondsNowMs(follows.ticking);
 
   const mainStage = flow.environmentInputs.find(
     (entry) =>
       entry.tier === "stage" &&
       flow.environments.find((row) => row.projectId === entry.projectId)?.source === "main",
   );
-  const marks = useMemo(
-    () =>
-      stageMarks({
+  const production = flow.environmentInputs.find((entry) => entry.tier === "production");
+  const {
+    outcome,
+    held: keep,
+    facts,
+    productionMoved,
+  } = releaseStep({
+    follows,
+    held,
+    press,
+    clockMs,
+    read: (tag) =>
+      releaseFacts({
+        tag,
+        live: flow.releases.find((entry) => entry.standing === "live")?.tag,
+        releases: flow.releases,
         contents: flow.release.contents,
-        stage:
-          mainStage === undefined
-            ? undefined
-            : stageStandings({
-                environment: mainStage,
-                deployment: flowValue?.deployments.get(mainStage.projectId),
-              }),
+        comparison: flow.release.comparison,
+        productionServices: production?.services.map((entry) => entry.hostname) ?? [],
       }),
-    [flow.release.contents, flowValue?.deployments, mainStage],
+  });
+  if (keep !== held) setHeld(keep);
+  // The changes are the release's; where each stands on the stage is read as it stands now.
+  const stage = useMemo(
+    () =>
+      mainStage === undefined
+        ? undefined
+        : stageStandings({
+            environment: mainStage,
+            deployment: flowValue?.deployments.get(mainStage.projectId),
+          }),
+    [flowValue?.deployments, mainStage],
   );
-  const rows = reviewRowsOf(releaseChangeRows({ moved: flow.release.contents, marks }), {
+  const marks = useMemo(() => releaseStageMarks(facts, stage), [facts, stage]);
+  const rows = reviewRowsOf(releaseChangeRows({ moved: facts.contents, marks }), {
     mates,
     mateNames: flowValue?.mateNames,
     now,
   });
-  const production = flow.environmentInputs.find((entry) => entry.tier === "production");
-  const moving = flow.release.comparison.filter((row) => row.changed).map((row) => row.service);
   // A failed release is anybody's to fix: the person's own Mate in the project, the one they
   // used last (S6, `fixMates.ts`).
   const [fixer] = useFixMates({
@@ -340,7 +328,6 @@ function ReleaseData({
       gate={flow.release.gate}
       permission={flow.release.permission}
       hasStage={mainStage !== undefined}
-      live={flow.releases.find((entry) => entry.standing === "live")?.tag}
       name={name}
       now={now}
       onClose={onClose}
@@ -355,19 +342,14 @@ function ReleaseData({
       }}
       outcome={outcome}
       press={press}
+      productionMoved={productionMoved}
+      replaces={facts.replaces}
       rows={rows}
       untold={flow.release.untold}
-      services={
-        moving.length === 0 ? (production?.services.map((entry) => entry.hostname) ?? []) : moving
-      }
-      tag={tag}
+      services={facts.services}
+      tag={facts.tag}
       titleId={titleId}
-      where={flow.release.comparison.map((row) => ({
-        service: row.service,
-        line: row.changed
-          ? `redeploys from ${row.candidate ?? "main"}`
-          : `stays on ${row.production ?? "what it runs"}`,
-      }))}
+      where={facts.where}
     />
   );
 }
@@ -385,7 +367,10 @@ export interface ReleaseReviewViewProps {
   readonly where: ReadonlyArray<{ readonly service: string; readonly line: string }>;
   readonly hasStage: boolean;
   readonly services: ReadonlyArray<string>;
-  readonly live: string | undefined;
+  /** What production ran as this one was offered. */
+  readonly replaces: ReleaseReplaces;
+  /** After a failure, whether production no longer runs what it replaced. */
+  readonly productionMoved?: boolean | undefined;
   readonly outcome: ReleaseOutcome;
   readonly press: ReviewPress;
   /** The person's own Mate a failure is handed to, the one they used last. */
@@ -410,8 +395,9 @@ export function ReleaseReviewView(props: ReleaseReviewViewProps) {
       ? { total: rows.length, running: rows.filter((row) => row.stage === "on-stage").length }
       : undefined,
     services: props.services,
-    live: props.live,
+    replaces: props.replaces,
     outcome: props.outcome,
+    productionMoved: props.productionMoved,
     now: props.now,
   });
   const fix = model.verdict.fix;
@@ -432,15 +418,12 @@ export function ReleaseReviewView(props: ReleaseReviewViewProps) {
       }
       kind="release"
       kindLabel={reviewKindLine("release")}
-      meta={
-        <>
-          <span>{props.live === undefined ? "the first release" : `replaces ${props.live}`}</span>
-          <span aria-hidden="true">·</span>
-          <span>
-            {rows.length} {rows.length === 1 ? "change" : "changes"}
-          </span>
-        </>
-      }
+      meta={model.meta.map((part, index) => (
+        <Fragment key={part}>
+          {index === 0 ? null : <span aria-hidden="true">·</span>}
+          <span>{part}</span>
+        </Fragment>
+      ))}
       onClose={props.onClose}
       primary={
         model.primary === undefined
@@ -473,11 +456,9 @@ export function ReleaseReviewView(props: ReleaseReviewViewProps) {
           <ReviewWhere rows={props.where} />
         </ReviewSection>
       )}
-      {props.live === undefined ? null : (
+      {model.ifWrong === undefined ? null : (
         <ReviewSection title="If it goes wrong">
-          <p className="rv-words">
-            Roll back to {props.live} from production's menu. It gets its own review.
-          </p>
+          <p className="rv-words">{model.ifWrong}</p>
         </ReviewSection>
       )}
     </ZeropsReviewSurface>
@@ -564,20 +545,40 @@ function RollbackData({
 }) {
   const flowValue = useZeropsProjectFlowOptional();
   const mates = useZeropsReviewMates(flow.groupId);
+  const askMateToFix = useAskMateToFix();
   const now = useNowMs();
   const [press, setPress] = useState<ReviewPress>({ kind: "idle" });
   // The release the roll back made — HQ's answer, not the flow's guess — which the review follows
   // through HQ's record of it and production's deploy, as a release's.
   const [made, setMade] = useState<string | undefined>(undefined);
-  const tagged = made === undefined ? undefined : flow.releases.find((entry) => entry.tag === made);
-  const clockMs = useSecondsNowMs(press.kind === "done" && tagged?.standing === undefined);
+  const follows = releaseFollows({
+    made,
+    held: undefined,
+    press,
+    inFlight: undefined,
+    suggestion: flow.release.suggestion,
+    releases: flow.releases,
+    nowMs: now,
+  });
+  const tagged = made === undefined ? undefined : follows.tagged;
+  const done = press.kind === "done";
+  const clockMs = useSecondsNowMs(done && follows.ticking);
+  // Past the wait for it, or with a newer release above it, the roll back says how it ended.
   const outcome = releaseOutcomeOf({
     tagged,
-    releasing: press.kind === "done",
+    releasing: done,
+    stalled: done && follows.stalled,
+    superseded: done ? follows.superseded : undefined,
     pressing: false,
     tag: made ?? flow.release.suggestion,
     clockMs,
   });
+  // What production ran as it was offered, held from the press: once it lands, production runs
+  // the roll back's own tag.
+  const current = { tag, live: flow.releases.find((entry) => entry.standing === "live")?.tag };
+  const [held, setHeld] = useState<typeof current | undefined>(undefined);
+  const keep = holdReleaseFacts({ held, current, press, outcome });
+  if (keep !== held) setHeld(keep);
   const earlier = flow.releases.find((entry) => entry.tag === tag);
   const { runs, repositories } = flow.release;
   const lists = useRollbackLists(flow.groupId, earlier?.entries, runs, repositories);
@@ -593,6 +594,12 @@ function RollbackData({
           }),
           ...movedCount(moved.moved),
         };
+  // A roll back that hasn't landed is anybody's to look into, as a release's (S6, `fixMates.ts`).
+  const production = flow.environmentInputs.find((entry) => entry.tier === "production");
+  const [fixer] = useFixMates({
+    projectId: production?.projectId ?? flow.groupId,
+    groupId: flow.groupId,
+  });
   const rollBack = async () => {
     if (flowValue === null) return;
     setPress({ kind: "running" });
@@ -603,9 +610,10 @@ function RollbackData({
   return (
     <RollbackReviewView
       comingBack={listOf(lists.comingBack)}
+      fixer={fixer?.name}
       leaving={listOf(lists.leaving)}
       line={earlier?.line}
-      live={flow.releases.find((entry) => entry.standing === "live")?.tag}
+      live={(keep ?? current).live}
       // Rolling back is a release: HQ's rule for releasing decides, whatever else holds Release
       // back now.
       permission={flow.release.permission}
@@ -613,6 +621,11 @@ function RollbackData({
       nextTag={made ?? flow.release.suggestion}
       now={now}
       onClose={onClose}
+      onFix={(problem) => {
+        if (fixer === undefined) return;
+        askMateToFix(fixer.mateProjectId, problem);
+        onClose();
+      }}
       onOpenChange={onOpenChange}
       onRollBack={() => {
         void rollBack();
@@ -653,6 +666,9 @@ export interface RollbackReviewViewProps {
   /** HQ's rule for this person, its refusal in words; `undefined` while it cannot be asked. */
   readonly permission: ReleaseGate | undefined;
   readonly press: ReviewPress;
+  /** The person's own Mate a roll back that hasn't landed is handed to, the one they used last. */
+  readonly fixer?: string | undefined;
+  readonly onFix?: ((problem: FixProblem) => void) | undefined;
   /** Where the tag it made stands, once it was made. */
   readonly outcome: ReleaseOutcome;
   readonly now: number;
@@ -703,18 +719,30 @@ export function RollbackReviewView(props: RollbackReviewViewProps) {
     outcome: props.outcome,
     now: props.now,
   });
+  const fix = model.verdict.fix;
+  const onFix = props.onFix;
   return (
     <ZeropsReviewSurface
       consequence={model.consequence}
       dismiss={model.primary === undefined ? "Close" : "Cancel"}
+      fix={
+        fix === undefined || props.fixer === undefined || onFix === undefined
+          ? undefined
+          : {
+              label: `Ask ${props.fixer} to ${fix.verb}`,
+              onPress: () => {
+                onFix(fix.problem);
+              },
+            }
+      }
       kind="rollback"
       kindLabel={reviewKindLine("rollback")}
       meta={
         <>
-          <span>production runs {props.live ?? "a later release"}</span>
+          {model.meta === undefined ? null : <span>{model.meta}</span>}
           {props.line === undefined ? null : (
             <>
-              <span aria-hidden="true">·</span>
+              {model.meta === undefined ? null : <span aria-hidden="true">·</span>}
               <span>{props.line}</span>
             </>
           )}

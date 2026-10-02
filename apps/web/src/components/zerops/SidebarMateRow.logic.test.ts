@@ -230,6 +230,44 @@ describe("mateOwnerView — whose seat, and whether anybody signed its agent in"
     expect(view.waitsOnViewer).toBe(waits);
   });
 
+  // One state, one phrase whichever flow made it (run 4, 2026-10-02): a Mate New project made asks
+  // no stand-up, and still waits for the sign-in of whoever made it, as HQ's record names them.
+  it.each([
+    {
+      case: "made by the viewer, no stand-up asked: it waits on them",
+      madeBy: "user-petra",
+      standUpBy: undefined,
+      line: "Waiting for your sign-in",
+      waits: true,
+    },
+    {
+      case: "made by somebody else, no stand-up asked: it waits for a sign-in",
+      madeBy: "user-karel",
+      standUpBy: undefined,
+      line: "Waiting for sign-in",
+      waits: false,
+    },
+    {
+      case: "made by the viewer, a stand-up asked by somebody else: it still waits on its maker",
+      madeBy: "user-petra",
+      standUpBy: "user-karel",
+      line: "Waiting for your sign-in",
+      waits: true,
+    },
+  ])("$case", ({ madeBy, standUpBy, line, waits }) => {
+    const view = mateOwnerView({
+      owner: undefined,
+      records: NOBODY,
+      asked: false,
+      madeBy,
+      standUpBy,
+      viewer: "user-petra",
+      linked: true,
+    });
+    expect(view.signInLine).toBe(line);
+    expect(view.waitsOnViewer).toBe(waits);
+  });
+
   it("says the empty seat in words, and draws a person as their mark", () => {
     expect(mateOwnerView({ owner: undefined, records: NOBODY, asked: true }).seat).toEqual({
       kind: "nobody",

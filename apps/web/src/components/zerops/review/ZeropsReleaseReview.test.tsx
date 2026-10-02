@@ -21,7 +21,6 @@ function render(over: Partial<ReleaseReviewViewProps>): string {
       fixer={undefined}
       gate={{ allowed: true }}
       hasStage={false}
-      live="v0.1.56"
       name="Beviro"
       now={NOW}
       onClose={() => {}}
@@ -30,6 +29,7 @@ function render(over: Partial<ReleaseReviewViewProps>): string {
       outcome={{ kind: "offered" }}
       permission={{ allowed: true }}
       press={{ kind: "idle" }}
+      replaces={{ kind: "release", tag: "v0.1.56" }}
       rows={[]}
       services={["app"]}
       tag="v0.1.57"
@@ -174,5 +174,26 @@ describe("RollbackReviewView", () => {
   ])("says $name", ({ over, says }) => {
     const markup = renderRollback(over);
     for (const words of says) expect(markup).toContain(words);
+  });
+});
+
+describe("a roll back that hasn't landed", () => {
+  // A roll back that hasn't landed hands it to the person's own Mate, as a release's does (S6).
+  const stalled = (fixer: string | undefined) =>
+    renderRollback({
+      fixer,
+      onFix: () => {},
+      outcome: { kind: "stalled", at: new Date(NOW - 31 * 60_000).toISOString() },
+      press: { kind: "done" },
+    });
+
+  it("says so, and offers the person's Mate to find out why", () => {
+    const markup = stalled("Juno");
+    expect(markup).toContain("v0.1.58 hasn&#x27;t landed");
+    expect(markup).toContain("Ask Juno to find out why");
+  });
+
+  it("offers no Mate when the person has none", () => {
+    expect(stalled(undefined)).not.toContain("Ask ");
   });
 });

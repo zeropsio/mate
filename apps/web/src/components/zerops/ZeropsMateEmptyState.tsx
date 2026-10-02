@@ -147,8 +147,9 @@ export function useMateEmptyState({
             ? "signed-in"
             : "someone-else",
   });
-  // Somebody else added it and nobody has signed it in: the sentence names them.
-  const adder = mate.standUp?.by;
+  // Somebody else added it and nobody has signed it in: the sentence names them — whichever flow
+  // made it, as its row does (`mateOwnerView`).
+  const adder = mate.madeBy ?? mate.standUp?.by;
   const colleague =
     phase === null && signInRequired && adder !== undefined && adder !== viewerSubject;
   const project = useZeropsEnvironmentProject(environmentId);

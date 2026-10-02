@@ -1123,13 +1123,18 @@ export function mateContainerMissing(
 }
 
 /**
- * Whether the viewer added this Mate: its stand-up asked for by them, or its seat theirs — as
- * HQ's record of it says.
+ * Whether the viewer added this Mate: HQ's record names them as its maker (New project or Add a
+ * Mate), its stand-up was asked for by them, or its seat is theirs — as HQ's record of it says.
  */
 export function mateAddedBy(
   project: { readonly hq?: HqPlacement | undefined },
   viewer: string | undefined,
 ): boolean {
   if (viewer === undefined || viewer.length === 0) return false;
-  return readZeropsMembership(project).standUp?.by === viewer || mateIsViewers(project, viewer);
+  const membership = readZeropsMembership(project);
+  return (
+    membership.madeBy === viewer ||
+    membership.standUp?.by === viewer ||
+    mateIsViewers(project, viewer)
+  );
 }

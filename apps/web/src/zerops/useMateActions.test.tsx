@@ -16,7 +16,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test"
 import type { ZeropsMenuAction } from "../components/zerops/ZeropsProjectMenu";
 import { hqStructureAtom, zeropsSessionAtom } from "../state/zerops";
 import { closeAccountLifetime, openAccountLifetime } from "./accountLifetime";
-import { useMateActions, type MateActions } from "./useMateActions";
+import { mateAddedBy, useMateActions, type MateActions } from "./useMateActions";
 import type { ZeropsCandidatePresentation } from "./useZeropsCandidates";
 
 interface FaceDialogProps {
@@ -548,5 +548,28 @@ describe("useMateActions — Move, for the person who made the Mate", () => {
     };
     mount();
     expect(verbs(made).map((verb) => verb.id)).toContain("move");
+  });
+});
+
+// Whether the viewer added a Mate reads who HQ's record says made it, so a Mate made by New
+// project is its maker's to finish as one made by Add a Mate is.
+describe("mateAddedBy — whether the viewer added this Mate", () => {
+  const placed = (mate: Partial<NonNullable<HqPlacement["mate"]>>): HqPlacement => ({
+    appId: "app-1",
+    appName: "Acme",
+    kind: "mate",
+    mate: { name: "Fen", face: "", ...mate },
+  });
+  it.each([
+    { case: "HQ names its maker (New project)", hq: placed({ madeBy: "user-ada" }), added: true },
+    {
+      case: "its stand-up asked by them (a Mate recorded before HQ kept its maker)",
+      hq: placed({ madeBy: null, standupRequestedBy: "user-ada" }),
+      added: true,
+    },
+    { case: "somebody else made it", hq: placed({ madeBy: "user-fen" }), added: false },
+    { case: "nothing names anybody", hq: placed({}), added: false },
+  ])("$case: $added", ({ hq, added }) => {
+    expect(mateAddedBy({ hq }, "user-ada")).toBe(added);
   });
 });
