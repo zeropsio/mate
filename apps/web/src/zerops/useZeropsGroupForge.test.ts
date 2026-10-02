@@ -7,8 +7,9 @@ import {
 } from "@t3tools/client-runtime/zerops";
 import { flowVerbInvalidations } from "@t3tools/client-runtime/zerops/flow";
 import {
-  createCommitStatusMemo,
+  createForgeReads,
   createMergeabilityTracker,
+  TAGS_MAX_AGE_MS,
   type MergeabilityTracker,
 } from "@t3tools/client-runtime/zerops/forge";
 import { act, createElement } from "react";
@@ -17,8 +18,10 @@ import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import {
   checkingRepositories,
   GROUP_FORGE_REFRESH_MS,
+  UNMERGEABLE_MAX_AGE_MS,
   readForge,
   useZeropsGroupForge,
+  useForgeReads,
   type ZeropsGroupForge,
   type ZeropsGroupForgeState,
 } from "./useZeropsGroupForge";
@@ -282,6 +285,9 @@ describe("readForge", () => {
     const { client: base, calls } = forge();
     const client = {
       ...base,
+      listOrganizationRepositories: async () => [
+        { name: "group", updated_at: "2026-09-01T08:00:00Z", open_pr_counter: 0 },
+      ],
       listTags: async () =>
         Array.from({ length: 30 }, (_, index) => ({
           name: `v0.1.${String(index)}`,
@@ -292,10 +298,10 @@ describe("readForge", () => {
         return repo === "group" ? [{ context: "deploy", state: "success" }] : [];
       },
     } as unknown as GiteaClient;
-    const statuses = createCommitStatusMemo();
+    const reads = createForgeReads();
     const tracker = createMergeabilityTracker();
-    await readForge(client, "harbor", "group", tracker, statuses);
-    await readForge(client, "harbor", "group", tracker, statuses);
+    await readForge(client, "harbor", "group", tracker, reads);
+    await readForge(client, "harbor", "group", tracker, reads);
     expect(calls.filter((call) => call.startsWith("statuses harbor/group@"))).toEqual([
       `statuses harbor/group@${SHARED}`,
     ]);
@@ -308,6 +314,158 @@ describe("readForge", () => {
     const update = await readForge(client, "harbor", { kind: "tags" }, createMergeabilityTracker());
     expect(calls).toEqual(["tags harbor/group"]);
     expect(update(held)?.pullRequests).toBe(held.pullRequests);
+  });
+});
+
+/** Long before any test: a push this old is trusted at once. */
+const PUSHED = "2026-09-01T08:00:00Z";
+
+/**
+ * An org listed with what moves when something is pushed or opened, a pull request on appdev and
+ * one release; every ask of Gitea recorded.
+ */
+function listedOrg() {
+  const calls: string[] = [];
+  const listed = new Map([
+    ["appdev", { updated_at: PUSHED, open_pr_counter: 1 }],
+    ["group", { updated_at: PUSHED, open_pr_counter: 0 }],
+  ]);
+  const tags = [{ name: "v0.1.0", commit: { sha: "r1" } }];
+  const client = {
+    listOrganizationRepositories: async () => {
+      calls.push("repos");
+      return [...listed].map(([name, fields]) => ({ name, default_branch: "main", ...fields }));
+    },
+    listPullRequests: async (_owner: string, repo: string, options: { readonly state: string }) => {
+      calls.push(`pulls ${repo} ${options.state}`);
+      return options.state === "open" && repo === "appdev" ? [{ ...pull(4), mergeable: true }] : [];
+    },
+    listCommitStatuses: async (_owner: string, repo: string, sha: string) => {
+      calls.push(`statuses ${repo}@${sha}`);
+      return [{ context: "ci", state: "success" }];
+    },
+    listTags: async () => {
+      calls.push("tags");
+      return tags;
+    },
+  } as unknown as GiteaClient;
+  return { client, calls, listed, tags };
+}
+
+describe("readForge on the org's listing", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it.each([
+    { name: "nothing moved: the listing alone", move: () => undefined, asked: ["repos"] },
+    {
+      name: "appdev's open counter moved: its pull requests only",
+      move: (listed: ReturnType<typeof listedOrg>["listed"]) =>
+        listed.set("appdev", { updated_at: PUSHED, open_pr_counter: 2 }),
+      asked: ["repos", "pulls appdev open", "pulls appdev closed"],
+    },
+    {
+      name: "appdev was pushed: its pull requests and their checks",
+      move: (listed: ReturnType<typeof listedOrg>["listed"]) =>
+        listed.set("appdev", { updated_at: "2026-09-02T08:00:00Z", open_pr_counter: 1 }),
+      asked: ["repos", "pulls appdev open", "statuses appdev@sha4", "pulls appdev closed"],
+    },
+    {
+      name: "the group repo was pushed: its pull requests, tags and their checks",
+      move: (listed: ReturnType<typeof listedOrg>["listed"]) =>
+        listed.set("group", { updated_at: "2026-09-02T08:00:00Z", open_pr_counter: 0 }),
+      asked: ["repos", "pulls group open", "pulls group closed", "tags", "statuses group@r1"],
+    },
+  ])("a refresh where $name", async ({ move, asked }) => {
+    vi.useFakeTimers();
+    vi.setSystemTime(Date.parse("2026-10-02T12:00:00Z"));
+    const { client, calls, listed } = listedOrg();
+    const reads = createForgeReads();
+    const tracker = createMergeabilityTracker();
+    const first = (await readForge(client, "harbor", "group", tracker, reads))(undefined);
+    calls.length = 0;
+    vi.advanceTimersByTime(GROUP_FORGE_REFRESH_MS);
+    move(listed);
+    const next = (await readForge(client, "harbor", "group", tracker, reads))(first);
+    expect(calls).toEqual(asked);
+    // What the screen shows is the same answer, read or kept.
+    expect(next).toEqual(first);
+  });
+
+  it("reads the tags again every five minutes, and a settled check never", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(Date.parse("2026-10-02T12:00:00Z"));
+    const { client, calls } = listedOrg();
+    const reads = createForgeReads();
+    const tracker = createMergeabilityTracker();
+    for (let minute = 0; minute < 30; minute += 1) {
+      await readForge(client, "harbor", "group", tracker, reads);
+      vi.advanceTimersByTime(GROUP_FORGE_REFRESH_MS);
+    }
+    expect(calls.filter((call) => call === "repos")).toHaveLength(30);
+    expect(calls.filter((call) => call === "tags")).toHaveLength(6);
+    expect(calls.filter((call) => call.startsWith("statuses"))).toEqual([
+      "statuses appdev@sha4",
+      "statuses group@r1",
+    ]);
+  });
+
+  it("asks again now and then whether a pull request Gitea says does not merge merges now", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(Date.parse("2026-10-02T12:00:00Z"));
+    const { client: base, calls } = listedOrg();
+    let mergeable = false;
+    const client = {
+      ...base,
+      listPullRequests: async (
+        owner: string,
+        repo: string,
+        options: { readonly state: "open" | "closed" },
+      ) =>
+        (await base.listPullRequests(owner, repo, options)).map((open) => ({
+          ...open,
+          mergeable,
+          base: { ref: "main", sha: "b1" },
+        })),
+    } as unknown as GiteaClient;
+    const reads = createForgeReads();
+    const tracker = createMergeabilityTracker();
+    const row = async () =>
+      (await readForge(client, "harbor", "group", tracker, reads))(undefined)?.pullRequests[0];
+    await row();
+    // The hook's rechecks after a "no": the repository's pull requests are read again.
+    vi.advanceTimersByTime(10_000);
+    reads.forget("harbor", "appdev", new Set(["pulls"]));
+    expect((await row())?.mergeability).toBe("conflicting");
+    // Gitea's check ends late: nothing was pushed, so no listing moves.
+    mergeable = true;
+    calls.length = 0;
+    for (let minute = 1; minute < UNMERGEABLE_MAX_AGE_MS / 60_000; minute += 1) {
+      vi.advanceTimersByTime(GROUP_FORGE_REFRESH_MS);
+      expect((await row())?.mergeability).toBe("conflicting");
+    }
+    vi.advanceTimersByTime(GROUP_FORGE_REFRESH_MS);
+    expect((await row())?.mergeability).toBe("mergeable");
+    expect(calls.filter((call) => call === "pulls appdev open")).toHaveLength(1);
+  });
+
+  it("asks a release's commit again when a new tag points at it, though nothing was pushed", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(Date.parse("2026-10-02T12:00:00Z"));
+    const { client, calls, tags } = listedOrg();
+    const reads = createForgeReads();
+    const tracker = createMergeabilityTracker();
+    await readForge(client, "harbor", "group", tracker, reads);
+    // Another tab releases through the API: no listing moves, and the tag shares the commit.
+    tags.unshift({ name: "v0.1.1", commit: { sha: "r1" } });
+    calls.length = 0;
+    vi.advanceTimersByTime(TAGS_MAX_AGE_MS);
+    const state = (await readForge(client, "harbor", "group", tracker, reads))(undefined);
+    expect(calls).toEqual(["repos", "tags", "statuses group@r1"]);
+    expect("tags" in (state?.released ?? {}) ? state?.released : undefined).toMatchObject({
+      tags: ["v0.1.1", "v0.1.0"],
+    });
   });
 });
 
@@ -398,6 +556,7 @@ describe("useZeropsGroupForge", () => {
         groups: GROUPS,
         enabled: true,
         readable: true,
+        reads: useForgeReads("https://gitea.example.test"),
       });
       return null;
     }
@@ -418,6 +577,55 @@ describe("useZeropsGroupForge", () => {
     });
   });
 
+  it("lists the org once a refresh, nothing while the page is hidden, and once on coming back", async () => {
+    vi.useFakeTimers();
+    installTestDom();
+    const page = document as unknown as {
+      hidden: boolean;
+      addEventListener: (type: string, listener: () => void) => void;
+    };
+    const shown: Array<() => void> = [];
+    page.addEventListener = (type, listener) => {
+      if (type === "visibilitychange") shown.push(listener);
+    };
+    const { createRoot } = await import("react-dom/client");
+    function Probe() {
+      useZeropsGroupForge({
+        giteaOrigin: "https://gitea.example.test",
+        groups: GROUPS,
+        enabled: true,
+        readable: true,
+        reads: useForgeReads("https://gitea.example.test"),
+      });
+      return null;
+    }
+    const root = createRoot(document.createElement("div") as unknown as Element);
+    await act(async () => {
+      root.render(createElement(Probe));
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(GROUP_FORGE_REFRESH_MS);
+    });
+    expect(gitea.listings).toBe(2);
+
+    page.hidden = true;
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10 * GROUP_FORGE_REFRESH_MS);
+    });
+    expect(gitea.listings).toBe(2);
+
+    page.hidden = false;
+    await act(async () => {
+      for (const listener of shown) listener();
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(gitea.listings).toBe(3);
+    await act(async () => {
+      root.unmount();
+    });
+  });
+
   it("keeps what it read when a 401 and a failed reacquire land inside one pass", async () => {
     vi.useFakeTimers();
     installTestDom();
@@ -431,6 +639,7 @@ describe("useZeropsGroupForge", () => {
           groups: GROUPS,
           enabled: true,
           readable: true,
+          reads: useForgeReads("https://gitea.example.test"),
         }),
       );
       return null;
@@ -470,6 +679,7 @@ describe("useZeropsGroupForge", () => {
           groups: GROUPS,
           enabled: true,
           readable: true,
+          reads: useForgeReads("https://gitea.example.test"),
         }),
       );
       return null;

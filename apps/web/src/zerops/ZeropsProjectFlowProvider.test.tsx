@@ -136,6 +136,7 @@ vi.mock("./useZeropsGroupDeploys", () => ({
   },
 }));
 vi.mock("./useZeropsGroupForge", () => ({
+  useForgeReads: () => null,
   useZeropsGroupForge: () => ({
     forges: new Map([["g1", verbs.forge]]),
     failures: verbs.forgeFailures,

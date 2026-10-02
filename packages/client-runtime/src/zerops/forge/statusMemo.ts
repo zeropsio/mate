@@ -3,16 +3,18 @@
  * clock of their own rather than through the forge store (`useZeropsGroupForge`,
  * `useZeropsGroupDeploys`).
  *
- * Statuses that are settled (every context's newest one done) are kept for
- * {@link SETTLED_STATUS_KEEP_MS}, or as long as the caller's `maxAgeMs` allows where a deploy may be
- * posting to the commit. Pending ones, and a commit CI has posted nothing to yet, are read again on
- * {@link STATUS_RECHECK_LADDER_MS}, a rung further each time the answer is the same and from the
- * bottom again when it moved, never more than a minute apart. A verb, or a group whose deploys
- * moved, forgets an owner's commits and the reads running for them.
+ * Statuses that are settled (every context's newest one done) are kept until they are forgotten:
+ * no read can change them. Pending ones, and a commit CI has posted nothing to yet, are read again
+ * on {@link STATUS_RECHECK_LADDER_MS}, a rung further each time the answer is the same and from the
+ * bottom again when it moved, never more than a minute apart. What may post to a settled commit
+ * again forgets it: a verb, a group whose deploys moved, or a push the org's listing shows
+ * (`forge/forgeReads.ts`).
  *
  * A release group whose thirty tags all point at one commit asked Gitea about that commit thirty
  * times a minute, every minute, in every open tab (pass 30, 2026-10-02: 560 reads of one commit in
- * 17.8 min); with the memo it is one read.
+ * 17.8 min); with the memo it is one read. Kept for five minutes, and for one minute on the newest
+ * release and every deploy, settled statuses were still read again on every tick of a page left
+ * open (pass 31, 2026-10-02: one group repo's release commit about once a minute, 60 reads).
  *
  * @module forge/statusMemo
  */
@@ -20,18 +22,6 @@ import type { GiteaCommitStatus } from "../giteaClient.ts";
 
 /** How long statuses that may still move are kept before the next read, rung by rung. */
 export const STATUS_RECHECK_LADDER_MS: ReadonlyArray<number> = [15_000, 30_000, 60_000];
-
-/**
- * How long settled statuses are kept. Not for ever: a commit takes a new context when a stage's
- * commit is released to production, and another tab's release posts to it too.
- */
-export const SETTLED_STATUS_KEEP_MS = 5 * 60_000;
-
-/**
- * How old statuses a deploy may still be posting to are let be: a commit a stage or production
- * runs, and the newest release. The group readers' own clock, so they lag no more than it does.
- */
-export const DEPLOY_STATUS_MAX_AGE_MS = 60_000;
 
 /**
  * Statuses no read changes: at least one, none pending. A commit read before CI posted anything
@@ -63,14 +53,13 @@ export interface CommitRef {
 
 export interface CommitStatusMemo {
   /**
-   * The commit's statuses: what is kept while no read can have changed them yet and it is no older
-   * than `maxAgeMs`, otherwise one `load` — shared with whoever asks for the same commit while it
-   * runs. A load that fails keeps nothing and rejects.
+   * The commit's statuses: what is kept while no read can have changed them yet, otherwise one
+   * `load` — shared with whoever asks for the same commit while it runs. A load that fails keeps
+   * nothing and rejects.
    */
   readonly read: (
     commit: CommitRef,
     load: () => Promise<ReadonlyArray<GiteaCommitStatus>>,
-    options?: { readonly maxAgeMs?: number | undefined },
   ) => Promise<ReadonlyArray<GiteaCommitStatus>>;
   /**
    * Drops everything kept and every read running for an owner — or for one of its repositories: a
@@ -86,7 +75,7 @@ interface Kept {
   readonly signature: string;
   /** The back-off's rung the next read waits; `null` once settled. */
   readonly rung: number | null;
-  readonly readAtMs: number;
+  /** When the next read may ask Gitea; never, once settled. */
   readonly nextAtMs: number;
 }
 
@@ -131,8 +120,7 @@ export function createCommitStatusMemo(
         statuses,
         signature,
         rung: null,
-        readAtMs,
-        nextAtMs: readAtMs + SETTLED_STATUS_KEEP_MS,
+        nextAtMs: Number.POSITIVE_INFINITY,
       });
       return;
     }
@@ -147,18 +135,16 @@ export function createCommitStatusMemo(
       statuses,
       signature,
       rung,
-      readAtMs,
       nextAtMs: readAtMs + (STATUS_RECHECK_LADDER_MS[rung] ?? 0),
     });
   };
 
   return {
-    read: (commit, load, readOptions) => {
+    read: (commit, load) => {
       const key = keyOf(commit);
       const held = kept.get(key);
       const at = now();
-      const maxAgeMs = readOptions?.maxAgeMs ?? Number.POSITIVE_INFINITY;
-      if (held !== undefined && at < held.nextAtMs && at - held.readAtMs < maxAgeMs) {
+      if (held !== undefined && at < held.nextAtMs) {
         return Promise.resolve(held.statuses);
       }
       const running = inFlight.get(key);
