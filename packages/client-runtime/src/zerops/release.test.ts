@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import type { GiteaCommitStatus } from "./giteaClient.ts";
 import { environmentRow, type EnvironmentRow } from "./groupRows.ts";
 import {
   compareForRelease,
@@ -8,25 +7,19 @@ import {
   isReleaseTag,
   releaseRunBy,
   nameStopByRelease,
-  newestReleaseTag,
   readReleaseMessage,
   releaseEntries,
   releaseGate,
   releaseCandidate,
   releaseInFlight,
   releaseInFlightReason,
-  releaseMessage,
   releaseOffer,
   releaseRow,
-  releaseStatusContext,
-  releaseVerdict,
   releaseWord,
   RELEASE_CHECKING,
   RELEASE_NOTHING_MERGED,
   RELEASE_NOTHING_NEW_ON_MAIN,
-  rollbackTo,
   shortCommit,
-  suggestReleaseTags,
   type FlowRelease,
   type FlowReleaseRow,
 } from "./release.ts";
@@ -38,24 +31,7 @@ const COMPARED: MovedCommits = { state: "known", moved: [] };
 const WEB = "77ab0e1f2d3c4b5a69788796a5b4c3d2e1f0a9b8";
 const OLD = "1111111111111111111111111111111111111111";
 
-describe("the tag's message", () => {
-  it("is one line per service, in service order", () => {
-    expect(
-      releaseMessage([
-        { service: "web", commit: WEB },
-        { service: "api", commit: API },
-      ]),
-    ).toBe(`api ${API}\nweb ${WEB}`);
-  });
-
-  it("lower-cases a sha, so it compares equal to a version's name", () => {
-    expect(releaseMessage([{ service: "api", commit: API.toUpperCase() }])).toBe(`api ${API}`);
-  });
-
-  it("drops anything that is not a full sha rather than writing a tag the broker refuses", () => {
-    expect(releaseMessage([{ service: "api", commit: "3f9c1b2" }])).toBe("");
-  });
-
+describe("a Gitea tag's message, as the history reads it", () => {
   it.each([
     { name: "two services", message: `api ${API}\nweb ${WEB}`, expected: 2 },
     { name: "blank lines between them", message: `api ${API}\n\n\nweb ${WEB}\n`, expected: 2 },
@@ -70,36 +46,9 @@ describe("the tag's message", () => {
   ])("reads $name", ({ message, expected }) => {
     expect(readReleaseMessage(message)).toHaveLength(expected);
   });
-
-  it("round-trips: what it writes is what it reads", () => {
-    const entries = [
-      { service: "api", commit: API },
-      { service: "web", commit: WEB },
-    ];
-    expect(readReleaseMessage(releaseMessage(entries))).toEqual(entries);
-  });
 });
 
-describe("what to call the next release", () => {
-  it.each([
-    { name: "a group that has never released", tags: [], patch: "v0.1.0", minor: "v0.1.0" },
-    { name: "one release", tags: ["v1.2.0"], patch: "v1.2.1", minor: "v1.3.0" },
-    {
-      name: "the newest by version, not by name",
-      tags: ["v1.9.0", "v1.10.0", "v1.2.0"],
-      patch: "v1.10.1",
-      minor: "v1.11.0",
-    },
-    {
-      name: "tags that are not ours, ignored",
-      tags: ["release-3", "v2.0.0", "nightly"],
-      patch: "v2.0.1",
-      minor: "v2.1.0",
-    },
-  ])("suggests, for $name", ({ tags, patch, minor }) => {
-    expect(suggestReleaseTags(tags)).toEqual({ patch, minor });
-  });
-
+describe("a release's name", () => {
   it.each([
     { tag: "v1.2.3", expected: true },
     { tag: "v1.2", expected: false },
@@ -107,10 +56,6 @@ describe("what to call the next release", () => {
     { tag: "v1.2.3-rc1", expected: false },
   ])("recognises $tag as ours: $expected", ({ tag, expected }) => {
     expect(isReleaseTag(tag)).toBe(expected);
-  });
-
-  it("has no newest tag among tags that are none of ours", () => {
-    expect(newestReleaseTag(["nightly", "release-3"])).toBeUndefined();
   });
 });
 
@@ -455,67 +400,14 @@ describe("a release as HQ records it", () => {
   });
 });
 
-describe("rolling back", () => {
-  const earlier = `api ${OLD}\nweb ${WEB}`;
-
-  it("is a new tag carrying the earlier one's message, exactly", () => {
-    expect(
-      rollbackTo({ tag: "v1.2.0", message: earlier, existingTags: ["v1.2.0", "v1.3.0"] }),
-    ).toEqual({ tag: "v1.3.1", message: earlier });
-  });
-
-  it("never reuses a name, even rolling back to the newest but one", () => {
-    const result = rollbackTo({
-      tag: "v1.2.0",
-      message: earlier,
-      existingTags: ["v1.2.0", "v1.3.0"],
-    });
-    expect(["v1.2.0", "v1.3.0"]).not.toContain(result?.tag);
-  });
-
-  it("refuses a tag whose message this build cannot read", () => {
-    expect(
-      rollbackTo({ tag: "v1.2.0", message: "deployed the invoices work", existingTags: [] }),
-    ).toBeUndefined();
-  });
-});
-
-describe("the broker's verdict on a tag", () => {
-  const status = (state: GiteaCommitStatus["state"], description?: string): GiteaCommitStatus => ({
-    context: releaseStatusContext("v1.2.0"),
-    state,
-    ...(description === undefined ? {} : { description }),
-  });
-
+describe("the one word beside a release's dot", () => {
   it.each([
-    { name: "approved", statuses: [status("success")], verdict: "approved", word: "Approved" },
-    {
-      name: "refused, with the reason",
-      statuses: [status("failure", "ada is not a releaser")],
-      verdict: "refused",
-      word: "Refused",
-    },
-    {
-      name: "still being checked",
-      statuses: [status("pending")],
-      verdict: "pending",
-      word: "Checking",
-    },
-    { name: "nothing said yet", statuses: [], verdict: "unknown", word: undefined },
-  ] as const)("reads $name", ({ statuses, verdict, word }) => {
-    expect(releaseVerdict("v1.2.0", statuses).verdict).toBe(verdict);
+    { verdict: "approved", word: "Approved" },
+    { verdict: "refused", word: "Refused" },
+    { verdict: "pending", word: "Checking" },
+    { verdict: "unknown", word: undefined },
+  ] as const)("says $word for $verdict", ({ verdict, word }) => {
     expect(releaseWord(verdict)).toBe(word);
-  });
-
-  it("does not take another tag's verdict for this one", () => {
-    const statuses = [{ context: "mate/release/v1.1.0", state: "success" } as GiteaCommitStatus];
-    expect(releaseVerdict("v1.2.0", statuses).verdict).toBe("unknown");
-  });
-
-  it("carries the description a refusal came with", () => {
-    expect(releaseVerdict("v1.2.0", [status("failure", "ada is not a releaser")]).detail).toBe(
-      "ada is not a releaser",
-    );
   });
 });
 

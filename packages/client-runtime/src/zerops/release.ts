@@ -1,36 +1,23 @@
 /**
- * Release and rollback — decided here, performed as the person (guide 5.5, 5.6).
+ * Release and rollback — decided here, made in HQ as the person (SPEC §3.2d; main C01–C37).
  *
- * A release is an annotated tag `v{semver}` on the **group repo**, created by a
- * person through Gitea, whose message lists one line per service:
- *
- * ```
- * api 3f9c1b2e5d7a4c6f8e0b1d2a3c4f5e6d7a8b9c0d
- * web 77ab0e1f2d3c4b5a69788796a5b4c3d2e1f0a9b8
- * ```
- *
- * `{service hostname} {full 40-hex sha}`, and nothing else
- * (`../gitea-mate/docs/group-repo.md`). A short sha would never compare equal
- * to a version's name and the broker would redeploy for ever, so it is refused
- * rather than tolerated.
+ * A release is HQ's record of one tag `v{x.y.z}` on the recipe repository's `main`, listing the
+ * whole commit each production service runs from then on (`@t3tools/shared/hqRelease`). HQ makes
+ * it of what the offer showed, approved at birth, and production follows the newest approved one.
  *
  * ## What the button shows before it is pressed
  *
- * Per service, what the stage runs against what production runs — both read
- * from the sha in the deployed **version's name**, never from a branch head.
- * A service whose two shas already match is not a change; the tag still lists
- * it, because a tag lists what production should run, not what is new.
+ * Per service, the commit its repository's `main` holds against what production runs — read from
+ * the sha in the deployed **version's name**, never from a branch head. A service whose two shas
+ * already match is not a change; the release still lists it, because a release lists what
+ * production should run, not what is new.
  *
  * ## What a release lists: what is merged (D28)
  *
- * Each repository's default branch, always — never what a stage happens to be
- * running. A project may have no stage at all; one that has a stage has it as
- * a place that runs `main` too, not as a gate the tag waits behind, and a
- * stage that is mid-deploy or behind must not change what a release means (the
- * owner, 2026-09-18: "I hope that even with stage prod release is not tied to
- * stage in any way"). A group that wants production held until a stage has the
- * commit says so once, in `environments.yaml`, as `requireOnStage` — an
- * explicit gate the broker enforces, not something the tag's contents imply.
+ * Each repository's `main`, always — never what a stage happens to be running. A project may have
+ * no stage at all; one that has a stage has it as a place that runs `main` too, not as a gate the
+ * release waits behind (the owner, 2026-09-18: "I hope that even with stage prod release is not
+ * tied to stage in any way").
  *
  * ## Who may
  *
@@ -40,10 +27,9 @@
  *
  * ## Rollback
  *
- * A new tag listing an earlier tag's commits. A tag name is never reused, and
- * `POST /deploy` takes no ref, so going back is going forward to the same
- * contents under a new name — which is also the only form that leaves a record
- * of when it happened.
+ * A new release listing an earlier release's entries, under the next name: a name is never
+ * reused, so going back is going forward to the same contents — which is also the only form that
+ * leaves a record of when it happened.
  *
  * Pure: no network, no clock, no platform globals (rule R1).
  *
@@ -54,7 +40,6 @@ import type { RepoListEntry } from "@t3tools/shared/hqChanges";
 import { RECIPE_REPO } from "@t3tools/shared/hqRecipe";
 import { nextPatch, type Release } from "@t3tools/shared/hqRelease";
 
-import type { GiteaCommitStatus } from "./giteaClient.ts";
 import type { Moved, MovedCommits } from "./releaseCompare.ts";
 import type { EnvironmentRow } from "./groupRows.ts";
 import { sameCommit } from "./versionName.ts";
@@ -77,33 +62,9 @@ export interface ReleaseEntry {
 /** A whole commit sha: 40 hex, or 64 in a SHA-256 repository (`versionName.ts`). */
 const FULL_SHA = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/iu;
 
-/** What a release tag is called. */
-export function releaseTagName(version: string): string {
-  return `v${version}`;
-}
-
-/** The commit status the broker writes for one release tag. */
-export function releaseStatusContext(tag: string): string {
-  return `mate/release/${tag}`;
-}
-
 /** Whether a tag name is one of ours. */
 export function isReleaseTag(tag: string): boolean {
   return /^v\d+\.\d+\.\d+$/u.test(tag);
-}
-
-/**
- * The tag's message, from the services a release covers.
- *
- * Sorted by service so two releases of the same contents produce the same
- * message, and a diff between two tags reads as the commits that moved.
- */
-export function releaseMessage(entries: ReadonlyArray<ReleaseEntry>): string {
-  return [...entries]
-    .filter((entry) => FULL_SHA.test(entry.commit))
-    .sort((left, right) => left.service.localeCompare(right.service, "en"))
-    .map((entry) => `${entry.service} ${entry.commit.toLowerCase()}`)
-    .join("\n");
 }
 
 /**
@@ -127,7 +88,7 @@ export function readReleaseMessage(message: string): ReadonlyArray<ReleaseEntry>
   return entries;
 }
 
-/** A semantic version, as far as suggesting the next one needs. */
+/** A semantic version, as far as ordering a Gitea history's tags needs. */
 export interface Semver {
   readonly major: number;
   readonly minor: number;
@@ -141,42 +102,6 @@ export function readSemver(tag: string): Semver | undefined {
     major: Number(match[1]),
     minor: Number(match[2]),
     patch: Number(match[3]),
-  };
-}
-
-function compareSemver(left: Semver, right: Semver): number {
-  return left.major - right.major || left.minor - right.minor || left.patch - right.patch;
-}
-
-/** The newest `v*` tag on the group repo, by version rather than by name. */
-export function newestReleaseTag(tags: ReadonlyArray<string>): string | undefined {
-  let best: { readonly tag: string; readonly version: Semver } | undefined;
-  for (const tag of tags) {
-    const version = readSemver(tag);
-    if (version === undefined) continue;
-    if (best === undefined || compareSemver(version, best.version) > 0) best = { tag, version };
-  }
-  return best?.tag;
-}
-
-/**
- * What to call the next release — the newest tag's patch and minor, and
- * `v0.1.0` for a group that has never released.
- *
- * A suggestion and not a rule: the person types what they mean. Two of them
- * because that is the choice anybody actually makes at this button, and a
- * major bump is rare enough to be typed.
- */
-export function suggestReleaseTags(tags: ReadonlyArray<string>): {
-  readonly patch: string;
-  readonly minor: string;
-} {
-  const newest = newestReleaseTag(tags);
-  const version = newest === undefined ? undefined : readSemver(newest);
-  if (version === undefined) return { patch: "v0.1.0", minor: "v0.1.0" };
-  return {
-    patch: `v${version.major}.${version.minor}.${version.patch + 1}`,
-    minor: `v${version.major}.${version.minor + 1}.0`,
   };
 }
 
@@ -362,51 +287,8 @@ export function releaseOffer(input: {
   };
 }
 
-/**
- * A rollback's tag: a new name, the earlier tag's message verbatim.
- *
- * Verbatim and not re-derived, because the earlier tag is the record of what
- * production ran and a re-derivation would quietly release whatever the stage
- * holds now (guide 5.6). `undefined` when the earlier tag's message cannot be
- * read — there is nothing to go back to that the broker would accept.
- */
-export function rollbackTo(input: {
-  readonly tag: string;
-  readonly message: string;
-  readonly existingTags: ReadonlyArray<string>;
-}): { readonly tag: string; readonly message: string } | undefined {
-  const entries = readReleaseMessage(input.message);
-  if (entries.length === 0) return undefined;
-  const next = suggestReleaseTags(input.existingTags).patch;
-  return { tag: next, message: releaseMessage(entries) };
-}
-
-/** What the broker said about a release tag — approved, refused, or not yet. */
+/** What was said of a release — approved, refused, or not yet. */
 export type ReleaseVerdict = "approved" | "refused" | "pending" | "unknown";
-
-/**
- * The broker's verdict on one tag, from the commit statuses on the tagged
- * commit (`mate/release/{tag}`).
- *
- * `unknown` when there is no status for that tag: the webhook has not been
- * processed, or nobody is signed in to Gitea to read one. Never read as
- * approved — a tag the broker refused looks exactly like a tag it has not
- * seen, and only one of them ever deploys.
- */
-export function releaseVerdict(
-  tag: string,
-  statuses: ReadonlyArray<GiteaCommitStatus>,
-): { readonly verdict: ReleaseVerdict; readonly detail: string | undefined } {
-  const status = statuses.find((entry) => entry.context === releaseStatusContext(tag));
-  if (status === undefined) return { verdict: "unknown", detail: undefined };
-  const verdict: ReleaseVerdict =
-    status.state === "success"
-      ? "approved"
-      : status.state === "failure" || status.state === "error"
-        ? "refused"
-        : "pending";
-  return { verdict, detail: status.description };
-}
 
 /** The newest release tag as read, for {@link releaseInFlight}. */
 export interface ReleaseAttempt {
@@ -526,8 +408,8 @@ type ReleaseListing = Pick<FlowRelease, "tag" | "entries" | "verdict">;
  * (`sameCommit`), or `undefined`. A refused release never deployed, and one that lists nothing
  * names nothing it could run. `running` is `{hostname: sha}`, whole or short (`deployedCommit`).
  *
- * Over production, it is the release that reads Live. The newest, because a roll-back re-tags an
- * earlier message verbatim ({@link rollbackTo}) and two tags then list the same commits; only the
+ * Over production, it is the release that reads Live. The newest, because a roll-back is a new
+ * release of an earlier one's entries, and two releases then list the same commits; only the
  * later one is what production was last moved to.
  *
  * Over one stop's services, it is the release the stop is named by. A release lists every

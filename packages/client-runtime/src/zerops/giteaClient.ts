@@ -27,12 +27,10 @@
  *
  * ## Deadlines
  *
- * Every read ends by {@link GITEA_REQUEST_DEADLINE_MS} as a `TimeoutError`,
- * or earlier when the caller's signal ends it. A Gitea that stops answering is
- * then a failure the reader can retry, never a read that holds its place
- * forever (DESIGN §2.D D3). A write ends only on the caller's signal: one
- * ended while Gitea was still applying it would be reported as failed and
- * then land.
+ * Every request is a read, and ends by {@link GITEA_REQUEST_DEADLINE_MS} as a
+ * `TimeoutError`, or earlier when the caller's signal ends it. A Gitea that
+ * stops answering is then a failure the reader can retry, never a read that
+ * holds its place forever (DESIGN §2.D D3).
  *
  * @module giteaClient
  */
@@ -134,51 +132,14 @@ interface GiteaListCommitWire {
   readonly author?: { readonly login?: string | undefined } | null | undefined;
 }
 
-export interface GiteaBranch {
-  readonly name: string;
-  readonly commit?: { readonly id?: string | undefined } | undefined;
-  readonly protected?: boolean | undefined;
-  /**
-   * Gitea's own answer to "may this person merge into it". The mirror lags a
-   * role change by minutes, so this is what decides whether the app merges its
-   * own pull request — never the role the app happens to know (guide 4.5).
-   */
-  readonly user_can_merge?: boolean | undefined;
-  readonly user_can_push?: boolean | undefined;
-}
-
 /** One tag of a repository — `GET /repos/{o}/{r}/tags`. */
 export interface GiteaTag {
   readonly name: string;
-  /** The tag object's sha — what {@link GiteaClient.tagDate} reads. */
+  /** The tag object's sha. */
   readonly id?: string | undefined;
   /** An annotated tag's message; empty for a lightweight one. */
   readonly message?: string | undefined;
   readonly commit?: { readonly sha?: string | undefined } | undefined;
-}
-
-export interface GiteaCommitStatus {
-  readonly context: string;
-  readonly state: "pending" | "success" | "error" | "failure" | "warning";
-  readonly description?: string | undefined;
-  readonly target_url?: string | undefined;
-  readonly created_at?: string | undefined;
-}
-
-/**
- * A commit status as Gitea sends it: the state travels under `status`, not
- * `state`. Read as `state` here, every release read as "Checking" and every
- * check as none (the owner's Git tab, 2026-09-17, on a release the broker had
- * approved an hour before).
- */
-interface GiteaCommitStatusWire extends Omit<GiteaCommitStatus, "state"> {
-  readonly status?: GiteaCommitStatus["state"] | undefined;
-  readonly state?: GiteaCommitStatus["state"] | undefined;
-}
-
-function commitStatusFromWire(wire: GiteaCommitStatusWire): GiteaCommitStatus {
-  const { status, state, ...rest } = wire;
-  return { ...rest, state: state ?? status ?? "pending" };
 }
 
 export interface GiteaClientOptions {
@@ -199,31 +160,8 @@ export interface GiteaClient {
   getRepository(owner: string, repo: string): Promise<GiteaRepository | undefined>;
   /** Every repository this person has access to, page by page. */
   listUserRepositories(): Promise<ReadonlyArray<GiteaRepository>>;
-  /** `undefined` when the branch is not there — a group repo with no `main` yet. */
-  getBranch(owner: string, repo: string, branch: string): Promise<GiteaBranch | undefined>;
-
-  createTag(
-    owner: string,
-    repo: string,
-    input: {
-      readonly tag: string;
-      readonly target: string;
-      readonly message?: string | undefined;
-    },
-  ): Promise<void>;
-
   /** One page, Gitea's default length; newest first, as Gitea orders them. */
   listTags(owner: string, repo: string): Promise<ReadonlyArray<GiteaTag>>;
-  /** When an annotated tag was made, from its tagger; `undefined` where it says none. */
-  tagDate(owner: string, repo: string, tagSha: string): Promise<string | undefined>;
-  /** Every tag, page by page; newest first, as Gitea orders them. */
-  listAllTags(owner: string, repo: string): Promise<ReadonlyArray<GiteaTag>>;
-
-  listCommitStatuses(
-    owner: string,
-    repo: string,
-    sha: string,
-  ): Promise<ReadonlyArray<GiteaCommitStatus>>;
 
   /**
    * A branch's commits, newest first — the spine a group's history is drawn on.
@@ -262,13 +200,11 @@ export function createGiteaClient(options: GiteaClientOptions): GiteaClient {
   const base = `${options.origin.trim().replace(/\/+$/u, "")}${API_PREFIX}`;
   const tokenOf = () => (typeof options.token === "function" ? options.token() : options.token);
 
-  /** Sends one request and reads its answer with `answer`, both inside a read's deadline. */
+  /** Reads one path and its answer with `answer`, both inside a read's deadline. */
   async function send<T>(
     input: {
-      readonly method: string;
       readonly path: string;
       readonly query?: Readonly<Record<string, string | number | undefined>> | undefined;
-      readonly body?: unknown;
       readonly signal?: AbortSignal | undefined;
     },
     answer: (response: Response) => Promise<T>,
@@ -278,21 +214,11 @@ export function createGiteaClient(options: GiteaClientOptions): GiteaClient {
       if (value !== undefined) query.set(key, String(value));
     }
     const suffix = query.size > 0 ? `?${query.toString()}` : "";
-    const caller = input.signal ?? options.signal;
-    // A write Gitea is slow to answer may still land: ending it would report a merge or a tag as
-    // failed that then exists. Only a read has a deadline.
-    const { signal, done } =
-      input.method === "GET" ? withDeadline(caller) : { signal: caller, done: () => undefined };
+    const { signal, done } = withDeadline(input.signal ?? options.signal);
     try {
       const response = await options.fetch(`${base}${input.path}${suffix}`, {
-        method: input.method,
-        headers: {
-          authorization: `Bearer ${tokenOf()}`,
-          accept: "application/json",
-          ...(input.body === undefined ? {} : { "content-type": "application/json" }),
-        },
-        ...(input.body === undefined ? {} : { body: JSON.stringify(input.body) }),
-        ...(signal === undefined ? {} : { signal }),
+        headers: { authorization: `Bearer ${tokenOf()}`, accept: "application/json" },
+        signal,
       });
       return await answer(response);
     } finally {
@@ -337,11 +263,6 @@ export function createGiteaClient(options: GiteaClientOptions): GiteaClient {
       return (await response.json()) as T;
     });
 
-  const nothing = (input: Request, what: string): Promise<void> =>
-    send(input, async (response) => {
-      if (!response.ok) await fail(response, what);
-    });
-
   /**
    * Every page of a list, in order, until one comes back short. Gitea caps a
    * page at its own maximum (50 by default) whatever `limit` asks for, so a
@@ -364,69 +285,26 @@ export function createGiteaClient(options: GiteaClientOptions): GiteaClient {
     origin: options.origin,
 
     getOrganization: (slug) =>
-      optional<GiteaOrganization>({ method: "GET", path: `/orgs/${enc(slug)}` }, "read the group"),
+      optional<GiteaOrganization>({ path: `/orgs/${enc(slug)}` }, "read the group"),
 
     getRepository: (owner, repo) =>
       optional<GiteaRepository>(
-        { method: "GET", path: `/repos/${enc(owner)}/${enc(repo)}` },
+        { path: `/repos/${enc(owner)}/${enc(repo)}` },
         "read the repository",
       ),
 
     listUserRepositories: () =>
-      paged<GiteaRepository>({ method: "GET", path: "/user/repos" }, "list your repositories"),
-
-    getBranch: (owner, repo, branch) =>
-      optional<GiteaBranch>(
-        { method: "GET", path: `/repos/${enc(owner)}/${enc(repo)}/branches/${enc(branch)}` },
-        "read the branch",
-      ),
-
-    createTag: (owner, repo, input) =>
-      nothing(
-        {
-          method: "POST",
-          path: `/repos/${enc(owner)}/${enc(repo)}/tags`,
-          body: {
-            tag_name: input.tag,
-            target: input.target,
-            ...(input.message === undefined ? {} : { message: input.message }),
-          },
-        },
-        "create the tag",
-      ),
+      paged<GiteaRepository>({ path: "/user/repos" }, "list your repositories"),
 
     listTags: (owner, repo) =>
       json<ReadonlyArray<GiteaTag>>(
-        { method: "GET", path: `/repos/${enc(owner)}/${enc(repo)}/tags` },
+        { path: `/repos/${enc(owner)}/${enc(repo)}/tags` },
         "list the tags",
       ),
-
-    tagDate: async (owner, repo, tagSha) =>
-      (
-        await json<{ readonly tagger?: { readonly date?: string | undefined } | undefined }>(
-          { method: "GET", path: `/repos/${enc(owner)}/${enc(repo)}/git/tags/${enc(tagSha)}` },
-          "read the tag",
-        )
-      ).tagger?.date,
-
-    listAllTags: (owner, repo) =>
-      paged<GiteaTag>(
-        { method: "GET", path: `/repos/${enc(owner)}/${enc(repo)}/tags` },
-        "list the tags",
-      ),
-
-    listCommitStatuses: async (owner, repo, sha) =>
-      (
-        await json<ReadonlyArray<GiteaCommitStatusWire>>(
-          { method: "GET", path: `/repos/${enc(owner)}/${enc(repo)}/commits/${enc(sha)}/statuses` },
-          "list the commit statuses",
-        )
-      ).map(commitStatusFromWire),
 
     listCommits: async (owner, repo, listOptions) => {
       const answer = await optional<ReadonlyArray<GiteaListCommitWire>>(
         {
-          method: "GET",
           path: `/repos/${enc(owner)}/${enc(repo)}/commits`,
           query: {
             ...(listOptions?.ref === undefined ? {} : { sha: listOptions.ref }),
@@ -446,7 +324,6 @@ export function createGiteaClient(options: GiteaClientOptions): GiteaClient {
     commitDetail: async (owner, repo, sha) => {
       const answer = await optional<GiteaCommitDetailWire>(
         {
-          method: "GET",
           // Gitea carries one commit under `git/commits`; `/commits/{sha}` is
           // GitHub's shape and answers 404 here (measured on 1.27.2,
           // 2026-09-20). `files` and `stats` come back with it when asked for.

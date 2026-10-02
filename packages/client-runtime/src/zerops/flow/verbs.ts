@@ -10,9 +10,6 @@
  */
 import type { FlowVerb } from "../projectFlow.ts";
 
-/** One part of a group's Gitea half: the group repo's tags. */
-export type ForgeScope = { readonly kind: "tags" };
-
 export interface FlowInvalidation {
   /** Whether the application's releases are read again. */
   readonly releases: boolean;
