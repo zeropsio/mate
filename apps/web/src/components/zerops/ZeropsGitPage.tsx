@@ -7,8 +7,8 @@
  * other surface names it; under it a row per repository with how many changes are open; under
  * each, the changes themselves, newest first.
  *
- * Everything on it is HQ's: each application's repositories (`useZeropsAppRepos`) and the changes
- * open on them, down its stream (the flow). A change's title opens the change's own page, with
+ * Everything on it is HQ's, as the flow holds it: each application's repositories, read with its
+ * releases (`useZeropsAppReleases`), and the changes open on them, down its stream. A change's title opens the change's own page, with
  * the same word and the same colour its row wears on the projects screen and in the left menu (the
  * owner, 2026-09-19: "all pages are unified in how they look work feel have ux and abilities"). A
  * repository's name opens nothing: there is no web git browser to open it in until zitweb.
@@ -24,7 +24,6 @@ import { useMemo } from "react";
 import { StatusDot } from "./primitives";
 import { useZeropsProjectFlow } from "~/zerops/projectFlowContext";
 import { useChangeOffers } from "~/zerops/useChangeOffers";
-import { useZeropsAppRepos } from "~/zerops/useZeropsAppRepos";
 import { useZeropsRegistry } from "~/zerops/useZeropsRegistry";
 import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
 import { ZeropsSessionAccountControl } from "./landing/ZeropsAccountControl";
@@ -142,20 +141,15 @@ export function ZeropsGitPage() {
           name: group.name,
           read: offersOf(group.groupId)?.read,
           changes: groupFlow?.changesKnown === true ? groupFlow.pullRequests : undefined,
+          repositories: groupFlow?.repos,
+          failure: flow.releaseFailures.get(group.groupId),
         };
       }),
-    [flow.flows, offersOf, registry.registry.groups],
+    [flow.flows, flow.releaseFailures, offersOf, registry.registry.groups],
   );
-  const readable = useMemo(
-    () => apps.filter((app) => app.read === true).map((app) => app.appId),
-    [apps],
-  );
-  const { repos, failures } = useZeropsAppRepos(readable);
   const state = gitPageState({
     appsKnown: !registry.loading,
     apps,
-    repos,
-    failures,
     mateName: (projectId) => flow.mateNames.get(projectId),
   });
   const scoped =

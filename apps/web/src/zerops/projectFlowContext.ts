@@ -140,6 +140,11 @@ export interface ZeropsProjectFlowValue {
   readonly signInTrouble: string | null;
   readonly flows: ReadonlyMap<string, ZeropsProjectFlow>;
   /**
+   * Why HQ's last read of an application's releases and repositories did not answer, by its id;
+   * what was read before stands in its flow. Nothing while the account's access lapses.
+   */
+  readonly releaseFailures: ReadonlyMap<string, string>;
+  /**
    * What each Zerops project's stop runs, by project id — the platform's
    * answer, read whether or not Gitea is. A project missing here is unread.
    */

@@ -103,6 +103,7 @@ import { useZeropsSession } from "./ZeropsSessionProvider";
 
 const EMPTY_FLOWS: ReadonlyMap<string, ZeropsProjectFlow> = new Map();
 const EMPTY_SLUGS: ReadonlyMap<string, string> = new Map();
+const NO_FAILURES: ReadonlyMap<string, string> = new Map();
 /** How long a verb whose call landed stays pending while the flow has not read its effect back. */
 export const HELD_VERB_MS = 30_000;
 /** What a second press of a verb that is still running says: the first one is the one that counts. */
@@ -1099,6 +1100,7 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
       readable,
       signInTrouble,
       flows: lapsed ? EMPTY_FLOWS : flows,
+      releaseFailures: lapsed ? NO_FAILURES : releaseFailures,
       deployments,
       slugs: lapsed ? EMPTY_SLUGS : slugs,
       mateNames,
@@ -1124,6 +1126,7 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
       readable,
       redeploy,
       release,
+      releaseFailures,
       rollBack,
       signInTrouble,
       signedIn,

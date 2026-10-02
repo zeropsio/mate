@@ -558,6 +558,34 @@ describe("ZeropsProjectFlowProvider", () => {
     });
   });
 
+  it("says why HQ did not answer an application's releases and repositories, but not while access lapses", async () => {
+    released.failures = new Map([["g1", "HQ is not answering right now."]]);
+    installTestDom();
+    const { createRoot } = await import("react-dom/client");
+    const seen: Array<ZeropsProjectFlowValue> = [];
+
+    function Probe() {
+      seen.push(useZeropsProjectFlow());
+      return null;
+    }
+
+    const root = createRoot(document.createElement("div") as unknown as Element);
+    await act(async () => {
+      root.render(createElement(ZeropsProjectFlowProvider, null, createElement(Probe)));
+    });
+    expect(seen.at(-1)?.releaseFailures.get("g1")).toBe("HQ is not answering right now.");
+
+    access.account = { kind: "withheld", reason: "access-lapsed", cause: null };
+    await act(async () => {
+      root.render(createElement(ZeropsProjectFlowProvider, null, createElement(Probe)));
+    });
+    expect(seen.at(-1)?.releaseFailures.size).toBe(0);
+
+    await act(async () => {
+      root.unmount();
+    });
+  });
+
   // DESIGN M7: withholding is not loss. A project the grant withholds alone keeps its stop, from
   // HQ's record, so its tier is never offered as missing again.
   it("a project the grant withholds alone keeps its stop, and its tier is not asked for", async () => {

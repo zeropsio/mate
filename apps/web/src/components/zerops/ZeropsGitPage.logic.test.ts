@@ -31,20 +31,15 @@ const app = (over: Partial<GitPageApp> = {}): GitPageApp => ({
   name: "Todo",
   read: true,
   changes: [OPEN],
+  repositories: [{ name: "appdev" }, { name: "group" }],
+  failure: undefined,
   ...over,
 });
 
-const state = (input: {
-  readonly apps: ReadonlyArray<GitPageApp>;
-  readonly repos?: ReadonlyMap<string, ReadonlyArray<{ readonly name: string }>>;
-  readonly failures?: ReadonlyMap<string, string>;
-  readonly appsKnown?: boolean;
-}) =>
+const state = (input: { readonly apps: ReadonlyArray<GitPageApp>; readonly appsKnown?: boolean }) =>
   gitPageState({
     appsKnown: input.appsKnown ?? true,
     apps: input.apps,
-    repos: input.repos ?? new Map([["a-todo", [{ name: "appdev" }, { name: "group" }]]]),
-    failures: input.failures ?? new Map(),
     mateName: (projectId) => (projectId === "p-vera" ? "Vera" : undefined),
   });
 
@@ -67,7 +62,10 @@ describe("gitPageState — what the Git page says (SPEC §5.3)", () => {
   it.each([
     ["the applications are not known yet", { appsKnown: false }],
     ["HQ's rule has not been asked", { apps: [app({ read: undefined })] }],
-    ["an application's repositories are on their way", { repos: new Map() }],
+    [
+      "an application's repositories are on their way",
+      { apps: [app({ repositories: undefined })] },
+    ],
     ["an application's changes are not told yet", { apps: [app({ changes: undefined })] }],
   ] as const)("says nothing while %s", (_case, over) => {
     expect(state({ apps: [app()], ...over })).toEqual({ kind: "unread", failure: null });
@@ -84,8 +82,15 @@ describe("gitPageState — what the Git page says (SPEC §5.3)", () => {
 
   it("names why a read did not answer, beside what was read", () => {
     const said = state({
-      apps: [app(), app({ appId: "a-crm", name: "CRM" })],
-      failures: new Map([["a-crm", "HQ is not answering right now."]]),
+      apps: [
+        app(),
+        app({
+          appId: "a-crm",
+          name: "CRM",
+          repositories: undefined,
+          failure: "HQ is not answering right now.",
+        }),
+      ],
     });
     expect(said).toMatchObject({ kind: "read", failure: "HQ is not answering right now." });
     expect(said.kind === "read" && said.apps.map((entry) => entry.name)).toEqual(["Todo"]);
@@ -94,10 +99,26 @@ describe("gitPageState — what the Git page says (SPEC §5.3)", () => {
   it("names why it did not answer instead of an empty page, before anything was read", () => {
     expect(
       state({
-        apps: [app()],
-        repos: new Map(),
-        failures: new Map([["a-todo", "HQ is not answering right now."]]),
+        apps: [app({ repositories: undefined, failure: "HQ is not answering right now." })],
       }),
     ).toEqual({ kind: "unread", failure: "HQ is not answering right now." });
+  });
+
+  // The flow reads every application's releases and repositories, the ones the page leaves out
+  // too: why one of those did not answer is not this page's to say.
+  it("names no failure of an application whose changes the person may not read", () => {
+    const said = state({
+      apps: [
+        app(),
+        app({
+          appId: "a-crm",
+          name: "CRM",
+          read: false,
+          repositories: undefined,
+          failure: "You can't see this application's changes.",
+        }),
+      ],
+    });
+    expect(said).toMatchObject({ kind: "read", failure: null });
   });
 });
