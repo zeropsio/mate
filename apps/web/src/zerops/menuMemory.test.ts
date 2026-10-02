@@ -46,6 +46,7 @@ const PULL: FlowPullRequest = {
   author: "nova-bot",
   url: "https://git.example/app/pulls/14",
   mergeability: "mergeable",
+  behind: false,
   merged: false,
   mergedAt: undefined,
   headSha: "abc123",

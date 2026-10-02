@@ -64,6 +64,7 @@ function change(
     author: undefined,
     url: "https://hq.example/changes/g1/api/12",
     mergeability,
+    behind: false,
     merged: false,
     mergedAt: undefined,
     state: "open",

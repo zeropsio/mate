@@ -13,6 +13,7 @@ function pull(over: Partial<FlowPullRequest> = {}): FlowPullRequest {
     author: "mate-p-theo",
     url: undefined,
     mergeability: "mergeable",
+    behind: false,
     merged: false,
     mergedAt: undefined,
     headSha: "abc",

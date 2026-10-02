@@ -27,8 +27,7 @@ function change(over: Partial<ChangeReviewInput> = {}): ChangeReviewInput {
       mergeability: "mergeable",
       merged: false,
       mergedAt: undefined,
-      mergeBase: "mb",
-      baseSha: "mb",
+      behind: false,
     },
     mateName: "Nova",
     readout: "read",
@@ -94,12 +93,12 @@ describe("changeReview: the verdict comes first (R2)", () => {
     ],
     [
       "behind main, and it still merges cleanly",
-      { pull: pull({ mergeBase: "mb", baseSha: "newer" }), behindBy: 2 },
+      { pull: pull({ behind: true }) },
       {
         state: "behind-clean",
         tone: "attention",
         title: "Behind main",
-        why: "2 changes landed on main since Nova branched · it still merges cleanly",
+        why: "main moved on since Nova branched · it still merges cleanly",
       },
     ],
     [
@@ -153,7 +152,7 @@ describe("changeReview: the verdict comes first (R2)", () => {
     ],
     [
       "a branch main moved past",
-      { pull: pull({ baseSha: "newer" }) },
+      { pull: pull({ behind: true }) },
       "update it",
       "Bring it up to date with main, check it still works, and push.",
     ],
@@ -194,8 +193,8 @@ describe("changeReview: the button says what will happen (R5)", () => {
     [
       // Amber: still pressable, never pressed for the person — no focus, no ⌘↵.
       "behind main but clean",
-      { pull: pull({ baseSha: "newer" }), behindBy: 2 },
-      "Squash-merges 1 commit into main, on top of 2 changes it wasn't checked with. Production isn't touched until you release.",
+      { pull: pull({ behind: true }) },
+      "Squash-merges 1 commit into main, on top of changes it wasn't checked with. Production isn't touched until you release.",
       { enabled: true, safe: false },
     ],
   ])("%s", (_name, over, consequence, primary) => {
@@ -927,8 +926,7 @@ describe("changeReview: Merge takes only a head whose change was shown", () => {
   it("keeps no keys for a change behind main while it is read: it never takes them", () => {
     const review = changeReview(
       change({
-        pull: pull({ mergeBase: "old", baseSha: "new" }),
-        behindBy: 2,
+        pull: pull({ behind: true }),
         readout: "reading",
       }),
     );

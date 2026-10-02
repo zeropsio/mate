@@ -396,15 +396,15 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
     stage: props.environments.some((entry) => entry.tier === "stage"),
   };
   const model = changeReview({
-    // How it merges, and where `main` stands against it, are HQ's detail once it is read.
+    // How it merges, and whether `main` moved on under it, are its record's until HQ's detail of it
+    // is read, and the detail's after.
     pull:
       read === undefined
         ? pull
         : {
             ...pull,
             mergeability: read.mergeability,
-            mergeBase: read.mergeBase,
-            baseSha: read.mainHead,
+            behind: read.behind,
           },
     mateName: mate?.name,
     readout: readout.kind === "read" ? "read" : readout.kind === "failed" ? "failed" : "reading",

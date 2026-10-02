@@ -187,8 +187,8 @@ export interface ChangeReviewInput {
     readonly mergedAt: string | undefined;
     /** `closed` for one Gitea closed — merged, or never. */
     readonly state?: string | undefined;
-    readonly mergeBase?: string | undefined;
-    readonly baseSha?: string | undefined;
+    /** Whether `main` has moved on past the commit it was cut from. */
+    readonly behind: boolean;
   };
   /** The Mate that wrote it; `undefined` for a person's own branch. */
   readonly mateName: string | undefined;
@@ -210,8 +210,6 @@ export interface ChangeReviewInput {
         readonly by: { readonly subject: string; readonly at?: string | undefined } | undefined;
       }
     | undefined;
-  /** How many changes landed on `main` since the branch was cut, where read. */
-  readonly behindBy?: number | undefined;
   /** Where `main` goes next: a production a release puts it in front of, a stage that follows it. */
   readonly downstream: { readonly production: boolean; readonly stage: boolean };
   /** Once merged: how many changes wait for production now, and what production runs. */
@@ -234,17 +232,14 @@ export interface ChangeReviewInput {
 function squashSentence(
   pull: ChangeReviewInput["pull"],
   commits: number | undefined,
-  behindBy: number | undefined,
+  behind: boolean,
   unshown: boolean,
 ): string {
   const what =
     commits === undefined ? "it" : commits === 1 ? "1 commit" : `${String(commits)} commits`;
   const asOne = commits !== undefined && commits > 1 ? " as one" : "";
   const unseen = unshown ? " without its files shown" : "";
-  const onTop =
-    behindBy === undefined || behindBy === 0
-      ? ""
-      : `, on top of ${count(behindBy, "change", "changes")} it wasn't checked with`;
+  const onTop = behind ? ", on top of changes it wasn't checked with" : "";
   return `Squash-merges ${what} into ${pull.baseBranch}${asOne}${unseen}${onTop}.`;
 }
 
@@ -413,20 +408,14 @@ function changeVerdictOf(input: ChangeReviewInput): {
 
   const commits =
     input.commits === undefined ? undefined : count(input.commits, "commit", "commits");
-  const moved =
-    pull.mergeBase !== undefined && pull.baseSha !== undefined && pull.mergeBase !== pull.baseSha;
-  if (moved) {
-    const landed =
-      input.behindBy === undefined || input.behindBy === 0
-        ? `${base} moved on`
-        : `${count(input.behindBy, "change", "changes")} landed on ${base}`;
+  if (pull.behind) {
     return {
       enabled: true,
       verdict: {
         state: "behind-clean",
         tone: "attention",
         title: `Behind ${base}`,
-        why: `${landed} since ${who} branched · it still merges cleanly`,
+        why: `${base} moved on since ${who} branched · it still merges cleanly`,
         fix: {
           verb: "update it",
           problem: {
@@ -519,7 +508,7 @@ export function changeReview(input: ChangeReviewInput): ReviewModel {
     squashSentence(
       pull,
       input.commits,
-      verdict.state === "behind-clean" ? input.behindBy : undefined,
+      verdict.state === "behind-clean",
       input.readout === "failed",
     ),
     afterMain(input),

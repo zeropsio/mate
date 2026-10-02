@@ -34,6 +34,7 @@ const PULL: FlowPullRequest = {
   author: "mate-p-nova",
   url: undefined,
   mergeability: "mergeable",
+  behind: false,
   merged: false,
   mergedAt: undefined,
   headSha: "abc",

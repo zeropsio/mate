@@ -591,6 +591,7 @@ const pull = (number: number, overrides: Partial<FlowPullRequest> = {}): FlowPul
   author: "mate-crm-dev",
   url: `https://gitea.example/crm/appdev/pulls/${number}`,
   mergeability: "mergeable",
+  behind: false,
   merged: false,
   mergedAt: undefined,
   headSha: "abc",

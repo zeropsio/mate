@@ -505,6 +505,7 @@ function pull(input: Partial<FlowPullRequest> & { number: number }): FlowPullReq
     author: undefined,
     url: "https://gitea.example/links/appdev/pulls/1",
     mergeability: "mergeable",
+    behind: false,
     merged: false,
     mergedAt: undefined,
     headSha: "3f9c1b2",

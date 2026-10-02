@@ -13,7 +13,7 @@
  */
 import type { ChangeDetailResponse, ChangeFile } from "@t3tools/shared/hqChanges";
 
-import type { MergeabilityKind } from "./changeMergeability.ts";
+import { mergeabilityKindOf, type MergeabilityKind } from "./changeMergeability.ts";
 import { parseChangeDiff, type ChangeDiffFile } from "./changeDiff.ts";
 
 /** A file it changes, as its row draws it. */
@@ -42,9 +42,8 @@ export interface ChangeReadout {
   readonly mergeability: MergeabilityKind;
   /** The files it conflicts with `main` in; none named for a change that shares no history. */
   readonly conflict: ReadonlyArray<string>;
-  /** `main`'s head as read, and the change's merge base with it: past it, `main` moved on. */
-  readonly mainHead: string | undefined;
-  readonly mergeBase: string | undefined;
+  /** Whether `main`'s head as read is past the change's merge base with it: `main` moved on. */
+  readonly behind: boolean;
 }
 
 /** Whether the change adds the file or deletes it, as its patch's header says; else it edits it. */
@@ -54,23 +53,6 @@ function statusOf(file: ChangeFile): ChangeReadoutFile["status"] {
   if (/^new file mode /mu.test(header)) return "added";
   if (/^deleted file mode /mu.test(header)) return "deleted";
   return "modified";
-}
-
-function mergeabilityOf(
-  mergeability: ChangeDetailResponse["mergeability"],
-): Pick<ChangeReadout, "mergeability" | "conflict"> {
-  switch (mergeability.kind) {
-    case "clean":
-      return { mergeability: "mergeable", conflict: [] };
-    case "conflict":
-      return { mergeability: "conflicting", conflict: mergeability.paths };
-    case "unrelated":
-      return { mergeability: "conflicting", conflict: [] };
-    case "empty":
-    case "already_merged":
-    case "no_change":
-      return { mergeability: "empty", conflict: [] };
-  }
 }
 
 export function changeReadout(detail: ChangeDetailResponse): ChangeReadout {
@@ -89,8 +71,9 @@ export function changeReadout(detail: ChangeDetailResponse): ChangeReadout {
     filesCut: detail.filesTruncated,
     diff,
     commits: detail.commits.map(({ sha, subject, at }) => ({ sha, subject, at })),
-    ...mergeabilityOf(detail.mergeability),
-    mainHead: detail.mainHead ?? undefined,
-    mergeBase: detail.mergeBase ?? undefined,
+    mergeability: mergeabilityKindOf(detail.mergeability.kind),
+    conflict: detail.mergeability.kind === "conflict" ? detail.mergeability.paths : [],
+    behind:
+      detail.mainHead !== null && detail.mergeBase !== null && detail.mainHead !== detail.mergeBase,
   };
 }

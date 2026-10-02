@@ -125,6 +125,7 @@ function pull(over: Partial<FlowPullRequest> = {}): FlowPullRequest {
     author: "mate-p-nova",
     url: `${HARNESS_HQ}/changes/g-snap/appdev/2`,
     mergeability: "mergeable",
+    behind: false,
     merged: false,
     mergedAt: undefined,
     headSha: HEAD,

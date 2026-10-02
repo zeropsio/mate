@@ -131,11 +131,12 @@ describe("changeReadout: a change's review as HQ's detail reads it", () => {
     expect(read.conflict).toEqual(conflict);
   });
 
-  it("carries main's head and its merge base with it, which tell a change behind main", () => {
-    const behind = changeReadout(detail({ mergeBase: BASE }));
-    expect([behind.mergeBase, behind.mainHead]).toEqual([BASE, MAIN]);
-    const unborn = changeReadout(detail({ mergeBase: null, mainHead: null }));
-    expect([unborn.mergeBase, unborn.mainHead]).toEqual([undefined, undefined]);
+  it.each([
+    ["main moved past its merge base", { mergeBase: BASE }, true],
+    ["main at its merge base", {}, false],
+    ["nothing to compare: no head, or no main yet", { mergeBase: null, mainHead: null }, false],
+  ] as const)("is behind main where %s", (_name, over, behind) => {
+    expect(changeReadout(detail(over)).behind).toBe(behind);
   });
 
   it("lists its commits newest first, as HQ does", () => {

@@ -442,6 +442,7 @@ function change(number: number, title: string, mateProjectId: string): FlowPullR
     author: undefined,
     url: undefined,
     mergeability: "mergeable",
+    behind: false,
     merged: false,
     mergedAt: undefined,
     headSha: "3f9c1b2",

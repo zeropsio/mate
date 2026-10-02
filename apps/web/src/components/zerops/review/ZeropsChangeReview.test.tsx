@@ -86,6 +86,7 @@ function merged(over: Partial<FlowPullRequest> = {}): FlowPullRequest {
     author: "ada",
     url: undefined,
     mergeability: "mergeable",
+    behind: false,
     merged: true,
     mergedAt: new Date(NOW).toISOString(),
     headSha: "c".repeat(40),

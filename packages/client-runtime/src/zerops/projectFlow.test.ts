@@ -41,6 +41,7 @@ function row(over: Partial<FlowPullRequest> = {}): FlowPullRequest {
     author: undefined,
     url: "https://hq.example/changes/g1/appdev/4",
     mergeability: "mergeable",
+    behind: false,
     merged: false,
     mergedAt: undefined,
     state: "open",
@@ -83,7 +84,8 @@ describe("a Mate's changes in HQ, as the flow shows them", () => {
   const flow = (changes: ReadonlyArray<HqChange>) => flowChanges({ changes, hqAddress: `${HQ}/` });
 
   it("draws an open change its Mate pushed to as a row, at HQ's own address", () => {
-    expect(flow([change()]).pullRequests).toEqual([
+    const pushed = change({ updatedAt: "2026-10-02T09:30:00.000Z" });
+    expect(flow([pushed]).pullRequests).toEqual([
       {
         repository: "appdev",
         number: 3,
@@ -92,18 +94,33 @@ describe("a Mate's changes in HQ, as the flow shows them", () => {
         mateProjectId: VERA,
         author: undefined,
         url: `${HQ}/changes/g1/appdev/3`,
-        mergeability: "checking",
+        mergeability: "mergeable",
+        behind: false,
         merged: false,
         mergedAt: undefined,
         state: "open",
         headSha: SHA,
         baseBranch: "main",
         line: "appdev #3",
-        updatedAt: "2026-10-02T09:00:00.000Z",
+        // Its last push, edit of its words, or comment.
+        updatedAt: "2026-10-02T09:30:00.000Z",
         headBranch: `mate/${VERA}/3`,
         description: undefined,
       },
     ]);
+  });
+
+  it.each([
+    ["clean", "mergeable"],
+    ["conflict", "conflicting"],
+    ["empty", "empty"],
+    ["unknown", "checking"],
+  ] as const)("names how it merges as HQ last judged it: %s", (said, word) => {
+    expect(flow([change({ mergeability: said })]).pullRequests[0]?.mergeability).toBe(word);
+  });
+
+  it("is behind main where HQ judged main moved past it", () => {
+    expect(flow([change({ behind: true })]).pullRequests[0]?.behind).toBe(true);
   });
 
   it("carries its description where its Mate wrote one", () => {
@@ -124,6 +141,7 @@ describe("a Mate's changes in HQ, as the flow shows them", () => {
         mergedSha: "m".repeat(39) + String(number),
         landedHead: SHA,
         mergedAt,
+        updatedAt: mergedAt,
       });
     const { pullRequests, merged } = flow([
       landed(1, "2026-10-02T10:00:00.000Z"),

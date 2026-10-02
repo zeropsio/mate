@@ -269,6 +269,7 @@ export function changeFromMemory(change: RememberedChange): FlowPullRequest {
     author: change.author,
     url: change.url,
     mergeability: "checking",
+    behind: false,
     merged: false,
     mergedAt: undefined,
     headSha: undefined,

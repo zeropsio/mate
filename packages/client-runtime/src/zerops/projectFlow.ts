@@ -25,7 +25,7 @@ import type { ServiceStatusToneId } from "@t3tools/shared/brand";
 import { changeUrl, type HqChange } from "@t3tools/shared/hqChanges";
 
 import { pullRequestBlocked } from "./gitTab.ts";
-import type { MergeabilityKind } from "./changeMergeability.ts";
+import { mergeabilityKindOf, type MergeabilityKind } from "./changeMergeability.ts";
 
 export type FlowPullRequestKind = "code" | "recipe";
 
@@ -42,6 +42,8 @@ export interface FlowPullRequest {
   readonly url: string | undefined;
   /** HQ's word on whether it merges (`changeMergeability.ts`), never the app's. */
   readonly mergeability: MergeabilityKind;
+  /** Whether `main` has moved on past the commit it was cut from, as HQ judged with the above. */
+  readonly behind: boolean;
   /**
    * Whether it has already landed.
    *
@@ -106,8 +108,8 @@ export function flowChange(change: HqChange, hqAddress: string): FlowPullRequest
     mateProjectId: change.mateProjectId,
     author: undefined,
     url: changeUrl(hqAddress, change.appId, change.repo, change.number),
-    // HQ's record of a change does not say yet whether it merges: checking until it does.
-    mergeability: "checking",
+    mergeability: mergeabilityKindOf(change.mergeability),
+    behind: change.behind,
     merged,
     mergedAt: change.mergedAt ?? undefined,
     ...(merged && change.mergedSha !== null ? { mergeCommitSha: change.mergedSha } : {}),
@@ -116,7 +118,7 @@ export function flowChange(change: HqChange, hqAddress: string): FlowPullRequest
     baseBranch: FALLBACK_BASE,
     // Under its Mate the row does not say whose it is.
     line: `${change.repo} #${String(change.number)}`,
-    updatedAt: change.mergedAt ?? change.closedAt ?? change.openedAt,
+    updatedAt: change.updatedAt,
     headBranch: `mate/${change.mateProjectId}/${String(change.number)}`,
     description: change.body.trim().length === 0 ? undefined : change.body,
   };
