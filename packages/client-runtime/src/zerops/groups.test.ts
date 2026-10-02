@@ -690,10 +690,10 @@ describe("deriveZeropsGroups — creations under way", () => {
     },
     {
       case: "a creation not named yet stays pending beside a listed Mate of another name",
-      projects: [project("Todo - Otto", ["mate:g:aaa", "mate:bot:Otto"], "p-otto")],
+      projects: [project("Todo - Moss", ["mate:g:aaa", "mate:bot:Moss"], "p-moss")],
       births: [{ ...birth("aaa", "aaa", 1, { botName: "Wren" }), awaitingProject: true }],
       pending: { aaa: ["aaa"] },
-      environments: { aaa: ["p-otto"] },
+      environments: { aaa: ["p-moss"] },
     },
     {
       case: "a birth in a group nothing lists yet creates the group",
