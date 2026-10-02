@@ -91,8 +91,24 @@ export interface AttachInput {
   readonly environment?: { readonly name: string };
 }
 
-/** A stage's or a production's environment as a reader sees it. */
+/** A deploy of a service of an environment, as its record holds it (`deploys.ts`). */
+export interface DeployView {
+  readonly sha: string;
+  readonly state: "pending" | "deploying" | "live" | "failed";
+  /** Whose failure: the build's own (`job`, final) or HQ's (`refused`, asked again); none else. */
+  readonly failure: "job" | "refused" | null;
+  readonly message: string | null;
+  /** The platform's version and job it is read by: its log. */
+  readonly appVersionId: string | null;
+  readonly processId: string | null;
+  /** When it last changed, ISO 8601. */
+  readonly at: string;
+}
+
+/** A stage's or a production's environment as a reader of its application sees it. */
 export interface EnvironmentView {
+  readonly projectId: string;
+  readonly tier: "stage" | "production";
   readonly name: string;
   /** The branches it follows: a stage `main`, a production `release`. */
   readonly sources: ReadonlyArray<string>;
@@ -100,6 +116,12 @@ export interface EnvironmentView {
   readonly order: number;
   /** Whether HQ holds its deploy token (main E05); the token itself is never answered. */
   readonly keyHeld: boolean;
+  /** Per service, by its hostname: its newest deploy, and the newest that went live. */
+  readonly deploys: ReadonlyArray<{
+    readonly service: string;
+    readonly latest: DeployView;
+    readonly live: DeployView | null;
+  }>;
 }
 
 /** A Mate's state as the structure holds it: its record and its birth; its changes are `changes.ts`'. */
@@ -148,9 +170,12 @@ export interface StructureRead {
       readonly name: string;
       readonly kind: string;
       readonly mate: MateView | null;
-      /** A stage's or a production's environment. */
-      readonly environment?: EnvironmentView;
     }>;
+    /**
+     * Its stage and production, in the order they were declared, with their deploys: to whoever
+     * reads the application, as main's commit statuses went to whoever read its repositories.
+     */
+    readonly environments: ReadonlyArray<EnvironmentView>;
   }>;
 }
 
@@ -837,24 +862,79 @@ export const structureLayer = (options: {
               FROM hq_mate m
               WHERE NOT EXISTS (SELECT 1 FROM hq_app_project p WHERE p.project_id = m.project_id)
               ORDER BY m.seq`;
-            const environments = new Map(
-              (yield* sql<{
-                readonly project_id: string;
-                readonly name: string;
-                readonly sources: ReadonlyArray<string>;
-                readonly order: number;
-                readonly key_held: boolean;
-              }>`
-                SELECT e.project_id, e.name, e.sources,
-                       (rank() OVER (PARTITION BY e.app_id ORDER BY e.declared_seq))::int AS "order",
-                       t.project_id IS NOT NULL AS key_held
-                FROM hq_environment e LEFT JOIN hq_deploy_token t USING (project_id)`).map(
-                (row): [string, EnvironmentView] => [
-                  row.project_id,
-                  { name: row.name, sources: row.sources, order: row.order, keyHeld: row.key_held },
-                ],
-              ),
-            );
+            const environments = yield* sql<{
+              readonly project_id: string;
+              readonly app_id: string;
+              readonly tier: "stage" | "production";
+              readonly name: string;
+              readonly sources: ReadonlyArray<string>;
+              readonly order: number;
+              readonly key_held: boolean;
+            }>`
+              SELECT e.project_id, e.app_id::text AS app_id, e.tier, e.name, e.sources,
+                     (rank() OVER (PARTITION BY e.app_id ORDER BY e.declared_seq))::int AS "order",
+                     t.project_id IS NOT NULL AS key_held
+              FROM hq_environment e LEFT JOIN hq_deploy_token t USING (project_id)
+              ORDER BY e.declared_seq`;
+            const deploys = yield* sql<{
+              readonly project_id: string;
+              readonly service: string;
+              readonly live: boolean;
+              readonly sha: string;
+              readonly state: DeployView["state"];
+              readonly failure: DeployView["failure"];
+              readonly message: string | null;
+              readonly app_version_id: string | null;
+              readonly process_id: string | null;
+              readonly at: string;
+            }>`
+              SELECT * FROM (
+                SELECT DISTINCT ON (project_id, service) project_id, service, false AS live, sha,
+                       state, failure, message, app_version_id, process_id,
+                       to_char(updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS at
+                FROM hq_deploy ORDER BY project_id, service, created_at DESC
+              ) newest
+              UNION ALL
+              SELECT * FROM (
+                SELECT DISTINCT ON (project_id, service) project_id, service, true AS live, sha,
+                       state, failure, message, app_version_id, process_id,
+                       to_char(updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS at
+                FROM hq_deploy WHERE state = 'live' ORDER BY project_id, service, updated_at DESC
+              ) live
+              ORDER BY service`;
+            const deployView = (row: (typeof deploys)[number]): DeployView => ({
+              sha: row.sha,
+              state: row.state,
+              failure: row.failure,
+              message: row.message,
+              appVersionId: row.app_version_id,
+              processId: row.process_id,
+              at: row.at,
+            });
+            const environmentView = (row: (typeof environments)[number]): EnvironmentView => {
+              const of = deploys.filter((deploy) => deploy.project_id === row.project_id);
+              return {
+                projectId: row.project_id,
+                tier: row.tier,
+                name: row.name,
+                sources: row.sources,
+                order: row.order,
+                keyHeld: row.key_held,
+                deploys: of.flatMap((deploy) => {
+                  if (deploy.live) return [];
+                  const live = of.find(
+                    (candidate) => candidate.live && candidate.service === deploy.service,
+                  );
+                  return [
+                    {
+                      service: deploy.service,
+                      latest: deployView(deploy),
+                      live: live === undefined ? null : deployView(live),
+                    },
+                  ];
+                }),
+              };
+            };
             const names = new Map(view.projects.map((project) => [project.id, project.name]));
             const person = { kind: "person", userId } as const;
             const reads = (projectId: string) =>
@@ -882,16 +962,15 @@ export const structureLayer = (options: {
                   name: app.name,
                   projects: visible
                     .filter((row) => row.app_id === app.id)
-                    .map((row) => {
-                      const environment = environments.get(row.project_id);
-                      return {
-                        projectId: row.project_id,
-                        name: names.get(row.project_id) ?? "",
-                        kind: row.kind,
-                        mate: row.mate === null ? null : mateView(row.project_id, row.mate),
-                        ...(environment === undefined ? {} : { environment }),
-                      };
-                    }),
+                    .map((row) => ({
+                      projectId: row.project_id,
+                      name: names.get(row.project_id) ?? "",
+                      kind: row.kind,
+                      mate: row.mate === null ? null : mateView(row.project_id, row.mate),
+                    })),
+                  environments: environments
+                    .filter((row) => row.app_id === app.id)
+                    .map(environmentView),
                 }))
                 .filter(
                   (app) =>

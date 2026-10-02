@@ -7,7 +7,8 @@
  * - `POST /api/apps/:id/projects` `{ projectId, kind, mate?, environment? }`: attaches a project; a
  *   stage or a production is its application's environment, named `environment.name` or after
  *   its project (`environments.ts`).
- * - `GET /api/structure` → `{ apps }`, as the caller sees them in Zerops.
+ * - `GET /api/structure` → `{ apps }`, as the caller sees them in Zerops: each with its projects,
+ *   and its environments with their deploys.
  * - `GET /api/structure/ws?ticket=`: the same, then its changes, over a WebSocket (`stream.ts`);
  *   the ticket from `POST /api/stream-ticket` → `{ ticket, expiresIn }`.
  * - `PATCH /api/apps/:id` `{ name }` → the application.

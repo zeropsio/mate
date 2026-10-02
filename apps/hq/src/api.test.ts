@@ -74,6 +74,7 @@ describe("HQ API", () => {
                     },
                   },
                 ],
+                environments: [],
               },
             ],
           });
@@ -106,17 +107,28 @@ describe("HQ API", () => {
           ],
         );
         const read = (yield* call("GET", "/api/structure", { session })).body as {
-          readonly apps: ReadonlyArray<{ readonly projects: ReadonlyArray<unknown> }>;
+          readonly apps: ReadonlyArray<{
+            readonly projects: ReadonlyArray<unknown>;
+            readonly environments: ReadonlyArray<unknown>;
+          }>;
         };
-        assert.deepStrictEqual(read.apps[0]?.projects, [
-          {
-            projectId: "P_MATE",
-            name: "P_MATE",
-            kind: "production",
-            mate: null,
-            environment: { name: "live", sources: ["release"], order: 1, keyHeld: false },
-          },
-        ]);
+        assert.deepStrictEqual(
+          [read.apps[0]?.projects, read.apps[0]?.environments],
+          [
+            [{ projectId: "P_MATE", name: "P_MATE", kind: "production", mate: null }],
+            [
+              {
+                projectId: "P_MATE",
+                tier: "production",
+                name: "live",
+                sources: ["release"],
+                order: 1,
+                keyHeld: false,
+                deploys: [],
+              },
+            ],
+          ],
+        );
       }),
     );
 
@@ -167,12 +179,20 @@ describe("HQ API", () => {
         assert.deepStrictEqual(
           (
             read.body as {
-              readonly apps: ReadonlyArray<{
-                readonly projects: ReadonlyArray<{ readonly environment?: unknown }>;
-              }>;
+              readonly apps: ReadonlyArray<{ readonly environments: ReadonlyArray<unknown> }>;
             }
-          ).apps[0]?.projects[0]?.environment,
-          { name: "stage", sources: ["main"], order: 1, keyHeld: true },
+          ).apps[0]?.environments,
+          [
+            {
+              projectId: "P_MATE",
+              tier: "stage",
+              name: "stage",
+              sources: ["main"],
+              order: 1,
+              keyHeld: true,
+              deploys: [],
+            },
+          ],
         );
         assert.notInclude(new TextDecoder().decode(read.bytes), "key-stage");
       }),
@@ -360,7 +380,7 @@ describe("HQ API", () => {
           ).id;
           assert.deepStrictEqual(yield* owner.next("change"), {
             key: appId,
-            value: { id: appId, name: "Shop", projects: [] },
+            value: { id: appId, name: "Shop", projects: [], environments: [] },
           });
           yield* call("POST", `/api/apps/${appId}/projects`, {
             session,
@@ -379,6 +399,7 @@ describe("HQ API", () => {
                   mate: { ...mate, standupRequestedBy: null, closedOff: false },
                 },
               ],
+              environments: [],
             },
           });
           assert.deepStrictEqual(
@@ -398,7 +419,7 @@ describe("HQ API", () => {
           );
           assert.deepStrictEqual(yield* owner.next("change"), {
             key: appId,
-            value: { id: appId, name: "Shop", projects: [] },
+            value: { id: appId, name: "Shop", projects: [], environments: [] },
           });
           // Three pings answered: still open.
           yield* Effect.sleep(Duration.millis(1100));
@@ -453,7 +474,7 @@ describe("HQ API", () => {
           );
           assert.deepStrictEqual(yield* owner.next("change"), {
             key: appId,
-            value: { id: appId, name: "Store", projects: [] },
+            value: { id: appId, name: "Store", projects: [], environments: [] },
           });
 
           const moved = yield* call("PUT", "/api/projects/P_MATE/app", {
@@ -474,6 +495,7 @@ describe("HQ API", () => {
                   id: appId,
                   name: "Store",
                   projects: [{ projectId: "P_MATE", name: "P_MATE", kind: "mate", mate: adaView }],
+                  environments: [],
                 },
               },
             ],
@@ -490,7 +512,7 @@ describe("HQ API", () => {
             [yield* owner.next("change"), yield* owner.next("change")] as Array<object>,
             [
               { key: "ungrouped", value: lone },
-              { key: appId, value: { id: appId, name: "Store", projects: [] } },
+              { key: appId, value: { id: appId, name: "Store", projects: [], environments: [] } },
             ],
           );
           yield* owner.close;
@@ -530,13 +552,16 @@ describe("HQ API", () => {
           value: {
             id: appId,
             name: "Shop",
-            projects: [
+            projects: [{ projectId: "P_MATE", name: "P_MATE", kind: "stage", mate: null }],
+            environments: [
               {
                 projectId: "P_MATE",
-                name: "P_MATE",
-                kind: "stage",
-                mate: null,
-                environment: { name: "p-mate", sources: ["main"], order: 1, keyHeld: false },
+                tier: "stage",
+                name: "p-mate",
+                sources: ["main"],
+                order: 1,
+                keyHeld: false,
+                deploys: [],
               },
             ],
           },
@@ -561,7 +586,7 @@ describe("HQ API", () => {
         );
         assert.deepStrictEqual(yield* readerSocket.next("snapshot"), {
           ungrouped: [],
-          apps: [{ id: appId, name: "Shop", projects: [] }],
+          apps: [{ id: appId, name: "Shop", projects: [], environments: [] }],
           changes: { [appId]: [] },
         });
 

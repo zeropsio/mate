@@ -146,16 +146,48 @@ const reasonOf = <A, E extends { readonly _tag: string }>(effect: Effect.Effect<
 
 const encodeJson = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown));
 
-/** Each project of the application named `appName` by id, and its environment, as owner reads it. */
+/** An environment as a reader sees it, its key not held and nothing deployed. */
+const environmentRow = (
+  projectId: string,
+  tier: "stage" | "production",
+  name: string,
+  order: number,
+) => ({
+  projectId,
+  tier,
+  name,
+  sources: tier === "stage" ? ["main"] : ["release"],
+  order,
+  keyHeld: false,
+  deploys: [],
+});
+
+/**
+ * Each project of the application named `appName` by id, and its environment's record — its name,
+ * sources, order and whether its key is held — as owner reads it.
+ */
 const environmentsOf = (structure: Structure["Service"], appName: string) =>
-  Effect.map(structure.read("owner"), (read) =>
-    Object.fromEntries(
-      (read.apps.find((app) => app.name === appName)?.projects ?? []).map((project) => [
-        project.projectId,
-        project.environment,
-      ]),
-    ),
-  );
+  Effect.map(structure.read("owner"), (read) => {
+    const app = read.apps.find((candidate) => candidate.name === appName);
+    return Object.fromEntries(
+      (app?.projects ?? []).map((project) => {
+        const environment = app?.environments.find(
+          (candidate) => candidate.projectId === project.projectId,
+        );
+        return [
+          project.projectId,
+          environment === undefined
+            ? undefined
+            : {
+                name: environment.name,
+                sources: environment.sources,
+                order: environment.order,
+                keyHeld: environment.keyHeld,
+              },
+        ];
+      }),
+    );
+  });
 
 /** The refusal's code, or the success. */
 const outcome = <A, E extends { readonly _tag: string }>(effect: Effect.Effect<A, E>) =>
@@ -562,54 +594,25 @@ describe("structure", () => {
                 id: shop.id,
                 name: "Shop",
                 projects: [
-                  {
-                    projectId: "P_PROD",
-                    name: "name of P_PROD",
-                    kind: "production",
-                    mate: null,
-                    environment: {
-                      name: "name-of-p-prod",
-                      sources: ["release"],
-                      order: 1,
-                      keyHeld: false,
-                    },
-                  },
+                  { projectId: "P_PROD", name: "name of P_PROD", kind: "production", mate: null },
                   {
                     projectId: "P_MATE",
                     name: "name of P_MATE",
                     kind: "devstage",
                     mate: { ...mate, ...UNBORN },
                   },
-                  {
-                    projectId: "P_STAGE",
-                    name: "name of P_STAGE",
-                    kind: "stage",
-                    mate: null,
-                    environment: {
-                      name: "name-of-p-stage",
-                      sources: ["main"],
-                      order: 2,
-                      keyHeld: false,
-                    },
-                  },
+                  { projectId: "P_STAGE", name: "name of P_STAGE", kind: "stage", mate: null },
+                ],
+                environments: [
+                  environmentRow("P_PROD", "production", "name-of-p-prod", 1),
+                  environmentRow("P_STAGE", "stage", "name-of-p-stage", 2),
                 ],
               },
               {
                 id: team.id,
                 name: "Team",
                 projects: [
-                  {
-                    projectId: "P_TEAM",
-                    name: "name of P_TEAM",
-                    kind: "stage",
-                    mate: null,
-                    environment: {
-                      name: "name-of-p-team",
-                      sources: ["main"],
-                      order: 1,
-                      keyHeld: false,
-                    },
-                  },
+                  { projectId: "P_TEAM", name: "name of P_TEAM", kind: "stage", mate: null },
                   {
                     projectId: "P_OWNED",
                     name: "name of P_OWNED",
@@ -617,6 +620,7 @@ describe("structure", () => {
                     mate: { name: "Bo", face: "face-1", ...UNBORN },
                   },
                 ],
+                environments: [environmentRow("P_TEAM", "stage", "name-of-p-team", 1)],
               },
             ]);
           }),
@@ -1212,6 +1216,80 @@ describe("structure", () => {
             assert.notInclude(encodeJson(yield* structure.read("owner")), "key-stage");
           }),
         ),
+    );
+
+    // An application's environments and their deploys (SPEC §3.2b, main B26–B36) go to whoever
+    // reads the application, as main's commit statuses went to whoever read its repositories — its
+    // environment's project unseen or not. Per service, the newest deploy and the one live.
+    it.effect("reads an application's environments and their deploys to whoever reads it", () =>
+      withStructure(() =>
+        Effect.gen(function* () {
+          const structure = yield* Structure;
+          const sql = yield* SqlClient.SqlClient;
+          const shop = yield* structure.createApp("owner", "Shop");
+          yield* structure.attachProject("owner", shop.id, {
+            projectId: "P_MATE",
+            kind: "mate",
+            mate: { name: "Ada", face: "face-1" },
+          });
+          yield* structure.attachProject("owner", shop.id, {
+            projectId: "P_STAGE",
+            kind: "stage",
+            environment: { name: "stage" },
+          });
+          const [one, two, three] = ["1".repeat(40), "2".repeat(40), "3".repeat(40)] as const;
+          yield* sql`
+            INSERT INTO hq_deploy (project_id, service, sha, repo, state, failure, message,
+              app_version_id, process_id, created_at, updated_at)
+            VALUES
+              ('P_STAGE', 'web', ${one}, 'web', 'live', NULL, NULL, 'V1', 'J1',
+                now() - interval '3 minutes', now() - interval '2 minutes'),
+              ('P_STAGE', 'web', ${two}, 'web', 'failed', 'job', 'failed: Build failed', 'V2',
+                'J2', now() - interval '1 minute', now()),
+              ('P_STAGE', 'api', ${three}, 'api', 'pending', NULL, NULL, NULL, NULL, now(), now())`;
+          const read = (userId: string) =>
+            Effect.map(structure.read(userId), (structureRead) =>
+              structureRead.apps.map((app) => ({
+                projects: app.projects.map((project) => project.projectId),
+                environments: app.environments.map(({ projectId, deploys }) => ({
+                  projectId,
+                  deploys: deploys.map(({ service, latest, live }) => ({
+                    service,
+                    latest: [
+                      latest.sha,
+                      latest.state,
+                      latest.failure,
+                      latest.message,
+                      latest.processId,
+                    ],
+                    live: live === null ? null : [live.sha, live.appVersionId, typeof live.at],
+                  })),
+                })),
+              })),
+            );
+          const seen = [
+            {
+              projects: ["P_MATE"],
+              environments: [
+                {
+                  projectId: "P_STAGE",
+                  deploys: [
+                    { service: "api", latest: [three, "pending", null, null, null], live: null },
+                    {
+                      service: "web",
+                      latest: [two, "failed", "job", "failed: Build failed", "J2"],
+                      live: [one, "V1", "string"],
+                    },
+                  ],
+                },
+              ],
+            },
+          ];
+          // dev reads Shop through P_MATE, not its stage's project.
+          assert.deepStrictEqual(yield* read("dev"), seen);
+          assert.deepStrictEqual(yield* read("nobody"), []);
+        }),
+      ),
     );
 
     it.effect("a project gone from Zerops loses its Mate credential and its challenges", () =>

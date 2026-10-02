@@ -34,6 +34,7 @@ import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Redacted from "effect/Redacted";
 import * as Stream from "effect/Stream";
+import * as SubscriptionRef from "effect/SubscriptionRef";
 import * as Ref from "effect/Ref";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
 
@@ -58,6 +59,8 @@ export class Deploys extends Context.Service<
   {
     /** Every stage environment's wanted commits against what its services run (B22). */
     readonly catchUp: Effect.Effect<void, NotLeader>;
+    /** Ticks after every change of a deploy's record, starting with the current tick. */
+    readonly changes: Stream.Stream<number>;
   }
 >()("@t3tools/hq/deploys") {}
 
@@ -157,6 +160,8 @@ export const deploysLayer = (
       const pollEvery = options.pollEvery ?? Duration.seconds(10);
       const patience = options.patience ?? Duration.minutes(20);
       const patienceSeconds = Duration.toSeconds(patience);
+      const ticks = yield* SubscriptionRef.make(0);
+      const tick = SubscriptionRef.update(ticks, (n) => n + 1);
 
       /** Every stage environment following `main`, and the commit each of its runtimes is wanted at. */
       const wanted = Effect.gen(function* () {
@@ -240,7 +245,7 @@ export const deploysLayer = (
           (rows) => rows[0],
         );
 
-      /** The record of `target` now `state`, written by the leader. */
+      /** The record of `target` now `state`: written by the leader, told to the structure. */
       const record = (
         target: Target,
         row:
@@ -252,7 +257,8 @@ export const deploysLayer = (
             }
           | Ended,
       ) =>
-        leader.write(sql`
+        Effect.andThen(
+          leader.write(sql`
             INSERT INTO hq_deploy (project_id, service, sha, repo, state, failure, message,
               app_version_id, process_id, started_at)
             VALUES (${target.projectId}, ${target.service}, ${target.sha}, ${target.repo},
@@ -266,7 +272,9 @@ export const deploysLayer = (
               app_version_id = COALESCE(EXCLUDED.app_version_id, hq_deploy.app_version_id),
               process_id = COALESCE(EXCLUDED.process_id, hq_deploy.process_id),
               started_at = COALESCE(EXCLUDED.started_at, hq_deploy.started_at),
-              updated_at = now()`);
+              updated_at = now()`),
+          tick,
+        );
 
       const tokenOf = (projectId: string) =>
         Effect.map(
@@ -388,6 +396,7 @@ export const deploysLayer = (
               DELETE FROM hq_deploy
               WHERE project_id = ${target.projectId} AND service = ${target.service}
                 AND sha <> ${target.sha} AND state = 'pending'`);
+            yield* tick;
             const version = yield* deploy.createAppVersion(
               service.id,
               versionName("main", target.sha),
@@ -507,6 +516,7 @@ export const deploysLayer = (
             ? pass.value(true)
             : Effect.fail(new NotLeader({ reason: "standby" })),
         ),
+        changes: SubscriptionRef.changes(ticks),
       });
     }),
   );

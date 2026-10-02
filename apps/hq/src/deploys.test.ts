@@ -8,8 +8,10 @@ import { assert, describe, it } from "@effect/vitest";
 import * as Context from "effect/Context";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
+import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as Schedule from "effect/Schedule";
+import * as Stream from "effect/Stream";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
 
 import { activeCoreLayer, untilActive } from "../test/harness/activeCore.ts";
@@ -261,6 +263,21 @@ describe("deploys", () => {
             world.services[0]?.activeVersionId,
             [...world.appVersions.values()][1]?.id,
           );
+        }),
+      ),
+    );
+
+    // The structure's readers hear of every change of a deploy's record (`stream.ts`).
+    it.effect("ticks as a deploy's record changes", () =>
+      withDeploys(({ appId, tiers, commit, until }) =>
+        Effect.gen(function* () {
+          const heard = yield* Stream.runCollect(
+            (yield* Deploys).changes.pipe(Stream.take(3)),
+          ).pipe(Effect.forkChild);
+          tiers.set(`${appId}/stage`, stageTier(appId, [{ hostname: "web" }]));
+          yield* commit("web", { "zerops.yaml": ZEROPS_YAML });
+          yield* until(settled("live"));
+          assert.lengthOf(yield* Fiber.join(heard), 3);
         }),
       ),
     );
