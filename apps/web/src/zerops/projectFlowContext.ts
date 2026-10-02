@@ -15,6 +15,7 @@ import type {
   GroupEnvironmentRowInput,
   MissingEnvironmentRow,
   Moved,
+  ProductionRun,
   ReleaseComparison,
   ReleaseEntry,
   ReleaseGate,
@@ -49,6 +50,13 @@ export interface ZeropsReleaseOffer {
   readonly contents: ReadonlyArray<Moved>;
   /** Production's services whose commit cannot be told: what goes live on them is not said. */
   readonly untold: ReadonlyArray<string>;
+  /**
+   * What each production service runs (`productionRuns`), whole; `undefined` until it is known. A
+   * roll back compares from it what leaves production and what comes back.
+   */
+  readonly runs: ReadonlyMap<string, ProductionRun> | undefined;
+  /** The repository each production runtime builds from (the recipe's); `undefined` until read. */
+  readonly repositories: ReadonlyMap<string, string> | undefined;
 }
 
 /** One project's flow: its environments, what is waiting, what was released. */

@@ -10,6 +10,7 @@
  */
 import {
   linksChange,
+  type Moved,
   type ReviewPrimary,
   type ReviewVerdict,
 } from "@t3tools/client-runtime/zerops";
@@ -398,46 +399,63 @@ export interface ReleaseChangeRow {
 const LANDED_AS = /\s*\(#(\d+)\)\s*$/u;
 
 /**
- * What a release carries, one row per change: a commit is the change it landed as — matched by
- * the commit Gitea says the change landed as, never by the `(#54)` in its subject, since numbers
- * are per repository and the recipe's #54 is not appdev's — whose Mate wrote it and when; a
- * commit nobody reviewed is its own words.
+ * What HQ compared, one row per change: a commit is the change HQ says it landed — in the
+ * repository it was compared in, since numbers are per repository — whose Mate wrote it and when;
+ * a commit nobody reviewed is its own words. One commit several services take is one row.
  */
 export function releaseChangeRows(input: {
-  readonly commits: ReadonlyArray<{ readonly sha: string; readonly subject: string }>;
-  readonly merged: ReadonlyArray<{
-    readonly repository: string;
-    readonly number: number;
-    readonly title: string;
-    readonly mateProjectId: string | undefined;
-    readonly mergedAt: string | undefined;
-    readonly mergeCommitSha?: string | undefined;
-  }>;
+  readonly moved: ReadonlyArray<Moved>;
   readonly marks: ReadonlyMap<string, ReleaseStageMark>;
 }): ReadonlyArray<ReleaseChangeRow> {
-  const bySha = new Map(
-    input.merged.flatMap((change) =>
-      change.mergeCommitSha === undefined
-        ? []
-        : [[change.mergeCommitSha.toLowerCase(), change] as const],
-    ),
-  );
-  return input.commits.map((commit) => {
-    const key = commit.sha.toLowerCase();
-    const change = bySha.get(key);
-    return {
-      key,
-      title:
-        change === undefined
-          ? commit.subject
-          : `#${String(change.number)} ${change.title.replace(LANDED_AS, "")}`,
-      change:
-        change === undefined ? undefined : { repository: change.repository, number: change.number },
-      mateProjectId: change?.mateProjectId,
-      mergedAt: change?.mergedAt,
-      stage: input.marks.get(key) ?? "none",
-    };
-  });
+  const rows = new Map<string, ReleaseChangeRow>();
+  for (const { repository, commits } of input.moved) {
+    for (const commit of commits) {
+      const key = commit.sha.toLowerCase();
+      if (rows.has(key)) continue;
+      const { change } = commit;
+      rows.set(key, {
+        key,
+        title:
+          change === null
+            ? commit.subject
+            : `#${String(change.number)} ${change.title.replace(LANDED_AS, "")}`,
+        change: change === null ? undefined : { repository, number: change.number },
+        mateProjectId: change?.mateProjectId,
+        mergedAt: change === null ? undefined : commit.at,
+        stage: input.marks.get(key) ?? "none",
+      });
+    }
+  }
+  return [...rows.values()];
+}
+
+/** How many changes: `1 change`, `12 changes`, `10000+ changes` where HQ stopped counting. */
+export function changesCountWords(count: number, atLeast: boolean): string {
+  return count === 1 && !atLeast ? "1 change" : `${String(count)}${atLeast ? "+" : ""} changes`;
+}
+
+/** A roll back's two lists: what production runs that it takes off, and what it brings back. */
+export type RollbackSide = "leaving" | "coming-back";
+
+/**
+ * What a roll back's list says where it has no rows: HQ still comparing, why it could not, or —
+ * an answer as well — that nothing moves that way.
+ */
+export function rollbackListNote(
+  side: RollbackSide,
+  list:
+    | { readonly state: "reading" }
+    | { readonly state: "failed"; readonly reason: string }
+    | { readonly state: "known" },
+): string {
+  switch (list.state) {
+    case "reading":
+      return "Comparing in HQ…";
+    case "failed":
+      return `Can't tell what ${side === "leaving" ? "leaves production" : "comes back"}: ${list.reason.replace(/\.$/u, "")}.`;
+    case "known":
+      return side === "leaving" ? "Nothing leaves production." : "Nothing comes back.";
+  }
 }
 
 /**

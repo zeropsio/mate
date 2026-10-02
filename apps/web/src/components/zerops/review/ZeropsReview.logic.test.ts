@@ -7,6 +7,7 @@ import {
   absoluteDescription,
   changeFileLetter,
   changeRunMessage,
+  changesCountWords,
   commitFold,
   crewLandCommand,
   descriptionPicture,
@@ -21,6 +22,7 @@ import {
   reviewPictureBox,
   reviewKindLine,
   reviewOrigin,
+  rollbackListNote,
   runWords,
   sizeWords,
 } from "./ZeropsReview.logic";
@@ -348,33 +350,42 @@ describe("sizeWords", () => {
 });
 
 describe("releaseChangeRows: what goes out, one row per change", () => {
-  const merged = [
-    {
-      repository: "appdev",
-      number: 54,
-      title: "Performance tuning across the storefront",
-      mateProjectId: "p-juno",
-      mergedAt: "2026-09-28T09:00:00Z",
-      mergeCommitSha: "aaa111",
-    },
-    {
-      repository: "appdev",
-      number: 55,
-      title: "Clearer copy on the admin sign-in",
-      mateProjectId: "p-cleo",
-      mergedAt: "2026-09-29T09:00:00Z",
-      mergeCommitSha: "BBB222",
-    },
-  ];
+  const commit = (
+    sha: string,
+    subject: string,
+    change: {
+      readonly number: number;
+      readonly title: string;
+      readonly mateProjectId: string;
+    } | null,
+  ) => ({ sha, subject, authorName: "Juno", at: "2026-09-28T09:00:00Z", change });
+  const moved = (repository: string, commits: ReadonlyArray<ReturnType<typeof commit>>) => ({
+    repository,
+    services: ["app"],
+    commits,
+    total: commits.length,
+    truncated: false,
+  });
 
-  it("names each commit by the change it landed as, which opens, whose Mate, and whether stage runs it", () => {
+  it("names each commit by the change HQ says it landed, which opens, whose Mate, and whether stage runs it", () => {
     const rows = releaseChangeRows({
-      commits: [
-        { sha: "AAA111", subject: "Performance tuning across the storefront (#54)" },
-        { sha: "bbb222", subject: "Clearer copy on the admin sign-in (#55)" },
-        { sha: "ccc333", subject: "A person's direct fix" },
+      moved: [
+        moved("appdev", [
+          commit("aaa111", "Performance tuning across the storefront (#54)", {
+            number: 54,
+            title: "Performance tuning across the storefront (#54)",
+            mateProjectId: "p-juno",
+          }),
+          commit("bbb222", "Clearer copy on the admin sign-in", {
+            number: 55,
+            title: "Clearer copy on the admin sign-in",
+            mateProjectId: "p-cleo",
+          }),
+          commit("ccc333", "A person's direct fix", null),
+        ]),
+        // One commit two services take is one row.
+        moved("appdev", [commit("aaa111", "Performance tuning across the storefront (#54)", null)]),
       ],
-      merged,
       marks: new Map([
         ["aaa111", "on-stage"],
         ["bbb222", "deploying-on-stage"],
@@ -394,7 +405,7 @@ describe("releaseChangeRows: what goes out, one row per change", () => {
         title: "#55 Clearer copy on the admin sign-in",
         change: { repository: "appdev", number: 55 },
         mateProjectId: "p-cleo",
-        mergedAt: "2026-09-29T09:00:00Z",
+        mergedAt: "2026-09-28T09:00:00Z",
         stage: "deploying-on-stage",
       },
       {
@@ -408,27 +419,55 @@ describe("releaseChangeRows: what goes out, one row per change", () => {
     ]);
   });
 
-  it.each([
-    // Numbers are per repository: the recipe repo's #54 is not appdev's.
-    ["a commit naming #54 that another repository's #54 landed as", "ddd444", undefined],
-    ["the commit appdev's #54 landed as", "aaa111", "p-juno"],
-  ])("credits by the commit a change landed as: %s", (_case, sha, mate) => {
-    const [row] = releaseChangeRows({
-      commits: [{ sha, subject: "Performance tuning across the storefront (#54)" }],
-      merged: [
-        ...merged,
-        {
-          repository: "recipe",
-          number: 54,
-          title: "Add a staging environment",
-          mateProjectId: "p-uma",
-          mergedAt: "2026-09-27T09:00:00Z",
-          mergeCommitSha: "eee555",
-        },
+  it("opens a change in the repository it was compared in: numbers are per repository", () => {
+    const rows = releaseChangeRows({
+      moved: [
+        moved("recipe", [
+          commit("eee555", "Add a staging environment", {
+            number: 54,
+            title: "Add a staging environment",
+            mateProjectId: "p-uma",
+          }),
+        ]),
+        moved("appdev", [
+          commit("aaa111", "Performance tuning", {
+            number: 54,
+            title: "Performance tuning",
+            mateProjectId: "p-juno",
+          }),
+        ]),
       ],
       marks: new Map(),
     });
-    expect(row?.mateProjectId).toBe(mate);
+    expect(rows.map(({ change, mateProjectId }) => [change, mateProjectId])).toEqual([
+      [{ repository: "recipe", number: 54 }, "p-uma"],
+      [{ repository: "appdev", number: 54 }, "p-juno"],
+    ]);
+  });
+});
+
+describe("changesCountWords: how many, and at least how many where HQ stopped counting", () => {
+  it.each([
+    [1, false, "1 change"],
+    [12, false, "12 changes"],
+    [10000, true, "10000+ changes"],
+  ] as const)("%i (at least: %s) reads %s", (count, atLeast, words) => {
+    expect(changesCountWords(count, atLeast)).toBe(words);
+  });
+});
+
+describe("rollbackListNote: what a roll back's list says where it lists nothing", () => {
+  it.each([
+    ["leaving", { state: "reading" }, "Comparing in HQ…"],
+    [
+      "coming-back",
+      { state: "failed", reason: "HQ is not answering right now." },
+      "Can't tell what comes back: HQ is not answering right now.",
+    ],
+    ["leaving", { state: "known" }, "Nothing leaves production."],
+    ["coming-back", { state: "known" }, "Nothing comes back."],
+  ] as const)("%s, %o", (side, list, words) => {
+    expect(rollbackListNote(side, list)).toBe(words);
   });
 });
 

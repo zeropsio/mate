@@ -843,7 +843,7 @@ export interface RollbackReviewInput {
   /** The press: tagging, refused, or the tag made. */
   readonly press: ReviewPress;
   /**
-   * Where the tag it made stands, as a release's does: the broker's verdict and production's
+   * Where the tag it made stands, as a release's does: HQ's record of it and production's
    * deploy decide, never the tag existing.
    */
   readonly outcome: ReleaseOutcome;
