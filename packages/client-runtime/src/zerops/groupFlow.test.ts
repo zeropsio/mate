@@ -23,11 +23,9 @@ function pull(over: Partial<FlowPullRequest> = {}): FlowPullRequest {
     title: "Greet with a fuller line",
     kind: "code",
     mateProjectId: "p-wren",
-    author: "mate-p-wren",
     url: undefined,
-    checks: "none",
-    checkWord: undefined,
     mergeability: "mergeable",
+    behind: false,
     merged: false,
     mergedAt: undefined,
     headSha: "abc",
@@ -131,7 +129,7 @@ const FSADFDASFSA = group({
   mainHead: MAIN_SHA,
 });
 
-/** `sm-fixture`: #1 mergeable with no checks, a stage on e014b0e, no production, code on main. */
+/** `sm-fixture`: #1 mergeable, a stage on e014b0e, no production, code on main. */
 const SM_FIXTURE = group({
   groupId: "sm-fixture",
   mates: [{ projectId: "p-wren", name: "Wren", preview: undefined, waiting: false, talked: false }],
@@ -225,7 +223,7 @@ describe("groupFlow", () => {
       target: { kind: "change", repository: "app", number: 1 },
     });
     expect(flow.pullRequests).toEqual([
-      { pull: pull(), blocked: null, state: { word: "Unchecked", tone: "off" } },
+      { pull: pull(), blocked: null, state: { word: "Ready to merge", tone: "off" } },
     ]);
     expect(flow.stages).toEqual([
       {
@@ -400,11 +398,11 @@ describe("groupFlow", () => {
       case: "a change that cannot land is the Mate's to fix",
       input: {
         ...SM_FIXTURE,
-        pullRequests: [pull({ mergeability: "conflicting", checks: "failing" })],
+        pullRequests: [pull({ mergeability: "conflicting" })],
       },
       step: {
         kind: "unblock",
-        text: "#1 checks failed",
+        text: "#1 needs a rebase",
         verb: "Ask Wren",
         target: { kind: "change", repository: "app", number: 1 },
       },
@@ -413,7 +411,7 @@ describe("groupFlow", () => {
       case: "a merge the person can make outranks one that cannot land",
       input: {
         ...SM_FIXTURE,
-        pullRequests: [pull({ number: 2, mergeability: "conflicting", checks: "failing" }), pull()],
+        pullRequests: [pull({ number: 2, mergeability: "conflicting" }), pull()],
       },
       step: {
         kind: "merge",

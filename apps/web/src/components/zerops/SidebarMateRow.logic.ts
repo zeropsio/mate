@@ -234,19 +234,17 @@ export function mateCrewItem(input: {
 }
 
 /**
- * The one colour a change row's pull-request mark may wear (S3): red where
- * its checks fail — broken — and amber where it has fallen behind `main` and
- * no longer merges — it didn't go through. Everything else is the mark's own
- * grey: checks running, Gitea still working the answer out, or nothing wrong.
- * The verdict itself lives in the review, not on the row; a change drawn from
- * memory says nothing until Gitea says it again.
+ * The one colour a change row's pull-request mark may wear (S3): amber where
+ * it has fallen behind `main` and no longer merges — it didn't go through.
+ * Everything else is the mark's own grey: still working the answer out, or
+ * nothing wrong. The verdict itself lives in the review, not on the row; a
+ * change drawn from memory says nothing until it is read again.
  */
 export function changeMarkTone(
-  pull: Pick<FlowPullRequest, "number" | "mergeability" | "checks">,
+  pull: Pick<FlowPullRequest, "number" | "mergeability">,
   remembered: boolean,
-): "failed" | "attention" | undefined {
+): "attention" | undefined {
   if (remembered) return undefined;
-  if (pull.checks === "failing") return "failed";
   return pullRequestBlocked(pull)?.kind === "behind" ? "attention" : undefined;
 }
 

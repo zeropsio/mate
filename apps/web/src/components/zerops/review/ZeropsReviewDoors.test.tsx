@@ -28,7 +28,6 @@ import reviewDialogSource from "./ZeropsReviewDialog.tsx?raw";
 import { ZeropsReleaseRows } from "../ZeropsReleaseRows";
 import {
   ReviewDiff,
-  ReviewFiles,
   ZeropsReviewSurface,
   type ReviewDiffState,
   type ZeropsReviewSurfaceProps,
@@ -37,6 +36,8 @@ import {
 /** What acting directly looks like in a door's source: a flow verb or a crew landing. */
 const ACTS = [
   ".mergePullRequest(",
+  ".merge(",
+  ".close(",
   ".release(",
   ".rollBack(",
   '_tag: "land"',
@@ -163,7 +164,7 @@ const VERDICT: ReviewVerdict = {
   state: "ready",
   tone: "ok",
   title: "Ready to merge",
-  why: "Checks passed · no conflicts with main · 1 commit",
+  why: "No conflicts with main · 1 commit",
   fix: undefined,
 };
 
@@ -325,7 +326,6 @@ describe("the page presses its button on ⌘↵ while it is safe, never from a f
   });
 });
 
-const GITEA_FILE = "https://git.example.test/acme/appdev/pulls/2/files#diff-0a1b";
 const STOPPED_INSIDE = parseChangeDiff(
   ["diff --git a/a.ts b/a.ts", "--- a/a.ts", "+++ b/a.ts", "@@ -1 +1,2 @@", "-x", "+y", "+z"].join(
     "\n",
@@ -333,70 +333,27 @@ const STOPPED_INSIDE = parseChangeDiff(
   { cut: true },
 ).get("a.ts");
 
-describe("a diff too long to read here says so, and where the rest is (D4)", () => {
-  it.each<[string, ReviewDiffState, string, boolean]>([
+describe("a diff too long to read here says so (D4)", () => {
+  it.each<[string, ReviewDiffState, string]>([
     [
       "a file the read stopped inside",
       { kind: "read", file: STOPPED_INSIDE, cut: true },
       "The rest is too long to read here.",
-      true,
     ],
     [
       "a file past where the read stopped",
       { kind: "read", file: undefined, cut: true },
       "Too long to read here.",
-      true,
     ],
     [
       "a file with nothing to show in a diff read whole",
       { kind: "read", file: undefined, cut: false },
       "Nothing to show for this file.",
-      false,
     ],
-  ])("%s", (_case, diff, words, linked) => {
-    const html = renderToStaticMarkup(<ReviewDiff diff={diff} gitea={GITEA_FILE} />);
+  ])("%s", (_case, diff, words) => {
+    const html = renderToStaticMarkup(<ReviewDiff diff={diff} />);
     expect(html).toContain(words);
-    expect(html.includes(`href="${GITEA_FILE}"`)).toBe(linked);
-  });
-});
-
-describe("a file's diff is read once a file opens, never before (D4)", () => {
-  it("asks for it as a file opens, and not as it closes", async () => {
-    const onOpen = vi.fn();
-    const document = installTestDom();
-    const { act } = await import("react");
-    const { createRoot } = await import("react-dom/client");
-    const container = document.createElement("div");
-    const root = createRoot(container as unknown as Element);
-    const row = (path: string) => {
-      const found = elementsOf(container, "button").find((button) =>
-        button.textContent.includes(path.slice(path.lastIndexOf("/") + 1)),
-      );
-      if (found === undefined) throw new Error(`no row for ${path}`);
-      return found;
-    };
-    try {
-      await act(async () =>
-        root.render(
-          <ReviewFiles
-            diffOf={() => ({ kind: "reading" })}
-            files={[
-              { path: "src/a.ts", status: "modified", additions: 1, deletions: 1 },
-              { path: "src/b.ts", status: "added", additions: 3, deletions: 0 },
-            ]}
-            onOpen={onOpen}
-            pending={2}
-          />,
-        ),
-      );
-      expect(onOpen).not.toHaveBeenCalled();
-      await act(async () => pressFrom(row("src/a.ts")));
-      await act(async () => pressFrom(row("src/a.ts")));
-      await act(async () => pressFrom(row("src/b.ts")));
-      expect(onOpen.mock.calls).toEqual([["src/a.ts"], ["src/b.ts"]]);
-    } finally {
-      await act(async () => root.unmount());
-    }
+    expect(html).not.toContain("href=");
   });
 });
 

@@ -4,10 +4,8 @@
  *
  * The broker is scripted: it mints person tokens, answers 502 while Gitea is still setting up,
  * 403 to a person who is not a member, 424 in Gitea's words, or nothing at all while it is
- * unreachable. It reads a change's picture for the person the way the real one does: the bearer
- * forwarded to Gitea's `/attachments/{uuid}`, Gitea's answer relayed. Gitea answers 401 to a token
- * revoked mid-read, serves the pictures it is given, and plays a pull request's `mergeable`
- * sequence. Every request is logged with the bearer it carried.
+ * unreachable. Gitea answers 401 to a token revoked mid-read. Every request is logged with the
+ * bearer it carried.
  */
 
 const GITEA_API_PREFIX = "/api/v1";
@@ -56,15 +54,6 @@ export interface FakeGitea extends FakeOrigin {
   /** Every later request carrying it answers 401. */
   readonly revoke: (token: string) => void;
   readonly setTags: (owner: string, repo: string, tags: ReadonlyArray<string>) => void;
-  /** Each read of the pull request answers the next value; the last one holds. */
-  readonly scriptMergeable: (
-    owner: string,
-    repo: string,
-    number: number,
-    sequence: ReadonlyArray<boolean | null>,
-  ) => void;
-  /** An attachment Gitea serves at `/attachments/{uuid}` to every live token. */
-  readonly putPicture: (uuid: string, bytes: Uint8Array, type: string) => void;
   readonly requests: () => ReadonlyArray<FakeGiteaRequest>;
 }
 
@@ -72,8 +61,6 @@ export function makeFakeGitea(origin: string): FakeGitea {
   const tokens = new Map<string, string>();
   const revoked = new Set<string>();
   const tags = new Map<string, ReadonlyArray<string>>();
-  const mergeable = new Map<string, Array<boolean | null>>();
-  const pictures = new Map<string, { readonly bytes: Uint8Array; readonly type: string }>();
   const log: FakeGiteaRequest[] = [];
   let issued = 0;
 
@@ -88,15 +75,6 @@ export function makeFakeGitea(origin: string): FakeGitea {
     if (bearer === null || !tokens.has(bearer) || revoked.has(bearer)) {
       return json(401, { message: "token does not exist" });
     }
-    const pictureRoute = /^GET \/attachments\/([0-9a-f-]+)$/u.exec(route);
-    if (pictureRoute !== null) {
-      const picture = pictures.get(pictureRoute[1] ?? "");
-      if (picture === undefined) return json(404, { message: "not found" });
-      return new Response(picture.bytes.slice(), {
-        status: 200,
-        headers: { "content-type": picture.type },
-      });
-    }
     const tagsRoute = /^GET \/repos\/([^/]+)\/([^/]+)\/tags$/u.exec(route);
     if (tagsRoute !== null) {
       const names = tags.get(`${tagsRoute[1]}/${tagsRoute[2]}`) ?? [];
@@ -104,18 +82,6 @@ export function makeFakeGitea(origin: string): FakeGitea {
         200,
         names.map((name) => ({ name })),
       );
-    }
-    const pullRoute = /^GET \/repos\/([^/]+)\/([^/]+)\/pulls\/(\d+)$/u.exec(route);
-    if (pullRoute !== null) {
-      const sequence = mergeable.get(`${pullRoute[1]}/${pullRoute[2]}#${pullRoute[3]}`);
-      if (sequence === undefined) return json(404, { message: "pull request does not exist" });
-      const value = sequence.length > 1 ? sequence.shift() : sequence[0];
-      return json(200, {
-        number: Number(pullRoute[3]),
-        title: "change",
-        state: "open",
-        mergeable: value,
-      });
     }
     return json(404, { message: "not found" });
   }) as typeof globalThis.fetch;
@@ -134,12 +100,6 @@ export function makeFakeGitea(origin: string): FakeGitea {
     },
     setTags: (owner, repo, names) => {
       tags.set(`${owner}/${repo}`, [...names]);
-    },
-    scriptMergeable: (owner, repo, number, sequence) => {
-      mergeable.set(`${owner}/${repo}#${String(number)}`, [...sequence]);
-    },
-    putPicture: (uuid, bytes, type) => {
-      pictures.set(uuid, { bytes: bytes.slice(), type });
     },
     requests: () => [...log],
   };
@@ -192,26 +152,6 @@ export function makeFakeBroker(input: {
     const bearer = bearerOf(init);
     const route = `${init?.method ?? "GET"} ${url.pathname}`;
     log.push({ route, bearer, mode: init?.mode ?? null });
-    const pictureRoute = /^GET \/person\/attachments\/([0-9a-f-]+)$/u.exec(route);
-    if (pictureRoute !== null) {
-      if (bearer === null) return json(401, { error: "gitea_token_required", message: "no token" });
-      const answer = await input.gitea.fetch(
-        `${input.gitea.origin}/attachments/${pictureRoute[1] ?? ""}`,
-        { headers: { authorization: `Bearer ${bearer}` } },
-      );
-      if (answer.status === 401) {
-        return json(401, {
-          error: "gitea_token_refused",
-          message: "Gitea did not accept that token",
-        });
-      }
-      if (!answer.ok)
-        return json(answer.status, { error: "not_found", message: "no such attachment" });
-      return new Response(await answer.arrayBuffer(), {
-        status: 200,
-        headers: { "content-type": answer.headers.get("content-type") ?? "image/png" },
-      });
-    }
     if (route !== "POST /person/token") return json(404, { error: "not_found" });
     if (bearer === null) return json(401, { error: "unauthorized", message: "no throwaway" });
     switch (mode) {

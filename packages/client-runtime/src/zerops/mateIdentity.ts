@@ -42,10 +42,9 @@ export function mateProjectOfBranch(ref: string | undefined): string | undefined
  * A branch as a person reads it.
  *
  * `mate/mate-PXGYIVK9RLWlE3eTL3Qwow` is a project id inside a bot login inside
- * a ref: three machine names and nothing a reader can use. It is the same leak
- * `changeAuthorName` closed for a change's author, in the same words — a Mate's
- * own working branch is named after the Mate, and every other branch is named
- * after itself, because a person chose that name and it means something.
+ * a ref: three machine names and nothing a reader can use. A Mate's own working
+ * branch is named after the Mate, and every other branch is named after itself,
+ * because a person chose that name and it means something.
  */
 export function branchLabel(ref: string | null, mateName: string | undefined): string {
   if (ref === null || ref.length === 0) return "detached";

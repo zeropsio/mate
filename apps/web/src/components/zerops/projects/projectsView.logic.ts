@@ -18,11 +18,14 @@ import {
   changesNotLive,
   deployWord,
   environmentNameUnderGroup,
+  flowVerbKey,
+  flowVerbLabel,
   hasMate,
   pairPreviewRoute,
   readZeropsMembership,
   releaseContentsSummary,
   releaseInFlightReason,
+  REVIEW_LABEL,
   type EnvironmentRow,
   type FlowPullRequest,
   type GroupEnvironmentTier,
@@ -303,8 +306,33 @@ export function foldUngrouped<E extends { readonly action: ZeropsRowAction["kind
 }
 
 /**
+ * What a change's row offers: *Review*, the one door to merging it (R1) — and while its merge runs,
+ * or waits for HQ's stream to bring it merged, that it is merging. Its close says so in its review.
+ */
+export function changeRowVerb(
+  pending: ReadonlySet<string>,
+  groupId: string,
+  pull: Pick<FlowPullRequest, "repository" | "number">,
+): string {
+  const merge = flowVerbKey({
+    kind: "merge",
+    groupId,
+    repository: pull.repository,
+    number: pull.number,
+  });
+  return pending.has(merge) ? flowVerbLabel("merge", true) : REVIEW_LABEL;
+}
+
+/**
+ * Why a project's changes are not known: HQ never answered for them and none is held
+ * (`ZeropsProjectFlow.changesFailure`), or HQ's rule shows this person the project and not its
+ * changes (`read_change`, `useChangeOffers`).
+ */
+export type ChangesUnknown = "failed" | "unseen";
+
+/**
  * Which of a project's steps wait on a read that is out, and so hold a skeleton rather than an
- * empty word. The pull requests and `main` are Gitea's changes half: "None yet" and "Nothing
+ * empty word. The pull requests and `main` are HQ's changes half: "None yet" and "Nothing
  * merged" from a flow whose deploy half alone answered are claims the page then takes back —
  * 11–28 s on a reload, and for as long as a project's changes are being read again (the owner,
  * 2026-09-30).
@@ -315,27 +343,46 @@ export function flowStepsAwaiting(input: {
   /** Its changes half answered (`ZeropsProjectFlow.changesKnown`). */
   readonly changesKnown: boolean;
   /**
-   * Its changes' read failed and nothing is held (`ZeropsProjectFlow.changesFailure`): no read
-   * is out for them, and the steps say so rather than wait forever.
+   * Its changes are not known and no read is out for them: the steps say why rather than wait
+   * forever.
    */
-  readonly changesFailed?: boolean;
+  readonly changesUnknown?: ChangesUnknown | undefined;
   /** Its read is out: a Gitea session is held or coming, and it has an org to read. */
   readonly readOut: boolean;
 }): { readonly steps: boolean; readonly changes: boolean } {
-  const { read, changesKnown, readOut } = input;
-  const answered = read && (changesKnown || input.changesFailed === true);
+  const { read, changesKnown, changesUnknown, readOut } = input;
+  const answered =
+    changesUnknown === "unseen" || (read && (changesKnown || changesUnknown === "failed"));
   return { steps: readOut && !read, changes: readOut && !answered };
 }
 
-/** What the changes' steps say where Gitea never answered for the project. */
-export const CHANGES_UNREAD_LINE = "Gitea didn’t answer";
+/**
+ * Why a project's changes are not known, where they are not: HQ's rule first — what this person
+ * may not see is unseen however HQ answered — and nothing while its rule has not been asked.
+ */
+export function changesUnknownOf(input: {
+  /** What `useChangeOffers` offers of the project's changes; `undefined` while not asked. */
+  readonly offers: { readonly read: boolean } | undefined;
+  /** Why HQ never told its changes (`ZeropsProjectFlow.changesFailure`). */
+  readonly changesFailure: string | undefined;
+}): ChangesUnknown | undefined {
+  if (input.offers?.read === false) return "unseen";
+  return input.changesFailure === undefined ? undefined : "failed";
+}
+
+/** What the changes' steps say where their changes are not known. */
+const CHANGES_UNKNOWN_LINE: { readonly [U in ChangesUnknown]: string } = {
+  failed: "HQ didn’t answer",
+  // The refusal's own access (`changes_not_seen`), short enough for a step.
+  unseen: "Needs Basic user access",
+};
 
 /**
- * The pull requests' step with none open: "yet" until something has landed — and where the
- * changes' read failed (`changesFailed`), that, since none is known either way.
+ * The pull requests' step with none open: "yet" until something has landed — and where its
+ * changes are not known (`changesUnknown`), why, since none is known either way.
  */
-export function pullRequestsLine(flow: GroupFlow, changesFailed = false): string {
-  if (changesFailed) return CHANGES_UNREAD_LINE;
+export function pullRequestsLine(flow: GroupFlow, changesUnknown?: ChangesUnknown): string {
+  if (changesUnknown !== undefined) return CHANGES_UNKNOWN_LINE[changesUnknown];
   return flow.main.hasCode === true ? "None open" : "None yet";
 }
 
@@ -365,8 +412,8 @@ export interface MainCell {
 export function mainCell(
   flow: GroupFlow,
   lastMerged: FlowPullRequest | undefined,
-  /** The changes' read failed (`ZeropsProjectFlow.changesFailure`): nothing merged is not known. */
-  changesFailed = false,
+  /** Its changes are not known: nothing merged is not known either. */
+  changesUnknown?: ChangesUnknown,
 ): MainCell {
   const { main } = flow;
   const title =
@@ -377,9 +424,9 @@ export function mainCell(
     main.notLive > 0
       ? changesNotLive(main.notLive)
       : empty
-        ? changesFailed
-          ? CHANGES_UNREAD_LINE
-          : "Nothing merged"
+        ? changesUnknown === undefined
+          ? "Nothing merged"
+          : CHANGES_UNKNOWN_LINE[changesUnknown]
         : "Nothing waiting to release";
   return { empty, head: main.head, title, state };
 }

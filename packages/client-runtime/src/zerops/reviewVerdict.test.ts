@@ -1,7 +1,6 @@
 // @effect-diagnostics globalDate:off -- fixture timestamps are offsets from a fixed instant, not wall-clock reads.
 import { describe, expect, it } from "vite-plus/test";
 
-import type { GitCheckRow } from "./gitTab.ts";
 import type { RecipeReach } from "./recipeReach.ts";
 import { RELEASE_NOT_A_RELEASER, RELEASE_NOTHING_NEW_ON_MAIN } from "./release.ts";
 import {
@@ -19,13 +18,6 @@ import {
 const NOW = Date.parse("2026-09-29T10:00:00Z");
 const minutesAgo = (minutes: number) => new Date(NOW - minutes * 60_000).toISOString();
 
-const check = (name: string, tone: GitCheckRow["tone"], description?: string): GitCheckRow => ({
-  name,
-  tone,
-  word: tone,
-  ...(description === undefined ? {} : { description }),
-});
-
 function change(over: Partial<ChangeReviewInput> = {}): ChangeReviewInput {
   return {
     pull: {
@@ -33,17 +25,15 @@ function change(over: Partial<ChangeReviewInput> = {}): ChangeReviewInput {
       kind: "code",
       baseBranch: "main",
       mergeability: "mergeable",
-      checks: "passing",
-      checkRows: [check("build", "ok", "pnpm build · 34s")],
       merged: false,
       mergedAt: undefined,
-      mergeBase: "mb",
-      baseSha: "mb",
+      behind: false,
     },
     mateName: "Nova",
     readout: "read",
     commits: 1,
     downstream: { production: true, stage: true },
+    offered: { merge: true, close: true },
     now: NOW,
     ...over,
   };
@@ -54,24 +44,14 @@ const pull = (over: Partial<ChangeReviewInput["pull"]>) => ({ ...change().pull, 
 describe("changeReview: the verdict comes first (R2)", () => {
   it.each<[string, Partial<ChangeReviewInput>, Record<string, unknown>]>([
     [
-      "ready",
-      {},
+      "ready: grey, not green",
+      { commits: 3 },
       {
         state: "ready",
-        tone: "ok",
-        title: "Ready to merge",
-        why: "Checks passed · no conflicts with main · 1 commit",
-        fix: undefined,
-      },
-    ],
-    [
-      "ready with nothing checked: grey, not green",
-      { pull: pull({ checks: "none", checkRows: [] }), commits: 3 },
-      {
-        state: "unchecked",
         tone: "quiet",
         title: "Ready to merge",
-        why: "No checks ran · no conflicts with main · 3 commits",
+        why: "No conflicts with main · 3 commits",
+        fix: undefined,
       },
     ],
     [
@@ -114,52 +94,33 @@ describe("changeReview: the verdict comes first (R2)", () => {
     ],
     [
       "behind main, and it still merges cleanly",
-      { pull: pull({ mergeBase: "mb", baseSha: "newer" }), behindBy: 2 },
+      { pull: pull({ behind: true }) },
       {
         state: "behind-clean",
         tone: "attention",
         title: "Behind main",
-        why: "2 changes landed on main since Nova branched · it still merges cleanly",
+        why: "main moved on since Nova branched · it still merges cleanly",
       },
     ],
     [
-      "checks failing, named",
+      "nothing main does not have",
+      { pull: pull({ mergeability: "empty" }) },
       {
-        pull: pull({
-          checks: "failing",
-          checkRows: [check("build", "failed", "tsc exited 2 · 41s"), check("lint", "ok")],
-        }),
-      },
-      {
-        state: "checks-failed",
-        tone: "failed",
-        title: "Checks failing: build",
-        why: "tsc exited 2 · 41s",
-      },
-    ],
-    [
-      "checks running",
-      {
-        pull: pull({
-          checks: "pending",
-          checkRows: [check("build", "busy"), check("e2e", "busy", "3 of 12 pages")],
-        }),
-      },
-      {
-        state: "checks-running",
-        tone: "busy",
-        title: "Checks running: build and e2e",
-        why: "Merging waits for them",
+        state: "empty",
+        tone: "quiet",
+        title: "Nothing to merge",
+        why: "main already has all of it",
         fix: undefined,
       },
     ],
     [
-      "Gitea still working out whether it merges",
+      "HQ not having said yet whether it merges",
       { pull: pull({ mergeability: "checking" }) },
       {
         state: "checking",
         tone: "busy",
         title: "Checking whether it merges cleanly",
+        why: "HQ works it out after every push",
         fix: undefined,
       },
     ],
@@ -191,14 +152,8 @@ describe("changeReview: the verdict comes first (R2)", () => {
       "Rebase it on main, resolve the conflicts, and push.",
     ],
     [
-      "failing checks",
-      { pull: pull({ checks: "failing", checkRows: [check("build", "failed", "tsc exited 2")] }) },
-      "fix it",
-      "Find out why, fix them, and push.",
-    ],
-    [
       "a branch main moved past",
-      { pull: pull({ baseSha: "newer" }) },
+      { pull: pull({ behind: true }) },
       "update it",
       "Bring it up to date with main, check it still works, and push.",
     ],
@@ -207,18 +162,6 @@ describe("changeReview: the verdict comes first (R2)", () => {
     expect(fix?.verb).toBe(verb);
     expect(fix?.problem.ask).toBe(ask);
     expect(fix?.problem.what).toMatch(/#2/u);
-  });
-
-  it("says the failing check's own words as the error the Mate reads", () => {
-    const fix = changeReview(
-      change({
-        pull: pull({ checks: "failing", checkRows: [check("build", "failed", "tsc exited 2")] }),
-      }),
-    ).verdict.fix;
-    expect(fix?.problem).toMatchObject({
-      what: "The checks on pull request #2 are failing: build",
-      error: "tsc exited 2",
-    });
   });
 });
 
@@ -249,22 +192,16 @@ describe("changeReview: the button says what will happen (R5)", () => {
       { enabled: false, safe: false },
     ],
     [
-      "failing checks",
-      { pull: pull({ checks: "failing", checkRows: [check("build", "failed")] }) },
-      "Merging waits until the checks pass.",
-      { enabled: false, safe: false },
-    ],
-    [
-      "running checks",
-      { pull: pull({ checks: "pending", checkRows: [check("build", "busy")] }) },
-      "Merging waits for the checks to finish.",
+      "HQ not having said yet whether it merges",
+      { pull: pull({ mergeability: "checking" }) },
+      "Merging waits until HQ knows it merges cleanly.",
       { enabled: false, safe: false },
     ],
     [
       // Amber: still pressable, never pressed for the person — no focus, no ⌘↵.
       "behind main but clean",
-      { pull: pull({ baseSha: "newer" }), behindBy: 2 },
-      "Squash-merges 1 commit into main, on top of 2 changes it wasn't checked with. Production isn't touched until you release.",
+      { pull: pull({ behind: true }) },
+      "Squash-merges 1 commit into main, on top of changes it wasn't checked with. Production isn't touched until you release.",
       { enabled: true, safe: false },
     ],
   ])("%s", (_name, over, consequence, primary) => {
@@ -337,7 +274,7 @@ describe("changeReview: a recipe change says what its merge does, and is never r
     ...over,
   });
   const recipe = (over: Partial<ChangeReviewInput["pull"]> = {}) =>
-    pull({ kind: "recipe", checks: "none", checkRows: [], ...over });
+    pull({ kind: "recipe", ...over });
   const merged = recipe({ merged: true, mergedAt: minutesAgo(0) });
   /** Where production waits for a release: a code change's review would offer it now. */
   const releasable = { releaseOffered: true, waiting: { count: 2, live: "v0.1.0" } } as const;
@@ -940,6 +877,110 @@ describe("crewTaskReview: only work that went in is in (the press's answer is no
   });
 });
 
+describe("changeReview: Merge, offered by HQ's rule (T8a)", () => {
+  // A verb this person cannot finish is not offered (guide 0.8); the foot says what it takes, in
+  // HQ's own refusal words.
+  it("offers no Merge where merge_change is not offered, and says what it takes", () => {
+    const review = changeReview(change({ offered: { merge: false, close: false } }));
+    expect(review.verdict.state).toBe("ready");
+    expect(review.primary).toBeUndefined();
+    expect(review.consequence).toBe(
+      "You need at least Basic user access to one of this project's Zerops projects to do this.",
+    );
+  });
+
+  // Its facts not held yet — HQ has not placed the projects: Merge stands where it will, unpressed.
+  it("holds Merge back while HQ's rule has not been asked", () => {
+    const review = changeReview(change({ offered: undefined }));
+    expect(review.primary).toMatchObject({ label: "Merge", enabled: false, safe: false });
+    expect(review.consequence).toBe(
+      "Squash-merges 1 commit into main. Production isn't touched until you release.",
+    );
+  });
+});
+
+describe("changeReview: Close without merging, the review its one confirmation (T8a)", () => {
+  const ASKED = { kind: "asked" } as const;
+
+  it.each<[string, Partial<ChangeReviewInput>, { label: string; enabled: boolean } | undefined]>([
+    [
+      "beside Merge, where close_change is offered",
+      {},
+      { label: "Close without merging…", enabled: true },
+    ],
+    ["nowhere close_change is not offered", { offered: { merge: true, close: false } }, undefined],
+    // An owner or admin closes what they may not merge (an application with no project left).
+    [
+      "to a person who may close and not merge",
+      { offered: { merge: false, close: true } },
+      { label: "Close without merging…", enabled: true },
+    ],
+    ["while Merge runs", { press: { kind: "running" } }, undefined],
+    [
+      "after a refused Merge",
+      { press: { kind: "refused", reason: "No." } },
+      { label: "Close without merging…", enabled: true },
+    ],
+    ["on a merged change", { pull: pull({ merged: true, mergedAt: minutesAgo(1) }) }, undefined],
+    ["on a closed one", { pull: pull({ state: "closed" }) }, undefined],
+  ])("is offered %s", (_name, over, secondary) => {
+    expect(changeReview(change(over)).secondary).toEqual(secondary);
+  });
+
+  it("asks before it closes, in the review's own words, never for ⌘↵", () => {
+    const review = changeReview(change({ close: ASKED }));
+    expect(review.verdict).toMatchObject({
+      state: "close-confirm",
+      tone: "attention",
+      title: "Close #2 without merging?",
+      why: "Nothing of it reaches main",
+    });
+    expect(review.consequence).toBe("Closes #2 for good; Nova's branch stays as it is.");
+    expect(review.primary).toEqual({ label: "Close without merging", enabled: true, safe: false });
+    expect(review.secondary).toEqual({ label: "Keep it open", enabled: true });
+  });
+
+  it.each<[string, ChangeReviewInput["close"], Record<string, unknown>, boolean, boolean]>([
+    [
+      "closing",
+      { kind: "running" },
+      { state: "closing", tone: "busy", title: "Closing #2", why: "Without merging" },
+      false,
+      false,
+    ],
+    [
+      "refused: a deliberate press tries again",
+      { kind: "refused", reason: "This change is merged or closed already." },
+      {
+        state: "close-refused",
+        tone: "attention",
+        title: "Not closed",
+        why: "This change is merged or closed already.",
+      },
+      true,
+      true,
+    ],
+  ])("while pressed: %s", (_name, close, verdict, enabled, keepOpen) => {
+    const review = changeReview(change({ close }));
+    expect(review.verdict).toMatchObject(verdict);
+    expect(review.primary).toEqual({ label: "Close without merging", enabled, safe: false });
+    expect(review.secondary !== undefined).toBe(keepOpen);
+  });
+
+  it("says it was closed once its close is done, before HQ's stream has it", () => {
+    const review = changeReview(change({ close: { kind: "done" } }));
+    expect(review.verdict).toMatchObject({
+      state: "closed",
+      tone: "done",
+      title: "Closed without merging",
+      why: "You closed it; its branch is still there",
+    });
+    expect(review.consequence).toBe("It never reached main; nothing merges from here.");
+    expect(review.primary).toBeUndefined();
+    expect(review.secondary).toBeUndefined();
+  });
+});
+
 describe("changeReview: a change closed without merging", () => {
   it("says so, and offers no Merge", () => {
     const review = changeReview(change({ pull: pull({ state: "closed", merged: false }) }));
@@ -947,6 +988,7 @@ describe("changeReview: a change closed without merging", () => {
       state: "closed",
       tone: "done",
       title: "Closed without merging",
+      why: "Somebody closed it; its branch is still there",
     });
     expect(review.primary).toBeUndefined();
     expect(review.consequence).toBe("It never reached main; nothing merges from here.");
@@ -996,8 +1038,7 @@ describe("changeReview: Merge takes only a head whose change was shown", () => {
   it("keeps no keys for a change behind main while it is read: it never takes them", () => {
     const review = changeReview(
       change({
-        pull: pull({ mergeBase: "old", baseSha: "new" }),
-        behindBy: 2,
+        pull: pull({ behind: true }),
         readout: "reading",
       }),
     );

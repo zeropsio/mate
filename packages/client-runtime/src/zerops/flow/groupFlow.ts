@@ -1,12 +1,10 @@
 /**
- * One group's flow, as a projection over per-key facts (DESIGN §4.7): its open and landed pull
- * requests, its stops and what each runs, the tiers it has not added, its releases and the
- * release offer.
+ * One group's flow, as a projection over per-key facts (DESIGN §4.7): its stops and what each
+ * runs, the tiers it has not added, its releases and the release offer. Its changes are HQ's.
  *
- * - **The halves are independent.** The pull requests are known once every repository's open
- *   list is, the landings once every repository's recent landings are; each stop carries its own
- *   deployment, and a declared stop its environment row — each service's version and how its
- *   deploy went, from the statuses on that commit. Nothing fills a missing half with `[]`.
+ * - **The halves are independent.** Each stop carries its own deployment, and a declared stop its
+ *   environment row — each service's version and how its deploy went, from the statuses on that
+ *   commit. Nothing fills a missing half with `[]`.
  * - **Releases** are the group repo's newest release tags, newest first, known once the tags are;
  *   each row carries the broker's verdict on its commit, and a verdict not read yet holds its own
  *   row rather than reading as not judged.
@@ -31,8 +29,7 @@
  * @module flow/groupFlow
  */
 import type { ServiceRef } from "../data/types.ts";
-import type { MergeState } from "../forge/mergeState.ts";
-import type { GiteaCommit, GiteaCommitStatus, GiteaPullRequest, GiteaTag } from "../giteaClient.ts";
+import type { GiteaCommit, GiteaCommitStatus, GiteaTag } from "../giteaClient.ts";
 import {
   environmentTierForRole,
   missingEnvironmentRows,
@@ -81,19 +78,6 @@ export interface GroupFlowMember {
   readonly role: ZeropsEnvironmentRole | undefined;
 }
 
-/** A pull request as the forge holds it, and how it merges. */
-export interface GroupFlowPull {
-  readonly pull: GiteaPullRequest;
-  readonly state: MergeState;
-}
-
-/** One open pull request of the group, which `flowPullRequest` paints as a row. */
-export interface GroupFlowPullRequest {
-  readonly repository: string;
-  readonly pull: GiteaPullRequest;
-  readonly state: Extract<MergeState, { readonly kind: "open" }>;
-}
-
 /** What the group repo's `main` offers: the tiers whose import is on it, and where code lives. */
 export interface TiersOnMain {
   /** The tiers whose import is on `main` — what a person can add. */
@@ -115,24 +99,10 @@ export interface GroupFlowRelease {
   readonly row: Shown<FlowReleaseRow>;
 }
 
-/** One pull request of the group that landed. */
-export interface GroupFlowLanding {
-  readonly repository: string;
-  readonly pull: GiteaPullRequest;
-}
-
 export interface GroupFlowInputs {
   readonly entry: ZeropsRegistryGroup;
   readonly members: Shown<ReadonlyArray<GroupFlowMember>>;
   readonly declarations: Shown<ReadonlyArray<GroupEnvironment>>;
-  /** The group org's repositories, by name. */
-  readonly repos: Shown<ReadonlyArray<string>>;
-  /** Each repository's open pull requests, by number. */
-  readonly openPulls: ReadonlyMap<string, Shown<ReadonlyArray<number>>>;
-  /** Each pull request by {@link pullKey}. */
-  readonly pulls: ReadonlyMap<string, Shown<GroupFlowPull>>;
-  /** Each repository's recent landings, newest first. */
-  readonly merged: ReadonlyMap<string, Shown<ReadonlyArray<GiteaPullRequest>>>;
   /** The group repo's tags. */
   readonly tags: Shown<ReadonlyArray<GiteaTag>>;
   /** The tiers on the group repo's `main` ({@link tiersOnMain}). */
@@ -193,10 +163,6 @@ export interface ReleaseContent {
 export interface GroupFlow {
   readonly groupId: string;
   readonly slug: string;
-  /** Every repository's open pull requests, in the org's order. */
-  readonly pullRequests: Shown<ReadonlyArray<GroupFlowPullRequest>>;
-  /** Every repository's recent landings, in the org's order: what a conversation's timeline places. */
-  readonly merged: Shown<ReadonlyArray<GroupFlowLanding>>;
   /** Declared stops in the file's order, then members not declared yet. */
   readonly stops: Shown<ReadonlyArray<StopRow>>;
   /** The tiers the recipe on `main` offers and the group has not added: the rows that ask. */
@@ -225,10 +191,6 @@ export interface StatusRead {
 
 /** A commit's statuses' key in {@link GroupFlowInputs.statuses}. */
 export const statusKey = (repository: string, sha: string): string => `${repository}@${sha}`;
-
-/** A pull request's key in {@link GroupFlowInputs.pulls}. */
-export const pullKey = (repository: string, number: number): string =>
-  `${repository}#${String(number)}`;
 
 const UNREAD: Known<never> = { state: "unread", waitingFor: null };
 
@@ -344,41 +306,6 @@ function withValue<T>(combined: Shown<null>, value: () => T): Shown<T> {
 
 const isKnown = <T>(shown: Shown<T>): shown is Extract<Shown<T>, { readonly state: "known" }> =>
   shown.state === "known";
-
-function pullRequestsOf(inputs: GroupFlowInputs): Shown<ReadonlyArray<GroupFlowPullRequest>> {
-  const repos = inputs.repos;
-  if (!isKnown(repos)) return repos as Shown<never>;
-  const parts: Array<Part> = [{ shown: repos, source: "gitea" }];
-  const rows: Array<GroupFlowPullRequest> = [];
-  for (const repository of repos.value) {
-    const open = inputs.openPulls.get(repository) ?? UNREAD;
-    parts.push({ shown: open, source: "gitea" });
-    if (!isKnown(open)) continue;
-    for (const number of open.value) {
-      const read = inputs.pulls.get(pullKey(repository, number)) ?? UNREAD;
-      parts.push({ shown: read, source: "gitea" });
-      // One that landed or closed since the list was read is no longer waiting.
-      if (isKnown(read) && read.value.state.kind === "open") {
-        rows.push({ repository, pull: read.value.pull, state: read.value.state });
-      }
-    }
-  }
-  return withValue(combine(parts).shown, () => rows);
-}
-
-function mergedOf(inputs: GroupFlowInputs): Shown<ReadonlyArray<GroupFlowLanding>> {
-  const repos = inputs.repos;
-  if (!isKnown(repos)) return repos as Shown<never>;
-  const parts: Array<Part> = [{ shown: repos, source: "gitea" }];
-  const landings: Array<GroupFlowLanding> = [];
-  for (const repository of repos.value) {
-    const merged = inputs.merged.get(repository) ?? UNREAD;
-    parts.push({ shown: merged, source: "gitea" });
-    if (!isKnown(merged)) continue;
-    for (const pull of merged.value) landings.push({ repository, pull });
-  }
-  return withValue(combine(parts).shown, () => landings);
-}
 
 /**
  * What a stop runs, from its services: the first deploying one by hostname, else the first
@@ -903,8 +830,6 @@ export function groupFlow(
   return {
     groupId: inputs.entry.groupId,
     slug: inputs.entry.slug,
-    pullRequests: pullRequestsOf(inputs),
-    merged: mergedOf(inputs),
     stops,
     missing: missingOf(inputs),
     release,

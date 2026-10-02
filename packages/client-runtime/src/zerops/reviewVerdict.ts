@@ -20,8 +20,8 @@
  * @module reviewVerdict
  */
 
-import type { MergeabilityKind } from "./forge/mergeState.ts";
-import type { GitCheckRow, GitCheckTone } from "./gitTab.ts";
+import type { MergeabilityKind } from "./changeMergeability.ts";
+import { hqRefusalWords } from "./hq/refusals.ts";
 import type { FlowPullRequestKind } from "./projectFlow.ts";
 import type { RecipeReach } from "./recipeReach.ts";
 import type { RecipeTier } from "./recipeTier.ts";
@@ -48,16 +48,17 @@ export type ReviewTone = "ok" | "attention" | "failed" | "busy" | "done" | "quie
 
 export type ReviewState =
   | "ready"
-  | "unchecked"
   | "behind-clean"
   | "behind"
   | "conflict"
-  | "checks-failed"
-  | "checks-running"
+  | "empty"
   | "checking"
   | "merging"
   | "merge-refused"
   | "merged"
+  | "close-confirm"
+  | "closing"
+  | "close-refused"
   | "closed"
   | "release-ready"
   | "release-blocked"
@@ -128,20 +129,33 @@ export interface ReviewPrimary {
   readonly shortcut?: true;
 }
 
+/** A quiet word in the foot beside the one button: a change's *Close without merging…*. */
+export interface ReviewSecondary {
+  readonly label: string;
+  readonly enabled: boolean;
+}
+
 export interface ReviewModel {
   readonly verdict: ReviewVerdict;
   /** What pressing does, said beside the button — or, once it is over, where things stand. */
   readonly consequence: string;
   /** `undefined` where there is nothing left to press. */
   readonly primary: ReviewPrimary | undefined;
+  readonly secondary?: ReviewSecondary | undefined;
 }
 
-/** The press, as the caller holds it: running, refused with Gitea's words, or done. */
+/** The press, as the caller holds it: running, refused with HQ's words, or done. */
 export type ReviewPress =
   | { readonly kind: "idle" }
   | { readonly kind: "running" }
   | { readonly kind: "refused"; readonly reason: string }
   | { readonly kind: "done" };
+
+/**
+ * Closing a change without merging, as the caller holds it: asked — the review is its one
+ * confirmation — then pressed like any verb.
+ */
+export type ReviewClose = ReviewPress | { readonly kind: "asked" };
 
 /** `Just now`, `20 minutes ago`, `5 hours ago`, `3 days ago` — or nothing for a time it cannot read. */
 export function reviewAge(at: string, now: number): string | undefined {
@@ -186,17 +200,15 @@ export interface ChangeReviewInput {
     readonly kind: FlowPullRequestKind;
     readonly baseBranch: string;
     readonly mergeability: MergeabilityKind;
-    readonly checks: GitCheckTone;
-    readonly checkRows?: ReadonlyArray<GitCheckRow> | undefined;
     readonly merged: boolean;
     readonly mergedAt: string | undefined;
-    /** `closed` for one Gitea closed — merged, or never. */
+    /** `closed` for one no longer open — merged, or closed without merging. */
     readonly state?: string | undefined;
-    readonly mergeBase?: string | undefined;
-    readonly baseSha?: string | undefined;
+    /** Whether `main` has moved on past the commit it was cut from. */
+    readonly behind: boolean;
   };
-  /** The Mate that wrote it; `undefined` for a person's own branch. */
-  readonly mateName: string | undefined;
+  /** The name of the Mate that wrote it: only Mates open changes (SPEC §5.4). */
+  readonly mateName: string;
   /**
    * How far its files were read for the head it is at. Merge takes only a head whose change was
    * shown: it waits while they are read, and one that could not be read is merged only by a
@@ -215,8 +227,6 @@ export interface ChangeReviewInput {
         readonly by: { readonly subject: string; readonly at?: string | undefined } | undefined;
       }
     | undefined;
-  /** How many changes landed on `main` since the branch was cut, where read. */
-  readonly behindBy?: number | undefined;
   /** Where `main` goes next: a production a release puts it in front of, a stage that follows it. */
   readonly downstream: { readonly production: boolean; readonly stage: boolean };
   /** Once merged: how many changes wait for production now, and what production runs. */
@@ -231,21 +241,94 @@ export interface ChangeReviewInput {
    * read; `undefined` until then.
    */
   readonly recipe?: RecipeReach | undefined;
+  /**
+   * What HQ's rule offers the person (`changeOffers`): Merge and Close only where it does;
+   * `undefined` while the facts it asks are not held yet, and Merge waits for them.
+   */
+  readonly offered: { readonly merge: boolean; readonly close: boolean } | undefined;
   readonly press?: ReviewPress | undefined;
+  readonly close?: ReviewClose | undefined;
   readonly now: number;
 }
 
-/** The checks' part of a verdict's why: what they came to, in two or three words. */
-function checksPart(checks: GitCheckTone): string {
-  switch (checks) {
-    case "passing":
-      return "Checks passed";
-    case "none":
-      return "No checks ran";
-    case "pending":
-      return "Checks running";
-    case "failing":
-      return "Checks failing";
+/** What merging takes, said where Merge would stand for a person HQ would refuse it to. */
+const MERGE_NOT_OFFERED = hqRefusalWords({ code: "forbidden", reason: "not_app_developer" });
+
+/** The close's own button, once the review asks it. */
+const CLOSE_LABEL = "Close without merging";
+/** The word that asks it, quiet in the foot. */
+const CLOSE_OFFER: ReviewSecondary = { label: `${CLOSE_LABEL}…`, enabled: true };
+/** The way back from the ask. */
+const KEEP_OPEN: ReviewSecondary = { label: "Keep it open", enabled: true };
+
+/** A change no longer open and never merged: nothing more to press. */
+function closedReview(base: string, why: string): ReviewModel {
+  return {
+    verdict: {
+      state: "closed",
+      tone: "done",
+      title: "Closed without merging",
+      why,
+      fix: undefined,
+    },
+    consequence: `It never reached ${base}; nothing merges from here.`,
+    primary: undefined,
+  };
+}
+
+/** Closing without merging, asked or pressed: the review is its one confirmation, never ⌘↵'s. */
+function closeReview(
+  input: ChangeReviewInput,
+  close: Exclude<ReviewClose, { readonly kind: "idle" | "done" }>,
+): ReviewModel {
+  const { pull } = input;
+  const number = `#${String(pull.number)}`;
+  const consequence = `Closes ${number} for good; ${input.mateName}'s branch stays as it is.`;
+  const primary = (enabled: boolean): ReviewPrimary => ({
+    label: CLOSE_LABEL,
+    enabled,
+    safe: false,
+  });
+  switch (close.kind) {
+    case "asked":
+      return {
+        verdict: {
+          state: "close-confirm",
+          tone: "attention",
+          title: `Close ${number} without merging?`,
+          why: `Nothing of it reaches ${pull.baseBranch}`,
+          fix: undefined,
+        },
+        consequence,
+        primary: primary(true),
+        secondary: KEEP_OPEN,
+      };
+    case "running":
+      return {
+        verdict: {
+          state: "closing",
+          tone: "busy",
+          title: `Closing ${number}`,
+          why: "Without merging",
+          fix: undefined,
+        },
+        consequence,
+        primary: primary(false),
+      };
+    case "refused":
+      return {
+        verdict: {
+          state: "close-refused",
+          tone: "attention",
+          title: "Not closed",
+          why: close.reason,
+          fix: undefined,
+        },
+        consequence,
+        // A second try is the person's deliberate press, as Merge's is.
+        primary: primary(true),
+        secondary: KEEP_OPEN,
+      };
   }
 }
 
@@ -253,17 +336,14 @@ function checksPart(checks: GitCheckTone): string {
 function squashSentence(
   pull: ChangeReviewInput["pull"],
   commits: number | undefined,
-  behindBy: number | undefined,
+  behind: boolean,
   unshown: boolean,
 ): string {
   const what =
     commits === undefined ? "it" : commits === 1 ? "1 commit" : `${String(commits)} commits`;
   const asOne = commits !== undefined && commits > 1 ? " as one" : "";
   const unseen = unshown ? " without its files shown" : "";
-  const onTop =
-    behindBy === undefined || behindBy === 0
-      ? ""
-      : `, on top of ${count(behindBy, "change", "changes")} it wasn't checked with`;
+  const onTop = behind ? ", on top of changes it wasn't checked with" : "";
   return `Squash-merges ${what} into ${pull.baseBranch}${asOne}${unseen}${onTop}.`;
 }
 
@@ -356,9 +436,7 @@ function changeVerdictOf(input: ChangeReviewInput): {
 } {
   const { pull } = input;
   const base = pull.baseBranch;
-  const who = input.mateName ?? "this";
-  const rows = pull.checkRows ?? [];
-  const change = `pull request #${String(pull.number)}`;
+  const who = input.mateName;
 
   if (pull.mergeability === "conflicting") {
     const files = input.conflict?.files ?? [];
@@ -406,51 +484,14 @@ function changeVerdictOf(input: ChangeReviewInput): {
     };
   }
 
-  if (pull.checks === "failing") {
-    const failed = rows.filter((row) => row.tone === "failed");
-    const names = failed.map((row) => row.name);
-    const said = failed.find((row) => row.description !== undefined)?.description;
+  if (pull.mergeability === "empty") {
     return {
       enabled: false,
       verdict: {
-        state: "checks-failed",
-        tone: "failed",
-        title:
-          names.length === 0
-            ? "Checks failing"
-            : names.length <= 2
-              ? `Checks failing: ${listed(names)}`
-              : `${String(names.length)} checks failing`,
-        why: said ?? "It can't land until they pass",
-        fix: {
-          verb: "fix it",
-          problem: {
-            what:
-              names.length === 0
-                ? `The checks on ${change} are failing`
-                : `The checks on ${change} are failing: ${listed(names)}`,
-            ...(said === undefined ? {} : { error: said }),
-            ask: "Find out why, fix them, and push.",
-          },
-        },
-      },
-    };
-  }
-
-  if (pull.checks === "pending") {
-    const running = rows.filter((row) => row.tone === "busy").map((row) => row.name);
-    return {
-      enabled: false,
-      verdict: {
-        state: "checks-running",
-        tone: "busy",
-        title:
-          running.length === 0
-            ? "Checks running"
-            : running.length <= 2
-              ? `Checks running: ${listed(running)}`
-              : `${String(running.length)} checks running`,
-        why: "Merging waits for them",
+        state: "empty",
+        tone: "quiet",
+        title: "Nothing to merge",
+        why: `${base} already has all of it`,
         fix: undefined,
       },
     };
@@ -463,7 +504,7 @@ function changeVerdictOf(input: ChangeReviewInput): {
         state: "checking",
         tone: "busy",
         title: "Checking whether it merges cleanly",
-        why: "Gitea works it out again after every push",
+        why: "HQ works it out after every push",
         fix: undefined,
       },
     };
@@ -471,20 +512,14 @@ function changeVerdictOf(input: ChangeReviewInput): {
 
   const commits =
     input.commits === undefined ? undefined : count(input.commits, "commit", "commits");
-  const moved =
-    pull.mergeBase !== undefined && pull.baseSha !== undefined && pull.mergeBase !== pull.baseSha;
-  if (moved) {
-    const landed =
-      input.behindBy === undefined || input.behindBy === 0
-        ? `${base} moved on`
-        : `${count(input.behindBy, "change", "changes")} landed on ${base}`;
+  if (pull.behind) {
     return {
       enabled: true,
       verdict: {
         state: "behind-clean",
         tone: "attention",
         title: `Behind ${base}`,
-        why: `${landed} since ${who} branched · it still merges cleanly`,
+        why: `${base} moved on since ${who} branched · it still merges cleanly`,
         fix: {
           verb: "update it",
           problem: {
@@ -496,16 +531,14 @@ function changeVerdictOf(input: ChangeReviewInput): {
     };
   }
 
-  const unchecked = pull.checks === "none";
+  // Quiet, not green: no signal about a change is not a good signal.
   return {
     enabled: true,
     verdict: {
-      state: unchecked ? "unchecked" : "ready",
-      tone: unchecked ? "quiet" : "ok",
+      state: "ready",
+      tone: "quiet",
       title: "Ready to merge",
-      why: [checksPart(pull.checks), `no conflicts with ${base}`, commits]
-        .filter((part) => part !== undefined)
-        .join(" · "),
+      why: [`No conflicts with ${base}`, commits].filter((part) => part !== undefined).join(" · "),
       fix: undefined,
     },
   };
@@ -515,6 +548,7 @@ export function changeReview(input: ChangeReviewInput): ReviewModel {
   const { pull } = input;
   const base = pull.baseBranch;
   const press = input.press ?? { kind: "idle" };
+  const close = input.close ?? { kind: "idle" };
 
   if (pull.merged || press.kind === "done") {
     const age =
@@ -557,29 +591,24 @@ export function changeReview(input: ChangeReviewInput): ReviewModel {
     };
   }
 
-  if (pull.state === "closed") {
-    return {
-      verdict: {
-        state: "closed",
-        tone: "done",
-        title: "Closed without merging",
-        why: "Somebody closed it in Gitea; its branch is still there",
-        fix: undefined,
-      },
-      consequence: `It never reached ${base}; nothing merges from here.`,
-      primary: undefined,
-    };
-  }
+  // Closed by this press: said at once, before HQ's stream brings it closed.
+  if (close.kind === "done") return closedReview(base, "You closed it; its branch is still there");
+  if (pull.state === "closed")
+    return closedReview(base, "Somebody closed it; its branch is still there");
+  if (close.kind !== "idle") return closeReview(input, close);
+  // Close without merging, quiet beside Merge where HQ's rule offers it — never while Merge runs.
+  const secondary = input.offered?.close === true ? CLOSE_OFFER : undefined;
 
   const verdictOf = changeVerdictOf(input);
   const { verdict } = verdictOf;
-  // A head whose files are still being read was not shown: it waits for them.
-  const enabled = verdictOf.enabled && input.readout !== "reading";
+  // A head whose files are still being read was not shown: it waits for them, as it waits for the
+  // facts HQ's rule is asked over.
+  const enabled = verdictOf.enabled && input.readout !== "reading" && input.offered?.merge === true;
   const squash = sentences(
     squashSentence(
       pull,
       input.commits,
-      verdict.state === "behind-clean" ? input.behindBy : undefined,
+      verdict.state === "behind-clean",
       input.readout === "failed",
     ),
     afterMain(input),
@@ -587,9 +616,7 @@ export function changeReview(input: ChangeReviewInput): ReviewModel {
   const waits: Partial<Record<ReviewState, string>> = {
     behind: "Merging waits until the conflict is resolved.",
     conflict: "Merging waits until the conflict is resolved.",
-    "checks-failed": "Merging waits until the checks pass.",
-    "checks-running": "Merging waits for the checks to finish.",
-    checking: "Merging waits until Gitea knows it merges cleanly.",
+    checking: "Merging waits until HQ knows it merges cleanly.",
   };
   // What holds it back, said beside it: the change's own trouble, or — for a change nothing is
   // wrong with — its files still being read, which Merge waits for.
@@ -627,20 +654,28 @@ export function changeReview(input: ChangeReviewInput): ReviewModel {
       consequence: enabled ? squash : held,
       // A second try is the person's deliberate press, never ⌘↵'s.
       primary: { label: "Merge", enabled, safe: false },
+      secondary,
     };
+  }
+  // A verb this person cannot finish is not offered (guide 0.8): the foot says what it takes.
+  if (input.offered?.merge === false) {
+    return { verdict, consequence: MERGE_NOT_OFFERED, primary: undefined, secondary };
   }
   // Behind main is amber, and a change whose files could not be read was never shown: both
   // still pressable, never pressed for the person.
   const safeOnceRead = verdictOf.enabled && verdict.state !== "behind-clean";
+  // Its files, or HQ's rule's facts, still to come: Merge keeps the width it will have.
+  const waiting = input.readout === "reading" || input.offered === undefined;
   return {
     verdict,
     consequence: held,
     primary: {
       label: "Merge",
       enabled,
-      safe: safeOnceRead && input.readout === "read",
-      ...(safeOnceRead && input.readout === "reading" ? { shortcut: true } : {}),
+      safe: safeOnceRead && input.readout === "read" && !waiting,
+      ...(safeOnceRead && waiting ? { shortcut: true } : {}),
     },
+    secondary,
   };
 }
 

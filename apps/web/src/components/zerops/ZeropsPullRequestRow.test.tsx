@@ -5,7 +5,7 @@ import { ZeropsPullRequestRow } from "./ZeropsPullRequestRow";
 
 function row(props: Partial<React.ComponentProps<typeof ZeropsPullRequestRow>> = {}) {
   return renderToStaticMarkup(
-    <ZeropsPullRequestRow line="#12 · ada" title="Add a worker to the stage tier" {...props} />,
+    <ZeropsPullRequestRow line="#12 · Nova" title="Add a worker to the stage tier" {...props} />,
   );
 }
 
@@ -15,8 +15,8 @@ describe("ZeropsPullRequestRow", () => {
     expect(html).toContain('data-zerops-pull-request-row="true"');
     expect(html).toContain("sm:grid-cols-[minmax(0,5fr)_minmax(0,4fr)_auto]");
     expect(html).toContain("Add a worker to the stage tier");
-    expect(html).toContain("#12 · ada");
-    expect(html.indexOf("Add a worker to the stage tier")).toBeLessThan(html.indexOf("#12 · ada"));
+    expect(html).toContain("#12 · Nova");
+    expect(html.indexOf("Add a worker to the stage tier")).toBeLessThan(html.indexOf("#12 · Nova"));
   });
 
   it("says what kind of change it is, once, as a tag", () => {

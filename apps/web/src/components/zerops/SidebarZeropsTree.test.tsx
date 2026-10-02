@@ -588,11 +588,9 @@ const pull = (number: number, overrides: Partial<FlowPullRequest> = {}): FlowPul
   title: `Change ${number}`,
   kind: "code",
   mateProjectId: "crm-dev",
-  author: "mate-crm-dev",
   url: `https://gitea.example/crm/appdev/pulls/${number}`,
-  checks: "passing",
-  checkWord: "Passing",
   mergeability: "mergeable",
+  behind: false,
   merged: false,
   mergedAt: undefined,
   headSha: "abc",
@@ -1139,12 +1137,11 @@ describe("the project's flow under it", () => {
 
   // The one door to merging is the review (R1): every change says *Review*
   // in blue, and nothing on the row merges, asks or grades it.
-  it("offers Review on every change, and never Merge, Ask or a check dot from the row", () => {
+  it("offers Review on every change, and never Merge, Ask or a status dot from the row", () => {
     for (const change of [
       pull(4),
       pull(4, { mergeability: "conflicting" }),
-      pull(4, { mergeability: "conflicting", checks: "failing", checkWord: "Failing" }),
-      pull(4, { mergeability: "conflicting", checks: "pending", checkWord: "Pending" }),
+      pull(4, { mergeability: "checking" }),
     ]) {
       const html = withFlow([CRM_DEV, CRM_STAGE], flow({ pullRequests: [change] }));
       const rows = html.slice(html.indexOf('data-zerops-surface="sidebar-pull-requests"'));
@@ -1157,8 +1154,8 @@ describe("the project's flow under it", () => {
     }
   });
 
-  // One meaning per colour (S3): the mark is red where the checks fail,
-  // amber where the change fell behind main, and its own grey otherwise.
+  // One meaning per colour (S3): the mark is amber where the change fell
+  // behind main, and its own grey otherwise.
   it.each([
     { case: "that merges", change: pull(4), tone: undefined, ink: "text-muted-foreground" },
     {
@@ -1166,12 +1163,6 @@ describe("the project's flow under it", () => {
       change: pull(4, { mergeability: "conflicting" }),
       tone: "attention",
       ink: "text-status-attention-text",
-    },
-    {
-      case: "whose checks fail",
-      change: pull(4, { mergeability: "conflicting", checks: "failing" }),
-      tone: "failed",
-      ink: "text-status-failed-text",
     },
   ])("tints only the mark of a change $case", ({ change, tone, ink }) => {
     const html = withFlow([CRM_DEV, CRM_STAGE], flow({ pullRequests: [change] }));
@@ -1293,18 +1284,14 @@ describe("the project's flow under it", () => {
     expect(three.match(/data-zerops-surface="sidebar-pull-request"/gu)).toHaveLength(3);
   });
 
-  it("lists a person's own pull request after the Mates, never under one", () => {
+  // Only Mates open changes (SPEC §5.4): one whose Mate the menu does not hold is drawn nowhere.
+  it("draws no row for a change of a Mate the menu does not hold", () => {
     const html = withFlow(
       [CRM_DEV, CRM_STAGE],
-      flow({
-        pullRequests: [
-          pull(7, { mateProjectId: undefined, author: "ada", line: "appdev #7 · ada" }),
-        ],
-      }),
+      flow({ pullRequests: [pull(7, { mateProjectId: "gone-dev" })] }),
     );
-    expect(html).toContain('data-zerops-surface="sidebar-other-pull-requests"');
-    expect(html).toContain("#7 Change 7 · ada");
-    expect(html).not.toContain('data-zerops-surface="sidebar-pull-requests"');
+    expect(html).not.toContain("#7 Change 7");
+    expect(html).not.toContain("sidebar-pull-request");
   });
 
   // Production and stage leave the list (M1): the chip on the heading
@@ -3569,13 +3556,13 @@ describe("what the jump box finds in the menu", () => {
     onOpenStop: () => {},
   });
   const OWN = pull(4, { mateProjectId: "links-dev", title: "Add a search box" });
-  const ADAS = pull(6, { mateProjectId: undefined, author: "ada", title: "Bump the linter" });
+  const GONE = pull(6, { mateProjectId: "gone-dev", title: "Bump the linter" });
   // Its stops' services read, so the heading draws its chip.
   const tree = (props: Record<string, unknown> = {}) => (
     <SidebarZeropsTree
       candidates={[LINKS_MATE, up(LINKS_STAGE), up(LINKS_PROD)]}
       complete
-      getFlow={() => linksFlow([OWN, ADAS])}
+      getFlow={() => linksFlow([OWN, GONE])}
       onBrowseProjects={() => {}}
       onOpenGroup={() => {}}
       onSelect={() => {}}
@@ -3603,10 +3590,7 @@ describe("what the jump box finds in the menu", () => {
         change.mateProjectId,
         change.whose,
       ]),
-    ).toEqual([
-      ["appdev#4", "#4 Add a search box", "links-dev", index()?.mates[0]?.name],
-      ["appdev#6", "#6 Bump the linter · ada", undefined, "ada"],
-    ]);
+    ).toEqual([["appdev#4", "#4 Add a search box", "links-dev", index()?.mates[0]?.name]]);
     expect(index()?.stops.map((stop) => [stop.projectId, stop.title])).toEqual([
       ["links-stage", "Links stage"],
       ["links-prod", "Links production"],
@@ -3622,7 +3606,7 @@ describe("what the jump box finds in the menu", () => {
     stored.collapsed = new Set(["links"]);
     mount(tree());
     expect(index()?.mates).toHaveLength(1);
-    expect(index()?.changes).toHaveLength(2);
+    expect(index()?.changes).toHaveLength(1);
     expect(index()?.stops).toHaveLength(2);
   });
 

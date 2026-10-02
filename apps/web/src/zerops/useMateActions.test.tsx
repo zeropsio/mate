@@ -421,6 +421,7 @@ describe("useMateActions — Finish setup on a Mate HQ holds no record of", () =
       registry.set(hqStructureAtom, {
         organizationId: "org-acme",
         structure: { ungrouped: [], apps: [] },
+        changes: null,
         readAt: 1_000,
         current: true,
         unavailableSince: null,

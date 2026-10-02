@@ -42,7 +42,6 @@ import giteaPageSource from "./ZeropsGiteaPage.tsx?raw";
 import sidebarTreeSource from "./SidebarZeropsTree.tsx?raw";
 import sidebarSource from "../Sidebar.tsx?raw";
 import newProjectSource from "./ZeropsNewProjectHost.tsx?raw";
-import gitBlockSource from "./ZeropsGitBlock.tsx?raw";
 import deployRunSource from "./ZeropsDeployRun.tsx?raw";
 import verdictPanelSource from "./primitives/VerdictPanel.tsx?raw";
 import releaseRowsSource from "./ZeropsReleaseRows.tsx?raw";
@@ -730,7 +729,6 @@ describe("a status word's hand", () => {
     ["the projects screen", projectsPageSource],
     ["a project's own page", groupDetailSource],
     ["the Git page", giteaPageSource],
-    ["the Git tab", gitBlockSource],
     ["a deploy's run", deployRunSource],
     ["the verdict panel", verdictPanelSource],
     ["a project's releases", releaseRowsSource],
@@ -786,9 +784,11 @@ describe("a project's next step on the projects page", () => {
     expect(groupDetailSource).toContain('openReview({ kind: "release", groupId }, { from });');
   });
 
-  it("merges, releases and rolls back from no row: every such verb opens a review", () => {
+  it("merges, closes, releases and rolls back from no row: every such verb opens a review", () => {
     for (const source of [projectsPageSource, groupDetailSource]) {
       expect(source).not.toContain("mergePullRequest(");
+      expect(source).not.toContain(".merge(");
+      expect(source).not.toContain(".close(");
       expect(source).not.toContain(".release(");
       expect(source).not.toContain(".rollBack(");
     }

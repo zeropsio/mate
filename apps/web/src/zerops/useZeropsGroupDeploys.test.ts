@@ -1,5 +1,5 @@
 import type { GiteaClient } from "@t3tools/client-runtime/zerops";
-import { createGroupAnswers, flowVerbInvalidations } from "@t3tools/client-runtime/zerops/flow";
+import { createGroupAnswers } from "@t3tools/client-runtime/zerops/flow";
 import { act, createElement } from "react";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
@@ -224,7 +224,7 @@ describe("readGroupDeploys", () => {
     expect(next?.environments).toBe(held.environments);
   });
 
-  it("a merge into the group repo reads its declarations again", async () => {
+  it("a whole read of the group reads its declarations again", async () => {
     const read: string[] = [];
     const repo = groupRepo();
     const client = {
@@ -244,17 +244,10 @@ describe("readGroupDeploys", () => {
       mainHeads: new Map(),
       releaseContents: [],
     };
-    const { deploys } = flowVerbInvalidations({
-      kind: "merge",
-      slug: "harbor",
-      repository: "group",
-      number: 2,
-    });
-    if (deploys === null) throw new Error("a recipe merge changes the deploy half");
     const update = await readGroupDeploys({
       client,
       group: GROUP,
-      scope: deploys,
+      scope: "group",
       readVersion: async () => SHA,
       held,
       signal: new AbortController().signal,
@@ -287,17 +280,10 @@ describe("readGroupDeploys", () => {
       mainHeads: new Map(),
       releaseContents: [],
     };
-    const { deploys } = flowVerbInvalidations({
-      kind: "merge",
-      slug: "harbor",
-      repository: "group",
-      number: 2,
-    });
-    if (deploys === null) throw new Error("a recipe merge changes the deploy half");
     const update = await readGroupDeploys({
       client,
       group: GROUP,
-      scope: deploys,
+      scope: "group",
       readVersion: async () => SHA,
       held,
       signal: new AbortController().signal,

@@ -15,7 +15,6 @@ import type {
   PostGrantStage,
 } from "@t3tools/client-runtime/zerops/account/runtime";
 import {
-  checkoutInvalidations,
   envelopeInvalidations,
   groupFlow,
   groupFlowFacts,
@@ -28,14 +27,12 @@ import {
   type EnvelopeServices,
   type FlowAttempt,
   type FlowCommand,
-  type ForgeRepository,
   type GroupFlow,
   type GroupFlowSource,
   type StopService,
 } from "@t3tools/client-runtime/zerops/flow";
 import { projectKeyOf, type ProjectRef } from "@t3tools/client-runtime/zerops/data";
 import type { ForgeFact, ForgePriority } from "@t3tools/client-runtime/zerops/forge";
-import type { GitCheckoutState } from "@t3tools/client-runtime/zerops";
 import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
 import type { ZeropsStateEnvelope } from "@t3tools/contracts";
 import { useCallback, useEffect, useMemo, useRef, useSyncExternalStore } from "react";
@@ -126,25 +123,6 @@ export function lifecycleEnvelopeChanged(
   for (const invalidation of envelopeInvalidations(previous, next, bound.services)) {
     invalidateZerops(invalidation);
   }
-}
-
-/**
- * One checkout's VCS statuses as pushes: a status that shows commits leaving for the remote
- * re-reads its Gitea repository (§6.1). `null` while the checkout has not answered: only a status
- * it reported is compared, so its first answer, or one after a refetch, is no push.
- */
-export function useCheckoutPushes(
-  status: GitCheckoutState | null,
-  repository: ForgeRepository | null,
-): void {
-  const heard = useRef<GitCheckoutState | undefined>(undefined);
-  useEffect(() => {
-    if (status === null) return;
-    for (const invalidation of checkoutInvalidations(heard.current, status, repository)) {
-      invalidateZerops(invalidation);
-    }
-    heard.current = status;
-  }, [repository, status]);
 }
 
 // ── What surfaces read ───────────────────────────────────────────────────────────────────────

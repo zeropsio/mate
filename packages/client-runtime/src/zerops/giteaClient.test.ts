@@ -319,21 +319,15 @@ describe("GiteaClient request shapes", () => {
     expect(calls[0]?.url).toBe(`${ORIGIN}/api/v1/repos/acme/group/pulls?state=open`);
   });
 
-  it("lists an org's repositories page by page, until a page comes back short", async () => {
+  it("lists the repositories this person has access to page by page, until a page comes back short", async () => {
     const full = Array.from({ length: 50 }, (_, index) => ({ id: index, name: `r${index}` }));
     const { client, calls } = fake([{ body: full }, { body: [{ id: 50, name: "r50" }] }]);
-    const repositories = await client.listOrganizationRepositories("acme");
+    const repositories = await client.listUserRepositories();
     expect(repositories).toHaveLength(51);
     expect(calls.map((call) => call.url)).toEqual([
-      `${ORIGIN}/api/v1/orgs/acme/repos?limit=50&page=1`,
-      `${ORIGIN}/api/v1/orgs/acme/repos?limit=50&page=2`,
+      `${ORIGIN}/api/v1/user/repos?limit=50&page=1`,
+      `${ORIGIN}/api/v1/user/repos?limit=50&page=2`,
     ]);
-  });
-
-  it("lists the repositories this person has access to", async () => {
-    const { client, calls } = fake([{ body: [] }]);
-    expect(await client.listUserRepositories()).toEqual([]);
-    expect(calls[0]?.url).toBe(`${ORIGIN}/api/v1/user/repos?limit=50&page=1`);
   });
 
   it("searches the open pull requests across everything the person can see", async () => {
@@ -504,28 +498,6 @@ describe("GiteaClient deadlines (DESIGN §2.D D3)", () => {
 });
 
 describe("GiteaClient pull request shas (DESIGN A7)", () => {
-  it("a pull request carries its head and base shas and the commit it merged as", async () => {
-    const { client } = fake([
-      {
-        body: {
-          number: 4,
-          title: "Add a due date",
-          state: "closed",
-          merged: true,
-          mergeable: null,
-          head: { ref: "mate/x", sha: "head-sha" },
-          base: { ref: "main", sha: "base-sha" },
-          merge_commit_sha: "merge-sha",
-        },
-      },
-    ]);
-    const pull = await client.getPullRequest("acme", "app", 4);
-    expect(pull?.head?.sha).toBe("head-sha");
-    expect(pull?.base?.sha).toBe("base-sha");
-    expect(pull?.merge_commit_sha).toBe("merge-sha");
-    expect(pull?.mergeable).toBeNull();
-  });
-
   it("reads one page of pull requests as long as it is asked for", async () => {
     const { client, calls } = fake([{ body: [] }]);
     await client.listPullRequests("acme", "app", { state: "closed", limit: 20 });
@@ -543,229 +515,7 @@ describe("GiteaClient pull request shas (DESIGN A7)", () => {
   });
 });
 
-describe("GiteaClient a change's pictures, read as the person", () => {
-  it("reads a picture on its own Gitea with the person's token, as bytes a page can show", async () => {
-    const calls: Array<{ readonly url: string; readonly authorization: string | undefined }> = [];
-    const client = createGiteaClient({
-      origin: ORIGIN,
-      token: "t-1",
-      fetch: (input, init) => {
-        calls.push({
-          url: String(input),
-          authorization: (init?.headers as Record<string, string> | undefined)?.authorization,
-        });
-        return Promise.resolve(
-          new Response(new Uint8Array([137, 80, 78, 71]), {
-            headers: { "content-type": "image/png" },
-          }),
-        );
-      },
-    });
-    const picture = await client.picture(`${ORIGIN}/attachments/5f1c2a`);
-    expect(calls).toEqual([{ url: `${ORIGIN}/attachments/5f1c2a`, authorization: "Bearer t-1" }]);
-    expect(picture.type).toBe("image/png");
-    expect(new Uint8Array(await picture.arrayBuffer())).toEqual(new Uint8Array([137, 80, 78, 71]));
-  });
-
-  it.each([
-    ["another origin", "https://pictures.example/cat.png"],
-    ["the same host on another port", `${ORIGIN}:8443/attachments/5f1c2a`],
-    ["a plain http copy of it", ORIGIN.replace("https:", "http:") + "/attachments/5f1c2a"],
-    ["an inline address", "data:image/png;base64,iVBORw0KGgo="],
-    ["something that is not an address", "not a url"],
-  ])("never sends the token to %s", async (_case, url) => {
-    const fetch = vi.fn();
-    const client = createGiteaClient({ origin: ORIGIN, token: "t-1", fetch });
-    await expect(client.picture(url)).rejects.toBeInstanceOf(GiteaApiError);
-    expect(fetch).not.toHaveBeenCalled();
-  });
-
-  it("fails at once, with no status, where a browser's preflight is refused", async () => {
-    // Gitea 1.27.2 answers the preflight of /attachments/{uuid} with a 303, no CORS headers:
-    // the browser's fetch rejects before any answer is read.
-    const client = createGiteaClient({
-      origin: ORIGIN,
-      token: "t-1",
-      fetch: () => Promise.reject(new TypeError("Failed to fetch")),
-    });
-    await expect(client.picture(`${ORIGIN}/attachments/5f1c2a`)).rejects.toBeInstanceOf(TypeError);
-  });
-
-  it("says Gitea's refusal of a picture with its status", async () => {
-    const { client } = fake([{ status: 404, text: "Not Found" }]);
-    await expect(client.picture(`${ORIGIN}/attachments/gone`)).rejects.toMatchObject({
-      status: 404,
-    });
-  });
-});
-
-describe("GiteaClient a change's pictures, read through the broker", () => {
-  const BROKER = "https://broker.example.test";
-  const UUID = "3f2a9c1e-5b7d-4e8f-9a0b-1c2d3e4f5a6b";
-
-  function brokered(answer: () => Response) {
-    const calls: Array<{ readonly url: string; readonly headers: Record<string, string> }> = [];
-    const client = createGiteaClient({
-      origin: ORIGIN,
-      brokerOrigin: BROKER,
-      token: "t-1",
-      fetch: (input, init) => {
-        calls.push({
-          url: String(input),
-          headers: (init?.headers ?? {}) as Record<string, string>,
-        });
-        return Promise.resolve(answer());
-      },
-    });
-    return { client, calls };
-  }
-
-  it("reads an attachment through the broker with the person's token: Gitea refuses the browser's preflight", async () => {
-    const { client, calls } = brokered(
-      () =>
-        new Response(new Uint8Array([137, 80, 78, 71]), {
-          headers: { "content-type": "image/png" },
-        }),
-    );
-    const picture = await client.picture(`${ORIGIN}/attachments/${UUID}`);
-    expect(calls.map((call) => call.url)).toEqual([`${BROKER}/person/attachments/${UUID}`]);
-    expect(calls[0]?.headers).toMatchObject({ authorization: "Bearer t-1", accept: "image/*" });
-    expect(new Uint8Array(await picture.arrayBuffer())).toEqual(new Uint8Array([137, 80, 78, 71]));
-  });
-
-  it("says the broker's refusal in its words, with its status", async () => {
-    const { client } = brokered(
-      () =>
-        new Response(
-          JSON.stringify({
-            error: "not_a_picture",
-            message: "only a picture is served here: png, jpeg, gif, webp or avif",
-          }),
-          { status: 415, headers: { "content-type": "application/json" } },
-        ),
-    );
-    await expect(client.picture(`${ORIGIN}/attachments/${UUID}`)).rejects.toMatchObject({
-      status: 415,
-      detail: "only a picture is served here: png, jpeg, gif, webp or avif",
-    });
-  });
-
-  it("reads a picture of its Gitea that is no attachment from Gitea itself", async () => {
-    const { client, calls } = brokered(
-      () => new Response(new Uint8Array([1]), { headers: { "content-type": "image/png" } }),
-    );
-    await client.picture(`${ORIGIN}/acme/app/raw/branch/main/shot.png`);
-    expect(calls.map((call) => call.url)).toEqual([`${ORIGIN}/acme/app/raw/branch/main/shot.png`]);
-  });
-
-  it("never reads anything but its own Gitea's pictures, the broker's own address included", async () => {
-    const fetch = vi.fn();
-    const client = createGiteaClient({ origin: ORIGIN, brokerOrigin: BROKER, token: "t-1", fetch });
-    await expect(client.picture(`${BROKER}/person/attachments/${UUID}`)).rejects.toBeInstanceOf(
-      GiteaApiError,
-    );
-    expect(fetch).not.toHaveBeenCalled();
-  });
-});
-
-describe("GiteaClient a change you can read (pass 16 R8)", () => {
-  it("lists the files a pull request changes, with each one's +/−, page by page", async () => {
-    const full = Array.from({ length: 50 }, (_, index) => ({
-      filename: `src/file-${index}.ts`,
-      status: "modified",
-      additions: 1,
-      deletions: 0,
-    }));
-    const { client, calls } = fake([
-      { body: full },
-      {
-        body: [
-          {
-            filename: "src/server/routes/status.ts",
-            status: "added",
-            additions: 38,
-            deletions: 0,
-            changes: 38,
-          },
-          {
-            filename: "src/next.ts",
-            previous_filename: "src/old.ts",
-            status: "renamed",
-            additions: 2,
-            deletions: 1,
-          },
-        ],
-      },
-    ]);
-    const files = await client.pullRequestFiles("acme", "appdev", 2);
-    expect(calls.map((call) => call.url.slice(ORIGIN.length))).toEqual([
-      "/api/v1/repos/acme/appdev/pulls/2/files?limit=50&page=1",
-      "/api/v1/repos/acme/appdev/pulls/2/files?limit=50&page=2",
-    ]);
-    expect(files).toHaveLength(52);
-    expect(files[50]).toEqual({
-      filename: "src/server/routes/status.ts",
-      previousFilename: undefined,
-      status: "added",
-      additions: 38,
-      deletions: 0,
-    });
-    expect(files[51]).toMatchObject({ previousFilename: "src/old.ts", status: "renamed" });
-  });
-
-  it("reads a pull request's whole diff as git wrote it, as text", async () => {
-    const diff = "diff --git a/a.ts b/a.ts\n--- a/a.ts\n+++ b/a.ts\n@@ -1 +1 @@\n-old\n+new\n";
-    const { client, calls } = fake([{ text: diff }]);
-    expect(await client.pullRequestDiff("acme", "appdev", 2, 1024)).toEqual({
-      text: diff,
-      cut: false,
-    });
-    expect(calls[0]?.url).toBe(`${ORIGIN}/api/v1/repos/acme/appdev/pulls/2.diff`);
-    expect(calls[0]?.headers.accept).toBe("text/plain");
-  });
-
-  it.each([
-    ["within its bound, whole", "x".repeat(10), 16, { text: "x".repeat(10), cut: false }],
-    ["exactly at its bound, whole", "x".repeat(16), 16, { text: "x".repeat(16), cut: false }],
-    ["past its bound, only so far", "x".repeat(40), 16, { text: "x".repeat(16), cut: true }],
-  ])("reads a diff %s", async (_case, diff, maxBytes, expected) => {
-    const { client } = fake([{ text: diff }]);
-    expect(await client.pullRequestDiff("acme", "appdev", 2, maxBytes)).toEqual(expected);
-  });
-
-  it("stops reading a diff at its bound rather than taking the rest of it", async () => {
-    let pulled = 0;
-    let cancelled = false;
-    const line = new TextEncoder().encode(`+${"a".repeat(9)}\n`);
-    // Never ends by itself: only a read that stops at its bound comes back.
-    const body = new ReadableStream<Uint8Array>({
-      pull(controller) {
-        pulled += 1;
-        controller.enqueue(line);
-      },
-      cancel() {
-        cancelled = true;
-      },
-    });
-    const client = createGiteaClient({
-      origin: ORIGIN,
-      token: "t-1",
-      fetch: () => Promise.resolve(new Response(body)),
-    });
-    const answer = await client.pullRequestDiff("acme", "appdev", 2, 25);
-    expect(answer).toEqual({ text: `+${"a".repeat(9)}\n+${"a".repeat(9)}\n+aa`, cut: true });
-    expect(cancelled).toBe(true);
-    expect(pulled).toBeLessThan(6);
-  });
-
-  it("says Gitea's refusal of a diff in its own words", async () => {
-    const { client } = fake([{ status: 404, body: { message: "pull request does not exist" } }]);
-    await expect(client.pullRequestDiff("acme", "appdev", 9, 1024)).rejects.toMatchObject({
-      status: 404,
-      detail: "pull request does not exist",
-    });
-  });
-
+describe("GiteaClient comparing commits", () => {
   it("keeps what each compared commit touched and when it was written", async () => {
     const { client } = fake([
       {
@@ -791,32 +541,5 @@ describe("GiteaClient a change you can read (pass 16 R8)", () => {
         files: ["src/server/index.ts"],
       },
     ]);
-  });
-
-  it("a pull request carries its size, its merge base and when it was opened, where Gitea says", async () => {
-    const { client } = fake([
-      {
-        body: {
-          number: 2,
-          title: "Add a /status page",
-          state: "open",
-          additions: 42,
-          deletions: 3,
-          changed_files: 3,
-          merge_base: "mb-sha",
-          created_at: "2026-09-29T07:00:00Z",
-          head: { ref: "mate/mate-p1", sha: "head-sha" },
-          base: { ref: "main", sha: "base-sha" },
-        },
-      },
-    ]);
-    const pull = await client.getPullRequest("acme", "appdev", 2);
-    expect(pull).toMatchObject({
-      additions: 42,
-      deletions: 3,
-      changed_files: 3,
-      merge_base: "mb-sha",
-      created_at: "2026-09-29T07:00:00Z",
-    });
   });
 });

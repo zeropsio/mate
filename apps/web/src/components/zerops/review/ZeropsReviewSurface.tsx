@@ -10,15 +10,10 @@
  * button pinned in view, and ⌘↵ pressing it while it is safe, as the dialog's does.
  *
  * One reading order, top to bottom (R2–R5): its title with one line of provenance, the verdict,
- * what it does, what it changes, how it was checked, what was said and its commits — and a foot
+ * what it does, what it changes, what was said and its commits — and a foot
  * that says what the one button does, beside it.
  */
-import type {
-  ChangeDiffFile,
-  GitCheckRow,
-  ReviewTone,
-  ReviewVerdict,
-} from "@t3tools/client-runtime/zerops";
+import type { ChangeDiffFile, ReviewTone, ReviewVerdict } from "@t3tools/client-runtime/zerops";
 import { changeFileParts } from "@t3tools/client-runtime/zerops";
 import type { MateMarkState, MateShapeId, MateTintId } from "@t3tools/shared/brand";
 import {
@@ -28,7 +23,6 @@ import {
   ChevronRightIcon,
   CircleCheckIcon,
   CircleDashedIcon,
-  CircleIcon,
   CircleXIcon,
   GitPullRequestArrowIcon,
   Maximize2Icon,
@@ -117,6 +111,8 @@ export interface ZeropsReviewSurfaceProps {
   readonly consequence: string;
   /** "Cancel" before anything was pressed, "Close" after. */
   readonly dismiss?: string | undefined;
+  /** A quiet word beside the button: a change's "Close without merging…", then "Keep it open". */
+  readonly secondary?: (ReviewButton & { readonly enabled: boolean }) | undefined;
   readonly primary?: ReviewPrimaryButton | undefined;
   /** What was already done, said where the button would stand: "Merged". */
   readonly settled?: string | undefined;
@@ -142,6 +138,7 @@ export function ZeropsReviewSurface({
   children,
   consequence,
   dismiss,
+  secondary,
   primary,
   settled,
   back,
@@ -205,6 +202,17 @@ export function ZeropsReviewSurface({
       <div className="rv-body">{children}</div>
       <footer className="rv-foot">
         <span className="rv-conseq">{consequence}</span>
+        {secondary === undefined ? null : (
+          <button
+            className="rv-btn2"
+            data-review-secondary=""
+            disabled={!secondary.enabled}
+            onClick={secondary.onPress}
+            type="button"
+          >
+            {secondary.label}
+          </button>
+        )}
         {dismiss === undefined || frame === "page" ? null : (
           <button className="rv-btn2" onClick={onClose} type="button">
             {dismiss}
@@ -371,28 +379,20 @@ export type ReviewDiffState =
 
 /**
  * The files it changes, 36 px each with a status letter, the folder dimmed and the +/−; a file
- * opens its diff in place (R4), and the diff is asked for only then (`onOpen`). `pending` rows
- * hold the list's height while it is read.
+ * opens its diff in place (R4). A row holds the list's place while it is read.
  */
 export function ReviewFiles({
   files,
-  pending,
   failed,
   diffOf,
-  giteaOf,
-  onOpen,
   onRetry,
   initiallyOpen,
 }: {
   readonly files: ReadonlyArray<ReviewFileRow> | undefined;
-  readonly pending: number;
   /** Why the files could not be read, where they could not. */
   readonly failed?: string | undefined;
   readonly diffOf: (path: string) => ReviewDiffState;
-  /** Where the file's diff is on Gitea, for what is too long to show here. */
-  readonly giteaOf?: ((path: string) => string | undefined) | undefined;
-  readonly onOpen?: ((path: string) => void) | undefined;
-  /** Reads what could not be read again: the files, a diff. */
+  /** Reads what could not be read again. */
   readonly onRetry?: (() => void) | undefined;
   readonly initiallyOpen?: ReadonlyArray<string> | undefined;
 }) {
@@ -407,11 +407,9 @@ export function ReviewFiles({
   if (files === undefined) {
     return (
       <div aria-busy="true" className="rv-files">
-        {Array.from({ length: Math.max(1, pending) }, (_, index) => (
-          <div className="rv-file-skeleton" key={index}>
-            <span />
-          </div>
-        ))}
+        <div className="rv-file-skeleton">
+          <span />
+        </div>
       </div>
     );
   }
@@ -427,13 +425,11 @@ export function ReviewFiles({
             dir={dir}
             expanded={expanded}
             file={file}
-            gitea={expanded ? giteaOf?.(file.path) : undefined}
             key={file.path}
             letter={letter}
             name={name}
             onRetry={onRetry}
             onToggle={() => {
-              if (!expanded) onOpen?.(file.path);
               setOpen((current) => {
                 const next = new Set(current);
                 if (next.has(file.path)) next.delete(file.path);
@@ -455,7 +451,6 @@ function FileRow({
   letter,
   expanded,
   diff,
-  gitea,
   onToggle,
   onRetry,
 }: {
@@ -465,7 +460,6 @@ function FileRow({
   readonly letter: string;
   readonly expanded: boolean;
   readonly diff: ReviewDiffState | undefined;
-  readonly gitea: string | undefined;
   readonly onToggle: () => void;
   readonly onRetry: (() => void) | undefined;
 }) {
@@ -489,48 +483,22 @@ function FileRow({
         </span>
       </button>
       {diff === undefined ? null : (
-        <ReviewDiff diff={diff} gitea={gitea} onRetry={onRetry} previousPath={file.previousPath} />
+        <ReviewDiff diff={diff} onRetry={onRetry} previousPath={file.previousPath} />
       )}
     </>
   );
 }
 
-/** What is missing from a file's diff here, said, with the way to it on Gitea. */
-function DiffElsewhere({
-  words,
-  gitea,
-}: {
-  readonly words: string;
-  readonly gitea: string | undefined;
-}) {
-  return (
-    <p className="rv-diff-note">
-      {words}
-      {gitea === undefined ? null : (
-        <>
-          {" "}
-          <a className="rv-link" href={gitea} rel="noopener noreferrer" target="_blank">
-            Open it on Gitea
-          </a>
-        </>
-      )}
-    </p>
-  );
-}
-
 /**
  * One file's diff: hunk headers, numbers, + green and − red; a long line wraps under its code,
- * so nothing ever scrolls sideways. What is too long to show here says so, and links the file's
- * diff on Gitea (`gitea`).
+ * so nothing ever scrolls sideways. What is too long to show here says so.
  */
 export function ReviewDiff({
   diff,
-  gitea,
   previousPath,
   onRetry,
 }: {
   readonly diff: ReviewDiffState;
-  readonly gitea?: string | undefined;
   readonly previousPath?: string | undefined;
   readonly onRetry?: (() => void) | undefined;
 }) {
@@ -553,7 +521,7 @@ export function ReviewDiff({
   if (file === undefined && diff.cut) {
     return (
       <div className="rv-diff">
-        <DiffElsewhere gitea={gitea} words="Too long to read here." />
+        <p className="rv-diff-note">Too long to read here.</p>
       </div>
     );
   }
@@ -610,47 +578,7 @@ export function ReviewDiff({
           {rest.label}
         </button>
       ) : null}
-      {rest?.kind === "gitea" ? <DiffElsewhere gitea={gitea} words={rest.words} /> : null}
-    </div>
-  );
-}
-
-const CHECK_ICON: Record<GitCheckRow["tone"], ReactNode> = {
-  ok: <CircleCheckIcon aria-hidden="true" />,
-  failed: <CircleXIcon aria-hidden="true" />,
-  busy: <Spinner size="md" tone="muted" />,
-  attention: <CircleIcon aria-hidden="true" />,
-  off: <CircleIcon aria-hidden="true" />,
-};
-
-/** The checks by name, with what each said, and a way to its own page where it keeps one. */
-export function ReviewChecks({ rows }: { readonly rows: ReadonlyArray<GitCheckRow> }) {
-  return (
-    <div className="rv-checks">
-      {rows.map((row) => (
-        <div className="rv-check" data-tone={row.tone} key={row.name}>
-          <span className="rv-ci">{CHECK_ICON[row.tone]}</span>
-          <span className="min-w-0">
-            <span className="sr-only">{row.word}: </span>
-            {row.name}
-            {row.description === undefined ? null : (
-              <span className="rv-check-d"> {row.description}</span>
-            )}
-          </span>
-          {row.url === undefined ? (
-            <span />
-          ) : (
-            <a
-              className="rv-link rv-check-d"
-              href={row.url}
-              rel="noopener noreferrer"
-              target="_blank"
-            >
-              Open
-            </a>
-          )}
-        </div>
-      ))}
+      {rest?.kind === "cut" ? <p className="rv-diff-note">{rest.words}</p> : null}
     </div>
   );
 }

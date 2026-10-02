@@ -1,28 +1,29 @@
 import type { FlowPullRequest } from "@t3tools/client-runtime/zerops";
+import type { ChangeLink } from "@t3tools/shared/hqChanges";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { TestNode } from "../../zerops/__fixtures__/testDom";
 import type { ZeropsProjectFlowValue } from "../../zerops/projectFlowContext";
-import type {
-  ZeropsLandedChangeRequest,
-  ZeropsLandedChangeState,
-} from "../../zerops/useZeropsLandedChange";
+import type { ZeropsLandedChangeState } from "../../zerops/useZeropsLandedChange";
 
-/** What the forge answers for a landed change, once the chip asks for it. */
-const forge = vi.hoisted(() => ({
+/** What HQ answers for a change the flow does not carry, and the change the chip last asked for. */
+const hq = vi.hoisted(() => ({
   answer: { kind: "reading" } as ZeropsLandedChangeState,
+  asked: null as ChangeLink | null,
 }));
 
 vi.mock("../../zerops/useZeropsLandedChange", () => ({
-  useZeropsLandedChange: (request: ZeropsLandedChangeRequest | null) =>
-    request === null ? { kind: "idle" } : forge.answer,
+  useZeropsLandedChange: (link: ChangeLink | null) => {
+    hq.asked = link;
+    return link === null ? { kind: "idle" } : hq.answer;
+  },
 }));
 
 // The test DOM draws no SVG; the icon says nothing the text does not.
 vi.mock("lucide-react", () => ({ GitPullRequestArrow: () => null, GitMergeIcon: () => null }));
 
-const ORIGIN = "https://gitea.example.test";
-const HREF = `${ORIGIN}/zit/zitdev/pulls/31`;
+const HQ = "https://hq.example.test";
+const HREF = `${HQ}/changes/g1/zitdev/31`;
 const LANDED = {
   repository: "zitdev",
   number: 31,
@@ -30,12 +31,14 @@ const LANDED = {
   merged: true,
 } as unknown as FlowPullRequest;
 
-/** The flow as a chip reads it: this Gitea, and the orgs the registry names. */
-function flowValue(slugs: ReadonlyArray<readonly [string, string]>): ZeropsProjectFlowValue {
+/** The flow as a chip reads it: the official HQ once its anchor is resolved, and `g1`'s landed. */
+function flowValue(
+  hqAddress: string | undefined,
+  merged: ReadonlyArray<FlowPullRequest> = [],
+): ZeropsProjectFlowValue {
   return {
-    giteaOrigin: ORIGIN,
-    flows: new Map(),
-    slugs: new Map(slugs as ReadonlyArray<[string, string]>),
+    hqAddress,
+    flows: new Map([["g1", { pullRequests: [], merged }]]),
   } as unknown as ZeropsProjectFlowValue;
 }
 
@@ -61,47 +64,63 @@ function installTestDom(): TestNode {
 }
 
 afterEach(() => {
-  forge.answer = { kind: "reading" };
+  hq.answer = { kind: "reading" };
+  hq.asked = null;
   vi.unstubAllGlobals();
 });
 
 /**
- * A Mate links a change the moment it opens it, often on a project made since the page loaded:
- * the registry does not name its Gitea org yet. The link is drawn as the change from its address
- * at once, and takes its word once HQ's structure names the org — never a bare url until a
- * reload.
+ * A Mate links a change the moment it opens it. The link is drawn as the change from its address
+ * at once — the application, the repository and the number are in it — and takes its word from
+ * the flow, or from HQ for one the flow does not carry: never a bare url until a reload.
  */
 describe("ZeropsChangeLinkChip", () => {
   it.each<{
     readonly name: string;
     readonly href?: string;
-    /** What the registry names and the forge answers, render by render. */
+    /** The official HQ and what it answers, render by render. */
     readonly renders: ReadonlyArray<{
-      readonly slugs: ReadonlyArray<readonly [string, string]>;
+      readonly hqAddress: string | undefined;
+      readonly merged?: ReadonlyArray<FlowPullRequest>;
       readonly answer?: ZeropsLandedChangeState;
     }>;
     readonly text: string;
   }>([
     {
-      name: "an owner the registry does not name is drawn from the url",
-      renders: [{ slugs: [] }],
+      name: "a change HQ is still reading is drawn from its address",
+      renders: [{ hqAddress: HQ }],
       text: "zitdev #31",
     },
     {
-      name: "an owner the registry comes to name gives the chip its word",
-      renders: [{ slugs: [] }, { slugs: [["g1", "zit"]], answer: { kind: "read", pull: LANDED } }],
+      name: "a change HQ reads gives the chip its word",
+      renders: [{ hqAddress: HQ }, { hqAddress: HQ, answer: { kind: "read", pull: LANDED } }],
       text: "Cache the link previews, Landed",
     },
     {
-      name: "an owner the registry names gives the chip its word at once",
-      renders: [{ slugs: [["g1", "zit"]], answer: { kind: "read", pull: LANDED } }],
+      name: "a change the flow carries gives the chip its word",
+      renders: [{ hqAddress: HQ, merged: [LANDED] }],
       text: "Cache the link previews, Landed",
     },
     {
-      name: "a change on another forge stays the link it was",
-      href: "https://github.com/zit/zitdev/pull/31",
-      renders: [{ slugs: [] }],
-      text: "https://github.com/zit/zitdev/pull/31",
+      name: "a link drawn before the official HQ is known stays the link it was",
+      renders: [{ hqAddress: undefined }],
+      text: HREF,
+    },
+    {
+      name: "a link drawn before the official HQ is known becomes the change once it is",
+      renders: [{ hqAddress: undefined }, { hqAddress: HQ }],
+      text: "zitdev #31",
+    },
+    {
+      name: "a change HQ does not have stays the link it was",
+      renders: [{ hqAddress: HQ, answer: { kind: "gone" } }],
+      text: HREF,
+    },
+    {
+      name: "a change on another HQ stays the link it was",
+      href: "https://hq.elsewhere.test/changes/g1/zitdev/31",
+      renders: [{ hqAddress: HQ }],
+      text: "https://hq.elsewhere.test/changes/g1/zitdev/31",
     },
   ])("$name", async ({ href = HREF, renders, text }) => {
     const document = installTestDom();
@@ -112,9 +131,9 @@ describe("ZeropsChangeLinkChip", () => {
     const container = document.createElement("div");
     const root = createRoot(container as unknown as Element);
     try {
-      for (const { slugs, answer } of renders) {
-        forge.answer = answer ?? { kind: "reading" };
-        const value = flowValue(slugs);
+      for (const { hqAddress, merged, answer } of renders) {
+        hq.answer = answer ?? { kind: "reading" };
+        const value = flowValue(hqAddress, merged);
         await act(async () =>
           root.render(
             <ZeropsProjectFlowContext.Provider value={value}>
@@ -124,6 +143,28 @@ describe("ZeropsChangeLinkChip", () => {
         );
       }
       expect(container.textContent).toBe(text);
+    } finally {
+      await act(async () => root.unmount());
+    }
+  });
+
+  it("asks HQ for nothing the flow carries", async () => {
+    const document = installTestDom();
+    const { act } = await import("react");
+    const { createRoot } = await import("react-dom/client");
+    const { ZeropsProjectFlowContext } = await import("../../zerops/projectFlowContext");
+    const { ZeropsChangeLinkChip } = await import("./ZeropsChangeLinkChip");
+    const root = createRoot(document.createElement("div") as unknown as Element);
+    const value = flowValue(HQ, [LANDED]);
+    try {
+      await act(async () =>
+        root.render(
+          <ZeropsProjectFlowContext.Provider value={value}>
+            <ZeropsChangeLinkChip href={HREF}>{HREF}</ZeropsChangeLinkChip>
+          </ZeropsProjectFlowContext.Provider>,
+        ),
+      );
+      expect(hq.asked).toBeNull();
     } finally {
       await act(async () => root.unmount());
     }
@@ -143,13 +184,13 @@ describe("ZeropsChangeLinkChip", () => {
     const { ZeropsProjectFlowContext } = await import("../../zerops/projectFlowContext");
     const { ChangeChipMomentContext, ZeropsChangeLinkChip } =
       await import("./ZeropsChangeLinkChip");
-    forge.answer = {
+    hq.answer = {
       kind: "read",
       pull: { ...LANDED, mergedAt: "2026-09-20T11:00:00.000Z" } as FlowPullRequest,
     };
     const container = document.createElement("div");
     const root = createRoot(container as unknown as Element);
-    const value = flowValue([["g1", "zit"]]);
+    const value = flowValue(HQ);
     try {
       await act(async () =>
         root.render(

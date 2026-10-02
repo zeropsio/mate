@@ -9,7 +9,6 @@ import type {
 } from "@t3tools/client-runtime/zerops/flow";
 import type { ForgeFact, ForgeStore, GiteaSessions } from "@t3tools/client-runtime/zerops/forge";
 import type { Known, Shown } from "@t3tools/client-runtime/zerops/knowledge";
-import type { GitCheckoutState } from "@t3tools/client-runtime/zerops";
 import type { ZeropsStateEnvelope } from "@t3tools/contracts";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
@@ -78,7 +77,6 @@ function stage() {
   const store = {
     read: (fact: ForgeFact) =>
       held.get(JSON.stringify(fact)) ?? { state: "unread", waitingFor: null },
-    mergeState: () => ({ state: "unread", waitingFor: null }),
     demand: (fact: ForgeFact) => {
       const key = JSON.stringify(fact);
       demanded.set(key, (demanded.get(key) ?? 0) + 1);
@@ -181,55 +179,6 @@ describe("the account's project flow in the web", () => {
 
     expect(accountGiteaSessions()).toBeNull();
     expect(rig.sessions.close).toHaveBeenCalledTimes(1);
-  });
-
-  it("a checkout's push re-reads its repository, and a status not heard yet is no push", async () => {
-    const document = installTestDom();
-    const { createRoot } = await import("react-dom/client");
-    const { useCheckoutPushes } = await import("./accountForge");
-    const { useEffect } = await import("react");
-    const repository = { origin: GITEA, owner: "harbor", repo: "appdev" };
-    const checkout = (aheadCount: number): GitCheckoutState => ({
-      repository: "appdev",
-      isRepo: true,
-      hasRemote: true,
-      headRef: "mate/ada",
-      aheadCount,
-      behindCount: 0,
-      hasUpstream: true,
-      changed: [],
-    });
-    /** Every status the probe has handed on, so each step waits for its own. */
-    const seen: Array<GitCheckoutState | null> = [];
-
-    function Probe({ status }: { readonly status: GitCheckoutState | null }) {
-      useCheckoutPushes(status, repository);
-      useEffect(() => {
-        seen.push(status);
-      }, [status]);
-      return null;
-    }
-
-    const root = createRoot(document.createElement("div") as unknown as Element);
-    const hear = async (status: GitCheckoutState | null) => {
-      const count = seen.length;
-      root.render(<Probe status={status} />);
-      await vi.waitFor(() => expect(seen.length).toBe(count + 1));
-    };
-    try {
-      // Before the checkout answers, and on its first answer, nothing was pushed.
-      await hear(null);
-      await hear(checkout(2));
-      // A refetch that clears the status for a moment is not a push either.
-      await hear(null);
-      await hear(checkout(2));
-      expect(invalidated).toEqual([]);
-
-      await hear(checkout(0));
-      expect(invalidated).toEqual([{ topic: "forge-repo", ...repository }]);
-    } finally {
-      root.unmount();
-    }
   });
 
   it("the stop rows read what each stop deploys from the account's store while they are shown", async () => {
@@ -504,15 +453,18 @@ describe("the account's project flow in the web", () => {
     try {
       root.render(<Surface />);
       await vi.waitFor(() =>
-        expect(rig.demanded()).toEqual(["repos", "declarations", "tags", "file", "file"]),
+        expect(rig.demanded()).toEqual(["declarations", "tags", "file", "file"]),
       );
       expect(rig.stopDemands).toEqual(["p-stage"]);
-      expect(flow()?.pullRequests.state).toBe("unread");
+      expect(flow()?.releases.state).toBe("unread");
 
-      rig.hold({ kind: "repos", origin: GITEA, org: "harbor" }, known([{ name: "appdev" }]));
-      await vi.waitFor(() => expect(rig.demanded()).toContain("open-pulls"));
-      rig.hold({ kind: "open-pulls", origin: GITEA, owner: "harbor", repo: "appdev" }, known([]));
-      await vi.waitFor(() => expect(flow()?.pullRequests.state).toBe("known"));
+      rig.hold(
+        { kind: "tags", origin: GITEA, owner: "harbor", repo: "group" },
+        known([{ name: "v1.0.0", message: "", commit: { sha: "s1" } }]),
+      );
+      // A release tag names the commit whose statuses carry the broker's verdict on it.
+      await vi.waitFor(() => expect(rig.demanded()).toContain("statuses"));
+      await vi.waitFor(() => expect(flow()?.releases.state).toBe("known"));
     } finally {
       root.unmount();
       await nextMacrotask();

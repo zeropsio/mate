@@ -10,11 +10,9 @@ function pull(over: Partial<FlowPullRequest> = {}): FlowPullRequest {
     title: "Cache the link previews",
     kind: "code",
     mateProjectId: "p-theo",
-    author: "mate-p-theo",
     url: undefined,
-    checks: "passing",
-    checkWord: "Passing",
     mergeability: "mergeable",
+    behind: false,
     merged: false,
     mergedAt: undefined,
     headSha: "abc",
@@ -99,10 +97,10 @@ describe("projectAttention", () => {
     expect(item?.verb).toBe("Ask the Mate");
   });
 
-  it("leaves checks that are merely running alone: waiting is the correct move", () => {
+  it("leaves a change Gitea is still checking alone: waiting is the correct move", () => {
     const items = projectAttention({
       ...EMPTY,
-      pullRequests: [pull({ mergeability: "conflicting", checks: "pending" })],
+      pullRequests: [pull({ mergeability: "checking" })],
     });
     expect(items).toEqual([]);
   });

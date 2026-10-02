@@ -22,9 +22,8 @@
  * one (`MateUnit`), then its open pull requests, a line each — the mark,
  * `#N title` and *Review*, the one door to merging — folded behind a count
  * past three (`pullRequestsFolded`).
- * After the Mates come those being created, the ones untouched for a week
- * folded behind their count, and the pull requests that are nobody's Mate's,
- * a person's own branch. *New project* stands at the menu's foot, under the
+ * After the Mates come those being created, and the ones untouched for a week
+ * folded behind their count. *New project* stands at the menu's foot, under the
  * list's scroll (`SidebarNewProject`).
  *
  * A project collapses to its heading, the usual sidebar gesture, and the menu
@@ -48,7 +47,6 @@
  */
 import { useWarmIntent } from "../chat/warmTimeline";
 import {
-  checkDotTone,
   assignCandidateMateTints,
   botDisplayName,
   buildZeropsGroupTree,
@@ -946,34 +944,30 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
     if (input.changesDrawn) {
       // Every open change of the project's, so a Mate's in two repositories name theirs.
       const among = input.flow?.pullRequests;
-      const change = (pull: FlowPullRequest, mateProjectId: string | undefined): JumpChange => ({
-        key: changeRowKey(pull),
-        groupId: id,
-        repository: pull.repository,
-        number: pull.number,
-        projectName: groupName,
-        label: sidebarChangeLabel(pull, among),
-        checkTone: checkDotTone({ checks: pull.checks }),
-        checkWord: pull.checkWord,
-        mateProjectId,
-        whose: (mateProjectId === undefined ? undefined : names.get(mateProjectId)) ?? pull.author,
-      });
       // A hidden Mate's changes are drawn nowhere, so they are found nowhere.
       for (const { item } of mateEntries) {
-        for (const pull of grouped.byMate.get(item.project.id) ?? []) {
-          jumpChanges.push(change(pull, item.project.id));
+        const mateProjectId = item.project.id;
+        for (const pull of grouped.get(mateProjectId) ?? []) {
+          jumpChanges.push({
+            key: changeRowKey(pull),
+            groupId: id,
+            repository: pull.repository,
+            number: pull.number,
+            projectName: groupName,
+            label: sidebarChangeLabel(pull, among),
+            mateProjectId,
+            whose: names.get(mateProjectId),
+          });
         }
       }
-      for (const pull of grouped.others) jumpChanges.push(change(pull, undefined));
     }
     jumpStops.push(...input.stops);
   };
 
   /**
    * A project: its heading, then its Mates, each with its crew and what it
-   * has waiting, those being created, the quiet ones folded behind their
-   * count, and the pull requests that are nobody's Mate's. Nothing when
-   * nobody lives in it.
+   * has waiting, those being created, and the quiet ones folded behind their
+   * count. Nothing when nobody lives in it.
    */
   const section = (
     id: string,
@@ -1316,8 +1310,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
       ? projectFlow.pullRequests.map((entry) => entry.pull)
       : (rememberedPulls ?? []);
     if (changesKnown) drawnChanges[id] = flowPulls;
-    // By every Mate, shown or not: a hidden Mate's change is still its own,
-    // never a person's branch.
+    // By every Mate, shown or not: a hidden Mate's change is still its own.
     const grouped = pullRequestsByMate(
       flowPulls,
       everyMate.map(({ item }) => item.project.id),
@@ -1364,12 +1357,12 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
       ...(quietOpen ? quiet.map(({ item }) => ({ kind: "mate" as const, item })) : []),
     ];
     // Each block — a Mate with its crew and its changes, one being created,
-    // the quiet fold, the changes nobody's Mate owns — stands apart from the
-    // next by air alone: 10 px, which with a row's own 10 px above and below
-    // its words puts 30 px between one Mate's words and the next's, whatever
-    // hangs under the first (M16). The heading stands on the first.
-    const blocks: Array<{ readonly key: string; readonly node: ReactNode }> = [
-      ...slots.map((slot) => {
+    // the quiet fold — stands apart from the next by air alone: 10 px, which
+    // with a row's own 10 px above and below its words puts 30 px between one
+    // Mate's words and the next's, whatever hangs under the first (M16). The
+    // heading stands on the first.
+    const blocks: ReadonlyArray<{ readonly key: string; readonly node: ReactNode }> = slots.map(
+      (slot) => {
         if (slot.kind === "coming") {
           const active = slot.member.projectId === activeProjectId;
           return {
@@ -1401,7 +1394,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
           };
         }
         const { item } = slot;
-        const pulls = grouped.byMate.get(item.project.id) ?? [];
+        const pulls = grouped.get(item.project.id) ?? [];
         const listKey = `${id}:${item.project.id}`;
         const appUrl = projectFlow.mates.find(
           (mate) => mate.projectId === item.project.id,
@@ -1457,33 +1450,8 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
             </div>
           ),
         };
-      }),
-      ...(grouped.others.length === 0 || changeRows === undefined
-        ? []
-        : [
-            {
-              key: "others",
-              node: (
-                // Nobody's Mate's: a person's own branch, a block of its own
-                // after the Mates. Hung under the last Mate it read as that
-                // Mate's work, which the row's own `· ada` could not undo at
-                // 256 px, where it is truncated away.
-                <ul className="flex flex-col" data-zerops-surface="sidebar-other-pull-requests">
-                  {grouped.others.map((pull) => (
-                    <PullRequestRow
-                      among={grouped.others}
-                      groupId={id}
-                      key={`${pull.repository}#${pull.number}`}
-                      onOpenChange={changeRows.onOpenChange}
-                      pull={pull}
-                      remembered={changeRows.remembered === true}
-                    />
-                  ))}
-                </ul>
-              ),
-            },
-          ]),
-    ];
+      },
+    );
     return (
       <>
         {header}
@@ -3492,11 +3460,7 @@ function PullRequestRow({
       <span
         className={cn(
           "flex justify-center",
-          tone === "failed"
-            ? "text-status-failed-text"
-            : tone === "attention"
-              ? "text-status-attention-text"
-              : "text-muted-foreground",
+          tone === "attention" ? "text-status-attention-text" : "text-muted-foreground",
         )}
       >
         <GitPullRequestIcon aria-hidden="true" className="size-3.5" />

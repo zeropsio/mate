@@ -114,8 +114,7 @@ export function projectAttention(
     const blocked = pullRequestBlocked(pull);
     // Checks merely running are not waiting on anybody: waiting is correct.
     if (blocked === null || blocked.ask === undefined) continue;
-    const mate =
-      pull.mateProjectId === undefined ? undefined : input.mateNames.get(pull.mateProjectId);
+    const mate = input.mateNames.get(pull.mateProjectId);
     items.push({
       kind: "change-blocked",
       text: `#${String(pull.number)} ${blocked.word.toLocaleLowerCase()}`,

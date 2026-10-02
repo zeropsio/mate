@@ -9,12 +9,9 @@ function blockOf(overrides: Partial<GitBlock> = {}): GitBlock {
     repository: "api",
     branch: "feature/invoices",
     baseBranch: "main",
-    verdict: { tone: "ok", text: "The checks passed. Nothing is stopping it.", ask: undefined },
+    verdict: { tone: "off", text: "Nothing is stopping it.", ask: undefined },
     checkoutLine: "feature/invoices ↑3 · 2 files changed",
     state: "in-review",
-    checks: "passing",
-    checkWord: "Passing",
-    checkRows: [{ name: "ci/test", tone: "ok", word: "Passed" }],
     changed: [{ path: "server.js", insertions: 12, deletions: 1 }],
     pullRequestNumber: 12,
     pullRequestHead: "c0ffee",
@@ -36,10 +33,10 @@ describe("ZeropsGitBlock", () => {
     expect(html).toContain("#12");
     expect(html).toContain("feature/invoices ↑3 · 2 files changed");
     expect(html).toContain("stage picks it up on merge");
-    expect(html).toContain("The checks passed. Nothing is stopping it.");
+    expect(html).toContain("Nothing is stopping it.");
     // The order a person reads in: which repository, what about it, what now.
     expect(html.indexOf(">api<")).toBeLessThan(html.indexOf("feature/invoices ↑3"));
-    expect(html.indexOf("feature/invoices ↑3")).toBeLessThan(html.indexOf("The checks passed"));
+    expect(html.indexOf("feature/invoices ↑3")).toBeLessThan(html.indexOf("Nothing is stopping"));
   });
 
   it("spends the repository's name once, on the line that is the name", () => {
@@ -52,7 +49,7 @@ describe("ZeropsGitBlock", () => {
     { tone: "ok", text: "Merged into main." },
     { tone: "busy", text: "3 commits here are not pushed yet." },
     { tone: "attention", text: "It no longer merges cleanly." },
-    { tone: "failed", text: "Its checks failed." },
+    { tone: "failed", text: "remote: Repository not found." },
     { tone: "off", text: "Nothing new here." },
   ] as const)("wears the $tone answer's colour", ({ tone, text }) => {
     const html = render({ block: blockOf({ verdict: { tone, text, ask: undefined } }) });
@@ -79,8 +76,6 @@ describe("ZeropsGitBlock", () => {
         checkoutLine: "main",
         pullRequestNumber: undefined,
         pullRequestUrl: undefined,
-        checks: "none",
-        checkWord: undefined,
         destination: "",
         verdict: { tone: "off", text: "Nothing new here.", ask: undefined },
       }),
@@ -103,24 +98,6 @@ describe("ZeropsGitBlock", () => {
     // here links out to it.
     expect(html).not.toContain("gitea.example");
     expect(render()).not.toContain('data-zerops-surface="git-change"');
-  });
-
-  it("names each check rather than collapsing them all into one word", () => {
-    const html = render({
-      block: blockOf({
-        checkRows: [
-          { name: "ci/test", tone: "ok", word: "Passed" },
-          { name: "ci/lint", tone: "failed", word: "Failed" },
-        ],
-      }),
-    });
-    expect(html).toContain("ci/test");
-    expect(html).toContain("ci/lint");
-    expect(html).toContain("Failed");
-  });
-
-  it("says nothing about checks where none ran", () => {
-    expect(render({ block: blockOf({ checkRows: [] }) })).not.toContain("Checks");
   });
 
   it("shows what is on disk and not committed, file by file and in total", () => {

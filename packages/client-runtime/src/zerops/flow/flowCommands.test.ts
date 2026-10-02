@@ -1,18 +1,14 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import type { Capability } from "../data/access/capabilities.ts";
-import { project, service } from "../data/__fixtures__/index.ts";
-import type { ServiceRef } from "../data/types.ts";
 import { GiteaApiError, type GiteaClient } from "../giteaClient.ts";
 import type { Invalidation } from "../knowledge/invalidation.ts";
-import type { Shown } from "../knowledge/known.ts";
 import { flowVerbKey } from "../projectFlow.ts";
 import { RELEASE_NOT_A_RELEASER } from "../release.ts";
 import {
   FLOW_COMMAND_UNCERTAIN,
   flowCommandFor,
   makeFlowCommands,
-  mergeCommand,
   releaseCommand,
   type FlowCommand,
   type FlowCommandPorts,
@@ -20,7 +16,6 @@ import {
 import type { GroupFlow } from "./groupFlow.ts";
 
 const GITEA = "https://gitea-1-3000.prg1.zerops.app";
-const APPSTAGE = service("stage-appdev", project("p-stage"));
 const HEAD = "a".repeat(40);
 
 const flush = async (): Promise<void> => {
@@ -40,15 +35,11 @@ function rig(initial: Capability = { allowed: true }) {
     return answer(route);
   };
   const client = {
-    mergePullRequest: (owner: string, repo: string, number: number) =>
-      call(`merge ${owner}/${repo}#${String(number)}`),
     getBranch: (owner: string, repo: string, branch: string) =>
       call(`branch ${owner}/${repo} ${branch}`),
     createTag: (owner: string, repo: string, input: { readonly tag: string }) =>
       call(`tag ${owner}/${repo} ${input.tag}`),
     listTags: (owner: string, repo: string) => call(`tags ${owner}/${repo}`),
-    createPullRequest: (owner: string, repo: string, input: { readonly head: string }) =>
-      call(`open ${owner}/${repo} ${input.head}`),
   } as unknown as GiteaClient;
   const ports: FlowCommandPorts = {
     capability: () => capability,
@@ -84,16 +75,6 @@ function rig(initial: Capability = { allowed: true }) {
   };
 }
 
-const MERGE: FlowCommand = {
-  kind: "merge",
-  origin: GITEA,
-  slug: "harbor",
-  repository: "appdev",
-  number: 4,
-  head: HEAD,
-  feeds: [APPSTAGE],
-};
-
 const RELEASE: FlowCommand = {
   kind: "release",
   origin: GITEA,
@@ -103,20 +84,13 @@ const RELEASE: FlowCommand = {
   message: `appdev ${HEAD}`,
 };
 
+/** The group repo's `main` read, and the tag's write answered by `write`. */
+const tagging =
+  (write: () => Promise<unknown> = async () => undefined) =>
+  async (route: string): Promise<unknown> =>
+    route.startsWith("branch") ? { name: "main", commit: { id: HEAD } } : write();
+
 describe("flow commands (DESIGN §4.9, §4.7 verbs)", () => {
-  it("Merge re-reads only that repo and the deployment it feeds", async () => {
-    const { commands, invalidated, calls } = rig();
-
-    const attempt = await commands.run(MERGE);
-
-    expect(attempt).toEqual({ phase: "accepted" });
-    expect(calls).toEqual(["merge harbor/appdev#4"]);
-    expect(invalidated).toEqual([
-      { topic: "forge-repo", origin: GITEA, owner: "harbor", repo: "appdev" },
-      { topic: "deployment", service: APPSTAGE },
-    ]);
-  });
-
   it("Release and Roll back re-read the group repo, nothing else", async () => {
     const { commands, invalidated, answerWith } = rig();
     answerWith(async (route) => {
@@ -141,26 +115,6 @@ describe("flow commands (DESIGN §4.9, §4.7 verbs)", () => {
     expect(invalidated).toEqual([group, group]);
   });
 
-  it("Open re-reads only that repo's pull requests", async () => {
-    const { commands, invalidated, calls } = rig();
-
-    const attempt = await commands.run({
-      kind: "open",
-      origin: GITEA,
-      slug: "harbor",
-      repository: "appdev",
-      head: "mate/ada",
-      base: "main",
-      title: "Add cart",
-    });
-
-    expect(attempt).toEqual({ phase: "accepted" });
-    expect(calls).toEqual(["open harbor/appdev mate/ada"]);
-    expect(invalidated).toEqual([
-      { topic: "forge-repo", origin: GITEA, owner: "harbor", repo: "appdev" },
-    ]);
-  });
-
   it("a capability nothing can bring back refuses at once, typed, and writes nothing", async () => {
     const { commands, calls, invalidated } = rig({
       allowed: false,
@@ -168,7 +122,7 @@ describe("flow commands (DESIGN §4.9, §4.7 verbs)", () => {
       waitable: false,
     });
 
-    const attempt = await commands.run(MERGE);
+    const attempt = await commands.run(RELEASE);
 
     expect(attempt).toMatchObject({
       phase: "refused",
@@ -180,14 +134,15 @@ describe("flow commands (DESIGN §4.9, §4.7 verbs)", () => {
 
   it("a waitable capability is awaited before the attempt starts, and refused when the wait runs out", async () => {
     const waiting = rig({ allowed: false, reason: "gitea-session", waitable: true });
-    const merged = waiting.commands.run(MERGE);
+    waiting.answerWith(tagging());
+    const released = waiting.commands.run(RELEASE);
     await flush();
-    expect(waiting.commands.attempt(MERGE)).toEqual({ phase: "awaiting-capability" });
+    expect(waiting.commands.attempt(RELEASE)).toEqual({ phase: "awaiting-capability" });
     waiting.setCapability({ allowed: true });
-    expect(await merged).toEqual({ phase: "accepted" });
+    expect(await released).toEqual({ phase: "accepted" });
 
     const expiring = rig({ allowed: false, reason: "gitea-session", waitable: true });
-    const refused = expiring.commands.run(MERGE);
+    const refused = expiring.commands.run(RELEASE);
     await flush();
     expiring.expire();
     expect(await refused).toMatchObject({
@@ -197,24 +152,22 @@ describe("flow commands (DESIGN §4.9, §4.7 verbs)", () => {
     expect(expiring.calls).toEqual([]);
   });
 
-  it("Gitea's own no is a refusal on that target only, in its words", async () => {
+  it("Gitea's own no is a refusal on that target only", async () => {
     const { commands, answerWith } = rig();
-    answerWith(async () => {
-      throw new GiteaApiError("Gitea would not merge it.", 405, "Please try again later");
-    });
+    answerWith(
+      tagging(async () => {
+        throw new GiteaApiError("Gitea would not create the tag.", 405, "Please try again later");
+      }),
+    );
 
-    const attempt = await commands.run(MERGE);
+    const attempt = await commands.run(RELEASE);
 
     expect(attempt).toEqual({
       phase: "refused",
-      refusal: {
-        kind: "gitea",
-        status: 405,
-        words: "Gitea would not merge it: Please try again later",
-      },
+      refusal: { kind: "gitea", status: 405, words: "Gitea would not create the tag." },
     });
-    expect(commands.attempt(MERGE)).toEqual(attempt);
-    expect(commands.attempt({ ...MERGE, number: 5 })).toBeNull();
+    expect(commands.attempt(RELEASE)).toEqual(attempt);
+    expect(commands.attempt({ ...RELEASE, groupId: "g2" })).toBeNull();
   });
 
   it("a tag Gitea's protection refuses says only releasers can tag", async () => {
@@ -232,15 +185,19 @@ describe("flow commands (DESIGN §4.9, §4.7 verbs)", () => {
 
   it("a write whose answer was lost is uncertain, re-reads what it touched, and is never sent again", async () => {
     const { commands, answerWith, calls, invalidated } = rig();
-    answerWith(async () => {
-      throw new TypeError("Failed to fetch");
-    });
+    answerWith(
+      tagging(async () => {
+        throw new TypeError("Failed to fetch");
+      }),
+    );
 
-    const attempt = await commands.run(MERGE);
+    const attempt = await commands.run(RELEASE);
 
     expect(attempt).toEqual({ phase: "uncertain", words: FLOW_COMMAND_UNCERTAIN });
-    expect(calls).toEqual(["merge harbor/appdev#4"]);
-    expect(invalidated).toHaveLength(2);
+    expect(calls).toEqual(["branch harbor/group main", "tag harbor/group v1.0.1"]);
+    expect(invalidated).toEqual([
+      { topic: "forge-repo", origin: GITEA, owner: "harbor", repo: "group" },
+    ]);
   });
 
   it("a read before the write that fails refuses, having written nothing", async () => {
@@ -259,62 +216,47 @@ describe("flow commands (DESIGN §4.9, §4.7 verbs)", () => {
   it("a group's attempts are listed by their verb's key, and no other group's", async () => {
     const { commands, answerWith } = rig();
     const landings: Array<() => void> = [];
-    answerWith(() => new Promise<void>((resolve) => landings.push(resolve)));
-    const cove: FlowCommand = { ...MERGE, slug: "cove", feeds: [] };
+    answerWith(tagging(() => new Promise<void>((resolve) => landings.push(resolve))));
+    const cove: FlowCommand = { ...RELEASE, slug: "cove", groupId: "g2" };
 
-    const merging = commands.run(MERGE);
+    const releasing = commands.run(RELEASE);
     const other = commands.run(cove);
     await flush();
     expect(commands.attemptsIn("harbor")).toEqual(
-      new Map([[flowVerbKey(MERGE), { phase: "pending" }]]),
+      new Map([[flowVerbKey(RELEASE), { phase: "pending" }]]),
     );
     expect([...commands.attemptsIn("cove").keys()]).toEqual([flowVerbKey(cove)]);
     expect(commands.attemptsIn("atoll")).toEqual(new Map());
 
     for (const land of landings) land();
-    await merging;
+    await releasing;
     await other;
     expect(commands.attemptsIn("harbor")).toEqual(
-      new Map([[flowVerbKey(MERGE), { phase: "accepted" }]]),
+      new Map([[flowVerbKey(RELEASE), { phase: "accepted" }]]),
     );
   });
 
   it("a second press while one runs is the same attempt", async () => {
     const { commands, answerWith, calls } = rig();
     let land: () => void = () => undefined;
-    answerWith(() => new Promise<void>((resolve) => (land = resolve)));
+    answerWith(tagging(() => new Promise<void>((resolve) => (land = resolve))));
 
-    const first = commands.run(MERGE);
-    const second = commands.run(MERGE);
+    const first = commands.run(RELEASE);
+    const second = commands.run(RELEASE);
     await flush();
-    expect(commands.attempt(MERGE)).toEqual({ phase: "pending" });
+    expect(commands.attempt(RELEASE)).toEqual({ phase: "pending" });
     land();
 
     expect(await first).toEqual({ phase: "accepted" });
     expect(await second).toEqual({ phase: "accepted" });
-    expect(calls).toEqual(["merge harbor/appdev#4"]);
+    expect(calls).toEqual(["branch harbor/group main", "tag harbor/group v1.0.1"]);
   });
 });
 
 describe("a group flow's commands", () => {
-  const KNOWN = {
-    state: "known",
-    asOf: { ordinal: 1, atMs: 1 },
-    coverage: "complete",
-    freshness: { kind: "live" },
-  } as const;
-  const stagesKnown = (repository: string): Shown<ReadonlyArray<ServiceRef>> => ({
-    ...KNOWN,
-    value: repository === "appdev" ? [APPSTAGE] : [],
-  });
-  const flow = (
-    release: GroupFlow["release"],
-    feeds: GroupFlow["feeds"] = stagesKnown,
-  ): GroupFlow => ({
+  const flow = (release: GroupFlow["release"]): GroupFlow => ({
     groupId: "g1",
     slug: "harbor",
-    pullRequests: { state: "unread", waitingFor: null },
-    merged: { state: "unread", waitingFor: null },
     stops: { state: "unread", waitingFor: null },
     missing: { state: "unread", waitingFor: null },
     release,
@@ -322,7 +264,7 @@ describe("a group flow's commands", () => {
     releases: { state: "unread", waitingFor: null },
     releaseGate: { allowed: true },
     releaseAffordance: null,
-    feeds,
+    feeds: () => ({ state: "unread", waitingFor: null }),
   });
   const offer = {
     gate: { allowed: true },
@@ -330,22 +272,6 @@ describe("a group flow's commands", () => {
     comparison: [],
     entries: [{ service: "appdev", commit: HEAD }],
   } as const;
-
-  it("a merge names the stages its repository feeds, and is not built until they are known", () => {
-    const unread = { state: "unread", waitingFor: null } as const;
-    expect(mergeCommand(flow(unread), GITEA, "appdev", 4, HEAD)).toEqual(MERGE);
-    // A merge settled with no stage named would leave the stage it deploys to unread again.
-    const reading = { state: "reading", sinceMs: 1, attempt: 1 } as const;
-    expect(
-      mergeCommand(
-        flow(unread, () => reading),
-        GITEA,
-        "appdev",
-        4,
-        HEAD,
-      ),
-    ).toBeNull();
-  });
 
   it("a release tags what the offer showed, and only a known offer", () => {
     const known = flow({
@@ -359,7 +285,7 @@ describe("a group flow's commands", () => {
     expect(releaseCommand(flow({ state: "reading", sinceMs: 1, attempt: 1 }), GITEA)).toBeNull();
   });
 
-  it("verbs are addressed as surfaces call them: a pull request by its group's slug, a release by its group", () => {
+  it("verbs are addressed as surfaces call them: by their group", () => {
     const flows = [
       flow({
         state: "known",
@@ -370,30 +296,6 @@ describe("a group flow's commands", () => {
       }),
     ];
 
-    expect(
-      flowCommandFor(
-        { kind: "merge", slug: "harbor", repository: "appdev", number: 4, head: HEAD },
-        flows,
-        GITEA,
-      ),
-    ).toEqual(MERGE);
-    // A group whose flow is not read names no stage its merge feeds: there is none to build.
-    expect(
-      flowCommandFor(
-        { kind: "merge", slug: "cove", repository: "appdev", number: 4, head: HEAD },
-        flows,
-        GITEA,
-      ),
-    ).toBeNull();
-    const open = {
-      kind: "open",
-      slug: "harbor",
-      repository: "appdev",
-      head: "mate/ada",
-      base: "main",
-      title: "Add cart",
-    } as const;
-    expect(flowCommandFor(open, flows, GITEA)).toEqual({ ...open, origin: GITEA });
     expect(flowCommandFor({ kind: "release", groupId: "g1" }, flows, GITEA)).toEqual(RELEASE);
     expect(
       flowCommandFor({ kind: "roll-back", groupId: "g1", tag: "v1.0.0" }, flows, GITEA),

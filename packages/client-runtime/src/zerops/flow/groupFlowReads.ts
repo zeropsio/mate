@@ -2,10 +2,9 @@
  * What one group's flow reads from the account's stores (DESIGN §4.7): the forge facts a view
  * demands for it, and `groupFlow`'s inputs as the forge and the deployment store hold them now.
  *
- * What is demanded grows with what is known: the org's repositories name their open lists, a
- * list names its pull requests' heads, whose checks are read, and the production's services, each
- * through the repository its tier on `main` builds it from (`tiersOnMain`), name the repositories
- * whose `main` a release would carry. A service's repository is never guessed from its hostname.
+ * What is demanded grows with what is known: the production's services, each through the
+ * repository its tier on `main` builds it from (`tiersOnMain`), name the repositories whose `main`
+ * a release would carry. A service's repository is never guessed from its hostname.
  * A group read without a forge — before the Gitea is known, or on a host with none — waits for the
  * Gitea session.
  *
@@ -13,7 +12,7 @@
  */
 import type { ProjectRef } from "../data/types.ts";
 import type { ForgeFact, ForgeStore } from "../forge/forgeStore.ts";
-import type { GiteaCommit, GiteaCommitStatus, GiteaPullRequest } from "../giteaClient.ts";
+import type { GiteaCommit, GiteaCommitStatus } from "../giteaClient.ts";
 import type { GroupEnvironmentTier } from "../groupEnvironments.ts";
 import type { ZeropsRegistryGroup } from "../hq/registry.ts";
 import type { Shown } from "../knowledge/known.ts";
@@ -23,7 +22,6 @@ import type { StopService } from "./deployment.ts";
 import type { DeploymentStore } from "./deploymentStore.ts";
 import {
   groupFlowStatusReads,
-  pullKey,
   releaseContentKey,
   releaseContentReads,
   statusKey,
@@ -31,7 +29,6 @@ import {
   TIERS_ON_MAIN,
   type GroupFlowInputs,
   type GroupFlowMember,
-  type GroupFlowPull,
   type ReleaseContentRead,
   type TiersOnMain,
 } from "./groupFlow.ts";
@@ -51,7 +48,6 @@ export interface GroupFlowSource {
   readonly members: Shown<ReadonlyArray<GroupFlowMember & { readonly project: ProjectRef }>>;
 }
 
-const UNREAD: Shown<never> = { state: "unread", waitingFor: null };
 const WAITING_FOR_GITEA: Shown<never> = { state: "unread", waitingFor: "gitea-session" };
 /** Nothing is read before the epoch's first grant built the stores. */
 const UNBOUND: Shown<never> = { state: "unread", waitingFor: "access-grant" };
@@ -163,28 +159,12 @@ export function groupFlowFacts(
   if (forge === null || origin === undefined) return facts;
   const repository = (repo: string) => ({ origin, owner: source.entry.slug, repo });
   facts.push(
-    { kind: "repos", origin, org: source.entry.slug },
     { kind: "declarations", ...repository(GROUP_REPOSITORY) },
     { kind: "tags", ...repository(GROUP_REPOSITORY) },
     ...TIERS_ON_MAIN.map((tier) => tierFile(origin, source.entry.slug, tier)),
   );
   for (const name of productionRepositories(forge, origin, stores.deployments, source)) {
     facts.push({ kind: "branch", ...repository(name), branch: "main" });
-  }
-  const repos = forge.read({ kind: "repos", origin, org: source.entry.slug });
-  if (repos.state !== "known") return facts;
-  for (const { name } of repos.value) {
-    facts.push(
-      { kind: "open-pulls", ...repository(name) },
-      { kind: "merged-pulls", ...repository(name) },
-    );
-    const open = forge.read({ kind: "open-pulls", ...repository(name) });
-    if (open.state !== "known") continue;
-    for (const number of open.value) {
-      const pull = forge.read({ kind: "pull", ...repository(name), number });
-      if (pull.state !== "known" || pull.value.pull.head?.sha === undefined) continue;
-      facts.push({ kind: "statuses", ...repository(name), sha: pull.value.pull.head.sha });
-    }
   }
   const inputs = groupFlowInputs(stores, source);
   for (const { repository: repo, sha } of groupFlowStatusReads(inputs)) {
@@ -205,33 +185,6 @@ export function groupFlowInputs(stores: GroupFlowStores, source: GroupFlowSource
   const read = <F extends ForgeFact>(fact: F) =>
     forge === null || origin === undefined ? WAITING_FOR_GITEA : forge.read(fact);
 
-  const repos = read({ kind: "repos", origin: origin ?? "", org: slug });
-  const openPulls = new Map<string, Shown<ReadonlyArray<number>>>();
-  const pulls = new Map<string, Shown<GroupFlowPull>>();
-  const merged = new Map<string, Shown<ReadonlyArray<GiteaPullRequest>>>();
-  let repoNames: Shown<ReadonlyArray<string>> = repos as Shown<never>;
-  if (repos.state === "known") {
-    repoNames = { ...repos, value: repos.value.map(({ name }) => name) };
-    for (const { name } of repos.value) {
-      merged.set(name, read({ kind: "merged-pulls", ...repository(name) }));
-      const open = read({ kind: "open-pulls", ...repository(name) });
-      openPulls.set(name, open);
-      if (open.state !== "known") continue;
-      for (const number of open.value) {
-        const key = { ...repository(name), number };
-        const pull = read({ kind: "pull", ...key });
-        // The MergeState is a projection over the same pull request entry: known together.
-        const state = forge === null ? UNREAD : forge.mergeState(key);
-        pulls.set(
-          pullKey(name, number),
-          pull.state === "known" && state.state === "known"
-            ? { ...state, value: { pull: pull.value.pull, state: state.value } }
-            : (state as Shown<never>),
-        );
-      }
-    }
-  }
-
   const stops = new Map<string, Shown<ReadonlyArray<StopService>>>();
   if (source.members.state === "known") {
     for (const member of source.members.value) {
@@ -250,10 +203,6 @@ export function groupFlowInputs(stores: GroupFlowStores, source: GroupFlowSource
     entry: source.entry,
     members: source.members,
     declarations: read({ kind: "declarations", ...repository(GROUP_REPOSITORY) }),
-    repos: repoNames,
-    openPulls,
-    pulls,
-    merged,
     tags: read({ kind: "tags", ...repository(GROUP_REPOSITORY) }),
     tiers:
       forge === null || origin === undefined ? WAITING_FOR_GITEA : readTiers(forge, origin, slug),
@@ -283,10 +232,6 @@ export function unboundGroupFlowInputs(
     entry: source.entry,
     members: source.members,
     declarations: UNBOUND,
-    repos: UNBOUND,
-    openPulls: new Map(),
-    pulls: new Map(),
-    merged: new Map(),
     tags: UNBOUND,
     tiers: UNBOUND,
     mainHeads: new Map(),

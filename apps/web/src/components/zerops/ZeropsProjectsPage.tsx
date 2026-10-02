@@ -106,8 +106,6 @@ import {
   buildZeropsGroupTree,
   mateShapeOf,
   newMateTint,
-  flowVerbKey,
-  flowVerbLabel,
   deployWord,
   rankZeropsCandidateForListing,
   readZeropsToolKind,
@@ -157,6 +155,7 @@ import { ZeropsRenameDialog } from "./ZeropsRenameDialog";
 import { useRenameGroup } from "~/zerops/useRenameGroup";
 import { useEnableRoute } from "~/zerops/useEnableRoute";
 import { useMateActions } from "~/zerops/useMateActions";
+import { useChangeOffers } from "~/zerops/useChangeOffers";
 import { useZeropsGroupRecipe } from "~/zerops/useZeropsGroupRecipe";
 import { officialHq, useAccountHq } from "~/zerops/accountHq";
 import { useAccountGitea } from "~/zerops/giteaProject";
@@ -182,6 +181,8 @@ import {
   type ProjectsFlowGroup,
 } from "./projects/ZeropsProjectsFlow";
 import {
+  changeRowVerb,
+  changesUnknownOf,
   flowStepsAwaiting,
   groupFlowInputOf,
   groupMemberFactsOf,
@@ -1612,6 +1613,9 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
   // is waiting to land, what was released — is read once for the account
   // (`ZeropsProjectFlowProvider`, D26); the page draws its share of it.
   const projectFlow = useZeropsProjectFlow();
+  // What HQ's rule shows this person of each project's changes: a project listed to them whose
+  // changes it does not says so in their steps, never "None yet".
+  const changeOffersOf = useChangeOffers();
 
   /**
    * The face a Mate wears (`mateFaceOf`): the state of its conversation when its socket is up,
@@ -1720,30 +1724,23 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
   /**
    * One pull request's row, wherever it is drawn. Its verb is *Review*, the one
    * door to merging (pass 16, R1): the review reads the change, says whether it
-   * is safe and carries *Merge* — nothing merges from a row. `withMerge` is
-   * false where the project's next step already offers that door on it: one
-   * verb, once. `compact` stacks title, state and verb for a flow step's narrow
-   * column.
+   * is safe and carries *Merge* — nothing merges from a row, which says
+   * "Merging…" while the review's merge is under way. `withMerge` is false where
+   * the project's next step already offers that door on it: one verb, once.
+   * `compact` stacks title, state and verb for a flow step's narrow column.
    */
   const pullRequestRowOf = (
     group: ZeropsGroup,
     pull: FlowPullRequest,
     { withMerge, compact }: { readonly withMerge: boolean; readonly compact: boolean },
   ) => {
-    const slug = groupDeploys.get(group.groupId)?.slug;
     // One vocabulary down the column, the same one the project's own page and
-    // the left menu use: `changeState` answers a rebase and a passing check in
-    // the same register. `checkDotTone` alone said nothing at all about a
-    // change that no longer merges, which is the one a person needs to see.
+    // the left menu use (`changeState`): a change that no longer merges is the
+    // one a person needs to see.
     const state = changeState(pull);
-    const merging =
-      slug !== undefined &&
-      projectFlow.pending.has(
-        flowVerbKey({ kind: "merge", slug, repository: pull.repository, number: pull.number }),
-      );
     const action = withMerge ? (
       <ZeropsMateVerb
-        label={merging ? flowVerbLabel("merge", true) : REVIEW_LABEL}
+        label={changeRowVerb(projectFlow.pending, group.groupId, pull)}
         onClick={(event) => {
           openReview(
             {
@@ -1758,7 +1755,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
       />
     ) : undefined;
     const key = `pull-${group.groupId}-${pull.repository}-${pull.number}`;
-    const line = pullRequestLineWith(pull, mateNames.get(pull.mateProjectId ?? ""));
+    const line = pullRequestLineWith(pull, mateNames.get(pull.mateProjectId));
     const open = () => {
       void navigate({
         to: "/change/$groupId/$repository/$number",
@@ -2557,10 +2554,14 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
   const flowGroups = groupTree.groups.map(
     ({ group, environments }): ProjectsFlowGroup<ZeropsCandidatePresentation> => {
       const reads = groupDeploys.get(group.groupId);
+      const changesUnknown = changesUnknownOf({
+        offers: changeOffersOf(group.groupId),
+        changesFailure: reads?.changesFailure,
+      });
       const awaiting = flowStepsAwaiting({
         read: reads !== undefined,
         changesKnown: reads?.changesKnown === true,
-        changesFailed: reads?.changesFailure !== undefined,
+        changesUnknown,
         // Out and expected back: a Gitea session is held or coming, and the
         // group has an org to read (or the registry has not answered yet).
         readOut:
@@ -2597,7 +2598,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
         placed: lastGroupPlacement(group.groupId),
         awaiting: awaiting.steps,
         changesAwaiting: awaiting.changes,
-        changesFailed: reads?.changesFailure !== undefined,
+        changesUnknown,
         mates: new Map(
           environments
             .filter(({ item }) => hasMate(item))

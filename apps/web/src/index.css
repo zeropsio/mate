@@ -6206,17 +6206,6 @@ html[data-theme-id] [data-chat-header] .conversation-crewmate[data-popup-open] {
   min-width: 0;
   flex: 1;
 }
-.rv-pic-line .rv-link {
-  display: inline-flex;
-  flex: none;
-  align-items: center;
-  gap: 2px;
-  font-weight: 500;
-}
-.rv-pic-line .rv-link svg {
-  width: 14px;
-  height: 14px;
-}
 
 /* A picture opened large, over the review: the picture, its words, a way through the others. */
 .rv-viewer-backdrop {
@@ -6455,39 +6444,6 @@ html[data-theme-id] [data-chat-header] .conversation-crewmate[data-popup-open] {
   margin: 4px 0 2px 60px;
 }
 
-/* The checks by name, with what each said. */
-.rv-checks {
-  display: grid;
-  gap: 2px;
-}
-.rv-check {
-  display: grid;
-  min-height: 32px;
-  grid-template-columns: 18px minmax(0, 1fr) auto;
-  column-gap: 10px;
-  align-items: center;
-  font-size: 14px;
-  line-height: 20px;
-}
-.rv-check .rv-ci {
-  display: flex;
-  color: var(--muted-foreground);
-}
-.rv-check .rv-ci svg {
-  width: 16px;
-  height: 16px;
-}
-.rv-check[data-tone="ok"] .rv-ci {
-  color: var(--zerops-status-ok);
-}
-.rv-check[data-tone="failed"] .rv-ci {
-  color: var(--zerops-status-failed);
-}
-.rv-check-d {
-  font-size: 13px;
-  color: var(--muted-foreground);
-}
-
 /* What could not be read, where it would have stood, with Try again: amber, it didn't go
    through; a failure never blanks its section. */
 .rv-failed {
@@ -6517,12 +6473,6 @@ html[data-theme-id] [data-chat-header] .conversation-crewmate[data-popup-open] {
 .rv-diff .rv-failed {
   padding: 0 6px 0 60px;
 }
-.rv-note {
-  margin: 0 0 12px;
-  font-size: 14px;
-  line-height: 22px;
-  color: var(--muted-foreground);
-}
 /* A fold's way open: its words on the edge of what it opens. */
 .rv-fold {
   margin: 4px 0 0 -8px;
@@ -6539,8 +6489,7 @@ html[data-theme-id] [data-chat-header] .conversation-crewmate[data-popup-open] {
   padding: 0;
   list-style: none;
 }
-.rv-remark,
-.rv-remark-skeleton {
+.rv-remark {
   display: grid;
   grid-template-columns: 20px minmax(0, 1fr);
   column-gap: 10px;
@@ -6580,33 +6529,6 @@ html[data-theme-id] [data-chat-header] .conversation-crewmate[data-popup-open] {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
-/* A comment on its way holds a one-line comment's room: its mark, its name, its line. */
-.rv-remark-skeleton {
-  height: 44px;
-}
-.rv-remark-skeleton[data-fold] {
-  height: 24px;
-}
-.rv-remark-skeleton span {
-  height: 10px;
-  border-radius: 5px;
-  background: color-mix(in oklab, var(--foreground) 7%, transparent);
-}
-.rv-remark-skeleton span:first-child {
-  grid-row: 1 / span 2;
-  width: 20px;
-  height: 20px;
-  border-radius: 999px;
-}
-.rv-remark-skeleton span:nth-child(2) {
-  width: 96px;
-  margin: 5px 0;
-}
-.rv-remark-skeleton span:nth-child(3) {
-  width: 64%;
-  margin: 6px 0;
-}
-
 /* The one box: a quiet line that grows as it is written in, its two verbs at its end. */
 .rv-say {
   display: flex;
@@ -6622,9 +6544,6 @@ html[data-theme-id] [data-chat-header] .conversation-crewmate[data-popup-open] {
   box-shadow:
     inset 0 0 0 1px color-mix(in oklab, var(--foreground) 22%, transparent),
     0 0 0 3px color-mix(in oklab, var(--ring) 22%, transparent);
-}
-.rv-say[data-off] {
-  opacity: 0.6;
 }
 .rv-say-box {
   flex: 1;

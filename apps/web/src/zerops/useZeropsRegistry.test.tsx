@@ -46,6 +46,7 @@ function view(over: Partial<HqStructureView>): HqStructureView {
   return {
     organizationId: "org-1",
     structure: KNOWN,
+    changes: null,
     readAt: 1_000,
     current: true,
     unavailableSince: null,

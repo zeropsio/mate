@@ -73,7 +73,6 @@ export const Invalidation = Schema.Union([
   Schema.Struct({ topic: Schema.Literal("gitea-session"), origin: GiteaOrigin }),
   Schema.Struct({ topic: Schema.Literal("forge-org"), origin: GiteaOrigin, org: Schema.String }),
   Schema.Struct({ topic: Schema.Literal("forge-repo"), ...Repository }),
-  Schema.Struct({ topic: Schema.Literal("forge-pr"), ...Repository, number: Schema.Int }),
 ]);
 /** "Facts under this key may have changed at the source." */
 export type Invalidation = typeof Invalidation.Type;
@@ -135,14 +134,6 @@ function keyOf(invalidation: Invalidation): string {
         invalidation.origin,
         invalidation.owner,
         invalidation.repo,
-      ]);
-    case "forge-pr":
-      return JSON.stringify([
-        invalidation.topic,
-        invalidation.origin,
-        invalidation.owner,
-        invalidation.repo,
-        invalidation.number,
       ]);
   }
 }

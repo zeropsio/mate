@@ -1,22 +1,16 @@
 /**
  * The forge store (DESIGN §2.D D3–D5, §4.7): what Gitea says, as the person, one fact per key —
- * an org's repositories, whether the broker has made a group's org yet, a repository with the
- * person's permissions in it, its open and recently merged pull requests and those of a head
- * branch, one pull request, a repository's tags, recent commits, a branch's head, a file on
- * `main`, the group repo's declarations (`environments.yaml`), a commit's statuses and detail, what
- * one commit has over another, and across the whole Gitea the person's repositories and the open
- * pull requests they can see.
+ * whether the broker has made a group's org yet, a repository with the person's permissions in
+ * it, a repository's tags, recent commits, a branch's head, a file on `main`, the group repo's
+ * declarations (`environments.yaml`), a commit's statuses and detail, what one commit has over
+ * another, and across the whole Gitea the person's repositories. A Mate's changes are HQ's.
  *
  * ## Facts
  *
  * Each key is one `Known` cell, read on demand and published on its own (M4, M8): one key
  * resolving never republishes or resets another, so an org switch, a group re-keying its
  * repositories or a view unmounting blanks nothing (M9). A list is `complete` only when the read
- * covered all of it. A pull request read in a list is admitted into its own cell by that read,
- * and a demanded list demands the pull requests it lists. Every read of a pull request moves its
- * `MergeState` on (`mergeState.ts`); one that is checking is read again at
- * {@link MERGE_RECHECK_AFTER_MS} while it is demanded, and a pull request landing puts every other
- * open one of its repository back to checking.
+ * covered all of it.
  *
  * ## Scheduling
  *
@@ -24,8 +18,8 @@
  *   go by the demand's priority, then in the order keys became due.
  * - Nothing aborts a read in flight except the store's end or the key's eviction: a backstop that
  *   comes due, an invalidation or a wake during a read is one more read after it (M3).
- * - Backstops, because Gitea pushes nothing to a browser (§6.3): lists, repositories, tags,
- *   commits, files and branch heads every {@link FORGE_LIST_BACKSTOP_MS}, declarations every
+ * - Backstops, because Gitea pushes nothing to a browser (§6.3): repositories, tags, commits,
+ *   files and branch heads every {@link FORGE_LIST_BACKSTOP_MS}, declarations every
  *   {@link FORGE_DECLARATIONS_BACKSTOP_MS}, a commit's statuses every
  *   {@link FORGE_PENDING_STATUS_MS} while one is pending, for at most
  *   {@link FORGE_PENDING_STATUS_LIMIT_MS}, and at the list backstop while CI has posted none; an
@@ -37,8 +31,8 @@
  *   readable again and reads then.
  * - While the tab is hidden nothing starts. A visible wake resets the backoff and reads again
  *   every demanded key read more than {@link FORGE_WAKE_REVALIDATE_MS} ago, except what no read
- *   changes: a key proved absent, a pull request that landed, statuses that are all done, an org
- *   that is made, a comparison or a commit read.
+ *   changes: a key proved absent, statuses that are all done, an org that is made, a comparison or
+ *   a commit read.
  *
  * ## Retention
  *
@@ -55,13 +49,10 @@ import {
   type GiteaCommit,
   type GiteaCommitDetail,
   type GiteaCommitStatus,
-  type GiteaIssueSearchHit,
   type GiteaOrganization,
-  type GiteaPullRequest,
   type GiteaRepository,
   type GiteaTag,
 } from "../giteaClient.ts";
-import { checkTone, type GitCheckTone } from "../gitTab.ts";
 import { readGroupEnvironments, type GroupEnvironment } from "../groupEnvironments.ts";
 import type { Invalidation } from "../knowledge/invalidation.ts";
 import {
@@ -77,14 +68,6 @@ import {
 import { INITIAL_BACKOFF, scheduleRetry, type Backoff } from "../knowledge/retryPolicy.ts";
 import { ENVIRONMENTS_DOCUMENT_PATH } from "../recipeTier.ts";
 import type { GiteaSessions } from "./giteaSession.ts";
-import {
-  MERGE_RECHECK_AFTER_MS,
-  mergeabilityAfter,
-  mergeReadOf,
-  mergeStateOf,
-  type MergeabilityTrack,
-  type MergeState,
-} from "./mergeState.ts";
 
 export const FORGE_HOST_CONCURRENCY = 4;
 export const FORGE_LIST_BACKSTOP_MS = 60_000;
@@ -93,12 +76,6 @@ export const FORGE_PENDING_STATUS_MS = 15_000;
 export const FORGE_PENDING_STATUS_LIMIT_MS = 20 * 60_000;
 export const FORGE_WAKE_REVALIDATE_MS = 30_000;
 export const FORGE_RETAINED_UNLEASED = 256;
-/** One page of open pull requests; a page this long may not be all of them. */
-export const FORGE_OPEN_PULLS_PAGE = 50;
-/** How many of a repository's closed pull requests are read for its recent landings. */
-export const FORGE_MERGED_PULLS_READ = 20;
-/** One page of a repository's pull requests of every state, matched to a head branch. */
-export const FORGE_BRANCH_PULLS_PAGE = 50;
 /** How far back a repository's history goes before it stops being one. */
 export const FORGE_COMMITS_READ = 30;
 
@@ -108,26 +85,14 @@ interface Repository {
   readonly repo: string;
 }
 
-/** A pull request's natural key: origin, owner, repository and number. */
-export interface PullKey extends Repository {
-  readonly number: number;
-}
-
 /** One fact the forge holds, by its natural key. */
 export type ForgeFact =
-  | { readonly kind: "repos"; readonly origin: string; readonly org: string }
   /** Every repository the person can reach on the Gitea. */
   | { readonly kind: "user-repos"; readonly origin: string }
-  /** The open pull requests across every repository the person can see. */
-  | { readonly kind: "pull-search"; readonly origin: string }
   /** A group's org, which the broker makes after the group is registered. */
   | { readonly kind: "organization"; readonly origin: string; readonly org: string }
-  | ({ readonly kind: "open-pulls" } & Repository)
-  | ({ readonly kind: "merged-pulls" } & Repository)
-  | ({ readonly kind: "pull" } & PullKey)
   | ({ readonly kind: "tags" } & Repository)
   | ({ readonly kind: "branch"; readonly branch: string } & Repository)
-  | ({ readonly kind: "branch-pulls"; readonly branch: string } & Repository)
   | ({ readonly kind: "declarations" } & Repository)
   /** A file on the repository's `main`, by its path. */
   | ({ readonly kind: "file"; readonly path: string } & Repository)
@@ -156,27 +121,12 @@ export type ForgeRepository =
   | { readonly kind: "made"; readonly repository: GiteaRepository }
   | { readonly kind: "pending" };
 
-/** A pull request as last read, and what its reads have shown about whether it merges. */
-export interface PullRequestFact {
-  readonly pull: GiteaPullRequest;
-  readonly merge: MergeabilityTrack;
-}
-
 interface ForgeValues {
-  readonly repos: ReadonlyArray<GiteaRepository>;
   readonly "user-repos": ReadonlyArray<GiteaRepository>;
-  readonly "pull-search": ReadonlyArray<GiteaIssueSearchHit>;
   readonly organization: ForgeOrganization;
-  /** The open pull requests' numbers; each one's own fact is its `pull` key. */
-  readonly "open-pulls": ReadonlyArray<number>;
-  /** The recent landings, newest first as Gitea lists them. */
-  readonly "merged-pulls": ReadonlyArray<GiteaPullRequest>;
-  readonly pull: PullRequestFact;
   readonly tags: ReadonlyArray<GiteaTag>;
   /** The commit the branch's head is. */
   readonly branch: string;
-  /** The numbers of the pull requests of any state whose head is the branch, newest first. */
-  readonly "branch-pulls": ReadonlyArray<number>;
   readonly declarations: ReadonlyArray<GroupEnvironment>;
   /** The file's text; `null` while `main` holds no such file. */
   readonly file: string | null;
@@ -203,7 +153,7 @@ const PRIORITY_RANK: Readonly<Record<ForgePriority, number>> = {
 /** The invalidations the forge store answers (§6.2). */
 export type ForgeInvalidation = Extract<
   Invalidation,
-  { readonly topic: "forge-org" | "forge-repo" | "forge-pr" }
+  { readonly topic: "forge-org" | "forge-repo" }
 >;
 
 export interface ForgeStorePorts {
@@ -220,8 +170,6 @@ export interface ForgeStore {
   /** Shows the fact until the returned release; the most urgent of its demands orders its reads. */
   readonly demand: (fact: ForgeFact, priority?: ForgePriority) => () => void;
   readonly read: <F extends ForgeFact>(fact: F) => Shown<ForgeValue<F>>;
-  /** The pull request's MergeState, with the checks on its head as they are held. */
-  readonly mergeState: (pull: PullKey) => Shown<MergeState>;
   /** Told the key of every fact whose shown state changed. */
   readonly subscribe: (listener: (fact: ForgeFact) => void) => () => void;
   readonly invalidate: (invalidation: ForgeInvalidation) => void;
@@ -250,7 +198,7 @@ interface Entry {
   inFlight: { readonly ordinal: number; readonly controller: AbortController } | null;
   /** A read is owed as soon as a slot is free: demanded unread, invalidated, or asked for by a wake. */
   owed: boolean;
-  /** Monotonic time a backstop or a recheck reads it next; null while none does. */
+  /** Monotonic time a backstop reads it next; null while none does. */
   pollAt: number | null;
   /** Monotonic time a failed read is tried again; null while none is due. */
   retryAt: number | null;
@@ -259,10 +207,6 @@ interface Entry {
   awaitingSession: boolean;
   /** Monotonic time the last read started; null before the first. */
   readAt: number | null;
-  /** Wall time of the newest invalidation. */
-  invalidatedAtMs: number;
-  /** A checking pull request: when it started checking and the next recheck rung. */
-  recheck: { readonly sinceMs: number; rung: number } | null;
   /** Monotonic time the statuses were first read pending, in the current pending run. */
   pendingSince: number | null;
   /** When the key last became due, for the order within one priority. */
@@ -277,26 +221,19 @@ function normalized(fact: ForgeFact): ForgeFact {
 
 function keyOf(fact: ForgeFact): string {
   switch (fact.kind) {
-    case "repos":
     case "organization":
       return JSON.stringify([fact.kind, fact.origin, fact.org]);
     case "user-repos":
-    case "pull-search":
       return JSON.stringify([fact.kind, fact.origin]);
-    case "pull":
-      return JSON.stringify([fact.kind, fact.origin, fact.owner, fact.repo, fact.number]);
     case "statuses":
     case "commit":
       return JSON.stringify([fact.kind, fact.origin, fact.owner, fact.repo, fact.sha]);
     case "compare":
       return JSON.stringify([fact.kind, fact.origin, fact.owner, fact.repo, fact.base, fact.head]);
     case "branch":
-    case "branch-pulls":
       return JSON.stringify([fact.kind, fact.origin, fact.owner, fact.repo, fact.branch]);
     case "file":
       return JSON.stringify([fact.kind, fact.origin, fact.owner, fact.repo, fact.path]);
-    case "open-pulls":
-    case "merged-pulls":
     case "tags":
     case "declarations":
     case "commits":
@@ -324,26 +261,21 @@ const sameRepository = (fact: ForgeFact, repository: Repository): boolean =>
   fact.repo === repository.repo;
 
 /**
- * Whether the invalidation names facts under the fact's key. The facts across the whole Gitea
- * follow what changed under them: the person's repositories an org, the search a repository.
+ * Whether the invalidation names facts under the fact's key. The person's repositories across the
+ * whole Gitea follow an org.
  */
 function invalidates(invalidation: ForgeInvalidation, fact: ForgeFact): boolean {
   const origin = normalize(invalidation.origin);
   if (invalidation.topic === "forge-org") {
     return (
       fact.origin === origin &&
-      (((fact.kind === "repos" || fact.kind === "organization") && fact.org === invalidation.org) ||
+      ((fact.kind === "organization" && fact.org === invalidation.org) ||
         fact.kind === "user-repos")
     );
   }
-  if (fact.kind === "pull-search") return fact.origin === origin;
   // Commits named by their shas never change.
   if (fact.kind === "compare" || fact.kind === "commit") return false;
-  return (
-    sameRepository(fact, { origin, owner: invalidation.owner, repo: invalidation.repo }) &&
-    (invalidation.topic === "forge-repo" ||
-      (fact.kind === "pull" && fact.number === invalidation.number))
-  );
+  return sameRepository(fact, { origin, owner: invalidation.owner, repo: invalidation.repo });
 }
 
 /** What a failed read means for the fact. */
@@ -362,66 +294,14 @@ export function forgeFailure(cause: unknown): FailureReason {
 
 async function readFact(client: GiteaClient, fact: ForgeFact): Promise<Outcome> {
   switch (fact.kind) {
-    case "repos":
-      return {
-        kind: "value",
-        value: await client.listOrganizationRepositories(fact.org),
-        coverage: "complete",
-      };
     case "user-repos":
       return { kind: "value", value: await client.listUserRepositories(), coverage: "complete" };
-    case "pull-search":
-      return { kind: "value", value: await client.searchPullRequests(), coverage: "complete" };
     case "organization": {
       // Only a 404 means "not made yet"; the client turns that, and nothing else, into undefined.
       const organization = await client.getOrganization(fact.org);
       const value: ForgeOrganization =
         organization === undefined ? { kind: "pending" } : { kind: "made", organization };
       return { kind: "value", value, coverage: "complete" };
-    }
-    case "open-pulls": {
-      const pulls = await client.listPullRequests(fact.owner, fact.repo, {
-        state: "open",
-        limit: FORGE_OPEN_PULLS_PAGE,
-      });
-      return {
-        kind: "value",
-        value: pulls,
-        coverage: pulls.length < FORGE_OPEN_PULLS_PAGE ? "complete" : "partial",
-      };
-    }
-    case "branch-pulls": {
-      // Gitea has no "pull requests by head branch" filter worth trusting across versions. A
-      // fork's branch of the same name is another branch; Gitea matches names ignoring case.
-      const pulls = await client.listPullRequests(fact.owner, fact.repo, {
-        state: "all",
-        limit: FORGE_BRANCH_PULLS_PAGE,
-      });
-      const own = `${fact.owner}/${fact.repo}`.toLowerCase();
-      return {
-        kind: "value",
-        value: pulls.filter(
-          ({ head }) => head?.ref === fact.branch && head.repo?.full_name?.toLowerCase() === own,
-        ),
-        coverage: pulls.length < FORGE_BRANCH_PULLS_PAGE ? "complete" : "partial",
-      };
-    }
-    case "merged-pulls": {
-      const closed = await client.listPullRequests(fact.owner, fact.repo, {
-        state: "closed",
-        limit: FORGE_MERGED_PULLS_READ,
-      });
-      return {
-        kind: "value",
-        value: closed.filter((pull) => pull.merged === true),
-        coverage: "complete",
-      };
-    }
-    case "pull": {
-      const pull = await client.getPullRequest(fact.owner, fact.repo, fact.number);
-      return pull === undefined
-        ? { kind: "absent" }
-        : { kind: "value", value: pull, coverage: "complete" };
     }
     case "tags":
       return {
@@ -487,10 +367,6 @@ async function readFact(client: GiteaClient, fact: ForgeFact): Promise<Outcome> 
   }
 }
 
-function mapShown<A, B>(shown: Shown<A>, map: (value: A) => B): Shown<B> {
-  return shown.state === "known" ? { ...shown, value: map(shown.value) } : shown;
-}
-
 export function makeForgeStore(ports: ForgeStorePorts): ForgeStore {
   const entries = new Map<string, Entry>();
   /** Keys nobody demands, least recently released first. */
@@ -531,8 +407,6 @@ export function makeForgeStore(ports: ForgeStorePorts): ForgeStore {
       backoff: INITIAL_BACKOFF,
       awaitingSession: false,
       readAt: null,
-      invalidatedAtMs: 0,
-      recheck: null,
       pendingSince: null,
       dueSince: ports.now().mono,
     };
@@ -547,40 +421,11 @@ export function makeForgeStore(ports: ForgeStorePorts): ForgeStore {
     test: (value: ForgeValues[K]) => boolean,
   ): boolean => entry.cell.held.state === "known" && test(entry.cell.held.value as ForgeValues[K]);
 
-  /**
-   * The lists held that name this pull request: its repository's open list, and the list of its
-   * head branch.
-   */
-  const listsOf = (entry: Entry): ReadonlyArray<Entry> => {
-    if (entry.fact.kind !== "pull") return [];
-    const { origin, owner, repo, number } = entry.fact;
-    const keys = [keyOf({ kind: "open-pulls", origin, owner, repo })];
-    const held = entry.cell.held;
-    if (held.state === "known") {
-      const head = (held.value as PullRequestFact).pull.head?.ref;
-      if (head !== undefined) {
-        keys.push(keyOf({ kind: "branch-pulls", origin, owner, repo, branch: head }));
-      }
-    }
-    return keys.flatMap((key) => {
-      const list = entries.get(key);
-      return list !== undefined && holds<"open-pulls">(list, (numbers) => numbers.includes(number))
-        ? [list]
-        : [];
-    });
-  };
-
-  /** The most urgent demand on it, directly or through a list that names it. */
+  /** The most urgent demand on it. */
   const rankOf = (entry: Entry): number | null => {
     let rank: number | null = null;
     for (const priority of entry.leases.values()) {
       rank = Math.min(rank ?? Number.POSITIVE_INFINITY, PRIORITY_RANK[priority]);
-    }
-    if (rank !== null) return rank;
-    for (const list of listsOf(entry)) {
-      if (list.leases.size === 0) continue;
-      const listed = rankOf(list);
-      if (listed !== null) rank = Math.min(rank ?? Number.POSITIVE_INFINITY, listed);
     }
     return rank;
   };
@@ -588,15 +433,12 @@ export function makeForgeStore(ports: ForgeStorePorts): ForgeStore {
   const reached = (at: number | null, mono: number): boolean => at !== null && mono >= at;
 
   /**
-   * What no read changes: a key proved absent (M6), a pull request that landed, statuses that are
-   * all done (D5), an org that is made, a comparison or a commit read. Only an invalidation reads
-   * it again.
+   * What no read changes: a key proved absent (M6), statuses that are all done (D5), an org that
+   * is made, a comparison or a commit read. Only an invalidation reads it again.
    */
   const final = (entry: Entry): boolean => {
     if (entry.cell.held.state === "gone") return true;
     switch (entry.fact.kind) {
-      case "pull":
-        return holds<"pull">(entry, (fact) => fact.pull.merged === true);
       case "statuses":
         return holds<"statuses">(entry, statusesDone);
       case "organization":
@@ -633,7 +475,6 @@ export function makeForgeStore(ports: ForgeStorePorts): ForgeStore {
     for (const id of released) {
       if (released.size <= FORGE_RETAINED_UNLEASED) return;
       const entry = entries.get(id);
-      // A pull request its demanded list names is shown, whoever holds no lease on it.
       if (entry !== undefined && rankOf(entry) !== null) continue;
       released.delete(id);
       if (entry === undefined) continue;
@@ -649,14 +490,9 @@ export function makeForgeStore(ports: ForgeStorePorts): ForgeStore {
     wall: number,
   ): number | null => {
     switch (entry.fact.kind) {
-      case "repos":
       case "user-repos":
-      case "pull-search":
-      case "open-pulls":
-      case "merged-pulls":
       case "tags":
       case "branch":
-      case "branch-pulls":
       case "commits":
       case "file":
         return mono + FORGE_LIST_BACKSTOP_MS;
@@ -688,77 +524,13 @@ export function makeForgeStore(ports: ForgeStorePorts): ForgeStore {
           ? mono + FORGE_PENDING_STATUS_MS
           : null;
       }
-      case "pull": {
-        const mergeability = (value as PullRequestFact).merge.mergeability;
-        if (mergeability.kind !== "checking") {
-          entry.recheck = null;
-          return null;
-        }
-        if (entry.recheck?.sinceMs !== mergeability.sinceMs) {
-          entry.recheck = { sinceMs: mergeability.sinceMs, rung: 0 };
-        }
-        const recheck = entry.recheck;
-        for (; recheck.rung < MERGE_RECHECK_AFTER_MS.length; recheck.rung += 1) {
-          const at = recheck.sinceMs + (MERGE_RECHECK_AFTER_MS[recheck.rung] ?? 0);
-          if (at > wall) {
-            recheck.rung += 1;
-            return mono + (at - wall);
-          }
-        }
-        return null;
-      }
     }
   };
 
   const invalidateEntry = (entry: Entry): void => {
     ordinal += 1;
-    entry.invalidatedAtMs = ports.now().wall;
     apply(entry, { kind: "invalidated", ordinal });
     if (entry.inFlight === null) owe(entry);
-  };
-
-  /**
-   * A pull request read, whether on its own or in its repository's list. Its mergeability moves on
-   * from what the reads before it showed, unless an invalidation since then means they no longer
-   * count.
-   */
-  const admitPull = (entry: Entry, readOrdinal: number, at: Instant, pull: GiteaPullRequest) => {
-    const held = entry.cell.held;
-    let prior: MergeabilityTrack | null = null;
-    // Only a pull request read open before lands now: one first read landed moved no base today.
-    let wasOpen = false;
-    if (held.state === "known") {
-      const before = held.value as PullRequestFact;
-      wasOpen = before.pull.merged !== true;
-      if (entry.cell.lastInvalidation <= held.asOf.ordinal) prior = before.merge;
-    }
-    const merge = mergeabilityAfter(prior, mergeReadOf(pull, at.wall));
-    const value: PullRequestFact = { pull, merge };
-    const applied = entry.cell;
-    apply(entry, {
-      kind: "read-succeeded",
-      ordinal: readOrdinal,
-      value,
-      coverage: "complete",
-      atMs: at.wall,
-    });
-    if (entry.cell.held === applied.held) return;
-    const now = ports.now();
-    entry.pollAt = backstopAfter(entry, value, now.mono, now.wall);
-    if (wasOpen && pull.merged === true && entry.fact.kind === "pull") {
-      // Its base moved: every other open pull request there is checking again (§4.7).
-      const { number } = entry.fact;
-      for (const sibling of entries.values()) {
-        if (
-          sibling.fact.kind === "pull" &&
-          sibling.fact.number !== number &&
-          sameRepository(sibling.fact, entry.fact) &&
-          holds<"pull">(sibling, (fact) => fact.pull.state === "open")
-        ) {
-          invalidateEntry(sibling);
-        }
-      }
-    }
   };
 
   const admit = (entry: Entry, readOrdinal: number, at: Instant, outcome: Outcome): void => {
@@ -803,40 +575,15 @@ export function makeForgeStore(ports: ForgeStorePorts): ForgeStore {
     }
     // An org or a repository not made yet climbs the ladder across its reads (`backstopAfter`).
     if (!notMadeYet(fact, outcome.value)) entry.backoff = INITIAL_BACKOFF;
-    if (fact.kind === "pull") {
-      admitPull(entry, readOrdinal, at, outcome.value as GiteaPullRequest);
-    } else {
-      const pulls =
-        fact.kind === "open-pulls" || fact.kind === "branch-pulls"
-          ? (outcome.value as ReadonlyArray<GiteaPullRequest>)
-          : null;
-      const value = pulls === null ? outcome.value : pulls.map((pull) => pull.number);
-      apply(entry, {
-        kind: "read-succeeded",
-        ordinal: readOrdinal,
-        value,
-        coverage: outcome.coverage,
-        atMs: at.wall,
-      });
-      const now = ports.now();
-      entry.pollAt = backstopAfter(entry, value, now.mono, now.wall);
-      if (pulls !== null && (fact.kind === "open-pulls" || fact.kind === "branch-pulls")) {
-        for (const pull of pulls) {
-          admitPull(
-            entryFor({
-              kind: "pull",
-              origin: fact.origin,
-              owner: fact.owner,
-              repo: fact.repo,
-              number: pull.number,
-            }),
-            readOrdinal,
-            at,
-            pull,
-          );
-        }
-      }
-    }
+    apply(entry, {
+      kind: "read-succeeded",
+      ordinal: readOrdinal,
+      value: outcome.value,
+      coverage: outcome.coverage,
+      atMs: at.wall,
+    });
+    const now = ports.now();
+    entry.pollAt = backstopAfter(entry, outcome.value, now.mono, now.wall);
     // An invalidation during the read leaves one read owed after it (M3).
     if (entry.cell.dirty) owe(entry);
   };
@@ -996,41 +743,6 @@ export function makeForgeStore(ports: ForgeStorePorts): ForgeStore {
         state: "unread",
         waitingFor: null,
       }) as Shown<ForgeValue<F>>,
-    mergeState: (key) => {
-      const fact: ForgeFact = { kind: "pull", ...key, origin: normalize(key.origin) };
-      const entry = entries.get(keyOf(fact));
-      if (entry === undefined) return { state: "unread", waitingFor: null };
-      const shown = entry.shown as Shown<PullRequestFact>;
-      const held = entry.cell.held;
-      // Invalidated since it was read — its base moved, or it was pushed to: Gitea is working
-      // out again whether it merges.
-      const recomputing = held.state === "known" && entry.cell.lastInvalidation > held.asOf.ordinal;
-      return mapShown(shown, ({ pull, merge }) => {
-        const head = pull.head?.sha;
-        const statuses: Shown<ReadonlyArray<GiteaCommitStatus>> =
-          head === undefined
-            ? { state: "unread", waitingFor: null }
-            : ((entries.get(
-                keyOf({
-                  kind: "statuses",
-                  origin: fact.origin,
-                  owner: key.owner,
-                  repo: key.repo,
-                  sha: head,
-                }),
-              )?.shown ?? { state: "unread", waitingFor: null }) as Shown<
-                ReadonlyArray<GiteaCommitStatus>
-              >);
-        const checks: Shown<GitCheckTone> = mapShown(statuses, checkTone);
-        return mergeStateOf(
-          pull,
-          recomputing
-            ? { kind: "checking", sinceMs: entry.invalidatedAtMs, falseReads: 0 }
-            : merge.mergeability,
-          checks,
-        );
-      });
-    },
     subscribe: (listener) => {
       listeners.add(listener);
       return () => {

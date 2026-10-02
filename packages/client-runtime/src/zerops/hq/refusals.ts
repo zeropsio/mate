@@ -8,6 +8,7 @@
  *
  * @module hq/refusals
  */
+import type { MERGE_REFUSALS } from "@t3tools/shared/hqChanges";
 import type { Reason } from "@t3tools/shared/zeropsPermissions";
 
 /** Every permission's refusal, in words: a reason left out does not compile. */
@@ -46,7 +47,25 @@ const PERMISSION_WORDS: { readonly [R in Reason]: string } = {
     "This change edits the project's recipe, so it waits for someone who develops the project to merge it.",
 };
 
-/** HQ's structure's own refusals (`StructureRefused` in `apps/hq/src/structure.ts`), in words. */
+/**
+ * Why HQ did not merge a change (`MERGE_REFUSALS`), in words: what stopped it, so the person knows
+ * whether pressing again can help. A refusal left out does not compile.
+ */
+const MERGE_WORDS: { readonly [R in (typeof MERGE_REFUSALS)[number]]: string } = {
+  head_moved: "Its Mate pushed to it since you opened it. Review it again.",
+  conflict: "It no longer merges cleanly into main.",
+  empty: "There is nothing in it that main does not have.",
+  already_merged: "It is on main already.",
+  unrelated: "It shares no history with main.",
+  no_change: "Nothing was pushed to it yet.",
+  main_moved: "Other changes kept landing on main meanwhile. Try again.",
+  change_not_open: "This change is merged or closed already.",
+};
+
+/**
+ * HQ's own refusals — its structure's (`StructureRefused` in `apps/hq/src/structure.ts`) and its
+ * changes' (`ChangeRefused` in `apps/hq/src/changes.ts`) — in words.
+ */
 const STRUCTURE_WORDS: Readonly<Record<string, string>> = {
   name_length: "A name has 1 to 100 characters.",
   hq_project: "HQ's own project belongs to no project.",
@@ -61,10 +80,16 @@ const STRUCTURE_WORDS: Readonly<Record<string, string>> = {
     "This Zerops project is in a project already, or that project has its production.",
   production_taken: "That project has its production already.",
   held_changed: "Somebody changed this project in HQ meanwhile. Try again.",
+  // A Mate's changes (`@t3tools/shared/hqChanges`), as a person meets them.
+  repo_not_found: "HQ has no such repository.",
+  change_not_found: "HQ has no such change.",
+  attachment_not_found: "HQ has no such picture.",
 };
 
 const isPermissionReason = (reason: string): reason is Reason =>
   Object.hasOwn(PERMISSION_WORDS, reason);
+const isMergeRefusal = (reason: string): reason is keyof typeof MERGE_WORDS =>
+  Object.hasOwn(MERGE_WORDS, reason);
 
 /** What HQ's refusal says to the person: its reason in words, else named by its reason or code. */
 export function hqRefusalWords(refusal: {
@@ -74,6 +99,7 @@ export function hqRefusalWords(refusal: {
   const { reason } = refusal;
   if (reason !== undefined) {
     if (isPermissionReason(reason)) return PERMISSION_WORDS[reason];
+    if (isMergeRefusal(reason)) return MERGE_WORDS[reason];
     const words = STRUCTURE_WORDS[reason];
     if (words !== undefined) return words;
   }
