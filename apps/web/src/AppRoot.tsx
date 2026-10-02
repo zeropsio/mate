@@ -8,6 +8,8 @@ import { appBasePath } from "./basePath";
 import { RouterProvider } from "@tanstack/react-router";
 
 import { QuitHoldOverlay } from "./components/QuitHoldOverlay";
+import { RenderErrorBoundary } from "./components/RenderErrorBoundary";
+import { ZeropsAppFailed } from "./components/zerops/landing/ZeropsAppFailed";
 import { AppAtomRegistryProvider } from "./rpc/atomRegistry";
 import type { AppRouter } from "./router";
 import {
@@ -60,9 +62,12 @@ function AccountProductBoundary({ router }: { readonly router: AppRouter }) {
 
 /** No route loader or connection runtime exists before account verification. */
 export function AppRoot({ router }: { readonly router: AppRouter }) {
+  // A throw above the router says so, rather than leaving the boot frame with nothing to say.
   return (
-    <ZeropsSessionProvider>
-      <AccountProductBoundary router={router} />
-    </ZeropsSessionProvider>
+    <RenderErrorBoundary fallback={<ZeropsAppFailed onReload={() => window.location.reload()} />}>
+      <ZeropsSessionProvider>
+        <AccountProductBoundary router={router} />
+      </ZeropsSessionProvider>
+    </RenderErrorBoundary>
   );
 }
