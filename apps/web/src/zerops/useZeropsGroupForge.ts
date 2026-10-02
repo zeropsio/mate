@@ -10,8 +10,8 @@
  * a Gitea 401 no token recovered is not an answer, and the token coming back reads every group
  * again.
  *
- * What an environment runs is not read here: that is the account's to prove
- * (`useZeropsGroupDeploys`), and the two are joined in the provider.
+ * What an environment runs is not read here: HQ records how each deploy went and the account
+ * proves what runs, and the provider joins them.
  */
 import {
   GROUP_REPOSITORY,
@@ -91,13 +91,13 @@ export function useZeropsGroupForge(input: {
 /**
  * One group's answers, per group and kept across reads, for as long as the
  * tab holds a Gitea session with this origin — the React half of
- * `createGroupAnswers`, shared by the flow's two halves, with why each
+ * `createGroupAnswers`, with why each
  * failing group's reads fail. Losing the session stops the reads and keeps
  * what was read; another Gitea starts from nothing. No token to read with
  * (`readable` false) stops them too, and its return reads every group again.
  */
 export function useGroupAnswers<Group extends { readonly groupId: string }, Scope, Answer>(input: {
-  readonly pass: "forge" | "deploys";
+  readonly pass: "forge";
   readonly giteaOrigin: string | undefined;
   readonly enabled: boolean;
   /** A Gitea request can go out now (`GiteaSessionView.readable`). */

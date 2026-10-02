@@ -5,7 +5,6 @@ import {
   buildGroupRows,
   deployedCommit,
   deployedVersion,
-  deployStatusContext,
   deployTone,
   environmentRow,
   jobDuration,
@@ -22,19 +21,13 @@ const OTHER = "77ab0e1f2d3c4b5a69788796a5b4c3d2e1f0a9b8";
 
 function service(
   hostname: string,
-  state: "pending" | "success" | "failure" | undefined,
-  options: { readonly environment?: string; readonly version?: string | undefined } = {},
+  state: HqDeploy["state"] | undefined,
+  options: { readonly version?: string | undefined } = {},
 ): EnvironmentServiceState {
   return {
     hostname,
     ...(options.version === undefined ? {} : { appVersionName: options.version }),
-    ...(state === undefined
-      ? {}
-      : {
-          statuses: [
-            { context: deployStatusContext(options.environment ?? "stage", hostname), state },
-          ],
-        }),
+    ...(state === undefined ? {} : { deploy: { latest: deployRecord(state), live: null } }),
   };
 }
 
@@ -175,48 +168,24 @@ describe("deployedVersion", () => {
 
 describe("deployTone", () => {
   it.each([
-    { name: "nothing deployed yet", services: [service("api", undefined)], expected: "neutral" },
-    { name: "a deploy in flight", services: [service("api", "pending")], expected: "pending" },
-    { name: "a deploy that landed", services: [service("api", "success")], expected: "good" },
-    { name: "a deploy that failed", services: [service("api", "failure")], expected: "bad" },
-    {
-      // Averaging a failure away is how a screen says "configured" for a
-      // broken setup.
-      name: "one service failing among three",
-      services: [service("api", "success"), service("web", "failure"), service("db", "success")],
-      expected: "bad",
-    },
-    {
-      name: "one service still going",
-      services: [service("api", "success"), service("web", "pending")],
-      expected: "pending",
-    },
-  ])("reads $name as $expected", ({ services, expected }) => {
-    expect(deployTone({ environment: "stage", services })).toBe(expected);
-  });
-
-  it.each([
+    { name: "nothing deployed yet", states: [undefined], expected: "neutral" },
     { name: "a deploy HQ has yet to start", states: ["pending"], expected: "pending" },
     { name: "a deploy HQ runs", states: ["deploying"], expected: "pending" },
     { name: "a deploy that went live", states: ["live"], expected: "good" },
     { name: "a deploy that failed", states: ["failed"], expected: "bad" },
-    { name: "one service failing among live ones", states: ["live", "failed"], expected: "bad" },
+    {
+      // Averaging a failure away is how a screen says "configured" for a
+      // broken setup.
+      name: "one service failing among three",
+      states: ["live", "failed", undefined],
+      expected: "bad",
+    },
     { name: "one service still deploying", states: ["live", "deploying"], expected: "pending" },
     { name: "a failure behind one still going", states: ["deploying", "failed"], expected: "bad" },
   ] as const)("reads HQ's record of $name as $expected", ({ states, expected }) => {
-    const services = states.map((state, index): EnvironmentServiceState => ({
-      hostname: `app${String(index)}`,
-      deploy: { latest: deployRecord(state), live: null },
-    }));
-    expect(deployTone({ environment: "stage", services })).toBe(expected);
-  });
-
-  it("ignores a status written for another environment", () => {
-    const foreign: EnvironmentServiceState = {
-      hostname: "api",
-      statuses: [{ context: deployStatusContext("production", "api"), state: "failure" }],
-    };
-    expect(deployTone({ environment: "stage", services: [foreign] })).toBe("neutral");
+    expect(deployTone(states.map((state, index) => service(`app${String(index)}`, state)))).toBe(
+      expected,
+    );
   });
 });
 
@@ -225,7 +194,6 @@ describe("environmentRow", () => {
     projectId: "p-stage",
     name: "Acme - stage",
     tier: "stage" as const,
-    environment: "acme-stage",
   };
 
   it("names its source and nothing else before the first deploy", () => {
@@ -243,7 +211,7 @@ describe("environmentRow", () => {
     const row = environmentRow({
       ...base,
       sources: ["main"],
-      services: [service("api", "success", { environment: "acme-stage", version: SHA })],
+      services: [service("api", "live", { version: SHA })],
     });
     expect(row.line).toBe("main · 3f9c1b2");
     expect(row.tone).toBe("good");
@@ -255,7 +223,7 @@ describe("environmentRow", () => {
     const row = environmentRow({
       ...base,
       sources: ["main"],
-      services: [service("api", "failure", { environment: "acme-stage", version: SHA })],
+      services: [service("api", "failed", { version: SHA })],
     });
     expect(row.line).toBe("main · 3f9c1b2");
     expect(row.tone).toBe("bad");
@@ -275,11 +243,8 @@ describe("environmentRow", () => {
       ...base,
       name: "Acme - production",
       tier: "production",
-      environment: "production",
       sources: "release",
-      services: [
-        service("api", "success", { environment: "production", version: `${SHA} v1.2.0 u-jan` }),
-      ],
+      services: [service("api", "live", { version: `${SHA} v1.2.0 u-jan` })],
     });
     // The tag, because that is what everyone calls this deploy; the sha is on
     // the row's `version` for whoever needs it.
@@ -298,7 +263,7 @@ describe("environmentRow", () => {
     const row = environmentRow({
       ...base,
       sources: ["main"],
-      services: [service("api", "success", { environment: "acme-stage", version: SHA })],
+      services: [service("api", "live", { version: SHA })],
     });
     expect(row.version.label).toBe("3f9c1b2");
     expect(row.version.name).toBeUndefined();
@@ -327,7 +292,7 @@ describe("environmentRow", () => {
     const row = environmentRow({
       ...base,
       sources: ["main"],
-      services: [service("api", "success", { environment: "acme-stage", version: "hotfix" })],
+      services: [service("api", "live", { version: "hotfix" })],
     });
     expect(row.line).toBe("main · hotfix");
     expect(row.version.label).toBe("hotfix");
@@ -412,17 +377,15 @@ describe("buildGroupRows", () => {
         projectId: "p-prod",
         name: "Acme - production",
         tier: "production",
-        environment: "production",
         sources: "release",
-        services: [service("api", "success", { environment: "production", version: SHA })],
+        services: [service("api", "live", { version: SHA })],
       },
       {
         projectId: "p-stage",
         name: "Acme - stage",
         tier: "stage",
-        environment: "acme-stage",
         sources: ["main"],
-        services: [service("api", "success", { environment: "acme-stage", version: OTHER })],
+        services: [service("api", "live", { version: OTHER })],
       },
     ],
     pullRequests: [{ number: 12, title: "Add a worker", state: "open" }],

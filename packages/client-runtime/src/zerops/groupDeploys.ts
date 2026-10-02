@@ -1,180 +1,48 @@
 /**
- * What a group's environments are running — planned, then assembled (guide
- * 4.4, 5.3).
+ * What an application's environments run, and how each deploy of theirs went (guide 4.4, 5.3).
  *
- * The projects screen shows each stage and the production with the branch it
- * follows and the commit it actually runs. Three parties hold those three
- * facts and none of them can be asked for another's:
+ * The projects screen shows each stage and the production with the branch it follows and the
+ * commit it actually runs. Three parties hold those facts, and none of them can be asked for
+ * another's:
  *
- * - **`environments.yaml` on the group repo** says which environments exist,
- *   which Zerops project each one is, and what feeds it. Read as the person,
- *   from Gitea (`groupEnvironments.ts`).
- * - **Zerops** says what is deployed, as the commit the service's
- *   `appVersionName` spells (`versionName.ts`, `docs/group-repo.md`; measured
- *   2026-09-16 — the version list carries no name at all, the service's
- *   `userData` does).
- * - **Gitea's commit statuses** say how that deploy went, under the context
- *   the broker writes: `mate/deploy/{environment}/{service}` on the service
- *   repository's commit.
- *
- * So the reads are planned from what the declarations name, not from what a
- * project happens to hold: a service in a stage that no environment declares
- * is nobody's business here, and a status read needs a commit, which only the
- * version read produces. That ordering is the whole module — plan the version
- * reads, plan the status reads from their answers, then assemble the rows.
+ * - **HQ** records which projects are the application's environments, in the order they were
+ *   declared, what feeds each, and per service its newest deploy and the newest that went live
+ *   (`HqEnvironment`, SPEC §3.2b) — down the organization's stream, as the person.
+ * - **Zerops** says what is deployed, as the commit the service's `appVersionName` spells
+ *   (`versionName.ts`), as the account's store states it.
+ * - **The recipe on `main`** says which tiers a person can add, and which repository each runtime
+ *   builds from (`appRecipeOf`), read through HQ as the person.
  *
  * ## A missing answer is a quieter row, never a different one
  *
- * Every environment that is declared gets a row whatever came back. Not signed
- * in to Gitea: no statuses, so the row carries the branch and the commit and no
- * dot with a word beside it. Nothing deployed yet: the branch alone. The row's
- * shape does not depend on which reads landed, which is what keeps the screen
- * from moving under the person as they arrive (`environmentRow`).
+ * Every environment HQ records gets a row whatever else came back. No deploy recorded: no dot with
+ * a word beside it. Nothing deployed yet: the branch alone. The row's shape does not depend on
+ * which reads landed, which is what keeps the screen from moving under the person as they arrive
+ * (`environmentRow`).
  *
  * Pure: no network, no clock, no platform globals (rule R1).
  *
  * @module groupDeploys
  */
 
-import type { GiteaCommitStatus } from "./giteaClient.ts";
-import type { GroupEnvironment } from "./groupEnvironments.ts";
-import type { HqEnvironment } from "./hq/environments.ts";
 import {
-  deployedCommit,
-  deployStatusContext,
-  environmentRow,
-  type EnvironmentServiceState,
-  type GroupRowTone,
-} from "./groupRows.ts";
+  environmentTierForRole,
+  missingEnvironmentRows,
+  type GroupEnvironment,
+  type GroupEnvironmentTier,
+  type MissingEnvironmentRow,
+} from "./groupEnvironments.ts";
+import { deployedCommit, type EnvironmentServiceState, type GroupRowTone } from "./groupRows.ts";
+import type { ZeropsEnvironmentRole } from "./groups.ts";
+import type { HqEnvironment } from "./hq/environments.ts";
+import { recipeTierRepositories } from "./recipeTier.ts";
 
-/** One runtime service of one Zerops project, as the reads need it. */
+/** One runtime service of one Zerops project, as an environment's row needs it. */
 export interface GroupEnvironmentService {
   readonly projectId: string;
   readonly serviceId: string;
   /** Its hostname in the environment — `app` for a pair's promoted runtime. */
   readonly hostname: string;
-  /** The active version the platform pushed for it, which its version read must name. */
-  readonly activeVersionId?: string | undefined;
-}
-
-/** A service whose deployed version name has to be read from Zerops. */
-export type DeployedVersionRead = GroupEnvironmentService;
-
-/**
- * Which services to ask Zerops about: the ones in a project some environment
- * declares, and no others.
- *
- * A Mate's own dev pair sits in the same account and is not here: it deploys
- * nothing the group declared, and reading its versions would cost a request
- * per service for a row that never shows them.
- */
-export function planDeployedVersionReads(input: {
-  readonly declarations: ReadonlyArray<GroupEnvironment>;
-  readonly services: ReadonlyArray<GroupEnvironmentService>;
-}): ReadonlyArray<DeployedVersionRead> {
-  const projects = new Set(input.declarations.map((entry) => entry.project));
-  return input.services.filter((service) => projects.has(service.projectId));
-}
-
-/** One `GET /repos/{owner}/{repo}/commits/{sha}/statuses`. */
-export interface DeployStatusRead {
-  /** The group's Gitea org. */
-  readonly owner: string;
-  /** The service's hostname in its environment — what the row is keyed by. */
-  readonly hostname: string;
-  /**
-   * The repository the read goes to: the one the tier's `buildFromGit` names
-   * (`appdev` for the promoted runtime `app` — a pair's repository is named
-   * after its dev half), the hostname when the tier does not say. Reading the
-   * hostname's answered `404` for every stage and production of the owner's
-   * run (2026-09-17), and the rows showed no deploy at all.
-   */
-  readonly repo: string;
-  readonly sha: string;
-}
-
-/** The key a planned status read is answered under: the hostname's, not the repository's. */
-export function deployStatusKey(
-  read: Pick<DeployStatusRead, "owner" | "hostname" | "sha">,
-): string {
-  return `${read.owner}/${read.hostname}@${read.sha}`;
-}
-
-/**
- * Which commits to ask Gitea about, from the version names that came back.
- *
- * Only a sha is asked about, whole or short as the name spells it — Gitea's
- * `commits/{ref}/statuses` resolves a sha of seven characters or more to its
- * commit (`ResolveRefCommit`, Gitea's source) and answers that commit's
- * statuses. A version somebody deployed by hand is named whatever they typed,
- * and `{repo}/commits/not-a-sha/statuses` is a request that can only answer
- * `404`. Deduplicated, because a stage and a production
- * running the same commit of the same service is the normal state of a group
- * between releases and the answer is the same one.
- */
-export function planDeployStatusReads(input: {
-  readonly owner: string;
-  readonly versions: ReadonlyArray<{
-    readonly hostname: string;
-    readonly appVersionName?: string | undefined;
-    /** The repository's name in the org, from the tier's `buildFromGit`. */
-    readonly repository?: string | undefined;
-  }>;
-}): ReadonlyArray<DeployStatusRead> {
-  const seen = new Set<string>();
-  const reads: Array<DeployStatusRead> = [];
-  for (const version of input.versions) {
-    const sha = deployedCommit(version.appVersionName);
-    if (sha === undefined) continue;
-    const read = {
-      owner: input.owner,
-      hostname: version.hostname,
-      repo: version.repository ?? version.hostname,
-      sha,
-    };
-    const key = deployStatusKey(read);
-    if (seen.has(key)) continue;
-    seen.add(key);
-    reads.push(read);
-  }
-  return reads;
-}
-
-/** One default-branch read: the repository a production's service is built from. */
-export interface MainHeadRead {
-  /** The service's hostname in the production — what a release's entry is keyed by. */
-  readonly hostname: string;
-  readonly repo: string;
-}
-
-/**
- * Which repositories' default branches a release has to read (D28, `release.ts`).
- *
- * A release lists what is merged, whether or not the group has a stage, so
- * every service the production runs is asked for at the repository its tier's
- * `buildFromGit` names. A service the tier builds from no repository of the
- * group is not asked: the broker never deploys it, and a tag listing it held
- * Release as in flight until its bound ran out (2026-09-26, a stray `mailpit`
- * matched a repository of that name). A group with no production declared has
- * nothing to release and is asked nothing.
- */
-export function planMainHeadReads(input: {
-  readonly declarations: ReadonlyArray<GroupEnvironment>;
-  readonly services: ReadonlyArray<GroupEnvironmentService>;
-  /** The repository's name in the org by hostname, from the tiers on `main`. */
-  readonly repositories: ReadonlyMap<string, string>;
-}): ReadonlyArray<MainHeadRead> {
-  const productions = new Set(
-    input.declarations.filter((entry) => entry.tier === "production").map((entry) => entry.project),
-  );
-  const reads = new Map<string, MainHeadRead>();
-  for (const service of input.services) {
-    if (!productions.has(service.projectId) || reads.has(service.hostname)) continue;
-    const repo = input.repositories.get(service.hostname);
-    if (repo === undefined) continue;
-    reads.set(service.hostname, { hostname: service.hostname, repo });
-  }
-  return [...reads.values()];
 }
 
 /** What one environment's row is built from, before the row itself. */
@@ -184,56 +52,44 @@ export interface GroupEnvironmentRowInput {
   readonly tier: GroupEnvironment["tier"];
   readonly sources: GroupEnvironment["sources"];
   readonly services: ReadonlyArray<EnvironmentServiceState>;
+  /** HQ's name for it, which a deploy asked again names. */
   readonly environment: string;
 }
 
-/**
- * Every declared environment of one group, in the shape `environmentRow` takes.
- *
- * Named by the Zerops project when the account can see it, and by the entry in
- * `environments.yaml` when it cannot: an environment declared in a project this
- * person may not read is still an environment the group has, and dropping it
- * would make the page disagree with the file the broker deploys from.
- */
-export function buildGroupEnvironmentRowInputs(input: {
-  readonly owner: string;
-  readonly declarations: ReadonlyArray<GroupEnvironment>;
-  /** What each Zerops project is called, by id. */
-  readonly projectNames: ReadonlyMap<string, string>;
-  readonly services: ReadonlyArray<GroupEnvironmentService>;
-  /** The version name each service runs, by service id. */
-  readonly versions: ReadonlyMap<string, string>;
-  /** The repository each service is built from, by hostname (the tier's `buildFromGit`). */
-  readonly repositories?: ReadonlyMap<string, string> | undefined;
-  /** Every commit status read, by {@link deployStatusKey}. */
-  readonly statuses: ReadonlyMap<string, ReadonlyArray<GiteaCommitStatus>>;
-}): ReadonlyArray<GroupEnvironmentRowInput> {
-  return input.declarations.map((declaration) => ({
-    projectId: declaration.project,
-    name: input.projectNames.get(declaration.project) ?? declaration.name,
-    tier: declaration.tier,
-    sources: declaration.sources,
-    environment: declaration.name,
-    services: input.services
-      .filter((service) => service.projectId === declaration.project)
-      .map((service): EnvironmentServiceState => {
-        const appVersionName = input.versions.get(service.serviceId);
-        const sha = deployedCommit(appVersionName);
-        const statuses =
-          sha === undefined
-            ? undefined
-            : input.statuses.get(
-                deployStatusKey({ owner: input.owner, hostname: service.hostname, sha }),
-              );
-        const repository = input.repositories?.get(service.hostname);
-        return {
-          hostname: service.hostname,
-          ...(repository === undefined ? {} : { repository }),
-          ...(appVersionName === undefined ? {} : { appVersionName }),
-          ...(statuses === undefined ? {} : { statuses }),
-        };
-      }),
-  }));
+/** What an application's recipe on `main` offers: the tiers a person can add, and where code lives. */
+export interface AppRecipe {
+  readonly tiers: ReadonlyArray<GroupEnvironmentTier>;
+  /**
+   * The repository each runtime builds from, by hostname, from the tiers' `buildFromGit` — never
+   * the hostname: `appdev` builds `app`. A later tier names a hostname's repository over an earlier.
+   */
+  readonly repositories: ReadonlyMap<string, string>;
+}
+
+/** `appdev` from `https://hq…/git/app-1/appdev.git`. */
+function repositoryName(cloneUrl: string): string | undefined {
+  const last = cloneUrl.replace(/\/+$/u, "").split("/").at(-1);
+  if (last === undefined || last.length === 0) return undefined;
+  return last.endsWith(".git") ? last.slice(0, -".git".length) : last;
+}
+
+/** The recipe's stage and production tiers as `main` holds them; `null` where it holds none. */
+export function appRecipeOf(files: {
+  readonly stage: string | null;
+  readonly production: string | null;
+}): AppRecipe {
+  const tiers: Array<GroupEnvironmentTier> = [];
+  const repositories = new Map<string, string>();
+  for (const tier of ["stage", "production"] as const) {
+    const file = files[tier];
+    if (file === null) continue;
+    tiers.push(tier);
+    for (const [hostname, cloneUrl] of recipeTierRepositories(file)) {
+      const name = repositoryName(cloneUrl);
+      if (name !== undefined) repositories.set(hostname, name);
+    }
+  }
+  return { tiers, repositories };
 }
 
 /**
@@ -283,30 +139,76 @@ export function environmentRowInputsOf(input: {
     });
 }
 
+/** A Zerops project of an application, as its stops need it: the account's half. */
+export interface GroupStopProject {
+  readonly projectId: string;
+  readonly name: string;
+  /** Its role tag, which says which tier it fills before HQ records it as one. */
+  readonly role?: ZeropsEnvironmentRole | undefined;
+  /** Its runtime services — the ones that hold code HQ deploys. */
+  readonly services: ReadonlyArray<{ readonly serviceId: string; readonly hostname: string }>;
+}
+
+/** An application's stops: the environments HQ records, their rows' inputs, the tiers that ask. */
+export interface GroupStops {
+  readonly declarations: ReadonlyArray<GroupEnvironment>;
+  readonly environments: ReadonlyArray<GroupEnvironmentRowInput>;
+  readonly missing: ReadonlyArray<MissingEnvironmentRow>;
+}
+
 /**
- * The rows themselves, in the file's order — `buildGroupRows` is what puts the
- * stages before the production, because it is what holds the whole list.
+ * An application's stops from HQ's environments and what the account holds: each environment HQ
+ * records, and a row that asks for each tier the recipe on `main` offers and no environment and no
+ * project's role fills — none while the recipe is not read.
  */
-export function buildGroupEnvironmentRows(
-  input: Parameters<typeof buildGroupEnvironmentRowInputs>[0],
-): ReadonlyArray<ReturnType<typeof environmentRow>> {
-  return buildGroupEnvironmentRowInputs(input).map((entry) => environmentRow(entry));
+export function groupStopsOf(input: {
+  readonly environments: ReadonlyArray<HqEnvironment>;
+  readonly projects: ReadonlyArray<GroupStopProject>;
+  /** The version name each service runs, by service id. */
+  readonly versions: ReadonlyMap<string, string>;
+  readonly recipe: AppRecipe | undefined;
+}): GroupStops {
+  const { recipe } = input;
+  const declarations = input.environments.map((environment): GroupEnvironment => ({
+    name: environment.name,
+    tier: environment.tier,
+    project: environment.projectId,
+    sources: environment.tier === "production" ? "release" : environment.sources,
+    deploy: undefined,
+  }));
+  return {
+    declarations,
+    environments: environmentRowInputsOf({
+      environments: input.environments,
+      projectNames: new Map(input.projects.map((project) => [project.projectId, project.name])),
+      services: input.projects.flatMap((project) =>
+        project.services.map((service) => ({ projectId: project.projectId, ...service })),
+      ),
+      versions: input.versions,
+      repositories: recipe?.repositories,
+    }),
+    missing:
+      recipe === undefined
+        ? []
+        : missingEnvironmentRows({
+            tiersOnMain: recipe.tiers,
+            declarations,
+            filledTiers: input.projects.flatMap((project) => {
+              const tier = environmentTierForRole(project.role);
+              return tier === undefined ? [] : [tier];
+            }),
+          }),
+  };
 }
 
 /** `{service hostname: sha}` per side of a release, whole or short as the name spells it. */
 export interface ReleaseDeploys {
-  /** What the stage runs. Several stages: the first the file declares (D16). */
+  /** What the stage runs. Several stages: the first HQ records (D16). */
   readonly stage: ReadonlyMap<string, string>;
   /** What production runs, read the same way and never from a release tag. */
   readonly production: ReadonlyMap<string, string>;
-  /**
-   * `{service}@{sha}` → when the failure was posted (`undefined`: not
-   * read), for every commit whose newest production status for that service is
-   * a failure, from every status read — a stage running the commit a release
-   * lists carries the broker's production status on it too — and for every
-   * production service whose newest deploy HQ records as failed.
-   */
-  readonly failed: ReadonlyMap<string, string | undefined>;
+  /** `{service}@{sha}` → when it failed, for each production service whose newest deploy failed. */
+  readonly failed: ReadonlyMap<string, string>;
 }
 
 /**
@@ -318,8 +220,8 @@ export interface ReleaseDeploys {
  * than what is running. A service whose name is not a commit has no side: it
  * was deployed by hand, and a tag listing a guess is a tag the broker deploys.
  *
- * With several stages declared (D16) the first one the file declares wins for
- * a service they both run: the file's order is the group's own, and picking by
+ * With several stages (D16) the first one HQ records wins for a service they
+ * both run: the order they were declared in is the group's own, and picking by
  * anything else would make the release depend on the order of an account read.
  */
 export function releaseDeploys(
@@ -327,10 +229,7 @@ export function releaseDeploys(
 ): ReleaseDeploys {
   const stage = new Map<string, string>();
   const production = new Map<string, string>();
-  const failed = new Map<string, string | undefined>();
-  const productions = environments
-    .filter((environment) => environment.tier === "production")
-    .map((environment) => environment.environment);
+  const failed = new Map<string, string>();
   for (const environment of environments) {
     const side = environment.tier === "production" ? production : stage;
     for (const service of environment.services) {
@@ -338,21 +237,7 @@ export function releaseDeploys(
       if (environment.tier === "production" && latest?.state === "failed")
         failed.set(`${service.hostname}@${latest.sha}`, latest.at);
       const sha = deployedCommit(service.appVersionName);
-      if (sha === undefined) continue;
-      // Gitea keeps every status a commit was ever given, newest first: only the
-      // newest of a context says how that deploy went (as `deployTone` reads it).
-      const seen = new Set<string>();
-      for (const status of service.statuses ?? []) {
-        if (seen.has(status.context)) continue;
-        seen.add(status.context);
-        if (status.state !== "failure" && status.state !== "error") continue;
-        for (const name of productions) {
-          const prefix = deployStatusContext(name, "");
-          if (status.context.startsWith(prefix))
-            failed.set(`${status.context.slice(prefix.length)}@${sha}`, status.created_at);
-        }
-      }
-      if (side.has(service.hostname)) continue;
+      if (sha === undefined || side.has(service.hostname)) continue;
       side.set(service.hostname, sha);
     }
   }
@@ -364,7 +249,7 @@ export function releaseDeploys(
  * (design system R5).
  *
  * `undefined` for a neutral environment: nothing has been deployed there, or
- * nobody signed in to Gitea to be told how it went, and a word invented for
+ * HQ records no deploy of it to tell how it went, and a word invented for
  * either would be the screen guessing.
  */
 export function deployWord(tone: GroupRowTone): string | undefined {

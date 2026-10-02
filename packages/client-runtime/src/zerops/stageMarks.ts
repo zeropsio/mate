@@ -84,11 +84,7 @@ export interface StageStandings {
  * A service whose version name carries no commit runs nothing this can place.
  */
 export function stageStandings(input: {
-  readonly environment: {
-    /** Its name in `environments.yaml`, which the deploy statuses name. */
-    readonly environment: string;
-    readonly services: ReadonlyArray<EnvironmentServiceState>;
-  };
+  readonly environment: { readonly services: ReadonlyArray<EnvironmentServiceState> };
   readonly deployment: Shown<Deployment> | undefined;
 }): StageStandings {
   const { deployment, environment } = input;
@@ -105,10 +101,7 @@ export function stageStandings(input: {
         : undefined,
     failed: new Set(
       environment.services
-        .filter(
-          (service) =>
-            deployTone({ environment: environment.environment, services: [service] }) === "bad",
-        )
+        .filter((service) => deployTone([service]) === "bad")
         .map((service) => service.hostname),
     ),
   };

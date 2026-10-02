@@ -11,6 +11,19 @@ import {
   type StageMark,
   type StageStandings,
 } from "./stageMarks.ts";
+import type { HqDeploy } from "./hq/environments.ts";
+
+/** HQ's record of a deploy in `state`. */
+const deployRecord = (state: HqDeploy["state"]): HqDeploy => ({
+  sha: "0000000000000000000000000000000000000000",
+  state,
+  failure: state === "failed" ? "job" : null,
+  message: null,
+  appVersionId: null,
+  processId: null,
+  requestedBy: null,
+  at: "2026-10-02T10:00:00.000Z",
+});
 
 /** A full sha whose first character says which commit it is. */
 const sha = (mark: string): string => mark.repeat(40);
@@ -176,13 +189,11 @@ describe("stageStandings", () => {
   const service = (
     hostname: string,
     appVersionName: string | undefined,
-    status?: "success" | "failure" | "pending",
+    status?: HqDeploy["state"],
   ): EnvironmentServiceState => ({
     hostname,
     appVersionName,
-    ...(status === undefined
-      ? {}
-      : { statuses: [{ context: `mate/deploy/stage/${hostname}`, state: status }] }),
+    ...(status === undefined ? {} : { deploy: { latest: deployRecord(status), live: null } }),
   });
 
   it.each<{
@@ -193,7 +204,7 @@ describe("stageStandings", () => {
   }>([
     {
       name: "each service's whole commit from its version name",
-      services: [service("app", `${C} v1.2.0 ada`, "success"), service("api", B)],
+      services: [service("app", `${C} v1.2.0 ada`, "live"), service("api", B)],
       deployment: known({ kind: "running", activatedAt: null, version: deployedVersion(C) }),
       expected: {
         runs: new Map([
@@ -222,7 +233,7 @@ describe("stageStandings", () => {
     },
     {
       name: "a failed deploy is the failed service's alone",
-      services: [service("app", C, "success"), service("api", C, "failure")],
+      services: [service("app", C, "live"), service("api", C, "failed")],
       deployment: undefined,
       expected: {
         runs: new Map([
@@ -234,8 +245,6 @@ describe("stageStandings", () => {
       },
     },
   ])("$name", ({ services, deployment, expected }) => {
-    expect(stageStandings({ environment: { environment: "stage", services }, deployment })).toEqual(
-      expected,
-    );
+    expect(stageStandings({ environment: { services }, deployment })).toEqual(expected);
   });
 });

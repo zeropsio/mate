@@ -31,6 +31,19 @@ import {
   type StopServiceRow,
   type StopVerdict,
 } from "./stopDetail.ts";
+import type { HqDeploy } from "../hq/environments.ts";
+
+/** HQ's record of a deploy in `state`. */
+const deployRecord = (state: HqDeploy["state"]): HqDeploy => ({
+  sha: "0000000000000000000000000000000000000000",
+  state,
+  failure: state === "failed" ? "job" : null,
+  message: null,
+  appVersionId: null,
+  processId: null,
+  requestedBy: null,
+  at: "2026-10-02T10:00:00.000Z",
+});
 
 const V13: DeployedVersion = {
   name: "v0.1.13",
@@ -387,7 +400,7 @@ const GITEA: ReadonlyArray<EnvironmentServiceState> = [
     hostname: "api",
     repository: "api",
     appVersionName: `${SHA_API} v0.1.13 gitea`,
-    statuses: [{ context: "mate/deploy/production/api", state: "success" }],
+    deploy: { latest: deployRecord("live"), live: deployRecord("live") },
   },
   { hostname: "docs", repository: "docs", appVersionName: `${SHA_DOCS} v0.1.9 gitea` },
 ];

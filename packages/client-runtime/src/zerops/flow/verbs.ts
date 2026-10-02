@@ -11,21 +11,17 @@ import type { FlowVerb } from "../projectFlow.ts";
 /** One part of a group's Gitea half: the group repo's tags. */
 export type ForgeScope = { readonly kind: "tags" };
 
-/** One part of a group's deploy half: the head of one repository's `main`, which a merge moves. */
-export type DeployScope = { readonly kind: "main-head"; readonly repository: string };
-
 export interface FlowInvalidation {
   readonly forge: ForgeScope | null;
-  readonly deploys: DeployScope | "group" | null;
 }
 
 export function flowVerbInvalidations(verb: FlowVerb): FlowInvalidation {
   switch (verb.kind) {
     case "merge":
     case "close":
-      return { forge: null, deploys: null };
+      return { forge: null };
     case "release":
     case "roll-back":
-      return { forge: { kind: "tags" }, deploys: null };
+      return { forge: { kind: "tags" } };
   }
 }

@@ -1,38 +1,17 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import type { GiteaCommitStatus } from "./giteaClient.ts";
 import {
-  buildGroupEnvironmentRowInputs,
-  buildGroupEnvironmentRows,
-  deployStatusKey,
+  appRecipeOf,
   deployWord,
   environmentRowInputsOf,
-  planDeployStatusReads,
-  planDeployedVersionReads,
-  planMainHeadReads,
+  groupStopsOf,
   releaseDeploys,
 } from "./groupDeploys.ts";
-import type { GroupEnvironment } from "./groupEnvironments.ts";
 import type { HqDeploy, HqEnvironment } from "./hq/environments.ts";
 
 const API = "3f9c1b2e5d7a4c6f8e0b1d2a3c4f5e6d7a8b9c0d";
 const WEB = "77ab0e1f2d3c4b5a69788796a5b4c3d2e1f0a9b8";
 const OLD = "1111111111111111111111111111111111111111";
-
-const stage: GroupEnvironment = {
-  name: "stage",
-  tier: "stage",
-  project: "p-stage",
-  sources: ["main"],
-  deploy: "on-push",
-};
-const production: GroupEnvironment = {
-  name: "production",
-  tier: "production",
-  project: "p-prod",
-  sources: "release",
-  deploy: undefined,
-};
 
 const services = [
   { projectId: "p-stage", serviceId: "s1", hostname: "api" },
@@ -40,251 +19,6 @@ const services = [
   { projectId: "p-prod", serviceId: "s3", hostname: "api" },
   { projectId: "p-mate", serviceId: "s4", hostname: "api" },
 ];
-
-function status(context: string, state: GiteaCommitStatus["state"]): GiteaCommitStatus {
-  return { context, state };
-}
-
-describe("planning the reads", () => {
-  it("asks Zerops only about the projects an environment declares", () => {
-    expect(
-      planDeployedVersionReads({ declarations: [stage, production], services }).map(
-        (read) => read.serviceId,
-      ),
-    ).toEqual(["s1", "s2", "s3"]);
-  });
-
-  it("asks about nothing when the group declares no environment", () => {
-    expect(planDeployedVersionReads({ declarations: [], services })).toEqual([]);
-  });
-
-  it.each([
-    {
-      name: "one commit per service",
-      versions: [
-        { hostname: "api", appVersionName: API },
-        { hostname: "web", appVersionName: `${WEB} v1.2.0 ada` },
-      ],
-      expected: [`acme/api@${API}`, `acme/web@${WEB}`],
-    },
-    {
-      name: "the same commit twice, asked about once",
-      versions: [
-        { hostname: "api", appVersionName: API },
-        { hostname: "api", appVersionName: `${API} v1.2.0 ada` },
-      ],
-      expected: [`acme/api@${API}`],
-    },
-    {
-      name: "a service with nothing deployed",
-      versions: [{ hostname: "api", appVersionName: undefined }],
-      expected: [],
-    },
-    {
-      // The promoted runtime `app` builds from the pair's repository `appdev`
-      // (the owner's run, 2026-09-17: reading `todo/app` answered 404).
-      name: "a runtime whose tier names another repository",
-      versions: [{ hostname: "app", appVersionName: API, repository: "appdev" }],
-      expected: [`acme/app@${API}`],
-    },
-    {
-      name: "a version somebody named by hand",
-      versions: [{ hostname: "api", appVersionName: "hotfix" }],
-      expected: [],
-    },
-    {
-      // Gitea's `commits/{ref}/statuses` resolves a sha of seven or more characters itself.
-      name: "versions named by branch or tag and a short sha, asked about by it",
-      versions: [
-        { hostname: "api", appVersionName: "main 3f9c1b2" },
-        { hostname: "web", appVersionName: "v1.2.0 77ab0e1" },
-      ],
-      expected: ["acme/api@3f9c1b2", "acme/web@77ab0e1"],
-    },
-    {
-      name: "a push of a dirty working tree, which is no commit",
-      versions: [{ hostname: "api", appVersionName: "main 3f9c1b2-dirty" }],
-      expected: [],
-    },
-  ])("plans status reads for $name", ({ versions, expected }) => {
-    expect(planDeployStatusReads({ owner: "acme", versions }).map(deployStatusKey)).toEqual(
-      expected,
-    );
-  });
-
-  it("reads the statuses on the tier's repository and keys them by the hostname", () => {
-    const reads = planDeployStatusReads({
-      owner: "acme",
-      versions: [
-        { hostname: "app", appVersionName: API, repository: "appdev" },
-        { hostname: "worker", appVersionName: API },
-      ],
-    });
-    expect(reads.map((read) => [read.repo, deployStatusKey(read)])).toEqual([
-      ["appdev", `acme/app@${API}`],
-      ["worker", `acme/worker@${API}`],
-    ]);
-  });
-});
-
-describe("the join — a declaration, a version and a status", () => {
-  const projectNames = new Map([
-    ["p-stage", "Acme CRM - stage"],
-    ["p-prod", "Acme CRM - production"],
-  ]);
-
-  const assemble = (input: {
-    readonly versions?: ReadonlyMap<string, string>;
-    readonly statuses?: ReadonlyMap<string, ReadonlyArray<GiteaCommitStatus>>;
-    readonly declarations?: ReadonlyArray<GroupEnvironment>;
-  }) =>
-    buildGroupEnvironmentRows({
-      owner: "acme",
-      declarations: input.declarations ?? [stage, production],
-      projectNames,
-      services,
-      versions: input.versions ?? new Map(),
-      statuses: input.statuses ?? new Map(),
-    });
-
-  it.each([
-    {
-      name: "nothing deployed anywhere",
-      versions: new Map<string, string>(),
-      statuses: new Map<string, ReadonlyArray<GiteaCommitStatus>>(),
-      expected: [
-        { name: "Acme CRM - stage", line: "main", commit: undefined, tone: "neutral" },
-        { name: "Acme CRM - production", line: "release", commit: undefined, tone: "neutral" },
-      ],
-    },
-    {
-      name: "a commit and no Gitea session to grade it",
-      versions: new Map([["s1", API]]),
-      statuses: new Map<string, ReadonlyArray<GiteaCommitStatus>>(),
-      expected: [
-        { name: "Acme CRM - stage", line: "main · 3f9c1b2", commit: "3f9c1b2", tone: "neutral" },
-        { name: "Acme CRM - production", line: "release", commit: undefined, tone: "neutral" },
-      ],
-    },
-    {
-      name: "a stage the broker deployed",
-      versions: new Map([
-        ["s1", API],
-        ["s2", WEB],
-      ]),
-      statuses: new Map([
-        [`acme/api@${API}`, [status("mate/deploy/stage/api", "success")]],
-        [`acme/web@${WEB}`, [status("mate/deploy/stage/web", "success")]],
-      ]),
-      expected: [
-        { name: "Acme CRM - stage", line: "main · 3f9c1b2", commit: "3f9c1b2", tone: "good" },
-        { name: "Acme CRM - production", line: "release", commit: undefined, tone: "neutral" },
-      ],
-    },
-    {
-      name: "a stage the broker deployed under short names",
-      versions: new Map([
-        ["s1", "main 3f9c1b2"],
-        ["s2", "main 77ab0e1"],
-      ]),
-      statuses: new Map([
-        ["acme/api@3f9c1b2", [status("mate/deploy/stage/api", "success")]],
-        ["acme/web@77ab0e1", [status("mate/deploy/stage/web", "success")]],
-      ]),
-      expected: [
-        { name: "Acme CRM - stage", line: "main · 3f9c1b2", commit: "3f9c1b2", tone: "good" },
-        { name: "Acme CRM - production", line: "release", commit: undefined, tone: "neutral" },
-      ],
-    },
-    {
-      name: "one service of a stage still going",
-      versions: new Map([
-        ["s1", API],
-        ["s2", WEB],
-      ]),
-      statuses: new Map([
-        [`acme/api@${API}`, [status("mate/deploy/stage/api", "success")]],
-        [`acme/web@${WEB}`, [status("mate/deploy/stage/web", "pending")]],
-      ]),
-      expected: [
-        { name: "Acme CRM - stage", line: "main · 3f9c1b2", commit: "3f9c1b2", tone: "pending" },
-        { name: "Acme CRM - production", line: "release", commit: undefined, tone: "neutral" },
-      ],
-    },
-    {
-      name: "one service of a stage refused — the worst wins",
-      versions: new Map([
-        ["s1", API],
-        ["s2", WEB],
-      ]),
-      statuses: new Map([
-        [`acme/api@${API}`, [status("mate/deploy/stage/api", "success")]],
-        [`acme/web@${WEB}`, [status("mate/deploy/stage/web", "failure")]],
-      ]),
-      expected: [
-        { name: "Acme CRM - stage", line: "main · 3f9c1b2", commit: "3f9c1b2", tone: "bad" },
-        { name: "Acme CRM - production", line: "release", commit: undefined, tone: "neutral" },
-      ],
-    },
-    {
-      name: "a production running a released commit",
-      versions: new Map([["s3", `${API} v1.2.0 ada`]]),
-      statuses: new Map([[`acme/api@${API}`, [status("mate/deploy/production/api", "success")]]]),
-      expected: [
-        { name: "Acme CRM - stage", line: "main", commit: undefined, tone: "neutral" },
-        {
-          // The tag, not the sha: `v1.2.0` is what everybody calls this deploy.
-          name: "Acme CRM - production",
-          line: "release · v1.2.0",
-          commit: "3f9c1b2",
-          tone: "good",
-        },
-      ],
-    },
-  ])("reads $name", ({ versions, statuses, expected }) => {
-    expect(
-      assemble({ versions, statuses }).map((row) => ({
-        name: row.name,
-        line: row.line,
-        commit: row.commit,
-        tone: row.tone,
-      })),
-    ).toEqual(expected);
-  });
-
-  it("does not take another environment's status for its own", () => {
-    // The same commit of the same repository, graded for the stage only: the
-    // production row must stay silent rather than borrow the verdict.
-    const [, prod] = assemble({
-      versions: new Map([
-        ["s1", API],
-        ["s3", API],
-      ]),
-      statuses: new Map([[`acme/api@${API}`, [status("mate/deploy/stage/api", "success")]]]),
-    });
-    expect(prod?.tone).toBe("neutral");
-    expect(prod?.line).toBe("release · 3f9c1b2");
-  });
-
-  it("names an environment from the file when the project is out of reach", () => {
-    const rows = buildGroupEnvironmentRowInputs({
-      owner: "acme",
-      declarations: [stage],
-      projectNames: new Map(),
-      services,
-      versions: new Map(),
-      statuses: new Map(),
-    });
-    expect(rows[0]?.name).toBe("stage");
-  });
-
-  it("keeps the file's order, leaving the group's own list to sort it", () => {
-    const rows = assemble({
-      declarations: [production, { ...stage, name: "stage-client-x", project: "p-stage" }, stage],
-    });
-    expect(rows.map((row) => row.tier)).toEqual(["production", "stage", "stage"]);
-  });
-});
 
 function record(state: HqDeploy["state"], sha: string): HqDeploy {
   return {
@@ -388,6 +122,67 @@ describe("what a release compares, from HQ's records", () => {
   });
 });
 
+describe("an application's stops, as HQ records them", () => {
+  const projects = [
+    {
+      projectId: "p-stage",
+      name: "Acme - stage",
+      role: "stage" as const,
+      services: [{ serviceId: "s1", hostname: "api" }],
+    },
+    { projectId: "p-mate", name: "Acme - Ada", role: "dev" as const, services: [] },
+  ];
+
+  it("declares each environment HQ records, and asks for each tier the recipe offers and none fills", () => {
+    const stops = groupStopsOf({
+      environments: [environment({ projectId: "p-stage", tier: "stage", name: "stage" })],
+      projects,
+      versions: new Map([["s1", `main ${API.slice(0, 7)}`]]),
+      recipe: { tiers: ["stage", "production"], repositories: new Map([["api", "apidev"]]) },
+    });
+    expect(stops.declarations).toEqual([
+      { name: "stage", tier: "stage", project: "p-stage", sources: ["main"], deploy: undefined },
+    ]);
+    expect(stops.environments.map((entry) => [entry.name, entry.services])).toEqual([
+      [
+        "Acme - stage",
+        [{ hostname: "api", repository: "apidev", appVersionName: `main ${API.slice(0, 7)}` }],
+      ],
+    ]);
+    expect(stops.missing.map((row) => row.tier)).toEqual(["production"]);
+  });
+
+  it("asks for no tier while the recipe is not read", () => {
+    const stops = groupStopsOf({
+      environments: [],
+      projects,
+      versions: new Map(),
+      recipe: undefined,
+    });
+    expect(stops.missing).toEqual([]);
+  });
+});
+
+describe("what the recipe on main offers", () => {
+  const stageTier = [
+    "services:",
+    "  - hostname: app",
+    "    type: nodejs@22",
+    "    buildFromGit: https://hq.example/git/app-1/appdev.git",
+    "    zeropsSetup: app",
+    "  - hostname: db",
+    "    type: postgresql@16",
+    "",
+  ].join("\n");
+
+  it("offers each tier on main, and names the repository each runtime builds from", () => {
+    expect(appRecipeOf({ stage: stageTier, production: null })).toEqual({
+      tiers: ["stage"],
+      repositories: new Map([["app", "appdev"]]),
+    });
+  });
+});
+
 describe("the word beside the dot", () => {
   it.each([
     { tone: "good", word: "Deployed" },
@@ -400,18 +195,17 @@ describe("the word beside the dot", () => {
 });
 
 describe("what a release compares", () => {
+  const stage = environment({ projectId: "p-stage", tier: "stage", name: "stage", order: 1 });
+  const production = environment({
+    projectId: "p-prod",
+    tier: "production",
+    name: "production",
+    order: 2,
+  });
   const snapshot = (
     versions: ReadonlyMap<string, string>,
-    declarations: ReadonlyArray<GroupEnvironment> = [stage, production],
-  ) =>
-    buildGroupEnvironmentRowInputs({
-      owner: "acme",
-      declarations,
-      projectNames: new Map(),
-      services,
-      versions,
-      statuses: new Map(),
-    });
+    environments: ReadonlyArray<HqEnvironment> = [stage, production],
+  ) => environmentRowInputsOf({ environments, projectNames: new Map(), services, versions });
 
   it("reads both sides from the sha in the deployed version's name", () => {
     const commits = releaseDeploys(
@@ -448,48 +242,13 @@ describe("what a release compares", () => {
           ["s4", OLD],
           ["s1", API],
         ]),
-        [{ ...stage, name: "stage-client-x", project: "p-mate" }, stage, production],
+        [
+          { ...stage, order: 2 },
+          environment({ projectId: "p-mate", tier: "stage", name: "stage-client-x", order: 1 }),
+          { ...production, order: 3 },
+        ],
       ),
     );
     expect(commits.stage.get("api")).toBe(OLD);
-  });
-});
-
-/**
- * A release lists what is merged (D28, `release.ts`) — never what a stage
- * happens to run — so every production service's repository is asked for its
- * default branch, stage or no stage.
- */
-describe("what a release has to read", () => {
-  const repositories = new Map([["api", "apidev"]]);
-
-  it("asks for the repository of every service the production runs", () => {
-    expect(planMainHeadReads({ declarations: [production], services, repositories })).toEqual([
-      { hostname: "api", repo: "apidev" },
-    ]);
-  });
-
-  // The broker deploys a production service only from the repository its tier
-  // names, so a release that listed any other one would list a commit that is
-  // never deployed — and the app held Release as in flight for 30 minutes
-  // waiting for it (2026-09-26: a stray `mailpit` service matched a repository
-  // of the same name, and `v0.1.31` sat at "Releasing").
-  it.each([
-    ["the tier names no repository at all", new Map<string, string>()],
-    ["the tier names one for another service", new Map([["web", "webdev"]])],
-  ])("asks for nothing where %s", (_, tierRepositories) => {
-    expect(
-      planMainHeadReads({ declarations: [production], services, repositories: tierRepositories }),
-    ).toEqual([]);
-  });
-
-  it("asks the same for a project that also has a stage", () => {
-    expect(
-      planMainHeadReads({ declarations: [stage, production], services, repositories }),
-    ).toEqual([{ hostname: "api", repo: "apidev" }]);
-  });
-
-  it("asks for nothing where no production is declared", () => {
-    expect(planMainHeadReads({ declarations: [], services, repositories })).toEqual([]);
   });
 });

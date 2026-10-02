@@ -16,6 +16,7 @@ import {
   type StopFailure,
   type StopService,
 } from "@t3tools/client-runtime/zerops/flow";
+import type { HqDeploy } from "@t3tools/client-runtime/zerops/hq";
 import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vite-plus/test";
@@ -212,20 +213,31 @@ describe("ZeropsGroupPane", () => {
 
 const fullSha = (seed: string) => seed.padEnd(40, "0");
 
-/** One service of a stop, as the group's Gitea reads it: what it runs and how its deploy went. */
+/** HQ's record of a deploy of `commit` in `state`. */
+const deployRecord = (commit: string, state: HqDeploy["state"]): HqDeploy => ({
+  sha: commit,
+  state,
+  failure: state === "failed" ? "job" : null,
+  message: null,
+  appVersionId: null,
+  processId: null,
+  requestedBy: null,
+  at: "2026-09-19T11:00:00Z",
+});
+
+/** One service of a stop: what it runs, and how HQ records its deploy of that commit went. */
 const service = (
-  environment: string,
   hostname: string,
   seed: string,
   name: string | undefined,
-  state: "success" | "failure" = "success",
+  state: HqDeploy["state"] = "live",
 ): EnvironmentServiceState => ({
   hostname,
   repository: `${hostname}dev`,
   appVersionName: [fullSha(seed), name, name === undefined ? undefined : "gitea"]
     .filter((part) => part !== undefined)
     .join(" "),
-  statuses: [{ context: `mate/deploy/${environment}/${hostname}`, state }],
+  deploy: { latest: deployRecord(fullSha(seed), state), live: null },
 });
 
 const UNREAD: Shown<Deployment> = { state: "unread", waitingFor: null };
@@ -422,10 +434,7 @@ function renderStop(input: StopCase): string {
   );
 }
 
-const TWO_LIVE = [
-  service("production", "api", "a1", "v0.1.13"),
-  service("production", "web", "b2", "v0.1.13"),
-];
+const TWO_LIVE = [service("api", "a1", "v0.1.13"), service("web", "b2", "v0.1.13")];
 
 const count = (markup: string, needle: string | RegExp) => markup.split(needle).length - 1;
 
@@ -452,7 +461,7 @@ describe("ZeropsStopPane", () => {
       name: "a production three changes behind, with a release offered",
       input: {
         tier: "production",
-        services: [service("production", "api", "a1", "v0.1.13")],
+        services: [service("api", "a1", "v0.1.13")],
         releases: 1,
         waiting: [
           { sha: fullSha("c1"), subject: "Two-step checkout" },
@@ -474,7 +483,7 @@ describe("ZeropsStopPane", () => {
       name: "a production whose deploy failed",
       input: {
         tier: "production",
-        services: [service("production", "api", "a1", "v0.1.14", "failure")],
+        services: [service("api", "a1", "v0.1.14", "failed")],
         failed: {
           label: "v0.1.14",
           service: "api",
@@ -489,7 +498,7 @@ describe("ZeropsStopPane", () => {
       name: "a stage at the head of main",
       input: {
         tier: "stage",
-        services: [service("stage", "api", "a1", undefined)],
+        services: [service("api", "a1", undefined)],
         atMainHead: true,
         commits: {
           kind: "read",
@@ -539,7 +548,7 @@ describe("ZeropsStopPane", () => {
       name: "a production behind",
       input: {
         tier: "production",
-        services: [service("production", "api", "a1", "v0.1.13")],
+        services: [service("api", "a1", "v0.1.13")],
         waiting: [{ sha: fullSha("c1"), subject: "Two-step checkout" }],
         offered: "v0.1.14",
       },
@@ -549,7 +558,7 @@ describe("ZeropsStopPane", () => {
       name: "a stage at the head of main",
       input: {
         tier: "stage",
-        services: [service("stage", "api", "a1", undefined)],
+        services: [service("api", "a1", undefined)],
         atMainHead: true,
       },
       detail: fullSha("a1").slice(0, 7),
@@ -604,7 +613,7 @@ describe("ZeropsStopPane", () => {
     };
     const markup = renderStop({
       tier: "stage",
-      services: [service("stage", "api", "b2", undefined)],
+      services: [service("api", "b2", undefined)],
       deployment: deploying,
       platform: {
         ...NONE,
@@ -637,7 +646,7 @@ describe("ZeropsStopPane", () => {
   it("draws the verdict's verb as an outline button, not a filled one", () => {
     const markup = renderStop({
       tier: "production",
-      services: [service("production", "api", "a1", "v0.1.13")],
+      services: [service("api", "a1", "v0.1.13")],
       waiting: [{ sha: fullSha("c1"), subject: "Two-step checkout" }],
       offered: "v0.1.14",
     });
@@ -675,7 +684,7 @@ describe("ZeropsStopPane", () => {
         name: "a single repository: its newest commit's subject, over who, when and the sha",
         input: {
           tier: "production",
-          services: [service("production", "api", "a1", "v0.1.13")],
+          services: [service("api", "a1", "v0.1.13")],
           releases: 2,
           reads: READ_BRANCHES,
         },
@@ -707,7 +716,7 @@ describe("ZeropsStopPane", () => {
         name: "the last row shown: what came after the first release not shown",
         input: {
           tier: "production",
-          services: [service("production", "api", "a1", "v0.1.13")],
+          services: [service("api", "a1", "v0.1.13")],
           releases: 6,
           reads: READ_BRANCHES,
         },

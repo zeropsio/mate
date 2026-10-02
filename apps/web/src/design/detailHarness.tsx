@@ -37,6 +37,7 @@ import {
   type Deployment,
   type StopService,
 } from "@t3tools/client-runtime/zerops/flow";
+import type { HqDeploy } from "@t3tools/client-runtime/zerops/hq";
 import {
   makeZeropsApiOrigin,
   ZeropsAccountId,
@@ -302,13 +303,12 @@ const BROKEN: ZeropsDeployRun = run({
   ],
 });
 
-/** One service of a stop, as the group's Gitea read it: what it runs and how its deploy went. */
+/** One service of a stop: what it runs, and how HQ records its deploy of that commit went. */
 function service(
-  environment: string,
   hostname: string,
   seed: string | undefined,
   name: string | undefined,
-  state: "success" | "pending" | "failure" = "success",
+  state: HqDeploy["state"] = "live",
   repository = "appdev",
 ): EnvironmentServiceState {
   return {
@@ -316,7 +316,23 @@ function service(
     repository,
     appVersionName:
       seed === undefined ? undefined : name === undefined ? sha(seed) : `${sha(seed)} ${name} ales`,
-    statuses: [{ context: `mate/deploy/${environment}/${hostname}`, state }],
+    ...(seed === undefined
+      ? {}
+      : { deploy: { latest: deployRecord(sha(seed), state), live: null } }),
+  };
+}
+
+/** HQ's record of a deploy of `commit` in `state`. */
+function deployRecord(commit: string, state: HqDeploy["state"]): HqDeploy {
+  return {
+    sha: commit,
+    state,
+    failure: state === "failed" ? "job" : null,
+    message: null,
+    appVersionId: null,
+    processId: null,
+    requestedBy: null,
+    at: "2026-09-19T11:00:00Z",
   };
 }
 
@@ -376,8 +392,8 @@ const managed = (hostname: string): EnvironmentServiceState => ({ hostname });
  */
 const BEVIRO_LIVE = [
   managed("db"),
-  service("production", "medusa", MEDUSA, "v0.1.9", "success", "medusadev"),
-  service("production", "nextstore", NEXTSTORE[0], "v0.1.13", "success", "nextstoredev"),
+  service("medusa", MEDUSA, "v0.1.9", "live", "medusadev"),
+  service("nextstore", NEXTSTORE[0], "v0.1.13", "live", "nextstoredev"),
   managed("redis"),
   managed("storage"),
 ];
@@ -604,7 +620,6 @@ function StopState({ fixture }: { readonly fixture: StopFixture }) {
     tier: fixture.tier,
     sources: production ? "release" : ["main"],
     services: fixture.services,
-    environment: name,
   });
   const live = releaseRunBy(listing, running);
   const stop = production && live !== undefined ? nameStopByRelease(row, live) : row;
@@ -803,8 +818,8 @@ function Harness() {
             tier: "production",
             group: "Beviro",
             services: [
-              service("production", "medusa", undefined, undefined, "success", "medusadev"),
-              service("production", "nextstore", undefined, undefined, "success", "nextstoredev"),
+              service("medusa", undefined, undefined, "live", "medusadev"),
+              service("nextstore", undefined, undefined, "live", "nextstoredev"),
             ],
             releases: BEVIRO_RELEASES,
             reads: BEVIRO_READS,
@@ -832,10 +847,7 @@ function Harness() {
         <StopState
           fixture={{
             tier: "stage",
-            services: [
-              service("stage", "api", undefined, undefined),
-              service("stage", "app", undefined, undefined),
-            ],
+            services: [service("api", undefined, undefined), service("app", undefined, undefined)],
             offers: [{ service: "api", serviceId: "svc-api", port: 8080 }],
             deployment: NOTHING_RUNS,
             commits: { kind: "read", commits: [], releases: new Map() },
@@ -851,8 +863,8 @@ function Harness() {
           fixture={{
             tier: "stage",
             services: [
-              service("stage", "api", "b21d904c", undefined, "pending"),
-              service("stage", "app", "5c3ea18b", undefined),
+              service("api", "b21d904c", undefined, "deploying"),
+              service("app", "5c3ea18b", undefined),
             ],
             deployment: {
               kind: "deploying",
@@ -902,8 +914,8 @@ function Harness() {
           fixture={{
             tier: "stage",
             services: [
-              service("stage", "api", "b21d904c", undefined, "failure"),
-              service("stage", "app", "5c3ea18b", undefined),
+              service("api", "b21d904c", undefined, "failed"),
+              service("app", "5c3ea18b", undefined),
             ],
             deployment: STAGE_RUNNING,
             routes: ROUTES,
@@ -920,8 +932,8 @@ function Harness() {
           fixture={{
             tier: "stage",
             services: [
-              service("stage", "api", "b21d904c", undefined, "failure"),
-              service("stage", "app", "5c3ea18b", undefined),
+              service("api", "b21d904c", undefined, "failed"),
+              service("app", "5c3ea18b", undefined),
             ],
             deployment: STAGE_RUNNING,
             routes: ROUTES,
@@ -1029,8 +1041,8 @@ function Harness() {
           fixture={{
             tier: "stage",
             services: [
-              service("stage", "api", "b21d904c", undefined),
-              service("stage", "app", "b21d904c", undefined),
+              service("api", "b21d904c", undefined),
+              service("app", "b21d904c", undefined),
               managed("db"),
             ],
             deployment: STAGE_RUNNING,
@@ -1047,8 +1059,8 @@ function Harness() {
           fixture={{
             tier: "stage",
             services: [
-              service("stage", "api", "5c3ea18b", undefined),
-              service("stage", "app", "5c3ea18b", undefined),
+              service("api", "5c3ea18b", undefined),
+              service("app", "5c3ea18b", undefined),
             ],
             routes: ROUTES,
           }}
@@ -1063,8 +1075,8 @@ function Harness() {
           fixture={{
             tier: "stage",
             services: [
-              service("stage", "api", "b21d904c", undefined),
-              service("stage", "app", "b21d904c", undefined),
+              service("api", "b21d904c", undefined),
+              service("app", "b21d904c", undefined),
             ],
             routes: ROUTES.filter((route) => route.service === "app"),
             offers: [{ service: "api", serviceId: "svc-api", port: 3000 }],

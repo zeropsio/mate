@@ -214,12 +214,23 @@ export function brokenProduction() {
           name: "production",
           tier: "production",
           sources: "release",
-          environment: "production",
           services: [
             {
               hostname: "app",
               appVersionName: FAILED_PROD_SHA,
-              statuses: [{ context: "mate/deploy/production/app", state: "failure" }],
+              deploy: {
+                latest: {
+                  sha: FAILED_PROD_SHA,
+                  state: "failed",
+                  failure: "job",
+                  message: null,
+                  appVersionId: null,
+                  processId: null,
+                  requestedBy: null,
+                  at: "2026-09-29T10:41:00Z",
+                },
+                live: null,
+              },
             },
           ],
         }),

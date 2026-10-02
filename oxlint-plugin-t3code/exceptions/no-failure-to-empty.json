@@ -20,7 +20,7 @@
     "kind": "LogicalExpression",
     "fingerprint": "flow?.environments ?? []",
     "owner": "state-model 4.5",
-    "reason": "an unread or failed group flow reads as empty; useGroupFlow hands the view Known halves",
+    "reason": "an unread or failed group flow reads as empty",
     "expires": "never"
   },
   {
@@ -28,7 +28,7 @@
     "kind": "LogicalExpression",
     "fingerprint": "flow?.pullRequests ?? EMPTY_PULLS",
     "owner": "state-model 4.5",
-    "reason": "an unread or failed group flow reads as empty; useGroupFlow hands the view Known halves",
+    "reason": "an unread or failed group flow reads as empty",
     "expires": "never"
   },
   {
@@ -36,7 +36,7 @@
     "kind": "LogicalExpression",
     "fingerprint": "flow?.release.contents ?? []",
     "owner": "state-model 4.5",
-    "reason": "an unread or failed group flow reads as empty; useGroupFlow hands the view Known halves",
+    "reason": "an unread or failed group flow reads as empty",
     "expires": "never"
   },
   {
@@ -44,7 +44,7 @@
     "kind": "LogicalExpression",
     "fingerprint": "mateNames ?? EMPTY_MATE_NAMES",
     "owner": "state-model 4.5",
-    "reason": "an unread or failed group flow reads as empty; useGroupFlow hands the view Known halves",
+    "reason": "an unread or failed group flow reads as empty",
     "expires": "never"
   },
   {
@@ -52,7 +52,7 @@
     "kind": "LogicalExpression",
     "fingerprint": "groupDeploys.get(group.groupId)?.pullRequests ?? []",
     "owner": "state-model 4.5",
-    "reason": "an unread group's pull requests, releases and missing stops read as none; useGroupFlow hands the view Known halves",
+    "reason": "an unread group's pull requests, releases and missing stops read as none",
     "expires": "never"
   },
   {
@@ -60,7 +60,7 @@
     "kind": "LogicalExpression",
     "fingerprint": "groupDeploys.get(group.groupId)?.releases ?? []",
     "owner": "state-model 4.5",
-    "reason": "an unread group's pull requests, releases and missing stops read as none; useGroupFlow hands the view Known halves",
+    "reason": "an unread group's pull requests, releases and missing stops read as none",
     "expires": "never"
   },
   {
@@ -93,38 +93,6 @@
     "fingerprint": "readZeropsCell(cells, request, signal).catch(() => undefined)",
     "owner": "state-model 4.6",
     "reason": "readZeropsCellOnce turns a failed cell read into no answer; the deployment store (4.4) replaces its callers and 4.6 deletes the hook",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/useZeropsGroupDeploys.ts",
-    "kind": "CallExpression",
-    "fingerprint": "client .commitDetail(slug, repo, read.head) .then((detail): ReadonlyArray<GiteaCommit> => detail === undefined ? [] : [{ sha: detail.sha, subject: detail.subject }], ) .catch((): ReadonlyArray<GiteaCommit> => [])",
-    "owner": "state-model 4.6",
-    "reason": "a failed commit read reads as nothing waiting to go live; the forge store (4.1) holds release contents as Known and 4.6 deletes the hook",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/useZeropsGroupDeploys.ts",
-    "kind": "CallExpression",
-    "fingerprint": "client .compareCommits(slug, repo, read.from, read.head) .catch((): ReadonlyArray<GiteaCommit> => [])",
-    "owner": "state-model 4.6",
-    "reason": "a failed compare reads as nothing waiting to go live; the forge store (4.1) holds release contents as Known and 4.6 deletes the hook",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/useZeropsGroupDeploys.ts",
-    "kind": "CallExpression",
-    "fingerprint": "client .listCommitStatuses(read.owner, read.repo, read.sha) .catch(() => null)",
-    "owner": "state-model 4.6",
-    "reason": "null marks a status read that did not answer and the row stays silent; the forge store (4.1) holds statuses as Known and 4.6 deletes the hook",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/useZeropsGroupDeploys.ts",
-    "kind": "CallExpression",
-    "fingerprint": "client.getBranch(slug, repository, \"main\").catch(() => null)",
-    "owner": "state-model 4.6",
-    "reason": "a failed main-branch read leaves the head unknown by omission; the forge store (4.1) holds heads as Known and 4.6 deletes the hook",
     "expires": "never"
   },
   {

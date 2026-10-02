@@ -4,9 +4,8 @@
  * One provider reads it for the whole account — the left menu, the projects
  * screen and a Mate's Git tab all show a leg of the same flow, and each
  * reading Gitea for itself is how the account was read seven hundred times a
- * minute once (`useZeropsGroupDeploys`). The value is what was read and the
- * verbs that change it, as the person; a verb re-reads what it changed once
- * it has settled.
+ * minute once. The value is what was read and the verbs that change it, as
+ * the person; a verb re-reads what it changed once it has settled.
  */
 import type {
   EnvironmentRow,
@@ -19,11 +18,9 @@ import type {
   ReleaseEntry,
   ReleaseGate,
 } from "@t3tools/client-runtime/zerops";
-import type { Deployment } from "@t3tools/client-runtime/zerops/flow";
+import type { Deployment, ReleaseContent } from "@t3tools/client-runtime/zerops/flow";
 import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
 import { createContext, useContext } from "react";
-
-import type { ReleaseContent } from "./useZeropsGroupDeploys";
 
 /** What *Release* offers on a project, when it is offered at all. */
 export interface ZeropsReleaseOffer {
@@ -35,8 +32,6 @@ export interface ZeropsReleaseOffer {
   readonly entries: ReadonlyArray<ReleaseEntry>;
   /** The release tag on its way to production (`releaseInFlight`); Release waits for it. */
   readonly inFlight: string | undefined;
-  /** The group repo's `main` head this offer was read with — the commit its tag points at. */
-  readonly target: string | undefined;
   /**
    * What pressing it would carry: per service, the commits `main` has that the
    * service is not running. With squash merges each is one task delivered.
@@ -51,19 +46,13 @@ export interface ZeropsProjectFlow {
   readonly slug: string;
   readonly declarations: ReadonlyArray<GroupEnvironment>;
   /**
-   * Whether `environments.yaml` has been read: until then `declarations` is empty for want of an
-   * answer, not because the group declares nothing.
+   * Whether HQ has told the project's environments: until then `declarations` is empty for want of
+   * an answer, not because the project has none.
    */
   readonly declarationsRead: boolean;
   /** Stages first, then the production — the order code travels. */
   readonly environments: ReadonlyArray<EnvironmentRow>;
   readonly environmentInputs: ReadonlyArray<GroupEnvironmentRowInput>;
-  /**
-   * `main`'s head per production service, as the deploy half read it — what
-   * tells a release's review which of its commits is newest, and so which the
-   * stage runs (`stageMarks.ts`).
-   */
-  readonly mainHeads: ReadonlyMap<string, string>;
   /** The tiers the recipe offers and the project lacks — the rows that ask. */
   readonly missing: ReadonlyArray<MissingEnvironmentRow>;
   /** Every open change a push reached on the project's repositories, as HQ's stream says. */

@@ -304,7 +304,7 @@ function platformDeployments(
  * (`stopView` over that one service), so a service reads the same word on the page as in the menu.
  */
 export function serviceRows(input: {
-  /** The environment's name in `environments.yaml`, which the statuses name. */
+  /** HQ's name for the environment. */
   readonly environment: string;
   readonly services: ReadonlyArray<EnvironmentServiceState>;
   readonly platform: Shown<ReadonlyArray<StopService>>;
@@ -329,14 +329,13 @@ export function serviceRows(input: {
     const settled = settledOf(deployment);
     const version = settledVersionOf(deployment, settled, read);
     // The service's own row: `stopView` reads only its version and tone, which the one service
-    // and the environment's statuses decide; the row's name, tier and source go unread.
+    // and HQ's record of its deploys decide; the row's name, tier and source go unread.
     const row = environmentRow({
       projectId: "",
       name: input.environment,
       tier: "stage",
       sources: [],
       services: [state],
-      environment: input.environment,
     });
     const { tone, word, activatedAt } = stopView({ deployment, row, nowMs: input.nowMs });
     return {

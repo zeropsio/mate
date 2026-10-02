@@ -4,10 +4,9 @@ import type {
   Deployment,
   DeploymentStore,
   FlowCommands,
-  GroupFlow,
   StopService,
 } from "@t3tools/client-runtime/zerops/flow";
-import type { ForgeFact, ForgeStore, GiteaSessions } from "@t3tools/client-runtime/zerops/forge";
+import type { ForgeStore, GiteaSessions } from "@t3tools/client-runtime/zerops/forge";
 import type { Known, Shown } from "@t3tools/client-runtime/zerops/knowledge";
 import type { ZeropsStateEnvelope } from "@t3tools/contracts";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
@@ -21,7 +20,6 @@ vi.mock("./accountInvalidations", () => ({
   },
 }));
 
-const GITEA = "https://gitea.example";
 const PROJECT: ProjectRef = {
   kind: "project",
   organization: {
@@ -60,10 +58,8 @@ function installTestDom(): TestNode {
 
 const nextMacrotask = () => new Promise((resolve) => setTimeout(resolve, 0));
 
-/** A post-grant stage whose forge answers what the test holds, recording every demand. */
+/** A post-grant stage whose deployment store answers what the test holds, recording every demand. */
 function stage() {
-  const held = new Map<string, Shown<unknown>>();
-  const demanded = new Map<string, number>();
   const listeners = new Set<() => void>();
   const publish = () => {
     for (const listener of listeners) listener();
@@ -74,16 +70,7 @@ function stage() {
       listeners.delete(listener);
     };
   };
-  const store = {
-    read: (fact: ForgeFact) =>
-      held.get(JSON.stringify(fact)) ?? { state: "unread", waitingFor: null },
-    demand: (fact: ForgeFact) => {
-      const key = JSON.stringify(fact);
-      demanded.set(key, (demanded.get(key) ?? 0) + 1);
-      return () => demanded.set(key, (demanded.get(key) ?? 0) - 1);
-    },
-    subscribe,
-  } as unknown as ForgeStore;
+  const store = { subscribe } as unknown as ForgeStore;
   const sessions = { subscribe, close: vi.fn() } as unknown as GiteaSessions;
   const stopDemands: Array<string> = [];
   let stopDemandCalls = 0;
@@ -113,17 +100,8 @@ function stage() {
       },
     },
     sessions,
-    /** The facts demanded now. */
-    demanded: () =>
-      [...demanded]
-        .filter(([, leases]) => leases > 0)
-        .map(([key]) => (JSON.parse(key) as ForgeFact).kind),
     stopDemands,
     stopDemandCalls: () => stopDemandCalls,
-    hold: (fact: ForgeFact, shown: Shown<unknown>) => {
-      held.set(JSON.stringify(fact), shown);
-      publish();
-    },
     holdStop: (projectId: string, shown: Shown<ReadonlyArray<StopService>>) => {
       stops.set(projectId, shown);
       publish();
@@ -424,53 +402,5 @@ describe("the account's project flow in the web", () => {
       await nextMacrotask();
       unbind();
     }
-  });
-
-  it("a group's flow demands what it reads as it learns more, and lets it all go at unmount", async () => {
-    const document = installTestDom();
-    const { createRoot } = await import("react-dom/client");
-    const { bindAccountFlow, useGroupFlow } = await import("./accountForge");
-    const rig = stage();
-    const unbind = bindAccountFlow(rig.stage);
-    const source = {
-      entry: { groupId: "g1", name: "Harbor", slug: "harbor", projects: [] },
-      giteaOrigin: GITEA,
-      members: known([
-        { projectId: "p-stage", name: "harbor stage", role: undefined, project: PROJECT },
-      ]),
-      mayRelease: true,
-    };
-    /** Every flow the surface rendered, the latest last. */
-    const flows: Array<GroupFlow> = [];
-    const flow = () => flows.at(-1);
-
-    function Surface() {
-      flows.push(useGroupFlow(source));
-      return null;
-    }
-
-    const root = createRoot(document.createElement("div") as unknown as Element);
-    try {
-      root.render(<Surface />);
-      await vi.waitFor(() =>
-        expect(rig.demanded()).toEqual(["declarations", "tags", "file", "file"]),
-      );
-      expect(rig.stopDemands).toEqual(["p-stage"]);
-      expect(flow()?.releases.state).toBe("unread");
-
-      rig.hold(
-        { kind: "tags", origin: GITEA, owner: "harbor", repo: "group" },
-        known([{ name: "v1.0.0", message: "", commit: { sha: "s1" } }]),
-      );
-      // A release tag names the commit whose statuses carry the broker's verdict on it.
-      await vi.waitFor(() => expect(rig.demanded()).toContain("statuses"));
-      await vi.waitFor(() => expect(flow()?.releases.state).toBe("known"));
-    } finally {
-      root.unmount();
-      await nextMacrotask();
-      unbind();
-    }
-    expect(rig.demanded()).toEqual([]);
-    expect(rig.stopDemands).toEqual([]);
   });
 });

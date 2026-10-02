@@ -21,10 +21,9 @@
  * ## Every fact from the party that can prove it
  *
  * The sha comes from the service's **app-version name**, which spells the
- * commit the broker built from (`versionName.ts`, `docs/group-repo.md`) —
- * never from the branch head, which says what *should* be there.
- * The deploy outcome comes from the commit status the broker wrote,
- * `mate/deploy/{environment}/{service}` — never from the version's existence.
+ * commit it was built from (`versionName.ts`) — never from the branch head,
+ * which says what *should* be there. How the deploy went is HQ's record of it
+ * (`HqEnvironment.deploys`) — never the version's existence.
  * Whether a group's Gitea is ready comes from `GET /orgs/{slug}` answering as
  * the person, never from the registry tag that asked for it
  * (`groupCreation.ts`).
@@ -34,7 +33,7 @@
  * @module groupRows
  */
 
-import type { GiteaCommitStatus, GiteaPullRequest } from "./giteaClient.ts";
+import type { GiteaPullRequest } from "./giteaClient.ts";
 import {
   mateAwaitingRegistryLine,
   type GroupGiteaState,
@@ -214,11 +213,6 @@ export function deployedVersion(appVersionName: string | undefined): DeployedVer
   };
 }
 
-/** The commit status the broker writes for one service of one environment. */
-export function deployStatusContext(environment: string, service: string): string {
-  return `mate/deploy/${environment}/${service}`;
-}
-
 /** As much of one service as a row needs. */
 export interface EnvironmentServiceState {
   readonly hostname: string;
@@ -226,8 +220,6 @@ export interface EnvironmentServiceState {
   readonly repository?: string | undefined;
   /** The deployed version's name — the sha first (`appVersionName`). */
   readonly appVersionName?: string | undefined;
-  /** Every commit status on that commit, as Gitea returned them. */
-  readonly statuses?: ReadonlyArray<GiteaCommitStatus> | undefined;
   /** Its newest deploy as HQ records it, and the newest that went live. */
   readonly deploy?: ServiceDeploys | undefined;
 }
@@ -253,24 +245,13 @@ const DEPLOY_TONES: Record<HqDeploy["state"], GroupRowTone> = {
  * that is not running what it says it runs, and averaging that away is how a
  * screen ends up saying "configured" for a broken setup.
  */
-export function deployTone(input: {
-  readonly environment: string;
-  readonly services: ReadonlyArray<EnvironmentServiceState>;
-}): GroupRowTone {
+export function deployTone(services: ReadonlyArray<EnvironmentServiceState>): GroupRowTone {
   let seen: GroupRowTone = "neutral";
-  for (const service of input.services) {
-    if (service.deploy !== undefined) {
-      const tone = DEPLOY_TONES[service.deploy.latest.state];
-      if (tone === "bad") return "bad";
-      if (tone === "pending" || seen !== "pending") seen = tone;
-      continue;
-    }
-    const status = (service.statuses ?? []).find(
-      (entry) => entry.context === deployStatusContext(input.environment, service.hostname),
-    );
-    if (status?.state === "failure" || status?.state === "error") return "bad";
-    if (status?.state === "pending") seen = "pending";
-    else if (status?.state === "success" && seen !== "pending") seen = "good";
+  for (const { deploy } of services) {
+    if (deploy === undefined) continue;
+    const tone = DEPLOY_TONES[deploy.latest.state];
+    if (tone === "bad") return "bad";
+    if (tone === "pending" || seen !== "pending") seen = tone;
   }
   return seen;
 }
@@ -289,8 +270,6 @@ export function environmentRow(input: {
   readonly tier: GroupEnvironmentTier;
   readonly sources: ReadonlyArray<string> | "release";
   readonly services: ReadonlyArray<EnvironmentServiceState>;
-  /** The environment's name in `environments.yaml`, which the statuses name. */
-  readonly environment: string;
 }): EnvironmentRow {
   const source = input.sources === "release" ? "release" : input.sources.join(" + ") || "—";
   // The first service that is running something names the environment: in a
@@ -300,7 +279,7 @@ export function environmentRow(input: {
     .map((service) => ({ service, version: deployedVersion(service.appVersionName) }))
     .find((entry) => entry.version.label !== undefined);
   const version = named?.version ?? NO_VERSION;
-  const tone = deployTone({ environment: input.environment, services: input.services });
+  const tone = deployTone(input.services);
   return {
     kind: "environment",
     projectId: input.projectId,

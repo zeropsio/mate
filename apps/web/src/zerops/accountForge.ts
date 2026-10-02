@@ -16,23 +16,15 @@ import type {
 } from "@t3tools/client-runtime/zerops/account/runtime";
 import {
   envelopeInvalidations,
-  groupFlow,
-  groupFlowFacts,
-  groupFlowInputs,
-  groupFlowStops,
   stopDeploymentOf,
-  unboundGroupFlowInputs,
   type Deployment,
   type DeploymentStore,
   type EnvelopeServices,
   type FlowAttempt,
   type FlowCommand,
-  type GroupFlow,
-  type GroupFlowSource,
   type StopService,
 } from "@t3tools/client-runtime/zerops/flow";
 import { projectKeyOf, type ProjectRef } from "@t3tools/client-runtime/zerops/data";
-import type { ForgeFact, ForgePriority } from "@t3tools/client-runtime/zerops/forge";
 import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
 import type { ZeropsStateEnvelope } from "@t3tools/contracts";
 import { useCallback, useEffect, useMemo, useRef, useSyncExternalStore } from "react";
@@ -42,7 +34,6 @@ import { bindAccountGiteaSessions } from "./accountGiteaSessions";
 import { invalidateZerops } from "./accountInvalidations";
 import { onAccountLifetimeClose } from "./accountLifetime";
 import { batchedPerTask } from "./taskBatch";
-import { useNowMs } from "./useNowMs";
 
 /** The browser's half of the forge: fetch, the clocks and timers. */
 export const webForgePorts: AccountForgePorts = {
@@ -127,13 +118,6 @@ export function lifecycleEnvelopeChanged(
 
 // ── What surfaces read ───────────────────────────────────────────────────────────────────────
 
-/** What one group's flow is read from, and how it is weighed. */
-export interface UseGroupFlowSource extends GroupFlowSource {
-  readonly mayRelease: boolean;
-  /** The route's group reads first, then what is on screen (§4.7 "Scheduling"). */
-  readonly priority?: ForgePriority;
-}
-
 /** Subscribes to the bound stores, moving their counter once per task however often they publish. */
 function useFlowSubscription(flow: AccountFlow | null): (listener: () => void) => () => void {
   return useCallback(
@@ -162,13 +146,6 @@ function useFlowSubscription(flow: AccountFlow | null): (listener: () => void) =
 /** The bound stores' counter, as `useFlowSubscription` moves it. */
 function flowVersionOf(flow: AccountFlow | null): number {
   return flow === null ? 0 : (versions.get(flow) ?? 0);
-}
-
-/** A counter the bound stores move, once per task however often they publish. */
-function useFlowVersion(flow: AccountFlow | null): number {
-  const subscribe = useFlowSubscription(flow);
-  const snapshot = useCallback(() => flowVersionOf(flow), [flow]);
-  return useSyncExternalStore(subscribe, snapshot, snapshot);
 }
 
 const versions = new WeakMap<AccountFlow, number>();
@@ -205,59 +182,6 @@ function stopDeploymentsSnapshot(
 
 /** Nothing is read before the epoch's first grant built the stores. */
 const UNBOUND: Shown<never> = { state: "unread", waitingFor: "access-grant" };
-
-/**
- * One group's flow (§4.7): demands every fact it reads from the forge and the deployment store for
- * as long as the calling surface is mounted, and answers `groupFlow` over them — read again once
- * per task however often the stores publish.
- */
-export function useGroupFlow(source: UseGroupFlowSource): GroupFlow {
-  const { entry, giteaOrigin, members, mayRelease, priority } = source;
-  const flow = useAccountFlow();
-  const version = useFlowVersion(flow);
-  const nowMs = useNowMs();
-
-  // The stores' answers as of `version`: what the group reads, and what it is read from.
-  const read = useMemo(() => {
-    if (flow === null) return null;
-    const stores = { forge: flow.forge?.store ?? null, deployments: flow.deployments };
-    const current = { entry, giteaOrigin, members };
-    return {
-      version,
-      inputs: groupFlowInputs(stores, current),
-      facts: groupFlowFacts(stores, current),
-    };
-  }, [entry, flow, giteaOrigin, members, version]);
-
-  // What the group reads is demanded as what is known names more of it.
-  const store = flow?.forge?.store ?? null;
-  const factKeys = JSON.stringify(read?.facts ?? []);
-  useEffect(() => {
-    if (store === null) return;
-    const releases = (JSON.parse(factKeys) as ReadonlyArray<ForgeFact>).map((fact) =>
-      store.demand(fact, priority),
-    );
-    return () => {
-      for (const release of releases) release();
-    };
-  }, [factKeys, priority, store]);
-
-  useEffect(() => {
-    if (flow === null) return;
-    const releases = groupFlowStops({ entry, giteaOrigin, members }).map((project) =>
-      flow.deployments.demand(project),
-    );
-    return () => {
-      for (const release of releases) release();
-    };
-  }, [entry, flow, giteaOrigin, members]);
-
-  return useMemo(
-    () =>
-      groupFlow(read?.inputs ?? unboundGroupFlowInputs({ entry, members }), { mayRelease }, nowMs),
-    [entry, mayRelease, members, nowMs, read],
-  );
-}
 
 /**
  * What each stop runs (§4.7), by project id: demands the stops of the deployment store for as long

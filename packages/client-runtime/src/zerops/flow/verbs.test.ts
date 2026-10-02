@@ -13,19 +13,19 @@ describe("flowVerbInvalidations", () => {
       // A change merges, and closes, in HQ: nothing of Gitea moves, and the change comes back
       // down HQ's stream — nothing is read again.
       verb: { kind: "merge", groupId: "g1", repository: "appdev", number: 4 },
-      expected: { forge: null, deploys: null },
+      expected: { forge: null },
     },
     {
       verb: { kind: "close", groupId: "g1", repository: "group", number: 2 },
-      expected: { forge: null, deploys: null },
+      expected: { forge: null },
     },
     {
       verb: { kind: "release", groupId: "g1" },
-      expected: { forge: { kind: "tags" }, deploys: null },
+      expected: { forge: { kind: "tags" } },
     },
     {
       verb: { kind: "roll-back", groupId: "g1", tag: "v1.2.0" },
-      expected: { forge: { kind: "tags" }, deploys: null },
+      expected: { forge: { kind: "tags" } },
     },
   ];
 
