@@ -38,12 +38,3 @@ export function useZeropsRegistry(): ZeropsRegistryState {
     [structure],
   );
 }
-
-/** The Gitea org a group is keyed by, or `undefined` while the registry names no such group. */
-export function registryGroupSlug(
-  registry: ZeropsRegistry,
-  groupId: string | undefined,
-): string | undefined {
-  if (groupId === undefined) return undefined;
-  return registry.groups.find((group) => group.groupId === groupId)?.slug;
-}

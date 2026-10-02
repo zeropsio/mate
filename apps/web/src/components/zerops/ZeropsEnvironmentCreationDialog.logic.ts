@@ -298,7 +298,7 @@ export function newMateWords(input: {
   };
 }
 
-/** Where the recipe on the group repo's `main` stands, as it answered (`useZeropsGroupRecipe`). */
+/** Where the recipe on its repository's `main` stands, as HQ answered (`useZeropsGroupRecipe`). */
 export type NewMateRecipeRead = "loading" | "present" | "absent" | "unreadable";
 
 /** One of the project's Mates, as the door names it. */
