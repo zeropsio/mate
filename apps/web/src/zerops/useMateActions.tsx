@@ -154,8 +154,8 @@ type MateDialog =
   | { readonly kind: "delete"; readonly candidate: ZeropsCandidatePresentation };
 
 /**
- * Where a dialog's press stands — Delete's, or Change face's: the platform answering it, or why
- * it refused. One dialog is open at a time, and opening one starts it unpressed.
+ * Where a dialog's press stands — Delete's, Change face's or Hand over's: the platform answering
+ * it, or why it refused. One dialog is open at a time, and opening one starts it unpressed.
  */
 interface DialogPress {
   readonly pending: boolean;
@@ -476,21 +476,30 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
 
   /**
    * Hands a Mate over (guide 0.8, D11): a per-project role override to OWNER
-   * for the person picked. The one write in the app that carries `userRoles`.
+   * for the person picked, written on their own role list
+   * (`ZeropsApiClient.setProjectMemberRole`). The dialog stays open until the
+   * platform answers: a refusal is said there, and nothing changes.
    */
   const assign = useCallback(
     (candidate: ZeropsCandidatePresentation, clientUserId: string) => {
       if (activeOrganization === null) return;
-      void write(candidate.key, () =>
-        runZeropsCommand(
-          runtime.commands.setProjectMemberRole(
-            projectRef(activeOrganization.id, candidate.project.id),
-            { clientUserId, roleCode: "OWNER" },
-          ),
+      const isCurrent = captureAccountLifetime();
+      setPress({ pending: true, error: null });
+      runZeropsCommand(
+        runtime.commands.setProjectMemberRole(
+          projectRef(activeOrganization.id, candidate.project.id),
+          { clientUserId, roleCode: "OWNER" },
         ),
+      ).then(
+        () => {
+          if (isCurrent()) setDialog(null);
+        },
+        (cause: unknown) => {
+          if (isCurrent()) setPress({ pending: false, error: zeropsErrorMessage(cause) });
+        },
       );
     },
-    [activeOrganization, projectRef, runtime.commands, write],
+    [activeOrganization, projectRef, runtime.commands, setDialog],
   );
 
   /** Into another application as what the person picked, a new one made first, or out of all. */
@@ -900,7 +909,10 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
               {
                 id: "assign",
                 label: "Hand this Mate over",
-                onSelect: () => setDialog({ kind: "assign", candidate }),
+                onSelect: () => {
+                  setPress(UNPRESSED);
+                  setDialog({ kind: "assign", candidate });
+                },
               },
             ]
           : []),
@@ -1043,6 +1055,7 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
       ) : null}
       {dialog?.kind === "assign" ? (
         <ZeropsAssignMateDialog
+          error={press.error}
           key={`assign:${dialog.candidate.key}`}
           members={members}
           onCancel={close}
@@ -1050,10 +1063,9 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
             if (!open) close();
           }}
           onSubmit={(clientUserId) => {
-            const { candidate } = dialog;
-            close();
-            assign(candidate, clientUserId);
+            assign(dialog.candidate, clientUserId);
           }}
+          pending={press.pending}
           projectName={dialog.candidate.project.name}
         />
       ) : null}

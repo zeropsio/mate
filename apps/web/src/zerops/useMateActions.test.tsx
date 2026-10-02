@@ -19,6 +19,12 @@ import { closeAccountLifetime, openAccountLifetime } from "./accountLifetime";
 import { useMateActions, type MateActions } from "./useMateActions";
 import type { ZeropsCandidatePresentation } from "./useZeropsCandidates";
 
+interface AssignDialogProps {
+  readonly pending: boolean;
+  readonly error: string | null;
+  readonly onSubmit: (clientUserId: string) => void;
+}
+
 interface FaceDialogProps {
   readonly open: boolean;
   readonly name: string;
@@ -42,6 +48,9 @@ const mock = vi.hoisted(() => ({
   /** The press's marker on each container, by service id, as the store states it. */
   markers: new Map<string, boolean | "unknown" | "unread">(),
   dialog: { current: null as FaceDialogProps | null },
+  /** The platform's per-project role write a hand-over makes, a promise the test answers. */
+  setProjectMemberRole: vi.fn(),
+  assignDialog: { current: null as AssignDialogProps | null },
 }));
 
 vi.mock("./ZeropsSessionProvider", () => ({
@@ -63,7 +72,7 @@ vi.mock("./zeropsDataContext", () => ({
     organizationRef: (organizationId: string) => ({ organizationId }),
     projectRef: (organizationId: string, projectId: string) => ({ organizationId, projectId }),
     runtime: {
-      commands: {},
+      commands: { setProjectMemberRole: mock.setProjectMemberRole },
       reads: { setupMarker: () => null },
       cells: { known: () => null },
     },
@@ -111,6 +120,12 @@ vi.mock("./matePress", async (original) => ({
   ...(await original<typeof import("./matePress")>()),
   beginPress: () => {},
   finishMateSetup: mock.finishMateSetup,
+}));
+vi.mock("../components/zerops/ZeropsAssignMateDialog", () => ({
+  ZeropsAssignMateDialog: (props: AssignDialogProps) => {
+    mock.assignDialog.current = props;
+    return null;
+  },
 }));
 // The dialog as the hook mounts it: what it is handed, and the two answers it gives.
 vi.mock("../components/zerops/ZeropsChangeFaceDialog", () => ({
@@ -171,6 +186,8 @@ beforeEach(() => {
   mock.user = { id: "user-ada" };
   mock.markers.clear();
   mock.dialog.current = null;
+  mock.assignDialog.current = null;
+  mock.setProjectMemberRole.mockReset();
   mock.updateMate.mockReset();
   mock.finishMateSetup.mockReset();
   seen.length = 0;
@@ -330,6 +347,58 @@ describe("useMateActions — Change face…", () => {
     });
     expect(mock.updateMate).toHaveBeenCalledTimes(1);
     expect(actions().trouble).toBeNull();
+  });
+});
+
+// E2E F7: a refused hand-over closed its dialog and said nothing. The dialog stays until the
+// platform answers, says a refusal there, and closes only on the platform's yes.
+describe("useMateActions — Hand this Mate over", () => {
+  const openAssign = () => {
+    const entry = verbs(FEN).find((verb) => verb.id === "assign");
+    act(() => {
+      entry!.onSelect();
+    });
+  };
+
+  it("says a refused hand-over's reason in the dialog, which stays open", async () => {
+    mock.setProjectMemberRole.mockRejectedValue(new Error("Zerops refused the hand-over."));
+    mount();
+    openAssign();
+    expect(mock.assignDialog.current).toMatchObject({ pending: false, error: null });
+    await act(async () => {
+      mock.assignDialog.current!.onSubmit("cu-eva");
+    });
+    expect(mock.setProjectMemberRole).toHaveBeenCalledWith(
+      { organizationId: "org-acme", projectId: FEN.project.id },
+      { clientUserId: "cu-eva", roleCode: "OWNER" },
+    );
+    expect(mock.assignDialog.current).toMatchObject({
+      pending: false,
+      error: "Zerops refused the hand-over.",
+    });
+  });
+
+  it("closes once the platform takes it", async () => {
+    let answer: (value: unknown) => void = () => {};
+    mock.setProjectMemberRole.mockReturnValue(
+      new Promise((resolve) => {
+        answer = resolve;
+      }),
+    );
+    mount();
+    openAssign();
+    await act(async () => {
+      mock.assignDialog.current!.onSubmit("cu-eva");
+    });
+    expect(mock.assignDialog.current).toMatchObject({ pending: true, error: null });
+    mock.assignDialog.current = null;
+    await act(async () => {
+      answer(undefined);
+    });
+    act(() => {
+      mounted[0]!.update(<Probe />);
+    });
+    expect(mock.assignDialog.current).toBeNull();
   });
 });
 

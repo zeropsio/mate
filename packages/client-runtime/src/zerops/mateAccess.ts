@@ -355,21 +355,23 @@ export function handOverCandidates<
 }
 
 /**
- * Handing a Mate over: the project's `userRoles` with one person raised (or
- * lowered) and everybody else's override untouched (guide 0.8, D11).
+ * Handing a Mate over: one person's project role list with this project's
+ * role set, and their every other project's untouched (guide 0.8, D11).
  *
- * `PUT /project/{id}` replaces the list wholesale, so the caller sends the
- * whole thing; a blind write would drop every other person's role on the
- * project. Overrides are measured in both directions — the same call, lowered,
- * takes a Mate away.
+ * `PUT /client-user/{id}/roles` replaces the person's list wholesale, so the
+ * caller sends the whole thing; a blind write would drop the person's role on
+ * every other project. Overrides are measured in both directions — the same
+ * call, lowered, takes a Mate away.
  */
 export function withMateProjectRole(
-  userRoles:
-    | ReadonlyArray<{ readonly clientUserId: string; readonly roleCode: string }>
+  projectRoleList:
+    | ReadonlyArray<{ readonly projectId: string; readonly roleCode: string }>
     | undefined,
-  clientUserId: string,
+  projectId: string,
   roleCode: ZeropsOrgRole,
-): ReadonlyArray<{ readonly clientUserId: string; readonly roleCode: string }> {
-  const others = (userRoles ?? []).filter((entry) => entry.clientUserId !== clientUserId);
-  return [...others, { clientUserId, roleCode }];
+): ReadonlyArray<{ readonly projectId: string; readonly roleCode: string }> {
+  const others = (projectRoleList ?? [])
+    .filter((entry) => entry.projectId !== projectId)
+    .map((entry) => ({ projectId: entry.projectId, roleCode: entry.roleCode }));
+  return [...others, { projectId, roleCode }];
 }
