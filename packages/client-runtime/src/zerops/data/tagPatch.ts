@@ -11,10 +11,6 @@
  *
  * Pure: no I/O, no clock.
  */
-import type { RoleProjectKind } from "@t3tools/shared/zeropsRoles";
-
-import { planGroupMembership, planGroupRegistration } from "../groupCreation.ts";
-import { parseZeropsRegistry } from "../groupRegistry.ts";
 import {
   withZeropsBotTag,
   withZeropsChangedFace,
@@ -46,100 +42,28 @@ export type ProjectTagPatch =
   /** The Mate was asked to stand the project's development up: the ask (`mate:standup:`) goes. */
   | { readonly kind: "stand-up-done" }
   /** The press closed the project off and read it back closed (`mate:closed-off`). */
-  | { readonly kind: "closed-off" }
-  /** A group in the account's registry, on its Gitea project; its slug is derived here. */
-  | { readonly kind: "registry-group"; readonly groupId: string; readonly name: string }
-  /** A project in a registered group as a Mate, a stage or the production. */
-  | {
-      readonly kind: "registry-member";
-      readonly groupId: string;
-      readonly projectId: string;
-      readonly member: RoleProjectKind;
-      /**
-       * Projects the platform answered `projectNotFound` for: a member of the group naming one is
-       * dropped in the same write (`planGroupMembership`, 2026-09-24).
-       */
-      readonly gone?: ReadonlyArray<string> | undefined;
-    };
+  | { readonly kind: "closed-off" };
 
-export type ProjectTagRefusal =
-  /** The registry names no such group — yet, when its own write has not landed. */
-  | { readonly code: "group-unknown"; readonly reason: string }
-  /** The registry holds something that contradicts the patch; the words say what. */
-  | { readonly code: "registry-conflict"; readonly reason: string }
-  /**
-   * The group's one production is another project, named so the caller can ask the platform
-   * whether it still exists — and write again with it `gone` when it does not.
-   */
-  | { readonly code: "production-held"; readonly reason: string; readonly projectId: string };
-
-export type ProjectTagPatchResult =
-  | { readonly ok: true; readonly tags: ReadonlyArray<string> }
-  | { readonly ok: false; readonly refusal: ProjectTagRefusal };
-
-const changed = (tags: ReadonlyArray<string>): ProjectTagPatchResult => ({ ok: true, tags });
-
-/** The list the patch leaves, or why the list it was given does not take it. */
+/** The list the patch leaves. */
 export function applyProjectTagPatch(
   tags: ReadonlyArray<string>,
   patch: ProjectTagPatch,
-): ProjectTagPatchResult {
+): ReadonlyArray<string> {
   switch (patch.kind) {
     case "group-membership":
-      return changed(withZeropsGroupTags(tags, patch.next));
+      return withZeropsGroupTags(tags, patch.next);
     case "agent-name": {
       const named = withZeropsBotTag(tags, patch.name);
-      return changed(patch.name.trim().length === 0 ? named : withZeropsMateTag(named));
+      return patch.name.trim().length === 0 ? named : withZeropsMateTag(named);
     }
     case "mate-face":
-      return changed(withZeropsChangedFace(tags, patch.face));
+      return withZeropsChangedFace(tags, patch.face);
     case "agent-signer":
-      return changed(withMateSignerTag(tags, patch.agentId, patch.userId));
+      return withMateSignerTag(tags, patch.agentId, patch.userId);
     case "stand-up-done":
-      return changed(withoutZeropsStandUpTag(tags));
+      return withoutZeropsStandUpTag(tags);
     case "closed-off":
-      return changed(withZeropsClosedOffTag(tags));
-    case "registry-group": {
-      const registry = parseZeropsRegistry(tags);
-      // The group is there: our own earlier write, read back.
-      if (registry.groups.some((group) => group.groupId === patch.groupId)) return changed(tags);
-      const registration = planGroupRegistration({
-        name: patch.name,
-        groupId: patch.groupId,
-        registry,
-      });
-      return registration.ok
-        ? changed(registration.plan.tagList)
-        : { ok: false, refusal: { code: "registry-conflict", reason: registration.reason } };
-    }
-    case "registry-member": {
-      const registry = parseZeropsRegistry(tags);
-      if (!registry.groups.some((group) => group.groupId === patch.groupId)) {
-        return {
-          ok: false,
-          refusal: { code: "group-unknown", reason: "That project is not in the registry yet." },
-        };
-      }
-      const membership = planGroupMembership({
-        registry,
-        groupId: patch.groupId,
-        projectId: patch.projectId,
-        kind: patch.member,
-        gone: patch.gone,
-      });
-      if (membership.ok) return changed(membership.tagList);
-      return {
-        ok: false,
-        refusal:
-          membership.production === undefined
-            ? { code: "registry-conflict", reason: membership.reason }
-            : {
-                code: "production-held",
-                reason: membership.reason,
-                projectId: membership.production,
-              },
-      };
-    }
+      return withZeropsClosedOffTag(tags);
   }
 }
 

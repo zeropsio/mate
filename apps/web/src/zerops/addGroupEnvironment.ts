@@ -2,11 +2,11 @@
  * The four writes that turn a new Zerops project into a group environment
  * (guide 5.2), performed in an order that never leaves a half-made one.
  *
- * 1. **The registry** — `mate:gm:{groupId}:{projectId}:stage|production`, as
- *    the person, an org owner or admin: a patch through `updateProjectTags`,
- *    applied to the Gitea project's tags as they are. Without it nothing else
- *    knows the project belongs to the group, so it goes first, and the group's
- *    Gitea org is read off the registry it met.
+ * 1. **The registry** — the project attached to its application in the
+ *    organization's HQ as its stage or production, as the person, an org owner
+ *    or admin (`POST /api/apps/{id}/projects`). Without it nothing else knows
+ *    the project belongs to the group, so it goes first. HQ keeps one
+ *    production per application, and lets a production deleted in Zerops go.
  * 2. **The broker's grants** — `BASIC_USER` on the new project, added to what
  *    the broker already holds (`brokerGrant.ts`, the same write a Mate's
  *    registration makes). Its token's value is never read or written; only
@@ -18,6 +18,11 @@
  * 4. **`environments.yaml`** — always as a pull request from
  *    `mate-app/env-{name}`, because `main` takes no direct push from anybody;
  *    merged in the same breath only when Gitea says this person may merge it.
+ *
+ * Steps 2–4 are the Gitea project's: an organization without one — every one
+ * whose HQ was born with its first project — has no broker, no key store and no
+ * group repo, so its environment is registered and that is all, until HQ
+ * deploys it (T8).
  *
  * Each step reports what happened rather than throwing: an environment whose
  * grant write failed is an environment the broker cannot deploy **yet**, and an
@@ -34,7 +39,6 @@ import {
   deriveEnvironmentName,
   ENVIRONMENTS_DOCUMENT_PATH,
   environmentCommitMessage,
-  parseZeropsRegistry,
   planEnvironmentWrite,
   readGroupEnvironments,
   withGroupEnvironment,
@@ -44,10 +48,9 @@ import {
   type GroupEnvironmentTier,
   type ZeropsApiClient,
 } from "@t3tools/client-runtime/zerops";
-import type { ProjectTagPatch, ProjectTagWrite } from "@t3tools/client-runtime/zerops/data";
-import type { RoleProjectKind } from "@t3tools/shared/zeropsRoles";
+import { attachToApp, type HqApi } from "@t3tools/client-runtime/zerops/hq";
 
-import { grantBrokerProject, type BrokerGrantClient, type ProjectTagsWrite } from "./brokerGrant";
+import { grantBrokerProject, type BrokerGrantClient } from "./brokerGrant";
 import { ensureDeployToken } from "./deployToken";
 
 /** The group repo of a group, by its slug (`{slug}/group`). */
@@ -76,10 +79,11 @@ export async function addGroupEnvironment(input: {
   readonly client: ZeropsApiClient;
   /** The organization's token list and the broker's grant write (`brokerGrantTokens`). */
   readonly tokens: BrokerGrantClient;
-  readonly writeTags: ProjectTagsWrite;
+  /** The organization's HQ, where the registry lives. */
+  readonly hq: HqApi;
   readonly gitea: GiteaClient | null;
   readonly clientId: string;
-  /** The account's Gitea project — where the registry lives. */
+  /** The organization's Gitea project, where the broker is, if it has one. */
   readonly giteaProjectId: string | undefined;
   readonly groupId: string;
   readonly environment: {
@@ -98,28 +102,17 @@ export async function addGroupEnvironment(input: {
     pullRequest: undefined,
   });
 
-  if (input.giteaProjectId === undefined) {
-    return stop("registry", "Your account's Gitea is still being set up.");
-  }
-
-  let slug: string | undefined;
   try {
-    const written = await writeRegistryMember({
-      client: input.client,
-      writeTags: input.writeTags,
-      giteaProjectId: input.giteaProjectId,
-      groupId: input.groupId,
+    await attachToApp(input.hq, input.groupId, {
       projectId: input.environment.project,
-      member: input.environment.tier,
-      signal: input.signal,
+      kind: input.environment.tier,
     });
-    if (written.kind === "refused") return stop("registry", written.refusal.reason);
-    slug = parseZeropsRegistry(written.project.tagList).groups.find(
-      (group) => group.groupId === input.groupId,
-    )?.slug;
     done.push("registry");
   } catch (cause) {
     return stop("registry", messageOf(cause));
+  }
+  if (input.giteaProjectId === undefined) {
+    return { done, failed: undefined, pullRequest: undefined };
   }
 
   // A stage the broker cannot reach is a stage it cannot deploy, so an
@@ -147,7 +140,9 @@ export async function addGroupEnvironment(input: {
   done.push("deploy-token");
 
   const gitea = input.gitea;
-  if (gitea === null || slug === undefined) {
+  // The registry keys a group's Gitea org by the group's id (`hq/registry.ts`).
+  const slug = input.groupId;
+  if (gitea === null) {
     return stop(
       "environments-document",
       "Sign in to Gitea to declare this environment on the project's repository.",
@@ -267,41 +262,6 @@ export async function addGroupEnvironment(input: {
   } catch (cause) {
     return stop("environments-document", messageOf(cause));
   }
-}
-
-/**
- * The registry entry of one project in a group (step 1), as a patch through
- * `writeTags` — the same write a creation's own registry step makes
- * (`zeropsBirths.ts`).
- *
- * A production deleted outside the app keeps its entry, and the one-production
- * rule then refused every production after it: Beviro's, deleted in the Zerops
- * GUI and added again from the app, got no registry entry, no broker grant, no
- * deploy token and no declaration, and the broker refused its deploys
- * `424 no_deploy_token` (2026-09-24). So a refusal that names the production in
- * the way asks the platform about that project, and writes again with it
- * `gone` only when the platform says it is deleted.
- */
-export async function writeRegistryMember(input: {
-  readonly client: Pick<ZeropsApiClient, "fetchProject">;
-  readonly writeTags: ProjectTagsWrite;
-  /** The account's Gitea project — where the registry lives. */
-  readonly giteaProjectId: string;
-  readonly groupId: string;
-  readonly projectId: string;
-  readonly member: RoleProjectKind;
-  readonly signal?: AbortSignal | undefined;
-}): Promise<ProjectTagWrite> {
-  const patch: ProjectTagPatch = {
-    kind: "registry-member",
-    groupId: input.groupId,
-    projectId: input.projectId,
-    member: input.member,
-  };
-  const written = await input.writeTags(input.giteaProjectId, patch);
-  if (written.kind !== "refused" || written.refusal.code !== "production-held") return written;
-  const gone = await deletedProjects(input.client, [written.refusal.projectId], input.signal);
-  return gone.length === 0 ? written : input.writeTags(input.giteaProjectId, { ...patch, gone });
 }
 
 /** How `GET /project/{id}` answers for a project that has been deleted. */

@@ -3578,12 +3578,6 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
               organization: command.organization,
               projectId: ZeropsProjectId.make(result.value.project.id),
             };
-          } else if (command.kind === "create-tool-project" && result?.kind === command.kind) {
-            createdProject = {
-              kind: "project",
-              organization: command.organization,
-              projectId: ZeropsProjectId.make(result.value.project.id),
-            };
           } else if (command.kind === "import-project" && result?.kind === command.kind) {
             createdProject = {
               kind: "project",
@@ -3754,14 +3748,6 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
       runCommand({ kind: "import-services", project, yaml }).pipe(
         Effect.flatMap(({ attempt, result }) =>
           result.kind === "import-services"
-            ? Effect.succeed({ attempt, value: result.value })
-            : Effect.fail(missingCommandResult()),
-        ),
-      ),
-    createToolProject: (input) =>
-      runCommand({ kind: "create-tool-project", ...input }).pipe(
-        Effect.flatMap(({ attempt, result }) =>
-          result.kind === "create-tool-project"
             ? Effect.succeed({ attempt, value: result.value })
             : Effect.fail(missingCommandResult()),
         ),

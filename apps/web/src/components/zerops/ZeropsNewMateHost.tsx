@@ -9,9 +9,10 @@
  * it is taken, the dialog closes and the person lands on the new Mate, where it comes up
  * (`/mate/$projectId`). A step that fails after that is its row's and its view's to say.
  *
- * A project that takes no Mate now — its Mates have not written its recipe yet, or it cannot be
- * read — says why in the dialog instead (`newMateDoor`), and its one action leaves the dialog for
- * the recipe's change or the Mate writing it, or reads the recipe again.
+ * A project that takes no Mate now — its organization has no HQ (`newMateDoorWithoutHq`), its
+ * Mates have not written its recipe yet, or it cannot be read — says why in the dialog instead
+ * (`newMateDoor`), and its one action leaves the dialog for the recipe's change or the Mate
+ * writing it, or reads the recipe again.
  *
  * It also keeps a new Mate's conversation read while that view hands over to it, so the route
  * changing under the person paints the view's last frame, never a loading pane.
@@ -29,6 +30,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 
 import { useThreadDetail, useThreadStatus } from "~/state/entities";
+import { useAccountHq } from "~/zerops/accountHq";
 import { useAccountGitea, useAccountHoldsGitea } from "~/zerops/giteaProject";
 import { newMateView, useNewMate } from "~/zerops/newMate";
 import { useZeropsProjectFlowOptional } from "~/zerops/projectFlowContext";
@@ -49,6 +51,7 @@ import {
   landedRecipeProposal,
   newMateDoor,
   newMateDoorMates,
+  newMateDoorWithoutHq,
   newMateRecipeChange,
   pressRegistrationRefused,
   pressSteps,
@@ -107,6 +110,8 @@ function NewMateDialog({
   readonly create: ReturnType<typeof useEnvironmentCreation>;
 }) {
   const { activeOrganization, status } = useZeropsSession();
+  // ADR 0001: a Mate works only in an organization with its HQ.
+  const accountHq = useAccountHq(activeOrganization?.id);
   const { listing } = useZeropsCandidates();
   const candidates = useMemo(() => heldCandidates(listing).rows, [listing]);
   // A Mate's name must be new on the account, not just in the project: it is what the left menu
@@ -124,10 +129,7 @@ function NewMateDialog({
   );
   const accountGitea = useAccountGitea(activeOrganization?.id);
   const holdsGitea = useAccountHoldsGitea(activeOrganization?.id);
-  const registry = useZeropsRegistry({
-    giteaProjectId: accountGitea?.projectId,
-    enabled: status === "signed-in",
-  });
+  const registry = useZeropsRegistry({ enabled: status === "signed-in" });
   // The account's flow: the group's org, known from its registry long before this opened, and
   // the group's changes, open and landed, as the forge last read them.
   const flow = useZeropsProjectFlowOptional();
@@ -177,17 +179,28 @@ function NewMateDialog({
 
   if (entry === undefined) return null;
   const { group, environments } = entry;
-  const door = newMateDoor({
-    groupName: group.name,
-    recipe: recipe.state,
-    mates,
-    change: newMateRecipeChange({
-      flow: groupFlow,
-      mateName: (projectId) =>
-        mates.find((mate) => mate.projectId === projectId)?.name ?? flow?.mateNames.get(projectId),
-    }),
-    rereading: recipe.rereading,
-  });
+  const withoutHq =
+    accountHq.status === "ready"
+      ? newMateDoorWithoutHq({
+          hq: accountHq.hq,
+          viewerRole: activeOrganization?.roleCode,
+          admins: accountHq.admins,
+        })
+      : undefined;
+  const door =
+    withoutHq ??
+    newMateDoor({
+      groupName: group.name,
+      recipe: recipe.state,
+      mates,
+      change: newMateRecipeChange({
+        flow: groupFlow,
+        mateName: (projectId) =>
+          mates.find((mate) => mate.projectId === projectId)?.name ??
+          flow?.mateNames.get(projectId),
+      }),
+      rereading: recipe.rereading,
+    });
   const roleLabel = environmentRoleLabel("dev")?.toLowerCase() ?? "dev";
   const proposeName = (botName: string) =>
     proposedEnvironmentName({

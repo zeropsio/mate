@@ -4,9 +4,8 @@
  * A group environment is a Zerops project created from a tier, plus three facts
  * written where the parties that need them can read them:
  *
- * 1. the **registry** (`mate:gm:{groupId}:{projectId}:stage|production`), which
- *    is how the app and the broker know the project belongs to the group
- *    (`groupCreation.ts`);
+ * 1. the **registry**: the project attached to its application in the
+ *    organization's HQ as its stage or production (`hq/registry.ts`);
  * 2. the **broker's token grants**, so the one deploy key on the account can
  *    reach the new project — `BASIC_USER` on it, everything else it already
  *    holds kept, and its value never touched;
@@ -37,7 +36,7 @@
  * @module groupEnvironments
  */
 
-import type { ZeropsRegistry } from "./groupRegistry.ts";
+import type { ZeropsRegistry } from "./hq/registry.ts";
 import { readZeropsGroupTags } from "./groups.ts";
 import type { ZeropsEnvironmentRole } from "./groups.ts";
 import type { ZeropsProjectGrant } from "./groupReach.ts";
@@ -127,8 +126,7 @@ export const DEFAULT_STAGE_SOURCES: ReadonlyArray<string> = ["main"];
  * It is not a display name: a workflow's deploy step asks for it by name, the
  * broker matches it, and it becomes a branch (`env/{name}`, `mate-app/env-
  * {name}`). So it is lower-case letters, digits and dashes, derived once and
- * numbered on a collision — the same rule, and the same reason, as a group's
- * slug (`groupRegistry.ts`).
+ * numbered on a collision.
  *
  * "Acme CRM - stage" becomes `acme-crm-stage`; a name with nothing usable in it
  * falls back to the tier, which is what the first one is called anyway.

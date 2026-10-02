@@ -2,6 +2,8 @@ import { act, createElement as h, type ReactNode } from "react";
 import { create, type ReactTestRenderer, type ReactTestRendererJSON } from "react-test-renderer";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
+import { HQ_BIRTH_START } from "@t3tools/client-runtime/zerops/hq";
+
 import { useNewProjectBirths, type NewProjectBirth } from "~/zerops/newProjectBirth";
 
 import { ZeropsNewProjectComingPage } from "./ZeropsNewProjectComingPage";
@@ -56,19 +58,21 @@ vi.mock("../ui/button", () => ({
   }) => h("button", { onClick }, children),
 }));
 
-/** Acme CRM, pressed a moment ago on an account with no Git hosting: standing it up. */
+/** Acme CRM, pressed a moment ago in an organization with no HQ: standing it up. */
 const ACME: NewProjectBirth = {
   organizationId: "org-acme",
-  groupId: "g-acme",
+  birthId: "b-acme",
   name: "Acme CRM",
   botName: "Vera",
   face: { tint: "rose", shape: "seal" },
   locationId: null,
   agents: [],
   startedAt: Date.parse("2026-09-30T10:00:00.000Z"),
-  withGitea: true,
-  giteaProjectId: null,
-  step: "gitea",
+  withHq: true,
+  hqBirth: HQ_BIRTH_START,
+  hq: null,
+  appId: null,
+  step: "hq",
   failed: null,
   projectId: null,
 };
@@ -77,13 +81,13 @@ let tree: ReactTestRenderer | undefined;
 
 function hold(birth: NewProjectBirth | undefined) {
   act(() => {
-    useNewProjectBirths.setState({ births: birth === undefined ? {} : { [birth.groupId]: birth } });
+    useNewProjectBirths.setState({ births: birth === undefined ? {} : { [birth.birthId]: birth } });
   });
 }
 
 function openView() {
   act(() => {
-    tree = create(h(ZeropsNewProjectComingPage, { birthId: "g-acme" }));
+    tree = create(h(ZeropsNewProjectComingPage, { birthId: "b-acme" }));
   });
 }
 
@@ -131,20 +135,21 @@ describe("a New project's first Mate, before its project exists", () => {
     expect(kind()).toBe("coming");
     expect(said()).toContain("Vera on Acme CRM");
     // The project's own steps, then its first Mate's workspace, then the person's own sign-in.
-    expect(steps()).toEqual([
-      "git-hosting:active",
-      "registry:waiting",
-      "workspace:waiting",
-      "you:you",
-    ]);
-    expect(said()).toContain("Git hosting");
+    expect(steps()).toEqual(["hq:active", "registry:waiting", "workspace:waiting", "you:you"]);
+    expect(said()).toContain("HQ");
     expect(said()).toContain("Vera's workspace");
     expect(said()).toContain("You sign Vera in with your Claude or ChatGPT subscription");
     expect(app.navigate).not.toHaveBeenCalled();
   });
 
   it("hands the route to its Mate's own view the moment the platform takes its project, in place of this one", () => {
-    hold({ ...ACME, withGitea: false, giteaProjectId: "gitea-1", step: "create" });
+    hold({
+      ...ACME,
+      withHq: false,
+      hq: { projectId: "hq-1", address: "https://hq-1-8080.prg1.zerops.app" },
+      appId: "app-acme",
+      step: "create",
+    });
     openView();
     expect(app.navigate).not.toHaveBeenCalled();
     hold({ ...ACME, step: "created", projectId: "p-vera" });
@@ -164,7 +169,7 @@ describe("a New project's first Mate, before its project exists", () => {
     act(() => {
       button("Try again")?.props.onClick();
     });
-    expect(useNewProjectBirths.getState().births["g-acme"]?.failed).toBeNull();
+    expect(useNewProjectBirths.getState().births["b-acme"]?.failed).toBeNull();
   });
 
   it("never offers to make again what the platform may have made, only the way to the projects", () => {

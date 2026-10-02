@@ -3,13 +3,9 @@ import { describe, expect, it } from "vite-plus/test";
 import type { ZeropsProject, ZeropsService } from "./api.ts";
 import {
   deriveGiteaState,
-  formatToolTag,
   partitionZeropsToolProjects,
-  planGiteaProjectSetup,
   readZeropsToolKind,
-  type ZeropsGiteaSetupInput,
   type ZeropsGiteaStepState,
-  toolProjectName,
 } from "./tools.ts";
 
 /** The probe project as the platform actually returned it, 2026-09-05. */
@@ -50,15 +46,6 @@ function stepState(
 }
 
 describe("tool tags", () => {
-  it("names the project after what it holds, not after one of its services", () => {
-    // Gitea, the broker and the runners live in it; it is found by its tag.
-    expect(toolProjectName("gitea")).toBe("Headquarters");
-  });
-
-  it("formats the tag", () => {
-    expect(formatToolTag("gitea")).toBe("mate:tool:gitea");
-  });
-
   it.each([
     { name: "reads a known kind", tagList: ["mate:tool:gitea"], expected: "gitea" },
     { name: "ignores an unknown kind", tagList: ["mate:tool:jenkins"], expected: undefined },
@@ -218,59 +205,5 @@ describe("deriveGiteaState", () => {
     );
     expect(stepState(withoutBroker, "broker")).toBe("pending");
     expect(withoutBroker.brokerImported).toBe(false);
-  });
-});
-
-describe("planGiteaProjectSetup", () => {
-  const table: ReadonlyArray<{
-    readonly name: string;
-    readonly input: ZeropsGiteaSetupInput;
-    readonly expected: ReadonlyArray<string>;
-  }> = [
-    {
-      name: "nothing yet",
-      input: { project: undefined, services: [], tokenNames: [] },
-      expected: ["create-project", "mint-broker-token", "import-services"],
-    },
-    {
-      name: "the project exists, nothing else does",
-      input: { project: { id: "p-1" }, services: [], tokenNames: [] },
-      expected: ["mint-broker-token", "import-services"],
-    },
-    {
-      name: "the project and the token exist, the import never ran",
-      input: { project: { id: "p-1" }, services: [], tokenNames: ["mate-broker"] },
-      // Nobody holds the value of a token minted before a tab closed, and a
-      // regenerate carries no grants, so the tool project is granted again.
-      expected: ["regenerate-broker-token", "grant-broker-token", "import-services"],
-    },
-    {
-      name: "the import was accepted but only half of it appeared",
-      input: { project: { id: "p-1" }, services: [{ name: "web" }], tokenNames: ["mate-broker"] },
-      expected: ["regenerate-broker-token", "grant-broker-token", "import-services"],
-    },
-    {
-      name: "all done",
-      input: {
-        project: { id: "p-1" },
-        services: [{ name: "web" }, { name: "broker" }, { name: "db" }],
-        tokenNames: ["mate-broker"],
-      },
-      expected: [],
-    },
-    {
-      name: "services without a project is not a state, and plans a project",
-      input: { project: undefined, services: [{ name: "web" }], tokenNames: ["mate-broker"] },
-      expected: [
-        "create-project",
-        "regenerate-broker-token",
-        "grant-broker-token",
-        "import-services",
-      ],
-    },
-  ];
-
-  it.each(table.map((row) => [row.name, row] as const))("%s", (_name, row) => {
-    expect(planGiteaProjectSetup(row.input)).toEqual(row.expected);
   });
 });

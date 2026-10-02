@@ -1,12 +1,19 @@
 import { describe, expect, it, vi } from "vite-plus/test";
 
 import { ZeropsApiError, type GiteaClient } from "@t3tools/client-runtime/zerops";
+import { HqError, type HqApi } from "@t3tools/client-runtime/zerops/hq";
 
 import { addGroupEnvironment } from "./addGroupEnvironment";
-import type { ProjectTagsWrite } from "./brokerGrant";
-import { tagsFake } from "./__fixtures__/projectTags";
 
-const REGISTRY = ["mate:tool:gitea", "mate:gn:g-1:acme"];
+/** HQ, taking every attachment unless told otherwise. */
+function hqFake(attachProject: HqApi["attachProject"] = vi.fn(async () => undefined)) {
+  const api: HqApi = {
+    structure: vi.fn(async () => ({ apps: [] })),
+    createApp: vi.fn(async () => ({ id: "g-1", name: "Acme" })),
+    attachProject: vi.fn(attachProject),
+  };
+  return api;
+}
 
 const STAGE = {
   displayName: "Acme - stage",
@@ -55,11 +62,11 @@ function apiFake(overrides: Record<string, unknown> = {}) {
 const base = (
   api: ReturnType<typeof apiFake>,
   gitea: GiteaClient | null,
-  writeTags: ProjectTagsWrite = tagsFake(REGISTRY).writeTags,
+  hq: HqApi = hqFake(),
 ) => ({
   client: api as never,
   tokens: api as never,
-  writeTags,
+  hq,
   gitea,
   clientId: "org-1",
   giteaProjectId: "p-gitea",
@@ -71,8 +78,8 @@ describe("addGroupEnvironment", () => {
   it("writes the registry, the broker's grant and the environments document, in that order", async () => {
     const api = apiFake();
     const gitea = giteaFake();
-    const registry = tagsFake(REGISTRY);
-    const outcome = await addGroupEnvironment(base(api, gitea, registry.writeTags));
+    const hq = hqFake();
+    const outcome = await addGroupEnvironment(base(api, gitea, hq));
 
     expect(outcome.done).toEqual([
       "registry",
@@ -81,27 +88,30 @@ describe("addGroupEnvironment", () => {
       "environments-document",
     ]);
     expect(outcome.failed).toBeUndefined();
-    expect(registry.writeTags).toHaveBeenCalledWith("p-gitea", {
-      kind: "registry-member",
-      groupId: "g-1",
-      projectId: "p-stage",
-      member: "stage",
-    });
-    expect(registry.tags()).toEqual(
-      expect.arrayContaining(["mate:gm:g-1:p-stage:stage", "mate:gn:g-1:acme", "mate:tool:gitea"]),
-    );
+    expect(hq.attachProject).toHaveBeenCalledWith("g-1", { projectId: "p-stage", kind: "stage" });
   });
 
-  // The group's Gitea org is read off the registry the write itself met, never a copy the caller
-  // held: a group registered a moment ago in another tab is there.
-  it("declares on the group repo of the slug the registry write read back", async () => {
+  it("declares on the group repo the registry keys the group by", async () => {
     const gitea = giteaFake();
-    const outcome = await addGroupEnvironment(
-      base(apiFake(), gitea, tagsFake(["mate:tool:gitea", "mate:gn:g-1:beta"]).writeTags),
-    );
+    const outcome = await addGroupEnvironment(base(apiFake(), gitea));
 
     expect(outcome.failed).toBeUndefined();
-    expect(gitea.readFile).toHaveBeenCalledWith("beta", "group", "environments.yaml", "main");
+    expect(gitea.readFile).toHaveBeenCalledWith("g-1", "group", "environments.yaml", "main");
+  });
+
+  it("registers the environment in HQ and is done, in an organization with no Gitea project", async () => {
+    const api = apiFake();
+    const gitea = giteaFake();
+    const hq = hqFake();
+    const outcome = await addGroupEnvironment({
+      ...base(api, gitea, hq),
+      giteaProjectId: undefined,
+    });
+
+    expect(outcome).toEqual({ done: ["registry"], failed: undefined, pullRequest: undefined });
+    expect(hq.attachProject).toHaveBeenCalledTimes(1);
+    expect(api.listIntegrationTokens).not.toHaveBeenCalled();
+    expect(gitea.readFile).not.toHaveBeenCalled();
   });
 
   it("adds the broker's grant without touching the rest, or its org role", async () => {
@@ -154,7 +164,7 @@ describe("addGroupEnvironment", () => {
     const gitea = giteaFake();
     const outcome = await addGroupEnvironment(base(apiFake(), gitea));
 
-    expect(gitea.changeFiles).toHaveBeenCalledWith("acme", "group", {
+    expect(gitea.changeFiles).toHaveBeenCalledWith("g-1", "group", {
       message: "Add the acme-stage stage environment",
       branch: "main",
       newBranch: "mate-app/env-acme-stage",
@@ -167,7 +177,7 @@ describe("addGroupEnvironment", () => {
         },
       ],
     });
-    expect(gitea.createPullRequest).toHaveBeenCalledWith("acme", "group", {
+    expect(gitea.createPullRequest).toHaveBeenCalledWith("g-1", "group", {
       head: "mate-app/env-acme-stage",
       base: "main",
       title: "Add the acme-stage stage environment",
@@ -184,7 +194,7 @@ describe("addGroupEnvironment", () => {
     });
     const outcome = await addGroupEnvironment(base(apiFake(), gitea));
 
-    expect(gitea.mergePullRequest).toHaveBeenCalledWith("acme", "group", 12, "c0ffee");
+    expect(gitea.mergePullRequest).toHaveBeenCalledWith("g-1", "group", 12, "c0ffee");
     expect(outcome.pullRequest).toEqual({ number: 12, merged: true });
   });
 
@@ -235,19 +245,32 @@ describe("addGroupEnvironment", () => {
 
   it.each([
     {
-      name: "the registry write",
-      writeTags: vi.fn<ProjectTagsWrite>().mockRejectedValue(new Error("Only owners write tags.")),
+      name: "an attachment HQ refuses",
+      hq: hqFake(async () => {
+        throw new HqError({
+          kind: "refused",
+          code: "forbidden",
+          status: 403,
+          message: "Only an org owner or admin changes the structure.",
+        });
+      }),
       patch: {},
       step: "registry",
-      reason: "Only owners write tags.",
+      reason: "Only an org owner or admin changes the structure.",
       done: [],
     },
     {
-      name: "a registry that names no such group",
-      writeTags: tagsFake(["mate:tool:gitea"]).writeTags,
+      name: "an HQ that does not answer",
+      hq: hqFake(async () => {
+        throw new HqError({
+          kind: "unavailable",
+          code: "network",
+          message: "HQ could not be reached.",
+        });
+      }),
       patch: {},
       step: "registry",
-      reason: "That project is not in the registry yet.",
+      reason: "HQ could not be reached.",
       done: [],
     },
     {
@@ -266,8 +289,8 @@ describe("addGroupEnvironment", () => {
       reason: "Only admins mint tokens.",
       done: ["registry", "broker-grant"],
     },
-  ])("stops at $name and says which step", async ({ writeTags, patch, step, reason, done }) => {
-    const outcome = await addGroupEnvironment(base(apiFake(patch), giteaFake(), writeTags));
+  ])("stops at $name and says which step", async ({ hq, patch, step, reason, done }) => {
+    const outcome = await addGroupEnvironment(base(apiFake(patch), giteaFake(), hq));
     expect(outcome.failed).toEqual({ step, reason });
     expect(outcome.done).toEqual(done);
   });
@@ -400,7 +423,7 @@ environments:
 
     expect(outcome.failed).toBeUndefined();
     expect(gitea.readFile).toHaveBeenCalledWith(
-      "acme",
+      "g-1",
       "group",
       "environments.yaml",
       "mate-app/env-acme-stage",
@@ -409,12 +432,12 @@ environments:
       expect(gitea.deleteBranch).not.toHaveBeenCalled();
       expect(gitea.changeFiles).not.toHaveBeenCalled();
     } else {
-      expect(gitea.deleteBranch).toHaveBeenCalledWith("acme", "group", "mate-app/env-acme-stage");
+      expect(gitea.deleteBranch).toHaveBeenCalledWith("g-1", "group", "mate-app/env-acme-stage");
       const [deleted] = (gitea.deleteBranch as ReturnType<typeof vi.fn>).mock.invocationCallOrder;
       const [written] = (gitea.changeFiles as ReturnType<typeof vi.fn>).mock.invocationCallOrder;
       expect(deleted).toBeLessThan(written ?? 0);
       expect(gitea.changeFiles).toHaveBeenCalledWith(
-        "acme",
+        "g-1",
         "group",
         expect.objectContaining({
           branch: "main",
@@ -439,7 +462,7 @@ environments:
     const outcome = await addGroupEnvironment(base(apiFake(), gitea));
     expect(outcome.failed).toBeUndefined();
     expect(gitea.createPullRequest).not.toHaveBeenCalled();
-    expect(gitea.mergePullRequest).toHaveBeenCalledWith("acme", "group", 7, "c0ffee");
+    expect(gitea.mergePullRequest).toHaveBeenCalledWith("g-1", "group", 7, "c0ffee");
     expect(outcome.pullRequest).toEqual({ number: 7, merged: true });
   });
 });
@@ -450,8 +473,6 @@ describe("a production deleted outside the app (Beviro, 2026-09-24)", () => {
     tier: "production" as const,
     project: "p-new",
   };
-  /** The registry as Beviro's was: the production deleted in the Zerops GUI still registered. */
-  const HELD_REGISTRY = [...REGISTRY, "mate:gm:g-1:p-dead:production"];
   const HELD_DOCUMENT = `version: 1
 environments:
   beviro-production:
@@ -475,9 +496,9 @@ environments:
       ref === "main" ? { path, sha: "blob-1", content } : undefined,
     );
 
-  it("is replaced by the new one in the registry and in the document, its name kept", async () => {
+  it("is replaced by the new one in the document, its name kept", async () => {
     const api = apiFake({ fetchProject: vi.fn(deleted) });
-    const registry = tagsFake(HELD_REGISTRY);
+    const hq = hqFake();
     // The branch the deleted production's merged declaration left, still declaring it.
     const gitea = giteaFake({
       readFile: vi.fn(async (_owner: string, _repo: string, path: string) => ({
@@ -490,7 +511,7 @@ environments:
       ),
     });
     const outcome = await addGroupEnvironment({
-      ...base(api, gitea, registry.writeTags),
+      ...base(api, gitea, hq),
       environment: PRODUCTION,
     });
 
@@ -502,14 +523,16 @@ environments:
       "environments-document",
     ]);
     expect(api.fetchProject).toHaveBeenCalledWith("p-dead", undefined);
-    expect(registry.tags()).toContain("mate:gm:g-1:p-new:production");
-    expect(registry.tags()).not.toContain("mate:gm:g-1:p-dead:production");
+    expect(hq.attachProject).toHaveBeenCalledWith("g-1", {
+      projectId: "p-new",
+      kind: "production",
+    });
     expect(gitea.deleteBranch).toHaveBeenCalledWith(
-      "acme",
+      "g-1",
       "group",
       "mate-app/env-beviro-production",
     );
-    expect(gitea.changeFiles).toHaveBeenCalledWith("acme", "group", {
+    expect(gitea.changeFiles).toHaveBeenCalledWith("g-1", "group", {
       message: "Add the beviro-production production environment",
       branch: "main",
       newBranch: "mate-app/env-beviro-production",
@@ -553,40 +576,19 @@ environments:
       fetchProject: () => Promise.reject(new TypeError("Failed to fetch")),
     },
   ];
-  const HELD = [
-    {
-      where: "the registry",
-      tags: HELD_REGISTRY,
-      document: "",
-      step: "registry",
-      done: [],
-    },
-    {
-      where: "environments.yaml",
-      tags: REGISTRY,
-      document: HELD_DOCUMENT,
-      step: "environments-document",
-      done: ["registry", "broker-grant", "deploy-token"],
-    },
-  ];
-  it.each(HELD.flatMap((held) => NOT_DELETED.map((answer) => ({ ...held, ...answer }))))(
-    "keeps refusing a second production held in $where when the platform answers $answer",
-    async ({ tags, document, fetchProject, step, done }) => {
+  it.each(NOT_DELETED)(
+    "keeps refusing a second production held in environments.yaml when the platform answers $answer",
+    async ({ fetchProject }) => {
       const api = apiFake({ fetchProject: vi.fn(fetchProject) });
-      const registry = tagsFake(tags);
-      const gitea = giteaFake({ readFile: documentOnMain(document) });
-      const outcome = await addGroupEnvironment({
-        ...base(api, gitea, registry.writeTags),
-        environment: PRODUCTION,
-      });
+      const gitea = giteaFake({ readFile: documentOnMain(HELD_DOCUMENT) });
+      const outcome = await addGroupEnvironment({ ...base(api, gitea), environment: PRODUCTION });
 
       expect(api.fetchProject).toHaveBeenCalledWith("p-dead", undefined);
-      expect(outcome.failed).toEqual({ step, reason: "This project already has a production." });
-      expect(outcome.done).toEqual(done);
-      expect(registry.tags().includes("mate:gm:g-1:p-new:production")).toBe(step !== "registry");
-      expect(registry.tags().includes("mate:gm:g-1:p-dead:production")).toBe(
-        tags.includes("mate:gm:g-1:p-dead:production"),
-      );
+      expect(outcome.failed).toEqual({
+        step: "environments-document",
+        reason: "This project already has a production.",
+      });
+      expect(outcome.done).toEqual(["registry", "broker-grant", "deploy-token"]);
       expect(gitea.changeFiles).not.toHaveBeenCalled();
     },
   );

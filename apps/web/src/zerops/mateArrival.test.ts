@@ -200,7 +200,7 @@ describe("arrivalSteps", () => {
     const steps = arrivalSteps(
       {
         steps: [
-          { id: "git-hosting", label: "Git hosting", state: "done" },
+          { id: "hq", label: "HQ", state: "done" },
           { id: "registry", label: "Acme Shop", state: "done" },
           ...mate.steps,
         ],
@@ -209,7 +209,7 @@ describe("arrivalSteps", () => {
       NOW,
     );
     expect(steps.map(({ id, label, state }) => ({ id, label, state }))).toEqual([
-      { id: "git-hosting", label: "Git hosting", state: "done" },
+      { id: "hq", label: "HQ", state: "done" },
       { id: "registry", label: "Acme Shop", state: "done" },
       { id: "workspace", label: "Vera's workspace", state: "active" },
       {

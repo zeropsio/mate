@@ -62,24 +62,6 @@ function isToolKind(value: string): value is ZeropsToolKind {
   return TOOL_KINDS.has(value);
 }
 
-export function formatToolTag(kind: ZeropsToolKind): string {
-  return `${TOOL_TAG_PREFIX}${kind}`;
-}
-
-/**
- * What the tool's Zerops project is called when the app makes it. Not
- * "Gitea": the project also holds the broker and the groups' runners, and may
- * hold more of the account's own machinery later (the owner, 2026-09-18: "it
- * could be called headquarters or something"). The project is found by its
- * tag, never by this name, so an account made before keeps the name it has.
- */
-export function toolProjectName(kind: ZeropsToolKind): string {
-  switch (kind) {
-    case "gitea":
-      return "Headquarters";
-  }
-}
-
 /** The tool this project *is*, or `undefined` for an ordinary project. */
 export function readZeropsToolKind(
   tagList: ReadonlyArray<string> | undefined,
@@ -103,18 +85,11 @@ export interface ZeropsToolProject {
  */
 export const GITEA_HTTP_PORT = 3000;
 
-/** The service hostnames the import creates (`giteaRecipe.ts`). */
+/** The service hostnames of the Gitea project (`zeropsio/gitea-mate`, `import/gitea-project.yaml`). */
 export const GITEA_WEB_SERVICE = "web";
 export const GITEA_BROKER_SERVICE = "broker";
-/** The port the broker's recipe publishes (`giteaRecipe.ts`, `LISTEN_ADDR`). */
+/** The port the broker publishes (its `LISTEN_ADDR`). */
 export const GITEA_BROKER_PORT = 8080;
-
-/**
- * The broker's Zerops token, by name. One per account, and the name is the
- * handle: a token's value is shown once, so "does this account already have
- * one?" can only ever be asked of the token list.
- */
-export const GITEA_BROKER_TOKEN_NAME = "mate-broker";
 
 /**
  * How far along Gitea is, stated only as far as the platform can actually see.
@@ -349,79 +324,4 @@ export function partitionZeropsToolProjects(projects: ReadonlyArray<ZeropsProjec
 
   tools.sort((left, right) => left.project.name.localeCompare(right.project.name, "en"));
   return { tools, rest };
-}
-
-/**
- * Standing up the account's Gitea, as a reconcile rather than a script.
- *
- * It is three platform calls and about three minutes, run in the background
- * right after sign-up on the new owner's session. A person closes the tab, a
- * call fails, a browser sleeps — and the next time an owner opens the app it
- * has to pick up exactly where it stopped, not start again on a half-built
- * project. So every step states what proves it already happened.
- *
- * The one step that cannot simply be skipped is the token. A Zerops token's
- * value is shown once, at the call that makes it; an account that has a
- * `mate-broker` token but no imported services has a token nobody holds the
- * value of. Regenerating is the way out — it hands the token to whoever
- * regenerates it and kills the old value at once (measured 2026-09-15) — and
- * it is safe precisely because nothing is using the old value yet.
- */
-export type ZeropsGiteaSetupAction =
-  /** `POST /client/{id}/project` with the tool tag. */
-  | "create-project"
-  /** `POST /client/{id}/integration-token` — org `BASIC_USER`, no project grants. */
-  | "mint-broker-token"
-  /** The token exists but nobody holds its value, because the import never ran. */
-  | "regenerate-broker-token"
-  /**
-   * `PUT /client/{id}/integration-token/{tokenId}` — the tool project, at
-   * `BASIC_USER`, added to the grants a regenerate left untouched; nothing when
-   * the token's org role (`BASIC_USER` or higher) already reaches it.
-   *
-   * A regenerate replaces a token's value and nothing else, so an older org
-   * `READ_ONLY` token that outlived the Gitea it was minted for reaches every
-   * group environment and not the new tool project: the broker then reads the
-   * project and every write into it is refused, which is a runner that is
-   * never imported and a job queued for ever.
-   */
-  | "grant-broker-token"
-  /** `POST /project/{id}/service-stack/import` with the filled document. */
-  | "import-services";
-
-export interface ZeropsGiteaSetupInput {
-  /** The account's Gitea project, when one already carries the tool tag. */
-  readonly project: { readonly id: string } | undefined;
-  /** Its services. Empty, or unread, when there is no project yet. */
-  readonly services: ReadonlyArray<{ readonly name: string }>;
-  /** The names of the account's integration tokens — never their values. */
-  readonly tokenNames: ReadonlyArray<string>;
-}
-
-/**
- * What still has to happen, in order. An account whose Gitea is up plans
- * nothing, which is what lets an owner's every visit run this.
- */
-export function planGiteaProjectSetup(
-  input: ZeropsGiteaSetupInput,
-): ReadonlyArray<ZeropsGiteaSetupAction> {
-  const actions: Array<ZeropsGiteaSetupAction> = [];
-  if (input.project === undefined) actions.push("create-project");
-
-  const names = new Set(input.services.map((service) => service.name));
-  // Both halves, because the import is one call: `web` alone would mean the
-  // document was accepted and the broker never appeared, which is not a state
-  // to resume from by skipping the import.
-  const imported =
-    input.project !== undefined && names.has(GITEA_WEB_SERVICE) && names.has(GITEA_BROKER_SERVICE);
-  if (imported) return actions;
-
-  if (input.tokenNames.includes(GITEA_BROKER_TOKEN_NAME)) {
-    actions.push("regenerate-broker-token", "grant-broker-token");
-  } else {
-    // A fresh mint is org `BASIC_USER`, which reaches this project already.
-    actions.push("mint-broker-token");
-  }
-  actions.push("import-services");
-  return actions;
 }

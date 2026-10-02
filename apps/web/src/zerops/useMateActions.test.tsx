@@ -85,7 +85,9 @@ vi.mock("./useZeropsMateOwners", () => ({
   useZeropsOrganizationMembers: () => [],
   zeropsMateOwner: () => undefined,
 }));
-vi.mock("./giteaProject", () => ({ useAccountGitea: () => undefined }));
+vi.mock("./accountHq", () => ({
+  useAccountHq: () => ({ status: "ready", hq: { kind: "none" }, admins: [], reread: () => {} }),
+}));
 vi.mock("./projectOrderPreference", () => ({ useProjectOrderOptions: () => ({ order: "name" }) }));
 // The dialog as the hook mounts it: what it is handed, and the two answers it gives.
 vi.mock("../components/zerops/ZeropsChangeFaceDialog", () => ({
@@ -121,7 +123,7 @@ const seen: Array<MateActions> = [];
 const actions = () => seen.at(-1)!;
 function Probe() {
   const handed = useMateActions({
-    registry: { registry: { groups: [], leaving: [], other: [] }, refresh: () => {} },
+    registry: { registry: { groups: [] }, refresh: () => {} },
     serverVersions: new Map(),
   });
   seen.push(handed);

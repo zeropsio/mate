@@ -1083,8 +1083,7 @@ type ProjectResponseCommand = Extract<
       | "update-project-tags"
       | "set-project-member-role"
       | "create-project"
-      | "create-project-with-mate"
-      | "create-tool-project";
+      | "create-project-with-mate";
   }
 >;
 
@@ -1121,7 +1120,6 @@ export function decodeProjectCommandResponse(
         return command.project.organization;
       case "create-project":
       case "create-project-with-mate":
-      case "create-tool-project":
         return command.organization;
     }
   })();

@@ -145,7 +145,7 @@ function comingProgress(
   const mate = deriveBirthProgress(creatingFacts(), nowMs);
   if (kind === "coming-new") {
     const steps: ReadonlyArray<ArrivalStepInput> = [
-      { id: "git-hosting", label: "Git hosting", state: "done" },
+      { id: "hq", label: "HQ", state: "done" },
       { id: "registry", label: "Acme Shop", state: "done" },
       ...mate.steps,
     ];

@@ -4,8 +4,7 @@
  * only diff would be the progress"). It is the view Add a Mate lands on (`ZeropsMateComingPage`) —
  * the header line with the Mate's face and name, its face asleep a third of the way down, "Vera is
  * coming up on Acme CRM." — with the project's own steps before the Mate's in its progress
- * (`newProjectBirth.ts`): Git hosting where the account had none, then the project, under its
- * name. A step that stops says why here, with *Try again*, which resumes from it; one the platform
+ * (`newProjectBirth.ts`): HQ where the organization had none, then the project, under its name. A step that stops says why here, with *Try again*, which resumes from it; one the platform
  * may have made anyway, with the way to the projects, where it would be listed.
  *
  * The moment the platform takes the Mate's project, that Mate's own view takes the route in place

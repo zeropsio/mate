@@ -74,10 +74,11 @@ const HALF_MADE: ReadonlyArray<HalfMadeGroupEnvironment> = [
   { groupId: "g1", projectId: "p-stage", displayName: "Harbor stage", tier: "stage" },
 ];
 const ZEROPS = {} as ZeropsApiClient;
-/** The repairs are mocked whole: the runtime they would write the registry with is never called. */
-const DATA = { runtime: {}, projectRef: () => ({}) } as unknown as Parameters<
+/** The repairs are mocked whole: the runtime they would grant the broker with is never called. */
+const DATA = { runtime: {} } as unknown as Parameters<
   typeof useZeropsGroupEnvironmentReconcile
 >[0]["data"];
+const HQ = { projectId: "hq-1", address: "https://hq-1-8080.prg1.zerops.app" } as const;
 
 class TestNode {
   parentNode: TestNode | null = null;
@@ -166,6 +167,7 @@ describe("useZeropsGroupEnvironmentReconcile", () => {
         client: ZEROPS,
         data: DATA,
         clientId: "org-1",
+        hq: HQ,
         giteaOrigin: "https://gitea.example.test",
         giteaProjectId: "gitea-project",
         refreshRegistry: () => {

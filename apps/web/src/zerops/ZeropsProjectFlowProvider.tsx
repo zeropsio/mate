@@ -365,10 +365,7 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
   const brokerOrigin = accountGitea?.state.brokerUrl;
   const signedInToMate = session.status === "signed-in";
 
-  const registry = useZeropsRegistry({
-    giteaProjectId: accountGitea?.projectId,
-    enabled: signedInToMate,
-  });
+  const registry = useZeropsRegistry({ enabled: signedInToMate });
   const { askForOwner } = registry;
   const platform = useMemo(() => zeropsThrowawayPlatform(session.client), [session.client]);
   const {

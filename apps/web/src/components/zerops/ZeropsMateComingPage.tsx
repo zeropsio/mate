@@ -90,7 +90,6 @@ import { useZeropsInventory, type InventoryServiceOutcome } from "~/zerops/inven
 import { finishSetupView, forgetPress, pressFailure, useMatePress } from "~/zerops/matePress";
 import { useReviveFailedMate } from "~/zerops/mateRestart";
 import { useMateSetup } from "~/zerops/useMateSetup";
-import { useAccountGitea } from "~/zerops/giteaProject";
 import { useMateActions } from "~/zerops/useMateActions";
 import { useZeropsRegistry } from "~/zerops/useZeropsRegistry";
 import type { MateSetup } from "@t3tools/client-runtime/zerops/mateSetup";
@@ -448,9 +447,8 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
 
   // *Finish setup*, where its press stopped before its container: the same verb as its menu's,
   // offered to an owner or an admin in any browser.
-  const giteaProjectId = useAccountGitea(activeOrganization?.id)?.projectId;
   const halfMade = coming?.kind === "failed" && coming.verb === "finish-setup";
-  const registryState = useZeropsRegistry({ giteaProjectId, enabled: halfMade });
+  const registryState = useZeropsRegistry({ enabled: halfMade });
   const mateActions = useMateActions({ registry: registryState, serverVersions: NO_VERSIONS });
   const finishEntry =
     !halfMade || candidate === undefined

@@ -276,8 +276,7 @@ export const FLOW_PROPS: ZeropsProjectsFlowProps<Item> = {
       "data-test-with-merge": String(options.withMerge),
     }),
   renderStopMenu: (value) => h("span", { "data-test-stop-menu": value.project.id }),
-  renderTool: (value) => h("span", { "data-test-tool": value.project.id }),
-  tools: [],
+  hqTool: h("span", { "data-test-hq-tool": "true" }),
   ungrouped: [],
   view: "overview",
 };

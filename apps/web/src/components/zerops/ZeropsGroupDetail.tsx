@@ -141,7 +141,6 @@ import { useZeropsRegistry } from "~/zerops/useZeropsRegistry";
 import { findInventoryProjectRef, withheldProjectNotice } from "~/zerops/inventoryContext";
 import { useStopServices } from "~/zerops/accountForge";
 import { useZeropsInventory } from "~/zerops/ZeropsInventoryProvider";
-import { useAccountGitea } from "~/zerops/giteaProject";
 
 /** A stop's tone as a dot's. Neutral wears none: nothing has been deployed. */
 const STOP_DOT_TONE: Record<GroupRowTone, ServiceStatusToneId | undefined> = {
@@ -219,12 +218,11 @@ function useMateMenus(): {
   readonly dialogs: React.ReactNode;
   readonly trouble: string | null;
 } {
-  const { activeOrganization, status } = useZeropsSession();
+  const { status } = useZeropsSession();
   const { listing } = useZeropsCandidates();
   const candidates = useMemo(() => heldCandidates(listing).rows, [listing]);
   const { serverVersions } = useZeropsContainers();
-  const giteaProjectId = useAccountGitea(activeOrganization?.id)?.projectId;
-  const registry = useZeropsRegistry({ giteaProjectId, enabled: status === "signed-in" });
+  const registry = useZeropsRegistry({ enabled: status === "signed-in" });
   const actions = useMateActions({ registry, serverVersions });
   const menuForMate = useCallback(
     (projectId: string) => {

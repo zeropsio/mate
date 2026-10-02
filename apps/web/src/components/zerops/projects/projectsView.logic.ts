@@ -39,7 +39,6 @@ import {
   type ZeropsGroup,
   type ZeropsGroupPendingMember,
   type ZeropsPublicRoute,
-  type ZeropsToolKind,
 } from "@t3tools/client-runtime/zerops";
 import {
   CHECKING_WHAT_RUNS,
@@ -53,9 +52,6 @@ import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates"
 import { mateFaceFor, type ZeropsAgentActivity } from "~/zerops/agentActivity";
 import { creatableRoles } from "../ZeropsGroupTree.logic";
 import { COMING_UP_LINE, NOT_SET_UP_LINE, type ZeropsRowAction } from "../ZeropsProjectRow.logic";
-
-/** What a tool is called where there is no project to name yet — the add verb. */
-export const TOOL_LABEL: Record<ZeropsToolKind, string> = { gitea: "Gitea" };
 
 /** The page's URL, shared with a Mate's conversation (the thread links here). */
 export interface ProjectsSearch {

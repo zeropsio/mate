@@ -1,27 +1,24 @@
 /**
- * The account's registry, read on the projects screen and shared from there.
+ * The account's registry, read from the organization's HQ (`GET /api/structure`, ADR 0002) and
+ * shared from the screens that need it.
  *
- * One project read — the tags on the account's Gitea project — answering which
- * groups exist, what each one's Gitea org is called, and which projects belong
- * to them (`groupRegistry.ts`, D3). It lives here because this is the one
- * screen that can see the whole account, and because every verb that writes it
- * needs to have read it first.
- *
- * An account with no Gitea has no registry: that is the empty one, not a
- * failure. A read that fails is no answer: the registry last read from the same
- * Gitea project stands, or, before any, the read stays loading — never the
- * empty registry settled, which would drop every group from the tree, and
- * never another project's registry, which a switch of organization leaves
- * behind. The rows fall back to the per-project `mate:g:` hints they already
+ * It answers which applications exist and which projects are in them, as the reader sees them in
+ * Zerops. An organization with no HQ has no registry: that is the empty one, not a failure — once
+ * the member list said so. A read that fails is no answer: the registry last read from the same
+ * HQ stands, or, before any, the read stays loading — never the empty registry settled, which
+ * would drop every group from the tree, and never another HQ's registry, which a switch of
+ * organization leaves behind. The rows fall back to the per-project `mate:g:` hints they already
  * render from, and the next read tries again.
  */
-
-import type { ZeropsRegistry } from "@t3tools/client-runtime/zerops";
+import {
+  EMPTY_REGISTRY,
+  registryFromHq,
+  type ZeropsRegistry,
+} from "@t3tools/client-runtime/zerops/hq";
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { accountHqApi, useAccountHq } from "./accountHq";
 import { useZeropsSession } from "./ZeropsSessionProvider";
-
-const EMPTY: ZeropsRegistry = { groups: [], leaving: [], other: [] };
 
 /** How long a re-read for an owner waits after the last one. */
 export const REGISTRY_OWNER_REREAD_MS = 30_000;
@@ -30,7 +27,7 @@ export const REGISTRY_OWNER_REREADS = 3;
 
 export interface ZeropsRegistryState {
   readonly registry: ZeropsRegistry;
-  /** True until this project's registry has been read once. */
+  /** True until this HQ's registry has been read once. */
   readonly loading: boolean;
   /** Re-reads it — after a write, so the tree is not left one version behind. */
   readonly refresh: () => void;
@@ -42,38 +39,51 @@ export interface ZeropsRegistryState {
   readonly askForOwner: (owner: string) => void;
 }
 
-export function useZeropsRegistry(input: {
-  /** The account's Gitea project, where the registry lives. */
-  readonly giteaProjectId: string | undefined;
-  readonly enabled: boolean;
-}): ZeropsRegistryState {
-  const { client } = useZeropsSession();
-  const { enabled, giteaProjectId } = input;
+export function useZeropsRegistry(input: { readonly enabled: boolean }): ZeropsRegistryState {
+  const { client, activeOrganization } = useZeropsSession();
+  const clientId = input.enabled ? activeOrganization?.id : undefined;
+  const { hq, status } = useAccountHq(clientId);
+  const hqProjectId = hq.kind === "official" ? hq.projectId : undefined;
+  const hqAddress = hq.kind === "official" ? hq.address : undefined;
+  /** The HQ this registry is read from. */
+  const source =
+    clientId === undefined || hqProjectId === undefined
+      ? undefined
+      : `${clientId}:${hqProjectId}:${hqAddress}`;
   const [generation, setGeneration] = useState(0);
   const [answer, setAnswer] = useState<{
     readonly key: string;
-    /** The Gitea project this registry was read from. */
-    readonly giteaProjectId: string;
+    readonly source: string;
     readonly registry: ZeropsRegistry;
   } | null>(null);
-  const key = enabled && giteaProjectId !== undefined ? `${giteaProjectId}:${generation}` : "";
+  const key = source === undefined ? "" : `${source}:${generation}`;
 
   useEffect(() => {
-    if (key === "" || giteaProjectId === undefined) return;
+    if (
+      key === "" ||
+      source === undefined ||
+      clientId === undefined ||
+      hqProjectId === undefined ||
+      hqAddress === undefined
+    ) {
+      return;
+    }
     const controller = new AbortController();
-    void client
-      .readGroupRegistry(giteaProjectId, controller.signal)
-      .then((registry) => {
-        if (!controller.signal.aborted) setAnswer({ key, giteaProjectId, registry });
+    void accountHqApi(client, clientId, { projectId: hqProjectId, address: hqAddress })
+      .structure(controller.signal)
+      .then((structure) => {
+        if (!controller.signal.aborted) {
+          setAnswer({ key, source, registry: registryFromHq(structure) });
+        }
       })
       .catch(() => {
         if (controller.signal.aborted) return;
-        setAnswer((last) => (last?.giteaProjectId === giteaProjectId ? { ...last, key } : last));
+        setAnswer((last) => (last?.source === source ? { ...last, key } : last));
       });
     return () => {
       controller.abort();
     };
-  }, [client, giteaProjectId, key]);
+  }, [client, clientId, hqAddress, hqProjectId, key, source]);
 
   const refresh = useCallback(() => {
     setGeneration((current) => current + 1);
@@ -86,13 +96,13 @@ export function useZeropsRegistry(input: {
     setOwners((current) => (current.has(owner) ? current : new Map(current).set(owner, 0)));
   }, []);
 
-  const loading = key !== "" && answer?.key !== key;
-  const registry =
+  // No HQ is an answer once the member list was read; before that it is not known yet.
+  const loading =
     key === ""
-      ? EMPTY
-      : answer !== null && answer.giteaProjectId === giteaProjectId
-        ? answer.registry
-        : EMPTY;
+      ? clientId !== undefined && hq.kind === "none" && status === "loading"
+      : answer?.key !== key;
+  const registry =
+    key !== "" && answer !== null && answer.source === source ? answer.registry : EMPTY_REGISTRY;
 
   useEffect(() => {
     if (key === "" || loading) return;
@@ -122,7 +132,7 @@ export function useZeropsRegistry(input: {
   return { registry, loading, refresh, askForOwner };
 }
 
-/** The Gitea org a group is registered under, or `undefined` while it is not. */
+/** The Gitea org a group is keyed by, or `undefined` while the registry names no such group. */
 export function registryGroupSlug(
   registry: ZeropsRegistry,
   groupId: string | undefined,

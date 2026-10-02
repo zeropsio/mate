@@ -73,8 +73,8 @@ export interface RoleRegistryGroup {
 }
 
 /**
- * The account's groups and their projects, parsed from the registry tags on
- * the org's Gitea project (`groupRegistry.ts` in the fork's client runtime).
+ * The account's groups and their projects, as HQ's structure holds them
+ * (`hq/registry.ts` in the fork's client runtime).
  */
 export interface RoleRegistry {
   readonly groups: ReadonlyArray<RoleRegistryGroup>;

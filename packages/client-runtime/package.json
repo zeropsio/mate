@@ -227,6 +227,10 @@
       "types": "./src/zerops/activity/standupReading.ts",
       "default": "./src/zerops/activity/standupReading.ts"
     },
+    "./zerops/hq": {
+      "types": "./src/zerops/hq/index.ts",
+      "default": "./src/zerops/hq/index.ts"
+    },
     "./zerops/activityResult": {
       "types": "./src/zerops/activityResult.ts",
       "default": "./src/zerops/activityResult.ts"

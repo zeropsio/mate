@@ -49,7 +49,7 @@ const deployments = (stops: ReadonlyMap<string, Shown<ReadonlyArray<StopService>
 const repo = (name: string) => ({ origin: GITEA, owner: "harbor", repo: name });
 
 const SOURCE: GroupFlowSource = {
-  entry: { groupId: "g1", slug: "harbor", projects: [], matesMayRelease: false },
+  entry: { groupId: "g1", name: "Harbor", slug: "harbor", projects: [] },
   giteaOrigin: GITEA,
   members: known([
     { projectId: "p-prod", name: "harbor production", role: undefined, project: PROD },

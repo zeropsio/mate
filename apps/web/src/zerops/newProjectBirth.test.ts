@@ -1,5 +1,5 @@
 import { deriveBirthProgress } from "@t3tools/client-runtime/zerops/birthProgress";
-import type { ProjectTagWrite } from "@t3tools/client-runtime/zerops/data";
+import { HQ_BIRTH_START, type HqBirthRecord } from "@t3tools/client-runtime/zerops/hq";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { closeAccountLifetime, openAccountLifetime } from "./accountLifetime";
@@ -26,7 +26,7 @@ import {
 /** What Create asked for: Acme CRM, and Vera in it. */
 const ASK: NewProjectAsk = {
   organizationId: "org-acme",
-  groupId: "g-acme",
+  birthId: "b-acme",
   name: "Acme CRM",
   botName: "Vera",
   face: { tint: "rose", shape: "seal" },
@@ -37,13 +37,18 @@ const ASK: NewProjectAsk = {
 const PRESSED_AT = Date.parse("2026-09-30T10:00:00.000Z");
 const NOW = PRESSED_AT + 5_000;
 
-/** Acme CRM's creation, pressed at `PRESSED_AT`, on an account whose Git hosting stands. */
+/** The organization's HQ. */
+const HQ = { projectId: "hq-1", address: "https://hq-30db-8080.prg1.zerops.app" } as const;
+
+/** Acme CRM's creation, pressed at `PRESSED_AT`, in an organization whose HQ stands. */
 function birth(over: Partial<NewProjectBirth> = {}): NewProjectBirth {
   return {
     ...ASK,
     startedAt: PRESSED_AT,
-    withGitea: false,
-    giteaProjectId: "gitea-1",
+    withHq: false,
+    hqBirth: HQ_BIRTH_START,
+    hq: HQ,
+    appId: null,
     step: "registry",
     failed: null,
     projectId: null,
@@ -51,9 +56,18 @@ function birth(over: Partial<NewProjectBirth> = {}): NewProjectBirth {
   };
 }
 
-/** The same creation on an account that had no Git hosting when Create was pressed. */
+/** The same creation in an organization that had no HQ when Create was pressed. */
 const bare = (over: Partial<NewProjectBirth> = {}) =>
-  birth({ withGitea: true, giteaProjectId: null, step: "gitea", ...over });
+  birth({ withHq: true, hq: null, step: "hq", ...over });
+
+/** HQ's birth at its deploy. */
+const DEPLOYING: HqBirthRecord = {
+  step: "deploy",
+  projectId: "hq-1",
+  serviceId: "svc-hq",
+  address: HQ.address,
+  deployProcessId: null,
+};
 
 const NO_ROOM = { reason: "No room in this account.", uncertain: false } as const;
 
@@ -68,39 +82,47 @@ describe("a New project's own steps, before its first Mate's", () => {
     readonly steps: ReadonlyArray<readonly [string, string, string, string | undefined]>;
   }>([
     {
-      case: "an account with Git hosting registers the project, under its name",
+      case: "an organization with HQ registers the project, under its name",
       birth: birth(),
       steps: [["registry", "Acme CRM", "active", "Registering the project"]],
     },
     {
-      case: "an account without stands Git hosting up first",
+      case: "an organization without stands HQ up first",
       birth: bare(),
       steps: [
-        ["git-hosting", "Git hosting", "active", "Setting up Git hosting"],
+        ["hq", "HQ", "active", "Creating HQ's project"],
         ["registry", "Acme CRM", "waiting", undefined],
       ],
     },
     {
-      case: "Git hosting that could not be stood up says why, and nothing after it begins",
+      case: "HQ's line says which of its steps runs",
+      birth: bare({ hqBirth: DEPLOYING }),
+      steps: [
+        ["hq", "HQ", "active", "Deploying HQ"],
+        ["registry", "Acme CRM", "waiting", undefined],
+      ],
+    },
+    {
+      case: "an HQ that could not be stood up says why, and nothing after it begins",
       birth: bare({ failed: NO_ROOM }),
       steps: [
-        ["git-hosting", "Git hosting", "failed", "No room in this account."],
+        ["hq", "HQ", "failed", "No room in this account."],
         ["registry", "Acme CRM", "waiting", undefined],
       ],
     },
     {
       case: "a registration that stopped says why",
-      birth: birth({ withGitea: true, failed: NO_ROOM }),
+      birth: birth({ withHq: true, failed: NO_ROOM }),
       steps: [
-        ["git-hosting", "Git hosting", "done", undefined],
+        ["hq", "HQ", "done", undefined],
         ["registry", "Acme CRM", "failed", "No room in this account."],
       ],
     },
     {
       case: "creating the Mate's project, the project's own are done",
-      birth: birth({ withGitea: true, step: "create" }),
+      birth: birth({ withHq: true, step: "create" }),
       steps: [
-        ["git-hosting", "Git hosting", "done", undefined],
+        ["hq", "HQ", "done", undefined],
         ["registry", "Acme CRM", "done", undefined],
       ],
     },
@@ -132,20 +154,16 @@ describe("how far a New project's creation has got", () => {
       detail: "Registering the project",
     },
     {
-      case: "and while Git hosting is stood up",
+      case: "and while HQ is stood up",
       birth: bare(),
-      states: [
-        "git-hosting:active",
-        "registry:waiting",
-        ...MATE_STEPS.map((id) => `${id}:waiting`),
-      ],
-      detail: "Setting up Git hosting",
+      states: ["hq:active", "registry:waiting", ...MATE_STEPS.map((id) => `${id}:waiting`)],
+      detail: "Creating HQ's project",
     },
     {
       case: "creating its project is the Mate's own first step",
-      birth: birth({ withGitea: true, step: "create" }),
+      birth: birth({ withHq: true, step: "create" }),
       states: [
-        "git-hosting:done",
+        "hq:done",
         "registry:done",
         "project:active",
         ...MATE_STEPS.slice(1).map((id) => `${id}:waiting`),
@@ -191,15 +209,11 @@ describe("how far a New project's creation has got", () => {
       NOW,
     );
     const progress = newProjectProgress(
-      birth({ withGitea: true, step: "created", projectId: "p-vera" }),
+      birth({ withHq: true, step: "created", projectId: "p-vera" }),
       mate,
       NOW,
     );
-    expect(states(progress.steps)).toEqual([
-      "git-hosting:done",
-      "registry:done",
-      ...states(mate.steps),
-    ]);
+    expect(states(progress.steps)).toEqual(["hq:done", "registry:done", ...states(mate.steps)]);
     expect(progress.active?.detail).toBe(mate.active?.detail);
     expect(progress.doneCount).toBe(mate.doneCount + 2);
     // The whole creation's clock, not the Mate's project's.
@@ -243,9 +257,9 @@ describe("what its view says under the headline", () => {
 
 describe("where Create lands", () => {
   it("is the first Mate's own view before anything is made, by the creation's id", () => {
-    expect(newProjectView("g-acme")).toEqual({
+    expect(newProjectView("b-acme")).toEqual({
       to: "/mate/new/$birthId",
-      params: { birthId: "g-acme" },
+      params: { birthId: "b-acme" },
     });
   });
 
@@ -269,12 +283,12 @@ describe("where Create lands", () => {
 
 describe("the menu draws it from the press", () => {
   const PLACED = {
-    projectId: "g-acme",
+    projectId: "b-acme",
     startedAt: PRESSED_AT,
     step: "tags",
     overdue: false,
     placement: {
-      groupId: "g-acme",
+      groupId: "b-acme",
       groupName: "Acme CRM",
       kind: "mate",
       displayName: "Acme CRM - Vera",
@@ -302,6 +316,12 @@ describe("the menu draws it from the press", () => {
       placed: [{ ...PLACED, failed: true }],
     },
     {
+      case: "once HQ named its application, in that group",
+      births: [birth({ step: "create", appId: "app-acme" })],
+      organizationId: "org-acme",
+      placed: [{ ...PLACED, placement: { ...PLACED.placement, groupId: "app-acme" } }],
+    },
+    {
       case: "one in another organization is not drawn here",
       births: [birth()],
       organizationId: "org-other",
@@ -325,31 +345,32 @@ describe("the menu draws it from the press", () => {
 });
 
 const PROJECT = { id: "p-vera", name: "Acme CRM - Vera", status: "ACTIVE" } as const;
-const WRITTEN: ProjectTagWrite = {
-  kind: "written",
-  project: { id: "gitea-1", name: "Gitea", status: "ACTIVE" },
-};
+const NEW_HQ = { projectId: "hq-new", address: "https://hq-9-8080.prg1.zerops.app" } as const;
 
 type RegisterArgs = Parameters<NewProjectPorts["registerGroup"]>[0];
+type AcceptedArgs = Parameters<NewProjectPorts["accepted"]>;
 
 /** Ports that do what they are asked, each call written down in `order`. */
 function ports(over: Partial<NewProjectPorts> = {}) {
   const order: Array<string> = [];
   const made: NewProjectPorts = {
-    ensureGitea: vi.fn(async () => {
-      order.push("gitea");
-      return { projectId: "gitea-new" };
-    }),
-    registerGroup: vi.fn(async ({ giteaProjectId, groupId, name }: RegisterArgs) => {
-      order.push(`register:${giteaProjectId}:${groupId}:${name}`);
-      return WRITTEN;
+    bearHq: vi.fn(
+      async (_record: HqBirthRecord, moved: (patch: Partial<HqBirthRecord>) => void) => {
+        order.push("hq");
+        moved({ step: "done", projectId: NEW_HQ.projectId, address: NEW_HQ.address });
+        return { ok: true as const, hq: NEW_HQ };
+      },
+    ),
+    registerGroup: vi.fn(async ({ hq, name }: RegisterArgs) => {
+      order.push(`register:${hq.projectId}:${name}`);
+      return { appId: "app-acme" };
     }),
     createProject: vi.fn(async () => {
       order.push("create");
       return { project: PROJECT };
     }),
-    accepted: vi.fn((projectId: string, giteaProjectId: string) => {
-      order.push(`accepted:${projectId}:${giteaProjectId}`);
+    accepted: vi.fn((...[projectId, { hq, appId }]: AcceptedArgs) => {
+      order.push(`accepted:${projectId}:${hq.projectId}:${appId}`);
     }),
     ...over,
   };
@@ -357,30 +378,33 @@ function ports(over: Partial<NewProjectPorts> = {}) {
 }
 
 describe("runNewProjectBirth — the project, then its first Mate", () => {
-  it("stands Git hosting up where the account has none, registers the project on it, then creates its Mate", async () => {
+  it("stands HQ up where the organization has none, registers the project in it, then creates its Mate", async () => {
     const { order, ports: made } = ports();
     const moved: Array<NewProjectPatch> = [];
     await runNewProjectBirth(bare(), made, (patch) => moved.push(patch));
-    // The registry lives on the Gitea project: the project is registered there before anything
-    // is created in it.
+    // The registry lives in HQ: the project is registered there before anything is created in it,
+    // and its Mate goes into the application HQ named.
     expect(order).toEqual([
-      "gitea",
-      "register:gitea-new:g-acme:Acme CRM",
+      "hq",
+      "register:hq-new:Acme CRM",
       "create",
-      "accepted:p-vera:gitea-new",
+      "accepted:p-vera:hq-new:app-acme",
     ]);
     expect(moved).toEqual([
-      { step: "registry", giteaProjectId: "gitea-new" },
-      { step: "create" },
+      {
+        hqBirth: { ...HQ_BIRTH_START, step: "done", projectId: "hq-new", address: NEW_HQ.address },
+      },
+      { step: "registry", hq: NEW_HQ },
+      { step: "create", appId: "app-acme" },
       { step: "created", projectId: "p-vera" },
     ]);
   });
 
-  it("never stands a second Gitea up for an account that has one", async () => {
+  it("never stands a second HQ up for an organization that has one", async () => {
     const { order, ports: made } = ports();
     await runNewProjectBirth(birth(), made, () => undefined);
-    expect(made.ensureGitea).not.toHaveBeenCalled();
-    expect(order[0]).toBe("register:gitea-1:g-acme:Acme CRM");
+    expect(made.bearHq).not.toHaveBeenCalled();
+    expect(order[0]).toBe("register:hq-1:Acme CRM");
   });
 
   it.each<{ readonly case: string; readonly ask: Partial<NewProjectAsk>; readonly args: object }>([
@@ -390,7 +414,7 @@ describe("runNewProjectBirth — the project, then its first Mate", () => {
       args: {
         name: "Acme CRM - Vera",
         agents: [],
-        group: { groupId: "g-acme", role: "dev", label: "Acme CRM" },
+        group: { groupId: "app-acme", role: "dev", label: "Acme CRM" },
         botName: "Vera",
         face: { tint: "rose", shape: "seal" },
       },
@@ -402,14 +426,18 @@ describe("runNewProjectBirth — the project, then its first Mate", () => {
         name: "Acme CRM - Vera",
         location: "prg1",
         agents: ["claude-code"],
-        group: { groupId: "g-acme", role: "dev", label: "Acme CRM" },
+        group: { groupId: "app-acme", role: "dev", label: "Acme CRM" },
         botName: "Vera",
         face: { tint: "rose", shape: "seal" },
       },
     },
   ])("creates its first Mate $case", async ({ ask, args }) => {
     const { ports: made } = ports();
-    await runNewProjectBirth(birth({ step: "create", ...ask }), made, () => undefined);
+    await runNewProjectBirth(
+      birth({ step: "create", appId: "app-acme", ...ask }),
+      made,
+      () => undefined,
+    );
     expect(made.createProject).toHaveBeenCalledWith(args);
   });
 
@@ -421,37 +449,50 @@ describe("runNewProjectBirth — the project, then its first Mate", () => {
     readonly failed: NewProjectPatch["failed"];
   }>([
     {
-      case: "Git hosting that cannot be stood up creates nothing",
+      case: "an HQ that cannot be stood up creates nothing, and names its step",
       birth: bare(),
-      over: { ensureGitea: () => Promise.reject(new Error("No room in this account.")) },
-      order: [],
-      failed: { reason: "No room in this account.", uncertain: false },
-    },
-    {
-      case: "a registry write that fails creates nothing",
-      birth: birth(),
-      over: { registerGroup: () => Promise.reject(new Error("Only owners write tags.")) },
-      order: [],
-      failed: { reason: "Only owners write tags.", uncertain: false },
-    },
-    {
-      case: "a registry that refuses the project creates nothing, and says why",
-      birth: birth(),
       over: {
-        registerGroup: async () => ({
-          kind: "refused",
-          refusal: { code: "registry-conflict", reason: "A project is already called that." },
-          project: WRITTEN.project,
+        bearHq: async () => ({
+          ok: false,
+          step: "deploy",
+          reason: "No room in this account.",
+          uncertain: false,
         }),
       },
       order: [],
-      failed: { reason: "A project is already called that.", uncertain: false },
+      failed: { reason: "Deploying HQ: No room in this account.", uncertain: false },
+    },
+    {
+      case: "an HQ project the platform may have made anyway is kept from being made twice",
+      birth: bare(),
+      over: {
+        bearHq: async () => ({
+          ok: false,
+          step: "project",
+          reason: "Zerops may have accepted this operation.",
+          uncertain: true,
+        }),
+      },
+      order: [],
+      failed: {
+        reason: "Creating HQ's project: Zerops may have accepted this operation.",
+        uncertain: true,
+      },
+    },
+    {
+      case: "a registration HQ refuses creates nothing, and says why",
+      birth: birth(),
+      over: {
+        registerGroup: () => Promise.reject(new Error("An application named Acme CRM exists.")),
+      },
+      order: [],
+      failed: { reason: "An application named Acme CRM exists.", uncertain: false },
     },
     {
       case: "a creation the platform refused leaves a registered project, and no Mate",
       birth: birth(),
       over: { createProject: () => Promise.reject(new Error("Project name is taken.")) },
-      order: ["register:gitea-1:g-acme:Acme CRM"],
+      order: ["register:hq-1:Acme CRM"],
       failed: { reason: "Project name is taken.", uncertain: false },
     },
     {
@@ -465,7 +506,7 @@ describe("runNewProjectBirth — the project, then its first Mate", () => {
             message: "The project may already exist.",
           }),
       },
-      order: ["register:gitea-1:g-acme:Acme CRM"],
+      order: ["register:hq-1:Acme CRM"],
       failed: { reason: "The project may already exist.", uncertain: true },
     },
   ])("stops where it fails: $case", async ({ birth: made, over, order: expected, failed }) => {
@@ -483,20 +524,27 @@ describe("runNewProjectBirth — the project, then its first Mate", () => {
     readonly order: ReadonlyArray<string>;
   }>([
     {
-      case: "a registration, on the Gitea stood up before",
-      birth: bare({ step: "registry", giteaProjectId: "gitea-new" }),
-      order: ["register:gitea-new:g-acme:Acme CRM", "create", "accepted:p-vera:gitea-new"],
+      case: "HQ's birth, from what it made before",
+      birth: bare({ hqBirth: DEPLOYING }),
+      order: ["hq", "register:hq-new:Acme CRM", "create", "accepted:p-vera:hq-new:app-acme"],
+    },
+    {
+      case: "a registration, in the HQ stood up before",
+      birth: bare({ step: "registry", hq: NEW_HQ }),
+      order: ["register:hq-new:Acme CRM", "create", "accepted:p-vera:hq-new:app-acme"],
     },
     {
       case: "its Mate's creation, with nothing before it made again",
-      birth: birth({ step: "create" }),
-      order: ["create", "accepted:p-vera:gitea-1"],
+      birth: birth({ step: "create", appId: "app-1" }),
+      order: ["create", "accepted:p-vera:hq-1:app-1"],
     },
     { case: "nothing, once the platform took it", birth: birth({ step: "created" }), order: [] },
   ])("resumes from the step it stopped on: $case", async ({ birth: made, order: expected }) => {
     const { order, ports: fake } = ports();
     await runNewProjectBirth(made, fake, () => undefined);
     expect(order).toEqual(expected);
+    if (made.step === "hq")
+      expect(fake.bearHq).toHaveBeenCalledWith(made.hqBirth, expect.any(Function));
   });
 });
 
@@ -509,20 +557,26 @@ describe("the tab holds a New project's creation until the platform takes it", (
     closeAccountLifetime();
   });
 
-  const held = () => useNewProjectBirths.getState().births["g-acme"];
+  const held = () => useNewProjectBirths.getState().births["b-acme"];
 
   it("holds it from the press, and moves it to its Mate's project once the platform takes it", async () => {
     const { ports: fake } = ports();
     const birthId = beginNewProjectBirth({
       ask: ASK,
-      gitea: undefined,
+      hq: undefined,
       ports: fake,
       now: PRESSED_AT,
     });
-    expect(birthId).toBe("g-acme");
-    expect(held()).toMatchObject({ step: "gitea", withGitea: true, startedAt: PRESSED_AT });
+    expect(birthId).toBe("b-acme");
+    expect(held()).toMatchObject({ step: "hq", withHq: true, startedAt: PRESSED_AT });
     await vi.waitFor(() => expect(held()?.projectId).toBe("p-vera"));
-    expect(held()).toMatchObject({ step: "created", giteaProjectId: "gitea-new", failed: null });
+    expect(held()).toMatchObject({
+      step: "created",
+      hq: NEW_HQ,
+      appId: "app-acme",
+      hqBirth: { step: "done" },
+      failed: null,
+    });
     expect(fake.accepted).toHaveBeenCalledTimes(1);
   });
 
@@ -530,25 +584,21 @@ describe("the tab holds a New project's creation until the platform takes it", (
     let refuse = true;
     const { order, ports: fake } = ports({
       registerGroup: vi.fn(async () => {
-        if (refuse) throw new Error("The registry could not be read.");
+        if (refuse) throw new Error("HQ is not answering right now.");
         order.push("register");
-        return WRITTEN;
+        return { appId: "app-acme" };
       }),
     });
-    beginNewProjectBirth({ ask: ASK, gitea: { projectId: "gitea-1" }, ports: fake, now: 0 });
+    beginNewProjectBirth({ ask: ASK, hq: HQ, ports: fake, now: 0 });
     await vi.waitFor(() => expect(held()?.failed).not.toBeNull());
     expect(held()).toMatchObject({ step: "registry", failed: { uncertain: false } });
 
     refuse = false;
-    retryNewProjectBirth("g-acme");
+    retryNewProjectBirth("b-acme");
     expect(held()?.failed).toBeNull();
     await vi.waitFor(() => expect(held()?.step).toBe("created"));
-    expect(order).toEqual(["register", "create", "accepted:p-vera:gitea-1"]);
-    expect(fake.registerGroup).toHaveBeenLastCalledWith({
-      giteaProjectId: "gitea-1",
-      groupId: "g-acme",
-      name: "Acme CRM",
-    });
+    expect(order).toEqual(["register", "create", "accepted:p-vera:hq-1:app-acme"]);
+    expect(fake.registerGroup).toHaveBeenLastCalledWith({ hq: HQ, name: "Acme CRM" });
   });
 
   it("never tries again a creation the platform may have taken", async () => {
@@ -557,9 +607,9 @@ describe("the tab holds a New project's creation until the platform takes it", (
         Promise.reject({ _tag: "ZeropsDataAdapterError", kind: "uncertain", message: "Unsure." }),
       ),
     });
-    beginNewProjectBirth({ ask: ASK, gitea: { projectId: "gitea-1" }, ports: fake, now: 0 });
+    beginNewProjectBirth({ ask: ASK, hq: HQ, ports: fake, now: 0 });
     await vi.waitFor(() => expect(held()?.failed?.uncertain).toBe(true));
-    retryNewProjectBirth("g-acme");
+    retryNewProjectBirth("b-acme");
     expect(held()?.failed?.uncertain).toBe(true);
     expect(fake.createProject).toHaveBeenCalledTimes(1);
   });
@@ -574,7 +624,7 @@ describe("the tab holds a New project's creation until the platform takes it", (
           }),
       ),
     });
-    beginNewProjectBirth({ ask: ASK, gitea: { projectId: "gitea-1" }, ports: fake, now: 0 });
+    beginNewProjectBirth({ ask: ASK, hq: HQ, ports: fake, now: 0 });
     await vi.waitFor(() => expect(fake.createProject).toHaveBeenCalled());
     closeAccountLifetime();
     expect(useNewProjectBirths.getState().births).toEqual({});
@@ -598,11 +648,11 @@ describe("newProjectPressSteps — a New project's press, as its dialog draws it
 
   it.each([
     {
-      case: "Git hosting stood up first, where the account has none",
+      case: "HQ stood up first, where the organization has none",
       made: bare(),
       progress: null,
       want: [
-        "Git hosting:active",
+        "HQ:active",
         "Project registered:waiting",
         "Creating the project:waiting",
         "Closed off:waiting",

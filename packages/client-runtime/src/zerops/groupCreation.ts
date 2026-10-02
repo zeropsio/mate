@@ -1,46 +1,29 @@
 /**
- * *Add project* — what it writes, and who is offered it (guide 4.1).
+ * *Add project* — who is offered it (guide 4.1), and where a Mate stands in the registry.
  *
- * ## A group is a registry entry, not a project
+ * ## A group is an application in HQ, not a project
  *
- * Nothing is created in Zerops when a person adds a project. A group is one
- * `mate:gn:{groupId}:{slug}` tag on the account's Gitea project, and the broker
- * builds the Gitea side from it — the org, its three teams, the group repo, its
- * runner — within about eighty seconds (measured 2026-09-16). So the tree shows
- * the group the moment the tag lands, and says its Gitea is still being set up
- * until `GET /orgs/{slug}` answers **as the person** (`giteaClient.ts`). The
- * org is not assumed from the tag: the tag is what we asked for, the org is
- * what exists.
+ * Nothing is created in Zerops when a person adds a project. A group is an
+ * application in the organization's HQ (ADR 0002), which holds the registry
+ * and is its only writer (`hq/registry.ts`).
  *
  * ## Who may
  *
- * The registry lives on a project only org owners and admins can write (D3),
- * and the platform enforces that — so an offered verb a member cannot finish
+ * HQ lets only org owners and admins create an application, as main let only
+ * them write the registry (D3) — so an offered verb a member cannot finish
  * would be an error message after the fact (guide 0.8). The gate here is
  * therefore stricter than `canCreateMates`: a `READ_ONLY` member with *can
  * create projects* may add a **Mate** to a group that exists, and may not make
  * a group.
- *
- * ## The slug is forever
- *
- * It is the Gitea org, and renaming a Gitea org breaks every clone URL under
- * it, so it is derived once from the name and numbered on collision
- * (`groupRegistry.ts`). The name a person types stays theirs to change; the
- * slug does not move with it.
  *
  * Pure: no network, no clock, no platform globals (rule R1).
  *
  * @module groupCreation
  */
 
-import {
-  deriveGroupSlug,
-  formatZeropsRegistryTags,
-  type ZeropsRegistry,
-  type ZeropsRegistryGroup,
-} from "./groupRegistry.ts";
+import type { OfficialHq } from "./hq/anchor.ts";
+import type { ZeropsRegistry } from "./hq/registry.ts";
 import { mateMemberName, type MateAccessViewer, type MateOwnerCandidate } from "./mateAccess.ts";
-import type { RoleProjectKind } from "@t3tools/shared/zeropsRoles";
 
 /** A verb is either offered, or refused in words that name who can do it. */
 export type GroupVerb =
@@ -49,7 +32,7 @@ export type GroupVerb =
 
 const OFFERED: GroupVerb = { offered: true };
 
-/** Who may write the registry: an org owner or admin, and nobody else (D3). */
+/** Who may write the registry: an org owner or admin, and nobody else (D3, HQ's own rule). */
 export function canWriteRegistry(viewer: { readonly roleCode?: string | undefined }): boolean {
   return viewer.roleCode === "OWNER" || viewer.roleCode === "ADMIN";
 }
@@ -57,20 +40,28 @@ export function canWriteRegistry(viewer: { readonly roleCode?: string | undefine
 /**
  * Whether this person is offered *Add project*, and what the row says instead.
  *
- * One refusal: a member simply is not the one who does this. An account with
- * no Gitea yet is not a refusal — the first project stands it up on its way
- * (the web's `runNewProjectBirth`), so nobody has to know the word.
+ * A member simply is not the one who does this. An organization with no HQ
+ * yet is not a refusal — the first project stands it up on its way (the web's
+ * `runNewProjectBirth`); an organization whose member list marks more than one
+ * project as its HQ is: no HQ is official over it, and none is born over it.
  */
 export function resolveAddProjectVerb(input: {
   readonly viewer: MateAccessViewer;
   /** The org's owners and admins, for the refusal that names them. */
   readonly admins?: ReadonlyArray<MateOwnerCandidate> | undefined;
+  /** The organization's HQ as its member list names it; absent while that list is read. */
+  readonly hq?: OfficialHq | undefined;
 }): GroupVerb {
   if (!canWriteRegistry(input.viewer)) {
     return { offered: false, reason: onlyTheseCanAddAProject(input.admins ?? []) };
   }
+  if (input.hq?.kind === "unclear") return { offered: false, reason: HQ_UNCLEAR };
   return OFFERED;
 }
+
+/** Why nothing is born over an HQ the member list cannot tell apart from another. */
+export const HQ_UNCLEAR =
+  "More than one project is marked as this organization's HQ. An owner deletes the wrong mate-hq tokens in Zerops.";
 
 /**
  * The one line a member sees in place of the verb.
@@ -87,143 +78,6 @@ export function onlyTheseCanAddAProject(admins: ReadonlyArray<MateOwnerCandidate
   if (names.length === 1) return `Only ${names[0]} adds a project.`;
   const last = names.at(-1);
   return `Only ${names.slice(0, -1).join(", ")} and ${last} add a project.`;
-}
-
-export interface GroupRegistrationPlan {
-  readonly groupId: string;
-  /** The Gitea org this group will be, derived once and never changed. */
-  readonly slug: string;
-  /** The Gitea project's whole tag list, this entry included. */
-  readonly tagList: ReadonlyArray<string>;
-}
-
-export type GroupRegistrationResult =
-  | { readonly ok: true; readonly plan: GroupRegistrationPlan }
-  | { readonly ok: false; readonly reason: string };
-
-/**
- * The registry the account has, plus one group.
- *
- * The whole tag list comes back because `PUT /project/{id}` replaces it: a
- * write that carried only the new tag would delete every other group, the
- * `mate:tool:gitea` marker and whatever a person tagged the project with
- * themselves.
- */
-export function planGroupRegistration(input: {
-  readonly name: string;
-  /** Minted by the caller — `generateZeropsGroupId`. */
-  readonly groupId: string;
-  readonly registry: ZeropsRegistry;
-}): GroupRegistrationResult {
-  const name = input.name.trim();
-  if (name.length === 0) return { ok: false, reason: "A project needs a name." };
-  if (input.registry.groups.some((group) => group.groupId === input.groupId)) {
-    return { ok: false, reason: "That project already exists." };
-  }
-
-  let slug: string;
-  try {
-    slug = deriveGroupSlug(
-      name,
-      input.registry.groups.map((group) => group.slug),
-    );
-  } catch {
-    return { ok: false, reason: `Too many projects are already called "${name}".` };
-  }
-
-  const group: ZeropsRegistryGroup = {
-    groupId: input.groupId,
-    slug,
-    projects: [],
-    matesMayRelease: false,
-  };
-  return {
-    ok: true,
-    plan: {
-      groupId: input.groupId,
-      slug,
-      tagList: formatZeropsRegistryTags({
-        ...input.registry,
-        groups: [...input.registry.groups, group],
-      }),
-    },
-  };
-}
-
-export type GroupMembershipResult =
-  | { readonly ok: true; readonly tagList: ReadonlyArray<string> }
-  | {
-      readonly ok: false;
-      readonly reason: string;
-      /**
-       * The project that is the group's production, when a second one is the
-       * refusal: the caller asks the platform whether it still exists.
-       */
-      readonly production?: string | undefined;
-    };
-
-/**
- * The registry with one project added to a group as a Mate, a stage or the
- * production.
- *
- * **One production per group** (`docs/vocabulary.md`), refused here rather than
- * by the broker: the app is what offers *Add production*, and a second one
- * would leave two projects claiming the same release target with nothing to
- * decide between them.
- *
- * A member whose project the platform has confirmed deleted (`gone`) is
- * dropped in the same write, so the production that replaces one takes its
- * place: a production deleted in the Zerops GUI kept its entry, and every
- * *Add production* after it was refused for a project that no longer existed
- * (Beviro, 2026-09-24). This module does no I/O, so it cannot know a project
- * is gone; the refusal names the production in the way, and the caller asks.
- *
- * Adding a project already in the group is a no-op rather than a duplicate —
- * the same write run twice, which is what a retried creation is.
- */
-export function planGroupMembership(input: {
-  readonly registry: ZeropsRegistry;
-  readonly groupId: string;
-  readonly projectId: string;
-  readonly kind: RoleProjectKind;
-  /** Projects the platform answered `projectNotFound` for. */
-  readonly gone?: ReadonlyArray<string> | undefined;
-}): GroupMembershipResult {
-  const group = input.registry.groups.find((entry) => entry.groupId === input.groupId);
-  if (group === undefined) return { ok: false, reason: "That project is not in the registry." };
-
-  const gone = new Set(input.gone ?? []);
-  const members = group.projects.filter((entry) => !gone.has(entry.projectId));
-  const already = members.find((entry) => entry.projectId === input.projectId);
-  if (already !== undefined && already.kind !== input.kind) {
-    return { ok: false, reason: `That environment is already the group's ${already.kind}.` };
-  }
-  const production = members.find((entry) => entry.kind === "production");
-  if (already === undefined && input.kind === "production" && production !== undefined) {
-    return {
-      ok: false,
-      reason: "This project already has a production.",
-      production: production.projectId,
-    };
-  }
-
-  return {
-    ok: true,
-    tagList: formatZeropsRegistryTags({
-      ...input.registry,
-      groups: input.registry.groups.map((entry) =>
-        entry.groupId === input.groupId
-          ? {
-              ...entry,
-              projects:
-                already === undefined
-                  ? [...members, { projectId: input.projectId, kind: input.kind }]
-                  : members,
-            }
-          : entry,
-      ),
-    }),
-  };
 }
 
 /**

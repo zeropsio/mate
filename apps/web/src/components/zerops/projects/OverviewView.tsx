@@ -35,7 +35,6 @@ import {
   PendingStep,
   ProductionStep,
   PullRequestsStep,
-  QUIET_BUTTON_CLASS,
   releaseVerbFor,
   VerbSlot,
   verbFor,
@@ -46,7 +45,6 @@ import {
   groupMetaLine,
   nextStepTone,
   stripColumns,
-  TOOL_LABEL,
   type FlowCell,
 } from "./projectsView.logic";
 import type { ProjectsFlowGroup, ZeropsProjectsFlowProps } from "./ZeropsProjectsFlow";
@@ -583,7 +581,7 @@ export function OtherContainers<T>({
   );
 }
 
-/** The page's end, quietly: a project with no Mate yet, and the account's tools. */
+/** The page's end, quietly: a project with no Mate yet, and the organization's HQ. */
 export function QuietEnd<T>({
   withoutMate,
   props,
@@ -591,9 +589,6 @@ export function QuietEnd<T>({
   readonly withoutMate: ReadonlyArray<{ readonly item: T }>;
   readonly props: ZeropsProjectsFlowProps<T>;
 }) {
-  const offerGitea =
-    props.onCreateTool !== undefined && props.tools.every((tool) => tool.kind !== "gitea");
-  if (withoutMate.length === 0 && props.tools.length === 0 && !offerGitea) return null;
   // One list on the environment rows' grid, so the tools line runs down the
   // same columns as the projects above it.
   return (
@@ -605,22 +600,7 @@ export function QuietEnd<T>({
         <li className={ENVIRONMENT_ROW_GRID_CLASS} data-zerops-tools="true">
           <MicroLabel className="text-muted-foreground">Tools</MicroLabel>
           <span className="col-span-2 flex min-w-0 flex-wrap items-center gap-3 text-xs sm:col-span-1">
-            {props.tools.map(({ item, kind }) => (
-              <Fragment key={props.getKey(item)}>{props.renderTool(item, kind)}</Fragment>
-            ))}
-          </span>
-          <span className="col-start-2 row-start-1 flex justify-end sm:col-start-3">
-            {offerGitea ? (
-              <button
-                className={QUIET_BUTTON_CLASS}
-                disabled={props.creating}
-                onClick={props.onCreateTool}
-                type="button"
-              >
-                <span aria-hidden="true">+</span>
-                <span>Add {TOOL_LABEL.gitea}</span>
-              </button>
-            ) : null}
+            {props.hqTool}
           </span>
         </li>
       </ul>

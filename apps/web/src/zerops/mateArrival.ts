@@ -235,7 +235,7 @@ const timeOf = (startedAt: string | undefined, endedAt: string | undefined, nowM
 
 /**
  * The arrival's steps from the Mate's birth: its project's own steps first where it has them (a
- * New project's Git hosting and registration), then the Mate's copy of the project — the managed
+ * New project's HQ and registration), then the Mate's copy of the project — the managed
  * services its first import brings, what it waits on, on a quiet line under it — then its
  * workspace (the container, its address, closing it off, the runtimes' import, Mate answering,
  * the first connect: one step to the person) with the runtimes it imports under it, then — as

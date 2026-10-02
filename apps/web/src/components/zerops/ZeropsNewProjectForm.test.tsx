@@ -25,11 +25,10 @@ const ORGANIZATION: ZeropsOrganization = {
 };
 
 describe("ZeropsNewProjectHost source", () => {
-  it("reads no tags of its own: its group is a registry patch on a fresh read", () => {
-    expect(hostSource).not.toContain("readGroupRegistry(");
-    expect(hostSource).not.toContain("planGroupRegistration(");
-    expect(hostSource).toContain("runtime.commands.updateProjectTags(");
-    expect(hostSource).toContain('kind: "registry-group"');
+  it("writes no tags for its group: the group is an application HQ creates, and HQ names", () => {
+    expect(hostSource).not.toContain("runtime.commands.updateProjectTags(");
+    expect(hostSource).toContain(".createApp(groupName)");
+    expect(hostSource).toContain("runHqBirth(");
   });
 
   it("creates through the typed runtime command", () => {
@@ -109,14 +108,14 @@ function projectForm(props: Partial<FormProps> = {}): ReactElement {
         defaultTintFor={(name) => TINTS[name] ?? "slate"}
         locationError={null}
         locationId={null}
-        locationLoading={false}
+        loading={false}
         locations={[]}
         onCancel={() => {}}
         onCreate={() => {}}
         onLocation={() => {}}
         organizationName="Mate s.r.o."
         takenBotNames={{ names: ["Fen"], complete: true }}
-        withGitHosting={false}
+        withHq={false}
         {...props}
       />
     </Dialog>
@@ -327,13 +326,13 @@ describe("ZeropsNewProjectForm — the project and its first Mate", () => {
   });
 });
 
-// Board D1, 2026-09-30: the dialog ends with what happens next — Git hosting only where the
-// account has none, then the project and its Mate, then the person signs it in.
+// Board D1, 2026-09-30: the dialog ends with what happens next — HQ only where the organization
+// has none, then the project and its Mate, then the person signs it in.
 describe("ZeropsNewProjectForm — what happens next", () => {
   it.each([
     {
-      case: "an account with Git hosting",
-      withGitHosting: false,
+      case: "an organization with its HQ",
+      withHq: false,
       steps: [
         ["Acme Shop and Vera come up", "about 1½–2 min"],
         ["You sign Vera in with your Claude or ChatGPT subscription", ""],
@@ -341,17 +340,17 @@ describe("ZeropsNewProjectForm — what happens next", () => {
       ],
     },
     {
-      case: "the account's first project, Git hosting alongside",
-      withGitHosting: true,
+      case: "the organization's first project, HQ before it",
+      withHq: true,
       steps: [
-        ["Mate s.r.o. gets Git hosting, for all its projects", "about 3 min"],
-        ["Acme Shop and Vera come up meanwhile", "about 1½–2 min"],
+        ["Mate s.r.o. gets its HQ, for all its projects", "about 3 min"],
+        ["Then Acme Shop and Vera come up", "about 1½–2 min"],
         ["You sign Vera in with your Claude or ChatGPT subscription", ""],
         ["You tell Vera what to build", ""],
       ],
     },
-  ])("$case", ({ withGitHosting, steps }) => {
-    const tree = mount(projectForm({ withGitHosting }));
+  ])("$case", ({ withHq, steps }) => {
+    const tree = mount(projectForm({ withHq }));
     type(tree, PROJECT_FIELD, "Acme Shop");
     type(tree, MATE_FIELD, "Vera");
     expect(nextSteps(tree)).toEqual(steps);

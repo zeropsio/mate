@@ -18,12 +18,7 @@
  * in that window is lost with it.
  */
 import type { ZeropsApiClient, ZeropsProject } from "../api.ts";
-import {
-  applyProjectTagPatch,
-  sameProjectTags,
-  type ProjectTagPatch,
-  type ProjectTagRefusal,
-} from "./tagPatch.ts";
+import { applyProjectTagPatch, sameProjectTags, type ProjectTagPatch } from "./tagPatch.ts";
 import type { AdapterError } from "./types.ts";
 
 /** The reads and the one PUT the writer makes. */
@@ -40,13 +35,7 @@ export type ProjectTagWrite =
   /** The patch is on the project now; `project` is the read that confirmed it. */
   | { readonly kind: "written"; readonly project: ZeropsProject }
   /** The project already held it: nothing was written. */
-  | { readonly kind: "unchanged"; readonly project: ZeropsProject }
-  /** The list as read does not take the patch; nothing was written. */
-  | {
-      readonly kind: "refused";
-      readonly refusal: ProjectTagRefusal;
-      readonly project: ZeropsProject;
-    };
+  | { readonly kind: "unchanged"; readonly project: ZeropsProject };
 
 export interface ProjectTagWriter {
   readonly write: (
@@ -102,11 +91,10 @@ export function makeProjectTagWriter(options: {
         for (let written = 0; ; written += 1) {
           const current = project.tagList ?? [];
           const next = applyProjectTagPatch(current, patch);
-          if (!next.ok) return { kind: "refused", refusal: next.refusal, project };
-          if (sameProjectTags(next.tags, current))
+          if (sameProjectTags(next, current))
             return { kind: written === 0 ? "unchanged" : "written", project };
           if (written === PROJECT_TAG_WRITE_ATTEMPTS) throw replacedTooOften;
-          await source.writeProjectTags(project, next.tags, signal, beforeWrite);
+          await source.writeProjectTags(project, next, signal, beforeWrite);
           project = await source.fetchProject(projectId, signal);
         }
       }),

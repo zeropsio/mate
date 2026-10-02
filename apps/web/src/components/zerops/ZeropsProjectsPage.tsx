@@ -110,7 +110,6 @@ import {
   buildZeropsGroupTree,
   mateShapeOf,
   newMateTint,
-  toolProjectName,
   flowVerbKey,
   flowVerbLabel,
   deployWord,
@@ -139,13 +138,13 @@ import {
   type ZeropsGroup,
   type ZeropsGroupTags,
   type ZeropsProjectOrder,
-  type ZeropsToolKind,
 } from "@t3tools/client-runtime/zerops";
 import { invalidateZerops } from "~/zerops/accountInvalidations";
 
 import { MateFace, MicroLabel, StatusDot } from "./primitives";
 import { stopLinkOf, ZeropsEnvironmentRow } from "./ZeropsEnvironmentRow";
 import { ZeropsMateBirthLine } from "./ZeropsBirthProgress";
+import { ZeropsHqTool } from "./ZeropsHqTool";
 import { ZeropsMateCard, ZeropsMateVerb } from "./ZeropsMateCard";
 import { ZeropsMateUpdateControl } from "./ZeropsMateUpdateControl";
 import { MateUpdateStatusText } from "./MateUpdateLine";
@@ -164,7 +163,8 @@ import { useRenameGroup } from "~/zerops/useRenameGroup";
 import { useEnableRoute } from "~/zerops/useEnableRoute";
 import { useMateActions } from "~/zerops/useMateActions";
 import { useZeropsGroupRecipe } from "~/zerops/useZeropsGroupRecipe";
-import { useAccountGitea, useAccountHoldsGitea } from "~/zerops/giteaProject";
+import { useAccountHq } from "~/zerops/accountHq";
+import { useAccountGitea } from "~/zerops/giteaProject";
 import { useZeropsGroupEnvironmentReconcile } from "~/zerops/useZeropsGroupEnvironmentReconcile";
 import { useZeropsGroupOrganizations } from "~/zerops/useZeropsGroupOrganizations";
 import { registryGroupSlug, useZeropsRegistry } from "~/zerops/useZeropsRegistry";
@@ -194,7 +194,6 @@ import {
   parseProjectsSearch,
   productionAddable,
   talkSettled,
-  TOOL_LABEL,
   type ProjectsSearch,
 } from "./projects/projectsView.logic";
 import { lastGroupPlacement } from "./projects/groupPlacementMemory";
@@ -206,7 +205,6 @@ import {
   setUpMateVerb,
   deriveZeropsRowPresentation,
   environmentSummaryLine,
-  giteaToolLine,
   groupAddsOffered,
   isZeropsToolCandidate,
 } from "./ZeropsProjectRow.logic";
@@ -1580,18 +1578,17 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
         : groupTree.groups.find((entry) => entry.group.groupId === creationRequest.groupId),
     [creationRequest, groupTree.groups],
   );
+  // The organization's HQ, where the registry lives: its project is no project of the page's.
+  const accountHq = useAccountHq(activeOrganization?.id);
+  const hq = accountHq.hq.kind === "official" ? accountHq.hq : undefined;
+  // What a Gitea project the organization still has holds for its groups, read exactly as that
+  // project states it: an account on a devel region or behind a custom domain is read, never
+  // guessed.
   const accountGitea = useAccountGitea(activeOrganization?.id);
-  const holdsGitea = useAccountHoldsGitea(activeOrganization?.id);
   const giteaProjectId = accountGitea?.projectId;
-  // Read exactly as the account's Gitea project states it: an account on a
-  // devel region or behind a custom domain is read, never guessed.
   const giteaOrigin = accountGitea?.state.url;
-  // The registry — which groups exist, and what each one's Gitea org is called
-  // (guide 4.1). One project read, on the one screen that sees the account.
-  const registryState = useZeropsRegistry({
-    giteaProjectId: giteaProjectId,
-    enabled: status === "signed-in",
-  });
+  // The registry — which groups exist and which projects are in them (ADR 0002), read from HQ.
+  const registryState = useZeropsRegistry({ enabled: status === "signed-in" });
 
   // A press's group writes change the registry: it is read again as each
   // press settles, so the tree is not left one version behind.
@@ -1897,11 +1894,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
         role,
         choice,
         onPlanned: (steps) => {
-          setToolError(
-            tier !== null && giteaProjectId === undefined
-              ? "Your account's Gitea is still being set up."
-              : null,
-          );
+          setToolError(null);
           setCreationNowMs(Date.now());
           setCreation((current) =>
             current === null
@@ -1947,37 +1940,8 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
           : { ...current, outcome: { kind: "done", deployments: outcome.deployments } },
       );
     },
-    [
-      activeOrganization,
-      creationRunning,
-      giteaProjectId,
-      groupTree.groups,
-      runCreation,
-      setConnectError,
-    ],
+    [activeOrganization, creationRunning, groupTree.groups, runCreation, setConnectError],
   );
-
-  /**
-   * Stands Gitea up as its own tagged project. Two platform calls with the
-   * user's own token and no container is read — the same shape every other
-   * creation in this model has.
-   */
-  const createTool = useCallback(async () => {
-    if (!activeOrganization) return;
-    setToolError(null);
-    try {
-      await runZeropsCommand(
-        runtime.commands.createToolProject({
-          organization: organizationRef(activeOrganization.id),
-          toolKind: "gitea",
-          name: toolProjectName("gitea"),
-          appUrl: window.location.origin,
-        }),
-      );
-    } catch (cause) {
-      setToolError(zeropsErrorMessage(cause));
-    }
-  }, [activeOrganization, organizationRef, runtime.commands]);
 
   // A Mate's group is its token: every environment in the group readable,
   // its own writable. Reconciled off the list this screen already has, on
@@ -2044,8 +2008,9 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
   useZeropsGroupEnvironmentReconcile({
     enabled: status === "signed-in" && projectFlow.readable && !isLoading && !creationRunning,
     client,
-    data: { runtime, projectRef },
+    data: { runtime },
     clientId: activeOrganization?.id,
+    hq,
     giteaOrigin,
     giteaProjectId,
     refreshRegistry: registryState.refresh,
@@ -2410,60 +2375,6 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
   };
 
   /**
-   * A tool, in the page's last quiet line: its name as the way to it, and its
-   * menu. The project's own name, not the tool's — it is deliberately not
-   * called "Gitea" (it holds the broker and the groups' runners too,
-   * `tools.ts`), and a line that says "Gitea" sends somebody to Zerops looking
-   * for a project by that name.
-   */
-  const renderTool = (candidate: ZeropsCandidatePresentation, kind: ZeropsToolKind) => {
-    // A tool has no Mate and never will: Gitea's own state (`deriveGiteaState`,
-    // read once for the account) says whether it is up and where it is; the
-    // platform's project status covers the minutes before its services exist.
-    const gitea = accountGitea?.projectId === candidate.project.id ? accountGitea.state : undefined;
-    const line = giteaToolLine({
-      projectStatus: candidate.project.status,
-      phase: gitea?.phase,
-      url: gitea?.url,
-    });
-    const name = candidate.project.name || TOOL_LABEL[kind];
-    return (
-      <span className="group/tool inline-flex items-center gap-1" data-zerops-surface="tool">
-        {line.kind === "link" ? (
-          <a
-            className="underline-offset-2 hover:text-foreground hover:underline"
-            data-zerops-surface="tool-link"
-            href={line.url}
-            rel="noreferrer"
-            target="_blank"
-          >
-            {name}
-          </a>
-        ) : (
-          <span>
-            {name}
-            {line.kind === "setting-up"
-              ? " · Setting up."
-              : line.kind === "unavailable"
-                ? " · Not available."
-                : ""}
-          </span>
-        )}
-        <ZeropsProjectMenu
-          actions={[]}
-          enablingServiceId={route.enablingServiceId}
-          label={`More for ${name}`}
-          offers={candidate.routeOffers}
-          onEnableRoute={(offer) => {
-            void route.enable(candidate.project.id, offer.serviceId);
-          }}
-          routes={candidate.routes}
-        />
-      </span>
-    );
-  };
-
-  /**
    * A project's own quiet actions: its name, the environments a person adds
    * to it — another Mate, a stage, which is optional and never a step before
    * production (D16, D28) — and, where the recipe still has room for one, a
@@ -2732,10 +2643,12 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
   // The page's one line of trouble: a refusal of something done here — a
   // merge or a release the project flow refused included — one at a time.
   const trouble = toolError ?? renameGroup.trouble ?? route.trouble ?? projectFlow.trouble;
-  const ungroupedRows = groupTree.ungrouped.map((candidate) => ({
-    item: candidate,
-    action: deriveZeropsRowAction(rowInput(candidate)).kind,
-  }));
+  const ungroupedRows = groupTree.ungrouped
+    .filter((candidate) => candidate.project.id !== hq?.projectId)
+    .map((candidate) => ({
+      item: candidate,
+      action: deriveZeropsRowAction(rowInput(candidate)).kind,
+    }));
 
   return (
     // The page's end clears the app's fixed "Open main sidebar" control, so
@@ -2804,14 +2717,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
         onCreateProject={
           hasNoZeropsProject({ listing, creationPending: activeBirths }) ? askNewProject : undefined
         }
-        // A Gitea the grant withholds is still the account's: never offered a second.
-        {...(holdsGitea
-          ? {}
-          : {
-              onCreateTool: () => {
-                void createTool();
-              },
-            })}
+        hqTool={<ZeropsHqTool />}
         openMate={mateOpenerOf}
         onRetryContainers={(items) => {
           for (const candidate of items) runRowAction(candidate, "retry-probe");
@@ -2845,8 +2751,6 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
         renderStopMenu={(candidate: ZeropsCandidatePresentation) =>
           renderEnvironmentMenu(candidate, readZeropsGroupTags(candidate.project.tagList), false)
         }
-        renderTool={renderTool}
-        tools={groupTree.tools}
         ungrouped={ungroupedRows}
         view={search.view ?? "overview"}
       />

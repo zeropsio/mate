@@ -25,7 +25,6 @@ import type {
   GroupFlow,
   ZeropsEnvironmentRole,
   ZeropsGroup,
-  ZeropsToolKind,
 } from "@t3tools/client-runtime/zerops";
 import { useEffect, useRef, type ReactNode } from "react";
 
@@ -87,7 +86,6 @@ export interface ZeropsProjectsFlowProps<T> {
   readonly groups: ReadonlyArray<ProjectsFlowGroup<T>>;
   /** The projects no group holds, with the one verb each row offers. */
   readonly ungrouped: ReadonlyArray<{ readonly item: T; readonly action: ZeropsRowAction["kind"] }>;
-  readonly tools: ReadonlyArray<{ readonly item: T; readonly kind: ZeropsToolKind }>;
   readonly getKey: (item: T) => string;
   readonly isMate: (item: T) => boolean;
   /**
@@ -136,7 +134,6 @@ export interface ZeropsProjectsFlowProps<T> {
   /** The group's releases, the release gate's reason and its recipe changes, as `<li>`s; `null` for none. */
   readonly renderGroupRows: (group: ZeropsGroup) => ReactNode;
   readonly renderGroupMenu: (group: ZeropsGroup) => ReactNode;
-  readonly renderTool: (item: T, kind: ZeropsToolKind) => ReactNode;
   /** Re-probes the containers not answering. */
   readonly onRetryContainers: (items: ReadonlyArray<T>) => void;
   /** Absent hides every add verb. */
@@ -145,7 +142,8 @@ export interface ZeropsProjectsFlowProps<T> {
   readonly addsOffered?: (group: ZeropsGroup) => boolean;
   /** A creation runs: every add verb is disabled, never hidden. */
   readonly creating?: boolean;
-  readonly onCreateTool?: () => void;
+  /** The organization's HQ, on the page's last quiet line (`ZeropsHqTool`). */
+  readonly hqTool: ReactNode;
   /** Starts the account's first project; absent leaves an empty account empty. */
   readonly onCreateProject?: (() => void) | undefined;
   /** The group whose card the Projects view scrolls to. */
@@ -174,7 +172,7 @@ function FirstRun({
         <h2 className="text-xl font-semibold tracking-tight text-foreground">Start a project</h2>
         <p className="text-sm leading-6 text-muted-foreground">
           A Mate is a coding agent with a dev environment of its own and one conversation you come
-          back to. Name a project and it is up in a few minutes, Git hosting alongside.
+          back to. Name a project and it is up in a few minutes, your team's HQ before it.
         </p>
       </div>
       <Pill disabled={creating} label="New project" onClick={onCreateProject} />

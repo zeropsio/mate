@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import { ZeropsApiClient, type ZeropsProject } from "../api.ts";
-import { parseZeropsRegistry } from "../groupRegistry.ts";
 import { makeHarnessBrowser } from "../testing/browserTabs.ts";
 import { makeFakeZeropsRest } from "../testing/fakeZeropsRest.ts";
 import { makeProjectTagWriter, type ProjectTagSource } from "./tagWriter.ts";
@@ -111,21 +110,6 @@ describe("updateProjectTags' writer", () => {
     expect(rest.log).toEqual(["GET"]);
   });
 
-  it("a patch the list refuses writes nothing and says why", async () => {
-    const rest = platform(["mate:tool:gitea"]);
-    const writer = makeProjectTagWriter({ source: rest.source });
-
-    const written = await writer.write("p1", {
-      kind: "registry-member",
-      groupId: "g1",
-      projectId: "p9",
-      member: "mate",
-    });
-
-    expect(written).toMatchObject({ kind: "refused", refusal: { code: "group-unknown" } });
-    expect(rest.log).toEqual(["GET"]);
-  });
-
   it("gives up once other writers replaced its list every time, and says so", async () => {
     const rest = platform([]);
     const replaced: ProjectTagSource = {
@@ -158,7 +142,7 @@ describe("updateProjectTags' writer", () => {
     expect(rest.log).toEqual(["GET", "PUT", "GET", "GET", "PUT", "GET"]);
   });
 
-  it("two tabs register different groups; neither is lost", async () => {
+  it("two tabs write different tags to one project; neither is lost", async () => {
     const rest = makeFakeZeropsRest();
     rest.addUser({
       user: {
@@ -169,11 +153,11 @@ describe("updateProjectTags' writer", () => {
       password: "secret",
     });
     rest.addProject({
-      id: "gitea",
+      id: "p1",
       clientId: "org-1",
-      name: "Gitea",
+      name: "Acme - Vera",
       status: "ACTIVE",
-      tagList: ["mate:tool:gitea"],
+      tagList: ["person:own"],
     });
     const browser = makeHarnessBrowser();
     const writerIn = (tab: ReturnType<typeof browser.openTab>) => {
@@ -184,26 +168,23 @@ describe("updateProjectTags' writer", () => {
     const first = browser.openTab();
     const second = browser.openTab();
 
-    const [acme, beta] = await Promise.all([
-      writerIn(first).write("gitea", { kind: "registry-group", groupId: "g1", name: "Acme" }),
-      writerIn(second).write("gitea", { kind: "registry-group", groupId: "g2", name: "Beta" }),
+    const [named, signed] = await Promise.all([
+      writerIn(first).write("p1", { kind: "agent-name", name: "Vera" }),
+      writerIn(second).write("p1", { kind: "agent-signer", agentId: "codex", userId: "u1" }),
     ]);
 
-    expect([acme.kind, beta.kind]).toEqual(["written", "written"]);
-    const registry = parseZeropsRegistry(rest.project("gitea")?.tagList);
-    expect(registry.groups.map(({ groupId, slug }) => [groupId, slug])).toEqual([
-      ["g1", "acme"],
-      ["g2", "beta"],
-    ]);
-    expect(registry.other).toEqual(["mate:tool:gitea"]);
+    expect([named.kind, signed.kind]).toEqual(["written", "written"]);
+    expect(rest.project("p1")?.tagList).toEqual(
+      expect.arrayContaining(["person:own", "mate:bot:Vera", "mate", "mate:signer:codex:u1"]),
+    );
     // One tab's read, write and read-back, then the other's: never interleaved.
     expect(rest.requests().map(({ route, tab }) => `${tab} ${route}`)).toEqual([
-      `${first.id} GET /project/gitea`,
-      `${first.id} PUT /project/gitea`,
-      `${first.id} GET /project/gitea`,
-      `${second.id} GET /project/gitea`,
-      `${second.id} PUT /project/gitea`,
-      `${second.id} GET /project/gitea`,
+      `${first.id} GET /project/p1`,
+      `${first.id} PUT /project/p1`,
+      `${first.id} GET /project/p1`,
+      `${second.id} GET /project/p1`,
+      `${second.id} PUT /project/p1`,
+      `${second.id} GET /project/p1`,
     ]);
   });
 });

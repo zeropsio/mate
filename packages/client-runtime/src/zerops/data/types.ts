@@ -13,7 +13,6 @@ import type { Shown } from "../knowledge/known.ts";
 import type { ZeropsServiceDeployedVersion } from "./deployedVersion.ts";
 import type { ZeropsEnvironmentRole, ZeropsMateFace } from "../groups.ts";
 import type { ZeropsAgentType } from "../newProject.ts";
-import type { ZeropsToolKind } from "../tools.ts";
 import type { ZeropsIntegrationTokenGrantMetadata } from "./cells.ts";
 import type { ProjectTagPatch } from "./tagPatch.ts";
 import type { ProjectTagWrite } from "./tagWriter.ts";
@@ -1568,7 +1567,6 @@ export type PlatformCommandKind =
   | "create-project-with-mate"
   | "import-project"
   | "import-services"
-  | "create-tool-project"
   | "list-integration-token-grants"
   | "set-integration-token-projects"
   | "list-token-delegations"
@@ -1901,19 +1899,6 @@ export interface ImportServicesCommandIntent {
   readonly yaml: string;
 }
 
-export interface CreateToolProjectCommandIntent {
-  readonly kind: "create-tool-project";
-  readonly organization: OrganizationRef;
-  readonly toolKind: ZeropsToolKind;
-  readonly name: string;
-  readonly location?: string;
-  /**
-   * Where the consent page of Gitea's own sign-in lives: the origin this
-   * shell is served from. Only the shell knows it (`giteaRecipe.ts`).
-   */
-  readonly appUrl: string;
-}
-
 /**
  * `GET /client/{id}/integration-token/list`, as grant metadata.
  *
@@ -1997,7 +1982,6 @@ export type PlatformCommandIntent =
   | CreateProjectWithMateCommandIntent
   | ImportProjectCommandIntent
   | ImportServicesCommandIntent
-  | CreateToolProjectCommandIntent
   | ListIntegrationTokenGrantsCommandIntent
   | SetIntegrationTokenProjectsCommandIntent
   | ListTokenDelegationsCommandIntent
@@ -2053,10 +2037,6 @@ export type PlatformCommandResult =
     }
   | { readonly kind: "import-project"; readonly value: { readonly projectId: string } }
   | { readonly kind: "import-services"; readonly value: void }
-  | {
-      readonly kind: "create-tool-project";
-      readonly value: { readonly project: ZeropsProject };
-    }
   | {
       readonly kind: "list-integration-token-grants";
       readonly value: ReadonlyArray<ZeropsIntegrationTokenGrantMetadata>;
@@ -2305,14 +2285,6 @@ export interface ZeropsDataCommands {
     project: ProjectRef,
     yaml: string,
   ) => Effect.Effect<CommandExecution<void>, CommandAdmissionError | AdapterError>;
-  readonly createToolProject: (
-    input: Omit<CreateToolProjectCommandIntent, "kind" | "organization"> & {
-      readonly organization: OrganizationRef;
-    },
-  ) => Effect.Effect<
-    CommandExecution<{ readonly project: ZeropsProject }>,
-    CommandAdmissionError | AdapterError
-  >;
   readonly listIntegrationTokenGrants: (
     organization: OrganizationRef,
   ) => Effect.Effect<

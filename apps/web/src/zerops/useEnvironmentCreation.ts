@@ -5,12 +5,11 @@
  * inputs — the group's agents and environments, the account's Gitea, who asked — and presses.
  *
  * The press does every step that needs this person's rights before it returns: the project, a
- * Mate's key and container, its project closed off, and the group registration an owner or an
- * admin — or anyone adding a stage or a production — writes. A member's Mate waits for one of
- * them to *Finish setup*. The container does the rest whether this tab stays or not.
+ * Mate's key and container, its project closed off, and its registration in the organization's
+ * HQ, which decides who may write it. An organization with no HQ takes no environment (ADR 0001).
+ * The container does the rest whether this tab stays or not.
  */
 import {
-  canWriteRegistry,
   planEnvironmentCreation,
   recipeTierServices,
   unionAgents,
@@ -27,6 +26,8 @@ import { ZeropsServiceId, type AgentsCellRequest } from "@t3tools/client-runtime
 import { useCallback, useEffect, useRef } from "react";
 
 import type { EnvironmentCreationChoice } from "../components/zerops/ZeropsEnvironmentCreationDialog";
+import { NO_HQ_LINE } from "../components/zerops/ZeropsEnvironmentCreationDialog.logic";
+import { useAccountHq } from "./accountHq";
 import { invalidateZerops } from "./accountInvalidations";
 import { captureAccountLifetime } from "./accountLifetime";
 import { useAccountGitea } from "./giteaProject";
@@ -99,10 +100,12 @@ export function useEnvironmentCreation(): (
   useEffect(() => {
     inventoryRef.current = inventory;
   }, [inventory]);
+  const accountHq = useAccountHq(activeOrganization?.id);
+  const hq = accountHq.hq.kind === "official" ? accountHq.hq : undefined;
+  // A stage or a production is still declared where the organization has a Gitea project: read
+  // exactly as that project states it, never guessed.
   const accountGitea = useAccountGitea(activeOrganization?.id);
   const giteaProjectId = accountGitea?.projectId;
-  // Read exactly as the account's Gitea project states it: an account on a devel region or behind
-  // a custom domain is read, never guessed.
   const giteaOrigin = accountGitea?.state.url;
 
   /**
@@ -142,15 +145,12 @@ export function useEnvironmentCreation(): (
   return useCallback(
     async (request: EnvironmentCreationRequest): Promise<EnvironmentCreationRun> => {
       if (activeOrganization === null) return { kind: "refused", reason: null };
+      if (hq === undefined) return { kind: "refused", reason: NO_HQ_LINE };
       const organization = activeOrganization;
       const isCurrent = captureAccountLifetime();
       const { group, role, choice } = request;
       const { name } = choice;
       const tier = role === "prod" ? "production" : role === "stage" ? "stage" : null;
-      // A Mate's registration is an owner's or an admin's to write; a stage or a production's is
-      // anyone's who adds one. Without the account's Gitea there is no registry to write it in.
-      const registers =
-        giteaProjectId !== undefined && (tier !== null || canWriteRegistry(organization));
 
       const plan = planEnvironmentCreation({
         clientId: organization.id,
@@ -162,7 +162,7 @@ export function useEnvironmentCreation(): (
         agents: await readGroupAgents(request.environments),
         recipe: choice.recipe,
         withAgent: choice.withAgent,
-        register: registers,
+        register: true,
         ...(choice.botName === undefined ? {} : { botName: choice.botName }),
         ...(asker ? { standUpBy: asker } : {}),
         ...(choice.face === undefined ? {} : { face: choice.face }),
@@ -179,16 +179,25 @@ export function useEnvironmentCreation(): (
       const platform = pressPlatform(inputs, {
         groupProjectIds: request.environments.map(({ item }) => item.project.id),
         viewer: pressViewer(user, organization),
-        register:
-          registers && giteaProjectId !== undefined
-            ? pressRegistration(inputs, {
-                giteaProjectId,
-                giteaOrigin: tier === null ? null : (giteaOrigin ?? null),
+        register: pressRegistration(
+          inputs,
+          tier === null
+            ? {
+                hq,
                 groupId: group.groupId,
-                kind: tier ?? "mate",
                 displayName: name,
-              })
-            : null,
+                kind: "mate",
+                mate: { name: choice.botName ?? name, face: choice.face },
+              }
+            : {
+                hq,
+                groupId: group.groupId,
+                displayName: name,
+                kind: tier,
+                giteaProjectId,
+                giteaOrigin: giteaOrigin ?? null,
+              },
+        ),
         // Reads the latest shared-model projection; no platform request.
         readObservedServices: async (projectId) => {
           const services = inventoryRef.current.services.get(projectId);
@@ -237,6 +246,7 @@ export function useEnvironmentCreation(): (
       client,
       giteaOrigin,
       giteaProjectId,
+      hq,
       organizationRef,
       projectRef,
       readGroupAgents,

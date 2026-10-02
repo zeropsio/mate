@@ -484,7 +484,7 @@ describe("the account's project flow in the web", () => {
     const rig = stage();
     const unbind = bindAccountFlow(rig.stage);
     const source = {
-      entry: { groupId: "g1", slug: "harbor", projects: [], matesMayRelease: false },
+      entry: { groupId: "g1", name: "Harbor", slug: "harbor", projects: [] },
       giteaOrigin: GITEA,
       members: known([
         { projectId: "p-stage", name: "harbor stage", role: undefined, project: PROJECT },

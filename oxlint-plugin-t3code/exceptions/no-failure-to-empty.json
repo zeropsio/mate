@@ -154,7 +154,7 @@
   {
     "path": "apps/web/src/zerops/useZeropsGroupEnvironmentReconcile.ts",
     "kind": "CallExpression",
-    "fingerprint": "addGroupEnvironment({ client, tokens: brokerGrantTokens(data.current.runtime), writeTags: projectTagsWrite(data.current, clientId), gitea, clientId, giteaProjectId, groupId: entry.groupId, environment: { displayName: entry.displayName, tier: entry.tier, project: entry.projectId, }, signal: controller.signal, }).catch((): AddGroupEnvironmentOutcome | undefined => undefined)",
+    "fingerprint": "addGroupEnvironment({ client, tokens: brokerGrantTokens(data.current.runtime), hq: accountHqApi(client, clientId, hq), gitea, clientId, giteaProjectId, groupId: entry.groupId, environment: { displayName: entry.displayName, tier: entry.tier, project: entry.projectId, }, signal: controller.signal, }).catch((): AddGroupEnvironmentOutcome | undefined => undefined)",
     "owner": "state-model 4.7",
     "reason": "a failed repair reads as no outcome and the entry is given back for the next pass; the reconciler becomes an account worker with typed attempts",
     "expires": "never"

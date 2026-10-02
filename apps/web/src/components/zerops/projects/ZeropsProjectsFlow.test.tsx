@@ -63,32 +63,19 @@ describe("the containers no project holds", () => {
 });
 
 describe("the tools", () => {
-  const GITEA = item("mate-gitea", ["mate:tool:gitea"], false);
-
-  it("are one quiet line at the end, after the containers", () => {
+  it("are one quiet line at the end, after the containers: the organization's HQ", () => {
     const html = render({
       groups: [MERGING],
-      tools: [{ item: GITEA, kind: "gitea" }],
       ungrouped: [{ item: item("loose", []), action: "open" }],
     });
-    expect(html).toContain('data-test-tool="mate-gitea"');
+    expect(html).toContain('data-test-hq-tool="true"');
     expect(html.indexOf('data-zerops-surface="other-containers"')).toBeLessThan(
       html.indexOf('data-zerops-tools="true"'),
     );
   });
 
-  it("offer Gitea only to an account that has started and has none", () => {
-    expect(render({ groups: [MERGING], onCreateTool: () => {} })).toContain("Add Gitea");
-    expect(
-      render({
-        groups: [MERGING],
-        onCreateTool: () => {},
-        tools: [{ item: GITEA, kind: "gitea" }],
-      }),
-    ).not.toContain("Add Gitea");
-    expect(render({ onCreateProject: () => {}, onCreateTool: () => {} })).not.toContain(
-      "Add Gitea",
-    );
+  it("wait for an account that has started", () => {
+    expect(render({ onCreateProject: () => {} })).not.toContain('data-test-hq-tool="true"');
   });
 });
 

@@ -85,13 +85,6 @@ function recordingFetch(handler: (request: RecordedRequest) => Response | Promis
   };
 }
 
-const TOOL_INPUT = {
-  clientId: "org-1",
-  kind: "gitea",
-  name: "Gitea",
-  appUrl: "https://app.zerops.io",
-} as const;
-
 describe("servicePortOrigin", () => {
   const project: ZeropsProject = {
     id: "p1",
@@ -1730,229 +1723,6 @@ describe("ZeropsApiClient.exchangeWebSocketToken", () => {
     );
   });
 
-  it("rechecks runtime admission before every write in a compound command", async () => {
-    const stub = recordingFetch((request) => {
-      if (request.url.includes("/integration-token/list")) return jsonResponse(200, { list: [] });
-      if (request.method === "GET" && request.url.includes("/client/org-1/project")) {
-        return jsonResponse(200, { list: [], totalCount: 0 });
-      }
-      return jsonResponse(200, {
-        id: "project-1",
-        name: "tool",
-        status: "ACTIVE",
-        publicZone: "project-1.prg1-zerops.zone",
-      });
-    });
-    const client = new ZeropsApiClient({ fetch: stub.fetch });
-    client.restoreSession(SESSION);
-    let checks = 0;
-    const denied = {
-      _tag: "ZeropsCommandAdmissionError",
-      reason: "access-expired",
-      message: "Project access expired between writes.",
-    };
-
-    await expect(
-      client.createToolProject(TOOL_INPUT, undefined, async () => {
-        checks += 1;
-        if (checks === 2) throw denied;
-      }),
-    ).rejects.toMatchObject({ kind: "uncertain" });
-
-    // The project write went out; the broker's token mint was refused before
-    // it did, and the import never ran.
-    expect(checks).toBe(2);
-    expect(stub.requests.filter((request) => request.method !== "GET")).toHaveLength(1);
-  });
-
-  it("Gitea setup mints the broker token with org BASIC_USER", async () => {
-    const stub = recordingFetch((request) => {
-      if (request.url.includes("/integration-token/list")) return jsonResponse(200, { list: [] });
-      if (request.method === "GET" && request.url.includes("/client/org-1/project")) {
-        return jsonResponse(200, { list: [], totalCount: 0 });
-      }
-      if (request.url.endsWith("/client/org-1/integration-token")) {
-        return jsonResponse(200, { id: "tok-b", token: "fresh" });
-      }
-      return jsonResponse(200, {
-        id: "project-1",
-        name: "tool",
-        status: "ACTIVE",
-        publicZone: "project-1.prg1-zerops.zone",
-      });
-    });
-    const client = new ZeropsApiClient({ fetch: stub.fetch });
-    client.restoreSession(SESSION);
-
-    await client.createToolProject(TOOL_INPUT);
-
-    const mint = stub.requests.find(
-      (request) => request.method === "POST" && request.url.endsWith("/integration-token"),
-    );
-    expect(JSON.parse(mint?.body ?? "{}")).toMatchObject({
-      name: "mate-broker",
-      roleCode: "BASIC_USER",
-      projects: [],
-    });
-  });
-
-  it("resumes a Gitea setup instead of building a second one", async () => {
-    const project = {
-      id: "project-1",
-      name: "Gitea",
-      status: "ACTIVE",
-      publicZone: "project-1.prg1-zerops.zone",
-      tagList: ["mate:tool:gitea"],
-    };
-    const stub = recordingFetch((request) => {
-      if (request.url.includes("/integration-token/list")) {
-        return jsonResponse(200, { list: [{ id: "tok-b", name: "mate-broker" }] });
-      }
-      if (request.method === "GET" && request.url.includes("/client/org-1/project")) {
-        return jsonResponse(200, { list: [project], totalCount: 1 });
-      }
-      if (request.url.includes("/service-stack?")) return jsonResponse(200, { items: [] });
-      if (request.url.includes("/regenerate")) return jsonResponse(200, { token: "fresh" });
-      return jsonResponse(200, {});
-    });
-    const client = new ZeropsApiClient({ fetch: stub.fetch });
-    client.restoreSession(SESSION);
-
-    await expect(client.createToolProject(TOOL_INPUT)).resolves.toMatchObject({
-      project: { id: "project-1" },
-    });
-
-    const writes = stub.requests.filter((request) => request.method !== "GET");
-    // No second project; the token nobody holds the value of is regenerated,
-    // the tool project is granted to it — a regenerate carries no grants — and
-    // the import runs with the fresh value.
-    expect(writes.map((request) => `${request.method} ${new URL(request.url).pathname}`)).toEqual([
-      "PUT /api/rest/public/client/org-1/integration-token/tok-b/regenerate",
-      "PUT /api/rest/public/client/org-1/integration-token/tok-b",
-      "POST /api/rest/public/project/project-1/service-stack/import",
-    ]);
-    // The grant keeps the token's org role: writing it away would stop the
-    // broker reading the org at all.
-    expect(writes[1]?.body).toContain('"projectId":"project-1","roleCode":"BASIC_USER"');
-    expect(writes[1]?.body).toContain('"roleCode":"READ_ONLY"');
-    expect(writes[2]?.body).toContain("fresh");
-  });
-
-  it("grant-broker-token plans from the broker token as it is right before the write", async () => {
-    const project = {
-      id: "project-1",
-      name: "Gitea",
-      status: "ACTIVE",
-      publicZone: "project-1.prg1-zerops.zone",
-      tagList: ["mate:tool:gitea"],
-    };
-    let tokenReads = 0;
-    const stub = recordingFetch((request) => {
-      if (request.url.includes("/integration-token/list")) {
-        tokenReads += 1;
-        // A Mate's birth granted the broker its project while the setup regenerated the token.
-        const projects =
-          tokenReads === 1 ? [] : [{ projectId: "project-mate", roleCode: "BASIC_USER" }];
-        return jsonResponse(200, {
-          list: [{ id: "tok-b", name: "mate-broker", roleCode: "READ_ONLY", projects }],
-        });
-      }
-      if (request.method === "GET" && request.url.includes("/client/org-1/project")) {
-        return jsonResponse(200, { list: [project], totalCount: 1 });
-      }
-      if (request.url.includes("/service-stack?")) return jsonResponse(200, { items: [] });
-      if (request.url.includes("/regenerate")) return jsonResponse(200, { token: "fresh" });
-      return jsonResponse(200, {});
-    });
-    const held: string[] = [];
-    let readsUnderLock = 0;
-    const client = new ZeropsApiClient({
-      fetch: stub.fetch,
-      holdToken: async (tokenId, run) => {
-        held.push(tokenId);
-        const before = tokenReads;
-        const value = await run();
-        readsUnderLock += tokenReads - before;
-        return value;
-      },
-    });
-    client.restoreSession(SESSION);
-
-    await client.createToolProject(TOOL_INPUT);
-
-    expect(held).toEqual(["tok-b"]);
-    expect(readsUnderLock).toBe(1);
-    const grant = stub.requests.find(
-      (request) => request.method === "PUT" && request.url.endsWith("/integration-token/tok-b"),
-    );
-    expect(grant?.body).toContain('"projectId":"project-mate"');
-    expect(grant?.body).toContain('"projectId":"project-1"');
-  });
-
-  it("grant-broker-token writes nothing when the org role covers the project", async () => {
-    const project = {
-      id: "project-1",
-      name: "Gitea",
-      status: "ACTIVE",
-      publicZone: "project-1.prg1-zerops.zone",
-      tagList: ["mate:tool:gitea"],
-    };
-    const stub = recordingFetch((request) => {
-      if (request.url.includes("/integration-token/list")) {
-        return jsonResponse(200, {
-          list: [{ id: "tok-b", name: "mate-broker", roleCode: "BASIC_USER", projects: [] }],
-        });
-      }
-      if (request.method === "GET" && request.url.includes("/client/org-1/project")) {
-        return jsonResponse(200, { list: [project], totalCount: 1 });
-      }
-      if (request.url.includes("/service-stack?")) return jsonResponse(200, { items: [] });
-      if (request.url.includes("/regenerate")) return jsonResponse(200, { token: "fresh" });
-      return jsonResponse(200, {});
-    });
-    const client = new ZeropsApiClient({ fetch: stub.fetch });
-    client.restoreSession(SESSION);
-
-    await client.createToolProject(TOOL_INPUT);
-
-    const writes = stub.requests.filter((request) => request.method !== "GET");
-    expect(writes.map((request) => `${request.method} ${new URL(request.url).pathname}`)).toEqual([
-      "PUT /api/rest/public/client/org-1/integration-token/tok-b/regenerate",
-      "POST /api/rest/public/project/project-1/service-stack/import",
-    ]);
-  });
-
-  it("does nothing at all for an account whose Gitea is already up", async () => {
-    const project = {
-      id: "project-1",
-      name: "Gitea",
-      status: "ACTIVE",
-      publicZone: "project-1.prg1-zerops.zone",
-      tagList: ["mate:tool:gitea"],
-    };
-    const stub = recordingFetch((request) => {
-      if (request.url.includes("/integration-token/list")) {
-        return jsonResponse(200, { list: [{ id: "tok-b", name: "mate-broker" }] });
-      }
-      if (request.method === "GET" && request.url.includes("/client/org-1/project")) {
-        return jsonResponse(200, { list: [project], totalCount: 1 });
-      }
-      return jsonResponse(200, {
-        items: [
-          { id: "s1", name: "web" },
-          { id: "s2", name: "broker" },
-        ],
-      });
-    });
-    const client = new ZeropsApiClient({ fetch: stub.fetch });
-    client.restoreSession(SESSION);
-
-    await expect(client.createToolProject(TOOL_INPUT)).resolves.toMatchObject({
-      project: { id: "project-1" },
-    });
-    expect(stub.requests.filter((request) => request.method !== "GET")).toEqual([]);
-  });
-
   it("classifies a denied second write in create-with-Mate as partial-write uncertainty", async () => {
     const stub = recordingFetch(() =>
       jsonResponse(200, {
@@ -2116,6 +1886,53 @@ describe("ZeropsApiClient.stopService and readProcessStatus", () => {
     expect(
       stub.requests.map((request) => `${request.method} ${request.url.split("/public")[1]}`),
     ).toEqual(["PUT /service-stack/svc-1/stop", "GET /process/process-stop"]);
+  });
+});
+
+describe("ZeropsApiClient app versions — a deploy through the API", () => {
+  it("creates a version, uploads its archive as bytes and builds it with its zerops.yml", async () => {
+    const uploads: Array<{ readonly contentType: string | null; readonly bytes: number }> = [];
+    const stub = recordingFetch(async (request) => {
+      if (request.url.endsWith("/app-version")) return jsonResponse(200, { id: "av-1" });
+      // The upload answers with no body at all.
+      if (request.url.endsWith("/upload")) return new Response(null, { status: 200 });
+      return jsonResponse(200, { id: "process-1", status: "PENDING" });
+    });
+    const client = new ZeropsApiClient({
+      fetch: async (input, init) => {
+        if (input.endsWith("/upload")) {
+          uploads.push({
+            contentType: new Headers(init?.headers).get("content-type"),
+            bytes: (init?.body as Uint8Array).byteLength,
+          });
+        }
+        return stub.fetch(input, init);
+      },
+    });
+    client.restoreSession(SESSION);
+
+    const { id } = await client.createAppVersion("svc-hq", "hq-core");
+    await client.uploadAppVersionArchive(id, new Uint8Array([1, 2, 3]));
+    const deploy = await client.buildAndDeployAppVersion(id, {
+      zeropsYaml: "zerops: []",
+      setup: "hq",
+    });
+
+    expect(deploy).toEqual({ processId: "process-1" });
+    expect(uploads).toEqual([{ contentType: "application/octet-stream", bytes: 3 }]);
+    expect(
+      stub.requests.map((request) => [
+        `${request.method} ${request.url.split("/public")[1]}`,
+        request.body,
+      ]),
+    ).toEqual([
+      ["POST /service-stack/svc-hq/app-version", JSON.stringify({ name: "hq-core" })],
+      ["PUT /app-version/av-1/upload", null],
+      [
+        "PUT /app-version/av-1/build-and-deploy",
+        JSON.stringify({ zeropsYaml: "zerops: []", zeropsYamlSetup: "hq" }),
+      ],
+    ]);
   });
 });
 

@@ -24,19 +24,23 @@
  */
 
 import type { HalfMadeGroupEnvironment, ZeropsApiClient } from "@t3tools/client-runtime/zerops";
+import type { HqEndpoint } from "@t3tools/client-runtime/zerops/hq";
 import { useEffect, useRef, useState } from "react";
 
 import { addGroupEnvironment, type AddGroupEnvironmentOutcome } from "./addGroupEnvironment";
 import { giteaClientFor } from "./accountGiteaSessions";
-import { brokerGrantTokens, projectTagsWrite } from "./brokerGrant";
+import { accountHqApi } from "./accountHq";
+import { brokerGrantTokens } from "./brokerGrant";
 import type { ZeropsDataContextValue } from "./zeropsDataContext";
 
 export function useZeropsGroupEnvironmentReconcile(input: {
   readonly enabled: boolean;
   readonly client: ZeropsApiClient;
-  /** The account's runtime, whose `updateProjectTags` writes the registry entry as a patch. */
-  readonly data: Pick<ZeropsDataContextValue, "runtime" | "projectRef">;
+  /** The account's runtime, whose token commands grant the broker. */
+  readonly data: Pick<ZeropsDataContextValue, "runtime">;
   readonly clientId: string | undefined;
+  /** The organization's HQ, where the registry lives. */
+  readonly hq: HqEndpoint | undefined;
   readonly giteaOrigin: string | undefined;
   readonly giteaProjectId: string | undefined;
   readonly refreshRegistry: () => void;
@@ -46,7 +50,7 @@ export function useZeropsGroupEnvironmentReconcile(input: {
     | ((entry: HalfMadeGroupEnvironment, outcome: AddGroupEnvironmentOutcome) => void)
     | undefined;
 }): void {
-  const { client, clientId, enabled, giteaOrigin, giteaProjectId, halfMade, refreshRegistry } =
+  const { client, clientId, enabled, giteaOrigin, giteaProjectId, halfMade, hq, refreshRegistry } =
     input;
   const data = useRef(input.data);
   data.current = input.data;
@@ -94,7 +98,15 @@ export function useZeropsGroupEnvironmentReconcile(input: {
     .join(";");
 
   useEffect(() => {
-    if (!enabled || clientId === undefined || giteaOrigin === undefined || key === "") return;
+    if (
+      !enabled ||
+      clientId === undefined ||
+      hq === undefined ||
+      giteaOrigin === undefined ||
+      key === ""
+    ) {
+      return;
+    }
     if (giteaClientFor(giteaOrigin) === null) return;
     const now = Date.now();
     const pending = latest.current.filter((entry) => {
@@ -144,7 +156,7 @@ export function useZeropsGroupEnvironmentReconcile(input: {
           const outcome = await addGroupEnvironment({
             client,
             tokens: brokerGrantTokens(data.current.runtime),
-            writeTags: projectTagsWrite(data.current, clientId),
+            hq: accountHqApi(client, clientId, hq),
             gitea,
             clientId,
             giteaProjectId,
@@ -181,7 +193,7 @@ export function useZeropsGroupEnvironmentReconcile(input: {
     // No cleanup: the gate closing (a loading flip) does not abort a repair in flight; the
     // page going does (above). `key` is the half-made list; the list, the runtime and the
     // refresh are read through refs so a re-render does not abort a repair in flight either.
-  }, [client, clientId, due, enabled, giteaOrigin, giteaProjectId, key]);
+  }, [client, clientId, due, enabled, giteaOrigin, giteaProjectId, hq, key]);
 }
 
 /** How long a failed repair waits before it is tried again, by its count of failures. */

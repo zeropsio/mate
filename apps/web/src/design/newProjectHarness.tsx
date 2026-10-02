@@ -8,8 +8,8 @@
  * Seal picked; `refused` — the Mate named as another already is, Create pressed; `checking` — the
  * account's Mates' names still being read; `creating` — Create pressed, the first Mate's view on
  * its way; `closed` — the person may not add projects here, the reason in the form's place;
- * `&locations=2` offers two locations, at the footer's start; `&git=none` is the account's first
- * project, Git hosting coming along, its step first in what happens next). The die at the name's
+ * `&locations=2` offers two locations, at the footer's start; `&hq=none` is the organization's
+ * first project, its HQ coming along, its step first in what happens next). The die at the name's
  * end rolls another name. The dialog stands over the page beside the left menu at the owner's
  * 435 px, as it does in the app. Open it at 1786 × 1000. `window.__newProjectHarness.created`
  * holds what Create handed over.
@@ -136,7 +136,7 @@ function Harness() {
         defaultTintFor={(name) => newMateTint(MATES, name)}
         locationError={null}
         locationId="prg1"
-        locationLoading={false}
+        loading={false}
         locations={LOCATIONS}
         onCancel={() => {}}
         onCreate={(choice) => {
@@ -150,7 +150,7 @@ function Harness() {
           names: ["Fen", "Ada", "Nova"],
           complete: STATE !== "checking",
         }}
-        withGitHosting={params.get("git") === "none"}
+        withHq={params.get("hq") === "none"}
       />
     </div>
   );

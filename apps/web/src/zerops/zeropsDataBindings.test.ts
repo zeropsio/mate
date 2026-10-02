@@ -63,7 +63,6 @@ describe("central Zerops data bindings", () => {
       "createProjectWithZeropsMate",
       "importProject",
       "importServicesIntoProject",
-      "createToolProject",
       "setIntegrationTokenProjects",
       "deleteProject",
     ];

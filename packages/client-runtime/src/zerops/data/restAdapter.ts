@@ -1133,8 +1133,7 @@ export function makeZeropsDataAdapter(options: ZeropsDataAdapterOptions): Zerops
           | "update-project-tags"
           | "set-project-member-role"
           | "create-project"
-          | "create-project-with-mate"
-          | "create-tool-project";
+          | "create-project-with-mate";
       }
     >,
     project: unknown,
@@ -1428,25 +1427,6 @@ export function makeZeropsDataAdapter(options: ZeropsDataAdapterOptions): Zerops
                   result: { kind: command.kind, value: undefined },
                 });
           }),
-          Effect.mapError(uncertainCommandError),
-        );
-      case "create-tool-project":
-        return executeApi(context, (signal) =>
-          options.client.createToolProject(
-            {
-              clientId: command.organization.organizationId,
-              kind: command.toolKind,
-              name: command.name,
-              appUrl: command.appUrl,
-              ...(command.location === undefined ? {} : { location: command.location }),
-            },
-            signal,
-            context.beforeProjectWrite,
-          ),
-        ).pipe(
-          Effect.flatMap((value) =>
-            projectCommandReceipt(command, value.project, { kind: command.kind, value }),
-          ),
           Effect.mapError(uncertainCommandError),
         );
       case "list-integration-token-grants":

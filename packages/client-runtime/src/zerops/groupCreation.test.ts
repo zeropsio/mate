@@ -4,8 +4,6 @@ import {
   canWriteRegistry,
   mateAwaitingRegistryLine,
   onlyTheseCanAddAProject,
-  planGroupMembership,
-  planGroupRegistration,
   resolveAddProjectVerb,
   resolveGroupGitea,
   finishMateSetupScope,
@@ -13,15 +11,19 @@ import {
   resolveMateRegistration,
   type MateRegistration,
 } from "./groupCreation.ts";
-import { parseZeropsRegistry } from "./groupRegistry.ts";
+import type { ZeropsRegistry } from "./hq/registry.ts";
 import type { MateAccessViewer } from "./mateAccess.ts";
 
-const EMPTY = parseZeropsRegistry(["mate:tool:gitea"]);
-const ACME = parseZeropsRegistry([
-  "mate:tool:gitea",
-  "mate:gn:g-acme:acme",
-  "mate:gm:g-acme:p-fen:mate",
-]);
+const ACME: ZeropsRegistry = {
+  groups: [
+    {
+      groupId: "g-acme",
+      name: "Acme",
+      slug: "g-acme",
+      projects: [{ projectId: "p-fen", kind: "mate" }],
+    },
+  ],
+};
 
 function viewer(roleCode: string, extra: Partial<MateAccessViewer> = {}): MateAccessViewer {
   return { id: "org-1", membershipId: "cu-1", roleCode, ...extra };
@@ -48,8 +50,28 @@ describe("who may add a project", () => {
     expect(verb).toEqual({ offered: false, reason: "Only Jan Novák adds a project." });
   });
 
-  it("offers it to an owner, Gitea or no Gitea — the first project stands it up", () => {
-    expect(resolveAddProjectVerb({ viewer: viewer("OWNER") })).toEqual({ offered: true });
+  it.each([
+    { hq: undefined, name: "while the member list is read" },
+    { hq: { kind: "none" } as const, name: "with no HQ — the first project stands it up" },
+    {
+      hq: { kind: "official", projectId: "hq-1", address: "https://hq" } as const,
+      name: "with its HQ",
+    },
+  ])("offers it to an owner $name", ({ hq }) => {
+    expect(resolveAddProjectVerb({ viewer: viewer("OWNER"), hq })).toEqual({ offered: true });
+  });
+
+  it("offers no owner a project over an HQ nobody can tell apart from another", () => {
+    expect(
+      resolveAddProjectVerb({
+        viewer: viewer("ADMIN"),
+        hq: { kind: "unclear", projectIds: ["hq-1", "hq-2"] },
+      }),
+    ).toEqual({
+      offered: false,
+      reason:
+        "More than one project is marked as this organization's HQ. An owner deletes the wrong mate-hq tokens in Zerops.",
+    });
   });
 
   it.each([
@@ -77,162 +99,6 @@ describe("who may add a project", () => {
     { admins: [{ id: "a" }], expected: "Only an owner or admin adds a project." },
   ])("names who can: $expected", ({ admins, expected }) => {
     expect(onlyTheseCanAddAProject(admins)).toBe(expected);
-  });
-});
-
-describe("planGroupRegistration", () => {
-  it("writes the group's name tag and keeps every other tag", () => {
-    const result = planGroupRegistration({ name: "Acme", groupId: "g-1", registry: EMPTY });
-    expect(result).toEqual({
-      ok: true,
-      plan: { groupId: "g-1", slug: "acme", tagList: ["mate:gn:g-1:acme", "mate:tool:gitea"] },
-    });
-  });
-
-  it("keeps the groups that are already there, and their memberships", () => {
-    const result = planGroupRegistration({ name: "Beta", groupId: "g-2", registry: ACME });
-    expect(result.ok && result.plan.tagList).toEqual([
-      "mate:gm:g-acme:p-fen:mate",
-      "mate:gn:g-2:beta",
-      "mate:gn:g-acme:acme",
-      "mate:tool:gitea",
-    ]);
-  });
-
-  it.each([
-    { name: "Acme", expected: "acme-2" },
-    { name: "acme!", expected: "acme-2" },
-    { name: "Ácme", expected: "acme-2" },
-  ])("numbers $name past the slug acme already taken", ({ name, expected }) => {
-    const result = planGroupRegistration({ name, groupId: "g-2", registry: ACME });
-    expect(result.ok && result.plan.slug).toBe(expected);
-  });
-
-  it.each([
-    { name: "  ", groupId: "g-2", registry: EMPTY, reason: "A project needs a name." },
-    { name: "Acme", groupId: "g-acme", registry: ACME, reason: "That project already exists." },
-  ])("refuses $reason", ({ name, groupId, registry, reason }) => {
-    expect(planGroupRegistration({ name, groupId, registry })).toEqual({ ok: false, reason });
-  });
-});
-
-describe("planGroupMembership", () => {
-  it("adds a Mate to the group", () => {
-    const result = planGroupMembership({
-      registry: ACME,
-      groupId: "g-acme",
-      projectId: "p-nova",
-      kind: "mate",
-    });
-    expect(result.ok && result.tagList).toContain("mate:gm:g-acme:p-nova:mate");
-    expect(result.ok && result.tagList).toContain("mate:gm:g-acme:p-fen:mate");
-  });
-
-  it("is a no-op for a project already in the group as that kind", () => {
-    const result = planGroupMembership({
-      registry: ACME,
-      groupId: "g-acme",
-      projectId: "p-fen",
-      kind: "mate",
-    });
-    expect(result).toEqual({
-      ok: true,
-      tagList: ["mate:gm:g-acme:p-fen:mate", "mate:gn:g-acme:acme", "mate:tool:gitea"],
-    });
-  });
-
-  it.each([
-    {
-      name: "a group that is not registered",
-      registry: ACME,
-      groupId: "g-nope",
-      projectId: "p-1",
-      kind: "mate" as const,
-      reason: "That project is not in the registry.",
-    },
-    {
-      name: "changing what an environment already is",
-      registry: ACME,
-      groupId: "g-acme",
-      projectId: "p-fen",
-      kind: "stage" as const,
-      reason: "That environment is already the group's mate.",
-    },
-    {
-      name: "a second production, naming the one that holds it",
-      registry: parseZeropsRegistry(["mate:gn:g-acme:acme", "mate:gm:g-acme:p-prod:production"]),
-      groupId: "g-acme",
-      projectId: "p-prod2",
-      kind: "production" as const,
-      reason: "This project already has a production.",
-      production: "p-prod",
-    },
-    {
-      name: "a second production beside one the platform did not say is deleted",
-      registry: parseZeropsRegistry(["mate:gn:g-acme:acme", "mate:gm:g-acme:p-prod:production"]),
-      groupId: "g-acme",
-      projectId: "p-prod2",
-      kind: "production" as const,
-      gone: ["p-elsewhere"],
-      reason: "This project already has a production.",
-      production: "p-prod",
-    },
-  ])("refuses $name", ({ registry, groupId, projectId, kind, gone, reason, production }) => {
-    expect(planGroupMembership({ registry, groupId, projectId, kind, gone })).toEqual({
-      ok: false,
-      reason,
-      production,
-    });
-  });
-
-  // Beviro's production, deleted in the Zerops GUI, kept its entry, and every production added
-  // after it was refused (2026-09-24).
-  it.each([
-    {
-      name: "replaces a production whose project the platform says is deleted",
-      tags: [
-        "mate:gn:g-acme:acme",
-        "mate:gm:g-acme:p-fen:mate",
-        "mate:gm:g-acme:p-prod:production",
-      ],
-    },
-    {
-      name: "is a no-op once the replacement is written",
-      tags: [
-        "mate:gn:g-acme:acme",
-        "mate:gm:g-acme:p-fen:mate",
-        "mate:gm:g-acme:p-prod2:production",
-      ],
-    },
-  ])("$name", ({ tags }) => {
-    const result = planGroupMembership({
-      registry: parseZeropsRegistry(tags),
-      groupId: "g-acme",
-      projectId: "p-prod2",
-      kind: "production",
-      gone: ["p-prod"],
-    });
-    expect(result.ok && result.tagList.filter((tag) => tag.startsWith("mate:gm:g-acme:"))).toEqual([
-      "mate:gm:g-acme:p-fen:mate",
-      "mate:gm:g-acme:p-prod2:production",
-    ]);
-  });
-
-  it("allows a second stage", () => {
-    const one = planGroupMembership({
-      registry: ACME,
-      groupId: "g-acme",
-      projectId: "p-stage",
-      kind: "stage",
-    });
-    expect(one.ok).toBe(true);
-    const two = planGroupMembership({
-      registry: parseZeropsRegistry(one.ok ? one.tagList : []),
-      groupId: "g-acme",
-      projectId: "p-stage-x",
-      kind: "stage",
-    });
-    expect(two.ok && two.tagList).toContain("mate:gm:g-acme:p-stage-x:stage");
   });
 });
 

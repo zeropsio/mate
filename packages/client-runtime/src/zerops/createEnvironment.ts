@@ -115,9 +115,8 @@ export interface EnvironmentCreationInput {
    */
   readonly agents?: ReadonlyArray<ZeropsAgentType>;
   /**
-   * The person writes the environment's group registration in the press (`register`): an owner
-   * or an admin, or anyone adding a stage or a production. A member's Mate waits for one of them
-   * (*Finish setup*).
+   * The press writes the environment's registration in the organization's HQ (`register`), which
+   * decides who may: an owner or an admin, or a member attaching their own new Mate.
    */
   readonly register?: boolean;
 }

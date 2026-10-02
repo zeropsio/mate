@@ -716,12 +716,9 @@ describe("an opened row's environments", () => {
 });
 
 describe("the quiet end", () => {
-  const GITEA = item("mate-gitea", ["mate:tool:gitea"], false);
-
   it("sets the tools line on the environment rows' grid, one list with them", () => {
     const html = render({
       groups: [MERGING],
-      tools: [{ item: GITEA, kind: "gitea" }],
       ungrouped: [{ item: item("zerops-ads", [], false), action: "set-up-mate" }],
       renderEnvironment: (value) => (
         <li className={ENVIRONMENT_ROW_GRID_CLASS} data-test-environment={value.project.id} />
@@ -733,13 +730,13 @@ describe("the quiet end", () => {
     const tools = end.slice(end.lastIndexOf("<li", end.indexOf('data-zerops-tools="true"')));
     expect(tools).toContain(`class="${ENVIRONMENT_ROW_GRID_CLASS}`);
     expect(tools).toContain(">Tools<");
-    expect(tools).toContain('data-test-tool="mate-gitea"');
+    expect(tools).toContain('data-test-hq-tool="true"');
   });
 
   it("is only the tools line where every project has a Mate", () => {
-    const html = render({ groups: [MERGING], onCreateTool: () => {} });
+    const html = render({ groups: [MERGING] });
     const end = html.slice(html.indexOf('data-zerops-surface="quiet-end"'));
     expect(end.match(/<li/gu)).toHaveLength(1);
-    expect(end).toContain("Add Gitea");
+    expect(end).toContain('data-test-hq-tool="true"');
   });
 });

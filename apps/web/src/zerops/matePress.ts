@@ -36,12 +36,13 @@ import {
   type ZeropsApiClient,
   type ZeropsGroupReachWrite,
   type ZeropsIntegrationToken,
+  type ZeropsMateFace,
   type TokenWriteHold,
   type ZeropsPlacedBirth,
 } from "@t3tools/client-runtime/zerops";
 import { ZeropsServiceId } from "@t3tools/client-runtime/zerops/data";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
-import type { RoleProjectKind } from "@t3tools/shared/zeropsRoles";
+import { attachToApp, type HqEndpoint } from "@t3tools/client-runtime/zerops/hq";
 import { useEffect, useMemo } from "react";
 import { create } from "zustand";
 
@@ -55,8 +56,9 @@ import {
   type LockManagerLike,
 } from "./mateLocks";
 import { giteaClientFor } from "./accountGiteaSessions";
-import { addGroupEnvironment, writeRegistryMember } from "./addGroupEnvironment";
-import { brokerGrantTokens, grantBrokerProject, projectTagsWrite } from "./brokerGrant";
+import { accountHqApi } from "./accountHq";
+import { addGroupEnvironment } from "./addGroupEnvironment";
+import { brokerGrantTokens, grantBrokerProject } from "./brokerGrant";
 import {
   pressSteps,
   pressThrough,
@@ -346,38 +348,58 @@ export interface PressInputs {
   readonly organizationId: string;
 }
 
-/** The group registration a press writes, as the person who pressed may write it. */
-export interface PressRegistration {
-  /** The account's Gitea project, where the registry lives. */
-  readonly giteaProjectId: string;
-  /** The account's Gitea, where a stage or a production is declared. */
-  readonly giteaOrigin: string | null;
+/**
+ * The group registration a press writes, as the person who pressed may write it: into the
+ * organization's HQ, a Mate with its name and face, a stage or a production with what its Gitea
+ * project still holds for it where the organization has one.
+ */
+export type PressRegistration = {
+  /** The organization's HQ, where the registry lives. */
+  readonly hq: HqEndpoint;
+  /** The project's group: its application in HQ. */
   readonly groupId: string;
-  readonly kind: RoleProjectKind;
   readonly displayName: string;
+} & (
+  | {
+      readonly kind: "mate";
+      /** Its face as picked; none where the press gives it its name's own. */
+      readonly mate: { readonly name: string; readonly face: ZeropsMateFace | undefined };
+    }
+  | {
+      readonly kind: "stage" | "production";
+      /** The organization's Gitea project, where the broker is, if it has one. */
+      readonly giteaProjectId: string | undefined;
+      /** The account's Gitea, where a stage or a production is declared. */
+      readonly giteaOrigin: string | null;
+    }
+);
+
+/**
+ * A Mate's face as HQ records it: `<tint>:<shape>`, as its project's `mate:face:` tag spells it;
+ * empty where none was picked.
+ */
+export function hqMateFace(face: ZeropsMateFace | undefined): string {
+  return face === undefined ? "" : `${face.tint}:${face.shape}`;
 }
 
 /**
- * The `register` step: a Mate's registry entry and the broker's grant where an older broker needs
- * one; for a stage or a production, `addGroupEnvironment` — the entry, the grant, its deploy token
- * and its declaration. Each write reads what is there first, so asking again writes nothing twice.
+ * The `register` step: a Mate attached to its application in HQ, and the broker's grant where an
+ * older broker needs one; for a stage or a production, `addGroupEnvironment` — the attachment,
+ * the grant, its deploy token and its declaration. Each write reads what is there first, so asking
+ * again writes nothing twice.
  */
 export function pressRegistration(
   inputs: PressInputs,
   registration: PressRegistration,
 ): (projectId: string) => Promise<void> {
-  const writeTags = projectTagsWrite(inputs.data, inputs.organizationId);
+  const hq = accountHqApi(inputs.client, inputs.organizationId, registration.hq);
   return async (projectId) => {
     if (registration.kind === "mate") {
-      const written = await writeRegistryMember({
-        client: inputs.client,
-        writeTags,
-        giteaProjectId: registration.giteaProjectId,
-        groupId: registration.groupId,
+      await attachToApp(hq, registration.groupId, {
         projectId,
-        member: "mate",
+        kind: "mate",
+        mate: { name: registration.mate.name, face: hqMateFace(registration.mate.face) },
       });
-      if (written.kind === "refused") throw new Error(written.refusal.reason);
       const grant = await grantBrokerProject({
         client: brokerGrantTokens(inputs.data.runtime),
         clientId: inputs.organizationId,
@@ -389,7 +411,7 @@ export function pressRegistration(
     const added = await addGroupEnvironment({
       client: inputs.client,
       tokens: brokerGrantTokens(inputs.data.runtime),
-      writeTags,
+      hq,
       gitea: registration.giteaOrigin === null ? null : giteaClientFor(registration.giteaOrigin),
       clientId: inputs.organizationId,
       giteaProjectId: registration.giteaProjectId,
@@ -556,10 +578,9 @@ export function pressPlatform(
         (entry) => entry.key === PROJECT_ENV_ISOLATION_KEY,
       )?.content,
     markClosedOff: async (projectId) => {
-      const written = await runZeropsCommand(
+      await runZeropsCommand(
         data.runtime.commands.updateProjectTags(projectOf(projectId), { kind: "closed-off" }),
       );
-      if (written.kind === "refused") throw new Error(written.refusal.reason);
     },
     register: async (projectId) => {
       await options.register?.(projectId);

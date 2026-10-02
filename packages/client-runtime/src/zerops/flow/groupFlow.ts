@@ -43,7 +43,7 @@ import {
 import type { GroupEnvironmentRowInput } from "../groupDeploys.ts";
 import type { DeployedVersion, EnvironmentServiceState } from "../groupRows.ts";
 import type { ZeropsEnvironmentRole } from "../groups.ts";
-import type { ZeropsRegistryGroup } from "../groupRegistry.ts";
+import type { ZeropsRegistryGroup } from "../hq/registry.ts";
 import type { Freshness, Known, Shown, Stamp } from "../knowledge/known.ts";
 import {
   knownPresentation,

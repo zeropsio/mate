@@ -97,7 +97,6 @@ describe("same-origin Zerops identity bootstrap", () => {
       "createProject",
       "importProject",
       "importServicesIntoProject",
-      "createToolProject",
       "deleteProject",
     ]) {
       expect(projectsPageSource).not.toContain(`client.${method}(`);
@@ -790,15 +789,11 @@ describe("a status word's hand", () => {
 });
 
 describe("the tools line", () => {
-  it("names a tool after the project it opens, never after the tool", () => {
-    // `toolProjectName` deliberately does not call it "Gitea" — the project
-    // holds the broker and the groups' runners as well — so a line saying
-    // "Gitea" named something the account does not contain, and sent anybody
-    // who went looking for it in Zerops to a project that is not there.
+  it("is the organization's HQ, whose project is no project of the page's", () => {
+    expect(projectsPageSource).toContain("hqTool={<ZeropsHqTool />}");
     expect(projectsPageSource).toContain(
-      "const name = candidate.project.name || TOOL_LABEL[kind];",
+      ".filter((candidate) => candidate.project.id !== hq?.projectId)",
     );
-    expect(projectsPageSource).not.toContain("name={TOOL_LABEL[kind]}");
   });
 });
 

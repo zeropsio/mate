@@ -1,5 +1,5 @@
 /**
- * Giving the broker's Zerops token one more project, and registering a Mate.
+ * Giving the broker's Zerops token one more project, in an organization that still has one.
  *
  * The broker's own Zerops token (`docs/vocabulary.md`, "the broker's token"):
  * org `BASIC_USER`, which reaches every project of the org, so a new stage,
@@ -25,37 +25,12 @@ import {
   type TokenWriteHold,
   type ZeropsApiClient,
 } from "@t3tools/client-runtime/zerops";
-import {
-  ZeropsOrganizationId,
-  type OrganizationRef,
-  type ProjectTagPatch,
-  type ProjectTagWrite,
-} from "@t3tools/client-runtime/zerops/data";
+import { ZeropsOrganizationId, type OrganizationRef } from "@t3tools/client-runtime/zerops/data";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 
 import { tokenWrites } from "./tokenWriteLock";
 import { integrationTokensFromGrantMetadata } from "./useZeropsGroupReach";
 import { runZeropsCommand, type ZeropsDataContextValue } from "./zeropsDataContext";
-
-/**
- * `updateProjectTags` on one organization's projects (DESIGN §2.B B2): the registry writes here
- * are patches the TagWriter applies to the Gitea project's tags as they are, never a list
- * computed from a registry read earlier.
- */
-export type ProjectTagsWrite = (
-  projectId: string,
-  patch: ProjectTagPatch,
-) => Promise<ProjectTagWrite>;
-
-export function projectTagsWrite(
-  data: Pick<ZeropsDataContextValue, "runtime" | "projectRef">,
-  organizationId: string,
-): ProjectTagsWrite {
-  return (projectId, patch) =>
-    runZeropsCommand(
-      data.runtime.commands.updateProjectTags(data.projectRef(organizationId, projectId), patch),
-    );
-}
 
 export type BrokerGrantOutcome =
   /** The broker reaches the project — written now, or held already. */
@@ -174,88 +149,4 @@ export async function grantBrokerProject(input: {
   } catch (cause) {
     return { kind: "failed", reason: zeropsErrorMessage(cause) };
   }
-}
-
-export type MateRegistrationOutcome =
-  /** The registry entry could not be written; the Mate still waits for an owner. */
-  | { readonly kind: "registry-failed"; readonly reason: string }
-  /** The Mate is registered; what came of the broker's grant is beside it. */
-  | { readonly kind: "registered"; readonly grant: BrokerGrantOutcome };
-
-/**
- * Registers a Mate: its `mate:gm:{group}:{project}:mate` entry, then the
- * broker's grant on its project (guide 4.2, D20).
- *
- * The registry goes first because it is what the broker's rights loop reads;
- * a grant on a project the loop never looks at would be a grant to nothing.
- * A grant that fails is not a failed registration: the entry is there, the
- * loop reports the Mate it cannot reach, and the next registration attempt
- * gives the broker the project again.
- */
-export async function registerMateProject(input: {
-  readonly client: BrokerGrantClient;
-  readonly writeTags: ProjectTagsWrite;
-  readonly clientId: string;
-  /** The account's Gitea project, where the registry lives. */
-  readonly giteaProjectId: string;
-  readonly groupId: string;
-  /** The Mate's project. */
-  readonly projectId: string;
-  readonly signal?: AbortSignal | undefined;
-}): Promise<MateRegistrationOutcome> {
-  try {
-    const written = await input.writeTags(input.giteaProjectId, {
-      kind: "registry-member",
-      groupId: input.groupId,
-      projectId: input.projectId,
-      member: "mate",
-    });
-    if (written.kind === "refused") {
-      return { kind: "registry-failed", reason: written.refusal.reason };
-    }
-  } catch (cause) {
-    return { kind: "registry-failed", reason: zeropsErrorMessage(cause) };
-  }
-  return {
-    kind: "registered",
-    grant: await grantBrokerProject({
-      client: input.client,
-      clientId: input.clientId,
-      projectId: input.projectId,
-      ...(input.signal === undefined ? {} : { signal: input.signal }),
-    }),
-  };
-}
-
-/**
- * Registers a Mate in its group and says what is outstanding, if anything: the
- * card's *Register in {group}* for a member's Mate (guide 4.2). A Mate's birth
- * makes the same two writes as its `tags` and `registry` steps
- * (`zeropsBirths.ts`).
- *
- * `null` once the entry is written and the broker reaches the project, or when
- * the account has no broker to reach it with; the words to show otherwise. A
- * grant that failed leaves the Mate registered, and registering again retries
- * the grant.
- */
-export async function registerMateInGroup(input: {
-  readonly client: BrokerGrantClient;
-  readonly writeTags: ProjectTagsWrite;
-  readonly clientId: string;
-  /** The account's Gitea project, where the registry lives. */
-  readonly giteaProjectId: string;
-  readonly groupId: string;
-  /** The Mate's project. */
-  readonly projectId: string;
-}): Promise<string | null> {
-  const outcome = await registerMateProject({
-    client: input.client,
-    writeTags: input.writeTags,
-    clientId: input.clientId,
-    giteaProjectId: input.giteaProjectId,
-    groupId: input.groupId,
-    projectId: input.projectId,
-  });
-  if (outcome.kind === "registry-failed") return outcome.reason;
-  return outcome.grant.kind === "failed" ? outcome.grant.reason : null;
 }

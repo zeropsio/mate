@@ -15,7 +15,7 @@ import type { ProjectRef } from "../data/types.ts";
 import type { ForgeFact, ForgeStore } from "../forge/forgeStore.ts";
 import type { GiteaCommit, GiteaCommitStatus, GiteaPullRequest } from "../giteaClient.ts";
 import type { GroupEnvironmentTier } from "../groupEnvironments.ts";
-import type { ZeropsRegistryGroup } from "../groupRegistry.ts";
+import type { ZeropsRegistryGroup } from "../hq/registry.ts";
 import type { Shown } from "../knowledge/known.ts";
 import { GROUP_REPOSITORY } from "../release.ts";
 import { RECIPE_TIER_PATHS } from "../recipeTier.ts";

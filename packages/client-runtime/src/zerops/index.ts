@@ -159,34 +159,22 @@ export {
 } from "./autoConnect.ts";
 export {
   deriveGiteaState,
-  formatToolTag,
   GITEA_ADMIN_PASSWORD_ENV_KEY,
   GITEA_ADMIN_TOKEN_ENV_KEY,
   GITEA_ADMIN_USER_COMMAND,
   GITEA_BROKER_SERVICE,
-  GITEA_BROKER_TOKEN_NAME,
   GITEA_ADMIN_USER_ENV_KEY,
   GITEA_HTTP_PORT,
-  planGiteaProjectSetup,
   partitionZeropsToolProjects,
   readZeropsToolKind,
   type ZeropsGiteaPhase,
-  type ZeropsGiteaSetupAction,
-  type ZeropsGiteaSetupInput,
   type ZeropsGiteaProbe,
   type ZeropsGiteaSetupStep,
   type ZeropsGiteaState,
   type ZeropsGiteaStepState,
   type ZeropsToolKind,
   type ZeropsToolProject,
-  toolProjectName,
 } from "./tools.ts";
-export {
-  buildGiteaImportYaml,
-  GITEA_IMPORT_PLACEHOLDERS,
-  GITEA_MATE_REPOSITORY,
-  type GiteaImportInput,
-} from "./giteaRecipe.ts";
 export {
   resolvePrimaryConversation,
   type ZeropsConversationCandidate,
@@ -250,17 +238,10 @@ export {
   ZEROPS_BOT_NAME_POOL,
 } from "./bots.ts";
 export {
-  deriveGroupSlug,
-  formatZeropsRegistryTags,
-  GROUP_SLUG_MAX_LENGTH,
-  GROUP_SLUG_PATTERN,
-  parseZeropsRegistry,
-  projectTagWriteBody,
-  toRoleRegistry,
   type ZeropsRegistry,
   type ZeropsRegistryGroup,
   type ZeropsRegistryProject,
-} from "./groupRegistry.ts";
+} from "./hq/registry.ts";
 export {
   planProjectIsolation,
   projectIsolationStepLabel,
@@ -557,19 +538,15 @@ export {
 export {
   canWriteRegistry,
   onlyTheseCanAddAProject,
-  planGroupMembership,
   FINISH_MATE_SETUP_VERB,
   finishMateSetupScope,
   finishMateSetupVerb,
-  planGroupRegistration,
+  HQ_UNCLEAR,
   mateAwaitingRegistryLine,
   resolveAddProjectVerb,
   resolveGroupGitea,
   resolveMateRegistration,
   type GroupGiteaState,
-  type GroupMembershipResult,
-  type GroupRegistrationPlan,
-  type GroupRegistrationResult,
   type GroupVerb,
   type MateRegistration,
 } from "./groupCreation.ts";

@@ -57,9 +57,9 @@
  * ## Line-based, like everything else that touches these documents
  *
  * The tiers are written for people to read and carry comments that explain the
- * shape; a YAML round trip through a serializer drops every one of them. The
- * same reasoning as `giteaRecipe.ts`, and each service's own indentation — a
- * person's two spaces or zcp's four — is the one worked against.
+ * shape; a YAML round trip through a serializer drops every one of them, and
+ * each service's own indentation — a person's two spaces or zcp's four — is the
+ * one worked against.
  *
  * Pure: no network, no clock, no platform globals (rule R1).
  *

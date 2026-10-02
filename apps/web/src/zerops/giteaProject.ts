@@ -2,11 +2,12 @@
  * The account's Gitea project, found in the inventory once and read the same
  * way everywhere.
  *
- * Three screens need it — the projects page (every Mate's credential), the
- * consent page (which brokers are really this account's) and *Add project*
- * (where the registry lives) — and each used to find it for itself. The URL and
- * the broker's URL are derived from the project and its services rather than
- * guessed, so an account on a devel region or behind a custom domain is read.
+ * What an organization made before its HQ still holds there — its groups' Git,
+ * the broker, the deploy keys — is read from it until those move into HQ
+ * (T7–T11); an organization whose HQ was born with its first project has none.
+ * The URL and the broker's URL are derived from the project and its services
+ * rather than guessed, so an account on a devel region or behind a custom
+ * domain is read.
  */
 
 import {
@@ -53,21 +54,21 @@ function findAccountGitea(
 
 /**
  * The account's Gitea in the org, from the inventory as held: a grant that withholds the Gitea
- * project must not end the wiring that rests on it — its session, the registry, registration
- * (DESIGN law 5, M7). What it finds drives wiring; nothing renders its project from it.
+ * project must not end the wiring that rests on it — its session and its reads (DESIGN law 5,
+ * M7). What it finds drives wiring; nothing renders its project from it.
  */
 export function useAccountGitea(clientId: string | undefined): AccountGitea | undefined {
   const held = useContext(HeldInventoryContext);
   const found = useMemo(() => findAccountGitea(held, clientId), [clientId, held]);
-  // The inventory loses the Gitea project for a moment when its socket is replaced: the registry,
-  // the Gitea session and every project's reads rest on this, so a blink must not end them
+  // The inventory loses the Gitea project for a moment when its socket is replaced: the Gitea
+  // session and every project's reads rest on this, so a blink must not end them
   // (`heldThroughBlink.ts`). No inventory at all is no scope — signed out — and holds nothing.
   return useHeldThroughBlink(found, held === null ? undefined : (clientId ?? ""));
 }
 
 /**
  * Whether the account holds a Gitea project in the org, its services read or not, withheld or
- * not: *Add Gitea* is offered only while it holds none.
+ * not: while it does, what is read from it is still coming.
  */
 export function useAccountHoldsGitea(clientId: string | undefined): boolean {
   const held = useContext(HeldInventoryContext);

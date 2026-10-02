@@ -1,4 +1,4 @@
-import { parseZeropsRegistry } from "./groupRegistry.ts";
+import type { ZeropsRegistry } from "./hq/registry.ts";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
@@ -54,6 +54,20 @@ const STAGE: GroupEnvironment = {
   sources: ["main"],
   deploy: undefined,
 };
+
+/** HQ's registry of group `g-1`, with these members. */
+const registryOf = (
+  members: ReadonlyArray<readonly [string, "mate" | "stage" | "production"]>,
+): ZeropsRegistry => ({
+  groups: [
+    {
+      groupId: "g-1",
+      name: "Acme",
+      slug: "g-1",
+      projects: members.map(([projectId, kind]) => ({ projectId, kind })),
+    },
+  ],
+});
 
 describe("readGroupEnvironments", () => {
   it("reads every environment, its tier, its project and what feeds it", () => {
@@ -445,10 +459,9 @@ describe("deriveEnvironmentName", () => {
 });
 
 describe("halfMadeGroupEnvironments", () => {
-  const registry = parseZeropsRegistry([
-    "mate:gn:g-1:acme",
-    "mate:gm:g-1:p-mate:mate",
-    "mate:gm:g-1:p-stage:stage",
+  const registry = registryOf([
+    ["p-mate", "mate"],
+    ["p-stage", "stage"],
   ]);
   const projects = [
     { id: "p-mate", name: "Acme - dev", tagList: ["mate:g:g-1", "mate:role:dev", "mate"] },
@@ -476,10 +489,9 @@ describe("halfMadeGroupEnvironments", () => {
   it("names nothing in a group whose environments.yaml is not read yet", () => {
     // A cold load: every environment of every group read as undeclared until its document came,
     // and the page repaired each one, no write needed (measured 2026-10-01: six repairs, 36 reads).
-    const registered = parseZeropsRegistry([
-      "mate:gn:g-1:acme",
-      "mate:gm:g-1:p-stage:stage",
-      "mate:gm:g-1:p-prod:production",
+    const registered = registryOf([
+      ["p-stage", "stage"],
+      ["p-prod", "production"],
     ]);
     expect(
       halfMadeGroupEnvironments({ projects, registry: registered, declared: new Map() }),
@@ -496,10 +508,9 @@ describe("halfMadeGroupEnvironments", () => {
 
   it("leaves a group the registry does not know alone", () => {
     const declared = new Map([["g-1", new Set(["p-stage", "p-prod"])]]);
-    const registered = parseZeropsRegistry([
-      "mate:gn:g-1:acme",
-      "mate:gm:g-1:p-stage:stage",
-      "mate:gm:g-1:p-prod:production",
+    const registered = registryOf([
+      ["p-stage", "stage"],
+      ["p-prod", "production"],
     ]);
     expect(halfMadeGroupEnvironments({ projects, registry: registered, declared })).toEqual([]);
   });
@@ -508,10 +519,9 @@ describe("halfMadeGroupEnvironments", () => {
     // Made before a job deployed: registered and declared, and its first job
     // is refused until somebody who may mint a token opens the page.
     const declared = new Map([["g-1", new Set(["p-stage", "p-prod"])]]);
-    const registered = parseZeropsRegistry([
-      "mate:gn:g-1:acme",
-      "mate:gm:g-1:p-stage:stage",
-      "mate:gm:g-1:p-prod:production",
+    const registered = registryOf([
+      ["p-stage", "stage"],
+      ["p-prod", "production"],
     ]);
     expect(
       halfMadeGroupEnvironments({

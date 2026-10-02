@@ -97,7 +97,7 @@ import {
   settleDeletingMates,
   useDeletingMates,
 } from "./deletingMates";
-import { useAccountGitea } from "./giteaProject";
+import { useAccountHq } from "./accountHq";
 import { useProjectDialog } from "./inventoryContext";
 import { captureAccountLifetime } from "./accountLifetime";
 import { rememberMenu, withoutMate } from "./menuMemory";
@@ -262,7 +262,8 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
   // their own list, not a fixed order of their own.
   const projectOrder = useProjectOrderOptions();
 
-  const giteaProjectId = useAccountGitea(activeOrganization?.id)?.projectId;
+  const accountHq = useAccountHq(activeOrganization?.id);
+  const hq = accountHq.hq.kind === "official" ? accountHq.hq : undefined;
   const presses = useMatePresses();
   // A press interrupted before its close-off, on a Mate made in any browser: the store's markers,
   // at no cost of their own, for anyone who could finish it — its own adder too.
@@ -570,14 +571,20 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
             harden,
             // A Mate in no group — claimed from the pool — is hardened and closed off, no more.
             registration:
-              !whole || giteaProjectId === undefined || groupId === undefined
+              !whole || hq === undefined || groupId === undefined
                 ? null
                 : {
-                    giteaProjectId,
-                    giteaOrigin: null,
+                    hq,
                     groupId,
                     kind: "mate",
                     displayName: candidate.project.name,
+                    mate: {
+                      name: tags.bot ?? candidate.project.name,
+                      face:
+                        tags.face?.tint === undefined || tags.face.shape === undefined
+                          ? undefined
+                          : { tint: tags.face.tint, shape: tags.face.shape },
+                    },
                   },
             isCurrent: captureAccountLifetime(),
           });
@@ -590,8 +597,8 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
     [
       activeOrganization,
       client,
-      giteaProjectId,
       groupTree.groups,
+      hq,
       listedTokens,
       organizationRef,
       projectRef,

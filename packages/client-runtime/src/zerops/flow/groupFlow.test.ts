@@ -4,7 +4,7 @@ import { project, service } from "../data/__fixtures__/index.ts";
 import type { GiteaCommitStatus, GiteaPullRequest, GiteaTag } from "../giteaClient.ts";
 import type { GroupEnvironment, GroupEnvironmentTier } from "../groupEnvironments.ts";
 import { deployedVersion, deployStatusContext, environmentRow } from "../groupRows.ts";
-import type { ZeropsRegistryGroup } from "../groupRegistry.ts";
+import type { ZeropsRegistryGroup } from "../hq/registry.ts";
 import type { FailureReason, Known, Shown } from "../knowledge/known.ts";
 import { RELEASE_NOTHING_NEW_ON_MAIN, releaseStatusContext } from "../release.ts";
 import { CHECKING_RELEASE } from "./release.ts";
@@ -45,9 +45,9 @@ const failed = (failure: FailureReason): Known<never> => ({
 
 const ENTRY: ZeropsRegistryGroup = {
   groupId: "g1",
+  name: "Harbor",
   slug: "harbor",
   projects: [],
-  matesMayRelease: false,
 };
 
 const DECLARATIONS: ReadonlyArray<GroupEnvironment> = [

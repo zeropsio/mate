@@ -34,7 +34,6 @@ import { buildThreadRouteParams } from "~/threadRoutes";
 import { useUiStateStore } from "~/uiStateStore";
 
 import type { ZeropsAgentActivity } from "./agentActivity";
-import { useAccountGitea } from "./giteaProject";
 import { useMateActions } from "./useMateActions";
 import { useMutedMates } from "./mutedMates";
 import type { ZeropsCandidatePresentation } from "./useZeropsCandidates";
@@ -73,14 +72,10 @@ export function useSidebarMateMenus(input: {
   ) => MateRowActions | undefined;
   readonly dialogs: ReactNode;
 } {
-  const { activeOrganization, status } = useZeropsSession();
+  const { status } = useZeropsSession();
   const { serverVersions } = useZeropsContainers();
-  const giteaProjectId = useAccountGitea(activeOrganization?.id)?.projectId;
   const [registryWanted, setRegistryWanted] = useState(false);
-  const registry = useZeropsRegistry({
-    giteaProjectId,
-    enabled: registryWanted && status === "signed-in",
-  });
+  const registry = useZeropsRegistry({ enabled: registryWanted && status === "signed-in" });
   const mateActions = useMateActions({ registry, serverVersions });
   const { muted, toggle } = useMutedMates();
   const markThreadUnread = useUiStateStore((store) => store.markThreadUnread);
