@@ -119,8 +119,9 @@ export class Structure extends Context.Service<
     ) => Effect.Effect<MateRecord, WriteError>;
     readonly read: (userId: string) => Effect.Effect<StructureRead, SqlError | ZeropsError>;
     /**
-     * Follows Zerops: the rows of projects it no longer has (missing from the org's list, and
-     * refused by id) go; answers how many. Nothing moves while Zerops cannot say.
+     * Follows Zerops: what HQ holds of projects it no longer has (missing from the org's list, and
+     * refused by id) goes, Mate credentials included; answers how many projects. Nothing moves
+     * while Zerops cannot say.
      */
     readonly reconcile: Effect.Effect<number, NotLeader | SqlError | ZeropsError>;
     /** Ticks after every change of the structure, starting with the current tick. */
@@ -181,19 +182,30 @@ export const structureLayer = (options: {
           ),
           (found) => found.flat(),
         );
-      /** In a fenced write: the rows of `gone` go, their Mate records first. */
+      /**
+       * In a fenced write: what HQ holds of the projects `gone` goes — their rows, their Mate
+       * records first, their Mates' challenges, and their Mate credentials are revoked
+       * (`mateCredentials.ts`).
+       */
       const dropRows = (gone: ReadonlyArray<string>) =>
         gone.length === 0
           ? Effect.void
-          : Effect.andThen(
+          : Effect.all([
               sql`DELETE FROM hq_mate WHERE ${sql.in("project_id", gone)}`,
               sql`DELETE FROM hq_app_project WHERE ${sql.in("project_id", gone)}`,
-            );
+              sql`DELETE FROM hq_mate_challenge WHERE ${sql.in("project_id", gone)}`,
+              sql`
+                UPDATE hq_mate_credential SET revoked_at = now()
+                WHERE ${sql.in("project_id", gone)} AND revoked_at IS NULL`,
+            ]);
 
       const reconcile = Effect.gen(function* () {
         const listed = new Set((yield* roles.fresh).projects.map((project) => project.id));
         const rows = yield* sql<{ readonly project_id: string }>`
-          SELECT project_id FROM hq_app_project UNION SELECT project_id FROM hq_mate`;
+          SELECT project_id FROM hq_app_project
+          UNION SELECT project_id FROM hq_mate
+          UNION SELECT project_id FROM hq_mate_challenge
+          UNION SELECT project_id FROM hq_mate_credential WHERE revoked_at IS NULL`;
         const gone = yield* goneOf(
           rows.map((row) => row.project_id).filter((projectId) => !listed.has(projectId)),
         );

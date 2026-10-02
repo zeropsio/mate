@@ -8,8 +8,9 @@
  *
  * Both are 256 random bits and HQ keeps only their SHA-256. A challenge is bound to one project,
  * lives two minutes and enrolls once. A credential is bound to its project and does not expire; a
- * project holds one live credential, so issuing the next one revokes it. Writes are fenced by the
- * leader.
+ * project holds one live credential, so issuing the next one revokes it; a project gone from Zerops
+ * loses its credential and its challenges at the structure's reconcile (`structure.ts`). Writes are
+ * fenced by the leader.
  *
  * @module mateCredentials
  */

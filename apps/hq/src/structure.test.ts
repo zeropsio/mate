@@ -479,6 +479,44 @@ describe("structure", () => {
         ),
     );
 
+    it.effect("a project gone from Zerops loses its Mate credential and its challenges", () =>
+      withStructure((view) =>
+        Effect.gen(function* () {
+          const structure = yield* Structure;
+          const sql = yield* SqlClient.SqlClient;
+          // Mates that proved their project, in no application.
+          yield* sql`
+            INSERT INTO hq_mate_credential (credential_hash, project_id)
+            VALUES ('hash-other', 'P_OTHER'), ('hash-mate', 'P_MATE')`;
+          yield* sql`
+            INSERT INTO hq_mate_challenge (nonce_hash, project_id, expires_at)
+            VALUES ('nonce-other', 'P_OTHER', now() + interval '2 minutes'),
+                   ('nonce-mate', 'P_MATE', now() + interval '2 minutes')`;
+          const held = Effect.all([
+            Effect.map(
+              sql<{ readonly project_id: string }>`
+                SELECT project_id FROM hq_mate_credential WHERE revoked_at IS NULL
+                ORDER BY project_id`,
+              (rows) => rows.map((row) => row.project_id),
+            ),
+            Effect.map(
+              sql<{ readonly project_id: string }>`
+                SELECT project_id FROM hq_mate_challenge ORDER BY project_id`,
+              (rows) => rows.map((row) => row.project_id),
+            ),
+          ]);
+          assert.strictEqual(yield* structure.reconcile, 0);
+
+          yield* Ref.update(view, (current) => ({
+            ...current,
+            projects: current.projects.filter((candidate) => candidate.id !== "P_OTHER"),
+          }));
+          assert.strictEqual(yield* structure.reconcile, 1);
+          assert.deepStrictEqual(yield* held, [["P_MATE"], ["P_MATE"]]);
+        }),
+      ),
+    );
+
     it.effect("an org owner or admin renames an application; a taken name is a conflict", () =>
       withStructure(() =>
         Effect.gen(function* () {
