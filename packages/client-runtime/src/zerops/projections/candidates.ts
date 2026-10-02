@@ -14,9 +14,11 @@ import type { EnvironmentId } from "@t3tools/contracts";
 
 import type { ZeropsService } from "../api.ts";
 import {
+  addressSeenAfter,
   deriveZeropsCandidates,
   isZcpService,
   type AddressClock,
+  type AddressSeen,
   type ZeropsCandidate,
 } from "../candidates.ts";
 import { readZeropsGroupTags } from "../groups.ts";
@@ -89,12 +91,56 @@ export function projectCandidates(
 export function selectCandidates(
   projects: Known<ReadonlyArray<ProjectRecord>>,
   servicesOf: (project: ProjectRef) => Known<ReadonlyArray<ServiceRecord>>,
+  clock?: AddressClock,
 ): Known<ReadonlyArray<CandidateRow>> {
   if (projects.state !== "known") return projects;
   return candidateListing(
     projects,
-    projects.value.map((record) => projectCandidates(record, servicesOf)),
+    projects.value.map((record) => projectCandidates(record, servicesOf, clock)),
   );
+}
+
+/**
+ * What a reader remembers of its containers' addresses, by service id (`AddressSeen`). It outlives
+ * every read — a listing that blinks unread, a project not admitted for a moment — so a wait never
+ * begins again and a container once seen with its address never waits for it.
+ */
+export type AddressMemory = ReadonlyMap<string, AddressSeen>;
+
+export const NO_ADDRESS_MEMORY: AddressMemory = new Map();
+
+/** The clock a reader derives its rows by, over what it remembers. */
+export const addressClockOf = (memory: AddressMemory, nowMs: number): AddressClock => ({
+  nowMs,
+  addressSeen: (serviceId) => memory.get(serviceId),
+});
+
+/** The memory after rows a reader derived; the same memory when they taught it nothing. */
+export function rememberAddresses(
+  memory: AddressMemory,
+  rows: ReadonlyArray<ZeropsCandidate>,
+): AddressMemory {
+  let next: Map<string, AddressSeen> | null = null;
+  for (const row of rows) {
+    if (row.service === undefined) continue;
+    const held = memory.get(row.service.id);
+    const kept = addressSeenAfter(row, held);
+    if (kept === held) continue;
+    next ??= new Map(memory);
+    if (kept === undefined) next.delete(row.service.id);
+    else next.set(row.service.id, kept);
+  }
+  return next ?? memory;
+}
+
+/** When the first of the rows' address waits ends, wall ms; null when none waits. */
+export function addressWaitEnd(rows: ReadonlyArray<ZeropsCandidate>): number | null {
+  let end: number | null = null;
+  for (const row of rows) {
+    const until = row.addressAwaited?.until;
+    if (until !== undefined && (end === null || until < end)) end = until;
+  }
+  return end;
 }
 
 /**

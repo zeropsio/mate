@@ -257,14 +257,38 @@ export function addressWaitEnds(
   return Math.min(sinceMs, created + FIRST_BUILD_GIVE_UP_MS) + ADDRESS_GRACE_MS;
 }
 
+/**
+ * What a reader holds of a container's address: that it saw the container with one, or when it
+ * first saw it ACTIVE without one. Kept for as long as the reader lives (`addressSeenAfter`).
+ */
+export type AddressSeen =
+  | { readonly addressed: true }
+  | { readonly addressed: false; readonly since: number };
+
 /** The clock a reader judges an address wait by (`addressWaitEnds`). */
 export interface AddressClock {
   readonly nowMs: number;
-  /**
-   * When this reader first saw the container ACTIVE without its address, by service id; one it
-   * has not seen so is first seen now.
-   */
-  readonly addressAwaitedSince?: (serviceId: string) => number | undefined;
+  /** What this reader holds of the container's address, by service id; none: first seen now. */
+  readonly addressSeen?: (serviceId: string) => AddressSeen | undefined;
+}
+
+/**
+ * What a reader keeps of a candidate's address once it derived it, from what it held. A container
+ * seen with its address is seen with it for good: one whose access is switched off later has no
+ * public address, never a wait. A wait keeps its first moment, past its end too, so a wait that
+ * ended never begins again. A container never seen with its address and never waiting for it —
+ * old, or its creation not known — leaves nothing to keep.
+ */
+export function addressSeenAfter(
+  candidate: Pick<ZeropsCandidate, "containerOrigin" | "addressAwaited">,
+  held: AddressSeen | undefined,
+): AddressSeen | undefined {
+  if (held?.addressed === true) return held;
+  if (candidate.containerOrigin !== undefined) return { addressed: true };
+  if (held !== undefined) return held;
+  return candidate.addressAwaited === undefined
+    ? undefined
+    : { addressed: false, since: candidate.addressAwaited.since };
 }
 
 /**
@@ -336,16 +360,18 @@ export function deriveZeropsCandidates(
 
     const origin = containerOrigin(project, service);
     if (!origin.ok) {
-      // A young container ACTIVE before its address landed is on its way to it, never without one.
-      if (clock !== undefined) {
-        const since = clock.addressAwaitedSince?.(service.id) ?? clock.nowMs;
+      // A young container ACTIVE before its address landed is on its way to it, never without one
+      // — unless its reader saw it with its address: its access is off.
+      const seen = clock?.addressSeen?.(service.id);
+      if (clock !== undefined && seen?.addressed !== true) {
+        const since = seen?.since ?? clock.nowMs;
         const until = addressWaitEnds(service, since);
         if (until !== null && clock.nowMs < until) {
           return {
             key,
             project,
             group: "provisioning",
-            reason: `its address is on its way (${origin.reason})`,
+            reason: "its address is on its way",
             service: candidateService,
             addressAwaited: { since, until },
           };

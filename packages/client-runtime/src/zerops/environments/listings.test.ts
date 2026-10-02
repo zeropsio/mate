@@ -195,11 +195,7 @@ describe("candidateListingsAtom: a young container ACTIVE before its address lan
         hostname: "zcp",
         type: { versionName: "zcp@1", displayName: "Zerops Mate", category: "runtime" },
       }),
-      lifecycle: observed({
-        status: "ACTIVE",
-        createdAt: CREATED_AT,
-        updatedAt: null,
-      }),
+      lifecycle: observed({ status: "ACTIVE", createdAt: CREATED_AT, updatedAt: null }),
       routing: observed({
         subdomainAccess,
         ports: [{ port: 8080, protocol: "TCP", scheme: "http", httpSupport: true }],
@@ -223,9 +219,23 @@ describe("candidateListingsAtom: a young container ACTIVE before its address lan
       ...(slice === undefined ? {} : { project: slice }),
     }) as unknown;
 
-  const listingOver = (services: ServiceRecord) => {
+  /** The organization's projects not read (again) yet: the listing holds no rows. */
+  const unreadProjects = {
+    value: [],
+    query: { status: "pending", descriptor: { organization } },
+    observation: { required: [], optional: [] },
+  } as unknown;
+
+  const admitted = (yes: boolean) => ({
+    status: "verified",
+    projects: yes ? [{ project: project(), role: "OWNER" }] : [],
+  });
+
+  const listingOver = () => {
     const registry = AtomRegistry.make();
-    const servicesRead = Atom.make(read([services], project()));
+    const servicesRead = Atom.make<unknown>(read([], project()));
+    const projectsRead = Atom.make<unknown>(read([projectRecord]));
+    const access = Atom.make<unknown>(admitted(true));
     const data = {
       access: {
         view: Atom.make({
@@ -243,18 +253,30 @@ describe("candidateListingsAtom: a young container ACTIVE before its address lan
         }),
       },
       reads: {
-        access: Atom.make({
-          status: "verified",
-          projects: [{ project: project(), role: "OWNER" }],
-        }),
-        projectsOf: () => Atom.make(read([projectRecord])),
+        access,
+        projectsOf: () => projectsRead,
         servicesOf: () => servicesRead,
       },
     } as unknown as ManagedZeropsDataRuntime;
     const listings = candidateListingsAtom(data);
     registry.mount(listings);
     return {
-      push: (next: ServiceRecord) => registry.set(servicesRead, read([next], project())),
+      apply: (event: Event) => {
+        switch (event) {
+          case "address-off":
+          case "address-on":
+            return registry.set(servicesRead, read([zcp(event === "address-on")], project()));
+          case "projects-unread":
+            return registry.set(projectsRead, unreadProjects);
+          case "projects-back":
+            return registry.set(projectsRead, read([projectRecord]));
+          case "not-admitted":
+          case "admitted":
+            return registry.set(access, admitted(event === "admitted"));
+          case "tick":
+            return undefined;
+        }
+      },
       row: () => {
         const listing = registry.get(listings)[0]!.listing;
         return listing.state === "known" ? listing.value[0] : undefined;
@@ -262,45 +284,120 @@ describe("candidateListingsAtom: a young container ACTIVE before its address lan
     };
   };
 
+  type Event =
+    | "address-off"
+    | "address-on"
+    | "projects-unread"
+    | "projects-back"
+    | "not-admitted"
+    | "admitted"
+    /** Nothing read changes: only the clock runs. */
+    | "tick";
+
+  /** The row after a step: its group and its wait's first moment, since creation; none without a row. */
+  type Seen =
+    | { readonly group: "provisioning"; readonly since: number }
+    | { readonly group: "ready" | "unavailable" }
+    | { readonly presence: "unknown" }
+    | "no-row";
+
   beforeEach(() => {
     vi.useFakeTimers({ toFake: ["Date", "setTimeout", "clearTimeout"] });
-    vi.setSystemTime(CREATED + 110_000);
+    vi.setSystemTime(CREATED);
   });
   afterEach(() => {
     vi.useRealTimers();
   });
 
-  it("is on its way, its wait dated where this listing first saw it, through a push", () => {
-    const account = listingOver(zcp(false));
-    expect(account.row()).toMatchObject({
-      group: "provisioning",
-      addressAwaited: { since: CREATED + 110_000 },
-    });
+  const AFTER = 110_000 + ADDRESS_GRACE_MS;
 
-    vi.setSystemTime(CREATED + 113_000);
-    account.push(zcp(false));
-
-    expect(account.row()).toMatchObject({
-      group: "provisioning",
-      addressAwaited: { since: CREATED + 110_000 },
-    });
-  });
-
-  it("is ready the moment its address lands", () => {
-    const account = listingOver(zcp(false));
-    vi.setSystemTime(CREATED + 115_300);
-    account.push(zcp(true));
-    expect(account.row()).toMatchObject({ group: "ready" });
-    expect(account.row()?.addressAwaited).toBeUndefined();
-  });
-
-  it("reads as the platform leaves it once its wait ends, with no read changing", () => {
-    const account = listingOver(zcp(false));
-    expect(account.row()?.group).toBe("provisioning");
-
-    vi.advanceTimersByTime(ADDRESS_GRACE_MS);
-
-    expect(account.row()).toMatchObject({ group: "unavailable", reason: expect.any(String) });
-    expect(account.row()?.addressAwaited).toBeUndefined();
+  it.each<{
+    readonly case: string;
+    readonly steps: ReadonlyArray<readonly [atMs: number, event: Event, seen: Seen]>;
+  }>([
+    {
+      case: "on its way from the moment it was first seen so, through a push",
+      steps: [
+        [110_000, "address-off", { group: "provisioning", since: 110_000 }],
+        [113_000, "address-off", { group: "provisioning", since: 110_000 }],
+      ],
+    },
+    {
+      case: "ready the moment its address lands",
+      steps: [
+        [110_000, "address-off", { group: "provisioning", since: 110_000 }],
+        [115_300, "address-on", { group: "ready" }],
+      ],
+    },
+    {
+      case: "as the platform leaves it once its wait ends, with no read changing",
+      steps: [
+        [110_000, "address-off", { group: "provisioning", since: 110_000 }],
+        [AFTER, "tick", { group: "unavailable" }],
+      ],
+    },
+    {
+      case: "its wait never begins again once it ended, whatever is pushed after",
+      steps: [
+        [110_000, "address-off", { group: "provisioning", since: 110_000 }],
+        [AFTER, "tick", { group: "unavailable" }],
+        [240_000, "address-off", { group: "unavailable" }],
+        [361_000, "tick", { group: "unavailable" }],
+        [400_000, "address-off", { group: "unavailable" }],
+      ],
+    },
+    {
+      case: "a young Mate seen with its address whose access is switched off has none",
+      steps: [
+        [110_000, "address-on", { group: "ready" }],
+        [20 * 60_000, "address-off", { group: "unavailable" }],
+        [20 * 60_000 + 10_000, "address-off", { group: "unavailable" }],
+      ],
+    },
+    {
+      case: "its wait keeps its first moment through the organization's read blinking",
+      steps: [
+        [110_000, "address-off", { group: "provisioning", since: 110_000 }],
+        [112_000, "projects-unread", "no-row"],
+        [114_000, "projects-back", { group: "provisioning", since: 110_000 }],
+      ],
+    },
+    {
+      case: "its wait keeps its first moment through its project's admission blinking",
+      steps: [
+        [110_000, "address-off", { group: "provisioning", since: 110_000 }],
+        [112_000, "not-admitted", { presence: "unknown" }],
+        [114_000, "admitted", { group: "provisioning", since: 110_000 }],
+      ],
+    },
+    {
+      case: "an ended wait stays ended through a blink",
+      steps: [
+        [110_000, "address-off", { group: "provisioning", since: 110_000 }],
+        [AFTER, "tick", { group: "unavailable" }],
+        [240_000, "projects-unread", "no-row"],
+        [242_000, "projects-back", { group: "unavailable" }],
+      ],
+    },
+  ])("$case", ({ steps }) => {
+    const account = listingOver();
+    let elapsed = 0;
+    for (const [atMs, event, seen] of steps) {
+      vi.advanceTimersByTime(atMs - elapsed);
+      elapsed = atMs;
+      account.apply(event);
+      const row = account.row();
+      if (seen === "no-row") {
+        expect(row).toBeUndefined();
+      } else if ("presence" in seen) {
+        expect(row?.presence).toBe(seen.presence);
+      } else {
+        expect({ atMs, group: row?.group, since: row?.addressAwaited?.since }).toEqual({
+          atMs,
+          group: seen.group,
+          since: "since" in seen ? CREATED + seen.since : undefined,
+        });
+      }
+    }
   });
 });
