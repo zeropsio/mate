@@ -19,6 +19,7 @@ import {
   readHqHealth,
   type HqApi,
   type HqBirthDeps,
+  type HqCoreArtifact,
   type HqEndpoint,
   type HqHealth,
   type OfficialHq,
@@ -183,27 +184,44 @@ export function useHqStanding(address: string | undefined): HqStanding {
   return standing ?? { kind: "unknown" };
 }
 
-/** Core as this build carries it, same-origin. */
-async function bundledCore(): Promise<{
-  readonly archive: Uint8Array<ArrayBuffer>;
-  readonly zeropsYaml: string;
-}> {
-  const base = `${appBasePath()}/hq-core`;
+/**
+ * Core's archive as gzip, whatever happened to it on the way: a static server may serve a gzip
+ * file with `Content-Encoding: gzip`, and the browser then hands over what it unpacked (measured on
+ * the rig, 2026-10-02: Core's build failed on the plain tar). An archive without gzip's magic
+ * bytes is packed again here.
+ */
+async function asGzip(bytes: Uint8Array<ArrayBuffer>): Promise<Uint8Array<ArrayBuffer>> {
+  if (bytes[0] === 0x1f && bytes[1] === 0x8b) return bytes;
+  const packed = new Blob([bytes]).stream().pipeThrough(new CompressionStream("gzip"));
+  return new Uint8Array(await new Response(packed).arrayBuffer());
+}
+
+/**
+ * Core as this build carries it under `base` (`apps/hq/scripts/pack-core.ts`): its archive, by a
+ * name no server takes for an encoding, and the `zerops.yml` it deploys with.
+ */
+export async function readBundledCore(
+  fetch: typeof globalThis.fetch,
+  base: string,
+): Promise<HqCoreArtifact> {
   const [archive, yaml] = await Promise.all([
-    fetch(`${base}/core.tar.gz`, { cache: "no-store" }),
+    fetch(`${base}/core.tgz.bin`, { cache: "no-store" }),
     fetch(`${base}/zerops.yml`, { cache: "no-store" }),
   ]);
   if (!archive.ok || !yaml.ok) {
     throw new Error("This build of the app carries no HQ to deploy.");
   }
-  return { archive: new Uint8Array(await archive.arrayBuffer()), zeropsYaml: await yaml.text() };
+  return {
+    archive: await asGzip(new Uint8Array(await archive.arrayBuffer())),
+    zeropsYaml: await yaml.text(),
+  };
 }
 
 /** What an HQ birth acts through, from this tab. */
 export function hqBirthDeps(client: ZeropsApiClient): HqBirthDeps {
   return {
     platform: client,
-    core: bundledCore,
+    core: () => readBundledCore((input, init) => fetch(input, init), `${appBasePath()}/hq-core`),
     health: (address) => readHqHealth((input, init) => fetch(input, init), address),
     sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
     now: () => Date.now(),

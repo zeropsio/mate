@@ -1,8 +1,10 @@
 /**
  * Builds HQ Core and packs it into a web build, which carries it same-origin under `hq-core/`:
- * the archive an HQ birth deploys (`core.tar.gz`: `dist/main.mjs` and `zerops.yml`, as the rig's
- * deploy packs it) and the `zerops.yml` it deploys it with. The web and the Core it stands up are
- * then of one commit.
+ * the archive an HQ birth deploys (`core.tgz.bin`: a gzipped tar of `dist/main.mjs` and
+ * `zerops.yml`, as the rig's deploy packs it) and the `zerops.yml` it deploys it with. The web and
+ * the Core it stands up are then of one commit. The archive is not named `*.gz`: a static server
+ * serves that with `Content-Encoding: gzip`, and the browser unpacks it on the way (measured on the
+ * rig, 2026-10-02).
  *
  * The bundle is stamped `HQ_BUILD` when the caller sets one, else `<short sha>.<UTC>`, so `/health`
  * says which build an HQ runs.
@@ -51,7 +53,7 @@ try {
   // COPYFILE_DISABLE: macOS tar would add AppleDouble `._*` entries.
   NodeChildProcess.execFileSync(
     "tar",
-    ["czf", NodePath.join(target, "core.tar.gz"), "-C", stage, "dist", "zerops.yml"],
+    ["czf", NodePath.join(target, "core.tgz.bin"), "-C", stage, "dist", "zerops.yml"],
     {
       env: { ...process.env, COPYFILE_DISABLE: "1" },
     },
