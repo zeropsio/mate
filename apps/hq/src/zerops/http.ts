@@ -1,10 +1,10 @@
 /**
- * ZeropsApi over the REST API. Each request has a time limit; what it answers is classified from
- * the measured refusals (`401` unauthorized, `403` forbidden, `400 *NotFound` not_found, any other
- * `4xx` invalid) or is unavailable (no answer, `429`, `5xx`, a body not in the expected shape). An
- * unavailable read is tried again, a bounded number of times; so is `user/list`'s `400
- * userNotFound`, which the member list answers about once in eight calls for a valid credential
- * (ledger, 2026-09-22) and is no verdict.
+ * ZeropsApi and ZeropsDeploy over the REST API. Each request has a time limit; what it answers is
+ * classified from the measured refusals (`401` unauthorized, `403` forbidden, `400 *NotFound`
+ * not_found, any other `4xx` invalid) or is unavailable (no answer, `429`, `5xx`, a body not in the
+ * expected shape). An unavailable read is tried again, a bounded number of times; so is
+ * `user/list`'s `400 userNotFound`, which the member list answers about once in eight calls for a
+ * valid credential (ledger, 2026-09-22) and is no verdict. A write is asked once.
  *
  * @module zerops/http
  */
@@ -20,15 +20,20 @@ import * as HttpClientRequest from "effect/unstable/http/HttpClientRequest";
 
 import {
   type ZeropsApi,
+  type ZeropsDeploy,
   type ZeropsError,
   type ZeropsMember,
+  type ZeropsProcess,
   type ZeropsProject,
   ZeropsRefused,
+  type ZeropsService,
   ZeropsUnavailable,
 } from "./api.ts";
 import { parseEnvFile } from "./envFile.ts";
 
 const REQUEST_TIMEOUT = Duration.seconds(10);
+/** An archive's upload: a repository's whole tree. */
+const UPLOAD_TIMEOUT = Duration.minutes(5);
 /** Up to three more tries, 250 ms apart and doubling. */
 const RETRIES = 3;
 const BACKOFF = Schedule.exponential(Duration.millis(250));
@@ -86,6 +91,54 @@ const TokenRow = Schema.Struct({
   createdByUser: Schema.optionalKey(Schema.NullOr(Schema.String)),
 });
 const EnvFile = Schema.Struct({ envFile: Schema.String });
+const ServiceRow = Schema.Struct({
+  id: Schema.String,
+  projectId: Schema.String,
+  name: Schema.String,
+  status: Schema.String,
+  isSystem: Schema.Boolean,
+  subdomainAccess: Schema.Boolean,
+  ports: Schema.optionalKey(
+    Schema.NullOr(
+      Schema.Array(
+        Schema.Struct({
+          scheme: Schema.optionalKey(Schema.NullOr(Schema.String)),
+          httpRouting: Schema.optionalKey(Schema.NullOr(Schema.Boolean)),
+        }),
+      ),
+    ),
+  ),
+  userData: Schema.optionalKey(
+    Schema.NullOr(
+      Schema.Array(
+        Schema.Struct({
+          key: Schema.String,
+          content: Schema.optionalKey(Schema.NullOr(Schema.String)),
+        }),
+      ),
+    ),
+  ),
+  activeAppVersion: Schema.optionalKey(Schema.NullOr(Schema.Struct({ id: Schema.String }))),
+});
+const ServicePage = Schema.Struct({
+  list: Schema.Array(ServiceRow),
+  total: Schema.optionalKey(Schema.Number),
+});
+const Created = Schema.Struct({ id: Schema.String });
+const Imported = Schema.Struct({
+  serviceStacks: Schema.Array(Schema.Struct({ name: Schema.String })),
+});
+const ProcessRow = Schema.Struct({
+  status: Schema.Literals(["PENDING", "RUNNING", "FINISHED", "FAILED", "CANCELED"]),
+  error: Schema.optionalKey(
+    Schema.NullOr(
+      Schema.Struct({
+        code: Schema.optionalKey(Schema.NullOr(Schema.String)),
+        message: Schema.optionalKey(Schema.NullOr(Schema.String)),
+      }),
+    ),
+  ),
+});
 
 /** A member list row is a token when its address is the token's own (`token-<id>@zerops.io`). */
 const TOKEN_EMAIL = /^token-[^@]+@zerops\.io$/iu;
@@ -106,6 +159,33 @@ const toProject = (row: typeof ProjectRow.Type): ZeropsProject => ({
   publicZone: row.publicZone,
 });
 
+const toService = (row: typeof ServiceRow.Type): ZeropsService => {
+  const userData = (key: string) =>
+    (row.userData ?? []).find((entry) => entry.key === key)?.content ?? "";
+  const namedId = userData("appVersionId");
+  return {
+    id: row.id,
+    projectId: row.projectId,
+    name: row.name,
+    status: row.status,
+    isSystem: row.isSystem,
+    subdomainAccess: row.subdomainAccess,
+    http: (row.ports ?? []).some(
+      (port) => port.httpRouting === true || port.scheme === "http" || port.scheme === "https",
+    ),
+    named: namedId === "" ? null : { id: namedId, name: userData("appVersionName") },
+    activeVersionId: row.activeAppVersion?.id ?? null,
+  };
+};
+
+const toProcess = (row: typeof ProcessRow.Type): ZeropsProcess => ({
+  status: row.status,
+  failure:
+    row.status === "FAILED" || row.status === "CANCELED"
+      ? (row.error?.message ?? row.error?.code ?? null)
+      : null,
+});
+
 const reasonOf = (status: number, code: string): ZeropsRefused["reason"] => {
   if (status === 401) return "unauthorized";
   if (status === 403) return "forbidden";
@@ -113,66 +193,80 @@ const reasonOf = (status: number, code: string): ZeropsRefused["reason"] => {
   return "invalid";
 };
 
+/**
+ * One request as the credential, answered within `timeout`: its body decoded, with the API's own
+ * clock (`Date` header) of the answer — or a verdict, or no answer. `transient` codes of a `400`
+ * are no verdict and read as unavailable.
+ */
+const ask = <A>(
+  client: HttpClient.HttpClient,
+  operation: string,
+  credential: Redacted.Redacted,
+  request: HttpClientRequest.HttpClientRequest,
+  schema: Schema.Decoder<A>,
+  options: {
+    readonly timeout?: Duration.Duration;
+    readonly transient?: ReadonlyArray<string>;
+  } = {},
+): Effect.Effect<{ readonly value: A; readonly dateMs: number | undefined }, ZeropsError> =>
+  Effect.gen(function* () {
+    const unavailable = (message: string) => new ZeropsUnavailable({ operation, message });
+    const response = yield* client
+      .execute(
+        request.pipe(
+          HttpClientRequest.bearerToken(Redacted.value(credential)),
+          HttpClientRequest.acceptJson,
+        ),
+      )
+      .pipe(
+        Effect.timeout(options.timeout ?? REQUEST_TIMEOUT),
+        Effect.mapError(() => unavailable("The Zerops API could not be reached in time.")),
+      );
+    const body = yield* response.json.pipe(Effect.orElseSucceed((): unknown => null));
+    const status = response.status;
+    if (status >= 200 && status < 300) {
+      const value = yield* Schema.decodeUnknownEffect(schema)(body).pipe(
+        Effect.mapError(() => unavailable("The Zerops API answered an unexpected shape.")),
+      );
+      return { value, dateMs: epochMs(response.headers["date"]) };
+    }
+    const code = Option.match(decodeErrorBody(body), {
+      onNone: () => "",
+      onSome: (decoded) => decoded.error.code,
+    });
+    if (
+      status === 429 ||
+      status >= 500 ||
+      (status === 400 && (options.transient ?? []).includes(code))
+    ) {
+      return yield* unavailable(`The Zerops API answered ${String(status)} ${code}.`);
+    }
+    return yield* new ZeropsRefused({ operation, reason: reasonOf(status, code), status, code });
+  });
+
 export const makeZeropsApiHttp = (
   baseUrl: string,
 ): Effect.Effect<ZeropsApi["Service"], never, HttpClient.HttpClient> =>
   Effect.gen(function* () {
     const client = yield* HttpClient.HttpClient;
 
-    /**
-     * One GET, decoded, with the API's own clock (`Date` header) of the answer; `transient` codes of
-     * a `400` are no verdict and read as unavailable.
-     */
+    /** One GET, tried again while unavailable. */
     const get = <A>(
       operation: string,
       credential: Redacted.Redacted,
       path: string,
       schema: Schema.Decoder<A>,
       transient: ReadonlyArray<string> = [],
-    ): Effect.Effect<{ readonly value: A; readonly dateMs: number | undefined }, ZeropsError> => {
-      const unavailable = (message: string) => new ZeropsUnavailable({ operation, message });
-      const once = Effect.gen(function* () {
-        const response = yield* client
-          .execute(
-            HttpClientRequest.get(`${baseUrl}${path}`).pipe(
-              HttpClientRequest.bearerToken(Redacted.value(credential)),
-              HttpClientRequest.acceptJson,
-            ),
-          )
-          .pipe(
-            Effect.timeout(REQUEST_TIMEOUT),
-            Effect.mapError(() => unavailable("The Zerops API could not be reached in time.")),
-          );
-        const body = yield* response.json.pipe(Effect.orElseSucceed((): unknown => null));
-        const status = response.status;
-        if (status >= 200 && status < 300) {
-          const value = yield* Schema.decodeUnknownEffect(schema)(body).pipe(
-            Effect.mapError(() => unavailable("The Zerops API answered an unexpected shape.")),
-          );
-          return { value, dateMs: epochMs(response.headers["date"]) };
-        }
-        const code = Option.match(decodeErrorBody(body), {
-          onNone: () => "",
-          onSome: (decoded) => decoded.error.code,
-        });
-        if (status === 429 || status >= 500 || (status === 400 && transient.includes(code))) {
-          return yield* unavailable(`The Zerops API answered ${String(status)} ${code}.`);
-        }
-        return yield* new ZeropsRefused({
-          operation,
-          reason: reasonOf(status, code),
-          status,
-          code,
-        });
-      });
-      return once.pipe(
+    ) =>
+      ask(client, operation, credential, HttpClientRequest.get(`${baseUrl}${path}`), schema, {
+        transient,
+      }).pipe(
         Effect.retry({
           schedule: BACKOFF,
           times: RETRIES,
           while: (error) => error._tag === "ZeropsUnavailable",
         }),
       );
-    };
 
     const projects = (orgId: string) => (credential: Redacted.Redacted) =>
       Effect.gen(function* () {
@@ -243,5 +337,116 @@ export const makeZeropsApiHttp = (
             readAtMs: dateMs,
           };
         }),
+      services: (projectId) => (credential) =>
+        get(
+          "services",
+          credential,
+          `/project/${projectId}/service-stack?limit=${String(PAGE)}`,
+          ServicePage,
+        ).pipe(
+          Effect.flatMap(({ value }) =>
+            value.list.length < (value.total ?? value.list.length)
+              ? new ZeropsUnavailable({
+                  operation: "services",
+                  message: `The project lists more than ${String(PAGE)} services.`,
+                })
+              : Effect.succeed(value.list.map(toService)),
+          ),
+        ),
+      service: (serviceId) => (credential) =>
+        get("service", credential, `/service-stack/${serviceId}`, ServiceRow).pipe(
+          Effect.map(({ value }) => toService(value)),
+        ),
+    };
+  });
+
+export const makeZeropsDeployHttp = (
+  baseUrl: string,
+): Effect.Effect<ZeropsDeploy["Service"], never, HttpClient.HttpClient> =>
+  Effect.gen(function* () {
+    const client = yield* HttpClient.HttpClient;
+    /** One write, asked once: a second ask could make a second version. */
+    const send = <A>(
+      operation: string,
+      credential: Redacted.Redacted,
+      request: HttpClientRequest.HttpClientRequest,
+      schema: Schema.Decoder<A>,
+      timeout?: Duration.Duration,
+    ) =>
+      Effect.map(
+        ask(
+          client,
+          operation,
+          credential,
+          request,
+          schema,
+          timeout === undefined ? {} : { timeout },
+        ),
+        ({ value }) => value,
+      );
+    return {
+      createAppVersion: (serviceId, name) => (credential) =>
+        send(
+          "createAppVersion",
+          credential,
+          HttpClientRequest.post(`${baseUrl}/service-stack/${serviceId}/app-version`).pipe(
+            HttpClientRequest.bodyJsonUnsafe({ name }),
+          ),
+          Created,
+        ).pipe(Effect.map(({ id }) => ({ id }))),
+      upload: (appVersionId, archive) => (credential) =>
+        send(
+          "upload",
+          credential,
+          HttpClientRequest.put(`${baseUrl}/app-version/${appVersionId}/upload`).pipe(
+            HttpClientRequest.bodyUint8Array(archive, "application/octet-stream"),
+          ),
+          Schema.Unknown,
+          UPLOAD_TIMEOUT,
+        ).pipe(Effect.asVoid),
+      buildAndDeploy: (appVersionId, zeropsYaml, setup) => (credential) =>
+        send(
+          "buildAndDeploy",
+          credential,
+          HttpClientRequest.put(`${baseUrl}/app-version/${appVersionId}/build-and-deploy`).pipe(
+            HttpClientRequest.bodyJsonUnsafe({ zeropsYaml, zeropsYamlSetup: setup }),
+          ),
+          Created,
+        ).pipe(Effect.map(({ id }) => ({ processId: id }))),
+      process: (processId) => (credential) =>
+        ask(
+          client,
+          "process",
+          credential,
+          HttpClientRequest.get(`${baseUrl}/process/${processId}`),
+          ProcessRow,
+        ).pipe(
+          Effect.retry({
+            schedule: BACKOFF,
+            times: RETRIES,
+            while: (error) => error._tag === "ZeropsUnavailable",
+          }),
+          Effect.map(({ value }) => toProcess(value)),
+        ),
+      enableSubdomainAccess: (serviceId) => (credential) =>
+        send(
+          "enableSubdomainAccess",
+          credential,
+          HttpClientRequest.put(`${baseUrl}/service-stack/${serviceId}/enable-subdomain-access`),
+          Created,
+        ).pipe(Effect.map(({ id }) => ({ processId: id }))),
+      importServices: (projectId, yaml) => (credential) =>
+        send(
+          "importServices",
+          credential,
+          HttpClientRequest.post(`${baseUrl}/project/${projectId}/service-stack/import`).pipe(
+            HttpClientRequest.bodyJsonUnsafe({ yaml }),
+          ),
+          Imported,
+        ).pipe(
+          Effect.map(({ serviceStacks }) => ({
+            services: serviceStacks.map((stack) => stack.name),
+          })),
+        ),
     };
   });

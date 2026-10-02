@@ -13,7 +13,9 @@ import {
   ticketFor,
   untilHealth,
 } from "../test/harness/runningCore.ts";
+import { rowsWhere } from "../test/harness/mates.ts";
 import { tempPostgresLayer } from "../test/harness/tempPostgres.ts";
+import type { ZeropsOwnToken } from "./zerops/api.ts";
 import { failure } from "./api.ts";
 import { NotLeader } from "./leader.ts";
 import { ZeropsUnavailable } from "./zerops/api.ts";
@@ -74,10 +76,272 @@ describe("HQ API", () => {
                     },
                   },
                 ],
+                environments: [],
               },
             ],
           });
         }),
+    );
+
+    it.effect("attaches an environment named as asked, and refuses a name main refused", () =>
+      Effect.gen(function* () {
+        const { call } = yield* startCore(true);
+        yield* untilHealth(call, "active");
+        const session = yield* sessionFor(call, "door-owner");
+        const created = yield* call("POST", "/api/apps", { session, body: { name: "Shop" } });
+        const appId = (created.body as { readonly id: string }).id;
+        const attach = (projectId: string, kind: string, name: string) =>
+          Effect.map(
+            call("POST", `/api/apps/${appId}/projects`, {
+              session,
+              body: { projectId, kind, environment: { name } },
+            }),
+            (response) => [response.status, response.body],
+          );
+        assert.deepStrictEqual(
+          [
+            yield* attach("P_MATE", "production", "Live"),
+            yield* attach("P_MATE", "production", "live"),
+          ],
+          [
+            [400, { code: "invalid", reason: "environment_name_invalid" }],
+            [201, { appId, projectId: "P_MATE", kind: "production" }],
+          ],
+        );
+        const read = (yield* call("GET", "/api/structure", { session })).body as {
+          readonly apps: ReadonlyArray<{
+            readonly projects: ReadonlyArray<unknown>;
+            readonly environments: ReadonlyArray<unknown>;
+          }>;
+        };
+        assert.deepStrictEqual(
+          [read.apps[0]?.projects, read.apps[0]?.environments],
+          [
+            [{ projectId: "P_MATE", name: "P_MATE", kind: "production", mate: null }],
+            [
+              {
+                projectId: "P_MATE",
+                tier: "production",
+                name: "live",
+                sources: ["release"],
+                order: 1,
+                keyHeld: false,
+                keyInvalid: false,
+                deploys: [],
+              },
+            ],
+          ],
+        );
+      }),
+    );
+
+    it.effect("keeps an environment's deploy token, answering only that it holds one", () =>
+      Effect.gen(function* () {
+        const { call, fake } = yield* startCore(true);
+        yield* untilHealth(call, "active");
+        const session = yield* sessionFor(call, "door-owner");
+        const created = yield* call("POST", "/api/apps", { session, body: { name: "Shop" } });
+        const appId = (created.body as { readonly id: string }).id;
+        yield* call("POST", `/api/apps/${appId}/projects`, {
+          session,
+          body: { projectId: "P_MATE", kind: "stage", environment: { name: "stage" } },
+        });
+        const key = (over: Partial<ZeropsOwnToken> = {}) => ({
+          id: "T_KEY",
+          name: "deploy-stage",
+          orgId: "ORG",
+          roleCode: "NO_ACCESS",
+          canCreateProjects: false,
+          canViewFinances: false,
+          canEditFinances: false,
+          projects: [{ projectId: "P_MATE", roleCode: "BASIC_USER" }],
+          createdMs: 0,
+          createdByUser: "owner",
+          ...over,
+        });
+        fake.tokens.set("key-stage", key());
+        // One key per way a token reaches more than its project (main E02).
+        const scope = {
+          "key-other-org": key({ orgId: "ORG2" }),
+          "key-two-projects": key({
+            projects: [
+              { projectId: "P_MATE", roleCode: "BASIC_USER" },
+              { projectId: "HQ_PROJECT", roleCode: "BASIC_USER" },
+            ],
+          }),
+          "key-admin-on-p": key({ projects: [{ projectId: "P_MATE", roleCode: "ADMIN" }] }),
+          "key-org-read": key({ roleCode: "READ_ONLY" }),
+          "key-creates-projects": key({ canCreateProjects: true }),
+          "key-sees-finances": key({ canViewFinances: true }),
+        };
+        for (const [value, record] of Object.entries(scope)) fake.tokens.set(value, record);
+        // dev develops Shop through a Basic user grant on its stage's project: no Full access.
+        const project = fake.projects.find((candidate) => candidate.id === "P_MATE")!;
+        Object.assign(project, { userRoles: [{ clientUserId: "C-dev", roleCode: "BASIC_USER" }] });
+        const dev = yield* sessionFor(call, "door-dev");
+        const put = (name: string, token: string, as = session) =>
+          Effect.map(
+            call("PUT", `/api/apps/${appId}/environments/${name}/deploy-token`, {
+              session: as,
+              body: { token },
+            }),
+            (response) => [response.status, response.body],
+          );
+        const SCOPE = [400, { code: "invalid", reason: "deploy_token_scope" }];
+        assert.deepStrictEqual(
+          [
+            yield* put("production", "key-stage"),
+            yield* put("stage", "key-bogus"),
+            ...(yield* Effect.forEach(Object.keys(scope), (value) => put("stage", value))),
+            yield* put("stage", "key-stage", dev),
+            yield* put("stage", "key\r\nX-Injected: 1"),
+            yield* put("stage", "k".repeat(513)),
+            yield* put("stage", "key-stage"),
+          ],
+          [
+            [404, { code: "environment_not_found", reason: "environment_not_found" }],
+            [400, { code: "invalid", reason: "deploy_token_refused" }],
+            SCOPE,
+            SCOPE,
+            SCOPE,
+            SCOPE,
+            SCOPE,
+            SCOPE,
+            [403, { code: "forbidden", reason: "not_project_admin" }],
+            [400, { code: "invalid" }],
+            [400, { code: "invalid" }],
+            [204, null],
+          ],
+        );
+        const read = yield* call("GET", "/api/structure", { session });
+        assert.deepStrictEqual(
+          (
+            read.body as {
+              readonly apps: ReadonlyArray<{ readonly environments: ReadonlyArray<unknown> }>;
+            }
+          ).apps[0]?.environments,
+          [
+            {
+              projectId: "P_MATE",
+              tier: "stage",
+              name: "stage",
+              sources: ["main"],
+              order: 1,
+              keyHeld: true,
+              keyInvalid: false,
+              deploys: [],
+            },
+          ],
+        );
+        assert.notInclude(new TextDecoder().decode(read.bytes), "key-stage");
+      }),
+    );
+
+    // Fable round 9: an application's environments and deploys go to whoever reads its changes. A
+    // Read only grant shows the application, and none of them; a developer's snapshot carries them.
+    it.effect(
+      "a snapshot carries an application's environments only to who reads its changes",
+      () =>
+        Effect.gen(function* () {
+          const { call, fake, socket } = yield* startCore(true);
+          yield* untilHealth(call, "active");
+          const owner = yield* sessionFor(call, "door-owner");
+          const created = yield* call("POST", "/api/apps", {
+            session: owner,
+            body: { name: "Shop" },
+          });
+          const appId = (created.body as { readonly id: string }).id;
+          yield* call("POST", `/api/apps/${appId}/projects`, {
+            session: owner,
+            body: { projectId: "P_MATE", kind: "stage", environment: { name: "stage" } },
+          });
+          const project = fake.projects.find((candidate) => candidate.id === "P_MATE")!;
+          const dev = yield* sessionFor(call, "door-dev");
+          const snapshotAs = (roleCode: string) =>
+            Effect.gen(function* () {
+              Object.assign(project, { userRoles: [{ clientUserId: "C-dev", roleCode }] });
+              // The roles' cache (200 ms here) has the grant once it passes.
+              yield* Effect.sleep(Duration.millis(400));
+              const watching = yield* socket(
+                `/api/structure/ws?ticket=${yield* ticketFor(call, dev)}`,
+              );
+              const snapshot = (yield* watching.next("snapshot")) as {
+                readonly apps: ReadonlyArray<{ readonly environments: ReadonlyArray<unknown> }>;
+              };
+              yield* watching.close;
+              return snapshot.apps.map((app) => app.environments);
+            });
+          assert.deepStrictEqual(yield* snapshotAs("READ_ONLY"), [[]]);
+          assert.deepStrictEqual(yield* snapshotAs("BASIC_USER"), [
+            [
+              {
+                projectId: "P_MATE",
+                tier: "stage",
+                name: "stage",
+                sources: ["main"],
+                order: 1,
+                keyHeld: false,
+                keyInvalid: false,
+                deploys: [],
+              },
+            ],
+          ]);
+        }),
+    );
+
+    // "Run again" (main B36): whoever develops the application asks a failed deploy again; one who
+    // sees it through a Read only grant may not (Fable round 9).
+    it.effect("asks a failed deploy again for a developer, never for a Read only grant", () =>
+      Effect.gen(function* () {
+        const { call, fake, url } = yield* startCore(true);
+        yield* untilHealth(call, "active");
+        const owner = yield* sessionFor(call, "door-owner");
+        const created = yield* call("POST", "/api/apps", {
+          session: owner,
+          body: { name: "Shop" },
+        });
+        const appId = (created.body as { readonly id: string }).id;
+        yield* call("POST", `/api/apps/${appId}/projects`, {
+          session: owner,
+          body: { projectId: "P_MATE", kind: "stage", environment: { name: "stage" } },
+        });
+        const sha = "a".repeat(40);
+        yield* rowsWhere(
+          url,
+          `INSERT INTO hq_deploy (project_id, service, sha, repo, state, failure, message)
+           VALUES ('P_MATE', 'web', '${sha}', 'web', 'failed', 'job', 'failed: Build failed')
+           RETURNING 1`,
+          (rows) => rows.length === 1,
+        );
+        const project = fake.projects.find((candidate) => candidate.id === "P_MATE")!;
+        Object.assign(project, { userRoles: [{ clientUserId: "C-dev", roleCode: "READ_ONLY" }] });
+        const dev = yield* sessionFor(call, "door-dev");
+        const ask = (session: string, body: unknown) =>
+          Effect.map(
+            call("POST", `/api/apps/${appId}/environments/stage/redeploy`, { session, body }),
+            (response) => [response.status, response.body],
+          );
+        assert.deepStrictEqual(
+          [
+            yield* ask(dev, { service: "web", sha }),
+            yield* ask(owner, { service: "web", sha: "not-a-sha" }),
+            yield* ask(owner, { service: "web", sha }),
+            yield* ask(owner, { service: "web", sha }),
+          ],
+          [
+            [403, { code: "forbidden", reason: "not_app_developer" }],
+            [400, { code: "invalid" }],
+            [202, null],
+            [409, { code: "conflict", reason: "deploy_not_failed" }],
+          ],
+        );
+        yield* rowsWhere(
+          url,
+          `SELECT 1 FROM hq_deploy
+           WHERE sha = '${sha}' AND state = 'pending' AND requested_by = 'owner'`,
+          (rows) => rows.length === 1,
+        );
+      }),
     );
 
     it.effect(
@@ -265,7 +529,7 @@ describe("HQ API", () => {
           ).id;
           assert.deepStrictEqual(yield* owner.next("change"), {
             key: appId,
-            value: { id: appId, name: "Shop", projects: [] },
+            value: { id: appId, name: "Shop", projects: [], environments: [] },
           });
           yield* call("POST", `/api/apps/${appId}/projects`, {
             session,
@@ -284,6 +548,7 @@ describe("HQ API", () => {
                   mate: { ...mate, standupRequestedBy: null, closedOff: false },
                 },
               ],
+              environments: [],
             },
           });
           assert.deepStrictEqual(
@@ -303,7 +568,7 @@ describe("HQ API", () => {
           );
           assert.deepStrictEqual(yield* owner.next("change"), {
             key: appId,
-            value: { id: appId, name: "Shop", projects: [] },
+            value: { id: appId, name: "Shop", projects: [], environments: [] },
           });
           // Three pings answered: still open.
           yield* Effect.sleep(Duration.millis(1100));
@@ -358,7 +623,7 @@ describe("HQ API", () => {
           );
           assert.deepStrictEqual(yield* owner.next("change"), {
             key: appId,
-            value: { id: appId, name: "Store", projects: [] },
+            value: { id: appId, name: "Store", projects: [], environments: [] },
           });
 
           const moved = yield* call("PUT", "/api/projects/P_MATE/app", {
@@ -379,6 +644,7 @@ describe("HQ API", () => {
                   id: appId,
                   name: "Store",
                   projects: [{ projectId: "P_MATE", name: "P_MATE", kind: "mate", mate: adaView }],
+                  environments: [],
                 },
               },
             ],
@@ -395,7 +661,7 @@ describe("HQ API", () => {
             [yield* owner.next("change"), yield* owner.next("change")] as Array<object>,
             [
               { key: "ungrouped", value: lone },
-              { key: appId, value: { id: appId, name: "Store", projects: [] } },
+              { key: appId, value: { id: appId, name: "Store", projects: [], environments: [] } },
             ],
           );
           yield* owner.close;
@@ -436,6 +702,18 @@ describe("HQ API", () => {
             id: appId,
             name: "Shop",
             projects: [{ projectId: "P_MATE", name: "P_MATE", kind: "stage", mate: null }],
+            environments: [
+              {
+                projectId: "P_MATE",
+                tier: "stage",
+                name: "p-mate",
+                sources: ["main"],
+                order: 1,
+                keyHeld: false,
+                keyInvalid: false,
+                deploys: [],
+              },
+            ],
           },
         });
         yield* devSocket.close;
@@ -458,7 +736,7 @@ describe("HQ API", () => {
         );
         assert.deepStrictEqual(yield* readerSocket.next("snapshot"), {
           ungrouped: [],
-          apps: [{ id: appId, name: "Shop", projects: [] }],
+          apps: [{ id: appId, name: "Shop", projects: [], environments: [] }],
           changes: { [appId]: [] },
         });
 

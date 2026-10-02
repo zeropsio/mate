@@ -174,7 +174,77 @@ const MAKER = { orgRole: "NO_ACCESS", canCreate: true, override: "OWNER" } as co
 /** U with org NO_ACCESS and ADMIN on P alone: P's admin, nobody else's. */
 const P_ADMIN = { orgRole: "NO_ACCESS", override: "ADMIN" } as const;
 
+/** A deploy token handed to HQ for P, an environment's project. */
+const KEEP_TOKEN: Request = { verb: "keep_deploy_token", target: { projectId: "P" } };
+
+/** A person's "Run again" of a deploy of the application whose projects are `projectIds`. */
+const redeploy = (...projectIds: ReadonlyArray<string>): Request => ({
+  verb: "redeploy",
+  target: { projectIds },
+});
+
 const TABLES: Readonly<Record<Verb, ReadonlyArray<Row>>> = {
+  // "Run again" of a deploy (main B36): main re-ran a deploy's job with write on its repository —
+  // whoever develops the application, as a merge.
+  redeploy: [
+    [
+      "a developer of the application: Basic user on one of its projects",
+      {},
+      redeploy("P_SEEN", "P_DEV"),
+      "allow",
+    ],
+    ["org Basic user, through the org's role", { orgRole: "BASIC_USER" }, redeploy("P"), "allow"],
+    ["an org owner", WRITER, redeploy("P"), "allow"],
+    [
+      "org Read only sees it, does not develop it",
+      { orgRole: "READ_ONLY" },
+      redeploy("P"),
+      "not_app_developer",
+    ],
+    ["org none, a Read only grant on a project of it", {}, redeploy("P_SEEN"), "not_app_developer"],
+    ["org none, only a hidden project", {}, redeploy("P_HIDDEN"), "app_not_seen"],
+    // Seeing the application comes first: an application of no project is seen by nobody below
+    // org Read only.
+    ["org none, an application with no project", {}, redeploy(), "app_not_seen"],
+    ["an org owner, an application with no project left", WRITER, redeploy(), "not_app_developer"],
+    [
+      "an invited owner",
+      { orgRole: "OWNER", status: "INVITED" },
+      redeploy("P"),
+      "not_active_member",
+    ],
+  ],
+  // Who may hand HQ an environment's deploy token: who may attach it (Full access on its project),
+  // or the structure's writer (SPEC §3.2b, main E03).
+  keep_deploy_token: [
+    ["an org owner, a structure writer", WRITER, KEEP_TOKEN, "allow"],
+    ["an org admin", { orgRole: "ADMIN" }, KEEP_TOKEN, "allow"],
+    [
+      "a writer, a project the org no longer has",
+      { ...WRITER, present: false },
+      KEEP_TOKEN,
+      "project_gone",
+    ],
+    ["P's admin", P_ADMIN, KEEP_TOKEN, "allow"],
+    ["P's owner, who made it", MAKER, KEEP_TOKEN, "allow"],
+    ["a Basic user there", { override: "BASIC_USER" }, KEEP_TOKEN, "not_project_admin"],
+    // The writer's shortcut: an org admin lowered to Read only on P still hands it over.
+    [
+      "an org admin, Read only on P",
+      { orgRole: "ADMIN", override: "READ_ONLY" },
+      KEEP_TOKEN,
+      "allow",
+    ],
+    ["org Basic user", { orgRole: "BASIC_USER" }, KEEP_TOKEN, "not_project_admin"],
+    ["org Read only", { orgRole: "READ_ONLY" }, KEEP_TOKEN, "not_project_admin"],
+    [
+      "P's admin, a project the org no longer has",
+      { ...P_ADMIN, present: false },
+      KEEP_TOKEN,
+      "not_project_admin",
+    ],
+    ["an invited owner", { orgRole: "OWNER", status: "INVITED" }, KEEP_TOKEN, "not_active_member"],
+  ],
   read_project: [
     [
       "org Read only reads",
@@ -1053,6 +1123,8 @@ describe("can — one table per verb", () => {
     can(PERSON, "merge_change", { projectIds: [] }, cached);
     // @ts-expect-error -- and a close.
     can(PERSON, "close_change", { projectIds: [] }, cached);
+    // @ts-expect-error -- and asking a deploy again.
+    can(PERSON, "redeploy", { projectIds: [] }, cached);
     // @ts-expect-error -- so is a Mate's change.
     can(MATE_P, "open_change", { projectId: "P", appId: "A", held: "mate" }, cached);
     // A Mate's fetch is a read.
@@ -1101,6 +1173,7 @@ const REQUESTS: ReadonlyArray<Request> = [
   ...APPS.map((projectIds): Request => ({ verb: "read_app", target: { projectIds } })),
   { verb: "create_app", target: null },
   { verb: "rename_app", target: null },
+  KEEP_TOKEN,
   ...HELD.flatMap((held) =>
     TO.flatMap((to) =>
       APPS.flatMap((app) => [false, true].map((taken) => place("attach", held, to, app, taken))),
@@ -1119,9 +1192,9 @@ const REQUESTS: ReadonlyArray<Request> = [
   ...HELD.flatMap((held) =>
     [null, "A"].flatMap((appId) => ["A", "B"].map((repoAppId) => fetchOf(held, appId, repoAppId))),
   ),
-  ...(["read_change", "comment_change", "merge_change", "close_change"] as const).flatMap((verb) =>
-    APPS.map((projectIds): Request => ({ verb, target: { projectIds } })),
-  ),
+  ...(
+    ["read_change", "comment_change", "merge_change", "close_change", "redeploy"] as const
+  ).flatMap((verb) => APPS.map((projectIds): Request => ({ verb, target: { projectIds } }))),
 ];
 
 const PRINCIPALS: ReadonlyArray<Principal> = [

@@ -30,9 +30,14 @@ import * as HttpServer from "effect/unstable/http/HttpServer";
 import { coreApp } from "../../src/core.ts";
 import { GitHost } from "../../src/gitHost.ts";
 import { treeMigrations } from "../../src/migrationFiles.ts";
-import { ZeropsApi, type ZeropsMember, type ZeropsOwnToken } from "../../src/zerops/api.ts";
+import {
+  ZeropsApi,
+  ZeropsDeploy,
+  type ZeropsMember,
+  type ZeropsOwnToken,
+} from "../../src/zerops/api.ts";
 import { TempPostgres } from "./tempPostgres.ts";
-import { type FakeWorld, emptyWorld, fakeZeropsApi } from "./zeropsFake.ts";
+import { type FakeWorld, emptyWorld, fakeZeropsApi, fakeZeropsDeploy } from "./zeropsFake.ts";
 
 const encodeJson = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown));
 const decodeJson = Schema.decodeSync(Schema.fromJsonString(Schema.Unknown));
@@ -169,6 +174,7 @@ export const startCore = (
     const context = yield* Layer.buildWithScope(
       coreApp(options).pipe(
         Layer.provide(Layer.succeed(ZeropsApi, fakeZeropsApi(fake))),
+        Layer.provide(Layer.succeed(ZeropsDeploy, fakeZeropsDeploy(fake))),
         Layer.provideMerge(NodeHttpServer.layer(() => NodeHttp.createServer(), { port: 0 })),
       ),
       scope,

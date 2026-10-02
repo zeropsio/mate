@@ -21,8 +21,8 @@ import * as Layer from "effect/Layer";
 
 import { type CoreOptions, coreApp } from "./core.ts";
 import { bundledMigrations } from "./migrationFiles.ts";
-import { ZeropsApi } from "./zerops/api.ts";
-import { makeZeropsApiHttp } from "./zerops/http.ts";
+import { ZeropsApi, ZeropsDeploy } from "./zerops/api.ts";
+import { makeZeropsApiHttp, makeZeropsDeployHttp } from "./zerops/http.ts";
 
 /** The build stamp the bundle carries (`vite.config.ts`); an unbundled run is `dev`. */
 declare const __HQ_BUILD__: string | undefined;
@@ -37,9 +37,10 @@ const core = Layer.unwrap(
     const origins = yield* Config.String("HQ_CLIENT_ORIGINS").pipe(
       Config.withDefault("https://mate.zerops.io,http://localhost:4380"),
     );
-    const zerops = Layer.effect(ZeropsApi, makeZeropsApiHttp(api)).pipe(
-      Layer.provide(NodeHttpClient.layerNodeHttp),
-    );
+    const zerops = Layer.mergeAll(
+      Layer.effect(ZeropsApi, makeZeropsApiHttp(api)),
+      Layer.effect(ZeropsDeploy, makeZeropsDeployHttp(api)),
+    ).pipe(Layer.provide(NodeHttpClient.layerNodeHttp));
     const options: CoreOptions = {
       drainFor: Duration.seconds(
         yield* Config.Int("HQ_DRAIN_SECONDS").pipe(Config.withDefault(10)),
