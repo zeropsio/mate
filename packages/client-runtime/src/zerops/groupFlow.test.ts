@@ -904,14 +904,24 @@ describe("groupFlow — a stage's first deploy, while it runs nothing (run 4)", 
       over: { projectStatus: "CREATING", services: [] },
       runner: stuck,
       mainHasCode: true,
-      first: undefined,
+      first: { kind: "setting-up", step: "project" },
     },
     {
       case: "its app still being added: the import first, never the runner",
       over: { services: [{ hostname: "app", status: "CREATING", runtime: true }] },
       runner: stuck,
       mainHasCode: true,
-      first: undefined,
+      first: { kind: "setting-up", step: "app" },
+    },
+    {
+      case: "its app being added, what runs there unread: setting up, never Checking",
+      over: {
+        services: [{ hostname: "app", status: "NEW", runtime: true }],
+        deployment: undefined,
+      },
+      runner: stuck,
+      mainHasCode: true,
+      first: { kind: "setting-up", step: "app" },
     },
     {
       case: "its import done: the runner",
@@ -1016,7 +1026,7 @@ describe("groupFlow — a stage's first deploy, while it runs nothing (run 4)", 
       {
         case: "while the stage is still being made: the import first",
         stop: { ...failing(1), services: [{ hostname: "app", status: "CREATING", runtime: true }] },
-        first: undefined,
+        first: { kind: "setting-up", step: "app" },
       },
     ])("$case", ({ stop, first: expected }) => {
       expect(first(stop)).toEqual(expected);
@@ -1042,7 +1052,9 @@ describe("groupFlow — a stage's first deploy, while it runs nothing (run 4)", 
   it("is setting up while its own import runs, and only then", () => {
     const settingUp = (over: Partial<GroupFlowStopInput>) =>
       groupFlow(group({ stops: [stageStop(over)], mainHasCode: true, runner: stuck, nowMs: NOW }))
-        .stages[0]?.settingUp;
+        .stages[0]?.firstDeploy?.kind === "setting-up"
+        ? true
+        : undefined;
     const making = { hostname: "app", status: "NEW", runtime: true };
     expect(settingUp({ projectStatus: "CREATING", services: [] })).toBe(true);
     expect(settingUp({ services: [making] })).toBe(true);

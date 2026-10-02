@@ -71,6 +71,11 @@ export type FirstDeploy =
   /** Asked for, and the group's runner cannot run it. */
   | { readonly kind: "runner"; readonly why: RunnerTrouble }
   /**
+   * Its own import still runs (`stopImport`): no first deploy is waited for yet, and every surface
+   * says it is being set up before it says anything of a deploy or the runner (run 5).
+   */
+  | { readonly kind: "setting-up"; readonly step: "project" | "database" | "app" }
+  /**
    * A build of it was seen to end with nothing running (`Deployment.afterBuild`), or the job that
    * deploys it failed on `main`'s head before any build (`firstDeployFailure`): `reason` only where
    * the broker's status carries the job's own words.
@@ -276,6 +281,8 @@ export function stopComing(input: {
         return coming("deploy-on-its-way");
       case "runner":
         return { kind: "coming", step: "runner", why: first.why };
+      case "setting-up":
+        return coming(first.step);
       case "failed":
         return { kind: "failed", reason: "its first deploy failed" };
     }
@@ -400,12 +407,23 @@ export function comingLine(
 }
 
 /**
- * The tone a stage's first deploy line wears beside its dot: busy while on its way, failed where it
- * failed, off while it waits.
+ * The tone a stage's first deploy line wears beside its dot: busy while on its way or being set up,
+ * failed where it failed, off while it waits.
  */
 export function firstDeployTone(first: FirstDeploy | undefined): "busy" | "failed" | "off" {
-  return first?.kind === "on-its-way" ? "busy" : first?.kind === "failed" ? "failed" : "off";
+  switch (first?.kind) {
+    case "on-its-way":
+    case "setting-up":
+      return "busy";
+    case "failed":
+      return "failed";
+    default:
+      return "off";
+  }
 }
+
+/** A stage's line while its creation, or its own import, is under way. */
+export const STAGE_SETTING_UP = "Setting up a stage…";
 
 /** A stage whose first build was seen to end with nothing running. */
 export const FIRST_DEPLOY_FAILED = "First deploy failed";
@@ -425,6 +443,8 @@ export function firstDeployLine(first: FirstDeploy | undefined): string | undefi
       return `Waiting for the runner · ${RUNNER_TROUBLE_WORDS[first.why]}`;
     case "failed":
       return FIRST_DEPLOY_FAILED;
+    case "setting-up":
+      return STAGE_SETTING_UP;
     default:
       return undefined;
   }

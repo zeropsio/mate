@@ -215,16 +215,10 @@ export interface GroupFlowStop {
   readonly source: string | undefined;
   readonly route: string | undefined;
   /**
-   * A stage that runs nothing, its first deploy asked for: on its way, or held by the group's
-   * runner (`firstDeploy`). `undefined` while nothing asked for one.
+   * A stage that runs nothing: being set up, its first deploy on its way, held by the group's
+   * runner, or failed (`stageFirstDeploy`). `undefined` while nothing asked for one.
    */
   readonly firstDeploy?: Exclude<FirstDeploy, { readonly kind: "awaited" }> | undefined;
-  /**
-   * A stage that runs nothing known while its own import still runs (`stopImport`): it is being
-   * set up, which every surface says before its first deploy or the runner — the menu's "adding the
-   * app", the cell's "Setting up a stage…". Absent otherwise.
-   */
-  readonly settingUp?: true;
 }
 
 export type GroupFlowProduction =
@@ -311,8 +305,8 @@ export const PRODUCTION_NOT_SET_UP = "Not set up";
 export const PRODUCTION_SETTING_UP = "Setting up production…";
 /** Production's line while a deploy runs on it. */
 export const PRODUCTION_DEPLOYING = "Deploying…";
-/** A stage's line while its creation is under way. */
-export const STAGE_SETTING_UP = "Setting up a stage…";
+/** A stage's line while its creation is under way (`stopComing.ts`). */
+export { STAGE_SETTING_UP } from "./stopComing.ts";
 /** Beside *Add production*, where the verb is: the Mate's part ends at the pull request. */
 export const PRODUCTION_ADDED_HERE = "Production is added here, not by the Mate.";
 /** The verb that adds it. */
@@ -368,10 +362,8 @@ function withFirstDeploy(
   main: GroupFlowMain,
   flow: GroupFlowInput,
 ): GroupFlowStop {
-  if (input.tier !== "stage") return stop;
-  // Being made: no first deploy is waited for yet, whatever was asked for.
-  if ((stop.state === "empty" || stop.state === "checking") && stageSettingUp(input, flow.nowMs))
-    return { ...stop, settingUp: true };
+  // Only a stage that runs nothing, or nothing known yet, waits for a first deploy.
+  if (input.tier !== "stage" || (stop.state !== "empty" && stop.state !== "checking")) return stop;
   const first = stageFirstDeploy({
     projectStatus: input.projectStatus,
     services: input.services,
@@ -388,7 +380,7 @@ function withFirstDeploy(
 }
 
 /**
- * Whether a stage's own import still runs, as far as the platform's listing of it says
+ * Where a stage's own import has got while it still runs, as far as the platform's listing says
  * (`stopImport`): its project's status first, then its services; never where those are unread
  * under an active project, or without a clock.
  */
@@ -399,16 +391,15 @@ export function stageSettingUp(
     readonly createdAt?: string | undefined;
   },
   nowMs: number | undefined,
-): boolean {
-  return (
-    nowMs !== undefined &&
-    stopImport({
-      projectStatus: input.projectStatus,
-      createdAt: input.createdAt,
-      nowMs,
-      services: input.services,
-    }) !== undefined
-  );
+): ReturnType<typeof stopImport> {
+  return nowMs === undefined
+    ? undefined
+    : stopImport({
+        projectStatus: input.projectStatus,
+        createdAt: input.createdAt,
+        nowMs,
+        services: input.services,
+      });
 }
 
 /**
@@ -440,12 +431,19 @@ export function stageFirstDeploy(input: {
   readonly nowMs: number | undefined;
 }): Exclude<FirstDeploy, { readonly kind: "awaited" }> | undefined {
   const { deployment } = input;
-  if (deployment?.state !== "known" || deployment.value.kind !== "none") return undefined;
+  // Something runs or builds there: no first deploy to wait for.
+  if (deployment?.state === "known" && deployment.value.kind !== "none") return undefined;
   // A build of it was seen to end with nothing running: a fact, however long ago it was asked.
-  if (deployment.value.afterBuild === true) return { kind: "failed" };
-  if (input.nowMs === undefined) return undefined;
-  // Its own import comes first: the runner matters only once the stage is made (run 5).
-  if (stageSettingUp(input, input.nowMs)) return undefined;
+  if (
+    deployment?.state === "known" &&
+    deployment.value.kind === "none" &&
+    deployment.value.afterBuild === true
+  )
+    return { kind: "failed" };
+  // Its own import comes first, whether or not what runs there is read yet (run 5).
+  const step = stageSettingUp(input, input.nowMs);
+  if (step !== undefined) return { kind: "setting-up", step };
+  if (deployment?.state !== "known" || input.nowMs === undefined) return undefined;
   const askedAt = firstDeployAskedAt(input.createdAt, input.merged);
   // The job that deploys it failed on main's head after it was asked for — a fact, like a build
   // seen to fail; a commit landing after it asks again, and a failure from before is another's.

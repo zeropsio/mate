@@ -22,11 +22,13 @@ import {
   type GroupFlowInput,
   type MainHeadStatuses,
 } from "@t3tools/client-runtime/zerops";
-import type { Deployment } from "@t3tools/client-runtime/zerops/flow";
+import { stopVerdict, stopView, type Deployment } from "@t3tools/client-runtime/zerops/flow";
 import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
 import { describe, expect, it } from "vite-plus/test";
 
 import { stopLine } from "./projects/projectsView.logic";
+import { stageMenu } from "./SidebarProductionChip.logic";
+import { declaredEnvironmentSummary } from "./ZeropsProjectsPage";
 import { headingLine, type HeadingLineInput } from "./SidebarHeadingLine.logic";
 
 const START = Date.parse("2026-10-02T21:56:00.000Z");
@@ -181,10 +183,60 @@ function said(moment: Moment) {
   };
   const line = headingLine(heading, undefined);
   const cell = stopLine(stop);
+  const view = stopView({
+    deployment: moment.deployment ?? { state: "unread", waitingFor: null },
+    row,
+    nowMs,
+  });
   return {
     line: line === undefined ? null : [line.fact, line.rest].filter(Boolean).join(" · "),
     cell: [cell.word, cell.version].filter(Boolean).join(" "),
+    // The other surfaces that say a stage's first deploy: the expanded row, the stage chip's
+    // menu and the stage's own page.
+    others: {
+      summary: declaredEnvironmentSummary(row, stop.firstDeploy),
+      chipMenu:
+        stageMenu({
+          stages: [
+            {
+              projectId: STAGE_ID,
+              name: "stage",
+              stop,
+              chip: undefined,
+              deployedAt: undefined,
+              down: [],
+              routes: [],
+            },
+          ],
+          creating: [],
+          nowMs,
+        }).stops[0]?.word ?? "",
+      page: stopVerdict({
+        tier: "stage",
+        view,
+        releasing: undefined,
+        failed: undefined,
+        waiting: 0,
+        release: { offered: false, tag: undefined },
+        releasedAge: undefined,
+        since: undefined,
+        atMainHead: false,
+        firstDeploy: stop.firstDeploy,
+      }).text,
+    },
   };
+}
+
+/** The phase another surface's words name, before the first build. */
+function otherPhase(words: string): string {
+  if (words.startsWith("Setting up")) return "import";
+  if (words.startsWith("Waiting for the runner"))
+    return `runner: ${words.split(" · ")[1]?.replace(/\.$/u, "") ?? ""}`;
+  if (words.startsWith("First deploy on its way")) return "on its way";
+  if (words.startsWith("Nothing deployed yet") || words.startsWith("Not deployed yet"))
+    return "awaited";
+  if (words.startsWith("First deploy failed")) return "failed";
+  return `unknown: ${words}`;
 }
 
 /** The phase a menu line names. */
@@ -344,7 +396,20 @@ describe("a stage's first deploy, replayed as run 5 measured it", () => {
   ];
 
   it.each(moments)("+$t s", ({ line, cell, ...moment }) => {
-    expect(said(moment)).toEqual({ line, cell });
+    const { others: _others, ...now } = said(moment);
+    expect(now).toEqual({ line, cell });
+  });
+
+  it("names the same phase on every surface until the first build", () => {
+    for (const { line: _line, cell: _cell, ...moment } of moments) {
+      if (moment.deployment?.state === "known" && moment.deployment.value.kind !== "none") continue;
+      const now = said(moment);
+      const phase = linePhase(now.line);
+      expect({ t: moment.t, phases: Object.values(now.others).map(otherPhase) }).toEqual({
+        t: moment.t,
+        phases: [phase, phase, phase],
+      });
+    }
   });
 
   it("names the same phase on the menu and the cell at every moment", () => {
