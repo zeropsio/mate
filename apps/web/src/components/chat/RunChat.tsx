@@ -2706,7 +2706,7 @@ function SlotFillerWords({ filler }: { readonly filler: SlotFiller }) {
     case "thinking":
       return (
         <span
-          className="run-slot-thinking"
+          className="run-slot-word run-slot-later"
           style={{ animationDelay: `${THINKING_WORD_DELAY_MS}ms` }}
         >
           Thinking
@@ -2715,20 +2715,20 @@ function SlotFillerWords({ filler }: { readonly filler: SlotFiller }) {
     case "writing":
       return (
         <>
-          <span className="run-now-verb">Writing</span>
+          <span className="run-slot-word">Writing</span>
           <TypingDots className="run-now-dots" />
         </>
       );
     case "condensing":
       return (
         <>
-          <span className="run-now-verb">Condensing the context</span>
+          <span className="run-slot-word">Condensing the context</span>
           <TypingDots className="run-now-dots" />
         </>
       );
     case "waiting":
       return (
-        <span className="run-now-verb">{nowLineWords({ kind: "waiting", on: filler.on })}</span>
+        <span className="run-slot-word">{nowLineWords({ kind: "waiting", on: filler.on })}</span>
       );
   }
 }

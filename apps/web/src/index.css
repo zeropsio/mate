@@ -4365,11 +4365,14 @@ code {
   font-size: 14px;
   line-height: 20px;
 }
-/* "Thinking" between steps: muted, its word a moment late, so a quick gap
-   between two steps never flashes it (the delay is set where it is drawn). */
-.run-slot-thinking {
+/* What the slot says between things, muted: "Thinking", "Writing", a wait. */
+.run-slot-word {
   font-weight: 500;
   color: var(--color-muted-foreground);
+}
+/* "Thinking" between steps comes a moment late, so a quick gap between two
+   steps never flashes it (the delay is set where it is drawn). */
+.run-slot-later {
   animation: run-fade 200ms ease both;
 }
 .run-slot-more {
