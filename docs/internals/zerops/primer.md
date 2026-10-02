@@ -238,10 +238,14 @@ ledger row or a test.
     repository made with the delivered token); `TestPassDeliversAMatesAccessOnceAndNeverRestarts`
 - **1.6** — The runner pool
   - _State:_ partial — imported on a group's first workflow and removed with the group (live); woken
-    and slept on `workflow_job` (built); the cross-org `runs-on` proof not measured
-  - _Built in:_ gitea-mate `6933c4d`, `runnerPool`
-  - _Proven by:_ ledger _The backbone's first live run_ (a runner in 117 s, the job green in 71 s);
-    `TestWorkflowJobWakesAndSleepsTheRunner`
+    and slept on `workflow_job` (built); a runner whose build failed is replaced within bounds and
+    every download in its build retries (gitea-mate #7, live on the test org's broker 2026-10-02;
+    run 5's new runner built at the first try in 103 s, so the replacement is proven by its tests
+    only); the cross-org `runs-on` proof not measured
+  - _Built in:_ gitea-mate `6933c4d`, `runnerPool`; #7 `76f259c`
+  - _Proven by:_ ledger _The backbone's first live run_ (a runner in 117 s, the job green in 71 s),
+    _Run 4 as measured_ (the failed download, never rebuilt); `TestWorkflowJobWakesAndSleepsTheRunner`,
+    `TestABuildThatAlwaysFailsIsBoundedAndStops`, `TestARunnerDeletedButNotImportedIsOwedOne`
 - **2.1** — Git per dev pair, as early as possible
   - _State:_ live
   - _Built in:_ zcp v9.176.0 `3e344982` `0daca3f1` `d85814ed`
@@ -775,6 +779,20 @@ ledger row or a test.
     `nowLineCalm.logic.test.ts`, `standupReading.test.ts`, `operationBar.logic.test.ts`,
     `inventoryTrouble.logic.test.ts`, `ZeropsReleaseSteps.logic.test.ts`,
     `SidebarMateRow.logic.test.ts`
+- **—** — Pass 34: a stage coming up, a deploy, a release and a new Mate say what is true while
+  they happen
+  - _State:_ **live** in mate 0.11.87 (2026-10-02), re-checked live in run 5 on mate.zerops.io:
+    every step of a stage coming up was true, including the wait for a group's first runner; a
+    deploy's "Deployed" held through a stale pending status; a release kept "replaces v0.1.0 · 1
+    change" and its roll back to v0.1.0 through Released; a new Mate read "Coming up", then
+    "Waiting for your sign-in", in the window that had not made it, and both flows' Mates read the
+    same words; a merge reached the other window in 10 s (run 4: 48 s), idle cost unchanged (16 and
+    18 requests a minute). A deploy job that fails before the broker stays invisible (§7, 23)
+  - _Built in:_ mate 0.11.87 (PR #87 `e46b4a07f`); gitea-mate #7 `76f259c`
+  - _Proven by:_ `stopComing.test.ts`, `stageComingUp.replay.test.ts`, `deployment.test.ts`,
+    `deploymentStore.test.ts`, `pullWatch.test.ts`, `releaseFacts.test.ts`, `reviewVerdict.test.ts`,
+    `candidates.test.ts`, `mateComing.test.ts`, `mateLink.test.ts`, `SidebarMateRow.logic.test.ts`;
+    ledger _Run 4 as measured_, _Run 5 as measured_
 - **6** — Adopting an existing app
   - _State:_ **open** — nothing built; _New project_ has no _I have code_
 - **7** — The raw-token door and the client's re-mint
@@ -1000,6 +1018,25 @@ In the order the owner ranked them, then the rest:
     before v9.179.1 names the dev half's setup for the group's stage and production (Kai's
     `todo/group` `main`: `zeropsSetup: appdev`, start `zsc noop`); the correction as the bot was
     refused by the session's classifier and waits on the owner (ledger, _The owner's Todo run_).
+
+23. **A deploy job that fails before it reaches the broker is invisible** (run 5, 2026-10-02). A
+    group workflow's own step failed (`npm test` with no Node on the runner); the commit on `main`
+    carried "Zerops deploy: failure", the broker's status stayed pending, and the menu and the cell
+    said "first deploy on its way" for 4.3 min (up to its 15-minute bound). The fix the stage part
+    proposed and the pass deferred: read `main`'s head statuses only while a declared stage runs
+    nothing, and say "First deploy failed".
+24. **zcp's workflow template leaves the runner's runtime to the Mate** — its test step defaults to
+    `echo "no test command configured"` under "Replace with this project's own test command"; one
+    Mate wrote `npm test` without `actions/setup-node` and the bare Ubuntu runner failed it (run 5),
+    another added the setup (run 4). The template should set up the project's runtime, or say the
+    runner has none.
+25. **Two short blips in a stage's first deploy** (run 5): where the build ends and its version is
+    not yet known, one window read "awaiting a first deploy" (menu, ~2 s) and "Checking what runs
+    here…" (cell, 1.2 s); and the runner line came 4 s before the project was made, then gave way to
+    "adding the app" and came back.
+26. **A tainted runner's replacement may register with the org's same token** — Gitea's org
+    registration-token read likely returns the latest active token; a replacement after a taint
+    should reset it first. Needs Gitea 1.27's API checked (the runner part's review, pass 34).
 
 ## 8. Working on it
 
