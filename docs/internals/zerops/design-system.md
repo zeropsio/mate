@@ -387,11 +387,11 @@ conversation's state) Fen lives here` (`ZeropsMateOnMap`, from the panel), and t
     pose, "Nova is waiting for your review of #2" in ink over the change's title muted (13/18 each),
     and _Review_, the composer's one blue button (30 px, radius 9), which opens the change's review
     (R1); nothing merges from here. 61 px tall. Offered by the old rule: this Mate's own code
-    change, not merged, that Gitea says merges, the newest — one that conflicts or is still being
-    checked waits on the Mate or on Gitea, not on the person, and gets no strip. It gives way while
-    a question or an approval waits and comes back once it is answered. It has no entrance: a reload
-    paints the strip this conversation last showed, and Gitea's answer confirms it, changes its
-    words or takes it away
+    change, not merged, that HQ says merges, the newest — one that conflicts or is still being
+    checked waits on the Mate or on HQ, not on the person, and gets no strip. It gives way while a
+    question or an approval waits and comes back once it is answered. It has no entrance: a reload
+    paints the strip this conversation last showed, and HQ's answer confirms it, changes its words
+    or takes it away
   - _States:_ review · unknown (the remembered strip, or nothing) · none · held (a question or an
     approval waits)
   - _Phrase source:_ client-runtime `mateNextStep.ts`; `ZeropsNextStepBanner.tsx`
@@ -603,16 +603,16 @@ conversation's state) Fen lives here` (`ZeropsMateOnMap`, from the panel), and t
     name, then each stop as a group — its row, opening the environment's page: a dot, the name, the
     version and the state in words ("Healthy", "Releasing v1.2.1", "Release failed", "Deployed 40
     min ago", "Deploy failed", "Down", "Stopped", "Setting up…"); a note of what went wrong, as far
-    as the platform and Gitea say; "Ask Nova to fix it" while it is in trouble, a stage's fix naming
-    the stage (S6); the public links, each led by the service it reaches (`app`, `api:3000` where
-    one service answers on several ports); among several stages, each its own _Open in Zerops_ —
-    then "N changes wait for production" with _Review_, the release's review, where there is a
-    production; a menu of one stop ends on _Open in Zerops_
+    as the platform and HQ's deploys say, and Gitea for a release until T9b; "Ask Nova to fix it"
+    while it is in trouble, a stage's fix naming the stage (S6); the public links, each led by the
+    service it reaches (`app`, `api:3000` where one service answers on several ports); among several
+    stages, each its own _Open in Zerops_ — then "N changes wait for production" with _Review_, the
+    release's review, where there is a production; a menu of one stop ends on _Open in Zerops_
   - _States:_ a chip: neutral (healthy, changes waiting, releasing or deploying, setting up, nothing
     released or deployed yet) · amber (the last release or deploy did not go through) · red (down) ·
     hollow (stopped on purpose) · unknown (the remembered chip, or what the platform alone says
-    while Gitea is read, or nothing) · none (no such tier); several stages wear the worst of them:
-    down, then a failed deploy, then one deploying
+    while Gitea's release answer is read, until T9b, or nothing) · none (no such tier); several
+    stages wear the worst of them: down, then a failed deploy, then one deploying
   - _Phrase source:_ `SidebarProductionChip.logic.ts` (`projectChips`, `productionChip`,
     `stageChip`, `chipFace`, `productionMenu`, `stageMenu`, `stopServing`)
   - _Lands:_ landed 2026-09-29 (pass 16); two chips, each its word alone, 2026-09-29 (pass 18)
@@ -623,7 +623,7 @@ conversation's state) Fen lives here` (`ZeropsMateOnMap`, from the panel), and t
     and nothing on its corner. The name's line: the owner's mark before the name (`MateOwnerMark`,
     16 px round — their picture, or their initial on a hue of their own read off their name; a plain
     disc where nobody can name them, so every name starts on one edge), the name 14/20, 600 while
-    something it finished is unread, and on the right edge an 8 px dot — amber needs you (only on the viewer's own Mate, the one whose signer tag names
+    something it finished is unread, and on the right edge an 8 px dot — amber needs you (only on the viewer's own Mate, the one whose signer, as HQ relays it, names
     them: `mateIsViewers`; another's waiting Mate rests, its question muted, its change keeping its
     _Review_), blue finished unseen, red stopped on an error; no word, and no `StatusDot` — with when it last did
     something, or the run's clock counting up (600, tabular, in the Mate's own hue after a 6 px dot of it
@@ -659,12 +659,12 @@ conversation's state) Fen lives here` (`ZeropsMateOnMap`, from the panel), and t
     up 2026-09-30 (pass 19)
 - **Change row** — web
   - _Anatomy (fixed part):_ one of a Mate's open pull requests, 2 px under its row (M8): 28 px tall,
-    radius 10, 13/18 — the pull-request mark (14 px) in the faces' column, muted, red where its
-    checks fail and amber where it fell behind `main` (S3); `#N title` on the words' edge, the way
+    radius 10, 13/18 — the pull-request mark (14 px) in the faces' column, muted, and amber where it
+    fell behind `main` (S3); `#N title` on the words' edge, the way
     to the change's page; _Review_ as a blue word on the right edge, the one door to merging it
     (R1, D8). No _Merge_, no _Ask_ and no check dot on the row: the verdict is the review's. Past
     three, a Mate's changes fold behind "N pull requests"
-  - _States:_ open · checks failing (red mark) · behind main (amber mark) · remembered (a reload,
+  - _States:_ open · behind main (amber mark) · remembered (a reload,
     until HQ answers: its title untinted, _Review_ already there)
   - _Phrase source:_ `SidebarMateRow.logic.ts` (`changeMarkTone`); client-runtime
     `sidebarChangeLabel`, `pullRequestsFolded`
