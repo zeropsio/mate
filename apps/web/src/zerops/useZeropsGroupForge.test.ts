@@ -11,6 +11,7 @@ import {
   createForgeReads,
   createMergeabilityTracker,
   GATE_FRESH_MS,
+  PULL_WATCH_MS,
   TAGS_MAX_AGE_MS,
   type MergeabilityTracker,
 } from "@t3tools/client-runtime/zerops/forge";
@@ -38,6 +39,14 @@ const gitea = vi.hoisted(() => ({
   listings: 0,
   loseTokenOnRead: false,
   outwaitReacquireOnRead: false,
+  /** Whether `app` has its pull request open; its merge, in another window, closes it. */
+  open: true,
+  /** The next listing answers Gitea's 401 half a second later, as a slow one would. */
+  unauthorizedSlowlyOnRead: false,
+  /** How many pull request listings went out. */
+  pullReads: 0,
+  /** Pull request listings answer a second late. */
+  slowPulls: false,
   /** Every commit whose statuses were read, as `repo@sha`. */
   statusReads: [] as Array<string>,
 }));
@@ -53,17 +62,33 @@ vi.mock("./accountGiteaSessions", () => ({
               onUnauthorized?.();
               throw new Error("You are not signed in to Gitea.");
             }
+            if (gitea.unauthorizedSlowlyOnRead) {
+              gitea.unauthorizedSlowlyOnRead = false;
+              onUnauthorized?.();
+              return new Promise<never>((_, reject) => {
+                setTimeout(() => reject(new GiteaApiError("Gitea answered 401.", 401)), 500);
+              });
+            }
             if (gitea.outwaitReacquireOnRead) {
               gitea.outwaitReacquireOnRead = false;
               onUnauthorized?.();
               throw new Error("Gitea answered 401.");
             }
-            return [{ name: "app" }];
+            return [
+              {
+                name: "app",
+                updated_at: gitea.open ? "2026-10-01T08:00:00Z" : "2026-10-01T08:30:00Z",
+                open_pr_counter: gitea.open ? 1 : 0,
+              },
+            ];
           },
-          listPullRequests: async (_owner: string, _repo: string, query: { state: string }) =>
-            query.state === "open"
+          listPullRequests: async (_owner: string, _repo: string, query: { state: string }) => {
+            gitea.pullReads += 1;
+            if (gitea.slowPulls) await new Promise((resolve) => setTimeout(resolve, 1_000));
+            return query.state === "open" && gitea.open
               ? [{ number: 7, title: "Stage follows main", head: { sha: "abc" } }]
-              : [],
+              : [];
+          },
           listCommitStatuses: async (_owner: string, repo: string, sha: string) => {
             gitea.statusReads.push(`${repo}@${sha}`);
             return [{ context: "ci", state: "success" }];
@@ -663,6 +688,10 @@ describe("useZeropsGroupForge", () => {
     gitea.listings = 0;
     gitea.loseTokenOnRead = false;
     gitea.outwaitReacquireOnRead = false;
+    gitea.open = true;
+    gitea.unauthorizedSlowlyOnRead = false;
+    gitea.pullReads = 0;
+    gitea.slowPulls = false;
     gitea.statusReads = [];
     vi.useRealTimers();
     vi.unstubAllGlobals();
@@ -699,9 +728,10 @@ describe("useZeropsGroupForge", () => {
     });
   });
 
-  it("lists the org once a refresh, nothing while the page is hidden, and once on coming back", async () => {
+  it("lists an org with nothing open once a refresh, nothing while the page is hidden, and once on coming back", async () => {
     vi.useFakeTimers();
     installTestDom();
+    gitea.open = false;
     const page = document as unknown as {
       hidden: boolean;
       addEventListener: (type: string, listener: () => void) => void;
@@ -748,9 +778,148 @@ describe("useZeropsGroupForge", () => {
     });
   });
 
+  it("looks at an org with a pull request open every watch tick, and reads its merge in another window within one", async () => {
+    vi.useFakeTimers();
+    installTestDom();
+    const { createRoot } = await import("react-dom/client");
+    const seen: Array<ZeropsGroupForge> = [];
+    function Probe() {
+      seen.push(
+        useZeropsGroupForge({
+          giteaOrigin: "https://gitea.example.test",
+          groups: GROUPS,
+          enabled: true,
+          readable: true,
+          reads: useForgeReads("https://gitea.example.test"),
+        }),
+      );
+      return null;
+    }
+    const root = createRoot(document.createElement("div") as unknown as Element);
+    await act(async () => {
+      root.render(createElement(Probe));
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(gitea.listings).toBe(1);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(GROUP_FORGE_REFRESH_MS);
+    });
+    // One listing a watch tick, the minute's pass answered from them.
+    expect(gitea.listings).toBe(1 + GROUP_FORGE_REFRESH_MS / PULL_WATCH_MS);
+    expect(seen.at(-1)?.forges.get("g1")?.pullRequests).toHaveLength(1);
+
+    // Merged elsewhere: the next look sees the counter drop, and the answer holds nothing open.
+    gitea.open = false;
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(PULL_WATCH_MS);
+    });
+    expect(seen.at(-1)?.forges.get("g1")?.pullRequests).toEqual([]);
+
+    // Nothing open: back to the minute's refresh.
+    const before = gitea.listings;
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(GROUP_FORGE_REFRESH_MS);
+    });
+    expect(gitea.listings - before).toBeLessThanOrEqual(1);
+    await act(async () => {
+      root.unmount();
+    });
+  });
+
+  it("keeps what it read when the watch's listing meets a 401 while a pass is reading", async () => {
+    vi.useFakeTimers();
+    installTestDom();
+    const { createRoot } = await import("react-dom/client");
+    const seen: Array<ZeropsGroupForge> = [];
+    function Probe() {
+      seen.push(
+        useZeropsGroupForge({
+          giteaOrigin: "https://gitea.example.test",
+          groups: GROUPS,
+          enabled: true,
+          readable: true,
+          reads: useForgeReads("https://gitea.example.test"),
+        }),
+      );
+      return null;
+    }
+    const root = createRoot(document.createElement("div") as unknown as Element);
+    await act(async () => {
+      root.render(createElement(Probe));
+      await vi.advanceTimersByTimeAsync(PULL_WATCH_MS);
+    });
+    expect(seen.at(-1)?.forges.get("g1")?.pullRequests).toHaveLength(1);
+
+    // The watch's next listing meets the 401 while a pass of the group is still reading.
+    gitea.unauthorizedSlowlyOnRead = true;
+    gitea.slowPulls = true;
+    const listed = gitea.listings;
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(PULL_WATCH_MS);
+    });
+    expect(gitea.listings).toBe(listed + 1);
+    const reads = gitea.pullReads;
+    // What the pass reads differs from what is held: an answer it published would show.
+    gitea.open = false;
+    await act(async () => {
+      seen.at(-1)?.invalidate("g1", { kind: "repository", repository: "app" });
+      await vi.advanceTimersByTimeAsync(3_000);
+    });
+    expect(gitea.pullReads).toBeGreaterThan(reads);
+    expect(seen.at(-1)?.forges.get("g1")?.pullRequests).toHaveLength(1);
+    expect(seen.at(-1)?.failures.get("g1")).toBeUndefined();
+    await act(async () => {
+      root.unmount();
+    });
+  });
+
+  it("reads a merge made in this window at most once more when the watch sees it", async () => {
+    vi.useFakeTimers();
+    installTestDom();
+    const { createRoot } = await import("react-dom/client");
+    const seen: Array<ZeropsGroupForge> = [];
+    function Probe() {
+      seen.push(
+        useZeropsGroupForge({
+          giteaOrigin: "https://gitea.example.test",
+          groups: GROUPS,
+          enabled: true,
+          readable: true,
+          reads: useForgeReads("https://gitea.example.test"),
+        }),
+      );
+      return null;
+    }
+    const root = createRoot(document.createElement("div") as unknown as Element);
+    await act(async () => {
+      root.render(createElement(Probe));
+      await vi.advanceTimersByTimeAsync(PULL_WATCH_MS);
+    });
+    // Merged here: the verb reads the repository's pull requests again at once.
+    gitea.open = false;
+    const before = gitea.pullReads;
+    await act(async () => {
+      seen.at(-1)?.invalidate("g1", { kind: "repository", repository: "app" });
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(gitea.pullReads - before).toBe(2);
+    expect(seen.at(-1)?.forges.get("g1")?.pullRequests).toEqual([]);
+    // The watch's look sees the merge in the listing: its open and closed pull requests once more,
+    // as the minute's listing read them before, and nothing after.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5 * GROUP_FORGE_REFRESH_MS);
+    });
+    expect(gitea.pullReads - before).toBeLessThanOrEqual(4);
+    await act(async () => {
+      root.unmount();
+    });
+  });
+
   it("keeps what it read when a 401 and a failed reacquire land inside one pass", async () => {
     vi.useFakeTimers();
     installTestDom();
+    // Nothing open: the minute's pass lists the org itself, with no watch beside it.
+    gitea.open = false;
     const { createRoot } = await import("react-dom/client");
     const seen: Array<ZeropsGroupForge> = [];
 
@@ -772,7 +941,7 @@ describe("useZeropsGroupForge", () => {
       root.render(createElement(Probe));
       await vi.advanceTimersByTimeAsync(0);
     });
-    expect(seen.at(-1)?.forges.get("g1")?.pullRequests).toHaveLength(1);
+    expect(seen.at(-1)?.forges.get("g1")?.released).toMatchObject({ tags: ["v0.1.0"] });
 
     // The clock's pass starts with a token; its first read meets the 401 and the reacquire fails.
     gitea.loseTokenOnRead = true;
@@ -780,7 +949,7 @@ describe("useZeropsGroupForge", () => {
       await vi.advanceTimersByTimeAsync(GROUP_FORGE_REFRESH_MS);
     });
     expect(gitea.listings).toBe(2);
-    expect(seen.at(-1)?.forges.get("g1")?.pullRequests).toHaveLength(1);
+    expect(seen.at(-1)?.forges.get("g1")?.released).toMatchObject({ tags: ["v0.1.0"] });
     expect(seen.at(-1)?.failures.get("g1")).toBeUndefined();
 
     await act(async () => {
@@ -791,6 +960,8 @@ describe("useZeropsGroupForge", () => {
   it("keeps what it read when a read's 401 outlasts its wait, though the token is back by the pass's end", async () => {
     vi.useFakeTimers();
     installTestDom();
+    // Nothing open: the minute's pass lists the org itself, with no watch beside it.
+    gitea.open = false;
     const { createRoot } = await import("react-dom/client");
     const seen: Array<ZeropsGroupForge> = [];
 
@@ -812,7 +983,7 @@ describe("useZeropsGroupForge", () => {
       root.render(createElement(Probe));
       await vi.advanceTimersByTimeAsync(0);
     });
-    expect(seen.at(-1)?.forges.get("g1")?.pullRequests).toHaveLength(1);
+    expect(seen.at(-1)?.forges.get("g1")?.released).toMatchObject({ tags: ["v0.1.0"] });
 
     // The listing gives up on the reacquire and answers Gitea's 401; the token lands afterwards.
     gitea.outwaitReacquireOnRead = true;
@@ -820,7 +991,7 @@ describe("useZeropsGroupForge", () => {
       await vi.advanceTimersByTimeAsync(GROUP_FORGE_REFRESH_MS);
     });
     expect(gitea.listings).toBe(2);
-    expect(seen.at(-1)?.forges.get("g1")?.pullRequests).toHaveLength(1);
+    expect(seen.at(-1)?.forges.get("g1")?.released).toMatchObject({ tags: ["v0.1.0"] });
     expect(seen.at(-1)?.failures.get("g1")).toBeUndefined();
 
     await act(async () => {

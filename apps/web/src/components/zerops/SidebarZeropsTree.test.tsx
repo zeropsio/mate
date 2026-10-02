@@ -56,6 +56,13 @@ vi.mock("@tanstack/react-router", async (original) => ({
   ...(await original<typeof import("@tanstack/react-router")>()),
   useNavigate: () => () => undefined,
 }));
+// The shared minute clock, where a test sets it: the menu's coming-up windows close on it. The
+// real one's timer has no window to run on in a menu drawn here.
+const clock = vi.hoisted(() => ({ ms: undefined as number | undefined }));
+vi.mock("~/zerops/useNowMs", async (original) => ({
+  ...(await original<typeof import("~/zerops/useNowMs")>()),
+  useNowMs: () => clock.ms ?? Date.now(),
+}));
 // Who is looking: nobody signed in to Zerops unless a test says whom.
 const session = vi.hoisted(() => ({ viewer: undefined as string | undefined }));
 vi.mock("~/zerops/ZeropsSessionProvider", async (original) => ({
@@ -3833,5 +3840,42 @@ describe("a Mate on its way off Zerops", () => {
     settleDeletingMates(new Set(["crm-stage"]));
     const html = render([{ ...CRM_DEV, group: "connected" }]);
     expect(html).not.toContain("sidebar-mate-deleting");
+  });
+});
+
+describe("the menu's coming-up line reads the shared minute clock, never the moment it was drawn", () => {
+  afterEach(() => {
+    clock.ms = undefined;
+  });
+  const CLOCK = Date.parse("2025-03-04T10:00:00.000Z");
+  const madeAt = (ms: number) => new Date(ms).toISOString();
+  const stage = (created: number) => {
+    const item = up(CRM_STAGE, "CREATING");
+    return { ...item, project: { ...item.project, created: madeAt(created) } } as ZeropsCandidate;
+  };
+  const lineWords = (html: string) => {
+    const at = html.indexOf('data-zerops-surface="sidebar-project-line"');
+    return at === -1
+      ? undefined
+      : html
+          .slice(html.indexOf(">", at) + 1, html.indexOf("</div></div></div>", at))
+          .replace(/<[^>]+>/gu, "")
+          .trim() || undefined;
+  };
+  it.each([
+    {
+      case: "made 5 min before the clock: coming up",
+      madeMinutesAgo: 5,
+      words: "Stage coming up · adding the app",
+    },
+    {
+      case: "made 20 min before the clock: the window closed",
+      madeMinutesAgo: 20,
+      words: undefined,
+    },
+  ])("$case", ({ madeMinutesAgo, words }) => {
+    clock.ms = CLOCK;
+    const html = render([CRM_DEV, stage(CLOCK - madeMinutesAgo * 60_000)]);
+    expect(lineWords(html)).toBe(words);
   });
 });

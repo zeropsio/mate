@@ -63,12 +63,16 @@ import {
   readZeropsGroupTags,
   selectMateEnvironments,
   sidebarChangeLabel,
+  listedStopComing,
+  stopServes,
   type EnvironmentRow,
   type FlowPullRequest,
   type GroupFlow,
   type GroupEnvironmentTier,
   type GroupFlowStop,
+  type ListedStop,
   type MissingEnvironmentRow,
+  type StopComing,
   type ZeropsEnvironmentRole,
   type ZeropsEnvironmentServices,
   type ZeropsGroup,
@@ -79,7 +83,7 @@ import {
 import type { EnvironmentConnectionPresentation } from "@t3tools/client-runtime/connection";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import { mateIsViewers, mateOwnerRecords } from "@t3tools/client-runtime/zerops/mateAccess";
-import { deployActivatedAt, deployRuns } from "@t3tools/client-runtime/zerops/flow";
+import { deployActivatedAt } from "@t3tools/client-runtime/zerops/flow";
 import type { KnownAffordance } from "@t3tools/client-runtime/zerops/knowledge";
 import type { CandidatesNotice } from "@t3tools/client-runtime/zerops/projections";
 import type { ZeropsContainerHealth } from "@t3tools/client-runtime/zerops/provisioning";
@@ -119,6 +123,7 @@ import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { mateReviewWaits, type ZeropsAgentActivity } from "~/zerops/agentActivity";
 import type { MateComing } from "~/zerops/mateComing";
 import { useZeropsProjectFlowOptional } from "~/zerops/projectFlowContext";
+import { useNowMs } from "~/zerops/useNowMs";
 import type { FixProblem } from "~/zerops/fixRequest";
 import { useOpenReview } from "~/zerops/review";
 import { useSentAsks } from "~/zerops/sentAsk";
@@ -231,12 +236,7 @@ import {
   headingPillMotion,
   useHeadingLine,
 } from "./SidebarHeadingLine";
-import {
-  headingMark,
-  stopComing,
-  type HeadingLineInput,
-  type StopComing,
-} from "./SidebarHeadingLine.logic";
+import { headingMark, type HeadingLineInput } from "./SidebarHeadingLine.logic";
 
 /** What the client holds per environment, when it holds anything. */
 type RosterCandidate = ZeropsCandidate & {
@@ -636,6 +636,9 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
   });
   // What "a week untouched" is measured from: the moment the menu was drawn.
   const [nowMs] = useState(Date.now);
+  // What closes a stage's coming-up and first-deploy windows: the shared minute clock, so the
+  // menu and the projects page close them together (no request of its own).
+  const minuteMs = useNowMs();
   // The projects whose quiet Mates somebody unfolded; not remembered.
   const [openQuiet, setOpenQuiet] = useState<ReadonlySet<string>>(() => new Set());
   // The projects a heading's press set unfolding or folding, until they settle:
@@ -796,6 +799,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
   // the platform's facts alone.
   const projectFlows = useZeropsProjectFlowOptional();
   const deployments = projectFlows?.deployments;
+  const runners = projectFlows?.runners;
   const giteaComing = projectFlows !== null && projectFlows.signedIn;
 
   // Until the rows below are drawn, the jump box finds nothing here, and the
@@ -1023,6 +1027,8 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
             addsOffered: groupAddsOffered(entries, health),
           }),
         pending: group?.pending ?? [],
+        runner: runners?.get(id),
+        nowMs: minuteMs,
       }),
     );
     // Production and its stages are the chips on the heading (M2), never rows:
@@ -1228,24 +1234,19 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
       : [];
     // The heading's second line (D′): the release, and each environment coming up step by
     // step, from what the platform says of it (`stopComing`).
-    const comingOf = (
-      tier: "stage" | "production",
-      stop: GroupFlowStop,
-    ): StopComing | undefined => {
+    const listedOf = (stop: GroupFlowStop): ListedStop => {
       const item = stopItem(stop.projectId);
-      const deployment = deployments?.get(stop.projectId);
-      return stopComing({
-        tier,
-        pending: false,
+      return {
+        stop,
         projectStatus: item?.project.status,
         createdAt: item?.project.created,
-        nowMs,
         services: item?.services?.statuses,
-        building: buildingOf(deployment) !== undefined,
-        deployed: stop.version !== undefined || deployRuns(deployment),
+        building: buildingOf(deployments?.get(stop.projectId)) !== undefined,
         routes: item?.routes?.length ?? 0,
-      });
+      };
     };
+    const comingOf = (tier: "stage" | "production", stop: GroupFlowStop): StopComing | undefined =>
+      listedStopComing(tier, listedOf(stop), minuteMs);
     const PENDING: StopComing = { kind: "coming", step: "project" };
     const line: HeadingLineInput | undefined =
       group === undefined
@@ -1270,11 +1271,13 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
                 projectId: stop.projectId,
                 name,
                 coming: comingOf("stage", stop),
+                serves: stopServes(listedOf(stop)),
               })),
               ...projectFlow.creatingStages.map((creation) => ({
                 projectId: creation.projectId,
                 name: creation.name,
                 coming: PENDING,
+                serves: false,
               })),
             ],
             waiting: projectFlow.main.notLive,
@@ -2461,6 +2464,7 @@ function MateRow<T extends RosterCandidate>({
     records,
     asked: view.ask !== undefined,
     standUpBy: tags.standUp?.by,
+    madeBy: tags.madeBy,
     viewer,
     // It waits on the viewer once its page can show the sign-in: its link made.
     linked: candidate.group === "connected",

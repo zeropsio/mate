@@ -8,7 +8,8 @@
  * "Releasing v2.4.0…", "v2.4.0 is live" for 4 s in the tab that watched it go out, or
  * "v2.4.0 didn’t go out" in amber. While a stage or a production comes up the same line names
  * each step: "Stage coming up · building the app", then "Stage is up", or "Stage didn’t come up"
- * in amber with Details.
+ * in amber with Details. Where an environment has got is client-runtime's rule (`stopComing`),
+ * which a phone says too.
  *
  * One line at a time: trouble, then an environment coming up, then a release — nothing can
  * release to a place that does not serve yet, and the wait is two minutes. Down and stopped are
@@ -16,104 +17,12 @@
  *
  * Pure: no clock of its own, no platform globals.
  */
+import { comingLine, type StopComing } from "@t3tools/client-runtime/zerops";
+
 import type { ChipState, ProductionChip, ReleaseFailure } from "./SidebarProductionChip.logic";
-
-/** Where an environment coming up has got. */
-export type ComingStep = "project" | "database" | "build" | "address";
-
-/** An environment coming up, or one that did not come up. */
-export type StopComing =
-  | { readonly kind: "coming"; readonly step: ComingStep }
-  | { readonly kind: "failed"; readonly reason: string };
-
-/**
- * How long after its project was made an environment may still be coming up. The owner's stage
- * took 131 s (project 32 s, database 50 s, build 63–130 s, address 131 s); a first build can take
- * several minutes more. Past this, what it lacks is the pill's to say — not deployed yet, down —
- * not a step of its coming up.
- */
-export const COMING_UP_WINDOW_MS = 15 * 60_000;
 
 /** How long "is live" and "is up" stand on the line before it folds. */
 export const LANDING_MS = 4_000;
-
-const STEP_WORDS: Record<ComingStep, string> = {
-  project: "making the project",
-  database: "adding the database",
-  build: "building the app",
-  address: "turning its address on",
-};
-
-const failing = (status: string) => /FAIL/u.test(status);
-
-/**
- * Whether a stage or a production is coming up, and at which step, from what the platform says
- * of it: accepted and not listed yet, or its project still being made; then its services — a
- * database not running yet, a build running or its runtime not running yet, then no public
- * address. A runtime whose first build failed did not come up.
- *
- * Production's first build is its first release: until one is pressed its runtime waits, which
- * is "nothing released yet", not a step of its coming up.
- */
-export function stopComing(input: {
-  readonly tier: "stage" | "production";
-  /** Its creation was accepted and the listing does not hold its project yet. */
-  readonly pending: boolean;
-  readonly projectStatus: string | undefined;
-  /** When its project was made; unknown is never "just made". */
-  readonly createdAt: string | undefined;
-  readonly nowMs: number;
-  /** Its services as the platform lists them; `undefined` while unread. */
-  readonly services:
-    | ReadonlyArray<{
-        readonly hostname: string;
-        readonly status: string;
-        readonly runtime: boolean;
-      }>
-    | undefined;
-  /** A deploy runs on it (`deployBuilding`). */
-  readonly building: boolean;
-  /** It has run a deploy: a version is known, or the platform says one runs. */
-  readonly deployed: boolean;
-  /** Its public routes. */
-  readonly routes: number;
-}): StopComing | undefined {
-  if (input.pending) return { kind: "coming", step: "project" };
-  if (input.projectStatus === "STOPPED") return undefined;
-  if (input.projectStatus !== undefined && input.projectStatus !== "ACTIVE") {
-    return { kind: "coming", step: "project" };
-  }
-  const made = input.createdAt === undefined ? Number.NaN : Date.parse(input.createdAt);
-  if (Number.isNaN(made) || input.nowMs - made >= COMING_UP_WINDOW_MS) return undefined;
-  if (input.services === undefined) return { kind: "coming", step: "project" };
-  const runtimes = input.services.filter((service) => service.runtime);
-  const others = input.services.filter((service) => !service.runtime);
-  const running = (status: string) => status === "ACTIVE";
-  if (input.deployed && runtimes.every(({ status }) => running(status)) && input.routes > 0) {
-    return undefined;
-  }
-  const brokenOther = others.find(({ status }) => failing(status));
-  if (brokenOther !== undefined && !input.deployed) {
-    return { kind: "failed", reason: `the ${brokenOther.hostname} didn’t start` };
-  }
-  if (others.some(({ status }) => !running(status) && !failing(status))) {
-    return { kind: "coming", step: "database" };
-  }
-  const broken = runtimes.find(({ status }) => failing(status));
-  if (broken !== undefined) {
-    return input.deployed
-      ? undefined
-      : { kind: "failed", reason: `the ${broken.hostname}’s build failed` };
-  }
-  if (input.building) return { kind: "coming", step: "build" };
-  if (runtimes.some(({ status }) => !running(status))) {
-    return input.tier === "production" && !input.deployed
-      ? undefined
-      : { kind: "coming", step: "build" };
-  }
-  if (input.routes === 0) return { kind: "coming", step: "address" };
-  return undefined;
-}
 
 /** What the line is made of, besides what only this tab saw land (`HeadingLanding`). */
 export interface HeadingLineInput {
@@ -132,6 +41,8 @@ export interface HeadingLineInput {
     readonly projectId: string;
     readonly name: string;
     readonly coming: StopComing | undefined;
+    /** It serves: a deploy ran and it has a public address (`stopServes`). */
+    readonly serves: boolean;
   }>;
   /** Changes merged and not live (`GroupFlowMain.notLive`). */
   readonly waiting: number;
@@ -229,8 +140,7 @@ export function headingLine(
   }
   if (production?.coming?.kind === "coming") {
     return {
-      fact: "Production coming up",
-      rest: STEP_WORDS[production.coming.step],
+      ...comingLine("Production", production.coming),
       tone: "ink",
       spinner: false,
       release: false,
@@ -240,8 +150,7 @@ export function headingLine(
   for (const stage of stages) {
     if (stage.coming?.kind !== "coming") continue;
     return {
-      fact: `${stageWord(stages, stage)} coming up`,
-      rest: STEP_WORDS[stage.coming.step],
+      ...comingLine(stageWord(stages, stage), stage.coming),
       tone: "ink",
       spinner: false,
       release: false,
@@ -290,7 +199,7 @@ export function headingLine(
 /**
  * What landed between two readings, as this tab watched it: a release on its way now served
  * ("v2.4.0 is live"), production's first build serving ("v0.1.0 is live"), a stage that was
- * coming up now up ("Stage is up"). Nothing where this tab did not see it on its way.
+ * coming up now serving ("Stage is up"). Nothing where this tab did not see it on its way.
  */
 export function headingLanding(
   before: HeadingLineInput | undefined,
@@ -305,7 +214,8 @@ export function headingLanding(
     }
   }
   for (const stage of after.stages) {
-    if (stage.coming !== undefined) continue;
+    // Up only where it serves: a coming-up window that ended is not a landing.
+    if (stage.coming !== undefined || !stage.serves) continue;
     const earlier = before.stages.find((entry) => entry.projectId === stage.projectId);
     if (earlier?.coming?.kind === "coming") {
       return { kind: "up", name: stageWord(after.stages, stage) };

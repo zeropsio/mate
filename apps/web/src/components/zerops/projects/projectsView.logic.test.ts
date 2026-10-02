@@ -588,6 +588,22 @@ describe("a stop's line", () => {
       { state: "checking", version: undefined },
       { word: "Checking what runs here…", version: undefined, tone: "off" },
     ],
+    [
+      { state: "empty", version: undefined, firstDeploy: { kind: "failed" } },
+      { word: "First deploy failed", version: undefined, tone: "failed" },
+    ],
+    [
+      { state: "empty", version: undefined, firstDeploy: { kind: "on-its-way" } },
+      { word: "First deploy on its way", version: undefined, tone: "busy" },
+    ],
+    [
+      { state: "empty", version: undefined, firstDeploy: { kind: "runner", why: "not-started" } },
+      {
+        word: "Waiting for the runner · it hasn’t started",
+        version: undefined,
+        tone: "off",
+      },
+    ],
   ] as const)("reads %j as %j", (over, expected) => {
     expect(stopLine(stop(over))).toEqual(expected);
   });

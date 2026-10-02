@@ -14,6 +14,7 @@ import type {
   FlowReleaseRow,
   GroupEnvironment,
   GroupEnvironmentRowInput,
+  GroupRunner,
   MissingEnvironmentRow,
   ReleaseComparison,
   ReleaseEntry,
@@ -128,6 +129,11 @@ export interface ZeropsProjectFlowValue {
    * answered; a slug not answered for yet is absent and says nothing (`resolveGroupGitea`).
    */
   readonly organizations: ReadonlyMap<string, boolean>;
+  /**
+   * Each group's runner, by group id, from the services of the account's Gitea project as held
+   * (`groupRunner`): a stage's first deploy waits on it. A group missing here says nothing of it.
+   */
+  readonly runners?: ReadonlyMap<string, GroupRunner>;
   /** Every Mate's name by its project, for a surface that meets a bot login (`mate-{projectId}`). */
   readonly mateNames: ReadonlyMap<string, string>;
   /** The verbs in flight, by `flowVerbKey`: a row shows its own running and takes no second click. */

@@ -53,10 +53,14 @@ import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 import {
   createForgeReads,
   createMergeabilityTracker,
+  createPullWatch,
+  FORGE_REFRESH_MS,
   giteaNotFound,
   giteaUnauthorized,
   MERGE_RECHECK_AFTER_MS,
   mergeReadOf,
+  PULL_WATCH_MS,
+  pullWatchGroups,
   TAGS_MAX_AGE_MS,
   VERDICT_RECHECK_LADDER_MS,
   type ForgePart,
@@ -64,13 +68,16 @@ import {
   type MergeabilityTracker,
   type StatusReadOptions,
 } from "@t3tools/client-runtime/zerops/forge";
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 
 import { giteaClientFor } from "./accountGiteaSessions";
 import { startRefreshClock } from "./refreshClock";
 
-/** How often the forge is read again while the app is open. */
-export const GROUP_FORGE_REFRESH_MS = 60_000;
+/**
+ * How often the forge is read again while the app is open; a group with an open pull request has
+ * its org looked at every `PULL_WATCH_MS` besides (`forge/pullWatch.ts`).
+ */
+export const GROUP_FORGE_REFRESH_MS = FORGE_REFRESH_MS;
 
 export interface ZeropsGroupForgeState {
   /** The org's repositories whose pull requests this answer holds, in the forge's order. */
@@ -192,6 +199,34 @@ export function useZeropsGroupForge(input: {
     });
     return () => timers.forEach(clearTimeout);
   }, [checking, invalidate]);
+  // A merge made in another window reaches this one sooner than the minute's read: every
+  // `PULL_WATCH_MS` one org with an open pull request that moved lately is listed, in turn, and a
+  // repository whose pull requests that listing dropped is read again (`forge/pullWatch.ts`). At
+  // most four listings a minute whatever the count, and the clock stops while nothing is open.
+  const watched = useMemo(() => pullWatchGroups(input.groups, answers), [input.groups, answers]);
+  const watching = watched.some((group) => group.openPulls > 0);
+  const latestWatched = useRef(watched);
+  useEffect(() => {
+    latestWatched.current = watched;
+  });
+  const { enabled, giteaOrigin, readable } = input;
+  useEffect(() => {
+    if (!watching || !enabled || !readable || giteaOrigin === undefined) return;
+    const watch = createPullWatch({
+      reads,
+      list: (owner) => {
+        const client = giteaClientFor(giteaOrigin);
+        return client === null
+          ? Promise.reject(new Error("No Gitea session"))
+          : client.listOrganizationRepositories(owner);
+      },
+      moved: (groupId, repository) => invalidate(groupId, { kind: "repository", repository }),
+    });
+    return startRefreshClock({
+      refresh: () => void watch.tick(latestWatched.current),
+      everyMs: PULL_WATCH_MS,
+    });
+  }, [watching, enabled, readable, giteaOrigin, reads, invalidate]);
   return { forges: answers, failures, invalidate };
 }
 

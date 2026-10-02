@@ -50,7 +50,7 @@ import {
   type RoleMateVisibility,
 } from "@t3tools/client-runtime/zerops/mateAccess";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
-import { NOTHING_DEPLOYED } from "@t3tools/client-runtime/zerops/flow";
+import { NOTHING_DEPLOYED, stopTone } from "@t3tools/client-runtime/zerops/flow";
 import {
   knownPresentation,
   type KnownAffordance,
@@ -147,6 +147,8 @@ import {
   type ZeropsGroupTags,
   type ZeropsProjectOrder,
   type ZeropsToolKind,
+  firstDeployLine,
+  type FirstDeploy,
 } from "@t3tools/client-runtime/zerops";
 import { invalidateZerops } from "~/zerops/accountInvalidations";
 
@@ -484,8 +486,12 @@ const PROJECTS_WAIT_FOR_ZEROPS = "Your projects will show here once Zerops answe
  */
 export function declaredEnvironmentSummary(
   row: Pick<EnvironmentRow, "line" | "tone" | "version">,
+  /** A stage that runs nothing: where its first deploy stands, as its cell says it. */
+  firstDeploy?: FirstDeploy | undefined,
 ): string {
-  return row.version.label === undefined && row.tone === "neutral" ? NOTHING_DEPLOYED : row.line;
+  return row.version.label === undefined && row.tone === "neutral"
+    ? (firstDeployLine(firstDeploy) ?? NOTHING_DEPLOYED)
+    : row.line;
 }
 
 /**
@@ -2239,9 +2245,15 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
     // branch and the deployed commit, from the two parties that can
     // prove each (`groupDeploys.ts`). Anything else keeps the summary of
     // what it holds.
+    // Coloured by the one rule every surface words a stop by (`stopTone`): the platform's build
+    // is a deploy on its way, and a version it runs is deployed whatever a status read before said.
     const declared = declaredEnvironment(candidate.project.id);
-    const deployTone = declared === undefined ? undefined : deployRowTone(declared.tone);
-    const deployLabel = declared === undefined ? undefined : deployWord(declared.tone);
+    const stopDeployTone =
+      declared === undefined
+        ? undefined
+        : stopTone(projectFlow.deployments.get(candidate.project.id), declared);
+    const deployTone = stopDeployTone === undefined ? undefined : deployRowTone(stopDeployTone);
+    const deployLabel = stopDeployTone === undefined ? undefined : deployWord(stopDeployTone);
     // *Release* is the project's next step, in production's cell beside
     // the fact it acts on — never a second copy on this row, which put the
     // same verb on the page twice with nothing beside it saying why (the
@@ -2292,7 +2304,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
             ? presentation.detail
             : declared === undefined
               ? summaryOf(candidate)
-              : declaredEnvironmentSummary(declared)
+              : declaredEnvironmentSummary(declared, firstDeployOf(candidate.project.id))
         }
         tag={environmentRoleTag(role)}
       />
@@ -2694,6 +2706,8 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
               addsOffered: addsOfferedFor(group),
             }),
             pending: group.pending,
+            runner: projectFlow.runners?.get(group.groupId),
+            nowMs,
           }),
         ),
         read: reads !== undefined,
@@ -2725,6 +2739,11 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
       };
     },
   );
+  // Where each stage's first deploy stands, as its cell in the flow says it (`groupFlow`): the
+  // expanded environment row says the same.
+  const firstDeployOf = (projectId: string) =>
+    flowGroups.flatMap(({ flow }) => flow.stages).find((stage) => stage.projectId === projectId)
+      ?.firstDeploy;
   // The page's one line of trouble: a refusal of something done here — a
   // merge or a release the project flow refused included — one at a time.
   const trouble = toolError ?? renameGroup.trouble ?? route.trouble ?? projectFlow.trouble;

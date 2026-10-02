@@ -470,7 +470,7 @@ function release(over: Partial<ReleaseReviewInput> = {}): ReleaseReviewInput {
     changes: 2,
     onStage: { total: 2, running: 2 },
     services: ["app", "api"],
-    live: "v0.1.56",
+    replaces: { kind: "release", tag: "v0.1.56" },
     outcome: { kind: "offered" },
     now: NOW,
     ...over,
@@ -526,7 +526,7 @@ describe("releaseReview", () => {
         state: "released",
         tone: "done",
         title: "Released v0.1.57",
-        why: "Production runs it · 3 minutes ago",
+        why: "Production runs it · tagged 3 minutes ago",
       },
     ],
     [
@@ -575,7 +575,7 @@ describe("releaseReview", () => {
     [
       "released",
       { outcome: { kind: "released", at: undefined } },
-      "Production runs v0.1.57. If it misbehaves, roll back from production's menu.",
+      "Production runs v0.1.57. If it misbehaves, roll back to v0.1.56 from production's menu.",
       undefined,
     ],
     [
@@ -589,6 +589,48 @@ describe("releaseReview", () => {
     expect(review.consequence).toBe(consequence);
     expect(review.primary?.enabled).toBe(enabled);
   });
+
+  it.each<[string, ReleaseReviewInput["replaces"], string, string | undefined, string]>([
+    [
+      "the first release",
+      { kind: "first" },
+      "the first release · 2 changes",
+      undefined,
+      "Production runs v0.1.57.",
+    ],
+    [
+      "after a release production runs in full",
+      { kind: "release", tag: "v0.1.56" },
+      "replaces v0.1.56 · 2 changes",
+      "Roll back to v0.1.56 from production's menu. It gets its own review.",
+      "Production runs v0.1.57. If it misbehaves, roll back to v0.1.56 from production's menu.",
+    ],
+    [
+      "after releases none of which production runs in full",
+      { kind: "unnamed" },
+      "replaces what production runs · 2 changes",
+      "Roll back from production's menu. It gets its own review.",
+      "Production runs v0.1.57. If it misbehaves, roll back from production's menu.",
+    ],
+    [
+      // Read after it landed: production runs the release itself, never a roll back to it.
+      "naming itself",
+      { kind: "release", tag: "v0.1.57" },
+      "replaces v0.1.57 · 2 changes",
+      "Roll back from production's menu. It gets its own review.",
+      "Production runs v0.1.57. If it misbehaves, roll back from production's menu.",
+    ],
+  ])(
+    "released, %s: the header, the roll back line and the foot",
+    (_name, replaces, meta, ifWrong, foot) => {
+      const review = releaseReview(
+        release({ replaces, outcome: { kind: "released", at: undefined } }),
+      );
+      expect(review.meta.join(" · ")).toBe(meta);
+      expect(review.ifWrong).toBe(ifWrong);
+      expect(review.consequence).toBe(foot);
+    },
+  );
 
   it("hands a failed release to the person's Mate, with when and the error (S6)", () => {
     const fix = releaseReview(
@@ -679,7 +721,7 @@ describe("rollbackReview: roll back gets the same review, naming where it goes b
         state: "rolled-back",
         tone: "done",
         title: "Rolled back to v0.1.55",
-        why: "Production runs its commits again, as v0.1.58 · 3 minutes ago",
+        why: "Production runs its commits again, as v0.1.58 · tagged 3 minutes ago",
       },
       "Production runs v0.1.55's commits again, as v0.1.58.",
     ],
@@ -694,6 +736,31 @@ describe("rollbackReview: roll back gets the same review, naming where it goes b
         tone: "failed",
         title: "v0.1.58 didn't go out",
         why: "The deploy of app failed",
+      },
+      "Production still runs v0.1.57.",
+    ],
+    [
+      "a newer tag sits above the one it made",
+      {
+        press: { kind: "done" },
+        outcome: { kind: "superseded", by: "v0.1.59", live: "v0.1.59" },
+      },
+      {
+        state: "rollback-superseded",
+        tone: "quiet",
+        title: "v0.1.59 was tagged after v0.1.58",
+        why: "Production runs v0.1.59",
+      },
+      "The project's line in the menu follows v0.1.59.",
+    ],
+    [
+      "tagged, and past the wait for it with no landing",
+      { press: { kind: "done" }, outcome: { kind: "stalled", at: minutesAgo(34) } },
+      {
+        state: "rollback-stalled",
+        tone: "attention",
+        title: "v0.1.58 hasn't landed",
+        why: "Tagged 34 minutes ago · production doesn't run it",
       },
       "Production still runs v0.1.57.",
     ],

@@ -64,11 +64,15 @@ export type ReviewState =
   | "releasing"
   | "released"
   | "release-failed"
+  | "release-stalled"
+  | "release-superseded"
   | "rollback-ready"
   | "rollback-blocked"
   | "rolling-back"
   | "rolled-back"
   | "rollback-failed"
+  | "rollback-stalled"
+  | "rollback-superseded"
   | "rollback-refused"
   | "land-ready"
   | "land-now"
@@ -145,7 +149,10 @@ export type ReviewPress =
 
 /** `Just now`, `20 minutes ago`, `5 hours ago`, `3 days ago` — or nothing for a time it cannot read. */
 export function reviewAge(at: string, now: number): string | undefined {
-  const then = Date.parse(at);
+  return reviewAgeMs(Date.parse(at), now);
+}
+
+function reviewAgeMs(then: number, now: number): string | undefined {
   if (Number.isNaN(then)) return undefined;
   const minutes = Math.floor((now - then) / 60_000);
   if (minutes < 1) return "Just now";
@@ -652,6 +659,19 @@ export type ReleaseOutcome =
   | { readonly kind: "offered" }
   | { readonly kind: "releasing"; readonly progress?: string | undefined }
   | { readonly kind: "released"; readonly at: string | undefined }
+  /** Tagged longer ago than the wait for it, and production doesn't run it: the wait is over. */
+  | {
+      readonly kind: "stalled";
+      /** When it was tagged, where the tag's date was read. */
+      readonly at: string | undefined;
+      /** When it was tagged, else when the review first held it: what its age counts from. */
+      readonly sinceMs?: number | undefined;
+    }
+  /**
+   * A newer tag the broker did not refuse sits above it: the release it followed is over, and
+   * `live` is what production runs in full now.
+   */
+  | { readonly kind: "superseded"; readonly by: string; readonly live: string | undefined }
   | {
       readonly kind: "failed";
       readonly detail?: string | undefined;
@@ -670,16 +690,43 @@ export interface ReleaseReviewInput {
   readonly onStage: { readonly total: number; readonly running: number } | undefined;
   /** The production services that redeploy. */
   readonly services: ReadonlyArray<string>;
-  /** The release production runs now. */
-  readonly live: string | undefined;
+  /**
+   * What production ran as this one was offered — what it replaces, and where a roll back goes.
+   * Held from the press (`holdReleaseFacts`): read after the release lands, production runs the
+   * release itself.
+   */
+  readonly replaces: ReleaseReplaces;
   readonly outcome: ReleaseOutcome;
+  /**
+   * After a failure, whether production no longer runs what it replaced (`releaseStep`): a deploy
+   * that moved some services before another failed leaves something to roll back from.
+   */
+  readonly productionMoved?: boolean | undefined;
   readonly now: number;
+}
+
+/**
+ * What a release replaces: nothing, for the first one; the release production runs in full; or a
+ * production no one release names — one whose deploy moved some services and failed in another.
+ */
+export type ReleaseReplaces =
+  | { readonly kind: "first" }
+  | { readonly kind: "release"; readonly tag: string }
+  | { readonly kind: "unnamed" };
+
+/** A release's review: its verdict and foot, the header's facts, and where to go if it goes wrong. */
+export interface ReleaseReviewModel extends ReviewModel {
+  /** Beside the title: `the first release`, `replaces v0.1.0`, and how many changes. */
+  readonly meta: ReadonlyArray<string>;
+  /** Where a roll back goes; `undefined` for the first release, which replaced nothing. */
+  readonly ifWrong: string | undefined;
 }
 
 const RELEASE_FOLLOWS = "You can close this. The project's line in the menu follows the release.";
 
 function stageWhy(input: ReleaseReviewInput): string {
-  const since = input.live === undefined ? "since the last release" : `since ${input.live}`;
+  const since =
+    input.replaces.kind === "release" ? `since ${input.replaces.tag}` : "since the last release";
   const onStage = input.onStage;
   if (onStage === undefined || onStage.total === 0) {
     return `${count(input.changes, "change", "changes")} merged ${since}`;
@@ -696,12 +743,46 @@ function stageWhy(input: ReleaseReviewInput): string {
   return `Stage runs ${String(onStage.running)} of ${count(onStage.total, "change", "changes")}`;
 }
 
-export function releaseReview(input: ReleaseReviewInput): ReviewModel {
+export function releaseReview(input: ReleaseReviewInput): ReleaseReviewModel {
+  const { tag, replaces } = input;
+  // The release a roll back goes to — never the tag itself, which is a release read after it
+  // landed; none for the first release, and production's menu for one no release names.
+  // Nothing went out — a tag that hasn't landed, one a newer tag followed, a failure that moved
+  // nothing: production runs what it ran, and there is nothing to roll back from.
+  const nothingWentOut =
+    input.outcome.kind === "stalled" ||
+    input.outcome.kind === "superseded" ||
+    (input.outcome.kind === "failed" && input.productionMoved !== true);
+  const back =
+    replaces.kind === "first" || nothingWentOut
+      ? undefined
+      : replaces.kind === "release" && replaces.tag !== tag
+        ? `roll back to ${replaces.tag} from production's menu`
+        : "roll back from production's menu";
+  const facts = {
+    meta: [
+      replaces.kind === "first"
+        ? "the first release"
+        : replaces.kind === "release"
+          ? `replaces ${replaces.tag}`
+          : "replaces what production runs",
+      count(input.changes, "change", "changes"),
+    ],
+    ifWrong:
+      back === undefined
+        ? undefined
+        : `${back.charAt(0).toUpperCase()}${back.slice(1)}. It gets its own review.`,
+  };
+  return { ...releaseVerdictOf(input, back), ...facts };
+}
+
+function releaseVerdictOf(input: ReleaseReviewInput, back: string | undefined): ReviewModel {
   const { tag, outcome } = input;
+  const ran = input.replaces.kind === "release" ? input.replaces.tag : undefined;
   const keeps =
-    input.live === undefined
+    ran === undefined
       ? "Production keeps running what it runs."
-      : `Production keeps running ${input.live}.`;
+      : `Production keeps running ${ran}.`;
   switch (outcome.kind) {
     case "releasing":
       return {
@@ -723,10 +804,14 @@ export function releaseReview(input: ReleaseReviewInput): ReviewModel {
           state: "released",
           tone: "done",
           title: `Released ${tag}`,
-          why: age === undefined ? "Production runs it" : `Production runs it · ${age}`,
+          // The age is the tag's: the landing's own moment is not read.
+          why: age === undefined ? "Production runs it" : `Production runs it · tagged ${age}`,
           fix: undefined,
         },
-        consequence: `Production runs ${tag}. If it misbehaves, roll back from production's menu.`,
+        consequence:
+          back === undefined
+            ? `Production runs ${tag}.`
+            : `Production runs ${tag}. If it misbehaves, ${back}.`,
         primary: undefined,
       };
     }
@@ -749,12 +834,24 @@ export function releaseReview(input: ReleaseReviewInput): ReviewModel {
           },
         },
         consequence:
-          input.live === undefined
+          ran === undefined
             ? "Production still runs what it ran before."
-            : `Production still runs ${input.live}.`,
+            : `Production still runs ${ran}.`,
         primary: undefined,
       };
     }
+    case "stalled":
+      return stalledModel({
+        state: "release-stalled",
+        tag,
+        what: "release",
+        at: outcome.at,
+        sinceMs: outcome.sinceMs,
+        ran,
+        now: input.now,
+      });
+    case "superseded":
+      return supersededModel({ state: "release-superseded", tag, outcome });
     case "offered":
       break;
   }
@@ -796,6 +893,74 @@ export function releaseReview(input: ReleaseReviewInput): ReviewModel {
   };
 }
 
+/**
+ * A tag that went out and that production hasn't run past the wait for it: what is true — when it
+ * was tagged, that production doesn't run it, what production still runs — and the person's Mate
+ * to find out why. No clock, nothing to press: another tag would wait behind the same cause.
+ */
+function stalledModel(input: {
+  readonly state: "release-stalled" | "rollback-stalled";
+  /** The tag that hasn't landed. */
+  readonly tag: string;
+  readonly what: "release" | "roll back";
+  readonly at: string | undefined;
+  /** What the age counts from: the tag's date, else when the review first held it. */
+  readonly sinceMs: number | undefined;
+  /** What production still runs, where one release names it. */
+  readonly ran: string | undefined;
+  readonly now: number;
+}): ReviewModel {
+  const since = input.sinceMs ?? (input.at === undefined ? Number.NaN : Date.parse(input.at));
+  const age = reviewAgeMs(since, input.now)?.toLowerCase();
+  const tagged = age === undefined ? "Tagged" : `Tagged ${age}`;
+  return {
+    verdict: {
+      state: input.state,
+      tone: "attention",
+      title: `${input.tag} hasn't landed`,
+      why: `${tagged} · production doesn't run it`,
+      fix: {
+        verb: "find out why",
+        problem: {
+          what: `Production doesn't run ${input.what} ${input.tag}`,
+          ...(input.at === undefined ? {} : { at: input.at }),
+          ask: "Find out why production hasn't deployed it, and fix what holds it.",
+        },
+      },
+    },
+    consequence:
+      input.ran === undefined
+        ? "Production still runs what it ran before."
+        : `Production still runs ${input.ran}.`,
+    primary: undefined,
+  };
+}
+
+/**
+ * A tag a newer one followed: what is true — which tag came after it, and what production runs —
+ * and where the project's line goes from here. Nothing to press, nothing to ask: the newer tag is
+ * the one that moves production now.
+ */
+function supersededModel(input: {
+  readonly state: "release-superseded" | "rollback-superseded";
+  /** The tag the review followed. */
+  readonly tag: string;
+  readonly outcome: Extract<ReleaseOutcome, { readonly kind: "superseded" }>;
+}): ReviewModel {
+  const { by, live } = input.outcome;
+  return {
+    verdict: {
+      state: input.state,
+      tone: "quiet",
+      title: `${by} was tagged after ${input.tag}`,
+      why: live === undefined ? "No release runs in full on production" : `Production runs ${live}`,
+      fix: undefined,
+    },
+    consequence: `The project's line in the menu follows ${by}.`,
+    primary: undefined,
+  };
+}
+
 // ---------------------------------------------------------------------------
 // A roll back
 // ---------------------------------------------------------------------------
@@ -805,6 +970,7 @@ export interface RollbackReviewInput {
   readonly tag: string;
   /** The tag it makes, listing that release's commits — the one made, once it was. */
   readonly nextTag: string;
+  /** The release production ran as the roll back was offered, held from the press. */
   readonly live: string | undefined;
   readonly services: ReadonlyArray<string>;
   readonly mayRelease: boolean;
@@ -818,7 +984,27 @@ export interface RollbackReviewInput {
   readonly now: number;
 }
 
-export function rollbackReview(input: RollbackReviewInput): ReviewModel {
+export interface RollbackReviewModel extends ReviewModel {
+  /**
+   * Beside the title: what production runs as it goes back — `production runs v0.1.1` — and,
+   * once it went back, what it replaced; `undefined` when it went back from a release not read.
+   */
+  readonly meta: string | undefined;
+}
+
+export function rollbackReview(input: RollbackReviewInput): RollbackReviewModel {
+  const meta =
+    input.live === undefined
+      ? input.outcome.kind === "released"
+        ? undefined
+        : "production runs a later release"
+      : input.outcome.kind === "released"
+        ? `replaces ${input.live}`
+        : `production runs ${input.live}`;
+  return { ...rollbackVerdictOf(input), meta };
+}
+
+function rollbackVerdictOf(input: RollbackReviewInput): ReviewModel {
   const { tag, nextTag, outcome, press } = input;
   const keeps =
     input.live === undefined
@@ -862,13 +1048,25 @@ export function rollbackReview(input: RollbackReviewInput): ReviewModel {
           state: "rolled-back",
           tone: "done",
           title: `Rolled back to ${tag}`,
-          why: `Production runs its commits again, as ${nextTag}${age === undefined ? "" : ` · ${age}`}`,
+          why: `Production runs its commits again, as ${nextTag}${age === undefined ? "" : ` · tagged ${age}`}`,
           fix: undefined,
         },
         consequence: `Production runs ${tag}'s commits again, as ${nextTag}.`,
         primary: undefined,
       };
     }
+    case "superseded":
+      return supersededModel({ state: "rollback-superseded", tag: nextTag, outcome });
+    case "stalled":
+      return stalledModel({
+        state: "rollback-stalled",
+        tag: nextTag,
+        what: "roll back",
+        at: outcome.at,
+        sinceMs: outcome.sinceMs,
+        ran: input.live,
+        now: input.now,
+      });
     case "failed":
       return {
         verdict: {

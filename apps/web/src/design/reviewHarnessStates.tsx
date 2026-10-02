@@ -502,7 +502,7 @@ function Release({
       fixer="Juno"
       gate={{ allowed: true }}
       hasStage
-      live="v0.1.56"
+      replaces={{ kind: "release", tag: "v0.1.56" }}
       name="Beviro"
       now={NOW}
       onClose={onClose}

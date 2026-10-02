@@ -1,3 +1,4 @@
+import * as DateTime from "effect/DateTime";
 import { describe, expect, it } from "vite-plus/test";
 
 import type { Deployment } from "./flow/deployment.ts";
@@ -558,7 +559,7 @@ describe("groupFlow", () => {
       expected: { kind: "checking", line: "Checking what runs here…", stop: { state: "checking" } },
     },
     {
-      case: "deploying: a deploy is running, whatever it ran before",
+      case: "live: the platform runs the release a pending status was read on before it went active",
       production: productionOf({
         row: declared({
           projectId: "p-prod",
@@ -569,7 +570,7 @@ describe("groupFlow", () => {
         }),
         deployment: runs(MAIN_SHA),
       }),
-      expected: { kind: "deploying", line: "Deploying…", stop: { state: "deploying" } },
+      expected: { kind: "live", line: "v0.1.0", stop: { state: "deployed" } },
     },
     {
       case: "deploying: the platform's build runs on it, whatever the row read before",
@@ -822,6 +823,140 @@ describe("groupFlow — creations under way", () => {
       pending: [creating({ projectId: "p-stage", kind: "stage" })],
     });
     expect(listed.creatingStages).toEqual([]);
+  });
+});
+
+describe("groupFlow — a stage's first deploy, while it runs nothing (run 4)", () => {
+  const NOW = Date.parse("2026-10-02T12:00:00.000Z");
+  const MINUTE = 60_000;
+  const at = (msAgo: number) => DateTime.formatIso(DateTime.makeUnsafe(NOW - msAgo));
+  const stageStop = (over: Partial<GroupFlowStopInput> = {}): GroupFlowStopInput => ({
+    projectId: "p-pantry-stage",
+    name: "Pantry - stage",
+    tier: "stage",
+    row: declared({ projectId: "p-pantry-stage", name: "Pantry - stage", tier: "stage" }),
+    deployment: NOTHING_RUNS,
+    route: undefined,
+    createdAt: at(2 * MINUTE),
+    ...over,
+  });
+  const stuck = { kind: "unable", why: "not-started" } as const;
+  const able = { kind: "able" } as const;
+  it.each([
+    {
+      case: "asked for, the runner not started: it awaits the runner",
+      over: {},
+      runner: stuck,
+      mainHasCode: true,
+      first: { kind: "runner", why: "not-started" },
+    },
+    {
+      case: "asked for, the runner able: on its way",
+      over: {},
+      runner: able,
+      mainHasCode: true,
+      first: { kind: "on-its-way" },
+    },
+    {
+      case: "asked for, the runner unread: nothing promised",
+      over: {},
+      runner: undefined,
+      mainHasCode: true,
+      first: undefined,
+    },
+    {
+      case: "made a window ago, its first deploy never came: nothing promised",
+      over: { createdAt: at(20 * MINUTE) },
+      runner: able,
+      mainHasCode: true,
+      first: undefined,
+    },
+    {
+      case: "when it was made unknown: nothing promised",
+      over: { createdAt: undefined },
+      runner: able,
+      mainHasCode: true,
+      first: undefined,
+    },
+    {
+      case: "main has no code: nothing asked for",
+      over: {},
+      runner: stuck,
+      mainHasCode: false,
+      first: undefined,
+    },
+    {
+      case: "not declared: nothing asked for",
+      over: { row: undefined },
+      runner: stuck,
+      mainHasCode: true,
+      first: undefined,
+    },
+    {
+      case: "what runs there unread: nothing said of its first deploy",
+      over: { deployment: undefined },
+      runner: stuck,
+      mainHasCode: true,
+      first: undefined,
+    },
+    {
+      case: "running a deploy: none to wait for",
+      over: { deployment: runs(STAGE_SHA) },
+      runner: stuck,
+      mainHasCode: true,
+      first: undefined,
+    },
+  ])("$case", ({ over, runner, mainHasCode, first }) => {
+    const flow = groupFlow(group({ stops: [stageStop(over)], mainHasCode, runner, nowMs: NOW }));
+    expect(flow.stages[0]?.firstDeploy).toEqual(first);
+  });
+
+  it("proves main has code by a merged code change, as the release does", () => {
+    const flow = groupFlow(
+      group({ stops: [stageStop()], merged: [pull({ kind: "code" })], runner: stuck, nowMs: NOW }),
+    );
+    expect(flow.stages[0]?.firstDeploy).toEqual({ kind: "runner", why: "not-started" });
+  });
+
+  it("counts the window from main's last code landing where that is later than the stage", () => {
+    const merged = [pull({ kind: "code", merged: true, mergedAt: at(3 * MINUTE) })];
+    const old = stageStop({ createdAt: at(60 * MINUTE) });
+    expect(
+      groupFlow(group({ stops: [old], merged, runner: able, nowMs: NOW })).stages[0]?.firstDeploy,
+    ).toEqual({ kind: "on-its-way" });
+    // A recipe change landing asks for no deploy of the code.
+    const recipe = [pull({ kind: "recipe", merged: true, mergedAt: at(3 * MINUTE) })];
+    expect(
+      groupFlow(
+        group({
+          stops: [old],
+          merged: [...recipe, ...merged.map((entry) => ({ ...entry, mergedAt: at(40 * MINUTE) }))],
+          runner: able,
+          nowMs: NOW,
+        }),
+      ).stages[0]?.firstDeploy,
+    ).toBeUndefined();
+  });
+
+  it("says a first deploy failed where a build of it was seen to end with nothing running", () => {
+    const failedBuild: Shown<Deployment> = {
+      ...NOTHING_RUNS,
+      ...(NOTHING_RUNS.state === "known" ? { value: { kind: "none", afterBuild: true } } : {}),
+    } as Shown<Deployment>;
+    const flow = groupFlow(
+      group({
+        stops: [stageStop({ deployment: failedBuild })],
+        mainHasCode: true,
+        runner: able,
+        nowMs: NOW,
+      }),
+    );
+    expect(flow.stages[0]?.firstDeploy).toEqual({ kind: "failed" });
+  });
+
+  it("promises nothing without a clock", () => {
+    const flow = groupFlow(group({ stops: [stageStop()], mainHasCode: true, runner: able }));
+    expect(flow.stages[0]?.firstDeploy).toBeUndefined();
   });
 });
 

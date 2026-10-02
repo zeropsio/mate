@@ -64,6 +64,8 @@ const MATE: ZeropsMateIdentity = {
   connected: true,
 };
 const ASKED: ZeropsMateIdentity = { ...MATE, standUp: { by: ADA } };
+/** The same Mate as New project makes it: its maker named, no stand-up asked. */
+const MADE: ZeropsMateIdentity = { ...MATE, madeBy: ADA };
 
 const NOT_SIGNED_IN: ZeropsAgentAuthSnapshot = {
   available: true,
@@ -215,6 +217,18 @@ describe("ZeropsMateEmptyState", () => {
     {
       name: "a colleague opening a Mate its person has not signed in",
       mate: ASKED,
+      viewer: "u-mira",
+      names: [[ADA, "Ada"]] as const,
+      auth: known(NOT_SIGNED_IN),
+      headline: "Sign Fen in to start.",
+      sentence:
+        "Ada added Fen but hasn't signed it in. Sign it in with your own account and it's yours.",
+      face: "idle",
+      signIn: true,
+    },
+    {
+      name: "a colleague opening a Mate New project made, its maker not signed in",
+      mate: MADE,
       viewer: "u-mira",
       names: [[ADA, "Ada"]] as const,
       auth: known(NOT_SIGNED_IN),

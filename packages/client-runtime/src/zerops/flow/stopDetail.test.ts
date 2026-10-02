@@ -160,6 +160,21 @@ describe("stopVerdict", () => {
       },
     },
     {
+      name: "a stage whose first deploy waits for the runner says so, as its cell does",
+      input: { tier: "stage", view: EMPTY, firstDeploy: { kind: "runner", why: "not-started" } },
+      expected: {
+        tone: "off",
+        text: "Waiting for the runner · it hasn’t started.",
+        detail: undefined,
+        verb: null,
+      },
+    },
+    {
+      name: "a stage whose first deploy is on its way says so",
+      input: { tier: "stage", view: EMPTY, firstDeploy: { kind: "on-its-way" } },
+      expected: { tone: "busy", text: "First deploy on its way.", detail: undefined, verb: null },
+    },
+    {
       name: "still checking",
       input: { view: CHECKING, waiting: 3 },
       expected: { tone: "off", text: CHECKING_WHAT_RUNS, detail: undefined, verb: null },
@@ -646,6 +661,24 @@ describe("serviceRows", () => {
     expect({ commit: row?.commit, word: row?.word, status: row?.status }).toEqual({
       commit: undefined,
       word: NOTHING_DEPLOYED,
+      status: undefined,
+    });
+  });
+
+  it("says a stage's first deploy where a service runs nothing, as the stage's cell does", () => {
+    const [row] = serviceRows({
+      environment: "stage",
+      services: [{ hostname: "web", repository: "web" }],
+      platform: { ...PLATFORM, value: [platformService("web", { kind: "none" })] },
+      mainHead: undefined,
+      routes: [],
+      offers: [],
+      nowMs: 100_000,
+      age: (iso) => iso,
+      firstDeploy: { kind: "runner", why: "waking" },
+    });
+    expect({ word: row?.word, status: row?.status }).toEqual({
+      word: "Waiting for the runner · it’s waking up",
       status: undefined,
     });
   });

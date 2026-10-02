@@ -13,6 +13,7 @@ import {
   withZeropsChangedFace,
   withZeropsFaceTag,
   withZeropsGroupTags,
+  withZeropsMateAtBirth,
   withZeropsMateTag,
   withZeropsStandUpTag,
   withoutZeropsStandUpTag,
@@ -243,6 +244,65 @@ describe("the stand-up marker (mate:standup:)", () => {
   ])("stands through $name", ({ write }) => {
     const asked = withZeropsStandUpTag(["mate:g:old", "mate:role:dev", "mate"], "u-ada");
     expect(readZeropsGroupTags(write(asked)).standUp).toEqual({ by: "u-ada" });
+  });
+});
+
+// Run 4 (2026-10-02): the same person made two Mates, one by New project and one by Add a Mate,
+// and both waited for that person's sign-in — but only Add a Mate's stand-up named them. Both
+// flows name who made the Mate at birth, so every window knows whose sign-in it waits for.
+describe("the maker (mate:by:)", () => {
+  it.each([
+    { name: "names who made it", tagList: ["mate:g:abc", "mate", "mate:by:u-ada"], by: "u-ada" },
+    { name: "is absent on a Mate born before it", tagList: ["mate:g:abc", "mate"], by: undefined },
+    { name: "names nobody when blank", tagList: ["mate:by:", "mate:by:  "], by: undefined },
+    {
+      name: "takes the first when a list carries two",
+      tagList: ["mate:by:u-ada", "mate:by:u-fen"],
+      by: "u-ada",
+    },
+    { name: "is never the agent's name", tagList: ["mate:bot:Ada"], by: undefined },
+  ])("$name", ({ tagList, by }) => {
+    expect(readZeropsGroupTags(tagList).madeBy).toBe(by);
+  });
+
+  it.each([
+    {
+      name: "a development Mate, made by New project: its maker, and no stand-up",
+      mate: { role: "dev" as const, madeBy: "u-ada" },
+      by: "u-ada",
+      standUp: undefined,
+    },
+    {
+      name: "a development Mate, made by Add a Mate: its maker beside its stand-up",
+      mate: { role: "dev" as const, madeBy: "u-ada", standUpBy: "u-ada" },
+      by: "u-ada",
+      standUp: { by: "u-ada" },
+    },
+    {
+      name: "a stage with an agent: a deploy target, nobody's sign-in awaited",
+      mate: { role: "stage" as const, madeBy: "u-ada" },
+      by: undefined,
+      standUp: undefined,
+    },
+    {
+      name: "nobody named",
+      mate: { role: "dev" as const, madeBy: "  " },
+      by: undefined,
+      standUp: undefined,
+    },
+  ])("is written at birth for $name", ({ mate, by, standUp }) => {
+    const tags = readZeropsGroupTags(withZeropsMateAtBirth(["mate:g:abc", "mate:role:dev"], mate));
+    expect({ by: tags.madeBy, standUp: tags.standUp }).toEqual({ by, standUp });
+  });
+
+  it("stands through a move to another group and the stand-up's clearing", () => {
+    const born = withZeropsMateAtBirth(["mate:g:old", "mate:role:dev"], {
+      role: "dev",
+      madeBy: "u-ada",
+      standUpBy: "u-ada",
+    });
+    const moved = withZeropsGroupTags(withoutZeropsStandUpTag(born), { groupId: "new" });
+    expect(readZeropsGroupTags(moved).madeBy).toBe("u-ada");
   });
 });
 

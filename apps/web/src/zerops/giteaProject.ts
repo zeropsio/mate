@@ -13,11 +13,12 @@ import {
   deriveGiteaState,
   readZeropsToolKind,
   type ZeropsGiteaState,
+  type ZeropsService,
 } from "@t3tools/client-runtime/zerops";
 import { useContext, useMemo } from "react";
 
 import { useHeldThroughBlink } from "./heldThroughBlink";
-import { HeldInventoryContext, type Inventory } from "./inventoryContext";
+import { HeldInventoryContext, InventoryContext, type Inventory } from "./inventoryContext";
 
 export interface AccountGitea {
   readonly state: ZeropsGiteaState;
@@ -49,6 +50,44 @@ function findAccountGitea(
     };
   }
   return undefined;
+}
+
+/**
+ * The services of the account's Gitea project in the org, as the inventory holds them — no read of
+ * their own: an ACTIVE project's first, a project whose services are unread skipped; `undefined`
+ * while it holds no such project with its services read.
+ */
+export function accountGiteaServices(
+  inventory: Pick<Inventory, "projects" | "services"> | null | undefined,
+  clientId: string | undefined,
+): ReadonlyArray<ZeropsService> | undefined {
+  const projects = (inventory?.projects ?? []).filter(
+    (project) =>
+      readZeropsToolKind(project.tagList) === "gitea" &&
+      (clientId === undefined || project.clientId === clientId),
+  );
+  const ordered = [
+    ...projects.filter(({ status }) => status === "ACTIVE"),
+    ...projects.filter(({ status }) => status !== "ACTIVE"),
+  ];
+  for (const project of ordered) {
+    const outcome = inventory?.services.get(project.id);
+    if (outcome?.status === "resolved") return outcome.services;
+  }
+  return undefined;
+}
+
+/**
+ * The services of the account's Gitea project in the org, as the grant shows them — words are
+ * drawn from them, so never from what it withholds (DESIGN law 5) — held through a blink of its
+ * socket, as `useAccountGitea` holds the project: each group's runner rests on it.
+ */
+export function useAccountGiteaServices(
+  clientId: string | undefined,
+): ReadonlyArray<ZeropsService> | undefined {
+  const shown = useContext(InventoryContext);
+  const found = useMemo(() => accountGiteaServices(shown, clientId), [clientId, shown]);
+  return useHeldThroughBlink(found, shown === null ? undefined : (clientId ?? ""));
 }
 
 /**

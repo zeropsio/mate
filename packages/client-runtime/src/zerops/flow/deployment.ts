@@ -51,8 +51,11 @@ import { shortCommit } from "../release.ts";
 import { sameCommit } from "../versionName.ts";
 
 export type Deployment =
-  /** The deployment facet is observed and names no active deploy. */
-  | { readonly kind: "none" }
+  /**
+   * The deployment facet is observed and names no active deploy. `afterBuild`: a build of it was
+   * seen to end while it was demanded, and nothing it built runs — its first deploy failed.
+   */
+  | { readonly kind: "none"; readonly afterBuild?: true }
   | {
       readonly kind: "running";
       /** When the active deploy was activated, as the platform pushed it. */
@@ -577,6 +580,129 @@ export function stopServices(reads: StopReads, nowMs: number): Known<ReadonlyArr
   };
 }
 
+/**
+ * Being read again: nothing new is known yet, nothing failed, and the source is not paused — a
+ * paused source says so (`paused`), never revalidating.
+ */
+const rechecking = (shown: Shown<unknown>): boolean =>
+  shown.state === "reading" || (shown.state === "unread" && shown.waitingFor === null);
+
+/** Known to run nothing: the one answer a re-check keeps (F5). */
+const knownNone = (
+  shown: Shown<Deployment>,
+): shown is Extract<Shown<Deployment>, { state: "known" }> =>
+  shown.state === "known" && shown.value.kind === "none";
+
+/** A known answer, now being checked again: since when, kept from a check already under way. */
+function revalidating<T>(
+  held: Extract<Known<T>, { readonly state: "known" }>,
+  nowMs: number,
+): Extract<Known<T>, { readonly state: "known" }> {
+  if (held.freshness.kind === "revalidating") return held;
+  return { ...held, freshness: { kind: "revalidating", sinceMs: nowMs } };
+}
+
+/**
+ * A stop read again, over what it showed: a re-check keeps the last answer where that answer was
+ * "nothing deployed" (run 4, F5) — the import's own no-code version, which a push names only by
+ * its id (A14), then the account's store states, never ran anything either way. The listing read
+ * again keeps the services it showed where each ran nothing, and a service checked again keeps its
+ * none, revalidating, until an answer or a failure replaces it. A version is never held: one
+ * activated with no build seen (a roll back) reads Checking until it is named, never as the old
+ * one. A paused source stays paused. "Checking what runs here…" follows a none only as a version
+ * arrives.
+ */
+export function heldThroughRecheck(
+  shown: Known<ReadonlyArray<StopService>>,
+  next: Known<ReadonlyArray<StopService>>,
+  nowMs: number,
+): Known<ReadonlyArray<StopService>> {
+  if (shown.state !== "known") return next;
+  if (rechecking(next)) {
+    return shown.value.every(({ deployment }) => knownNone(deployment))
+      ? revalidating(shown, nowMs)
+      : next;
+  }
+  if (next.state !== "known") return next;
+  let held = false;
+  const value = next.value.map((service): StopService => {
+    if (!rechecking(service.deployment)) return service;
+    const before = shown.value.find(
+      (entry) => entry.service.serviceId === service.service.serviceId,
+    )?.deployment;
+    if (before === undefined || !knownNone(before)) return service;
+    held = true;
+    return { ...service, deployment: revalidating(before, nowMs) };
+  });
+  return held ? { ...next, value } : next;
+}
+
+/**
+ * How long a build seen to end with nothing running keeps saying what it said while it built,
+ * before it reads as the first deploy failing. The socket promises no order between a process's
+ * end and its service's new version: run 4 saw the version 0.3 s before the build's end (app
+ * ACTIVE +1481.7 s, build finished +1482.0 s), and the other order is a success that would flash
+ * "its first deploy failed" — the worst false alarm. 20 s is some 60 times that margin, and a
+ * failure still shows within half a minute.
+ */
+export const AFTER_BUILD_GRACE_MS = 20_000;
+
+/** A service seen building while its stop is demanded. */
+export interface SeenBuild {
+  /** What it said while it built, kept through the grace. */
+  readonly building: Extract<Shown<Deployment>, { readonly state: "known" }>;
+  /** When it was first seen to run nothing after the build; `null` while it builds. */
+  readonly endedAtMs: number | null;
+}
+
+/**
+ * A stop read again, over the services seen building: a service seen deploying and now known to
+ * run nothing ran no build of its — its first deploy failed (`afterBuild`), which no running-process
+ * listing keeps once the build is gone. Only after {@link AFTER_BUILD_GRACE_MS} with still nothing
+ * running: until then it says what it said while it built, since its new version may be on its
+ * way. One running anything is forgotten. Returns the services seen building, the stop as shown,
+ * and when the store must read it again for a grace to run out (`null` for none).
+ */
+export function afterBuilds(
+  built: ReadonlyMap<string, SeenBuild>,
+  next: Known<ReadonlyArray<StopService>>,
+  nowMs: number,
+): {
+  readonly built: ReadonlyMap<string, SeenBuild>;
+  readonly shown: Known<ReadonlyArray<StopService>>;
+  readonly wakeAtMs: number | null;
+} {
+  if (next.state !== "known") return { built, shown: next, wakeAtMs: null };
+  const seen = new Map(built);
+  let changed = false;
+  let wakeAtMs: number | null = null;
+  const value = next.value.map((service): StopService => {
+    const { deployment } = service;
+    if (deployment.state !== "known") return service;
+    const id = service.service.serviceId;
+    if (deployment.value.kind === "deploying") {
+      seen.set(id, { building: deployment, endedAtMs: null });
+      return service;
+    }
+    if (deployment.value.kind === "running") {
+      seen.delete(id);
+      return service;
+    }
+    const build = seen.get(id);
+    if (build === undefined) return service;
+    const endedAtMs = build.endedAtMs ?? nowMs;
+    if (build.endedAtMs === null) seen.set(id, { ...build, endedAtMs });
+    changed = true;
+    const graceEndsAtMs = endedAtMs + AFTER_BUILD_GRACE_MS;
+    if (nowMs < graceEndsAtMs) {
+      wakeAtMs = wakeAtMs === null ? graceEndsAtMs : Math.min(wakeAtMs, graceEndsAtMs);
+      return { ...service, deployment: build.building };
+    }
+    return { ...service, deployment: { ...deployment, value: { kind: "none", afterBuild: true } } };
+  });
+  return { built: seen, shown: changed ? { ...next, value } : next, wakeAtMs };
+}
+
 /** What a stop's row draws: the badge, its word, and the line under the name. */
 export interface StopView {
   readonly tone: GroupRowTone;
@@ -617,18 +743,62 @@ export function runningVersion(
 }
 
 /**
- * A stop that runs something, named by `runningVersion`; the deploy half's row colours it only
- * when the row read that same version.
+ * How the deploy a stop runs went, the one rule every surface colours a running stop by — its
+ * page (`stopView`), the menu, the chips and the projects page's cards (`groupFlow`'s `stopOf`,
+ * {@link stopTone}).
+ *
+ * A deploy of a commit only moves forward: a stop that runs a version is deployed. The row's
+ * statuses are on the commit a service runs — its active version — and the broker never deploys
+ * a commit a service already runs (gitea-mate grants it as live). So a `pending` there was read
+ * before the version went active (run 4, 2026-10-02: active at +1478.7 s, success by +1482.9 s),
+ * and never moves a running stop back to deploying, whether or not the platform's own answer is
+ * known just now. A newer commit starts its own sequence, from the platform's build.
+ *
+ * A failure on the version the stop runs still says Failed. A row read at another version — the
+ * one before, or a build that failed after its name moved (A11, A14) — names nothing there
+ * (`runningVersion`) and fails nothing there; the platform says the stop runs, so it is deployed.
+ * What the row still says is whether Gitea was read at all: a stop with no status read has no
+ * colour and no word (`deployWord`).
+ */
+export function runningTone(
+  runs: DeployedVersion | undefined,
+  row: EnvironmentRow | undefined,
+): GroupRowTone {
+  const named = runs?.label === undefined ? undefined : runs;
+  const read = row?.version.label === undefined ? undefined : row;
+  if (read === undefined || read.tone === "neutral") return "neutral";
+  const same = named === undefined || sameVersion(named, read.version);
+  return read.tone === "bad" && same ? "bad" : "good";
+}
+
+/**
+ * A stop's tone with no clock — what `stopView` colours it, for a surface that draws only the dot
+ * and its word: a build the platform runs is deploying; a version it runs, or the row's while its
+ * answer is on its way, is {@link runningTone}'s; nothing running, or nothing known, says nothing.
+ */
+export function stopTone(
+  deployment: Shown<Deployment> | undefined,
+  row: EnvironmentRow | undefined,
+): GroupRowTone {
+  if (deployment?.state === "known" && deployment.value.kind === "deploying") return "pending";
+  // "Nothing deployed yet" is earned only by a complete answer; a partial one leaves the row's.
+  if (deployment?.state === "known" && deployment.value.kind === "none") {
+    if (deployment.coverage === "complete") return "neutral";
+  }
+  if (deployment?.state === "known" && deployment.value.kind === "running")
+    return runningTone(deployment.value.version, row);
+  return runningTone(undefined, row);
+}
+
+/**
+ * A stop that runs something, named by `runningVersion` and coloured by `runningTone`.
  */
 function runningView(
   runs: Extract<Deployment, { readonly kind: "running" }> | undefined,
   row: EnvironmentRow | undefined,
 ): StopView {
-  const named = runs?.version.label === undefined ? undefined : runs.version;
-  const read = row?.version.label === undefined ? undefined : row;
-  const same = read !== undefined && named !== undefined && sameVersion(named, read.version);
   const version = runningVersion(runs?.version, row);
-  const tone = read !== undefined && (named === undefined || same) ? read.tone : "neutral";
+  const tone = runningTone(runs?.version, row);
   return {
     tone,
     word: deployWord(tone) ?? RUNNING_WORD,
