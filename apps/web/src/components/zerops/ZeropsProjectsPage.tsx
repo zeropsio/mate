@@ -2547,11 +2547,8 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
         read: reads !== undefined,
         changesKnown: reads?.changesKnown === true,
         changesUnknown,
-        // Out and expected back: a Gitea session is held or coming, and the
-        // group has an org to read (or the registry has not answered yet).
-        readOut:
-          projectFlow.signInTrouble === null &&
-          (projectFlow.slugs.size === 0 || projectFlow.slugs.has(group.groupId)),
+        // Out and expected back: an HQ is open, whose stream tells its changes.
+        readOut: projectFlow.hqAddress !== undefined,
       });
       const members = groupMemberFactsOf(
         environments,

@@ -40,17 +40,6 @@ import {
   ZeropsProjectFlowProvider,
 } from "./ZeropsProjectFlowProvider";
 
-const GITEA = "https://gitea.example.test";
-
-/**
- * The account's Gitea session, which nothing a flow shows or does reads: `trouble` is the cause the
- * session names. `origin` is whether the account has a Gitea at all.
- */
-const gitea = vi.hoisted(() => ({
-  origin: true,
-  trouble: null as string | null,
-}));
-
 /** The account's authority as its inventory publishes it. */
 const access = vi.hoisted(() => ({
   account: { kind: "authorized" } as
@@ -69,9 +58,6 @@ const released = vi.hoisted(() => ({
   refreshed: [] as Array<string>,
 }));
 
-vi.mock("./accountGiteaSessions", () => ({
-  useGiteaSession: () => ({ signedIn: true, readable: true, trouble: gitea.trouble }),
-}));
 vi.mock("./ZeropsSessionProvider", () => ({
   useZeropsSession: () => ({
     status: "signed-in",
@@ -110,15 +96,6 @@ vi.mock("./ZeropsInventoryProvider", () => ({
   }),
 }));
 vi.mock("./useNowMs", () => ({ useNowMs: () => 0 }));
-vi.mock("./giteaProject", () => ({
-  useAccountGitea: () =>
-    gitea.origin
-      ? {
-          projectId: "gitea-project",
-          state: { url: GITEA, brokerUrl: "https://broker.example.test" },
-        }
-      : undefined,
-}));
 /**
  * The organization's official HQ; what its stream says is each test's, and what it answers a
  * merge or a close (`answer`), with what it was asked.
@@ -333,8 +310,6 @@ function structureWith(environments: ReadonlyArray<HqEnvironment>): HqStructureV
 
 describe("ZeropsProjectFlowProvider", () => {
   afterEach(() => {
-    gitea.origin = true;
-    gitea.trouble = null;
     access.account = { kind: "authorized" };
     inventoryRefs.refs = new Map();
     inventoryRefs.projects = [];
@@ -541,14 +516,12 @@ describe("ZeropsProjectFlowProvider", () => {
       root.render(createElement(ZeropsProjectFlowProvider, null, createElement(Probe)));
     });
     expect(seen.at(-1)?.flows.size).toBe(0);
-    expect(seen.at(-1)?.slugs.size).toBe(0);
 
     access.account = { kind: "authorized" };
     await act(async () => {
       root.render(createElement(ZeropsProjectFlowProvider, null, createElement(Probe)));
     });
     expect([...(seen.at(-1)?.flows.keys() ?? [])]).toEqual(["g1"]);
-    expect([...(seen.at(-1)?.slugs.keys() ?? [])]).toEqual(["g1"]);
 
     await act(async () => {
       root.unmount();
@@ -638,30 +611,6 @@ describe("ZeropsProjectFlowProvider", () => {
       ["prod-1", "harbor-prod"],
     ]);
     expect(flow?.missing.map(({ tier }) => tier)).toEqual(["stage"]);
-
-    await act(async () => {
-      root.unmount();
-    });
-  });
-
-  // Nothing a flow shows or does reads Gitea: its session's trouble is not the verbs' to say.
-  it("a Gitea that stops answering keeps the flows, and puts no trouble where the verbs are", async () => {
-    gitea.trouble = "Gitea isn't answering.";
-    installTestDom();
-    const { createRoot } = await import("react-dom/client");
-    const seen: Array<ZeropsProjectFlowValue> = [];
-
-    function Probe() {
-      seen.push(useZeropsProjectFlow());
-      return null;
-    }
-
-    const root = createRoot(document.createElement("div") as unknown as Element);
-    await act(async () => {
-      root.render(createElement(ZeropsProjectFlowProvider, null, createElement(Probe)));
-    });
-    expect([...(seen.at(-1)?.flows.keys() ?? [])]).toEqual(["g1"]);
-    expect(seen.at(-1)?.trouble).toBeNull();
 
     await act(async () => {
       root.unmount();

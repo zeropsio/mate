@@ -30,10 +30,8 @@ const account = vi.hoisted(() => ({
 
 vi.mock("~/zerops/projectFlowContext", () => ({
   useZeropsProjectFlowOptional: () => ({
-    signInTrouble: null,
     flows: new Map(),
     deployments: new Map(),
-    slugs: new Map([["group-orchard", "orchard"]]),
     mateNames: new Map(),
     pending: new Set(),
     trouble: null,
