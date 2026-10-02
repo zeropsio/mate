@@ -64,6 +64,8 @@ interface Step {
   readonly inFlight: string | undefined;
   readonly suggestion: string;
   readonly releases: ReadonlyArray<FlowReleaseRow>;
+  /** The minute clock; `NOW` unless the step is later. */
+  readonly nowMs?: number;
 }
 
 function row(
@@ -97,12 +99,13 @@ function walk(steps: ReadonlyArray<Step>) {
       inFlight: step.inFlight,
       suggestion: step.suggestion,
       releases: step.releases,
+      nowMs: step.nowMs ?? NOW,
     });
     const shown = releaseStep({
       follows,
       held,
       press: step.press,
-      clockMs: NOW,
+      clockMs: step.nowMs ?? NOW,
       read: (tag) => current(tag, step.moment, step.releases),
     });
     held = shown.held;
@@ -116,9 +119,9 @@ function walk(steps: ReadonlyArray<Step>) {
       services: facts.services,
       replaces: facts.replaces,
       outcome: shown.outcome,
-      now: NOW,
+      now: step.nowMs ?? NOW,
     });
-    return { name: step.name, facts, model };
+    return { name: step.name, facts, model, follows };
   });
 }
 
@@ -302,6 +305,72 @@ describe("a held release's changes follow the stage as it stands now", () => {
     if (released === undefined) throw new Error("no released step");
     expect(released.model.verdict.state).toBe("released");
     expect(releaseStageMarks(released.facts, standing).get(HEAD)).toBe(mark);
+  });
+});
+
+describe("a release that never lands ends: past the cutoff it says so", () => {
+  const before: Moment = { live: "v0.1.0", contents: ONE_CHANGE, production: "4c3b2a1" };
+  const after: Moment = { live: "v0.1.1", contents: [], production: HEAD };
+  const [, tagging, onItsWay] = release("v0.1.1", "v0.1.2", before, after, [row("v0.1.0", "live")]);
+  if (tagging === undefined || onItsWay === undefined) throw new Error("no steps");
+  const later = (minutes: number, tagged: FlowReleaseRow): Step => ({
+    ...onItsWay,
+    name: `${String(minutes)} minutes on`,
+    nowMs: NOW + minutes * 60_000,
+    // Past the cutoff the tag is no longer on its way (`releaseInFlight`).
+    inFlight: minutes >= 30 ? undefined : "v0.1.1",
+    moment: tagged.standing === "live" ? after : before,
+    releases: [tagged, row("v0.1.0", tagged.standing === "live" ? undefined : "live")],
+  });
+
+  it("pressed, on its way, 31 minutes with no landing: the tag hasn't landed, and the clock stops", () => {
+    const steps = walk([
+      tagging,
+      onItsWay,
+      later(10, row("v0.1.1", undefined)),
+      later(31, row("v0.1.1", undefined)),
+    ]);
+    expect(steps.map((step) => step.model.verdict.state)).toEqual([
+      "releasing",
+      "releasing",
+      "releasing",
+      "release-stalled",
+    ]);
+    expect(steps.map((step) => step.follows.ticking)).toEqual([true, true, true, false]);
+    const last = steps.at(-1);
+    expect(last?.model.verdict).toMatchObject({
+      tone: "attention",
+      title: "v0.1.1 hasn't landed",
+      why: "Tagged 31 minutes ago · production doesn't run it",
+    });
+    expect(last?.model.consequence).toBe("Production still runs v0.1.0.");
+    expect(last?.model.primary).toBeUndefined();
+    expect(last?.model.verdict.fix).toEqual({
+      verb: "find out why",
+      problem: {
+        what: "Production doesn't run release v0.1.1, tagged 31 minutes ago",
+        at: new Date(NOW - 40_000).toISOString(),
+        ask: "Find out why production hasn't deployed it, and fix what holds it.",
+      },
+    });
+    // The roll back it offers is to what production ran before — never to the tag that didn't land.
+    expect(last?.model.ifWrong).toBe(
+      "Roll back to v0.1.0 from production's menu. It gets its own review.",
+    );
+    expect(last?.model.meta.join(" · ")).toBe("replaces v0.1.0 · 1 change");
+  });
+
+  it("a landing after the cutoff still reads Released", () => {
+    const steps = walk([
+      tagging,
+      onItsWay,
+      later(31, row("v0.1.1", undefined)),
+      later(40, row("v0.1.1", "live")),
+    ]);
+    expect(steps.at(-1)?.model.verdict).toMatchObject({
+      state: "released",
+      title: "Released v0.1.1",
+    });
   });
 });
 
