@@ -30,16 +30,12 @@ const LANDED = {
   merged: true,
 } as unknown as FlowPullRequest;
 
-/** The flow as a chip reads it: this Gitea, the orgs the registry names, and the asking verb. */
-function flowValue(
-  slugs: ReadonlyArray<readonly [string, string]>,
-  askForOwner: (owner: string) => void,
-): ZeropsProjectFlowValue {
+/** The flow as a chip reads it: this Gitea, and the orgs the registry names. */
+function flowValue(slugs: ReadonlyArray<readonly [string, string]>): ZeropsProjectFlowValue {
   return {
     giteaOrigin: ORIGIN,
     flows: new Map(),
     slugs: new Map(slugs as ReadonlyArray<[string, string]>),
-    askForOwner,
   } as unknown as ZeropsProjectFlowValue;
 }
 
@@ -72,7 +68,7 @@ afterEach(() => {
 /**
  * A Mate links a change the moment it opens it, often on a project made since the page loaded:
  * the registry does not name its Gitea org yet. The link is drawn as the change from its address
- * at once, asks for the org, and takes its word once the org is known — never a bare url until a
+ * at once, and takes its word once the registry, live from the store, names the org — never a bare url until a
  * reload.
  */
 describe("ZeropsChangeLinkChip", () => {
@@ -85,52 +81,40 @@ describe("ZeropsChangeLinkChip", () => {
       readonly answer?: ZeropsLandedChangeState;
     }>;
     readonly text: string;
-    readonly asked: ReadonlyArray<string>;
   }>([
     {
-      name: "an owner the registry does not name is drawn from the url and asked for once",
+      name: "an owner the registry does not name is drawn from the url",
       renders: [{ slugs: [] }],
       text: "zitdev #31",
-      asked: ["zit"],
     },
     {
       name: "an owner the registry comes to name gives the chip its word",
       renders: [{ slugs: [] }, { slugs: [["g1", "zit"]], answer: { kind: "read", pull: LANDED } }],
       text: "Cache the link previews, Landed",
-      asked: ["zit"],
     },
     {
-      name: "an owner that stays unknown across renders is asked for once",
-      renders: [{ slugs: [] }, { slugs: [["g1", "shop"]] }, { slugs: [["g1", "shop"]] }],
-      text: "zitdev #31",
-      asked: ["zit"],
-    },
-    {
-      name: "an owner the registry names is not asked for",
+      name: "an owner the registry names gives the chip its word",
       renders: [{ slugs: [["g1", "zit"]], answer: { kind: "read", pull: LANDED } }],
       text: "Cache the link previews, Landed",
-      asked: [],
     },
     {
       name: "a change on another forge stays the link it was",
       href: "https://github.com/zit/zitdev/pull/31",
       renders: [{ slugs: [] }],
       text: "https://github.com/zit/zitdev/pull/31",
-      asked: [],
     },
-  ])("$name", async ({ href = HREF, renders, text, asked }) => {
+  ])("$name", async ({ href = HREF, renders, text }) => {
     const document = installTestDom();
     const { act } = await import("react");
     const { createRoot } = await import("react-dom/client");
     const { ZeropsProjectFlowContext } = await import("../../zerops/projectFlowContext");
     const { ZeropsChangeLinkChip } = await import("./ZeropsChangeLinkChip");
-    const askForOwner = vi.fn<(owner: string) => void>();
     const container = document.createElement("div");
     const root = createRoot(container as unknown as Element);
     try {
       for (const { slugs, answer } of renders) {
         forge.answer = answer ?? { kind: "reading" };
-        const value = flowValue(slugs, askForOwner);
+        const value = flowValue(slugs);
         await act(async () =>
           root.render(
             <ZeropsProjectFlowContext.Provider value={value}>
@@ -140,7 +124,6 @@ describe("ZeropsChangeLinkChip", () => {
         );
       }
       expect(container.textContent).toBe(text);
-      expect(askForOwner.mock.calls.map(([owner]) => owner)).toEqual(asked);
     } finally {
       await act(async () => root.unmount());
     }
@@ -166,7 +149,7 @@ describe("ZeropsChangeLinkChip", () => {
     };
     const container = document.createElement("div");
     const root = createRoot(container as unknown as Element);
-    const value = flowValue([["g1", "zit"]], () => {});
+    const value = flowValue([["g1", "zit"]]);
     try {
       await act(async () =>
         root.render(

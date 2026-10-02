@@ -63,7 +63,7 @@ import {
   type MergeabilityTracker,
   type StatusReadOptions,
 } from "@t3tools/client-runtime/zerops/forge";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 
 import { giteaClientFor } from "./accountGiteaSessions";
 import { startRefreshClock } from "./refreshClock";
@@ -122,6 +122,15 @@ export function useForgeReads(giteaOrigin: string | undefined): ForgeReads {
   const next = { giteaOrigin, reads: createForgeReads() };
   setHeld(next);
   return next.reads;
+}
+
+/**
+ * Whether the broker has made each group's Gitea org, by slug, as the shared listing last answered
+ * (`ForgeReads.organizations`): `false` while a group's `orgs/{slug}/repos` says 404, `true` once
+ * it lists. Asked on the readers' own clock, on every screen.
+ */
+export function useForgeOrganizations(reads: ForgeReads): ReadonlyMap<string, boolean> {
+  return useSyncExternalStore(reads.subscribe, reads.organizations);
 }
 
 /** What a pull request listing asks, as both passes key it: one ask, kept once for both. */

@@ -2573,7 +2573,6 @@ function MateRow<T extends RosterCandidate>({
   const openMenu = (at?: MenuPoint) => {
     setMenuAt(at);
     setMenuOpen(true);
-    actions?.onMenuOpen?.();
   };
   // A finger held on the row opens its menu, as a right-click does: a phone
   // has neither that nor a hover to show the menu's trigger. The click that

@@ -902,7 +902,6 @@ describe("ChatMarkdown links to a change of the person's group", () => {
     giteaOrigin: GITEA,
     flows: new Map(),
     slugs: new Map([["group-1", "orchard"]]),
-    askForOwner: () => {},
   } as unknown as ZeropsProjectFlowValue;
 
   it.each([

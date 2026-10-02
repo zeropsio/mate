@@ -1,23 +1,21 @@
-import type { ZeropsRegistry } from "@t3tools/client-runtime/zerops";
+import type { ZeropsProject } from "@t3tools/client-runtime/zerops";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { TestNode } from "./__fixtures__/testDom";
 
-const session = vi.hoisted(() => {
-  const readGroupRegistry =
-    vi.fn<(projectId: string, signal: AbortSignal) => Promise<ZeropsRegistry>>();
-  return { readGroupRegistry, value: { client: { readGroupRegistry } } };
-});
+/** The account's Gitea project as the store holds it: its tags are the registry. */
+const gitea = (tagList: ReadonlyArray<string>, clientId = "org-a"): ZeropsProject =>
+  ({ id: "gitea-a", clientId, name: "Headquarters", tagList }) as unknown as ZeropsProject;
+const TOOL = "mate:tool:gitea";
+const SHOP = "mate:gn:g1:shop";
+const DOCK = "mate:gn:g2:dock";
 
-vi.mock("./ZeropsSessionProvider", () => ({
-  useZeropsSession: () => session.value,
-}));
-
-const KNOWN: ZeropsRegistry = {
-  groups: [{ groupId: "g1", slug: "shop", projects: [] }],
-  leaving: [],
-  other: ["mate:tool:gitea"],
-} as unknown as ZeropsRegistry;
+/** What the inventory holds at one render: its projects, and whether its read is still out. */
+interface Held {
+  readonly projects: ReadonlyArray<ZeropsProject> | null;
+  readonly loading?: boolean;
+  readonly clientId?: string;
+}
 
 function installTestDom(): TestNode {
   const document = new TestNode("#document", null, 9);
@@ -35,193 +33,106 @@ function installTestDom(): TestNode {
 }
 
 afterEach(() => {
-  session.readGroupRegistry.mockReset();
   vi.unstubAllGlobals();
 });
 
-describe("useZeropsRegistry", () => {
-  it.each([
-    {
-      name: "a failed re-read keeps the registry last read",
-      reads: [
-        { project: "gitea-a", read: KNOWN },
-        { project: "gitea-a", read: "fail" },
-      ] as const,
-      expected: { registry: KNOWN, loading: false },
-    },
-    {
-      name: "a failed first read reports loading, never a settled empty registry",
-      reads: [{ project: "gitea-a", read: "fail" }] as const,
-      expected: { loading: true },
-    },
-    {
-      name: "a failed first read of another project never shows the previous project's registry",
-      reads: [
-        { project: "gitea-a", read: KNOWN },
-        { project: "gitea-b", read: "fail" },
-      ] as const,
-      expected: { registry: { groups: [], leaving: [], other: [] }, loading: true },
-    },
-  ])("$name", async ({ reads, expected }) => {
-    const document = installTestDom();
-    const { act } = await import("react");
-    const { createRoot } = await import("react-dom/client");
-    const { useZeropsRegistry } = await import("./useZeropsRegistry");
-    for (const { read } of reads) {
-      if (read === "fail") session.readGroupRegistry.mockRejectedValueOnce(new Error("503"));
-      else session.readGroupRegistry.mockResolvedValueOnce(read);
-    }
-    /** Every state the probe rendered, the latest last. */
-    const rendered: Array<ReturnType<typeof useZeropsRegistry>> = [];
-
-    function Probe(props: { readonly giteaProjectId: string }) {
-      rendered.push(useZeropsRegistry({ giteaProjectId: props.giteaProjectId, enabled: true }));
-      return null;
-    }
-
-    const root = createRoot(document.createElement("div") as unknown as Element);
-    try {
-      await act(async () => root.render(<Probe giteaProjectId={reads[0].project} />));
-      for (let read = 1; read < reads.length; read += 1) {
-        const { project } = reads[read]!;
-        if (project === reads[read - 1]!.project) {
-          await act(async () => rendered.at(-1)!.refresh());
-        } else {
-          await act(async () => root.render(<Probe giteaProjectId={project} />));
-        }
-      }
-      expect(session.readGroupRegistry).toHaveBeenCalledTimes(reads.length);
-      expect(rendered.at(-1)).toMatchObject(expected);
-    } finally {
-      await act(async () => root.unmount());
-    }
-  });
-});
-
-/**
- * A conversation links a change on a Gitea org the registry read at page load does not name — the
- * project was made since, or that read failed. The link asks for the org; the registry is read
- * again, a bounded number of times, and never once per asking link.
- */
-describe("useZeropsRegistry — an owner a link names", () => {
-  const WITH_FRESH = {
-    ...KNOWN,
-    groups: [...KNOWN.groups, { groupId: "g2", slug: "fresh", projects: [] }],
-  } as unknown as ZeropsRegistry;
-
-  it.each([
-    {
-      name: "an unknown owner re-reads the registry once",
-      asks: [{ atMs: 0, owner: "fresh" }],
-      answers: [KNOWN, WITH_FRESH],
-      untilMs: 120_000,
-      reads: 2,
-    },
-    {
-      name: "an owner the registry names reads nothing more",
-      asks: [{ atMs: 0, owner: "shop" }],
-      answers: [KNOWN],
-      untilMs: 120_000,
-      reads: 1,
-    },
-    {
-      name: "the same owner asked by many links re-reads once",
-      asks: [
-        { atMs: 0, owner: "fresh" },
-        { atMs: 0, owner: "fresh" },
-        { atMs: 100, owner: "fresh" },
-        { atMs: 5_000, owner: "fresh" },
-      ],
-      answers: [KNOWN, WITH_FRESH],
-      untilMs: 120_000,
-      reads: 2,
-    },
-    {
-      name: "an owner that stays unknown is read again no sooner than 30 s later",
-      asks: [{ atMs: 0, owner: "gone" }],
-      answers: [KNOWN],
-      untilMs: 29_999,
-      reads: 2,
-    },
-    {
-      name: "an owner that stays unknown is given up after three re-reads",
-      asks: [
-        { atMs: 0, owner: "gone" },
-        { atMs: 200_000, owner: "gone" },
-      ],
-      answers: [KNOWN],
-      untilMs: 400_000,
-      reads: 4,
-    },
-    {
-      name: "two unknown owners share the re-reads",
-      asks: [
-        { atMs: 0, owner: "fresh" },
-        { atMs: 1_000, owner: "other" },
-      ],
-      answers: [KNOWN],
-      untilMs: 29_999,
-      reads: 2,
-    },
-    {
-      name: "an owner asked while the first read is out waits for its answer",
-      asks: [{ atMs: 0, owner: "fresh" }],
-      firstAnswerAtMs: 3_000,
-      answers: [WITH_FRESH],
-      untilMs: 120_000,
-      reads: 1,
-    },
-  ] as ReadonlyArray<{
+describe("useZeropsRegistry — the registry is the store's Gitea project's tags", () => {
+  it.each<{
     readonly name: string;
-    readonly asks: ReadonlyArray<{ readonly atMs: number; readonly owner: string }>;
-    /** When the page-load read answers; at once when absent. */
-    readonly firstAnswerAtMs?: number;
-    readonly answers: ReadonlyArray<ZeropsRegistry>;
-    readonly untilMs: number;
-    readonly reads: number;
-  }>)("$name", async ({ asks, firstAnswerAtMs, answers, untilMs, reads }) => {
-    vi.useFakeTimers();
+    readonly renders: ReadonlyArray<Held>;
+    readonly slugs: ReadonlyArray<string>;
+    readonly loading: boolean;
+  }>([
+    {
+      name: "a pushed group-name tag is a group at once",
+      renders: [{ projects: [gitea([TOOL, SHOP])] }, { projects: [gitea([TOOL, SHOP, DOCK])] }],
+      slugs: ["dock", "shop"],
+      loading: false,
+    },
+    {
+      name: "the Gitea project missing for a moment keeps the registry it last had",
+      renders: [{ projects: [gitea([TOOL, SHOP])] }, { projects: [], loading: true }],
+      slugs: ["shop"],
+      loading: false,
+    },
+    {
+      name: "a blink past a settled inventory keeps it too",
+      renders: [{ projects: [gitea([TOOL, SHOP])] }, { projects: [] }],
+      slugs: ["shop"],
+      loading: false,
+    },
+    {
+      name: "another organization never sees the one before's registry",
+      renders: [
+        { projects: [gitea([TOOL, SHOP])] },
+        { projects: [], clientId: "org-b", loading: true },
+      ],
+      slugs: [],
+      loading: true,
+    },
+    {
+      name: "no Gitea project yet while the inventory is read is loading, never settled empty",
+      renders: [{ projects: [], loading: true }],
+      slugs: [],
+      loading: true,
+    },
+    {
+      name: "an account with no Gitea project has the empty registry",
+      renders: [{ projects: [] }],
+      slugs: [],
+      loading: false,
+    },
+    {
+      name: "the Gitea project of another organization is not this one's",
+      renders: [{ projects: [gitea([TOOL, SHOP], "org-b")] }],
+      slugs: [],
+      loading: false,
+    },
+    {
+      name: "signed out holds nothing",
+      renders: [{ projects: [gitea([TOOL, SHOP])] }, { projects: null }],
+      slugs: [],
+      loading: false,
+    },
+  ])("$name", async ({ renders, slugs, loading }) => {
     const document = installTestDom();
+    // Nothing is read: the registry is what the store already holds.
+    const fetch = vi.fn<typeof globalThis.fetch>();
+    vi.stubGlobal("fetch", fetch);
     const { act } = await import("react");
     const { createRoot } = await import("react-dom/client");
+    const { HeldInventoryContext, InventoryContext } = await import("./inventoryContext");
     const { useZeropsRegistry } = await import("./useZeropsRegistry");
-    let answered = 0;
-    session.readGroupRegistry.mockImplementation(async () => {
-      const answer = answers[Math.min(answered, answers.length - 1)]!;
-      answered += 1;
-      if (answered === 1 && firstAnswerAtMs !== undefined) {
-        await new Promise((resolve) => setTimeout(resolve, firstAnswerAtMs));
-      }
-      return answer;
-    });
     const rendered: Array<ReturnType<typeof useZeropsRegistry>> = [];
-    function Probe() {
-      rendered.push(useZeropsRegistry({ giteaProjectId: "gitea-a", enabled: true }));
+
+    function Probe(props: { readonly clientId: string }) {
+      rendered.push(useZeropsRegistry(props.clientId));
       return null;
     }
+
     const root = createRoot(document.createElement("div") as unknown as Element);
     try {
-      await act(async () => root.render(<Probe />));
-      let now = 0;
-      // A second at a time, each inside `act`: a re-read renders before the clock moves on.
-      const advanceTo = async (atMs: number) => {
-        while (now < atMs) {
-          const stepMs = Math.min(1_000, atMs - now);
-          await act(async () => {
-            await vi.advanceTimersByTimeAsync(stepMs);
-          });
-          now += stepMs;
-        }
-      };
-      for (const ask of asks) {
-        await advanceTo(ask.atMs);
-        await act(async () => rendered.at(-1)!.askForOwner(ask.owner));
+      for (const held of renders) {
+        const value =
+          held.projects === null ? null : { projects: held.projects, services: new Map() };
+        const inventory =
+          held.projects === null ? null : { isLoading: held.loading ?? false, ...value };
+        await act(async () =>
+          root.render(
+            <InventoryContext value={inventory as never}>
+              <HeldInventoryContext value={value}>
+                <Probe clientId={held.clientId ?? "org-a"} />
+              </HeldInventoryContext>
+            </InventoryContext>,
+          ),
+        );
       }
-      await advanceTo(untilMs);
-      expect(session.readGroupRegistry).toHaveBeenCalledTimes(reads);
+      const last = rendered.at(-1)!;
+      expect(last.registry.groups.map((group) => group.slug)).toEqual(slugs);
+      expect(last.loading).toBe(loading);
+      expect(fetch).not.toHaveBeenCalled();
     } finally {
       await act(async () => root.unmount());
-      vi.useRealTimers();
     }
   });
 });

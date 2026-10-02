@@ -16,9 +16,9 @@
  * only ever an improvement on a link it is certain about.
  *
  * A change on this Gitea is drawn from its address at once, even on an org the
- * registry does not name yet — a project made since the page loaded, or a
- * registry read that failed. The chip asks for the org, and takes its word and
- * its in-app open once the registry names it.
+ * registry does not name yet — a group whose tag has not reached this tab. It
+ * takes its word and its in-app open once the registry, live from the store,
+ * names it.
  */
 import {
   changeState,
@@ -27,7 +27,7 @@ import {
 } from "@t3tools/client-runtime/zerops";
 import type { ServiceStatusToneId } from "@t3tools/shared/brand";
 import { GitMergeIcon, GitPullRequestArrow } from "lucide-react";
-import { createContext, useContext, useEffect, type ReactNode } from "react";
+import { createContext, useContext, type ReactNode } from "react";
 
 import { cn } from "~/lib/utils";
 import { AppLinkContext } from "../ServiceBrowserLink";
@@ -72,12 +72,6 @@ export function ZeropsChangeLinkChip({
     link !== null && flowValue !== null
       ? groupForGiteaOwner(flowValue.slugs, link.owner)
       : undefined;
-  const unknownOwner =
-    link !== null && flowValue !== null && groupId === undefined ? link.owner : undefined;
-  const askForOwner = flowValue?.askForOwner;
-  useEffect(() => {
-    if (unknownOwner !== undefined) askForOwner?.(unknownOwner);
-  }, [askForOwner, unknownOwner]);
   const open =
     groupId === undefined
       ? undefined

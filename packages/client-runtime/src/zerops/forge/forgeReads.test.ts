@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import { GiteaApiError, type GiteaCommitStatus, type GiteaRepository } from "../giteaClient.ts";
+import { resolveGroupGitea } from "../groupCreation.ts";
 import {
   createForgeReads,
   GATE_FRESH_MS,
@@ -275,5 +276,78 @@ describe("createForgeReads", () => {
     ).rejects.toThrow("offline");
     await forge.list();
     expect(forge.take()).toEqual(["repos"]);
+  });
+});
+
+describe("createForgeReads — whether a group's Gitea org is made", () => {
+  const missing = () => Promise.reject(new GiteaApiError("Not found", 404));
+  const listed = () => Promise.resolve([repo("group")]);
+  const refused = (status: number) => () => Promise.reject(new GiteaApiError("No", status));
+
+  it.each([
+    {
+      name: "a 404 is not made yet, and the 200 after it is made: the line goes",
+      answers: [missing, listed],
+      made: [false, true],
+      line: ["being-set-up", "ready"],
+      told: 2,
+    },
+    {
+      name: "a failure that is not a 404 says nothing",
+      answers: [refused(500), refused(401)],
+      made: [undefined, undefined],
+      line: ["unknown", "unknown"],
+      told: 0,
+    },
+    {
+      name: "a failure after an answer keeps the answer",
+      answers: [listed, refused(502)],
+      made: [true, true],
+      line: ["ready", "ready"],
+      told: 1,
+    },
+    {
+      name: "an org gone again is not made",
+      answers: [listed, missing],
+      made: [true, false],
+      line: ["ready", "being-set-up"],
+      told: 2,
+    },
+  ])("$name", async ({ answers, made, line, told: expectedTold }) => {
+    let clock = NOW;
+    const reads = createForgeReads({ now: () => clock });
+    let told = 0;
+    reads.subscribe(() => {
+      told += 1;
+    });
+    const seen: Array<boolean | undefined> = [];
+    for (const answer of answers) {
+      await reads.repositories("quay", answer).catch(() => []);
+      seen.push(reads.organizations().get("quay"));
+      clock += GATE_FRESH_MS;
+    }
+    expect(seen).toEqual(made);
+    expect(seen.map((organizationExists) => resolveGroupGitea({ organizationExists }))).toEqual(
+      line,
+    );
+    // Told once per change of what it says, never for an answer that moved nothing.
+    expect(told).toBe(expectedTold);
+  });
+
+  it("shares a 404 between the readers of one refresh, and asks again on the next", async () => {
+    let clock = NOW;
+    const reads = createForgeReads({ now: () => clock });
+    let asked = 0;
+    const ask = () =>
+      reads.repositories("quay", () => {
+        asked += 1;
+        return missing();
+      });
+    await expect(ask()).rejects.toThrow("Not found");
+    await expect(ask()).rejects.toThrow("Not found");
+    expect(asked).toBe(1);
+    clock += GATE_FRESH_MS;
+    await expect(ask()).rejects.toThrow("Not found");
+    expect(asked).toBe(2);
   });
 });

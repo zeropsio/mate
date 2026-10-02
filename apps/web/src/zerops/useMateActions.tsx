@@ -197,13 +197,7 @@ export interface MateRenameInPlace {
   readonly commit: (value: string) => void;
 }
 
-/**
- * The two reads a caller must already hold.
- *
- * Both are per-instance — a second `useZeropsRegistry` is a second poll of the
- * account's registry, not a shared one — so they are passed in rather than
- * taken again here. Each surface reads them once and hands them over.
- */
+/** The two reads a caller already holds, handed over rather than taken again here. */
 export interface MateActionsInput {
   readonly registry: RegistryState;
   /** `candidate.key → "0.11.25"`, from `useZeropsContainers`. */
@@ -212,7 +206,6 @@ export interface MateActionsInput {
 
 interface RegistryState {
   readonly registry: Parameters<typeof resolveMateRegistration>[0]["registry"];
-  readonly refresh: () => void;
 }
 
 export function useMateActions({ registry, serverVersions }: MateActionsInput): MateActions {
@@ -586,7 +579,6 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
                   },
             isCurrent: captureAccountLifetime(),
           });
-          registry.refresh();
           if (!finished.ok) throw new Error(finished.error);
         },
         refresh,
@@ -601,7 +593,6 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
       organizationRef,
       projectRef,
       refresh,
-      registry,
       runtime,
       user,
       write,

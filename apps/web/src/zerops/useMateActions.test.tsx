@@ -121,7 +121,7 @@ const seen: Array<MateActions> = [];
 const actions = () => seen.at(-1)!;
 function Probe() {
   const handed = useMateActions({
-    registry: { registry: { groups: [], leaving: [], other: [] }, refresh: () => {} },
+    registry: { registry: { groups: [], leaving: [], other: [] } },
     serverVersions: new Map(),
   });
   seen.push(handed);

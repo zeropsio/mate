@@ -51,8 +51,6 @@ export interface MateRowActions {
    * delete, which the menu keeps for its end.
    */
   readonly entries: ReadonlyArray<ZeropsMenuEntry>;
-  /** The menu opened — what a caller reads lazily for its verbs waits for this. */
-  readonly onMenuOpen?: (() => void) | undefined;
 }
 
 /** A point the menu opens at, for a right-click. */
@@ -216,13 +214,7 @@ export function MateMenu({
   readonly onOpenChange: (open: boolean) => void;
 }) {
   return (
-    <Menu
-      onOpenChange={(next) => {
-        if (next) items.actions.onMenuOpen?.();
-        onOpenChange(next);
-      }}
-      open={open}
-    >
+    <Menu onOpenChange={onOpenChange} open={open}>
       <MenuTrigger
         render={
           <button

@@ -11,7 +11,13 @@ import {
 import type { DeploymentStore, StopService } from "@t3tools/client-runtime/zerops/flow";
 import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
 import { act, createElement } from "react";
-import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+
+import {
+  createForgeReads,
+  GATE_FRESH_MS,
+  type ForgeReads,
+} from "@t3tools/client-runtime/zerops/forge";
 
 import { bindAccountFlow } from "./accountForge";
 import { HeldInventoryContext } from "./inventoryContext";
@@ -84,12 +90,16 @@ const inventoryRefs = vi.hoisted(() => ({
     | { readonly kind: "withheld"; readonly reason: string; readonly cause: null }
   >(),
 }));
-/** The groups the account's Gitea registry lists. */
+/**
+ * The groups the account's Gitea registry lists — or, `live`, the registry as the held inventory's
+ * Gitea project states it.
+ */
 const registryGroups = vi.hoisted(() => ({
   groups: [{ groupId: "g1", slug: "harbor" }] as ReadonlyArray<{
     readonly groupId: string;
     readonly slug: string;
   }>,
+  live: false,
 }));
 
 vi.mock("./ZeropsInventoryProvider", () => ({
@@ -111,9 +121,16 @@ vi.mock("./giteaProject", () => ({
         }
       : undefined,
 }));
-vi.mock("./useZeropsRegistry", () => ({
-  useZeropsRegistry: () => ({ registry: { groups: registryGroups.groups } }),
-}));
+vi.mock("./useZeropsRegistry", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./useZeropsRegistry")>();
+  return {
+    ...actual,
+    useZeropsRegistry: (clientId: string | undefined) =>
+      registryGroups.live
+        ? actual.useZeropsRegistry(clientId)
+        : { registry: { groups: registryGroups.groups }, loading: false },
+  };
+});
 vi.mock("./useZeropsDeployedVersion", () => ({
   useZeropsDeployedVersionReader: () => async () => undefined,
 }));
@@ -135,15 +152,27 @@ vi.mock("./useZeropsGroupDeploys", () => ({
     };
   },
 }));
-vi.mock("./useZeropsGroupForge", () => ({
-  useForgeReads: () => null,
-  useZeropsGroupForge: () => ({
-    forges: new Map([["g1", verbs.forge]]),
-    failures: verbs.forgeFailures,
-    invalidate: (groupId: string, scope: unknown) => {
-      verbs.invalidated.push([groupId, scope]);
-    },
-  }),
+/** What the forge half was last asked to read, and the reads both halves share. */
+const forgeReads = vi.hoisted(() => ({
+  groups: [] as ReadonlyArray<{ readonly groupId: string; readonly slug: string }>,
+  reads: null as unknown,
+  clock: 0,
+}));
+
+vi.mock("./useZeropsGroupForge", async (importOriginal) => ({
+  useForgeOrganizations: (await importOriginal<typeof import("./useZeropsGroupForge")>())
+    .useForgeOrganizations,
+  useForgeReads: () => forgeReads.reads,
+  useZeropsGroupForge: (input: { readonly groups: typeof forgeReads.groups }) => {
+    forgeReads.groups = input.groups;
+    return {
+      forges: new Map([["g1", verbs.forge]]),
+      failures: verbs.forgeFailures,
+      invalidate: (groupId: string, scope: unknown) => {
+        verbs.invalidated.push([groupId, scope]);
+      },
+    };
+  },
 }));
 
 class TestNode {
@@ -210,6 +239,11 @@ function installTestDom(): void {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
 }
 
+beforeEach(() => {
+  forgeReads.clock = 0;
+  forgeReads.reads = createForgeReads({ now: () => forgeReads.clock });
+});
+
 describe("ZeropsProjectFlowProvider", () => {
   afterEach(() => {
     gitea.readable = false;
@@ -220,6 +254,7 @@ describe("ZeropsProjectFlowProvider", () => {
     inventoryRefs.projects = [];
     inventoryRefs.authority = new Map();
     registryGroups.groups = [{ groupId: "g1", slug: "harbor" }];
+    registryGroups.live = false;
     verbs.client = null;
     verbs.deploys = null;
     verbs.invalidated = [];
@@ -231,6 +266,60 @@ describe("ZeropsProjectFlowProvider", () => {
       released: { releases: [], tags: [] },
     };
     vi.unstubAllGlobals();
+  });
+
+  // The registry is the store's: a group another tab names reaches the forge with the tag's push,
+  // and whether the broker has made its org is the forge's own listing — no page asks.
+  it("a group a pushed tag names is read by the forge, and its org's 404 then 200 reach the flow", async () => {
+    installTestDom();
+    registryGroups.live = true;
+    const reads = forgeReads.reads as ForgeReads;
+    const { createRoot } = await import("react-dom/client");
+    const seen: Array<ZeropsProjectFlowValue> = [];
+    function Probe() {
+      seen.push(useZeropsProjectFlow());
+      return null;
+    }
+    const headquarters = (tagList: ReadonlyArray<string>) => ({
+      projects: [
+        { id: "gitea-project", clientId: "org-1", name: "HQ", status: "ACTIVE", tagList },
+      ] as unknown as ReadonlyArray<ZeropsProject>,
+      services: new Map(),
+    });
+    const root = createRoot(document.createElement("div") as unknown as Element);
+    const render = (held: ReturnType<typeof headquarters>) =>
+      act(async () => {
+        root.render(
+          createElement(
+            HeldInventoryContext,
+            { value: held },
+            createElement(ZeropsProjectFlowProvider, null, createElement(Probe)),
+          ),
+        );
+      });
+    const listing = (answer: () => Promise<[]>) =>
+      act(async () => {
+        await reads.repositories("quay", answer).catch(() => undefined);
+      });
+
+    await render(headquarters(["mate:tool:gitea", "mate:gn:g1:harbor"]));
+    expect(forgeReads.groups.map(({ slug }) => slug)).toEqual(["harbor"]);
+    // Another tab pressed New project: its tag is pushed onto the Gitea project.
+    await render(headquarters(["mate:tool:gitea", "mate:gn:g1:harbor", "mate:gn:g2:quay"]));
+    expect(forgeReads.groups.map(({ slug }) => slug)).toEqual(["harbor", "quay"]);
+    expect(seen.at(-1)?.slugs.get("g2")).toBe("quay");
+    expect(seen.at(-1)?.organizations.get("quay")).toBeUndefined();
+
+    await listing(() => Promise.reject(new GiteaApiError("Not found", 404)));
+    expect(seen.at(-1)?.organizations.get("quay")).toBe(false);
+    // The reader's next refresh: the broker has made it.
+    forgeReads.clock += GATE_FRESH_MS;
+    await listing(() => Promise.resolve([]));
+    expect(seen.at(-1)?.organizations.get("quay")).toBe(true);
+
+    await act(async () => {
+      root.unmount();
+    });
   });
 
   // DESIGN §4.7, D6: what a stop runs needs no Gitea, and every project the sidebar draws is a stop
