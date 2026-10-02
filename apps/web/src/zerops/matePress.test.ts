@@ -20,6 +20,7 @@ import {
   FINISHED_SHOWN_MS,
   PRESSED_ELSEWHERE,
   connectedPresses,
+  finishSetupRowLine,
   finishMateSetup,
   pressDoneAt,
   pressingProjects,
@@ -497,6 +498,69 @@ describe("a press's end", () => {
         ],
       ),
     ).toEqual(["p-up"]);
+  });
+
+  // Live, 2026-10-02: Finish setup on a Mate whose container was up — its press was ended the
+  // moment it began, so nothing anywhere said its setup was being finished.
+  it("leaves a Finish setup on a connected Mate to end on its own", () => {
+    const made = (projectId: string, finishing: boolean): MatePress => ({
+      projectId,
+      organizationId: "org-acme",
+      startedAt: 0,
+      placement: null,
+      container: true,
+      ...(finishing ? { finishing: true } : {}),
+      state: { kind: "pressing" },
+    });
+    expect(
+      connectedPresses(
+        [made("p-finishing", true), made("p-added", false)],
+        [
+          { project: { id: "p-finishing" }, group: "connected" },
+          { project: { id: "p-added" }, group: "connected" },
+        ],
+      ),
+    ).toEqual(["p-added"]);
+  });
+});
+
+describe("finishSetupRowLine — Finish setup as its Mate's row says it, from any screen", () => {
+  const press = (state: MatePressState, finishing: boolean): MatePress => ({
+    projectId: "p-hugo",
+    organizationId: "org-acme",
+    startedAt: 0,
+    placement: null,
+    container: true,
+    ...(finishing ? { finishing: true } : {}),
+    state,
+  });
+  const failed: MatePressState = {
+    kind: "failed",
+    step: "close-off",
+    reason: "Zerops refused the change",
+    retry: null,
+  };
+
+  it.each([
+    { case: "no press", press: undefined, line: undefined },
+    {
+      case: "an Add's press: its dialog and its view say it",
+      press: press({ kind: "pressing" }, false),
+      line: undefined,
+    },
+    { case: "finishing", press: press({ kind: "pressing" }, true), line: "Finishing setup…" },
+    {
+      case: "finished, for the moment its record stays",
+      press: press({ kind: "pressed" }, true),
+      line: "Setup finished",
+    },
+    {
+      case: "stopped: Finish setup is on its menu again",
+      press: press(failed, true),
+      line: "Setup stopped",
+    },
+  ])("$case", ({ press, line }) => {
+    expect(finishSetupRowLine(press)).toBe(line);
   });
 });
 

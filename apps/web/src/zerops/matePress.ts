@@ -168,9 +168,13 @@ function endPress(projectId: string, finishing: boolean): void {
   }, FINISHED_SHOWN_MS);
 }
 
-/** The presses (or creations) whose Mate has connected: nothing of them is left to say. */
+/**
+ * The presses (or creations) whose Mate has connected: nothing of them is left to say. A *Finish
+ * setup* is not one of them: it runs on a Mate that may have been up all along, and ends on its own
+ * (`endPress`) once its row has said so.
+ */
 export function connectedPresses(
-  presses: ReadonlyArray<{ readonly projectId: string }>,
+  presses: ReadonlyArray<{ readonly projectId: string; readonly finishing?: boolean }>,
   candidates: ReadonlyArray<{ readonly project: { readonly id: string }; readonly group: string }>,
 ): ReadonlyArray<string> {
   const connected = new Set(
@@ -178,7 +182,9 @@ export function connectedPresses(
       candidate.group === "connected" ? [candidate.project.id] : [],
     ),
   );
-  return presses.flatMap((press) => (connected.has(press.projectId) ? [press.projectId] : []));
+  return presses.flatMap((press) =>
+    connected.has(press.projectId) && press.finishing !== true ? [press.projectId] : [],
+  );
 }
 
 /**
@@ -278,6 +284,23 @@ export function finishSetupView(press: MatePress | undefined):
         : FINISHED_SETUP_LINE,
     done,
   };
+}
+
+/**
+ * *Finish setup* as its Mate's row says it, on every screen — its own view draws the steps only
+ * while its container is missing: running, through for the moment its record stays
+ * (`FINISHED_SHOWN_MS`), or stopped, when its menu offers it again. Undefined for any other press.
+ */
+export function finishSetupRowLine(press: MatePress | undefined): string | undefined {
+  if (press?.finishing !== true) return undefined;
+  switch (press.state.kind) {
+    case "pressing":
+      return "Finishing setup…";
+    case "pressed":
+      return "Setup finished";
+    case "failed":
+      return "Setup stopped";
+  }
 }
 
 /** Each step of a press, as a person names it where it stopped. */

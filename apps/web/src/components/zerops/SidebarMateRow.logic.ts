@@ -421,6 +421,15 @@ export function mateDeletingView(view: MateRowView): MateRowView {
   };
 }
 
+/**
+ * A Mate whose setup is being finished (`finishSetupRowLine`): its row says so in place of its
+ * last line — its words, else what was asked, else the sign-in line — so it keeps its height. The
+ * Mate is going nowhere: its face, its time and its name stay as they were.
+ */
+export function mateFinishingView(view: MateRowView): MateRowView {
+  return { ...view, ask: view.reply === undefined ? undefined : view.ask, reply: undefined };
+}
+
 /** The socket's phases in which a conversation read through it still stands. */
 const STANDING_PHASES: ReadonlySet<EnvironmentConnectionPhase> = new Set([
   "connected",
@@ -532,12 +541,16 @@ export function mateRowAskLine(input: {
   /** What this browser just sent it, its conversation not caught up yet (`mateRowSentAsk`). */
   readonly sent: string | undefined;
   readonly deleting: boolean;
+  /** *Finish setup* runs on it (`finishSetupRowLine`): its last line says so, as deleting's does. */
+  readonly finishing: boolean;
   /** Its conversations are read: none there is a fact, not a socket still opening. */
   readonly read: boolean;
 }): MateRowAskLine {
   const { view } = input;
   if (view.coming !== undefined) return undefined;
-  if (input.deleting) return view.ask === undefined ? undefined : { kind: "ask", text: view.ask };
+  if (input.deleting || input.finishing) {
+    return view.ask === undefined ? undefined : { kind: "ask", text: view.ask };
+  }
   if (input.signIn !== undefined) return { kind: "sign-in", ...input.signIn };
   if (input.draft !== undefined) return { kind: "draft", text: input.draft, ask: view.ask };
   if (input.sent !== undefined) return { kind: "ask", text: input.sent };
