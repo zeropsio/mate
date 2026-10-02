@@ -431,6 +431,7 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
               projectId: project.id,
               name: project.name,
               ...(tags.role === undefined ? {} : { role: tags.role }),
+              ...(project.created === undefined ? {} : { createdAt: project.created }),
               services:
                 services?.status === "resolved"
                   ? summarizeEnvironmentServices(services.services).deployable.map((service) => {

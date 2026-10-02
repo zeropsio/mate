@@ -1060,7 +1060,22 @@ describe("a stage's first deploy on main's head", () => {
     const { client: base, calls, listed } = listedGroupRepo();
     listed.set("appdev", { updated_at: PUSHED, open_pr_counter: 0 });
     const head = {
-      statuses: [] as Array<{ context: string; state: string; created_at?: string }>,
+      sha: HEAD,
+      statuses: [] as Array<{
+        context: string;
+        state: string;
+        created_at?: string;
+        description?: string;
+      }>,
+      /** A push to `appdev`: a new head, which the org's listing shows. */
+      push: (sha: string) => {
+        head.sha = sha;
+        head.statuses = [];
+        listed.set("appdev", {
+          updated_at: new Date(Date.now()).toISOString(),
+          open_pr_counter: 0,
+        });
+      },
     };
     const client = {
       ...base,
@@ -1077,7 +1092,7 @@ describe("a stage's first deploy on main's head", () => {
       },
       getBranch: async (_owner: string, name: string, branch: string) => {
         calls.push(`branch ${name}/${branch}`);
-        return name === "appdev" ? { name: "main", commit: { id: HEAD } } : undefined;
+        return name === "appdev" ? { name: "main", commit: { id: head.sha } } : undefined;
       },
       listCommitStatuses: async (_owner: string, name: string, sha: string) => {
         calls.push(`statuses ${name}@${sha.slice(0, 7)}`);
@@ -1135,37 +1150,130 @@ describe("a stage's first deploy on main's head", () => {
       ),
     })[0]?.firstDeployFailure;
 
-  it("says the failure from the read after it is posted, at most a read a minute while it waits", async () => {
+  const posted = (context: string, state: string, description?: string) => ({
+    context,
+    state,
+    created_at: new Date(Date.now()).toISOString(),
+    ...(description === undefined ? {} : { description }),
+  });
+  const PUSH = "Zerops deploy / deploy (push)";
+  const BROKER = "mate/deploy/stage/app";
+
+  it("says a push job's failure from the next read, and reads on: a dispatch past its steps turns it", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(Date.parse("2026-10-02T22:10:00Z"));
-    const { client, calls, head } = stageRepo();
-    head.statuses = [
-      { context: "mate/deploy/stage/app", state: "pending", created_at: "2026-10-02T22:09:30Z" },
-    ];
+    const { client, head } = stageRepo();
+    head.statuses = [posted(BROKER, "pending", "dispatched")];
     const rows = await everyMinute(
       client,
       async () => undefined,
-      12,
+      10,
       (minute) => {
         if (minute === 4)
-          head.statuses = [
-            {
-              context: "Zerops deploy / deploy (push)",
-              state: "failure",
-              created_at: new Date(Date.now()).toISOString(),
-            },
-            ...head.statuses,
-          ];
+          head.statuses = [posted(PUSH, "failure", "Failing after 9s"), ...head.statuses];
+        if (minute === 7)
+          head.statuses = [posted(BROKER, "pending", "deploying 4e5f6a7"), ...head.statuses];
       },
     );
-    expect(rows.slice(0, 4).map(failureOf)).toEqual([undefined, undefined, undefined, undefined]);
-    expect(failureOf(rows[4])).toMatchObject({ reason: undefined });
-    expect(failureOf(rows[11])).toMatchObject({ reason: undefined });
-    const statusReads = calls.filter((call) => call.startsWith("statuses appdev"));
-    // Minutes 0–4 while it waits (one a minute at most), and nothing once it failed.
-    expect(statusReads.length).toBeLessThanOrEqual(5);
-    expect(statusReads.length).toBeGreaterThanOrEqual(3);
-    expect(calls.filter((call) => call === "branch appdev/main")).toHaveLength(1);
+    expect(rows.map(failureOf)).toEqual([
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      { reason: undefined },
+      { reason: undefined },
+      { reason: undefined },
+      undefined,
+      undefined,
+      undefined,
+    ]);
+  });
+
+  it("never says a refusal the broker retries failed, and reads its retry", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(Date.parse("2026-10-02T22:10:00Z"));
+    const { client, calls, head } = stageRepo();
+    head.statuses = [posted(BROKER, "failure", "has no workflow zerops.yml for the stage")];
+    const rows = await everyMinute(
+      client,
+      async () => undefined,
+      6,
+      (minute) => {
+        if (minute === 3)
+          head.statuses = [posted(BROKER, "pending", "dispatched"), ...head.statuses];
+      },
+    );
+    expect(rows.map(failureOf)).toEqual([
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+    ]);
+    expect(
+      calls.filter((call) => call.startsWith("statuses appdev")).length,
+    ).toBeGreaterThanOrEqual(5);
+  });
+
+  it("says the broker's own job report, and why, and reads no more", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(Date.parse("2026-10-02T22:10:00Z"));
+    const { client, calls, head } = stageRepo();
+    head.statuses = [posted(BROKER, "failure", "failed: the build step exited with 1")];
+    const rows = await everyMinute(client, async () => undefined, 6);
+    expect(failureOf(rows[5])).toEqual({ reason: "the build step exited with 1" });
+    expect(calls.filter((call) => call.startsWith("statuses appdev"))).toHaveLength(1);
+  });
+
+  it("reads no more past the broker's patience, and again from a push", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(Date.parse("2026-10-02T22:10:00Z"));
+    const { client, calls, head } = stageRepo();
+    head.statuses = [posted(BROKER, "pending", "dispatched")];
+    const reads = () => calls.filter((call) => call.startsWith("statuses appdev")).length;
+    let rested = 0;
+    await everyMinute(
+      client,
+      async () => undefined,
+      60,
+      (minute) => {
+        if (minute === 40) rested = reads();
+        if (minute === 55) head.push("5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b");
+      },
+    );
+    // Nothing between 40 and 55 minutes, then the new head from the push.
+    expect(calls.filter((call) => call === "statuses appdev@5a6b7c8").length).toBeGreaterThan(0);
+    expect(
+      reads() - rested - calls.filter((call) => call === "statuses appdev@5a6b7c8").length,
+    ).toBe(0);
+  });
+
+  it("re-reads a stage's head as a merge into its repository lands", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(Date.parse("2026-10-02T22:10:00Z"));
+    const { client, head } = stageRepo();
+    head.statuses = [posted(PUSH, "failure")];
+    const reads = createForgeReads();
+    const read = (
+      scope: "group" | { kind: "main-head"; repository: string },
+      held?: ZeropsGroupDeployState,
+    ) =>
+      readGroupDeploys({
+        client,
+        group: GROUP,
+        scope,
+        readVersion: async () => undefined,
+        held,
+        signal: new AbortController().signal,
+        reads,
+      }).then((update) => update(held));
+    const failed = await read("group");
+    expect(failureOf(failed)).toEqual({ reason: undefined });
+    head.push("5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b");
+    reads.forget("harbor", "appdev");
+    const merged = await read({ kind: "main-head", repository: "appdev" }, failed);
+    expect(failureOf(merged)).toBeUndefined();
   });
 
   it("falls to a read every five minutes once the head is quiet past the window", async () => {
