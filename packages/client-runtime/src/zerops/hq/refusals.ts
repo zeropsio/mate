@@ -86,6 +86,15 @@ const STRUCTURE_WORDS: Readonly<Record<string, string>> = {
   attachment_not_found: "HQ has no such picture.",
   // An application's recipe (`@t3tools/shared/hqRecipe`).
   recipe_too_large: "This project's recipe is too large to read here.",
+  // An application's environments and their deploy keys (`apps/hq/src/environments.ts`).
+  environment_with_kind: "Only a stage or a production is an environment.",
+  environment_name_missing: "An environment needs a name.",
+  environment_name_invalid:
+    "An environment's name starts with a letter and has only small letters, digits and dashes.",
+  environment_name_taken: "This project has an environment of that name already.",
+  environment_not_found: "HQ has no such environment.",
+  deploy_token_refused: "Zerops did not accept this deploy key.",
+  deploy_token_scope: "This deploy key reaches more than its own project.",
 };
 
 /** What anything asked of the organization's HQ says where its official HQ is not open here. */
