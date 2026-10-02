@@ -44,7 +44,8 @@ import { EnvironmentId, type ExecutionEnvironmentUpdate } from "@t3tools/contrac
 
 import { zeropsMateBaseUrl } from "./candidates.ts";
 import type { DescriptorFacts } from "./environments/environmentMachine.ts";
-import type { ProbeReading } from "./environments/probeStore.ts";
+import type { Instant } from "./data/access/grant.ts";
+import type { ProbeAnswer, ProbeRead } from "./environments/probeStore.ts";
 import type { ZeropsContainerHealth } from "./provisioning.ts";
 
 export type FetchLike = (url: string, init?: RequestInit) => Promise<Response>;
@@ -231,40 +232,49 @@ const initAtOf = (health: MatePathReading): string | null =>
 export type DescriptorRead = (
   httpBaseUrl: string,
   options: { readonly fresh: boolean; readonly signal: AbortSignal },
-) => Promise<MatePathReading>;
+) => Promise<{ readonly reading: MatePathReading; readonly sentAt: Instant }>;
 
 /**
- * One probe of the probe store (C6). On demand it is the descriptor alone, shared with every other
- * reader of this Mate (`descriptorShare.ts`): `/healthz` is read only when the descriptor does not
- * answer as Mate's, to tell a container coming up from one that is away. A `fresh` probe — a
- * container coming up, or a caller waiting for a probe started now — reads both at once, so a
- * container that re-initialized shows a new `initAt` even while its descriptor answers.
+ * One probe of the probe store (C6): the descriptor, shared with every other reader of this Mate
+ * unless the probe asks `fresh` (`descriptorShare.ts`). `/healthz` is read only when the
+ * descriptor does not answer as Mate's, to tell a container coming up from one that is away — or
+ * beside it when the probe asks `initAt` (a container coming up, a caller waiting on a probe
+ * started now), so a container that re-initialized shows a new `initAt` while its descriptor
+ * answers.
  */
 export async function readZeropsContainer(
   origin: string,
   ports: { readonly descriptor: DescriptorRead; readonly fetch: FetchLike },
   signal: AbortSignal,
-  ask: { readonly fresh: boolean },
-): Promise<ProbeReading> {
+  ask: ProbeRead,
+): Promise<ProbeAnswer> {
   const base = zeropsMateBaseUrl(origin.replace(/\/+$/, ""));
   const readHealth = () => readMatePath(`${base}/healthz`, ports.fetch, signal);
   const descriptorRead = ports.descriptor(base, { fresh: ask.fresh, signal });
-  const healthRead = ask.fresh ? readHealth() : null;
-  const descriptor = await descriptorRead;
+  const healthRead = ask.initAt ? readHealth() : null;
+  // The reading is as old as the descriptor read it rests on, which another reader may have sent.
+  const { reading: descriptor, sentAt } = await descriptorRead;
   if (descriptor.kind === "json" && isZeropsMateDescriptor(descriptor.body)) {
     const facts = descriptorFactsOf(descriptor.body);
     if (facts !== null) {
       return {
-        kind: "ready",
-        descriptor: facts,
-        projectId: projectIdOf(descriptor.body),
-        initAt: healthRead === null ? null : initAtOf(await healthRead),
+        reading: {
+          kind: "ready",
+          descriptor: facts,
+          projectId: projectIdOf(descriptor.body),
+          initAt: healthRead === null ? null : initAtOf(await healthRead),
+        },
+        sentAt,
       };
     }
   }
   const health = await (healthRead ?? readHealth());
   const concluded = concludeWithoutDescriptor(descriptor, health);
-  return concluded === "initializing"
-    ? { kind: "initializing", initAt: initAtOf(health) }
-    : { kind: concluded };
+  return {
+    reading:
+      concluded === "initializing"
+        ? { kind: "initializing", initAt: initAtOf(health) }
+        : { kind: concluded },
+    sentAt,
+  };
 }

@@ -1,6 +1,8 @@
 import { EnvironmentId } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
+import { readZeropsContainer } from "../containerHealth.ts";
+import { makeDescriptorShare } from "../descriptorShare.ts";
 import type { MateFlag, PlatformStatus } from "./containerMachine.ts";
 import {
   bindContainerStore,
@@ -92,6 +94,8 @@ interface Rig {
   readonly store: ContainerStore;
   /** Every probe started, in order. */
   readonly probes: Array<string>;
+  /** Whether each probe asked for a read started now. */
+  readonly asks: Array<boolean>;
   /** What the next probes answer. */
   answer: ProbeReading;
 }
@@ -116,15 +120,18 @@ function rig(
 ): Rig {
   const clock = options.clock ?? manualClock();
   const probes: Array<string> = [];
+  const asks: Array<boolean> = [];
   const result: Rig = {
     clock,
     probes,
+    asks,
     answer: ready("0.11.40"),
     store: makeContainerStore({
       clock,
-      probe: (origin) => {
+      probe: (origin, _signal, ask) => {
         probes.push(origin);
-        return Promise.resolve(result.answer);
+        asks.push(ask.fresh);
+        return Promise.resolve({ reading: result.answer, sentAt: clock.now() });
       },
       readMateFlag: () => Promise.resolve(options.flag ?? "unknown"),
       intents: options.intents ?? memoryStorage(),
@@ -326,7 +333,7 @@ describe("container store (DESIGN §4.5)", () => {
     after.store.dispose();
   });
 
-  it("the route's Mate takes the first probe slot that frees", async () => {
+  it("the route's Mate takes the first probe slot, and the first that frees", async () => {
     const clock = manualClock();
     const probes: Array<string> = [];
     const store = makeContainerStore({
@@ -364,7 +371,7 @@ describe("container store (DESIGN §4.5)", () => {
     driver.setDemand("route", ["project-route:zcp"]);
     await clock.advance(0);
 
-    // Listed last, the route's Mate misses the pool's first four slots.
+    // Listed last, the route's Mate still takes the pool's first slot.
     store.setTargets(
       ids.map((id) => ({
         key: `project-${id}:zcp`,
@@ -373,10 +380,12 @@ describe("container store (DESIGN §4.5)", () => {
       })),
     );
     await clock.advance(0);
-    expect(probes).toEqual(["o1", "o2", "o3", "o4"].map(originOf));
+    expect(probes).toEqual(["route", "o1", "o2", "o3"].map(originOf));
 
+    // The route's read again takes the first slot that frees.
+    store.request("project-route:zcp");
     await clock.advance(8_000);
-    expect(probes.slice(4, 6)).toEqual([originOf("route"), originOf("o5")]);
+    expect(probes.slice(4, 6)).toEqual([originOf("route"), originOf("o4")]);
     unbind();
     driver.dispose();
     store.dispose();
@@ -491,6 +500,8 @@ describe("container store: what reads a container again", () => {
     readonly connected: boolean;
     readonly act: (store: ContainerStore, clock: ReturnType<typeof manualClock>) => Promise<void>;
     readonly reads: number;
+    /** Whether those reads are started now, past a descriptor another reader just made. */
+    readonly fresh?: boolean;
   }> = [
     {
       name: "a connected Mate the listing sends again unchanged",
@@ -558,6 +569,7 @@ describe("container store: what reads a container again", () => {
         store.setTargets([target("ACTIVE")]);
       },
       reads: 1,
+      fresh: true,
     },
     {
       name: "a Mate whose service went RESTARTING while the listing lost it, then came back",
@@ -568,12 +580,14 @@ describe("container store: what reads a container again", () => {
         store.setTargets([target("ACTIVE")]);
       },
       reads: 1,
+      fresh: true,
     },
     {
       name: "a Mate at a new address",
       connected: false,
       act: async (store) => store.setTargets([target("ACTIVE", "https://zcp-2.prg1.zerops.app")]),
       reads: 1,
+      fresh: true,
     },
     {
       name: "a Mate read moments ago, on a visible wake",
@@ -592,6 +606,7 @@ describe("container store: what reads a container again", () => {
         store.wake(true);
       },
       reads: 1,
+      fresh: false,
     },
     {
       name: "a Mate last read a minute ago, on a hidden wake",
@@ -607,11 +622,26 @@ describe("container store: what reads a container again", () => {
       connected: true,
       act: async (store) => store.link(KEY, false),
       reads: 1,
+      fresh: true,
+    },
+    {
+      name: "a Mate somebody asks about",
+      connected: false,
+      act: async (store) => store.request(KEY),
+      reads: 1,
+      fresh: true,
+    },
+    {
+      name: "a Mate an exchange is about to read anyway",
+      connected: false,
+      act: async (store) => store.request(KEY, { fresh: false }),
+      reads: 1,
+      fresh: false,
     },
   ];
 
   it.each(rows.map((row) => [row.name, row] as const))("%s", async (_name, row) => {
-    const { clock, store, probes } = rig();
+    const { clock, store, probes, asks } = rig();
     store.setTargets([row.initial ?? target("ACTIVE")]);
     await clock.advance(0);
     expect(probes).toHaveLength(1);
@@ -622,6 +652,62 @@ describe("container store: what reads a container again", () => {
     await row.act(store, clock);
     await clock.advance(0);
     expect(probes).toHaveLength(row.reads);
+    expect(asks.slice(1)).toEqual(probes.map(() => row.fresh));
+    store.dispose();
+  });
+});
+
+describe("container store: a reading counts only from when its read was sent", () => {
+  it("a platform restart is not ended by a descriptor read before it, which the share still holds", async () => {
+    const clock = manualClock();
+    let up = true;
+    const requests: Array<string> = [];
+    const fetch = async (url: string): Promise<Response> => {
+      requests.push(url);
+      if (!up) throw new TypeError("Failed to fetch");
+      const body = url.endsWith("/healthz")
+        ? { initComplete: true, initAt: "2026-10-01T00:00:00Z" }
+        : {
+            environmentId: "env-a",
+            label: "zcp",
+            platform: { os: "linux", arch: "x64" },
+            serverVersion: "0.11.83",
+            capabilities: { repositoryIdentity: true },
+            basePath: "/mate",
+            zerops: { projectId: "project-1" },
+          };
+      return new Response(JSON.stringify(body), {
+        headers: { "content-type": "application/json" },
+      });
+    };
+    const share = makeDescriptorShare({ clock, fetch });
+    const store = makeContainerStore({
+      clock,
+      probe: (origin, signal, ask) =>
+        readZeropsContainer(origin, { descriptor: share.read, fetch }, signal, ask),
+      readMateFlag: () => Promise.resolve("unknown"),
+      intents: memoryStorage(),
+    });
+    store.setTargets([target("ACTIVE")]);
+    store.link(KEY, true);
+    await clock.advance(0);
+
+    // The socket drops: the container is read, and answers.
+    store.link(KEY, false);
+    await clock.advance(1_000);
+    expect(store.verdict(KEY)).toEqual({ level: "ready" });
+
+    // The platform restarts it, and says ACTIVE again while the server is still away.
+    up = false;
+    store.setTargets([target("RESTARTING")]);
+    await clock.advance(5_000);
+    requests.length = 0;
+    store.setTargets([target("ACTIVE")]);
+    await clock.advance(0);
+
+    // The read from before the restart ends nothing: a read is sent, and finds it away.
+    expect(requests.length).toBeGreaterThan(0);
+    expect(store.verdict(KEY)).not.toEqual({ level: "ready" });
     store.dispose();
   });
 });

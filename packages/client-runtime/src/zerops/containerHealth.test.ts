@@ -231,11 +231,15 @@ describe("probeZeropsContainerHealth", () => {
 
 describe("readZeropsContainer", () => {
   const signal = new AbortController().signal;
+  /** When the descriptor read was sent: the reading is as old as that read. */
+  const SENT_AT = { wall: 1_800_000_000_000, mono: 42 };
   /** The probe's ports over one stubbed fetch, the descriptor read straight through. */
   const ports = (read: ReturnType<typeof stub>) => ({
     fetch: read.fetch,
-    descriptor: (base: string, options: { readonly signal: AbortSignal }) =>
-      readMatePath(`${base}/.well-known/t3/environment`, read.fetch, options.signal),
+    descriptor: async (base: string, options: { readonly signal: AbortSignal }) => ({
+      reading: await readMatePath(`${base}/.well-known/t3/environment`, read.fetch, options.signal),
+      sentAt: SENT_AT,
+    }),
   });
 
   const FACTS = {
@@ -249,23 +253,32 @@ describe("readZeropsContainer", () => {
   it.each([
     {
       name: "on demand, a Mate that answers costs its descriptor alone",
-      fresh: false,
+      ask: { fresh: false, initAt: false },
       reading: { kind: "ready", descriptor: FACTS, projectId: null, initAt: null },
       asked: [DESCRIPTOR],
     },
     {
-      name: "fresh, it reads /healthz beside it, so a re-init shows a new initAt",
-      fresh: true,
+      name: "fresh after a status move, still its descriptor alone",
+      ask: { fresh: true, initAt: false },
+      reading: { kind: "ready", descriptor: FACTS, projectId: null, initAt: null },
+      asked: [DESCRIPTOR],
+    },
+    {
+      name: "for a container coming up, /healthz beside it, so a re-init shows a new initAt",
+      ask: { fresh: true, initAt: true },
       reading: { kind: "ready", descriptor: FACTS, projectId: null, initAt: LIVE_HEALTHZ.initAt },
       asked: [DESCRIPTOR, HEALTHZ],
     },
-  ])("$name", async ({ fresh, reading, asked }) => {
+  ])("$name", async ({ ask, reading, asked }) => {
     const read = stub({
       [DESCRIPTOR]: () => json(LIVE_DESCRIPTOR),
       [HEALTHZ]: () => json(LIVE_HEALTHZ),
     });
     // A descriptor outside Zerops mode states no project.
-    expect(await readZeropsContainer(ORIGIN, ports(read), signal, { fresh })).toEqual(reading);
+    expect(await readZeropsContainer(ORIGIN, ports(read), signal, ask)).toEqual({
+      reading,
+      sentAt: SENT_AT,
+    });
     expect(read.calls.map((call) => call.url)).toEqual(asked);
     expect(read.calls.every((call) => call.init?.signal === signal)).toBe(true);
   });
@@ -283,7 +296,10 @@ describe("readZeropsContainer", () => {
         }),
       [HEALTHZ]: corsBlocked,
     });
-    const reading = await readZeropsContainer(ORIGIN, ports(read), signal, { fresh: true });
+    const { reading } = await readZeropsContainer(ORIGIN, ports(read), signal, {
+      fresh: true,
+      initAt: true,
+    });
     expect(reading).toMatchObject({
       kind: "ready",
       descriptor: { identity: "failed", identityCheckedAt: "2026-09-23T10:00:00Z" },
@@ -295,8 +311,9 @@ describe("readZeropsContainer", () => {
   it.each([false, true])(
     "reads what the health probe concludes when the descriptor does not answer (fresh: %s)",
     async (fresh) => {
-      const read = (routes: Record<string, () => Response>) =>
-        readZeropsContainer(ORIGIN, ports(stub(routes)), signal, { fresh });
+      const read = async (routes: Record<string, () => Response>) =>
+        (await readZeropsContainer(ORIGIN, ports(stub(routes)), signal, { fresh, initAt: fresh }))
+          .reading;
       expect(
         await read({ [DESCRIPTOR]: () => html(404), [HEALTHZ]: () => json(LIVE_HEALTHZ) }),
       ).toEqual({ kind: "initializing", initAt: LIVE_HEALTHZ.initAt });

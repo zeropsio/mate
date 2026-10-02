@@ -163,6 +163,8 @@ function rig(
                 credential: { environmentId: mate.descriptor().environmentId, generation: 100 },
                 check: async () => true,
                 forget: () => undefined,
+                unanswered: false,
+                answered: () => undefined,
               }
             : null,
         },

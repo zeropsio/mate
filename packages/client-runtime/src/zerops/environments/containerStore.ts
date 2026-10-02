@@ -33,6 +33,7 @@ import type { ContainerVerdict } from "./environmentMachine.ts";
 import type { ExchangeClock, ExchangeDriver, TargetKey } from "./exchangeDriver.ts";
 import {
   makeProbeStore,
+  type ProbeAsk,
   type ProbeCadence,
   type ProbeReading,
   type ProbeStorePorts,
@@ -84,8 +85,11 @@ export interface ContainerStore {
   readonly link: (key: TargetKey, connected: boolean) => void;
   /** Our verb was accepted: its level holds until a read fact settles it. */
   readonly intend: (key: TargetKey, intent: IntentRequest) => void;
-  /** Reads the target's container once more. */
-  readonly request: (key: TargetKey) => void;
+  /**
+   * Reads the target's container once more, with a read started now — unless `fresh: false` lets
+   * it take one another reader made a moment ago (an exchange about to read it anyway).
+   */
+  readonly request: (key: TargetKey, ask?: ProbeAsk) => void;
   /** The targets whose containers are read ahead of every other: the route's (§4.5). */
   readonly setFirst: (keys: ReadonlySet<TargetKey>) => void;
   /** The reading of a probe of this origin started from now on. */
@@ -294,7 +298,10 @@ export function makeContainerStore(ports: ContainerStorePorts): ContainerStore {
     }
     if (depth > 0) return;
     probes.setFirst(new Set([...first].flatMap((key) => entries.get(key)?.origin ?? [])));
-    probes.setCadences(cadences());
+    // Asked only now, so each probe reads by the cadence its container ended the batch on.
+    const asked = new Map([...requests].map(([origin, fresh]) => [origin, { fresh }] as const));
+    requests.clear();
+    probes.setCadences(cadences(), asked);
     persist();
     const machines = new Map([...entries].map(([key, entry]) => [key, entry.machine] as const));
     if (sameJson([...machines], [...published])) return;
@@ -302,13 +309,19 @@ export function makeContainerStore(ports: ContainerStorePorts): ContainerStore {
     for (const listener of listeners) listener();
   }
 
+  /** The reads this batch asked for, by origin, and whether one of them must be started now. */
+  const requests = new Map<string, boolean>();
+
   /**
-   * Reads the container now, unless its socket is live — that proves it up — or the platform says
-   * it is down: its push back reads it.
+   * Reads the container once this batch ends, unless its socket is live — that proves it up — or
+   * the platform says it is down: its push back reads it. `fresh` unless the ask is content with a
+   * descriptor another reader made a moment ago: a read after a status move, a drop or a failure
+   * must be sent after it.
    */
-  const requestFor = (entry: Entry) => {
+  const requestFor = (entry: Entry, ask: ProbeAsk) => {
     if (entry.origin === null || entry.machine.connectedSince !== null) return;
-    if (!platformSaysDown(entry.machine)) probes.request(entry.origin);
+    if (platformSaysDown(entry.machine)) return;
+    requests.set(entry.origin, (requests.get(entry.origin) ?? false) || ask.fresh);
   };
 
   const unsubscribeProbes = probes.subscribe((origin, reading, sentAt) =>
@@ -353,7 +366,8 @@ export function makeContainerStore(ports: ContainerStorePorts): ContainerStore {
               restored.delete(target.key);
               step(target.key, entry, { type: "INTENT", intent: restore(record) });
             }
-            requestFor(entry);
+            // A Mate seen for the first time: the read its connect makes will do.
+            requestFor(entry, { fresh: false });
             continue;
           }
           const moved = existing.origin !== target.origin;
@@ -363,7 +377,7 @@ export function makeContainerStore(ports: ContainerStorePorts): ContainerStore {
           step(target.key, existing, { type: "PLATFORM", status: platformOf(existing, target) });
           // A status that moved, or a new address, reads the container again: ready is never
           // terminal. The same status listed again, or one the listing could not say, reads nothing.
-          if (pushed || moved) requestFor(existing);
+          if (pushed || moved) requestFor(existing, { fresh: true });
         }
       }),
     process: (key, running) =>
@@ -377,7 +391,7 @@ export function makeContainerStore(ports: ContainerStorePorts): ContainerStore {
         if (entry === undefined) return;
         const dropped = !connected && entry.machine.connectedSince !== null;
         step(key, entry, { type: "LINK", connected });
-        if (dropped) requestFor(entry);
+        if (dropped) requestFor(entry, { fresh: true });
       }),
     intend: (key, intent) =>
       batch(() => {
@@ -392,10 +406,10 @@ export function makeContainerStore(ports: ContainerStorePorts): ContainerStore {
               : { kind: intent.kind, since },
         });
       }),
-    request: (key) =>
+    request: (key, ask = { fresh: true }) =>
       batch(() => {
         const entry = entries.get(key);
-        if (entry !== undefined) requestFor(entry);
+        if (entry !== undefined) requestFor(entry, ask);
       }),
     setFirst: (keys) =>
       batch(() => {
@@ -416,7 +430,7 @@ export function makeContainerStore(ports: ContainerStorePorts): ContainerStore {
             probeCadence(entry.machine).kind === "on-demand" &&
             unreadSince(entry.machine, now)
           )
-            requestFor(entry);
+            requestFor(entry, { fresh: false });
         }
       }),
     verdict: (key) => {
@@ -435,6 +449,7 @@ export function makeContainerStore(ports: ContainerStorePorts): ContainerStore {
       if (disposed) return;
       disposed = true;
       unsubscribeProbes();
+      requests.clear();
       probes.dispose();
       for (const entry of entries.values()) entry.cancelTimer?.();
       entries.clear();
@@ -484,8 +499,8 @@ export function bindContainerStore(store: ContainerStore, driver: ExchangeDriver
   /** Whether each target's last read found its Mate answering. */
   const answering = new Map<TargetKey, boolean>();
   /** Reads the container once each time `now` turns true for the key. */
-  const onEdge = (seen: Set<TargetKey>, key: TargetKey, now: boolean) => {
-    if (now && !seen.has(key)) store.request(key);
+  const onEdge = (seen: Set<TargetKey>, key: TargetKey, now: boolean, ask: ProbeAsk) => {
+    if (now && !seen.has(key)) store.request(key, ask);
     if (now) seen.add(key);
     else seen.delete(key);
   };
@@ -497,11 +512,12 @@ export function bindContainerStore(store: ContainerStore, driver: ExchangeDriver
     for (const [key, machine] of machines) {
       store.link(key, machine.link.phase === "connected");
       // An exchange starting reads the container it is about to meet.
-      onEdge(exchanging, key, machine.credential.kind === "exchanging");
+      // It may take the descriptor the exchange itself reads.
+      onEdge(exchanging, key, machine.credential.kind === "exchanging", { fresh: false });
       // A connect failing, connected before or not, reads it again: ready is never terminal.
-      onEdge(failing, key, machine.link.phase === "backoff");
+      onEdge(failing, key, machine.link.phase === "backoff", { fresh: true });
       // So does an exchange backing off: the read that finds the Mate back ends the wait.
-      onEdge(backingOff, key, machine.credential.kind === "backoff");
+      onEdge(backingOff, key, machine.credential.kind === "backoff", { fresh: true });
     }
   };
   const unsubscribeStore = store.subscribe(toDriver);

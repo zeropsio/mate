@@ -37,6 +37,8 @@ const flush = async (): Promise<void> => {
  */
 function rig() {
   let mono = 0;
+  /** Wall time a sleep added: the monotonic clock stands still while the machine sleeps. */
+  let slept = 0;
   const timers = new Map<number, { readonly at: number; readonly fire: () => void }>();
   let nextTimer = 0;
   const requests: Array<string> = [];
@@ -58,7 +60,7 @@ function rig() {
   };
   const share = makeDescriptorShare({
     clock: {
-      now: () => ({ wall: 1_800_000_000_000 + mono, mono }),
+      now: () => ({ wall: 1_800_000_000_000 + mono + slept, mono }),
       setTimer: (delayMs, fire) => {
         const id = nextTimer;
         nextTimer += 1;
@@ -86,6 +88,10 @@ function rig() {
       }
       await flush();
     },
+    /** The machine sleeps: wall time moves, the monotonic clock does not. */
+    sleep: (ms: number) => {
+      slept += ms;
+    },
     advance: async (ms: number) => {
       mono += ms;
       for (const [id, timer] of timers) {
@@ -110,7 +116,10 @@ const readers: Record<
   (rig: Pick<Rig, "share" | "fetch">, signal: AbortSignal) => Promise<unknown>
 > = {
   probe: ({ share, fetch }, signal) =>
-    readZeropsContainer(ORIGIN, { descriptor: share.read, fetch }, signal, { fresh: false }),
+    readZeropsContainer(ORIGIN, { descriptor: share.read, fetch }, signal, {
+      fresh: false,
+      initAt: false,
+    }),
   driver: ({ share }, signal) => share.descriptor(BASE, signal),
   door: ({ share }, signal) => share.descriptor(BASE, signal),
 };
@@ -160,6 +169,22 @@ describe("descriptor share: one read of a Mate's descriptor serves one connect",
         await setup.answer(DESCRIPTOR_URL, () => json(DESCRIPTOR));
         await first;
         await setup.advance(DESCRIPTOR_SHARE_MS + 1);
+        const second = readers.driver(setup, signal);
+        await flush();
+        await setup.answer(DESCRIPTOR_URL, () => json(DESCRIPTOR));
+        await second;
+      },
+      reads: 2,
+    },
+    {
+      name: "a reader once the machine slept past the window, by the wall clock alone",
+      run: async (setup) => {
+        const first = readers.door(setup, signal);
+        await flush();
+        await setup.answer(DESCRIPTOR_URL, () => json(DESCRIPTOR));
+        await first;
+        setup.sleep(60 * 60_000);
+        expect(setup.share.recent(BASE)).toBeNull();
         const second = readers.driver(setup, signal);
         await flush();
         await setup.answer(DESCRIPTOR_URL, () => json(DESCRIPTOR));
@@ -237,7 +262,7 @@ describe("descriptor share: one read of a Mate's descriptor serves one connect",
       serverVersion: "0.11.83",
       zerops: { projectId: "project-1" },
     });
-    expect(await probe).toMatchObject({
+    expect(((await probe) as { reading: unknown }).reading).toMatchObject({
       kind: "ready",
       descriptor: { environmentId: "env-share", serverVersion: "0.11.83", identity: "ok" },
       projectId: "project-1",
@@ -293,11 +318,11 @@ describe("descriptor share: one read of a Mate's descriptor serves one connect",
     const { share, requests, advance, answer } = rig();
     const hung = share.read(BASE, { fresh: false, signal });
     await advance(DESCRIPTOR_READ_DEADLINE_MS);
-    expect(await hung).toEqual({ kind: "blocked" });
+    expect((await hung).reading).toEqual({ kind: "blocked" });
     const next = share.read(BASE, { fresh: false, signal });
     await flush();
     await answer(DESCRIPTOR_URL, () => json(DESCRIPTOR));
-    expect((await next).kind).toBe("json");
+    expect((await next).reading.kind).toBe("json");
     expect(requests).toEqual([DESCRIPTOR_URL, DESCRIPTOR_URL]);
   });
 });

@@ -248,7 +248,10 @@ const openMobileAccount = Effect.fnUntraced(function* (clock: DeadlineClock) {
       retryLink: (environmentId) => void retried.push(environmentId),
       remove: () => undefined,
     },
-    probe: async () => probe.answer,
+    probe: async () => ({
+      reading: probe.answer,
+      sentAt: { wall: clock.wallMs(), mono: clock.monoMs() },
+    }),
     intents: memoryIntents(),
     records,
     catalog: {
