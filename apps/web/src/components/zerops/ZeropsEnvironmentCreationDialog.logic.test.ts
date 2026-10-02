@@ -1,12 +1,15 @@
-import type {
-  EnvironmentCreationStep,
-  EnvironmentCreationStepProgress,
-  FlowPullRequest,
-  ZeropsGroupPendingMember,
+import {
+  flowChanges,
+  type EnvironmentCreationStep,
+  type EnvironmentCreationStepProgress,
+  type FlowPullRequest,
+  type ZeropsGroupPendingMember,
 } from "@t3tools/client-runtime/zerops";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import type { HqPlacement } from "@t3tools/client-runtime/zerops/hq";
 import type { MateShapeId, MateTintId } from "@t3tools/shared/brand";
+import type { HqChange } from "@t3tools/shared/hqChanges";
+import { RECIPE_PROPOSAL_TITLE, RECIPE_REPO } from "@t3tools/shared/hqRecipe";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
@@ -685,6 +688,50 @@ describe("newMateRecipeChange — the change the recipe waits in", () => {
     { case: "none before the forge read anything", flow: undefined, found: undefined },
   ])("finds $case", ({ flow, found }) => {
     expect(newMateRecipeChange({ flow, mateName: (id) => names[id] })).toEqual(found);
+  });
+});
+
+// SPEC §3.2c with main's D24/D25: Cleo's proposal as HQ's stream says it — a change in the
+// application's recipe repository under zcp's exact title — shuts the door on Review the change
+// while it is open, and reads the recipe again once it lands.
+describe("the recipe's proposal, as HQ holds it", () => {
+  const proposal = (over: Partial<HqChange>): HqChange => ({
+    appId: "beviro",
+    repo: RECIPE_REPO,
+    number: 11,
+    mateProjectId: "cleo-project",
+    title: RECIPE_PROPOSAL_TITLE,
+    body: "",
+    state: "open",
+    head: "c0ffee",
+    mergedSha: null,
+    landedHead: null,
+    openedAt: "2026-10-02T09:00:00.000Z",
+    mergedAt: null,
+    closedAt: null,
+    updatedAt: "2026-10-02T09:00:00.000Z",
+    mergeability: "clean",
+    behind: false,
+    ...over,
+  });
+  const flow = (changes: ReadonlyArray<HqChange>) =>
+    flowChanges({ changes, hqAddress: "https://hq.example.test" });
+
+  it("is the change the recipe waits in while it is open", () => {
+    const { pullRequests } = flow([proposal({})]);
+    expect(
+      newMateRecipeChange({
+        flow: { changesKnown: true, pullRequests },
+        mateName: (id) => (id === "cleo-project" ? "Cleo" : undefined),
+      }),
+    ).toEqual({ number: 11, mate: "Cleo" });
+  });
+
+  it("is the landing the recipe is read again on once it merged", () => {
+    const { merged } = flow([
+      proposal({ state: "merged", mergedSha: "d00d", mergedAt: "2026-10-02T10:00:00.000Z" }),
+    ]);
+    expect(landedRecipeProposal(merged)).toBe(11);
   });
 });
 
