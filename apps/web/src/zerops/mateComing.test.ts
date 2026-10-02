@@ -1194,6 +1194,17 @@ describe("a Mate whose address landed, not answering yet, in a window that did n
     expect(replay([...STEPS.slice(0, 3), { ...STEPS[3]!, link: now }])[3]).toBeUndefined();
   });
 
+  it("watched in its first build, its address landing with ACTIVE in one read: still coming up", () => {
+    // An org socket's recovery re-read, or one push carrying both: no read between them.
+    const read = replay([STEPS[0]!, { ...STEPS[2]!, atMs: 152_000 }, STEPS[3]!, STEPS[4]!]);
+    expect(read.map((coming) => coming?.kind ?? "up")).toEqual([
+      "coming",
+      "coming",
+      "coming",
+      "up",
+    ]);
+  });
+
   it("an old Mate that stops answering still reads as asleep, never coming up", () => {
     // A reload — or an old Mate: first seen with its address, nothing watched it come.
     const [read] = replay([{ ...STEPS[3]!, atMs: 3 * 60 * 60_000 }]);

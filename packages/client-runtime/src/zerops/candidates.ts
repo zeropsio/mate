@@ -266,12 +266,20 @@ export function addressWaitEnds(
 
 /**
  * What a reader holds of a container's address: that it saw the container with one — and, where
- * it watched it wait for it first, when that wait began — or when it first saw it ACTIVE without
- * one. Kept for as long as the reader lives (`addressSeenAfter`).
+ * it watched it come up, when it first saw it ACTIVE — when it first saw it ACTIVE without one, or
+ * that it saw it in its first build, before it was ACTIVE at all. Kept for as long as the reader
+ * lives (`addressSeenAfter`).
  */
 export type AddressSeen =
   | { readonly addressed: true; readonly since?: number }
-  | { readonly addressed: false; readonly since: number };
+  | { readonly addressed: false; readonly since: number }
+  | { readonly addressed: false; readonly since?: undefined; readonly building: true };
+
+/**
+ * A container's first build, as its statuses say it: made, or waiting for the build its import
+ * started. A start or a restart is a container already made, never its arrival.
+ */
+const FIRST_BUILD_STATUSES: ReadonlySet<string> = new Set(["NEW", "CREATING", "READY_TO_DEPLOY"]);
 
 /** The clock a reader judges an address wait by (`addressWaitEnds`). */
 export interface AddressClock {
@@ -283,28 +291,39 @@ export interface AddressClock {
 /**
  * What a reader keeps of a candidate's address once it derived it, from what it held. A container
  * seen with its address is seen with it for good: one whose access is switched off later has no
- * public address, never a wait. Its address landing keeps the moment its wait began, the clock its
- * arrival is judged by (`ZeropsCandidate.arriving`). A wait keeps its first moment, past its end
- * too, so a wait that ended never begins again. A container never seen with its address and never
- * waiting for it — old, or its creation not known — leaves nothing to keep.
+ * public address, never a wait. Its address landing keeps the moment it was first seen ACTIVE, the
+ * clock its arrival is judged by (`ZeropsCandidate.arriving`) — the moment its wait began, or, seen
+ * in its first build and next with its address at once, that moment. A wait keeps its first
+ * moment, past its end too, so a wait that ended never begins again. A container seen in its first
+ * build is kept so until it is ACTIVE. A container never seen with its address, never waiting for
+ * it and never seen building — old, or its creation not known — leaves nothing to keep.
  */
 export function addressSeenAfter(
-  candidate: Pick<ZeropsCandidate, "containerOrigin" | "addressAwaited">,
+  candidate: Pick<
+    ZeropsCandidate,
+    "containerOrigin" | "addressAwaited" | "arriving" | "group" | "service"
+  >,
   held: AddressSeen | undefined,
 ): AddressSeen | undefined {
   if (held?.addressed === true) return held;
   if (candidate.containerOrigin !== undefined) {
-    return held === undefined ? { addressed: true } : { addressed: true, since: held.since };
+    const since = held?.since ?? candidate.arriving?.since;
+    return since === undefined ? { addressed: true } : { addressed: true, since };
+  }
+  if (candidate.addressAwaited !== undefined && held?.since === undefined) {
+    return { addressed: false, since: candidate.addressAwaited.since };
   }
   if (held !== undefined) return held;
-  return candidate.addressAwaited === undefined
-    ? undefined
-    : { addressed: false, since: candidate.addressAwaited.since };
+  return candidate.group === "provisioning" &&
+    FIRST_BUILD_STATUSES.has(candidate.service?.status ?? "")
+    ? { addressed: false, building: true }
+    : undefined;
 }
 
 /**
- * A young container's arrival, where its reader watched it wait for its address: its Mate on its
- * way to answering until that wait's end (`addressWaitEnds`). The platform enables a new Mate's
+ * A young container's arrival, where its reader watched it come up — in its first build, or
+ * waiting for its address: its Mate on its way to answering until the end of the wait for its
+ * address, from when its reader first saw it ACTIVE (`addressWaitEnds`). The platform enables a new Mate's
  * address seconds after its first build makes it ACTIVE, and its server answers seconds after
  * that (measured 2026-10-02: ACTIVE at +265 s, the Mate answering at about +280 s), so the same
  * two minutes from first seen ACTIVE are ample for both; past them a Mate that does not answer
@@ -317,7 +336,9 @@ function arrivingOf(
   clock: AddressClock | undefined,
 ): { readonly since: number; readonly until: number } | undefined {
   if (clock === undefined) return undefined;
-  const since = clock.addressSeen?.(service.id)?.since;
+  const seen = clock.addressSeen?.(service.id);
+  // Seen building and ACTIVE now for the first time: its arrival's clock starts here.
+  const since = seen?.since ?? (seen !== undefined && "building" in seen ? clock.nowMs : undefined);
   if (since === undefined) return undefined;
   const until = addressWaitEnds(service, since);
   return until !== null && clock.nowMs < until ? { since, until } : undefined;
