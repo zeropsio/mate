@@ -10,7 +10,8 @@ import {
   HALF_MADE_LINE,
   HALF_MADE_OWNER_LINE,
   halfMadeFor,
-  firstBuildFailure,
+  firstBuildState,
+  listingLacksCreation,
   mateArrivalShown,
   type MateComingPage,
 } from "./mateComing";
@@ -132,7 +133,7 @@ describe("mateComing — a Mate in its first minutes, in one set of words", () =
           service: { status: "READY_TO_DEPLOY", created: new Date(NOW - 60_000).toISOString() },
         },
         created: true,
-        firstBuildFailed: "the build failed",
+        firstBuild: { kind: "failed", why: "the build failed" },
         nowMs: NOW,
       },
       expected: {
@@ -161,6 +162,40 @@ describe("mateComing — a Mate in its first minutes, in one set of words", () =
         press: undefined,
         candidate: { group: "provisioning", service: { status: "READY_TO_DEPLOY" } },
         created: true,
+      },
+      expected: { kind: "coming", line: "Coming up. A few minutes." },
+    },
+    // Past its grace a first build is still on its way: slow or queued looks the same from its
+    // status as failed, and only its build's process tells — never a restart, never removed.
+    ...[true, undefined].map((created) => ({
+      case: `a first build past its grace, nothing known of it${created === true ? ", made here" : ""}`,
+      input: {
+        press: undefined,
+        candidate: {
+          group: "provisioning" as const,
+          service: {
+            status: "READY_TO_DEPLOY",
+            created: new Date(NOW - 20 * 60_000).toISOString(),
+          },
+        },
+        created,
+        nowMs: NOW,
+      },
+      expected: { kind: "coming" as const, line: "Taking longer than usual." },
+    })),
+    {
+      case: "a first build past its grace, its build still running",
+      input: {
+        press: undefined,
+        candidate: {
+          group: "provisioning",
+          service: {
+            status: "READY_TO_DEPLOY",
+            created: new Date(NOW - 20 * 60_000).toISOString(),
+          },
+        },
+        firstBuild: { kind: "running" },
+        nowMs: NOW,
       },
       expected: { kind: "coming", line: "Coming up. A few minutes." },
     },
@@ -212,25 +247,13 @@ describe("mateComing — a Mate in its first minutes, in one set of words", () =
       input: { press: undefined, candidate: { group: "ready" }, created: true },
     },
     {
+      case: "a Mate this tab made that a whole listing, read well after, lacks",
+      input: { press: undefined, candidate: undefined, created: true, listingLacksIt: true },
+    },
+    {
       case: "a Mate this tab made whose project is gone",
       input: { press: undefined, candidate: undefined, created: true, linkHolds: false },
     },
-    ...[true, undefined].map((created) => ({
-      case: `a first build waiting past its grace${created === true ? ", made here" : ""}`,
-      input: {
-        press: undefined,
-        candidate: {
-          group: "provisioning" as const,
-          service: {
-            status: "READY_TO_DEPLOY",
-            created: new Date(NOW - 20 * 60_000).toISOString(),
-          },
-        },
-        created,
-        linkHolds: true,
-        nowMs: NOW,
-      },
-    })),
     {
       case: "a Mate this tab made, connected",
       input: { press: undefined, candidate: { group: "connected" }, created: true },
@@ -551,7 +574,7 @@ describe("mateArrivalShown — what a Mate's own view keeps saying once it came 
     readonly case: string;
     readonly page: MateComingPage | undefined;
     readonly cameUp: boolean;
-    readonly retryingPast?: boolean;
+    readonly failuresSinceConnect?: number;
     readonly expected: ReturnType<typeof mateArrivalShown>;
   }>([
     {
@@ -641,17 +664,34 @@ describe("mateArrivalShown — what a Mate's own view keeps saying once it came 
       cameUp: true,
       expected: OPENING,
     },
-    {
-      case: "reaching, retrying on its own past the arrival's patience",
-      page: reaching({
-        kind: "retrying",
-        retryAtMs: NOW,
-        last: { kind: "network" },
-        restart: false,
-      } as Reachability),
+    // Failing since it last connected: past its first failure, no wait of its link holds the board
+    // — its retries and the attempts between them alike, so the two never take turns.
+    ...(
+      [
+        { kind: "retrying", retryAtMs: NOW, last: { kind: "network" }, restart: false },
+        { kind: "connecting", waitingOn: "exchange" },
+        { kind: "reconnecting" },
+      ] as ReadonlyArray<Reachability>
+    ).map((reachability) => ({
+      case: `reaching, ${reachability.kind} after its second failure since it connected`,
+      page: reaching(reachability),
       cameUp: true,
-      retryingPast: true,
+      failuresSinceConnect: 2,
       expected: undefined,
+    })),
+    {
+      case: "reaching, connecting again after its first failure",
+      page: reaching({ kind: "connecting", waitingOn: "exchange" }),
+      cameUp: true,
+      failuresSinceConnect: 1,
+      expected: OPENING,
+    },
+    {
+      case: "reaching, its container booting whatever its link failed",
+      page: reaching({ kind: "container", container: { level: "booting", overdue: false } }),
+      cameUp: true,
+      failuresSinceConnect: 3,
+      expected: OPENING,
     },
     {
       case: "reaching, retrying with a restart to offer",
@@ -695,14 +735,14 @@ describe("mateArrivalShown — what a Mate's own view keeps saying once it came 
       expected: undefined,
     },
     { case: "nothing known yet", page: undefined, cameUp: true, expected: undefined },
-  ])("$case", ({ page, cameUp, retryingPast = false, expected }) => {
-    expect(mateArrivalShown({ page, cameUp, retryingPast })).toEqual(expected);
+  ])("$case", ({ page, cameUp, failuresSinceConnect = 0, expected }) => {
+    expect(mateArrivalShown({ page, cameUp, failuresSinceConnect })).toEqual(expected);
   });
 });
 
 // A first build that failed leaves the Mate's service READY_TO_DEPLOY for good (the ledger,
 // 2026-09: a failed buildFromGit): its newest build for that service says so.
-describe("firstBuildFailure — a Mate's first build, as its project's processes say it", () => {
+describe("firstBuildState — a Mate's first build, as its project's processes say it", () => {
   const build = (status: string, created: string, extra: object = {}) => ({
     actionName: "stack.build",
     serviceStackIds: ["zcp", "buildzcp"],
@@ -713,23 +753,33 @@ describe("firstBuildFailure — a Mate's first build, as its project's processes
   it.each<{
     readonly case: string;
     readonly processes: ReadonlyArray<ReturnType<typeof build>> | undefined;
-    readonly expected: string | undefined;
+    readonly expected: ReturnType<typeof firstBuildState>;
   }>([
     { case: "nothing read", processes: undefined, expected: undefined },
     {
       case: "building",
       processes: [build("RUNNING", "2026-10-02T10:00:00Z")],
+      expected: { kind: "running" },
+    },
+    {
+      case: "queued",
+      processes: [build("PENDING", "2026-10-02T10:00:00Z")],
+      expected: { kind: "running" },
+    },
+    {
+      case: "built",
+      processes: [build("FINISHED", "2026-10-02T10:00:00Z")],
       expected: undefined,
     },
     {
       case: "failed, with the platform's reason",
       processes: [build("FAILED", "2026-10-02T10:00:00Z", { failReason: "npm ci failed" })],
-      expected: "npm ci failed",
+      expected: { kind: "failed", why: "npm ci failed" },
     },
     {
       case: "failed, with no reason",
       processes: [build("CANCELED", "2026-10-02T10:00:00Z")],
-      expected: "Its container's first build did not finish",
+      expected: { kind: "failed", why: "Its container's first build did not finish" },
     },
     {
       case: "failed, then built again: the newest counts",
@@ -737,7 +787,7 @@ describe("firstBuildFailure — a Mate's first build, as its project's processes
         build("FAILED", "2026-10-02T10:00:00Z"),
         build("RUNNING", "2026-10-02T10:05:00Z"),
       ],
-      expected: undefined,
+      expected: { kind: "running" },
     },
     {
       case: "another service's build failed",
@@ -745,6 +795,48 @@ describe("firstBuildFailure — a Mate's first build, as its project's processes
       expected: undefined,
     },
   ])("$case", ({ processes, expected }) => {
-    expect(firstBuildFailure(processes, "zcp")).toBe(expected);
+    expect(firstBuildState(processes, "zcp")).toEqual(expected);
+  });
+});
+
+// A Mate this tab made whose project went before it ever connected: a whole listing read well
+// after the creation that lacks it means it is gone, never coming up for good — one read before
+// the platform's listing could hold it says nothing.
+describe("listingLacksCreation — a whole listing that no longer holds this tab's creation", () => {
+  const MADE = 1_000_000;
+  it.each([
+    { case: "listed", listed: true, complete: true, listedAtMs: MADE + 120_000, lacks: false },
+    {
+      case: "a partial listing",
+      listed: false,
+      complete: false,
+      listedAtMs: MADE + 120_000,
+      lacks: false,
+    },
+    {
+      case: "a whole listing read moments after",
+      listed: false,
+      complete: true,
+      listedAtMs: MADE + 5_000,
+      lacks: false,
+    },
+    {
+      case: "a whole listing read well after",
+      listed: false,
+      complete: true,
+      listedAtMs: MADE + 120_000,
+      lacks: true,
+    },
+    {
+      case: "no creation time",
+      listed: false,
+      complete: true,
+      listedAtMs: MADE + 120_000,
+      madeAtMs: undefined,
+      lacks: false,
+    },
+  ])("$case: $lacks", ({ listed, complete, listedAtMs, lacks, ...rest }) => {
+    const madeAtMs = "madeAtMs" in rest ? rest.madeAtMs : MADE;
+    expect(listingLacksCreation({ listed, complete, listedAtMs, madeAtMs })).toBe(lacks);
   });
 });

@@ -314,7 +314,7 @@ const zcpStandUpState = (facts: SetupFacts): Exclude<StandUpState, "idle"> | und
   return state === "done" && halvesLeft && ownTurnRuns ? "running" : state;
 };
 
-const standUpStep = (facts: SetupFacts): SetupStep => {
+const standUpStep = (facts: SetupFacts): SetupStep | null => {
   const standup = facts.status?.standup;
   const zcpState = zcpStandUpState(facts);
   // Settled as never due: nothing ran here, so nothing is done — unless zcp ran one.
@@ -330,8 +330,10 @@ const standUpStep = (facts: SetupFacts): SetupStep => {
       ? { id: "standup", state: "none", at: "" }
       : { id: "standup", state: "waiting", at: "" };
   }
-  const state =
-    zcpState ?? (facts.standUpTurn === "running" ? undefined : facts.standUpTurn) ?? "running";
+  // zcp's word, else its own turn's; with neither — its thread gone, its turn not found, and a
+  // zcp that writes nothing — the server cannot say, and says nothing rather than running for good.
+  const state = zcpState ?? facts.standUpTurn;
+  if (state === undefined) return null;
   const ended = state === "done" || state === "failed";
   const at =
     (ended ? standup?.endedAt : standup?.startedAt) || (ended ? "" : facts.record.startedAt);
@@ -352,6 +354,9 @@ export const setupDocument = (facts: SetupFacts): SetupDocument => ({
         ? { id: "signin", state: "waiting", at: "" }
         : { id: "signin", state: "done", at: facts.signinAt },
       standUpStep(facts),
-    ] satisfies ReadonlyArray<SetupStep>
-  ).filter((step) => !(facts.unknown ?? []).some((id) => id === step.id)),
+    ] satisfies ReadonlyArray<SetupStep | null>
+  ).filter(
+    (step): step is SetupStep =>
+      step !== null && !(facts.unknown ?? []).some((id) => id === step.id),
+  ),
 });

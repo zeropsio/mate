@@ -249,6 +249,12 @@ export interface EnvironmentMachine {
   /** Consecutive automatic failures; from the cap on, retries slow to the capped interval. */
   readonly failures: number;
   /**
+   * Failures since its link last connected, whatever started the ladder over (a Try now, a
+   * registry taking the credential): only a connect clears it. A new Mate's arrival holds its
+   * board only through the first of them (`arrivalHoldsThrough`).
+   */
+  readonly failuresSinceConnect: number;
+  /**
    * Monotonic times of the auth rejections counted in the loop window. Every published
    * `blocked(authentication)` belongs to the stored credential, so one counts per credential held.
    */
@@ -392,6 +398,7 @@ export const initialEnvironment = (input: {
   superseded: new Map(),
   ladder: INITIAL_BACKOFF,
   failures: 0,
+  failuresSinceConnect: 0,
   authRejections: [],
   permissionRetried: false,
   configurationBlocks: 0,
@@ -548,6 +555,7 @@ const backoff = (
   return {
     ...machine,
     failures,
+    failuresSinceConnect: machine.failuresSinceConnect + 1,
     ladder: next.backoff,
     credential: { kind: "backoff", retryAt: after(ctx.now, delayMs), last: cause, reconnect },
   };
@@ -777,7 +785,7 @@ const onLink = (
     };
     // A live socket proves the container is up: a wait on it ends.
     return next.credential.kind === "held"
-      ? { ...next, failures: 0, ladder: INITIAL_BACKOFF }
+      ? { ...next, failures: 0, failuresSinceConnect: 0, ladder: INITIAL_BACKOFF }
       : next;
   }
   const dropped = machine.link.phase === "connected";

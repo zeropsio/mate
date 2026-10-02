@@ -62,10 +62,10 @@ import { useProjects, useThreadShells, useThreadStatus } from "~/state/entities"
 import { buildThreadRouteParams } from "~/threadRoutes";
 import { useAccountEnvironments, useConnectMate } from "~/zerops/accountEnvironments";
 import {
-  ARRIVAL_RETRY_HOLD_MS,
   arrivalHoldsThrough,
-  firstBuildFailure,
+  firstBuildState,
   halfMadeFor,
+  listingLacksCreation,
   mateArrivalShown,
   mateComing,
   mateComingPage,
@@ -177,6 +177,15 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
   const { health } = useZeropsContainers();
   const containerHealth = candidate === undefined ? undefined : health.get(candidate.key);
   const pressRetry = press?.state.kind === "failed" ? press.state.retry : null;
+  // Made here, and gone before it ever connected: a whole listing read well after lacks it.
+  const listingLacksIt =
+    creation !== undefined &&
+    listingLacksCreation({
+      listed: listed !== undefined,
+      complete: held.complete,
+      listedAtMs: listing.state === "known" ? listing.asOf.atMs : undefined,
+      madeAtMs: creation.at,
+    });
   // What opens it is its machine (`mateLink`): found by its project while its row stands for the
   // project, and before the listing names it at all.
   const { mateLink } = useEnvironmentLinks();
@@ -185,11 +194,8 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
     () => mateLink({ key: rowKey, project: { id: projectId } }),
     [mateLink, projectId, rowKey],
   );
-  // A link retrying on its own is held through by its arrival only for a while.
-  const retrying = link.reachability?.kind === "retrying";
-  const retryingPast =
-    useHeldPast(`${projectId}:arrival:${retrying ? "retrying" : "not"}`, ARRIVAL_RETRY_HOLD_MS) &&
-    retrying;
+  // Its link failing since it last connected: an arrival holds its board only through the first.
+  const failuresSinceConnect = link.failuresSinceConnect;
   // Its first build's processes, read only while its container waits for that build.
   const firstBuilding = candidate?.service?.status === "READY_TO_DEPLOY";
   const { processes: firstBuildProcesses } = useProjectActivity(firstBuilding ? projectId : null);
@@ -206,15 +212,16 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
     setUpFailed: pressFailure(press) ?? creation?.failed,
     nowMs: Date.now(),
     created: creation !== undefined,
-    linkHolds: arrivalHoldsThrough(link.reachability, { retryingPast }),
-    firstBuildFailed: firstBuilding
-      ? firstBuildFailure(firstBuildProcesses, candidate?.service?.id)
+    listingLacksIt,
+    linkHolds: arrivalHoldsThrough(link.reachability, { failuresSinceConnect }),
+    firstBuild: firstBuilding
+      ? firstBuildState(firstBuildProcesses, candidate?.service?.id)
       : undefined,
   });
   const page = mateComingPage({
     coming,
     candidate,
-    complete: held.complete && press === undefined && creation === undefined,
+    complete: held.complete && press === undefined && (creation === undefined || listingLacksIt),
     linked: link.environmentId !== undefined,
     reachability: link.reachability,
   });
@@ -223,7 +230,7 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
   if (page?.kind === "coming" && !cameUp) setCameUp(true);
   // Its arrival, once shown, holds the board through every wait on its way to its conversation:
   // one surface from the press to the sign-in (`mateArrivalShown`).
-  const arrival = mateArrivalShown({ page, cameUp, retryingPast });
+  const arrival = mateArrivalShown({ page, cameUp, failuresSinceConnect });
 
   // Who it is: its listing's, the moment it is listed — the name and the tint the menu gives it —
   // and until then what its creation or its press knew.

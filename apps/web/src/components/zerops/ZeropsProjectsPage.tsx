@@ -35,7 +35,7 @@ import {
   useProjectOrderOptions,
 } from "~/zerops/projectOrderPreference";
 import {
-  applyFirstBuildGrace,
+  firstBuildOverdue,
   applyProjectCreationVerdict,
   normalizeOrigin,
   type ZeropsCandidate,
@@ -863,17 +863,12 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
     presses.find((press) => press.organizationId === activeOrganization?.id && press.container)
       ?.projectId ?? null,
   );
-  // A container waiting past its first build's grace is not on its way up any more: its row says
-  // what the platform leaves it as, with what removes it.
   const candidates = useMemo(
     () =>
       observedCandidates.map((candidate) =>
-        applyFirstBuildGrace(
-          applyProjectCreationVerdict(candidate, creationVerdicts.get(candidate.project.id)),
-          nowMs,
-        ),
+        applyProjectCreationVerdict(candidate, creationVerdicts.get(candidate.project.id)),
       ),
-    [creationVerdicts, nowMs, observedCandidates],
+    [creationVerdicts, observedCandidates],
   );
   // A Mate this tab pressed lands the person in its conversation once it is
   // connected. Auto-connect (the account runtime's) reaches the door — it never
@@ -1025,6 +1020,8 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
     return {
       candidate,
       health: candidateHealth.get(candidate.key),
+      // A first build past its grace is still on its way, taking longer.
+      firstBuildOverdue: firstBuildOverdue(candidate, nowMs),
       ...(mateFlag === undefined ? {} : { mateFlag }),
       waiting,
       can: {

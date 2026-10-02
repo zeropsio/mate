@@ -1,17 +1,24 @@
 // @vitest-environment happy-dom
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
-import { MATE_VOICE_QUIET_MS, type MateLink } from "@t3tools/client-runtime/zerops/environments";
+import {
+  MATE_VOICE_QUIET_MS,
+  type MateLink as MachineLink,
+} from "@t3tools/client-runtime/zerops/environments";
 import { EnvironmentId, ThreadId, type ScopedThreadRef } from "@t3tools/contracts";
 import { act, createElement as h, type ReactNode } from "react";
 import { create, type ReactTestRenderer } from "react-test-renderer";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
-import { ARRIVAL_RETRY_HOLD_MS } from "~/zerops/mateComing";
 import { awaitMateConversation, takeMateConversation } from "~/zerops/mateOpening";
 
 import { ComingBelow, ZeropsMateComingPage } from "./ZeropsMateComingPage";
 
 const ENV_QUINN = EnvironmentId.make("env-quinn");
+
+/** A Mate's link as its machine reads it; one that has not failed since it connected says none. */
+type MateLink = Omit<MachineLink, "failuresSinceConnect"> & {
+  readonly failuresSinceConnect?: number;
+};
 const KEY = "beviro-quinn:zcp";
 const PROJECT = "beviro-quinn";
 
@@ -593,25 +600,45 @@ describe("a new Mate's arrival, from the press to the sign-in", () => {
     expect(buttons()).toEqual(["Remove"]);
   });
 
-  it("holds the board through a link retrying on its own only for a while, then offers Try now", () => {
+  it("holds the board through its link's first failure only, never taking turns with its words", () => {
     app.listing = listingOf([coming]);
     openView();
     app.listing = listingOf([QUINN]);
-    app.link = {
-      key: KEY,
-      environmentId: undefined,
-      reachability: {
-        kind: "retrying",
-        retryAtMs: 5_000,
-        last: { kind: "network" },
-        restart: false,
-      },
-    } as MateLink;
-    act(() => tree?.update(h(ZeropsMateComingPage, { projectId: PROJECT })));
-    expect(kind()).toBe("coming");
-    act(() => vi.advanceTimersByTime(ARRIVAL_RETRY_HOLD_MS));
-    expect(kind()).toBe("reaching");
+    const rung = (reachability: MateLink["reachability"], failuresSinceConnect: number) => {
+      app.link = { key: KEY, environmentId: undefined, reachability, failuresSinceConnect };
+      act(() => tree?.update(h(ZeropsMateComingPage, { projectId: PROJECT })));
+      return kind();
+    };
+    const retrying = {
+      kind: "retrying",
+      retryAtMs: 5_000,
+      last: { kind: "network" },
+      restart: false,
+    } as const;
+    const connecting = { kind: "connecting", waitingOn: "exchange" } as const;
+    // Its link failing on every attempt, the attempts between its back-offs read as connecting.
+    expect([
+      rung(connecting, 0),
+      rung(retrying, 1),
+      rung(connecting, 1),
+      rung(retrying, 2),
+      rung(connecting, 2),
+      rung(retrying, 3),
+      rung(connecting, 3),
+    ]).toEqual(["coming", "coming", "coming", "reaching", "reaching", "reaching", "reaching"]);
+    act(() => vi.advanceTimersByTime(MATE_VOICE_QUIET_MS * 3));
+    rung(retrying, 4);
     expect(buttons()).toEqual(["Try now"]);
+  });
+
+  it("a Mate this tab made that a whole listing, read well after, lacks is not coming up", () => {
+    app.creations = { [PROJECT]: { ...QUINN_MADE, at: 1_000 } };
+    app.listing = { ...listingOf([]), asOf: { ordinal: 2, atMs: 1_000 + 5_000 } };
+    openView();
+    expect(kind()).toBe("coming");
+    app.listing = { ...listingOf([]), asOf: { ordinal: 3, atMs: 1_000 + 120_000 } };
+    act(() => tree?.update(h(ZeropsMateComingPage, { projectId: PROJECT })));
+    expect(kind()).toBe("unreachable");
   });
 
   it("says why once it came up here and its container stopped", () => {

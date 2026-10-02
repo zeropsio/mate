@@ -38,7 +38,7 @@ import { useEnvironmentLinks } from "../routes/-environmentTargets";
 import { readThreadShells, useProjects, useThreadShells } from "../state/entities";
 import { buildThreadRouteParams } from "../threadRoutes";
 import { deletingMates, mateDeleting } from "./deletingMates";
-import { mateComing, arrivalHoldsThrough } from "./mateComing";
+import { mateComing, arrivalLinkHolds } from "./mateComing";
 import { awaitMateConversation } from "./mateOpening";
 import { newMateView, useNewMate } from "./newMate";
 import { useZeropsCandidates } from "./useZeropsCandidates";
@@ -91,11 +91,8 @@ export function useOpenMate(): OpenMate {
         setUpFailed: pressed.setUpFailed ?? creations[projectId]?.failed,
         nowMs: Date.now(),
         created: creations[projectId] !== undefined,
-        // No clock for a door: a link retrying is past an arrival's patience.
         linkHolds:
-          creations[projectId] === undefined
-            ? undefined
-            : arrivalHoldsThrough(mateLink(candidate).reachability, { retryingPast: true }),
+          creations[projectId] === undefined ? undefined : arrivalLinkHolds(mateLink(candidate)),
       });
       const environmentId = coming === undefined ? linkTarget(candidate) : undefined;
       if (environmentId === undefined) {

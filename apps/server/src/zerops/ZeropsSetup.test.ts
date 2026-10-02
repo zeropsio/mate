@@ -382,9 +382,12 @@ describe("ZeropsSetup: the stand-up", () => {
     Effect.gen(function* () {
       const world = yield* makeWorld;
       yield* Ref.set(world.tags, SIGNED);
-      yield* withServer(world, freshDatabase(), (setup) =>
+      const database = freshDatabase();
+      yield* withServer(world, database, (setup) =>
         Effect.gen(function* () {
-          yield* eventually(turnsOf(world), (turns) => turns.length === 1);
+          const [standUp] = yield* eventually(turnsOf(world), (turns) => turns.length === 1);
+          // Its turn asked, as the engine records it.
+          yield* turnRow(database, standUp!.threadId, standUp!.message.messageId, "pending");
           const reads = yield* Ref.get(world.tagReads);
           const document = yield* setup.document;
           assert.strictEqual(yield* Ref.get(world.tagReads), reads);
@@ -791,7 +794,8 @@ describe("ZeropsSetup: the document", () => {
   it.live("follows the Mate from a bare container to a stood-up one", () =>
     Effect.gen(function* () {
       const world = yield* makeWorld;
-      yield* withServer(world, freshDatabase(), (setup) =>
+      const database = freshDatabase();
+      yield* withServer(world, database, (setup) =>
         Effect.gen(function* () {
           const states = Effect.all(
             ["container", "git", "runtimes", "signin", "standup"].map((id) => stateOf(setup, id)),
@@ -816,7 +820,8 @@ describe("ZeropsSetup: the document", () => {
           });
           assert.deepStrictEqual(yield* states, ["done", "done", "running", "waiting", "waiting"]);
           yield* Ref.set(world.tags, SIGNED);
-          yield* eventually(turnsOf(world), (turns) => turns.length === 1);
+          const [standUp] = yield* eventually(turnsOf(world), (turns) => turns.length === 1);
+          yield* turnRow(database, standUp!.threadId, standUp!.message.messageId, "running");
           assert.deepStrictEqual(yield* states, ["done", "done", "running", "done", "running"]);
           yield* Ref.set(world.statusFile, {
             version: 1,

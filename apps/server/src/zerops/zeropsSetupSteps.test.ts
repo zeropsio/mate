@@ -283,9 +283,28 @@ describe("setupDocument", () => {
     });
   });
 
-  const standups: ReadonlyArray<[string, Partial<SetupFacts>, string]> = [
+  const standups: ReadonlyArray<[string, Partial<SetupFacts>, string | undefined]> = [
     ["asked, not started", {}, "waiting"],
-    ["started, zcp says nothing yet", { record: { startedAt: NOW, ran: true } }, "running"],
+    [
+      "started, zcp says nothing yet, its own turn asked",
+      { record: { startedAt: NOW, ran: true }, standUpTurn: "running" },
+      "running",
+    ],
+    [
+      "started, its own turn not found and zcp silent: nothing said, never a running of our own",
+      { record: { startedAt: NOW, ran: true } },
+      undefined,
+    ],
+    [
+      "started, its own turn not found, zcp between its two calls",
+      {
+        record: { startedAt: NOW, ran: true },
+        status: parseZcpStatus(
+          status({ standup: { state: "running", phase: "stage", services: halvesAfterDev } }),
+        ),
+      },
+      "running",
+    ],
     [
       "started, zcp running it",
       {

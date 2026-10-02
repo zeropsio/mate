@@ -18,7 +18,7 @@ import { environmentsWithSnapshotAtom } from "../state/shell";
 import { zeropsEnvironmentsAtom } from "../state/zerops";
 import type { ZeropsAgentActivity } from "./agentActivity";
 import { useEnvironmentLinks } from "../routes/-environmentTargets";
-import { arrivalHoldsThrough, mateComing, type MateComing } from "./mateComing";
+import { arrivalLinkHolds, mateComing, type MateComing } from "./mateComing";
 import { rememberedActivity } from "./menuMemory";
 import { useNewMate } from "./newMate";
 import { useZeropsCreationVerdicts } from "./useZeropsCreationVerdicts";
@@ -104,11 +104,10 @@ export function useMateComingOf(
         setUpFailed: setUpFailed ?? creations[candidate.project.id]?.failed,
         nowMs: Date.now(),
         created: creations[candidate.project.id] !== undefined,
-        // No clock for a row: a link retrying is past an arrival's patience.
         linkHolds:
           creations[candidate.project.id] === undefined
             ? undefined
-            : arrivalHoldsThrough(mateLink(candidate).reachability, { retryingPast: true }),
+            : arrivalLinkHolds(mateLink(candidate)),
       });
     },
     [presses, creations, mateLink, verdicts],
