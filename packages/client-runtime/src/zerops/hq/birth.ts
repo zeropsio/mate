@@ -9,16 +9,20 @@
  *    system service, T0 §4), `db` and `vol`, named `Headquarters` as the Gitea project was, tagged
  *    `mate:hq` for the Zerops GUI alone. Never while the member list names an HQ already.
  * 2. `services` — the three services up.
- * 3. `domain` — HQ's address is its project's own domain (`publicZone`), the one Core names itself
- *    by: a routing of it to Core's port with SSL, the project's routings synced, and its
- *    certificate active (about ten seconds, measured on the rig 2026-10-02). An address that never
- *    serves over HTTPS stops here, with the platform's reason.
- * 4. `anchor` — `mate-hq:<projectId>:<address>`, org Admin, its value dropped at once: the mark
- *    that makes this HQ the official one (`anchor.ts`). Never while an anchor names another one.
- * 5. `credential` — `mate-hq-org:<projectId>`, org Read only and nothing else, written as the
+ * 3. `credential` — `mate-hq-org:<projectId>`, org Read only and nothing else, written as the
  *    sensitive `HQ_ORG_TOKEN` of `hq`. A token's value is shown once: a token whose variable is
  *    missing is regenerated; a variable that is there is never written again.
- * 6. `deploy` — Core's archive and `zerops.yml` (`core`), as an app version built and deployed.
+ * 4. `deploy` — Core's archive and `zerops.yml` (`core`), as an app version built and deployed. Core
+ *    starts as a standby, its anchor missing; its deploy opens `hq`'s HTTP port, which a fresh
+ *    import's `hq` does not have (measured in KRLS, 2026-10-02: a routing before it is refused,
+ *    400 "ServiceStack must supported http protocol").
+ * 5. `domain` — HQ's address is its project's own domain (`publicZone`), the one Core names itself
+ *    by: a routing of it to Core's port with SSL, the project's routings synced, and its
+ *    certificate active (about ten seconds, measured on the rig 2026-10-02). An address that never
+ *    serves over HTTPS stops here, with the platform's reason. A record at this step with no deploy
+ *    behind it deploys first.
+ * 6. `anchor` — `mate-hq:<projectId>:<address>`, org Admin, its value dropped at once: the mark
+ *    that makes this HQ the official one (`anchor.ts`). Never while an anchor names another one.
  * 7. `ready` — `/health` answering `official: ok` and `state: active`, which follows the anchor
  *    within Core's 30 s recheck.
  *
@@ -54,19 +58,19 @@ const HQ_SETUP = "hq";
 export type HqBirthStep =
   | "project"
   | "services"
-  | "domain"
-  | "anchor"
   | "credential"
   | "deploy"
+  | "domain"
+  | "anchor"
   | "ready";
 
 export const HQ_BIRTH_STEPS: ReadonlyArray<HqBirthStep> = [
   "project",
   "services",
-  "domain",
-  "anchor",
   "credential",
   "deploy",
+  "domain",
+  "anchor",
   "ready",
 ];
 
@@ -74,10 +78,10 @@ export const HQ_BIRTH_STEPS: ReadonlyArray<HqBirthStep> = [
 export const HQ_BIRTH_DOING: Readonly<Record<HqBirthStep, string>> = {
   project: "Creating HQ's project",
   services: "Starting HQ's services",
-  domain: "Giving HQ its address",
-  anchor: "Marking it this organization's HQ",
   credential: "Giving HQ its access",
   deploy: "Deploying HQ",
+  domain: "Giving HQ its address",
+  anchor: "Marking it this organization's HQ",
   ready: "Waiting for HQ to answer",
 };
 
@@ -258,6 +262,9 @@ export async function runHqBirth(input: {
     record = { ...record, ...patch };
     input.moved(patch);
   };
+  // The domain is routed to Core's HTTP port, which Core's deploy opens: a record at the domain
+  // with no deploy behind it gives Core its access and deploys it first.
+  if (record.step === "domain" && record.deployProcessId === null) advance({ step: "credential" });
 
   /** Polls `probe` until it answers, or stops once `capMs` has passed. */
   const waitFor = async <T>(capMs: number, what: string, probe: () => Promise<T | undefined>) => {
@@ -332,10 +339,60 @@ export async function runHqBirth(input: {
         const up = HQ_SERVICES.every((name) => named(name)?.status === "ACTIVE");
         return up ? named(HQ_SERVICE) : undefined;
       });
-      advance({ step: "domain", serviceId: hq.id });
+      advance({ step: "credential", serviceId: hq.id });
     }
 
     const serviceId = record.serviceId!;
+    if (record.step === "credential") {
+      const written = await platform.listServiceVariableNames(serviceId);
+      if (!written.includes(HQ_ORG_TOKEN_ENV)) {
+        const name = hqOrgTokenName(projectId);
+        const held = (await platform.listIntegrationTokens(clientId)).filter(
+          (token) => token.name === name,
+        );
+        if (held.length > 1) {
+          throw new BirthStopped(`More than one token is named ${name}. Delete them in Zerops.`);
+        }
+        const content =
+          held[0] === undefined
+            ? (
+                await platform.mintIntegrationToken({
+                  clientId,
+                  name,
+                  roleCode: "READ_ONLY",
+                  projects: [],
+                })
+              ).token
+            : await platform.regenerateIntegrationToken({ clientId, tokenId: held[0].id });
+        await platform.writeServiceSecret({ serviceId, key: HQ_ORG_TOKEN_ENV, content });
+      }
+      advance({ step: "deploy" });
+    }
+
+    if (record.step === "deploy") {
+      if (record.deployProcessId === null) {
+        const core = await deps.core();
+        const version = await platform.createAppVersion(serviceId, "hq-core");
+        await platform.uploadAppVersionArchive(version.id, core.archive);
+        const { processId } = await platform.buildAndDeployAppVersion(version.id, {
+          zeropsYaml: core.zeropsYaml,
+          setup: HQ_SETUP,
+        });
+        advance({ deployProcessId: processId });
+      }
+      const processId = record.deployProcessId!;
+      const status = await waitFor(waits.deployCapMs, "Deploying HQ", async () => {
+        const read = await platform.readProcessStatus(processId);
+        return read === "FINISHED" || read === "FAILED" || read === "CANCELED" ? read : undefined;
+      });
+      if (status !== "FINISHED") {
+        // Try again deploys anew.
+        advance({ deployProcessId: null });
+        throw new BirthStopped("HQ's deploy did not finish. Its build log in Zerops says why.");
+      }
+      advance({ step: "domain" });
+    }
+
     if (record.step === "domain") {
       const domain = await waitFor(
         waits.servicesCapMs,
@@ -395,56 +452,6 @@ export async function runHqBirth(input: {
       if (!tokens.some((token) => token.name === name)) {
         // A mark in the member list, never a credential: its value goes nowhere.
         await platform.mintIntegrationToken({ clientId, name, roleCode: "ADMIN", projects: [] });
-      }
-      advance({ step: "credential" });
-    }
-
-    if (record.step === "credential") {
-      const written = await platform.listServiceVariableNames(serviceId);
-      if (!written.includes(HQ_ORG_TOKEN_ENV)) {
-        const name = hqOrgTokenName(projectId);
-        const held = (await platform.listIntegrationTokens(clientId)).filter(
-          (token) => token.name === name,
-        );
-        if (held.length > 1) {
-          throw new BirthStopped(`More than one token is named ${name}. Delete them in Zerops.`);
-        }
-        const content =
-          held[0] === undefined
-            ? (
-                await platform.mintIntegrationToken({
-                  clientId,
-                  name,
-                  roleCode: "READ_ONLY",
-                  projects: [],
-                })
-              ).token
-            : await platform.regenerateIntegrationToken({ clientId, tokenId: held[0].id });
-        await platform.writeServiceSecret({ serviceId, key: HQ_ORG_TOKEN_ENV, content });
-      }
-      advance({ step: "deploy" });
-    }
-
-    if (record.step === "deploy") {
-      if (record.deployProcessId === null) {
-        const core = await deps.core();
-        const version = await platform.createAppVersion(serviceId, "hq-core");
-        await platform.uploadAppVersionArchive(version.id, core.archive);
-        const { processId } = await platform.buildAndDeployAppVersion(version.id, {
-          zeropsYaml: core.zeropsYaml,
-          setup: HQ_SETUP,
-        });
-        advance({ deployProcessId: processId });
-      }
-      const processId = record.deployProcessId!;
-      const status = await waitFor(waits.deployCapMs, "Deploying HQ", async () => {
-        const read = await platform.readProcessStatus(processId);
-        return read === "FINISHED" || read === "FAILED" || read === "CANCELED" ? read : undefined;
-      });
-      if (status !== "FINISHED") {
-        // Try again deploys anew.
-        advance({ deployProcessId: null });
-        throw new BirthStopped("HQ's deploy did not finish. Its build log in Zerops says why.");
       }
       advance({ step: "ready" });
     }

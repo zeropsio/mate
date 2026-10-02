@@ -29,10 +29,10 @@ describe("HqGateScreen", () => {
     expect(steps(html)).toEqual([
       "done:Creating HQ's project",
       "done:Starting HQ's services",
-      "done:Giving HQ its address",
-      "done:Marking it this organization's HQ",
       "done:Giving HQ its access",
       "running:Deploying HQ",
+      "waiting:Giving HQ its address",
+      "waiting:Marking it this organization's HQ",
       "waiting:Waiting for HQ to answer",
     ]);
     expect(html).not.toContain("Try again");

@@ -35,6 +35,8 @@ function fakeZerops(
     readonly members?: ReadonlyArray<ZeropsOrganizationMember>;
     /** The domain's certificate never turns active, the platform saying why. */
     readonly sslError?: string;
+    /** Core was deployed before the birth reads anything. */
+    readonly coreDeployed?: boolean;
     /** The organization's project creations, as its process history names them. */
     readonly creations?: ReadonlyArray<ZeropsProjectCreationRecord>;
   } = {},
@@ -53,6 +55,8 @@ function fakeZerops(
   let services: ZeropsService[] = (options.creations ?? []).length > 0 ? imported() : [];
   let reads = 0;
   let processReads = 0;
+  /** Core is deployed: `hq` has its HTTP port, and a routing may name it. */
+  let deployed = options.coreDeployed === true;
   let minted = 0;
   let routing: {
     id: string;
@@ -159,6 +163,7 @@ function fakeZerops(
       step(`process ${processId}`);
       if (processId === "process-sync") return "FINISHED";
       processReads += 1;
+      deployed = deployed || processReads >= 2;
       return processReads >= 2 ? "FINISHED" : "RUNNING";
     },
     listPublicHttpRoutings: async () => {
@@ -184,6 +189,10 @@ function fakeZerops(
     },
     createPublicHttpRouting: async (_projectId, input) => {
       const location = input.locations[0]!;
+      if (!deployed) {
+        // Measured in KRLS, 2026-10-02: a fresh import's `hq` has no HTTP port before Core's deploy.
+        throw new ZeropsApiError("ServiceStack must supported http protocol", "invalid-input", 400);
+      }
       step(
         `route ${input.domains.join(",")} -> ${location.serviceStackId}:${location.port}${location.path}`,
       );
@@ -257,7 +266,7 @@ async function birth(
 }
 
 describe("runHqBirth", () => {
-  it("stands HQ up from nothing: import, services, anchor, credential, Core, official", async () => {
+  it("stands HQ up from nothing: import, services, access, Core, its domain, anchor, official", async () => {
     const zerops = fakeZerops();
     const { outcome, record } = await birth(HQ_BIRTH_START, zerops);
 
@@ -275,18 +284,7 @@ describe("runHqBirth", () => {
       "import",
       "services",
       "services",
-      // HQ's address is its project's own domain, routed to Core with SSL before anything names it.
-      "project",
-      "routings",
-      `route ${PUBLIC_ZONE} -> svc-hq:8080/`,
-      "routings",
-      "sync",
-      "process process-sync",
-      "routings",
-      "routings",
-      "members",
-      "tokens",
-      `mint mate-hq:hq1:${ADDRESS} ADMIN`,
+      // Core gets its access and is deployed first: it starts as a standby, its anchor missing.
       "env",
       "tokens",
       "mint mate-hq-org:hq1 READ_ONLY",
@@ -296,9 +294,22 @@ describe("runHqBirth", () => {
       "deploy hq",
       "process process-1",
       "process process-1",
+      // Its HTTP port open, HQ's address is its project's own domain, routed to Core with SSL…
+      "project",
+      "routings",
+      `route ${PUBLIC_ZONE} -> svc-hq:8080/`,
+      "routings",
+      "sync",
+      "process process-sync",
+      "routings",
+      "routings",
+      // …and only an address that serves is named as the organization's HQ.
+      "members",
+      "tokens",
+      `mint mate-hq:hq1:${ADDRESS} ADMIN`,
     ]);
     // The anchor's value is dropped; the working token's is HQ's own secret and nothing else's.
-    expect([...zerops.env]).toEqual([["HQ_ORG_TOKEN", "value-2"]]);
+    expect([...zerops.env]).toEqual([["HQ_ORG_TOKEN", "value-1"]]);
     const yaml = zerops.imports[0]!;
     expect(yaml).toContain("name: Headquarters");
     expect(yaml).toContain('- "mate:hq"');
@@ -327,7 +338,10 @@ describe("runHqBirth", () => {
     zerops.calls.length = 0;
     const again = await birth(first.record, zerops);
     expect(again.outcome).toMatchObject({ ok: true });
-    expect(zerops.calls.filter((call) => /^(import|mint|secret)/u.test(call))).toEqual([]);
+    // Nothing before the deploy is made again; the anchor comes after it, once.
+    expect(zerops.calls.filter((call) => /^(import|mint|secret)/u.test(call))).toEqual([
+      `mint mate-hq:hq1:${ADDRESS} ADMIN`,
+    ]);
     expect(zerops.calls[0]).toBe("app-version svc-hq");
   });
 
@@ -532,12 +546,28 @@ describe("runHqBirth", () => {
   const AT_DOMAIN: HqBirthRecord = {
     ...HQ_BIRTH_START,
     step: "domain",
+    deployProcessId: "process-1",
     projectId: "hq1",
     serviceId: "svc-hq",
   };
 
+  it("deploys Core first where a birth stopped at the domain with no Core deployed behind it", async () => {
+    // Headquarters in KRLS, 2026-10-02: a build that routed the domain before Core's deploy stopped
+    // there with 400 "ServiceStack must supported http protocol".
+    const zerops = fakeZerops({ creations: [] });
+    const { outcome } = await birth({ ...AT_DOMAIN, deployProcessId: null }, zerops);
+    expect(outcome).toMatchObject({ ok: true, hq: { address: ADDRESS } });
+    const order = zerops.calls.filter((call) => /^(secret|deploy|route|mint mate-hq:)/u.test(call));
+    expect(order).toEqual([
+      "secret svc-hq HQ_ORG_TOKEN",
+      "deploy hq",
+      `route ${PUBLIC_ZONE} -> svc-hq:8080/`,
+      `mint mate-hq:hq1:${ADDRESS} ADMIN`,
+    ]);
+  });
+
   it("makes no second routing and syncs no more where the domain is routed and in place", async () => {
-    const zerops = fakeZerops();
+    const zerops = fakeZerops({ coreDeployed: true });
     await zerops.platform.createPublicHttpRouting("hq1", {
       domains: [PUBLIC_ZONE],
       locations: [{ path: "/", port: 8080, serviceStackId: "svc-hq" }],
@@ -551,7 +581,10 @@ describe("runHqBirth", () => {
   });
 
   it("stops at the domain, saying why its certificate is not ready, where it never turns active", async () => {
-    const zerops = fakeZerops({ sslError: "DNS for the domain does not resolve yet." });
+    const zerops = fakeZerops({
+      sslError: "DNS for the domain does not resolve yet.",
+      coreDeployed: true,
+    });
     const { outcome, record } = await birth(AT_DOMAIN, zerops);
     expect(outcome).toEqual({
       ok: false,
