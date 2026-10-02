@@ -342,7 +342,9 @@ function listedOrg() {
     },
     listCommitStatuses: async (_owner: string, repo: string, sha: string) => {
       calls.push(`statuses ${repo}@${sha}`);
-      return [{ context: "ci", state: "success" }];
+      return repo === "group"
+        ? tags.map((tag) => ({ context: `mate/release/${tag.name}`, state: "success" }))
+        : [{ context: "ci", state: "success" }];
     },
     listTags: async () => {
       calls.push("tags");
@@ -351,6 +353,12 @@ function listedOrg() {
   } as unknown as GiteaClient;
   return { client, calls, listed, tags };
 }
+
+/**
+ * Minutes of a refresh a minute after a first read, so the measured one starts with every kept
+ * check between rungs of its back-off (read at 0, 1, 3 and 8) and the tags between their reads.
+ */
+const SETTLED_MINUTES = 9;
 
 describe("readForge on the org's listing", () => {
   afterEach(() => {
@@ -383,7 +391,11 @@ describe("readForge on the org's listing", () => {
     const { client, calls, listed } = listedOrg();
     const reads = createForgeReads();
     const tracker = createMergeabilityTracker();
-    const first = (await readForge(client, "harbor", "group", tracker, reads))(undefined);
+    let first = (await readForge(client, "harbor", "group", tracker, reads))(undefined);
+    for (let minute = 1; minute < SETTLED_MINUTES; minute += 1) {
+      vi.advanceTimersByTime(GROUP_FORGE_REFRESH_MS);
+      first = (await readForge(client, "harbor", "group", tracker, reads))(first);
+    }
     calls.length = 0;
     vi.advanceTimersByTime(GROUP_FORGE_REFRESH_MS);
     move(listed);
@@ -393,7 +405,7 @@ describe("readForge on the org's listing", () => {
     expect(next).toEqual(first);
   });
 
-  it("reads the tags again every five minutes, and a settled check never", async () => {
+  it("reads the tags again every five minutes, and a settled check on a back-off up to five", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(Date.parse("2026-10-02T12:00:00Z"));
     const { client, calls } = listedOrg();
@@ -405,10 +417,9 @@ describe("readForge on the org's listing", () => {
     }
     expect(calls.filter((call) => call === "repos")).toHaveLength(30);
     expect(calls.filter((call) => call === "tags")).toHaveLength(6);
-    expect(calls.filter((call) => call.startsWith("statuses"))).toEqual([
-      "statuses appdev@sha4",
-      "statuses group@r1",
-    ]);
+    // Minutes 0, 1, 3, 8, 13, 18, 23 and 28: a check that lands late is seen within five.
+    expect(calls.filter((call) => call === "statuses appdev@sha4")).toHaveLength(8);
+    expect(calls.filter((call) => call === "statuses group@r1")).toHaveLength(8);
   });
 
   it("asks again now and then whether a pull request Gitea says does not merge merges now", async () => {
@@ -450,17 +461,50 @@ describe("readForge on the org's listing", () => {
     expect(calls.filter((call) => call === "pulls appdev open")).toHaveLength(1);
   });
 
+  it("shows the broker's refusal that lands after the release's own re-read", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(Date.parse("2026-10-02T12:00:00Z"));
+    const { client: base } = listedOrg();
+    // Thirty releases of one group head: the new tag shares the old ones' commit and successes.
+    const tags = [{ name: "v0.1.0", commit: { sha: "g1" } }];
+    let statuses = [{ context: "mate/release/v0.1.0", state: "success" }];
+    const client = {
+      ...base,
+      listTags: async () => tags,
+      listCommitStatuses: async () => statuses,
+    } as unknown as GiteaClient;
+    const reads = createForgeReads();
+    const tracker = createMergeabilityTracker();
+    const held = (await readForge(client, "harbor", "group", tracker, reads))(undefined);
+    // Release: the tag lands, and the verb re-reads the tags before the broker has judged it.
+    tags.unshift({ name: "v0.1.1", commit: { sha: "g1" } });
+    reads.forget("harbor", "group", new Set(["code", "statuses"]));
+    const after = (await readForge(client, "harbor", { kind: "tags" }, tracker, reads))(held);
+    expect("newest" in (after?.released ?? {}) ? after?.released : undefined).toMatchObject({
+      newest: { tag: "v0.1.1", verdict: "unknown" },
+    });
+    statuses = [{ context: "mate/release/v0.1.1", state: "failure" }, ...statuses];
+    vi.advanceTimersByTime(GROUP_FORGE_REFRESH_MS);
+    const next = (await readForge(client, "harbor", "group", tracker, reads))(after);
+    expect("newest" in (next?.released ?? {}) ? next?.released : undefined).toMatchObject({
+      newest: { tag: "v0.1.1", verdict: "refused" },
+    });
+  });
+
   it("asks a release's commit again when a new tag points at it, though nothing was pushed", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(Date.parse("2026-10-02T12:00:00Z"));
     const { client, calls, tags } = listedOrg();
     const reads = createForgeReads();
     const tracker = createMergeabilityTracker();
-    await readForge(client, "harbor", "group", tracker, reads);
+    for (let minute = 0; minute < SETTLED_MINUTES; minute += 1) {
+      await readForge(client, "harbor", "group", tracker, reads);
+      vi.advanceTimersByTime(GROUP_FORGE_REFRESH_MS);
+    }
     // Another tab releases through the API: no listing moves, and the tag shares the commit.
     tags.unshift({ name: "v0.1.1", commit: { sha: "r1" } });
     calls.length = 0;
-    vi.advanceTimersByTime(TAGS_MAX_AGE_MS);
+    vi.advanceTimersByTime(2 * TAGS_MAX_AGE_MS - SETTLED_MINUTES * GROUP_FORGE_REFRESH_MS);
     const state = (await readForge(client, "harbor", "group", tracker, reads))(undefined);
     expect(calls).toEqual(["repos", "tags", "statuses group@r1"]);
     expect("tags" in (state?.released ?? {}) ? state?.released : undefined).toMatchObject({

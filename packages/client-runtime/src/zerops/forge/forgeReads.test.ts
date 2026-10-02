@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import type { GiteaCommitStatus, GiteaRepository } from "../giteaClient.ts";
+import { GiteaApiError, type GiteaCommitStatus, type GiteaRepository } from "../giteaClient.ts";
 import {
   createForgeReads,
   GATE_FRESH_MS,
@@ -249,6 +249,24 @@ describe("createForgeReads", () => {
     expect(fresh.value).toEqual([2]);
     expect((await forge.reads.read(ref, async () => [3])).value).toEqual([2]);
   });
+
+  it.each([
+    { name: "a 401", status: 401, counted: 1 },
+    { name: "a 500", status: 500, counted: 0 },
+  ])(
+    "counts $name a shared read met as Gitea refusing the token: $counted",
+    async ({ status, counted }) => {
+      const forge = org([repo("appdev")]);
+      const refused = () => Promise.reject(new GiteaApiError("Gitea said no.", status));
+      await expect(forge.reads.repositories("other", refused)).rejects.toThrow();
+      await forge.list();
+      const ref = { owner: "acme", repo: "appdev", part: "pulls", key: "open" } as const;
+      await expect(forge.reads.read(ref, refused)).rejects.toThrow();
+      const commit = { owner: "acme", repo: "appdev", sha: "d".repeat(40) };
+      await expect(forge.reads.statuses.read(commit, refused)).rejects.toThrow();
+      expect(forge.reads.unauthorized()).toBe(3 * counted);
+    },
+  );
 
   it("keeps no listing that failed, and asks again on the next refresh", async () => {
     const forge = org([repo("appdev")]);
