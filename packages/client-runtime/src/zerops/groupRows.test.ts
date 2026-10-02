@@ -8,6 +8,7 @@ import {
   deployStatusContext,
   deployTone,
   environmentRow,
+  firstDeployFailure,
   jobDuration,
   GROUP_BEING_SET_UP_LINE,
   mateRow,
@@ -506,5 +507,85 @@ describe("jobDuration", () => {
 
   it("never reads a clock skew as a negative duration", () => {
     expect(jobDuration(at(10), at(4))).toBe("0s");
+  });
+});
+
+describe("firstDeployFailure — a stage's first deploy failing on main's head", () => {
+  const HEAD = "9a8b7c6d5e4f30211203f4e5d6c7b8a9f0e1d2c3";
+  const at = (minute: number) => `2026-10-02T22:${String(minute).padStart(2, "0")}:00Z`;
+  const posted = (
+    context: string,
+    state: "pending" | "success" | "failure" | "error",
+    minute: number,
+    description?: string,
+  ) => ({ context, state, created_at: at(minute), ...(description ? { description } : {}) });
+  const BROKER = "mate/deploy/abacus-stage/app";
+  const WORKFLOW = "Zerops deploy / deploy (push)";
+  const app = (statuses: ReadonlyArray<ReturnType<typeof posted>>) => ({
+    hostname: "app",
+    repository: "appdev",
+    head: { sha: HEAD, statuses },
+  });
+
+  it.each([
+    {
+      // Run 5: the workflow's own Test step failed before it asked the broker for a grant.
+      case: "the workflow's own job failed, the broker's deploy still pending",
+      statuses: [posted(WORKFLOW, "failure", 12, "Failing after 9s"), posted(BROKER, "pending", 7)],
+      failure: { at: at(12), reason: undefined },
+    },
+    {
+      case: "the broker's deploy failed with the job's own report: its reason",
+      statuses: [posted(BROKER, "failure", 14, "failed: the build step exited with 1")],
+      failure: { at: at(14), reason: "the build step exited with 1" },
+    },
+    {
+      case: "the broker refused it: failed, with no reason the person can act on",
+      statuses: [posted(BROKER, "error", 14, "the runner is busy")],
+      failure: { at: at(14), reason: undefined },
+    },
+    {
+      case: "a context that failed and then passed: only the newest counts",
+      statuses: [posted(WORKFLOW, "success", 15), posted(WORKFLOW, "failure", 12)],
+      failure: undefined,
+    },
+    {
+      case: "still running",
+      statuses: [posted(WORKFLOW, "pending", 12), posted(BROKER, "pending", 7)],
+      failure: undefined,
+    },
+    {
+      case: "another environment's deploy failing: not this stage's",
+      statuses: [posted("mate/deploy/abacus-production/app", "failure", 12)],
+      failure: undefined,
+    },
+    {
+      case: "a failure that says when it was posted not: nothing to bound it by",
+      statuses: [{ context: WORKFLOW, state: "failure" as const }],
+      failure: undefined,
+    },
+    { case: "nothing posted yet", statuses: [], failure: undefined },
+  ])("$case", ({ statuses, failure }) => {
+    expect(
+      firstDeployFailure({
+        environment: "abacus-stage",
+        services: [app(statuses as ReadonlyArray<ReturnType<typeof posted>>)],
+      }),
+    ).toEqual(failure);
+  });
+
+  it("is carried on the stage's row, and only there", () => {
+    const failing = [app([posted(WORKFLOW, "failure", 12)])];
+    const row = (tier: "stage" | "production") =>
+      environmentRow({
+        projectId: "p-abacus-stage",
+        name: "Abacus - stage",
+        tier,
+        sources: tier === "stage" ? ["main"] : "release",
+        services: failing,
+        environment: "abacus-stage",
+      });
+    expect(row("stage").firstDeployFailure).toEqual({ at: at(12), reason: undefined });
+    expect(row("production").firstDeployFailure).toBeUndefined();
   });
 });

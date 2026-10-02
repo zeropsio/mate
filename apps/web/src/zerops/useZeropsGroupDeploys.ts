@@ -29,11 +29,15 @@
 import {
   buildGroupEnvironmentRowInputs,
   deployStatusKey,
+  firstDeployHeadKey,
+  firstDeployHeadLadder,
+  firstDeployHeadSettled,
   environmentTierForRole,
   GROUP_REPOSITORY,
   missingEnvironmentRows,
   planDeployStatusReads,
   planDeployedVersionReads,
+  planFirstDeployHeadReads,
   planMainHeadReads,
   readGroupEnvironments,
   planReleaseReads,
@@ -44,10 +48,12 @@ import {
   type GiteaCommit,
   type GiteaCommitStatus,
   type GiteaPullRequest,
+  type FirstDeployHeadRead,
   type GroupEnvironment,
   type GroupEnvironmentRowInput,
   type GroupEnvironmentService,
   type GroupEnvironmentTier,
+  type MainHeadStatuses,
   type MissingEnvironmentRow,
   type ZeropsEnvironmentRole,
 } from "@t3tools/client-runtime/zerops";
@@ -337,6 +343,22 @@ export async function readGroupDeploys(input: {
     if (answered !== null) statuses.set(deployStatusKey(read), answered);
   }
 
+  // A declared stage that runs nothing: the job deploying `main` there may fail before it asks the
+  // broker for its grant, and say so only on `main`'s head (run 5).
+  const heads = await readFirstDeployHeads(
+    client,
+    memo,
+    group.slug,
+    planFirstDeployHeadReads({
+      declarations,
+      services,
+      versions,
+      repositories: onMain.repositories,
+    }),
+    held,
+    signal,
+  );
+
   const rowInputs = buildGroupEnvironmentRowInputs({
     owner: group.slug,
     declarations,
@@ -344,6 +366,7 @@ export async function readGroupDeploys(input: {
     services,
     versions,
     statuses,
+    heads,
     // Which repository each service is built from, so a row's version can
     // address the commit it was built from.
     repositories: onMain.repositories,
@@ -499,6 +522,66 @@ function withMainHeads(
     ),
   );
   return { ...held, mainHeads, releaseContents };
+}
+
+/**
+ * Each first-deploy head read (`planFirstDeployHeadReads`): the repository's `main` head — kept
+ * while the org's listing says nothing was pushed — and its statuses, read again while nothing
+ * there failed and something still runs (`firstDeployHeadLadder`), then kept until a push. So one
+ * stage waiting costs at most a status read a minute while its head is busy, falling to one every
+ * five once it is quiet; a stage that runs a deploy, or a group with none declared, costs nothing.
+ * A read that does not answer keeps the head the group last read.
+ */
+async function readFirstDeployHeads(
+  client: GiteaClient,
+  memo: ForgeReads["statuses"],
+  slug: string,
+  planned: ReadonlyArray<FirstDeployHeadRead>,
+  held: ZeropsGroupDeployState | undefined,
+  signal: AbortSignal,
+): Promise<ReadonlyMap<string, MainHeadStatuses>> {
+  const heads = new Map<string, MainHeadStatuses>();
+  for (const read of planned) {
+    signal.throwIfAborted();
+    const head = await readFirstDeployHead(client, memo, slug, read, heldHead(held, read));
+    if (head !== undefined) heads.set(firstDeployHeadKey(read), head);
+  }
+  return heads;
+}
+
+/** One head and its statuses; a read that does not answer keeps the head held before. */
+async function readFirstDeployHead(
+  client: GiteaClient,
+  memo: ForgeReads["statuses"],
+  slug: string,
+  read: FirstDeployHeadRead,
+  held: MainHeadStatuses | undefined,
+): Promise<MainHeadStatuses | undefined> {
+  try {
+    const sha = (await client.getBranch(slug, read.repo, "main"))?.commit?.id;
+    if (sha === undefined || sha === "") return held;
+    const statuses = await memo.read(
+      { owner: slug, repo: read.repo, sha },
+      () => client.listCommitStatuses(slug, read.repo, sha),
+      {
+        settled: (answered) => firstDeployHeadSettled(read, answered),
+        waiting: firstDeployHeadLadder(held, sha, Date.now()),
+      },
+    );
+    return { sha, statuses };
+  } catch {
+    return held;
+  }
+}
+
+/** The head a stage's service was last read with. */
+function heldHead(
+  held: ZeropsGroupDeployState | undefined,
+  read: FirstDeployHeadRead,
+): MainHeadStatuses | undefined {
+  return held?.environments
+    .find((environment) => environment.projectId === read.projectId)
+    ?.services.find((service) => service.hostname === read.hostname)?.head;
 }
 
 /** The version a service was last read with, by its project and hostname. */

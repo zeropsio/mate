@@ -24,6 +24,7 @@ import {
   readZeropsGroupTags,
   releaseContentsSummary,
   releaseInFlightReason,
+  STAGE_SETTING_UP,
   type EnvironmentRow,
   type FlowPullRequest,
   type GroupEnvironmentTier,
@@ -36,6 +37,7 @@ import {
   type GroupRowTone,
   type GroupRunner,
   type MissingEnvironmentRow,
+  type PlatformService,
   type ReleaseGate,
   type ZeropsEnvironmentRole,
   type ZeropsEnvironmentServices,
@@ -434,6 +436,8 @@ export function stopLine(stop: GroupFlowStop): {
   readonly tone: ServiceStatusToneId;
 } {
   const tone = STOP_TONE[stop.state];
+  // Its own import still runs: set up first, as the menu says, before any first deploy.
+  if (stop.settingUp === true) return { word: STAGE_SETTING_UP, version: undefined, tone: "busy" };
   switch (stop.state) {
     case "checking":
       return { word: CHECKING_WHAT_RUNS, version: undefined, tone };
@@ -538,6 +542,10 @@ export interface GroupMemberFacts {
   readonly hostnames: ReadonlyArray<string>;
   /** When its project was made. */
   readonly createdAt?: string | undefined;
+  /** Its project's status, as the platform lists it. */
+  readonly projectStatus?: string | undefined;
+  /** Its services as the platform lists them; `undefined` while unread. */
+  readonly services?: ReadonlyArray<PlatformService> | undefined;
 }
 
 /** A group member as the group tree carries it: a candidate, with what its container serves. */
@@ -594,6 +602,8 @@ export function groupMemberFactsOf<T extends GroupMemberCandidate>(
       routes: item.routes ?? [],
       hostnames: item.services?.hostnames ?? [],
       createdAt: item.project.created,
+      projectStatus: item.project.status,
+      services: item.services?.statuses,
     };
   });
 }
@@ -698,6 +708,8 @@ export function groupFlowInputOf(input: {
           deployment: input.deployments?.get(member.projectId),
           route: member.routes[0]?.url,
           createdAt: member.createdAt,
+          projectStatus: member.projectStatus,
+          services: member.services,
         },
       ];
     }),

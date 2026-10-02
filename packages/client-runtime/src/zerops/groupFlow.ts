@@ -59,7 +59,12 @@ import {
 import { pullRequestBlocked, type PullRequestBlocked } from "./gitTab.ts";
 import type { GroupEnvironmentTier, MissingEnvironmentRow } from "./groupEnvironments.ts";
 import type { ZeropsMateFace } from "./groups.ts";
-import type { DeployedVersion, EnvironmentRow, GroupRowTone } from "./groupRows.ts";
+import type {
+  DeployedVersion,
+  EnvironmentRow,
+  FirstDeployFailure,
+  GroupRowTone,
+} from "./groupRows.ts";
 import type { Shown } from "./knowledge/known.ts";
 import {
   PROJECT_ALL_CLEAR,
@@ -70,7 +75,13 @@ import { changeState, type ChangeState, type FlowPullRequest } from "./projectFl
 import type { ZeropsPublicRoute } from "./publicRoutes.ts";
 import { shortCommit, type ReleaseGate } from "./release.ts";
 import { REVIEW_LABEL, REVIEW_RELEASE_LABEL } from "./reviewVerdict.ts";
-import { firstDeploy, type FirstDeploy, type GroupRunner } from "./stopComing.ts";
+import {
+  firstDeploy,
+  stopImport,
+  type FirstDeploy,
+  type GroupRunner,
+  type PlatformService,
+} from "./stopComing.ts";
 
 /** One Mate of the project, as the flow's first column shows it. */
 export interface GroupFlowMate {
@@ -117,6 +128,13 @@ export interface GroupFlowStopInput {
   readonly route: string | undefined;
   /** When its project was made; a first deploy is asked for from then on. */
   readonly createdAt?: string | undefined;
+  /** Its project's status, as the platform lists it. */
+  readonly projectStatus?: string | undefined;
+  /**
+   * Its services as the platform lists them (`summarizeEnvironmentServices`); `undefined` while
+   * unread. With them, its own import is said before any word of its first deploy (`stopImport`).
+   */
+  readonly services?: ReadonlyArray<PlatformService> | undefined;
 }
 
 export interface GroupFlowInput {
@@ -201,6 +219,12 @@ export interface GroupFlowStop {
    * runner (`firstDeploy`). `undefined` while nothing asked for one.
    */
   readonly firstDeploy?: Exclude<FirstDeploy, { readonly kind: "awaited" }> | undefined;
+  /**
+   * A stage that runs nothing known while its own import still runs (`stopImport`): it is being
+   * set up, which every surface says before its first deploy or the runner — the menu's "adding the
+   * app", the cell's "Setting up a stage…". Absent otherwise.
+   */
+  readonly settingUp?: true;
 }
 
 export type GroupFlowProduction =
@@ -345,7 +369,13 @@ function withFirstDeploy(
   flow: GroupFlowInput,
 ): GroupFlowStop {
   if (input.tier !== "stage") return stop;
+  // Being made: no first deploy is waited for yet, whatever was asked for.
+  if ((stop.state === "empty" || stop.state === "checking") && stageSettingUp(input, flow.nowMs))
+    return { ...stop, settingUp: true };
   const first = stageFirstDeploy({
+    projectStatus: input.projectStatus,
+    services: input.services,
+    headFailure: input.row?.firstDeployFailure,
     deployment: input.deployment,
     declared: input.row !== undefined,
     mainHasCode: main.hasCode,
@@ -358,15 +388,46 @@ function withFirstDeploy(
 }
 
 /**
+ * Whether a stage's own import still runs, as far as the platform's listing of it says
+ * (`stopImport`): never where its services are unread, or without a clock.
+ */
+export function stageSettingUp(
+  input: {
+    readonly projectStatus?: string | undefined;
+    readonly services?: ReadonlyArray<PlatformService> | undefined;
+    readonly createdAt?: string | undefined;
+  },
+  nowMs: number | undefined,
+): boolean {
+  return (
+    input.services !== undefined &&
+    nowMs !== undefined &&
+    stopImport({
+      projectStatus: input.projectStatus,
+      createdAt: input.createdAt,
+      nowMs,
+      services: input.services,
+    }) !== undefined
+  );
+}
+
+/**
  * Where a stage's first deploy stands (`firstDeploy`), the one reading every surface says it by —
- * its cell, the menu, its own page: only for a stage known to run nothing — a first deploy seen to
- * fail, held by the runner, or on its way — asked for from the
+ * its cell, the menu, its own page: only for a stage known to run nothing, once its own import is
+ * done — a first deploy seen to fail, failing on `main`'s head after it was asked for, held by the
+ * runner, or on its way — asked for from the
  * later of its making and `main`'s last code landing. `undefined` while nothing asked for one, or
  * nothing can be promised.
  */
 export function stageFirstDeploy(input: {
+  /** Its project's status, as the platform lists it. */
+  readonly projectStatus?: string | undefined;
+  /** Its services as the platform lists them; with them, nothing is said while it is being made. */
+  readonly services?: ReadonlyArray<PlatformService> | undefined;
   /** What it runs, as the platform pushed it (`ZeropsProjectFlowValue.deployments`). */
   readonly deployment: Shown<Deployment> | undefined;
+  /** Its deploy failing on `main`'s head (`EnvironmentRow.firstDeployFailure`), where read. */
+  readonly headFailure?: FirstDeployFailure | undefined;
   /** The group's environments declare it. */
   readonly declared: boolean;
   /** Whether `main` has code, where it was read; a merged code change proves it either way. */
@@ -383,12 +444,28 @@ export function stageFirstDeploy(input: {
   // A build of it was seen to end with nothing running: a fact, however long ago it was asked.
   if (deployment.value.afterBuild === true) return { kind: "failed" };
   if (input.nowMs === undefined) return undefined;
+  // Its own import comes first: the runner matters only once the stage is made (run 5).
+  if (stageSettingUp(input, input.nowMs)) return undefined;
+  const askedAt = firstDeployAskedAt(input.createdAt, input.merged);
+  // The job that deploys it failed on main's head after it was asked for — a fact, like a build
+  // seen to fail; a commit landing after it asks again, and a failure from before is another's.
+  const failure = input.headFailure;
+  if (
+    input.declared &&
+    failure !== undefined &&
+    askedAt !== undefined &&
+    Date.parse(failure.at) >= Date.parse(askedAt)
+  ) {
+    return failure.reason === undefined
+      ? { kind: "failed" }
+      : { kind: "failed", reason: failure.reason };
+  }
   const landedCode = input.merged.some((pull) => pull.kind === "code");
   const first = firstDeploy({
     declared: input.declared,
     mainHasCode: input.mainHasCode ?? (landedCode ? true : undefined),
     runner: input.runner,
-    askedAt: firstDeployAskedAt(input.createdAt, input.merged),
+    askedAt,
     nowMs: input.nowMs,
   });
   return first.kind === "awaited" ? undefined : first;
