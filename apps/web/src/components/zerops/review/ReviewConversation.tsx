@@ -50,6 +50,7 @@ export function ReviewConversation({
   comments,
   remarks,
   asker,
+  commentable,
   now,
   onAsk,
 }: {
@@ -60,6 +61,11 @@ export function ReviewConversation({
   readonly remarks: ReadonlyArray<ChangeRemark>;
   /** The person's own Mate that wrote the change: the one Ask hands the words to. */
   readonly asker: Asker | undefined;
+  /**
+   * HQ's rule lets the person say something on the change (`comment_change`): without it the box
+   * is not offered — Ask keeps the words on the change too.
+   */
+  readonly commentable: boolean;
   readonly now: number;
   /** Keeps the words on the change and hands them to the Mate. */
   readonly onAsk: (said: string) => Promise<void>;
@@ -79,7 +85,9 @@ export function ReviewConversation({
       ) : state.kind === "read" ? (
         <Remarks frame={frame} now={now} remarks={remarks} />
       ) : null}
-      <SayBox asker={asker} comments={comments} draftKey={draftKey} onAsk={onAsk} />
+      {commentable ? (
+        <SayBox asker={asker} comments={comments} draftKey={draftKey} onAsk={onAsk} />
+      ) : null}
     </ReviewSection>
   );
 }

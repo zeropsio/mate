@@ -32,7 +32,12 @@ import { MateFace, Pill } from "../primitives";
 import type { ZeropsRowAction } from "../ZeropsProjectRow.logic";
 import { NextStepsStrip, OnlyAMate, OtherContainers, Overview, QuietEnd } from "./OverviewView";
 import { useRememberGroupPlacements } from "./groupPlacementMemory";
-import { foldGroups, foldUngrouped, type GroupPlacement } from "./projectsView.logic";
+import {
+  foldGroups,
+  foldUngrouped,
+  type ChangesUnknown,
+  type GroupPlacement,
+} from "./projectsView.logic";
 import { ProjectCard } from "./ProjectsView";
 
 /** One group as the page lays it out: its flow and the carriers the slots draw. */
@@ -56,8 +61,8 @@ export interface ProjectsFlowGroup<T> {
    * `main` hold a skeleton, whatever its deploys already say.
    */
   readonly changesAwaiting: boolean;
-  /** Its changes' read failed and nothing is held: their steps say so (`CHANGES_UNREAD_LINE`). */
-  readonly changesFailed?: boolean;
+  /** Why its changes are not known, where they are not: their steps say so (`pullRequestsLine`). */
+  readonly changesUnknown?: ChangesUnknown | undefined;
   /** The Mates' environments by project id, in the tree's order (`matesOf` pairs them). */
   readonly mates: ReadonlyMap<string, T>;
   /** Its stages and its production, by project id. */

@@ -155,6 +155,7 @@ import { ZeropsRenameDialog } from "./ZeropsRenameDialog";
 import { useRenameGroup } from "~/zerops/useRenameGroup";
 import { useEnableRoute } from "~/zerops/useEnableRoute";
 import { useMateActions } from "~/zerops/useMateActions";
+import { useChangeOffers } from "~/zerops/useChangeOffers";
 import { useZeropsGroupRecipe } from "~/zerops/useZeropsGroupRecipe";
 import { officialHq, useAccountHq } from "~/zerops/accountHq";
 import { useAccountGitea } from "~/zerops/giteaProject";
@@ -180,6 +181,7 @@ import {
   type ProjectsFlowGroup,
 } from "./projects/ZeropsProjectsFlow";
 import {
+  changesUnknownOf,
   flowStepsAwaiting,
   groupFlowInputOf,
   groupMemberFactsOf,
@@ -1610,6 +1612,9 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
   // is waiting to land, what was released — is read once for the account
   // (`ZeropsProjectFlowProvider`, D26); the page draws its share of it.
   const projectFlow = useZeropsProjectFlow();
+  // What HQ's rule shows this person of each project's changes: a project listed to them whose
+  // changes it does not says so in their steps, never "None yet".
+  const changeOffersOf = useChangeOffers();
 
   /**
    * The face a Mate wears (`mateFaceOf`): the state of its conversation when its socket is up,
@@ -2548,10 +2553,14 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
   const flowGroups = groupTree.groups.map(
     ({ group, environments }): ProjectsFlowGroup<ZeropsCandidatePresentation> => {
       const reads = groupDeploys.get(group.groupId);
+      const changesUnknown = changesUnknownOf({
+        offers: changeOffersOf(group.groupId),
+        changesFailure: reads?.changesFailure,
+      });
       const awaiting = flowStepsAwaiting({
         read: reads !== undefined,
         changesKnown: reads?.changesKnown === true,
-        changesFailed: reads?.changesFailure !== undefined,
+        changesUnknown,
         // Out and expected back: a Gitea session is held or coming, and the
         // group has an org to read (or the registry has not answered yet).
         readOut:
@@ -2588,7 +2597,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
         placed: lastGroupPlacement(group.groupId),
         awaiting: awaiting.steps,
         changesAwaiting: awaiting.changes,
-        changesFailed: reads?.changesFailure !== undefined,
+        changesUnknown,
         mates: new Map(
           environments
             .filter(({ item }) => hasMate(item))

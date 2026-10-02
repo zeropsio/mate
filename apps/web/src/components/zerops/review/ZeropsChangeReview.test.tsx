@@ -9,7 +9,7 @@ import { act, createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
-import { TestNode } from "~/zerops/__fixtures__/testDom";
+import { elementsOf, TestNode } from "~/zerops/__fixtures__/testDom";
 
 import {
   ChangeReviewView,
@@ -72,6 +72,12 @@ vi.mock("~/zerops/useAskMate", () => ({ useAskMate: () => () => undefined }));
 vi.mock("~/zerops/fixRequest", () => ({ useAskMateToFix: () => () => undefined }));
 vi.mock("~/zerops/fixMates", () => ({ useFixMates: () => [] }));
 vi.mock("~/zerops/useZeropsReviewMates", () => ({ useZeropsReviewMates: () => new Map() }));
+/** What HQ's rule offers the person of the application's changes; the one function every render. */
+const offers = vi.hoisted(() => {
+  const held = { current: { read: true, comment: true } };
+  return { held, of: () => held.current };
+});
+vi.mock("~/zerops/useChangeOffers", () => ({ useChangeOffers: () => offers.of }));
 
 const NOW = Date.parse("2026-09-30T10:00:00Z");
 const noop = () => undefined;
@@ -134,6 +140,7 @@ function render(pull: FlowPullRequest, files: ReadonlyArray<ChangeFile>): string
       retry: noop,
     },
     remarks: [],
+    commentable: true,
     run: { words: undefined, reading: false },
     hqAddress: undefined,
     pictures: undefined,
@@ -249,10 +256,12 @@ describe("ZeropsChangeReview: a change its project's flow does not hold yet", ()
   afterEach(() => {
     account.changes.clear();
     account.reads.length = 0;
+    offers.held.current = { read: true, comment: true };
     vi.unstubAllGlobals();
   });
 
-  it("reads the change from HQ by its application, before the flow is read", async () => {
+  /** The review of API_CHANGE, mounted; `test` reads what it drew. */
+  async function reviewed(test: (host: TestNode) => void): Promise<void> {
     account.changes.set("group-orchard/apidev#1", API_CHANGE);
     installTestDom();
     const { createRoot } = await import("react-dom/client");
@@ -268,11 +277,26 @@ describe("ZeropsChangeReview: a change its project's flow does not hold yet", ()
         }),
       );
     });
-    expect(account.reads).toEqual(["group-orchard/apidev#1"]);
-    expect(host.textContent).toContain("Rebuild the full API on the new schema");
-    expect(host.textContent).not.toContain("Reading this change");
+    test(host);
     await act(async () => {
       root.unmount();
+    });
+  }
+
+  it("reads the change from HQ by its application, before the flow is read", async () => {
+    await reviewed((host) => {
+      expect(account.reads).toEqual(["group-orchard/apidev#1"]);
+      expect(host.textContent).toContain("Rebuild the full API on the new schema");
+      expect(host.textContent).not.toContain("Reading this change");
+      expect(elementsOf(host, "textarea")).toHaveLength(1);
+    });
+  });
+
+  it("offers no box where HQ's rule does not let the person comment on it", async () => {
+    offers.held.current = { read: true, comment: false };
+    await reviewed((host) => {
+      expect(host.textContent).toContain("Rebuild the full API on the new schema");
+      expect(elementsOf(host, "textarea")).toHaveLength(0);
     });
   });
 });

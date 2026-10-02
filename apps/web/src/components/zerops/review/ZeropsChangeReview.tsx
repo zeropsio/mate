@@ -42,6 +42,7 @@ import {
 } from "~/zerops/projectFlowContext";
 import type { ReviewTarget } from "~/zerops/review";
 import { useAskMate } from "~/zerops/useAskMate";
+import { useChangeOffers } from "~/zerops/useChangeOffers";
 import { useZeropsChangeDetail, type ReadoutPart } from "~/zerops/useZeropsChangeDetail";
 import {
   useZeropsChangeComments,
@@ -208,6 +209,7 @@ function ChangeReviewData({
   const askMateToFix = useAskMateToFix();
   const mates = useZeropsReviewMates(target.groupId);
   const pictures = useHqPictureSource();
+  const changeOffersOf = useChangeOffers();
 
   const mate = pull.mateProjectId === undefined ? undefined : mates.get(pull.mateProjectId);
   // Only the Mate that wrote it can push to its branch: the fix goes to it, if it is the
@@ -284,6 +286,7 @@ function ChangeReviewData({
       now={now}
       comments={comments}
       remarks={remarks}
+      commentable={changeOffersOf(target.groupId)?.comment === true}
       onAsk={async (said) => {
         // The change keeps the record of what was asked; the Mate gets the words to act on.
         const refusal = await comments.say(said);
@@ -356,6 +359,8 @@ export interface ChangeReviewViewProps {
   /** What was said on it, and the way to say something back. */
   readonly comments: ZeropsChangeComments;
   readonly remarks: ReadonlyArray<ChangeRemark>;
+  /** HQ's rule lets the person say something on it (`comment_change`): the box is offered. */
+  readonly commentable: boolean;
   readonly run: { readonly words: string | undefined; readonly reading: boolean };
   /** The organization's official HQ, which its description's pictures and links are on. */
   readonly hqAddress: string | undefined;
@@ -518,6 +523,7 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
         asker={
           mine === undefined ? undefined : { name: mine.name, tint: mine.tint, shape: mine.shape }
         }
+        commentable={props.commentable}
         comments={props.comments}
         draftKey={`${pull.url ?? pull.repository}#${String(pull.number)}`}
         frame={props.frame ?? "dialog"}

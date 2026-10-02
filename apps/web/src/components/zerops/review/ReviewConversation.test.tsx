@@ -48,6 +48,7 @@ function html(props: Partial<Parameters<typeof ReviewConversation>[0]> = {}): st
   return renderToStaticMarkup(
     <ReviewConversation
       asker={{ name: "Nova", tint: "slate" }}
+      commentable
       comments={comments({ kind: "read", comments: [] })}
       draftKey="appdev#2"
       frame="page"
@@ -75,6 +76,16 @@ describe("a change's conversation in its review", () => {
     const markup = html({ asker });
     expect(markup).toContain(">Comment</button>");
     expect(markup.includes("Ask Nova")).toBe(asks);
+  });
+
+  // HQ's rule (`comment_change`) does not let them say anything on it: neither verb is offered —
+  // Ask keeps the words on the change too — and what was said still shows.
+  it("offers no box to a person who may not comment on the change", () => {
+    const markup = html({ commentable: false });
+    expect(markup).toContain("The cache key ignores the locale (0).");
+    expect(markup).not.toContain("rv-say-box");
+    expect(markup).not.toContain(">Comment</button>");
+    expect(markup).not.toContain("Ask Nova");
   });
 
   it("draws Ask in the face its person picked", () => {
@@ -167,6 +178,7 @@ describe("the box", () => {
       root.render(
         <ReviewConversation
           asker={{ name: "Nova", tint: "slate" }}
+          commentable
           comments={conversation}
           draftKey={`appdev#${String(Math.random())}`}
           frame="dialog"

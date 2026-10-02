@@ -421,6 +421,7 @@ function Change({
   const value = pull(over);
   return (
     <ChangeReviewView
+      commentable
       comments={conversation}
       environments={environments}
       frame={frame}
@@ -979,6 +980,7 @@ export function ReviewDialogTry() {
         open={open}
       >
         <ChangeReviewView
+          commentable
           comments={read ? TALKING : comments({ kind: "reading" })}
           environments={STAGE_AND_PRODUCTION}
           hqAddress={HARNESS_HQ}
@@ -1038,6 +1040,7 @@ function ReleaseTrySteps({ onClose }: { readonly onClose: () => void }) {
       change={
         shown === undefined ? null : (
           <ChangeReviewView
+            commentable
             comments={TALKING}
             environments={STAGE_AND_PRODUCTION}
             hqAddress={HARNESS_HQ}
