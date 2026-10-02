@@ -47,6 +47,8 @@ function fakeZerops(
     readonly importAnswerLost?: unknown;
     /** How many builds Zerops refuses while the service's variables still sync. */
     readonly variablesSyncing?: number;
+    /** How many variable writes Zerops refuses while the import's variables still sync. */
+    readonly importVariablesSyncing?: number;
   } = {},
 ) {
   const calls: string[] = [];
@@ -69,6 +71,7 @@ function fakeZerops(
   let minted = 0;
   let versions = 0;
   let syncing = options.variablesSyncing ?? 0;
+  let importSyncing = options.importVariablesSyncing ?? 0;
   let routing: {
     id: string;
     isSynced: boolean;
@@ -161,6 +164,15 @@ function fakeZerops(
     },
     writeServiceSecret: async ({ serviceId, key, content }) => {
       step(`secret ${serviceId} ${key}`);
+      if (importSyncing > 0) {
+        importSyncing -= 1;
+        throw new ZeropsApiError(
+          "Service environment variable synchronization is already running.",
+          "invalid-input",
+          400,
+          "userDataSyncRunning",
+        );
+      }
       env.set(key, content);
     },
     createAppVersion: async (serviceId) => {
@@ -646,6 +658,22 @@ describe("runHqBirth", () => {
       "app-version svc-hq",
       "upload av-1 7",
     ]);
+  });
+
+  // The import's own variables (its `envSecrets`) may still sync when Core's token is written.
+  it("waits out a variable sync its token's write is refused for, minting the token once", async () => {
+    const zerops = fakeZerops({ importVariablesSyncing: 2 });
+    const { outcome } = await birth(HQ_BIRTH_START, zerops);
+    expect(outcome).toMatchObject({ ok: true });
+    expect(
+      zerops.calls.filter((call) => /^(mint mate-hq-org|regenerate|secret)/u.test(call)),
+    ).toEqual([
+      "mint mate-hq-org:hq1 READ_ONLY",
+      "secret svc-hq HQ_ORG_TOKEN",
+      "secret svc-hq HQ_ORG_TOKEN",
+      "secret svc-hq HQ_ORG_TOKEN",
+    ]);
+    expect(zerops.env.get("HQ_ORG_TOKEN")).toBe("value-1");
   });
 
   it("deploys anew on Try again after a deploy that failed", async () => {

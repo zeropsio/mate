@@ -11,8 +11,9 @@
  *    while a `mate:hq` project no anchor names stands: one is being set up elsewhere, or stopped.
  * 2. `services` — the three services up.
  * 3. `credential` — `mate-hq-org:<projectId>`, org Read only and nothing else, written as the
- *    sensitive `HQ_ORG_TOKEN` of `hq`. A token's value is shown once: a token whose variable is
- *    missing is regenerated; a variable that is there is never written again.
+ *    sensitive `HQ_ORG_TOKEN` of `hq`, once the import's variables have synced. A token's value is
+ *    shown once: a token whose variable is missing is regenerated; a variable that is there is
+ *    never written again.
  * 4. `deploy` — Core's archive and `zerops.yml` (`core`), as an app version built and deployed. Core
  *    starts as a standby, its anchor missing; its deploy opens `hq`'s HTTP port, which a fresh
  *    import's `hq` does not have (measured in KRLS, 2026-10-02: a routing before it is refused,
@@ -64,8 +65,9 @@ const HQ_ORG_TOKEN_ENV = "HQ_ORG_TOKEN";
 /** The `zerops.yml` entry Core deploys from (`apps/hq/zerops.yml`). */
 const HQ_SETUP = "hq";
 /**
- * Zerops refuses a build while the service's variables sync, which a variable just written starts
- * (measured in Mate s.r.o., 2026-10-03: 400 right after `HQ_ORG_TOKEN`).
+ * Zerops refuses a build, or a variable's write, while the service's variables sync, which a
+ * variable just written starts (measured in Mate s.r.o., 2026-10-03: a build refused 400 right after
+ * `HQ_ORG_TOKEN`), and the import's own `envSecrets` too.
  */
 const VARIABLES_SYNCING = "userDataSyncRunning";
 /** The longest wait between two builds refused while the variables sync. */
@@ -422,7 +424,10 @@ export async function runHqBirth(input: {
                 })
               ).token
             : await platform.regenerateIntegrationToken({ clientId, tokenId: held[0].id });
-        await platform.writeServiceSecret({ serviceId, key: HQ_ORG_TOKEN_ENV, content });
+        // The import's own variables may still sync: the write waits them out with the token held.
+        await afterVariablesSync(waits.servicesCapMs, () =>
+          platform.writeServiceSecret({ serviceId, key: HQ_ORG_TOKEN_ENV, content }),
+        );
       }
       advance({ step: "deploy" });
     }
