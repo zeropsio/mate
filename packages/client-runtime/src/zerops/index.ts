@@ -479,6 +479,7 @@ export {
   type ReviewTone,
   type ReviewVerdict,
   type RollbackReviewInput,
+  type RollbackReviewModel,
 } from "./reviewVerdict.ts";
 export { holdReleaseFacts, releaseFacts, type ReleaseFacts } from "./releaseFacts.ts";
 export {

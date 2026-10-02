@@ -3,7 +3,12 @@ import { describe, expect, it } from "vite-plus/test";
 
 import { compareForRelease, type ReleaseGate } from "./release.ts";
 import { holdReleaseFacts, releaseFacts, type ReleaseFacts } from "./releaseFacts.ts";
-import { releaseReview, type ReleaseOutcome, type ReviewPress } from "./reviewVerdict.ts";
+import {
+  releaseReview,
+  rollbackReview,
+  type ReleaseOutcome,
+  type ReviewPress,
+} from "./reviewVerdict.ts";
 
 const NOW = Date.parse("2026-09-29T10:00:00Z");
 const HEAD = ["5e1d", "0a7c", "93b2", "e46f", "1d08", "c7a5", "2b9e", "f031", "6d4a", "8e72"].join(
@@ -201,5 +206,25 @@ describe("holdReleaseFacts", () => {
     ["another tag: its own facts", before, other, done, releasing, other],
   ])("%s", (_name, held, now, press, outcome, expected) => {
     expect(holdReleaseFacts({ held, current: now, press, outcome })).toBe(expected);
+  });
+});
+
+describe("rollbackReview: a roll back that landed names what it replaced", () => {
+  it.each<[string, ReleaseOutcome, ReviewPress, string]>([
+    ["offered", { kind: "offered" }, { kind: "idle" }, "production runs v0.1.1"],
+    ["on its way", { kind: "releasing" }, { kind: "done" }, "production runs v0.1.1"],
+    ["rolled back", { kind: "released", at: undefined }, { kind: "done" }, "replaces v0.1.1"],
+  ])("%s", (_name, outcome, press, meta) => {
+    const model = rollbackReview({
+      tag: "v0.1.0",
+      nextTag: "v0.1.2",
+      live: "v0.1.1",
+      services: ["app"],
+      mayRelease: true,
+      press,
+      outcome,
+      now: NOW,
+    });
+    expect(model.meta).toBe(meta);
   });
 });

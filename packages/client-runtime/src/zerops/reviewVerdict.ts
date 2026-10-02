@@ -837,6 +837,7 @@ export interface RollbackReviewInput {
   readonly tag: string;
   /** The tag it makes, listing that release's commits — the one made, once it was. */
   readonly nextTag: string;
+  /** The release production ran as the roll back was offered, held from the press. */
   readonly live: string | undefined;
   readonly services: ReadonlyArray<string>;
   readonly mayRelease: boolean;
@@ -850,7 +851,27 @@ export interface RollbackReviewInput {
   readonly now: number;
 }
 
-export function rollbackReview(input: RollbackReviewInput): ReviewModel {
+export interface RollbackReviewModel extends ReviewModel {
+  /**
+   * Beside the title: what production runs as it goes back — `production runs v0.1.1` — and,
+   * once it went back, what it replaced; `undefined` when it went back from a release not read.
+   */
+  readonly meta: string | undefined;
+}
+
+export function rollbackReview(input: RollbackReviewInput): RollbackReviewModel {
+  const meta =
+    input.live === undefined
+      ? input.outcome.kind === "released"
+        ? undefined
+        : "production runs a later release"
+      : input.outcome.kind === "released"
+        ? `replaces ${input.live}`
+        : `production runs ${input.live}`;
+  return { ...rollbackVerdictOf(input), meta };
+}
+
+function rollbackVerdictOf(input: RollbackReviewInput): ReviewModel {
   const { tag, nextTag, outcome, press } = input;
   const keeps =
     input.live === undefined

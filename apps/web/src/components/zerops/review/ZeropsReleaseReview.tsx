@@ -457,6 +457,13 @@ function RollbackData({
     tag: made ?? flow.release.suggestion,
     clockMs,
   });
+  // What production ran as it was offered, held from the press: once it lands, production runs
+  // the roll back's own tag.
+  const current = { tag, live: flow.releases.find((entry) => entry.standing === "live")?.tag };
+  const [held, setHeld] = useState<typeof current | undefined>(undefined);
+  const keep = holdReleaseFacts({ held, current, press, outcome });
+  if (keep !== held) setHeld(keep);
+  const live = (keep ?? current).live;
   const earlier = flow.releases.find((entry) => entry.tag === tag);
   const production = flow.environmentInputs.find((entry) => entry.tier === "production");
   const running = new Map(
@@ -475,7 +482,7 @@ function RollbackData({
   return (
     <RollbackReviewView
       line={earlier?.line}
-      live={flow.releases.find((entry) => entry.standing === "live")?.tag}
+      live={live}
       // Rolling back is a release: only a releaser tags, whatever else holds Release back now.
       mayRelease={flow.release.gate.allowed || flow.release.gate.reason !== RELEASE_NOT_A_RELEASER}
       name={name}
@@ -541,10 +548,10 @@ export function RollbackReviewView(props: RollbackReviewViewProps) {
       kindLabel={reviewKindLine("rollback")}
       meta={
         <>
-          <span>production runs {props.live ?? "a later release"}</span>
+          {model.meta === undefined ? null : <span>{model.meta}</span>}
           {props.line === undefined ? null : (
             <>
-              <span aria-hidden="true">·</span>
+              {model.meta === undefined ? null : <span aria-hidden="true">·</span>}
               <span>{props.line}</span>
             </>
           )}
