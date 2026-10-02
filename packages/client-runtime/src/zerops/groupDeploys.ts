@@ -246,52 +246,45 @@ export function groupStopsOf(input: {
   };
 }
 
-/**
- * `{service hostname: sha}` per side of a release: whole where HQ's record of the service's deploy
- * names the commit whole, else whole or short as the version's name spells it.
- */
+/** What production runs and where its deploys failed, as a release reads them. */
 export interface ReleaseDeploys {
-  /** What the stage runs. Several stages: the first HQ records (D16). */
-  readonly stage: ReadonlyMap<string, string>;
-  /** What production runs, read the same way and never from a release tag. */
+  /**
+   * `{service hostname: sha}` production runs, never read from a release tag: whole where HQ's
+   * record of the service's deploy names the commit whole, else whole or short as the version's
+   * name spells it.
+   */
   readonly production: ReadonlyMap<string, string>;
   /** `{service}@{sha}` → when it failed, for each production service whose newest deploy failed. */
   readonly failed: ReadonlyMap<string, string>;
 }
 
 /**
- * What *Release* compares, from the same snapshot the rows are built from.
+ * What *Release* compares production against, from the same snapshot the rows are built from.
  *
- * Both sides are the sha in a deployed version's name (`deployedCommit`) and
- * nothing else — not a branch head, which is what *should* be there, and not
- * the newest release tag, which is what the broker was asked to deploy rather
- * than what is running. A service whose name is not a commit has no side: it
- * was deployed by hand, and a tag listing a guess is a tag the broker deploys.
- * HQ names a version `{label} {7 hex}` and compares whole shas only, so the
- * commit is taken whole from HQ's record of the deploy that names it.
- *
- * With several stages (D16) the first one HQ records wins for a service they
- * both run: the order they were declared in is the group's own, and picking by
- * anything else would make the release depend on the order of an account read.
+ * What production runs is the sha in a deployed version's name (`deployedCommit`)
+ * and nothing else — not a branch head, which is what *should* be there, and not
+ * the newest release tag, which is what HQ was asked to deploy rather than what
+ * is running. A service whose name is not a commit has none: it was deployed by
+ * hand, and a release listing a guess is a release HQ deploys. HQ names a
+ * version `{label} {7 hex}` and compares whole shas only, so the commit is taken
+ * whole from HQ's record of the deploy that names it.
  */
 export function releaseDeploys(
   environments: ReadonlyArray<GroupEnvironmentRowInput>,
 ): ReleaseDeploys {
-  const stage = new Map<string, string>();
   const production = new Map<string, string>();
   const failed = new Map<string, string>();
   for (const environment of environments) {
-    const side = environment.tier === "production" ? production : stage;
+    if (environment.tier !== "production") continue;
     for (const service of environment.services) {
       const latest = service.deploy?.latest;
-      if (environment.tier === "production" && latest?.state === "failed")
-        failed.set(`${service.hostname}@${latest.sha}`, latest.at);
+      if (latest?.state === "failed") failed.set(`${service.hostname}@${latest.sha}`, latest.at);
       const sha = recordedWhole(deployedCommit(service.appVersionName), service.deploy);
-      if (sha === undefined || side.has(service.hostname)) continue;
-      side.set(service.hostname, sha);
+      if (sha === undefined || production.has(service.hostname)) continue;
+      production.set(service.hostname, sha);
     }
   }
-  return { stage, production, failed };
+  return { production, failed };
 }
 
 /** The commit a name spells, whole where HQ's record of the service's deploy names it. */

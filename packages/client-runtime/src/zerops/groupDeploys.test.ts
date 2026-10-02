@@ -309,7 +309,7 @@ describe("what a release compares", () => {
     environments: ReadonlyArray<HqEnvironment> = [stage, production],
   ) => environmentRowInputsOf({ environments, projectNames: new Map(), services, versions });
 
-  it("reads both sides from the sha in the deployed version's name", () => {
+  it("reads production from the sha in the deployed version's name, never a stage's", () => {
     const commits = releaseDeploys(
       snapshot(
         new Map([
@@ -319,38 +319,15 @@ describe("what a release compares", () => {
         ]),
       ),
     );
-    expect([...commits.stage]).toEqual([
-      ["api", API],
-      ["web", WEB],
-    ]);
     expect([...commits.production]).toEqual([["api", OLD]]);
   });
 
   it("leaves out a service whose version somebody named by hand", () => {
-    const commits = releaseDeploys(snapshot(new Map([["s1", "hotfix"]])));
-    expect(commits.stage.size).toBe(0);
-  });
-
-  it("has nothing to compare for a group that has deployed nothing", () => {
-    const commits = releaseDeploys(snapshot(new Map()));
-    expect(commits.stage.size).toBe(0);
+    const commits = releaseDeploys(snapshot(new Map([["s3", "hotfix"]])));
     expect(commits.production.size).toBe(0);
   });
 
-  it("takes the first declared stage where two of them run the same service", () => {
-    const commits = releaseDeploys(
-      snapshot(
-        new Map([
-          ["s4", OLD],
-          ["s1", API],
-        ]),
-        [
-          { ...stage, order: 2 },
-          environment({ projectId: "p-mate", tier: "stage", name: "stage-client-x", order: 1 }),
-          { ...production, order: 3 },
-        ],
-      ),
-    );
-    expect(commits.stage.get("api")).toBe(OLD);
+  it("has nothing to compare for a group that has deployed nothing", () => {
+    expect(releaseDeploys(snapshot(new Map())).production.size).toBe(0);
   });
 });
