@@ -12,6 +12,8 @@ import {
   signInPhrase,
   SIGN_IN_FAILED_LINE,
   usualAgentOf,
+  replacedSignInLine,
+  startsAtOnce,
 } from "./ZeropsAgentSignIn.logic";
 
 const at = (iso: string): DateTime.Utc => Option.getOrThrow(DateTime.make(iso));
@@ -269,5 +271,29 @@ describe("signInPhrase", () => {
       ["claude-code", "Claude"],
       ["codex", "ChatGPT"],
     ]);
+  });
+});
+
+describe("startsAtOnce: a dialog's login starts without a press only where nothing is held", () => {
+  it.each([
+    [{}, true],
+    [{ credPresent: false }, true],
+    [{ credPresent: true }, false],
+  ])("%o starts at once: %s", (agent, starts) => {
+    expect(startsAtOnce(agent)).toBe(starts);
+  });
+});
+
+describe("replacedSignInLine: whose sign-in a login replaces, said before the press", () => {
+  const nameOf = (subject: string) => (subject === "u-ann" ? "Ann" : undefined);
+  it.each([
+    ["nobody recorded", undefined, "Signing in replaces the sign-in Codex has now."],
+    ["the person's own", { subject: "u-bo" }, "Signing in replaces your own sign-in."],
+    ["a colleague, by name", { subject: "u-ann" }, "Signing in replaces Ann's sign-in."],
+    ["a colleague not named", { subject: "u-cy" }, "Signing in replaces another member's sign-in."],
+  ] as const)("%s", (_case, authorizedBy, line) => {
+    expect(
+      replacedSignInLine({ agentId: "codex", authorizedBy, viewerSubject: "u-bo", nameOf }),
+    ).toBe(line);
   });
 });

@@ -246,4 +246,27 @@ describe("the sign-in in a dialog", () => {
     expect(host.querySelector(".arrival-open")?.getAttribute("data-agent-id")).toBe("codex");
     expect(host.querySelector("[data-sign-in-switch]")).toBeNull();
   });
+
+  // Toby, 2026-10-02: a login started drops the one the agent holds, so a dialog opened over a
+  // working sign-in signed it out before the person did anything.
+  it("opens on an agent that holds a sign-in without starting a login, until the person presses", () => {
+    draw({
+      agents: [
+        {
+          agentId: "codex",
+          login: undefined,
+          credPresent: true,
+          authorizedBy: { subject: "u-ann" },
+        },
+      ],
+      fixed: true,
+      viewerSubject: "u-bo",
+      nameOf: (subject) => (subject === "u-ann" ? "Ann" : undefined),
+    });
+    expect(calls.start).toEqual([]);
+    const open = host.querySelector(".arrival-open");
+    expect(open?.textContent).toContain("Signing in replaces Ann's sign-in.");
+    click(host.querySelector("[data-sign-in-replace]"));
+    expect(calls.start).toEqual(["codex"]);
+  });
 });
