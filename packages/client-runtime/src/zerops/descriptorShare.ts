@@ -25,12 +25,18 @@ import type { ExchangeClock } from "./environments/exchangeDriver.ts";
 export const DESCRIPTOR_SHARE_MS = 10_000;
 export const DESCRIPTOR_READ_DEADLINE_MS = 8_000;
 
+/** One read of a Mate's descriptor, and when it was sent: a shared one may predate its reader. */
+export interface DescriptorReading {
+  readonly reading: MatePathReading;
+  readonly sentAt: Instant;
+}
+
 export interface DescriptorShare {
   /** The descriptor document at this Mate base URL, as one read of it answered. */
   readonly read: (
     httpBaseUrl: string,
     options: { readonly fresh: boolean; readonly signal?: AbortSignal },
-  ) => Promise<MatePathReading>;
+  ) => Promise<DescriptorReading>;
   /** The descriptor itself, shared; rejects when the Mate did not answer with one. */
   readonly descriptor: (
     httpBaseUrl: string,
@@ -45,15 +51,12 @@ export interface DescriptorSharePorts {
   readonly fetch: FetchLike;
 }
 
-interface Settled {
-  readonly reading: MatePathReading;
-  /** When its read was sent. */
-  readonly sentAt: Instant;
+interface Settled extends DescriptorReading {
   readonly descriptor: ExecutionEnvironmentDescriptor | null;
 }
 
 interface Slot {
-  inFlight: Promise<MatePathReading> | null;
+  inFlight: Promise<DescriptorReading> | null;
   settled: Settled | null;
   /** The order reads were sent in: an older read settling late never replaces a newer one. */
   sent: number;
@@ -109,7 +112,7 @@ export function makeDescriptorShare(ports: DescriptorSharePorts): DescriptorShar
     return age <= DESCRIPTOR_SHARE_MS ? settled : null;
   };
 
-  const start = (key: string, slot: Slot): Promise<MatePathReading> => {
+  const start = (key: string, slot: Slot): Promise<DescriptorReading> => {
     slot.sent += 1;
     const order = slot.sent;
     const sentAt = clock.now();
@@ -126,7 +129,7 @@ export function makeDescriptorShare(ports: DescriptorSharePorts): DescriptorShar
         slot.settled = { reading, sentAt, descriptor: descriptorOf(reading) };
       }
       if (slot.inFlight === read) slot.inFlight = null;
-      return reading;
+      return { reading, sentAt };
     });
     slot.inFlight = read;
     return read;
@@ -137,7 +140,7 @@ export function makeDescriptorShare(ports: DescriptorSharePorts): DescriptorShar
     const slot = slotFor(key);
     if (!fresh) {
       const held = servable(slot);
-      if (held !== null) return Promise.resolve(held.reading);
+      if (held !== null) return Promise.resolve({ reading: held.reading, sentAt: held.sentAt });
       if (slot.inFlight !== null) return until(slot.inFlight, signal);
     }
     return until(start(key, slot), signal);
@@ -146,7 +149,7 @@ export function makeDescriptorShare(ports: DescriptorSharePorts): DescriptorShar
   return {
     read,
     descriptor: async (httpBaseUrl, signal) => {
-      const reading = await read(httpBaseUrl, { fresh: false, ...(signal ? { signal } : {}) });
+      const { reading } = await read(httpBaseUrl, { fresh: false, ...(signal ? { signal } : {}) });
       const descriptor = descriptorOf(reading);
       if (descriptor === null) {
         throw new Error(`The Mate at ${httpBaseUrl} did not answer with its descriptor.`);

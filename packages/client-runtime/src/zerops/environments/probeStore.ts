@@ -14,7 +14,8 @@
  *   that never answers cannot starve the others.
  * - A tab hidden for `HIDDEN_PROBE_PAUSE_MS` probes nothing until it is shown again.
  * - A probe asked on demand may take the descriptor another reader of the Mate just read
- *   (`descriptorShare.ts`); a poll, or one a `next` caller waits on, reads it fresh (`ProbeAsk`).
+ *   (`descriptorShare.ts`); a poll, one a `next` caller waits on, or one asked fresh reads it anew
+ *   (`ProbeAsk`). Either way its reading is as old as the read it rests on (`ProbeAnswer`).
  */
 import type { Instant } from "../data/access/grant.ts";
 import type { DescriptorFacts } from "./environmentMachine.ts";
@@ -71,22 +72,35 @@ export interface ProbeAsk {
   readonly fresh: boolean;
 }
 
+/**
+ * What one probe read, and when the read it rests on was sent: a descriptor another reader read a
+ * moment ago (`descriptorShare.ts`) is as old as that read, never as new as the probe.
+ */
+export interface ProbeAnswer {
+  readonly reading: ProbeReading;
+  readonly sentAt: Instant;
+}
+
 export interface ProbeStorePorts {
   readonly clock: Pick<ExchangeClock, "now" | "setTimer">;
   /** Reads the origin's container (`readZeropsContainer`); rejects when the signal aborts it. */
-  readonly probe: (origin: string, signal: AbortSignal, ask: ProbeAsk) => Promise<ProbeReading>;
+  readonly probe: (origin: string, signal: AbortSignal, ask: ProbeAsk) => Promise<ProbeAnswer>;
 }
 
 export interface ProbeStore {
   /**
    * Every origin's cadence as its container stands now; an origin left out is forgotten once no
-   * `next` caller waits on it.
+   * `next` caller waits on it. `requests` are reads asked alongside (`request`), each started by
+   * the cadence given here: a poll due at once and a request are one probe.
    */
-  readonly setCadences: (cadences: ReadonlyMap<string, ProbeCadence>) => void;
+  readonly setCadences: (
+    cadences: ReadonlyMap<string, ProbeCadence>,
+    requests?: ReadonlyMap<string, ProbeAsk>,
+  ) => void;
   /** The origins read ahead of every other due one from the next free slot: the route's Mate. */
   readonly setFirst: (origins: ReadonlySet<string>) => void;
-  /** Reads the origin once more, as soon as the pool gives it a slot. */
-  readonly request: (origin: string) => void;
+  /** Reads the origin once more, as soon as the pool gives it a slot; `fresh` past any share. */
+  readonly request: (origin: string, ask: ProbeAsk) => void;
   /** The reading of a probe of this origin started from now on, held by a target or not. */
   readonly next: (origin: string) => Promise<ProbeReading>;
   readonly fact: (origin: string) => ProbeFact;
@@ -106,6 +120,8 @@ interface Origin {
   inFlight: { readonly controller: AbortController; readonly overdue: boolean } | null;
   /** Asked for once more, after whatever is in flight. */
   requested: boolean;
+  /** One of those asks wants a read started now. */
+  requestedFresh: boolean;
   /** When the cadence reads it next; null while it does not poll. */
   pollAt: Instant | null;
   /** How far up `OVERDUE_POLL_INTERVALS_MS` its next overdue read sits. */
@@ -146,6 +162,7 @@ export function makeProbeStore(ports: ProbeStorePorts): ProbeStore {
       fact: { status: "unread" },
       inFlight: null,
       requested: false,
+      requestedFresh: false,
       pollAt: null,
       overdueRung: 0,
       startedAt: Number.NEGATIVE_INFINITY,
@@ -192,25 +209,29 @@ export function makeProbeStore(ports: ProbeStorePorts): ProbeStore {
     const controller = new AbortController();
     const sentAt = clock.now();
     const overdue = overdueOnly(entry);
-    const ask: ProbeAsk = { fresh: polls(entry.cadence) || entry.waiting.length > 0 };
+    const ask: ProbeAsk = {
+      fresh: entry.requestedFresh || polls(entry.cadence) || entry.waiting.length > 0,
+    };
     entry.inFlight = { controller, overdue };
     entry.requested = false;
+    entry.requestedFresh = false;
     entry.startedAt = sentAt.mono;
     entry.answering = [...entry.answering, ...entry.waiting];
     entry.waiting = [];
     let settled = false;
-    const settle = (reading: ProbeReading) => {
+    const settle = (answer: ProbeAnswer) => {
       if (settled || disposed || origins.get(origin) !== entry) return;
       settled = true;
       cancelDeadline();
-      land(origin, entry, reading, sentAt);
+      land(origin, entry, answer.reading, answer.sentAt);
       dispatch();
     };
+    const unreachable = (): ProbeAnswer => ({ reading: { kind: "unreachable" }, sentAt });
     const cancelDeadline = clock.setTimer(PROBE_DEADLINE_MS, () => {
       controller.abort();
-      settle({ kind: "unreachable" });
+      settle(unreachable());
     });
-    ports.probe(origin, controller.signal, ask).then(settle, () => settle({ kind: "unreachable" }));
+    ports.probe(origin, controller.signal, ask).then(settle, () => settle(unreachable()));
   };
 
   /** Fills the free slots, then arms the one timer for the earliest poll still ahead. */
@@ -250,7 +271,7 @@ export function makeProbeStore(ports: ProbeStorePorts): ProbeStore {
   }
 
   return {
-    setCadences: (cadences) => {
+    setCadences: (cadences, requests = new Map()) => {
       if (disposed) return;
       for (const [origin, entry] of origins) {
         if (cadences.has(origin)) continue;
@@ -291,14 +312,22 @@ export function makeProbeStore(ports: ProbeStorePorts): ProbeStore {
           }
         }
       }
+      for (const [origin, ask] of requests) {
+        if (!cadences.has(origin)) continue;
+        const entry = originFor(origin);
+        entry.requested = true;
+        entry.requestedFresh ||= ask.fresh;
+      }
       dispatch();
     },
     setFirst: (origins) => {
       first = origins;
     },
-    request: (origin) => {
+    request: (origin, ask) => {
       if (disposed) return;
-      originFor(origin).requested = true;
+      const entry = originFor(origin);
+      entry.requested = true;
+      entry.requestedFresh ||= ask.fresh;
       dispatch();
     },
     next: (origin) =>

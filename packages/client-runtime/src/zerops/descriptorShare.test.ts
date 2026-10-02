@@ -259,7 +259,7 @@ describe("descriptor share: one read of a Mate's descriptor serves one connect",
       serverVersion: "0.11.83",
       zerops: { projectId: "project-1" },
     });
-    expect(await probe).toMatchObject({
+    expect(((await probe) as { reading: unknown }).reading).toMatchObject({
       kind: "ready",
       descriptor: { environmentId: "env-share", serverVersion: "0.11.83", identity: "ok" },
       projectId: "project-1",
@@ -315,11 +315,11 @@ describe("descriptor share: one read of a Mate's descriptor serves one connect",
     const { share, requests, advance, answer } = rig();
     const hung = share.read(BASE, { fresh: false, signal });
     await advance(DESCRIPTOR_READ_DEADLINE_MS);
-    expect(await hung).toEqual({ kind: "blocked" });
+    expect((await hung).reading).toEqual({ kind: "blocked" });
     const next = share.read(BASE, { fresh: false, signal });
     await flush();
     await answer(DESCRIPTOR_URL, () => json(DESCRIPTOR));
-    expect((await next).kind).toBe("json");
+    expect((await next).reading.kind).toBe("json");
     expect(requests).toEqual([DESCRIPTOR_URL, DESCRIPTOR_URL]);
   });
 });
