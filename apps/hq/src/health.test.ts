@@ -19,6 +19,7 @@ const getHealth = (
   status: LeaderStatus,
   official: OfficialStatus["official"],
   databaseUrl: string,
+  held: string | null = null,
 ) =>
   Effect.gen(function* () {
     const handler = yield* HttpRouter.toHttpEffect(healthRoute("b1"));
@@ -34,6 +35,8 @@ const getHealth = (
             changes: Stream.make(status),
             write: () => Effect.die("no writes"),
             release: Effect.void,
+            hold: () => Effect.die("no hold"),
+            held: Effect.succeed(held),
           }),
           Layer.succeed(Official, {
             status: Effect.succeed({ official, allowed: official === "ok" }),
@@ -99,5 +102,32 @@ describe("GET /health", () => {
           }),
       );
     }
+
+    // A Core holding the lock over records and git that disagree says why (`reconcile.ts`).
+    it.effect("names why a held Core serves nothing", () =>
+      Effect.gen(function* () {
+        const url = yield* (yield* TempPostgres).createDatabase;
+        const response = yield* getHealth(
+          { state: "failed", epoch: null },
+          "ok",
+          url,
+          "restore_mismatch",
+        );
+        assert.deepStrictEqual(
+          [response.status, response.body],
+          [
+            503,
+            {
+              state: "failed",
+              reason: "restore_mismatch",
+              official: "ok",
+              db: "up",
+              epoch: null,
+              build: "b1",
+            },
+          ],
+        );
+      }),
+    );
   });
 });

@@ -96,6 +96,27 @@ describe("leaderLayer", () => {
       }),
     );
 
+    it.effect("held, serves nothing and names why, yet keeps the lock from every other", () =>
+      Effect.gen(function* () {
+        const url = yield* (yield* TempPostgres).createDatabase;
+        const core = yield* startInstance(url);
+        yield* statusWhere(core.leader, (status) => status.state === "active");
+        assert.strictEqual(yield* core.leader.held, null);
+        yield* core.leader.hold("restore_mismatch");
+        assert.deepStrictEqual(yield* core.leader.status, { state: "failed", epoch: null });
+        assert.strictEqual(yield* core.leader.held, "restore_mismatch");
+        const write = yield* Effect.flip(core.leader.write(Effect.void));
+        assert.strictEqual(write._tag, "NotLeader");
+        // Another instance waits behind the lock: nobody leads.
+        const other = yield* startInstance(url);
+        yield* statusWhere(other.leader, (status) => status.state === "standby");
+        assert.deepStrictEqual(yield* statesSeen(other.leader), ["standby"]);
+        assert.deepStrictEqual(yield* statesSeen(core.leader), ["failed"]);
+        yield* other.stop;
+        yield* core.stop;
+      }),
+    );
+
     it.effect(
       "waits as a standby while another instance leads, and takes over under epoch 2 when it stops",
       () =>

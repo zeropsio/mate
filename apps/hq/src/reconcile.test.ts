@@ -3,11 +3,20 @@ import * as NodeChildProcess from "node:child_process";
 import * as NodePath from "node:path";
 
 import { assert, describe, it } from "@effect/vitest";
+import { RECIPE_REPO } from "@t3tools/shared/hqRecipe";
 import * as Effect from "effect/Effect";
+import * as Stream from "effect/Stream";
 
-import { mateInApp } from "../test/harness/mates.ts";
-import { sessionFor, startCore, untilHealth } from "../test/harness/runningCore.ts";
+import { addProject, mateInApp, rowsWhere } from "../test/harness/mates.ts";
+import {
+  type Call,
+  enrollMate,
+  sessionFor,
+  startCore,
+  untilHealth,
+} from "../test/harness/runningCore.ts";
 import { tempPostgresLayer } from "../test/harness/tempPostgres.ts";
+import type { FakeWorld } from "../test/harness/zeropsFake.ts";
 
 /** `git <args>` on the bare repository `dir`, as Ada; its output. */
 const bareAt =
@@ -40,8 +49,158 @@ const commitOn = (
   return bare(["commit-tree", tree, "-p", parent, "-m", message]);
 };
 
-describe("HQ's records and git that moved past them", () => {
+/** A Mate of the application, set up and enrolled; its credential's header. */
+const anotherMate = (
+  call: Call,
+  fake: FakeWorld,
+  owner: string,
+  appId: string,
+  projectId: string,
+  name: string,
+) =>
+  Effect.gen(function* () {
+    addProject(fake, projectId);
+    yield* call("POST", `/api/apps/${appId}/projects`, {
+      session: owner,
+      body: { projectId, kind: "mate", mate: { name, face: "face-2" } },
+    });
+    return { authorization: `Mate ${yield* enrollMate(call, fake, projectId)}` };
+  });
+
+describe("a takeover after git moved past HQ's records", () => {
   it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+    it.effect(
+      "records what git holds that the records lack, before Core leads, and refuses what git lacks",
+      () =>
+        Effect.gen(function* () {
+          const first = yield* startCore(true);
+          yield* untilHealth(first.call, "active");
+          const owner = yield* sessionFor(first.call, "door-owner");
+          const ada = yield* mateInApp(first.call, first.fake, owner, "P_MATE", "Shop");
+          const { appId } = ada;
+          yield* first.call("POST", "/api/mate/repos", {
+            headers: ada.auth,
+            body: { name: "appdev" },
+          });
+          // In the records: Ada's change 1 closed, her change 2 open; Bo's change 3 open.
+          const open = (auth: Record<string, string>, title: string) =>
+            first.call("POST", "/api/mate/changes", {
+              headers: auth,
+              body: { repo: "appdev", title },
+            });
+          yield* open(ada.auth, "Ada's first");
+          yield* first.call("POST", `/api/apps/${appId}/changes/appdev/1/close`, {
+            session: owner,
+          });
+          yield* open(ada.auth, "Ada's second");
+          const bo = yield* anotherMate(first.call, first.fake, owner, appId, "P_MATE2", "Bo");
+          yield* open(bo, "Bo's first");
+          yield* first.stop;
+
+          // What git came to hold after the records were taken (a set's git, newer than its dump).
+          const appdev = bareAt(NodePath.join(first.gitRoot, appId, "appdev.git"));
+          const main = appdev(["rev-parse", "refs/heads/main"]);
+          const squashed = commitOn(
+            appdev,
+            main,
+            "second.txt",
+            "Ada's second (#2)\n\nMate-Change: P_MATE/2",
+          );
+          appdev(["update-ref", "refs/heads/main", squashed, main]);
+          appdev([
+            "update-ref",
+            "refs/heads/mate/P_MATE/2",
+            commitOn(appdev, main, "second.txt", "Second"),
+          ]);
+          const third = commitOn(appdev, squashed, "third.txt", "Third");
+          appdev(["update-ref", "refs/heads/mate/P_MATE/4", third]);
+          const bos = commitOn(appdev, squashed, "bo.txt", "Bo's");
+          appdev(["update-ref", "refs/heads/mate/P_MATE2/5", bos]);
+          const group = bareAt(NodePath.join(first.gitRoot, appId, `${RECIPE_REPO}.git`));
+          const groupMain = group(["rev-parse", "refs/heads/main"]);
+          group(["tag", "-a", "v0.1.0", "-m", `app ${squashed}`, groupMain]);
+          bareAt(NodePath.join(first.gitRoot, appId, "extra.git"))(["init", "--bare", "-q"]);
+
+          const next = yield* startCore(true, { url: first.url, gitRoot: first.gitRoot });
+          addProject(next.fake, "P_MATE2");
+          yield* Stream.runHead(Stream.filter(next.gitHost.recorded, (tick) => tick > 0));
+          const now = (query: string) => rowsWhere(next.url, query, () => true);
+          assert.deepStrictEqual(
+            yield* now(
+              `SELECT number, mate_project_id AS mate, state, head, merged_sha AS merged
+               FROM hq_change WHERE repo = 'appdev' ORDER BY number`,
+            ),
+            [
+              // Closed before the records were taken; stays so.
+              { number: 1, mate: "P_MATE", state: "closed", head: null, merged: null },
+              // Open in the records, its squash on main: merged, recovered.
+              {
+                number: 2,
+                mate: "P_MATE",
+                state: "merged",
+                head: appdev(["rev-parse", "refs/heads/mate/P_MATE/2"]),
+                merged: squashed,
+              },
+              // Open in the records, but Bo opened a newer one since: closed, superseded.
+              { number: 3, mate: "P_MATE2", state: "closed", head: null, merged: null },
+              // No record: Ada's newest, open.
+              { number: 4, mate: "P_MATE", state: "open", head: third, merged: null },
+              // No record: Bo's newest, open.
+              { number: 5, mate: "P_MATE2", state: "open", head: bos, merged: null },
+            ],
+          );
+          assert.deepStrictEqual(yield* now(`SELECT title FROM hq_change WHERE number = 4`), [
+            { title: "Change 4 (restored)" },
+          ]);
+          assert.deepStrictEqual(
+            yield* now(
+              `SELECT tag, sha, entries, released_by AS by, state FROM hq_release ORDER BY tag`,
+            ),
+            [
+              {
+                tag: "v0.1.0",
+                sha: groupMain,
+                entries: [{ service: "app", sha: squashed }],
+                by: "restore",
+                state: "approved",
+              },
+            ],
+          );
+          assert.deepStrictEqual(
+            yield* now(`SELECT created_by FROM hq_repo WHERE name = 'extra'`),
+            [{ created_by: "restore" }],
+          );
+          assert.isAbove(
+            (yield* now(`SELECT 1 FROM hq_git_event WHERE (data->>'reconciled')::boolean`)).length,
+            0,
+          );
+          const nextOwner = yield* sessionFor(next.call, "door-owner-2");
+          assert.strictEqual(
+            (yield* next.call("GET", `/api/apps/${appId}/changes`, { session: nextOwner })).status,
+            200,
+          );
+
+          // The records name a commit git lacks: the next Core takes the lock and serves nothing.
+          yield* next.stop;
+          yield* rowsWhere(
+            first.url,
+            `UPDATE hq_change SET merged_sha = '${"e".repeat(40)}' WHERE number = 2 RETURNING 1`,
+            () => true,
+          );
+          const refused = yield* startCore(true, { url: first.url, gitRoot: first.gitRoot });
+          const health = yield* untilHealth(refused.call, "failed");
+          assert.strictEqual(
+            (health.body as { readonly reason?: string }).reason,
+            "restore_mismatch",
+          );
+          assert.strictEqual(
+            (yield* refused.call("GET", `/api/apps/${appId}/changes`, { session: nextOwner }))
+              .status,
+            503,
+          );
+        }),
+    );
+
     it.effect("numbers a new change past every change branch, recorded or not", () =>
       Effect.gen(function* () {
         const { call, fake, gitRoot } = yield* startCore(true);
