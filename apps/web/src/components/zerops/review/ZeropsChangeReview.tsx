@@ -33,7 +33,7 @@ import {
 } from "@t3tools/client-runtime/zerops";
 import type { MateShapeId, MateTintId } from "@t3tools/shared/brand";
 import { useRouter } from "@tanstack/react-router";
-import { Fragment, useEffect, useMemo, useState, type ReactNode } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 
 import { buildThreadRouteParams } from "~/threadRoutes";
 import { useAskMateToFix, type FixProblem } from "~/zerops/fixRequest";
@@ -256,12 +256,14 @@ function ChangeReviewData({
     enabled: comments.state.kind === "read" && comments.state.comments.length > 0,
   });
   const me = session?.user?.id;
+  // A Mate's words brought over from Gitea, as the application names its Mates.
+  const mateNameOf = useCallback((projectId: string) => mates.get(projectId)?.name, [mates]);
   const remarks = useMemo(
     () =>
       comments.state.kind === "read"
-        ? changeRemarks({ comments: comments.state.comments, nameOf, me })
+        ? changeRemarks({ comments: comments.state.comments, nameOf, mateNameOf, me })
         : NO_REMARKS,
-    [comments.state, me, nameOf],
+    [comments.state, me, nameOf, mateNameOf],
   );
   // A conversation that never answers is not waited on for ever: its lines give way.
   const [runGaveUp, setRunGaveUp] = useState(false);

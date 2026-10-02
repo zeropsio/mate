@@ -2,10 +2,12 @@
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 
+import * as PgConnection from "@effect/sql-pg/PgConnection";
 import { assert, describe, it } from "@effect/vitest";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
+import * as Redacted from "effect/Redacted";
 import * as Schedule from "effect/Schedule";
 import * as Stream from "effect/Stream";
 
@@ -742,6 +744,46 @@ describe("a Mate's changes in HQ", () => {
           reason: "attachment_not_found",
         });
       }),
+    );
+
+    it.effect(
+      "a Mate's comment brought over from Gitea reads as the Mate's, a person's as theirs",
+      () =>
+        Effect.gen(function* () {
+          const { call, fake, url } = yield* startCore(true);
+          yield* untilHealth(call, "active");
+          const owner = yield* sessionFor(call, "door-owner");
+          const { appId } = yield* mateWithChange(call, fake, owner);
+          const comments = `/api/apps/${appId}/changes/appdev/1/comments`;
+          const said = yield* call("POST", comments, {
+            session: owner,
+            body: { body: "Looks good" },
+          });
+          assert.deepStrictEqual(
+            [said.status, (said.body as Record<string, unknown>)["authorMateProjectId"]],
+            [200, null],
+          );
+          // Only the import writes a Mate's words; nothing on HQ's API does.
+          const comment = (authors: string) =>
+            `INSERT INTO hq_change_comment (app_id, repo, number, author_user_id, author_mate_project_id, body)
+           VALUES ('${appId}', 'appdev', 1, ${authors}, 'Done.') RETURNING id`;
+          yield* rowsWhere(url, comment("NULL, 'P_MATE'"), (rows) => rows.length === 1);
+          const read = (yield* call("GET", comments, { session: owner })).body as {
+            readonly comments: ReadonlyArray<Record<string, unknown>>;
+          };
+          assert.deepStrictEqual(
+            read.comments.map((entry) => [entry["authorUserId"], entry["authorMateProjectId"]]),
+            [
+              ["owner", null],
+              [null, "P_MATE"],
+            ],
+          );
+          // A comment has exactly one author.
+          const db = yield* PgConnection.make({ url: Redacted.make(url) });
+          for (const authors of ["NULL, NULL", "'owner', 'P_MATE'"]) {
+            assert.isTrue(Exit.isFailure(yield* Effect.exit(db.query(comment(authors)))), authors);
+          }
+        }).pipe(Effect.scoped),
     );
 
     it.effect("a change's address at HQ leads into the client", () =>

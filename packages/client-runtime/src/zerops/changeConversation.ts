@@ -9,7 +9,8 @@
  *
  * HQ keeps a change's conversation (SPEC §3.2a): what people said on it, each
  * comment by the Zerops user who wrote it, who is named as the organization's
- * members name them — never by an id.
+ * members name them — never by an id. A Mate's words on main's Gitea, brought
+ * over (T13), are the Mate's, named as the application names it.
  *
  * Pure: who said it, what the sentence handed to a Mate says, and nothing
  * about how any of it is drawn (R5).
@@ -32,12 +33,19 @@ export function changeRemarks(input: {
   readonly comments: ReadonlyArray<HqChangeComment>;
   /** The name a Zerops user goes by in the organization, where a member is them. */
   readonly nameOf: (userId: string) => string | undefined;
+  /** The name of the application's Mate in that project, for its words brought over from Gitea. */
+  readonly mateNameOf: (projectId: string) => string | undefined;
   /** The Zerops user reading, so their own words can be marked. */
   readonly me: string | undefined;
 }): ReadonlyArray<ChangeRemark> {
+  const nameOf = (comment: HqChangeComment): string | undefined => {
+    if (comment.authorUserId !== null) return input.nameOf(comment.authorUserId);
+    if (comment.authorMateProjectId !== null) return input.mateNameOf(comment.authorMateProjectId);
+    return undefined;
+  };
   return input.comments.map((comment) => ({
     id: comment.id,
-    speaker: input.nameOf(comment.authorUserId) ?? "somebody",
+    speaker: nameOf(comment) ?? "somebody",
     mine: comment.authorUserId === input.me,
     body: comment.body,
     at: comment.createdAt,

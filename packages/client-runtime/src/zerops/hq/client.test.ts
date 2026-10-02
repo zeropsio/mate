@@ -566,6 +566,7 @@ describe("makeHqApi — a Mate's changes, as the person reads them", () => {
   const COMMENT = {
     id: "c1",
     authorUserId: "u1",
+    authorMateProjectId: null,
     body: "Looks good",
     createdAt: "2026-10-02T09:05:00.000Z",
   } as const;

@@ -319,13 +319,18 @@ interface ChangeRow {
   readonly behind: boolean;
 }
 
-const COMMENT_COLUMNS = ["id::text AS id", "author_user_id", "body", instant("created_at")].join(
-  ", ",
-);
+const COMMENT_COLUMNS = [
+  "id::text AS id",
+  "author_user_id",
+  "author_mate_project_id",
+  "body",
+  instant("created_at"),
+].join(", ");
 
 interface CommentRow {
   readonly id: string;
-  readonly author_user_id: string;
+  readonly author_user_id: string | null;
+  readonly author_mate_project_id: string | null;
   readonly body: string;
   readonly created_at: string;
 }
@@ -333,6 +338,7 @@ interface CommentRow {
 const commentOf = (row: CommentRow): HqChangeComment => ({
   id: row.id,
   authorUserId: row.author_user_id,
+  authorMateProjectId: row.author_mate_project_id,
   body: row.body,
   createdAt: row.created_at,
 });
