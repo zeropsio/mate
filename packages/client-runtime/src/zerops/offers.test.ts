@@ -71,36 +71,54 @@ describe("changeOffers — what a person may do with an application's changes (S
     { id: projectId, userRoles: [{ clientUserId: "cu-ola", roleCode }] },
   ];
 
-  it.each<[string, OfferViewer, ReturnType<typeof granted>, boolean]>([
-    ["reads and comments with Read only on the organization", viewer("READ_ONLY"), [], true],
+  const offers = (read: boolean, develop: boolean, close = develop) => ({
+    read,
+    comment: read,
+    merge: develop,
+    close,
+  });
+
+  it.each<[string, OfferViewer, ReturnType<typeof granted>, ReturnType<typeof offers>]>([
     [
-      "reads and comments with Basic user on one of its projects",
+      "reads and comments with Read only on the organization, and merges nothing",
+      viewer("READ_ONLY"),
+      [],
+      offers(true, false),
+    ],
+    [
+      "does all of it with Basic user on one of its projects, a stage's as much as a Mate's",
       viewer("NO_ACCESS"),
       granted("p-stage", "BASIC_USER"),
-      true,
+      offers(true, true),
     ],
     [
       // It sees the application listed, never its changes (main's Gitea read rule).
-      "neither with only a Read only grant on one of its projects",
+      "none of it with only a Read only grant on one of its projects",
       viewer("NO_ACCESS"),
       granted("p-dev", "READ_ONLY"),
-      false,
+      offers(false, false),
     ],
     [
-      "neither with Basic user on another application's project",
+      "none of it with Basic user on another application's project",
       viewer("NO_ACCESS"),
       granted("p-else", "BASIC_USER"),
-      false,
+      offers(false, false),
     ],
   ])("%s", (_name, person, projects, offered) => {
-    expect(changeOffers(offerAsker(person, projects), PLACED, "app-1")).toEqual({
-      read: offered,
-      comment: offered,
+    expect(changeOffers(offerAsker(person, projects), PLACED, "app-1")).toEqual(offered);
+  });
+
+  // An application with no project left still has its open changes: the organization's owner or
+  // admin closes them, and merges nothing (Gitea's split on main).
+  it("lets an owner close a change of an application with no project, never merge it", () => {
+    expect(changeOffers(offerAsker(viewer("OWNER"), []), PLACED, "app-empty")).toMatchObject({
+      merge: false,
+      close: true,
     });
   });
 
   it("offers nothing to a person the client does not know", () => {
-    expect(changeOffers(null, PLACED, "app-1")).toEqual({ read: false, comment: false });
+    expect(changeOffers(null, PLACED, "app-1")).toEqual(offers(false, false));
   });
 });
 

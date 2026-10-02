@@ -261,13 +261,12 @@ describe("the pull requests of each Mate", () => {
 
 describe("a verb in flight", () => {
   it("keys each verb by its target, so one row's Merge is nobody else's", () => {
-    const merge4 = flowVerbKey({ kind: "merge", slug: "todo", repository: "appdev", number: 4 });
-    expect(merge4).toBe(
-      flowVerbKey({ kind: "merge", slug: "todo", repository: "appdev", number: 4 }),
-    );
-    expect(merge4).not.toBe(
-      flowVerbKey({ kind: "merge", slug: "todo", repository: "appdev", number: 3 }),
-    );
+    const change = { groupId: "g1", repository: "appdev", number: 4 } as const;
+    const merge4 = flowVerbKey({ kind: "merge", ...change });
+    expect(merge4).toBe("merge g1/appdev#4");
+    expect(merge4).not.toBe(flowVerbKey({ kind: "merge", ...change, number: 3 }));
+    expect(merge4).not.toBe(flowVerbKey({ kind: "merge", ...change, groupId: "g2" }));
+    expect(merge4).not.toBe(flowVerbKey({ kind: "close", ...change }));
     expect(flowVerbKey({ kind: "release", groupId: "g1" })).not.toBe(
       flowVerbKey({ kind: "roll-back", groupId: "g1", tag: "v0.1.0" }),
     );

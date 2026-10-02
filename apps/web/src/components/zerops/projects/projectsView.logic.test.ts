@@ -14,6 +14,7 @@ import { describe, expect, it } from "vite-plus/test";
 import type { ZeropsAgentActivity } from "~/zerops/agentActivity";
 
 import {
+  changeRowVerb,
   changesUnknownOf,
   comingMateLine,
   containersSummary,
@@ -215,6 +216,24 @@ describe("changesUnknownOf — why a project's changes are not known", () => {
         changesFailure: failed ? "HQ is not answering right now." : undefined,
       }),
     ).toBe(want);
+  });
+});
+
+// Main A21/A23: a merge pressed in the review shows on the change's row while it runs, and until
+// HQ's stream brings the change merged (`flowVerbKey`'s held key).
+describe("changeRowVerb — what a change's row offers", () => {
+  const change = { repository: "app", number: 7 } as const;
+  it.each([
+    ["Review, with nothing under way", new Set<string>(), "Review"],
+    ["Merging… while its merge runs or is held", new Set(["merge g1/app#7"]), "Merging…"],
+    ["Review, another change's merge under way", new Set(["merge g1/app#8"]), "Review"],
+    [
+      "Review while it closes: a close says so in its review",
+      new Set(["close g1/app#7"]),
+      "Review",
+    ],
+  ] as const)("%s", (_case, pending, label) => {
+    expect(changeRowVerb(pending, "g1", change)).toBe(label);
   });
 });
 

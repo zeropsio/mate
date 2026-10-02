@@ -181,6 +181,7 @@ import {
   type ProjectsFlowGroup,
 } from "./projects/ZeropsProjectsFlow";
 import {
+  changeRowVerb,
   changesUnknownOf,
   flowStepsAwaiting,
   groupFlowInputOf,
@@ -1722,11 +1723,11 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
 
   /**
    * One pull request's row, wherever it is drawn. Its verb is *Review*, the one
-   * door to merging (pass 16, R1): the review reads the change and says whether
-   * it is safe — nothing merges from a row. `withMerge` is
-   * false where the project's next step already offers that door on it: one
-   * verb, once. `compact` stacks title, state and verb for a flow step's narrow
-   * column.
+   * door to merging (pass 16, R1): the review reads the change, says whether it
+   * is safe and carries *Merge* — nothing merges from a row, which says
+   * "Merging…" while the review's merge is under way. `withMerge` is false where
+   * the project's next step already offers that door on it: one verb, once.
+   * `compact` stacks title, state and verb for a flow step's narrow column.
    */
   const pullRequestRowOf = (
     group: ZeropsGroup,
@@ -1739,7 +1740,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
     const state = changeState(pull);
     const action = withMerge ? (
       <ZeropsMateVerb
-        label={REVIEW_LABEL}
+        label={changeRowVerb(projectFlow.pending, group.groupId, pull)}
         onClick={(event) => {
           openReview(
             {

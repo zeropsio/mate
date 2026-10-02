@@ -438,9 +438,10 @@ export function releaseContentsSentence(summary: ReleaseContentsSummary): string
 
 /** A verb the person runs on the flow, as the surfaces key its progress. */
 export type FlowVerb =
+  /** A change of the application `groupId`, merged or closed without merging in HQ. */
   | {
-      readonly kind: "merge";
-      readonly slug: string;
+      readonly kind: "merge" | "close";
+      readonly groupId: string;
       readonly repository: string;
       readonly number: number;
     }
@@ -455,7 +456,8 @@ export type FlowVerb =
 export function flowVerbKey(verb: FlowVerb): string {
   switch (verb.kind) {
     case "merge":
-      return `merge ${verb.slug}/${verb.repository}#${verb.number}`;
+    case "close":
+      return `${verb.kind} ${verb.groupId}/${verb.repository}#${verb.number}`;
     case "release":
       return `release ${verb.groupId}`;
     case "roll-back":
@@ -463,8 +465,11 @@ export function flowVerbKey(verb: FlowVerb): string {
   }
 }
 
-/** The verb's word on a row: what it does, or what it is doing while it runs. */
-export function flowVerbLabel(kind: FlowVerb["kind"], running: boolean): string {
+/**
+ * The verb's word on a row: what it does, or what it is doing while it runs. A change is closed
+ * only from its review, which says so in its own words.
+ */
+export function flowVerbLabel(kind: Exclude<FlowVerb["kind"], "close">, running: boolean): string {
   switch (kind) {
     case "merge":
       return running ? "Merging…" : "Merge";

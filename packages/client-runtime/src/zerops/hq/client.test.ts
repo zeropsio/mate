@@ -628,6 +628,46 @@ describe("makeHqApi — a Mate's changes, as the person reads them", () => {
     expect(hq.seen.at(-1)).toMatchObject({ method: "POST", body: { body: "Ship it" } });
   });
 
+  // A merge takes only the head the person was shown; HQ answers the change as it now stands.
+  it("merges a change as the person, with the head they were shown", async () => {
+    const MERGED = {
+      ...CHANGE,
+      state: "merged",
+      mergedSha: "c".repeat(40),
+      landedHead: SHA,
+      mergedAt: "2026-10-02T09:10:00.000Z",
+      mergeability: "already_merged",
+    } as const;
+    const { hq, api: hqApi } = api((seen) =>
+      seen.path === "/api/apps/app-1/changes/app/3/merge" ? json(200, MERGED) : undefined,
+    );
+    await expect(hqApi.mergeChange(LINK, SHA)).resolves.toEqual(MERGED);
+    expect(hq.seen.at(-1)).toMatchObject({
+      method: "POST",
+      authorization: "Bearer session-1",
+      body: { expectedHead: SHA },
+    });
+  });
+
+  it("closes a change without merging it, as the person", async () => {
+    const CLOSED = { ...CHANGE, state: "closed", closedAt: "2026-10-02T09:10:00.000Z" } as const;
+    const { hq, api: hqApi } = api((seen) =>
+      seen.path === "/api/apps/app-1/changes/app/3/close" ? json(200, CLOSED) : undefined,
+    );
+    await expect(hqApi.closeChange(LINK)).resolves.toEqual(CLOSED);
+    expect(hq.seen.at(-1)).toMatchObject({ method: "POST", authorization: "Bearer session-1" });
+  });
+
+  it("says why HQ did not merge in words of its own", async () => {
+    const { api: hqApi } = api(() => json(409, { code: "conflict", reason: "head_moved" }));
+    await expect(hqApi.mergeChange(LINK, SHA)).rejects.toMatchObject({
+      kind: "refused",
+      code: "conflict",
+      status: 409,
+      message: "Its Mate pushed to it since you opened it. Review it again.",
+    });
+  });
+
   it("fetches a change's picture with the session, as the picture it is", async () => {
     const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47]);
     const { hq, api: hqApi } = api((seen) =>

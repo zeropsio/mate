@@ -36,6 +36,8 @@ import {
 /** What acting directly looks like in a door's source: a flow verb or a crew landing. */
 const ACTS = [
   ".mergePullRequest(",
+  ".merge(",
+  ".close(",
   ".release(",
   ".rollBack(",
   '_tag: "land"',
