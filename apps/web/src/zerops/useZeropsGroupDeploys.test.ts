@@ -667,6 +667,32 @@ describe("a listing that does not answer", () => {
   });
 });
 
+// Live, 2026-10-02 (pass 32 review): a project made a moment ago is read at once, before the
+// broker has made its group's org — there is no group repo to read yet, and nothing failed.
+describe("a group whose org the broker has not made yet", () => {
+  it("declares nothing and asks nothing more than the listing", async () => {
+    const { client: base, calls } = listedGroupRepo();
+    const client = {
+      ...base,
+      listOrganizationRepositories: async () => {
+        calls.push("repos");
+        throw new GiteaApiError("Gitea answered 404.", 404);
+      },
+    } as unknown as GiteaClient;
+    const update = await readGroupDeploys({
+      client,
+      group: GROUP,
+      scope: "group",
+      readVersion: async () => SHA,
+      held: undefined,
+      signal: new AbortController().signal,
+      reads: createForgeReads(),
+    });
+    expect(calls).toEqual(["repos"]);
+    expect(update(undefined)?.declarations).toEqual([]);
+  });
+});
+
 describe("a late check on a deploy's commit", () => {
   afterEach(() => {
     vi.useRealTimers();

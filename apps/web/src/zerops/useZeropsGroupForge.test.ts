@@ -10,6 +10,7 @@ import { flowVerbInvalidations } from "@t3tools/client-runtime/zerops/flow";
 import {
   createForgeReads,
   createMergeabilityTracker,
+  GATE_FRESH_MS,
   TAGS_MAX_AGE_MS,
   type MergeabilityTracker,
 } from "@t3tools/client-runtime/zerops/forge";
@@ -207,6 +208,28 @@ describe("readForge", () => {
       merged: [],
       released: { releases: [], tags: [] },
     });
+  });
+
+  it("fails the read of an org it listed before that answers 404 now, keeping what it held", async () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(Date.parse("2026-10-02T12:00:00Z"));
+      const reads = createForgeReads();
+      const { client } = forge();
+      await readForge(client, "harbor", "group", createMergeabilityTracker(), reads);
+      vi.advanceTimersByTime(GATE_FRESH_MS + 1);
+      const gone = {
+        ...client,
+        listOrganizationRepositories: async () => {
+          throw new GiteaApiError("Gitea answered 404.", 404);
+        },
+      } as unknown as GiteaClient;
+      await expect(
+        readForge(gone, "harbor", "group", createMergeabilityTracker(), reads),
+      ).rejects.toThrow("404");
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("shows the pull requests, and why the releases are missing, when the tags never answered", async () => {

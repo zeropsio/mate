@@ -430,12 +430,15 @@ export async function readForge(
     const released = await readReleases(client, slug, reads);
     return (held) => (held === undefined ? undefined : { ...held, released });
   }
+  // Read before the listing is asked: its own 404 is recorded as "not made" (`ForgeReads`).
+  const made = reads.organizations().get(slug) === true;
   const listed = await reads
     .repositories(slug, () => client.listOrganizationRepositories(slug))
     .catch((cause: unknown) => {
       // The broker has not made its org yet (`ForgeReads.organizations`): there is nothing to
-      // read, and nothing failed — its row says it is being set up.
-      if (giteaNotFound(cause)) return null;
+      // read, and nothing failed — its row says it is being set up. An org listed before that
+      // answers 404 now is a failure, and what was held stays.
+      if (giteaNotFound(cause) && !made) return null;
       throw cause;
     });
   if (listed === null) return () => NOTHING_YET;
