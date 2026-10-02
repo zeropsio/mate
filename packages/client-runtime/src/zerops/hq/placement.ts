@@ -26,22 +26,29 @@ export type HqPlacement =
   /** A Mate HQ holds in no application (`HqStructure.ungrouped`). */
   | { readonly appId: null; readonly appName: null; readonly kind: "mate"; readonly mate: HqMate };
 
-const PROJECT_KINDS: ReadonlySet<string> = new Set<RoleProjectKind>([
-  "mate",
-  "stage",
-  "production",
-]);
+/** Every kind this build reads: a kind HQ adds later places nothing here until it does. */
+const PROJECT_KINDS: Readonly<Record<RoleProjectKind, true>> = {
+  mate: true,
+  devstage: true,
+  stage: true,
+  production: true,
+};
+
+/** Whether HQ's `kind` is one this build reads. */
+export const isRoleProjectKind = (kind: string): kind is RoleProjectKind =>
+  Object.hasOwn(PROJECT_KINDS, kind);
 
 /** Each project HQ places, by its id; a kind this build does not know places nothing. */
 export function placementsOf(structure: HqStructure): ReadonlyMap<string, HqPlacement> {
   const placements = new Map<string, HqPlacement>();
   for (const app of structure.apps) {
     for (const project of app.projects) {
-      if (!PROJECT_KINDS.has(project.kind)) continue;
+      const { kind } = project;
+      if (!isRoleProjectKind(kind)) continue;
       placements.set(project.projectId, {
         appId: app.id,
         appName: app.name,
-        kind: project.kind as RoleProjectKind,
+        kind,
         mate: project.mate,
       });
     }

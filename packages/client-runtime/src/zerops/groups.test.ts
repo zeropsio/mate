@@ -7,6 +7,7 @@ import {
   deriveZeropsGroups,
   formatMateFace,
   generateZeropsGroupId,
+  kindOfRole,
   readMateFace,
   readZeropsMembership,
   withZeropsClosedOffTag,
@@ -60,6 +61,11 @@ describe("readZeropsMembership", () => {
       name: "reads a stage HQ places as the stage",
       input: { hq: placed("abc", "stage") },
       expected: { groupId: "abc", role: "stage" },
+    },
+    {
+      name: "reads a Mate that is also its application's stage as a Mate, in the dev/stage role",
+      input: { hq: placed("abc", "devstage", { mate: { name: "Ada", face: "" } }) },
+      expected: { mate: true, groupId: "abc", role: "devstage", bot: "Ada" },
     },
     {
       name: "is absent for a project HQ does not place",
@@ -142,6 +148,17 @@ describe("readZeropsMembership", () => {
       standUp: undefined,
       face: undefined,
     });
+  });
+});
+
+describe("kindOfRole — what HQ calls a project placed for a role", () => {
+  it.each([
+    ["dev", "mate"],
+    ["devstage", "devstage"],
+    ["stage", "stage"],
+    ["prod", "production"],
+  ] as const)("%s is %s", (role, kind) => {
+    expect(kindOfRole(role)).toBe(kind);
   });
 });
 

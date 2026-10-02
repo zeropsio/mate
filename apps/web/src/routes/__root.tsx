@@ -39,6 +39,7 @@ import { ThemeEditorHost } from "../components/settings/ThemeEditorHost";
 import { ZeropsHostedLanding } from "../components/zerops/landing/ZeropsHostedLanding";
 import { ZeropsNewMateHost } from "../components/zerops/ZeropsNewMateHost";
 import { ZeropsNewProjectHost } from "../components/zerops/ZeropsNewProjectHost";
+import { ZeropsHqGate } from "../components/zerops/ZeropsHqGate";
 import { Button } from "../components/ui/button";
 import {
   AnchoredToastProvider,
@@ -88,6 +89,7 @@ import { MateLinkStage } from "../components/zerops/MateLinkStage";
 import { RouteStandIn } from "../components/zerops/RouteStandIn";
 import { resolveThreadRouteRef } from "../threadRoutes";
 import { RouteGateView } from "./-routeGate";
+import { useHqGate } from "../zerops/hqGate";
 import { installMateDiagnostics } from "~/zerops/diagnostics";
 import { useHeldPast } from "~/zerops/useHeldPast";
 import { useNowMs } from "~/zerops/useNowMs";
@@ -168,6 +170,7 @@ function SignedInRootRouteView() {
         : EnvironmentId.make(routeEnvironmentId),
   );
   const gate = selectRouteGate(gateInputs.target);
+  const { gate: hqGate } = useHqGate(pathname);
   const nowMs = useNowMs();
   const gatePhrase = routeGatePhrase(gate, { nowMs, mateName: gateInputs.mateName });
   // The link's one voice (`mateVoice`): the banner over a mounted conversation, the stage where
@@ -261,33 +264,42 @@ function SignedInRootRouteView() {
     <ZeropsReviewProvider>
       <CommandPalette>
         <AppSidebarLayout>
-          <RouteGateView
-            gate={gate}
-            phrase={gatePhrase}
-            projectId={gateInputs.projectId}
-            conversation={conversation}
-            voice={voice}
-            stage={
-              gate.kind === "wait" ? (
-                <MateLinkStage
-                  composer={
-                    routeThreadRef === null ? null : <RouteStandIn threadRef={routeThreadRef} />
-                  }
-                  environmentId={routeEnvironment}
-                  projectId={gateInputs.projectId}
-                  voice={voice.surface === "none" ? SILENT_STAGE : voice}
-                />
-              ) : null
-            }
-          >
-            <Outlet />
-          </RouteGateView>
+          {/* The organization's gate (ADR 0001): no product without its HQ. */}
+          {hqGate.kind !== "open" ? (
+            <ZeropsHqGate gate={hqGate} />
+          ) : (
+            <RouteGateView
+              gate={gate}
+              phrase={gatePhrase}
+              projectId={gateInputs.projectId}
+              conversation={conversation}
+              voice={voice}
+              stage={
+                gate.kind === "wait" ? (
+                  <MateLinkStage
+                    composer={
+                      routeThreadRef === null ? null : <RouteStandIn threadRef={routeThreadRef} />
+                    }
+                    environmentId={routeEnvironment}
+                    projectId={gateInputs.projectId}
+                    voice={voice.surface === "none" ? SILENT_STAGE : voice}
+                  />
+                ) : null
+              }
+            >
+              <Outlet />
+            </RouteGateView>
+          )}
         </AppSidebarLayout>
         {/* The New Mate dialog over whatever is on screen — every "Add a Mate" asks here — and a
             new Mate's hand-over to its conversation; the New project dialog, of its family, the
-            same way for every "New project". */}
-        <ZeropsNewMateHost />
-        <ZeropsNewProjectHost />
+            same way for every "New project". Neither behind the organization's gate. */}
+        {hqGate.kind === "open" ? (
+          <>
+            <ZeropsNewMateHost />
+            <ZeropsNewProjectHost />
+          </>
+        ) : null}
       </CommandPalette>
     </ZeropsReviewProvider>
   );

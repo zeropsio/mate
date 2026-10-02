@@ -78,34 +78,13 @@ describe("newMateNext — what happens once a Mate is added", () => {
   });
 });
 
-// A new project: HQ first where the organization has none — for all the team's projects, and the
-// project is registered in it — then the project and its first Mate, then the person signs it in
-// and tells it what to build.
+// A new project: the project and its first Mate, then the person signs it in and tells it what to
+// build.
 describe("newProjectNext — what happens once a project is created", () => {
   it.each([
     {
-      case: "the organization's first project: its HQ first",
-      input: {
-        projectName: "Acme Shop",
-        botName: "Vera",
-        organizationName: "Mate s.r.o.",
-        withHq: true,
-      },
-      steps: [
-        ["Mate s.r.o. gets its HQ, for all its projects", "about 3 min"],
-        ["Then Acme Shop and Vera come up", "about 1½–2 min"],
-        ["You sign Vera in with your Claude or ChatGPT subscription", undefined],
-        ["You tell Vera what to build", undefined],
-      ],
-    },
-    {
-      case: "HQ there already: the project and its Mate",
-      input: {
-        projectName: "Acme Shop",
-        botName: "Vera",
-        organizationName: "Mate s.r.o.",
-        withHq: false,
-      },
+      case: "the project and its Mate",
+      input: { projectName: "Acme Shop", botName: "Vera" },
       steps: [
         ["Acme Shop and Vera come up", "about 1½–2 min"],
         ["You sign Vera in with your Claude or ChatGPT subscription", undefined],
@@ -114,10 +93,9 @@ describe("newProjectNext — what happens once a project is created", () => {
     },
     {
       case: "nothing named yet: the project and the Mate",
-      input: { projectName: " ", botName: "", organizationName: undefined, withHq: true },
+      input: { projectName: " ", botName: "" },
       steps: [
-        ["Your team gets its HQ, for all its projects", "about 3 min"],
-        ["Then the project and the Mate come up", "about 1½–2 min"],
+        ["The project and the Mate come up", "about 1½–2 min"],
         ["You sign the Mate in with your Claude or ChatGPT subscription", undefined],
         ["You tell the Mate what to build", undefined],
       ],
@@ -135,14 +113,7 @@ describe("what happens next — in the person's words", () => {
     ...(["recipe", "reading", "none"] as const).map((recipe) =>
       newMateNext({ groupName: "Beviro", botName: "Wren", recipe }),
     ),
-    ...[true, false].map((withHq) =>
-      newProjectNext({
-        projectName: "Acme Shop",
-        botName: "Vera",
-        organizationName: "Mate s.r.o.",
-        withHq,
-      }),
-    ),
+    newProjectNext({ projectName: "Acme Shop", botName: "Vera" }),
   ];
   it.each(["container", "zcp", "recipe", "deployed", "import", "service"])(
     "never says '%s'",
@@ -160,12 +131,7 @@ describe("what happens next — in the person's words", () => {
 describe("what happens next — the sign-in step", () => {
   it.each([
     newMateNext({ groupName: "Beviro", botName: "Wren", recipe: "recipe" }),
-    newProjectNext({
-      projectName: "Acme Shop",
-      botName: "Wren",
-      organizationName: "Mate s.r.o.",
-      withHq: false,
-    }),
+    newProjectNext({ projectName: "Acme Shop", botName: "Wren" }),
   ])("names the subscriptions it offers", (next) => {
     const step = next.steps.find((each) => each.phrase !== undefined);
     expect(step?.phrase?.map((part) => part.text).join("")).toBe(step?.words);

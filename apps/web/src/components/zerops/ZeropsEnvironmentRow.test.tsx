@@ -130,6 +130,7 @@ describe("stopLinkOf", () => {
     ["a production of a group", "aaa", "prod", { groupId: "aaa", projectId: "p1" }],
     ["a stage of a group", "aaa", "stage", { groupId: "aaa", projectId: "p1" }],
     ["a dev box of a group", "aaa", "dev", undefined],
+    ["a dev/stage of a group", "aaa", "devstage", undefined],
     ["an environment with no role", "aaa", undefined, undefined],
     ["a production no group holds", undefined, "prod", undefined],
   ] as const)("links %s: %j", (_name, groupId, role, link) => {

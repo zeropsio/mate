@@ -13,12 +13,7 @@
 import type { RoleProjectKind } from "@t3tools/shared/zeropsRoles";
 
 import type { HqStructure } from "./client.ts";
-
-const PROJECT_KINDS: ReadonlySet<string> = new Set<RoleProjectKind>([
-  "mate",
-  "stage",
-  "production",
-]);
+import { isRoleProjectKind } from "./placement.ts";
 
 export interface ZeropsRegistryProject {
   readonly projectId: string;
@@ -48,10 +43,8 @@ export function registryFromHq(structure: HqStructure): ZeropsRegistry {
       groupId: app.id,
       name: app.name,
       slug: app.id,
-      projects: app.projects.flatMap((project) =>
-        PROJECT_KINDS.has(project.kind)
-          ? [{ projectId: project.projectId, kind: project.kind as RoleProjectKind }]
-          : [],
+      projects: app.projects.flatMap(({ projectId, kind }) =>
+        isRoleProjectKind(kind) ? [{ projectId, kind }] : [],
       ),
     })),
   };

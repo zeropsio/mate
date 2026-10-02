@@ -9,7 +9,6 @@
  *   (SPEC §4); chat and terminal to the Mates do not go through HQ and keep working.
  * - **A stream that breaks, ends or stays silent** past HQ's pings (every 20 s) is opened
  *   again, a little later each time it fails, and starts over from a fresh snapshot.
- * - **No HQ:** an organization whose member list names none has the empty structure, known.
  */
 import { RegistryContext } from "@effect/atom-react";
 import {
@@ -30,8 +29,6 @@ import { useZeropsSession } from "./ZeropsSessionProvider";
 export const HQ_STREAM_SILENCE_MS = 60_000;
 /** How long a stream that failed waits before it is opened again, by failures in a row. */
 export const HQ_STREAM_RETRY_MS: ReadonlyArray<number> = [1_000, 2_000, 5_000, 10_000, 30_000];
-
-const EMPTY: HqStructure = { ungrouped: [], apps: [] };
 
 /**
  * Reads the organization's structure from its HQ until `signal` aborts, telling `publish` of every
@@ -158,8 +155,6 @@ export function ZeropsHqStructure(): null {
   const accountHq = useAccountHq(organizationId);
   const hqProjectId = accountHq.hq.kind === "official" ? accountHq.hq.projectId : undefined;
   const hqAddress = accountHq.hq.kind === "official" ? accountHq.hq.address : undefined;
-  /** The member list answered, and names no HQ to read. */
-  const none = accountHq.status === "ready" && accountHq.hq.kind !== "official";
 
   useEffect(() => {
     if (organizationId === undefined) {
@@ -174,12 +169,13 @@ export function ZeropsHqStructure(): null {
             structure: { ungrouped: remembered.ungrouped, apps: remembered.apps },
             readAt: remembered.readAt,
           };
+    // Until the member list names the organization's HQ: what this browser read of it last.
     if (hqProjectId === undefined || hqAddress === undefined) {
       registry.set(hqStructureAtom, {
         organizationId,
-        structure: none ? EMPTY : (kept?.structure ?? null),
-        readAt: none ? Date.now() : (kept?.readAt ?? null),
-        current: none,
+        structure: kept?.structure ?? null,
+        readAt: kept?.readAt ?? null,
+        current: false,
         unavailableSince: null,
       });
       return;
@@ -199,7 +195,7 @@ export function ZeropsHqStructure(): null {
       signal: stop.signal,
     });
     return () => stop.abort();
-  }, [client, hqAddress, hqProjectId, none, organizationId, registry]);
+  }, [client, hqAddress, hqProjectId, organizationId, registry]);
 
   return null;
 }

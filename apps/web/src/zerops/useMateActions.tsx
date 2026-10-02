@@ -85,10 +85,7 @@ import {
 } from "../components/zerops/ZeropsDeleteMateDialog.logic";
 import { ZeropsMoveToGroupDialog } from "../components/zerops/ZeropsMoveToGroupDialog";
 import { ZeropsRenameDialog } from "../components/zerops/ZeropsRenameDialog";
-import {
-  NO_HQ_LINE,
-  validateBotName,
-} from "../components/zerops/ZeropsEnvironmentCreationDialog.logic";
+import { validateBotName } from "../components/zerops/ZeropsEnvironmentCreationDialog.logic";
 import type { MoveMembership } from "../components/zerops/ZeropsMoveToGroupDialog.logic";
 import { useEnvironmentLinks } from "../routes/-environmentTargets";
 import { resolveThreadRouteTarget } from "../threadRoutes";
@@ -100,7 +97,7 @@ import {
   settleDeletingMates,
   useDeletingMates,
 } from "./deletingMates";
-import { accountHqApi, useAccountHq } from "./accountHq";
+import { accountHqApi, officialHq, useAccountHq } from "./accountHq";
 import { useProjectDialog } from "./inventoryContext";
 import { captureAccountLifetime } from "./accountLifetime";
 import { rememberMenu, withoutMate } from "./menuMemory";
@@ -259,7 +256,6 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
   const projectOrder = useProjectOrderOptions();
 
   const accountHq = useAccountHq(activeOrganization?.id);
-  const hq = accountHq.hq.kind === "official" ? accountHq.hq : undefined;
   const presses = useMatePresses();
   // A press interrupted before its close-off, on a Mate made in any browser: the store's markers,
   // at no cost of their own, for anyone who could finish it — its own adder too.
@@ -403,9 +399,9 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
 
   /** HQ's API, where a Mate's name and face and its application live (ADR 0002). */
   const hqApi = useCallback(() => {
-    if (activeOrganization === null || hq === undefined) throw new Error(NO_HQ_LINE);
-    return accountHqApi(client, activeOrganization.id, hq);
-  }, [activeOrganization, client, hq]);
+    if (activeOrganization === null) throw new Error("No organization is open.");
+    return accountHqApi(client, activeOrganization.id, officialHq(accountHq));
+  }, [accountHq, activeOrganization, client]);
 
   const rename = useCallback(
     (candidate: ZeropsCandidatePresentation, name: string) => {
@@ -552,10 +548,10 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
             harden,
             // A Mate in no group — claimed from the pool — is hardened and closed off, no more.
             registration:
-              !whole || hq === undefined || groupId === undefined
+              !whole || groupId === undefined
                 ? null
                 : {
-                    hq,
+                    hq: officialHq(accountHq),
                     groupId,
                     kind: "mate",
                     displayName: candidate.project.name,
@@ -575,10 +571,10 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
       );
     },
     [
+      accountHq,
       activeOrganization,
       client,
       groupTree.groups,
-      hq,
       listedTokens,
       organizationRef,
       projectRef,

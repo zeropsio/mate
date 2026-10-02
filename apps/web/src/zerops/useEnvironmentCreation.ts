@@ -26,8 +26,7 @@ import { ZeropsServiceId, type AgentsCellRequest } from "@t3tools/client-runtime
 import { useCallback, useEffect, useRef } from "react";
 
 import type { EnvironmentCreationChoice } from "../components/zerops/ZeropsEnvironmentCreationDialog";
-import { NO_HQ_LINE } from "../components/zerops/ZeropsEnvironmentCreationDialog.logic";
-import { useAccountHq } from "./accountHq";
+import { officialHq, useAccountHq } from "./accountHq";
 import { invalidateZerops } from "./accountInvalidations";
 import { captureAccountLifetime } from "./accountLifetime";
 import { useAccountGitea } from "./giteaProject";
@@ -101,7 +100,6 @@ export function useEnvironmentCreation(): (
     inventoryRef.current = inventory;
   }, [inventory]);
   const accountHq = useAccountHq(activeOrganization?.id);
-  const hq = accountHq.hq.kind === "official" ? accountHq.hq : undefined;
   // A stage or a production is still declared where the organization has a Gitea project: read
   // exactly as that project states it, never guessed.
   const accountGitea = useAccountGitea(activeOrganization?.id);
@@ -145,7 +143,7 @@ export function useEnvironmentCreation(): (
   return useCallback(
     async (request: EnvironmentCreationRequest): Promise<EnvironmentCreationRun> => {
       if (activeOrganization === null) return { kind: "refused", reason: null };
-      if (hq === undefined) return { kind: "refused", reason: NO_HQ_LINE };
+      const hq = officialHq(accountHq);
       const organization = activeOrganization;
       const isCurrent = captureAccountLifetime();
       const { group, role, choice } = request;
@@ -237,11 +235,11 @@ export function useEnvironmentCreation(): (
       return { kind: "ran", outcome, withAgent };
     },
     [
+      accountHq,
       activeOrganization,
       client,
       giteaOrigin,
       giteaProjectId,
-      hq,
       organizationRef,
       projectRef,
       readGroupAgents,

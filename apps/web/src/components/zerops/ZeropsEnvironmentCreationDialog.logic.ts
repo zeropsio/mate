@@ -4,9 +4,7 @@
 
 import {
   botDisplayName,
-  canWriteRegistry,
   GROUP_REPOSITORY,
-  HQ_UNCLEAR,
   hasMate,
   isRecipeProposal,
   readZeropsMembership,
@@ -20,8 +18,6 @@ import {
 } from "@t3tools/client-runtime/zerops";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import { crewPossessive } from "@t3tools/client-runtime/zerops/crew/phrases";
-import type { OfficialHq } from "@t3tools/client-runtime/zerops/hq";
-import { mateMemberName, type MateOwnerCandidate } from "@t3tools/client-runtime/zerops/mateAccess";
 import type { TakenBotNames } from "@t3tools/client-runtime/zerops/projections";
 import { MATE_SHAPE_OF_TINT, type MateShapeId, type MateTintId } from "@t3tools/shared/brand";
 
@@ -392,45 +388,6 @@ export function newMateDoor(input: {
     reason: `${groupName} has no recipe yet. ${crewPossessive(groupName)} Mates write it when one of them finishes setting ${groupName} up.`,
     action: undefined,
   };
-}
-
-/** An organization with no HQ takes no environment (ADR 0001). */
-export const NO_HQ_LINE = "This organization has no HQ yet, and a Mate works only with one.";
-
-/**
- * An organization with no HQ takes no Mate (ADR 0001): an owner or an admin is told where to set
- * it up, anybody else whom to ask. One whose member list marks two projects as its HQ takes none
- * either. `undefined` where its HQ stands.
- */
-export function newMateDoorWithoutHq(input: {
-  readonly hq: OfficialHq;
-  /** The viewer's org role, as the platform spells it. */
-  readonly viewerRole: string | undefined;
-  /** The org's owners and admins (`ownersAndAdmins`). */
-  readonly admins: ReadonlyArray<MateOwnerCandidate>;
-}): NewMateDoorClosed | undefined {
-  switch (input.hq.kind) {
-    case "official":
-      return undefined;
-    case "unclear":
-      return { kind: "closed", reason: HQ_UNCLEAR, action: undefined };
-    case "none": {
-      if (canWriteRegistry({ roleCode: input.viewerRole })) {
-        return {
-          kind: "closed",
-          reason: `${NO_HQ_LINE} Set it up under Tools on your projects page.`,
-          action: undefined,
-        };
-      }
-      const names = input.admins.flatMap((admin) => mateMemberName(admin) ?? []);
-      const who = names.length === 0 ? "an owner or admin" : names.join(" or ");
-      return {
-        kind: "closed",
-        reason: `${NO_HQ_LINE} Ask ${who} to set it up.`,
-        action: undefined,
-      };
-    }
-  }
 }
 
 /**

@@ -2,8 +2,6 @@ import { act, createElement as h, type ReactNode } from "react";
 import { create, type ReactTestRenderer, type ReactTestRendererJSON } from "react-test-renderer";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
-import { HQ_BIRTH_START } from "@t3tools/client-runtime/zerops/hq";
-
 import { useNewProjectBirths, type NewProjectBirth } from "~/zerops/newProjectBirth";
 
 import { ZeropsNewProjectComingPage } from "./ZeropsNewProjectComingPage";
@@ -58,7 +56,7 @@ vi.mock("../ui/button", () => ({
   }) => h("button", { onClick }, children),
 }));
 
-/** Acme CRM, pressed a moment ago in an organization with no HQ: standing it up. */
+/** Acme CRM, pressed a moment ago: registering it in the organization's HQ. */
 const ACME: NewProjectBirth = {
   organizationId: "org-acme",
   birthId: "b-acme",
@@ -68,11 +66,9 @@ const ACME: NewProjectBirth = {
   locationId: null,
   agents: [],
   startedAt: Date.parse("2026-09-30T10:00:00.000Z"),
-  withHq: true,
-  hqBirth: HQ_BIRTH_START,
-  hq: null,
+  hq: { projectId: "hq-1", address: "https://hq-1-8080.prg1.zerops.app" },
   appId: null,
-  step: "hq",
+  step: "registry",
   failed: null,
   projectId: null,
 };
@@ -135,8 +131,8 @@ describe("a New project's first Mate, before its project exists", () => {
     expect(kind()).toBe("coming");
     expect(said()).toContain("Vera on Acme CRM");
     // The project's own steps, then its first Mate's workspace, then the person's own sign-in.
-    expect(steps()).toEqual(["hq:active", "registry:waiting", "workspace:waiting", "you:you"]);
-    expect(said()).toContain("HQ");
+    expect(steps()).toEqual(["registry:active", "workspace:waiting", "you:you"]);
+    expect(said()).toContain("Acme CRM");
     expect(said()).toContain("Vera's workspace");
     expect(said()).toContain("You sign Vera in with your Claude or ChatGPT subscription");
     expect(app.navigate).not.toHaveBeenCalled();
@@ -145,8 +141,6 @@ describe("a New project's first Mate, before its project exists", () => {
   it("hands the route to its Mate's own view the moment the platform takes its project, in place of this one", () => {
     hold({
       ...ACME,
-      withHq: false,
-      hq: { projectId: "hq-1", address: "https://hq-1-8080.prg1.zerops.app" },
       appId: "app-acme",
       step: "create",
     });

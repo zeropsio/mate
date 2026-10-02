@@ -78,6 +78,17 @@ export function useAccountHq(clientId: string | undefined): AccountHq {
 const apis = new Map<string, HqApi>();
 onAccountLifetimeClose(() => apis.clear());
 
+/**
+ * The organization's HQ, for a write in the product: the product opens only over an official HQ
+ * (`hqGate.ts`), so this is that HQ; anywhere else it is a mistake, and throws.
+ */
+export function officialHq(accountHq: Pick<AccountHq, "hq">): HqEndpoint {
+  if (accountHq.hq.kind !== "official") {
+    throw new Error("This organization's HQ is not open here.");
+  }
+  return accountHq.hq;
+}
+
 /** HQ's structure socket, as this browser opens it. */
 const openBrowserSocket: OpenHqSocket = (url, on) => {
   const socket = new WebSocket(url);

@@ -1,5 +1,4 @@
 import { deriveBirthProgress } from "@t3tools/client-runtime/zerops/birthProgress";
-import { HQ_BIRTH_START, type HqBirthRecord } from "@t3tools/client-runtime/zerops/hq";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { closeAccountLifetime, openAccountLifetime } from "./accountLifetime";
@@ -45,8 +44,6 @@ function birth(over: Partial<NewProjectBirth> = {}): NewProjectBirth {
   return {
     ...ASK,
     startedAt: PRESSED_AT,
-    withHq: false,
-    hqBirth: HQ_BIRTH_START,
     hq: HQ,
     appId: null,
     step: "registry",
@@ -55,19 +52,6 @@ function birth(over: Partial<NewProjectBirth> = {}): NewProjectBirth {
     ...over,
   };
 }
-
-/** The same creation in an organization that had no HQ when Create was pressed. */
-const bare = (over: Partial<NewProjectBirth> = {}) =>
-  birth({ withHq: true, hq: null, step: "hq", ...over });
-
-/** HQ's birth at its deploy. */
-const DEPLOYING: HqBirthRecord = {
-  step: "deploy",
-  projectId: "hq-1",
-  serviceId: "svc-hq",
-  address: HQ.address,
-  deployProcessId: null,
-};
 
 const NO_ROOM = { reason: "No room in this account.", uncertain: false } as const;
 
@@ -82,49 +66,19 @@ describe("a New project's own steps, before its first Mate's", () => {
     readonly steps: ReadonlyArray<readonly [string, string, string, string | undefined]>;
   }>([
     {
-      case: "an organization with HQ registers the project, under its name",
+      case: "it registers the project in HQ, under its name",
       birth: birth(),
       steps: [["registry", "Acme CRM", "active", "Registering the project"]],
     },
     {
-      case: "an organization without stands HQ up first",
-      birth: bare(),
-      steps: [
-        ["hq", "HQ", "active", "Creating HQ's project"],
-        ["registry", "Acme CRM", "waiting", undefined],
-      ],
-    },
-    {
-      case: "HQ's line says which of its steps runs",
-      birth: bare({ hqBirth: DEPLOYING }),
-      steps: [
-        ["hq", "HQ", "active", "Deploying HQ"],
-        ["registry", "Acme CRM", "waiting", undefined],
-      ],
-    },
-    {
-      case: "an HQ that could not be stood up says why, and nothing after it begins",
-      birth: bare({ failed: NO_ROOM }),
-      steps: [
-        ["hq", "HQ", "failed", "No room in this account."],
-        ["registry", "Acme CRM", "waiting", undefined],
-      ],
-    },
-    {
       case: "a registration that stopped says why",
-      birth: birth({ withHq: true, failed: NO_ROOM }),
-      steps: [
-        ["hq", "HQ", "done", undefined],
-        ["registry", "Acme CRM", "failed", "No room in this account."],
-      ],
+      birth: birth({ failed: NO_ROOM }),
+      steps: [["registry", "Acme CRM", "failed", "No room in this account."]],
     },
     {
-      case: "creating the Mate's project, the project's own are done",
-      birth: birth({ withHq: true, step: "create" }),
-      steps: [
-        ["hq", "HQ", "done", undefined],
-        ["registry", "Acme CRM", "done", undefined],
-      ],
+      case: "creating the Mate's project, the project's own is done",
+      birth: birth({ step: "create" }),
+      steps: [["registry", "Acme CRM", "done", undefined]],
     },
     {
       case: "once the platform took it, still done",
@@ -154,16 +108,9 @@ describe("how far a New project's creation has got", () => {
       detail: "Registering the project",
     },
     {
-      case: "and while HQ is stood up",
-      birth: bare(),
-      states: ["hq:active", "registry:waiting", ...MATE_STEPS.map((id) => `${id}:waiting`)],
-      detail: "Creating HQ's project",
-    },
-    {
       case: "creating its project is the Mate's own first step",
-      birth: birth({ withHq: true, step: "create" }),
+      birth: birth({ step: "create" }),
       states: [
-        "hq:done",
         "registry:done",
         "project:active",
         ...MATE_STEPS.slice(1).map((id) => `${id}:waiting`),
@@ -208,14 +155,10 @@ describe("how far a New project's creation has got", () => {
       },
       NOW,
     );
-    const progress = newProjectProgress(
-      birth({ withHq: true, step: "created", projectId: "p-vera" }),
-      mate,
-      NOW,
-    );
-    expect(states(progress.steps)).toEqual(["hq:done", "registry:done", ...states(mate.steps)]);
+    const progress = newProjectProgress(birth({ step: "created", projectId: "p-vera" }), mate, NOW);
+    expect(states(progress.steps)).toEqual(["registry:done", ...states(mate.steps)]);
     expect(progress.active?.detail).toBe(mate.active?.detail);
-    expect(progress.doneCount).toBe(mate.doneCount + 2);
+    expect(progress.doneCount).toBe(mate.doneCount + 1);
     // The whole creation's clock, not the Mate's project's.
     expect(progress.startedAt).toBe("2026-09-30T10:00:00.000Z");
   });
@@ -345,7 +288,6 @@ describe("the menu draws it from the press", () => {
 });
 
 const PROJECT = { id: "p-vera", name: "Acme CRM - Vera", status: "ACTIVE" } as const;
-const NEW_HQ = { projectId: "hq-new", address: "https://hq-9-8080.prg1.zerops.app" } as const;
 
 type RegisterArgs = Parameters<NewProjectPorts["registerGroup"]>[0];
 type AcceptedArgs = Parameters<NewProjectPorts["accepted"]>;
@@ -354,13 +296,6 @@ type AcceptedArgs = Parameters<NewProjectPorts["accepted"]>;
 function ports(over: Partial<NewProjectPorts> = {}) {
   const order: Array<string> = [];
   const made: NewProjectPorts = {
-    bearHq: vi.fn(
-      async (_record: HqBirthRecord, moved: (patch: Partial<HqBirthRecord>) => void) => {
-        order.push("hq");
-        moved({ step: "done", projectId: NEW_HQ.projectId, address: NEW_HQ.address });
-        return { ok: true as const, hq: NEW_HQ };
-      },
-    ),
     registerGroup: vi.fn(async ({ hq, name }: RegisterArgs) => {
       order.push(`register:${hq.projectId}:${name}`);
       return { appId: "app-acme" };
@@ -378,33 +313,17 @@ function ports(over: Partial<NewProjectPorts> = {}) {
 }
 
 describe("runNewProjectBirth — the project, then its first Mate", () => {
-  it("stands HQ up where the organization has none, registers the project in it, then creates its Mate", async () => {
+  it("registers the project in the organization's HQ, then creates its Mate", async () => {
     const { order, ports: made } = ports();
     const moved: Array<NewProjectPatch> = [];
-    await runNewProjectBirth(bare(), made, (patch) => moved.push(patch));
+    await runNewProjectBirth(birth(), made, (patch) => moved.push(patch));
     // The registry lives in HQ: the project is registered there before anything is created in it,
     // and its Mate goes into the application HQ named.
-    expect(order).toEqual([
-      "hq",
-      "register:hq-new:Acme CRM",
-      "create",
-      "accepted:p-vera:hq-new:app-acme",
-    ]);
+    expect(order).toEqual(["register:hq-1:Acme CRM", "create", "accepted:p-vera:hq-1:app-acme"]);
     expect(moved).toEqual([
-      {
-        hqBirth: { ...HQ_BIRTH_START, step: "done", projectId: "hq-new", address: NEW_HQ.address },
-      },
-      { step: "registry", hq: NEW_HQ },
       { step: "create", appId: "app-acme" },
       { step: "created", projectId: "p-vera" },
     ]);
-  });
-
-  it("never stands a second HQ up for an organization that has one", async () => {
-    const { order, ports: made } = ports();
-    await runNewProjectBirth(birth(), made, () => undefined);
-    expect(made.bearHq).not.toHaveBeenCalled();
-    expect(order[0]).toBe("register:hq-1:Acme CRM");
   });
 
   it.each<{ readonly case: string; readonly ask: Partial<NewProjectAsk>; readonly args: object }>([
@@ -440,37 +359,6 @@ describe("runNewProjectBirth — the project, then its first Mate", () => {
     readonly order: ReadonlyArray<string>;
     readonly failed: NewProjectPatch["failed"];
   }>([
-    {
-      case: "an HQ that cannot be stood up creates nothing, and names its step",
-      birth: bare(),
-      over: {
-        bearHq: async () => ({
-          ok: false,
-          step: "deploy",
-          reason: "No room in this account.",
-          uncertain: false,
-        }),
-      },
-      order: [],
-      failed: { reason: "Deploying HQ: No room in this account.", uncertain: false },
-    },
-    {
-      case: "an HQ project the platform may have made anyway is kept from being made twice",
-      birth: bare(),
-      over: {
-        bearHq: async () => ({
-          ok: false,
-          step: "project",
-          reason: "Zerops may have accepted this operation.",
-          uncertain: true,
-        }),
-      },
-      order: [],
-      failed: {
-        reason: "Creating HQ's project: Zerops may have accepted this operation.",
-        uncertain: true,
-      },
-    },
     {
       case: "a registration HQ refuses creates nothing, and says why",
       birth: birth(),
@@ -516,14 +404,9 @@ describe("runNewProjectBirth — the project, then its first Mate", () => {
     readonly order: ReadonlyArray<string>;
   }>([
     {
-      case: "HQ's birth, from what it made before",
-      birth: bare({ hqBirth: DEPLOYING }),
-      order: ["hq", "register:hq-new:Acme CRM", "create", "accepted:p-vera:hq-new:app-acme"],
-    },
-    {
-      case: "a registration, in the HQ stood up before",
-      birth: bare({ step: "registry", hq: NEW_HQ }),
-      order: ["register:hq-new:Acme CRM", "create", "accepted:p-vera:hq-new:app-acme"],
+      case: "a registration",
+      birth: birth(),
+      order: ["register:hq-1:Acme CRM", "create", "accepted:p-vera:hq-1:app-acme"],
     },
     {
       case: "its Mate's creation, with nothing before it made again",
@@ -535,8 +418,6 @@ describe("runNewProjectBirth — the project, then its first Mate", () => {
     const { order, ports: fake } = ports();
     await runNewProjectBirth(made, fake, () => undefined);
     expect(order).toEqual(expected);
-    if (made.step === "hq")
-      expect(fake.bearHq).toHaveBeenCalledWith(made.hqBirth, expect.any(Function));
   });
 });
 
@@ -555,20 +436,14 @@ describe("the tab holds a New project's creation until the platform takes it", (
     const { ports: fake } = ports();
     const birthId = beginNewProjectBirth({
       ask: ASK,
-      hq: undefined,
+      hq: HQ,
       ports: fake,
       now: PRESSED_AT,
     });
     expect(birthId).toBe("b-acme");
-    expect(held()).toMatchObject({ step: "hq", withHq: true, startedAt: PRESSED_AT });
+    expect(held()).toMatchObject({ step: "registry", hq: HQ, startedAt: PRESSED_AT });
     await vi.waitFor(() => expect(held()?.projectId).toBe("p-vera"));
-    expect(held()).toMatchObject({
-      step: "created",
-      hq: NEW_HQ,
-      appId: "app-acme",
-      hqBirth: { step: "done" },
-      failed: null,
-    });
+    expect(held()).toMatchObject({ step: "created", hq: HQ, appId: "app-acme", failed: null });
     expect(fake.accepted).toHaveBeenCalledTimes(1);
   });
 
@@ -640,12 +515,11 @@ describe("newProjectPressSteps — a New project's press, as its dialog draws it
 
   it.each([
     {
-      case: "HQ stood up first, where the organization has none",
-      made: bare(),
+      case: "the project being registered first",
+      made: birth(),
       progress: null,
       want: [
-        "HQ:active",
-        "Project registered:waiting",
+        "Project registered:active",
         "Creating the project:waiting",
         "Closed off:waiting",
         "Mate registered:waiting",

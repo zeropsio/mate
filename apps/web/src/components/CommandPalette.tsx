@@ -30,7 +30,7 @@ import {
   type SourceControlProviderKind,
   type SourceControlRepositoryInfo,
 } from "@t3tools/contracts";
-import { useNavigate, useParams } from "@tanstack/react-router";
+import { useLocation, useNavigate, useParams } from "@tanstack/react-router";
 import * as Option from "effect/Option";
 import {
   ArrowLeftIcon,
@@ -142,6 +142,7 @@ import { ThreadRowLeadingStatus, ThreadRowTrailingStatus } from "./ThreadStatusI
 import { SidebarJumpBox } from "./zerops/SidebarJumpBox";
 import { useSidebarJump } from "../zerops/sidebarJump";
 import { askNewProject } from "../zerops/newProjectAsk";
+import { useHqGate } from "../zerops/hqGate";
 import { useZeropsSessionOptional } from "../zerops/ZeropsSessionProvider";
 import { slashKeyOpensJumpBox } from "../zerops/jumpSlash";
 import { primaryServerKeybindingsAtom, primaryServerProvidersAtom } from "../state/server";
@@ -677,6 +678,9 @@ function OpenCommandPaletteDialog(props: {
   readonly onLeaveCommands?: () => void;
 }) {
   const navigate = useNavigate();
+  // Behind the organization's gate (ADR 0001) nothing is offered to make.
+  const pathname = useLocation({ select: (location) => location.pathname });
+  const gated = useHqGate(pathname).gate.kind !== "open";
   const { clearOpenIntent, openIntent, openOverlayMode, setOpen } = props;
   const [query, setQuery] = useState(props.initialQuery ?? "");
   const deferredQuery = useDeferredValue(query);
@@ -1664,17 +1668,19 @@ function OpenCommandPaletteDialog(props: {
     },
   });
 
-  actionItems.push({
-    kind: "action",
-    value: "action:add-project",
-    searchTerms: ["add project", "create", "zerops", "environment"],
-    title: "Create Zerops project",
-    icon: <FolderPlusIcon className={ITEM_ICON_CLASS} />,
-    run: async () => {
-      setOpen(false);
-      askNewProject();
-    },
-  });
+  if (!gated) {
+    actionItems.push({
+      kind: "action",
+      value: "action:add-project",
+      searchTerms: ["add project", "create", "zerops", "environment"],
+      title: "Create Zerops project",
+      icon: <FolderPlusIcon className={ITEM_ICON_CLASS} />,
+      run: async () => {
+        setOpen(false);
+        askNewProject();
+      },
+    });
+  }
 
   const changeThemeItem: CommandPaletteSubmenuItem = {
     kind: "submenu",

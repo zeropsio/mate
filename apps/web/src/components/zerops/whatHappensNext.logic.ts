@@ -7,9 +7,7 @@
  * The times:
  * - a Mate is up in about 1½–2 minutes, ready to be signed in;
  * - a Mate added to a project with code then sets up development, deploying that code, in about
- *   6–10 minutes, by itself;
- * - an organization's first project brings its HQ along, which comes up in about 3 minutes,
- *   before the project and its Mate: the project is registered in it.
+ *   6–10 minutes, by itself.
  *
  * Pure: the words; `WhatHappensNext.tsx` draws them.
  */
@@ -35,7 +33,6 @@ export interface WhatHappensNext {
 
 const MATE_UP = "about 1½–2 min";
 const DEVELOPMENT_UP = "about 6–10 min";
-const HQ_UP = "about 3 min";
 
 /** The Mate as the steps name it: its name as it will be called, or the Mate until it has one. */
 function named(botName: string): { readonly subject: string; readonly object: string } {
@@ -85,29 +82,17 @@ export function newMateNext(input: {
   };
 }
 
-/**
- * Once a project is created: HQ where the organization has none — for all its projects, first —
- * then the project and its first Mate, then its person signs it in, then tells it what to build.
- */
+/** Once a project is created: the project and its first Mate, then its person signs it in, then tells it what to build. */
 export function newProjectNext(input: {
   readonly projectName: string;
   readonly botName: string;
-  /** The account's organization, which the HQ is for. */
-  readonly organizationName: string | undefined;
-  /** The organization has no HQ yet: this project brings it along. */
-  readonly withHq: boolean;
 }): WhatHappensNext {
   const { object } = named(input.botName);
   const project = input.projectName.replace(/\s+/g, " ").trim();
-  const subject = project.length > 0 ? project : input.withHq ? "the project" : "The project";
-  const comeUp = `${input.withHq ? "Then " : ""}${subject} and ${object} come up`;
-  const team = input.organizationName?.trim() || "Your team";
+  const subject = project.length > 0 ? project : "The project";
   return {
     steps: [
-      ...(input.withHq
-        ? [{ words: `${team} gets its HQ, for all its projects`, time: HQ_UP }]
-        : []),
-      { words: comeUp, time: MATE_UP },
+      { words: `${subject} and ${object} come up`, time: MATE_UP },
       signInStep(object),
       { words: `You tell ${object} what to build`, time: undefined },
     ],

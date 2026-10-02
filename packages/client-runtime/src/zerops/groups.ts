@@ -61,17 +61,21 @@ const STAND_UP_TAG_PREFIX = `${MATE_TAG_NAMESPACE}:standup:`;
  */
 export const MATE_MARKER_TAG = MATE_TAG_NAMESPACE;
 
-/** What an environment is for: the place HQ gives its project (`ROLE_OF_KIND`). */
-export type ZeropsEnvironmentRole = "dev" | "stage" | "prod";
+/**
+ * What an environment is for, as HQ places its project (`ROLE_OF_KIND`). Four values rather than
+ * two so a group can say "this one is both my dev box and what I show people" without inventing a
+ * fifth environment.
+ */
+export type ZeropsEnvironmentRole = "dev" | "devstage" | "stage" | "prod";
 
-const ROLE_ORDER: ReadonlyArray<ZeropsEnvironmentRole> = ["dev", "stage", "prod"];
+const ROLE_ORDER: ReadonlyArray<ZeropsEnvironmentRole> = ["dev", "devstage", "stage", "prod"];
 
 /** The longest name a Mate goes by: it is read in a menu row. */
 export const ZEROPS_BOT_NAME_MAX_LENGTH = 24;
 
 /** Where a project belongs and who lives in it: HQ's placement, and the project's own tags. */
 export interface ZeropsMembership {
-  /** A Mate lives here: HQ places it as one, or the project carries the `mate` marker. */
+  /** A Mate lives here: HQ places it as one — dev/stage included — or it carries the `mate` marker. */
   readonly mate: boolean;
   /** Its application in HQ. */
   readonly groupId: string | undefined;
@@ -88,13 +92,21 @@ export interface ZeropsMembership {
 
 const ROLE_OF_KIND: Readonly<Record<RoleProjectKind, ZeropsEnvironmentRole>> = {
   mate: "dev",
+  devstage: "devstage",
   stage: "stage",
   production: "prod",
 };
 
+const KIND_OF_ROLE: Readonly<Record<ZeropsEnvironmentRole, RoleProjectKind>> = {
+  dev: "mate",
+  devstage: "devstage",
+  stage: "stage",
+  prod: "production",
+};
+
 /** What HQ calls a project placed for `role`: a dev place is a Mate's. */
 export function kindOfRole(role: ZeropsEnvironmentRole): RoleProjectKind {
-  return role === "stage" ? "stage" : role === "prod" ? "production" : "mate";
+  return KIND_OF_ROLE[role];
 }
 
 /**
@@ -124,7 +136,8 @@ export function readZeropsMembership(
   const label = app?.appName.trim();
   const name = placed?.mate?.name.trim();
   return {
-    mate: marker || placed?.kind === "mate",
+    // A dev/stage is a Mate too: its project also serves as its application's stage.
+    mate: marker || placed?.kind === "mate" || placed?.kind === "devstage",
     groupId: app?.appId,
     role: app === undefined ? undefined : ROLE_OF_KIND[app.kind],
     label: label === undefined || label === "" ? undefined : label,

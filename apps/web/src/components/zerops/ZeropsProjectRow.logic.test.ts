@@ -261,7 +261,7 @@ describe("deriveZeropsRowAction", () => {
       ).toEqual({ kind: "none" });
     });
 
-    it.each(["dev", undefined] as const)(
+    it.each(["dev", "devstage", undefined] as const)(
       "is offered where a Mate belongs — a %s environment",
       (role) => {
         expect(

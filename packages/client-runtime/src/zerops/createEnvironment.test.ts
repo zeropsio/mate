@@ -30,6 +30,7 @@ function stepKinds(steps: ReadonlyArray<EnvironmentCreationStep>): ReadonlyArray
 describe("defaultAgentForRole", () => {
   it.each([
     { role: "dev", expected: true },
+    { role: "devstage", expected: true },
     // A stage is a deploy target (its form says so); an agent there is the
     // person's decision, like production's (2026-09-17).
     { role: "stage", expected: false },

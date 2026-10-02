@@ -99,7 +99,7 @@ export interface HqStructureView {
   readonly structure: HqStructure | null;
   /** When `structure` was HQ's answer, wall ms. */
   readonly readAt: number | null;
-  /** `structure` is HQ's answer now — or the organization has no HQ, and none to answer. */
+  /** `structure` is HQ's answer now. */
   readonly current: boolean;
   /** When HQ stopped answering, wall ms, while it does not; the last known structure stands. */
   readonly unavailableSince: number | null;

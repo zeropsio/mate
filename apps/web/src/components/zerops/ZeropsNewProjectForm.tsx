@@ -71,10 +71,6 @@ export interface ZeropsNewProjectFormProps {
   readonly takenBotNames: TakenBotNames;
   /** The tint the account gives a new Mate of this name (`newMateTint`). */
   readonly defaultTintFor: (name: string) => MateTintId;
-  /** The account's organization, which its HQ would be for. */
-  readonly organizationName: string | undefined;
-  /** The organization has no HQ yet: this project brings it along. */
-  readonly withHq: boolean;
   /** Create was pressed: its first Mate's view is on its way, and a second press makes nothing. */
   readonly creating: boolean;
   /** Why nothing can be created here, in the form's place; Close is all there is. */
@@ -97,8 +93,6 @@ export function ZeropsNewProjectForm({
   proposeAnotherName,
   takenBotNames: taken,
   defaultTintFor,
-  organizationName,
-  withHq,
   creating,
   closed,
   onCancel,
@@ -216,8 +210,6 @@ export function ZeropsNewProjectForm({
                   next: newProjectNext({
                     projectName: name,
                     botName,
-                    organizationName,
-                    withHq,
                   }),
                   shown: true,
                 },

@@ -532,7 +532,6 @@ export {
   FINISH_MATE_SETUP_VERB,
   finishMateSetupScope,
   finishMateSetupVerb,
-  HQ_UNCLEAR,
   mateAwaitingRegistryLine,
   resolveAddProjectVerb,
   resolveGroupGitea,

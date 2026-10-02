@@ -149,14 +149,14 @@ import {
   ZeropsEnvironmentCreationDialog,
   type EnvironmentCreationChoice,
 } from "./ZeropsEnvironmentCreationDialog";
-import { NO_HQ_LINE, proposedEnvironmentName } from "./ZeropsEnvironmentCreationDialog.logic";
+import { proposedEnvironmentName } from "./ZeropsEnvironmentCreationDialog.logic";
 import { ZeropsProjectMenu, type ZeropsMenuAction } from "./ZeropsProjectMenu";
 import { ZeropsRenameDialog } from "./ZeropsRenameDialog";
 import { useRenameGroup } from "~/zerops/useRenameGroup";
 import { useEnableRoute } from "~/zerops/useEnableRoute";
 import { useMateActions } from "~/zerops/useMateActions";
 import { useZeropsGroupRecipe } from "~/zerops/useZeropsGroupRecipe";
-import { accountHqApi, useAccountHq } from "~/zerops/accountHq";
+import { accountHqApi, officialHq, useAccountHq } from "~/zerops/accountHq";
 import { useAccountGitea } from "~/zerops/giteaProject";
 import { useZeropsGroupEnvironmentReconcile } from "~/zerops/useZeropsGroupEnvironmentReconcile";
 import { useZeropsGroupOrganizations } from "~/zerops/useZeropsGroupOrganizations";
@@ -1063,8 +1063,6 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
       setSettingUpKey(candidate.key);
       setConnectError(null);
       try {
-        // The Mate's record is HQ's: nothing is set up before HQ is known to take it.
-        if (hq === undefined) throw new Error(NO_HQ_LINE);
         const projectId = candidate.project.id;
         const group = groupTree.groups.find((candidate) =>
           candidate.environments.some(({ item }) => item.project.id === projectId),
@@ -1109,7 +1107,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
           random: (bytes) => crypto.getRandomValues(bytes),
         });
         if (record !== undefined) {
-          await accountHqApi(client, activeOrganization.id, hq).createMate({
+          await accountHqApi(client, activeOrganization.id, officialHq(accountHq)).createMate({
             projectId,
             ...record,
           });
@@ -1126,11 +1124,11 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
       }
     },
     [
+      accountHq,
       activeOrganization,
       candidates,
       client,
       groupTree.groups,
-      hq,
       organizationRef,
       projectRef,
       readGroupAgents,

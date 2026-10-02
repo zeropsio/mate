@@ -44,16 +44,16 @@ import {
  * Whether a new environment gets a `zcp` container — and so an agent, and a
  * conversation — or is a deployment target mate only watches.
  *
- * The default is deliberate: `dev` is where somebody works, so it gets one.
- * `prod` does not. An agent with a shell in production
+ * The default is deliberate: `dev`, `devstage` and `stage` are places somebody
+ * works, so they get one. `prod` does not. An agent with a shell in production
  * is a different product decision from anything settled so far, and a default
  * is the wrong way to make it — a caller that wants one has to say so.
  */
 export function defaultAgentForRole(role: ZeropsEnvironmentRole): boolean {
   // A stage is a deploy target, as its form's note says; an agent there is
-  // the person's decision, like production's. A dev environment is a Mate by
-  // default.
-  return role === "dev";
+  // the person's decision, like production's. A dev environment, on its own
+  // or with its stage half, is a Mate by default.
+  return role === "dev" || role === "devstage";
 }
 
 /**

@@ -23,10 +23,13 @@
  * 6. `ready` — `/health` answering `official: ok` and `state: active`, which follows the anchor
  *    within Core's 30 s recheck.
  *
- * The **record** (`HqBirthRecord`) is what a step leaves for the next, and what *Try again*
- * resumes from: a step that stopped runs again, the ones before it do not. A creation the platform
- * may have carried out though its answer was lost stops `uncertain`, since running it again could
- * make a second project.
+ * The **record** (`HqBirthRecord`) is what a step leaves for the next, and what *Try again* — or a
+ * reload, where the client keeps it — resumes from: a step that stopped runs again, the ones
+ * before it do not. The import is marked asked before it is sent. One whose answer was lost, or
+ * never read because the page went away, is never sent again — that could make a second project:
+ * its project is taken up only where the organization's process history names exactly one
+ * `Headquarters` created by this person since it was asked (P-10); otherwise the birth stops
+ * `uncertain`. No project is ever taken for HQ's by its name or its tag alone.
  *
  * Pure of platform globals (rule R1): the platform, Core's artifact, the health read, the clock
  * and the sleeps are passed in.
@@ -34,6 +37,7 @@
  * @module hq/birth
  */
 import { ZeropsApiError, type ZeropsApiClient } from "../api.ts";
+import type { ZeropsProjectCreationRecord } from "../projectCreation.ts";
 import { zeropsRegionFromPublicZone } from "../containerAddress.ts";
 import { findOfficialHq, hqAnchorName, hqOrgTokenName } from "./anchor.ts";
 import type { HqEndpoint, HqHealth } from "./client.ts";
@@ -74,6 +78,11 @@ export const HQ_BIRTH_DOING: Readonly<Record<HqBirthStep, string>> = {
 export interface HqBirthRecord {
   /** The step to run next; `done` once HQ answered as the official one. */
   readonly step: HqBirthStep | "done";
+  /**
+   * When the import was sent (wall ms) while its answer is not read: the project may stand,
+   * unknown to this birth. Null otherwise.
+   */
+  readonly importAskedAt: number | null;
   readonly projectId: string | null;
   /** The `hq` service. */
   readonly serviceId: string | null;
@@ -85,6 +94,7 @@ export interface HqBirthRecord {
 
 export const HQ_BIRTH_START: HqBirthRecord = {
   step: "project",
+  importAskedAt: null,
   projectId: null,
   serviceId: null,
   address: null,
@@ -94,6 +104,7 @@ export const HQ_BIRTH_START: HqBirthRecord = {
 /** The platform calls a birth makes, as the account's client offers them. */
 export type HqBirthPlatform = Pick<
   ZeropsApiClient,
+  | "listProjectCreations"
   | "listOrganizationMembers"
   | "listIntegrationTokens"
   | "importProject"
@@ -155,6 +166,34 @@ export type HqBirthOutcome =
 /** A stop of the birth's own, in words the person reads. */
 class BirthStopped extends Error {}
 
+/** The import may have made a project this birth knows nothing of. */
+class ImportUnanswered extends Error {}
+
+const IMPORT_UNANSWERED =
+  "Zerops did not confirm HQ's project, and its history shows no Headquarters of yours made since. Try again in a moment; before starting over, look for a Headquarters project in Zerops and delete it.";
+
+/** How far the browser's clock may run ahead of the platform's. */
+const CLOCK_SLACK_MS = 2 * 60_000;
+
+/**
+ * The project an unanswered import made: the one `Headquarters` the process history names as
+ * created by this person since the import was asked — none where it names none, or more.
+ */
+export function importedHqProject(input: {
+  readonly creations: ReadonlyArray<ZeropsProjectCreationRecord>;
+  readonly userId: string | undefined;
+  readonly askedAt: number;
+}): string | undefined {
+  if (input.userId === undefined) return undefined;
+  const made = input.creations.filter(
+    (creation) =>
+      creation.projectName === HQ_PROJECT_NAME &&
+      creation.createdByUserId === input.userId &&
+      creation.createdAt >= input.askedAt - CLOCK_SLACK_MS,
+  );
+  return made.length === 1 ? made[0]?.projectId : undefined;
+}
+
 /** HQ's import: Core, its Postgres and its volume, and the variables Core reads besides its token. */
 export function hqImportYaml(input: {
   /** The client origins HQ's API answers (`HQ_CLIENT_ORIGINS`). */
@@ -191,6 +230,8 @@ export function hqImportYaml(input: {
 export async function runHqBirth(input: {
   readonly record: HqBirthRecord;
   readonly clientId: string;
+  /** The person bearing it: an unanswered import's project is theirs alone to take up. */
+  readonly userId: string | undefined;
   readonly origins: ReadonlyArray<string>;
   readonly zeropsApi: string;
   readonly deps: HqBirthDeps;
@@ -232,13 +273,43 @@ export async function runHqBirth(input: {
   };
 
   try {
+    /** The project an import asked at `askedAt` made, from the process history; or a stop. */
+    const takeUpImport = async (askedAt: number) => {
+      const projectId = importedHqProject({
+        creations: await platform.listProjectCreations(clientId),
+        userId: input.userId,
+        askedAt,
+      });
+      if (projectId === undefined) throw new ImportUnanswered(IMPORT_UNANSWERED);
+      return projectId;
+    };
+
     if (record.step === "project") {
-      await assertNoOtherHq(null);
-      const { projectId } = await platform.importProject(
-        clientId,
-        hqImportYaml({ origins: input.origins, zeropsApi: input.zeropsApi }),
-      );
-      advance({ step: "services", projectId });
+      const asked = record.importAskedAt;
+      if (asked !== null) {
+        advance({ step: "services", importAskedAt: null, projectId: await takeUpImport(asked) });
+      } else {
+        await assertNoOtherHq(null);
+        const askedAt = deps.now();
+        advance({ importAskedAt: askedAt });
+        const projectId = await platform
+          .importProject(
+            clientId,
+            hqImportYaml({ origins: input.origins, zeropsApi: input.zeropsApi }),
+          )
+          .then(
+            (imported) => imported.projectId,
+            (cause: unknown) => {
+              if (cause instanceof ZeropsApiError && cause.kind === "uncertain") {
+                return takeUpImport(askedAt);
+              }
+              // Refused outright: nothing was made, and Try again imports.
+              advance({ importAskedAt: null });
+              throw cause;
+            },
+          );
+        advance({ step: "services", importAskedAt: null, projectId });
+      }
     }
 
     const projectId = record.projectId!;
@@ -356,8 +427,7 @@ export async function runHqBirth(input: {
           ? cause.message
           : "Zerops could not be reached.",
       // Every later step reads what is there before it writes.
-      uncertain:
-        step === "project" && cause instanceof ZeropsApiError && cause.kind === "uncertain",
+      uncertain: cause instanceof ImportUnanswered,
     };
   }
 }

@@ -28,6 +28,7 @@ const CRM_PROD = item("crm-prod", "aaa", "Beviro CRM", "production");
 describe("environmentRoleLabel", () => {
   it.each([
     ["dev", "Dev"],
+    ["devstage", "Dev / Stage"],
     ["stage", "Stage"],
     ["prod", "Production"],
   ] as const)("writes %s as %s in a sentence", (role, expected) => {
@@ -42,6 +43,7 @@ describe("environmentRoleLabel", () => {
 describe("environmentRoleTag", () => {
   it.each([
     ["dev", "dev"],
+    ["devstage", "dev/stage"],
     ["stage", "stage"],
     ["prod", "prod"],
   ] as const)("writes %s as the tag %s", (role, expected) => {

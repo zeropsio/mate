@@ -6,14 +6,14 @@
  * ## A project is an application in HQ
  *
  * Nothing platform-side is created for the project itself. The group is an
- * application in the organization's HQ (ADR 0002), which HQ names; an
- * organization with no HQ yet gets it with its first project (ADR 0001). The
- * first Mate is an ordinary Zerops project created inside it and tagged with
- * the group at birth, so it never exists ungrouped.
+ * application in the organization's HQ (ADR 0002), which HQ names, and which
+ * stands before any project does (ADR 0001). The first Mate is an ordinary
+ * Zerops project, attached to the application in HQ as it is born, so it never
+ * exists ungrouped.
  *
- * That is why the registration comes first and the Mate second: a Mate tagged
- * into a group the registry does not know about is a Mate in a project nobody
- * has heard of.
+ * That is why the registration comes first and the Mate second: a Mate
+ * attached to a group the registry does not know about is a Mate in a project
+ * nobody has heard of.
  *
  * ## Two questions
  *
@@ -54,9 +54,8 @@ import {
   resolveAddProjectVerb,
   type ZeropsOrganization,
 } from "@t3tools/client-runtime/zerops";
-import { runHqBirth } from "@t3tools/client-runtime/zerops/hq";
 
-import { accountHqApi, hqBirthDeps, hqBirthSite, useAccountHq } from "~/zerops/accountHq";
+import { accountHqApi, officialHq, useAccountHq } from "~/zerops/accountHq";
 import { useNewMate } from "~/zerops/newMate";
 import {
   beginNewProjectBirth,
@@ -147,8 +146,7 @@ function NewProjectDialog() {
   const press = useMatePress(birth?.projectId ?? undefined);
 
   // The registry lives in the organization's HQ, where only its owners and admins create an
-  // application — a stricter gate than *can create projects*, and the one HQ applies. HQ comes
-  // along only for an organization that has none, as the member list read now says.
+  // application — a stricter gate than *can create projects*, and the one HQ applies.
   const accountHq = useAccountHq(activeOrganization?.id);
   const addProject = resolveAddProjectVerb({
     viewer: {
@@ -158,7 +156,6 @@ function NewProjectDialog() {
       canCreateProjects: activeOrganization?.canCreateProjects,
     },
     admins: accountHq.admins,
-    hq: accountHq.status === "ready" ? accountHq.hq : undefined,
   });
   const canCreate = addProject.offered;
   const locationRequest = useMemo<LocationsCellRequest | null>(
@@ -272,23 +269,9 @@ function NewProjectDialog() {
     };
     const birthId = beginNewProjectBirth({
       ask,
-      hq: accountHq.hq.kind === "official" ? accountHq.hq : undefined,
+      hq: officialHq(accountHq),
       now: Date.now(),
       ports: {
-        // The first project brings HQ along: the same birth the projects page offers an
-        // organization's owner or admin on its own (*Set up HQ*).
-        bearHq: async (record, moved) => {
-          const outcome = await runHqBirth({
-            record,
-            clientId: organizationId,
-            ...hqBirthSite(client),
-            deps: hqBirthDeps(client),
-            moved,
-          });
-          // Its anchor is in the member list now: every surface reads the official HQ again.
-          if (outcome.ok) accountHq.reread();
-          return outcome;
-        },
         registerGroup: async ({ hq, name: groupName }) => ({
           appId: (await accountHqApi(client, organizationId, hq).createApp(groupName)).id,
         }),
@@ -354,7 +337,7 @@ function NewProjectDialog() {
       defaultTintFor={(botName) => newMateTint(candidates, botName)}
       locationError={locationError}
       locationId={locationId}
-      loading={locationStatus === "loading" || (canCreate && accountHq.status === "loading")}
+      loading={locationStatus === "loading"}
       locations={locations}
       onCancel={dismiss}
       onCreate={createProject}
@@ -381,12 +364,10 @@ function NewProjectDialog() {
                   : {}),
             },
           })}
-      organizationName={activeOrganization.name}
       proposeAnotherName={(current) =>
         generateBotName([...taken.names, current], (bytes) => crypto.getRandomValues(bytes))
       }
       takenBotNames={taken}
-      withHq={accountHq.status === "ready" && accountHq.hq.kind === "none"}
     />
   );
 }

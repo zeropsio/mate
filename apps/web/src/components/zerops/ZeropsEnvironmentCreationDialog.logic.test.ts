@@ -15,7 +15,6 @@ import {
   landedRecipeProposal,
   newMateDoor,
   newMateDoorMates,
-  newMateDoorWithoutHq,
   newMateFace,
   newMateRecipe,
   newMateRecipeChange,
@@ -867,49 +866,5 @@ describe("pressSteps — the press as the Add dialog draws it", () => {
     expect(
       pressRegistrationRefused("Ada", at(["done", "done", "done", "done", "running", "queued"])),
     ).toBeUndefined();
-  });
-});
-
-// ADR 0001: a Mate works only in an organization with its HQ. A Developer in one without is told
-// whom to ask; an owner or an admin, where to set it up.
-describe("newMateDoorWithoutHq", () => {
-  const ADMINS = [
-    { id: "a", user: { fullName: "Ada" } },
-    { id: "e", user: { fullName: "Eva" } },
-  ];
-  it.each<[string, Parameters<typeof newMateDoorWithoutHq>[0], string | undefined]>([
-    [
-      "an organization with its HQ takes the Mate",
-      {
-        hq: { kind: "official", projectId: "hq", address: "https://hq" },
-        viewerRole: "READ_ONLY",
-        admins: ADMINS,
-      },
-      undefined,
-    ],
-    [
-      "a Developer in one without is told whom to ask",
-      { hq: { kind: "none" }, viewerRole: "READ_ONLY", admins: ADMINS },
-      "This organization has no HQ yet, and a Mate works only with one. Ask Ada or Eva to set it up.",
-    ],
-    [
-      "nobody to name is said without names",
-      { hq: { kind: "none" }, viewerRole: "BASIC_USER", admins: [] },
-      "This organization has no HQ yet, and a Mate works only with one. Ask an owner or admin to set it up.",
-    ],
-    [
-      "an owner is told where to set it up",
-      { hq: { kind: "none" }, viewerRole: "OWNER", admins: ADMINS },
-      "This organization has no HQ yet, and a Mate works only with one. Set it up under Tools on your projects page.",
-    ],
-    [
-      "an HQ nobody can tell apart from another takes none",
-      { hq: { kind: "unclear", projectIds: ["a", "b"] }, viewerRole: "OWNER", admins: ADMINS },
-      "More than one project is marked as this organization's HQ. An owner deletes the wrong mate-hq tokens in Zerops.",
-    ],
-  ])("%s", (_name, input, reason) => {
-    const door = newMateDoorWithoutHq(input);
-    expect(door?.reason).toBe(reason);
-    if (door !== undefined) expect(door).toMatchObject({ kind: "closed", action: undefined });
   });
 });

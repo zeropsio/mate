@@ -50,28 +50,8 @@ describe("who may add a project", () => {
     expect(verb).toEqual({ offered: false, reason: "Only Jan Novák adds a project." });
   });
 
-  it.each([
-    { hq: undefined, name: "while the member list is read" },
-    { hq: { kind: "none" } as const, name: "with no HQ — the first project stands it up" },
-    {
-      hq: { kind: "official", projectId: "hq-1", address: "https://hq" } as const,
-      name: "with its HQ",
-    },
-  ])("offers it to an owner $name", ({ hq }) => {
-    expect(resolveAddProjectVerb({ viewer: viewer("OWNER"), hq })).toEqual({ offered: true });
-  });
-
-  it("offers no owner a project over an HQ nobody can tell apart from another", () => {
-    expect(
-      resolveAddProjectVerb({
-        viewer: viewer("ADMIN"),
-        hq: { kind: "unclear", projectIds: ["hq-1", "hq-2"] },
-      }),
-    ).toEqual({
-      offered: false,
-      reason:
-        "More than one project is marked as this organization's HQ. An owner deletes the wrong mate-hq tokens in Zerops.",
-    });
+  it("offers it to an owner", () => {
+    expect(resolveAddProjectVerb({ viewer: viewer("OWNER") })).toEqual({ offered: true });
   });
 
   it.each([

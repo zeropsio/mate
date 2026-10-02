@@ -20,6 +20,8 @@ export function environmentRoleLabel(role: ZeropsEnvironmentRole | undefined): s
   switch (role) {
     case "dev":
       return "Dev";
+    case "devstage":
+      return "Dev / Stage";
     case "stage":
       return "Stage";
     case "prod":
@@ -38,6 +40,8 @@ export function environmentRoleTag(role: ZeropsEnvironmentRole | undefined): str
   switch (role) {
     case "dev":
       return "dev";
+    case "devstage":
+      return "dev/stage";
     case "stage":
       return "stage";
     case "prod":

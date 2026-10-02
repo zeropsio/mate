@@ -21,7 +21,6 @@
  * @module groupCreation
  */
 
-import type { OfficialHq } from "./hq/anchor.ts";
 import type { ZeropsRegistry } from "./hq/registry.ts";
 import { mateMemberName, type MateAccessViewer, type MateOwnerCandidate } from "./mateAccess.ts";
 
@@ -38,30 +37,19 @@ export function canWriteRegistry(viewer: { readonly roleCode?: string | undefine
 }
 
 /**
- * Whether this person is offered *Add project*, and what the row says instead.
- *
- * A member simply is not the one who does this. An organization with no HQ
- * yet is not a refusal — the first project stands it up on its way (the web's
- * `runNewProjectBirth`); an organization whose member list marks more than one
- * project as its HQ is: no HQ is official over it, and none is born over it.
+ * Whether this person is offered *Add project*, and what the row says instead: a member simply is
+ * not the one who does this.
  */
 export function resolveAddProjectVerb(input: {
   readonly viewer: MateAccessViewer;
   /** The org's owners and admins, for the refusal that names them. */
   readonly admins?: ReadonlyArray<MateOwnerCandidate> | undefined;
-  /** The organization's HQ as its member list names it; absent while that list is read. */
-  readonly hq?: OfficialHq | undefined;
 }): GroupVerb {
   if (!canWriteRegistry(input.viewer)) {
     return { offered: false, reason: onlyTheseCanAddAProject(input.admins ?? []) };
   }
-  if (input.hq?.kind === "unclear") return { offered: false, reason: HQ_UNCLEAR };
   return OFFERED;
 }
-
-/** Why nothing is born over an HQ the member list cannot tell apart from another. */
-export const HQ_UNCLEAR =
-  "More than one project is marked as this organization's HQ. An owner deletes the wrong mate-hq tokens in Zerops.";
 
 /**
  * The one line a member sees in place of the verb.

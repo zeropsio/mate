@@ -39,7 +39,7 @@ export function useZeropsGroupEnvironmentReconcile(input: {
   /** The account's runtime, whose token commands grant the broker. */
   readonly data: Pick<ZeropsDataContextValue, "runtime">;
   readonly clientId: string | undefined;
-  /** The organization's HQ, where the registry lives. */
+  /** The organization's HQ, where the registry lives; none while no organization is open. */
   readonly hq: HqEndpoint | undefined;
   readonly giteaOrigin: string | undefined;
   readonly giteaProjectId: string | undefined;

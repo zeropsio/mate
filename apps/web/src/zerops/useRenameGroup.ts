@@ -10,8 +10,7 @@ import type { ZeropsGroup } from "@t3tools/client-runtime/zerops";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 import { useCallback, useState } from "react";
 
-import { NO_HQ_LINE } from "../components/zerops/ZeropsEnvironmentCreationDialog.logic";
-import { accountHqApi, useAccountHq } from "./accountHq";
+import { accountHqApi, officialHq, useAccountHq } from "./accountHq";
 import { useZeropsSession } from "./ZeropsSessionProvider";
 
 export interface RenameGroup {
@@ -26,7 +25,6 @@ export interface RenameGroup {
 export function useRenameGroup(): RenameGroup {
   const { activeOrganization, client } = useZeropsSession();
   const accountHq = useAccountHq(activeOrganization?.id);
-  const hq = accountHq.hq.kind === "official" ? accountHq.hq : undefined;
   const [renaming, setRenaming] = useState(false);
   const [trouble, setTrouble] = useState<string | null>(null);
 
@@ -36,15 +34,17 @@ export function useRenameGroup(): RenameGroup {
       setTrouble(null);
       setRenaming(true);
       try {
-        if (hq === undefined) throw new Error(NO_HQ_LINE);
-        await accountHqApi(client, activeOrganization.id, hq).renameApp(group.groupId, name);
+        await accountHqApi(client, activeOrganization.id, officialHq(accountHq)).renameApp(
+          group.groupId,
+          name,
+        );
       } catch (cause) {
         setTrouble(zeropsErrorMessage(cause));
       } finally {
         setRenaming(false);
       }
     },
-    [activeOrganization, client, hq],
+    [accountHq, activeOrganization, client],
   );
 
   return { rename, renaming, trouble };

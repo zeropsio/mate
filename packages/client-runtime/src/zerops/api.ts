@@ -22,9 +22,11 @@ import { withMateProjectRole } from "./mateAccess.ts";
 import { planProjectIsolation, type ProjectEnvEntry } from "./projectIsolation.ts";
 import {
   pickProjectCreation,
+  projectCreationsBy,
   projectProcessSearchBody,
   zcpCreationUnderWay,
   type ZeropsProjectCreation,
+  type ZeropsProjectCreationRecord,
 } from "./projectCreation.ts";
 import {
   buildGroupGrants,
@@ -1666,6 +1668,31 @@ export class ZeropsApiClient {
       Array.isArray(response.items) ? response.items : [],
       input.projectId,
     );
+  }
+
+  /**
+   * `POST /process/search` — the organization's newest project creations, each with the person who
+   * started it (`projectCreationsBy`): a project does not name its creator, its creation's process
+   * does (P-10). What an HQ birth whose import's answer was lost reads to find what it made.
+   */
+  async listProjectCreations(
+    clientId: string,
+    signal?: AbortSignal,
+  ): Promise<ReadonlyArray<ZeropsProjectCreationRecord>> {
+    const response = await this.#request<{ readonly items?: ReadonlyArray<unknown> }>(
+      "/process/search",
+      {
+        method: "POST",
+        signal: signal ?? null,
+        body: JSON.stringify({
+          search: [{ name: "clientId", operator: "eq", value: clientId }],
+          sort: [{ name: "created", ascending: false }],
+          limit: 100,
+        }),
+      },
+      { operationKind: "read" },
+    );
+    return projectCreationsBy(Array.isArray(response.items) ? response.items : []);
   }
 
   /**

@@ -88,7 +88,8 @@ vi.mock("./useZeropsMateOwners", () => ({
   zeropsMateOwner: () => undefined,
 }));
 // The organization's official HQ, where a Mate's face is written.
-vi.mock("./accountHq", () => ({
+vi.mock("./accountHq", async (original) => ({
+  officialHq: (await original<typeof import("./accountHq")>()).officialHq,
   useAccountHq: () => ({
     status: "ready",
     hq: { kind: "official", projectId: "p-hq", address: "https://hq.example.test" },

@@ -5,9 +5,8 @@
  * the first mate in the same step, then you should go to the mate detail and the only diff would
  * be the progress").
  *
- * A New project's creation takes, in order:
- * - `hq` — the organization's HQ, where it has none: the registry lives in it (ADR 0001). Its own
- *   birth (`runHqBirth`), each of whose steps a second try resumes from.
+ * A New project's creation takes, in order — over the organization's HQ, which stands before
+ * any project does (ADR 0001):
  * - `registry` — the project's application in HQ, which is what makes the project exist. HQ names
  *   it: its id is the project's group from then on.
  * - `create` — its first Mate's Zerops project, tagged into the project at birth. Once the platform
@@ -32,13 +31,7 @@ import {
 } from "@t3tools/client-runtime/zerops";
 import { deriveBirthProgress } from "@t3tools/client-runtime/zerops/birthProgress";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
-import {
-  HQ_BIRTH_DOING,
-  HQ_BIRTH_START,
-  type HqBirthOutcome,
-  type HqBirthRecord,
-  type HqEndpoint,
-} from "@t3tools/client-runtime/zerops/hq";
+import type { HqEndpoint } from "@t3tools/client-runtime/zerops/hq";
 import { create } from "zustand";
 
 import type {
@@ -55,7 +48,7 @@ import { asSentence, type MateComing } from "./mateComing";
 import { newMateView } from "./newMate";
 
 /** A step of a New project's creation, before the platform has taken its first Mate's project. */
-export type NewProjectStep = "hq" | "registry" | "create";
+export type NewProjectStep = "registry" | "create";
 
 /** What Create asked for: the project, its first Mate, and where. */
 export interface NewProjectAsk {
@@ -82,12 +75,8 @@ export interface NewProjectFailure {
 export interface NewProjectBirth extends NewProjectAsk {
   /** When Create was pressed, wall ms: the view's clock counts from here. */
   readonly startedAt: number;
-  /** The organization had no HQ when Create was pressed: its birth is a step. */
-  readonly withHq: boolean;
-  /** What HQ's birth has made so far, where it is a step. */
-  readonly hqBirth: HqBirthRecord;
-  /** The organization's HQ, where the registry lives, once it stands. */
-  readonly hq: HqEndpoint | null;
+  /** The organization's HQ, where the registry lives. */
+  readonly hq: HqEndpoint;
   /** The project's application in HQ — its group — once registered. */
   readonly appId: string | null;
   /** The step running, or — `failed` — the one that stopped it; `created` once the platform took the Mate's project. */
@@ -98,7 +87,7 @@ export interface NewProjectBirth extends NewProjectAsk {
 }
 
 export type NewProjectPatch = Partial<
-  Pick<NewProjectBirth, "step" | "hqBirth" | "hq" | "appId" | "failed" | "projectId">
+  Pick<NewProjectBirth, "step" | "appId" | "failed" | "projectId">
 >;
 
 /**
@@ -119,11 +108,6 @@ export interface NewProjectRegistration {
 
 /** What a New project's creation acts through: the platform, HQ, and the birth it hands over to. */
 export interface NewProjectPorts {
-  /** Runs HQ's birth from what it has made so far (`runHqBirth`). */
-  readonly bearHq: (
-    record: HqBirthRecord,
-    moved: (patch: Partial<HqBirthRecord>) => void,
-  ) => Promise<HqBirthOutcome>;
   /** Creates the project's application in HQ (`POST /api/apps`). */
   readonly registerGroup: (registration: {
     readonly hq: HqEndpoint;
@@ -184,7 +168,7 @@ export function placedNewProjects(
   );
 }
 
-const ORDER: ReadonlyArray<NewProjectBirth["step"]> = ["hq", "registry", "create", "created"];
+const ORDER: ReadonlyArray<NewProjectBirth["step"]> = ["registry", "create", "created"];
 
 /** A step's state: done once the creation is past it, and the running one active or failed. */
 function stateOf(birth: NewProjectBirth, own: NewProjectStep): BirthLineStep["state"] {
@@ -195,15 +179,7 @@ function stateOf(birth: NewProjectBirth, own: NewProjectStep): BirthLineStep["st
   return birth.failed === null ? "active" : "failed";
 }
 
-/** What HQ's birth is doing now, as its line says it. */
-function hqDoing(birth: NewProjectBirth): string {
-  return birth.hqBirth.step === "done" ? "Setting up HQ" : HQ_BIRTH_DOING[birth.hqBirth.step];
-}
-
-/**
- * The project's own steps, before its first Mate's: HQ where the organization had none, then the
- * project's registration, under the project's name.
- */
+/** The project's own step, before its first Mate's: its registration, under the project's name. */
 export function newProjectSteps(birth: NewProjectBirth): ReadonlyArray<BirthLineStep> {
   const step = (id: string, label: string, own: NewProjectStep, doing: string): BirthLineStep => {
     const state = stateOf(birth, own);
@@ -211,10 +187,7 @@ export function newProjectSteps(birth: NewProjectBirth): ReadonlyArray<BirthLine
       state === "active" ? doing : state === "failed" ? birth.failed?.reason : undefined;
     return { id, label, state, ...(detail === undefined ? {} : { detail }) };
   };
-  return [
-    ...(birth.withHq ? [step("hq", "HQ", "hq", hqDoing(birth))] : []),
-    step("registry", birth.name, "registry", "Registering the project"),
-  ];
+  return [step("registry", birth.name, "registry", "Registering the project")];
 }
 
 /**
@@ -315,10 +288,8 @@ function isUncertain(cause: unknown): boolean {
  * Runs a New project's creation from the step it stands on until the platform takes its first
  * Mate's project, or until a step stops it — telling `moved` of each step it reaches.
  *
- * The order is the point: the registry lives in the organization's HQ, so an organization without
- * one gets it first (the first project brings HQ along; nobody is told to add it); the application
- * is what makes the project exist, and a Mate created before it would be a Mate in a project nobody
- * has heard of. An HQ that cannot be stood up creates nothing; a registration that fails creates
+ * The order is the point: the application is what makes the project exist, and a Mate created
+ * before it would be a Mate in a project nobody has heard of. A registration that fails creates
  * nothing; a Mate's creation that fails leaves a registered project with no Mate in it, which is
  * one the person can add a Mate to, not a mess to clean up.
  */
@@ -332,21 +303,7 @@ export async function runNewProjectBirth(
     moved({ failed: { reason, uncertain } });
   };
 
-  let hq = birth.hq;
-  if (hq === null) {
-    let record = birth.hqBirth;
-    const born = await ports.bearHq(record, (patch) => {
-      record = { ...record, ...patch };
-      moved({ hqBirth: record });
-    });
-    if (!born.ok) {
-      stop(`${HQ_BIRTH_DOING[born.step]}: ${born.reason}`, born.uncertain);
-      return;
-    }
-    hq = born.hq;
-    moved({ step: "registry", hq });
-  }
-
+  const { hq } = birth;
   let appId = birth.appId;
   if (appId === null) {
     try {
@@ -430,8 +387,8 @@ async function drive(birthId: string): Promise<void> {
  */
 export function beginNewProjectBirth(input: {
   readonly ask: NewProjectAsk;
-  /** The organization's HQ, as its member list names it — or none yet. */
-  readonly hq: HqEndpoint | undefined;
+  /** The organization's HQ, as its member list names it. */
+  readonly hq: HqEndpoint;
   readonly ports: NewProjectPorts;
   /** Wall ms. */
   readonly now: number;
@@ -440,11 +397,9 @@ export function beginNewProjectBirth(input: {
   const birth: NewProjectBirth = {
     ...input.ask,
     startedAt: input.now,
-    withHq: input.hq === undefined,
-    hqBirth: HQ_BIRTH_START,
-    hq: input.hq ?? null,
+    hq: input.hq,
     appId: null,
-    step: input.hq === undefined ? "hq" : "registry",
+    step: "registry",
     failed: null,
     projectId: null,
   };
@@ -480,8 +435,8 @@ onAccountLifetimeClose(() => {
 });
 
 /**
- * A New project's press as its dialog draws it, until the first Mate needs no browser: HQ where
- * the organization has none, the project's registration, the project itself — its creation's wait
+ * A New project's press as its dialog draws it, until the first Mate needs no browser: the
+ * project's registration, the project itself — its creation's wait
  * part of the press — then its Mate's close-off and registration, from the Mate's own press
  * (`progress`, null before it begins).
  */
@@ -506,7 +461,6 @@ export function newProjectPressSteps(
     return { label, state };
   };
   return [
-    ...(birth.withHq ? [own("HQ", "hq")] : []),
     own("Project registered", "registry"),
     own("Creating the project", "create"),
     mate("Closed off", "close-off"),

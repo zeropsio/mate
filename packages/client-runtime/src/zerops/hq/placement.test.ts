@@ -24,6 +24,12 @@ const STRUCTURE = {
           mate: { name: "Vera", face: "rose:seal" },
         },
         { projectId: "p-stage", name: "acme-stage", kind: "stage", mate: null },
+        {
+          projectId: "p-ivo",
+          name: "Acme CRM - Ivo",
+          kind: "devstage",
+          mate: { name: "Ivo", face: "sky:gem" },
+        },
         { projectId: "p-prod", name: "acme", kind: "production", mate: null },
         { projectId: "p-later", name: "later", kind: "preview", mate: null },
       ],
@@ -44,6 +50,15 @@ describe("placementsOf", () => {
         },
       ],
       ["p-stage", { appId: "app-1", appName: "Acme CRM", kind: "stage", mate: null }],
+      [
+        "p-ivo",
+        {
+          appId: "app-1",
+          appName: "Acme CRM",
+          kind: "devstage",
+          mate: { name: "Ivo", face: "sky:gem" },
+        },
+      ],
       ["p-prod", { appId: "app-1", appName: "Acme CRM", kind: "production", mate: null }],
       [
         "p-ada",
