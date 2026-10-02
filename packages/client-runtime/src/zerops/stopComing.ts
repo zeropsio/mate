@@ -12,10 +12,14 @@
  *
  * The broker asks for a stage's deploy of `main` as its declaration lands
  * (`mate/deploy/{environment}/{service}` pending from then), and the group's runner runs it. A
- * runner that cannot run holds that deploy, and the line says so, and why — in the broker's own
- * terms (gitea-mate, pass 34): a runner not there yet, one being built, one whose build failed
- * (the broker deletes and imports it again on its own, so nobody is asked to fix it), and a
- * stopped one, which the broker wakes as a job queues.
+ * runner that cannot run holds that deploy, and the line says so, and why — only what the client
+ * sees of it: not there, being imported, imported and not started (building or its build failed:
+ * one word true either way, since which broker an org runs, and whether it rebuilds a runner, is
+ * not the app's to know), or stopped, which the broker wakes as a job queues.
+ *
+ * "On its way" is said only of a runner known able, and only for a window after the deploy was
+ * asked for: a first deploy that never comes reads "Nothing deployed yet" again, never on its way
+ * for ever.
  *
  * Pure: no network, no clock of its own, no platform globals (rule R1).
  *
@@ -37,12 +41,12 @@ export type ComingStep =
 
 /** Why the group's runner cannot run a deploy now. */
 export type RunnerTrouble =
-  /** Its service is not in the Gitea project, or is being deleted to be imported again. */
+  /** Its service is not in the Gitea project, or is being deleted. */
   | "missing"
-  /** Imported, its build under way. */
+  /** Being imported. */
   | "building"
-  /** Its build failed, or never finished: the broker imports it again on its own. */
-  | "failed"
+  /** Imported and not started: its build runs, or failed — the client cannot tell which. */
+  | "not-started"
   /** Stopped, stopping or starting: the broker starts it as a job queues. */
   | "waking";
 
@@ -62,7 +66,7 @@ export type GroupRunner =
 export type FirstDeploy =
   /** Nothing asked for one yet: `main` has no code, or the group does not declare the stage. */
   | { readonly kind: "awaited" }
-  /** Asked for, and nothing known holds it. */
+  /** Asked for within the window, and the group's runner is known able to run it. */
   | { readonly kind: "on-its-way" }
   /** Asked for, and the group's runner cannot run it. */
   | { readonly kind: "runner"; readonly why: RunnerTrouble };
@@ -74,14 +78,6 @@ export type FirstDeploy =
  * not a step of its coming up.
  */
 export const COMING_UP_WINDOW_MS = 15 * 60_000;
-
-/**
- * How long a runner may stand imported and not deployed while its build may still be running:
- * twice the good build run 4 measured (121.5 s; the failed one took 54 s). Past it, its build
- * failed or never finished — what the broker replaces (it calls one broken after a failed build,
- * or 20 min). The account holds no process of the Gitea project, so its age is what says it.
- */
-export const RUNNER_BUILD_MS = 4 * 60_000;
 
 /** Zerops hostnames are `[a-z0-9]`, 25 at most. */
 const HOSTNAME_MAX = 25;
@@ -100,24 +96,20 @@ const failing = (status: string) => /FAIL/u.test(status);
 export interface GiteaProjectService {
   readonly name: string;
   readonly status: string;
-  /** When it was imported. */
-  readonly created?: string | undefined;
 }
 
 /** A runner's status, as what it means for a deploy waiting on it; unknown says nothing. */
-function runnerOf(runner: GiteaProjectService, nowMs: number): GroupRunner | undefined {
-  if (failing(runner.status)) return { kind: "unable", why: "failed" };
-  switch (runner.status) {
+function runnerOf(status: string): GroupRunner | undefined {
+  if (failing(status)) return { kind: "unable", why: "not-started" };
+  switch (status) {
     case "ACTIVE":
     case "UPGRADING":
       return { kind: "able" };
     case "NEW":
     case "CREATING":
-    case "READY_TO_DEPLOY": {
-      const created = runner.created === undefined ? Number.NaN : Date.parse(runner.created);
-      const stuck = !Number.isNaN(created) && nowMs - created >= RUNNER_BUILD_MS;
-      return { kind: "unable", why: stuck ? "failed" : "building" };
-    }
+      return { kind: "unable", why: "building" };
+    case "READY_TO_DEPLOY":
+      return { kind: "unable", why: "not-started" };
     case "STOPPED":
     case "STOPPING":
     case "STARTING":
@@ -137,18 +129,19 @@ function runnerOf(runner: GiteaProjectService, nowMs: number): GroupRunner | und
 export function groupRunner(input: {
   readonly slug: string;
   readonly services: ReadonlyArray<GiteaProjectService> | undefined;
-  readonly nowMs: number;
 }): GroupRunner | undefined {
   if (input.services === undefined) return undefined;
   const hostname = runnerHostname(input.slug);
   const runner = input.services.find((service) => service.name === hostname);
-  return runner === undefined ? { kind: "unable", why: "missing" } : runnerOf(runner, input.nowMs);
+  return runner === undefined ? { kind: "unable", why: "missing" } : runnerOf(runner.status);
 }
 
 /**
  * Where a stage's first deploy stands while it runs nothing: asked for once the group declares
  * the stage and `main` has code — the broker deploys `main` to a stage as its declaration lands —
- * and held by a runner that cannot run.
+ * held by a runner known unable to run, or on its way behind one known able, for
+ * {@link COMING_UP_WINDOW_MS} after it was asked for. A runner not known, or a window gone by,
+ * is the neutral wait: nothing is promised that the client cannot see.
  */
 export function firstDeploy(input: {
   /** The group's environments declare it. */
@@ -156,13 +149,43 @@ export function firstDeploy(input: {
   /** `main` has code; `undefined` where nothing says either way. */
   readonly mainHasCode: boolean | undefined;
   readonly runner: GroupRunner | undefined;
+  /** The later of the stage's making and `main`'s last code landing; `undefined` unknown. */
+  readonly askedAt: string | undefined;
+  readonly nowMs: number;
 }): FirstDeploy {
   if (!input.declared || input.mainHasCode !== true) return { kind: "awaited" };
-  if (input.runner?.kind === "unable") return { kind: "runner", why: input.runner.why };
-  return { kind: "on-its-way" };
+  if (input.runner === undefined) return { kind: "awaited" };
+  if (input.runner.kind === "unable") return { kind: "runner", why: input.runner.why };
+  const asked = input.askedAt === undefined ? Number.NaN : Date.parse(input.askedAt);
+  return Number.isNaN(asked) || input.nowMs - asked >= COMING_UP_WINDOW_MS
+    ? { kind: "awaited" }
+    : { kind: "on-its-way" };
+}
+
+/**
+ * Whether a stop has run a deploy, from its flow stop: a version is known, or it runs or fails
+ * one; `false` where it is known to run nothing; `undefined` while that is not known — what runs
+ * there unread, or a build of a version nothing names.
+ */
+export function stopDeployed(stop: {
+  readonly state: "checking" | "empty" | "deploying" | "deployed" | "failed";
+  readonly version: unknown;
+}): boolean | undefined {
+  if (stop.version !== undefined) return true;
+  switch (stop.state) {
+    case "empty":
+      return false;
+    case "deployed":
+    case "failed":
+      return true;
+    default:
+      return undefined;
+  }
 }
 
 const coming = (step: ComingStep): StopComing => ({ kind: "coming", step });
+
+const AWAITED: FirstDeploy = { kind: "awaited" };
 
 /** A runtime the platform is still making: its container, then the import's no-code deploy. */
 const MAKING: ReadonlySet<string> = new Set(["NEW", "CREATING"]);
@@ -195,8 +218,8 @@ export function stopComing(input: {
     | undefined;
   /** A deploy runs on it (`deployBuilding`). */
   readonly building: boolean;
-  /** It has run a deploy: a version is known, or the platform says one runs. */
-  readonly deployed: boolean;
+  /** It has run a deploy (`stopDeployed`); `undefined` while that is not known. */
+  readonly deployed: boolean | undefined;
   /** Its public routes. */
   readonly routes: number;
   /** A stage's first deploy, while it runs nothing (`firstDeploy`); unknown is awaited. */
@@ -213,11 +236,14 @@ export function stopComing(input: {
   const runtimes = input.services.filter((service) => service.runtime);
   const others = input.services.filter((service) => !service.runtime);
   const running = (status: string) => status === "ACTIVE";
-  if (input.deployed && runtimes.every(({ status }) => running(status)) && input.routes > 0) {
+  // The platform turns a stage's address on only after its first build: one serving has run a
+  // deploy, read or not (a reload, a refused process demand).
+  const deployed = input.deployed ?? (input.routes > 0 ? true : undefined);
+  if (deployed === true && runtimes.every(({ status }) => running(status)) && input.routes > 0) {
     return undefined;
   }
   const brokenOther = others.find(({ status }) => failing(status));
-  if (brokenOther !== undefined && !input.deployed) {
+  if (brokenOther !== undefined && deployed !== true) {
     return { kind: "failed", reason: `the ${brokenOther.hostname} didn’t start` };
   }
   if (others.some(({ status }) => !running(status) && !failing(status))) {
@@ -225,16 +251,17 @@ export function stopComing(input: {
   }
   const broken = runtimes.find(({ status }) => failing(status));
   if (broken !== undefined) {
-    return input.deployed
+    return deployed === true
       ? undefined
       : { kind: "failed", reason: `the ${broken.hostname}’s build failed` };
   }
   if (input.building) return coming("build");
   // The import's own deploy carries no code: the app being added, never a build.
   if (runtimes.some(({ status }) => MAKING.has(status))) return coming("app");
-  if (!input.deployed) {
+  if (deployed !== true) {
     if (input.tier === "production") return undefined;
-    const first = input.firstDeploy ?? { kind: "awaited" };
+    // What runs there not known yet: the neutral wait, never a claim about the runner.
+    const first = deployed === false ? (input.firstDeploy ?? { kind: "awaited" }) : AWAITED;
     switch (first.kind) {
       case "awaited":
         return coming("awaiting-deploy");
@@ -249,13 +276,57 @@ export function stopComing(input: {
   return undefined;
 }
 
+/** A listed stop as its flow and the platform's listing of its project hold it. */
+export interface ListedStop {
+  /** Its flow stop (`GroupFlowStop`): what it runs, and its first deploy. */
+  readonly stop: {
+    readonly state: "checking" | "empty" | "deploying" | "deployed" | "failed";
+    readonly version: unknown;
+    readonly firstDeploy?: FirstDeploy | undefined;
+  };
+  readonly projectStatus: string | undefined;
+  readonly createdAt: string | undefined;
+  readonly services: Parameters<typeof stopComing>[0]["services"];
+  /** A deploy runs on it (`deployBuilding`). */
+  readonly building: boolean;
+  readonly routes: number;
+}
+
+/** Where a listed stage or production coming up has got — the one reading every surface makes. */
+export function listedStopComing(
+  tier: "stage" | "production",
+  listed: ListedStop,
+  nowMs: number,
+): StopComing | undefined {
+  return stopComing({
+    tier,
+    pending: false,
+    projectStatus: listed.projectStatus,
+    createdAt: listed.createdAt,
+    nowMs,
+    services: listed.services,
+    building: listed.building,
+    deployed: stopDeployed(listed.stop),
+    routes: listed.routes,
+    firstDeploy: listed.stop.firstDeploy,
+  });
+}
+
+/**
+ * Whether a listed stop serves: a deploy ran there and it has a public address. Only that lands
+ * a stage "up" — never a coming-up window running out.
+ */
+export function stopServes(listed: Pick<ListedStop, "stop" | "routes">): boolean {
+  return stopDeployed(listed.stop) === true && listed.routes > 0;
+}
+
 const STEP_WORDS: Record<ComingStep, string> = {
   project: "making the project",
   database: "adding the database",
   app: "adding the app",
   build: "building the app",
-  "awaiting-deploy": "waiting for its first deploy",
-  "deploy-on-its-way": "its first deploy is on its way",
+  "awaiting-deploy": "awaiting a first deploy",
+  "deploy-on-its-way": "first deploy on its way",
   address: "turning its address on",
 };
 
@@ -263,15 +334,15 @@ const STEP_WORDS: Record<ComingStep, string> = {
 export const RUNNER_TROUBLE_WORDS: Record<RunnerTrouble, string> = {
   missing: "it isn’t there",
   building: "it’s being built",
-  // The broker deletes it and imports it again on its own: nobody is asked to fix it.
-  failed: "it’s being rebuilt",
+  // Building, or its build failed: true either way, and asks nobody to fix it.
+  "not-started": "it hasn’t started",
   waking: "it’s waking up",
 };
 
 /**
  * The line an environment coming up says, about `subject` ("Stage", a stage's own name,
  * "Production"): "Stage coming up · building the app", or — a new truth, so its own words —
- * "Stage awaits the runner · it’s being built". Short enough for a 253 px line.
+ * "Stage awaits the runner · it’s being built". Each fits the menu’s narrowest line, 241 px of words.
  */
 export function comingLine(
   subject: string,

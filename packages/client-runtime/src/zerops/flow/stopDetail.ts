@@ -9,6 +9,7 @@
  *
  * @module flow/stopDetail
  */
+import { firstDeployLine, type FirstDeploy } from "../stopComing.ts";
 import type { GroupEnvironmentTier } from "../groupEnvironments.ts";
 import {
   deployedVersion,
@@ -86,6 +87,8 @@ export function stopVerdict(input: {
   readonly since: string | undefined;
   /** Whether a stage runs main's head commit; stage only. */
   readonly atMainHead: boolean;
+  /** A stage that runs nothing: where its first deploy stands (`GroupFlowStop.firstDeploy`). */
+  readonly firstDeploy?: FirstDeploy | undefined;
 }): StopVerdict {
   const { tier, view } = input;
   const quiet = { detail: undefined, verb: null } as const;
@@ -111,6 +114,12 @@ export function stopVerdict(input: {
       : null;
   if (view.version === undefined) {
     if (view.line !== NOTHING_DEPLOYED) return { tone: "off", text: view.line, ...quiet };
+    // A stage's first deploy asked for says where it stands, as its cell and the menu do.
+    const first = tier === "stage" ? firstDeployLine(input.firstDeploy) : undefined;
+    if (first !== undefined) {
+      const tone = input.firstDeploy?.kind === "on-its-way" ? "busy" : "off";
+      return { tone, text: `${first}.`, ...quiet };
+    }
     // An empty production moves by its first release, offered as soon as main has something.
     return {
       tone: "off",
@@ -314,6 +323,8 @@ export function serviceRows(input: {
   readonly offers: ReadonlyArray<ZeropsRouteOffer>;
   readonly nowMs: number;
   readonly age: (iso: string) => string;
+  /** A stage that runs nothing: where its first deploy stands, said where a service runs none. */
+  readonly firstDeploy?: FirstDeploy | undefined;
 }): ReadonlyArray<StopServiceRow> {
   const deploymentOf = platformDeployments(input.platform);
   const code = input.services
@@ -348,7 +359,7 @@ export function serviceRows(input: {
       commit: version.commit,
       line: commitLine(version, input.mainHead),
       tone,
-      word,
+      word: word === NOTHING_DEPLOYED ? (firstDeployLine(input.firstDeploy) ?? word) : word,
       status:
         word === NOTHING_DEPLOYED
           ? undefined

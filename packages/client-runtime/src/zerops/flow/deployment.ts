@@ -577,9 +577,18 @@ export function stopServices(reads: StopReads, nowMs: number): Known<ReadonlyArr
   };
 }
 
-/** Being read again: nothing new is known yet, and nothing failed. */
+/**
+ * Being read again: nothing new is known yet, nothing failed, and the source is not paused — a
+ * paused source says so (`paused`), never revalidating.
+ */
 const rechecking = (shown: Shown<unknown>): boolean =>
-  shown.state === "unread" || shown.state === "reading";
+  shown.state === "reading" || (shown.state === "unread" && shown.waitingFor === null);
+
+/** Known to run nothing: the one answer a re-check keeps (F5). */
+const knownNone = (
+  shown: Shown<Deployment>,
+): shown is Extract<Shown<Deployment>, { state: "known" }> =>
+  shown.state === "known" && shown.value.kind === "none";
 
 /** A known answer, now being checked again: since when, kept from a check already under way. */
 function revalidating<T>(
@@ -591,11 +600,14 @@ function revalidating<T>(
 }
 
 /**
- * A stop read again, over what it showed: a re-check keeps the last answer (run 4, F5). The
- * listing being read again keeps the services it showed, and a service whose deployment is checked
- * again — the import's own no-code version, which a push names only by its id (A14), then the
- * account's store states — keeps the deployment it had, revalidating, until an answer or a
- * failure replaces it. "Checking what runs here…" is said only before the first answer.
+ * A stop read again, over what it showed: a re-check keeps the last answer where that answer was
+ * "nothing deployed" (run 4, F5) — the import's own no-code version, which a push names only by
+ * its id (A14), then the account's store states, never ran anything either way. The listing read
+ * again keeps the services it showed where each ran nothing, and a service checked again keeps its
+ * none, revalidating, until an answer or a failure replaces it. A version is never held: one
+ * activated with no build seen (a roll back) reads Checking until it is named, never as the old
+ * one. A paused source stays paused. "Checking what runs here…" follows a none only as a version
+ * arrives.
  */
 export function heldThroughRecheck(
   shown: Known<ReadonlyArray<StopService>>,
@@ -603,7 +615,11 @@ export function heldThroughRecheck(
   nowMs: number,
 ): Known<ReadonlyArray<StopService>> {
   if (shown.state !== "known") return next;
-  if (rechecking(next)) return revalidating(shown, nowMs);
+  if (rechecking(next)) {
+    return shown.value.every(({ deployment }) => knownNone(deployment))
+      ? revalidating(shown, nowMs)
+      : next;
+  }
   if (next.state !== "known") return next;
   let held = false;
   const value = next.value.map((service): StopService => {
@@ -611,7 +627,7 @@ export function heldThroughRecheck(
     const before = shown.value.find(
       (entry) => entry.service.serviceId === service.service.serviceId,
     )?.deployment;
-    if (before?.state !== "known") return service;
+    if (before === undefined || !knownNone(before)) return service;
     held = true;
     return { ...service, deployment: revalidating(before, nowMs) };
   });

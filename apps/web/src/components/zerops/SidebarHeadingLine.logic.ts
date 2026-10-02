@@ -41,6 +41,8 @@ export interface HeadingLineInput {
     readonly projectId: string;
     readonly name: string;
     readonly coming: StopComing | undefined;
+    /** It serves: a deploy ran and it has a public address (`stopServes`). */
+    readonly serves: boolean;
   }>;
   /** Changes merged and not live (`GroupFlowMain.notLive`). */
   readonly waiting: number;
@@ -197,7 +199,7 @@ export function headingLine(
 /**
  * What landed between two readings, as this tab watched it: a release on its way now served
  * ("v2.4.0 is live"), production's first build serving ("v0.1.0 is live"), a stage that was
- * coming up now up ("Stage is up"). Nothing where this tab did not see it on its way.
+ * coming up now serving ("Stage is up"). Nothing where this tab did not see it on its way.
  */
 export function headingLanding(
   before: HeadingLineInput | undefined,
@@ -212,7 +214,8 @@ export function headingLanding(
     }
   }
   for (const stage of after.stages) {
-    if (stage.coming !== undefined) continue;
+    // Up only where it serves: a coming-up window that ended is not a landing.
+    if (stage.coming !== undefined || !stage.serves) continue;
     const earlier = before.stages.find((entry) => entry.projectId === stage.projectId);
     if (earlier?.coming?.kind === "coming") {
       return { kind: "up", name: stageWord(after.stages, stage) };

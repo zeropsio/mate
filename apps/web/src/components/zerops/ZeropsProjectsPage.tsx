@@ -147,6 +147,8 @@ import {
   type ZeropsGroupTags,
   type ZeropsProjectOrder,
   type ZeropsToolKind,
+  firstDeployLine,
+  type FirstDeploy,
 } from "@t3tools/client-runtime/zerops";
 import { invalidateZerops } from "~/zerops/accountInvalidations";
 
@@ -484,8 +486,12 @@ const PROJECTS_WAIT_FOR_ZEROPS = "Your projects will show here once Zerops answe
  */
 export function declaredEnvironmentSummary(
   row: Pick<EnvironmentRow, "line" | "tone" | "version">,
+  /** A stage that runs nothing: where its first deploy stands, as its cell says it. */
+  firstDeploy?: FirstDeploy | undefined,
 ): string {
-  return row.version.label === undefined && row.tone === "neutral" ? NOTHING_DEPLOYED : row.line;
+  return row.version.label === undefined && row.tone === "neutral"
+    ? (firstDeployLine(firstDeploy) ?? NOTHING_DEPLOYED)
+    : row.line;
 }
 
 /**
@@ -2298,7 +2304,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
             ? presentation.detail
             : declared === undefined
               ? summaryOf(candidate)
-              : declaredEnvironmentSummary(declared)
+              : declaredEnvironmentSummary(declared, firstDeployOf(candidate.project.id))
         }
         tag={environmentRoleTag(role)}
       />
@@ -2701,6 +2707,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
             }),
             pending: group.pending,
             runner: projectFlow.runners?.get(group.groupId),
+            nowMs,
           }),
         ),
         read: reads !== undefined,
@@ -2732,6 +2739,11 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
       };
     },
   );
+  // Where each stage's first deploy stands, as its cell in the flow says it (`groupFlow`): the
+  // expanded environment row says the same.
+  const firstDeployOf = (projectId: string) =>
+    flowGroups.flatMap(({ flow }) => flow.stages).find((stage) => stage.projectId === projectId)
+      ?.firstDeploy;
   // The page's one line of trouble: a refusal of something done here — a
   // merge or a release the project flow refused included — one at a time.
   const trouble = toolError ?? renameGroup.trouble ?? route.trouble ?? projectFlow.trouble;

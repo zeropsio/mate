@@ -115,6 +115,8 @@ export interface GroupFlowStopInput {
   readonly deployment: Shown<Deployment> | undefined;
   /** Its first public route's URL. */
   readonly route: string | undefined;
+  /** When its project was made; a first deploy is asked for from then on. */
+  readonly createdAt?: string | undefined;
 }
 
 export interface GroupFlowInput {
@@ -162,6 +164,8 @@ export interface GroupFlowInput {
    * `undefined` while they are unread.
    */
   readonly runner?: GroupRunner | undefined;
+  /** The clock a first deploy on its way is bounded by; without one, none is promised. */
+  readonly nowMs?: number | undefined;
 }
 
 /** An open pull request, with what is stopping it and the one word for where it stands. */
@@ -338,15 +342,69 @@ function withFirstDeploy(
   stop: GroupFlowStop,
   input: GroupFlowStopInput,
   main: GroupFlowMain,
-  runner: GroupRunner | undefined,
+  flow: GroupFlowInput,
 ): GroupFlowStop {
-  if (input.tier !== "stage" || stop.state !== "empty") return stop;
-  const first = firstDeploy({
+  if (input.tier !== "stage") return stop;
+  const first = stageFirstDeploy({
+    empty: stop.state === "empty",
     declared: input.row !== undefined,
     mainHasCode: main.hasCode,
-    runner,
+    merged: flow.merged,
+    runner: flow.runner,
+    createdAt: input.createdAt,
+    nowMs: flow.nowMs,
   });
-  return first.kind === "awaited" ? stop : { ...stop, firstDeploy: first };
+  return first === undefined ? stop : { ...stop, firstDeploy: first };
+}
+
+/**
+ * Where a stage's first deploy stands (`firstDeploy`), the one reading every surface says it by —
+ * its cell, the menu, its own page: only for a stage known to run nothing, asked for from the
+ * later of its making and `main`'s last code landing. `undefined` while nothing asked for one, or
+ * nothing can be promised.
+ */
+export function stageFirstDeploy(input: {
+  /** It is known to run nothing. */
+  readonly empty: boolean;
+  /** The group's environments declare it. */
+  readonly declared: boolean;
+  /** Whether `main` has code, where it was read; a merged code change proves it either way. */
+  readonly mainHasCode: boolean | undefined;
+  readonly merged: ReadonlyArray<FlowPullRequest>;
+  readonly runner: GroupRunner | undefined;
+  /** When its project was made. */
+  readonly createdAt: string | undefined;
+  /** Without a clock, nothing is promised. */
+  readonly nowMs: number | undefined;
+}): Exclude<FirstDeploy, { readonly kind: "awaited" }> | undefined {
+  if (!input.empty || input.nowMs === undefined) return undefined;
+  const landedCode = input.merged.some((pull) => pull.kind === "code");
+  const first = firstDeploy({
+    declared: input.declared,
+    mainHasCode: input.mainHasCode ?? (landedCode ? true : undefined),
+    runner: input.runner,
+    askedAt: firstDeployAskedAt(input.createdAt, input.merged),
+    nowMs: input.nowMs,
+  });
+  return first.kind === "awaited" ? undefined : first;
+}
+
+/**
+ * When a stage's first deploy was asked for, as far as the flow can say: the later of the stage's
+ * making and `main`'s last code landing — the broker deploys `main` to a stage as it is declared,
+ * and again as code lands. `undefined` where the stage's making is not known.
+ */
+function firstDeployAskedAt(
+  createdAt: string | undefined,
+  merged: ReadonlyArray<FlowPullRequest>,
+): string | undefined {
+  if (createdAt === undefined) return undefined;
+  let latest = createdAt;
+  for (const pull of merged) {
+    if (pull.kind !== "code" || pull.mergedAt === undefined) continue;
+    if (Date.parse(pull.mergedAt) > Date.parse(latest)) latest = pull.mergedAt;
+  }
+  return latest;
 }
 
 function runningState(tone: GroupRowTone): GroupFlowStopState {
@@ -495,7 +553,7 @@ export function groupFlow(input: GroupFlowInput): GroupFlow {
     hasCode: input.mainHasCode ?? (landedCode ? true : undefined),
     notLive: input.release.waiting,
   };
-  const stops = input.stops.map((stop) => withFirstDeploy(stopOf(stop), stop, main, input.runner));
+  const stops = input.stops.map((stop) => withFirstDeploy(stopOf(stop), stop, main, input));
   const stages = stops.filter((_, index) => input.stops[index]?.tier === "stage");
   const productionStop = stops.find((_, index) => input.stops[index]?.tier === "production");
   const production = productionOf(productionStop, input, main);

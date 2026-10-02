@@ -49,13 +49,13 @@ import {
   type ZeropsGroup,
   type ZeropsRouteOffer,
   sameCommit,
+  stageFirstDeploy,
 } from "@t3tools/client-runtime/zerops";
 import {
   DEPLOYS_ASIDE,
   earlierReleasesLabel,
   NONE_YET,
   NOT_PUBLIC_YET,
-  NOTHING_DEPLOYED,
   serviceBuildToggleLabel,
   serviceRows,
   stopCardTitle,
@@ -942,6 +942,22 @@ export function ZeropsStopDetailPage({
   // Only a countdown reads the clock, and nothing here counts down: the time
   // the page was first drawn is enough, as it is for the left menu's rows.
   const [nowMs] = useState(Date.now);
+  // A stage's first deploy is on its way only for a window: the minute clock bounds it.
+  const minuteMs = useNowMs();
+  // Where a stage that runs nothing stands on its first deploy, as its cell and the menu say it.
+  const stopDeployment = flowValue?.deployments.get(projectId);
+  const firstDeploy =
+    flow === undefined || stop === undefined || stop.tier !== "stage"
+      ? undefined
+      : stageFirstDeploy({
+          empty: stopDeployment?.state === "known" && stopDeployment.value.kind === "none",
+          declared: true,
+          mainHasCode: undefined,
+          merged: flow.merged,
+          runner: flowValue?.runners?.get(groupId),
+          createdAt: inventory.projects.find((entry) => entry.id === projectId)?.created,
+          nowMs: minuteMs,
+        });
   // A withheld stop lists no service, so no build of one is read either.
   const services =
     declared === undefined || withheld !== null
@@ -955,6 +971,7 @@ export function ZeropsStopDetailPage({
           offers,
           nowMs,
           age: formatRelativeTimeLabel,
+          firstDeploy,
         });
   const failedDeploy =
     flow === undefined || stop === undefined
@@ -1005,6 +1022,7 @@ export function ZeropsStopDetailPage({
     since: view.activatedAt === null ? undefined : formatRelativeTimeLabel(view.activatedAt),
     atMainHead:
       stage && commits.kind === "read" && sameCommit(view.version?.sha, commits.commits[0]?.sha),
+    firstDeploy,
   });
 
   return (
@@ -1509,9 +1527,7 @@ function StopServiceLine({
               {row.commit}
             </span>
           ) : row.status === undefined ? (
-            <span className="truncate text-sm leading-5 text-muted-foreground">
-              {NOTHING_DEPLOYED}
-            </span>
+            <span className="truncate text-sm leading-5 text-muted-foreground">{row.word}</span>
           ) : null}
           {row.line === undefined ? null : (
             <span className="truncate text-xs leading-4 text-muted-foreground">{row.line}</span>

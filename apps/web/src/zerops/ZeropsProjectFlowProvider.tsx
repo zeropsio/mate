@@ -69,7 +69,7 @@ import {
 } from "react";
 
 import { useStopDeployments } from "./accountForge";
-import { accountGiteaServices, useAccountGitea } from "./giteaProject";
+import { useAccountGitea, useAccountGiteaServices } from "./giteaProject";
 import { giteaClientFor, useGiteaSession } from "./accountGiteaSessions";
 import {
   ZeropsProjectFlowContext,
@@ -677,17 +677,18 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
     () => new Map(registry.registry.groups.map((entry) => [entry.groupId, entry.slug])),
     [registry.registry.groups],
   );
-  // Each group's runner, from the Gitea project's services the inventory already holds: a stage's
-  // first deploy waits on it, and its line says so (`stopComing`). Nothing is read for it.
+  // Each group's runner, from the Gitea project's services the inventory already holds, through a
+  // blink of its socket: a stage's first deploy waits on it, and its line says so (`stopComing`).
+  // Nothing is read for it.
+  const giteaServices = useAccountGiteaServices(clientId);
   const runners = useMemo(() => {
-    const services = accountGiteaServices(held, clientId);
     const found = new Map<string, GroupRunner>();
     for (const [groupId, slug] of slugs) {
-      const runner = groupRunner({ slug, services, nowMs });
+      const runner = groupRunner({ slug, services: giteaServices });
       if (runner !== undefined) found.set(groupId, runner);
     }
     return found;
-  }, [clientId, held, nowMs, slugs]);
+  }, [giteaServices, slugs]);
   const mateNames = useMemo(
     () =>
       new Map(

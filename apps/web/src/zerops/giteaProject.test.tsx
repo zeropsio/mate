@@ -2,7 +2,7 @@ import type { ZeropsProject } from "@t3tools/client-runtime/zerops";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vite-plus/test";
 
-import { useAccountGitea, useAccountHoldsGitea } from "./giteaProject";
+import { accountGiteaServices, useAccountGitea, useAccountHoldsGitea } from "./giteaProject";
 import { HeldInventoryContext, type InventoryServiceOutcome } from "./inventoryContext";
 
 const gitea = {
@@ -37,5 +37,40 @@ describe("the account's Gitea", () => {
   // *Add Gitea* is offered against the project, not against its services being read.
   it("is held before its services are read, though not yet found", () => {
     expect(render(new Map())).toBe("none held:true");
+  });
+});
+
+describe("the account's Gitea project's services, for each group's runner", () => {
+  const project = (id: string, status: string) =>
+    ({ ...gitea, id, status, name: id }) as ZeropsProject;
+  const runner = (status: string) => ({ id: `r-${status}`, name: "runnerbrine", status });
+  it.each([
+    {
+      case: "an older project not active, listed first, gives way to the active one",
+      projects: [project("old", "STOPPED"), project("new", "ACTIVE")],
+      services: new Map<string, InventoryServiceOutcome>([
+        ["old", { status: "resolved", services: [] }],
+        ["new", { status: "resolved", services: [runner("ACTIVE")] }],
+      ]),
+      names: ["runnerbrine"],
+    },
+    {
+      case: "a project whose services are unread is skipped",
+      projects: [project("unread", "ACTIVE"), project("read", "ACTIVE")],
+      services: new Map<string, InventoryServiceOutcome>([
+        ["read", { status: "resolved", services: [runner("ACTIVE")] }],
+      ]),
+      names: ["runnerbrine"],
+    },
+    {
+      case: "none read: unknown",
+      projects: [project("unread", "ACTIVE")],
+      services: new Map<string, InventoryServiceOutcome>(),
+      names: undefined,
+    },
+  ])("$case", ({ projects, services, names }) => {
+    expect(
+      accountGiteaServices({ projects, services }, "org-1")?.map((service) => service.name),
+    ).toEqual(names);
   });
 });

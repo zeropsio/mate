@@ -54,19 +54,39 @@ function findAccountGitea(
 
 /**
  * The services of the account's Gitea project in the org, as the inventory holds them — no read of
- * their own; `undefined` while it holds no such project, or its services are not read.
+ * their own: an ACTIVE project's first, a project whose services are unread skipped; `undefined`
+ * while it holds no such project with its services read.
  */
 export function accountGiteaServices(
   inventory: Pick<Inventory, "projects" | "services"> | null | undefined,
   clientId: string | undefined,
 ): ReadonlyArray<ZeropsService> | undefined {
-  for (const project of inventory?.projects ?? []) {
-    if (readZeropsToolKind(project.tagList) !== "gitea") continue;
-    if (clientId !== undefined && project.clientId !== clientId) continue;
+  const projects = (inventory?.projects ?? []).filter(
+    (project) =>
+      readZeropsToolKind(project.tagList) === "gitea" &&
+      (clientId === undefined || project.clientId === clientId),
+  );
+  const ordered = [
+    ...projects.filter(({ status }) => status === "ACTIVE"),
+    ...projects.filter(({ status }) => status !== "ACTIVE"),
+  ];
+  for (const project of ordered) {
     const outcome = inventory?.services.get(project.id);
-    return outcome?.status === "resolved" ? outcome.services : undefined;
+    if (outcome?.status === "resolved") return outcome.services;
   }
   return undefined;
+}
+
+/**
+ * The services of the account's Gitea project in the org, from the inventory as held and through
+ * a blink of its socket, as `useAccountGitea` holds the project: each group's runner rests on it.
+ */
+export function useAccountGiteaServices(
+  clientId: string | undefined,
+): ReadonlyArray<ZeropsService> | undefined {
+  const held = useContext(HeldInventoryContext);
+  const found = useMemo(() => accountGiteaServices(held, clientId), [clientId, held]);
+  return useHeldThroughBlink(found, held === null ? undefined : (clientId ?? ""));
 }
 
 /**
