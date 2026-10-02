@@ -7,7 +7,8 @@
  *
  * 1. `project` — the HQ project from an import: `hq` (Core; never `core`, every project's reserved
  *    system service, T0 §4), `db` and `vol`, named `Headquarters` as the Gitea project was, tagged
- *    `mate:hq` for the Zerops GUI alone. Never while the member list names an HQ already.
+ *    `mate:hq` and with the birth's own tag. Never while the member list names an HQ already, nor
+ *    while a `mate:hq` project no anchor names stands: one is being set up elsewhere, or stopped.
  * 2. `services` — the three services up.
  * 3. `credential` — `mate-hq-org:<projectId>`, org Read only and nothing else, written as the
  *    sensitive `HQ_ORG_TOKEN` of `hq`. A token's value is shown once: a token whose variable is
@@ -28,11 +29,11 @@
  *
  * The **record** (`HqBirthRecord`) is what a step leaves for the next, and what *Try again* — or a
  * reload, where the client keeps it — resumes from: a step that stopped runs again, the ones
- * before it do not. The import is marked asked before it is sent. One whose answer was lost, or
- * never read because the page went away, is never sent again — that could make a second project:
- * its project is taken up only where the organization's process history names exactly one
- * `Headquarters` created by this person since it was asked (P-10); otherwise the birth stops
- * `uncertain`. No project is ever taken for HQ's by its name or its tag alone.
+ * before it do not. The import is sent at most once a birth: the birth's tag
+ * (`mate:hq-birth:<id>`) is kept before the import is sent, and a birth that keeps one never sends
+ * it again — whatever became of its answer, it takes up the one project carrying that tag, or stops
+ * `uncertain`. Only an import Zerops refused outright made nothing, and is sent anew. No project is
+ * ever taken for HQ's by its name or the `mate:hq` tag alone.
  *
  * Pure of platform globals (rule R1): the platform, Core's artifact, the health read, the clock
  * and the sleeps are passed in.
@@ -40,13 +41,19 @@
  * @module hq/birth
  */
 import { ZeropsApiError, type ZeropsApiClient } from "../api.ts";
-import type { ZeropsProjectCreationRecord } from "../projectCreation.ts";
 import { findOfficialHq, hqAnchorName, hqOrgTokenName } from "./anchor.ts";
 import type { HqEndpoint, HqHealth } from "./client.ts";
 
 export const HQ_PROJECT_NAME = "Headquarters";
-/** For the Zerops GUI only: the official HQ is the one its anchor names, never a tag. */
+/**
+ * Marks HQ's project for the Zerops GUI, and for a birth to see one underway: the official HQ is
+ * the one its anchor names, never a tag.
+ */
 export const HQ_PROJECT_TAG = "mate:hq";
+/** One birth's own tag on the project it imports: what finds that project, and nothing else. */
+const hqBirthTag = (birthId: string): string => `mate:hq-birth:${birthId}`;
+/** A project on its way out, or out: nothing a birth counts. */
+const GONE_PROJECT_STATUSES: ReadonlySet<string> = new Set(["DELETING", "DELETED"]);
 const HQ_SERVICE = "hq";
 const HQ_PORT = 8080;
 const HQ_SERVICES = ["db", "vol", HQ_SERVICE] as const;
@@ -90,10 +97,10 @@ export interface HqBirthRecord {
   /** The step to run next; `done` once HQ answered as the official one. */
   readonly step: HqBirthStep | "done";
   /**
-   * When the import was sent (wall ms) while its answer is not read: the project may stand,
-   * unknown to this birth. Null otherwise.
+   * The birth's own tag (`hqBirthTag`), kept before its import is sent: from then on the import
+   * is never sent again, and the project is found by it. Null before.
    */
-  readonly importAskedAt: number | null;
+  readonly importTag: string | null;
   readonly projectId: string | null;
   /** The `hq` service. */
   readonly serviceId: string | null;
@@ -105,7 +112,7 @@ export interface HqBirthRecord {
 
 export const HQ_BIRTH_START: HqBirthRecord = {
   step: "project",
-  importAskedAt: null,
+  importTag: null,
   projectId: null,
   serviceId: null,
   address: null,
@@ -115,7 +122,7 @@ export const HQ_BIRTH_START: HqBirthRecord = {
 /** The platform calls a birth makes, as the account's client offers them. */
 export type HqBirthPlatform = Pick<
   ZeropsApiClient,
-  | "listProjectCreations"
+  | "listClientProjects"
   | "listOrganizationMembers"
   | "listIntegrationTokens"
   | "importProject"
@@ -167,6 +174,8 @@ export interface HqBirthDeps {
   readonly health: (address: string) => Promise<HqHealth>;
   readonly sleep: (ms: number) => Promise<void>;
   readonly now: () => number;
+  /** A new birth's id, for its tag. */
+  readonly newBirthId: () => string;
   readonly waits?: Partial<HqBirthWaits>;
 }
 
@@ -187,32 +196,17 @@ class BirthStopped extends Error {}
 class ImportUnanswered extends Error {}
 
 const IMPORT_UNANSWERED =
-  "Zerops did not confirm HQ's project, and its history shows no Headquarters of yours made since. Try again in a moment; before starting over, look for a Headquarters project in Zerops and delete it.";
+  "Zerops did not confirm HQ's project, and lists none of this setup's. Try again in a moment; before starting over, look for a Headquarters project in Zerops and delete it.";
 
-/** How far the browser's clock may run ahead of the platform's. */
-const CLOCK_SLACK_MS = 2 * 60_000;
-
-/**
- * The project an unanswered import made: the one `Headquarters` the process history names as
- * created by this person since the import was asked — none where it names none, or more.
- */
-export function importedHqProject(input: {
-  readonly creations: ReadonlyArray<ZeropsProjectCreationRecord>;
-  readonly userId: string | undefined;
-  readonly askedAt: number;
-}): string | undefined {
-  if (input.userId === undefined) return undefined;
-  const made = input.creations.filter(
-    (creation) =>
-      creation.projectName === HQ_PROJECT_NAME &&
-      creation.createdByUserId === input.userId &&
-      creation.createdAt >= input.askedAt - CLOCK_SLACK_MS,
-  );
-  return made.length === 1 ? made[0]?.projectId : undefined;
-}
+/** Zerops answered the import with a no: it made nothing. */
+const refusedOutright = (cause: unknown): boolean =>
+  cause instanceof ZeropsApiError &&
+  (cause.kind === "invalid-input" || cause.kind === "forbidden" || cause.kind === "not-found");
 
 /** HQ's import: Core, its Postgres and its volume, and the variables Core reads besides its token. */
 export function hqImportYaml(input: {
+  /** The birth's own tag (`hqBirthTag`). */
+  readonly birthTag: string;
   /** The client origins HQ's API answers (`HQ_CLIENT_ORIGINS`). */
   readonly origins: ReadonlyArray<string>;
   /** The Zerops REST API Core reads with (`HQ_ZEROPS_API`). */
@@ -223,6 +217,7 @@ export function hqImportYaml(input: {
     `  name: ${HQ_PROJECT_NAME}`,
     "  tags:",
     `    - ${JSON.stringify(HQ_PROJECT_TAG)}`,
+    `    - ${JSON.stringify(input.birthTag)}`,
     "services:",
     "  - hostname: db",
     "    type: postgresql:single@18",
@@ -246,8 +241,6 @@ export function hqImportYaml(input: {
 export async function runHqBirth(input: {
   readonly record: HqBirthRecord;
   readonly clientId: string;
-  /** The person bearing it: an unanswered import's project is theirs alone to take up. */
-  readonly userId: string | undefined;
   readonly origins: ReadonlyArray<string>;
   readonly zeropsApi: string;
   readonly deps: HqBirthDeps;
@@ -291,43 +284,60 @@ export async function runHqBirth(input: {
     }
   };
 
+  /**
+   * A `Headquarters` project no anchor names yet stops a birth from nothing: it is one being set up
+   * elsewhere, or one whose setup stopped, and a second import would make two.
+   */
+  const assertNoHqUnderway = async () => {
+    const underway = (await platform.listClientProjects(clientId)).find(
+      (project) =>
+        !GONE_PROJECT_STATUSES.has(project.status) &&
+        (project.tagList ?? []).includes(HQ_PROJECT_TAG),
+    );
+    if (underway !== undefined) {
+      throw new BirthStopped(
+        `This organization has a Headquarters project already (${underway.id}) that is not its HQ yet: HQ is being set up elsewhere, or a setup stopped. Finish it where it started, or delete that project in Zerops and try again.`,
+      );
+    }
+  };
+
   try {
-    /** The project an import asked at `askedAt` made, from the process history; or a stop. */
-    const takeUpImport = async (askedAt: number) => {
-      const projectId = importedHqProject({
-        creations: await platform.listProjectCreations(clientId),
-        userId: input.userId,
-        askedAt,
-      });
-      if (projectId === undefined) throw new ImportUnanswered(IMPORT_UNANSWERED);
-      return projectId;
+    /** The one project carrying the birth's tag `tag`; or a stop where none, or more, stand. */
+    const importedBy = async (tag: string) => {
+      const made = (await platform.listClientProjects(clientId)).filter(
+        (project) =>
+          !GONE_PROJECT_STATUSES.has(project.status) &&
+          (project.tagList ?? []).includes(HQ_PROJECT_TAG) &&
+          (project.tagList ?? []).includes(tag),
+      );
+      if (made.length !== 1) throw new ImportUnanswered(IMPORT_UNANSWERED);
+      return made[0]!.id;
     };
 
     if (record.step === "project") {
-      const asked = record.importAskedAt;
-      if (asked !== null) {
-        advance({ step: "services", importAskedAt: null, projectId: await takeUpImport(asked) });
+      const sent = record.importTag;
+      if (sent !== null) {
+        advance({ step: "services", projectId: await importedBy(sent) });
       } else {
         await assertNoOtherHq(null);
-        const askedAt = deps.now();
-        advance({ importAskedAt: askedAt });
+        await assertNoHqUnderway();
+        const tag = hqBirthTag(deps.newBirthId());
+        advance({ importTag: tag });
         const projectId = await platform
           .importProject(
             clientId,
-            hqImportYaml({ origins: input.origins, zeropsApi: input.zeropsApi }),
+            hqImportYaml({ birthTag: tag, origins: input.origins, zeropsApi: input.zeropsApi }),
           )
           .then(
             (imported) => imported.projectId,
             (cause: unknown) => {
-              if (cause instanceof ZeropsApiError && cause.kind === "uncertain") {
-                return takeUpImport(askedAt);
-              }
-              // Refused outright: nothing was made, and Try again imports.
-              advance({ importAskedAt: null });
+              if (!refusedOutright(cause)) return importedBy(tag);
+              // Nothing was made, and Try again imports.
+              advance({ importTag: null });
               throw cause;
             },
           );
-        advance({ step: "services", importAskedAt: null, projectId });
+        advance({ step: "services", projectId });
       }
     }
 

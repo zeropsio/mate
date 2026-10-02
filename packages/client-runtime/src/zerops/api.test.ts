@@ -2348,46 +2348,6 @@ describe("ZeropsApiClient — a project's public HTTP routing", () => {
   });
 });
 
-describe("ZeropsApiClient.listProjectCreations", () => {
-  it("searches the organization's newest processes and answers its project creations, each with its creator", async () => {
-    const stub = recordingFetch(() =>
-      jsonResponse(200, {
-        items: [
-          {
-            id: "proc-hq",
-            actionName: "project.create",
-            status: "RUNNING",
-            created: "2026-10-02T05:00:01.000Z",
-            project: { id: "hq1", name: "Headquarters" },
-            createdByUser: { type: "USER", id: "u-ada" },
-          },
-          { id: "proc-build", actionName: "stack.build", created: "2026-10-02T05:00:02.000Z" },
-        ],
-      }),
-    );
-    const client = new ZeropsApiClient({ fetch: stub.fetch });
-    client.restoreSession(SESSION);
-
-    await expect(client.listProjectCreations("org-1")).resolves.toEqual([
-      {
-        projectId: "hq1",
-        projectName: "Headquarters",
-        createdAt: Date.parse("2026-10-02T05:00:01.000Z"),
-        createdByUserId: "u-ada",
-      },
-    ]);
-    expect(stub.requests[0]).toMatchObject({
-      method: "POST",
-      url: expect.stringMatching(/\/process\/search$/),
-    });
-    expect(JSON.parse(stub.requests[0]!.body!)).toEqual({
-      search: [{ name: "clientId", operator: "eq", value: "org-1" }],
-      sort: [{ name: "created", ascending: false }],
-      limit: 100,
-    });
-  });
-});
-
 describe("ZeropsApiClient.readProjectCreation", () => {
   it("searches the project's processes and answers its newest project.create", async () => {
     const stub = recordingFetch(() =>

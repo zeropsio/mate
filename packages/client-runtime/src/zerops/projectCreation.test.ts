@@ -5,7 +5,6 @@ import {
   pickProjectCreation,
   projectCreationFailureSentence,
   projectCreationOutcome,
-  projectCreationsBy,
   projectProcessSearchBody,
   zcpCreationUnderWay,
 } from "./projectCreation.ts";
@@ -180,41 +179,5 @@ describe("zcpCreationUnderWay", () => {
     },
   ])("$case: $want", ({ items, want }) => {
     expect(zcpCreationUnderWay(items)).toBe(want);
-  });
-});
-
-describe("projectCreationsBy — who created which project, as its creation's process says", () => {
-  it("names each project.create's project and the person who started it, and nothing else", () => {
-    const items = [
-      process({
-        id: "p1",
-        created: "2026-10-02T05:00:00.000Z",
-        project: { id: "hq1", name: "Headquarters" },
-        createdByUser: { type: "USER", id: "u-ada" },
-      }),
-      process({
-        id: "p2",
-        actionName: "project.delete",
-        project: { id: "hq0", name: "Headquarters" },
-      }),
-      // A creation no person started names nobody.
-      process({ id: "p3", project: { id: "x", name: "x" }, createdByUser: null }),
-      process({ id: "p4", project: undefined }),
-      "noise",
-    ];
-    expect(projectCreationsBy(items)).toEqual([
-      {
-        projectId: "hq1",
-        projectName: "Headquarters",
-        createdAt: Date.parse("2026-10-02T05:00:00.000Z"),
-        createdByUserId: "u-ada",
-      },
-      {
-        projectId: "x",
-        projectName: "x",
-        createdAt: Date.parse("2026-09-16T20:21:17.000Z"),
-        createdByUserId: undefined,
-      },
-    ]);
   });
 });

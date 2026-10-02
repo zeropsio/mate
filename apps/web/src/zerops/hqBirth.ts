@@ -8,9 +8,9 @@
  * - **One tab at a time:** a birth holds the browser's lock for its organization; a second tab
  *   waits its turn, then finds HQ born, or goes on from what the first one kept.
  * - **A stop** names its step, and *Try again* goes on from it. After a stop where Zerops may have
- *   made HQ's project unseen (`importAskedAt`), *Try again* reads the process history again and
- *   never imports (`runHqBirth`); *Start over* begins anew, its words sending the person to Zerops
- *   first. No project is ever taken for HQ's by its name or its tag alone.
+ *   made HQ's project unseen (`importTag`), *Try again* looks for the project carrying the birth's
+ *   tag and never imports (`runHqBirth`); *Start over* begins anew, its words sending the person to
+ *   Zerops first. No project is ever taken for HQ's by its name or the `mate:hq` tag alone.
  */
 import {
   HQ_BIRTH_START,
@@ -40,7 +40,7 @@ const HQ_BIRTHS_STORAGE_KEY = "mate:zerops:hq-births";
 
 const RecordSchema = Schema.Struct({
   step: Schema.Literals([...HQ_BIRTH_STEPS, "done"]),
-  importAskedAt: Schema.NullOr(Schema.Number),
+  importTag: Schema.NullOr(Schema.String),
   projectId: Schema.NullOr(Schema.String),
   serviceId: Schema.NullOr(Schema.String),
   address: Schema.NullOr(Schema.String),

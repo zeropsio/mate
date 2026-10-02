@@ -225,6 +225,7 @@ export function hqBirthDeps(client: ZeropsApiClient): HqBirthDeps {
     health: (address) => readHqHealth((input, init) => fetch(input, init), address),
     sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
     now: () => Date.now(),
+    newBirthId: randomUUID,
   };
 }
 

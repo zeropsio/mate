@@ -1,7 +1,11 @@
 import { describe, expect, it } from "@effect/vitest";
 
-import { ZeropsApiError, type ZeropsOrganizationMember, type ZeropsService } from "../api.ts";
-import type { ZeropsProjectCreationRecord } from "../projectCreation.ts";
+import {
+  ZeropsApiError,
+  type ZeropsOrganizationMember,
+  type ZeropsProject,
+  type ZeropsService,
+} from "../api.ts";
 import type { HqHealth } from "./client.ts";
 import {
   HQ_BIRTH_START,
@@ -37,11 +41,14 @@ function fakeZerops(
     readonly sslError?: string;
     /** Core was deployed before the birth reads anything. */
     readonly coreDeployed?: boolean;
-    /** The organization's project creations, as its process history names them. */
-    readonly creations?: ReadonlyArray<ZeropsProjectCreationRecord>;
+    /** The organization's projects before the birth reads anything. */
+    readonly projects?: ReadonlyArray<ZeropsProject>;
+    /** The import is carried out, and its answer never reaches the birth: this is thrown instead. */
+    readonly importAnswerLost?: unknown;
   } = {},
 ) {
   const calls: string[] = [];
+  const projects: ZeropsProject[] = [...(options.projects ?? [])];
   const tokens: Token[] = [];
   const env = new Map<string, string>();
   const imports: string[] = [];
@@ -51,8 +58,8 @@ function fakeZerops(
     { id: "svc-vol", name: "vol", status: "CREATING" },
     { id: "svc-hq", name: "hq", status: "CREATING" },
   ];
-  // A creation the history names stands already, though no answer said so.
-  let services: ZeropsService[] = (options.creations ?? []).length > 0 ? imported() : [];
+  // A project that stands already has its services, though no answer said so.
+  let services: ZeropsService[] = projects.length > 0 ? imported() : [];
   let reads = 0;
   let processReads = 0;
   /** Core is deployed: `hq` has its HTTP port, and a routing may name it. */
@@ -81,9 +88,10 @@ function fakeZerops(
     user: { fullName: token.name, email: `token-${token.id}@zerops.io` },
   });
   const platform: HqBirthPlatform = {
-    listProjectCreations: async () => {
-      step("creations");
-      return options.creations ?? [];
+    listClientProjects: async (clientId) => {
+      step("projects");
+      expect(clientId).toBe(ORG);
+      return projects;
     },
     listOrganizationMembers: async () => {
       step("members");
@@ -103,6 +111,10 @@ function fakeZerops(
       expect(clientId).toBe(ORG);
       imports.push(yaml);
       services = imported();
+      // The direct read lists a project before its import has answered.
+      const tagList = [...yaml.matchAll(/^    - "(.+)"$/gmu)].map((tag) => tag[1]!);
+      projects.push({ id: "hq1", name: "Headquarters", status: "ACTIVE", tagList });
+      if (options.importAnswerLost !== undefined) throw options.importAnswerLost;
       return { projectId: "hq1" };
     },
     listProjectServices: async () => {
@@ -236,12 +248,12 @@ function deps(
       now += ms;
     },
     now: () => now,
+    newBirthId: () => "b1",
   };
 }
 
 const INPUT = {
   clientId: ORG,
-  userId: "u-ada",
   origins: ["http://localhost:4380", "https://mate.zerops.io"],
   zeropsApi: "https://api.app-prg1.zerops.io/api/rest/public",
 };
@@ -273,7 +285,7 @@ describe("runHqBirth", () => {
     expect(outcome).toEqual({ ok: true, hq: { projectId: "hq1", address: ADDRESS } });
     expect(record).toEqual({
       step: "done",
-      importAskedAt: null,
+      importTag: "mate:hq-birth:b1",
       projectId: "hq1",
       serviceId: "svc-hq",
       address: ADDRESS,
@@ -281,6 +293,7 @@ describe("runHqBirth", () => {
     });
     expect(zerops.calls).toEqual([
       "members",
+      "projects",
       "import",
       "services",
       "services",
@@ -312,7 +325,7 @@ describe("runHqBirth", () => {
     expect([...zerops.env]).toEqual([["HQ_ORG_TOKEN", "value-1"]]);
     const yaml = zerops.imports[0]!;
     expect(yaml).toContain("name: Headquarters");
-    expect(yaml).toContain('- "mate:hq"');
+    expect(yaml).toContain('- "mate:hq"\n    - "mate:hq-birth:b1"\n');
     expect(yaml).toMatch(/hostname: hq\n/u);
     expect(yaml).not.toMatch(/hostname: core\b/u);
     expect(yaml).not.toContain("enableSubdomainAccess");
@@ -402,82 +415,125 @@ describe("runHqBirth", () => {
     });
   });
 
-  /** An import asked at 05:00 whose answer this birth never read. */
-  const ASKED_AT = Date.parse("2026-10-02T05:00:00.000Z");
-  const creation = (
-    over: Partial<ZeropsProjectCreationRecord> = {},
-  ): ZeropsProjectCreationRecord => ({
-    projectId: "hq1",
-    projectName: "Headquarters",
-    createdAt: ASKED_AT + 1_000,
-    createdByUserId: "u-ada",
+  it.each<[string, ReadonlyArray<string>]>([
+    // KRLS, 2026-10-02 05:40: a page imported, its kept record went, and the next page imported a
+    // second Headquarters 2 s after the first.
+    ["by a build before birth tags", ["mate:hq"]],
+    ["by another birth", ["mate:hq", "mate:hq-birth:another"]],
+  ])(
+    "imports nothing while a Headquarters made %s stands without an anchor",
+    async (_n, tagList) => {
+      const zerops = fakeZerops({
+        projects: [
+          { id: "CYJDpyAOQf6CCe6l9qDxkA", name: "Headquarters", status: "ACTIVE", tagList },
+        ],
+      });
+      const { outcome } = await birth(HQ_BIRTH_START, zerops);
+      expect(outcome).toEqual({
+        ok: false,
+        step: "project",
+        reason:
+          "This organization has a Headquarters project already (CYJDpyAOQf6CCe6l9qDxkA) that is not its HQ yet: HQ is being set up elsewhere, or a setup stopped. Finish it where it started, or delete that project in Zerops and try again.",
+        uncertain: false,
+      });
+      expect(zerops.imports).toEqual([]);
+    },
+  );
+
+  /** A birth whose import was sent with its tag, the answer never read. */
+  const SENT: HqBirthRecord = { ...HQ_BIRTH_START, importTag: "mate:hq-birth:b0" };
+  const listed = (over: Partial<ZeropsProject> = {}): ZeropsProject => ({
+    id: "hq1",
+    name: "Headquarters",
+    status: "ACTIVE",
+    tagList: ["mate:hq", "mate:hq-birth:b0"],
     ...over,
   });
 
-  it("takes up the Headquarters this person's import made after it was asked, and imports nothing", async () => {
-    const zerops = fakeZerops({ creations: [creation()] });
-    const { outcome, record } = await birth({ ...HQ_BIRTH_START, importAskedAt: ASKED_AT }, zerops);
+  it("takes up the one project its birth's tag names, and imports nothing", async () => {
+    const zerops = fakeZerops({ projects: [listed()] });
+    const { outcome, record } = await birth(SENT, zerops);
     expect(outcome).toMatchObject({ ok: true, hq: { projectId: "hq1" } });
-    expect(record).toMatchObject({ projectId: "hq1", importAskedAt: null });
-    expect(zerops.calls).not.toContain("import");
+    expect(record).toMatchObject({ projectId: "hq1", importTag: "mate:hq-birth:b0" });
+    expect(zerops.imports).toEqual([]);
   });
 
-  it.each<[string, ReadonlyArray<ZeropsProjectCreationRecord>]>([
-    ["none in the history yet", []],
-    ["another person's", [creation({ createdByUserId: "u-jan" })]],
-    ["one made before the import was asked", [creation({ createdAt: ASKED_AT - 10 * 60_000 })]],
-    ["a project of another name", [creation({ projectName: "Headquarters 2" })]],
-    ["one of two", [creation(), creation({ projectId: "hq2" })]],
-  ])("never imports again over an unanswered import, nor takes up %s", async (_name, creations) => {
-    const zerops = fakeZerops({ creations });
-    const { outcome } = await birth({ ...HQ_BIRTH_START, importAskedAt: ASKED_AT }, zerops);
+  it.each<[string, ReadonlyArray<ZeropsProject>]>([
+    ["none listed yet", []],
+    ["another birth's", [listed({ tagList: ["mate:hq", "mate:hq-birth:other"] })]],
+    ["one going away", [listed({ status: "DELETING" })]],
+    ["one no longer tagged mate:hq", [listed({ tagList: ["mate:hq-birth:b0"] })]],
+    ["one of two", [listed(), listed({ id: "hq2" })]],
+  ])("never imports again over a sent import, nor takes up %s", async (_name, projects) => {
+    const zerops = fakeZerops({ projects });
+    const { outcome, record } = await birth(SENT, zerops);
     expect(outcome).toEqual({
       ok: false,
       step: "project",
       reason:
-        "Zerops did not confirm HQ's project, and its history shows no Headquarters of yours made since. Try again in a moment; before starting over, look for a Headquarters project in Zerops and delete it.",
+        "Zerops did not confirm HQ's project, and lists none of this setup's. Try again in a moment; before starting over, look for a Headquarters project in Zerops and delete it.",
       uncertain: true,
     });
-    expect(zerops.calls).not.toContain("import");
+    expect(record).toEqual(SENT);
+    expect(zerops.imports).toEqual([]);
   });
 
-  it("takes up its project at once where the import's answer was lost and the history names it", async () => {
-    const zerops = fakeZerops({ creations: [creation({ createdAt: 1_000 })] });
-    zerops.failOnce(
-      "import",
-      new ZeropsApiError("Zerops may have accepted this operation.", "uncertain"),
-    );
-    const { outcome } = await birth(HQ_BIRTH_START, zerops);
-    expect(outcome).toMatchObject({ ok: true, hq: { projectId: "hq1" } });
-    expect(zerops.calls.filter((call) => call === "import")).toHaveLength(1);
-  });
+  it.each<[string, unknown]>([
+    ["lost", new ZeropsApiError("Zerops may have accepted this operation.", "uncertain")],
+    // The client drops an answer that comes back after its session moved on.
+    [
+      "dropped as the session moved",
+      new ZeropsApiError("This account session has ended.", "expired-session", 401),
+    ],
+    ["unreadable", new SyntaxError("Unexpected end of JSON input")],
+  ])(
+    "takes up the project its import made where the answer was %s, and sends it once",
+    async (_name, answer) => {
+      const zerops = fakeZerops({ importAnswerLost: answer });
+      const { outcome } = await birth(HQ_BIRTH_START, zerops);
+      expect(outcome).toMatchObject({ ok: true, hq: { projectId: "hq1" } });
+      expect(zerops.imports).toHaveLength(1);
+    },
+  );
 
-  it("keeps an import that failed outright for one never made: Try again imports", async () => {
+  it.each<[string, ZeropsApiError]>([
+    ["invalid", new ZeropsApiError("Insufficient credit.", "invalid-input", 400)],
+    ["forbidden", new ZeropsApiError("Not allowed.", "forbidden", 403)],
+  ])("knows an import Zerops refused (%s) made nothing: Try again imports", async (_n, refusal) => {
     const zerops = fakeZerops();
-    zerops.failOnce(
-      "import",
-      new ZeropsApiError("Network error contacting Zerops: offline", "network"),
-    );
+    zerops.failOnce("import", refusal);
     const first = await birth(HQ_BIRTH_START, zerops);
-    expect(first.outcome).toMatchObject({ ok: false, step: "project", uncertain: false });
-    expect(first.record).toMatchObject({ step: "project", importAskedAt: null });
+    expect(first.outcome).toEqual({
+      ok: false,
+      step: "project",
+      reason: refusal.message,
+      uncertain: false,
+    });
+    expect(first.record).toEqual(HQ_BIRTH_START);
     expect((await birth(first.record, zerops)).outcome).toMatchObject({ ok: true });
     expect(zerops.imports).toHaveLength(1);
   });
 
-  it("marks the import asked before it is sent, and answered once it is", async () => {
+  it("keeps its birth's tag before the import is sent, and the import carries it", async () => {
     const zerops = fakeZerops();
-    const { patches } = await birth(HQ_BIRTH_START, zerops);
-    expect(patches.slice(0, 2)).toEqual([
-      { importAskedAt: 0 },
-      { step: "services", importAskedAt: null, projectId: "hq1" },
+    const kept: Array<readonly [Partial<HqBirthRecord>, number]> = [];
+    await runHqBirth({
+      ...INPUT,
+      record: HQ_BIRTH_START,
+      deps: deps(zerops),
+      moved: (patch) => kept.push([patch, zerops.imports.length]),
+    });
+    expect(kept.slice(0, 2)).toEqual([
+      [{ importTag: "mate:hq-birth:b1" }, 0],
+      [{ step: "services", projectId: "hq1" }, 1],
     ]);
+    expect(zerops.imports[0]).toContain('  tags:\n    - "mate:hq"\n    - "mate:hq-birth:b1"\n');
   });
 
   it("regenerates a working token whose variable is missing, and leaves a written one alone", async () => {
     const atCredential: HqBirthRecord = {
       step: "credential",
-      importAskedAt: null,
+      importTag: "mate:hq-birth:b1",
       projectId: "hq1",
       serviceId: "svc-hq",
       address: ADDRESS,
@@ -511,7 +567,7 @@ describe("runHqBirth", () => {
     const zerops = fakeZerops();
     const atDeploy: HqBirthRecord = {
       step: "deploy",
-      importAskedAt: null,
+      importTag: "mate:hq-birth:b1",
       projectId: "hq1",
       serviceId: "svc-hq",
       address: ADDRESS,
@@ -554,7 +610,7 @@ describe("runHqBirth", () => {
   it("deploys Core first where a birth stopped at the domain with no Core deployed behind it", async () => {
     // Headquarters in KRLS, 2026-10-02: a build that routed the domain before Core's deploy stopped
     // there with 400 "ServiceStack must supported http protocol".
-    const zerops = fakeZerops({ creations: [] });
+    const zerops = fakeZerops();
     const { outcome } = await birth({ ...AT_DOMAIN, deployProcessId: null }, zerops);
     expect(outcome).toMatchObject({ ok: true, hq: { address: ADDRESS } });
     const order = zerops.calls.filter((call) => /^(secret|deploy|route|mint mate-hq:)/u.test(call));

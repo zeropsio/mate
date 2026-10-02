@@ -85,7 +85,9 @@ describe("bearHqOnce — one birth, under the organization's lock", () => {
   });
 
   it("starts over from nothing only when asked to", async () => {
-    const { storage } = keptBirths({ "org-1": { ...HQ_BIRTH_START, importAskedAt: 1_000 } });
+    const { storage } = keptBirths({
+      "org-1": { ...HQ_BIRTH_START, importTag: "mate:hq-birth:b0" },
+    });
     const run = vi.fn(async () => BORN);
     await bearHqOnce({
       clientId: "org-1",
@@ -231,7 +233,7 @@ describe("bearHq — the birth the gate runs", () => {
     finish({ ok: false, step: "project", reason: "Unsure.", uncertain: true });
     await vi.waitFor(() => expect(held()?.failed?.uncertain).toBe(true));
     expect(hqBirthView(held())).toMatchObject({ kind: "failed", startOver: true });
-    // Try again never imports over an unanswered import (`runHqBirth`): it reads the history again.
+    // Try again never imports over an unanswered import (`runHqBirth`): it looks for its tag again.
     ask();
     await vi.waitFor(() => expect(run).toHaveBeenCalledTimes(2));
     finish({ ok: false, step: "project", reason: "Unsure.", uncertain: true });

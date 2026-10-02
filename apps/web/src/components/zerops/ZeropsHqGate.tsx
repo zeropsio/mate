@@ -25,8 +25,7 @@ type ClosedGate = Exclude<HqGate, { readonly kind: "open" }>;
 
 /** The gate over the organization open now; its birth starts the moment it shows. */
 export function ZeropsHqGate({ gate }: { readonly gate: ClosedGate }) {
-  const { activeOrganization, client, user } = useZeropsSession();
-  const userId = user?.id;
+  const { activeOrganization, client } = useZeropsSession();
   const clientId = activeOrganization?.id ?? "";
   const accountHq = useAccountHq(activeOrganization?.id);
   const held = useHqBirths((state) => state.byOrg[clientId]);
@@ -39,7 +38,6 @@ export function ZeropsHqGate({ gate }: { readonly gate: ClosedGate }) {
           runHqBirth({
             record,
             clientId,
-            userId,
             ...hqBirthSite(client),
             deps: hqBirthDeps(client),
             moved,
@@ -50,7 +48,7 @@ export function ZeropsHqGate({ gate }: { readonly gate: ClosedGate }) {
         onBorn: reread,
         startOver,
       }),
-    [client, clientId, reread, userId],
+    [client, clientId, reread],
   );
   const birthDue = gate.kind === "birth" && held === undefined;
   useEffect(() => {

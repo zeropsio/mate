@@ -144,48 +144,6 @@ export function pickProjectCreation(
   return newest?.creation;
 }
 
-/** A project's creation, as its process names it: the project, when, and who started it. */
-export interface ZeropsProjectCreationRecord {
-  readonly projectId: string;
-  readonly projectName: string;
-  /** Wall ms. */
-  readonly createdAt: number;
-  /** The person who started it; absent where no person did. */
-  readonly createdByUserId: string | undefined;
-}
-
-/**
- * Every `project.create` among a search's items, with the person who started it: a project does
- * not name who created it, its creation's process alone does, for as long as the platform keeps
- * its process history (P-10).
- */
-export function projectCreationsBy(
-  items: ReadonlyArray<unknown>,
-): ReadonlyArray<ZeropsProjectCreationRecord> {
-  return items.flatMap((item): ReadonlyArray<ZeropsProjectCreationRecord> => {
-    if (typeof item !== "object" || item === null) return [];
-    const { actionName, created, project, createdByUser } = item as {
-      readonly actionName?: unknown;
-      readonly created?: unknown;
-      readonly project?: { readonly id?: unknown; readonly name?: unknown } | null;
-      readonly createdByUser?: { readonly id?: unknown } | null;
-    };
-    if (actionName !== PROJECT_CREATE_ACTION || !nonEmptyString(created)) return [];
-    if (!nonEmptyString(project?.id) || typeof project?.name !== "string") return [];
-    const createdAt = Date.parse(created);
-    if (Number.isNaN(createdAt)) return [];
-    const by = createdByUser?.id;
-    return [
-      {
-        projectId: project.id,
-        projectName: project.name,
-        createdAt,
-        createdByUserId: nonEmptyString(by) ? by : undefined,
-      },
-    ];
-  });
-}
-
 const UNDER_WAY = new Set(["PENDING", "RUNNING"]);
 const ZCP_SERVICE_NAME = /^zcp\d*$/u;
 
