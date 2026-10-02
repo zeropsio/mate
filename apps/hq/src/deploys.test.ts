@@ -966,5 +966,38 @@ describe("deploys", () => {
         }),
       ),
     );
+
+    // Main C15: a new release, a rollback too, asks production again even over a failed deploy of
+    // the same commit — the build's own failure, which no pass retries by itself (B37).
+    it.effect("deploys again a commit whose build failed once a new release lists it", () =>
+      withDeploys(({ appId, world, tiers, commit, deploys, until }) =>
+        Effect.gen(function* () {
+          yield* withProduction(appId, world);
+          const releases = yield* Releases;
+          const sql = yield* SqlClient.SqlClient;
+          const groupHead = yield* commit("group", { "README.md": "# Shop\n" });
+          tiers.set(`${appId}/production`, tierOf(...runtime(appId, "web")));
+          const web = yield* commit("web", { "zerops.yaml": ZEROPS_YAML });
+          const entries = [{ service: "web", sha: web }];
+          const atProduction = (state: string) => (rows: Effect.Success<typeof deploys>) =>
+            rows.some((row) => row.project === "P_PROD" && row.sha === web && row.state === state);
+          world.outcome = () => "BUILD_FAILED";
+          yield* releases.release("dev", appId, { tag: "v0.1.0", groupHead, entries });
+          yield* until(atProduction("failed"));
+          world.outcome = () => "ACTIVE";
+          yield* releases.release("dev", appId, { tag: "v0.1.1", groupHead, entries });
+          yield* until(atProduction("live"));
+          assert.deepStrictEqual(
+            yield* sql`
+              SELECT requested_by FROM hq_deploy WHERE project_id = 'P_PROD' AND sha = ${web}`,
+            [{ requested_by: "dev" }],
+          );
+          assert.deepStrictEqual(
+            versions(world).filter((name) => name.startsWith("v")),
+            [`v0.1.0 ${web.slice(0, 7)}`, `v0.1.1 ${web.slice(0, 7)}`],
+          );
+        }),
+      ),
+    );
   });
 });

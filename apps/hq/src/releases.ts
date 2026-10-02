@@ -5,7 +5,9 @@
  * `main` — and Core, for whoever `can`'s `release` allows, checks it against what HQ holds now and
  * tags it: an annotated tag on the recipe repository's `main`, its message the release's lines
  * (`@t3tools/shared/hqRelease`). What HQ refuses is only an answer — no tag, no record; what it
- * tags it records approved, with its event, in the same fenced write.
+ * tags it records approved, with its event, in the same fenced write — and in it asks production
+ * again for each commit it lists whose build failed there (main C15), which no deploy pass retries
+ * by itself.
  *
  * - **Checked under the recipe repository's lock**, so two releases of one application go one after
  *   another: the name is new and newer by version than every release; `main` is still the head
@@ -251,6 +253,20 @@ export const releasesLayer: Layer.Layer<
                 ${encodeEntries(wanted.entries)}::jsonb, ${wanted.by}, 'approved',
                 ${wanted.rollbackOf})
               RETURNING ${sql.literal(RELEASE_COLUMNS)}`;
+            // Production is asked again for each commit it lists, even over its build's own failure,
+            // which no pass retries by itself (main C15, B37): the releaser asks it.
+            for (const entry of wanted.entries) {
+              yield* sql`
+                UPDATE hq_deploy
+                SET state = 'pending', failure = NULL, message = NULL,
+                    requested_by = ${wanted.by}, updated_at = now()
+                WHERE project_id IN (
+                    SELECT project_id FROM hq_environment
+                    WHERE app_id::text = ${appId} AND tier = 'production'
+                  )
+                  AND service = ${entry.service} AND sha = ${entry.sha}
+                  AND state = 'failed' AND failure = 'job'`;
+            }
             yield* appendEvent(sql, {
               kind: "released",
               appId,
