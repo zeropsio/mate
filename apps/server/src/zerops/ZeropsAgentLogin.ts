@@ -32,9 +32,13 @@
  *
  * A login is an agent's default one, keyed by the agent id, or one beyond the
  * defaults (crew mode's *Runs on*, `ZeropsLogins`), keyed by its own id: the
- * same walker, in its own terminal, with its own home in the terminal's
- * environment (`CLAUDE_CONFIG_DIR` / `CODEX_HOME`). Its success asks its own
- * check, never its agent's.
+ * same walker, in its own terminal. Its success asks its own check, never its
+ * agent's.
+ *
+ * Every sign-in's CLI runs in a scratch home (`zeropsLoginHomes`), never the
+ * home its login works with: a success moves the new credential across before
+ * the signer is kept and the check runs, and a cancel, a failure, an exit or a
+ * restart leaves the login as it was.
  *
  * ## Fiber lifecycle — a deliberate simplification
  *
@@ -55,6 +59,8 @@
  * amount of retained memory across a very long server lifetime is an
  * accepted trade-off against a scheduler crash.
  */
+
+import * as NodeOS from "node:os";
 
 import type {
   TerminalAttachInput,
@@ -91,6 +97,7 @@ import { isZeropsEnvironment } from "./ZeropsEnvironment.ts";
 import { zeropsUserIdOf } from "./ZeropsMembershipWatch.ts";
 import { ZEROPS_AGENT_LOGIN_HANDLERS } from "./zeropsAgentLoginHandlers.ts";
 import { stallLoginAction, stepLoginOutput } from "./zeropsAgentLoginWalker.ts";
+import { makeLoginHomes, type LoginHomes, type LoginHomeTarget } from "./zeropsLoginHomes.ts";
 import { ZeropsSignIns, type SignInStore } from "./zeropsSignIns.ts";
 
 /** How long a burst of terminal output coalesces into one stall countdown — mirrors the GUI walker's `STALL_TIMEOUT_MS`. */
@@ -261,6 +268,8 @@ export interface ZeropsAgentLoginOptions {
   /** Re-checks a login beyond the defaults once it signs in; absent, only default logins run. */
   readonly zeropsLogins?: Pick<ZeropsLogins["Service"], "recheckNow">;
   readonly isZeropsEnvironment: boolean;
+  /** Where each sign-in's CLI runs: a scratch home, so no attempt touches the credential in use. */
+  readonly homes: LoginHomes;
   /**
    * Who signed each login in last, kept across restarts (`zeropsSignIns`): read back at start,
    * written with every success. Absent, it lives only as long as the process.
@@ -290,6 +299,8 @@ interface ActiveSession {
   readonly unsubscribeOutput: () => void;
   /** The Zerops user id of whoever started this login — see `ZeropsAgentLoginState.startedBy`. */
   readonly startedBy: string;
+  /** The login its scratch home is for. */
+  readonly home: LoginHomeTarget;
 }
 
 /** How a login process ended, for the message a failed login carries. */
@@ -315,6 +326,7 @@ export const make = (options: ZeropsAgentLoginOptions) =>
       zeropsAgentAuth,
       zeropsLogins,
       isZeropsEnvironment: enabled,
+      homes,
       signIns,
       credentialsHeld,
       credentialGoneAfter = CREDENTIAL_GONE_AFTER,
@@ -484,18 +496,38 @@ export const make = (options: ZeropsAgentLoginOptions) =>
         const before = (yield* Ref.get(state)).logins[key];
         const phase = before?.phase ?? "menu";
         const handler = ZEROPS_AGENT_LOGIN_HANDLERS[session.agentId];
-        const result = stepLoginOutput({ phase, handler, buffer });
+        const stepped = stepLoginOutput({ phase, handler, buffer });
 
-        yield* Ref.set(session.bufferRef, result.clearBuffer ? "" : buffer);
+        yield* Ref.set(session.bufferRef, stepped.clearBuffer ? "" : buffer);
 
-        if (result.write !== undefined) {
+        if (stepped.write !== undefined) {
           yield* terminalManager
             .write({
               threadId: session.threadId,
               terminalId: session.terminalId,
-              data: result.write,
+              data: stepped.write,
             })
             .pipe(Effect.ignore);
+        }
+
+        // The credential its CLI wrote moves into the login's own home before anything hears of
+        // the success; a success that wrote none fails, and the login stays as it was.
+        const result =
+          stepped.nextPhase === "succeeded"
+            ? yield* homes.commit(session.home).pipe(
+                Effect.as(stepped),
+                Effect.catch((error) =>
+                  Effect.succeed({
+                    ...stepped,
+                    nextPhase: "failed" as const,
+                    message: error.detail,
+                  }),
+                ),
+              )
+            : stepped;
+        // A cancel while the success waited for its credential has the last word.
+        if (sessions.get(key)?.token !== token) {
+          return;
         }
 
         if (result.nextPhase === "succeeded" && signIns !== undefined) {
@@ -531,6 +563,17 @@ export const make = (options: ZeropsAgentLoginOptions) =>
 
         if (result.nextPhase === "succeeded" || result.nextPhase === "failed") {
           disposeSession(key, token);
+          if (result.nextPhase === "succeeded") {
+            // Claude stays at its prompt once signed in: nothing keeps running in a scratch home
+            // that goes.
+            yield* terminalManager
+              .close({
+                threadId: session.threadId,
+                terminalId: session.terminalId,
+              } satisfies TerminalCloseInput)
+              .pipe(Effect.ignore);
+          }
+          yield* homes.discard(key);
         }
       });
 
@@ -550,6 +593,7 @@ export const make = (options: ZeropsAgentLoginOptions) =>
           return;
         }
         disposeSession(key, token);
+        yield* homes.discard(key);
         const before = (yield* Ref.get(state)).logins[key];
         yield* setLoginState(key, {
           phase: "failed",
@@ -594,6 +638,11 @@ export const make = (options: ZeropsAgentLoginOptions) =>
         const startedAt = yield* DateTime.now;
         const startedBy = zeropsUserIdOf(subject);
         const before = (yield* Ref.get(state)).logins[key];
+        const home: LoginHomeTarget = {
+          agentId,
+          key,
+          ...(login === undefined ? {} : { env: login.env }),
+        };
 
         yield* setLoginState(key, { phase: "starting", terminalId, startedAt, startedBy });
 
@@ -606,7 +655,7 @@ export const make = (options: ZeropsAgentLoginOptions) =>
             threadId,
             terminalId,
             cwd: AGENT_LOGIN_CWD,
-            ...(login === undefined ? {} : { env: login.env }),
+            env: yield* homes.prepare(home),
           } satisfies TerminalOpenInput);
           // The shell exits with the CLI, so the terminal's own `exited`
           // event is the end of the login process, however it ended.
@@ -629,6 +678,7 @@ export const make = (options: ZeropsAgentLoginOptions) =>
             stallQueue,
             unsubscribeOutput,
             startedBy,
+            home,
           });
 
           yield* Stream.fromQueue(stallQueue).pipe(
@@ -645,7 +695,11 @@ export const make = (options: ZeropsAgentLoginOptions) =>
           yield* Queue.offer(stallQueue, undefined);
         });
 
-        yield* attempt.pipe(Effect.tapError(() => restoreLoginState(key, before)));
+        yield* attempt.pipe(
+          Effect.tapError(() =>
+            restoreLoginState(key, before).pipe(Effect.andThen(homes.discard(key))),
+          ),
+        );
 
         return { terminalId };
       });
@@ -675,6 +729,7 @@ export const make = (options: ZeropsAgentLoginOptions) =>
           threadId: session.threadId,
           terminalId: session.terminalId,
         } satisfies TerminalCloseInput);
+        yield* homes.discard(key);
       });
 
     const submitCode = (
@@ -767,6 +822,7 @@ export const layer = Layer.effect(
       zeropsAgentAuth,
       zeropsLogins,
       isZeropsEnvironment: isZeropsEnvironment(config),
+      homes: yield* makeLoginHomes(NodeOS.homedir()),
       signIns,
       credentialsHeld: credentialsHeldOf(zeropsAgentAuth, zeropsLogins),
     });

@@ -20,6 +20,7 @@ import type {
 import * as ServerConfig from "../config.ts";
 import { make as makeAgentLogin } from "./ZeropsAgentLogin.ts";
 import { ZEROPS_SUBJECT_PREFIX } from "./ZeropsMembershipWatch.ts";
+import { makeLoginHomes } from "./zeropsLoginHomes.ts";
 import {
   fileSignInStore,
   memorySignInStore,
@@ -663,9 +664,12 @@ describe("the turn gate", () => {
               terminalManager: manager,
               zeropsAgentAuth: { recheckNow: () => Effect.void },
               isZeropsEnvironment: true,
+              homes: yield* makeLoginHomes(home),
               signIns: yield* fileSignInStore(file),
             });
             yield* logins.start("claude-code", "thread-1", `${ZEROPS_SUBJECT_PREFIX}${EVA}`);
+            // The CLI signs in in its scratch home.
+            yield* fs.writeFileString(`${home}/.mate/pending/claude-code/.credentials.json`, "{}");
             yield* succeed("agent-login-claude-code");
           }),
         );

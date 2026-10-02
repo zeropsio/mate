@@ -285,6 +285,7 @@ it.layer(NodeServices.layer, { excludeTestServices: true })("ZeropsLogins", (it)
           >[0]["terminalManager"],
           zeropsAgentAuth: { recheckNow: () => Effect.void },
           isZeropsEnvironment: true,
+          homes: {} as Parameters<typeof ZeropsAgentLoginModule.make>[0]["homes"],
           signIns: store,
           credentialsHeld: ZeropsAgentLoginModule.credentialsHeldOf(
             { latest: Effect.succeed({ available: false, agents: [] }), changes: Stream.empty },
@@ -320,6 +321,7 @@ it.layer(NodeServices.layer, { excludeTestServices: true })("ZeropsLogins", (it)
           >[0]["terminalManager"],
           zeropsAgentAuth: { recheckNow: () => Effect.void },
           isZeropsEnvironment: true,
+          homes: {} as Parameters<typeof ZeropsAgentLoginModule.make>[0]["homes"],
           signIns: store,
           credentialsHeld: ZeropsAgentLoginModule.credentialsHeldOf(
             { latest: Effect.succeed({ available: false, agents: [] }), changes: Stream.empty },
@@ -373,6 +375,7 @@ it.layer(NodeServices.layer, { excludeTestServices: true })("ZeropsLogins", (it)
           >[0]["terminalManager"],
           zeropsAgentAuth: { recheckNow: () => Effect.void },
           isZeropsEnvironment: true,
+          homes: {} as Parameters<typeof ZeropsAgentLoginModule.make>[0]["homes"],
           signIns,
           credentialsHeld: ZeropsAgentLoginModule.credentialsHeldOf(
             { latest: Effect.succeed({ available: false, agents: [] }), changes: Stream.empty },
