@@ -291,6 +291,11 @@ describe("setupDocument", () => {
       "running",
     ],
     [
+      "claimed, its send not out yet: waiting, never a step that comes and goes",
+      { record: { startedAt: NOW, ran: true, claimed: true } },
+      "waiting",
+    ],
+    [
       "started, its own turn not found and zcp silent: nothing said, never a running of our own",
       { record: { startedAt: NOW, ran: true } },
       undefined,

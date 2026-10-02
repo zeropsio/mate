@@ -65,6 +65,7 @@ import {
   arrivalHoldsThrough,
   firstBuildState,
   halfMadeFor,
+  LISTING_CATCH_UP_MS,
   listingLacksCreation,
   mateArrivalShown,
   mateComing,
@@ -152,7 +153,7 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
   // Which agent this project's other Mates use, read while it comes up: its sign-in is ready in it.
   useUsualAgent(projectId);
   const { organizationRef, runtime } = useZeropsData();
-  const { listing } = useZeropsCandidates();
+  const { listing, refresh: rereadListing } = useZeropsCandidates();
   const held = useMemo(() => heldCandidates(listing), [listing]);
   const listed = held.rows.find((candidate) => candidate.project.id === projectId);
   // What this tab pressed for it, while it holds it.
@@ -177,6 +178,22 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
   const { health } = useZeropsContainers();
   const containerHealth = candidate === undefined ? undefined : health.get(candidate.key);
   const pressRetry = press?.state.kind === "failed" ? press.state.retry : null;
+  // Made here and still not listed a minute on: its organization's projects are read once more —
+  // a deletion the socket pushed leaves the listing's time at its last full read.
+  const unlisted = creation !== undefined && listed === undefined;
+  const madeAt = creation?.at;
+  const reread = useRef(false);
+  useEffect(() => {
+    if (!unlisted || madeAt === undefined || reread.current) return;
+    const timer = setTimeout(
+      () => {
+        reread.current = true;
+        rereadListing();
+      },
+      Math.max(0, madeAt + LISTING_CATCH_UP_MS + 1_000 - Date.now()),
+    );
+    return () => clearTimeout(timer);
+  }, [madeAt, rereadListing, unlisted]);
   // Made here, and gone before it ever connected: a whole listing read well after lacks it.
   const listingLacksIt =
     creation !== undefined &&

@@ -35,6 +35,7 @@ import {
   useProjectOrderOptions,
 } from "~/zerops/projectOrderPreference";
 import {
+  applyFirstBuildGiveUp,
   firstBuildOverdue,
   applyProjectCreationVerdict,
   normalizeOrigin,
@@ -863,12 +864,16 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
     presses.find((press) => press.organizationId === activeOrganization?.id && press.container)
       ?.projectId ?? null,
   );
+  // A first build half an hour on reads as the platform leaves it, with what removes it.
   const candidates = useMemo(
     () =>
       observedCandidates.map((candidate) =>
-        applyProjectCreationVerdict(candidate, creationVerdicts.get(candidate.project.id)),
+        applyFirstBuildGiveUp(
+          applyProjectCreationVerdict(candidate, creationVerdicts.get(candidate.project.id)),
+          nowMs,
+        ),
       ),
-    [creationVerdicts, observedCandidates],
+    [creationVerdicts, nowMs, observedCandidates],
   );
   // A Mate this tab pressed lands the person in its conversation once it is
   // connected. Auto-connect (the account runtime's) reaches the door — it never

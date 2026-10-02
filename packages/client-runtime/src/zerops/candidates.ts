@@ -204,6 +204,29 @@ export function firstBuildOverdue(
 }
 
 /**
+ * How long a first build nothing says is running stays on its way at all: past it, it failed or
+ * is stuck for good, and reads as the platform leaves it.
+ */
+export const FIRST_BUILD_GIVE_UP_MS = 30 * 60_000;
+
+/**
+ * A container waiting for its first build past {@link FIRST_BUILD_GIVE_UP_MS}, where no process
+ * read says its build still runs: unavailable, naming its status, so its row offers what removes
+ * it — never "taking longer" for good. A creation time not known keeps it on its way.
+ */
+export function applyFirstBuildGiveUp<Candidate extends ZeropsCandidate>(
+  candidate: Candidate,
+  nowMs: number,
+): Candidate {
+  if (candidate.group !== "provisioning" || candidate.service?.status !== "READY_TO_DEPLOY") {
+    return candidate;
+  }
+  const created = Date.parse(candidate.service.created ?? "");
+  if (Number.isNaN(created) || nowMs - created < FIRST_BUILD_GIVE_UP_MS) return candidate;
+  return { ...candidate, group: "unavailable", reason: "container is READY_TO_DEPLOY" };
+}
+
+/**
  * Every candidate one project contributes — one per zcp container, so a project
  * holding two of them offers both rather than collapsing into "ambiguous".
  * `services` is null when the project's service list could not be read; that is

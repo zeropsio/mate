@@ -184,7 +184,7 @@ describe("mateComing — a Mate in its first minutes, in one set of words", () =
       expected: { kind: "coming" as const, line: "Taking longer than usual." },
     })),
     {
-      case: "a first build past its grace, its build still running",
+      case: "a first build past its grace, its build still queued or running: taking longer too",
       input: {
         press: undefined,
         candidate: {
@@ -197,7 +197,23 @@ describe("mateComing — a Mate in its first minutes, in one set of words", () =
         firstBuild: { kind: "running" },
         nowMs: NOW,
       },
-      expected: { kind: "coming", line: "Coming up. A few minutes." },
+      expected: { kind: "coming", line: "Taking longer than usual." },
+    },
+    {
+      case: "a first build half an hour on, its build still running: on its way",
+      input: {
+        press: undefined,
+        candidate: {
+          group: "provisioning",
+          service: {
+            status: "READY_TO_DEPLOY",
+            created: new Date(NOW - 40 * 60_000).toISOString(),
+          },
+        },
+        firstBuild: { kind: "running" },
+        nowMs: NOW,
+      },
+      expected: { kind: "coming", line: "Taking longer than usual." },
     },
     {
       case: "a Mate with no container yet, moments after its press: still coming up",
@@ -250,6 +266,23 @@ describe("mateComing — a Mate in its first minutes, in one set of words", () =
       case: "a Mate this tab made that a whole listing, read well after, lacks",
       input: { press: undefined, candidate: undefined, created: true, listingLacksIt: true },
     },
+    // Half an hour on with nothing known of its build — another person's, a months-old one whose
+    // build failed — it is not coming up: its own row and menu say what it is, with their verbs.
+    ...[true, undefined].map((created) => ({
+      case: `a first build half an hour on, nothing known of it${created === true ? ", made here" : ""}`,
+      input: {
+        press: undefined,
+        candidate: {
+          group: "provisioning" as const,
+          service: {
+            status: "READY_TO_DEPLOY",
+            created: new Date(NOW - 40 * 60_000).toISOString(),
+          },
+        },
+        created,
+        nowMs: NOW,
+      },
+    })),
     {
       case: "a Mate this tab made whose project is gone",
       input: { press: undefined, candidate: undefined, created: true, linkHolds: false },
@@ -664,8 +697,9 @@ describe("mateArrivalShown — what a Mate's own view keeps saying once it came 
       cameUp: true,
       expected: OPENING,
     },
-    // Failing since it last connected: past its first failure, no wait of its link holds the board
-    // — its retries and the attempts between them alike, so the two never take turns.
+    // Failing since it last connected: past its first three failures (the ladder's 2, 4 and 8 s),
+    // no wait of its link holds the board — its retries and the attempts between them alike, so
+    // the two never take turns.
     ...(
       [
         { kind: "retrying", retryAtMs: NOW, last: { kind: "network" }, restart: false },
@@ -673,19 +707,27 @@ describe("mateArrivalShown — what a Mate's own view keeps saying once it came 
         { kind: "reconnecting" },
       ] as ReadonlyArray<Reachability>
     ).map((reachability) => ({
-      case: `reaching, ${reachability.kind} after its second failure since it connected`,
+      case: `reaching, ${reachability.kind} after its fourth failure since it connected`,
       page: reaching(reachability),
       cameUp: true,
-      failuresSinceConnect: 2,
+      failuresSinceConnect: 4,
       expected: undefined,
     })),
     {
-      case: "reaching, connecting again after its first failure",
+      case: "reaching, connecting again after its third failure (a fresh server warming up)",
       page: reaching({ kind: "connecting", waitingOn: "exchange" }),
       cameUp: true,
-      failuresSinceConnect: 1,
+      failuresSinceConnect: 3,
       expected: OPENING,
     },
+    // Waiting on its access or its presence is a wait on Zerops, never its link not answering.
+    ...(["access", "presence"] as const).map((waitingOn) => ({
+      case: `reaching, connecting on its ${waitingOn} however often its link failed`,
+      page: reaching({ kind: "connecting", waitingOn }),
+      cameUp: true,
+      failuresSinceConnect: 6,
+      expected: OPENING,
+    })),
     {
       case: "reaching, its container booting whatever its link failed",
       page: reaching({ kind: "container", container: { level: "booting", overdue: false } }),

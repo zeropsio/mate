@@ -27,6 +27,7 @@
  * Pure: the reading and the words; the menu, the view and the page draw them.
  */
 import {
+  FIRST_BUILD_GIVE_UP_MS,
   FIRST_BUILD_GRACE_MS,
   type ZeropsCandidateGroup,
 } from "@t3tools/client-runtime/zerops/candidates";
@@ -208,13 +209,18 @@ export function mateComing(input: MateComingInput): MateComing | undefined {
       ? { kind: "coming", line: COMING_UP_LINE }
       : { kind: "failed", line: HALF_MADE_LINE, verb: "finish-setup" };
   }
-  // Past its grace a first build is still on its way — a slow or queued one looks the same from
-  // its status as one that failed — taking longer, with no verb that cannot work on a service
-  // never deployed; its build still running keeps it simply coming up.
+  // Past its grace a first build is taking longer, whatever its build's state — a slow, queued or
+  // failed one look the same from its status — with no verb that cannot work on a service never
+  // deployed. Half an hour on, unless its build is known to run, it is not coming up at all.
   if (firstBuild) {
-    const overdue =
+    const created = candidate?.service?.created;
+    if (
       input.firstBuild?.kind !== "running" &&
-      !youngAt(candidate?.service?.created, input.nowMs, FIRST_BUILD_GRACE_MS);
+      !youngAt(created, input.nowMs, FIRST_BUILD_GIVE_UP_MS)
+    ) {
+      return undefined;
+    }
+    const overdue = !youngAt(created, input.nowMs, FIRST_BUILD_GRACE_MS);
     return { kind: "coming", line: overdue ? TAKING_LONGER_LINE : COMING_UP_LINE };
   }
   // Made here and not connected yet: its press is over and its container on its way — while
@@ -383,10 +389,11 @@ export function mateComingPage(input: {
 
 /**
  * How many failures of its link since it last connected an arrival holds its board through: its
- * first back-off step; past it, its link's words say it is not answering, with *Try now*, and
- * keep saying so through the attempts between the retries until it connects.
+ * first three back-off steps (2, 4 and 8 s) — a fresh server warming up, its access propagating;
+ * past them, its link's words say it is not answering, with *Try now*, and keep saying so through
+ * the attempts between the retries until it connects.
  */
-export const ARRIVAL_FAILURES_HELD = 1;
+export const ARRIVAL_FAILURES_HELD = 3;
 
 /** Up, its conversation and its sign-in being read: the last of its coming words. */
 const ARRIVAL_OPENING: MateComing = { kind: "coming", line: ALMOST_THERE_LINE };
@@ -419,6 +426,10 @@ export function arrivalHoldsThrough(
     case "waiting-for-zerops":
       return true;
     case "connecting":
+      // A wait on its access or its presence is a wait on Zerops, never its link not answering.
+      return (
+        reachability.waitingOn === "access" || reachability.waitingOn === "presence" || !failing
+      );
     case "reconnecting":
       return !failing;
     case "retrying":
