@@ -456,7 +456,6 @@ export {
   type GiteaCommitDetail,
   type GiteaCommitFile,
   type GiteaCommitStatus,
-  type GiteaIssueSearchHit,
   type GiteaOrganization,
   type GiteaRepository,
   type GiteaRepositoryPermissions,
@@ -494,13 +493,12 @@ export {
   type DeployTokenMint,
 } from "./deployToken.ts";
 export {
-  giteaOverview,
-  giteaPullRequestLine,
-  giteaRepositoryLine,
-  type GiteaOverviewOwner,
-  type GiteaOverviewPullRequest,
-  type GiteaOverviewRepository,
-} from "./giteaOverview.ts";
+  gitOverview,
+  gitRepositoryLine,
+  type GitOverviewApp,
+  type GitOverviewChange,
+  type GitOverviewRepository,
+} from "./gitOverview.ts";
 export {
   changeOffers,
   heldOf,

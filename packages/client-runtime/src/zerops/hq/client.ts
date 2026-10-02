@@ -19,8 +19,10 @@ import {
   CommentListResponse,
   HqChange,
   HqChangeComment,
+  RepoListResponse,
   type AttachmentLink,
   type ChangeLink,
+  type RepoListEntry,
 } from "@t3tools/shared/hqChanges";
 import { RecipeTierResponse, type RecipeTier } from "@t3tools/shared/hqRecipe";
 import type { MateSummary } from "@t3tools/shared/mateLink";
@@ -199,6 +201,11 @@ export interface HqApi {
     tier: RecipeTier,
     signal?: AbortSignal,
   ) => Promise<RecipeTierResponse>;
+  /**
+   * An application's repositories, read as the person (`GET /api/apps/:appId/repos`): whoever may
+   * read its changes.
+   */
+  readonly appRepos: (appId: string, signal?: AbortSignal) => Promise<ReadonlyArray<RepoListEntry>>;
 }
 
 /** A socket the structure stream reads, opened by the host (`WebSocket` in a browser). */
@@ -321,6 +328,8 @@ const readComments = decoded(CommentListResponse);
 const readComment = decoded(HqChangeComment);
 const readChange = decoded(HqChange);
 const readRecipeTier = decoded(RecipeTierResponse);
+
+const readAppRepos = decoded(RepoListResponse);
 
 /** A change's own path at HQ's API. */
 const changePath = ({ appId, repo, number }: ChangeLink): string =>
@@ -533,6 +542,15 @@ export function makeHqApi(input: {
           ...(signal === undefined ? {} : { signal }),
         })
       ).blob(),
+    appRepos: async (appId, signal) =>
+      (
+        await readAppRepos(
+          await authorized(
+            `/api/apps/${encodeURIComponent(appId)}/repos`,
+            signal === undefined ? {} : { signal },
+          ),
+        )
+      ).repos,
     recipeTier: async (appId, tier, signal) =>
       readRecipeTier(
         await authorized(

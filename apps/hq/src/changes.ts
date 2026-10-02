@@ -880,9 +880,12 @@ export const changesLayer: Layer.Layer<
             WHERE placed.project_id = ${projectId} AND placed.kind IN ('mate', 'devstage')`;
           if (placed === undefined) return { appId: null, appName: null, changes: [] };
           const rows = yield* sql<
-            Pick<ChangeRow, "repo" | "number" | "state" | "head" | "merged_sha" | "landed_head">
+            Pick<
+              ChangeRow,
+              "repo" | "number" | "title" | "state" | "head" | "merged_sha" | "landed_head"
+            >
           >`
-            SELECT repo, number, state, head, merged_sha, landed_head FROM (
+            SELECT repo, number, title, state, head, merged_sha, landed_head FROM (
               SELECT *, row_number() OVER (PARTITION BY repo ORDER BY number DESC) AS rank
               FROM hq_change
               WHERE app_id = ${placed.app_id}::uuid AND mate_project_id = ${projectId}
@@ -895,6 +898,7 @@ export const changesLayer: Layer.Layer<
             changes: rows.map((row) => ({
               repo: row.repo,
               number: row.number,
+              title: row.title,
               state: row.state,
               head: row.head,
               mergedSha: row.merged_sha,

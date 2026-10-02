@@ -129,6 +129,8 @@ export const judge = (git: HqGit, repo: Repo, mateId: string, number: number) =>
 export const gitHostLayer = (options: {
   /** Where the bare repositories live: `/mnt/vol/git` in the container. */
   readonly rootDir: string;
+  /** Where a repository may be imported from on disk: the migration's bundles (`importJob.ts`). */
+  readonly importRoots?: ReadonlyArray<string>;
   /** The first pause before opening git again after it failed, doubling up to 30 s; 1 s. */
   readonly openBackoff?: Duration.Duration;
 }): Layer.Layer<GitHost, never, Leader | SqlClient.SqlClient> =>
@@ -312,6 +314,7 @@ export const gitHostLayer = (options: {
           const opened: { git?: HqGit } = {};
           const git = yield* makeHqGit({
             rootDir: options.rootDir,
+            importRoots: options.importRoots ?? [],
             authenticate: (request) => principals.get(request) ?? null,
             canRead: (principal, repo) => {
               const mayRead = readers.get(principal);

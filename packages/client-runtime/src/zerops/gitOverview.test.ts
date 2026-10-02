@@ -1,0 +1,89 @@
+import { describe, expect, it } from "vite-plus/test";
+
+import { gitOverview, gitRepositoryLine } from "./gitOverview.ts";
+import type { FlowPullRequest } from "./projectFlow.ts";
+
+/** An open change of `repository`, as HQ's stream says it, moved at hour `hour`. */
+function change(repository: string, number: number, hour = number): FlowPullRequest {
+  return {
+    repository,
+    number,
+    title: `Change ${number}`,
+    kind: "code",
+    mateProjectId: "p-vera",
+    url: undefined,
+    mergeability: "mergeable",
+    behind: false,
+    merged: false,
+    mergedAt: undefined,
+    state: "open",
+    headSha: "abc",
+    baseBranch: "main",
+    line: `${repository} #${number}`,
+    updatedAt: `2026-10-02T${String(hour).padStart(2, "0")}:00:00Z`,
+  };
+}
+
+const VERA = (projectId: string) => (projectId === "p-vera" ? "Vera" : undefined);
+
+describe("the Git page's overview (SPEC §5.3)", () => {
+  it("lists each application by name, its repositories by name, their changes newest first", () => {
+    const overview = gitOverview({
+      apps: [
+        {
+          appId: "a-todo",
+          name: "Todo",
+          repositories: [{ name: "group" }, { name: "appdev" }],
+          changes: [change("appdev", 4), change("appdev", 5)],
+        },
+        { appId: "a-crm", name: "CRM", repositories: [{ name: "api" }], changes: [] },
+      ],
+      mateName: VERA,
+    });
+    expect(overview.map((app) => app.name)).toEqual(["CRM", "Todo"]);
+    const todo = overview[1];
+    expect(todo?.repositories.map((repository) => repository.name)).toEqual(["appdev", "group"]);
+    expect(todo?.repositories[0]?.changes.map((entry) => entry.pull.number)).toEqual([5, 4]);
+    expect(todo?.repositories[1]?.changes).toEqual([]);
+  });
+
+  // HQ's stream said it as the person, so they may see it: a page that dropped it would be
+  // quieter than HQ.
+  it("keeps a change whose repository the list did not carry, under its application", () => {
+    const [app] = gitOverview({
+      apps: [
+        {
+          appId: "a-todo",
+          name: "Todo",
+          repositories: [{ name: "group" }],
+          changes: [change("appdev", 4)],
+        },
+      ],
+      mateName: VERA,
+    });
+    expect(app?.repositories.map((repository) => repository.name)).toEqual(["appdev", "group"]);
+  });
+
+  it("names each change by its number and its Mate, under its repository's row", () => {
+    const [app] = gitOverview({
+      apps: [
+        {
+          appId: "a-todo",
+          name: "Todo",
+          repositories: [{ name: "appdev" }],
+          changes: [change("appdev", 4), { ...change("appdev", 6), mateProjectId: "p-gone" }],
+        },
+      ],
+      mateName: VERA,
+    });
+    expect(app?.repositories[0]?.changes.map((entry) => entry.line)).toEqual(["#6", "#4 · Vera"]);
+  });
+
+  it.each([
+    [0, "No open pull request"],
+    [1, "1 open pull request"],
+    [3, "3 open pull requests"],
+  ])("says a repository with %i open as %s", (open, line) => {
+    expect(gitRepositoryLine(open)).toBe(line);
+  });
+});

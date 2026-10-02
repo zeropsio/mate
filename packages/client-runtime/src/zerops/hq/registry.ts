@@ -24,8 +24,8 @@ export interface ZeropsRegistryGroup {
   readonly groupId: string;
   readonly name: string;
   /**
-   * The Gitea org the remaining Gitea reads key a group by. HQ names no Gitea org, so it is the
-   * group's id: no Gitea answers for it, until the Git page reads HQ (T11).
+   * The Gitea org the remaining Gitea reads — releases and deploys — key a group by. HQ names no
+   * Gitea org, so it is the group's id: no Gitea answers for it.
    */
   readonly slug: string;
   readonly projects: ReadonlyArray<ZeropsRegistryProject>;

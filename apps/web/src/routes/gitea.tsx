@@ -1,6 +1,6 @@
 import { createFileRoute, redirect } from "@tanstack/react-router";
 
-import { ZeropsGiteaPage } from "../components/zerops/ZeropsGiteaPage";
+import { ZeropsGitPage } from "../components/zerops/ZeropsGitPage";
 import { resolveDoor } from "./-door";
 import { loadDoorEnvironmentCount } from "./-doorEnvironments";
 
@@ -14,5 +14,5 @@ export const Route = createFileRoute("/gitea")({
       throw redirect({ to: door.redirect, replace: true });
     }
   },
-  component: ZeropsGiteaPage,
+  component: ZeropsGitPage,
 });

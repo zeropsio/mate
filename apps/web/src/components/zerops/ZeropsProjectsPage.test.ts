@@ -38,7 +38,7 @@ import pressSource from "../../zerops/matePress.ts?raw";
 import creationSource from "../../zerops/useEnvironmentCreation.ts?raw";
 import mateActionsSource from "../../zerops/useMateActions.tsx?raw";
 import groupDetailSource from "./ZeropsGroupDetail.tsx?raw";
-import giteaPageSource from "./ZeropsGiteaPage.tsx?raw";
+import gitPageSource from "./ZeropsGitPage.tsx?raw";
 import sidebarTreeSource from "./SidebarZeropsTree.tsx?raw";
 import sidebarSource from "../Sidebar.tsx?raw";
 import newProjectSource from "./ZeropsNewProjectHost.tsx?raw";
@@ -727,7 +727,7 @@ describe("a status word's hand", () => {
   it.each([
     ["the projects screen", projectsPageSource],
     ["a project's own page", groupDetailSource],
-    ["the Git page", giteaPageSource],
+    ["the Git page", gitPageSource],
     ["the verdict panel", verdictPanelSource],
     ["a project's releases", releaseRowsSource],
     ["a history", historyViewSource],

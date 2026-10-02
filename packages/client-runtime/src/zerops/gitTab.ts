@@ -426,7 +426,8 @@ export function gitTrouble(evidence: GitBlockEvidence): string {
   if (evidence.remoteReachable === false) {
     const detail = evidence.remoteDetail?.trim() ?? "";
     return detail.length === 0
-      ? "Its remote did not answer."
+      ? // A Mate's checkout's origin is its application's repository in HQ.
+        "HQ did not answer for this repository."
       : detail.slice(0, ZEROPS_GIT_REMOTE_DETAIL_MAX_CHARS);
   }
   return "";

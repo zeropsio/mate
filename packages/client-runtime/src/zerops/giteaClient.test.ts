@@ -213,18 +213,6 @@ describe("GiteaClient request shapes", () => {
     ]);
   });
 
-  it("searches the open pull requests across everything the person can see", async () => {
-    const { client, calls } = fake([{ body: [] }, { body: [] }]);
-    await client.searchPullRequests();
-    await client.searchPullRequests({ owner: "acme", state: "all" });
-    expect(calls[0]?.url).toBe(
-      `${ORIGIN}/api/v1/repos/issues/search?type=pulls&state=open&limit=50&page=1`,
-    );
-    expect(calls[1]?.url).toBe(
-      `${ORIGIN}/api/v1/repos/issues/search?type=pulls&state=all&owner=acme&limit=50&page=1`,
-    );
-  });
-
   it("creates a tag on a commit", async () => {
     const { client, calls } = fake([{ status: 201, body: {} }]);
     await client.createTag("acme", "group", { tag: "v1.2.0", target: "abc", message: "api abc" });
