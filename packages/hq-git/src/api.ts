@@ -281,16 +281,6 @@ export interface HqGit {
     options: { readonly limit: number },
   ) => Effect.Effect<Bounded<CommitSummary>, GitError>;
   /**
-   * The files the change touches against its merge base with main, and how — git's name-status
-   * letter, `A` added, `M` modified, `D` deleted, `T` its type changed — renames never detected.
-   * Bounded like every read; none without a change head or a main.
-   */
-  readonly changeNames: (
-    repo: Repo,
-    mateId: string,
-    number: number,
-  ) => Effect.Effect<Bounded<{ readonly path: string; readonly status: string }>, GitError>;
-  /**
    * What squashing the change into main would do to main now: each file of the merged tree that
    * differs from main's, and how — git's name-status letter, `A` added, `M` modified, `D` deleted,
    * `T` its type changed — renames never detected; a change that would do nothing names none. Named

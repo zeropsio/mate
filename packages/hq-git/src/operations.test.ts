@@ -373,35 +373,6 @@ describe("git operations", () => {
 });
 
 describe("a change's own history", () => {
-  it.live("names each file the change touches against its base, with how", () =>
-    fixture(async (git, dir) => {
-      expect(await value(git.changeNames(repo, "alice", 1))).toEqual({
-        items: [],
-        truncated: false,
-      });
-      const main = await write(
-        git,
-        { "kept.txt": "kept\n", "edited.txt": "one\n", "gone.txt": "x\n" },
-        null,
-      );
-      await branch(git, dir, main, {
-        "added.txt": "new\n",
-        "edited.txt": "two\n",
-        "gone.txt": null,
-      });
-      // main moving on is no part of the change.
-      await write(git, { "later.txt": "later\n" }, main);
-      expect(await value(git.changeNames(repo, "alice", 1))).toEqual({
-        items: [
-          { path: "added.txt", status: "A" },
-          { path: "edited.txt", status: "M" },
-          { path: "gone.txt", status: "D" },
-        ],
-        truncated: false,
-      });
-    }),
-  );
-
   it.live("names what squashing the change does to main now, against the main and head read", () =>
     fixture(async (git, dir) => {
       expect(await value(git.squashNames(repo, "alice", 1))).toEqual({ kind: "no_change" });
@@ -451,6 +422,13 @@ describe("a change's own history", () => {
         });
         expect(await value(git.squashNames(repo, "alice", 2))).toMatchObject({
           main: moved,
+          files: { items: [], truncated: false },
+        });
+        // A change main has already, its head on main itself, would do nothing either.
+        await native(dir, ["update-ref", "refs/heads/mate/alice/4", main]);
+        expect(await value(git.squashNames(repo, "alice", 4))).toEqual({
+          main: moved,
+          head: main,
           files: { items: [], truncated: false },
         });
         // Added otherwise, it does not merge: git's verdict, no names.

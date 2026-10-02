@@ -593,37 +593,20 @@ export const makeOperations = (
       const { items, cut } = await summaries(dir, shas.slice(0, limit), signal);
       return { items, truncated: shas.length > limit || cut };
     });
-  const changeNames: HqGit["changeNames"] = (repo, mateId, number) =>
-    inRepo("changeNames", repo, async (dir, signal) => {
-      const head = await refHead(dir, changeRef(mateId, number), signal);
-      const main = await refHead(dir, "refs/heads/main", signal);
-      if (!head || !main) return { items: [], truncated: false };
-      const base = await text(dir, ["merge-base", main, head], signal);
-      // `-z` alternates the letter and the path, each ended by NUL: never a cut pair.
-      const read = await prefix(
-        dir,
-        ["diff", "--no-renames", "--name-status", "-z", base, head, "--"],
-        signal,
-        readLimits.bytes,
-      );
-      const fields = read.bytes.toString().split("\0");
-      const items: Array<{ path: string; status: string }> = [];
-      for (let i = 0; i + 1 < fields.length && fields[i]; i += 2) {
-        items.push({ status: fields[i]!, path: fields[i + 1]! });
-      }
-      if (read.truncated) items.pop();
-      return {
-        items: items.slice(0, readLimits.entries),
-        truncated: read.truncated || items.length > readLimits.entries,
-      };
-    });
   const squashNames: HqGit["squashNames"] = (repo, mateId, number) =>
     inRepo("squashNames", repo, async (dir, signal) => {
       const head = await refHead(dir, changeRef(mateId, number), signal);
       if (!head) return { kind: "no_change" } as const;
       const main = await bornMain("squashNames", dir, signal);
+      const none = { main, head, files: { items: [], truncated: false } };
+      // A head main has already would squash nothing onto it.
+      const onMain = await git.exec(["-C", dir, "merge-base", "--is-ancestor", head, main], {
+        signal,
+        acceptExitCodes: [1],
+      });
+      if (onMain.code === 0) return none;
       const result = await inspect(dir, repo, mateId, number, main, head, signal);
-      if (result.kind === "empty") return { main, head, files: { items: [], truncated: false } };
+      if (result.kind === "empty") return none;
       if (result.kind !== "clean") return result;
       // `-z` alternates the letter and the path, each ended by NUL: never a cut pair.
       const read = await prefix(
@@ -859,7 +842,6 @@ export const makeOperations = (
     changeHead,
     mergeBase,
     changeLog,
-    changeNames,
     squashNames,
     changeTrailers,
     mergeability,

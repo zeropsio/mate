@@ -3,7 +3,7 @@ import * as NodeChildProcess from "node:child_process";
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 
-import { RECIPE_PROPOSAL_TITLE } from "@t3tools/shared/hqRecipe";
+import { RECIPE_PROPOSAL_TITLE, RECIPE_REPO } from "@t3tools/shared/hqRecipe";
 import { assert, describe, it } from "@effect/vitest";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
@@ -19,6 +19,7 @@ import {
   untilHealth,
 } from "../test/harness/runningCore.ts";
 import { tempPostgresLayer } from "../test/harness/tempPostgres.ts";
+import type { FakeWorld } from "../test/harness/zeropsFake.ts";
 
 type Git = Effect.Success<typeof gitClient>;
 
@@ -29,11 +30,14 @@ const TIER = "project:\n  name: shop\nservices:\n  - hostname: api\n    type: no
 /** The Mate opens a recipe proposal in its application's recipe repository; its number. */
 const propose = (call: Call, auth: Record<string, string>) =>
   Effect.gen(function* () {
-    const made = yield* call("POST", "/api/mate/repos", { headers: auth, body: { name: "group" } });
+    const made = yield* call("POST", "/api/mate/repos", {
+      headers: auth,
+      body: { name: RECIPE_REPO },
+    });
     assert.strictEqual(made.status, 200);
     const opened = yield* call("POST", "/api/mate/changes", {
       headers: auth,
-      body: { repo: "group", title: RECIPE_PROPOSAL_TITLE },
+      body: { repo: RECIPE_REPO, title: RECIPE_PROPOSAL_TITLE },
     });
     return (opened.body as { readonly change: { readonly number: number } }).change.number;
   });
@@ -41,7 +45,7 @@ const propose = (call: Call, auth: Record<string, string>) =>
 /** A Mate's checkout of the recipe repository in `dir`. */
 const groupCheckout = (git: Git, origin: string, credential: string, appId: string, dir: string) =>
   Effect.gen(function* () {
-    yield* git.checked(["clone", remoteOf(origin, credential, appId, "group"), dir]);
+    yield* git.checked(["clone", remoteOf(origin, credential, appId, RECIPE_REPO), dir]);
     const work = NodePath.join(git.dir, dir);
     return {
       work,
@@ -76,13 +80,30 @@ const stateBecomes = (call: Call, session: string, appId: string, number: number
     Effect.map(
       (answer) =>
         (answer.body as { readonly changes: ReadonlyArray<Record<string, unknown>> }).changes.find(
-          (change) => change["repo"] === "group" && change["number"] === number,
+          (change) => change["repo"] === RECIPE_REPO && change["number"] === number,
         ) ?? {},
     ),
     Effect.filterOrFail((change) => change["state"] === state),
     Effect.retry(Schedule.spaced(Duration.millis(50))),
     Effect.timeout(Duration.seconds(10)),
   );
+
+/** Ada and Bo, two Mates of one application. */
+const twoMates = (call: Call, fake: FakeWorld, owner: string) =>
+  Effect.gen(function* () {
+    const ada = yield* mateInApp(call, fake, owner, "P_MATE", "Shop");
+    addProject(fake, "P_MATE2");
+    yield* call("POST", `/api/apps/${ada.appId}/projects`, {
+      session: owner,
+      body: { projectId: "P_MATE2", kind: "mate", mate: { name: "Bo", face: "face-2" } },
+    });
+    const credential = yield* enrollMate(call, fake, "P_MATE2");
+    return {
+      appId: ada.appId,
+      ada,
+      bo: { credential, auth: { authorization: `Mate ${credential}` } },
+    };
+  });
 
 describe("an application's recipe in HQ", () => {
   it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
@@ -114,7 +135,7 @@ describe("an application's recipe in HQ", () => {
           assert.strictEqual(landed["mergedSha"], main);
           yield* rowsWhere(
             url,
-            "SELECT data->>'by' AS by FROM hq_git_event WHERE kind = 'merged' AND repo = 'group'",
+            `SELECT data->>'by' AS by FROM hq_git_event WHERE kind = 'merged' AND repo = '${RECIPE_REPO}'`,
             (rows) => rows[0]?.["by"] === "core",
           );
           assert.strictEqual(
@@ -196,13 +217,13 @@ describe("an application's recipe in HQ", () => {
         yield* stateBecomes(call, owner, appId, second, "open");
         yield* rowsWhere(
           url,
-          `SELECT head FROM hq_change WHERE repo = 'group' AND number = ${String(second)}`,
+          `SELECT head FROM hq_change WHERE repo = '${RECIPE_REPO}' AND number = ${String(second)}`,
           (rows) => rows[0]?.["head"] === head,
         );
 
         const merged = yield* call(
           "POST",
-          `/api/apps/${appId}/changes/group/${String(second)}/merge`,
+          `/api/apps/${appId}/changes/${RECIPE_REPO}/${String(second)}/merge`,
           { session: owner, body: { expectedHead: head } },
         );
         assert.strictEqual(merged.status, 200);
@@ -213,32 +234,26 @@ describe("an application's recipe in HQ", () => {
     );
 
     it.effect(
-      "an add-only recipe change that conflicts with main is left open, its record saying so",
+      "a recipe change adding, otherwise, a tier a sibling's merge added meanwhile waits, its record saying it conflicts",
       () =>
         Effect.gen(function* () {
           const { call, fake, origin } = yield* startCore(true);
           yield* untilHealth(call, "active");
           const owner = yield* sessionFor(call, "door-owner");
-          const ada = yield* mateInApp(call, fake, owner, "P_MATE", "Shop");
-          addProject(fake, "P_MATE2");
-          yield* call("POST", `/api/apps/${ada.appId}/projects`, {
-            session: owner,
-            body: { projectId: "P_MATE2", kind: "mate", mate: { name: "Bo", face: "face-2" } },
-          });
-          const boCredential = yield* enrollMate(call, fake, "P_MATE2");
+          const { appId, ada, bo } = yield* twoMates(call, fake, owner);
           const adaNumber = yield* propose(call, ada.auth);
-          const boNumber = yield* propose(call, { authorization: `Mate ${boCredential}` });
+          const boNumber = yield* propose(call, bo.auth);
           const git = yield* gitClient;
-          const adaWork = yield* groupCheckout(git, origin, ada.credential, ada.appId, "ada");
-          const boWork = yield* groupCheckout(git, origin, boCredential, ada.appId, "bo");
+          const adaWork = yield* groupCheckout(git, origin, ada.credential, appId, "ada");
+          const boWork = yield* groupCheckout(git, origin, bo.credential, appId, "bo");
           // Both add the AI Agent tier, each its own.
           yield* adaWork.write({ [AI_AGENT]: TIER }, "Ada's tier");
           yield* boWork.write({ [AI_AGENT]: TIER.replace("api", "web") }, "Bo's tier");
           yield* adaWork.push("P_MATE", adaNumber);
-          yield* stateBecomes(call, owner, ada.appId, adaNumber, "merged");
+          yield* stateBecomes(call, owner, appId, adaNumber, "merged");
           yield* boWork.push("P_MATE2", boNumber);
           // Not landed, and not closed: open for its Mate to propose again, and said to conflict.
-          const left = yield* call("GET", `/api/apps/${ada.appId}/changes`, {
+          const left = yield* call("GET", `/api/apps/${appId}/changes`, {
             session: owner,
           }).pipe(
             Effect.map(
@@ -246,7 +261,7 @@ describe("an application's recipe in HQ", () => {
                 (
                   answer.body as { readonly changes: ReadonlyArray<Record<string, unknown>> }
                 ).changes.find(
-                  (change) => change["repo"] === "group" && change["number"] === boNumber,
+                  (change) => change["repo"] === RECIPE_REPO && change["number"] === boNumber,
                 ) ?? {},
             ),
             Effect.filterOrFail((change) => change["mergeability"] === "conflict"),
@@ -254,6 +269,132 @@ describe("an application's recipe in HQ", () => {
             Effect.timeout(Duration.seconds(10)),
           );
           assert.strictEqual(left["state"], "open");
+        }),
+    );
+
+    it.effect(
+      "a recipe change adding what a sibling's merge added meanwhile is judged against main: of nothing it is closed, beside a new tier it lands",
+      () =>
+        Effect.gen(function* () {
+          const { call, fake, origin, url } = yield* startCore(true);
+          yield* untilHealth(call, "active");
+          const owner = yield* sessionFor(call, "door-owner");
+          const { appId, ada, bo } = yield* twoMates(call, fake, owner);
+          const adaNumber = yield* propose(call, ada.auth);
+          const boNumber = yield* propose(call, bo.auth);
+          const git = yield* gitClient;
+          const adaWork = yield* groupCheckout(git, origin, ada.credential, appId, "ada");
+          const boWork = yield* groupCheckout(git, origin, bo.credential, appId, "bo");
+          yield* adaWork.write({ [AI_AGENT]: TIER }, "Ada's tier");
+          yield* adaWork.push("P_MATE", adaNumber);
+          yield* stateBecomes(call, owner, appId, adaNumber, "merged");
+          // Bo's, from main as it was before Ada's: the same tier, byte for byte.
+          yield* boWork.write({ [AI_AGENT]: TIER }, "Bo's tier");
+          yield* boWork.push("P_MATE2", boNumber);
+          yield* stateBecomes(call, owner, appId, boNumber, "closed");
+          yield* rowsWhere(
+            url,
+            `SELECT data->>'by' AS by, data->>'reason' AS reason FROM hq_git_event
+             WHERE kind = 'closed' AND number = ${String(boNumber)}`,
+            (rows) => rows[0]?.["by"] === "core" && rows[0]?.["reason"] === "empty",
+          );
+          // Its next adds the stage's beside it: only that is new to main, and it lands.
+          const next = yield* propose(call, bo.auth);
+          const stage = TIER.replace("api", "web");
+          yield* boWork.write({ [STAGE]: stage }, "The stage's");
+          yield* boWork.push("P_MATE2", next);
+          yield* stateBecomes(call, owner, appId, next, "merged");
+          const tier = (name: string) =>
+            Effect.map(
+              call("GET", `/api/apps/${appId}/recipe/${name}`, { session: owner }),
+              (read) => (read.body as { readonly importYaml?: string }).importYaml,
+            );
+          assert.deepStrictEqual([yield* tier("mate"), yield* tier("stage")], [TIER, stage]);
+        }),
+    );
+
+    it.effect("a recipe change whose diff cannot be read is never landed", () =>
+      Effect.gen(function* () {
+        const { call, fake, origin, url, gitRoot } = yield* startCore(true);
+        yield* untilHealth(call, "active");
+        const owner = yield* sessionFor(call, "door-owner");
+        const { appId, ada, bo } = yield* twoMates(call, fake, owner);
+        const unread = yield* propose(call, ada.auth);
+        const read = yield* propose(call, bo.auth);
+        const git = yield* gitClient;
+        const adaWork = yield* groupCheckout(git, origin, ada.credential, appId, "ada");
+        // Past Ada's base, main grows a history longer than the git layer walks: what her
+        // change does to it is unreadable (`invalid_config`), and so never judged.
+        const dir = NodePath.join(gitRoot, appId, `${RECIPE_REPO}.git`);
+        const bare = (args: ReadonlyArray<string>, input = "") =>
+          NodeChildProcess.execFileSync("git", ["--git-dir", dir, ...args], {
+            input,
+            encoding: "utf8",
+            env: { PATH: process.env["PATH"] ?? "/usr/bin:/bin", GIT_CONFIG_NOSYSTEM: "1" },
+          }).trim();
+        const base = bare(["rev-parse", "refs/heads/main"]);
+        const commits = Array.from(
+          { length: 10_001 },
+          (_, i) =>
+            `commit refs/heads/long\ncommitter HQ <hq@hq.invalid> ${String(i)} +0000\ndata 0\n${
+              i === 0 ? `from ${base}\n` : ""
+            }\n`,
+        );
+        bare(["fast-import", "--quiet"], commits.join(""));
+        bare(["update-ref", "refs/heads/main", "refs/heads/long", base]);
+        bare(["update-ref", "-d", "refs/heads/long"]);
+        yield* adaWork.write({ [AI_AGENT]: TIER }, "Ada's tier");
+        yield* adaWork.push("P_MATE", unread);
+        const boWork = yield* groupCheckout(git, origin, bo.credential, appId, "bo");
+        yield* boWork.write({ [STAGE]: TIER }, "The stage's");
+        yield* boWork.push("P_MATE2", read);
+        // Changes are judged one after another as pushed: once Bo's has landed, Ada's was judged.
+        yield* stateBecomes(call, owner, appId, read, "merged");
+        yield* stateBecomes(call, owner, appId, unread, "open");
+        yield* rowsWhere(
+          url,
+          `SELECT count(*)::int AS merged FROM hq_git_event
+           WHERE kind = 'merged' AND number = ${String(unread)}`,
+          (rows) => rows[0]?.["merged"] === 0,
+        );
+      }),
+    );
+
+    it.effect(
+      "a recipe change past the read's bound is never landed: what it adds is not known",
+      () =>
+        Effect.gen(function* () {
+          const { call, fake, origin, url } = yield* startCore(true);
+          yield* untilHealth(call, "active");
+          const owner = yield* sessionFor(call, "door-owner");
+          const { appId, ada, bo } = yield* twoMates(call, fake, owner);
+          const big = yield* propose(call, ada.auth);
+          const small = yield* propose(call, bo.auth);
+          const git = yield* gitClient;
+          const adaWork = yield* groupCheckout(git, origin, ada.credential, appId, "ada");
+          const boWork = yield* groupCheckout(git, origin, bo.credential, appId, "bo");
+          // Every one a file added, one past the bound of what a read names.
+          yield* adaWork.write(
+            {
+              [AI_AGENT]: TIER,
+              ...Object.fromEntries(
+                Array.from({ length: 1001 }, (_, i) => [`notes/${String(i)}.md`, `${String(i)}\n`]),
+              ),
+            },
+            "Many notes",
+          );
+          yield* adaWork.push("P_MATE", big);
+          yield* boWork.write({ [STAGE]: TIER }, "The stage's");
+          yield* boWork.push("P_MATE2", small);
+          // Changes are judged one after another as pushed: once Bo's has landed, Ada's was judged.
+          yield* stateBecomes(call, owner, appId, small, "merged");
+          yield* stateBecomes(call, owner, appId, big, "open");
+          yield* rowsWhere(
+            url,
+            `SELECT count(*)::int AS merged FROM hq_git_event
+           WHERE kind = 'merged' AND number = ${String(big)}`,
+            (rows) => rows[0]?.["merged"] === 0,
+          );
         }),
     );
 

@@ -266,6 +266,9 @@ const squashOnMain = (git: HqGit, repo: Repo, mateId: string, number: number) =>
       )?.sha ?? null,
   );
 
+/** What a try of a landing squashes onto — `main` as it read it — or why it stops short (`stop`). */
+type Aim<A> = { readonly main: string } | { readonly stop: A };
+
 /** The bytes every PNG begins with. */
 const PNG_SIGNATURE = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
 
@@ -522,9 +525,17 @@ export const changesLayer: Layer.Layer<
 
     /**
      * The change squashed into `main` by whoever `by` names — a person, or Core — with the head
-     * that was judged: one merge of a repository at a time, from `main` as the last one left it.
+     * that was judged: one merge of a repository at a time. Each try squashes onto the `main` its
+     * `aim` reads under the repository's lock — a person's, `main` as it is now; Core's, the one it
+     * judged the change against — or stops short where the aim says; should anything else move
+     * `main` meanwhile, it is tried again from where it went.
      */
-    const land = (change: HqChange, expectedHead: string, by: object) =>
+    const land = <A = never, E = never, R = never>(
+      change: HqChange,
+      expectedHead: string,
+      by: object,
+      aim: (git: HqGit, at: Repo) => Effect.Effect<Aim<A>, E, R>,
+    ) =>
       Effect.gen(function* () {
         const git = yield* gitHost.git;
         const number = change.number;
@@ -540,16 +551,19 @@ export const changesLayer: Layer.Layer<
           change.body.trim() === ""
             ? mergeSubject(change.title, number)
             : `${mergeSubject(change.title, number)}\n\n${change.body}`;
-        const squash = (expectedMain: string) =>
-          git.squashMerge(at, {
+        const attempt = Effect.gen(function* () {
+          const aimed = yield* aim(git, at);
+          if ("stop" in aimed) return aimed;
+          return yield* git.squashMerge(at, {
             mateId: mate,
             number,
-            expectedMain,
+            expectedMain: aimed.main,
             expectedHead,
             message,
             trailers: crew,
             author: { name: record?.name ?? "Mate", email: `${mate}@mate.hq.invalid` },
           });
+        });
         return yield* touched(
           leader.write(
             Effect.gen(function* () {
@@ -558,15 +572,15 @@ export const changesLayer: Layer.Layer<
                 SELECT 1 FROM hq_repo WHERE app_id = ${at.appId}::uuid AND name = ${at.id}
                 FOR UPDATE`;
               yield* openChangeLocked(at.appId, at.id, number);
-              // main as it is now; should anything else move it meanwhile, from where it went.
-              let landed = yield* squash((yield* mainOf(git, at)) ?? "");
+              let landed = yield* attempt;
               for (
                 let tries = 1;
                 "kind" in landed && landed.kind === "main_moved" && tries < 3;
                 tries++
               ) {
-                landed = yield* squash((yield* mainOf(git, at)) ?? "");
+                landed = yield* attempt;
               }
+              if ("stop" in landed) return landed.stop;
               // On main already, yet open here: this change's squash whose record never landed
               // (its write failed after git moved main) is recorded now.
               const found =
@@ -602,6 +616,29 @@ export const changesLayer: Layer.Layer<
         );
       });
 
+    /** A person's try: the head they saw, onto `main` as it is now. */
+    const asItIs = (git: HqGit, at: Repo) =>
+      Effect.map(mainOf(git, at), (main) => ({ main: main ?? "" }));
+
+    /** In a fenced write, the change locked open: closed without merging, as `by` says. */
+    const closeLocked = (change: HqChange, by: object) =>
+      Effect.gen(function* () {
+        const [row] = yield* sql<ChangeRow>`
+          UPDATE hq_change
+          SET state = 'closed', closed_at = now(), updated_at = now()
+          WHERE app_id = ${change.appId}::uuid AND repo = ${change.repo}
+            AND number = ${change.number}
+          RETURNING ${sql.literal(CHANGE_COLUMNS)}`;
+        yield* appendEvent(sql, {
+          kind: "closed",
+          appId: change.appId,
+          repo: change.repo,
+          number: change.number,
+          data: by,
+        });
+        return changeOf(row!);
+      });
+
     /** The change closed without merging, as `by` says; its branch stays. */
     const close = (appId: string, repo: string, number: number, by: object) =>
       touched(
@@ -609,29 +646,53 @@ export const changesLayer: Layer.Layer<
           Effect.gen(function* () {
             const change = yield* changeIn(appId, repo, number);
             yield* openChangeLocked(change.appId, change.repo, number);
-            const [row] = yield* sql<ChangeRow>`
-              UPDATE hq_change
-              SET state = 'closed', closed_at = now(), updated_at = now()
-              WHERE app_id = ${change.appId}::uuid AND repo = ${change.repo}
-                AND number = ${number}
-              RETURNING ${sql.literal(CHANGE_COLUMNS)}`;
-            yield* appendEvent(sql, {
-              kind: "closed",
-              appId: change.appId,
-              repo: change.repo,
-              number,
-              data: by,
-            });
-            return changeOf(row!);
+            return yield* closeLocked(change, by);
           }),
         ),
       );
 
     /**
-     * A pushed change of an application's recipe repository, judged by its content (`can`'s
-     * `land_recipe`): one that only adds files, by a Mate HQ holds in that application, Core
-     * lands; an empty one, Core closes; any other waits for a person. A change no longer open, or
-     * with nothing pushed, is let be — so judging it again, at a takeover, is judging it once.
+     * Core's try at a recipe change of `head`, under its repository's lock: judged (`can`'s
+     * `land_recipe`) by what its squash does to `main` now — the `main` it then squashes onto —
+     * never by a guess: names cut short, or a change that does not merge, stop it there. An empty
+     * one is closed here; one `main` has the squash of already is recorded by the squash's own way.
+     */
+    const recipeAim = (change: HqChange, head: string, facts: Facts) => (git: HqGit, at: Repo) =>
+      Effect.gen(function* () {
+        const mate = change.mateProjectId;
+        const named = yield* git.squashNames(at, mate, change.number);
+        if (!("files" in named)) {
+          return named.kind === "already_merged"
+            ? { main: (yield* mainOf(git, at)) ?? "" }
+            : { stop: named.kind };
+        }
+        // A push since is judged as its own, as it comes.
+        if (named.head !== head) return { stop: "head_moved" };
+        if (named.files.truncated) return { stop: "files_past_bound" };
+        const held = yield* mateHeld(mate);
+        const decision = can(
+          { kind: "core" },
+          "land_recipe",
+          {
+            repo: at.id,
+            author: { projectId: mate, held: held.held, appId: held.appId },
+            appId: at.appId,
+            onlyAdded: named.files.items.every((file) => file.status === "A"),
+            empty: named.files.items.length === 0,
+          },
+          facts,
+        );
+        if (decision.allow) return { main: named.main };
+        if (decision.reason === "recipe_empty") {
+          yield* closeLocked(change, { by: "core", reason: "empty" });
+        }
+        return { stop: decision.reason };
+      });
+
+    /**
+     * A pushed change of an application's recipe repository, landed by Core when `can` says so
+     * (`recipeAim`); any other waits for a person. A change no longer open, or with nothing pushed,
+     * is let be — so judging it again, at a takeover, is judging it once.
      */
     const judgeRecipe = ({ repo, mateId, number }: PushedChange) =>
       Effect.gen(function* () {
@@ -644,37 +705,30 @@ export const changesLayer: Layer.Layer<
         if (row?.state !== "open") return;
         const head = yield* git.changeHead(repo, mateId, number);
         if (head === null) return;
-        const names = yield* git.changeNames(repo, mateId, number);
-        const held = yield* mateHeld(mateId);
-        const decision = can(
-          { kind: "core" },
-          "land_recipe",
-          {
-            repo: repo.id,
-            author: { projectId: mateId, held: held.held, appId: held.appId },
-            appId: repo.appId,
-            onlyAdded: !names.truncated && names.items.every((file) => file.status === "A"),
-            empty: !names.truncated && names.items.length === 0,
-          },
-          yield* roles.fresh,
-        );
-        if (decision.allow) {
-          // Refused as git sees it — a conflict with main, a head moved since — it stays open, as
-          // main's broker left it: its record says how it merges, and its Mate proposes again.
-          const change = yield* changeIn(repo.appId, repo.id, number);
-          yield* land(change, head, { by: "core" }).pipe(
-            Effect.catchIf(isChangeRefused, (refused) =>
+        // Read before the lock, never held across Zerops: the landing reads none of the org.
+        const facts = yield* roles.view;
+        const change = yield* changeIn(repo.appId, repo.id, number);
+        // Refused as git sees it — a conflict with main, a head moved since — it stays open, as
+        // main's broker left it: its record says how it merges, and its Mate proposes again.
+        const landed = yield* land(
+          change,
+          head,
+          { by: "core" },
+          recipeAim(change, head, facts),
+        ).pipe(
+          Effect.catchIf(isChangeRefused, (refused) =>
+            Effect.as(
               Effect.logWarning("recipe change not landed", {
                 repo,
                 number,
                 reason: refused.reason,
               }),
+              null,
             ),
-          );
-        } else if (decision.reason === "recipe_empty") {
-          yield* close(repo.appId, repo.id, number, { by: "core", reason: "empty" });
-        } else {
-          yield* Effect.logInfo("recipe change waits", { repo, number, reason: decision.reason });
+          ),
+        );
+        if (typeof landed === "string" && landed !== "recipe_empty") {
+          yield* Effect.logInfo("recipe change waits", { repo, number, reason: landed });
         }
       });
 
@@ -984,7 +1038,8 @@ export const changesLayer: Layer.Layer<
       mergeChange: (userId, appId, repo, number, expectedHead) =>
         Effect.gen(function* () {
           yield* personApp(userId, appId, "merge_change");
-          return yield* land(yield* changeIn(appId, repo, number), expectedHead, { userId });
+          const change = yield* changeIn(appId, repo, number);
+          return yield* land(change, expectedHead, { userId }, asItIs);
         }),
       closeChange: (userId, appId, repo, number) =>
         Effect.andThen(
