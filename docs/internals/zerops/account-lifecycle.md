@@ -27,8 +27,9 @@ local to the browser, not synchronized between devices.
 ## Restoration and convergence
 
 Only stable project/service targets remembered by the same account can reconnect automatically.
-Every restoration validates them against the current inventory; an explicit route wins over the
-last route. The server descriptor must identify the expected project before a credential is sent.
+Every restoration validates them against the current inventory. A sign-in lands once: on the deep
+link it started from, else on the projects page; no route from an earlier visit is restored
+(2026-10-02). The server descriptor must identify the expected project before a credential is sent.
 Restoration never provisions a missing container. A missing target is unavailable; it does not fall
 back to another project's conversation. Drafts retain their environment/thread keys and are not
 moved to a replacement environment or sent automatically.

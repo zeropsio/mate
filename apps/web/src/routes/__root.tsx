@@ -1,4 +1,3 @@
-import { rememberAccountRoute } from "../zerops/navigationStorage";
 import { EnvironmentId, type ServerLifecycleWelcomePayload } from "@t3tools/contracts";
 import { scopedProjectKey, scopeProjectRef } from "@t3tools/client-runtime/environment";
 import { mateDiagnostics } from "@t3tools/client-runtime/zerops/diagnostics";
@@ -228,9 +227,6 @@ function SignedInRootRouteView() {
     environmentId: routeEnvironmentId ?? undefined,
     threadId: pathname.split("/").filter((part) => part.length > 0)[1],
   });
-  useEffect(() => {
-    rememberAccountRoute(pathname);
-  }, [pathname]);
   useEffect(() => {
     mateDiagnostics.record({
       kind: "route-gate",

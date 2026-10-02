@@ -677,7 +677,7 @@ carries it. "Live" means it holds on `main` today.
 | Agent login reports its exit                                                                      | Live from the first release after 0.11.41                                              |
 | A deploy operation becomes uncertain after its cap                                                | Live                                                                                   |
 | Descriptor boot identity, server state stream, identity verdict split, close reasons              | S.6                                                                                    |
-| Persisted UI keys under the account key; the last route through the gate                          | Live                                                                                   |
+| Persisted UI keys under the account key; a sign-in lands on its deep link or /zerops              | Live                                                                                   |
 | Zone tests: one owner per fact family, no component I/O, no data timers                           | 5.5                                                                                    |
 | Dependency rule 1 (`cr/zerops/**` imports no React and no DOM globals)                            | Live                                                                                   |
 | Dependency rule 2 (machine and reducer files import no Effect runtime, fetch or storage)          | Live; zone test "rule 2"                                                               |
