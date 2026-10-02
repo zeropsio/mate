@@ -70,7 +70,7 @@ export function sidebarAccountOrganizationChoices(
 
 /** One destination the foot folds away, in the order the menu lists them. */
 export interface SidebarAccountDestination {
-  readonly id: "projects" | "gitea" | "usage" | "settings";
+  readonly id: "projects" | "git" | "usage" | "settings";
   readonly label: string;
   readonly to: string;
 }
@@ -79,12 +79,12 @@ export interface SidebarAccountDestination {
  * The four places the foot used to spend a glyph each on.
  *
  * Ordered by how often a person goes there rather than by kind: the projects
- * screen is where a Mate is set up, Gitea is where a change is read, and
+ * screen is where a Mate is set up, Git is where a change is read, and
  * settings is the one nobody opens twice a day.
  */
 export const SIDEBAR_ACCOUNT_DESTINATIONS: ReadonlyArray<SidebarAccountDestination> = [
   { id: "projects", label: "Projects", to: "/zerops" },
-  { id: "gitea", label: "Git", to: "/gitea" },
+  { id: "git", label: "Git", to: "/git" },
   { id: "usage", label: "Usage", to: "/usage" },
   { id: "settings", label: "Settings", to: "/settings" },
 ];
@@ -95,7 +95,7 @@ export function sidebarAccountDestinationOf(
 ): SidebarAccountDestination["id"] | null {
   if (/^\/settings(?:\/|$)/.test(pathname)) return "settings";
   if (pathname === "/usage") return "usage";
-  if (pathname === "/gitea") return "gitea";
+  if (pathname === "/git") return "git";
   if (pathname === "/zerops") return "projects";
   return null;
 }

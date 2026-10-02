@@ -4,7 +4,7 @@ import { ZeropsGitPage } from "../components/zerops/ZeropsGitPage";
 import { resolveDoor } from "./-door";
 import { loadDoorEnvironmentCount } from "./-doorEnvironments";
 
-export const Route = createFileRoute("/gitea")({
+export const Route = createFileRoute("/git")({
   beforeLoad: async ({ context, location }) => {
     const door = resolveDoor(context.authGateState, {
       pathname: location.pathname,
