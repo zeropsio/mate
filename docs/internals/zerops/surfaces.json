@@ -1053,10 +1053,12 @@
     },
     {
       "id": "zerops-gitea",
-      "title": "Gitea overview",
+      "title": "Git page",
       "components": [
-        "apps/web/src/components/zerops/ZeropsGiteaPage.tsx",
-        "packages/client-runtime/src/zerops/giteaOverview.ts"
+        "apps/web/src/components/zerops/ZeropsGitPage.tsx",
+        "apps/web/src/components/zerops/ZeropsGitPage.logic.ts",
+        "apps/web/src/zerops/useZeropsAppRepos.ts",
+        "packages/client-runtime/src/zerops/gitOverview.ts"
       ],
       "entryPoints": [
         {
@@ -1065,7 +1067,7 @@
         },
         {
           "kind": "sidebar-item",
-          "value": "Gitea (the footer)"
+          "value": "Git (the account menu)"
         }
       ],
       "clients": {
@@ -1078,19 +1080,24 @@
       },
       "providers": "n/a",
       "connectionModes": ["zerops-door"],
-      "contracts": ["@t3tools/client-runtime/zerops/giteaOverview"],
+      "contracts": [
+        "@t3tools/client-runtime/zerops/gitOverview",
+        "@t3tools/client-runtime/zerops/hq"
+      ],
       "reverseStates": [
         {
-          "action": "Open a repository or a pull request in Gitea",
-          "reverse": "none: navigation, in a new tab."
+          "action": "Open a change's own page",
+          "reverse": "none: navigation."
         }
       ],
       "docs": {
-        "none": "No docs/user page documents the Gitea overview yet."
+        "none": "No docs/user page documents the Git page yet."
       },
       "tests": [
-        "apps/web/src/components/zerops/ZeropsGiteaPage.test.tsx",
-        "packages/client-runtime/src/zerops/giteaOverview.test.ts"
+        "apps/web/src/components/zerops/ZeropsGitPage.test.tsx",
+        "apps/web/src/components/zerops/ZeropsGitPage.logic.test.ts",
+        "apps/web/src/zerops/useZeropsAppRepos.test.tsx",
+        "packages/client-runtime/src/zerops/gitOverview.test.ts"
       ],
       "captures": []
     },

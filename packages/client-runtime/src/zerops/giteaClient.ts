@@ -78,34 +78,6 @@ export interface GiteaRepository {
   readonly permissions?: GiteaRepositoryPermissions | undefined;
 }
 
-/**
- * One hit of `GET /repos/issues/search` — an issue or a pull request across
- * every repository the person can see, with the repository named on it. Not
- * a `GiteaPullRequest`: the search carries neither the head nor whether it
- * merges, which is why the overview lists and links, and a project's flow
- * reads each repository's own pull requests.
- */
-export interface GiteaIssueSearchHit {
-  readonly number: number;
-  readonly title: string;
-  readonly state: string;
-  readonly html_url?: string | undefined;
-  readonly user?: { readonly login?: string | undefined } | undefined;
-  readonly updated_at?: string | undefined;
-  readonly repository?:
-    | {
-        readonly id?: number | undefined;
-        readonly name?: string | undefined;
-        readonly owner?: string | undefined;
-        readonly full_name?: string | undefined;
-      }
-    | undefined;
-  readonly pull_request?:
-    | { readonly merged?: boolean | undefined; readonly draft?: boolean | undefined }
-    | null
-    | undefined;
-}
-
 /** One commit, as a release's contents and a group's history need it. */
 export interface GiteaCommit {
   readonly sha: string;
@@ -334,15 +306,6 @@ export interface GiteaClient {
   getRepository(owner: string, repo: string): Promise<GiteaRepository | undefined>;
   /** Every repository this person has access to, page by page. */
   listUserRepositories(): Promise<ReadonlyArray<GiteaRepository>>;
-  /**
-   * The pull requests across every repository the person can see, page by
-   * page — open ones unless told otherwise, one org's when `owner` is given.
-   */
-  searchPullRequests(
-    options?:
-      | { readonly state?: "open" | "closed" | "all"; readonly owner?: string | undefined }
-      | undefined,
-  ): Promise<ReadonlyArray<GiteaIssueSearchHit>>;
   listBranches(owner: string, repo: string): Promise<ReadonlyArray<GiteaBranch>>;
   /** `undefined` when the branch is not there — a group repo with no `main` yet. */
   getBranch(owner: string, repo: string, branch: string): Promise<GiteaBranch | undefined>;
@@ -617,20 +580,6 @@ export function createGiteaClient(options: GiteaClientOptions): GiteaClient {
 
     listUserRepositories: () =>
       paged<GiteaRepository>({ method: "GET", path: "/user/repos" }, "list your repositories"),
-
-    searchPullRequests: (searchOptions) =>
-      paged<GiteaIssueSearchHit>(
-        {
-          method: "GET",
-          path: "/repos/issues/search",
-          query: {
-            type: "pulls",
-            state: searchOptions?.state ?? "open",
-            owner: searchOptions?.owner,
-          },
-        },
-        "search the pull requests",
-      ),
 
     listBranches: (owner, repo) =>
       json<ReadonlyArray<GiteaBranch>>(
