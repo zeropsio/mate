@@ -435,6 +435,24 @@ export {
   type GroupNextStepTarget,
 } from "./groupFlow.ts";
 export {
+  comingWords,
+  COMING_UP_WINDOW_MS,
+  FIRST_DEPLOY_ON_ITS_WAY,
+  firstDeploy,
+  firstDeployLine,
+  groupRunner,
+  RUNNER_BUILD_MS,
+  RUNNER_TROUBLE_WORDS,
+  runnerHostname,
+  stopComing,
+  type ComingStep,
+  type FirstDeploy,
+  type GiteaProjectService,
+  type GroupRunner,
+  type RunnerTrouble,
+  type StopComing,
+} from "./stopComing.ts";
+export {
   stageMarks,
   stageStandings,
   type ServiceChanges,
