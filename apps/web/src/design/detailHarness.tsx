@@ -195,11 +195,21 @@ function pull(over: Partial<FlowPullRequest> = {}): FlowPullRequest {
 const WAITING = releaseContentsSummary(
   [
     {
+      repository: "appdev",
+      services: ["app"],
       commits: [
-        { sha: "a", subject: "Two-step checkout: the basket step" },
-        { sha: "b", subject: "Fix the VAT rate table for Ireland" },
-        { sha: "c", subject: "Retry the payment webhook three times" },
-      ],
+        "Two-step checkout: the basket step",
+        "Fix the VAT rate table for Ireland",
+        "Retry the payment webhook three times",
+      ].map((subject, index) => ({
+        sha: `c${String(index)}`,
+        subject,
+        authorName: "Juno",
+        at: "2026-10-02T10:00:00.000Z",
+        change: null,
+      })),
+      total: 3,
+      truncated: false,
     },
   ],
   20,
@@ -312,8 +322,8 @@ const BEVIRO_RELEASES: ReadonlyArray<FlowRelease> = NEXTSTORE.map((nextstore, in
       { service: "medusa", commit: sha(medusa) },
       { service: "nextstore", commit: sha(nextstore) },
     ],
-    // Only the newest release's tag time is read.
-    taggedAt: index === 0 ? new Date(NOW - 3_600_000).toISOString() : undefined,
+    // A day apart, newest first.
+    taggedAt: new Date(NOW - (index + 1) * 86_400_000).toISOString(),
   };
 });
 
@@ -394,7 +404,7 @@ const BEVIRO_FAILED_RELEASES: ReadonlyArray<FlowRelease> = [
     ],
     taggedAt: new Date(NOW - 600_000).toISOString(),
   },
-  ...BEVIRO_RELEASES.map((release) => ({ ...release, taggedAt: undefined })),
+  ...BEVIRO_RELEASES,
 ];
 
 /**
@@ -482,7 +492,7 @@ interface StopFixture {
   /** `repository → its read`: what a production's releases carried; the rows are shas without it. */
   readonly reads?: ReadonlyMap<string, ZeropsCommitsState>;
   /** `{service}@{full sha}` → when its production deploy failed. */
-  readonly failedDeploys?: ReadonlyMap<string, string | undefined>;
+  readonly failedDeploys?: ReadonlyMap<string, string>;
   readonly releasedAge?: string;
 }
 
@@ -572,6 +582,7 @@ function StopState({ fixture }: { readonly fixture: StopFixture }) {
       production: running,
       failed: fixture.failedDeploys ?? new Map(),
       live: entry.tag === live,
+      newer: listing.slice(0, index),
     }),
   );
   const view = stopView({

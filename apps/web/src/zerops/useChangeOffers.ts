@@ -5,7 +5,14 @@
  * One function for every application, so a screen listing several asks it per row.
  */
 import { useAtomValue } from "@effect/atom-react";
-import { changeOffers, mayOffer, offerAsker } from "@t3tools/client-runtime/zerops";
+import {
+  changeOffers,
+  mayOffer,
+  offerAsker,
+  releasePermission,
+  type ReleaseGate,
+} from "@t3tools/client-runtime/zerops";
+import { hqRefusalWords } from "@t3tools/client-runtime/zerops/hq";
 import { useCallback, useContext, useMemo } from "react";
 
 import { hqPlacementsAtom } from "../state/zerops";
@@ -59,5 +66,27 @@ export function useKeepDeployKeyOffer(): (projectId: string) => boolean | undefi
     (projectId) =>
       asker === undefined ? undefined : mayOffer(asker, "keep_deploy_token", { projectId }),
     [asker],
+  );
+}
+
+/**
+ * Whether HQ's rule lets the person release an application's production (`releasePermission`),
+ * its refusal in HQ's words, by the application's id; `undefined` while HQ has not said where it
+ * places the projects, or the projects are not listed yet. HQ asks it again at the press.
+ */
+export function useReleasePermission(): (appId: string) => ReleaseGate | undefined {
+  const placements = useAtomValue(hqPlacementsAtom);
+  const asker = useOfferAsker();
+  return useCallback(
+    (appId) => {
+      if (placements === null) return undefined;
+      const decision = releasePermission(asker ?? null, placements, appId);
+      if (decision === undefined || decision.allowed) return decision;
+      return {
+        allowed: false,
+        reason: hqRefusalWords({ code: "forbidden", reason: decision.reason }),
+      };
+    },
+    [asker, placements],
   );
 }

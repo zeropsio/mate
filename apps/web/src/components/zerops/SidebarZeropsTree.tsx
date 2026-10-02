@@ -63,6 +63,7 @@ import {
   sidebarChangeLabel,
   type EnvironmentRow,
   type FlowPullRequest,
+  type Moved,
   type GroupFlow,
   type GroupEnvironmentTier,
   type GroupFlowStop,
@@ -333,9 +334,7 @@ export interface SidebarProjectFlow {
    * What a release would carry, per production service: how many changes wait
    * for production, the count the production chip wears.
    */
-  readonly releaseContents?:
-    | ReadonlyArray<{ readonly commits: ReadonlyArray<{ sha: string; subject: string }> }>
-    | undefined;
+  readonly releaseContents?: ReadonlyArray<Moved> | undefined;
   /**
    * The newest release that did not go through, newer than the one production
    * runs (`releaseFailureOf`): the production chip turns amber, and its menu

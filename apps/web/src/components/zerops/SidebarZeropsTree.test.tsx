@@ -95,6 +95,20 @@ import {
 } from "./SidebarZeropsTree";
 import { groupAddsOffered } from "./ZeropsProjectRow.logic";
 
+/** One comparison HQ answered for `appdev`: what a release would put live. */
+const compared = (commits: ReadonlyArray<{ readonly sha: string; readonly subject: string }>) => ({
+  repository: "appdev",
+  services: ["app"],
+  commits: commits.map((commit) => ({
+    ...commit,
+    authorName: "Juno",
+    at: "2026-10-02T10:00:00.000Z",
+    change: null,
+  })),
+  total: commits.length,
+  truncated: false,
+});
+
 /** Where HQ places a project: in application `appId`, named `appName`, as `kind`; a Mate by its name. */
 function inApp(
   appId: string,
@@ -1486,12 +1500,10 @@ describe("production and the stages are two chips on the project's heading (M2, 
         flow({
           releaseOffered: true,
           releaseContents: [
-            {
-              commits: [
-                { sha: "a", subject: "Search box" },
-                { sha: "b", subject: "Cart badge" },
-              ],
-            },
+            compared([
+              { sha: "a", subject: "Search box" },
+              { sha: "b", subject: "Cart badge" },
+            ]),
           ],
         }),
     });
@@ -1520,12 +1532,10 @@ describe("production and the stages are two chips on the project's heading (M2, 
       flow: {
         releaseOffered: true,
         releaseContents: [
-          {
-            commits: [
-              { sha: "a", subject: "Search box" },
-              { sha: "b", subject: "Cart badge" },
-            ],
-          },
+          compared([
+            { sha: "a", subject: "Search box" },
+            { sha: "b", subject: "Cart badge" },
+          ]),
         ],
       },
       words: "2 changes not released · since v2.4.0",
@@ -1559,7 +1569,7 @@ describe("production and the stages are two chips on the project's heading (M2, 
       getFlow: () =>
         flow({
           releaseOffered: true,
-          releaseContents: [{ commits: [{ sha: "a", subject: "x" }] }],
+          releaseContents: [compared([{ sha: "a", subject: "x" }])],
         }),
     });
     expect(lineOf(folded)?.words ?? "").toBe("");
@@ -1572,7 +1582,7 @@ describe("production and the stages are two chips on the project's heading (M2, 
       getFlow: () =>
         flow({
           releaseOffered: true,
-          releaseContents: [{ commits: [{ sha: "a", subject: "x" }] }],
+          releaseContents: [compared([{ sha: "a", subject: "x" }])],
         }),
     });
     stored.collapsed = new Set();
@@ -2496,7 +2506,7 @@ describe("the sidebar and the projects page read one group the same way", () => 
         release: {
           gate: { allowed: true },
           suggestion: "v0.2.0",
-          contents: [{ commits: [{ sha: "a".repeat(40), subject: "Add a field" }] }],
+          contents: [compared([{ sha: "a".repeat(40), subject: "Add a field" }])],
         },
       }),
       health: UP,

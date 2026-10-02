@@ -17,6 +17,7 @@ import {
   type EnvironmentServiceState,
   type GroupRowTone,
 } from "../groupRows.ts";
+import type { HqDeploy } from "../hq/environments.ts";
 import type { Shown } from "../knowledge/known.ts";
 import { changesNotLive } from "../projectAttention.ts";
 import type { ZeropsPublicRoute, ZeropsRouteOffer } from "../publicRoutes.ts";
@@ -62,6 +63,8 @@ export interface StopFailedDeploy {
    * and it is this one. `undefined` for any other.
    */
   readonly redeploy: { readonly service: string; readonly sha: string } | undefined;
+  /** HQ's words for why, from its record of that deploy; `undefined` where it keeps none. */
+  readonly message: string | undefined;
 }
 
 export interface StopFailure extends StopFailedDeploy {
@@ -142,12 +145,16 @@ export function stopVerdict(input: {
     };
   }
   if (input.failed !== undefined) {
-    const { label, service, running, redeploy, mayRunAgain } = input.failed;
+    const { label, service, running, redeploy, message, mayRunAgain } = input.failed;
+    // HQ's words for why say more than what still runs, which the service's row says too.
     return {
       tone: "failed",
       text: `The deploy of ${label} failed on ${service}.`,
       detail:
-        running === undefined ? undefined : withSince(`${running.label} still runs`, running.since),
+        message ??
+        (running === undefined
+          ? undefined
+          : withSince(`${running.label} still runs`, running.since)),
       verb: redeploy !== undefined && mayRunAgain ? { kind: "run-again" } : null,
     };
   }
@@ -271,8 +278,8 @@ export interface StopServiceRow {
   readonly runs: ServiceRuns | undefined;
   readonly routes: ReadonlyArray<ZeropsPublicRoute>;
   readonly offers: ReadonlyArray<ZeropsRouteOffer>;
-  /** The commit of its newest deploy, while HQ records that deploy as failed. */
-  readonly failedSha: string | undefined;
+  /** Its newest deploy, while HQ records it as failed: its commit, and HQ's words for why. */
+  readonly failed: { readonly sha: string; readonly message: string | undefined } | undefined;
 }
 
 /** A version a service runs, and how long it has run, already said. */
@@ -346,6 +353,16 @@ function platformDeployments(
   return (hostname) => listed.get(hostname) ?? UNREAD;
 }
 
+/** A deploy HQ records as failed, as a row carries it: its commit, and HQ's words where it has some. */
+function failedOf(latest: HqDeploy | undefined): StopServiceRow["failed"] {
+  if (latest?.state !== "failed") return undefined;
+  const message = latest.message?.trim();
+  return {
+    sha: latest.sha,
+    message: message === undefined || message === "" ? undefined : message,
+  };
+}
+
 /**
  * A stop's code services, one row each: those its tiers build from a repository. A database, a
  * cache or a bucket is never deployed from one, so it has no row. The state is the menu's
@@ -405,7 +422,7 @@ export function serviceRows(input: {
       runs: runsOf(deployment, settled, read, input.age),
       routes: input.routes.filter((route) => route.service === hostname),
       offers: input.offers.filter((offer) => offer.service === hostname),
-      failedSha: state.deploy?.latest.state === "failed" ? state.deploy.latest.sha : undefined,
+      failed: failedOf(state.deploy?.latest),
     };
   });
 }
@@ -429,11 +446,10 @@ export function stopFailedDeploy(input: {
   /** The group's releases, newest first. */
   readonly releases: ReadonlyArray<FlowReleaseRow>;
 }): StopFailedDeploy | undefined {
-  const redeployOf = (service: string, commit: string | undefined) => {
-    const failedSha = input.rows.find((row) => row.hostname === service)?.failedSha;
-    return failedSha !== undefined && sameCommit(commit, failedSha)
-      ? { service, sha: failedSha }
-      : undefined;
+  /** The service's failed deploy HQ records, where it is of `commit`. */
+  const recordOf = (service: string, commit: string | undefined) => {
+    const failed = input.rows.find((row) => row.hostname === service)?.failed;
+    return failed !== undefined && sameCommit(commit, failed.sha) ? failed : undefined;
   };
   if (input.tier === "production") {
     const live = input.releases.findIndex((release) => release.standing === "live");
@@ -441,24 +457,27 @@ export function stopFailedDeploy(input: {
     const failed = newer.find((release) => release.failedEntry !== undefined);
     if (failed?.failedEntry !== undefined) {
       const { service, commit } = failed.failedEntry;
+      const record = recordOf(service, commit);
       return {
         label: failed.tag,
         service,
         sha: commit,
         running: input.rows.find((row) => row.hostname === service)?.runs,
-        redeploy: redeployOf(service, commit),
+        redeploy: record === undefined ? undefined : { service, sha: record.sha },
+        message: record?.message,
       };
     }
   }
-  const row = input.rows.find((entry) => entry.failedSha !== undefined);
-  if (row?.failedSha === undefined) return undefined;
-  const { failedSha, hostname } = row;
+  const row = input.rows.find((entry) => entry.failed !== undefined);
+  if (row?.failed === undefined) return undefined;
+  const { failed, hostname } = row;
   return {
-    label: shortCommit(failedSha),
+    label: shortCommit(failed.sha),
     service: hostname,
-    sha: failedSha,
-    running: sameCommit(row.sha, failedSha) ? undefined : row.runs,
-    redeploy: { service: hostname, sha: failedSha },
+    sha: failed.sha,
+    running: sameCommit(row.sha, failed.sha) ? undefined : row.runs,
+    redeploy: { service: hostname, sha: failed.sha },
+    message: failed.message,
   };
 }
 

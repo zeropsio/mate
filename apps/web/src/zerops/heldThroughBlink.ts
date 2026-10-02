@@ -16,8 +16,7 @@ import { useEffect, useState } from "react";
 
 /**
  * How long a missing source is a blink. The inventory's slowest measured recovery after its
- * socket was replaced took 18.9 s (3.9 s since); a minute is three times that, and one Gitea
- * refresh cycle (`GROUP_FORGE_REFRESH_MS`), so something truly gone is dropped within one more.
+ * socket was replaced took 18.9 s (3.9 s since); a minute is three times that.
  */
 export const BLINK_GRACE_MS = 60_000;
 

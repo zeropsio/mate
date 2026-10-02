@@ -1,58 +1,46 @@
 /**
- * Release and rollback — decided here, performed as the person (guide 5.5, 5.6).
+ * Release and rollback — decided here, made in HQ as the person (SPEC §3.2d; main C01–C37).
  *
- * A release is an annotated tag `v{semver}` on the **group repo**, created by a
- * person through Gitea, whose message lists one line per service:
- *
- * ```
- * api 3f9c1b2e5d7a4c6f8e0b1d2a3c4f5e6d7a8b9c0d
- * web 77ab0e1f2d3c4b5a69788796a5b4c3d2e1f0a9b8
- * ```
- *
- * `{service hostname} {full 40-hex sha}`, and nothing else
- * (`../gitea-mate/docs/group-repo.md`). A short sha would never compare equal
- * to a version's name and the broker would redeploy for ever, so it is refused
- * rather than tolerated.
+ * A release is HQ's record of one tag `v{x.y.z}` on the recipe repository's `main`, listing the
+ * whole commit each production service runs from then on (`@t3tools/shared/hqRelease`). HQ makes
+ * it of what the offer showed, approved at birth, and production follows the newest approved one.
  *
  * ## What the button shows before it is pressed
  *
- * Per service, what the stage runs against what production runs — both read
- * from the sha in the deployed **version's name**, never from a branch head.
- * A service whose two shas already match is not a change; the tag still lists
- * it, because a tag lists what production should run, not what is new.
+ * Per service, the commit its repository's `main` holds against what production runs — read from
+ * the sha in the deployed **version's name**, never from a branch head. A service whose two shas
+ * already match is not a change; the release still lists it, because a release lists what
+ * production should run, not what is new.
  *
  * ## What a release lists: what is merged (D28)
  *
- * Each repository's default branch, always — never what a stage happens to be
- * running. A project may have no stage at all; one that has a stage has it as
- * a place that runs `main` too, not as a gate the tag waits behind, and a
- * stage that is mid-deploy or behind must not change what a release means (the
- * owner, 2026-09-18: "I hope that even with stage prod release is not tied to
- * stage in any way"). A group that wants production held until a stage has the
- * commit says so once, in `environments.yaml`, as `requireOnStage` — an
- * explicit gate the broker enforces, not something the tag's contents imply.
+ * Each repository's `main`, always — never what a stage happens to be running. A project may have
+ * no stage at all; one that has a stage has it as a place that runs `main` too, not as a gate the
+ * release waits behind (the owner, 2026-09-18: "I hope that even with stage prod release is not
+ * tied to stage in any way").
  *
  * ## Who may
  *
- * Two gates, and only one of them is real. Gitea's tag protection lets the
- * `release` team create `v*` and refuses everybody else — that is the one that
- * decides. The app's own gate (`groups[slug].release` from the shared role
- * function) only keeps the button from being offered to somebody it would
- * refuse; a `403` that arrives anyway is shown as what it is.
+ * HQ's rule (SPEC §3.3a): Basic user or above on the application's production. The client asks it
+ * over what it holds only to offer the button (`releasePermission`); HQ asks it again at the
+ * press, and a refusal that arrives anyway is shown in HQ's words.
  *
  * ## Rollback
  *
- * A new tag listing an earlier tag's commits. A tag name is never reused, and
- * `POST /deploy` takes no ref, so going back is going forward to the same
- * contents under a new name — which is also the only form that leaves a record
- * of when it happened.
+ * A new release listing an earlier release's entries, under the next name: a name is never
+ * reused, so going back is going forward to the same contents — which is also the only form that
+ * leaves a record of when it happened.
  *
  * Pure: no network, no clock, no platform globals (rule R1).
  *
  * @module release
  */
 
-import type { GiteaCommitStatus } from "./giteaClient.ts";
+import type { RepoListEntry } from "@t3tools/shared/hqChanges";
+import { RECIPE_REPO } from "@t3tools/shared/hqRecipe";
+import { nextPatch, type Release } from "@t3tools/shared/hqRelease";
+
+import type { Moved, MovedCommits } from "./releaseCompare.ts";
 import type { EnvironmentRow } from "./groupRows.ts";
 import { sameCommit } from "./versionName.ts";
 
@@ -74,33 +62,9 @@ export interface ReleaseEntry {
 /** A whole commit sha: 40 hex, or 64 in a SHA-256 repository (`versionName.ts`). */
 const FULL_SHA = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/iu;
 
-/** What a release tag is called. */
-export function releaseTagName(version: string): string {
-  return `v${version}`;
-}
-
-/** The commit status the broker writes for one release tag. */
-export function releaseStatusContext(tag: string): string {
-  return `mate/release/${tag}`;
-}
-
 /** Whether a tag name is one of ours. */
 export function isReleaseTag(tag: string): boolean {
   return /^v\d+\.\d+\.\d+$/u.test(tag);
-}
-
-/**
- * The tag's message, from the services a release covers.
- *
- * Sorted by service so two releases of the same contents produce the same
- * message, and a diff between two tags reads as the commits that moved.
- */
-export function releaseMessage(entries: ReadonlyArray<ReleaseEntry>): string {
-  return [...entries]
-    .filter((entry) => FULL_SHA.test(entry.commit))
-    .sort((left, right) => left.service.localeCompare(right.service, "en"))
-    .map((entry) => `${entry.service} ${entry.commit.toLowerCase()}`)
-    .join("\n");
 }
 
 /**
@@ -124,7 +88,7 @@ export function readReleaseMessage(message: string): ReadonlyArray<ReleaseEntry>
   return entries;
 }
 
-/** A semantic version, as far as suggesting the next one needs. */
+/** A semantic version, as far as ordering a Gitea history's tags needs. */
 export interface Semver {
   readonly major: number;
   readonly minor: number;
@@ -138,42 +102,6 @@ export function readSemver(tag: string): Semver | undefined {
     major: Number(match[1]),
     minor: Number(match[2]),
     patch: Number(match[3]),
-  };
-}
-
-function compareSemver(left: Semver, right: Semver): number {
-  return left.major - right.major || left.minor - right.minor || left.patch - right.patch;
-}
-
-/** The newest `v*` tag on the group repo, by version rather than by name. */
-export function newestReleaseTag(tags: ReadonlyArray<string>): string | undefined {
-  let best: { readonly tag: string; readonly version: Semver } | undefined;
-  for (const tag of tags) {
-    const version = readSemver(tag);
-    if (version === undefined) continue;
-    if (best === undefined || compareSemver(version, best.version) > 0) best = { tag, version };
-  }
-  return best?.tag;
-}
-
-/**
- * What to call the next release — the newest tag's patch and minor, and
- * `v0.1.0` for a group that has never released.
- *
- * A suggestion and not a rule: the person types what they mean. Two of them
- * because that is the choice anybody actually makes at this button, and a
- * major bump is rare enough to be typed.
- */
-export function suggestReleaseTags(tags: ReadonlyArray<string>): {
-  readonly patch: string;
-  readonly minor: string;
-} {
-  const newest = newestReleaseTag(tags);
-  const version = newest === undefined ? undefined : readSemver(newest);
-  if (version === undefined) return { patch: "v0.1.0", minor: "v0.1.0" };
-  return {
-    patch: `v${version.major}.${version.minor}.${version.patch + 1}`,
-    minor: `v${version.major}.${version.minor + 1}.0`,
   };
 }
 
@@ -191,10 +119,9 @@ export interface ReleaseComparison {
 /**
  * Per service, what would be released against what production runs.
  *
- * With a stage both sides come from the sha in a deployed version's name, so a
- * service the stage has never deployed to has no side to compare and cannot be
- * released — there is no commit to list, and a tag listing a guess is a tag the
- * broker deploys. With none, the candidate is the default branch's head.
+ * The candidate is each repository's `main` (`releaseCandidate`), production's side the sha in a
+ * deployed version's name; a service whose `main` holds nothing has no candidate and is not
+ * released — there is no commit to list, and a release listing a guess is one HQ deploys.
  */
 export function compareForRelease(input: {
   /** `{service: full sha}` each repository's default branch holds. */
@@ -217,6 +144,29 @@ export function compareForRelease(input: {
   });
 }
 
+/**
+ * What a release would list, from the application's repositories as HQ answers them (C01): each
+ * production runtime at its repository's `main` — a runtime whose repository has nothing on `main`
+ * yet lists nothing — and the recipe repository's `main`, which the release tags; `undefined` where
+ * it has none.
+ */
+export function releaseCandidate(input: {
+  /** The repository each production runtime builds from, by hostname (`AppRecipe`). */
+  readonly productionRepositories: ReadonlyMap<string, string>;
+  readonly repos: ReadonlyArray<RepoListEntry>;
+}): { readonly candidate: ReadonlyMap<string, string>; readonly groupHead: string | undefined } {
+  const heads = new Map(
+    input.repos.flatMap((repo) => (repo.mainHead === null ? [] : [[repo.name, repo.mainHead]])),
+  );
+  const candidate = new Map(
+    [...input.productionRepositories].flatMap(([hostname, repo]) => {
+      const head = heads.get(repo);
+      return head === undefined ? [] : [[hostname, head] as const];
+    }),
+  );
+  return { candidate, groupHead: heads.get(RECIPE_REPO) };
+}
+
 /** What a release would list: every service the basis has a commit for. */
 export function releaseEntries(
   candidate: ReadonlyMap<string, string>,
@@ -230,17 +180,21 @@ export type ReleaseGate =
   | { readonly allowed: true }
   | { readonly allowed: false; readonly reason: string };
 
-/** What the app says when it will not offer the button. */
-export const RELEASE_NOT_A_RELEASER = "Only releasers can tag.";
 /** Nothing is on `main` to release — a group whose Mates have landed nothing. */
 export const RELEASE_NOTHING_MERGED = "Nothing is merged to release.";
 /**
- * Production already runs every commit `main` holds, so the tag would list
- * production's own state back to it and the broker would redeploy what is
- * live. A tag still lists an unchanged service (that is what a tag is); a
- * release where *nothing* moved is not a release.
+ * Production already runs every commit `main` holds, so the release would list
+ * production's own state back to it and HQ would redeploy what is live. A
+ * release still lists an unchanged service (that is what a release is); one
+ * where *nothing* moved is not a release.
  */
 export const RELEASE_NOTHING_NEW_ON_MAIN = "Production already runs what is merged.";
+/** Who may release is not known yet: HQ's rule has nothing to be asked over. */
+export const RELEASE_CHECKING = "Checking what can be released…";
+/** What goes live could not be compared: no release is offered over a list nobody could read. */
+export function releaseUncheckedReason(why: string): string {
+  return `Can't check what can be released: ${why.replace(/\.$/u, "")}.`;
+}
 /** A release tagged and not yet running: another tag now would be a second release of it. */
 export function releaseInFlightReason(tag: string): string {
   return `Releasing ${tag}…`;
@@ -249,13 +203,13 @@ export function releaseInFlightReason(tag: string): string {
 /**
  * Whether to offer *Release* at all.
  *
- * The app's own gate, from the role function's `groups[slug].release`. It is
- * not the real one — Gitea's tag protection is, and a `403` from it is shown
- * with this same sentence, because it means the same thing and the mirror
- * simply had not caught up.
+ * Who may is HQ's rule (`releasePermission`), in its words; HQ asks it again at the press. Then a
+ * release in flight, nothing merged, and nothing that would move hold it, in that order; and last
+ * what goes live while it is read, or could not be (main C05).
  */
 export function releaseGate(input: {
-  readonly mayRelease: boolean;
+  /** HQ's rule for this person, its refusal in words; `undefined` while it cannot be asked. */
+  readonly permission: ReleaseGate | undefined;
   readonly entries: ReadonlyArray<ReleaseEntry>;
   /**
    * Per service, the stage against production. Omitted where production's
@@ -264,8 +218,11 @@ export function releaseGate(input: {
   readonly comparison?: ReadonlyArray<ReleaseComparison> | undefined;
   /** The release tag on its way to production (`releaseInFlight`). */
   readonly inFlight?: string | undefined;
+  /** What it would put live (`movedCommits`); omitted where nobody asks. */
+  readonly live?: MovedCommits | undefined;
 }): ReleaseGate {
-  if (!input.mayRelease) return { allowed: false, reason: RELEASE_NOT_A_RELEASER };
+  if (input.permission === undefined) return { allowed: false, reason: RELEASE_CHECKING };
+  if (!input.permission.allowed) return input.permission;
   if (input.inFlight !== undefined)
     return { allowed: false, reason: releaseInFlightReason(input.inFlight) };
   if (input.entries.length === 0) return { allowed: false, reason: RELEASE_NOTHING_MERGED };
@@ -273,6 +230,9 @@ export function releaseGate(input: {
   if (comparison !== undefined && comparison.length > 0 && !comparison.some((row) => row.changed)) {
     return { allowed: false, reason: RELEASE_NOTHING_NEW_ON_MAIN };
   }
+  if (input.live?.state === "reading") return { allowed: false, reason: RELEASE_CHECKING };
+  if (input.live?.state === "failed")
+    return { allowed: false, reason: releaseUncheckedReason(input.live.reason) };
   return { allowed: true };
 }
 
@@ -286,20 +246,25 @@ export function releaseGate(input: {
  * exactly what the offer showed.
  */
 export function releaseOffer(input: {
-  readonly mayRelease: boolean;
+  /** HQ's rule for this person (`releaseGate`). */
+  readonly permission: ReleaseGate | undefined;
   /** `{service: full sha}` each repository's default branch holds. */
   readonly candidate: ReadonlyMap<string, string>;
   /** `{service: sha}` production runs, whole or short (`deployedCommit`). */
   readonly production: ReadonlyMap<string, string>;
   /** The release tag on its way to production (`releaseInFlight`). */
   readonly inFlight?: string | undefined;
-  /** Every `v*` tag on the group repo, so no name is suggested twice. */
+  /** Every release's name, so the next one is suggested over the newest (`nextPatch`). */
   readonly tags: ReadonlyArray<string>;
+  /** What it would put live, as HQ compared it (`movedCommits`). */
+  readonly live: MovedCommits;
 }): {
   readonly gate: ReleaseGate;
   readonly suggestion: string;
   readonly comparison: ReadonlyArray<ReleaseComparison>;
   readonly entries: ReadonlyArray<ReleaseEntry>;
+  /** What it would put live, per comparison read; nothing until all of it is known. */
+  readonly contents: ReadonlyArray<Moved>;
 } {
   const entries = releaseEntries(input.candidate);
   const comparison = compareForRelease({
@@ -308,103 +273,58 @@ export function releaseOffer(input: {
   });
   return {
     gate: releaseGate({
-      mayRelease: input.mayRelease,
+      permission: input.permission,
       entries,
       comparison,
       inFlight: input.inFlight,
+      live: input.live,
     }),
-    suggestion: suggestReleaseTags(input.tags).patch,
+    suggestion: nextPatch(input.tags),
     comparison,
     entries,
+    contents: input.live.state === "known" ? input.live.moved : [],
   };
 }
 
-/**
- * A rollback's tag: a new name, the earlier tag's message verbatim.
- *
- * Verbatim and not re-derived, because the earlier tag is the record of what
- * production ran and a re-derivation would quietly release whatever the stage
- * holds now (guide 5.6). `undefined` when the earlier tag's message cannot be
- * read — there is nothing to go back to that the broker would accept.
- */
-export function rollbackTo(input: {
-  readonly tag: string;
-  readonly message: string;
-  readonly existingTags: ReadonlyArray<string>;
-}): { readonly tag: string; readonly message: string } | undefined {
-  const entries = readReleaseMessage(input.message);
-  if (entries.length === 0) return undefined;
-  const next = suggestReleaseTags(input.existingTags).patch;
-  return { tag: next, message: releaseMessage(entries) };
-}
+/** How HQ judged a release, at its birth: approved, or refused (`Release.state`). */
+export type ReleaseVerdict = Release["state"];
 
-/** What the broker said about a release tag — approved, refused, or not yet. */
-export type ReleaseVerdict = "approved" | "refused" | "pending" | "unknown";
-
-/**
- * The broker's verdict on one tag, from the commit statuses on the tagged
- * commit (`mate/release/{tag}`).
- *
- * `unknown` when there is no status for that tag: the webhook has not been
- * processed, or nobody is signed in to Gitea to read one. Never read as
- * approved — a tag the broker refused looks exactly like a tag it has not
- * seen, and only one of them ever deploys.
- */
-export function releaseVerdict(
-  tag: string,
-  statuses: ReadonlyArray<GiteaCommitStatus>,
-): { readonly verdict: ReleaseVerdict; readonly detail: string | undefined } {
-  const status = statuses.find((entry) => entry.context === releaseStatusContext(tag));
-  if (status === undefined) return { verdict: "unknown", detail: undefined };
-  const verdict: ReleaseVerdict =
-    status.state === "success"
-      ? "approved"
-      : status.state === "failure" || status.state === "error"
-        ? "refused"
-        : "pending";
-  return { verdict, detail: status.description };
-}
-
-/** The newest release tag as read, for {@link releaseInFlight}. */
+/** The newest release, for {@link releaseInFlight}. */
 export interface ReleaseAttempt {
   readonly tag: string;
   readonly verdict: ReleaseVerdict;
-  /** What its message lists. */
+  /** What it lists. */
   readonly entries: ReadonlyArray<ReleaseEntry>;
-  /** When it was tagged (the annotated tag's tagger date); `undefined` unread. */
-  readonly taggedAt: string | undefined;
+  /** When HQ made it. */
+  readonly taggedAt: string;
 }
 
 /**
- * How long a tag with no final state holds Release back. A build and deploy
- * take minutes; a broker that never answers must not hold it for ever.
+ * How long a release production does not run yet holds Release back. A build and deploy take
+ * minutes; a deploy that never ends must not hold it for ever.
  */
 export const RELEASE_IN_FLIGHT_MS = 30 * 60_000;
 
 /**
  * The release tag on its way to production, or `undefined`.
  *
- * In flight: the newest tag is not refused, no commit it lists failed its
- * production deploy after the tag was made, production does not run every
- * commit it lists yet, and it was tagged less than {@link RELEASE_IN_FLIGHT_MS}
- * ago. A tag whose time is not read is not held, so a broken read cannot keep
- * Release away. A failure whose time is not read, or posted before the tag,
- * belongs to an earlier release of the same commit and does not end the hold.
- * Pure: the caller passes the clock (rule R1).
+ * In flight: the newest release is not refused, no commit it lists failed its production deploy
+ * after it was made, production does not run every commit it lists yet, and it was made less than
+ * {@link RELEASE_IN_FLIGHT_MS} ago. A failure posted before it belongs to an earlier release of the
+ * same commit and does not end the hold. Pure: the caller passes the clock (rule R1).
  */
 export function releaseInFlight(input: {
   readonly newest: ReleaseAttempt | undefined;
   /** `{service: sha}` production runs, whole or short (`deployedCommit`). */
   readonly production: ReadonlyMap<string, string>;
   /** `{service}@{sha}` → when its production deploy failed (`ReleaseDeploys.failed`). */
-  readonly failed: ReadonlyMap<string, string | undefined>;
+  readonly failed: ReadonlyMap<string, string>;
   readonly nowMs: number;
 }): string | undefined {
   const { newest } = input;
-  if (newest === undefined || newest.verdict === "refused" || newest.taggedAt === undefined)
-    return undefined;
+  if (newest === undefined || newest.verdict === "refused") return undefined;
   const taggedMs = Date.parse(newest.taggedAt);
-  if (Number.isNaN(taggedMs) || input.nowMs - taggedMs >= RELEASE_IN_FLIGHT_MS) return undefined;
+  if (input.nowMs - taggedMs >= RELEASE_IN_FLIGHT_MS) return undefined;
   const failedAfterTag = newest.entries.some((entry) => {
     const key = failedKeyOf(input.failed, entry.service, entry.commit);
     const failedAt = key === undefined ? undefined : input.failed.get(key);
@@ -418,44 +338,45 @@ export function releaseInFlight(input: {
 }
 
 /** The one word beside a release's dot (R5). */
-export function releaseWord(verdict: ReleaseVerdict): string | undefined {
-  switch (verdict) {
-    case "approved":
-      return "Approved";
-    case "refused":
-      return "Refused";
-    case "pending":
-      return "Checking";
-    case "unknown":
-      return undefined;
-  }
+export function releaseWord(verdict: ReleaseVerdict): string {
+  return verdict === "approved" ? "Approved" : "Refused";
 }
 
-/** One release of the group, as the broker judged it. */
+/** A release as HQ records it, as the flow lists it: approved or refused, and when it was made. */
+export function flowReleaseOf(release: Release): FlowRelease {
+  const entries = release.entries.map(({ service, sha }) => ({ service, commit: sha }));
+  return {
+    tag: release.tag,
+    verdict: release.state,
+    detail: release.reason ?? undefined,
+    line: entries.map((entry) => `${entry.service} ${shortCommit(entry.commit)}`).join(" · "),
+    entries,
+    taggedAt: release.at,
+  };
+}
+
+/** One release of the application, as HQ judged it. */
 export interface FlowRelease {
   readonly tag: string;
   readonly verdict: ReleaseVerdict;
-  /** Why the broker refused it, when it did. */
+  /** Why HQ refused it, when it did. */
   readonly detail: string | undefined;
-  /** `api 3f9c1b2 · web 77ab0e1` — what the tag lists, short. */
+  /** `api 3f9c1b2 · web 77ab0e1` — what it lists, short. */
   readonly line: string;
-  /** What the tag lists, full commits ({@link readReleaseMessage}); `[]` for one it cannot read. */
+  /** What it lists, whole commits. */
   readonly entries: ReadonlyArray<ReleaseEntry>;
-  /** When it was tagged; read for the newest release only, `undefined` elsewhere and unread. */
-  readonly taggedAt: string | undefined;
+  /** When HQ made it. */
+  readonly taggedAt: string;
 }
 
 export interface FlowReleaseRow extends FlowRelease {
   /**
    * Where it stands against production: it runs there, or its deploy failed. `undefined` while
-   * neither is known: the row says the broker's verdict.
+   * neither is known: the row says HQ's verdict.
    */
   readonly standing: "live" | "deploy-failed" | undefined;
-  /**
-   * The word beside the dot — Live, Deploy failed, else the broker's Approved, Refused, Checking;
-   * `undefined` before the broker spoke.
-   */
-  readonly word: string | undefined;
+  /** The word beside the dot — Live, Deploy failed, else HQ's Approved or Refused. */
+  readonly word: string;
   /** Whether *Roll back to this* is offered. */
   readonly rollBack: boolean;
   /** The commit, and its service, whose production deploy failed; on a Deploy failed row only. */
@@ -470,8 +391,8 @@ type ReleaseListing = Pick<FlowRelease, "tag" | "entries" | "verdict">;
  * (`sameCommit`), or `undefined`. A refused release never deployed, and one that lists nothing
  * names nothing it could run. `running` is `{hostname: sha}`, whole or short (`deployedCommit`).
  *
- * Over production, it is the release that reads Live. The newest, because a roll-back re-tags an
- * earlier message verbatim ({@link rollbackTo}) and two tags then list the same commits; only the
+ * Over production, it is the release that reads Live. The newest, because a roll-back is a new
+ * release of an earlier one's entries, and two releases then list the same commits; only the
  * later one is what production was last moved to.
  *
  * Over one stop's services, it is the release the stop is named by. A release lists every
@@ -518,7 +439,7 @@ export function nameStopByRelease(row: EnvironmentRow, tag: string): Environment
  * version name spelled the commit whole or short, and either is the same commit.
  */
 function failedKeyOf(
-  failed: ReadonlyMap<string, string | undefined>,
+  failed: ReadonlyMap<string, string>,
   service: string,
   commit: string,
 ): string | undefined {
@@ -533,25 +454,32 @@ function failedKeyOf(
 
 /**
  * The commit the release lists, and production does not run, that failed its production deploy
- * after the release was tagged; `undefined` for none. A failure whose time is not read, or posted before the tag,
- * belongs to an earlier release of the same commit — as {@link releaseInFlight} reads it. With no
- * tag time to measure against, the failure alone counts for the newest release only: the tag time
- * is read for the newest alone, and an older tag listing the same commit may have deployed it fine.
+ * after the release was made; `undefined` for none. A failure posted before it belongs to an
+ * earlier release of the same commit — as {@link releaseInFlight} reads it — and one a newer
+ * release listing the commit was made before belongs to that one: HQ deploys production to the
+ * newest release alone.
  */
 function deployFailed(
   release: FlowRelease,
-  index: number,
+  newer: ReadonlyArray<FlowRelease>,
   production: ReadonlyMap<string, string>,
-  failed: ReadonlyMap<string, string | undefined>,
+  failed: ReadonlyMap<string, string>,
 ): ReleaseEntry | undefined {
-  const taggedMs = release.taggedAt === undefined ? Number.NaN : Date.parse(release.taggedAt);
+  const madeBy = (listing: FlowRelease, entry: ReleaseEntry, failedMs: number) =>
+    Date.parse(listing.taggedAt) <= failedMs &&
+    listing.entries.some(
+      (listed) => listed.service === entry.service && sameCommit(listed.commit, entry.commit),
+    );
   return release.entries.find((entry) => {
     if (sameCommit(production.get(entry.service), entry.commit)) return false;
     const key = failedKeyOf(failed, entry.service, entry.commit);
-    if (key === undefined) return false;
-    if (Number.isNaN(taggedMs)) return index === 0;
-    const failedAt = failed.get(key);
-    return failedAt !== undefined && Date.parse(failedAt) >= taggedMs;
+    const failedAt = key === undefined ? undefined : failed.get(key);
+    if (failedAt === undefined) return false;
+    const failedMs = Date.parse(failedAt);
+    return (
+      madeBy(release, entry, failedMs) &&
+      !newer.some((listing) => listing.verdict !== "refused" && madeBy(listing, entry, failedMs))
+    );
   });
 }
 
@@ -561,10 +489,9 @@ function deployFailed(
  * `deploys.live` says whether this is the release {@link releaseRunBy} names over production — the caller decides,
  * since only the newest of the releases that match reads Live. The live release offers no roll
  * back: going back to it would be a tag that changes nothing — nor does an older tag listing the
- * same commits, which a roll-back leaves behind (the live one's message, re-tagged). Nor does the
- * newest, which is what production was last moved to; a release the broker refused was never
- * deployed, so there is nothing to go back to; one still being judged is not yet a state
- * production was ever in.
+ * same commits, which a roll-back leaves behind (the live one's entries, released again). Nor does
+ * the newest, which is what production was last moved to; a release HQ refused was never
+ * deployed, so there is nothing to go back to.
  */
 export function releaseRow(
   release: FlowRelease,
@@ -573,8 +500,10 @@ export function releaseRow(
     /** `{service: sha}` production runs, whole or short (`deployedCommit`). */
     readonly production: ReadonlyMap<string, string>;
     /** `{service}@{sha}` → when its production deploy failed (`ReleaseDeploys.failed`). */
-    readonly failed: ReadonlyMap<string, string | undefined>;
+    readonly failed: ReadonlyMap<string, string>;
     readonly live: boolean;
+    /** The releases newer than this one, newest first: a failure is the newest's to list it. */
+    readonly newer: ReadonlyArray<FlowRelease>;
   },
 ): FlowReleaseRow {
   const line =
@@ -591,7 +520,7 @@ export function releaseRow(
   const failedEntry =
     release.verdict === "refused"
       ? undefined
-      : deployFailed(release, index, deploys.production, deploys.failed);
+      : deployFailed(release, deploys.newer, deploys.production, deploys.failed);
   if (failedEntry !== undefined)
     return {
       ...release,

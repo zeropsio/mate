@@ -606,19 +606,10 @@ export function environmentSummaryLine(
  */
 export function releaseRowTone(
   release: Pick<FlowReleaseRow, "verdict" | "standing">,
-): ServiceStatusToneId | undefined {
+): ServiceStatusToneId {
   if (release.standing === "live") return "ok";
   if (release.standing === "deploy-failed") return "failed";
-  switch (release.verdict) {
-    case "approved":
-      return "ok";
-    case "refused":
-      return "failed";
-    case "pending":
-      return "busy";
-    case "unknown":
-      return undefined;
-  }
+  return release.verdict === "approved" ? "ok" : "failed";
 }
 
 /**

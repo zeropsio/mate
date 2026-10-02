@@ -2,7 +2,14 @@ import { describe, expect, it } from "@effect/vitest";
 import type { Verb } from "@t3tools/shared/zeropsPermissions";
 
 import type { HqPlacement } from "./hq/placement.ts";
-import { changeOffers, heldOf, mayOffer, offerAsker, type OfferViewer } from "./offers.ts";
+import {
+  changeOffers,
+  heldOf,
+  mayOffer,
+  offerAsker,
+  releasePermission,
+  type OfferViewer,
+} from "./offers.ts";
 
 const ADA: OfferViewer = {
   userId: "u-ada",
@@ -126,6 +133,53 @@ describe("changeOffers — what a person may do with an application's changes (S
 
 // SPEC §3.2b, main E03: an environment's deploy key is minted on the client of who may attach its
 // project — Full access on it, or the organization's owner or admin.
+describe("releasePermission — who may release an application's production (SPEC §3.3a)", () => {
+  const ADA_NO_ACCESS: OfferViewer = { ...ADA, roleCode: "NO_ACCESS" };
+  const placed = (production: boolean) =>
+    new Map<string, HqPlacement>([
+      ["p-dev", { appId: "app-1", appName: "Acme", kind: "devstage", mate: null }],
+      ...(production
+        ? ([
+            ["p-prod", { appId: "app-1", appName: "Acme", kind: "production", mate: null }],
+          ] as const)
+        : []),
+    ]);
+  const grants = (roles: Record<string, string>) =>
+    Object.entries(roles).map(([id, roleCode]) => ({
+      id,
+      userRoles: [{ clientUserId: "cu-ada", roleCode }],
+    }));
+
+  it.each<[string, boolean, Record<string, string>, ReturnType<typeof releasePermission>]>([
+    ["releases with Basic user on production", true, { "p-prod": "BASIC_USER" }, { allowed: true }],
+    [
+      "never with Read only there, whatever else they develop",
+      true,
+      { "p-prod": "READ_ONLY", "p-dev": "BASIC_USER" },
+      { allowed: false, reason: "not_releaser" },
+    ],
+    [
+      "tells one who reads its changes it has no production",
+      false,
+      { "p-dev": "BASIC_USER" },
+      { allowed: false, reason: "no_production" },
+    ],
+    [
+      "tells one who only sees the project nothing of its production",
+      false,
+      { "p-dev": "READ_ONLY" },
+      { allowed: false, reason: "not_releaser" },
+    ],
+  ])("%s", (_name, production, roles, expected) => {
+    const asker = offerAsker(ADA_NO_ACCESS, grants(roles));
+    expect(releasePermission(asker, placed(production), "app-1")).toEqual(expected);
+  });
+
+  it("decides nothing for a person the client does not know", () => {
+    expect(releasePermission(null, placed(true), "app-1")).toBeUndefined();
+  });
+});
+
 describe("mayOffer keep_deploy_token — who hands HQ an environment's deploy key", () => {
   const person = (roleCode: string, grant?: string): Parameters<typeof offerAsker> => [
     { userId: "u-ola", clientUserId: "cu-ola", roleCode, canCreateProjects: false },

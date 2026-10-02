@@ -2,7 +2,6 @@
 export * from "./deployment.ts";
 export * from "./deploymentStore.ts";
 export * from "./envelopeInvalidations.ts";
-export * from "./groupAnswers.ts";
 export * from "./groupFlow.ts";
 export * from "./verbs.ts";
 export * from "./stopDetail.ts";

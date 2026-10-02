@@ -19,6 +19,7 @@ const ADDRESS = "https://hq-30db-8080.prg1.zerops.app";
 interface Seen {
   readonly method: string;
   readonly path: string;
+  readonly search: string;
   readonly authorization: string | null;
   readonly accept: string | null;
   readonly body: unknown;
@@ -38,6 +39,7 @@ function fakeHq(answer: (seen: Seen) => Response | undefined = () => undefined) 
     const request: Seen = {
       method: init?.method ?? "GET",
       path: url.pathname,
+      search: url.search,
       authorization: headers.get("authorization"),
       accept: headers.get("accept"),
       body: typeof init?.body === "string" ? JSON.parse(init.body) : undefined,
@@ -752,6 +754,77 @@ describe("makeHqApi — a Mate's changes, as the person reads them", () => {
         : undefined,
     );
     await expect(hqApi.appRepos("app-1")).rejects.toMatchObject({ code: "unreadable" });
+  });
+
+  // An application's releases (`@t3tools/shared/hqRelease`): read, made and rolled back as the person.
+  const RELEASE = {
+    tag: "v0.1.1",
+    sha: SHA,
+    entries: [{ service: "app", sha: "b".repeat(40) }],
+    by: "u1",
+    at: "2026-10-02T10:00:00.000Z",
+    state: "approved",
+    reason: null,
+    rollbackOf: null,
+  } as const;
+
+  it("lists an application's releases, as the person", async () => {
+    const { hq, api: hqApi } = api((seen) =>
+      seen.path === "/api/apps/app-1/releases" && seen.method === "GET"
+        ? json(200, { releases: [RELEASE] })
+        : undefined,
+    );
+    await expect(hqApi.releases("app-1")).resolves.toEqual([RELEASE]);
+    expect(hq.seen.at(-1)).toMatchObject({ method: "GET", authorization: "Bearer session-1" });
+  });
+
+  it("releases what the offer showed, and rolls back with main's head read with the offer", async () => {
+    const { hq, api: hqApi } = api((seen) =>
+      seen.method === "POST" && seen.path.startsWith("/api/apps/app-1/releases")
+        ? json(201, RELEASE)
+        : undefined,
+    );
+    const request = { tag: "v0.1.1", groupHead: SHA, entries: RELEASE.entries };
+    await expect(hqApi.release("app-1", request)).resolves.toEqual(RELEASE);
+    await expect(hqApi.rollback("app-1", "v0.1.0", { groupHead: SHA })).resolves.toEqual(RELEASE);
+    expect(hq.seen.slice(-2)).toMatchObject([
+      { method: "POST", path: "/api/apps/app-1/releases", body: request },
+      {
+        method: "POST",
+        path: "/api/apps/app-1/releases/v0.1.0/rollback",
+        body: { groupHead: SHA },
+      },
+    ]);
+  });
+
+  // What lies between two of a repository's commits (`CompareResponse`): what a release puts live.
+  it("compares two commits of a repository by its name, as the person", async () => {
+    const COMPARED = {
+      base: SHA,
+      head: "b".repeat(40),
+      commits: [
+        {
+          sha: "b".repeat(40),
+          subject: "Quicker gallery",
+          authorName: "Ada",
+          at: "2026-10-02T10:00:00.000Z",
+          change: { number: 7, title: "Quicker gallery", mateProjectId: "p1" },
+        },
+      ],
+      truncated: false,
+      total: 1,
+    };
+    const { hq, api: hqApi } = api((seen) =>
+      seen.path === "/api/apps/app-1/repos/appdev/compare" ? json(200, COMPARED) : undefined,
+    );
+    await expect(
+      hqApi.compare("app-1", "appdev", { base: SHA, head: "b".repeat(40) }),
+    ).resolves.toEqual(COMPARED);
+    await hqApi.compare("app-1", "appdev", { head: "b".repeat(40) });
+    expect(hq.seen.slice(-2)).toMatchObject([
+      { method: "GET", search: `?base=${SHA}&head=${"b".repeat(40)}` },
+      { method: "GET", search: `?head=${"b".repeat(40)}` },
+    ]);
   });
 
   it("fetches a change's picture with the session, as the picture it is", async () => {

@@ -26,7 +26,6 @@ import type { FlowPullRequestKind } from "./projectFlow.ts";
 import type { RecipeReach } from "./recipeReach.ts";
 import type { RecipeTier } from "./recipeTier.ts";
 import {
-  RELEASE_NOT_A_RELEASER,
   RELEASE_NOTHING_MERGED,
   RELEASE_NOTHING_NEW_ON_MAIN,
   type ReleaseGate,
@@ -694,6 +693,8 @@ export interface ReleaseReviewInput {
   /** The version it tags — the suggestion, or the tag on its way. */
   readonly tag: string;
   readonly gate: ReleaseGate;
+  /** HQ's rule for this person, its refusal in words (`releasePermission`); `undefined` unasked. */
+  readonly permission: ReleaseGate | undefined;
   /** How many changes go out. */
   readonly changes: number;
   /** How many of them the stage that follows `main` runs; `undefined` with no such stage. */
@@ -800,13 +801,10 @@ export function releaseReview(input: ReleaseReviewInput): ReviewModel {
         tone: nothing ? "done" : "attention",
         title: nothing
           ? "Nothing to release"
-          : reason === RELEASE_NOT_A_RELEASER
+          : input.permission?.allowed === false
             ? "Only releasers can release"
             : "Can't release now",
-        why:
-          reason === RELEASE_NOT_A_RELEASER
-            ? "An owner or an admin of the organization can"
-            : reason.replace(/\.$/u, ""),
+        why: reason.replace(/\.$/u, ""),
         fix: undefined,
       },
       consequence: keeps,
@@ -837,7 +835,11 @@ export interface RollbackReviewInput {
   readonly nextTag: string;
   readonly live: string | undefined;
   readonly services: ReadonlyArray<string>;
-  readonly mayRelease: boolean;
+  /**
+   * HQ's rule for this person, its refusal in words (`releasePermission`): a rollback is a release.
+   * `undefined` while it cannot be asked, and HQ asks it again at the press.
+   */
+  readonly permission: ReleaseGate | undefined;
   /** The press: tagging, refused, or the tag made. */
   readonly press: ReviewPress;
   /**
@@ -855,7 +857,12 @@ export function rollbackReview(input: RollbackReviewInput): ReviewModel {
       ? "Production keeps running what it runs."
       : `Production keeps running ${input.live}.`;
   // Production moves: a deliberate press, never the review's first focus, never ⌘↵.
-  const primary = { label: `Roll back to ${tag}`, enabled: input.mayRelease, safe: false };
+  const permission = input.permission;
+  const primary = {
+    label: `Roll back to ${tag}`,
+    enabled: permission?.allowed !== false,
+    safe: false,
+  };
   const onItsWay = (why: string): ReviewModel => ({
     verdict: {
       state: "rolling-back",
@@ -918,13 +925,13 @@ export function rollbackReview(input: RollbackReviewInput): ReviewModel {
       break;
   }
   if (press.kind === "done") return onItsWay(`Production redeploys from ${nextTag}`);
-  if (!input.mayRelease) {
+  if (permission?.allowed === false) {
     return {
       verdict: {
         state: "rollback-blocked",
         tone: "attention",
         title: "Only releasers can roll back",
-        why: "An owner or an admin of the organization can",
+        why: permission.reason.replace(/\.$/u, ""),
         fix: undefined,
       },
       consequence: keeps,

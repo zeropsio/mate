@@ -27,10 +27,10 @@ export interface StopChange {
   readonly subject: string;
 }
 
-/** One production service's share of `releaseContents`. */
+/** One comparison of what a release puts live (`Moved`), and the production services it moves. */
 export interface ServiceChanges {
-  /** The service's hostname. */
-  readonly service: string;
+  /** The services' hostnames. */
+  readonly services: ReadonlyArray<string>;
   readonly commits: ReadonlyArray<StopChange>;
 }
 
@@ -128,22 +128,18 @@ export function stageMarks(input: {
   const marks = new Map<string, StageMark>();
   for (const entry of input.contents) {
     const known = entry.commits.map((commit) => commit.sha);
-    const runs = resolveCommit(input.stage?.runs.get(entry.service), known);
     const deploying = resolveCommit(input.stage?.deploying, known);
-    for (const change of entry.commits) {
-      const mark =
-        input.stage === undefined
-          ? "none"
-          : markOnService({
-              change,
-              service: entry.service,
-              runs,
-              deploying,
-              stage: input.stage,
-            });
-      const key = change.sha.toLowerCase();
-      const seen = marks.get(key);
-      marks.set(key, seen === undefined ? mark : worstMark(seen, mark));
+    for (const service of entry.services) {
+      const runs = resolveCommit(input.stage?.runs.get(service), known);
+      for (const change of entry.commits) {
+        const mark =
+          input.stage === undefined
+            ? "none"
+            : markOnService({ change, service, runs, deploying, stage: input.stage });
+        const key = change.sha.toLowerCase();
+        const seen = marks.get(key);
+        marks.set(key, seen === undefined ? mark : worstMark(seen, mark));
+      }
     }
   }
   return marks;

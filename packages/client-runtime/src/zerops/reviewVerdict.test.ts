@@ -1,8 +1,15 @@
 // @effect-diagnostics globalDate:off -- fixture timestamps are offsets from a fixed instant, not wall-clock reads.
 import { describe, expect, it } from "vite-plus/test";
 
-import type { RecipeReach } from "./recipeReach.ts";
-import { RELEASE_NOT_A_RELEASER, RELEASE_NOTHING_NEW_ON_MAIN } from "./release.ts";
+import { isRecipeProposal } from "./projectFlow.ts";
+import { recipeReach, type RecipeReach } from "./recipeReach.ts";
+import { RELEASE_NOTHING_NEW_ON_MAIN } from "./release.ts";
+
+/** HQ's rule refusing the person the release, in its words (`releasePermission`). */
+const NOT_A_RELEASER = {
+  allowed: false,
+  reason: "You need at least Basic user access to this project's production to release it.",
+} as const;
 import {
   changeReview,
   crewTaskReview,
@@ -356,6 +363,24 @@ describe("changeReview: a recipe change says what its merge does, and is never r
     expect(after.primary).toBeUndefined();
   });
 
+  // zcp's second kind of recipe change modifies a tier — a host's verticalAutoscaling — rather
+  // than adding one, and a person merges it: what the stage has keeps the scale it was made with.
+  // A review reads no title, so it reads as any recipe change; it is no recipe proposal.
+  it("a scale change to a tier says the stage's services stay as they are, and merges as any change", () => {
+    const reached = recipeReach({
+      files: [{ filename: "3 — Stage/import.yaml" }],
+      environments: [{ tier: "stage" }],
+    });
+    const review = changeReview(change({ pull: recipe(), recipe: reached, ...releasable }));
+    expect(review.consequence).toBe(
+      "Squash-merges 1 commit into main. The stage gets any service added to its recipe, created empty; the services it has stay as they are.",
+    );
+    expect(review.primary).toEqual({ label: "Merge", enabled: true, safe: true });
+    expect(
+      isRecipeProposal({ kind: "recipe", title: "Mate: app's scale in the group recipe" }),
+    ).toBe(false);
+  });
+
   const UNREAD =
     "Each environment gets any service added to its recipe, created empty; the services it has stay as they are.";
 
@@ -391,6 +416,7 @@ function release(over: Partial<ReleaseReviewInput> = {}): ReleaseReviewInput {
   return {
     tag: "v0.1.57",
     gate: { allowed: true },
+    permission: { allowed: true },
     changes: 2,
     onStage: { total: 2, running: 2 },
     services: ["app", "api"],
@@ -424,9 +450,14 @@ describe("releaseReview", () => {
       { state: "release-ready", why: "1 change merged since v0.1.56" },
     ],
     [
-      "not a releaser",
-      { gate: { allowed: false, reason: RELEASE_NOT_A_RELEASER } },
-      { state: "release-blocked", tone: "attention", title: "Only releasers can release" },
+      "not a releaser, in HQ's words for who may",
+      { gate: NOT_A_RELEASER, permission: NOT_A_RELEASER },
+      {
+        state: "release-blocked",
+        tone: "attention",
+        title: "Only releasers can release",
+        why: "You need at least Basic user access to this project's production to release it",
+      },
     ],
     [
       "nothing new",
@@ -486,7 +517,7 @@ describe("releaseReview", () => {
   it.each<[string, Partial<ReleaseReviewInput>, string, boolean | undefined]>([
     [
       "blocked",
-      { gate: { allowed: false, reason: RELEASE_NOT_A_RELEASER } },
+      { gate: NOT_A_RELEASER, permission: NOT_A_RELEASER },
       "Production keeps running v0.1.56.",
       false,
     ],
@@ -543,7 +574,7 @@ function rollback(over: Partial<RollbackReviewInput> = {}): RollbackReviewInput 
     nextTag: "v0.1.58",
     live: "v0.1.57",
     services: ["app", "api"],
-    mayRelease: true,
+    permission: { allowed: true },
     press: { kind: "idle" },
     outcome: { kind: "offered" },
     now: NOW,
@@ -565,10 +596,27 @@ describe("rollbackReview: roll back gets the same review, naming where it goes b
       "Tags main as v0.1.58 with v0.1.55's commits. Production redeploys app and api from them.",
     ],
     [
-      "not a releaser",
-      { mayRelease: false },
-      { state: "rollback-blocked", tone: "attention", title: "Only releasers can roll back" },
+      "not a releaser, in HQ's words for who may",
+      { permission: NOT_A_RELEASER },
+      {
+        state: "rollback-blocked",
+        tone: "attention",
+        title: "Only releasers can roll back",
+        why: "You need at least Basic user access to this project's production to release it",
+      },
       "Production keeps running v0.1.57.",
+    ],
+    [
+      // HQ asks its rule again at the press, so a rule not asked yet holds nothing back.
+      "while who may is not known yet",
+      { permission: undefined },
+      {
+        state: "rollback-ready",
+        tone: "quiet",
+        title: "Goes back to v0.1.55",
+        why: "Production runs v0.1.57 now",
+      },
+      "Tags main as v0.1.58 with v0.1.55's commits. Production redeploys app and api from them.",
     ],
     [
       "tagging",

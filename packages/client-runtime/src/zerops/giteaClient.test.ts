@@ -11,12 +11,10 @@ const ORIGIN = "https://web-1234-3000.prg1.zerops.app";
 
 interface Call {
   readonly url: string;
-  readonly method: string;
   readonly headers: Record<string, string>;
-  readonly body: unknown;
 }
 
-function fake(answers: ReadonlyArray<{ status?: number; body?: unknown; text?: string }>): {
+function fake(answers: ReadonlyArray<{ status?: number; body?: unknown }>): {
   readonly client: GiteaClient;
   readonly calls: ReadonlyArray<Call>;
 } {
@@ -26,25 +24,16 @@ function fake(answers: ReadonlyArray<{ status?: number; body?: unknown; text?: s
     origin: ORIGIN,
     token: "t-1",
     fetch: (input, init) => {
-      const raw = typeof init?.body === "string" ? init.body : undefined;
       calls.push({
         url: String(input),
-        method: init?.method ?? "GET",
         headers: Object.fromEntries(
           Object.entries((init?.headers ?? {}) as Record<string, string>).map(([key, value]) => [
             key.toLowerCase(),
             value,
           ]),
         ),
-        body: raw === undefined ? undefined : JSON.parse(raw),
       });
       const answer = answers[index++] ?? { body: {} };
-      if (answer.text !== undefined) {
-        // An empty text is no body at all, which is what a `204` must carry.
-        return Promise.resolve(
-          new Response(answer.text === "" ? null : answer.text, { status: answer.status ?? 200 }),
-        );
-      }
       return Promise.resolve(
         new Response(JSON.stringify(answer.body ?? {}), {
           status: answer.status ?? 200,
@@ -130,10 +119,6 @@ describe("GiteaClient request shapes", () => {
       what: "a repository that is not there",
       call: (c: GiteaClient) => c.getRepository("acme", "group"),
     },
-    {
-      what: "a branch that is not there",
-      call: (c: GiteaClient) => c.getBranch("acme", "group", "main"),
-    },
   ])("answers undefined for $what rather than throwing", async ({ call }) => {
     const { client } = fake([{ status: 404, body: { message: "Not found" } }]);
     await expect(call(client)).resolves.toBeUndefined();
@@ -166,7 +151,7 @@ describe("GiteaClient request shapes", () => {
       },
     });
 
-    await expect(client.getBranch("acme", "group", "main")).resolves.toBeUndefined();
+    await expect(client.getRepository("acme", "group")).resolves.toBeUndefined();
 
     expect(signals).toHaveLength(1);
     expect(signals[0]?.aborted).toBe(false);
@@ -194,14 +179,6 @@ describe("GiteaClient request shapes", () => {
     expect((failure as GiteaApiError).message).toBe("Gitea refused to list the tags.");
   });
 
-  it("reads when an annotated tag was made from its tagger", async () => {
-    const { client, calls } = fake([
-      { body: { tag: "v0.1.1", tagger: { date: "2026-09-24T10:00:00Z" } } },
-    ]);
-    expect(await client.tagDate("acme", "group", "t-sha")).toBe("2026-09-24T10:00:00Z");
-    expect(calls[0]?.url).toBe(`${ORIGIN}/api/v1/repos/acme/group/git/tags/t-sha`);
-  });
-
   it("lists the repositories this person has access to page by page, until a page comes back short", async () => {
     const full = Array.from({ length: 50 }, (_, index) => ({ id: index, name: `r${index}` }));
     const { client, calls } = fake([{ body: full }, { body: [{ id: 50, name: "r50" }] }]);
@@ -213,12 +190,6 @@ describe("GiteaClient request shapes", () => {
     ]);
   });
 
-  it("creates a tag on a commit", async () => {
-    const { client, calls } = fake([{ status: 201, body: {} }]);
-    await client.createTag("acme", "group", { tag: "v1.2.0", target: "abc", message: "api abc" });
-    expect(calls[0]?.body).toEqual({ tag_name: "v1.2.0", target: "abc", message: "api abc" });
-  });
-
   it("lists one page of a repository's tags, message and all", async () => {
     const { client, calls } = fake([
       { body: [{ name: "v1.2.0", message: "api abc", commit: { sha: "abc" } }] },
@@ -226,20 +197,6 @@ describe("GiteaClient request shapes", () => {
     expect(await client.listTags("acme", "group")).toHaveLength(1);
     expect(calls.map((call) => call.url.slice(ORIGIN.length))).toEqual([
       "/api/v1/repos/acme/group/tags",
-    ]);
-  });
-
-  it("reads a commit's statuses", async () => {
-    const { client, calls } = fake([
-      // Gitea sends a status's state under `status` (the owner's Git tab,
-      // 2026-09-17: read as `state`, an approved release said "Checking").
-      { body: [{ context: "mate/release/v1.0.0", status: "success" }] },
-    ]);
-    expect(await client.listCommitStatuses("acme", "group", "abc")).toEqual([
-      { context: "mate/release/v1.0.0", state: "success" },
-    ]);
-    expect(calls.map((call) => `${call.method} ${call.url.slice(ORIGIN.length)}`)).toEqual([
-      "GET /api/v1/repos/acme/group/commits/abc/statuses",
     ]);
   });
 });
@@ -280,38 +237,10 @@ describe("GiteaClient deadlines (DESIGN §2.D D3)", () => {
     expect(await outcome).toBe("TimeoutError");
   });
 
-  it("a write has no deadline: a tag Gitea is slow to answer may still land", async () => {
-    vi.useFakeTimers();
-    const tagging = silent().createTag("acme", "group", { tag: "v1.0.0", target: "c0ffee" });
-    let settled = false;
-    void tagging.then(
-      () => {
-        settled = true;
-      },
-      () => {
-        settled = true;
-      },
-    );
-    await vi.advanceTimersByTimeAsync(GITEA_REQUEST_DEADLINE_MS * 4);
-    expect(settled).toBe(false);
-  });
-
   it("the caller's signal still ends a request before its deadline", async () => {
     const controller = new AbortController();
     const read = silent(controller.signal).listTags("acme", "group");
     controller.abort(new DOMException("The account closed.", "AbortError"));
     await expect(read).rejects.toMatchObject({ name: "AbortError" });
-  });
-});
-
-describe("GiteaClient pages", () => {
-  it("lists every tag, page by page, until a page comes back short", async () => {
-    const full = Array.from({ length: 50 }, (_, index) => ({ name: `v0.0.${index}` }));
-    const { client, calls } = fake([{ body: full }, { body: [{ name: "v0.1.0" }] }]);
-    expect(await client.listAllTags("acme", "group")).toHaveLength(51);
-    expect(calls.map((call) => call.url.slice(ORIGIN.length))).toEqual([
-      "/api/v1/repos/acme/group/tags?limit=50&page=1",
-      "/api/v1/repos/acme/group/tags?limit=50&page=2",
-    ]);
   });
 });

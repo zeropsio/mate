@@ -7,6 +7,7 @@ import {
   groupStopsOf,
   releaseDeploys,
   statedVersionNames,
+  versionsStated,
 } from "./groupDeploys.ts";
 import type { ZeropsServiceDeployedVersion } from "./data/deployedVersion.ts";
 import type { Shown } from "./knowledge/known.ts";
@@ -155,7 +156,30 @@ describe("what a release compares, from HQ's records", () => {
     });
     const { failed, production } = releaseDeploys(inputs);
     expect([...failed]).toEqual([[`api@${API}`, "2026-10-02T10:00:00.000Z"]]);
-    expect([...production]).toEqual([["api", OLD.slice(0, 7)]]);
+    expect([...production]).toEqual([["api", OLD]]);
+  });
+
+  it("spells production's commit whole where HQ's record of its deploy names it, else as its name does", () => {
+    const inputs = environmentRowInputsOf({
+      environments: [
+        environment({
+          projectId: "p-prod",
+          tier: "production",
+          name: "production",
+          deploys: [{ service: "api", latest: record("live", API), live: record("live", API) }],
+        }),
+      ],
+      projectNames: new Map(),
+      services: [...services, { projectId: "p-prod", serviceId: "s5", hostname: "web" }],
+      versions: new Map([
+        ["s3", `v1.0.1 ${API.slice(0, 7)}`],
+        ["s5", `v1.0.1 ${WEB.slice(0, 7)}`],
+      ]),
+    });
+    expect([...releaseDeploys(inputs).production]).toEqual([
+      ["api", API],
+      ["web", WEB.slice(0, 7)],
+    ]);
   });
 });
 
@@ -175,7 +199,11 @@ describe("an application's stops, as HQ records them", () => {
       environments: [environment({ projectId: "p-stage", tier: "stage", name: "stage" })],
       projects,
       versions: new Map([["s1", `main ${API.slice(0, 7)}`]]),
-      recipe: { tiers: ["stage", "production"], repositories: new Map([["api", "apidev"]]) },
+      recipe: {
+        tiers: ["stage", "production"],
+        repositories: new Map([["api", "apidev"]]),
+        productionRepositories: new Map(),
+      },
     });
     expect(stops.declarations).toEqual([
       { name: "stage", tier: "stage", project: "p-stage", sources: ["main"] },
@@ -220,6 +248,19 @@ describe("the version names the account's store states", () => {
       ),
     ).toEqual(new Map([["s1", `main ${API.slice(0, 7)}`]]));
   });
+
+  // What a release puts live is measured from what production runs: a service whose version is
+  // not read yet would read as running nothing, and its whole history as going live.
+  it("says whether the store has stated what each of the services runs, a name or none", () => {
+    const stated = new Map<string, Shown<ZeropsServiceDeployedVersion>>([
+      ["s1", known(`v0.1.0 ${API.slice(0, 7)}`)],
+      ["s2", known(null)],
+      ["s3", { state: "unread", waitingFor: null }],
+    ]);
+    expect(versionsStated(stated, ["s1", "s2"])).toBe(true);
+    expect(versionsStated(stated, ["s1", "s3"])).toBe(false);
+    expect(versionsStated(stated, ["s1", "s4"])).toBe(false);
+  });
 });
 
 describe("what the recipe on main offers", () => {
@@ -238,6 +279,22 @@ describe("what the recipe on main offers", () => {
     expect(appRecipeOf({ stage: stageTier, production: null })).toEqual({
       tiers: ["stage"],
       repositories: new Map([["app", "appdev"]]),
+      productionRepositories: new Map(),
+    });
+  });
+
+  // What a release lists: each production runtime at its repository's main (C01).
+  it("names the repository each production runtime builds from, apart", () => {
+    const productionTier = stageTier
+      .replace("appdev", "appprod")
+      .replace("hostname: app", "hostname: web");
+    expect(appRecipeOf({ stage: stageTier, production: productionTier })).toEqual({
+      tiers: ["stage", "production"],
+      repositories: new Map([
+        ["app", "appdev"],
+        ["web", "appprod"],
+      ]),
+      productionRepositories: new Map([["web", "appprod"]]),
     });
   });
 });
@@ -266,7 +323,7 @@ describe("what a release compares", () => {
     environments: ReadonlyArray<HqEnvironment> = [stage, production],
   ) => environmentRowInputsOf({ environments, projectNames: new Map(), services, versions });
 
-  it("reads both sides from the sha in the deployed version's name", () => {
+  it("reads production from the sha in the deployed version's name, never a stage's", () => {
     const commits = releaseDeploys(
       snapshot(
         new Map([
@@ -276,38 +333,15 @@ describe("what a release compares", () => {
         ]),
       ),
     );
-    expect([...commits.stage]).toEqual([
-      ["api", API],
-      ["web", WEB],
-    ]);
     expect([...commits.production]).toEqual([["api", OLD]]);
   });
 
   it("leaves out a service whose version somebody named by hand", () => {
-    const commits = releaseDeploys(snapshot(new Map([["s1", "hotfix"]])));
-    expect(commits.stage.size).toBe(0);
-  });
-
-  it("has nothing to compare for a group that has deployed nothing", () => {
-    const commits = releaseDeploys(snapshot(new Map()));
-    expect(commits.stage.size).toBe(0);
+    const commits = releaseDeploys(snapshot(new Map([["s3", "hotfix"]])));
     expect(commits.production.size).toBe(0);
   });
 
-  it("takes the first declared stage where two of them run the same service", () => {
-    const commits = releaseDeploys(
-      snapshot(
-        new Map([
-          ["s4", OLD],
-          ["s1", API],
-        ]),
-        [
-          { ...stage, order: 2 },
-          environment({ projectId: "p-mate", tier: "stage", name: "stage-client-x", order: 1 }),
-          { ...production, order: 3 },
-        ],
-      ),
-    );
-    expect(commits.stage.get("api")).toBe(OLD);
+  it("has nothing to compare for a group that has deployed nothing", () => {
+    expect(releaseDeploys(snapshot(new Map())).production.size).toBe(0);
   });
 });

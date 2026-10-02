@@ -96,10 +96,7 @@ function releaseRowParts(
       />
     ) : undefined,
     name: release.tag,
-    status:
-      tone === undefined || release.word === undefined ? undefined : (
-        <StatusDot label={release.word} sentence tone={tone} />
-      ),
+    status: <StatusDot label={release.word} sentence tone={tone} />,
     tag: "release",
   };
 }

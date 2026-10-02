@@ -64,22 +64,6 @@
     "expires": "never"
   },
   {
-    "path": "apps/web/src/zerops/ZeropsProjectFlowProvider.tsx",
-    "kind": "CallExpression",
-    "fingerprint": "client.getBranch(slug, GROUP_REPOSITORY, \"main\").catch(() => undefined)",
-    "owner": "state-model 4.6",
-    "reason": "a failed main-branch read is told as \"no main to tag\"; per-verb attempts (4.5) name the cause and 4.6 deletes the provider",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/ZeropsProjectFlowProvider.tsx",
-    "kind": "CallExpression",
-    "fingerprint": "client.listTags(flow.slug, GROUP_REPOSITORY).catch(() => [])",
-    "owner": "state-model 4.6",
-    "reason": "a failed tag read reads as the release not existing; per-verb attempts (4.5) name the cause and 4.6 deletes the provider",
-    "expires": "never"
-  },
-  {
     "path": "apps/web/src/zerops/useZeropsDataMentions.ts",
     "kind": "ConditionalExpression",
     "fingerprint": "result._tag === \"Success\" ? result.value : undefined",
@@ -101,22 +85,6 @@
     "fingerprint": "addGroupEnvironment({ client, hq: accountHqApi(client, clientId, hq), clientId, groupId: entry.groupId, environment: { tier: entry.tier, project: entry.projectId }, signal: controller.signal, }).catch((): AddGroupEnvironmentOutcome | undefined => undefined)",
     "owner": "state-model 4.7",
     "reason": "a failed repair reads as no outcome and the entry is given back for the next pass; the reconciler becomes an account worker with typed attempts",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/useZeropsGroupForge.ts",
-    "kind": "CallExpression",
-    "fingerprint": "client.listCommitStatuses(slug, GROUP_REPOSITORY, sha).catch(() => [])",
-    "owner": "state-model 4.6",
-    "reason": "a failed status read reads as no checks; the forge store (4.1) holds statuses as Known and 4.6 deletes the hook",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/useZeropsGroupForge.ts",
-    "kind": "CallExpression",
-    "fingerprint": "client.tagDate(slug, GROUP_REPOSITORY, tag.id).catch(() => undefined)",
-    "owner": "state-model 4.6",
-    "reason": "an unread tag date holds no release in flight, so Release stays offered rather than refused on a read that did not answer; the forge store (4.1) holds it as Known and 4.6 deletes the hook",
     "expires": "never"
   },
   {

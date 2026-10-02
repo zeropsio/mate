@@ -1,4 +1,10 @@
-import { flowVerbKey, type AppRecipe, type ZeropsProject } from "@t3tools/client-runtime/zerops";
+import {
+  flowVerbKey,
+  RELEASE_CHECKING,
+  type AppRecipe,
+  type CompareRead,
+  type ZeropsProject,
+} from "@t3tools/client-runtime/zerops";
 import {
   ZeropsAccountId,
   ZeropsOrganizationId,
@@ -11,7 +17,8 @@ import {
 import type { DeploymentStore, StopService } from "@t3tools/client-runtime/zerops/flow";
 import type { HqEnvironment } from "@t3tools/client-runtime/zerops/hq";
 import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
-import { changeUrl, type HqChange } from "@t3tools/shared/hqChanges";
+import { changeUrl, type HqChange, type RepoListEntry } from "@t3tools/shared/hqChanges";
+import type { Release } from "@t3tools/shared/hqRelease";
 import { RegistryContext } from "@effect/atom-react";
 import { AtomRegistry } from "effect/unstable/reactivity";
 import { act, createElement } from "react";
@@ -29,7 +36,6 @@ import { useZeropsProjectFlow, type ZeropsProjectFlowValue } from "./projectFlow
 import {
   HELD_VERB_MS,
   HQ_CHANGES_UNANSWERED,
-  RELEASE_MOVES_TO_HQ,
   VERB_ALREADY_RUNNING,
   ZeropsProjectFlowProvider,
 } from "./ZeropsProjectFlowProvider";
@@ -54,17 +60,19 @@ const access = vi.hoisted(() => ({
     | { readonly kind: "withheld"; readonly reason: "access-lapsed"; readonly cause: null },
 }));
 
-/** What the verbs act on: the client they act as, and what the Gitea half answers for `g1`. */
-const verbs = vi.hoisted(() => ({
-  client: null as unknown,
-  forge: { released: { releases: [], tags: [] } } as unknown,
-  invalidated: [] as Array<readonly [string, unknown]>,
-  forgeFailures: new Map<string, string>(),
+/**
+ * What HQ last answered `g1`'s releases and repositories, why its last read failed, and which
+ * applications a verb asked to be read again.
+ */
+const released = vi.hoisted(() => ({
+  releases: [] as ReadonlyArray<Release>,
+  repos: [] as ReadonlyArray<RepoListEntry>,
+  failures: new Map<string, string>(),
+  refreshed: [] as Array<string>,
 }));
 
 vi.mock("./accountGiteaSessions", () => ({
   useGiteaSession: () => ({ signedIn: true, readable: gitea.readable, trouble: gitea.trouble }),
-  giteaClientFor: () => verbs.client,
 }));
 vi.mock("./ZeropsSessionProvider", () => ({
   useZeropsSession: () => ({
@@ -140,6 +148,14 @@ vi.mock("./accountHq", async (importOriginal) => ({
       hq.asked.push(["redeploy", { appId, environment, deploy }]);
       return hq.answer();
     },
+    rollback: (appId: string, tag: string, request: unknown) => {
+      hq.asked.push(["rollback", { appId, tag, request }]);
+      return hq.answer();
+    },
+    release: (appId: string, request: unknown) => {
+      hq.asked.push(["release", { appId, request }]);
+      return hq.answer();
+    },
   }),
 }));
 vi.mock("./useZeropsRegistry", () => ({
@@ -150,12 +166,58 @@ const recipes = vi.hoisted(() => ({ read: new Map<string, AppRecipe>() }));
 vi.mock("./useZeropsAppRecipes", () => ({
   useZeropsAppRecipes: () => recipes.read,
 }));
-vi.mock("./useZeropsGroupForge", () => ({
-  useZeropsGroupForge: () => ({
-    forges: new Map([["g1", verbs.forge]]),
-    failures: verbs.forgeFailures,
-    invalidate: (groupId: string, scope: unknown) => {
-      verbs.invalidated.push([groupId, scope]);
+/** HQ's rule for this person releasing `g1`, in its words; `undefined` while it cannot be asked. */
+const permission = vi.hoisted(() => ({
+  gate: { allowed: true } as
+    | { readonly allowed: true }
+    | { readonly allowed: false; readonly reason: string }
+    | undefined,
+}));
+vi.mock("./useChangeOffers", () => ({
+  useReleasePermission: () => () => permission.gate,
+}));
+/** What HQ compares for each read a release asks: the commits listed here, every time. */
+const compares = vi.hoisted(() => ({
+  commits: [] as ReadonlyArray<{ readonly sha: string; readonly subject: string }>,
+}));
+vi.mock("./useZeropsCompares", async () => {
+  const { compareReadKey } = await import("@t3tools/client-runtime/zerops");
+  return {
+    useZeropsCompares: (asks: ReadonlyMap<string, ReadonlyArray<CompareRead>>) =>
+      new Map(
+        [...asks].map(([appId, reads]) => [
+          appId,
+          {
+            answers: new Map(
+              reads.map((read) => [
+                compareReadKey(read),
+                {
+                  base: read.query.base ?? null,
+                  head: read.query.head,
+                  commits: compares.commits.map((commit) => ({
+                    ...commit,
+                    authorName: "Juno",
+                    at: "2026-10-02T09:00:00.000Z",
+                    change: null,
+                  })),
+                  truncated: false,
+                  total: compares.commits.length,
+                },
+              ]),
+            ),
+            failures: new Map(),
+          },
+        ]),
+      ),
+  };
+});
+vi.mock("./useZeropsAppReleases", () => ({
+  useZeropsAppReleases: () => ({
+    releases: new Map([["g1", released.releases]]),
+    repos: new Map([["g1", released.repos]]),
+    failures: released.failures,
+    refresh: (appId: string) => {
+      released.refreshed.push(appId);
     },
   }),
 }));
@@ -274,11 +336,15 @@ describe("ZeropsProjectFlowProvider", () => {
     inventoryRefs.projects = [];
     inventoryRefs.authority = new Map();
     registryGroups.groups = [{ groupId: "g1", slug: "harbor" }];
-    verbs.client = null;
-    verbs.invalidated = [];
     recipes.read = new Map();
-    verbs.forgeFailures = new Map();
-    verbs.forge = { released: { releases: [], tags: [] } };
+    released.releases = [];
+    released.repos = [];
+    released.failures = new Map();
+    released.refreshed = [];
+    permission.gate = { allowed: true };
+    compares.commits = [];
+    hq.asked = [];
+    hq.answer = () => Promise.resolve({});
     vi.unstubAllGlobals();
   });
 
@@ -502,7 +568,14 @@ describe("ZeropsProjectFlowProvider", () => {
       services: new Map(),
     };
     recipes.read = new Map([
-      ["g1", { tiers: ["stage", "production"], repositories: new Map([["app", "appdev"]]) }],
+      [
+        "g1",
+        {
+          tiers: ["stage", "production"],
+          repositories: new Map([["app", "appdev"]]),
+          productionRepositories: new Map(),
+        },
+      ],
     ]);
     const atoms = signedInAtoms();
     atoms.set(hqStructureAtom, structureWith([environment("prod-1", "production")]));
@@ -561,132 +634,203 @@ describe("ZeropsProjectFlowProvider", () => {
     });
   });
 
-  it("a verb pressed while no Gitea token is held says why nothing happened", async () => {
-    installTestDom();
-    const { createRoot } = await import("react-dom/client");
-    const seen: Array<ZeropsProjectFlowValue> = [];
+  describe("release", () => {
+    const MERGED = "2".repeat(40);
+    const GROUP_MAIN = "b".repeat(40);
+    const RELEASE = flowVerbKey({ kind: "release", groupId: "g1" });
+    /** What HQ makes of the offer: the release it was named. */
+    const MADE: Release = {
+      tag: "v0.1.0",
+      sha: GROUP_MAIN,
+      entries: [{ service: "app", sha: MERGED }],
+      by: "u1",
+      at: "2026-10-02T10:00:00.000Z",
+      state: "approved",
+      reason: null,
+      rollbackOf: null,
+    };
 
-    function Probe() {
-      seen.push(useZeropsProjectFlow());
-      return null;
+    /**
+     * A group whose production builds `app` from appdev, merged at MERGED and run nowhere yet, the
+     * recipe at GROUP_MAIN; HQ compares one change to put live.
+     */
+    async function mountRelease(services: ReadonlyArray<unknown> = []) {
+      compares.commits = [{ sha: MERGED, subject: "Quicker gallery" }];
+      recipes.read = new Map([
+        [
+          "g1",
+          {
+            tiers: ["production"],
+            repositories: new Map([["app", "appdev"]]),
+            productionRepositories: new Map([["app", "appdev"]]),
+          },
+        ],
+      ]);
+      released.repos = [
+        { name: "appdev", mainHead: MERGED, updatedAt: "2026-10-02T09:00:00.000Z" },
+        { name: "group", mainHead: GROUP_MAIN, updatedAt: "2026-10-02T09:00:00.000Z" },
+      ];
+      hq.answer = () => Promise.resolve(MADE);
+      installTestDom();
+      const { createRoot } = await import("react-dom/client");
+      const seen: Array<ZeropsProjectFlowValue> = [];
+      function Probe() {
+        seen.push(useZeropsProjectFlow());
+        return null;
+      }
+      // Its production is the Zerops project prod-1, whose services are listed: none runs yet.
+      const held = {
+        projects: [
+          {
+            id: "prod-1",
+            clientId: "org-1",
+            name: "harbor-prod",
+            status: "ACTIVE",
+            hq: { appId: "g1", appName: "Harbor", kind: "production", mate: null },
+          } as ZeropsProject,
+        ],
+        services: new Map([["prod-1", { status: "resolved", services }]]),
+      };
+      const atoms = signedInAtoms();
+      atoms.set(hqStructureAtom, structureWith([environment("prod-1", "production")]));
+      const root = createRoot(document.createElement("div") as unknown as Element);
+      const render = () =>
+        act(async () => {
+          root.render(
+            createElement(
+              RegistryContext.Provider,
+              { value: atoms },
+              createElement(
+                HeldInventoryContext,
+                { value: held as never },
+                createElement(ZeropsProjectFlowProvider, null, createElement(Probe)),
+              ),
+            ),
+          );
+        });
+      await render();
+      return { seen, render, root };
     }
 
-    const root = createRoot(document.createElement("div") as unknown as Element);
-    await act(async () => {
-      root.render(createElement(ZeropsProjectFlowProvider, null, createElement(Probe)));
+    it("offers what HQ compared it would put live", async () => {
+      const { seen, root } = await mountRelease();
+      expect(
+        seen
+          .at(-1)
+          ?.flows.get("g1")
+          ?.release.contents.flatMap(({ commits }) => commits.map(({ subject }) => subject)),
+      ).toEqual(["Quicker gallery"]);
+      await act(async () => {
+        root.unmount();
+      });
     });
-    expect(seen.at(-1)?.readable).toBe(false);
-    expect(seen.at(-1)?.trouble).toBeNull();
 
-    await act(async () => {
-      await seen.at(-1)?.rollBack("g1", "v1.0.0");
+    // A production service whose version the store has not stated yet would read as running
+    // nothing, and its repository's whole history as going live.
+    it("compares nothing while what a production service runs is not stated", async () => {
+      const { seen, root } = await mountRelease([
+        { id: "s-app", name: "app", status: "ACTIVE", isSystem: false, activeAppVersion: null },
+      ]);
+      const release = seen.at(-1)?.flows.get("g1")?.release;
+      expect(release?.gate).toEqual({ allowed: false, reason: RELEASE_CHECKING });
+      expect(release?.contents).toEqual([]);
+      await act(async () => {
+        root.unmount();
+      });
     });
-    expect(seen.at(-1)?.trouble).toBe("Signing in to Gitea again. Try it again in a moment.");
 
-    await act(async () => {
-      root.unmount();
+    it("releases what its offer shows, held until the releases list what HQ made", async () => {
+      const { seen, render, root } = await mountRelease();
+      expect(seen.at(-1)?.flows.get("g1")?.release.gate).toEqual({ allowed: true });
+      let outcome: unknown;
+      await act(async () => {
+        outcome = await seen.at(-1)!.release("g1");
+      });
+      expect(hq.asked).toEqual([
+        [
+          "release",
+          {
+            appId: "g1",
+            request: {
+              tag: "v0.1.0",
+              groupHead: GROUP_MAIN,
+              entries: [{ service: "app", sha: MERGED }],
+            },
+          },
+        ],
+      ]);
+      expect(outcome).toEqual({ ok: true, tag: "v0.1.0" });
+      expect(released.refreshed).toEqual(["g1"]);
+      expect(seen.at(-1)?.pending.has(RELEASE)).toBe(true);
+      released.releases = [MADE];
+      await render();
+      expect(seen.at(-1)?.pending.has(RELEASE)).toBe(false);
+      await act(async () => {
+        root.unmount();
+      });
     });
-  });
 
-  it("stops saying it is signing in again once the token is back", async () => {
-    installTestDom();
-    const { createRoot } = await import("react-dom/client");
-    const seen: Array<ZeropsProjectFlowValue> = [];
+    it("refuses what its offer refuses, in HQ's words for who may, and asks HQ nothing", async () => {
+      permission.gate = {
+        allowed: false,
+        reason: "You need at least Basic user access to this project's production to release it.",
+      };
+      const { seen, root } = await mountRelease();
+      let outcome: unknown;
+      await act(async () => {
+        outcome = await seen.at(-1)!.release("g1");
+      });
+      expect(hq.asked).toEqual([]);
+      expect(outcome).toEqual({
+        ok: false,
+        reason: "You need at least Basic user access to this project's production to release it.",
+      });
+      await act(async () => {
+        root.unmount();
+      });
+    });
 
-    function Probe() {
-      seen.push(useZeropsProjectFlow());
-      return null;
-    }
-
-    const root = createRoot(document.createElement("div") as unknown as Element);
-    await act(async () => {
-      root.render(createElement(ZeropsProjectFlowProvider, null, createElement(Probe)));
-    });
-    await act(async () => {
-      await seen.at(-1)?.rollBack("g1", "v1.0.0");
-    });
-    expect(seen.at(-1)?.trouble).toBe("Signing in to Gitea again. Try it again in a moment.");
-
-    gitea.readable = true;
-    await act(async () => {
-      root.render(createElement(ZeropsProjectFlowProvider, null, createElement(Probe)));
-    });
-    expect(seen.at(-1)?.trouble).toBeNull();
-
-    await act(async () => {
-      root.unmount();
-    });
-  });
-
-  it("a verb pressed with no Gitea on the account claims no sign-in", async () => {
-    gitea.origin = false;
-    installTestDom();
-    const { createRoot } = await import("react-dom/client");
-    const seen: Array<ZeropsProjectFlowValue> = [];
-
-    function Probe() {
-      seen.push(useZeropsProjectFlow());
-      return null;
-    }
-
-    const root = createRoot(document.createElement("div") as unknown as Element);
-    await act(async () => {
-      root.render(createElement(ZeropsProjectFlowProvider, null, createElement(Probe)));
-    });
-    // The group's flow stands, so the press reaches the client it would act as.
-    expect(seen.at(-1)?.flows.has("g1")).toBe(true);
-    await act(async () => {
-      await seen.at(-1)?.rollBack("g1", "v1.0.0");
-    });
-    expect(seen.at(-1)?.trouble).toBeNull();
-
-    await act(async () => {
-      root.unmount();
-    });
-  });
-
-  it("refuses a release: its offer moves to HQ next", async () => {
-    installTestDom();
-    const { createRoot } = await import("react-dom/client");
-    const seen: Array<ZeropsProjectFlowValue> = [];
-    function Probe() {
-      seen.push(useZeropsProjectFlow());
-      return null;
-    }
-    const root = createRoot(document.createElement("div") as unknown as Element);
-    await act(async () => {
-      root.render(createElement(ZeropsProjectFlowProvider, null, createElement(Probe)));
-    });
-    expect(seen.at(-1)?.flows.get("g1")?.release.gate).toEqual({
-      allowed: false,
-      reason: RELEASE_MOVES_TO_HQ,
-    });
-    let outcome: unknown;
-    await act(async () => {
-      outcome = await seen.at(-1)?.release("g1");
-    });
-    expect(outcome).toEqual({ ok: false, reason: RELEASE_MOVES_TO_HQ });
-    await act(async () => {
-      root.unmount();
+    it("says HQ's refusal in its words, where the verbs are, and holds nothing", async () => {
+      const { seen, root } = await mountRelease();
+      hq.answer = () =>
+        Promise.reject(new Error("Main moved since you opened this. Review it again."));
+      let outcome: unknown;
+      await act(async () => {
+        outcome = await seen.at(-1)!.release("g1");
+      });
+      expect(outcome).toEqual({
+        ok: false,
+        reason: "Main moved since you opened this. Review it again.",
+      });
+      expect(seen.at(-1)?.trouble).toBe("Main moved since you opened this. Review it again.");
+      expect(seen.at(-1)?.pending.has(RELEASE)).toBe(false);
+      await act(async () => {
+        root.unmount();
+      });
     });
   });
 
   describe("roll back", () => {
-    const MOVED = "b".repeat(40);
-    const MERGED = "2".repeat(40);
+    const GROUP_MAIN = "b".repeat(40);
     const ROLL_BACK = flowVerbKey({ kind: "roll-back", groupId: "g1", tag: "v1.0.0" });
+    /** What HQ makes of a rollback to v1.0.0: the next patch, listing its entries. */
+    const MADE: Release = {
+      tag: "v1.0.2",
+      sha: GROUP_MAIN,
+      entries: [{ service: "app", sha: "2".repeat(40) }],
+      by: "u1",
+      at: "2026-10-02T10:00:00.000Z",
+      state: "approved",
+      reason: null,
+      rollbackOf: "v1.0.0",
+    };
 
-    /** A group whose group repo `main` is at `MOVED` at the press, and whose `v1.0.0` lists MERGED. */
-    async function mountRollBack() {
-      gitea.readable = true;
-      const tags: Array<{ tag: string; target: string; message?: string | undefined }> = [];
-      verbs.client = {
-        getBranch: async () => ({ name: "main", commit: { id: MOVED } }),
-        listTags: async () => [{ name: "v1.0.0", message: `app ${MERGED}` }],
-        createTag: async (_owner: string, _repo: string, input: (typeof tags)[number]) => {
-          tags.push(input);
-        },
-      };
+    /** A group whose recipe's `main` HQ last listed at GROUP_MAIN, or `null` for none. */
+    async function mountRollBack(groupMain: string | null = GROUP_MAIN) {
+      released.repos = [
+        { name: "group", mainHead: groupMain, updatedAt: "2026-10-02T09:00:00.000Z" },
+      ];
+      hq.answer = () => Promise.resolve(MADE);
       installTestDom();
       const { createRoot } = await import("react-dom/client");
       const seen: Array<ZeropsProjectFlowValue> = [];
@@ -700,31 +844,33 @@ describe("ZeropsProjectFlowProvider", () => {
           root.render(createElement(ZeropsProjectFlowProvider, null, createElement(Probe)));
         });
       await render();
-      return { seen, tags, render, root };
+      return { seen, render, root };
     }
 
-    it("tags main as read at the press, and answers with the tag it made", async () => {
-      const { seen, tags, root } = await mountRollBack();
+    it("asks HQ with the recipe's main as last read, and answers with the release it made", async () => {
+      const { seen, root } = await mountRollBack();
       let outcome: unknown;
       await act(async () => {
         outcome = await seen.at(-1)!.rollBack("g1", "v1.0.0");
       });
-      expect(tags.map(({ target }) => target)).toEqual([MOVED]);
-      expect(outcome).toEqual({ ok: true, tag: tags[0]?.tag });
+      expect(hq.asked).toEqual([
+        ["rollback", { appId: "g1", tag: "v1.0.0", request: { groupHead: GROUP_MAIN } }],
+      ]);
+      expect(outcome).toEqual({ ok: true, tag: "v1.0.2" });
       expect(seen.at(-1)?.trouble).toBeNull();
       await act(async () => {
         root.unmount();
       });
     });
 
-    it("the group's tags are re-read right after the tag is made, and Roll back waits for them", async () => {
+    it("reads the releases again right after, and Roll back waits for them to list it", async () => {
       const { seen, render, root } = await mountRollBack();
       await act(async () => {
         await seen.at(-1)!.rollBack("g1", "v1.0.0");
       });
-      expect(verbs.invalidated).toEqual([["g1", { kind: "tags" }]]);
+      expect(released.refreshed).toEqual(["g1"]);
       expect(seen.at(-1)?.pending.has(ROLL_BACK)).toBe(true);
-      verbs.forge = { ...(verbs.forge as object) };
+      released.releases = [MADE];
       await render();
       expect(seen.at(-1)?.pending.has(ROLL_BACK)).toBe(false);
       await act(async () => {
@@ -732,18 +878,17 @@ describe("ZeropsProjectFlowProvider", () => {
       });
     });
 
-    it("a failed re-read after the tag does not leave Roll back pending", async () => {
+    it("a failed re-read of the releases does not leave Roll back pending", async () => {
       const { seen, render, root } = await mountRollBack();
       await act(async () => {
         await seen.at(-1)!.rollBack("g1", "v1.0.0");
       });
       expect(seen.at(-1)?.pending.has(ROLL_BACK)).toBe(true);
-      // The re-read the tag asked for fails: the forge answer stays the one the tag was made against.
-      verbs.forgeFailures = new Map([["g1", "Gitea did not answer"]]);
+      released.failures = new Map([["g1", "HQ is not answering right now."]]);
       await render();
       expect(seen.at(-1)?.pending.has(ROLL_BACK)).toBe(false);
       // The failure clearing does not bring back a wait that already ended.
-      verbs.forgeFailures = new Map();
+      released.failures = new Map();
       await render();
       expect(seen.at(-1)?.pending.has(ROLL_BACK)).toBe(false);
       await act(async () => {
@@ -751,38 +896,7 @@ describe("ZeropsProjectFlowProvider", () => {
       });
     });
 
-    it("keeps waiting when the group's tags answer again while the tag is being made", async () => {
-      const { seen, render, root } = await mountRollBack();
-      let finish = () => {};
-      const client = verbs.client as Record<string, unknown>;
-      verbs.client = {
-        ...client,
-        createTag: () =>
-          new Promise<void>((resolve) => {
-            finish = resolve;
-          }),
-      };
-      let pressed: Promise<unknown> = Promise.resolve();
-      await act(async () => {
-        pressed = seen.at(-1)!.rollBack("g1", "v1.0.0");
-      });
-      // A pass that started before the tag existed answers while it is being made.
-      verbs.forge = { ...(verbs.forge as object) };
-      await render();
-      await act(async () => {
-        finish();
-        await pressed;
-      });
-      expect(seen.at(-1)?.pending.has(ROLL_BACK)).toBe(true);
-      verbs.forge = { ...(verbs.forge as object) };
-      await render();
-      expect(seen.at(-1)?.pending.has(ROLL_BACK)).toBe(false);
-      await act(async () => {
-        root.unmount();
-      });
-    });
-
-    it("stops being pending once the forge has not answered again in time", async () => {
+    it("stops being pending once the releases have not listed it in time", async () => {
       vi.useFakeTimers();
       try {
         const { seen, root } = await mountRollBack();
@@ -803,6 +917,41 @@ describe("ZeropsProjectFlowProvider", () => {
       } finally {
         vi.useRealTimers();
       }
+    });
+
+    it("says HQ's refusal in its words, where the verbs are, and holds nothing", async () => {
+      const { seen, root } = await mountRollBack();
+      hq.answer = () =>
+        Promise.reject(new Error("Main moved since you opened this. Review it again."));
+      let outcome: unknown;
+      await act(async () => {
+        outcome = await seen.at(-1)!.rollBack("g1", "v1.0.0");
+      });
+      expect(outcome).toEqual({
+        ok: false,
+        reason: "Main moved since you opened this. Review it again.",
+      });
+      expect(seen.at(-1)?.trouble).toBe("Main moved since you opened this. Review it again.");
+      expect(seen.at(-1)?.pending.has(ROLL_BACK)).toBe(false);
+      await act(async () => {
+        root.unmount();
+      });
+    });
+
+    it("asks HQ nothing while the recipe has nothing on main to tag", async () => {
+      const { seen, root } = await mountRollBack(null);
+      let outcome: unknown;
+      await act(async () => {
+        outcome = await seen.at(-1)!.rollBack("g1", "v1.0.0");
+      });
+      expect(hq.asked).toEqual([]);
+      expect(outcome).toEqual({
+        ok: false,
+        reason: "The project's recipe has nothing on main to tag yet.",
+      });
+      await act(async () => {
+        root.unmount();
+      });
     });
   });
 });
@@ -993,7 +1142,7 @@ describe("merging and closing a change in HQ", () => {
     expect(outcome).toEqual({ ok: true });
     expect(hq.asked).toEqual([["merge", { appId: "g1", repo: "app", number: 7 }, HEAD]]);
     // Nothing is read again: the change comes back down the stream.
-    expect(verbs.invalidated).toEqual([]);
+    expect(released.refreshed).toEqual([]);
     expect(seen.at(-1)?.pending.has(MERGE)).toBe(true);
     await say([
       { ...open(7), state: "merged", mergedSha: "d00d", mergedAt: "2026-10-02T10:00:00Z" },

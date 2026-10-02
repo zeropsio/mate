@@ -546,9 +546,21 @@ function environment(
 }
 
 /** A made-up Gitea, so the version reads as the link it is in the product. */
-/** What a release would put live, as `releaseContents` carries it. */
+/** What a release would put live, as `releaseContents` carries it: one comparison of `appdev`. */
 const changes = (...subjects: ReadonlyArray<string>) => [
-  { commits: subjects.map((subject, index) => ({ sha: `c${index}`, subject })) },
+  {
+    repository: "appdev",
+    services: ["app"],
+    commits: subjects.map((subject, index) => ({
+      sha: `c${index}`,
+      subject,
+      authorName: "Juno",
+      at: "2026-10-02T10:00:00.000Z",
+      change: null,
+    })),
+    total: subjects.length,
+    truncated: false,
+  },
 ];
 
 const FLOWS = new Map<string, SidebarProjectFlow>([

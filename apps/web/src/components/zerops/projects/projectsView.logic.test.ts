@@ -41,6 +41,20 @@ import {
   type FoldedGroupInput,
 } from "./projectsView.logic";
 
+/** One comparison HQ answered for `appdev`: what a release would put live. */
+const compared = (commits: ReadonlyArray<{ readonly sha: string; readonly subject: string }>) => ({
+  repository: "appdev",
+  services: ["app"],
+  commits: commits.map((commit) => ({
+    ...commit,
+    authorName: "Juno",
+    at: "2026-10-02T10:00:00.000Z",
+    change: null,
+  })),
+  total: commits.length,
+  truncated: false,
+});
+
 function pull(over: Partial<FlowPullRequest> = {}): FlowPullRequest {
   return {
     repository: "app",
@@ -989,13 +1003,11 @@ describe("groupFlowInputOf", () => {
           gate: { allowed: true },
           suggestion: "v0.1.1",
           contents: [
-            {
-              commits: [
-                { sha: "a", subject: "one" },
-                { sha: "b", subject: "two" },
-              ],
-            },
-            { commits: [{ sha: "a", subject: "one" }] },
+            compared([
+              { sha: "a", subject: "one" },
+              { sha: "b", subject: "two" },
+            ]),
+            compared([{ sha: "a", subject: "one" }]),
           ],
         },
       },

@@ -19,6 +19,7 @@ import {
   type FactsFor,
   type Held,
   type Principal,
+  type Reason,
   type Targets,
   type Verb,
 } from "@t3tools/shared/zeropsPermissions";
@@ -114,6 +115,32 @@ export function changeOffers(
     close: mayOffer(asker, "close_change", { projectIds }),
     redeploy: mayOffer(asker, "redeploy", { projectIds }),
   };
+}
+
+/**
+ * Whether the person may release the application's production (SPEC §3.3a), and HQ's reason where
+ * not: Basic user or above on it. That it has none is told only to whoever reads its changes, as HQ
+ * tells it. `undefined` for a person the client does not know: nothing is decided for them.
+ */
+export function releasePermission(
+  asker: OfferAsker | null,
+  placements: ReadonlyMap<string, HqPlacement>,
+  appId: string,
+): { readonly allowed: true } | { readonly allowed: false; readonly reason: Reason } | undefined {
+  if (asker === null) return undefined;
+  const placed = [...placements].filter(([, placement]) => placement.appId === appId);
+  const production = placed.find(([, placement]) => placement.kind === "production");
+  const decision = can(
+    asker.principal,
+    "release",
+    {
+      projectIds: placed.map(([projectId]) => projectId),
+      productionProjectId: production === undefined ? null : production[0],
+    },
+    // The one place cached facts stand in for fresh ones, as in `mayOffer`: an offer, never a write.
+    asker.facts as unknown as FactsFor<"release">,
+  );
+  return decision.allow ? { allowed: true } : { allowed: false, reason: decision.reason };
 }
 
 /** What HQ holds a project as, from where it places it: `none` where it places it nowhere. */

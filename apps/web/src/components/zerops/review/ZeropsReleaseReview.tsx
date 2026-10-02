@@ -16,7 +16,6 @@
  */
 import {
   buildZeropsGroupTree,
-  RELEASE_NOT_A_RELEASER,
   releaseContentsCommits,
   releaseReview,
   reviewAge,
@@ -288,6 +287,7 @@ function ReleaseData({
     <ReleaseReviewView
       fixer={fixer?.name}
       gate={flow.release.gate}
+      permission={flow.release.permission}
       hasStage={mainStage !== undefined}
       live={flow.releases.find((entry) => entry.standing === "live")?.tag}
       name={name}
@@ -325,6 +325,8 @@ export interface ReleaseReviewViewProps {
   readonly name: string | undefined;
   readonly tag: string;
   readonly gate: ReleaseGate;
+  /** HQ's rule for this person, its refusal in words; `undefined` while it cannot be asked. */
+  readonly permission: ReleaseGate | undefined;
   readonly rows: ReadonlyArray<ReviewReleaseRow>;
   readonly where: ReadonlyArray<{ readonly service: string; readonly line: string }>;
   readonly hasStage: boolean;
@@ -348,6 +350,7 @@ export function ReleaseReviewView(props: ReleaseReviewViewProps) {
   const model = releaseReview({
     tag,
     gate: props.gate,
+    permission: props.permission,
     changes: rows.length,
     onStage: props.hasStage
       ? { total: rows.length, running: rows.filter((row) => row.stage === "on-stage").length }
@@ -471,8 +474,9 @@ function RollbackData({
     <RollbackReviewView
       line={earlier?.line}
       live={flow.releases.find((entry) => entry.standing === "live")?.tag}
-      // Rolling back is a release: only a releaser tags, whatever else holds Release back now.
-      mayRelease={flow.release.gate.allowed || flow.release.gate.reason !== RELEASE_NOT_A_RELEASER}
+      // Rolling back is a release: HQ's rule for releasing decides, whatever else holds Release
+      // back now.
+      permission={flow.release.permission}
       name={name}
       nextTag={made ?? flow.release.suggestion}
       now={now}
@@ -506,7 +510,8 @@ export interface RollbackReviewViewProps {
   readonly line: string | undefined;
   readonly services: ReadonlyArray<string>;
   readonly where: ReadonlyArray<{ readonly service: string; readonly line: string }>;
-  readonly mayRelease: boolean;
+  /** HQ's rule for this person, its refusal in words; `undefined` while it cannot be asked. */
+  readonly permission: ReleaseGate | undefined;
   readonly press: ReviewPress;
   /** Where the tag it made stands, once it was made. */
   readonly outcome: ReleaseOutcome;
@@ -523,7 +528,7 @@ export function RollbackReviewView(props: RollbackReviewViewProps) {
     nextTag: props.nextTag,
     live: props.live,
     services: props.services,
-    mayRelease: props.mayRelease,
+    permission: props.permission,
     press,
     outcome: props.outcome,
     now: props.now,

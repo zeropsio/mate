@@ -94,6 +94,7 @@ describe("useZeropsAppRecipes", () => {
     expect(seen()?.get("app-1")).toEqual({
       tiers: ["stage"],
       repositories: new Map([["app", "appdev"]]),
+      productionRepositories: new Map(),
     });
   });
 

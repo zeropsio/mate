@@ -124,6 +124,7 @@ import {
   groupFlow,
   pullRequestLineWith,
   PRODUCTION_ADDED_HERE,
+  releaseContentsCommits,
   type FlowPullRequest,
   readZeropsMembership,
   resolveGroupGitea,
@@ -1716,7 +1717,8 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
   const releaseContentLines = (group: ZeropsGroup) => {
     const flow = groupDeploys.get(group.groupId);
     if (flow === undefined || !flow.release.gate.allowed) return null;
-    const commits = flow.release.contents.flatMap((entry) => entry.commits);
+    // One commit several services take is one change (`releaseContentsCommits`).
+    const commits = releaseContentsCommits(flow.release.contents);
     if (commits.length === 0) return null;
     // Led in by what they are, one entry of the list: a sha and a subject
     // alone read as a stray commit.

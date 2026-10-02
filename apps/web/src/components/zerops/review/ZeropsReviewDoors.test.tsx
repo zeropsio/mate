@@ -121,13 +121,14 @@ describe("Roll back to this opens the roll back's review, from the row pressed",
       detail: undefined,
       line: "app ccccccc",
       entries: [{ service: "app", commit: "c".repeat(40) }],
-      taggedAt: undefined,
+      taggedAt: "2026-09-25T07:00:00Z",
     };
     const rows = [
       releaseRow(earlier, 1, {
         production: new Map([["app", "a".repeat(40)]]),
         failed: new Map(),
         live: false,
+        newer: [],
       }),
     ];
     const onRollBack = vi.fn();

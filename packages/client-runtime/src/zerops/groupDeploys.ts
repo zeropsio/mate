@@ -32,12 +32,18 @@ import {
   type GroupEnvironmentTier,
   type MissingEnvironmentRow,
 } from "./groupEnvironments.ts";
-import { deployedCommit, type EnvironmentServiceState, type GroupRowTone } from "./groupRows.ts";
+import {
+  deployedCommit,
+  type EnvironmentServiceState,
+  type GroupRowTone,
+  type ServiceDeploys,
+} from "./groupRows.ts";
 import type { ZeropsEnvironmentRole } from "./groups.ts";
 import type { ZeropsServiceDeployedVersion } from "./data/deployedVersion.ts";
 import type { HqEnvironment } from "./hq/environments.ts";
 import type { Shown } from "./knowledge/known.ts";
 import { recipeTierRepositories } from "./recipeTier.ts";
+import { sameCommit } from "./versionName.ts";
 
 /** One runtime service of one Zerops project, as an environment's row needs it. */
 export interface GroupEnvironmentService {
@@ -78,6 +84,17 @@ export function statedVersionNames(
   return names;
 }
 
+/**
+ * Whether the account's store has stated what every one of `serviceIds` runs — a name, or none:
+ * until then what a service runs is not known, and nothing is measured from it.
+ */
+export function versionsStated(
+  stated: ReadonlyMap<string, Shown<ZeropsServiceDeployedVersion>>,
+  serviceIds: ReadonlyArray<string>,
+): boolean {
+  return serviceIds.every((serviceId) => stated.get(serviceId)?.state === "known");
+}
+
 /** What an application's recipe on `main` offers: the tiers a person can add, and where code lives. */
 export interface AppRecipe {
   readonly tiers: ReadonlyArray<GroupEnvironmentTier>;
@@ -86,6 +103,8 @@ export interface AppRecipe {
    * the hostname: `appdev` builds `app`. A later tier names a hostname's repository over an earlier.
    */
   readonly repositories: ReadonlyMap<string, string>;
+  /** The production tier's alone: what a release lists, each at its repository's `main` (C01). */
+  readonly productionRepositories: ReadonlyMap<string, string>;
 }
 
 /** `appdev` from `https://hq…/git/app-1/appdev.git`. */
@@ -102,16 +121,19 @@ export function appRecipeOf(files: {
 }): AppRecipe {
   const tiers: Array<GroupEnvironmentTier> = [];
   const repositories = new Map<string, string>();
+  const productionRepositories = new Map<string, string>();
   for (const tier of ["stage", "production"] as const) {
     const file = files[tier];
     if (file === null) continue;
     tiers.push(tier);
     for (const [hostname, cloneUrl] of recipeTierRepositories(file)) {
       const name = repositoryName(cloneUrl);
-      if (name !== undefined) repositories.set(hostname, name);
+      if (name === undefined) continue;
+      repositories.set(hostname, name);
+      if (tier === "production") productionRepositories.set(hostname, name);
     }
   }
-  return { tiers, repositories };
+  return { tiers, repositories, productionRepositories };
 }
 
 /**
@@ -235,47 +257,54 @@ export function groupStopsOf(input: {
   };
 }
 
-/** `{service hostname: sha}` per side of a release, whole or short as the name spells it. */
+/** What production runs and where its deploys failed, as a release reads them. */
 export interface ReleaseDeploys {
-  /** What the stage runs. Several stages: the first HQ records (D16). */
-  readonly stage: ReadonlyMap<string, string>;
-  /** What production runs, read the same way and never from a release tag. */
+  /**
+   * `{service hostname: sha}` production runs, never read from a release tag: whole where HQ's
+   * record of the service's deploy names the commit whole, else whole or short as the version's
+   * name spells it.
+   */
   readonly production: ReadonlyMap<string, string>;
   /** `{service}@{sha}` → when it failed, for each production service whose newest deploy failed. */
   readonly failed: ReadonlyMap<string, string>;
 }
 
 /**
- * What *Release* compares, from the same snapshot the rows are built from.
+ * What *Release* compares production against, from the same snapshot the rows are built from.
  *
- * Both sides are the sha in a deployed version's name (`deployedCommit`) and
- * nothing else — not a branch head, which is what *should* be there, and not
- * the newest release tag, which is what the broker was asked to deploy rather
- * than what is running. A service whose name is not a commit has no side: it
- * was deployed by hand, and a tag listing a guess is a tag the broker deploys.
- *
- * With several stages (D16) the first one HQ records wins for a service they
- * both run: the order they were declared in is the group's own, and picking by
- * anything else would make the release depend on the order of an account read.
+ * What production runs is the sha in a deployed version's name (`deployedCommit`)
+ * and nothing else — not a branch head, which is what *should* be there, and not
+ * the newest release tag, which is what HQ was asked to deploy rather than what
+ * is running. A service whose name is not a commit has none: it was deployed by
+ * hand, and a release listing a guess is a release HQ deploys. HQ names a
+ * version `{label} {7 hex}` and compares whole shas only, so the commit is taken
+ * whole from HQ's record of the deploy that names it.
  */
 export function releaseDeploys(
   environments: ReadonlyArray<GroupEnvironmentRowInput>,
 ): ReleaseDeploys {
-  const stage = new Map<string, string>();
   const production = new Map<string, string>();
   const failed = new Map<string, string>();
   for (const environment of environments) {
-    const side = environment.tier === "production" ? production : stage;
+    if (environment.tier !== "production") continue;
     for (const service of environment.services) {
       const latest = service.deploy?.latest;
-      if (environment.tier === "production" && latest?.state === "failed")
-        failed.set(`${service.hostname}@${latest.sha}`, latest.at);
-      const sha = deployedCommit(service.appVersionName);
-      if (sha === undefined || side.has(service.hostname)) continue;
-      side.set(service.hostname, sha);
+      if (latest?.state === "failed") failed.set(`${service.hostname}@${latest.sha}`, latest.at);
+      const sha = recordedWhole(deployedCommit(service.appVersionName), service.deploy);
+      if (sha === undefined || production.has(service.hostname)) continue;
+      production.set(service.hostname, sha);
     }
   }
-  return { stage, production, failed };
+  return { production, failed };
+}
+
+/** The commit a name spells, whole where HQ's record of the service's deploy names it. */
+function recordedWhole(
+  named: string | undefined,
+  deploy: ServiceDeploys | undefined,
+): string | undefined {
+  if (named === undefined || deploy === undefined) return named;
+  return [deploy.live?.sha, deploy.latest.sha].find((sha) => sameCommit(named, sha)) ?? named;
 }
 
 /**
