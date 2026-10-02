@@ -108,6 +108,9 @@ const change = (patch: Record<string, unknown> = {}) => ({
   openedAt: "2026-10-02T10:00:00.000Z",
   mergedAt: null,
   closedAt: null,
+  updatedAt: "2026-10-02T10:05:00.000Z",
+  mergeability: "clean",
+  behind: false,
   ...patch,
 });
 
@@ -139,6 +142,10 @@ describe("hqChanges — the wire", () => {
     ["a fractional number", { number: 1.5 }, "Failure"],
     ["a head that is no commit", { head: "main" }, "Failure"],
     ["a state this build does not know", { state: "draft" }, "Failure"],
+    ["a change behind main, in conflict", { mergeability: "conflict", behind: true }, "Success"],
+    ["a change not judged yet", { mergeability: "unknown" }, "Success"],
+    ["a mergeability this build does not know", { mergeability: "maybe" }, "Failure"],
+    ["a change with no time of its last move", { updatedAt: undefined }, "Failure"],
     ["a repository no git layer takes", { repo: "a/b" }, "Failure"],
   ])("a change: %s", (_name, patch, expected) => {
     expect(read(HqChange, change(patch))).toBe(expected);

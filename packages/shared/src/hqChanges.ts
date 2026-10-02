@@ -87,6 +87,26 @@ export type ChangeState = typeof ChangeState.Type;
 const Instant = Schema.String;
 
 /**
+ * Whether a change merges into `main`, as its record keeps it ({@link Mergeability} without the
+ * conflict's paths): `unknown` until HQ has judged it.
+ */
+export const MergeabilityKind = Schema.Literals([
+  "clean",
+  "conflict",
+  "empty",
+  "already_merged",
+  "unrelated",
+  "unknown",
+]);
+export type MergeabilityKind = typeof MergeabilityKind.Type;
+
+/**
+ * How many open changes of a repository HQ judges again when its `main` moves, newest first; the
+ * rest read `unknown` until their detail is read. A push judges its own change.
+ */
+export const JUDGED_PER_MAIN_MOVE = 20;
+
+/**
  * A change as HQ records it. Its branch is `mate/<mateProjectId>/<number>`; `head` is the commit
  * that branch was last pushed to, none until the first push lands. Once merged, `mergedSha` is the
  * squash on `main` and `landedHead` the head it squashed.
@@ -108,6 +128,15 @@ export const HqChange = Schema.Struct({
   openedAt: Instant,
   mergedAt: Schema.NullOr(Instant),
   closedAt: Schema.NullOr(Instant),
+  /** Its last push, edit of its words, or comment. */
+  updatedAt: Instant,
+  /**
+   * As HQ judged it on the last push to it or move of `main`
+   * ({@link JUDGED_PER_MAIN_MOVE}), or the last read of its detail.
+   */
+  mergeability: MergeabilityKind,
+  /** Whether `main` has moved past the change's merge base, judged with `mergeability`. */
+  behind: Schema.Boolean,
 });
 export type HqChange = typeof HqChange.Type;
 

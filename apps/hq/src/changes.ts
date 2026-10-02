@@ -185,6 +185,9 @@ const CHANGE_COLUMNS = [
   instant("opened_at"),
   instant("merged_at"),
   instant("closed_at"),
+  instant("updated_at"),
+  "mergeability",
+  "behind",
 ].join(", ");
 
 interface ChangeRow {
@@ -201,6 +204,9 @@ interface ChangeRow {
   readonly opened_at: string;
   readonly merged_at: string | null;
   readonly closed_at: string | null;
+  readonly updated_at: string;
+  readonly mergeability: HqChange["mergeability"];
+  readonly behind: boolean;
 }
 
 const COMMENT_COLUMNS = ["id::text AS id", "author_user_id", "body", instant("created_at")].join(
@@ -235,6 +241,9 @@ const changeOf = (row: ChangeRow): HqChange => ({
   openedAt: row.opened_at,
   mergedAt: row.merged_at,
   closedAt: row.closed_at,
+  updatedAt: row.updated_at,
+  mergeability: row.mergeability,
+  behind: row.behind,
 });
 
 export const changesLayer: Layer.Layer<
@@ -460,7 +469,8 @@ export const changesLayer: Layer.Layer<
                 const [row] = yield* sql<ChangeRow>`
                 UPDATE hq_change
                 SET title = COALESCE(${edit.title ?? null}, title),
-                    body = COALESCE(${edit.body ?? null}, body)
+                    body = COALESCE(${edit.body ?? null}, body),
+                    updated_at = now()
                 WHERE app_id = ${appId}::uuid AND repo = ${repo} AND number = ${number}
                 RETURNING ${sql.literal(CHANGE_COLUMNS)}`;
                 return changeOf(row!);
@@ -520,11 +530,29 @@ export const changesLayer: Layer.Layer<
             maxBytesPerFile: 256 * 1024,
           });
           const log = yield* git.changeLog(at, mate, number, { limit: 100 });
+          const mainHead = yield* mainOf(git, at);
+          const mergeBase = yield* git.mergeBase(at, mate, number);
+          const mergeability = yield* git.mergeability(at, mate, number);
+          // Read in full, the change is judged: its record keeps what was just read.
+          const judged = {
+            mergeability: mergeability.kind === "no_change" ? "unknown" : mergeability.kind,
+            behind:
+              mergeability.kind !== "no_change" && mergeBase !== null && mergeBase !== mainHead,
+          } as const;
+          if (judged.mergeability !== change.mergeability || judged.behind !== change.behind) {
+            yield* touched(
+              leader.write(sql`
+                UPDATE hq_change
+                SET mergeability = ${judged.mergeability}, behind = ${judged.behind}
+                WHERE app_id = ${change.appId}::uuid AND repo = ${change.repo}
+                  AND number = ${number}`),
+            );
+          }
           return {
-            change,
-            mainHead: yield* mainOf(git, at),
-            mergeBase: yield* git.mergeBase(at, mate, number),
-            mergeability: yield* git.mergeability(at, mate, number),
+            change: { ...change, ...judged },
+            mainHead,
+            mergeBase,
+            mergeability,
             files: diff.items.map((file) => ({
               path: file.path,
               added: file.added,
@@ -556,23 +584,30 @@ export const changesLayer: Layer.Layer<
       postComment: (userId, appId, repo, number, body) =>
         Effect.gen(function* () {
           yield* personApp(userId, appId, "comment_change");
-          return yield* leader.write(
-            Effect.gen(function* () {
-              const change = yield* changeIn(appId, repo, number);
-              const [row] = yield* sql<CommentRow>`
+          return yield* touched(
+            leader.write(
+              Effect.gen(function* () {
+                const change = yield* changeIn(appId, repo, number);
+                const [row] = yield* sql<CommentRow>`
                 INSERT INTO hq_change_comment (app_id, repo, number, author_user_id, body)
                 VALUES (${change.appId}::uuid, ${change.repo}, ${number}, ${userId}, ${body})
                 RETURNING ${sql.literal(COMMENT_COLUMNS)}`;
-              const comment = commentOf(row!);
-              yield* appendEvent(sql, {
-                kind: "commented",
-                appId: change.appId,
-                repo: change.repo,
-                number,
-                data: { commentId: comment.id, userId },
-              });
-              return comment;
-            }),
+                // A comment moves the change.
+                yield* sql`
+                UPDATE hq_change SET updated_at = now()
+                WHERE app_id = ${change.appId}::uuid AND repo = ${change.repo}
+                  AND number = ${number}`;
+                const comment = commentOf(row!);
+                yield* appendEvent(sql, {
+                  kind: "commented",
+                  appId: change.appId,
+                  repo: change.repo,
+                  number,
+                  data: { commentId: comment.id, userId },
+                });
+                return comment;
+              }),
+            ),
           );
         }),
       attachment: (userId, appId, repo, number, id) =>

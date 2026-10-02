@@ -11,7 +11,8 @@
  * up (`core.ts`), so no git of this instance outlives its lead.
  *
  * Every ref the layer writes reaches the durable log through its events: a change branch's push
- * moves the change's head, `main` moving moves the repository's.
+ * moves the change's head, `main` moving moves the repository's. Each also judges again whether a
+ * change merges: a push its own change, a move of `main` the repository's open ones.
  *
  * @module gitHost
  */
@@ -31,6 +32,8 @@ import * as Stream from "effect/Stream";
 import * as SubscriptionRef from "effect/SubscriptionRef";
 import type * as HttpServerRequest from "effect/unstable/http/HttpServerRequest";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
+
+import { JUDGED_PER_MAIN_MOVE, type MergeabilityKind } from "@t3tools/shared/hqChanges";
 
 import { type GitEventKind, appendEvent } from "./gitEvents.ts";
 import { Leader, NotLeader } from "./leader.ts";
@@ -67,6 +70,27 @@ export const mainOf = (git: HqGit, repo: Repo) =>
     (branches) => branches.items.find((branch) => branch.ref === "refs/heads/main")?.sha ?? null,
   );
 
+/** A change as judged against `main` now: what its record keeps of its mergeability. */
+export interface Judged {
+  readonly mergeability: MergeabilityKind;
+  readonly behind: boolean;
+}
+
+const UNJUDGED: Judged = { mergeability: "unknown", behind: false };
+
+/**
+ * How the change merges into `main` now, and whether `main` has moved past its merge base. A change
+ * with nothing pushed, or one git cannot judge, is `unknown`.
+ */
+export const judge = (git: HqGit, repo: Repo, mateId: string, number: number) =>
+  Effect.gen(function* () {
+    const mergeability = yield* git.mergeability(repo, mateId, number);
+    if (mergeability.kind === "no_change") return UNJUDGED;
+    const base = yield* git.mergeBase(repo, mateId, number);
+    const main = yield* mainOf(git, repo);
+    return { mergeability: mergeability.kind, behind: base !== null && base !== main };
+  }).pipe(Effect.orElseSucceed(() => UNJUDGED));
+
 export const gitHostLayer = (options: {
   /** Where the bare repositories live: `/mnt/vol/git` in the container. */
   readonly rootDir: string;
@@ -84,20 +108,66 @@ export const gitHostLayer = (options: {
       const event = (repo: Repo, kind: GitEventKind, number: number | null, data: object) =>
         appendEvent(sql, { kind, appId: repo.appId, repo: repo.id, number, data });
 
-      /** A change's branch now at `head`: its record follows, and the log says so. */
-      const pushed = (repo: Repo, ref: string, old: string | null, head: string, data: object) =>
+      /**
+       * A change's branch now at `head`, judged as `judged`: its record follows — the push moves it
+       * — and the log says so.
+       */
+      const pushed = (
+        repo: Repo,
+        change: { readonly mateId: string; readonly number: number },
+        old: string | null,
+        head: string,
+        judged: Judged,
+        data: object,
+      ) =>
         Effect.gen(function* () {
-          const match = CHANGE_REF.exec(ref);
-          if (match === null) return;
-          const [, mateId, digits] = match;
-          const number = Number(digits);
           const moved = yield* sql`
-            UPDATE hq_change SET head = ${head}
-            WHERE app_id::text = ${repo.appId} AND repo = ${repo.id} AND number = ${number}
-              AND mate_project_id = ${mateId ?? ""}
+            UPDATE hq_change
+            SET head = ${head}, updated_at = now(),
+                mergeability = ${judged.mergeability}, behind = ${judged.behind}
+            WHERE app_id::text = ${repo.appId} AND repo = ${repo.id} AND number = ${change.number}
+              AND mate_project_id = ${change.mateId}
             RETURNING 1`;
-          if (moved.length > 0)
-            yield* event(repo, "pushed", number, { ref, old, new: head, ...data });
+          if (moved.length > 0) {
+            const ref = `refs/heads/mate/${change.mateId}/${String(change.number)}`;
+            yield* event(repo, "pushed", change.number, { ref, old, new: head, ...data });
+          }
+        });
+
+      /** The change a ref is the branch of, if it is one. */
+      const changeOfRef = (ref: string) => {
+        const match = CHANGE_REF.exec(ref);
+        return match === null ? undefined : { mateId: match[1] ?? "", number: Number(match[2]) };
+      };
+
+      /**
+       * After `main` moved: the repository's newest {@link JUDGED_PER_MAIN_MOVE} open changes
+       * judged again, the rest `unknown` until their detail is read.
+       */
+      const rejudge = (git: HqGit, repo: Repo) =>
+        Effect.gen(function* () {
+          const open = yield* sql<{ readonly number: number; readonly mate_project_id: string }>`
+            SELECT number, mate_project_id FROM hq_change
+            WHERE app_id::text = ${repo.appId} AND repo = ${repo.id} AND state = 'open'
+            ORDER BY number DESC`;
+          const judged = yield* Effect.forEach(open, (row, i) =>
+            i < JUDGED_PER_MAIN_MOVE
+              ? Effect.map(judge(git, repo, row.mate_project_id, row.number), (verdict) => ({
+                  number: row.number,
+                  verdict,
+                }))
+              : Effect.succeed({ number: row.number, verdict: UNJUDGED }),
+          );
+          yield* leader.write(
+            Effect.forEach(
+              judged,
+              ({ number, verdict }) => sql`
+                UPDATE hq_change
+                SET mergeability = ${verdict.mergeability}, behind = ${verdict.behind}
+                WHERE app_id::text = ${repo.appId} AND repo = ${repo.id} AND number = ${number}`,
+              { discard: true },
+            ),
+          );
         });
 
       /** `main` now at `head`: the repository's record follows, and the log says so. */
@@ -112,20 +182,24 @@ export const gitHostLayer = (options: {
       const ticks = yield* SubscriptionRef.make(0);
       const tick = SubscriptionRef.update(ticks, (n) => n + 1);
 
-      const record = (event: GitEvent) =>
-        leader
-          .write(
-            Effect.gen(function* () {
-              if (event.kind === "pushed") {
-                for (const update of event.updates) {
-                  yield* pushed(event.repo, update.ref, update.oldSha, update.newSha, {});
-                }
-              } else if (event.kind === "main_moved") {
-                yield* mainMoved(event.repo, event.old, event.new, event.by);
-              }
-            }),
-          )
-          .pipe(Effect.andThen(tick));
+      /** A ref the layer wrote: the change it is the branch of judged, or the repository's main. */
+      const record = (git: HqGit, event: GitEvent) =>
+        Effect.gen(function* () {
+          if (event.kind === "pushed") {
+            for (const update of event.updates) {
+              const change = changeOfRef(update.ref);
+              if (change === undefined) continue;
+              const verdict = yield* judge(git, event.repo, change.mateId, change.number);
+              yield* leader.write(
+                pushed(event.repo, change, update.oldSha, update.newSha, verdict, {}),
+              );
+            }
+          } else if (event.kind === "main_moved") {
+            yield* leader.write(mainMoved(event.repo, event.old, event.new, event.by));
+            yield* rejudge(git, event.repo);
+          }
+          yield* tick;
+        });
 
       /** On taking the lead: every repository converged, and what the refs show the log missed. */
       const takeover = (git: HqGit) =>
@@ -162,10 +236,15 @@ export const gitHostLayer = (options: {
               .changeHead(repo, row.mate_project_id, row.number)
               .pipe(Effect.option);
             if (Option.isSome(head) && head.value !== null && head.value !== row.head) {
-              const ref = `refs/heads/mate/${row.mate_project_id}/${String(row.number)}`;
-              yield* leader.write(pushed(repo, ref, row.head, head.value, { reconciled: true }));
+              const change = { mateId: row.mate_project_id, number: row.number };
+              const verdict = yield* judge(git, repo, change.mateId, change.number);
+              yield* leader.write(
+                pushed(repo, change, row.head, head.value, verdict, { reconciled: true }),
+              );
             }
           }
+          // What was judged before this lead may be stale: main may have moved since.
+          for (const row of repos) yield* rejudge(git, { appId: row.app_id, id: row.name });
           yield* tick;
         });
 
@@ -182,6 +261,8 @@ export const gitHostLayer = (options: {
         Effect.gen(function* () {
           if ((yield* Ref.get(stopped)) || Option.isSome(yield* Ref.get(current))) return;
           const scope = yield* Scope.make();
+          // Events come only after a write, so never before the layer is here.
+          const opened: { git?: HqGit } = {};
           const git = yield* makeHqGit({
             rootDir: options.rootDir,
             authenticate: (request) => principals.get(request) ?? null,
@@ -209,11 +290,13 @@ export const gitHostLayer = (options: {
                   },
                 ),
               ),
-            onEvent: (event) => run(record(event)),
+            onEvent: (event) =>
+              opened.git === undefined ? undefined : run(record(opened.git, event)),
           }).pipe(
             Effect.provideService(Scope.Scope, scope),
             Effect.tapError(() => Scope.close(scope, Exit.void)),
           );
+          opened.git = git;
           yield* takeover(git).pipe(
             Effect.catch((error) => Effect.logWarning("git takeover reconcile failed", error)),
           );

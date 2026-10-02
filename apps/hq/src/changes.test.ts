@@ -150,6 +150,10 @@ describe("a Mate's changes in HQ", () => {
             openedAt: change["openedAt"],
             mergedAt: null,
             closedAt: null,
+            updatedAt: change["openedAt"],
+            // Nothing pushed: nothing to judge yet.
+            mergeability: "unknown",
+            behind: false,
           });
           // Its open change again, as it is: the title asked for now opens nothing.
           assert.deepStrictEqual((yield* open("Add a login page")).body, {
@@ -368,11 +372,16 @@ describe("a Mate's changes in HQ", () => {
               body: bytes,
             });
 
+          yield* Effect.sleep(Duration.millis(5));
           const retitled = yield* edit({ title: "Add a login page" });
-          assert.deepStrictEqual(
-            [retitled.status, (retitled.body as { readonly title: string }).title],
-            [200, "Add a login page"],
-          );
+          const words = retitled.body as {
+            readonly title: string;
+            readonly openedAt: string;
+            readonly updatedAt: string;
+          };
+          assert.deepStrictEqual([retitled.status, words.title], [200, "Add a login page"]);
+          // An edit of its words moves the change.
+          assert.isAbove(Date.parse(words.updatedAt), Date.parse(words.openedAt));
           const described = (yield* edit({ body: "It adds **a login page**." })).body as {
             readonly title: string;
             readonly body: string;
@@ -561,9 +570,20 @@ describe("a Mate's changes in HQ", () => {
         const { changes } = listed.body as {
           readonly changes: ReadonlyArray<Record<string, unknown>>;
         };
+        // Judged at its push: it merges cleanly, and main has not moved past it.
         assert.deepStrictEqual(
-          changes.map((change) => [change["repo"], change["number"], change["state"]]),
-          [["appdev", 1, "open"]],
+          changes.map((change) => [
+            change["repo"],
+            change["number"],
+            change["state"],
+            change["mergeability"],
+            change["behind"],
+          ]),
+          [["appdev", 1, "open", "clean", false]],
+        );
+        assert.isAbove(
+          Date.parse(String(changes[0]?.["updatedAt"])),
+          Date.parse(String(changes[0]?.["openedAt"])),
         );
 
         const detail = yield* call("GET", `/api/apps/${appId}/changes/appdev/1`, {
@@ -637,7 +657,19 @@ describe("a Mate's changes in HQ", () => {
         const say = (session: string, body: string) =>
           call("POST", comments, { session, body: { body } });
 
+        const updatedAt = Effect.map(
+          call("GET", `/api/apps/${appId}/changes`, { session: owner }),
+          (answer) =>
+            Date.parse(
+              (answer.body as { readonly changes: ReadonlyArray<{ updatedAt: string }> })
+                .changes[0]!.updatedAt,
+            ),
+        );
+        const before = yield* updatedAt;
+        yield* Effect.sleep(Duration.millis(5));
         const said = yield* say(owner, "Looks good");
+        // A comment moves the change.
+        assert.isAbove(yield* updatedAt, before);
         assert.strictEqual(said.status, 200);
         const comment = said.body as Record<string, unknown>;
         assert.deepStrictEqual([comment["authorUserId"], comment["body"]], ["owner", "Looks good"]);
