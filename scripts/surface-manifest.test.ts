@@ -204,7 +204,7 @@ const EXPECTED_SURFACE_IDS = [
   "zerops-primitives",
   "zerops-landing",
   "zerops-projects",
-  "zerops-gitea",
+  "zerops-git",
   "zerops-new-project",
   "zerops-settings",
   "zerops-crew-section",
