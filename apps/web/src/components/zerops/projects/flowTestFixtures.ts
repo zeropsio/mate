@@ -158,6 +158,7 @@ function entryOf(
         gate: { allowed: false, reason: "Nothing is merged to release." },
         suggestion: "v0.1.0",
         waiting: 0,
+        waitingAtLeast: false,
         untold: [],
       },
       mainHasCode: undefined,
@@ -198,7 +199,13 @@ export const MERGING = entry([WREN, STAGE], { pullRequests: [pull()], stops: [ST
 export const RELEASING = entry([WREN, PROD], {
   merged: [pull({ number: 4, merged: true })],
   stops: [PRODUCTION_STOP],
-  release: { gate: { allowed: true }, suggestion: "v0.1.0", waiting: 1, untold: [] },
+  release: {
+    gate: { allowed: true },
+    suggestion: "v0.1.0",
+    waiting: 1,
+    waitingAtLeast: false,
+    untold: [],
+  },
 });
 export const FRESH = entry([UMA]);
 
@@ -254,7 +261,13 @@ export function brokenProduction() {
         },
       },
     ],
-    release: { gate: { allowed: true }, suggestion: "v0.1.0", waiting: 1, untold: [] },
+    release: {
+      gate: { allowed: true },
+      suggestion: "v0.1.0",
+      waiting: 1,
+      waitingAtLeast: false,
+      untold: [],
+    },
   });
 }
 

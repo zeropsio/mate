@@ -390,6 +390,7 @@ export {
 } from "./stageMarks.ts";
 export {
   cannotTellWhatRuns,
+  changesCountWords,
   changesNotLive,
   PROJECT_ALL_CLEAR,
   projectAttention,

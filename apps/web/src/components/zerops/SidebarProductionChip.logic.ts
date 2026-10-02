@@ -25,6 +25,7 @@
  * Pure: no React, no clock, no store.
  */
 import {
+  changesCountWords,
   sameCommit,
   type FlowReleaseRow,
   type GroupEnvironmentRowInput,
@@ -183,6 +184,8 @@ export interface ProductionChip {
   readonly next?: string;
   /** Changes merged and not live, while they wait — and while down or stopped. */
   readonly waiting?: number;
+  /** Whether `waiting` is only how many at least: HQ stopped counting. */
+  readonly waitingAtLeast?: true;
   /** The stage chip over several stages: each by its name, in the state it is in. */
   readonly stages?: ReadonlyArray<{ readonly name: string; readonly state: ChipState }>;
 }
@@ -227,6 +230,7 @@ function chipOf(
     readonly version?: string | undefined;
     readonly next?: string | undefined;
     readonly waiting?: number | undefined;
+    readonly waitingAtLeast?: boolean;
   } = {},
 ): ChipView {
   return chipView({
@@ -235,6 +239,9 @@ function chipOf(
     ...(facts.version === undefined ? {} : { version: facts.version }),
     ...(facts.next === undefined ? {} : { next: facts.next }),
     ...(facts.waiting === undefined ? {} : { waiting: facts.waiting }),
+    ...(facts.waiting !== undefined && facts.waitingAtLeast === true
+      ? { waitingAtLeast: true as const }
+      : {}),
   });
 }
 
@@ -256,6 +263,8 @@ export function productionChip(input: {
     | undefined;
   /** Changes merged and not live (`GroupFlowMain.notLive`). */
   readonly waiting: number;
+  /** Whether that is only how many at least (`GroupFlowMain.notLiveAtLeast`). */
+  readonly waitingAtLeast: boolean;
   readonly serving: StopServing;
   readonly releases: ReleasesAnswer;
 }): ChipView {
@@ -265,7 +274,7 @@ export function productionChip(input: {
   const served =
     input.building === undefined ? production.stop.version?.label : input.building.from;
   const waiting = input.waiting > 0 ? input.waiting : undefined;
-  const { serving } = input;
+  const { serving, waitingAtLeast } = input;
   if (serving.kind === "down" || serving.kind === "stopped") {
     // A release tagged for production, or a deploy the platform runs on it.
     const next = production.kind === "releasing" ? production.tag : input.building?.to;
@@ -273,6 +282,7 @@ export function productionChip(input: {
       version: served,
       next: next === served ? undefined : next,
       waiting,
+      waitingAtLeast,
     });
   }
   if (production.kind === "checking" || serving.kind === "unknown") return UNKNOWN;
@@ -295,8 +305,9 @@ export function productionChip(input: {
   ) {
     return chipOf("prod", "failed", { version: served });
   }
-  if (served === undefined) return chipOf("prod", "empty", { waiting });
-  if (waiting !== undefined) return chipOf("prod", "waiting", { version: served, waiting });
+  if (served === undefined) return chipOf("prod", "empty", { waiting, waitingAtLeast });
+  if (waiting !== undefined)
+    return chipOf("prod", "waiting", { version: served, waiting, waitingAtLeast });
   return chipOf("prod", "ok", { version: served });
 }
 
@@ -431,6 +442,8 @@ export function projectChips(input: {
     | undefined;
   /** Changes merged and not live (`GroupFlowMain.notLive`). */
   readonly waiting: number;
+  /** Whether that is only how many at least (`GroupFlowMain.notLiveAtLeast`). */
+  readonly waitingAtLeast: boolean;
   /** How production serves. */
   readonly serving: StopServing;
   readonly stages: ReadonlyArray<StageInput>;
@@ -501,14 +514,11 @@ const TONE: Record<ChipState, ChipTone> = {
 
 const TIER_WORD: Record<ChipLabel, string> = { prod: "Production", stage: "Stage" };
 
-const plural = (count: number, one: string, many: string) =>
-  `${String(count)} ${count === 1 ? one : many}`;
-
 /** What else is true of a stop down or stopped: a release on its way, else changes waiting. */
 function alongside(chip: ProductionChip): string | undefined {
   if (chip.next !== undefined) return `releasing ${chip.next}`;
   if (chip.waiting !== undefined) {
-    return `${plural(chip.waiting, "change", "changes")} waiting`;
+    return `${changesCountWords(chip.waiting, chip.waitingAtLeast === true)} waiting`;
   }
   return undefined;
 }

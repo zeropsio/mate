@@ -50,6 +50,7 @@ const input = (over: Partial<HeadingLineInput>): HeadingLineInput => ({
   production: undefined,
   stages: [],
   waiting: 0,
+  waitingAtLeast: false,
   allOnStage: false,
   ...over,
 });

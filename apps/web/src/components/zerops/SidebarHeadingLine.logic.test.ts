@@ -133,6 +133,7 @@ const input = (over: Partial<HeadingLineInput> = {}): HeadingLineInput => ({
   },
   stages: [],
   waiting: 0,
+  waitingAtLeast: false,
   allOnStage: false,
   ...over,
 });
@@ -185,6 +186,11 @@ describe("headingLine — the heading's second line, the board's D′ ladder", (
       line: ["1 change not released · all on stage", "ink", "", "review"],
     },
     {
+      case: "2 more than HQ counts",
+      over: { waiting: 10000, waitingAtLeast: true },
+      line: ["10000+ changes not released · since v2.3.0", "ink", "", "review"],
+    },
+    {
       case: "3 releasing",
       over: prod({ chip: chip("releasing", { version: "v2.3.0", next: "v2.4.0" }) }),
       line: ["Releasing v2.4.0…", "ink", "spinner", "review"],
@@ -212,7 +218,7 @@ describe("headingLine — the heading's second line, the board's D′ ladder", (
         chip: chip("failed"),
         failure: { tag: "v2.4.0", kind: "refused", at: undefined, error: "no", service: undefined },
       }),
-      line: ["v2.4.0 didn’t go out · the broker refused it", "amber", "", "review"],
+      line: ["v2.4.0 didn’t go out · HQ refused it", "amber", "", "review"],
     },
     {
       case: "6 down: the pill's alone",
@@ -355,13 +361,19 @@ describe("headingMark — a folded heading's release mark", () => {
       case: "changes waiting",
       over: { waiting: 3 },
       landing: undefined,
-      mark: { kind: "waiting", count: 3 },
+      mark: { kind: "waiting", count: 3, atLeast: false },
+    },
+    {
+      case: "more changes waiting than HQ counts",
+      over: { waiting: 10000, waitingAtLeast: true },
+      landing: undefined,
+      mark: { kind: "waiting", count: 10000, atLeast: true },
     },
     {
       case: "nothing released yet, changes waiting",
       over: { ...prod({ chip: chip("empty") }), waiting: 3 },
       landing: undefined,
-      mark: { kind: "waiting", count: 3 },
+      mark: { kind: "waiting", count: 3, atLeast: false },
     },
     {
       case: "releasing",
@@ -391,7 +403,7 @@ describe("headingMark — a folded heading's release mark", () => {
       case: "a stage coming up while changes wait: the mark stays the release's",
       over: { waiting: 3, stages: [stage({ kind: "coming", step: "build" })] },
       landing: undefined,
-      mark: { kind: "waiting", count: 3 },
+      mark: { kind: "waiting", count: 3, atLeast: false },
     },
     {
       case: "no production",

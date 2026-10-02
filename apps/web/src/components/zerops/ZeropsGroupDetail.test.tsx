@@ -8,6 +8,7 @@ import {
   type FlowReleaseRow,
   type Moved,
   type MovedCommits,
+  type ReleaseContentsSummary,
 } from "@t3tools/client-runtime/zerops";
 import {
   serviceRows,
@@ -95,6 +96,7 @@ function render(
   stops: Pick<React.ComponentProps<typeof ZeropsGroupPane>, "environments" | "withheldNotice"> = {
     environments: [environment("stage", "stage"), environment("prod", "production")],
   },
+  waiting: ReleaseContentsSummary = releaseContentsSummary([], 20),
 ) {
   return renderToStaticMarkup(
     <ZeropsGroupPane
@@ -120,7 +122,7 @@ function render(
       }}
       repo={undefined}
       tags={new Map()}
-      waiting={releaseContentsSummary([], 20)}
+      waiting={waiting}
     />,
   );
 }
@@ -152,6 +154,18 @@ describe("ZeropsGroupPane", () => {
     expect(markup).not.toContain("Harbor live");
     expect(markup.match(/3f9c1b2/g)).toHaveLength(1);
     expect(markup.match(/<button/g)?.length).toBe(render().match(/<button/g)!.length - 1);
+  });
+
+  it("says at least how many changes are not live where HQ stopped counting", () => {
+    const markup = render(undefined, undefined, {
+      subjects: ["Two-step checkout"],
+      more: 9999,
+      total: 10000,
+      atLeast: true,
+    });
+
+    expect(markup).toContain("Merged, not live · 10000+");
+    expect(markup).toContain("+9999+ more");
   });
 
   // SPEC §1: the page stands in the frame /zerops stands in, its trail in the bar.
@@ -340,6 +354,8 @@ interface StopCase {
   /** What the platform lists for each service; unread unless given. */
   readonly platform?: Shown<ReadonlyArray<StopService>>;
   readonly waiting?: ReadonlyArray<{ readonly sha: string; readonly subject: string }>;
+  /** How many wait in all, where HQ counted more than it listed. */
+  readonly notLive?: { readonly total: number; readonly atLeast: boolean };
   readonly offered?: string;
   /** Why the release is not offered, as the flow's gate says. */
   readonly releaseReason?: string;
@@ -386,7 +402,12 @@ function renderStop(input: StopCase): string {
     nowMs: NOW,
     age: () => "1h ago",
   });
-  const waiting = input.waiting ?? [];
+  const commits = input.waiting ?? [];
+  const waiting = {
+    commits,
+    total: input.notLive?.total ?? commits.length,
+    atLeast: input.notLive?.atLeast ?? false,
+  };
   const running = new Map(
     input.services.map((entry) => [entry.hostname, entry.appVersionName?.split(" ")[0] ?? ""]),
   );
@@ -395,7 +416,8 @@ function renderStop(input: StopCase): string {
     view,
     releasing: undefined,
     failed: input.failed,
-    waiting: waiting.length,
+    waiting: waiting.total,
+    waitingAtLeast: waiting.atLeast,
     untold: input.untold ?? [],
     release: {
       offered: input.offered !== undefined,
@@ -509,6 +531,18 @@ describe("ZeropsStopPane", () => {
         "c200000",
         ">Review release</button>",
       ],
+    },
+    {
+      name: "a production behind by more than HQ counts says at least how many, as the verdict",
+      input: {
+        tier: "production",
+        services: [service("api", "a1", "v0.1.13")],
+        releases: 1,
+        waiting: [{ sha: fullSha("c1"), subject: "Two-step checkout" }],
+        notLive: { total: 10000, atLeast: true },
+        offered: "v0.1.14",
+      },
+      contains: ["10000+ changes not live.", "Waiting for release · 10000+", "Two-step checkout"],
     },
     {
       name: "a production whose deploy failed",

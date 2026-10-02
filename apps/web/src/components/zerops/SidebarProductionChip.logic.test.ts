@@ -71,6 +71,7 @@ const input = (over: Partial<ChipInput> = {}): ChipInput => ({
   production: live("v0.1.44"),
   building: undefined,
   waiting: 0,
+  waitingAtLeast: false,
   serving: SERVING,
   releases: ANSWERED,
   ...over,
@@ -111,6 +112,7 @@ describe("projectChips — the chips a project's heading wears", () => {
       production,
       building: undefined,
       waiting: 0,
+      waitingAtLeast: false,
       serving: SERVING,
       stages,
       stagesBeingCreated: false,
@@ -368,6 +370,22 @@ describe("productionChip — production's chip: the word, its tone, its state in
       given: input({ waiting: 2, serving: { kind: "down", services: ["app"] } }),
       chip: { label: "prod", state: "down", version: "v0.1.44", waiting: 2 },
       words: "Production is down, 2 changes waiting",
+    },
+    {
+      name: "down, more changes waiting than HQ counts",
+      given: input({
+        waiting: 10000,
+        waitingAtLeast: true,
+        serving: { kind: "down", services: ["app"] },
+      }),
+      chip: {
+        label: "prod",
+        state: "down",
+        version: "v0.1.44",
+        waiting: 10000,
+        waitingAtLeast: true,
+      },
+      words: "Production is down, 10000+ changes waiting",
     },
     {
       name: "down, the last release failed too",

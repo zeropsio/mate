@@ -1082,6 +1082,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
           ? undefined
           : buildingOf(deployments?.get(productionStop.projectId)),
       waiting: projectFlow.main.notLive,
+      waitingAtLeast: projectFlow.main.notLiveAtLeast,
       serving: productionServing,
       stages,
       stagesBeingCreated: projectFlow.creatingStages.length > 0,
@@ -1294,6 +1295,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
               })),
             ],
             waiting: projectFlow.main.notLive,
+            waitingAtLeast: projectFlow.main.notLiveAtLeast,
             allOnStage:
               projectFlow.main.head !== undefined &&
               stages.some(({ stop }) => stop.version?.commit === projectFlow.main.head),
