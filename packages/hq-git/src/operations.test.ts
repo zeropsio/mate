@@ -372,6 +372,33 @@ describe("git operations", () => {
   );
 });
 
+describe("main's own history", () => {
+  it.live("says whether a commit is main's head or before it, and nothing else is", () =>
+    fixture(async (git, dir) => {
+      const first = await write(git, { "a.txt": "1\n" }, null);
+      expect(await value(git.onMain(repo, first))).toBe(true);
+      const second = await write(git, { "a.txt": "2\n" }, first);
+      expect(await value(git.onMain(repo, first))).toBe(true);
+      expect(await value(git.onMain(repo, second))).toBe(true);
+      // A branch's commit past main, an object that is no commit, and one the repository lacks.
+      const branched = await branch(git, dir, second, { "b.txt": "b\n" });
+      expect(await value(git.onMain(repo, branched))).toBe(false);
+      const tree = await native(dir, ["rev-parse", `${second}^{tree}`]);
+      expect(await value(git.onMain(repo, tree))).toBe(false);
+      expect(await value(git.onMain(repo, "f".repeat(40)))).toBe(false);
+      await expect(value(git.onMain(repo, "main"))).rejects.toHaveProperty(
+        "reason",
+        "invalid_config",
+      );
+    }),
+  );
+  it.live("says no commit is on an unborn main", () =>
+    fixture(async (git) => {
+      expect(await value(git.onMain(repo, "a".repeat(40)))).toBe(false);
+    }),
+  );
+});
+
 describe("a change's own history", () => {
   it.live("names what squashing the change does to main now, against the main and head read", () =>
     fixture(async (git, dir) => {

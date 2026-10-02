@@ -558,6 +558,22 @@ export const makeOperations = (
     }
     return { items, cut };
   };
+  const onMain: HqGit["onMain"] = (repo, sha) =>
+    inRepo("onMain", repo, async (dir, signal) => {
+      if (!validSha(sha)) throw error("Invalid commit");
+      const main = await refHead(dir, "refs/heads/main", signal);
+      if (!main) return false;
+      const commit = await git.exec(["-C", dir, "cat-file", "-e", `${sha}^{commit}`], {
+        signal,
+        acceptExitCodes: [1, 128],
+      });
+      if (commit.code !== 0) return false;
+      const ancestor = await git.exec(["-C", dir, "merge-base", "--is-ancestor", sha, main], {
+        signal,
+        acceptExitCodes: [1],
+      });
+      return ancestor.code === 0;
+    });
   const mergeBase: HqGit["mergeBase"] = (repo, mateId, number) =>
     inRepo("mergeBase", repo, async (dir, signal) => {
       const head = await refHead(dir, changeRef(mateId, number), signal);
@@ -840,6 +856,7 @@ export const makeOperations = (
     });
   return {
     changeHead,
+    onMain,
     mergeBase,
     changeLog,
     squashNames,
