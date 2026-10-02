@@ -179,7 +179,10 @@ describe("HQ API", () => {
 
     it.effect("judges a presented token before spending HQ's own credential on it", () =>
       Effect.gen(function* () {
-        const { call, fake } = yield* startCore(true);
+        // The structure's reconcile spends HQ's credential on its own clock: off here, so every
+        // spend counted is the door's. Official's next read comes 30 s after boot, past the
+        // health wait's 10 s.
+        const { call, fake } = yield* startCore(true, { reconcileEvery: Duration.minutes(5) });
         yield* untilHealth(call, "active");
         const spent = () => fake.calls.filter((entry) => entry.endsWith(":hq")).length;
         const before = spent();
