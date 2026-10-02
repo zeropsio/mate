@@ -134,7 +134,7 @@ const landing = (
     readonly onlyAdded?: boolean;
     readonly empty?: boolean;
   } = {},
-): Request => ({
+): Extract<Request, { readonly verb: "land_recipe" }> => ({
   verb: "land_recipe",
   target: {
     repo: patch.repo ?? "group",
@@ -784,6 +784,13 @@ const TABLES: Readonly<Record<Verb, ReadonlyArray<Row>>> = {
     ],
     ["a change that modifies a file", {}, landing({ onlyAdded: false }), "recipe_changes_files"],
     ["an empty change", {}, landing({ empty: true }), "recipe_empty"],
+    // Empty first: a change of nothing is closed, whatever else is said of it.
+    [
+      "an empty change, said to do more than add",
+      {},
+      landing({ empty: true, onlyAdded: false }),
+      "recipe_empty",
+    ],
     // Whoever is in the org has no say: the decision is the change's, not the org's.
     [
       "nobody in the org",
@@ -1044,6 +1051,8 @@ describe("can — one table per verb", () => {
     // A Mate's fetch is a read.
     const fetched = { projectId: "P", appId: "A", held: "mate", repoAppId: "A" };
     expect(can(MATE_P, "fetch_repo", fetched, cached).allow).toBe(true);
+    // Core's landing reads no fact of the org: any it has will do.
+    expect(can(CORE, "land_recipe", landing().target, cached).allow).toBe(true);
     // Nor when the verb is known only at run time: it may be a write.
     // @ts-expect-error -- `can` over any verb takes `Facts<"fresh">`.
     const anyVerb: Parameters<typeof can<Verb>>[3] = cached;
@@ -1291,6 +1300,13 @@ describe("can — over the whole input space", () => {
         empty,
       ]).toEqual(["group", true, appId, true, false]);
     });
+  });
+
+  it("decides Core's landing by the change alone, whoever the org has", () => {
+    for (const request of REQUESTS) {
+      const first = outcome(decide(CORE, request, POINTS[0]!));
+      for (const point of POINTS) expect(outcome(decide(CORE, request, point))).toBe(first);
+    }
   });
 
   it("refuses a person or a Mate the landing of a recipe: it is Core's", () => {

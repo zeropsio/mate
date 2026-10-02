@@ -16,7 +16,7 @@
  * - **The target carries its current kind** (`held`), never only the requested one: a change between a
  *   Mate and an environment is the structure's writers' alone, whoever owns the project.
  * - **Freshness is a type:** every verb that writes takes `Facts<"fresh">`, read at the moment of
- *   use; only the reads take facts up to the cache's age.
+ *   use; only the reads take facts up to the cache's age, and Core's landing, which reads none.
  * - **The checks run in one order** — an active member, the role, the project's existence, its
  *   kind — so a project id tells someone without the role nothing about whether it exists; for a
  *   Mate, being HQ's Mate stands in for the role.
@@ -155,8 +155,16 @@ export type Verb = keyof Targets;
 /** The verbs that only read; every other one writes and takes `Facts<"fresh">`. */
 export type ReadVerb = "read_project" | "read_app" | "read_change" | "observe_mate" | "fetch_repo";
 
-/** Not distributive: a verb known only as `Verb` may be a write, so it takes `Facts<"fresh">`. */
-export type FactsFor<V extends Verb> = [V] extends [ReadVerb] ? Facts : Facts<"fresh">;
+/** The verbs decided by their target alone, whatever the org: Core's own. */
+export type FactlessVerb = "land_recipe";
+
+/**
+ * Facts of any age for a read or a verb that reads none; not distributive: a verb known only as
+ * `Verb` may be a write, so it takes `Facts<"fresh">`.
+ */
+export type FactsFor<V extends Verb> = [V] extends [ReadVerb | FactlessVerb]
+  ? Facts
+  : Facts<"fresh">;
 
 export const REASONS = [
   "wrong_principal",
