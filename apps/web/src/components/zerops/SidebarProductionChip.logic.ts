@@ -25,6 +25,7 @@
  * Pure: no React, no clock, no store.
  */
 import {
+  cannotTellWhatRuns,
   changesCountWords,
   sameCommit,
   type FlowReleaseRow,
@@ -186,6 +187,11 @@ export interface ProductionChip {
   readonly waiting?: number;
   /** Whether `waiting` is only how many at least: HQ stopped counting. */
   readonly waitingAtLeast?: true;
+  /**
+   * Production's services whose commit cannot be told, while it serves: the chip says so where it
+   * would say healthy.
+   */
+  readonly untold?: ReadonlyArray<string>;
   /** The stage chip over several stages: each by its name, in the state it is in. */
   readonly stages?: ReadonlyArray<{ readonly name: string; readonly state: ChipState }>;
 }
@@ -231,6 +237,7 @@ function chipOf(
     readonly next?: string | undefined;
     readonly waiting?: number | undefined;
     readonly waitingAtLeast?: boolean;
+    readonly untold?: ReadonlyArray<string>;
   } = {},
 ): ChipView {
   return chipView({
@@ -242,6 +249,7 @@ function chipOf(
     ...(facts.waiting !== undefined && facts.waitingAtLeast === true
       ? { waitingAtLeast: true as const }
       : {}),
+    ...(facts.untold === undefined || facts.untold.length === 0 ? {} : { untold: facts.untold }),
   });
 }
 
@@ -265,6 +273,8 @@ export function productionChip(input: {
   readonly waiting: number;
   /** Whether that is only how many at least (`GroupFlowMain.notLiveAtLeast`). */
   readonly waitingAtLeast: boolean;
+  /** Production's services whose commit cannot be told (`ZeropsReleaseOffer.untold`). */
+  readonly untold: ReadonlyArray<string>;
   readonly serving: StopServing;
   readonly releases: ReleasesAnswer;
 }): ChipView {
@@ -274,7 +284,7 @@ export function productionChip(input: {
   const served =
     input.building === undefined ? production.stop.version?.label : input.building.from;
   const waiting = input.waiting > 0 ? input.waiting : undefined;
-  const { serving, waitingAtLeast } = input;
+  const { serving, waitingAtLeast, untold } = input;
   if (serving.kind === "down" || serving.kind === "stopped") {
     // A release tagged for production, or a deploy the platform runs on it.
     const next = production.kind === "releasing" ? production.tag : input.building?.to;
@@ -303,12 +313,12 @@ export function productionChip(input: {
     (input.releases.kind === "answered" && input.releases.failure !== undefined) ||
     production.kind === "deploy-failed"
   ) {
-    return chipOf("prod", "failed", { version: served });
+    return chipOf("prod", "failed", { version: served, untold });
   }
   if (served === undefined) return chipOf("prod", "empty", { waiting, waitingAtLeast });
   if (waiting !== undefined)
-    return chipOf("prod", "waiting", { version: served, waiting, waitingAtLeast });
-  return chipOf("prod", "ok", { version: served });
+    return chipOf("prod", "waiting", { version: served, waiting, waitingAtLeast, untold });
+  return chipOf("prod", "ok", { version: served, untold });
 }
 
 /**
@@ -444,6 +454,8 @@ export function projectChips(input: {
   readonly waiting: number;
   /** Whether that is only how many at least (`GroupFlowMain.notLiveAtLeast`). */
   readonly waitingAtLeast: boolean;
+  /** Production's services whose commit cannot be told (`ZeropsReleaseOffer.untold`). */
+  readonly untold: ReadonlyArray<string>;
   /** How production serves. */
   readonly serving: StopServing;
   readonly stages: ReadonlyArray<StageInput>;
@@ -544,6 +556,13 @@ function stagePhrase({ name, state }: { readonly name: string; readonly state: C
   }
 }
 
+/** Healthy, unless what a service runs cannot be told: then that, never healthy. */
+function healthyWord(chip: ProductionChip): string {
+  if (chip.untold === undefined) return "healthy";
+  const words = cannotTellWhatRuns(chip.untold);
+  return `${words.charAt(0).toLowerCase()}${words.slice(1)}`;
+}
+
 /** The whole state in a sentence, what the chip no longer draws included. */
 function chipWords(chip: ProductionChip): string {
   if (chip.stages !== undefined && chip.stages.length > 1) {
@@ -554,15 +573,15 @@ function chipWords(chip: ProductionChip): string {
     chip.version === undefined ? `${tier}, ${rest}` : `${tier} ${chip.version}, ${rest}`;
   switch (chip.state) {
     case "ok":
-      return named("healthy");
+      return named(healthyWord(chip));
     // What waits is the release's, said once on the heading's line: the place is healthy.
     case "waiting":
-      return named("healthy");
+      return named(healthyWord(chip));
     case "releasing":
       return named(chip.next === undefined ? "deploying" : `releasing ${chip.next}`);
     // The release that did not go out is the line's; production still serves the one before.
     case "failed":
-      return named(chip.label === "prod" ? "healthy" : "the last deploy failed");
+      return named(chip.label === "prod" ? healthyWord(chip) : "the last deploy failed");
     case "down":
     case "stopped": {
       const also = alongside(chip);
@@ -643,6 +662,8 @@ const MAIN_DOT: Record<ChipState, ChipDot> = {
 
 /** A stop's dot, by the state its chip says: in its menu's row and in the jump box. */
 export function chipDot(chip: ProductionChip): ChipDot {
+  // Serving what cannot be told is not known to be healthy.
+  if (chip.untold !== undefined && (chip.state === "ok" || chip.state === "waiting")) return "off";
   return MAIN_DOT[chip.state];
 }
 
@@ -661,7 +682,7 @@ function mainWord(chip: ProductionChip): string {
   switch (chip.state) {
     case "ok":
     case "waiting":
-      return "Healthy";
+      return chip.untold === undefined ? "Healthy" : cannotTellWhatRuns(chip.untold);
     case "releasing":
       return chip.next === undefined ? "Deploying…" : `Releasing ${chip.next}`;
     case "failed":

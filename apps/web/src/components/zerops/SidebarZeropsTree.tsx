@@ -305,6 +305,8 @@ function groupFlowReadsOf(flow: SidebarProjectFlow): GroupFlowReads {
 }
 
 const NO_HEALTH: ReadonlyMap<string, ZeropsContainerHealth> = new Map();
+/** No production service whose commit cannot be told. */
+const NO_UNTOLD: ReadonlyArray<string> = [];
 const NO_BIRTHS: ReadonlyArray<ZeropsPlacedBirth> = [];
 
 /**
@@ -1083,6 +1085,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
           : buildingOf(deployments?.get(productionStop.projectId)),
       waiting: projectFlow.main.notLive,
       waitingAtLeast: projectFlow.main.notLiveAtLeast,
+      untold: flow?.releaseUntold ?? NO_UNTOLD,
       serving: productionServing,
       stages,
       stagesBeingCreated: projectFlow.creatingStages.length > 0,
