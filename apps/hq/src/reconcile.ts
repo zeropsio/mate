@@ -17,9 +17,10 @@
  *
  * Afterwards no change branch is without its record, and a new change's number passes them all.
  *
- * While the migration's import is unfinished (`importing`), neither runs: the import records a
- * repository before it brings it, and its releases after, and agrees the two itself as it resumes
- * under the next leader (`importJob.ts`; migration-only, it goes with T14).
+ * Neither runs for an application whose import is unfinished (`importingApps`): the import records
+ * a repository before it brings it, and its releases after, and agrees the two itself as it resumes
+ * under the next leader (`importJob.ts`; migration-only, it goes with T14). The applications
+ * imported before it are judged and caught up as at every takeover.
  *
  * @module reconcile
  */
@@ -46,30 +47,38 @@ const isReleaseTag = Schema.is(ReleaseTag);
 /** Who a reconciled record is by. */
 const BY = "restore";
 
-/** Whether the migration's import is queued, running, or stopped short of done. */
-export const importing = (sql: SqlClient.SqlClient): Effect.Effect<boolean, SqlError> =>
+/** The applications an import queued, running, or stopped short of done has made so far. */
+export const importingApps = (
+  sql: SqlClient.SqlClient,
+): Effect.Effect<ReadonlySet<string>, SqlError> =>
   Effect.map(
-    sql<{ readonly unfinished: boolean }>`
-      SELECT EXISTS (SELECT 1 FROM hq_import WHERE state <> 'done') AS unfinished`,
-    ([row]) => row?.unfinished === true,
+    sql<{ readonly app_id: string }>`
+      SELECT i.target ->> 'appId' AS app_id
+      FROM hq_import_item i JOIN hq_import j ON j.digest = i.digest
+      WHERE j.state <> 'done' AND i.key LIKE 'app:%'`,
+    (rows) => new Set(rows.map((row) => row.app_id)),
   );
 
 /** How many recorded things git lacks, by kind; none when the records and git agree. */
 export type Missing = Readonly<Record<string, number>>;
 
-/** Every recorded commit git lacks, and every repository it lacks, counted by kind. */
+/** Every recorded commit git lacks, and every repository it lacks, counted by kind; `aside`'s not. */
 export const missing = (
   git: HqGit,
   sql: SqlClient.SqlClient,
+  aside: ReadonlySet<string>,
 ): Effect.Effect<Missing, GitError | SqlError> =>
   Effect.gen(function* () {
+    const kept = <A extends { readonly app_id: string }>(rows: ReadonlyArray<A>) =>
+      rows.filter((row) => !aside.has(row.app_id));
     const present = new Set((yield* git.list()).map((repo) => `${repo.appId}/${repo.id}`));
-    const named = yield* sql<{
-      readonly app_id: string;
-      readonly repo: string;
-      readonly kind: string;
-      readonly sha: string;
-    }>`
+    const named = kept(
+      yield* sql<{
+        readonly app_id: string;
+        readonly repo: string;
+        readonly kind: string;
+        readonly sha: string;
+      }>`
       SELECT app_id::text AS app_id, name AS repo, 'main' AS kind, main_head AS sha
       FROM hq_repo WHERE main_head IS NOT NULL
       UNION ALL
@@ -82,9 +91,12 @@ export const missing = (
       SELECT app_id::text, ${RECIPE_REPO}, 'release', sha FROM hq_release
       UNION ALL
       SELECT e.app_id::text, d.repo, 'deploy', d.sha
-      FROM hq_deploy d JOIN hq_environment e ON e.project_id = d.project_id`;
-    const repos = yield* sql<{ readonly app_id: string; readonly name: string }>`
-      SELECT app_id::text AS app_id, name FROM hq_repo`;
+      FROM hq_deploy d JOIN hq_environment e ON e.project_id = d.project_id`,
+    );
+    const repos = kept(
+      yield* sql<{ readonly app_id: string; readonly name: string }>`
+        SELECT app_id::text AS app_id, name FROM hq_repo`,
+    );
     const counts: Record<string, number> = {};
     const count = (kind: string, n: number) => {
       if (n > 0) counts[kind] = (counts[kind] ?? 0) + n;
@@ -107,8 +119,10 @@ export const missing = (
       for (const row of rows) if (lacked.has(row.sha)) count(row.kind, 1);
     }
     // A release is its tag too.
-    const releases = yield* sql<{ readonly app_id: string; readonly tag: string }>`
-      SELECT app_id::text AS app_id, tag FROM hq_release`;
+    const releases = kept(
+      yield* sql<{ readonly app_id: string; readonly tag: string }>`
+        SELECT app_id::text AS app_id, tag FROM hq_release`,
+    );
     for (const appId of new Set(releases.map((row) => row.app_id))) {
       if (!present.has(`${appId}/${RECIPE_REPO}`)) continue;
       const tags = new Set(
@@ -128,24 +142,27 @@ interface ChangeRow {
   readonly state: string;
 }
 
-/** What git holds beyond the records, recorded, each logged `reconciled`. */
+/** What git holds beyond the records, recorded, each logged `reconciled`; `aside`'s left to its import. */
 export const catchUp = (
   git: HqGit,
   sql: SqlClient.SqlClient,
   leader: Leader["Service"],
+  aside: ReadonlySet<string>,
 ): Effect.Effect<void, GitError | SqlError | NotLeader> =>
   Effect.gen(function* () {
     const apps = new Set(
-      (yield* sql<{ readonly id: string }>`SELECT id::text AS id FROM hq_app`).map((row) => row.id),
+      (yield* sql<{ readonly id: string }>`SELECT id::text AS id FROM hq_app`)
+        .map((row) => row.id)
+        .filter((id) => !aside.has(id)),
     );
     const rows = new Set(
       (yield* sql<{ readonly app_id: string; readonly name: string }>`
-          SELECT app_id::text AS app_id, name FROM hq_repo`).map(
-        (row) => `${row.app_id}/${row.name}`,
-      ),
+          SELECT app_id::text AS app_id, name FROM hq_repo`)
+        .filter((row) => !aside.has(row.app_id))
+        .map((row) => `${row.app_id}/${row.name}`),
     );
     for (const repo of yield* git.list()) {
-      if (rows.has(`${repo.appId}/${repo.id}`)) continue;
+      if (aside.has(repo.appId) || rows.has(`${repo.appId}/${repo.id}`)) continue;
       if (!apps.has(repo.appId)) {
         yield* Effect.logWarning("a repository of an application HQ does not know, left aside", {
           repo,

@@ -7,8 +7,10 @@
  *   leave as it is follows as notes.
  * - `import <bundle>` checks it, queues it in `hq_import` and follows it until the leader has done
  *   it or it failed (`importJob.ts`). The command writes no record of its own: the leader imports.
- *   The same bundle again resumes a run that failed, or verifies a done one once more; another
- *   bundle is refused, as one HQ takes one import.
+ *   The same bundle again resumes a run that failed, or verifies a done one once more. Accounts
+ *   move an application at a time: another application's bundle imports beside the ones done
+ *   (`hq_import_app`), while a bundle bringing an application another import brought is refused,
+ *   and so is any bundle while another import is not done.
  *
  * @module importCli
  */
@@ -87,18 +89,43 @@ export const queueCommand = (dir: string, options: { readonly follow?: Duration.
     if (checked._tag === "Failure") return refusedResult(checked.failure);
     const bundle = checked.success;
     const summary = bundleSummary(bundle);
-    const held = yield* sql<{ readonly digest: string }>`SELECT digest FROM hq_import`;
-    const other = held.find((row) => row.digest !== bundle.digest);
-    if (other !== undefined)
+    const [unfinished] = yield* sql<{ readonly digest: string }>`
+      SELECT digest FROM hq_import WHERE state <> 'done' AND digest <> ${bundle.digest}`;
+    if (unfinished !== undefined)
       return {
         code: 1,
-        lines: [summary, `this HQ holds import ${other.digest}: one HQ takes one import`],
+        lines: [
+          summary,
+          `import ${unfinished.digest} is not done: run its bundle again to finish it`,
+        ],
       } satisfies CommandResult;
-    yield* sql`
-      INSERT INTO hq_import (digest, dir, state) VALUES (${bundle.digest}, ${bundle.dir}, 'queued')
-      ON CONFLICT (digest) DO UPDATE
-      SET state = 'queued', dir = EXCLUDED.dir, error = NULL, updated_at = now()
-      WHERE hq_import.state IN ('failed', 'done')`;
+    const keys = bundle.mapping.apps.map((app) => app.key);
+    const [other] = yield* sql<{ readonly app_key: string; readonly digest: string }>`
+      SELECT app_key, digest FROM hq_import_app
+      WHERE ${sql.in("app_key", keys)} AND digest <> ${bundle.digest}`;
+    if (other !== undefined) {
+      const named = bundle.mapping.apps.find((app) => app.key === other.app_key)?.name ?? "";
+      return {
+        code: 1,
+        lines: [
+          summary,
+          `application ${other.app_key} (${named}) came with import ${other.digest}`,
+        ],
+      } satisfies CommandResult;
+    }
+    yield* sql.withTransaction(
+      Effect.andThen(
+        sql`
+          INSERT INTO hq_import (digest, dir, state)
+          VALUES (${bundle.digest}, ${bundle.dir}, 'queued')
+          ON CONFLICT (digest) DO UPDATE
+          SET state = 'queued', dir = EXCLUDED.dir, error = NULL, updated_at = now()
+          WHERE hq_import.state IN ('failed', 'done')`,
+        sql`
+          INSERT INTO hq_import_app ${sql.insert(keys.map((key) => ({ app_key: key, digest: bundle.digest })))}
+          ON CONFLICT DO NOTHING`,
+      ),
+    );
     const [outcome] = yield* sql<{
       readonly state: string;
       readonly error: string | null;

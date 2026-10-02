@@ -48,7 +48,7 @@ import { JUDGED_PER_MAIN_MOVE, type MergeabilityKind } from "@t3tools/shared/hqC
 
 import { type GitEventKind, appendEvent } from "./gitEvents.ts";
 import { Leader, NotLeader } from "./leader.ts";
-import { catchUp, importing, missing } from "./reconcile.ts";
+import { catchUp, importingApps, missing } from "./reconcile.ts";
 
 /** A change whose branch moved: its repository, its Mate, its number. */
 export interface PushedChange {
@@ -258,16 +258,16 @@ export const gitHostLayer = (options: {
               .convergeRepo(repo)
               .pipe(Effect.catch((error) => Effect.logWarning("git converge failed", error)));
           }
-          // An unfinished import agrees its own records and git as it resumes (`reconcile.ts`).
-          if (!(yield* importing(sql))) {
-            const lacked = yield* missing(git, sql);
-            if (Object.keys(lacked).length > 0) {
-              yield* Effect.logError("HQ's records name what git lacks: serving nothing", lacked);
-              yield* leader.hold("restore_mismatch");
-              return found;
-            }
-            yield* catchUp(git, sql, leader);
+          // An unfinished import agrees its own application's records and git as it resumes
+          // (`reconcile.ts`); every other application is judged and caught up.
+          const importing = yield* importingApps(sql);
+          const lacked = yield* missing(git, sql, importing);
+          if (Object.keys(lacked).length > 0) {
+            yield* Effect.logError("HQ's records name what git lacks: serving nothing", lacked);
+            yield* leader.hold("restore_mismatch");
+            return found;
           }
+          yield* catchUp(git, sql, leader, importing);
           const repos = yield* sql<{
             readonly app_id: string;
             readonly name: string;
