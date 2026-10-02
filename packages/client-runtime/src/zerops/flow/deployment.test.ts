@@ -124,6 +124,7 @@ const row = (version: EnvironmentRow["version"], tone: EnvironmentRow["tone"]): 
   versionRepository: "appdev",
   line: "main",
   tone,
+  deploys: [],
 });
 
 const NO_VERSION: EnvironmentRow["version"] = {

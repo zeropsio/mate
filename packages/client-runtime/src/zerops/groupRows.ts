@@ -46,6 +46,8 @@ export interface EnvironmentRow {
   readonly versionRepository: string | undefined;
   readonly line: string;
   readonly tone: GroupRowTone;
+  /** HQ's newest deploy of each of its services HQ records one for (`ServiceDeploys.latest`). */
+  readonly deploys: ReadonlyArray<HqDeploy>;
 }
 
 /**
@@ -248,5 +250,6 @@ export function environmentRow(input: {
     versionRepository: named?.service.repository,
     line: version.label === undefined ? source : `${source} · ${version.label}`,
     tone,
+    deploys: input.services.flatMap(({ deploy }) => (deploy === undefined ? [] : [deploy.latest])),
   };
 }

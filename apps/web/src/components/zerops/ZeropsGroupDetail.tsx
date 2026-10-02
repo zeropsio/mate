@@ -611,27 +611,20 @@ export function ZeropsReleaseVerb({
 /**
  * Where each declared stage of the group that runs nothing stands on its first deploy
  * (`stageFirstDeploy`), as its cell on the projects page and the menu say it: on the minute clock,
- * from what the flow and the account already hold.
+ * from what the platform runs and HQ's records of its deploys.
  */
 function useStageFirstDeploys(groupId: string): (projectId: string) => FirstDeploy | undefined {
   const flowValue = useZeropsProjectFlowOptional();
   const flow = flowValue?.flows.get(groupId);
-  const inventory = useZeropsInventory();
   const nowMs = useNowMs();
   return (projectId) =>
-    flow === undefined
-      ? undefined
-      : stageFirstDeploy({
-          deployment: flowValue?.deployments.get(projectId),
-          declared: flow.environments.some(
-            (entry) => entry.projectId === projectId && entry.tier === "stage",
-          ),
-          mainHasCode: undefined,
-          merged: flow.merged,
-          runner: undefined,
-          createdAt: inventory.projects.find((entry) => entry.id === projectId)?.created,
-          nowMs,
-        });
+    stageFirstDeploy({
+      deployment: flowValue?.deployments.get(projectId),
+      deploys: flow?.environments.find(
+        (entry) => entry.projectId === projectId && entry.tier === "stage",
+      )?.deploys,
+      nowMs,
+    });
 }
 
 export function ZeropsGroupDetailPage({ groupId }: { readonly groupId: string }) {

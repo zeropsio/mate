@@ -910,105 +910,86 @@ describe("groupFlow — a stage's first deploy, while it runs nothing (run 4)", 
     row: declared({ projectId: "p-pantry-stage", name: "Pantry - stage", tier: "stage" }),
     deployment: NOTHING_RUNS,
     route: undefined,
-    createdAt: at(2 * MINUTE),
     ...over,
   });
-  const stuck = { kind: "unable", why: "not-started" } as const;
-  const able = { kind: "able" } as const;
+  /** The stage's row with HQ's newest deploy of each of its services, changed `msAgo`. */
+  const withDeploys = (
+    ...deploys: ReadonlyArray<{
+      readonly state: HqDeploy["state"];
+      readonly failure?: HqDeploy["failure"];
+      readonly msAgo: number;
+    }>
+  ): EnvironmentRow =>
+    environmentRow({
+      projectId: "p-pantry-stage",
+      name: "Pantry - stage",
+      tier: "stage",
+      sources: ["main"],
+      services: deploys.map(({ state, failure, msAgo }, index) => {
+        const latest: HqDeploy = {
+          ...deployRecord(state),
+          failure: failure ?? deployRecord(state).failure,
+          at: at(msAgo),
+        };
+        return { hostname: `app${String(index)}`, deploy: { latest, live: null } };
+      }),
+    });
   it.each([
     {
-      case: "asked for, the runner not started: it awaits the runner",
-      over: {},
-      runner: stuck,
-      mainHasCode: true,
-      first: { kind: "runner", why: "not-started" },
-    },
-    {
-      case: "asked for, the runner able: on its way",
-      over: {},
-      runner: able,
-      mainHasCode: true,
+      case: "HQ queued its first deploy: on its way",
+      row: withDeploys({ state: "pending", msAgo: MINUTE }),
       first: { kind: "on-its-way" },
     },
     {
-      case: "asked for, the runner unread: nothing promised",
+      case: "HQ deploying one service, another queued: on its way",
+      row: withDeploys({ state: "deploying", msAgo: MINUTE }, { state: "pending", msAgo: MINUTE }),
+      first: { kind: "on-its-way" },
+    },
+    {
+      case: "HQ says its build failed: the first deploy failed, however long ago",
+      row: withDeploys({ state: "failed", failure: "job", msAgo: 60 * MINUTE }),
+      first: { kind: "failed" },
+    },
+    {
+      case: "HQ refused it (no key, Zerops not answering) and asks again: nothing promised",
+      row: withDeploys({ state: "failed", failure: "refused", msAgo: MINUTE }),
+      first: undefined,
+    },
+    {
+      case: "HQ's queued record unchanged for a window: never on its way for ever",
+      row: withDeploys({ state: "pending", msAgo: 15 * MINUTE }),
+      first: undefined,
+    },
+  ])("$case", ({ row, first }) => {
+    const flow = groupFlow(group({ stops: [stageStop({ row })], nowMs: NOW }));
+    expect(flow.stages[0]?.firstDeploy).toEqual(first);
+  });
+
+  const queued = withDeploys({ state: "pending", msAgo: MINUTE });
+  it.each([
+    {
+      case: "HQ records no deploy of it: nothing promised",
       over: {},
-      runner: undefined,
-      mainHasCode: true,
-      first: undefined,
-    },
-    {
-      case: "made a window ago, its first deploy never came: nothing promised",
-      over: { createdAt: at(20 * MINUTE) },
-      runner: able,
-      mainHasCode: true,
-      first: undefined,
-    },
-    {
-      case: "when it was made unknown: nothing promised",
-      over: { createdAt: undefined },
-      runner: able,
-      mainHasCode: true,
-      first: undefined,
-    },
-    {
-      case: "main has no code: nothing asked for",
-      over: {},
-      runner: stuck,
-      mainHasCode: false,
       first: undefined,
     },
     {
       case: "not declared: nothing asked for",
       over: { row: undefined },
-      runner: stuck,
-      mainHasCode: true,
       first: undefined,
     },
     {
       case: "what runs there unread: nothing said of its first deploy",
-      over: { deployment: undefined },
-      runner: stuck,
-      mainHasCode: true,
+      over: { row: queued, deployment: undefined },
       first: undefined,
     },
     {
       case: "running a deploy: none to wait for",
-      over: { deployment: runs(STAGE_SHA) },
-      runner: stuck,
-      mainHasCode: true,
+      over: { row: queued, deployment: runs(STAGE_SHA) },
       first: undefined,
     },
-  ])("$case", ({ over, runner, mainHasCode, first }) => {
-    const flow = groupFlow(group({ stops: [stageStop(over)], mainHasCode, runner, nowMs: NOW }));
+  ])("$case", ({ over, first }) => {
+    const flow = groupFlow(group({ stops: [stageStop(over)], nowMs: NOW }));
     expect(flow.stages[0]?.firstDeploy).toEqual(first);
-  });
-
-  it("proves main has code by a merged code change, as the release does", () => {
-    const flow = groupFlow(
-      group({ stops: [stageStop()], merged: [pull({ kind: "code" })], runner: stuck, nowMs: NOW }),
-    );
-    expect(flow.stages[0]?.firstDeploy).toEqual({ kind: "runner", why: "not-started" });
-  });
-
-  it("counts the window from main's last code landing where that is later than the stage", () => {
-    const merged = [pull({ kind: "code", merged: true, mergedAt: at(3 * MINUTE) })];
-    const old = stageStop({ createdAt: at(60 * MINUTE) });
-    expect(
-      groupFlow(group({ stops: [old], merged, runner: able, nowMs: NOW })).stages[0]?.firstDeploy,
-    ).toEqual({ kind: "on-its-way" });
-    // A recipe change landing asks for no deploy of the code.
-    const recipe = [pull({ kind: "recipe", merged: true, mergedAt: at(3 * MINUTE) })];
-    expect(
-      groupFlow(
-        group({
-          stops: [old],
-          merged: [...recipe, ...merged.map((entry) => ({ ...entry, mergedAt: at(40 * MINUTE) }))],
-          runner: able,
-          nowMs: NOW,
-        }),
-      ).stages[0]?.firstDeploy,
-    ).toBeUndefined();
   });
 
   it("says a first deploy failed where a build of it was seen to end with nothing running", () => {
@@ -1017,18 +998,13 @@ describe("groupFlow — a stage's first deploy, while it runs nothing (run 4)", 
       ...(NOTHING_RUNS.state === "known" ? { value: { kind: "none", afterBuild: true } } : {}),
     } as Shown<Deployment>;
     const flow = groupFlow(
-      group({
-        stops: [stageStop({ deployment: failedBuild })],
-        mainHasCode: true,
-        runner: able,
-        nowMs: NOW,
-      }),
+      group({ stops: [stageStop({ row: queued, deployment: failedBuild })], nowMs: NOW }),
     );
     expect(flow.stages[0]?.firstDeploy).toEqual({ kind: "failed" });
   });
 
   it("promises nothing without a clock", () => {
-    const flow = groupFlow(group({ stops: [stageStop()], mainHasCode: true, runner: able }));
+    const flow = groupFlow(group({ stops: [stageStop({ row: queued })] }));
     expect(flow.stages[0]?.firstDeploy).toBeUndefined();
   });
 });
