@@ -2357,6 +2357,40 @@ describe("makeZeropsDataRuntime", () => {
       }),
   );
 
+  it.effect("a subscriber that throws while the account publishes stops no write", () =>
+    Effect.gen(function* () {
+      const registry = AtomRegistry.make();
+      const runtime = yield* commandRuntime(registry, (command) =>
+        Effect.succeed({
+          processRefs: [],
+          observations: [],
+          result: { kind: command.kind, value: undefined },
+        } as never),
+      );
+      let armed = true;
+      const unsubscribe = registry.subscribe(runtime.stateAtom, () => {
+        if (armed) throw new Error("a subscriber's own bug");
+      });
+      const first = yield* Effect.forkChild(
+        Effect.exit(runtime.commands.setIntegrationTokenProjects(tokenWrite)),
+      );
+      for (let turn = 0; turn < 50; turn++) yield* Effect.yieldNow;
+      armed = false;
+      const second = yield* Effect.forkChild(
+        Effect.exit(runtime.commands.setIntegrationTokenProjects(tokenWrite)),
+      );
+      for (let turn = 0; turn < 50; turn++) yield* Effect.yieldNow;
+
+      expect(first.pollUnsafe()).toBeDefined();
+      expect(Exit.isSuccess(yield* Fiber.join(first))).toBe(true);
+      expect(second.pollUnsafe()).toBeDefined();
+      expect(Exit.isSuccess(yield* Fiber.join(second))).toBe(true);
+      unsubscribe();
+      yield* runtime.shutdown("application-close");
+      registry.dispose();
+    }),
+  );
+
   it.effect("an interrupted command is no longer counted as pending", () =>
     Effect.gen(function* () {
       const registry = AtomRegistry.make();

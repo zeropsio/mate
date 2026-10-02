@@ -1,3 +1,4 @@
+import * as Cause from "effect/Cause";
 import * as Clock from "effect/Clock";
 import * as Deferred from "effect/Deferred";
 import * as Duration from "effect/Duration";
@@ -1072,13 +1073,31 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
 
   let pendingPublication: ZeropsDataState | null = null;
   let publicationEvents = 0;
-  const flushPendingPublication = () => {
+  /**
+   * The atoms notify their subscribers inside `set`, on whichever fiber published: the ingress's
+   * one consumer, a command, a scheduler task. One subscriber's throw must not stop the account:
+   * the state is published, that subscriber missed it, and its error is handed back to be logged.
+   */
+  const flushPendingPublication = (): { readonly subscriberError: unknown } | null => {
     const next = pendingPublication;
     pendingPublication = null;
     publicationEvents = 0;
-    if (next !== null) options.atomRegistry.set(rootAtom, next);
+    if (next === null) return null;
+    try {
+      options.atomRegistry.set(rootAtom, next);
+      return null;
+    } catch (subscriberError) {
+      return { subscriberError };
+    }
   };
-  const flushPublication = Effect.sync(flushPendingPublication);
+  const logSubscriberError = (failed: { readonly subscriberError: unknown } | null) =>
+    failed === null
+      ? Effect.void
+      : Effect.logError(
+          "Zerops data: a subscriber failed while the account published",
+          failed.subscriberError,
+        );
+  const flushPublication = Effect.suspend(() => logSubscriberError(flushPendingPublication()));
   // Every change a task makes reaches the atoms in one publication, after the task: each
   // publication recomputes every projection, so the leases of a whole account taken one by one
   // must not recompute them once per lease.
@@ -1089,7 +1108,8 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
     publicationScheduled = true;
     publicationDispatcher.scheduleTask(() => {
       publicationScheduled = false;
-      flushPendingPublication();
+      const failed = flushPendingPublication();
+      if (failed !== null) Effect.runForkWith(runtimeContext)(logSubscriberError(failed));
     }, 0);
   };
 
@@ -1202,8 +1222,8 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
   const applyIngress = (input: RuntimeIngressInput): Effect.Effect<void> =>
     Effect.gen(function* () {
       if (input.kind === "barrier") {
-        yield* flushPublication;
-        yield* Deferred.succeed(input.deferred, undefined);
+        // Whatever the flush does, the command or read waiting on the barrier goes on.
+        yield* flushPublication.pipe(Effect.ensuring(Deferred.succeed(input.deferred, undefined)));
         return;
       }
       const followUps = yield* modelLock.withPermit(
@@ -1376,9 +1396,16 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
     onOverflow: recoverOverflow,
   });
 
+  // Every read, write and event of the account completes through this one loop, so it outlives a
+  // defect in any one input: the input is logged and the loop goes on.
   yield* Effect.forever(
     Effect.gen(function* () {
-      yield* applyIngress(yield* ingress.take);
+      yield* applyIngress(yield* ingress.take).pipe(
+        Effect.catchCauseIf(
+          (cause) => !Cause.hasInterruptsOnly(cause),
+          (cause) => Effect.logError("Zerops data: an input could not be applied", cause),
+        ),
+      );
       if (
         pendingPublication !== null &&
         (publicationEvents >= policy.ingressPublicationBatchEvents ||
