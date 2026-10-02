@@ -288,7 +288,7 @@ const LONG: Run = {
 const RUN: Run = { main: MAIN, burst: BURST, stale: STALE, band: BAND, long: LONG }[SCRIPT] ?? MAIN;
 
 /** The run started this long before the page loaded, so its clock reads as it would live. */
-const STARTED = Date.now() - (START_AT * 1000) / SPEED;
+const STARTED = Date.now() - START_AT * 1000;
 const iso = (second: number) => new Date(STARTED + second * 1000).toISOString();
 
 function work(id: string, start: number, fields: Partial<WorkLogEntry>): TimelineEntry {
