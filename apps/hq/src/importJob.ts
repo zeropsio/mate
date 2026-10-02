@@ -16,7 +16,9 @@
  * event beyond `main` as the repository brought it, and the people it names are the bundle's.
  * Main's tiers build from Gitea, which HQ does not deploy from: one commit of Core's on each
  * `group`'s `main` makes them build from HQ (`importTiers.ts`), what they now say is the
- * baseline every later change of the recipe is weighed against (`Deploys.baseline`), and the last
+ * baseline every later change of the recipe is weighed against (`Deploys.baseline`); each open
+ * change of a rewritten recipe that the rewrite alone makes conflict takes main in, Core's merge whose
+ * tree is the change's with its tiers rewritten too, so it merges as it did on main's Gitea; and the last
  * item holds every environment brought where a service does not run what it is wanted at
  * (`Deploys.hold`): an admin's first key then deploys and imports nothing nobody asked for.
  *
@@ -42,7 +44,7 @@ import { TIER_SOURCES } from "./environments.ts";
 import { appendEvent } from "./gitEvents.ts";
 import { Deploys, type HeldEnvironment } from "./deploys.ts";
 import { rewriteTier } from "./importTiers.ts";
-import { GitHost, mainOf } from "./gitHost.ts";
+import { GitHost, judge, mainOf } from "./gitHost.ts";
 import {
   type Bundle,
   type BundleApp,
@@ -105,6 +107,7 @@ const encodeTarget = Schema.encodeSync(
   Schema.fromJsonString(Schema.Record(Schema.String, Schema.String)),
 );
 const encodeReport = Schema.encodeSync(Schema.fromJsonString(ImportReport));
+const decodeReport = Schema.decodeUnknownSync(ImportReport);
 const decodeTarget = Schema.decodeUnknownSync(Schema.Record(Schema.String, Schema.String));
 const HeldEnvironments = Schema.Array(
   Schema.Struct({
@@ -135,15 +138,18 @@ const bundleMainOf = (app: BundleApp) =>
     ?.refs.find((ref) => ref.ref === "refs/heads/main")?.sha;
 
 /** Each tier of `app` as it builds from HQ at `hq`, the application being `appId`. */
+/** What a tier of `app` builds from, moved from its Gitea to HQ's address of the same repository. */
+const tierMapping = (app: BundleApp, hq: string, appId: string) => ({
+  host: app.gitea.host,
+  owner: app.gitea.owner,
+  repos: app.repos.map((repo) => repo.name),
+  to: (repo: string) => `${hq}/git/${appId}/${repo}.git`,
+});
+
 const plannedTiers = (app: BundleApp, hq: string, appId: string) =>
   app.tiers.map((tier) => ({
     tier,
-    rewrite: rewriteTier(tier.content, {
-      host: app.gitea.host,
-      owner: app.gitea.owner,
-      repos: app.repos.map((repo) => repo.name),
-      to: (repo) => `${hq}/git/${appId}/${repo}.git`,
-    }),
+    rewrite: rewriteTier(tier.content, tierMapping(app, hq, appId)),
   }));
 
 const changeKey = (change: Pick<BundleChange, "app" | "repo" | "number">) =>
@@ -275,6 +281,35 @@ export const importsLayer = (
               }),
             );
           }
+          // Each open change of a rewritten recipe that the rewrite alone makes conflict takes main in.
+          for (const app of bundle.mapping.apps) {
+            const main = done.get(`recipe:${app.key}`)?.["commit"] ?? "";
+            if (main === "") continue;
+            const appId = appIdOf(app.key);
+            const open = bundle.changes.filter(
+              (change) =>
+                change.app === app.key && change.repo === RECIPE_REPO && change.state === "open",
+            );
+            for (const change of open) {
+              let head = change.head;
+              yield* item(
+                `heal:${changeKey(change)}`,
+                Effect.gen(function* () {
+                  if (head === change.head) return { head };
+                  const at = { appId, id: RECIPE_REPO };
+                  const verdict = yield* judge(git, at, change.mateProjectId, change.number);
+                  yield* sql`
+                    UPDATE hq_change
+                    SET head = ${head}, mergeability = ${verdict.mergeability}, behind = ${verdict.behind}
+                    WHERE app_id::text = ${appId} AND repo = ${RECIPE_REPO} AND number = ${change.number}`;
+                  return { head };
+                }),
+                Effect.gen(function* () {
+                  head = yield* healed(git, bundle.digest, app, hq, appId, change, main);
+                }),
+              );
+            }
+          }
           for (const change of bundle.changes) {
             for (const attachment of change.attachments) {
               yield* item(
@@ -309,6 +344,11 @@ export const importsLayer = (
             }),
           );
           const kept = decodeHeld(done.get("hold")?.["held"] ?? "[]");
+          // An import done once was verified then: its application has lived since, so a run again
+          // takes only the steps it lacked (a later Core's), and its first verification stands.
+          const [once] = yield* sql<{ readonly report: unknown }>`
+            SELECT report FROM hq_import WHERE digest = ${job.digest} AND report IS NOT NULL`;
+          if (once !== undefined) return decodeReport(once.report);
           return yield* verify(
             git,
             bundle,
@@ -316,6 +356,7 @@ export const importsLayer = (
             kept,
             hq,
             (key) => done.get(`recipe:${key}`)?.["commit"] ?? "",
+            (change) => done.get(`heal:${changeKey(change)}`)?.["head"] ?? change.head,
           ).pipe(
             Effect.mapError((error) =>
               error._tag === "ImportFailed" ? error : failed(`verification: ${wordsOf(error)}`),
@@ -479,6 +520,68 @@ export const importsLayer = (
           return made.sha;
         });
 
+      /**
+       * An open change of `app`'s recipe, as main's rewrite left it: where the rewrite alone makes it
+       * conflict, main merged in by Core, the merge's tree the change's with its tiers rewritten as
+       * main's were, so it merges as it did on main's Gitea. Only while main is the rewrite and the
+       * change is built on the bundle's main: one behind it, one the rewrite leaves mergeable, or one
+       * of a main that moved on since (a run again after the application lived) stays as brought. A
+       * branch already at that merge, an earlier run's whose item did not land, is it. The head after.
+       */
+      const healed = (
+        git: HqGit,
+        digest: string,
+        app: BundleApp,
+        hq: string,
+        appId: string,
+        change: BundleChange,
+        main: string,
+      ) =>
+        Effect.gen(function* () {
+          const at = { appId, id: RECIPE_REPO };
+          const message = `Core: the change builds from HQ, as main does\n\nHQ-Import: ${digest}`;
+          const head = yield* git.changeHead(at, change.mateProjectId, change.number);
+          if (head !== change.head) {
+            const found = head === null ? null : yield* git.commit(at, head);
+            if (
+              found !== null &&
+              found.parents[0] === change.head &&
+              found.parents[1] === main &&
+              found.message.trim() === message
+            )
+              return found.sha;
+            return yield* failed(`#${String(change.number)}'s branch is not the bundle's`);
+          }
+          if ((yield* mainOf(git, at)) !== main) return head;
+          const verdict = yield* git.mergeability(at, change.mateProjectId, change.number);
+          if (verdict.kind !== "conflict") return head;
+          if ((yield* git.mergeBase(at, change.mateProjectId, change.number)) !== bundleMainOf(app))
+            return head;
+          // Every tier the change holds, rewritten as main's tiers were.
+          const files: Record<string, string> = {};
+          for (const entry of (yield* git.tree(at, head, "")).items) {
+            if (entry.type !== "tree") continue;
+            const path = `${entry.path}/import.yaml`;
+            const read = yield* git
+              .file(at, head, path, TIER_MAX)
+              .pipe(Effect.catchTag("GitError", () => Effect.succeed(null)));
+            if (read === null || read.truncated) continue;
+            const rewrite = rewriteTier(read.content.toString("utf8"), tierMapping(app, hq, appId));
+            if (rewrite.rewritten.length > 0) files[path] = rewrite.content;
+          }
+          const made = yield* git.mergeIntoChange(at, change.mateProjectId, change.number, {
+            expectedHead: head,
+            expectedMain: main,
+            from: head,
+            files,
+            message,
+            author: HQ_AUTHOR,
+          });
+          if (!("sha" in made))
+            return yield* failed(`#${String(change.number)}: ${made.kind.replaceAll("_", " ")}`);
+          return made.sha;
+        });
+
       /** A picture its change's description links: HQ's now, and the description links it at HQ. */
       const picture = (
         bundle: Bundle,
@@ -534,6 +637,7 @@ export const importsLayer = (
         held: ReadonlyArray<HeldEnvironment>,
         hq: string,
         recipeOf: (key: string) => string,
+        headOf: (change: BundleChange) => string,
       ) =>
         Effect.gen(function* () {
           const differences: Array<string> = [];
@@ -619,7 +723,7 @@ export const importsLayer = (
                   ),
                 ...changesHere.map(
                   (change) =>
-                    `refs/heads/mate/${change.mateProjectId}/${String(change.number)} ${change.head}`,
+                    `refs/heads/mate/${change.mateProjectId}/${String(change.number)} ${headOf(change)}`,
                 ),
               ].sort();
               const found = (yield* git.branches(at)).items
@@ -642,6 +746,20 @@ export const importsLayer = (
                   .join(",")
               )
                 differences.push(`${app.key}/${repo.name}: its change numbers are not its PRs'`);
+              // Core's merge of main into a change: on the head brought and the recipe's main, by the bundle.
+              for (const change of changesHere) {
+                const head = headOf(change);
+                if (head === change.head) continue;
+                const merge = yield* git.commit(at, head);
+                if (
+                  merge.parents[0] !== change.head ||
+                  merge.parents[1] !== recipe ||
+                  !merge.message.trim().endsWith(`HQ-Import: ${bundle.digest}`)
+                )
+                  differences.push(
+                    `change ${changeKey(change)}: Core's merge is not on what was brought`,
+                  );
+              }
               for (const change of changesHere) {
                 if (change.state !== "merged" || change.mergedSha === null) continue;
                 if (!(yield* git.onMain(at, change.mergedSha))) {
