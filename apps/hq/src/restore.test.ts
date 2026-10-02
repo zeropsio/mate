@@ -275,6 +275,13 @@ describe("a backup set, restored", () => {
           const owner = yield* sessionFor(a.call, "door-owner");
           const { appId, credential } = yield* mateWithChange(a.call, a.fake, owner);
           const older = yield* a.backup.take;
+          // Kept elsewhere: in the store the newer set of the same hour replaces it.
+          const elsewhere = yield* temporaryDir;
+          NodeFS.cpSync(
+            NodePath.join(a.storeDir, "sets", older.id),
+            NodePath.join(elsewhere, "sets", older.id),
+            { recursive: true },
+          );
           // After the older set: a push and its merge.
           const git = yield* gitClient;
           yield* git.checked(["clone", remoteOf(a.origin, credential, appId, "appdev"), "work"]);
@@ -291,21 +298,18 @@ describe("a backup set, restored", () => {
             session: owner,
             body: { expectedHead: head },
           });
-          // A set apart in time, so the two never share an id.
-          yield* Effect.sleep("1100 millis");
           const newer = yield* a.backup.take;
           yield* a.stop;
 
           // The newer set's database over the older set's git: sources mixed.
           const url = yield* (yield* TempPostgres).createDatabase;
           const gitRoot = yield* temporaryDir;
-          const store = directoryStore(a.storeDir);
-          yield* restoreDatabase(store, newer.id, {
+          yield* restoreDatabase(directoryStore(a.storeDir), newer.id, {
             databaseUrl: Redacted.make(url),
             gitRoot,
             workDir: yield* temporaryDir,
           });
-          yield* restoreRepos(store, older.id, {
+          yield* restoreRepos(directoryStore(elsewhere), older.id, {
             databaseUrl: Redacted.make(url),
             gitRoot,
             workDir: yield* temporaryDir,

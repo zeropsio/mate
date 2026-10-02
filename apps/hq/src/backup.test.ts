@@ -4,6 +4,7 @@ import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 
 import { assert, describe, it } from "@effect/vitest";
+import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Redacted from "effect/Redacted";
 import * as Stream from "effect/Stream";
@@ -11,7 +12,14 @@ import * as Stream from "effect/Stream";
 import { mateWithChange, rowsWhere } from "../test/harness/mates.ts";
 import { type Call, sessionFor, startCore, untilHealth } from "../test/harness/runningCore.ts";
 import { TempPostgres, tempPostgresLayer } from "../test/harness/tempPostgres.ts";
-import { PgDumpOlder, directoryStore } from "./backup.ts";
+import {
+  PgDumpOlder,
+  type Room,
+  type StoredSet,
+  directoryStore,
+  retained,
+  roomFor,
+} from "./backup.ts";
 import { restoreSet } from "./restore.ts";
 
 const temporaryDir = Effect.acquireRelease(
@@ -26,12 +34,137 @@ const leading = (core: Effect.Success<ReturnType<typeof startCore>>) =>
     Stream.runHead(Stream.filter(core.gitHost.recorded, (tick) => tick > 0)),
   );
 
+/** The bytes of every file under `dir`. */
+const bytesOf = (dir: string): number =>
+  NodeFS.readdirSync(dir, { withFileTypes: true }).reduce((sum, entry) => {
+    const path = NodePath.join(dir, entry.name);
+    return sum + (entry.isDirectory() ? bytesOf(path) : NodeFS.statSync(path).size);
+  }, 0);
+
+/** Whole sets of `bytes` dump each in the store `storeDir`, taken the given months ago; their ids. */
+const storedBefore = (storeDir: string, monthsAgo: ReadonlyArray<number>, bytes: number) =>
+  Effect.map(DateTime.now, (now) =>
+    monthsAgo.map((months) => {
+      const id = DateTime.formatIso(DateTime.subtract(now, { months })).replace(/[-:]/gu, "");
+      const dir = NodePath.join(storeDir, "sets", id);
+      NodeFS.mkdirSync(dir, { recursive: true });
+      NodeFS.writeFileSync(NodePath.join(dir, "db.dump"), new Uint8Array(bytes));
+      NodeFS.writeFileSync(NodePath.join(dir, "manifest.json"), "{}");
+      return id;
+    }),
+  );
+
 /** What `/health` says of backup. */
 const backupHealth = (call: Call) =>
   Effect.map(call("GET", "/health"), (response) => [
     response.status,
     (response.body as { readonly backup: unknown }).backup,
   ]);
+
+const NOW = DateTime.makeUnsafe("2026-10-02T12:00:00.000Z");
+
+describe("the sets kept", () => {
+  const cases: ReadonlyArray<{
+    readonly name: string;
+    readonly ids: ReadonlyArray<string>;
+    readonly kept: ReadonlyArray<string>;
+  }> = [
+    { name: "none of none", ids: [], kept: [] },
+    {
+      name: "for a day, the newest of each hour",
+      ids: ["20261002T100000.000Z", "20261002T110500.000Z", "20261002T115000.000Z"],
+      kept: ["20261002T100000.000Z", "20261002T115000.000Z"],
+    },
+    {
+      name: "for 14 days, the newest of each day",
+      ids: ["20260930T080000.000Z", "20260930T200000.000Z", "20261001T090000.000Z"],
+      kept: ["20260930T200000.000Z", "20261001T090000.000Z"],
+    },
+    {
+      name: "for 6 months, the newest of each month",
+      ids: [
+        "20260801T000000.000Z",
+        "20260815T000000.000Z",
+        "20260910T000000.000Z",
+        "20260912T000000.000Z",
+      ],
+      kept: ["20260815T000000.000Z", "20260912T000000.000Z"],
+    },
+    {
+      name: "past that, the newest alone",
+      ids: ["20260101T000000.000Z", "20260301T000000.000Z"],
+      kept: ["20260301T000000.000Z"],
+    },
+  ];
+  for (const { name, ids, kept } of cases) {
+    it(name, () => {
+      assert.deepStrictEqual([...retained(ids, NOW)].sort(), kept);
+    });
+  }
+});
+
+describe("the room a set makes in its store", () => {
+  const set = (id: string, bytes: number, whole = true): StoredSet => ({ id, bytes, whole });
+  const cases: ReadonlyArray<{
+    readonly name: string;
+    readonly stored: ReadonlyArray<StoredSet>;
+    readonly incoming: number;
+    readonly limit: number;
+    readonly room: Room;
+  }> = [
+    {
+      name: "under the limit, the incomplete and the expired go",
+      stored: [
+        set("20260101T000000.000Z", 10),
+        set("20261002T100000.000Z", 10),
+        set("20261002T103000.000Z", 5, false),
+      ],
+      incoming: 10,
+      limit: 100,
+      room: {
+        remove: ["20261002T103000.000Z", "20260101T000000.000Z"],
+        fits: true,
+        cut: false,
+        used: 10,
+      },
+    },
+    {
+      name: "over it, kept sets go oldest first, never the newest whole one",
+      stored: [
+        set("20260815T000000.000Z", 40),
+        set("20260912T000000.000Z", 40),
+        set("20261001T090000.000Z", 40),
+      ],
+      incoming: 40,
+      limit: 100,
+      room: {
+        remove: ["20260815T000000.000Z", "20260912T000000.000Z"],
+        fits: true,
+        cut: true,
+        used: 40,
+      },
+    },
+    {
+      name: "when nothing makes room, the kept sets stay",
+      stored: [
+        set("20260101T000000.000Z", 10),
+        set("20260815T000000.000Z", 40),
+        set("20261001T090000.000Z", 40),
+      ],
+      incoming: 70,
+      limit: 100,
+      room: { remove: ["20260101T000000.000Z"], fits: false, cut: false, used: 80 },
+    },
+  ];
+  for (const { name, stored, incoming, limit, room } of cases) {
+    it(name, () => {
+      assert.deepStrictEqual(
+        roomFor(stored, { id: "20261002T115000.000Z", bytes: incoming }, limit, NOW),
+        room,
+      );
+    });
+  }
+});
 
 describe("a backup set, taken", () => {
   it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
@@ -78,8 +211,62 @@ describe("a backup set, taken", () => {
 
         yield* sessionFor(a.call, "door-owner");
         const next = yield* a.backup.take;
-        assert.deepStrictEqual(NodeFS.readdirSync(sets).sort(), [first.id, next.id]);
+        assert.notStrictEqual(next.id, first.id);
+        // The newer of one hour is the one kept.
+        assert.deepStrictEqual(NodeFS.readdirSync(sets), [next.id]);
         assert.deepStrictEqual(yield* backupHealth(a.call), [200, { state: "ok", set: next.id }]);
+      }),
+    );
+
+    it.effect("makes room in a full store, the oldest kept set first, and tells it", () =>
+      Effect.gen(function* () {
+        // 100 000 bytes, and two sets of the months before, each kept as its month's newest.
+        const a = yield* startCore(true, { quotaGb: 0.0001 });
+        const [older, old] = yield* storedBefore(a.storeDir, [3, 2], 40_000);
+        yield* leading(a);
+        const manifest = yield* a.backup.take;
+        assert.deepStrictEqual(NodeFS.readdirSync(NodePath.join(a.storeDir, "sets")).sort(), [
+          old,
+          manifest.id,
+        ]);
+        assert.notStrictEqual(older, manifest.id);
+        assert.deepStrictEqual(yield* backupHealth(a.call), [
+          200,
+          {
+            state: "degraded",
+            set: manifest.id,
+            usedBytes: bytesOf(NodePath.join(a.storeDir, "sets", old ?? "")),
+            neededBytes: bytesOf(NodePath.join(a.storeDir, "sets", manifest.id)),
+            quotaBytes: 100_000,
+          },
+        ]);
+      }),
+    );
+
+    it.effect("is refused when nothing makes room, every kept set staying", () =>
+      Effect.gen(function* () {
+        const a = yield* startCore(true, { quotaGb: 0.00005 });
+        const [kept] = yield* storedBefore(a.storeDir, [2], 40_000);
+        yield* leading(a);
+        const refused = yield* Effect.flip(a.backup.take);
+        assert.strictEqual(refused._tag, "BucketFull");
+        const [status, backup] = yield* backupHealth(a.call);
+        const { neededBytes, ...rest } = backup as { readonly neededBytes: number };
+        assert.deepStrictEqual(
+          [status, rest],
+          [
+            200,
+            {
+              state: "failed",
+              reason: "quota",
+              usedBytes: bytesOf(NodePath.join(a.storeDir, "sets", kept ?? "")),
+              quotaBytes: 50_000,
+            },
+          ],
+        );
+        assert.isAbove(neededBytes, 0);
+        assert.deepStrictEqual(NodeFS.readdirSync(NodePath.join(a.storeDir, "sets")), [kept]);
+        assert.deepStrictEqual(NodeFS.readdirSync(NodePath.join(a.stagingDir, "sets")), []);
       }),
     );
 

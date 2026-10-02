@@ -50,7 +50,7 @@ export interface CoreOptions {
   /** Where the bare repositories live: the volume's `/mnt/vol/git` in the container. */
   readonly gitRoot: string;
   /** Where a backup set is staged, and the store it is kept in, none: backup off (`backup.ts`). */
-  readonly backup: Pick<BackupOptions, "stagingDir" | "store" | "pgDump" | "afterDump">;
+  readonly backup: Pick<BackupOptions, "stagingDir" | "store" | "quotaGb" | "pgDump" | "afterDump">;
   readonly migrations: ReadonlyArray<Migration>;
   readonly hqProjectId: string;
   /** `HQ_ORG_TOKEN`. */

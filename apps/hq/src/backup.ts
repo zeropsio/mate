@@ -23,6 +23,11 @@
  * not restore. A set that fails leaves nothing of itself staged. `status` tells the newest set's
  * outcome, for `/health`.
  *
+ * The store keeps what the retention targets keep (`retained`): the newest set of each hour for a
+ * day, of each day for 14 days, of each month for 6 months. Before a set uploads, it makes its room
+ * under 90% of the store's quota (`roomFor`): when that costs a set the targets keep, backup is
+ * `degraded`; when nothing makes it, the set is refused and the kept sets stay.
+ *
  * @module backup
  */
 import * as NodeChildProcess from "node:child_process";
@@ -114,7 +119,15 @@ export const directoryStore = (dir: string): BackupStore => {
       io(`list ${prefix}`, async () =>
         (await walk(dir, "")).filter((object) => object.key.startsWith(prefix)),
       ),
-    remove: (key) => io(`remove ${key}`, () => NodeFSP.rm(path(key), { force: true })),
+    // As in a bucket, a key's folders are there only while a key is under them.
+    remove: (key) =>
+      io(`remove ${key}`, async () => {
+        await NodeFSP.rm(path(key), { force: true });
+        for (let at = NodePath.dirname(path(key)); at !== dir; at = NodePath.dirname(at)) {
+          if ((await NodeFSP.readdir(at).catch(() => [""])).length > 0) break;
+          await NodeFSP.rmdir(at);
+        }
+      }),
   };
 };
 
@@ -224,6 +237,8 @@ export interface BackupOptions {
   readonly stagingDir: string;
   /** Where sets are kept; none: backup off, a set only staged. */
   readonly store: BackupStore | null;
+  /** The store's quota, in GB (`HQ_BACKUP_QUOTA_GB`); none: no limit. */
+  readonly quotaGb?: number;
   /** The `pg_dump` this Core runs; the one on its path. */
   readonly pgDump?: string;
   /** For tests: what happens between the dump and the bundles. */
@@ -237,17 +252,34 @@ export class PgDumpOlder extends Schema.TaggedError<PgDumpOlder>()("PgDumpOlder"
   server: Schema.Number,
 }) {}
 
-type TakeError = BackupError | PgDumpOlder | GitError | NotLeader | SqlError;
+/** A set refused for want of room: the store holds `used` bytes it may not lose, the set `needed`. */
+export class BucketFull extends Schema.TaggedError<BucketFull>()("BucketFull", {
+  used: Schema.Number,
+  needed: Schema.Number,
+  quota: Schema.Number,
+}) {}
+
+type TakeError = BackupError | PgDumpOlder | BucketFull | GitError | NotLeader | SqlError;
+
+/** The store's bytes after a set's room was made, the set's own, and the quota. */
+interface Usage {
+  readonly usedBytes: number;
+  readonly neededBytes: number;
+  readonly quotaBytes: number;
+}
 
 type Position = Pick<Manifest, "eventSeq" | "xmax">;
 
 /**
  * Backup as `/health` tells it, the newest set's outcome: `off` with no store, `pending` before a
- * first set, `ok` with the newest set kept, `failed` with why.
+ * first set, `ok` with the newest set kept, `degraded` when a set the retention targets keep went to
+ * make its room, `failed` with why.
  */
 export type BackupStatus =
   | { readonly state: "off" | "pending" }
   | { readonly state: "ok"; readonly set: string }
+  | ({ readonly state: "degraded"; readonly set: string } & Usage)
+  | ({ readonly state: "failed"; readonly reason: "quota" } & Usage)
   | {
       readonly state: "failed";
       readonly reason: "pg_dump_older";
@@ -268,6 +300,14 @@ const failedOf = (cause: Cause.Cause<TakeError>): BackupStatus => {
         reason: "pg_dump_older",
         pgDump: error.pgDump,
         server: error.server,
+      };
+    case "BucketFull":
+      return {
+        state: "failed",
+        reason: "quota",
+        usedBytes: error.used,
+        neededBytes: error.needed,
+        quotaBytes: error.quota,
       };
     case "BackupError":
       return { state: "failed", reason: error.reason };
@@ -299,6 +339,100 @@ export class Backup extends Context.Service<
  * a set that fails removes its own staging, which must not be a kept set's.
  */
 const idOf = (takenAt: string) => takenAt.replace(/[-:]/gu, "");
+
+/** How long each target keeps sets, and the part of an id that names its hour, day, month. */
+const TARGETS: ReadonlyArray<{
+  readonly within: Partial<DateTime.DateTime.PartsForMath>;
+  readonly slot: number;
+}> = [
+  { within: { hours: 24 }, slot: "YYYYMMDDTHH".length },
+  { within: { days: 14 }, slot: "YYYYMMDD".length },
+  { within: { months: 6 }, slot: "YYYYMM".length },
+];
+
+/**
+ * The sets the retention targets keep, of `ids` at `now`: the newest of each hour for 24 hours, of
+ * each day for 14 days, of each month for 6 months; and the newest of all, whenever it was taken.
+ */
+export const retained = (ids: ReadonlyArray<string>, now: DateTime.Utc): ReadonlySet<string> => {
+  const newestFirst = [...ids].sort((a, b) => (a < b ? 1 : -1));
+  const kept = new Set(newestFirst.slice(0, 1));
+  for (const { within, slot } of TARGETS) {
+    const since = idOf(DateTime.formatIso(DateTime.subtract(now, within)));
+    const slots = new Set<string>();
+    for (const id of newestFirst) {
+      if (id >= since && !slots.has(id.slice(0, slot))) {
+        slots.add(id.slice(0, slot));
+        kept.add(id);
+      }
+    }
+  }
+  return kept;
+};
+
+/** A set in the store: whole when its manifest is there. */
+export interface StoredSet {
+  readonly id: string;
+  readonly bytes: number;
+  readonly whole: boolean;
+}
+
+/** What a new set's room costs: the sets to remove, and the bytes the store holds after. */
+export interface Room {
+  readonly remove: ReadonlyArray<string>;
+  /** Whether the new set fits under the limit then. */
+  readonly fits: boolean;
+  /** Whether a set the retention targets keep goes to make the room. */
+  readonly cut: boolean;
+  readonly used: number;
+}
+
+/**
+ * The room for `incoming` in a store holding `stored`, under `limit` bytes. The incomplete sets and
+ * those no target keeps go anyway. While the new set would not fit, the kept go too, oldest first,
+ * never the newest whole one (it is all there is until the new one is whole). When nothing makes the
+ * room, no kept set goes for a set that will not be kept.
+ */
+export const roomFor = (
+  stored: ReadonlyArray<StoredSet>,
+  incoming: { readonly id: string; readonly bytes: number },
+  limit: number,
+  now: DateTime.Utc,
+): Room => {
+  const oldestFirst = [...stored].sort((a, b) => (a.id < b.id ? -1 : 1));
+  const whole = oldestFirst.filter((set) => set.whole).map((set) => set.id);
+  const total = stored.reduce((sum, set) => sum + set.bytes, 0);
+  const goingAnyway = (kept: ReadonlySet<string>) => [
+    ...oldestFirst.filter((set) => !set.whole),
+    ...oldestFirst.filter((set) => set.whole && !kept.has(set.id)),
+  ];
+  const kept = retained([...whole, incoming.id], now);
+  const gone = goingAnyway(kept);
+  let used = total - gone.reduce((sum, set) => sum + set.bytes, 0);
+  const cut: Array<StoredSet> = [];
+  for (const set of oldestFirst) {
+    if (used + incoming.bytes <= limit) break;
+    if (set.whole && kept.has(set.id) && set.id !== whole.at(-1)) {
+      cut.push(set);
+      used -= set.bytes;
+    }
+  }
+  if (used + incoming.bytes <= limit) {
+    return {
+      remove: [...gone, ...cut].map((set) => set.id),
+      fits: true,
+      cut: cut.length > 0,
+      used,
+    };
+  }
+  const stays = goingAnyway(retained(whole, now));
+  return {
+    remove: stays.map((set) => set.id),
+    fits: false,
+    cut: false,
+    used: total - stays.reduce((sum, set) => sum + set.bytes, 0),
+  };
+};
 
 export const backupLayer = (
   options: BackupOptions,
@@ -412,21 +546,72 @@ export const backupLayer = (
           }
         });
 
+      /**
+       * Room in the store for the staged set (`roomFor`), under 90% of the quota; refused when
+       * nothing makes it. When a set the targets keep went for it, the store's usage.
+       */
+      const makeRoom = (store: BackupStore, manifest: Manifest, dir: string, now: DateTime.Utc) =>
+        Effect.gen(function* () {
+          const objects = new Map<string, Array<StoredObject>>();
+          for (const object of yield* store.list("sets/")) {
+            const id = object.key.split("/")[1] ?? "";
+            objects.set(id, [...(objects.get(id) ?? []), object]);
+          }
+          const stored = [...objects].map(([id, files]) => ({
+            id,
+            bytes: files.reduce((sum, file) => sum + file.size, 0),
+            whole: files.some((file) => file.key === setKey(id, "manifest.json")),
+          }));
+          const needed =
+            manifest.database.size +
+            manifest.repos.reduce((sum, repo) => sum + repo.size, 0) +
+            (yield* io("stat", () => NodeFSP.stat(NodePath.join(dir, "manifest.json")))).size;
+          const quota =
+            options.quotaGb === undefined ? Number.POSITIVE_INFINITY : options.quotaGb * 1e9;
+          const room = roomFor(stored, { id: manifest.id, bytes: needed }, quota * 0.9, now);
+          for (const id of room.remove) {
+            // Its manifest first: a set half removed is incomplete, never whole with files missing.
+            const files = [...(objects.get(id) ?? [])].sort(
+              (a, b) =>
+                Number(b.key === setKey(id, "manifest.json")) -
+                Number(a.key === setKey(id, "manifest.json")),
+            );
+            for (const file of files) yield* store.remove(file.key);
+          }
+          if (!room.fits) {
+            return yield* new BucketFull({ used: room.used, needed, quota: Math.round(quota) });
+          }
+          return room.cut
+            ? { usedBytes: room.used, neededBytes: needed, quotaBytes: Math.round(quota) }
+            : undefined;
+        });
+
       const attempt = Effect.gen(function* () {
         const git = yield* gitHost.git;
         // While the database stands still, git has not moved either (every push is recorded), and
         // the newest set is still whole.
         const position = yield* positionNow;
         const last = yield* newest;
-        if (last?.eventSeq === position.eventSeq && last.xmax === position.xmax) return last;
+        if (last?.eventSeq === position.eventSeq && last.xmax === position.xmax) {
+          return { manifest: last, cut: undefined };
+        }
         yield* restorable;
-        const takenAt = DateTime.formatIso(yield* DateTime.now);
+        const now = yield* DateTime.now;
+        const takenAt = DateTime.formatIso(now);
         const id = idOf(takenAt);
         const dir = NodePath.join(staged, id);
         const store = options.store;
         // A set that fails leaves nothing of itself staged: the newest staged set stays whole.
-        const manifest = yield* Effect.tap(stage(git, id, takenAt, dir, position), (manifest) =>
-          store === null ? Effect.void : keep(store, manifest, dir),
+        const { manifest, cut } = yield* Effect.flatMap(
+          stage(git, id, takenAt, dir, position),
+          (manifest) =>
+            store === null
+              ? Effect.succeed({ manifest, cut: undefined })
+              : Effect.gen(function* () {
+                  const cut = yield* makeRoom(store, manifest, dir, now);
+                  yield* keep(store, manifest, dir);
+                  return { manifest, cut };
+                }),
         ).pipe(
           Effect.onError(() =>
             Effect.ignore(io("unstage", () => NodeFSP.rm(dir, { recursive: true, force: true }))),
@@ -444,8 +629,9 @@ export const backupLayer = (
           id,
           repos: manifest.repos.length,
           bytes: manifest.database.size + manifest.repos.reduce((sum, repo) => sum + repo.size, 0),
+          ...cut,
         });
-        return manifest;
+        return { manifest, cut };
       });
 
       const take = attempt.pipe(
@@ -453,7 +639,11 @@ export const backupLayer = (
           Exit.isSuccess(exit)
             ? Ref.set(
                 status,
-                options.store === null ? { state: "off" } : { state: "ok", set: exit.value.id },
+                options.store === null
+                  ? { state: "off" }
+                  : exit.value.cut === undefined
+                    ? { state: "ok", set: exit.value.manifest.id }
+                    : { state: "degraded", set: exit.value.manifest.id, ...exit.value.cut },
               )
             : Cause.hasInterruptsOnly(exit.cause)
               ? Effect.void
@@ -462,6 +652,7 @@ export const backupLayer = (
                   Effect.logError("backup set failed", exit.cause),
                 ),
         ),
+        Effect.map(({ manifest }) => manifest),
       );
 
       return Backup.of({ take, status: Ref.get(status) });

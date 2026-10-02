@@ -153,6 +153,8 @@ export const startCore = (
     readonly afterDump?: Effect.Effect<void>;
     /** The `pg_dump` a set is taken with; the one on the path. */
     readonly pgDump?: string;
+    /** The store's quota; none by default. */
+    readonly quotaGb?: number;
   } = {},
 ) =>
   Effect.gen(function* () {
@@ -178,6 +180,7 @@ export const startCore = (
         store: given.storeless === true ? null : directoryStore(storeDir),
         ...(given.afterDump === undefined ? {} : { afterDump: given.afterDump }),
         ...(given.pgDump === undefined ? {} : { pgDump: given.pgDump }),
+        ...(given.quotaGb === undefined ? {} : { quotaGb: given.quotaGb }),
       },
       migrations: treeMigrations(),
       hqProjectId: HQ,
