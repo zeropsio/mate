@@ -697,8 +697,9 @@ describe("mateArrivalShown — what a Mate's own view keeps saying once it came 
       cameUp: true,
       expected: OPENING,
     },
-    // Failing since it last connected: past its first failure, no wait of its link holds the board
-    // — its retries and the attempts between them alike, so the two never take turns.
+    // Failing since it last connected: past its first three failures (the ladder's 2, 4 and 8 s),
+    // no wait of its link holds the board — its retries and the attempts between them alike, so
+    // the two never take turns.
     ...(
       [
         { kind: "retrying", retryAtMs: NOW, last: { kind: "network" }, restart: false },
@@ -706,19 +707,27 @@ describe("mateArrivalShown — what a Mate's own view keeps saying once it came 
         { kind: "reconnecting" },
       ] as ReadonlyArray<Reachability>
     ).map((reachability) => ({
-      case: `reaching, ${reachability.kind} after its second failure since it connected`,
+      case: `reaching, ${reachability.kind} after its fourth failure since it connected`,
       page: reaching(reachability),
       cameUp: true,
-      failuresSinceConnect: 2,
+      failuresSinceConnect: 4,
       expected: undefined,
     })),
     {
-      case: "reaching, connecting again after its first failure",
+      case: "reaching, connecting again after its third failure (a fresh server warming up)",
       page: reaching({ kind: "connecting", waitingOn: "exchange" }),
       cameUp: true,
-      failuresSinceConnect: 1,
+      failuresSinceConnect: 3,
       expected: OPENING,
     },
+    // Waiting on its access or its presence is a wait on Zerops, never its link not answering.
+    ...(["access", "presence"] as const).map((waitingOn) => ({
+      case: `reaching, connecting on its ${waitingOn} however often its link failed`,
+      page: reaching({ kind: "connecting", waitingOn }),
+      cameUp: true,
+      failuresSinceConnect: 6,
+      expected: OPENING,
+    })),
     {
       case: "reaching, its container booting whatever its link failed",
       page: reaching({ kind: "container", container: { level: "booting", overdue: false } }),

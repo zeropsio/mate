@@ -600,7 +600,7 @@ describe("a new Mate's arrival, from the press to the sign-in", () => {
     expect(buttons()).toEqual(["Remove"]);
   });
 
-  it("holds the board through its link's first failure only, never taking turns with its words", () => {
+  it("holds the board through its link's first three failures only, never taking turns with its words", () => {
     app.listing = listingOf([coming]);
     openView();
     app.listing = listingOf([QUINN]);
@@ -625,9 +625,23 @@ describe("a new Mate's arrival, from the press to the sign-in", () => {
       rung(connecting, 2),
       rung(retrying, 3),
       rung(connecting, 3),
-    ]).toEqual(["coming", "coming", "coming", "reaching", "reaching", "reaching", "reaching"]);
+      rung(retrying, 4),
+      rung(connecting, 4),
+      rung(retrying, 5),
+    ]).toEqual([
+      "coming",
+      "coming",
+      "coming",
+      "coming",
+      "coming",
+      "coming",
+      "coming",
+      "reaching",
+      "reaching",
+      "reaching",
+    ]);
     act(() => vi.advanceTimersByTime(MATE_VOICE_QUIET_MS * 3));
-    rung(retrying, 4);
+    rung(retrying, 6);
     expect(buttons()).toEqual(["Try now"]);
   });
 

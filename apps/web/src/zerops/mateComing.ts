@@ -389,10 +389,11 @@ export function mateComingPage(input: {
 
 /**
  * How many failures of its link since it last connected an arrival holds its board through: its
- * first back-off step; past it, its link's words say it is not answering, with *Try now*, and
- * keep saying so through the attempts between the retries until it connects.
+ * first three back-off steps (2, 4 and 8 s) — a fresh server warming up, its access propagating;
+ * past them, its link's words say it is not answering, with *Try now*, and keep saying so through
+ * the attempts between the retries until it connects.
  */
-export const ARRIVAL_FAILURES_HELD = 1;
+export const ARRIVAL_FAILURES_HELD = 3;
 
 /** Up, its conversation and its sign-in being read: the last of its coming words. */
 const ARRIVAL_OPENING: MateComing = { kind: "coming", line: ALMOST_THERE_LINE };
@@ -425,6 +426,10 @@ export function arrivalHoldsThrough(
     case "waiting-for-zerops":
       return true;
     case "connecting":
+      // A wait on its access or its presence is a wait on Zerops, never its link not answering.
+      return (
+        reachability.waitingOn === "access" || reachability.waitingOn === "presence" || !failing
+      );
     case "reconnecting":
       return !failing;
     case "retrying":
