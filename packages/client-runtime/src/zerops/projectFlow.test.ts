@@ -5,7 +5,6 @@ import { pullRequestBlocked, pullRequestBlockedReason } from "./gitTab.ts";
 import { mateBotLogin, mateProjectOfBranch, mateProjectOfLogin } from "./mateIdentity.ts";
 
 import type { MergeabilityKind } from "./changeMergeability.ts";
-import type { GiteaPullRequest } from "./giteaClient.ts";
 import {
   changeAuthorName,
   changeState,
@@ -15,7 +14,6 @@ import {
   releaseContentsSummary,
   releaseWaitingLabel,
   flowChanges,
-  flowPullRequest,
   flowVerbKey,
   flowVerbLabel,
   isRecipeProposal,
@@ -32,20 +30,33 @@ import {
 const VERA = "tsXR3xnURPSvsy4zp1EaYA";
 const FEN = "9lSt5lFxQ1mQ3v8b7c2d1e";
 
-function pull(overrides: Partial<GiteaPullRequest> = {}): GiteaPullRequest {
+/** Vera's open `appdev #4` as the flow carries it. */
+function row(over: Partial<FlowPullRequest> = {}): FlowPullRequest {
   return {
+    repository: "appdev",
     number: 4,
     title: "Add a due date to each todo",
+    kind: "code",
+    mateProjectId: VERA,
+    author: undefined,
+    url: "https://hq.example/changes/g1/appdev/4",
+    mergeability: "mergeable",
+    merged: false,
+    mergedAt: undefined,
     state: "open",
-    html_url: "https://gitea.example/todo/appdev/pulls/4",
-    mergeable: true,
-    head: { ref: `mate/mate-${VERA}`, sha: "abc" },
-    base: { ref: "main" },
-    user: { login: `mate-${VERA}` },
-    updated_at: "2026-09-17T18:00:00Z",
-    ...overrides,
+    headSha: "abc",
+    baseBranch: "main",
+    line: "appdev #4",
+    updatedAt: "2026-09-17T18:00:00Z",
+    ...over,
   };
 }
+
+/** A person's own change, named after them. */
+const persons = (over: Partial<FlowPullRequest> = {}): FlowPullRequest => {
+  const base = row({ mateProjectId: undefined, author: "ada", ...over });
+  return { ...base, line: `${base.repository} #${String(base.number)} · ada` };
+};
 
 describe("a Mate's changes in HQ, as the flow shows them", () => {
   const HQ = "https://hq-30db-8080.prg1.zerops.app";
@@ -152,207 +163,32 @@ describe("whose pull request it is", () => {
   });
 });
 
-describe("one pull request in the flow", () => {
-  it("belongs to the Mate whose branch it is", () => {
-    const row = flowPullRequest({
-      mergeability: "mergeable",
-      repository: "appdev",
-      pull: pull(),
-    });
-    expect(row).toMatchObject({
-      repository: "appdev",
-      number: 4,
-      kind: "code",
-      mateProjectId: VERA,
-      mergeability: "mergeable",
-      baseBranch: "main",
-      line: "appdev #4",
-    });
-  });
-
-  it("carries what a review reads: the branch, its size and its base", () => {
-    const row = flowPullRequest({
-      mergeability: "mergeable",
-      repository: "appdev",
-      pull: pull({
-        head: { ref: `mate/mate-${VERA}`, sha: "head-sha" },
-        base: { ref: "main", sha: "main-sha" },
-        additions: 42,
-        deletions: 3,
-        changed_files: 3,
-        merge_base: "mb-sha",
-      }),
-    });
-    expect(row).toMatchObject({
-      headBranch: `mate/mate-${VERA}`,
-      additions: 42,
-      deletions: 3,
-      changedFiles: 3,
-      mergeBase: "mb-sha",
-      baseSha: "main-sha",
-    });
-  });
-
-  it.each([
-    [
-      "its description as it was written",
-      { body: "Adds a /status page.\n\n![The page](x)" },
-      "Adds a /status page.\n\n![The page](x)",
-    ],
-    ["no description where the body is empty", { body: "" }, undefined],
-    ["no description where the body is only blank lines", { body: "\n  \n" }, undefined],
-    ["no description where Gitea sent none", {}, undefined],
-  ] as const)("carries %s", (_case, over, description) => {
-    const row = flowPullRequest({
-      mergeability: "mergeable",
-      repository: "appdev",
-      pull: pull(over),
-    });
-    expect(row.description).toBe(description);
-  });
-
-  it.each([
-    ["how many comments it has, which a review holds the room of", { comments: 3 }, 3],
-    ["none said", { comments: 0 }, 0],
-    ["no count where Gitea sent none", {}, undefined],
-  ] as const)("carries %s", (_case, over, count) => {
-    const row = flowPullRequest({
-      mergeability: "mergeable",
-      repository: "appdev",
-      pull: pull(over),
-    });
-    expect(row.commentCount).toBe(count);
-  });
-
-  it("carries the commit it landed as, which a release names it by", () => {
-    const row = flowPullRequest({
-      mergeability: "mergeable",
-      repository: "appdev",
-      pull: pull({ state: "closed", merged: true, merge_commit_sha: "abc123" }),
-    });
-    expect(row.mergeCommitSha).toBe("abc123");
-  });
-
-  it.each(["open", "closed"] as const)("carries whether it is %s", (state) => {
-    const row = flowPullRequest({
-      mergeability: "mergeable",
-      repository: "appdev",
-      pull: pull({ state }),
-    });
-    expect(row.state).toBe(state);
-  });
-
-  it("leaves a review's reads unknown where Gitea did not send them, never zero", () => {
-    const row = flowPullRequest({
-      mergeability: "mergeable",
-      repository: "appdev",
-      pull: pull(),
-    });
-    expect(row.additions).toBeUndefined();
-    expect(row.changedFiles).toBeUndefined();
-  });
-
-  it("belongs to the Mate whose bot opened it when a person renamed the branch", () => {
-    const row = flowPullRequest({
-      mergeability: "mergeable",
-      repository: "appdev",
-      pull: pull({ head: { ref: "due-dates", sha: "abc" } }),
-    });
-    expect(row.mateProjectId).toBe(VERA);
-  });
-
-  it("belongs to nobody's Mate when a person opened it from their own branch", () => {
-    const row = flowPullRequest({
-      mergeability: "mergeable",
-      repository: "appdev",
-      pull: pull({ head: { ref: "feature/x", sha: "abc" }, user: { login: "ada" } }),
-    });
-    expect(row.mateProjectId).toBeUndefined();
-    expect(row.line).toBe("appdev #4 · ada");
-  });
-
-  it("is a recipe change on the group repo, whoever opened it", () => {
-    const row = flowPullRequest({
-      mergeability: "mergeable",
-      repository: "group",
-      pull: pull(),
-    });
-    expect(row.kind).toBe("recipe");
-    // The row wears the "recipe" tag; the line does not say it twice.
-    expect(row.line).toBe("#4");
-  });
-
+describe("naming a change", () => {
   it("names the Mate on a row that does not sit under it, and a person once", () => {
-    const vera = flowPullRequest({
-      mergeability: "mergeable",
-      repository: "appdev",
-      pull: pull(),
-    });
-    expect(pullRequestLineWith(vera, "Vera")).toBe("appdev #4 · Vera");
-    expect(pullRequestLineWith(vera, undefined)).toBe("appdev #4");
-    const ada = flowPullRequest({
-      mergeability: "mergeable",
-      repository: "appdev",
-      pull: pull({ head: { ref: "feature/x", sha: "abc" }, user: { login: "ada" } }),
-    });
-    expect(pullRequestLineWith(ada, "Vera")).toBe("appdev #4 · ada");
-  });
-
-  it("carries the mergeability its reads came to, never one answer of Gitea's", () => {
-    for (const mergeability of ["checking", "mergeable", "conflicting"] as const) {
-      for (const mergeable of [true, false, undefined]) {
-        expect(
-          flowPullRequest({
-            repository: "appdev",
-            pull: pull({ mergeable }),
-            mergeability,
-          }).mergeability,
-        ).toBe(mergeability);
-      }
-    }
+    expect(pullRequestLineWith(row(), "Vera")).toBe("appdev #4 · Vera");
+    expect(pullRequestLineWith(row(), undefined)).toBe("appdev #4");
+    expect(pullRequestLineWith(persons(), "Vera")).toBe("appdev #4 · ada");
   });
 
   it("reads as its number and title in a menu row, a person's own naming them", () => {
-    const mine = flowPullRequest({
-      mergeability: "mergeable",
-      repository: "appdev",
-      pull: pull(),
-    });
-    expect(mine.mateProjectId).toBe(VERA);
     // Stripped to its number under its Mate the change lost its name, which
     // cost more than echoing the task above it did. The fork carries the
     // distinction instead.
-    expect(sidebarChangeLabel(mine)).toBe("#4 Add a due date to each todo");
-    const ada = flowPullRequest({
-      mergeability: "mergeable",
-      repository: "appdev",
-      pull: pull({ head: { ref: "feature/x", sha: "abc" }, user: { login: "ada" } }),
-    });
-    expect(ada.mateProjectId).toBeUndefined();
-    expect(sidebarChangeLabel(ada)).toBe("#4 Add a due date to each todo · ada");
+    expect(sidebarChangeLabel(row())).toBe("#4 Add a due date to each todo");
+    expect(sidebarChangeLabel(persons())).toBe("#4 Add a due date to each todo · ada");
   });
 });
 
 describe("sidebarChangeLabel: a Mate's changes in two repositories name their repository", () => {
-  const change = (repository: string, number: number, title: string, login: string) =>
-    flowPullRequest({
-      mergeability: "mergeable",
-      repository,
-      pull: pull({
-        number,
-        title,
-        head: {
-          ref: login.startsWith("mate-") ? login.replace("mate-", "mate/mate-") : "fix",
-          sha: "abc",
-        },
-        user: { login },
-      }),
-    });
-  const appdev = change("appdev", 1, "Build the storefront", `mate-${VERA}`);
-  const apidev = change("apidev", 1, "Rebuild the API", `mate-${VERA}`);
-  const fenApi = change("apidev", 2, "Add a health route", `mate-${FEN}`);
-  const adaApp = change("appdev", 7, "Fix a typo", "ada");
-  const adaApi = change("apidev", 8, "Tune the pool", "ada");
+  const change = (repository: string, number: number, title: string, mate?: string) =>
+    mate === undefined
+      ? persons({ repository, number, title })
+      : row({ repository, number, title, mateProjectId: mate, line: `${repository} #${number}` });
+  const appdev = change("appdev", 1, "Build the storefront", VERA);
+  const apidev = change("apidev", 1, "Rebuild the API", VERA);
+  const fenApi = change("apidev", 2, "Add a health route", FEN);
+  const adaApp = change("appdev", 7, "Fix a typo");
+  const adaApi = change("apidev", 8, "Tune the pool");
 
   it.each([
     ["one repository: number and title", appdev, [appdev, fenApi], "#1 Build the storefront"],
@@ -393,38 +229,24 @@ describe("sidebarChangeLabel: a Mate's changes in two repositories name their re
 });
 
 describe("the pull requests of each Mate", () => {
-  const vera = flowPullRequest({
-    mergeability: "mergeable",
-    repository: "appdev",
-    pull: pull(),
-  });
-  const veraRecipe = flowPullRequest({
-    mergeability: "mergeable",
+  const vera = row();
+  const veraRecipe = row({
     repository: "group",
-    pull: pull({ number: 6, title: "Mate: the group's import files" }),
+    kind: "recipe",
+    number: 6,
+    title: "Mate: the group's import files",
+    line: "#6",
   });
-  const fen = flowPullRequest({
-    mergeability: "mergeable",
-    repository: "appdev",
-    pull: pull({
-      number: 5,
-      head: { ref: `mate/mate-${FEN}`, sha: "def" },
-      user: { login: `mate-${FEN}` },
-      updated_at: "2026-09-17T19:00:00Z",
-    }),
+  const fen = row({
+    number: 5,
+    mateProjectId: FEN,
+    line: "appdev #5",
+    updatedAt: "2026-09-17T19:00:00Z",
   });
-  const ada = flowPullRequest({
-    mergeability: "mergeable",
-    repository: "appdev",
-    pull: pull({ number: 7, head: { ref: "feature/x", sha: "fff" }, user: { login: "ada" } }),
-  });
+  const ada = persons({ number: 7 });
 
   it("puts each Mate's under it, newest first, and the rest after the Mates", () => {
-    const older = flowPullRequest({
-      mergeability: "mergeable",
-      repository: "appdev",
-      pull: pull({ number: 3, updated_at: "2026-09-17T12:00:00Z" }),
-    });
+    const older = row({ number: 3, line: "appdev #3", updatedAt: "2026-09-17T12:00:00Z" });
     const grouped = pullRequestsByMate([older, ada, fen, vera, veraRecipe], [VERA, FEN]);
     // #4 and #6 moved at the same moment; the higher number is the newer one.
     expect(grouped.byMate.get(VERA)?.map((entry) => entry.number)).toEqual([6, 4, 3]);
@@ -467,44 +289,6 @@ describe("a verb in flight", () => {
   ] as const)("says what %s does, then that it is doing it", (kind, idle, running) => {
     expect(flowVerbLabel(kind, false)).toBe(idle);
     expect(flowVerbLabel(kind, true)).toBe(running);
-  });
-});
-
-describe("types", () => {
-  it("carries what every surface needs and nothing a surface decides", () => {
-    const row: FlowPullRequest = flowPullRequest({
-      mergeability: "mergeable",
-      repository: "appdev",
-      pull: pull(),
-    });
-    expect(Object.keys(row).sort()).toEqual(
-      [
-        "additions",
-        "author",
-        "baseBranch",
-        "baseSha",
-        "changedFiles",
-        "commentCount",
-        "deletions",
-        "description",
-        "headBranch",
-        "headSha",
-        "kind",
-        "line",
-        "mateProjectId",
-        "mergeBase",
-        "mergeCommitSha",
-        "mergeability",
-        "merged",
-        "mergedAt",
-        "number",
-        "repository",
-        "state",
-        "title",
-        "updatedAt",
-        "url",
-      ].sort(),
-    );
   });
 });
 
@@ -822,11 +606,7 @@ describe("a Mate's proposal of the group's recipe", () => {
       proposal: false,
     },
   ])("tells $case", ({ repository, title, proposal }) => {
-    const change = flowPullRequest({
-      mergeability: "mergeable",
-      repository,
-      pull: pull({ number: 11, title }),
-    });
-    expect(isRecipeProposal(change)).toBe(proposal);
+    const kind = repository === "group" ? "recipe" : "code";
+    expect(isRecipeProposal(row({ repository, kind, number: 11, title }))).toBe(proposal);
   });
 });

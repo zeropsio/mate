@@ -140,12 +140,7 @@ export function ZeropsChangeReview({
   const landed = useZeropsLandedChange(
     open !== undefined || merged !== undefined
       ? null
-      : {
-          giteaOrigin: flowValue?.giteaOrigin,
-          owner,
-          repository: target.repository,
-          number: target.number,
-        },
+      : { appId: target.groupId, repo: target.repository, number: target.number },
   );
   const current = open ?? merged ?? (landed.kind === "read" ? landed.pull : undefined);
   // A change just merged leaves the open ones a read before the landed ones have it: the review
@@ -254,7 +249,7 @@ function ChangeReviewData({
   });
   const run = useZeropsChangeRun({
     mateProjectId: pull.mateProjectId,
-    owner,
+    appId: target.groupId,
     repository: pull.repository,
     number: pull.number,
   });

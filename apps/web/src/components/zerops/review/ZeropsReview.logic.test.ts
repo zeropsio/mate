@@ -12,7 +12,6 @@ import {
   crewLandCommand,
   descriptionPicture,
   focusesPrimaryLate,
-  linksChange,
   diffFold,
   giteaFileUrl,
   keyStaysInReview,
@@ -249,27 +248,27 @@ describe("remarkFold: the dialog, a quick look, shows the newest of a long conve
 });
 
 describe("runWords: what it does, in the Mate's words (R3)", () => {
-  const link = "https://gitea.example/snap/appdev/pulls/2";
+  const link = "https://hq.example.test/changes/g1/appdev/2";
   it("keeps the run's own sentences and leaves the link to the change out", () => {
-    const text = `Added a **/status** route that lists the app's uptime and its last deploy, refreshed on each visit. It stays behind the sign-in, like the rest of the admin pages.\n\nPull request carrying this to main, ready for a person to merge: ${link}`;
-    expect(runWords(text, "/snap/appdev/pulls/2")).toBe(
+    const text = `Added a **/status** route that lists the app's uptime and its last deploy, refreshed on each visit. It stays behind the sign-in, like the rest of the admin pages.\n\nThe change carrying this to main, ready for a person to merge: ${link}`;
+    expect(runWords(text)).toBe(
       "Added a /status route that lists the app's uptime and its last deploy, refreshed on each visit. It stays behind the sign-in, like the rest of the admin pages.",
     );
   });
 
   it("stops at a sentence once four lines' worth is said", () => {
     const sentence = "This sentence is exactly seventy-five characters long, give or take a few.";
-    const words = runWords(Array.from({ length: 12 }, () => sentence).join(" "), "/x/y/pulls/1");
+    const words = runWords(Array.from({ length: 12 }, () => sentence).join(" "));
     expect(words?.length).toBeLessThanOrEqual(400);
     expect(words?.endsWith(".")).toBe(true);
   });
 
   it("says nothing where the run said only the link", () => {
-    expect(runWords(`Opened ${link}`, "/snap/appdev/pulls/2")).toBeUndefined();
+    expect(runWords(`Opened ${link}`)).toBeUndefined();
   });
 
   it("reads a list as sentences, not as its bullets", () => {
-    expect(runWords("- Added the route.\n- Wrote a test for it.\n", "/a/b/pulls/3")).toBe(
+    expect(runWords("- Added the route.\n- Wrote a test for it.\n")).toBe(
       "Added the route. Wrote a test for it.",
     );
   });
@@ -538,26 +537,19 @@ describe("crewLandCommand: Land now takes only work never reported or sent back"
   });
 });
 
-describe("linksChange: a message links this change, never one whose number starts the same", () => {
-  it.each([
-    ["its own address", "Ready to merge: https://gitea.example/snap/appdev/pulls/5", true],
-    ["its address before punctuation", "(https://gitea.example/snap/appdev/pulls/5).", true],
-    ["its files page", "https://gitea.example/snap/appdev/pulls/5/files", true],
-    ["#53's address", "https://gitea.example/snap/appdev/pulls/53", false],
-    ["another repository's #5", "https://gitea.example/snap/api/pulls/5", false],
-  ])("%s: %s", (_case, text, links) => {
-    expect(linksChange(text, "/snap/appdev/pulls/5")).toBe(links);
-  });
+describe("changeRunMessage: the run that made a change is the newest answer linking it", () => {
+  const HQ = "https://hq.example.test";
+  const change = (number: number) => ({ appId: "g1", repo: "appdev", number });
 
   it("picks the run that linked #5, not a newer one that linked #53", () => {
     const messages = [
-      { role: "assistant", text: "Added the route. PR: https://gitea.example/snap/appdev/pulls/5" },
+      { role: "assistant", text: `Added the route. Change: ${HQ}/changes/g1/appdev/5` },
       { role: "user", text: "Now the footer." },
-      { role: "assistant", text: "Footer done. PR: https://gitea.example/snap/appdev/pulls/53" },
+      { role: "assistant", text: `Footer done. Change: ${HQ}/changes/g1/appdev/53` },
     ];
-    expect(changeRunMessage(messages, "/snap/appdev/pulls/5")?.text).toContain("Added the route.");
-    expect(changeRunMessage(messages, "/snap/appdev/pulls/53")?.text).toContain("Footer done.");
-    expect(changeRunMessage(messages, "/snap/appdev/pulls/7")).toBeUndefined();
+    expect(changeRunMessage(messages, change(5), HQ)?.text).toContain("Added the route.");
+    expect(changeRunMessage(messages, change(53), HQ)?.text).toContain("Footer done.");
+    expect(changeRunMessage(messages, change(7), HQ)).toBeUndefined();
   });
 });
 

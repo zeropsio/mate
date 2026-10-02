@@ -41,6 +41,7 @@ import { randomUUID } from "~/lib/utils";
 import { onAccountLifetimeClose } from "./accountLifetime";
 import { useZeropsOrganizationMembersRead } from "./useZeropsMateOwners";
 import { ZeropsDataContext } from "./zeropsDataContext";
+import { useZeropsSessionOptional } from "./ZeropsSessionProvider";
 
 /** The origins an HQ's API answers (`HQ_CLIENT_ORIGINS`): this one, and the hosted app. */
 export const HOSTED_APP_ORIGIN = "https://mate.zerops.io";
@@ -127,6 +128,24 @@ export function accountHqApi(client: ZeropsApiClient, clientId: string, hq: HqEn
   });
   apis.set(key, api);
   return api;
+}
+
+/**
+ * The official HQ of the organization in view, as the person reaches it: its address and its API;
+ * `null` until its anchor is resolved, with no organization open, and outside a Zerops session.
+ */
+export function useOfficialHq(): { readonly address: string; readonly api: HqApi } | null {
+  const session = useZeropsSessionOptional();
+  const client = session?.client;
+  const clientId = session?.activeOrganization?.id;
+  const { hq } = useAccountHq(clientId);
+  return useMemo(
+    () =>
+      client === undefined || clientId === undefined || hq.kind !== "official"
+        ? null
+        : { address: hq.address, api: accountHqApi(client, clientId, hq) },
+    [client, clientId, hq],
+  );
 }
 
 /** Where an HQ stands, as this tab last read it. */

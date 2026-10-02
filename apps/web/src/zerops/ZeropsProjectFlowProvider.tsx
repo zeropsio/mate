@@ -917,6 +917,7 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
   const value = useMemo<ZeropsProjectFlowValue>(
     () => ({
       giteaOrigin,
+      hqAddress,
       signedIn,
       readable,
       signInTrouble,
@@ -936,6 +937,7 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
       deployments,
       flows,
       giteaOrigin,
+      hqAddress,
       lapsed,
       mateNames,
       pendingOrHeld,

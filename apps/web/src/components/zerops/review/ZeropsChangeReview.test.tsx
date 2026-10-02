@@ -3,11 +3,8 @@
  * merge did to the project's environments, from the files it changed, and never offers a release;
  * a code change still hands over to the release production waits for.
  */
-import type {
-  FlowPullRequest,
-  GiteaChangedFile,
-  GiteaPullRequest,
-} from "@t3tools/client-runtime/zerops";
+import type { FlowPullRequest, GiteaChangedFile } from "@t3tools/client-runtime/zerops";
+import type { HqChange } from "@t3tools/shared/hqChanges";
 import { act, createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
@@ -22,7 +19,7 @@ import {
 
 /** The account as a reload leaves it: the registry read, no project's flow read yet. */
 const account = vi.hoisted(() => ({
-  pulls: new Map<string, unknown>(),
+  changes: new Map<string, unknown>(),
   reads: [] as Array<string>,
 }));
 
@@ -40,18 +37,19 @@ vi.mock("~/zerops/projectFlowContext", () => ({
     trouble: null,
   }),
 }));
-vi.mock("~/zerops/accountGiteaSessions", () => ({
-  useGiteaReadable: () => true,
-  giteaSessionLogin: () => undefined,
-  giteaClientFor: () => ({
-    getPullRequest: async (owner: string, repository: string, number: number) => {
-      const key = `${owner}/${repository}#${String(number)}`;
+vi.mock("~/zerops/accountGiteaSessions", () => ({ giteaSessionLogin: () => undefined }));
+/** The organization's official HQ, the same one on every render, as `useOfficialHq` keeps it. */
+const hq = vi.hoisted(() => ({
+  address: "https://hq.example.test",
+  api: {
+    change: async (link: { appId: string; repo: string; number: number }) => {
+      const key = `${link.appId}/${link.repo}#${String(link.number)}`;
       account.reads.push(key);
-      return account.pulls.get(key);
+      return { change: account.changes.get(key) };
     },
-    listCommitStatuses: async () => [],
-  }),
+  },
 }));
+vi.mock("~/zerops/accountHq", () => ({ useOfficialHq: () => hq }));
 vi.mock("@tanstack/react-router", () => ({ useRouter: () => ({ navigate: async () => {} }) }));
 vi.mock("~/zerops/useZeropsChangeReadout", () => ({
   useZeropsChangeReadout: () => ({
@@ -225,27 +223,31 @@ function installTestDom(): void {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
 }
 
-const API_CHANGE: GiteaPullRequest = {
+const API_CHANGE: HqChange = {
+  appId: "group-orchard",
+  repo: "apidev",
   number: 1,
+  mateProjectId: "p-wren",
   title: "Rebuild the full API on the new schema",
+  body: "",
   state: "open",
-  html_url: "https://gitea.example.test/orchard/apidev/pulls/1",
-  mergeable: true,
-  head: { ref: "mate/mate-p-wren", sha: "d".repeat(40) },
-  base: { ref: "main" },
-  user: { login: "mate-p-wren" },
-  updated_at: "2026-09-30T09:00:00Z",
+  head: "d".repeat(40),
+  mergedSha: null,
+  landedHead: null,
+  openedAt: "2026-09-30T09:00:00Z",
+  mergedAt: null,
+  closedAt: null,
 };
 
 describe("ZeropsChangeReview: a change its project's flow does not hold yet", () => {
   afterEach(() => {
-    account.pulls.clear();
+    account.changes.clear();
     account.reads.length = 0;
     vi.unstubAllGlobals();
   });
 
-  it("reads the change from Gitea by the project's org, before the flow is read", async () => {
-    account.pulls.set("orchard/apidev#1", API_CHANGE);
+  it("reads the change from HQ by its application, before the flow is read", async () => {
+    account.changes.set("group-orchard/apidev#1", API_CHANGE);
     installTestDom();
     const { createRoot } = await import("react-dom/client");
     const host = document.createElement("div") as unknown as TestNode;
@@ -260,7 +262,7 @@ describe("ZeropsChangeReview: a change its project's flow does not hold yet", ()
         }),
       );
     });
-    expect(account.reads).toEqual(["orchard/apidev#1"]);
+    expect(account.reads).toEqual(["group-orchard/apidev#1"]);
     expect(host.textContent).toContain("Rebuild the full API on the new schema");
     expect(host.textContent).not.toContain("Reading this change");
     await act(async () => {

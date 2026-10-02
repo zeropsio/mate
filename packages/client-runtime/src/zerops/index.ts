@@ -290,13 +290,7 @@ export {
   type GitVerdict,
   type PullRequestBlocked,
 } from "./gitTab.ts";
-export {
-  groupForGiteaOwner,
-  parseGiteaChangeUrl,
-  resolveGiteaChange,
-  type GiteaChangeLink,
-  type GiteaGroupChange,
-} from "./giteaChangeLink.ts";
+export { linkedChanges, linksChange } from "./changeLinks.ts";
 export {
   branchLabel,
   mateBotLogin,
@@ -478,8 +472,8 @@ export {
   type GiteaUser,
 } from "./giteaClient.ts";
 export {
+  flowChange,
   flowChanges,
-  flowPullRequest,
   flowVerbKey,
   flowVerbLabel,
   isRecipeProposal,

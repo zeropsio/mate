@@ -18,7 +18,7 @@
  */
 import {
   changeLandedEvents,
-  parseGiteaChangeUrl,
+  linkedChanges,
   type ChangeLandedEvent,
   type FlowPullRequest,
 } from "@t3tools/client-runtime/zerops";
@@ -63,32 +63,25 @@ export function useZeropsChangeLandedEvents(
   }, [environmentId, flows, listing]);
 }
 
-/** A url as prose and markdown carry it: up to whitespace, a bracket or a quote. */
-const URL_IN_TEXT = /https?:\/\/[^\s<>()[\]"'`]+/gu;
-/** What ends a sentence around a url rather than the url itself. */
-const TRAILING_PUNCTUATION = /[.,;:!?]+$/u;
-
 type SaidMessage = { readonly text: string; readonly createdAt: string };
 
 /**
  * Messages are immutable and the list is re-read on every streamed token, so each message is
- * scanned once per forge.
+ * scanned once per official HQ.
  */
 const mentionsByMessage = new WeakMap<
   SaidMessage,
-  { origin: string; changes: ReadonlyArray<string> }
+  { hqAddress: string; changes: ReadonlyArray<string> }
 >();
 
-/** `repository#number` of every change on this forge the message links to. */
-function mentionedChanges(message: SaidMessage, giteaOrigin: string): ReadonlyArray<string> {
+/** `repository#number` of every change at the official HQ the message links to. */
+function mentionedChanges(message: SaidMessage, hqAddress: string): ReadonlyArray<string> {
   const cached = mentionsByMessage.get(message);
-  if (cached?.origin === giteaOrigin) return cached.changes;
-  const changes: Array<string> = [];
-  for (const [url] of message.text.matchAll(URL_IN_TEXT)) {
-    const change = parseGiteaChangeUrl(url.replace(TRAILING_PUNCTUATION, ""), giteaOrigin);
-    if (change !== null) changes.push(`${change.repository}#${String(change.number)}`);
-  }
-  mentionsByMessage.set(message, { origin: giteaOrigin, changes });
+  if (cached?.hqAddress === hqAddress) return cached.changes;
+  const changes = linkedChanges(message.text, hqAddress).map(
+    (link) => `${link.repo}#${String(link.number)}`,
+  );
+  mentionsByMessage.set(message, { hqAddress, changes });
   return changes;
 }
 
@@ -100,11 +93,11 @@ function mentionedChanges(message: SaidMessage, giteaOrigin: string): ReadonlyAr
 export function conversationLandings(
   events: ReadonlyArray<ChangeLandedEvent>,
   messages: ReadonlyArray<SaidMessage>,
-  giteaOrigin: string | undefined,
+  hqAddress: string | undefined,
 ): ReadonlyArray<ChangeLandedEvent> {
   const first = messages[0];
-  if (events.length === 0 || first === undefined || giteaOrigin === undefined) return NONE;
-  const mentioned = new Set(messages.flatMap((message) => mentionedChanges(message, giteaOrigin)));
+  if (events.length === 0 || first === undefined || hqAddress === undefined) return NONE;
+  const mentioned = new Set(messages.flatMap((message) => mentionedChanges(message, hqAddress)));
   const placed = events.filter(
     (event) =>
       mentioned.has(`${event.repository}#${String(event.number)}`) &&
@@ -117,9 +110,9 @@ export function useZeropsConversationLandings(
   events: ReadonlyArray<ChangeLandedEvent>,
   messages: ReadonlyArray<SaidMessage>,
 ): ReadonlyArray<ChangeLandedEvent> {
-  const giteaOrigin = useZeropsProjectFlowOptional()?.giteaOrigin;
+  const hqAddress = useZeropsProjectFlowOptional()?.hqAddress;
   return useMemo(
-    () => conversationLandings(events, messages, giteaOrigin),
-    [events, messages, giteaOrigin],
+    () => conversationLandings(events, messages, hqAddress),
+    [events, messages, hqAddress],
   );
 }

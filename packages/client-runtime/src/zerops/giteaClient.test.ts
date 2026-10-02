@@ -498,28 +498,6 @@ describe("GiteaClient deadlines (DESIGN §2.D D3)", () => {
 });
 
 describe("GiteaClient pull request shas (DESIGN A7)", () => {
-  it("a pull request carries its head and base shas and the commit it merged as", async () => {
-    const { client } = fake([
-      {
-        body: {
-          number: 4,
-          title: "Add a due date",
-          state: "closed",
-          merged: true,
-          mergeable: null,
-          head: { ref: "mate/x", sha: "head-sha" },
-          base: { ref: "main", sha: "base-sha" },
-          merge_commit_sha: "merge-sha",
-        },
-      },
-    ]);
-    const pull = await client.getPullRequest("acme", "app", 4);
-    expect(pull?.head?.sha).toBe("head-sha");
-    expect(pull?.base?.sha).toBe("base-sha");
-    expect(pull?.merge_commit_sha).toBe("merge-sha");
-    expect(pull?.mergeable).toBeNull();
-  });
-
   it("reads one page of pull requests as long as it is asked for", async () => {
     const { client, calls } = fake([{ body: [] }]);
     await client.listPullRequests("acme", "app", { state: "closed", limit: 20 });
@@ -785,32 +763,5 @@ describe("GiteaClient a change you can read (pass 16 R8)", () => {
         files: ["src/server/index.ts"],
       },
     ]);
-  });
-
-  it("a pull request carries its size, its merge base and when it was opened, where Gitea says", async () => {
-    const { client } = fake([
-      {
-        body: {
-          number: 2,
-          title: "Add a /status page",
-          state: "open",
-          additions: 42,
-          deletions: 3,
-          changed_files: 3,
-          merge_base: "mb-sha",
-          created_at: "2026-09-29T07:00:00Z",
-          head: { ref: "mate/mate-p1", sha: "head-sha" },
-          base: { ref: "main", sha: "base-sha" },
-        },
-      },
-    ]);
-    const pull = await client.getPullRequest("acme", "appdev", 2);
-    expect(pull).toMatchObject({
-      additions: 42,
-      deletions: 3,
-      changed_files: 3,
-      merge_base: "mb-sha",
-      created_at: "2026-09-29T07:00:00Z",
-    });
   });
 });

@@ -1,4 +1,5 @@
-import type { GiteaPullRequest } from "@t3tools/client-runtime/zerops";
+import { HqError, type HqApi } from "@t3tools/client-runtime/zerops/hq";
+import type { ChangeDetailResponse, HqChange } from "@t3tools/shared/hqChanges";
 import { act, createElement } from "react";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
@@ -9,45 +10,57 @@ import {
 } from "./useZeropsLandedChange";
 
 /**
- * What the forge answers each read of the change, in order — the last answer repeats — and
- * whether this tab holds a Gitea token.
+ * What HQ answers each read of the change, in order — the last answer repeats — and whether the
+ * organization's official HQ is known yet.
  */
-type Answer = "pull" | "absent" | "failed" | "unauthorized";
-const gitea = vi.hoisted(() => ({
-  readable: false,
-  answers: [] as Array<"pull" | "absent" | "failed" | "unauthorized">,
+type Answer = "change" | "absent" | "unavailable" | "forbidden";
+const hq = vi.hoisted(() => ({
+  official: false,
+  answers: [] as Array<"change" | "absent" | "unavailable" | "forbidden">,
   reads: 0,
 }));
 
-const PULL = {
-  number: 31,
-  title: "Cache the link previews",
-  html_url: "https://gitea.example.test/zit/zitdev/pulls/31",
-  merged: false,
-  state: "open",
-  head: { ref: "mate/work", sha: "abc123" },
-  base: { ref: "main" },
-} as unknown as GiteaPullRequest;
+const HQ_ADDRESS = "https://hq.example.test";
 
-vi.mock("./accountGiteaSessions", () => ({
-  useGiteaReadable: () => gitea.readable,
-  giteaClientFor: (_origin: string, onUnauthorized?: () => void) =>
-    gitea.readable
-      ? {
-          getPullRequest: async () => {
-            const answer = gitea.answers[Math.min(gitea.reads, gitea.answers.length - 1)];
-            gitea.reads += 1;
-            if (answer === "absent") return undefined;
-            if (answer === "failed") throw new Error("Gitea did not answer within 15 s.");
-            if (answer === "unauthorized") {
-              onUnauthorized?.();
-              throw new Error("You are not signed in to Gitea.");
-            }
-            return PULL;
-          },
-          listCommitStatuses: async () => [],
-        }
-      : null,
+const CHANGE: HqChange = {
+  appId: "g1",
+  repo: "zitdev",
+  number: 31,
+  mateProjectId: "mate-1",
+  title: "Cache the link previews",
+  body: "",
+  state: "merged",
+  head: "abc123",
+  mergedSha: "def456",
+  landedHead: "abc123",
+  openedAt: "2026-10-02T09:00:00.000Z",
+  mergedAt: "2026-10-02T10:00:00.000Z",
+  closedAt: null,
+};
+
+const refusal = (status: number, code: string, message: string) =>
+  new HqError({ kind: "refused", code, status, message });
+
+const api: Pick<HqApi, "change"> = {
+  change: async () => {
+    const answer = hq.answers[Math.min(hq.reads, hq.answers.length - 1)];
+    hq.reads += 1;
+    if (answer === "absent") throw refusal(404, "not_found", "HQ has no such change.");
+    if (answer === "forbidden") throw refusal(403, "forbidden", "HQ refused this (forbidden).");
+    if (answer === "unavailable") {
+      throw new HqError({
+        kind: "unavailable",
+        code: "network",
+        message: "HQ could not be reached.",
+      });
+    }
+    return { change: CHANGE } as ChangeDetailResponse;
+  },
+};
+const official = { address: HQ_ADDRESS, api };
+
+vi.mock("./accountHq", () => ({
+  useOfficialHq: () => (hq.official ? official : null),
 }));
 
 class TestNode {
@@ -115,109 +128,87 @@ function installTestDom(): void {
 }
 
 /**
- * A change a Mate links to in a message it is still writing: it opened the change a moment
- * before, and the conversation asks the forge for it on its own. Whatever the first read met, the
- * link settles on the change within a minute — never on the bare url until the page is reloaded.
+ * A change a Mate links to that the flow does not carry: HQ is asked for it on its own. Whatever
+ * the first read met, the link settles on the change within a minute — never on the bare url until
+ * the page is reloaded.
  */
 const settles: ReadonlyArray<{
   readonly name: string;
-  /** Whether the tab holds a Gitea token when the link is first drawn. */
-  readonly readableAtFirst: boolean;
+  /** Whether the official HQ is known when the link is first drawn. */
+  readonly officialAtFirst: boolean;
   readonly answers: ReadonlyArray<Answer>;
 }> = [
   {
-    name: "a token that arrives after the link is drawn",
-    readableAtFirst: false,
-    answers: ["pull"],
+    name: "an HQ anchor resolved after the link is drawn",
+    officialAtFirst: false,
+    answers: ["change"],
   },
-  { name: "a read that failed", readableAtFirst: true, answers: ["failed", "pull"] },
-  { name: "a first read that did not find it", readableAtFirst: true, answers: ["absent", "pull"] },
+  { name: "a read HQ did not answer", officialAtFirst: true, answers: ["unavailable", "change"] },
   {
-    name: "a 401 no token recovered",
-    readableAtFirst: true,
-    answers: ["unauthorized", "failed", "pull"],
+    name: "a first read that did not find it",
+    officialAtFirst: true,
+    answers: ["absent", "change"],
   },
 ];
 
+const LINK = { appId: "g1", repo: "zitdev", number: 31 };
+
 describe("useZeropsLandedChange", () => {
   afterEach(() => {
-    gitea.readable = false;
-    gitea.answers = [];
-    gitea.reads = 0;
+    hq.official = false;
+    hq.answers = [];
+    hq.reads = 0;
     vi.useRealTimers();
     vi.unstubAllGlobals();
   });
 
-  it.each(settles)("reads the change after $name", async ({ readableAtFirst, answers }) => {
+  /** The states drawn while the link is read, `officialAtFirst` turning true on the second render. */
+  async function settle(link: typeof LINK, officialAtFirst: boolean) {
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
     installTestDom();
     const { createRoot } = await import("react-dom/client");
-    gitea.readable = readableAtFirst;
-    gitea.answers = [...answers];
+    hq.official = officialAtFirst;
     const seen: Array<ZeropsLandedChangeState> = [];
-    const request = {
-      giteaOrigin: "https://gitea.example.test",
-      owner: "zit",
-      repository: "zitdev",
-      number: 31,
-    };
-
     function Probe(_props: { readonly render: number }) {
-      seen.push(useZeropsLandedChange(request));
+      seen.push(useZeropsLandedChange(link));
       return null;
     }
-
     const root = createRoot(document.createElement("div") as unknown as Element);
     await act(async () => {
       root.render(createElement(Probe, { render: 0 }));
     });
-    gitea.readable = true;
+    hq.official = true;
     await act(async () => {
       root.render(createElement(Probe, { render: 1 }));
     });
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(60_000);
+      await vi.advanceTimersByTimeAsync(10 * 60_000);
     });
-
-    expect(seen.at(-1)).toMatchObject({ kind: "read", pull: { number: 31 } });
-
     await act(async () => {
       root.unmount();
+    });
+    return seen;
+  }
+
+  it.each(settles)("reads the change after $name", async ({ officialAtFirst, answers }) => {
+    hq.answers = [...answers];
+    const seen = await settle(LINK, officialAtFirst);
+    expect(seen.at(-1)).toMatchObject({
+      kind: "read",
+      pull: { number: 31, merged: true, url: `${HQ_ADDRESS}/changes/g1/zitdev/31` },
     });
   });
 
-  it("stops asking once the forge keeps saying the change is not there", async () => {
-    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
-    installTestDom();
-    const { createRoot } = await import("react-dom/client");
-    gitea.readable = true;
-    gitea.answers = ["absent"];
-    const seen: Array<ZeropsLandedChangeState> = [];
-    const request = {
-      giteaOrigin: "https://gitea.example.test",
-      owner: "zit",
-      repository: "zitdev",
-      number: 999,
-    };
-
-    function Probe() {
-      seen.push(useZeropsLandedChange(request));
-      return null;
-    }
-
-    const root = createRoot(document.createElement("div") as unknown as Element);
-    await act(async () => {
-      root.render(createElement(Probe));
-    });
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(10 * 60_000);
-    });
-
+  it("stops asking once HQ keeps saying the change is not there", async () => {
+    hq.answers = ["absent"];
+    const seen = await settle({ ...LINK, number: 999 }, true);
     expect(seen.at(-1)).toEqual({ kind: "gone" });
-    expect(gitea.reads).toBe(1 + LANDED_CHANGE_RETRY_MS.length);
+    expect(hq.reads).toBe(1 + LANDED_CHANGE_RETRY_MS.length);
+  });
 
-    await act(async () => {
-      root.unmount();
-    });
+  it("says why when HQ will not let the person read it", async () => {
+    hq.answers = ["forbidden"];
+    const seen = await settle(LINK, true);
+    expect(seen.at(-1)).toEqual({ kind: "failed", reason: "HQ refused this (forbidden)." });
   });
 });

@@ -6,8 +6,8 @@
  * 403 to a person who is not a member, 424 in Gitea's words, or nothing at all while it is
  * unreachable. It reads a change's picture for the person the way the real one does: the bearer
  * forwarded to Gitea's `/attachments/{uuid}`, Gitea's answer relayed. Gitea answers 401 to a token
- * revoked mid-read, serves the pictures it is given, and plays a pull request's `mergeable`
- * sequence. Every request is logged with the bearer it carried.
+ * revoked mid-read, and serves the pictures it is given. Every request is logged with the bearer
+ * it carried.
  */
 
 const GITEA_API_PREFIX = "/api/v1";
@@ -56,13 +56,6 @@ export interface FakeGitea extends FakeOrigin {
   /** Every later request carrying it answers 401. */
   readonly revoke: (token: string) => void;
   readonly setTags: (owner: string, repo: string, tags: ReadonlyArray<string>) => void;
-  /** Each read of the pull request answers the next value; the last one holds. */
-  readonly scriptMergeable: (
-    owner: string,
-    repo: string,
-    number: number,
-    sequence: ReadonlyArray<boolean | null>,
-  ) => void;
   /** An attachment Gitea serves at `/attachments/{uuid}` to every live token. */
   readonly putPicture: (uuid: string, bytes: Uint8Array, type: string) => void;
   readonly requests: () => ReadonlyArray<FakeGiteaRequest>;
@@ -72,7 +65,6 @@ export function makeFakeGitea(origin: string): FakeGitea {
   const tokens = new Map<string, string>();
   const revoked = new Set<string>();
   const tags = new Map<string, ReadonlyArray<string>>();
-  const mergeable = new Map<string, Array<boolean | null>>();
   const pictures = new Map<string, { readonly bytes: Uint8Array; readonly type: string }>();
   const log: FakeGiteaRequest[] = [];
   let issued = 0;
@@ -105,18 +97,6 @@ export function makeFakeGitea(origin: string): FakeGitea {
         names.map((name) => ({ name })),
       );
     }
-    const pullRoute = /^GET \/repos\/([^/]+)\/([^/]+)\/pulls\/(\d+)$/u.exec(route);
-    if (pullRoute !== null) {
-      const sequence = mergeable.get(`${pullRoute[1]}/${pullRoute[2]}#${pullRoute[3]}`);
-      if (sequence === undefined) return json(404, { message: "pull request does not exist" });
-      const value = sequence.length > 1 ? sequence.shift() : sequence[0];
-      return json(200, {
-        number: Number(pullRoute[3]),
-        title: "change",
-        state: "open",
-        mergeable: value,
-      });
-    }
     return json(404, { message: "not found" });
   }) as typeof globalThis.fetch;
 
@@ -134,9 +114,6 @@ export function makeFakeGitea(origin: string): FakeGitea {
     },
     setTags: (owner, repo, names) => {
       tags.set(`${owner}/${repo}`, [...names]);
-    },
-    scriptMergeable: (owner, repo, number, sequence) => {
-      mergeable.set(`${owner}/${repo}#${String(number)}`, [...sequence]);
     },
     putPicture: (uuid, bytes, type) => {
       pictures.set(uuid, { bytes: bytes.slice(), type });

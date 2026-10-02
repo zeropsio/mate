@@ -20,7 +20,7 @@ import { createMergeabilityTracker, mergeReadOf } from "./forge/mergeState.ts";
 import type { GiteaPullRequest, GiteaRepository } from "./giteaClient.ts";
 import type { GroupEnvironment } from "./groupEnvironments.ts";
 import { mateNextStep } from "./mateNextStep.ts";
-import { changeState, flowPullRequest, type FlowPullRequest } from "./projectFlow.ts";
+import { changeState, type FlowPullRequest } from "./projectFlow.ts";
 
 const DECLARATIONS: ReadonlyArray<GroupEnvironment> = [
   { name: "stage", tier: "stage", project: "p1", sources: ["main"], deploy: "on-push" },
@@ -774,7 +774,23 @@ describe("one MergeState on every surface (DESIGN §4.7, A7, A11)", () => {
         ...read.over,
       });
       const mergeability = tracker.after("api#12", mergeReadOf(gitea, read.atMs)).kind;
-      const flow = flowPullRequest({ repository: "api", pull: gitea, mergeability });
+      const flow: FlowPullRequest = {
+        repository: "api",
+        number: 12,
+        title: "Invoices",
+        kind: "code",
+        mateProjectId: "p1",
+        author: undefined,
+        url: "https://hq.example/changes/g1/api/12",
+        mergeability,
+        merged: false,
+        mergedAt: undefined,
+        state: "open",
+        headSha: "abc",
+        baseBranch: "main",
+        line: "api #12",
+        updatedAt: undefined,
+      };
       seen = {
         mergeability,
         tab: gitBlock({

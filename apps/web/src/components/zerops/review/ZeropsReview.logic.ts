@@ -10,7 +10,12 @@
  */
 import { sha1 } from "@noble/hashes/legacy";
 import { bytesToHex, utf8ToBytes } from "@noble/hashes/utils";
-import type { ReviewPrimary, ReviewVerdict } from "@t3tools/client-runtime/zerops";
+import {
+  linksChange,
+  type ReviewPrimary,
+  type ReviewVerdict,
+} from "@t3tools/client-runtime/zerops";
+import type { ChangeLink } from "@t3tools/shared/hqChanges";
 
 export type ReviewKind = "change" | "release" | "rollback" | "crew-task";
 
@@ -264,22 +269,14 @@ export function remarkFold(input: {
   return { hidden: folds ? input.total - DIALOG_REMARKS_SHOWN : 0 };
 }
 
-/**
- * Whether `text` links the change at `changePath` (`/{org}/{repo}/pulls/{n}`) — its page or one
- * under it, never a change whose number only starts the same (`/pulls/5` is not `/pulls/53`).
- */
-export function linksChange(text: string, changePath: string): boolean {
-  const escaped = changePath.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
-  return new RegExp(`${escaped}(?![0-9])`, "u").test(text);
-}
-
-/** The newest of a Mate's answers that links the change: the run that made it. */
+/** The newest of a Mate's answers that links the change at the official HQ: the run that made it. */
 export function changeRunMessage<M extends { readonly role: string; readonly text: string }>(
   messages: ReadonlyArray<M>,
-  changePath: string,
+  change: ChangeLink,
+  hqAddress: string,
 ): M | undefined {
   return messages.findLast(
-    (message) => message.role === "assistant" && linksChange(message.text, changePath),
+    (message) => message.role === "assistant" && linksChange(message.text, change, hqAddress),
   );
 }
 
@@ -301,17 +298,14 @@ function plainText(text: string): string {
 
 /**
  * What a change does, in the words of the run that made it: the sentences of the Mate's
- * message that links it, the link's own sentence left out, up to about four lines. The rest
- * is the run's, one click away.
+ * message that links it, every sentence with an address left out — the link's own among them —
+ * up to about four lines. The rest is the run's, one click away.
  */
-export function runWords(text: string, changePath: string): string | undefined {
+export function runWords(text: string): string | undefined {
   const sentences = plainText(text)
     .split(/(?<=[.!?])\s+/u)
     .map((sentence) => sentence.trim())
-    .filter(
-      (sentence) =>
-        sentence.length > 0 && !linksChange(sentence, changePath) && !/https?:\/\//u.test(sentence),
-    );
+    .filter((sentence) => sentence.length > 0 && !/https?:\/\//u.test(sentence));
   const kept: Array<string> = [];
   let length = 0;
   for (const sentence of sentences) {

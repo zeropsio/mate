@@ -99,6 +99,11 @@ export type FlowVerbOutcome =
 export interface ZeropsProjectFlowValue {
   readonly giteaOrigin: string | undefined;
   /**
+   * The organization's official HQ, whose addresses name a Mate's changes; `undefined` until its
+   * anchor is resolved, and nothing is read as one of its changes until then.
+   */
+  readonly hqAddress: string | undefined;
+  /**
    * Whether what was read as the person stands: this tab holds a Gitea session, or is getting one
    * back after holding it — stale, with the cause in `trouble` after two failed tries. Without it
    * the flows are empty.
