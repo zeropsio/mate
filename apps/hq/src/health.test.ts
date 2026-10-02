@@ -11,9 +11,14 @@ import * as HttpServerResponse from "effect/unstable/http/HttpServerResponse";
 import { TempPostgres, tempPostgresLayer } from "../test/harness/tempPostgres.ts";
 import { healthRoute } from "./health.ts";
 import { Leader, type LeaderStatus } from "./leader.ts";
+import { Official, type OfficialStatus } from "./official.ts";
 
-/** `GET /health` for a leader in `status`, over a pool on `databaseUrl`. */
-const getHealth = (status: LeaderStatus, databaseUrl: string) =>
+/** `GET /health` for a leader in `status` and the official verdict, over a pool on `databaseUrl`. */
+const getHealth = (
+  status: LeaderStatus,
+  official: OfficialStatus["official"],
+  databaseUrl: string,
+) =>
   Effect.gen(function* () {
     const handler = yield* HttpRouter.toHttpEffect(healthRoute("b1"));
     const response = yield* handler.pipe(
@@ -24,6 +29,9 @@ const getHealth = (status: LeaderStatus, databaseUrl: string) =>
       Effect.provide(
         Layer.mergeAll(
           Layer.succeed(Leader, { status: Effect.succeed(status) }),
+          Layer.succeed(Official, {
+            status: Effect.succeed({ official, allowed: official === "ok" }),
+          }),
           PgClient.layer({ url: Redacted.make(databaseUrl), connectTimeout: Duration.seconds(1) }),
         ),
       ),
@@ -34,31 +42,53 @@ const getHealth = (status: LeaderStatus, databaseUrl: string) =>
 
 const cases: ReadonlyArray<{
   readonly leader: LeaderStatus;
+  readonly official: OfficialStatus["official"];
   readonly database: "up" | "down";
   readonly status: number;
 }> = [
-  { leader: { state: "active", epoch: 3 }, database: "up", status: 200 },
-  { leader: { state: "standby", epoch: null }, database: "up", status: 200 },
-  { leader: { state: "starting", epoch: null }, database: "up", status: 503 },
-  { leader: { state: "failed", epoch: null }, database: "down", status: 503 },
+  { leader: { state: "active", epoch: 3 }, official: "ok", database: "up", status: 200 },
+  // A Core that is not the official HQ is a healthy standby: its deploy must pass.
+  {
+    leader: { state: "standby", epoch: null },
+    official: "anchor_missing",
+    database: "up",
+    status: 200,
+  },
+  {
+    leader: { state: "standby", epoch: null },
+    official: "credentials_wrong",
+    database: "up",
+    status: 200,
+  },
+  { leader: { state: "starting", epoch: null }, official: "unknown", database: "up", status: 503 },
+  {
+    leader: { state: "failed", epoch: null },
+    official: "anchor_elsewhere",
+    database: "down",
+    status: 503,
+  },
 ];
 
 describe("GET /health", () => {
   it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
-    for (const { leader, database, status } of cases) {
-      it.effect(`answers ${String(status)} for ${leader.state} with the database ${database}`, () =>
-        Effect.gen(function* () {
-          const postgres = yield* TempPostgres;
-          const url = database === "up" ? yield* postgres.createDatabase : yield* postgres.deadUrl;
-          const response = yield* getHealth(leader, url);
-          assert.strictEqual(response.status, status);
-          assert.deepStrictEqual(response.body, {
-            state: leader.state,
-            db: database,
-            epoch: leader.epoch,
-            build: "b1",
-          });
-        }),
+    for (const { leader, official, database, status } of cases) {
+      it.effect(
+        `answers ${String(status)} for ${leader.state}, ${official}, the database ${database}`,
+        () =>
+          Effect.gen(function* () {
+            const postgres = yield* TempPostgres;
+            const url =
+              database === "up" ? yield* postgres.createDatabase : yield* postgres.deadUrl;
+            const response = yield* getHealth(leader, official, url);
+            assert.strictEqual(response.status, status);
+            assert.deepStrictEqual(response.body, {
+              state: leader.state,
+              official,
+              db: database,
+              epoch: leader.epoch,
+              build: "b1",
+            });
+          }),
       );
     }
   });

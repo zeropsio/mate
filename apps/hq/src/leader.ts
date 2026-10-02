@@ -2,11 +2,12 @@
  * The one-writer rule. Of all running Core instances, the one holding a Postgres advisory lock on
  * a session of its own leads; every other instance is a standby and writes nothing.
  *
- * A session: open a connection outside the pool (the lock belongs to that session), block in
+ * Only the official HQ competes (`official.ts`). A session: open a connection outside the pool
+ * (the lock belongs to that session), wait while this HQ is not the official one, block in
  * `pg_advisory_lock`, raise the epoch and run the pending migrations, then lead. A heartbeat on the
- * lock connection keeps checking that this session still holds the epoch; any failure ends the
- * session — the connection closes, the lock is released, the instance is a standby again and
- * tries anew.
+ * lock connection keeps checking that this session still holds the epoch and that this HQ is still
+ * the official one; any failure ends the session — the connection closes, the lock is released,
+ * the instance is a standby again and tries anew.
  *
  * @module leader
  */
@@ -18,9 +19,11 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import type * as Redacted from "effect/Redacted";
 import * as Ref from "effect/Ref";
+import * as Schedule from "effect/Schedule";
 import type * as SqlClient from "effect/unstable/sql/SqlClient";
 
 import { type Migration, migrate } from "./migrations.ts";
+import { Official } from "./official.ts";
 
 /**
  * `starting` until the first session reaches the database; `standby` while connected and not
@@ -43,7 +46,7 @@ export class Leader extends Context.Service<
 export interface LeaderOptions {
   readonly databaseUrl: Redacted.Redacted;
   readonly migrations: ReadonlyArray<Migration>;
-  /** How often the lock connection is checked while this instance leads. */
+  /** How often the lock connection and the official verdict are checked. */
   readonly heartbeat?: Duration.Duration;
   /** A heartbeat that takes longer ends the session: the connection is presumed gone. */
   readonly heartbeatTimeout?: Duration.Duration;
@@ -86,15 +89,24 @@ class Lost {
   readonly _tag = "Lost";
 }
 
+class NotOfficial {
+  readonly _tag = "NotOfficial";
+}
+
 export const leaderLayer = (
   options: LeaderOptions,
-): Layer.Layer<Leader, never, SqlClient.SqlClient> =>
+): Layer.Layer<Leader, never, SqlClient.SqlClient | Official> =>
   Layer.effect(
     Leader,
     Effect.gen(function* () {
       const heartbeat = options.heartbeat ?? Duration.seconds(2);
       const heartbeatTimeout = options.heartbeatTimeout ?? Duration.seconds(5);
       const retryAfter = options.retryAfter ?? Duration.seconds(2);
+      const official = yield* Official;
+      const allowed = Effect.map(official.status, (current) => current.allowed);
+      const stillOfficial = Effect.flatMap(allowed, (ok) =>
+        ok ? Effect.void : Effect.fail(new NotOfficial()),
+      );
       const status = yield* Ref.make<Internal>({
         state: "starting",
         epoch: null,
@@ -129,7 +141,12 @@ export const leaderLayer = (
           discard: true,
         });
         yield* Ref.update(status, reached);
+        yield* allowed.pipe(
+          Effect.repeat({ schedule: Schedule.spaced(heartbeat), until: (ok) => ok }),
+        );
         yield* connection.query(`SELECT pg_advisory_lock(${String(LOCK_KEY)})`);
+        // The verdict may have changed while this session waited behind another holder.
+        yield* stillOfficial;
 
         // With the schema there the epoch moves first; the first boot has no table to raise yet.
         const raise = readEpoch(
@@ -152,8 +169,8 @@ export const leaderLayer = (
         );
         return yield* Effect.andThen(
           Effect.sleep(heartbeat),
-          Effect.flatMap(check, (current) =>
-            current === epoch ? Effect.void : Effect.fail(new Lost()),
+          Effect.flatMap(check, (current): Effect.Effect<void, Lost | NotOfficial> =>
+            current === epoch ? stillOfficial : Effect.fail(new Lost()),
           ),
         ).pipe(Effect.forever);
       }).pipe(

@@ -1,8 +1,9 @@
 /**
  * `GET /health`: what this instance is doing, for the platform's readiness check and for people.
  * 200 for `standby` and `active` — a healthy standby must pass, or a rolling deploy could never
- * cut over to an instance that waits for the old one's lock — 503 otherwise. `db` is a fresh
- * `SELECT 1` on the pool, reported, never judged.
+ * cut over to an instance that waits for the old one's lock — 503 otherwise. A Core that is not
+ * the official HQ (`official`, see `official.ts`) is such a standby. `db` is a fresh `SELECT 1` on
+ * the pool, reported, never judged.
  *
  * @module health
  */
@@ -13,6 +14,7 @@ import * as HttpServerResponse from "effect/unstable/http/HttpServerResponse";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
 
 import { Leader } from "./leader.ts";
+import { Official } from "./official.ts";
 
 /** A stuck database must not hang the health check with it. */
 const PROBE_TIMEOUT = Duration.seconds(2);
@@ -23,6 +25,7 @@ export const healthRoute = (build: string) =>
     "/health",
     Effect.gen(function* () {
       const { state, epoch } = yield* (yield* Leader).status;
+      const { official } = yield* (yield* Official).status;
       const sql = yield* SqlClient.SqlClient;
       const db = yield* sql`SELECT 1`.pipe(
         Effect.timeout(PROBE_TIMEOUT),
@@ -31,7 +34,7 @@ export const healthRoute = (build: string) =>
       );
       const serving = state === "standby" || state === "active";
       return HttpServerResponse.jsonUnsafe(
-        { state, db, epoch, build },
+        { state, official, db, epoch, build },
         { status: serving ? 200 : 503 },
       );
     }),

@@ -7,6 +7,7 @@ import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Layer from "effect/Layer";
 import * as Redacted from "effect/Redacted";
+import * as Ref from "effect/Ref";
 import * as Schedule from "effect/Schedule";
 import * as Scope from "effect/Scope";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
@@ -14,6 +15,7 @@ import * as SqlClient from "effect/unstable/sql/SqlClient";
 import { TempPostgres, tempPostgresLayer } from "../test/harness/tempPostgres.ts";
 import { LOCK_KEY, Leader, type LeaderStatus, leaderLayer } from "./leader.ts";
 import { type Migration, MIGRATIONS_TABLE } from "./migrations.ts";
+import { Official } from "./official.ts";
 import { treeMigrations } from "./migrationFiles.ts";
 
 const FAST = {
@@ -22,14 +24,28 @@ const FAST = {
   retryAfter: Duration.millis(100),
 };
 
-/** One Core instance's leader over `url`, stopped by closing its own scope. */
-const startInstance = (url: string, migrations: ReadonlyArray<Migration> = treeMigrations()) =>
+/**
+ * One Core instance's leader over `url`, stopped by closing its own scope. It is the official HQ
+ * while `allowed` holds (always, unless a test passes its own).
+ */
+const startInstance = (
+  url: string,
+  migrations: ReadonlyArray<Migration> = treeMigrations(),
+  allowed?: Ref.Ref<boolean>,
+) =>
   Effect.gen(function* () {
     const scope = yield* Scope.make();
     const databaseUrl = Redacted.make(url);
+    const official = Official.of({
+      status: Effect.map(allowed === undefined ? Effect.succeed(true) : Ref.get(allowed), (ok) => ({
+        official: ok ? "ok" : "anchor_missing",
+        allowed: ok,
+      })),
+    });
     const context = yield* Layer.buildWithScope(
       leaderLayer({ databaseUrl, migrations, ...FAST }).pipe(
         Layer.provideMerge(PgClient.layer({ url: databaseUrl })),
+        Layer.provide(Layer.succeed(Official, official)),
       ),
       scope,
     );
@@ -173,6 +189,39 @@ describe("leaderLayer", () => {
           yield* statusWhere(core.leader, (status) => status.state === "active");
           assert.deepStrictEqual(yield* broken.leader.status, { state: "failed", epoch: null });
           yield* broken.stop;
+          yield* core.stop;
+        }),
+    );
+    it.effect(
+      "competes for the lock only while it is the official HQ, and gives it up when it stops being",
+      () =>
+        Effect.gen(function* () {
+          const url = yield* (yield* TempPostgres).createDatabase;
+          const allowed = yield* Ref.make(false);
+          const core = yield* startInstance(url, treeMigrations(), allowed);
+          yield* statusWhere(core.leader, (status) => status.state === "standby");
+          assert.deepStrictEqual(yield* statesSeen(core.leader), ["standby"]);
+
+          yield* Ref.set(allowed, true);
+          assert.deepStrictEqual(
+            yield* statusWhere(core.leader, (status) => status.state === "active"),
+            { state: "active", epoch: 1 },
+          );
+
+          yield* Ref.set(allowed, false);
+          yield* statusWhere(core.leader, (status) => status.state === "standby");
+          const rival = yield* PgConnection.make({ url: Redacted.make(url) });
+          const taken = yield* rival.query(
+            `SELECT pg_try_advisory_lock(${String(LOCK_KEY)}) AS taken`,
+          );
+          assert.strictEqual(taken.rows[0]?.["taken"], true);
+          yield* rival.query(`SELECT pg_advisory_unlock(${String(LOCK_KEY)})`);
+
+          yield* Ref.set(allowed, true);
+          assert.deepStrictEqual(
+            yield* statusWhere(core.leader, (status) => status.state === "active"),
+            { state: "active", epoch: 2 },
+          );
           yield* core.stop;
         }),
     );
