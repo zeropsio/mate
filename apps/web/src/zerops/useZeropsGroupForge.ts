@@ -58,6 +58,7 @@ import {
   type ForgePart,
   type ForgeReads,
   type MergeabilityTracker,
+  type StatusReadOptions,
 } from "@t3tools/client-runtime/zerops/forge";
 import { useCallback, useEffect, useRef, useState } from "react";
 
@@ -475,8 +476,10 @@ async function readRepositoryPulls(
       head === undefined
         ? []
         : await reads.statuses
-            .read({ owner: slug, repo: repository, sha: head }, () =>
-              client.listCommitStatuses(slug, repository, head),
+            .read(
+              { owner: slug, repo: repository, sha: head },
+              () => client.listCommitStatuses(slug, repository, head),
+              LIVE,
             )
             .catch(() => []);
     pullRequests.push(row(pull, open.atMs, checks));
@@ -512,12 +515,17 @@ async function readReleases(
   for (const tag of releaseTags) {
     const entries = readReleaseMessage(tag.message ?? "");
     const sha = tag.commit?.sha;
+    // The newest waits for its own verdict, which may land on a commit an older tag's already
+    // settled, and still takes production's after it; an older one is over.
+    const asked = newest === undefined ? { settled: judged(tag.name), live: true } : undefined;
     const statuses =
       sha === undefined
         ? []
         : await reads.statuses
-            .read({ owner: slug, repo: GROUP_REPOSITORY, sha }, () =>
-              client.listCommitStatuses(slug, GROUP_REPOSITORY, sha),
+            .read(
+              { owner: slug, repo: GROUP_REPOSITORY, sha },
+              () => client.listCommitStatuses(slug, GROUP_REPOSITORY, sha),
+              asked,
             )
             .catch(() => []);
     const { verdict, detail } = releaseVerdict(tag.name, statuses);
@@ -544,6 +552,17 @@ async function readReleases(
   }
   return { releases, tags: releaseTags.map((tag) => tag.name), newest };
 }
+
+/** A pull request's head still takes checks after its first ones pass: a second workflow, a rerun. */
+const LIVE: StatusReadOptions = { live: true };
+
+/** Statuses that carry the broker's final word on `tag`. */
+const judged =
+  (tag: string) =>
+  (statuses: ReadonlyArray<GiteaCommitStatus>): boolean => {
+    const { verdict } = releaseVerdict(tag, statuses);
+    return verdict === "approved" || verdict === "refused";
+  };
 
 /** Newest release first, by version rather than by name. */
 function byVersionDescending(left: { readonly name: string }, right: { readonly name: string }) {

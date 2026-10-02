@@ -19,7 +19,8 @@
  * the counter moved. Everything else is answered from what was kept. A repository the listing
  * does not name, or names without those fields, is never kept. Tags, which the listing cannot
  * see, are read again at most every {@link TAGS_MAX_AGE_MS}. Commit statuses are the status
- * memo's: settled ones kept until forgotten, pending ones on its back-off (`forge/statusMemo.ts`).
+ * memo's: pending ones on its back-off, settled ones until forgotten — or, on a commit that still
+ * takes contexts, on a slower back-off of their own (`forge/statusMemo.ts`).
  *
  * Every open tab re-read every group whole every minute — the org's repositories, each one's open
  * and closed pull requests, the group repo's tags, files and branches — about 160 requests a

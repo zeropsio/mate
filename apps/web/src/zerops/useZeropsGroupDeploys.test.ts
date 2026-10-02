@@ -616,8 +616,13 @@ describe("readGroupDeploys on the org's listing", () => {
           reads,
         })
       )(held);
-    const first = await read(undefined);
+    let first = await read(undefined);
     expect(calls).toEqual(["repos", ...GROUP_REPO_READ, "statuses app@3f9c1b2"]);
+    // A refresh a minute until the deploy's checks are between rungs of their back-off (0, 1, 3, 8).
+    for (let minute = 1; minute < 9; minute += 1) {
+      vi.advanceTimersByTime(GROUP_DEPLOYS_REFRESH_MS);
+      first = await read(first);
+    }
     calls.length = 0;
     vi.advanceTimersByTime(GROUP_DEPLOYS_REFRESH_MS);
     move(listed);
@@ -625,6 +630,46 @@ describe("readGroupDeploys on the org's listing", () => {
     expect(calls).toEqual(asked);
     // What the screen shows is the same answer, read or kept.
     expect(next).toEqual(first);
+  });
+});
+
+describe("a late check on a deploy's commit", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("is seen within five minutes, though nothing was pushed and nothing deployed", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(Date.parse("2026-10-02T12:00:00Z"));
+    const { client: base } = listedGroupRepo();
+    let statuses = [{ context: "ci", state: "success" }];
+    const client = { ...base, listCommitStatuses: async () => statuses } as unknown as GiteaClient;
+    const reads = createForgeReads();
+    let held: ZeropsGroupDeployState | undefined;
+    const read = async () => {
+      held = (
+        await readGroupDeploys({
+          client,
+          group: GROUP,
+          scope: "group",
+          readVersion: async () => SHA,
+          held,
+          signal: new AbortController().signal,
+          reads,
+        })
+      )(held);
+      return held?.environments[0]?.services[0];
+    };
+    await read();
+    for (let minute = 0; minute < 10; minute += 1) {
+      vi.advanceTimersByTime(GROUP_DEPLOYS_REFRESH_MS);
+      await read();
+    }
+    // A failed deploy posts to the commit long after its checks settled.
+    statuses = [{ context: "deploy", state: "failure" }, ...statuses];
+    vi.advanceTimersByTime(5 * GROUP_DEPLOYS_REFRESH_MS);
+    const service = await read();
+    expect(JSON.stringify(service)).toContain("failure");
   });
 });
 

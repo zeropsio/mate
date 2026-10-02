@@ -57,6 +57,7 @@ import {
   type ForgePart,
   type ForgeReadRef,
   type ForgeReads,
+  type StatusReadOptions,
 } from "@t3tools/client-runtime/zerops/forge";
 
 import type { ZeropsDeployedVersionReader } from "./useZeropsDeployedVersion";
@@ -164,6 +165,9 @@ export function deployGroupKey(group: ZeropsDeployGroup): string {
     ]),
   ]);
 }
+
+/** A running commit still takes contexts once its checks pass: production's deploy, say. */
+const RUNNING: StatusReadOptions = { live: true };
 
 const STATUSES: ReadonlySet<ForgePart> = new Set(["statuses"]);
 const PULLS_AND_CODE: ReadonlySet<ForgePart> = new Set(["pulls", "code"]);
@@ -308,7 +312,7 @@ export async function readGroupDeploys(input: {
     // A refusal is not an answer: the row says nothing about a deploy
     // it could not be told about, rather than calling it neutral.
     const answered = await memo
-      .read(read, () => client.listCommitStatuses(read.owner, read.repo, read.sha))
+      .read(read, () => client.listCommitStatuses(read.owner, read.repo, read.sha), RUNNING)
       .catch(() => null);
     if (answered !== null) statuses.set(deployStatusKey(read), answered);
   }
