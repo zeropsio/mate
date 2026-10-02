@@ -73,7 +73,10 @@ export interface GiteaRepository {
   readonly html_url?: string | undefined;
   readonly owner?: { readonly login?: string | undefined } | undefined;
   readonly description?: string | undefined;
+  /** Moves with every push to any branch, never with a status, a title or an API-made tag. */
   readonly updated_at?: string | undefined;
+  /** How many pull requests are open: moves when one opens, closes or merges. */
+  readonly open_pr_counter?: number | undefined;
   /** The probe guide 4.5 insists on: what *this person* may do here. */
   readonly permissions?: GiteaRepositoryPermissions | undefined;
 }
