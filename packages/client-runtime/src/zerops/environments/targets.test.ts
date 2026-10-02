@@ -361,6 +361,21 @@ describe("containerTargetsOf", () => {
     ]);
   });
 
+  it("carries when the row's container was made, for its first build's wait", () => {
+    const made = "2026-10-02T10:00:00.000Z";
+    const row: CandidateRow = {
+      ...mateRow("READY_TO_DEPLOY", null),
+      service: { id: "service-1", name: "zcp", status: "READY_TO_DEPLOY", created: made },
+    };
+    expect(containerTargetsOf([row], [], null)).toEqual([
+      {
+        key: KEY,
+        origin: null,
+        platform: { project: "ACTIVE", service: "READY_TO_DEPLOY", serviceCreated: made },
+      },
+    ]);
+  });
+
   it("reads a remembered Mate of a listed project at its record's origin, the route's first (A16)", () => {
     const other = { id: "project-2", name: "blog", status: "ACTIVE" } as ZeropsProject;
     const otherOrigin = "https://zcp-9f1a-8080.prg1.zerops.app";
