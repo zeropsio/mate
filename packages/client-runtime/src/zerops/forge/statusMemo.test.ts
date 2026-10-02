@@ -5,6 +5,7 @@ import {
   createCommitStatusMemo,
   newestStatusesSettled,
   SETTLED_RECHECK_LADDER_MS,
+  VERDICT_RECHECK_LADDER_MS,
   STATUS_RECHECK_LADDER_MS,
   type CommitStatusMemo,
   type StatusReadOptions,
@@ -104,6 +105,17 @@ describe("commit status memo", () => {
     const at = await readsOver((call) => answers[call] ?? answers[1]!, 4, { live: true });
     // Read at 0, the late failure at 60 — a change, so from the bottom again: 120, 240.
     expect(at).toEqual([0, 60, 120, 240]);
+  });
+
+  it("waits on a ladder of the reader's own for what it waits for", async () => {
+    // A verdict that never comes: read at 0, 15, 45, 105, 225, then every five minutes.
+    const waitsFor = () => false;
+    const at = await readsOver(() => [status("success")], 16, {
+      settled: waitsFor,
+      waiting: VERDICT_RECHECK_LADDER_MS,
+    });
+    expect(VERDICT_RECHECK_LADDER_MS).toEqual([15_000, 30_000, 60_000, 120_000, 300_000]);
+    expect(at).toEqual([0, 15, 45, 105, 225, 525, 825]);
   });
 
   it("keeps reading a commit on the pending back-off until the context its reader waits for is done", async () => {

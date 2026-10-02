@@ -491,6 +491,37 @@ describe("readForge on the org's listing", () => {
     });
   });
 
+  it.each([
+    { minutes: 10, atMost: 6 },
+    { minutes: 60, atMost: 16 },
+  ])(
+    "asks a release the broker never judges about at most $atMost times in $minutes minutes",
+    async ({ minutes, atMost }) => {
+      vi.useFakeTimers();
+      vi.setSystemTime(Date.parse("2026-10-02T12:00:00Z"));
+      const { client: base } = listedOrg();
+      let asked = 0;
+      const client = {
+        ...base,
+        listTags: async () => [
+          { name: "v0.1.1", commit: { sha: "g1" } },
+          { name: "v0.1.0", commit: { sha: "g1" } },
+        ],
+        listCommitStatuses: async (_owner: string, repo: string) => {
+          if (repo === "group") asked += 1;
+          return [{ context: "mate/release/v0.1.0", state: "success" }];
+        },
+      } as unknown as GiteaClient;
+      const reads = createForgeReads();
+      const tracker = createMergeabilityTracker();
+      for (let minute = 0; minute < minutes; minute += 1) {
+        await readForge(client, "harbor", "group", tracker, reads);
+        vi.advanceTimersByTime(GROUP_FORGE_REFRESH_MS);
+      }
+      expect(asked).toBeLessThanOrEqual(atMost);
+    },
+  );
+
   it("asks a release's commit again when a new tag points at it, though nothing was pushed", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(Date.parse("2026-10-02T12:00:00Z"));

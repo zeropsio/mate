@@ -27,6 +27,15 @@ import type { GiteaCommitStatus } from "../giteaClient.ts";
 /** How long statuses that may still move are kept before the next read, rung by rung. */
 export const STATUS_RECHECK_LADDER_MS: ReadonlyArray<number> = [15_000, 30_000, 60_000];
 
+/**
+ * How long a commit is kept while its reader waits for a context that may never come — a release
+ * the broker never judges — rung by rung: a verdict that lands within a minute shows within a tick
+ * or two, and one that never lands costs a read every five minutes.
+ */
+export const VERDICT_RECHECK_LADDER_MS: ReadonlyArray<number> = [
+  15_000, 30_000, 60_000, 120_000, 300_000,
+];
+
 /** How long settled statuses of a commit that still takes contexts are kept, rung by rung. */
 export const SETTLED_RECHECK_LADDER_MS: ReadonlyArray<number> = [60_000, 120_000, 300_000];
 
@@ -34,6 +43,8 @@ export const SETTLED_RECHECK_LADDER_MS: ReadonlyArray<number> = [60_000, 120_000
 export interface StatusReadOptions {
   /** When what this reader waits for is done; every context's newest one, by default. */
   readonly settled?: ((statuses: ReadonlyArray<GiteaCommitStatus>) => boolean) | undefined;
+  /** The back-off while it is not done; {@link STATUS_RECHECK_LADDER_MS} by default. */
+  readonly waiting?: ReadonlyArray<number> | undefined;
   /** The commit still takes contexts once settled: read it again on the settled back-off. */
   readonly live?: boolean | undefined;
 }
@@ -99,7 +110,7 @@ interface Kept {
 function keepsFor(held: Kept, options: StatusReadOptions | undefined): number {
   const settled = (options?.settled ?? newestStatusesSettled)(held.statuses);
   const ladder = !settled
-    ? STATUS_RECHECK_LADDER_MS
+    ? (options?.waiting ?? STATUS_RECHECK_LADDER_MS)
     : options?.live === true
       ? SETTLED_RECHECK_LADDER_MS
       : undefined;
