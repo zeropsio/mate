@@ -10,15 +10,25 @@ import {
 } from "@t3tools/client-runtime/zerops/data";
 import type { DeploymentStore, StopService } from "@t3tools/client-runtime/zerops/flow";
 import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
+import { changeUrl, type HqChange } from "@t3tools/shared/hqChanges";
+import { RegistryContext } from "@effect/atom-react";
+import { AtomRegistry } from "effect/unstable/reactivity";
 import { act, createElement } from "react";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
+import {
+  hqStructureAtom,
+  zeropsSessionAtom,
+  type HqStructureView,
+  type ZeropsSessionView,
+} from "../state/zerops";
 import { bindAccountFlow } from "./accountForge";
 import { HeldInventoryContext } from "./inventoryContext";
 import { useZeropsProjectFlow, type ZeropsProjectFlowValue } from "./projectFlowContext";
 import {
   activeDeployOf,
   HELD_VERB_MS,
+  HQ_CHANGES_UNANSWERED,
   ZeropsProjectFlowProvider,
 } from "./ZeropsProjectFlowProvider";
 
@@ -49,12 +59,7 @@ const access = vi.hoisted(() => ({
 const verbs = vi.hoisted(() => ({
   client: null as unknown,
   deploys: null as unknown,
-  forge: {
-    repositories: [],
-    pullRequests: [],
-    merged: [],
-    released: { releases: [], tags: [] },
-  } as unknown,
+  forge: { released: { releases: [], tags: [] } } as unknown,
   invalidated: [] as Array<readonly [string, unknown]>,
   forgeFailures: new Map<string, string>(),
 }));
@@ -109,6 +114,16 @@ vi.mock("./giteaProject", () => ({
           state: { url: GITEA, brokerUrl: "https://broker.example.test" },
         }
       : undefined,
+}));
+/** The organization's official HQ; what its stream says is each test's. */
+const hq = vi.hoisted(() => ({
+  account: {
+    hq: { kind: "official", projectId: "hq-project", address: "https://hq.example.test" },
+  },
+}));
+vi.mock("./accountHq", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./accountHq")>()),
+  useAccountHq: () => hq.account,
 }));
 vi.mock("./useZeropsRegistry", () => ({
   useZeropsRegistry: () => ({ registry: { groups: registryGroups.groups } }),
@@ -222,12 +237,7 @@ describe("ZeropsProjectFlowProvider", () => {
     verbs.deploys = null;
     verbs.invalidated = [];
     verbs.forgeFailures = new Map();
-    verbs.forge = {
-      repositories: [],
-      pullRequests: [],
-      merged: [],
-      released: { releases: [], tags: [] },
-    };
+    verbs.forge = { released: { releases: [], tags: [] } };
     vi.unstubAllGlobals();
   });
 
@@ -779,6 +789,105 @@ describe("ZeropsProjectFlowProvider", () => {
         root.unmount();
       });
     });
+  });
+});
+
+describe("a Mate's changes in a project's flow", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  /** `app#n` of `g1` as HQ's stream says it. */
+  const change = (over: Partial<HqChange> = {}): HqChange => ({
+    appId: "g1",
+    repo: "app",
+    number: 7,
+    mateProjectId: "mate-1",
+    title: "Add a /status page",
+    body: "",
+    state: "open",
+    head: "c0ffee",
+    mergedSha: null,
+    landedHead: null,
+    openedAt: "2026-10-02T09:00:00.000Z",
+    mergedAt: null,
+    closedAt: null,
+    ...over,
+  });
+
+  /** The flow of `g1` while HQ's stream for org-1 says `view`. */
+  async function flowOf(view: HqStructureView) {
+    const atoms = AtomRegistry.make();
+    atoms.set(zeropsSessionAtom, {
+      status: "signed-in",
+      organizationStatus: "selected",
+      activeOrganization: { organizationId: "org-1" },
+    } as ZeropsSessionView);
+    atoms.set(hqStructureAtom, view);
+    installTestDom();
+    const { createRoot } = await import("react-dom/client");
+    const seen: Array<ZeropsProjectFlowValue> = [];
+    function Probe() {
+      seen.push(useZeropsProjectFlow());
+      return null;
+    }
+    const root = createRoot(document.createElement("div") as unknown as Element);
+    await act(async () => {
+      root.render(
+        createElement(
+          RegistryContext.Provider,
+          { value: atoms },
+          createElement(ZeropsProjectFlowProvider, null, createElement(Probe)),
+        ),
+      );
+    });
+    await act(async () => {
+      root.unmount();
+    });
+    return seen.at(-1)?.flows.get("g1");
+  }
+
+  const view = (over: Partial<HqStructureView>): HqStructureView => ({
+    organizationId: "org-1",
+    structure: null,
+    changes: null,
+    readAt: null,
+    current: true,
+    unavailableSince: null,
+    ...over,
+  });
+
+  it("come down HQ's stream: the open ones a push reached, and the merged, linked at HQ", async () => {
+    const flow = await flowOf(
+      view({
+        changes: new Map([
+          [
+            "g1",
+            [
+              change(),
+              change({ number: 8, head: null }),
+              change({
+                number: 6,
+                state: "merged",
+                mergedSha: "d00d",
+                mergedAt: "2026-10-02T08:00:00.000Z",
+              }),
+            ],
+          ],
+        ]),
+      }),
+    );
+    expect(flow?.changesKnown).toBe(true);
+    expect(flow?.pullRequests.map((pull) => pull.url)).toEqual([
+      changeUrl("https://hq.example.test", "g1", "app", 7),
+    ]);
+    expect(flow?.merged.map((pull) => pull.number)).toEqual([6]);
+  });
+
+  it("are not known, and say why, while HQ has never told them and does not answer", async () => {
+    const flow = await flowOf(view({ current: false, unavailableSince: 1 }));
+    expect(flow?.changesKnown).toBe(false);
+    expect(flow?.changesFailure).toBe(HQ_CHANGES_UNANSWERED);
   });
 });
 

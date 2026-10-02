@@ -398,8 +398,6 @@ export interface GiteaClient {
   getOrganization(slug: string): Promise<GiteaOrganization | undefined>;
 
   getRepository(owner: string, repo: string): Promise<GiteaRepository | undefined>;
-  /** Every repository of an org, page by page — the group's own and its services'. */
-  listOrganizationRepositories(org: string): Promise<ReadonlyArray<GiteaRepository>>;
   /** Every repository this person has access to, page by page. */
   listUserRepositories(): Promise<ReadonlyArray<GiteaRepository>>;
   /**
@@ -763,12 +761,6 @@ export function createGiteaClient(options: GiteaClientOptions): GiteaClient {
       optional<GiteaRepository>(
         { method: "GET", path: `/repos/${enc(owner)}/${enc(repo)}` },
         "read the repository",
-      ),
-
-    listOrganizationRepositories: (org) =>
-      paged<GiteaRepository>(
-        { method: "GET", path: `/orgs/${enc(org)}/repos` },
-        "list the org's repositories",
       ),
 
     listUserRepositories: () =>

@@ -433,17 +433,17 @@ storage lacks.
 
 ### Project flow per group
 
-The flow is a projection over per-key cells, never a pass. Its halves are independent: pull request
-rows render once the open pulls are known, and each stop renders its own `Shown<Deployment>`. The
-release offer is known only when both halves are known and fresh. `environments.yaml` declares which
-stops exist and their order; project tags declare membership. `Deployment` is `none` (the deployment
-facet observed with no active deploy), `running` (activation time, version name and commit, build
-status) or `deploying`; an unresolved facet is `unread`, never "Nothing deployed yet".
-`MergeState` is `merged`, `closed`, or `open` with mergeability `checking`, `mergeable` or
-`conflicting`; Gitea's `mergeable: false` reads `checking` until a confirming
-read, and Merge is offered only on `mergeable` with the cell fresh. A verb invalidates exactly what
-it changed: merge the pull request, the repository's pulls and `main`; release and roll back the
-group repository's tags; open a pull request the repository's pulls; add a stage the declarations.
+The flow is a projection over per-key cells, never a pass. Its parts are independent: change rows
+render once HQ's stream has told a Mate's changes, and each stop renders its own
+`Shown<Deployment>`. The release offer is known only when both halves are known and fresh.
+`environments.yaml` declares which stops exist and their order; project tags declare membership.
+`Deployment` is `none` (the deployment facet observed with no active deploy), `running` (activation
+time, version name and commit, build status) or `deploying`; an unresolved facet is `unread`, never
+"Nothing deployed yet". `MergeState` is `merged`, `closed`, or `open` with mergeability `checking`,
+`mergeable`, `conflicting` or `empty`; Gitea's `mergeable: false` reads `checking` until a
+confirming read, and Merge is offered only on `mergeable` with the cell fresh. A verb invalidates
+exactly what it changed: release and roll back the group repository's tags; add a stage the
+declarations. A Mate's change comes back down HQ's stream.
 
 ## Lifetimes
 
@@ -524,7 +524,7 @@ on the next visible wake.
 | Inventory, activity                    | None: resnapshot on reconnect, foreground and explicit refresh              | —                                   |
 | Registry, tags                         | Re-read after our own writes and on a cross-tab invalidation                | —                                   |
 | Pull request lists, repositories, tags | 60 s; on visible wake when older than 30 s                                  | Demanded and visible                |
-| A pull request in `checking`           | 2, 5, 10 s                                                                  | Demanded and checking               |
+| A Mate's changes                       | None: HQ's stream, its snapshot again on reconnect                          | —                                   |
 | Commit status                          | 15 s, up to 20 minutes                                                      | Demanded, visible, pending          |
 | `environments.yaml`, tiers on `main`   | 5 minutes                                                                   | Demanded and visible                |
 | Deployment name                        | 30 s while a deploy of that service runs and the pushed name is unconfirmed | Demanded                            |

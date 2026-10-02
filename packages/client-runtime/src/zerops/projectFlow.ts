@@ -31,9 +31,10 @@
  */
 
 import type { ServiceStatusToneId } from "@t3tools/shared/brand";
+import { changeUrl, type HqChange } from "@t3tools/shared/hqChanges";
 
 import { pullRequestBlocked } from "./gitTab.ts";
-import type { MergeabilityKind } from "./forge/mergeState.ts";
+import type { MergeabilityKind } from "./changeMergeability.ts";
 import type { GiteaPullRequest } from "./giteaClient.ts";
 import { mateProjectOfBranch, mateProjectOfLogin } from "./mateIdentity.ts";
 import { GROUP_REPOSITORY } from "./release.ts";
@@ -165,6 +166,60 @@ export function flowPullRequest(input: {
     baseSha: pull.base?.sha,
     description: pull.body === undefined || pull.body.trim().length === 0 ? undefined : pull.body,
     commentCount: pull.comments,
+  };
+}
+
+/** One of a Mate's changes in HQ as a row. */
+function flowChange(change: HqChange, hqAddress: string): FlowPullRequest {
+  const merged = change.state === "merged";
+  return {
+    repository: change.repo,
+    number: change.number,
+    title: change.title,
+    // A recipe lives in HQ from T10 on; every change in HQ until then is code.
+    kind: "code",
+    mateProjectId: change.mateProjectId,
+    author: undefined,
+    url: changeUrl(hqAddress, change.appId, change.repo, change.number),
+    // HQ's record of a change does not say yet whether it merges: checking until it does.
+    mergeability: "checking",
+    merged,
+    mergedAt: change.mergedAt ?? undefined,
+    ...(merged && change.mergedSha !== null ? { mergeCommitSha: change.mergedSha } : {}),
+    state: change.state === "open" ? "open" : "closed",
+    headSha: change.head ?? undefined,
+    baseBranch: FALLBACK_BASE,
+    // Under its Mate the row does not say whose it is.
+    line: `${change.repo} #${String(change.number)}`,
+    updatedAt: change.mergedAt ?? change.closedAt ?? change.openedAt,
+    headBranch: `mate/${change.mateProjectId}/${String(change.number)}`,
+    description: change.body.trim().length === 0 ? undefined : change.body,
+  };
+}
+
+/**
+ * An application's changes in HQ as every surface shows them: the open ones a push reached — an
+ * open change with no head yet has nothing to show — and the landed ones, newest first. A change
+ * closed without merging is in neither, as a pull request closed on main was in no flow.
+ */
+export function flowChanges(input: {
+  readonly changes: ReadonlyArray<HqChange>;
+  /** The official HQ's address, which a change's own address is at. */
+  readonly hqAddress: string;
+}): {
+  readonly pullRequests: ReadonlyArray<FlowPullRequest>;
+  readonly merged: ReadonlyArray<FlowPullRequest>;
+} {
+  const row = (change: HqChange) => flowChange(change, input.hqAddress);
+  return {
+    pullRequests: input.changes
+      .filter((change) => change.state === "open" && change.head !== null)
+      .map(row),
+    // Filtered into a fresh array, so the sort touches nothing else.
+    merged: input.changes
+      .filter((change) => change.state === "merged")
+      .sort((left, right) => (right.mergedAt ?? "").localeCompare(left.mergedAt ?? ""))
+      .map(row),
   };
 }
 
@@ -410,6 +465,7 @@ export function pullRequestMergeLine(pull: {
   const blocked = pullRequestBlocked(pull);
   if (blocked === null) return `Cleanly, into ${pull.baseBranch}`;
   if (blocked.kind === "checking") return "Still checking whether it can";
+  if (blocked.kind === "empty") return `Nothing to merge into ${pull.baseBranch}`;
   return `Not until it is rebased on ${pull.baseBranch}`;
 }
 

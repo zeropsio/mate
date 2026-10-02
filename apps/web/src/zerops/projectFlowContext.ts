@@ -66,19 +66,18 @@ export interface ZeropsProjectFlow {
   readonly mainHeads: ReadonlyMap<string, string>;
   /** The tiers the recipe offers and the project lacks — the rows that ask. */
   readonly missing: ReadonlyArray<MissingEnvironmentRow>;
-  /** Every open pull request on the project's repositories, code and recipe. */
+  /** Every open change a push reached on the project's repositories, as HQ's stream says. */
   readonly pullRequests: ReadonlyArray<FlowPullRequest>;
   /**
-   * Whether Gitea has answered for the project: until then `pullRequests` is
-   * empty for want of an answer, not of a change, and the left menu draws the
-   * change rows it remembers (`menuMemory.ts`). A read that failed first is
-   * no answer — the next one usually is, a few seconds on — and one that
-   * fails after an answer keeps it (`flow/groupAnswers.ts`).
+   * Whether HQ's stream has told the project's changes: until then
+   * `pullRequests` is empty for want of an answer, not of a change, and the
+   * left menu draws the change rows it remembers (`menuMemory.ts`). Once told,
+   * they stand through a stream that goes quiet.
    */
   readonly changesKnown: boolean;
   /**
-   * Why its changes were never read: the Gitea read's failure while no answer is held — a 403 on
-   * the org, the broker down at load. `undefined` once any answer is held, or while none failed.
+   * Why its changes were never told: HQ not answering while none are held. `undefined` once
+   * they are, or while HQ answers.
    */
   readonly changesFailure?: string | undefined;
   /** The changes that have landed — what a conversation's timeline places. */

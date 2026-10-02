@@ -478,6 +478,7 @@ export {
   type GiteaUser,
 } from "./giteaClient.ts";
 export {
+  flowChanges,
   flowPullRequest,
   flowVerbKey,
   flowVerbLabel,

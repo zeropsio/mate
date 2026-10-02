@@ -1,20 +1,8 @@
-import {
-  flowPullRequest,
-  releaseInFlight,
-  releaseMessage,
-  type GiteaClient,
-  type GiteaPullRequest,
-} from "@t3tools/client-runtime/zerops";
-import { flowVerbInvalidations } from "@t3tools/client-runtime/zerops/flow";
-import {
-  createMergeabilityTracker,
-  type MergeabilityTracker,
-} from "@t3tools/client-runtime/zerops/forge";
+import { releaseInFlight, releaseMessage, type GiteaClient } from "@t3tools/client-runtime/zerops";
 import { act, createElement } from "react";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
 import {
-  checkingRepositories,
   GROUP_FORGE_REFRESH_MS,
   readForge,
   useZeropsGroupForge,
@@ -23,7 +11,7 @@ import {
 } from "./useZeropsGroupForge";
 
 /**
- * Whether this tab can read Gitea now, how often the org's repositories were listed, whether the
+ * Whether this tab can read Gitea now, how often the group repo's tags were listed, whether the
  * next listing meets a 401 whose reacquire fails — the session loses its token mid-pass — and
  * whether it meets a 401 that outlasts the request's wait while the reacquire goes on to succeed.
  */
@@ -38,7 +26,7 @@ vi.mock("./accountGiteaSessions", () => ({
   giteaClientFor: (_origin: string, onUnauthorized?: () => void) =>
     gitea.readable
       ? {
-          listOrganizationRepositories: async () => {
+          listTags: async () => {
             gitea.listings += 1;
             if (gitea.loseTokenOnRead) {
               gitea.readable = false;
@@ -50,157 +38,50 @@ vi.mock("./accountGiteaSessions", () => ({
               onUnauthorized?.();
               throw new Error("Gitea answered 401.");
             }
-            return [{ name: "app" }];
+            return [];
           },
-          listPullRequests: async (_owner: string, _repo: string, query: { state: string }) =>
-            query.state === "open"
-              ? [{ number: 7, title: "Stage follows main", head: { sha: "abc" } }]
-              : [],
           listCommitStatuses: async () => [],
-          listTags: async () => [],
         }
       : null,
 }));
 
-const pull = (number: number, merged = false): GiteaPullRequest => ({
-  number,
-  title: `Change ${number}`,
-  state: merged ? "closed" : "open",
-  merged,
-  head: { ref: `mate/p${number}`, sha: `sha${number}` },
-});
-
-/**
- * A Gitea org with two code repositories; every call is recorded, and a
- * repository — or the group repo's tags, as `group` — can refuse.
- */
-function forge(refusing: ReadonlySet<string> = new Set()) {
+/** A group repo whose every call is recorded; its tags can refuse. */
+function forge(refusing = false) {
   const calls: string[] = [];
-  const open = new Map([
-    ["appdev", [pull(4)]],
-    ["apidev", [pull(7)]],
-  ]);
   const client = {
-    listOrganizationRepositories: async (org: string) => {
-      calls.push(`repos ${org}`);
-      return [{ name: "appdev" }, { name: "apidev" }];
-    },
-    listPullRequests: async (
-      owner: string,
-      repo: string,
-      options: { readonly state: "open" | "closed" },
-    ) => {
-      calls.push(`pulls ${owner}/${repo} ${options.state}`);
-      if (refusing.has(repo)) throw new Error("Gitea did not answer");
-      return options.state === "open" ? (open.get(repo) ?? []) : [pull(1, true)];
-    },
     listCommitStatuses: async (owner: string, repo: string, sha: string) => {
       calls.push(`statuses ${owner}/${repo}@${sha}`);
       return [];
     },
     listTags: async (owner: string, repo: string) => {
       calls.push(`tags ${owner}/${repo}`);
-      if (refusing.has(repo)) throw new Error("Gitea did not answer");
+      if (refusing) throw new Error("Gitea did not answer");
       return [];
     },
   } as unknown as GiteaClient;
-  return { client, calls, open };
+  return { client, calls };
 }
 
-async function readAll(
-  client: GiteaClient,
-  tracker: MergeabilityTracker = createMergeabilityTracker(),
-): Promise<ZeropsGroupForgeState> {
-  const update = await readForge(client, "harbor", "group", tracker);
+async function readAll(client: GiteaClient): Promise<ZeropsGroupForgeState> {
+  const update = await readForge(client, "harbor", "group");
   const state = update(undefined);
   if (state === undefined) throw new Error("the first read answered nothing");
   return state;
 }
 
 describe("readForge", () => {
-  it("Merge re-reads only that repo", async () => {
-    const { client, calls, open } = forge();
-    const held = await readAll(client);
-    calls.length = 0;
-    open.set("appdev", []);
-
-    const { forge: scope } = flowVerbInvalidations({
-      kind: "merge",
-      slug: "harbor",
-      repository: "appdev",
-      number: 4,
-    });
-    const update = await readForge(client, "harbor", scope!, createMergeabilityTracker());
-    expect(calls).toEqual(["pulls harbor/appdev open", "pulls harbor/appdev closed"]);
-
-    const next = update(held);
-    expect(next?.pullRequests.map((row) => row.number)).toEqual([7]);
-    // The other repository's rows are the ones already held, not a new read of them.
-    expect(next?.pullRequests[0]).toBe(held.pullRequests[1]);
-    expect(next?.released).toBe(held.released);
-  });
-
-  it("a row's mergeability is its reads', never one false Gitea sends after a push", async () => {
-    vi.useFakeTimers();
-    try {
-      vi.setSystemTime(Date.parse("2026-09-23T10:00:00Z"));
-      const { client, open } = forge();
-      open.set("appdev", [{ ...pull(4), mergeable: false, base: { ref: "main", sha: "b1" } }]);
-      const tracker = createMergeabilityTracker();
-      const first = await readAll(client, tracker);
-      expect(first.pullRequests.find((row) => row.number === 4)?.mergeability).toBe("checking");
-      vi.setSystemTime(Date.parse("2026-09-23T10:00:05Z"));
-      const second = await readAll(client, tracker);
-      expect(second.pullRequests.find((row) => row.number === 4)?.mergeability).toBe("conflicting");
-    } finally {
-      vi.useRealTimers();
-    }
-  });
-
-  it("a failed forge read keeps the last PR rows", async () => {
-    const healthy = forge();
-    const held = await readAll(healthy.client);
-    const { client } = forge(new Set(["appdev"]));
-
-    const update = await readForge(client, "harbor", "group", createMergeabilityTracker());
-    const next = update(held);
-    // appdev did not answer: its row stays; apidev answered and is read afresh.
-    expect(next?.pullRequests.map((row) => [row.repository, row.number])).toEqual([
-      ["appdev", 4],
-      ["apidev", 7],
-    ]);
-    expect(next?.pullRequests[0]).toBe(held.pullRequests[0]);
-  });
-
-  it("shows the repositories that answered, and holds only them, while another never has", async () => {
-    const { client } = forge(new Set(["appdev"]));
-    const update = await readForge(client, "harbor", "group", createMergeabilityTracker());
-    const state = update(undefined);
-    // appdev is not among what the answer read, so nothing says it has no pull requests.
-    expect(state?.repositories).toEqual(["apidev"]);
-    expect(state?.pullRequests.map((row) => [row.repository, row.number])).toEqual([["apidev", 7]]);
-  });
-
-  it("shows the pull requests, and why the releases are missing, when the tags never answered", async () => {
-    const { client } = forge(new Set(["group"]));
-    const update = await readForge(client, "harbor", "group", createMergeabilityTracker());
-    const state = update(undefined);
-    expect(state?.pullRequests.map((row) => row.number)).toEqual([4, 7]);
-    expect(state?.released).toEqual({ failure: "Gitea did not answer" });
+  it("says why the releases are missing when the tags never answered", async () => {
+    const update = await readForge(forge(true).client, "harbor", "group");
+    expect(update(undefined)?.released).toEqual({ failure: "Gitea did not answer" });
   });
 
   it("keeps the releases it read, and says why, when the tags do not answer again", async () => {
     const held = await readAll(forge().client);
-    const update = await readForge(
-      forge(new Set(["group"])).client,
-      "harbor",
-      "group",
-      createMergeabilityTracker(),
-    );
+    const update = await readForge(forge(true).client, "harbor", "group");
     const stale = update(held);
     expect(stale?.released).toEqual({ ...held.released, failure: "Gitea did not answer" });
     // The tags answering again is what takes the failure back.
-    const again = await readForge(forge().client, "harbor", "group", createMergeabilityTracker());
+    const again = await readForge(forge().client, "harbor", "group");
     expect(again(stale)?.released).toEqual(held.released);
   });
 
@@ -275,9 +156,9 @@ describe("readForge", () => {
     const { client, calls } = forge();
     const held = await readAll(client);
     calls.length = 0;
-    const update = await readForge(client, "harbor", { kind: "tags" }, createMergeabilityTracker());
+    const update = await readForge(client, "harbor", { kind: "tags" });
     expect(calls).toEqual(["tags harbor/group"]);
-    expect(update(held)?.pullRequests).toBe(held.pullRequests);
+    expect(update(held)?.released).toEqual(held.released);
   });
 });
 
@@ -380,7 +261,7 @@ describe("useZeropsGroupForge", () => {
       root.render(createElement(Probe));
       await vi.advanceTimersByTimeAsync(0);
     });
-    expect(seen.at(-1)?.forges.get("g1")?.pullRequests).toHaveLength(1);
+    expect(seen.at(-1)?.forges.get("g1")?.released).toEqual({ releases: [], tags: [] });
 
     // The clock's pass starts with a token; its first read meets the 401 and the reacquire fails.
     gitea.loseTokenOnRead = true;
@@ -388,7 +269,7 @@ describe("useZeropsGroupForge", () => {
       await vi.advanceTimersByTimeAsync(GROUP_FORGE_REFRESH_MS);
     });
     expect(gitea.listings).toBe(2);
-    expect(seen.at(-1)?.forges.get("g1")?.pullRequests).toHaveLength(1);
+    expect(seen.at(-1)?.forges.get("g1")?.released).toEqual({ releases: [], tags: [] });
     expect(seen.at(-1)?.failures.get("g1")).toBeUndefined();
 
     await act(async () => {
@@ -419,7 +300,7 @@ describe("useZeropsGroupForge", () => {
       root.render(createElement(Probe));
       await vi.advanceTimersByTimeAsync(0);
     });
-    expect(seen.at(-1)?.forges.get("g1")?.pullRequests).toHaveLength(1);
+    expect(seen.at(-1)?.forges.get("g1")?.released).toEqual({ releases: [], tags: [] });
 
     // The listing gives up on the reacquire and answers Gitea's 401; the token lands afterwards.
     gitea.outwaitReacquireOnRead = true;
@@ -427,40 +308,11 @@ describe("useZeropsGroupForge", () => {
       await vi.advanceTimersByTimeAsync(GROUP_FORGE_REFRESH_MS);
     });
     expect(gitea.listings).toBe(2);
-    expect(seen.at(-1)?.forges.get("g1")?.pullRequests).toHaveLength(1);
+    expect(seen.at(-1)?.forges.get("g1")?.released).toEqual({ releases: [], tags: [] });
     expect(seen.at(-1)?.failures.get("g1")).toBeUndefined();
 
     await act(async () => {
       root.unmount();
     });
-  });
-});
-
-describe("checkingRepositories", () => {
-  const open = (repository: string, number: number, mergeability: "checking" | "mergeable") =>
-    flowPullRequest({ repository, pull: pull(number), mergeability });
-  const state = (pullRequests: ZeropsGroupForgeState["pullRequests"]): ZeropsGroupForgeState => ({
-    repositories: [...new Set(pullRequests.map((entry) => entry.repository))],
-    pullRequests,
-    merged: [],
-    released: { releases: [], tags: [] },
-  });
-
-  it.each([
-    {
-      name: "nothing checking",
-      forges: [["g1", state([open("appdev", 1, "mergeable")])]],
-      want: [],
-    },
-    {
-      name: "one repository per group, however many of its changes check",
-      forges: [
-        ["g1", state([open("group", 13, "checking"), open("group", 14, "checking")])],
-        ["g2", state([open("appdev", 2, "mergeable"), open("apidev", 3, "checking")])],
-      ],
-      want: ["g1\u0000group", "g2\u0000apidev"],
-    },
-  ] as const)("$name", ({ forges, want }) => {
-    expect(checkingRepositories(new Map(forges))).toEqual(want);
   });
 });

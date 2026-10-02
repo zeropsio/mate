@@ -1,7 +1,8 @@
 /**
  * The organization's structure, live from its HQ (ADR 0002, SPEC §3.5): one stream per
  * organization (`/api/structure/ws`) — the whole structure, then its changes — published
- * to `hqStructureAtom`, from which every surface places its projects (`hqPlacementsAtom`).
+ * to `hqStructureAtom`, from which every surface places its projects (`hqPlacementsAtom`). The
+ * same stream carries each application's Mates' changes (SPEC §3.2a, `hqChangesAtom`).
  *
  * - **First paint:** the structure this browser last read (`menuMemory`), with when, until HQ
  *   answers.
@@ -12,8 +13,10 @@
  */
 import { RegistryContext } from "@effect/atom-react";
 import {
+  applyChangesEvent,
   applyStructureEvent,
   type HqApi,
+  type HqChanges,
   type HqStructure,
 } from "@t3tools/client-runtime/zerops/hq";
 import type { TimestampFormat } from "@t3tools/contracts/settings";
@@ -49,6 +52,7 @@ export async function driveHqStructure(input: {
   let view: HqStructureView = {
     organizationId: input.organizationId,
     structure: input.remembered?.structure ?? null,
+    changes: null,
     readAt: input.remembered?.readAt ?? null,
     current: false,
     unavailableSince: null,
@@ -65,8 +69,9 @@ export async function driveHqStructure(input: {
     const abort = () => attempt.abort();
     input.signal.addEventListener("abort", abort);
     let silence = setTimeout(abort, silenceMs);
-    /** This stream's own structure: a reconnect starts from its snapshot. */
+    /** This stream's own structure and changes: a reconnect starts from its snapshot. */
     let streamed: HqStructure | null = null;
+    let changes: HqChanges | null = null;
     let broke = false;
     try {
       await input.api.streamStructure(
@@ -82,6 +87,7 @@ export async function driveHqStructure(input: {
           },
           onEvent: (event) => {
             streamed = applyStructureEvent(streamed, event);
+            changes = applyChangesEvent(changes, event);
             if (streamed === null) return;
             failures = 0;
             const readAt = input.now();
@@ -89,6 +95,7 @@ export async function driveHqStructure(input: {
             publish({
               ...view,
               structure: streamed,
+              changes,
               readAt,
               current: true,
               unavailableSince: null,
@@ -174,6 +181,7 @@ export function ZeropsHqStructure(): null {
       registry.set(hqStructureAtom, {
         organizationId,
         structure: kept?.structure ?? null,
+        changes: null,
         readAt: kept?.readAt ?? null,
         current: false,
         unavailableSince: null,

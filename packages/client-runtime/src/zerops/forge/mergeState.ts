@@ -6,7 +6,7 @@
  * after a push is not a verdict. `true` is mergeable at once. `false`, `null` or no answer is
  * `checking`; a `false` is `conflicting` only once {@link MERGE_CHECKING_WINDOW_MS} have passed
  * since these head and base shas were first read, and a read that knows neither sha can never be
- * one. A surface reads a pull request that is checking again at {@link MERGE_RECHECK_AFTER_MS}.
+ * one.
  *
  * Pure: no network, no clock, no platform globals (rule R1).
  *
@@ -17,16 +17,10 @@ import type { GiteaPullRequest } from "../giteaClient.ts";
 /** A `false` this soon after the head or base sha changed is Gitea still checking. */
 export const MERGE_CHECKING_WINDOW_MS = 5_000;
 
-/** A pull request that is checking is read again this long after it started checking. */
-export const MERGE_RECHECK_AFTER_MS: ReadonlyArray<number> = [2_000, 5_000, 10_000];
-
 export type Mergeability =
   | { readonly kind: "checking"; readonly sinceMs: number; readonly falseReads: number }
   | { readonly kind: "mergeable" }
   | { readonly kind: "conflicting" };
-
-/** How an open pull request merges, as far as a surface that draws it needs to know. */
-export type MergeabilityKind = Mergeability["kind"];
 
 /** One read of a pull request, as far as whether it merges goes. */
 export interface MergeRead {

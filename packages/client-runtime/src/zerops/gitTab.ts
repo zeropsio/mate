@@ -47,7 +47,7 @@
 import { ZEROPS_GIT_REMOTE_DETAIL_MAX_CHARS } from "@t3tools/contracts";
 import type { ServiceStatusToneId } from "@t3tools/shared/brand";
 
-import type { MergeabilityKind } from "./forge/mergeState.ts";
+import type { MergeabilityKind } from "./changeMergeability.ts";
 import type { GiteaPullRequest, GiteaRepository } from "./giteaClient.ts";
 import type { GroupEnvironment } from "./groupEnvironments.ts";
 import { branchLabel } from "./mateIdentity.ts";
@@ -216,7 +216,7 @@ export function pullRequestBlockedReason(pull: {
 
 /** Why a pull request offers no *Merge*, the tone that says it, and who moves it. */
 export interface PullRequestBlocked {
-  readonly kind: "checking" | "behind";
+  readonly kind: "checking" | "behind" | "empty";
   readonly word: string;
   readonly tone: ServiceStatusToneId;
   /**
@@ -244,6 +244,9 @@ export function pullRequestBlocked(pull: {
   readonly mergeability: MergeabilityKind;
 }): PullRequestBlocked | null {
   if (pull.mergeability === "mergeable") return null;
+  // Nothing in it that `main` lacks: nothing is in anybody's way, and nobody is asked anything.
+  if (pull.mergeability === "empty")
+    return { kind: "empty", word: "nothing to merge", tone: "off", ask: undefined };
   // Gitea answers "no" for a moment after every push while it works the
   // answer out again (A11): that is nobody's to act on, and a rebase asked for
   // on the strength of it would be work invented by the surface.
@@ -404,6 +407,7 @@ export function gitVerdict(input: {
  */
 const IN_REVIEW: Record<MergeabilityKind, Omit<GitVerdict, "ask">> = {
   mergeable: { tone: "off", text: "Nothing is stopping it." },
+  empty: { tone: "off", text: "Main already has all of it." },
   checking: { tone: "busy", text: "Checking whether it merges cleanly." },
   conflicting: { tone: "attention", text: "It no longer merges cleanly." },
 };

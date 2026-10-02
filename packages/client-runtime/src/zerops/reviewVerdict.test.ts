@@ -103,6 +103,17 @@ describe("changeReview: the verdict comes first (R2)", () => {
       },
     ],
     [
+      "nothing main does not have",
+      { pull: pull({ mergeability: "empty" }) },
+      {
+        state: "empty",
+        tone: "quiet",
+        title: "Nothing to merge",
+        why: "main already has all of it",
+        fix: undefined,
+      },
+    ],
+    [
       "Gitea still working out whether it merges",
       { pull: pull({ mergeability: "checking" }) },
       {

@@ -1,9 +1,10 @@
+import type { HqChange } from "@t3tools/shared/hqChanges";
 import { describe, expect, it } from "vite-plus/test";
 
 import { pullRequestBlocked, pullRequestBlockedReason } from "./gitTab.ts";
 import { mateBotLogin, mateProjectOfBranch, mateProjectOfLogin } from "./mateIdentity.ts";
 
-import type { MergeabilityKind } from "./forge/mergeState.ts";
+import type { MergeabilityKind } from "./changeMergeability.ts";
 import type { GiteaPullRequest } from "./giteaClient.ts";
 import {
   changeAuthorName,
@@ -13,6 +14,7 @@ import {
   releaseContentsCommits,
   releaseContentsSummary,
   releaseWaitingLabel,
+  flowChanges,
   flowPullRequest,
   flowVerbKey,
   flowVerbLabel,
@@ -44,6 +46,88 @@ function pull(overrides: Partial<GiteaPullRequest> = {}): GiteaPullRequest {
     ...overrides,
   };
 }
+
+describe("a Mate's changes in HQ, as the flow shows them", () => {
+  const HQ = "https://hq-30db-8080.prg1.zerops.app";
+  const SHA = "a".repeat(40);
+  const change = (over: Partial<HqChange> = {}): HqChange => ({
+    appId: "g1",
+    repo: "appdev",
+    number: 3,
+    mateProjectId: VERA,
+    title: "Add a due date to each todo",
+    body: "",
+    state: "open",
+    head: SHA,
+    mergedSha: null,
+    landedHead: null,
+    openedAt: "2026-10-02T09:00:00.000Z",
+    mergedAt: null,
+    closedAt: null,
+    ...over,
+  });
+  const flow = (changes: ReadonlyArray<HqChange>) => flowChanges({ changes, hqAddress: `${HQ}/` });
+
+  it("draws an open change its Mate pushed to as a row, at HQ's own address", () => {
+    expect(flow([change()]).pullRequests).toEqual([
+      {
+        repository: "appdev",
+        number: 3,
+        title: "Add a due date to each todo",
+        kind: "code",
+        mateProjectId: VERA,
+        author: undefined,
+        url: `${HQ}/changes/g1/appdev/3`,
+        mergeability: "checking",
+        merged: false,
+        mergedAt: undefined,
+        state: "open",
+        headSha: SHA,
+        baseBranch: "main",
+        line: "appdev #3",
+        updatedAt: "2026-10-02T09:00:00.000Z",
+        headBranch: `mate/${VERA}/3`,
+        description: undefined,
+      },
+    ]);
+  });
+
+  it("carries its description where its Mate wrote one", () => {
+    expect(flow([change({ body: "Adds the field." })]).pullRequests[0]?.description).toBe(
+      "Adds the field.",
+    );
+  });
+
+  it("never draws a change no push reached", () => {
+    expect(flow([change({ head: null })]).pullRequests).toEqual([]);
+  });
+
+  it("lists the landed ones, newest first, with the commit they landed as", () => {
+    const landed = (number: number, mergedAt: string) =>
+      change({
+        number,
+        state: "merged",
+        mergedSha: "m".repeat(39) + String(number),
+        landedHead: SHA,
+        mergedAt,
+      });
+    const { pullRequests, merged } = flow([
+      landed(1, "2026-10-02T10:00:00.000Z"),
+      landed(2, "2026-10-02T11:00:00.000Z"),
+      change({ number: 4, state: "closed", closedAt: "2026-10-02T12:00:00.000Z" }),
+    ]);
+    expect(pullRequests).toEqual([]);
+    expect(merged.map((entry) => [entry.number, entry.merged, entry.state])).toEqual([
+      [2, true, "closed"],
+      [1, true, "closed"],
+    ]);
+    expect(merged[0]).toMatchObject({
+      mergedAt: "2026-10-02T11:00:00.000Z",
+      mergeCommitSha: "m".repeat(39) + "2",
+      updatedAt: "2026-10-02T11:00:00.000Z",
+    });
+  });
+});
 
 describe("whose pull request it is", () => {
   it("names the bot after the project, the way the broker does", () => {
@@ -432,6 +516,8 @@ describe("pullRequestBlockedReason", () => {
     ["conflicting", "needs a rebase"],
     // Gitea is still working it out after a push: nobody is asked to rebase.
     ["checking", "checking"],
+    // Nothing in it main does not have: nobody is asked anything either.
+    ["empty", "nothing to merge"],
   ];
 
   for (const [mergeability, expected] of cases) {
@@ -580,6 +666,7 @@ describe("pullRequestMergeLine", () => {
     [{ mergeability: "mergeable" }, "Cleanly, into main"],
     [{ mergeability: "checking" }, "Still checking whether it can"],
     [{ mergeability: "conflicting" }, "Not until it is rebased on main"],
+    [{ mergeability: "empty" }, "Nothing to merge into main"],
   ] as const)("answers merging in its own words", (pull, expected) => {
     expect(pullRequestMergeLine({ ...base, ...pull })).toBe(expected);
   });
@@ -597,8 +684,9 @@ describe("changeState", () => {
       changeState({ number: 1, mergeability: "mergeable" }),
       changeState({ number: 2, mergeability: "conflicting" }),
       changeState({ number: 3, mergeability: "checking" }),
+      changeState({ number: 4, mergeability: "empty" }),
     ].map((state) => state?.word);
-    expect(words).toEqual(["Ready to merge", "Needs a rebase", "Checking"]);
+    expect(words).toEqual(["Ready to merge", "Needs a rebase", "Checking", "Nothing to merge"]);
     for (const word of words) expect(word?.charAt(0)).toBe(word?.charAt(0).toLocaleUpperCase());
   });
 

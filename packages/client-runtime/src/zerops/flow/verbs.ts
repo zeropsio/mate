@@ -1,19 +1,17 @@
 /**
  * What a flow verb changed, so its settlement re-reads that and nothing else
- * (DESIGN §4.7 "Verbs"): one repository, one `main` head, or the group repo's
- * tags — never another group, and never a whole pass. The one whole read is
- * the deploy half after a merge into the group repo, whose `main` holds the
- * declarations and tiers that half is read from.
+ * (DESIGN §4.7 "Verbs"): one `main` head, or the group repo's tags — never
+ * another group, and never a whole pass. The one whole read is the deploy half
+ * after a merge into the group repo, whose `main` holds the declarations and
+ * tiers that half is read from. A change itself comes back down HQ's stream.
  *
  * @module flow/verbs
  */
 import type { FlowVerb } from "../projectFlow.ts";
 import { GROUP_REPOSITORY } from "../release.ts";
 
-/** One part of a group's Gitea half. */
-export type ForgeScope =
-  | { readonly kind: "repository"; readonly repository: string }
-  | { readonly kind: "tags" };
+/** One part of a group's Gitea half: the group repo's tags. */
+export type ForgeScope = { readonly kind: "tags" };
 
 /** One part of a group's deploy half: the head of one repository's `main`, which a merge moves. */
 export type DeployScope = { readonly kind: "main-head"; readonly repository: string };
@@ -27,14 +25,14 @@ export function flowVerbInvalidations(verb: FlowVerb): FlowInvalidation {
   switch (verb.kind) {
     case "merge":
       return {
-        forge: { kind: "repository", repository: verb.repository },
+        forge: null,
         deploys:
           verb.repository === GROUP_REPOSITORY
             ? "group"
             : { kind: "main-head", repository: verb.repository },
       };
     case "open":
-      return { forge: { kind: "repository", repository: verb.repository }, deploys: null };
+      return { forge: null, deploys: null };
     case "release":
     case "roll-back":
       return { forge: { kind: "tags" }, deploys: null };

@@ -20,7 +20,7 @@
  * @module reviewVerdict
  */
 
-import type { MergeabilityKind } from "./forge/mergeState.ts";
+import type { MergeabilityKind } from "./changeMergeability.ts";
 import type { FlowPullRequestKind } from "./projectFlow.ts";
 import type { RecipeReach } from "./recipeReach.ts";
 import type { RecipeTier } from "./recipeTier.ts";
@@ -50,6 +50,7 @@ export type ReviewState =
   | "behind-clean"
   | "behind"
   | "conflict"
+  | "empty"
   | "checking"
   | "merging"
   | "merge-refused"
@@ -380,6 +381,19 @@ function changeVerdictOf(input: ChangeReviewInput): {
             ? "It no longer merges cleanly"
             : `${author} changed ${it} on ${base}${age === undefined ? "" : ` ${age}`}`,
         fix: resolve,
+      },
+    };
+  }
+
+  if (pull.mergeability === "empty") {
+    return {
+      enabled: false,
+      verdict: {
+        state: "empty",
+        tone: "quiet",
+        title: "Nothing to merge",
+        why: `${base} already has all of it`,
+        fix: undefined,
       },
     };
   }

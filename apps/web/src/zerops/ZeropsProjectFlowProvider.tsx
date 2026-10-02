@@ -2,24 +2,29 @@
  * Reads every project's flow once for the whole account, and holds the verbs
  * that move it (`projectFlowContext.ts`, D26).
  *
- * Two reads are joined here, each from the party that can prove it: the
+ * Three reads are joined here, each from the party that can prove it: the
  * account says which projects a group holds and which commit each service
- * of them runs (`useZeropsGroupDeploys`), Gitea says what is waiting to land
- * and what was released (`useZeropsGroupForge`). The declarations in the
- * group repo say which of those projects are environments and what feeds
- * them; the registry says which Gitea org a group is. Each half is kept per
- * group, and a group's flow is the same object until one of its own halves
- * changes, so one group answering never republishes another.
+ * of them runs (`useZeropsGroupDeploys`), HQ says what is waiting to land and
+ * what landed — its Mates' changes, down the organization's stream
+ * (`hqChangesAtom`) — and Gitea says what was released
+ * (`useZeropsGroupForge`). The declarations in the group repo say which of
+ * those projects are environments and what feeds them; the registry says
+ * which Gitea org a group is. Each part is kept per group, and a group's flow
+ * is the same object until one of its own parts changes, so one group
+ * answering never republishes another.
  *
  * Signed in to Mate is signed in to Gitea (D21): the provider signs the tab
- * in by itself, and until that lands every flow is empty and the surfaces
- * say so where they stand. What each stop runs is the account's deployment
- * store's answer (`flow/deploymentStore.ts`) and needs no Gitea at all.
+ * in by itself, and until that lands the Gitea halves are empty and the
+ * surfaces say so where they stand. A Mate's changes need no Gitea, nor does
+ * what each stop runs: the account's deployment store's answer
+ * (`flow/deploymentStore.ts`).
  */
+import { useAtomValue } from "@effect/atom-react";
 import {
   botDisplayName,
   deployedCommit,
   environmentRow,
+  flowChanges,
   flowVerbKey,
   releaseRunBy,
   nameStopByRelease,
@@ -34,6 +39,7 @@ import {
   summarizeEnvironmentServices,
   GROUP_REPOSITORY,
   type EnvironmentRow,
+  type FlowPullRequest,
   type FlowRelease,
   type GroupEnvironmentRowInput,
   type FlowVerb,
@@ -54,6 +60,7 @@ import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
 import { mateDiagnostics } from "@t3tools/client-runtime/zerops/diagnostics";
 import { zeropsThrowawayPlatform } from "@t3tools/client-runtime/zerops/doorThrowaway";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
+import type { HqChange } from "@t3tools/shared/hqChanges";
 import {
   useCallback,
   useContext,
@@ -64,7 +71,9 @@ import {
   type ReactNode,
 } from "react";
 
+import { hqChangesAtom, hqStructureAtom } from "../state/zerops";
 import { useStopDeployments } from "./accountForge";
+import { useAccountHq } from "./accountHq";
 import { useAccountGitea } from "./giteaProject";
 import { giteaClientFor, useGiteaSession } from "./accountGiteaSessions";
 import {
@@ -129,6 +138,46 @@ function effectRead(
   return failed || forge !== held.against;
 }
 
+/** One group's changes as its flow shows them: the open ones a push reached, and the landed. */
+export interface GroupChanges {
+  readonly pullRequests: ReadonlyArray<FlowPullRequest>;
+  readonly merged: ReadonlyArray<FlowPullRequest>;
+}
+
+/** A group HQ holds no change of. */
+const NO_CHANGES: GroupChanges = { pullRequests: [], merged: [] };
+
+/**
+ * Each application's changes as rows, by the identity of its changes as HQ last sent them, so an
+ * application nothing came down for keeps its rows.
+ */
+const changeRows = new WeakMap<ReadonlyArray<HqChange>, Map<string, GroupChanges>>();
+
+/** Every application's changes as its group's flow shows them, at HQ's official address. */
+function groupChangesOf(
+  changes: ReadonlyMap<string, ReadonlyArray<HqChange>>,
+  hqAddress: string,
+): ReadonlyMap<string, GroupChanges> {
+  const byGroup = new Map<string, GroupChanges>();
+  for (const [appId, list] of changes) {
+    let byAddress = changeRows.get(list);
+    if (byAddress === undefined) {
+      byAddress = new Map();
+      changeRows.set(list, byAddress);
+    }
+    let rows = byAddress.get(hqAddress);
+    if (rows === undefined) {
+      rows = flowChanges({ changes: list, hqAddress });
+      byAddress.set(hqAddress, rows);
+    }
+    byGroup.set(appId, rows);
+  }
+  return byGroup;
+}
+
+/** What the flow says while HQ has never told it any change, and does not answer. */
+export const HQ_CHANGES_UNANSWERED = "HQ is not answering right now.";
+
 /** What the platform pushed as a service's active deploy: when it was activated, and its name. */
 /**
  * What a service runs, as a group's read is keyed on it: the push's activation and name, and the
@@ -144,14 +193,17 @@ export function activeDeployOf(
   return `${version.lastUpdate ?? ""} ${version.name ?? ""} ${statedDeployKey(stated)}`;
 }
 
-/** Stands for a half a group has no answer for, as a key of {@link joinedFlows}. */
+/** Stands for a part a group has no answer for, as a key of {@link joinedFlows}. */
 const UNREAD_HALF = {};
 
 /**
- * Every group's flow, by the identity of its two halves: a group whose halves
- * did not change keeps its flow object.
+ * Every group's flow, by the identity of its parts: a group whose parts did not
+ * change keeps its flow object.
  */
-const joinedFlows = new WeakMap<object, WeakMap<object, Map<string, ZeropsProjectFlow>>>();
+const joinedFlows = new WeakMap<
+  object,
+  WeakMap<object, WeakMap<object, Map<string, ZeropsProjectFlow>>>
+>();
 
 /** Why each group's latest read of either half failed, while it keeps failing. */
 export interface FlowFailures {
@@ -160,14 +212,18 @@ export interface FlowFailures {
 }
 
 /**
- * Joins each group's two halves into its flow. A group is shown once either
- * half answered; the release is offered only once both have, and says why
- * while either half fails (`flow/release.ts`).
+ * Joins each group's parts into its flow. A group is shown once any part
+ * answered; the release is offered only once both Gitea and the account have,
+ * and says why while either fails (`flow/release.ts`).
  */
 export function joinProjectFlows(input: {
   readonly groups: ReadonlyArray<{ readonly groupId: string; readonly slug: string }>;
   readonly deploys: ZeropsGroupDeploys;
   readonly forges: ZeropsGroupForges;
+  /** Each group's changes, by its id; `null` while HQ has told nothing of them. */
+  readonly changes: ReadonlyMap<string, GroupChanges> | null;
+  /** Why HQ has told nothing of them, while it does not answer. */
+  readonly changesFailure: string | undefined;
   readonly mayRelease: boolean;
   /** The clock a release in flight is bounded by (`releaseInFlight`). */
   readonly nowMs: number;
@@ -179,16 +235,23 @@ export function joinProjectFlows(input: {
   for (const group of input.groups) {
     const deployed = input.deploys.get(group.groupId);
     const forge = input.forges.get(group.groupId);
-    if (deployed === undefined && forge === undefined) continue;
+    const changes =
+      input.changes === null ? undefined : (input.changes.get(group.groupId) ?? NO_CHANGES);
+    if (deployed === undefined && forge === undefined && changes === undefined) continue;
     let byForge = joinedFlows.get(deployed ?? UNREAD_HALF);
     if (byForge === undefined) {
       byForge = new WeakMap();
       joinedFlows.set(deployed ?? UNREAD_HALF, byForge);
     }
-    let byGroup = byForge.get(forge ?? UNREAD_HALF);
+    let byChanges = byForge.get(forge ?? UNREAD_HALF);
+    if (byChanges === undefined) {
+      byChanges = new WeakMap();
+      byForge.set(forge ?? UNREAD_HALF, byChanges);
+    }
+    let byGroup = byChanges.get(changes ?? UNREAD_HALF);
     if (byGroup === undefined) {
       byGroup = new Map();
-      byForge.set(forge ?? UNREAD_HALF, byGroup);
+      byChanges.set(changes ?? UNREAD_HALF, byGroup);
     }
     const failures = {
       deploys: input.failures.deploys.get(group.groupId),
@@ -215,13 +278,14 @@ export function joinProjectFlows(input: {
       inFlight ?? null,
       failures.deploys ?? null,
       failures.forge ?? null,
+      changes === undefined ? (input.changesFailure ?? null) : null,
       [...withheld],
     ]);
     let flow = byGroup.get(key);
     if (flow === undefined) {
       flow = projectFlow(
         group,
-        { deployed, forge, failures },
+        { deployed, forge, changes, changesFailure: input.changesFailure, failures },
         { mayRelease: input.mayRelease, inFlight },
         withheld,
       );
@@ -262,13 +326,15 @@ function projectFlow(
   halves: {
     readonly deployed: ZeropsGroupDeployState | undefined;
     readonly forge: ZeropsGroupForgeState | undefined;
+    readonly changes: GroupChanges | undefined;
+    readonly changesFailure: string | undefined;
     readonly failures: { readonly deploys: string | undefined; readonly forge: string | undefined };
   },
   release: { readonly mayRelease: boolean; readonly inFlight: string | undefined },
   /** Why the grant withholds each of the group's projects it withholds alone. */
   withheld: ReadonlyMap<string, string>,
 ): ZeropsProjectFlow {
-  const { deployed, forge, failures } = halves;
+  const { deployed, forge, changes, failures } = halves;
   const environmentInputs = deployed?.environments ?? [];
   const released = forge !== undefined && "tags" in forge.released ? forge.released : undefined;
   // Releases that did not answer say why, like a forge read that failed
@@ -312,10 +378,10 @@ function projectFlow(
     environmentInputs,
     mainHeads: deployed?.mainHeads ?? EMPTY_HEADS,
     missing: deployed?.missing ?? [],
-    pullRequests: forge?.pullRequests ?? [],
-    changesKnown: forge !== undefined,
-    changesFailure: forge === undefined ? failures.forge : undefined,
-    merged: forge?.merged ?? [],
+    pullRequests: changes?.pullRequests ?? [],
+    changesKnown: changes !== undefined,
+    changesFailure: changes === undefined ? halves.changesFailure : undefined,
+    merged: changes?.merged ?? [],
     releases: releaseRows,
     release: {
       ...offer,
@@ -523,20 +589,49 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
 
   // A release in flight stops holding Release back once it is old enough (`releaseInFlight`).
   const nowMs = useNowMs();
+  // A Mate's changes, down the organization's HQ stream, linked at its official address. They
+  // need no Gitea, so the flows stand on them wherever HQ answers.
+  const accountHq = useAccountHq(clientId);
+  const hqAddress = accountHq.hq.kind === "official" ? accountHq.hq.address : undefined;
+  const hqChanges = useAtomValue(hqChangesAtom);
+  const hqStructure = useAtomValue(hqStructureAtom);
+  const changes = useMemo(
+    () =>
+      hqChanges === null || hqAddress === undefined ? null : groupChangesOf(hqChanges, hqAddress),
+    [hqAddress, hqChanges],
+  );
+  const changesFailure =
+    hqStructure?.unavailableSince === null || hqStructure === null
+      ? undefined
+      : HQ_CHANGES_UNANSWERED;
   const flows = useMemo<ReadonlyMap<string, ZeropsProjectFlow>>(
     () =>
-      enabled
+      signedInToMate
         ? joinProjectFlows({
             groups,
             deploys,
             forges,
+            changes,
+            changesFailure,
             mayRelease,
             nowMs,
             withheld,
             failures: { deploys: deployFailures, forge: forgeFailures },
           })
         : EMPTY_FLOWS,
-    [deployFailures, deploys, enabled, forgeFailures, forges, groups, mayRelease, nowMs, withheld],
+    [
+      changes,
+      changesFailure,
+      deployFailures,
+      deploys,
+      forgeFailures,
+      forges,
+      groups,
+      mayRelease,
+      nowMs,
+      signedInToMate,
+      withheld,
+    ],
   );
 
   // Time to the first pull request row, per group, for diagnostics.

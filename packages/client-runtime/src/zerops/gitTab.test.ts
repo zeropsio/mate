@@ -15,11 +15,8 @@ import {
   type GitForgePullRequest,
   type GitForgeState,
 } from "./gitTab.ts";
-import {
-  createMergeabilityTracker,
-  mergeReadOf,
-  type MergeabilityKind,
-} from "./forge/mergeState.ts";
+import type { MergeabilityKind } from "./changeMergeability.ts";
+import { createMergeabilityTracker, mergeReadOf } from "./forge/mergeState.ts";
 import type { GiteaPullRequest, GiteaRepository } from "./giteaClient.ts";
 import type { GroupEnvironment } from "./groupEnvironments.ts";
 import { mateNextStep } from "./mateNextStep.ts";
@@ -231,6 +228,15 @@ describe("where the work stands", () => {
       ),
       tone: "busy",
       text: "Checking whether it merges cleanly.",
+    },
+    {
+      name: "a pull request main already has all of",
+      answer: block(
+        checkout({ headRef: "feature/invoices" }),
+        forge({ pullRequest: request("empty") }),
+      ),
+      tone: "off",
+      text: "Main already has all of it.",
     },
     {
       // The state that offers no verb: without a sentence, the row is a change

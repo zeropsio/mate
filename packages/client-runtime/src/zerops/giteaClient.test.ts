@@ -319,21 +319,15 @@ describe("GiteaClient request shapes", () => {
     expect(calls[0]?.url).toBe(`${ORIGIN}/api/v1/repos/acme/group/pulls?state=open`);
   });
 
-  it("lists an org's repositories page by page, until a page comes back short", async () => {
+  it("lists the repositories this person has access to page by page, until a page comes back short", async () => {
     const full = Array.from({ length: 50 }, (_, index) => ({ id: index, name: `r${index}` }));
     const { client, calls } = fake([{ body: full }, { body: [{ id: 50, name: "r50" }] }]);
-    const repositories = await client.listOrganizationRepositories("acme");
+    const repositories = await client.listUserRepositories();
     expect(repositories).toHaveLength(51);
     expect(calls.map((call) => call.url)).toEqual([
-      `${ORIGIN}/api/v1/orgs/acme/repos?limit=50&page=1`,
-      `${ORIGIN}/api/v1/orgs/acme/repos?limit=50&page=2`,
+      `${ORIGIN}/api/v1/user/repos?limit=50&page=1`,
+      `${ORIGIN}/api/v1/user/repos?limit=50&page=2`,
     ]);
-  });
-
-  it("lists the repositories this person has access to", async () => {
-    const { client, calls } = fake([{ body: [] }]);
-    expect(await client.listUserRepositories()).toEqual([]);
-    expect(calls[0]?.url).toBe(`${ORIGIN}/api/v1/user/repos?limit=50&page=1`);
   });
 
   it("searches the open pull requests across everything the person can see", async () => {
