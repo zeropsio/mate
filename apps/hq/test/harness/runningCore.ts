@@ -27,6 +27,7 @@ import * as Schema from "effect/Schema";
 import * as Scope from "effect/Scope";
 import * as HttpServer from "effect/unstable/http/HttpServer";
 
+import { Backup, directoryStore } from "../../src/backup.ts";
 import { coreApp } from "../../src/core.ts";
 import { GitHost } from "../../src/gitHost.ts";
 import { treeMigrations } from "../../src/migrationFiles.ts";
@@ -132,7 +133,8 @@ const world = (now: number, anchored: boolean, orgId: string): FakeWorld => {
  * Core on a fresh database and git root (or the given ones), served over a real Node server on a
  * free port, as the container serves it; requests as `{ status, body, headers }`. `stop` ends it —
  * drain included — before the test does. `gitHost` is its git host, for what only it shows: whether
- * it holds git open, and its record of git's events (`recorded`).
+ * it holds git open, and its record of git's events (`recorded`); `backup` takes a set into
+ * `storeDir`.
  */
 export const startCore = (
   anchored: boolean,
@@ -143,6 +145,10 @@ export const startCore = (
     /** How long the org's view is kept, and how often the structure reconciles; 200 ms each. */
     readonly viewTtl?: Duration.Duration;
     readonly reconcileEvery?: Duration.Duration;
+    /** The directory backup sets are kept in; a fresh one by default. */
+    readonly storeDir?: string;
+    /** What happens between a set's dump and its bundles. */
+    readonly afterDump?: Effect.Effect<void>;
   } = {},
 ) =>
   Effect.gen(function* () {
@@ -153,10 +159,20 @@ export const startCore = (
         Effect.sync(() => NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "hq-git-"))),
         (root) => Effect.sync(() => NodeFS.rmSync(root, { recursive: true, force: true })),
       ));
+    const temporary = Effect.acquireRelease(
+      Effect.sync(() => NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "hq-backup-"))),
+      (dir) => Effect.sync(() => NodeFS.rmSync(dir, { recursive: true, force: true })),
+    );
+    const storeDir = given.storeDir ?? (yield* temporary);
     const fake = world(yield* Clock.currentTimeMillis, anchored, given.orgId ?? "ORG");
     const options = {
       databaseUrl: Redacted.make(url),
       gitRoot,
+      backup: {
+        stagingDir: yield* temporary,
+        store: directoryStore(storeDir),
+        ...(given.afterDump === undefined ? {} : { afterDump: given.afterDump }),
+      },
       migrations: treeMigrations(),
       hqProjectId: HQ,
       credential: Option.some(Redacted.make("hq")),
@@ -283,6 +299,8 @@ export const startCore = (
       stop,
       socket,
       gitHost: Context.get(context, GitHost),
+      backup: Context.get(context, Backup),
+      storeDir,
     };
   });
 

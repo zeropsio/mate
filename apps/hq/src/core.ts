@@ -21,6 +21,7 @@ import type * as Redacted from "effect/Redacted";
 import * as HttpRouter from "effect/unstable/http/HttpRouter";
 
 import { apiRoutes } from "./api.ts";
+import { type BackupOptions, backupLayer } from "./backup.ts";
 import { changesLayer } from "./changes.ts";
 import { deploysLayer } from "./deploys.ts";
 import { doorLayer } from "./door.ts";
@@ -48,6 +49,8 @@ export interface CoreOptions {
   readonly databaseUrl: Redacted.Redacted;
   /** Where the bare repositories live: the volume's `/mnt/vol/git` in the container. */
   readonly gitRoot: string;
+  /** Where a backup set is staged, and the store it is kept in, none: backup off (`backup.ts`). */
+  readonly backup: Pick<BackupOptions, "stagingDir" | "store" | "afterDump">;
   readonly migrations: ReadonlyArray<Migration>;
   readonly hqProjectId: string;
   /** `HQ_ORG_TOKEN`. */
@@ -105,7 +108,10 @@ const services = (options: CoreOptions) => {
     streamTicketsLayer,
     mateLinkTicketsLayer,
     liveSocketsLayer,
-    deploysLayer().pipe(
+    Layer.mergeAll(
+      deploysLayer(),
+      backupLayer({ databaseUrl: options.databaseUrl, ...options.backup }),
+    ).pipe(
       Layer.provideMerge(releasesLayer),
       Layer.provide(recipeTiersLayer),
       Layer.provideMerge(changesLayer),

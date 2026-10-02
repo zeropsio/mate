@@ -46,8 +46,10 @@ const core = Layer.unwrap(
         yield* Config.Int("HQ_DRAIN_SECONDS").pipe(Config.withDefault(10)),
       ),
       databaseUrl: yield* Config.Redacted("DATABASE_URL"),
-      // The volume `vol` (zerops.yml) survives a deploy: the repositories live on it.
+      // The volume `vol` (zerops.yml) survives a deploy: the repositories live on it, and a
+      // backup set is staged there.
       gitRoot: "/mnt/vol/git",
+      backup: { stagingDir: "/mnt/vol/backup", store: null },
       migrations: bundledMigrations(),
       hqProjectId: yield* Config.String("projectId"),
       credential: yield* Config.option(Config.Redacted("HQ_ORG_TOKEN")),
