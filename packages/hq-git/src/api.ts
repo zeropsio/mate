@@ -81,6 +81,11 @@ export interface HqGitOptions {
   readonly importTimeoutMs?: number;
   /** Per-request deadline (default 30 min); a client that stops reading cannot hold git longer. */
   readonly requestTimeoutMs?: number;
+  /**
+   * How long a ref write waits for another writer's lock before it answers `busy` (default 5 s):
+   * git's own 100 ms is shorter than a writer slowed by IO holds it.
+   */
+  readonly refLockTimeoutMs?: number;
 }
 export interface ImportCredentials {
   readonly username: string;
