@@ -5868,6 +5868,8 @@ rebase` was painted green. `projectFlow.test.ts`.
   - _What it is:_ `grouped.others` — a change on nobody's Mate's branch — was indented under the
     Mates like theirs, distinguished only by a `· ada` the 256px width truncates away. It sits at
     the project's own left edge now. `SidebarZeropsTree.test.tsx`.
+  - _Stale 2026-10-02:_ `grouped.others` went with the Gitea pull-request rows; a change in HQ is
+    always a Mate's.
 - **Not done in this pass**
   - _What it is:_ "The actual PRs that prod has" and each branch's distance from production are not
     built. What a production is _missing_ is shown (`releaseContents`, already read, now listed in
@@ -7248,3 +7250,68 @@ read-only Gitea calls.
 - **Valkey's eviction policy is set through its profile** — the live import schema accepts
   `profileOverrides: {maxmemory-policy: …}` on every Valkey profile (hobby, staging, production).
   Medusa's job queue (BullMQ) warns on `allkeys-lru` and wants `noeviction`.
+
+## The HQ rebuild, as measured — 2026-10-01/02
+
+KRLS rigs and KRLS `Headquarters` `XpjD3GggSOmPrk2Xm7N8Kg`, unless named. Each row says what was done.
+
+- **A deploy with `readinessCheck` and `temporaryShutdown: false` hands over without one failed
+  request**; a version whose check never passes fails while the old one keeps serving. A Postgres
+  plus one runtime imports in 54–66 s. The hostname `core` is reserved: an import under it creates
+  nothing and leaves a project that cannot be deleted.
+  - _How it was established:_ probe projects created and deleted in KRLS, a 1 s poller on the
+    public address through each deploy.
+- **A BASIC_USER write to project env is read at once through an org READ_ONLY token's env read;**
+  project search trails it by up to about 1.6 s. A `mate-hq:` integration token is visible in the
+  member list to every reader.
+  - _How it was established:_ a write, then both reads polled with the two tokens.
+- **A project's own domain reaches an IPv4-only client through Zerops' shared IPv4**, with no 50 MB
+  body cap: `/health` 200 and a 120 MB body to HQ from a laptop without IPv6. Routing set before the
+  first deploy is refused with 400 "ServiceStack must supported http protocol"; the certificate
+  followed the deploy in about 10 s.
+  - _How it was established:_ T3c on KRLS `Headquarters`, curl from this Mac.
+- **A `local-storage` volume survives a deploy, and two containers serve it together for about
+  20 s.** The new container answered SSH at +40 s and took HQ's lead at +60 s; a marker written
+  before the deploy was read after it under a different host key. The old Core stops answering
+  about 45 s after a deploy's PUT, before the new version reads ACTIVE.
+  - _How it was established:_ marker, deploy, read; repeated in the restore drill's timings.
+- **An environment-scoped NO_ACCESS + BASIC_USER token deploys, enables the subdomain and imports
+  services** into its one project; an org READ_ONLY token cannot enable a subdomain.
+- **Stage deploys from HQ, twice** (Core `2d93cc977d`): deploying 3–10 s after the merge, live at
+  63–81 s, the app version named `main <sha7>`, the subdomain answering; everything deleted after.
+- **A Mate's delivery round trip through HQ** (Core `7e41c9e963`, zcp `5865657ce`): appdev #1
+  delivered, merged over the API and absorbed by the next delivery; #2 merged with the browser's
+  Merge button; #3 retitled within one session; the recipe proposal in `group` landed by Core.
+  `mate-rig-a - Gita` enrolled with HQ the same day.
+- **Backup sets** (Core `ddce9f140d`, then `ec1ae73186`): PGDG's `postgresql-client-18` 18.6
+  installs in the runtime prepare (about 82 s) against a Postgres 18.4 server; the five
+  `${backup_*}` references resolve inside a sensitive service env; the Object Storage at
+  `storage-prg1.zerops.io` answers SigV4 for region `us-east-1`. The first set (126 MB, 5
+  repositories, a 43.5 kB dump) was whole in the bucket and on the volume 36 s after the build
+  answered.
+- **A restore** (`restore <set> --replace`): 8.3 s; HQ down 2 min 50 s in all, about 80 s of it hand
+  steps; event log, refs and counts equal the set's manifest; the epoch went from 12 to 14. A set
+  from a Core with 17 migrations restored under one with 18, which applied the 18th at takeover.
+  HQ's database user does not own schema `public`: `DROP SCHEMA public` is refused with "must be
+  owner of schema public". A signed-in client re-entered through the door by itself; Gita's
+  credential, older than the set, kept working.
+- **An integration token's name takes 255 characters and colons;** 256 is refused with 400
+  `invalidUserInput`.
+  - _How it was established:_ NO_ACCESS tokens with no grants minted and deleted at each length.
+- **Swapping an environment's deploy key** (rehearsed with a stand-in broker variable): main's key
+  deleted by id, HQ's key handed over 0.6 s later, the variable untouched. HQ reads a deleted key as
+  held until it next hands it over, and then refuses the deploy.
+- **The sign-in hand-over returns only to the platform's registered callback.** From an origin that
+  is not `localhost` the request carries no port, so a client hosted on a `*.zerops.app` subdomain
+  cannot sign in: `app.zerops.io/authorize-app?app=zerops-code&state=…` sends the token to
+  `mate.zerops.io`. The Zerops API answers that origin with `access-control-allow-origin: *`.
+  - _How it was established:_ a static client hosted on `mate-rig-web` (deleted after), a browser
+    run to the platform's consent page.
+- **A door's throwaway token outlives a page that closes right after the door answers.** 18
+  `mate-door:*` tokens stood in KRLS, all minted by the owner's browser profiles: the client
+  deletes a door throwaway without awaiting it (`zeropsThrowaway.ts:161`), and the backstop sweep
+  runs once a day per browser.
+- **Main's release tags are signed by Gitea, not by the person.** Snap's `v0.1.0` reads
+  `tagger Gitea <gitea@fake.local>`; the person who released is in the broker's verdict status,
+  `approved: u-<login>`, as for all 94 verdicts in Mate s.r.o.
+  - _How it was established:_ the T13 export of Snap, read-only.
