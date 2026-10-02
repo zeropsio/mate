@@ -63,7 +63,7 @@ function step(html: string, name: string): string {
 describe("the Projects card", () => {
   it("names the next step in its header, without the verb", () => {
     const header = between(card(MERGING), "<header", "</header>");
-    expect(header).toContain(">Pull request #1 waits for your merge<");
+    expect(header).toContain(">Change #1 waits for your merge<");
     expect(header).not.toContain("Next:");
     expect(header).not.toContain("data-test-verb");
     expect(header).toContain('data-test-menu="aaa"');
@@ -85,7 +85,7 @@ describe("the Projects card", () => {
     "lays the four steps out as one row of labels over one row of equal cells: %s",
     (_name, value) => {
       const html = card(value);
-      const labels = ["Mates", "Pull requests", "main", "Production"].map((label) =>
+      const labels = ["Mates", "Changes", "main", "Production"].map((label) =>
         html.indexOf(`>${label}</span>`),
       );
       const cells = STEPS.map((name) => html.indexOf(`data-zerops-step-cell="${name}"`));

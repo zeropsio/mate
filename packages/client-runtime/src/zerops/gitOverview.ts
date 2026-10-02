@@ -32,10 +32,10 @@ export interface GitOverviewApp {
   readonly repositories: ReadonlyArray<GitOverviewRepository>;
 }
 
-/** `2 open pull requests` — a repository's one line. */
+/** `2 open changes` — a repository's one line. */
 export function gitRepositoryLine(open: number): string {
-  if (open === 0) return "No open pull request";
-  return open === 1 ? "1 open pull request" : `${String(open)} open pull requests`;
+  if (open === 0) return "No open change";
+  return open === 1 ? "1 open change" : `${String(open)} open changes`;
 }
 
 function byName(left: string, right: string): number {

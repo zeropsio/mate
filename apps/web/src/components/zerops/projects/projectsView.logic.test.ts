@@ -665,10 +665,10 @@ describe("groupMetaLine", () => {
   it.each([
     ["1 Mate", flowOf()],
     [
-      "2 Mates · 1 open pull request",
+      "2 Mates · 1 open change",
       flowOf({ mates: [MATE, { ...MATE, projectId: "p-2", name: "Ada" }], pullRequests: [pull()] }),
     ],
-    ["2 open pull requests", flowOf({ mates: [], pullRequests: [pull(), pull({ number: 2 })] })],
+    ["2 open changes", flowOf({ mates: [], pullRequests: [pull(), pull({ number: 2 })] })],
     ["No Mate yet", flowOf({ mates: [] })],
   ] as const)("reads %s", (line, flow) => {
     expect(groupMetaLine(flow)).toBe(line);

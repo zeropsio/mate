@@ -185,7 +185,7 @@ function OverviewHeader() {
       <span />
       <MicroLabel>Project</MicroLabel>
       <MicroLabel className="hidden @5xl/flow:block">Mates</MicroLabel>
-      <MicroLabel>Pull requests</MicroLabel>
+      <MicroLabel>Changes</MicroLabel>
       <MicroLabel>main</MicroLabel>
       <MicroLabel>Production</MicroLabel>
       <span />
@@ -333,7 +333,7 @@ function OverviewRow<T>({
         </button>
         <MatesCell entry={entry} props={props} verb={verbIn("mates")} />
         {/* Until the group's read answers, its steps hold their place and claim nothing. */}
-        <StepPlace label="Pull requests">
+        <StepPlace label="Changes">
           {entry.changesAwaiting ? (
             <PendingStep density="line" step="pull-requests" />
           ) : (

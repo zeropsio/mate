@@ -458,9 +458,7 @@ export function groupMetaLine(flow: GroupFlow): string {
   const open = flow.pullRequests.length;
   const parts = [
     ...(mates === 0 ? [] : [mates === 1 ? "1 Mate" : `${String(mates)} Mates`]),
-    ...(open === 0
-      ? []
-      : [open === 1 ? "1 open pull request" : `${String(open)} open pull requests`]),
+    ...(open === 0 ? [] : [open === 1 ? "1 open change" : `${String(open)} open changes`]),
   ];
   return parts.length === 0 ? "No Mate yet" : parts.join(" · ");
 }

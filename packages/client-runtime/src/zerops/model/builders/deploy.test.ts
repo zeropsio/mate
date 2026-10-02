@@ -539,7 +539,7 @@ describe("buildDeployFields — a git push says what it did, a deploy only once 
 
   it.each([
     { call: "running", expected: undefined },
-    { call: "pushedForPullRequest", expected: "Pushed to pull request #8." },
+    { call: "pushedForPullRequest", expected: "Pushed to change #8." },
     { call: "pushed", expected: "Pushed to main." },
     { call: "pushedWithNoBuildWired", expected: "Pushed to main." },
     { call: "upToDate", expected: "Nothing new to push." },

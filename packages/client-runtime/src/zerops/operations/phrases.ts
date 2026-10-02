@@ -617,7 +617,7 @@ export function gitPushClosing(
     return "Nothing new to push.";
   }
   if (context.pullRequest !== undefined) {
-    return `Pushed to pull request #${context.pullRequest}.`;
+    return `Pushed to change #${context.pullRequest}.`;
   }
   return context.branch !== undefined ? `Pushed to ${context.branch}.` : "Pushed.";
 }

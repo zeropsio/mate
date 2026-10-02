@@ -94,7 +94,7 @@ const ATTENTION = [
   },
   {
     kind: "change-blocked" as const,
-    text: "#6 needs a rebase",
+    text: "#6 conflicts with main",
     verb: "Ask Theo",
     target: { kind: "change" as const, repository: "appdev", number: 6 },
   },

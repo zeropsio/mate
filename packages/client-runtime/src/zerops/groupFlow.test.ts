@@ -249,7 +249,7 @@ describe("groupFlow", () => {
     const flow = groupFlow(SM_FIXTURE);
     expect(flow.nextStep).toEqual({
       kind: "merge",
-      text: "Pull request #1 waits for your merge",
+      text: "Change #1 waits for your merge",
       verb: "Review",
       target: { kind: "change", repository: "app", number: 1 },
     });
@@ -438,7 +438,7 @@ describe("groupFlow", () => {
       },
       step: {
         kind: "unblock",
-        text: "#1 needs a rebase",
+        text: "#1 conflicts with main",
         verb: "Ask Wren",
         target: { kind: "change", repository: "app", number: 1 },
       },
@@ -451,7 +451,7 @@ describe("groupFlow", () => {
       },
       step: {
         kind: "merge",
-        text: "Pull request #1 waits for your merge",
+        text: "Change #1 waits for your merge",
         verb: "Review",
         target: { kind: "change", repository: "app", number: 1 },
       },
@@ -461,7 +461,7 @@ describe("groupFlow", () => {
       input: { ...FSADFDASFSA, pullRequests: [pull({ number: 5, mateProjectId: "p-juno" })] },
       step: {
         kind: "merge",
-        text: "Pull request #5 waits for your merge",
+        text: "Change #5 waits for your merge",
         verb: "Review",
         target: { kind: "change", repository: "app", number: 5 },
       },

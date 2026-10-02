@@ -418,7 +418,7 @@ function nextStepOf(
   if (mergeable !== undefined)
     return {
       kind: "merge",
-      text: `Pull request #${String(mergeable.number)} waits for your merge`,
+      text: `Change #${String(mergeable.number)} waits for your merge`,
       // The door to the change's review, which merges it (pass 16, R1).
       verb: REVIEW_LABEL,
       target: { kind: "change", repository: mergeable.repository, number: mergeable.number },

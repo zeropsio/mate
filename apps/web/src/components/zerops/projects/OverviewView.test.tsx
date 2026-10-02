@@ -75,7 +75,7 @@ describe("the Overview", () => {
     );
     expect(strip).toContain("Next steps");
     expect(strip).toContain(">sm-fixture<");
-    expect(strip).toContain(">Pull request #1 waits for your merge<");
+    expect(strip).toContain(">Change #1 waits for your merge<");
     expect(strip).toContain('data-test-verb="merge"');
     // A first task is not a step waiting on anybody: its group is a tile.
     expect(strip).not.toContain("first task");
@@ -497,7 +497,7 @@ describe("a creation under way on the Overview", () => {
     // The listed Mate opens; the one being created has nothing to press.
     expect(mates.match(/<button/gu)).toHaveLength(1);
     expect(mates).toContain('aria-label="Open Wren"');
-    expect(row).toContain(">2 Mates · 1 open pull request<");
+    expect(row).toContain(">2 Mates · 1 open change<");
   });
 
   // Picked in the New Mate dialog, its face is worn from its first moment — asleep, as the left
@@ -533,7 +533,7 @@ describe("a creation under way on the Overview", () => {
     const row = section(render({ groups: [listed] }), 'data-zerops-group="aaa"');
     expect(row).not.toContain('data-zerops-surface="mate-coming"');
     expect(row.match(/data-test-face="wren-dev"/gu)).toHaveLength(1);
-    expect(row).toContain(">1 Mate · 1 open pull request<");
+    expect(row).toContain(">1 Mate · 1 open change<");
   });
 
   it("leads with a brand-new project's group, drawn from its birth alone", () => {
