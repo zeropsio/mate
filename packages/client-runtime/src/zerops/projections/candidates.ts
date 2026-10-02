@@ -13,7 +13,12 @@
 import type { EnvironmentId } from "@t3tools/contracts";
 
 import type { ZeropsService } from "../api.ts";
-import { deriveZeropsCandidates, isZcpService, type ZeropsCandidate } from "../candidates.ts";
+import {
+  deriveZeropsCandidates,
+  isZcpService,
+  type AddressClock,
+  type ZeropsCandidate,
+} from "../candidates.ts";
 import { readZeropsGroupTags } from "../groups.ts";
 import { projectRecordToZeropsProject, serviceRecordToZeropsService } from "../data/dto.ts";
 import type { ProjectRecord, ProjectRef, ServiceRecord } from "../data/types.ts";
@@ -57,11 +62,13 @@ const known = (candidates: ReadonlyArray<ZeropsCandidate>): ReadonlyArray<Candid
 
 /**
  * One project's candidates; null while its name or status is not read yet. Only an active
- * project's services are read (`servicesOf`): any other status decides its one row alone.
+ * project's services are read (`servicesOf`): any other status decides its one row alone. A reader
+ * that holds a clock judges a young container's wait for its address by it (`AddressClock`).
  */
 export function projectCandidates(
   record: ProjectRecord,
   servicesOf: (project: ProjectRef) => Known<ReadonlyArray<ServiceRecord>>,
+  clock?: AddressClock,
 ): ReadonlyArray<CandidateRow> | null {
   const project = projectRecordToZeropsProject(record);
   if (project === null) return null;
@@ -71,7 +78,7 @@ export function projectCandidates(
   if (services === null) {
     return [{ key: project.id, project, group: "unavailable", presence: "unknown" }];
   }
-  return known(deriveZeropsCandidates(project, services, NO_CONNECTIONS));
+  return known(deriveZeropsCandidates(project, services, NO_CONNECTIONS, undefined, clock));
 }
 
 /**

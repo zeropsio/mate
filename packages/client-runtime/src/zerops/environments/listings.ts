@@ -11,6 +11,10 @@
  * - A read with no value yet is dated by the moment this listing first saw it wait that way
  *   (`known.ts`): a new read that still waits the same way keeps the date, so no clock derives
  *   the listing again.
+ * - A young container ACTIVE before its address landed is on its way to it from the moment this
+ *   listing first saw it so (`addressAwaited`): a new read keeps that moment, and the one clock
+ *   that derives the listing again is its wait's end, when the same facts read as the platform
+ *   leaves them.
  */
 import { Atom } from "effect/unstable/reactivity";
 
@@ -64,6 +68,8 @@ interface ProjectEntry {
   readonly services: CollectionRead<ServiceRecord> | null;
   /** Null while its record does not name it yet. */
   readonly rows: ReadonlyArray<CandidateRow> | null;
+  /** When the first of its rows' address waits ends, wall ms; null when none waits. */
+  readonly waitEnds: number | null;
   readonly directRead: number | null;
 }
 
@@ -140,7 +146,8 @@ export function candidateListingsAtom(
       before: ProjectEntry | undefined,
     ): ProjectEntry => {
       const isAdmitted = admitted.has(projectKeyOf(record.ref));
-      if (before?.record === record && before.admitted === isAdmitted) {
+      const waitOver = before?.waitEnds != null && before.waitEnds <= nowMs;
+      if (before?.record === record && before.admitted === isAdmitted && !waitOver) {
         if (before.services === null) return before;
         const read = get(data.reads.servicesOf(record.ref));
         if (read === before.services) return before;
@@ -157,21 +164,33 @@ export function candidateListingsAtom(
     ): ProjectEntry => {
       let services: CollectionRead<ServiceRecord> | null = null;
       let directRead: number | null = null;
-      const rows = projectCandidates(record, (ref) => {
-        if (!isAdmitted) return UNREAD_SERVICES;
-        const read = known ?? get(data.reads.servicesOf(ref));
-        const value = knownServicesOf(read, nowMs);
-        services = read;
-        directRead = directReadOf(read, value);
-        return value;
-      });
+      const rows = projectCandidates(
+        record,
+        (ref) => {
+          if (!isAdmitted) return UNREAD_SERVICES;
+          const read = known ?? get(data.reads.servicesOf(ref));
+          const value = knownServicesOf(read, nowMs);
+          services = read;
+          directRead = directReadOf(read, value);
+          return value;
+        },
+        {
+          nowMs,
+          addressAwaitedSince: (serviceId) =>
+            before?.rows?.find((row) => row.service?.id === serviceId)?.addressAwaited?.since,
+        },
+      );
       const same = before?.rows != null && rows !== null && sameJson(before.rows, rows);
+      const ends = (rows ?? []).flatMap((row) =>
+        row.addressAwaited === undefined ? [] : [row.addressAwaited.until],
+      );
       return {
         record,
         admitted: isAdmitted,
         services,
         rows: same ? before.rows : rows,
         directRead,
+        waitEnds: ends.length === 0 ? null : Math.min(...ends),
       };
     };
 
@@ -227,6 +246,20 @@ export function candidateListingsAtom(
       ]),
     );
     organizations = next;
+    // A young container's wait for its address ends on a clock, not on a read: the listing is
+    // derived again then, so it never says "on its way" past its wait.
+    const waitEnds = [...next.values()].flatMap((organization) =>
+      [...organization.entries.values()].flatMap((entry) =>
+        entry.waitEnds === null ? [] : [entry.waitEnds],
+      ),
+    );
+    if (waitEnds.length > 0) {
+      get.addFinalizer(
+        systemExchangeClock.setTimer(Math.max(0, Math.min(...waitEnds) - nowMs), () =>
+          get.refreshSelf(),
+        ),
+      );
+    }
     const listed = [...next.values()].map((entry) => entry.listed);
     if (!sameItems(published, listed)) published = listed;
     return published;
