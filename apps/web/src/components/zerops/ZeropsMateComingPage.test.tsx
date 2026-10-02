@@ -15,9 +15,13 @@ import { ComingBelow, ZeropsMateComingPage } from "./ZeropsMateComingPage";
 
 const ENV_QUINN = EnvironmentId.make("env-quinn");
 
-/** A Mate's link as its machine reads it; one that has not failed since it connected says none. */
-type MateLink = Omit<MachineLink, "failuresSinceConnect"> & {
+/**
+ * A Mate's link as its machine reads it; one that has not failed since it connected says none, and
+ * one that has not answered says nothing of it.
+ */
+type MateLink = Omit<MachineLink, "failuresSinceConnect" | "answered"> & {
   readonly failuresSinceConnect?: number;
+  readonly answered?: boolean;
 };
 const KEY = "beviro-quinn:zcp";
 const PROJECT = "beviro-quinn";

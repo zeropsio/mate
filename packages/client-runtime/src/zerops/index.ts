@@ -92,6 +92,7 @@ export {
   withZeropsChangedFace,
   withZeropsFaceTag,
   withZeropsGroupTags,
+  withZeropsMateAtBirth,
   withZeropsMateTag,
   isZeropsMateClosedOff,
   MATE_CLOSED_OFF_TAG,

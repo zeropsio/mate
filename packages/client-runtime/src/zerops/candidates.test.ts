@@ -566,6 +566,78 @@ describe("a young container ACTIVE before its address landed", () => {
   });
 });
 
+// Run 4, 2 Oct 2026: in a window that did not make it, a new Mate's row read asleep for the 15 s
+// between its address landing and its server answering. A reader that watched it wait for its
+// address holds it on its way to answering on the same clock; one that first sees it with its
+// address — a reload — never says so, so it paints nothing it takes back.
+describe("a young container whose address landed, its Mate not answering yet", () => {
+  const CREATED_AT = "2026-10-02T12:00:00.000Z";
+  const CREATED = Date.parse(CREATED_AT);
+  const at = (ms: number) => CREATED + ms;
+  const MINUTE = 60_000;
+
+  it.each<{
+    readonly case: string;
+    /** Since its creation, ms; undefined when no clock judges it. */
+    readonly now: number | undefined;
+    readonly seen?: AddressSeen;
+    readonly arriving?: { readonly since: number; readonly until: number };
+  }>([
+    {
+      case: "its address lands while this reader waits for it: on its way, on the wait's clock",
+      now: 115_300,
+      seen: { addressed: false, since: at(110_000) },
+      arriving: { since: 110_000, until: 110_000 + ADDRESS_GRACE_MS },
+    },
+    {
+      case: "seen with its address since that wait: still on its way",
+      now: 125_000,
+      seen: { addressed: true, since: at(110_000) },
+      arriving: { since: 110_000, until: 110_000 + ADDRESS_GRACE_MS },
+    },
+    {
+      case: "a slow first build turned ACTIVE late: its wait ends with its first minutes",
+      now: 31 * MINUTE + 10_000,
+      seen: { addressed: true, since: at(31 * MINUTE) },
+      arriving: { since: 31 * MINUTE, until: FIRST_BUILD_GIVE_UP_MS + ADDRESS_GRACE_MS },
+    },
+    {
+      case: "past its wait: ready, and nothing says it is on its way",
+      now: 110_000 + ADDRESS_GRACE_MS,
+      seen: { addressed: true, since: at(110_000) },
+    },
+    {
+      case: "first seen with its address, as a reload sees it: nothing on its way",
+      now: 125_000,
+    },
+    {
+      case: "seen with its address and never waiting for it: nothing on its way",
+      now: 125_000,
+      seen: { addressed: true },
+    },
+    {
+      case: "no clock judges it: as the platform leaves it",
+      now: undefined,
+      seen: { addressed: true, since: at(110_000) },
+    },
+  ])("$case", (row) => {
+    const [candidate] = deriveZeropsCandidates(
+      PROJECT,
+      [service({ id: "s1", created: CREATED_AT })],
+      NO_CONNECTIONS,
+      undefined,
+      row.now === undefined ? undefined : { nowMs: at(row.now), addressSeen: () => row.seen },
+    );
+    expect(candidate?.group).toBe("ready");
+    expect(candidate?.containerOrigin).toBeDefined();
+    expect(candidate?.arriving).toEqual(
+      row.arriving === undefined
+        ? undefined
+        : { since: at(row.arriving.since), until: at(row.arriving.until) },
+    );
+  });
+});
+
 // What a reader keeps of each container's address once a derivation read it: a container seen with
 // its address never waits for it again, and a wait's first moment is kept — after its end too.
 describe("addressSeenAfter", () => {
@@ -610,8 +682,15 @@ describe("addressSeenAfter", () => {
       kept: WITHOUT,
     },
     {
-      case: "its address landed: seen with it",
+      case: "its address landed: seen with it, on the clock its wait began",
       held: WITHOUT,
+      subdomainAccess: true,
+      now: 115_300,
+      kept: { addressed: true, since: WITHOUT.since },
+    },
+    {
+      case: "first seen with its address: seen with it, and no wait to date it by",
+      held: undefined,
       subdomainAccess: true,
       now: 115_300,
       kept: { addressed: true },

@@ -164,7 +164,7 @@ export function useEnvironmentCreation(): (
         withAgent: choice.withAgent,
         register: registers,
         ...(choice.botName === undefined ? {} : { botName: choice.botName }),
-        ...(asker ? { standUpBy: asker } : {}),
+        ...(asker ? { standUpBy: asker, madeBy: asker } : {}),
         ...(choice.face === undefined ? {} : { face: choice.face }),
       });
       if (!isCurrent()) return { kind: "refused", reason: null };

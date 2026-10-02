@@ -13,6 +13,7 @@ import {
 import { describe, expect, it } from "vite-plus/test";
 
 import {
+  arrivalAwaitsAnswer,
   arrivalLinkHolds,
   mateComing,
   mateComingHeadlineClauses,
@@ -28,7 +29,13 @@ import {
   mateArrivalShown,
   type MateComingPage,
 } from "./mateComing";
-import type { Reachability } from "@t3tools/client-runtime/zerops/environments";
+import type { MateLink, Reachability } from "@t3tools/client-runtime/zerops/environments";
+import {
+  NO_ADDRESS_MEMORY,
+  addressClockOf,
+  rememberAddresses,
+  type AddressMemory,
+} from "@t3tools/client-runtime/zerops/projections";
 
 const NOW = Date.parse("2026-10-01T20:00:00.000Z");
 const HELD = { startedAt: 1_000, container: true, retryable: false } as const;
@@ -1034,5 +1041,164 @@ describe("a new Mate whose container is ACTIVE before its address landed", () =>
     });
     expect(read.coming).toBeUndefined();
     expect(read.reachability.kind).toBe("no-address");
+  });
+});
+
+// Run 4 (2026-10-02), replayed in the window that did not make the Mate: its container turned
+// ACTIVE, its address landed seconds later, and its server answered about 15 s after ACTIVE. In that
+// gap the row read asleep — "Nobody has signed in yet" under an asleep face — and took it back when
+// the Mate answered. Each step is a listing derivation over the memory the listing keeps, then the
+// link this window's machine reads.
+describe("a Mate whose address landed, not answering yet, in a window that did not make it", () => {
+  const CREATED_AT = "2026-10-02T12:00:00.000Z";
+  const CREATED = Date.parse(CREATED_AT);
+  const ENV = EnvironmentId.make("environment-larch");
+  const PROJECT: ZeropsProject = {
+    id: "project-larch",
+    name: "Larch",
+    status: "ACTIVE",
+    clientId: "org-1",
+    publicZone: "fte2334ab.prg1-zerops.zone",
+    zeropsSubdomainHost: "7c2e",
+  };
+  const ORIGIN = "https://zcp-7c2e-8080.prg1.zerops.app";
+  const zcp = (status: string, subdomainAccess: boolean): ZeropsService => ({
+    id: "service-larch",
+    name: "zcp",
+    status,
+    subdomainAccess,
+    ports: [{ port: 8080, httpSupport: true }],
+    serviceStackTypeInfo: { serviceStackTypeVersionName: "zcp@1" },
+    created: CREATED_AT,
+  });
+  const BOOTING: Reachability = {
+    kind: "container",
+    container: { level: "booting", overdue: false },
+  };
+  const NOT_ANSWERING: Reachability = {
+    kind: "retrying",
+    retryAtMs: CREATED + 160_000,
+    last: { kind: "descriptor-unreachable" },
+    restart: false,
+  };
+  const link = (reachability: Reachability | null, answered = false, failures = 0) =>
+    ({
+      key: "project-larch:service-larch",
+      environmentId: undefined,
+      reachability,
+      failuresSinceConnect: failures,
+      answered,
+    }) satisfies MateLink;
+
+  const STEPS: ReadonlyArray<{
+    readonly step: string;
+    readonly atMs: number;
+    readonly service: ZeropsService;
+    readonly link: MateLink;
+    readonly connected?: true;
+    readonly coming: boolean;
+  }> = [
+    {
+      step: "its first build",
+      atMs: 60_000,
+      service: zcp("READY_TO_DEPLOY", false),
+      link: link(null),
+      coming: true,
+    },
+    {
+      step: "ACTIVE, its address not enabled yet",
+      atMs: 152_000,
+      service: zcp("ACTIVE", false),
+      link: link(BOOTING),
+      coming: true,
+    },
+    {
+      step: "its address landed, its Mate not answering",
+      atMs: 157_600,
+      service: zcp("ACTIVE", true),
+      link: link(BOOTING),
+      coming: true,
+    },
+    {
+      step: "its probes failing past an arrival's held failures",
+      atMs: 166_800,
+      service: zcp("ACTIVE", true),
+      link: link(NOT_ANSWERING, false, 5),
+      coming: true,
+    },
+    {
+      step: "its Mate answered and its link connected",
+      atMs: 167_000,
+      service: zcp("ACTIVE", true),
+      link: link({ kind: "ready", notice: null }, true),
+      connected: true,
+      coming: false,
+    },
+  ];
+
+  /** The steps in order, the listing's memory carried from each to the next. */
+  const replay = (steps: typeof STEPS) => {
+    let memory: AddressMemory = NO_ADDRESS_MEMORY;
+    return steps.map((step) => {
+      const nowMs = CREATED + step.atMs;
+      const candidate = deriveZeropsCandidates(
+        PROJECT,
+        [step.service],
+        new Map(step.connected === true ? [[ORIGIN, ENV]] : []),
+        undefined,
+        addressClockOf(memory, nowMs),
+      )[0]!;
+      memory = rememberAddresses(memory, [candidate]);
+      return mateComing({
+        press: undefined,
+        candidate,
+        nowMs,
+        answerAwaited: arrivalAwaitsAnswer(step.link),
+      });
+    });
+  };
+
+  it("reads coming up at every step until its Mate answers, never asleep in between", () => {
+    expect(replay(STEPS).map((coming) => coming?.kind ?? "up")).toEqual(
+      STEPS.map((step) => (step.coming ? "coming" : "up")),
+    );
+  });
+
+  it("says it in the words a Mate coming up says everywhere", () => {
+    expect(replay(STEPS)[3]).toEqual({ kind: "coming", line: "Coming up. A few minutes." });
+  });
+
+  it("past its two minutes, a Mate that never answered reads as any other", () => {
+    const late = replay([...STEPS.slice(0, 3), { ...STEPS[3]!, atMs: 152_000 + ADDRESS_GRACE_MS }]);
+    expect(late[3]).toBeUndefined();
+  });
+
+  it.each<{ readonly case: string; readonly link: MateLink }>([
+    {
+      case: "it answered once and its link dropped",
+      link: link({ kind: "reconnecting" }, true),
+    },
+    { case: "it is gone", link: link({ kind: "gone", because: "direct-not-found" }) },
+    {
+      case: "its link asks for a restart",
+      link: link({ ...NOT_ANSWERING, restart: true } as Reachability),
+    },
+    {
+      case: "its container stopped",
+      link: link({
+        kind: "container",
+        container: { level: "inactive", status: "STOPPED" },
+      } as Reachability),
+    },
+  ])("within its two minutes, not coming up when $case", ({ link: now }) => {
+    expect(replay([...STEPS.slice(0, 3), { ...STEPS[3]!, link: now }])[3]).toBeUndefined();
+  });
+
+  it("an old Mate that stops answering still reads as asleep, never coming up", () => {
+    // A reload — or an old Mate: first seen with its address, nothing watched it come.
+    const [read] = replay([{ ...STEPS[3]!, atMs: 3 * 60 * 60_000 }]);
+    expect(read).toBeUndefined();
+    const [reloaded] = replay([STEPS[3]!]);
+    expect(reloaded).toBeUndefined();
   });
 });

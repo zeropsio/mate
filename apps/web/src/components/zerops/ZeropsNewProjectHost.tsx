@@ -259,6 +259,8 @@ function NewProjectDialog() {
       locationId,
       // Every agent: an empty selection omits `ZCP_AGENTS` (`newProject.ts`).
       agents: [],
+      // Its first Mate waits for the sign-in of whoever pressed Create.
+      ...(user?.id ? { madeBy: user.id } : {}),
     };
     const isCurrent = captureAccountLifetime();
     let landed = false;

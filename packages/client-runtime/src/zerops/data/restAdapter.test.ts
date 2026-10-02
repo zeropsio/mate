@@ -1078,13 +1078,19 @@ describe("ZeropsDataAdapter receiver", () => {
             botName: "Ada",
             face: { tint: "coral", shape: "gem" },
             standUpBy: "u-ada",
+            madeBy: "u-ada",
             ...commandBase,
           },
           context(),
         );
 
         // The project's own POST: the one body the platform creates it with.
-        for (const tag of ["mate:bot:Ada", "mate:face:coral:gem", "mate:standup:u-ada"]) {
+        for (const tag of [
+          "mate:bot:Ada",
+          "mate:face:coral:gem",
+          "mate:standup:u-ada",
+          "mate:by:u-ada",
+        ]) {
           expect(bodies[0]).toContain(`"${tag}"`);
         }
       }),

@@ -1037,14 +1037,19 @@ export function mateContainerMissing(
   return mateProjectPastGrace(candidate.project, nowMs);
 }
 
-/** Whether the viewer added this Mate: its stand-up asked for by them, or its seat theirs. */
+/**
+ * Whether the viewer added this Mate: its birth names them (`mate:by:`, New project or Add a Mate),
+ * its stand-up was asked for by them, or its seat is theirs.
+ */
 export function mateAddedBy(
   tagList: ReadonlyArray<string> | undefined,
   viewer: string | undefined,
 ): boolean {
   if (viewer === undefined || viewer.length === 0) return false;
+  const tags = readZeropsGroupTags(tagList);
   return (
-    readZeropsGroupTags(tagList).standUp?.by === viewer ||
+    tags.madeBy === viewer ||
+    tags.standUp?.by === viewer ||
     mateIsViewers({ tagList: tagList ?? [] }, viewer)
   );
 }

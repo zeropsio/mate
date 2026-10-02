@@ -54,6 +54,8 @@ export interface ZeropsMateIdentity {
    * waits for their first sign-in: their empty conversation says so and sends it (`mateStandUp.ts`).
    */
   readonly standUp?: { readonly by: string } | undefined;
+  /** Who made it (`mate:by:`): whose sign-in it waits for while nobody has signed it in. */
+  readonly madeBy?: string | undefined;
 }
 
 const NO_ORIGINS: ReadonlyMap<string, EnvironmentId> = new Map();
@@ -92,6 +94,7 @@ export function zeropsMateIdentityOf(
     projectUrl: zeropsProjectUrl(candidate.project.id),
     connected: candidate.group === "connected",
     ...(tags.standUp === undefined ? {} : { standUp: tags.standUp }),
+    ...(tags.madeBy === undefined ? {} : { madeBy: tags.madeBy }),
   };
 }
 

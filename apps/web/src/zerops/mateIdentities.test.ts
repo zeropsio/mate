@@ -57,6 +57,14 @@ describe("zeropsMateIdentities", () => {
     expect(mate?.standUp).toEqual(by === undefined ? undefined : { by });
   });
 
+  it.each([
+    { name: "names who made it", tags: [...FEN_TAGS, "mate:by:u-ada"], by: "u-ada" },
+    { name: "is absent on a Mate born before it", tags: FEN_TAGS, by: undefined },
+  ])("carries who made it: $name", ({ tags, by }) => {
+    const mate = zeropsMateIdentities([candidate("acme-docs-dev", tags, FEN)]).get(FEN);
+    expect(mate?.madeBy).toBe(by);
+  });
+
   /**
    * A Mate wears the face its person picked (`mate:face:`); one nobody picked
    * a face for wears exactly the one it wore before: its derived tint, and

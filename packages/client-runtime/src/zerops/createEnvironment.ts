@@ -104,6 +104,11 @@ export interface EnvironmentCreationInput {
    */
   readonly standUpBy?: string;
   /**
+   * The Zerops user adding this Mate: a dev environment with an agent is born naming them
+   * (`mate:by:`), the person whose sign-in it waits for until somebody signs its agent in.
+   */
+  readonly madeBy?: string;
+  /**
    * The face its person picked for the agent, written beside its name. A
    * caller that omits it gets a Mate whose face is derived from its name.
    */

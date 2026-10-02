@@ -54,6 +54,11 @@ export interface MateLink {
   readonly reachability: Reachability | null;
   /** Its link's failures since it last connected (`EnvironmentMachine.failuresSinceConnect`). */
   readonly failuresSinceConnect: number;
+  /**
+   * Its link has connected on this page — it is connected, or it was: a Mate that answered is no
+   * longer arriving, whatever it waits for now.
+   */
+  readonly answered: boolean;
 }
 
 export function mateLink(input: {
@@ -68,7 +73,13 @@ export function mateLink(input: {
   const key = rowTarget(input);
   const machine = key === undefined ? undefined : input.machines.get(key);
   if (machine === undefined) {
-    return { key, environmentId: undefined, reachability: null, failuresSinceConnect: 0 };
+    return {
+      key,
+      environmentId: undefined,
+      reachability: null,
+      failuresSinceConnect: 0,
+      answered: false,
+    };
   }
   // A restarting Mate has no origin in the inventory; its target key still finds it.
   const named =
@@ -86,5 +97,6 @@ export function mateLink(input: {
     environmentId: opens ? named : undefined,
     reachability,
     failuresSinceConnect: machine.failuresSinceConnect,
+    answered: machine.link.phase === "connected" || machine.linkLostAt !== null,
   };
 }

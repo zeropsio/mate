@@ -70,6 +70,12 @@ const BOT_TAG_PREFIX = `${MATE_TAG_NAMESPACE}:bot:`;
  * (`mateStandUp.ts` in the web app), and the send clears the tag.
  */
 const STAND_UP_TAG_PREFIX = `${MATE_TAG_NAMESPACE}:standup:`;
+/**
+ * Who made a development Mate — by New project or by Add a Mate — written at birth: the person
+ * whose sign-in it waits for until somebody signs its agent in. Unlike the stand-up it is never
+ * cleared; it says who made it, not what is asked of it.
+ */
+const MADE_BY_TAG_PREFIX = `${MATE_TAG_NAMESPACE}:by:`;
 /** The face its person picked for it: `mate:face:<tint>:<shape>`. */
 const FACE_TAG_PREFIX = `${MATE_TAG_NAMESPACE}:face:`;
 
@@ -153,6 +159,8 @@ export interface ZeropsGroupTags {
   readonly bot: string | undefined;
   /** Who asked for the project's development to be stood up (`mate:standup:`), while it waits. */
   readonly standUp?: { readonly by: string } | undefined;
+  /** Who made the Mate (`mate:by:`): whose sign-in it waits for while nobody has signed in. */
+  readonly madeBy?: string | undefined;
   /** The face its person picked (`mate:face:`); absent where the tag says nothing this client knows. */
   readonly face: ZeropsMateFaceTag | undefined;
 }
@@ -169,6 +177,7 @@ export function readZeropsGroupTags(tagList: ReadonlyArray<string> | undefined):
   let label: string | undefined;
   let bot: string | undefined;
   let standUp: { readonly by: string } | undefined;
+  let madeBy: string | undefined;
   let face: ZeropsMateFaceTag | undefined;
 
   for (const tag of tagList ?? []) {
@@ -179,6 +188,11 @@ export function readZeropsGroupTags(tagList: ReadonlyArray<string> | undefined):
     if (tag.startsWith(STAND_UP_TAG_PREFIX)) {
       const by = tag.slice(STAND_UP_TAG_PREFIX.length).trim();
       if (standUp === undefined && by.length > 0) standUp = { by };
+      continue;
+    }
+    if (tag.startsWith(MADE_BY_TAG_PREFIX)) {
+      const by = tag.slice(MADE_BY_TAG_PREFIX.length).trim();
+      if (madeBy === undefined && by.length > 0) madeBy = by;
       continue;
     }
     if (groupId === undefined && tag.startsWith(GROUP_TAG_PREFIX)) {
@@ -206,7 +220,16 @@ export function readZeropsGroupTags(tagList: ReadonlyArray<string> | undefined):
     }
   }
 
-  return { mate, groupId, role, label, bot, standUp, face };
+  return {
+    mate,
+    groupId,
+    role,
+    label,
+    bot,
+    standUp,
+    ...(madeBy === undefined ? {} : { madeBy }),
+    face,
+  };
 }
 
 /** A Mate's face: the colour and the shape its person picked for it. */
@@ -415,10 +438,11 @@ export function withoutZeropsStandUpTag(
 
 /**
  * A Mate as it is born, after its membership: the marker, the agent's name, the face its person
- * picked, and — for a dev Mate — who asked for the project's development to be stood up. The one
- * birth whichever call creates the project: *New Mate* (`planEnvironmentCreation`) and the New
- * project wizard's first Mate (`createProjectWithZeropsMate`). A stage or a production with an
- * agent is a target, not a place development is stood up.
+ * picked, and — for a dev Mate — who made it and who asked for the project's development to be
+ * stood up. The one birth whichever call creates the project: *New Mate*
+ * (`planEnvironmentCreation`) and the New project wizard's first Mate
+ * (`createProjectWithZeropsMate`). A stage or a production with an agent is a target, not a place
+ * development is stood up, nor a Mate whose sign-in somebody is waited for.
  */
 export function withZeropsMateAtBirth(
   tagList: ReadonlyArray<string> | undefined,
@@ -427,14 +451,16 @@ export function withZeropsMateAtBirth(
     readonly botName?: string | undefined;
     readonly face?: ZeropsMateFace | undefined;
     readonly standUpBy?: string | undefined;
+    readonly madeBy?: string | undefined;
   },
 ): ReadonlyArray<string> {
   const declared = withZeropsMateTag(tagList);
   const named = mate.botName === undefined ? declared : withZeropsBotTag(declared, mate.botName);
   const faced = mate.face === undefined ? named : withZeropsFaceTag(named, mate.face);
-  return mate.role === "dev" && mate.standUpBy !== undefined
-    ? withZeropsStandUpTag(faced, mate.standUpBy)
-    : faced;
+  if (mate.role !== "dev") return faced;
+  const maker = mate.madeBy?.trim() ?? "";
+  const made = maker.length === 0 ? faced : [...faced, `${MADE_BY_TAG_PREFIX}${maker}`];
+  return mate.standUpBy === undefined ? made : withZeropsStandUpTag(made, mate.standUpBy);
 }
 
 export const ZEROPS_GROUP_ID_LENGTH = 12;

@@ -649,4 +649,15 @@ describe("learnAddresses — what the listings teach the address memory, and the
     expect(learned.memory.get("s-wait")).toEqual({ addressed: false, since: 180_000 });
     expect(learned.memory.get("s-later")).toEqual({ addressed: false, since: 380_000 });
   });
+
+  it("derives the listing again when a container on its way to answering stops being so", () => {
+    const arriving = {
+      ...row("s-landed", { origin: "https://landed.example" }),
+      arriving: { since: 100_000, until: 220_000 },
+    } as ZeropsCandidate;
+    const waited = new Map([["s-landed", { addressed: false, since: 100_000 } as const]]);
+    const learned = learnAddresses(waited, [known([row("s-later", { until: 500_000 }), arriving])]);
+    expect(learned.waitEnd).toBe(220_000);
+    expect(learned.memory.get("s-landed")).toEqual({ addressed: true, since: 100_000 });
+  });
 });
