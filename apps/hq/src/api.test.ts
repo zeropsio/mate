@@ -308,7 +308,12 @@ describe("HQ API", () => {
                     projectId: "P_MATE",
                     name: "P_MATE",
                     kind: "mate",
-                    mate: { name: "Ada", face: "face-3" },
+                    mate: {
+                      name: "Ada",
+                      face: "face-3",
+                      standupRequestedBy: null,
+                      closedOff: false,
+                    },
                   },
                 ],
               },
@@ -509,7 +514,14 @@ describe("HQ API", () => {
             value: {
               id: appId,
               name: "Shop",
-              projects: [{ projectId: "P_MATE", name: "P_MATE", kind: "mate", mate }],
+              projects: [
+                {
+                  projectId: "P_MATE",
+                  name: "P_MATE",
+                  kind: "mate",
+                  mate: { ...mate, standupRequestedBy: null, closedOff: false },
+                },
+              ],
             },
           });
           assert.deepStrictEqual(
@@ -551,7 +563,8 @@ describe("HQ API", () => {
           );
           assert.deepStrictEqual(yield* owner.next("snapshot"), { ungrouped: [], apps: [] });
           const ada = { name: "Ada", face: "sky:flower" };
-          const lone = [{ projectId: "P_MATE", name: "P_MATE", mate: ada }];
+          const adaView = { ...ada, standupRequestedBy: null, closedOff: false };
+          const lone = [{ projectId: "P_MATE", name: "P_MATE", mate: adaView }];
 
           const setUp = yield* call("POST", "/api/mates", {
             session,
@@ -599,7 +612,7 @@ describe("HQ API", () => {
                 value: {
                   id: appId,
                   name: "Store",
-                  projects: [{ projectId: "P_MATE", name: "P_MATE", kind: "mate", mate: ada }],
+                  projects: [{ projectId: "P_MATE", name: "P_MATE", kind: "mate", mate: adaView }],
                 },
               },
             ],

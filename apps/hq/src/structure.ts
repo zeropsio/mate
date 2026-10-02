@@ -79,13 +79,25 @@ export interface MateRecord {
 }
 
 /**
- * A Mate as a reader sees it: its record, and — to whoever may operate it (`observe_mate`), once
- * HQ has heard from it — its live summary (`mateLive.ts`).
+ * A Mate as a reader sees it: its record and its birth, and — to whoever may operate it
+ * (`observe_mate`), once HQ has heard from it — its live summary (`mateLive.ts`).
  */
 export interface MateView {
   readonly name: string;
   readonly face: string;
+  /** Who asked for its stand-up (`markBirth`), or nobody yet. */
+  readonly standupRequestedBy: string | null;
+  /** Whether its project is closed off, so its runtimes may be imported. */
+  readonly closedOff: boolean;
   readonly live?: MateLiveEntry;
+}
+
+/** A Mate's record and birth as its row holds them. */
+interface MateRow {
+  readonly name: string;
+  readonly face: string;
+  readonly standupRequestedBy: string | null;
+  readonly closedOff: boolean;
 }
 
 export interface StructureRead {
@@ -336,6 +348,7 @@ export const structureLayer = (options: {
               }),
             );
             if (marked.length === 0) return yield* refuse("mate_not_found", "mate_not_found");
+            yield* changed;
             yield* PubSub.publish(mateChanged, projectId);
             const state = yield* stateOf(projectId);
             if (Option.isNone(state)) return yield* refuse("mate_not_found", "mate_not_found");
@@ -573,19 +586,21 @@ export const structureLayer = (options: {
               readonly project_id: string;
               readonly app_id: string;
               readonly kind: string;
-              readonly mate_name: string | null;
-              readonly mate_face: string | null;
+              readonly mate: MateRow | null;
             }>`
               SELECT p.project_id, p.app_id::text AS app_id, p.kind,
-                     m.name AS mate_name, m.face AS mate_face
+                     CASE WHEN m.project_id IS NULL THEN NULL ELSE json_build_object(
+                       'name', m.name, 'face', m.face,
+                       'standupRequestedBy', m.standup_requested_by,
+                       'closedOff', m.closed_off_at IS NOT NULL) END AS mate
               FROM hq_app_project p LEFT JOIN hq_mate m USING (project_id)
               ORDER BY p.seq`;
-            const alone = yield* sql<{
-              readonly project_id: string;
-              readonly name: string;
-              readonly face: string;
-            }>`
-              SELECT m.project_id, m.name, m.face FROM hq_mate m
+            const alone = yield* sql<{ readonly project_id: string; readonly mate: MateRow }>`
+              SELECT m.project_id, json_build_object(
+                       'name', m.name, 'face', m.face,
+                       'standupRequestedBy', m.standup_requested_by,
+                       'closedOff', m.closed_off_at IS NOT NULL) AS mate
+              FROM hq_mate m
               WHERE NOT EXISTS (SELECT 1 FROM hq_app_project p WHERE p.project_id = m.project_id)
               ORDER BY m.seq`;
             const names = new Map(view.projects.map((project) => [project.id, project.name]));
@@ -594,12 +609,12 @@ export const structureLayer = (options: {
               can(person, "read_project", { projectId }, view).allow;
             const visible = rows.filter((row) => reads(row.project_id));
             const summaries = yield* live.all;
-            /** The Mate's record, with its live summary for whoever may operate it. */
-            const mateView = (projectId: string, name: string, face: string): MateView => {
+            /** The Mate's record and birth, with its live summary for whoever may operate it. */
+            const mateView = (projectId: string, mate: MateRow): MateView => {
               const entry = summaries.get(projectId);
               return entry !== undefined && can(person, "observe_mate", { projectId }, view).allow
-                ? { name, face, live: entry }
-                : { name, face };
+                ? { ...mate, live: entry }
+                : mate;
             };
             return {
               ungrouped: alone
@@ -607,7 +622,7 @@ export const structureLayer = (options: {
                 .map((row) => ({
                   projectId: row.project_id,
                   name: names.get(row.project_id) ?? "",
-                  mate: mateView(row.project_id, row.name, row.face),
+                  mate: mateView(row.project_id, row.mate),
                 })),
               apps: apps
                 .map((app) => ({
@@ -619,10 +634,7 @@ export const structureLayer = (options: {
                       projectId: row.project_id,
                       name: names.get(row.project_id) ?? "",
                       kind: row.kind,
-                      mate:
-                        row.mate_name === null
-                          ? null
-                          : mateView(row.project_id, row.mate_name, row.mate_face ?? ""),
+                      mate: row.mate === null ? null : mateView(row.project_id, row.mate),
                     })),
                 }))
                 .filter(

@@ -3,7 +3,9 @@ import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
 import * as Ref from "effect/Ref";
+import * as Stream from "effect/Stream";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
 
 import { activeCoreLayer, untilActive } from "../test/harness/activeCore.ts";
@@ -38,6 +40,9 @@ const project = (id: string, userRoles: ZeropsProject["userRoles"] = []): Zerops
  * Read only on P_TEAM; basic is org Basic user who can create projects, with no grant of their own.
  */
 type Org = Omit<OrgView, "freshness">;
+
+/** A Mate's birth before anything marked it. */
+const UNBORN = { standupRequestedBy: null, closedOff: false } as const;
 
 const VIEW: Org = {
   orgId: "ORG",
@@ -345,7 +350,12 @@ describe("structure", () => {
                 name: "Shop",
                 projects: [
                   { projectId: "P_PROD", name: "name of P_PROD", kind: "production", mate: null },
-                  { projectId: "P_MATE", name: "name of P_MATE", kind: "devstage", mate },
+                  {
+                    projectId: "P_MATE",
+                    name: "name of P_MATE",
+                    kind: "devstage",
+                    mate: { ...mate, ...UNBORN },
+                  },
                   { projectId: "P_STAGE", name: "name of P_STAGE", kind: "stage", mate: null },
                 ],
               },
@@ -358,7 +368,7 @@ describe("structure", () => {
                     projectId: "P_OWNED",
                     name: "name of P_OWNED",
                     kind: "devstage",
-                    mate: { name: "Bo", face: "face-1" },
+                    mate: { name: "Bo", face: "face-1", ...UNBORN },
                   },
                 ],
               },
@@ -504,10 +514,48 @@ describe("structure", () => {
             const read = yield* structure.read("owner");
             assert.deepStrictEqual(
               read.apps[0]?.projects.find((project) => project.projectId === "P_OWN")?.mate,
-              { name: "Ada", face: "face-3" },
+              { name: "Ada", face: "face-3", ...UNBORN },
             );
           }),
         ),
+    );
+
+    // The press records its ask and the close-off as the Mate is born (`markBirth`); whoever reads
+    // the project reads them with the record, and the structure is told at once.
+    it.effect("reads a Mate's birth with its record, and says so as it is marked", () =>
+      withStructure(() =>
+        Effect.gen(function* () {
+          const structure = yield* Structure;
+          yield* structure.createMate("owner", {
+            projectId: "P_MATE",
+            name: "Ada",
+            face: "face-3",
+          });
+          const mateOf = (userId: string) =>
+            Effect.map(structure.read(userId), (read) => read.ungrouped[0]?.mate);
+          assert.deepStrictEqual(yield* mateOf("reader"), {
+            name: "Ada",
+            face: "face-3",
+            standupRequestedBy: null,
+            closedOff: false,
+          });
+
+          const told = yield* Stream.runHead(Stream.drop(structure.changes, 1)).pipe(
+            Effect.forkChild,
+          );
+          yield* Effect.yieldNow;
+          yield* structure.markBirth("owner", "P_MATE", "standup");
+          assert.isTrue(Option.isSome(yield* Fiber.join(told)));
+          yield* structure.markBirth("owner", "P_MATE", "closed_off");
+
+          assert.deepStrictEqual(yield* mateOf("reader"), {
+            name: "Ada",
+            face: "face-3",
+            standupRequestedBy: "owner",
+            closedOff: true,
+          });
+        }),
+      ),
     );
 
     it.effect("renames a Mate and changes its face: whoever is owner or admin on its project", () =>
@@ -551,8 +599,8 @@ describe("structure", () => {
           );
           const mates = (yield* structure.read("owner")).apps[0]?.projects.map((p) => p.mate);
           assert.deepStrictEqual(mates, [
-            { name: "Ada 2", face: "face-3" },
-            { name: "Mine", face: "olive:clover" },
+            { name: "Ada 2", face: "face-3", ...UNBORN },
+            { name: "Mine", face: "olive:clover", ...UNBORN },
             null,
           ]);
         }),
@@ -688,7 +736,7 @@ describe("structure", () => {
               {
                 projectId: "P_OWNED",
                 name: "name of P_OWNED",
-                mate: { name: "Bo 2", face: "olive:clover" },
+                mate: { name: "Bo 2", face: "olive:clover", ...UNBORN },
               },
             ];
             assert.deepStrictEqual(yield* ungrouped("maker"), listed);
@@ -800,7 +848,7 @@ describe("structure", () => {
             projectId: "P_MATE",
             name: "name of P_MATE",
             kind: "mate",
-            mate: { name: "Ada", face: "face-3" },
+            mate: { name: "Ada", face: "face-3", ...UNBORN },
           });
 
           yield* Ref.update(view, (current) => ({
