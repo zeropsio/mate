@@ -40,6 +40,10 @@
  *   `GET /api/apps/:appId/recipe/:tier`, and a Mate's own, `GET /api/mate/recipe/:tier`. And `GET
  *   /changes/:appId/:repo/:n`, a change's address at HQ,
  *   redirects to the change in the first client origin.
+ * - An application's releases to production (`releases.ts`, the wire in
+ *   `@t3tools/shared/hqRelease`): `GET /api/apps/:appId/releases` → `{ releases }`; `POST
+ *   /api/apps/:appId/releases` `{ tag, groupHead, entries }` and `POST
+ *   /api/apps/:appId/releases/:tag/rollback` `{ groupHead }` → `201`, the release made.
  *
  * Every call but the doors carries `Authorization: Bearer <session>`, of a session issued for this
  * HQ's org. Only the leading HQ answers: a standby or an HQ that is not the official one answers
@@ -82,8 +86,10 @@ import {
 
 import { ChangeRefused, Changes } from "./changes.ts";
 import { RecipeTier } from "@t3tools/shared/hqRecipe";
+import { CreateReleaseRequest, RollbackRequest } from "@t3tools/shared/hqRelease";
 
 import { DeployRefused, Deploys } from "./deploys.ts";
+import { ReleaseRefused, Releases } from "./releases.ts";
 import { Door } from "./door.ts";
 import { GitHost } from "./gitHost.ts";
 import { type LinkOptions, serveMateLink } from "./link.ts";
@@ -193,7 +199,15 @@ const DEPLOY_STATUS = {
   conflict: 409,
 } as const;
 
+const RELEASE_STATUS = {
+  forbidden: 403,
+  app_not_found: 404,
+  release_not_found: 404,
+  conflict: 409,
+} as const;
+
 const isStructureRefused = Schema.is(StructureRefused);
+const isReleaseRefused = Schema.is(ReleaseRefused);
 const isDeployRefused = Schema.is(DeployRefused);
 const isChangeRefused = Schema.is(ChangeRefused);
 const isMateRefused = Schema.is(MateRefused);
@@ -218,6 +232,11 @@ const jsonBody = <A, RD>(schema: Schema.Codec<A, unknown, RD>, limit: number) =>
 export const failure = (error: {
   readonly _tag: string;
 }): Effect.Effect<HttpServerResponse.HttpServerResponse> => {
+  if (isReleaseRefused(error)) {
+    return Effect.succeed(
+      json({ code: error.code, reason: error.reason }, RELEASE_STATUS[error.code]),
+    );
+  }
   if (isDeployRefused(error)) {
     return Effect.succeed(
       json({ code: error.code, reason: error.reason }, DEPLOY_STATUS[error.code]),
@@ -810,6 +829,49 @@ const routes = (
             sha,
           );
           return HttpServerResponse.empty({ status: 202 });
+        }),
+      ),
+    ),
+    HttpRouter.add(
+      "GET",
+      "/api/apps/:appId/releases",
+      handle(
+        Effect.gen(function* () {
+          const { userId } = yield* principal;
+          const appId = (yield* HttpRouter.params)["appId"] ?? "";
+          return json({ releases: yield* (yield* Releases).list(userId, appId) }, 200);
+        }),
+      ),
+    ),
+    HttpRouter.add(
+      "POST",
+      "/api/apps/:appId/releases",
+      handle(
+        Effect.gen(function* () {
+          const { userId } = yield* principal;
+          const appId = (yield* HttpRouter.params)["appId"] ?? "";
+          const request = yield* jsonBody(CreateReleaseRequest, BODY_LIMIT);
+          return json(yield* (yield* Releases).release(userId, appId, request), 201);
+        }),
+      ),
+    ),
+    HttpRouter.add(
+      "POST",
+      "/api/apps/:appId/releases/:tag/rollback",
+      handle(
+        Effect.gen(function* () {
+          const { userId } = yield* principal;
+          const params = yield* HttpRouter.params;
+          const request = yield* jsonBody(RollbackRequest, BODY_LIMIT);
+          return json(
+            yield* (yield* Releases).rollback(
+              userId,
+              params["appId"] ?? "",
+              params["tag"] ?? "",
+              request,
+            ),
+            201,
+          );
         }),
       ),
     ),

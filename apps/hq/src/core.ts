@@ -32,6 +32,7 @@ import { mateLiveLayer } from "./mateLive.ts";
 import type { Migration } from "./migrations.ts";
 import { officialLayer } from "./official.ts";
 import { recipeTiersLayer } from "./recipeTiers.ts";
+import { releasesLayer } from "./releases.ts";
 import { doorRateLimitLayer } from "./rateLimit.ts";
 import { rolesLayer } from "./roles.ts";
 import { sessionsLayer } from "./sessions.ts";
@@ -104,7 +105,7 @@ const services = (options: CoreOptions) => {
     streamTicketsLayer,
     mateLinkTicketsLayer,
     liveSocketsLayer,
-    deploysLayer().pipe(
+    Layer.mergeAll(deploysLayer(), releasesLayer).pipe(
       Layer.provide(recipeTiersLayer),
       Layer.provideMerge(changesLayer),
       Layer.provideMerge(gitHostLayer({ rootDir: options.gitRoot })),
