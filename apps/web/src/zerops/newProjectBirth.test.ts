@@ -273,6 +273,8 @@ describe("the menu draws it from the press", () => {
     startedAt: PRESSED_AT,
     step: "tags",
     overdue: false,
+    // The platform has not answered with its project: the menu takes the listed one for it.
+    awaitingProject: true,
     placement: {
       groupId: "g-acme",
       groupName: "Acme CRM",
@@ -524,6 +526,8 @@ describe("the tab holds a New project's creation until the platform takes it", (
     await vi.waitFor(() => expect(held()?.projectId).toBe("p-vera"));
     expect(held()).toMatchObject({ step: "created", giteaProjectId: "gitea-new", failed: null });
     expect(fake.accepted).toHaveBeenCalledTimes(1);
+    // Its Mate's row counts on from the press, not from when the platform answered.
+    expect(fake.accepted).toHaveBeenCalledWith("p-vera", "gitea-new", PRESSED_AT);
   });
 
   it("resumes from the step that stopped it, with the same project, on Try again", async () => {

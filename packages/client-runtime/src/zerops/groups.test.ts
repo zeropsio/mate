@@ -670,6 +670,22 @@ describe("deriveZeropsGroups — creations under way", () => {
       environments: { aaa: [] },
     },
     {
+      // Measured live (pass 31): the platform's listing held the new project 2.8 s before the
+      // creation's call answered with its id, and the menu drew the Mate twice meanwhile.
+      case: "a creation the platform has not named yet is its Mate once its group lists it",
+      projects: [project("Todo - Wren", ["mate:g:new", "mate:bot:Wren"], "p-made")],
+      births: [{ ...birth("new", "new", 1, { botName: "Wren" }), awaitingProject: true }],
+      pending: { new: [] },
+      environments: { new: ["p-made"] },
+    },
+    {
+      case: "a creation not named yet stays pending beside a listed Mate of another name",
+      projects: [project("Todo - Otto", ["mate:g:aaa", "mate:bot:Otto"], "p-otto")],
+      births: [{ ...birth("aaa", "aaa", 1, { botName: "Wren" }), awaitingProject: true }],
+      pending: { aaa: ["aaa"] },
+      environments: { aaa: ["p-otto"] },
+    },
+    {
       case: "a birth in a group nothing lists yet creates the group",
       projects: [],
       births: [birth("p-b", "new", 2), birth("p-a", "new", 1)],
