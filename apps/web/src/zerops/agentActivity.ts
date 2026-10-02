@@ -175,7 +175,7 @@ export function mateFaceAwaitingReview(
 
 /**
  * Whether a Mate's own change waits on the person's review: the composer's top's rule
- * (`mateNextStep`), on a project flow Gitea answered — the one reading of it for every surface
+ * (`mateNextStep`), on a project flow HQ answered — the one reading of it for every surface
  * that draws the Mate's face.
  */
 export function mateReviewWaits(

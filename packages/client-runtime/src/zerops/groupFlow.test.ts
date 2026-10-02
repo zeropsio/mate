@@ -60,7 +60,7 @@ const NOTHING_RUNS = known({ kind: "none" });
 const runs = (sha: string): Shown<Deployment> =>
   known({ kind: "running", activatedAt: null, version: deployedVersion(sha) });
 
-/** A declared stop's row as the deploy half reads it: the version name and the broker's status. */
+/** A declared stop's row as the deploy half reads it: the version name and its deploy's status. */
 function declared(input: {
   readonly projectId: string;
   readonly name: string;
@@ -561,7 +561,7 @@ describe("groupFlow", () => {
       },
     },
     {
-      case: "deploy-failed: the broker's status on the release failed, whatever is waiting",
+      case: "deploy-failed: the release's deploy failed on production, whatever is waiting",
       production: productionOf(
         {
           row: declared({

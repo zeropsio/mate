@@ -1,10 +1,10 @@
 /**
  * What each conversation's composer top last showed — its Mate's change,
  * waiting for the person's review — remembered in this browser, so a reload
- * paints the composer as it stood. Without it the strip arrived with Gitea's
+ * paints the composer as it stood. Without it the strip arrived with HQ's
  * answer, seconds after the page had settled, and the composer grew under a
  * conversation pinned to its end, taking back 61 px the reload had painted
- * (the owner: "a reload paints nothing it takes back"). Gitea's answer
+ * (the owner: "a reload paints nothing it takes back"). HQ's answer
  * confirms what is remembered, updates its words, or takes it away.
  *
  * Kept per account and per conversation, like the menu's memory

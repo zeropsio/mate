@@ -2,7 +2,7 @@
  * Stands one environment up in a group — a Mate, a stage or a production — from whatever surface
  * asked for it: the New Mate dialog over any view (`ZeropsNewMateHost`), and the projects page's
  * own adds. The plan is `planEnvironmentCreation`, the press `matePress.ts`; this only gathers the
- * inputs — the group's agents and environments, the account's Gitea, who asked — and presses.
+ * inputs — the group's agents and environments, who asked — and presses.
  *
  * The press does every step that needs this person's rights before it returns: the project, a
  * Mate's key and container, its project closed off, and its registration in the organization's

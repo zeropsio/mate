@@ -268,8 +268,8 @@ function NewProjectDialog() {
         createProject: (creation) =>
           runZeropsCommand(runtime.commands.createProjectWithMate({ organization, ...creation })),
         accepted: (projectId, { hq, appId }, startedAt) => {
-          // The press goes on: the project closed off, the Mate attached to its application in
-          // HQ and the broker's grant. The listing is read again so the project's group catches
+          // The press goes on: the project closed off and the Mate attached to its application in
+          // HQ. The listing is read again so the project's group catches
           // up with it. Its row stands where the creation's stood, with the same face and name.
           const placement = newProjectPlacement({ ...ask, appId });
           beginPress({

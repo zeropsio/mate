@@ -601,7 +601,7 @@ export function environmentSummaryLine(
 
 /**
  * A release row's tone as a dot's: where it stands against production first —
- * running there, or its deploy failed — else the broker's verdict; none before
+ * running there, or its deploy failed — else HQ's verdict on it; none before
  * it spoke.
  */
 export function releaseRowTone(
@@ -616,7 +616,7 @@ export function releaseRowTone(
  * A deploy's tone as a dot's, for a group environment's row.
  *
  * `undefined` where the row model says `neutral`: nothing has been deployed
- * there, or nobody is signed in to Gitea to be told how it went, and a dot
+ * there, or nothing has said yet how it went, and a dot
  * without a word is exactly what rule R5 forbids. A row that has nothing to
  * say about its deploy says nothing.
  */

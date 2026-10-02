@@ -328,8 +328,8 @@ describe("ZeropsProjectFlowProvider", () => {
     vi.unstubAllGlobals();
   });
 
-  // DESIGN §4.7, D6: what a stop runs needs no Gitea, and every project the sidebar draws is a stop
-  // — one tagged into no registered group, or in none at all, reads what it runs all the same.
+  // DESIGN §4.7, D6: what a stop runs needs nothing from HQ, and every project the sidebar draws is
+  // a stop — one HQ places in no group, or in none at all, reads what it runs all the same.
   it("every project the account holds reads what it runs, with no group registered", async () => {
     installTestDom();
     registryGroups.groups = [];

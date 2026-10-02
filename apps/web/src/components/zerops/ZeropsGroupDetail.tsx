@@ -1577,9 +1577,8 @@ function StopServiceLine({
  * nothing opens over it, its one button is pinned in view, and after a merge its *Review release*
  * opens the release's review, which has no page of its own.
  *
- * `#4` used to be a link into Gitea, which is a sign-in page for everybody: the app holds the only
- * Gitea token, so everything a change is — its description, files, checks, conversation and
- * commits — is read here as the person.
+ * `#4` used to be a link into Gitea, which was a sign-in page for everybody. Everything a change is
+ * — its description, files, conversation and commits — is read here from HQ, as the person.
  */
 export function ZeropsChangeDetailPage({
   groupId,

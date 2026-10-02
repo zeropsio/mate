@@ -221,7 +221,7 @@ describe("stopView", () => {
       expected: { tone: "good", word: "Deployed", line: "v1.6.0" },
     },
     {
-      name: "the row's release, uncoloured by Gitea, still names it",
+      name: "the row's release, with no tone of its own, still names it",
       row: row({ ...RUNNING.version, name: "v1.6.0", label: "v1.6.0" }, "neutral"),
       expected: { tone: "neutral", word: "Deployed", line: "v1.6.0" },
     },

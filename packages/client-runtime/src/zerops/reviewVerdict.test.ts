@@ -630,7 +630,7 @@ describe("rollbackReview: roll back gets the same review, naming where it goes b
       "You can close this. The project's line in the menu follows the release.",
     ],
     [
-      // The tag existing is not production running it: the broker and the deploy still decide.
+      // The tag existing is not production running it: HQ's deploy still decides.
       "tagged, on its way",
       {
         press: { kind: "done" },
@@ -656,7 +656,7 @@ describe("rollbackReview: roll back gets the same review, naming where it goes b
       "Production runs v0.1.55's commits again, as v0.1.58.",
     ],
     [
-      "the broker refused it, or its deploy failed",
+      "HQ refused it, or its deploy failed",
       {
         press: { kind: "done" },
         outcome: { kind: "failed", detail: "The deploy of app failed", service: "app" },

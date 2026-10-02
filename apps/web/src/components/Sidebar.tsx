@@ -2374,7 +2374,7 @@ export default function Sidebar() {
     );
   }, [zeropsAgentActivity, zeropsCandidates, zeropsDeleting, zeropsHeld.complete]);
   // The change rows and the chips the tree drew of what it read, for
-  // the next reload to paint while Gitea and the platform answer again.
+  // the next reload to paint while HQ and the platform answer again.
   const zeropsRemembered = useMemo<SidebarRemembered>(
     () => ({
       changes: rememberedChanges,

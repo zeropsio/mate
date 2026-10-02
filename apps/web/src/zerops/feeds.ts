@@ -237,7 +237,7 @@ export function createZeropsFeedAtoms<R, E>(runtime: Atom.AtomRuntime<Environmen
       input: ZeropsLifecycleTarget["input"],
     ): Stream.Stream<ZeropsLifecycle, unknown, EnvironmentSupervisor> =>
       subscribe(WS_METHODS.subscribeZeropsLifecycle, input),
-    // A Mate's envelope is a push that says what changed in Gitea and on the platform (§6.1).
+    // A Mate's envelope is a push that says what its deploys changed on the platform (§6.1).
     onFrame: (previous, next) => lifecycleEnvelopeChanged(previous?.envelope, next.envelope),
   });
 

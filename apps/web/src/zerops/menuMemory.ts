@@ -1,7 +1,7 @@
 /**
  * What the left menu last drew, remembered in this browser so a reload
  * paints the menu as it stood — not names that grow into rows as each Mate
- * connects, change rows that arrive when Gitea answers, a stop named twice,
+ * connects, change rows that arrive when HQ answers, a stop named twice,
  * and *Mine* showing everyone until the members are read (the owner,
  * 2026-09-27). Each piece stands until its own live read replaces it:
  * - a Mate's row: what was asked, its last words, when, and whether unread;
@@ -308,7 +308,7 @@ export function withRows(
   return withPart(memory, "rows", rows, listed);
 }
 
-/** Each project's change rows as drawn once Gitea answered, and — given the listing — none for a project gone. */
+/** Each project's change rows as drawn once HQ answered, and — given the listing — none for a project gone. */
 export function withChanges(
   memory: MenuMemory,
   changes: Readonly<Record<string, ReadonlyArray<RememberedChange>>>,

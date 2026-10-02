@@ -595,8 +595,8 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
   /**
    * What each project the account holds runs, from the account's deployment store
    * (`flow/deploymentStore.ts`): the platform's own service listing and the builds running in the
-   * project. Every project is a stop wherever it is drawn — in a group by its tags, or in none —
-   * and none of this waits on Gitea or its registry. As with the inventory's own demand, a project
+   * project. Every project is a stop wherever it is drawn — in a group HQ places it in, or in none
+   * — and none of this waits on HQ. As with the inventory's own demand, a project
    * refused to the account (G6) or not ACTIVE holds nothing open.
    */
   const stops = useMemo(() => {
@@ -673,8 +673,8 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
 
   // A release in flight stops holding Release back once it is old enough (`releaseInFlight`).
   const nowMs = useNowMs();
-  // A Mate's changes, down the organization's HQ stream, linked at its official address. They
-  // need no Gitea, so the flows stand on them wherever HQ answers.
+  // A Mate's changes, down the organization's HQ stream, linked at its official address: the
+  // flows stand on them wherever HQ answers.
   const accountHq = useAccountHq(clientId);
   const hqAddress = accountHq.hq.kind === "official" ? accountHq.hq.address : undefined;
   const hqApi = useMemo(

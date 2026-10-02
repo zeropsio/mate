@@ -222,7 +222,7 @@ describe("environmentRow", () => {
     expect(row.tone).toBe("bad");
   });
 
-  it("joins several sources, the way the broker merges them", () => {
+  it("joins several sources into one line", () => {
     const row = environmentRow({
       ...base,
       sources: ["main", "feature/invoices"],

@@ -53,8 +53,8 @@ export interface ProjectsFlowGroup<T> {
   readonly placed: GroupPlacement | undefined;
   /**
    * Unread, and its read is out: the steps it would fill hold a skeleton
-   * rather than an empty word. False for a group nobody will read (no Gitea
-   * org, no session), whose steps say what is known.
+   * rather than an empty word. False for a group nobody will read (the
+   * organization's HQ not known), whose steps say what is known.
    */
   readonly awaiting: boolean;
   /**

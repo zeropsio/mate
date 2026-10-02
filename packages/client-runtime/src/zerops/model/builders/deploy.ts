@@ -231,7 +231,7 @@ const GIT_PUSH_STEP_ID = "push";
 /**
  * What a git push came to (`internal/tools/deploy_git_push.go`): `pushed` —
  * nothing built by this call, whether nothing is wired to build (a Mate's own
- * Gitea branch among them) or zcp could not watch; `upToDate` — the remote
+ * change in HQ among them) or zcp could not watch; `upToDate` — the remote
  * already had every commit; `delivered` — the build the push triggered was
  * watched to ACTIVE; `buildFailed` — that build failed or was cancelled;
  * `buildUnconfirmed` — it never appeared, or was still running when zcp
@@ -246,8 +246,8 @@ type GitPushOutcome =
   | "refused";
 
 /**
- * `internal/ops/deploy_common.go` `GitPushResult`, with the pull request
- * `deployGitPushResponse` adds on the account's own Gitea — or zcp's
+ * `internal/ops/deploy_common.go` `GitPushResult`, with the change
+ * `deployGitPushResponse` adds for a push to this Mate's HQ — or zcp's
  * `gitPushPrerequisites`, which answers `GIT_TOKEN_MISSING` as a call that
  * succeeded. Only the fields the card reads.
  */
@@ -324,8 +324,8 @@ function decodeGitPushResult(
 }
 
 /**
- * The pull request a push lands through: `repo` is `org/name` on the group's
- * Gitea, and the flow names a repository by its name in the org.
+ * The change a push lands through: `repo` is its repository's name in HQ, or
+ * `org/name` from main's zcp, and the flow names a repository by its last part.
  */
 function decodePullRequest(
   record: Record<string, unknown> | undefined,

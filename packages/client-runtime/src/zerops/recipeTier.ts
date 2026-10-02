@@ -8,8 +8,8 @@
  * — the em dash is part of the name — each with an `import.yaml` describing a
  * whole environment: a dev/stage pair per codebase for the Mate tier, the same
  * without the container for Stage, and the HA shape for production. A Mate
- * proposes and updates them by pull request; a person with production rights
- * merges (D13).
+ * proposes and updates them by a change in HQ: Core lands one that only adds a
+ * tier, and a person merges one that edits a tier.
  *
  * ## What each service of a tier is
  *
@@ -26,11 +26,11 @@
  * - **dev** — every other runtime: a pair's dev half, the Mate's clone target.
  *
  * The platform **cannot clone a private repository**, and it refuses
- * `zeropsSetup` without `buildFromGit`, so a runtime built from the group's own
- * Gitea is imported without its build; its code arrives afterwards from the
- * party that can push it — a Mate's zcp, or the broker's deploy key for a group
- * environment. zcp reads which repository a runtime comes from off the tier
- * itself; nothing here carries that along.
+ * `zeropsSetup` without `buildFromGit`, so a runtime built from the
+ * application's own repositories in HQ is imported without its build; its code
+ * arrives afterwards from the party that can deploy it — a Mate's zcp, or HQ's
+ * Core with the environment's deploy key. zcp reads which repository a runtime
+ * comes from off the tier itself; nothing here carries that along.
  *
  * ## A Mate's tier comes in two imports ({@link splitRecipeTier})
  *
@@ -52,7 +52,7 @@
  *
  * An environment with no container has no Mate and nothing to close off, so its
  * tier goes in as one import, as it always has: every runtime starts empty for
- * the broker to deploy onto, and a utility is built.
+ * HQ's Core to deploy onto, and a utility is built.
  *
  * ## Line-based, like everything else that touches these documents
  *
@@ -375,7 +375,7 @@ export function splitRecipeTier(yaml: string): RecipeTierSplit | undefined {
 
 /**
  * A stage's or a production's tier, whole and ready for its one import: every
- * runtime built from the group's own repositories starts empty for the broker
+ * runtime built from the group's own repositories starts empty for HQ's Core
  * to deploy onto, a utility keeps its build, a managed service is carried
  * through byte for byte. `undefined` when the tier declares no services.
  */

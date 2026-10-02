@@ -299,7 +299,7 @@ export type TimelineEntry =
        * One of this Mate's changes landing, placed at the moment it landed.
        *
        * Not projected from an activity, because nothing the agent did caused
-       * it: a person merged, or the broker did, and the conversation is where
+       * it: a person merged, or HQ's Core did, and the conversation is where
        * the person reads the work in order.
        */
       kind: "change-landed";

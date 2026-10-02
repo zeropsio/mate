@@ -2075,8 +2075,8 @@ its ratio)`, its size attributes giving its height before a byte has come; a pic
   - _Why:_ the plan's note ("down since 09:12, both containers stopped, exit 137") needs reads the
     client does not make
 - **2026-09-29** — **Superseded 2026-10-02 in part by the HQ row below: releases are Core's (T9a),
-  and the chip reads them from HQ (T9b); it still waits while a Gitea session is coming
-  (`giteaComing`), until T12's token flows go.**
+  and the chip reads them from HQ (T9b); it waits while HQ's releases are coming
+  (`releasesComing`, `SidebarZeropsTree.tsx:812`), never on Gitea.**
   **A chip is drawn only once what decides it is read.** Until then the menu draws
   the chip it remembers, else — while only Gitea's answer is missing — what the platform alone says,
   never remembered, else nothing; down and stopped settle at once, and without a Gitea session the
@@ -3403,7 +3403,9 @@ no-cache`.
   ready Mate the roster lists, up to a bound of 48 that no account comes near (the largest has 27).
   - _Why:_ the ceiling of 12 rationed a throwaway per Mate per load; with sessions kept across loads
     a reconnect mints nothing, and the first connect of the day waits on the door's mint pace
-- **2026-10-01** — **A new Mate's setup needs no browser after the press** (the owner: "never ever be
+- **2026-10-01** — **Superseded 2026-10-02 in part by "A Mate's key reaches only its own project"
+  below: the key holds no grant on its siblings, and the press gives no sibling reach.**
+  **A new Mate's setup needs no browser after the press** (the owner: "never ever be
   tied to user having to have browser open"). Every step that needs the person's rights runs in the
   Add press, in the foreground: the project, the container with its own key (BASIC_USER on its
   project, READ_ONLY on its siblings, no delegation), close-off, the registry and sibling reach.
@@ -3450,3 +3452,15 @@ no-cache`.
   are, and nothing writes to them. The client keeps a project tagged `mate:tool:gitea` out of the
   applications and never writes to it (`tools.ts`). Retiring it is a separate decision, later.
   - _Why:_ accounts that ran it still have it, and HQ replaces it without taking it down
+- **2026-10-02** — **A Mate's key reaches only its own project** (the owner, ADR 0003). The key a
+  Mate's container holds is `NO_ACCESS` at the org and `BASIC_USER` on its own project, and nothing
+  more: the mint grants its own project alone (`api.ts:1791`), the press gives no sibling reach, and
+  the projects page only lowers a key minted `ADMIN` — for the Mates HQ places in an application —
+  keeping any other grant a key already holds (`planMateKey`, `groupReach.ts:233`;
+  `useZeropsMateKeys`). The `READ_ONLY` grants on siblings an earlier client gave are taken off by
+  hand. An agent reaches its application's stage, production and other Mates only through HQ, later:
+  a zcp tool that asks HQ, and HQ's rule over what the people who control the Mate may see.
+  **Supersedes:** the sibling reach of the 2026-10-01 _setup needs no browser_ row.
+  - _Why:_ a `READ_ONLY` grant on a production project reads its unmarked secrets — a database's
+    connection string in clear — for anyone with the Mate's terminal, and grants are writes somebody
+    must keep in step; HQ would need Admin rights to keep them

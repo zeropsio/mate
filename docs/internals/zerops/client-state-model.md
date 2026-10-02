@@ -16,11 +16,11 @@ Path prefixes: `cr/` = `packages/client-runtime/src/`, `web/` = `apps/web/src/`.
 
 Three questions stay separate. No expression may answer two of them.
 
-| Axis       | Question               | Owner                                                                               | Changes on                                                                | May never                                            |
-| ---------- | ---------------------- | ----------------------------------------------------------------------------------- | ------------------------------------------------------------------------- | ---------------------------------------------------- |
-| Mounting   | Is this UI alive?      | The account epoch (from its first grant), and a route for its own outlet            | Sign-in, sign-out, principal change, navigation, a terminal route verdict | Depend on data liveness or on the access window      |
-| Capability | May I do X now?        | The grant (per project), the Zerops session, the Gitea session, the Mate credential | Renewal, denial, session loss                                             | Unmount UI, or erase facts that are not secrets      |
-| Freshness  | Is what I see current? | Each fact                                                                           | Pushes, reads, pauses, failures                                           | Turn _known_ back into _unknown_ within one identity |
+| Axis       | Question               | Owner                                                                            | Changes on                                                                | May never                                            |
+| ---------- | ---------------------- | -------------------------------------------------------------------------------- | ------------------------------------------------------------------------- | ---------------------------------------------------- |
+| Mounting   | Is this UI alive?      | The account epoch (from its first grant), and a route for its own outlet         | Sign-in, sign-out, principal change, navigation, a terminal route verdict | Depend on data liveness or on the access window      |
+| Capability | May I do X now?        | The grant (per project), the Zerops session, the HQ session, the Mate credential | Renewal, denial, session loss                                             | Unmount UI, or erase facts that are not secrets      |
+| Freshness  | Is what I see current? | Each fact                                                                        | Pushes, reads, pauses, failures                                           | Turn _known_ back into _unknown_ within one identity |
 
 ## Seven laws
 
@@ -28,7 +28,7 @@ Three questions stay separate. No expression may answer two of them.
    `cr/zerops`. Components never copy, time or catch a remote fact.
 2. **One knowledge type.** Every remote fact reaches a projection as `Known<T>`. No remote fact is
    `T | undefined`.
-3. **Negatives are earned.** "Nothing deployed yet", "No open pull requests" and "no longer
+3. **Negatives are earned.** "Nothing deployed yet", "No open changes" and "no longer
    available" come only from `known` with complete coverage, or from `gone` with evidence.
 4. **Knowledge is monotonic within one identity.** A known value only gains freshness markers. A
    new key is a new fact and never resets its neighbours. Evicting an unleased entry ends its
@@ -48,7 +48,7 @@ Three questions stay separate. No expression may answer two of them.
   unrefreshable 401. A result from a closed epoch is dropped by the store that receives it.
 - **Pre-grant stage** — Built when the principal is verified: session, grant, data runtime.
 - **Post-grant stage** — Built on the epoch's first `granted`: T3 connection runtime, environment,
-  container, birth and probe stores, Gitea sessions, forge and deployment stores, reconcilers.
+  container and probe stores, the deployment store, reconcilers.
   Nothing in it runs before the platform has confirmed organizations, projects and roles.
 - **Owner record** — `zerops-mate.zerops-session-owner.v1 = {userId, loginGeneration}` beside the
   unchanged session key. Written only by a tab that verified the principal; a refresh never changes
@@ -56,8 +56,9 @@ Three questions stay separate. No expression may answer two of them.
 - **Target key** — A Mate's identity: `projectId:serviceId`. `environmentId` is an attribute learned
   from the descriptor; names, URLs and origins are addresses, never identities.
 - **Source** — A system that answers with authority, reached through one adapter: Zerops REST, the
-  Zerops datastream, a Mate's descriptor and `/healthz`, a Mate's WebSocket RPC, Gitea REST as the
-  person, the Gitea broker. Storage, visibility, locks and clocks are signals, never sources.
+  Zerops datastream, a Mate's descriptor and `/healthz`, a Mate's WebSocket RPC, the organization's
+  HQ — its API as the person, through its door, and its structure stream. Storage, visibility, locks
+  and clocks are signals, never sources.
 - **Observation** — One arrival of evidence (a frame, a response, a descriptor, a close code, a
   storage event), stamped with a local ordinal and receipt time, admitted or rejected by its owner.
   Never rendered directly.
@@ -85,7 +86,7 @@ Three questions stay separate. No expression may answer two of them.
 - **Projection, verdict** — A pure function from knowledge, capabilities and `now` to a view model;
   a verdict is a render-ready projection. Neither holds state.
 - **Personal context** — Account-scoped, non-secret records in browser storage: registrations,
-  births, intents, drafts, UI preferences. Never authority for existence or access; always
+  intents, drafts, UI preferences. Never authority for existence or access; always
   revalidated against facts.
 
 ## The knowledge type
@@ -106,7 +107,7 @@ flag) private; its public `read` applies withholding, so a surface cannot forget
 
 | Part             | Values                                                                                                                                           |
 | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Prerequisite     | `zerops-session`, `access-grant`, `gitea-session`, `mate-session`, `presence`, `visible`, `online`                                               |
+| Prerequisite     | `zerops-session`, `access-grant`, `mate-session`, `presence`, `visible`, `online`                                                                |
 | Failure reason   | `offline`, `timeout`, `transport`, `throttled`, `server(status)`, `unauthorized`, `refused(code, words)`, `malformed`, `unsupported(capability)` |
 | Freshness        | `live` (an observing push covers it), `settled` (last pull succeeded, no push), `revalidating`, `paused` (not current), `stale(reason)`          |
 | Stale reason     | `source-recovering`, `revalidation-failed(failure, retryAt)`, `invalidated`, `superseded(by)`                                                    |
@@ -163,44 +164,47 @@ while its interest is not observing.
 
 A fact is owned where it is born and where its authority is checked. The Mate server owns what is
 born in its container (boot, planned stops, the sessions it issued, its key's verdict, its checkout,
-its agent's tool results, agent sign-in). zcp reaches the client only through the Mate server. The
-client owns the person's facts (identity, grant, Gitea as the person), facts spanning several Mates
-(inventory, registry, group flows) and facts about this browser's path (reachability, probes, this
-tab's credentials). Zerops and Gitea stay the authorities the client observes. A group flow is not
-computed on the server: a group whose Mates sleep or are gone would lose it, and a bot's rights are
-not the person's.
+its agent's tool results, agent sign-in and its signer). zcp reaches the client only through the
+Mate server. HQ owns the organization's structure — its applications, their projects and kinds, each
+Mate's record — a Mate's changes, the environments and their deploy keys, and the releases; it
+relays what each Mate's server says of itself. The client owns the person's facts (identity, grant,
+its HQ session), facts spanning several Mates as this person reads them (inventory, group flows) and
+facts about this browser's path (reachability, probes, this tab's credentials). Zerops and HQ are
+the authorities the client observes. A group flow is not computed on a Mate's server: a group whose
+Mates sleep or are gone would lose it, and a Mate's rights are not the person's.
 
-| Fact                                                                                                                                                   | Owner                                                                                 | Source and transport                                                     | Scope                        |
-| ------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ | ---------------------------- |
-| Zerops session and owner record                                                                                                                        | Session machine, `cr/zerops/account/session.ts`                                       | REST `user/info`, `auth/*`; storage events on the session and owner keys | Renderer; identity cross-tab |
-| Organizations and memberships                                                                                                                          | Session store, refreshed by each grant round                                          | REST `user/info`                                                         | Epoch                        |
-| Active organization                                                                                                                                    | Personal context, per tab                                                             | The user                                                                 | Tab; no fact is keyed by it  |
-| Access grant, per project                                                                                                                              | Grant machine, `cr/zerops/data/access/grant.ts`, I/O through an `AccessVerifier` port | REST rounds                                                              | Epoch                        |
-| Capabilities                                                                                                                                           | `cr/zerops/data/access/capabilities.ts`, pure                                         | Derived                                                                  | Epoch                        |
-| Org, project, service and process records; query memberships                                                                                           | `ZeropsDataRuntime`                                                                   | Datastream + REST anchors                                                | Epoch, keyed by org, project |
-| Project `tagList` (group, role, signer, bot, release switch, registry)                                                                                 | Read: the runtime's tags facet. Write: `updateProjectTags(project, patch)` only       | Datastream; re-read after our own write                                  | Epoch                        |
-| Registry, candidates, environment→project index, topology, names                                                                                       | Pure selectors over the records above                                                 | Derived                                                                  | Epoch                        |
-| Project-creation verdict                                                                                                                               | Runtime activity (the `project.create` process)                                       | Datastream                                                               | Epoch                        |
-| Configuration, export, token, deployed-version and Mate-flag resources                                                                                 | Runtime resource broker                                                               | REST, on lease                                                           | Lease                        |
-| Registration record                                                                                                                                    | `cr/zerops/environments/records.ts`, written only by the environment machine          | Written on exchange success; `localStorage`                              | Account, persisted           |
-| Mate credential and install generation                                                                                                                 | T3 credential store, written only by the environment machine                          | Door exchange; a kept session once its Mate confirms it                  | Epoch; kept per account      |
-| Reachability                                                                                                                                           | `cr/zerops/environments/reachability.ts`, pure                                        | Derived                                                                  | Epoch                        |
-| Link phase                                                                                                                                             | T3 supervisor, mirrored read-only                                                     | Mate WebSocket                                                           | Per environment              |
-| Descriptor facts (`environmentId`, `serverVersion`, `update`, `capabilities`, `zerops.identity`)                                                       | Probe store, one per origin                                                           | HTTP descriptor                                                          | Epoch                        |
-| Container lifecycle and restart intents                                                                                                                | Container machine; intents persisted per tab                                          | Status pushes, processes, probes, link connects, descriptor version      | Epoch, per target            |
-| Birth record                                                                                                                                           | `cr/zerops/birth/birthStore.ts` and one account worker (`birthWorker.ts`)             | Its own project read directly, activity, container facts, the registry   | Account, persisted           |
-| Thread shell and detail                                                                                                                                | T3 `cr/state/shell.ts`, `threads.ts`                                                  | Mate WebSocket snapshot + sequence                                       | Per environment              |
-| Thread lifecycle envelope, agent sign-in                                                                                                               | Mate server; client feeds as `Known`                                                  | Mate WebSocket                                                           | Per thread, per environment  |
-| Agent availability for this viewer                                                                                                                     | `cr/zerops/agentAvailability.ts`, pure over `Known` inputs                            | Derived                                                                  | Epoch                        |
-| Server session validity and revocation                                                                                                                 | Mate server `ZeropsMembershipWatch`                                                   | Socket close, auth block                                                 | Per session                  |
-| Gitea discovery per org                                                                                                                                | Selector over the records                                                             | Derived                                                                  | Epoch                        |
-| Gitea person session                                                                                                                                   | `cr/zerops/forge/giteaSession.ts`, one per (epoch, Gitea origin)                      | Broker `POST /person/token` via a throwaway                              | Epoch                        |
-| Deployment per service                                                                                                                                 | `cr/zerops/flow/deploymentStore.ts`                                                   | Pushed `activeDeploy`; REST for the version name; Gitea for build status | Epoch, per service           |
-| Group flow, release offer, mergeability                                                                                                                | Pure projections                                                                      | Derived                                                                  | —                            |
-| Verb attempts                                                                                                                                          | Command attempts keyed by target                                                      | Our verbs                                                                | Epoch                        |
-| Background reconcilers (group reach, deploy-token gaps, throwaway sweep, half-made group environments of births from another device or an older build) | `cr/zerops/reconcilers/*`, account workers in the post-grant stage                    | Act only on `known` inputs with complete coverage                        | Epoch                        |
-| Persisted UI state                                                                                                                                     | The owning store, under `accountStorageKey`                                           | Personal context                                                         | Account                      |
-| Platform signals                                                                                                                                       | One `PlatformSignals` port and one `DeadlineClock` port per account runtime           | Visibility, focus, online, freeze/resume, wall and monotonic clocks      | Renderer                     |
+| Fact                                                                                                                                               | Owner                                                                                                                                                                                         | Source and transport                                                                       | Scope                                                    |
+| -------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | -------------------------------------------------------- |
+| Zerops session and owner record                                                                                                                    | Session machine, `cr/zerops/account/session.ts`                                                                                                                                               | REST `user/info`, `auth/*`; storage events on the session and owner keys                   | Renderer; identity cross-tab                             |
+| Organizations and memberships                                                                                                                      | Session store, refreshed by each grant round                                                                                                                                                  | REST `user/info`                                                                           | Epoch                                                    |
+| Active organization                                                                                                                                | Personal context, per tab                                                                                                                                                                     | The user                                                                                   | Tab; no fact is keyed by it                              |
+| Access grant, per project                                                                                                                          | Grant machine, `cr/zerops/data/access/grant.ts`, I/O through an `AccessVerifier` port                                                                                                         | REST rounds                                                                                | Epoch                                                    |
+| Capabilities                                                                                                                                       | `cr/zerops/data/access/capabilities.ts`, pure                                                                                                                                                 | Derived                                                                                    | Epoch                                                    |
+| Org, project, service and process records; query memberships                                                                                       | `ZeropsDataRuntime`                                                                                                                                                                           | Datastream + REST anchors                                                                  | Epoch, keyed by org, project                             |
+| Project `tagList`: the `mate` marker; tags main's client wrote are carried through, never read for structure                                       | Read: the runtime's tags facet. Write: `updateProjectTags(project, patch)` only (`data/tagWriter.ts`), whose one patch is the marker (`data/tagPatch.ts`)                                     | Datastream; re-read after our own write                                                    | Epoch                                                    |
+| HQ structure: applications, their projects and kinds, each Mate's record and its live summary (chats, signers), a Mate's changes, the environments | HQ's stream (`cr/zerops/hq/stream.ts`, `client.ts`), held in `hqStructureAtom`; placements, environments and changes derived from it (`web/state/zerops.ts`)                                  | HQ `/api/structure/ws`: a snapshot, then whole applications; a snapshot again on reconnect | Epoch, per organization's HQ                             |
+| HQ session                                                                                                                                         | `web/zerops/accountHq.ts`: one API per account, organization and HQ                                                                                                                           | HQ's door, presented a `mate-door:` throwaway named for HQ's project                       | Account lifetime, in memory                              |
+| An application's releases and repositories; comparisons; a repository's history; a recipe's tiers                                                  | `web/zerops/useZeropsAppReleases.ts`, `useZeropsCompares.ts`, `useZeropsHistory.ts`, `useZeropsAppRecipes.ts`, over `HqApi`                                                                   | HQ REST as the person                                                                      | Epoch                                                    |
+| Registry, placements, candidates, environment→project index, topology, names                                                                       | Pure selectors: the registry over HQ's structure (`cr/zerops/hq/registry.ts`), a project's place on its record (`placeProjects`), the rest over the records above                             | Derived                                                                                    | Epoch                                                    |
+| Project-creation verdict                                                                                                                           | Runtime activity (the `project.create` process)                                                                                                                                               | Datastream                                                                                 | Epoch                                                    |
+| Configuration, export, token, deployed-version and Mate-flag resources                                                                             | Runtime resource broker                                                                                                                                                                       | REST, on lease                                                                             | Lease                                                    |
+| Registration record                                                                                                                                | `cr/zerops/environments/records.ts`, written only by the environment machine                                                                                                                  | Written on exchange success; `localStorage`                                                | Account, persisted                                       |
+| Mate credential and install generation                                                                                                             | T3 credential store, written only by the environment machine                                                                                                                                  | Door exchange; a kept session once its Mate confirms it                                    | Epoch; kept per account                                  |
+| Reachability                                                                                                                                       | `cr/zerops/environments/reachability.ts`, pure                                                                                                                                                | Derived                                                                                    | Epoch                                                    |
+| Link phase                                                                                                                                         | T3 supervisor, mirrored read-only                                                                                                                                                             | Mate WebSocket                                                                             | Per environment                                          |
+| Descriptor facts (`environmentId`, `serverVersion`, `update`, `capabilities`, `zerops.identity`)                                                   | Probe store, one per origin                                                                                                                                                                   | HTTP descriptor                                                                            | Epoch                                                    |
+| Container lifecycle and restart intents                                                                                                            | Container machine; intents persisted per tab                                                                                                                                                  | Status pushes, processes, probes, link connects, descriptor version                        | Epoch, per target                                        |
+| A Mate's press and its setup                                                                                                                       | The press (`web/zerops/matePress.ts`, steps in `cr/zerops/createEnvironment.ts`), one per project under Web Lock `mate:press:<projectId>`; its setup read off the Mate (`mateSetup.ts`)       | Platform writes, HQ's registration; `/mate/setup.json`                                     | Tab memory; any owner or admin finishes a half-made Mate |
+| Thread shell and detail                                                                                                                            | T3 `cr/state/shell.ts`, `threads.ts`                                                                                                                                                          | Mate WebSocket snapshot + sequence                                                         | Per environment                                          |
+| Thread lifecycle envelope, agent sign-in                                                                                                           | Mate server; client feeds as `Known`                                                                                                                                                          | Mate WebSocket                                                                             | Per thread, per environment                              |
+| Agent availability for this viewer                                                                                                                 | `cr/zerops/agentAvailability.ts`, pure over `Known` inputs                                                                                                                                    | Derived                                                                                    | Epoch                                                    |
+| Server session validity and revocation                                                                                                             | Mate server `ZeropsMembershipWatch`                                                                                                                                                           | Socket close, auth block                                                                   | Per session                                              |
+| Deployment per service                                                                                                                             | `cr/zerops/flow/deploymentStore.ts`                                                                                                                                                           | Pushed `activeDeploy`; REST for the version name; the project's running builds             | Epoch, per service                                       |
+| Group flow, release offer, mergeability                                                                                                            | Pure projections                                                                                                                                                                              | Derived                                                                                    | —                                                        |
+| Verb attempts                                                                                                                                      | Command attempts keyed by target                                                                                                                                                              | Our verbs                                                                                  | Epoch                                                    |
+| Background reconcilers (the Mate keys' lowering, environments HQ holds without their attach or their deploy key, the throwaway sweep)              | `cr/zerops/reconcilers/*`, account workers in the post-grant stage; today hooks of the projects screen (`useZeropsMateKeys`, `useZeropsGroupEnvironmentReconcile`, `useZeropsThrowawaySweep`) | Act only on `known` inputs with complete coverage                                          | Epoch                                                    |
+| Persisted UI state                                                                                                                                 | The owning store, under `accountStorageKey`                                                                                                                                                   | Personal context                                                                           | Account                                                  |
+| Platform signals                                                                                                                                   | One `PlatformSignals` port and one `DeadlineClock` port per account runtime                                                                                                                   | Visibility, focus, online, freeze/resume, wall and monotonic clocks                        | Renderer                                                 |
 
 ## Machines
 
@@ -264,7 +268,7 @@ cell gets `withheld(access-lapsed)` and the broker erases its values but keeps d
   - _Waitable when:_ — (withheld at the read)
 - **`identityMint`** — A live session and the epoch's first grant; the rights-less mint is an
   account write, so a lapse does not hold it up. No organization or project role is checked: the
-  door and the broker decide
+  door it is presented to decides, a Mate's or HQ's
   - _Waitable when:_ Before the epoch's first grant
 - **`throwawayCleanup`** — Always, within the minting epoch (carrying the minting token) or under
   the same principal (the sweep)
@@ -272,8 +276,6 @@ cell gets `withheld(access-lapsed)` and the broker erases its values but keeps d
 - **`mate(env)`** — Post-grant stage running, credential held, link connected, and until 2.5
   `platformRead` of the Mate's project
   - _Waitable when:_ Link reconnecting
-- **`forge(origin)`** — Gitea session signed in
-  - _Waitable when:_ Acquiring, pending
 
 Commands await a waitable capability for up to 30 s before their attempt deadline starts, then fail
 with a typed, retryable reason. A refusal is a value the caller shows, never a silent interrupt.
@@ -302,16 +304,17 @@ descriptor → exchange → thread state.
 
 An exchange runs when the key is wanted (the route targets it, a registration record exists, the
 user pressed Connect, a live intent of ours, auto-connect for ready Mates in the active org, or a
-birth past hardening) and all of these hold: the post-grant stage runs, the session is signed in,
-P is `present`, C is `ready` or `unknown`, no exchange is in flight for the origin, the tab is
-visible or this is the route's target, the tab's exchange budget has a token, and `identityMint` is
-allowed. One driver per store serves them route target first, then visible rows, remembered Mates,
-auto-connect; concurrency 3, single flight per origin, 20 s per attempt. After five consecutive
-automatic failures a target retries every 5 minutes until a user retry or an input change. Mint
-budgets are per tab: 10 exchanges a minute, and a separate 4 a minute for Gitea. A refusal (door
-role refusal, a server below the floor, a project mismatch) waits for an input change; descriptor
-`zerops.identity = failed` is retryable, not a refusal. Credential rotation writes through the
-credential store (`registry.rotateCredential`) and never re-registers the environment.
+pressed Mate past its provisioning wait's hardening, `provisioning.ts`) and all of these hold: the
+post-grant stage runs, the session is signed in, P is `present`, C is `ready` or `unknown`, no
+exchange is in flight for the origin, the tab is visible or this is the route's target, the tab's
+exchange budget has a token, and `identityMint` is allowed. One driver per store serves them route
+target first, then visible rows, remembered Mates, auto-connect; concurrency 3, single flight per
+origin, 20 s per attempt. After five consecutive automatic failures a target retries every 5 minutes
+until a user retry or an input change. Mint budgets are per tab: a burst of 10 door mints refilled
+at 30 a minute, and the mint for a Mate the person asked for never waits (`doorThrowaway.ts`). A
+refusal (door role refusal, a server below the floor, a project mismatch) waits for an input change;
+descriptor `zerops.identity = failed` is retryable, not a refusal. Credential rotation writes
+through the credential store (`registry.rotateCredential`) and never re-registers the environment.
 
 **Reachability** is a projection over P, K, L, C and the descriptor; the first matching row wins.
 
@@ -352,34 +355,16 @@ only on a read fact; a cap past its budget sets `overdue` on the current level a
 
 Probes run from one pool of 4 per tab, 8 s each: every 2 s while booting, restarting or updating
 (then 10 s rising to 60 s once overdue); none while ready and connected; on wake, connect failure or
-an exchange want while ready without a socket; none after 60 s hidden. A birth record
-`{target, startedAt, step: tags | registry | harden | health, overdue}` starts at create-accepted and
-is driven by one account worker under Web Lock `mate:birth:<projectId>`; auto-connect waits for
-`harden` to be done. The record carries its own group writes (the registry entry, then the broker's
-grant and a stage's key and declaration) and its organization, so neither an organization switch
-nor leaving the page strands them; a group write that fails is said and never holds the harden. A
-harden that answers "not yet" is tried on the retry ladder, and one refused waits for _Try again_.
-The driving tab keeps the lock until the record is gone, so a Mate that answered is not read again
-by another tab. A birth has no expiry: the connect promotes it; a failed or removed project, or a
-container import that failed, ends it (spec MB-24).
-
-### Gitea session, one per (epoch, Gitea origin)
-
-| State                                 | Meaning                                             | Leaves on                                                                                                                    |
-| ------------------------------------- | --------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
-| `idle`                                | Not demanded                                        | Demand, signed in, post-grant, discovery known → `waiting` then `acquiring`                                                  |
-| `waiting(on: identityMint or budget)` | —                                                   | Guard met → `acquiring`                                                                                                      |
-| `acquiring(attempt)`                  | A `gitea-signin` throwaway and `POST /person/token` | OK → `signed-in`; broker 502/503 → `pending`; unreachable → `unavailable`; 403 → `refused`; Zerops 401 → the session machine |
-| `signed-in(token, expiresAt)`         | Requests carry the token                            | Demanded near expiry → `renewing`; not demanded at expiry → `idle`; a Gitea 401 → `reacquiring`                              |
-| `renewing`                            | The old token stays in use                          | OK → `signed-in`; failure → `signed-in` until expiry, then `unavailable`                                                     |
-| `reacquiring`                         | Requests queue up to 10 s, then retry once          | OK → `signed-in`; a third 401 in 10 minutes → `refused`                                                                      |
-| `pending(setting-up, retryAt)`        | Gitea is still setting up (5 s rising to 60 s)      | Retry after a credential-less liveness request to the broker origin; no answer → next rung, no mint                          |
-| `unavailable(cause, retryAt, n)`      | Broker unreachable (2, 4, 8, 15, 30, 60 s)          | Same as `pending`                                                                                                            |
-| `refused(reason, retryAt)`            | Gitea or the broker said no                         | Every 5 minutes while visible, or a user retry or role change → `acquiring`                                                  |
-| `closed`                              | Epoch closed; token forgotten                       | —                                                                                                                            |
-
-Dependent facts wait in `unread(waitingFor: gitea-session)` or stay `known(stale)` for the first
-two failed acquisitions, then show the cause. A 401 never blanks them.
+an exchange want while ready without a socket; none after 60 s hidden. A Mate's birth is its press
+(`web/zerops/matePress.ts`, the steps in `cr/zerops/createEnvironment.ts`): the project made or
+imported, its container imported with its own key, the project closed off, the Mate registered in
+HQ, then a wait for it to answer — one press per project at a time under Web Lock
+`mate:press:<projectId>`. Every step is safe to ask again: a press that stopped says where and
+resumes there on _Try again_, and a half-made Mate is finished from its ⋯ menu by an owner or an
+admin, in any browser (_Finish setup_, the same steps). What follows runs in the container — zcp
+imports the runtimes and enrolls the Mate with its HQ, the Mate server sends the stand-up — and any
+browser reads where it stands off `/mate/setup.json` (`mateSetup.ts`). Nothing of a press is
+stored: a reload forgets it, and HQ's structure and the listing draw the rest.
 
 ### Command attempts
 
@@ -393,7 +378,8 @@ two failed acquisitions, then show the cause. A 401 never blanks them.
 | `uncertain`                  | "Check the project before trying again"; never replayed | —                                                                                     |
 
 A compound command re-checks admission before each write. Non-idempotent commands are never retried
-automatically; a pull request is looked up by head branch before one is opened.
+automatically; a merge carries the head its review showed, and HQ refuses one whose head moved since
+(`head_moved`).
 
 ### Route and view gate
 
@@ -434,15 +420,15 @@ storage lacks.
 
 The flow is a projection over per-key cells, never a pass. Its parts are independent: change rows
 render once HQ's stream has told a Mate's changes, and each stop renders its own
-`Shown<Deployment>`. The release offer is known only when both halves are known and fresh.
-`environments.yaml` declares which stops exist and their order; project tags declare membership.
-`Deployment` is `none` (the deployment facet observed with no active deploy), `running` (activation
-time, version name and commit, build status) or `deploying`; an unresolved facet is `unread`, never
-"Nothing deployed yet". A change is `merged`, `closed`, or `open` with mergeability `checking`,
-`mergeable`, `conflicting` or `empty`, as HQ says it (`changeMergeability.ts`); `checking` until it
-has said. A verb invalidates
-exactly what it changed: release and roll back the group repository's tags; add a stage the
-declarations. A Mate's change comes back down HQ's stream.
+`Shown<Deployment>`. The release offer is known only when both halves are known and fresh. HQ's
+environments (`hqEnvironmentsAtom`) declare which stops exist and their order; HQ's placements
+declare membership. `Deployment` is `none` (the deployment facet observed with no active deploy),
+`running` (activation time, version name and commit) or `deploying` (the version a build makes, and
+what ran when it started); an unresolved facet is `unread`, never "Nothing deployed yet". A change
+is `merged`, `closed`, or `open` with mergeability `checking`, `mergeable`, `conflicting` or
+`empty`, as HQ says it (`changeMergeability.ts`); `checking` until it has said. A verb invalidates
+exactly what it changed: a release or a roll back reads that application's releases again
+(`useZeropsAppReleases`' `refresh`); a stage added, a merge or a close comes back down HQ's stream.
 
 ## Lifetimes
 
@@ -453,10 +439,9 @@ declarations. A Mate's change comes back down HQ's stream.
   - _Ended only by:_ Sign-out, principal change, unrefreshable 401
   - _May unmount:_ The product tree
 - **Account epoch, post-grant stage** — T3 connection runtime (kept alive for the epoch),
-  environment, container, birth and probe stores, Gitea sessions, forge and deployment stores,
-  reconcilers
+  environment, container and probe stores, the deployment store, reconcilers
   - _Ended only by:_ Epoch close, never a lapse
-- **Organization** — Receivers, Gitea discovery, registry
+- **Organization** — Receivers, its HQ (session, structure stream), registry
   - _Ended only by:_ Membership loss in an admitted round
   - _May unmount:_ Nothing; its rows go `gone`
 - **Project** — Services, tags, deployments, group membership, access evidence
@@ -470,10 +455,10 @@ declarations. A Mate's change comes back down HQ's stream.
 
 - A lifetime ends only through its owner's authoritative event; timers, data liveness and
   capabilities are never such events.
-- Unmounting releases demand only. A store may evict an unleased entry after 10 minutes idle (an LRU
-  of 500 pull request entities); a later reader starts a new identity at `unread`.
-- Losing a capability — a lapsed grant or project, a denied role, a refused Gitea session, a blocked
-  Mate link — never tears down state or UI.
+- Unmounting releases demand only. A store may evict an unleased entry after 10 minutes idle (the
+  resource broker's cells, `data/cells.ts`); a later reader starts a new identity at `unread`.
+- Losing a capability — a lapsed grant or project, a denied role, an HQ that does not answer, a
+  blocked Mate link — never tears down state or UI.
 - Cancellation is structural: every effect runs in a fiber owned by its entry's scope and carries an
   AbortSignal. Commands past their first possible write are never aborted; throwaway deletes run in
   uninterruptible finalizers carrying the minting token.
@@ -482,8 +467,8 @@ declarations. A Mate's change comes back down HQ's stream.
   account runtime, not by mounted components.
 - A failure in one scope stays there: one org's receiver, one blocked interest, one project's failed
   access read or one malformed frame degrades only that scope's regions.
-- Account close runs one hook, in order: lock, flush drafts, revoke Mate sessions, forget Gitea
-  tokens, dispose the post-grant stores, shut down the data runtime, dispose the atom registry.
+- Account close runs one hook, in order: lock, flush drafts, revoke Mate sessions, forget the HQ
+  sessions, dispose the post-grant stores, shut down the data runtime, dispose the atom registry.
   Leftover throwaways are swept at the same principal's next epoch.
 
 ## Data flow and invalidation
@@ -491,74 +476,74 @@ declarations. A Mate's change comes back down HQ's stream.
 Observations flow only into owners; surfaces read only projections and send back only intents
 (demand, commands, "Try again").
 
-| Push                                      | Facts touched                                                                  |
-| ----------------------------------------- | ------------------------------------------------------------------------------ |
-| Datastream frame                          | Platform records; derived joins recompute reactively, no bus involved          |
-| Project tags change                       | Registry, group members, signer overlay                                        |
-| Service `activeDeploy` change             | Deployment: a new version-name key                                             |
-| Service status, terminal process          | Container lifecycle, birth, `Deployment.deploying`                             |
-| Mate shell and thread streams             | Thread shell and detail                                                        |
-| Mate `subscribeVcsStatus`                 | Invalidates the checkout's forge repository                                    |
-| zcp lifecycle envelope                    | Git push or pull request tool → forge repository; deploy finished → deployment |
-| Agent-auth feed                           | Agent sign-in, agent availability                                              |
-| Socket auth block, close and close reason | Credential region, `waiting(on: zerops)`, link block mapping                   |
-| Link connect                              | Ends container `restarting` and `updating`                                     |
-| Accepted verb                             | Its target's topics                                                            |
-| Storage events                            | Session and owner record; registration and birth records                       |
-| BroadcastChannel `mate:account`           | The carried invalidation topics                                                |
+| Push                                      | Facts touched                                                                                                         |
+| ----------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| Datastream frame                          | Platform records; derived joins recompute reactively, no bus involved                                                 |
+| HQ structure stream                       | Registry, placements, group members, environments, a Mate's changes, its record and its live summary (chats, signers) |
+| Project tags change                       | Whether a project is a Mate (the `mate` marker)                                                                       |
+| Service `activeDeploy` change             | Deployment: a new version-name key                                                                                    |
+| Service status, terminal process          | Container lifecycle, birth, `Deployment.deploying`                                                                    |
+| Mate shell and thread streams             | Thread shell and detail                                                                                               |
+| Mate `subscribeVcsStatus`                 | The Git tab's checkout, one subscription per mount                                                                    |
+| zcp lifecycle envelope                    | A new successful deploy → that service's `deployment` (`flow/envelopeInvalidations.ts`)                               |
+| Agent-auth feed                           | Agent sign-in, agent availability                                                                                     |
+| Socket auth block, close and close reason | Credential region, `waiting(on: zerops)`, link block mapping                                                          |
+| Link connect                              | Ends container `restarting` and `updating`                                                                            |
+| Accepted verb                             | Its target's topics                                                                                                   |
+| Storage events                            | Session and owner record; registration records                                                                        |
+| BroadcastChannel `mate:account`           | The carried invalidation topics                                                                                       |
 
 **The invalidation bus** is a `PubSub` owned by the account runtime: a closed, typed set of
 revalidation requests with no data and no merge semantics. Topics: `access` (granted, lapsed,
 renew-now), `inventory(org)`, `project`, `environment(target, why)`, `container(target)`,
-`deployment(service)`, `gitea-session(origin)`. Only owners
+`deployment(service)`. Only owners
 of pull-based facts subscribe; the runtime accepts only `inventory` and `access`. Invalidations
 coalesce per key over 250 ms; in a hidden tab they collect into a dirty set flushed, visible first,
 on the next visible wake.
 
 **Polling is a backstop, and this is the complete list.**
 
-| Fact                                 | Backstop                                                                    | Runs only while                     |
-| ------------------------------------ | --------------------------------------------------------------------------- | ----------------------------------- |
-| Access grant                         | Renewal before its deadline; per-project retry for unverified projects      | Epoch open, hidden under 60 minutes |
-| Inventory, activity                  | None: resnapshot on reconnect, foreground and explicit refresh              | —                                   |
-| Registry, tags                       | Re-read after our own writes and on a cross-tab invalidation                | —                                   |
-| Tags and releases                    | 60 s; on visible wake when older than 30 s                                  | Demanded and visible                |
-| A Mate's changes                     | None: HQ's stream, its snapshot again on reconnect                          | —                                   |
-| Commit status                        | 15 s, up to 20 minutes                                                      | Demanded, visible, pending          |
-| `environments.yaml`, tiers on `main` | 5 minutes                                                                   | Demanded and visible                |
-| Deployment name                      | 30 s while a deploy of that service runs and the pushed name is unconfirmed | Demanded                            |
-| Container probe                      | The container machine's cadence                                             | Its state requires it               |
-| Gitea token                          | Before `expiresAt`                                                          | Demanded                            |
-| Throwaway sweep                      | Epoch open, then every 5 minutes                                            | Visible                             |
+| Fact                                              | Backstop                                                                                                            | Runs only while                     |
+| ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- | ----------------------------------- |
+| Access grant                                      | Renewal before its deadline; per-project retry for unverified projects                                              | Epoch open, hidden under 60 minutes |
+| Inventory, activity                               | None: resnapshot on reconnect, foreground and explicit refresh                                                      | —                                   |
+| Tags                                              | Re-read after our own writes and on a cross-tab invalidation                                                        | —                                   |
+| An application's releases and repositories        | 60 s, and at once for one a verb asks or whose production's deploys move (`useZeropsAppReleases`)                   | An official HQ is known             |
+| HQ's structure, environments and a Mate's changes | None: HQ's stream, its snapshot again on reconnect                                                                  | —                                   |
+| A recipe's tiers on `main`                        | None: read when its application is first shown, and again once a change of the recipe lands (`useZeropsAppRecipes`) | —                                   |
+| A comparison of two commits                       | None: asked once and held; one that failed is asked again a minute later (`useZeropsCompares`)                      | Still wanted                        |
+| Deployment name                                   | 30 s while a deploy of that service runs and the pushed name is unconfirmed                                         | Demanded                            |
+| Container probe                                   | The container machine's cadence                                                                                     | Its state requires it               |
+| Throwaway sweep                                   | Once a day per account on a browser (`throwawaySweepDue`)                                                           | The projects screen is open         |
 
 **Wake.** A visible wake is one coalesced event, at most one per 10 s, on: visible again after at
 least 30 s hidden, `pageshow` with `persisted`, `resume`, `online`, sleep detected while visible,
 and focus after at least 30 s hidden or blurred. Sleep is the wall clock outrunning the monotonic
 clock by more than 5 s between ticks, or a tick gap over 5 minutes; hidden-tab throttling alone
-never looks like sleep. A hidden wake only re-evaluates deadlines (the grant, Gitea expiry); retries,
-probes and forge flushes wait for the next visible wake. Offline pauses rounds, retries, probes and
-forge reads.
+never looks like sleep. A hidden wake only re-evaluates deadlines (the grant); retries and probes
+wait for the next visible wake. Offline pauses rounds, retries and probes.
 
 **Ordering.** Each store processes events one at a time; I/O runs concurrently and results come back
 fenced by attempt id and read-start ordinal. Effects apply after the state is published. Single
-flight per key: one exchange per origin, one acquisition per Gitea origin, one probe per origin, one
-read per fact and key, one grant round. `tagList` is written by one tag writer that reads, applies a
-pure patch, writes and reads back, serialized per project and under Web Lock `mate:tags:<projectId>`
-across tabs; the platform has no conditional write, so a cross-device race remains within one
-read-write round trip. `environments.yaml` writes carry the blob sha and re-apply once on conflict.
+flight per key: one exchange per origin, one probe per origin, one read per fact and key, one grant
+round. `tagList` is written by one tag writer that reads, applies a pure patch, writes and reads
+back, serialized per project and under Web Lock `mate:tags:<projectId>` across tabs; the platform
+has no conditional write, so a cross-device race remains within one read-write round trip. A key's
+project list is written under Web Lock `mate:token:<tokenId>`, from a list read inside the lock.
 
-**Multi-tab.** No tab leads. Each has its own runtime, grant, Mate sessions, Gitea token and mint
+**Multi-tab.** No tab leads. Each has its own runtime, grant, Mate sessions, HQ session and mint
 budgets. The cross-tab channels are closed:
 
-| Channel                                          | Carries                                            | Guard                                                               |
-| ------------------------------------------------ | -------------------------------------------------- | ------------------------------------------------------------------- |
-| Storage event, session key                       | Sign-in, refresh, sign-out, to tabs in every state | Verified adoption                                                   |
-| Storage event, owner key                         | Login generation                                   | Consumed only by tabs without a generation                          |
-| Web Lock `mate:zerops-refresh`                   | Token refresh; owner-record creation               | Storage re-read inside the lock                                     |
-| Web Lock `mate:tags:<projectId>`                 | Tag patches                                        | Fresh read inside the lock                                          |
-| Web Lock `mate:birth:<projectId>`                | One birth driver                                   | —                                                                   |
-| BroadcastChannel `mate:account`                  | Invalidations after account-level writes           | Dropped unless `{userId, loginGeneration}` matches the open account |
-| Storage events on registration and birth records | Store reload                                       | Account-scoped keys; never credentials                              |
+| Channel                                | Carries                                            | Guard                                                               |
+| -------------------------------------- | -------------------------------------------------- | ------------------------------------------------------------------- |
+| Storage event, session key             | Sign-in, refresh, sign-out, to tabs in every state | Verified adoption                                                   |
+| Storage event, owner key               | Login generation                                   | Consumed only by tabs without a generation                          |
+| Web Lock `mate:zerops-refresh`         | Token refresh; owner-record creation               | Storage re-read inside the lock                                     |
+| Web Lock `mate:tags:<projectId>`       | Tag patches                                        | Fresh read inside the lock                                          |
+| Web Lock `mate:press:<projectId>`      | One press or _Finish setup_ per project            | —                                                                   |
+| Web Lock `mate:token:<tokenId>`        | One key's read-then-write                          | Fresh read inside the lock                                          |
+| BroadcastChannel `mate:account`        | Invalidations after account-level writes           | Dropped unless `{userId, loginGeneration}` matches the open account |
+| Storage events on registration records | Store reload                                       | Account-scoped keys; never credentials                              |
 
 ## Module boundaries
 
@@ -576,11 +561,11 @@ data/          the data runtime, plus access/grant.ts, access/verifier.ts, acces
                commands: updateProjectTags(project, patch)
 environments/  records.ts, probeStore.ts, containerMachine.ts, environmentMachine.ts,
                exchangeDriver.ts, reachability.ts, gate.ts, descriptorIndex.ts
-birth/         birthStore.ts
-forge/         giteaSession.ts
+hq/            client.ts (HQ's API, through its door), stream.ts, registry.ts, placement.ts,
+               birth.ts, anchor.ts
 flow/          deploymentStore.ts, groupFlow.ts, envelopeInvalidations.ts
                (projectFlow.ts, release.ts, groupDeploys.ts)
-reconcilers/   groupReach.ts, deployTokenGaps.ts, throwawaySweep.ts
+reconcilers/   the Mate keys' lowering, environments HQ holds half-made, the throwaway sweep
 projections/   candidates.ts, sidebar rows, banner, Git tab, birth progress, agentAvailability.ts
 testing/       accountHarness.ts, explore.ts
 api.ts                 + deleteThrowaway({clientId, tokenId, name}, {token})
@@ -596,10 +581,10 @@ Dependency rules, each an import-graph test in `scripts/mate-zone-architecture.t
    `ctx.now`. Drivers reach sources only through ports.
 3. `projections/**`, `flow/groupFlow.ts` and `environments/{reachability,gate}.ts` are pure,
    reading no clock by the same measure.
-4. Web and mobile components import hooks only — never a store, `api.ts`, `giteaClient.ts` or
-   `fetch` — and set no timer for data.
+4. Web and mobile components import hooks only — never a store, `api.ts` or `fetch` — and set no
+   timer for data.
 5. `Cell` and `advance` stay private to their store; `.value` is read only in selectors.
-6. Dependencies run one way: data runtime ← environments ← flow, and data runtime ← forge ← flow.
+6. Dependencies run one way: data runtime ← environments ← flow.
    Nothing depends on `account/` except the web and mobile bindings and, inside `cr/zerops`,
    `account/` itself and the `testing/` harness, which drives sessions; post-grant modules are
    constructed only by `accountRuntime.ts`.
@@ -616,74 +601,77 @@ for locks, a no-op broadcast and the Effect scheduler.
 Slices are numbered by phase: 0 stabilizes, 1 puts `Known` at every boundary, 2 moves the grant into
 the runtime, 3 builds environments, containers and births, 4 the forge and flow, 5 views and
 withholding; S is the Mate server, and a server item holds on Mates at or above the release that
-carries it. "Live" means it holds on `main` today.
+carries it. "Live" means it holds on `rebuild/int` today; "gone" names the slice that removed a part
+whose fact is now another owner's or no longer exists.
 
-| Item                                                                                              | Status                                                                                 |
-| ------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
-| Platform data runtime: records, interests, receivers, resource broker, commands                   | Live                                                                                   |
-| T3 shell and thread stores                                                                        | Live                                                                                   |
-| Account epoch and its fence at the web boundary                                                   | Live                                                                                   |
-| Active organization per tab                                                                       | Live                                                                                   |
-| Agent availability as one projection                                                              | Live                                                                                   |
-| Server membership watch: 300 s re-check, two-pass rule, 24-hour maximum age                       | Live; the interval clamped to at most 300 s (S.0) from the first release after 0.11.41 |
-| Mate sessions kept per account, presented again once their Mate confirms them                     | Live                                                                                   |
-| Gitea sessions forgotten on account close                                                         | Live                                                                                   |
-| Account harness and sign-in guards                                                                | Live                                                                                   |
-| `Known`, `Shown`, `Cell`, `knownPresentation`, retry policy                                       | Live                                                                                   |
-| Grant reducer with per-project evidence and policy constants                                      | Live                                                                                   |
-| REST-only renewal, round-start evidence, per-project admission, writes open during renewal        | Live                                                                                   |
-| `deleteThrowaway` with the minting token; per-tab mint budgets                                    | Live                                                                                   |
-| `registry.rotateCredential`                                                                       | Live                                                                                   |
-| Environment machine and reachability                                                              | Live                                                                                   |
-| One exchange driver for restore, auto-connect and repair                                          | Live                                                                                   |
-| Content-based route gate over the driver's machines, and one link predicate                       | Live                                                                                   |
-| A lapse never unmounts (opaque overlay, portals removed, title neutralized)                       | Live; replaced by per-region withholding in 5.1                                        |
-| Session machine: cross-tab sign-in without reload, owner record, verified adoption                | Live                                                                                   |
-| `Deployment` from the pushed facet; per-group publication                                         | Live; `deploying` in 4.4                                                               |
-| Gitea session machine                                                                             | Live                                                                                   |
-| Mergeability shared by the flow, Git tab, banner and change page                                  | Live, as HQ says it (`changeMergeability.ts`)                                          |
-| Broker leases as cells, withheld and re-admitted per scope                                        | Live                                                                                   |
-| Invalidation bus and cross-tab channel                                                            | Live                                                                                   |
-| Inventory selectors return `Known`; presence `unknown`                                            | Live                                                                                   |
-| The candidate listing's web consumers read `Known` through selectors                              | Live                                                                                   |
-| Mate feeds as `Known`                                                                             | Live                                                                                   |
-| Lint `t3code/no-failure-to-empty` and the `Cell` zone rule                                        | Live                                                                                   |
-| Runtime hygiene: no stranded `recovering`, resume reuses a live receiver, scoped malformed frames | Live                                                                                   |
-| Grant machine inside the data runtime; pre-grant and post-grant stages                            | Live                                                                                   |
-| Capabilities; typed refusals from commands                                                        | Live                                                                                   |
-| Refresh epoch deleted; callers become intents                                                     | Live                                                                                   |
-| Rights-less throwaway mint no longer waits for the account window                                 | Live                                                                                   |
-| Mate commands need the Mate session only                                                          | 2.5, after S.0 is released                                                             |
-| First mount on the first grant alone                                                              | Live                                                                                   |
-| Registration records, followed across tabs                                                        | Live; the legacy keys are no longer read                                               |
-| Probe store, container machine, persisted intents                                                 | Live                                                                                   |
-| A Mate leaves the catalog only after a direct project-services read confirms its absence (C19)    | Live                                                                                   |
-| Descriptor index and full sweep; `replaced`                                                       | Live                                                                                   |
-| Environment store in the post-grant stage                                                         | Live                                                                                   |
-| Birth store and worker                                                                            | Live                                                                                   |
-| Derived topology, names and Mate atoms                                                            | Live                                                                                   |
-| Mobile on the shared candidate selectors and container store                                      | Live                                                                                   |
-| Mobile reachability, hosted by a mobile account runtime                                           | Live                                                                                   |
-| Wake definition; a stream defect leaves `live`; thread gate                                       | Live                                                                                   |
-| Forge store with its scheduler                                                                    | Live                                                                                   |
-| Registry as a projection of tags                                                                  | Live                                                                                   |
-| One tag writer                                                                                    | Live                                                                                   |
-| `groupFlow`, per-verb attempts, envelope and VCS invalidations                                    | 4.5; old hooks deleted in 4.6                                                          |
-| Reconcilers as account workers                                                                    | 4.7                                                                                    |
-| Server lifecycle feed keeps each thread's latest value; one bad event never stops the ingest      | Live from the first release after 0.11.41                                              |
-| Signer re-read before refusing a turn                                                             | Live from the first release after 0.11.41                                              |
-| A turn failing authentication re-probes the agent's sign-in                                       | Live from the first release after 0.11.41                                              |
-| Agent login reports its exit                                                                      | Live from the first release after 0.11.41                                              |
-| A deploy operation becomes uncertain after its cap                                                | Live                                                                                   |
-| Descriptor boot identity, server state stream, identity verdict split, close reasons              | S.6                                                                                    |
-| Persisted UI keys under the account key; a sign-in lands on its deep link or /zerops              | Live                                                                                   |
-| Zone tests: one owner per fact family, no component I/O, no data timers                           | 5.5                                                                                    |
-| Dependency rule 1 (`cr/zerops/**` imports no React and no DOM globals)                            | Live                                                                                   |
-| Dependency rule 2 (machine and reducer files import no Effect runtime, fetch or storage)          | Live; zone test "rule 2"                                                               |
-| Dependency rule 3 (projections and the named pure modules are pure)                               | Live; zone test "rule 3"                                                               |
-| Dependency rules 2 and 3 read no clock and set no timer                                           | Live; zone tests "rule 2" and "rule 3"                                                 |
-| Dependency rule 4 (components import hooks only and set no data timer)                            | 5.5                                                                                    |
-| Dependency rule 5 (`Cell` and `advance` private to their store; `.value` only in selectors)       | Live                                                                                   |
-| Dependency rule 6, one way (only `account/` and `testing/` depend on `account/`)                  | Live; zone test "rule 6"                                                               |
-| Dependency rule 6, construction (post-grant modules built only by `accountRuntime.ts`)            | Live; zone test "rule 6"; the web's Gitea sessions a named exception                   |
-| Dependency rule 7 (protected roots render only)                                                   | Live                                                                                   |
+| Item                                                                                              | Status                                                                                     |
+| ------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| Platform data runtime: records, interests, receivers, resource broker, commands                   | Live                                                                                       |
+| T3 shell and thread stores                                                                        | Live                                                                                       |
+| Account epoch and its fence at the web boundary                                                   | Live                                                                                       |
+| Active organization per tab                                                                       | Live                                                                                       |
+| Agent availability as one projection                                                              | Live                                                                                       |
+| Server membership watch: 300 s re-check, two-pass rule, 24-hour maximum age                       | Live; the interval clamped to at most 300 s (S.0) from the first release after 0.11.41     |
+| Mate sessions kept per account, presented again once their Mate confirms them                     | Live                                                                                       |
+| Gitea sessions forgotten on account close                                                         | Gone with T12: the client holds no Gitea session                                           |
+| Account harness and sign-in guards                                                                | Live                                                                                       |
+| `Known`, `Shown`, `Cell`, `knownPresentation`, retry policy                                       | Live                                                                                       |
+| Grant reducer with per-project evidence and policy constants                                      | Live                                                                                       |
+| REST-only renewal, round-start evidence, per-project admission, writes open during renewal        | Live                                                                                       |
+| `deleteThrowaway` with the minting token; per-tab mint budgets                                    | Live                                                                                       |
+| `registry.rotateCredential`                                                                       | Live                                                                                       |
+| Environment machine and reachability                                                              | Live                                                                                       |
+| One exchange driver for restore, auto-connect and repair                                          | Live                                                                                       |
+| Content-based route gate over the driver's machines, and one link predicate                       | Live                                                                                       |
+| A lapse never unmounts (opaque overlay, portals removed, title neutralized)                       | Live; replaced by per-region withholding in 5.1                                            |
+| Session machine: cross-tab sign-in without reload, owner record, verified adoption                | Live                                                                                       |
+| `Deployment` from the pushed facet; per-group publication                                         | Live; `deploying` in 4.4                                                                   |
+| Gitea session machine                                                                             | Gone with T12 (`23762ac9b3`)                                                               |
+| Mergeability shared by the flow, Git tab, banner and change page                                  | Live, as HQ says it (`changeMergeability.ts`)                                              |
+| Broker leases as cells, withheld and re-admitted per scope                                        | Live                                                                                       |
+| Invalidation bus and cross-tab channel                                                            | Live                                                                                       |
+| Inventory selectors return `Known`; presence `unknown`                                            | Live                                                                                       |
+| The candidate listing's web consumers read `Known` through selectors                              | Live                                                                                       |
+| Mate feeds as `Known`                                                                             | Live                                                                                       |
+| Lint `t3code/no-failure-to-empty` and the `Cell` zone rule                                        | Live                                                                                       |
+| Runtime hygiene: no stranded `recovering`, resume reuses a live receiver, scoped malformed frames | Live                                                                                       |
+| Grant machine inside the data runtime; pre-grant and post-grant stages                            | Live                                                                                       |
+| Capabilities; typed refusals from commands                                                        | Live                                                                                       |
+| Refresh epoch deleted; callers become intents                                                     | Live                                                                                       |
+| Rights-less throwaway mint no longer waits for the account window                                 | Live                                                                                       |
+| Mate commands need the Mate session only                                                          | 2.5, after S.0 is released                                                                 |
+| First mount on the first grant alone                                                              | Live                                                                                       |
+| Registration records, followed across tabs                                                        | Live; the legacy keys are no longer read                                                   |
+| Probe store, container machine, persisted intents                                                 | Live                                                                                       |
+| A Mate leaves the catalog only after a direct project-services read confirms its absence (C19)    | Live                                                                                       |
+| Descriptor index and full sweep; `replaced`                                                       | Live                                                                                       |
+| Environment store in the post-grant stage                                                         | Live                                                                                       |
+| Birth store and worker                                                                            | Gone: a Mate's birth is the press (`web/zerops/matePress.ts`), its setup read off the Mate |
+| Derived topology, names and Mate atoms                                                            | Live                                                                                       |
+| Mobile on the shared candidate selectors and container store                                      | Live                                                                                       |
+| Mobile reachability, hosted by a mobile account runtime                                           | Live                                                                                       |
+| Wake definition; a stream defect leaves `live`; thread gate                                       | Live                                                                                       |
+| Forge store with its scheduler                                                                    | Gone with T9b and T12: changes, merges, releases, history and comparisons are HQ's         |
+| Registry as a projection of HQ's structure                                                        | Live (`hq/registry.ts`, T5); a projection of tags before                                   |
+| HQ's structure stream, its placements, environments and changes as atoms                          | Live (T5, T7c)                                                                             |
+| A Mate's key lowered to its own project, no grant on its application's others                     | Live (T12, `04d73b1557`)                                                                   |
+| One tag writer                                                                                    | Live                                                                                       |
+| `groupFlow`, per-verb attempts, envelope and VCS invalidations                                    | 4.5; old hooks deleted in 4.6                                                              |
+| Reconcilers as account workers                                                                    | 4.7                                                                                        |
+| Server lifecycle feed keeps each thread's latest value; one bad event never stops the ingest      | Live from the first release after 0.11.41                                                  |
+| Signer re-read before refusing a turn                                                             | Live from the first release after 0.11.41                                                  |
+| A turn failing authentication re-probes the agent's sign-in                                       | Live from the first release after 0.11.41                                                  |
+| Agent login reports its exit                                                                      | Live from the first release after 0.11.41                                                  |
+| A deploy operation becomes uncertain after its cap                                                | Live                                                                                       |
+| Descriptor boot identity, server state stream, identity verdict split, close reasons              | S.6                                                                                        |
+| Persisted UI keys under the account key; a sign-in lands on its deep link or /zerops              | Live                                                                                       |
+| Zone tests: one owner per fact family, no component I/O, no data timers                           | 5.5                                                                                        |
+| Dependency rule 1 (`cr/zerops/**` imports no React and no DOM globals)                            | Live                                                                                       |
+| Dependency rule 2 (machine and reducer files import no Effect runtime, fetch or storage)          | Live; zone test "rule 2"                                                                   |
+| Dependency rule 3 (projections and the named pure modules are pure)                               | Live; zone test "rule 3"                                                                   |
+| Dependency rules 2 and 3 read no clock and set no timer                                           | Live; zone tests "rule 2" and "rule 3"                                                     |
+| Dependency rule 4 (components import hooks only and set no data timer)                            | 5.5                                                                                        |
+| Dependency rule 5 (`Cell` and `advance` private to their store; `.value` only in selectors)       | Live                                                                                       |
+| Dependency rule 6, one way (only `account/` and `testing/` depend on `account/`)                  | Live; zone test "rule 6"                                                                   |
+| Dependency rule 6, construction (post-grant modules built only by `accountRuntime.ts`)            | Live; zone test "rule 6"                                                                   |
+| Dependency rule 7 (protected roots render only)                                                   | Live                                                                                       |

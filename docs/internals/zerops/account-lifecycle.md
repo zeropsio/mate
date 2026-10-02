@@ -104,15 +104,16 @@ The client reaches a Mate only through the throwaway door
 ([spec §10.4](../../../../zcp/docs/spec-mate.md#104-the-door-post-apiauthzerops-throwaway)): it
 mints a rights-less integration token as the person, presents it once, and deletes it whether the
 door admitted or refused. HQ's door takes the same throwaway, named for HQ's project
-(`apps/hq/src/door.ts`), and so does the old Gitea's broker for the sign-in the client still makes
-until T12's token flows go, though it reads no release there since T9b. The client checks no organization or project role for the mint; the
-door it is presented to decides roles. From 2.4 a mint of `NO_ACCESS` with no projects and no flags is an account write: it runs
-only after the sign-in's first access grant, and a verification window that has closed since does
-not hold it up. Any mint that grants a project stays a project write and is
-refused while the window is closed. The delete carries the minting token, never the current
-session, with its own 15 s timeout and outside the exchange's cancellation, so it can neither run
-under another account nor end anyone's session. A token it could not delete is removed by the same
-account's next sweep.
+(`apps/hq/src/door.ts`). The client makes no Gitea sign-in and mints no throwaway for a broker; its
+start-up sweep still takes back the person's own `gitea-signin:` throwaways that main's client
+leaves (`zeropsThrowaway.ts:71`). The client checks no organization or project role for the mint;
+the door it is presented to decides roles. From 2.4 a mint of `NO_ACCESS` with no projects and no
+flags is an account write: it runs only after the sign-in's first access grant, and a verification
+window that has closed since does not hold it up. Any mint that grants a project stays a project
+write and is refused while the window is closed. The delete carries the minting token, never the
+current session, with its own 15 s timeout and outside the exchange's cancellation, so it can
+neither run under another account nor end anyone's session. A token it could not delete is removed
+by the same account's next sweep.
 
 The window guards against a person whose access lapsed acting on the platform past it. Minting a
 token with no role, no project grant and no flag while project writes are closed cannot grant

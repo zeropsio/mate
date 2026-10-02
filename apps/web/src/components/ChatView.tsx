@@ -8046,9 +8046,9 @@ export default function ChatView(props: ChatViewProps) {
     Boolean(shownThreadSyncPhase && !activeEnvironmentUnavailable);
 
   /**
-   * A pull request address a Mate wrote into its conversation opens on the
-   * change's own page, not in a Gitea the reader has to sign into. Anything
-   * this account's forge does not own is left exactly as it was.
+   * A change's address at HQ a Mate wrote into its conversation opens on the
+   * change's own page here. Anything this account's HQ does not own is left
+   * exactly as it was.
    */
   const resolveChangeLink = useOpenZeropsChange(activeThreadRef);
 

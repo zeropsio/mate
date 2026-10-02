@@ -272,7 +272,7 @@ services:
 });
 
 describe("deployTargetTier — a stage or a production, whole", () => {
-  it("starts every runtime the broker deploys empty, and builds a utility", () => {
+  it("starts every runtime HQ deploys empty, and builds a utility", () => {
     expect(deployTargetTier(MATE_TIER)).toBe(`#zeropsPreprocessor=on
 project:
   name: Acme - Vera

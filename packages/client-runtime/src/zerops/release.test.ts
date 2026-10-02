@@ -764,7 +764,8 @@ describe("a release in flight", () => {
 });
 
 describe("a production whose version names spell short shas", () => {
-  // Since 2026-09-30 the broker names a deploy `{tag} {short sha}`, so what production runs
+  // Since 2026-09-30 a release's deploy is named `{tag} {short sha}` — by main's broker, and by
+  // HQ's Core after it — so what production runs
   // reads as the seven-hex prefix of the commit a release lists.
   const short = (sha: string) => sha.slice(0, 7);
   const RUNS = new Map([

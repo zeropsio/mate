@@ -132,7 +132,7 @@ describe("ZeropsEnvironmentCreation", () => {
   });
 
   it("says where a stage's first deploy comes from, rather than sending anyone out", () => {
-    // A stage tracks main and the broker deploys the difference on its own, so
+    // A stage tracks main and HQ deploys the difference on its own, so
     // the old sentence — "deploy from the Zerops dashboard or ask an agent to"
     // — sent the reader out of the product for something already on its way
     // (measured on the test account, 2026-09-20).

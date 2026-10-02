@@ -66,7 +66,7 @@ const RUNNING = shell({
 });
 
 // One rule for "its change waits for your review" wherever a Mate's face is drawn: the composer's
-// top's (`mateNextStep`), on a flow Gitea answered.
+// top's (`mateNextStep`), on a flow HQ answered.
 describe("mateReviewWaits — a Mate's own change waits for the person's review", () => {
   const pull = (overrides: Partial<FlowPullRequest> = {}): FlowPullRequest =>
     ({
@@ -83,7 +83,7 @@ describe("mateReviewWaits — a Mate's own change waits for the person's review"
     { case: "its change merges", flow: { pullRequests: [pull()] }, waits: true },
     { case: "the flow unread", flow: undefined, waits: false },
     {
-      case: "Gitea not answered yet",
+      case: "HQ not answered yet",
       flow: { pullRequests: [pull()], changesKnown: false },
       waits: false,
     },
@@ -93,7 +93,7 @@ describe("mateReviewWaits — a Mate's own change waits for the person's review"
       waits: false,
     },
     {
-      case: "still being checked: it waits on Gitea",
+      case: "still being checked: it waits on HQ",
       flow: { pullRequests: [pull({ mergeability: "checking" })] },
       waits: false,
     },

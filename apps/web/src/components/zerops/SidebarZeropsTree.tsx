@@ -357,16 +357,16 @@ export interface SidebarProjectFlow {
    * What is running, what is in it, what is not in it yet and where it is —
    * the questions a 256px row cannot answer. *History* used to be a link into
    * Gitea, and so did the version beside it; neither worked, because the app
-   * holds the only Gitea token and a person's browser has no session there,
-   * so both arrived at a sign-in page (measured 2026-09-19).
+   * held the only Gitea token and a person's browser had no session there, so
+   * both arrived at a sign-in page (measured 2026-09-19).
    */
   readonly onOpenStop?: ((row: EnvironmentRow) => void) | undefined;
   /**
    * Opens a change's own page — what it carries, what is stopping it, and the
    * verb that moves it.
    *
-   * `#4` used to be a link into Gitea, and Gitea is a sign-in page for
-   * everybody: the app holds the only token. "This links to gitea as well, no
+   * `#4` used to be a link into Gitea, and Gitea was a sign-in page for
+   * everybody: the app held the only token. "This links to gitea as well, no
    * built in interface for PR" (the owner, 2026-09-19).
    */
   readonly onOpenChange?: ((pull: FlowPullRequest) => void) | undefined;
