@@ -111,6 +111,8 @@ export interface MateComingInput {
    * the caller does not read its link.
    */
   readonly linkHolds?: boolean | undefined;
+  /** A whole listing read well after this tab made it lacks it (`listingLacksCreation`). */
+  readonly listingLacksIt?: boolean | undefined;
   /** Why its container's first build failed, where its project's processes say so. */
   readonly firstBuildFailed?: string | undefined;
 }
@@ -214,7 +216,7 @@ export function mateComing(input: MateComingInput): MateComing | undefined {
   if (
     input.created === true &&
     (candidate === undefined
-      ? input.linkHolds !== false
+      ? input.linkHolds !== false && input.listingLacksIt !== true
       : candidate.group === "provisioning" || input.linkHolds === true)
   ) {
     return { kind: "coming", line: comingMateLine({}) };
@@ -256,6 +258,30 @@ export function firstBuildFailure(
     .toSorted((left, right) => Date.parse(right.created) - Date.parse(left.created))[0];
   if (newest === undefined || !FAILED_PROCESS_STATUSES.has(newest.status)) return undefined;
   return newest.failReason ?? "Its container's first build did not finish";
+}
+
+/**
+ * How long after this tab made a Mate its organization's listing may still lack the project: the
+ * platform's push of a new project lands within seconds.
+ */
+export const LISTING_CATCH_UP_MS = 60_000;
+
+/**
+ * Whether a whole listing, read well after this tab made the Mate, lacks its project: it went
+ * before it ever connected. A partial listing, one read before the platform's could hold it, or a
+ * creation with no time says nothing.
+ */
+export function listingLacksCreation(input: {
+  readonly listed: boolean;
+  readonly complete: boolean;
+  /** When the listing was read, wall ms. */
+  readonly listedAtMs: number | undefined;
+  /** When the platform took this tab's creation, wall ms. */
+  readonly madeAtMs: number | undefined;
+}): boolean {
+  if (input.listed || !input.complete) return false;
+  if (input.listedAtMs === undefined || input.madeAtMs === undefined) return false;
+  return input.listedAtMs - input.madeAtMs > LISTING_CATCH_UP_MS;
 }
 
 /** A name the headline never breaks inside. */

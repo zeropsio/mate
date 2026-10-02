@@ -65,6 +65,7 @@ import {
   arrivalHoldsThrough,
   firstBuildFailure,
   halfMadeFor,
+  listingLacksCreation,
   mateArrivalShown,
   mateComing,
   mateComingPage,
@@ -176,6 +177,15 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
   const { health } = useZeropsContainers();
   const containerHealth = candidate === undefined ? undefined : health.get(candidate.key);
   const pressRetry = press?.state.kind === "failed" ? press.state.retry : null;
+  // Made here, and gone before it ever connected: a whole listing read well after lacks it.
+  const listingLacksIt =
+    creation !== undefined &&
+    listingLacksCreation({
+      listed: listed !== undefined,
+      complete: held.complete,
+      listedAtMs: listing.state === "known" ? listing.asOf.atMs : undefined,
+      madeAtMs: creation.at,
+    });
   // What opens it is its machine (`mateLink`): found by its project while its row stands for the
   // project, and before the listing names it at all.
   const { mateLink } = useEnvironmentLinks();
@@ -202,6 +212,7 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
     setUpFailed: pressFailure(press) ?? creation?.failed,
     nowMs: Date.now(),
     created: creation !== undefined,
+    listingLacksIt,
     linkHolds: arrivalHoldsThrough(link.reachability, { failuresSinceConnect }),
     firstBuildFailed: firstBuilding
       ? firstBuildFailure(firstBuildProcesses, candidate?.service?.id)
@@ -210,7 +221,7 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
   const page = mateComingPage({
     coming,
     candidate,
-    complete: held.complete && press === undefined && creation === undefined,
+    complete: held.complete && press === undefined && (creation === undefined || listingLacksIt),
     linked: link.environmentId !== undefined,
     reachability: link.reachability,
   });

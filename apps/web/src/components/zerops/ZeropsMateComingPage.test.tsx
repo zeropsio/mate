@@ -631,6 +631,16 @@ describe("a new Mate's arrival, from the press to the sign-in", () => {
     expect(buttons()).toEqual(["Try now"]);
   });
 
+  it("a Mate this tab made that a whole listing, read well after, lacks is not coming up", () => {
+    app.creations = { [PROJECT]: { ...QUINN_MADE, at: 1_000 } };
+    app.listing = { ...listingOf([]), asOf: { ordinal: 2, atMs: 1_000 + 5_000 } };
+    openView();
+    expect(kind()).toBe("coming");
+    app.listing = { ...listingOf([]), asOf: { ordinal: 3, atMs: 1_000 + 120_000 } };
+    act(() => tree?.update(h(ZeropsMateComingPage, { projectId: PROJECT })));
+    expect(kind()).toBe("unreachable");
+  });
+
   it("says why once it came up here and its container stopped", () => {
     app.listing = listingOf([coming]);
     openView();

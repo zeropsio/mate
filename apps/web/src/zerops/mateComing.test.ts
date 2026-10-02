@@ -11,6 +11,7 @@ import {
   HALF_MADE_OWNER_LINE,
   halfMadeFor,
   firstBuildFailure,
+  listingLacksCreation,
   mateArrivalShown,
   type MateComingPage,
 } from "./mateComing";
@@ -210,6 +211,10 @@ describe("mateComing — a Mate in its first minutes, in one set of words", () =
     {
       case: "a Mate this tab made, up, nothing known of its link",
       input: { press: undefined, candidate: { group: "ready" }, created: true },
+    },
+    {
+      case: "a Mate this tab made that a whole listing, read well after, lacks",
+      input: { press: undefined, candidate: undefined, created: true, listingLacksIt: true },
     },
     {
       case: "a Mate this tab made whose project is gone",
@@ -763,5 +768,47 @@ describe("firstBuildFailure — a Mate's first build, as its project's processes
     },
   ])("$case", ({ processes, expected }) => {
     expect(firstBuildFailure(processes, "zcp")).toBe(expected);
+  });
+});
+
+// A Mate this tab made whose project went before it ever connected: a whole listing read well
+// after the creation that lacks it means it is gone, never coming up for good — one read before
+// the platform's listing could hold it says nothing.
+describe("listingLacksCreation — a whole listing that no longer holds this tab's creation", () => {
+  const MADE = 1_000_000;
+  it.each([
+    { case: "listed", listed: true, complete: true, listedAtMs: MADE + 120_000, lacks: false },
+    {
+      case: "a partial listing",
+      listed: false,
+      complete: false,
+      listedAtMs: MADE + 120_000,
+      lacks: false,
+    },
+    {
+      case: "a whole listing read moments after",
+      listed: false,
+      complete: true,
+      listedAtMs: MADE + 5_000,
+      lacks: false,
+    },
+    {
+      case: "a whole listing read well after",
+      listed: false,
+      complete: true,
+      listedAtMs: MADE + 120_000,
+      lacks: true,
+    },
+    {
+      case: "no creation time",
+      listed: false,
+      complete: true,
+      listedAtMs: MADE + 120_000,
+      madeAtMs: undefined,
+      lacks: false,
+    },
+  ])("$case: $lacks", ({ listed, complete, listedAtMs, lacks, ...rest }) => {
+    const madeAtMs = "madeAtMs" in rest ? rest.madeAtMs : MADE;
+    expect(listingLacksCreation({ listed, complete, listedAtMs, madeAtMs })).toBe(lacks);
   });
 });
