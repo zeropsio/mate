@@ -1,17 +1,17 @@
 /**
- * What merging a change to the group repo does to the project, read from the files it changes.
+ * What merging a change to the application's recipe repository does to the project, read from the
+ * files it changes (SPEC §3.2c).
  *
- * The group repo holds the recipe — one directory per tier, `0 — AI Agent/` to `4 — Small
- * Production/` and more, each with its `import.yaml` and a README — and `environments.yaml`. None
- * of it is released: a release tags the code in the service repositories, and the group repo holds
- * only what the environments are made from (the owner, 2026-09-30). A merge to its `main` moves
- * the project in these ways only (`../gitea-mate/docs/group-repo.md`, "Recipe deltas";
- * `pipeline/recipes.go`):
+ * The recipe repository holds the recipe — one directory per tier, `0 — AI Agent/` to `4 — Small
+ * Production/` and more, each with its `import.yaml` and a README. None of it is released: a
+ * release tags the code in the service repositories, and the recipe repository holds only what
+ * the environments are made from (the owner, 2026-09-30). HQ holds the environments themselves
+ * (SPEC §3.2b), so a file declaring them here changes nothing. A merge to its `main` moves the
+ * project in these ways only (main's "Recipe deltas"):
  *
- * - a tier's `import.yaml` changed: every environment `environments.yaml` makes from that tier gets
- *   each service the tier declares and it lacks, created empty. A service it has keeps what it
- *   was created with, and one the tier no longer declares is never deleted.
- * - `environments.yaml` changed: the project deploys to what it declares.
+ * - a tier's `import.yaml` changed: every environment made from that tier gets each service the
+ *   tier declares and it lacks, created empty. A service it has keeps what it was created with, and
+ *   one the tier no longer declares is never deleted.
  * - a Mate, a stage or a production made later is made from the tier on `main` then.
  *
  * The tiers anything is made from are the app's own (`RECIPE_TIER_PATHS`): a Mate from the AI
@@ -25,7 +25,7 @@
  */
 
 import type { GroupEnvironmentTier } from "./groupEnvironments.ts";
-import { ENVIRONMENTS_DOCUMENT_PATH, RECIPE_TIER_PATHS, type RecipeTier } from "./recipeTier.ts";
+import { RECIPE_TIER_PATHS, type RecipeTier } from "./recipeTier.ts";
 
 export interface RecipeReach {
   /** How many of the project's stages are made from a recipe it changes; each gets what it adds. */
@@ -40,8 +40,6 @@ export interface RecipeReach {
   readonly later: ReadonlyArray<RecipeTier>;
   /** The recipes it changes that nothing in the project is made from, by their titles, in order. */
   readonly unused: ReadonlyArray<string>;
-  /** It changes `environments.yaml`: which environments the project deploys to. */
-  readonly declarations: boolean;
 }
 
 /** Where a tier keeps its recipe, inside its directory. */
@@ -81,7 +79,7 @@ export function recipeReach(input: {
     readonly filename: string;
     readonly previousFilename?: string | undefined;
   }>;
-  /** The environments `environments.yaml` declares on `main`. */
+  /** The application's environments, as HQ holds them. */
   readonly environments: ReadonlyArray<{ readonly tier: GroupEnvironmentTier }>;
 }): RecipeReach {
   const paths = input.files.flatMap((file) =>
@@ -104,6 +102,5 @@ export function recipeReach(input: {
     unused: directories
       .filter((directory) => !MADE_FROM.has(directory))
       .map((directory) => TIER_DIRECTORY.exec(directory)?.[2]?.trim() ?? directory),
-    declarations: paths.includes(ENVIRONMENTS_DOCUMENT_PATH),
   };
 }

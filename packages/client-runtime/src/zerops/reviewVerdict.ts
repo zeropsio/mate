@@ -397,8 +397,7 @@ function recipeSentence(reach: RecipeReach | undefined): string {
     gainers === undefined
       ? undefined
       : `${capitalized(gainers.who)} ${gainers.one ? "gets" : "get"} any service added to ${gainers.recipes}, created empty; the services ${gainers.one ? "it has" : "they have"} stay as they are.`,
-    reach.declarations ? "The project deploys to the environments it declares." : undefined,
-    gainers === undefined && !reach.declarations ? unchanged : undefined,
+    gainers === undefined ? unchanged : undefined,
     later.length === 0
       ? undefined
       : `${capitalized(either(later))} added later is made from the new recipe.`,
@@ -409,11 +408,7 @@ function recipeSentence(reach: RecipeReach | undefined): string {
 function recipeNext(reach: RecipeReach | undefined, base: string): string {
   if (reach === undefined) return `it's on ${base}`;
   const gainers = recipeGainers(reach);
-  if (gainers === undefined) {
-    return reach.declarations
-      ? "the project deploys to what it declares"
-      : "no environment changes";
-  }
+  if (gainers === undefined) return "no environment changes";
   return `${gainers.who} ${gainers.one ? "gets" : "get"} any new service`;
 }
 
