@@ -27,6 +27,7 @@
  *
  * @module zeropsPermissions
  */
+import { RECIPE_REPO } from "./hqRecipe.ts";
 import {
   type ZeropsOrgRole,
   ZEROPS_ACTIVE_MEMBER_STATUS,
@@ -193,8 +194,6 @@ export type Decision =
 
 const ALLOW: Decision = { allow: true };
 
-/** An application's recipe repository: its import files, Core's to land (`land_recipe`). */
-export const RECIPE_REPO = "group";
 const deny = (reason: Reason): Decision => ({ allow: false, reason });
 
 const KINDS: ReadonlySet<string> = new Set(["mate", "devstage", "stage", "production"]);
