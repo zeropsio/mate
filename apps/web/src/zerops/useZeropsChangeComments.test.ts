@@ -20,6 +20,7 @@ function said(body: string, index: number): HqChangeComment {
   return {
     id: `c${String(index + 1)}`,
     authorUserId: "u-ales",
+    authorMateProjectId: null,
     body,
     createdAt: "2026-10-02T09:00:00.000Z",
   };

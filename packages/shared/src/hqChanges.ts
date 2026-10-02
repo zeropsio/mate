@@ -300,11 +300,18 @@ export const CommentBody = upTo(COMMENT_BODY_MAX).check(
   Schema.makeFilter((body: string) => (body.trim() === "" ? "Expected words" : undefined)),
 );
 
-/** A person's comment on a change. */
+/**
+ * A comment on a change, by exactly one author: a person, or a Mate whose words on main's Gitea were
+ * brought over (T13). Only that import writes a Mate's; a person comments through HQ's API.
+ */
 export const HqChangeComment = Schema.Struct({
   id: Schema.String,
-  /** The Zerops user who wrote it. */
-  authorUserId: Schema.String,
+  /** The Zerops user who wrote it; none for a Mate's. */
+  authorUserId: Schema.NullOr(Schema.String),
+  /** The Mate's project, for a Mate's. Added after `authorUserId`: an older HQ's comment, without it, is a person's. */
+  authorMateProjectId: Schema.NullOr(Schema.String).pipe(
+    Schema.withDecodingDefaultKey(Effect.succeed(null)),
+  ),
   body: CommentBody,
   createdAt: Instant,
 });
