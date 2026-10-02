@@ -139,6 +139,11 @@ export interface AccountEnvironmentPorts {
     /** The descriptor, the mint, the door and the token exchange; installs nothing. */
     readonly exchange: (request: DoorRequest) => Promise<ExchangeAnswer<DoorCredential>>;
     readonly readDescriptor: (origin: string, signal: AbortSignal) => Promise<DescriptorFacts>;
+    /**
+     * Whether the target's exchange presents a session kept from an earlier load first
+     * (`keptSessions.ts`): it starts past the mint pace and spends none of it. Absent: none is.
+     */
+    readonly kept?: (key: TargetKey) => boolean;
     /** The supervisor's `retryNow` for a link in backoff. */
     readonly retryLink: (environmentId: EnvironmentId) => void;
     /** `catalog.remove`: the registration is released; drafts keep their keys (AL-13). */
@@ -474,6 +479,7 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
     },
     install,
     readDescriptor: ports.door.readDescriptor,
+    ...(ports.door.kept === undefined ? {} : { kept: ports.door.kept }),
     retryLink: ports.door.retryLink,
     // The inventory of the organization that lists the target's project, or of the active one
     // when nothing names it (§6.2).

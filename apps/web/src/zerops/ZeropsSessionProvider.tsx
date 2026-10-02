@@ -39,6 +39,7 @@ import {
   type ZeropsSessionState,
 } from "@t3tools/client-runtime/zerops/account";
 import { closeAccountLifetime, openAccountLifetime } from "./accountLifetime";
+import { endEveryKeptSession } from "./keptSessions";
 import {
   useCallback,
   useEffect,
@@ -176,7 +177,10 @@ function makeSession(storage: ZeropsStorageAdapter) {
         return { kind: "user", user: await client.fetchUser() };
       } catch {
         // The client has already cleared a session the API refused.
-        return client.session === null ? { kind: "unauthorized" } : { kind: "unavailable" };
+        if (client.session !== null) return { kind: "unavailable" };
+        // Nobody is signed in here any more: no Mate session kept under any login outlives it.
+        endEveryKeptSession();
+        return { kind: "unauthorized" };
       }
     },
     probe: (session) => probeZeropsPrincipal({ fetch, baseUrl: client.baseUrl }, session),

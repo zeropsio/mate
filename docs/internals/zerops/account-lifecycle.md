@@ -33,11 +33,20 @@ Restoration never provisions a missing container. A missing target is unavailabl
 back to another project's conversation. Drafts retain their environment/thread keys and are not
 moved to a replacement environment or sent automatically.
 
-Connection credentials and server snapshots are held in memory for the current login. Historical,
-unowned connection catalogs and snapshots are not imported. A login/reload downloads current server
-state. On socket replacement, the existing shared shell/thread synchronizers reload authoritative
-snapshots; thread history epochs prevent older pages from merging across a history replacement.
-This deliberately trades warm offline startup for a smaller, verifiable ownership model.
+Server snapshots are held in memory for the current login. Historical, unowned connection catalogs
+and snapshots are not imported. A login/reload downloads current server state. On socket
+replacement, the existing shared shell/thread synchronizers reload authoritative snapshots; thread
+history epochs prevent older pages from merging across a history replacement. This deliberately
+trades warm offline startup for a smaller, verifiable ownership model.
+
+A Mate's session is kept per account (`keptSessions.ts`, 2026-10-02). A later load presents it again
+only where the door would present a fresh one — the Mate's descriptor names the expected project
+and the environment it was kept for — and only once the Mate answers that it still holds it with
+every scope the client asks for now (`GET /api/auth/session`, 3 s). A session the Mate ended, or one
+short of a scope, is forgotten, and a throwaway opens a new one; a kept session spends no mint and
+waits on no mint pace. No kept session outlives its login: the account's close ends every one at
+its Mate however the account closes, a stored login the platform refuses ends every one the origin
+holds, and a session displaced from the store is ended too.
 
 One inventory supplies overview, sidebar and restore. Direct platform lists and permission-filtered
 search are paginated; malformed pages, changing totals and duplicate pages fail the read. Reads use
