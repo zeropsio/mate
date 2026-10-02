@@ -28,7 +28,8 @@
  *   (`gitHost.ts`).
  * - A person's side of the changes: `GET /api/apps/:appId/changes` → `{ changes }`; `GET
  *   /api/apps/:appId/changes/:repo/:n` → the change's review; `GET`, `POST …/comments`; `GET
- *   …/attachments/:id` → a picture. And `GET /changes/:appId/:repo/:n`, a change's address at HQ,
+ *   …/attachments/:id` → a picture; `POST …/merge` `{ expectedHead }` and `POST …/close` → the
+ *   change, merged or closed. And `GET /changes/:appId/:repo/:n`, a change's address at HQ,
  *   redirects to the change in the first client origin.
  *
  * Every call but the doors carries `Authorization: Bearer <session>`, of a session issued for this
@@ -62,6 +63,7 @@ import {
   ChangeNumber,
   EditChangeRequest,
   EnsureRepoRequest,
+  MergeChangeRequest,
   OpenChangeRequest,
   PostCommentRequest,
   RepoName,
@@ -440,6 +442,32 @@ const routes = (
           const { appId, repo, number } = yield* appChangePath;
           const { body } = yield* jsonBody(PostCommentRequest, TEXT_BODY_LIMIT);
           return json(yield* (yield* Changes).postComment(userId, appId, repo, number, body), 200);
+        }),
+      ),
+    ),
+    HttpRouter.add(
+      "POST",
+      "/api/apps/:appId/changes/:repo/:n/merge",
+      handle(
+        Effect.gen(function* () {
+          const { userId } = yield* principal;
+          const { appId, repo, number } = yield* appChangePath;
+          const { expectedHead } = yield* jsonBody(MergeChangeRequest, BODY_LIMIT);
+          return json(
+            yield* (yield* Changes).mergeChange(userId, appId, repo, number, expectedHead),
+            200,
+          );
+        }),
+      ),
+    ),
+    HttpRouter.add(
+      "POST",
+      "/api/apps/:appId/changes/:repo/:n/close",
+      handle(
+        Effect.gen(function* () {
+          const { userId } = yield* principal;
+          const { appId, repo, number } = yield* appChangePath;
+          return json(yield* (yield* Changes).closeChange(userId, appId, repo, number), 200);
         }),
       ),
     ),

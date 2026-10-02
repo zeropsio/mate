@@ -10,7 +10,7 @@
  *
  * @module changes
  */
-import type { GitError } from "@t3tools/hq-git";
+import type { CommitSummary, GitError } from "@t3tools/hq-git";
 import {
   type AttachmentResponse,
   type ChangeDetailResponse,
@@ -19,10 +19,12 @@ import {
   type HqChangeComment,
   type HqRepo,
   CHANGE_LIST_SETTLED,
+  MERGE_REFUSALS,
   MATE_CHANGES_PER_REPO,
   type MateChanges,
   type OpenChangeResponse,
   attachmentPath,
+  mergeSubject,
 } from "@t3tools/shared/hqChanges";
 import { type Decision, type Facts, REASONS, can } from "@t3tools/shared/zeropsPermissions";
 import * as Context from "effect/Context";
@@ -56,11 +58,11 @@ export class ChangeRefused extends Schema.TaggedError<ChangeRefused>()("ChangeRe
   /** Why: a permission's reason (`zeropsPermissions.ts`) or one of the changes' own. */
   reason: Schema.Literals([
     ...REASONS,
+    ...MERGE_REFUSALS,
     "app_not_found",
     "repo_not_found",
     "change_not_found",
     "attachment_not_found",
-    "change_not_open",
     "not_png",
   ]),
 }) {}
@@ -148,6 +150,24 @@ export class Changes extends Context.Service<
       body: string,
     ) => Effect.Effect<HqChangeComment, ReadError | NotLeader>;
     /**
+     * The change squashed into `main` (`hqChanges.ts` `MergeChangeRequest`), if its head is still
+     * `expectedHead`: one merge of a repository at a time, from `main` as the last one left it.
+     */
+    readonly mergeChange: (
+      userId: string,
+      appId: string,
+      repo: string,
+      number: number,
+      expectedHead: string,
+    ) => Effect.Effect<HqChange, ReadError | NotLeader | GitError>;
+    /** The change closed without merging; its branch stays. */
+    readonly closeChange: (
+      userId: string,
+      appId: string,
+      repo: string,
+      number: number,
+    ) => Effect.Effect<HqChange, ReadError | NotLeader>;
+    /**
      * The changes of every application the person may read them of, by application id: what the
      * structure socket carries (`stream.ts`).
      */
@@ -170,6 +190,29 @@ const HQ_AUTHOR = { name: "HQ", email: "hq@hq.invalid" };
 
 const refuse = (code: ChangeRefused["code"], reason: ChangeRefused["reason"]) =>
   Effect.fail(new ChangeRefused({ code, reason }));
+
+/** The crew's trailers a squash carries over from the change's own commits (SPEC §9). */
+const CREW_TRAILERS = ["Crew-Lane", "Crew-Assignment"] as const;
+
+/**
+ * The crew's trailers of a change's commits, each value once, oldest first: what a crew's landing
+ * wrote as its message's last paragraph (`apps/server/src/zerops/crew/crewTrailers.ts`).
+ */
+const crewTrailers = (commits: ReadonlyArray<CommitSummary>) => {
+  const found: Record<string, Array<string>> = {};
+  for (const commit of commits.toReversed()) {
+    const paragraphs = commit.message.trimEnd().split(/\n[ \t]*\n/u);
+    if (paragraphs.length < 2) continue;
+    for (const line of paragraphs.at(-1)!.split("\n")) {
+      for (const key of CREW_TRAILERS) {
+        const value = line.startsWith(`${key}:`) ? line.slice(key.length + 1).trim() : "";
+        const values = (found[key] ??= []);
+        if (value !== "" && !values.includes(value)) values.push(value);
+      }
+    }
+  }
+  return Object.fromEntries(Object.entries(found).filter(([, values]) => values.length > 0));
+};
 
 /** The bytes every PNG begins with. */
 const PNG_SIGNATURE = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
@@ -360,7 +403,11 @@ export const changesLayer: Layer.Layer<
     const readsChanges = (userId: string, projectIds: ReadonlyArray<string>, facts: Facts) =>
       can({ kind: "person", userId }, "read_change", { projectIds }, facts);
 
-    const personApp = (userId: string, appId: string, verb: "read_change" | "comment_change") =>
+    const personApp = (
+      userId: string,
+      appId: string,
+      verb: "read_change" | "comment_change" | "merge_change" | "close_change",
+    ) =>
       Effect.gen(function* () {
         const projects = yield* sql<{ readonly project_id: string }>`
           SELECT project_id FROM hq_app_project WHERE app_id::text = ${appId}`;
@@ -368,7 +415,7 @@ export const changesLayer: Layer.Layer<
         const decision =
           verb === "read_change"
             ? readsChanges(userId, projectIds, yield* roles.view)
-            : can({ kind: "person", userId }, "comment_change", { projectIds }, yield* roles.fresh);
+            : can({ kind: "person", userId }, verb, { projectIds }, yield* roles.fresh);
         if (!decision.allow) {
           yield* Effect.logInfo("change refused", { userId, verb, appId, reason: decision.reason });
           return yield* refuse("forbidden", decision.reason);
@@ -665,6 +712,95 @@ export const changesLayer: Layer.Layer<
                   data: { commentId: comment.id, userId },
                 });
                 return comment;
+              }),
+            ),
+          );
+        }),
+      mergeChange: (userId, appId, repo, number, expectedHead) =>
+        Effect.gen(function* () {
+          yield* personApp(userId, appId, "merge_change");
+          const change = yield* changeIn(appId, repo, number);
+          const git = yield* gitHost.git;
+          // As the change's record names it, never as the path spelled it.
+          const at = { appId: change.appId, id: change.repo };
+          const mate = change.mateProjectId;
+          // Read before the squash; a push since moves the head the squash checks.
+          const log = yield* git.changeLog(at, mate, number, { limit: 100 });
+          const [record] = yield* sql<{ readonly name: string }>`
+            SELECT name FROM hq_mate WHERE project_id = ${mate}`;
+          const message =
+            change.body.trim() === ""
+              ? mergeSubject(change.title, number)
+              : `${mergeSubject(change.title, number)}\n\n${change.body}`;
+          const squash = (expectedMain: string) =>
+            git.squashMerge(at, {
+              mateId: mate,
+              number,
+              expectedMain,
+              expectedHead,
+              message,
+              trailers: crewTrailers(log.items),
+              author: { name: record?.name ?? "Mate", email: `${mate}@mate.hq.invalid` },
+            });
+          return yield* touched(
+            leader.write(
+              Effect.gen(function* () {
+                // The repository's row, locked: its merges go one at a time.
+                yield* sql`
+                  SELECT 1 FROM hq_repo WHERE app_id = ${at.appId}::uuid AND name = ${at.id}
+                  FOR UPDATE`;
+                yield* openChangeLocked(at.appId, at.id, number);
+                // main as it is now; should anything else move it meanwhile, from where it went.
+                let landed = yield* squash((yield* mainOf(git, at)) ?? "");
+                for (
+                  let tries = 1;
+                  "kind" in landed && landed.kind === "main_moved" && tries < 3;
+                  tries++
+                ) {
+                  landed = yield* squash((yield* mainOf(git, at)) ?? "");
+                }
+                if ("kind" in landed) return yield* refuse("conflict", landed.kind);
+                const [row] = yield* sql<ChangeRow>`
+                  UPDATE hq_change
+                  SET state = 'merged', merged_sha = ${landed.merged}, landed_head = ${expectedHead},
+                      head = ${expectedHead}, merged_at = now(), updated_at = now(),
+                      mergeability = 'already_merged', behind = false
+                  WHERE app_id = ${at.appId}::uuid AND repo = ${at.id} AND number = ${number}
+                  RETURNING ${sql.literal(CHANGE_COLUMNS)}`;
+                yield* appendEvent(sql, {
+                  kind: "merged",
+                  appId: at.appId,
+                  repo: at.id,
+                  number,
+                  data: { mergedSha: landed.merged, landedHead: expectedHead, userId },
+                });
+                return changeOf(row!);
+              }),
+            ),
+          );
+        }),
+      closeChange: (userId, appId, repo, number) =>
+        Effect.gen(function* () {
+          yield* personApp(userId, appId, "close_change");
+          return yield* touched(
+            leader.write(
+              Effect.gen(function* () {
+                const change = yield* changeIn(appId, repo, number);
+                yield* openChangeLocked(change.appId, change.repo, number);
+                const [row] = yield* sql<ChangeRow>`
+                  UPDATE hq_change
+                  SET state = 'closed', closed_at = now(), updated_at = now()
+                  WHERE app_id = ${change.appId}::uuid AND repo = ${change.repo}
+                    AND number = ${number}
+                  RETURNING ${sql.literal(CHANGE_COLUMNS)}`;
+                yield* appendEvent(sql, {
+                  kind: "closed",
+                  appId: change.appId,
+                  repo: change.repo,
+                  number,
+                  data: { userId },
+                });
+                return changeOf(row!);
               }),
             ),
           );
