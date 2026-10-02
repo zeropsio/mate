@@ -1109,11 +1109,6 @@ describe("stageMenu — each stage, as production's menu says production", () =>
   it.each([
     { case: "nothing asked for", firstDeploy: undefined, word: "Not deployed yet" },
     {
-      case: "held by the runner",
-      firstDeploy: { kind: "runner", why: "waking" } as const,
-      word: "Waiting for the runner · it’s waking up",
-    },
-    {
       case: "on its way",
       firstDeploy: { kind: "on-its-way" } as const,
       word: "First deploy on its way",

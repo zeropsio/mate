@@ -178,10 +178,9 @@ describe("ZeropsGroupPane", () => {
     } as EnvironmentRow;
     const markup = render(undefined, {
       environments: [empty],
-      firstDeployOf: (projectId) =>
-        projectId === "stage" ? { kind: "runner", why: "waking" } : undefined,
+      firstDeployOf: (projectId) => (projectId === "stage" ? { kind: "on-its-way" } : undefined),
     });
-    expect(markup).toContain("Waiting for the runner · it’s waking up");
+    expect(markup).toContain("First deploy on its way");
   });
 
   // SPEC §1: the page stands in the frame /zerops stands in, its trail in the bar.

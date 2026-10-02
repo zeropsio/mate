@@ -142,12 +142,12 @@ describe("headingLine — the heading's second line, the board's D′ ladder", (
       line: ["Stage coming up · building the app", "ink", "", ""],
     },
     {
-      case: "14 a stage whose first deploy waits for the group's runner says why",
+      case: "14 a stage whose first deploy HQ has under way",
       over: {
         production: undefined,
-        stages: [stage({ kind: "coming", step: "runner", why: "not-started" })],
+        stages: [stage({ kind: "coming", step: "deploy-on-its-way" })],
       },
-      line: ["Stage awaits the runner · it hasn’t started", "ink", "", ""],
+      line: ["Stage coming up · first deploy on its way", "ink", "", ""],
     },
     {
       case: "15 a stage that didn't come up",

@@ -1,24 +1,24 @@
 /**
- * A stage coming up, replayed as run 4 measured it (2 Oct 2026), under invented names: the menu's
- * heading line (`listedStopComing` → `headingLine`, what the left menu reads) and the projects
- * page's stage cell (`groupFlow` → `stopLine`), step by step, with what lands "up" between them.
+ * A stage coming up, replayed on run 4's clock (2 Oct 2026) with HQ deploying it, under invented
+ * names: the menu's heading line (`listedStopComing` → `headingLine`, what the left menu reads) and
+ * the projects page's stage cell (`groupFlow` → `stopLine`), step by step, with what lands "up"
+ * between them.
  *
- * The run: the stage's project made at +1061 s; its declaration landed at +1092 s, when the
- * broker asked for its deploy of `main` (code landed on `main` at +1032 s); the group's runner,
- * imported at +1020 s, failed its build at +1087 s and stood READY_TO_DEPLOY until it was
- * deleted and imported again at +1268 s, active at +1389 s; the stage's first build ran
+ * The run: the stage's project made at +1061 s; its declaration landed at +1092 s, when HQ queued
+ * its deploy of `main` (code landed on `main` at +1032 s); HQ refused it at +1268 s for want of a
+ * deploy key, and queued it again at +1389 s once one was minted; the stage's first build ran
  * +1407 → +1479 s and its address turned on at +1481 s.
  */
 import {
   environmentRow,
   groupFlow,
-  groupRunner,
   listedStopComing,
   stopServes,
   type FlowPullRequest,
   type GroupFlowInput,
 } from "@t3tools/client-runtime/zerops";
 import type { Deployment } from "@t3tools/client-runtime/zerops/flow";
+import type { HqDeploy } from "@t3tools/client-runtime/zerops/hq";
 import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
 import { deployedVersion } from "@t3tools/client-runtime/zerops";
 import { describe, expect, it } from "vite-plus/test";
@@ -30,7 +30,6 @@ const START = Date.parse("2026-10-02T09:00:00.000Z");
 const at = (seconds: number) => START + seconds * 1000;
 const iso = (seconds: number) => new Date(at(seconds)).toISOString();
 
-const SLUG = "brine";
 const STAGE_ID = "p-brine-stage";
 const SHA = "7c41d9e0a2b35f6e8d1c0b9a4f3e2d1c0b9a8f7e";
 
@@ -75,27 +74,47 @@ const merged: FlowPullRequest = {
 const app = (status: string) => ({ hostname: "app", status, runtime: true });
 const db = (status: string) => ({ hostname: "db", status, runtime: false });
 
+/** HQ's newest deploy of the stage's app, as its record says, changed at +`t` s. */
+interface HqRecord {
+  readonly state: HqDeploy["state"];
+  readonly failure?: HqDeploy["failure"];
+  readonly t: number;
+}
+
+const QUEUED: HqRecord = { state: "pending", t: 1092 };
+const REFUSED: HqRecord = { state: "failed", failure: "refused", t: 1268 };
+const QUEUED_AGAIN: HqRecord = { state: "pending", t: 1389 };
+const HQ_DEPLOYING: HqRecord = { state: "deploying", t: 1400 };
+const LIVE: HqRecord = { state: "live", t: 1481 };
+
 interface Moment {
   readonly t: number;
   readonly projectStatus?: string;
   readonly services?: ReadonlyArray<ReturnType<typeof app>> | undefined;
   readonly deployment: Shown<Deployment> | undefined;
   readonly routes?: number;
-  /** The runner's status; `undefined` for none in the Gitea project, `"unread"` for unread. */
-  readonly runner: string | undefined;
+  /** HQ's record of its deploy; `undefined` for none. */
+  readonly hq: HqRecord | undefined;
   readonly declared: boolean;
+}
+
+function record({ state, failure, t }: HqRecord): HqDeploy {
+  return {
+    sha: SHA,
+    state,
+    failure: failure ?? null,
+    message: null,
+    appVersionId: null,
+    processId: null,
+    requestedBy: null,
+    at: iso(t),
+  };
 }
 
 /** What the menu's line and the page's cell say at one moment. */
 function said(moment: Moment) {
   const nowMs = at(moment.t);
-  const services =
-    moment.runner === "unread"
-      ? undefined
-      : [
-          { name: "web", status: "ACTIVE" },
-          ...(moment.runner === undefined ? [] : [{ name: "runnerbrine", status: moment.runner }]),
-        ];
+  const latest = moment.hq === undefined ? undefined : record(moment.hq);
   const input: GroupFlowInput = {
     groupId: "g-brine",
     mates: [],
@@ -112,12 +131,15 @@ function said(moment: Moment) {
               name: "Brine - stage",
               tier: "stage",
               sources: ["main"],
-              services: [{ hostname: "app" }],
+              services: [
+                latest === undefined
+                  ? { hostname: "app" }
+                  : { hostname: "app", deploy: { latest, live: null } },
+              ],
             })
           : undefined,
         deployment: moment.deployment,
         route: undefined,
-        createdAt: iso(1061),
       },
     ],
     missing: [],
@@ -132,7 +154,6 @@ function said(moment: Moment) {
     mainHead: undefined,
     productionAddable: false,
     pending: [],
-    runner: groupRunner({ slug: SLUG, services }),
     nowMs,
   };
   const stop = groupFlow(input).stages[0];
@@ -168,16 +189,15 @@ function said(moment: Moment) {
   };
 }
 
-const READY = "READY_TO_DEPLOY";
 const MAKING = { projectStatus: "CREATING", services: undefined };
 
-describe("a stage coming up, replayed as run 4 measured it", () => {
+describe("a stage coming up, replayed on run 4's clock with HQ deploying it", () => {
   const moments: ReadonlyArray<Moment & { readonly line: string | null; readonly cell: string }> = [
     {
       t: 1062,
       ...MAKING,
       deployment: undefined,
-      runner: READY,
+      hq: undefined,
       declared: false,
       line: "Stage coming up · making the project",
       cell: "Checking what runs here…",
@@ -186,7 +206,7 @@ describe("a stage coming up, replayed as run 4 measured it", () => {
       t: 1090,
       services: [db("CREATING"), app("NEW")],
       deployment: NONE,
-      runner: READY,
+      hq: undefined,
       declared: false,
       line: "Stage coming up · adding the database",
       cell: "Nothing deployed yet",
@@ -195,47 +215,31 @@ describe("a stage coming up, replayed as run 4 measured it", () => {
       t: 1103,
       services: [db("ACTIVE"), app("CREATING")],
       deployment: NONE,
-      runner: READY,
+      hq: QUEUED,
       declared: true,
       line: "Stage coming up · adding the app",
-      cell: "Waiting for the runner · it hasn’t started",
+      cell: "First deploy on its way",
     },
     {
       t: 1121,
       deployment: NONE_RECHECKED,
-      runner: READY,
+      hq: QUEUED,
       declared: true,
-      line: "Stage awaits the runner · it hasn’t started",
-      cell: "Waiting for the runner · it hasn’t started",
-    },
-    {
-      t: 1268,
-      deployment: NONE,
-      runner: undefined,
-      declared: true,
-      line: "Stage awaits the runner · it isn’t there",
-      cell: "Waiting for the runner · it isn’t there",
+      line: "Stage coming up · first deploy on its way",
+      cell: "First deploy on its way",
     },
     {
       t: 1270,
       deployment: NONE,
-      runner: READY,
+      hq: REFUSED,
       declared: true,
-      line: "Stage awaits the runner · it hasn’t started",
-      cell: "Waiting for the runner · it hasn’t started",
-    },
-    {
-      t: 1370,
-      deployment: NONE,
-      runner: "CREATING",
-      declared: true,
-      line: "Stage awaits the runner · it’s being built",
-      cell: "Waiting for the runner · it’s being built",
+      line: "Stage coming up · awaiting a first deploy",
+      cell: "Nothing deployed yet",
     },
     {
       t: 1389,
       deployment: NONE,
-      runner: "ACTIVE",
+      hq: QUEUED_AGAIN,
       declared: true,
       line: "Stage coming up · first deploy on its way",
       cell: "First deploy on its way",
@@ -243,7 +247,7 @@ describe("a stage coming up, replayed as run 4 measured it", () => {
     {
       t: 1407,
       deployment: DEPLOYING,
-      runner: "ACTIVE",
+      hq: HQ_DEPLOYING,
       declared: true,
       line: "Stage coming up · building the app",
       cell: "Deploying… 7c41d9e",
@@ -252,7 +256,7 @@ describe("a stage coming up, replayed as run 4 measured it", () => {
       t: 1446,
       services: [db("ACTIVE"), app("UPGRADING")],
       deployment: DEPLOYING,
-      runner: "ACTIVE",
+      hq: HQ_DEPLOYING,
       declared: true,
       line: "Stage coming up · building the app",
       cell: "Deploying… 7c41d9e",
@@ -260,7 +264,7 @@ describe("a stage coming up, replayed as run 4 measured it", () => {
     {
       t: 1480,
       deployment: RUNNING,
-      runner: "ACTIVE",
+      hq: HQ_DEPLOYING,
       declared: true,
       line: "Stage coming up · turning its address on",
       cell: "Deployed 7c41d9e",
@@ -269,7 +273,7 @@ describe("a stage coming up, replayed as run 4 measured it", () => {
       t: 1482,
       deployment: RUNNING,
       routes: 1,
-      runner: "ACTIVE",
+      hq: LIVE,
       declared: true,
       line: null,
       cell: "Deployed 7c41d9e",
@@ -308,21 +312,32 @@ describe("a stage whose first build failed", () => {
   // The build ended and the app keeps the import's no-code version: nothing it built runs.
   it("says so on the line and the cell, at once and after the window", () => {
     for (const t of [1500, 1061 + 15 * 60 - 1]) {
-      expect(said({ t, deployment: FAILED_BUILD, runner: "ACTIVE", declared: true })).toMatchObject(
+      expect(said({ t, deployment: FAILED_BUILD, hq: HQ_DEPLOYING, declared: true })).toMatchObject(
         { line: "Stage didn’t come up · its first deploy failed", cell: "First deploy failed" },
       );
     }
-    expect(
-      said({ t: 86_400, deployment: FAILED_BUILD, runner: "STOPPED", declared: true }).cell,
-    ).toBe("First deploy failed");
+    expect(said({ t: 86_400, deployment: FAILED_BUILD, hq: undefined, declared: true }).cell).toBe(
+      "First deploy failed",
+    );
+  });
+
+  it("says so where HQ records its build failing, however long ago", () => {
+    const failed: HqRecord = { state: "failed", failure: "job", t: 1479 };
+    expect(said({ t: 1500, deployment: NONE, hq: failed, declared: true })).toMatchObject({
+      line: "Stage didn’t come up · its first deploy failed",
+      cell: "First deploy failed",
+    });
+    expect(said({ t: 86_400, deployment: NONE, hq: failed, declared: true }).cell).toBe(
+      "First deploy failed",
+    );
   });
 });
 
 describe("a stage whose first deploy never starts", () => {
-  // The broker asked; no build of it was ever seen.
-  const waiting: Moment = { t: 1500, deployment: NONE, runner: "ACTIVE", declared: true };
-  // 15 min after the later of the stage's making (+1061 s) and main's last code (+1032 s).
-  const past: Moment = { ...waiting, t: 1061 + 15 * 60 };
+  // HQ queued it; no build of it was ever seen, and its record never moved.
+  const waiting: Moment = { t: 1500, deployment: NONE, hq: QUEUED, declared: true };
+  // 15 min after HQ's record last changed (+1092 s).
+  const past: Moment = { ...waiting, t: 1092 + 15 * 60 };
 
   it("is on its way for a window, then says nothing is deployed, never on its way for ever", () => {
     expect(said(waiting)).toMatchObject({
@@ -332,23 +347,14 @@ describe("a stage whose first deploy never starts", () => {
     expect(said(past)).toMatchObject({ line: null, cell: "Nothing deployed yet" });
   });
 
-  it("drops the runner's words with the window: a stopped runner past it has no job to wake for", () => {
-    expect(said({ ...waiting, runner: "STOPPED" }).cell).toBe(
-      "Waiting for the runner · it’s waking up",
-    );
-    for (const t of [past.t, 86_400]) {
-      expect(said({ ...past, t, runner: "STOPPED" }).cell).toBe("Nothing deployed yet");
-    }
-  });
-
   it("never lands up as its window runs out", () => {
     expect(headingLanding(said({ ...past, t: past.t - 1 }).heading, said(past).heading)).toBe(
       undefined,
     );
   });
 
-  it("says the neutral wait, never on its way, where the runner is not read", () => {
-    expect(said({ ...waiting, runner: "unread" })).toMatchObject({
+  it("says the neutral wait, never on its way, where HQ does not declare it yet", () => {
+    expect(said({ ...waiting, declared: false })).toMatchObject({
       line: "Stage coming up · awaiting a first deploy",
       cell: "Nothing deployed yet",
     });
@@ -360,7 +366,7 @@ describe("a redeploy over the serving stage (its runtime UPGRADING)", () => {
     t: 1490,
     deployment: RUNNING,
     routes: 1,
-    runner: "ACTIVE",
+    hq: LIVE,
     declared: true,
   };
   const redeploying: Moment = {
@@ -387,7 +393,7 @@ describe("a stage serving while what runs there is unread (a reload, a refused d
       t: 1490,
       deployment: undefined,
       routes: 1,
-      runner: READY,
+      hq: LIVE,
       declared: true,
     };
     expect(said(reload).line).toBeNull();

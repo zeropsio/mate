@@ -146,8 +146,8 @@ describe("ZeropsEnvironmentCreation", () => {
     expect(html).toContain("The environment is set up.");
     expect(html).not.toContain(" is up");
     expect(html).not.toContain("Zerops dashboard");
-    // The card cannot see the group's runner: it promises no time (run 4, F2 — the runner was
-    // dead and "within a few minutes" stood for 4.6 min).
+    // The card cannot see what holds the deploy: it promises no time (run 4, F2 — "within a few
+    // minutes" stood for 4.6 min).
     expect(html).not.toContain("within a few minutes");
   });
 

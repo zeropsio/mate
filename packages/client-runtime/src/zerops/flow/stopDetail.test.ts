@@ -232,14 +232,9 @@ describe("stopVerdict", () => {
       },
     },
     {
-      name: "a stage whose first deploy waits for the runner says so, as its cell does",
-      input: { tier: "stage", view: EMPTY, firstDeploy: { kind: "runner", why: "not-started" } },
-      expected: {
-        tone: "off",
-        text: "Waiting for the runner · it hasn’t started.",
-        detail: undefined,
-        verb: null,
-      },
+      name: "a stage whose first deploy failed says so, as its cell does",
+      input: { tier: "stage", view: EMPTY, firstDeploy: { kind: "failed" } },
+      expected: { tone: "failed", text: "First deploy failed.", detail: undefined, verb: null },
     },
     {
       name: "a stage whose first deploy is on its way says so",
@@ -885,10 +880,10 @@ describe("serviceRows", () => {
       offers: [],
       nowMs: 100_000,
       age: (iso) => iso,
-      firstDeploy: { kind: "runner", why: "waking" },
+      firstDeploy: { kind: "on-its-way" },
     });
     expect({ word: row?.word, status: row?.status }).toEqual({
-      word: "Waiting for the runner · it’s waking up",
+      word: "First deploy on its way",
       status: undefined,
     });
   });
