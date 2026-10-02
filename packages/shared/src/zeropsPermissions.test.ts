@@ -125,7 +125,33 @@ const fetchOf = (held: string, appId: string | null, repoAppId = "A"): Request =
   target: { projectId: "P", appId, held, repoAppId },
 });
 
-/** The verbs a Mate asks for itself; every other one is a person's. */
+/** Core's landing of a recipe change in `repo` of the application A, its author P held so. */
+const landing = (
+  patch: {
+    readonly repo?: string;
+    readonly held?: string;
+    readonly authorApp?: string | null;
+    readonly onlyAdded?: boolean;
+    readonly empty?: boolean;
+  } = {},
+): Request => ({
+  verb: "land_recipe",
+  target: {
+    repo: patch.repo ?? "group",
+    author: {
+      projectId: "P",
+      held: patch.held ?? "mate",
+      appId: patch.authorApp === undefined ? "A" : patch.authorApp,
+    },
+    appId: "A",
+    onlyAdded: patch.onlyAdded ?? true,
+    empty: patch.empty ?? false,
+  },
+});
+
+const CORE: Principal = { kind: "core" };
+
+/** The verbs a Mate asks for itself; every other one is a person's, but Core's `land_recipe`. */
 const MATE_VERBS: ReadonlySet<Verb> = new Set([
   "enroll_mate",
   "ensure_repo",
@@ -742,6 +768,30 @@ const TABLES: Readonly<Record<Verb, ReadonlyArray<Row>>> = {
     ["a production, a sibling's change", {}, editOf("production", "A", "Q"), "not_a_mate"],
     ["a kind this build does not know", {}, editOf("FUTURE", "A"), "unknown_kind"],
   ],
+  land_recipe: [
+    ["a Mate of the application adds tiers", {}, landing(), "allow"],
+    ["its devstage adds them", {}, landing({ held: "devstage" }), "allow"],
+    ["a Mate's change in a service repository", {}, landing({ repo: "appdev" }), "not_recipe_repo"],
+    ["an author in no application", {}, landing({ authorApp: null }), "author_not_in_app"],
+    ["an author of another application", {}, landing({ authorApp: "B" }), "author_not_in_app"],
+    ["an author HQ holds as a stage", {}, landing({ held: "stage" }), "not_a_mate"],
+    ["an author HQ holds as nothing", {}, landing({ held: "none", authorApp: null }), "not_a_mate"],
+    [
+      "an author of a kind this build does not know",
+      {},
+      landing({ held: "FUTURE" }),
+      "unknown_kind",
+    ],
+    ["a change that modifies a file", {}, landing({ onlyAdded: false }), "recipe_changes_files"],
+    ["an empty change", {}, landing({ empty: true }), "recipe_empty"],
+    // Whoever is in the org has no say: the decision is the change's, not the org's.
+    [
+      "nobody in the org",
+      { orgRole: "OWNER", status: "INVITED", present: false },
+      landing(),
+      "allow",
+    ],
+  ],
   fetch_repo: [
     ["its own application's repository", {}, fetchOf("mate", "A"), "allow"],
     ["as a devstage", {}, fetchOf("devstage", "A"), "allow"],
@@ -960,7 +1010,8 @@ describe("can — one table per verb", () => {
     it.each(rows.map((row) => [row[0], row] as const))(
       `${verb}: %s`,
       (_name, [, point, request, expected]) => {
-        const principal = MATE_VERBS.has(verb as Verb) ? MATE_P : PERSON;
+        const principal =
+          verb === "land_recipe" ? CORE : MATE_VERBS.has(verb as Verb) ? MATE_P : PERSON;
         expect(outcome(decide(principal, request, { ...BASE, ...point }))).toBe(expected);
       },
     );
@@ -1020,6 +1071,15 @@ const POINTS: ReadonlyArray<Point> = ROLES.flatMap((orgRole) =>
 );
 
 const REQUESTS: ReadonlyArray<Request> = [
+  ...["group", "appdev"].flatMap((repo) =>
+    HELD.flatMap((held) =>
+      [null, "A", "B"].flatMap((authorApp) =>
+        [true, false].flatMap((onlyAdded) =>
+          [true, false].map((empty) => landing({ repo, held, authorApp, onlyAdded, empty })),
+        ),
+      ),
+    ),
+  ),
   { verb: "read_project", target: { projectId: "P" } },
   { verb: "observe_mate", target: { projectId: "P" } },
   ...APPS.map((projectIds): Request => ({ verb: "read_app", target: { projectIds } })),
@@ -1053,6 +1113,7 @@ const PRINCIPALS: ReadonlyArray<Principal> = [
   { kind: "person", userId: "STRANGER" },
   MATE_P,
   { kind: "mate", projectId: "Q" },
+  CORE,
 ];
 
 const everywhere = (check: (principal: Principal, request: Request, point: Point) => void) => {
@@ -1209,6 +1270,34 @@ describe("can — over the whole input space", () => {
             : 0
           : ranked(FIXTURE_GRANTS[projectId as keyof typeof FIXTURE_GRANTS]);
       expect(request.target.projectIds.some((projectId) => roleIn(projectId) >= 2)).toBe(true);
+    });
+  });
+
+  it("lets Core land a recipe and do nothing else, and only as the rule says", () => {
+    everywhere((principal, request, point) => {
+      if (principal.kind !== "core") return;
+      const decision = outcome(decide(principal, request, point));
+      if (request.verb !== "land_recipe") {
+        expect(decision).toBe("wrong_principal");
+        return;
+      }
+      if (decision !== "allow") return;
+      const { repo, author, appId, onlyAdded, empty } = request.target;
+      expect([
+        repo,
+        ["mate", "devstage"].includes(author.held),
+        author.appId,
+        onlyAdded,
+        empty,
+      ]).toEqual(["group", true, appId, true, false]);
+    });
+  });
+
+  it("refuses a person or a Mate the landing of a recipe: it is Core's", () => {
+    everywhere((principal, request, point) => {
+      if (principal.kind !== "core" && request.verb === "land_recipe") {
+        expect(outcome(decide(principal, request, point))).toBe("wrong_principal");
+      }
     });
   });
 

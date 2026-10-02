@@ -39,6 +39,11 @@ const PERMISSION_WORDS: { readonly [R in Reason]: string } = {
     "This project has one of this kind already. Only an owner or admin of the organization replaces it.",
   not_app_developer:
     "You need at least Basic user access to one of this project's Zerops projects to do this.",
+  not_recipe_repo: "Only the project's recipe lands by itself.",
+  author_not_in_app: "Only a Mate of this project proposes its recipe.",
+  recipe_empty: "This change changes nothing, so it was closed.",
+  recipe_changes_files:
+    "This change edits the project's recipe, so it waits for someone who develops the project to merge it.",
 };
 
 /** HQ's structure's own refusals (`StructureRefused` in `apps/hq/src/structure.ts`), in words. */

@@ -11,6 +11,8 @@
  * - **A Mate's own verbs** — its enrollment, and its repositories, its own changes and git in the
  *   application HQ holds it in — are a Mate's alone, for its own project only; it is refused every
  *   other verb.
+ * - **Core's own verb**, landing a recipe change (`land_recipe`), is Core's alone, and Core is refused
+ *   every other: what Core does by itself is a named actor's, never a person's verb.
  * - **The target carries its current kind** (`held`), never only the requested one: a change between a
  *   Mate and an environment is the structure's writers' alone, whoever owns the project.
  * - **Freshness is a type:** every verb that writes takes `Facts<"fresh">`, read at the moment of
@@ -61,7 +63,9 @@ export interface Facts<F extends Freshness = Freshness> {
 export type Principal =
   | { readonly kind: "person"; readonly userId: string }
   /** A Mate proving its project (its container's own Zerops key wrote the challenge). */
-  | { readonly kind: "mate"; readonly projectId: string };
+  | { readonly kind: "mate"; readonly projectId: string }
+  /** HQ's Core acting on its own: a named actor, never a person's verb (`land_recipe`). */
+  | { readonly kind: "core" };
 
 /**
  * What HQ holds a project as now: `none`; `mate` for a Mate in no application; else its kind in its
@@ -88,6 +92,23 @@ export interface MateChangeTarget extends MateTarget {
 /** A repository a Mate fetches: the application it is a repository of. */
 export interface MateFetchTarget extends MateTarget {
   readonly repoAppId: string;
+}
+
+/**
+ * A change Core would land in an application's repository `repo`: its author, the Mate's project as
+ * HQ holds it now (`appId` the application it is in, `null`: none), and what the change does to
+ * `main` — only adding files, or nothing at all.
+ */
+export interface RecipeLandingTarget {
+  readonly repo: string;
+  readonly author: {
+    readonly projectId: string;
+    readonly held: Held;
+    readonly appId: string | null;
+  };
+  readonly appId: string;
+  readonly onlyAdded: boolean;
+  readonly empty: boolean;
 }
 
 /** A project placed into an application as `to`, beside the application's projects. */
@@ -125,6 +146,7 @@ export interface Targets {
   readonly open_change: MateTarget;
   readonly edit_change: MateChangeTarget;
   readonly fetch_repo: MateFetchTarget;
+  readonly land_recipe: RecipeLandingTarget;
 }
 
 export type Verb = keyof Targets;
@@ -157,6 +179,10 @@ export const REASONS = [
   "changes_not_seen",
   "slot_taken",
   "not_app_developer",
+  "not_recipe_repo",
+  "author_not_in_app",
+  "recipe_empty",
+  "recipe_changes_files",
 ] as const;
 
 export type Reason = (typeof REASONS)[number];
@@ -166,6 +192,9 @@ export type Decision =
   | { readonly allow: false; readonly reason: Reason };
 
 const ALLOW: Decision = { allow: true };
+
+/** An application's recipe repository: its import files, Core's to land (`land_recipe`). */
+export const RECIPE_REPO = "group";
 const deny = (reason: Reason): Decision => ({ allow: false, reason });
 
 const KINDS: ReadonlySet<string> = new Set(["mate", "devstage", "stage", "production"]);
@@ -190,6 +219,20 @@ export function can<V extends Verb>(
 function decide(principal: Principal, request: Request, facts: Facts): Decision {
   const projectOf = (projectId: string) =>
     facts.projects.find((project) => project.id === projectId);
+
+  if (request.verb === "land_recipe") {
+    // Core lands a recipe change by itself (main's broker, C01): one in the application's recipe
+    // repository, by a Mate HQ holds in that application, that only adds files. One that changes a
+    // file waits for a person (`merge_change`); an empty one Core closes.
+    const { repo, author, appId, onlyAdded, empty } = request.target;
+    if (principal.kind !== "core") return deny("wrong_principal");
+    if (repo !== RECIPE_REPO) return deny("not_recipe_repo");
+    if (!knownHeld(author.held)) return deny("unknown_kind");
+    if (!isMateKind(author.held)) return deny("not_a_mate");
+    if (author.appId !== appId) return deny("author_not_in_app");
+    if (empty) return deny("recipe_empty");
+    return onlyAdded ? ALLOW : deny("recipe_changes_files");
+  }
 
   if (request.verb === "enroll_mate") {
     const { projectId, held } = request.target;
