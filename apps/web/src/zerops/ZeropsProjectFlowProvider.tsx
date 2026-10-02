@@ -34,11 +34,13 @@ import {
   summarizeEnvironmentServices,
   GiteaApiError,
   GROUP_REPOSITORY,
+  groupRunner,
   type EnvironmentRow,
   type FlowPullRequest,
   type FlowRelease,
   type GroupEnvironmentRowInput,
   type FlowVerb,
+  type GroupRunner,
   type ZeropsService,
 } from "@t3tools/client-runtime/zerops";
 import {
@@ -67,7 +69,7 @@ import {
 } from "react";
 
 import { useStopDeployments } from "./accountForge";
-import { useAccountGitea } from "./giteaProject";
+import { accountGiteaServices, useAccountGitea } from "./giteaProject";
 import { giteaClientFor, useGiteaSession } from "./accountGiteaSessions";
 import {
   ZeropsProjectFlowContext,
@@ -675,6 +677,17 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
     () => new Map(registry.registry.groups.map((entry) => [entry.groupId, entry.slug])),
     [registry.registry.groups],
   );
+  // Each group's runner, from the Gitea project's services the inventory already holds: a stage's
+  // first deploy waits on it, and its line says so (`stopComing`). Nothing is read for it.
+  const runners = useMemo(() => {
+    const services = accountGiteaServices(held, clientId);
+    const found = new Map<string, GroupRunner>();
+    for (const [groupId, slug] of slugs) {
+      const runner = groupRunner({ slug, services, nowMs });
+      if (runner !== undefined) found.set(groupId, runner);
+    }
+    return found;
+  }, [clientId, held, nowMs, slugs]);
   const mateNames = useMemo(
     () =>
       new Map(
@@ -894,6 +907,7 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
       flows: lapsed ? EMPTY_FLOWS : flows,
       deployments,
       slugs: lapsed ? EMPTY_SLUGS : slugs,
+      runners,
       organizations: lapsed ? EMPTY_ORGANIZATIONS : organizations,
       mateNames,
       pending: pendingOrHeld,
@@ -917,6 +931,7 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
       readable,
       release,
       rollBack,
+      runners,
       signInTrouble,
       signedIn,
       slugs,

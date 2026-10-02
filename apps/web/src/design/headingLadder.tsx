@@ -4,11 +4,11 @@
  * pills and line the menu draws, fed made-up inputs. A landing replays every 6 s: the state
  * before it, then the one it lands in, so "is live" shows, stands 4 s and folds.
  */
-import type { ZeropsGroup } from "@t3tools/client-runtime/zerops";
+import type { ComingStep, StopComing, ZeropsGroup } from "@t3tools/client-runtime/zerops";
 import { useEffect, useState } from "react";
 
 import { SidebarProductionChip } from "~/components/zerops/SidebarProductionChip";
-import type { HeadingLineInput, StopComing } from "~/components/zerops/SidebarHeadingLine.logic";
+import type { HeadingLineInput } from "~/components/zerops/SidebarHeadingLine.logic";
 import type { ProductionChip } from "~/components/zerops/SidebarProductionChip.logic";
 import { ProjectHeader } from "~/components/zerops/SidebarZeropsTree";
 
@@ -42,7 +42,7 @@ const production = (
   failure: undefined,
   ...over,
 });
-const coming = (step: "project" | "database" | "build" | "address"): StopComing => ({
+const coming = (step: ComingStep): StopComing => ({
   kind: "coming",
   step,
 });

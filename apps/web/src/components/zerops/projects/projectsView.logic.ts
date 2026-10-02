@@ -17,6 +17,7 @@ import {
   changesNotLive,
   deployWord,
   environmentNameUnderGroup,
+  firstDeployLine,
   hasMate,
   pairPreviewRoute,
   readZeropsGroupTags,
@@ -32,6 +33,7 @@ import {
   type GroupFlowStopState,
   type GroupNextStepKind,
   type GroupRowTone,
+  type GroupRunner,
   type MissingEnvironmentRow,
   type ReleaseGate,
   type ZeropsEnvironmentRole,
@@ -434,8 +436,17 @@ export function stopLine(stop: GroupFlowStop): {
   switch (stop.state) {
     case "checking":
       return { word: CHECKING_WHAT_RUNS, version: undefined, tone };
-    case "empty":
-      return { word: NOTHING_DEPLOYED, version: undefined, tone };
+    case "empty": {
+      // A stage that runs nothing says where its first deploy stands, where one was asked for.
+      const first = firstDeployLine(stop.firstDeploy);
+      return first === undefined
+        ? { word: NOTHING_DEPLOYED, version: undefined, tone }
+        : {
+            word: first,
+            version: undefined,
+            tone: stop.firstDeploy?.kind === "on-its-way" ? "busy" : tone,
+          };
+    }
     default:
       return {
         word: deployWord(STOP_ROW_TONE[stop.state]) ?? "",
@@ -644,6 +655,8 @@ export function groupFlowInputOf(input: {
   readonly productionAddable: boolean;
   /** The group's creations under way (the group tree's `pending`). */
   readonly pending: ReadonlyArray<ZeropsGroupPendingMember>;
+  /** The group's runner, as the account holds the Gitea project's services; `undefined` unread. */
+  readonly runner?: GroupRunner | undefined;
 }): GroupFlowInput {
   const { flow } = input;
   return {
@@ -695,5 +708,6 @@ export function groupFlowInputOf(input: {
     mainHead: undefined,
     productionAddable: input.productionAddable,
     pending: input.pending,
+    runner: input.runner,
   };
 }

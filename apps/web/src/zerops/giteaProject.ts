@@ -13,6 +13,7 @@ import {
   deriveGiteaState,
   readZeropsToolKind,
   type ZeropsGiteaState,
+  type ZeropsService,
 } from "@t3tools/client-runtime/zerops";
 import { useContext, useMemo } from "react";
 
@@ -47,6 +48,23 @@ function findAccountGitea(
       projectId: project.id,
       clientId: project.clientId,
     };
+  }
+  return undefined;
+}
+
+/**
+ * The services of the account's Gitea project in the org, as the inventory holds them — no read of
+ * their own; `undefined` while it holds no such project, or its services are not read.
+ */
+export function accountGiteaServices(
+  inventory: Pick<Inventory, "projects" | "services"> | null | undefined,
+  clientId: string | undefined,
+): ReadonlyArray<ZeropsService> | undefined {
+  for (const project of inventory?.projects ?? []) {
+    if (readZeropsToolKind(project.tagList) !== "gitea") continue;
+    if (clientId !== undefined && project.clientId !== clientId) continue;
+    const outcome = inventory?.services.get(project.id);
+    return outcome?.status === "resolved" ? outcome.services : undefined;
   }
   return undefined;
 }
