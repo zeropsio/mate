@@ -260,6 +260,18 @@ export interface EnvironmentMachine {
    */
   readonly failuresSinceConnect: number;
   /**
+   * Of those, the ones its server answered — with an error, a refusal of its credential, a
+   * failed mint or install — rather than not at all (`NOT_ANSWERING_CAUSES`): a server still
+   * starting fails its probes, one that answers with errors is not starting. Only a connect clears
+   * it.
+   */
+  readonly errorsSinceConnect: number;
+  /**
+   * Its container has been found ready on this page: its probe answered, or its link connected.
+   * Kept through a boot that follows, so a Mate that answered never reads as arriving again.
+   */
+  readonly readySeen: boolean;
+  /**
    * Monotonic times of the auth rejections counted in the loop window. Every published
    * `blocked(authentication)` belongs to the stored credential, so one counts per credential held.
    */
@@ -404,6 +416,8 @@ export const initialEnvironment = (input: {
   ladder: INITIAL_BACKOFF,
   failures: 0,
   failuresSinceConnect: 0,
+  errorsSinceConnect: 0,
+  readySeen: false,
   authRejections: [],
   permissionRetried: false,
   configurationBlocks: 0,
@@ -541,6 +555,13 @@ const inputChanged = (
 
 // ── Failures ──────────────────────────────────────────────────────────────────────────────────
 
+/** The failures that say a Mate's server did not answer at all, as one still starting fails. */
+export const NOT_ANSWERING_CAUSES: ReadonlySet<ExchangeCause["kind"]> = new Set([
+  "network",
+  "timeout",
+  "descriptor-unreachable",
+]);
+
 const backoff = (
   machine: EnvironmentMachine,
   cause: ExchangeCause,
@@ -561,6 +582,7 @@ const backoff = (
     ...machine,
     failures,
     failuresSinceConnect: machine.failuresSinceConnect + 1,
+    errorsSinceConnect: machine.errorsSinceConnect + (NOT_ANSWERING_CAUSES.has(cause.kind) ? 0 : 1),
     ladder: next.backoff,
     credential: { kind: "backoff", retryAt: after(ctx.now, delayMs), last: cause, reconnect },
   };
@@ -790,7 +812,13 @@ const onLink = (
     };
     // A live socket proves the container is up: a wait on it ends.
     return next.credential.kind === "held"
-      ? { ...next, failures: 0, failuresSinceConnect: 0, ladder: INITIAL_BACKOFF }
+      ? {
+          ...next,
+          failures: 0,
+          failuresSinceConnect: 0,
+          errorsSinceConnect: 0,
+          ladder: INITIAL_BACKOFF,
+        }
       : next;
   }
   const dropped = machine.link.phase === "connected";
@@ -1110,5 +1138,6 @@ export const transitionEnvironment = (
   // Every input can move a guard: an idle or waiting credential is re-judged after each event.
   next = evaluate(next, ctx, out);
   next = reschedule(next, out);
+  if (!next.readySeen && next.container.level === "ready") next = { ...next, readySeen: true };
   return { state: next, effects: out };
 };
