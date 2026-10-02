@@ -2,13 +2,13 @@
 import * as NodeCrypto from "node:crypto";
 import * as NodeFS from "node:fs";
 import * as NodeHttp from "node:http";
-import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 
 import { assert, describe, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Redacted from "effect/Redacted";
 
+import { tempDir } from "../test/harness/tempDir.ts";
 import { type BucketCredentials, bucketFromEnv, bucketStore, signV4 } from "./bucketStore.ts";
 
 const EMPTY = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
@@ -160,17 +160,12 @@ const fakeBucket = (bucket: string, credentials: BucketCredentials) =>
     ({ server }) => Effect.promise(() => new Promise<void>((done) => server.close(() => done()))),
   );
 
-const temporaryDir = Effect.acquireRelease(
-  Effect.sync(() => NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "hq-bucket-"))),
-  (dir) => Effect.sync(() => NodeFS.rmSync(dir, { recursive: true, force: true })),
-);
-
 describe("a bucket store", () => {
   it.effect("keeps files, lists them page by page, gives them back and removes them", () =>
     Effect.gen(function* () {
       const { url } = yield* fakeBucket("hq-backup", EXAMPLE);
       const store = bucketStore({ url, bucket: "hq-backup", ...EXAMPLE });
-      const dir = yield* temporaryDir;
+      const dir = yield* tempDir("hq-bucket-");
       const files = { dump: "x".repeat(1000), manifest: "{}", other: "y".repeat(10) };
       for (const [name, text] of Object.entries(files)) {
         NodeFS.writeFileSync(NodePath.join(dir, name), text);

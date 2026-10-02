@@ -7,10 +7,7 @@
  *
  * @module test/harness/runningCore
  */
-import * as NodeFS from "node:fs";
 import * as NodeHttp from "node:http";
-import * as NodeOS from "node:os";
-import * as NodePath from "node:path";
 
 import * as NodeHttpServer from "@effect/platform-node/NodeHttpServer";
 import { assert } from "@effect/vitest";
@@ -37,6 +34,7 @@ import {
   type ZeropsMember,
   type ZeropsOwnToken,
 } from "../../src/zerops/api.ts";
+import { tempDir } from "./tempDir.ts";
 import { TempPostgres } from "./tempPostgres.ts";
 import { type FakeWorld, emptyWorld, fakeZeropsApi, fakeZeropsDeploy } from "./zeropsFake.ts";
 
@@ -166,18 +164,9 @@ export const startCore = (
 ) =>
   Effect.gen(function* () {
     const url = given.url ?? (yield* (yield* TempPostgres).createDatabase);
-    const gitRoot =
-      given.gitRoot ??
-      (yield* Effect.acquireRelease(
-        Effect.sync(() => NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "hq-git-"))),
-        (root) => Effect.sync(() => NodeFS.rmSync(root, { recursive: true, force: true })),
-      ));
-    const temporary = Effect.acquireRelease(
-      Effect.sync(() => NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "hq-backup-"))),
-      (dir) => Effect.sync(() => NodeFS.rmSync(dir, { recursive: true, force: true })),
-    );
-    const storeDir = given.storeDir ?? (yield* temporary);
-    const stagingDir = given.stagingDir ?? (yield* temporary);
+    const gitRoot = given.gitRoot ?? (yield* tempDir("hq-git-"));
+    const storeDir = given.storeDir ?? (yield* tempDir("hq-backup-"));
+    const stagingDir = given.stagingDir ?? (yield* tempDir("hq-backup-"));
     const fake = world(yield* Clock.currentTimeMillis, anchored, given.orgId ?? "ORG");
     const options = {
       databaseUrl: Redacted.make(url),

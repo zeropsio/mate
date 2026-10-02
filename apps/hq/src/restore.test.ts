@@ -1,7 +1,6 @@
 // @effect-diagnostics nodeBuiltinImport:off -- the tests read the restored repositories with the host's git.
 import * as NodeChildProcess from "node:child_process";
 import * as NodeFS from "node:fs";
-import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 
 import { assert, describe, it } from "@effect/vitest";
@@ -26,6 +25,7 @@ import {
   ticketFor,
   untilHealth,
 } from "../test/harness/runningCore.ts";
+import { tempDir } from "../test/harness/tempDir.ts";
 import { TempPostgres, tempPostgresLayer } from "../test/harness/tempPostgres.ts";
 import { directoryStore } from "./backup.ts";
 import { restoreDatabase, restoreRepos, restoreSet } from "./restore.ts";
@@ -43,11 +43,6 @@ const native = (dir: string, args: ReadonlyArray<string>) =>
       GIT_CONFIG_GLOBAL: "/dev/null",
     },
   }).trim();
-
-const temporaryDir = Effect.acquireRelease(
-  Effect.sync(() => NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "hq-restore-"))),
-  (dir) => Effect.sync(() => NodeFS.rmSync(dir, { recursive: true, force: true })),
-);
 
 /** Everything a person reads of the application `appId`, as `session` reads it. */
 const reads = (call: Call, session: string, appId: string, picture: string) =>
@@ -155,11 +150,11 @@ describe("a backup set, restored", () => {
 
           // Into a fresh database and git root.
           const url = yield* (yield* TempPostgres).createDatabase;
-          const gitRoot = yield* temporaryDir;
+          const gitRoot = yield* tempDir("hq-restore-");
           yield* restoreSet(directoryStore(a.storeDir), manifest.id, {
             databaseUrl: Redacted.make(url),
             gitRoot,
-            workDir: yield* temporaryDir,
+            workDir: yield* tempDir("hq-restore-"),
           });
           const b = yield* startCore(true, { url, gitRoot });
           yield* Stream.runHead(Stream.filter(b.gitHost.recorded, (tick) => tick > 0));
@@ -243,11 +238,11 @@ describe("a backup set, restored", () => {
           yield* a.stop;
 
           const url = yield* (yield* TempPostgres).createDatabase;
-          const gitRoot = yield* temporaryDir;
+          const gitRoot = yield* tempDir("hq-restore-");
           yield* restoreSet(directoryStore(a.storeDir), manifest.id, {
             databaseUrl: Redacted.make(url),
             gitRoot,
-            workDir: yield* temporaryDir,
+            workDir: yield* tempDir("hq-restore-"),
           });
           const b = yield* startCore(true, { url, gitRoot });
           yield* Stream.runHead(Stream.filter(b.gitHost.recorded, (tick) => tick > 0));
@@ -282,7 +277,7 @@ describe("a backup set, restored", () => {
           const { appId, credential } = yield* mateWithChange(a.call, a.fake, owner);
           const older = yield* a.backup.take;
           // Kept elsewhere: in the store the newer set of the same hour replaces it.
-          const elsewhere = yield* temporaryDir;
+          const elsewhere = yield* tempDir("hq-restore-");
           NodeFS.cpSync(
             NodePath.join(a.storeDir, "sets", older.id),
             NodePath.join(elsewhere, "sets", older.id),
@@ -309,16 +304,16 @@ describe("a backup set, restored", () => {
 
           // The newer set's database over the older set's git: sources mixed.
           const url = yield* (yield* TempPostgres).createDatabase;
-          const gitRoot = yield* temporaryDir;
+          const gitRoot = yield* tempDir("hq-restore-");
           yield* restoreDatabase(directoryStore(a.storeDir), newer.id, {
             databaseUrl: Redacted.make(url),
             gitRoot,
-            workDir: yield* temporaryDir,
+            workDir: yield* tempDir("hq-restore-"),
           });
           yield* restoreRepos(directoryStore(elsewhere), older.id, {
             databaseUrl: Redacted.make(url),
             gitRoot,
-            workDir: yield* temporaryDir,
+            workDir: yield* tempDir("hq-restore-"),
           });
           const b = yield* startCore(true, { url, gitRoot });
           const health = yield* untilHealth(b.call, "failed");
@@ -345,11 +340,11 @@ describe("a backup set, restored", () => {
           yield* a.stop;
 
           const url = yield* (yield* TempPostgres).createDatabase;
-          const gitRoot = yield* temporaryDir;
+          const gitRoot = yield* tempDir("hq-restore-");
           yield* restoreSet(directoryStore(a.storeDir), manifest.id, {
             databaseUrl: Redacted.make(url),
             gitRoot,
-            workDir: yield* temporaryDir,
+            workDir: yield* tempDir("hq-restore-"),
           });
           const b = yield* startCore(true, { url, gitRoot });
           yield* untilHealth(b.call, "active");
@@ -420,11 +415,11 @@ describe("a backup set, restored", () => {
           assert.strictEqual(yield* beforeSocket.socket.closedWith, 1001);
 
           const url = yield* (yield* TempPostgres).createDatabase;
-          const gitRoot = yield* temporaryDir;
+          const gitRoot = yield* tempDir("hq-restore-");
           yield* restoreSet(directoryStore(a.storeDir), manifest.id, {
             databaseUrl: Redacted.make(url),
             gitRoot,
-            workDir: yield* temporaryDir,
+            workDir: yield* tempDir("hq-restore-"),
           });
           const b = yield* startCore(true, { url, gitRoot });
           yield* Stream.runHead(Stream.filter(b.gitHost.recorded, (tick) => tick > 0));
