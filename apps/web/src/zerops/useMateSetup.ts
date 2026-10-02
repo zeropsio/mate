@@ -1,8 +1,8 @@
 /**
  * A Mate's setup, read off its own `/mate/setup.json` (`mateSetup.ts`) while its view shows it
  * coming up: the same answer in any browser, and whether a browser watches or not. Read every few
- * seconds while there is something left to happen, and no more once its runtimes and its
- * stand-up have settled.
+ * seconds while there is something left to happen, and no more once its Git access, its runtimes
+ * and its stand-up have settled.
  *
  * `undefined` while nothing readable came back — not asked yet, on its way up, or an older Mate
  * whose server has no such route: the caller then reads the container's health, as it always
@@ -14,11 +14,15 @@ import { useEffect, useState } from "react";
 /** How often a Mate's setup is read while something in it is still to happen. */
 export const MATE_SETUP_POLL_MS = 4_000;
 
-/** Nothing more will change without a person: the runtimes and the stand-up have settled. */
+/**
+ * Nothing more will change: the Git access granted — one on its way, or failed, comes or heals
+ * (HQ set up, the Mate's setup finished) — and the runtimes and the stand-up settled.
+ */
 export function mateSetupSettled(setup: MateSetup): boolean {
   const runtimes = setup.runtimes;
   const standup = setup.standup;
   return (
+    (setup.git === undefined || setup.git === "done") &&
     (runtimes === "none" ||
       runtimes === "done" ||
       runtimes === "failed" ||
