@@ -215,6 +215,8 @@ import {
 import { ZeropsOrganizationScope, ZeropsOrganizationSwitcher } from "./ZeropsOrganizationScope";
 import { ZeropsSessionAccountControl } from "./landing/ZeropsAccountControl";
 import { ZeropsHostedFrame } from "./landing/ZeropsHostedFrame";
+import { PageWaitLine } from "./WaitLine";
+import { BOOT_WAIT_LINE_MS } from "~/zerops/waitLine.logic";
 
 /** One creation in flight, or just finished, on this screen. */
 interface EnvironmentCreationView {
@@ -2168,14 +2170,8 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
     runtime,
   ]);
 
-  if (status === "loading") {
-    return (
-      <div className="flex items-center gap-2 text-sm text-muted-foreground">
-        <Spinner size="md" />
-        Checking your Zerops session…
-      </div>
-    );
-  }
+  // The session is checked before this page can draw (`ZeropsHostedLanding`): nothing to say here.
+  if (status === "loading") return null;
   if (status === "signed-out") {
     return <SignedOutNotice message="Sign in with your Zerops account to see your projects." />;
   }
@@ -2749,7 +2745,10 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
     // The page's end clears the app's fixed "Open main sidebar" control, so
     // the last row is never under it with the menu closed.
     <div className="space-y-6 pb-12">
-      {listingNotice === null ? null : listingNotice.region === "message" ? (
+      {listingNotice === null ? null : listingNotice.region === "placeholder" ? (
+        // Nothing read yet: the one wait line at the page's centre, where the boot frame said it.
+        <PageWaitLine delayMs={BOOT_WAIT_LINE_MS} from="mount" text={listingNotice.message.text} />
+      ) : listingNotice.region === "message" ? (
         <div
           className="flex items-center gap-3 rounded-md border border-[var(--zerops-status-failed)]/40 bg-[var(--zerops-status-failed-surface)] px-3 py-2 text-sm text-[var(--zerops-status-failed-text)]"
           role="alert"

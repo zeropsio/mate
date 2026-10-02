@@ -1842,6 +1842,8 @@ export default function Sidebar() {
         ? null
         : candidatesNotice(zeropsListing, ZEROPS_SIDEBAR_SURFACE, zeropsNowMs, {
             patient: zeropsPatient,
+            // The page says the projects are read, once; the menu holds its rows' room quietly.
+            readingSilent: true,
           }),
     [zeropsListing, zeropsNowMs, zeropsPatient, zeropsSession.organizationStatus],
   );

@@ -46,7 +46,7 @@ import { ProjectFavicon } from "../ProjectFavicon";
 import { useThreadShell } from "../../state/entities";
 import { useZeropsThreadActivity } from "~/zerops/useZeropsAgentActivity";
 import type { ZeropsMateAt } from "~/zerops/mateIdentities";
-import { useZeropsMate } from "~/zerops/useZeropsMates";
+import { useKnownMate, useZeropsMate } from "~/zerops/useZeropsMates";
 import { ZeropsMark } from "../ZeropsMark";
 import { ConversationStrip } from "./ConversationStrip";
 import { registerThreadSyncSlot } from "./threadSyncSlot";
@@ -261,7 +261,8 @@ export const ChatHeader = memo(function ChatHeader({
   // While who lives here is not known, the header shows what both looks
   // share and leaves out what only one of them has.
   const whoLivesHere = useZeropsMate(activeThreadEnvironmentId);
-  const mate = whoLivesHere.kind === "mate" ? whoLivesHere.mate : undefined;
+  // Read, or remembered until read (`knownMate`): a reload heads the page with the Mate at once.
+  const mate = useKnownMate(activeThreadEnvironmentId);
   const showOpenInPicker = shouldShowOpenInPicker({
     activeProjectName,
     activeThreadEnvironmentId,

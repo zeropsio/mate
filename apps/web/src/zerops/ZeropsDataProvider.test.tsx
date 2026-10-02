@@ -10,7 +10,8 @@ import { ZeropsDataProvider, ZeropsDataStartupFailure } from "./ZeropsDataProvid
 const session = vi.hoisted(() => ({ current: undefined as unknown }));
 vi.mock("./ZeropsSessionProvider", () => ({ useZeropsSession: () => session.current }));
 vi.mock("../components/zerops/landing/ZeropsLandingShell", () => ({
-  ZeropsLandingWait: () => null,
+  ZeropsFrameWait: ({ children }: { readonly children?: import("react").ReactNode }) =>
+    children ?? null,
 }));
 
 class TestNode {

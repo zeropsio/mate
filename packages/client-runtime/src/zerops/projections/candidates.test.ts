@@ -496,6 +496,49 @@ describe("candidatesNotice", () => {
   });
 });
 
+describe("candidatesNotice for a region that says nothing while it reads", () => {
+  const surface = {
+    subject: "your projects",
+    entity: "project",
+    source: "zerops" as const,
+    checking: "Reading your projects…",
+    negative: null,
+  };
+
+  it.each<{ readonly name: string; readonly listing: Known<ReadonlyArray<CandidateRow>> }>([
+    { name: "unread", listing: { state: "unread", waitingFor: null } },
+    { name: "being read", listing: { state: "reading", sinceMs: 10, attempt: 1 } },
+  ])("is silent while $name", ({ listing }) => {
+    expect(candidatesNotice(listing, surface, 0, { readingSilent: true })).toBeNull();
+  });
+
+  it.each<{ readonly name: string; readonly listing: Known<ReadonlyArray<CandidateRow>> }>([
+    { name: "waiting for a connection", listing: { state: "unread", waitingFor: "online" } },
+    { name: "paused in the background", listing: { state: "unread", waitingFor: "visible" } },
+    { name: "still reading over its rows", listing: known([row("a")], "partial") },
+    { name: "still reading with none", listing: known([], "partial") },
+  ])("still says why it waits when $name", ({ listing }) => {
+    expect(candidatesNotice(listing, surface, 0, { readingSilent: true })).not.toBeNull();
+  });
+
+  it("still says a failed read, with its one Try again", () => {
+    const notice = candidatesNotice(
+      {
+        state: "failed",
+        failure: { kind: "transport", detail: "gateway" },
+        atMs: 10,
+        attempt: 1,
+        retryAtMs: null,
+      },
+      surface,
+      0,
+      { readingSilent: true },
+    );
+    expect(notice?.region).toBe("message");
+    expect(notice?.affordance).toEqual({ kind: "retry", label: "Try again" });
+  });
+});
+
 describe("listsNoProject", () => {
   const isProject = (row: ZeropsCandidate) => !row.project.tagList?.includes("tool");
 

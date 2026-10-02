@@ -44,7 +44,8 @@ import { TRY_NOW_SETTLE_MS } from "./inventoryTrouble.logic";
 const session = vi.hoisted(() => ({ current: undefined as unknown }));
 vi.mock("./ZeropsSessionProvider", () => ({ useZeropsSession: () => session.current }));
 vi.mock("../components/zerops/landing/ZeropsLandingShell", () => ({
-  ZeropsLandingWait: () => null,
+  ZeropsFrameWait: ({ children }: { readonly children?: import("react").ReactNode }) =>
+    children ?? null,
 }));
 
 class TestNode {

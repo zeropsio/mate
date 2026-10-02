@@ -2,6 +2,8 @@ import { Children, isValidElement, type ReactElement, type ReactNode } from "rea
 import { describe, expect, it } from "vite-plus/test";
 
 import { QuitHoldOverlay } from "./components/QuitHoldOverlay";
+import { RenderErrorBoundary } from "./components/RenderErrorBoundary";
+import { ZeropsAppFailed } from "./components/zerops/landing/ZeropsAppFailed";
 import type { AppRouter } from "./router";
 import { ZeropsSessionProvider } from "./zerops/ZeropsSessionProvider";
 import { ZeropsDataProvider } from "./zerops/ZeropsDataProvider";
@@ -17,9 +19,18 @@ function childrenOf(node: unknown): ReadonlyArray<ReactNode> {
 describe("AppRoot", () => {
   it("keeps the Zerops account session around routed UI and renderer-wide hosts", () => {
     const root = AppRoot({ router: {} as AppRouter });
+    const session = childrenOf(root)[0];
 
-    expect(root.type).toBe(ZeropsSessionProvider);
-    expect(childrenOf(root)).toHaveLength(1);
+    expect(isValidElement(session) && session.type).toBe(ZeropsSessionProvider);
+    expect(childrenOf(session)).toHaveLength(1);
+  });
+
+  it("says the app could not open when anything above the router throws", () => {
+    const root = AppRoot({ router: {} as AppRouter });
+    const { fallback } = root.props as { readonly fallback: ReactNode };
+
+    expect(root.type).toBe(RenderErrorBoundary);
+    expect(isValidElement(fallback) && fallback.type).toBe(ZeropsAppFailed);
   });
 
   it.each(["loading", "unavailable", "signed-out", "totp-required"] as const)(

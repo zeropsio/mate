@@ -32,7 +32,7 @@ import {
   type ReactNode,
 } from "react";
 
-import { ZeropsLandingWait } from "../components/zerops/landing/ZeropsLandingShell";
+import { ZeropsFrameWait } from "../components/zerops/landing/ZeropsLandingShell";
 import { zeropsDataRuntimeAtom, zeropsInventoryAtom, zeropsSessionAtom } from "../state/zerops";
 import { invalidateZerops } from "./accountInvalidations";
 import {
@@ -669,27 +669,31 @@ export function ZeropsInventoryProvider({ children }: { readonly children: React
     <>
       {!ready ? (
         error !== null ? (
-          <div role="alert" className="p-8">
-            Could not load your Zerops projects. {error}{" "}
-            <button type="button" onClick={retry}>
-              Try again
-            </button>{" "}
-            <button type="button" onClick={() => void signOut()}>
-              Sign out
-            </button>
-          </div>
+          <ZeropsFrameWait label="Could not load your Zerops projects." signedIn>
+            <div role="alert" className="p-8 text-sm">
+              Could not load your Zerops projects. {error}{" "}
+              <button type="button" onClick={retry}>
+                Try again
+              </button>{" "}
+              <button type="button" onClick={() => void signOut()}>
+                Sign out
+              </button>
+            </div>
+          </ZeropsFrameWait>
         ) : grant.overdue ? (
-          <div role="alert" className="p-8">
-            Still checking your Zerops projects.{" "}
-            <button type="button" onClick={retry}>
-              Try again
-            </button>{" "}
-            <button type="button" onClick={() => void signOut()}>
-              Sign out
-            </button>
-          </div>
+          <ZeropsFrameWait label="Still checking your Zerops projects." signedIn>
+            <div role="alert" className="p-8 text-sm">
+              Still checking your Zerops projects.{" "}
+              <button type="button" onClick={retry}>
+                Try again
+              </button>{" "}
+              <button type="button" onClick={() => void signOut()}>
+                Sign out
+              </button>
+            </div>
+          </ZeropsFrameWait>
         ) : (
-          <ZeropsLandingWait label="Checking your Zerops projects…" />
+          <ZeropsFrameWait label="Checking your Zerops projects…" signedIn />
         )
       ) : (
         <InventoryContext value={snapshot}>
