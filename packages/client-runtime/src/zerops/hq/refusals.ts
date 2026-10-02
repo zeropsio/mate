@@ -29,6 +29,7 @@ const PERMISSION_WORDS: { readonly [R in Reason]: string } = {
   project_gone: "This Zerops project is gone.",
   held_as_environment: "This Zerops project is its project's stage or production, not a Mate.",
   not_a_mate: "HQ holds this Zerops project as no Mate.",
+  mate_not_in_app: "This Mate is in no project in HQ yet.",
 };
 
 /** HQ's structure's own refusals (`StructureRefused` in `apps/hq/src/structure.ts`), in words. */

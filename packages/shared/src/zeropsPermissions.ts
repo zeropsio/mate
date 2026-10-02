@@ -4,8 +4,12 @@
  * HQ holds it now. HQ enforces it; the client asks it what to offer.
  *
  * - **The verbs** are the places that decide today: reading a project or an application, writing an
- *   application, attaching, moving or detaching a project, a Mate's record, a Mate's enrollment, and
- *   following a Mate's live summary (who may operate it: open it, as its door does).
+ *   application, attaching, moving or detaching a project, a Mate's record, a Mate's enrollment,
+ *   following a Mate's live summary (who may operate it: open it, as its door does), and reading and
+ *   commenting on an application's changes (`hqChanges.ts`), which whoever sees the application may.
+ * - **A Mate's own verbs** — its enrollment, and its repositories, changes and git in the
+ *   application HQ holds it in — are a Mate's alone, for its own project only; it is refused every
+ *   other verb.
  * - **The target carries its current kind** (`held`), never only the requested one: a change between a
  *   Mate and an environment is the structure's writers' alone, whoever owns the project.
  * - **Freshness is a type:** every verb that writes takes `Facts<"fresh">`, read at the moment of
@@ -70,6 +74,11 @@ export interface ProjectTarget {
   readonly held: Held;
 }
 
+/** A Mate's own project as HQ holds it: its kind and the application it is in (`null`: none). */
+export interface MateTarget extends ProjectTarget {
+  readonly appId: string | null;
+}
+
 /** A project placed into an application as `to`, beside the application's projects. */
 export interface PlacementTarget extends ProjectTarget {
   readonly to: string;
@@ -80,6 +89,10 @@ export interface Targets {
   readonly read_project: { readonly projectId: string };
   readonly observe_mate: { readonly projectId: string };
   readonly read_app: { readonly projectIds: ReadonlyArray<string> };
+  /** An application's changes, as its projects: whoever sees the application. */
+  readonly read_change: { readonly projectIds: ReadonlyArray<string> };
+  /** A comment on one of an application's changes: whoever reads the change. */
+  readonly comment_change: { readonly projectIds: ReadonlyArray<string> };
   readonly create_app: null;
   readonly rename_app: null;
   readonly attach: PlacementTarget;
@@ -88,12 +101,15 @@ export interface Targets {
   readonly create_mate_record: ProjectTarget;
   readonly edit_mate_record: ProjectTarget;
   readonly enroll_mate: ProjectTarget;
+  readonly ensure_repo: MateTarget;
+  readonly open_change: MateTarget;
+  readonly edit_change: MateTarget;
 }
 
 export type Verb = keyof Targets;
 
 /** The verbs that only read; every other one writes and takes `Facts<"fresh">`. */
-export type ReadVerb = "read_project" | "read_app" | "observe_mate";
+export type ReadVerb = "read_project" | "read_app" | "read_change" | "observe_mate";
 
 /** Not distributive: a verb known only as `Verb` may be a write, so it takes `Facts<"fresh">`. */
 export type FactsFor<V extends Verb> = [V] extends [ReadVerb] ? Facts : Facts<"fresh">;
@@ -113,6 +129,7 @@ export const REASONS = [
   "project_gone",
   "held_as_environment",
   "not_a_mate",
+  "mate_not_in_app",
 ] as const;
 
 export type Reason = (typeof REASONS)[number];
@@ -158,6 +175,22 @@ function decide(principal: Principal, request: Request, facts: Facts): Decision 
     return projectOf(projectId) === undefined ? deny("project_gone") : ALLOW;
   }
 
+  if (
+    request.verb === "ensure_repo" ||
+    request.verb === "open_change" ||
+    request.verb === "edit_change"
+  ) {
+    // A Mate's work on its application: its repositories, its changes and its git. Only for its
+    // own project, and only in the application HQ holds it in, which is the only one it can name.
+    const { projectId, appId, held } = request.target;
+    if (principal.kind !== "mate") return deny("wrong_principal");
+    if (principal.projectId !== projectId) return deny("not_your_project");
+    if (appId === null) return deny("mate_not_in_app");
+    if (!knownHeld(held)) return deny("unknown_kind");
+    if (!isMateKind(held)) return deny("not_a_mate");
+    return projectOf(projectId) === undefined ? deny("project_gone") : ALLOW;
+  }
+
   if (principal.kind !== "person") return deny("wrong_principal");
   const member = facts.members.find(
     (candidate) =>
@@ -191,6 +224,8 @@ function decide(principal: Principal, request: Request, facts: Facts): Decision 
     case "read_project":
       return readsProject(request.target.projectId) ? ALLOW : deny("not_project_reader");
     case "read_app":
+    case "read_change":
+    case "comment_change":
       return seesApp(request.target.projectIds) ? ALLOW : deny("app_not_seen");
     case "observe_mate":
       // Who may operate a Mate is who its door opens for: Basic user or above there. No kind check:
