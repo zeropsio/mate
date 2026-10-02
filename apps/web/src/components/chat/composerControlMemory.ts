@@ -19,8 +19,10 @@ export interface ComposerControlLook {
 export type ComposerControlMemory = Readonly<Record<string, ComposerControlLook>>;
 
 const STORAGE_KEY = "mate:composer-control:v1";
-/** Enough for the models a person switches between and the conversations they open; oldest first out. */
-const ROOM = 48;
+/** Kept apart, so conversations opened never push out the models' looks; oldest first out. */
+const MODEL_ROOM = 24;
+const THREAD_ROOM = 48;
+const THREAD_PREFIX = "thread\u0000";
 
 export function composerControlKey(instanceId: string, model: string): string {
   return `${instanceId}\u0000${model}`;
@@ -28,17 +30,19 @@ export function composerControlKey(instanceId: string, model: string): string {
 
 /** A conversation's own control, for its composer's stand-in before the conversation is read. */
 export function composerThreadControlKey(threadKey: string): string {
-  return `thread\u0000${threadKey}`;
+  return `${THREAD_PREFIX}${threadKey}`;
 }
 
 /** What the control shows: the catalog's look once read, else — while it is read — the last one. */
 export function shownComposerControl(input: {
   readonly resolved: ComposerControlLook | null;
   readonly pending: boolean;
-  readonly remembered: ComposerControlLook | undefined;
+  /** Most particular first: the conversation's own last look (its effort), then its model's. */
+  readonly remembered: ReadonlyArray<ComposerControlLook | undefined>;
 }): ComposerControlLook | null {
   if (input.resolved !== null) return input.resolved;
-  return input.pending ? (input.remembered ?? null) : null;
+  if (!input.pending) return null;
+  return input.remembered.find((look) => look !== undefined) ?? null;
 }
 
 const isLabel = (value: unknown): value is ComposerModelControlLabel => {
@@ -79,7 +83,9 @@ export function readComposerControls(text: string | null): ComposerControlMemory
 const same = (a: ComposerControlLook | undefined, b: ComposerControlLook): boolean =>
   a !== undefined && JSON.stringify(a) === JSON.stringify(b);
 
-/** The memory with `look` as the newest, the oldest dropped past its room. */
+const isThreadKey = (key: string): boolean => key.startsWith(THREAD_PREFIX);
+
+/** The memory with `look` as the newest, the oldest of its kind dropped past that kind's room. */
 export function withComposerControl(
   memory: ComposerControlMemory,
   key: string,
@@ -87,7 +93,15 @@ export function withComposerControl(
 ): ComposerControlMemory {
   const entries = Object.entries(memory).filter(([held]) => held !== key);
   entries.push([key, look]);
-  return Object.fromEntries(entries.slice(-ROOM));
+  const room = isThreadKey(key) ? THREAD_ROOM : MODEL_ROOM;
+  let over = entries.filter(([held]) => isThreadKey(held) === isThreadKey(key)).length - room;
+  return Object.fromEntries(
+    entries.filter(([held]) => {
+      if (over <= 0 || isThreadKey(held) !== isThreadKey(key)) return true;
+      over -= 1;
+      return false;
+    }),
+  );
 }
 
 let held: ComposerControlMemory | null = null;
@@ -109,10 +123,10 @@ export function rememberedComposerControl(key: string): ComposerControlLook | un
   return typeof window === "undefined" ? undefined : memoryNow()[key];
 }
 
-/** Remembers how the control looks for `key`, written only when it changed. */
+/** Remembers how the control looks for `key` as the newest; written only when that changes it. */
 export function rememberComposerControl(key: string, look: ComposerControlLook): void {
   const memory = memoryNow();
-  if (same(memory[key], look)) return;
+  if (same(memory[key], look) && Object.keys(memory).at(-1) === key) return;
   held = withComposerControl(memory, key, look);
   try {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(held));

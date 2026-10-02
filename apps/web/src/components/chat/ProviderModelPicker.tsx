@@ -171,7 +171,10 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
   const look = shownComposerControl({
     resolved: resolvedLook,
     pending: props.catalogPending === true,
-    remembered: rememberedComposerControl(controlKey),
+    remembered: [
+      rememberAs === undefined ? undefined : rememberedComposerControl(rememberAs),
+      rememberedComposerControl(controlKey),
+    ],
   });
 
   const setIsMenuOpen = (open: boolean) => {
@@ -286,6 +289,7 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
               // A catalog still read is a beat, not a refusal: the control keeps its look,
               // and the popover above stays shut until it is read.
               disabled={props.disabled === true && props.catalogPending !== true}
+              aria-disabled={props.catalogPending === true || undefined}
               size="quiet"
             />
           }

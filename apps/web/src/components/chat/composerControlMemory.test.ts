@@ -3,6 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   composerControlKey,
+  composerThreadControlKey,
   readComposerControls,
   shownComposerControl,
   withComposerControl,
@@ -17,6 +18,17 @@ const opus: ComposerControlLook = {
 
 describe("the composer's control, as it last looked", () => {
   const key = composerControlKey("claude", "claude-opus-5-5");
+
+  const high = { ...opus, label: { ...opus.label, traits: ["High"] } };
+
+  it("prefers the conversation's own last look to the model's while the catalog is read", () => {
+    expect(
+      shownComposerControl({ resolved: null, pending: true, remembered: [high, opus] }),
+    ).toEqual(high);
+    expect(
+      shownComposerControl({ resolved: null, pending: true, remembered: [undefined, opus] }),
+    ).toEqual(opus);
+  });
 
   it.each([
     {
@@ -55,23 +67,34 @@ describe("the composer's control, as it last looked", () => {
       shown: null,
     },
   ])("$name", ({ resolved, pending, remembered, shown }) => {
-    expect(shownComposerControl({ resolved, pending, remembered })).toEqual(shown);
+    expect(shownComposerControl({ resolved, pending, remembered: [remembered] })).toEqual(shown);
   });
 
-  it("keeps what it remembers across a reload, and drops the oldest past its room", () => {
+  it("keeps what it remembers across a reload, and drops the oldest of its kind past its room", () => {
     let memory = readComposerControls(null);
     memory = withComposerControl(memory, key, opus);
-    const reread = readComposerControls(JSON.stringify(memory));
-    expect(reread[key]).toEqual(opus);
+    expect(readComposerControls(JSON.stringify(memory))[key]).toEqual(opus);
+
+    // Conversations come and go; the models' looks are kept apart from them.
+    for (let index = 0; index < 100; index += 1) {
+      memory = withComposerControl(memory, composerThreadControlKey(`thread-${index}`), opus);
+    }
+    expect(memory[key]).toEqual(opus);
+    expect(Object.keys(memory).filter((held) => held.startsWith("thread"))).toHaveLength(48);
 
     for (let index = 0; index < 30; index += 1) {
       memory = withComposerControl(memory, composerControlKey("claude", `model-${index}`), opus);
     }
-    for (let index = 30; index < 60; index += 1) {
-      memory = withComposerControl(memory, composerControlKey("claude", `model-${index}`), opus);
-    }
-    expect(Object.keys(memory)).toHaveLength(48);
     expect(memory[key]).toBeUndefined();
+  });
+
+  it("keeps a look it keeps seeing, however many others come after it", () => {
+    let memory = withComposerControl(readComposerControls(null), key, opus);
+    for (let index = 0; index < 30; index += 1) {
+      memory = withComposerControl(memory, composerControlKey("claude", `model-${index}`), opus);
+      memory = withComposerControl(memory, key, opus);
+    }
+    expect(memory[key]).toEqual(opus);
   });
 
   it("remembers nothing from a stored shape it cannot read", () => {
