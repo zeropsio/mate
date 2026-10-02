@@ -9,6 +9,7 @@ import {
   type HqGit,
   type HqGitOptions,
   type ImportCredentials,
+  type ImportedChangeHead,
   type Repo,
 } from "./api.ts";
 import { GitRunner, converge, scratch, sweep } from "./git.ts";
@@ -94,6 +95,7 @@ export const makeHqGit = (options: HqGitOptions): Effect.Effect<HqGit, GitError,
       signal: AbortSignal,
       source?: string,
       credentials?: ImportCredentials,
+      changeHeads: ReadonlyArray<ImportedChangeHead> = [],
     ) => {
       const dest = directory(repo);
       const from =
@@ -136,38 +138,58 @@ export const makeHqGit = (options: HqGitOptions): Effect.Effect<HqGit, GitError,
             : {};
           const deadline = AbortSignal.timeout(options.importTimeoutMs ?? 10 * 60 * 1000);
           // Fetch instead of clone: source config, hooks, alternates, and remotes are never copied.
+          const fetch = (refspecs: ReadonlyArray<string>) =>
+            runner
+              .run(
+                [
+                  "-c",
+                  `protocol.${from.protocol}.allow=always`,
+                  "-c",
+                  "credential.helper=",
+                  "-c",
+                  "http.followRedirects=false",
+                  "-C",
+                  repoPath,
+                  "fetch",
+                  "--no-write-fetch-head",
+                  "--no-recurse-submodules",
+                  "--",
+                  from.source,
+                  ...refspecs,
+                ],
+                { env, signal: AbortSignal.any([signal, deadline]) },
+              )
+              .catch((error: unknown) => {
+                throw deadline.aborted
+                  ? new GitError({
+                      operation: "import",
+                      reason: "timeout",
+                      message: "Import timed out",
+                    })
+                  : error;
+              });
           // Change branches are born here, so an imported mate/* could impersonate one.
-          await runner
-            .run(
-              [
-                "-c",
-                `protocol.${from.protocol}.allow=always`,
-                "-c",
-                "credential.helper=",
-                "-c",
-                "http.followRedirects=false",
-                "-C",
-                repoPath,
-                "fetch",
-                "--no-write-fetch-head",
-                "--no-recurse-submodules",
-                "--",
-                from.source,
-                "+refs/heads/*:refs/heads/*",
-                "+refs/tags/*:refs/tags/*",
-                "^refs/heads/mate/*",
-              ],
-              { env, signal: AbortSignal.any([signal, deadline]) },
-            )
-            .catch((error: unknown) => {
-              throw deadline.aborted
-                ? new GitError({
-                    operation: "import",
-                    reason: "timeout",
-                    message: "Import timed out",
-                  })
-                : error;
-            });
+          await fetch([
+            "+refs/heads/*:refs/heads/*",
+            "+refs/tags/*:refs/tags/*",
+            "^refs/heads/mate/*",
+          ]);
+          const heads = await changeBranches(repo, changeHeads);
+          if (heads.length > 0) {
+            await fetch(heads.map(({ head, branch }) => `+${head.ref}:${branch}`));
+            for (const { head, branch } of heads) {
+              const at = await runner.run(
+                ["-C", repoPath, "for-each-ref", "--format=%(objectname)", branch],
+                { signal },
+              );
+              if (at.toString().trim() !== head.sha)
+                throw new GitError({
+                  operation: "import",
+                  reason: "source_refused",
+                  message: "A change head is not at the commit named",
+                });
+            }
+          }
           const main = await runner.run(
             ["-C", repoPath, "for-each-ref", "--format=%(objectname)", "refs/heads/main"],
             { signal },
@@ -189,9 +211,46 @@ export const makeHqGit = (options: HqGitOptions): Effect.Effect<HqGit, GitError,
         if (staging) await NodeFSP.rm(staging, { recursive: true, force: true });
       }
     };
+    /** Each head's branch, once Core's record of its change is found; refused otherwise. */
+    const changeBranches = async (repo: Repo, changeHeads: ReadonlyArray<ImportedChangeHead>) => {
+      const branches = new Set<string>();
+      const found: Array<{ readonly head: ImportedChangeHead; readonly branch: string }> = [];
+      for (const head of changeHeads) {
+        const branch = `refs/heads/mate/${head.mateId}/${String(head.number)}`;
+        if (
+          !validId(head.mateId) ||
+          !Number.isSafeInteger(head.number) ||
+          head.number < 1 ||
+          !/^refs\/[A-Za-z0-9._/-]+$/.test(head.ref) ||
+          head.ref.includes("..") ||
+          !/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/.test(head.sha) ||
+          branches.has(branch)
+        )
+          throw new GitError({
+            operation: "import",
+            reason: "invalid_config",
+            message: "Invalid change head",
+          });
+        const change = await options.lookupChange(repo, head.mateId, head.number);
+        if (
+          change === null ||
+          change.appId !== repo.appId ||
+          change.mateId !== head.mateId ||
+          change.number !== head.number
+        )
+          throw new GitError({
+            operation: "import",
+            reason: "not_found",
+            message: "A change head names no change",
+          });
+        branches.add(branch);
+        found.push({ head, branch });
+      }
+      return found;
+    };
     const create: HqGit["create"] = (repo) => attempt("create", (signal) => build(repo, signal));
-    const importRepo: HqGit["import"] = (repo, source, credentials) =>
-      attempt("import", (signal) => build(repo, signal, source, credentials));
+    const importRepo: HqGit["import"] = (repo, source, credentials, changeHeads) =>
+      attempt("import", (signal) => build(repo, signal, source, credentials, changeHeads));
     const list: HqGit["list"] = (appId) =>
       attempt("list", async () => {
         if (appId !== undefined && !validId(appId))
