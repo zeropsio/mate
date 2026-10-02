@@ -19,11 +19,14 @@ import {
   type Verb,
   can,
 } from "@t3tools/shared/zeropsPermissions";
+import type { MateState } from "@t3tools/shared/mateLink";
 import { type RoleProjectKind, isMateKind } from "@t3tools/shared/zeropsRoles";
 import * as Context from "effect/Context";
 import type * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
+import * as PubSub from "effect/PubSub";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 import * as SubscriptionRef from "effect/SubscriptionRef";
@@ -32,6 +35,7 @@ import type { SqlError } from "effect/unstable/sql/SqlError";
 
 import { heldOf } from "./held.ts";
 import { Leader, type NotLeader } from "./leader.ts";
+import { MateLive, type MateLiveEntry } from "./mateLive.ts";
 import { Roles } from "./roles.ts";
 import type { ZeropsError } from "./zerops/api.ts";
 
@@ -74,12 +78,22 @@ export interface MateRecord {
   readonly face: string;
 }
 
+/**
+ * A Mate as a reader sees it: its record, and — to whoever may operate it (`observe_mate`), once
+ * HQ has heard from it — its live summary (`mateLive.ts`).
+ */
+export interface MateView {
+  readonly name: string;
+  readonly face: string;
+  readonly live?: MateLiveEntry;
+}
+
 export interface StructureRead {
   /** The Mates in no application: their project's name in Zerops and their record. */
   readonly ungrouped: ReadonlyArray<{
     readonly projectId: string;
     readonly name: string;
-    readonly mate: { readonly name: string; readonly face: string };
+    readonly mate: MateView;
   }>;
   readonly apps: ReadonlyArray<{
     readonly id: string;
@@ -88,7 +102,7 @@ export interface StructureRead {
       readonly projectId: string;
       readonly name: string;
       readonly kind: string;
-      readonly mate: { readonly name: string; readonly face: string } | null;
+      readonly mate: MateView | null;
     }>;
   }>;
 }
@@ -140,6 +154,20 @@ export class Structure extends Context.Service<
       projectId: string,
       patch: { readonly name?: string; readonly face?: string },
     ) => Effect.Effect<MateRecord, WriteError>;
+    /**
+     * Records a Mate's birth, as the client that set it up does: that the caller asks for its
+     * stand-up, or that its project is closed off (its runtimes may be imported). By whoever may
+     * edit the Mate's record.
+     */
+    readonly markBirth: (
+      userId: string,
+      projectId: string,
+      mark: "standup" | "closed_off",
+    ) => Effect.Effect<MateState, WriteError>;
+    /** A Mate's state as HQ holds it — its record and its birth — when HQ has its record. */
+    readonly mateState: (projectId: string) => Effect.Effect<Option.Option<MateState>, SqlError>;
+    /** The projects whose Mate state changes, as they change. */
+    readonly mateChanges: Stream.Stream<string>;
     readonly read: (userId: string) => Effect.Effect<StructureRead, SqlError | ZeropsError>;
     /**
      * Follows Zerops: what HQ holds of projects it no longer has (missing from the org's list, and
@@ -198,15 +226,36 @@ export const structureLayer = (options: {
   readonly hqProjectId: string;
   /** How often the leader reconciles with Zerops (SPEC §4); 60 s. */
   readonly reconcileEvery?: Duration.Duration;
-}): Layer.Layer<Structure, never, Leader | Roles | SqlClient.SqlClient> =>
+}): Layer.Layer<Structure, never, Leader | MateLive | Roles | SqlClient.SqlClient> =>
   Layer.effect(
     Structure,
     Effect.gen(function* () {
       const leader = yield* Leader;
       const roles = yield* Roles;
+      const live = yield* MateLive;
       const sql = yield* SqlClient.SqlClient;
       const version = yield* SubscriptionRef.make(0);
       const changed = SubscriptionRef.update(version, (tick) => tick + 1);
+      const mateChanged = yield* PubSub.unbounded<string>();
+      const stateOf = (projectId: string) =>
+        Effect.map(
+          sql<{
+            readonly name: string;
+            readonly face: string;
+            readonly standup_requested_by: string | null;
+            readonly closed_off: boolean;
+          }>`
+            SELECT name, face, standup_requested_by, closed_off_at IS NOT NULL AS closed_off
+            FROM hq_mate WHERE project_id = ${projectId}`,
+          (rows) =>
+            Option.map(Option.fromNullishOr(rows[0]), (row): MateState => ({
+              projectId,
+              name: row.name,
+              face: row.face,
+              standupRequestedBy: row.standup_requested_by,
+              closedOff: row.closed_off,
+            })),
+        );
 
       /** The projects of `projectIds` Zerops refuses by id; any other failure is no answer. */
       const goneOf = (projectIds: ReadonlyArray<string>) =>
@@ -267,7 +316,31 @@ export const structureLayer = (options: {
 
       return Structure.of({
         reconcile,
-        changes: SubscriptionRef.changes(version),
+        changes: Stream.merge(SubscriptionRef.changes(version), live.changes),
+        mateChanges: Stream.fromPubSub(mateChanged),
+        mateState: stateOf,
+        markBirth: (userId, projectId, mark) =>
+          Effect.gen(function* () {
+            const view = yield* roles.fresh;
+            const marked = yield* leader.write(
+              Effect.gen(function* () {
+                const held = yield* heldOf(sql, projectId);
+                yield* allowed(userId, "edit_mate_record", { projectId, held }, view);
+                return yield* mark === "standup"
+                  ? sql`
+                      UPDATE hq_mate SET standup_requested_by = ${userId}
+                      WHERE project_id = ${projectId} RETURNING 1`
+                  : sql`
+                      UPDATE hq_mate SET closed_off_at = COALESCE(closed_off_at, now())
+                      WHERE project_id = ${projectId} RETURNING 1`;
+              }),
+            );
+            if (marked.length === 0) return yield* refuse("mate_not_found", "mate_not_found");
+            yield* PubSub.publish(mateChanged, projectId);
+            const state = yield* stateOf(projectId);
+            if (Option.isNone(state)) return yield* refuse("mate_not_found", "mate_not_found");
+            return state.value;
+          }),
         createApp: (userId, rawName) =>
           Effect.gen(function* () {
             const name = rawName.trim();
@@ -460,6 +533,7 @@ export const structureLayer = (options: {
               "mate_record_exists",
             );
             yield* changed;
+            yield* PubSub.publish(mateChanged, mate.projectId);
             return { projectId: mate.projectId, name, face: mate.face };
           }),
 
@@ -486,6 +560,7 @@ export const structureLayer = (options: {
             );
             if (rows[0] === undefined) return yield* refuse("mate_not_found", "mate_not_found");
             yield* changed;
+            yield* PubSub.publish(mateChanged, projectId);
             return { projectId, ...rows[0] };
           }),
 
@@ -518,13 +593,21 @@ export const structureLayer = (options: {
             const reads = (projectId: string) =>
               can(person, "read_project", { projectId }, view).allow;
             const visible = rows.filter((row) => reads(row.project_id));
+            const summaries = yield* live.all;
+            /** The Mate's record, with its live summary for whoever may operate it. */
+            const mateView = (projectId: string, name: string, face: string): MateView => {
+              const entry = summaries.get(projectId);
+              return entry !== undefined && can(person, "observe_mate", { projectId }, view).allow
+                ? { name, face, live: entry }
+                : { name, face };
+            };
             return {
               ungrouped: alone
                 .filter((row) => reads(row.project_id))
                 .map((row) => ({
                   projectId: row.project_id,
                   name: names.get(row.project_id) ?? "",
-                  mate: { name: row.name, face: row.face },
+                  mate: mateView(row.project_id, row.name, row.face),
                 })),
               apps: apps
                 .map((app) => ({
@@ -539,7 +622,7 @@ export const structureLayer = (options: {
                       mate:
                         row.mate_name === null
                           ? null
-                          : { name: row.mate_name, face: row.mate_face ?? "" },
+                          : mateView(row.project_id, row.mate_name, row.mate_face ?? ""),
                     })),
                 }))
                 .filter(

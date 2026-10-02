@@ -210,7 +210,7 @@ const startCore = (anchored: boolean, given?: { readonly url: string; readonly o
             Effect.timeout(Duration.seconds(5)),
             Effect.orDie,
           );
-        const next = (type: "snapshot" | "change") =>
+        const next = (type: string) =>
           until(() => {
             const found = messages.findIndex((message) => message.type === type);
             return found < 0 ? undefined : messages.splice(0, found + 1).at(-1);
@@ -227,6 +227,7 @@ const startCore = (anchored: boolean, given?: { readonly url: string; readonly o
             ),
           closedWith: until(() => closed?.code, "close"),
           close: Effect.sync(() => ws.close()),
+          send: (message: unknown) => Effect.sync(() => ws.send(encodeJson(message))),
         };
       });
     return { call, fake, url, stop, socket };
@@ -250,7 +251,7 @@ const ticketFor = (call: Call, session: string) =>
     (response) => (response.body as { readonly ticket: string }).ticket,
   );
 
-/** The owner sets `projectId` up as a Mate in no application: what makes it enrollable. */
+/** The owner sets `projectId` up as a Mate in no application (what makes it enrollable); their session. */
 const setUpMate = (call: Call, projectId: string) =>
   Effect.gen(function* () {
     const session = yield* sessionFor(call, "door-owner");
@@ -259,6 +260,18 @@ const setUpMate = (call: Call, projectId: string) =>
       body: { projectId, name: "Ada", face: "face-1" },
     });
     assert.strictEqual(created.status, 201);
+    return session;
+  });
+
+/** What zcp does: the challenge, written into the project's env, presented back; the credential. */
+const enrollMate = (call: Call, fake: FakeWorld, projectId: string) =>
+  Effect.gen(function* () {
+    const { nonce } = (yield* call("POST", "/api/mate/challenge", { body: { projectId } }))
+      .body as { readonly nonce: string };
+    fake.env.set(projectId, [{ key: "MATE_HQ_CHALLENGE", value: nonce, sensitive: false }]);
+    const issued = yield* call("POST", "/api/mate/credential", { body: { projectId, nonce } });
+    assert.strictEqual(issued.status, 200);
+    return (issued.body as { readonly credential: string }).credential;
   });
 
 const sessionFor = (call: Call, token: string) =>
@@ -878,6 +891,130 @@ describe("HQ API", () => {
           assert.deepStrictEqual(statuses, [...Array(10).fill(401), 429]);
           // A person's door at the same address keeps its own bucket.
           assert.strictEqual(yield* knock("/api/door", { token: "unknown" }), 401);
+        }),
+    );
+
+    it.effect(
+      "the Mate's birth is recorded by its project's admin, and the Mate reads its own state",
+      () =>
+        Effect.gen(function* () {
+          const { call, fake } = yield* startCore(true);
+          yield* untilHealth(call, "active");
+          const owner = yield* setUpMate(call, "P_MATE");
+          const credential = yield* enrollMate(call, fake, "P_MATE");
+          const self = Effect.map(
+            call("GET", "/api/mate/self", { headers: { authorization: `Mate ${credential}` } }),
+            (answer) => [answer.status, answer.body],
+          );
+          const born = { projectId: "P_MATE", name: "Ada", face: "face-1" };
+          assert.deepStrictEqual(yield* self, [
+            200,
+            { ...born, standupRequestedBy: null, closedOff: false },
+          ]);
+
+          const standup = yield* call("POST", "/api/mates/P_MATE/standup", { session: owner });
+          assert.deepStrictEqual(
+            [standup.status, standup.body],
+            [200, { ...born, standupRequestedBy: "owner", closedOff: false }],
+          );
+          const closed = yield* call("POST", "/api/mates/P_MATE/closed-off", { session: owner });
+          assert.deepStrictEqual(
+            [closed.status, closed.body],
+            [200, { ...born, standupRequestedBy: "owner", closedOff: true }],
+          );
+          assert.deepStrictEqual(yield* self, [
+            200,
+            { ...born, standupRequestedBy: "owner", closedOff: true },
+          ]);
+
+          const dev = yield* sessionFor(call, "door-dev");
+          const refused = yield* call("POST", "/api/mates/P_MATE/closed-off", { session: dev });
+          assert.deepStrictEqual(
+            [refused.status, refused.body],
+            [403, { code: "forbidden", reason: "not_project_admin" }],
+          );
+          const nobody = yield* call("GET", "/api/mate/self", {
+            headers: { authorization: `Mate ${credential}x` },
+          });
+          assert.strictEqual(nobody.status, 401);
+        }),
+    );
+
+    it.effect(
+      "a Mate's link brings its state down at once and on each change, and its summary up to whoever may operate it",
+      () =>
+        Effect.gen(function* () {
+          const { call, fake, socket } = yield* startCore(true);
+          yield* untilHealth(call, "active");
+          const owner = yield* setUpMate(call, "P_MATE");
+          const credential = yield* enrollMate(call, fake, "P_MATE");
+          const mateAuth = { authorization: `Mate ${credential}` };
+          const ticket = (yield* call("POST", "/api/mate/link-ticket", { headers: mateAuth }))
+            .body as { readonly ticket: string; readonly expiresIn: number };
+          assert.strictEqual(ticket.expiresIn, 60);
+          const link = yield* socket(`/api/mate/link?ticket=${ticket.ticket}`);
+          const state = { projectId: "P_MATE", name: "Ada", face: "face-1" };
+          assert.deepStrictEqual(yield* link.next("state"), {
+            mate: { ...state, standupRequestedBy: null, closedOff: false },
+          });
+          yield* call("POST", "/api/mates/P_MATE/closed-off", { session: owner });
+          assert.deepStrictEqual(yield* link.next("state"), {
+            mate: { ...state, standupRequestedBy: null, closedOff: true },
+          });
+
+          // The owner operates the Mate and follows its summary; a reader only sees it listed.
+          const ownerSocket = yield* socket(
+            `/api/structure/ws?ticket=${yield* ticketFor(call, owner)}`,
+          );
+          yield* ownerSocket.next("snapshot");
+          const reader = yield* sessionFor(call, "door-reader");
+          const readerSocket = yield* socket(
+            `/api/structure/ws?ticket=${yield* ticketFor(call, reader)}`,
+          );
+          yield* readerSocket.next("snapshot");
+          const summary = {
+            main: {
+              threadId: "t1",
+              status: "working",
+              lastRequest: "Add a login page",
+              lastWords: null,
+              lastTurnAt: "2026-10-02T10:00:00Z",
+              waitingQuestion: null,
+              firstError: null,
+              liveStep: "Reading src/app.ts",
+            },
+            running: 1,
+            waiting: 0,
+            signers: { "claude-code": "owner" },
+          };
+          yield* link.send({ type: "summary", summary });
+          const seen = (yield* ownerSocket.next("change")) as {
+            readonly key: string;
+            readonly value: ReadonlyArray<{
+              readonly mate: {
+                readonly live?: { readonly online: boolean; readonly summary: unknown };
+              };
+            }>;
+          };
+          assert.strictEqual(seen.key, "ungrouped");
+          assert.deepStrictEqual(seen.value[0]?.mate.live?.summary, summary);
+          assert.strictEqual(seen.value[0]?.mate.live?.online, true);
+          assert.deepStrictEqual(yield* readerSocket.quiet("500 millis"), []);
+
+          // The link goes: the Mate is offline, its last summary kept.
+          yield* link.close;
+          const gone = (yield* ownerSocket.next("change")) as typeof seen;
+          assert.strictEqual(gone.value[0]?.mate.live?.online, false);
+          assert.deepStrictEqual(gone.value[0]?.mate.live?.summary, summary);
+
+          // Without a Mate's credential there is no ticket, and a ticket opens one link.
+          assert.strictEqual(
+            (yield* call("POST", "/api/mate/link-ticket", { headers: { authorization: "Mate x" } }))
+              .status,
+            401,
+          );
+          const reused = yield* socket(`/api/mate/link?ticket=${ticket.ticket}`);
+          assert.isFalse(reused.opened);
         }),
     );
 

@@ -8,6 +8,7 @@ import * as SqlClient from "effect/unstable/sql/SqlClient";
 
 import { activeCoreLayer, untilActive } from "../test/harness/activeCore.ts";
 import { TempPostgres, tempPostgresLayer } from "../test/harness/tempPostgres.ts";
+import { mateLiveLayer } from "./mateLive.ts";
 import { type OrgView, Roles } from "./roles.ts";
 import { Structure, structureLayer } from "./structure.ts";
 import { type ZeropsMember, type ZeropsProject, ZeropsUnavailable } from "./zerops/api.ts";
@@ -93,6 +94,7 @@ const withStructure = <A, E>(
       structureLayer({ hqProjectId: "HQ" }).pipe(
         Layer.provideMerge(activeCoreLayer(url)),
         Layer.provide(roles),
+        Layer.provide(mateLiveLayer),
       ),
     );
     return yield* Effect.andThen(untilActive, use(view, down)).pipe(Effect.provide(context));

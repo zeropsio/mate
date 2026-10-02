@@ -24,12 +24,18 @@ import { doorLayer } from "./door.ts";
 import { healthRoute } from "./health.ts";
 import { Leader, leaderLayer } from "./leader.ts";
 import { mateCredentialsLayer } from "./mateCredentials.ts";
+import { mateLiveLayer } from "./mateLive.ts";
 import type { Migration } from "./migrations.ts";
 import { officialLayer } from "./official.ts";
 import { doorRateLimitLayer } from "./rateLimit.ts";
 import { rolesLayer } from "./roles.ts";
 import { sessionsLayer } from "./sessions.ts";
-import { LiveSockets, liveSocketsLayer, streamTicketsLayer } from "./stream.ts";
+import {
+  LiveSockets,
+  liveSocketsLayer,
+  mateLinkTicketsLayer,
+  streamTicketsLayer,
+} from "./stream.ts";
 import { structureLayer } from "./structure.ts";
 
 export interface CoreOptions {
@@ -58,6 +64,10 @@ const routes = (options: CoreOptions) =>
       clientOrigins: options.clientOrigins,
       ...(options.streamRecheck === undefined ? {} : { recheck: options.streamRecheck }),
       ...(options.pingEvery === undefined ? {} : { pingEvery: options.pingEvery }),
+      link: {
+        ...(options.pingEvery === undefined ? {} : { pingEvery: options.pingEvery }),
+        ...(options.streamRecheck === undefined ? {} : { recheck: options.streamRecheck }),
+      },
     }),
   );
 
@@ -85,8 +95,10 @@ const services = (options: CoreOptions) => {
     mateCredentialsLayer({ credential: options.credential }),
     doorRateLimitLayer,
     streamTicketsLayer,
+    mateLinkTicketsLayer,
     liveSocketsLayer,
   ).pipe(
+    Layer.provideMerge(mateLiveLayer),
     Layer.provideMerge(
       rolesLayer({
         hqProjectId: options.hqProjectId,

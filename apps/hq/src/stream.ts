@@ -173,36 +173,45 @@ export const serveStructureSocket = <R>(
     }),
   );
 
-export class StreamTickets extends Context.Service<
-  StreamTickets,
-  {
-    /** A ticket for `session`'s socket. */
-    readonly mint: (session: string) => Effect.Effect<{ readonly ticket: string }>;
-    /** The session a live, unused ticket was minted for; the ticket is spent. */
-    readonly take: (ticket: string) => Effect.Effect<Option.Option<string>>;
-  }
->()("@t3tools/hq/stream/StreamTickets") {}
+/** One-use tickets for a socket a client opens without headers: 60 s, held in this Core's memory. */
+export interface Tickets {
+  /** A ticket for `holder` (a person's session, a Mate's credential). */
+  readonly mint: (holder: string) => Effect.Effect<{ readonly ticket: string }>;
+  /** The holder a live, unused ticket was minted for; the ticket is spent. */
+  readonly take: (ticket: string) => Effect.Effect<Option.Option<string>>;
+}
+
+/** Tickets for a person's structure socket, minted for their session. */
+export class StreamTickets extends Context.Service<StreamTickets, Tickets>()(
+  "@t3tools/hq/stream/StreamTickets",
+) {}
+
+/** Tickets for a Mate's link, minted for its credential (`link.ts`). */
+export class MateLinkTickets extends Context.Service<MateLinkTickets, Tickets>()(
+  "@t3tools/hq/stream/MateLinkTickets",
+) {}
 
 const TICKET_TTL_MS = 60_000;
 
-export const streamTicketsLayer = Layer.sync(StreamTickets, () => {
-  const tickets = new Map<string, { readonly session: string; readonly until: number }>();
+const makeTickets = (): Tickets => {
+  const tickets = new Map<string, { readonly holder: string; readonly until: number }>();
   const hashOf = (ticket: string) => NodeCrypto.createHash("sha256").update(ticket).digest("hex");
-  return StreamTickets.of({
-    mint: (session) =>
+  return {
+    mint: (holder) =>
       Effect.map(Clock.currentTimeMillis, (now) => {
         for (const [key, entry] of tickets) if (entry.until <= now) tickets.delete(key);
         const ticket = NodeCrypto.randomBytes(32).toString("base64url");
-        tickets.set(hashOf(ticket), { session, until: now + TICKET_TTL_MS });
+        tickets.set(hashOf(ticket), { holder, until: now + TICKET_TTL_MS });
         return { ticket };
       }),
     take: (ticket) =>
       Effect.map(Clock.currentTimeMillis, (now) => {
         const entry = tickets.get(hashOf(ticket));
         tickets.delete(hashOf(ticket));
-        return entry !== undefined && entry.until > now
-          ? Option.some(entry.session)
-          : Option.none();
+        return entry !== undefined && entry.until > now ? Option.some(entry.holder) : Option.none();
       }),
-  });
-});
+  };
+};
+
+export const streamTicketsLayer = Layer.sync(StreamTickets, makeTickets);
+export const mateLinkTicketsLayer = Layer.sync(MateLinkTickets, makeTickets);

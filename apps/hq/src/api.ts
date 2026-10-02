@@ -15,7 +15,10 @@
  *   → `{ projectId, name, face }`: a Mate's record, in an application or not.
  * - The Mate's own door (`mateCredentials.ts`): `POST /api/mate/challenge` `{ projectId }` →
  *   `{ nonce, expiresIn }`; `POST /api/mate/credential` `{ projectId, nonce }` → `{ credential }`;
- *   `GET /api/mate/whoami` with `Authorization: Mate <credential>` → `{ projectId }`.
+ *   `GET /api/mate/whoami` with `Authorization: Mate <credential>` → `{ projectId }`;
+ *   `GET /api/mate/self`, the same → the Mate's state (`@t3tools/shared/mateLink` `MateState`).
+ * - `POST /api/mates/:projectId/standup`, `POST /api/mates/:projectId/closed-off` → the Mate's state:
+ *   its birth, recorded by the client that set it up (the caller asks for the stand-up).
  *
  * Every call but the doors carries `Authorization: Bearer <session>`, of a session issued for this
  * HQ's org. Only the leading HQ answers: a standby or an HQ that is not the official one answers
@@ -39,12 +42,14 @@ import * as HttpServerRequest from "effect/unstable/http/HttpServerRequest";
 import * as HttpServerResponse from "effect/unstable/http/HttpServerResponse";
 
 import { Door } from "./door.ts";
+import { type LinkOptions, serveMateLink } from "./link.ts";
 import { Leader, NotLeader } from "./leader.ts";
 import { MateCredentials, MateRefused } from "./mateCredentials.ts";
 import { DoorRateLimit } from "./rateLimit.ts";
 import { Roles } from "./roles.ts";
 import { Sessions } from "./sessions.ts";
 import {
+  MateLinkTickets,
   type StreamOptions,
   StreamTickets,
   serveStructureSocket,
@@ -207,16 +212,22 @@ const knock = (door: "person" | "mate") =>
     }
   });
 
-/** The project of the Mate credential presented as `Authorization: Mate <credential>`. */
-const mate = Effect.gen(function* () {
-  const request = yield* HttpServerRequest.HttpServerRequest;
-  const presented = /^Mate (\S+)$/u.exec(request.headers["authorization"] ?? "")?.[1];
-  const found =
-    presented === undefined ? Option.none() : yield* (yield* MateCredentials).whoami(presented);
-  return Option.isSome(found) ? found.value : yield* new MateCredentialRequired();
-});
+/** The project a live Mate credential is bound to; the credential presented. */
+const mateHolding = (presented: string | undefined) =>
+  Effect.gen(function* () {
+    const found =
+      presented === undefined ? Option.none() : yield* (yield* MateCredentials).whoami(presented);
+    return Option.isSome(found) && presented !== undefined
+      ? { projectId: found.value.projectId, credential: presented }
+      : yield* new MateCredentialRequired();
+  });
 
-const routes = (options: StreamOptions) =>
+/** The Mate presenting `Authorization: Mate <credential>`. */
+const mate = Effect.flatMap(HttpServerRequest.HttpServerRequest, (request) =>
+  mateHolding(/^Mate (\S+)$/u.exec(request.headers["authorization"] ?? "")?.[1]),
+);
+
+const routes = (options: StreamOptions & { readonly link?: LinkOptions }) =>
   Layer.mergeAll(
     HttpRouter.add(
       "POST",
@@ -259,7 +270,63 @@ const routes = (options: StreamOptions) =>
     HttpRouter.add(
       "GET",
       "/api/mate/whoami",
-      handle(Effect.map(mate, (found) => json(found, 200))),
+      handle(Effect.map(mate, ({ projectId }) => json({ projectId }, 200))),
+    ),
+    HttpRouter.add(
+      "POST",
+      "/api/mate/link-ticket",
+      handle(
+        Effect.gen(function* () {
+          const { credential } = yield* mate;
+          const minted = yield* (yield* MateLinkTickets).mint(credential);
+          return json({ ticket: minted.ticket, expiresIn: 60 }, 200);
+        }),
+      ),
+    ),
+    HttpRouter.add(
+      "GET",
+      "/api/mate/link",
+      handle(
+        Effect.gen(function* () {
+          const request = yield* HttpServerRequest.HttpServerRequest;
+          const ticket = new URL(request.url, "http://hq").searchParams.get("ticket");
+          const presented =
+            ticket === null
+              ? undefined
+              : Option.getOrUndefined(yield* (yield* MateLinkTickets).take(ticket));
+          const { projectId, credential } = yield* mateHolding(presented);
+          const socket = yield* request.upgrade;
+          yield* serveMateLink(socket, projectId, credential, options.link ?? {});
+          return HttpServerResponse.empty();
+        }),
+      ),
+    ),
+    HttpRouter.add(
+      "GET",
+      "/api/mate/self",
+      handle(
+        Effect.gen(function* () {
+          const { projectId } = yield* mate;
+          const state = yield* (yield* Structure).mateState(projectId);
+          return Option.isSome(state)
+            ? json(state.value, 200)
+            : json({ code: "mate_not_found", reason: "mate_not_found" }, 404);
+        }),
+      ),
+    ),
+    ...(["standup", "closed-off"] as const).map((path) =>
+      HttpRouter.add(
+        "POST",
+        `/api/mates/:projectId/${path}`,
+        handle(
+          Effect.gen(function* () {
+            const { userId } = yield* principal;
+            const projectId = (yield* HttpRouter.params)["projectId"] ?? "";
+            const mark = path === "standup" ? "standup" : "closed_off";
+            return json(yield* (yield* Structure).markBirth(userId, projectId, mark), 200);
+          }),
+        ),
+      ),
     ),
     HttpRouter.add(
       "DELETE",
@@ -395,7 +462,9 @@ const routes = (options: StreamOptions) =>
   );
 
 export const apiRoutes = (
-  options: { readonly clientOrigins: ReadonlyArray<string> } & StreamOptions,
+  options: { readonly clientOrigins: ReadonlyArray<string> } & StreamOptions & {
+      readonly link?: LinkOptions;
+    },
 ) =>
   Layer.mergeAll(
     routes(options),
