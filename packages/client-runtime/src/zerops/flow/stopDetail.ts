@@ -293,7 +293,7 @@ export interface StopServiceRow {
   readonly status: string | undefined;
   /**
    * What the service runs now — through a build, what ran before it — and how long it has, when
-   * the platform says; the Gitea side's name while the platform's is not read. `undefined` for
+   * the platform says; the name HQ's record gives while the platform's is not read. `undefined` for
    * nothing known to run.
    */
   readonly runs: ServiceRuns | undefined;
@@ -330,7 +330,7 @@ function settledOf(deployment: Shown<Deployment>): SettledDeployment | null {
 }
 
 /**
- * The version a service's row names: what the platform says it runs, the Gitea side's while the
+ * The version a service's row names: what the platform says it runs, HQ's record's while the
  * platform is not read — never the one a build is deploying, which runs nothing yet, and none
  * while nothing states what ran before that build.
  */
@@ -410,7 +410,7 @@ export function serviceRows(input: {
   return code.map((state) => {
     const { hostname } = state;
     const deployment = deploymentOf(hostname);
-    // What the Gitea side read: the version a build deploys, while one runs.
+    // What HQ's record names: the version a build deploys, while one runs.
     const read = deployedVersion(state.appVersionName);
     const settled = settledOf(deployment);
     const version = settledVersionOf(deployment, settled, read);

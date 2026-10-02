@@ -116,26 +116,14 @@ export type FlowVerbOutcome =
   | { readonly ok: false; readonly reason: string };
 
 export interface ZeropsProjectFlowValue {
-  readonly giteaOrigin: string | undefined;
   /**
    * The organization's official HQ, whose addresses name a Mate's changes; `undefined` until its
    * anchor is resolved, and nothing is read as one of its changes until then.
    */
   readonly hqAddress: string | undefined;
   /**
-   * Whether what was read as the person stands: this tab holds a Gitea session, or is getting one
-   * back after holding it — stale, with the cause in `trouble` after two failed tries. Without it
-   * the flows are empty.
-   */
-  readonly signedIn: boolean;
-  /**
-   * A Gitea request can go out as the person now. False while the flows stand with no token held:
-   * a surface starts no Gitea read or write then, and runs one once this turns true.
-   */
-  readonly readable: boolean;
-  /**
-   * Why no token is held: a refusal at once, a Gitea or broker that does not answer only after
-   * two failed tries.
+   * Why no Gitea token is held: a refusal at once, a Gitea or broker that does not answer only
+   * after two failed tries. Nothing a flow shows or does reads Gitea.
    */
   readonly signInTrouble: string | null;
   readonly flows: ReadonlyMap<string, ZeropsProjectFlow>;
@@ -155,10 +143,7 @@ export interface ZeropsProjectFlowValue {
   readonly mateNames: ReadonlyMap<string, string>;
   /** The verbs in flight, by `flowVerbKey`: a row shows its own running and takes no second click. */
   readonly pending: ReadonlySet<string>;
-  /**
-   * While the flows stand with no token, why ({@link signInTrouble}); otherwise what the last
-   * verb's refusal said, until the next verb.
-   */
+  /** What the last verb's refusal said, until the next verb. */
   readonly trouble: string | null;
   /**
    * A release made in HQ as the person, of what the offer shows: its `entries`, named its

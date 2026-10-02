@@ -502,11 +502,7 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
 
   const registry = useZeropsRegistry();
   const platform = useMemo(() => zeropsThrowawayPlatform(session.client), [session.client]);
-  const {
-    signedIn,
-    readable,
-    trouble: signInTrouble,
-  } = useGiteaSession({
+  const { trouble: signInTrouble } = useGiteaSession({
     giteaOrigin,
     brokerOrigin,
     clientId,
@@ -1094,10 +1090,7 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
   }, [awaiting, pending, settled]);
   const value = useMemo<ZeropsProjectFlowValue>(
     () => ({
-      giteaOrigin,
       hqAddress,
-      signedIn,
-      readable,
       signInTrouble,
       flows: lapsed ? EMPTY_FLOWS : flows,
       releaseFailures: lapsed ? NO_FAILURES : releaseFailures,
@@ -1105,8 +1098,7 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
       slugs: lapsed ? EMPTY_SLUGS : slugs,
       mateNames,
       pending: pendingOrHeld,
-      // Flows that stand with no token say why where the verbs are, ahead of what a verb said.
-      trouble: (signedIn ? signInTrouble : null) ?? trouble,
+      trouble,
       release,
       rollBack,
       merge,
@@ -1117,19 +1109,16 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
       close,
       deployments,
       flows,
-      giteaOrigin,
       hqAddress,
       lapsed,
       mateNames,
       merge,
       pendingOrHeld,
-      readable,
       redeploy,
       release,
       releaseFailures,
       rollBack,
       signInTrouble,
-      signedIn,
       slugs,
       trouble,
     ],

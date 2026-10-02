@@ -43,12 +43,10 @@ import {
 const GITEA = "https://gitea.example.test";
 
 /**
- * The flows stand through a failed reacquire: signed in, and no token to act with until
- * `readable` turns; `trouble` is the cause the session names. `origin` is whether the account has
- * a Gitea at all.
+ * The account's Gitea session, which nothing a flow shows or does reads: `trouble` is the cause the
+ * session names. `origin` is whether the account has a Gitea at all.
  */
 const gitea = vi.hoisted(() => ({
-  readable: false,
   origin: true,
   trouble: null as string | null,
 }));
@@ -72,7 +70,7 @@ const released = vi.hoisted(() => ({
 }));
 
 vi.mock("./accountGiteaSessions", () => ({
-  useGiteaSession: () => ({ signedIn: true, readable: gitea.readable, trouble: gitea.trouble }),
+  useGiteaSession: () => ({ signedIn: true, readable: true, trouble: gitea.trouble }),
 }));
 vi.mock("./ZeropsSessionProvider", () => ({
   useZeropsSession: () => ({
@@ -335,7 +333,6 @@ function structureWith(environments: ReadonlyArray<HqEnvironment>): HqStructureV
 
 describe("ZeropsProjectFlowProvider", () => {
   afterEach(() => {
-    gitea.readable = false;
     gitea.origin = true;
     gitea.trouble = null;
     access.account = { kind: "authorized" };
@@ -647,7 +644,8 @@ describe("ZeropsProjectFlowProvider", () => {
     });
   });
 
-  it("a Gitea that stops answering keeps the flows and names the cause where the verbs are", async () => {
+  // Nothing a flow shows or does reads Gitea: its session's trouble is not the verbs' to say.
+  it("a Gitea that stops answering keeps the flows, and puts no trouble where the verbs are", async () => {
     gitea.trouble = "Gitea isn't answering.";
     installTestDom();
     const { createRoot } = await import("react-dom/client");
@@ -663,7 +661,7 @@ describe("ZeropsProjectFlowProvider", () => {
       root.render(createElement(ZeropsProjectFlowProvider, null, createElement(Probe)));
     });
     expect([...(seen.at(-1)?.flows.keys() ?? [])]).toEqual(["g1"]);
-    expect(seen.at(-1)?.trouble).toBe("Gitea isn't answering.");
+    expect(seen.at(-1)?.trouble).toBeNull();
 
     await act(async () => {
       root.unmount();

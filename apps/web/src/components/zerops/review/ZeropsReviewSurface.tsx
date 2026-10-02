@@ -315,7 +315,7 @@ export function ReviewFailed({
 }: {
   /** What could not be read: "The files couldn't be read." */
   readonly what: string;
-  /** Why, in Gitea's words. */
+  /** Why, in HQ's words. */
   readonly reason: string;
   readonly onRetry: (() => void) | undefined;
 }) {

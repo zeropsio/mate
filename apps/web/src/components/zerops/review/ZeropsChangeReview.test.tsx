@@ -30,9 +30,6 @@ const account = vi.hoisted(() => ({
 
 vi.mock("~/zerops/projectFlowContext", () => ({
   useZeropsProjectFlowOptional: () => ({
-    giteaOrigin: "https://gitea.example.test",
-    signedIn: true,
-    readable: true,
     signInTrouble: null,
     flows: new Map(),
     deployments: new Map(),
