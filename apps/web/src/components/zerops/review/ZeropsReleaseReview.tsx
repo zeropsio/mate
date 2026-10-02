@@ -25,7 +25,7 @@ import {
   reviewAge,
   rollbackReads,
   rollbackReview,
-  sameCommit,
+  rollbackServices,
   shortCommit,
   stageMarks,
   stageStandings,
@@ -480,6 +480,8 @@ interface RollbackLists {
 }
 
 const NO_ASKS: ReadonlyMap<string, ReadonlyArray<CompareRead>> = new Map();
+/** What a roll back to a release not listed goes back to: nothing. */
+const NO_ENTRIES: ReadonlyArray<ReleaseEntry> = [];
 const COMPARING: MovedCommits = { state: "reading" };
 const LISTS_UNREAD: RollbackLists = { leaving: COMPARING, comingBack: COMPARING, untold: [] };
 /** A roll back's rows are never marked by the stage: nothing it brings back is new to `main`. */
@@ -566,13 +568,6 @@ function RollbackData({
           }),
           ...movedCount(moved.moved),
         };
-  // A service moves where production runs another commit than the release lists, or none.
-  const moving = (earlier?.entries ?? [])
-    .filter(({ service, commit }) => {
-      const run = runs?.get(service);
-      return run?.kind === "nothing" || (run?.kind === "commit" && !sameCommit(run.sha, commit));
-    })
-    .map((entry) => entry.service);
   const rollBack = async () => {
     if (flowValue === null) return;
     setPress({ kind: "running" });
@@ -598,13 +593,11 @@ function RollbackData({
       }}
       outcome={outcome}
       press={press}
-      services={
-        moving.length === 0 ? (earlier?.entries.map((entry) => entry.service) ?? []) : moving
-      }
+      services={rollbackServices({ entries: earlier?.entries ?? NO_ENTRIES, runs })}
       tag={tag}
       titleId={titleId}
       untold={lists.untold}
-      where={(earlier?.entries ?? []).map((entry) => ({
+      where={(earlier?.entries ?? NO_ENTRIES).map((entry) => ({
         service: entry.service,
         line: `goes back to ${shortCommit(entry.commit)}`,
       }))}

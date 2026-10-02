@@ -181,6 +181,26 @@ export function rollbackReads(input: {
 }
 
 /**
+ * The services a roll back to `entries` redeploys, as its review names them: each one production
+ * runs another commit on than the release lists, or nothing at all. One whose commit cannot be told
+ * is never said to move. While none is known to move — what production runs not known yet, or none
+ * differing — every service the release lists.
+ */
+export function rollbackServices(input: {
+  readonly entries: ReadonlyArray<ReleaseEntry>;
+  /** What each production service runs (`productionRuns`); `undefined` while not known. */
+  readonly runs: ReadonlyMap<string, ProductionRun> | undefined;
+}): ReadonlyArray<string> {
+  const moving = input.entries
+    .filter(({ service, commit }) => {
+      const run = input.runs?.get(service);
+      return run?.kind === "nothing" || (run?.kind === "commit" && !sameCommit(run.sha, commit));
+    })
+    .map(({ service }) => service);
+  return moving.length === 0 ? input.entries.map(({ service }) => service) : moving;
+}
+
+/**
  * What to ask so each release can say what it carried (main C25): per repository it moved, named
  * by its first service that moved, the commits from the one the nearest older release lists — for
  * that service, else for another of its repository — to its own; with none older, from the
