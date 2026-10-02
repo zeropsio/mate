@@ -142,6 +142,9 @@ describe("ZeropsEnvironmentCreation", () => {
     });
     expect(html).toContain("app has nothing deployed yet");
     expect(html).toContain("its first deploy of main shows on its line above");
+    // Its services stand; nothing serves there yet, so it is set up, never "up".
+    expect(html).toContain("The environment is set up.");
+    expect(html).not.toContain(" is up");
     expect(html).not.toContain("Zerops dashboard");
     // The card cannot see the group's runner: it promises no time (run 4, F2 — the runner was
     // dead and "within a few minutes" stood for 4.6 min).
@@ -152,7 +155,7 @@ describe("ZeropsEnvironmentCreation", () => {
     { outcome: undefined, title: "Creating Beviro CRM - production" },
     {
       outcome: { kind: "done", deployments: [nothingDeployed("app")] } as const,
-      title: "Beviro CRM - production is up",
+      title: "Beviro CRM - production is set up",
     },
     // Handed off, its container is still on its way: still being created.
     { outcome: { kind: "handed-off" } as const, title: "Creating Beviro CRM - production" },
