@@ -2282,6 +2282,72 @@ describe("ZeropsApiClient.writeProjectTags — the TagWriter's one PUT", () => {
   });
 });
 
+describe("ZeropsApiClient — a project's public HTTP routing", () => {
+  it("lists each routing with its domains' certificate state", async () => {
+    const stub = recordingFetch(() =>
+      jsonResponse(200, {
+        list: [
+          {
+            id: "r1",
+            sslEnabled: true,
+            isSynced: false,
+            domains: [
+              {
+                domainName: "abc.zerops.app",
+                dnsCheckStatus: "PENDING",
+                sslStatus: "WAITING_FOR_DNS",
+                sslCertificateInstallationError: "dns not ready",
+              },
+            ],
+            locations: [{ path: "/", port: 8080, serviceStackId: "svc-hq" }],
+          },
+        ],
+      }),
+    );
+    const client = new ZeropsApiClient({ fetch: stub.fetch });
+    client.restoreSession(SESSION);
+    await expect(client.listPublicHttpRoutings("hq1")).resolves.toEqual([
+      {
+        id: "r1",
+        isSynced: false,
+        domains: [
+          { domainName: "abc.zerops.app", sslStatus: "WAITING_FOR_DNS", sslError: "dns not ready" },
+        ],
+      },
+    ]);
+    expect(stub.requests[0]).toMatchObject({
+      method: "GET",
+      url: expect.stringMatching(/\/project\/hq1\/public-http-routing$/),
+    });
+  });
+
+  it("makes one routing, with SSL, and syncs the project's routings as one process", async () => {
+    const stub = recordingFetch((request) =>
+      request.method === "PUT"
+        ? jsonResponse(200, { id: "proc-sync" })
+        : jsonResponse(200, { id: "r1" }),
+    );
+    const client = new ZeropsApiClient({ fetch: stub.fetch });
+    client.restoreSession(SESSION);
+    await client.createPublicHttpRouting("hq1", {
+      domains: ["abc.zerops.app"],
+      locations: [{ path: "/", port: 8080, serviceStackId: "svc-hq" }],
+    });
+    await expect(client.syncPublicHttpRouting("hq1")).resolves.toEqual({ processId: "proc-sync" });
+    expect(
+      stub.requests.map((request) => `${request.method} ${new URL(request.url).pathname}`),
+    ).toEqual([
+      "POST /api/rest/public/project/hq1/public-http-routing",
+      "PUT /api/rest/public/project/hq1/sync-public-http-routing",
+    ]);
+    expect(JSON.parse(stub.requests[0]!.body!)).toEqual({
+      sslEnabled: true,
+      domains: ["abc.zerops.app"],
+      locations: [{ path: "/", port: 8080, serviceStackId: "svc-hq" }],
+    });
+  });
+});
+
 describe("ZeropsApiClient.listProjectCreations", () => {
   it("searches the organization's newest processes and answers its project creations, each with its creator", async () => {
     const stub = recordingFetch(() =>

@@ -112,6 +112,8 @@ const contract = (name: string, subject: Effect.Effect<Subject, never, Scope.Sco
         assert.strictEqual(project.status, "ACTIVE");
         assert.include(project.tags, "mate-rig");
         assert.isArray(project.userRoles);
+        // The project's own domain, the CNAME target every project has.
+        assert.match(project.publicZone, /^[a-z0-9]+\.[a-z0-9]+-zerops\.zone$/u);
       }),
     );
 
@@ -214,6 +216,7 @@ const fakeSubject = (down: boolean) =>
       status: "ACTIVE",
       tags: ["mate-rig"],
       userRoles: [],
+      publicZone: "p1zone.prg1-zerops.zone",
     });
     world.env.set("P1", [
       { key: PLAIN.key, value: PLAIN.value, sensitive: false },

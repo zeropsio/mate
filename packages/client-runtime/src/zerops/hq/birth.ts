@@ -3,24 +3,23 @@
  * the HQ project, its anchor and working credential, and Core deployed from the build the client
  * itself came with.
  *
- * Six steps, each reading what is there before it writes:
+ * Seven steps, each reading what is there before it writes:
  *
  * 1. `project` — the HQ project from an import: `hq` (Core; never `core`, every project's reserved
  *    system service, T0 §4), `db` and `vol`, named `Headquarters` as the Gitea project was, tagged
  *    `mate:hq` for the Zerops GUI alone. Never while the member list names an HQ already.
- * 2. `services` — the three services up, Core's subdomain published, and Core's address from the
- *    project (`https://hq-<zeropsSubdomainHost>-8080.<region>.zerops.app`, equal to the
- *    `zeropsSubdomain` Core reads; measured on the rig 2026-10-02). Core reads that address once,
- *    at its start, so the subdomain is on before Core is deployed where the platform allows it.
- * 3. `anchor` — `mate-hq:<projectId>:<address>`, org Admin, its value dropped at once: the mark
+ * 2. `services` — the three services up.
+ * 3. `domain` — HQ's address is its project's own domain (`publicZone`), the one Core names itself
+ *    by: a routing of it to Core's port with SSL, the project's routings synced, and its
+ *    certificate active (about ten seconds, measured on the rig 2026-10-02). An address that never
+ *    serves over HTTPS stops here, with the platform's reason.
+ * 4. `anchor` — `mate-hq:<projectId>:<address>`, org Admin, its value dropped at once: the mark
  *    that makes this HQ the official one (`anchor.ts`). Never while an anchor names another one.
- * 4. `credential` — `mate-hq-org:<projectId>`, org Read only and nothing else, written as the
+ * 5. `credential` — `mate-hq-org:<projectId>`, org Read only and nothing else, written as the
  *    sensitive `HQ_ORG_TOKEN` of `hq`. A token's value is shown once: a token whose variable is
  *    missing is regenerated; a variable that is there is never written again.
- * 5. `deploy` — Core's archive and `zerops.yml` (`core`), as an app version built and deployed;
- *    then, where the platform would not publish the subdomain before there was code, it is
- *    published now and Core restarted, to start again with its address.
- * 6. `ready` — `/health` answering `official: ok` and `state: active`, which follows the anchor
+ * 6. `deploy` — Core's archive and `zerops.yml` (`core`), as an app version built and deployed.
+ * 7. `ready` — `/health` answering `official: ok` and `state: active`, which follows the anchor
  *    within Core's 30 s recheck.
  *
  * The **record** (`HqBirthRecord`) is what a step leaves for the next, and what *Try again* — or a
@@ -38,7 +37,6 @@
  */
 import { ZeropsApiError, type ZeropsApiClient } from "../api.ts";
 import type { ZeropsProjectCreationRecord } from "../projectCreation.ts";
-import { zeropsRegionFromPublicZone } from "../containerAddress.ts";
 import { findOfficialHq, hqAnchorName, hqOrgTokenName } from "./anchor.ts";
 import type { HqEndpoint, HqHealth } from "./client.ts";
 
@@ -53,11 +51,19 @@ const HQ_ORG_TOKEN_ENV = "HQ_ORG_TOKEN";
 /** The `zerops.yml` entry Core deploys from (`apps/hq/zerops.yml`). */
 const HQ_SETUP = "hq";
 
-export type HqBirthStep = "project" | "services" | "anchor" | "credential" | "deploy" | "ready";
+export type HqBirthStep =
+  | "project"
+  | "services"
+  | "domain"
+  | "anchor"
+  | "credential"
+  | "deploy"
+  | "ready";
 
 export const HQ_BIRTH_STEPS: ReadonlyArray<HqBirthStep> = [
   "project",
   "services",
+  "domain",
   "anchor",
   "credential",
   "deploy",
@@ -68,6 +74,7 @@ export const HQ_BIRTH_STEPS: ReadonlyArray<HqBirthStep> = [
 export const HQ_BIRTH_DOING: Readonly<Record<HqBirthStep, string>> = {
   project: "Creating HQ's project",
   services: "Starting HQ's services",
+  domain: "Giving HQ its address",
   anchor: "Marking it this organization's HQ",
   credential: "Giving HQ its access",
   deploy: "Deploying HQ",
@@ -118,8 +125,9 @@ export type HqBirthPlatform = Pick<
   | "uploadAppVersionArchive"
   | "buildAndDeployAppVersion"
   | "readProcessStatus"
-  | "enableSubdomainAccess"
-  | "restartService"
+  | "listPublicHttpRoutings"
+  | "createPublicHttpRouting"
+  | "syncPublicHttpRouting"
 >;
 
 /** Core as this build of the app carries it (`hq-core/`). */
@@ -131,14 +139,19 @@ export interface HqCoreArtifact {
 export interface HqBirthWaits {
   readonly pollMs: number;
   readonly servicesCapMs: number;
+  readonly domainCapMs: number;
   readonly deployCapMs: number;
   readonly readyCapMs: number;
 }
 
-/** The import takes about a minute, a deploy about one (T0 §3, §4); both get ten times that. */
+/**
+ * The import takes about a minute, a deploy about one (T0 §3, §4); both get ten times that. A
+ * domain's certificate takes about ten seconds; it gets a few minutes.
+ */
 export const HQ_BIRTH_WAITS: HqBirthWaits = {
   pollMs: 3_000,
   servicesCapMs: 10 * 60_000,
+  domainCapMs: 5 * 60_000,
   deployCapMs: 15 * 60_000,
   readyCapMs: 5 * 60_000,
 };
@@ -215,7 +228,6 @@ export function hqImportYaml(input: {
     `  - hostname: ${HQ_SERVICE}`,
     "    type: nodejs@24",
     "    startWithoutCode: true",
-    "    enableSubdomainAccess: true",
     "    minContainers: 1",
     "    maxContainers: 1",
     "    verticalAutoscaling:",
@@ -320,26 +332,61 @@ export async function runHqBirth(input: {
         const up = HQ_SERVICES.every((name) => named(name)?.status === "ACTIVE");
         return up ? named(HQ_SERVICE) : undefined;
       });
-      const serviceId = hq.id;
-      if (hq.subdomainAccess !== true) {
-        // A service with no code yet may refuse it: the deploy step publishes it then.
-        await platform.enableSubdomainAccess(serviceId).then(
-          () => "published",
-          () => "after the deploy",
-        );
-      }
-      const address = await waitFor(waits.servicesCapMs, "HQ's address", async () => {
-        const project = await platform.fetchProject(projectId);
-        const region =
-          project.publicZone === undefined ? null : zeropsRegionFromPublicZone(project.publicZone);
-        return project.zeropsSubdomainHost === undefined || region === null
-          ? undefined
-          : `https://${HQ_SERVICE}-${project.zeropsSubdomainHost}-${HQ_PORT}.${region}.zerops.app`;
-      });
-      advance({ step: "anchor", serviceId, address });
+      advance({ step: "domain", serviceId: hq.id });
     }
 
     const serviceId = record.serviceId!;
+    if (record.step === "domain") {
+      const domain = await waitFor(
+        waits.servicesCapMs,
+        "HQ's domain",
+        async () => (await platform.fetchProject(projectId)).publicZone,
+      );
+      /** The routing of the domain, with the domain's state in it. */
+      const routed = async () => {
+        for (const routing of await platform.listPublicHttpRoutings(projectId)) {
+          const named = routing.domains.find((entry) => entry.domainName === domain);
+          if (named !== undefined) return { routing, domain: named };
+        }
+        return undefined;
+      };
+      if ((await routed()) === undefined) {
+        await platform.createPublicHttpRouting(projectId, {
+          domains: [domain],
+          locations: [{ path: "/", port: HQ_PORT, serviceStackId: serviceId }],
+        });
+      }
+      if ((await routed())?.routing.isSynced !== true) {
+        const { processId } = await platform.syncPublicHttpRouting(projectId);
+        if (processId !== undefined) {
+          const status = await waitFor(
+            waits.domainCapMs,
+            "Putting HQ's domain in place",
+            async () => {
+              const read = await platform.readProcessStatus(processId);
+              return read === "FINISHED" || read === "FAILED" || read === "CANCELED"
+                ? read
+                : undefined;
+            },
+          );
+          if (status !== "FINISHED") {
+            throw new BirthStopped("Zerops could not put HQ's domain in place. Try again.");
+          }
+        }
+      }
+      let sslError: string | undefined;
+      await waitFor(waits.domainCapMs, "HQ's certificate", async () => {
+        const state = (await routed())?.domain;
+        sslError = state?.sslError;
+        return state?.sslStatus === "ACTIVE" ? true : undefined;
+      }).catch((cause: unknown) => {
+        throw sslError === undefined
+          ? cause
+          : new BirthStopped(`HQ's certificate for ${domain} is not ready: ${sslError}`);
+      });
+      advance({ step: "anchor", address: `https://${domain}` });
+    }
+
     const address = record.address!;
     if (record.step === "anchor") {
       await assertNoOtherHq(projectId);
@@ -398,14 +445,6 @@ export async function runHqBirth(input: {
         // Try again deploys anew.
         advance({ deployProcessId: null });
         throw new BirthStopped("HQ's deploy did not finish. Its build log in Zerops says why.");
-      }
-      const hq = (await platform.listProjectServices(projectId)).find(
-        (service) => service.id === serviceId,
-      );
-      if (hq?.subdomainAccess !== true) {
-        await platform.enableSubdomainAccess(serviceId);
-        // Core started without its address, and reads it only at its start.
-        await platform.restartService(serviceId);
       }
       advance({ step: "ready" });
     }

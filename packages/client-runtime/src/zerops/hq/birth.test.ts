@@ -12,7 +12,9 @@ import {
 } from "./birth.ts";
 
 const ORG = "org-1";
-const ADDRESS = "https://hq-30db-8080.prg1.zerops.app";
+/** The HQ project's own domain, as the platform names it. */
+const PUBLIC_ZONE = "qapsmj4u3rd3n03jj4au6r13i40.prg1-zerops.zone";
+const ADDRESS = `https://${PUBLIC_ZONE}`;
 
 interface Token {
   readonly id: string;
@@ -24,14 +26,15 @@ interface Token {
 
 /**
  * Zerops as a birth meets it: an import that makes the three services, which come up after a
- * few reads; tokens that show in the member list; a deploy whose process finishes after a few
+ * few reads; a routing of the project's domain whose certificate turns active a few reads after
+ * its sync; tokens that show in the member list; a deploy whose process finishes after a few
  * reads. `fail` makes one call throw once.
  */
 function fakeZerops(
   options: {
     readonly members?: ReadonlyArray<ZeropsOrganizationMember>;
-    /** The platform refuses the subdomain while no code is deployed. */
-    readonly subdomainNeedsCode?: boolean;
+    /** The domain's certificate never turns active, the platform saying why. */
+    readonly sslError?: string;
     /** The organization's project creations, as its process history names them. */
     readonly creations?: ReadonlyArray<ZeropsProjectCreationRecord>;
   } = {},
@@ -44,14 +47,20 @@ function fakeZerops(
   const imported = (): ZeropsService[] => [
     { id: "svc-db", name: "db", status: "CREATING" },
     { id: "svc-vol", name: "vol", status: "CREATING" },
-    { id: "svc-hq", name: "hq", status: "CREATING", subdomainAccess: false },
+    { id: "svc-hq", name: "hq", status: "CREATING" },
   ];
   // A creation the history names stands already, though no answer said so.
   let services: ZeropsService[] = (options.creations ?? []).length > 0 ? imported() : [];
   let reads = 0;
   let processReads = 0;
   let minted = 0;
-  let deployed = false;
+  let routing: {
+    id: string;
+    isSynced: boolean;
+    domain: string;
+    sslStatus: string;
+    reads: number;
+  } | null = null;
   const failures = new Map<string, unknown>();
   const step = (name: string) => {
     calls.push(name);
@@ -104,8 +113,7 @@ function fakeZerops(
         id: projectId,
         name: "Headquarters",
         status: "ACTIVE",
-        zeropsSubdomainHost: "30db",
-        publicZone: "qapsmj4u3rd3n03jj4au6r13i40.prg1-zerops.zone",
+        publicZone: PUBLIC_ZONE,
       };
     },
     mintIntegrationToken: async (input) => {
@@ -147,23 +155,50 @@ function fakeZerops(
       processReads = 0;
       return { processId: "process-1" };
     },
-    readProcessStatus: async () => {
-      step("process");
+    readProcessStatus: async (processId) => {
+      step(`process ${processId}`);
+      if (processId === "process-sync") return "FINISHED";
       processReads += 1;
-      deployed = processReads >= 2;
-      return deployed ? "FINISHED" : "RUNNING";
+      return processReads >= 2 ? "FINISHED" : "RUNNING";
     },
-    enableSubdomainAccess: async (serviceId) => {
-      step(`subdomain ${serviceId}`);
-      if (options.subdomainNeedsCode === true && !deployed) {
-        throw new ZeropsApiError("The service has no code yet.", "invalid-input", 400);
+    listPublicHttpRoutings: async () => {
+      step("routings");
+      if (routing === null) return [];
+      if (routing.isSynced) routing.reads += 1;
+      if (routing.isSynced && routing.reads >= 2 && options.sslError === undefined) {
+        routing.sslStatus = "ACTIVE";
       }
-      services = services.map((service) =>
-        service.id === serviceId ? { ...service, subdomainAccess: true } : service,
-      );
+      return [
+        {
+          id: routing.id,
+          isSynced: routing.isSynced,
+          domains: [
+            {
+              domainName: routing.domain,
+              sslStatus: routing.sslStatus,
+              sslError: options.sslError,
+            },
+          ],
+        },
+      ];
     },
-    restartService: async (serviceId) => {
-      step(`restart ${serviceId}`);
+    createPublicHttpRouting: async (_projectId, input) => {
+      const location = input.locations[0]!;
+      step(
+        `route ${input.domains.join(",")} -> ${location.serviceStackId}:${location.port}${location.path}`,
+      );
+      routing = {
+        id: "routing-1",
+        isSynced: false,
+        domain: input.domains[0]!,
+        sslStatus: "WAITING_FOR_DNS",
+        reads: 0,
+      };
+    },
+    syncPublicHttpRouting: async () => {
+      step("sync");
+      if (routing !== null) routing.isSynced = true;
+      return { processId: "process-sync" };
     },
   };
   return {
@@ -240,9 +275,15 @@ describe("runHqBirth", () => {
       "import",
       "services",
       "services",
-      // Core names itself by its subdomain at boot: it is on before Core is deployed.
-      "subdomain svc-hq",
+      // HQ's address is its project's own domain, routed to Core with SSL before anything names it.
       "project",
+      "routings",
+      `route ${PUBLIC_ZONE} -> svc-hq:8080/`,
+      "routings",
+      "sync",
+      "process process-sync",
+      "routings",
+      "routings",
       "members",
       "tokens",
       `mint mate-hq:hq1:${ADDRESS} ADMIN`,
@@ -253,9 +294,8 @@ describe("runHqBirth", () => {
       "app-version svc-hq",
       "upload 7",
       "deploy hq",
-      "process",
-      "process",
-      "services",
+      "process process-1",
+      "process process-1",
     ]);
     // The anchor's value is dropped; the working token's is HQ's own secret and nothing else's.
     expect([...zerops.env]).toEqual([["HQ_ORG_TOKEN", "value-2"]]);
@@ -264,6 +304,7 @@ describe("runHqBirth", () => {
     expect(yaml).toContain('- "mate:hq"');
     expect(yaml).toMatch(/hostname: hq\n/u);
     expect(yaml).not.toMatch(/hostname: core\b/u);
+    expect(yaml).not.toContain("enableSubdomainAccess");
     expect(yaml).toContain('HQ_CLIENT_ORIGINS: "http://localhost:4380,https://mate.zerops.io"');
     expect(yaml).toContain('HQ_ZEROPS_API: "https://api.app-prg1.zerops.io/api/rest/public"');
   });
@@ -487,19 +528,37 @@ describe("runHqBirth", () => {
     });
   });
 
-  it("publishes Core after its deploy where the platform refuses it before, and restarts it to read its address", async () => {
-    const zerops = fakeZerops({ subdomainNeedsCode: true });
-    const { outcome } = await birth(HQ_BIRTH_START, zerops);
+  /** A birth whose services are up: what it does for HQ's domain. */
+  const AT_DOMAIN: HqBirthRecord = {
+    ...HQ_BIRTH_START,
+    step: "domain",
+    projectId: "hq1",
+    serviceId: "svc-hq",
+  };
 
-    expect(outcome).toMatchObject({ ok: true });
-    expect(
-      zerops.calls.filter((call) => /^(subdomain|restart|deploy|app-version)/u.test(call)),
-    ).toEqual([
-      "subdomain svc-hq",
-      "app-version svc-hq",
-      "deploy hq",
-      "subdomain svc-hq",
-      "restart svc-hq",
-    ]);
+  it("makes no second routing and syncs no more where the domain is routed and in place", async () => {
+    const zerops = fakeZerops();
+    await zerops.platform.createPublicHttpRouting("hq1", {
+      domains: [PUBLIC_ZONE],
+      locations: [{ path: "/", port: 8080, serviceStackId: "svc-hq" }],
+    });
+    await zerops.platform.syncPublicHttpRouting("hq1");
+    zerops.calls.length = 0;
+    const { outcome, record } = await birth(AT_DOMAIN, zerops);
+    expect(outcome).toMatchObject({ ok: true, hq: { address: ADDRESS } });
+    expect(record.address).toBe(ADDRESS);
+    expect(zerops.calls.filter((call) => /^(route|sync)/u.test(call))).toEqual([]);
+  });
+
+  it("stops at the domain, saying why its certificate is not ready, where it never turns active", async () => {
+    const zerops = fakeZerops({ sslError: "DNS for the domain does not resolve yet." });
+    const { outcome, record } = await birth(AT_DOMAIN, zerops);
+    expect(outcome).toEqual({
+      ok: false,
+      step: "domain",
+      reason: `HQ's certificate for ${PUBLIC_ZONE} is not ready: DNS for the domain does not resolve yet.`,
+      uncertain: false,
+    });
+    expect(record.address).toBeNull();
   });
 });

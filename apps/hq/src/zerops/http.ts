@@ -58,6 +58,7 @@ const ProjectRow = Schema.Struct({
   clientId: Schema.String,
   name: Schema.String,
   status: Schema.String,
+  publicZone: Schema.String,
   tagList: Schema.optionalKey(Schema.NullOr(Schema.Array(Schema.String))),
   userRoles: Schema.optionalKey(
     Schema.NullOr(
@@ -102,6 +103,7 @@ const toProject = (row: typeof ProjectRow.Type): ZeropsProject => ({
   status: row.status,
   tags: row.tagList ?? [],
   userRoles: row.userRoles ?? [],
+  publicZone: row.publicZone,
 });
 
 const reasonOf = (status: number, code: string): ZeropsRefused["reason"] => {

@@ -27,6 +27,7 @@ const project = (id: string, userRoles: ZeropsProject["userRoles"] = []): Zerops
   status: "ACTIVE",
   tags: [],
   userRoles,
+  publicZone: `${id}.prg1-zerops.zone`,
 });
 
 const VIEW: OrgView = {

@@ -11,8 +11,8 @@ import { type FakeWorld, emptyWorld, fakeZeropsApi } from "../test/harness/zerop
 import { Official, anchorVerdict, credentialFits, officialLayer } from "./official.ts";
 import { ZeropsApi, type ZeropsMember, type ZeropsOwnToken } from "./zerops/api.ts";
 
-const SELF = { projectId: "P1", address: "https://hq-30db-8080.prg1.zerops.app" };
-const OWN = "mate-hq:P1:https://hq-30db-8080.prg1.zerops.app";
+const SELF = { projectId: "P1", address: "https://p1zone.prg1-zerops.zone" };
+const OWN = "mate-hq:P1:https://p1zone.prg1-zerops.zone";
 
 const token = (name: string, roleCode = "ADMIN", status = "ACTIVE"): ZeropsMember => ({
   name,
@@ -28,7 +28,7 @@ describe("anchorVerdict", () => {
   const cases: ReadonlyArray<{
     readonly name: string;
     readonly members: ReadonlyArray<ZeropsMember>;
-    readonly self?: { readonly projectId: string; readonly address: string | undefined };
+    readonly self?: { readonly projectId: string; readonly address: string };
     readonly verdict: ReturnType<typeof anchorVerdict>;
   }> = [
     {
@@ -83,12 +83,6 @@ describe("anchorVerdict", () => {
       name: "another project's without the Admin role",
       members: [token(OWN), token("mate-hq:P2:https://x.example", "READ_ONLY")],
       verdict: "ok",
-    },
-    {
-      name: "no own address to match",
-      members: [token(OWN)],
-      self: { projectId: "P1", address: undefined },
-      verdict: "anchor_missing",
     },
   ];
   for (const { name, members, self, verdict } of cases) {
@@ -156,6 +150,7 @@ const world = () => {
     status: "ACTIVE",
     tags: [],
     userRoles: [],
+    publicZone: "p1zone.prg1-zerops.zone",
   });
   return fake;
 };
@@ -164,7 +159,6 @@ const official = (fake: FakeWorld, credential: string | null = "org-token") =>
   Layer.build(
     officialLayer({
       projectId: SELF.projectId,
-      address: SELF.address,
       credential: credential === null ? Option.none() : Option.some(Redacted.make(credential)),
     }).pipe(Layer.provide(Layer.succeed(ZeropsApi, fakeZeropsApi(fake)))),
   ).pipe(Effect.map((context) => Context.get(context, Official)));
@@ -184,6 +178,19 @@ describe("officialLayer", () => {
       yield* after("29 seconds");
       assert.deepStrictEqual(yield* service.status, { official: "anchor_missing", allowed: false });
       yield* after("1 second");
+      assert.deepStrictEqual(yield* service.status, { official: "ok", allowed: true });
+    }),
+  );
+
+  it.effect("its address is its project's own domain, not the zerops.app subdomain", () =>
+    Effect.gen(function* () {
+      const fake = world();
+      fake.members.get("ORG")!.push(token("mate-hq:P1:https://hq-30db-8080.prg1.zerops.app"));
+      const service = yield* official(fake);
+      yield* Effect.yieldNow;
+      assert.deepStrictEqual(yield* service.status, { official: "anchor_missing", allowed: false });
+      fake.members.get("ORG")!.push(token(OWN));
+      yield* after("30 seconds");
       assert.deepStrictEqual(yield* service.status, { official: "ok", allowed: true });
     }),
   );

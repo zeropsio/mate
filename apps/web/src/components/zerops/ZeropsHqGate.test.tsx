@@ -29,6 +29,7 @@ describe("HqGateScreen", () => {
     expect(steps(html)).toEqual([
       "done:Creating HQ's project",
       "done:Starting HQ's services",
+      "done:Giving HQ its address",
       "done:Marking it this organization's HQ",
       "done:Giving HQ its access",
       "running:Deploying HQ",

@@ -809,6 +809,62 @@ function mateKeyName(projectName: string): string {
  * Owns request serialization so N parallel 401s cause exactly one refresh, and
  * so the caller never has to think about the Authorization header.
  */
+/** A routing of a project's own domains (`GET /project/{id}/public-http-routing`). */
+export interface ZeropsPublicHttpRouting {
+  readonly id: string;
+  /** Whether it is in place as it reads, or waits for the project's routings to be synced. */
+  readonly isSynced: boolean;
+  readonly domains: ReadonlyArray<{
+    readonly domainName: string;
+    /** The certificate's state: `ACTIVE` once the domain serves over HTTPS. */
+    readonly sslStatus: string | undefined;
+    /** Why the certificate could not be installed, where the platform says. */
+    readonly sslError: string | undefined;
+  }>;
+}
+
+const textOf = (value: unknown): string | undefined =>
+  typeof value === "string" && value.length > 0 ? value : undefined;
+
+export function publicHttpRoutingsOf(
+  items: ReadonlyArray<unknown>,
+): ReadonlyArray<ZeropsPublicHttpRouting> {
+  return items.flatMap((item): ReadonlyArray<ZeropsPublicHttpRouting> => {
+    if (typeof item !== "object" || item === null) return [];
+    const { id, isSynced, domains } = item as {
+      readonly id?: unknown;
+      readonly isSynced?: unknown;
+      readonly domains?: unknown;
+    };
+    const routingId = textOf(id);
+    if (routingId === undefined) return [];
+    return [
+      {
+        id: routingId,
+        isSynced: isSynced === true,
+        domains: (Array.isArray(domains) ? domains : []).flatMap((domain: unknown) => {
+          if (typeof domain !== "object" || domain === null) return [];
+          const { domainName, sslStatus, sslCertificateInstallationError } = domain as {
+            readonly domainName?: unknown;
+            readonly sslStatus?: unknown;
+            readonly sslCertificateInstallationError?: unknown;
+          };
+          const name = textOf(domainName);
+          return name === undefined
+            ? []
+            : [
+                {
+                  domainName: name,
+                  sslStatus: textOf(sslStatus),
+                  sslError: textOf(sslCertificateInstallationError),
+                },
+              ];
+        }),
+      },
+    ];
+  });
+}
+
 export class ZeropsApiClient {
   /** Asked before every project write; none admits every write. */
   #writeAdmission: WriteAdmission | null = null;
@@ -2502,6 +2558,67 @@ export class ZeropsApiClient {
         operationKind: "project-write",
         ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),
       },
+    );
+    return { processId: typeof process?.id === "string" ? process.id : undefined };
+  }
+
+  /**
+   * `GET /project/{id}/public-http-routing` — the project's routings of its own domains, each
+   * domain with its certificate's state (`sslStatus`: `WAITING_FOR_DNS`, `ACTIVE`, …).
+   */
+  async listPublicHttpRoutings(
+    projectId: string,
+    signal?: AbortSignal,
+  ): Promise<ReadonlyArray<ZeropsPublicHttpRouting>> {
+    const response = await this.#request<{
+      readonly list?: ReadonlyArray<unknown>;
+      readonly items?: ReadonlyArray<unknown>;
+    }>(
+      `/project/${projectId}/public-http-routing`,
+      { signal: signal ?? null },
+      {
+        operationKind: "read",
+      },
+    );
+    return publicHttpRoutingsOf(response.list ?? response.items ?? []);
+  }
+
+  /**
+   * `POST /project/{id}/public-http-routing` — routes the domains to the locations, with SSL. It
+   * serves nothing until the project's routings are synced (`syncPublicHttpRouting`).
+   */
+  async createPublicHttpRouting(
+    projectId: string,
+    routing: {
+      readonly domains: ReadonlyArray<string>;
+      readonly locations: ReadonlyArray<{
+        readonly path: string;
+        readonly port: number;
+        readonly serviceStackId: string;
+      }>;
+    },
+    signal?: AbortSignal,
+  ): Promise<void> {
+    await this.#request(
+      `/project/${projectId}/public-http-routing`,
+      {
+        method: "POST",
+        signal: signal ?? null,
+        body: JSON.stringify({ sslEnabled: true, ...routing }),
+      },
+      { operationKind: "project-write" },
+    );
+  }
+
+  /** `PUT /project/{id}/sync-public-http-routing` — puts the project's routings in place: a process. */
+  async syncPublicHttpRouting(
+    projectId: string,
+    signal?: AbortSignal,
+  ): Promise<{ readonly processId: string | undefined }> {
+    const process = await this.#request<{ readonly id?: unknown }>(
+      `/project/${projectId}/sync-public-http-routing`,
+      { method: "PUT", signal: signal ?? null },
+      { operationKind: "project-write" },
     );
     return { processId: typeof process?.id === "string" ? process.id : undefined };
   }

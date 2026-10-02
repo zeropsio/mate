@@ -37,7 +37,15 @@ const world = (): FakeWorld => {
     ["P_MATE", "ORG"],
     ["P_ELSE", "ORG2"],
   ] as const) {
-    fake.projects.push({ id, orgId, name: id, status: "ACTIVE", tags: [], userRoles: [] });
+    fake.projects.push({
+      id,
+      orgId,
+      name: id,
+      status: "ACTIVE",
+      tags: [],
+      userRoles: [],
+      publicZone: `${id}.prg1-zerops.zone`,
+    });
   }
   return fake;
 };
@@ -178,6 +186,7 @@ describe("mate credentials", () => {
               status: "ACTIVE",
               tags: [],
               userRoles: [],
+              publicZone: "P_OTHER.prg1-zerops.zone",
             });
             writeChallenge(fake, "P_OTHER", forMate.nonce);
             assert.strictEqual(yield* refusal("P_OTHER", forMate.nonce), "unknown_nonce");

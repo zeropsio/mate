@@ -166,28 +166,38 @@ async function errorOf(response: Response): Promise<HqError> {
   });
 }
 
-/** One call to HQ: its answer, or an {@link HqError}. */
+/** A call stopped by its caller or by its own timeout: never one to try again. */
+const stopped = (cause: unknown, signal: AbortSignal | null | undefined) =>
+  signal?.aborted === true ||
+  (cause instanceof DOMException && (cause.name === "AbortError" || cause.name === "TimeoutError"));
+
+/**
+ * One call to HQ: its answer, or an {@link HqError}. A connection that drops under the call is
+ * tried once more — a kept-alive connection is cut as HQ's Core is redeployed (measured on the rig,
+ * 2026-10-02) — and HQ's own answer never is.
+ */
 async function send(fetch: FetchImplementation, url: string, init: RequestInit): Promise<Response> {
-  let response: Response;
-  try {
-    response = await fetch(url, {
-      ...init,
-      signal: init.signal ?? AbortSignal.timeout(CALL_TIMEOUT_MS),
-      headers: {
-        Accept: "application/json",
-        ...(init.body === undefined ? {} : { "Content-Type": "application/json" }),
-        ...init.headers,
-      },
-    });
-  } catch {
-    throw new HqError({
-      kind: "unavailable",
-      code: "network",
-      message: "HQ could not be reached.",
-    });
+  const signal = init.signal ?? AbortSignal.timeout(CALL_TIMEOUT_MS);
+  const headers = {
+    Accept: "application/json",
+    ...(init.body === undefined ? {} : { "Content-Type": "application/json" }),
+    ...init.headers,
+  };
+  for (let attempt = 0; ; attempt += 1) {
+    let response: Response;
+    try {
+      response = await fetch(url, { ...init, signal, headers });
+    } catch (cause) {
+      if (attempt === 0 && !stopped(cause, signal)) continue;
+      throw new HqError({
+        kind: "unavailable",
+        code: "network",
+        message: "HQ could not be reached.",
+      });
+    }
+    if (!response.ok) throw await errorOf(response);
+    return response;
   }
-  if (!response.ok) throw await errorOf(response);
-  return response;
 }
 
 const json = async <T>(response: Response): Promise<T> => (await response.json()) as T;

@@ -70,6 +70,78 @@ function doors() {
   };
 }
 
+describe("makeHqApi — a connection that drops", () => {
+  /** HQ behind a connection that drops `drops` times first, then answers each session's calls. */
+  const dropping = (drops: number) => {
+    const hq = fakeHq();
+    let left = drops;
+    const fetch = async (input: string, init?: RequestInit) => {
+      if (new URL(input).pathname === "/api/structure" && left > 0) {
+        left -= 1;
+        throw new TypeError("Failed to fetch");
+      }
+      return hq.fetch(input, init);
+    };
+    return { hq, fetch };
+  };
+
+  it("tries a call once more when the connection dropped under it", async () => {
+    const { hq, fetch } = dropping(1);
+    const api = makeHqApi({
+      address: ADDRESS,
+      fetch,
+      throughDoor: doors().throughDoor,
+      openSocket: NO_SOCKET,
+    });
+    await expect(api.structure()).resolves.toEqual({ apps: [] });
+    expect(hq.seen.filter((entry) => entry.path === "/api/structure")).toHaveLength(1);
+  });
+
+  it("says HQ could not be reached when it drops twice in a row", async () => {
+    const { fetch } = dropping(2);
+    const api = makeHqApi({
+      address: ADDRESS,
+      fetch,
+      throughDoor: doors().throughDoor,
+      openSocket: NO_SOCKET,
+    });
+    await expect(api.structure()).rejects.toMatchObject({ kind: "unavailable", code: "network" });
+  });
+
+  it("never tries again what HQ answered, nor what its caller stopped", async () => {
+    let calls = 0;
+    const answering = async () => {
+      calls += 1;
+      return json(503, { code: "not_leader" });
+    };
+    const api = makeHqApi({
+      address: ADDRESS,
+      fetch: async (input, init) =>
+        new URL(input).pathname === "/api/door" ? fakeHq().fetch(input, init) : answering(),
+      throughDoor: doors().throughDoor,
+      openSocket: NO_SOCKET,
+    });
+    await expect(api.structure()).rejects.toMatchObject({ kind: "unavailable" });
+    expect(calls).toBe(1);
+
+    const stopped = new AbortController();
+    stopped.abort();
+    let tried = 0;
+    const aborting = makeHqApi({
+      address: ADDRESS,
+      fetch: async (input, init) => {
+        if (new URL(input).pathname === "/api/door") return fakeHq().fetch(input, init);
+        tried += 1;
+        throw new DOMException("aborted", "AbortError");
+      },
+      throughDoor: doors().throughDoor,
+      openSocket: NO_SOCKET,
+    });
+    await expect(aborting.structure(stopped.signal)).rejects.toBeInstanceOf(HqError);
+    expect(tried).toBe(1);
+  });
+});
+
 describe("makeHqApi", () => {
   it("comes through the door once and carries its session on every call", async () => {
     const hq = fakeHq();

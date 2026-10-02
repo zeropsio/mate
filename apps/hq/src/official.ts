@@ -5,6 +5,10 @@
  * credential and may lead only while the anchor names its own project and address and no Admin
  * `mate-hq:*` names another project.
  *
+ * Core's address is its project's own domain, `https://<publicZone>`, read with the project: a Mate's
+ * calls and git pushes reach it through the project's own balancer, not the shared `zerops.app`
+ * one with its 50 MB body cap (T3c).
+ *
  * The verdict is read at boot and every 30 s. A read the platform could not answer is `unknown`:
  * it keeps an `ok` for at most ten minutes after that `ok` was read, and never allows otherwise.
  *
@@ -38,19 +42,18 @@ const parseAnchor = (name: string) => {
  * fail closed), else `ok` while an active Admin token names this project and address.
  */
 export const anchorVerdict = (
-  self: { readonly projectId: string; readonly address: string | undefined },
+  self: { readonly projectId: string; readonly address: string },
   members: ReadonlyArray<ZeropsMember>,
 ): "ok" | "anchor_missing" | "anchor_elsewhere" => {
   const anchors = members
     .filter((member) => member.roleCode === "ADMIN" && member.name.startsWith(ANCHOR_PREFIX))
     .map((member) => ({ member, ...parseAnchor(member.name) }));
   if (anchors.some((anchor) => anchor.projectId !== self.projectId)) return "anchor_elsewhere";
-  const address = self.address?.replace(/\/+$/u, "");
+  const address = self.address.replace(/\/+$/u, "");
   const own = anchors.some(
     (anchor) =>
       anchor.member.kind === "token" &&
       anchor.member.status === "ACTIVE" &&
-      address !== undefined &&
       anchor.address === address,
   );
   return own ? "ok" : "anchor_missing";
@@ -79,8 +82,6 @@ export class Official extends Context.Service<
 
 export interface OfficialOptions {
   readonly projectId: string;
-  /** This Core's public address (`zeropsSubdomain`); none means no anchor can name it. */
-  readonly address: string | undefined;
   /** `HQ_ORG_TOKEN`. */
   readonly credential: Option.Option<Redacted.Redacted>;
   readonly recheck?: Duration.Duration;
@@ -107,7 +108,10 @@ export const officialLayer = (options: OfficialOptions): Layer.Layer<Official, n
         const own = yield* api.ownToken(credential);
         const project = yield* api.project(options.projectId)(credential);
         if (!credentialFits(own, project.orgId)) return "credentials_wrong" as const;
-        return anchorVerdict(options, yield* api.members(project.orgId)(credential));
+        return anchorVerdict(
+          { projectId: options.projectId, address: `https://${project.publicZone}` },
+          yield* api.members(project.orgId)(credential),
+        );
       }).pipe(
         Effect.catchTags({
           ZeropsRefused: () => Effect.succeed("credentials_wrong" as const),

@@ -34,6 +34,12 @@ export interface ZeropsProject {
   readonly tags: ReadonlyArray<string>;
   /** Project grants: the member row (`clientUserId`) and its role on the project. */
   readonly userRoles: ReadonlyArray<{ readonly clientUserId: string; readonly roleCode: string }>;
+  /**
+   * The project's own domain (`<id>.<region>-zerops.zone`), the CNAME target every project has:
+   * it resolves to the project's IPv6 and the shared IPv4, and serves once a public HTTP routing
+   * names it.
+   */
+  readonly publicZone: string;
 }
 
 /** What the credential itself is, as its own token record says. */

@@ -36,8 +36,6 @@ export interface CoreOptions {
   readonly databaseUrl: Redacted.Redacted;
   readonly migrations: ReadonlyArray<Migration>;
   readonly hqProjectId: string;
-  /** This Core's public address (`zeropsSubdomain`). */
-  readonly address: string | undefined;
   /** `HQ_ORG_TOKEN`. */
   readonly credential: Option.Option<Redacted.Redacted>;
   readonly clientOrigins: ReadonlyArray<string>;
@@ -73,7 +71,6 @@ const services = (options: CoreOptions) => {
     Layer.provideMerge(
       officialLayer({
         projectId: options.hqProjectId,
-        address: options.address,
         credential: options.credential,
       }),
     ),

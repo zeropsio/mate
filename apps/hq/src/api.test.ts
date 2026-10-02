@@ -27,7 +27,7 @@ const encodeJson = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown));
 const decodeJson = Schema.decodeSync(Schema.fromJsonString(Schema.Unknown));
 
 const HQ = "HQ1";
-const ADDRESS = "https://hq.test";
+const ADDRESS = "https://hqzone.prg1-zerops.zone";
 const CLIENT = "https://mate.zerops.io";
 
 const person = (userId: string, roleCode: string): ZeropsMember => ({
@@ -93,7 +93,15 @@ const world = (now: number, anchored: boolean, orgId: string): FakeWorld => {
       : []),
   ]);
   for (const id of [HQ, "P_MATE"]) {
-    fake.projects.push({ id, orgId, name: id, status: "ACTIVE", tags: [], userRoles: [] });
+    fake.projects.push({
+      id,
+      orgId,
+      name: id,
+      status: "ACTIVE",
+      tags: [],
+      userRoles: [],
+      publicZone: id === HQ ? "hqzone.prg1-zerops.zone" : `${id}.prg1-zerops.zone`,
+    });
   }
   return fake;
 };
@@ -111,7 +119,6 @@ const startCore = (anchored: boolean, given?: { readonly url: string; readonly o
       databaseUrl: Redacted.make(url),
       migrations: treeMigrations(),
       hqProjectId: HQ,
-      address: ADDRESS,
       credential: Option.some(Redacted.make("hq")),
       clientOrigins: [CLIENT, "http://localhost:4380"],
       build: "test",
@@ -752,6 +759,7 @@ describe("HQ API", () => {
             status: "ACTIVE",
             tags: [],
             userRoles: [],
+            publicZone: "P_ELSE.prg1-zerops.zone",
           });
           const { nonce } = (yield* call("POST", "/api/mate/challenge", {
             body: { projectId: "P_MATE" },
