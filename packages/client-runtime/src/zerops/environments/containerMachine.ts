@@ -252,7 +252,17 @@ export const unansweredSinceUp = (machine: ContainerMachine): boolean =>
 // ── Transition ────────────────────────────────────────────────────────────────────────────────
 
 const PROJECT_CREATING: ReadonlySet<string> = new Set(["NEW", "CREATING"]);
-const SERVICE_PROVISIONING: ReadonlySet<string> = new Set(["NEW", "CREATING", "STARTING"]);
+/**
+ * A zcp service on its way up. `READY_TO_DEPLOY` is its first build: a Mate's container is never
+ * deployed by hand, so one with no app version yet waits for the build its import started — it is
+ * coming up, never "not running" (measured 2026-10-02: 45 s of an Add read that way).
+ */
+const SERVICE_PROVISIONING: ReadonlySet<string> = new Set([
+  "NEW",
+  "CREATING",
+  "STARTING",
+  "READY_TO_DEPLOY",
+]);
 const SERVICE_RESTARTING: ReadonlySet<string> = new Set(["RESTARTING", "UPGRADING", "RELOADING"]);
 
 const after = (instant: Instant, ms: number): Instant => ({

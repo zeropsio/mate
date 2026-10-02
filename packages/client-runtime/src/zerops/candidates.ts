@@ -147,6 +147,9 @@ const SERVICE_PROVISIONING_STATUSES = new Set([
   "STARTING",
   "RESTARTING",
   "UPGRADING",
+  // A Mate's container is never deployed by hand: one ready to deploy waits for the first build
+  // its import started.
+  "READY_TO_DEPLOY",
 ]);
 
 /**

@@ -239,7 +239,16 @@ describe("deriveZeropsCandidates", () => {
   });
 
   it("reports a container that is starting as provisioning, naming its status", () => {
-    for (const status of ["NEW", "CREATING", "STARTING", "RESTARTING", "UPGRADING"]) {
+    // READY_TO_DEPLOY: a Mate's container is never deployed by hand — it waits for its first
+    // build, which the import started (measured 2026-10-02: 45 s of it on an Add).
+    for (const status of [
+      "NEW",
+      "CREATING",
+      "STARTING",
+      "RESTARTING",
+      "UPGRADING",
+      "READY_TO_DEPLOY",
+    ]) {
       const candidates = deriveZeropsCandidates(
         PROJECT,
         [service({ id: "s1", status })],

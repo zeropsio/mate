@@ -23,7 +23,7 @@ export function mateSetupSettled(setup: MateSetup): boolean {
       runtimes === "done" ||
       runtimes === "failed" ||
       runtimes === "unknown") &&
-    (standup === "done" || standup === "failed")
+    (standup === "none" || standup === "done" || standup === "failed")
   );
 }
 

@@ -90,6 +90,7 @@ export function useOpenMate(): OpenMate {
         candidate,
         setUpFailed: pressed.setUpFailed ?? creations[projectId]?.failed,
         nowMs: Date.now(),
+        created: creations[projectId] !== undefined,
       });
       const environmentId = coming === undefined ? linkTarget(candidate) : undefined;
       if (environmentId === undefined) {

@@ -742,18 +742,12 @@ describe("ZeropsSetup: what an unauthenticated caller can make it do", () => {
     }),
   );
 
-  const quiet: ReadonlyArray<[string, (world: World) => Effect.Effect<void>]> = [
-    ["a Mate made before the new press", (world) => Ref.set(world.variables, ["PATH"])],
-    [
-      "a Mate whose stand-up nobody asked for",
-      (world) => Ref.set(world.tags, ["mate:face:coral:gem"]),
-    ],
-  ];
-  for (const [name, arrange] of quiet) {
-    it.live(`${name} reads no tags for its setup, and says nothing of a sign-in`, () =>
+  it.live(
+    "a Mate made before the new press reads no tags for its setup, and says nothing of a sign-in",
+    () =>
       Effect.gen(function* () {
         const world = yield* makeWorld;
-        yield* arrange(world);
+        yield* Ref.set(world.variables, ["PATH"]);
         yield* withServer(world, freshDatabase(), (setup) =>
           Effect.gen(function* () {
             yield* ticks;
@@ -764,8 +758,29 @@ describe("ZeropsSetup: what an unauthenticated caller can make it do", () => {
           }),
         );
       }),
-    );
-  }
+  );
+
+  it.live("a Mate whose stand-up nobody asked for reads its tags only until its sign-in", () =>
+    Effect.gen(function* () {
+      const world = yield* makeWorld;
+      yield* Ref.set(world.tags, ["mate:face:coral:gem"]);
+      yield* withServer(world, freshDatabase(), (setup) =>
+        Effect.gen(function* () {
+          yield* ticks;
+          const signin = Effect.map(
+            setup.document,
+            (document) => document.steps.find((step) => step.id === "signin")?.state,
+          );
+          assert.strictEqual(yield* signin, "waiting");
+          yield* Ref.set(world.tags, ["mate:face:coral:gem", "mate:signer:codex:user-b"]);
+          assert.strictEqual(yield* signin, "done");
+          const reads = yield* Ref.get(world.tagReads);
+          yield* flood(setup);
+          assert.strictEqual(yield* Ref.get(world.tagReads), reads);
+        }),
+      );
+    }),
+  );
 });
 
 describe("ZeropsSetup: the document", () => {
@@ -811,6 +826,81 @@ describe("ZeropsSetup: the document", () => {
           // A git step once done stays done: the setup is a record, not a live probe.
           yield* Ref.set(world.variables, []);
           assert.strictEqual(yield* stateOf(setup, "git"), "done");
+        }),
+      );
+    }),
+  );
+
+  it.live("a New project's first Mate: no stand-up is ever done, and its sign-in stays", () =>
+    Effect.gen(function* () {
+      const world = yield* makeWorld;
+      // Nobody asked a stand-up of it; its sign-in comes after the stand-up settled as none.
+      yield* Ref.set(world.tags, ["mate:face:coral:gem"]);
+      yield* Ref.set(world.statusFile, { version: 1, runtimes: { state: "none" } });
+      yield* withServer(world, freshDatabase(), (setup) =>
+        Effect.gen(function* () {
+          const states = Effect.all(["signin", "standup"].map((id) => stateOf(setup, id)));
+          assert.deepStrictEqual(yield* states, ["waiting", "none"]);
+          yield* ticks;
+          assert.deepStrictEqual(yield* states, ["waiting", "none"]);
+          yield* Ref.set(world.tags, ["mate:face:coral:gem", "mate:signer:claude-code:user-b"]);
+          assert.deepStrictEqual(yield* states, ["done", "none"]);
+          yield* ticks;
+          assert.deepStrictEqual(yield* states, ["done", "none"]);
+        }),
+      );
+    }),
+  );
+
+  it.live("a stand-up whose stage halves build on a second call runs until they return", () =>
+    Effect.gen(function* () {
+      const world = yield* makeWorld;
+      yield* Ref.set(world.tags, SIGNED);
+      const half = (hostname: string, step: string, state: string) => ({ hostname, step, state });
+      yield* withServer(world, freshDatabase(), (setup) =>
+        Effect.gen(function* () {
+          yield* eventually(turnsOf(world), (turns) => turns.length === 1);
+          const sequence: ReadonlyArray<[unknown, string]> = [
+            [
+              {
+                state: "running",
+                phase: "development",
+                services: [
+                  half("appdev", "build", "running"),
+                  half("appstage", "build", "pending"),
+                ],
+              },
+              "running",
+            ],
+            [
+              {
+                state: "done",
+                phase: "development",
+                services: [half("appdev", "verify", "done"), half("appstage", "build", "pending")],
+              },
+              "running",
+            ],
+            [
+              {
+                state: "running",
+                phase: "stage",
+                services: [half("appdev", "verify", "done"), half("appstage", "build", "running")],
+              },
+              "running",
+            ],
+            [
+              {
+                state: "done",
+                phase: "stage",
+                services: [half("appdev", "verify", "done"), half("appstage", "verify", "done")],
+              },
+              "done",
+            ],
+          ];
+          for (const [standup, expected] of sequence) {
+            yield* Ref.set(world.statusFile, { version: 1, standup });
+            assert.strictEqual(yield* stateOf(setup, "standup"), expected);
+          }
         }),
       );
     }),

@@ -11,8 +11,11 @@
  *   { "id": "git",       "state": "waiting|done", "at": "" },
  *   { "id": "runtimes",  "state": "none|waiting|running|done|failed|unknown", "at": "" },
  *   { "id": "signin",    "state": "waiting|done", "at": "" },
- *   { "id": "standup",   "state": "waiting|running|done|failed", "at": "" } ] }
+ *   { "id": "standup",   "state": "none|waiting|running|done|failed", "at": "" } ] }
  * ```
+ *
+ * A step that has not run is never `done`: a Mate nobody asked a stand-up of (a New project's
+ * first) says `none`, as its runtimes do with nothing to import.
  *
  * It carries no names, no error text and no secrets. A `404` is an older Mate, whose server has
  * no such route — and so is an answer that is not this document: an older server's catch-all
@@ -39,7 +42,7 @@ export interface MateSetup {
   readonly git?: "waiting" | "done";
   readonly runtimes?: MateSetupRuntimesState;
   readonly signin?: "waiting" | "done";
-  readonly standup?: "waiting" | "running" | "done" | "failed";
+  readonly standup?: "none" | "waiting" | "running" | "done" | "failed";
 }
 
 const STATES: { readonly [Id in MateSetupStepId]: ReadonlySet<string> } = {
@@ -47,7 +50,7 @@ const STATES: { readonly [Id in MateSetupStepId]: ReadonlySet<string> } = {
   git: new Set(["waiting", "done"]),
   runtimes: new Set(["none", "waiting", "running", "done", "failed", "unknown"]),
   signin: new Set(["waiting", "done"]),
-  standup: new Set(["waiting", "running", "done", "failed"]),
+  standup: new Set(["none", "waiting", "running", "done", "failed"]),
 };
 
 const isStepId = (id: unknown): id is MateSetupStepId =>

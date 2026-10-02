@@ -10,6 +10,8 @@
  * A Mate is coming up while:
  * - this browser pressed it (`matePress.ts`) with a container to bring up: "Coming up. A few
  *   minutes.";
+ * - this tab made it (`newMate.ts`'s creation) and it has not connected yet: its press ends in
+ *   seconds, at its close-off, long before its container answers;
  * - or, where this browser made no press — another device, a reload — the listing reads its
  *   project or its container on the way up (`provisioning`, never a restart).
  *
@@ -34,6 +36,7 @@ import {
 
 import { comingMateLine } from "../components/zerops/projects/projectsView.logic";
 import {
+  ALMOST_THERE_LINE,
   COMING_UP_LINE,
   creationFailedLine,
   NOT_SET_UP_LINE,
@@ -96,6 +99,8 @@ export interface MateComingInput {
   readonly nowMs?: number | undefined;
   /** Why this tab's press stopped after the platform had taken the project. */
   readonly setUpFailed?: string | undefined;
+  /** This tab made it, and it has not connected since (`newMate.ts`'s creation). */
+  readonly created?: boolean | undefined;
 }
 
 /** How long a Mate's project may stand without its container before that is no longer its press. */
@@ -164,6 +169,8 @@ export function mateComing(input: MateComingInput): MateComing | undefined {
       ...(press.startedAt === undefined ? {} : { since: press.startedAt }),
     };
   }
+  // Made here and not connected yet: its press is over, its container on its way.
+  if (input.created === true) return { kind: "coming", line: comingMateLine({}) };
   if (press === undefined && candidate?.missingContainer === true) {
     // A press in another browser is still importing it a moment after the project; past that,
     // the press stopped before its container — the tab closed — and nothing will bring it.
@@ -266,6 +273,62 @@ export function mateComingPage(input: {
     return reachability === null ? undefined : { kind: "reaching", reachability };
   }
   return { kind: "reaching", reachability };
+}
+
+/** Up, its conversation and its sign-in being read: the last of its coming words. */
+const ARRIVAL_OPENING: MateComing = { kind: "coming", line: ALMOST_THERE_LINE };
+
+/** A container level on its way up, whose own words would only interrupt the arrival. */
+const ON_ITS_WAY_LEVELS: ReadonlySet<string> = new Set([
+  "creating",
+  "provisioning",
+  "booting",
+  "restarting",
+  "updating",
+]);
+
+/**
+ * Whether a link's wait is one the arrival holds through: anything on its way that needs nobody —
+ * never one past its cap, one that wants a restart, or a container down or not to be reached.
+ */
+function arrivalHoldsThrough(reachability: Reachability | null): boolean {
+  if (reachability === null) return true;
+  switch (reachability.kind) {
+    case "connecting":
+    case "reconnecting":
+    case "resolving":
+    case "ready":
+    case "waiting-for-zerops":
+      return true;
+    case "retrying":
+      return !reachability.restart;
+    case "container":
+      return (
+        ON_ITS_WAY_LEVELS.has(reachability.container.level) &&
+        !("overdue" in reachability.container && reachability.container.overdue)
+      );
+    default:
+      return false;
+  }
+}
+
+/**
+ * What a Mate's own view says as its arrival, if anything: its coming words while it comes up,
+ * and — once the view has shown it coming (`cameUp`) — the board still, through every wait on its
+ * way to its conversation, until the sign-in takes the board's place and the conversation the
+ * route. A container down, a wait past its cap or one that asks for a restart says so in its link's
+ * words instead; a Mate never shown coming here says its link's words from the start.
+ */
+export function mateArrivalShown(input: {
+  readonly page: MateComingPage | undefined;
+  readonly cameUp: boolean;
+}): MateComing | undefined {
+  const { page } = input;
+  if (page?.kind === "coming") return page.coming;
+  if (!input.cameUp) return undefined;
+  if (page?.kind === "up") return ARRIVAL_OPENING;
+  if (page?.kind === "reaching" && arrivalHoldsThrough(page.reachability)) return ARRIVAL_OPENING;
+  return undefined;
 }
 
 /**

@@ -294,23 +294,38 @@ const runtimesStep = (status: ZcpStatus | undefined): SetupStep => {
   return { id: "runtimes", state, at };
 };
 
+/**
+ * What zcp's stand-up section says of the whole stand-up. zcp starts the
+ * section afresh on each call and ends each `done`: its first call stands the
+ * development halves up and leaves the stage halves `pending` for a second
+ * call. A call that returned with halves still pending is not the stand-up's
+ * end while its turn may still make that call — only a turn that ended
+ * without it leaves zcp's word standing.
+ */
+const zcpStandUpState = (facts: SetupFacts): Exclude<StandUpState, "idle"> | undefined => {
+  if (isStaleStandUp(facts.status, Date.parse(facts.now))) return "failed";
+  const standup = facts.status?.standup;
+  const state = standup?.state;
+  if (state !== "running" && state !== "done" && state !== "failed") return undefined;
+  const halvesLeft = standup!.services.some((service) => service.state === "pending");
+  const turnOver = facts.standUpTurn === "done" || facts.standUpTurn === "failed";
+  return state === "done" && halvesLeft && !turnOver ? "running" : state;
+};
+
 const standUpStep = (facts: SetupFacts): SetupStep => {
   const standup = facts.status?.standup;
-  const zcpState = isStaleStandUp(facts.status, Date.parse(facts.now))
-    ? "failed"
-    : standup?.state === "running" || standup?.state === "done" || standup?.state === "failed"
-      ? standup.state
-      : undefined;
+  const zcpState = zcpStandUpState(facts);
+  // Settled as never due: nothing ran here, so nothing is done — unless zcp ran one.
   if (facts.record !== undefined && !facts.record.ran) {
-    return { id: "standup", state: zcpState ?? "done", at: "" };
+    return { id: "standup", state: zcpState ?? "none", at: "" };
   }
   if (facts.record === undefined) {
     if (zcpState !== undefined)
       return { id: "standup", state: zcpState, at: standup?.startedAt ?? "" };
-    // Nothing asked and nothing started: there is nothing to wait for — once
+    // Nothing asked and nothing started: a Mate with no stand-up to run — once
     // the tags have been read to say so.
     return facts.tagsRead && facts.requestedBy === undefined
-      ? { id: "standup", state: "done", at: "" }
+      ? { id: "standup", state: "none", at: "" }
       : { id: "standup", state: "waiting", at: "" };
   }
   const state =

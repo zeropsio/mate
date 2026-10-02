@@ -236,6 +236,12 @@ describe("container machine (DESIGN §4.5)", () => {
       service: "RELOADING",
       verdict: { level: "restarting", by: "platform", overdue: false },
     },
+    // Its first build, which the import started: a Mate's container is never deployed by hand.
+    {
+      project: "ACTIVE",
+      service: "READY_TO_DEPLOY",
+      verdict: { level: "provisioning", overdue: false },
+    },
     { project: "ACTIVE", service: "STOPPED", verdict: { level: "inactive", status: "STOPPED" } },
     // Nothing read about the Mate behind an ACTIVE service yet.
     { project: "ACTIVE", service: "ACTIVE", verdict: { level: "unknown" } },
@@ -249,6 +255,34 @@ describe("container machine (DESIGN §4.5)", () => {
       expect(containerVerdict(run.machine)).toEqual(row.verdict);
     });
   }
+
+  it("a new Mate's container comes up through its first build, never reading as not running", () => {
+    // An Add, as the platform said it (2026-10-02): the import, the first build, the container.
+    const statuses: ReadonlyArray<readonly [string, string | null]> = [
+      ["CREATING", null],
+      ["CREATING", "NEW"],
+      ["ACTIVE", "NEW"],
+      ["ACTIVE", "READY_TO_DEPLOY"],
+      ["ACTIVE", "CREATING"],
+    ];
+    let run: Run = { machine: initialContainer(), nowMs: START_MS };
+    const levels: Array<string> = [];
+    for (const [project, service] of statuses) {
+      run = drive([{ type: "PLATFORM", status: { project, service } }], run);
+      levels.push(containerVerdict(run.machine).level);
+    }
+    expect(levels).toEqual([
+      "creating",
+      "creating",
+      "provisioning",
+      "provisioning",
+      "provisioning",
+    ]);
+    // One wait from the import on: its cap runs from when the platform first brought it up.
+    expect(run.machine.timer).toEqual(instant(START_MS + 3_000 + CONTAINER_CAPS_MS.provisioning));
+    run = drive([active], run);
+    expect(containerVerdict(run.machine)).toEqual({ level: "booting", overdue: false });
+  });
 
   it("a service the platform brought up boots until a probe sent after it answers", () => {
     const provisioning = drive([
