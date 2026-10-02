@@ -541,6 +541,7 @@ function environment(
     versionRepository,
     line: version.label === undefined ? source : `${source} · ${version.label}`,
     tone: "good",
+    deploys: [],
     ...rest,
   };
 }

@@ -637,6 +637,7 @@ const stageRow: EnvironmentRow = {
   versionRepository: "appdev",
   line: "main · 3f9c1b2",
   tone: "good",
+  deploys: [],
 };
 const productionRow: EnvironmentRow = {
   ...stageRow,
