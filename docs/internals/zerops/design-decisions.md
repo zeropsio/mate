@@ -3350,3 +3350,27 @@ no-cache`.
   ready Mate the roster lists, up to a bound of 48 that no account comes near (the largest has 27).
   - _Why:_ the ceiling of 12 rationed a throwaway per Mate per load; with sessions kept across loads
     a reconnect mints nothing, and the first connect of the day waits on the door's mint pace
+- **2026-10-01** — **A new Mate's setup needs no browser after the press** (the owner: "never ever be
+  tied to user having to have browser open"). Every step that needs the person's rights runs in the
+  Add press, in the foreground: the project, the container with its own key (BASIC_USER on its
+  project, READ_ONLY on its siblings, no delegation), close-off, the registry and sibling reach.
+  zcp imports the runtimes itself once the project is closed off and its own deploy has finished,
+  the Mate serves its setup at a public `/mate/setup.json`, and it starts the stand-up when the
+  signer lands. _Finish setup_ repairs a half-made Mate from any browser.
+  - _Why:_ the setup ran in the creating browser; a closed tab or a connect stranded it mid-way
+- **2026-10-01** — **The Zerops data lives in one store the org sockets feed**, modelled on the
+  legacy `zef` entity manager: streamed records by `clientId`, keyed cells for reads with no stream,
+  and no fetch in a hook (a CI rule).
+  - _Why:_ every view read on its own, and a cold open made 672 calls
+- **2026-10-02** — **A sign-in lands once** (the owner: landing on the projects page and then
+  jumping into some Mate "is very strange and disturbing"). It lands on the deep link it started
+  from, else on the projects page; no route from an earlier visit is restored.
+  - _Why:_ the return fell back to the last route the browser had open, usually an old Mate
+- **2026-10-02** — **A group recipe gives a search engine room to reindex, and keeps what a Mate
+  learns** (the owner: "while creating the recipe it should think about minimal viable resources
+  (but not go overboard either)"). zcp writes Meilisearch, Elasticsearch and Typesense at no less
+  than 2 GB with 0.5 GB free on every tier, every other service at the numbers it runs with, and
+  carries the free-memory buffer and Valkey's profile overrides. A scale change that leaves the
+  recipe behind says so, and one call proposes it as a recipe change for Review.
+  - _Why:_ a new Mate's catalog import ran Meilisearch out of memory at the recipe's 1 GB, and the
+    fix its agent made stopped at that one Mate
