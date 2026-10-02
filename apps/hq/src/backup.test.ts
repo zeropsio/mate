@@ -6,6 +6,7 @@ import * as NodePath from "node:path";
 import { assert, describe, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Redacted from "effect/Redacted";
+import * as Stream from "effect/Stream";
 
 import { mateWithChange, rowsWhere } from "../test/harness/mates.ts";
 import { type Call, sessionFor, startCore, untilHealth } from "../test/harness/runningCore.ts";
@@ -17,6 +18,13 @@ const temporaryDir = Effect.acquireRelease(
   Effect.sync(() => NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "hq-backup-test-"))),
   (dir) => Effect.sync(() => NodeFS.rmSync(dir, { recursive: true, force: true })),
 );
+
+/** Until `core` leads with git open, its takeover done. */
+const leading = (core: Effect.Success<ReturnType<typeof startCore>>) =>
+  Effect.andThen(
+    untilHealth(core.call, "active"),
+    Stream.runHead(Stream.filter(core.gitHost.recorded, (tick) => tick > 0)),
+  );
 
 /** What `/health` says of backup. */
 const backupHealth = (call: Call) =>
@@ -37,7 +45,7 @@ describe("a backup set, taken", () => {
           { mode: 0o755 },
         );
         const a = yield* startCore(true, { pgDump });
-        yield* untilHealth(a.call, "active");
+        yield* leading(a);
         assert.deepStrictEqual(yield* backupHealth(a.call), [200, { state: "pending" }]);
 
         const refused = yield* Effect.flip(a.backup.take);
@@ -59,10 +67,26 @@ describe("a backup set, taken", () => {
       }),
     );
 
+    it.effect("is taken again only once the database has moved", () =>
+      Effect.gen(function* () {
+        const a = yield* startCore(true);
+        yield* leading(a);
+        const sets = NodePath.join(a.storeDir, "sets");
+        const first = yield* a.backup.take;
+        assert.strictEqual((yield* a.backup.take).id, first.id);
+        assert.deepStrictEqual(NodeFS.readdirSync(sets), [first.id]);
+
+        yield* sessionFor(a.call, "door-owner");
+        const next = yield* a.backup.take;
+        assert.deepStrictEqual(NodeFS.readdirSync(sets).sort(), [first.id, next.id]);
+        assert.deepStrictEqual(yield* backupHealth(a.call), [200, { state: "ok", set: next.id }]);
+      }),
+    );
+
     it.effect("that fails leaves the newest whole set staged, and nothing of itself", () =>
       Effect.gen(function* () {
         const a = yield* startCore(true);
-        yield* untilHealth(a.call, "active");
+        yield* leading(a);
         const kept = yield* a.backup.take;
         assert.deepStrictEqual(yield* backupHealth(a.call), [200, { state: "ok", set: kept.id }]);
 
@@ -89,7 +113,7 @@ describe("a backup set, taken", () => {
     it.effect("without a store, stays on the volume whole and restores from there", () =>
       Effect.gen(function* () {
         const a = yield* startCore(true, { storeless: true });
-        yield* untilHealth(a.call, "active");
+        yield* leading(a);
         const owner = yield* sessionFor(a.call, "door-owner");
         yield* mateWithChange(a.call, a.fake, owner);
         const manifest = yield* a.backup.take;

@@ -9,8 +9,8 @@
  *    so git holds every commit the dump names; what git holds beyond it a takeover records
  *    (`reconcile.ts`);
  * 3. `manifest.json` last: the set's files with their sizes and SHA-256, each repository's refs, and
- *    the database's position (the event log's last `seq`, the WAL position). A set without its
- *    manifest is incomplete and never restored.
+ *    the database's position (the event log's last `seq`, the first transaction not yet done). A set
+ *    without its manifest is incomplete and never restored.
  *
  * A set is staged on the volume (`stagingDir/sets/<id>/`), uploaded to the store (`sets/<id>/…`, its
  * manifest last), and the newest complete one stays staged, laid out as the store keeps it: the
@@ -18,6 +18,7 @@
  * With no store, backup is off and a set is only staged. The database's address reaches `pg_dump` in
  * libpq's own environment variables, never in its arguments, and no log carries it.
  *
+ * No set is taken while the database stands where the newest set left it: that set is still whole.
  * A set is refused before it begins when `pg_dump` is older than the server: a dump it writes might
  * not restore. A set that fails leaves nothing of itself staged. `status` tells the newest set's
  * outcome, for `/health`.
@@ -124,9 +125,14 @@ export const Manifest = Schema.Struct({
   version: Schema.Literal(1),
   id: Schema.String,
   takenAt: Schema.String,
-  /** The event log's last `seq` and the WAL position, read before the dump. */
+  /**
+   * Where the database stood before the dump: the event log's last `seq`, and its snapshot's `xmax`,
+   * the first transaction not yet done. Every write is a transaction, so an equal `xmax` is a
+   * database nothing has written to since; what writes only to the log (a read pruning a page)
+   * moves it not.
+   */
   eventSeq: Schema.Number,
-  walLsn: Schema.String,
+  xmax: Schema.String,
   database: Schema.Struct({
     file: Schema.String,
     size: Schema.Number,
@@ -233,6 +239,8 @@ export class PgDumpOlder extends Schema.TaggedError<PgDumpOlder>()("PgDumpOlder"
 
 type TakeError = BackupError | PgDumpOlder | GitError | NotLeader | SqlError;
 
+type Position = Pick<Manifest, "eventSeq" | "xmax">;
+
 /**
  * Backup as `/health` tells it, the newest set's outcome: `off` with no store, `pending` before a
  * first set, `ok` with the newest set kept, `failed` with why.
@@ -277,7 +285,10 @@ const failedOf = (cause: Cause.Cause<TakeError>): BackupStatus => {
 export class Backup extends Context.Service<
   Backup,
   {
-    /** A set taken now, staged and kept in the store if there is one; its manifest. */
+    /**
+     * A set taken now, staged and kept in the store if there is one; its manifest. While the
+     * database stands where the newest set left it, that set.
+     */
     readonly take: Effect.Effect<Manifest, TakeError>;
     readonly status: Effect.Effect<BackupStatus>;
   }
@@ -302,7 +313,9 @@ export const backupLayer = (
         options.store === null ? { state: "off" } : { state: "pending" },
       );
 
-      /** Refused unless `pg_dump` is at least the server's major version: never a dump that would not restore. */
+      const staged = NodePath.join(options.stagingDir, "sets");
+
+      /** Refused unless `pg_dump` is at least the server's major version: a dump that restores. */
       const restorable = Effect.gen(function* () {
         const answer = yield* runTool(pgDump, ["--version"], options.databaseUrl);
         const client = Number(/\(PostgreSQL\) (\d+)/u.exec(answer)?.[1] ?? Number.NaN);
@@ -315,13 +328,32 @@ export const backupLayer = (
         if (client < server) return yield* new PgDumpOlder({ pgDump: client, server });
       });
 
+      /** Where the database stands: the event log's last `seq` and the snapshot's `xmax`. */
+      const positionNow = Effect.map(
+        sql<{ readonly seq: string; readonly xmax: string }>`
+          SELECT COALESCE((SELECT max(seq) FROM hq_git_event), 0)::text AS seq,
+                 pg_snapshot_xmax(pg_current_snapshot())::text AS xmax`,
+        ([row]): Position => ({ eventSeq: Number(row?.seq ?? 0), xmax: row?.xmax ?? "" }),
+      );
+
+      /** The newest staged set's manifest, if the set is whole and, with a store, kept there. */
+      const newest = Effect.gen(function* () {
+        const id = (yield* io("staged", () => NodeFSP.readdir(staged).catch(() => [])))
+          .sort()
+          .at(-1);
+        if (id === undefined) return undefined;
+        const manifest = yield* io("staged", () =>
+          NodeFSP.readFile(NodePath.join(staged, id, "manifest.json"), "utf8"),
+        ).pipe(Effect.flatMap(decodeManifest), Effect.option, Effect.map(Option.getOrUndefined));
+        if (manifest === undefined || options.store === null) return manifest;
+        const kept = yield* options.store.list(setKey(id, "manifest.json"));
+        return kept.length > 0 ? manifest : undefined;
+      });
+
       /** Set `id`, staged in `dir`: the dump, the bundles, then the manifest. */
-      const stage = (git: HqGit, id: string, takenAt: string, dir: string) =>
+      const stage = (git: HqGit, id: string, takenAt: string, dir: string, position: Position) =>
         Effect.gen(function* () {
           yield* io("stage", () => NodeFSP.mkdir(dir, { recursive: true }));
-          const [position] = yield* sql<{ readonly seq: string; readonly lsn: string }>`
-            SELECT COALESCE((SELECT max(seq) FROM hq_git_event), 0)::text AS seq,
-                   pg_current_wal_lsn()::text AS lsn`;
           // The database first: git taken after it holds every commit it names.
           const dump = NodePath.join(dir, "db.dump");
           yield* runTool(
@@ -353,8 +385,7 @@ export const backupLayer = (
             version: 1,
             id,
             takenAt,
-            eventSeq: Number(position?.seq ?? 0),
-            walLsn: position?.lsn ?? "",
+            ...position,
             database: {
               file: "db.dump",
               size: (yield* io("stat", () => NodeFSP.stat(dump))).size,
@@ -383,14 +414,18 @@ export const backupLayer = (
 
       const attempt = Effect.gen(function* () {
         const git = yield* gitHost.git;
+        // While the database stands still, git has not moved either (every push is recorded), and
+        // the newest set is still whole.
+        const position = yield* positionNow;
+        const last = yield* newest;
+        if (last?.eventSeq === position.eventSeq && last.xmax === position.xmax) return last;
         yield* restorable;
         const takenAt = DateTime.formatIso(yield* DateTime.now);
         const id = idOf(takenAt);
-        const staged = NodePath.join(options.stagingDir, "sets");
         const dir = NodePath.join(staged, id);
         const store = options.store;
         // A set that fails leaves nothing of itself staged: the newest staged set stays whole.
-        const manifest = yield* Effect.tap(stage(git, id, takenAt, dir), (manifest) =>
+        const manifest = yield* Effect.tap(stage(git, id, takenAt, dir, position), (manifest) =>
           store === null ? Effect.void : keep(store, manifest, dir),
         ).pipe(
           Effect.onError(() =>
