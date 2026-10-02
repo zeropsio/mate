@@ -121,6 +121,11 @@ describe("joinProjectFlows", () => {
     expect(flow?.environments.map(({ name }) => name)).toEqual(["harbor stage"]);
   });
 
+  it("knows a group's releases once HQ has answered them", () => {
+    expect(join({ stops: new Map([["g1", stopsOf()]]) }).get("g1")?.releasesKnown).toBe(false);
+    expect(join({ releases: new Map([["g1", []]]) }).get("g1")?.releasesKnown).toBe(true);
+  });
+
   describe("the release offered", () => {
     const MERGED = "2".repeat(40);
     const GROUP_MAIN = "9".repeat(40);

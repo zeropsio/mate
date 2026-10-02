@@ -448,6 +448,7 @@ function projectFlow(
     changesFailure: changes === undefined ? halves.changesFailure : undefined,
     merged: changes?.merged ?? [],
     releases: releaseRows,
+    releasesKnown: records !== undefined,
     repos,
     // A production the grant withholds is measured against nothing, and offers nothing.
     release:

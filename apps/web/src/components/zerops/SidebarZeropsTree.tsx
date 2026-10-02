@@ -168,7 +168,7 @@ import {
   STOP_DOT,
   stopServing,
   type ChipView,
-  type GiteaAnswer,
+  type ReleasesAnswer,
   type ProductionChip,
   type ReleaseFailure,
   type StopServing,
@@ -310,14 +310,14 @@ const NO_BIRTHS: ReadonlyArray<ZeropsPlacedBirth> = [];
 /**
  * One project's flow, as the menu needs it: the open pull requests, each
  * declared environment's row by its Zerops project, and what production runs
- * and has waiting — read as the person, in Gitea. Nothing here merges or
+ * and has waiting — as HQ tells it to the person. Nothing here merges or
  * releases: that is the review's (R1).
  */
 export interface SidebarProjectFlow {
   readonly pullRequests: ReadonlyArray<FlowPullRequest>;
   /**
-   * Whether Gitea answered for the project; absent reads as answered. Until
-   * it does, `pullRequests` is empty for want of an answer, and the menu
+   * Whether HQ told the project's changes; absent reads as told. Until it
+   * does, `pullRequests` is empty for want of an answer, and the menu
    * draws the change rows it remembers (`remembered`).
    */
   readonly changesKnown?: boolean | undefined;
@@ -338,6 +338,11 @@ export interface SidebarProjectFlow {
   readonly releaseContents?: ReadonlyArray<Moved> | undefined;
   /** Production's services whose commit cannot be told: nothing is said to wait on them. */
   readonly releaseUntold?: ReadonlyArray<string> | undefined;
+  /**
+   * Whether HQ answered the application's releases; absent reads as answered.
+   * Until it does, production's chip says only what the platform says.
+   */
+  readonly releasesKnown?: boolean | undefined;
   /**
    * The newest release that did not go through, newer than the one production
    * runs (`releaseFailureOf`): the production chip turns amber, and its menu
@@ -430,13 +435,13 @@ export interface SidebarZeropsTreeProps<T extends RosterCandidate> {
   readonly getOwner?: ((candidate: T) => ZeropsMateOwner | undefined) | undefined;
   /**
    * The project's flow, when the account has read it (`projectFlowContext`).
-   * Absent — signed out of Gitea, nothing read yet — the menu keeps its
+   * Absent — no HQ open, nothing read yet — the menu keeps its
    * shape and simply carries none of what the flow says: no change row.
    */
   readonly getFlow?: ((groupId: string) => SidebarProjectFlow | undefined) | undefined;
   /**
    * What this browser remembers the menu drawing (`menuMemory.ts`), for what
-   * is not read yet: a project's change rows until Gitea answers, untinted,
+   * is not read yet: a project's change rows until HQ tells them, untinted,
    * and its production chip as it last stood.
    * Absent, the menu draws only what it has read.
    */
@@ -529,7 +534,7 @@ export interface SidebarRemembered {
 }
 
 /**
- * What the menu drew of what it has read: the change rows Gitea answered, and
+ * What the menu drew of what it has read: the change rows HQ told, and
  * each project's chips — `null` where it no longer has one, absent while
  * what decides it is unread.
  */
@@ -558,7 +563,7 @@ type ChangeRows = Pick<SidebarProjectFlow, "onOpenChange"> & {
   readonly remembered?: true;
 };
 
-/** Change rows drawn from memory: their titles, untinted, until Gitea answers. */
+/** Change rows drawn from memory: their titles, untinted, until HQ tells them. */
 const REMEMBERED_CHANGE_ROWS: ChangeRows = {
   onOpenChange: undefined,
   remembered: true,
@@ -798,11 +803,11 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
   }, [activeProjectId]);
   // What each stop runs, read once per render and handed to `groupFlow`, so
   // the chip and the page never read two different answers for one project;
-  // and whether Gitea is coming at all — where it is not, a chip settles on
-  // the platform's facts alone.
+  // and whether HQ's releases are coming at all — where no HQ is open, a chip
+  // settles on the platform's facts alone.
   const projectFlows = useZeropsProjectFlowOptional();
   const deployments = projectFlows?.deployments;
-  const giteaComing = projectFlows !== null && projectFlows.signedIn;
+  const releasesComing = projectFlows !== null && projectFlows.hqAddress !== undefined;
 
   // Until the rows below are drawn, the jump box finds nothing here, and the
   // memory learns nothing new.
@@ -917,7 +922,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
     /** Its Mates as the menu draws them: the ones at work or lately, then the quiet ones. */
     readonly mateEntries: ReadonlyArray<Entry<T>>;
     readonly grouped: ReturnType<typeof pullRequestsByMate>;
-    /** Whether change rows are drawn: Gitea's, or the ones remembered until it answers. */
+    /** Whether change rows are drawn: HQ's, or the ones remembered until it tells them. */
     readonly changesDrawn: boolean;
     /** Its production and stages, each as the chip and its menu say it. */
     readonly stops: ReadonlyArray<JumpStop>;
@@ -1010,7 +1015,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
     // hangs under a Mate, the recipe changes it leaves out and the production
     // chip can never disagree with what the page says about the same project.
     //
-    // Read whether or not Gitea is: what a stop runs, and whether it serves,
+    // Read whether or not HQ is: what a stop runs, and whether it serves,
     // is the platform's answer, and the chip says that much either way
     // (`productionChip`).
     const projectFlow: GroupFlow = groupFlow(
@@ -1056,10 +1061,10 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
             routes: item.routes ?? [],
           });
     const downOf = (serving: StopServing) => (serving.kind === "down" ? serving.services : []);
-    const gitea: GiteaAnswer =
-      flow !== undefined && flow.changesKnown !== false
+    const releases: ReleasesAnswer =
+      flow !== undefined && flow.releasesKnown !== false
         ? { kind: "answered", failure: flow.releaseFailure }
-        : giteaComing
+        : releasesComing
           ? { kind: "waiting" }
           : { kind: "absent" };
     const stopName = (stop: GroupFlowStop) =>
@@ -1080,7 +1085,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
       serving: productionServing,
       stages,
       stagesBeingCreated: projectFlow.creatingStages.length > 0,
-      gitea,
+      releases,
     });
     const rememberedChips = group === undefined ? undefined : remembered?.chips(id);
     const prodChip =
@@ -1091,7 +1096,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
     // Each stage as a chip of its own says it: its dot and words in the jump
     // box, its row in the stages' menu.
     const stageChips = stages.map(({ stop, serving }) =>
-      drawnChip(stageStopChip({ stop, serving, gitea }), undefined),
+      drawnChip(stageStopChip({ stop, serving, releases }), undefined),
     );
     const stopDeployedAt = (projectId: string) => {
       const activated = deployActivatedAt(deployments?.get(projectId));
@@ -1155,7 +1160,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
                 productionMenu({
                   chip: prodChip,
                   projectId: productionItem?.project.id,
-                  failure: gitea.kind === "answered" ? gitea.failure : undefined,
+                  failure: releases.kind === "answered" ? releases.failure : undefined,
                   down: downOf(productionServing),
                   routes: productionItem?.routes ?? [],
                   nowMs: openedAt,
@@ -1203,7 +1208,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
           ]),
     ];
     // Whether a Mate's own change waits on the person's review — the
-    // composer's top's own rule (`mateNextStep`), on the flow Gitea answered:
+    // composer's top's own rule (`mateNextStep`), on the flow HQ told:
     // its row and its face on the folded heading wear needs-you for it.
     const reviewWaits = (item: T) => mateReviewWaits(flow, item.project.id);
     // Folded, the heading shows who is busy in it (M15): its Mates that need
@@ -1274,7 +1279,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
                         : productionStop === undefined
                           ? undefined
                           : comingOf("production", productionStop),
-                    failure: gitea.kind === "answered" ? gitea.failure : undefined,
+                    failure: releases.kind === "answered" ? releases.failure : undefined,
                   },
             stages: [
               ...stages.map(({ name, stop }) => ({
@@ -1302,7 +1307,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
     // Code only — a recipe change is the group's document, left to the
     // projects page, and is never one more thing a Mate's row here answers
     // for.
-    // The change rows: Gitea's once it answered, and until then the ones this
+    // The change rows: HQ's once it told them, and until then the ones this
     // browser remembers drawing, untinted — so a reload grows no row when the
     // answer comes (`menuMemory.ts`).
     const changesKnown = flow !== undefined && flow.changesKnown !== false;
@@ -3428,7 +3433,7 @@ function PullRequestList({
   readonly open: boolean;
   readonly onToggle: () => void;
   readonly onOpenChange?: ((pull: FlowPullRequest) => void) | undefined;
-  /** Drawn from memory until Gitea answers: no tint, and the title opens nothing yet. */
+  /** Drawn from memory until HQ tells it: no tint, and the title opens nothing yet. */
   readonly remembered?: boolean;
 }) {
   const folded = pullRequestsFolded(pulls.length);
@@ -3491,7 +3496,7 @@ function PullRequestRow({
   /** The project whose repository it is open against, for *Review*. */
   readonly groupId: string;
   readonly onOpenChange?: ((pull: FlowPullRequest) => void) | undefined;
-  /** Drawn from memory until Gitea answers: its title, and no verdict it may no longer have. */
+  /** Drawn from memory until HQ tells it: its title, and no verdict it may no longer have. */
   readonly remembered?: boolean;
 }) {
   const openReview = useOpenReview();

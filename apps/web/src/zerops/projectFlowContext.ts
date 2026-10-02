@@ -86,6 +86,11 @@ export interface ZeropsProjectFlow {
   /** Newest first. */
   readonly releases: ReadonlyArray<FlowReleaseRow>;
   /**
+   * Whether HQ has answered the application's releases: until then `releases` is empty for want
+   * of an answer, and production's chip says only what the platform says.
+   */
+  readonly releasesKnown: boolean;
+  /**
    * The application's repositories with their `main`, as HQ last listed them; `undefined` until it
    * answered. What a history and a release read from.
    */
