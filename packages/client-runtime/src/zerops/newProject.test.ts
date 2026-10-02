@@ -379,11 +379,11 @@ describe("ZeropsApiClient.importDevelopmentContainer: the Mate's key comes with 
     clientId: "org-1",
     projectId: "project-9",
     projectName: "Acme Docs - Ada",
-    groupProjectIds: ["project-9", "project-stage"],
     setupRuntimesYaml: "services:\n  - hostname: appdev\n",
   };
 
-  it("mints the key with the Mate's reach and nothing more, then imports the container holding it", async () => {
+  // ADR 0003: a Mate's key holds its own project; it reads nothing of its application's others.
+  it("mints the key with its own project and nothing more, then imports the container holding it", async () => {
     const { client, requests } = platformClient({});
 
     const result = await client.importDevelopmentContainer(INPUT);
@@ -400,10 +400,7 @@ describe("ZeropsApiClient.importDevelopmentContainer: the Mate's key comes with 
       canCreateProjects: false,
       canViewFinances: false,
       canEditFinances: false,
-      projects: [
-        { projectId: "project-9", roleCode: "BASIC_USER" },
-        { projectId: "project-stage", roleCode: "READ_ONLY" },
-      ],
+      projects: [{ projectId: "project-9", roleCode: "BASIC_USER" }],
     });
     const body = importOf(requests);
     expect(body.createIntegrationToken).toBe(false);
@@ -450,7 +447,7 @@ describe("ZeropsApiClient.importDevelopmentContainer: the Mate's key comes with 
     expect(writesOf(requests)).toEqual([]);
   });
 
-  it("reuses a key a stopped press minted: its reach set again, its value replaced, never a second key", async () => {
+  it("reuses a key a stopped press minted: its value replaced, never a second key", async () => {
     const { client, requests } = platformClient({
       tokens: [
         {
@@ -464,12 +461,41 @@ describe("ZeropsApiClient.importDevelopmentContainer: the Mate's key comes with 
 
     await client.importDevelopmentContainer(INPUT);
 
+    // Its own grant is already the Mate's: nothing is written to it but its new value.
     expect(writesOf(requests)).toEqual([
-      "PUT /client/org-1/integration-token/token-old",
       "PUT /client/org-1/integration-token/token-old/regenerate",
       "PUT /project/project-9/first-class-recipe/development-container",
     ]);
     expect(importOf(requests).serviceImportYaml).toContain(`ZCP_API_KEY: "${REGENERATED_KEY}"`);
+  });
+
+  it("lowers a reused key still ADMIN on its project, keeping every other grant it holds", async () => {
+    const { client, requests } = platformClient({
+      tokens: [
+        {
+          id: "token-old",
+          name: "zcp-Acme Docs - Ada",
+          roleCode: "NO_ACCESS",
+          projects: [
+            { projectId: "project-9", roleCode: "ADMIN" },
+            { projectId: "project-stage", roleCode: "READ_ONLY" },
+          ],
+        },
+      ],
+    });
+
+    await client.importDevelopmentContainer(INPUT);
+
+    const write = requests.find(
+      (request) =>
+        request.method === "PUT" && request.url === "/client/org-1/integration-token/token-old",
+    );
+    expect(JSON.parse(write?.body ?? "{}")).toMatchObject({
+      projects: [
+        { projectId: "project-9", roleCode: "BASIC_USER" },
+        { projectId: "project-stage", roleCode: "READ_ONLY" },
+      ],
+    });
   });
 
   // A zcp the platform is still creating holds the key already: regenerating it would cut the
@@ -500,7 +526,7 @@ describe("ZeropsApiClient.importDevelopmentContainer: the Mate's key comes with 
 
   // The write replaces the key's whole project list: it is planned from a read under the key's
   // lock, every token writer's (pass 28 review).
-  it("sets a reused key's reach from a read under its lock", async () => {
+  it("sets a reused key's own grant from a read under its lock", async () => {
     const held: Array<string> = [];
     const { client, requests } = platformClient({
       tokens: [
@@ -508,7 +534,7 @@ describe("ZeropsApiClient.importDevelopmentContainer: the Mate's key comes with 
           id: "token-old",
           name: "zcp-Acme Docs - Ada",
           roleCode: "NO_ACCESS",
-          projects: [{ projectId: "project-9", roleCode: "BASIC_USER" }],
+          projects: [{ projectId: "project-9", roleCode: "ADMIN" }],
         },
       ],
       holdToken: async (tokenId, run) => {

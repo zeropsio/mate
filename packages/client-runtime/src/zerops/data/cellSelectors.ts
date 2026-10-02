@@ -30,7 +30,7 @@ export function selectLocationChoice(shown: Shown<ReadonlyArray<ZeropsLocation>>
 }
 
 /**
- * What the group-reach reconcile acts on: the tokens' grants once a read
+ * What the Mate-key reconcile acts on: the tokens' grants once a read
  * answered them. A retained value is not acted on until its read again
  * confirms it; a revalidation that failed is a failed read.
  */

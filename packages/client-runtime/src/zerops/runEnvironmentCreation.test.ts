@@ -59,10 +59,6 @@ function fakePlatform(overrides: Partial<EnvironmentCreationPlatform> = {}) {
       calls.push(`importProject:${input.yaml.length}`);
       return Promise.resolve({ projectId: "proj-1" });
     },
-    shareReach: (projectId) => {
-      calls.push(`shareReach:${projectId}`);
-      return Promise.resolve();
-    },
     closeOff: (projectId) => {
       calls.push(`closeOff:${projectId}`);
       return Promise.resolve();
@@ -196,8 +192,6 @@ describe("runEnvironmentCreation", () => {
       "isolation:proj-1",
       "closedOff:proj-1",
       "register:proj-1",
-      // Last, and best-effort: the group-reach reconcile covers it anyway.
-      "shareReach:proj-1",
     ]);
   });
 
@@ -229,7 +223,6 @@ describe("runEnvironmentCreation", () => {
       ["import-container", "done"],
       ["close-off", "done"],
       ["register", "done"],
-      ["share-reach", "done"],
       ["await-ready", "running"],
     ]);
   });
@@ -344,7 +337,6 @@ describe("runEnvironmentCreation", () => {
       "queued",
       "queued",
       "queued",
-      "queued",
     ]);
     expect(last[1]?.error).toBe("projectImportProjectIncluded");
   });
@@ -362,7 +354,6 @@ describe("runEnvironmentCreation", () => {
     const { platform } = fakePlatform();
     const { reports } = await run(plan("dev"), platform);
     expect(reports[0]!.map((entry) => entry.state)).toEqual([
-      "queued",
       "queued",
       "queued",
       "queued",
@@ -599,8 +590,8 @@ describe("runEnvironmentCreation — closing the project off", () => {
     expect(calls.indexOf("closedOff:proj-1")).toBeLessThan(calls.indexOf("register:proj-1"));
   });
 
-  // A member who may make a Mate but not write the registry, or a broker grant that failed: the
-  // Mate stays closed off and running, and waits for an owner (`brokerGrant.ts`).
+  // A member who may make a Mate but not write the registry: the Mate stays closed off and
+  // running, and waits for an owner.
   it("keeps a Mate closed off and running when its registration is refused", async () => {
     const { platform, calls } = fakePlatform({
       register: async () => {
@@ -610,25 +601,9 @@ describe("runEnvironmentCreation — closing the project off", () => {
     const { outcome, reports } = await run(plan("dev"), platform);
     expect(outcome).toMatchObject({ ok: true, projectId: "proj-1", awaitingAgent: true });
     expect(calls).toContain("closedOff:proj-1");
-    expect(calls).toContain("shareReach:proj-1");
     expect(reports.at(-1)!.find((entry) => entry.step.kind === "register")).toMatchObject({
       state: "failed",
       error: "Only an owner may register it.",
-    });
-  });
-
-  // Best-effort, but never quiet: what the group's sight of it could not do is said on its step.
-  it("says on its step what the group's sight of it could not do, and goes on", async () => {
-    const { platform } = fakePlatform({
-      shareReach: async () => {
-        throw new Error("2 of the group's Mates could not be given sight of it.");
-      },
-    });
-    const { outcome, reports } = await run(plan("dev"), platform);
-    expect(outcome).toMatchObject({ ok: true, awaitingAgent: true });
-    expect(reports.at(-1)!.find((entry) => entry.step.kind === "share-reach")).toMatchObject({
-      state: "failed",
-      error: "2 of the group's Mates could not be given sight of it.",
     });
   });
 
@@ -656,11 +631,7 @@ describe("runEnvironmentCreation — a press tried again", () => {
       sleep: async () => undefined,
     });
     expect(outcome).toMatchObject({ ok: true, projectId: "proj-1" });
-    expect(calls).toEqual([
-      "register:proj-1",
-      // Last, and best-effort: the group-reach reconcile covers it anyway.
-      "shareReach:proj-1",
-    ]);
+    expect(calls).toEqual(["register:proj-1"]);
   });
 
   it("resumed at its close-off, reads it back twice, then marks it", async () => {
@@ -680,7 +651,6 @@ describe("runEnvironmentCreation — a press tried again", () => {
       "isolation:proj-1",
       "closedOff:proj-1",
       "register:proj-1",
-      "shareReach:proj-1",
     ]);
   });
 

@@ -1,18 +1,17 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import {
-  buildGroupGrants,
   findHeldMateKey,
   mateHardenableBy,
   mateNeedsHarden,
   findMateIntegrationToken,
   newestMateKey,
-  planAccountGroupReach,
+  planAccountMateKeys,
   makeTokenWriteLock,
-  planGroupReach,
+  planMateKey,
   writeTokenProjectsFresh,
+  type MateKeyWrite,
   type TokenWriteLocks,
-  type ZeropsGroupReachWrite,
   type ZeropsIntegrationToken,
 } from "./groupReach.ts";
 
@@ -87,119 +86,52 @@ describe("findMateIntegrationToken", () => {
   });
 });
 
-describe("buildGroupGrants", () => {
-  it("writes its own project and reads the rest", () => {
-    expect(buildGroupGrants({ selfProjectId: DEV, groupProjectIds: [DEV, PROD, STAGE] })).toEqual([
-      { projectId: DEV, roleCode: "BASIC_USER" },
-      { projectId: PROD, roleCode: "READ_ONLY" },
-      { projectId: STAGE, roleCode: "READ_ONLY" },
-    ]);
-  });
-
-  it("lowers a solo Mate too", () => {
-    // A Mate with no siblings is still a shell holding project ADMIN until
-    // this runs; being alone in its group is not a reason to keep it.
-    expect(buildGroupGrants({ selfProjectId: DEV, groupProjectIds: [DEV] })).toEqual([
-      { projectId: DEV, roleCode: "BASIC_USER" },
-    ]);
-  });
-
-  it("never takes write away from the project the Mate lives in", () => {
-    // A group edit that took write access away from the project the Mate lives
-    // in would end its ability to work at all.
-    expect(buildGroupGrants({ selfProjectId: DEV, groupProjectIds: [PROD] })[0]).toEqual({
-      projectId: DEV,
-      roleCode: "BASIC_USER",
-    });
-  });
-
-  it("says the same thing whatever order the group arrives in", () => {
-    expect(buildGroupGrants({ selfProjectId: DEV, groupProjectIds: [STAGE, PROD] })).toEqual(
-      buildGroupGrants({ selfProjectId: DEV, groupProjectIds: [PROD, STAGE, PROD] }),
+// ADR 0003: a Mate's key holds its own project and nothing this client adds beside it. The plan
+// lowers a key the platform minted with ADMIN, and keeps every other grant it holds exactly as it
+// is — a grant on a sibling is neither added nor taken away here.
+describe("planMateKey", () => {
+  it.each([
+    {
+      case: "a key the platform minted with ADMIN is lowered in place",
+      projects: [{ projectId: DEV, roleCode: "ADMIN" }],
+      written: [{ projectId: DEV, roleCode: "BASIC_USER" }],
+    },
+    {
+      case: "a key that reads a sibling keeps it, and gains nothing",
+      projects: [
+        { projectId: DEV, roleCode: "ADMIN" },
+        { projectId: PROD, roleCode: "READ_ONLY" },
+      ],
+      written: [
+        { projectId: DEV, roleCode: "BASIC_USER" },
+        { projectId: PROD, roleCode: "READ_ONLY" },
+      ],
+    },
+    {
+      case: "a key already lowered plans nothing, whatever else it holds",
+      projects: [
+        { projectId: PROD, roleCode: "READ_ONLY" },
+        { projectId: DEV, roleCode: "BASIC_USER" },
+      ],
+      written: null,
+    },
+    {
+      case: "a key with no grant on its own project is given one",
+      projects: [{ projectId: STAGE, roleCode: "READ_ONLY" }],
+      written: [
+        { projectId: DEV, roleCode: "BASIC_USER" },
+        { projectId: STAGE, roleCode: "READ_ONLY" },
+      ],
+    },
+  ] as const)("$case", ({ projects, written }) => {
+    const token: ZeropsIntegrationToken = { ...MATE_TOKEN, projects };
+    expect(planMateKey({ token, selfProjectId: DEV })).toEqual(
+      written === null ? undefined : { tokenId: "tok-mate", projects: written },
     );
   });
 });
 
-describe("planGroupReach", () => {
-  it("widens a Mate that cannot yet see its group, and lowers it while it is there", () => {
-    expect(
-      planGroupReach({ token: MATE_TOKEN, selfProjectId: DEV, groupProjectIds: [DEV, PROD] }),
-    ).toEqual({
-      tokenId: "tok-mate",
-      projects: [
-        { projectId: DEV, roleCode: "BASIC_USER" },
-        { projectId: PROD, roleCode: "READ_ONLY" },
-      ],
-    });
-  });
-
-  it("plans a write for a solo Mate the platform minted with ADMIN", () => {
-    // The whole of 0.2 for an account that has never grouped anything: one
-    // grant, lowered in place, with the token string unchanged.
-    expect(
-      planGroupReach({ token: MATE_TOKEN, selfProjectId: DEV, groupProjectIds: [DEV] }),
-    ).toEqual({
-      tokenId: "tok-mate",
-      projects: [{ projectId: DEV, roleCode: "BASIC_USER" }],
-    });
-  });
-
-  it("plans nothing for a solo Mate already lowered", () => {
-    expect(
-      planGroupReach({ token: LOWERED_MATE_TOKEN, selfProjectId: DEV, groupProjectIds: [DEV] }),
-    ).toBeUndefined();
-  });
-
-  it("writes nothing when the token already reaches exactly its group", () => {
-    // Reconciling on a screen load must not be a write.
-    const widened: ZeropsIntegrationToken = {
-      ...MATE_TOKEN,
-      projects: [
-        { projectId: PROD, roleCode: "READ_ONLY" },
-        { projectId: DEV, roleCode: "BASIC_USER" },
-      ],
-    };
-    expect(
-      planGroupReach({ token: widened, selfProjectId: DEV, groupProjectIds: [PROD, DEV] }),
-    ).toBeUndefined();
-  });
-
-  it("narrows a Mate when an environment leaves the group", () => {
-    const widened: ZeropsIntegrationToken = {
-      ...MATE_TOKEN,
-      projects: [
-        { projectId: DEV, roleCode: "BASIC_USER" },
-        { projectId: PROD, roleCode: "READ_ONLY" },
-        { projectId: STAGE, roleCode: "READ_ONLY" },
-      ],
-    };
-    expect(
-      planGroupReach({ token: widened, selfProjectId: DEV, groupProjectIds: [DEV, PROD] })
-        ?.projects,
-    ).toEqual([
-      { projectId: DEV, roleCode: "BASIC_USER" },
-      { projectId: PROD, roleCode: "READ_ONLY" },
-    ]);
-  });
-
-  it("repairs a sibling that was granted more than it should have", () => {
-    const wrong: ZeropsIntegrationToken = {
-      ...MATE_TOKEN,
-      projects: [
-        { projectId: DEV, roleCode: "ADMIN" },
-        { projectId: PROD, roleCode: "ADMIN" },
-      ],
-    };
-    expect(
-      planGroupReach({ token: wrong, selfProjectId: DEV, groupProjectIds: [DEV, PROD] })?.projects,
-    ).toEqual([
-      { projectId: DEV, roleCode: "BASIC_USER" },
-      { projectId: PROD, roleCode: "READ_ONLY" },
-    ]);
-  });
-});
-
-describe("planAccountGroupReach", () => {
+describe("planAccountMateKeys", () => {
   const tokens: ReadonlyArray<ZeropsIntegrationToken> = [
     MATE_TOKEN,
     DEPLOY_TOKEN,
@@ -207,60 +139,40 @@ describe("planAccountGroupReach", () => {
     {
       id: "tok-other",
       name: "zcp-Beviro - dev",
-      projects: [{ projectId: "b-dev", roleCode: "ADMIN" }],
+      projects: [
+        { projectId: "b-dev", roleCode: "ADMIN" },
+        { projectId: "b-prod", roleCode: "READ_ONLY" },
+      ],
     },
   ];
 
-  it("widens each group's Mates and leaves everything else alone", () => {
-    expect(
-      planAccountGroupReach({
-        groups: [
-          { projectIds: [DEV, PROD], mateProjectIds: [DEV] },
-          { projectIds: ["b-dev"], mateProjectIds: ["b-dev"] },
-        ],
-        tokens,
-      }),
-    ).toEqual([
+  it("lowers each Mate's key, adds no sibling, and leaves every other token alone", () => {
+    expect(planAccountMateKeys({ mateProjectIds: [DEV, "b-dev"], tokens })).toEqual([
       {
         tokenId: "tok-mate",
         name: "zcp-Aurora - dev",
-        projects: [
-          { projectId: DEV, roleCode: "BASIC_USER" },
-          { projectId: PROD, roleCode: "READ_ONLY" },
-        ],
+        projects: [{ projectId: DEV, roleCode: "BASIC_USER" }],
       },
       {
         tokenId: "tok-other",
         name: "zcp-Beviro - dev",
-        projects: [{ projectId: "b-dev", roleCode: "BASIC_USER" }],
+        projects: [
+          { projectId: "b-dev", roleCode: "BASIC_USER" },
+          { projectId: "b-prod", roleCode: "READ_ONLY" },
+        ],
       },
     ]);
   });
 
-  it("writes nothing for an account already reconciled", () => {
+  it("writes nothing for an account whose keys are lowered", () => {
     // The whole reason this can run on every screen read.
-    const widened: ZeropsIntegrationToken = {
-      ...MATE_TOKEN,
-      projects: [
-        { projectId: DEV, roleCode: "BASIC_USER" },
-        { projectId: PROD, roleCode: "READ_ONLY" },
-      ],
-    };
-    expect(
-      planAccountGroupReach({
-        groups: [{ projectIds: [DEV, PROD], mateProjectIds: [DEV] }],
-        tokens: [widened],
-      }),
-    ).toEqual([]);
+    expect(planAccountMateKeys({ mateProjectIds: [DEV], tokens: [LOWERED_MATE_TOKEN] })).toEqual(
+      [],
+    );
   });
 
-  it("skips a Mate whose token this client cannot find", () => {
-    expect(
-      planAccountGroupReach({
-        groups: [{ projectIds: [DEV, PROD], mateProjectIds: [DEV] }],
-        tokens: [DEPLOY_TOKEN],
-      }),
-    ).toEqual([]);
+  it("skips a Mate whose key this client cannot find", () => {
+    expect(planAccountMateKeys({ mateProjectIds: [DEV], tokens: [DEPLOY_TOKEN] })).toEqual([]);
   });
 });
 
@@ -289,7 +201,7 @@ describe("writeTokenProjectsFresh", () => {
     ];
     let reads = 0;
     const held: string[] = [];
-    const written: Array<ZeropsGroupReachWrite & { readonly roleCode?: string | undefined }> = [];
+    const written: Array<MateKeyWrite> = [];
     const count = await writeTokenProjectsFresh({
       read: async () => answers[Math.min(reads++, answers.length - 1)]!,
       plan: wantProd,

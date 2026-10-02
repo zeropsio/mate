@@ -89,7 +89,6 @@ describe("planEnvironmentCreation", () => {
       "create-project",
       "import-container",
       "close-off",
-      "share-reach",
       "await-ready",
     ]);
   });
@@ -105,14 +104,7 @@ describe("planEnvironmentCreation", () => {
       case: "a Mate",
       input: { role: "dev" as const, name: "dev", register: true },
       // Closed off before it is registered: a refused registration never keeps a Mate open.
-      steps: [
-        "create-project",
-        "import-container",
-        "close-off",
-        "register",
-        "share-reach",
-        "await-ready",
-      ],
+      steps: ["create-project", "import-container", "close-off", "register", "await-ready"],
     },
     {
       case: "a production",
@@ -122,7 +114,7 @@ describe("planEnvironmentCreation", () => {
     {
       case: "a Mate whose person may not write the registry",
       input: { role: "dev" as const, name: "dev", register: false },
-      steps: ["create-project", "import-container", "close-off", "share-reach", "await-ready"],
+      steps: ["create-project", "import-container", "close-off", "await-ready"],
     },
   ])("registers $case in the press, before anything is waited on", ({ input, steps }) => {
     const plan = planEnvironmentCreation({ ...BASE, ...input });
@@ -197,7 +189,6 @@ describe("environmentCreationStepLabel", () => {
       "Adding the managed services",
       "Adding the agent container",
       "Closing the project off",
-      "Letting the project's other Mates see it",
       "Waiting for the agent",
     ]);
   });
@@ -307,7 +298,6 @@ describe("the recipe choice", () => {
       "create-project",
       "import-container",
       "close-off",
-      "share-reach",
       "await-ready",
     ]);
     const container = plan.steps.find((step) => step.kind === "import-container");
@@ -346,7 +336,7 @@ services:
     priority: 10
 `;
   const SERVICES_ONLY = MATE_TIER.replace(/^project:\n(?: {2}.*\n)+/mu, "");
-  const CONTAINER_STEPS = ["import-container", "close-off", "share-reach"] as const;
+  const CONTAINER_STEPS = ["import-container", "close-off"] as const;
 
   function plan(yaml: string, extra: Partial<EnvironmentCreationInput> = {}) {
     const result = planEnvironmentCreation({
@@ -503,7 +493,6 @@ services:
       "import-project",
       "import-container",
       "close-off",
-      "share-reach",
       "await-ready",
     ]);
   });

@@ -129,7 +129,6 @@ import {
   finishSetupRunning,
   finishMateSetup,
   forgetPress,
-  pressViewer,
   readMatePress,
   useInterruptedPresses,
   useMatePresses,
@@ -138,7 +137,7 @@ import { mateRestartPorts, restartMateContainer } from "./mateRestart";
 import { sessionOfferViewer } from "./offerViewer";
 import { intendContainer, readContainerInitAt } from "./zeropsContainers";
 import { runZeropsCommand, useKnown, useZeropsData } from "./zeropsDataContext";
-import { integrationTokensFromGrantMetadata } from "./useZeropsGroupReach";
+import { integrationTokensFromGrantMetadata } from "./useZeropsMateKeys";
 import { useZeropsSession } from "./ZeropsSessionProvider";
 
 /** Which Mate a dialog is about, and which dialog it is. */
@@ -580,10 +579,6 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
       const groupId = tags.groupId;
       const organizationId = activeOrganization.id;
       const projectId = candidate.project.id;
-      const group =
-        groupId === undefined
-          ? undefined
-          : groupTree.groups.find((entry) => entry.group.groupId === groupId);
       const pressStopped = readMatePress(projectId)?.state.kind === "failed";
       // An owner or an admin finishes all of it; the Mate's own adder, its close-off. The harden
       // runs where it may: never on keys this viewer may not write.
@@ -635,10 +630,6 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
             projectId,
             projectName: candidate.project.name,
             container,
-            groupProjectIds: (group?.environments ?? []).flatMap(({ item }) =>
-              item.project.id === projectId ? [] : [item.project.id],
-            ),
-            viewer: pressViewer(user, activeOrganization),
             // A Mate made before the press: its key lowered from ADMIN.
             harden,
             // A Mate HQ holds no record of has it written; a Mate in no group, its record there,
@@ -684,7 +675,6 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
       activeOrganization,
       candidates,
       client,
-      groupTree.groups,
       interrupted,
       listedTokens,
       mayCreateRecord,
