@@ -73,14 +73,15 @@ export interface CommitStatusMemo {
     options?: { readonly maxAgeMs?: number | undefined },
   ) => Promise<ReadonlyArray<GiteaCommitStatus>>;
   /**
-   * Drops everything kept and every read running for an owner: a verb changed its commits, and
-   * the next read asks Gitea, never a read that started before the verb.
+   * Drops everything kept and every read running for an owner — or for one of its repositories: a
+   * verb changed its commits, and the next read asks Gitea, never a read that started before it.
    */
-  readonly forget: (owner: string) => void;
+  readonly forget: (owner: string, repo?: string) => void;
 }
 
 interface Kept {
   readonly owner: string;
+  readonly repo: string;
   readonly statuses: ReadonlyArray<GiteaCommitStatus>;
   readonly signature: string;
   /** The back-off's rung the next read waits; `null` once settled. */
@@ -102,24 +103,31 @@ export function createCommitStatusMemo(
   const kept = new Map<string, Kept>();
   const inFlight = new Map<
     string,
-    { readonly owner: string; readonly read: Promise<ReadonlyArray<GiteaCommitStatus>> }
+    {
+      readonly owner: string;
+      readonly repo: string;
+      readonly read: Promise<ReadonlyArray<GiteaCommitStatus>>;
+    }
   >();
-  /** Bumped by `forget`: a read that started under an older one keeps nothing. */
+  /** Bumped by `forget`, per repository: a read that started under an older one keeps nothing. */
   const generations = new Map<string, number>();
+  const repoKey = (owner: string, repo: string) => `${owner}/${repo}`;
   const keyOf = (commit: CommitRef) => `${commit.owner}/${commit.repo}@${commit.sha}`;
 
   /** `readAtMs` is when the read was asked, not when it answered: a clock's next ask is as old. */
   const settle = (
     key: string,
-    owner: string,
+    commit: CommitRef,
     statuses: ReadonlyArray<GiteaCommitStatus>,
     readAtMs: number,
   ) => {
+    const { owner, repo } = commit;
     const previous = kept.get(key);
     const signature = signatureOf(statuses);
     if (newestStatusesSettled(statuses)) {
       kept.set(key, {
         owner,
+        repo,
         statuses,
         signature,
         rung: null,
@@ -135,6 +143,7 @@ export function createCommitStatusMemo(
         : Math.min(previous.rung + 1, last);
     kept.set(key, {
       owner,
+      repo,
       statuses,
       signature,
       rung,
@@ -154,13 +163,14 @@ export function createCommitStatusMemo(
       }
       const running = inFlight.get(key);
       if (running !== undefined) return running.read;
-      const generation = generations.get(commit.owner) ?? 0;
-      const current = () => (generations.get(commit.owner) ?? 0) === generation;
+      const scope = repoKey(commit.owner, commit.repo);
+      const generation = generations.get(scope) ?? 0;
+      const current = () => (generations.get(scope) ?? 0) === generation;
       const read = load().then(
         (statuses) => {
           if (current()) {
             inFlight.delete(key);
-            settle(key, commit.owner, statuses, at);
+            settle(key, commit, statuses, at);
           }
           return statuses;
         },
@@ -169,13 +179,24 @@ export function createCommitStatusMemo(
           throw cause;
         },
       );
-      inFlight.set(key, { owner: commit.owner, read });
+      inFlight.set(key, { owner: commit.owner, repo: commit.repo, read });
       return read;
     },
-    forget: (owner) => {
-      generations.set(owner, (generations.get(owner) ?? 0) + 1);
-      for (const [key, entry] of kept) if (entry.owner === owner) kept.delete(key);
-      for (const [key, entry] of inFlight) if (entry.owner === owner) inFlight.delete(key);
+    forget: (owner, repo) => {
+      const covers = (entry: { readonly owner: string; readonly repo: string }) =>
+        entry.owner === owner && (repo === undefined || entry.repo === repo);
+      const repos = new Set<string>();
+      for (const [key, entry] of kept) {
+        if (!covers(entry)) continue;
+        kept.delete(key);
+        repos.add(repoKey(entry.owner, entry.repo));
+      }
+      for (const [key, entry] of inFlight) {
+        if (!covers(entry)) continue;
+        inFlight.delete(key);
+        repos.add(repoKey(entry.owner, entry.repo));
+      }
+      for (const scope of repos) generations.set(scope, (generations.get(scope) ?? 0) + 1);
     },
   };
 }

@@ -196,7 +196,10 @@ export function useZeropsGroupDeploys(input: {
         signal,
         statuses,
       }),
-    forget: (group) => statuses.forget(group.slug),
+    // A merge's re-read of a `main` head reads no statuses; a group read again whole forgets them.
+    forget: (group, scope) => {
+      if (scope === "group") statuses.forget(group.slug);
+    },
   });
   return { deploys: answers, failures, invalidate };
 }

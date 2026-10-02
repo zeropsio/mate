@@ -124,7 +124,13 @@ export function useZeropsGroupForge(input: {
     refreshMs: GROUP_FORGE_REFRESH_MS,
     keyOf: (group) => group.slug,
     read: (client, group, scope) => readForge(client, group.slug, scope, mergeability, statuses),
-    forget: (group) => statuses.forget(group.slug),
+    // A release changes what its tags' commits are told; a group read again whole forgets all. A
+    // repository read again — a merge, or Gitea saying "checking" after a push — changes no
+    // commit's checks: its pull requests' heads are new commits.
+    forget: (group, scope) => {
+      if (scope === "group") statuses.forget(group.slug);
+      else if (scope.kind === "tags") statuses.forget(group.slug, GROUP_REPOSITORY);
+    },
   });
   const checking = checkingRepositories(answers).join("\n");
   // A pull request Gitea says "no" for is read again at the forge store's rungs: only a later
@@ -180,8 +186,8 @@ export function useGroupAnswers<Group extends { readonly groupId: string }, Scop
     signal: AbortSignal,
     held: Answer | undefined,
   ) => Promise<GroupUpdate<Answer>>;
-  /** Drops what the reads keep about a group beside its answer: a verb changed it. */
-  readonly forget?: (group: Group) => void;
+  /** Drops what the reads keep about a group beside its answer: a verb, or its key, changed it. */
+  readonly forget?: (group: Group, scope: Scope | "group") => void;
 }): {
   readonly answers: ReadonlyMap<string, Answer>;
   readonly failures: ReadonlyMap<string, string>;
@@ -286,7 +292,7 @@ export function useGroupAnswers<Group extends { readonly groupId: string }, Scop
     for (const group of groups) {
       const key = keyOf(group);
       const before = keys.current.get(group.groupId);
-      if (forget !== undefined && before !== undefined && before !== key) forget(group);
+      if (forget !== undefined && before !== undefined && before !== key) forget(group, "group");
       next.set(group.groupId, key);
     }
     keys.current = next;
@@ -296,7 +302,7 @@ export function useGroupAnswers<Group extends { readonly groupId: string }, Scop
   const invalidate = useCallback((groupId: string, scope: Scope | "group") => {
     const { forget, groups: current } = latest.current.input;
     const group = current.find((candidate) => candidate.groupId === groupId);
-    if (forget !== undefined && group !== undefined) forget(group);
+    if (forget !== undefined && group !== undefined) forget(group, scope);
     driver.current?.invalidate(groupId, scope);
   }, []);
 

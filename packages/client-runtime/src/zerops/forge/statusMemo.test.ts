@@ -180,6 +180,22 @@ describe("commit status memo", () => {
       expect(await loadsAfterForget(first)).toBe(1);
     });
 
+    it("forgets only the repository it is told, where it is told one", async () => {
+      const memo = createCommitStatusMemo();
+      const head = { ...commit, repo: "appdev" };
+      await memo.read(commit, async () => [status("success")]);
+      await memo.read(head, async () => [status("success")]);
+      memo.forget("acme", "group");
+      const loads: string[] = [];
+      for (const ref of [commit, head]) {
+        await memo.read(ref, async () => {
+          loads.push(ref.repo);
+          return [status("success")];
+        });
+      }
+      expect(loads).toEqual(["group"]);
+    });
+
     it("leaves another owner's statuses kept", async () => {
       const memo = createCommitStatusMemo();
       const other = { ...commit, owner: "harbor" };
