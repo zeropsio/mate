@@ -1,45 +1,35 @@
 /**
  * What has happened to a codebase, drawn the way the menu draws a project.
  *
- * The version on a stop used to be a link into Gitea and *History* a second
- * one. Neither worked: the app holds the only Gitea token, so a person's
- * browser has no session there and both landed on a sign-in page (measured
- * 2026-09-19). Gitea answers this perfectly well as an API, so the answer is
- * drawn here instead of handed off — "we can still make the system available,
- * just give the basic functions our face" (the owner, 2026-09-19).
+ * HQ answers it (`useZeropsHistory`): every commit up to `main`'s head, newest first and bounded,
+ * each naming the change of HQ's that landed it. A commit a change landed opens that change's
+ * review; one none did — a person's, a recipe's — is a line, and nothing more.
  *
- * Mounted by the group's page and the stop's own, both of which stand in place
- * of the thread rather than over it.
+ * Mounted by the group's page, the stop's own, and a release row that says what it carried.
  *
- * Same language as the left menu: one spine, a node per commit, and the stops
- * that are running a commit wear their name on it. The rows sit flush and the
- * rail is opaque for the same reason they are there.
+ * Same language as the left menu: one spine, a node per commit, and the stops that are running a
+ * commit wear their name on it. The rows sit flush and the rail is opaque for the same reason they
+ * are there.
  *
- * Structural only: the folding is `groupHistory`'s (R5), the reading is the
- * caller's.
+ * Structural only: the folding is `groupHistory`'s (R5), the reading is the caller's.
  */
 import {
   groupHistory,
+  historyEarlier,
   historyLine,
   historyNote,
   type HistoryEntry,
 } from "@t3tools/client-runtime/zerops";
 import { RUNNING_HERE } from "@t3tools/client-runtime/zerops/flow";
 import { ChevronRightIcon } from "lucide-react";
-import { useCallback, useState } from "react";
 
-import { cn } from "~/lib/utils";
-
-import type { ZeropsCommitDetailResult } from "~/zerops/useZeropsCommitDetail";
-
-import type { ZeropsCommitsState } from "~/zerops/useZeropsRepositoryCommits";
+import type { ZeropsHistoryState } from "~/zerops/useZeropsHistory";
 import { useNowMs } from "~/zerops/useNowMs";
 
 import { StatusDot } from "./primitives";
 import { RAIL_BLANK, RAIL_LINE } from "./rail";
 import { ZeropsRoleTag } from "./ZeropsEnvironmentRow";
 
-/** What the dialog is looking at, and what the reads answered. */
 /** What to call the things a history row names. */
 export interface HistoryNames {
   readonly mateNames?: ReadonlyMap<string, string> | undefined;
@@ -53,59 +43,64 @@ export interface ZeropsHistoryRequest {
   readonly deployed: ReadonlyMap<string, string>;
 }
 
+/** The change of HQ's that landed a commit, as a row opens its review. */
+export type HistoryChange = NonNullable<HistoryEntry["change"]>;
+
 export function ZeropsHistoryView({
   request,
-  commits,
+  history,
+  tags,
   names = {},
-  readDetail,
+  onOpenChange,
   here,
 }: {
   readonly request: ZeropsHistoryRequest;
-  readonly commits: ZeropsCommitsState;
+  readonly history: ZeropsHistoryState;
+  /** `full sha → the release that shipped it` (`releaseTagsByCommit`). */
+  readonly tags: ReadonlyMap<string, string>;
   readonly names?: HistoryNames;
   /**
    * The stop this history is drawn on, by its environment name: the commit it runs reads
    * *Running here* rather than its own name. Absent where the history is no one stop's.
    */
   readonly here?: string | undefined;
-  /** Opens what a commit changed. Absent, a row is a line and nothing more. */
-  readonly readDetail?: ((sha: string) => Promise<ZeropsCommitDetailResult>) | undefined;
+  /** Opens the review of the change that landed a commit. Absent, a row is a line and nothing more. */
+  readonly onOpenChange?: ((change: HistoryChange, from: HTMLElement) => void) | undefined;
 }) {
   // One clock for the whole list, the app's minute tick: rows age together and
   // move on as the minute turns, not only when something else re-renders them.
   const now = useNowMs();
-  if (commits.kind === "no-gitea") {
-    return <HistoryNote>{historyNote("no-gitea")}</HistoryNote>;
+  if (history.kind === "failed") {
+    return <HistoryNote>{history.reason}</HistoryNote>;
   }
-  if (commits.kind === "failed") {
-    return <HistoryNote>{commits.reason}</HistoryNote>;
-  }
-  if (commits.kind === "reading") {
+  if (history.kind === "reading") {
     return <HistoryNote>{historyNote("reading")}</HistoryNote>;
   }
-  const entries = groupHistory({
-    commits: commits.commits,
-    deployed: request.deployed,
-    tags: commits.releases,
-  });
+  const entries = groupHistory({ commits: history.commits, deployed: request.deployed, tags });
   if (entries.length === 0) {
     return <HistoryNote>{historyNote("empty")}</HistoryNote>;
   }
+  const earlier = historyEarlier(entries.length, history.total);
   return (
-    <ul className="flex flex-col" data-zerops-surface="zerops-history">
-      {entries.map((entry, index) => (
-        <HistoryRow
-          entry={entry}
-          first={index === 0}
-          here={here}
-          key={entry.sha}
-          last={index === entries.length - 1}
-          names={names}
-          now={now}
-          readDetail={readDetail}
-        />
-      ))}
-    </ul>
+    <>
+      <ul className="flex flex-col" data-zerops-surface="zerops-history">
+        {entries.map((entry, index) => (
+          <HistoryRow
+            entry={entry}
+            first={index === 0}
+            here={here}
+            key={entry.sha}
+            last={index === entries.length - 1}
+            names={names}
+            now={now}
+            onOpenChange={onOpenChange}
+          />
+        ))}
+      </ul>
+      {earlier === undefined ? null : (
+        <p className="py-2 pl-7.5 text-xs text-muted-foreground">{earlier}</p>
+      )}
+    </>
   );
 }
 
@@ -116,7 +111,7 @@ function HistoryRow({
   last,
   names,
   now,
-  readDetail,
+  onOpenChange,
 }: {
   readonly entry: HistoryEntry;
   readonly first: boolean;
@@ -126,7 +121,7 @@ function HistoryRow({
   readonly now: number;
   /** What to call a Mate and a project, so neither shows as an identifier. */
   readonly names: HistoryNames;
-  readonly readDetail?: ((sha: string) => Promise<ZeropsCommitDetailResult>) | undefined;
+  readonly onOpenChange?: ((change: HistoryChange, from: HTMLElement) => void) | undefined;
 }) {
   const runsHere = here !== undefined && entry.deployedTo.includes(here);
   // The stop it runs on is the page itself: its name gives way to the mark, the rest stays said.
@@ -136,22 +131,12 @@ function HistoryRow({
     names,
   );
   const live = entry.deployedTo.length > 0;
-  const [detail, setDetail] = useState<ZeropsCommitDetailResult | "reading" | null>(null);
-  const toggle = useCallback(() => {
-    if (readDetail === undefined) return;
-    if (detail !== null) {
-      setDetail(null);
-      return;
-    }
-    setDetail("reading");
-    void readDetail(entry.sha).then(setDetail);
-  }, [detail, entry.sha, readDetail]);
+  const { change } = entry;
   return (
     <li className="flex min-w-0 items-stretch gap-2.5" data-zerops-surface="zerops-history-commit">
       <span className="relative flex w-5 shrink-0 flex-col items-center self-stretch">
-        {/* Pinned to the row's first line, never centred in it: the row grows
-            when somebody opens what the commit changed, and a centred node
-            slides down the rail as it does. */}
+        {/* Pinned to the row's first line, never centred in it: a centred node
+            slides down the rail as a two-line row grows. */}
         <span
           aria-hidden="true"
           className={first ? "h-3.5 w-px" : "h-3.5 w-px bg-[var(--zerops-rail)]"}
@@ -170,25 +155,23 @@ function HistoryRow({
       </span>
       <span className="flex min-w-0 flex-1 flex-col gap-0.5 py-2">
         <span className="flex min-w-0 items-baseline gap-2">
-          {readDetail === undefined ? (
+          {onOpenChange === undefined || change === null ? (
             <span className="min-w-0 flex-1 truncate text-sm leading-5 font-medium">
               {entry.subject}
             </span>
           ) : (
             <button
-              aria-expanded={detail !== null}
               className="flex min-w-0 flex-1 cursor-pointer items-baseline gap-1.5 rounded-sm text-left text-sm leading-5 font-medium underline-offset-2 hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-hidden"
-              onClick={toggle}
+              onClick={(event) => {
+                onOpenChange(change, event.currentTarget);
+              }}
               type="button"
             >
               {/* What opens says so at rest. Hover was the only sign this row
                   had more in it, and a touch screen has no hover at all. */}
               <ChevronRightIcon
                 aria-hidden="true"
-                className={cn(
-                  "size-3.5 shrink-0 self-center text-muted-foreground/60 transition-transform",
-                  detail !== null && "rotate-90",
-                )}
+                className="size-3.5 shrink-0 self-center text-muted-foreground/60"
               />
               <span className="min-w-0 truncate">{entry.subject}</span>
             </button>
@@ -228,43 +211,6 @@ function HistoryRow({
         ) : line === undefined ? null : (
           <span className="truncate text-xs leading-4 text-muted-foreground">{line}</span>
         )}
-        {detail === null ? null : (
-          <span
-            className="mt-1 flex flex-col gap-0.5"
-            data-zerops-surface="zerops-history-commit-files"
-          >
-            {detail === "reading" ? (
-              <span className="text-xs text-muted-foreground">Reading what changed&hellip;</span>
-            ) : detail.kind === "failed" ? (
-              <span className="text-xs text-muted-foreground">{detail.reason}</span>
-            ) : detail.kind === "none" ? (
-              <span className="text-xs text-muted-foreground">
-                Gitea would not say what this commit changed.
-              </span>
-            ) : (
-              <>
-                {detail.detail.additions === undefined &&
-                detail.detail.deletions === undefined ? null : (
-                  <span className="text-xs text-muted-foreground tabular-nums">
-                    +{detail.detail.additions ?? 0} −{detail.detail.deletions ?? 0}
-                  </span>
-                )}
-                {detail.detail.files.length === 0 ? (
-                  <span className="text-xs text-muted-foreground">No files changed.</span>
-                ) : (
-                  detail.detail.files.map((file) => (
-                    <span
-                      className="truncate font-mono text-[11px] leading-4 text-muted-foreground"
-                      key={file.filename}
-                    >
-                      {FILE_MARK[file.status] ?? "·"} {file.filename}
-                    </span>
-                  ))
-                )}
-              </>
-            )}
-          </span>
-        )}
       </span>
     </li>
   );
@@ -273,11 +219,3 @@ function HistoryRow({
 function HistoryNote({ children }: { readonly children: React.ReactNode }) {
   return <p className="py-6 text-center text-sm text-muted-foreground">{children}</p>;
 }
-
-/** Gitea's word for what happened to a file, as one character. */
-const FILE_MARK: Record<string, string> = {
-  added: "+",
-  modified: "~",
-  removed: "−",
-  renamed: "→",
-};

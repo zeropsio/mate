@@ -291,8 +291,6 @@ export {
   isReleaseTag,
   releaseRunBy,
   nameStopByRelease,
-  readReleaseMessage,
-  readSemver,
   releaseEntries,
   releaseGate,
   releaseInFlight,
@@ -308,8 +306,6 @@ export {
   type ReleaseEntry,
   type ReleaseGate,
   type ReleaseVerdict,
-  type Semver,
-  GROUP_REPOSITORY,
   releaseRow,
   shortCommit,
   type FlowRelease,
@@ -333,20 +329,19 @@ export { agentNeedsSignIn, AGENT_SIGN_IN_MESSAGE } from "./agentSignIn.ts";
 export {
   groupHistory,
   historyAge,
+  historyEarlier,
   historyLine,
   historyNote,
   releaseTagsByCommit,
   type HistoryEntry,
 } from "./groupHistory.ts";
 export {
-  releaseCarried,
   releaseCarriedToggleLabel,
   releaseDescription,
-  releasesCarried,
   type ReleaseDescription,
-  type ReleaseServiceChange,
 } from "./releaseCarried.ts";
 export {
+  carriedReads,
   compareReadKey,
   movedCommits,
   releaseReads,
@@ -448,12 +443,7 @@ export {
   GiteaApiError,
   type GiteaClient,
   type GiteaClientOptions,
-  type GiteaCommit,
-  type GiteaCommitDetail,
-  type GiteaCommitFile,
   type GiteaOrganization,
-  type GiteaRepository,
-  type GiteaRepositoryPermissions,
   type GiteaTag,
 } from "./giteaClient.ts";
 export {

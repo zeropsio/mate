@@ -1,18 +1,18 @@
 import {
   flowVerbKey,
   releaseRow,
-  releasesCarried,
   type FlowRelease,
   type FlowReleaseRow,
-  type GiteaCommit,
+  type Moved,
+  type MovedCommits,
 } from "@t3tools/client-runtime/zerops";
+import type { CompareCommit } from "@t3tools/shared/hqChanges";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { elementsOf, press, readableText, TestNode } from "~/zerops/__fixtures__/testDom";
-import type { ZeropsCommitsState } from "~/zerops/useZeropsRepositoryCommits";
 
 import { ENVIRONMENT_ROW_GRID_CLASS } from "./ZeropsEnvironmentRow";
 import { ZeropsReleaseRows } from "./ZeropsReleaseRows";
@@ -139,30 +139,34 @@ describe("ZeropsReleaseRows without the commits read", () => {
 describe("ZeropsReleaseRows saying what a release carried", () => {
   const full = (short: string) => short.padEnd(40, "0");
   const FOUR_HOURS_AGO = "2026-09-19T08:00:00Z";
-  const commit = (short: string, subject: string, byline = false): GiteaCommit => ({
+  const commit = (short: string, subject: string): CompareCommit => ({
     sha: full(short),
     subject,
-    ...(byline ? { author: "ales", at: FOUR_HOURS_AGO } : {}),
+    authorName: "ales",
+    at: FOUR_HOURS_AGO,
+    change: null,
   });
-  const TITAN: ReadonlyArray<GiteaCommit> = [
-    commit("1bcc930", "v0.23.0: the void (#32)", true),
+  /** What a release carried of one repository, as HQ compared it. */
+  const moved = (repository: string, commits: ReadonlyArray<CompareCommit>): Moved => ({
+    repository,
+    services: [repository],
+    commits,
+    total: commits.length,
+    truncated: false,
+  });
+  const known = (...carried: ReadonlyArray<Moved>): MovedCommits => ({
+    state: "known",
+    moved: carried,
+  });
+  const TITAN = moved("titan", [
+    commit("1bcc930", "v0.23.0: the void (#32)"),
     commit("2cc0000", "Add the hangar"),
-    commit("3dd0000", "The first ship"),
-  ];
-  const API: ReadonlyArray<GiteaCommit> = [
-    commit("a100000", "Fix the cart", true),
-    commit("a000000", "Open the shop"),
-  ];
-  const WEB: ReadonlyArray<GiteaCommit> = [
+  ]);
+  const API = moved("api", [commit("a100000", "Fix the cart")]);
+  const WEB = moved("web", [
     commit("e200000", "Restyle the cart"),
     commit("e100000", "Add a footer"),
-    commit("e000000", "Open the shop"),
-  ];
-  const read = (commits: ReadonlyArray<GiteaCommit>): ZeropsCommitsState => ({
-    kind: "read",
-    commits,
-    releases: new Map(),
-  });
+  ]);
 
   const titanRelease = (tag: string, short: string, overrides: Partial<FlowRelease> = {}) =>
     release(tag, {
@@ -192,29 +196,9 @@ describe("ZeropsReleaseRows saying what a release carried", () => {
       ],
     }),
   ];
-  const TITAN_ONLY = new Map([["titan", "titan"]]);
-  const SPLIT = new Map([
-    ["api", "api"],
-    ["web", "web"],
-  ]);
-
-  const carriedOf = (
-    releases: ReadonlyArray<FlowRelease>,
-    repositoryOf: ReadonlyMap<string, string>,
-    reads: ReadonlyMap<string, ZeropsCommitsState>,
-  ) => ({
-    changes: releasesCarried({
-      releases,
-      repositoryOf,
-      commits: new Map(
-        [...reads].flatMap(([repository, state]) =>
-          state.kind === "read" ? [[repository, state.commits] as const] : [],
-        ),
-      ),
-    }),
-    reads,
-    repositoryOf,
-    forge: { giteaOrigin: undefined, owner: undefined },
+  /** `tag → what it carried`: v0.1.27 the titan commits; v0.1.26 a roll-back, nothing new. */
+  const carriedOf = (carried: ReadonlyArray<readonly [string, MovedCommits]>) => ({
+    carried: new Map(carried),
     names: {},
   });
 
@@ -233,7 +217,10 @@ describe("ZeropsReleaseRows saying what a release carried", () => {
     </ul>
   );
 
-  const TITAN_READ = carriedOf(TITAN_RELEASES, TITAN_ONLY, new Map([["titan", read(TITAN)]]));
+  const TITAN_READ = carriedOf([
+    ["v0.1.27", known(TITAN)],
+    ["v0.1.26", known()],
+  ]);
   const NEWEST = row(TITAN_RELEASES[0]!, 1);
 
   it.each([
@@ -247,23 +234,16 @@ describe("ZeropsReleaseRows saying what a release carried", () => {
     [
       "a release that moved two repositories names the one it leads with and counts the rest",
       row(SPLIT_RELEASES[0]!, 1),
-      carriedOf(
-        SPLIT_RELEASES,
-        SPLIT,
-        new Map([
-          ["api", read(API)],
-          ["web", read(WEB)],
-        ]),
-      ),
+      carriedOf([["v2.0.1", known(API, WEB)]]),
       ["api: Fix the cart, +2 more", "ales · 4h · api a100000 · web e200000"],
       [],
     ],
     [
-      "a release whose commits are still being read keeps its shas and a way to open it",
+      "a release HQ is still comparing keeps its shas",
       NEWEST,
-      carriedOf(TITAN_RELEASES, TITAN_ONLY, new Map([["titan", { kind: "reading" }]])),
-      [">titan 1bcc930<", 'aria-expanded="false"'],
-      ["v0.23.0"],
+      carriedOf([["v0.1.27", { state: "reading" }]]),
+      [">titan 1bcc930<"],
+      ["v0.23.0", "aria-expanded"],
     ],
     [
       "a release that carried nothing new keeps its shas, and its name where the others are",
@@ -295,7 +275,7 @@ describe("ZeropsReleaseRows saying what a release carried", () => {
   it("writes what a release carried in the row's flexible middle, the tag and its pill before it", () => {
     const html = renderToStaticMarkup(carriedRows([NEWEST], TITAN_READ));
     expect(html).toMatch(
-      /data-zerops-surface="environment-name">v0\.1\.27<\/span><span[^>]*data-zerops-surface="role-tag"[\s\S]*<\/span><\/span><span class="[^"]*" data-zerops-surface="release-description">v0\.23\.0: the void \(#32\)<\/span><span class="[^"]*text-muted-foreground[^"]*" data-zerops-surface="release-byline">ales · 4h · titan 1bcc930<\/span>/u,
+      /data-zerops-surface="environment-name">v0\.1\.27<\/span><span[^>]*data-zerops-surface="role-tag"[\s\S]*<\/span><\/span><span class="[^"]*" data-zerops-surface="release-description">v0\.23\.0: the void \(#32\), \+1 more<\/span><span class="[^"]*text-muted-foreground[^"]*" data-zerops-surface="release-byline">ales · 4h · titan 1bcc930<\/span>/u,
     );
     expect(html).not.toContain("environment-summary");
   });
@@ -304,15 +284,10 @@ describe("ZeropsReleaseRows saying what a release carried", () => {
     const html = renderToStaticMarkup(
       carriedRows(
         [row(TITAN_RELEASES[0]!, 0, { live: true }), row(SPLIT_RELEASES[0]!, 1)],
-        carriedOf(
-          [...TITAN_RELEASES, ...SPLIT_RELEASES],
-          new Map([...TITAN_ONLY, ...SPLIT]),
-          new Map([
-            ["titan", read(TITAN)],
-            ["api", read(API)],
-            ["web", read(WEB)],
-          ]),
-        ),
+        carriedOf([
+          ["v0.1.27", known(TITAN)],
+          ["v2.0.1", known(API, WEB)],
+        ]),
       ),
     );
     const grids = [...html.matchAll(/<li class="([^"]*)"/gu)].map((match) => match[1]);
@@ -407,41 +382,20 @@ describe("ZeropsReleaseRows saying what a release carried", () => {
       [
         "lists the commits it carried, each with its short sha",
         NEWEST,
-        carriedOf(
-          [TITAN_RELEASES[0]!, titanRelease("v0.1.20", "3dd0000")],
-          TITAN_ONLY,
-          new Map([["titan", read(TITAN)]]),
-        ),
+        TITAN_READ,
         ["v0.23.0: the void (#32)", "1bcc930", "Add the hangar", "2cc0000"],
       ],
       [
-        "says the history is being read",
+        "says why HQ could not compare it",
         NEWEST,
-        carriedOf(TITAN_RELEASES, TITAN_ONLY, new Map([["titan", { kind: "reading" }]])),
-        ["Reading the history\u2026"],
+        carriedOf([["v0.1.27", { state: "failed", reason: "HQ has no such commit." }]]),
+        ["HQ has no such commit."],
       ],
       [
-        "says why the history could not be read",
-        NEWEST,
-        carriedOf(
-          TITAN_RELEASES,
-          TITAN_ONLY,
-          new Map([["titan", { kind: "failed", reason: "Gitea answered 502." }]]),
-        ),
-        ["Gitea answered 502."],
-      ],
-      [
-        "lists one repository's commits and says why another's could not be read",
+        "lists each repository it moved, by the service it leads with",
         row(SPLIT_RELEASES[0]!, 1),
-        carriedOf(
-          SPLIT_RELEASES,
-          SPLIT,
-          new Map<string, ZeropsCommitsState>([
-            ["api", read(API)],
-            ["web", { kind: "failed", reason: "Gitea answered 502." }],
-          ]),
-        ),
-        ["api", "Fix the cart", "web", "Gitea answered 502."],
+        carriedOf([["v2.0.1", known(API, WEB)]]),
+        ["api", "Fix the cart", "web", "Restyle the cart"],
       ],
     ] as const)("%s", async (_case, shown, carried, has) => {
       const { text, expanded, label } = await opened(shown, carried);

@@ -7,7 +7,7 @@ import type { CompareRead } from "@t3tools/client-runtime/zerops";
 import type { CompareQuery, CompareResponse } from "@t3tools/shared/hqChanges";
 import { act, type ReactElement } from "react";
 import { create, type ReactTestRenderer } from "react-test-renderer";
-import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { COMPARES_RETRY_MS, useZeropsCompares, type ZeropsCompares } from "./useZeropsCompares";
 
@@ -23,9 +23,11 @@ const hq = vi.hoisted(() => {
     open: true,
     asked: [] as Array<string>,
     failing: false,
+    /** A new HQ for every test: what one HQ answered is held for the whole tab. */
+    tests: 0,
   };
   const official = {
-    address: "https://hq.example.test",
+    address: "https://hq-0.example.test",
     api: {
       compare: async (appId: string, repo: string, query: CompareQuery) => {
         state.asked.push(`${appId} ${repo}`);
@@ -46,6 +48,11 @@ const hq = vi.hoisted(() => {
 vi.mock("./accountHq", () => ({
   useOfficialHq: () => (hq.state.open ? hq.official : null),
 }));
+
+beforeEach(() => {
+  hq.state.tests += 1;
+  hq.official.address = `https://hq-${String(hq.state.tests)}.example.test`;
+});
 
 const READ: CompareRead = {
   repository: "appdev",
@@ -129,5 +136,12 @@ describe("useZeropsCompares", () => {
     await mount(<Probe asks={new Map([["a-todo", [READ]]])} />);
     expect(hq.state.asked).toEqual([]);
     expect(seen()?.get("a-todo")?.answers).toEqual(new Map());
+  });
+
+  it("asks a comparison another surface asked already of nobody: one store per HQ", async () => {
+    await mount(<Probe asks={new Map([["a-todo", [READ]]])} />);
+    await mount(<Probe asks={new Map([["a-todo", [READ]]])} />);
+    expect(hq.state.asked).toEqual(["a-todo appdev"]);
+    expect(seen()?.get("a-todo")?.answers.has(KEY)).toBe(true);
   });
 });

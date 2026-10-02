@@ -44,9 +44,6 @@ import type { Moved, MovedCommits } from "./releaseCompare.ts";
 import type { EnvironmentRow } from "./groupRows.ts";
 import { sameCommit } from "./versionName.ts";
 
-/** The group repo, whose pull requests are recipe changes and whose tags are the releases. */
-export const GROUP_REPOSITORY = "group";
-
 /** The seven characters a person reads a commit by. */
 export function shortCommit(sha: string): string {
   return sha.slice(0, 7);
@@ -65,44 +62,6 @@ const FULL_SHA = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/iu;
 /** Whether a tag name is one of ours. */
 export function isReleaseTag(tag: string): boolean {
   return /^v\d+\.\d+\.\d+$/u.test(tag);
-}
-
-/**
- * The entries a tag's message lists, or `[]` for a message this build cannot
- * read.
- *
- * Tolerant of blank lines and nothing else: a line that is not
- * `{service} {full sha}` makes the tag unparseable, and the broker refuses it.
- * Reading one leniently here would show a release the broker will never deploy.
- */
-export function readReleaseMessage(message: string): ReadonlyArray<ReleaseEntry> {
-  const entries: Array<ReleaseEntry> = [];
-  for (const line of message.split("\n")) {
-    const trimmed = line.trim();
-    if (trimmed.length === 0) continue;
-    const [service, commit, ...rest] = trimmed.split(/\s+/u);
-    if (service === undefined || commit === undefined || rest.length > 0) return [];
-    if (!FULL_SHA.test(commit)) return [];
-    entries.push({ service, commit: commit.toLowerCase() });
-  }
-  return entries;
-}
-
-/** A semantic version, as far as ordering a Gitea history's tags needs. */
-export interface Semver {
-  readonly major: number;
-  readonly minor: number;
-  readonly patch: number;
-}
-
-export function readSemver(tag: string): Semver | undefined {
-  const match = /^v(\d+)\.(\d+)\.(\d+)$/u.exec(tag.trim());
-  if (match === null) return undefined;
-  return {
-    major: Number(match[1]),
-    minor: Number(match[2]),
-    patch: Number(match[3]),
-  };
 }
 
 /** One row of what *Release* shows before it is pressed. */

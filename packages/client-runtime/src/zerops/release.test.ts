@@ -7,7 +7,6 @@ import {
   isReleaseTag,
   releaseRunBy,
   nameStopByRelease,
-  readReleaseMessage,
   releaseEntries,
   releaseGate,
   releaseCandidate,
@@ -30,23 +29,6 @@ const API = "3f9c1b2e5d7a4c6f8e0b1d2a3c4f5e6d7a8b9c0d";
 const COMPARED: MovedCommits = { state: "known", moved: [] };
 const WEB = "77ab0e1f2d3c4b5a69788796a5b4c3d2e1f0a9b8";
 const OLD = "1111111111111111111111111111111111111111";
-
-describe("a Gitea tag's message, as the history reads it", () => {
-  it.each([
-    { name: "two services", message: `api ${API}\nweb ${WEB}`, expected: 2 },
-    { name: "blank lines between them", message: `api ${API}\n\n\nweb ${WEB}\n`, expected: 2 },
-    {
-      name: "a short sha, which makes the whole tag unreadable",
-      message: `api 3f9c1b2`,
-      expected: 0,
-    },
-    { name: "a third word", message: `api ${API} extra`, expected: 0 },
-    { name: "a line with no sha", message: `api`, expected: 0 },
-    { name: "nothing at all", message: "", expected: 0 },
-  ])("reads $name", ({ message, expected }) => {
-    expect(readReleaseMessage(message)).toHaveLength(expected);
-  });
-});
 
 describe("a release's name", () => {
   it.each([

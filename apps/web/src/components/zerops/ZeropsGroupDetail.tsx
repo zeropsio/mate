@@ -9,8 +9,8 @@
  * (the owner, 2026-09-19).
  *
  * Nothing here is fetched twice: the flow is the account-wide read every
- * Zerops surface shares (`projectFlowContext`), and the history is the one
- * read that is opened rather than polled (`useZeropsRepositoryCommits`).
+ * Zerops surface shares (`projectFlowContext`), and the history and what each
+ * release carried are HQ's comparisons, asked once and held (`useZeropsCompares`).
  *
  * Structural only — what a row says is `projectFlow.ts`'s and
  * `groupHistory.ts`'s (rule R5).
@@ -32,8 +32,10 @@ import {
   projectAttention,
   releaseContentsCommits,
   releaseContentsSummary,
-  releasesCarried,
-  type GiteaCommit,
+  carriedReads,
+  movedCommits,
+  releaseTagsByCommit,
+  type MovedCommits,
   type ReleaseContentsSummary,
   shortCommit,
   sidebarChangeLabel,
@@ -42,6 +44,7 @@ import {
   type ProjectAttentionKind,
   type EnvironmentRow,
   type FlowPullRequest,
+  type CompareRead,
   type FlowReleaseRow,
   type GroupEnvironmentRowInput,
   type GroupEnvironmentTier,
@@ -96,13 +99,8 @@ import { useZeropsCandidates } from "~/zerops/useZeropsCandidates";
 import { useZeropsProjectFlowOptional } from "~/zerops/projectFlowContext";
 import { useChangeOffers, useKeepDeployKeyOffer } from "~/zerops/useChangeOffers";
 import { REVIEW_RELEASE_LABEL, useOpenReview } from "~/zerops/review";
-import type { ZeropsCommitDetailResult } from "~/zerops/useZeropsCommitDetail";
-import type { ZeropsCommitsState } from "~/zerops/useZeropsRepositoryCommits";
-import { useZeropsCommitDetailReader } from "~/zerops/useZeropsCommitDetail";
-import {
-  useZeropsRepositoriesCommits,
-  useZeropsRepositoryCommits,
-} from "~/zerops/useZeropsRepositoryCommits";
+import { useZeropsCompares } from "~/zerops/useZeropsCompares";
+import { useZeropsHistory, type ZeropsHistoryState } from "~/zerops/useZeropsHistory";
 import { cn } from "~/lib/utils";
 import { Button } from "../ui/button";
 import {
@@ -114,7 +112,7 @@ import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
 import { mateIsViewers } from "@t3tools/client-runtime/zerops/mateAccess";
 import { ZeropsHostedFrame } from "./landing/ZeropsHostedFrame";
 import { ZeropsRoleTag } from "./ZeropsEnvironmentRow";
-import { ZeropsHistoryView, type HistoryNames } from "./ZeropsHistoryView";
+import { ZeropsHistoryView, type HistoryChange, type HistoryNames } from "./ZeropsHistoryView";
 import {
   FlatCard,
   MateFace,
@@ -608,18 +606,11 @@ export function ZeropsGroupDetailPage({ groupId }: { readonly groupId: string })
   const flow = flowValue?.flows.get(groupId);
   const environments = flow?.environments ?? [];
   const repo = groupRepository(environments);
-  const commits = useZeropsRepositoryCommits(
-    flow === undefined || repo === undefined
-      ? null
-      : { giteaOrigin: flowValue?.giteaOrigin, owner: flow.slug, repo },
-  );
+  const history = useZeropsHistory({ appId: groupId, repo, repos: flow?.repos });
+  const tags = useReleaseTags(flow?.releases);
+  const openChange = useOpenChange(groupId, repo);
   const waiting = releaseContentsSummary(flow?.release.contents ?? [], 20);
   const groupName = useGroupName(groupId);
-  const readDetail = useZeropsCommitDetailReader({
-    giteaOrigin: flowValue?.giteaOrigin,
-    owner: flow?.slug,
-    repo,
-  });
   const openProjects = useOpenProjects();
   // The New Mate dialog over this page, as from every "Add a Mate" (`ZeropsNewMateHost`).
   const addMate = useAddMate();
@@ -648,8 +639,8 @@ export function ZeropsGroupDetailPage({ groupId }: { readonly groupId: string })
 
   return (
     <ZeropsGroupPane
-      commits={commits}
       environments={environments}
+      history={history}
       groupId={groupId}
       attention={attention.items}
       mates={mates}
@@ -677,9 +668,10 @@ export function ZeropsGroupDetailPage({ groupId }: { readonly groupId: string })
       onSetUp={openProjects}
       release={release}
       trouble={actions.trouble ?? mates_.trouble}
+      onOpenChange={openChange}
       pullRequests={flow.pullRequests}
-      readDetail={readDetail}
       repo={repo}
+      tags={tags}
       waiting={waiting}
       withheldNotice={withheldNotice}
     />
@@ -694,8 +686,8 @@ export function ZeropsGroupDetailPage({ groupId }: { readonly groupId: string })
  * changes waiting, without an account behind it.
  */
 export function ZeropsGroupPane({
-  commits,
   environments,
+  history,
   attention,
   groupId,
   mates,
@@ -711,14 +703,20 @@ export function ZeropsGroupPane({
   onOpenMate,
   onSetUp,
   trouble,
+  onOpenChange,
   pullRequests,
-  readDetail,
   release,
   repo,
+  tags,
   waiting,
   withheldNotice,
 }: {
-  readonly commits: ZeropsCommitsState;
+  /** What has landed on the repository, as HQ compares it. */
+  readonly history: ZeropsHistoryState;
+  /** `full sha → the release that shipped it`. */
+  readonly tags: ReadonlyMap<string, string>;
+  /** Opens the review of the change that landed a commit. */
+  readonly onOpenChange?: ((change: HistoryChange, from: HTMLElement) => void) | undefined;
   readonly environments: ReadonlyArray<EnvironmentRow>;
   readonly groupId: string;
   readonly name: string;
@@ -726,7 +724,6 @@ export function ZeropsGroupPane({
   /** Where a project with nothing set up goes to get something set up. */
   readonly onSetUp: () => void;
   readonly pullRequests: ReadonlyArray<FlowPullRequest>;
-  readonly readDetail?: ((sha: string) => Promise<ZeropsCommitDetailResult>) | undefined;
   readonly release: ReleaseOffer;
   /** The repository its history is read from; absent where none is declared. */
   readonly repo: string | undefined;
@@ -882,10 +879,11 @@ export function ZeropsGroupPane({
           />
         ) : (
           <ZeropsHistoryView
-            commits={commits}
+            history={history}
             names={names}
-            readDetail={readDetail}
+            onOpenChange={onOpenChange}
             request={{ repo, deployed }}
+            tags={tags}
           />
         )}
       </Section>
@@ -913,19 +911,25 @@ export function ZeropsStopDetailPage({
   const deployed = useMemo(() => deployedShas(shown), [shown]);
   const stage = stop?.tier === "stage";
   const production = stop?.tier === "production";
-  const forge = useStopForge(flowValue?.giteaOrigin, flow?.slug);
   // Only a stage draws its deploys: a production moves by release, and its
   // releases are the list it is read by.
-  const commits = useZeropsRepositoryCommits(
-    flow === undefined || repo === undefined || !stage
-      ? null
-      : { giteaOrigin: flowValue?.giteaOrigin, owner: flow.slug, repo },
-  );
-  const readDetail = useZeropsCommitDetailReader({ ...forge, repo });
-  const releaseReads = useStopReleaseReads({
-    ...forge,
-    services: production && withheld === null ? declared?.services : undefined,
+  const history = useZeropsHistory({
+    appId: groupId,
+    repo: stage ? repo : undefined,
+    repos: flow?.repos,
   });
+  const mainHead =
+    repo === undefined
+      ? undefined
+      : (flow?.repos?.find(({ name }) => name === repo)?.mainHead ?? undefined);
+  const tags = useReleaseTags(flow?.releases);
+  const openChange = useOpenChange(groupId, repo);
+  const openCarried = useOpenCarriedChange(groupId);
+  const carried = useStopCarried(
+    groupId,
+    flow?.releases,
+    production && withheld === null ? declared?.services : undefined,
+  );
   const release = useReleaseOffer(groupId);
   const openReview = useOpenReview();
   const stopGroupName = useGroupName(groupId);
@@ -949,7 +953,7 @@ export function ZeropsStopDetailPage({
           environment: declared.environment,
           services: declared.services,
           platform,
-          mainHead: stage && commits.kind === "read" ? commits.commits[0]?.sha : undefined,
+          mainHead: stage ? mainHead : undefined,
           routes,
           offers,
           nowMs,
@@ -995,8 +999,7 @@ export function ZeropsStopDetailPage({
     release,
     releasedAge: releasedAge.length === 0 ? undefined : releasedAge,
     since: view.activatedAt === null ? undefined : formatRelativeTimeLabel(view.activatedAt),
-    atMainHead:
-      stage && commits.kind === "read" && sameCommit(view.version?.sha, commits.commits[0]?.sha),
+    atMainHead: stage && sameCommit(view.version?.sha, mainHead),
     keyGap:
       declared === undefined
         ? undefined
@@ -1005,11 +1008,11 @@ export function ZeropsStopDetailPage({
 
   return (
     <ZeropsStopPane
-      commits={commits}
+      carried={carried}
       crumbs={crumbs}
       deployed={deployed}
       enablingServiceId={route.enablingServiceId}
-      forge={forge}
+      history={history}
 
       groupId={groupId}
       groupName={stopGroupName}
@@ -1017,14 +1020,14 @@ export function ZeropsStopDetailPage({
       onEnableRoute={(serviceId) => {
         void route.enable(projectId, serviceId);
       }}
+      onOpenCarriedChange={openCarried}
+      onOpenChange={openChange}
       onOpenProject={openProjects}
       onRollBack={(tag, from) => {
         openReview({ kind: "rollback", groupId, tag }, { from });
       }}
       pending={flowValue.pending}
-      readDetail={readDetail}
       release={release}
-      releaseReads={releaseReads}
       releases={production ? flow.releases : NO_RELEASES}
       repo={repo}
       routeTrouble={route.trouble}
@@ -1047,6 +1050,7 @@ export function ZeropsStopDetailPage({
       }
       services={services}
       stop={stop}
+      tags={tags}
       trouble={flowValue.trouble}
       verdict={verdict}
       view={view}
@@ -1054,12 +1058,6 @@ export function ZeropsStopDetailPage({
       waiting={production ? releaseContentsCommits(flow.release.contents) : NO_COMMITS}
     />
   );
-}
-
-/** Where a stop's repositories are read from: the account's Gitea, and the group's org there. */
-interface StopForge {
-  readonly giteaOrigin: string | undefined;
-  readonly owner: string | undefined;
 }
 
 /** A commit merged to `main` and not in front of people yet. */
@@ -1082,54 +1080,80 @@ const ROLE_TAG: Record<GroupEnvironmentTier, ZeropsEnvironmentRole> = {
   production: "prod",
 };
 
-/**
- * Where a stop's repositories live, held across renders: the commit and
- * release reads that take it are not asked again by a render alone.
- */
-function useStopForge(giteaOrigin: string | undefined, owner: string | undefined): StopForge {
-  return useMemo(() => ({ giteaOrigin, owner }), [giteaOrigin, owner]);
+/** `full sha → the release that shipped it`, from HQ's records (`releaseTagsByCommit`). */
+function useReleaseTags(
+  releases: ReadonlyArray<FlowReleaseRow> | undefined,
+): ReadonlyMap<string, string> {
+  return useMemo(() => releaseTagsByCommit(releases ?? NO_RELEASES), [releases]);
 }
 
-/**
- * A production's releases say what each carried: its code services'
- * repositories, read once when the page opens, never on the clock. Held
- * across renders, so the release rows are measured once per read.
- * `undefined` without the services — a stage, or a withheld stop.
- */
-function useStopReleaseReads({
-  giteaOrigin,
-  owner,
-  services,
-}: StopForge & {
-  readonly services: GroupEnvironmentRowInput["services"] | undefined;
-}): StopReleaseReads | undefined {
-  const repositoryOf = useMemo(
-    () =>
-      services === undefined
-        ? NO_REPOSITORIES
-        : new Map(
-            services.flatMap((entry) =>
-              entry.repository === undefined ? [] : [[entry.hostname, entry.repository] as const],
-            ),
-          ),
-    [services],
-  );
-  const repositories = [...new Set(repositoryOf.values())];
-  const reads = useZeropsRepositoriesCommits(
-    owner !== undefined && repositories.length > 0 ? { giteaOrigin, owner, repositories } : null,
-  );
+/** Opens the review of the change that landed a commit of `repo`, from where it was pressed. */
+function useOpenChange(
+  groupId: string,
+  repo: string | undefined,
+): ((change: HistoryChange, from: HTMLElement) => void) | undefined {
+  const openReview = useOpenReview();
   return useMemo(
-    () => (services === undefined ? undefined : { reads, repositoryOf }),
-    [services, reads, repositoryOf],
+    () =>
+      repo === undefined
+        ? undefined
+        : (change: HistoryChange, from: HTMLElement) => {
+            openReview(
+              { kind: "change", groupId, repository: repo, number: change.number },
+              { from },
+            );
+          },
+    [groupId, openReview, repo],
   );
 }
 
-/** A production's code repositories, read for what its releases carried. */
-interface StopReleaseReads {
-  /** `repository → its read`. */
-  readonly reads: ReadonlyMap<string, ZeropsCommitsState>;
-  /** `hostname → repository`, the code services only. */
-  readonly repositoryOf: ReadonlyMap<string, string>;
+/** Opens the review of the change that landed a commit a release carried, in its repository. */
+function useOpenCarriedChange(
+  groupId: string,
+): (repository: string, change: HistoryChange, from: HTMLElement) => void {
+  const openReview = useOpenReview();
+  return useCallback(
+    (repository, change, from) => {
+      openReview({ kind: "change", groupId, repository, number: change.number }, { from });
+    },
+    [groupId, openReview],
+  );
+}
+
+/**
+ * What each of a production's releases carried, by its tag, as HQ compares it (`carriedReads`):
+ * every release against the one before it, read once and held. `undefined` without the services —
+ * a stage, or a withheld stop.
+ */
+function useStopCarried(
+  groupId: string,
+  releases: ReadonlyArray<FlowReleaseRow> | undefined,
+  services: GroupEnvironmentRowInput["services"] | undefined,
+): ReadonlyMap<string, MovedCommits> | undefined {
+  const reads = useMemo(() => {
+    if (services === undefined || releases === undefined) return undefined;
+    const repositoryOf = new Map(
+      services.flatMap((entry) =>
+        entry.repository === undefined ? [] : [[entry.hostname, entry.repository] as const],
+      ),
+    );
+    return carriedReads({ releases, repositoryOf });
+  }, [releases, services]);
+  const asks = useMemo(
+    () => (reads === undefined ? NO_ASKS : new Map([[groupId, [...reads.values()].flat()]])),
+    [groupId, reads],
+  );
+  const compares = useZeropsCompares(asks);
+  return useMemo(() => {
+    if (reads === undefined) return undefined;
+    const answered = compares.get(groupId);
+    return new Map(
+      [...reads].map(([tag, tagReads]) => [
+        tag,
+        answered === undefined ? CARRIED_READING : movedCommits({ reads: tagReads, ...answered }),
+      ]),
+    );
+  }, [compares, groupId, reads]);
 }
 
 /** How many releases a production lists before the rest wait behind a quiet verb. */
@@ -1148,21 +1172,21 @@ const RELEASES_SHOWN = 5;
  * and how the stop got here (a production's releases, a stage's deploys).
  */
 export function ZeropsStopPane({
-  commits,
+  carried,
   crumbs,
   deployed,
   enablingServiceId,
-  forge,
   groupId,
   groupName,
+  history,
   names,
   onEnableRoute,
+  onOpenCarriedChange,
+  onOpenChange,
   onOpenProject,
   onRollBack,
   pending,
-  readDetail,
   release,
-  releaseReads,
   releases,
   repo,
   routeTrouble,
@@ -1170,6 +1194,7 @@ export function ZeropsStopPane({
   runAgain,
   services,
   stop,
+  tags,
   trouble,
   untold,
   verdict,
@@ -1186,8 +1211,6 @@ export function ZeropsStopPane({
   readonly verdict: StopVerdict;
   /** One row per service, as `serviceRows` says it. */
   readonly services: ReadonlyArray<StopServiceRow>;
-  /** Where a production's release rows read what each carried. */
-  readonly forge: StopForge;
   /** Offered on a production that is behind — the one stop a release moves. */
   readonly release: ReleaseOffer;
   readonly runAgain?: StopRunAgain | undefined;
@@ -1201,21 +1224,29 @@ export function ZeropsStopPane({
   /** A production's releases, newest first; empty for a stage. */
   readonly releases: ReadonlyArray<FlowReleaseRow>;
   /**
-   * What a production's code repositories read, so each release row says what it carried;
-   * `undefined` on a stage, where the rows are their shas.
+   * What each of a production's releases carried, by its tag, as HQ compares it; `undefined` on a
+   * stage, where the rows are their shas.
    */
-  readonly releaseReads?: StopReleaseReads | undefined;
+  readonly carried?: ReadonlyMap<string, MovedCommits> | undefined;
+  /** Opens the review of the change that landed a commit a release carried. */
+  readonly onOpenCarriedChange?:
+    | ((repository: string, change: HistoryChange, from: HTMLElement) => void)
+    | undefined;
   /** The flow's verbs under way (`flowVerbKey`). */
   readonly pending: ReadonlySet<string>;
   /** Opens the roll back's review from the row pressed: nothing rolls back from a row (R1). */
   readonly onRollBack: (tag: string, from: HTMLElement) => void;
   /** What the last flow verb's refusal said — a *Roll back* refused says so here. */
   readonly trouble: string | null;
-  readonly commits: ZeropsCommitsState;
+  /** A stage's deploys: what has landed on its repository, as HQ compares it. */
+  readonly history: ZeropsHistoryState;
+  /** `full sha → the release that shipped it`. */
+  readonly tags: ReadonlyMap<string, string>;
+  /** Opens the review of the change that landed a commit of the stage's history. */
+  readonly onOpenChange?: ((change: HistoryChange, from: HTMLElement) => void) | undefined;
   /** `environment name → the whole sha it runs`, for the history's own marks. */
   readonly deployed: ReadonlyMap<string, string>;
   readonly names: HistoryNames;
-  readonly readDetail?: ((sha: string) => Promise<ZeropsCommitDetailResult>) | undefined;
   readonly repo: string | undefined;
   readonly onEnableRoute?: ((serviceId: string) => void) | undefined;
   /** Which one is being opened, so its row says so and takes no second press. */
@@ -1227,25 +1258,6 @@ export function ZeropsStopPane({
   const production = stop.tier === "production";
   const earlier = Math.max(0, releases.length - RELEASES_SHOWN);
   const listed = allReleases ? releases : releases.slice(0, RELEASES_SHOWN);
-  // Over the whole list, not the rows shown: the last row drawn is measured
-  // against the first one not drawn.
-  const changes = useMemo(
-    () =>
-      releaseReads === undefined
-        ? NO_CHANGES
-        : releasesCarried({
-            releases,
-            repositoryOf: releaseReads.repositoryOf,
-            commits: new Map(
-              [...releaseReads.reads].flatMap(([repository, state]) =>
-                state.kind === "read"
-                  ? [[repository, state.commits] as [string, ReadonlyArray<GiteaCommit>]]
-                  : [],
-              ),
-            ),
-          }),
-    [releaseReads, releases],
-  );
   const verb = verdict.verb;
   return (
     <DetailShell
@@ -1334,17 +1346,9 @@ export function ZeropsStopPane({
           <CardGroup title={stopCardTitle("releases", releases.length)}>
             <ul className="flex flex-col">
               <ZeropsReleaseRows
-                {...(releaseReads === undefined
+                {...(carried === undefined
                   ? {}
-                  : {
-                      carried: {
-                        changes,
-                        reads: releaseReads.reads,
-                        repositoryOf: releaseReads.repositoryOf,
-                        forge,
-                        names,
-                      },
-                    })}
+                  : { carried: { carried, names, onOpenChange: onOpenCarriedChange } })}
                 groupId={groupId}
                 onRollBack={onRollBack}
                 pending={pending}
@@ -1371,7 +1375,7 @@ export function ZeropsStopPane({
             aside={DEPLOYS_ASIDE}
             title={stopCardTitle(
               "deploys",
-              repo !== undefined && commits.kind === "read" ? commits.commits.length : undefined,
+              repo !== undefined && history.kind === "read" ? history.total : undefined,
             )}
           >
             {repo === undefined ? (
@@ -1379,15 +1383,16 @@ export function ZeropsStopPane({
                 No repository is declared for this environment&rsquo;s services, so its history
                 cannot be read.
               </p>
-            ) : commits.kind === "read" && commits.commits.length === 0 ? (
+            ) : history.kind === "read" && history.commits.length === 0 ? (
               <p className="py-2 text-sm text-muted-foreground">{NONE_YET}</p>
             ) : (
               <ZeropsHistoryView
-                commits={commits}
                 here={stop.name}
+                history={history}
                 names={names}
-                readDetail={readDetail}
+                onOpenChange={onOpenChange}
                 request={{ repo, deployed }}
+                tags={tags}
               />
             )}
           </CardGroup>
@@ -1591,8 +1596,9 @@ const UNREAD_DEPLOYMENT: Shown<Deployment> = { state: "unread", waitingFor: null
 const NO_SERVICE_ROWS: ReadonlyArray<StopServiceRow> = [];
 /** What a stage lists in a production's place: it has no releases and waits for none. */
 const NO_RELEASES: ReadonlyArray<FlowReleaseRow> = [];
-const NO_REPOSITORIES: ReadonlyMap<string, string> = new Map();
-const NO_CHANGES: ReturnType<typeof releasesCarried> = new Map();
+/** What a release carried while HQ is asked: nothing is known yet. */
+const CARRIED_READING: MovedCommits = { state: "reading" };
+const NO_ASKS: ReadonlyMap<string, ReadonlyArray<CompareRead>> = new Map();
 const NO_COMMITS: ReadonlyArray<WaitingCommit> = [];
 /** A stage, whose verdict never speaks of what production runs. */
 const NO_UNTOLD: ReadonlyArray<string> = [];

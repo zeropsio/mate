@@ -21,6 +21,7 @@ import type {
 } from "@t3tools/client-runtime/zerops";
 import type { Deployment } from "@t3tools/client-runtime/zerops/flow";
 import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
+import type { RepoListEntry } from "@t3tools/shared/hqChanges";
 import { createContext, useContext } from "react";
 
 /** What *Release* offers on a project, when it is offered at all. */
@@ -84,6 +85,11 @@ export interface ZeropsProjectFlow {
   readonly merged: ReadonlyArray<FlowPullRequest>;
   /** Newest first. */
   readonly releases: ReadonlyArray<FlowReleaseRow>;
+  /**
+   * The application's repositories with their `main`, as HQ last listed them; `undefined` until it
+   * answered. What a history and a release read from.
+   */
+  readonly repos: ReadonlyArray<RepoListEntry> | undefined;
   readonly release: ZeropsReleaseOffer;
 }
 

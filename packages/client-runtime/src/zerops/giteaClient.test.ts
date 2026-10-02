@@ -70,54 +70,10 @@ describe("GiteaClient request shapes", () => {
     expect(calls).toEqual(["Bearer first", "Bearer second"]);
   });
 
-  it("reads one commit on Gitea's own route, with its files and stats", async () => {
-    // `/repos/{o}/{r}/commits/{sha}` is GitHub's; Gitea answers 404 there and
-    // carries the single commit under `git/commits` (measured on 1.27.2,
-    // 2026-09-20).
-    const { client, calls } = fake([
-      {
-        body: {
-          sha: "dc8aabc",
-          commit: { message: "Add the page\n\nbody" },
-          files: [{ filename: "index.html", status: "added" }],
-          stats: { additions: 12, deletions: 0 },
-        },
-      },
-    ]);
-    const detail = await client.commitDetail("harbor", "appdev", "dc8aabc");
-    expect(calls[0]?.url).toBe(
-      `${ORIGIN}/api/v1/repos/harbor/appdev/git/commits/dc8aabc?stat=true&files=true`,
-    );
-    expect(detail?.subject).toBe("Add the page");
-    expect(detail?.files).toEqual([{ filename: "index.html", status: "added" }]);
-    expect(detail?.additions).toBe(12);
-  });
-
-  it("reads a repository with the permissions this person has there", async () => {
-    const { client, calls } = fake([
-      {
-        body: {
-          id: 3,
-          name: "group",
-          full_name: "acme/group",
-          default_branch: "main",
-          permissions: { admin: false, push: false, pull: true },
-        },
-      },
-    ]);
-    const repository = await client.getRepository("acme", "group");
-    expect(calls[0]?.url).toBe(`${ORIGIN}/api/v1/repos/acme/group`);
-    expect(repository?.permissions).toEqual({ admin: false, push: false, pull: true });
-  });
-
   it.each([
     {
       what: "an org the broker has not made yet",
       call: (c: GiteaClient) => c.getOrganization("acme"),
-    },
-    {
-      what: "a repository that is not there",
-      call: (c: GiteaClient) => c.getRepository("acme", "group"),
     },
   ])("answers undefined for $what rather than throwing", async ({ call }) => {
     const { client } = fake([{ status: 404, body: { message: "Not found" } }]);
@@ -151,7 +107,7 @@ describe("GiteaClient request shapes", () => {
       },
     });
 
-    await expect(client.getRepository("acme", "group")).resolves.toBeUndefined();
+    await expect(client.getOrganization("acme")).resolves.toBeUndefined();
 
     expect(signals).toHaveLength(1);
     expect(signals[0]?.aborted).toBe(false);
@@ -177,17 +133,6 @@ describe("GiteaClient request shapes", () => {
     const { client } = fake([{ status: 500, body: {} }]);
     const failure = await client.listTags("acme", "group").catch((cause: unknown) => cause);
     expect((failure as GiteaApiError).message).toBe("Gitea refused to list the tags.");
-  });
-
-  it("lists the repositories this person has access to page by page, until a page comes back short", async () => {
-    const full = Array.from({ length: 50 }, (_, index) => ({ id: index, name: `r${index}` }));
-    const { client, calls } = fake([{ body: full }, { body: [{ id: 50, name: "r50" }] }]);
-    const repositories = await client.listUserRepositories();
-    expect(repositories).toHaveLength(51);
-    expect(calls.map((call) => call.url)).toEqual([
-      `${ORIGIN}/api/v1/user/repos?limit=50&page=1`,
-      `${ORIGIN}/api/v1/user/repos?limit=50&page=2`,
-    ]);
   });
 
   it("lists one page of a repository's tags, message and all", async () => {
