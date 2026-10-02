@@ -5,7 +5,9 @@ import * as NodePath from "node:path";
 import { assert, describe, it } from "@effect/vitest";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
+import * as Exit from "effect/Exit";
 import * as Schedule from "effect/Schedule";
+import * as Stream from "effect/Stream";
 
 import { gitClient } from "../test/harness/gitClient.ts";
 import {
@@ -294,26 +296,28 @@ describe("a Mate's changes in HQ", () => {
 
           const next = yield* startCore(true, { url: first.url, gitRoot: first.gitRoot });
           yield* untilHealth(next.call, "standby");
-          yield* Effect.sleep(Duration.millis(500));
+          // A standby holds no git: it never opened it, so it swept nothing.
+          assert.isTrue(
+            Exit.isFailure(yield* Effect.exit(next.gitHost.git)),
+            "a standby opened git",
+          );
           assert.isTrue(NodeFS.existsSync(debris), "a standby swept the leader's staging");
 
           yield* first.stop;
-          yield* untilHealth(next.call, "active");
-          yield* rowsWhere(
-            first.url,
-            "SELECT head FROM hq_change WHERE repo = 'appdev'",
-            (rows) => rows[0]?.["head"] === head,
-          );
-          yield* rowsWhere(
-            first.url,
-            "SELECT main_head FROM hq_repo WHERE name = 'appdev'",
-            (rows) => rows[0]?.["main_head"] === main,
+          // Taking the lead, it opens git — sweeps, converges, follows the refs into the log — and
+          // its record ticks once that is done.
+          yield* Stream.runHead(Stream.filter(next.gitHost.recorded, (tick) => tick > 0));
+          const now = (query: string) => rowsWhere(first.url, query, () => true);
+          assert.deepStrictEqual(
+            [
+              (yield* now("SELECT head FROM hq_change WHERE repo = 'appdev'"))[0]?.["head"],
+              (yield* now("SELECT main_head FROM hq_repo WHERE name = 'appdev'"))[0]?.["main_head"],
+            ],
+            [head, main],
           );
           assert.isFalse(NodeFS.existsSync(debris), "taking the lead, git swept nothing");
-          const events = yield* rowsWhere(
-            first.url,
+          const events = yield* now(
             "SELECT kind, number, data FROM hq_git_event WHERE repo = 'appdev' ORDER BY seq",
-            (rows) => rows.length >= 5,
           );
           assert.deepStrictEqual(
             events.map((row) => [
