@@ -7,6 +7,9 @@
  * client origins the API answers; `HQ_DRAIN_SECONDS`, how long the server still answers on shutdown (`core.ts`). The server answers from the first moment; the official check and
  * the leader work behind it.
  *
+ * `main.mjs import …` is no server but the migration's command (`importCli.ts`): its lines on the
+ * standard output, its outcome the exit code.
+ *
  * @module main
  */
 import * as NodeHttp from "node:http";
@@ -15,11 +18,13 @@ import * as NodeHttpClient from "@effect/platform-node/NodeHttpClient";
 import * as NodeHttpServer from "@effect/platform-node/NodeHttpServer";
 import * as NodeRuntime from "@effect/platform-node/NodeRuntime";
 import * as Config from "effect/Config";
+import * as Console from "effect/Console";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 
 import { type CoreOptions, coreApp } from "./core.ts";
+import { importCommand } from "./importCli.ts";
 import { bundledMigrations } from "./migrationFiles.ts";
 import { ZeropsApi, ZeropsDeploy } from "./zerops/api.ts";
 import { makeZeropsApiHttp, makeZeropsDeployHttp } from "./zerops/http.ts";
@@ -68,4 +73,13 @@ const core = Layer.unwrap(
   }),
 );
 
-Layer.launch(core).pipe(NodeRuntime.runMain);
+const [command, ...args] = process.argv.slice(2);
+if (command === "import") {
+  Effect.gen(function* () {
+    const result = yield* importCommand(args);
+    for (const line of result.lines) yield* Console.log(line);
+    process.exitCode = result.code;
+  }).pipe(NodeRuntime.runMain);
+} else {
+  Layer.launch(core).pipe(NodeRuntime.runMain);
+}
