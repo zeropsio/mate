@@ -22,6 +22,7 @@ import {
   type AttachmentLink,
   type ChangeLink,
 } from "@t3tools/shared/hqChanges";
+import { RecipeTierResponse, type RecipeTier } from "@t3tools/shared/hqRecipe";
 import type { MateSummary } from "@t3tools/shared/mateLink";
 import type { RoleProjectKind } from "@t3tools/shared/zeropsRoles";
 import * as Option from "effect/Option";
@@ -166,6 +167,16 @@ export interface HqApi {
   readonly closeChange: (link: ChangeLink) => Promise<HqChange>;
   /** A picture of a change, read as the person (`attachmentPath`). */
   readonly changeAttachment: (link: AttachmentLink, signal?: AbortSignal) => Promise<Blob>;
+  /**
+   * A tier of an application's recipe as its recipe repository's `main` holds it, read as the
+   * person (`GET /api/apps/:appId/recipe/:tier`): `absent` where it is not there or declares no
+   * service.
+   */
+  readonly recipeTier: (
+    appId: string,
+    tier: RecipeTier,
+    signal?: AbortSignal,
+  ) => Promise<RecipeTierResponse>;
 }
 
 /** A socket the structure stream reads, opened by the host (`WebSocket` in a browser). */
@@ -287,6 +298,7 @@ const readChangeDetail = decoded(ChangeDetailResponse);
 const readComments = decoded(CommentListResponse);
 const readComment = decoded(HqChangeComment);
 const readChange = decoded(HqChange);
+const readRecipeTier = decoded(RecipeTierResponse);
 
 /** A change's own path at HQ's API. */
 const changePath = ({ appId, repo, number }: ChangeLink): string =>
@@ -487,6 +499,13 @@ export function makeHqApi(input: {
           ...(signal === undefined ? {} : { signal }),
         })
       ).blob(),
+    recipeTier: async (appId, tier, signal) =>
+      readRecipeTier(
+        await authorized(
+          `/api/apps/${encodeURIComponent(appId)}/recipe/${tier}`,
+          signal === undefined ? {} : { signal },
+        ),
+      ),
     recordStandUp: async (projectId) => {
       await authorized(`/api/mates/${encodeURIComponent(projectId)}/standup`, { method: "POST" });
     },

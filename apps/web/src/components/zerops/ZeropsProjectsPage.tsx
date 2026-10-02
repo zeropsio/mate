@@ -161,7 +161,7 @@ import { officialHq, useAccountHq } from "~/zerops/accountHq";
 import { useAccountGitea } from "~/zerops/giteaProject";
 import { useZeropsGroupEnvironmentReconcile } from "~/zerops/useZeropsGroupEnvironmentReconcile";
 import { useZeropsGroupOrganizations } from "~/zerops/useZeropsGroupOrganizations";
-import { registryGroupSlug, useZeropsRegistry } from "~/zerops/useZeropsRegistry";
+import { useZeropsRegistry } from "~/zerops/useZeropsRegistry";
 import { useZeropsProjectFlow } from "~/zerops/projectFlowContext";
 import { REVIEW_LABEL, REVIEW_RELEASE_LABEL, useOpenReview } from "~/zerops/review";
 import { readZeropsCellOnce } from "~/zerops/useZeropsDeployedVersion";
@@ -1586,12 +1586,11 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
   // a project's own page, which listed its Mates and could do nothing to them.
   const mateActions = useMateActions({ registry: registryState, serverVersions });
 
-  // The recipe is the group repo's, read as the person (guide 4.3) — never a
-  // sibling's export, which carried service shapes without their build setup
-  // and produced environments that could not build.
+  // The recipe is the application's, read as the person through its HQ (guide
+  // 4.3) — never a sibling's export, which carried service shapes without their
+  // build setup and produced environments that could not build.
   const groupRecipe = useZeropsGroupRecipe({
-    giteaOrigin,
-    slug: registryGroupSlug(registryState.registry, creationRequest?.groupId),
+    appId: creationRequest?.groupId,
     tier:
       creationRequest?.role === "prod"
         ? "production"

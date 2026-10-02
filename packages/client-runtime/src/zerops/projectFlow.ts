@@ -13,8 +13,10 @@
  * ## Whose change it is
  *
  * HQ records the Mate that opened each change (SPEC §3.2a), and a change sits
- * under that Mate: only Mates open changes, as people do not push (SPEC §5.4). A recipe change (kind `recipe`) changes what the
- * environments are made of, not what runs in them (`docs/group-repo.md`).
+ * under that Mate: only Mates open changes, as people do not push (SPEC §5.4).
+ * A change in the application's recipe repository is a recipe change (kind
+ * `recipe`, SPEC §3.2c): it changes what the environments are made of, not
+ * what runs in them.
  *
  * Pure: no network, no clock, no platform globals (rule R1).
  *
@@ -23,6 +25,7 @@
 
 import type { ServiceStatusToneId } from "@t3tools/shared/brand";
 import { changeUrl, type HqChange } from "@t3tools/shared/hqChanges";
+import { RECIPE_PROPOSAL_TITLE, RECIPE_REPO } from "@t3tools/shared/hqRecipe";
 
 import { pullRequestBlocked } from "./gitTab.ts";
 import { mergeabilityKindOf, type MergeabilityKind } from "./changeMergeability.ts";
@@ -67,7 +70,7 @@ export interface FlowPullRequest {
   readonly state?: string | undefined;
   readonly headSha: string | undefined;
   readonly baseBranch: string;
-  /** `appdev #4`; `recipe #6` on the group repo. */
+  /** `appdev #4`; `#6` on the recipe repository, whose row wears the tag. */
   readonly line: string;
   readonly updatedAt: string | undefined;
   /** The branch it comes from — `mate/{projectId}/{n}` for a Mate's change in HQ. */
@@ -80,14 +83,10 @@ export interface FlowPullRequest {
 }
 
 /**
- * What zcp calls the pull request a Mate proposes the group's recipe in (`giteaRecipeBranchTitle`,
- * zcp `gitea_recipe_reconcile.go`): the tiers `main` lacks, `0 — AI Agent/import.yaml` among them,
- * which the broker merges by itself when it only adds files. A new Mate waits on it while `main`
- * has no recipe.
+ * A Mate's proposal of the application's recipe: the recipe repository's change of zcp's title
+ * (`RECIPE_PROPOSAL_TITLE`), the tiers `main` lacks, which Core lands by itself when it only adds
+ * files. A new Mate waits on it while `main` has no recipe.
  */
-export const RECIPE_PROPOSAL_TITLE = "Mate: the group's import files";
-
-/** A Mate's proposal of the group's recipe: the group repo's change of zcp's title. */
 export function isRecipeProposal(pull: Pick<FlowPullRequest, "kind" | "title">): boolean {
   return pull.kind === "recipe" && pull.title === RECIPE_PROPOSAL_TITLE;
 }
@@ -102,8 +101,7 @@ export function flowChange(change: HqChange, hqAddress: string): FlowPullRequest
     repository: change.repo,
     number: change.number,
     title: change.title,
-    // A recipe lives in HQ from T10 on; every change in HQ until then is code.
-    kind: "code",
+    kind: change.repo === RECIPE_REPO ? "recipe" : "code",
     mateProjectId: change.mateProjectId,
     url: changeUrl(hqAddress, change.appId, change.repo, change.number),
     mergeability: mergeabilityKindOf(change.mergeability),
@@ -114,8 +112,12 @@ export function flowChange(change: HqChange, hqAddress: string): FlowPullRequest
     state: change.state === "open" ? "open" : "closed",
     headSha: change.head ?? undefined,
     baseBranch: FALLBACK_BASE,
-    // Under its Mate the row does not say whose it is.
-    line: `${change.repo} #${String(change.number)}`,
+    // Under its Mate the row does not say whose it is; a recipe change's row wears the tag, so
+    // its number alone names it.
+    line:
+      change.repo === RECIPE_REPO
+        ? `#${String(change.number)}`
+        : `${change.repo} #${String(change.number)}`,
     updatedAt: change.updatedAt,
     headBranch: `mate/${change.mateProjectId}/${String(change.number)}`,
     description: change.body.trim().length === 0 ? undefined : change.body,

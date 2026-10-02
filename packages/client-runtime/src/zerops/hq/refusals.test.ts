@@ -23,6 +23,7 @@ describe("hqRefusalWords — HQ's refusal, in the person's words", () => {
     ["name_length", "invalid", "A name has 1 to 100 characters."],
     ["change_not_found", "change_not_found", "HQ has no such change."],
     ["change_not_open", "conflict", "This change is merged or closed already."],
+    ["recipe_too_large", "too_large", "This project's recipe is too large to read here."],
   ])("says the structure's own %s in words", (reason, code, words) => {
     expect(hqRefusalWords({ code, reason })).toBe(words);
   });
