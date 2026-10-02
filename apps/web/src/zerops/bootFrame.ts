@@ -8,6 +8,7 @@
  */
 import * as Schema from "effect/Schema";
 
+import { isElectron } from "~/env";
 import { getLocalStorageItem } from "~/hooks/useLocalStorage";
 import {
   resolveInitialThreadSidebarWidth,
@@ -39,7 +40,8 @@ export function bootFrameSlot(): HTMLElement | null {
  */
 export function showAppFrame(): void {
   const root = document.documentElement;
-  if (root.dataset.bootFrame === "app") return;
+  // A desktop window keeps the sign-in's mark (`bootFrameMode`).
+  if (isElectron || root.dataset.bootFrame === "app") return;
   let stored: number | null = null;
   try {
     stored = getLocalStorageItem(THREAD_SIDEBAR_WIDTH_STORAGE_KEY, Schema.Finite);

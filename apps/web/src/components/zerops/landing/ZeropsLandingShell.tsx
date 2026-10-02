@@ -16,6 +16,7 @@ import { useLayoutEffect, type FormEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 
 import { appBasePath } from "~/basePath";
+import { isElectron } from "~/env";
 import { environmentIdFromAddress } from "~/routes/-environmentRoute";
 import { bootFrameSlot, showAppFrame } from "~/zerops/bootFrame";
 import { rememberedMateIdentity } from "~/zerops/mateIdentityMemory";
@@ -129,7 +130,13 @@ export function ZeropsFrameWait({
 
 /** The frame's line (`bootWaitLine`), shown past the boot's beat from the page's load. */
 function useFrameWaitLine(signedIn: boolean): string | null {
-  const pathname = typeof window === "undefined" ? "" : window.location.pathname;
+  // A desktop window routes by its hash.
+  const pathname =
+    typeof window === "undefined"
+      ? ""
+      : isElectron
+        ? window.location.hash.replace(/^#/u, "").split("?")[0] || "/"
+        : window.location.pathname;
   const routed = environmentIdFromAddress(pathname, appBasePath());
   const text = signedIn
     ? bootWaitLine({

@@ -580,19 +580,23 @@
     <script>
       // Which first frame: the app's, for a browser whose last session was
       // signed in (`mate:boot-frame`, written by the session, cleared on sign
-      // out) or one coming back from the Zerops sign-in; else the sign-in's
-      // centred mark. The menu column takes the width the menu will
-      // (`resolveInitialThreadSidebarWidth`). Mirrored by bootFrame.logic.ts.
+      // out) and still holds it, or one coming back from the Zerops sign-in;
+      // else, and in a desktop window, the sign-in's centred mark. The menu
+      // column takes the width the menu will (`resolveInitialThreadSidebarWidth`).
+      // Mirrored by bootFrame.logic.ts.
       (() => {
         const root = document.documentElement;
-        let remembered = null;
+        if (window.desktopBridge !== undefined) return;
+        let signedIn = false;
         try {
-          remembered = window.localStorage.getItem("mate:boot-frame");
+          signedIn =
+            window.localStorage.getItem("mate:boot-frame") === "app" &&
+            window.localStorage.getItem("zerops-mate.zerops-session.v1") !== null;
         } catch {
           // Storage refused: the sign-in's frame, unless this is its return.
         }
         const returning = /\/zerops\/authorized\/?$/i.test(window.location.pathname);
-        if (remembered !== "app" && !returning) return;
+        if (!signedIn && !returning) return;
         root.dataset.bootFrame = "app";
         let stored = null;
         try {

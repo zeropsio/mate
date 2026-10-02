@@ -1,3 +1,4 @@
+import { ZEROPS_SESSION_STORAGE_KEY } from "@t3tools/client-runtime/zerops";
 import { describe, expect, it } from "vite-plus/test";
 
 import indexHtml from "../../index.html?raw";
@@ -20,6 +21,7 @@ function bootFrameOf(input: {
   readonly pathname: string;
   readonly innerWidth: number;
   readonly storageThrows?: boolean;
+  readonly desktop?: boolean;
 }): { readonly mode: string | undefined; readonly menuWidth: string | undefined } {
   const variables: Record<string, string> = {};
   const documentElement = {
@@ -27,6 +29,7 @@ function bootFrameOf(input: {
     style: { setProperty: (name: string, value: string) => void (variables[name] = value) },
   };
   const fakeWindow = {
+    ...(input.desktop === true ? { desktopBridge: {} } : {}),
     innerWidth: input.innerWidth,
     location: { pathname: input.pathname },
     localStorage: {
@@ -40,37 +43,83 @@ function bootFrameOf(input: {
   return { mode: documentElement.dataset.bootFrame, menuWidth: variables["--boot-menu-width"] };
 }
 
+const SESSION = "a-stored-session";
+
 describe("the boot frame", () => {
   const cases = [
-    { name: "a browser signed in last time", remembered: "app", pathname: "/zerops", mode: "app" },
+    {
+      name: "a browser signed in last time",
+      remembered: "app",
+      session: SESSION,
+      pathname: "/zerops",
+      mode: "app",
+    },
     {
       name: "a conversation reloaded, signed in",
       remembered: "app",
+      session: SESSION,
       pathname: "/env-1/thread-1",
       mode: "app",
     },
-    { name: "a browser never signed in", remembered: null, pathname: "/zerops", mode: "mark" },
-    { name: "an unknown memory", remembered: "yes", pathname: "/", mode: "mark" },
+    {
+      name: "a memory left over with no session",
+      remembered: "app",
+      session: null,
+      pathname: "/zerops",
+      mode: "mark",
+    },
+    {
+      name: "a browser never signed in",
+      remembered: null,
+      session: null,
+      pathname: "/zerops",
+      mode: "mark",
+    },
+    { name: "an unknown memory", remembered: "yes", session: SESSION, pathname: "/", mode: "mark" },
     {
       name: "the way back from the Zerops sign-in",
       remembered: null,
+      session: null,
       pathname: "/zerops/authorized",
       mode: "app",
     },
     {
       name: "the way back under a base path",
       remembered: null,
+      session: null,
       pathname: "/mate/zerops/authorized/",
       mode: "app",
     },
   ] as const;
 
   it.each(cases)("paints $mode for $name, in index.html as in the app", (row) => {
-    expect(bootFrameMode({ remembered: row.remembered, pathname: row.pathname })).toBe(row.mode);
-    const storage: Record<string, string> =
-      row.remembered === null ? {} : { [BOOT_FRAME_STORAGE_KEY]: row.remembered };
+    expect(
+      bootFrameMode({
+        remembered: row.remembered,
+        session: row.session,
+        pathname: row.pathname,
+        desktop: false,
+      }),
+    ).toBe(row.mode);
+    const storage: Record<string, string> = {};
+    if (row.remembered !== null) storage[BOOT_FRAME_STORAGE_KEY] = row.remembered;
+    if (row.session !== null) storage[ZEROPS_SESSION_STORAGE_KEY] = row.session;
     const painted = bootFrameOf({ storage, pathname: row.pathname, innerWidth: 1786 });
     expect(painted.mode ?? "mark").toBe(row.mode);
+  });
+
+  // A desktop window's menu stands its mark beside the window's own buttons, in a 52 px bar:
+  // the sign-in's centred mark stands until the app draws, never one in the wrong corner.
+  it("paints the sign-in's mark in a desktop window, signed in or on its way back", () => {
+    for (const pathname of ["/zerops", "/zerops/authorized"]) {
+      expect(bootFrameMode({ remembered: "app", session: SESSION, pathname, desktop: true })).toBe(
+        "mark",
+      );
+      const storage = { [BOOT_FRAME_STORAGE_KEY]: "app", [ZEROPS_SESSION_STORAGE_KEY]: SESSION };
+      expect(
+        bootFrameOf({ storage, pathname, innerWidth: 1786, desktop: true }).mode,
+      ).toBeUndefined();
+    }
   });
 
   it.each([
@@ -80,7 +129,10 @@ describe("the boot frame", () => {
     { stored: 900, innerWidth: 1280 },
     { stored: null, innerWidth: 800 },
   ])("draws the menu column $stored px wide at $innerWidth as the menu will", (row) => {
-    const storage: Record<string, string> = { [BOOT_FRAME_STORAGE_KEY]: "app" };
+    const storage: Record<string, string> = {
+      [BOOT_FRAME_STORAGE_KEY]: "app",
+      [ZEROPS_SESSION_STORAGE_KEY]: SESSION,
+    };
     if (row.stored !== null) storage[THREAD_SIDEBAR_WIDTH_STORAGE_KEY] = JSON.stringify(row.stored);
     const painted = bootFrameOf({ storage, pathname: "/", innerWidth: row.innerWidth });
     expect(painted.menuWidth).toBe(
