@@ -50,3 +50,14 @@ export function waitLineDueInMs(input: {
   if (input.text === input.said) return 0;
   return Math.max(0, input.delayMs - input.elapsedMs);
 }
+
+/**
+ * Whether the line shows: once the wait has spoken it keeps speaking, so new words ("Opening the
+ * conversation…" → "Opening Gita's conversation…") stand at once and never blank a frame.
+ */
+export function waitLineShows(input: {
+  readonly text: string | null;
+  readonly spoken: boolean;
+}): boolean {
+  return input.text !== null && input.spoken;
+}

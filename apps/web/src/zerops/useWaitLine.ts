@@ -5,7 +5,7 @@
  */
 import { useEffect, useLayoutEffect, useState } from "react";
 
-import { waitLineDueInMs } from "./waitLine.logic";
+import { waitLineDueInMs, waitLineShows } from "./waitLine.logic";
 
 /** The line on screen, and how many waits say it; cleared a task after the last one goes. */
 let said: { text: string; holders: number } | null = null;
@@ -39,17 +39,17 @@ export function useWaitLine(
 ): boolean {
   const { delayMs, from } = options;
   const [startedAt] = useState(() => (from === "load" ? 0 : performance.now()));
-  const [shownText, setShownText] = useState<string | null>(() =>
-    dueInMs(text, startedAt, delayMs, performance.now()) === 0 ? text : null,
+  const [spoken, setSpoken] = useState(
+    () => dueInMs(text, startedAt, delayMs, performance.now()) === 0,
   );
-  const showing = text !== null && shownText === text;
+  const showing = waitLineShows({ text, spoken });
   useEffect(() => {
-    if (showing) return;
+    if (spoken) return;
     const due = dueInMs(text, startedAt, delayMs, performance.now());
     if (due === null) return;
-    const timer = setTimeout(() => setShownText(text), due);
+    const timer = setTimeout(() => setSpoken(true), due);
     return () => clearTimeout(timer);
-  }, [delayMs, showing, startedAt, text]);
+  }, [delayMs, spoken, startedAt, text]);
   useLayoutEffect(() => (showing && text !== null ? say(text) : undefined), [showing, text]);
   return showing;
 }

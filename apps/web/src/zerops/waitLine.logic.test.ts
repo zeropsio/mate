@@ -6,6 +6,7 @@ import {
   openingConversationLine,
   READING_PROJECTS_LINE,
   waitLineDueInMs,
+  waitLineShows,
 } from "./waitLine.logic";
 
 describe("a wait's one line", () => {
@@ -38,6 +39,26 @@ describe("a wait's one line", () => {
       expect(bootWaitLine(row)).toBe(row.line);
     },
   );
+
+  it.each([
+    {
+      name: "before it has spoken",
+      text: "Opening the conversation…",
+      spoken: false,
+      shows: false,
+    },
+    { name: "once it has spoken", text: "Opening the conversation…", spoken: true, shows: true },
+    // Its words changing ("…the conversation…" → "…Gita's conversation…") never blank a frame.
+    {
+      name: "with new words, having spoken",
+      text: "Opening Gita's conversation…",
+      spoken: true,
+      shows: true,
+    },
+    { name: "with no words", text: null, spoken: true, shows: false },
+  ])("shows $shows $name", ({ text, spoken, shows }) => {
+    expect(waitLineShows({ text, spoken })).toBe(shows);
+  });
 
   it("names the Mate whose conversation opens, or the conversation", () => {
     expect(openingConversationLine("Milo")).toBe("Opening Milo's conversation…");
