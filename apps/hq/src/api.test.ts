@@ -80,6 +80,46 @@ describe("HQ API", () => {
         }),
     );
 
+    it.effect("attaches an environment named as asked, and refuses a name main refused", () =>
+      Effect.gen(function* () {
+        const { call } = yield* startCore(true);
+        yield* untilHealth(call, "active");
+        const session = yield* sessionFor(call, "door-owner");
+        const created = yield* call("POST", "/api/apps", { session, body: { name: "Shop" } });
+        const appId = (created.body as { readonly id: string }).id;
+        const attach = (projectId: string, kind: string, name: string) =>
+          Effect.map(
+            call("POST", `/api/apps/${appId}/projects`, {
+              session,
+              body: { projectId, kind, environment: { name } },
+            }),
+            (response) => [response.status, response.body],
+          );
+        assert.deepStrictEqual(
+          [
+            yield* attach("P_MATE", "production", "Live"),
+            yield* attach("P_MATE", "production", "live"),
+          ],
+          [
+            [400, { code: "invalid", reason: "environment_name_invalid" }],
+            [201, { appId, projectId: "P_MATE", kind: "production" }],
+          ],
+        );
+        const read = (yield* call("GET", "/api/structure", { session })).body as {
+          readonly apps: ReadonlyArray<{ readonly projects: ReadonlyArray<unknown> }>;
+        };
+        assert.deepStrictEqual(read.apps[0]?.projects, [
+          {
+            projectId: "P_MATE",
+            name: "P_MATE",
+            kind: "production",
+            mate: null,
+            environment: { name: "live", sources: ["release"], order: 1 },
+          },
+        ]);
+      }),
+    );
+
     it.effect(
       "a Developer comes through, may not create, and sees nothing Zerops hides from them",
       () =>
@@ -432,7 +472,15 @@ describe("HQ API", () => {
           value: {
             id: appId,
             name: "Shop",
-            projects: [{ projectId: "P_MATE", name: "P_MATE", kind: "stage", mate: null }],
+            projects: [
+              {
+                projectId: "P_MATE",
+                name: "P_MATE",
+                kind: "stage",
+                mate: null,
+                environment: { name: "p-mate", sources: ["main"], order: 1 },
+              },
+            ],
           },
         });
         yield* devSocket.close;

@@ -131,6 +131,17 @@ const reasonOf = <A, E extends { readonly _tag: string }>(effect: Effect.Effect<
     }),
   );
 
+/** Each project of the application named `appName` by id, and its environment, as owner reads it. */
+const environmentsOf = (structure: Structure["Service"], appName: string) =>
+  Effect.map(structure.read("owner"), (read) =>
+    Object.fromEntries(
+      (read.apps.find((app) => app.name === appName)?.projects ?? []).map((project) => [
+        project.projectId,
+        project.environment,
+      ]),
+    ),
+  );
+
 /** The refusal's code, or the success. */
 const outcome = <A, E extends { readonly _tag: string }>(effect: Effect.Effect<A, E>) =>
   effect.pipe(
@@ -536,21 +547,39 @@ describe("structure", () => {
                 id: shop.id,
                 name: "Shop",
                 projects: [
-                  { projectId: "P_PROD", name: "name of P_PROD", kind: "production", mate: null },
+                  {
+                    projectId: "P_PROD",
+                    name: "name of P_PROD",
+                    kind: "production",
+                    mate: null,
+                    environment: { name: "name-of-p-prod", sources: ["release"], order: 1 },
+                  },
                   {
                     projectId: "P_MATE",
                     name: "name of P_MATE",
                     kind: "devstage",
                     mate: { ...mate, ...UNBORN },
                   },
-                  { projectId: "P_STAGE", name: "name of P_STAGE", kind: "stage", mate: null },
+                  {
+                    projectId: "P_STAGE",
+                    name: "name of P_STAGE",
+                    kind: "stage",
+                    mate: null,
+                    environment: { name: "name-of-p-stage", sources: ["main"], order: 2 },
+                  },
                 ],
               },
               {
                 id: team.id,
                 name: "Team",
                 projects: [
-                  { projectId: "P_TEAM", name: "name of P_TEAM", kind: "stage", mate: null },
+                  {
+                    projectId: "P_TEAM",
+                    name: "name of P_TEAM",
+                    kind: "stage",
+                    mate: null,
+                    environment: { name: "name-of-p-team", sources: ["main"], order: 1 },
+                  },
                   {
                     projectId: "P_OWNED",
                     name: "name of P_OWNED",
@@ -878,6 +907,181 @@ describe("structure", () => {
             assert.strictEqual((yield* sql`SELECT 1 FROM hq_mate`).length, 0);
           }),
         ),
+    );
+
+    // An application's environments live in HQ (SPEC §3.2b): recorded with the attach, named as
+    // main named them (D10), following their tier's sources, in the order they were declared.
+    it.effect(
+      "records an environment with its attach, named from its project, in the order declared",
+      () =>
+        withStructure(() =>
+          Effect.gen(function* () {
+            const structure = yield* Structure;
+            const shop = yield* structure.createApp("owner", "Shop");
+            yield* structure.attachProject("owner", shop.id, {
+              projectId: "P_STAGE",
+              kind: "stage",
+            });
+            yield* structure.attachProject("owner", shop.id, {
+              projectId: "P_MATE",
+              kind: "mate",
+              mate: { name: "Ada", face: "face-1" },
+            });
+            yield* structure.attachProject("owner", shop.id, {
+              projectId: "P_PROD",
+              kind: "production",
+            });
+            assert.deepStrictEqual(yield* environmentsOf(structure, "Shop"), {
+              P_STAGE: { name: "name-of-p-stage", sources: ["main"], order: 1 },
+              P_MATE: undefined,
+              P_PROD: { name: "name-of-p-prod", sources: ["release"], order: 2 },
+            });
+          }),
+        ),
+    );
+
+    // Main's write refusals (D11): a name given is checked; one derived is numbered on a collision.
+    it.effect("names an environment as its attach asks, refused as main refused one", () =>
+      withStructure(() =>
+        Effect.gen(function* () {
+          const structure = yield* Structure;
+          const shop = yield* structure.createApp("owner", "Shop");
+          const attach = (projectId: string, name?: string, kind: "stage" | "mate" = "stage") =>
+            reasonOf(
+              structure.attachProject("owner", shop.id, {
+                projectId,
+                kind,
+                ...(name === undefined ? {} : { environment: { name } }),
+                ...(kind === "mate" ? { mate: { name: "Ada", face: "face-1" } } : {}),
+              }),
+            );
+          assert.deepStrictEqual(
+            [
+              yield* attach("P_STAGE", "name-of-p-team"),
+              yield* attach("P_TEAM", ""),
+              yield* attach("P_TEAM", "Live"),
+              yield* attach("P_TEAM", "name-of-p-team"),
+              yield* attach("P_MATE", "dev", "mate"),
+              yield* attach("P_TEAM"),
+            ],
+            [
+              "ok",
+              "environment_name_missing",
+              "environment_name_invalid",
+              "environment_name_taken",
+              "environment_with_kind",
+              "ok",
+            ],
+          );
+          assert.deepStrictEqual(yield* environmentsOf(structure, "Shop"), {
+            P_STAGE: { name: "name-of-p-team", sources: ["main"], order: 1 },
+            P_TEAM: { name: "name-of-p-team-2", sources: ["main"], order: 2 },
+          });
+        }),
+      ),
+    );
+
+    // Main D13: an environment whose project Zerops no longer has is taken over in place by the
+    // project attached in its place — its name, its sources and its place in the order kept.
+    it.effect("takes over the environment of a project Zerops no longer has, in place", () =>
+      withStructure((view) =>
+        Effect.gen(function* () {
+          const structure = yield* Structure;
+          const shop = yield* structure.createApp("owner", "Shop");
+          yield* structure.attachProject("owner", shop.id, {
+            projectId: "P_PROD",
+            kind: "production",
+            environment: { name: "live" },
+          });
+          yield* structure.attachProject("owner", shop.id, { projectId: "P_STAGE", kind: "stage" });
+          yield* Ref.update(view, (org) => ({
+            ...org,
+            projects: org.projects.filter((project) => project.id !== "P_PROD"),
+          }));
+          yield* structure.attachProject("owner", shop.id, {
+            projectId: "P_PROD2",
+            kind: "production",
+          });
+          assert.deepStrictEqual(yield* environmentsOf(structure, "Shop"), {
+            P_STAGE: { name: "name-of-p-stage", sources: ["main"], order: 2 },
+            P_PROD2: { name: "live", sources: ["release"], order: 1 },
+          });
+        }),
+      ),
+    );
+
+    // An environment goes with its project: at reconcile once Zerops no longer has it, and when
+    // it leaves its application; a move into another application or tier records it there anew.
+    it.effect("drops an environment with its project, and records it anew where it moves", () =>
+      withStructure((view) =>
+        Effect.gen(function* () {
+          const structure = yield* Structure;
+          const sql = yield* SqlClient.SqlClient;
+          const shop = yield* structure.createApp("owner", "Shop");
+          const team = yield* structure.createApp("owner", "Team");
+          yield* structure.attachProject("owner", shop.id, { projectId: "P_STAGE", kind: "stage" });
+          yield* structure.attachProject("owner", shop.id, { projectId: "P_TEAM", kind: "stage" });
+          yield* structure.attachProject("owner", team.id, {
+            projectId: "P_OTHER",
+            kind: "stage",
+            environment: { name: "name-of-p-stage" },
+          });
+          yield* structure.attachProject("owner", shop.id, {
+            projectId: "P_PROD",
+            kind: "production",
+          });
+
+          yield* structure.moveProject("owner", "P_STAGE", { appId: team.id, kind: "production" });
+          yield* structure.moveProject("owner", "P_PROD", { appId: null, kind: "production" });
+          assert.deepStrictEqual(yield* environmentsOf(structure, "Team"), {
+            P_OTHER: { name: "name-of-p-stage", sources: ["main"], order: 1 },
+            P_STAGE: { name: "name-of-p-stage-2", sources: ["release"], order: 2 },
+          });
+
+          yield* Ref.update(view, (org) => ({
+            ...org,
+            projects: org.projects.filter((project) => project.id !== "P_TEAM"),
+          }));
+          assert.strictEqual(yield* structure.reconcile, 1);
+          const left = yield* sql<{ readonly project_id: string }>`
+            SELECT project_id FROM hq_environment ORDER BY project_id`;
+          assert.deepStrictEqual(
+            left.map((row) => row.project_id),
+            ["P_OTHER", "P_STAGE"],
+          );
+        }),
+      ),
+    );
+
+    // A stage or production attached before HQ held environments is one: named after its tier,
+    // numbered within its application in the order it was attached.
+    it.effect("records an environment of every stage and production attached before 0010", () =>
+      withStructure(
+        (_view) =>
+          Effect.gen(function* () {
+            const structure = yield* Structure;
+            assert.deepStrictEqual(yield* environmentsOf(structure, "Shop"), {
+              P_STAGE: { name: "stage", sources: ["main"], order: 1 },
+              P_PROD: { name: "production", sources: ["release"], order: 2 },
+              P_TEAM: { name: "stage-2", sources: ["main"], order: 3 },
+              P_MATE: undefined,
+            });
+          }),
+        Effect.gen(function* () {
+          const applied = yield* migrate(treeMigrations().filter(({ name }) => name < "0010"));
+          assert.strictEqual(applied.at(-1), "0009_change_judged.sql");
+          const sql = yield* SqlClient.SqlClient;
+          yield* sql`
+            INSERT INTO hq_app (id, name, created_by)
+            VALUES ('00000000-0000-0000-0000-00000000000a', 'Shop', 'owner')`;
+          yield* sql`
+            INSERT INTO hq_app_project (project_id, app_id, kind, created_by)
+            VALUES ('P_STAGE', '00000000-0000-0000-0000-00000000000a', 'stage', 'owner'),
+                   ('P_PROD', '00000000-0000-0000-0000-00000000000a', 'production', 'owner'),
+                   ('P_TEAM', '00000000-0000-0000-0000-00000000000a', 'stage', 'owner'),
+                   ('P_MATE', '00000000-0000-0000-0000-00000000000a', 'mate', 'owner')`;
+        }),
+      ),
     );
 
     it.effect("a project gone from Zerops loses its Mate credential and its challenges", () =>

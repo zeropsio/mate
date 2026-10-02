@@ -1,6 +1,7 @@
 /**
  * The structure of applications (ADR 0002): applications, the Zerops projects each holds with
- * their kind (`mate`, `devstage`, `stage`, `production`), and the Mate record of a Mate's project.
+ * their kind (`mate`, `devstage`, `stage`, `production`), the Mate record of a Mate's project, and
+ * the environment record of a stage's or a production's (`environments.ts`).
  * A `devstage` project is a Mate that also serves as its application's stage (main's "Dev /
  * Stage"): a Mate by its record and its rules, a stage by the one-production rule. HQ is its
  * only writer; every write is fenced by the leader and checks the writer against Zerops read fresh.
@@ -34,6 +35,12 @@ import * as SubscriptionRef from "effect/SubscriptionRef";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
 import type { SqlError } from "effect/unstable/sql/SqlError";
 
+import {
+  type EnvironmentTier,
+  TIER_SOURCES,
+  deriveEnvironmentName,
+  environmentNameProblem,
+} from "./environments.ts";
 import { heldOf, lockProject } from "./held.ts";
 import { Leader, type NotLeader } from "./leader.ts";
 import { MateLive, type MateLiveEntry } from "./mateLive.ts";
@@ -64,6 +71,10 @@ export class StructureRefused extends Schema.TaggedError<StructureRefused>()("St
     "placed_or_production_taken",
     "production_taken",
     "held_changed",
+    "environment_with_kind",
+    "environment_name_missing",
+    "environment_name_invalid",
+    "environment_name_taken",
   ]),
 }) {}
 
@@ -71,6 +82,17 @@ export interface AttachInput {
   readonly projectId: string;
   readonly kind: RoleProjectKind;
   readonly mate?: { readonly name: string; readonly face: string };
+  /** A stage's or a production's environment, named as given; else named from its project. */
+  readonly environment?: { readonly name: string };
+}
+
+/** A stage's or a production's environment as a reader sees it. */
+export interface EnvironmentView {
+  readonly name: string;
+  /** The branches it follows: a stage `main`, a production `release`. */
+  readonly sources: ReadonlyArray<string>;
+  /** Its place among the application's environments, in the order they were declared: from 1. */
+  readonly order: number;
 }
 
 /** A Mate's state as the structure holds it: its record and its birth; its changes are `changes.ts`'. */
@@ -119,6 +141,8 @@ export interface StructureRead {
       readonly name: string;
       readonly kind: string;
       readonly mate: MateView | null;
+      /** A stage's or a production's environment. */
+      readonly environment?: EnvironmentView;
     }>;
   }>;
 }
@@ -202,6 +226,22 @@ const refuse = (code: StructureRefused["code"], reason: StructureRefused["reason
   Effect.fail(new StructureRefused({ code, reason }));
 
 const fitsName = (name: string) => name.length >= 1 && name.length <= 100;
+
+/** The environment a project of `kind` is: a stage's or a production's, else none. */
+const tierOf = (kind: string): EnvironmentTier | undefined =>
+  kind === "stage" || kind === "production" ? kind : undefined;
+
+/** An environment's sources as the JSON its insert spreads into a text array. */
+const encodeSources = Schema.encodeSync(Schema.fromJsonString(Schema.Array(Schema.String)));
+
+/** An environment's row, as a takeover keeps it (main D13). */
+interface EnvironmentRow {
+  readonly project_id: string;
+  readonly tier: string;
+  readonly name: string;
+  readonly sources: ReadonlyArray<string>;
+  readonly declared_seq: string;
+}
 
 /** `can`'s answer, enforced: a refusal is logged with who asked what, and answered by its reason. */
 const allowed = <V extends Verb>(
@@ -299,6 +339,55 @@ export const structureLayer = (options: {
                 UPDATE hq_mate_credential SET revoked_at = now()
                 WHERE ${sql.in("project_id", gone)} AND revoked_at IS NULL`,
             ]);
+
+      /** The environments of `projectIds`, read before their projects' rows go. */
+      const environmentRows = (projectIds: ReadonlyArray<string>) =>
+        projectIds.length === 0
+          ? Effect.succeed([])
+          : sql<EnvironmentRow>`
+              SELECT project_id, tier, name, sources, declared_seq::text AS declared_seq
+              FROM hq_environment WHERE ${sql.in("project_id", projectIds)}
+              ORDER BY declared_seq`;
+      /**
+       * In a fenced write, the application locked: the environment of a project now placed in it as
+       * `tier`. It takes over `replaced` — an environment of the tier whose project Zerops no longer
+       * has (main D13) — with its name, its sources and its place in the order; else it is named as
+       * asked, or from its project's name in Zerops (main D10), and declared last.
+       */
+      const recordEnvironment = (environment: {
+        readonly projectId: string;
+        readonly appId: string;
+        readonly tier: EnvironmentTier;
+        readonly userId: string;
+        readonly name: string | undefined;
+        readonly projectName: string;
+        readonly replaced: EnvironmentRow | undefined;
+      }) =>
+        Effect.gen(function* () {
+          const taken = (yield* sql<{ readonly name: string }>`
+            SELECT name FROM hq_environment WHERE app_id::text = ${environment.appId}`).map(
+            (row) => row.name,
+          );
+          const name =
+            environment.name ??
+            environment.replaced?.name ??
+            deriveEnvironmentName(environment.projectName, environment.tier, taken);
+          if (name === undefined || taken.includes(name)) {
+            return yield* refuse("conflict", "environment_name_taken");
+          }
+          const sources = encodeSources(
+            environment.replaced?.sources ?? TIER_SOURCES[environment.tier],
+          );
+          const declared = environment.replaced?.declared_seq ?? null;
+          yield* sql`
+            INSERT INTO hq_environment (project_id, app_id, tier, name, sources, declared_seq,
+              created_by)
+            VALUES (${environment.projectId}, ${environment.appId}::uuid, ${environment.tier},
+              ${name}, ARRAY(SELECT jsonb_array_elements_text(${sources}::jsonb)),
+              COALESCE(${declared}::bigint, nextval(pg_get_serial_sequence('hq_environment',
+                'declared_seq'))),
+              ${environment.userId})`;
+        });
 
       const reconcile = Effect.gen(function* () {
         const listed = new Set((yield* roles.fresh).projects.map((project) => project.id));
@@ -400,6 +489,12 @@ export const structureLayer = (options: {
             if (input.mate !== undefined && !fitsName(input.mate.name)) {
               return yield* refuse("invalid", "name_length");
             }
+            const tier = tierOf(input.kind);
+            if (input.environment !== undefined) {
+              if (tier === undefined) return yield* refuse("invalid", "environment_with_kind");
+              const problem = environmentNameProblem(input.environment.name);
+              if (problem !== undefined) return yield* refuse("invalid", problem);
+            }
             if (input.projectId === options.hqProjectId) {
               return yield* refuse("invalid", "hq_project");
             }
@@ -436,13 +531,15 @@ export const structureLayer = (options: {
             // Decided first on the structure as it stands, so a refusal spends nothing of Zerops;
             // then again in the write, under the application's lock.
             yield* decided;
-            // What this write would conflict with — the project in any application, the
-            // application's production. A row whose project Zerops no longer has (asked by its id)
-            // stops counting and goes with this write; one Zerops cannot answer for refuses it.
+            // What this write would conflict with or take over — the project in any application,
+            // the application's environments of its tier. A row whose project Zerops no longer has
+            // (asked by its id) stops counting and goes with this write, its environment taken
+            // over; one Zerops cannot answer for refuses it.
             const holders = yield* sql<{ readonly project_id: string }>`
               SELECT project_id FROM hq_app_project
               WHERE project_id = ${input.projectId}
-                 OR (${input.kind} = 'production' AND kind = 'production' AND app_id::text = ${appId})`;
+                 OR (${tier ?? null}::text IS NOT NULL AND kind = ${input.kind}
+                     AND app_id::text = ${appId})`;
             const gone = yield* goneOf(holders.map((row) => row.project_id));
             yield* conflictOnUnique(
               leader.write(
@@ -456,10 +553,23 @@ export const structureLayer = (options: {
                     SELECT 1 FROM hq_app WHERE id::text = ${appId} FOR NO KEY UPDATE`;
                   yield* decided;
                   if (apps.length === 0) return yield* refuse("app_not_found", "app_not_found");
+                  const replaced = (yield* environmentRows(gone)).find((row) => row.tier === tier);
                   yield* dropRows(gone);
                   yield* sql`
                     INSERT INTO hq_app_project (project_id, app_id, kind, created_by)
                     VALUES (${input.projectId}, ${appId}::uuid, ${input.kind}, ${userId})`;
+                  if (tier !== undefined) {
+                    yield* recordEnvironment({
+                      projectId: input.projectId,
+                      appId,
+                      tier,
+                      userId,
+                      name: input.environment?.name,
+                      projectName:
+                        view.projects.find((project) => project.id === input.projectId)?.name ?? "",
+                      replaced,
+                    });
+                  }
                   // A Mate set up already keeps its record: renaming it is its admin's
                   // (`edit_mate_record`), not an attacher's.
                   if (input.mate !== undefined) {
@@ -500,10 +610,12 @@ export const structureLayer = (options: {
             }
             const target = yield* sql<{ readonly project_id: string }>`
               SELECT project_id FROM hq_app_project WHERE app_id::text = ${appId}`;
-            // The application's production, if gone from Zerops, makes room as on attach.
+            // The application's environments of the tier, if gone from Zerops, make room as on
+            // attach, the first one's environment taken over.
+            const tier = tierOf(kind);
             const holders = yield* sql<{ readonly project_id: string }>`
               SELECT project_id FROM hq_app_project
-              WHERE ${kind} = 'production' AND kind = 'production'
+              WHERE ${tier ?? null}::text IS NOT NULL AND kind = ${kind}
                 AND app_id::text = ${appId} AND project_id <> ${projectId}`;
             const gone = yield* goneOf(holders.map((row) => row.project_id));
             yield* conflictOnUnique(
@@ -528,8 +640,18 @@ export const structureLayer = (options: {
                       return yield* refuse("invalid", "mate_record_missing");
                     }
                   }
-                  const apps = yield* sql`SELECT 1 FROM hq_app WHERE id::text = ${appId}`;
+                  const apps = yield* sql`
+                    SELECT 1 FROM hq_app WHERE id::text = ${appId} FOR NO KEY UPDATE`;
                   if (apps.length === 0) return yield* refuse("app_not_found", "app_not_found");
+                  // Its environment stays only where the project stays: moved anywhere else, it
+                  // is recorded anew there.
+                  const stays = yield* sql`
+                    SELECT 1 FROM hq_app_project
+                    WHERE project_id = ${projectId} AND app_id::text = ${appId} AND kind = ${kind}`;
+                  if (stays.length === 0) {
+                    yield* sql`DELETE FROM hq_environment WHERE project_id = ${projectId}`;
+                  }
+                  const replaced = (yield* environmentRows(gone)).find((row) => row.tier === tier);
                   yield* dropRows(gone);
                   const placed = yield* sql`
                     INSERT INTO hq_app_project (project_id, app_id, kind, created_by)
@@ -539,6 +661,18 @@ export const structureLayer = (options: {
                     WHERE hq_app_project.kind = ${held}
                     RETURNING 1`;
                   if (placed.length === 0) return yield* refuse("conflict", "held_changed");
+                  if (tier !== undefined && stays.length === 0) {
+                    yield* recordEnvironment({
+                      projectId,
+                      appId,
+                      tier,
+                      userId,
+                      name: undefined,
+                      projectName:
+                        view.projects.find((project) => project.id === projectId)?.name ?? "",
+                      replaced,
+                    });
+                  }
                 }),
               ),
               "production_taken",
@@ -634,6 +768,20 @@ export const structureLayer = (options: {
               FROM hq_mate m
               WHERE NOT EXISTS (SELECT 1 FROM hq_app_project p WHERE p.project_id = m.project_id)
               ORDER BY m.seq`;
+            const environments = new Map(
+              (yield* sql<{
+                readonly project_id: string;
+                readonly name: string;
+                readonly sources: ReadonlyArray<string>;
+                readonly order: number;
+              }>`
+                SELECT project_id, name, sources,
+                       (rank() OVER (PARTITION BY app_id ORDER BY declared_seq))::int AS "order"
+                FROM hq_environment`).map((row): [string, EnvironmentView] => [
+                row.project_id,
+                { name: row.name, sources: row.sources, order: row.order },
+              ]),
+            );
             const names = new Map(view.projects.map((project) => [project.id, project.name]));
             const person = { kind: "person", userId } as const;
             const reads = (projectId: string) =>
@@ -661,12 +809,16 @@ export const structureLayer = (options: {
                   name: app.name,
                   projects: visible
                     .filter((row) => row.app_id === app.id)
-                    .map((row) => ({
-                      projectId: row.project_id,
-                      name: names.get(row.project_id) ?? "",
-                      kind: row.kind,
-                      mate: row.mate === null ? null : mateView(row.project_id, row.mate),
-                    })),
+                    .map((row) => {
+                      const environment = environments.get(row.project_id);
+                      return {
+                        projectId: row.project_id,
+                        name: names.get(row.project_id) ?? "",
+                        kind: row.kind,
+                        mate: row.mate === null ? null : mateView(row.project_id, row.mate),
+                        ...(environment === undefined ? {} : { environment }),
+                      };
+                    }),
                 }))
                 .filter(
                   (app) =>

@@ -4,7 +4,9 @@
  * - `POST /api/door` `{ token }`: a throwaway through the door (`door.ts`) → `{ session, expiresAt }`.
  * - `DELETE /api/session`: revokes the presented session.
  * - `POST /api/apps` `{ name }` → the application.
- * - `POST /api/apps/:id/projects` `{ projectId, kind, mate? }`: attaches a project.
+ * - `POST /api/apps/:id/projects` `{ projectId, kind, mate?, environment? }`: attaches a project; a
+ *   stage or a production is its application's environment, named `environment.name` or after
+ *   its project (`environments.ts`).
  * - `GET /api/structure` → `{ apps }`, as the caller sees them in Zerops.
  * - `GET /api/structure/ws?ticket=`: the same, then its changes, over a WebSocket (`stream.ts`);
  *   the ticket from `POST /api/stream-ticket` → `{ ticket, expiresIn }`.
@@ -125,6 +127,7 @@ const AttachBody = Schema.Struct({
   projectId: Schema.String,
   kind: Schema.Literals(["mate", "devstage", "stage", "production"]),
   mate: Schema.optionalKey(Schema.Struct({ name: Schema.String, face: Schema.String })),
+  environment: Schema.optionalKey(Schema.Struct({ name: Schema.String })),
 });
 
 const STRUCTURE_STATUS = {
