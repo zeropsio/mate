@@ -361,6 +361,124 @@ describe("a backup set, restored", () => {
         }),
     );
 
+    // Without `replace`, a target that holds anything is refused before either is written.
+    it.effect("refuses a database or git root that holds anything, and writes neither", () =>
+      Effect.gen(function* () {
+        const a = yield* startCore(true);
+        yield* untilHealth(a.call, "active");
+        const owner = yield* sessionFor(a.call, "door-owner");
+        yield* mateWithChange(a.call, a.fake, owner);
+        const manifest = yield* a.backup.take;
+        yield* a.stop;
+        const store = directoryStore(a.storeDir);
+        const tables = (url: string) =>
+          rowsWhere(
+            url,
+            "SELECT count(*)::int AS n FROM pg_tables WHERE schemaname = 'public'",
+            () => true,
+          );
+
+        // The live database: refused, and its git root left as it was.
+        const live = yield* Effect.flip(
+          restoreSet(store, manifest.id, {
+            databaseUrl: Redacted.make(a.url),
+            gitRoot: yield* tempDir("hq-restore-"),
+            workDir: yield* tempDir("hq-restore-"),
+          }),
+        );
+        assert.deepStrictEqual(
+          [live._tag, "reason" in live && live.reason],
+          ["BackupError", "target_not_empty"],
+        );
+
+        // An empty database beside the live git root: refused before the database is written.
+        const url = yield* (yield* TempPostgres).createDatabase;
+        const git = yield* Effect.flip(
+          restoreSet(store, manifest.id, {
+            databaseUrl: Redacted.make(url),
+            gitRoot: a.gitRoot,
+            workDir: yield* tempDir("hq-restore-"),
+          }),
+        );
+        assert.deepStrictEqual(
+          [git._tag, "reason" in git && git.reason],
+          ["BackupError", "target_not_empty"],
+        );
+        assert.deepStrictEqual(yield* tables(url), [{ n: 0 }]);
+      }),
+    );
+
+    // `restore --replace` (vysledky/hq-backup.md §10): the live HQ kept beside, then the set in its
+    // place; the epoch never goes back, so no write of a Core from before can pass the fence.
+    it.effect(
+      "replaces a live HQ, keeping it, and its next leader leads above the epoch it had",
+      () =>
+        Effect.gen(function* () {
+          const a = yield* startCore(true);
+          yield* untilHealth(a.call, "active");
+          const owner = yield* sessionFor(a.call, "door-owner");
+          const { appId, auth } = yield* mateWithChange(a.call, a.fake, owner);
+          const manifest = yield* a.backup.take;
+          // After the set: a repository the restored HQ will not have.
+          yield* a.call("POST", "/api/mate/repos", { headers: auth, body: { name: "api" } });
+          yield* a.stop;
+          // Another lead on the same HQ: the epoch the restore must pass.
+          const again = yield* startCore(true, { url: a.url, gitRoot: a.gitRoot });
+          const led = (yield* untilHealth(again.call, "active")).body as { readonly epoch: number };
+          yield* again.stop;
+
+          yield* Effect.addFinalizer(() =>
+            Effect.sync(() => {
+              for (const entry of NodeFS.readdirSync(NodePath.dirname(a.gitRoot))) {
+                if (entry.startsWith(`${NodePath.basename(a.gitRoot)}.before-`)) {
+                  NodeFS.rmSync(NodePath.join(NodePath.dirname(a.gitRoot), entry), {
+                    recursive: true,
+                    force: true,
+                  });
+                }
+              }
+            }),
+          );
+          const workDir = yield* tempDir("hq-restore-");
+          yield* restoreSet(directoryStore(a.storeDir), manifest.id, {
+            databaseUrl: Redacted.make(a.url),
+            gitRoot: a.gitRoot,
+            workDir,
+            replace: true,
+          });
+          // What was there is kept: the database's dump, and the repositories beside the git root.
+          const kept = NodeFS.readdirSync(workDir).filter((entry) =>
+            /^before-.*\.dump$/u.test(entry),
+          );
+          assert.lengthOf(kept, 1);
+          assert.isAbove(NodeFS.statSync(NodePath.join(workDir, kept[0] ?? "")).size, 0);
+          const aside = NodeFS.readdirSync(NodePath.dirname(a.gitRoot)).filter((entry) =>
+            entry.startsWith(`${NodePath.basename(a.gitRoot)}.before-`),
+          );
+          assert.lengthOf(aside, 1);
+          assert.isTrue(
+            NodeFS.existsSync(
+              NodePath.join(NodePath.dirname(a.gitRoot), aside[0] ?? "", appId, "api.git"),
+            ),
+          );
+
+          const b = yield* startCore(true, { url: a.url, gitRoot: a.gitRoot });
+          const restored = (yield* untilHealth(b.call, "active")).body as {
+            readonly epoch: number;
+          };
+          assert.isAbove(restored.epoch, led.epoch);
+          const repos = yield* b.call("GET", `/api/apps/${appId}/repos`, {
+            session: yield* sessionFor(b.call, "door-owner-2"),
+          });
+          assert.deepStrictEqual(
+            (repos.body as { readonly repos: ReadonlyArray<{ readonly name: string }> }).repos
+              .map((repo) => repo.name)
+              .sort(),
+            ["appdev", "group"],
+          );
+        }),
+    );
+
     // No subscriber resumes past a restore: every one reconnects to the restored state, whole.
     it.effect(
       "gives a socket and a Mate link the restored state whole, never what came after the set",
