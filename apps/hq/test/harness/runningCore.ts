@@ -151,6 +151,8 @@ export const startCore = (
     readonly storeless?: boolean;
     /** What happens between a set's dump and its bundles. */
     readonly afterDump?: Effect.Effect<void>;
+    /** The `pg_dump` a set is taken with; the one on the path. */
+    readonly pgDump?: string;
   } = {},
 ) =>
   Effect.gen(function* () {
@@ -175,6 +177,7 @@ export const startCore = (
         stagingDir,
         store: given.storeless === true ? null : directoryStore(storeDir),
         ...(given.afterDump === undefined ? {} : { afterDump: given.afterDump }),
+        ...(given.pgDump === undefined ? {} : { pgDump: given.pgDump }),
       },
       migrations: treeMigrations(),
       hqProjectId: HQ,

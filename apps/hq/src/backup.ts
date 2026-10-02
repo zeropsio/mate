@@ -18,6 +18,10 @@
  * With no store, backup is off and a set is only staged. The database's address reaches `pg_dump` in
  * libpq's own environment variables, never in its arguments, and no log carries it.
  *
+ * A set is refused before it begins when `pg_dump` is older than the server: a dump it writes might
+ * not restore. A set that fails leaves nothing of itself staged. `status` tells the newest set's
+ * outcome, for `/health`.
+ *
  * @module backup
  */
 import * as NodeChildProcess from "node:child_process";
@@ -26,12 +30,16 @@ import * as NodeFS from "node:fs";
 import * as NodeFSP from "node:fs/promises";
 import * as NodePath from "node:path";
 
-import type { GitError } from "@t3tools/hq-git";
+import type { GitError, HqGit } from "@t3tools/hq-git";
+import * as Cause from "effect/Cause";
 import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
+import * as Exit from "effect/Exit";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
 import * as Redacted from "effect/Redacted";
+import * as Ref from "effect/Ref";
 import * as Schema from "effect/Schema";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
 import type { SqlError } from "effect/unstable/sql/SqlError";
@@ -109,7 +117,7 @@ export const directoryStore = (dir: string): BackupStore => {
   };
 };
 
-const Ref = Schema.Struct({ ref: Schema.String, sha: Schema.String });
+const BundledRef = Schema.Struct({ ref: Schema.String, sha: Schema.String });
 
 /** A set's manifest: what restores it, and what tells it is whole. */
 export const Manifest = Schema.Struct({
@@ -132,7 +140,7 @@ export const Manifest = Schema.Struct({
       file: Schema.NullOr(Schema.String),
       size: Schema.Number,
       sha256: Schema.NullOr(Schema.String),
-      refs: Schema.Array(Ref),
+      refs: Schema.Array(BundledRef),
     }),
   ),
 });
@@ -216,16 +224,70 @@ export interface BackupOptions {
   readonly afterDump?: Effect.Effect<void>;
 }
 
+/** A set refused before it begins: a dump this `pg_dump` writes might not restore. */
+export class PgDumpOlder extends Schema.TaggedError<PgDumpOlder>()("PgDumpOlder", {
+  /** `pg_dump`'s major version, and the server's. */
+  pgDump: Schema.Number,
+  server: Schema.Number,
+}) {}
+
+type TakeError = BackupError | PgDumpOlder | GitError | NotLeader | SqlError;
+
+/**
+ * Backup as `/health` tells it, the newest set's outcome: `off` with no store, `pending` before a
+ * first set, `ok` with the newest set kept, `failed` with why.
+ */
+export type BackupStatus =
+  | { readonly state: "off" | "pending" }
+  | { readonly state: "ok"; readonly set: string }
+  | {
+      readonly state: "failed";
+      readonly reason: "pg_dump_older";
+      readonly pgDump: number;
+      readonly server: number;
+    }
+  | {
+      readonly state: "failed";
+      readonly reason: BackupError["reason"] | "git" | "not_leader" | "database" | "defect";
+    };
+
+const failedOf = (cause: Cause.Cause<TakeError>): BackupStatus => {
+  const error = Option.getOrUndefined(Cause.findErrorOption(cause));
+  switch (error?._tag) {
+    case "PgDumpOlder":
+      return {
+        state: "failed",
+        reason: "pg_dump_older",
+        pgDump: error.pgDump,
+        server: error.server,
+      };
+    case "BackupError":
+      return { state: "failed", reason: error.reason };
+    case "GitError":
+      return { state: "failed", reason: "git" };
+    case "NotLeader":
+      return { state: "failed", reason: "not_leader" };
+    case "SqlError":
+      return { state: "failed", reason: "database" };
+    case undefined:
+      return { state: "failed", reason: "defect" };
+  }
+};
+
 export class Backup extends Context.Service<
   Backup,
   {
     /** A set taken now, staged and kept in the store if there is one; its manifest. */
-    readonly take: Effect.Effect<Manifest, BackupError | GitError | NotLeader | SqlError>;
+    readonly take: Effect.Effect<Manifest, TakeError>;
+    readonly status: Effect.Effect<BackupStatus>;
   }
 >()("@t3tools/hq/backup") {}
 
-/** A set's id: when it was taken, to the second, sortable as text. */
-const idOf = (takenAt: string) => takenAt.replace(/[-:]/gu, "").replace(/\.\d+Z$/u, "Z");
+/**
+ * A set's id: when it was taken, to the millisecond, sortable as text. Two sets never share one:
+ * a set that fails removes its own staging, which must not be a kept set's.
+ */
+const idOf = (takenAt: string) => takenAt.replace(/[-:]/gu, "");
 
 export const backupLayer = (
   options: BackupOptions,
@@ -236,70 +298,105 @@ export const backupLayer = (
       const sql = yield* SqlClient.SqlClient;
       const gitHost = yield* GitHost;
       const pgDump = options.pgDump ?? "pg_dump";
+      const status = yield* Ref.make<BackupStatus>(
+        options.store === null ? { state: "off" } : { state: "pending" },
+      );
 
-      const take = Effect.gen(function* () {
+      /** Refused unless `pg_dump` is at least the server's major version: never a dump that would not restore. */
+      const restorable = Effect.gen(function* () {
+        const answer = yield* runTool(pgDump, ["--version"], options.databaseUrl);
+        const client = Number(/\(PostgreSQL\) (\d+)/u.exec(answer)?.[1] ?? Number.NaN);
+        const [setting] = yield* sql<{ readonly version: string }>`
+          SELECT current_setting('server_version_num') AS version`;
+        const server = Math.floor(Number(setting?.version ?? Number.NaN) / 10_000);
+        if (!Number.isInteger(client) || !Number.isInteger(server)) {
+          return yield* failure("tool", `versions unreadable: ${answer.trim()}`);
+        }
+        if (client < server) return yield* new PgDumpOlder({ pgDump: client, server });
+      });
+
+      /** Set `id`, staged in `dir`: the dump, the bundles, then the manifest. */
+      const stage = (git: HqGit, id: string, takenAt: string, dir: string) =>
+        Effect.gen(function* () {
+          yield* io("stage", () => NodeFSP.mkdir(dir, { recursive: true }));
+          const [position] = yield* sql<{ readonly seq: string; readonly lsn: string }>`
+            SELECT COALESCE((SELECT max(seq) FROM hq_git_event), 0)::text AS seq,
+                   pg_current_wal_lsn()::text AS lsn`;
+          // The database first: git taken after it holds every commit it names.
+          const dump = NodePath.join(dir, "db.dump");
+          yield* runTool(
+            pgDump,
+            ["--format=custom", "--no-owner", "--no-acl", `--file=${dump}`],
+            options.databaseUrl,
+          );
+          if (options.afterDump !== undefined) yield* options.afterDump;
+          const repos: Array<Manifest["repos"][number]> = [];
+          for (const repo of yield* git.list()) {
+            const file = `git/${repo.appId}/${repo.id}.bundle`;
+            const path = NodePath.join(dir, ...file.split("/"));
+            yield* io("stage", () => NodeFSP.mkdir(NodePath.dirname(path), { recursive: true }));
+            const { refs } = yield* git.bundle(repo, path);
+            repos.push(
+              refs.length === 0
+                ? { appId: repo.appId, id: repo.id, file: null, size: 0, sha256: null, refs }
+                : {
+                    appId: repo.appId,
+                    id: repo.id,
+                    file,
+                    size: (yield* io("stat", () => NodeFSP.stat(path))).size,
+                    sha256: yield* digestOf(path),
+                    refs,
+                  },
+            );
+          }
+          const manifest: Manifest = {
+            version: 1,
+            id,
+            takenAt,
+            eventSeq: Number(position?.seq ?? 0),
+            walLsn: position?.lsn ?? "",
+            database: {
+              file: "db.dump",
+              size: (yield* io("stat", () => NodeFSP.stat(dump))).size,
+              sha256: yield* digestOf(dump),
+            },
+            repos,
+          };
+          yield* io("stage", () =>
+            NodeFSP.writeFile(NodePath.join(dir, "manifest.json"), encodeManifest(manifest)),
+          );
+          return manifest;
+        });
+
+      /** The staged set into the store: its files, then the manifest that makes it whole. */
+      const keep = (store: BackupStore, manifest: Manifest, dir: string) =>
+        Effect.gen(function* () {
+          const files = [
+            manifest.database.file,
+            ...manifest.repos.flatMap((repo) => (repo.file === null ? [] : [repo.file])),
+            "manifest.json",
+          ];
+          for (const file of files) {
+            yield* store.put(setKey(manifest.id, file), NodePath.join(dir, ...file.split("/")));
+          }
+        });
+
+      const attempt = Effect.gen(function* () {
         const git = yield* gitHost.git;
+        yield* restorable;
         const takenAt = DateTime.formatIso(yield* DateTime.now);
         const id = idOf(takenAt);
         const staged = NodePath.join(options.stagingDir, "sets");
         const dir = NodePath.join(staged, id);
-        yield* io("stage", () => NodeFSP.mkdir(dir, { recursive: true }));
-        const [position] = yield* sql<{ readonly seq: string; readonly lsn: string }>`
-          SELECT COALESCE((SELECT max(seq) FROM hq_git_event), 0)::text AS seq,
-                 pg_current_wal_lsn()::text AS lsn`;
-        // The database first: git taken after it holds every commit it names.
-        const dump = NodePath.join(dir, "db.dump");
-        yield* runTool(
-          pgDump,
-          ["--format=custom", "--no-owner", "--no-acl", `--file=${dump}`],
-          options.databaseUrl,
-        );
-        if (options.afterDump !== undefined) yield* options.afterDump;
-        const repos: Array<Manifest["repos"][number]> = [];
-        for (const repo of yield* git.list()) {
-          const file = `git/${repo.appId}/${repo.id}.bundle`;
-          const path = NodePath.join(dir, ...file.split("/"));
-          yield* io("stage", () => NodeFSP.mkdir(NodePath.dirname(path), { recursive: true }));
-          const { refs } = yield* git.bundle(repo, path);
-          repos.push(
-            refs.length === 0
-              ? { appId: repo.appId, id: repo.id, file: null, size: 0, sha256: null, refs }
-              : {
-                  appId: repo.appId,
-                  id: repo.id,
-                  file,
-                  size: (yield* io("stat", () => NodeFSP.stat(path))).size,
-                  sha256: yield* digestOf(path),
-                  refs,
-                },
-          );
-        }
-        const manifest: Manifest = {
-          version: 1,
-          id,
-          takenAt,
-          eventSeq: Number(position?.seq ?? 0),
-          walLsn: position?.lsn ?? "",
-          database: {
-            file: "db.dump",
-            size: (yield* io("stat", () => NodeFSP.stat(dump))).size,
-            sha256: yield* digestOf(dump),
-          },
-          repos,
-        };
-        const manifestPath = NodePath.join(dir, "manifest.json");
-        yield* io("stage", () => NodeFSP.writeFile(manifestPath, encodeManifest(manifest)));
         const store = options.store;
-        if (store !== null) {
-          // The files, then the manifest that makes the set whole.
-          yield* store.put(setKey(id, "db.dump"), dump);
-          for (const repo of repos) {
-            if (repo.file !== null) {
-              yield* store.put(setKey(id, repo.file), NodePath.join(dir, ...repo.file.split("/")));
-            }
-          }
-          yield* store.put(setKey(id, "manifest.json"), manifestPath);
-        }
+        // A set that fails leaves nothing of itself staged: the newest staged set stays whole.
+        const manifest = yield* Effect.tap(stage(git, id, takenAt, dir), (manifest) =>
+          store === null ? Effect.void : keep(store, manifest, dir),
+        ).pipe(
+          Effect.onError(() =>
+            Effect.ignore(io("unstage", () => NodeFSP.rm(dir, { recursive: true, force: true }))),
+          ),
+        );
         // The newest complete set stays staged; the older go.
         for (const entry of yield* io("staged", () => NodeFSP.readdir(staged))) {
           if (entry !== id) {
@@ -310,12 +407,28 @@ export const backupLayer = (
         }
         yield* Effect.logInfo(store === null ? "backup set staged" : "backup set kept", {
           id,
-          repos: repos.length,
-          bytes: manifest.database.size + repos.reduce((sum, repo) => sum + repo.size, 0),
+          repos: manifest.repos.length,
+          bytes: manifest.database.size + manifest.repos.reduce((sum, repo) => sum + repo.size, 0),
         });
         return manifest;
       });
 
-      return Backup.of({ take });
+      const take = attempt.pipe(
+        Effect.onExit((exit) =>
+          Exit.isSuccess(exit)
+            ? Ref.set(
+                status,
+                options.store === null ? { state: "off" } : { state: "ok", set: exit.value.id },
+              )
+            : Cause.hasInterruptsOnly(exit.cause)
+              ? Effect.void
+              : Effect.andThen(
+                  Ref.set(status, failedOf(exit.cause)),
+                  Effect.logError("backup set failed", exit.cause),
+                ),
+        ),
+      );
+
+      return Backup.of({ take, status: Ref.get(status) });
     }),
   );
