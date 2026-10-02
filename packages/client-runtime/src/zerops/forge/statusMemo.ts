@@ -108,10 +108,15 @@ export function createCommitStatusMemo(
   const generations = new Map<string, number>();
   const keyOf = (commit: CommitRef) => `${commit.owner}/${commit.repo}@${commit.sha}`;
 
-  const settle = (key: string, owner: string, statuses: ReadonlyArray<GiteaCommitStatus>) => {
+  /** `readAtMs` is when the read was asked, not when it answered: a clock's next ask is as old. */
+  const settle = (
+    key: string,
+    owner: string,
+    statuses: ReadonlyArray<GiteaCommitStatus>,
+    readAtMs: number,
+  ) => {
     const previous = kept.get(key);
     const signature = signatureOf(statuses);
-    const readAtMs = now();
     if (newestStatusesSettled(statuses)) {
       kept.set(key, {
         owner,
@@ -155,7 +160,7 @@ export function createCommitStatusMemo(
         (statuses) => {
           if (current()) {
             inFlight.delete(key);
-            settle(key, commit.owner, statuses);
+            settle(key, commit.owner, statuses, at);
           }
           return statuses;
         },

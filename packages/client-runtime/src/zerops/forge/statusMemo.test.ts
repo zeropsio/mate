@@ -95,6 +95,28 @@ describe("commit status memo", () => {
     expect(await readsOver(() => [status("success")], 4, 60_000)).toEqual([0, 60, 120, 180, 240]);
   });
 
+  it("dates a read from when it was asked, so a minute's clock reads every minute", async () => {
+    const memo = createCommitStatusMemo();
+    let loads = 0;
+    // Gitea takes 300 ms to answer; the group readers ask on a 60 s clock.
+    for (let pass = 0; pass < 5; pass += 1) {
+      const answer = deferredLoad([status("success")]);
+      const read = memo.read(
+        commit,
+        () => {
+          loads += 1;
+          return answer.load();
+        },
+        { maxAgeMs: 60_000 },
+      );
+      await vi.advanceTimersByTimeAsync(300);
+      answer.answer();
+      await read;
+      await vi.advanceTimersByTimeAsync(59_700);
+    }
+    expect(loads).toBe(5);
+  });
+
   it("re-reads pending statuses on a back-off no longer than a minute", async () => {
     expect(STATUS_RECHECK_LADDER_MS).toEqual([15_000, 30_000, 60_000]);
     const at = await readsOver((call) => (call < 5 ? [status("pending")] : [status("success")]), 6);
