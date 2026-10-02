@@ -12,6 +12,8 @@ const overrides = ["-c", "core.hooksPath=/dev/null", "-c", "core.fsmonitor=false
 interface RunOptions {
   readonly env?: Readonly<Record<string, string>>;
   readonly signal?: AbortSignal;
+  readonly input?: string | Uint8Array;
+  readonly acceptExitCodes?: ReadonlyArray<number>;
 }
 const graceMs = 2_000;
 const stopping = new WeakSet<NodeChildProcess.ChildProcess>();
@@ -84,7 +86,7 @@ export class GitRunner {
       child.on("close", (code) => {
         options.signal?.removeEventListener("abort", abort);
         // stderr names server paths and source URLs: it stays out of the error.
-        if (code === 0) resolve();
+        if (code === 0 || (code !== null && options.acceptExitCodes?.includes(code))) resolve();
         else reject(failed(operation, `Git ${operation} failed`));
       });
     });
@@ -99,8 +101,16 @@ export class GitRunner {
   }
 
   async run(args: string[], options: RunOptions = {}): Promise<Buffer> {
+    return (await this.exec(args, options)).stdout;
+  }
+
+  /** Like run, and reports which accepted exit code git ended with. */
+  async exec(
+    args: string[],
+    options: RunOptions = {},
+  ): Promise<{ readonly stdout: Buffer; readonly code: number }> {
     const { child, done } = this.start(args, options);
-    child.stdin.end();
+    child.stdin.end(options.input);
     const chunks: Buffer[] = [];
     let size = 0;
     try {
@@ -111,7 +121,7 @@ export class GitRunner {
         chunks.push(bytes);
       }
       await done;
-      return Buffer.concat(chunks);
+      return { stdout: Buffer.concat(chunks), code: child.exitCode ?? 0 };
     } finally {
       terminate(child);
       await done.catch(() => {});
@@ -214,13 +224,15 @@ export const converge = async (
 };
 
 const staleMs = 60 * 60 * 1000;
+/** Private index, archive worktree and config staging the layer creates inside a repository. */
+export const scratch = (name: string) => /^\.(?:index|archive|config)-/.test(name);
 const names = (path: string, recursive = false) =>
   NodeFSP.readdir(path, { recursive }).catch(() => [] as string[]);
 
-/** Debris of a git killed mid-write: lock files and push quarantines untouched for an hour. */
+/** Debris of a git killed mid-write: locks, quarantines and scratch untouched for an hour. */
 export const sweep = async (dir: string): Promise<void> => {
   const candidates = [
-    ...(await names(dir)).filter((name) => name.endsWith(".lock")),
+    ...(await names(dir)).filter((name) => name.endsWith(".lock") || scratch(name)),
     ...(await names(NodePath.join(dir, "refs"), true))
       .filter((name) => name.endsWith(".lock"))
       .map((name) => NodePath.join("refs", name)),

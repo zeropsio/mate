@@ -3,9 +3,17 @@ import type * as NodeHttp from "node:http";
 import * as NodeStream from "node:stream";
 import * as NodeStreamPromises from "node:stream/promises";
 import * as NodeZlib from "node:zlib";
-import { GitError, type HqGitOptions, type Principal, type RefUpdate, type Repo } from "./api.ts";
+import {
+  GitError,
+  type GitEvent,
+  type HqGitOptions,
+  type Principal,
+  type RefUpdate,
+  type Repo,
+} from "./api.ts";
 import { GitRunner, converge, terminate } from "./git.ts";
 import { HttpError, pkt, readPush, refusalReport } from "./protocol.ts";
+import { PushReport } from "./report.ts";
 import { allowRefUpdate } from "./rules.ts";
 
 async function* body(req: NodeHttp.IncomingMessage, limit: number): AsyncGenerator<Buffer> {
@@ -32,6 +40,7 @@ export const makeHandler = (
   options: HqGitOptions,
   git: GitRunner,
   locate: (repo: Repo) => Promise<string | null>,
+  emit: (event: GitEvent) => void,
 ): NodeHttp.RequestListener => {
   const prefix = options.pathPrefix ?? "/git";
   if (!/^\/(?:[A-Za-z0-9_-]+\/?)*$/.test(prefix) || prefix.endsWith("/")) {
@@ -138,6 +147,8 @@ export const makeHandler = (
       }
       input = body(req, service === "git-receive-pack" ? 256 * 1024 * 1024 : 8 * 1024 * 1024);
       let replay: Buffer | undefined;
+      let updates: ReadonlyArray<RefUpdate> = [];
+      let report: PushReport | undefined;
       res.setHeader("Content-Type", `application/x-${service}-result`);
       if (service === "git-receive-pack") {
         const push = await readPush(input);
@@ -153,6 +164,8 @@ export const makeHandler = (
           return;
         }
         replay = push.replay;
+        updates = push.updates;
+        report = new PushReport(push.capabilities);
       }
       if (abort.signal.aborted) return;
       await converge(git, dir, abort.signal);
@@ -172,14 +185,58 @@ export const makeHandler = (
       // receive-pack keeps writing even to a departed client, so it never dies of a closed pipe.
       const output = push
         ? (async () => {
-            for await (const chunk of process.child.stdout) if (!res.destroyed) res.write(chunk);
+            for await (const chunk of process.child.stdout) {
+              report?.feed(Buffer.from(chunk as Uint8Array));
+              if (!res.destroyed) res.write(chunk);
+            }
           })()
         : NodeStreamPromises.pipeline(process.child.stdout, res, { end: false });
       // receive-pack can exit nonzero after sending a valid report-status; preserve that report.
       try {
         await Promise.all([send, output]);
-        if (push) await process.done.catch(() => {});
-        else await process.done;
+        if (push) {
+          const success = await process.done.then(
+            () => true,
+            () => false,
+          );
+          let applied = updates.filter((update) => report?.ok.has(update.ref));
+          // Without report-status there is no per-ref report. Verify refs only on process success.
+          if (success && !report?.requested) {
+            applied = [];
+            for (const update of updates) {
+              const current = await git.run([
+                "-C",
+                dir,
+                "for-each-ref",
+                "--format=%(refname) %(objectname)",
+                update.ref,
+              ]);
+              if (current.toString().split("\n").includes(`${update.ref} ${update.newSha}`))
+                applied.push(update);
+            }
+          }
+          if (applied.length) emit({ kind: "pushed", repo, updates: applied });
+          // Only Core may push main or tags; its pushes report like the layer's own writes.
+          for (const { ref, oldSha, newSha } of applied) {
+            if (ref === "refs/heads/main")
+              emit({
+                kind: "main_moved",
+                repo,
+                old: /^0+$/.test(oldSha) ? null : oldSha,
+                new: newSha,
+                by: "push",
+              });
+            else if (ref.startsWith("refs/tags/")) {
+              const target = await git
+                .run(["-C", dir, "rev-parse", "--verify", "--end-of-options", `${newSha}^{}`])
+                .then(
+                  (peeled) => peeled.toString().trim(),
+                  () => newSha,
+                );
+              emit({ kind: "tagged", repo, name: ref.slice("refs/tags/".length), sha: target });
+            }
+          }
+        } else await process.done;
         res.end();
       } finally {
         terminate(process.child);

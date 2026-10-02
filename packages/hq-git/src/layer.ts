@@ -11,8 +11,9 @@ import {
   type ImportCredentials,
   type Repo,
 } from "./api.ts";
-import { GitRunner, converge, sweep } from "./git.ts";
+import { GitRunner, converge, scratch, sweep } from "./git.ts";
 import { makeHandler } from "./http.ts";
+import { eventPort, makeOperations } from "./operations.ts";
 import { defaultImportHost, resolveSource } from "./source.ts";
 
 const validId = (id: string) => /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/.test(id);
@@ -34,8 +35,12 @@ const recover = async (root: string) => {
     for (const name of await NodeFSP.readdir(path)) {
       const child = NodePath.join(path, name);
       if (name.startsWith(".build-")) await NodeFSP.rm(child, { recursive: true, force: true });
-      // A reservation is an empty directory; rmdir refuses anything holding a repository.
-      else if (name.endsWith(".git")) await NodeFSP.rmdir(child).catch(() => {});
+      else if (name.endsWith(".git")) {
+        for (const debris of (await NodeFSP.readdir(child).catch(() => [])).filter(scratch))
+          await NodeFSP.rm(NodePath.join(child, debris), { recursive: true, force: true });
+        // A reservation is an empty directory; rmdir refuses anything holding a repository.
+        await NodeFSP.rmdir(child).catch(() => {});
+      }
     }
   }
 };
@@ -222,9 +227,11 @@ export const makeHqGit = (options: HqGitOptions): Effect.Effect<HqGit, GitError,
         await converge(runner, dir, signal);
         await sweep(dir);
       });
+    const emit = eventPort(options);
+    const operations = makeOperations(runner, locate, options, attempt, emit);
     const handler = yield* Effect.try({
-      try: () => makeHandler(options, runner, locate),
+      try: () => makeHandler(options, runner, locate, emit),
       catch: (error) => failure("handler", error),
     });
-    return { create, import: importRepo, list, convergeRepo, handler };
+    return { create, import: importRepo, list, convergeRepo, handler, ...operations };
   });

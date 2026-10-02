@@ -1,5 +1,6 @@
 // @effect-diagnostics nodeBuiltinImport:off - native Node smart HTTP and real git process boundary.
 import type * as NodeHttp from "node:http";
+import type * as NodeStream from "node:stream";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 
@@ -30,12 +31,19 @@ export interface Change {
   readonly number: number;
   /** Whether the change still accepts pushes here, i.e. it is neither merged nor closed. */
   readonly open: boolean;
+  readonly merged?: boolean;
 }
 
 type Awaitable<A> = A | Promise<A>;
 export interface HqGitOptions {
   /** One instance per root: opening sweeps reservations and staging left by a crashed instance. */
   readonly rootDir: string;
+  /**
+   * Best effort, ordered delivery after the ref write. No write waits for it, so a handler may call
+   * back into the layer. Failure is logged and never rolls back git; there is no durable queue or
+   * retry: Core reconciles from refs and owns the durable log.
+   */
+  readonly onEvent?: (event: GitEvent) => Awaitable<void>;
   /** Routes default to /git/<appId>/<id>.git; Core may choose another mount prefix. */
   readonly pathPrefix?: string;
   readonly authenticate: (request: NodeHttp.IncomingMessage) => Awaitable<Principal | null>;
@@ -76,15 +84,96 @@ export class GitError extends Schema.TaggedError<GitError>()("GitError", {
     "exists",
     "invalid_id",
     "invalid_config",
+    /** A write path git, a case-insensitive checkout, or the existing tree refuses. */
+    "invalid_path",
     "not_found",
     "no_main",
     "source_refused",
     "timeout",
+    /** A ref write found the ref locked and changed nothing; retrying is safe. */
+    "busy",
     "git_failed",
   ]),
   /** Never carries server paths, stderr, or credentials. */
   message: Schema.String,
 }) {}
+export type GitEvent =
+  | { readonly kind: "pushed"; readonly repo: Repo; readonly updates: ReadonlyArray<RefUpdate> }
+  | {
+      readonly kind: "main_moved";
+      readonly repo: Repo;
+      readonly old: string | null;
+      readonly new: string;
+      readonly by: "merge" | "commit" | "push";
+    }
+  | { readonly kind: "tagged"; readonly repo: Repo; readonly name: string; readonly sha: string };
+export interface Author {
+  readonly name: string;
+  readonly email: string;
+}
+export type Mergeability =
+  | { readonly kind: "clean" }
+  | { readonly kind: "conflict"; readonly paths: ReadonlyArray<string> }
+  | { readonly kind: "empty" | "already_merged" | "no_change" | "unrelated" };
+export interface SquashOptions {
+  readonly mateId: string;
+  readonly number: number;
+  readonly expectedMain: string;
+  /** The change head Core reviewed: a later push refuses the merge as `head_moved`. */
+  readonly expectedHead: string;
+  /**
+   * Caller composes title and body, kept verbatim. A blank first line or git's scissors line is
+   * refused; the trusted trailers and `Mate-Change` always form the last paragraph.
+   */
+  readonly message: string;
+  readonly trailers: Readonly<Record<string, string>>;
+  readonly author: Author;
+}
+export interface CommitFilesOptions {
+  /** Content or null to delete an existing file; a path git or a case-folding checkout refuses is `invalid_path`. */
+  readonly files: Readonly<Record<string, string | Uint8Array | null>>;
+  /** A `Mate-Change` trailer is refused: it would mark a change merged. */
+  readonly message: string;
+  readonly author: Author;
+  /** null creates an unborn ref. Only refs/heads/* outside mate/* are Core-owned here. */
+  readonly expectedHead: string | null;
+}
+export interface Bounded<A> {
+  readonly items: ReadonlyArray<A>;
+  readonly truncated: boolean;
+}
+export interface TreeEntry {
+  readonly path: string;
+  readonly sha: string;
+  readonly mode: string;
+  readonly type: string;
+}
+export interface FileRead {
+  readonly content: Buffer;
+  readonly binary: boolean;
+  readonly truncated: boolean;
+}
+export interface CommitSummary {
+  readonly sha: string;
+  readonly message: string;
+  readonly author: Author;
+  readonly parents: ReadonlyArray<string>;
+}
+export interface FileStat {
+  readonly path: string;
+  readonly added: number | null;
+  readonly deleted: number | null;
+}
+export interface CommitRead extends CommitSummary {
+  readonly files: ReadonlyArray<FileStat>;
+  readonly truncated: boolean;
+}
+export interface DiffFile extends FileStat {
+  readonly hunks: string;
+  readonly binary: boolean;
+  readonly truncated: boolean;
+}
+/** All reads have hard ceilings; optional requested bounds may only narrow them. */
 export interface HqGit {
   readonly create: (repo: Repo) => Effect.Effect<Repo, GitError>;
   /**
@@ -97,7 +186,75 @@ export interface HqGit {
     credentials?: ImportCredentials,
   ) => Effect.Effect<Repo, GitError>;
   readonly list: (appId?: string) => Effect.Effect<ReadonlyArray<Repo>, GitError>;
-  /** Core calls this on takeover: converges config and sweeps stale locks and quarantines. */
+  /** Core calls this on takeover: converges config and sweeps stale locks, quarantines, scratch. */
   readonly convergeRepo: (repo: Repo) => Effect.Effect<void, GitError>;
+  readonly changeHead: (
+    repo: Repo,
+    mateId: string,
+    number: number,
+  ) => Effect.Effect<string | null, GitError>;
+  /**
+   * `already_merged` when Core's change record says merged, or a `Mate-Change` trailer for the
+   * change sits on main's first-parent line past its merge base with the change. A walk past the
+   * history bound fails closed with `invalid_config`: Core reconciles before retrying. A change
+   * that merged main after an earlier squash moves its base past that squash, so for it only
+   * Core's record guards. An unborn main is `no_main`.
+   */
+  readonly mergeability: (
+    repo: Repo,
+    mateId: string,
+    number: number,
+  ) => Effect.Effect<Mergeability, GitError>;
+  /** Mergeability's verdict, then one commit on main by CAS: never a moved main or change head. */
+  readonly squashMerge: (
+    repo: Repo,
+    options: SquashOptions,
+  ) => Effect.Effect<
+    | { readonly merged: string }
+    | Exclude<Mergeability, { readonly kind: "clean" }>
+    | { readonly kind: "main_moved" | "head_moved" },
+    GitError
+  >;
+  readonly commitFiles: (
+    repo: Repo,
+    ref: string,
+    options: CommitFilesOptions,
+  ) => Effect.Effect<{ readonly sha: string } | { readonly kind: "head_moved" }, GitError>;
+  /** An existing tag is `exists_same` when it peels to the same commit, else `conflict`. */
+  readonly createTag: (
+    repo: Repo,
+    name: string,
+    sha: string,
+    message: string,
+  ) => Effect.Effect<{ readonly kind: "created" | "exists_same" | "conflict" }, GitError>;
+  readonly branches: (
+    repo: Repo,
+  ) => Effect.Effect<Bounded<{ readonly ref: string; readonly sha: string }>, GitError>;
+  readonly tree: (
+    repo: Repo,
+    rev: string,
+    path: string,
+  ) => Effect.Effect<Bounded<TreeEntry>, GitError>;
+  readonly file: (
+    repo: Repo,
+    rev: string,
+    path: string,
+    maxBytes: number,
+  ) => Effect.Effect<FileRead, GitError>;
+  /** Opaque cursor pins the initial tip and offset, so pagination survives ref movement. */
+  readonly log: (
+    repo: Repo,
+    rev: string,
+    options: { readonly cursor?: string; readonly limit: number },
+  ) => Effect.Effect<Bounded<CommitSummary> & { readonly cursor: string | null }, GitError>;
+  readonly commit: (repo: Repo, sha: string) => Effect.Effect<CommitRead, GitError>;
+  readonly changeDiff: (
+    repo: Repo,
+    mateId: string,
+    number: number,
+    options: { readonly maxFiles: number; readonly maxBytesPerFile: number },
+  ) => Effect.Effect<Bounded<DiffFile>, GitError>;
+  /** Stream belongs to the consumer: destroy it on cancellation; layer scope also stops git. */
+  readonly archive: (repo: Repo, sha: string) => Effect.Effect<NodeStream.Readable, GitError>;
   readonly handler: NodeHttp.RequestListener;
 }

@@ -48,6 +48,13 @@ describe("default write rules", () => {
     ["main", mate, { ref: "refs/heads/main" }, change, "not_your_ref"],
     ["tag", mate, { ref: "refs/tags/v1" }, change, "not_your_ref"],
     ["deletion", mate, { newSha: "0".repeat(40) }, change, "deletion"],
+    [
+      "core tag replacement",
+      { kind: "core" },
+      { ref: "refs/tags/v1", oldSha: "2".repeat(40) },
+      change,
+      "tag_immutable",
+    ],
     ["core deletion", { kind: "core" }, { newSha: "0".repeat(64) }, change, "deletion"],
     ["unknown", mate, {}, null, "unknown_change"],
     ["wrong owner", mate, {}, { ...change, mateId: "bob" }, "unknown_change"],

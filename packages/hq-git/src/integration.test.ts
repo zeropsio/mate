@@ -723,7 +723,7 @@ describe("repositories and real smart HTTP", () => {
     ),
   );
 
-  it.live("sweeps stale locks and quarantines but keeps fresh ones", () =>
+  it.live("sweeps stale locks, quarantines and scratch directories but keeps fresh ones", () =>
     fixture(
       Effect.gen(function* () {
         yield* git.create({ appId: "app", id: "repo" });
@@ -731,8 +731,16 @@ describe("repositories and real smart HTTP", () => {
           "packed-refs.lock",
           "refs/heads/mate/alice/1.lock",
           "objects/tmp_objdir-incoming-old",
+          ".index-old",
+          ".archive-old",
+          ".config-old",
         ];
-        const fresh = ["HEAD.lock", "refs/heads/main.lock", "objects/tmp_objdir-incoming-new"];
+        const fresh = [
+          "HEAD.lock",
+          "refs/heads/main.lock",
+          "objects/tmp_objdir-incoming-new",
+          ".index-new",
+        ];
         const past = new Date(Date.now() - 2 * 60 * 60 * 1000);
         for (const name of [...stale, ...fresh]) {
           const path = NodePath.join(repoDir(), name);
@@ -741,6 +749,9 @@ describe("repositories and real smart HTTP", () => {
             if (name.includes("tmp_objdir")) {
               await NodeFSP.mkdir(NodePath.join(path, "pack"), { recursive: true });
               await NodeFSP.writeFile(NodePath.join(path, "pack", "tmp_pack_x"), "partial");
+            } else if (name.startsWith(".")) {
+              await NodeFSP.mkdir(path);
+              await NodeFSP.writeFile(NodePath.join(path, "index"), "partial");
             } else await NodeFSP.writeFile(path, "");
             if (stale.includes(name)) await NodeFSP.utimes(path, past, past);
           });
@@ -766,6 +777,9 @@ describe("repositories and real smart HTTP", () => {
             ".home-old/x",
             "app/.build-old/repo.git/HEAD",
             "app/kept.git/HEAD",
+            "app/kept.git/.index-old/index",
+            "app/kept.git/.archive-old/index",
+            "app/kept.git/.config-old/config",
           ]) {
             await NodeFSP.mkdir(NodePath.dirname(NodePath.join(root, debris)), { recursive: true });
             await NodeFSP.writeFile(NodePath.join(root, debris), "");
@@ -788,6 +802,9 @@ describe("repositories and real smart HTTP", () => {
         expect(yield* Effect.promise(() => NodeFSP.readdir(NodePath.join(root, "app")))).toEqual([
           "kept.git",
         ]);
+        expect(
+          yield* Effect.promise(() => NodeFSP.readdir(NodePath.join(root, "app", "kept.git"))),
+        ).toEqual(["HEAD"]);
       }),
     ),
   );

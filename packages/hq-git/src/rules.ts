@@ -22,7 +22,15 @@ export const allowRefUpdate = async (
   if (principal.kind === "mate" && principal.appId !== repo.appId) return refuse("not_your_ref");
   if (!validRef(update.ref)) return refuse("invalid_ref");
   if (/^(?:0{40}|0{64})$/.test(update.newSha)) return refuse("deletion");
-  if (principal.kind === "core") return { allowed: true };
+  if (principal.kind === "core") {
+    if (
+      update.ref.startsWith("refs/tags/") &&
+      !/^(?:0{40}|0{64})$/.test(update.oldSha) &&
+      update.oldSha !== update.newSha
+    )
+      return refuse("tag_immutable");
+    return { allowed: true };
+  }
   const match = /^refs\/heads\/mate\/([^/]+)\/([1-9][0-9]*)$/.exec(update.ref);
   if (!match || match[1] !== principal.mateId) return refuse("not_your_ref");
   const number = Number(match[2]);
