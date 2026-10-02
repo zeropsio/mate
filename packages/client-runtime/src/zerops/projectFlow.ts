@@ -448,7 +448,14 @@ export type FlowVerb =
       readonly number: number;
     }
   | { readonly kind: "release"; readonly groupId: string }
-  | { readonly kind: "roll-back"; readonly groupId: string; readonly tag: string };
+  | { readonly kind: "roll-back"; readonly groupId: string; readonly tag: string }
+  /** A service's failed deploy in the environment `projectId`, asked again in HQ. */
+  | {
+      readonly kind: "redeploy";
+      readonly groupId: string;
+      readonly projectId: string;
+      readonly service: string;
+    };
 
 /**
  * One key per verb and target: a row shows its own verb running and takes
@@ -464,6 +471,8 @@ export function flowVerbKey(verb: FlowVerb): string {
       return `release ${verb.groupId}`;
     case "roll-back":
       return `roll-back ${verb.groupId} ${verb.tag}`;
+    case "redeploy":
+      return `redeploy ${verb.groupId}/${verb.projectId}/${verb.service}`;
   }
 }
 
@@ -479,5 +488,7 @@ export function flowVerbLabel(kind: Exclude<FlowVerb["kind"], "close">, running:
       return running ? "Releasing…" : "Release";
     case "roll-back":
       return running ? "Rolling back…" : "Roll back to this";
+    case "redeploy":
+      return running ? "Redeploying…" : "Run again";
   }
 }

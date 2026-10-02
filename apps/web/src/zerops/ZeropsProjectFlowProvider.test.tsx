@@ -136,6 +136,10 @@ vi.mock("./accountHq", async (importOriginal) => ({
       hq.asked.push(["close", link]);
       return hq.answer();
     },
+    redeploy: (appId: string, environment: string, deploy: unknown) => {
+      hq.asked.push(["redeploy", { appId, environment, deploy }]);
+      return hq.answer();
+    },
   }),
 }));
 vi.mock("./useZeropsRegistry", () => ({
@@ -1057,6 +1061,99 @@ describe("merging and closing a change in HQ", () => {
     });
     expect(hq.asked).toHaveLength(1);
     expect(second).toEqual({ ok: false, reason: VERB_ALREADY_RUNNING });
+    await unmount();
+  });
+});
+
+describe("asking HQ to run a failed deploy again", () => {
+  const FAILED_SHA = "f".repeat(40);
+  const REDEPLOY = flowVerbKey({
+    kind: "redeploy",
+    groupId: "g1",
+    projectId: "p-stage",
+    service: "app",
+  });
+  const record = (state: "failed" | "pending"): HqEnvironment["deploys"][number]["latest"] => ({
+    sha: FAILED_SHA,
+    state,
+    failure: state === "failed" ? "job" : null,
+    message: null,
+    appVersionId: null,
+    processId: null,
+    requestedBy: null,
+    at: "2026-10-02T10:00:00.000Z",
+  });
+  const stageWith = (state: "failed" | "pending"): HqEnvironment => ({
+    ...environment("p-stage", "stage"),
+    deploys: [{ service: "app", latest: record(state), live: null }],
+  });
+
+  afterEach(() => {
+    hq.asked = [];
+    hq.answer = () => Promise.resolve({});
+    vi.unstubAllGlobals();
+  });
+
+  /** The provider over HQ's stream recording the stage's newest deploy of `app` as failed. */
+  async function mount() {
+    const atoms = signedInAtoms();
+    atoms.set(hqStructureAtom, structureWith([stageWith("failed")]));
+    installTestDom();
+    const { createRoot } = await import("react-dom/client");
+    const seen: Array<ZeropsProjectFlowValue> = [];
+    function Probe() {
+      seen.push(useZeropsProjectFlow());
+      return null;
+    }
+    const root = createRoot(document.createElement("div") as unknown as Element);
+    await act(async () => {
+      root.render(
+        createElement(
+          RegistryContext.Provider,
+          { value: atoms },
+          createElement(ZeropsProjectFlowProvider, null, createElement(Probe)),
+        ),
+      );
+    });
+    const say = (state: "failed" | "pending") =>
+      act(async () => {
+        atoms.set(hqStructureAtom, structureWith([stageWith(state)]));
+      });
+    const unmount = () =>
+      act(async () => {
+        root.unmount();
+      });
+    return { seen, say, unmount };
+  }
+
+  it("asks it by the environment's name, held until HQ's stream no longer records it failed", async () => {
+    const { seen, say, unmount } = await mount();
+    let outcome: unknown;
+    await act(async () => {
+      outcome = await seen.at(-1)!.redeploy("g1", "p-stage", { service: "app", sha: FAILED_SHA });
+    });
+    expect(outcome).toEqual({ ok: true });
+    expect(hq.asked).toEqual([
+      [
+        "redeploy",
+        { appId: "g1", environment: "stage", deploy: { service: "app", sha: FAILED_SHA } },
+      ],
+    ]);
+    expect(seen.at(-1)?.pending.has(REDEPLOY)).toBe(true);
+    await say("pending");
+    expect(seen.at(-1)?.pending.has(REDEPLOY)).toBe(false);
+    await unmount();
+  });
+
+  it("hands HQ's refusal back in its words, and holds nothing", async () => {
+    hq.answer = () => Promise.reject(new Error("A newer deploy took its place."));
+    const { seen, unmount } = await mount();
+    let outcome: unknown;
+    await act(async () => {
+      outcome = await seen.at(-1)!.redeploy("g1", "p-stage", { service: "app", sha: FAILED_SHA });
+    });
+    expect(outcome).toEqual({ ok: false, reason: "A newer deploy took its place." });
+    expect(seen.at(-1)?.pending.has(REDEPLOY)).toBe(false);
     await unmount();
   });
 });

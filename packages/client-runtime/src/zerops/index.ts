@@ -451,8 +451,6 @@ export {
   base64Encode,
   createGiteaClient,
   GiteaApiError,
-  type GiteaActionJob,
-  type GiteaActionRun,
   type GiteaBranch,
   type GiteaClient,
   type GiteaClientOptions,
@@ -543,7 +541,6 @@ export {
   type MissingEnvironmentRow,
 } from "./groupEnvironments.ts";
 export {
-  jobDuration,
   buildGroupRows,
   deployedCommit,
   deployedVersion,

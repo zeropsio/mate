@@ -400,24 +400,3 @@ function byTierThenName(
   if (left.tier !== right.tier) return left.tier === "stage" ? -1 : 1;
   return left.name.localeCompare(right.name, "en");
 }
-
-/**
- * How long a build step took — `4s`, `1m 32s`, `1h 04m`.
- *
- * A run with no duration on it is the one thing every other forge shows and
- * this one was dropping; a step still going has none to show yet.
- */
-export function jobDuration(
-  startedAt: string | undefined,
-  completedAt: string | undefined,
-): string | undefined {
-  if (startedAt === undefined || completedAt === undefined) return undefined;
-  const from = Date.parse(startedAt);
-  const to = Date.parse(completedAt);
-  if (Number.isNaN(from) || Number.isNaN(to)) return undefined;
-  const seconds = Math.max(0, Math.round((to - from) / 1000));
-  if (seconds < 60) return `${String(seconds)}s`;
-  const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${String(minutes)}m ${String(seconds % 60).padStart(2, "0")}s`;
-  return `${String(Math.floor(minutes / 60))}h ${String(minutes % 60).padStart(2, "0")}m`;
-}

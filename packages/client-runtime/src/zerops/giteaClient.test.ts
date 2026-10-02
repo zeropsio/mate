@@ -358,33 +358,17 @@ describe("GiteaClient request shapes", () => {
     ]);
   });
 
-  it("reads commit statuses, runs, jobs, a rerun and logs", async () => {
+  it("reads a commit's statuses", async () => {
     const { client, calls } = fake([
       // Gitea sends a status's state under `status` (the owner's Git tab,
       // 2026-09-17: read as `state`, an approved release said "Checking").
-      { body: [{ context: "mate/deploy/stage/api", status: "success" }] },
-      { body: { workflow_runs: [{ id: 7 }] } },
-      { body: { jobs: [{ id: 9, run_id: 7 }] } },
-      { status: 200, body: {} },
-      { text: "step 1\nstep 2\n" },
+      { body: [{ context: "mate/release/v1.0.0", status: "success" }] },
     ]);
-    expect(await client.listCommitStatuses("acme", "api", "abc")).toEqual([
-      { context: "mate/deploy/stage/api", state: "success" },
+    expect(await client.listCommitStatuses("acme", "group", "abc")).toEqual([
+      { context: "mate/release/v1.0.0", state: "success" },
     ]);
-    expect(await client.listActionRuns("acme", "api", { branch: "main", limit: 5 })).toEqual([
-      { id: 7 },
-    ]);
-    expect(await client.listActionJobs("acme", "api", 7)).toEqual([{ id: 9, run_id: 7 }]);
-    await client.rerunActionJob("acme", "api", 7, 9);
-    expect(await client.actionJobLogs("acme", "api", 9)).toBe("step 1\nstep 2\n");
-
     expect(calls.map((call) => `${call.method} ${call.url.slice(ORIGIN.length)}`)).toEqual([
-      "GET /api/v1/repos/acme/api/commits/abc/statuses",
-      "GET /api/v1/repos/acme/api/actions/runs?branch=main&limit=5",
-      "GET /api/v1/repos/acme/api/actions/runs/7/jobs",
-      // Gitea 1.27.2 reruns a job under its run; it has no `/actions/jobs/{id}/rerun`.
-      "POST /api/v1/repos/acme/api/actions/runs/7/jobs/9/rerun",
-      "GET /api/v1/repos/acme/api/actions/jobs/9/logs",
+      "GET /api/v1/repos/acme/group/commits/abc/statuses",
     ]);
   });
 });
@@ -407,12 +391,9 @@ describe("GiteaClient deadlines (DESIGN §2.D D3)", () => {
     });
   }
 
-  it.each([
-    { what: "a read", read: (client: GiteaClient) => client.listTags("acme", "group") },
-    { what: "a job's log", read: (client: GiteaClient) => client.actionJobLogs("acme", "app", 7) },
-  ])("$what Gitea has not answered in 15 s ends as a timeout", async ({ read: send }) => {
+  it("a read Gitea has not answered in 15 s ends as a timeout", async () => {
     vi.useFakeTimers();
-    const read = send(silent());
+    const read = silent().listTags("acme", "group");
     const outcome = read.then(
       () => "answered",
       (cause: unknown) => (cause instanceof DOMException ? cause.name : "other"),
@@ -442,51 +423,6 @@ describe("GiteaClient deadlines (DESIGN §2.D D3)", () => {
     );
     await vi.advanceTimersByTimeAsync(GITEA_REQUEST_DEADLINE_MS * 4);
     expect(settled).toBe(false);
-  });
-
-  /** A job's log whose chunks arrive `gapMs` apart, and that stops after `chunks` of them. */
-  function trickling(gapMs: number, chunks: number, close: boolean): GiteaClient {
-    return createGiteaClient({
-      origin: ORIGIN,
-      token: "t-1",
-      fetch: async (_input, init) =>
-        new Response(
-          new ReadableStream<Uint8Array>({
-            start(stream) {
-              init?.signal?.addEventListener("abort", () => stream.error(init.signal?.reason));
-              for (let chunk = 1; chunk <= chunks; chunk += 1) {
-                // @effect-diagnostics-next-line globalTimers:off -- the log's body, late on vitest's fake clock.
-                setTimeout(() => {
-                  if (init?.signal?.aborted === true) return;
-                  stream.enqueue(new TextEncoder().encode(`step ${String(chunk)} done\n`));
-                  if (chunk === chunks && close) stream.close();
-                }, gapMs * chunk);
-              }
-            },
-          }),
-        ),
-    });
-  }
-
-  const outcomeOf = (logs: Promise<string>) =>
-    logs.then(
-      (text) => text,
-      (cause: unknown) => (cause instanceof DOMException ? cause.name : "other"),
-    );
-
-  it("a job's log Gitea keeps sending may take longer than 15 s to arrive", async () => {
-    vi.useFakeTimers();
-    const gap = GITEA_REQUEST_DEADLINE_MS - 1_000;
-    const outcome = outcomeOf(trickling(gap, 4, true).actionJobLogs("acme", "app", 7));
-    await vi.advanceTimersByTimeAsync(gap * 4);
-    expect(await outcome).toBe("step 1 done\nstep 2 done\nstep 3 done\nstep 4 done\n");
-  });
-
-  it("a job's log that stops arriving for 15 s ends as a timeout", async () => {
-    vi.useFakeTimers();
-    const outcome = outcomeOf(trickling(1_000, 2, false).actionJobLogs("acme", "app", 7));
-    await vi.advanceTimersByTimeAsync(2_000 + GITEA_REQUEST_DEADLINE_MS);
-    expect(await outcome).toBe("TimeoutError");
   });
 
   it("the caller's signal still ends a request before its deadline", async () => {

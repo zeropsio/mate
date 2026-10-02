@@ -95,7 +95,8 @@ export function appRecipeOf(files: {
 /**
  * Every environment HQ records for an application, in the order they were declared, in the shape
  * `environmentRow` takes: each service the account lists in its project, with what it runs and the
- * deploys HQ records for it by its hostname.
+ * deploys HQ records for it by its hostname, then each service HQ records a deploy of that the
+ * account does not list.
  *
  * Named by the Zerops project when the account can see it, and by HQ's name for it when it cannot:
  * an environment in a project this person may not read is still one the application has.
@@ -116,25 +117,35 @@ export function environmentRowInputsOf(input: {
       const deploys = new Map(
         environment.deploys.map(({ service, latest, live }) => [service, { latest, live }]),
       );
+      const listed = input.services.filter(
+        (service) => service.projectId === environment.projectId,
+      );
+      const state = (hostname: string, serviceId?: string): EnvironmentServiceState => {
+        const repository = input.repositories?.get(hostname);
+        const appVersionName = serviceId === undefined ? undefined : input.versions.get(serviceId);
+        const deploy = deploys.get(hostname);
+        return {
+          hostname,
+          ...(repository === undefined ? {} : { repository }),
+          ...(appVersionName === undefined ? {} : { appVersionName }),
+          ...(deploy === undefined ? {} : { deploy }),
+        };
+      };
+      // A service HQ deploys stands in the row before the account lists it: how its deploy went
+      // is HQ's to say, whatever the account has read.
+      const unlisted = [...deploys.keys()].filter(
+        (hostname) => !listed.some((service) => service.hostname === hostname),
+      );
       return {
         projectId: environment.projectId,
         name: input.projectNames.get(environment.projectId) ?? environment.name,
         tier: environment.tier,
         sources: environment.tier === "production" ? "release" : environment.sources,
         environment: environment.name,
-        services: input.services
-          .filter((service) => service.projectId === environment.projectId)
-          .map((service): EnvironmentServiceState => {
-            const repository = input.repositories?.get(service.hostname);
-            const appVersionName = input.versions.get(service.serviceId);
-            const deploy = deploys.get(service.hostname);
-            return {
-              hostname: service.hostname,
-              ...(repository === undefined ? {} : { repository }),
-              ...(appVersionName === undefined ? {} : { appVersionName }),
-              ...(deploy === undefined ? {} : { deploy }),
-            };
-          }),
+        services: [
+          ...listed.map((service) => state(service.hostname, service.serviceId)),
+          ...unlisted.map((hostname) => state(hostname)),
+        ],
       };
     });
 }

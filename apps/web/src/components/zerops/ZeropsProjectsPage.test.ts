@@ -42,7 +42,6 @@ import giteaPageSource from "./ZeropsGiteaPage.tsx?raw";
 import sidebarTreeSource from "./SidebarZeropsTree.tsx?raw";
 import sidebarSource from "../Sidebar.tsx?raw";
 import newProjectSource from "./ZeropsNewProjectHost.tsx?raw";
-import deployRunSource from "./ZeropsDeployRun.tsx?raw";
 import verdictPanelSource from "./primitives/VerdictPanel.tsx?raw";
 import releaseRowsSource from "./ZeropsReleaseRows.tsx?raw";
 import historyViewSource from "./ZeropsHistoryView.tsx?raw";
@@ -729,7 +728,6 @@ describe("a status word's hand", () => {
     ["the projects screen", projectsPageSource],
     ["a project's own page", groupDetailSource],
     ["the Git page", giteaPageSource],
-    ["a deploy's run", deployRunSource],
     ["the verdict panel", verdictPanelSource],
     ["a project's releases", releaseRowsSource],
     ["a history", historyViewSource],

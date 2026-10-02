@@ -112,13 +112,19 @@ const HEAD_NOT_SHOWN = hqRefusalWords({ code: "conflict", reason: "head_moved" }
 /**
  * A verb whose call landed, waiting until its effect is read: a tag, for any forge answer of its
  * group after the one it landed against; a change merged or closed, for HQ's stream to no longer
- * hold it open.
+ * hold it open; a deploy asked again, for HQ's stream to no longer record it failed.
  */
 interface HeldVerb {
   readonly groupId: string;
   readonly against:
     | { readonly kind: "forge"; readonly answer: ZeropsGroupForgeState | undefined }
-    | { readonly kind: "change"; readonly repository: string; readonly number: number };
+    | { readonly kind: "change"; readonly repository: string; readonly number: number }
+    | {
+        readonly kind: "deploy";
+        readonly projectId: string;
+        readonly service: string;
+        readonly sha: string;
+      };
   readonly sinceMs: number;
 }
 
@@ -131,6 +137,12 @@ function effectRead(
 ): boolean {
   const { against } = held;
   if (against.kind === "forge") return failed || forge !== against.answer;
+  if (against.kind === "deploy") {
+    const latest = flow?.environmentInputs
+      .find((entry) => entry.projectId === against.projectId)
+      ?.services.find((service) => service.hostname === against.service)?.deploy?.latest;
+    return latest?.state !== "failed" || latest.sha !== against.sha;
+  }
   return !(
     flow?.pullRequests.some(
       (pull) => pull.repository === against.repository && pull.number === against.number,
@@ -680,19 +692,23 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
   useEffect(() => {
     latestForges.current = forges;
   }, [forges]);
-  const hold = useCallback((verb: FlowVerb, groupId: string | undefined) => {
-    if (groupId === undefined) return;
-    setAwaiting((current) =>
-      new Map(current).set(flowVerbKey(verb), {
-        groupId,
-        against:
-          verb.kind === "merge" || verb.kind === "close"
-            ? { kind: "change", repository: verb.repository, number: verb.number }
-            : { kind: "forge", answer: latestForges.current.get(groupId) },
-        sinceMs: Date.now(),
-      }),
-    );
-  }, []);
+  const hold = useCallback(
+    (verb: FlowVerb, groupId: string | undefined, against?: HeldVerb["against"]) => {
+      if (groupId === undefined) return;
+      setAwaiting((current) =>
+        new Map(current).set(flowVerbKey(verb), {
+          groupId,
+          against:
+            against ??
+            (verb.kind === "merge" || verb.kind === "close"
+              ? { kind: "change", repository: verb.repository, number: verb.number }
+              : { kind: "forge", answer: latestForges.current.get(groupId) }),
+          sinceMs: Date.now(),
+        }),
+      );
+    },
+    [],
+  );
   const letGo = useCallback((key: string, entry: HeldVerb) => {
     setAwaiting((current) => {
       if (current.get(key) !== entry) return current;
@@ -860,6 +876,32 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
     [changeVerb],
   );
 
+  const redeploy = useCallback(
+    (
+      groupId: string,
+      projectId: string,
+      deploy: { readonly service: string; readonly sha: string },
+    ): Promise<FlowVerbOutcome> => {
+      if (hqApi === null) return Promise.resolve(refused(HQ_NOT_OPEN));
+      const environment = flows
+        .get(groupId)
+        ?.environmentInputs.find((entry) => entry.projectId === projectId)?.environment;
+      if (environment === undefined)
+        return Promise.resolve(refused("This project has not been read yet."));
+      const verb: FlowVerb = { kind: "redeploy", groupId, projectId, service: deploy.service };
+      return run(verb, groupId, async () => {
+        try {
+          await hqApi.redeploy(groupId, environment, deploy);
+        } catch (cause) {
+          return refused(zeropsErrorMessage(cause));
+        }
+        hold(verb, groupId, { kind: "deploy", projectId, ...deploy });
+        return { ok: true };
+      });
+    },
+    [flows, hold, hqApi, run],
+  );
+
   // While the account's access lapses, the groups the registry names and what was read of them
   // are withheld with every project (§3.1); the reads themselves are kept for the next grant.
   const lapsed = inventory.account.kind === "withheld";
@@ -908,6 +950,7 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
       rollBack,
       merge,
       close,
+      redeploy,
     }),
     [
       close,
@@ -920,6 +963,7 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
       merge,
       pendingOrHeld,
       readable,
+      redeploy,
       release,
       rollBack,
       signInTrouble,

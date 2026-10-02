@@ -94,6 +94,35 @@ describe("the join — HQ's record of an environment, a version and a deploy", (
   });
 });
 
+describe("a service HQ records a deploy of", () => {
+  it("stands in its environment's row though the account does not list it", () => {
+    const latest = record("failed", API);
+    const [stage] = environmentRowInputsOf({
+      environments: [
+        environment({
+          projectId: "p-stage",
+          tier: "stage",
+          name: "stage",
+          deploys: [
+            { service: "api", latest: record("live", API), live: record("live", API) },
+            { service: "worker", latest, live: null },
+          ],
+        }),
+      ],
+      projectNames: new Map(),
+      services,
+      versions: new Map(),
+      repositories: new Map([["worker", "workerdev"]]),
+    });
+    expect(stage?.services.map(({ hostname }) => hostname)).toEqual(["api", "web", "worker"]);
+    expect(stage?.services[2]).toEqual({
+      hostname: "worker",
+      repository: "workerdev",
+      deploy: { latest, live: null },
+    });
+  });
+});
+
 describe("what a release compares, from HQ's records", () => {
   it("holds a production deploy HQ records as failed, under its service and commit", () => {
     const inputs = environmentRowInputsOf({

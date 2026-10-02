@@ -143,6 +143,15 @@ export interface ZeropsProjectFlowValue {
     groupId: string,
     change: { readonly repository: string; readonly number: number },
   ) => Promise<FlowVerbOutcome>;
+  /**
+   * "Run again": the environment `projectId`'s newest deploy of `service`, at `sha`, which HQ
+   * records as failed, asked again in HQ as the person. HQ's stream brings it running.
+   */
+  readonly redeploy: (
+    groupId: string,
+    projectId: string,
+    deploy: { readonly service: string; readonly sha: string },
+  ) => Promise<FlowVerbOutcome>;
 }
 
 export const ZeropsProjectFlowContext = createContext<ZeropsProjectFlowValue | null>(null);

@@ -24,7 +24,7 @@ import { describe, expect, it, vi } from "vite-plus/test";
 import { service as platformService } from "~/zerops/__fixtures__/platformData";
 import type { ZeropsCommitsState } from "~/zerops/useZeropsRepositoryCommits";
 
-import { serviceBuildRequest, ZeropsGroupPane, ZeropsStopPane } from "./ZeropsGroupDetail";
+import { ZeropsGroupPane, ZeropsStopPane } from "./ZeropsGroupDetail";
 import { ZeropsReleaseRows } from "./ZeropsReleaseRows";
 
 /** The rows' one clock, fixed: an age is the producer's to test, not the minute this ran in. */
@@ -489,7 +489,8 @@ describe("ZeropsStopPane", () => {
           service: "api",
           sha: undefined,
           running: undefined,
-          jobKnown: false,
+          redeploy: undefined,
+          mayRunAgain: false,
         },
       },
       contains: ["The deploy of v0.1.14 failed on api."],
@@ -794,30 +795,5 @@ describe("ZeropsStopPane", () => {
       "Deploys",
     );
     expect(renderStop({ tier: "stage", services: [] })).not.toContain("Releases");
-  });
-});
-
-describe("serviceBuildRequest", () => {
-  const forge = { giteaOrigin: "https://gitea.example", owner: "shop" };
-  const rows = serviceRows({
-    environment: "production",
-    services: TWO_LIVE,
-    platform: { state: "unread", waitingFor: null },
-    mainHead: undefined,
-    routes: [],
-    offers: [],
-    nowMs: NOW,
-    age: () => "",
-  });
-
-  it("reads the build of the service it expands, not the first one's", () => {
-    expect(rows.map((row) => serviceBuildRequest(row, forge))).toEqual([
-      { ...forge, repo: "apidev", sha: fullSha("a1") },
-      { ...forge, repo: "webdev", sha: fullSha("b2") },
-    ]);
-  });
-
-  it("reads nothing for a service with nothing deployed", () => {
-    expect(serviceBuildRequest({ repository: "apidev", sha: undefined }, forge)).toBeNull();
   });
 });

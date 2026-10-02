@@ -52,7 +52,6 @@ import {
   ZeropsStopPane,
   type ReleaseOffer,
 } from "~/components/zerops/ZeropsGroupDetail";
-import type { ZeropsDeployRun } from "~/zerops/useZeropsDeployRun";
 import type { ZeropsCommitsState } from "~/zerops/useZeropsRepositoryCommits";
 
 import { SidebarProvider } from "~/components/ui/sidebar";
@@ -237,71 +236,6 @@ const READ_DETAIL = async (sha: string) => ({
 });
 
 const NOW = Date.now();
-
-function run(state: ZeropsDeployRun["state"]): ZeropsDeployRun {
-  return {
-    state,
-    readLog: async () => "",
-    rerun: async () => {},
-    refresh: () => {},
-    rerunning: false,
-    rerunFailure: null,
-  };
-}
-
-/** A build that went through, as an opened service row shows it. */
-const BUILT: ZeropsDeployRun = run({
-  kind: "read",
-  runId: 41,
-  runNumber: 12,
-  jobs: [
-    {
-      id: 1,
-      name: "build",
-      status: "completed",
-      conclusion: "success",
-      run_id: 41,
-      started_at: "2026-09-19T11:00:00Z",
-      completed_at: "2026-09-19T11:01:32Z",
-    },
-    {
-      id: 2,
-      name: "deploy",
-      status: "completed",
-      conclusion: "success",
-      run_id: 41,
-      started_at: "2026-09-19T11:01:32Z",
-      completed_at: "2026-09-19T11:01:50Z",
-    },
-  ],
-});
-
-/** A build whose deploy job failed: the row a failed service opens onto. */
-const BROKEN: ZeropsDeployRun = run({
-  kind: "read",
-  runId: 42,
-  runNumber: 13,
-  jobs: [
-    {
-      id: 3,
-      name: "build",
-      status: "completed",
-      conclusion: "success",
-      run_id: 42,
-      started_at: "2026-09-19T11:00:00Z",
-      completed_at: "2026-09-19T11:02:11Z",
-    },
-    {
-      id: 4,
-      name: "deploy",
-      status: "completed",
-      conclusion: "failure",
-      run_id: 42,
-      started_at: "2026-09-19T11:02:11Z",
-      completed_at: "2026-09-19T11:02:15Z",
-    },
-  ],
-});
 
 /** One service of a stop: what it runs, and how HQ records its deploy of that commit went. */
 function service(
@@ -530,8 +464,8 @@ interface StopFixture {
   }>;
   /** The tag being released; production only. */
   readonly releasing?: string;
-  /** Whether the failed deploy's job is known, so the verdict offers *Run again*. */
-  readonly jobKnown?: boolean;
+  /** Whether the person may ask HQ to run the failed deploy again, so the verdict offers it. */
+  readonly mayRunAgain?: boolean;
   readonly commits?: ZeropsCommitsState;
   /** A production's releases, newest first. */
   readonly releases?: ReadonlyArray<FlowRelease>;
@@ -656,7 +590,7 @@ function StopState({ fixture }: { readonly fixture: StopFixture }) {
   const failed =
     failedDeploy === undefined
       ? undefined
-      : { ...failedDeploy, jobKnown: fixture.jobKnown ?? false };
+      : { ...failedDeploy, mayRunAgain: fixture.mayRunAgain ?? false };
   // The code services' repositories, as the page maps them.
   const repositoryOf = new Map(
     fixture.services.flatMap((entry) =>
@@ -665,7 +599,6 @@ function StopState({ fixture }: { readonly fixture: StopFixture }) {
   );
   return (
     <ZeropsStopPane
-      buildOf={(entry) => (entry.tone === "bad" ? BROKEN : BUILT)}
       commits={commits}
       crumbs={crumbs(group)}
       deployed={new Map(stop.version.sha === undefined ? [] : [[name, stop.version.sha]])}
@@ -690,8 +623,8 @@ function StopState({ fixture }: { readonly fixture: StopFixture }) {
       routeTrouble={null}
       routes={routes}
       runAgain={
-        failed?.jobKnown === true
-          ? { rerunning: false, failure: null, onRunAgain: () => {} }
+        failed?.redeploy !== undefined && failed.mayRunAgain
+          ? { running: false, refused: null, onRunAgain: () => {} }
           : undefined
       }
       services={services}
@@ -907,8 +840,8 @@ function Harness() {
       </State>
 
       <State
-        label="A stage whose deploy failed, its job known"
-        note="api's deploy of the commit it runs failed: the verdict names the service and runs its failed job again, and its row opens onto the failed job."
+        label="A stage whose deploy failed, for one who may run it again"
+        note="HQ records api's newest deploy failed: the verdict names the service and asks HQ to run it again."
       >
         <StopState
           fixture={{
@@ -919,14 +852,14 @@ function Harness() {
             ],
             deployment: STAGE_RUNNING,
             routes: ROUTES,
-            jobKnown: true,
+            mayRunAgain: true,
           }}
         />
       </State>
 
       <State
-        label="A stage whose deploy failed, its job unknown"
-        note="No job to run again, so no verb."
+        label="A stage whose deploy failed, for one who may not run it again"
+        note="HQ's rule offers Run again only to who develops the application: no verb."
       >
         <StopState
           fixture={{

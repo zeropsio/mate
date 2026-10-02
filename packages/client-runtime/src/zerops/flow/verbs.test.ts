@@ -27,6 +27,11 @@ describe("flowVerbInvalidations", () => {
       verb: { kind: "roll-back", groupId: "g1", tag: "v1.2.0" },
       expected: { forge: { kind: "tags" } },
     },
+    {
+      // A deploy is asked again in HQ, and its record comes back down HQ's stream.
+      verb: { kind: "redeploy", groupId: "g1", projectId: "p-stage", service: "api" },
+      expected: { forge: null },
+    },
   ];
 
   it.each(cases)("$verb.kind invalidates what it changed", ({ verb, expected }) => {

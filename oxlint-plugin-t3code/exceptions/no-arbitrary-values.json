@@ -776,14 +776,6 @@
     "expires": "F6"
   },
   {
-    "path": "apps/web/src/components/zerops/ZeropsDeployRun.tsx",
-    "kind": "Literal",
-    "fingerprint": "<> text-[11px] in \"mb-2 max-h-72 overflow-auto rounded-md bg-muted p-3 font-mono text-[11px] leading-5 whitespace-pre-wrap text-muted-foreground\"",
-    "owner": "web-intake",
-    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
-    "expires": "F6"
-  },
-  {
     "path": "apps/web/src/components/zerops/ZeropsEnvironmentCreationDialog.tsx",
     "kind": "Literal",
     "fingerprint": "<> rounded-[var(--zerops-card-radius)] in \"flex cursor-pointer items-start gap-3 rounded-[var(--zerops-card-radius)] border border-border/55 px-3 py-2.5 text-sm transition-colors\"",
