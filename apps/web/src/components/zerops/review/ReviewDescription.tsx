@@ -3,26 +3,17 @@
  * are — Markdown, its pictures in it — or, where it wrote none, what the run that made it said of
  * it; and the way back to that run, where it is known (`reviewDescription`).
  *
- * The description's pictures are attachments of a private repository. Each is read as the person
- * through the broker of the app's own Gitea (`useGiteaPicture`, `GiteaClient.picture`): Gitea
- * answers a browser's preflight of `/attachments/{uuid}` with a 303, not its CORS headers
- * (measured on 1.27.2, 2026-09-29), and the broker's `/person/attachments/{uuid}` reads it for
- * the person. Once read it is drawn from its bytes, at most the column's width; a click opens it
- * large, the description's others beside it. Until then, and wherever it cannot be read, it stands
- * as one quiet line — its words, or "Picture", and *Open on Gitea*, where the change's own page
- * shows it. A picture whose description gives its size (zcp writes `<img alt width height src>`)
- * holds that box from the first paint, its line in it (`reviewPictureBox`), so nothing moves when
- * it arrives or when a read fails; one without a size stands as the line alone. A picture
- * anywhere else stays a plain link, never read with the person's token.
+ * The description's pictures are the change's own, kept by the organization's HQ. Each is read as
+ * the person through HQ's API (`useChangePicture`). Once read it is drawn from its bytes, at most
+ * the column's width; a click opens it large, the description's others beside it. Until then, and
+ * wherever it cannot be read, it stands as one quiet line — its words, or "Picture". A picture
+ * whose description gives its size (zcp writes `<img alt width height src>`) holds that box from
+ * the first paint, its line in it (`reviewPictureBox`), so nothing moves when it arrives or when a
+ * read fails; one without a size stands as the line alone. A picture anywhere else stays a plain
+ * link, never read with the person's session.
  */
 import { Dialog as DialogPrimitive } from "@base-ui/react/dialog";
-import {
-  ArrowUpRightIcon,
-  ChevronLeftIcon,
-  ChevronRightIcon,
-  ImageIcon,
-  XIcon,
-} from "lucide-react";
+import { ChevronLeftIcon, ChevronRightIcon, ImageIcon, XIcon } from "lucide-react";
 import { useCallback, useMemo, useState, type KeyboardEvent, type ReactNode } from "react";
 
 import ChatMarkdown, {
@@ -30,7 +21,7 @@ import ChatMarkdown, {
   type MarkdownPicture,
 } from "~/components/ChatMarkdown";
 import { gatedPortal } from "~/components/ui/portal-gate";
-import { useGiteaPicture, type GiteaPictureSource } from "~/zerops/useGiteaPicture";
+import { useChangePicture, type ChangePictureSource } from "~/zerops/useChangePicture";
 
 import {
   absoluteDescription,
@@ -52,20 +43,18 @@ interface PictureView {
 export function ReviewDescription({
   description,
   run,
-  giteaOrigin,
-  giteaPage,
+  hqAddress,
   pictures,
   onOpenRun,
 }: {
   /** The change's description as its author wrote it. */
   readonly description: string | undefined;
-  /** The change's own page on Gitea, which shows a picture that cannot be read here. */
-  readonly giteaPage: string | undefined;
   /** What the run that made it said of it, while its conversation is read. */
   readonly run: { readonly words: string | undefined; readonly reading: boolean };
-  readonly giteaOrigin: string | undefined;
+  /** The organization's official HQ, which keeps the change's pictures. */
+  readonly hqAddress: string | undefined;
   /** Where its pictures are read from, as the person. */
-  readonly pictures: GiteaPictureSource | undefined;
+  readonly pictures: ChangePictureSource | undefined;
   /** Opens the run that made it, where one is known. */
   readonly onOpenRun: (() => void) | undefined;
 }) {
@@ -83,12 +72,7 @@ export function ReviewDescription({
       title={shown.kind === "body" ? "Description" : "What it does"}
     >
       {shown.kind === "body" ? (
-        <DescriptionBody
-          giteaOrigin={giteaOrigin}
-          giteaPage={giteaPage}
-          pictures={pictures}
-          text={shown.text}
-        />
+        <DescriptionBody hqAddress={hqAddress} pictures={pictures} text={shown.text} />
       ) : shown.kind === "run" ? (
         <p className="rv-words">{shown.words}</p>
       ) : (
@@ -100,28 +84,20 @@ export function ReviewDescription({
 
 function DescriptionBody({
   text,
-  giteaOrigin,
-  giteaPage,
+  hqAddress,
   pictures,
 }: {
   readonly text: string;
-  readonly giteaOrigin: string | undefined;
-  readonly giteaPage: string | undefined;
-  readonly pictures: GiteaPictureSource | undefined;
+  readonly hqAddress: string | undefined;
+  readonly pictures: ChangePictureSource | undefined;
 }) {
   const [view, setView] = useState<PictureView | null>(null);
-  const written = useMemo(() => absoluteDescription(text, giteaOrigin), [giteaOrigin, text]);
+  const written = useMemo(() => absoluteDescription(text, hqAddress), [hqAddress, text]);
   const draw = useCallback(
     (picture: MarkdownPicture): ReactNode => (
-      <ReviewPicture
-        giteaOrigin={giteaOrigin}
-        giteaPage={giteaPage}
-        onOpen={setView}
-        picture={picture}
-        source={pictures}
-      />
+      <ReviewPicture hqAddress={hqAddress} onOpen={setView} picture={picture} source={pictures} />
     ),
-    [giteaOrigin, giteaPage, pictures],
+    [hqAddress, pictures],
   );
   return (
     <div className="rv-desc" data-review-description="">
@@ -140,21 +116,19 @@ function DescriptionBody({
   );
 }
 
-/** One of the description's pictures: read as the person where it is the Gitea's, a link where not. */
+/** One of the description's pictures: read as the person where it is the HQ's, a link where not. */
 function ReviewPicture({
   picture,
-  giteaOrigin,
-  giteaPage,
+  hqAddress,
   source,
   onOpen,
 }: {
   readonly picture: MarkdownPicture;
-  readonly giteaOrigin: string | undefined;
-  readonly giteaPage: string | undefined;
-  readonly source: GiteaPictureSource | undefined;
+  readonly hqAddress: string | undefined;
+  readonly source: ChangePictureSource | undefined;
   readonly onOpen: (view: PictureView) => void;
 }) {
-  const where = descriptionPicture(picture.uri, giteaOrigin);
+  const where = descriptionPicture(picture.uri, hqAddress);
   if (where.kind === "elsewhere") {
     return (
       <a className="rv-link" href={where.url} rel="noopener noreferrer" target="_blank">
@@ -162,11 +136,10 @@ function ReviewPicture({
       </a>
     );
   }
-  if (where.kind === "none") return <PictureLine alt={picture.alt} giteaPage={giteaPage} />;
+  if (where.kind === "none") return <PictureLine alt={picture.alt} />;
   return (
-    <GiteaPicture
+    <HqPicture
       alt={picture.alt}
-      giteaPage={giteaPage}
       height={picture.height}
       onOpen={onOpen}
       source={source}
@@ -176,12 +149,11 @@ function ReviewPicture({
   );
 }
 
-function GiteaPicture({
+function HqPicture({
   url,
   alt,
   width,
   height,
-  giteaPage,
   source,
   onOpen,
 }: {
@@ -190,15 +162,14 @@ function GiteaPicture({
   /** Its size as the description gives it, where it does. */
   readonly width: string | number | undefined;
   readonly height: string | number | undefined;
-  readonly giteaPage: string | undefined;
-  readonly source: GiteaPictureSource | undefined;
+  readonly source: ChangePictureSource | undefined;
   readonly onOpen: (view: PictureView) => void;
 }) {
-  const state = useGiteaPicture(source, url);
+  const state = useChangePicture(source, url);
   // Only a picture seen arriving fades in: one already read stands as it was.
   const [arriving] = useState(state.kind === "reading");
   const box = reviewPictureBox(width, height);
-  if (box === null && state.kind !== "read") return <PictureLine alt={alt} giteaPage={giteaPage} />;
+  if (box === null && state.kind !== "read") return <PictureLine alt={alt} />;
   return (
     <span
       className="rv-pic"
@@ -226,33 +197,21 @@ function GiteaPicture({
           />
         </button>
       ) : (
-        <PictureLine alt={alt} giteaPage={giteaPage} />
+        <PictureLine alt={alt} />
       )}
     </span>
   );
 }
 
 /**
- * A picture not drawn here — being read, or unreadable: its words, and the change's page on
- * Gitea, where it is shown. One line, the same while it is read and after a read failed.
+ * A picture not drawn here — being read, or unreadable: its words. One line, the same while it is
+ * read and after a read failed.
  */
-function PictureLine({
-  alt,
-  giteaPage,
-}: {
-  readonly alt: string;
-  readonly giteaPage: string | undefined;
-}) {
+function PictureLine({ alt }: { readonly alt: string }) {
   return (
     <span className="rv-pic-line">
       <ImageIcon aria-hidden="true" />
       <span className="rv-pic-alt">{alt.length > 0 ? alt : "Picture"}</span>
-      {giteaPage === undefined ? null : (
-        <a className="rv-link" href={giteaPage} rel="noopener noreferrer" target="_blank">
-          Open on Gitea
-          <ArrowUpRightIcon aria-hidden="true" />
-        </a>
-      )}
     </span>
   );
 }

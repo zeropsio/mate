@@ -1,12 +1,15 @@
 /**
- * A change's description with its screenshots, as the harness's Gitea hands them over: drawn
- * here, never fetched, each after the delay its address names — so a review shows its pictures
+ * A change's description with its screenshots, as the harness's HQ hands them over: drawn here,
+ * never fetched, each after the delay its address names — so a review shows its pictures
  * arriving slowly, settled, and one that cannot be read. Fixtures only.
  */
-import type { GiteaPictureSource } from "~/zerops/useGiteaPicture";
+import type { ChangePictureSource } from "~/zerops/useChangePicture";
 
-/** The harness's Gitea: an address no browser resolves. */
-export const HARNESS_GITEA = "https://git.example.test";
+/** The harness's HQ: an address no browser resolves. */
+export const HARNESS_HQ = "https://hq.example.test";
+
+/** Where the harness's change keeps its pictures (`attachmentPath`). */
+const PICTURES_AT = `${HARNESS_HQ}/api/apps/g-snap/changes/appdev/2/attachments`;
 
 /** A wide screenshot of the /status page, 1280 × 800. */
 function wideScreenshot(): string {
@@ -54,12 +57,10 @@ const DRAWN = new Map<string, string>([
 ]);
 
 /**
- * `${HARNESS_GITEA}/attachments/<drawing>?after=<ms>`: the drawing, handed over after `ms`; an
- * address naming no drawing fails as a browser's read of Gitea's own attachment does today — its
- * preflight answered 303, a network error with no status.
+ * `${PICTURES_AT}/<drawing>?after=<ms>`: the drawing, handed over after `ms`; an address naming no
+ * drawing fails as a read HQ does not answer does.
  */
-export const HARNESS_PICTURES: GiteaPictureSource = {
-  ready: true,
+export const HARNESS_PICTURES: ChangePictureSource = {
   read: (address) => {
     const url = new URL(address);
     const drawing = DRAWN.get(url.pathname.split("/").at(-1) ?? "");
@@ -78,7 +79,7 @@ export const HARNESS_PICTURES: GiteaPictureSource = {
 
 /**
  * A description in full, its two screenshots read after `after` ms: `missing` makes the second
- * unreadable, `unreadable` both — as every picture is from a browser today.
+ * unreadable, `unreadable` both.
  */
 export function harnessDescription(options: {
   readonly after: number;
@@ -86,7 +87,7 @@ export function harnessDescription(options: {
   readonly unreadable?: boolean;
 }): string {
   const at = (drawing: string) =>
-    `${HARNESS_GITEA}/attachments/${options.unreadable === true ? `${drawing}-refused` : drawing}?after=${String(options.after)}`;
+    `${PICTURES_AT}/${options.unreadable === true ? `${drawing}-refused` : drawing}?after=${String(options.after)}`;
   return [
     "Adds a **/status** page an admin opens to see whether the app is healthy without reading its logs.",
     "",

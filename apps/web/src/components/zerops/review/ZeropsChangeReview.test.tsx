@@ -64,9 +64,9 @@ vi.mock("~/zerops/useZeropsChangeComments", () => ({
 vi.mock("~/zerops/useZeropsChangeRun", () => ({
   useZeropsChangeRun: () => ({ words: undefined, reading: false, threadRef: undefined }),
 }));
-vi.mock("~/zerops/useGiteaPicture", () => ({
-  useGiteaPictureSource: () => undefined,
-  useGiteaPicture: () => ({ kind: "none" }),
+vi.mock("~/zerops/useChangePicture", () => ({
+  useHqPictureSource: () => undefined,
+  useChangePicture: () => ({ kind: "reading" }),
 }));
 vi.mock("~/zerops/useAskMate", () => ({ useAskMate: () => () => undefined }));
 vi.mock("~/zerops/fixRequest", () => ({ useAskMateToFix: () => () => undefined }));
@@ -134,7 +134,7 @@ function render(pull: FlowPullRequest, files: ReadonlyArray<ChangeFile>): string
     },
     remarks: [],
     run: { words: undefined, reading: false },
-    giteaOrigin: undefined,
+    hqAddress: undefined,
     pictures: undefined,
     environments: [{ tier: "stage" }, { tier: "production" }],
     waitingForProduction: 2,

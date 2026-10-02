@@ -98,55 +98,47 @@ describe("reviewDescription: the change's own words first, the run's when it wro
   });
 });
 
-describe("descriptionPicture: a picture is read as the person only from the app's own Gitea", () => {
-  const GITEA = "https://git.example.test";
+describe("descriptionPicture: a picture is read as the person only where it is a change's picture at the official HQ", () => {
+  const HQ = "https://hq.example.test";
+  const PICTURE = "/api/apps/g1/changes/appdev/2/attachments/a1b2c3";
   it.each([
     [
-      "an attachment on its Gitea, read as the person",
-      `${GITEA}/attachments/5f1c2a`,
-      { kind: "gitea", url: `${GITEA}/attachments/5f1c2a` },
+      "a change's picture at the official HQ, read as the person",
+      `${HQ}${PICTURE}`,
+      { kind: "hq", url: `${HQ}${PICTURE}` },
+    ],
+    ["one written without its host", PICTURE, { kind: "hq", url: `${HQ}${PICTURE}` }],
+    [
+      "one written without its scheme",
+      `//hq.example.test${PICTURE}`,
+      { kind: "hq", url: `${HQ}${PICTURE}` },
     ],
     [
-      "an attachment by its repository's older address, read where Gitea answers other origins",
-      `${GITEA}/acme/appdev/attachments/5f1c2a`,
-      { kind: "gitea", url: `${GITEA}/attachments/5f1c2a` },
+      "anything else at the HQ: a plain link",
+      `${HQ}/changes/g1/appdev/2`,
+      { kind: "elsewhere", url: `${HQ}/changes/g1/appdev/2` },
     ],
     [
-      "an address Gitea wrote without its host",
-      "/attachments/5f1c2a",
-      { kind: "gitea", url: `${GITEA}/attachments/5f1c2a` },
-    ],
-    [
-      "an address without its scheme",
-      "//git.example.test/attachments/5f1c2a",
-      { kind: "gitea", url: `${GITEA}/attachments/5f1c2a` },
-    ],
-    [
-      "a file of the repository on its Gitea",
-      `${GITEA}/acme/appdev/raw/commit/b21d904/docs/page.png`,
-      { kind: "gitea", url: `${GITEA}/acme/appdev/raw/commit/b21d904/docs/page.png` },
-    ],
-    [
-      "a picture anywhere else: a plain link, never read with the token",
+      "a picture anywhere else: a plain link, never read with the person's session",
       "https://pictures.example/cat.png",
       { kind: "elsewhere", url: "https://pictures.example/cat.png" },
     ],
     [
-      "the Gitea's host over plain http: a plain link",
-      "http://git.example.test/attachments/5f1c2a",
-      { kind: "elsewhere", url: "http://git.example.test/attachments/5f1c2a" },
+      "the HQ's host over plain http: a plain link",
+      `http://hq.example.test${PICTURE}`,
+      { kind: "elsewhere", url: `http://hq.example.test${PICTURE}` },
     ],
     ["an inline picture: nothing to read", "data:image/png;base64,iVBORw0KGgo=", { kind: "none" }],
     ["a script: nothing", "javascript:alert(1)", { kind: "none" }],
   ] as const)("%s", (_case, src, picture) => {
-    expect(descriptionPicture(src, GITEA)).toEqual(picture);
+    expect(descriptionPicture(src, HQ)).toEqual(picture);
   });
 
-  it("reads nothing as the person with no Gitea known", () => {
-    expect(descriptionPicture("/attachments/5f1c2a", undefined)).toEqual({ kind: "none" });
-    expect(descriptionPicture("https://git.example.test/attachments/5f1c2a", undefined)).toEqual({
+  it("reads nothing as the person while the official HQ is not known", () => {
+    expect(descriptionPicture(PICTURE, undefined)).toEqual({ kind: "none" });
+    expect(descriptionPicture(`${HQ}${PICTURE}`, undefined)).toEqual({
       kind: "elsewhere",
-      url: "https://git.example.test/attachments/5f1c2a",
+      url: `${HQ}${PICTURE}`,
     });
   });
 });
@@ -186,15 +178,15 @@ describe("reviewPictureBox: a picture holds its box from the size its descriptio
   );
 });
 
-describe("absoluteDescription: what Gitea wrote without its host points at its Gitea", () => {
-  const GITEA = "https://git.example.test";
+describe("absoluteDescription: what was written without its host points at the official HQ", () => {
+  const HQ = "https://hq.example.test";
   it.each([
-    ["a picture", "![The page](/attachments/5f1c2a)", `![The page](${GITEA}/attachments/5f1c2a)`],
-    ["a link", "See [#3](/acme/appdev/pulls/3).", `See [#3](${GITEA}/acme/appdev/pulls/3).`],
+    ["a picture", "![The page](/attachments/5f1c2a)", `![The page](${HQ}/attachments/5f1c2a)`],
+    ["a link", "See [#3](/changes/g1/appdev/3).", `See [#3](${HQ}/changes/g1/appdev/3).`],
     [
       "a picture written as HTML",
       '<img src="/attachments/5f1c2a" width="640" alt="The page">',
-      `<img src="${GITEA}/attachments/5f1c2a" width="640" alt="The page">`,
+      `<img src="${HQ}/attachments/5f1c2a" width="640" alt="The page">`,
     ],
     [
       "an address that has its host",
@@ -206,13 +198,13 @@ describe("absoluteDescription: what Gitea wrote without its host points at its G
     [
       "nothing inside a fenced block of code",
       "```md\n![a](/attachments/1)\n```\n![b](/attachments/2)",
-      `\`\`\`md\n![a](/attachments/1)\n\`\`\`\n![b](${GITEA}/attachments/2)`,
+      `\`\`\`md\n![a](/attachments/1)\n\`\`\`\n![b](${HQ}/attachments/2)`,
     ],
   ])("%s", (_case, text, written) => {
-    expect(absoluteDescription(text, GITEA)).toBe(written);
+    expect(absoluteDescription(text, HQ)).toBe(written);
   });
 
-  it("leaves the text alone with no Gitea known", () => {
+  it("leaves the text alone while the official HQ is not known", () => {
     expect(absoluteDescription("![a](/attachments/1)", undefined)).toBe("![a](/attachments/1)");
   });
 });

@@ -42,7 +42,7 @@ import type {
 } from "~/zerops/useZeropsChangeComments";
 import type { ReadoutPart } from "~/zerops/useZeropsChangeDetail";
 
-import { HARNESS_GITEA, HARNESS_PICTURES, harnessDescription } from "./reviewHarnessPictures";
+import { HARNESS_HQ, HARNESS_PICTURES, harnessDescription } from "./reviewHarnessPictures";
 
 const NOW = Date.now();
 const minutesAgo = (minutes: number) => new Date(NOW - minutes * 60_000).toISOString();
@@ -123,7 +123,7 @@ function pull(over: Partial<FlowPullRequest> = {}): FlowPullRequest {
     kind: "code",
     mateProjectId: "p-nova",
     author: "mate-p-nova",
-    url: "https://gitea.example/snap/appdev/pulls/2",
+    url: `${HARNESS_HQ}/changes/g-snap/appdev/2`,
     mergeability: "mergeable",
     merged: false,
     mergedAt: undefined,
@@ -342,7 +342,7 @@ const RECIPE: Partial<FlowPullRequest> = {
   number: 7,
   title: "Add a mail service to the Remote (CDE) and Local recipes",
   line: "#7",
-  url: "https://gitea.example/snap/group/pulls/7",
+  url: `${HARNESS_HQ}/changes/g-snap/group/7`,
 };
 
 /** The same service added to two tiers, as git names a path with an em dash in it. */
@@ -420,7 +420,7 @@ function Change({
       comments={conversation}
       environments={environments}
       frame={frame}
-      giteaOrigin={HARNESS_GITEA}
+      hqAddress={HARNESS_HQ}
       initiallyOpen={open}
       live="v0.1.0"
       mate={value.mateProjectId === undefined ? undefined : NOVA}
@@ -559,8 +559,7 @@ function Crew({
 
 /**
  * A change whose reads land `after` ms after it opens — its files, commits and comments; its
- * description's pictures refused at their preflight, as a browser's are today — so the first
- * frame can be set against the settled one.
+ * description's pictures never readable — so the first frame can be set against the settled one.
  */
 function Settling({
   frame,
@@ -659,8 +658,8 @@ export const REVIEW_STATES: ReadonlyArray<{
     node: <Change over={{ description: harnessDescription({ after: 0, missing: true }) }} />,
   },
   {
-    id: "description-today",
-    label: "Its description as a browser reads it today: every picture refused at its preflight",
+    id: "description-unread",
+    label: "Its description, none of its pictures readable",
     node: <Change over={{ description: harnessDescription({ after: 120, unreadable: true }) }} />,
   },
   {
@@ -978,7 +977,7 @@ export function ReviewDialogTry() {
         <ChangeReviewView
           comments={read ? TALKING : comments({ kind: "reading" })}
           environments={STAGE_AND_PRODUCTION}
-          giteaOrigin={HARNESS_GITEA}
+          hqAddress={HARNESS_HQ}
           live="v0.1.0"
           mate={NOVA}
           now={NOW}
@@ -1037,7 +1036,7 @@ function ReleaseTrySteps({ onClose }: { readonly onClose: () => void }) {
           <ChangeReviewView
             comments={TALKING}
             environments={STAGE_AND_PRODUCTION}
-            giteaOrigin={HARNESS_GITEA}
+            hqAddress={HARNESS_HQ}
             live="v0.1.56"
             mate={NOVA}
             now={NOW}

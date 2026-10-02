@@ -6206,17 +6206,6 @@ html[data-theme-id] [data-chat-header] .conversation-crewmate[data-popup-open] {
   min-width: 0;
   flex: 1;
 }
-.rv-pic-line .rv-link {
-  display: inline-flex;
-  flex: none;
-  align-items: center;
-  gap: 2px;
-  font-weight: 500;
-}
-.rv-pic-line .rv-link svg {
-  width: 14px;
-  height: 14px;
-}
 
 /* A picture opened large, over the review: the picture, its words, a way through the others. */
 .rv-viewer-backdrop {

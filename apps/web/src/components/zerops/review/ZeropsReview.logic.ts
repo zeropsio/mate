@@ -13,7 +13,7 @@ import {
   type ReviewPrimary,
   type ReviewVerdict,
 } from "@t3tools/client-runtime/zerops";
-import type { ChangeLink } from "@t3tools/shared/hqChanges";
+import { parseAttachmentUrl, type ChangeLink } from "@t3tools/shared/hqChanges";
 
 export type ReviewKind = "change" | "release" | "rollback" | "crew-task";
 
@@ -133,15 +133,14 @@ export function reviewDescription(input: {
 }
 
 /**
- * Where one of a description's pictures is read from. A picture on the app's own Gitea — a
- * change's attachment, a file of its repository — is read as the person and shown from its bytes:
- * a private repository answers nobody without a token, and a page's own `<img>` carries none. An
- * attachment written by its repository's older address is read by its own, `/attachments/{uuid}`
- * (the older one does not even answer a preflight: 405). A picture anywhere else stays a plain
- * link, never read with the person's token; one inline or scripted is nothing.
+ * Where one of a description's pictures is read from. A change's picture at the organization's
+ * official HQ (`parseAttachmentUrl`) is read as the person and shown from its bytes: HQ answers
+ * nobody without a session, and a page's own `<img>` carries none. A picture anywhere else — HQ's
+ * other addresses among them — stays a plain link, never read with the person's session; one
+ * inline or scripted is nothing.
  */
 export type DescriptionPicture =
-  | { readonly kind: "gitea"; readonly url: string }
+  | { readonly kind: "hq"; readonly url: string }
   | { readonly kind: "elsewhere"; readonly url: string }
   | { readonly kind: "none" };
 
@@ -174,29 +173,19 @@ function pictureSize(value: string | number | undefined): number | null {
   return Number.isInteger(size) && size > 0 && size <= PICTURE_SIZE_MAX ? size : null;
 }
 
-/** `/{owner}/{repo}/attachments/{uuid}`: an attachment by its repository's older address. */
-const REPOSITORY_ATTACHMENT = /^\/[^/]+\/[^/]+\/attachments\/([^/?#]+)$/u;
-
-export function descriptionPicture(
-  src: string,
-  giteaOrigin: string | undefined,
-): DescriptionPicture {
-  const gitea = originOf(giteaOrigin);
+export function descriptionPicture(src: string, hqAddress: string | undefined): DescriptionPicture {
   let url: URL;
   try {
-    url = new URL(src, gitea ?? undefined);
+    // Written without its host, it is read against the HQ — and with no HQ known it is no
+    // address at all.
+    url = new URL(src, originOf(hqAddress) ?? undefined);
   } catch {
     return { kind: "none" };
   }
   if (url.protocol !== "https:" && url.protocol !== "http:") return { kind: "none" };
-  // Written without its host, it is read against the Gitea — and with no Gitea known it is
-  // no address at all.
-  if (url.origin !== gitea) return { kind: "elsewhere", url: url.href };
-  const attachment = REPOSITORY_ATTACHMENT.exec(url.pathname)?.[1];
-  return {
-    kind: "gitea",
-    url: attachment === undefined ? url.href : `${gitea}/attachments/${attachment}`,
-  };
+  return hqAddress !== undefined && parseAttachmentUrl(url.href, hqAddress) !== null
+    ? { kind: "hq", url: url.href }
+    : { kind: "elsewhere", url: url.href };
 }
 
 function originOf(address: string | undefined): string | null {
@@ -214,13 +203,13 @@ const HOSTLESS_ADDRESS = /(\]\(\s*<?|\b(?:src|href)\s*=\s*["']?)\/(?!\/)/gu;
 const FENCE = /^\s{0,3}(?:```|~~~)/u;
 
 /**
- * A description with every address Gitea wrote without its host — the web editor writes an
- * uploaded picture as `![image](/attachments/…)` — pointing at its Gitea, so its pictures are
- * read there and its links open the change they name. Code is left as it was written.
+ * A description with every address written without its host pointing at the organization's
+ * official HQ, so its pictures are read there and its links open the change they name. Code is
+ * left as it was written.
  */
-export function absoluteDescription(text: string, giteaOrigin: string | undefined): string {
-  const gitea = originOf(giteaOrigin);
-  if (gitea === null) return text;
+export function absoluteDescription(text: string, hqAddress: string | undefined): string {
+  const hq = originOf(hqAddress);
+  if (hq === null) return text;
   let inCode = false;
   return text
     .split("\n")
@@ -229,7 +218,7 @@ export function absoluteDescription(text: string, giteaOrigin: string | undefine
         inCode = !inCode;
         return line;
       }
-      return inCode ? line : line.replace(HOSTLESS_ADDRESS, `$1${gitea}/`);
+      return inCode ? line : line.replace(HOSTLESS_ADDRESS, `$1${hq}/`);
     })
     .join("\n");
 }

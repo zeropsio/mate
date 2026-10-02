@@ -472,9 +472,9 @@ conversation's state) Fen lives here` (`ZeropsMateOnMap`, from the panel), and t
     end, the title (16 px), a meta line ("(face) Nova · appdev → main · #2 · 1d", 13, tabular — the
     size stays in the Changes heading); the verdict first (R2), one 12 px-round box in its tone —
     green ready, amber attention, red failing, ink quiet, busy or done — saying whether it is safe
-    and why, its fix in blue beside it ("Ask Nova to resolve it"); its description — the pull
-    request's body as its author wrote it, in the chat's markdown, its pictures in it (one it cannot
-    read settles on one line with _Open on Gitea_) — else what the run that made it said, under
+    and why, its fix in blue beside it ("Ask Nova to resolve it"); its description — the
+    change's body as its author wrote it, in the chat's markdown, its pictures in it (one it cannot
+    read settles on one line with its words) — else what the run that made it said, under
     "What it does", with a link to that run where one names the change (R3); its files with a letter
     and +/− each, a file's diff opening in place (12/19 mono, hunk headers, one number column; 400
     lines, then "Show all N lines" up to 2,000, past that a line saying the rest is too long to

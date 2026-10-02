@@ -48,7 +48,7 @@ import {
   type ZeropsChangeComments,
 } from "~/zerops/useZeropsChangeComments";
 import { useZeropsChangeRun } from "~/zerops/useZeropsChangeRun";
-import { useGiteaPictureSource, type GiteaPictureSource } from "~/zerops/useGiteaPicture";
+import { useHqPictureSource, type ChangePictureSource } from "~/zerops/useChangePicture";
 import { useZeropsLandedChange } from "~/zerops/useZeropsLandedChange";
 import { useNowMs } from "~/zerops/useNowMs";
 import { useFixMates } from "~/zerops/fixMates";
@@ -207,7 +207,7 @@ function ChangeReviewData({
   const askMate = useAskMate();
   const askMateToFix = useAskMateToFix();
   const mates = useZeropsReviewMates(target.groupId);
-  const pictures = useGiteaPictureSource(flowValue.giteaOrigin);
+  const pictures = useHqPictureSource();
 
   const mate = pull.mateProjectId === undefined ? undefined : mates.get(pull.mateProjectId);
   // Only the Mate that wrote it can push to its branch: the fix goes to it, if it is the
@@ -266,7 +266,7 @@ function ChangeReviewData({
     <ChangeReviewView
       environments={flow?.environmentInputs ?? NO_ENVIRONMENTS}
       frame={frame}
-      giteaOrigin={flowValue.giteaOrigin}
+      hqAddress={flowValue.hqAddress}
       onBack={onBack}
       onOpenPage={onOpenPage}
       live={flow?.releases.find((entry) => entry.standing === "live")?.tag}
@@ -357,10 +357,10 @@ export interface ChangeReviewViewProps {
   readonly comments: ZeropsChangeComments;
   readonly remarks: ReadonlyArray<ChangeRemark>;
   readonly run: { readonly words: string | undefined; readonly reading: boolean };
-  /** The account's Gitea, which its description's pictures and links are on. */
-  readonly giteaOrigin: string | undefined;
+  /** The organization's official HQ, which its description's pictures and links are on. */
+  readonly hqAddress: string | undefined;
   /** Where its description's pictures are read from, as the person. */
-  readonly pictures: GiteaPictureSource | undefined;
+  readonly pictures: ChangePictureSource | undefined;
   /**
    * The environments `environments.yaml` declares: where `main` goes next, and what a recipe
    * change's merge reaches.
@@ -491,8 +491,7 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
     >
       <ReviewDescription
         description={pull.description}
-        giteaOrigin={props.giteaOrigin}
-        giteaPage={pull.url}
+        hqAddress={props.hqAddress}
         onOpenRun={props.onOpenRun}
         pictures={props.pictures}
         run={props.run}
