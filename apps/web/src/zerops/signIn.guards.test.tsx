@@ -140,15 +140,20 @@ describe("deep link after sign-in", () => {
     },
   );
 
-  it("returns a hand-over with no route of its own to the account's last route", async () => {
-    const { tab, navigation, signInByHandover } = await signedOutTab("/");
+  // A sign-in lands once, where it was asked to go or on the projects page — never on a route an
+  // earlier visit ended on (the owner, 2026-10-02: landing on /zerops and then jumping into some
+  // Mate "is very strange and disturbing").
+  it("returns a hand-over with no route of its own to /zerops, whatever an earlier visit opened", async () => {
+    const { tab, signInByHandover } = await signedOutTab("/");
     await tab.run(() => tab.session().signIn("person@example.test", "secret"));
-    await tab.run(() => navigation.rememberAccountRoute(DEEP_LINK));
+    await tab.run(() =>
+      window.localStorage.setItem("mate:account:user-1:last-route:v1", DEEP_LINK),
+    );
     await tab.run(() => tab.session().signOut());
 
     const landing = await signInByHandover();
 
-    expect(landing).toBe(DEEP_LINK);
+    expect(landing).toBe("/zerops");
     expectLanding(landing);
   });
 });
