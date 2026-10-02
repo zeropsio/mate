@@ -1,3 +1,5 @@
+import type { ExecutionEnvironmentDescriptor } from "@t3tools/contracts";
+import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 
 import { environmentEndpointUrl } from "./endpoint.ts";
@@ -15,3 +17,16 @@ export const fetchRemoteEnvironmentDescriptor = Effect.fn(
     client.descriptor(),
   );
 });
+
+/**
+ * The descriptors this client read moments ago, by base URL: a connect presents the one its door
+ * just read instead of reading it again. Holds none unless the application provides a reader.
+ */
+export interface RecentEnvironmentDescriptors {
+  readonly recent: (httpBaseUrl: string) => ExecutionEnvironmentDescriptor | null;
+}
+
+export class RecentEnvironmentDescriptorsRef extends Context.Reference<RecentEnvironmentDescriptors>(
+  "@t3tools/client-runtime/environment/descriptor/RecentEnvironmentDescriptors",
+  { defaultValue: () => ({ recent: () => null }) },
+) {}

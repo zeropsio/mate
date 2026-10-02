@@ -6,6 +6,7 @@ import {
   bindContainerStore,
   makeContainerStore,
   type ContainerStore,
+  type ContainerTarget,
   type IntentStorage,
 } from "./containerStore.ts";
 import { makeExchangeDriver, type ExchangeClock } from "./exchangeDriver.ts";
@@ -186,7 +187,7 @@ async function boundDriver(rig: Rig) {
 }
 
 describe("container store (DESIGN §4.5)", () => {
-  it("ready re-probes on status push, connect failure or wake", async () => {
+  it("ready re-probes on a status move, connect failure or wake", async () => {
     const setup = rig();
     const { clock, store, probes } = setup;
     store.setTargets([target("ACTIVE")]);
@@ -218,7 +219,11 @@ describe("container store (DESIGN §4.5)", () => {
     await clock.advance(0);
     expect(probes).toHaveLength(1);
 
-    // So does a visible wake.
+    // So does a visible wake, once that reading is a minute old.
+    store.wake(true);
+    await clock.advance(0);
+    expect(probes).toHaveLength(1);
+    await clock.advance(60_000);
     store.wake(true);
     await clock.advance(0);
     expect(probes).toHaveLength(2);
@@ -470,6 +475,153 @@ describe("container store (DESIGN §4.5)", () => {
     expect(store.verdict(KEY)).toEqual({ level: "ready" });
     expect(retried).toEqual([environmentId]);
     dispose();
+    store.dispose();
+  });
+});
+
+describe("container store: what reads a container again", () => {
+  /** The target held only by its record: the listing does not say its service's status. */
+  const remembered = { key: KEY, origin: ORIGIN, platform: { project: "ACTIVE", service: null } };
+
+  const rows: ReadonlyArray<{
+    readonly name: string;
+    /** The target as first listed; ACTIVE by default. */
+    readonly initial?: ContainerTarget;
+    /** Whether the Mate's socket is live once its first reading landed. */
+    readonly connected: boolean;
+    readonly act: (store: ContainerStore, clock: ReturnType<typeof manualClock>) => Promise<void>;
+    readonly reads: number;
+  }> = [
+    {
+      name: "a connected Mate the listing sends again unchanged",
+      connected: true,
+      act: async (store) => store.setTargets([target("ACTIVE")]),
+      reads: 0,
+    },
+    {
+      name: "a connected Mate on a visible wake",
+      connected: true,
+      act: async (store, clock) => {
+        await clock.advance(120_000);
+        store.wake(true);
+      },
+      reads: 0,
+    },
+    {
+      name: "a connected Mate somebody asks about",
+      connected: true,
+      act: async (store) => store.request(KEY),
+      reads: 0,
+    },
+    {
+      name: "a connected Mate the listing drops to its record and lists again",
+      connected: true,
+      act: async (store) => {
+        store.setTargets([remembered]);
+        store.setTargets([target("ACTIVE")]);
+      },
+      reads: 0,
+    },
+    {
+      name: "a Mate the listing drops to its record and lists again",
+      connected: false,
+      act: async (store) => {
+        store.setTargets([remembered]);
+        store.setTargets([target("ACTIVE")]);
+      },
+      reads: 0,
+    },
+    {
+      name: "a Mate whose service the listing reads for the first time",
+      initial: remembered,
+      connected: false,
+      act: async (store) => store.setTargets([target("ACTIVE")]),
+      reads: 0,
+    },
+    {
+      name: "a Mate whose service's creation time the listing adds",
+      connected: false,
+      act: async (store) =>
+        store.setTargets([
+          {
+            ...target("ACTIVE"),
+            platform: { project: "ACTIVE", service: "ACTIVE", serviceCreated: "2026-10-01" },
+          },
+        ]),
+      reads: 0,
+    },
+    {
+      name: "a Mate whose service restarted and is ACTIVE again",
+      connected: false,
+      act: async (store) => {
+        store.setTargets([target("RESTARTING")]);
+        store.setTargets([target("ACTIVE")]);
+      },
+      reads: 1,
+    },
+    {
+      name: "a Mate whose service went RESTARTING while the listing lost it, then came back",
+      connected: false,
+      act: async (store) => {
+        store.setTargets([target("RESTARTING")]);
+        store.setTargets([remembered]);
+        store.setTargets([target("ACTIVE")]);
+      },
+      reads: 1,
+    },
+    {
+      name: "a Mate at a new address",
+      connected: false,
+      act: async (store) => store.setTargets([target("ACTIVE", "https://zcp-2.prg1.zerops.app")]),
+      reads: 1,
+    },
+    {
+      name: "a Mate read moments ago, on a visible wake",
+      connected: false,
+      act: async (store, clock) => {
+        await clock.advance(5_000);
+        store.wake(true);
+      },
+      reads: 0,
+    },
+    {
+      name: "a Mate last read a minute ago, on a visible wake",
+      connected: false,
+      act: async (store, clock) => {
+        await clock.advance(60_000);
+        store.wake(true);
+      },
+      reads: 1,
+    },
+    {
+      name: "a Mate last read a minute ago, on a hidden wake",
+      connected: false,
+      act: async (store, clock) => {
+        await clock.advance(60_000);
+        store.wake(false);
+      },
+      reads: 0,
+    },
+    {
+      name: "a Mate whose socket drops",
+      connected: true,
+      act: async (store) => store.link(KEY, false),
+      reads: 1,
+    },
+  ];
+
+  it.each(rows.map((row) => [row.name, row] as const))("%s", async (_name, row) => {
+    const { clock, store, probes } = rig();
+    store.setTargets([row.initial ?? target("ACTIVE")]);
+    await clock.advance(0);
+    expect(probes).toHaveLength(1);
+    if (row.connected) store.link(KEY, true);
+    await clock.advance(0);
+    probes.length = 0;
+
+    await row.act(store, clock);
+    await clock.advance(0);
+    expect(probes).toHaveLength(row.reads);
     store.dispose();
   });
 });

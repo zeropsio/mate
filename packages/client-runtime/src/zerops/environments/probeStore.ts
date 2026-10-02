@@ -13,6 +13,8 @@
  *   origin started least recently; overdue origins share at most `OVERDUE_PROBE_SLOTS`, so one
  *   that never answers cannot starve the others.
  * - A tab hidden for `HIDDEN_PROBE_PAUSE_MS` probes nothing until it is shown again.
+ * - A probe asked on demand may take the descriptor another reader of the Mate just read
+ *   (`descriptorShare.ts`); a poll, or one a `next` caller waits on, reads it fresh (`ProbeAsk`).
  */
 import type { Instant } from "../data/access/grant.ts";
 import type { DescriptorFacts } from "./environmentMachine.ts";
@@ -61,10 +63,18 @@ export const POLL_INTERVAL_MS = 2_000;
 export const OVERDUE_POLL_INTERVALS_MS: ReadonlyArray<number> = [10_000, 20_000, 40_000, 60_000];
 export const HIDDEN_PROBE_PAUSE_MS = 60_000;
 
+/**
+ * What one probe asks of its read: `fresh` for a container coming up, or for a caller waiting on a
+ * probe started after it asked — a reading another reader made a moment ago will not do.
+ */
+export interface ProbeAsk {
+  readonly fresh: boolean;
+}
+
 export interface ProbeStorePorts {
   readonly clock: Pick<ExchangeClock, "now" | "setTimer">;
-  /** Reads the origin's descriptor and `/healthz`; rejects when the signal aborts it. */
-  readonly probe: (origin: string, signal: AbortSignal) => Promise<ProbeReading>;
+  /** Reads the origin's container (`readZeropsContainer`); rejects when the signal aborts it. */
+  readonly probe: (origin: string, signal: AbortSignal, ask: ProbeAsk) => Promise<ProbeReading>;
 }
 
 export interface ProbeStore {
@@ -182,6 +192,7 @@ export function makeProbeStore(ports: ProbeStorePorts): ProbeStore {
     const controller = new AbortController();
     const sentAt = clock.now();
     const overdue = overdueOnly(entry);
+    const ask: ProbeAsk = { fresh: polls(entry.cadence) || entry.waiting.length > 0 };
     entry.inFlight = { controller, overdue };
     entry.requested = false;
     entry.startedAt = sentAt.mono;
@@ -199,7 +210,7 @@ export function makeProbeStore(ports: ProbeStorePorts): ProbeStore {
       controller.abort();
       settle({ kind: "unreachable" });
     });
-    ports.probe(origin, controller.signal).then(settle, () => settle({ kind: "unreachable" }));
+    ports.probe(origin, controller.signal, ask).then(settle, () => settle({ kind: "unreachable" }));
   };
 
   /** Fills the free slots, then arms the one timer for the earliest poll still ahead. */

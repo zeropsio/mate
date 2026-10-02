@@ -33,13 +33,11 @@ import {
   exchangeAtDoor,
   installDoorRegistration,
   prepareDoorRegistration,
-  readDoorDescriptor,
 } from "@t3tools/client-runtime/zerops/identityExchange";
 import {
   createAtomCommandScheduler,
   createRuntimeCommand,
   runAtomCommand,
-  squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
 import type { EnvironmentId } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
@@ -52,17 +50,13 @@ import { connectionAtomRuntime } from "../../connection/runtime";
 import { uuidv4 } from "../../lib/uuid";
 import { appAtomRegistry } from "../../state/atom-registry";
 import { loadAccountRecords, memoryIntents } from "./account-ports";
+import { mateDescriptors } from "./mate-descriptors";
 import { mobilePlatformSignals } from "./platform-signals";
 import { mobileZeropsStorage } from "./storage";
 
 // ── The door, through the connection runtime ─────────────────────────────────────────────────
 
 const doorScheduler = createAtomCommandScheduler();
-
-const readDescriptorCommand = createRuntimeCommand(connectionAtomRuntime, {
-  label: "mobile:zerops:read-door-descriptor",
-  execute: readDoorDescriptor,
-});
 
 /**
  * The Zerops door. Single-flight on the container's base URL so two exchanges can never mint
@@ -111,17 +105,6 @@ function doorCredential(registration: BearerConnectionRegistration): DoorCredent
       return { ok: result._tag !== "Failure" };
     },
   };
-}
-
-async function descriptorAt(httpBaseUrl: string) {
-  const result = await runAtomCommand(
-    appAtomRegistry,
-    readDescriptorCommand,
-    { httpBaseUrl },
-    quiet,
-  );
-  if (result._tag === "Failure") throw squashAtomCommandFailure(result);
-  return result.value;
 }
 
 // ── The catalog and its links ────────────────────────────────────────────────────────────────
@@ -256,7 +239,8 @@ export async function mobileAccountPorts(input: {
                     nonce: uuidv4(),
                   }
                 : null,
-              readDescriptor: descriptorAt,
+              readDescriptor: (httpBaseUrl) =>
+                mateDescriptors.descriptor(httpBaseUrl, request.signal),
               prepare: (prepared) =>
                 runAtomCommand(appAtomRegistry, prepareCommand, prepared, quiet),
               environmentOf: (registration) => registration.target.environmentId,
@@ -266,8 +250,8 @@ export async function mobileAccountPorts(input: {
           );
           return answer.ok ? { ...answer, credential: doorCredential(answer.credential) } : answer;
         },
-        readDescriptor: async (origin) =>
-          descriptorFacts(await descriptorAt(zeropsMateBaseUrl(origin))),
+        readDescriptor: async (origin, signal) =>
+          descriptorFacts(await mateDescriptors.descriptor(zeropsMateBaseUrl(origin), signal)),
         retryLink: (environmentId) => {
           void runAtomCommand(appAtomRegistry, retryLinkCommand, environmentId, quiet);
         },
@@ -275,8 +259,13 @@ export async function mobileAccountPorts(input: {
           void runAtomCommand(appAtomRegistry, environmentCatalog.remove, environmentId, quiet);
         },
       },
-      probe: (origin, signal) =>
-        readZeropsContainer(origin, globalThis.fetch.bind(globalThis), signal),
+      probe: (origin, signal, ask) =>
+        readZeropsContainer(
+          origin,
+          { descriptor: mateDescriptors.read, fetch: (url, init) => globalThis.fetch(url, init) },
+          signal,
+          ask,
+        ),
       intents: memoryIntents(),
       records,
       catalog: catalogPort,

@@ -4,7 +4,6 @@ import type { BearerConnectionRegistration } from "../connection/catalog.ts";
 import { ConnectionBlockedError, ConnectionTransientError } from "../connection/model.ts";
 import { prepareZeropsIdentityRegistration } from "../connection/onboarding.ts";
 import * as EnvironmentRegistry from "../connection/registry.ts";
-import { fetchRemoteEnvironmentDescriptor } from "../environment/descriptor.ts";
 /**
  * The container's `/mate` door, shared by every client.
  *
@@ -309,13 +308,13 @@ async function keptSessionWord<C>(
   kept: KeptDoorSession<C>,
   environmentOf: (credential: C) => EnvironmentId,
   at: { readonly httpBaseUrl: string; readonly environmentId: EnvironmentId },
-): Promise<"held" | "ended" | "no-word"> {
+): Promise<"held" | "ended" | { readonly noWord: unknown }> {
   if (environmentOf(kept.credential) !== at.environmentId) return "ended";
   try {
     return (await kept.check(at)) ? "held" : "ended";
-  } catch {
-    // No answer is no verdict: a throwaway connects this time, and the session stays kept.
-    return "no-word";
+  } catch (cause) {
+    // No answer is no verdict: the session stays kept, and the exchange is tried again.
+    return { noWord: cause };
   }
 }
 
@@ -326,8 +325,9 @@ async function keptSessionWord<C>(
  * The descriptor is read first, so a Mate that cannot answer for the person
  * (`zerops.identity = "failed"`), runs a server below the client floor or belongs to another
  * project costs no throwaway. A session kept from an earlier load is presented next, once its
- * Mate says it still holds it; only then is a throwaway minted. A kept session the Mate ended is
- * forgotten; one the Mate gave no word on stays kept for the next exchange.
+ * Mate says it still holds it. A throwaway is minted only when no session is kept or the Mate ended
+ * the kept one, which is forgotten; one the Mate gave no word on stays kept, and the exchange fails
+ * retryable so the next one asks again.
  */
 export async function exchangeAtDoor<C, E>(
   deps: DoorExchangeDeps<C, E>,
@@ -398,6 +398,16 @@ export async function exchangeAtDoor<C, E>(
       };
     }
     if (word === "ended") kept.forget();
+    else {
+      // A throwaway is minted only where no session is kept or the Mate ended the kept one: a
+      // Mate that gave no word on it is asked again, never handed a second session meanwhile.
+      const failure = exchangeFailureOf(word.noWord);
+      return fail(
+        failure.class === "retryable" ? failure : retryableFailure({ kind: "network" }),
+        descriptor,
+        diagnosticFailure(word.noWord),
+      );
+    }
   }
 
   let result: AtomCommandResult<C, E>;
@@ -433,10 +443,6 @@ export async function exchangeAtDoor<C, E>(
 }
 
 // ── The door's steps as the connection runtime runs them ─────────────────────────────────────
-
-/** `/.well-known/t3/environment` at a Mate's base URL. */
-export const readDoorDescriptor = (input: { readonly httpBaseUrl: string }) =>
-  fetchRemoteEnvironmentDescriptor(input);
 
 /** The door and the token exchange: a registration for the Mate, installed nowhere yet. */
 export const prepareDoorRegistration = prepareZeropsIdentityRegistration;

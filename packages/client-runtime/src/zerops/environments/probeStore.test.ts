@@ -301,3 +301,54 @@ describe("probe store (DESIGN §4.5 probes)", () => {
     expect(settled.get("c")).toEqual({ kind: "unreachable" });
   });
 });
+
+describe("probe store: which probes may take a reading another reader just made", () => {
+  const rows: ReadonlyArray<{
+    readonly name: string;
+    readonly cadence: ProbeCadence;
+    readonly ask: (store: ReturnType<typeof makeProbeStore>) => void;
+    readonly fresh: boolean;
+  }> = [
+    {
+      name: "a read asked of a container read on demand",
+      cadence: { kind: "on-demand" },
+      ask: (store) => store.request("a"),
+      fresh: false,
+    },
+    {
+      name: "a read a caller waits on, started after it asked",
+      cadence: { kind: "on-demand" },
+      ask: (store) => void store.next("a"),
+      fresh: true,
+    },
+    {
+      name: "a poll of a container coming up",
+      cadence: poll(false),
+      ask: () => undefined,
+      fresh: true,
+    },
+    {
+      name: "an overdue poll",
+      cadence: poll(true),
+      ask: () => undefined,
+      fresh: true,
+    },
+  ];
+
+  it.each(rows.map((row) => [row.name, row] as const))("%s", async (_name, row) => {
+    const clock = manualClock();
+    const asks: Array<{ readonly fresh: boolean }> = [];
+    const store = makeProbeStore({
+      clock,
+      probe: (_origin, _signal, ask) => {
+        asks.push(ask);
+        return Promise.resolve(READY);
+      },
+    });
+    store.setCadences(new Map([["a", row.cadence]]));
+    row.ask(store);
+    await clock.advance(0);
+    expect(asks).toEqual([{ fresh: row.fresh }]);
+    store.dispose();
+  });
+});
