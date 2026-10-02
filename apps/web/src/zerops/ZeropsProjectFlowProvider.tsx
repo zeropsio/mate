@@ -33,6 +33,7 @@ import {
   releaseInFlight,
   releaseRow,
   rollbackTo,
+  statedVersionNames,
   suggestReleaseTags,
   summarizeEnvironmentServices,
   GROUP_REPOSITORY,
@@ -492,14 +493,14 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
     for (const [groupId, projects] of groupProjects) {
       const environments = heldEnvironments.get(groupId);
       if (environments === undefined) continue;
-      const versions = new Map(
-        projects.flatMap(({ services }) =>
-          services.flatMap(({ serviceId }) => {
-            // A version the store does not state yet names nothing: the row is quieter until it does.
-            const version = stated.get(serviceId);
-            if (version?.state !== "known" || version.value.name === null) return [];
-            return [[serviceId, version.value.name] as const];
-          }),
+      const versions = statedVersionNames(
+        new Map(
+          projects.flatMap(({ services }) =>
+            services.flatMap(({ serviceId }) => {
+              const version = stated.get(serviceId);
+              return version === undefined ? [] : [[serviceId, version] as const];
+            }),
+          ),
         ),
       );
       built.set(

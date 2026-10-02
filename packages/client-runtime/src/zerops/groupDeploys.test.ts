@@ -6,7 +6,10 @@ import {
   environmentRowInputsOf,
   groupStopsOf,
   releaseDeploys,
+  statedVersionNames,
 } from "./groupDeploys.ts";
+import type { ZeropsServiceDeployedVersion } from "./data/deployedVersion.ts";
+import type { Shown } from "./knowledge/known.ts";
 import type { HqDeploy, HqEnvironment } from "./hq/environments.ts";
 
 const API = "3f9c1b2e5d7a4c6f8e0b1d2a3c4f5e6d7a8b9c0d";
@@ -192,6 +195,28 @@ describe("an application's stops, as HQ records them", () => {
       recipe: undefined,
     });
     expect(stops.missing).toEqual([]);
+  });
+});
+
+describe("the version names the account's store states", () => {
+  const known = (name: string | null): Shown<ZeropsServiceDeployedVersion> => ({
+    state: "known",
+    value: { activeId: "v-1", source: "GIT", name },
+    asOf: { ordinal: 1, atMs: 0 },
+    coverage: "complete",
+    freshness: { kind: "live" },
+  });
+
+  it("names a service only where the store states a name for what it runs", () => {
+    expect(
+      statedVersionNames(
+        new Map<string, Shown<ZeropsServiceDeployedVersion>>([
+          ["s1", known(`main ${API.slice(0, 7)}`)],
+          ["s2", known(null)],
+          ["s3", { state: "unread", waitingFor: null }],
+        ]),
+      ),
+    ).toEqual(new Map([["s1", `main ${API.slice(0, 7)}`]]));
   });
 });
 

@@ -34,7 +34,9 @@ import {
 } from "./groupEnvironments.ts";
 import { deployedCommit, type EnvironmentServiceState, type GroupRowTone } from "./groupRows.ts";
 import type { ZeropsEnvironmentRole } from "./groups.ts";
+import type { ZeropsServiceDeployedVersion } from "./data/deployedVersion.ts";
 import type { HqEnvironment } from "./hq/environments.ts";
+import type { Shown } from "./knowledge/known.ts";
 import { recipeTierRepositories } from "./recipeTier.ts";
 
 /** One runtime service of one Zerops project, as an environment's row needs it. */
@@ -56,6 +58,22 @@ export interface GroupEnvironmentRowInput {
   readonly environment: string;
   /** Whether the deploy key HQ holds for it no longer answers, or reaches more than its project. */
   readonly keyInvalid: boolean;
+}
+
+/**
+ * The version name each service runs, by service id, as the account's store states it
+ * (`selectDeployedVersion`). A service it states no name for — not read yet, or running what
+ * nobody named — is left out: its row says less until the store says more.
+ */
+export function statedVersionNames(
+  stated: ReadonlyMap<string, Shown<ZeropsServiceDeployedVersion>>,
+): ReadonlyMap<string, string> {
+  const names = new Map<string, string>();
+  for (const [serviceId, version] of stated) {
+    if (version.state !== "known" || version.value.name === null) continue;
+    names.set(serviceId, version.value.name);
+  }
+  return names;
 }
 
 /** What an application's recipe on `main` offers: the tiers a person can add, and where code lives. */
