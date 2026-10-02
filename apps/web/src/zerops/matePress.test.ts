@@ -22,6 +22,7 @@ import {
   connectedPresses,
   finishSetupRowLine,
   finishSetupRunning,
+  birthPresses,
   finishMateSetup,
   pressComingInput,
   pressDoneAt,
@@ -789,5 +790,25 @@ describe("pressingProjects", () => {
     expect([...pressingProjects.read()]).toEqual([]);
     expect(heard).toBe(2);
     stop();
+  });
+});
+
+// Re-check of pass 32, live: Finish setup pressed on the projects page pulled the person into the
+// Mate's conversation once it connected, as an Add's press does — pressed anywhere else it did not.
+describe("birthPresses — the presses that make a Mate, whose conversation the press lands in", () => {
+  const press = (projectId: string, finishing: boolean): MatePress => ({
+    projectId,
+    organizationId: "org-acme",
+    startedAt: 0,
+    placement: null,
+    container: true,
+    ...(finishing ? { finishing: true } : {}),
+    state: { kind: "pressing" },
+  });
+
+  it("names an Add's or a New project's press, never a Finish setup", () => {
+    expect(birthPresses([press("p-added", false), press("p-finishing", true)])).toEqual([
+      "p-added",
+    ]);
   });
 });

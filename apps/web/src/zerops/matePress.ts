@@ -328,6 +328,15 @@ export function finishSetupView(press: MatePress | undefined):
   };
 }
 
+/**
+ * The presses that make a Mate — an Add's, a New project's — whose conversation the press lands the
+ * person in once it connects. Never a Finish setup: it runs on a Mate that is there already, its
+ * row says how it went, and the person stays where they pressed it.
+ */
+export function birthPresses(presses: ReadonlyArray<MatePress>): ReadonlyArray<string> {
+  return presses.flatMap((press) => (press.finishing === true ? [] : [press.projectId]));
+}
+
 /** Whether a Finish setup runs on this Mate now: its menu does not offer it again meanwhile. */
 export function finishSetupRunning(press: MatePress | undefined): boolean {
   return press?.finishing === true && press.state.kind === "pressing";

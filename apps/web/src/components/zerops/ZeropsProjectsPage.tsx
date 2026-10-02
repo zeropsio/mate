@@ -76,6 +76,7 @@ import {
   useZeropsContainers,
 } from "~/zerops/zeropsContainers";
 import {
+  birthPresses,
   beginPress,
   finishMateSetup,
   forgetPress,
@@ -890,7 +891,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
   const seenBirthsRef = useRef(new Set<string>());
   const finishedBirthProjectsRef = useRef(new Set<string>());
   useEffect(() => {
-    for (const press of presses) seenBirthsRef.current.add(press.projectId);
+    for (const projectId of birthPresses(presses)) seenBirthsRef.current.add(projectId);
     // A connect this page's own `connectContainer` is mid-flight on will
     // reach `finishBirth` itself; racing in here would only navigate twice.
     if (connectingOrigin !== null) return;
