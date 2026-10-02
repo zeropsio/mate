@@ -287,12 +287,25 @@ export const makeZeropsSetup = (timings: ZeropsSetupTimings = TIMINGS) =>
 
     const status = Effect.map(reads.statusFile, parseZcpStatus);
 
-    const turnOf = (threadId: string) =>
-      projection.getThreadShellById(ThreadId.make(threadId)).pipe(
-        Effect.map((thread) => {
-          const state = Option.getOrUndefined(thread)?.latestTurn?.state;
+    /**
+     * The recorded stand-up's own turn — the one its ask started, found by its message (its ids
+     * are the command's) — never the thread's latest, which a later message would make another's.
+     * Asked and not started yet, it runs; not found (its thread gone), it is not read.
+     */
+    const turnOf = (record: StandUpRow) =>
+      sql<{ readonly state: string }>`
+        SELECT state FROM projection_turns
+        WHERE thread_id = ${record.threadId} AND pending_message_id = ${record.commandId}
+        ORDER BY row_id DESC LIMIT 1
+      `.pipe(
+        Effect.map((rows) => {
+          const state = rows[0]?.state;
           if (state === undefined) return undefined;
-          return state === "running" ? "running" : state === "completed" ? "done" : "failed";
+          return state === "running" || state === "pending"
+            ? "running"
+            : state === "completed"
+              ? "done"
+              : "failed";
         }),
         Effect.catch(() => Effect.succeed(undefined)),
       );
@@ -304,11 +317,18 @@ export const makeZeropsSetup = (timings: ZeropsSetupTimings = TIMINGS) =>
       const marked = variables !== undefined && hasSetupMarker(variables);
       const record = yield* recordOf;
       const ran = record !== undefined && RAN.has(record.source);
-      // Only a marked Mate whose stand-up is still pending asks who asked for it: a Mate made
-      // before has no stand-up of the server's, and a settled one has its record.
+      const signedInAt = yield* Ref.get(signinAt);
+      // Only a marked Mate whose stand-up is still pending says why it waits: a Mate made before
+      // has no stand-up of the server's, and a settled one has its record.
       const pending = marked && record === undefined;
       const hq = pending ? standing : undefined;
-      const mate = hq?.kind === "linked" ? Option.some(hq.mate) : Option.none<MateState>();
+      // Who asked, from HQ, where a marked Mate's record cannot say it: a stand-up still pending,
+      // or — settled as never due — a sign-in not seen yet. One that ran has its sign-in in its
+      // record.
+      const mate =
+        marked && (pending || (!ran && signedInAt === undefined)) && standing.kind === "linked"
+          ? Option.some(standing.mate)
+          : Option.none<MateState>();
       const requestedBy = Option.getOrUndefined(mate)?.standupRequestedBy ?? undefined;
       const signers = yield* reads.signers;
       const signedIn =
@@ -317,8 +337,9 @@ export const makeZeropsSetup = (timings: ZeropsSetupTimings = TIMINGS) =>
           (requestedBy === undefined
             ? Object.keys(signers).length > 0
             : standUpSigners(signers, requestedBy).length > 0));
-      // The sign-in is known from a stand-up that ran, or from HQ's word on one pending.
-      const signinKnown = ran || pending;
+      // The sign-in is known from a stand-up that ran, from HQ's word, or once seen: a step once
+      // done stays done.
+      const signinKnown = ran || marked || signedInAt !== undefined;
       return setupDocument({
         now: yield* nowIso,
         startedAt,
@@ -327,8 +348,15 @@ export const makeZeropsSetup = (timings: ZeropsSetupTimings = TIMINGS) =>
         requestedBy,
         standUpWait: hq === undefined ? undefined : standUpWaitOf(hq),
         signinAt: yield* latch(signinAt, signedIn),
-        record: record === undefined ? undefined : { startedAt: record.startedAt, ran },
-        standUpTurn: ran ? yield* turnOf(record.threadId) : undefined,
+        record:
+          record === undefined
+            ? undefined
+            : { startedAt: record.startedAt, ran, claimed: record.source.endsWith(":claimed") },
+        // HQ's birth record is whole — the press records the ask before the close-off — and
+        // names nobody: a Mate with no stand-up to run.
+        nobodyAsked:
+          hq?.kind === "linked" && hq.mate.standupRequestedBy === null && hq.mate.closedOff,
+        standUpTurn: ran ? yield* turnOf(record) : undefined,
         unknown: [
           ...(signinKnown ? [] : (["signin"] as const)),
           ...(marked || record !== undefined ? [] : (["standup"] as const)),

@@ -72,6 +72,11 @@ describe("arrivalSteps — what the Mate's own setup says (`/mate/setup.json`)",
       want: ["git:done", "you:done", "standup:done"],
     },
     {
+      case: "a Mate with no stand-up to run: no stand-up step",
+      setup: { git: "done", signin: "done", standup: "none" },
+      want: ["git:done", "you:done"],
+    },
+    {
       case: "a stand-up that failed",
       setup: { git: "done", signin: "done", standup: "failed" },
       want: ["git:done", "you:done", "standup:failed"],
