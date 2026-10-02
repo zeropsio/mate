@@ -6,6 +6,7 @@ import * as NodePath from "node:path";
 
 import { assert, describe, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
+import * as Ref from "effect/Ref";
 import * as Redacted from "effect/Redacted";
 import * as Stream from "effect/Stream";
 
@@ -15,7 +16,7 @@ import { groupCheckout, propose, stateBecomes } from "../test/harness/recipe.ts"
 import { type Call, sessionFor, startCore, untilHealth } from "../test/harness/runningCore.ts";
 import { TempPostgres, tempPostgresLayer } from "../test/harness/tempPostgres.ts";
 import { directoryStore } from "./backup.ts";
-import { restoreSet } from "./restore.ts";
+import { restoreDatabase, restoreRepos, restoreSet } from "./restore.ts";
 
 /** A PNG's signature and a little more: what HQ checks a picture by. */
 const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13]);
@@ -181,6 +182,134 @@ describe("a backup set, restored", () => {
             () => true,
           );
           assert.deepStrictEqual(reconciled, [{ n: 0 }]);
+        }),
+    );
+
+    it.effect(
+      "restores a set whose git moved on past its dump: the takeover records the push and the merge",
+      () =>
+        Effect.gen(function* () {
+          // What happens between the set's dump and its bundles.
+          const between = yield* Ref.make<Effect.Effect<void>>(Effect.void);
+          const a = yield* startCore(true, {
+            afterDump: Effect.flatten(Ref.get(between)),
+          });
+          yield* untilHealth(a.call, "active");
+          const owner = yield* sessionFor(a.call, "door-owner");
+          const { appId, credential } = yield* mateWithChange(a.call, a.fake, owner);
+          const git = yield* gitClient;
+          yield* git.checked(["clone", remoteOf(a.origin, credential, appId, "appdev"), "work"]);
+          const work = NodePath.join(git.dir, "work");
+          const push = (file: string) =>
+            Effect.gen(function* () {
+              NodeFS.writeFileSync(NodePath.join(work, file), `${file}\n`);
+              yield* git.checked(["add", file], work);
+              yield* git.checked(["commit", "-q", "-m", file], work);
+              yield* git.checked(["push", "-q", "origin", "HEAD:refs/heads/mate/P_MATE/1"], work);
+              const head = yield* git.checked(["rev-parse", "HEAD"], work);
+              yield* rowsWhere(
+                a.url,
+                "SELECT head FROM hq_change",
+                (rows) => rows[0]?.["head"] === head,
+              );
+              return head;
+            }).pipe(Effect.orDie);
+          yield* push("one.txt");
+          yield* Ref.set(
+            between,
+            Effect.gen(function* () {
+              const head = yield* push("two.txt");
+              const merged = yield* a.call("POST", `/api/apps/${appId}/changes/appdev/1/merge`, {
+                session: owner,
+                body: { expectedHead: head },
+              });
+              assert.strictEqual(merged.status, 200);
+            }),
+          );
+          const manifest = yield* a.backup.take;
+          const main = native(NodePath.join(a.gitRoot, appId, "appdev.git"), ["rev-parse", "main"]);
+          yield* a.stop;
+
+          const url = yield* (yield* TempPostgres).createDatabase;
+          const gitRoot = yield* temporaryDir;
+          yield* restoreSet(directoryStore(a.storeDir), manifest.id, {
+            databaseUrl: Redacted.make(url),
+            gitRoot,
+            workDir: yield* temporaryDir,
+          });
+          const b = yield* startCore(true, { url, gitRoot });
+          yield* Stream.runHead(Stream.filter(b.gitHost.recorded, (tick) => tick > 0));
+          const head = native(NodePath.join(gitRoot, appId, "appdev.git"), [
+            "rev-parse",
+            "refs/heads/mate/P_MATE/1",
+          ]);
+          assert.deepStrictEqual(
+            yield* rowsWhere(
+              url,
+              "SELECT state, head, merged_sha AS merged FROM hq_change WHERE number = 1",
+              () => true,
+            ),
+            [{ state: "merged", head, merged: main }],
+          );
+          const reconciled = yield* rowsWhere(
+            url,
+            "SELECT kind FROM hq_git_event WHERE (data->>'reconciled')::boolean ORDER BY seq",
+            () => true,
+          );
+          assert.includeDeepMembers([...reconciled], [{ kind: "merged" }]);
+        }),
+    );
+
+    it.effect(
+      "refuses a database newer than its git: the Core holds the lead and serves nothing",
+      () =>
+        Effect.gen(function* () {
+          const a = yield* startCore(true);
+          yield* untilHealth(a.call, "active");
+          const owner = yield* sessionFor(a.call, "door-owner");
+          const { appId, credential } = yield* mateWithChange(a.call, a.fake, owner);
+          const older = yield* a.backup.take;
+          // After the older set: a push and its merge.
+          const git = yield* gitClient;
+          yield* git.checked(["clone", remoteOf(a.origin, credential, appId, "appdev"), "work"]);
+          const work = NodePath.join(git.dir, "work");
+          yield* git.checked(["commit", "-q", "--allow-empty", "-m", "Later"], work);
+          yield* git.checked(["push", "-q", "origin", "HEAD:refs/heads/mate/P_MATE/1"], work);
+          const head = yield* git.checked(["rev-parse", "HEAD"], work);
+          yield* rowsWhere(
+            a.url,
+            "SELECT head FROM hq_change",
+            (rows) => rows[0]?.["head"] === head,
+          );
+          yield* a.call("POST", `/api/apps/${appId}/changes/appdev/1/merge`, {
+            session: owner,
+            body: { expectedHead: head },
+          });
+          // A set apart in time, so the two never share an id.
+          yield* Effect.sleep("1100 millis");
+          const newer = yield* a.backup.take;
+          yield* a.stop;
+
+          // The newer set's database over the older set's git: sources mixed.
+          const url = yield* (yield* TempPostgres).createDatabase;
+          const gitRoot = yield* temporaryDir;
+          const store = directoryStore(a.storeDir);
+          yield* restoreDatabase(store, newer.id, {
+            databaseUrl: Redacted.make(url),
+            gitRoot,
+            workDir: yield* temporaryDir,
+          });
+          yield* restoreRepos(store, older.id, {
+            databaseUrl: Redacted.make(url),
+            gitRoot,
+            workDir: yield* temporaryDir,
+          });
+          const b = yield* startCore(true, { url, gitRoot });
+          const health = yield* untilHealth(b.call, "failed");
+          assert.strictEqual(
+            (health.body as { readonly reason?: string }).reason,
+            "restore_mismatch",
+          );
         }),
     );
   });
