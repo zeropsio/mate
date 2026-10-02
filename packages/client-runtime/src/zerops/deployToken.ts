@@ -15,9 +15,13 @@
 
 import type { ZeropsProjectGrant } from "./groupReach.ts";
 
-/** `deploy-Todo - stage` — what the token is called in the account's token list. */
-export function deployTokenName(environmentName: string): string {
-  return `deploy-${environmentName.trim()}`;
+/**
+ * `mate-hq-deploy:todo-stage:<projectId>` — what the token is called in the account's token list:
+ * HQ's, by the environment's name and its project. Main's own keys, `deploy-<project name>`, stay in
+ * the list beside it, so neither is ever taken for the other.
+ */
+export function deployTokenName(environmentName: string, projectId: string): string {
+  return `mate-hq-deploy:${environmentName.trim()}:${projectId}`;
 }
 
 /** The token an environment's key is minted as: its name, the org role, the one grant. */
@@ -32,7 +36,7 @@ export function deployTokenMint(input: {
   readonly environmentName: string;
 }): DeployTokenMint {
   return {
-    name: deployTokenName(input.environmentName),
+    name: deployTokenName(input.environmentName, input.projectId),
     roleCode: "NO_ACCESS",
     projects: [{ projectId: input.projectId, roleCode: "BASIC_USER" }],
   };
