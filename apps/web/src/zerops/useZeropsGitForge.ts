@@ -41,7 +41,6 @@ const NO_REPOSITORY: GitForgeState = {
   read: true,
   repository: undefined,
   pullRequest: undefined,
-  checks: [],
 };
 
 /**
@@ -52,7 +51,6 @@ const UNREAD_FORGE: GitForgeState = {
   read: false,
   repository: undefined,
   pullRequest: undefined,
-  checks: [],
 };
 
 export type ZeropsGitForgeStates = ReadonlyMap<string, GitForgeState>;
@@ -133,15 +131,12 @@ async function readForge(
 ): Promise<GitForgeState> {
   const repository = await client.getRepository(owner, target.repository);
   if (repository === undefined) return NO_REPOSITORY;
-  if (target.branch === null) return { read: true, repository, pullRequest: undefined, checks: [] };
+  if (target.branch === null) return { read: true, repository, pullRequest: undefined };
   // Gitea has no "pull requests by head branch" filter worth trusting across
   // versions, so the open list is matched here — it is a handful of entries.
   const readAt = Date.now();
   const pulls = await client.listPullRequests(owner, target.repository, { state: "all" });
   const pull = pulls.find((candidate) => candidate.head?.ref === target.branch);
-  const head = pull?.head?.sha;
-  const checks =
-    head === undefined ? [] : await client.listCommitStatuses(owner, target.repository, head);
   const pullRequest =
     pull === undefined
       ? undefined
@@ -152,5 +147,5 @@ async function readForge(
             mergeReadOf(pull, readAt),
           ).kind,
         };
-  return { read: true, repository, pullRequest, checks };
+  return { read: true, repository, pullRequest };
 }

@@ -497,8 +497,8 @@ conversation's state) Fen lives here` (`ZeropsMateOnMap`, from the panel), and t
     sliding in from the right in 220 ms as the release moves 30 % left and fades and the height
     eases; the first Esc steps back to the release where it was, the focus on the pressed row, the
     second closes, and ⌘↵ never reaches the release underneath (`ZeropsReleaseSteps.logic.ts`)
-  - _States:_ a change: ready · not checked · checks running or Gitea checking · checks failing ·
-    behind main (amber, still merges) · conflicts with main · its files still read · closed without
+  - _States:_ a change: ready · Gitea checking · behind main (amber, still merges) · conflicts
+    with main · its files still read · closed without
     merging · merging · merged · refused; a release: ready · blocked · releasing · released ·
     failed; a roll back: ready · rolling back · rolled back · refused; a crew task: ready · add what
     it has · conflict · check failed · in Fen's code
@@ -529,7 +529,7 @@ conversation's state) Fen lives here` (`ZeropsMateOnMap`, from the panel), and t
     typed open the box in the palette's own chrome; signed in, it is the palette's root, and `>`
     hands over to the commands. Nothing typed: the menu's first six Mates — face, name, "project ·
     subject" — then its projects, the last of them _New project_ (D11). Typed: Mates by name,
-    projects and _New project_, changes ("#12 title", the checks dot), stops ("Shop production" and
+    projects and _New project_, changes ("#12 title"), stops ("Shop production" and
     what it runs, the dot its chip's menu gives it — only where its chip is drawn), in conversations
     (the task, the last words, then the server's search of whole histories), each group capped, the
     match in the search's bold. A Mate, or its words, opens its conversation; a project, a change or

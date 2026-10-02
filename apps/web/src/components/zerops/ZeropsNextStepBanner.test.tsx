@@ -33,8 +33,6 @@ const PULL: FlowPullRequest = {
   mateProjectId: "p-nova",
   author: "mate-p-nova",
   url: undefined,
-  checks: "passing",
-  checkWord: "Passed",
   mergeability: "mergeable",
   merged: false,
   mergedAt: undefined,

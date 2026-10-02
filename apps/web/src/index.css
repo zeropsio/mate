@@ -6455,39 +6455,6 @@ html[data-theme-id] [data-chat-header] .conversation-crewmate[data-popup-open] {
   margin: 4px 0 2px 60px;
 }
 
-/* The checks by name, with what each said. */
-.rv-checks {
-  display: grid;
-  gap: 2px;
-}
-.rv-check {
-  display: grid;
-  min-height: 32px;
-  grid-template-columns: 18px minmax(0, 1fr) auto;
-  column-gap: 10px;
-  align-items: center;
-  font-size: 14px;
-  line-height: 20px;
-}
-.rv-check .rv-ci {
-  display: flex;
-  color: var(--muted-foreground);
-}
-.rv-check .rv-ci svg {
-  width: 16px;
-  height: 16px;
-}
-.rv-check[data-tone="ok"] .rv-ci {
-  color: var(--zerops-status-ok);
-}
-.rv-check[data-tone="failed"] .rv-ci {
-  color: var(--zerops-status-failed);
-}
-.rv-check-d {
-  font-size: 13px;
-  color: var(--muted-foreground);
-}
-
 /* What could not be read, where it would have stood, with Try again: amber, it didn't go
    through; a failure never blanks its section. */
 .rv-failed {

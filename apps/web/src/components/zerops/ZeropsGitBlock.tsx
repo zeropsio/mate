@@ -13,9 +13,8 @@
  * answer's colour, carrying the verb that acts on it.
  *
  * Under that: the **commits** this branch has that its base does not, which
- * are the Mate's actual work and the thing a person came to see. The **checks**
- * by name, because one collapsed word answers "can it land" and never "which
- * one broke". And **what is on disk and not committed**, which lives in the
+ * are the Mate's actual work and the thing a person came to see. And **what is
+ * on disk and not committed**, which lives in the
  * container and which nothing outside it can prove — the tab used to keep a
  * count of that and throw the files away.
  *
@@ -24,15 +23,13 @@
  * person to a forge they have to sign into for a change this app can already
  * draw is the long way round to a worse copy (the owner, 2026-09-19).
  *
- * Structural: every word is `gitTab.ts`'s (R5) — including its case. A check
- * answers "Passed", and the panel above it and the change's review both say
- * so in the running hand; this list used to shout PASSED.
+ * Structural: every word is `gitTab.ts`'s (R5) — including its case.
  */
 import type { GitBlock } from "@t3tools/client-runtime/zerops";
 import type { ReactNode } from "react";
 
 import { cn } from "~/lib/utils";
-import { StatusDot, VerdictPanel, VerdictPanelWaiting } from "./primitives";
+import { VerdictPanel, VerdictPanelWaiting } from "./primitives";
 
 export interface ZeropsGitBlockProps {
   readonly block: GitBlock;
@@ -174,21 +171,6 @@ export function ZeropsGitBlock({
       </div>
 
       {commits === undefined || commits === null ? null : commits}
-
-      {block.checkRows.length === 0 ? null : (
-        <Detail title="Checks">
-          {block.checkRows.map((check) => (
-            <li
-              className="flex min-w-0 items-center justify-between gap-3 py-1 text-xs"
-              data-zerops-surface="git-check"
-              key={check.name}
-            >
-              <span className="min-w-0 truncate font-mono text-foreground">{check.name}</span>
-              <StatusDot className="shrink-0" label={check.word} sentence tone={check.tone} />
-            </li>
-          ))}
-        </Detail>
-      )}
 
       {block.changed.length === 0 ? null : (
         <Detail title={`Not committed · ${String(block.changed.length)}`}>

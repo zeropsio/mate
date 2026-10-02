@@ -163,7 +163,7 @@ const VERDICT: ReviewVerdict = {
   state: "ready",
   tone: "ok",
   title: "Ready to merge",
-  why: "Checks passed · no conflicts with main · 1 commit",
+  why: "No conflicts with main · 1 commit",
   fix: undefined,
 };
 

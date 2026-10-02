@@ -34,7 +34,6 @@ import {
   type FlowRelease,
   type ReleaseAttempt,
   type GiteaClient,
-  type GiteaCommitStatus,
   type GiteaPullRequest,
 } from "@t3tools/client-runtime/zerops";
 import {
@@ -376,11 +375,10 @@ async function readRepositoryPulls(
   repository: string,
   mergeability: MergeabilityTracker,
 ): Promise<RepositoryPulls> {
-  const row = (pull: GiteaPullRequest, atMs: number, checks: ReadonlyArray<GiteaCommitStatus>) =>
+  const row = (pull: GiteaPullRequest, atMs: number) =>
     flowPullRequest({
       repository,
       pull,
-      checks,
       mergeability: mergeability.after(
         `${slug}/${repository}#${String(pull.number)}`,
         mergeReadOf(pull, atMs),
@@ -389,23 +387,17 @@ async function readRepositoryPulls(
   const pullRequests: Array<FlowPullRequest> = [];
   const openAt = Date.now();
   for (const pull of await client.listPullRequests(slug, repository, { state: "open" })) {
-    const head = pull.head?.sha;
-    const checks =
-      head === undefined
-        ? []
-        : await client.listCommitStatuses(slug, repository, head).catch(() => []);
-    pullRequests.push(row(pull, openAt, checks));
+    pullRequests.push(row(pull, openAt));
   }
   // The landed ones, so a conversation can place its own work landing on its
-  // timeline. No checks are read for them: a change that is over is not waiting
-  // on CI. Capped, because a long-lived group's closed list is unbounded and
+  // timeline. Capped, because a long-lived group's closed list is unbounded and
   // only the recent ones sit inside a conversation anybody still has open.
   const closedAt = Date.now();
   const closed = await client.listPullRequests(slug, repository, { state: "closed" });
   const merged = closed
     .slice(0, MERGED_PER_REPOSITORY)
     .filter((pull) => pull.merged === true)
-    .map((pull) => row(pull, closedAt, []));
+    .map((pull) => row(pull, closedAt));
   return { pullRequests, merged };
 }
 

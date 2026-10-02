@@ -270,14 +270,10 @@ export {
 } from "./groupReach.ts";
 export {
   gitCheckoutHostnames,
-  checkDotTone,
-  checkTone,
-  checkWord,
   environmentForBranch,
   gitActionAllowed,
   gitBlock,
   gitCheckoutLine,
-  gitChecks,
   gitTrouble,
   gitVerdict,
   pullRequestBlocked,
@@ -289,8 +285,6 @@ export {
   type GitBlockState,
   type GitChangedFile,
   type GitCheckoutState,
-  type GitCheckRow,
-  type GitCheckTone,
   type GitForgePullRequest,
   type GitForgeState,
   type GitVerdict,
@@ -427,7 +421,6 @@ export {
   changeRemarks,
   type ChangeRemark,
 } from "./changeConversation.ts";
-export { changeVerdict, type ChangeVerdict, type ChangeVerdictKind } from "./changeVerdict.ts";
 export {
   REVIEW_LABEL,
   REVIEW_RELEASE_LABEL,

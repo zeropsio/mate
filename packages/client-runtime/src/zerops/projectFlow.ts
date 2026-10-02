@@ -32,17 +32,9 @@
 
 import type { ServiceStatusToneId } from "@t3tools/shared/brand";
 
-import {
-  checkDotTone,
-  checkTone,
-  checkWord,
-  gitChecks,
-  pullRequestBlocked,
-  type GitCheckRow,
-  type GitCheckTone,
-} from "./gitTab.ts";
+import { pullRequestBlocked } from "./gitTab.ts";
 import type { MergeabilityKind } from "./forge/mergeState.ts";
-import type { GiteaCommitStatus, GiteaPullRequest } from "./giteaClient.ts";
+import type { GiteaPullRequest } from "./giteaClient.ts";
 import { mateProjectOfBranch, mateProjectOfLogin } from "./mateIdentity.ts";
 import { GROUP_REPOSITORY } from "./release.ts";
 
@@ -59,9 +51,6 @@ export interface FlowPullRequest {
   readonly mateProjectId: string | undefined;
   readonly author: string | undefined;
   readonly url: string | undefined;
-  readonly checks: GitCheckTone;
-  /** The one word beside the checks' dot; `undefined` where no check ran. */
-  readonly checkWord: string | undefined;
   /**
    * Gitea's answers over the reads so far (`forge/mergeState.ts`), never the
    * app's: Merge is offered only where it is `mergeable`.
@@ -101,8 +90,6 @@ export interface FlowPullRequest {
    */
   /** The branch it comes from — `mate/mate-{projectId}` for a Mate's. */
   readonly headBranch?: string | undefined;
-  /** Every check on its head by name, with what each said — the broker's own left out. */
-  readonly checkRows?: ReadonlyArray<GitCheckRow> | undefined;
   /** Lines added and removed and files touched, as Gitea counts them; absent where it did not. */
   readonly additions?: number | undefined;
   readonly deletions?: number | undefined;
@@ -140,15 +127,12 @@ const FALLBACK_BASE = "main";
 export function flowPullRequest(input: {
   readonly repository: string;
   readonly pull: GiteaPullRequest;
-  /** Every commit status on the pull request's head. */
-  readonly checks: ReadonlyArray<GiteaCommitStatus>;
   /** How it merges over the reads of it so far (`forge/mergeState.ts`). */
   readonly mergeability: MergeabilityKind;
 }): FlowPullRequest {
   const { pull, repository } = input;
   const kind: FlowPullRequestKind = repository === GROUP_REPOSITORY ? "recipe" : "code";
   const mateProjectId = mateProjectOfBranch(pull.head?.ref) ?? mateProjectOfLogin(pull.user?.login);
-  const tone = checkTone(input.checks);
   const author = pull.user?.login;
   // A recipe change's row already wears the tag; a code change names its
   // repository. A Mate's pull request sits under its Mate, so the line does
@@ -164,8 +148,6 @@ export function flowPullRequest(input: {
     mateProjectId,
     author,
     url: pull.html_url,
-    checks: tone,
-    checkWord: checkWord(tone),
     mergeability: input.mergeability,
     merged: pull.merged === true,
     mergedAt: pull.merged_at,
@@ -176,7 +158,6 @@ export function flowPullRequest(input: {
     line,
     updatedAt: pull.updated_at,
     headBranch: pull.head?.ref,
-    checkRows: gitChecks(input.checks),
     additions: pull.additions,
     deletions: pull.deletions,
     changedFiles: pull.changed_files,
@@ -400,19 +381,15 @@ export interface ChangeState {
 }
 
 /**
- * Where a change stands, in one vocabulary.
- *
- * A list of changes used to mix two: `checkWord` answers in adjectives
- * (`Passing`, `Failing`) and `pullRequestBlocked` in phrases (`needs a
- * rebase`, `checks failed`), and both landed in the same column — so one row
- * read `Passing` and the next `needs a rebase`, in different registers, about
- * the same kind of thing. What is stopping a change outranks what its checks
- * did, because it is the thing somebody has to act on.
+ * Where a change stands, in one vocabulary: what is stopping it, because it is
+ * the thing somebody has to act on, or that nothing is. Saying nothing at all
+ * for a change nothing stops left a whole column blank, where "nothing wrong"
+ * and "not read yet" looked identical. Grey, because no signal is not a good
+ * signal — the same quiet its own page gives it.
  */
 export function changeState(pull: {
   readonly number: number;
   readonly mergeability: MergeabilityKind;
-  readonly checks: GitCheckTone;
 }): ChangeState | undefined {
   const blocked = pullRequestBlocked(pull);
   if (blocked !== null) {
@@ -421,37 +398,17 @@ export function changeState(pull: {
       tone: blocked.tone,
     };
   }
-  const word = checkWord(pull.checks);
-  // No check ran, and nothing is stopping it either. Saying nothing at all
-  // left a whole column blank on an account with no CI, where "nothing wrong"
-  // and "not read yet" then looked identical. Grey, because no signal is not a
-  // good signal — the same colour its own page gives it (`changeVerdict`).
-  if (word === undefined) return { word: "Unchecked", tone: "off" };
-  // From the one table, not a ternary of its own: `failing ? failed : ok`
-  // painted checks that were still *running* green, while the change's own
-  // page painted them blue. One fact, two colours, on two surfaces a click
-  // apart.
-  return { word, tone: checkDotTone(pull) ?? "off" };
+  return { word: "Ready to merge", tone: "off" };
 }
 
-/**
- * How a change merges, in merge's own terms.
- *
- * A page that reports the checks and then reports them again under *Merges*
- * says the same words twice and answers neither question. What the checks did
- * is one fact; whether the change can land, and what it is waiting on, is
- * another — so this says the second without repeating the first.
- */
+/** How a change merges, in merge's own terms: whether it can land, and what it is waiting on. */
 export function pullRequestMergeLine(pull: {
   readonly number: number;
   readonly mergeability: MergeabilityKind;
-  readonly checks: GitCheckTone;
   readonly baseBranch: string;
 }): string {
   const blocked = pullRequestBlocked(pull);
   if (blocked === null) return `Cleanly, into ${pull.baseBranch}`;
-  if (blocked.kind === "checks-running") return "Once the checks have finished";
-  if (blocked.kind === "checks-failed") return "Not while the checks are failing";
   if (blocked.kind === "checking") return "Still checking whether it can";
   return `Not until it is rebased on ${pull.baseBranch}`;
 }

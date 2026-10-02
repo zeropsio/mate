@@ -438,7 +438,7 @@ describe("useZeropsGroupForge", () => {
 
 describe("checkingRepositories", () => {
   const open = (repository: string, number: number, mergeability: "checking" | "mergeable") =>
-    flowPullRequest({ repository, pull: pull(number), checks: [], mergeability });
+    flowPullRequest({ repository, pull: pull(number), mergeability });
   const state = (pullRequests: ZeropsGroupForgeState["pullRequests"]): ZeropsGroupForgeState => ({
     repositories: [...new Set(pullRequests.map((entry) => entry.repository))],
     pullRequests,

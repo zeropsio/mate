@@ -74,7 +74,6 @@ import { ReviewCommits } from "./ReviewCommits";
 import { ReviewConversation, type MateFaceOf } from "./ReviewConversation";
 import { ReviewDescription } from "./ReviewDescription";
 import {
-  ReviewChecks,
   ReviewFiles,
   ReviewSection,
   ReviewSize,
@@ -500,7 +499,6 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
     if (readout.diff.kind === "failed") return { kind: "failed", reason: readout.diff.reason };
     return { kind: "reading" };
   };
-  const checkRows = pull.checkRows ?? [];
   const mine = mate?.mine === true ? mate : undefined;
   const fix = model.verdict.fix;
   const next = model.primary?.label === REVIEW_RELEASE_LABEL;
@@ -591,11 +589,6 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
           pending={pull.changedFiles ?? 1}
         />
       </ReviewSection>
-      {checkRows.length === 0 ? null : (
-        <ReviewSection title="Checks">
-          <ReviewChecks rows={checkRows} />
-        </ReviewSection>
-      )}
       <ReviewConversation
         asker={
           mine === undefined ? undefined : { name: mine.name, tint: mine.tint, shape: mine.shape }

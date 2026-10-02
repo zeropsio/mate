@@ -440,7 +440,7 @@ stops exist and their order; project tags declare membership. `Deployment` is `n
 facet observed with no active deploy), `running` (activation time, version name and commit, build
 status) or `deploying`; an unresolved facet is `unread`, never "Nothing deployed yet".
 `MergeState` is `merged`, `closed`, or `open` with mergeability `checking`, `mergeable` or
-`conflicting` and a checks summary; Gitea's `mergeable: false` reads `checking` until a confirming
+`conflicting`; Gitea's `mergeable: false` reads `checking` until a confirming
 read, and Merge is offered only on `mergeable` with the cell fresh. A verb invalidates exactly what
 it changed: merge the pull request, the repository's pulls and `main`; release and roll back the
 group repository's tags; open a pull request the repository's pulls; add a stage the declarations.

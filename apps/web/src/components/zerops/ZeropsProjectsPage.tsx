@@ -1725,9 +1725,8 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
   ) => {
     const slug = groupDeploys.get(group.groupId)?.slug;
     // One vocabulary down the column, the same one the project's own page and
-    // the left menu use: `changeState` answers a rebase and a passing check in
-    // the same register. `checkDotTone` alone said nothing at all about a
-    // change that no longer merges, which is the one a person needs to see.
+    // the left menu use (`changeState`): a change that no longer merges is the
+    // one a person needs to see.
     const state = changeState(pull);
     const merging =
       slug !== undefined &&

@@ -1,7 +1,6 @@
 // @effect-diagnostics globalDate:off -- fixture timestamps are offsets from a fixed instant, not wall-clock reads.
 import { describe, expect, it } from "vite-plus/test";
 
-import type { GitCheckRow } from "./gitTab.ts";
 import type { RecipeReach } from "./recipeReach.ts";
 import { RELEASE_NOT_A_RELEASER, RELEASE_NOTHING_NEW_ON_MAIN } from "./release.ts";
 import {
@@ -19,13 +18,6 @@ import {
 const NOW = Date.parse("2026-09-29T10:00:00Z");
 const minutesAgo = (minutes: number) => new Date(NOW - minutes * 60_000).toISOString();
 
-const check = (name: string, tone: GitCheckRow["tone"], description?: string): GitCheckRow => ({
-  name,
-  tone,
-  word: tone,
-  ...(description === undefined ? {} : { description }),
-});
-
 function change(over: Partial<ChangeReviewInput> = {}): ChangeReviewInput {
   return {
     pull: {
@@ -33,8 +25,6 @@ function change(over: Partial<ChangeReviewInput> = {}): ChangeReviewInput {
       kind: "code",
       baseBranch: "main",
       mergeability: "mergeable",
-      checks: "passing",
-      checkRows: [check("build", "ok", "pnpm build · 34s")],
       merged: false,
       mergedAt: undefined,
       mergeBase: "mb",
@@ -54,24 +44,14 @@ const pull = (over: Partial<ChangeReviewInput["pull"]>) => ({ ...change().pull, 
 describe("changeReview: the verdict comes first (R2)", () => {
   it.each<[string, Partial<ChangeReviewInput>, Record<string, unknown>]>([
     [
-      "ready",
-      {},
+      "ready: grey, not green",
+      { commits: 3 },
       {
         state: "ready",
-        tone: "ok",
-        title: "Ready to merge",
-        why: "Checks passed · no conflicts with main · 1 commit",
-        fix: undefined,
-      },
-    ],
-    [
-      "ready with nothing checked: grey, not green",
-      { pull: pull({ checks: "none", checkRows: [] }), commits: 3 },
-      {
-        state: "unchecked",
         tone: "quiet",
         title: "Ready to merge",
-        why: "No checks ran · no conflicts with main · 3 commits",
+        why: "No conflicts with main · 3 commits",
+        fix: undefined,
       },
     ],
     [
@@ -123,37 +103,6 @@ describe("changeReview: the verdict comes first (R2)", () => {
       },
     ],
     [
-      "checks failing, named",
-      {
-        pull: pull({
-          checks: "failing",
-          checkRows: [check("build", "failed", "tsc exited 2 · 41s"), check("lint", "ok")],
-        }),
-      },
-      {
-        state: "checks-failed",
-        tone: "failed",
-        title: "Checks failing: build",
-        why: "tsc exited 2 · 41s",
-      },
-    ],
-    [
-      "checks running",
-      {
-        pull: pull({
-          checks: "pending",
-          checkRows: [check("build", "busy"), check("e2e", "busy", "3 of 12 pages")],
-        }),
-      },
-      {
-        state: "checks-running",
-        tone: "busy",
-        title: "Checks running: build and e2e",
-        why: "Merging waits for them",
-        fix: undefined,
-      },
-    ],
-    [
       "Gitea still working out whether it merges",
       { pull: pull({ mergeability: "checking" }) },
       {
@@ -191,12 +140,6 @@ describe("changeReview: the verdict comes first (R2)", () => {
       "Rebase it on main, resolve the conflicts, and push.",
     ],
     [
-      "failing checks",
-      { pull: pull({ checks: "failing", checkRows: [check("build", "failed", "tsc exited 2")] }) },
-      "fix it",
-      "Find out why, fix them, and push.",
-    ],
-    [
       "a branch main moved past",
       { pull: pull({ baseSha: "newer" }) },
       "update it",
@@ -207,18 +150,6 @@ describe("changeReview: the verdict comes first (R2)", () => {
     expect(fix?.verb).toBe(verb);
     expect(fix?.problem.ask).toBe(ask);
     expect(fix?.problem.what).toMatch(/#2/u);
-  });
-
-  it("says the failing check's own words as the error the Mate reads", () => {
-    const fix = changeReview(
-      change({
-        pull: pull({ checks: "failing", checkRows: [check("build", "failed", "tsc exited 2")] }),
-      }),
-    ).verdict.fix;
-    expect(fix?.problem).toMatchObject({
-      what: "The checks on pull request #2 are failing: build",
-      error: "tsc exited 2",
-    });
   });
 });
 
@@ -246,18 +177,6 @@ describe("changeReview: the button says what will happen (R5)", () => {
       "a conflict",
       { pull: pull({ mergeability: "conflicting" }) },
       "Merging waits until the conflict is resolved.",
-      { enabled: false, safe: false },
-    ],
-    [
-      "failing checks",
-      { pull: pull({ checks: "failing", checkRows: [check("build", "failed")] }) },
-      "Merging waits until the checks pass.",
-      { enabled: false, safe: false },
-    ],
-    [
-      "running checks",
-      { pull: pull({ checks: "pending", checkRows: [check("build", "busy")] }) },
-      "Merging waits for the checks to finish.",
       { enabled: false, safe: false },
     ],
     [
@@ -337,7 +256,7 @@ describe("changeReview: a recipe change says what its merge does, and is never r
     ...over,
   });
   const recipe = (over: Partial<ChangeReviewInput["pull"]> = {}) =>
-    pull({ kind: "recipe", checks: "none", checkRows: [], ...over });
+    pull({ kind: "recipe", ...over });
   const merged = recipe({ merged: true, mergedAt: minutesAgo(0) });
   /** Where production waits for a release: a code change's review would offer it now. */
   const releasable = { releaseOffered: true, waiting: { count: 2, live: "v0.1.0" } } as const;

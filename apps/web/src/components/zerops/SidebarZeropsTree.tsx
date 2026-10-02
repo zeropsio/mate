@@ -48,7 +48,6 @@
  */
 import { useWarmIntent } from "../chat/warmTimeline";
 import {
-  checkDotTone,
   assignCandidateMateTints,
   botDisplayName,
   buildZeropsGroupTree,
@@ -953,8 +952,6 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
         number: pull.number,
         projectName: groupName,
         label: sidebarChangeLabel(pull, among),
-        checkTone: checkDotTone({ checks: pull.checks }),
-        checkWord: pull.checkWord,
         mateProjectId,
         whose: (mateProjectId === undefined ? undefined : names.get(mateProjectId)) ?? pull.author,
       });
@@ -3492,11 +3489,7 @@ function PullRequestRow({
       <span
         className={cn(
           "flex justify-center",
-          tone === "failed"
-            ? "text-status-failed-text"
-            : tone === "attention"
-              ? "text-status-attention-text"
-              : "text-muted-foreground",
+          tone === "attention" ? "text-status-attention-text" : "text-muted-foreground",
         )}
       >
         <GitPullRequestIcon aria-hidden="true" className="size-3.5" />

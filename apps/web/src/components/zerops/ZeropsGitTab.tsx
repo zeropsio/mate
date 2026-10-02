@@ -266,7 +266,6 @@ export function ZeropsGitTab(props: ZeropsGitTabProps) {
             read: false,
             repository: undefined,
             pullRequest: undefined,
-            checks: [],
           },
           declarations: props.declarations,
           ...(props.mateName === undefined ? {} : { mateName: props.mateName }),

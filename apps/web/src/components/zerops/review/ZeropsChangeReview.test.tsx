@@ -95,8 +95,6 @@ function merged(over: Partial<FlowPullRequest> = {}): FlowPullRequest {
     mateProjectId: undefined,
     author: "ada",
     url: undefined,
-    checks: "none",
-    checkWord: undefined,
     mergeability: "mergeable",
     merged: true,
     mergedAt: new Date(NOW).toISOString(),

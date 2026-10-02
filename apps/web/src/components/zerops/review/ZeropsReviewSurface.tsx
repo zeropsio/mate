@@ -10,15 +10,10 @@
  * button pinned in view, and ⌘↵ pressing it while it is safe, as the dialog's does.
  *
  * One reading order, top to bottom (R2–R5): its title with one line of provenance, the verdict,
- * what it does, what it changes, how it was checked, what was said and its commits — and a foot
+ * what it does, what it changes, what was said and its commits — and a foot
  * that says what the one button does, beside it.
  */
-import type {
-  ChangeDiffFile,
-  GitCheckRow,
-  ReviewTone,
-  ReviewVerdict,
-} from "@t3tools/client-runtime/zerops";
+import type { ChangeDiffFile, ReviewTone, ReviewVerdict } from "@t3tools/client-runtime/zerops";
 import { changeFileParts } from "@t3tools/client-runtime/zerops";
 import type { MateMarkState, MateShapeId, MateTintId } from "@t3tools/shared/brand";
 import {
@@ -28,7 +23,6 @@ import {
   ChevronRightIcon,
   CircleCheckIcon,
   CircleDashedIcon,
-  CircleIcon,
   CircleXIcon,
   GitPullRequestArrowIcon,
   Maximize2Icon,
@@ -611,46 +605,6 @@ export function ReviewDiff({
         </button>
       ) : null}
       {rest?.kind === "gitea" ? <DiffElsewhere gitea={gitea} words={rest.words} /> : null}
-    </div>
-  );
-}
-
-const CHECK_ICON: Record<GitCheckRow["tone"], ReactNode> = {
-  ok: <CircleCheckIcon aria-hidden="true" />,
-  failed: <CircleXIcon aria-hidden="true" />,
-  busy: <Spinner size="md" tone="muted" />,
-  attention: <CircleIcon aria-hidden="true" />,
-  off: <CircleIcon aria-hidden="true" />,
-};
-
-/** The checks by name, with what each said, and a way to its own page where it keeps one. */
-export function ReviewChecks({ rows }: { readonly rows: ReadonlyArray<GitCheckRow> }) {
-  return (
-    <div className="rv-checks">
-      {rows.map((row) => (
-        <div className="rv-check" data-tone={row.tone} key={row.name}>
-          <span className="rv-ci">{CHECK_ICON[row.tone]}</span>
-          <span className="min-w-0">
-            <span className="sr-only">{row.word}: </span>
-            {row.name}
-            {row.description === undefined ? null : (
-              <span className="rv-check-d"> {row.description}</span>
-            )}
-          </span>
-          {row.url === undefined ? (
-            <span />
-          ) : (
-            <a
-              className="rv-link rv-check-d"
-              href={row.url}
-              rel="noopener noreferrer"
-              target="_blank"
-            >
-              Open
-            </a>
-          )}
-        </div>
-      ))}
     </div>
   );
 }

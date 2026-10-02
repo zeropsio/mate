@@ -632,8 +632,6 @@ function change(overrides: Partial<FlowPullRequest> = {}): FlowPullRequest {
     mateProjectId: "cleo-project",
     author: "mate-cleo-project",
     url: "https://gitea.example.test/beviro/group/pulls/11",
-    checks: "none",
-    checkWord: undefined,
     mergeability: "mergeable",
     merged: false,
     mergedAt: undefined,

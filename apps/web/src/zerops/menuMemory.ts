@@ -257,7 +257,7 @@ export function rememberedChangeOf(pull: FlowPullRequest): RememberedChange {
 
 /**
  * A remembered change as a pull request: its title where it hung, and no
- * verdict — its checks and whether it merges are Gitea's to say again.
+ * verdict — whether it merges is to be said again.
  */
 export function changeFromMemory(change: RememberedChange): FlowPullRequest {
   return {
@@ -268,8 +268,6 @@ export function changeFromMemory(change: RememberedChange): FlowPullRequest {
     mateProjectId: change.mateProjectId,
     author: change.author,
     url: change.url,
-    checks: "none",
-    checkWord: undefined,
     mergeability: "checking",
     merged: false,
     mergedAt: undefined,

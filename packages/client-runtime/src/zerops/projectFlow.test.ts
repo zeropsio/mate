@@ -1,12 +1,10 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import { pullRequestBlocked, pullRequestBlockedReason } from "./gitTab.ts";
-import { changeVerdict } from "./changeVerdict.ts";
 import { mateBotLogin, mateProjectOfBranch, mateProjectOfLogin } from "./mateIdentity.ts";
 
 import type { MergeabilityKind } from "./forge/mergeState.ts";
-import type { GitCheckTone } from "./gitTab.ts";
-import type { GiteaCommitStatus, GiteaPullRequest } from "./giteaClient.ts";
+import type { GiteaPullRequest } from "./giteaClient.ts";
 import {
   changeAuthorName,
   changeState,
@@ -47,10 +45,6 @@ function pull(overrides: Partial<GiteaPullRequest> = {}): GiteaPullRequest {
   };
 }
 
-function status(context: string, state: GiteaCommitStatus["state"]): GiteaCommitStatus {
-  return { context, state };
-}
-
 describe("whose pull request it is", () => {
   it("names the bot after the project, the way the broker does", () => {
     expect(mateBotLogin(VERA)).toBe(`mate-${VERA}`);
@@ -75,27 +69,24 @@ describe("whose pull request it is", () => {
 });
 
 describe("one pull request in the flow", () => {
-  it("belongs to the Mate whose branch it is, with the checks as a tone and one word", () => {
+  it("belongs to the Mate whose branch it is", () => {
     const row = flowPullRequest({
       mergeability: "mergeable",
       repository: "appdev",
       pull: pull(),
-      checks: [status("ci/test", "success")],
     });
     expect(row).toMatchObject({
       repository: "appdev",
       number: 4,
       kind: "code",
       mateProjectId: VERA,
-      checks: "passing",
-      checkWord: "Passing",
       mergeability: "mergeable",
       baseBranch: "main",
       line: "appdev #4",
     });
   });
 
-  it("carries what a review reads: the branch, each check by name, its size and its base", () => {
+  it("carries what a review reads: the branch, its size and its base", () => {
     const row = flowPullRequest({
       mergeability: "mergeable",
       repository: "appdev",
@@ -107,14 +98,9 @@ describe("one pull request in the flow", () => {
         changed_files: 3,
         merge_base: "mb-sha",
       }),
-      checks: [
-        { context: "build", state: "success", description: "pnpm build · 34s" },
-        { context: "mate/deploy/stage/app", state: "failure" },
-      ],
     });
     expect(row).toMatchObject({
       headBranch: `mate/mate-${VERA}`,
-      checkRows: [{ name: "build", tone: "ok", word: "Passed", description: "pnpm build · 34s" }],
       additions: 42,
       deletions: 3,
       changedFiles: 3,
@@ -137,7 +123,6 @@ describe("one pull request in the flow", () => {
       mergeability: "mergeable",
       repository: "appdev",
       pull: pull(over),
-      checks: [],
     });
     expect(row.description).toBe(description);
   });
@@ -151,7 +136,6 @@ describe("one pull request in the flow", () => {
       mergeability: "mergeable",
       repository: "appdev",
       pull: pull(over),
-      checks: [],
     });
     expect(row.commentCount).toBe(count);
   });
@@ -161,7 +145,6 @@ describe("one pull request in the flow", () => {
       mergeability: "mergeable",
       repository: "appdev",
       pull: pull({ state: "closed", merged: true, merge_commit_sha: "abc123" }),
-      checks: [],
     });
     expect(row.mergeCommitSha).toBe("abc123");
   });
@@ -171,7 +154,6 @@ describe("one pull request in the flow", () => {
       mergeability: "mergeable",
       repository: "appdev",
       pull: pull({ state }),
-      checks: [],
     });
     expect(row.state).toBe(state);
   });
@@ -181,11 +163,9 @@ describe("one pull request in the flow", () => {
       mergeability: "mergeable",
       repository: "appdev",
       pull: pull(),
-      checks: [],
     });
     expect(row.additions).toBeUndefined();
     expect(row.changedFiles).toBeUndefined();
-    expect(row.checkRows).toEqual([]);
   });
 
   it("belongs to the Mate whose bot opened it when a person renamed the branch", () => {
@@ -193,7 +173,6 @@ describe("one pull request in the flow", () => {
       mergeability: "mergeable",
       repository: "appdev",
       pull: pull({ head: { ref: "due-dates", sha: "abc" } }),
-      checks: [],
     });
     expect(row.mateProjectId).toBe(VERA);
   });
@@ -203,7 +182,6 @@ describe("one pull request in the flow", () => {
       mergeability: "mergeable",
       repository: "appdev",
       pull: pull({ head: { ref: "feature/x", sha: "abc" }, user: { login: "ada" } }),
-      checks: [],
     });
     expect(row.mateProjectId).toBeUndefined();
     expect(row.line).toBe("appdev #4 · ada");
@@ -214,7 +192,6 @@ describe("one pull request in the flow", () => {
       mergeability: "mergeable",
       repository: "group",
       pull: pull(),
-      checks: [],
     });
     expect(row.kind).toBe("recipe");
     // The row wears the "recipe" tag; the line does not say it twice.
@@ -226,7 +203,6 @@ describe("one pull request in the flow", () => {
       mergeability: "mergeable",
       repository: "appdev",
       pull: pull(),
-      checks: [],
     });
     expect(pullRequestLineWith(vera, "Vera")).toBe("appdev #4 · Vera");
     expect(pullRequestLineWith(vera, undefined)).toBe("appdev #4");
@@ -234,7 +210,6 @@ describe("one pull request in the flow", () => {
       mergeability: "mergeable",
       repository: "appdev",
       pull: pull({ head: { ref: "feature/x", sha: "abc" }, user: { login: "ada" } }),
-      checks: [],
     });
     expect(pullRequestLineWith(ada, "Vera")).toBe("appdev #4 · ada");
   });
@@ -246,7 +221,6 @@ describe("one pull request in the flow", () => {
           flowPullRequest({
             repository: "appdev",
             pull: pull({ mergeable }),
-            checks: [],
             mergeability,
           }).mergeability,
         ).toBe(mergeability);
@@ -254,23 +228,11 @@ describe("one pull request in the flow", () => {
     }
   });
 
-  it("does not count the broker's own deploy statuses as checks", () => {
-    const row = flowPullRequest({
-      mergeability: "mergeable",
-      repository: "appdev",
-      pull: pull(),
-      checks: [status("mate/deploy/todo-stage/app", "failure")],
-    });
-    expect(row.checks).toBe("none");
-    expect(row.checkWord).toBeUndefined();
-  });
-
   it("reads as its number and title in a menu row, a person's own naming them", () => {
     const mine = flowPullRequest({
       mergeability: "mergeable",
       repository: "appdev",
       pull: pull(),
-      checks: [],
     });
     expect(mine.mateProjectId).toBe(VERA);
     // Stripped to its number under its Mate the change lost its name, which
@@ -281,7 +243,6 @@ describe("one pull request in the flow", () => {
       mergeability: "mergeable",
       repository: "appdev",
       pull: pull({ head: { ref: "feature/x", sha: "abc" }, user: { login: "ada" } }),
-      checks: [],
     });
     expect(ada.mateProjectId).toBeUndefined();
     expect(sidebarChangeLabel(ada)).toBe("#4 Add a due date to each todo · ada");
@@ -302,7 +263,6 @@ describe("sidebarChangeLabel: a Mate's changes in two repositories name their re
         },
         user: { login },
       }),
-      checks: [],
     });
   const appdev = change("appdev", 1, "Build the storefront", `mate-${VERA}`);
   const apidev = change("apidev", 1, "Rebuild the API", `mate-${VERA}`);
@@ -353,13 +313,11 @@ describe("the pull requests of each Mate", () => {
     mergeability: "mergeable",
     repository: "appdev",
     pull: pull(),
-    checks: [],
   });
   const veraRecipe = flowPullRequest({
     mergeability: "mergeable",
     repository: "group",
     pull: pull({ number: 6, title: "Mate: the group's import files" }),
-    checks: [],
   });
   const fen = flowPullRequest({
     mergeability: "mergeable",
@@ -370,13 +328,11 @@ describe("the pull requests of each Mate", () => {
       user: { login: `mate-${FEN}` },
       updated_at: "2026-09-17T19:00:00Z",
     }),
-    checks: [],
   });
   const ada = flowPullRequest({
     mergeability: "mergeable",
     repository: "appdev",
     pull: pull({ number: 7, head: { ref: "feature/x", sha: "fff" }, user: { login: "ada" } }),
-    checks: [],
   });
 
   it("puts each Mate's under it, newest first, and the rest after the Mates", () => {
@@ -384,7 +340,6 @@ describe("the pull requests of each Mate", () => {
       mergeability: "mergeable",
       repository: "appdev",
       pull: pull({ number: 3, updated_at: "2026-09-17T12:00:00Z" }),
-      checks: [],
     });
     const grouped = pullRequestsByMate([older, ada, fen, vera, veraRecipe], [VERA, FEN]);
     // #4 and #6 moved at the same moment; the higher number is the newer one.
@@ -437,7 +392,6 @@ describe("types", () => {
       mergeability: "mergeable",
       repository: "appdev",
       pull: pull(),
-      checks: [],
     });
     expect(Object.keys(row).sort()).toEqual(
       [
@@ -446,9 +400,6 @@ describe("types", () => {
         "baseBranch",
         "baseSha",
         "changedFiles",
-        "checkRows",
-        "checkWord",
-        "checks",
         "commentCount",
         "deletions",
         "description",
@@ -474,85 +425,46 @@ describe("types", () => {
 });
 
 describe("pullRequestBlockedReason", () => {
-  const cases: ReadonlyArray<[MergeabilityKind, GitCheckTone, string | null]> = [
+  const cases: ReadonlyArray<[MergeabilityKind, string | null]> = [
     // Gitea says it merges: the verb is the whole answer.
-    ["mergeable", "none", null],
-    ["mergeable", "pending", null],
-    ["mergeable", "passing", null],
-    ["mergeable", "failing", null],
+    ["mergeable", null],
     // It does not, and the row says why rather than dropping its verb silently.
-    ["conflicting", "pending", "checks running"],
-    ["conflicting", "none", "needs a rebase"],
-    ["conflicting", "passing", "needs a rebase"],
-    // A red dot on its own is not a sentence: a row whose right edge is
-    // sometimes a verb and sometimes a wordless dot reads as neither.
-    ["conflicting", "failing", "checks failed"],
+    ["conflicting", "needs a rebase"],
     // Gitea is still working it out after a push: nobody is asked to rebase.
-    ["checking", "none", "checking"],
-    ["checking", "passing", "checking"],
-    ["checking", "pending", "checks running"],
-    ["checking", "failing", "checks failed"],
+    ["checking", "checking"],
   ];
 
-  for (const [mergeability, checks, expected] of cases) {
-    it(`${mergeability} with ${checks} checks: ${expected ?? "nothing to add"}`, () => {
-      expect(pullRequestBlockedReason({ number: 4, mergeability, checks })).toBe(expected);
+  for (const [mergeability, expected] of cases) {
+    it(`${mergeability}: ${expected ?? "nothing to add"}`, () => {
+      expect(pullRequestBlockedReason({ number: 4, mergeability })).toBe(expected);
     });
   }
 
-  it("tones each reason to itself, never to the checks under it", () => {
-    // Passing checks and a stale branch: a green dot beside "needs a rebase"
-    // said the opposite of the words next to it.
-    expect(
-      pullRequestBlocked({ number: 4, mergeability: "conflicting", checks: "passing" }),
-    ).toMatchObject({
+  it("tones each reason to itself", () => {
+    expect(pullRequestBlocked({ number: 4, mergeability: "conflicting" })).toMatchObject({
       kind: "behind",
       word: "needs a rebase",
       tone: "attention",
     });
-    expect(
-      pullRequestBlocked({ number: 4, mergeability: "conflicting", checks: "pending" }),
-    ).toMatchObject({
-      kind: "checks-running",
-      word: "checks running",
+    expect(pullRequestBlocked({ number: 4, mergeability: "checking" })).toMatchObject({
+      kind: "checking",
+      word: "checking",
       tone: "busy",
     });
-    expect(
-      pullRequestBlocked({ number: 4, mergeability: "conflicting", checks: "failing" }),
-    ).toMatchObject({
-      kind: "checks-failed",
-      word: "checks failed",
-      tone: "failed",
-    });
-    expect(
-      pullRequestBlocked({ number: 4, mergeability: "mergeable", checks: "failing" }),
-    ).toBeNull();
+    expect(pullRequestBlocked({ number: 4, mergeability: "mergeable" })).toBeNull();
   });
 
   it("hands every refusal somebody can act on to the Mate, and names the change", () => {
     // Nobody reading the menu is going to rebase a branch they have not
     // checked out in a repository they have no session for. The Mate does it.
-    const behind = pullRequestBlocked({
-      number: 4,
-      mergeability: "conflicting",
-      checks: "passing",
-    });
+    const behind = pullRequestBlocked({ number: 4, mergeability: "conflicting" });
     // Shown verbatim on a change's page as well as written into a composer, so
     // it opens as a sentence does.
     expect(behind?.ask).toContain("Pull request #4");
     expect(behind?.ask).toContain("Rebase");
-    const failing = pullRequestBlocked({
-      number: 9,
-      mergeability: "conflicting",
-      checks: "failing",
-    });
-    expect(failing?.ask).toContain("pull request #9");
-    expect(failing?.ask).toContain("checks");
-    // Checks that are merely running are the one refusal with nothing to ask
+    // A merge still being worked out is the one refusal with nothing to ask
     // for: waiting is the correct move.
-    expect(
-      pullRequestBlocked({ number: 4, mergeability: "conflicting", checks: "pending" })?.ask,
-    ).toBeUndefined();
+    expect(pullRequestBlocked({ number: 4, mergeability: "checking" })?.ask).toBeUndefined();
   });
 });
 
@@ -665,63 +577,39 @@ describe("pullRequestMergeLine", () => {
   const base = { number: 4, baseBranch: "main" } as const;
 
   it.each([
-    [{ mergeability: "mergeable", checks: "passing" }, "Cleanly, into main"],
-    [{ mergeability: "conflicting", checks: "pending" }, "Once the checks have finished"],
-    [{ mergeability: "conflicting", checks: "failing" }, "Not while the checks are failing"],
-    [{ mergeability: "conflicting", checks: "none" }, "Not until it is rebased on main"],
-  ] as const)("answers merging in its own words, not the checks'", (pull, expected) => {
+    [{ mergeability: "mergeable" }, "Cleanly, into main"],
+    [{ mergeability: "checking" }, "Still checking whether it can"],
+    [{ mergeability: "conflicting" }, "Not until it is rebased on main"],
+  ] as const)("answers merging in its own words", (pull, expected) => {
     expect(pullRequestMergeLine({ ...base, ...pull })).toBe(expected);
-  });
-
-  it("never repeats the word the checks row already said", () => {
-    const pull = { ...base, mergeability: "conflicting", checks: "failing" } as const;
-    expect(pullRequestMergeLine(pull)).not.toBe(pullRequestBlocked(pull)?.word);
   });
 
   it("names the branch it would land on, so the row is not abstract", () => {
     expect(
-      pullRequestMergeLine({
-        ...base,
-        baseBranch: "trunk",
-        mergeability: "mergeable",
-        checks: "passing",
-      }),
+      pullRequestMergeLine({ ...base, baseBranch: "trunk", mergeability: "mergeable" }),
     ).toContain("trunk");
   });
 });
 
 describe("changeState", () => {
-  it("answers every row in one register, never Passing beside needs a rebase", () => {
+  it("answers every row in one register, opening as a sentence does", () => {
     const words = [
-      changeState({ number: 1, mergeability: "mergeable", checks: "passing" }),
-      changeState({ number: 2, mergeability: "conflicting", checks: "passing" }),
-      changeState({ number: 3, mergeability: "conflicting", checks: "failing" }),
-      changeState({ number: 4, mergeability: "conflicting", checks: "pending" }),
+      changeState({ number: 1, mergeability: "mergeable" }),
+      changeState({ number: 2, mergeability: "conflicting" }),
+      changeState({ number: 3, mergeability: "checking" }),
     ].map((state) => state?.word);
-    expect(words).toEqual(["Passing", "Needs a rebase", "Checks failed", "Checks running"]);
-    // Every one of them opens the way a sentence does.
+    expect(words).toEqual(["Ready to merge", "Needs a rebase", "Checking"]);
     for (const word of words) expect(word?.charAt(0)).toBe(word?.charAt(0).toLocaleUpperCase());
   });
 
-  it("lets what is stopping it outrank what the checks did", () => {
-    // The checks passed and it still cannot land: the rebase is the news.
-    expect(changeState({ number: 4, mergeability: "conflicting", checks: "passing" })?.word).toBe(
-      "Needs a rebase",
-    );
+  it("carries the tone that means the word", () => {
+    expect(changeState({ number: 4, mergeability: "conflicting" })?.tone).toBe("attention");
+    expect(changeState({ number: 4, mergeability: "checking" })?.tone).toBe("busy");
   });
 
-  it("carries the tone that means the word, never the checks' under a rebase", () => {
-    expect(changeState({ number: 4, mergeability: "conflicting", checks: "passing" })?.tone).toBe(
-      "attention",
-    );
-    expect(changeState({ number: 1, mergeability: "mergeable", checks: "failing" })?.tone).toBe(
-      "failed",
-    );
-  });
-
-  it("names the absence of a check rather than leaving the column blank", () => {
-    expect(changeState({ number: 1, mergeability: "mergeable", checks: "none" })).toEqual({
-      word: "Unchecked",
+  it("names a change nothing stops rather than leaving the column blank: grey, not green", () => {
+    expect(changeState({ number: 1, mergeability: "mergeable" })).toEqual({
+      word: "Ready to merge",
       tone: "off",
     });
   });
@@ -743,26 +631,6 @@ describe("changeAuthorName", () => {
   });
 });
 
-describe("a change with nothing wrong with it", () => {
-  it("says no check vouched for it rather than saying nothing at all", () => {
-    // A column that is blank for every row on an account with no CI cannot be
-    // told from a column that has not been read yet.
-    expect(changeState({ number: 4, mergeability: "mergeable", checks: "none" })).toEqual({
-      word: "Unchecked",
-      tone: "off",
-    });
-  });
-
-  it("agrees with the colour that change's own page gives it", () => {
-    for (const checks of ["none", "pending", "passing", "failing"] as const) {
-      const state = changeState({ number: 4, mergeability: "mergeable", checks });
-      expect(state?.tone).toBe(
-        changeVerdict({ number: 4, mergeability: "mergeable", checks }).tone,
-      );
-    }
-  });
-});
-
 describe("changeLandedEvents", () => {
   const landed = (over: Partial<FlowPullRequest>): FlowPullRequest =>
     ({
@@ -773,8 +641,6 @@ describe("changeLandedEvents", () => {
       mateProjectId: "mate-1",
       author: "otto",
       url: undefined,
-      checks: "none",
-      checkWord: undefined,
       mergeability: "conflicting",
       merged: true,
       mergedAt: "2026-09-20T10:03:00Z",
@@ -872,7 +738,6 @@ describe("a Mate's proposal of the group's recipe", () => {
       mergeability: "mergeable",
       repository,
       pull: pull({ number: 11, title }),
-      checks: [],
     });
     expect(isRecipeProposal(change)).toBe(proposal);
   });

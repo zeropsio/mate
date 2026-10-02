@@ -12,8 +12,6 @@ function pull(over: Partial<FlowPullRequest> = {}): FlowPullRequest {
     mateProjectId: "p-wren",
     author: "mate-p-wren",
     url: undefined,
-    checks: "none",
-    checkWord: undefined,
     mergeability: "mergeable",
     merged: false,
     mergedAt: undefined,
@@ -78,7 +76,7 @@ describe("mateNextStep", () => {
     },
     {
       case: "its own change that does not merge",
-      pullRequests: [pull({ mergeability: "conflicting", checks: "failing" })],
+      pullRequests: [pull({ mergeability: "conflicting" })],
       mate: "p-wren",
       mateName: "Wren",
       step: "none",

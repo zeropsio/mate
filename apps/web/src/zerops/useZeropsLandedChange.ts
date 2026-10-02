@@ -12,11 +12,7 @@
  * a few times while it does not find the change. A change the flow already has
  * never gets here.
  */
-import {
-  flowPullRequest,
-  type FlowPullRequest,
-  type GiteaCommitStatus,
-} from "@t3tools/client-runtime/zerops";
+import { flowPullRequest, type FlowPullRequest } from "@t3tools/client-runtime/zerops";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 import { mergeabilityAfter, mergeReadOf } from "@t3tools/client-runtime/zerops/forge";
 import { useEffect, useState } from "react";
@@ -56,25 +52,12 @@ async function readChange(
     const readAt = Date.now();
     const pull = await client.getPullRequest(owner, repository, number);
     if (pull === undefined) return { kind: "gone" };
-    // The checks are read where the flow reads them — on the head — so a
-    // landed change's verdict is the verdict its row always carried.
-    const sha = pull.head?.sha;
-    let checks: ReadonlyArray<GiteaCommitStatus> = [];
-    if (sha !== undefined) {
-      try {
-        checks = await client.listCommitStatuses(owner, repository, sha);
-      } catch {
-        // A head the forge has since garbage-collected still has a change
-        // worth reading; it simply has no checks to show.
-        checks = [];
-      }
-    }
     // One read, so a "no" is Gitea still checking, never a conflict: the
     // flow, which reads again, is what carries an open change's verdict.
     const { mergeability } = mergeabilityAfter(null, mergeReadOf(pull, readAt));
     return {
       kind: "read",
-      pull: flowPullRequest({ repository, pull, checks, mergeability: mergeability.kind }),
+      pull: flowPullRequest({ repository, pull, mergeability: mergeability.kind }),
     };
   } catch (cause) {
     return { kind: "failed", reason: zeropsErrorMessage(cause) };

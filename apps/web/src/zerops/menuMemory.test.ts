@@ -45,8 +45,6 @@ const PULL: FlowPullRequest = {
   mateProjectId: "nova",
   author: "nova-bot",
   url: "https://git.example/app/pulls/14",
-  checks: "passing",
-  checkWord: "Checks passed",
   mergeability: "mergeable",
   merged: false,
   mergedAt: undefined,
@@ -155,8 +153,6 @@ describe("a remembered change", () => {
   it("is its title where it hung, with no verdict until Gitea says one again", () => {
     expect(changeFromMemory(rememberedChangeOf(PULL))).toEqual({
       ...PULL,
-      checks: "none",
-      checkWord: undefined,
       mergeability: "checking",
       headSha: undefined,
     });

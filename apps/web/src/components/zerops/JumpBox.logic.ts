@@ -17,12 +17,7 @@
  *
  * Pure: no React, no clock, no store.
  */
-import type {
-  MateMarkState,
-  MateShapeId,
-  MateTintId,
-  ServiceStatusToneId,
-} from "@t3tools/shared/brand";
+import type { MateMarkState, MateShapeId, MateTintId } from "@t3tools/shared/brand";
 import { maskSecrets, messageWords } from "@t3tools/shared/messagePreview";
 import type { ThreadStatusKind } from "@t3tools/shared/threadStatus";
 
@@ -83,8 +78,6 @@ export interface JumpChange {
   readonly projectName: string | undefined;
   /** What the menu calls it (`sidebarChangeLabel`). */
   readonly label: string;
-  readonly checkTone: ServiceStatusToneId | undefined;
-  readonly checkWord: string | undefined;
   /** The Mate whose change it is, where it is one's. */
   readonly mateProjectId: string | undefined;
   /** The Mate's name, or the person's. */

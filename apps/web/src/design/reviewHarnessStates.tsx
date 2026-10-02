@@ -110,8 +110,6 @@ function pull(over: Partial<FlowPullRequest> = {}): FlowPullRequest {
     mateProjectId: "p-nova",
     author: "mate-p-nova",
     url: "https://gitea.example/snap/appdev/pulls/2",
-    checks: "passing",
-    checkWord: "Passing",
     mergeability: "mergeable",
     merged: false,
     mergedAt: undefined,
@@ -120,10 +118,6 @@ function pull(over: Partial<FlowPullRequest> = {}): FlowPullRequest {
     line: "appdev #2",
     updatedAt: minutesAgo(4),
     headBranch: "mate/mate-p-nova",
-    checkRows: [
-      { name: "build", tone: "ok", word: "Passed", description: "pnpm build · 34s" },
-      { name: "/status", tone: "ok", word: "Passed", description: "checked in the browser" },
-    ],
     additions: 42,
     deletions: 3,
     changedFiles: 3,
@@ -320,7 +314,7 @@ const STAGE_AND_PRODUCTION: ChangeReviewViewProps["environments"] = [
 /** A project that has made nothing from its recipe yet. */
 const NO_ENVIRONMENTS: ChangeReviewViewProps["environments"] = [];
 
-/** A change to the group repo's recipe, from a Mate's bot: no checks run on a recipe. */
+/** A change to the group repo's recipe, from a Mate's bot. */
 const RECIPE: Partial<FlowPullRequest> = {
   repository: "group",
   kind: "recipe",
@@ -328,9 +322,6 @@ const RECIPE: Partial<FlowPullRequest> = {
   title: "Add a mail service to the Remote (CDE) and Local recipes",
   line: "#7",
   url: "https://gitea.example/snap/group/pulls/7",
-  checks: "none",
-  checkWord: undefined,
-  checkRows: [],
   additions: 12,
   deletions: 0,
   changedFiles: 2,
@@ -744,13 +735,11 @@ export const REVIEW_STATES: ReadonlyArray<{
     ),
   },
   {
-    id: "unchecked",
-    label: "Ready, nothing checked",
+    id: "person",
+    label: "Ready, a person's own branch",
     node: (
       <Change
         over={{
-          checks: "none",
-          checkRows: [],
           mateProjectId: undefined,
           author: "ada",
           headBranch: "ada/status-page",
@@ -792,37 +781,6 @@ export const REVIEW_STATES: ReadonlyArray<{
     id: "behind",
     label: "Behind main, no longer merges",
     node: <Change over={{ mergeability: "conflicting", baseSha: "main-now" }} />,
-  },
-  {
-    id: "checks-failed",
-    label: "Checks failing",
-    node: (
-      <Change
-        over={{
-          checks: "failing",
-          checkRows: [
-            { name: "build", tone: "failed", word: "Failed", description: "tsc exited 2 · 41s" },
-            { name: "lint", tone: "ok", word: "Passed", description: "oxlint · 3s" },
-          ],
-        }}
-      />
-    ),
-  },
-  {
-    id: "checks-running",
-    label: "Checks running",
-    node: (
-      <Change
-        over={{
-          checks: "pending",
-          checkRows: [
-            { name: "build", tone: "busy", word: "Running", description: "pnpm build" },
-            { name: "e2e", tone: "busy", word: "Running", description: "3 of 12 pages" },
-          ],
-        }}
-        run={{ words: undefined, reading: true }}
-      />
-    ),
   },
   { id: "merging", label: "Merging", node: <Change press={{ kind: "running" }} /> },
   {

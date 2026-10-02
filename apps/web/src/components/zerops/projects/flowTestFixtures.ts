@@ -55,8 +55,6 @@ export function pull(over: Partial<FlowPullRequest> = {}): FlowPullRequest {
     mateProjectId: "wren-dev",
     author: "mate-wren-dev",
     url: undefined,
-    checks: "none",
-    checkWord: undefined,
     mergeability: "mergeable",
     merged: false,
     mergedAt: undefined,

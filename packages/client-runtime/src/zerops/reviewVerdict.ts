@@ -21,7 +21,6 @@
  */
 
 import type { MergeabilityKind } from "./forge/mergeState.ts";
-import type { GitCheckRow, GitCheckTone } from "./gitTab.ts";
 import type { FlowPullRequestKind } from "./projectFlow.ts";
 import type { RecipeReach } from "./recipeReach.ts";
 import type { RecipeTier } from "./recipeTier.ts";
@@ -48,12 +47,9 @@ export type ReviewTone = "ok" | "attention" | "failed" | "busy" | "done" | "quie
 
 export type ReviewState =
   | "ready"
-  | "unchecked"
   | "behind-clean"
   | "behind"
   | "conflict"
-  | "checks-failed"
-  | "checks-running"
   | "checking"
   | "merging"
   | "merge-refused"
@@ -186,8 +182,6 @@ export interface ChangeReviewInput {
     readonly kind: FlowPullRequestKind;
     readonly baseBranch: string;
     readonly mergeability: MergeabilityKind;
-    readonly checks: GitCheckTone;
-    readonly checkRows?: ReadonlyArray<GitCheckRow> | undefined;
     readonly merged: boolean;
     readonly mergedAt: string | undefined;
     /** `closed` for one Gitea closed — merged, or never. */
@@ -233,20 +227,6 @@ export interface ChangeReviewInput {
   readonly recipe?: RecipeReach | undefined;
   readonly press?: ReviewPress | undefined;
   readonly now: number;
-}
-
-/** The checks' part of a verdict's why: what they came to, in two or three words. */
-function checksPart(checks: GitCheckTone): string {
-  switch (checks) {
-    case "passing":
-      return "Checks passed";
-    case "none":
-      return "No checks ran";
-    case "pending":
-      return "Checks running";
-    case "failing":
-      return "Checks failing";
-  }
 }
 
 /** `Squash-merges 3 commits into main as one.` */
@@ -357,8 +337,6 @@ function changeVerdictOf(input: ChangeReviewInput): {
   const { pull } = input;
   const base = pull.baseBranch;
   const who = input.mateName ?? "this";
-  const rows = pull.checkRows ?? [];
-  const change = `pull request #${String(pull.number)}`;
 
   if (pull.mergeability === "conflicting") {
     const files = input.conflict?.files ?? [];
@@ -406,56 +384,6 @@ function changeVerdictOf(input: ChangeReviewInput): {
     };
   }
 
-  if (pull.checks === "failing") {
-    const failed = rows.filter((row) => row.tone === "failed");
-    const names = failed.map((row) => row.name);
-    const said = failed.find((row) => row.description !== undefined)?.description;
-    return {
-      enabled: false,
-      verdict: {
-        state: "checks-failed",
-        tone: "failed",
-        title:
-          names.length === 0
-            ? "Checks failing"
-            : names.length <= 2
-              ? `Checks failing: ${listed(names)}`
-              : `${String(names.length)} checks failing`,
-        why: said ?? "It can't land until they pass",
-        fix: {
-          verb: "fix it",
-          problem: {
-            what:
-              names.length === 0
-                ? `The checks on ${change} are failing`
-                : `The checks on ${change} are failing: ${listed(names)}`,
-            ...(said === undefined ? {} : { error: said }),
-            ask: "Find out why, fix them, and push.",
-          },
-        },
-      },
-    };
-  }
-
-  if (pull.checks === "pending") {
-    const running = rows.filter((row) => row.tone === "busy").map((row) => row.name);
-    return {
-      enabled: false,
-      verdict: {
-        state: "checks-running",
-        tone: "busy",
-        title:
-          running.length === 0
-            ? "Checks running"
-            : running.length <= 2
-              ? `Checks running: ${listed(running)}`
-              : `${String(running.length)} checks running`,
-        why: "Merging waits for them",
-        fix: undefined,
-      },
-    };
-  }
-
   if (pull.mergeability === "checking") {
     return {
       enabled: false,
@@ -496,16 +424,14 @@ function changeVerdictOf(input: ChangeReviewInput): {
     };
   }
 
-  const unchecked = pull.checks === "none";
+  // Quiet, not green: no signal about a change is not a good signal.
   return {
     enabled: true,
     verdict: {
-      state: unchecked ? "unchecked" : "ready",
-      tone: unchecked ? "quiet" : "ok",
+      state: "ready",
+      tone: "quiet",
       title: "Ready to merge",
-      why: [checksPart(pull.checks), `no conflicts with ${base}`, commits]
-        .filter((part) => part !== undefined)
-        .join(" · "),
+      why: [`No conflicts with ${base}`, commits].filter((part) => part !== undefined).join(" · "),
       fix: undefined,
     },
   };
@@ -587,8 +513,6 @@ export function changeReview(input: ChangeReviewInput): ReviewModel {
   const waits: Partial<Record<ReviewState, string>> = {
     behind: "Merging waits until the conflict is resolved.",
     conflict: "Merging waits until the conflict is resolved.",
-    "checks-failed": "Merging waits until the checks pass.",
-    "checks-running": "Merging waits for the checks to finish.",
     checking: "Merging waits until Gitea knows it merges cleanly.",
   };
   // What holds it back, said beside it: the change's own trouble, or — for a change nothing is
