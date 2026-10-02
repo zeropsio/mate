@@ -63,12 +63,14 @@ import {
   readZeropsGroupTags,
   selectMateEnvironments,
   sidebarChangeLabel,
+  stopComing,
   type EnvironmentRow,
   type FlowPullRequest,
   type GroupFlow,
   type GroupEnvironmentTier,
   type GroupFlowStop,
   type MissingEnvironmentRow,
+  type StopComing,
   type ZeropsEnvironmentRole,
   type ZeropsEnvironmentServices,
   type ZeropsGroup,
@@ -231,12 +233,7 @@ import {
   headingPillMotion,
   useHeadingLine,
 } from "./SidebarHeadingLine";
-import {
-  headingMark,
-  stopComing,
-  type HeadingLineInput,
-  type StopComing,
-} from "./SidebarHeadingLine.logic";
+import { headingMark, type HeadingLineInput } from "./SidebarHeadingLine.logic";
 
 /** What the client holds per environment, when it holds anything. */
 type RosterCandidate = ZeropsCandidate & {
@@ -796,6 +793,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
   // the platform's facts alone.
   const projectFlows = useZeropsProjectFlowOptional();
   const deployments = projectFlows?.deployments;
+  const runners = projectFlows?.runners;
   const giteaComing = projectFlows !== null && projectFlows.signedIn;
 
   // Until the rows below are drawn, the jump box finds nothing here, and the
@@ -1023,6 +1021,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
             addsOffered: groupAddsOffered(entries, health),
           }),
         pending: group?.pending ?? [],
+        runner: runners?.get(id),
       }),
     );
     // Production and its stages are the chips on the heading (M2), never rows:
@@ -1244,6 +1243,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
         building: buildingOf(deployment) !== undefined,
         deployed: stop.version !== undefined || deployRuns(deployment),
         routes: item?.routes?.length ?? 0,
+        firstDeploy: stop.firstDeploy,
       });
     };
     const PENDING: StopComing = { kind: "coming", step: "project" };

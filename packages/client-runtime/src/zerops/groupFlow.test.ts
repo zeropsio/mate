@@ -825,6 +825,80 @@ describe("groupFlow — creations under way", () => {
   });
 });
 
+describe("groupFlow — a stage's first deploy, while it runs nothing (run 4)", () => {
+  const stageStop = (over: Partial<GroupFlowStopInput> = {}): GroupFlowStopInput => ({
+    projectId: "p-pantry-stage",
+    name: "Pantry - stage",
+    tier: "stage",
+    row: declared({ projectId: "p-pantry-stage", name: "Pantry - stage", tier: "stage" }),
+    deployment: NOTHING_RUNS,
+    route: undefined,
+    ...over,
+  });
+  const failed = { kind: "unable", why: "failed" } as const;
+  it.each([
+    {
+      case: "asked for, the runner's build failed: it waits for the runner",
+      over: {},
+      runner: failed,
+      mainHasCode: true,
+      first: { kind: "runner", why: "failed" },
+    },
+    {
+      case: "asked for, the runner able: on its way",
+      over: {},
+      runner: { kind: "able" } as const,
+      mainHasCode: true,
+      first: { kind: "on-its-way" },
+    },
+    {
+      case: "asked for, the runner unread: on its way",
+      over: {},
+      runner: undefined,
+      mainHasCode: true,
+      first: { kind: "on-its-way" },
+    },
+    {
+      case: "main has no code: nothing asked for",
+      over: {},
+      runner: failed,
+      mainHasCode: false,
+      first: undefined,
+    },
+    {
+      case: "not declared: nothing asked for",
+      over: { row: undefined },
+      runner: failed,
+      mainHasCode: true,
+      first: undefined,
+    },
+    {
+      case: "what runs there unread: nothing said of its first deploy",
+      over: { deployment: undefined },
+      runner: failed,
+      mainHasCode: true,
+      first: undefined,
+    },
+    {
+      case: "running a deploy: none to wait for",
+      over: { deployment: runs(STAGE_SHA) },
+      runner: failed,
+      mainHasCode: true,
+      first: undefined,
+    },
+  ])("$case", ({ over, runner, mainHasCode, first }) => {
+    const flow = groupFlow(group({ stops: [stageStop(over)], mainHasCode, runner }));
+    expect(flow.stages[0]?.firstDeploy).toEqual(first);
+  });
+
+  it("proves main has code by a merged code change, as the release does", () => {
+    const flow = groupFlow(
+      group({ stops: [stageStop()], merged: [pull({ kind: "code" })], runner: failed }),
+    );
+    expect(flow.stages[0]?.firstDeploy).toEqual({ kind: "runner", why: "failed" });
+  });
+});
+
 describe("pairPreviewRoute", () => {
   const route = (service: string) => ({
     service,

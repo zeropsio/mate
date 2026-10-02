@@ -14,6 +14,9 @@
  * not prove, rather than checking forever, and is asked for again on the retry ladder (§4.0)
  * while the stop is demanded. A stop nobody demands shows `unread`.
  *
+ * A stop read again keeps its last answer while nothing new is known (`heldThroughRecheck`):
+ * "Checking what runs here…" is said only before the first one.
+ *
  * A `deployment` invalidation (§6.2) publishes the stop holding that service again.
  *
  * @module flow/deploymentStore
@@ -29,10 +32,11 @@ import {
 } from "../data/types.ts";
 import type { ZeropsServiceDeployedVersion } from "../data/deployedVersion.ts";
 import type { Invalidation } from "../knowledge/invalidation.ts";
-import type { Shown } from "../knowledge/known.ts";
+import type { Known, Shown } from "../knowledge/known.ts";
 import { INITIAL_BACKOFF, scheduleRetry, type Backoff } from "../knowledge/retryPolicy.ts";
 import {
   buildNames,
+  heldThroughRecheck,
   stopServices,
   unnamedVersions,
   type ProcessRefusal,
@@ -93,7 +97,7 @@ interface Entry {
   backoff: Backoff;
   /** Disarms the next ask for a refused demand. */
   disarm: () => void;
-  shown: Shown<ReadonlyArray<StopService>>;
+  shown: Known<ReadonlyArray<StopService>>;
   unfollow: () => void;
 }
 
@@ -103,7 +107,7 @@ const RETRIED_REFUSALS: ReadonlySet<LeaseAdmissionError["reason"]> = new Set([
   "receiver-capacity",
 ]);
 
-const UNREAD: Shown<never> = { state: "unread", waitingFor: null };
+const UNREAD: Known<never> = { state: "unread", waitingFor: null };
 
 export function makeDeploymentStore(ports: DeploymentStorePorts): DeploymentStore {
   const entries = new Map<string, Entry>();
@@ -115,7 +119,7 @@ export function makeDeploymentStore(ports: DeploymentStorePorts): DeploymentStor
     const services = ports.services(entry.project);
     const processes = ports.processes(entry.project);
     entry.names = buildNames(entry.names, processes);
-    entry.shown = stopServices(
+    const next = stopServices(
       {
         services,
         processes,
@@ -130,6 +134,8 @@ export function makeDeploymentStore(ports: DeploymentStorePorts): DeploymentStor
       },
       ports.nowMs(),
     );
+    // A stop read again keeps its last answer while nothing new is known (F5).
+    entry.shown = heldThroughRecheck(entry.shown, next, ports.nowMs());
   };
 
   const publish = (entry: Entry): void => {

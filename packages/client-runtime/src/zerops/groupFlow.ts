@@ -70,6 +70,7 @@ import { changeState, type ChangeState, type FlowPullRequest } from "./projectFl
 import type { ZeropsPublicRoute } from "./publicRoutes.ts";
 import { shortCommit, type ReleaseGate } from "./release.ts";
 import { REVIEW_LABEL, REVIEW_RELEASE_LABEL } from "./reviewVerdict.ts";
+import { firstDeploy, type FirstDeploy, type GroupRunner } from "./stopComing.ts";
 
 /** One Mate of the project, as the flow's first column shows it. */
 export interface GroupFlowMate {
@@ -156,6 +157,11 @@ export interface GroupFlowInput {
   readonly productionAddable: boolean;
   /** Its creations under way the listing does not hold yet (the group tree's `pending`). */
   readonly pending: ReadonlyArray<GroupFlowPending>;
+  /**
+   * The group's runner, from the Gitea project's services the account holds (`groupRunner`);
+   * `undefined` while they are unread.
+   */
+  readonly runner?: GroupRunner | undefined;
 }
 
 /** An open pull request, with what is stopping it and the one word for where it stands. */
@@ -186,6 +192,11 @@ export interface GroupFlowStop {
   /** What feeds it — `main` for a stage, `release` for a production; `undefined` undeclared. */
   readonly source: string | undefined;
   readonly route: string | undefined;
+  /**
+   * A stage that runs nothing, its first deploy asked for: on its way, or held by the group's
+   * runner (`firstDeploy`). `undefined` while nothing asked for one.
+   */
+  readonly firstDeploy?: Exclude<FirstDeploy, { readonly kind: "awaited" }> | undefined;
 }
 
 export type GroupFlowProduction =
@@ -320,6 +331,22 @@ function stopOf(input: GroupFlowStopInput): GroupFlowStop {
   if (named !== undefined)
     return { ...base, state: runningState(runningTone(undefined, row)), version: named };
   return { ...base, state: "checking", version: undefined };
+}
+
+/** A stage known to run nothing, with where its first deploy stands (`firstDeploy`). */
+function withFirstDeploy(
+  stop: GroupFlowStop,
+  input: GroupFlowStopInput,
+  main: GroupFlowMain,
+  runner: GroupRunner | undefined,
+): GroupFlowStop {
+  if (input.tier !== "stage" || stop.state !== "empty") return stop;
+  const first = firstDeploy({
+    declared: input.row !== undefined,
+    mainHasCode: main.hasCode,
+    runner,
+  });
+  return first.kind === "awaited" ? stop : { ...stop, firstDeploy: first };
 }
 
 function runningState(tone: GroupRowTone): GroupFlowStopState {
@@ -468,7 +495,7 @@ export function groupFlow(input: GroupFlowInput): GroupFlow {
     hasCode: input.mainHasCode ?? (landedCode ? true : undefined),
     notLive: input.release.waiting,
   };
-  const stops = input.stops.map(stopOf);
+  const stops = input.stops.map((stop) => withFirstDeploy(stopOf(stop), stop, main, input.runner));
   const stages = stops.filter((_, index) => input.stops[index]?.tier === "stage");
   const productionStop = stops.find((_, index) => input.stops[index]?.tier === "production");
   const production = productionOf(productionStop, input, main);

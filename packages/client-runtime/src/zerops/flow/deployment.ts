@@ -577,6 +577,47 @@ export function stopServices(reads: StopReads, nowMs: number): Known<ReadonlyArr
   };
 }
 
+/** Being read again: nothing new is known yet, and nothing failed. */
+const rechecking = (shown: Shown<unknown>): boolean =>
+  shown.state === "unread" || shown.state === "reading";
+
+/** A known answer, now being checked again: since when, kept from a check already under way. */
+function revalidating<T>(
+  held: Extract<Known<T>, { readonly state: "known" }>,
+  nowMs: number,
+): Extract<Known<T>, { readonly state: "known" }> {
+  if (held.freshness.kind === "revalidating") return held;
+  return { ...held, freshness: { kind: "revalidating", sinceMs: nowMs } };
+}
+
+/**
+ * A stop read again, over what it showed: a re-check keeps the last answer (run 4, F5). The
+ * listing being read again keeps the services it showed, and a service whose deployment is checked
+ * again — the import's own no-code version, which a push names only by its id (A14), then the
+ * account's store states — keeps the deployment it had, revalidating, until an answer or a
+ * failure replaces it. "Checking what runs here…" is said only before the first answer.
+ */
+export function heldThroughRecheck(
+  shown: Known<ReadonlyArray<StopService>>,
+  next: Known<ReadonlyArray<StopService>>,
+  nowMs: number,
+): Known<ReadonlyArray<StopService>> {
+  if (shown.state !== "known") return next;
+  if (rechecking(next)) return revalidating(shown, nowMs);
+  if (next.state !== "known") return next;
+  let held = false;
+  const value = next.value.map((service): StopService => {
+    if (!rechecking(service.deployment)) return service;
+    const before = shown.value.find(
+      (entry) => entry.service.serviceId === service.service.serviceId,
+    )?.deployment;
+    if (before?.state !== "known") return service;
+    held = true;
+    return { ...service, deployment: revalidating(before, nowMs) };
+  });
+  return held ? { ...next, value } : next;
+}
+
 /** What a stop's row draws: the badge, its word, and the line under the name. */
 export interface StopView {
   readonly tone: GroupRowTone;
