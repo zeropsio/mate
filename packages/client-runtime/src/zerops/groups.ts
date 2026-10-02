@@ -79,6 +79,11 @@ export interface ZeropsMembership {
   readonly bot: string | undefined;
   /** Who asked for the project's development to be stood up, as HQ's birth record names them. */
   readonly standUp?: { readonly by: string } | undefined;
+  /**
+   * Who made the Mate, as HQ's record names them: whose sign-in it waits for while nobody has
+   * signed it in. Absent for a Mate recorded before HQ kept it.
+   */
+  readonly madeBy?: string | undefined;
   /** The face its person picked; absent where HQ's record says nothing this client knows. */
   readonly face: ZeropsMateFaceTag | undefined;
 }
@@ -117,6 +122,7 @@ export function readZeropsMembership(
   const marker = (project?.tagList ?? []).includes(MATE_MARKER_TAG);
   const placed = project?.hq;
   const asker = placed?.mate?.standupRequestedBy?.trim();
+  const maker = placed?.mate?.madeBy?.trim();
   // A Mate HQ holds in no application has its record, and no place.
   const app = placed?.appId === null ? undefined : placed;
   const label = app?.appName.trim();
@@ -129,6 +135,7 @@ export function readZeropsMembership(
     label: label === undefined || label === "" ? undefined : label,
     bot: name === undefined || name === "" ? undefined : name,
     standUp: asker === undefined || asker === "" ? undefined : { by: asker },
+    madeBy: maker === undefined || maker === "" ? undefined : maker,
     face:
       placed?.mate === null || placed === undefined ? undefined : readMateFace(placed.mate.face),
   };

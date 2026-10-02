@@ -199,6 +199,26 @@ describe("who asked for a Mate's stand-up, as HQ's birth record names them", () 
   });
 });
 
+describe("who made a Mate, as HQ's record names them", () => {
+  const made = (madeBy: string | null | undefined) =>
+    placed("abc", "mate", {
+      mate: { name: "Ada", face: "", ...(madeBy === undefined ? {} : { madeBy }) },
+    });
+  it.each([
+    { name: "names who made it", hq: made("u-ada"), madeBy: "u-ada" },
+    { name: "is absent on a Mate recorded before HQ kept it", hq: made(null), madeBy: undefined },
+    { name: "is absent where an older HQ says nothing", hq: made(undefined), madeBy: undefined },
+    { name: "names nobody when blank", hq: made("  "), madeBy: undefined },
+    { name: "is absent on a project HQ does not place", hq: undefined, madeBy: undefined },
+  ])("$name", ({ hq, madeBy }) => {
+    expect(readZeropsMembership({ hq }).madeBy).toEqual(madeBy);
+  });
+
+  it("is never read off the project's tags", () => {
+    expect(readZeropsMembership({ tagList: ["mate", "mate:by:u-ada"] }).madeBy).toBe(undefined);
+  });
+});
+
 describe("generateZeropsGroupId", () => {
   it("draws a Crockford base32 id of the fixed length", () => {
     let next = 0;

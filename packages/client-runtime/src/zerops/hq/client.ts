@@ -65,6 +65,11 @@ export interface HqMateLive {
 
 /** A Mate as HQ reads it: its record, its birth, and its live summary where HQ relays one. */
 export interface HqMate extends HqMateRecord {
+  /**
+   * Who made it — whoever set its record up: a Mate recorded before HQ kept it is null; an older
+   * HQ says nothing.
+   */
+  readonly madeBy?: string | null;
   /** Who asked for its stand-up (`recordStandUp`): nobody yet is null; an older HQ says nothing. */
   readonly standupRequestedBy?: string | null;
   /** Whether its project is closed off (`recordClosedOff`); an older HQ says nothing. */

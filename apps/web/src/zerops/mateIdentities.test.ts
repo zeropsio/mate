@@ -67,6 +67,15 @@ describe("zeropsMateIdentities", () => {
     expect(mate?.standUp).toEqual(by === undefined ? undefined : { by });
   });
 
+  it.each([
+    { name: "names who made it", maker: "u-ada", madeBy: "u-ada" },
+    { name: "is absent on a Mate recorded before HQ kept it", maker: null, madeBy: undefined },
+  ])("carries who made it, as HQ records it: $name", ({ maker, madeBy }) => {
+    const placed = acme("mate", { name: "Fen", face: "", madeBy: maker });
+    const mate = zeropsMateIdentities([candidate("acme-docs-dev", ["mate"], FEN, placed)]).get(FEN);
+    expect(mate?.madeBy).toBe(madeBy);
+  });
+
   /**
    * A Mate wears the face its person picked (HQ's record); one nobody picked
    * a face for wears exactly the one it wore before: its derived tint, and

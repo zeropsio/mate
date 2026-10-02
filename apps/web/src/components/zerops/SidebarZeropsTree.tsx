@@ -2480,6 +2480,7 @@ function MateRow<T extends RosterCandidate>({
     records,
     asked: view.ask !== undefined,
     standUpBy: tags.standUp?.by,
+    madeBy: tags.madeBy,
     viewer,
     // It waits on the viewer once its page can show the sign-in: its link made.
     linked: candidate.group === "connected",
