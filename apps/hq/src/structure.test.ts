@@ -1,5 +1,7 @@
 import { assert, describe, it } from "@effect/vitest";
+import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
+import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as Ref from "effect/Ref";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
@@ -34,7 +36,9 @@ const project = (id: string, userRoles: ZeropsProject["userRoles"] = []): Zerops
  * NO_ACCESS; maker is NO_ACCESS who can create projects, Basic user on their new Mate P_OWN and
  * Read only on P_TEAM; basic is org Basic user who can create projects, with no grant of their own.
  */
-const VIEW: OrgView = {
+type Org = Omit<OrgView, "freshness">;
+
+const VIEW: Org = {
   orgId: "ORG",
   members: [
     member("owner", "OWNER"),
@@ -65,7 +69,7 @@ const VIEW: OrgView = {
  */
 const withStructure = <A, E>(
   use: (
-    view: Ref.Ref<OrgView>,
+    view: Ref.Ref<Org>,
     down: Ref.Ref<boolean>,
   ) => Effect.Effect<A, E, Structure | SqlClient.SqlClient>,
 ) =>
@@ -74,8 +78,8 @@ const withStructure = <A, E>(
     const view = yield* Ref.make(VIEW);
     const down = yield* Ref.make(false);
     const roles = Layer.succeed(Roles, {
-      view: Ref.get(view),
-      fresh: Ref.get(view),
+      view: Effect.map(Ref.get(view), (org) => ({ ...org, freshness: "cached" as const })),
+      fresh: Effect.map(Ref.get(view), (org) => ({ ...org, freshness: "fresh" as const })),
       exists: (projectId) =>
         Effect.flatMap(Ref.get(down), (isDown) =>
           isDown
@@ -266,7 +270,10 @@ describe("structure", () => {
                 mate,
               }),
             );
-            assert.include(refused.message, "their own new Mate");
+            assert.strictEqual(
+              refused._tag === "StructureRefused" ? refused.reason : refused._tag,
+              "not_own_new_mate",
+            );
           }),
         ),
     );
@@ -390,6 +397,117 @@ describe("structure", () => {
         ),
     );
 
+    it.effect(
+      "an owner of one project does not turn its application's production into a Mate (S-1)",
+      () =>
+        withStructure(() =>
+          Effect.gen(function* () {
+            const structure = yield* Structure;
+            const sql = yield* SqlClient.SqlClient;
+            const shop = yield* structure.createApp("owner", "Shop");
+            // maker owns P_OWNED in Zerops (its creator); the org's owner made it Shop's production.
+            yield* structure.attachProject("owner", shop.id, {
+              projectId: "P_OWNED",
+              kind: "production",
+            });
+            assert.strictEqual(
+              yield* outcome(
+                structure.createMate("maker", { projectId: "P_OWNED", name: "Bo", face: "face-1" }),
+              ),
+              "forbidden",
+            );
+            // A record there already (written before this rule) still does not make it a Mate.
+            yield* sql`INSERT INTO hq_mate (project_id, name, face) VALUES ('P_OWNED', 'Bo', 'face-1')`;
+            assert.strictEqual(
+              yield* outcome(
+                structure.moveProject("maker", "P_OWNED", { appId: shop.id, kind: "mate" }),
+              ),
+              "forbidden",
+            );
+            const [held] = yield* sql<{ readonly kind: string }>`
+              SELECT kind FROM hq_app_project WHERE project_id = 'P_OWNED'`;
+            assert.strictEqual(held?.kind, "production");
+          }),
+        ),
+    );
+
+    it.effect(
+      "a move decided on a kind that a writer changes before it lands is refused, never applied (N-3)",
+      () =>
+        withStructure(() =>
+          Effect.gen(function* () {
+            const structure = yield* Structure;
+            const sql = yield* SqlClient.SqlClient;
+            const shop = yield* structure.createApp("owner", "Shop");
+            const team = yield* structure.createApp("owner", "Team");
+            yield* structure.attachProject("owner", team.id, {
+              projectId: "P_TEAM",
+              kind: "stage",
+            });
+            yield* structure.attachProject("owner", shop.id, {
+              projectId: "P_OWNED",
+              kind: "mate",
+              mate: { name: "Bo", face: "face-1" },
+            });
+            // A writer turns P_OWNED into Shop's production; their transaction is still open
+            // while maker, its owner, moves it into Team as their Mate.
+            const updated = yield* Deferred.make<void>();
+            const release = yield* Deferred.make<void>();
+            const writer = yield* Effect.forkChild(
+              sql.withTransaction(
+                Effect.gen(function* () {
+                  yield* sql`UPDATE hq_app_project SET kind = 'production' WHERE project_id = 'P_OWNED'`;
+                  yield* Deferred.succeed(updated, undefined);
+                  yield* Deferred.await(release);
+                }),
+              ),
+            );
+            yield* Deferred.await(updated);
+            const move = yield* Effect.forkChild(
+              outcome(structure.moveProject("maker", "P_OWNED", { appId: team.id, kind: "mate" })),
+            );
+            yield* Effect.sleep("300 millis");
+            yield* Deferred.succeed(release, undefined);
+            yield* Fiber.join(writer);
+            assert.notStrictEqual(yield* Fiber.join(move), "ok");
+            const [row] = yield* sql<{ readonly kind: string }>`
+              SELECT kind FROM hq_app_project WHERE project_id = 'P_OWNED'`;
+            assert.strictEqual(row?.kind, "production");
+          }),
+        ),
+    );
+
+    it.effect(
+      "attaching a Mate that is set up already keeps its record: renaming is its admin's (N-4)",
+      () =>
+        withStructure(() =>
+          Effect.gen(function* () {
+            const structure = yield* Structure;
+            const team = yield* structure.createApp("owner", "Team");
+            yield* structure.attachProject("owner", team.id, {
+              projectId: "P_TEAM",
+              kind: "stage",
+            });
+            yield* structure.createMate("owner", {
+              projectId: "P_OWN",
+              name: "Ada",
+              face: "face-3",
+            });
+            // maker may attach their own new Mate, but is only its Basic user: no renaming.
+            yield* structure.attachProject("maker", team.id, {
+              projectId: "P_OWN",
+              kind: "mate",
+              mate: { name: "Bo", face: "face-1" },
+            });
+            const read = yield* structure.read("owner");
+            assert.deepStrictEqual(
+              read.apps[0]?.projects.find((project) => project.projectId === "P_OWN")?.mate,
+              { name: "Ada", face: "face-3" },
+            );
+          }),
+        ),
+    );
+
     it.effect("renames a Mate and changes its face: whoever is owner or admin on its project", () =>
       withStructure(() =>
         Effect.gen(function* () {
@@ -423,7 +541,8 @@ describe("structure", () => {
               "forbidden",
               "forbidden",
               "mate_not_found",
-              "mate_not_found",
+              // Asked of Zerops before HQ's records: a project it no longer has is gone.
+              "project_not_found",
               "invalid",
               "invalid",
             ],

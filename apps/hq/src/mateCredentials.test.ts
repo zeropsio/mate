@@ -16,9 +16,13 @@ import {
   MateRefused,
   mateCredentialsLayer,
 } from "./mateCredentials.ts";
+import { rolesLayer } from "./roles.ts";
 import { ZeropsApi } from "./zerops/api.ts";
 
-/** HQ's Read only token, a Mate's project in its org and one in another org. */
+/**
+ * HQ's Read only token, its project and its owner; a Mate's project, an environment, a devstage and
+ * a project HQ holds as nothing, in its org; one project in another org.
+ */
 const world = (): FakeWorld => {
   const fake = emptyWorld();
   fake.tokens.set("hq", {
@@ -33,8 +37,23 @@ const world = (): FakeWorld => {
     createdMs: 0,
     createdByUser: null,
   });
+  fake.members.set("ORG", [
+    {
+      name: "owner",
+      kind: "person",
+      roleCode: "OWNER",
+      status: "ACTIVE",
+      userId: "owner",
+      clientUserId: "C-owner",
+      canCreateProjects: true,
+    },
+  ]);
   for (const [id, orgId] of [
+    ["HQ1", "ORG"],
     ["P_MATE", "ORG"],
+    ["P_STAGE", "ORG"],
+    ["P_DEV", "ORG"],
+    ["P_PLAIN", "ORG"],
     ["P_ELSE", "ORG2"],
   ] as const) {
     fake.projects.push({
@@ -57,13 +76,30 @@ const withMates = <A, E>(
   Effect.gen(function* () {
     const url = yield* (yield* TempPostgres).createDatabase;
     const fake = world();
+    const credential = Option.some(Redacted.make("hq"));
     const context = yield* Layer.build(
-      mateCredentialsLayer({ credential: Option.some(Redacted.make("hq")) }).pipe(
+      mateCredentialsLayer({ credential }).pipe(
+        Layer.provide(rolesLayer({ hqProjectId: "HQ1", credential })),
         Layer.provide(Layer.succeed(ZeropsApi, wrap(fakeZeropsApi(fake)))),
         Layer.provideMerge(activeCoreLayer(url)),
       ),
     );
-    return yield* Effect.andThen(untilActive, use(fake)).pipe(Effect.provide(context));
+    // P_MATE is a Mate in no application; P_STAGE and P_DEV are Shop's stage and devstage.
+    const held = Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      yield* sql`INSERT INTO hq_mate (project_id, name, face) VALUES ('P_MATE', 'Ada', 'face-1')`;
+      const [app] = yield* sql<{ readonly id: string }>`
+        INSERT INTO hq_app (name, created_by) VALUES ('Shop', 'owner') RETURNING id::text AS id`;
+      yield* sql`
+        INSERT INTO hq_app_project (project_id, app_id, kind, created_by)
+        VALUES ('P_STAGE', ${app!.id}::uuid, 'stage', 'owner'),
+               ('P_DEV', ${app!.id}::uuid, 'devstage', 'owner')`;
+    });
+    return yield* untilActive.pipe(
+      Effect.andThen(held),
+      Effect.andThen(use(fake)),
+      Effect.provide(context),
+    );
   });
 
 const isMateRefused = Schema.is(MateRefused);
@@ -128,6 +164,36 @@ describe("mate credentials", () => {
           assert.match((yield* mates.issue("P_MATE", nonce)).credential, /^[A-Za-z0-9_-]{43}$/u);
         }),
       ),
+    );
+
+    it.effect(
+      "issues a credential only for a project HQ holds as a Mate, asked again at the issue",
+      () =>
+        withMates((fake) =>
+          Effect.gen(function* () {
+            const mates = yield* MateCredentials;
+            const sql = yield* SqlClient.SqlClient;
+            assert.deepStrictEqual(
+              yield* Effect.all([
+                refusalOf(mates.challenge("P_STAGE")),
+                refusalOf(mates.challenge("P_PLAIN")),
+              ]),
+              ["not_a_mate", "not_a_mate"],
+            );
+            const devstage = yield* mates.challenge("P_DEV");
+            writeChallenge(fake, "P_DEV", devstage.nonce);
+            assert.match((yield* mates.issue("P_DEV", devstage.nonce)).credential, /^[\w-]{43}$/u);
+
+            // Turned into an environment between the challenge and the issue.
+            const { nonce } = yield* mates.challenge("P_MATE");
+            writeChallenge(fake, "P_MATE", nonce);
+            const [app] = yield* sql<{ readonly id: string }>`SELECT id::text AS id FROM hq_app`;
+            yield* sql`
+              INSERT INTO hq_app_project (project_id, app_id, kind, created_by)
+              VALUES ('P_MATE', ${app!.id}::uuid, 'production', 'owner')`;
+            assert.strictEqual(yield* refusalOf(mates.issue("P_MATE", nonce)), "not_a_mate");
+          }),
+        ),
     );
 
     it.effect("forgets a challenge ten minutes after it expired", () =>
@@ -238,13 +304,14 @@ describe("mate credentials", () => {
     });
 
     it.effect(
-      "refuses a project outside HQ's org or gone from Zerops, at the challenge and at the credential",
+      "refuses a project outside HQ's org or gone from Zerops as no Mate, and a Mate gone at the credential",
       () =>
         withMates((fake) =>
           Effect.gen(function* () {
             const mates = yield* MateCredentials;
-            assert.strictEqual(yield* refusalOf(mates.challenge("P_ELSE")), "project_not_in_org");
-            assert.strictEqual(yield* refusalOf(mates.challenge("P_NONE")), "project_gone");
+            // Neither tells anyone whether the project exists: neither is HQ's Mate.
+            assert.strictEqual(yield* refusalOf(mates.challenge("P_ELSE")), "not_a_mate");
+            assert.strictEqual(yield* refusalOf(mates.challenge("P_NONE")), "not_a_mate");
 
             const { nonce } = yield* mates.challenge("P_MATE");
             writeChallenge(fake, "P_MATE", nonce);

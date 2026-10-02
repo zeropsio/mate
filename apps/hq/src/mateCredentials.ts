@@ -4,7 +4,9 @@
  * a challenge, writes its nonce unmarked into its own project's env ({@link CHALLENGE_ENV}) with
  * its own key, and presents the nonce back. HQ reads that env with its own credential
  * (`HQ_ORG_TOKEN`, org Read only, whose direct `env-file` read sees a write at once: T0 §1); the
- * nonce found there proves the caller controls the project, and HQ issues it a Mate credential.
+ * nonce found there proves the caller controls the project, and HQ issues it a Mate credential —
+ * only for a project HQ holds as a Mate (`mate` or `devstage`: `can`'s `enroll_mate`), asked at the
+ * challenge and again at the issue.
  *
  * Both are 256 random bits and HQ keeps only their SHA-256. A challenge is bound to one project,
  * lives two minutes and enrolls once. A credential is bound to its project and does not expire; a
@@ -16,6 +18,7 @@
  */
 import * as NodeCrypto from "node:crypto";
 
+import { can } from "@t3tools/shared/zeropsPermissions";
 import * as Context from "effect/Context";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
@@ -26,7 +29,9 @@ import * as Schema from "effect/Schema";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
 import type { SqlError } from "effect/unstable/sql/SqlError";
 
+import { heldOf } from "./held.ts";
 import { Leader, type NotLeader } from "./leader.ts";
+import { Roles } from "./roles.ts";
 import { ZeropsApi, type ZeropsError, ZeropsRefused } from "./zerops/api.ts";
 
 /** The project env key zcp writes the nonce into. */
@@ -39,6 +44,7 @@ export class MateRefused extends Schema.TaggedError<MateRefused>()("MateRefused"
     "env_mismatch",
     "project_not_in_org",
     "project_gone",
+    "not_a_mate",
   ]),
 }) {}
 
@@ -75,13 +81,14 @@ const secret = () => NodeCrypto.randomBytes(32).toString("base64url");
 export const mateCredentialsLayer = (options: {
   /** `HQ_ORG_TOKEN`. */
   readonly credential: Option.Option<Redacted.Redacted>;
-}): Layer.Layer<MateCredentials, never, Leader | SqlClient.SqlClient | ZeropsApi> =>
+}): Layer.Layer<MateCredentials, never, Leader | Roles | SqlClient.SqlClient | ZeropsApi> =>
   Layer.effect(
     MateCredentials,
     Effect.gen(function* () {
       const leader = yield* Leader;
       const sql = yield* SqlClient.SqlClient;
       const api = yield* ZeropsApi;
+      const roles = yield* Roles;
       const own = Effect.fromOption(options.credential).pipe(
         Effect.mapError(
           () =>
@@ -108,10 +115,24 @@ export const mateCredentialsLayer = (options: {
                   : Effect.fail(error),
           ),
         );
+      /** Whether HQ holds the project as a Mate now, over the org read fresh. */
+      const enrollable = (projectId: string) =>
+        Effect.gen(function* () {
+          const decision = can(
+            { kind: "mate", projectId },
+            "enroll_mate",
+            { projectId, held: yield* heldOf(sql, projectId) },
+            yield* roles.fresh,
+          );
+          if (decision.allow) return;
+          return yield* new MateRefused({
+            code: decision.reason === "project_gone" ? "project_gone" : "not_a_mate",
+          });
+        });
       return MateCredentials.of({
         challenge: (projectId) =>
           Effect.gen(function* () {
-            yield* ofProject(api.project(projectId));
+            yield* enrollable(projectId);
             const nonce = secret();
             yield* leader.write(
               Effect.andThen(
@@ -132,6 +153,7 @@ export const mateCredentialsLayer = (options: {
               WHERE nonce_hash = ${nonceHash} AND project_id = ${projectId} AND used_at IS NULL`;
             if (challenge === undefined) return yield* new MateRefused({ code: "unknown_nonce" });
             if (!challenge.live) return yield* new MateRefused({ code: "expired" });
+            yield* enrollable(projectId);
             const env = yield* ofProject(api.projectEnv(projectId));
             if (env.get(CHALLENGE_ENV) !== nonce) {
               return yield* new MateRefused({ code: "env_mismatch" });

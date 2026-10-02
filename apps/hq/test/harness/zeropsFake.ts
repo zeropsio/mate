@@ -3,7 +3,9 @@
  * implementation against the real API (`src/zerops/contract.test.ts`): every refusal mirrors what
  * the platform answered there — a bogus credential `401 notAuthorized`, another org `403
  * insufficientPermissions`, an unknown project `400 projectNotFound`, a sensitive value `REDACTED`
- * to a Read only credential — and `down` makes every read unavailable.
+ * to a Read only credential — and `down` makes every read unavailable. `apiClock: false` answers
+ * without the API's clock (its `Date` header): a knob for HQ's own refusal to judge without it,
+ * never measured on the real API.
  *
  * @module test/harness/zeropsFake
  */
@@ -33,6 +35,8 @@ export interface FakeWorld {
   /** Integration tokens by their value; the fake's clock stamps `readAtMs` on each read. */
   tokens: Map<string, Omit<ZeropsOwnToken, "readAtMs">>;
   down: boolean;
+  /** Whether answers carry the API's clock (`readAtMs`). */
+  apiClock: boolean;
   /** Every call, as `<operation>:<credential>`, for a test that counts what a credential spent. */
   calls: Array<string>;
 }
@@ -43,6 +47,7 @@ export const emptyWorld = (): FakeWorld => ({
   env: new Map(),
   tokens: new Map(),
   down: false,
+  apiClock: true,
   calls: [],
 });
 
@@ -121,7 +126,7 @@ export const fakeZeropsApi = (world: FakeWorld): ZeropsApi["Service"] => {
     ownToken: (credential) =>
       Effect.zipWith(caller("ownToken", credential), Clock.currentTimeMillis, (token, now) => ({
         ...token,
-        readAtMs: now,
+        readAtMs: world.apiClock ? now : undefined,
       })),
   };
 };

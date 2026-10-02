@@ -77,10 +77,16 @@ const world = (now: number, anchored: boolean, orgId: string): FakeWorld => {
   door("door-owner-2", "owner");
   door("door-dev", "dev");
   door("door-flagged", "owner", { canCreateProjects: true });
+  door("door-reader", "reader");
+  door("door-other-org", "owner", { orgId: "ORG2" });
+  door("door-wrong-name", "owner", { name: "mate-door:ELSEWHERE:n0nce" });
+  door("door-invited", "invitee");
   door("door-stale", "owner", { createdMs: now - 10 * 60_000 });
   fake.members.set(orgId, [
     person("owner", "OWNER"),
     person("dev", "NO_ACCESS"),
+    person("reader", "READ_ONLY"),
+    { ...person("invitee", "ADMIN"), status: "INVITED" },
     { ...person("T-hq", "READ_ONLY"), name: `mate-hq-org:${HQ}`, kind: "token" },
     ...(anchored
       ? [
@@ -244,6 +250,17 @@ const ticketFor = (call: Call, session: string) =>
     (response) => (response.body as { readonly ticket: string }).ticket,
   );
 
+/** The owner sets `projectId` up as a Mate in no application: what makes it enrollable. */
+const setUpMate = (call: Call, projectId: string) =>
+  Effect.gen(function* () {
+    const session = yield* sessionFor(call, "door-owner");
+    const created = yield* call("POST", "/api/mates", {
+      session,
+      body: { projectId, name: "Ada", face: "face-1" },
+    });
+    assert.strictEqual(created.status, 201);
+  });
+
 const sessionFor = (call: Call, token: string) =>
   Effect.map(call("POST", "/api/door", { body: { token } }), (response) => {
     assert.strictEqual(response.status, 200);
@@ -303,10 +320,7 @@ describe("HQ API", () => {
           // The refusal says what and why, nothing of the server's own types.
           assert.deepStrictEqual(
             [refused.status, refused.body],
-            [
-              403,
-              { code: "forbidden", message: "Only an org owner or admin changes the structure." },
-            ],
+            [403, { code: "forbidden", reason: "not_structure_writer" }],
           );
           assert.deepStrictEqual((yield* call("GET", "/api/structure", { session: dev })).body, {
             ungrouped: [],
@@ -632,6 +646,62 @@ describe("HQ API", () => {
       }),
     );
 
+    it.effect("a socket follows a role its holder loses: what they no longer see goes", () =>
+      Effect.gen(function* () {
+        const { call, fake, socket } = yield* startCore(true);
+        yield* untilHealth(call, "active");
+        const owner = yield* sessionFor(call, "door-owner");
+        const reader = yield* sessionFor(call, "door-reader");
+        const appId = (
+          (yield* call("POST", "/api/apps", { session: owner, body: { name: "Shop" } })).body as {
+            readonly id: string;
+          }
+        ).id;
+        const readerSocket = yield* socket(
+          `/api/structure/ws?ticket=${yield* ticketFor(call, reader)}`,
+        );
+        assert.deepStrictEqual(yield* readerSocket.next("snapshot"), {
+          ungrouped: [],
+          apps: [{ id: appId, name: "Shop", projects: [] }],
+        });
+
+        // Zerops lowers the reader to no access: the open socket drops the application.
+        const member = fake.members.get("ORG")!.find((row) => row.userId === "reader")!;
+        Object.assign(member, { roleCode: "NO_ACCESS" });
+        assert.deepStrictEqual(yield* readerSocket.next("change"), { key: appId, value: null });
+        yield* readerSocket.close;
+      }),
+    );
+
+    it.effect(
+      "refuses at the door every throwaway that is not this HQ's own, fresh, of an active member",
+      () =>
+        Effect.gen(function* () {
+          const { call, fake } = yield* startCore(true);
+          yield* untilHealth(call, "active");
+          const knock = (token: string) =>
+            Effect.map(call("POST", "/api/door", { body: { token } }), (answer) => [
+              answer.status,
+              (answer.body as { readonly code: string }).code,
+            ]);
+          assert.deepStrictEqual(
+            yield* Effect.all([
+              knock("door-other-org"),
+              knock("door-wrong-name"),
+              knock("door-invited"),
+            ]),
+            [
+              [401, "zerops_throwaway_required"],
+              [401, "zerops_throwaway_required"],
+              [401, "zerops_throwaway_required"],
+            ],
+          );
+          // The platform's clock missing is HQ's trouble, never the caller's verdict.
+          fake.apiClock = false;
+          assert.deepStrictEqual(yield* knock("door-owner"), [503, "zerops_unavailable"]);
+        }),
+    );
+
     it.effect(
       "opens a socket only with a fresh one-use ticket, and closes one that ends its session or stops answering",
       () =>
@@ -712,6 +782,7 @@ describe("HQ API", () => {
         Effect.gen(function* () {
           const { call, fake } = yield* startCore(true);
           yield* untilHealth(call, "active");
+          yield* setUpMate(call, "P_MATE");
           const challenge = yield* call("POST", "/api/mate/challenge", {
             body: { projectId: "P_MATE" },
           });
@@ -752,15 +823,21 @@ describe("HQ API", () => {
         Effect.gen(function* () {
           const { call, fake } = yield* startCore(true);
           yield* untilHealth(call, "active");
-          fake.projects.push({
-            id: "P_ELSE",
-            orgId: "ORG2",
-            name: "P_ELSE",
-            status: "ACTIVE",
-            tags: [],
-            userRoles: [],
-            publicZone: "P_ELSE.prg1-zerops.zone",
-          });
+          yield* setUpMate(call, "P_MATE");
+          for (const [id, orgId] of [
+            ["P_ELSE", "ORG2"],
+            ["P_PLAIN", "ORG"],
+          ] as const) {
+            fake.projects.push({
+              id,
+              orgId,
+              name: id,
+              status: "ACTIVE",
+              tags: [],
+              userRoles: [],
+              publicZone: `${id}.prg1-zerops.zone`,
+            });
+          }
           const { nonce } = (yield* call("POST", "/api/mate/challenge", {
             body: { projectId: "P_MATE" },
           })).body as { readonly nonce: string };
@@ -768,6 +845,7 @@ describe("HQ API", () => {
             [
               ["/api/mate/challenge", { projectId: "P_ELSE" }],
               ["/api/mate/challenge", { projectId: "P_NONE" }],
+              ["/api/mate/challenge", { projectId: "P_PLAIN" }],
               ["/api/mate/credential", { projectId: "P_MATE", nonce: "never-handed-out" }],
               ["/api/mate/credential", { projectId: "P_MATE", nonce }],
               ["/api/mate/credential", { projectId: "P_MATE" }],
@@ -780,8 +858,9 @@ describe("HQ API", () => {
               (answer.body as { readonly code: string }).code,
             ]),
             [
-              [403, "project_not_in_org"],
-              [404, "project_gone"],
+              [403, "not_a_mate"],
+              [403, "not_a_mate"],
+              [403, "not_a_mate"],
               [401, "unknown_nonce"],
               [401, "env_mismatch"],
               [400, "invalid"],

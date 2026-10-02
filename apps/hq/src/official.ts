@@ -38,23 +38,26 @@ const parseAnchor = (name: string) => {
 };
 
 /**
- * `anchor_elsewhere` while any Admin member names another project (person or token, any status:
- * fail closed), else `ok` while an active Admin token names this project and address.
+ * Only an integration token is an anchor: a person who names themselves like one names nothing.
+ * `anchor_elsewhere` while any Admin token names another project (any status: fail closed), else
+ * `ok` while an active Admin token names this project and address.
  */
 export const anchorVerdict = (
   self: { readonly projectId: string; readonly address: string },
   members: ReadonlyArray<ZeropsMember>,
 ): "ok" | "anchor_missing" | "anchor_elsewhere" => {
   const anchors = members
-    .filter((member) => member.roleCode === "ADMIN" && member.name.startsWith(ANCHOR_PREFIX))
+    .filter(
+      (member) =>
+        member.kind === "token" &&
+        member.roleCode === "ADMIN" &&
+        member.name.startsWith(ANCHOR_PREFIX),
+    )
     .map((member) => ({ member, ...parseAnchor(member.name) }));
   if (anchors.some((anchor) => anchor.projectId !== self.projectId)) return "anchor_elsewhere";
   const address = self.address.replace(/\/+$/u, "");
   const own = anchors.some(
-    (anchor) =>
-      anchor.member.kind === "token" &&
-      anchor.member.status === "ACTIVE" &&
-      anchor.address === address,
+    (anchor) => anchor.member.status === "ACTIVE" && anchor.address === address,
   );
   return own ? "ok" : "anchor_missing";
 };

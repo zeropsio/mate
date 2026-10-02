@@ -19,8 +19,9 @@
  *
  * Every call but the doors carries `Authorization: Bearer <session>`, of a session issued for this
  * HQ's org. Only the leading HQ answers: a standby or an HQ that is not the official one answers
- * `503 not_active`. A refusal answers one code; a refusal at the person's door says nothing of which
- * rule the token broke. Bodies are bounded (8 KiB at the doors, 64 KiB elsewhere: `413 too_large`), and each door
+ * `503 not_active`. A refusal answers one code, and for the structure a reason code beside it
+ * (`zeropsPermissions.ts`'s or the structure's own) — the words for a person are the client's; a
+ * refusal at the person's door says nothing of which rule the token broke. Bodies are bounded (8 KiB at the doors, 64 KiB elsewhere: `413 too_large`), and each door
  * is limited per client address (`rateLimit.ts`: `429 too_many_requests`).
  *
  * @module api
@@ -100,6 +101,7 @@ const MATE_STATUS = {
   env_mismatch: 401,
   project_not_in_org: 403,
   project_gone: 404,
+  not_a_mate: 403,
 } as const;
 
 const json = (body: unknown, status: number) => HttpServerResponse.jsonUnsafe(body, { status });
@@ -129,7 +131,7 @@ const failure = (error: {
 }): Effect.Effect<HttpServerResponse.HttpServerResponse> => {
   if (isStructureRefused(error)) {
     return Effect.succeed(
-      json({ code: error.code, message: error.message }, STRUCTURE_STATUS[error.code]),
+      json({ code: error.code, reason: error.reason }, STRUCTURE_STATUS[error.code]),
     );
   }
   if (isMateRefused(error)) {

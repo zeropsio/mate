@@ -7,14 +7,14 @@ import * as Redacted from "effect/Redacted";
 import * as TestClock from "effect/testing/TestClock";
 
 import { emptyWorld, fakeZeropsApi } from "../test/harness/zeropsFake.ts";
-import { type OrgView, Roles, canWriteStructure, effectiveRole, rolesLayer } from "./roles.ts";
+import { type OrgView, Roles, rolesLayer } from "./roles.ts";
 import { ZeropsApi, type ZeropsMember, type ZeropsProject } from "./zerops/api.ts";
 
-const member = (userId: string, roleCode: string, status = "ACTIVE"): ZeropsMember => ({
+const member = (userId: string, roleCode: string): ZeropsMember => ({
   name: userId,
   kind: "person",
   roleCode,
-  status,
+  status: "ACTIVE",
   userId,
   clientUserId: `C-${userId}`,
   canCreateProjects: false,
@@ -28,58 +28,6 @@ const project = (id: string, userRoles: ZeropsProject["userRoles"] = []): Zerops
   tags: [],
   userRoles,
   publicZone: `${id}.prg1-zerops.zone`,
-});
-
-const VIEW: OrgView = {
-  orgId: "ORG",
-  members: [
-    member("owner", "OWNER"),
-    member("admin", "ADMIN"),
-    member("dev", "NO_ACCESS"),
-    member("reader", "READ_ONLY"),
-    member("invited", "ADMIN", "INVITED"),
-    member("future", "SUPER_ADMIN"),
-  ],
-  projects: [
-    project("P1", [
-      { clientUserId: "C-dev", roleCode: "BASIC_USER" },
-      { clientUserId: "C-owner", roleCode: "NO_ACCESS" },
-    ]),
-    project("P2"),
-    project("P3", [{ clientUserId: "C-dev", roleCode: "SOMETHING_NEW" }]),
-  ],
-};
-
-describe("effectiveRole", () => {
-  const cases: ReadonlyArray<readonly [string, string, string]> = [
-    ["owner", "P2", "OWNER"],
-    ["owner", "P1", "NO_ACCESS"], // an override lowers even an owner
-    ["dev", "P1", "BASIC_USER"],
-    ["dev", "P2", "NO_ACCESS"],
-    ["reader", "P2", "READ_ONLY"],
-    ["invited", "P2", "NO_ACCESS"], // not active: no rights
-    ["stranger", "P2", "NO_ACCESS"],
-    ["owner", "P9", "NO_ACCESS"], // no such project
-    // A role this build does not know is no role (main's `asOrgRole`): never visible.
-    ["dev", "P3", "NO_ACCESS"],
-    ["future", "P2", "NO_ACCESS"],
-  ];
-  for (const [userId, projectId, role] of cases) {
-    it(`${userId} on ${projectId}: ${role}`, () => {
-      assert.strictEqual(effectiveRole(VIEW, userId, projectId), role);
-    });
-  }
-});
-
-describe("canWriteStructure", () => {
-  it("is an active org owner or admin, nobody else", () => {
-    assert.deepStrictEqual(
-      ["owner", "admin", "dev", "reader", "invited", "stranger"].map((userId) =>
-        canWriteStructure(VIEW, userId),
-      ),
-      [true, true, false, false, false, false],
-    );
-  });
 });
 
 describe("rolesLayer", () => {
@@ -111,6 +59,9 @@ describe("rolesLayer", () => {
         const userIds = (view: OrgView) => view.members.map((row) => row.userId);
 
         assert.deepStrictEqual(userIds(yield* roles.view), ["owner"]);
+        // What a write may be decided over says so: read now, or served from the cache.
+        assert.strictEqual((yield* roles.view).freshness, "cached");
+        assert.strictEqual((yield* roles.fresh).freshness, "fresh");
         world.members.get("ORG")!.push(member("admin", "ADMIN"));
         yield* TestClock.adjust("29 seconds");
         assert.deepStrictEqual(userIds(yield* roles.view), ["owner"]);

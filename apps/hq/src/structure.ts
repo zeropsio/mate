@@ -5,14 +5,21 @@
  * Stage"): a Mate by its record and its rules, a stage by the one-production rule. HQ is its
  * only writer; every write is fenced by the leader and checks the writer against Zerops read fresh.
  *
- * Who may: an active org owner or admin writes, as main's `canWriteRegistry` (parity B #41, #73,
- * #77); a member who can create projects also attaches their own new Mate (`canAttachMate`). A reader sees an application while their org role is Read only or above, or while they see
- * one of its projects; a project while their effective role on it is above `NO_ACCESS` and Zerops
- * still has it.
+ * Who may is `can` (`@t3tools/shared/zeropsPermissions`), asked with the project's kind as HQ holds
+ * it now and, for a write, the org read fresh. A refusal answers a code and a reason code, and is
+ * logged with who asked what.
  *
  * @module structure
  */
-import type { RoleProjectKind } from "@t3tools/shared/zeropsRoles";
+import {
+  type FactsFor,
+  type Reason,
+  REASONS,
+  type Targets,
+  type Verb,
+  can,
+} from "@t3tools/shared/zeropsPermissions";
+import { type RoleProjectKind, isMateKind } from "@t3tools/shared/zeropsRoles";
 import * as Context from "effect/Context";
 import type * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
@@ -23,8 +30,9 @@ import * as SubscriptionRef from "effect/SubscriptionRef";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
 import type { SqlError } from "effect/unstable/sql/SqlError";
 
+import { heldOf } from "./held.ts";
 import { Leader, type NotLeader } from "./leader.ts";
-import { Roles, canAttachMate, canEditMate, canWriteStructure, sees, seesApp } from "./roles.ts";
+import { Roles } from "./roles.ts";
 import type { ZeropsError } from "./zerops/api.ts";
 
 export class StructureRefused extends Schema.TaggedError<StructureRefused>()("StructureRefused", {
@@ -36,7 +44,22 @@ export class StructureRefused extends Schema.TaggedError<StructureRefused>()("St
     "invalid",
     "conflict",
   ]),
-  message: Schema.String,
+  /** Why: a permission's reason (`zeropsPermissions.ts`) or one of the structure's own. */
+  reason: Schema.Literals([
+    ...REASONS,
+    "name_length",
+    "hq_project",
+    "mate_record_with_kind",
+    "mate_record_missing",
+    "mate_record_exists",
+    "nothing_to_change",
+    "app_name_taken",
+    "app_not_found",
+    "mate_not_found",
+    "placed_or_production_taken",
+    "production_taken",
+    "held_changed",
+  ]),
 }) {}
 
 export interface AttachInput {
@@ -129,21 +152,32 @@ export class Structure extends Context.Service<
   }
 >()("@t3tools/hq/structure") {}
 
-const refuse = (code: StructureRefused["code"], message: string) =>
-  Effect.fail(new StructureRefused({ code, message }));
+const refuse = (code: StructureRefused["code"], reason: StructureRefused["reason"]) =>
+  Effect.fail(new StructureRefused({ code, reason }));
 
 const fitsName = (name: string) => name.length >= 1 && name.length <= 100;
 
-/** A kind whose project is a Mate: it carries a Mate record and follows a Mate's rules. */
-const isMate = (kind: string) => kind === "mate" || kind === "devstage";
-
-const WRITERS_ONLY = "Only an org owner or admin changes the structure.";
-const MATE_MOVERS_ONLY =
-  "Only an owner or admin of the Mate's project moves it, and only into an application they see.";
-const MATE_EDITORS_ONLY =
-  "Only an owner or admin of the Mate's project sets it up, renames it or changes its face.";
-const MATE_ATTACHERS_ONLY =
-  "Only an org owner or admin attaches a Mate, or a member who can create projects attaches their own new Mate to an application they see.";
+/** `can`'s answer, enforced: a refusal is logged with who asked what, and answered by its reason. */
+const allowed = <V extends Verb>(
+  userId: string,
+  verb: V,
+  target: Targets[V],
+  facts: FactsFor<V>,
+) => {
+  const decision = can({ kind: "person", userId }, verb, target, facts);
+  if (decision.allow) return Effect.void;
+  const reason: Reason = decision.reason;
+  return Effect.andThen(
+    Effect.logInfo("structure refused", {
+      userId,
+      verb,
+      target,
+      reason,
+      freshness: facts.freshness,
+    }),
+    refuse(reason === "project_gone" ? "project_not_found" : "forbidden", reason),
+  );
+};
 
 const isUniqueViolation = (error: { readonly _tag: string }) =>
   error._tag === "SqlError" && (error as SqlError).reason._tag === "UniqueViolation";
@@ -151,12 +185,12 @@ const isUniqueViolation = (error: { readonly _tag: string }) =>
 /** A unique constraint the write ran into is a conflict with what is already there. */
 const conflictOnUnique = <A, E extends { readonly _tag: string }, R>(
   effect: Effect.Effect<A, E, R>,
-  message: string,
+  reason: StructureRefused["reason"],
 ) =>
   effect.pipe(
     Effect.catchIf(
       (error: E) => isUniqueViolation(error),
-      () => refuse("conflict", message),
+      () => refuse("conflict", reason),
     ),
   );
 
@@ -237,15 +271,13 @@ export const structureLayer = (options: {
         createApp: (userId, rawName) =>
           Effect.gen(function* () {
             const name = rawName.trim();
-            if (!fitsName(name)) return yield* refuse("invalid", "A name has 1 to 100 characters.");
-            if (!canWriteStructure(yield* roles.fresh, userId)) {
-              return yield* refuse("forbidden", WRITERS_ONLY);
-            }
+            if (!fitsName(name)) return yield* refuse("invalid", "name_length");
+            yield* allowed(userId, "create_app", null, yield* roles.fresh);
             const rows = yield* conflictOnUnique(
               leader.write(sql<{ readonly id: string; readonly name: string }>`
                 INSERT INTO hq_app (name, created_by) VALUES (${name}, ${userId})
                 RETURNING id::text AS id, name`),
-              `An application named ${name} exists.`,
+              "app_name_taken",
             );
             yield* changed;
             // `INSERT … RETURNING` answers the row it inserted, or fails.
@@ -255,56 +287,46 @@ export const structureLayer = (options: {
         renameApp: (userId, appId, rawName) =>
           Effect.gen(function* () {
             const name = rawName.trim();
-            if (!fitsName(name)) return yield* refuse("invalid", "A name has 1 to 100 characters.");
-            if (!canWriteStructure(yield* roles.fresh, userId)) {
-              return yield* refuse("forbidden", WRITERS_ONLY);
-            }
+            if (!fitsName(name)) return yield* refuse("invalid", "name_length");
+            yield* allowed(userId, "rename_app", null, yield* roles.fresh);
             const rows = yield* conflictOnUnique(
               leader.write(sql<{ readonly id: string; readonly name: string }>`
                 UPDATE hq_app SET name = ${name} WHERE id::text = ${appId}
                 RETURNING id::text AS id, name`),
-              `An application named ${name} exists.`,
+              "app_name_taken",
             );
-            if (rows[0] === undefined)
-              return yield* refuse("app_not_found", "No such application.");
+            if (rows[0] === undefined) return yield* refuse("app_not_found", "app_not_found");
             yield* changed;
             return rows[0];
           }),
 
         attachProject: (userId, appId, input) =>
           Effect.gen(function* () {
-            if (isMate(input.kind) !== (input.mate !== undefined)) {
-              return yield* refuse(
-                "invalid",
-                "A Mate record goes with a Mate's kind (mate, devstage), and only with it.",
-              );
+            if (isMateKind(input.kind) !== (input.mate !== undefined)) {
+              return yield* refuse("invalid", "mate_record_with_kind");
             }
             if (input.mate !== undefined && !fitsName(input.mate.name)) {
-              return yield* refuse("invalid", "A Mate's name has 1 to 100 characters.");
+              return yield* refuse("invalid", "name_length");
             }
             if (input.projectId === options.hqProjectId) {
-              return yield* refuse("invalid", "HQ's own project belongs to no application.");
+              return yield* refuse("invalid", "hq_project");
             }
             const view = yield* roles.fresh;
             const appProjects = yield* sql<{ readonly project_id: string }>`
               SELECT project_id FROM hq_app_project WHERE app_id::text = ${appId}`;
-            const may = isMate(input.kind)
-              ? canAttachMate(
-                  view,
-                  userId,
-                  input.projectId,
-                  appProjects.map((row) => row.project_id),
-                )
-              : canWriteStructure(view, userId);
-            if (!may) {
-              return yield* refuse(
-                "forbidden",
-                isMate(input.kind) ? MATE_ATTACHERS_ONLY : WRITERS_ONLY,
-              );
-            }
-            if (!view.projects.some((project) => project.id === input.projectId)) {
-              return yield* refuse("project_not_found", "No such project in this organization.");
-            }
+            // Decided on the kind held now; the plain INSERT below is the fence: a project placed
+            // since makes it a conflict.
+            yield* allowed(
+              userId,
+              "attach",
+              {
+                projectId: input.projectId,
+                held: yield* heldOf(sql, input.projectId),
+                to: input.kind,
+                appProjectIds: appProjects.map((row) => row.project_id),
+              },
+              view,
+            );
             // What this write would conflict with — the project in any application, the
             // application's production. A row whose project Zerops no longer has (asked by its id)
             // stops counting and goes with this write; one Zerops cannot answer for refuses it.
@@ -317,21 +339,22 @@ export const structureLayer = (options: {
               leader.write(
                 Effect.gen(function* () {
                   const apps = yield* sql`SELECT 1 FROM hq_app WHERE id::text = ${appId}`;
-                  if (apps.length === 0)
-                    return yield* refuse("app_not_found", "No such application.");
+                  if (apps.length === 0) return yield* refuse("app_not_found", "app_not_found");
                   yield* dropRows(gone);
                   yield* sql`
                     INSERT INTO hq_app_project (project_id, app_id, kind, created_by)
                     VALUES (${input.projectId}, ${appId}::uuid, ${input.kind}, ${userId})`;
+                  // A Mate set up already keeps its record: renaming it is its admin's
+                  // (`edit_mate_record`), not an attacher's.
                   if (input.mate !== undefined) {
                     yield* sql`
                       INSERT INTO hq_mate (project_id, name, face)
                       VALUES (${input.projectId}, ${input.mate.name}, ${input.mate.face})
-                      ON CONFLICT (project_id) DO UPDATE SET name = EXCLUDED.name, face = EXCLUDED.face`;
+                      ON CONFLICT (project_id) DO NOTHING`;
                   }
                 }),
               ),
-              "The project is in an application already, or the application has its production.",
+              "placed_or_production_taken",
             );
             yield* changed;
           }),
@@ -339,47 +362,27 @@ export const structureLayer = (options: {
         moveProject: (userId, projectId, { appId, kind }) =>
           Effect.gen(function* () {
             if (projectId === options.hqProjectId) {
-              return yield* refuse("invalid", "HQ's own project belongs to no application.");
+              return yield* refuse("invalid", "hq_project");
             }
             const view = yield* roles.fresh;
-            if (!view.projects.some((project) => project.id === projectId)) {
-              return yield* refuse("project_not_found", "No such project in this organization.");
-            }
-            const [current] = yield* sql<{ readonly kind: string }>`
-              SELECT kind FROM hq_app_project WHERE project_id = ${projectId}`;
+            // The kind is read and decided on in the write that changes it, and the change lands
+            // only on the row still of that kind: a writer's change in between makes a conflict.
             if (appId === null) {
-              if (current === undefined) return { projectId, appId, kind: null };
-              const may = isMate(current.kind)
-                ? canEditMate(view, userId, projectId)
-                : canWriteStructure(view, userId);
-              if (!may) {
-                return yield* refuse(
-                  "forbidden",
-                  isMate(current.kind) ? MATE_MOVERS_ONLY : WRITERS_ONLY,
-                );
-              }
-              yield* leader.write(sql`DELETE FROM hq_app_project WHERE project_id = ${projectId}`);
-              yield* changed;
+              const removed = yield* leader.write(
+                Effect.gen(function* () {
+                  const held = yield* heldOf(sql, projectId);
+                  yield* allowed(userId, "detach", { projectId, held }, view);
+                  return yield* sql`
+                    DELETE FROM hq_app_project
+                    WHERE project_id = ${projectId} AND kind = ${held}
+                    RETURNING 1`;
+                }),
+              );
+              if (removed.length > 0) yield* changed;
               return { projectId, appId, kind: null };
             }
-            if (isMate(kind)) {
-              const mates = yield* sql`SELECT 1 FROM hq_mate WHERE project_id = ${projectId}`;
-              if (mates.length === 0) {
-                return yield* refuse("invalid", "A Mate is set up before it joins an application.");
-              }
-              const target = yield* sql<{ readonly project_id: string }>`
-                SELECT project_id FROM hq_app_project WHERE app_id::text = ${appId}`;
-              const may =
-                canEditMate(view, userId, projectId) &&
-                seesApp(
-                  view,
-                  userId,
-                  target.map((row) => row.project_id),
-                );
-              if (!may) return yield* refuse("forbidden", MATE_MOVERS_ONLY);
-            } else if (!canWriteStructure(view, userId)) {
-              return yield* refuse("forbidden", WRITERS_ONLY);
-            }
+            const target = yield* sql<{ readonly project_id: string }>`
+              SELECT project_id FROM hq_app_project WHERE app_id::text = ${appId}`;
             // The application's production, if gone from Zerops, makes room as on attach.
             const holders = yield* sql<{ readonly project_id: string }>`
               SELECT project_id FROM hq_app_project
@@ -389,19 +392,38 @@ export const structureLayer = (options: {
             yield* conflictOnUnique(
               leader.write(
                 Effect.gen(function* () {
-                  const apps = yield* sql`SELECT 1 FROM hq_app WHERE id::text = ${appId}`;
-                  if (apps.length === 0) {
-                    return yield* refuse("app_not_found", "No such application.");
+                  const held = yield* heldOf(sql, projectId);
+                  yield* allowed(
+                    userId,
+                    "move",
+                    {
+                      projectId,
+                      held,
+                      to: kind,
+                      appProjectIds: target.map((row) => row.project_id),
+                    },
+                    view,
+                  );
+                  if (isMateKind(kind)) {
+                    const mates = yield* sql`SELECT 1 FROM hq_mate WHERE project_id = ${projectId}`;
+                    if (mates.length === 0) {
+                      return yield* refuse("invalid", "mate_record_missing");
+                    }
                   }
+                  const apps = yield* sql`SELECT 1 FROM hq_app WHERE id::text = ${appId}`;
+                  if (apps.length === 0) return yield* refuse("app_not_found", "app_not_found");
                   yield* dropRows(gone);
-                  yield* sql`
+                  const placed = yield* sql`
                     INSERT INTO hq_app_project (project_id, app_id, kind, created_by)
                     VALUES (${projectId}, ${appId}::uuid, ${kind}, ${userId})
                     ON CONFLICT (project_id)
-                    DO UPDATE SET app_id = EXCLUDED.app_id, kind = EXCLUDED.kind`;
+                    DO UPDATE SET app_id = EXCLUDED.app_id, kind = EXCLUDED.kind
+                    WHERE hq_app_project.kind = ${held}
+                    RETURNING 1`;
+                  if (placed.length === 0) return yield* refuse("conflict", "held_changed");
                 }),
               ),
-              "The application has its production.",
+              "production_taken",
             );
             yield* changed;
             return { projectId, appId, kind };
@@ -411,23 +433,31 @@ export const structureLayer = (options: {
           Effect.gen(function* () {
             const name = mate.name.trim();
             if (!fitsName(name) || mate.face.length < 1 || mate.face.length > 64) {
-              return yield* refuse("invalid", "A name has 1 to 100 characters, a face 1 to 64.");
+              return yield* refuse("invalid", "name_length");
             }
             if (mate.projectId === options.hqProjectId) {
-              return yield* refuse("invalid", "HQ's own project is no Mate.");
+              return yield* refuse("invalid", "hq_project");
             }
             const view = yield* roles.fresh;
-            if (!view.projects.some((project) => project.id === mate.projectId)) {
-              return yield* refuse("project_not_found", "No such project in this organization.");
-            }
-            if (!canEditMate(view, userId, mate.projectId)) {
-              return yield* refuse("forbidden", MATE_EDITORS_ONLY);
-            }
             yield* conflictOnUnique(
-              leader.write(sql`
-                INSERT INTO hq_mate (project_id, name, face)
-                VALUES (${mate.projectId}, ${name}, ${mate.face})`),
-              "The project's Mate is set up already.",
+              leader.write(
+                Effect.gen(function* () {
+                  // Held as decided until this write ends: a writer changing the project's kind
+                  // waits for it.
+                  yield* sql`SELECT 1 FROM hq_app_project WHERE project_id = ${mate.projectId} FOR SHARE`;
+                  const held = yield* heldOf(sql, mate.projectId);
+                  yield* allowed(
+                    userId,
+                    "create_mate_record",
+                    { projectId: mate.projectId, held },
+                    view,
+                  );
+                  yield* sql`
+                    INSERT INTO hq_mate (project_id, name, face)
+                    VALUES (${mate.projectId}, ${name}, ${mate.face})`;
+                }),
+              ),
+              "mate_record_exists",
             );
             yield* changed;
             return { projectId: mate.projectId, name, face: mate.face };
@@ -437,23 +467,24 @@ export const structureLayer = (options: {
           Effect.gen(function* () {
             const name = patch.name?.trim();
             if (name === undefined && patch.face === undefined) {
-              return yield* refuse("invalid", "Say what changes: a name, a face, or both.");
+              return yield* refuse("invalid", "nothing_to_change");
             }
             if ((name !== undefined && !fitsName(name)) || (patch.face?.length ?? 1) > 64) {
-              return yield* refuse("invalid", "A name has 1 to 100 characters, a face up to 64.");
+              return yield* refuse("invalid", "name_length");
             }
-            const mates = yield* sql`SELECT 1 FROM hq_mate WHERE project_id = ${projectId}`;
-            if (mates.length === 0) return yield* refuse("mate_not_found", "No such Mate.");
-            if (!canEditMate(yield* roles.fresh, userId, projectId)) {
-              return yield* refuse("forbidden", MATE_EDITORS_ONLY);
-            }
-            const rows = yield* leader.write(sql<{ readonly name: string; readonly face: string }>`
-              UPDATE hq_mate
-              SET name = COALESCE(${name ?? null}, name), face = COALESCE(${patch.face ?? null}, face)
-              WHERE project_id = ${projectId}
-              RETURNING name, face`);
-            // The row was there a moment ago; a write that lost it has nothing to say.
-            if (rows[0] === undefined) return yield* refuse("mate_not_found", "No such Mate.");
+            const view = yield* roles.fresh;
+            const rows = yield* leader.write(
+              Effect.gen(function* () {
+                const held = yield* heldOf(sql, projectId);
+                yield* allowed(userId, "edit_mate_record", { projectId, held }, view);
+                return yield* sql<{ readonly name: string; readonly face: string }>`
+                  UPDATE hq_mate
+                  SET name = COALESCE(${name ?? null}, name), face = COALESCE(${patch.face ?? null}, face)
+                  WHERE project_id = ${projectId}
+                  RETURNING name, face`;
+              }),
+            );
+            if (rows[0] === undefined) return yield* refuse("mate_not_found", "mate_not_found");
             yield* changed;
             return { projectId, ...rows[0] };
           }),
@@ -483,10 +514,13 @@ export const structureLayer = (options: {
               WHERE NOT EXISTS (SELECT 1 FROM hq_app_project p WHERE p.project_id = m.project_id)
               ORDER BY m.seq`;
             const names = new Map(view.projects.map((project) => [project.id, project.name]));
-            const visible = rows.filter((row) => sees(view, userId, row.project_id));
+            const person = { kind: "person", userId } as const;
+            const reads = (projectId: string) =>
+              can(person, "read_project", { projectId }, view).allow;
+            const visible = rows.filter((row) => reads(row.project_id));
             return {
               ungrouped: alone
-                .filter((row) => sees(view, userId, row.project_id))
+                .filter((row) => reads(row.project_id))
                 .map((row) => ({
                   projectId: row.project_id,
                   name: names.get(row.project_id) ?? "",
@@ -508,12 +542,14 @@ export const structureLayer = (options: {
                           : { name: row.mate_name, face: row.mate_face ?? "" },
                     })),
                 }))
-                .filter((app) =>
-                  seesApp(
-                    view,
-                    userId,
-                    app.projects.map((project) => project.projectId),
-                  ),
+                .filter(
+                  (app) =>
+                    can(
+                      person,
+                      "read_app",
+                      { projectIds: app.projects.map((project) => project.projectId) },
+                      view,
+                    ).allow,
                 ),
             };
           }),

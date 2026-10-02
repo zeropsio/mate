@@ -63,6 +63,10 @@
       "types": "./src/zeropsRoles.ts",
       "import": "./src/zeropsRoles.ts"
     },
+    "./zeropsPermissions": {
+      "types": "./src/zeropsPermissions.ts",
+      "import": "./src/zeropsPermissions.ts"
+    },
     "./zeropsAgentAuth": {
       "types": "./src/zeropsAgentAuth.ts",
       "import": "./src/zeropsAgentAuth.ts"

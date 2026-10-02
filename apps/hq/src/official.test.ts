@@ -69,15 +69,17 @@ describe("anchorVerdict", () => {
       verdict: "anchor_elsewhere",
     },
     {
-      name: "another project's, on a person, inactive (fail closed)",
+      name: "another project's token, inactive (fail closed)",
       members: [
         token(OWN),
-        {
-          ...token("mate-hq:P2:https://x.example", "ADMIN", "WAITING_AUTHORIZATION"),
-          kind: "person",
-        },
+        token("mate-hq:P2:https://x.example", "ADMIN", "WAITING_AUTHORIZATION"),
       ],
       verdict: "anchor_elsewhere",
+    },
+    {
+      name: "a person named like another project's anchor is no anchor",
+      members: [token(OWN), { ...token("mate-hq:P2:https://x.example"), kind: "person" }],
+      verdict: "ok",
     },
     {
       name: "another project's without the Admin role",
