@@ -49,7 +49,11 @@ const recover = async (root: string) => {
 export const makeHqGit = (options: HqGitOptions): Effect.Effect<HqGit, GitError, Scope.Scope> =>
   Effect.gen(function* () {
     const root = NodePath.resolve(options.rootDir);
-    for (const ms of [options.importTimeoutMs, options.requestTimeoutMs]) {
+    for (const ms of [
+      options.importTimeoutMs,
+      options.requestTimeoutMs,
+      options.refLockTimeoutMs,
+    ]) {
       if (ms !== undefined && !(Number.isSafeInteger(ms) && ms > 0))
         return yield* new GitError({
           operation: "open",

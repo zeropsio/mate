@@ -111,6 +111,7 @@ export const makeOperations = (
   attempt: Attempt,
   emit: (event: GitEvent) => void,
 ) => {
+  const refLockTimeoutMs = options.refLockTimeoutMs ?? 5000;
   const inRepo = <A>(
     operation: string,
     repo: Repo,
@@ -306,11 +307,22 @@ export const makeOperations = (
     signal: AbortSignal,
   ) => {
     try {
-      await run(dir, ["update-ref", ref, sha, old ?? "0".repeat(sha.length)], signal);
+      await run(
+        dir,
+        [
+          "-c",
+          `core.filesRefLockTimeout=${String(refLockTimeoutMs)}`,
+          "update-ref",
+          ref,
+          sha,
+          old ?? "0".repeat(sha.length),
+        ],
+        signal,
+      );
       return true;
     } catch {
       if ((await refHead(dir, ref, signal)) !== old) return false;
-      // Nothing moved: another writer held the ref lock past git's retry window.
+      // Nothing moved: another writer held the ref lock past the wait.
       throw new GitError({ operation: "update-ref", reason: "busy", message: "Ref is locked" });
     }
   };
