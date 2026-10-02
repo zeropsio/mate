@@ -62,6 +62,9 @@ import { useProjects, useThreadShells, useThreadStatus } from "~/state/entities"
 import { buildThreadRouteParams } from "~/threadRoutes";
 import { useAccountEnvironments, useConnectMate } from "~/zerops/accountEnvironments";
 import {
+  ARRIVAL_RETRY_HOLD_MS,
+  arrivalHoldsThrough,
+  firstBuildFailure,
   halfMadeFor,
   mateArrivalShown,
   mateComing,
@@ -81,6 +84,7 @@ import {
   useNewProjectBirths,
 } from "~/zerops/newProjectBirth";
 import { useHeldPast } from "~/zerops/useHeldPast";
+import { useProjectActivity } from "~/zerops/activity/useProjectActivity";
 import { useSecondsNowMs } from "~/zerops/useNowMs";
 import { useOpenMate } from "~/zerops/useOpenMate";
 import { useUsualAgent } from "~/zerops/useUsualAgent";
@@ -173,6 +177,22 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
   const { health } = useZeropsContainers();
   const containerHealth = candidate === undefined ? undefined : health.get(candidate.key);
   const pressRetry = press?.state.kind === "failed" ? press.state.retry : null;
+  // What opens it is its machine (`mateLink`): found by its project while its row stands for the
+  // project, and before the listing names it at all.
+  const { mateLink } = useEnvironmentLinks();
+  const rowKey = candidate?.key ?? projectId;
+  const link = useMemo(
+    () => mateLink({ key: rowKey, project: { id: projectId } }),
+    [mateLink, projectId, rowKey],
+  );
+  // A link retrying on its own is held through by its arrival only for a while.
+  const retrying = link.reachability?.kind === "retrying";
+  const retryingPast =
+    useHeldPast(`${projectId}:arrival:${retrying ? "retrying" : "not"}`, ARRIVAL_RETRY_HOLD_MS) &&
+    retrying;
+  // Its first build's processes, read only while its container waits for that build.
+  const firstBuilding = candidate?.service?.status === "READY_TO_DEPLOY";
+  const { processes: firstBuildProcesses } = useProjectActivity(firstBuilding ? projectId : null);
   const coming = mateComing({
     press:
       press === undefined
@@ -186,15 +206,11 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
     setUpFailed: pressFailure(press) ?? creation?.failed,
     nowMs: Date.now(),
     created: creation !== undefined,
+    linkHolds: arrivalHoldsThrough(link.reachability, { retryingPast }),
+    firstBuildFailed: firstBuilding
+      ? firstBuildFailure(firstBuildProcesses, candidate?.service?.id)
+      : undefined,
   });
-  // What opens it is its machine (`mateLink`): found by its project while its row stands for the
-  // project, and before the listing names it at all.
-  const { mateLink } = useEnvironmentLinks();
-  const rowKey = candidate?.key ?? projectId;
-  const link = useMemo(
-    () => mateLink({ key: rowKey, project: { id: projectId } }),
-    [mateLink, projectId, rowKey],
-  );
   const page = mateComingPage({
     coming,
     candidate,
@@ -207,7 +223,7 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
   if (page?.kind === "coming" && !cameUp) setCameUp(true);
   // Its arrival, once shown, holds the board through every wait on its way to its conversation:
   // one surface from the press to the sign-in (`mateArrivalShown`).
-  const arrival = mateArrivalShown({ page, cameUp });
+  const arrival = mateArrivalShown({ page, cameUp, retryingPast });
 
   // Who it is: its listing's, the moment it is listed — the name and the tint the menu gives it —
   // and until then what its creation or its press knew.
@@ -364,8 +380,13 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
     candidate.containerOrigin !== undefined &&
     containerHealth === "ready";
   // Once a machine names it: a Connect asked before the stage holds its target would end unheard.
+  // A new Mate whose container is up is connected the same way while its board still stands: its
+  // machine tries again on its own ladder, whatever its health reads.
   const reachingKey =
-    page?.kind === "reaching" && link.reachability !== null ? link.key : undefined;
+    (page?.kind === "reaching" || (page?.kind === "coming" && candidate?.group === "ready")) &&
+    link.reachability !== null
+      ? link.key
+      : undefined;
   const connectKey = mateConnectKey({
     reachingKey,
     answering,

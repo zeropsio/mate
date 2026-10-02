@@ -10,6 +10,7 @@ import {
   HALF_MADE_LINE,
   HALF_MADE_OWNER_LINE,
   halfMadeFor,
+  firstBuildFailure,
   mateArrivalShown,
   type MateComingPage,
 } from "./mateComing";
@@ -106,9 +107,53 @@ describe("mateComing — a Mate in its first minutes, in one set of words", () =
       expected: { kind: "coming", line: "Coming up. A few minutes." },
     },
     {
-      case: "a Mate this tab made, up and not connected yet",
-      input: { press: undefined, candidate: { group: "ready" }, created: true },
+      case: "a Mate this tab made, up and its link on its way",
+      input: { press: undefined, candidate: { group: "ready" }, created: true, linkHolds: true },
       expected: { kind: "coming", line: "Coming up. A few minutes." },
+    },
+    {
+      case: "a Mate in its first build, minutes young",
+      input: {
+        press: undefined,
+        candidate: {
+          group: "provisioning",
+          service: { status: "READY_TO_DEPLOY", created: new Date(NOW - 60_000).toISOString() },
+        },
+        nowMs: NOW,
+      },
+      expected: { kind: "coming", line: "Coming up. A few minutes." },
+    },
+    {
+      case: "a Mate whose first build failed: it never came, with Remove",
+      input: {
+        press: undefined,
+        candidate: {
+          group: "provisioning",
+          service: { status: "READY_TO_DEPLOY", created: new Date(NOW - 60_000).toISOString() },
+        },
+        created: true,
+        firstBuildFailed: "the build failed",
+        nowMs: NOW,
+      },
+      expected: {
+        kind: "failed",
+        line: "Could not be set up. The build failed.",
+        verb: "remove",
+      },
+    },
+    {
+      case: "a Mate this tab made whose container went before it came: half-made, with Finish setup",
+      input: {
+        press: undefined,
+        candidate: {
+          group: "unavailable",
+          missingContainer: true,
+          project: { created: new Date(NOW - 3 * 60_000).toISOString() },
+        },
+        created: true,
+        nowMs: NOW,
+      },
+      expected: { kind: "failed", line: HALF_MADE_LINE, verb: "finish-setup" },
     },
     {
       case: "a Mate this tab made, in its first build",
@@ -158,6 +203,34 @@ describe("mateComing — a Mate in its first minutes, in one set of words", () =
       input: { press: undefined, candidate: { group: "ready" } },
     },
     { case: "a stopped Mate", input: { press: undefined, candidate: { group: "unavailable" } } },
+    {
+      case: "a Mate this tab made, up, its link wanting someone (a restart, a cap passed)",
+      input: { press: undefined, candidate: { group: "ready" }, created: true, linkHolds: false },
+    },
+    {
+      case: "a Mate this tab made, up, nothing known of its link",
+      input: { press: undefined, candidate: { group: "ready" }, created: true },
+    },
+    {
+      case: "a Mate this tab made whose project is gone",
+      input: { press: undefined, candidate: undefined, created: true, linkHolds: false },
+    },
+    ...[true, undefined].map((created) => ({
+      case: `a first build waiting past its grace${created === true ? ", made here" : ""}`,
+      input: {
+        press: undefined,
+        candidate: {
+          group: "provisioning" as const,
+          service: {
+            status: "READY_TO_DEPLOY",
+            created: new Date(NOW - 20 * 60_000).toISOString(),
+          },
+        },
+        created,
+        linkHolds: true,
+        nowMs: NOW,
+      },
+    })),
     {
       case: "a Mate this tab made, connected",
       input: { press: undefined, candidate: { group: "connected" }, created: true },
@@ -478,6 +551,7 @@ describe("mateArrivalShown — what a Mate's own view keeps saying once it came 
     readonly case: string;
     readonly page: MateComingPage | undefined;
     readonly cameUp: boolean;
+    readonly retryingPast?: boolean;
     readonly expected: ReturnType<typeof mateArrivalShown>;
   }>([
     {
@@ -568,6 +642,18 @@ describe("mateArrivalShown — what a Mate's own view keeps saying once it came 
       expected: OPENING,
     },
     {
+      case: "reaching, retrying on its own past the arrival's patience",
+      page: reaching({
+        kind: "retrying",
+        retryAtMs: NOW,
+        last: { kind: "network" },
+        restart: false,
+      } as Reachability),
+      cameUp: true,
+      retryingPast: true,
+      expected: undefined,
+    },
+    {
       case: "reaching, retrying with a restart to offer",
       page: reaching({
         kind: "retrying",
@@ -609,7 +695,56 @@ describe("mateArrivalShown — what a Mate's own view keeps saying once it came 
       expected: undefined,
     },
     { case: "nothing known yet", page: undefined, cameUp: true, expected: undefined },
-  ])("$case", ({ page, cameUp, expected }) => {
-    expect(mateArrivalShown({ page, cameUp })).toEqual(expected);
+  ])("$case", ({ page, cameUp, retryingPast = false, expected }) => {
+    expect(mateArrivalShown({ page, cameUp, retryingPast })).toEqual(expected);
+  });
+});
+
+// A first build that failed leaves the Mate's service READY_TO_DEPLOY for good (the ledger,
+// 2026-09: a failed buildFromGit): its newest build for that service says so.
+describe("firstBuildFailure — a Mate's first build, as its project's processes say it", () => {
+  const build = (status: string, created: string, extra: object = {}) => ({
+    actionName: "stack.build",
+    serviceStackIds: ["zcp", "buildzcp"],
+    status,
+    created,
+    ...extra,
+  });
+  it.each<{
+    readonly case: string;
+    readonly processes: ReadonlyArray<ReturnType<typeof build>> | undefined;
+    readonly expected: string | undefined;
+  }>([
+    { case: "nothing read", processes: undefined, expected: undefined },
+    {
+      case: "building",
+      processes: [build("RUNNING", "2026-10-02T10:00:00Z")],
+      expected: undefined,
+    },
+    {
+      case: "failed, with the platform's reason",
+      processes: [build("FAILED", "2026-10-02T10:00:00Z", { failReason: "npm ci failed" })],
+      expected: "npm ci failed",
+    },
+    {
+      case: "failed, with no reason",
+      processes: [build("CANCELED", "2026-10-02T10:00:00Z")],
+      expected: "Its container's first build did not finish",
+    },
+    {
+      case: "failed, then built again: the newest counts",
+      processes: [
+        build("FAILED", "2026-10-02T10:00:00Z"),
+        build("RUNNING", "2026-10-02T10:05:00Z"),
+      ],
+      expected: undefined,
+    },
+    {
+      case: "another service's build failed",
+      processes: [{ ...build("FAILED", "2026-10-02T10:00:00Z"), serviceStackIds: ["appdev"] }],
+      expected: undefined,
+    },
+  ])("$case", ({ processes, expected }) => {
+    expect(firstBuildFailure(processes, "zcp")).toBe(expected);
   });
 });

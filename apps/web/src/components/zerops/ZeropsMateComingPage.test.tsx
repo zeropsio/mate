@@ -6,6 +6,7 @@ import { act, createElement as h, type ReactNode } from "react";
 import { create, type ReactTestRenderer } from "react-test-renderer";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
+import { ARRIVAL_RETRY_HOLD_MS } from "~/zerops/mateComing";
 import { awaitMateConversation, takeMateConversation } from "~/zerops/mateOpening";
 
 import { ComingBelow, ZeropsMateComingPage } from "./ZeropsMateComingPage";
@@ -60,6 +61,7 @@ const app = vi.hoisted(() => ({
   projects: [] as Array<unknown>,
   remembered: undefined as { readonly subject: string; readonly threadKey?: string } | undefined,
   creations: {} as Record<string, unknown>,
+  processes: [] as Array<unknown>,
 }));
 vi.mock("~/zerops/menuMemory", () => ({ rememberedActivity: () => app.remembered }));
 
@@ -122,7 +124,7 @@ vi.mock("~/zerops/useUsualAgent", () => ({
 vi.mock("~/zerops/useNowMs", () => ({ useSecondsNowMs: () => 0 }));
 // A slow first connect lists its project's processes; none are read here.
 vi.mock("~/zerops/activity/useProjectActivity", () => ({
-  useProjectActivity: () => ({ processes: [] }),
+  useProjectActivity: () => ({ processes: app.processes }),
 }));
 vi.mock("~/zerops/inventoryContext", () => ({
   useZeropsInventory: () => ({ services: new Map() }),
@@ -211,6 +213,7 @@ beforeEach(() => {
   app.link = { key: undefined, environmentId: undefined, reachability: null };
   app.remembered = undefined;
   app.creations = {};
+  app.processes = [];
 });
 afterEach(async () => {
   const { useComposerDraftStore } = await import("~/composerDraftStore");
@@ -559,6 +562,56 @@ describe("a new Mate's arrival, from the press to the sign-in", () => {
     expect(kind()).toBe("coming");
     expect(composer()).toHaveLength(0);
     expect(app.navigate).not.toHaveBeenCalled();
+  });
+
+  it("says its first build failed, with Remove, never coming up for good", () => {
+    const building = {
+      ...QUINN,
+      group: "provisioning",
+      service: {
+        id: "zcp",
+        name: "zcp",
+        status: "READY_TO_DEPLOY",
+        created: new Date().toISOString(),
+      },
+    } as unknown as ZeropsCandidate;
+    app.listing = listingOf([building]);
+    app.creations = { [PROJECT]: QUINN_MADE };
+    openView();
+    expect(kind()).toBe("coming");
+    app.processes = [
+      {
+        actionName: "stack.build",
+        serviceStackIds: ["zcp"],
+        status: "FAILED",
+        created: new Date().toISOString(),
+        failReason: "the build failed",
+      },
+    ];
+    act(() => tree?.update(h(ZeropsMateComingPage, { projectId: PROJECT })));
+    expect(kind()).toBe("failed");
+    expect(buttons()).toEqual(["Remove"]);
+  });
+
+  it("holds the board through a link retrying on its own only for a while, then offers Try now", () => {
+    app.listing = listingOf([coming]);
+    openView();
+    app.listing = listingOf([QUINN]);
+    app.link = {
+      key: KEY,
+      environmentId: undefined,
+      reachability: {
+        kind: "retrying",
+        retryAtMs: 5_000,
+        last: { kind: "network" },
+        restart: false,
+      },
+    } as MateLink;
+    act(() => tree?.update(h(ZeropsMateComingPage, { projectId: PROJECT })));
+    expect(kind()).toBe("coming");
+    act(() => vi.advanceTimersByTime(ARRIVAL_RETRY_HOLD_MS));
+    expect(kind()).toBe("reaching");
+    expect(buttons()).toEqual(["Try now"]);
   });
 
   it("says why once it came up here and its container stopped", () => {
