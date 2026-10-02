@@ -33,7 +33,7 @@ A disconnected model is explicitly unsynchronized. A platform value whose push s
 is paused reaches a view as `known` with `paused` freshness and renders as paused,
 never as current ([the knowledge type](client-state-model.md#the-knowledge-type)).
 A value shown while it is read again, and an "as of" time, belong only to pull-only
-sources (the resource broker, Gitea's releases until T9b) and to a T3 stream that resubscribes.
+sources (the resource broker, HQ's releases) and to a T3 stream that resubscribes.
 
 Compose the system in one account-scoped **`ZeropsDataRuntime`** inside
 `packages/client-runtime`: a composition root and public domain facade with small

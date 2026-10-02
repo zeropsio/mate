@@ -880,8 +880,7 @@ stage…`; a new project's group is placed by the birth's start — and the list
     was happening; `projectOrderPreference.ts`, `projectsView.logic.ts`, `groups.ts` (`pending`),
     `groupFlow.ts` (`creating`, `deploying`), `ZeropsProjectFlowProvider.tsx`
 - **2026-09-25** — **Superseded 2026-10-02 in part by the HQ row below: Core tags and records
-  releases (T9a); until T9b the client reads them from Gitea, the broker's reason with them, and its
-  roll back still tags there.**
+  releases (T9a), and the client reads them from HQ and rolls back there (T9b).**
   **A stop's page says what the stop runs in one sentence, in the words the left
   menu and the projects page use, and lists everything else in one card.** The detail pages
   (project, stop, change) stand in `ZeropsHostedFrame` `expanded` with the /zerops bar: the
@@ -1538,7 +1537,7 @@ stage…`; a new project's group is placed by the birth's start — and the list
   written.
   - _Why:_ the owner, on the finding that the menu showed a colleague's pasted admin password: "yes"
 - **2026-09-27** — **Superseded 2026-10-02 in part: a project's change rows stand until HQ answers,
-  not Gitea (`changesKnown`); a stop's line still waits on Gitea for its releases until T9b.**
+  not Gitea (`changesKnown`), and a stop's line reads its releases from HQ (T9b).**
   **A reload paints the left menu as it stood** (`menuMemory.ts`). Measured on a
   live account, a reload painted each Mate as its name alone and grew the rows to three lines as
   each socket connected — 74 moves in 9 seconds — change rows arrived with Gitea ten seconds in, a
@@ -2073,8 +2072,9 @@ its ratio)`, its size attributes giving its height before a byte has come; a pic
   it went down and no production runtime log are read.
   - _Why:_ the plan's note ("down since 09:12, both containers stopped, exit 137") needs reads the
     client does not make
-- **2026-09-29** — **Superseded 2026-10-02 in part by the HQ row below: releases are Core's (T9a);
-  until T9b the chip still waits on Gitea for them (`untilGitea`).**
+- **2026-09-29** — **Superseded 2026-10-02 in part by the HQ row below: releases are Core's (T9a),
+  and the chip reads them from HQ (T9b); it still waits while a Gitea session is coming
+  (`giteaComing`), until T12's token flows go.**
   **A chip is drawn only once what decides it is read.** Until then the menu draws
   the chip it remembers, else — while only Gitea's answer is missing — what the platform alone says,
   never remembered, else nothing; down and stopped settle at once, and without a Gitea session the
@@ -2084,8 +2084,8 @@ its ratio)`, its size attributes giving its height before a byte has come; a pic
   before the project's name does.** Under a 340 px heading the chip keeps its dot, `prod` and the
   version; under 260 only the dot and `prod`, or "prod down".
   - _Why:_ at 256 px a long project name beside the whole chip cut to four letters
-- **2026-09-29** — **Superseded 2026-10-02 in part by the HQ row below: releases are Core's (T9a);
-  until T9b a failed release is read from Gitea, the broker's words with it.**
+- **2026-09-29** — **Superseded 2026-10-02 in part by the HQ row below: releases are Core's (T9a),
+  and a failed release is HQ's record, said in HQ's words (T9b).**
   **What the stops' rows held lives in the chip's menu.** Production's row, which
   opens the environment's page; a note of what went wrong; "Ask Nova to fix it" while in trouble,
   whose first press shows what will be written and whose second opens the conversation; the public
@@ -3433,14 +3433,14 @@ no-cache`.
   moved since the review (`head_moved`). A change carries no checks. HQ keeps each environment and
   its deploy token: Core deploys each stage from the archive of the commit `main` moved to, and each
   production from the newest approved release (`apps/hq/src/deploys.ts`). Core tags and records a
-  release, and a roll back is a new release (T9a, `apps/hq/src/releases.ts`); the client reads
-  releases from Gitea until T9b. A Mate's birth is HQ's record — its name and face, who asked for
-  its stand-up (`standupRequestedBy`) and that its project is closed off — and whose a login is
-  stays the Mate's server's own record (`~/.mate/signed-in.json`), which HQ relays. The Git page is
-  `/git`, every application's repositories and the changes open on them. An agent reaches past its
-  own project only through HQ, later. **Supersedes:** the 2026-09-17 _footer's Gitea button_ and the
-  2026-09-30 _two signer records_ rows, and the Gitea, broker and tag parts of the rows marked
-  above.
+  release, and a roll back is a new release (T9a, `apps/hq/src/releases.ts`); the client releases,
+  rolls back and reads releases there (T9b). A Mate's birth is HQ's record — its name and face, who
+  asked for its stand-up (`standupRequestedBy`) and that its project is closed off — and whose a
+  login is stays the Mate's server's own record (`~/.mate/signed-in.json`), which HQ relays. The Git
+  page is `/git`, every application's repositories and the changes open on them. An agent reaches
+  past its own project only through HQ, later. **Supersedes:** the 2026-09-17 _footer's Gitea
+  button_ and the 2026-09-30 _two signer records_ rows, and the Gitea, broker and tag parts of the
+  rows marked above.
   - _Why:_ the owner's call: HQ is mandatory per organization and holds its structure, and an
     agent's reach past its project waits on it
 - **2026-10-02** — **The old Gitea system stays as it is** (the owner, 2026-10-02). The Gitea
