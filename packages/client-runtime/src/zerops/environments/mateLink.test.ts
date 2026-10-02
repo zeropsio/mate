@@ -134,8 +134,8 @@ describe("mateLink — what a door opens of a Mate, and what its own view waits 
     readonly registered: ReadonlyArray<EnvironmentId>;
     readonly index?: DescriptorIndex;
     /**
-     * What it opens and waits for; its failures since it last connected are none, and it has not
-     * answered, unless said.
+     * What it opens and waits for; its failures since it last connected are none, and — its
+     * container ready, as its machine here has it unless said — it has answered.
      */
     readonly link: Omit<MateLink, "failuresSinceConnect" | "answered"> & {
       readonly failuresSinceConnect?: number;
@@ -151,7 +151,6 @@ describe("mateLink — what a door opens of a Mate, and what its own view waits 
         key: KEY,
         environmentId: ENV_A,
         reachability: { kind: "ready", notice: null },
-        answered: true,
       },
     },
     {
@@ -166,7 +165,6 @@ describe("mateLink — what a door opens of a Mate, and what its own view waits 
         key: KEY,
         environmentId: ENV_A,
         reachability: { kind: "ready", notice: null },
-        answered: true,
       },
     },
     {
@@ -254,7 +252,40 @@ describe("mateLink — what a door opens of a Mate, and what its own view waits 
         key: KEY,
         environmentId: ENV_A,
         reachability: { kind: "reconnecting" },
-        answered: true,
+      },
+    },
+    {
+      case: "its container still booting, its link never made: it has not answered",
+      key: KEY,
+      machines: [
+        [KEY, { ...machine({ container: { level: "booting", overdue: false } }), record: null }],
+      ],
+      registered: [],
+      link: {
+        key: KEY,
+        environmentId: undefined,
+        reachability: { kind: "container", container: { level: "booting", overdue: false } },
+        answered: false,
+      },
+    },
+    {
+      case: "its container booting after its link connected and dropped: it has answered",
+      key: KEY,
+      machines: [
+        [
+          KEY,
+          machine({
+            container: { level: "booting", overdue: false },
+            credential: { kind: "none", reconnect: true },
+            linkLostAt: { wall: 5_000, mono: 5_000 },
+          }),
+        ],
+      ],
+      registered: [ENV_A],
+      link: {
+        key: KEY,
+        environmentId: ENV_A,
+        reachability: { kind: "container", container: { level: "booting", overdue: false } },
       },
     },
     {
@@ -262,7 +293,7 @@ describe("mateLink — what a door opens of a Mate, and what its own view waits 
       key: KEY,
       machines: [],
       registered: [ENV_A],
-      link: { key: KEY, environmentId: undefined, reachability: null },
+      link: { key: KEY, environmentId: undefined, reachability: null, answered: false },
     },
   ])("$case", ({ key, machines, registered, index, link }) => {
     expect(
@@ -274,6 +305,6 @@ describe("mateLink — what a door opens of a Mate, and what its own view waits 
         records: [],
         registered: new Set(registered),
       }),
-    ).toEqual({ failuresSinceConnect: 0, answered: false, ...link });
+    ).toEqual({ failuresSinceConnect: 0, answered: true, ...link });
   });
 });

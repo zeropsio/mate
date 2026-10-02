@@ -7,6 +7,7 @@ import {
 import {
   candidatePresence,
   initialEnvironment,
+  mateLink,
   reachabilityPhrase,
   selectReachability,
 } from "@t3tools/client-runtime/zerops/environments";
@@ -1237,6 +1238,33 @@ describe("a Mate whose address landed, not answering yet, in a window that did n
   it("in the window that made it, past an arrival's held failures, its link's words speak", () => {
     // Pass 31: "This Mate isn't answering" with Try now — never "Coming up" over it.
     const [, , , read] = replay(STEPS.slice(0, 4), true);
+    expect(read).toBeUndefined();
+  });
+
+  // Review, pass 34: a Mate auto-connect leaves unlinked — its close-off pending, past the
+  // ceiling — sits waiting for an exchange nobody asks for. Its probe found it up: it is not coming
+  // up, and its row offers what it offers (Finish setup) at once.
+  it("its probe found it up, auto-connect leaving it unlinked: no longer coming up", () => {
+    const key = "project-larch:service-larch";
+    const unlinked = mateLink({
+      key,
+      projectId: "project-larch",
+      machines: new Map([
+        [
+          key,
+          {
+            ...initialEnvironment({ record: null }),
+            presence: { kind: "present", origin: ORIGIN },
+            container: { level: "ready" },
+          },
+        ],
+      ]),
+      index: { serving: new Map(), reported: new Map(), unanswered: [], failed: [] },
+      records: [],
+      registered: new Set(),
+    });
+    expect(unlinked.reachability?.kind).toBe("connecting");
+    const [, , , read] = replay([...STEPS.slice(0, 3), { ...STEPS[3]!, link: unlinked }]);
     expect(read).toBeUndefined();
   });
 

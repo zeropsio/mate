@@ -55,8 +55,9 @@ export interface MateLink {
   /** Its link's failures since it last connected (`EnvironmentMachine.failuresSinceConnect`). */
   readonly failuresSinceConnect: number;
   /**
-   * Its link has connected on this page — it is connected, or it was: a Mate that answered is no
-   * longer arriving, whatever it waits for now.
+   * Its Mate has answered on this page: its container's probe found it ready, or its link is
+   * connected or was. A Mate that answered is no longer arriving, whatever it waits for now —
+   * one auto-connect leaves unlinked (its close-off pending, past the ceiling) included.
    */
   readonly answered: boolean;
 }
@@ -97,6 +98,9 @@ export function mateLink(input: {
     environmentId: opens ? named : undefined,
     reachability,
     failuresSinceConnect: machine.failuresSinceConnect,
-    answered: machine.link.phase === "connected" || machine.linkLostAt !== null,
+    answered:
+      machine.container.level === "ready" ||
+      machine.link.phase === "connected" ||
+      machine.linkLostAt !== null,
   };
 }
