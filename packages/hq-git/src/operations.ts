@@ -497,6 +497,87 @@ export const makeOperations = (
       emit({ kind: "tagged", repo, name, sha: target });
       return { kind: "created" } as const;
     });
+  const bundle: HqGit["bundle"] = (repo, file) =>
+    inRepo("bundle", repo, async (dir, signal) => {
+      if (!(await text(dir, ["for-each-ref", "--count=1", "--format=%(refname)"], signal)))
+        return { refs: [] };
+      await run(dir, ["bundle", "create", "--quiet", file, "--all"], signal);
+      // What the bundle itself holds: the refs a restore makes again.
+      const heads = await text(dir, ["bundle", "list-heads", file], signal);
+      return {
+        refs: heads.split("\n").flatMap((line) => {
+          const [sha = "", ref = ""] = line.split(" ");
+          return ref.startsWith("refs/") ? [{ ref, sha }] : [];
+        }),
+      };
+    });
+  const tags: HqGit["tags"] = (repo) =>
+    inRepo("tags", repo, async (dir, signal) => {
+      const result = await records(
+        dir,
+        [
+          "for-each-ref",
+          "--sort=refname",
+          `--count=${readLimits.entries + 1}`,
+          "--format=%(refname:strip=2)%1f%(objecttype)%1f%(objectname)%1f%(*objectname)%1f%(taggerdate:iso-strict)%1f%(contents)%1e",
+          "refs/tags/",
+        ],
+        signal,
+        "\x1e",
+      );
+      return {
+        ...result,
+        items: result.items.flatMap((record) => {
+          // Each record but the first follows the newline that ends the one before.
+          const line = record.replace(/^\n/u, "");
+          if (line === "") return [];
+          const [name = "", type = "", object = "", peeled = "", taggedAt = "", message = ""] =
+            line.split("\x1f");
+          // A lightweight tag names a commit and carries no message nor date of its own.
+          return type === "tag"
+            ? [{ name, sha: peeled, message: message.trimEnd(), taggedAt }]
+            : [{ name, sha: object, message: "", taggedAt: "" }];
+        }),
+      };
+    });
+  const changeRefs: HqGit["changeRefs"] = (repo) =>
+    inRepo("changeRefs", repo, async (dir, signal) => {
+      const read = await prefix(
+        dir,
+        [
+          "for-each-ref",
+          `--count=${readLimits.history + 1}`,
+          "--format=%(refname) %(objectname)",
+          "refs/heads/mate/",
+        ],
+        signal,
+        readLimits.bytes,
+      );
+      const lines = read.bytes.toString().split("\n").filter(Boolean);
+      if (read.truncated || lines.length > readLimits.history)
+        throw error("Change branches exceed safety bound");
+      return lines.flatMap((line) => {
+        const [ref = "", sha = ""] = line.split(" ");
+        const match = /^refs\/heads\/mate\/([^/]+)\/([1-9][0-9]*)$/u.exec(ref);
+        return match === null ? [] : [{ mateId: match[1]!, number: Number(match[2]), sha }];
+      });
+    });
+  const missingCommits: HqGit["missingCommits"] = (repo, shas) =>
+    inRepo("missingCommits", repo, async (dir, signal) => {
+      if (shas.some((sha) => !validSha(sha))) throw error("Invalid commit");
+      if (shas.length === 0) return [];
+      const answers = (
+        await run(
+          dir,
+          ["cat-file", "--batch-check=%(objectname) %(objecttype)"],
+          signal,
+          `${shas.join("\n")}\n`,
+        )
+      )
+        .toString()
+        .split("\n");
+      return shas.filter((sha, i) => answers[i] !== `${sha} commit`);
+    });
   const branches: HqGit["branches"] = (repo) =>
     inRepo("branches", repo, async (dir, signal) => {
       const result = await records(
@@ -909,6 +990,10 @@ export const makeOperations = (
     });
   return {
     changeHead,
+    bundle,
+    tags,
+    changeRefs,
+    missingCommits,
     onMain,
     mergeBase,
     range,

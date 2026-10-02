@@ -392,6 +392,79 @@ describe("git operations", () => {
   );
 });
 
+describe("a repository's backup", () => {
+  it.live("bundles a repository whole, and makes it again from the bundle", () =>
+    fixture(async (git, dir) => {
+      const main = await write(git, { "a.txt": "a\n" }, null);
+      const change = await branch(git, dir, main, { "b.txt": "b\n" });
+      expect(await value(git.createTag(repo, "v0.1.0", main, "web " + main))).toEqual({
+        kind: "created",
+      });
+      const file = NodePath.join(NodePath.dirname(NodePath.dirname(dir)), "repo.bundle");
+      const bundled = await value(git.bundle(repo, file));
+      const refs = Object.fromEntries(bundled.refs.map(({ ref, sha }) => [ref, sha]));
+      expect(refs["refs/heads/main"]).toBe(main);
+      expect(refs["refs/heads/mate/alice/1"]).toBe(change);
+      expect(refs["refs/tags/v0.1.0"]).toBe(await native(dir, ["rev-parse", "refs/tags/v0.1.0"]));
+
+      const copy = { appId: "app", id: "copy" };
+      await value(git.restore(copy, file));
+      const copied = NodePath.join(NodePath.dirname(dir), "copy.git");
+      expect(await native(copied, ["for-each-ref", "--format=%(refname) %(objectname)"])).toBe(
+        await native(dir, ["for-each-ref", "--format=%(refname) %(objectname)"]),
+      );
+      await native(copied, ["fsck", "--full", "--strict"]);
+      // Made again, it is converged like every repository: pushes still only go forward.
+      expect(await native(copied, ["config", "receive.denyNonFastForwards"])).toBe("true");
+      await expect(value(git.restore(copy, file))).rejects.toHaveProperty("reason", "exists");
+    }),
+  );
+  it.live("bundles nothing of a repository with no ref, and makes it again empty", () =>
+    fixture(async (git, dir) => {
+      const file = NodePath.join(NodePath.dirname(NodePath.dirname(dir)), "empty.bundle");
+      expect(await value(git.bundle(repo, file))).toEqual({ refs: [] });
+      await expect(NodeFSP.stat(file)).rejects.toThrow();
+      const copy = { appId: "app", id: "copy" };
+      await value(git.restore(copy, null));
+      expect(await value(git.changeHead(copy, "alice", 1))).toBeNull();
+    }),
+  );
+  it.live("lists tags by their commit, message and date", () =>
+    fixture(async (git) => {
+      const main = await write(git, { "a.txt": "a\n" }, null);
+      await value(git.createTag(repo, "v0.1.0", main, `web ${main}`));
+      const tags = await value(git.tags(repo));
+      expect(tags.truncated).toBe(false);
+      expect(tags.items.map(({ name, sha, message }) => [name, sha, message])).toEqual([
+        ["v0.1.0", main, `web ${main}`],
+      ]);
+      expect(Number.isNaN(Date.parse(tags.items[0]!.taggedAt))).toBe(false);
+    }),
+  );
+  it.live("lists every change branch by its Mate and number", () =>
+    fixture(async (git, dir) => {
+      expect(await value(git.changeRefs(repo))).toEqual([]);
+      const main = await write(git, { "a.txt": "a\n" }, null);
+      const one = await branch(git, dir, main, { "b.txt": "b\n" }, 1);
+      await native(dir, ["update-ref", "refs/heads/mate/bob/12", one]);
+      await native(dir, ["update-ref", "refs/heads/core/build", one]);
+      expect(await value(git.changeRefs(repo))).toEqual([
+        { mateId: "alice", number: 1, sha: one },
+        { mateId: "bob", number: 12, sha: one },
+      ]);
+    }),
+  );
+  it.live("names the commits a repository lacks", () =>
+    fixture(async (git, dir) => {
+      const main = await write(git, { "a.txt": "a\n" }, null);
+      const tree = await native(dir, ["rev-parse", `${main}^{tree}`]);
+      const absent = "f".repeat(40);
+      expect(await value(git.missingCommits(repo, [main, tree, absent]))).toEqual([tree, absent]);
+      expect(await value(git.missingCommits(repo, []))).toEqual([]);
+    }),
+  );
+});
+
 describe("main's own history", () => {
   it.live("says whether a commit is main's head or before it, and nothing else is", () =>
     fixture(async (git, dir) => {

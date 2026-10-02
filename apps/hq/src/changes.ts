@@ -54,6 +54,7 @@ import { GitHost, type PushedChange, mainOf } from "./gitHost.ts";
 import { heldOf } from "./held.ts";
 import { Leader, type NotLeader } from "./leader.ts";
 import { Roles } from "./roles.ts";
+import { squashesOnMain } from "./squashes.ts";
 import type { ZeropsError } from "./zerops/api.ts";
 
 export class ChangeRefused extends Schema.TaggedError<ChangeRefused>()("ChangeRefused", {
@@ -148,7 +149,7 @@ export class Changes extends Context.Service<
       projectId: string,
       repo: string,
       title: string,
-    ) => Effect.Effect<OpenChangeResponse, MateError>;
+    ) => Effect.Effect<OpenChangeResponse, MateError | GitError>;
     /** The Mate's open change `number` in `repo`, retitled, described, or both. */
     readonly editChange: (
       projectId: string,
@@ -271,24 +272,11 @@ const onceEach = (trailers: ReadonlyArray<{ readonly key: string; readonly value
   return found;
 };
 
-/**
- * The squash of a Mate's change among `main`'s latest commits, by the `Mate-Change` trailer the git
- * layer gives every squash; none past them.
- */
+/** The squash of a Mate's change among `main`'s latest commits (`squashes.ts`); none past them. */
 const squashOnMain = (git: HqGit, repo: Repo, mateId: string, number: number) =>
   Effect.map(
-    git.log(repo, "refs/heads/main", { limit: 100 }),
-    (log) =>
-      log.items.find((commit) =>
-        (
-          commit.message
-            .trimEnd()
-            .split(/\n[ \t]*\n/u)
-            .at(-1) ?? ""
-        )
-          .split("\n")
-          .some((line) => line.trim() === `Mate-Change: ${mateId}/${String(number)}`),
-      )?.sha ?? null,
+    squashesOnMain(git, repo),
+    (found) => found.get(`${mateId}/${String(number)}`) ?? null,
   );
 
 /** What a try of a landing squashes onto — `main` as it read it — or why it stops short (`stop`). */
@@ -857,6 +845,7 @@ export const changesLayer: Layer.Layer<
         Effect.gen(function* () {
           const appId = yield* mateApp(projectId, "open_change");
           const columns = sql.literal(CHANGE_COLUMNS);
+          const git = yield* gitHost.git;
           return yield* touched(
             leader.write(
               Effect.gen(function* () {
@@ -869,9 +858,16 @@ export const changesLayer: Layer.Layer<
                 WHERE app_id = ${appId}::uuid AND repo = ${repo}
                   AND mate_project_id = ${projectId} AND state = 'open'`;
                 if (open !== undefined) return { change: changeOf(open), created: false };
+                // Past every change branch too, recorded or not: a branch a restore's records
+                // lack is never a new change's.
+                const branched = (yield* git.changeRefs({ appId, id: repo })).reduce(
+                  (highest, ref) => Math.max(highest, ref.number),
+                  0,
+                );
                 const [made] = yield* sql<ChangeRow>`
                 INSERT INTO hq_change (app_id, repo, number, mate_project_id, title)
-                SELECT ${appId}::uuid, ${repo}, COALESCE(MAX(number), 0) + 1, ${projectId}, ${title}
+                SELECT ${appId}::uuid, ${repo}, GREATEST(COALESCE(MAX(number), 0), ${branched}) + 1,
+                  ${projectId}, ${title}
                 FROM hq_change WHERE app_id = ${appId}::uuid AND repo = ${repo}
                 RETURNING ${columns}`;
                 // `INSERT … RETURNING` answers the row it inserted, or fails.
