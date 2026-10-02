@@ -7,7 +7,7 @@ const rows = (next: WhatHappensNext) => next.steps.map((step) => [step.words, st
 
 // Board D1 (2026-09-30): both dialogs end with what happens after the press, with honest times.
 // A Mate added to a project with code is up in about 1½–2 minutes and signed in by its person,
-// then sets up development, deploying the project's code, in about 6–10 minutes; they can leave
+// then sets up development, deploying the project's code, in up to 15 minutes; they can leave
 // meanwhile. The project's first Mate, with nothing to deploy yet, is told what to build.
 describe("newMateNext — what happens once a Mate is added", () => {
   it.each([
@@ -17,7 +17,7 @@ describe("newMateNext — what happens once a Mate is added", () => {
       steps: [
         ["Wren comes up", "about 1½–2 min"],
         ["You sign Wren in with your Claude or ChatGPT subscription", undefined],
-        ["Wren sets up development, deploying Beviro's code", "about 6–10 min"],
+        ["Wren sets up development, deploying Beviro's code", "up to 15 min"],
       ],
       note: "You can leave meanwhile.",
     },
@@ -27,7 +27,7 @@ describe("newMateNext — what happens once a Mate is added", () => {
       steps: [
         ["Wren comes up", "about 1½–2 min"],
         ["You sign Wren in with your Claude or ChatGPT subscription", undefined],
-        ["Wren sets up development, deploying Beviro's code", "about 6–10 min"],
+        ["Wren sets up development, deploying Beviro's code", "up to 15 min"],
       ],
       note: "You can leave meanwhile.",
     },
@@ -37,7 +37,7 @@ describe("newMateNext — what happens once a Mate is added", () => {
       steps: [
         ["Quinn comes up", "about 1½–2 min"],
         ["You sign Quinn in with your Claude or ChatGPT subscription", undefined],
-        ["Quinn sets up development, deploying Acme Docs' code", "about 6–10 min"],
+        ["Quinn sets up development, deploying Acme Docs' code", "up to 15 min"],
       ],
       note: "You can leave meanwhile.",
     },
@@ -57,7 +57,7 @@ describe("newMateNext — what happens once a Mate is added", () => {
       steps: [
         ["The Mate comes up", "about 1½–2 min"],
         ["You sign the Mate in with your Claude or ChatGPT subscription", undefined],
-        ["The Mate sets up development, deploying Beviro's code", "about 6–10 min"],
+        ["The Mate sets up development, deploying Beviro's code", "up to 15 min"],
       ],
       note: "You can leave meanwhile.",
     },

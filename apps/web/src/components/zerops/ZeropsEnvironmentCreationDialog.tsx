@@ -151,7 +151,7 @@ export function PressingPanel({ pressing }: { readonly pressing: PressingView })
         <DialogDescription>
           {pressing.failed ??
             pressing.notice ??
-            "Keep this open for a few seconds: after this it needs nobody."}
+            "Keep this open for about half a minute: after this it needs nobody."}
         </DialogDescription>
       </DialogHeader>
       <DialogPanel>

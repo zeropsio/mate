@@ -110,7 +110,7 @@ describe("ZeropsEnvironmentCreationForm while it presses", () => {
 
   it("asks to be kept open while it runs, with nothing to press", () => {
     const html = render({ pressing: { name: "Ada", steps: steps.slice(0, 2) } });
-    expect(html).toContain("Keep this open for a few seconds");
+    expect(html).toContain("Keep this open for about half a minute");
     expect(html).not.toContain("Open Ada");
   });
 });
