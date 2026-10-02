@@ -61,6 +61,7 @@ const app = vi.hoisted(() => ({
   connect: vi.fn(async (_target: unknown) => ({ _tag: "Success" as const })),
   onScreen: vi.fn((_projectId: string | null) => undefined),
   openMate: vi.fn(),
+  refresh: vi.fn(),
   handingOver: vi.fn(),
   link: { key: undefined, environmentId: undefined, reachability: null } as unknown,
   listing: { state: "unread", waitingFor: null } as unknown,
@@ -98,7 +99,7 @@ vi.mock("~/zerops/accountEnvironments", () => ({
 const environments = { setOnScreen: (projectId: string | null) => app.onScreen(projectId) };
 vi.mock("~/zerops/useOpenMate", () => ({ useOpenMate: () => app.openMate }));
 vi.mock("~/zerops/useZeropsCandidates", () => ({
-  useZeropsCandidates: () => ({ listing: app.listing }),
+  useZeropsCandidates: () => ({ listing: app.listing, refresh: app.refresh }),
 }));
 // The menu's verbs: none offered on these Mates, which are all whole.
 vi.mock("~/zerops/useMateActions", () => ({
@@ -213,6 +214,7 @@ beforeEach(() => {
   app.connect.mockClear();
   app.onScreen.mockClear();
   app.openMate.mockClear();
+  app.refresh.mockClear();
   app.handingOver.mockClear();
   app.listing = listingOf([QUINN]);
   app.threads = [];
@@ -653,6 +655,34 @@ describe("a new Mate's arrival, from the press to the sign-in", () => {
     app.listing = { ...listingOf([]), asOf: { ordinal: 3, atMs: 1_000 + 120_000 } };
     act(() => tree?.update(h(ZeropsMateComingPage, { projectId: PROJECT })));
     expect(kind()).toBe("unreachable");
+  });
+
+  it("reads its organization's projects again once, when it is still not listed a minute on", () => {
+    // Deleted while the organization's socket is live: a push takes it off the listing, whose
+    // time stays the full read's, moments after the creation.
+    const madeAt = Date.now();
+    app.creations = { [PROJECT]: { ...QUINN_MADE, at: madeAt } };
+    app.listing = { ...listingOf([]), asOf: { ordinal: 2, atMs: madeAt + 5_000 } };
+    openView();
+    expect(kind()).toBe("coming");
+    act(() => vi.advanceTimersByTime(30_000));
+    expect(app.refresh).not.toHaveBeenCalled();
+    act(() => vi.advanceTimersByTime(40_000));
+    expect(app.refresh).toHaveBeenCalledOnce();
+    // The fresh read lacks it: it is gone.
+    app.listing = { ...listingOf([]), asOf: { ordinal: 3, atMs: madeAt + 70_000 } };
+    act(() => tree?.update(h(ZeropsMateComingPage, { projectId: PROJECT })));
+    expect(kind()).toBe("unreachable");
+    act(() => vi.advanceTimersByTime(120_000));
+    expect(app.refresh).toHaveBeenCalledOnce();
+  });
+
+  it("never reads them again for a creation the listing holds", () => {
+    const madeAt = Date.now();
+    app.creations = { [PROJECT]: { ...QUINN_MADE, at: madeAt } };
+    openView();
+    act(() => vi.advanceTimersByTime(120_000));
+    expect(app.refresh).not.toHaveBeenCalled();
   });
 
   it("says why once it came up here and its container stopped", () => {
