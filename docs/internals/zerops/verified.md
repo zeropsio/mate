@@ -1881,20 +1881,35 @@ apps/mobile/src/features/cloud`
   the provider registry only through `spi/providerInstances.ts` — zone rule 2 green again.
   - _How it was established:_ `ZeropsAgentAuthVerify.test.ts` (21), `ZeropsAgentAuthIo.test.ts`,
     `ZeropsAgentAuthWatcher.test.ts`, `scripts/z3-zone-architecture.test.ts` 4/4
-- **Login is server-driven**: `zerops.agentLogin.start {agentId, threadId}` opens an
-  `agent-login-<agent>` terminal, writes the command, feeds the PTY bytes to a near-verbatim port of
-  the Zerops GUI walker's pure output parser (`zeropsAgentLoginOutputParser.ts`: chunk-boundary-safe
-  URL anchors, OSC 8, DEC graphics; 16 ported tests) and handler table trimmed to claude-code/codex,
-  with the walker's stall timer pressing Enter through any unrecognized screen (Claude's
-  login-method menu included); the feed's `login` field carries `phase` (`starting | menu |
-awaiting-browser | awaiting-code | succeeded | failed | cancelled`), `url`, `code`, `message`,
-  `terminalId`; success triggers `ZeropsAgentAuth.recheckNow`; one session per agent;
-  `zerops.agentLogin.cancel` sends Ctrl-C and closes. The card renders "Open sign-in link" + "Copy
-  link" (+ "Copy code" for Codex) and no longer types into a client terminal. The raw PTY stream
-  carries no newline at the soft-wrap point — the wrapping seen in F8 was the client terminal's
-  rendering.
-  - _How it was established:_ `ZeropsAgentLogin.test.ts` (9), `zeropsAgentLoginWalker.test.ts` (17)
-    fixtured on the F8 ledger lines; web card tests
+- **Login is server-driven**: `zerops.agentLogin.start {agentId, threadId, loginId?}` opens an
+  `agent-login-<key>` terminal (the agent id for a default login, the login's id for any other),
+  writes the command, feeds the PTY bytes to a near-verbatim port of the Zerops GUI walker's pure
+  output parser (`zeropsAgentLoginOutputParser.ts`: chunk-boundary-safe URL anchors, OSC 8, DEC
+  graphics; 16 ported tests) and handler table trimmed to claude-code/codex, with the walker's stall
+  timer pressing Enter through any unrecognized screen (Claude's login-method menu included); the
+  feed's `login` field carries `phase` (`starting | menu | awaiting-browser | awaiting-code |
+succeeded | failed | cancelled`), `url`, `code`, `message`, `terminalId`. The CLI signs in in a
+  scratch home `~/.mate/pending/<key>` (`CLAUDE_CONFIG_DIR` / `CODEX_HOME`; Claude's seeded through
+  `seedClaudeConfig`, Codex's a shadow home over `~/.codex` via `spi/driverHomes.codexShadowHome`),
+  never in the home the login works with. A success waits up to 5 s for the credential to land
+  there, moves it into the login's own home by one rename (for Claude, `oauthAccount` into that
+  login's `.claude.json`), then saves the signer, triggers `ZeropsAgentAuth.recheckNow` (another
+  login: its own check), closes the terminal, and drops the scratch home. A cancel, a failure, an
+  exit, a restart, or a success that left no credential leaves the working credential as it was. A
+  server clears `~/.mate/pending` at boot, and each start clears its own leftover. One session per
+  login; `zerops.agentLogin.cancel` sends Ctrl-C and closes. The card renders "Open sign-in link" +
+  "Copy link" (+ "Copy code" for Codex) and no longer types into a client terminal. The raw PTY
+  stream carries no newline at the soft-wrap point — the wrapping seen in F8 was the client
+  terminal's rendering.
+  - _How it was established:_ `ZeropsAgentLogin.test.ts` (68, including real-home rows for the
+    Claude and Codex default and extra logins: cancel, success with signer and flag, CLI exit,
+    restart, no credential, credential landing 1 s late, a colleague's attempt),
+    `zeropsAgentLoginWalker.test.ts` (17) fixtured on the F8 ledger lines, `spi/driverHomes.test.ts`
+    (`codexShadowHome`), web card tests. Codex writes `auth.json` before its success line: measured
+    on Toby 2026-10-02 (`auth.json` 21:44:57.147, the server's save on success 21:44:57.174).
+    `CODEX_HOME` redirects `codex login`: local probe, codex-cli 0.159.2. `CLAUDE_CONFIG_DIR` keeps
+    `.credentials.json`: Claude Code docs, IAM "Credential management". Not live-run on a rig since
+    the scratch home landed (int 95d2af8a6f).
 - Not proven offline: Codex's exact success/error lines beyond `Logged in using <method>` / `Not
 logged in` (ported from the GUI walker), which stream Codex writes to (both are read), and the
   Claude menu text (the walker never matches it — it Enters on stall). The `ws.ts` feed handler
