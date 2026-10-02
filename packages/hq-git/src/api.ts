@@ -13,6 +13,14 @@ export interface Repo {
   readonly appId: string;
   readonly id: string;
 }
+/** A smart HTTP service: a fetch's or a push's. */
+export type GitService = "git-upload-pack" | "git-receive-pack";
+/** What a request asks: its repository, its operation, and the service it is of (none: unknown). */
+export interface GitTarget {
+  readonly repo: Repo;
+  readonly operation: "info/refs" | "git-upload-pack" | "git-receive-pack";
+  readonly service: GitService | null;
+}
 export interface RefUpdate {
   readonly oldSha: string;
   readonly newSha: string;

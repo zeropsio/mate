@@ -19,7 +19,15 @@
 import type * as NodeHttp from "node:http";
 
 import * as NodeHttpServerRequest from "@effect/platform-node/NodeHttpServerRequest";
-import { type GitEvent, type HqGit, type Principal, type Repo, makeHqGit } from "@t3tools/hq-git";
+import {
+  type GitEvent,
+  type GitService,
+  type HqGit,
+  type Principal,
+  type Repo,
+  gitTarget,
+  makeHqGit,
+} from "@t3tools/hq-git";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Duration from "effect/Duration";
@@ -49,15 +57,21 @@ export class GitHost extends Context.Service<
     /** The git layer, while this Core leads and has it open. */
     readonly git: Effect.Effect<HqGit, NotLeader>;
     /**
-     * Serves one git request for `principal` with the layer's smart HTTP; ends with the response.
-     * The layer serves a repository only where `mayRead` allows it, and then applies its own write
-     * rules to a push.
+     * Serves one git request with the layer's smart HTTP; ends with the response. `decide` is told
+     * the repository and the service as the layer itself reads the request — a fetch's or a push's,
+     * so a verb is never chosen on another reading of its address — and answers who serves it, or
+     * fails, and the layer serves nothing; a request the layer reads as no service is the layer's
+     * to refuse. The layer then serves a repository only where `mayRead` allows it, and applies its
+     * own write rules to a push.
      */
-    readonly serve: (
-      principal: MatePrincipal,
+    readonly serve: <E, R>(
       request: HttpServerRequest.HttpServerRequest,
+      decide: (target: {
+        readonly repo: Repo;
+        readonly service: GitService;
+      }) => Effect.Effect<MatePrincipal, E, R>,
       mayRead: (repo: Repo) => Effect.Effect<boolean>,
-    ) => Effect.Effect<void, NotLeader>;
+    ) => Effect.Effect<void, E | NotLeader, R>;
     /** Closes the layer for good: on shutdown, before the lead is given up. */
     readonly close: Effect.Effect<void>;
     /** Ticks after the log has followed a ref that moved, starting with the current tick. */
@@ -66,6 +80,9 @@ export class GitHost extends Context.Service<
 >()("@t3tools/hq/gitHost") {}
 
 const CHANGE_REF = /^refs\/heads\/mate\/([^/]+)\/([1-9][0-9]*)$/u;
+
+/** Where the layer serves the repositories: its default, `/git/<appId>/<repo>.git`. */
+const GIT_PREFIX = "/git";
 
 /** `main`'s head in `repo`, none while it is unborn. */
 export const mainOf = (git: HqGit, repo: Repo) =>
@@ -354,13 +371,17 @@ export const gitHostLayer = (options: {
       );
       return GitHost.of({
         git,
-        serve: (principal, request, mayRead) =>
+        serve: (request, decide, mayRead) =>
           Effect.gen(function* () {
             const layer = yield* git;
             const req = NodeHttpServerRequest.toIncomingMessage(request);
             const res = NodeHttpServerRequest.toServerResponse(request);
-            principals.set(req, principal);
-            readers.set(principal, mayRead);
+            const target = gitTarget(GIT_PREFIX, req.url ?? "");
+            if (target !== null && target.service !== null) {
+              const principal = yield* decide({ repo: target.repo, service: target.service });
+              principals.set(req, principal);
+              readers.set(principal, mayRead);
+            }
             yield* Effect.callback<void>((resume) => {
               res.once("close", () => resume(Effect.void));
               layer.handler(req, res);

@@ -211,7 +211,7 @@ describe("a Mate's changes in HQ", () => {
         assert.notStrictEqual(elsewhere.code, 0);
         assert.include(elsewhere.stderr, "403");
         // A fetch is `fetch_repo`'s to refuse; a push passes `open_change` in its own application
-        // and is still refused the other's repository, by `fetch_repo` in the layer.
+        // and is still refused the other's repository, by `fetch_repo`.
         const refs = (service: string) =>
           call("GET", `/git/${shop.appId}/appdev.git/info/refs?service=${service}`, {
             headers: {
@@ -244,7 +244,10 @@ describe("a Mate's changes in HQ", () => {
         assert.strictEqual(yield* knock(undefined), 401);
         assert.strictEqual(yield* knock(shop.credential), 200);
         const pushing = yield* refs("git-receive-pack");
-        assert.deepStrictEqual([pushing.status, pushing.body], [403, "App read access refused\n"]);
+        assert.deepStrictEqual(
+          [pushing.status, pushing.body],
+          [403, { code: "forbidden", reason: "not_your_app" }],
+        );
         // No credential, a forged one, or a user other than `mate`: git is asked for one.
         for (const remote of [
           `${origin}/git/${shop.appId}/appdev.git`,
@@ -882,6 +885,41 @@ describe("a Mate's changes in HQ", () => {
           assert.strictEqual(retitled.changes[0]?.["title"], "Add a login page");
           assert.deepStrictEqual(yield* link.quiet("300 millis"), []);
           assert.deepStrictEqual(yield* devSocket.quiet("1 millis"), []);
+        }),
+    );
+
+    it.effect(
+      "git decides a push as the git layer reads the request, however its address is spelled",
+      () =>
+        Effect.gen(function* () {
+          // The org's view kept long, no reconcile: a fetch reads it as kept, a push as it is now.
+          const { call, fake } = yield* startCore(true, {
+            viewTtl: Duration.minutes(5),
+            reconcileEvery: Duration.minutes(5),
+          });
+          yield* untilHealth(call, "active");
+          const owner = yield* sessionFor(call, "door-owner");
+          const { appId, credential } = yield* mateWithChange(call, fake, owner);
+          const advertise = (query: string) =>
+            call("GET", `/git/${appId}/appdev.git/info/refs?${query}`, {
+              headers: {
+                authorization: `Basic ${Buffer.from(`mate:${credential}`).toString("base64")}`,
+              },
+            });
+          assert.strictEqual((yield* advertise("service=git-upload-pack")).status, 200);
+          // Zerops no longer has the Mate's project; HQ's kept view still does.
+          fake.projects.splice(
+            fake.projects.findIndex((project) => project.id === "P_MATE"),
+            1,
+          );
+          assert.strictEqual((yield* advertise("service=git-upload-pack")).status, 200);
+          // The layer reads everything past the first `?` as the query: this is a push's
+          // advertisement, so `open_change` decides it, over the org read now.
+          const push = yield* advertise("x=1?&service=git-receive-pack");
+          assert.deepStrictEqual(
+            [push.status, push.body],
+            [404, { code: "project_not_found", reason: "project_gone" }],
+          );
         }),
     );
   });

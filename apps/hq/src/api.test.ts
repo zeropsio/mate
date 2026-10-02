@@ -799,6 +799,38 @@ describe("HQ API", () => {
         }),
     );
 
+    it.effect("a Mate's push is refused another application's repository: not_your_app", () =>
+      Effect.gen(function* () {
+        const { call, fake } = yield* startCore(true);
+        yield* untilHealth(call, "active");
+        const owner = yield* sessionFor(call, "door-owner");
+        const appOf = (name: string) =>
+          Effect.map(
+            call("POST", "/api/apps", { session: owner, body: { name } }),
+            (answer) => (answer.body as { readonly id: string }).id,
+          );
+        const [a, b] = [yield* appOf("A"), yield* appOf("B")];
+        yield* call("POST", `/api/apps/${a}/projects`, {
+          session: owner,
+          body: { projectId: "P_MATE", kind: "mate", mate: { name: "Ada", face: "face-1" } },
+        });
+        const credential = yield* enrollMate(call, fake, "P_MATE");
+        const advertised = yield* call(
+          "GET",
+          `/git/${b}/x.git/info/refs?service=git-receive-pack`,
+          {
+            headers: {
+              authorization: `Basic ${Buffer.from(`mate:${credential}`).toString("base64")}`,
+            },
+          },
+        );
+        assert.deepStrictEqual(
+          [advertised.status, advertised.body],
+          [403, { code: "forbidden", reason: "not_your_app" }],
+        );
+      }),
+    );
+
     it.effect("an HQ that is not the official one answers its API 503 not_active", () =>
       Effect.gen(function* () {
         const { call } = yield* startCore(false);

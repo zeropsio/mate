@@ -1,5 +1,5 @@
 import { describe, expect, it } from "@effect/vitest";
-import { HttpError, pkt, readPush, refusalReport } from "./protocol.ts";
+import { HttpError, gitTarget, pkt, readPush, refusalReport } from "./protocol.ts";
 
 const command = (ref = "refs/heads/mate/alice/1", shaLength = 40) =>
   `${"0".repeat(shaLength)} ${"1".repeat(shaLength)} ${ref}`;
@@ -76,5 +76,30 @@ describe("receive command framing", () => {
     expect(report).toContain("ng refs/heads/main read_only ng injected \n");
     expect(report).toContain("ng refs/heads/topic other_ref_refused\n");
     expect(report).not.toContain("\nng injected");
+  });
+});
+
+describe("a request's target", () => {
+  const repo = { appId: "app", id: "repo" };
+  it.each([
+    ["/git/app/repo.git/info/refs?service=git-upload-pack", "info/refs", "git-upload-pack"],
+    ["/git/app/repo.git/info/refs?service=git-receive-pack", "info/refs", "git-receive-pack"],
+    ["/git/app/repo.git/git-upload-pack", "git-upload-pack", "git-upload-pack"],
+    ["/git/app/repo.git/git-receive-pack", "git-receive-pack", "git-receive-pack"],
+    // Everything after the first `?` is the query, whatever else it holds.
+    ["/git/app/repo.git/info/refs?x=1?&service=git-receive-pack", "info/refs", "git-receive-pack"],
+    ["/git/app/repo.git/info/refs?service=git-bogus", "info/refs", null],
+    ["/git/app/repo.git/info/refs", "info/refs", null],
+  ])("reads %s as the handler serves it", (url, operation, service) => {
+    expect(gitTarget("/git", url)).toEqual({ repo, operation, service });
+  });
+
+  it.each([
+    "/git/app/repo.git/objects/info/packs",
+    "/git/app/../repo.git/info/refs",
+    "/elsewhere/app/repo.git/info/refs",
+    "/git/app/repo/info/refs",
+  ])("names no repository at %s", (url) => {
+    expect(gitTarget("/git", url)).toBeNull();
   });
 });
