@@ -7,10 +7,7 @@
  *
  * @module test/harness/runningCore
  */
-import * as NodeFS from "node:fs";
 import * as NodeHttp from "node:http";
-import * as NodeOS from "node:os";
-import * as NodePath from "node:path";
 
 import * as NodeHttpServer from "@effect/platform-node/NodeHttpServer";
 import { assert } from "@effect/vitest";
@@ -27,6 +24,7 @@ import * as Schema from "effect/Schema";
 import * as Scope from "effect/Scope";
 import * as HttpServer from "effect/unstable/http/HttpServer";
 
+import { Backup, directoryStore } from "../../src/backup.ts";
 import { coreApp } from "../../src/core.ts";
 import { GitHost } from "../../src/gitHost.ts";
 import { treeMigrations } from "../../src/migrationFiles.ts";
@@ -36,6 +34,7 @@ import {
   type ZeropsMember,
   type ZeropsOwnToken,
 } from "../../src/zerops/api.ts";
+import { tempDir } from "./tempDir.ts";
 import { TempPostgres } from "./tempPostgres.ts";
 import { type FakeWorld, emptyWorld, fakeZeropsApi, fakeZeropsDeploy } from "./zeropsFake.ts";
 
@@ -132,7 +131,8 @@ const world = (now: number, anchored: boolean, orgId: string): FakeWorld => {
  * Core on a fresh database and git root (or the given ones), served over a real Node server on a
  * free port, as the container serves it; requests as `{ status, body, headers }`. `stop` ends it —
  * drain included — before the test does. `gitHost` is its git host, for what only it shows: whether
- * it holds git open, and its record of git's events (`recorded`).
+ * it holds git open, and its record of git's events (`recorded`); `backup` takes a set, staged in
+ * `stagingDir`, into `storeDir`.
  */
 export const startCore = (
   anchored: boolean,
@@ -145,20 +145,41 @@ export const startCore = (
     /** How long the org's view is kept, and how often the structure reconciles; 200 ms each. */
     readonly viewTtl?: Duration.Duration;
     readonly reconcileEvery?: Duration.Duration;
+    /** The directory backup sets are kept in; a fresh one by default. */
+    readonly storeDir?: string;
+    /** Backup with no store: sets are only staged. */
+    readonly storeless?: boolean;
+    /** What happens between a set's dump and its bundles. */
+    readonly afterDump?: Effect.Effect<void>;
+    /** The `pg_dump` a set is taken with; the one on the path. */
+    readonly pgDump?: string;
+    /** The store's quota; none by default. */
+    readonly quotaGb?: number;
+    /** Where sets are staged; a fresh directory by default. */
+    readonly stagingDir?: string;
+    /** How long after the newest set the next is due, and how often that is checked; none. */
+    readonly backupEvery?: Duration.Duration;
+    readonly backupCheck?: Duration.Duration;
   } = {},
 ) =>
   Effect.gen(function* () {
     const url = given.url ?? (yield* (yield* TempPostgres).createDatabase);
-    const gitRoot =
-      given.gitRoot ??
-      (yield* Effect.acquireRelease(
-        Effect.sync(() => NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "hq-git-"))),
-        (root) => Effect.sync(() => NodeFS.rmSync(root, { recursive: true, force: true })),
-      ));
+    const gitRoot = given.gitRoot ?? (yield* tempDir("hq-git-"));
+    const storeDir = given.storeDir ?? (yield* tempDir("hq-backup-"));
+    const stagingDir = given.stagingDir ?? (yield* tempDir("hq-backup-"));
     const fake = world(yield* Clock.currentTimeMillis, anchored, given.orgId ?? "ORG");
     const options = {
       databaseUrl: Redacted.make(url),
       gitRoot,
+      backup: {
+        stagingDir,
+        store: given.storeless === true ? null : directoryStore(storeDir),
+        ...(given.afterDump === undefined ? {} : { afterDump: given.afterDump }),
+        ...(given.pgDump === undefined ? {} : { pgDump: given.pgDump }),
+        ...(given.quotaGb === undefined ? {} : { quotaGb: given.quotaGb }),
+        ...(given.backupEvery === undefined ? {} : { every: given.backupEvery }),
+        ...(given.backupCheck === undefined ? {} : { checkEvery: given.backupCheck }),
+      },
       migrations: treeMigrations(),
       hqProjectId: HQ,
       credential: Option.some(Redacted.make("hq")),
@@ -287,6 +308,9 @@ export const startCore = (
       stop,
       socket,
       gitHost: Context.get(context, GitHost),
+      backup: Context.get(context, Backup),
+      storeDir,
+      stagingDir,
     };
   });
 

@@ -153,19 +153,9 @@ export {
 } from "./autoConnect.ts";
 export {
   deriveGiteaState,
-  GITEA_ADMIN_PASSWORD_ENV_KEY,
-  GITEA_ADMIN_TOKEN_ENV_KEY,
-  GITEA_ADMIN_USER_COMMAND,
-  GITEA_BROKER_SERVICE,
-  GITEA_ADMIN_USER_ENV_KEY,
-  GITEA_HTTP_PORT,
   partitionZeropsToolProjects,
   readZeropsToolKind,
-  type ZeropsGiteaPhase,
-  type ZeropsGiteaProbe,
-  type ZeropsGiteaSetupStep,
   type ZeropsGiteaState,
-  type ZeropsGiteaStepState,
   type ZeropsToolKind,
   type ZeropsToolProject,
 } from "./tools.ts";

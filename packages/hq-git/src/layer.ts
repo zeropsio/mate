@@ -96,6 +96,7 @@ export const makeHqGit = (options: HqGitOptions): Effect.Effect<HqGit, GitError,
       source?: string,
       credentials?: ImportCredentials,
       changeHeads: ReadonlyArray<ImportedChangeHead> = [],
+      bundle?: string,
     ) => {
       const dest = directory(repo);
       const from =
@@ -127,6 +128,23 @@ export const makeHqGit = (options: HqGitOptions): Effect.Effect<HqGit, GitError,
           signal,
         });
         await converge(runner, repoPath, signal);
+        if (bundle !== undefined) {
+          await runner.run(
+            [
+              "-c",
+              "protocol.file.allow=always",
+              "-C",
+              repoPath,
+              "fetch",
+              "--no-write-fetch-head",
+              "--",
+              bundle,
+              "+refs/*:refs/*",
+            ],
+            { signal },
+          );
+          await converge(runner, repoPath, signal);
+        }
         if (from) {
           // Environment config avoids both credential URLs and askpass prompt argv.
           const env: Record<string, string> = credentials
@@ -249,6 +267,10 @@ export const makeHqGit = (options: HqGitOptions): Effect.Effect<HqGit, GitError,
       return found;
     };
     const create: HqGit["create"] = (repo) => attempt("create", (signal) => build(repo, signal));
+    const restore: HqGit["restore"] = (repo, bundle) =>
+      attempt("restore", (signal) =>
+        build(repo, signal, undefined, undefined, [], bundle === null ? undefined : bundle),
+      );
     const importRepo: HqGit["import"] = (repo, source, credentials, changeHeads) =>
       attempt("import", (signal) => build(repo, signal, source, credentials, changeHeads));
     const list: HqGit["list"] = (appId) =>
@@ -296,5 +318,5 @@ export const makeHqGit = (options: HqGitOptions): Effect.Effect<HqGit, GitError,
       try: () => makeHandler(options, runner, locate, emit),
       catch: (error) => failure("handler", error),
     });
-    return { create, import: importRepo, list, convergeRepo, handler, ...operations };
+    return { create, restore, import: importRepo, list, convergeRepo, handler, ...operations };
   });

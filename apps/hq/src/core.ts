@@ -21,6 +21,7 @@ import type * as Redacted from "effect/Redacted";
 import * as HttpRouter from "effect/unstable/http/HttpRouter";
 
 import { apiRoutes } from "./api.ts";
+import { type BackupOptions, backupLayer } from "./backup.ts";
 import { changesLayer } from "./changes.ts";
 import { deploysLayer } from "./deploys.ts";
 import { doorLayer } from "./door.ts";
@@ -51,6 +52,8 @@ export interface CoreOptions {
   readonly gitRoot: string;
   /** Where the migration's bundles lie: the volume's `/mnt/vol/import`; none takes no import. */
   readonly importRoot?: string;
+  /** Where a backup set is staged, the store it is kept in, and how often (`backup.ts`). */
+  readonly backup: Omit<BackupOptions, "databaseUrl">;
   readonly migrations: ReadonlyArray<Migration>;
   readonly hqProjectId: string;
   /** `HQ_ORG_TOKEN`. */
@@ -109,12 +112,15 @@ const services = (options: CoreOptions) => {
     streamTicketsLayer,
     mateLinkTicketsLayer,
     liveSocketsLayer,
-    importsLayer({
-      importRoot: options.importRoot,
-      hqProjectId: options.hqProjectId,
-      credential: options.credential,
-      ...(options.importPoll === undefined ? {} : { poll: options.importPoll }),
-    }).pipe(
+    Layer.mergeAll(
+      importsLayer({
+        importRoot: options.importRoot,
+        hqProjectId: options.hqProjectId,
+        credential: options.credential,
+        ...(options.importPoll === undefined ? {} : { poll: options.importPoll }),
+      }),
+      backupLayer({ databaseUrl: options.databaseUrl, ...options.backup }),
+    ).pipe(
       Layer.provideMerge(
         deploysLayer().pipe(
           Layer.provideMerge(releasesLayer),

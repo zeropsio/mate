@@ -3,7 +3,7 @@ import { MERGE_REFUSALS } from "@t3tools/shared/hqChanges";
 import { RELEASE_REFUSALS } from "@t3tools/shared/hqRelease";
 import { REASONS } from "@t3tools/shared/zeropsPermissions";
 
-import { hqRefusalWords } from "./refusals.ts";
+import { enrollmentRefusalWords, hqRefusalWords } from "./refusals.ts";
 
 describe("hqRefusalWords — HQ's refusal, in the person's words", () => {
   it.each([...REASONS])("says %s in words of its own, never the code", (reason) => {
@@ -108,5 +108,22 @@ describe("hqRefusalWords — HQ's refusal, in the person's words", () => {
     expect(hqRefusalWords({ code: "too_large", reason: undefined })).toBe(
       "HQ refused this (too_large).",
     );
+  });
+});
+
+// zcp's enrollment, refused (`MateRefused` in `apps/hq/src/mateCredentials.ts`): what stands, and
+// what the person can do — or that it tries again on its own.
+describe("enrollmentRefusalWords — HQ's refusal of a Mate's enrollment", () => {
+  it.each([
+    ["not_a_mate", "HQ has no record of this Mate yet. Finish its setup from its menu."],
+    ["project_not_in_org", "Its Zerops project is not in this HQ's organization."],
+    ["project_gone", "Its Zerops project is gone."],
+    ["env_mismatch", "HQ could not check its Zerops project yet. It tries again on its own."],
+    ["expired", "HQ could not check its Zerops project yet. It tries again on its own."],
+    ["unknown_nonce", "HQ could not check its Zerops project yet. It tries again on its own."],
+    ["later_code", "HQ refused it (later_code). It tries again on its own."],
+    [undefined, "HQ refused it. It tries again on its own."],
+  ] as const)("%s", (code, words) => {
+    expect(enrollmentRefusalWords(code)).toBe(words);
   });
 });

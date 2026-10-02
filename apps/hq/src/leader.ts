@@ -69,6 +69,14 @@ export class Leader extends Context.Service<
      * the next Core takes it — and stays a standby. For shutdown (`core.ts`).
      */
     readonly release: Effect.Effect<void>;
+    /**
+     * Serves nothing from now on, yet keeps the lock, so no other Core leads either — `reason`
+     * says why, in `/health` — until this Core stops: what its records and git disagree on, which
+     * no Core may serve (`reconcile.ts`).
+     */
+    readonly hold: (reason: string) => Effect.Effect<void>;
+    /** Why this Core holds the lock and serves nothing, if it does. */
+    readonly held: Effect.Effect<string | null>;
     readonly write: <A, E, R>(
       effect: Effect.Effect<A, E, R>,
     ) => Effect.Effect<A, E | NotLeader | SqlError, R>;
@@ -99,20 +107,32 @@ const SESSION_SETTINGS = [
   "SET tcp_keepalives_count = 3",
 ] as const;
 
-/** The status, and whether its `failed` is a migration's, which only leading clears. */
+/**
+ * The status, whether its `failed` is a migration's, which only leading clears, and why this Core
+ * holds the lock serving nothing (`hold`), which nothing clears.
+ */
 interface Internal extends LeaderStatus {
   readonly migrationFailed: boolean;
+  readonly held: string | null;
 }
 
-const STANDBY: Internal = { state: "standby", epoch: null, migrationFailed: false };
-const MIGRATION_FAILED: Internal = { state: "failed", epoch: null, migrationFailed: true };
+const STANDBY: Internal = { state: "standby", epoch: null, migrationFailed: false, held: null };
+const MIGRATION_FAILED: Internal = {
+  state: "failed",
+  epoch: null,
+  migrationFailed: true,
+  held: null,
+};
 
-/** The database answered: a standby, unless a migration failed before. */
-const reached = (current: Internal): Internal => (current.migrationFailed ? current : STANDBY);
+/** The database answered: a standby, unless a migration failed before or this Core is held. */
+const reached = (current: Internal): Internal =>
+  current.migrationFailed || current.held !== null ? current : STANDBY;
 
 /** The database did not answer. */
 const unreachable = (current: Internal): Internal =>
-  current.migrationFailed ? current : { state: "failed", epoch: null, migrationFailed: false };
+  current.migrationFailed || current.held !== null
+    ? current
+    : { state: "failed", epoch: null, migrationFailed: false, held: null };
 
 /** A session ended: a standby again if it had reached the database and failed nothing on the way. */
 const ended = (current: Internal): Internal => (current.state === "failed" ? current : STANDBY);
@@ -144,6 +164,7 @@ export const leaderLayer = (
         state: "starting",
         epoch: null,
         migrationFailed: false,
+        held: null,
       });
 
       /**
@@ -195,7 +216,12 @@ export const leaderLayer = (
         const epoch = schemaThere
           ? yield* Effect.tap(raise, () => runMigrations)
           : yield* Effect.andThen(runMigrations, raise);
-        yield* SubscriptionRef.set(status, { state: "active", epoch, migrationFailed: false });
+        yield* SubscriptionRef.set(status, {
+          state: "active",
+          epoch,
+          migrationFailed: false,
+          held: null,
+        });
 
         const check = withinTimeout(
           readEpoch(connection, "SELECT epoch FROM hq_leader WHERE id = 1"),
@@ -230,6 +256,14 @@ export const leaderLayer = (
           Stream.changesWith((a, b) => a.state === b.state && a.epoch === b.epoch),
         ),
         release: Effect.andThen(Fiber.interrupt(loop), SubscriptionRef.set(status, STANDBY)),
+        hold: (reason) =>
+          SubscriptionRef.set(status, {
+            state: "failed",
+            epoch: null,
+            migrationFailed: false,
+            held: reason,
+          }),
+        held: Effect.map(SubscriptionRef.get(status), (current) => current.held),
         write: (effect) =>
           Effect.gen(function* () {
             const { state, epoch } = yield* SubscriptionRef.get(status);

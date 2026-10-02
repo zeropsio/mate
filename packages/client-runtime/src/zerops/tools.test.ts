@@ -1,12 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import type { ZeropsProject, ZeropsService } from "./api.ts";
-import {
-  deriveGiteaState,
-  partitionZeropsToolProjects,
-  readZeropsToolKind,
-  type ZeropsGiteaStepState,
-} from "./tools.ts";
+import { deriveGiteaState, partitionZeropsToolProjects, readZeropsToolKind } from "./tools.ts";
 
 /** The probe project as the platform actually returned it, 2026-09-05. */
 const GITEA_PROJECT: ZeropsProject = {
@@ -37,13 +32,6 @@ const RECIPE_SERVICES = [
   WEB_ACTIVE,
   service("broker", "ACTIVE"),
 ];
-
-function stepState(
-  state: ReturnType<typeof deriveGiteaState>,
-  id: string,
-): ZeropsGiteaStepState | undefined {
-  return state.steps.find((step) => step.id === id)?.state;
-}
 
 describe("tool tags", () => {
   it.each([
@@ -92,119 +80,30 @@ describe("deriveGiteaState", () => {
     );
   });
 
-  it.each([
-    { name: "running once web is ACTIVE", webStatus: "ACTIVE", phase: "running" },
-    { name: "provisioning while it builds", webStatus: "READY_TO_DEPLOY", phase: "provisioning" },
-    { name: "provisioning while it is created", webStatus: "CREATING", phase: "provisioning" },
-    { name: "provisioning at NEW", webStatus: "NEW", phase: "provisioning" },
-    { name: "unavailable while deleting", webStatus: "DELETING", phase: "unavailable" },
-  ])("is $name", ({ webStatus, phase }) => {
-    const services = [
-      service("db", "ACTIVE"),
-      service("web", webStatus, { subdomainAccess: true }),
-    ];
-    expect(deriveGiteaState(GITEA_PROJECT, services).phase).toBe(phase);
-  });
-
-  it("is provisioning while the web service is not listed yet", () => {
-    // Seconds after the import the project is ACTIVE and lists nothing; the
-    // inventory catches up on its next read. Not gone: setting up.
-    expect(deriveGiteaState(GITEA_PROJECT, []).phase).toBe("provisioning");
-  });
-
   it("ignores the transient build and prepare services the platform creates", () => {
     // Both observed in a real import; without the isSystem filter a service
     // named `buildwebv…` would be read as part of the recipe.
     const withBuilds = [
-      ...RECIPE_SERVICES,
       service("buildwebv1788602355", "CREATING", { isSystem: true }),
       service("preparewebv11788602377", "ACTIVE", { isSystem: true }),
-      service("core", "ACTIVE", { isSystem: true }),
+      ...RECIPE_SERVICES,
     ];
-    expect(deriveGiteaState(GITEA_PROJECT, withBuilds).phase).toBe("running");
-  });
-
-  it("demotes a platform-ACTIVE Gitea that does not actually answer", () => {
-    const state = deriveGiteaState(GITEA_PROJECT, RECIPE_SERVICES, { reachable: false });
-    expect(state.phase).toBe("provisioning");
-    expect(state.webStatus).toBe("ACTIVE");
-  });
-
-  describe("the admin-user step", () => {
-    it("is unknown without a probe rather than nagging", () => {
-      expect(stepState(deriveGiteaState(GITEA_PROJECT, RECIPE_SERVICES), "admin")).toBe("unknown");
-    });
-
-    it("needs the user when Gitea reports no users", () => {
-      const state = deriveGiteaState(GITEA_PROJECT, RECIPE_SERVICES, {
-        reachable: true,
-        userCount: 0,
-      });
-      expect(stepState(state, "admin")).toBe("needs-you");
-      expect(state.steps.find((step) => step.id === "admin")?.detail).toContain(
-        "gitea admin user create",
-      );
-    });
-
-    it("is done once a user exists", () => {
-      const state = deriveGiteaState(GITEA_PROJECT, RECIPE_SERVICES, {
-        reachable: true,
-        userCount: 1,
-      });
-      expect(stepState(state, "admin")).toBe("done");
-    });
-
-    it("stays unknown when the probe reached Gitea but the user call failed", () => {
-      expect(
-        stepState(deriveGiteaState(GITEA_PROJECT, RECIPE_SERVICES, { reachable: true }), "admin"),
-      ).toBe("unknown");
-    });
-
-    // The recipe mints the admin on first boot and publishes the token as the
-    // web service's own env, so its presence is stronger evidence than a user
-    // count — and it is readable without asking Gitea anything.
-    it("is done when the recipe has published the admin token, with no probe at all", () => {
-      const state = deriveGiteaState(GITEA_PROJECT, RECIPE_SERVICES, undefined, [
-        "GITEA_ADMIN_USERNAME",
-        "GITEA_ADMIN_TOKEN",
-      ]);
-      expect(stepState(state, "admin")).toBe("done");
-      expect(state.adminCredentialPublished).toBe(true);
-      expect(state.steps.find((step) => step.id === "admin")?.detail).toBeUndefined();
-    });
-
-    it("does not read an unrelated key as the admin token", () => {
-      const state = deriveGiteaState(
-        GITEA_PROJECT,
-        RECIPE_SERVICES,
-        { reachable: true, userCount: 0 },
-        ["GITEA_ADMIN_USERNAME"],
-      );
-      expect(stepState(state, "admin")).toBe("needs-you");
-      expect(state.adminCredentialPublished).toBe(false);
-    });
-
-    // An instance built before the recipe minted its own admin: somebody made
-    // the user by hand, so there is a user but no published token. Still done,
-    // and still worth knowing the credential is not readable.
-    it("is done but unpublished for a hand-made admin on an older instance", () => {
-      const state = deriveGiteaState(GITEA_PROJECT, RECIPE_SERVICES, {
-        reachable: true,
-        userCount: 1,
-      });
-      expect(stepState(state, "admin")).toBe("done");
-      expect(state.adminCredentialPublished).toBe(false);
-    });
-  });
-
-  it("reports the broker only once the import has created it", () => {
-    expect(stepState(deriveGiteaState(GITEA_PROJECT, RECIPE_SERVICES), "broker")).toBe("done");
-
-    const withoutBroker = deriveGiteaState(
-      GITEA_PROJECT,
-      RECIPE_SERVICES.filter((entry) => entry.name !== "broker"),
+    expect(deriveGiteaState(GITEA_PROJECT, withBuilds).url).toBe(
+      "https://web-926-3000.prg1.zerops.app",
     );
-    expect(stepState(withoutBroker, "broker")).toBe("pending");
-    expect(withoutBroker.brokerImported).toBe(false);
+  });
+
+  it("names the broker's address only once the import has created it, public", () => {
+    const published = service("broker", "ACTIVE", { subdomainAccess: true });
+    const withBroker = [...RECIPE_SERVICES.filter((entry) => entry.name !== "broker"), published];
+    expect(deriveGiteaState(GITEA_PROJECT, withBroker).brokerUrl).toBe(
+      "https://broker-926-8080.prg1.zerops.app",
+    );
+    const withoutBroker = RECIPE_SERVICES.filter((entry) => entry.name !== "broker");
+    expect(deriveGiteaState(GITEA_PROJECT, withoutBroker).brokerUrl).toBeUndefined();
+  });
+
+  it("has no address before its web service is listed", () => {
+    expect(deriveGiteaState(GITEA_PROJECT, []).url).toBeUndefined();
   });
 });

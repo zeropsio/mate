@@ -331,6 +331,19 @@ describe("runHqBirth", () => {
     expect(yaml).not.toContain("enableSubdomainAccess");
     expect(yaml).toContain('HQ_CLIENT_ORIGINS: "http://localhost:4380,https://mate.zerops.io"');
     expect(yaml).toContain('HQ_ZEROPS_API: "https://api.app-prg1.zerops.io/api/rest/public"');
+    // Backup sets go to a private bucket of HQ's own, which Core reaches by the service's variables.
+    expect(yaml).toContain(
+      "  - hostname: backup\n    type: objectstorage\n    objectStorageSize: 80\n    objectStoragePolicy: private\n",
+    );
+    for (const [name, variable] of [
+      ["URL", "apiUrl"],
+      ["KEY_ID", "accessKeyId"],
+      ["SECRET", "secretAccessKey"],
+      ["BUCKET", "bucketName"],
+      ["QUOTA_GB", "quotaGBytes"],
+    ]) {
+      expect(yaml).toContain(`      HQ_BACKUP_${name}: \${backup_${variable}}\n`);
+    }
   });
 
   it("names the step that stopped, and Try again resumes there without making anything twice", async () => {

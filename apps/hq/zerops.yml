@@ -25,17 +25,20 @@ zerops:
     run:
       base: nodejs@24
       os: ubuntu
-      # Ubuntu 24.04 ships git 2.43; the git-core PPA carries the latest.
+      # Ubuntu 24.04 ships git 2.43; the git-core PPA carries the latest. It ships pg_dump 16, and a
+      # backup set's dump needs the database's own major (postgresql@18): the PGDG repository's.
       prepareCommands:
         - sudo DEBIAN_FRONTEND=noninteractive apt-get update -q
-        - sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -q software-properties-common
+        - sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -q software-properties-common postgresql-common
         - sudo add-apt-repository -y ppa:git-core/ppa
+        - sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
         - sudo DEBIAN_FRONTEND=noninteractive apt-get update -q
-        - sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -q git
+        - sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -q git postgresql-client-18
       ports:
         - port: 8080
           httpSupport: true
-      # Mounted at /mnt/vol, owned by zerops: the git repositories' home.
+      # Mounted at /mnt/vol, owned by zerops: the git repositories' home, and the backup sets'
+      # staging.
       volume:
         hostname: vol
       envVariables:

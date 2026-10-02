@@ -1052,7 +1052,7 @@
       "captures": []
     },
     {
-      "id": "zerops-gitea",
+      "id": "zerops-git",
       "title": "Git page",
       "components": [
         "apps/web/src/components/zerops/ZeropsGitPage.tsx",
@@ -1063,7 +1063,7 @@
       "entryPoints": [
         {
           "kind": "route",
-          "value": "/gitea"
+          "value": "/git"
         },
         {
           "kind": "sidebar-item",

@@ -117,7 +117,7 @@ describe("SidebarZeropsAccountMenu", () => {
 
   it("folds every place the foot used to spend a glyph on", () => {
     const html = renderMenu();
-    for (const id of ["projects", "gitea", "usage", "settings"]) {
+    for (const id of ["projects", "git", "usage", "settings"]) {
       expect(html).toContain(`data-zerops-account-destination="${id}"`);
     }
     expect(html).toContain("Sign out");

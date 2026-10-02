@@ -175,7 +175,7 @@ function sidebarAccountDestinationIcon(id: SidebarAccountDestination["id"]) {
   switch (id) {
     case "projects":
       return <CloudIcon />;
-    case "gitea":
+    case "git":
       return <GitPullRequestIcon />;
     case "usage":
       return <ChartNoAxesColumnIcon />;

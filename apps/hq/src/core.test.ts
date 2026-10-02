@@ -22,6 +22,8 @@ describe("the drain", () => {
           status: Effect.succeed({ state: "active" as const, epoch: 1 }),
           changes: Stream.empty,
           release: note("lead released"),
+          hold: () => Effect.die("no hold"),
+          held: Effect.succeed(null),
           write: () => Effect.die("no writes"),
         }),
         Layer.succeed(GitHost, {
