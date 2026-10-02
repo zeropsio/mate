@@ -1,26 +1,34 @@
 /**
- * Core's routes and the services they run on, one composition for `main.ts` and the tests. The
- * routes take their services per request, so they are provided after `HttpRouter.serve` (or merged
- * into the layer a test's `toWebHandler` builds). What the services still need is the Zerops port
- * (`ZeropsApi`): HTTP in production, the fake in tests.
+ * Core, composed once for `main.ts` and the tests: the routes served over its services, and the
+ * drain that ends it. What it still needs is the HTTP server and the Zerops port (`ZeropsApi`):
+ * HTTP in production, the fake in tests.
+ *
+ * On shutdown (`SIGTERM`, a deploy replacing this container) the drain runs before the server
+ * stops: the lead goes at once, so the next Core takes it within milliseconds; every open socket
+ * is closed `1001 going away`, so its client reconnects to the next Core; and for `drainFor` more
+ * the server still answers — a request the balancer still routes here gets an answer (`/health` a
+ * standby's 200, the API `503 not_active`), not a reset.
  *
  * @module core
  */
 import * as PgClient from "@effect/sql-pg/PgClient";
-import type * as Duration from "effect/Duration";
+import * as Duration from "effect/Duration";
+import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import type * as Option from "effect/Option";
 import type * as Redacted from "effect/Redacted";
+import * as HttpRouter from "effect/unstable/http/HttpRouter";
 
 import { apiRoutes } from "./api.ts";
 import { doorLayer } from "./door.ts";
 import { healthRoute } from "./health.ts";
-import { leaderLayer } from "./leader.ts";
+import { Leader, leaderLayer } from "./leader.ts";
 import type { Migration } from "./migrations.ts";
 import { officialLayer } from "./official.ts";
-import { rolesLayer } from "./roles.ts";
 import { doorRateLimitLayer } from "./rateLimit.ts";
+import { rolesLayer } from "./roles.ts";
 import { sessionsLayer } from "./sessions.ts";
+import { LiveSockets, liveSocketsLayer, streamTicketsLayer } from "./stream.ts";
 import { structureLayer } from "./structure.ts";
 
 export interface CoreOptions {
@@ -33,15 +41,28 @@ export interface CoreOptions {
   readonly credential: Option.Option<Redacted.Redacted>;
   readonly clientOrigins: ReadonlyArray<string>;
   readonly build: string;
-  /** Shorter leader intervals, for tests. */
+  /** How long the server still answers after the lead is given up on shutdown; 10 s. */
+  readonly drainFor?: Duration.Duration;
+  /** Shorter intervals, for tests. */
   readonly heartbeat?: Duration.Duration;
   readonly retryAfter?: Duration.Duration;
+  readonly viewTtl?: Duration.Duration;
+  readonly reconcileEvery?: Duration.Duration;
+  readonly streamRecheck?: Duration.Duration;
+  readonly pingEvery?: Duration.Duration;
 }
 
-export const coreRoutes = (options: Pick<CoreOptions, "build" | "clientOrigins">) =>
-  Layer.mergeAll(healthRoute(options.build), apiRoutes({ clientOrigins: options.clientOrigins }));
+const routes = (options: CoreOptions) =>
+  Layer.mergeAll(
+    healthRoute(options.build),
+    apiRoutes({
+      clientOrigins: options.clientOrigins,
+      ...(options.streamRecheck === undefined ? {} : { recheck: options.streamRecheck }),
+      ...(options.pingEvery === undefined ? {} : { pingEvery: options.pingEvery }),
+    }),
+  );
 
-export const coreServices = (options: CoreOptions) => {
+const services = (options: CoreOptions) => {
   const leader = leaderLayer({
     databaseUrl: options.databaseUrl,
     migrations: options.migrations,
@@ -58,12 +79,21 @@ export const coreServices = (options: CoreOptions) => {
   );
   return Layer.mergeAll(
     sessionsLayer,
-    structureLayer({ hqProjectId: options.hqProjectId }),
+    structureLayer({
+      hqProjectId: options.hqProjectId,
+      reconcileEvery: options.reconcileEvery ?? Duration.seconds(60),
+    }),
     doorLayer({ hqProjectId: options.hqProjectId }),
     doorRateLimitLayer,
+    streamTicketsLayer,
+    liveSocketsLayer,
   ).pipe(
     Layer.provideMerge(
-      rolesLayer({ hqProjectId: options.hqProjectId, credential: options.credential }),
+      rolesLayer({
+        hqProjectId: options.hqProjectId,
+        credential: options.credential,
+        ...(options.viewTtl === undefined ? {} : { viewTtl: options.viewTtl }),
+      }),
     ),
     Layer.provideMerge(leader),
     Layer.provideMerge(
@@ -71,3 +101,30 @@ export const coreServices = (options: CoreOptions) => {
     ),
   );
 };
+
+/** On shutdown, before the server stops: lead and sockets go, the server answers `drainFor` more. */
+const drainLayer = (drainFor: Duration.Duration) =>
+  Layer.effectDiscard(
+    Effect.gen(function* () {
+      const leader = yield* Leader;
+      const sockets = yield* LiveSockets;
+      yield* Effect.addFinalizer(() =>
+        Effect.gen(function* () {
+          yield* Effect.logInfo("draining");
+          yield* leader.release;
+          yield* sockets.closeAll(1001, "going away");
+          yield* Effect.sleep(drainFor);
+        }),
+      );
+    }),
+  );
+
+/**
+ * The whole Core. Built in this order — services, the served routes, the drain — so it ends in the
+ * reverse: the drain first, while the routes still answer.
+ */
+export const coreApp = (options: CoreOptions) =>
+  drainLayer(options.drainFor ?? Duration.seconds(10)).pipe(
+    Layer.provide(HttpRouter.serve(routes(options))),
+    Layer.provideMerge(services(options)),
+  );

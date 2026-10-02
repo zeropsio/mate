@@ -85,6 +85,14 @@ export const effectiveRole = (view: OrgView, userId: string, projectId: string):
 export const canWriteStructure = (view: OrgView, userId: string): boolean =>
   atLeast(asRole(activeMember(view, userId)?.roleCode), "ADMIN");
 
+/**
+ * Who renames a Mate or changes its face: an owner or admin of its project there (their grant,
+ * else their org role) — main's `resolveMateVerbs(...).rename`, the gate of both its rename and its
+ * face dialog. A Mate's creator is its project's owner.
+ */
+export const canEditMate = (view: OrgView, userId: string, projectId: string): boolean =>
+  atLeast(effectiveRole(view, userId, projectId), "ADMIN");
+
 /** Whether a person sees a project: Zerops still has it, and their role on it is above none. */
 export const sees = (view: OrgView, userId: string, projectId: string): boolean =>
   atLeast(effectiveRole(view, userId, projectId), "READ_ONLY");
@@ -140,6 +148,8 @@ export const rolesLayer = (options: {
   readonly hqProjectId: string;
   /** `HQ_ORG_TOKEN`. */
   readonly credential: Option.Option<Redacted.Redacted>;
+  /** How old a view may be served; 30 s. */
+  readonly viewTtl?: Duration.Duration;
 }): Layer.Layer<Roles, never, ZeropsApi> =>
   Layer.effect(
     Roles,
@@ -204,7 +214,7 @@ export const rolesLayer = (options: {
         );
       const fresh = Effect.flatMap(Clock.currentTimeMillis, readSince);
       const view = Effect.flatMap(Clock.currentTimeMillis, (now) =>
-        readSince(now - Duration.toMillis(VIEW_TTL) + 1),
+        readSince(now - Duration.toMillis(options.viewTtl ?? VIEW_TTL) + 1),
       );
       return Roles.of({ view, fresh, exists });
     }),

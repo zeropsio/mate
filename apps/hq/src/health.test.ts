@@ -31,6 +31,7 @@ const getHealth = (
           Layer.succeed(Leader, {
             status: Effect.succeed(status),
             write: () => Effect.die("no writes"),
+            release: Effect.void,
           }),
           Layer.succeed(Official, {
             status: Effect.succeed({ official, allowed: official === "ok" }),

@@ -260,5 +260,23 @@ describe("leaderLayer", () => {
           yield* core.stop;
         }),
     );
+    it.effect("releases the lead on shutdown at once, and never takes it again", () =>
+      Effect.gen(function* () {
+        const url = yield* (yield* TempPostgres).createDatabase;
+        const core = yield* startInstance(url);
+        yield* statusWhere(core.leader, (status) => status.state === "active");
+        yield* core.leader.release;
+        assert.deepStrictEqual(yield* core.leader.status, { state: "standby", epoch: null });
+        const rival = yield* PgConnection.make({ url: Redacted.make(url) });
+        const taken = yield* rival.query(
+          `SELECT pg_try_advisory_lock(${String(LOCK_KEY)}) AS taken`,
+        );
+        assert.strictEqual(taken.rows[0]?.["taken"], true);
+        yield* rival.query(`SELECT pg_advisory_unlock(${String(LOCK_KEY)})`);
+        yield* Effect.sleep(Duration.millis(500));
+        assert.deepStrictEqual(yield* core.leader.status, { state: "standby", epoch: null });
+        yield* core.stop;
+      }),
+    );
   });
 });

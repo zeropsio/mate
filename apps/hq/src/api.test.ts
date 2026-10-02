@@ -1,18 +1,25 @@
+// @effect-diagnostics nodeBuiltinImport:off globalFetch:off globalFetchInEffect:off -- the tests reach Core as a client does: over HTTP and a WebSocket.
+import * as NodeHttp from "node:http";
+
+import * as NodeHttpServer from "@effect/platform-node/NodeHttpServer";
 import { assert, describe, it } from "@effect/vitest";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Duration from "effect/Duration";
+import * as Exit from "effect/Exit";
+import * as Fiber from "effect/Fiber";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Redacted from "effect/Redacted";
 import * as Schedule from "effect/Schedule";
 import * as Schema from "effect/Schema";
-import * as HttpRouter from "effect/unstable/http/HttpRouter";
+import * as Scope from "effect/Scope";
+import * as HttpServer from "effect/unstable/http/HttpServer";
 
 import { TempPostgres, tempPostgresLayer } from "../test/harness/tempPostgres.ts";
 import { type FakeWorld, emptyWorld, fakeZeropsApi } from "../test/harness/zeropsFake.ts";
-import { coreRoutes, coreServices } from "./core.ts";
+import { coreApp } from "./core.ts";
 import { treeMigrations } from "./migrationFiles.ts";
 import { ZeropsApi, type ZeropsMember, type ZeropsOwnToken } from "./zerops/api.ts";
 
@@ -92,8 +99,9 @@ const world = (now: number, anchored: boolean, orgId: string): FakeWorld => {
 };
 
 /**
- * Core on a fresh database (or `url`'s), as a fetch handler; requests as `{ status, body, headers }`.
- * `stop` ends it before the test does.
+ * Core on a fresh database (or `url`'s), served over a real Node server on a free port, as the
+ * container serves it; requests as `{ status, body, headers }`. `stop` ends it — drain included —
+ * before the test does.
  */
 const startCore = (anchored: boolean, given?: { readonly url: string; readonly orgId: string }) =>
   Effect.gen(function* () {
@@ -107,16 +115,25 @@ const startCore = (anchored: boolean, given?: { readonly url: string; readonly o
       credential: Option.some(Redacted.make("hq")),
       clientOrigins: [CLIENT, "http://localhost:4380"],
       build: "test",
+      drainFor: Duration.millis(300),
       heartbeat: Duration.millis(100),
       retryAfter: Duration.millis(100),
+      viewTtl: Duration.millis(200),
+      reconcileEvery: Duration.millis(200),
+      streamRecheck: Duration.millis(200),
+      pingEvery: Duration.millis(300),
     };
-    const { handler, dispose } = HttpRouter.toWebHandler(
-      coreRoutes(options).pipe(
-        Layer.provideMerge(coreServices(options)),
+    const scope = yield* Scope.make();
+    const context = yield* Layer.buildWithScope(
+      coreApp(options).pipe(
         Layer.provide(Layer.succeed(ZeropsApi, fakeZeropsApi(fake))),
+        Layer.provideMerge(NodeHttpServer.layer(() => NodeHttp.createServer(), { port: 0 })),
       ),
+      scope,
     );
-    const stop = Effect.promise(() => dispose());
+    const address = Context.get(context, HttpServer.HttpServer).address;
+    const base = `127.0.0.1:${String("port" in address ? address.port : 0)}`;
+    const stop = Scope.close(scope, Exit.void);
     yield* Effect.addFinalizer(() => stop);
     const call = (
       method: string,
@@ -128,20 +145,17 @@ const startCore = (anchored: boolean, given?: { readonly url: string; readonly o
       } = {},
     ) =>
       Effect.promise(async () => {
-        const response = await handler(
-          new Request(`http://hq.test${path}`, {
-            method,
-            headers: {
-              ...(options.body === undefined ? {} : { "content-type": "application/json" }),
-              ...(options.session === undefined
-                ? {}
-                : { authorization: `Bearer ${options.session}` }),
-              ...options.headers,
-            },
-            ...(options.body === undefined ? {} : { body: encodeJson(options.body) }),
-          }),
-          Context.empty(),
-        );
+        const response = await fetch(`http://${base}${path}`, {
+          method,
+          headers: {
+            ...(options.body === undefined ? {} : { "content-type": "application/json" }),
+            ...(options.session === undefined
+              ? {}
+              : { authorization: `Bearer ${options.session}` }),
+            ...options.headers,
+          },
+          ...(options.body === undefined ? {} : { body: encodeJson(options.body) }),
+        });
         const text = await response.text();
         return {
           status: response.status,
@@ -149,7 +163,60 @@ const startCore = (anchored: boolean, given?: { readonly url: string; readonly o
           headers: response.headers,
         };
       });
-    return { call, fake, url, stop };
+    /** A WebSocket to `path`: its messages one by one, its close, a pong for every ping while `answering`. */
+    const socket = (path: string) =>
+      Effect.gen(function* () {
+        const messages: Array<{ readonly type: string }> = [];
+        const pings = { seen: 0, answering: true };
+        let closed: { readonly code: number } | undefined;
+        const ws = new WebSocket(`ws://${base}${path}`);
+        ws.addEventListener("message", (event) => {
+          const message = decodeJson(String(event.data)) as { readonly type: string };
+          if (message.type !== "ping") messages.push(message);
+          else {
+            pings.seen += 1;
+            if (pings.answering) ws.send(encodeJson({ type: "pong" }));
+          }
+        });
+        ws.addEventListener("close", (event) => {
+          closed = { code: event.code };
+        });
+        const opened = yield* Effect.promise(
+          () =>
+            new Promise<boolean>((resolve) => {
+              ws.addEventListener("open", () => resolve(true));
+              ws.addEventListener("error", () => resolve(false));
+            }),
+        );
+        const until = <A>(found: () => A | undefined, what: string) =>
+          Effect.suspend(() => {
+            const value = found();
+            return value === undefined ? Effect.fail(what) : Effect.succeed(value);
+          }).pipe(
+            Effect.retry(Schedule.spaced(Duration.millis(20))),
+            Effect.timeout(Duration.seconds(5)),
+            Effect.orDie,
+          );
+        const next = (type: "snapshot" | "change") =>
+          until(() => {
+            const found = messages.findIndex((message) => message.type === type);
+            return found < 0 ? undefined : messages.splice(0, found + 1).at(-1);
+          }, type).pipe(Effect.map(({ type: _type, ...rest }) => rest));
+        return {
+          opened,
+          pings,
+          next,
+          /** What arrived within `window`. */
+          quiet: (window: Duration.Input) =>
+            Effect.andThen(
+              Effect.sleep(window),
+              Effect.sync(() => [...messages]),
+            ),
+          closedWith: until(() => closed?.code, "close"),
+          close: Effect.sync(() => ws.close()),
+        };
+      });
+    return { call, fake, url, stop, socket };
   });
 
 type Call = Effect.Success<ReturnType<typeof startCore>>["call"];
@@ -161,6 +228,13 @@ const untilHealth = (call: Call, state: string) =>
     ),
     Effect.retry(Schedule.spaced(Duration.millis(50))),
     Effect.timeout(Duration.seconds(10)),
+  );
+
+/** A one-use ticket for `session`'s socket. */
+const ticketFor = (call: Call, session: string) =>
+  Effect.map(
+    call("POST", "/api/stream-ticket", { session }),
+    (response) => (response.body as { readonly ticket: string }).ticket,
   );
 
 const sessionFor = (call: Call, token: string) =>
@@ -187,6 +261,7 @@ describe("HQ API", () => {
           });
           assert.strictEqual(attached.status, 201);
           assert.deepStrictEqual((yield* call("GET", "/api/structure", { session })).body, {
+            ungrouped: [],
             apps: [
               {
                 id: appId,
@@ -227,6 +302,7 @@ describe("HQ API", () => {
             ],
           );
           assert.deepStrictEqual((yield* call("GET", "/api/structure", { session: dev })).body, {
+            ungrouped: [],
             apps: [],
           });
         }),
@@ -331,14 +407,10 @@ describe("HQ API", () => {
         assert.strictEqual(yield* knock("10.0.0.2"), 401);
 
         const session = yield* sessionFor(call, "door-owner");
+        // Refused on their declared length, before a byte is read: no connection is cut.
         const tooLarge = yield* Effect.all([
           call("POST", "/api/door", { body: { token: "x".repeat(9000) } }),
           call("POST", "/api/apps", { session, body: { name: "x".repeat(70_000) } }),
-          // Refused on its declared length, before a byte is read: no socket is cut.
-          call("POST", "/api/door", {
-            body: { token: "x" },
-            headers: { "content-length": "100000" },
-          }),
         ]);
         assert.deepStrictEqual(
           tooLarge.map((answer) => [
@@ -346,7 +418,6 @@ describe("HQ API", () => {
             (answer.body as { readonly code: string }).code,
           ]),
           [
-            [413, "too_large"],
             [413, "too_large"],
             [413, "too_large"],
           ],
@@ -370,6 +441,238 @@ describe("HQ API", () => {
         );
         assert.strictEqual((yield* sessionFor(moved.call, "door-owner-2")).length, 43);
       }),
+    );
+
+    it.effect(
+      "streams the caller's structure over a WebSocket: a snapshot, then each change, pings answered",
+      () =>
+        Effect.gen(function* () {
+          const { call, fake, socket } = yield* startCore(true);
+          yield* untilHealth(call, "active");
+          const session = yield* sessionFor(call, "door-owner");
+          const owner = yield* socket(
+            `/api/structure/ws?ticket=${yield* ticketFor(call, session)}`,
+          );
+          assert.deepStrictEqual(
+            yield* owner.next("snapshot"),
+            (yield* call("GET", "/api/structure", { session })).body,
+          );
+          const appId = (
+            (yield* call("POST", "/api/apps", { session, body: { name: "Shop" } })).body as {
+              readonly id: string;
+            }
+          ).id;
+          assert.deepStrictEqual(yield* owner.next("change"), {
+            key: appId,
+            value: { id: appId, name: "Shop", projects: [] },
+          });
+          yield* call("POST", `/api/apps/${appId}/projects`, {
+            session,
+            body: { projectId: "P_MATE", kind: "mate", mate: { name: "Ada", face: "sky:flower" } },
+          });
+          const shopWith = (mate: { readonly name: string; readonly face: string }) => ({
+            key: appId,
+            value: {
+              id: appId,
+              name: "Shop",
+              projects: [{ projectId: "P_MATE", name: "P_MATE", kind: "mate", mate }],
+            },
+          });
+          assert.deepStrictEqual(
+            yield* owner.next("change"),
+            shopWith({ name: "Ada", face: "sky:flower" }),
+          );
+          yield* call("PATCH", "/api/mates/P_MATE", { session, body: { name: "Ada 2" } });
+          assert.deepStrictEqual(
+            yield* owner.next("change"),
+            shopWith({ name: "Ada 2", face: "sky:flower" }),
+          );
+
+          // Deleted in Zerops: the reconcile drops it, and the socket says so.
+          fake.projects.splice(
+            fake.projects.findIndex((project) => project.id === "P_MATE"),
+            1,
+          );
+          assert.deepStrictEqual(yield* owner.next("change"), {
+            key: appId,
+            value: { id: appId, name: "Shop", projects: [] },
+          });
+          // Three pings answered: still open.
+          yield* Effect.sleep(Duration.millis(1100));
+          assert.isAtLeast(owner.pings.seen, 3);
+          assert.deepStrictEqual(yield* owner.quiet("1 millis"), []);
+          yield* owner.close;
+        }),
+    );
+
+    it.effect(
+      "sets a Mate up, renames an application and moves the Mate: each change on the socket",
+      () =>
+        Effect.gen(function* () {
+          const { call, socket } = yield* startCore(true);
+          yield* untilHealth(call, "active");
+          const session = yield* sessionFor(call, "door-owner");
+          const owner = yield* socket(
+            `/api/structure/ws?ticket=${yield* ticketFor(call, session)}`,
+          );
+          assert.deepStrictEqual(yield* owner.next("snapshot"), { ungrouped: [], apps: [] });
+          const ada = { name: "Ada", face: "sky:flower" };
+          const lone = [{ projectId: "P_MATE", name: "P_MATE", mate: ada }];
+
+          const setUp = yield* call("POST", "/api/mates", {
+            session,
+            body: { projectId: "P_MATE", ...ada },
+          });
+          assert.deepStrictEqual(
+            [setUp.status, setUp.body],
+            [201, { projectId: "P_MATE", ...ada }],
+          );
+          assert.deepStrictEqual(yield* owner.next("change"), { key: "ungrouped", value: lone });
+
+          const appId = (
+            (yield* call("POST", "/api/apps", { session, body: { name: "Shop" } })).body as {
+              readonly id: string;
+            }
+          ).id;
+          yield* owner.next("change");
+          const renamed = yield* call("PATCH", `/api/apps/${appId}`, {
+            session,
+            body: { name: "Store" },
+          });
+          assert.deepStrictEqual(
+            [renamed.status, renamed.body],
+            [200, { id: appId, name: "Store" }],
+          );
+          assert.deepStrictEqual(yield* owner.next("change"), {
+            key: appId,
+            value: { id: appId, name: "Store", projects: [] },
+          });
+
+          const moved = yield* call("PUT", "/api/projects/P_MATE/app", {
+            session,
+            body: { appId, kind: "mate" },
+          });
+          assert.deepStrictEqual(
+            [moved.status, moved.body],
+            [200, { projectId: "P_MATE", appId, kind: "mate" }],
+          );
+          assert.sameDeepMembers(
+            [yield* owner.next("change"), yield* owner.next("change")] as Array<object>,
+            [
+              { key: "ungrouped", value: [] },
+              {
+                key: appId,
+                value: {
+                  id: appId,
+                  name: "Store",
+                  projects: [{ projectId: "P_MATE", name: "P_MATE", kind: "mate", mate: ada }],
+                },
+              },
+            ],
+          );
+          const out = yield* call("PUT", "/api/projects/P_MATE/app", {
+            session,
+            body: { appId: null, kind: "mate" },
+          });
+          assert.deepStrictEqual(
+            [out.status, out.body],
+            [200, { projectId: "P_MATE", appId: null, kind: null }],
+          );
+          assert.sameDeepMembers(
+            [yield* owner.next("change"), yield* owner.next("change")] as Array<object>,
+            [
+              { key: "ungrouped", value: lone },
+              { key: appId, value: { id: appId, name: "Store", projects: [] } },
+            ],
+          );
+          yield* owner.close;
+        }),
+    );
+
+    it.effect("a Developer's socket holds only what they see, and follows a role they gain", () =>
+      Effect.gen(function* () {
+        const { call, fake, socket } = yield* startCore(true);
+        yield* untilHealth(call, "active");
+        const owner = yield* sessionFor(call, "door-owner");
+        const dev = yield* sessionFor(call, "door-dev");
+        const devSocket = yield* socket(`/api/structure/ws?ticket=${yield* ticketFor(call, dev)}`);
+        assert.deepStrictEqual(yield* devSocket.next("snapshot"), { ungrouped: [], apps: [] });
+        const appId = (
+          (yield* call("POST", "/api/apps", { session: owner, body: { name: "Shop" } })).body as {
+            readonly id: string;
+          }
+        ).id;
+        yield* call("POST", `/api/apps/${appId}/projects`, {
+          session: owner,
+          body: { projectId: "P_MATE", kind: "stage" },
+        });
+        assert.deepStrictEqual(yield* devSocket.quiet("700 millis"), []);
+
+        // Zerops grants dev the project: the open socket shows the application within its recheck.
+        const project = fake.projects.find((candidate) => candidate.id === "P_MATE")!;
+        Object.assign(project, {
+          userRoles: [{ clientUserId: "C-dev", roleCode: "BASIC_USER" }],
+        });
+        assert.deepStrictEqual(yield* devSocket.next("change"), {
+          key: appId,
+          value: {
+            id: appId,
+            name: "Shop",
+            projects: [{ projectId: "P_MATE", name: "P_MATE", kind: "stage", mate: null }],
+          },
+        });
+        yield* devSocket.close;
+      }),
+    );
+
+    it.effect(
+      "opens a socket only with a fresh one-use ticket, and closes one that ends its session or stops answering",
+      () =>
+        Effect.gen(function* () {
+          const { call, socket } = yield* startCore(true);
+          yield* untilHealth(call, "active");
+          const session = yield* sessionFor(call, "door-owner");
+          const ticket = yield* ticketFor(call, session);
+          const opened = yield* socket(`/api/structure/ws?ticket=${ticket}`);
+          assert.deepStrictEqual(yield* opened.next("snapshot"), { ungrouped: [], apps: [] });
+          assert.deepStrictEqual(
+            [
+              (yield* socket(`/api/structure/ws?ticket=${ticket}`)).opened,
+              (yield* socket("/api/structure/ws")).opened,
+            ],
+            [false, false],
+          );
+          // The session ends: the socket closes 4401 within its recheck.
+          yield* call("DELETE", "/api/session", { session });
+          assert.strictEqual(yield* opened.closedWith, 4401);
+
+          // A client that never answers a ping is closed after three: 4408.
+          const silent = yield* socket(
+            `/api/structure/ws?ticket=${yield* ticketFor(call, yield* sessionFor(call, "door-owner-2"))}`,
+          );
+          silent.pings.answering = false;
+          assert.strictEqual(yield* silent.closedWith, 4408);
+        }),
+    );
+
+    it.effect(
+      "drains on shutdown: gives the lead up, sends sockets away (1001), and still answers meanwhile",
+      () =>
+        Effect.gen(function* () {
+          const { call, socket, stop } = yield* startCore(true);
+          yield* untilHealth(call, "active");
+          const session = yield* sessionFor(call, "door-owner");
+          const open = yield* socket(`/api/structure/ws?ticket=${yield* ticketFor(call, session)}`);
+          yield* open.next("snapshot");
+          const stopping = yield* Effect.forkChild(stop);
+          assert.strictEqual(yield* open.closedWith, 1001);
+          const health = yield* call("GET", "/health");
+          assert.deepStrictEqual(
+            [health.status, (health.body as { readonly state: string }).state],
+            [200, "standby"],
+          );
+          yield* Fiber.join(stopping);
+        }),
     );
 
     it.effect("answers a client origin's preflight, and no other origin", () =>

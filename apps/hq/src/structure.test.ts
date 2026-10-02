@@ -2,6 +2,7 @@ import { assert, describe, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Ref from "effect/Ref";
+import * as SqlClient from "effect/unstable/sql/SqlClient";
 
 import { activeCoreLayer, untilActive } from "../test/harness/activeCore.ts";
 import { TempPostgres, tempPostgresLayer } from "../test/harness/tempPostgres.ts";
@@ -52,6 +53,8 @@ const VIEW: OrgView = {
     project("P_OWN", [{ clientUserId: "C-maker", roleCode: "BASIC_USER" }]),
     project("P_TEAM", [{ clientUserId: "C-maker", roleCode: "READ_ONLY" }]),
     project("P_OTHER"),
+    // maker made this Mate: Zerops left them its OWNER.
+    project("P_OWNED", [{ clientUserId: "C-maker", roleCode: "OWNER" }]),
   ],
 };
 
@@ -60,7 +63,10 @@ const VIEW: OrgView = {
  * view has it, and `down` makes asking for one unanswerable.
  */
 const withStructure = <A, E>(
-  use: (view: Ref.Ref<OrgView>, down: Ref.Ref<boolean>) => Effect.Effect<A, E, Structure>,
+  use: (
+    view: Ref.Ref<OrgView>,
+    down: Ref.Ref<boolean>,
+  ) => Effect.Effect<A, E, Structure | SqlClient.SqlClient>,
 ) =>
   Effect.gen(function* () {
     const url = yield* (yield* TempPostgres).createDatabase;
@@ -292,6 +298,229 @@ describe("structure", () => {
               ),
               [["P_PROD2"]],
             );
+          }),
+        ),
+    );
+
+    it.effect("renames a Mate and changes its face: whoever is owner or admin on its project", () =>
+      withStructure(() =>
+        Effect.gen(function* () {
+          const structure = yield* Structure;
+          const shop = yield* structure.createApp("owner", "Shop");
+          const attachMate = (projectId: string, name: string) =>
+            structure.attachProject("owner", shop.id, {
+              projectId,
+              kind: "mate",
+              mate: { name, face: "face-3" },
+            });
+          yield* attachMate("P_MATE", "Ada");
+          yield* attachMate("P_OWNED", "Bo");
+          yield* structure.attachProject("owner", shop.id, { projectId: "P_STAGE", kind: "stage" });
+          assert.deepStrictEqual(
+            yield* Effect.all([
+              outcome(structure.patchMate("owner", "P_MATE", { name: " Ada 2 " })),
+              outcome(
+                structure.patchMate("maker", "P_OWNED", { name: "Mine", face: "olive:clover" }),
+              ),
+              outcome(structure.patchMate("dev", "P_MATE", { face: "sky:flower" })),
+              outcome(structure.patchMate("reader", "P_MATE", { name: "Reader's" })),
+              outcome(structure.patchMate("owner", "P_STAGE", { name: "Stage" })),
+              outcome(structure.patchMate("owner", "P_GONE", { name: "Gone" })),
+              outcome(structure.patchMate("owner", "P_MATE", {})),
+              outcome(structure.patchMate("owner", "P_MATE", { name: " " })),
+            ]),
+            [
+              "ok",
+              "ok",
+              "forbidden",
+              "forbidden",
+              "mate_not_found",
+              "mate_not_found",
+              "invalid",
+              "invalid",
+            ],
+          );
+          const mates = (yield* structure.read("owner")).apps[0]?.projects.map((p) => p.mate);
+          assert.deepStrictEqual(mates, [
+            { name: "Ada 2", face: "face-3" },
+            { name: "Mine", face: "olive:clover" },
+            null,
+          ]);
+        }),
+      ),
+    );
+
+    it.effect(
+      "reconciles with Zerops: rows of projects it no longer has go, nothing moves while it cannot say",
+      () =>
+        withStructure((view, down) =>
+          Effect.gen(function* () {
+            const structure = yield* Structure;
+            const sql = yield* SqlClient.SqlClient;
+            const shop = yield* structure.createApp("owner", "Shop");
+            yield* structure.attachProject("owner", shop.id, {
+              projectId: "P_MATE",
+              kind: "mate",
+              mate: { name: "Ada", face: "face-3" },
+            });
+            yield* structure.attachProject("owner", shop.id, {
+              projectId: "P_STAGE",
+              kind: "stage",
+            });
+            const rows = Effect.map(
+              sql<{
+                readonly project_id: string;
+              }>`SELECT project_id FROM hq_app_project ORDER BY seq`,
+              (found) => found.map((row) => row.project_id),
+            );
+            assert.strictEqual(yield* structure.reconcile, 0);
+
+            yield* Ref.update(view, (current) => ({
+              ...current,
+              projects: current.projects.filter(
+                (candidate) => candidate.id !== "P_MATE" && candidate.id !== "P_STAGE",
+              ),
+            }));
+            yield* Ref.set(down, true);
+            assert.strictEqual(yield* outcome(structure.reconcile), "ZeropsUnavailable");
+            assert.deepStrictEqual(yield* rows, ["P_MATE", "P_STAGE"]);
+            yield* Ref.set(down, false);
+            assert.strictEqual(yield* structure.reconcile, 2);
+            assert.deepStrictEqual(yield* rows, []);
+            assert.strictEqual((yield* sql`SELECT 1 FROM hq_mate`).length, 0);
+          }),
+        ),
+    );
+
+    it.effect("an org owner or admin renames an application; a taken name is a conflict", () =>
+      withStructure(() =>
+        Effect.gen(function* () {
+          const structure = yield* Structure;
+          const shop = yield* structure.createApp("owner", "Shop");
+          yield* structure.createApp("owner", "Blog");
+          assert.deepStrictEqual(
+            yield* Effect.all([
+              outcome(structure.renameApp("dev", shop.id, "Dev's")),
+              outcome(structure.renameApp("admin", shop.id, "Blog")),
+              outcome(structure.renameApp("admin", shop.id, " ")),
+              outcome(structure.renameApp("admin", "00000000-0000-0000-0000-000000000000", "X")),
+              outcome(structure.renameApp("admin", shop.id, " Store ")),
+            ]),
+            ["forbidden", "conflict", "invalid", "app_not_found", "ok"],
+          );
+          assert.deepStrictEqual(
+            (yield* structure.read("owner")).apps.map((app) => app.name),
+            ["Store", "Blog"],
+          );
+        }),
+      ),
+    );
+
+    it.effect(
+      "a Mate stands on its own: set up outside any application, listed ungrouped to whoever sees it",
+      () =>
+        withStructure(() =>
+          Effect.gen(function* () {
+            const structure = yield* Structure;
+            const bo = { projectId: "P_OWNED", name: "Bo", face: "olive:clover" };
+            assert.deepStrictEqual(
+              yield* Effect.all([
+                outcome(structure.createMate("dev", { ...bo, projectId: "P_MATE" })),
+                outcome(structure.createMate("owner", { ...bo, projectId: "P_GONE" })),
+                outcome(structure.createMate("owner", { ...bo, projectId: "HQ" })),
+                outcome(structure.createMate("owner", { ...bo, name: " " })),
+                outcome(structure.createMate("maker", bo)),
+                outcome(structure.createMate("owner", bo)),
+                outcome(structure.patchMate("maker", "P_OWNED", { name: "Bo 2" })),
+              ]),
+              ["forbidden", "project_not_found", "invalid", "invalid", "ok", "conflict", "ok"],
+            );
+            const ungrouped = (userId: string) =>
+              Effect.map(structure.read(userId), (read) => read.ungrouped);
+            const listed = [
+              {
+                projectId: "P_OWNED",
+                name: "name of P_OWNED",
+                mate: { name: "Bo 2", face: "olive:clover" },
+              },
+            ];
+            assert.deepStrictEqual(yield* ungrouped("maker"), listed);
+            assert.deepStrictEqual(yield* ungrouped("owner"), listed);
+            assert.deepStrictEqual(yield* ungrouped("dev"), []);
+          }),
+        ),
+    );
+
+    it.effect(
+      "moves projects: a Mate by its project's owner or admin into an application they see, an environment by an org owner or admin",
+      () =>
+        withStructure(() =>
+          Effect.gen(function* () {
+            const structure = yield* Structure;
+            const shop = yield* structure.createApp("owner", "Shop");
+            const team = yield* structure.createApp("owner", "Team");
+            const blog = yield* structure.createApp("owner", "Blog");
+            // maker sees Team through P_TEAM (Read only there), not Shop.
+            yield* structure.attachProject("owner", team.id, {
+              projectId: "P_TEAM",
+              kind: "stage",
+            });
+            yield* structure.createMate("maker", {
+              projectId: "P_OWNED",
+              name: "Bo",
+              face: "olive:clover",
+            });
+            const move = (
+              userId: string,
+              projectId: string,
+              appId: string | null,
+              kind: "mate" | "stage" | "production",
+            ) => outcome(structure.moveProject(userId, projectId, { appId, kind }));
+            const steps = [
+              move("maker", "P_OWNED", team.id, "mate"),
+              move("maker", "P_OWNED", shop.id, "mate"),
+              move("dev", "P_OWNED", team.id, "mate"),
+              move("maker", "P_OWNED", null, "mate"),
+              move("maker", "P_OWNED", null, "mate"),
+              move("owner", "P_OWNED", team.id, "mate"),
+              move("owner", "P_OWNED", blog.id, "mate"),
+              move("owner", "P_STAGE", shop.id, "stage"),
+              move("maker", "P_STAGE", team.id, "stage"),
+              move("owner", "P_PROD", shop.id, "production"),
+              move("owner", "P_PROD2", shop.id, "production"),
+              move("owner", "P_MATE", shop.id, "mate"),
+              move("owner", "P_STAGE", "00000000-0000-0000-0000-000000000000", "stage"),
+              move("owner", "P_GONE", shop.id, "stage"),
+              move("owner", "P_STAGE", null, "stage"),
+            ];
+            const outcomes: Array<string> = [];
+            for (const step of steps) outcomes.push(yield* step);
+            assert.deepStrictEqual(outcomes, [
+              "ok",
+              "forbidden",
+              "forbidden",
+              "ok",
+              "ok",
+              "ok",
+              "ok",
+              "ok",
+              "forbidden",
+              "ok",
+              "conflict",
+              "invalid",
+              "app_not_found",
+              "project_not_found",
+              "ok",
+            ]);
+            const read = yield* structure.read("owner");
+            assert.deepStrictEqual(
+              read.apps.map(
+                (app) =>
+                  `${app.name}: ${app.projects.map((p) => `${p.projectId} ${p.kind}`).join(",")}`,
+              ),
+              ["Shop: P_PROD production", "Team: P_TEAM stage", "Blog: P_OWNED mate"],
+            );
+            assert.deepStrictEqual(read.ungrouped, []);
           }),
         ),
     );

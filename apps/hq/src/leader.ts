@@ -15,6 +15,7 @@ import * as PgConnection from "@effect/sql-pg/PgConnection";
 import * as Context from "effect/Context";
 import * as Deferred from "effect/Deferred";
 import * as Duration from "effect/Duration";
+import * as Fiber from "effect/Fiber";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import type * as Redacted from "effect/Redacted";
@@ -54,6 +55,11 @@ export class Leader extends Context.Service<
      * still this instance's. The next holder's raise waits for every such transaction, and one
      * that starts after it sees the new epoch: no write of an old leader lands after a takeover.
      */
+    /**
+     * Gives the lead up for good, at once — the session's connection closes, the lock with it, and
+     * the next Core takes it — and stays a standby. For shutdown (`core.ts`).
+     */
+    readonly release: Effect.Effect<void>;
     readonly write: <A, E, R>(
       effect: Effect.Effect<A, E, R>,
     ) => Effect.Effect<A, E | NotLeader | SqlError, R>;
@@ -205,9 +211,12 @@ export const leaderLayer = (
         ),
       );
 
-      yield* Effect.forkScoped(Effect.forever(Effect.andThen(session, Effect.sleep(retryAfter))));
+      const loop = yield* Effect.forkScoped(
+        Effect.forever(Effect.andThen(session, Effect.sleep(retryAfter))),
+      );
       return Leader.of({
         status: Effect.map(Ref.get(status), ({ state, epoch }) => ({ state, epoch })),
+        release: Effect.andThen(Fiber.interrupt(loop), Ref.set(status, STANDBY)),
         write: (effect) =>
           Effect.gen(function* () {
             const { state, epoch } = yield* Ref.get(status);
