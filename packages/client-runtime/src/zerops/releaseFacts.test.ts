@@ -2,13 +2,15 @@
 import type { CompareCommit } from "@t3tools/shared/hqChanges";
 import { describe, expect, it } from "vite-plus/test";
 
-import { compareForRelease, type ReleaseGate } from "./release.ts";
+import { compareForRelease, type FlowReleaseRow, type ReleaseGate } from "./release.ts";
 import type { Moved } from "./releaseCompare.ts";
 import { movedCount } from "./releaseCompare.ts";
 import {
   holdReleaseFacts,
   releaseFacts,
+  releaseFollows,
   releaseStageMarks,
+  releaseStep,
   type ReleaseFacts,
 } from "./releaseFacts.ts";
 import {
@@ -60,16 +62,54 @@ interface Step {
   readonly name: string;
   readonly moment: Moment;
   readonly press: ReviewPress;
-  readonly outcome: ReleaseOutcome;
+  /** The tag this window's press made. */
+  readonly made: string | undefined;
+  readonly inFlight: string | undefined;
+  readonly suggestion: string;
+  readonly releases: ReadonlyArray<FlowReleaseRow>;
 }
 
-/** The review as each step shows it, its facts held the way the dialog holds them. */
-function walk(tag: string, steps: ReadonlyArray<Step>) {
+function row(
+  tag: string,
+  standing: FlowReleaseRow["standing"],
+  over: Partial<FlowReleaseRow> = {},
+): FlowReleaseRow {
+  return {
+    tag,
+    verdict: "approved",
+    detail: undefined,
+    line: "app 5e1d0a7",
+    entries: [{ service: "app", commit: HEAD }],
+    taggedAt: new Date(NOW - 40_000).toISOString(),
+    standing,
+    word: "Approved",
+    rollBack: false,
+    failedEntry: undefined,
+    ...over,
+  };
+}
+
+/** The review as each step shows it, its tag followed and its facts held the way the dialog does. */
+function walk(steps: ReadonlyArray<Step>) {
   let held: ReleaseFacts | undefined;
   return steps.map((step) => {
-    const now = current(tag, step.moment);
-    held = holdReleaseFacts({ held, current: now, press: step.press, outcome: step.outcome });
-    const facts = held ?? now;
+    const follows = releaseFollows({
+      made: step.made,
+      held,
+      press: step.press,
+      inFlight: step.inFlight,
+      suggestion: step.suggestion,
+      releases: step.releases,
+    });
+    const shown = releaseStep({
+      follows,
+      held,
+      press: step.press,
+      clockMs: NOW,
+      read: (tag) => current(tag, step.moment),
+    });
+    held = shown.held;
+    const { facts } = shown;
     const gate: ReleaseGate = { allowed: true };
     const model = releaseReview({
       tag: facts.tag,
@@ -79,43 +119,50 @@ function walk(tag: string, steps: ReadonlyArray<Step>) {
       onStage: undefined,
       services: facts.services,
       replaces: facts.replaces,
-      outcome: step.outcome,
+      outcome: shown.outcome,
       now: NOW,
     });
-    return { name: step.name, facts, model };
+    return { name: step.name, facts, model, follows };
   });
 }
 
-/** A release from `before` to its own tag running, through the press and the deploy. */
-function release(tag: string, before: Moment, after: Moment): ReadonlyArray<Step> {
+/** A release from `before` to its own tag running, pressed in this window, through its deploy. */
+function release(
+  tag: string,
+  next: string,
+  before: Moment,
+  after: Moment,
+  earlier: ReadonlyArray<FlowReleaseRow> = [],
+): ReadonlyArray<Step> {
+  const idle = { made: undefined, inFlight: undefined, suggestion: tag, releases: earlier };
+  const made = { made: tag, suggestion: next };
   return [
-    { name: "ready", moment: before, press: { kind: "idle" }, outcome: { kind: "offered" } },
-    {
-      name: "tagging",
-      moment: before,
-      press: { kind: "running" },
-      outcome: { kind: "releasing", progress: `Tagging main as ${tag}` },
-    },
+    { name: "ready", moment: before, press: { kind: "idle" }, ...idle },
+    { name: "tagging", moment: before, press: { kind: "running" }, ...idle, made: tag },
     {
       name: "releasing",
       moment: before,
       press: { kind: "done" },
-      outcome: { kind: "releasing", progress: `Production redeploys from ${tag} · 0:40` },
+      ...made,
+      inFlight: tag,
+      releases: [row(tag, undefined), ...earlier],
     },
     {
       name: "released",
       moment: after,
       press: { kind: "done" },
-      outcome: { kind: "released", at: new Date(NOW).toISOString() },
+      ...made,
+      inFlight: undefined,
+      releases: [row(tag, "live"), ...earlier.map((entry) => ({ ...entry, standing: undefined }))],
     },
   ];
 }
 
 describe("a finished release keeps the facts it was made with", () => {
   const first = walk(
-    "v0.1.0",
     release(
       "v0.1.0",
+      "v0.1.1",
       { live: undefined, contents: ONE_CHANGE, production: undefined },
       // After: production runs the new tag, and nothing waits for it.
       { live: "v0.1.0", contents: [], production: HEAD },
@@ -145,11 +192,12 @@ describe("a finished release keeps the facts it was made with", () => {
   });
 
   const second = walk(
-    "v0.1.1",
     release(
       "v0.1.1",
+      "v0.1.2",
       { live: "v0.1.0", contents: ONE_CHANGE, production: "4c3b2a1" },
       { live: "v0.1.1", contents: [], production: HEAD },
+      [row("v0.1.0", "live")],
     ),
   );
 
@@ -173,9 +221,9 @@ describe("a finished release keeps the facts it was made with", () => {
 
 describe("a held release's changes follow the stage as it stands now", () => {
   const released = walk(
-    "v0.1.0",
     release(
       "v0.1.0",
+      "v0.1.1",
       { live: undefined, contents: ONE_CHANGE, production: undefined },
       { live: "v0.1.0", contents: [], production: HEAD },
     ),
@@ -201,6 +249,76 @@ describe("a held release's changes follow the stage as it stands now", () => {
     if (released === undefined) throw new Error("no released step");
     expect(released.model.verdict.state).toBe("released");
     expect(releaseStageMarks(released.facts, standing).get(HEAD)).toBe(mark);
+  });
+});
+
+describe("a release opened on its way follows its own tag to the end", () => {
+  const before: Moment = { live: undefined, contents: ONE_CHANGE, production: undefined };
+  const after: Moment = { live: "v0.1.0", contents: [], production: HEAD };
+  // Opened in another window, after a reload, or reopened: no press here, only the tag on its way.
+  const onItsWay: Step = {
+    name: "on its way",
+    moment: before,
+    press: { kind: "idle" },
+    made: undefined,
+    inFlight: "v0.1.0",
+    suggestion: "v0.1.1",
+    releases: [row("v0.1.0", undefined)],
+  };
+  const ended = (name: string, moment: Moment, tagged: FlowReleaseRow): Step => ({
+    ...onItsWay,
+    name,
+    moment,
+    inFlight: undefined,
+    releases: [tagged],
+  });
+
+  it.each<[string, Step, Record<string, unknown>, string]>([
+    [
+      "landed",
+      ended("landed", after, row("v0.1.0", "live")),
+      { state: "released", title: "Released v0.1.0" },
+      "Production runs v0.1.0.",
+    ],
+    [
+      "its deploy failed",
+      ended(
+        "failed",
+        before,
+        row("v0.1.0", "deploy-failed", { failedEntry: { service: "app", commit: HEAD } }),
+      ),
+      { state: "release-failed", title: "v0.1.0 didn't go out", why: "The deploy of app failed" },
+      "Production still runs what it ran before.",
+    ],
+    [
+      "HQ refused it",
+      ended(
+        "refused",
+        before,
+        row("v0.1.0", undefined, { verdict: "refused", detail: "Production is held" }),
+      ),
+      { state: "release-failed", title: "v0.1.0 didn't go out", why: "Production is held" },
+      "Production still runs what it ran before.",
+    ],
+  ])(
+    "%s: it says how v0.1.0 ended, with the facts it was made with",
+    (_name, end, verdict, foot) => {
+      const [first, last] = walk([onItsWay, end]);
+      expect(first?.model.verdict).toMatchObject({ state: "releasing", title: "Releasing v0.1.0" });
+      expect(last?.model.verdict).toMatchObject(verdict);
+      expect(last?.model.consequence).toBe(foot);
+      expect(last?.model.meta.join(" · ")).toBe("the first release · 1 change");
+      expect(last?.facts.where).toEqual([{ service: "app", line: "redeploys from 5e1d0a7" }]);
+    },
+  );
+
+  it("a refused press gives the offer back", () => {
+    const [ready, tagging] = release("v0.1.0", "v0.1.1", before, after);
+    if (ready === undefined || tagging === undefined) throw new Error("no steps");
+    const refused: Step = { ...ready, name: "refused", press: { kind: "refused", reason: "No." } };
+    const last = walk([ready, tagging, refused]).at(-1);
+    expect(last?.model.verdict).toMatchObject({ state: "release-ready" });
+    expect(last?.model.primary?.label).toBe("Release v0.1.0");
   });
 });
 

@@ -448,7 +448,10 @@ export {
 export {
   holdReleaseFacts,
   releaseFacts,
+  releaseFollows,
+  releaseOutcomeOf,
   releaseStageMarks,
+  releaseStep,
   type ReleaseFacts,
 } from "./releaseFacts.ts";
 export {
