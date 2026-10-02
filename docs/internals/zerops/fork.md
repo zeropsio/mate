@@ -51,7 +51,7 @@ Measured against the real upstream repo, 2026-08-28:
 - **Owned product** — `apps/server/src/zerops/**`, `apps/web/src/zerops/**`,
   `apps/web/src/components/zerops/**`, `packages/client-runtime/src/zerops/**`,
   `apps/mobile/src/features/zerops/**`,
-  `packages/shared/src/{brand,threadStatus,crewHome,crewTemplates}.ts`, `packages/hq-git/**`,
+  `packages/shared/src/{brand,threadStatus,crewHome,crewTemplates}.ts`, `apps/hq/**`, `packages/hq-git/**`,
   `docs/internals/zerops/**`
   - _Rule:_ Ours only. The client design system (`design-system.md`) governs the client dirs: tokens
     only, protected roots render only, one status resolver.
