@@ -516,6 +516,7 @@ function Rollback({
       nextTag="v0.1.58"
       now={NOW}
       onClose={noop}
+      onOpenChange={noop}
       onRollBack={noop}
       outcome={OFFERED}
       press={IDLE}
@@ -1133,7 +1134,7 @@ function ReleaseTrySteps({ onClose }: { readonly onClose: () => void }) {
             mate={NOVA}
             now={NOW}
             onAsk={async () => {}}
-            onBack={steps.back}
+            back={{ label: "Release", onPress: steps.back }}
             onClose={onClose}
             onFix={noop}
             onOpenPage={onClose}

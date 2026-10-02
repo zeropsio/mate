@@ -99,6 +99,29 @@ describe("RollbackReviewView", () => {
     expect(markup).toContain("Nothing comes back.");
   });
 
+  it("opens a change it lists in its review, as history does", () => {
+    const markup = renderRollback({
+      onOpenChange: () => {},
+      leaving: {
+        state: "known",
+        rows: [
+          {
+            key: "aaa111",
+            title: "#54 Quicker gallery",
+            change: { repository: "appdev", number: 54 },
+            mateProjectId: "p-juno",
+            mergedAt: undefined,
+            stage: "none",
+            sub: "Juno",
+          },
+        ],
+        count: 1,
+        atLeast: false,
+      },
+    });
+    expect(markup).toMatch(/<button[^>]*data-release-row="aaa111"/u);
+  });
+
   const row = (key: string) => ({
     key,
     title: `Commit ${key}`,
