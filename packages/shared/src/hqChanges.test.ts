@@ -11,6 +11,8 @@ import {
   ChangesMessage,
   ChangesSnapshot,
   CommentListResponse,
+  CompareQuery,
+  CompareResponse,
   EditChangeRequest,
   EnsureRepoRequest,
   HqChange,
@@ -266,6 +268,12 @@ describe("hqChanges — the wire", () => {
     commitsTruncated: false,
     ...patch,
   });
+  const landed = {
+    sha: "b".repeat(40),
+    subject: "Add a login page (#7)",
+    authorName: "Ada",
+    at: "2026-10-02T10:00:00Z",
+  };
   const comment = (body: string) => ({
     id: "c1",
     authorUserId: "owner",
@@ -315,6 +323,45 @@ describe("hqChanges — the wire", () => {
     ["say something", PostCommentRequest, { body: "Please rename it." }, "Success"],
     ["say nothing", PostCommentRequest, { body: " " }, "Failure"],
     ["say too much", PostCommentRequest, { body: "x".repeat(COMMENT_BODY_MAX + 1) }, "Failure"],
+    ["compare from a commit", CompareQuery, { base: SHA, head: "b".repeat(40) }, "Success"],
+    ["compare from the root", CompareQuery, { head: SHA }, "Success"],
+    ["compare up to a branch's name", CompareQuery, { head: "main" }, "Failure"],
+    [
+      "what lies between two commits, one landed by a change and one by nobody's",
+      CompareResponse,
+      {
+        base: SHA,
+        head: "b".repeat(40),
+        commits: [
+          {
+            ...landed,
+            change: { number: 7, title: "Add a login page", mateProjectId: "P_MATE" },
+          },
+          { ...landed, sha: "c".repeat(40), subject: "Recipe: stage", change: null },
+        ],
+        truncated: false,
+        total: 2,
+      },
+      "Success",
+    ],
+    [
+      "everything up to a commit, cut at the bound",
+      CompareResponse,
+      {
+        base: null,
+        head: SHA,
+        commits: [{ ...landed, change: null }],
+        truncated: true,
+        total: 10000,
+      },
+      "Success",
+    ],
+    [
+      "a count below none",
+      CompareResponse,
+      { base: null, head: SHA, commits: [], truncated: false, total: -1 },
+      "Failure",
+    ],
   ])("a person's read: %s", (_name, schema, value, expected) => {
     expect(read(schema as Schema.Codec<unknown, unknown>, value)).toBe(expected);
   });
