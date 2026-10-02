@@ -106,8 +106,6 @@ import {
   buildZeropsGroupTree,
   mateShapeOf,
   newMateTint,
-  flowVerbKey,
-  flowVerbLabel,
   deployWord,
   rankZeropsCandidateForListing,
   readZeropsToolKind,
@@ -1712,8 +1710,8 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
 
   /**
    * One pull request's row, wherever it is drawn. Its verb is *Review*, the one
-   * door to merging (pass 16, R1): the review reads the change, says whether it
-   * is safe and carries *Merge* — nothing merges from a row. `withMerge` is
+   * door to merging (pass 16, R1): the review reads the change and says whether
+   * it is safe — nothing merges from a row. `withMerge` is
    * false where the project's next step already offers that door on it: one
    * verb, once. `compact` stacks title, state and verb for a flow step's narrow
    * column.
@@ -1723,19 +1721,13 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
     pull: FlowPullRequest,
     { withMerge, compact }: { readonly withMerge: boolean; readonly compact: boolean },
   ) => {
-    const slug = groupDeploys.get(group.groupId)?.slug;
     // One vocabulary down the column, the same one the project's own page and
     // the left menu use (`changeState`): a change that no longer merges is the
     // one a person needs to see.
     const state = changeState(pull);
-    const merging =
-      slug !== undefined &&
-      projectFlow.pending.has(
-        flowVerbKey({ kind: "merge", slug, repository: pull.repository, number: pull.number }),
-      );
     const action = withMerge ? (
       <ZeropsMateVerb
-        label={merging ? flowVerbLabel("merge", true) : REVIEW_LABEL}
+        label={REVIEW_LABEL}
         onClick={(event) => {
           openReview(
             {

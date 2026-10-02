@@ -213,6 +213,13 @@ const TALKING = comments({ kind: "read", comments: TALK });
 const NOVA = { name: "Nova", tint: "slate", mine: true } as const;
 
 const IDLE: ReviewPress = { kind: "idle" };
+/** Merged a minute ago: the review says what happened, and offers the release's review. */
+const MERGED_NOW: Partial<FlowPullRequest> = {
+  state: "closed",
+  merged: true,
+  mergedAt: minutesAgo(1),
+  updatedAt: minutesAgo(1),
+};
 const NONE_OPEN: ReadonlyArray<string> = [];
 const RUN = { words: WORDS, reading: false } as const;
 const OFFERED = { kind: "offered" } as const;
@@ -393,7 +400,6 @@ function Change({
   over,
   mainSince,
   readout,
-  press = IDLE,
   open = NONE_OPEN,
   run = RUN,
   conversation = TALKING,
@@ -404,7 +410,6 @@ function Change({
   readonly mainSince?: ReadonlyArray<GiteaCommit>;
   /** What was read of it, where that is not everything. */
   readonly readout?: Partial<ChangeReviewViewProps["readout"]>;
-  readonly press?: ReviewPress;
   readonly open?: ReadonlyArray<string>;
   readonly run?: { readonly words: string | undefined; readonly reading: boolean };
   readonly conversation?: ZeropsChangeComments;
@@ -428,11 +433,9 @@ function Change({
       onRetry={noop}
       remarks={remarksOf(conversation)}
       onFix={noop}
-      onMerge={noop}
       onOpenRun={run.words === undefined && value.description === undefined ? undefined : noop}
       onReviewRelease={noop}
       pictures={HARNESS_PICTURES}
-      press={press}
       pull={value}
       readout={{
         ...READ,
@@ -782,20 +785,7 @@ export const REVIEW_STATES: ReadonlyArray<{
     label: "Behind main, no longer merges",
     node: <Change over={{ mergeability: "conflicting", baseSha: "main-now" }} />,
   },
-  { id: "merging", label: "Merging", node: <Change press={{ kind: "running" }} /> },
-  {
-    id: "refused",
-    label: "Refused",
-    node: (
-      <Change
-        press={{
-          kind: "refused",
-          reason: "This pull request changed since you opened it — review it again.",
-        }}
-      />
-    ),
-  },
-  { id: "merged", label: "After Merge", node: <Change press={{ kind: "done" }} /> },
+  { id: "merged", label: "Merged", node: <Change over={MERGED_NOW} /> },
   {
     id: "closed",
     label: "Closed without merging",
@@ -816,12 +806,11 @@ export const REVIEW_STATES: ReadonlyArray<{
   },
   {
     id: "recipe-merged-unused",
-    label: "A recipe change after Merge, to recipes nothing is made from: no release",
+    label: "A recipe change merged, to recipes nothing is made from: no release",
     node: (
       <Change
         conversation={comments({ kind: "read", comments: [] })}
-        over={RECIPE}
-        press={{ kind: "done" }}
+        over={{ ...RECIPE, ...MERGED_NOW }}
         readout={recipeRead(UNUSED_TIERS)}
         run={{ words: undefined, reading: false }}
       />
@@ -829,12 +818,15 @@ export const REVIEW_STATES: ReadonlyArray<{
   },
   {
     id: "recipe-merged",
-    label: "A recipe change after Merge: the stage and production get what it adds",
+    label: "A recipe change merged: the stage and production get what it adds",
     node: (
       <Change
         conversation={comments({ kind: "read", comments: [] })}
-        over={{ ...RECIPE, title: "Add a mail service to the stage and production recipes" }}
-        press={{ kind: "done" }}
+        over={{
+          ...RECIPE,
+          ...MERGED_NOW,
+          title: "Add a mail service to the stage and production recipes",
+        }}
         readout={recipeRead(MADE_FROM_TIERS)}
         run={{ words: undefined, reading: false }}
       />
@@ -842,13 +834,16 @@ export const REVIEW_STATES: ReadonlyArray<{
   },
   {
     id: "recipe-merged-none",
-    label: "A recipe change after Merge, in a project with no stage or production yet",
+    label: "A recipe change merged, in a project with no stage or production yet",
     node: (
       <Change
         conversation={comments({ kind: "read", comments: [] })}
         environments={NO_ENVIRONMENTS}
-        over={{ ...RECIPE, title: "Add a mail service to the stage and production recipes" }}
-        press={{ kind: "done" }}
+        over={{
+          ...RECIPE,
+          ...MERGED_NOW,
+          title: "Add a mail service to the stage and production recipes",
+        }}
         readout={recipeRead(MADE_FROM_TIERS)}
         run={{ words: undefined, reading: false }}
       />
@@ -974,7 +969,7 @@ const TRY_READ_MS = 600;
 
 /**
  * The real dialog, opened from a button, to try its motion, its focus and its keys — its files
- * arriving a moment after it opens, as they do from Gitea, so Merge turns pressable then.
+ * arriving a moment after it opens, as they do from Gitea.
  */
 export function ReviewDialogTry() {
   const [from, setFrom] = useState<HTMLElement | null>(null);
@@ -1026,11 +1021,9 @@ export function ReviewDialogTry() {
             setOpen(false);
           }}
           onFix={noop}
-          onMerge={noop}
           onOpenRun={noop}
           onReviewRelease={noop}
           pictures={HARNESS_PICTURES}
-          press={IDLE}
           pull={pull({
             description: harnessDescription({ after: TRY_READ_MS }),
             commentCount: TALK.length,
@@ -1083,12 +1076,10 @@ function ReleaseTrySteps({ onClose }: { readonly onClose: () => void }) {
             onBack={steps.back}
             onClose={onClose}
             onFix={noop}
-            onMerge={noop}
             onOpenPage={onClose}
             onOpenRun={noop}
             onReviewRelease={noop}
             pictures={HARNESS_PICTURES}
-            press={IDLE}
             pull={pull({
               ...RELEASED[shown.number],
               description: harnessDescription({ after: 0 }),

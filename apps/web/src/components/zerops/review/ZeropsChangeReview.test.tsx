@@ -59,7 +59,6 @@ vi.mock("~/zerops/useZeropsChangeReadout", () => ({
     diff: { kind: "none" },
     commits: { kind: "reading" },
     mainSince: { kind: "none" },
-    head: undefined,
     retry: () => undefined,
   }),
 }));
@@ -140,9 +139,7 @@ function render(pull: FlowPullRequest, files: ReadonlyArray<GiteaChangedFile>): 
     environments: [{ tier: "stage" }, { tier: "production" }],
     waitingForProduction: 2,
     live: "v0.1.0",
-    press: { kind: "idle" },
     now: NOW,
-    onMerge: noop,
     onFix: noop,
     onAsk: async () => undefined,
     onOpenRun: undefined,
@@ -187,6 +184,15 @@ describe("ChangeReviewView: a change after its merge", () => {
     const html = render(merged(), [changed("src/mail.ts")]);
     expect(textOf(html)).toContain("Production still serves v0.1.0 until you release.");
     expect(html).toContain('data-zerops-primary-action="Review release"');
+  });
+});
+
+describe("ChangeReviewView: an open change", () => {
+  it("that merges cleanly offers no Merge: a Mate's change merges in HQ", () => {
+    const open = merged({ state: "open", merged: false, mergedAt: undefined });
+    const html = render(open, [changed("src/mail.ts")]);
+    expect(html).not.toContain('data-zerops-primary-action="Merge"');
+    expect(html.slice(html.indexOf('<footer class="rv-foot">'))).not.toContain("<button");
   });
 });
 

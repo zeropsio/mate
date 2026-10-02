@@ -1,16 +1,17 @@
 /**
  * A change's review: a pull request, read before it is merged (R2–R6).
  *
- * The verdict and the button come from the flow the moment it opens — the flow already knows
- * whether the change merges and how its checks went, and carries the change's description — and
+ * The verdict comes from the flow the moment it opens — the flow already knows whether the change
+ * merges, and carries the change's description — and
  * what the flow does not carry is read as it opens (`useZeropsChangeReadout`): its files, the
  * commits it squashes, and what `main` changed under it; its diff once a file is opened. The run
  * that made it is its Mate's newest answer linking it: what it said stands in for a description
  * nobody wrote.
  *
- * After Merge the review stays: it says what happened, and where production waits for a code
- * change, its button opens the release's review in place. A recipe change is never released: its
- * review says, from the files it changed, what its merge does to the environments made from it.
+ * It offers no Merge: a Mate's change merges in HQ (T8). Once merged it says what happened, and
+ * where production waits for a code change, its button opens the release's review in place. A
+ * recipe change is never released: its review says, from the files it changed, what its merge
+ * does to the environments made from it.
  *
  * `ChangeReviewView` is the picture with every read handed in, so the harness shows each state.
  */
@@ -28,7 +29,6 @@ import {
   type GiteaChangedFile,
   type GiteaCommit,
   type GroupEnvironmentTier,
-  type ReviewPress,
 } from "@t3tools/client-runtime/zerops";
 import type { MateShapeId, MateTintId } from "@t3tools/shared/brand";
 import { useRouter } from "@tanstack/react-router";
@@ -229,7 +229,6 @@ function ChangeReviewData({
   const askMate = useAskMate();
   const askMateToFix = useAskMateToFix();
   const mates = useZeropsReviewMates(target.groupId);
-  const [press, setPress] = useState<ReviewPress>({ kind: "idle" });
   const [diffWanted, setDiffWanted] = useState(false);
   const pictures = useGiteaPictureSource(flowValue.giteaOrigin);
 
@@ -289,12 +288,6 @@ function ChangeReviewData({
       clearTimeout(timer);
     };
   }, [run.reading]);
-  const merge = async () => {
-    setPress({ kind: "running" });
-    // The head whose change was shown: one pushed since is Gitea's to refuse, never merged unseen.
-    const outcome = await flowValue.mergePullRequest(owner, { ...pull, headSha: readout.head });
-    setPress(outcome.ok ? { kind: "done" } : { kind: "refused", reason: outcome.reason });
-  };
   const runRef = run.threadRef;
 
   return (
@@ -342,9 +335,6 @@ function ChangeReviewData({
         askMateToFix(pull.mateProjectId, problem);
         onClose();
       }}
-      onMerge={() => {
-        void merge();
-      }}
       onOpenFile={() => {
         setDiffWanted(true);
       }}
@@ -363,7 +353,6 @@ function ChangeReviewData({
         onReplace({ kind: "release", groupId: target.groupId });
       }}
       pictures={pictures}
-      press={press}
       pull={pull}
       readout={readout}
       run={{ words: run.words, reading: run.reading && !runGaveUp }}
@@ -419,12 +408,10 @@ export interface ChangeReviewViewProps {
   readonly waitingForProduction: number;
   /** The release production runs. */
   readonly live: string | undefined;
-  readonly press: ReviewPress;
   readonly now: number;
   readonly titleId?: string | undefined;
   /** Files whose diff stands open from the start — the harness's. */
   readonly initiallyOpen?: ReadonlyArray<string> | undefined;
-  readonly onMerge: () => void;
   /** A file was opened: its diff is wanted. */
   readonly onOpenFile?: (() => void) | undefined;
   readonly onFix: (problem: FixProblem) => void;
@@ -442,7 +429,7 @@ export interface ChangeReviewViewProps {
 }
 
 export function ChangeReviewView(props: ChangeReviewViewProps) {
-  const { pull, readout, press, mate } = props;
+  const { pull, readout, mate } = props;
   const files = readout.files.kind === "read" ? readout.files.value : undefined;
   const mainSince = readout.mainSince.kind === "read" ? readout.mainSince.value : undefined;
   const downstream = {
@@ -467,20 +454,12 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
     }),
     behindBy: mainSince?.length,
     downstream,
-    waiting: {
-      // Until the flow reads it again, the change just merged is not among what waits yet.
-      count:
-        press.kind === "done" && !pull.merged
-          ? props.waitingForProduction + 1
-          : props.waitingForProduction,
-      live: props.live,
-    },
+    waiting: { count: props.waitingForProduction, live: props.live },
     releaseOffered: downstream.production,
     recipe:
       pull.kind === "recipe" && files !== undefined
         ? recipeReach({ files, environments: props.environments })
         : undefined,
-    press,
     now: props.now,
   });
   const size = sizeWords({
@@ -501,12 +480,13 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
   };
   const mine = mate?.mine === true ? mate : undefined;
   const fix = model.verdict.fix;
+  // Its one button is the release's review once it is merged; Merge is not offered here (T8).
   const next = model.primary?.label === REVIEW_RELEASE_LABEL;
   // Merged or closed: nothing more to ask of it here.
   const over = model.verdict.state === "merged" || model.verdict.state === "closed";
   // Read from its release: merged already, and the release is the next review.
   const fromRelease = props.onBack !== undefined;
-  const primary = fromRelease ? undefined : model.primary;
+  const primary = fromRelease || !next ? undefined : model.primary;
   return (
     <ZeropsReviewSurface
       back={props.onBack === undefined ? undefined : { label: RELEASE_BACK, onPress: props.onBack }}
@@ -541,13 +521,7 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
       primary={
         primary === undefined
           ? undefined
-          : {
-              ...primary,
-              busy: press.kind === "running",
-              label: press.kind === "running" ? "Merging" : primary.label,
-              icon: next ? "tag" : undefined,
-              onPress: next ? props.onReviewRelease : props.onMerge,
-            }
+          : { ...primary, icon: "tag", onPress: props.onReviewRelease }
       }
       settled={fromRelease ? "Merged" : undefined}
       title={pull.title}

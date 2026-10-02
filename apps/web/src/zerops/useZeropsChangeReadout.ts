@@ -56,8 +56,6 @@ export interface ChangeDiffRead {
 }
 
 export interface ZeropsChangeReadout {
-  /** The head every part was read for: the one Merge takes, never a newer one read since. */
-  readonly head: string | undefined;
   readonly files: ReadoutPart<ReadonlyArray<GiteaChangedFile>>;
   /** `none` until a file is opened. */
   readonly diff: ReadoutPart<ChangeDiffRead>;
@@ -235,5 +233,5 @@ export function useZeropsChangeReadout(
     origin,
     attempt,
   );
-  return { head: at === null ? undefined : head, files, diff, commits, mainSince, retry };
+  return { files, diff, commits, mainSince, retry };
 }

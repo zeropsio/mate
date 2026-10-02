@@ -1,7 +1,7 @@
 /**
- * The flow's verbs as command attempts (DESIGN §4.9, §4.7 "Verbs", §2.D D8): Merge, Open,
- * Release and Roll back, each keyed by its target, so a refusal on one pull request, branch or
- * group never shows on another.
+ * The flow's verbs as command attempts (DESIGN §4.9, §4.7 "Verbs", §2.D D8): Open, Release and
+ * Roll back, each keyed by its target, so a refusal on one branch or group never shows on
+ * another. A Mate's change merges in HQ, not here.
  *
  * ```
  *  requested ─[capability waitable]─► awaiting-capability (≤ 30 s) ─allowed─► pending
@@ -13,9 +13,8 @@
  *
  * - The capability is the Gitea session's (§4.3 `forge(origin)`), asked before the attempt and
  *   again before each write of a compound command; waiting for it never counts against a write.
- * - Settlement invalidates exactly what the verb changed: a merge, its repository and the stage
- *   deployments that repository's `main` feeds; opening a pull request, its repository; a release
- *   or a roll back, the group repo.
+ * - Settlement invalidates exactly what the verb changed: opening a pull request, its repository;
+ *   a release or a roll back, the group repo.
  * - A write is never sent twice: a second press while one runs is the same attempt, and an
  *   attempt whose answer was lost is `uncertain`, never retried.
  *
@@ -27,7 +26,6 @@ import {
   type Capability,
 } from "../data/access/capabilities.ts";
 import type { GrantCapability } from "../data/access/grant.ts";
-import type { ServiceRef } from "../data/types.ts";
 import { GiteaApiError, type GiteaClient } from "../giteaClient.ts";
 import type { Invalidation } from "../knowledge/invalidation.ts";
 import { flowVerbKey } from "../projectFlow.ts";
@@ -36,18 +34,6 @@ import { RELEASE_NOT_A_RELEASER, releaseMessage, releaseTagName, rollbackTo } fr
 import type { GroupFlow } from "./groupFlow.ts";
 
 export type FlowCommand =
-  | {
-      readonly kind: "merge";
-      readonly origin: string;
-      /** The group's Gitea org. */
-      readonly slug: string;
-      readonly repository: string;
-      readonly number: number;
-      /** The head the person was shown; a pull request that moved since is not merged. */
-      readonly head: string;
-      /** The stage services the repository's `main` deploys to (`GroupFlow.feeds`). */
-      readonly feeds: ReadonlyArray<ServiceRef>;
-    }
   | {
       readonly kind: "open";
       readonly origin: string;
@@ -128,16 +114,6 @@ export interface FlowCommands {
 /** What a settled verb changed at its source (§4.7 "Verbs"). */
 export function flowCommandInvalidations(command: FlowCommand): ReadonlyArray<Invalidation> {
   switch (command.kind) {
-    case "merge":
-      return [
-        {
-          topic: "forge-repo",
-          origin: command.origin,
-          owner: command.slug,
-          repo: command.repository,
-        },
-        ...command.feeds.map((service): Invalidation => ({ topic: "deployment", service })),
-      ];
     case "open":
       return [
         {
@@ -160,22 +136,6 @@ export function flowCommandInvalidations(command: FlowCommand): ReadonlyArray<In
   }
 }
 
-/**
- * Merging one of the group's pull requests, with the stages its repository feeds; `null` while
- * those are not known — a merge that named none would leave the stage it deploys to unread.
- */
-export function mergeCommand(
-  flow: GroupFlow,
-  origin: string,
-  repository: string,
-  number: number,
-  head: string,
-): FlowCommand | null {
-  const feeds = flow.feeds(repository);
-  if (feeds.state !== "known") return null;
-  return { kind: "merge", origin, slug: flow.slug, repository, number, head, feeds: feeds.value };
-}
-
 /** Tagging what the release offer showed; `null` while the offer is not known. */
 export function releaseCommand(flow: GroupFlow, origin: string): FlowCommand | null {
   if (flow.release.state !== "known") return null;
@@ -192,20 +152,13 @@ export function releaseCommand(flow: GroupFlow, origin: string): FlowCommand | n
 
 /** A verb as a surface asks for it: a pull request by its group's slug, a release by its group. */
 export type FlowRequest =
-  | {
-      readonly kind: "merge";
-      readonly slug: string;
-      readonly repository: string;
-      readonly number: number;
-      readonly head: string;
-    }
   | Omit<Extract<FlowCommand, { readonly kind: "open" }>, "origin">
   | { readonly kind: "release"; readonly groupId: string }
   | { readonly kind: "roll-back"; readonly groupId: string; readonly tag: string };
 
 /**
  * The command a surface's request is, over the flows read: `null` for a verb on a group whose
- * flow is not read, a merge whose stages it feeds are not known, or a release whose offer is not.
+ * flow is not read, or a release whose offer is not.
  */
 export function flowCommandFor(
   request: FlowRequest,
@@ -214,12 +167,6 @@ export function flowCommandFor(
 ): FlowCommand | null {
   const groups = [...flows];
   switch (request.kind) {
-    case "merge": {
-      const flow = groups.find(({ slug }) => slug === request.slug);
-      return flow === undefined
-        ? null
-        : mergeCommand(flow, origin, request.repository, request.number, request.head);
-    }
     case "open":
       return { ...request, origin };
     case "release": {
@@ -363,21 +310,6 @@ export function makeFlowCommands(ports: FlowCommandPorts): FlowCommands {
 
   const act = async (command: FlowCommand, client: GiteaClient): Promise<FlowAttempt> => {
     switch (command.kind) {
-      case "merge":
-        try {
-          await client.mergePullRequest(
-            command.slug,
-            command.repository,
-            command.number,
-            command.head,
-          );
-          return { phase: "accepted" };
-        } catch (cause) {
-          return writeSettled(
-            cause,
-            (error) => `Gitea would not merge it: ${error.detail ?? error.message}`,
-          );
-        }
       case "open":
         try {
           await client.createPullRequest(command.slug, command.repository, {
@@ -423,7 +355,7 @@ export function makeFlowCommands(ports: FlowCommandPorts): FlowCommands {
     const capability = await admitted(command.origin);
     if (!capability.allowed) return capabilityRefusal(capability);
     const client = clientForWrite(command.origin);
-    if (!("mergePullRequest" in client)) return client;
+    if (!("createTag" in client)) return client;
     set(command, { phase: "pending" });
     const settled = await act(command, client);
     if (!disposed && (settled.phase === "accepted" || settled.phase === "uncertain")) {
