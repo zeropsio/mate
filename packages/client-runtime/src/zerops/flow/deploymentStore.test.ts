@@ -16,6 +16,7 @@ import type { Shown } from "../knowledge/known.ts";
 import type { StopService } from "./deployment.ts";
 import { processesRead, runningProcess } from "./__fixtures__/processes.ts";
 import { deployed, record, servicesRead } from "./__fixtures__/services.ts";
+import { AFTER_BUILD_GRACE_MS } from "./deployment.ts";
 import { makeDeploymentStore } from "./deploymentStore.ts";
 
 const NOW = 100_000;
@@ -222,26 +223,66 @@ describe("the deployment store (DESIGN §2.D D6)", () => {
     expect(heard).toEqual(["project-stage"]);
   });
 
-  it("a build seen to end with nothing running is kept: the first deploy failed", () => {
-    const platform = listings();
-    const store = makeDeploymentStore(platform.ports);
-    store.demand(STAGE);
-    platform.publish(STAGE, stage(NEVER_DEPLOYED));
-    platform.publishProcesses(STAGE, building({ id: "version-2", name: SHA }));
-    expect(deploymentOf(store.stop(STAGE), "app")).toMatchObject({ value: { kind: "deploying" } });
+  describe("a build seen to end with nothing running (the first deploy failing)", () => {
+    /** The store on a clock the test moves. */
+    const clocked = () => {
+      const platform = listings();
+      const clock = { ms: NOW };
+      const store = makeDeploymentStore({ ...platform.ports, nowMs: () => clock.ms });
+      store.demand(STAGE);
+      platform.publish(STAGE, stage(NEVER_DEPLOYED));
+      platform.publishProcesses(STAGE, building({ id: "version-2", name: SHA }));
+      return { platform, clock, store };
+    };
 
-    // The build ends and the service still carries its NONE version: nothing it built runs.
-    platform.publishProcesses(STAGE, building());
-    expect(deploymentOf(store.stop(STAGE), "app")).toMatchObject({
-      state: "known",
-      value: { kind: "none", afterBuild: true },
+    it("a success whose build's end arrives before its version: never failed", () => {
+      const { platform, clock, store } = clocked();
+      // The build's process leaves first; the service still names its NONE version.
+      platform.publishProcesses(STAGE, building());
+      expect(deploymentOf(store.stop(STAGE), "app")).toMatchObject({
+        value: { kind: "deploying" },
+      });
+      clock.ms += 300;
+      platform.publish(STAGE, stage({ ...NEVER_DEPLOYED, id: "version-2", source: null }));
+      expect(deploymentOf(store.stop(STAGE), "app")).toMatchObject({ value: { kind: "running" } });
+      // The grace runs out with the version running: nothing turns it into a failure.
+      clock.ms += AFTER_BUILD_GRACE_MS;
+      platform.fire();
+      expect(deploymentOf(store.stop(STAGE), "app")).toMatchObject({ value: { kind: "running" } });
     });
 
-    // The next build activates: it runs, and the failure is forgotten.
-    platform.publishProcesses(STAGE, building({ id: "version-3", name: SHA }));
-    platform.publishProcesses(STAGE, building());
-    platform.publish(STAGE, stage({ ...NEVER_DEPLOYED, id: "version-3", source: null }));
-    expect(deploymentOf(store.stop(STAGE), "app")).toMatchObject({ value: { kind: "running" } });
+    it("a real failure reads failed once the grace ran out with nothing running", () => {
+      const { platform, clock, store } = clocked();
+      platform.publishProcesses(STAGE, building());
+      expect(deploymentOf(store.stop(STAGE), "app")).toMatchObject({
+        value: { kind: "deploying" },
+      });
+      expect(platform.armed()).toEqual([AFTER_BUILD_GRACE_MS]);
+
+      clock.ms += AFTER_BUILD_GRACE_MS;
+      platform.fire();
+      expect(deploymentOf(store.stop(STAGE), "app")).toMatchObject({
+        state: "known",
+        value: { kind: "none", afterBuild: true },
+      });
+
+      // The next build activates: it runs, and the failure is forgotten.
+      platform.publishProcesses(STAGE, building({ id: "version-3", name: SHA }));
+      platform.publishProcesses(STAGE, building());
+      platform.publish(STAGE, stage({ ...NEVER_DEPLOYED, id: "version-3", source: null }));
+      expect(deploymentOf(store.stop(STAGE), "app")).toMatchObject({ value: { kind: "running" } });
+    });
+
+    it("a stop let go stops the grace's timer", () => {
+      const platform = listings();
+      const store = makeDeploymentStore(platform.ports);
+      const release = store.demand(STAGE);
+      platform.publish(STAGE, stage(NEVER_DEPLOYED));
+      platform.publishProcesses(STAGE, building({ id: "version-2", name: SHA }));
+      platform.publishProcesses(STAGE, building());
+      release();
+      expect(platform.armed()).toEqual([]);
+    });
   });
 
   it("a never-built runtime's none says nothing of a build", () => {

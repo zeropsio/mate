@@ -638,32 +638,69 @@ export function heldThroughRecheck(
 }
 
 /**
+ * How long a build seen to end with nothing running keeps saying what it said while it built,
+ * before it reads as the first deploy failing. The socket promises no order between a process's
+ * end and its service's new version: run 4 saw the version 0.3 s before the build's end (app
+ * ACTIVE +1481.7 s, build finished +1482.0 s), and the other order is a success that would flash
+ * "its first deploy failed" — the worst false alarm. 20 s is some 60 times that margin, and a
+ * failure still shows within half a minute.
+ */
+export const AFTER_BUILD_GRACE_MS = 20_000;
+
+/** A service seen building while its stop is demanded. */
+export interface SeenBuild {
+  /** What it said while it built, kept through the grace. */
+  readonly building: Extract<Shown<Deployment>, { readonly state: "known" }>;
+  /** When it was first seen to run nothing after the build; `null` while it builds. */
+  readonly endedAtMs: number | null;
+}
+
+/**
  * A stop read again, over the services seen building: a service seen deploying and now known to
  * run nothing ran no build of its — its first deploy failed (`afterBuild`), which no running-process
- * listing keeps once the build is gone. One running anything is forgotten. Returns the services
- * still seen building and the stop as shown.
+ * listing keeps once the build is gone. Only after {@link AFTER_BUILD_GRACE_MS} with still nothing
+ * running: until then it says what it said while it built, since its new version may be on its
+ * way. One running anything is forgotten. Returns the services seen building, the stop as shown,
+ * and when the store must read it again for a grace to run out (`null` for none).
  */
 export function afterBuilds(
-  built: ReadonlySet<string>,
+  built: ReadonlyMap<string, SeenBuild>,
   next: Known<ReadonlyArray<StopService>>,
+  nowMs: number,
 ): {
-  readonly built: ReadonlySet<string>;
+  readonly built: ReadonlyMap<string, SeenBuild>;
   readonly shown: Known<ReadonlyArray<StopService>>;
+  readonly wakeAtMs: number | null;
 } {
-  if (next.state !== "known") return { built, shown: next };
-  const seen = new Set(built);
-  let marked = false;
+  if (next.state !== "known") return { built, shown: next, wakeAtMs: null };
+  const seen = new Map(built);
+  let changed = false;
+  let wakeAtMs: number | null = null;
   const value = next.value.map((service): StopService => {
     const { deployment } = service;
     if (deployment.state !== "known") return service;
     const id = service.service.serviceId;
-    if (deployment.value.kind === "deploying") seen.add(id);
-    if (deployment.value.kind === "running") seen.delete(id);
-    if (deployment.value.kind !== "none" || !seen.has(id)) return service;
-    marked = true;
+    if (deployment.value.kind === "deploying") {
+      seen.set(id, { building: deployment, endedAtMs: null });
+      return service;
+    }
+    if (deployment.value.kind === "running") {
+      seen.delete(id);
+      return service;
+    }
+    const build = seen.get(id);
+    if (build === undefined) return service;
+    const endedAtMs = build.endedAtMs ?? nowMs;
+    if (build.endedAtMs === null) seen.set(id, { ...build, endedAtMs });
+    changed = true;
+    const graceEndsAtMs = endedAtMs + AFTER_BUILD_GRACE_MS;
+    if (nowMs < graceEndsAtMs) {
+      wakeAtMs = wakeAtMs === null ? graceEndsAtMs : Math.min(wakeAtMs, graceEndsAtMs);
+      return { ...service, deployment: build.building };
+    }
     return { ...service, deployment: { ...deployment, value: { kind: "none", afterBuild: true } } };
   });
-  return { built: seen, shown: marked ? { ...next, value } : next };
+  return { built: seen, shown: changed ? { ...next, value } : next, wakeAtMs };
 }
 
 /** What a stop's row draws: the badge, its word, and the line under the name. */
