@@ -91,7 +91,7 @@ export function NextStepsStrip<T>({
   readonly renderNextStep: ZeropsProjectsFlowProps<T>["renderNextStep"];
 }) {
   const steps = entries
-    .map((entry) => ({ entry, verb: renderNextStep(entry, "strip") }))
+    .map((entry) => ({ entry, verb: renderNextStep(entry) }))
     .filter(({ verb }) => drawn(verb));
   if (steps.length === 0 && !pending) return null;
   return (

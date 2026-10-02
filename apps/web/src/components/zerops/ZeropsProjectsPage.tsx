@@ -134,7 +134,6 @@ import {
   type ZeropsEnvironmentRole,
   type ZeropsGroup,
   type ZeropsMembership,
-  type ZeropsProjectOrder,
   mayOffer,
   offerAsker,
   firstDeployLine,
@@ -172,7 +171,7 @@ import { useZeropsRegistry } from "~/zerops/useZeropsRegistry";
 import { useZeropsProjectFlow } from "~/zerops/projectFlowContext";
 import { REVIEW_LABEL, REVIEW_RELEASE_LABEL, useOpenReview } from "~/zerops/review";
 import { readZeropsCellOnce } from "~/zerops/readZeropsCell";
-import { deployRowTone, TAKING_LONGER_LINE } from "./ZeropsProjectRow.logic";
+import { deployRowTone } from "./ZeropsProjectRow.logic";
 import { ZeropsReleaseRows } from "./ZeropsReleaseRows";
 import { ZeropsReleaseVerb } from "./ZeropsGroupDetail";
 import { ZeropsPullRequestRow } from "./ZeropsPullRequestRow";
@@ -182,11 +181,7 @@ import {
   environmentRoleTag,
   groupNameIsPlaceholder,
 } from "./ZeropsGroupTree.logic";
-import {
-  ZeropsProjectsFlow,
-  type NextStepPlacement,
-  type ProjectsFlowGroup,
-} from "./projects/ZeropsProjectsFlow";
+import { ZeropsProjectsFlow, type ProjectsFlowGroup } from "./projects/ZeropsProjectsFlow";
 import {
   changeRowVerb,
   changesUnknownOf,
@@ -2412,7 +2407,6 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
    */
   const renderNextStep = (
     entry: ProjectsFlowGroup<ZeropsCandidatePresentation>,
-    placement: NextStepPlacement,
   ): React.ReactNode => {
     const { group, flow } = entry;
     const step = flow.nextStep;
