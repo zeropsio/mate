@@ -617,6 +617,31 @@ describe("ZeropsProjectFlowProvider", () => {
     });
   });
 
+  // The client opens no session with the old Gitea (T12): the flow names no sign-in there and no
+  // Gitea org, whether or not the organization still has one.
+  it("opens no Gitea session: the flow names no sign-in to Gitea and no Gitea org", async () => {
+    installTestDom();
+    const { createRoot } = await import("react-dom/client");
+    const seen: Array<ZeropsProjectFlowValue> = [];
+
+    function Probe() {
+      seen.push(useZeropsProjectFlow());
+      return null;
+    }
+
+    const root = createRoot(document.createElement("div") as unknown as Element);
+    await act(async () => {
+      root.render(createElement(ZeropsProjectFlowProvider, null, createElement(Probe)));
+    });
+    expect([...(seen.at(-1)?.flows.keys() ?? [])]).toEqual(["g1"]);
+    expect(seen.at(-1)).not.toHaveProperty("signInTrouble");
+    expect(seen.at(-1)).not.toHaveProperty("slugs");
+
+    await act(async () => {
+      root.unmount();
+    });
+  });
+
   describe("release", () => {
     const MERGED = "2".repeat(40);
     const GROUP_MAIN = "b".repeat(40);

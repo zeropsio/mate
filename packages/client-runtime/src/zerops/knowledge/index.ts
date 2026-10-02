@@ -21,7 +21,6 @@ export type {
   CrossTabInvalidation,
   CrossTabInvalidations,
   CrossTabInvalidationsOptions,
-  GiteaOrigin,
   Invalidation,
   InvalidationBus,
   InvalidationBusOptions,

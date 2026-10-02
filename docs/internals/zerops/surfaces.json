@@ -349,7 +349,6 @@
         "@t3tools/client-runtime/zerops/reviewVerdict",
         "@t3tools/client-runtime/zerops/changeDiff",
         "@t3tools/client-runtime/zerops/changeReadout",
-        "@t3tools/client-runtime/zerops/giteaClient",
         "@t3tools/client-runtime/zerops/projectFlow"
       ],
       "reverseStates": [

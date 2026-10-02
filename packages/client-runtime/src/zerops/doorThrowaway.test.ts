@@ -16,7 +16,6 @@ import {
   DOOR_MINT_BURST,
   DOOR_MINT_PACE,
   DOOR_MINT_THROTTLE_MS,
-  GITEA_MINTS_PER_MINUTE,
   makeMintPace,
   makeThrowawayMintBudgets,
   planThrowawaySweep,
@@ -54,7 +53,7 @@ describe("planThrowawaySweep", () => {
       true,
     ],
     [
-      "a Gitea sign-in throwaway older than five minutes",
+      "a Gitea sign-in throwaway main's client left, older than five minutes",
       { id: "b", name: "gitea-signin:git.example.com:n", created: at(600_000) },
       true,
     ],
@@ -240,54 +239,37 @@ describe("the door's mint pace", () => {
 });
 
 describe("zeropsThrowawayPlatform's diagnostics", () => {
-  it("tells door and Gitea mints apart and pairs each delete with its mint", async () => {
+  it("pairs each delete with its mint, and says a failed delete by its code", async () => {
     const client = {
-      mintThrowaway: async (input: { readonly name: string }) =>
-        input.name.startsWith("gitea-signin:")
-          ? { id: "gitea-token", token: "a-value", mintingToken: "access-1" }
-          : { id: "door-token", token: "a-value", mintingToken: "access-1" },
+      mintThrowaway: async (input: { readonly name: string }) => ({
+        id: `token-${input.name.slice(-1)}`,
+        token: "a-value",
+        mintingToken: "access-1",
+      }),
       deleteThrowaway: async (input: { readonly tokenId: string }) => {
-        if (input.tokenId === "gitea-token") throw new ZeropsApiError("gone", "not-found", 404);
+        if (input.tokenId === "token-2") throw new ZeropsApiError("gone", "not-found", 404);
       },
     } as unknown as ZeropsApiClient;
     const throwaways = zeropsThrowawayPlatform(client);
     mateDiagnostics.enable();
     mateDiagnostics.clear();
 
-    const door = await throwaways.mint({ clientId: "org", name: "mate-door:p1:n1" });
-    await throwaways.remove({ clientId: "org", tokenId: door.id });
-    const gitea = await throwaways.mint({ clientId: "org", name: "gitea-signin:git.example:n2" });
-    await expect(throwaways.remove({ clientId: "org", tokenId: gitea.id })).rejects.toThrow("gone");
+    const first = await throwaways.mint({ clientId: "org", name: "mate-door:p1:n1" });
+    await throwaways.remove({ clientId: "org", tokenId: first.id });
+    const second = await throwaways.mint({ clientId: "org", name: "mate-door:p2:n2" });
+    await expect(throwaways.remove({ clientId: "org", tokenId: second.id })).rejects.toThrow(
+      "gone",
+    );
 
     expect(mateDiagnostics.snapshot().map(({ t: _t, ...event }) => event)).toEqual([
-      {
-        kind: "throwaway",
-        action: "mint",
-        purpose: "door",
-        clientId: "org",
-        outcome: "ok",
-        tokenId: "door-token",
-      },
+      { kind: "throwaway", action: "mint", clientId: "org", outcome: "ok", tokenId: "token-1" },
+      { kind: "throwaway", action: "delete", clientId: "org", tokenId: "token-1", outcome: "ok" },
+      { kind: "throwaway", action: "mint", clientId: "org", outcome: "ok", tokenId: "token-2" },
       {
         kind: "throwaway",
         action: "delete",
         clientId: "org",
-        tokenId: "door-token",
-        outcome: "ok",
-      },
-      {
-        kind: "throwaway",
-        action: "mint",
-        purpose: "gitea",
-        clientId: "org",
-        outcome: "ok",
-        tokenId: "gitea-token",
-      },
-      {
-        kind: "throwaway",
-        action: "delete",
-        clientId: "org",
-        tokenId: "gitea-token",
+        tokenId: "token-2",
         outcome: "failed",
         code: "ZeropsApiError:not-found",
         status: 404,
@@ -383,12 +365,6 @@ describe("throwaway hygiene", () => {
         mint: "a door throwaway",
         minted: true,
         run: (tab: Tab) => tab.throwaways().mint({ clientId: "org-1", name: "mate-door:p1:n1" }),
-      },
-      {
-        mint: "a Gitea sign-in throwaway",
-        minted: true,
-        run: (tab: Tab) =>
-          tab.throwaways().mint({ clientId: "org-1", name: "gitea-signin:git.example:n1" }),
       },
       {
         mint: "a NO_ACCESS token granting a project",
@@ -574,19 +550,16 @@ describe("throwaway hygiene", () => {
       const platform = tab.throwaways();
 
       const door = await platform.mint({ clientId: "org-1", name: "mate-door:p1:n1" });
-      const gitea = await platform.mint({ clientId: "org-1", name: "gitea-signin:git.example:n2" });
       await platform.remove({ clientId: "org-1", tokenId: door.id });
-      await platform.remove({ clientId: "org-1", tokenId: gitea.id });
 
       expect(tab.mints().map(({ body }) => body)).toEqual([
         expect.objectContaining({ name: "mate-door:p1:n1", roleCode: "NO_ACCESS", projects: [] }),
-        expect.objectContaining({ name: "gitea-signin:git.example:n2", roleCode: "NO_ACCESS" }),
       ]);
       expect(tab.rest.orphanTokens()).toEqual([]);
     });
   }
 
-  it("a background door mint past the bucket waits its gap; an asked-for one never waits; Gitea mints keep their own", async () => {
+  it("a background door mint past the bucket waits its gap; an asked-for one never waits", async () => {
     vi.useFakeTimers();
     const tab = signedInTab();
     const mint = (name: string, asked = false) =>
@@ -595,14 +568,10 @@ describe("throwaway hygiene", () => {
       tab.mints().filter(({ body }) => (body as { name: string }).name.startsWith(prefix)).length;
     const gap = 60_000 / DOOR_MINT_PACE.perMinute;
 
-    for (let n = 1; n <= GITEA_MINTS_PER_MINUTE; n += 1)
-      await mint(`gitea-signin:git.example:${n}`);
     for (let n = 1; n <= DOOR_MINT_BURST; n += 1) await mint(`mate-door:p1:${n}`);
     expect(minted("mate-door:")).toBe(DOOR_MINT_BURST);
-    expect(minted("gitea-signin:")).toBe(GITEA_MINTS_PER_MINUTE);
 
     const background = mint("mate-door:p1:background");
-    const fifthGitea = mint("gitea-signin:git.example:5");
     await settle();
     expect(minted("mate-door:")).toBe(DOOR_MINT_BURST);
 
@@ -616,10 +585,6 @@ describe("throwaway hygiene", () => {
     await vi.advanceTimersByTimeAsync(1);
     await background;
     expect(minted("mate-door:")).toBe(DOOR_MINT_BURST + 2);
-
-    await vi.advanceTimersByTimeAsync(60_000);
-    await fifthGitea;
-    expect(minted("gitea-signin:")).toBe(GITEA_MINTS_PER_MINUTE + 1);
   });
 
   it("a door mint the platform throttles holds the background ones, never an asked-for one", async () => {

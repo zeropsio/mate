@@ -33,7 +33,7 @@ import { useContext, useEffect, useEffectEvent, useMemo, useState, type ReactNod
 
 import { ZeropsFrameWait } from "../components/zerops/landing/ZeropsLandingShell";
 import { bindAccountEnvironments, useAccountEnvironments } from "./accountEnvironments";
-import { bindAccountFlow, webForgePorts } from "./accountForge";
+import { bindAccountFlow } from "./accountForge";
 import { bindAccountInvalidations } from "./accountInvalidations";
 import { currentAccountEpoch, onAccountLifetimeClose } from "./accountLifetime";
 import { browserPlatformSignals, signalsVisibility } from "./browserSignals";
@@ -173,8 +173,8 @@ function accountRefs(
  * platform-data runtime `makeRuntime` builds, its access grant verified
  * through the session's client, its invalidation bus bound for the web's
  * surfaces, and — once the epoch's first grant built it — its post-grant
- * stage: the Mate environments, the project flow's Gitea sessions, forge and
- * deployments, and the births beside them.
+ * stage: the Mate environments, the project flow's deployments, and the births
+ * beside them.
  */
 export function ZeropsDataProvider({
   children,
@@ -263,7 +263,6 @@ export function ZeropsDataProvider({
             signals,
             atomRegistry: registry,
             environments: webEnvironmentPorts({ client, registry }),
-            forge: webForgePorts,
           }),
         );
         void account.then(
@@ -277,8 +276,7 @@ export function ZeropsDataProvider({
             unbindInvalidations = bindAccountInvalidations(built.invalidations);
             setOpened({ runtime: created, signals });
             // The post-grant stage stands on the epoch's first grant: surfaces read its Mate
-            // environments and its project flow — the Gitea sessions, the forge, the deployments —
-            // from then on.
+            // environments and its project flow's deployments from then on.
             void Effect.runPromise(built.postGrant).then(
               (stage) => {
                 if (cancelled) return;

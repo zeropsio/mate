@@ -21,7 +21,7 @@
  * @module tools
  */
 
-import { servicePortOrigin, type ZeropsProject, type ZeropsService } from "./api.ts";
+import type { ZeropsProject } from "./api.ts";
 import { MATE_TAG_NAMESPACE } from "./groups.ts";
 
 const TOOL_TAG_PREFIX = `${MATE_TAG_NAMESPACE}:tool:`;
@@ -50,83 +50,6 @@ export function readZeropsToolKind(
 export interface ZeropsToolProject {
   readonly project: ZeropsProject;
   readonly kind: ZeropsToolKind;
-}
-
-/**
- * Gitea's port, from `zeropsio/recipe-gitea`: `app.ini` serves HTTP on 3000
- * and the built-in SSH server on 2222.
- */
-const GITEA_HTTP_PORT = 3000;
-
-/** The service hostnames of the Gitea project (`zeropsio/gitea-mate`, `import/gitea-project.yaml`). */
-const GITEA_WEB_SERVICE = "web";
-const GITEA_BROKER_SERVICE = "broker";
-/** The port the broker publishes (its `LISTEN_ADDR`). */
-const GITEA_BROKER_PORT = 8080;
-
-export interface ZeropsGiteaState {
-  readonly project: ZeropsProject;
-  /** `https://web-<subdomain>-3000.<region>.zerops.app`, once the platform has assigned one. */
-  readonly url: string | undefined;
-  /**
-   * `https://broker-<subdomain>-8080.<region>.zerops.app`, once the platform
-   * has assigned one — where Gitea's sign-in is completed (guide 1.5, 3.6).
-   *
-   * Derived exactly as the Gitea URL is, from the project and the service's
-   * own port, so an account on a devel region or behind a custom domain is
-   * read rather than guessed.
-   */
-  readonly brokerUrl: string | undefined;
-}
-
-/**
- * A service the user asked for, as opposed to one the platform made for
- * itself. Build and prepare containers show up in a project's service list
- * under generated names (`buildwebv1788602355`, `preparewebv11788602377`,
- * observed 2026-09-05) and would otherwise be read as part of the recipe.
- */
-function userServices(services: ReadonlyArray<ZeropsService>): ReadonlyArray<ZeropsService> {
-  return services.filter((service) => service.isSystem !== true);
-}
-
-function findService(
-  services: ReadonlyArray<ZeropsService>,
-  name: string,
-): ZeropsService | undefined {
-  return userServices(services).find((service) => service.name === name);
-}
-
-function servicePublicOrigin(
-  project: ZeropsProject,
-  service: ZeropsService | undefined,
-  portNumber: number,
-): string | undefined {
-  if (service === undefined) return undefined;
-  const port = service.ports?.find((candidate) => candidate.port === portNumber) ?? {
-    port: portNumber,
-    httpSupport: true,
-    scheme: "http",
-  };
-  return servicePortOrigin(project, service, port);
-}
-
-/**
- * Where an account's Gitea and its broker answer, from one project read and one
- * service-stack read: what the release forge and the Gitea sign-in still read.
- */
-export function deriveGiteaState(
-  project: ZeropsProject,
-  services: ReadonlyArray<ZeropsService>,
-): ZeropsGiteaState {
-  return {
-    project,
-    url: servicePublicOrigin(project, findService(services, GITEA_WEB_SERVICE), GITEA_HTTP_PORT),
-    brokerUrl: servicePublicOrigin(
-      project,
-      findService(services, GITEA_BROKER_SERVICE),
-      GITEA_BROKER_PORT,
-    ),
-  };
 }
 
 /**

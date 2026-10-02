@@ -16,7 +16,7 @@ import type {
 } from "./known.ts";
 
 /** The system that answers for a region's fact, named in its failure copy. */
-export type KnowledgeSource = "zerops" | "gitea" | "mate";
+export type KnowledgeSource = "zerops" | "mate";
 
 export interface KnownSurface<T> {
   /** What the region reads, as the object of "Couldn't read …": "pull requests", "this project". */
@@ -107,7 +107,6 @@ const say = (text: string, tone: KnownMessage["tone"], afterMs = 0): KnownMessag
 const WAITING_FOR: Record<Prerequisite, string> = {
   "zerops-session": "Signing in to Zerops…",
   "access-grant": "Checking your Zerops access…",
-  "gitea-session": "Signing in to Gitea…",
   "mate-session": "Waiting for this Mate to connect…",
   presence: "Looking for this Mate…",
   visible: "Paused while this tab is in the background.",
@@ -117,7 +116,6 @@ const WAITING_FOR: Record<Prerequisite, string> = {
 const SOURCE_NAME: Record<KnowledgeSource, { readonly subject: string; readonly object: string }> =
   {
     zerops: { subject: "Zerops", object: "Zerops" },
-    gitea: { subject: "Gitea", object: "Gitea" },
     mate: { subject: "This Mate", object: "this Mate" },
   };
 

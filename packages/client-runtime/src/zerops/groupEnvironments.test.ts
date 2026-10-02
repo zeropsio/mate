@@ -15,7 +15,6 @@ const registryOf = (
     {
       groupId: "g-1",
       name: "Acme",
-      slug: "g-1",
       projects: members.map(([projectId, kind]) => ({ projectId, kind })),
     },
   ],

@@ -26,7 +26,7 @@ const VALUE = "platform-value-7f3a";
 const PULL_REQUESTS: KnownSurface<ReadonlyArray<string>> = {
   subject: "pull requests",
   entity: "repository",
-  source: "gitea",
+  source: "zerops",
   checking: null,
   negative: (value) => (value.length === 0 ? NEGATIVE : null),
 };
@@ -75,15 +75,6 @@ const RENDERING: ReadonlyArray<CopyRow> = [
     },
   },
   {
-    name: "unread(waitingFor gitea-session): Signing in to Gitea…",
-    shown: { state: "unread", waitingFor: "gitea-session" },
-    expected: {
-      region: "placeholder",
-      message: { text: "Signing in to Gitea…", afterMs: 0, tone: "quiet" },
-      affordance: null,
-    },
-  },
-  {
     name: "unread(waitingFor mate-session): Waiting for this Mate to connect…",
     shown: { state: "unread", waitingFor: "mate-session" },
     expected: {
@@ -98,7 +89,7 @@ const RENDERING: ReadonlyArray<CopyRow> = [
     expected: {
       region: "message",
       message: {
-        text: "Couldn't read pull requests. Gitea didn't answer.",
+        text: "Couldn't read pull requests. Zerops didn't answer.",
         afterMs: 0,
         tone: "alert",
       },
@@ -138,7 +129,7 @@ const RENDERING: ReadonlyArray<CopyRow> = [
       retryAtMs: 104_000,
     },
     expected: {
-      message: { text: "Couldn't read pull requests. Gitea said no.", afterMs: 0, tone: "alert" },
+      message: { text: "Couldn't read pull requests. Zerops said no.", afterMs: 0, tone: "alert" },
       affordance: { kind: "retry", label: "Try again" },
     },
   },
@@ -233,7 +224,7 @@ const RENDERING: ReadonlyArray<CopyRow> = [
     expected: {
       region: "value",
       message: {
-        text: "Not up to date. Gitea didn't answer. Trying again in 8 s.",
+        text: "Not up to date. Zerops didn't answer. Trying again in 8 s.",
         afterMs: 0,
         tone: "notice",
       },
@@ -372,7 +363,6 @@ const PREREQUISITES: ReadonlyArray<Prerequisite | null> = [
   null,
   "zerops-session",
   "access-grant",
-  "gitea-session",
   "mate-session",
   "presence",
   "visible",
@@ -446,7 +436,7 @@ const everyShown: ReadonlyArray<Shown<ReadonlyArray<string>>> = [
   ),
 ];
 
-const SOURCES: ReadonlyArray<KnowledgeSource> = ["zerops", "gitea", "mate"];
+const SOURCES: ReadonlyArray<KnowledgeSource> = ["zerops", "mate"];
 const everySurface: ReadonlyArray<KnownSurface<ReadonlyArray<string>>> = SOURCES.flatMap(
   (source) => [
     { ...PULL_REQUESTS, source },
@@ -556,7 +546,7 @@ describe("knownPresentation over every Shown state (the vector)", () => {
       PULL_REQUESTS,
       CONTEXT,
     );
-    expect(noRetry.message?.text).toBe("Not up to date. Gitea didn't answer.");
+    expect(noRetry.message?.text).toBe("Not up to date. Zerops didn't answer.");
   });
 
   it("uses the glossary: never 'environment' in user-facing copy", () => {

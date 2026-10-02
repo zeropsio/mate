@@ -47,15 +47,7 @@ import { makeExchangeDriver } from "../environments/exchangeDriver.ts";
 import { makeRegistrationRecords } from "../environments/records.ts";
 import { makeDeploymentStore, type DeploymentStore } from "../flow/deploymentStore.ts";
 import type { EnvelopeServices } from "../flow/envelopeInvalidations.ts";
-import { makeGiteaSessions } from "../forge/giteaSession.ts";
-import {
-  deploymentStorePorts,
-  envelopeServices,
-  makeForgeWiring,
-  type AccountForge,
-  type AccountForgePorts,
-  type ForgeStage,
-} from "./flow.ts";
+import { deploymentStorePorts, envelopeServices } from "./flow.ts";
 import { holdInventoryDemand, holdListedProjects } from "./inventoryDemand.ts";
 import {
   makeEnvironmentWiring,
@@ -72,7 +64,6 @@ export type {
   DoorRequest,
   RegisteredEnvironment,
 } from "./environments.ts";
-export type { AccountForge, AccountForgePorts } from "./flow.ts";
 export {
   evidenceProjectRefs,
   heldEvidence,
@@ -90,8 +81,6 @@ export interface AccountRuntimePorts {
   readonly atomRegistry: AtomRegistry.AtomRegistry;
   /** What the post-grant stage's Mate environments reach their sources through. */
   readonly environments: AccountEnvironmentPorts;
-  /** What the person's Gitea is reached through; a host without Gitea surfaces gives none. */
-  readonly forge?: AccountForgePorts;
 }
 
 /** The epoch's post-grant stage, as surfaces read it. */
@@ -99,8 +88,6 @@ export interface PostGrantStage {
   readonly environments: AccountEnvironments;
   /** What each stop's services run (D6). */
   readonly deployments: DeploymentStore;
-  /** The person's Gitea; `null` on a host that gave the forge no ports. */
-  readonly forge: AccountForge | null;
   /** The services a Mate's envelope names by hostname, as the account holds them (§6.1). */
   readonly services: EnvelopeServices;
 }
@@ -145,7 +132,6 @@ export const makeAccountRuntime = Effect.fnUntraced(function* (
   const services = yield* Effect.context<never>();
   let stage: {
     readonly environments: EnvironmentStage;
-    readonly forge: ForgeStage | null;
     readonly deployments: DeploymentStore;
   } | null = null;
   let closed = false;
@@ -207,17 +193,9 @@ export const makeAccountRuntime = Effect.fnUntraced(function* (
     const deployments = makeDeploymentStore(
       deploymentStorePorts(data, ports.atomRegistry, services),
     );
-    const forge =
-      ports.forge === undefined
-        ? null
-        : (() => {
-            const forgeWiring = makeForgeWiring({ ports: ports.forge, signals });
-            return forgeWiring.start({ sessions: makeGiteaSessions(forgeWiring.sessionPorts) });
-          })();
-    // Finalizers run in reverse: the Gitea tokens are forgotten first, then the stores end.
+    // Finalizers run in reverse: the deployment store ends, then the environments.
     yield* Scope.addFinalizer(postGrantScope, Effect.sync(built.dispose));
     yield* Scope.addFinalizer(postGrantScope, Effect.sync(deployments.dispose));
-    if (forge !== null) yield* Scope.addFinalizer(postGrantScope, Effect.sync(forge.dispose));
     // Each owner of pull-based facts reads again what an invalidation names (§6.2).
     const subscription = yield* invalidations.subscribe.pipe(Scope.provide(postGrantScope));
     yield* PubSub.take(subscription).pipe(
@@ -238,7 +216,7 @@ export const makeAccountRuntime = Effect.fnUntraced(function* (
       Effect.forever,
       Effect.forkIn(postGrantScope),
     );
-    return { environments: built, forge, deployments };
+    return { environments: built, deployments };
   });
 
   const follow = (view: AccessGrantView): Effect.Effect<void> =>
@@ -250,7 +228,6 @@ export const makeAccountRuntime = Effect.fnUntraced(function* (
         yield* Deferred.succeed(postGrant, {
           environments: stage.environments.environments,
           deployments: stage.deployments,
-          forge: stage.forge?.forge ?? null,
           services: envelopeServices(data, ports.atomRegistry),
         });
       }
@@ -260,7 +237,6 @@ export const makeAccountRuntime = Effect.fnUntraced(function* (
   const hear = (signal: PlatformSignal): Effect.Effect<void> =>
     Effect.sync(() => {
       stage?.environments.hear(signal);
-      stage?.forge?.hear(signal);
     }).pipe(Effect.andThen(heardByAccount(signal)));
 
   const heardByAccount = (signal: PlatformSignal): Effect.Effect<void> => {

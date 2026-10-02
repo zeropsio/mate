@@ -95,8 +95,9 @@ export function environmentNameUnderGroup(
  * underneath.
  *
  * Zerops keeps one string per service — the app version's name — and the two
- * parties that write it write different things. The broker names a stage
- * deploy `{branch} {short sha}` and a release `{tag} {short sha}` (before
+ * parties that write it write different things. HQ's Core names a stage
+ * deploy `main {short sha}` and a release `{tag} {short sha}`, as main's
+ * broker named them `{branch} {short sha}` and `{tag} {short sha}` (before
  * 2026-09-30: the bare sha, and `{sha} {tag} {tagger}`); somebody deploying
  * with `zcli` by hand names it whatever they typed.
  *
@@ -247,6 +248,3 @@ export function environmentRow(input: {
     tone,
   };
 }
-
-/** What a group whose Gitea the broker has not finished says about itself. */
-export const GROUP_BEING_SET_UP_LINE = "Setting up its repositories…";

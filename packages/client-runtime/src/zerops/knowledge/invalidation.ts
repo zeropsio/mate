@@ -45,10 +45,6 @@ const ServiceRef = Schema.Struct({
 export const TargetKey = Schema.TemplateLiteral([Schema.String, ":", Schema.String]);
 export type TargetKey = typeof TargetKey.Type;
 
-/** The origin a Gitea instance answers on; an address that keys its session. */
-export const GiteaOrigin = Schema.String.check(Schema.isNonEmpty());
-export type GiteaOrigin = typeof GiteaOrigin.Type;
-
 export const Invalidation = Schema.Union([
   Schema.Struct({
     topic: Schema.Literal("access"),
@@ -68,7 +64,6 @@ export const Invalidation = Schema.Union([
   }),
   Schema.Struct({ topic: Schema.Literal("container"), target: TargetKey }),
   Schema.Struct({ topic: Schema.Literal("deployment"), service: ServiceRef }),
-  Schema.Struct({ topic: Schema.Literal("gitea-session"), origin: GiteaOrigin }),
 ]);
 /** "Facts under this key may have changed at the source." */
 export type Invalidation = typeof Invalidation.Type;
@@ -120,8 +115,6 @@ function keyOf(invalidation: Invalidation): string {
       return JSON.stringify([invalidation.topic, invalidation.target]);
     case "deployment":
       return JSON.stringify([invalidation.topic, serviceKeyOf(invalidation.service)]);
-    case "gitea-session":
-      return JSON.stringify([invalidation.topic, invalidation.origin]);
   }
 }
 

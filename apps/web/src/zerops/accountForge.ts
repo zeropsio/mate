@@ -1,7 +1,7 @@
 /**
  * The web's binding to the account runtime's project flow (DESIGN §7.3): the post-grant stage's
- * Gitea sessions and its deployment store, bound once the epoch's first grant built them, and the
- * hooks surfaces read them through. The stores are the runtime's; nothing here holds a fact of its
+ * deployment store, bound once the epoch's first grant built it, and the hooks surfaces read it
+ * through. The stores are the runtime's; nothing here holds a fact of its
  * own.
  *
  * It also carries the Mates' pushes into the account's bus: a lifecycle envelope names the
@@ -9,10 +9,7 @@
  *
  * Closing the account lifetime unbinds it at once: a reader after sign-out sees nothing of it.
  */
-import type {
-  AccountForgePorts,
-  PostGrantStage,
-} from "@t3tools/client-runtime/zerops/account/runtime";
+import type { PostGrantStage } from "@t3tools/client-runtime/zerops/account/runtime";
 import {
   envelopeInvalidations,
   stopDeploymentOf,
@@ -26,23 +23,9 @@ import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
 import type { ZeropsStateEnvelope } from "@t3tools/contracts";
 import { useCallback, useEffect, useMemo, useRef, useSyncExternalStore } from "react";
 
-import { randomUUID } from "../lib/utils";
-import { bindAccountGiteaSessions } from "./accountGiteaSessions";
 import { invalidateZerops } from "./accountInvalidations";
 import { onAccountLifetimeClose } from "./accountLifetime";
 import { batchedPerTask } from "./taskBatch";
-
-/** The browser's half of the forge: fetch, the clocks and timers. */
-export const webForgePorts: AccountForgePorts = {
-  fetch: (input, init) => globalThis.fetch(input, init),
-  now: () => ({ wall: Date.now(), mono: performance.now() }),
-  random: Math.random,
-  nonce: randomUUID,
-  setTimer: (delayMs, fire) => {
-    const timer = setTimeout(fire, delayMs);
-    return () => clearTimeout(timer);
-  },
-};
 
 // ── The binding ──────────────────────────────────────────────────────────────────────────────
 
@@ -64,21 +47,18 @@ onAccountLifetimeClose(() => {
 });
 
 /**
- * Makes the open account's post-grant stage the one the flow's surfaces read, its Gitea sessions
- * with it. Returns the way to unbind it, which leaves a newer binding alone.
+ * Makes the open account's post-grant stage the one the flow's surfaces read. Returns the way to
+ * unbind it, which leaves a newer binding alone.
  */
 export function bindAccountFlow(
-  stage: Pick<PostGrantStage, "forge" | "deployments" | "services">,
+  stage: Pick<PostGrantStage, "deployments" | "services">,
 ): () => void {
   const flow: AccountFlow = {
     deployments: stage.deployments,
     services: stage.services,
   };
   publish(flow);
-  const unbindSessions =
-    stage.forge === null ? () => undefined : bindAccountGiteaSessions(stage.forge.sessions);
   return () => {
-    unbindSessions();
     if (bound === flow) publish(null);
   };
 }

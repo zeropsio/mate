@@ -152,10 +152,8 @@ export {
   type AutoConnectCandidate,
 } from "./autoConnect.ts";
 export {
-  deriveGiteaState,
   partitionZeropsToolProjects,
   readZeropsToolKind,
-  type ZeropsGiteaState,
   type ZeropsToolKind,
   type ZeropsToolProject,
 } from "./tools.ts";
@@ -443,14 +441,6 @@ export {
   type ChangeDiffLine,
 } from "./changeDiff.ts";
 export {
-  createGiteaClient,
-  GiteaApiError,
-  type GiteaClient,
-  type GiteaClientOptions,
-  type GiteaOrganization,
-  type GiteaTag,
-} from "./giteaClient.ts";
-export {
   flowChange,
   flowChanges,
   flowVerbKey,
@@ -504,9 +494,7 @@ export {
   finishMateSetupScope,
   finishMateSetupVerb,
   resolveAddProjectVerb,
-  resolveGroupGitea,
   resolveMateRegistration,
-  type GroupGiteaState,
   type GroupVerb,
   type MateRegistration,
 } from "./groupCreation.ts";
@@ -526,7 +514,6 @@ export {
   deployTone,
   environmentNameUnderGroup,
   environmentRow,
-  GROUP_BEING_SET_UP_LINE,
   type DeployedVersion,
   type EnvironmentRow,
   type EnvironmentServiceState,

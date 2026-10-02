@@ -88,27 +88,11 @@
     "expires": "never"
   },
   {
-    "path": "apps/web/src/zerops/useZeropsGroupOrganizations.ts",
-    "kind": "CallExpression",
-    "fingerprint": "client.getOrganization(slug).catch(() => null)",
-    "owner": "state-model 4.1",
-    "reason": "null marks an organization read that did not answer and the pair is left out, never taken as absent; the forge store holds it as Known",
-    "expires": "never"
-  },
-  {
     "path": "packages/client-runtime/src/zerops/agentLogin.ts",
     "kind": "ConditionalExpression",
     "fingerprint": "result._tag === \"Success\" ? result.value.terminalId : undefined",
     "owner": "karel",
     "reason": "a login start's settled command result, not a read: a failed start focuses no terminal, and the command itself reports the failure",
-    "expires": "never"
-  },
-  {
-    "path": "packages/client-runtime/src/zerops/giteaClient.ts",
-    "kind": "CallExpression",
-    "fingerprint": "response.json().catch(() => null)",
-    "owner": "karel",
-    "reason": "an unparseable error body carries no detail; the refusal itself is still thrown, so no failure becomes a negative",
     "expires": "never"
   },
   {

@@ -47,7 +47,10 @@
 
 /** A throwaway minted to open one Mate: `mate-door:{projectId}:{nonce}`. */
 export const DOOR_THROWAWAY_PREFIX = "mate-door";
-/** A throwaway minted for one Gitea: `gitea-signin:{host}:{nonce}`. */
+/**
+ * A throwaway main's client mints for its Gitea sign-in: `gitea-signin:{host}:{nonce}`. This
+ * client mints none; it only takes the person's own leftovers back (`isThrowawayName`).
+ */
 export const GITEA_THROWAWAY_PREFIX = "gitea-signin";
 
 /**
@@ -60,22 +63,9 @@ export function doorThrowawayName(projectId: string, nonce: string): string {
 }
 
 /**
- * Names a throwaway after the Gitea it is for — its **host**, without a scheme
- * and without a path, because that is what the broker compares its own
- * `GITEA_PUBLIC_URL` against.
+ * Whether a token on the account is a throwaway left behind by a crash: one of ours, or a Gitea
+ * sign-in's that main's client left in the same organization.
  */
-export function giteaThrowawayName(giteaUrl: string, nonce: string): string {
-  return `${GITEA_THROWAWAY_PREFIX}:${throwawayHost(giteaUrl)}:${nonce}`;
-}
-
-function throwawayHost(url: string): string {
-  const withoutScheme = url.trim().replace(/^[a-z][a-z0-9+.-]*:\/\//iu, "");
-  const host = withoutScheme.split("/")[0] ?? "";
-  if (host.length === 0) throw new Error(`"${url}" names no Gitea host.`);
-  return host;
-}
-
-/** Whether a token on the account is one of ours, left behind by a crash. */
 export function isThrowawayName(name: string): boolean {
   return (
     name.startsWith(`${DOOR_THROWAWAY_PREFIX}:`) || name.startsWith(`${GITEA_THROWAWAY_PREFIX}:`)
@@ -111,7 +101,7 @@ export interface ZeropsThrowawayPlatform {
 export interface WithThrowawayInput<T> {
   readonly platform: ZeropsThrowawayPlatform;
   readonly clientId: string;
-  /** {@link doorThrowawayName} or {@link giteaThrowawayName}. */
+  /** {@link doorThrowawayName}. */
   readonly name: string;
   /** The one place the value is ever seen. Its result is what this returns. */
   readonly use: (token: string) => Promise<T>;
@@ -135,15 +125,10 @@ export interface WithThrowawayInput<T> {
  *
  * Nothing interrupts the deletion: the caller giving up, the account closing
  * or somebody else signing in to the tab mid-call all leave it running, and it
- * acts as the person who minted or not at all. Who waits for it depends on the
- * receiver:
- *
- * - A door exchange does not: its answer is returned as soon as it is known,
- *   and the deletion runs on to its own end. Its deadline and its one retry
- *   are not the exchange's to sit through; the exchange has a deadline of its
- *   own (DESIGN §4.4).
- * - A Gitea sign-in does: it sends the browser on to Gitea as soon as it
- *   answers, and a page being left takes an unfinished delete with it.
+ * acts as the person who minted or not at all. Nobody waits for it: a door
+ * exchange's answer is returned as soon as it is known, and the deletion runs
+ * on to its own end. Its deadline and its one retry are not the exchange's to
+ * sit through; the exchange has a deadline of its own (DESIGN §4.4).
  *
  * A deletion that itself fails is reported and swallowed: the caller's outcome
  * is the answer, and a token with no rights is not worth turning a successful
@@ -155,9 +140,8 @@ export async function withThrowaway<T>(input: WithThrowawayInput<T>): Promise<T>
     return await input.use(minted.token);
   } finally {
     const orphaned = (cause: unknown) => input.onOrphaned?.(cause);
-    const deletion = (async () => {
+    void (async () => {
       await input.platform.remove({ clientId: input.clientId, tokenId: minted.id });
     })().catch(orphaned);
-    if (!input.name.startsWith(`${DOOR_THROWAWAY_PREFIX}:`)) await deletion;
   }
 }

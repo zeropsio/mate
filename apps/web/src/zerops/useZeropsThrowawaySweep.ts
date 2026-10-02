@@ -8,10 +8,11 @@
  * leaver cannot be taken off the org.
  *
  * So the app sweeps at start-up, once a day per account on a browser
- * (`throwawaySweepDue`), over the person's own `mate-door:*` and
- * `gitea-signin:*` tokens older than five minutes. Anything younger is left alone: five minutes is the window the door
- * itself allows, so another tab's live connect is never swept out from under
- * it, and nothing else on the token list is ours to touch.
+ * (`throwawaySweepDue`), over the person's own `mate-door:*` tokens, and the
+ * `gitea-signin:*` ones main's client leaves, older than five minutes. Anything
+ * younger is left alone: five minutes is the window the door itself allows, so
+ * another tab's live connect is never swept out from under it, and nothing
+ * else on the token list is ours to touch.
  *
  * It runs beside `useZeropsGroupReach` for the same reason that one does: the
  * projects screen is where an account is read, and a repair nobody asked for

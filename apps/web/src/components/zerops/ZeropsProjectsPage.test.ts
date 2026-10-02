@@ -937,17 +937,10 @@ describe("a declared environment's row", () => {
 
 describe("a group's one line about itself", () => {
   it.each([
-    [{ placeholder: true, unfinished: "production", gitea: "" }, "This project has no name yet"],
-    [
-      { placeholder: false, unfinished: "production", gitea: "" },
-      "Couldn't finish setting up production",
-    ],
-    [
-      { placeholder: false, unfinished: "stage", gitea: "Gitea side …" },
-      "Couldn't finish setting up stage",
-    ],
-    [{ placeholder: false, unfinished: undefined, gitea: "Gitea side …" }, "Gitea side …"],
-    [{ placeholder: false, unfinished: undefined, gitea: "" }, undefined],
+    [{ placeholder: true, unfinished: "production" }, "This project has no name yet"],
+    [{ placeholder: false, unfinished: "production" }, "Couldn't finish setting up production"],
+    [{ placeholder: false, unfinished: "stage" }, "Couldn't finish setting up stage"],
+    [{ placeholder: false, unfinished: undefined }, undefined],
   ] as const)("reads %j as %j — never the platform's own words", (input, expected) => {
     expect(projectsGroupLine(input)).toBe(expected);
   });
