@@ -9,7 +9,6 @@ import {
   accountGiteaSessions,
   bindAccountGiteaSessions,
   giteaClientFor,
-  giteaSessionLogin,
   useGiteaReadable,
   useGiteaSession,
 } from "./accountGiteaSessions";
@@ -152,6 +151,9 @@ function installTestDom(): void {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
 }
 
+/** The person's login on that Gitea, `u-…`, while the account holds a session there. */
+const loginOn = (origin: string) => accountGiteaSessions()?.view(origin).login;
+
 describe("the account's Gitea sessions in this tab", () => {
   let world: ReturnType<typeof forge>;
   const original = globalThis.fetch;
@@ -220,7 +222,7 @@ describe("the account's Gitea sessions in this tab", () => {
 
     await act(async () => {
       demandGitea();
-      await vi.waitFor(() => expect(giteaSessionLogin(GITEA)).toBe("u-person-a"));
+      await vi.waitFor(() => expect(loginOn(GITEA)).toBe("u-person-a"));
     });
     expect(renders.at(-1)).toBe(true);
 
@@ -255,7 +257,7 @@ describe("the account's Gitea sessions in this tab", () => {
   it("sign-out, another person signs in on the same tab: no Gitea request carries the first person's token", async () => {
     signIn("person-a");
     demandGitea();
-    await vi.waitFor(() => expect(giteaSessionLogin(GITEA)).toBe("u-person-a"));
+    await vi.waitFor(() => expect(loginOn(GITEA)).toBe("u-person-a"));
     expect(await bearersAfterRead(world)).toEqual(["gitea-token-1"]);
     const clientOfA = giteaClientFor(GITEA);
 
@@ -264,11 +266,11 @@ describe("the account's Gitea sessions in this tab", () => {
 
     // Nothing of A's is left to read with: B's surface acquires its own.
     expect(giteaClientFor(GITEA)).toBeNull();
-    expect(giteaSessionLogin(GITEA)).toBeUndefined();
+    expect(loginOn(GITEA)).toBeUndefined();
     await expect(clientOfA?.listTags("acme", "group")).rejects.toThrow();
 
     demandGitea();
-    await vi.waitFor(() => expect(giteaSessionLogin(GITEA)).toBe("u-person-b"));
+    await vi.waitFor(() => expect(loginOn(GITEA)).toBe("u-person-b"));
     expect(await bearersAfterRead(world)).toEqual(["gitea-token-1", "gitea-token-2"]);
     expect(world.broker.personTokens()).toBe(2);
   });
@@ -286,7 +288,7 @@ describe("the account's Gitea sessions in this tab", () => {
 
     // A's answer and B's are both let go; only B's lands, in B's account.
     world.answerHeld();
-    await vi.waitFor(() => expect(giteaSessionLogin(GITEA)).toBe("u-person-b"));
+    await vi.waitFor(() => expect(loginOn(GITEA)).toBe("u-person-b"));
     expect(world.broker.personTokens()).toBe(2);
     expect(await bearersAfterRead(world)).toEqual(["gitea-token-2"]);
   });

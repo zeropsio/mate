@@ -10,23 +10,16 @@ describe("flowVerbInvalidations", () => {
     readonly expected: FlowInvalidation;
   }> = [
     {
-      // The pull request and its repository's lists, and that repository's
-      // `main`, whose head the deploy half reads for what a release would carry.
+      // That repository's `main`, whose head the deploy half reads for what a release would
+      // carry; the change itself comes back down HQ's stream.
       verb: { kind: "merge", slug: "harbor", repository: "appdev", number: 4 },
-      expected: {
-        forge: { kind: "repository", repository: "appdev" },
-        deploys: { kind: "main-head", repository: "appdev" },
-      },
+      expected: { forge: null, deploys: { kind: "main-head", repository: "appdev" } },
     },
     {
       // The group repo's `main` holds the declarations and the tiers the
       // deploy half reads, so a recipe merge reads that half whole again.
       verb: { kind: "merge", slug: "harbor", repository: "group", number: 2 },
-      expected: { forge: { kind: "repository", repository: "group" }, deploys: "group" },
-    },
-    {
-      verb: { kind: "open", slug: "harbor", repository: "appdev", head: "mate/ada" },
-      expected: { forge: { kind: "repository", repository: "appdev" }, deploys: null },
+      expected: { forge: null, deploys: "group" },
     },
     {
       verb: { kind: "release", groupId: "g1" },

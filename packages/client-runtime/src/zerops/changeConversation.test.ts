@@ -1,3 +1,4 @@
+import type { HqChangeComment } from "@t3tools/shared/hqChanges";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
@@ -6,77 +7,55 @@ import {
   changeConversationCount,
   changeRemarks,
 } from "./changeConversation.ts";
-import type { GiteaIssueComment } from "./giteaClient.ts";
 
-function comment(over: Partial<GiteaIssueComment> = {}): GiteaIssueComment {
+function comment(over: Partial<HqChangeComment> = {}): HqChangeComment {
   return {
-    id: 1,
-    author: "ales",
-    avatarUrl: undefined,
+    id: "c1",
+    authorUserId: "u-ales",
     body: "Looks right to me.",
-    at: "2026-09-19T10:00:00Z",
+    createdAt: "2026-09-19T10:00:00Z",
     ...over,
   };
 }
 
-const MATES = new Map([["p-abc", "Theo"]]);
+/** The organization's members by their Zerops user id. */
+const MEMBERS = new Map([
+  ["u-ales", "Aleš Novák"],
+  ["u-wren", "Wren"],
+]);
+const nameOf = (userId: string) => MEMBERS.get(userId);
 
 describe("changeRemarks", () => {
-  it("names a Mate rather than showing its bot login", () => {
-    const [remark] = changeRemarks({
-      comments: [comment({ author: "mate-p-abc" })],
-      mateNames: MATES,
-      me: undefined,
+  it("names who said it as the organization's members name them", () => {
+    const [remark] = changeRemarks({ comments: [comment()], nameOf, me: undefined });
+    expect(remark).toEqual({
+      id: "c1",
+      speaker: "Aleš Novák",
+      mine: false,
+      body: "Looks right to me.",
+      at: "2026-09-19T10:00:00Z",
     });
-    expect(remark?.speaker).toBe("Theo");
-    expect(remark?.mateProjectId).toBe("p-abc");
-  });
-
-  it("keeps the bot login when the account cannot name that Mate", () => {
-    const [remark] = changeRemarks({
-      comments: [comment({ author: "mate-p-zzz" })],
-      mateNames: MATES,
-      me: undefined,
-    });
-    expect(remark?.speaker).toBe("mate-p-zzz");
-    expect(remark?.mateProjectId).toBe("p-zzz");
   });
 
   it("marks the reader's own words and nobody else's", () => {
     const remarks = changeRemarks({
-      comments: [comment({ id: 1, author: "ales" }), comment({ id: 2, author: "wren" })],
-      mateNames: MATES,
-      me: "ales",
+      comments: [
+        comment({ id: "c1", authorUserId: "u-ales" }),
+        comment({ id: "c2", authorUserId: "u-wren" }),
+      ],
+      nameOf,
+      me: "u-ales",
     });
     expect(remarks.map((entry) => entry.mine)).toEqual([true, false]);
   });
 
-  it("drops the empty comments Gitea writes for events that are not remarks", () => {
-    const remarks = changeRemarks({
-      comments: [comment({ id: 1, body: "   " }), comment({ id: 2, body: "Merged." })],
-      mateNames: MATES,
-      me: undefined,
-    });
-    expect(remarks.map((entry) => entry.id)).toEqual([2]);
-  });
-
-  it("trims what is kept, so a trailing newline is not a blank line on the page", () => {
+  it("says somebody said it where no member of the organization is them any more", () => {
     const [remark] = changeRemarks({
-      comments: [comment({ body: "Ship it.\n\n" })],
-      mateNames: MATES,
-      me: undefined,
-    });
-    expect(remark?.body).toBe("Ship it.");
-  });
-
-  it("falls back to a word rather than nothing where Gitea sent no author", () => {
-    const [remark] = changeRemarks({
-      comments: [comment({ author: undefined })],
-      mateNames: MATES,
+      comments: [comment({ authorUserId: "u-gone" })],
+      nameOf,
       me: undefined,
     });
     expect(remark?.speaker).toBe("somebody");
-    expect(remark?.mine).toBe(false);
   });
 });
 
@@ -87,8 +66,8 @@ describe("changeConversationCount", () => {
     [4, "4 comments"],
   ])("counts %i as %s", (count, expected) => {
     const remarks = changeRemarks({
-      comments: Array.from({ length: count }, (_, index) => comment({ id: index + 1 })),
-      mateNames: MATES,
+      comments: Array.from({ length: count }, (_, index) => comment({ id: `c${String(index)}` })),
+      nameOf,
       me: undefined,
     });
     expect(changeConversationCount(remarks)).toBe(expected);

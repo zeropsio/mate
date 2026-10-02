@@ -590,9 +590,8 @@ const pull = (number: number, overrides: Partial<FlowPullRequest> = {}): FlowPul
   mateProjectId: "crm-dev",
   author: "mate-crm-dev",
   url: `https://gitea.example/crm/appdev/pulls/${number}`,
-  checks: "passing",
-  checkWord: "Passing",
   mergeability: "mergeable",
+  behind: false,
   merged: false,
   mergedAt: undefined,
   headSha: "abc",
@@ -1139,12 +1138,11 @@ describe("the project's flow under it", () => {
 
   // The one door to merging is the review (R1): every change says *Review*
   // in blue, and nothing on the row merges, asks or grades it.
-  it("offers Review on every change, and never Merge, Ask or a check dot from the row", () => {
+  it("offers Review on every change, and never Merge, Ask or a status dot from the row", () => {
     for (const change of [
       pull(4),
       pull(4, { mergeability: "conflicting" }),
-      pull(4, { mergeability: "conflicting", checks: "failing", checkWord: "Failing" }),
-      pull(4, { mergeability: "conflicting", checks: "pending", checkWord: "Pending" }),
+      pull(4, { mergeability: "checking" }),
     ]) {
       const html = withFlow([CRM_DEV, CRM_STAGE], flow({ pullRequests: [change] }));
       const rows = html.slice(html.indexOf('data-zerops-surface="sidebar-pull-requests"'));
@@ -1157,8 +1155,8 @@ describe("the project's flow under it", () => {
     }
   });
 
-  // One meaning per colour (S3): the mark is red where the checks fail,
-  // amber where the change fell behind main, and its own grey otherwise.
+  // One meaning per colour (S3): the mark is amber where the change fell
+  // behind main, and its own grey otherwise.
   it.each([
     { case: "that merges", change: pull(4), tone: undefined, ink: "text-muted-foreground" },
     {
@@ -1166,12 +1164,6 @@ describe("the project's flow under it", () => {
       change: pull(4, { mergeability: "conflicting" }),
       tone: "attention",
       ink: "text-status-attention-text",
-    },
-    {
-      case: "whose checks fail",
-      change: pull(4, { mergeability: "conflicting", checks: "failing" }),
-      tone: "failed",
-      ink: "text-status-failed-text",
     },
   ])("tints only the mark of a change $case", ({ change, tone, ink }) => {
     const html = withFlow([CRM_DEV, CRM_STAGE], flow({ pullRequests: [change] }));

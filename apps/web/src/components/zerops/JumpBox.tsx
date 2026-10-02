@@ -57,7 +57,7 @@ import {
   type JumpStop,
   type SidebarJumpIndex,
 } from "./JumpBox.logic";
-import { MateFace, StatusDot } from "./primitives";
+import { MateFace } from "./primitives";
 import { EnvDot } from "./SidebarProductionChip";
 
 export interface JumpBoxModel {
@@ -560,10 +560,7 @@ function JumpRow({ item, match }: { readonly item: JumpItem; readonly match: str
       break;
     case "change": {
       const { change } = item;
-      lead =
-        change.checkTone === undefined || change.checkWord === undefined ? null : (
-          <StatusDot dotOnly label={change.checkWord} tone={change.checkTone} />
-        );
+      lead = null;
       title = <Marked match={match} text={change.label} />;
       sub = [change.whose, change.projectName].filter((part) => part !== undefined).join(" · ");
       break;

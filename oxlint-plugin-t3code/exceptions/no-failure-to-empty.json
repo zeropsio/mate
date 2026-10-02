@@ -162,14 +162,6 @@
   {
     "path": "apps/web/src/zerops/useZeropsGroupForge.ts",
     "kind": "CallExpression",
-    "fingerprint": "client.listCommitStatuses(slug, repository, head).catch(() => [])",
-    "owner": "state-model 4.6",
-    "reason": "a failed status read reads as no checks; the forge store (4.1) holds statuses as Known and 4.6 deletes the hook",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/useZeropsGroupForge.ts",
-    "kind": "CallExpression",
     "fingerprint": "client.tagDate(slug, GROUP_REPOSITORY, tag.id).catch(() => undefined)",
     "owner": "state-model 4.6",
     "reason": "an unread tag date holds no release in flight, so Release stays offered rather than refused on a read that did not answer; the forge store (4.1) holds it as Known and 4.6 deletes the hook",

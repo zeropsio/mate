@@ -41,7 +41,10 @@ const PERMISSION_WORDS: { readonly [R in Reason]: string } = {
     "You need at least Basic user access to one of this project's Zerops projects to do this.",
 };
 
-/** HQ's structure's own refusals (`StructureRefused` in `apps/hq/src/structure.ts`), in words. */
+/**
+ * HQ's own refusals — its structure's (`StructureRefused` in `apps/hq/src/structure.ts`) and its
+ * changes' (`ChangeRefused` in `apps/hq/src/changes.ts`) — in words.
+ */
 const STRUCTURE_WORDS: Readonly<Record<string, string>> = {
   name_length: "A name has 1 to 100 characters.",
   hq_project: "HQ's own project belongs to no project.",
@@ -56,6 +59,11 @@ const STRUCTURE_WORDS: Readonly<Record<string, string>> = {
     "This Zerops project is in a project already, or that project has its production.",
   production_taken: "That project has its production already.",
   held_changed: "Somebody changed this project in HQ meanwhile. Try again.",
+  // A Mate's changes (`@t3tools/shared/hqChanges`), as a person meets them.
+  repo_not_found: "HQ has no such repository.",
+  change_not_found: "HQ has no such change.",
+  attachment_not_found: "HQ has no such picture.",
+  change_not_open: "This change is merged or closed already.",
 };
 
 const isPermissionReason = (reason: string): reason is Reason =>

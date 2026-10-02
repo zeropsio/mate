@@ -824,25 +824,9 @@
     "expires": "F6"
   },
   {
-    "path": "apps/web/src/components/zerops/ZeropsGitPanel.tsx",
-    "kind": "Literal",
-    "fingerprint": "<> text-[var(--zerops-status-failed-text)] in \"text-xs text-[var(--zerops-status-failed-text)]\"",
-    "owner": "web-intake",
-    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
-    "expires": "F6"
-  },
-  {
     "path": "apps/web/src/components/zerops/ZeropsGitSurface.tsx",
     "kind": "Literal",
     "fingerprint": "<> text-[var(--zerops-status-failed)] in \"px-4 pt-3 text-xs text-[var(--zerops-status-failed)]\"",
-    "owner": "web-intake",
-    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsGitTab.tsx",
-    "kind": "Literal",
-    "fingerprint": "<> text-[11px] in \"shrink-0 font-mono text-[11px] text-muted-foreground\"",
     "owner": "web-intake",
     "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
     "expires": "F6"

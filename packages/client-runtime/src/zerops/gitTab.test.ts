@@ -3,30 +3,22 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   gitCheckoutHostnames,
-  checkTone,
   environmentForBranch,
   gitActionAllowed,
   gitBlock,
   gitCheckoutLine,
-  gitChecks,
   gitTrouble,
   gitVerdict,
+  mateChangeIn,
+  pullRequestBlocked,
   type GitBlockEvidence,
+  type GitChangeState,
   type GitCheckoutState,
-  type GitCheckTone,
-  type GitForgePullRequest,
-  type GitForgeState,
 } from "./gitTab.ts";
-import { changeVerdict } from "./changeVerdict.ts";
-import {
-  createMergeabilityTracker,
-  mergeReadOf,
-  type MergeabilityKind,
-} from "./forge/mergeState.ts";
-import type { GiteaCommitStatus, GiteaPullRequest, GiteaRepository } from "./giteaClient.ts";
+import type { MergeabilityKind } from "./changeMergeability.ts";
 import type { GroupEnvironment } from "./groupEnvironments.ts";
 import { mateNextStep } from "./mateNextStep.ts";
-import { changeState, flowPullRequest, type FlowPullRequest } from "./projectFlow.ts";
+import { changeState, type FlowPullRequest } from "./projectFlow.ts";
 
 const DECLARATIONS: ReadonlyArray<GroupEnvironment> = [
   { name: "stage", tier: "stage", project: "p1", sources: ["main"], deploy: "on-push" },
@@ -39,14 +31,6 @@ const DECLARATIONS: ReadonlyArray<GroupEnvironment> = [
   },
   { name: "production", tier: "production", project: "p3", sources: "release", deploy: undefined },
 ];
-
-const REPOSITORY: GiteaRepository = {
-  id: 1,
-  name: "api",
-  full_name: "acme/api",
-  default_branch: "main",
-  permissions: { admin: false, push: true, pull: true },
-};
 
 function checkout(overrides: Partial<GitCheckoutState> = {}): GitCheckoutState {
   return {
@@ -62,32 +46,37 @@ function checkout(overrides: Partial<GitCheckoutState> = {}): GitCheckoutState {
   };
 }
 
-function forge(overrides: Partial<GitForgeState> = {}): GitForgeState {
-  return { read: true, repository: REPOSITORY, pullRequest: undefined, checks: [], ...overrides };
+function changes(overrides: Partial<GitChangeState> = {}): GitChangeState {
+  return { read: true, change: undefined, ...overrides };
 }
 
-function pull(overrides: Partial<GiteaPullRequest> = {}): GiteaPullRequest {
+/** The Mate's change `api #12` in HQ, as the flow carries it. */
+function change(
+  mergeability: MergeabilityKind,
+  overrides: Partial<FlowPullRequest> = {},
+): FlowPullRequest {
   return {
+    repository: "api",
     number: 12,
     title: "Invoices",
+    kind: "code",
+    mateProjectId: "p1",
+    author: undefined,
+    url: "https://hq.example/changes/g1/api/12",
+    mergeability,
+    behind: false,
+    merged: false,
+    mergedAt: undefined,
     state: "open",
-    html_url: "https://gitea.example/acme/api/pulls/12",
-    head: { ref: "feature/invoices", sha: "abc" },
-    base: { ref: "main" },
+    headSha: "abc",
+    baseBranch: "main",
+    line: "api #12",
+    updatedAt: undefined,
     ...overrides,
   };
 }
 
-function request(
-  mergeability: MergeabilityKind,
-  overrides: Partial<GiteaPullRequest> = {},
-): GitForgePullRequest {
-  return { pull: pull(overrides), mergeability };
-}
-
-function status(context: string, state: GiteaCommitStatus["state"]): GiteaCommitStatus {
-  return { context, state };
-}
+const LANDED = { state: "closed", merged: true } as const;
 
 const FILE = { path: "server.js", insertions: 12, deletions: 1 };
 const OTHER = { path: "public/app.css", insertions: 2, deletions: 2 };
@@ -96,9 +85,10 @@ const EVIDENCE = { remoteReachable: true } as const;
 
 const block = (
   checkoutState: GitCheckoutState,
-  forgeState: GitForgeState = forge(),
+  changeState: GitChangeState = changes(),
   evidence: GitBlockEvidence = EVIDENCE,
-) => gitBlock({ checkout: checkoutState, forge: forgeState, declarations: DECLARATIONS, evidence });
+) =>
+  gitBlock({ checkout: checkoutState, changes: changeState, declarations: DECLARATIONS, evidence });
 
 describe("which environment picks a branch up", () => {
   it.each([
@@ -112,30 +102,6 @@ describe("which environment picks a branch up", () => {
 
   it("never answers with the production, whose source is a release", () => {
     expect(environmentForBranch(DECLARATIONS, "release")).toBeUndefined();
-  });
-});
-
-describe("the checks on a head", () => {
-  it.each([
-    { name: "nothing ran", statuses: [], expected: "none" },
-    { name: "all green", statuses: [status("ci/test", "success")], expected: "passing" },
-    {
-      name: "one still going",
-      statuses: [status("ci/test", "success"), status("ci/lint", "pending")],
-      expected: "pending",
-    },
-    {
-      name: "one red among greens",
-      statuses: [status("ci/test", "success"), status("ci/lint", "failure")],
-      expected: "failing",
-    },
-    {
-      name: "only the broker's own deploy statuses, which are not checks",
-      statuses: [status("mate/deploy/stage/api", "failure")],
-      expected: "none",
-    },
-  ] as const)("reads $name", ({ statuses, expected }) => {
-    expect(checkTone(statuses)).toBe(expected);
   });
 });
 
@@ -207,10 +173,7 @@ describe("where the work stands", () => {
   it.each([
     {
       name: "no repository at all",
-      answer: block(
-        checkout({ isRepo: false, hasRemote: false }),
-        forge({ repository: undefined }),
-      ),
+      answer: block(checkout({ isRepo: false, hasRemote: false })),
       tone: "off",
       text: "No code here yet.",
     },
@@ -245,40 +208,40 @@ describe("where the work stands", () => {
       text: "4 commits on the remote are not in this checkout yet.",
     },
     {
+      // Grey, not green: no signal about it is not a good signal.
       name: "a pull request waiting on a person",
       answer: block(
         checkout({ headRef: "feature/invoices" }),
-        forge({ pullRequest: request("mergeable"), checks: [status("ci/test", "success")] }),
+        changes({ change: change("mergeable") }),
       ),
-      tone: "ok",
-      text: "The checks passed. Nothing is stopping it.",
+      tone: "off",
+      text: "Nothing is stopping it.",
     },
     {
-      name: "a pull request whose checks are still going",
+      name: "a change HQ has not said yet whether it merges",
       answer: block(
         checkout({ headRef: "feature/invoices" }),
-        forge({ pullRequest: request("mergeable"), checks: [status("ci/test", "pending")] }),
+        changes({ change: change("checking") }),
       ),
       tone: "busy",
-      text: "Its checks are still running.",
+      text: "Checking whether it merges cleanly.",
     },
     {
-      name: "a pull request whose checks went red",
+      name: "a pull request main already has all of",
       answer: block(
         checkout({ headRef: "feature/invoices" }),
-        forge({ pullRequest: request("mergeable"), checks: [status("ci/test", "failure")] }),
+        changes({ change: change("empty") }),
       ),
-      tone: "failed",
-      text: "Its checks failed.",
+      tone: "off",
+      text: "Main already has all of it.",
     },
     {
       // The state that offers no verb: without a sentence, the row is a change
-      // that looks fine and cannot move, which is the trap `changeVerdict` was
-      // written to close.
-      name: "a pull request the forge will not take",
+      // that looks fine and cannot move.
+      name: "a change that will not merge",
       answer: block(
         checkout({ headRef: "feature/invoices" }),
-        forge({ pullRequest: request("conflicting") }),
+        changes({ change: change("conflicting") }),
       ),
       tone: "attention",
       text: "It no longer merges cleanly.",
@@ -287,7 +250,7 @@ describe("where the work stands", () => {
       name: "work that has landed",
       answer: block(
         checkout({ headRef: "feature/invoices" }),
-        forge({ pullRequest: request("checking", { state: "closed", merged: true }) }),
+        changes({ change: change("checking", LANDED) }),
       ),
       tone: "ok",
       text: "Merged into main.",
@@ -311,17 +274,9 @@ describe("where the work stands", () => {
       name: "a change that no longer merges",
       answer: block(
         checkout({ headRef: "feature/invoices" }),
-        forge({ pullRequest: request("conflicting") }),
+        changes({ change: change("conflicting") }),
       ),
       ask: "Pull request #12 no longer merges cleanly. Rebase it on main, resolve the conflicts, and push.",
-    },
-    {
-      name: "checks the forge would let through anyway",
-      answer: block(
-        checkout({ headRef: "feature/invoices" }),
-        forge({ pullRequest: request("mergeable"), checks: [status("ci/test", "failure")] }),
-      ),
-      ask: "The checks on pull request #12 are failing. Find out why, fix them, and push.",
     },
   ] as const)("hands $name back in words the Mate can act on", ({ answer, ask }) => {
     expect(answer.verdict?.ask).toBe(ask);
@@ -332,7 +287,7 @@ describe("where the work stands", () => {
       name: "work that has landed",
       answer: block(
         checkout({ headRef: "feature/invoices" }),
-        forge({ pullRequest: request("checking", { state: "closed", merged: true }) }),
+        changes({ change: change("checking", LANDED) }),
       ),
     },
     { name: "a repository nobody has touched", answer: block(checkout()) },
@@ -346,7 +301,7 @@ describe("where the work stands", () => {
       name: "a change with nothing wrong with it",
       answer: block(
         checkout({ headRef: "feature/invoices" }),
-        forge({ pullRequest: request("mergeable"), checks: [status("ci/test", "success")] }),
+        changes({ change: change("mergeable") }),
       ),
     },
   ])("asks nothing of $name", ({ answer }) => {
@@ -354,7 +309,7 @@ describe("where the work stands", () => {
   });
 
   it("says what was proved wrong before anything it would have guessed", () => {
-    const answer = block(checkout({ headRef: "feature/invoices", aheadCount: 3 }), forge(), {
+    const answer = block(checkout({ headRef: "feature/invoices", aheadCount: 3 }), changes(), {
       remoteReachable: false,
       remoteDetail: "remote: Repository not found.",
     });
@@ -376,14 +331,14 @@ describe("where the work stands", () => {
     }
   });
 
-  it("says nothing at all until the forge has answered", () => {
+  it("says nothing at all until HQ has told its changes", () => {
     // Measured on the live account, 2026-09-19: the tab opened on "No code
     // here yet.", listed five of the Mate's commits under that sentence, and
-    // then replaced the whole panel with "#11 · No checks ran. Nothing is
-    // stopping it." and a *Merge*. An unread forge is not an empty one.
+    // then replaced the whole panel with "#11 · Nothing is stopping it." and a
+    // *Merge*. Changes not told yet are not no changes.
     const unread = gitBlock({
       checkout: checkout({ headRef: "mate/mate-x", aheadCount: 3 }),
-      forge: forge({ read: false, repository: undefined }),
+      changes: changes({ read: false }),
       declarations: DECLARATIONS,
       evidence: { remoteReachable: true },
     });
@@ -394,10 +349,10 @@ describe("where the work stands", () => {
     expect(unread.destination).toBe("");
   });
 
-  it("still says a repository is missing once the forge has said so", () => {
+  it("still says a repository is missing once HQ has told its changes", () => {
     const answered = gitBlock({
-      checkout: checkout({ headRef: "mate/mate-x" }),
-      forge: forge({ read: true, repository: undefined }),
+      checkout: checkout({ isRepo: false, headRef: null }),
+      changes: changes(),
       declarations: DECLARATIONS,
       evidence: { remoteReachable: true },
     });
@@ -405,35 +360,22 @@ describe("where the work stands", () => {
     expect(answered.verdict?.text).toBe("No code here yet.");
   });
 
-  it("says what was proved wrong even before the forge answers", () => {
+  it("says what was proved wrong even before HQ answers", () => {
     // A remote that refused is a different read, and it is proved. It is the
-    // one thing worth saying while the forge is still out.
+    // one thing worth saying while HQ is still out.
     const refused = gitBlock({
       checkout: checkout({ headRef: "mate/mate-x" }),
-      forge: forge({ read: false, repository: undefined }),
+      changes: changes({ read: false }),
       declarations: DECLARATIONS,
       evidence: { remoteReachable: false, remoteDetail: "remote: access denied" },
     });
     expect(refused.verdict?.tone).toBe("failed");
   });
 
-  it("says nothing ran rather than calling no signal a good one", () => {
-    const answer = block(
-      checkout({ headRef: "feature/invoices" }),
-      forge({ pullRequest: request("mergeable"), checks: [] }),
-    );
-    expect(answer.verdict).toEqual({
-      tone: "off",
-      text: "No checks ran. Nothing is stopping it.",
-      ask: undefined,
-    });
-  });
-
   it("can be asked directly, without a block around it", () => {
     expect(
       gitVerdict({
         state: "merged",
-        checks: "none",
         checkout: checkout({ headRef: "feature/invoices" }),
         pullRequestNumber: 12,
         mergeability: "mergeable",
@@ -446,10 +388,7 @@ describe("where the work stands", () => {
 
 describe("every state of a block", () => {
   it("a dev pair with no repository yet says so, and offers nothing", () => {
-    const answer = block(
-      checkout({ isRepo: false, hasRemote: false }),
-      forge({ repository: undefined }),
-    );
+    const answer = block(checkout({ isRepo: false, hasRemote: false }));
     expect(answer.state).toBe("no-repository");
     expect(answer.action).toBeUndefined();
     expect(answer.destination).toBe("");
@@ -460,7 +399,6 @@ describe("every state of a block", () => {
     expect(answer.state).toBe("untouched");
     expect(answer.action).toBeUndefined();
     expect(answer.pullRequestNumber).toBeUndefined();
-    expect(answer.checkWord).toBeUndefined();
     // `main` is a stage's source, so the row still says where this branch runs.
     expect(answer.destination).toBe("stage runs this branch");
   });
@@ -499,37 +437,28 @@ describe("every state of a block", () => {
     ).toBe("push");
   });
 
-  it("a pushed branch with no pull request offers to open one", () => {
-    expect(block(checkout({ headRef: "feature/invoices" })).action).toEqual({
-      kind: "open-pull-request",
-      label: "Open pull request",
-      running: "Opening…",
-      ownerOnly: false,
-    });
-  });
-
-  it("the default branch never offers a pull request into itself", () => {
+  it("a pushed branch with no change open offers nothing: a Mate's push opens its change", () => {
+    expect(block(checkout({ headRef: "feature/invoices" })).action).toBeUndefined();
     expect(block(checkout({ headRef: "main" })).action).toBeUndefined();
   });
 
-  it("a pull request open with checks says its number, its checks and where it lands", () => {
+  it("a change open says its number, where it is, and where it lands", () => {
     const answer = block(
       checkout({ headRef: "feature/invoices" }),
-      forge({ pullRequest: request("mergeable"), checks: [status("ci/test", "success")] }),
+      changes({ change: change("mergeable") }),
     );
     expect(answer.state).toBe("in-review");
     expect(answer.pullRequestNumber).toBe(12);
-    expect(answer.checks).toBe("passing");
-    expect(answer.checkWord).toBe("Passing");
+    expect(answer.pullRequestUrl).toBe("https://hq.example/changes/g1/api/12");
     expect(answer.destination).toBe("stage picks it up on merge");
   });
 
   it.each(["mergeable", "conflicting", "checking"] as const)(
-    "offers the review of an open pull request whatever Gitea says of it (%s)",
+    "offers the review of an open change whatever is said of it (%s)",
     (mergeability) => {
       const open = block(
         checkout({ headRef: "feature/invoices" }),
-        forge({ pullRequest: request(mergeability) }),
+        changes({ change: change(mergeability) }),
       );
       // The review says whether it merges, and carries Merge; the tab never merges itself.
       expect(open.action).toEqual({
@@ -544,7 +473,7 @@ describe("every state of a block", () => {
   it("a merged pull request is the broker's business now, and offers nothing", () => {
     const answer = block(
       checkout({ headRef: "feature/invoices" }),
-      forge({ pullRequest: request("checking", { state: "closed", merged: true }) }),
+      changes({ change: change("checking", LANDED) }),
     );
     expect(answer.state).toBe("merged");
     expect(answer.action).toBeUndefined();
@@ -604,31 +533,25 @@ describe("a setup proved broken offers no verb that would fail", () => {
     {
       name: "a branch nobody has pushed",
       state: checkout({ headRef: "feature/invoices", hasUpstream: false }),
-      forgeState: forge(),
+      changeState: changes(),
       offered: "push",
     },
     {
       name: "a branch behind main",
       state: checkout({ behindCount: 2 }),
-      forgeState: forge(),
+      changeState: changes(),
       offered: "update-from-main",
     },
     {
-      name: "a pushed branch with no pull request",
+      name: "a change that merges",
       state: checkout({ headRef: "feature/invoices" }),
-      forgeState: forge(),
-      offered: "open-pull-request",
-    },
-    {
-      name: "a pull request Gitea says is mergeable",
-      state: checkout({ headRef: "feature/invoices" }),
-      forgeState: forge({ pullRequest: request("mergeable") }),
+      changeState: changes({ change: change("mergeable") }),
       offered: "review",
     },
   ] as const)(
     "$name keeps its verb while nothing is proved wrong",
-    ({ state, forgeState, offered }) => {
-      expect(block(state, forgeState, evidence()).action?.kind).toBe(offered);
+    ({ state, changeState, offered }) => {
+      expect(block(state, changeState, evidence()).action?.kind).toBe(offered);
     },
   );
 
@@ -638,8 +561,8 @@ describe("a setup proved broken offers no verb that would fail", () => {
       broken: evidence({ remoteReachable: false }),
     },
   ])("with $name, a container verb is not offered", ({ broken }) => {
-    expect(block(checkout({ hasUpstream: false }), forge(), broken).action).toBeUndefined();
-    expect(block(checkout({ behindCount: 2 }), forge(), broken).action).toBeUndefined();
+    expect(block(checkout({ hasUpstream: false }), changes(), broken).action).toBeUndefined();
+    expect(block(checkout({ behindCount: 2 }), changes(), broken).action).toBeUndefined();
   });
 
   it.each([
@@ -647,14 +570,11 @@ describe("a setup proved broken offers no verb that would fail", () => {
       name: "a remote that did not answer",
       broken: evidence({ remoteReachable: false }),
     },
-  ])("with $name, a verb Gitea runs is still offered", ({ broken }) => {
-    expect(block(checkout({ headRef: "feature/invoices" }), forge(), broken).action?.kind).toBe(
-      "open-pull-request",
-    );
+  ])("with $name, the review is still offered", ({ broken }) => {
     expect(
       block(
         checkout({ headRef: "feature/invoices" }),
-        forge({ pullRequest: request("mergeable") }),
+        changes({ change: change("mergeable") }),
         broken,
       ).action?.kind,
     ).toBe("review");
@@ -681,27 +601,14 @@ describe("the owner-only gate on checkout verbs", () => {
     expect(gitActionAllowed(action, { isOwner: false })).toBe(false);
   });
 
-  it.each([
-    {
-      name: "Open pull request",
-      action: {
-        kind: "open-pull-request",
-        label: "Open pull request",
-        running: "Opening…",
-        ownerOnly: false,
-      } as const,
-    },
-    {
-      name: "Review",
-      action: {
-        kind: "review",
-        label: "Review",
-        running: "Review",
-        ownerOnly: false,
-      } as const,
-    },
-  ])("$name is Gitea's to police, so anyone here may press it", ({ action }) => {
-    expect(gitActionAllowed(action, { isOwner: false })).toBe(true);
+  it("Review opens the review, which polices what it offers, so anyone here may press it", () => {
+    const review = {
+      kind: "review",
+      label: "Review",
+      running: "Review",
+      ownerOnly: false,
+    } as const;
+    expect(gitActionAllowed(review, { isOwner: false })).toBe(true);
   });
 
   it("no verb is nothing to press", () => {
@@ -747,77 +654,29 @@ describe("gitCheckoutHostnames", () => {
 });
 
 describe("gitBlock base branch", () => {
-  // The Git tab's "Open pull request" opens it onto this branch (2026-09-17:
-  // the verb was wired to nothing, and the click did nothing).
-  it("carries the repository's default branch, main until Gitea says", () => {
-    const withRepository = gitBlock({
-      checkout: checkout({ headRef: "mate/mate-x", hasUpstream: true }),
-      forge: {
-        read: true,
-        repository: { ...REPOSITORY, default_branch: "trunk" },
-        pullRequest: undefined,
-        checks: [],
-      },
-      declarations: DECLARATIONS,
-      evidence: { remoteReachable: true },
-    });
-    expect(withRepository.baseBranch).toBe("trunk");
-    const unknown = gitBlock({
-      checkout: checkout({ headRef: "mate/mate-x", hasUpstream: true }),
-      forge: { read: true, repository: undefined, pullRequest: undefined, checks: [] },
-      declarations: DECLARATIONS,
-      evidence: { remoteReachable: true },
-    });
-    expect(unknown.baseBranch).toBe("main");
+  it("is main, which every change in HQ goes onto", () => {
+    expect(block(checkout({ headRef: "mate/mate-x" })).baseBranch).toBe("main");
+    expect(
+      block(checkout({ headRef: "mate/mate-x" }), changes({ change: change("mergeable") }))
+        .baseBranch,
+    ).toBe("main");
   });
 });
 
-describe("the checks, by name", () => {
-  it("lists every check the forge reported, with its own word", () => {
-    expect(
-      gitChecks([
-        status("ci/test", "success"),
-        status("ci/lint", "pending"),
-        status("ci/types", "failure"),
-      ]),
-    ).toEqual([
-      { name: "ci/test", tone: "ok", word: "Passed" },
-      { name: "ci/lint", tone: "busy", word: "Running" },
-      { name: "ci/types", tone: "failed", word: "Failed" },
-    ]);
-  });
-
-  it("keeps the broker's deploy statuses out, as the collapsed word does", () => {
-    // They are what happened after a change landed, not a verdict on it.
-    expect(gitChecks([status("mate/deploy/stage/api", "failure")])).toEqual([]);
-  });
-
-  it.each([
-    [
-      "what the check said about itself, and where its own page is",
-      { description: " pnpm build · 34s ", target_url: "https://ci.example/runs/7" },
-      { description: "pnpm build · 34s", url: "https://ci.example/runs/7" },
-    ],
-    ["nothing where it said nothing", { description: "  ", target_url: "" }, {}],
-  ])("keeps %s", (_name, said, kept) => {
-    expect(gitChecks([{ ...status("ci/build", "success"), ...said }])).toEqual([
-      { name: "ci/build", tone: "ok", word: "Passed", ...kept },
-    ]);
-  });
-
-  it("says a state it does not know rather than guessing a colour for it", () => {
-    expect(gitChecks([status("ci/test", "warning" as never)])).toEqual([
-      { name: "ci/test", tone: "off", word: "Unknown" },
-    ]);
-  });
-
-  it("reaches a block, so the panel never has to ask the forge itself", () => {
-    const answer = block(
-      checkout({ headRef: "feature/invoices" }),
-      forge({ pullRequest: request("mergeable"), checks: [status("ci/test", "failure")] }),
-    );
-    expect(answer.checkRows).toEqual([{ name: "ci/test", tone: "failed", word: "Failed" }]);
-    expect(answer.checks).toBe("failing");
+describe("mateChangeIn: the Mate's newest change in a repository", () => {
+  const open = change("mergeable", { number: 14 });
+  const landed = change("mergeable", { number: 12, ...LANDED });
+  const flow = {
+    pullRequests: [open, change("mergeable", { number: 15, mateProjectId: "p2" })],
+    merged: [landed, change("mergeable", { number: 3, repository: "web", ...LANDED })],
+  };
+  it.each<[string, string, string, FlowPullRequest | undefined, typeof flow]>([
+    ["its open change, newer than the landed one", "p1", "api", open, flow],
+    ["its landed one where none is open", "p1", "api", landed, { ...flow, pullRequests: [] }],
+    ["nothing in a repository it has no change in", "p1", "cache", undefined, flow],
+    ["nothing of another Mate's", "p3", "api", undefined, flow],
+  ])("is %s", (_name, mate, repository, expected, of) => {
+    expect(mateChangeIn(of, mate, repository)).toBe(expected);
   });
 });
 
@@ -835,7 +694,7 @@ describe("a Mate's own branch, wherever it is read", () => {
   it("reaches a block through the name its caller was given", () => {
     const answer = gitBlock({
       checkout: checkout({ headRef: "mate/mate-0bPLTRRSSTuV54WMpcLoww" }),
-      forge: forge(),
+      changes: changes(),
       declarations: DECLARATIONS,
       evidence: EVIDENCE,
       mateName: "Theo",
@@ -846,213 +705,47 @@ describe("a Mate's own branch, wherever it is read", () => {
   });
 });
 
-describe("one MergeState on every surface (DESIGN §4.7, A7, A11)", () => {
-  interface Read {
-    readonly mergeable: boolean | null | undefined;
-    readonly atMs: number;
-    readonly over?: Partial<GiteaPullRequest>;
-  }
-
-  /** The composer's top over a project holding only this pull request: its review, or nothing. */
+describe("one answer on every surface (DESIGN §4.7)", () => {
+  /** The composer's top over a project holding only this change: its review, or nothing. */
   function bannerOf(flow: FlowPullRequest) {
     const step = mateNextStep({ pullRequests: [flow], mateProjectId: "p1", mateName: "Iris" });
     return step.kind === "review" ? step : undefined;
   }
 
-  /**
-   * The Git tab, the conversation's banner, the change's own page and its row, after the same
-   * reads of one Mate's pull request.
-   */
-  function surfaces(reads: ReadonlyArray<Read>, checks: ReadonlyArray<GiteaCommitStatus>) {
-    const tracker = createMergeabilityTracker();
-    let seen:
-      | {
-          readonly mergeability: MergeabilityKind;
-          readonly tab: ReturnType<typeof gitBlock>;
-          readonly banner: ReturnType<typeof bannerOf>;
-          readonly page: ReturnType<typeof changeVerdict>;
-          readonly row: ReturnType<typeof changeState>;
-        }
-      | undefined;
-    for (const read of reads) {
-      const gitea = pull({
-        mergeable: read.mergeable,
-        head: { ref: "mate/mate-p1", sha: "abc" },
-        base: { ref: "main", sha: "b1" },
-        ...read.over,
-      });
-      const mergeability = tracker.after("api#12", mergeReadOf(gitea, read.atMs)).kind;
-      const flow = flowPullRequest({ repository: "api", pull: gitea, checks, mergeability });
-      seen = {
-        mergeability,
-        tab: gitBlock({
-          checkout: checkout({ headRef: "mate/mate-p1" }),
-          forge: forge({ pullRequest: { pull: gitea, mergeability }, checks }),
-          declarations: DECLARATIONS,
-          evidence: EVIDENCE,
-        }),
-        banner: bannerOf(flow),
-        page: changeVerdict(flow),
-        row: changeState(flow),
-      };
-    }
-    if (seen === undefined) throw new Error("no reads");
-    return seen;
+  /** The Git tab, the conversation's banner and the change's row, over one Mate's change. */
+  function surfaces(flow: FlowPullRequest) {
+    return {
+      tab: gitBlock({
+        checkout: checkout({ headRef: "mate/mate-p1" }),
+        changes: changes({ change: flow }),
+        declarations: DECLARATIONS,
+        evidence: EVIDENCE,
+      }),
+      banner: bannerOf(flow),
+      row: changeState(flow),
+      blocked: pullRequestBlocked(flow),
+    };
   }
 
-  const saysRebase = (seen: ReturnType<typeof surfaces>) => ({
-    tab: /no longer merges/.test(seen.tab.verdict?.text ?? ""),
-    page: seen.page.kind === "behind",
-    row: seen.row?.word === "Needs a rebase",
-  });
-
-  it("false then true within 5 s reads Checking, never Needs a rebase", () => {
-    for (const reads of [
-      [{ mergeable: false, atMs: 0 }],
-      [
-        { mergeable: false, atMs: 0 },
-        { mergeable: false, atMs: 2_000 },
-      ],
-    ]) {
-      const seen = surfaces(reads, []);
-      expect(seen.row?.word).toBe("Checking");
-      expect(seen.page.kind).toBe("checking");
-      expect(seen.tab.verdict?.text).toBe("Checking whether it merges cleanly.");
-      expect(saysRebase(seen)).toEqual({ tab: false, page: false, row: false });
-      // Still in review: the tab's door to it is there, and the review says it is checking.
-      expect(seen.tab.action?.kind).toBe("review");
-      expect(seen.banner).toBeUndefined();
-    }
-    const settled = surfaces(
-      [
-        { mergeable: false, atMs: 0 },
-        { mergeable: false, atMs: 2_000 },
-        { mergeable: true, atMs: 4_000 },
-      ],
-      [],
-    );
-    expect(saysRebase(settled)).toEqual({ tab: false, page: false, row: false });
-    expect(settled.tab.action?.kind).toBe("review");
-    expect(settled.banner?.pull.number).toBe(12);
-  });
-
-  const STATES: ReadonlyArray<{
-    readonly name: string;
-    readonly reads: ReadonlyArray<Read>;
-    readonly state: MergeabilityKind | "merged";
-  }> = [
-    { name: "Gitea says it merges", reads: [{ mergeable: true, atMs: 0 }], state: "mergeable" },
-    {
-      name: "a false just after a push",
-      reads: [{ mergeable: false, atMs: 0 }],
-      state: "checking",
-    },
-    { name: "a null", reads: [{ mergeable: null, atMs: 0 }], state: "checking" },
-    { name: "no answer at all", reads: [{ mergeable: undefined, atMs: 0 }], state: "checking" },
-    {
-      name: "falses that know no head sha",
-      reads: [
-        { mergeable: false, atMs: 0, over: { head: { ref: "mate/mate-p1" } } },
-        { mergeable: false, atMs: 60_000, over: { head: { ref: "mate/mate-p1" } } },
-      ],
-      state: "checking",
-    },
-    {
-      name: "a false that outlasts the window",
-      reads: [
-        { mergeable: false, atMs: 0 },
-        { mergeable: false, atMs: 5_000 },
-      ],
-      state: "conflicting",
-    },
-    {
-      name: "a landed one Gitea still calls mergeable",
-      reads: [{ mergeable: true, atMs: 0, over: { state: "closed", merged: true } }],
-      state: "merged",
-    },
-    {
-      name: "a landed one Gitea calls unmergeable",
-      reads: [
-        { mergeable: false, atMs: 0, over: { state: "closed", merged: true } },
-        { mergeable: false, atMs: 5_000, over: { state: "closed", merged: true } },
-      ],
-      state: "merged",
-    },
-  ];
-  const CHECKS: ReadonlyArray<{
-    readonly ran: string;
-    readonly checks: ReadonlyArray<GiteaCommitStatus>;
-  }> = [
-    { ran: "none", checks: [] },
-    { ran: "passing", checks: [status("ci/test", "success")] },
-    { ran: "running", checks: [status("ci/test", "pending")] },
-    { ran: "failing", checks: [status("ci/test", "failure")] },
-  ];
-
-  it.each(STATES.flatMap((state) => CHECKS.map((checks) => ({ ...state, ...checks }))))(
-    "Git tab and banner agree for every state: $name, checks $ran",
-    ({ reads, state, checks }) => {
-      const seen = surfaces(reads, checks);
-      if (state === "merged") {
-        expect(seen.tab.state).toBe("merged");
-        expect(seen.page.kind).toBe("merged");
-      } else {
-        expect(seen.mergeability).toBe(state);
-      }
-      const offers = state === "mergeable";
+  it.each(["mergeable", "checking", "conflicting", "empty"] as const)(
+    "Git tab, banner and row agree on a change that is %s",
+    (mergeability) => {
+      const seen = surfaces(change(mergeability));
       // The tab's door is the review's, on every open change; the review decides.
-      expect(seen.tab.action?.kind === "review").toBe(state !== "merged");
-      expect(seen.banner !== undefined).toBe(offers);
-      expect(seen.page.canMerge).toBe(offers);
-      expect(seen.tab.verdict?.tone).toBe(seen.page.tone);
-      expect(seen.tab.verdict?.ask).toBe(seen.page.ask);
-      const rebase = saysRebase(seen);
-      expect(rebase.tab).toBe(rebase.page);
-      // A row is drawn only for an open change; a landed one reads "Landed" before it.
-      if (state !== "merged") expect(rebase.row).toBe(rebase.page);
-      if (rebase.page) expect(state).toBe("conflicting");
+      expect(seen.tab.action?.kind).toBe("review");
+      expect(seen.banner !== undefined).toBe(mergeability === "mergeable");
+      expect(seen.tab.verdict?.tone).toBe(seen.row?.tone);
+      expect(seen.tab.verdict?.ask).toBe(seen.blocked?.ask);
+      const rebase = {
+        tab: /no longer merges/.test(seen.tab.verdict?.text ?? ""),
+        row: seen.row?.word === "Needs a rebase",
+      };
+      expect(rebase.tab).toBe(rebase.row);
+      expect(rebase.row).toBe(mergeability === "conflicting");
     },
   );
-});
 
-describe("a check says what its newest status says (Gitea keeps every status, newest first)", () => {
-  it.each<
-    [string, ReadonlyArray<GiteaCommitStatus>, GitCheckTone, ReadonlyArray<[string, string]>]
-  >([
-    [
-      "a check that was pending and then passed",
-      [status("ci/build", "success"), status("ci/build", "pending")],
-      "passing",
-      [["ci/build", "Passed"]],
-    ],
-    [
-      "a check that failed and passed on a rerun",
-      [status("ci/build", "success"), status("ci/build", "failure")],
-      "passing",
-      [["ci/build", "Passed"]],
-    ],
-    [
-      "a check that passed and then failed",
-      [status("ci/build", "failure"), status("ci/build", "success")],
-      "failing",
-      [["ci/build", "Failed"]],
-    ],
-    [
-      "two checks, each read by its own newest status",
-      [
-        status("ci/lint", "success"),
-        status("ci/build", "pending"),
-        status("ci/lint", "failure"),
-        status("ci/build", "success"),
-      ],
-      "pending",
-      [
-        ["ci/lint", "Passed"],
-        ["ci/build", "Running"],
-      ],
-    ],
-  ])("%s", (_case, statuses, tone, rows) => {
-    expect(checkTone(statuses)).toBe(tone);
-    expect(gitChecks(statuses).map((row) => [row.name, row.word])).toEqual(rows);
+  it("a landed change is merged on the tab whatever was said of it", () => {
+    expect(surfaces(change("conflicting", LANDED)).tab.state).toBe("merged");
   });
 });

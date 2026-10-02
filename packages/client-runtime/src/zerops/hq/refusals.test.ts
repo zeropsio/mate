@@ -20,6 +20,8 @@ describe("hqRefusalWords — HQ's refusal, in the person's words", () => {
     ["app_name_taken", "conflict", "Another project already has this name."],
     ["held_changed", "conflict", "Somebody changed this project in HQ meanwhile. Try again."],
     ["name_length", "invalid", "A name has 1 to 100 characters."],
+    ["change_not_found", "change_not_found", "HQ has no such change."],
+    ["change_not_open", "conflict", "This change is merged or closed already."],
   ])("says the structure's own %s in words", (reason, code, words) => {
     expect(hqRefusalWords({ code, reason })).toBe(words);
   });

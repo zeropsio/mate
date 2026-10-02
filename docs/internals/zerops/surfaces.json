@@ -249,6 +249,7 @@
       "title": "Zerops Git tab",
       "components": [
         "apps/web/src/components/zerops/ZeropsGitBlock.tsx",
+        "apps/web/src/components/zerops/ZeropsGitBlockCommits.tsx",
         "apps/web/src/components/zerops/ZeropsGitPanel.tsx",
         "apps/web/src/components/zerops/ZeropsGitSurface.tsx",
         "apps/web/src/components/zerops/ZeropsGitTab.tsx",
@@ -279,14 +280,6 @@
       ],
       "reverseStates": [
         {
-          "action": "Open pull request",
-          "reverse": "none: a pull request is closed in Gitea, which owns it."
-        },
-        {
-          "action": "Merge",
-          "reverse": "none: a merge is undone by a revert, which is a new change."
-        },
-        {
           "action": "Release",
           "reverse": "Roll back to this"
         },
@@ -297,10 +290,6 @@
         {
           "action": "Update from main",
           "reverse": "none: the checkout keeps what it pulled."
-        },
-        {
-          "action": "Sign in to Gitea",
-          "reverse": "none: the session ends with the tab (nothing is persisted)."
         }
       ],
       "docs": {
@@ -308,6 +297,7 @@
       },
       "tests": [
         "apps/web/src/components/zerops/ZeropsGitBlock.test.tsx",
+        "apps/web/src/components/zerops/ZeropsGitBlockCommits.test.tsx",
         "apps/web/src/components/zerops/ZeropsGitPanel.test.tsx",
         "packages/client-runtime/src/zerops/gitTab.test.ts",
         "packages/client-runtime/src/zerops/release.test.ts"
@@ -330,11 +320,12 @@
         "apps/web/src/components/zerops/review/ZeropsReviewSurface.tsx",
         "apps/web/src/zerops/ZeropsReviewProvider.tsx",
         "apps/web/src/zerops/review.ts",
-        "apps/web/src/zerops/useGiteaPicture.ts",
-        "apps/web/src/zerops/useZeropsChangeReadout.ts",
+        "apps/web/src/zerops/useChangePicture.ts",
+        "apps/web/src/zerops/useZeropsChangeDetail.ts",
         "apps/web/src/zerops/useZeropsChangeRun.ts",
         "apps/web/src/zerops/useZeropsReviewMates.ts",
         "packages/client-runtime/src/zerops/changeDiff.ts",
+        "packages/client-runtime/src/zerops/changeReadout.ts",
         "packages/client-runtime/src/zerops/recipeReach.ts",
         "packages/client-runtime/src/zerops/reviewVerdict.ts"
       ],
@@ -357,14 +348,11 @@
       "contracts": [
         "@t3tools/client-runtime/zerops/reviewVerdict",
         "@t3tools/client-runtime/zerops/changeDiff",
+        "@t3tools/client-runtime/zerops/changeReadout",
         "@t3tools/client-runtime/zerops/giteaClient",
         "@t3tools/client-runtime/zerops/projectFlow"
       ],
       "reverseStates": [
-        {
-          "action": "Merge",
-          "reverse": "none: a merge is undone by a revert, which is a new change."
-        },
         {
           "action": "Release",
           "reverse": "Roll back"
@@ -388,9 +376,11 @@
         "apps/web/src/components/zerops/review/ZeropsChangeReview.test.tsx",
         "apps/web/src/components/zerops/review/ZeropsCrewTaskReview.test.tsx",
         "apps/web/src/components/zerops/review/ZeropsReview.logic.test.ts",
+        "apps/web/src/zerops/useChangePicture.test.ts",
         "apps/web/src/zerops/useZeropsChangeComments.test.ts",
-        "apps/web/src/zerops/useZeropsChangeReadout.test.ts",
+        "apps/web/src/zerops/useZeropsChangeDetail.test.ts",
         "packages/client-runtime/src/zerops/changeDiff.test.ts",
+        "packages/client-runtime/src/zerops/changeReadout.test.ts",
         "packages/client-runtime/src/zerops/recipeReach.test.ts",
         "packages/client-runtime/src/zerops/reviewVerdict.test.ts"
       ],

@@ -2,7 +2,6 @@ import { act, createElement } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 import {
-  useZeropsChangeCommits,
   useZeropsRepositoriesCommits,
   useZeropsRepositoryCommits,
   type ZeropsCommitsState,
@@ -256,97 +255,6 @@ describe("useZeropsRepositoryCommits", () => {
       root.render(createElement(Probe, { repo: "api" }));
     });
     expect(seen.at(-1)?.kind).toBe("no-gitea");
-
-    await act(async () => {
-      root.unmount();
-    });
-  });
-});
-
-describe("useZeropsChangeCommits", () => {
-  afterEach(() => {
-    gitea.readable = false;
-    gitea.unauthorizedOnRead = false;
-    vi.unstubAllGlobals();
-  });
-
-  it("keeps a change's commits it read while the token is gone (§4.6)", async () => {
-    installTestDom();
-    const { createRoot } = await import("react-dom/client");
-    const seen: Array<ZeropsCommitsState> = [];
-    const request = {
-      giteaOrigin: "https://gitea.example.test",
-      owner: "harbor",
-      repo: "app",
-      base: "main",
-      head: "stage",
-    };
-
-    function Probe(_props: { readonly render: number }) {
-      seen.push(useZeropsChangeCommits(request));
-      return null;
-    }
-
-    gitea.readable = true;
-    const root = createRoot(document.createElement("div") as unknown as Element);
-    await act(async () => {
-      root.render(createElement(Probe, { render: 0 }));
-    });
-    expect(seen.at(-1)?.kind).toBe("read");
-    const readAt = seen.length - 1;
-
-    gitea.readable = false;
-    await act(async () => {
-      root.render(createElement(Probe, { render: 1 }));
-    });
-
-    expect(seen.slice(readAt).map((state) => state.kind)).toEqual(
-      seen.slice(readAt).map(() => "read"),
-    );
-
-    await act(async () => {
-      root.unmount();
-    });
-  });
-
-  it("keeps a change's commits it read when the re-read meets a 401 that no token recovered (§4.6)", async () => {
-    installTestDom();
-    const { createRoot } = await import("react-dom/client");
-    const seen: Array<ZeropsCommitsState> = [];
-    const request = {
-      giteaOrigin: "https://gitea.example.test",
-      owner: "harbor",
-      repo: "app",
-      base: "main",
-      head: "stage",
-    };
-
-    function Probe(_props: { readonly render: number }) {
-      seen.push(useZeropsChangeCommits(request));
-      return null;
-    }
-
-    gitea.readable = true;
-    const root = createRoot(document.createElement("div") as unknown as Element);
-    await act(async () => {
-      root.render(createElement(Probe, { render: 0 }));
-    });
-    expect(seen.at(-1)?.kind).toBe("read");
-    const readAt = seen.length - 1;
-
-    gitea.readable = false;
-    await act(async () => {
-      root.render(createElement(Probe, { render: 1 }));
-    });
-    gitea.readable = true;
-    gitea.unauthorizedOnRead = true;
-    await act(async () => {
-      root.render(createElement(Probe, { render: 2 }));
-    });
-
-    expect(seen.slice(readAt).map((state) => state.kind)).toEqual(
-      seen.slice(readAt).map(() => "read"),
-    );
 
     await act(async () => {
       root.unmount();

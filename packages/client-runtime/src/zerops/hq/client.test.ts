@@ -20,6 +20,7 @@ interface Seen {
   readonly method: string;
   readonly path: string;
   readonly authorization: string | null;
+  readonly accept: string | null;
   readonly body: unknown;
 }
 
@@ -38,6 +39,7 @@ function fakeHq(answer: (seen: Seen) => Response | undefined = () => undefined) 
       method: init?.method ?? "GET",
       path: url.pathname,
       authorization: headers.get("authorization"),
+      accept: headers.get("accept"),
       body: typeof init?.body === "string" ? JSON.parse(init.body) : undefined,
     };
     seen.push(request);
@@ -262,7 +264,7 @@ describe("attachToApp", () => {
     message: "The project is in an application already, or the application has its production.",
   });
   const api = (attached: ReadonlyArray<{ readonly projectId: string; readonly kind: string }>) => {
-    const made: HqApi = {
+    const made: Pick<HqApi, "attachProject" | "structure"> = {
       structure: async () => ({
         ungrouped: [],
         apps: [
@@ -273,17 +275,9 @@ describe("attachToApp", () => {
           },
         ],
       }),
-      streamStructure: async () => undefined,
-      createApp: async () => ({ id: "app-1", name: "Acme" }),
       attachProject: async () => {
         throw conflict;
       },
-      updateMate: async () => undefined,
-      renameApp: async () => undefined,
-      moveProject: async () => undefined,
-      createMate: async () => undefined,
-      recordStandUp: async () => undefined,
-      recordClosedOff: async () => undefined,
     };
     return made;
   };
@@ -394,7 +388,7 @@ describe("makeHqApi — the structure socket", () => {
 
     expect(socket.url).toBe("wss://hq-30db-8080.prg1.zerops.app/api/structure/ws?ticket=t-1");
     expect(stream.events).toEqual([
-      { kind: "snapshot", structure: { ungrouped: [], apps: [] } },
+      { kind: "snapshot", structure: { ungrouped: [], apps: [] }, changes: null },
       { kind: "change", appId: "app-1", app: { id: "app-1", name: "Acme", projects: [] } },
     ]);
     expect(socket.sent).toEqual([JSON.stringify({ type: "pong" })]);
@@ -525,5 +519,128 @@ describe("makeHqApi — application name and a project's application", () => {
       }),
     );
     expect(hq.seen.at(-1)).toMatchObject(expected);
+  });
+});
+
+describe("makeHqApi — a Mate's changes, as the person reads them", () => {
+  const SHA = "a".repeat(40);
+  const CHANGE = {
+    appId: "app-1",
+    repo: "app",
+    number: 3,
+    mateProjectId: "p1",
+    title: "Add a /status page",
+    body: "![The page](https://hq.example/api/apps/app-1/changes/app/3/attachments/shot1)",
+    state: "open",
+    head: SHA,
+    mergedSha: null,
+    landedHead: null,
+    openedAt: "2026-10-02T09:00:00.000Z",
+    mergedAt: null,
+    closedAt: null,
+    updatedAt: "2026-10-02T09:00:00.000Z",
+    mergeability: "clean",
+    behind: false,
+  } as const;
+  const DETAIL = {
+    change: CHANGE,
+    mainHead: "b".repeat(40),
+    mergeBase: "b".repeat(40),
+    mergeability: { kind: "clean" },
+    files: [
+      {
+        path: "server/status.ts",
+        added: 12,
+        deleted: 1,
+        hunks: "@@ -1 +1,12 @@",
+        binary: false,
+        truncated: false,
+      },
+    ],
+    filesTruncated: false,
+    commits: [
+      { sha: SHA, subject: "Add the page", authorName: "Vera", at: "2026-10-02T09:01:00Z" },
+    ],
+    commitsTruncated: false,
+  } as const;
+  const COMMENT = {
+    id: "c1",
+    authorUserId: "u1",
+    body: "Looks good",
+    createdAt: "2026-10-02T09:05:00.000Z",
+  } as const;
+  const LINK = { appId: "app-1", repo: "app", number: 3 } as const;
+  const api = (answer: (seen: Seen) => Response | undefined) => {
+    const hq = fakeHq((seen) =>
+      seen.path === "/api/door" || seen.authorization === null ? undefined : answer(seen),
+    );
+    return {
+      hq,
+      api: makeHqApi({
+        address: ADDRESS,
+        fetch: hq.fetch,
+        throughDoor: doors().throughDoor,
+        openSocket: NO_SOCKET,
+      }),
+    };
+  };
+
+  it("reads a change with what its review reads, as the person", async () => {
+    const { hq, api: hqApi } = api((seen) =>
+      seen.path === "/api/apps/app-1/changes/app/3" ? json(200, DETAIL) : undefined,
+    );
+    await expect(hqApi.change(LINK)).resolves.toEqual(DETAIL);
+    expect(hq.seen.at(-1)).toMatchObject({ method: "GET", authorization: "Bearer session-1" });
+  });
+
+  it("refuses an answer this version of Mate cannot read, rather than drawing half of it", async () => {
+    const { api: hqApi } = api(() => json(200, { ...DETAIL, mergeability: { kind: "maybe" } }));
+    await expect(hqApi.change(LINK)).rejects.toMatchObject({
+      kind: "refused",
+      code: "unreadable",
+    });
+  });
+
+  it("says a change HQ has no record of in words of its own", async () => {
+    const { api: hqApi } = api(() =>
+      json(404, { code: "change_not_found", reason: "change_not_found" }),
+    );
+    await expect(hqApi.change(LINK)).rejects.toMatchObject({
+      kind: "refused",
+      code: "change_not_found",
+      message: "HQ has no such change.",
+    });
+  });
+
+  it("reads a change's conversation, and says something in it as the person", async () => {
+    const { hq, api: hqApi } = api((seen) =>
+      seen.path === "/api/apps/app-1/changes/app/3/comments"
+        ? seen.method === "POST"
+          ? json(201, { ...COMMENT, body: "Ship it" })
+          : json(200, { comments: [COMMENT] })
+        : undefined,
+    );
+    await expect(hqApi.changeComments(LINK)).resolves.toEqual([COMMENT]);
+    await expect(hqApi.commentOnChange(LINK, "Ship it")).resolves.toEqual({
+      ...COMMENT,
+      body: "Ship it",
+    });
+    expect(hq.seen.at(-1)).toMatchObject({ method: "POST", body: { body: "Ship it" } });
+  });
+
+  it("fetches a change's picture with the session, as the picture it is", async () => {
+    const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47]);
+    const { hq, api: hqApi } = api((seen) =>
+      seen.path === "/api/apps/app-1/changes/app/3/attachments/shot1"
+        ? new Response(png, { status: 200, headers: { "content-type": "image/png" } })
+        : undefined,
+    );
+    const picture = await hqApi.changeAttachment({ ...LINK, id: "shot1" });
+    expect(new Uint8Array(await picture.arrayBuffer())).toEqual(png);
+    expect(picture.type).toBe("image/png");
+    expect(hq.seen.at(-1)).toMatchObject({
+      authorization: "Bearer session-1",
+      accept: "image/png",
+    });
   });
 });

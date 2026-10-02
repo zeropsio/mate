@@ -197,7 +197,7 @@ not the person's.
 | Gitea person session                                                                                                                                   | `cr/zerops/forge/giteaSession.ts`, one per (epoch, Gitea origin)                      | Broker `POST /person/token` via a throwaway                              | Epoch                        |
 | Repositories, pull requests, tags, releases, `environments.yaml`, branch heads, commit statuses                                                        | `cr/zerops/forge/forgeStore.ts`                                                       | Gitea REST as the person                                                 | Epoch; bounded LRU unleased  |
 | Deployment per service                                                                                                                                 | `cr/zerops/flow/deploymentStore.ts`                                                   | Pushed `activeDeploy`; REST for the version name; Gitea for build status | Epoch, per service           |
-| Group flow, release offer, MergeState                                                                                                                  | Pure projections                                                                      | Derived                                                                  | —                            |
+| Group flow, release offer, mergeability                                                                                                                | Pure projections                                                                      | Derived                                                                  | —                            |
 | Verb attempts                                                                                                                                          | Command attempts keyed by target                                                      | Our verbs                                                                | Epoch                        |
 | Background reconcilers (group reach, deploy-token gaps, throwaway sweep, half-made group environments of births from another device or an older build) | `cr/zerops/reconcilers/*`, account workers in the post-grant stage                    | Act only on `known` inputs with complete coverage                        | Epoch                        |
 | Persisted UI state                                                                                                                                     | The owning store, under `accountStorageKey`                                           | Personal context                                                         | Account                      |
@@ -433,17 +433,17 @@ storage lacks.
 
 ### Project flow per group
 
-The flow is a projection over per-key cells, never a pass. Its halves are independent: pull request
-rows render once the open pulls are known, and each stop renders its own `Shown<Deployment>`. The
-release offer is known only when both halves are known and fresh. `environments.yaml` declares which
-stops exist and their order; project tags declare membership. `Deployment` is `none` (the deployment
-facet observed with no active deploy), `running` (activation time, version name and commit, build
-status) or `deploying`; an unresolved facet is `unread`, never "Nothing deployed yet".
-`MergeState` is `merged`, `closed`, or `open` with mergeability `checking`, `mergeable` or
-`conflicting` and a checks summary; Gitea's `mergeable: false` reads `checking` until a confirming
-read, and Merge is offered only on `mergeable` with the cell fresh. A verb invalidates exactly what
-it changed: merge the pull request, the repository's pulls and `main`; release and roll back the
-group repository's tags; open a pull request the repository's pulls; add a stage the declarations.
+The flow is a projection over per-key cells, never a pass. Its parts are independent: change rows
+render once HQ's stream has told a Mate's changes, and each stop renders its own
+`Shown<Deployment>`. The release offer is known only when both halves are known and fresh.
+`environments.yaml` declares which stops exist and their order; project tags declare membership.
+`Deployment` is `none` (the deployment facet observed with no active deploy), `running` (activation
+time, version name and commit, build status) or `deploying`; an unresolved facet is `unread`, never
+"Nothing deployed yet". A change is `merged`, `closed`, or `open` with mergeability `checking`,
+`mergeable`, `conflicting` or `empty`, as HQ says it (`changeMergeability.ts`); `checking` until it
+has said. A verb invalidates
+exactly what it changed: release and roll back the group repository's tags; add a stage the
+declarations. A Mate's change comes back down HQ's stream.
 
 ## Lifetimes
 
@@ -511,26 +511,26 @@ Observations flow only into owners; surfaces read only projections and send back
 **The invalidation bus** is a `PubSub` owned by the account runtime: a closed, typed set of
 revalidation requests with no data and no merge semantics. Topics: `access` (granted, lapsed,
 renew-now), `inventory(org)`, `project`, `environment(target, why)`, `container(target)`,
-`deployment(service)`, `gitea-session(origin)`, `forge-org`, `forge-repo`, `forge-pr`. Only owners
+`deployment(service)`, `gitea-session(origin)`, `forge-org`, `forge-repo`. Only owners
 of pull-based facts subscribe; the runtime accepts only `inventory` and `access`. Invalidations
 coalesce per key over 250 ms; in a hidden tab they collect into a dirty set flushed, visible first,
 on the next visible wake.
 
 **Polling is a backstop, and this is the complete list.**
 
-| Fact                                   | Backstop                                                                    | Runs only while                     |
-| -------------------------------------- | --------------------------------------------------------------------------- | ----------------------------------- |
-| Access grant                           | Renewal before its deadline; per-project retry for unverified projects      | Epoch open, hidden under 60 minutes |
-| Inventory, activity                    | None: resnapshot on reconnect, foreground and explicit refresh              | —                                   |
-| Registry, tags                         | Re-read after our own writes and on a cross-tab invalidation                | —                                   |
-| Pull request lists, repositories, tags | 60 s; on visible wake when older than 30 s                                  | Demanded and visible                |
-| A pull request in `checking`           | 2, 5, 10 s                                                                  | Demanded and checking               |
-| Commit status                          | 15 s, up to 20 minutes                                                      | Demanded, visible, pending          |
-| `environments.yaml`, tiers on `main`   | 5 minutes                                                                   | Demanded and visible                |
-| Deployment name                        | 30 s while a deploy of that service runs and the pushed name is unconfirmed | Demanded                            |
-| Container probe                        | The container machine's cadence                                             | Its state requires it               |
-| Gitea token                            | Before `expiresAt`                                                          | Demanded                            |
-| Throwaway sweep                        | Epoch open, then every 5 minutes                                            | Visible                             |
+| Fact                                 | Backstop                                                                    | Runs only while                     |
+| ------------------------------------ | --------------------------------------------------------------------------- | ----------------------------------- |
+| Access grant                         | Renewal before its deadline; per-project retry for unverified projects      | Epoch open, hidden under 60 minutes |
+| Inventory, activity                  | None: resnapshot on reconnect, foreground and explicit refresh              | —                                   |
+| Registry, tags                       | Re-read after our own writes and on a cross-tab invalidation                | —                                   |
+| Tags and releases                    | 60 s; on visible wake when older than 30 s                                  | Demanded and visible                |
+| A Mate's changes                     | None: HQ's stream, its snapshot again on reconnect                          | —                                   |
+| Commit status                        | 15 s, up to 20 minutes                                                      | Demanded, visible, pending          |
+| `environments.yaml`, tiers on `main` | 5 minutes                                                                   | Demanded and visible                |
+| Deployment name                      | 30 s while a deploy of that service runs and the pushed name is unconfirmed | Demanded                            |
+| Container probe                      | The container machine's cadence                                             | Its state requires it               |
+| Gitea token                          | Before `expiresAt`                                                          | Demanded                            |
+| Throwaway sweep                      | Epoch open, then every 5 minutes                                            | Visible                             |
 
 **Wake.** A visible wake is one coalesced event, at most one per 10 s, on: visible again after at
 least 30 s hidden, `pageshow` with `persisted`, `resume`, `online`, sleep detected while visible,
@@ -578,7 +578,7 @@ data/          the data runtime, plus access/grant.ts, access/verifier.ts, acces
 environments/  records.ts, probeStore.ts, containerMachine.ts, environmentMachine.ts,
                exchangeDriver.ts, reachability.ts, gate.ts, descriptorIndex.ts
 birth/         birthStore.ts
-forge/         giteaSession.ts, forgeStore.ts, mergeState.ts
+forge/         giteaSession.ts, forgeStore.ts
 flow/          deploymentStore.ts, groupFlow.ts, envelopeInvalidations.ts
                (projectFlow.ts, release.ts, groupDeploys.ts)
 reconcilers/   groupReach.ts, deployTokenGaps.ts, throwawaySweep.ts
@@ -642,7 +642,7 @@ carries it. "Live" means it holds on `main` today.
 | Session machine: cross-tab sign-in without reload, owner record, verified adoption                | Live                                                                                   |
 | `Deployment` from the pushed facet; per-group publication                                         | Live; `deploying` in 4.4                                                               |
 | Gitea session machine                                                                             | Live                                                                                   |
-| `MergeState` shared by the flow, Git tab, banner and change page                                  | Live, in the forge store                                                               |
+| Mergeability shared by the flow, Git tab, banner and change page                                  | Live, as HQ says it (`changeMergeability.ts`)                                          |
 | Broker leases as cells, withheld and re-admitted per scope                                        | Live                                                                                   |
 | Invalidation bus and cross-tab channel                                                            | Live                                                                                   |
 | Inventory selectors return `Known`; presence `unknown`                                            | Live                                                                                   |

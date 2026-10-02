@@ -11,20 +11,17 @@ const BLOCK: GitBlock = {
   verdict: { tone: "ok", text: "The checks passed. Nothing is stopping it.", ask: undefined },
   checkoutLine: "feature/invoices ↑3",
   state: "in-review",
-  checks: "passing",
-  checkWord: "Passing",
-  checkRows: [],
   changed: [],
   pullRequestNumber: 12,
   pullRequestHead: "c0ffee",
-  pullRequestUrl: "https://gitea.example/acme/api/pulls/12",
+  pullRequestUrl: "https://hq.example/changes/g1/api/12",
   destination: "stage picks it up on merge",
   action: undefined,
   trouble: "",
 };
 
 function model(overrides: Partial<ZeropsGitPanelModel> = {}): ZeropsGitPanelModel {
-  return { signedIn: true, blocks: [BLOCK], ...overrides };
+  return { blocks: [BLOCK], ...overrides };
 }
 
 const render = (props: Partial<React.ComponentProps<typeof ZeropsGitPanel>> = {}) =>
@@ -58,28 +55,7 @@ describe("ZeropsGitPanel", () => {
     expect(html).toContain(">Merge<");
   });
 
-  it("keeps the checkout half and says the Gitea half is on its way, with nothing to click", () => {
-    const html = render({ model: model({ signedIn: false }) });
-    expect(html).toContain("feature/invoices");
-    expect(html).toContain("Signing you in to Gitea");
-    expect(html).not.toContain("Sign in to Gitea");
-    expect(html).not.toContain("<button");
-  });
-
-  it("says why the sign-in was refused, in place of the sign-in line", () => {
-    // The owner's run of 2026-09-17: Gitea's login source had not been added,
-    // and the tab said "Signing you in…" for a quarter of an hour.
-    const html = render({
-      model: model({
-        signedIn: false,
-        signInTrouble: "Gitea refused: login source does not exist [id: 1]",
-      }),
-    });
-    expect(html).toContain("login source does not exist");
-    expect(html).not.toContain("Signing you in to Gitea");
-  });
-
-  it("says nothing about Gitea once signed in", () => {
+  it("says nothing about Gitea: the Mate's change is HQ's", () => {
     expect(render()).not.toContain("Gitea");
   });
 
@@ -88,7 +64,7 @@ describe("ZeropsGitPanel", () => {
     expect(html).toContain('data-zerops-surface="git-change"');
   });
 
-  it("offers a merged change's page too, which reads it from the forge itself", () => {
+  it("offers a merged change's page too, which reads it from HQ itself", () => {
     const html = render({
       model: model({ blocks: [{ ...BLOCK, state: "merged" }] }),
       onOpenChange: () => {},

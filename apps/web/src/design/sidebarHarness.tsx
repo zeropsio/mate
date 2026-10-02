@@ -504,9 +504,8 @@ function pull(input: Partial<FlowPullRequest> & { number: number }): FlowPullReq
     mateProjectId: undefined,
     author: undefined,
     url: "https://gitea.example/links/appdev/pulls/1",
-    checks: "passing",
-    checkWord: "Passing",
     mergeability: "mergeable",
+    behind: false,
     merged: false,
     mergedAt: undefined,
     headSha: "3f9c1b2",
@@ -519,7 +518,7 @@ function pull(input: Partial<FlowPullRequest> & { number: number }): FlowPullReq
 
 /** A pull request whose branch has fallen behind `main` — Gitea refuses it. */
 const behindPull = (input: Partial<FlowPullRequest> & { number: number }) =>
-  pull({ mergeability: "conflicting", checks: "passing", checkWord: "Passing", ...input });
+  pull({ mergeability: "conflicting", ...input });
 
 function environment(
   input: Partial<Omit<EnvironmentRow, "version" | "versionRepository">> & {
@@ -561,8 +560,6 @@ const FLOWS = new Map<string, SidebarProjectFlow>([
           number: 4,
           title: "Add a search box above the list",
           mateProjectId: "links-enzo",
-          checks: "pending",
-          checkWord: "Checking",
           mergeability: "conflicting",
           merged: false,
           mergedAt: undefined,
@@ -578,8 +575,6 @@ const FLOWS = new Map<string, SidebarProjectFlow>([
           number: 5,
           title: "Cache the link previews",
           mateProjectId: "links-theo",
-          checks: "failing",
-          checkWord: "Failing",
           mergeability: "conflicting",
           merged: false,
           mergedAt: undefined,
@@ -621,8 +616,6 @@ const FLOWS = new Map<string, SidebarProjectFlow>([
           number: 42,
           title: "Two-step checkout: the payment step",
           mateProjectId: "shop-mira",
-          checks: "pending",
-          checkWord: "Checking",
           mergeability: "conflicting",
           merged: false,
           mergedAt: undefined,
@@ -636,8 +629,6 @@ const FLOWS = new Map<string, SidebarProjectFlow>([
           number: 39,
           title: "Tidy the order confirmation email template",
           mateProjectId: "shop-mira",
-          checks: "failing",
-          checkWord: "Failing",
           mergeability: "conflicting",
           merged: false,
           mergedAt: undefined,

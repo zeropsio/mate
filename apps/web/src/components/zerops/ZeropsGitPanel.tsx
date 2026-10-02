@@ -11,15 +11,9 @@
  * "git for the whole project" in a Mate's own panel (the owner, 2026-09-17).
  *
  * Every fact comes from the party that can prove it, and each one arrives on
- * its own schedule: the checkout is a live subscription, and the Gitea side is
- * re-read when the tab opens, after each action, and every sixty seconds while
- * it is open. Nothing here decides anything — `gitTab.ts` does, and this
- * renders what it produced (R5).
- *
- * Signed out of Gitea, the checkout half still works: the container is the
- * Mate server's to stream and needs no forge. The forge half says so in one
- * line rather than showing a block that looks like a branch nobody has asked
- * about.
+ * its own schedule: the checkout is a live subscription, and the Mate's change
+ * comes down HQ's stream. Nothing here decides anything — `gitTab.ts` does, and
+ * this renders what it produced (R5).
  */
 import type { GitBlock } from "@t3tools/client-runtime/zerops";
 import type { ReactNode } from "react";
@@ -29,15 +23,6 @@ import { cn } from "~/lib/utils";
 import { ZeropsGitBlock } from "./ZeropsGitBlock";
 
 export interface ZeropsGitPanelModel {
-  /** Whether this tab holds a Gitea session; without one only the checkout half can speak. */
-  readonly signedIn: boolean;
-  /**
-   * Why the sign-in did not go through, when the broker or Gitea refused it
-   * (a login source that does not exist, an account Gitea will not make).
-   * Shown in place of "Signing you in to Gitea…"; a Gitea still setting up
-   * is not a refusal and keeps the line.
-   */
-  readonly signInTrouble?: string | undefined;
   readonly blocks: ReadonlyArray<GitBlock>;
 }
 
@@ -84,17 +69,6 @@ export function ZeropsGitPanel({
               />
             ))}
           </ul>
-        )}
-
-        {model.signedIn ? null : model.signInTrouble === undefined ? (
-          <span className="text-xs text-muted-foreground">Signing you in to Gitea…</span>
-        ) : (
-          <span
-            className="text-xs text-[var(--zerops-status-failed-text)]"
-            data-zerops-surface="git-signin-trouble"
-          >
-            {model.signInTrouble}
-          </span>
         )}
       </div>
     </ScrollArea>

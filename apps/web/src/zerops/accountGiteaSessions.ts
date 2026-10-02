@@ -133,8 +133,3 @@ export function giteaClientFor(
 ): GiteaClient | null {
   return current?.clientFor(giteaOrigin, onUnauthorized) ?? null;
 }
-
-/** The person's login on that Gitea, `u-…`, while signed in. */
-export function giteaSessionLogin(giteaOrigin: string): string | undefined {
-  return current?.view(giteaOrigin).login;
-}

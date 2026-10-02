@@ -1,45 +1,36 @@
 /**
- * The Git tab's join: a branch, the pull request open from it, and the
- * environment that picks it up (guide 4.5).
+ * The Git tab's join: a branch, the Mate's change in HQ, and the environment
+ * that picks it up (guide 4.5; SPEC §3.2a).
  *
  * ## Two sources, and neither may answer for the other
  *
  * Which branch a Mate is on is the **working copy's** fact. It lives in the dev
- * container and the Mate server streams it (`subscribeVcsStatus`). What that
- * branch *means* outside the container is **Gitea's**: whether a pull request
- * is open from it, how its checks went, what this person may do in that
- * repository. And which environment would pick it up on merge is the **group
- * repo's**, from `environments.yaml`.
+ * container and the Mate server streams it (`subscribeVcsStatus`). What the
+ * Mate's work *means* outside the container is **HQ's**: its newest change in
+ * the repository, open or landed, as HQ's stream tells it. And which
+ * environment would pick it up on merge is the **group repo's**, from
+ * `environments.yaml`.
  *
- * Nothing here infers one from another. In particular:
- *
- * - *what the person may do* comes from the repository probe's `permissions`,
- *   never from the role the app happens to know — the mirror lags a role
- *   change by minutes;
- * - *that the remote is healthy* — which is also the only proof the Mate holds
- *   the Gitea access the broker's rights loop writes onto it — comes from a
- *   live `git ls-remote`, never from the last push having worked or from a
- *   `GITEA_TOKEN` key being present.
- *
- * A tab that mixes them shows "configured" for a broken setup, which is the one
- * outcome 4.5 names.
+ * Nothing here infers one from another. In particular, *that the remote is
+ * healthy* comes from a live `git ls-remote`, never from the last push having
+ * worked. A tab that mixes them shows "configured" for a broken setup, which is
+ * the one outcome 4.5 names.
  *
  * ## One block per repository, one answer, one verb
  *
- * A block opens with where the work stands — `Open as #12, waiting for
- * somebody to merge it.` — and carries the verb that moves it. Under the
- * answer, quietly, the checkout it was read from: the branch, what is unpushed
- * and what is uncommitted, and which environment the work lands on.
+ * A block opens with where the work stands — `Nothing is stopping it.` — and
+ * carries the verb that moves it. Under the answer, quietly, the checkout it
+ * was read from: the branch, what is unpushed and what is uncommitted, and
+ * which environment the work lands on.
  *
- * At most one verb, and it is the one the work needs next: you cannot open a
- * pull request for a branch you have not pushed, and updating from `main`
- * before pushing is how a person loses work, so the order the verbs are
- * offered in is the order the work actually happens in. A state that offers no
- * verb says why it offers none.
+ * At most one verb, and it is the one the work needs next: updating from `main`
+ * before pushing is how a person loses work, so the order the verbs are offered
+ * in is the order the work actually happens in. A Mate's push opens its change
+ * (SPEC §3.2a), so nobody opens one here. A state that offers no verb says why
+ * it offers none.
  *
- * Checks are a tone and one word, never a sentence (design system R5). A block
- * whose setup has been *proved* broken says what was proved — git's own line
- * for a remote that refused — and offers no verb that would run against it.
+ * A block whose setup has been *proved* broken says what was proved — git's own
+ * line for a remote that refused — and offers no verb that would run against it.
  *
  * Pure: no network, no clock, no platform globals (rule R1).
  *
@@ -49,10 +40,10 @@
 import { ZEROPS_GIT_REMOTE_DETAIL_MAX_CHARS } from "@t3tools/contracts";
 import type { ServiceStatusToneId } from "@t3tools/shared/brand";
 
-import type { MergeabilityKind } from "./forge/mergeState.ts";
-import type { GiteaCommitStatus, GiteaPullRequest, GiteaRepository } from "./giteaClient.ts";
+import type { MergeabilityKind } from "./changeMergeability.ts";
 import type { GroupEnvironment } from "./groupEnvironments.ts";
 import { branchLabel } from "./mateIdentity.ts";
+import type { FlowPullRequest } from "./projectFlow.ts";
 import { REVIEW_LABEL } from "./reviewVerdict.ts";
 import { foldedStageHostnames } from "./serviceMap.ts";
 import type { ZeropsTopologyService } from "./topology.ts";
@@ -85,31 +76,42 @@ export interface GitChangedFile {
   readonly deletions: number;
 }
 
-/** What Gitea says about that repository and branch, answering as the person. */
-export interface GitForgeState {
+/** What HQ says of the Mate's work in that repository. */
+export interface GitChangeState {
   /**
-   * Whether the forge answered at all.
+   * Whether HQ's stream has told the application's changes at all.
    *
-   * `false` is not an answer about the repository, it is the absence of one.
-   * The field below has always said so in a comment, and `stateOf` read it as
-   * "there is none" anyway: the Git tab opened by telling a person their work
-   * did not exist, listed five of their commits under that sentence, and then
-   * took the whole thing back (measured on the live account, 2026-09-19).
+   * `false` is not an answer about the work, it is the absence of one: the Git
+   * tab once opened by telling a person their work did not exist, listed five
+   * of their commits under that sentence, and then took the whole thing back
+   * (measured on the live account, 2026-09-19).
    */
   readonly read: boolean;
-  /** `undefined` while nothing has been asked — not "it is not there". */
-  readonly repository: GiteaRepository | undefined;
-  /** The pull request whose head is this branch, open or freshly merged. */
-  readonly pullRequest: GitForgePullRequest | undefined;
-  /** Every commit status on the pull request's head. */
-  readonly checks: ReadonlyArray<GiteaCommitStatus>;
+  /** The Mate's newest change in the repository, open or landed (`mateChangeIn`). */
+  readonly change: FlowPullRequest | undefined;
 }
 
-/** A pull request as Gitea sent it, with how it merges over the reads so far. */
-export interface GitForgePullRequest {
-  readonly pull: GiteaPullRequest;
-  /** From `forge/mergeState.ts`, never from `pull.mergeable` on its own. */
-  readonly mergeability: MergeabilityKind;
+/**
+ * A Mate's newest change in a repository, as the flow carries its application's — the open one,
+ * if any, being the newest, since a Mate opens a number only while none is open. A change closed
+ * without landing is no work of anybody's any more.
+ */
+export function mateChangeIn(
+  flow: {
+    readonly pullRequests: ReadonlyArray<FlowPullRequest>;
+    readonly merged: ReadonlyArray<FlowPullRequest>;
+  },
+  mateProjectId: string | undefined,
+  repository: string,
+): FlowPullRequest | undefined {
+  const own = (change: FlowPullRequest) =>
+    change.mateProjectId === mateProjectId && change.repository === repository;
+  return [...flow.pullRequests.filter(own), ...flow.merged.filter(own)].reduce<
+    FlowPullRequest | undefined
+  >(
+    (newest, change) => (newest === undefined || change.number > newest.number ? change : newest),
+    undefined,
+  );
 }
 
 /**
@@ -129,13 +131,10 @@ export interface GitBlockEvidence {
 
 /** What the person is looking at, in one word the block is built around. */
 export type GitBlockState =
-  /** The forge has not answered. Says nothing, and must not be made to. */
+  /** HQ has not told the changes. Says nothing, and must not be made to. */
   "unread" | "no-repository" | "untouched" | "unpushed" | "behind" | "in-review" | "merged";
 
-/** How the checks on the branch's head went — a dot's tone, with one word. */
-export type GitCheckTone = "none" | "pending" | "passing" | "failing";
-
-export type GitBlockActionKind = "open-pull-request" | "update-from-main" | "push" | "review";
+export type GitBlockActionKind = "update-from-main" | "push" | "review";
 
 export interface GitBlockAction {
   readonly kind: GitBlockActionKind;
@@ -144,8 +143,8 @@ export interface GitBlockAction {
   readonly running: string;
   /**
    * The verb runs in the container, through the Mate server, as the agent's
-   * user — so only the Mate's owner may press it (D11). A verb that runs in
-   * Gitea as the person is not owner-only: Gitea polices it.
+   * user — so only the Mate's owner may press it (D11). *Review* only opens
+   * the review, which polices what it offers.
    */
   readonly ownerOnly: boolean;
 }
@@ -156,25 +155,20 @@ export interface GitBlock {
   readonly branch: string;
   /**
    * Where this repository's work stands, and in what colour. `undefined`
-   * while the forge has not answered — the block holds the place open rather
+   * while HQ has not told the changes — the block holds the place open rather
    * than filling it with a sentence it would have to withdraw.
    */
   readonly verdict: GitVerdict | undefined;
   /** `feature/invoices ↑3 · 2 files changed` — the checkout, under the answer. */
   readonly checkoutLine: string;
   readonly state: GitBlockState;
-  readonly checks: GitCheckTone;
-  /** `undefined` when no word belongs beside the dot — no checks ran. */
-  readonly checkWord: string | undefined;
-  /** Every check on the head, by name — empty where none ran. */
-  readonly checkRows: ReadonlyArray<GitCheckRow>;
   /** What is changed on disk and not committed — the container's own fact. */
   readonly changed: ReadonlyArray<GitChangedFile>;
+  /** The Mate's change in it, by its number, head and address at HQ. */
   readonly pullRequestNumber: number | undefined;
-  /** The pull request's head as read — the only commit *Merge* lands. */
   readonly pullRequestHead: string | undefined;
   readonly pullRequestUrl: string | undefined;
-  /** The branch a pull request from `branch` targets — the repository's default, `main` until Gitea says. */
+  /** The branch the work goes onto: `main`, which every change in HQ goes onto. */
   readonly baseBranch: string;
   /** `stage picks it up on merge`, or empty when nothing would. */
   readonly destination: string;
@@ -186,8 +180,8 @@ export interface GitBlock {
   readonly trouble: string;
 }
 
-/** The default branch when Gitea has not been asked yet. */
-const FALLBACK_DEFAULT_BRANCH = "main";
+/** Where every change in HQ goes. */
+const MAIN = "main";
 
 /**
  * Which environment picks a branch up, from `environments.yaml`.
@@ -206,125 +200,12 @@ export function environmentForBranch(
 }
 
 /**
- * Each check's newest status, the broker's own left out.
+ * Why a change offers no *Merge*, in the words a row has space for — `null`
+ * where HQ says it merges and the verb speaks for itself.
  *
- * Gitea keeps every status a commit was ever given, newest first (as `releaseDeploys` reads them),
- * so a check that went pending → success, or failure → rerun → success, is listed twice; only its
- * newest says how it went. Read whole, a rerun that passed still read "failing" — and a change
- * whose checks once failed could never merge (pass 16's review blocks on failing checks).
- *
- * The broker's own deploy statuses are not checks on the change: they are what happened after it
- * landed, and counting them would make a stage's failed deploy read as a failing pull request.
- */
-function newestChecks(
-  statuses: ReadonlyArray<GiteaCommitStatus>,
-): ReadonlyArray<GiteaCommitStatus> {
-  const seen = new Set<string>();
-  return statuses.filter((status) => {
-    if (status.context.startsWith("mate/") || seen.has(status.context)) return false;
-    seen.add(status.context);
-    return true;
-  });
-}
-
-/** How the checks on one commit went, worst-first — a green among reds is not green. */
-export function checkTone(statuses: ReadonlyArray<GiteaCommitStatus>): GitCheckTone {
-  const checks = newestChecks(statuses);
-  if (checks.length === 0) return "none";
-  if (checks.some((status) => status.state === "failure" || status.state === "error")) {
-    return "failing";
-  }
-  if (checks.some((status) => status.state === "pending")) return "pending";
-  return checks.some((status) => status.state === "success") ? "passing" : "none";
-}
-
-/**
- * The checks' tone as a status dot's — `undefined` where no check ran and no
- * dot belongs.
- *
- * Here rather than beside a component: several surfaces paint this fact (a
- * change's row on the projects screen, the left menu, the Git tab), and a
- * tone table that lives in one of them is a table the others are one edit
- * away from disagreeing with.
- */
-export function checkDotTone(input: {
-  readonly checks: GitCheckTone;
-}): ServiceStatusToneId | undefined {
-  switch (input.checks) {
-    case "passing":
-      return "ok";
-    case "pending":
-      return "busy";
-    case "failing":
-      return "failed";
-    case "none":
-      return undefined;
-  }
-}
-
-/** One check on the branch's head, as the tab lists it. */
-export interface GitCheckRow {
-  /** The check's own name, as the forge reports it. */
-  readonly name: string;
-  readonly tone: ServiceStatusToneId;
-  readonly word: string;
-  /** What the check said about itself — `pnpm build · 34s`; absent where it said nothing. */
-  readonly description?: string | undefined;
-  /** Where the check keeps its own page — its run, its log; absent where it keeps none. */
-  readonly url?: string | undefined;
-}
-
-const CHECK_STATE: Record<string, { readonly tone: ServiceStatusToneId; readonly word: string }> = {
-  success: { tone: "ok", word: "Passed" },
-  pending: { tone: "busy", word: "Running" },
-  failure: { tone: "failed", word: "Failed" },
-  error: { tone: "failed", word: "Failed" },
-};
-
-/**
- * Every check on the head, by name.
- *
- * One collapsed word answers "can it land"; it does not answer "which one
- * broke", which is the question a person opens a Git panel with. The broker's
- * own deploy statuses stay out for the same reason they stay out of
- * `checkTone`: they are what happened after a change landed, not a verdict on
- * the change.
- */
-export function gitChecks(statuses: ReadonlyArray<GiteaCommitStatus>): ReadonlyArray<GitCheckRow> {
-  return newestChecks(statuses).map((status) => {
-    const description = status.description?.trim();
-    const url = status.target_url?.trim();
-    return {
-      name: status.context,
-      tone: CHECK_STATE[status.state]?.tone ?? "off",
-      word: CHECK_STATE[status.state]?.word ?? "Unknown",
-      ...(description === undefined || description.length === 0 ? {} : { description }),
-      ...(url === undefined || url.length === 0 ? {} : { url }),
-    };
-  });
-}
-
-/** The one word beside the checks' dot (R5). */
-export function checkWord(tone: GitCheckTone): string | undefined {
-  switch (tone) {
-    case "passing":
-      return "Passing";
-    case "pending":
-      return "Running";
-    case "failing":
-      return "Failing";
-    case "none":
-      return undefined;
-  }
-}
-
-/**
- * Why a pull request offers no *Merge*, in the words a row has space for —
- * `null` where Gitea says it merges and the verb speaks for itself.
- *
- * A row that simply dropped its verb was a dead end: Gitea had refused, and
- * the menu said nothing about it, so the person was left to open the request
- * to find out. Gitea's own answer is the only authority here (MU-1's
+ * A row that simply dropped its verb was a dead end: the merge had been
+ * refused, and the menu said nothing about it, so the person was left to open
+ * the change to find out. HQ's own answer is the only authority here (MU-1's
  * discipline applied to merges): nothing recomputes whether a branch merges.
  *
  * Every refusal has a word, including the red one. A row whose right edge is
@@ -335,14 +216,13 @@ export function checkWord(tone: GitCheckTone): string | undefined {
 export function pullRequestBlockedReason(pull: {
   readonly number: number;
   readonly mergeability: MergeabilityKind;
-  readonly checks: GitCheckTone;
 }): string | null {
   return pullRequestBlocked(pull)?.word ?? null;
 }
 
 /** Why a pull request offers no *Merge*, the tone that says it, and who moves it. */
 export interface PullRequestBlocked {
-  readonly kind: "checks-running" | "checks-failed" | "checking" | "behind";
+  readonly kind: "checking" | "behind" | "empty";
   readonly word: string;
   readonly tone: ServiceStatusToneId;
   /**
@@ -353,7 +233,7 @@ export interface PullRequestBlocked {
    * out, in a repository they have no session for. The Mate does it, so the
    * row that reports the problem is the row that hands it over: "who is going
    * to deal with it? you still need the agent to take care of it" (the owner,
-   * 2026-09-19). Checks that are merely running are the one refusal with
+   * 2026-09-19). A merge still being worked out is the one refusal with
    * nothing to ask for — waiting is the correct move.
    */
   readonly ask: string | undefined;
@@ -361,32 +241,20 @@ export interface PullRequestBlocked {
 
 /**
  * The same answer with its own tone, because the dot beside the word has to
- * mean the word.
- *
- * Painting the checks' tone under every reason put a **green** dot beside
- * "needs a rebase" — the checks did pass, and the row still said the opposite
- * of what its dot showed (seen in the harness, 2026-09-19). A branch that has
- * fallen behind is nobody's failure and nothing is running: it is the one
- * thing on the row asking for a person, which is what `attention` means.
+ * mean the word. A branch that has fallen behind is nobody's failure and
+ * nothing is running: it is the one thing on the row asking for a person,
+ * which is what `attention` means.
  */
 export function pullRequestBlocked(pull: {
   readonly number: number;
   readonly mergeability: MergeabilityKind;
-  readonly checks: GitCheckTone;
 }): PullRequestBlocked | null {
   if (pull.mergeability === "mergeable") return null;
-  if (pull.checks === "pending")
-    return { kind: "checks-running", word: "checks running", tone: "busy", ask: undefined };
-  if (pull.checks === "failing")
-    return {
-      kind: "checks-failed",
-      word: "checks failed",
-      tone: "failed",
-      ask: checksFailedAsk(pull.number),
-    };
-  // Gitea answers "no" for a moment after every push while it works the
-  // answer out again (A11): that is nobody's to act on, and a rebase asked for
-  // on the strength of it would be work invented by the surface.
+  // Nothing in it that `main` lacks: nothing is in anybody's way, and nobody is asked anything.
+  if (pull.mergeability === "empty")
+    return { kind: "empty", word: "nothing to merge", tone: "off", ask: undefined };
+  // Not said yet whether it merges: that is nobody's to act on, and a rebase
+  // asked for on the strength of it would be work invented by the surface.
   if (pull.mergeability === "checking")
     return { kind: "checking", word: "checking", tone: "busy", ask: undefined };
   return {
@@ -397,11 +265,6 @@ export function pullRequestBlocked(pull: {
     // as written into a composer, and a page does not open mid-sentence.
     ask: `Pull request #${pull.number} no longer merges cleanly. Rebase it on main, resolve the conflicts, and push.`,
   };
-}
-
-/** What to ask the Mate about a pull request whose checks are failing. */
-export function checksFailedAsk(number: number): string {
-  return `The checks on pull request #${number} are failing. Find out why, fix them, and push.`;
 }
 
 /**
@@ -465,14 +328,13 @@ function commits(count: number): { readonly subject: string; readonly verb: stri
  * So it answers, worst-first, in the same voice as a change's page: what has
  * been *proved* wrong beats anything that would have been inferred, and every
  * state that offers no verb says why it offers none — a pull request that
- * looks fine and cannot move is the trap `changeVerdict` was written to close.
+ * looks fine and cannot move is the trap the change's own verdict closes.
  */
 export function gitVerdict(input: {
   readonly state: GitBlockState;
-  readonly checks: GitCheckTone;
   readonly checkout: GitCheckoutState;
   readonly pullRequestNumber: number | undefined;
-  /** Whether the forge would take the merge. Not whether it is a good idea. */
+  /** Whether HQ would take the merge. Not whether it is a good idea. */
   readonly mergeability: MergeabilityKind;
   readonly baseBranch: string;
   readonly trouble: string;
@@ -493,15 +355,21 @@ export function gitVerdict(input: {
     case "merged":
       return { tone: "ok", text: `Merged into ${input.baseBranch}.`, ask: undefined };
     case "in-review":
-      // The same pull request has a page of its own, and `changeVerdict` is
-      // what that page opens with. Two surfaces answering the same question in
-      // two colours is how a release came to wear a rebase's amber, so the
-      // tones here are the tones there — held to it by a test that reads both
-      // (`changeVerdict.test.ts`). Only the words are shorter: the number and
-      // the branch are already on the line above this panel.
+      // The same pull request has a page of its own and a row in every list.
+      // Two surfaces answering the same question in two colours is how a
+      // release came to wear a rebase's amber, so the tones here are the tones
+      // there — held to it by a test that reads them all. Only the words are
+      // shorter: the number and the branch are already on the line above this
+      // panel.
       return {
-        ...IN_REVIEW[input.mergeability][input.checks],
-        ask: inReviewAsk(input),
+        ...IN_REVIEW[input.mergeability],
+        ask:
+          input.pullRequestNumber === undefined
+            ? undefined
+            : pullRequestBlocked({
+                number: input.pullRequestNumber,
+                mergeability: input.mergeability,
+              })?.ask,
       };
     case "behind": {
       const { subject, verb } = commits(input.checkout.behindCount);
@@ -537,58 +405,16 @@ export function gitVerdict(input: {
 }
 
 /**
- * What to hand back about a change that is open, and nothing where there is
- * nothing to hand back.
- *
- * A change the forge *would* take and whose checks went red is still worth
- * somebody's time, so it is offered the same words a refused one is — which is
- * what `changeVerdict` does. A change with nothing wrong with it asks for
- * nothing: passing it to the Mate anyway would be work invented by the surface
- * reporting it.
+ * A change's answer, by whether HQ would take it, in this tab's words. While it
+ * is not said yet whether it merges, that is what it says, never a rebase. Grey
+ * for one nothing stops: no signal about it is not a good signal, the same
+ * quiet its own page gives it.
  */
-function inReviewAsk(input: {
-  readonly checks: GitCheckTone;
-  readonly mergeability: MergeabilityKind;
-  readonly pullRequestNumber: number | undefined;
-}): string | undefined {
-  if (input.pullRequestNumber === undefined) return undefined;
-  if (input.checks === "failing") return checksFailedAsk(input.pullRequestNumber);
-  return pullRequestBlocked({
-    number: input.pullRequestNumber,
-    mergeability: input.mergeability,
-    checks: input.checks,
-  })?.ask;
-}
-
-/**
- * A pull request's answer, by whether the forge would take it and how its
- * checks went — the tone table `changeVerdict` uses, in this tab's words.
- *
- * A forge refuses a merge when required checks failed, and allows one when
- * nothing required them; the first says it cannot land, the second says only
- * that the checks failed, because greying out a verb the forge would accept is
- * a lie and leaving it lit with no explanation is a trap. While Gitea is still
- * working out whether it merges, that is what it says, never a rebase.
- */
-const IN_REVIEW: Record<MergeabilityKind, Record<GitCheckTone, Omit<GitVerdict, "ask">>> = {
-  mergeable: {
-    failing: { tone: "failed", text: "Its checks failed." },
-    pending: { tone: "busy", text: "Its checks are still running." },
-    none: { tone: "off", text: "No checks ran. Nothing is stopping it." },
-    passing: { tone: "ok", text: "The checks passed. Nothing is stopping it." },
-  },
-  checking: {
-    failing: { tone: "failed", text: "Its checks failed, and it cannot land until they pass." },
-    pending: { tone: "busy", text: "Its checks are still running." },
-    none: { tone: "busy", text: "Checking whether it merges cleanly." },
-    passing: { tone: "busy", text: "Checking whether it merges cleanly." },
-  },
-  conflicting: {
-    failing: { tone: "failed", text: "Its checks failed, and it cannot land until they pass." },
-    pending: { tone: "busy", text: "Its checks are still running." },
-    none: { tone: "attention", text: "It no longer merges cleanly." },
-    passing: { tone: "attention", text: "It no longer merges cleanly." },
-  },
+const IN_REVIEW: Record<MergeabilityKind, Omit<GitVerdict, "ask">> = {
+  mergeable: { tone: "off", text: "Nothing is stopping it." },
+  empty: { tone: "off", text: "Main already has all of it." },
+  checking: { tone: "busy", text: "Checking whether it merges cleanly." },
+  conflicting: { tone: "attention", text: "It no longer merges cleanly." },
 };
 
 /**
@@ -613,18 +439,18 @@ export function gitTrouble(evidence: GitBlockEvidence): string {
  * run as the agent's user, over the container's own credential. A setup proved
  * broken is exactly the setup those verbs need, so they are not offered:
  * pressing one would spend a round trip to arrive at the sentence the block is
- * already showing. Gitea-side verbs are unaffected — they run as the person,
- * from the browser, and the container's remote is not in their path.
+ * already showing. *Review* is unaffected — the container's remote is not in
+ * its path.
  */
 function runsInTheContainer(action: GitBlockAction): boolean {
   return action.kind === "push" || action.kind === "update-from-main";
 }
 
-function stateOf(checkout: GitCheckoutState, forge: GitForgeState): GitBlockState {
-  if (!forge.read) return "unread";
-  if (!checkout.isRepo || forge.repository === undefined) return "no-repository";
-  if (forge.pullRequest?.pull.merged === true) return "merged";
-  if (forge.pullRequest?.pull.state === "open") return "in-review";
+function stateOf(checkout: GitCheckoutState, changes: GitChangeState): GitBlockState {
+  if (!changes.read) return "unread";
+  if (!checkout.isRepo) return "no-repository";
+  if (changes.change?.merged === true) return "merged";
+  if (changes.change?.state === "open") return "in-review";
   if (!checkout.hasUpstream || checkout.aheadCount > 0) return "unpushed";
   if (checkout.behindCount > 0) return "behind";
   return "untouched";
@@ -634,17 +460,12 @@ function stateOf(checkout: GitCheckoutState, forge: GitForgeState): GitBlockStat
  * The one verb, in the order the work happens: push what is local, then take
  * what is remote, then review what is open.
  *
- * An open pull request offers *Review* whatever Gitea says about it — the one
- * door to merging (pass 16, R1): the review says whether it can merge and why
- * not, and carries *Merge*. A branch that *is* the default never offers a pull
- * request — there would be nothing to merge it into — and a merged one offers
- * nothing at all: the broker is deploying it, and the person's part is over.
+ * An open change offers *Review* whatever is said about it — the one door to
+ * merging (pass 16, R1): the review says whether it can merge and why not. A
+ * merged one offers nothing at all, and neither does pushed work with no
+ * change open: the Mate's push opens its change (SPEC §3.2a).
  */
-function actionOf(
-  checkout: GitCheckoutState,
-  forge: GitForgeState,
-  state: GitBlockState,
-): GitBlockAction | undefined {
+function actionOf(checkout: GitCheckoutState, state: GitBlockState): GitBlockAction | undefined {
   if (state === "unread" || state === "no-repository" || state === "merged") return undefined;
   if (state === "unpushed" && checkout.isRepo) {
     return { kind: "push", label: "Push", running: "Pushing…", ownerOnly: true };
@@ -660,36 +481,29 @@ function actionOf(
   if (state === "in-review") {
     return { kind: "review", label: REVIEW_LABEL, running: REVIEW_LABEL, ownerOnly: false };
   }
-  const defaultBranch = forge.repository?.default_branch ?? FALLBACK_DEFAULT_BRANCH;
-  if (checkout.headRef === null || checkout.headRef === defaultBranch) return undefined;
-  return {
-    kind: "open-pull-request",
-    label: "Open pull request",
-    running: "Opening…",
-    ownerOnly: false,
-  };
+  return undefined;
 }
 
 /** One repository's block — the two lines and the verb. */
 export function gitBlock(input: {
   readonly checkout: GitCheckoutState;
-  readonly forge: GitForgeState;
+  readonly changes: GitChangeState;
   readonly declarations: ReadonlyArray<GroupEnvironment>;
   readonly evidence: GitBlockEvidence;
   /** Whose Mate this is, so its own branch reads as a name rather than an id. */
   readonly mateName?: string | undefined;
 }): GitBlock {
-  const { checkout, forge } = input;
-  const state = stateOf(checkout, forge);
-  const tone = checkTone(forge.checks);
-  // A merge lands on the pull request's base; without one, on the branch
-  // itself — which is what a push to a source branch already does.
-  const target = forge.pullRequest?.pull.base?.ref ?? checkout.headRef;
+  const { checkout, changes } = input;
+  const change = changes.change;
+  const state = stateOf(checkout, changes);
+  // A merge lands on the change's base; without one, on the branch itself —
+  // which is what a push to a source branch already does.
+  const target = change?.baseBranch ?? checkout.headRef;
   const environment =
     state === "unread" || state === "no-repository"
       ? // Where the branch lands is local knowledge, but its wording is not:
-        // the same branch reads "runs this branch" before the forge answers
-        // and "picks it up on merge" after. Said once, when it is settled.
+        // the same branch reads "runs this branch" before HQ answers and
+        // "picks it up on merge" after. Said once, when it is settled.
         undefined
       : environmentForBranch(input.declarations, target);
   const picksUp =
@@ -703,31 +517,27 @@ export function gitBlock(input: {
           ? `${environment} runs it`
           : `${environment} runs this branch`;
   const trouble = gitTrouble(input.evidence);
-  const action = actionOf(checkout, forge, state);
-  const baseBranch = forge.repository?.default_branch ?? FALLBACK_DEFAULT_BRANCH;
+  const action = actionOf(checkout, state);
+  const baseBranch = change?.baseBranch ?? MAIN;
   const verdict = gitVerdict({
     state,
-    checks: tone,
     checkout,
-    pullRequestNumber: forge.pullRequest?.pull.number,
-    // Read only in review, which has a pull request.
-    mergeability: forge.pullRequest?.mergeability ?? "checking",
+    pullRequestNumber: change?.number,
+    // Read only in review, which has a change.
+    mergeability: change?.mergeability ?? "checking",
     baseBranch,
     trouble,
   });
   return {
     repository: checkout.repository,
-    branch: checkout.headRef ?? FALLBACK_DEFAULT_BRANCH,
+    branch: checkout.headRef ?? MAIN,
     verdict,
     checkoutLine: gitCheckoutLine(checkout, input.mateName),
     state,
-    checks: tone,
-    checkWord: checkWord(tone),
-    checkRows: gitChecks(forge.checks),
     changed: checkout.changed,
-    pullRequestNumber: forge.pullRequest?.pull.number,
-    pullRequestHead: forge.pullRequest?.pull.head?.sha,
-    pullRequestUrl: forge.pullRequest?.pull.html_url,
+    pullRequestNumber: change?.number,
+    pullRequestHead: change?.headSha,
+    pullRequestUrl: change?.url,
     baseBranch,
     destination: picksUp,
     action:
@@ -741,8 +551,8 @@ export function gitBlock(input: {
  *
  * Checkout-side verbs run in the Mate's container as the agent's user, so they
  * are the **owner's** alone (D11) — an org admin who can open the Mate is not
- * the person whose agent that is. Everything else runs in Gitea as the person,
- * where Gitea's own permissions are the gate and the app adds none.
+ * the person whose agent that is. *Review* opens the review, which polices
+ * what it offers; the app adds no gate of its own.
  */
 export function gitActionAllowed(
   action: GitBlockAction | undefined,

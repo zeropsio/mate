@@ -43,7 +43,13 @@ export {
   placementsOf,
   type HqPlacement,
 } from "./placement.ts";
-export { applyStructureEvent, structureEventOf, type HqStructureEvent } from "./stream.ts";
+export {
+  applyChangesEvent,
+  applyStructureEvent,
+  structureEventOf,
+  type HqChanges,
+  type HqStructureEvent,
+} from "./stream.ts";
 export {
   EMPTY_REGISTRY,
   registryFromHq,

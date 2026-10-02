@@ -25,6 +25,7 @@ import {
 import {
   placeListing,
   placementsOf,
+  type HqChanges,
   type HqPlacement,
   type HqStructure,
 } from "@t3tools/client-runtime/zerops/hq";
@@ -97,6 +98,11 @@ export interface HqStructureView {
   readonly organizationId: string;
   /** Null while nothing is known: never read here, nothing remembered from before. */
   readonly structure: HqStructure | null;
+  /**
+   * Each application's changes, as this stream last told them; null until its snapshot carried
+   * them. Never remembered across loads: a change's state is HQ's to say again.
+   */
+  readonly changes: HqChanges | null;
   /** When `structure` was HQ's answer, wall ms. */
   readonly readAt: number | null;
   /** `structure` is HQ's answer now. */
@@ -121,6 +127,16 @@ export const hqPlacementsAtom = Atom.make((get): ReadonlyMap<string, HqPlacement
     ? null
     : placementsOf(view.structure);
 }).pipe(Atom.withLabel("zerops:hq-placements"));
+
+/**
+ * Each application's changes in the organization in view, as HQ last said them (SPEC §3.2a); null
+ * while nothing is known of them.
+ */
+export const hqChangesAtom = Atom.make((get): HqChanges | null => {
+  const view = get(hqStructureAtom);
+  const organizationId = get(zeropsSessionAtom)?.activeOrganization?.organizationId;
+  return view === null || view.organizationId !== organizationId ? null : view.changes;
+}).pipe(Atom.withLabel("zerops:hq-changes"));
 
 const NO_PLACEMENTS: ReadonlyMap<string, HqPlacement> = new Map();
 

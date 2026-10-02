@@ -223,7 +223,7 @@ export function ProjectCard<T>({
               verb={verbFor(entry, "pull-requests", props.renderNextStep)}
             >
               {flow.pullRequests.length === 0 ? (
-                <EmptyStep>{pullRequestsLine(flow, entry.changesFailed)}</EmptyStep>
+                <EmptyStep>{pullRequestsLine(flow, entry.changesUnknown)}</EmptyStep>
               ) : (
                 <ul className="flex min-w-0 flex-col divide-y divide-border/50">
                   {flow.pullRequests.map(({ pull }) => (

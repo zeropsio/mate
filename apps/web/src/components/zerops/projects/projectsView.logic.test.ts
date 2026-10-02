@@ -14,6 +14,7 @@ import { describe, expect, it } from "vite-plus/test";
 import type { ZeropsAgentActivity } from "~/zerops/agentActivity";
 
 import {
+  changesUnknownOf,
   comingMateLine,
   containersSummary,
   flowStepsAwaiting,
@@ -47,9 +48,8 @@ function pull(over: Partial<FlowPullRequest> = {}): FlowPullRequest {
     mateProjectId: "p-wren",
     author: "mate-p-wren",
     url: undefined,
-    checks: "none",
-    checkWord: undefined,
     mergeability: "mergeable",
+    behind: false,
     merged: false,
     mergedAt: undefined,
     headSha: "abc",
@@ -115,7 +115,7 @@ const FLOWS = {
   }),
 } as const;
 
-// A project's pull requests and main are Gitea's changes half: until it answers they claim
+// A project's pull requests and main are HQ's changes half: until it answers they claim
 // nothing, whatever the deploy half says (the owner, 2026-09-30: three projects read "None yet" /
 // "Nothing merged" beside their deploys while their changes were being read again).
 describe("flowStepsAwaiting — which steps hold a skeleton while a read is out", () => {
@@ -124,7 +124,7 @@ describe("flowStepsAwaiting — which steps hold a skeleton while a read is out"
       case: "nothing answered",
       read: false,
       changesKnown: false,
-      changesFailed: false,
+      changesUnknown: undefined,
       readOut: true,
       steps: true,
       changes: true,
@@ -133,7 +133,7 @@ describe("flowStepsAwaiting — which steps hold a skeleton while a read is out"
       case: "the deploy half alone",
       read: true,
       changesKnown: false,
-      changesFailed: false,
+      changesUnknown: undefined,
       readOut: true,
       steps: false,
       changes: true,
@@ -142,27 +142,37 @@ describe("flowStepsAwaiting — which steps hold a skeleton while a read is out"
       case: "both halves",
       read: true,
       changesKnown: true,
-      changesFailed: false,
+      changesUnknown: undefined,
       readOut: true,
       steps: false,
       changes: false,
     },
-    // A Gitea read that never answered (a 403 on the org, the broker down at load) is no read
-    // out: the steps say it failed rather than wait forever.
+    // A read HQ never answered is no read out: the steps say it failed rather than wait forever.
     {
       case: "the changes' read failed",
       read: true,
       changesKnown: false,
-      changesFailed: true,
+      changesUnknown: "failed",
       readOut: true,
       steps: false,
+      changes: false,
+    },
+    // HQ's rule shows this person the project and not its changes: nothing will answer for them,
+    // so they wait for nothing, whatever the deploy half has.
+    {
+      case: "the person may not see its changes",
+      read: false,
+      changesKnown: false,
+      changesUnknown: "unseen",
+      readOut: true,
+      steps: true,
       changes: false,
     },
     {
       case: "no read out: what is known is said",
       read: true,
       changesKnown: false,
-      changesFailed: false,
+      changesUnknown: undefined,
       readOut: false,
       steps: false,
       changes: false,
@@ -171,16 +181,41 @@ describe("flowStepsAwaiting — which steps hold a skeleton while a read is out"
       case: "nothing read and none out",
       read: false,
       changesKnown: false,
-      changesFailed: false,
+      changesUnknown: undefined,
       readOut: false,
       steps: false,
       changes: false,
     },
-  ])("$case", ({ read, changesKnown, changesFailed, readOut, steps, changes }) => {
-    expect(flowStepsAwaiting({ read, changesKnown, changesFailed, readOut })).toEqual({
+  ] as const)("$case", ({ read, changesKnown, changesUnknown, readOut, steps, changes }) => {
+    expect(flowStepsAwaiting({ read, changesKnown, changesUnknown, readOut })).toEqual({
       steps,
       changes,
     });
+  });
+});
+
+// HQ's rule decides first: where it shows this person the project and not its changes, an HQ that
+// did not answer them changes nothing they would see. Its rule not asked yet decides nothing.
+describe("changesUnknownOf — why a project's changes are not known", () => {
+  it.each([
+    { case: "seen and told", read: true, failed: false, want: undefined },
+    { case: "seen, and HQ did not answer", read: true, failed: true, want: "failed" },
+    { case: "not seen", read: false, failed: false, want: "unseen" },
+    { case: "not seen, and HQ did not answer", read: false, failed: true, want: "unseen" },
+    { case: "its rule not asked yet", read: undefined, failed: false, want: undefined },
+    {
+      case: "its rule not asked, HQ did not answer",
+      read: undefined,
+      failed: true,
+      want: "failed",
+    },
+  ] as const)("$case", ({ read, failed, want }) => {
+    expect(
+      changesUnknownOf({
+        offers: read === undefined ? undefined : { read },
+        changesFailure: failed ? "HQ is not answering right now." : undefined,
+      }),
+    ).toBe(want);
   });
 });
 
@@ -437,9 +472,13 @@ describe("the pull requests' cell with none open", () => {
     expect(pullRequestsLine(flow)).toBe(line);
   });
 
-  // Gitea never answered for it: that, never "None yet" — it would claim what nobody read.
-  it("says Gitea did not answer where its read failed", () => {
-    expect(pullRequestsLine(flowOf(), true)).toBe("Gitea didn’t answer");
+  // Its changes are not known — HQ never answered, or its rule shows this person the project and
+  // not its changes: that, never "None yet", which would claim what nobody read.
+  it.each([
+    ["HQ did not answer where its read failed", "failed", "HQ didn’t answer"],
+    ["the access its changes need where the person lacks it", "unseen", "Needs Basic user access"],
+  ] as const)("says %s", (_name, unknown, line) => {
+    expect(pullRequestsLine(flowOf(), unknown)).toBe(line);
   });
 });
 
@@ -507,12 +546,15 @@ describe("main's cell", () => {
     });
   }
 
-  it("says Gitea did not answer where its changes' read failed, never Nothing merged", () => {
-    expect(mainCell(flowOf(), undefined, true)).toEqual({
+  it.each([
+    ["HQ did not answer where its changes' read failed", "failed", "HQ didn’t answer"],
+    ["the access its changes need where the person lacks it", "unseen", "Needs Basic user access"],
+  ] as const)("says %s, never Nothing merged", (_name, unknown, state) => {
+    expect(mainCell(flowOf(), undefined, unknown)).toEqual({
       empty: true,
       head: undefined,
       title: undefined,
-      state: "Gitea didn’t answer",
+      state,
     });
   });
 });

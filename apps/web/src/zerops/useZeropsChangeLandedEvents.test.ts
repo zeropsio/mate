@@ -68,7 +68,7 @@ describe("changeLandedEventsFor", () => {
   });
 });
 
-const giteaOrigin = "https://git.shop.example";
+const HQ = "https://hq.shop.example";
 
 const landing = (repository: string, number: number, landedAt: string): ChangeLandedEvent => ({
   key: `change-landed:${repository}#${String(number)}`,
@@ -92,40 +92,38 @@ describe("conversationLandings", () => {
   }>([
     {
       name: "a change this conversation linked",
-      messages: [said(`Opened ${giteaOrigin}/shop/titandev/pulls/7 for review.`)],
+      messages: [said(`Opened ${HQ}/changes/shop/titandev/7 for review.`)],
       placed: [titandev7],
     },
     {
       name: "a change linked in markdown",
-      messages: [said(`See [the change](${giteaOrigin}/shop/titandev/pulls/7).`)],
+      messages: [said(`See [the change](${HQ}/changes/shop/titandev/7).`)],
       placed: [titandev7],
     },
     {
       name: "a change another conversation linked",
-      messages: [said(`Opened ${giteaOrigin}/shop/titandev/pulls/8.`)],
+      messages: [said(`Opened ${HQ}/changes/shop/titandev/8.`)],
       placed: [],
     },
     {
-      name: "a change on another forge",
-      messages: [said("Opened https://github.com/shop/titandev/pulls/7.")],
+      name: "a change on another HQ",
+      messages: [said("Opened https://hq.elsewhere.example/changes/shop/titandev/7.")],
       placed: [],
     },
     {
-      name: "a change on a forge the app was not told of",
-      messages: [said(`Opened ${giteaOrigin}/shop/titandev/pulls/7.`)],
+      name: "a change while the official HQ is not known",
+      messages: [said(`Opened ${HQ}/changes/shop/titandev/7.`)],
       untold: true,
       placed: [],
     },
     {
       name: "a change that landed before the first loaded message",
-      messages: [
-        said(`${giteaOrigin}/shop/titandev/pulls/7 already landed.`, "2026-09-20T11:00:00Z"),
-      ],
+      messages: [said(`${HQ}/changes/shop/titandev/7 already landed.`, "2026-09-20T11:00:00Z")],
       placed: [],
     },
     { name: "an empty conversation", messages: [], placed: [] },
   ])("places $name accordingly", ({ messages, untold, placed }) => {
-    const origin = untold ? undefined : giteaOrigin;
-    expect(conversationLandings([titandev7], messages, origin)).toEqual(placed);
+    const hqAddress = untold ? undefined : HQ;
+    expect(conversationLandings([titandev7], messages, hqAddress)).toEqual(placed);
   });
 });

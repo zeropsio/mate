@@ -3,15 +3,20 @@
  * the app runs, with made-up reads. Fixtures only — no route imports this module.
  */
 import {
+  changeReadout,
   changeRemarks,
-  parseChangeDiff,
+  type ChangeReadout,
   type FlowPullRequest,
-  type GiteaChangedFile,
-  type GiteaCommit,
-  type GiteaIssueComment,
   type ReviewPress,
 } from "@t3tools/client-runtime/zerops";
 import type { CrewTask } from "@t3tools/contracts";
+import type {
+  ChangeCommit,
+  ChangeDetailResponse,
+  ChangeFile,
+  HqChange,
+  HqChangeComment,
+} from "@t3tools/shared/hqChanges";
 import { useEffect, useState, type ReactNode } from "react";
 
 import {
@@ -35,8 +40,9 @@ import type {
   ZeropsChangeComments,
   ZeropsChangeCommentsState,
 } from "~/zerops/useZeropsChangeComments";
+import type { ReadoutPart } from "~/zerops/useZeropsChangeDetail";
 
-import { HARNESS_GITEA, HARNESS_PICTURES, harnessDescription } from "./reviewHarnessPictures";
+import { HARNESS_HQ, HARNESS_PICTURES, harnessDescription } from "./reviewHarnessPictures";
 
 const NOW = Date.now();
 const minutesAgo = (minutes: number) => new Date(NOW - minutes * 60_000).toISOString();
@@ -74,32 +80,40 @@ const DIFF = [
   "+22",
 ].join("\n");
 
-const FILES: ReadonlyArray<GiteaChangedFile> = [
-  {
-    filename: "src/server/routes/status.ts",
-    previousFilename: undefined,
-    status: "added",
-    additions: 38,
-    deletions: 0,
-  },
-  {
-    filename: "src/server/index.ts",
-    previousFilename: undefined,
-    status: "modified",
-    additions: 3,
-    deletions: 2,
-  },
-  {
-    filename: ".nvmrc",
-    previousFilename: undefined,
-    status: "modified",
-    additions: 1,
-    deletions: 1,
-  },
-];
+/**
+ * A `git diff` of several files as HQ hands it over: one patch per file, with the lines it adds
+ * and deletes. Where HQ's read stopped (`cutAt`), that file's patch is cut, and the ones after it
+ * were not read.
+ */
+function hqFiles(
+  diff: string,
+  counts: ReadonlyArray<readonly [path: string, added: number, deleted: number]>,
+  cutAt?: number,
+): ReadonlyArray<ChangeFile> {
+  const patches = diff.split(/\n(?=diff --git )/u);
+  return counts.map(([path, added, deleted], index) => ({
+    path,
+    added,
+    deleted,
+    hunks: cutAt !== undefined && index > cutAt ? "" : (patches[index] ?? ""),
+    binary: false,
+    truncated: cutAt !== undefined && index >= cutAt,
+  }));
+}
+
+const FILES = hqFiles(DIFF, [
+  ["src/server/routes/status.ts", 38, 0],
+  ["src/server/index.ts", 3, 2],
+  [".nvmrc", 1, 1],
+]);
 
 const WORDS =
   "Adds a /status route that lists the app's uptime and its last deploy, refreshed on each visit. It stays behind the sign-in, like the rest of the admin pages.";
+
+const HEAD = "b21d904cb21d904cb21d904cb21d904cb21d904c";
+/** `main` as the change was cut from it, and `main` two changes later. */
+const BASE = "ba5e000ba5e000ba5e000ba5e000ba5e000ba5e";
+const MAIN_NOW = "c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2";
 
 function pull(over: Partial<FlowPullRequest> = {}): FlowPullRequest {
   return {
@@ -109,26 +123,16 @@ function pull(over: Partial<FlowPullRequest> = {}): FlowPullRequest {
     kind: "code",
     mateProjectId: "p-nova",
     author: "mate-p-nova",
-    url: "https://gitea.example/snap/appdev/pulls/2",
-    checks: "passing",
-    checkWord: "Passing",
+    url: `${HARNESS_HQ}/changes/g-snap/appdev/2`,
     mergeability: "mergeable",
+    behind: false,
     merged: false,
     mergedAt: undefined,
-    headSha: "b21d904cb21d904cb21d904cb21d904cb21d904c",
+    headSha: HEAD,
     baseBranch: "main",
     line: "appdev #2",
     updatedAt: minutesAgo(4),
-    headBranch: "mate/mate-p-nova",
-    checkRows: [
-      { name: "build", tone: "ok", word: "Passed", description: "pnpm build · 34s" },
-      { name: "/status", tone: "ok", word: "Passed", description: "checked in the browser" },
-    ],
-    additions: 42,
-    deletions: 3,
-    changedFiles: 3,
-    mergeBase: "base-sha",
-    baseSha: "base-sha",
+    headBranch: "mate/p-nova/2",
     ...over,
   };
 }
@@ -156,61 +160,102 @@ const COMMIT_SUBJECTS = [
   "Start the status page",
 ];
 
-function commits(count: number): ReadonlyArray<GiteaCommit> {
+function commits(count: number): ReadonlyArray<ChangeCommit> {
   return COMMIT_SUBJECTS.slice(0, count).map((subject, index) => ({
     sha: `${(0xb21d904 + index * 7919).toString(16)}${"c".repeat(33)}`,
     subject,
+    authorName: "Nova",
     at: minutesAgo(4 + index * 95),
   }));
 }
 
-const READ = {
-  files: { kind: "read", value: FILES },
-  diff: { kind: "read", value: { files: parseChangeDiff(DIFF), cut: false } },
-  commits: { kind: "read", value: commits(3) },
-  mainSince: { kind: "none" },
-} as const;
+const CHANGE: HqChange = {
+  appId: "g-snap",
+  repo: "appdev",
+  number: 2,
+  mateProjectId: "p-nova",
+  title: "Add a /status page with the uptime and the last deploy",
+  body: "",
+  state: "open",
+  head: HEAD,
+  mergedSha: null,
+  landedHead: null,
+  openedAt: minutesAgo(400),
+  mergedAt: null,
+  closedAt: null,
+  updatedAt: minutesAgo(400),
+  mergeability: "clean",
+  behind: false,
+};
 
-function said(id: number, author: string, body: string, minutes: number): GiteaIssueComment {
-  return { id, author, avatarUrl: undefined, body, at: minutesAgo(minutes) };
+/** HQ's detail of the change, `over` it, as its review reads it (`changeReadout`). */
+function detail(over: Partial<ChangeDetailResponse> = {}): ReadoutPart<ChangeReadout> {
+  return {
+    kind: "read",
+    value: changeReadout({
+      change: CHANGE,
+      mainHead: BASE,
+      mergeBase: BASE,
+      mergeability: { kind: "clean" },
+      files: FILES,
+      filesTruncated: false,
+      commits: commits(3),
+      commitsTruncated: false,
+      ...over,
+    }),
+  };
 }
 
-const TALK: ReadonlyArray<GiteaIssueComment> = [
+const READ = detail();
+
+function said(id: number, author: string, body: string, minutes: number): HqChangeComment {
+  return { id: `c${String(id)}`, authorUserId: author, body, createdAt: minutesAgo(minutes) };
+}
+
+const TALK: ReadonlyArray<HqChangeComment> = [
   said(
     1,
-    "ales",
+    "u-ales",
     "Does the page still load when the database is down? That is when I'd open it.",
     95,
   ),
   said(
     2,
-    "mate-p-nova",
-    "It does now: the uptime and the version come from the process, and the requests card says it could not read them.",
+    "u-wren",
+    "It does: the uptime and the version come from the process, and the requests card says it could not read them.",
     41,
   ),
 ];
 
 /** A long thread, as a change that went back and forth gathers. */
-const LONG_TALK: ReadonlyArray<GiteaIssueComment> = Array.from({ length: 9 }, (_, index) =>
+const LONG_TALK: ReadonlyArray<HqChangeComment> = Array.from({ length: 9 }, (_, index) =>
   index % 2 === 0
     ? said(
         index + 1,
-        "ales",
+        "u-ales",
         `Round ${String(index / 2 + 1)}: the cards still jump on a phone.`,
         400 - index * 40,
       )
-    : said(index + 1, "mate-p-nova", "Fixed, and checked on a 390 px screen.", 390 - index * 40),
+    : said(index + 1, "u-wren", "Checked again on a 390 px screen: still fine.", 390 - index * 40),
 );
 
 function comments(state: ZeropsChangeCommentsState): ZeropsChangeComments {
   return { state, say: async () => null, saying: false, retry: noop };
 }
 
-const MATE_NAMES = new Map([["p-nova", "Nova"]]);
+/** The organization's members by their Zerops user id. */
+const MEMBERS = new Map([
+  ["u-ales", "Aleš"],
+  ["u-wren", "Wren"],
+]);
 
 function remarksOf(conversation: ZeropsChangeComments) {
   return conversation.state.kind === "read"
-    ? changeRemarks({ comments: conversation.state.comments, mateNames: MATE_NAMES, me: "ales" })
+    ? changeRemarks({
+        comments: conversation.state.comments,
+        nameOf: (userId) => MEMBERS.get(userId),
+        me: "u-ales",
+      })
     : [];
 }
 
@@ -219,34 +264,18 @@ const TALKING = comments({ kind: "read", comments: TALK });
 const NOVA = { name: "Nova", tint: "slate", mine: true } as const;
 
 const IDLE: ReviewPress = { kind: "idle" };
+/** Merged a minute ago: the review says what happened, and offers the release's review. */
+const MERGED_NOW: Partial<FlowPullRequest> = {
+  state: "closed",
+  merged: true,
+  mergedAt: minutesAgo(1),
+  updatedAt: minutesAgo(1),
+};
 const NONE_OPEN: ReadonlyArray<string> = [];
 const RUN = { words: WORDS, reading: false } as const;
 const OFFERED = { kind: "offered" } as const;
 
 /** A change whose diff was too long to read whole: a lockfile first, the read stopping after. */
-const LONG_FILES: ReadonlyArray<GiteaChangedFile> = [
-  {
-    filename: "pnpm-lock.yaml",
-    previousFilename: undefined,
-    status: "modified",
-    additions: 2_600,
-    deletions: 0,
-  },
-  {
-    filename: "src/server/index.ts",
-    previousFilename: undefined,
-    status: "modified",
-    additions: 3,
-    deletions: 2,
-  },
-  {
-    filename: "src/web/app.tsx",
-    previousFilename: undefined,
-    status: "modified",
-    additions: 12,
-    deletions: 4,
-  },
-];
 const LONG_DIFF = [
   "diff --git a/pnpm-lock.yaml b/pnpm-lock.yaml",
   "--- a/pnpm-lock.yaml",
@@ -263,13 +292,18 @@ const LONG_DIFF = [
   " const app = new Hono();",
   ' app.route("/he',
 ].join("\n");
-const LONG = {
-  files: { kind: "read", value: LONG_FILES },
-  diff: {
-    kind: "read",
-    value: { files: parseChangeDiff(LONG_DIFF, { cut: true }), cut: true },
-  },
-} as const;
+const LONG = detail({
+  files: hqFiles(
+    LONG_DIFF,
+    [
+      ["pnpm-lock.yaml", 2_600, 0],
+      ["src/server/index.ts", 3, 2],
+      ["src/web/app.tsx", 12, 4],
+    ],
+    1,
+  ),
+  filesTruncated: true,
+});
 
 /** A change whose diff holds lines far wider than the review: an import list and an inlined SVG. */
 const WIDE_IMPORT = `import { pool, migrate, ensureInbox, boardCols, itemCols, bus, changed, listenForChanges, ${Array.from(
@@ -280,37 +314,22 @@ const WIDE_SVG = `const logo = '<svg xmlns="http://www.w3.org/2000/svg" viewBox=
   { length: 40 },
   (_, index) => `M${String(index)} ${String(index * 2)}L${String(index + 3)} ${String(index)}`,
 ).join(" ")}"/></svg>';`;
-const WIDE_FILES: ReadonlyArray<GiteaChangedFile> = [
-  {
-    filename: "server/index.ts",
-    previousFilename: undefined,
-    status: "modified",
-    additions: 2,
-    deletions: 1,
-  },
-];
-const WIDE = {
-  files: { kind: "read", value: WIDE_FILES },
-  diff: {
-    kind: "read",
-    value: {
-      files: parseChangeDiff(
-        [
-          "diff --git a/server/index.ts b/server/index.ts",
-          "--- a/server/index.ts",
-          "+++ b/server/index.ts",
-          `@@ -1,3 +1,4 @@ ${WIDE_IMPORT.slice(0, 60)}`,
-          '-import { pool } from "./db";',
-          `+${WIDE_IMPORT}`,
-          `+${WIDE_SVG}`,
-          " ",
-          " const app = new Hono();",
-        ].join("\n"),
-      ),
-      cut: false,
-    },
-  },
-} as const;
+const WIDE = detail({
+  files: hqFiles(
+    [
+      "diff --git a/server/index.ts b/server/index.ts",
+      "--- a/server/index.ts",
+      "+++ b/server/index.ts",
+      `@@ -1,3 +1,4 @@ ${WIDE_IMPORT.slice(0, 60)}`,
+      '-import { pool } from "./db";',
+      `+${WIDE_IMPORT}`,
+      `+${WIDE_SVG}`,
+      " ",
+      " const app = new Hono();",
+    ].join("\n"),
+    [["server/index.ts", 2, 1]],
+  ),
+});
 
 /** A project with a stage and a production, as `environments.yaml` declares them. */
 const STAGE_AND_PRODUCTION: ChangeReviewViewProps["environments"] = [
@@ -320,20 +339,14 @@ const STAGE_AND_PRODUCTION: ChangeReviewViewProps["environments"] = [
 /** A project that has made nothing from its recipe yet. */
 const NO_ENVIRONMENTS: ChangeReviewViewProps["environments"] = [];
 
-/** A change to the group repo's recipe, from a Mate's bot: no checks run on a recipe. */
+/** A change to the group repo's recipe, from a Mate's bot. */
 const RECIPE: Partial<FlowPullRequest> = {
   repository: "group",
   kind: "recipe",
   number: 7,
   title: "Add a mail service to the Remote (CDE) and Local recipes",
   line: "#7",
-  url: "https://gitea.example/snap/group/pulls/7",
-  checks: "none",
-  checkWord: undefined,
-  checkRows: [],
-  additions: 12,
-  deletions: 0,
-  changedFiles: 2,
+  url: `${HARNESS_HQ}/changes/g-snap/group/7`,
 };
 
 /** The same service added to two tiers, as git names a path with an em dash in it. */
@@ -361,26 +374,21 @@ function recipeDiff(tiers: ReadonlyArray<string>): string {
 }
 
 /** What a recipe change touching `tiers` reads as: each tier's recipe, and its diff. */
-function recipeRead(tiers: ReadonlyArray<string>): Partial<ChangeReviewViewProps["readout"]> {
-  return {
-    files: {
-      kind: "read",
-      value: tiers.map((tier) => ({
-        filename: `${tier}/import.yaml`,
-        previousFilename: undefined,
-        status: "modified",
-        additions: 6,
-        deletions: 0,
-      })),
-    },
-    diff: { kind: "read", value: { files: parseChangeDiff(recipeDiff(tiers)), cut: false } },
-    commits: {
-      kind: "read",
-      value: [
-        { sha: `7d1e0a4${"d".repeat(33)}`, subject: "Add a mail service", at: minutesAgo(6) },
-      ],
-    },
-  };
+function recipeRead(tiers: ReadonlyArray<string>): ReadoutPart<ChangeReadout> {
+  return detail({
+    files: hqFiles(
+      recipeDiff(tiers),
+      tiers.map((tier) => [`${tier}/import.yaml`, 6, 0] as const),
+    ),
+    commits: [
+      {
+        sha: `7d1e0a4${"d".repeat(33)}`,
+        subject: "Add a mail service",
+        authorName: "Nova",
+        at: minutesAgo(6),
+      },
+    ],
+  });
 }
 
 /** The owner's case: two recipes nothing in the project is made from. */
@@ -388,21 +396,13 @@ const UNUSED_TIERS = ["1 — Remote (CDE)", "2 — Local"];
 /** The two recipes a stage and a production are made from. */
 const MADE_FROM_TIERS = ["3 — Stage", "4 — Small Production"];
 
-/** Everything Gitea answers, still on its way: what the flow knew paints, the rest holds its room. */
-const ALL_READING = {
-  files: { kind: "reading" },
-  commits: { kind: "reading" },
-} as const;
-const ALL_FAILED = {
-  files: { kind: "failed", reason: "Gitea did not answer in time." },
-  commits: { kind: "failed", reason: "Gitea did not answer in time." },
-} as const;
+/** HQ's detail, still on its way: what the flow knew paints, the rest holds its room. */
+const READING = { kind: "reading" } as const;
+const UNREAD = { kind: "failed", reason: "HQ is not answering right now." } as const;
 
 function Change({
   over,
-  mainSince,
-  readout,
-  press = IDLE,
+  readout = READ,
   open = NONE_OPEN,
   run = RUN,
   conversation = TALKING,
@@ -410,10 +410,8 @@ function Change({
   frame,
 }: {
   readonly over?: Partial<FlowPullRequest>;
-  readonly mainSince?: ReadonlyArray<GiteaCommit>;
-  /** What was read of it, where that is not everything. */
-  readonly readout?: Partial<ChangeReviewViewProps["readout"]>;
-  readonly press?: ReviewPress;
+  /** HQ's detail of it, where it is not the one every state shares. */
+  readonly readout?: ChangeReviewViewProps["readout"];
   readonly open?: ReadonlyArray<string>;
   readonly run?: { readonly words: string | undefined; readonly reading: boolean };
   readonly conversation?: ZeropsChangeComments;
@@ -423,10 +421,11 @@ function Change({
   const value = pull(over);
   return (
     <ChangeReviewView
+      commentable
       comments={conversation}
       environments={environments}
       frame={frame}
-      giteaOrigin={HARNESS_GITEA}
+      hqAddress={HARNESS_HQ}
       initiallyOpen={open}
       live="v0.1.0"
       mate={value.mateProjectId === undefined ? undefined : NOVA}
@@ -437,17 +436,11 @@ function Change({
       onRetry={noop}
       remarks={remarksOf(conversation)}
       onFix={noop}
-      onMerge={noop}
       onOpenRun={run.words === undefined && value.description === undefined ? undefined : noop}
       onReviewRelease={noop}
       pictures={HARNESS_PICTURES}
-      press={press}
       pull={value}
-      readout={{
-        ...READ,
-        ...readout,
-        mainSince: mainSince === undefined ? READ.mainSince : { kind: "read", value: mainSince },
-      }}
+      readout={readout}
       run={run}
       waitingForProduction={0}
     />
@@ -571,8 +564,7 @@ function Crew({
 
 /**
  * A change whose reads land `after` ms after it opens — its files, commits and comments; its
- * description's pictures refused at their preflight, as a browser's are today — so the first
- * frame can be set against the settled one.
+ * description's pictures never readable — so the first frame can be set against the settled one.
  */
 function Settling({
   frame,
@@ -596,9 +588,8 @@ function Settling({
       frame={frame}
       over={{
         description: harnessDescription({ after, unreadable: true }),
-        commentCount: TALK.length,
       }}
-      readout={read ? { commits: { kind: "read", value: commits(19) } } : ALL_READING}
+      readout={read ? detail({ commits: commits(19) }) : READING}
     />
   );
 }
@@ -621,7 +612,7 @@ export const REVIEW_STATES: ReadonlyArray<{
       <Change
         frame="page"
         over={{ description: harnessDescription({ after: 0 }) }}
-        readout={{ commits: { kind: "read", value: commits(19) } }}
+        readout={detail({ commits: commits(19) })}
       />
     ),
   },
@@ -633,14 +624,13 @@ export const REVIEW_STATES: ReadonlyArray<{
   },
   {
     id: "page-reading",
-    label: "The change's page, everything Gitea answers still being read",
+    label: "The change's page, everything HQ answers still being read",
     page: true,
     node: (
       <Change
         conversation={comments({ kind: "reading" })}
         frame="page"
-        over={{ commentCount: 2 }}
-        readout={ALL_READING}
+        readout={READING}
         run={{ words: undefined, reading: true }}
       />
     ),
@@ -649,14 +639,7 @@ export const REVIEW_STATES: ReadonlyArray<{
     id: "page-wide",
     label: "The change's page, a diff with lines wider than its column open",
     page: true,
-    node: (
-      <Change
-        frame="page"
-        open={["server/index.ts"]}
-        over={{ additions: 2, deletions: 1, changedFiles: 1 }}
-        readout={WIDE}
-      />
-    ),
+    node: <Change frame="page" open={["server/index.ts"]} readout={WIDE} />,
   },
   {
     id: "settle",
@@ -680,8 +663,8 @@ export const REVIEW_STATES: ReadonlyArray<{
     node: <Change over={{ description: harnessDescription({ after: 0, missing: true }) }} />,
   },
   {
-    id: "description-today",
-    label: "Its description as a browser reads it today: every picture refused at its preflight",
+    id: "description-unread",
+    label: "Its description, none of its pictures readable",
     node: <Change over={{ description: harnessDescription({ after: 120, unreadable: true }) }} />,
   },
   {
@@ -691,30 +674,29 @@ export const REVIEW_STATES: ReadonlyArray<{
   },
   {
     id: "reading",
-    label: "Everything Gitea answers, still being read",
+    label: "Everything HQ answers, still being read",
     node: (
       <Change
         conversation={comments({ kind: "reading" })}
-        over={{ commentCount: 2 }}
-        readout={ALL_READING}
+        readout={READING}
         run={{ words: undefined, reading: true }}
       />
     ),
   },
   {
     id: "unread",
-    label: "Nothing Gitea answers could be read",
+    label: "Nothing HQ answers could be read",
     node: (
       <Change
-        conversation={comments({ kind: "failed", reason: "Gitea did not answer in time." })}
-        readout={ALL_FAILED}
+        conversation={comments({ kind: "failed", reason: "HQ is not answering right now." })}
+        readout={UNREAD}
       />
     ),
   },
   {
     id: "many-commits",
     label: "Nineteen commits, the newest five shown",
-    node: <Change readout={{ commits: { kind: "read", value: commits(19) } }} />,
+    node: <Change readout={detail({ commits: commits(19) })} />,
   },
   {
     id: "long-conversation",
@@ -725,32 +707,20 @@ export const REVIEW_STATES: ReadonlyArray<{
     id: "long",
     label: "A diff too long for here",
     node: (
-      <Change
-        open={["pnpm-lock.yaml", "src/server/index.ts", "src/web/app.tsx"]}
-        over={{ additions: 2_615, deletions: 6 }}
-        readout={LONG}
-      />
+      <Change open={["pnpm-lock.yaml", "src/server/index.ts", "src/web/app.tsx"]} readout={LONG} />
     ),
   },
   {
     id: "wide",
     label: "A diff with lines wider than the review",
-    node: (
-      <Change
-        open={["server/index.ts"]}
-        over={{ additions: 2, deletions: 1, changedFiles: 1 }}
-        readout={WIDE}
-      />
-    ),
+    node: <Change open={["server/index.ts"]} readout={WIDE} />,
   },
   {
-    id: "unchecked",
-    label: "Ready, nothing checked",
+    id: "person",
+    label: "Ready, a person's own branch",
     node: (
       <Change
         over={{
-          checks: "none",
-          checkRows: [],
           mateProjectId: undefined,
           author: "ada",
           headBranch: "ada/status-page",
@@ -761,83 +731,35 @@ export const REVIEW_STATES: ReadonlyArray<{
   {
     id: "behind-clean",
     label: "Behind main, still merges",
-    node: (
-      <Change
-        mainSince={[
-          { sha: "c1", subject: "Tidy the README (#4)", files: ["README.md"] },
-          { sha: "c2", subject: "Health routes (#5)", files: ["src/server/health.ts"] },
-        ]}
-        over={{ baseSha: "c2" }}
-      />
-    ),
+    node: <Change readout={detail({ mainHead: MAIN_NOW })} />,
   },
   {
     id: "conflict",
     label: "A change, blocked: a conflict",
     node: (
       <Change
-        mainSince={[
-          {
-            sha: "c2",
-            subject: "Health routes (#5)",
-            at: minutesAgo(20),
-            files: ["src/server/index.ts"],
-          },
-        ]}
-        over={{ mergeability: "conflicting", baseSha: "c2" }}
+        readout={detail({
+          mainHead: MAIN_NOW,
+          mergeability: { kind: "conflict", paths: ["src/server/index.ts"] },
+        })}
       />
     ),
   },
   {
     id: "behind",
     label: "Behind main, no longer merges",
-    node: <Change over={{ mergeability: "conflicting", baseSha: "main-now" }} />,
-  },
-  {
-    id: "checks-failed",
-    label: "Checks failing",
     node: (
       <Change
-        over={{
-          checks: "failing",
-          checkRows: [
-            { name: "build", tone: "failed", word: "Failed", description: "tsc exited 2 · 41s" },
-            { name: "lint", tone: "ok", word: "Passed", description: "oxlint · 3s" },
-          ],
-        }}
+        readout={detail({ mainHead: MAIN_NOW, mergeability: { kind: "conflict", paths: [] } })}
       />
     ),
   },
   {
-    id: "checks-running",
-    label: "Checks running",
-    node: (
-      <Change
-        over={{
-          checks: "pending",
-          checkRows: [
-            { name: "build", tone: "busy", word: "Running", description: "pnpm build" },
-            { name: "e2e", tone: "busy", word: "Running", description: "3 of 12 pages" },
-          ],
-        }}
-        run={{ words: undefined, reading: true }}
-      />
-    ),
+    id: "empty",
+    label: "Nothing in it main does not have",
+    node: <Change readout={detail({ mergeability: { kind: "empty" } })} />,
   },
-  { id: "merging", label: "Merging", node: <Change press={{ kind: "running" }} /> },
-  {
-    id: "refused",
-    label: "Refused",
-    node: (
-      <Change
-        press={{
-          kind: "refused",
-          reason: "This pull request changed since you opened it — review it again.",
-        }}
-      />
-    ),
-  },
-  { id: "merged", label: "After Merge", node: <Change press={{ kind: "done" }} /> },
+  { id: "merged", label: "Merged", node: <Change over={MERGED_NOW} /> },
   {
     id: "closed",
     label: "Closed without merging",
@@ -858,12 +780,11 @@ export const REVIEW_STATES: ReadonlyArray<{
   },
   {
     id: "recipe-merged-unused",
-    label: "A recipe change after Merge, to recipes nothing is made from: no release",
+    label: "A recipe change merged, to recipes nothing is made from: no release",
     node: (
       <Change
         conversation={comments({ kind: "read", comments: [] })}
-        over={RECIPE}
-        press={{ kind: "done" }}
+        over={{ ...RECIPE, ...MERGED_NOW }}
         readout={recipeRead(UNUSED_TIERS)}
         run={{ words: undefined, reading: false }}
       />
@@ -871,12 +792,15 @@ export const REVIEW_STATES: ReadonlyArray<{
   },
   {
     id: "recipe-merged",
-    label: "A recipe change after Merge: the stage and production get what it adds",
+    label: "A recipe change merged: the stage and production get what it adds",
     node: (
       <Change
         conversation={comments({ kind: "read", comments: [] })}
-        over={{ ...RECIPE, title: "Add a mail service to the stage and production recipes" }}
-        press={{ kind: "done" }}
+        over={{
+          ...RECIPE,
+          ...MERGED_NOW,
+          title: "Add a mail service to the stage and production recipes",
+        }}
         readout={recipeRead(MADE_FROM_TIERS)}
         run={{ words: undefined, reading: false }}
       />
@@ -884,13 +808,16 @@ export const REVIEW_STATES: ReadonlyArray<{
   },
   {
     id: "recipe-merged-none",
-    label: "A recipe change after Merge, in a project with no stage or production yet",
+    label: "A recipe change merged, in a project with no stage or production yet",
     node: (
       <Change
         conversation={comments({ kind: "read", comments: [] })}
         environments={NO_ENVIRONMENTS}
-        over={{ ...RECIPE, title: "Add a mail service to the stage and production recipes" }}
-        press={{ kind: "done" }}
+        over={{
+          ...RECIPE,
+          ...MERGED_NOW,
+          title: "Add a mail service to the stage and production recipes",
+        }}
         readout={recipeRead(MADE_FROM_TIERS)}
         run={{ words: undefined, reading: false }}
       />
@@ -1016,7 +943,7 @@ const TRY_READ_MS = 600;
 
 /**
  * The real dialog, opened from a button, to try its motion, its focus and its keys — its files
- * arriving a moment after it opens, as they do from Gitea, so Merge turns pressable then.
+ * arriving a moment after it opens, as they do from Gitea.
  */
 export function ReviewDialogTry() {
   const [from, setFrom] = useState<HTMLElement | null>(null);
@@ -1053,9 +980,10 @@ export function ReviewDialogTry() {
         open={open}
       >
         <ChangeReviewView
+          commentable
           comments={read ? TALKING : comments({ kind: "reading" })}
           environments={STAGE_AND_PRODUCTION}
-          giteaOrigin={HARNESS_GITEA}
+          hqAddress={HARNESS_HQ}
           live="v0.1.0"
           mate={NOVA}
           now={NOW}
@@ -1068,16 +996,13 @@ export function ReviewDialogTry() {
             setOpen(false);
           }}
           onFix={noop}
-          onMerge={noop}
           onOpenRun={noop}
           onReviewRelease={noop}
           pictures={HARNESS_PICTURES}
-          press={IDLE}
           pull={pull({
             description: harnessDescription({ after: TRY_READ_MS }),
-            commentCount: TALK.length,
           })}
-          readout={read ? READ : { ...READ, ...ALL_READING }}
+          readout={read ? READ : READING}
           run={RUN}
           titleId="review-try-title"
           waitingForProduction={0}
@@ -1115,9 +1040,10 @@ function ReleaseTrySteps({ onClose }: { readonly onClose: () => void }) {
       change={
         shown === undefined ? null : (
           <ChangeReviewView
+            commentable
             comments={TALKING}
             environments={STAGE_AND_PRODUCTION}
-            giteaOrigin={HARNESS_GITEA}
+            hqAddress={HARNESS_HQ}
             live="v0.1.56"
             mate={NOVA}
             now={NOW}
@@ -1125,16 +1051,13 @@ function ReleaseTrySteps({ onClose }: { readonly onClose: () => void }) {
             onBack={steps.back}
             onClose={onClose}
             onFix={noop}
-            onMerge={noop}
             onOpenPage={onClose}
             onOpenRun={noop}
             onReviewRelease={noop}
             pictures={HARNESS_PICTURES}
-            press={IDLE}
             pull={pull({
               ...RELEASED[shown.number],
               description: harnessDescription({ after: 0 }),
-              commentCount: TALK.length,
             })}
             readout={READ}
             remarks={remarksOf(TALKING)}

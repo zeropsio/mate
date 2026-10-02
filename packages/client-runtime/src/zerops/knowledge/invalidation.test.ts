@@ -84,7 +84,7 @@ const openBus = (options: Partial<Pick<InvalidationBusOptions, "shown">> = {}) =
   });
 
 describe("the invalidation union (DESIGN §6.2)", () => {
-  it("is closed over the ten topics of §6.2", () => {
+  it("is closed over the nine topics of §6.2", () => {
     // A topic missing here, or one more than the union has, fails the typecheck.
     const topics: Record<Invalidation["topic"], true> = {
       access: true,
@@ -96,11 +96,10 @@ describe("the invalidation union (DESIGN §6.2)", () => {
       "gitea-session": true,
       "forge-org": true,
       "forge-repo": true,
-      "forge-pr": true,
     };
     // @ts-expect-error — not a topic the bus carries
     const unknown: Invalidation["topic"] = "thread";
-    expect(Object.keys(topics)).toHaveLength(10);
+    expect(Object.keys(topics)).toHaveLength(9);
     expect(Object.keys(topics)).not.toContain(unknown);
   });
 });

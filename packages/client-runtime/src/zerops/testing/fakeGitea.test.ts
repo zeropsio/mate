@@ -96,17 +96,4 @@ describe("FakeGitea", () => {
     gitea.revoke(token);
     await expect(statusOf(client.listTags("acme", "group"))).resolves.toBe(401);
   });
-
-  it("plays a pull request's scripted mergeable sequence, then holds its last value", async () => {
-    const { gitea, fetch } = forge();
-    const client = createGiteaClient({ origin: GITEA, token: gitea.issue("u-person"), fetch });
-    gitea.scriptMergeable("acme", "app", 4, [null, false, true]);
-
-    const seen: Array<boolean | null | undefined> = [];
-    for (let read = 0; read < 4; read += 1) {
-      seen.push((await client.getPullRequest("acme", "app", 4))?.mergeable);
-    }
-
-    expect(seen).toEqual([null, false, true, true]);
-  });
 });

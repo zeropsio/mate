@@ -1,7 +1,8 @@
 import { describe, expect, it } from "@effect/vitest";
 import type { Verb } from "@t3tools/shared/zeropsPermissions";
 
-import { heldOf, mayOffer, offerAsker, type OfferViewer } from "./offers.ts";
+import type { HqPlacement } from "./hq/placement.ts";
+import { changeOffers, heldOf, mayOffer, offerAsker, type OfferViewer } from "./offers.ts";
 
 const ADA: OfferViewer = {
   userId: "u-ada",
@@ -50,6 +51,56 @@ describe("mayOffer — what the client offers, by the rule HQ enforces", () => {
     expect(asker).toBeNull();
     expect(mayOffer(asker, "edit_mate_record", { projectId: "p-own", held: "mate" })).toBe(false);
     expect(mayOffer(asker, "read_project", { projectId: "p-own" })).toBe(false);
+  });
+});
+
+describe("changeOffers — what a person may do with an application's changes (SPEC §3.2a)", () => {
+  /** The application `app-1` holds `p-dev` and `p-stage`; `p-else` is in another one. */
+  const PLACED = new Map<string, HqPlacement>([
+    ["p-dev", { appId: "app-1", appName: "Acme", kind: "devstage", mate: null }],
+    ["p-stage", { appId: "app-1", appName: "Acme", kind: "stage", mate: null }],
+    ["p-else", { appId: "app-2", appName: "Other", kind: "devstage", mate: null }],
+  ]);
+  const viewer = (roleCode: string): OfferViewer => ({
+    userId: "u-ola",
+    clientUserId: "cu-ola",
+    roleCode,
+    canCreateProjects: false,
+  });
+  const granted = (projectId: string, roleCode: string) => [
+    { id: projectId, userRoles: [{ clientUserId: "cu-ola", roleCode }] },
+  ];
+
+  it.each<[string, OfferViewer, ReturnType<typeof granted>, boolean]>([
+    ["reads and comments with Read only on the organization", viewer("READ_ONLY"), [], true],
+    [
+      "reads and comments with Basic user on one of its projects",
+      viewer("NO_ACCESS"),
+      granted("p-stage", "BASIC_USER"),
+      true,
+    ],
+    [
+      // It sees the application listed, never its changes (main's Gitea read rule).
+      "neither with only a Read only grant on one of its projects",
+      viewer("NO_ACCESS"),
+      granted("p-dev", "READ_ONLY"),
+      false,
+    ],
+    [
+      "neither with Basic user on another application's project",
+      viewer("NO_ACCESS"),
+      granted("p-else", "BASIC_USER"),
+      false,
+    ],
+  ])("%s", (_name, person, projects, offered) => {
+    expect(changeOffers(offerAsker(person, projects), PLACED, "app-1")).toEqual({
+      read: offered,
+      comment: offered,
+    });
+  });
+
+  it("offers nothing to a person the client does not know", () => {
+    expect(changeOffers(null, PLACED, "app-1")).toEqual({ read: false, comment: false });
   });
 });
 

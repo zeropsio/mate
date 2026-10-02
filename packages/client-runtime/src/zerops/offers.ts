@@ -85,6 +85,26 @@ export function mayOffer<V extends Verb>(
   return can(asker.principal, verb, target, facts).allow;
 }
 
+/**
+ * What a person may do with an application's changes (SPEC §3.2a): read them, and comment on them
+ * — the application as the projects HQ places in it. Main's Gitea read rule: Read only on the
+ * organization, or Basic user on one of those projects; a Read only grant alone sees the
+ * application listed and not its changes.
+ */
+export function changeOffers(
+  asker: OfferAsker | null,
+  placements: ReadonlyMap<string, HqPlacement>,
+  appId: string,
+): { readonly read: boolean; readonly comment: boolean } {
+  const projectIds = [...placements]
+    .filter(([, placed]) => placed.appId === appId)
+    .map(([projectId]) => projectId);
+  return {
+    read: mayOffer(asker, "read_change", { projectIds }),
+    comment: mayOffer(asker, "comment_change", { projectIds }),
+  };
+}
+
 /** What HQ holds a project as, from where it places it: `none` where it places it nowhere. */
 export function heldOf(project: { readonly hq?: HqPlacement | undefined }): Held {
   const placed = project.hq;

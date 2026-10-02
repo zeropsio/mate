@@ -4,12 +4,12 @@
  * say. A long run shows its newest five and opens whole in place ("Show all 19", D4). While they
  * are read, three rows hold their place; a read that fails says so, with *Try again*.
  */
-import { historyAge, shortCommit, type GiteaCommit } from "@t3tools/client-runtime/zerops";
+import { historyAge, shortCommit, type ChangeReadoutCommit } from "@t3tools/client-runtime/zerops";
 import { useState } from "react";
 
 import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
 
-import type { ReadoutPart } from "~/zerops/useZeropsChangeReadout";
+import type { ReadoutPart } from "~/zerops/useZeropsChangeDetail";
 
 import { commitFold } from "./ZeropsReview.logic";
 import { ReviewFailed, ReviewSection } from "./ZeropsReviewSurface";
@@ -22,7 +22,7 @@ export function ReviewCommits({
   now,
   onRetry,
 }: {
-  readonly commits: ReadoutPart<ReadonlyArray<GiteaCommit>>;
+  readonly commits: ReadoutPart<ReadonlyArray<ChangeReadoutCommit>>;
   readonly now: number;
   readonly onRetry: (() => void) | undefined;
 }) {
@@ -60,7 +60,7 @@ function CommitRows({
   now,
   onShowAll,
 }: {
-  readonly commits: ReadonlyArray<GiteaCommit>;
+  readonly commits: ReadonlyArray<ChangeReadoutCommit>;
   readonly all: boolean;
   readonly now: number;
   readonly onShowAll: () => void;
@@ -78,9 +78,7 @@ function CommitRows({
               </TooltipTrigger>
               <TooltipPopup>{commit.subject}</TooltipPopup>
             </Tooltip>
-            {commit.at === undefined ? null : (
-              <span className="rv-commit-at">{historyAge(commit.at, now)}</span>
-            )}
+            <span className="rv-commit-at">{historyAge(commit.at, now)}</span>
             <code className="rv-commit-sha">{shortCommit(commit.sha)}</code>
           </li>
         ))}

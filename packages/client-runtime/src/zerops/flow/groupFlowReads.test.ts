@@ -2,13 +2,13 @@ import { describe, expect, it } from "vite-plus/test";
 
 import { project, service } from "../data/__fixtures__/index.ts";
 import type { ProjectRef } from "../data/types.ts";
-import type { ForgeFact, ForgeStore, PullKey } from "../forge/forgeStore.ts";
+import type { ForgeFact, ForgeStore } from "../forge/forgeStore.ts";
 import type { Known, Shown } from "../knowledge/known.ts";
 import { deployedVersion } from "../groupRows.ts";
 import { RECIPE_TIER_PATHS } from "../recipeTier.ts";
 import type { DeploymentStore } from "./deploymentStore.ts";
 import type { Deployment, StopService } from "./deployment.ts";
-import { pullKey, releaseContentKey, statusKey } from "./groupFlow.ts";
+import { releaseContentKey, statusKey } from "./groupFlow.ts";
 import {
   groupFlowFacts,
   groupFlowInputs,
@@ -34,10 +34,6 @@ function forge(held: ReadonlyArray<readonly [ForgeFact, Shown<unknown>]>): Forge
   return {
     read: (fact: ForgeFact) =>
       byKey.get(JSON.stringify(fact)) ?? { state: "unread", waitingFor: null },
-    mergeState: (pull: PullKey) =>
-      byKey.has(JSON.stringify({ kind: "pull", ...pull }))
-        ? known({ kind: "open", mergeability: { kind: "mergeable" }, checks: known("none") })
-        : { state: "unread", waitingFor: null },
   } as unknown as ForgeStore;
 }
 
@@ -75,35 +71,25 @@ const tierYaml = (hostname: string, repository: string) =>
 const HELD: ReadonlyArray<readonly [ForgeFact, Shown<unknown>]> = [
   [tier(RECIPE_TIER_PATHS.stage), known(null)],
   [tier(RECIPE_TIER_PATHS.production), known(tierYaml("appdev", "appdev"))],
-  [{ kind: "repos", origin: GITEA, org: "harbor" }, known([{ name: "appdev" }])],
   [
     { kind: "declarations", ...repo("group") },
     known([{ name: "production", tier: "production", project: "p-prod", sources: "release" }]),
   ],
-  [{ kind: "open-pulls", ...repo("appdev") }, known([4])],
-  [
-    { kind: "pull", ...repo("appdev"), number: 4 },
-    known({ pull: { number: 4, title: "x", state: "open", head: { sha: "h4" } } }),
-  ],
 ];
 
 describe("a group flow's reads", () => {
-  it("demands what what is known so far names: the lists, each head's checks, production's main", () => {
+  it("demands what what is known so far names: the recipe, its declarations and tags, production's main", () => {
     const stores = {
       forge: forge(HELD),
       deployments: deployments(new Map([["p-prod", PRODUCTION_STOP]])),
     };
 
     expect(groupFlowFacts(stores, SOURCE)).toEqual([
-      { kind: "repos", origin: GITEA, org: "harbor" },
       { kind: "declarations", ...repo("group") },
       { kind: "tags", ...repo("group") },
       tier(RECIPE_TIER_PATHS.stage),
       tier(RECIPE_TIER_PATHS.production),
       { kind: "branch", ...repo("appdev"), branch: "main" },
-      { kind: "open-pulls", ...repo("appdev") },
-      { kind: "merged-pulls", ...repo("appdev") },
-      { kind: "statuses", ...repo("appdev"), sha: "h4" },
     ]);
   });
 
@@ -114,11 +100,6 @@ describe("a group flow's reads", () => {
     };
     const inputs = groupFlowInputs(stores, SOURCE);
 
-    expect(inputs.repos).toMatchObject({ state: "known", value: ["appdev"] });
-    expect(inputs.pulls.get(pullKey("appdev", 4))).toMatchObject({
-      state: "known",
-      value: { pull: { number: 4 }, state: { kind: "open" } },
-    });
     expect(inputs.stops.get("p-prod")).toBe(PRODUCTION_STOP);
     expect(inputs.mainHeads.get("appdev")).toEqual({ state: "unread", waitingFor: null });
 
@@ -232,7 +213,7 @@ describe("a group flow's reads", () => {
     const inputs = unboundGroupFlowInputs(SOURCE);
     const waiting = { state: "unread", waitingFor: "access-grant" };
     expect(inputs.members).toBe(SOURCE.members);
-    for (const shown of [inputs.declarations, inputs.repos, inputs.tags, inputs.tiers]) {
+    for (const shown of [inputs.declarations, inputs.tags, inputs.tiers]) {
       expect(shown).toEqual(waiting);
     }
   });
@@ -254,19 +235,5 @@ describe("a group flow's reads", () => {
       sha: "s1",
     });
     expect(groupFlowInputs(stores, SOURCE).statuses.get(statusKey("group", "s1"))).toBe(approved);
-  });
-
-  it("reads each repository's recent landings", () => {
-    const landings = known([{ number: 3, title: "x", state: "closed", merged: true }]);
-    const stores = {
-      forge: forge([...HELD, [{ kind: "merged-pulls", ...repo("appdev") }, landings]]),
-      deployments: deployments(new Map([["p-prod", PRODUCTION_STOP]])),
-    };
-
-    expect(groupFlowFacts(stores, SOURCE)).toContainEqual({
-      kind: "merged-pulls",
-      ...repo("appdev"),
-    });
-    expect(groupFlowInputs(stores, SOURCE).merged.get("appdev")).toBe(landings);
   });
 });

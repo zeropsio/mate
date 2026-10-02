@@ -1,4 +1,5 @@
 import type { HqApi, HqStructure, HqStructureEvent } from "@t3tools/client-runtime/zerops/hq";
+import type { HqChange } from "@t3tools/shared/hqChanges";
 import { describe, expect, it, vi } from "vite-plus/test";
 
 import type { HqStructureView } from "../state/zerops";
@@ -63,11 +64,52 @@ function harness(remembered?: { readonly structure: HqStructure; readonly readAt
 }
 
 describe("driveHqStructure", () => {
+  it("carries each application's changes from its stream, and starts them over with each snapshot", async () => {
+    const change: HqChange = {
+      appId: "app-1",
+      repo: "app",
+      number: 3,
+      mateProjectId: "p1",
+      title: "Add a /status page",
+      body: "",
+      state: "open",
+      head: "a".repeat(40),
+      mergedSha: null,
+      landedHead: null,
+      openedAt: "2026-10-02T09:00:00.000Z",
+      mergedAt: null,
+      closedAt: null,
+      updatedAt: "2026-10-02T09:00:00.000Z",
+      mergeability: "clean",
+      behind: false,
+    };
+    const merged: HqChange = { ...change, state: "merged", mergedAt: "2026-10-02T10:00:00.000Z" };
+    const api = streamingApi([
+      {
+        events: [
+          { kind: "snapshot", structure: ACME, changes: new Map([["app-1", [change]]]) },
+          { kind: "changes", appId: "app-1", changes: [merged] },
+        ],
+        end: "close",
+      },
+      { events: [{ kind: "snapshot", structure: ACME, changes: new Map() }], end: "hang" },
+    ]);
+    const h = harness();
+    const stop = new AbortController();
+    const driving = driveHqStructure({ ...h.deps, api, signal: stop.signal });
+    await vi.waitFor(() => expect(h.views.at(-1)?.changes).toEqual(new Map()));
+    stop.abort();
+    await driving;
+
+    expect(h.views.map((view) => view.changes)).toContainEqual(new Map([["app-1", [change]]]));
+    expect(h.views.map((view) => view.changes)).toContainEqual(new Map([["app-1", [merged]]]));
+  });
+
   it("draws what is remembered at once, then HQ's snapshot and its changes, each remembered", async () => {
     const api = streamingApi([
       {
         events: [
-          { kind: "snapshot", structure: ACME },
+          { kind: "snapshot", structure: ACME, changes: null },
           { kind: "change", appId: "app-2", app: BETA },
         ],
         end: "hang",
@@ -83,6 +125,7 @@ describe("driveHqStructure", () => {
     expect(h.views[0]).toEqual({
       organizationId: "org-1",
       structure: { ungrouped: [], apps: [] },
+      changes: null,
       readAt: 1_000,
       current: false,
       unavailableSince: null,
@@ -99,9 +142,12 @@ describe("driveHqStructure", () => {
 
   it("says since when HQ is unavailable, keeps the last structure, and starts over from a fresh snapshot", async () => {
     const api = streamingApi([
-      { events: [{ kind: "snapshot", structure: ACME }], end: "fail" },
+      { events: [{ kind: "snapshot", structure: ACME, changes: null }], end: "fail" },
       { events: [], end: "fail" },
-      { events: [{ kind: "snapshot", structure: { ungrouped: [], apps: [BETA] } }], end: "hang" },
+      {
+        events: [{ kind: "snapshot", structure: { ungrouped: [], apps: [BETA] }, changes: null }],
+        end: "hang",
+      },
     ]);
     const h = harness();
     const stop = new AbortController();
@@ -127,7 +173,7 @@ describe("driveHqStructure", () => {
     const api = streamingApi([
       {
         events: [
-          { kind: "snapshot", structure: ACME },
+          { kind: "snapshot", structure: ACME, changes: null },
           { pingAfterMs: 20_000, tick: h.tick },
         ],
         end: "fail",
@@ -152,8 +198,8 @@ describe("driveHqStructure", () => {
     vi.useFakeTimers();
     try {
       const api = streamingApi([
-        { events: [{ kind: "snapshot", structure: ACME }], end: "hang" },
-        { events: [{ kind: "snapshot", structure: ACME }], end: "hang" },
+        { events: [{ kind: "snapshot", structure: ACME, changes: null }], end: "hang" },
+        { events: [{ kind: "snapshot", structure: ACME, changes: null }], end: "hang" },
       ]);
       const h = harness();
       const stop = new AbortController();
@@ -175,6 +221,7 @@ describe("hqOutageLine", () => {
   const view = (over: Partial<HqStructureView>): HqStructureView => ({
     organizationId: "org-1",
     structure: ACME,
+    changes: null,
     readAt: at(13, 58),
     current: false,
     unavailableSince: at(14, 5),

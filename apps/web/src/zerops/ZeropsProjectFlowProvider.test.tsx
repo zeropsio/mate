@@ -1,4 +1,4 @@
-import { flowVerbKey, GiteaApiError, type ZeropsProject } from "@t3tools/client-runtime/zerops";
+import { flowVerbKey, type ZeropsProject } from "@t3tools/client-runtime/zerops";
 import {
   ZeropsAccountId,
   ZeropsOrganizationId,
@@ -10,16 +10,25 @@ import {
 } from "@t3tools/client-runtime/zerops/data";
 import type { DeploymentStore, StopService } from "@t3tools/client-runtime/zerops/flow";
 import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
+import { changeUrl, type HqChange } from "@t3tools/shared/hqChanges";
+import { RegistryContext } from "@effect/atom-react";
+import { AtomRegistry } from "effect/unstable/reactivity";
 import { act, createElement } from "react";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
+import {
+  hqStructureAtom,
+  zeropsSessionAtom,
+  type HqStructureView,
+  type ZeropsSessionView,
+} from "../state/zerops";
 import { bindAccountFlow } from "./accountForge";
 import { HeldInventoryContext } from "./inventoryContext";
 import { useZeropsProjectFlow, type ZeropsProjectFlowValue } from "./projectFlowContext";
 import {
   activeDeployOf,
   HELD_VERB_MS,
-  MERGE_HEAD_MOVED,
+  HQ_CHANGES_UNANSWERED,
   ZeropsProjectFlowProvider,
 } from "./ZeropsProjectFlowProvider";
 
@@ -50,12 +59,7 @@ const access = vi.hoisted(() => ({
 const verbs = vi.hoisted(() => ({
   client: null as unknown,
   deploys: null as unknown,
-  forge: {
-    repositories: [],
-    pullRequests: [],
-    merged: [],
-    released: { releases: [], tags: [] },
-  } as unknown,
+  forge: { released: { releases: [], tags: [] } } as unknown,
   invalidated: [] as Array<readonly [string, unknown]>,
   forgeFailures: new Map<string, string>(),
 }));
@@ -110,6 +114,16 @@ vi.mock("./giteaProject", () => ({
           state: { url: GITEA, brokerUrl: "https://broker.example.test" },
         }
       : undefined,
+}));
+/** The organization's official HQ; what its stream says is each test's. */
+const hq = vi.hoisted(() => ({
+  account: {
+    hq: { kind: "official", projectId: "hq-project", address: "https://hq.example.test" },
+  },
+}));
+vi.mock("./accountHq", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./accountHq")>()),
+  useAccountHq: () => hq.account,
 }));
 vi.mock("./useZeropsRegistry", () => ({
   useZeropsRegistry: () => ({ registry: { groups: registryGroups.groups } }),
@@ -223,12 +237,7 @@ describe("ZeropsProjectFlowProvider", () => {
     verbs.deploys = null;
     verbs.invalidated = [];
     verbs.forgeFailures = new Map();
-    verbs.forge = {
-      repositories: [],
-      pullRequests: [],
-      merged: [],
-      released: { releases: [], tags: [] },
-    };
+    verbs.forge = { released: { releases: [], tags: [] } };
     vi.unstubAllGlobals();
   });
 
@@ -516,7 +525,7 @@ describe("ZeropsProjectFlowProvider", () => {
     expect(seen.at(-1)?.trouble).toBeNull();
 
     await act(async () => {
-      await seen.at(-1)?.mergePullRequest("harbor", { repository: "app", number: 7 });
+      await seen.at(-1)?.rollBack("g1", "v1.0.0");
     });
     expect(seen.at(-1)?.trouble).toBe("Signing in to Gitea again. Try it again in a moment.");
 
@@ -540,7 +549,7 @@ describe("ZeropsProjectFlowProvider", () => {
       root.render(createElement(ZeropsProjectFlowProvider, null, createElement(Probe)));
     });
     await act(async () => {
-      await seen.at(-1)?.mergePullRequest("harbor", { repository: "app", number: 7 });
+      await seen.at(-1)?.rollBack("g1", "v1.0.0");
     });
     expect(seen.at(-1)?.trouble).toBe("Signing in to Gitea again. Try it again in a moment.");
 
@@ -570,8 +579,10 @@ describe("ZeropsProjectFlowProvider", () => {
     await act(async () => {
       root.render(createElement(ZeropsProjectFlowProvider, null, createElement(Probe)));
     });
+    // The group's flow stands, so the press reaches the client it would act as.
+    expect(seen.at(-1)?.flows.has("g1")).toBe(true);
     await act(async () => {
-      await seen.at(-1)?.mergePullRequest("harbor", { repository: "app", number: 7 });
+      await seen.at(-1)?.rollBack("g1", "v1.0.0");
     });
     expect(seen.at(-1)?.trouble).toBeNull();
 
@@ -736,6 +747,30 @@ describe("ZeropsProjectFlowProvider", () => {
       },
     );
 
+    it("Release stops being pending once the forge has not answered again in time", async () => {
+      vi.useFakeTimers();
+      try {
+        const { seen, root } = await mountReleasable();
+        const key = flowVerbKey({ kind: "release", groupId: "g1" });
+        await act(async () => {
+          await seen.at(-1)!.release("g1");
+        });
+        await act(async () => {
+          vi.advanceTimersByTime(HELD_VERB_MS - 1);
+        });
+        expect(seen.at(-1)?.pending.has(key)).toBe(true);
+        await act(async () => {
+          vi.advanceTimersByTime(1);
+        });
+        expect(seen.at(-1)?.pending.has(key)).toBe(false);
+        await act(async () => {
+          root.unmount();
+        });
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
     it("Roll back tags main as read at the press while what production runs is not read yet", async () => {
       const { seen, tags, render, root } = await mountReleasable();
       const client = verbs.client as Record<string, unknown>;
@@ -755,166 +790,107 @@ describe("ZeropsProjectFlowProvider", () => {
       });
     });
   });
+});
 
-  describe("merge", () => {
-    async function mountMerging(merge: (head: string) => Promise<void>) {
-      gitea.readable = true;
-      verbs.client = {
-        mergePullRequest: (_owner: string, _repo: string, _number: number, head: string) =>
-          merge(head),
-      };
-      installTestDom();
-      const { createRoot } = await import("react-dom/client");
-      const seen: Array<ZeropsProjectFlowValue> = [];
-      function Probe() {
-        seen.push(useZeropsProjectFlow());
-        return null;
-      }
-      const root = createRoot(document.createElement("div") as unknown as Element);
-      await act(async () => {
-        root.render(createElement(ZeropsProjectFlowProvider, null, createElement(Probe)));
-      });
-      await act(async () => {
-        await seen
-          .at(-1)
-          ?.mergePullRequest("harbor", { repository: "app", number: 7, headSha: "c0ffee" });
-      });
-      await act(async () => {
-        root.unmount();
-      });
-      return seen.at(-1);
+describe("a Mate's changes in a project's flow", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  /** `app#n` of `g1` as HQ's stream says it. */
+  const change = (over: Partial<HqChange> = {}): HqChange => ({
+    appId: "g1",
+    repo: "app",
+    number: 7,
+    mateProjectId: "mate-1",
+    title: "Add a /status page",
+    body: "",
+    state: "open",
+    head: "c0ffee",
+    mergedSha: null,
+    landedHead: null,
+    openedAt: "2026-10-02T09:00:00.000Z",
+    mergedAt: null,
+    closedAt: null,
+    updatedAt: "2026-10-02T09:00:00.000Z",
+    mergeability: "clean",
+    behind: false,
+    ...over,
+  });
+
+  /** The flow of `g1` while HQ's stream for org-1 says `view`. */
+  async function flowOf(view: HqStructureView) {
+    const atoms = AtomRegistry.make();
+    atoms.set(zeropsSessionAtom, {
+      status: "signed-in",
+      organizationStatus: "selected",
+      activeOrganization: { organizationId: "org-1" },
+    } as ZeropsSessionView);
+    atoms.set(hqStructureAtom, view);
+    installTestDom();
+    const { createRoot } = await import("react-dom/client");
+    const seen: Array<ZeropsProjectFlowValue> = [];
+    function Probe() {
+      seen.push(useZeropsProjectFlow());
+      return null;
     }
-
-    it("merge sends the shown head", async () => {
-      const heads: Array<string> = [];
-      await mountMerging(async (head) => {
-        heads.push(head);
-      });
-      expect(heads).toEqual(["c0ffee"]);
-    });
-
-    it.each([
-      {
-        name: "a head-out-of-date 409 reads as changed since opened",
-        refusal: new GiteaApiError(
-          "Gitea refused to merge the pull request.",
-          409,
-          "head out of date",
+    const root = createRoot(document.createElement("div") as unknown as Element);
+    await act(async () => {
+      root.render(
+        createElement(
+          RegistryContext.Provider,
+          { value: atoms },
+          createElement(ZeropsProjectFlowProvider, null, createElement(Probe)),
         ),
-        trouble: MERGE_HEAD_MOVED,
-      },
-      {
-        name: "any other 409 stays a refusal to retry",
-        refusal: new GiteaApiError(
-          "Gitea refused to merge the pull request. merge push out of date",
-          409,
-          "merge push out of date",
-        ),
-        trouble:
-          "Gitea would not merge it: Gitea refused to merge the pull request. merge push out of date",
-      },
-    ])("$name", async ({ refusal, trouble }) => {
-      const value = await mountMerging(async () => {
-        throw refusal;
-      });
-      expect(value?.trouble).toBe(trouble);
-    });
-
-    const MERGE_KEY = flowVerbKey({ kind: "merge", slug: "harbor", repository: "app", number: 7 });
-    const OPEN = { repository: "app", number: 7, headSha: "c0ffee" };
-
-    /** A group whose forge lists `app#7` open, merged by `merge`; the tree stays mounted. */
-    async function mountOpen(merge: () => Promise<void>) {
-      gitea.readable = true;
-      verbs.client = { mergePullRequest: merge };
-      verbs.forge = { ...(verbs.forge as object), pullRequests: [OPEN] };
-      installTestDom();
-      const { createRoot } = await import("react-dom/client");
-      const seen: Array<ZeropsProjectFlowValue> = [];
-      function Probe() {
-        seen.push(useZeropsProjectFlow());
-        return null;
-      }
-      const root = createRoot(document.createElement("div") as unknown as Element);
-      const render = () =>
-        act(async () => {
-          root.render(createElement(ZeropsProjectFlowProvider, null, createElement(Probe)));
-        });
-      await render();
-      await act(async () => {
-        await seen.at(-1)?.mergePullRequest("harbor", OPEN);
-      });
-      return { seen, render, root };
-    }
-
-    it("Merge stays pending between the merge landing and the forge reading it back", async () => {
-      const { seen, root } = await mountOpen(async () => {});
-      expect(verbs.invalidated.map(([groupId]) => groupId)).toEqual(["g1"]);
-      expect(seen.at(-1)?.pending.has(MERGE_KEY)).toBe(true);
-      await act(async () => {
-        root.unmount();
-      });
-    });
-
-    it.each([
-      {
-        name: "a forge answer that no longer lists the pull request open",
-        reread: () => {
-          verbs.forge = { ...(verbs.forge as object), pullRequests: [] };
-        },
-      },
-      {
-        name: "a forge re-read that fails",
-        reread: () => {
-          verbs.forgeFailures = new Map([["g1", "Gitea did not answer"]]);
-        },
-      },
-    ])("Merge stops being pending on $name", async ({ reread }) => {
-      const { seen, render, root } = await mountOpen(async () => {});
-      // A pass that still lists it open keeps Merge pending.
-      verbs.forge = { ...(verbs.forge as object) };
-      await render();
-      expect(seen.at(-1)?.pending.has(MERGE_KEY)).toBe(true);
-      reread();
-      await render();
-      expect(seen.at(-1)?.pending.has(MERGE_KEY)).toBe(false);
-      await act(async () => {
-        root.unmount();
-      });
-    });
-
-    it("a merge Gitea refused stops being pending at once and says why", async () => {
-      const { seen, root } = await mountOpen(async () => {
-        throw new GiteaApiError("Gitea refused to merge the pull request.", 405, "not mergeable");
-      });
-      expect(seen.at(-1)?.pending.has(MERGE_KEY)).toBe(false);
-      expect(seen.at(-1)?.trouble).toBe(
-        "Gitea would not merge it: Gitea refused to merge the pull request.",
       );
-      await act(async () => {
-        root.unmount();
-      });
     });
+    await act(async () => {
+      root.unmount();
+    });
+    return seen.at(-1)?.flows.get("g1");
+  }
 
-    it("Merge stops being pending once the forge has not read it back in time", async () => {
-      vi.useFakeTimers();
-      try {
-        const { seen, root } = await mountOpen(async () => {});
-        await act(async () => {
-          vi.advanceTimersByTime(HELD_VERB_MS - 1);
-        });
-        expect(seen.at(-1)?.pending.has(MERGE_KEY)).toBe(true);
-        await act(async () => {
-          vi.advanceTimersByTime(1);
-        });
-        expect(seen.at(-1)?.pending.has(MERGE_KEY)).toBe(false);
-        await act(async () => {
-          root.unmount();
-        });
-      } finally {
-        vi.useRealTimers();
-      }
-    });
+  const view = (over: Partial<HqStructureView>): HqStructureView => ({
+    organizationId: "org-1",
+    structure: null,
+    changes: null,
+    readAt: null,
+    current: true,
+    unavailableSince: null,
+    ...over,
+  });
+
+  it("come down HQ's stream: the open ones a push reached, and the merged, linked at HQ", async () => {
+    const flow = await flowOf(
+      view({
+        changes: new Map([
+          [
+            "g1",
+            [
+              change(),
+              change({ number: 8, head: null }),
+              change({
+                number: 6,
+                state: "merged",
+                mergedSha: "d00d",
+                mergedAt: "2026-10-02T08:00:00.000Z",
+              }),
+            ],
+          ],
+        ]),
+      }),
+    );
+    expect(flow?.changesKnown).toBe(true);
+    expect(flow?.pullRequests.map((pull) => pull.url)).toEqual([
+      changeUrl("https://hq.example.test", "g1", "app", 7),
+    ]);
+    expect(flow?.merged.map((pull) => pull.number)).toEqual([6]);
+  });
+
+  it("are not known, and say why, while HQ has never told them and does not answer", async () => {
+    const flow = await flowOf(view({ current: false, unavailableSince: 1 }));
+    expect(flow?.changesKnown).toBe(false);
+    expect(flow?.changesFailure).toBe(HQ_CHANGES_UNANSWERED);
   });
 });
 

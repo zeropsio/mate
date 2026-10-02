@@ -66,19 +66,18 @@ export interface ZeropsProjectFlow {
   readonly mainHeads: ReadonlyMap<string, string>;
   /** The tiers the recipe offers and the project lacks — the rows that ask. */
   readonly missing: ReadonlyArray<MissingEnvironmentRow>;
-  /** Every open pull request on the project's repositories, code and recipe. */
+  /** Every open change a push reached on the project's repositories, as HQ's stream says. */
   readonly pullRequests: ReadonlyArray<FlowPullRequest>;
   /**
-   * Whether Gitea has answered for the project: until then `pullRequests` is
-   * empty for want of an answer, not of a change, and the left menu draws the
-   * change rows it remembers (`menuMemory.ts`). A read that failed first is
-   * no answer — the next one usually is, a few seconds on — and one that
-   * fails after an answer keeps it (`flow/groupAnswers.ts`).
+   * Whether HQ's stream has told the project's changes: until then
+   * `pullRequests` is empty for want of an answer, not of a change, and the
+   * left menu draws the change rows it remembers (`menuMemory.ts`). Once told,
+   * they stand through a stream that goes quiet.
    */
   readonly changesKnown: boolean;
   /**
-   * Why its changes were never read: the Gitea read's failure while no answer is held — a 403 on
-   * the org, the broker down at load. `undefined` once any answer is held, or while none failed.
+   * Why its changes were never told: HQ not answering while none are held. `undefined` once
+   * they are, or while HQ answers.
    */
   readonly changesFailure?: string | undefined;
   /** The changes that have landed — what a conversation's timeline places. */
@@ -99,6 +98,11 @@ export type FlowVerbOutcome =
 
 export interface ZeropsProjectFlowValue {
   readonly giteaOrigin: string | undefined;
+  /**
+   * The organization's official HQ, whose addresses name a Mate's changes; `undefined` until its
+   * anchor is resolved, and nothing is read as one of its changes until then.
+   */
+  readonly hqAddress: string | undefined;
   /**
    * Whether what was read as the person stands: this tab holds a Gitea session, or is getting one
    * back after holding it — stale, with the cause in `trouble` after two failed tries. Without it
@@ -132,24 +136,6 @@ export interface ZeropsProjectFlowValue {
    * verb's refusal said, until the next verb.
    */
   readonly trouble: string | null;
-  /**
-   * Merges it in Gitea as the person, only at the head the person was shown; Gitea's own
-   * permissions are the gate.
-   */
-  readonly mergePullRequest: (
-    slug: string,
-    pull: Pick<FlowPullRequest, "repository" | "number" | "headSha">,
-  ) => Promise<FlowVerbOutcome>;
-  /** Opens one in Gitea as the person, from a branch onto the repository's default. */
-  readonly createPullRequest: (
-    slug: string,
-    input: {
-      readonly repository: string;
-      readonly head: string;
-      readonly base: string;
-      readonly title: string;
-    },
-  ) => Promise<void>;
   /** Tags what the stage runs as the next release (`release.ts`). */
   readonly release: (groupId: string) => Promise<FlowVerbOutcome>;
   /** A new tag listing an earlier release's commits (guide 5.6). */

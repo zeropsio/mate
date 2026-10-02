@@ -80,7 +80,7 @@ export async function addGroupEnvironment(input: {
   /** The organization's token list and the broker's grant write (`brokerGrantTokens`). */
   readonly tokens: BrokerGrantClient;
   /** The organization's HQ, where the registry lives. */
-  readonly hq: HqApi;
+  readonly hq: Pick<HqApi, "attachProject" | "structure">;
   readonly gitea: GiteaClient | null;
   readonly clientId: string;
   /** The organization's Gitea project, where the broker is, if it has one. */

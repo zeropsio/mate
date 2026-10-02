@@ -122,60 +122,11 @@ export interface GiteaCommit {
   readonly files?: ReadonlyArray<string> | undefined;
 }
 
-/**
- * One file a pull request changes, with the lines it adds and removes —
- * `GET /repos/{o}/{r}/pulls/{index}/files`.
- */
-export interface GiteaChangedFile {
-  /** Its path after the change; a deleted file's last path. */
-  readonly filename: string;
-  /** The path it had before a rename or a copy; absent otherwise. */
-  readonly previousFilename: string | undefined;
-  /** Gitea's word: `added`, `modified`, `deleted`, `renamed`, `copied`, `changed`. */
-  readonly status: string;
-  readonly additions: number;
-  readonly deletions: number;
-}
-
-/** Gitea's own shape for a changed file. */
-interface GiteaChangedFileWire {
-  readonly filename?: string | undefined;
-  readonly previous_filename?: string | undefined;
-  readonly status?: string | undefined;
-  readonly additions?: number | undefined;
-  readonly deletions?: number | undefined;
-}
-
 /** One file a commit touched. */
 export interface GiteaCommitFile {
   readonly filename: string;
   /** Gitea's word: `added`, `modified`, `removed`, `renamed`. */
   readonly status: string;
-}
-
-/**
- * One thing somebody said on a change.
- *
- * Gitea keeps a pull request's conversation on the issue of the same number,
- * so this is `/issues/{index}/comments` rather than anything under `/pulls`.
- * The body is Markdown as it was typed; nothing here renders it.
- */
-export interface GiteaIssueComment {
-  readonly id: number;
-  /** The login that wrote it — a Mate's is `mate-{projectId}`. */
-  readonly author: string | undefined;
-  readonly avatarUrl: string | undefined;
-  readonly body: string;
-  /** ISO-8601. */
-  readonly at: string | undefined;
-}
-
-/** Gitea's own shape for a comment. */
-interface GiteaIssueCommentWire {
-  readonly id?: number | undefined;
-  readonly user?: GiteaUser | undefined;
-  readonly body?: string | undefined;
-  readonly created_at?: string | undefined;
 }
 
 /** What a commit changed, as a page showing one needs it. */
@@ -261,8 +212,7 @@ export interface GiteaPullRequest {
   readonly html_url?: string | undefined;
   /**
    * Gitea's answer to "does it merge", which it recomputes after every push to
-   * either side: `false` or `null` for a while after one is not yet a verdict
-   * (`forge/mergeState.ts`).
+   * either side: `false` or `null` for a while after one is not yet a verdict.
    */
   readonly mergeable?: boolean | null | undefined;
   readonly merged?: boolean | undefined;
@@ -328,17 +278,6 @@ function commitStatusFromWire(wire: GiteaCommitStatusWire): GiteaCommitStatus {
   return { ...rest, state: state ?? status ?? "pending" };
 }
 
-/** A comment as the surfaces want it: who, what, when, and nothing else. */
-function issueComment(wire: GiteaIssueCommentWire): GiteaIssueComment {
-  return {
-    id: wire.id ?? 0,
-    author: wire.user?.login,
-    avatarUrl: wire.user?.avatar_url,
-    body: wire.body ?? "",
-    at: wire.created_at,
-  };
-}
-
 export interface GiteaActionRun {
   readonly id: number;
   readonly status?: string | undefined;
@@ -370,11 +309,6 @@ export interface GiteaUser {
 export interface GiteaClientOptions {
   /** Gitea's public origin. */
   readonly origin: string;
-  /**
-   * The origin of this Gitea's broker, where known. A change's pictures are read through it
-   * ({@link GiteaClient.picture}): Gitea itself refuses a browser's preflight of its attachments.
-   */
-  readonly brokerOrigin?: string | undefined;
   /** The access token, or a way to read the current one. */
   readonly token: string | (() => string);
   readonly fetch: typeof globalThis.fetch;
@@ -398,8 +332,6 @@ export interface GiteaClient {
   getOrganization(slug: string): Promise<GiteaOrganization | undefined>;
 
   getRepository(owner: string, repo: string): Promise<GiteaRepository | undefined>;
-  /** Every repository of an org, page by page — the group's own and its services'. */
-  listOrganizationRepositories(org: string): Promise<ReadonlyArray<GiteaRepository>>;
   /** Every repository this person has access to, page by page. */
   listUserRepositories(): Promise<ReadonlyArray<GiteaRepository>>;
   /**
@@ -459,19 +391,6 @@ export interface GiteaClient {
       | { readonly state?: "open" | "closed" | "all"; readonly limit?: number | undefined }
       | undefined,
   ): Promise<ReadonlyArray<GiteaPullRequest>>;
-  /**
-   * One pull request by number, whatever state it is in — `undefined` when
-   * there is none.
-   *
-   * The listings above carry the open ones, which is what every surface reads
-   * from. A change that has landed is still a change somebody links to, and
-   * its page has to be able to draw it (the owner, 2026-09-19).
-   */
-  getPullRequest(
-    owner: string,
-    repo: string,
-    number: number,
-  ): Promise<GiteaPullRequest | undefined>;
   createPullRequest(
     owner: string,
     repo: string,
@@ -487,54 +406,6 @@ export interface GiteaClient {
    * was shown; a head that moved since is refused with `409 head out of date`.
    */
   mergePullRequest(owner: string, repo: string, index: number, head: string): Promise<void>;
-  /**
-   * Every file a pull request changes, with its +/−, page by page — what a review lists before
-   * anyone merges it.
-   */
-  pullRequestFiles(
-    owner: string,
-    repo: string,
-    index: number,
-  ): Promise<ReadonlyArray<GiteaChangedFile>>;
-  /**
-   * The pull request's unified diff, as git writes it (`/pulls/{index}.diff`), read no further
-   * than `maxBytes`: a change that regenerates a lockfile can run to hundreds of megabytes.
-   */
-  pullRequestDiff(
-    owner: string,
-    repo: string,
-    index: number,
-    maxBytes: number,
-  ): Promise<GiteaDiffText>;
-
-  /**
-   * A picture this Gitea serves — an attachment of a change, its description's screenshots — read
-   * as the person, as bytes a page can show (`URL.createObjectURL`). A private repository's
-   * pictures answer nobody without a token, and a page's own `<img>` carries none. Only an address
-   * on this Gitea is read, and the token goes nowhere but there and its broker.
-   *
-   * An attachment (`/attachments/{uuid}`) is read through the broker, where one is known: from a
-   * browser on another origin, Gitea's own read fails as a network error with no status — the
-   * bearer makes it preflight, and Gitea 1.27.2 answers the preflight of `/attachments/{uuid}`
-   * with a 303 to its sign-in, not its CORS headers, and no API route serves an attachment's
-   * bytes (measured 2026-09-29). The broker's `GET /person/attachments/{uuid}` forwards the
-   * person's token to Gitea and answers every origin; it relays raster pictures only.
-   */
-  picture(url: string): Promise<Blob>;
-
-  /** What has been said on a change, oldest first — Gitea's own order. */
-  listIssueComments(
-    owner: string,
-    repo: string,
-    index: number,
-  ): Promise<ReadonlyArray<GiteaIssueComment>>;
-  /** Says something on a change, as the person. */
-  createIssueComment(
-    owner: string,
-    repo: string,
-    index: number,
-    body: string,
-  ): Promise<GiteaIssueComment>;
 
   createTag(
     owner: string,
@@ -617,25 +488,6 @@ const PAGE_SIZE = 50;
 /** More pages than any account here has repositories for; a stop, not a target. */
 const MAX_PAGES = 40;
 
-/** An attachment's address on Gitea, as its own editor and its API write it. */
-const ATTACHMENT_PATH =
-  /^\/(?:[^/]+\/[^/]+\/)?attachments\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/u;
-
-/** Where the broker reads an attachment of its Gitea for the person; `undefined` for anything else. */
-function brokeredPicture(url: string, brokerOrigin: string | undefined): string | undefined {
-  if (brokerOrigin === undefined) return undefined;
-  let address: URL;
-  try {
-    address = new URL(url);
-  } catch {
-    return undefined;
-  }
-  const uuid = ATTACHMENT_PATH.exec(address.pathname)?.[1];
-  return uuid === undefined
-    ? undefined
-    : `${brokerOrigin.trim().replace(/\/+$/u, "")}/person/attachments/${uuid}`;
-}
-
 export function createGiteaClient(options: GiteaClientOptions): GiteaClient {
   const base = `${options.origin.trim().replace(/\/+$/u, "")}${API_PREFIX}`;
   const tokenOf = () => (typeof options.token === "function" ? options.token() : options.token);
@@ -649,8 +501,6 @@ export function createGiteaClient(options: GiteaClientOptions): GiteaClient {
     input: {
       readonly method: string;
       readonly path: string;
-      /** The whole address, for a read outside the API — always one on this Gitea. */
-      readonly url?: string | undefined;
       readonly query?: Readonly<Record<string, string | number | undefined>> | undefined;
       readonly body?: unknown;
       readonly accept?: string;
@@ -673,7 +523,7 @@ export function createGiteaClient(options: GiteaClientOptions): GiteaClient {
         : { signal: caller, rearm: () => undefined, done: () => undefined };
     const arrived = input.deadline === "idle" ? rearm : () => undefined;
     try {
-      const response = await options.fetch(input.url ?? `${base}${input.path}${suffix}`, {
+      const response = await options.fetch(`${base}${input.path}${suffix}`, {
         method: input.method,
         headers: {
           authorization: `Bearer ${tokenOf()}`,
@@ -763,12 +613,6 @@ export function createGiteaClient(options: GiteaClientOptions): GiteaClient {
       optional<GiteaRepository>(
         { method: "GET", path: `/repos/${enc(owner)}/${enc(repo)}` },
         "read the repository",
-      ),
-
-    listOrganizationRepositories: (org) =>
-      paged<GiteaRepository>(
-        { method: "GET", path: `/orgs/${enc(org)}/repos` },
-        "list the org's repositories",
       ),
 
     listUserRepositories: () =>
@@ -871,14 +715,6 @@ export function createGiteaClient(options: GiteaClientOptions): GiteaClient {
         "write the files",
       ),
 
-    // A number that is not there is an answer, not a failure: `optional`
-    // turns the forge's 404 into `undefined` and the caller says so.
-    getPullRequest: (owner, repo, number) =>
-      optional<GiteaPullRequest>(
-        { method: "GET", path: `/repos/${enc(owner)}/${enc(repo)}/pulls/${String(number)}` },
-        "read the pull request",
-      ),
-
     listPullRequests: (owner, repo, listOptions) =>
       json<ReadonlyArray<GiteaPullRequest>>(
         {
@@ -919,87 +755,6 @@ export function createGiteaClient(options: GiteaClientOptions): GiteaClient {
           },
         },
         "merge the pull request",
-      ),
-
-    pullRequestFiles: async (owner, repo, index) =>
-      (
-        await paged<GiteaChangedFileWire>(
-          {
-            method: "GET",
-            path: `/repos/${enc(owner)}/${enc(repo)}/pulls/${String(index)}/files`,
-          },
-          "list the pull request's files",
-        )
-      )
-        .filter((file) => (file.filename ?? "").length > 0)
-        .map((file) => ({
-          filename: file.filename ?? "",
-          previousFilename:
-            file.previous_filename === undefined || file.previous_filename.length === 0
-              ? undefined
-              : file.previous_filename,
-          status: file.status ?? "modified",
-          additions: file.additions ?? 0,
-          deletions: file.deletions ?? 0,
-        })),
-
-    pullRequestDiff: (owner, repo, index, maxBytes) =>
-      send(
-        {
-          method: "GET",
-          path: `/repos/${enc(owner)}/${enc(repo)}/pulls/${String(index)}.diff`,
-          accept: "text/plain",
-          // A change of fifty files is a long answer on a slow link; only a diff that stops
-          // arriving ends, as a job's log does.
-          deadline: "idle",
-        },
-        async (response, arrived) => {
-          if (!response.ok) await fail(response, "hand over the pull request's diff");
-          return textUpTo(response, arrived, maxBytes);
-        },
-      ),
-
-    picture: (url) => {
-      if (!onOrigin(url, options.origin)) {
-        return Promise.reject(new GiteaApiError("That picture is not on this Gitea.", 0));
-      }
-      return send(
-        // A screenshot can run to megabytes: only one that stops arriving ends.
-        {
-          method: "GET",
-          path: "",
-          url: brokeredPicture(url, options.brokerOrigin) ?? url,
-          accept: "image/*",
-          deadline: "idle",
-        },
-        async (response, arrived) => {
-          if (!response.ok) return fail(response, "hand over the picture");
-          return blobOf(response, arrived);
-        },
-      );
-    },
-
-    listIssueComments: async (owner, repo, index) => {
-      const wire = await json<ReadonlyArray<GiteaIssueCommentWire>>(
-        {
-          method: "GET",
-          path: `/repos/${enc(owner)}/${enc(repo)}/issues/${index}/comments`,
-        },
-        "list what was said on the change",
-      );
-      return wire.map(issueComment);
-    },
-
-    createIssueComment: async (owner, repo, index, body) =>
-      issueComment(
-        await json<GiteaIssueCommentWire>(
-          {
-            method: "POST",
-            path: `/repos/${enc(owner)}/${enc(repo)}/issues/${index}/comments`,
-            body: { body },
-          },
-          "say that on the change",
-        ),
       ),
 
     createTag: (owner, repo, input) =>
@@ -1158,70 +913,6 @@ export function createGiteaClient(options: GiteaClientOptions): GiteaClient {
         },
       ),
   };
-}
-
-/** Whether `url` is an address on `origin` — the same scheme, host and port. */
-function onOrigin(url: string, origin: string): boolean {
-  try {
-    return new URL(url).origin === new URL(origin).origin;
-  } catch {
-    return false;
-  }
-}
-
-/** The body as bytes of its own type, saying each time more of it arrived. */
-async function blobOf(response: Response, arrived: () => void): Promise<Blob> {
-  const type = response.headers.get("content-type") ?? "";
-  if (response.body === null) return new Blob([], { type });
-  const reader = response.body.getReader();
-  const parts: Array<Uint8Array<ArrayBuffer>> = [];
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    arrived();
-    parts.push(new Uint8Array(value));
-  }
-  return new Blob(parts, { type });
-}
-
-/** A diff as far as it was read: `cut` where it went on past what was read. */
-export interface GiteaDiffText {
-  readonly text: string;
-  readonly cut: boolean;
-}
-
-/**
- * The body as text, no further than `maxBytes`: past them the read stops, and the rest of the
- * body is never fetched. The text may end inside a line, or a character, where it was cut.
- */
-async function textUpTo(
-  response: Response,
-  arrived: () => void,
-  maxBytes: number,
-): Promise<GiteaDiffText> {
-  if (response.body === null) {
-    const text = await response.text();
-    return text.length > maxBytes
-      ? { text: text.slice(0, maxBytes), cut: true }
-      : { text, cut: false };
-  }
-  const reader = response.body.getReader();
-  const decoder = new TextDecoder();
-  let text = "";
-  let bytes = 0;
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) return { text: text + decoder.decode(), cut: false };
-    arrived();
-    const room = maxBytes - bytes;
-    if (value.byteLength > room) {
-      text += decoder.decode(value.subarray(0, room));
-      await reader.cancel().catch(() => undefined);
-      return { text, cut: true };
-    }
-    bytes += value.byteLength;
-    text += decoder.decode(value, { stream: true });
-  }
 }
 
 /** The body as text, saying each time more of it arrived. */

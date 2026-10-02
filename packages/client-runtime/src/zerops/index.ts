@@ -268,16 +268,13 @@ export {
 } from "./groupReach.ts";
 export {
   gitCheckoutHostnames,
-  checkDotTone,
-  checkTone,
-  checkWord,
   environmentForBranch,
   gitActionAllowed,
   gitBlock,
   gitCheckoutLine,
-  gitChecks,
   gitTrouble,
   gitVerdict,
+  mateChangeIn,
   pullRequestBlocked,
   pullRequestBlockedReason,
   type GitBlock,
@@ -287,20 +284,11 @@ export {
   type GitBlockState,
   type GitChangedFile,
   type GitCheckoutState,
-  type GitCheckRow,
-  type GitCheckTone,
-  type GitForgePullRequest,
-  type GitForgeState,
+  type GitChangeState,
   type GitVerdict,
   type PullRequestBlocked,
 } from "./gitTab.ts";
-export {
-  groupForGiteaOwner,
-  parseGiteaChangeUrl,
-  resolveGiteaChange,
-  type GiteaChangeLink,
-  type GiteaGroupChange,
-} from "./giteaChangeLink.ts";
+export { linkedChanges, linksChange } from "./changeLinks.ts";
 export {
   branchLabel,
   mateBotLogin,
@@ -425,7 +413,6 @@ export {
   changeRemarks,
   type ChangeRemark,
 } from "./changeConversation.ts";
-export { changeVerdict, type ChangeVerdict, type ChangeVerdictKind } from "./changeVerdict.ts";
 export {
   REVIEW_LABEL,
   REVIEW_RELEASE_LABEL,
@@ -449,6 +436,12 @@ export {
   type RollbackReviewInput,
 } from "./reviewVerdict.ts";
 export {
+  changeReadout,
+  type ChangeReadout,
+  type ChangeReadoutCommit,
+  type ChangeReadoutFile,
+} from "./changeReadout.ts";
+export {
   changeFileParts,
   parseChangeDiff,
   type ChangeDiffFile,
@@ -463,17 +456,14 @@ export {
   type GiteaActionJob,
   type GiteaActionRun,
   type GiteaBranch,
-  type GiteaChangedFile,
   type GiteaClient,
   type GiteaClientOptions,
   type GiteaCommit,
   type GiteaCommitDetail,
   type GiteaCommitFile,
   type GiteaCommitStatus,
-  type GiteaDiffText,
   type GiteaFile,
   type GiteaFileChange,
-  type GiteaIssueComment,
   type GiteaIssueSearchHit,
   type GiteaOrganization,
   type GiteaPullRequest,
@@ -483,7 +473,8 @@ export {
   type GiteaUser,
 } from "./giteaClient.ts";
 export {
-  flowPullRequest,
+  flowChange,
+  flowChanges,
   flowVerbKey,
   flowVerbLabel,
   isRecipeProposal,
@@ -524,7 +515,14 @@ export {
   type GiteaOverviewPullRequest,
   type GiteaOverviewRepository,
 } from "./giteaOverview.ts";
-export { heldOf, mayOffer, offerAsker, type OfferAsker, type OfferViewer } from "./offers.ts";
+export {
+  changeOffers,
+  heldOf,
+  mayOffer,
+  offerAsker,
+  type OfferAsker,
+  type OfferViewer,
+} from "./offers.ts";
 export {
   canWriteRegistry,
   onlyTheseCanAddAProject,
