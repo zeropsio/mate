@@ -78,6 +78,20 @@ describe("stopComing — where a stage or a production coming up has got", () =>
     },
     { case: "running at its address: up", over: {}, coming: undefined },
     {
+      case: "a redeploy over a serving stage, its runtime upgrading: never coming up again",
+      over: { services: [db("ACTIVE"), app("UPGRADING")], building: true },
+      coming: undefined,
+    },
+    {
+      case: "production's next release upgrading its runtime: the release's line, never coming up",
+      over: {
+        tier: "production" as const,
+        services: [db("ACTIVE"), app("UPGRADING")],
+        building: true,
+      },
+      coming: undefined,
+    },
+    {
       case: "serving while what runs there is unread (a reload): up, never a first deploy",
       over: { deployed: undefined },
       coming: undefined,
@@ -90,6 +104,11 @@ describe("stopComing — where a stage or a production coming up has got", () =>
         firstDeploy: { kind: "runner", why: "waking" } as FirstDeploy,
       },
       coming: { kind: "coming", step: "awaiting-deploy" },
+    },
+    {
+      case: "a first deploy that failed: the stage didn't come up",
+      over: { deployed: false, routes: 0, firstDeploy: { kind: "failed" } as FirstDeploy },
+      coming: { kind: "failed", reason: "its first deploy failed" },
     },
     {
       case: "a first deploy known not to have run: the runner holding it",
@@ -255,9 +274,22 @@ describe("firstDeploy — where a stage's first deploy stands while it runs noth
       first: { kind: "awaited" },
     },
     {
-      case: "the runner holds it however long ago it was asked for",
+      case: "a runner not started, asked a window ago: nothing promised any more",
       over: { runner: stuck, askedAt: ago(COMING_UP_WINDOW_MS * 4) },
-      first: { kind: "runner", why: "not-started" },
+      first: { kind: "awaited" },
+    },
+    {
+      case: "a stopped runner, asked a window ago: no job queued that would wake it",
+      over: {
+        runner: { kind: "unable", why: "waking" } as const,
+        askedAt: ago(COMING_UP_WINDOW_MS),
+      },
+      first: { kind: "awaited" },
+    },
+    {
+      case: "a runner not there, its ask unknown: nothing promised",
+      over: { runner: { kind: "unable", why: "missing" } as const, askedAt: undefined },
+      first: { kind: "awaited" },
     },
   ])("$case", ({ over, first }) => {
     expect(firstDeploy({ ...asked, ...over })).toEqual(first);

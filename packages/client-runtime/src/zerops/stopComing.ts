@@ -69,7 +69,9 @@ export type FirstDeploy =
   /** Asked for within the window, and the group's runner is known able to run it. */
   | { readonly kind: "on-its-way" }
   /** Asked for, and the group's runner cannot run it. */
-  | { readonly kind: "runner"; readonly why: RunnerTrouble };
+  | { readonly kind: "runner"; readonly why: RunnerTrouble }
+  /** A build of it was seen to end with nothing running (`Deployment.afterBuild`). */
+  | { readonly kind: "failed" };
 
 /**
  * How long after its project was made an environment may still be coming up. The owner's stage
@@ -139,7 +141,7 @@ export function groupRunner(input: {
 /**
  * Where a stage's first deploy stands while it runs nothing: asked for once the group declares
  * the stage and `main` has code — the broker deploys `main` to a stage as its declaration lands —
- * held by a runner known unable to run, or on its way behind one known able, for
+ * held by a runner known unable to run, or on its way behind one known able — either only for
  * {@link COMING_UP_WINDOW_MS} after it was asked for. A runner not known, or a window gone by,
  * is the neutral wait: nothing is promised that the client cannot see.
  */
@@ -155,10 +157,12 @@ export function firstDeploy(input: {
 }): FirstDeploy {
   if (!input.declared || input.mainHasCode !== true) return { kind: "awaited" };
   if (input.runner === undefined) return { kind: "awaited" };
-  if (input.runner.kind === "unable") return { kind: "runner", why: input.runner.why };
+  // Every word about the deploy is bounded by its ask: past the window no job is queued — the
+  // broker stops a runner 15 min after its last one — and nothing is promised.
   const asked = input.askedAt === undefined ? Number.NaN : Date.parse(input.askedAt);
-  return Number.isNaN(asked) || input.nowMs - asked >= COMING_UP_WINDOW_MS
-    ? { kind: "awaited" }
+  if (Number.isNaN(asked) || input.nowMs - asked >= COMING_UP_WINDOW_MS) return { kind: "awaited" };
+  return input.runner.kind === "unable"
+    ? { kind: "runner", why: input.runner.why }
     : { kind: "on-its-way" };
 }
 
@@ -237,11 +241,10 @@ export function stopComing(input: {
   const others = input.services.filter((service) => !service.runtime);
   const running = (status: string) => status === "ACTIVE";
   // The platform turns a stage's address on only after its first build: one serving has run a
-  // deploy, read or not (a reload, a refused process demand).
+  // deploy, read or not (a reload, a refused process demand). A deploy over it — a redeploy, a
+  // release, its runtime UPGRADING — is that deploy's to say, never the place coming up again.
   const deployed = input.deployed ?? (input.routes > 0 ? true : undefined);
-  if (deployed === true && runtimes.every(({ status }) => running(status)) && input.routes > 0) {
-    return undefined;
-  }
+  if (deployed === true && input.routes > 0) return undefined;
   const brokenOther = others.find(({ status }) => failing(status));
   if (brokenOther !== undefined && deployed !== true) {
     return { kind: "failed", reason: `the ${brokenOther.hostname} didn’t start` };
@@ -269,6 +272,8 @@ export function stopComing(input: {
         return coming("deploy-on-its-way");
       case "runner":
         return { kind: "coming", step: "runner", why: first.why };
+      case "failed":
+        return { kind: "failed", reason: "its first deploy failed" };
     }
   }
   if (runtimes.some(({ status }) => !running(status))) return coming("build");
@@ -353,6 +358,17 @@ export function comingLine(
     : { fact: `${subject} coming up`, rest: STEP_WORDS[coming.step] };
 }
 
+/**
+ * The tone a stage's first deploy line wears beside its dot: busy while on its way, failed where it
+ * failed, off while it waits.
+ */
+export function firstDeployTone(first: FirstDeploy | undefined): "busy" | "failed" | "off" {
+  return first?.kind === "on-its-way" ? "busy" : first?.kind === "failed" ? "failed" : "off";
+}
+
+/** A stage whose first build was seen to end with nothing running. */
+export const FIRST_DEPLOY_FAILED = "First deploy failed";
+
 /** A stage's first deploy on its way, where its line would say nothing is deployed. */
 export const FIRST_DEPLOY_ON_ITS_WAY = "First deploy on its way";
 
@@ -366,6 +382,8 @@ export function firstDeployLine(first: FirstDeploy | undefined): string | undefi
       return FIRST_DEPLOY_ON_ITS_WAY;
     case "runner":
       return `Waiting for the runner · ${RUNNER_TROUBLE_WORDS[first.why]}`;
+    case "failed":
+      return FIRST_DEPLOY_FAILED;
     default:
       return undefined;
   }

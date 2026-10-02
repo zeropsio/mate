@@ -34,6 +34,7 @@ import {
   type GroupFlowProduction,
   type GroupFlowStop,
   type ZeropsPublicRoute,
+  firstDeployLine,
 } from "@t3tools/client-runtime/zerops";
 
 import { deployBuilding, type Deployment } from "@t3tools/client-runtime/zerops/flow";
@@ -697,7 +698,8 @@ function stopWord(stop: GroupFlowStop, deployedAt: string | undefined, nowMs: nu
     case "failed":
       return "Deploy failed";
     case "empty":
-      return "Not deployed yet";
+      // A first deploy asked for says where it stands, as the stage's cell does.
+      return firstDeployLine(stop.firstDeploy) ?? "Not deployed yet";
     case "checking":
       return "Checking…";
   }
@@ -820,7 +822,10 @@ export function stageMenu(input: {
     return {
       ...base,
       dot: chipDot(chip),
-      word: chip.state === "ok" ? stopWord(stop, stage.deployedAt, input.nowMs) : mainWord(chip),
+      word:
+        chip.state === "ok" || (chip.state === "empty" && stop.state === "empty")
+          ? stopWord(stop, stage.deployedAt, input.nowMs)
+          : mainWord(chip),
       tone: MENU_TONE[chip.state],
       note: troubleNote({ ...problem, nowMs: input.nowMs }),
       fix: fixProblemOf({ ...problem, name: stage.name }),

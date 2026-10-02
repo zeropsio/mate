@@ -9,7 +9,7 @@
  *
  * @module flow/stopDetail
  */
-import { firstDeployLine, type FirstDeploy } from "../stopComing.ts";
+import { firstDeployLine, firstDeployTone, type FirstDeploy } from "../stopComing.ts";
 import type { GroupEnvironmentTier } from "../groupEnvironments.ts";
 import {
   deployedVersion,
@@ -117,8 +117,7 @@ export function stopVerdict(input: {
     // A stage's first deploy asked for says where it stands, as its cell and the menu do.
     const first = tier === "stage" ? firstDeployLine(input.firstDeploy) : undefined;
     if (first !== undefined) {
-      const tone = input.firstDeploy?.kind === "on-its-way" ? "busy" : "off";
-      return { tone, text: `${first}.`, ...quiet };
+      return { tone: firstDeployTone(input.firstDeploy), text: `${first}.`, ...quiet };
     }
     // An empty production moves by its first release, offered as soon as main has something.
     return {

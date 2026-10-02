@@ -18,7 +18,7 @@ import {
 import { useContext, useMemo } from "react";
 
 import { useHeldThroughBlink } from "./heldThroughBlink";
-import { HeldInventoryContext, type Inventory } from "./inventoryContext";
+import { HeldInventoryContext, InventoryContext, type Inventory } from "./inventoryContext";
 
 export interface AccountGitea {
   readonly state: ZeropsGiteaState;
@@ -78,15 +78,16 @@ export function accountGiteaServices(
 }
 
 /**
- * The services of the account's Gitea project in the org, from the inventory as held and through
- * a blink of its socket, as `useAccountGitea` holds the project: each group's runner rests on it.
+ * The services of the account's Gitea project in the org, as the grant shows them — words are
+ * drawn from them, so never from what it withholds (DESIGN law 5) — held through a blink of its
+ * socket, as `useAccountGitea` holds the project: each group's runner rests on it.
  */
 export function useAccountGiteaServices(
   clientId: string | undefined,
 ): ReadonlyArray<ZeropsService> | undefined {
-  const held = useContext(HeldInventoryContext);
-  const found = useMemo(() => accountGiteaServices(held, clientId), [clientId, held]);
-  return useHeldThroughBlink(found, held === null ? undefined : (clientId ?? ""));
+  const shown = useContext(InventoryContext);
+  const found = useMemo(() => accountGiteaServices(shown, clientId), [clientId, shown]);
+  return useHeldThroughBlink(found, shown === null ? undefined : (clientId ?? ""));
 }
 
 /**

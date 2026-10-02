@@ -439,9 +439,11 @@ export {
 export {
   comingLine,
   COMING_UP_WINDOW_MS,
+  FIRST_DEPLOY_FAILED,
   FIRST_DEPLOY_ON_ITS_WAY,
   firstDeploy,
   firstDeployLine,
+  firstDeployTone,
   groupRunner,
   RUNNER_TROUBLE_WORDS,
   runnerHostname,

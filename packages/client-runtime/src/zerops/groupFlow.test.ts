@@ -938,6 +938,22 @@ describe("groupFlow — a stage's first deploy, while it runs nothing (run 4)", 
     ).toBeUndefined();
   });
 
+  it("says a first deploy failed where a build of it was seen to end with nothing running", () => {
+    const failedBuild: Shown<Deployment> = {
+      ...NOTHING_RUNS,
+      ...(NOTHING_RUNS.state === "known" ? { value: { kind: "none", afterBuild: true } } : {}),
+    } as Shown<Deployment>;
+    const flow = groupFlow(
+      group({
+        stops: [stageStop({ deployment: failedBuild })],
+        mainHasCode: true,
+        runner: able,
+        nowMs: NOW,
+      }),
+    );
+    expect(flow.stages[0]?.firstDeploy).toEqual({ kind: "failed" });
+  });
+
   it("promises nothing without a clock", () => {
     const flow = groupFlow(group({ stops: [stageStop()], mainHasCode: true, runner: able }));
     expect(flow.stages[0]?.firstDeploy).toBeUndefined();

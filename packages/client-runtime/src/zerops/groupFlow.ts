@@ -346,7 +346,7 @@ function withFirstDeploy(
 ): GroupFlowStop {
   if (input.tier !== "stage") return stop;
   const first = stageFirstDeploy({
-    empty: stop.state === "empty",
+    deployment: input.deployment,
     declared: input.row !== undefined,
     mainHasCode: main.hasCode,
     merged: flow.merged,
@@ -359,13 +359,14 @@ function withFirstDeploy(
 
 /**
  * Where a stage's first deploy stands (`firstDeploy`), the one reading every surface says it by —
- * its cell, the menu, its own page: only for a stage known to run nothing, asked for from the
+ * its cell, the menu, its own page: only for a stage known to run nothing — a first deploy seen to
+ * fail, held by the runner, or on its way — asked for from the
  * later of its making and `main`'s last code landing. `undefined` while nothing asked for one, or
  * nothing can be promised.
  */
 export function stageFirstDeploy(input: {
-  /** It is known to run nothing. */
-  readonly empty: boolean;
+  /** What it runs, as the platform pushed it (`ZeropsProjectFlowValue.deployments`). */
+  readonly deployment: Shown<Deployment> | undefined;
   /** The group's environments declare it. */
   readonly declared: boolean;
   /** Whether `main` has code, where it was read; a merged code change proves it either way. */
@@ -377,7 +378,11 @@ export function stageFirstDeploy(input: {
   /** Without a clock, nothing is promised. */
   readonly nowMs: number | undefined;
 }): Exclude<FirstDeploy, { readonly kind: "awaited" }> | undefined {
-  if (!input.empty || input.nowMs === undefined) return undefined;
+  const { deployment } = input;
+  if (deployment?.state !== "known" || deployment.value.kind !== "none") return undefined;
+  // A build of it was seen to end with nothing running: a fact, however long ago it was asked.
+  if (deployment.value.afterBuild === true) return { kind: "failed" };
+  if (input.nowMs === undefined) return undefined;
   const landedCode = input.merged.some((pull) => pull.kind === "code");
   const first = firstDeploy({
     declared: input.declared,

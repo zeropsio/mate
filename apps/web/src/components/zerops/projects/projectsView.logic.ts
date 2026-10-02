@@ -18,6 +18,7 @@ import {
   deployWord,
   environmentNameUnderGroup,
   firstDeployLine,
+  firstDeployTone,
   hasMate,
   pairPreviewRoute,
   readZeropsGroupTags,
@@ -444,7 +445,7 @@ export function stopLine(stop: GroupFlowStop): {
         : {
             word: first,
             version: undefined,
-            tone: stop.firstDeploy?.kind === "on-its-way" ? "busy" : tone,
+            tone: firstDeployTone(stop.firstDeploy),
           };
     }
     default:

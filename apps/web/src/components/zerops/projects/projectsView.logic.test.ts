@@ -589,6 +589,10 @@ describe("a stop's line", () => {
       { word: "Checking what runs here…", version: undefined, tone: "off" },
     ],
     [
+      { state: "empty", version: undefined, firstDeploy: { kind: "failed" } },
+      { word: "First deploy failed", version: undefined, tone: "failed" },
+    ],
+    [
       { state: "empty", version: undefined, firstDeploy: { kind: "on-its-way" } },
       { word: "First deploy on its way", version: undefined, tone: "busy" },
     ],

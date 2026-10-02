@@ -51,8 +51,11 @@ import { shortCommit } from "../release.ts";
 import { sameCommit } from "../versionName.ts";
 
 export type Deployment =
-  /** The deployment facet is observed and names no active deploy. */
-  | { readonly kind: "none" }
+  /**
+   * The deployment facet is observed and names no active deploy. `afterBuild`: a build of it was
+   * seen to end while it was demanded, and nothing it built runs — its first deploy failed.
+   */
+  | { readonly kind: "none"; readonly afterBuild?: true }
   | {
       readonly kind: "running";
       /** When the active deploy was activated, as the platform pushed it. */
@@ -632,6 +635,35 @@ export function heldThroughRecheck(
     return { ...service, deployment: revalidating(before, nowMs) };
   });
   return held ? { ...next, value } : next;
+}
+
+/**
+ * A stop read again, over the services seen building: a service seen deploying and now known to
+ * run nothing ran no build of its — its first deploy failed (`afterBuild`), which no running-process
+ * listing keeps once the build is gone. One running anything is forgotten. Returns the services
+ * still seen building and the stop as shown.
+ */
+export function afterBuilds(
+  built: ReadonlySet<string>,
+  next: Known<ReadonlyArray<StopService>>,
+): {
+  readonly built: ReadonlySet<string>;
+  readonly shown: Known<ReadonlyArray<StopService>>;
+} {
+  if (next.state !== "known") return { built, shown: next };
+  const seen = new Set(built);
+  let marked = false;
+  const value = next.value.map((service): StopService => {
+    const { deployment } = service;
+    if (deployment.state !== "known") return service;
+    const id = service.service.serviceId;
+    if (deployment.value.kind === "deploying") seen.add(id);
+    if (deployment.value.kind === "running") seen.delete(id);
+    if (deployment.value.kind !== "none" || !seen.has(id)) return service;
+    marked = true;
+    return { ...service, deployment: { ...deployment, value: { kind: "none", afterBuild: true } } };
+  });
+  return { built: seen, shown: marked ? { ...next, value } : next };
 }
 
 /** What a stop's row draws: the badge, its word, and the line under the name. */

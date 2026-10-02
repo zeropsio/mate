@@ -88,7 +88,10 @@ function render(
       mate("iris", "Iris", "Split the checkout"),
     ],
   },
-  stops: Pick<React.ComponentProps<typeof ZeropsGroupPane>, "environments" | "withheldNotice"> = {
+  stops: Pick<
+    React.ComponentProps<typeof ZeropsGroupPane>,
+    "environments" | "withheldNotice" | "firstDeployOf"
+  > = {
     environments: [environment("stage", "stage"), environment("prod", "production")],
   },
 ) {
@@ -147,6 +150,19 @@ describe("ZeropsGroupPane", () => {
     expect(markup).not.toContain("Harbor live");
     expect(markup.match(/3f9c1b2/g)).toHaveLength(1);
     expect(markup.match(/<button/g)?.length).toBe(render().match(/<button/g)!.length - 1);
+  });
+
+  it("says an empty stage's first deploy on its line, as its cell does", () => {
+    const empty = {
+      ...environment("stage", "stage"),
+      version: { ...environment("stage", "stage").version, label: undefined, commit: undefined },
+    } as EnvironmentRow;
+    const markup = render(undefined, {
+      environments: [empty],
+      firstDeployOf: (projectId) =>
+        projectId === "stage" ? { kind: "runner", why: "waking" } : undefined,
+    });
+    expect(markup).toContain("Waiting for the runner · it’s waking up");
   });
 
   // SPEC §1: the page stands in the frame /zerops stands in, its trail in the bar.
