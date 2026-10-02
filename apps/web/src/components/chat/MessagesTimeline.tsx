@@ -1239,6 +1239,7 @@ function OpeningLine({ name }: { readonly name: string | undefined }) {
       delayMs={OPENING_WAIT_LINE_MS}
       from="mount"
       text={openingConversationLine(name)}
+      within="pane"
     />
   );
 }

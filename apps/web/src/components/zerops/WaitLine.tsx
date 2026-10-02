@@ -4,7 +4,7 @@
  * the frame said stands in the same place when the app's page takes it over. No face, no mark: the
  * menu's mark and the header's face are the only ones on screen while anything loads.
  */
-import type { ReactNode } from "react";
+import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
 
 import { cn } from "~/lib/utils";
 import { useWaitLine } from "~/zerops/useWaitLine";
@@ -22,32 +22,57 @@ export function WaitLine({ text }: { readonly text: string }) {
 
 /**
  * The line at the page's centre, beside the menu: the page between the menu's edge and the
- * window's, as the boot frame's page is. Says nothing for its beat (`useWaitLine`).
+ * window's, as the boot frame's page is. Says nothing for its beat (`useWaitLine`). Within a pane
+ * — a conversation's, beside its right panel — it stands at the pane's centre across, still at the
+ * window's centre down, so a line the page said stays at its height as the pane takes it over.
  */
 export function PageWaitLine({
   text,
   delayMs,
   from,
   below = null,
+  within = "page",
 }: {
   readonly text: string | null;
   readonly delayMs: number;
   readonly from: "load" | "mount";
   /** What hangs under the line once it shows — never moving it off the centre. */
   readonly below?: ReactNode;
+  /** The page beside the menu, or the pane the line is drawn in. */
+  readonly within?: "page" | "pane";
 }) {
   const showing = useWaitLine(text, { delayMs, from });
   const sidebar = useOptionalSidebar();
   const beside = sidebar !== null && !sidebar.isMobile && sidebar.open;
+  const box = useRef<HTMLDivElement>(null);
+  const [across, setAcross] = useState<{ left: number; right: number } | null>(null);
+  useLayoutEffect(() => {
+    const pane = within === "pane" ? box.current?.parentElement : null;
+    if (pane === null || pane === undefined) return;
+    const measure = () => {
+      const rect = pane.getBoundingClientRect();
+      setAcross({ left: rect.left, right: window.innerWidth - rect.right });
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(pane);
+    window.addEventListener("resize", measure);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", measure);
+    };
+  }, [within]);
   return (
     <div
       aria-live="polite"
       className={cn(
         // m-0: a parent's space-y never moves it off the frame's centre.
         "pointer-events-none fixed inset-y-0 right-0 left-0 z-10 m-0 flex items-center justify-center",
-        beside && "md:left-(--sidebar-width)",
+        beside && across === null && "md:left-(--sidebar-width)",
       )}
+      ref={box}
       role="status"
+      style={across === null ? undefined : { left: across.left, right: across.right }}
     >
       {showing && text !== null ? (
         <div className="relative">
