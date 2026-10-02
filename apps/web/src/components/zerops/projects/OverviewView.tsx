@@ -440,7 +440,7 @@ export function OnlyAMate<T>({
           <span className="font-normal text-muted-foreground">{entries.length}</span>
         </span>
         <span className="hidden min-w-0 truncate text-xs font-normal text-muted-foreground @2xl/flow:block">
-          Give it a first task. Pull requests, main and production appear as the work gets there.
+          Give it a first task. Changes, main and production appear as the work gets there.
         </span>
       </h2>
       <ul className="grid grid-cols-1 gap-2 @2xl/flow:grid-cols-2 @5xl/flow:grid-cols-4">

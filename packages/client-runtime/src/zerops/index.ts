@@ -457,6 +457,7 @@ export {
   type ChangeDiffLine,
 } from "./changeDiff.ts";
 export {
+  changeKindTag,
   flowChange,
   flowChanges,
   flowVerbKey,
