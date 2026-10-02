@@ -75,6 +75,16 @@ describe("a Mate's changes in HQ, as the flow shows them", () => {
   });
   const flow = (changes: ReadonlyArray<HqChange>) => flowChanges({ changes, hqAddress: `${HQ}/` });
 
+  // SPEC §3.2c: the recipe repository's change is a recipe change; its row wears the tag, so its
+  // line is its number alone, and the one zcp titles is the Mate's proposal of the recipe.
+  it("draws a change in the recipe repository as a recipe change, its proposal known by title", () => {
+    const [proposal] = flow([
+      change({ repo: "group", number: 6, title: "Mate: the group's import files" }),
+    ]).pullRequests;
+    expect(proposal).toMatchObject({ kind: "recipe", repository: "group", line: "#6" });
+    expect(proposal !== undefined && isRecipeProposal(proposal)).toBe(true);
+  });
+
   it("draws an open change its Mate pushed to as a row, at HQ's own address", () => {
     const pushed = change({ updatedAt: "2026-10-02T09:30:00.000Z" });
     expect(flow([pushed]).pullRequests).toEqual([
