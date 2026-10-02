@@ -266,6 +266,8 @@ export function releaseStep(input: {
   readonly outcome: ReleaseOutcome;
   readonly held: ReleaseFacts | undefined;
   readonly facts: ReleaseFacts;
+  /** Whether production no longer runs what the release replaced (`ReleaseReviewInput`). */
+  readonly productionMoved: boolean;
 } {
   const { follows, press } = input;
   const outcome = releaseOutcomeOf({
@@ -288,7 +290,18 @@ export function releaseStep(input: {
       ? kept
       : { ...kept, seenAt: kept.seenAt ?? input.nowMs, taggedAt };
   const facts = held ?? current;
-  return { outcome, held, facts };
+  return {
+    outcome,
+    held,
+    facts,
+    productionMoved: held !== undefined && !sameReplaces(current.replaces, held.replaces),
+  };
+}
+
+function sameReplaces(left: ReleaseReplaces, right: ReleaseReplaces): boolean {
+  return left.kind === "release" && right.kind === "release"
+    ? left.tag === right.tag
+    : left.kind === right.kind;
 }
 
 /**

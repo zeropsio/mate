@@ -207,6 +207,7 @@ function ReleaseData({
     outcome,
     held: keep,
     facts,
+    productionMoved,
   } = releaseStep({
     follows,
     held,
@@ -292,6 +293,7 @@ function ReleaseData({
       }}
       outcome={outcome}
       press={press}
+      productionMoved={productionMoved}
       replaces={facts.replaces}
       rows={rows}
       services={facts.services}
@@ -313,6 +315,8 @@ export interface ReleaseReviewViewProps {
   readonly services: ReadonlyArray<string>;
   /** What production ran as this one was offered. */
   readonly replaces: ReleaseReplaces;
+  /** After a failure, whether production no longer runs what it replaced. */
+  readonly productionMoved?: boolean | undefined;
   readonly outcome: ReleaseOutcome;
   readonly press: ReviewPress;
   /** The person's own Mate a failure is handed to, the one they used last. */
@@ -338,6 +342,7 @@ export function ReleaseReviewView(props: ReleaseReviewViewProps) {
     services: props.services,
     replaces: props.replaces,
     outcome: props.outcome,
+    productionMoved: props.productionMoved,
     now: props.now,
   });
   const fix = model.verdict.fix;
