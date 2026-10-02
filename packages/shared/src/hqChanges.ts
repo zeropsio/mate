@@ -24,6 +24,8 @@
  * - `GET /api/apps/:appId/changes/:repo/:n` → {@link ChangeDetailResponse};
  * - `GET`, `POST /api/apps/:appId/changes/:repo/:n/comments` → {@link CommentListResponse},
  *   {@link HqChangeComment};
+ * - `POST /api/apps/:appId/changes/:repo/:n/merge` {@link MergeChangeRequest} and `POST …/close`,
+ *   by whoever develops the application → the change, merged or closed;
  * - `GET` {@link attachmentPath} → the picture, `image/png`;
  * - the structure socket carries changes too: {@link ChangesSnapshot}, {@link ChangesMessage};
  * - a change's address, {@link changeUrl}, is HQ's: `GET /changes/<appId>/<repo>/<n>` redirects
@@ -295,6 +297,38 @@ export type CommentListResponse = typeof CommentListResponse.Type;
 
 /** `POST /api/apps/:appId/changes/:repo/:n/comments` → the comment ({@link HqChangeComment}). */
 export const PostCommentRequest = Schema.Struct({ body: CommentBody });
+
+/**
+ * `POST /api/apps/:appId/changes/:repo/:n/merge`, by whoever develops the application: the change
+ * squashed into `main` as one commit, if its head is still `expectedHead` — the head the person was
+ * shown. HQ moves `main` from where it is then; the client never names it. The commit's subject is
+ * {@link mergeSubject}, its body the change's description, its trailers the `Crew-Lane` and
+ * `Crew-Assignment` of the change's own commits and `Mate-Change`. → the merged change
+ * ({@link HqChange}: `mergedSha` the squash, `landedHead` the head it squashed), or `409 conflict`
+ * with one of {@link MERGE_REFUSALS}. Its branch stays.
+ */
+export const MergeChangeRequest = Schema.Struct({ expectedHead: Sha });
+
+/**
+ * Why HQ does not merge: the head moved since it was shown; the change conflicts with `main`, would
+ * change nothing, is on `main` already, shares no history with it, has nothing pushed; `main` kept
+ * moving; or the change is merged or closed.
+ */
+export const MERGE_REFUSALS = [
+  "head_moved",
+  "conflict",
+  "empty",
+  "already_merged",
+  "unrelated",
+  "no_change",
+  "main_moved",
+  "change_not_open",
+] as const;
+
+/** A merge's subject on `main`, as Gitea's squash wrote it: what a release reads as the task. */
+export function mergeSubject(title: string, number: number): string {
+  return `${title} (#${String(number)})`;
+}
 
 /**
  * The structure socket's snapshot (`/api/structure/ws`) carries this beside its applications, under
