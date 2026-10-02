@@ -16,12 +16,14 @@
  * - The Mate's own door (`mateCredentials.ts`): `POST /api/mate/challenge` `{ projectId }` →
  *   `{ nonce, expiresIn }`; `POST /api/mate/credential` `{ projectId, nonce }` → `{ credential }`;
  *   `GET /api/mate/whoami` with `Authorization: Mate <credential>` → `{ projectId }`;
- *   `GET /api/mate/self`, the same → the Mate's state (`@t3tools/shared/mateLink` `MateState`).
+ *   `GET /api/mate/self`, the same → the Mate's state (`@t3tools/shared/mateLink` `MateState`)
+ *   with its changes (`@t3tools/shared/hqChanges` `MateChanges`).
  * - `POST /api/mates/:projectId/standup`, `POST /api/mates/:projectId/closed-off` → the Mate's state:
  *   its birth, recorded by the client that set it up (the caller asks for the stand-up).
  * - A Mate's changes (`changes.ts`, the wire in `@t3tools/shared/hqChanges`): `POST /api/mate/repos`
  *   `{ name }` → the repository; `POST /api/mate/changes` `{ repo, title }` → `{ change, created }`;
- *   and git itself at `/git/<appId>/<repo>.git`, Basic auth with the user `mate` and the Mate's
+ *   `PATCH /api/mate/changes/:repo/:n` `{ title?, body? }` → the change; `POST
+ *   /api/mate/changes/:repo/:n/attachments`, a PNG of at most 20 MiB → `{ id, path }`; and git itself at `/git/<appId>/<repo>.git`, Basic auth with the user `mate` and the Mate's
  *   credential (`gitHost.ts`).
  *
  * Every call but the doors carries `Authorization: Bearer <session>`, of a session issued for this
@@ -47,7 +49,15 @@ import * as HttpRouter from "effect/unstable/http/HttpRouter";
 import * as HttpServerRequest from "effect/unstable/http/HttpServerRequest";
 import * as HttpServerResponse from "effect/unstable/http/HttpServerResponse";
 
-import { EnsureRepoRequest, OpenChangeRequest } from "@t3tools/shared/hqChanges";
+import {
+  ATTACHMENT_CONTENT_TYPE,
+  ATTACHMENT_MAX_BYTES,
+  ChangeNumber,
+  EditChangeRequest,
+  EnsureRepoRequest,
+  OpenChangeRequest,
+  RepoName,
+} from "@t3tools/shared/hqChanges";
 
 import { ChangeRefused, Changes } from "./changes.ts";
 import { Door } from "./door.ts";
@@ -260,6 +270,37 @@ const mate = Effect.flatMap(HttpServerRequest.HttpServerRequest, (request) =>
   mateHolding(/^Mate (\S+)$/u.exec(request.headers["authorization"] ?? "")?.[1]),
 );
 
+/** A change as a path names it, `:repo/:n`: a repository's name and a change's number. */
+const decodeChangePath = Schema.decodeUnknownEffect(
+  Schema.Struct({
+    repo: RepoName,
+    n: Schema.NumberFromString.pipe(Schema.decodeTo(ChangeNumber)),
+  }),
+);
+const changePath = Effect.map(
+  Effect.flatMap(HttpRouter.params, decodeChangePath),
+  ({ repo, n }) => ({ repo, number: n }),
+);
+
+/**
+ * A picture as a Mate sends it: the body itself, `Content-Type: image/png`, at most 20 MiB — a
+ * declared length above it refused before a byte is read.
+ */
+const pngBody = Effect.gen(function* () {
+  const request = yield* HttpServerRequest.HttpServerRequest;
+  if (Number(request.headers["content-length"] ?? 0) > ATTACHMENT_MAX_BYTES) {
+    return yield* new TooLarge();
+  }
+  if (request.headers["content-type"]?.split(";")[0]?.trim() !== ATTACHMENT_CONTENT_TYPE) {
+    return yield* new ChangeRefused({ code: "invalid", reason: "not_png" });
+  }
+  const body = yield* request.arrayBuffer.pipe(
+    Effect.provideService(HttpIncomingMessage.MaxBodySize, ByteSize.bytes(ATTACHMENT_MAX_BYTES)),
+  );
+  if (body.byteLength > ATTACHMENT_MAX_BYTES) return yield* new TooLarge();
+  return new Uint8Array(body);
+});
+
 /** The credential git presents for the user `mate`: `Authorization: Basic base64(mate:<credential>)`. */
 const gitCredential = (authorization: string | undefined) => {
   const encoded = /^Basic ([A-Za-z0-9+/=]+)$/u.exec(authorization ?? "")?.[1];
@@ -353,6 +394,30 @@ const routes = (options: StreamOptions & { readonly link?: LinkOptions }) =>
       ),
     ),
     HttpRouter.add(
+      "PATCH",
+      "/api/mate/changes/:repo/:n",
+      handle(
+        Effect.gen(function* () {
+          const { projectId } = yield* mate;
+          const { repo, number } = yield* changePath;
+          const edit = yield* jsonBody(EditChangeRequest, BODY_LIMIT);
+          return json(yield* (yield* Changes).editChange(projectId, repo, number, edit), 200);
+        }),
+      ),
+    ),
+    HttpRouter.add(
+      "POST",
+      "/api/mate/changes/:repo/:n/attachments",
+      handle(
+        Effect.gen(function* () {
+          const { projectId } = yield* mate;
+          const { repo, number } = yield* changePath;
+          const png = yield* pngBody;
+          return json(yield* (yield* Changes).attach(projectId, repo, number, png), 200);
+        }),
+      ),
+    ),
+    HttpRouter.add(
       "GET",
       "/api/mate/whoami",
       handle(Effect.map(mate, ({ projectId }) => json({ projectId }, 200))),
@@ -394,7 +459,7 @@ const routes = (options: StreamOptions & { readonly link?: LinkOptions }) =>
           const { projectId } = yield* mate;
           const state = yield* (yield* Structure).mateState(projectId);
           return Option.isSome(state)
-            ? json(state.value, 200)
+            ? json({ ...state.value, ...(yield* (yield* Changes).mateChanges(projectId)) }, 200)
             : json({ code: "mate_not_found", reason: "mate_not_found" }, 404);
         }),
       ),

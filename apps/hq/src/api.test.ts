@@ -642,9 +642,11 @@ describe("HQ API", () => {
             (answer) => [answer.status, answer.body],
           );
           const born = { projectId: "P_MATE", name: "Ada", face: "face-1" };
+          // A Mate in no application: no changes beside its record.
+          const none = { appId: null, changes: [] };
           assert.deepStrictEqual(yield* self, [
             200,
-            { ...born, standupRequestedBy: null, closedOff: false },
+            { ...born, standupRequestedBy: null, closedOff: false, ...none },
           ]);
 
           const standup = yield* call("POST", "/api/mates/P_MATE/standup", { session: owner });
@@ -659,7 +661,7 @@ describe("HQ API", () => {
           );
           assert.deepStrictEqual(yield* self, [
             200,
-            { ...born, standupRequestedBy: "owner", closedOff: true },
+            { ...born, standupRequestedBy: "owner", closedOff: true, ...none },
           ]);
 
           const dev = yield* sessionFor(call, "door-dev");

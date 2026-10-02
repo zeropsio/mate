@@ -172,27 +172,34 @@ export const startCore = (
       method: string,
       path: string,
       options: {
+        /** JSON, or bytes sent as they are (their `content-type` among the headers). */
         readonly body?: unknown;
         readonly session?: string;
         readonly headers?: Record<string, string>;
       } = {},
     ) =>
       Effect.promise(async () => {
+        const raw = options.body instanceof Uint8Array;
         const response = await fetch(`http://${base}${path}`, {
           method,
           headers: {
-            ...(options.body === undefined ? {} : { "content-type": "application/json" }),
+            ...(options.body === undefined || raw ? {} : { "content-type": "application/json" }),
             ...(options.session === undefined
               ? {}
               : { authorization: `Bearer ${options.session}` }),
             ...options.headers,
           },
-          ...(options.body === undefined ? {} : { body: encodeJson(options.body) }),
+          ...(options.body === undefined
+            ? {}
+            : { body: raw ? (options.body as Uint8Array) : encodeJson(options.body) }),
         });
-        const text = await response.text();
+        const bytes = new Uint8Array(await response.arrayBuffer());
+        const text = new TextDecoder().decode(bytes);
+        const isJson = response.headers.get("content-type")?.includes("json") ?? false;
         return {
           status: response.status,
-          body: text === "" ? null : decodeJson(text),
+          body: text === "" ? null : isJson ? decodeJson(text) : text,
+          bytes,
           headers: response.headers,
         };
       });

@@ -10,7 +10,15 @@
  * @module changes
  */
 import type { GitError } from "@t3tools/hq-git";
-import type { HqChange, HqRepo, OpenChangeResponse } from "@t3tools/shared/hqChanges";
+import {
+  type AttachmentResponse,
+  type HqChange,
+  type HqRepo,
+  MATE_CHANGES_PER_REPO,
+  type MateChanges,
+  type OpenChangeResponse,
+  attachmentPath,
+} from "@t3tools/shared/hqChanges";
 import { REASONS, can } from "@t3tools/shared/zeropsPermissions";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
@@ -72,6 +80,25 @@ export class Changes extends Context.Service<
       repo: string,
       title: string,
     ) => Effect.Effect<OpenChangeResponse, MateError>;
+    /** The Mate's open change `number` in `repo`, retitled, described, or both. */
+    readonly editChange: (
+      projectId: string,
+      repo: string,
+      number: number,
+      edit: { readonly title?: string; readonly body?: string },
+    ) => Effect.Effect<HqChange, MateError>;
+    /**
+     * What the Mate's own state carries of its changes: the application HQ holds it in, and there
+     * its latest changes per repository, newest first.
+     */
+    readonly mateChanges: (projectId: string) => Effect.Effect<MateChanges, SqlError>;
+    /** A picture for the Mate's open change: a PNG, kept for its description to show. */
+    readonly attach: (
+      projectId: string,
+      repo: string,
+      number: number,
+      png: Uint8Array,
+    ) => Effect.Effect<AttachmentResponse, MateError>;
   }
 >()("@t3tools/hq/changes") {}
 
@@ -80,6 +107,11 @@ const HQ_AUTHOR = { name: "HQ", email: "hq@hq.invalid" };
 
 const refuse = (code: ChangeRefused["code"], reason: ChangeRefused["reason"]) =>
   Effect.fail(new ChangeRefused({ code, reason }));
+
+/** The bytes every PNG begins with. */
+const PNG_SIGNATURE = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
+
+const isPng = (bytes: Uint8Array) => PNG_SIGNATURE.every((byte, i) => bytes[i] === byte);
 
 const instant = (column: string) =>
   `to_char(${column} AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS ${column}`;
@@ -170,6 +202,21 @@ export const changesLayer: Layer.Layer<
         return target.appId!;
       });
 
+    /**
+     * In a fenced write: the Mate's own change, locked, while it is open. Another Mate's change is
+     * none of its own.
+     */
+    const ownOpenChange = (appId: string, projectId: string, repo: string, number: number) =>
+      Effect.gen(function* () {
+        const [change] = yield* sql<{ readonly state: string }>`
+          SELECT state FROM hq_change
+          WHERE app_id = ${appId}::uuid AND repo = ${repo} AND number = ${number}
+            AND mate_project_id = ${projectId}
+          FOR UPDATE`;
+        if (change === undefined) return yield* refuse("change_not_found", "change_not_found");
+        if (change.state !== "open") return yield* refuse("conflict", "change_not_open");
+      });
+
     return Changes.of({
       mateApp,
       ensureRepo: (projectId, name) =>
@@ -235,6 +282,66 @@ export const changesLayer: Layer.Layer<
               return { change, created: true };
             }),
           );
+        }),
+      mateChanges: (projectId) =>
+        Effect.gen(function* () {
+          const [placed] = yield* sql<{ readonly app_id: string }>`
+            SELECT app_id::text AS app_id FROM hq_app_project
+            WHERE project_id = ${projectId} AND kind IN ('mate', 'devstage')`;
+          if (placed === undefined) return { appId: null, changes: [] };
+          const rows = yield* sql<
+            Pick<ChangeRow, "repo" | "number" | "state" | "head" | "merged_sha" | "landed_head">
+          >`
+            SELECT repo, number, state, head, merged_sha, landed_head FROM (
+              SELECT *, row_number() OVER (PARTITION BY repo ORDER BY number DESC) AS rank
+              FROM hq_change
+              WHERE app_id = ${placed.app_id}::uuid AND mate_project_id = ${projectId}
+            ) latest
+            WHERE rank <= ${MATE_CHANGES_PER_REPO}
+            ORDER BY repo, number DESC`;
+          return {
+            appId: placed.app_id,
+            changes: rows.map((row) => ({
+              repo: row.repo,
+              number: row.number,
+              state: row.state,
+              head: row.head,
+              mergedSha: row.merged_sha,
+              landedHead: row.landed_head,
+            })),
+          };
+        }),
+      editChange: (projectId, repo, number, edit) =>
+        Effect.gen(function* () {
+          const appId = yield* mateApp(projectId, "edit_change");
+          return yield* leader.write(
+            Effect.gen(function* () {
+              yield* ownOpenChange(appId, projectId, repo, number);
+              const [row] = yield* sql<ChangeRow>`
+                UPDATE hq_change
+                SET title = COALESCE(${edit.title ?? null}, title),
+                    body = COALESCE(${edit.body ?? null}, body)
+                WHERE app_id = ${appId}::uuid AND repo = ${repo} AND number = ${number}
+                RETURNING ${sql.literal(CHANGE_COLUMNS)}`;
+              return changeOf(row!);
+            }),
+          );
+        }),
+      attach: (projectId, repo, number, png) =>
+        Effect.gen(function* () {
+          if (!isPng(png)) return yield* refuse("invalid", "not_png");
+          const appId = yield* mateApp(projectId, "edit_change");
+          const id = yield* leader.write(
+            Effect.gen(function* () {
+              yield* ownOpenChange(appId, projectId, repo, number);
+              const [row] = yield* sql<{ readonly id: string }>`
+                INSERT INTO hq_change_attachment (app_id, repo, number, content)
+                VALUES (${appId}::uuid, ${repo}, ${number}, ${png})
+                RETURNING id::text AS id`;
+              return row!.id;
+            }),
+          );
+          return { id, path: attachmentPath(appId, repo, number, id) };
         }),
     });
   }),
