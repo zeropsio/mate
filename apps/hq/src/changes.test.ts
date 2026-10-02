@@ -385,6 +385,12 @@ describe("a Mate's changes in HQ", () => {
             [(yield* edit({})).status, (yield* edit({ title: "x".repeat(121) })).status],
             [400, 400],
           );
+          // The longest description, in the widest characters, is still a description.
+          const longest = "🙂".repeat(20_000);
+          assert.strictEqual(
+            ((yield* edit({ body: longest })).body as { body: string }).body,
+            longest,
+          );
           for (const path of ["appdev/0", "appdev/one", "app.dev/1"]) {
             const named = yield* call("PATCH", `/api/mate/changes/${path}`, {
               headers: auth,
@@ -661,6 +667,9 @@ describe("a Mate's changes in HQ", () => {
           "SELECT kind FROM hq_git_event WHERE kind = 'commented'",
           (rows) => rows.length === 2,
         );
+        // The longest comment, in characters JSON spells widest, is still a comment; a NUL is none.
+        assert.strictEqual((yield* say(owner, "\u0001".repeat(20_000))).status, 200);
+        assert.strictEqual((yield* say(owner, "a\u0000b")).status, 400);
 
         const kept = (yield* call("POST", "/api/mate/changes/appdev/1/attachments", {
           headers: { ...auth, "content-type": "image/png" },

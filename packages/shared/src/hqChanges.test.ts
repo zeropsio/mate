@@ -133,6 +133,8 @@ describe("hqChanges — the wire", () => {
     ["a blank title", { title: "  " }, "Failure"],
     ["a body of the most characters", { body: "🙂".repeat(CHANGE_BODY_MAX) }, "Success"],
     ["a body past them", { body: "x".repeat(CHANGE_BODY_MAX + 1) }, "Failure"],
+    ["a body holding a NUL, which no text in HQ keeps", { body: "a\u0000b" }, "Failure"],
+    ["a title holding a NUL", { title: "a\u0000b" }, "Failure"],
     ["number zero", { number: 0 }, "Failure"],
     ["a fractional number", { number: 1.5 }, "Failure"],
     ["a head that is no commit", { head: "main" }, "Failure"],

@@ -50,11 +50,15 @@ export const CHANGE_BODY_MAX = 20_000;
 /** A comment on a change, at most this many characters. */
 export const COMMENT_BODY_MAX = 20_000;
 
-/** Text of at most `max` characters, counted as code points. */
+/** Text of at most `max` characters, counted as code points, and no NUL, which no text in HQ keeps. */
 const upTo = (max: number) =>
   Schema.String.check(
     Schema.makeFilter((text: string) =>
-      [...text].length <= max ? undefined : `Expected at most ${String(max)} characters`,
+      text.includes("\u0000")
+        ? "Expected no NUL"
+        : [...text].length <= max
+          ? undefined
+          : `Expected at most ${String(max)} characters`,
     ),
   );
 

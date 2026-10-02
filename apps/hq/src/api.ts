@@ -37,8 +37,10 @@
  * a deploy runs two Cores side by side for a while, and zcp tries again. A refusal answers one
  * code, and for the structure and a Mate's changes a reason code beside it (`zeropsPermissions.ts`'s
  * or their own) — the words for a person are the client's; a
- * refusal at the person's door says nothing of which rule the token broke. Bodies are bounded (8 KiB at the doors, 64 KiB elsewhere: `413 too_large`), and each door
- * is limited per client address (`rateLimit.ts`: `429 too_many_requests`).
+ * refusal at the person's door says nothing of which rule the token broke. Bodies are bounded (8
+ * KiB at the doors, 128 KiB for a change's words, 20 MiB for its picture, 64 KiB elsewhere: `413
+ * too_large`), and each door is limited per client address (`rateLimit.ts`: `429
+ * too_many_requests`).
  *
  * @module api
  */
@@ -94,6 +96,11 @@ class TooManyRequests extends Schema.TaggedError<TooManyRequests>()("TooManyRequ
 
 const DOOR_BODY_LIMIT = 8 * 1024;
 const BODY_LIMIT = 64 * 1024;
+/**
+ * A change's description or a comment: 20 000 characters, which JSON may spell in up to six bytes
+ * each (`\u0001`).
+ */
+const TEXT_BODY_LIMIT = 128 * 1024;
 
 const DoorBody = Schema.Struct({ token: Schema.String });
 const ChallengeBody = Schema.Struct({ projectId: Schema.String });
@@ -420,7 +427,7 @@ const routes = (
         Effect.gen(function* () {
           const { userId } = yield* principal;
           const { appId, repo, number } = yield* appChangePath;
-          const { body } = yield* jsonBody(PostCommentRequest, BODY_LIMIT);
+          const { body } = yield* jsonBody(PostCommentRequest, TEXT_BODY_LIMIT);
           return json(yield* (yield* Changes).postComment(userId, appId, repo, number, body), 200);
         }),
       ),
@@ -513,7 +520,7 @@ const routes = (
         Effect.gen(function* () {
           const { projectId } = yield* mate;
           const { repo, number } = yield* changePath;
-          const edit = yield* jsonBody(EditChangeRequest, BODY_LIMIT);
+          const edit = yield* jsonBody(EditChangeRequest, TEXT_BODY_LIMIT);
           return json(yield* (yield* Changes).editChange(projectId, repo, number, edit), 200);
         }),
       ),
