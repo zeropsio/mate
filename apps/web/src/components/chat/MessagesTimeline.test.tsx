@@ -285,16 +285,16 @@ describe("MessagesTimeline", () => {
     expect(markup).toContain('aria-label="Next turn"');
   });
 
-  // A conversation slow to come was a blank second: its Mate works in the
-  // middle of the pane, shown only once the wait passes 400 ms — and never in
-  // a new draft's pane, whose hero carries the Mate's mark already.
-  it("shows the Mate at work while a slow conversation is on its way", () => {
+  // A conversation on its way draws no face — the header wears its Mate's
+  // (pass 30, D2) — and its one line waits its beat before it says anything;
+  // a new draft's pane says nothing at all.
+  it("draws no face while a conversation is on its way, its one line held for its beat", () => {
     const loading = renderToStaticMarkup(
       <MessagesTimeline {...buildProps()} hideEmptyPlaceholder loading timelineEntries={[]} />,
     );
     expect(loading).toContain('role="status"');
-    expect(loading).toContain("animate-held-appear");
-    expect(loading).toContain('data-mate-face-state="working"');
+    expect(loading).not.toContain("data-mate-face-state");
+    expect(loading).not.toContain("Opening");
     const hero = renderToStaticMarkup(
       <MessagesTimeline {...buildProps()} hideEmptyPlaceholder timelineEntries={[]} />,
     );

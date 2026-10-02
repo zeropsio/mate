@@ -1,44 +1,52 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { mateOpeningStage } from "./mateOpeningStage";
+import { stageSpeaks } from "./mateOpeningStage";
 
-// A reload of a Mate's conversation, before its thread is read: its stage speaks, never a blank
-// pane (the owner, 2026-09-30), with the route's own words where the link has any.
-describe("mateOpeningStage", () => {
+// A Mate's page while its conversation cannot show: the stage, with the Mate's face over its name,
+// only for words of the link's own; opening it is the quiet page and its one line.
+describe("stageSpeaks", () => {
   it.each([
     {
-      case: "a blip: the face and the name, nothing said",
-      voice: { surface: "none" },
-      pastQuiet: false,
-      text: null,
+      case: "a blip: no words",
+      voice: { surface: "stage", text: null, actions: [], processes: false },
+      speaks: false,
     },
     {
-      case: "past the quiet: it opens",
-      voice: { surface: "none" },
-      pastQuiet: true,
-      text: "Opening Quinn…",
+      case: "a first connect past the quiet: the page's opening line",
+      voice: { surface: "stage", text: "Opening Quinn…", actions: [], processes: true },
+      speaks: false,
     },
     {
-      case: "a restart the route knows: its words, on the stage",
-      voice: { surface: "banner", text: "Quinn is restarting.", actions: [], processes: false },
-      pastQuiet: false,
-      text: "Quinn is restarting.",
+      case: "a first connect that is slow: the same line, with Try now under it",
+      voice: { surface: "stage", text: "Opening Quinn…", actions: ["try-now"], processes: true },
+      speaks: false,
     },
     {
-      case: "a reconnect with Try now: its words and its verb",
+      case: "a restart the route knows",
+      voice: { surface: "stage", text: "Quinn is restarting.", actions: [], processes: false },
+      speaks: true,
+    },
+    {
+      case: "a reconnect with Try now",
       voice: {
-        surface: "banner",
+        surface: "stage",
         text: "Reconnecting to Quinn…",
         actions: ["try-now"],
         processes: false,
       },
-      pastQuiet: true,
-      text: "Reconnecting to Quinn…",
+      speaks: true,
     },
-  ] as const)("$case", ({ voice, pastQuiet, text }) => {
-    const stage = mateOpeningStage({ voice, pastQuiet, mateName: "Quinn" });
-    expect(stage.surface).toBe("stage");
-    expect(stage.text).toBe(text);
-    expect(stage.actions).toEqual(voice.surface === "none" ? [] : voice.actions);
+    {
+      case: "a container that is not running",
+      voice: {
+        surface: "stage",
+        text: "This Mate isn't running.",
+        actions: ["go-to-projects"],
+        processes: false,
+      },
+      speaks: true,
+    },
+  ] as const)("$case", ({ voice, speaks }) => {
+    expect(stageSpeaks(voice)).toBe(speaks);
   });
 });

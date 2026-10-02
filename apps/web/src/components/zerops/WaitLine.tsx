@@ -4,6 +4,8 @@
  * the frame said stands in the same place when the app's page takes it over. No face, no mark: the
  * menu's mark and the header's face are the only ones on screen while anything loads.
  */
+import type { ReactNode } from "react";
+
 import { cn } from "~/lib/utils";
 import { useWaitLine } from "~/zerops/useWaitLine";
 import { Spinner } from "../ui/spinner";
@@ -26,10 +28,13 @@ export function PageWaitLine({
   text,
   delayMs,
   from,
+  below = null,
 }: {
   readonly text: string | null;
   readonly delayMs: number;
   readonly from: "load" | "mount";
+  /** What hangs under the line once it shows — never moving it off the centre. */
+  readonly below?: ReactNode;
 }) {
   const showing = useWaitLine(text, { delayMs, from });
   const sidebar = useOptionalSidebar();
@@ -44,7 +49,16 @@ export function PageWaitLine({
       )}
       role="status"
     >
-      {showing && text !== null ? <WaitLine text={text} /> : null}
+      {showing && text !== null ? (
+        <div className="relative">
+          <WaitLine text={text} />
+          {below === null ? null : (
+            <div className="pointer-events-auto absolute top-full left-1/2 mt-3 flex -translate-x-1/2 flex-col items-center gap-3">
+              {below}
+            </div>
+          )}
+        </div>
+      ) : null}
     </div>
   );
 }

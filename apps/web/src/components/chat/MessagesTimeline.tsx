@@ -132,11 +132,12 @@ import {
 } from "~/lib/terminalContext";
 import { cn } from "~/lib/utils";
 import { useUiStateStore } from "~/uiStateStore";
-import { useZeropsMate } from "~/zerops/useZeropsMates";
+import { useKnownMate, useZeropsMate } from "~/zerops/useZeropsMates";
+import { OPENING_WAIT_LINE_MS, openingConversationLine } from "~/zerops/waitLine.logic";
 import { isMateStandUpAsk } from "~/zerops/mateStandUp";
 import { useMateStandUpAskLine } from "~/zerops/useMateStandUp";
 import { ZeropsMateEmptyState } from "../zerops/ZeropsMateEmptyState";
-import { MateFace } from "../zerops/primitives";
+import { PageWaitLine } from "../zerops/WaitLine";
 import { type TimestampFormat } from "@t3tools/contracts/settings";
 import { formatChatTimestampTooltip, formatDayAwareTimestamp } from "../../timestampFormat";
 
@@ -771,7 +772,8 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     };
   }, [timelineViewportElement, rows.length]);
 
-  const mate = useZeropsMate(activeThreadEnvironmentId);
+  // Read, or remembered until read (`knownMate`): the conversation speaks in its Mate's name at once.
+  const mate = useKnownMate(activeThreadEnvironmentId);
   // A crewmate's conversation is the crewmate's: its name and its face speak
   // on every line — the work line too (ARCHITECTURE §6).
   const crewmate = crew?.crewmate ?? null;
@@ -782,11 +784,12 @@ export const MessagesTimeline = memo(function MessagesTimeline({
             name: crewmate.profile?.displayName ?? `@${crewmate.handle}`,
             tint: crewmate.profile?.tint ?? "slate",
           }
-        : mate.kind === "mate"
-          ? { name: mate.mate.name, tint: mate.mate.tint, shape: mate.mate.shape }
+        : mate !== undefined
+          ? { name: mate.name, tint: mate.tint, shape: mate.shape }
           : { name: "Assistant", tint: "slate" },
     [crewmate, mate],
   );
+  const openingName = crewmate !== null ? speaker.name : mate?.name;
   // What the conversation held when it opened, on the server's clock: a
   // message newer than that arrived while the person watched. Measured per
   // conversation, from the rows themselves, so a client clock that runs
@@ -1100,10 +1103,9 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     if (hideEmptyPlaceholder) {
       return (
         <TimelineLoadingPane
-          handedOver={handedOver}
           loading={loading}
+          openingName={openingName}
           routeThreadKey={routeThreadKey}
-          speaker={speaker}
         />
       );
     }
@@ -1114,7 +1116,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
         bottomInset={contentInsetEndAdjustment}
         crew={crew}
         environmentId={activeThreadEnvironmentId}
-        mateFace={mate.kind === "mate" ? mate.mate : null}
+        mateFace={mate ?? null}
         seams={rows.flatMap((row) => (row.kind === "crew-seam" ? [row] : []))}
       />
     );
@@ -1191,11 +1193,9 @@ export const MessagesTimeline = memo(function MessagesTimeline({
             />
           </div>
           {handedOver && !listPlaced ? (
-            // Its Mate at work, where the pane on its way showed it, until the
+            // The line the pane on its way said, where it said it, until the
             // rows stand where they stay.
-            <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-              <MateAtWork speaker={speaker} held={false} />
-            </div>
+            <OpeningLine name={openingName} />
           ) : null}
         </TimelineWorkingCtx>
       </TimelineRowActivityCtx>
@@ -1206,21 +1206,20 @@ export const MessagesTimeline = memo(function MessagesTimeline({
 /**
  * The pane of a conversation on its way. It occupies the pane with the theme
  * surface so a thread switch cannot punch a hole through to the window chrome
- * (white in light mode). A conversation slow to come — a Mate opened for the
- * first time, over the network — was a blank second: its Mate works in the
- * middle of the pane instead, shown only once the wait passes 400 ms.
+ * (white in light mode), and says nothing of its own for a beat: then the
+ * page's one line, "Opening Quinn's conversation…", at the page's centre —
+ * at once where the Mate's own view on its way was already saying it. No
+ * face: the header wears the Mate's (pass 30, D2).
  */
 function TimelineLoadingPane({
-  handedOver,
   loading,
   routeThreadKey,
-  speaker,
+  openingName,
 }: {
-  /** Handed over from its Mate's own view: its Mate was on screen the whole wait. */
-  readonly handedOver: boolean;
   readonly loading: boolean;
   readonly routeThreadKey: string;
-  readonly speaker: ConversationSpeaker;
+  /** Whose conversation opens: its Mate's or crewmate's name; none for a thread without one. */
+  readonly openingName: string | undefined;
 }) {
   return (
     <div
@@ -1228,32 +1227,19 @@ function TimelineLoadingPane({
       data-timeline-loading="true"
       data-timeline-thread={routeThreadKey}
     >
-      {loading ? <MateAtWork speaker={speaker} held={!handedOver} /> : null}
+      {loading ? <OpeningLine name={openingName} /> : null}
     </div>
   );
 }
 
-/**
- * Its Mate at work in the middle of the pane. Held 400 ms before it shows —
- * opacity alone, so it keeps its hold under reduced motion too: without it a
- * quick load flashed it — except after a hand-over from the Mate's own view,
- * where it was on screen the whole wait.
- */
-function MateAtWork({
-  speaker,
-  held,
-}: {
-  readonly speaker: ConversationSpeaker;
-  readonly held: boolean;
-}) {
+/** The page's one opening line, in its Mate's name (`openingConversationLine`). */
+function OpeningLine({ name }: { readonly name: string | undefined }) {
   return (
-    <span
-      aria-label={`Opening ${speaker.name}'s conversation`}
-      className={held ? "flex animate-held-appear" : "flex"}
-      role="status"
-    >
-      <MateFace shape={speaker.shape} size="lg" state="working" tint={speaker.tint} />
-    </span>
+    <PageWaitLine
+      delayMs={OPENING_WAIT_LINE_MS}
+      from="mount"
+      text={openingConversationLine(name)}
+    />
   );
 }
 
