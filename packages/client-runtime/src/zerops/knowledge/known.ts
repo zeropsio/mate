@@ -18,7 +18,6 @@ export interface Stamp {
 export type Prerequisite =
   | "zerops-session"
   | "access-grant"
-  | "gitea-session"
   | "mate-session"
   | "presence"
   | "visible"

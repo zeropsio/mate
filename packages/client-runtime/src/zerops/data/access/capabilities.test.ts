@@ -18,13 +18,7 @@ import { commandAdmissionError } from "../commands.ts";
 import type { AgentsCellRequest, ZeropsCellAdapter } from "../cells.ts";
 import { makeZeropsDataRuntime } from "../runtime.ts";
 import type { ProjectEffectiveAccess, ProjectRef, ZeropsDataAdapter } from "../types.ts";
-import {
-  forge,
-  grantCapabilities,
-  mate,
-  throwawayCleanup,
-  type CapabilityAsk,
-} from "./capabilities.ts";
+import { grantCapabilities, mate, throwawayCleanup, type CapabilityAsk } from "./capabilities.ts";
 import type { GrantCapability, GrantFailure, ProjectOutcome } from "./grant.ts";
 import {
   IDLE_GUARDS,
@@ -629,20 +623,6 @@ describe("capabilities over the access grant", () => {
     expect(
       mate({ postGrant: true, credential: "held", link: "connected", project: ALLOWED, ...input }),
     ).toEqual(expected);
-  });
-
-  it.each([
-    ["signed-in", ALLOWED],
-    ["idle", { allowed: false, reason: "gitea-session", waitable: false }],
-    ["acquiring", { allowed: false, reason: "gitea-session", waitable: true }],
-    ["reacquiring", { allowed: false, reason: "gitea-session", waitable: true }],
-    ["pending", { allowed: false, reason: "gitea-session", waitable: true }],
-    ["unavailable", { allowed: false, reason: "gitea-session", waitable: false }],
-    ["waiting", { allowed: false, reason: "gitea-session", waitable: false }],
-    ["refused", { allowed: false, reason: "gitea-session", waitable: false }],
-    ["closed", refused("epoch-closed", false)],
-  ] as const)("forge(origin) with its Gitea session %s", (session, expected) => {
-    expect(forge(session)).toEqual(expected);
   });
 
   it.each([

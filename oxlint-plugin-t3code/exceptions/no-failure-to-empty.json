@@ -96,14 +96,6 @@
     "expires": "never"
   },
   {
-    "path": "packages/client-runtime/src/zerops/giteaClient.ts",
-    "kind": "CallExpression",
-    "fingerprint": "response.json().catch(() => null)",
-    "owner": "karel",
-    "reason": "an unparseable error body carries no detail; the refusal itself is still thrown, so no failure becomes a negative",
-    "expires": "never"
-  },
-  {
     "path": "packages/client-runtime/src/zerops/model/deriveThreadModel.ts",
     "kind": "ConditionalExpression",
     "fingerprint": "lifecycle?.state === \"known\" ? lifecycle.value.envelope : undefined",

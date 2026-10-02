@@ -2,7 +2,6 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   doorThrowawayName,
-  giteaThrowawayName,
   isThrowawayName,
   withThrowaway,
   type ZeropsThrowawayPlatform,
@@ -36,29 +35,13 @@ function fakePlatform(overrides: Partial<ZeropsThrowawayPlatform> = {}): {
 }
 
 describe("throwaway names", () => {
-  it.each([
-    ["mate-door:proj-1:n1", () => doorThrowawayName("proj-1", "n1")],
-    [
-      "gitea-signin:web-926-3000.prg1.zerops.app:n1",
-      () => giteaThrowawayName("https://web-926-3000.prg1.zerops.app", "n1"),
-    ],
-    // The host, without the scheme and without a path: it is what the broker
-    // compares its own GITEA_PUBLIC_URL against.
-    [
-      "gitea-signin:web-926-3000.prg1.zerops.app:n1",
-      () => giteaThrowawayName("https://web-926-3000.prg1.zerops.app/", "n1"),
-    ],
-    ["gitea-signin:localhost:3000:n1", () => giteaThrowawayName("http://localhost:3000", "n1")],
-  ])("%s", (expected, build) => {
-    expect(build()).toBe(expected);
-  });
-
-  it("refuses a Gitea URL with no host", () => {
-    expect(() => giteaThrowawayName("https://", "n1")).toThrow(/names no Gitea host/u);
+  it("names a door throwaway after its Mate", () => {
+    expect(doorThrowawayName("proj-1", "n1")).toBe("mate-door:proj-1:n1");
   });
 
   it.each([
     ["mate-door:p:n", true],
+    // main's client mints these until the switch; the sweep takes the person's own back.
     ["gitea-signin:h:n", true],
     ["zcp-Aurora - dev", false],
     ["mate-broker", false],
@@ -134,14 +117,9 @@ describe("withThrowaway", () => {
     },
   );
 
-  it.each([
-    // DESIGN §4.4: a door exchange's finalizer is detached. A delete that
-    // takes its full deadline and its retry never holds the answer back.
-    { receiver: "a door", name: "mate-door:p:n", waits: false },
-    // A Gitea sign-in sends the browser on as soon as it answers, and a page
-    // being left takes an unfinished delete with it.
-    { receiver: "a Gitea sign-in", name: "gitea-signin:git.example.com:n", waits: true },
-  ])("$receiver answers once the deletion ended: $waits", async ({ name, waits }) => {
+  // DESIGN §4.4: a door exchange's finalizer is detached. A delete that takes its full deadline
+  // and its retry never holds the answer back.
+  it("answers before the deletion ended", async () => {
     let finishRemove!: () => void;
     const removed: Array<string> = [];
     const { platform } = fakePlatform({
@@ -157,14 +135,14 @@ describe("withThrowaway", () => {
     const answer = withThrowaway({
       platform,
       clientId: "org-1",
-      name,
+      name: "mate-door:p:n",
       use: () => Promise.resolve("in"),
     }).then((value) => {
       answered = true;
       return value;
     });
     for (let hop = 0; hop < 10; hop += 1) await Promise.resolve();
-    expect(answered).toBe(!waits);
+    expect(answered).toBe(true);
     expect(removed).toEqual([]);
 
     finishRemove();

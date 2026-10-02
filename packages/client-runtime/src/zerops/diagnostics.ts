@@ -39,8 +39,6 @@ export interface DiagnosticFailure {
   readonly status?: number;
 }
 
-export type ThrowawayPurpose = "door" | "gitea";
-
 /**
  * Why an exchange at a Mate's door was attempted: the reload's restore, the
  * auto-connect of ready Mates, the repair of a session the door stopped
@@ -127,7 +125,6 @@ export type MateDiagnosticEvent =
   | ({
       readonly kind: "throwaway";
       readonly action: "mint";
-      readonly purpose: ThrowawayPurpose;
       readonly clientId: string;
     } & (
       | { readonly outcome: "ok"; readonly tokenId: string }
@@ -137,7 +134,7 @@ export type MateDiagnosticEvent =
       readonly kind: "throwaway";
       readonly action: "delete";
       readonly clientId: string;
-      /** Pairs the delete with its mint, which names the purpose. */
+      /** Pairs the delete with its mint. */
       readonly tokenId: string;
     } & ({ readonly outcome: "ok" } | ({ readonly outcome: "failed" } & DiagnosticFailure)))
   /** The connection runtime that holds the environment catalog. */

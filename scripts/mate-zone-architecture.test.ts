@@ -680,15 +680,13 @@ function collectPureZoneViolations(
   });
 }
 
-// Rule 6: dependencies run one way — data ← environments ← flow and
-// data ← forge ← flow — and nothing under `cr/zerops` depends on `account/`
-// except `account/` itself and the `testing/` harness, which drives sessions.
+// Rule 6: dependencies run one way — data ← environments ← flow — and nothing under `cr/zerops`
+// depends on `account/` except `account/` itself and the `testing/` harness, which drives sessions.
 // Every import edge counts, type-only included: the rule is about the module
 // graph, not the emitted code. Test files are not part of the graph.
 const FORBIDDEN_LAYER_EDGES: ReadonlyMap<string, ReadonlySet<string>> = new Map([
-  ["data", new Set(["environments", "forge", "flow"])],
+  ["data", new Set(["environments", "flow"])],
   ["environments", new Set(["flow"])],
-  ["forge", new Set(["flow"])],
 ]);
 
 interface OneWayViolation {
@@ -754,8 +752,8 @@ function collectOneWayViolations(
 
 // Rule 6, its construction half: the account runtime's modules — its invalidation bus, which one
 // owner holds (§6.2), and the post-grant stage's, built on the epoch's first grant: the
-// registration records, the container store (with its probe store), the exchange driver, the Gitea
-// sessions and the deployment store — are constructed by the account runtime only. A call of a constructor anywhere else is reported; its
+// registration records, the container store (with its probe store), the exchange driver and the
+// deployment store — are constructed by the account runtime only. A call of a constructor anywhere else is reported; its
 // declaration is not, nor a test's or a test fixture's.
 const ACCOUNT_RUNTIME_FILE = `${CLIENT_RUNTIME_ZEROPS_DIR}/account/accountRuntime.ts`;
 const ACCOUNT_RUNTIME_CONSTRUCTORS: ReadonlyArray<string> = [
@@ -764,7 +762,6 @@ const ACCOUNT_RUNTIME_CONSTRUCTORS: ReadonlyArray<string> = [
   "makeRegistrationRecords",
   "makeContainerStore",
   "makeExchangeDriver",
-  "makeGiteaSessions",
   "makeDeploymentStore",
 ];
 
@@ -2794,18 +2791,15 @@ it.layer(NodeServices.layer)("mate zone architecture", (it) => {
       const fixtureRoot = yield* makeClientRuntimeZeropsFixture({
         "data/runtime.ts": 'import type { Reach } from "../environments/reachability.ts";\n',
         "data/access/grant.ts": 'import { flow } from "../../flow/groupFlow.ts";\n',
-        "data/commands.ts": 'import { forge } from "../forge";\n',
         "data/state.ts": 'import type { Known } from "../knowledge/known.ts";\n',
         "environments/gate.ts": [
           'import { runtime } from "../data/runtime.ts";',
           'import { flow } from "../flow/groupFlow.ts";',
           "",
         ].join("\n"),
-        "forge/forgeStore.ts": 'export * from "../flow/release.ts";\n',
         "flow/groupFlow.ts": [
           'import { runtime } from "../data/runtime.ts";',
           'import { gate } from "../environments/gate.ts";',
-          'import { store } from "../forge/forgeStore.ts";',
           "",
         ].join("\n"),
         "knowledge/known.ts": 'import type { Session } from "../account/session.ts";\n',
@@ -2828,11 +2822,6 @@ it.layer(NodeServices.layer)("mate zone architecture", (it) => {
           reason: "data/ must not depend on flow/",
         },
         {
-          file: `${zerops}/data/commands.ts`,
-          specifier: "../forge",
-          reason: "data/ must not depend on forge/",
-        },
-        {
           file: `${zerops}/data/runtime.ts`,
           specifier: "../environments/reachability.ts",
           reason: "data/ must not depend on environments/",
@@ -2841,11 +2830,6 @@ it.layer(NodeServices.layer)("mate zone architecture", (it) => {
           file: `${zerops}/environments/gate.ts`,
           specifier: "../flow/groupFlow.ts",
           reason: "environments/ must not depend on flow/",
-        },
-        {
-          file: `${zerops}/forge/forgeStore.ts`,
-          specifier: "../flow/release.ts",
-          reason: "forge/ must not depend on flow/",
         },
         {
           file: `${zerops}/groupReach.ts`,
@@ -2900,16 +2884,10 @@ it.layer(NodeServices.layer)("mate zone architecture", (it) => {
           'const label = "connectCrossTabInvalidations(";',
           "",
         ].join("\n"),
-        [`${zerops}/forge/giteaSession.ts`]:
-          "export function makeGiteaSessions(ports) { return ports; }\n",
         [`${zerops}/environments/exchangeDriver.test.ts`]: "makeExchangeDriver(ports);\n",
         [`${zerops}/flow/groupFlow.ts`]: "const bus = makeInvalidationBus (options);\n",
         "apps/web/src/zerops/accountForge.ts": "const store = makeDeploymentStore(ports);\n",
-        "apps/web/src/zerops/AccountShell.tsx": [
-          "const driver = makeExchangeDriver(ports);",
-          "const sessions = makeGiteaSessions(ports);",
-          "",
-        ].join("\n"),
+        "apps/web/src/zerops/AccountShell.tsx": "const driver = makeExchangeDriver(ports);\n",
         "apps/web/src/zerops/zeropsContainers.ts": [
           "const store = makeContainerStore({ clock, probe, readMateFlag, intents });",
           "const records = makeRegistrationRecords(storage);",
@@ -2942,10 +2920,6 @@ it.layer(NodeServices.layer)("mate zone architecture", (it) => {
         {
           file: "apps/web/src/zerops/AccountShell.tsx",
           reason: "constructs makeExchangeDriver, a module of the account runtime, outside it",
-        },
-        {
-          file: "apps/web/src/zerops/AccountShell.tsx",
-          reason: "constructs makeGiteaSessions, a module of the account runtime, outside it",
         },
         {
           file: "apps/web/src/zerops/zeropsContainers.ts",

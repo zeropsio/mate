@@ -48,16 +48,8 @@ import { makeDeadlineClock, type DeadlineClock } from "../testing/deadlineClock.
 import { makeFakeDatastream } from "../testing/fakeDatastream.ts";
 import { makeFakeZeropsRest } from "../testing/fakeZeropsRest.ts";
 import {
-  fetchAcross,
-  HARNESS_BROKER_ORIGIN,
-  HARNESS_GITEA_ORIGIN,
-  makeAccountHarness,
-} from "../testing/accountHarness.ts";
-import type { ZeropsThrowawayPlatform } from "../../authorization/zeropsThrowaway.ts";
-import {
   makeAccountRuntime,
   type AccountEnvironmentPorts,
-  type AccountForgePorts,
   type CatalogListener,
   type DoorCredential,
   type DoorRequest,
@@ -1435,7 +1427,8 @@ describe("the post-grant stage's Mate environments", () => {
       Effect.scoped(
         Effect.gen(function* () {
           const { clock, built } = yield* granted([]);
-          const { deployments, forge, services } = yield* built.postGrant;
+          const stage = yield* built.postGrant;
+          const { deployments, services } = stage;
           /** Whether a lease holds project A's running processes. */
           const followsActivity = built.data.state.pipe(
             Effect.map((state) =>
@@ -1453,7 +1446,8 @@ describe("the post-grant stage's Mate environments", () => {
           yield* clock.advance(SECOND);
           yield* settle;
           expect(deployments.stop(projectA)).toMatchObject({ state: "known", value: [] });
-          expect(forge).toBeNull();
+          // The account builds no Gitea sessions: the stage holds no forge on any host.
+          expect(stage).not.toHaveProperty("forge");
           // A shown stop reads what builds run in its project, and only while it is shown.
           expect(yield* followsActivity).toBe(true);
 
@@ -2413,119 +2407,5 @@ describe("the post-grant stage's Mate environments", () => {
         expect(environments.machines()).toBe(machines);
       }),
     ),
-  );
-});
-
-describe("the post-grant stage's Gitea sessions", () => {
-  const throwaways: ZeropsThrowawayPlatform = {
-    mint: async () => ({ id: "throwaway", token: "the-throwaway" }),
-    remove: async () => undefined,
-  };
-
-  /**
-   * An account runtime whose Gitea sessions reach a fake Gitea and broker. Their timers run on the
-   * test's clock.
-   */
-  const openAccount = Effect.fnUntraced(function* () {
-    const clock = yield* makeDeadlineClock({ startWallMs: START_WALL_MS });
-    const registry = AtomRegistry.make();
-    const page = yield* makePage(clock);
-    const grant = heldVerifier();
-    const harness = makeAccountHarness({ people: [] });
-    const direct = fetchAcross(harness.gitea, harness.broker);
-    const sent: Array<string> = [];
-    /** The sessions' timers, fired by `turn` once the clock reaches them. */
-    const timers = new Set<{ readonly at: number; readonly fire: () => void }>();
-    const forge: AccountForgePorts = {
-      fetch: async (input, init) => {
-        sent.push(String(input));
-        return direct(input, init);
-      },
-      now: () => ({ wall: clock.wallMs(), mono: clock.monoMs() }),
-      random: () => 0.5,
-      nonce: () => "nonce",
-      setTimer: (delayMs, fire) => {
-        const timer = { at: clock.monoMs() + delayMs, fire };
-        timers.add(timer);
-        return () => void timers.delete(timer);
-      },
-    };
-    const built = yield* Effect.gen(function* () {
-      const data = yield* makeZeropsDataRuntime({
-        scope: scope(),
-        adapter: inertAdapter,
-        atomRegistry: registry,
-        makeOpaqueId: (() => {
-          let next = 0;
-          return () => `opaque-${++next}`;
-        })(),
-      });
-      return yield* makeAccountRuntime({
-        data,
-        verifier: grant.verifier,
-        signals: page.signals,
-        atomRegistry: registry,
-        environments: inertEnvironments(clock),
-        forge,
-      });
-    }).pipe(Effect.provideService(Clock.Clock, clock));
-    yield* Effect.addFinalizer(() => built.close("application-close"));
-    return {
-      clock,
-      page,
-      grant,
-      built,
-      sent,
-      /** Lets the sessions' answers land and fires the timers they arm that are due. */
-      turn: Effect.gen(function* () {
-        for (let step = 0; step < 10; step++) {
-          for (const timer of timers) {
-            if (timer.at > clock.monoMs()) continue;
-            timers.delete(timer);
-            timer.fire();
-          }
-          yield* settle;
-        }
-      }),
-    };
-  });
-
-  it.effect(
-    "the Gitea sessions are built only after the first grant and forgotten at sign-out",
-    () =>
-      Effect.scoped(
-        Effect.gen(function* () {
-          const { clock, grant, built, sent, turn } = yield* openAccount();
-          const postGrant = yield* Effect.forkChild(built.postGrant);
-          yield* clock.advance(SECOND);
-          yield* settle;
-          // Nothing of the forge stands, and nothing reached Gitea or its broker.
-          expect(postGrant.pollUnsafe()).toBeUndefined();
-          expect(sent).toEqual([]);
-
-          yield* grant.answer();
-          yield* clock.advance(SECOND);
-          yield* settle;
-          const { forge } = yield* Fiber.join(postGrant);
-          if (forge === null) throw new Error("the web host gives the forge its ports");
-          forge.sessions.demand({
-            giteaOrigin: HARNESS_GITEA_ORIGIN,
-            brokerOrigin: HARNESS_BROKER_ORIGIN,
-            clientId: "org-1",
-            platform: throwaways,
-          });
-          yield* turn;
-          expect(forge.sessions.view(HARNESS_GITEA_ORIGIN).signedIn).toBe(true);
-
-          yield* built.close("logout");
-
-          expect(forge.sessions.view(HARNESS_GITEA_ORIGIN).signedIn).toBe(false);
-          expect(forge.sessions.capability(HARNESS_GITEA_ORIGIN)).toEqual({
-            allowed: false,
-            reason: "epoch-closed",
-            waitable: false,
-          });
-        }),
-      ),
   );
 });

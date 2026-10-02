@@ -25,7 +25,8 @@
  * renderer or a killed process leaves a row behind — and Zerops refuses to
  * remove a member who still holds tokens (measured 2026-09-15), so the rows
  * are not harmless. At start-up the app therefore deletes the person's own
- * `mate-door:*` and `gitea-signin:*` tokens older than five minutes.
+ * `mate-door:*` tokens older than five minutes, and the `gitea-signin:*` ones
+ * main's client leaves in the same organizations.
  * {@link planThrowawaySweep} decides which; five minutes is the same window
  * the door itself allows, so a throwaway another tab is mid-flight with is
  * never swept out from under it.
@@ -34,7 +35,6 @@
  */
 
 import {
-  GITEA_THROWAWAY_PREFIX,
   doorThrowawayName,
   isThrowawayName,
   withThrowaway,
@@ -102,9 +102,6 @@ export const DOOR_MINT_PACE: MintPaceConfig = {
   burst: DOOR_MINT_BURST,
   perMinute: DOOR_MINTS_PER_MINUTE,
 };
-/** Gitea sign-ins this tab may mint for, apart from the doors'. */
-export const GITEA_MINTS_PER_MINUTE = 4;
-const GITEA_MINT_PACE: MintPaceConfig = { burst: 4, perMinute: GITEA_MINTS_PER_MINUTE };
 /** How long background mints stand still after the platform answers one with 429. */
 export const DOOR_MINT_THROTTLE_MS = 30_000;
 
@@ -207,22 +204,17 @@ function slotFree(delayMs: number, signal: AbortSignal | undefined): Promise<voi
 }
 
 /**
- * One budget per kind of throwaway, so a Gitea that keeps asking never takes
- * a door exchange's slot (DESIGN I12). Per tab: there is no leader to share
- * one across tabs (D10).
+ * The doors' mint budget (DESIGN I12). Per tab: there is no leader to share one across tabs
+ * (D10).
  */
 export interface ThrowawayMintBudgets {
   readonly door: MintBudget;
-  readonly gitea: MintBudget;
 }
 
 export function makeThrowawayMintBudgets(
   now: () => number = () => performance.now(),
 ): ThrowawayMintBudgets {
-  return {
-    door: makeMintBudget(DOOR_MINT_PACE, now),
-    gitea: makeMintBudget(GITEA_MINT_PACE, now),
-  };
+  return { door: makeMintBudget(DOOR_MINT_PACE, now) };
 }
 
 /** This tab's budgets, shared by every platform built here. */
@@ -235,8 +227,8 @@ const tabMintBudgets = makeThrowawayMintBudgets();
  * `mintThrowaway` mints `NO_ACCESS` with no projects and refuses to set a
  * flag of any kind, which is what makes what it mints a throwaway rather than
  * something a door has to argue with, and why a closed account window does
- * not hold it up. A mint first takes a slot from this tab's budget for its
- * kind — at once when `asked`, the person having asked for this Mate — and a
+ * not hold it up. A mint first takes a slot from this tab's door budget — at
+ * once when `asked`, the person having asked for this Mate — and a
  * 429 holds that budget's background mints; `signal` ends the wait and the mint — never the delete,
  * which runs on its own deadline with the token the mint carried and is tried
  * once more after {@link THROWAWAY_DELETE_RETRY_MS} when Zerops could not
@@ -258,19 +250,13 @@ export function zeropsThrowawayPlatform(
   const minted = new Map<string, { readonly name: string; readonly mintingToken: string }>();
   return {
     mint: async (input) => {
-      const purpose = input.name.startsWith(`${GITEA_THROWAWAY_PREFIX}:`) ? "gitea" : "door";
-      const diagnostic = {
-        kind: "throwaway",
-        action: "mint",
-        purpose,
-        clientId: input.clientId,
-      } as const;
+      const diagnostic = { kind: "throwaway", action: "mint", clientId: input.clientId } as const;
       return client
         .mintThrowaway(
           { clientId: input.clientId, name: input.name },
           {
             ...(signal === undefined ? {} : { signal }),
-            beforeMint: () => budgets[purpose].take(client.accountEpoch, { signal, asked }),
+            beforeMint: () => budgets.door.take(client.accountEpoch, { signal, asked }),
           },
         )
         .then(
@@ -281,7 +267,7 @@ export function zeropsThrowawayPlatform(
           },
           (cause: unknown) => {
             if (cause instanceof ZeropsApiError && cause.status === 429) {
-              budgets[purpose].throttled(cause.retryAfterMs);
+              budgets.door.throttled(cause.retryAfterMs);
             }
             mateDiagnostics.record({
               ...diagnostic,

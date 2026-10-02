@@ -54,12 +54,12 @@ const TRANSITIONS: ReadonlyArray<TransitionRow> = [
   {
     name: "unread, prerequisite missing → unread(waitingFor), no failure recorded",
     from: newCell("account"),
-    event: { kind: "waiting", on: "gitea-session" },
-    to: cellOf({ state: "unread", waitingFor: "gitea-session" }),
+    event: { kind: "waiting", on: "mate-session" },
+    to: cellOf({ state: "unread", waitingFor: "mate-session" }),
   },
   {
     name: "unread, demanded with prerequisites met (the store starts a read) → reading",
-    from: cellOf({ state: "unread", waitingFor: "gitea-session" }),
+    from: cellOf({ state: "unread", waitingFor: "mate-session" }),
     event: { kind: "read-started", ordinal: 1, atMs: 1_000 },
     to: cellOf(READING, { lastReadStart: 1 }),
   },

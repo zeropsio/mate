@@ -442,14 +442,6 @@ export {
   type ChangeDiffLine,
 } from "./changeDiff.ts";
 export {
-  createGiteaClient,
-  GiteaApiError,
-  type GiteaClient,
-  type GiteaClientOptions,
-  type GiteaOrganization,
-  type GiteaTag,
-} from "./giteaClient.ts";
-export {
   flowChange,
   flowChanges,
   flowVerbKey,

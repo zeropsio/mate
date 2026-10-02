@@ -40,7 +40,7 @@ interface ModelState {
 const eventsFrom = (state: ModelState): ReadonlyArray<KnownEvent<string>> => {
   const next = state.nextOrdinal;
   const events: Array<KnownEvent<string>> = [
-    { kind: "waiting", on: "gitea-session" },
+    { kind: "waiting", on: "mate-session" },
     { kind: "pushed", ordinal: next, value: `push-${next}`, atMs: next * 1_000 },
     {
       kind: "pushed",

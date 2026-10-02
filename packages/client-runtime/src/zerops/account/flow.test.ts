@@ -3,74 +3,12 @@ import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as TestClock from "effect/testing/TestClock";
 import { Atom, AtomRegistry } from "effect/unstable/reactivity";
-import { describe, expect, it, vi } from "vite-plus/test";
+import { describe, expect, it } from "vite-plus/test";
 
 import { project, service } from "../data/__fixtures__/index.ts";
 import type { ManagedZeropsDataRuntime } from "../data/runtime.ts";
 import type { LeaseAdmissionError } from "../data/types.ts";
-import type { GiteaSessions } from "../forge/giteaSession.ts";
-import type { PlatformSignal, PlatformSignals } from "../knowledge/signals.ts";
-import { deploymentStorePorts, makeForgeWiring } from "./flow.ts";
-
-/** The Gitea sessions, as spies. */
-function forge() {
-  const sessions = {
-    resume: vi.fn(),
-    wake: vi.fn(),
-    online: vi.fn(),
-    close: vi.fn(),
-  };
-  return { sessions, stores: { sessions: sessions as unknown as GiteaSessions } };
-}
-
-const tab = (hidden: boolean): PlatformSignals => ({
-  hidden: () => hidden,
-  online: () => true,
-  listen: () => () => undefined,
-});
-
-const wiring = (hidden: boolean) =>
-  makeForgeWiring({
-    ports: {
-      fetch: globalThis.fetch,
-      now: () => ({ wall: 0, mono: 0 }),
-      random: () => 0.5,
-      nonce: () => "nonce",
-      setTimer: () => () => undefined,
-    },
-    signals: tab(hidden),
-  });
-
-describe("the post-grant stage's Gitea sessions and the tab (DESIGN §6.4)", () => {
-  it.each([
-    ["a visible wake tries every wait", { type: "wake", visible: true, cause: "shown" }, ["wake"]],
-    [
-      "a hidden wake evaluates what came due",
-      { type: "wake", visible: false, cause: "resume" },
-      ["resume"],
-    ],
-    ["shown again runs what came due", { type: "visibility", hidden: false }, ["resume"]],
-    ["hidden starts nothing more", { type: "visibility", hidden: true }, []],
-    ["online tries the sessions again", { type: "network", online: true }, ["online"]],
-  ] as const)("%s", (_case, signal: PlatformSignal, expected) => {
-    const { sessions, stores } = forge();
-    const stage = wiring(false).start(stores);
-
-    stage.hear(signal);
-
-    expect(
-      Object.entries(sessions)
-        .filter(([, spy]) => spy.mock.calls.length > 0)
-        .map(([method]) => method),
-    ).toEqual(expected);
-  });
-
-  it("forgets the Gitea tokens when it ends (§5 L9)", () => {
-    const { sessions, stores } = forge();
-    wiring(false).start(stores).dispose();
-    expect(sessions.close).toHaveBeenCalledTimes(1);
-  });
-});
+import { deploymentStorePorts } from "./flow.ts";
 
 describe("the deployment store's ports (DESIGN §2.D D6)", () => {
   it("tells the store why the platform took no demand for a stop's processes", () => {

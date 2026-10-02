@@ -9,10 +9,7 @@
  *
  * Closing the account lifetime unbinds it at once: a reader after sign-out sees nothing of it.
  */
-import type {
-  AccountForgePorts,
-  PostGrantStage,
-} from "@t3tools/client-runtime/zerops/account/runtime";
+import type { PostGrantStage } from "@t3tools/client-runtime/zerops/account/runtime";
 import {
   envelopeInvalidations,
   stopDeploymentOf,
@@ -26,22 +23,9 @@ import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
 import type { ZeropsStateEnvelope } from "@t3tools/contracts";
 import { useCallback, useEffect, useMemo, useRef, useSyncExternalStore } from "react";
 
-import { randomUUID } from "../lib/utils";
 import { invalidateZerops } from "./accountInvalidations";
 import { onAccountLifetimeClose } from "./accountLifetime";
 import { batchedPerTask } from "./taskBatch";
-
-/** The browser's half of the forge: fetch, the clocks and timers. */
-export const webForgePorts: AccountForgePorts = {
-  fetch: (input, init) => globalThis.fetch(input, init),
-  now: () => ({ wall: Date.now(), mono: performance.now() }),
-  random: Math.random,
-  nonce: randomUUID,
-  setTimer: (delayMs, fire) => {
-    const timer = setTimeout(fire, delayMs);
-    return () => clearTimeout(timer);
-  },
-};
 
 // ── The binding ──────────────────────────────────────────────────────────────────────────────
 
