@@ -16,7 +16,6 @@ const stopsOf = (environments: ReadonlyArray<GroupEnvironmentRowInput> = []): Gr
     tier: entry.tier,
     project: entry.projectId,
     sources: entry.sources,
-    deploy: undefined,
   })),
   environments,
   missing: [],

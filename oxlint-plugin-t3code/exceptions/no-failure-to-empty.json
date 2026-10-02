@@ -88,7 +88,7 @@
     "expires": "never"
   },
   {
-    "path": "apps/web/src/zerops/useZeropsDeployedVersion.ts",
+    "path": "apps/web/src/zerops/readZeropsCell.ts",
     "kind": "CallExpression",
     "fingerprint": "readZeropsCell(cells, request, signal).catch(() => undefined)",
     "owner": "state-model 4.6",

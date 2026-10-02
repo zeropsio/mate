@@ -1,9 +1,8 @@
 /**
  * The forge store (DESIGN §2.D D3–D5, §4.7): what Gitea says, as the person, one fact per key —
  * whether the broker has made a group's org yet, a repository with the person's permissions in
- * it, a repository's tags, recent commits, a branch's head, a file on `main`, the group repo's
- * declarations (`environments.yaml`), a commit's statuses and detail, what one commit has over
- * another, and across the whole Gitea the person's repositories. A Mate's changes are HQ's.
+ * it, a repository's tags and recent commits, and across the whole Gitea the person's
+ * repositories. A Mate's changes are HQ's, and so is what an environment deploys.
  *
  * ## Facts
  *
@@ -18,21 +17,16 @@
  *   go by the demand's priority, then in the order keys became due.
  * - Nothing aborts a read in flight except the store's end or the key's eviction: a backstop that
  *   comes due, an invalidation or a wake during a read is one more read after it (M3).
- * - Backstops, because Gitea pushes nothing to a browser (§6.3): repositories, tags, commits,
- *   files and branch heads every {@link FORGE_LIST_BACKSTOP_MS}, declarations every
- *   {@link FORGE_DECLARATIONS_BACKSTOP_MS}, a commit's statuses every
- *   {@link FORGE_PENDING_STATUS_MS} while one is pending, for at most
- *   {@link FORGE_PENDING_STATUS_LIMIT_MS}, and at the list backstop while CI has posted none; an
- *   org or a repository the broker has not made yet on the backoff ladder until it is. They run
- *   only while the key is demanded and the tab is visible. What commits named by their shas hold
- *   never changes, and no invalidation touches it.
+ * - Backstops, because Gitea pushes nothing to a browser (§6.3): repositories, tags and commits
+ *   every {@link FORGE_LIST_BACKSTOP_MS}; an org or a repository the broker has not made yet on
+ *   the backoff ladder until it is. They run only while the key is demanded and the tab is
+ *   visible.
  * - A failed read retries on the backoff ladder (`retryPolicy.ts`), keeping the value it had. A
  *   read whose Gitea 401 no token recovered is no answer: the key waits for the session to be
  *   readable again and reads then.
  * - While the tab is hidden nothing starts. A visible wake resets the backoff and reads again
- *   every demanded key read more than {@link FORGE_WAKE_REVALIDATE_MS} ago, except what no read
- *   changes: a key proved absent, statuses that are all done, an org that is made, a comparison or
- *   a commit read.
+ *   every demanded key read more than {@link FORGE_WAKE_REVALIDATE_MS} ago, except an org that is
+ *   made, which no read changes.
  *
  * ## Retention
  *
@@ -47,13 +41,10 @@ import {
   GITEA_REQUEST_DEADLINE_MS,
   type GiteaClient,
   type GiteaCommit,
-  type GiteaCommitDetail,
-  type GiteaCommitStatus,
   type GiteaOrganization,
   type GiteaRepository,
   type GiteaTag,
 } from "../giteaClient.ts";
-import { readGroupEnvironments, type GroupEnvironment } from "../groupEnvironments.ts";
 import type { Invalidation } from "../knowledge/invalidation.ts";
 import {
   advance,
@@ -66,14 +57,10 @@ import {
   type Shown,
 } from "../knowledge/known.ts";
 import { INITIAL_BACKOFF, scheduleRetry, type Backoff } from "../knowledge/retryPolicy.ts";
-import { ENVIRONMENTS_DOCUMENT_PATH } from "../recipeTier.ts";
 import type { GiteaSessions } from "./giteaSession.ts";
 
 export const FORGE_HOST_CONCURRENCY = 4;
 export const FORGE_LIST_BACKSTOP_MS = 60_000;
-export const FORGE_DECLARATIONS_BACKSTOP_MS = 5 * 60_000;
-export const FORGE_PENDING_STATUS_MS = 15_000;
-export const FORGE_PENDING_STATUS_LIMIT_MS = 20 * 60_000;
 export const FORGE_WAKE_REVALIDATE_MS = 30_000;
 export const FORGE_RETAINED_UNLEASED = 256;
 /** How far back a repository's history goes before it stops being one. */
@@ -92,16 +79,7 @@ export type ForgeFact =
   /** A group's org, which the broker makes after the group is registered. */
   | { readonly kind: "organization"; readonly origin: string; readonly org: string }
   | ({ readonly kind: "tags" } & Repository)
-  | ({ readonly kind: "branch"; readonly branch: string } & Repository)
-  | ({ readonly kind: "declarations" } & Repository)
-  /** A file on the repository's `main`, by its path. */
-  | ({ readonly kind: "file"; readonly path: string } & Repository)
-  | ({ readonly kind: "statuses"; readonly sha: string } & Repository)
   | ({ readonly kind: "commits" } & Repository)
-  /** What `head` has that `base` does not: what a release would carry. */
-  | ({ readonly kind: "compare"; readonly base: string; readonly head: string } & Repository)
-  /** What one commit changed. */
-  | ({ readonly kind: "commit"; readonly sha: string } & Repository)
   | ({ readonly kind: "repository" } & Repository);
 
 /**
@@ -125,16 +103,8 @@ interface ForgeValues {
   readonly "user-repos": ReadonlyArray<GiteaRepository>;
   readonly organization: ForgeOrganization;
   readonly tags: ReadonlyArray<GiteaTag>;
-  /** The commit the branch's head is. */
-  readonly branch: string;
-  readonly declarations: ReadonlyArray<GroupEnvironment>;
-  /** The file's text; `null` while `main` holds no such file. */
-  readonly file: string | null;
-  readonly statuses: ReadonlyArray<GiteaCommitStatus>;
   /** The newest {@link FORGE_COMMITS_READ} commits of the default branch, newest first. */
   readonly commits: ReadonlyArray<GiteaCommit>;
-  readonly compare: ReadonlyArray<GiteaCommit>;
-  readonly commit: GiteaCommitDetail;
   /** The repository with what this person may do in it — never the mirrored role (guide 4.5). */
   readonly repository: ForgeRepository;
 }
@@ -184,7 +154,6 @@ export interface ForgeStore {
 
 type Outcome =
   | { readonly kind: "value"; readonly value: unknown; readonly coverage: Coverage }
-  | { readonly kind: "absent" }
   | { readonly kind: "failed"; readonly failure: FailureReason };
 
 interface Entry {
@@ -207,8 +176,6 @@ interface Entry {
   awaitingSession: boolean;
   /** Monotonic time the last read started; null before the first. */
   readAt: number | null;
-  /** Monotonic time the statuses were first read pending, in the current pending run. */
-  pendingSince: number | null;
   /** When the key last became due, for the order within one priority. */
   dueSince: number;
 }
@@ -225,29 +192,12 @@ function keyOf(fact: ForgeFact): string {
       return JSON.stringify([fact.kind, fact.origin, fact.org]);
     case "user-repos":
       return JSON.stringify([fact.kind, fact.origin]);
-    case "statuses":
-    case "commit":
-      return JSON.stringify([fact.kind, fact.origin, fact.owner, fact.repo, fact.sha]);
-    case "compare":
-      return JSON.stringify([fact.kind, fact.origin, fact.owner, fact.repo, fact.base, fact.head]);
-    case "branch":
-      return JSON.stringify([fact.kind, fact.origin, fact.owner, fact.repo, fact.branch]);
-    case "file":
-      return JSON.stringify([fact.kind, fact.origin, fact.owner, fact.repo, fact.path]);
     case "tags":
-    case "declarations":
     case "commits":
     case "repository":
       return JSON.stringify([fact.kind, fact.origin, fact.owner, fact.repo]);
   }
 }
-
-/**
- * Statuses no read changes: at least one, none pending. A commit read before CI posted anything
- * has none yet, and its first pending status is still to come.
- */
-const statusesDone = (statuses: ReadonlyArray<GiteaCommitStatus>): boolean =>
-  statuses.length > 0 && !statuses.some((status) => status.state === "pending");
 
 /** An org or a repository the broker has not made yet, which the ladder asks about again. */
 const notMadeYet = (fact: ForgeFact, value: unknown): boolean =>
@@ -273,8 +223,6 @@ function invalidates(invalidation: ForgeInvalidation, fact: ForgeFact): boolean 
         fact.kind === "user-repos")
     );
   }
-  // Commits named by their shas never change.
-  if (fact.kind === "compare" || fact.kind === "commit") return false;
   return sameRepository(fact, { origin, owner: invalidation.owner, repo: invalidation.repo });
 }
 
@@ -309,54 +257,12 @@ async function readFact(client: GiteaClient, fact: ForgeFact): Promise<Outcome> 
         value: await client.listAllTags(fact.owner, fact.repo),
         coverage: "complete",
       };
-    case "branch": {
-      const head = (await client.getBranch(fact.owner, fact.repo, fact.branch))?.commit?.id;
-      return head === undefined
-        ? { kind: "absent" }
-        : { kind: "value", value: head, coverage: "complete" };
-    }
-    case "declarations": {
-      // The root's listing first: a group with no `environments.yaml` — most of them — answers
-      // it without the 404 a read of the missing file printed in red on every load.
-      const root = await client.listDirectory(fact.owner, fact.repo, "", "main");
-      const file =
-        root?.includes(ENVIRONMENTS_DOCUMENT_PATH) === true
-          ? await client.readFile(fact.owner, fact.repo, ENVIRONMENTS_DOCUMENT_PATH, "main")
-          : undefined;
-      return {
-        kind: "value",
-        value: file === undefined ? [] : readGroupEnvironments(file.content),
-        coverage: "complete",
-      };
-    }
-    case "file": {
-      const file = await client.readFile(fact.owner, fact.repo, fact.path, "main");
-      return { kind: "value", value: file?.content ?? null, coverage: "complete" };
-    }
-    case "statuses":
-      return {
-        kind: "value",
-        value: await client.listCommitStatuses(fact.owner, fact.repo, fact.sha),
-        coverage: "complete",
-      };
     case "commits":
       return {
         kind: "value",
         value: await client.listCommits(fact.owner, fact.repo, { limit: FORGE_COMMITS_READ }),
         coverage: "complete",
       };
-    case "compare":
-      return {
-        kind: "value",
-        value: await client.compareCommits(fact.owner, fact.repo, fact.base, fact.head),
-        coverage: "complete",
-      };
-    case "commit": {
-      const detail = await client.commitDetail(fact.owner, fact.repo, fact.sha);
-      return detail === undefined
-        ? { kind: "absent" }
-        : { kind: "value", value: detail, coverage: "complete" };
-    }
     case "repository": {
       // As with the org, only a 404 is "not made yet".
       const repository = await client.getRepository(fact.owner, fact.repo);
@@ -407,7 +313,6 @@ export function makeForgeStore(ports: ForgeStorePorts): ForgeStore {
       backoff: INITIAL_BACKOFF,
       awaitingSession: false,
       readAt: null,
-      pendingSince: null,
       dueSince: ports.now().mono,
     };
     entries.set(id, created);
@@ -432,24 +337,10 @@ export function makeForgeStore(ports: ForgeStorePorts): ForgeStore {
 
   const reached = (at: number | null, mono: number): boolean => at !== null && mono >= at;
 
-  /**
-   * What no read changes: a key proved absent (M6), statuses that are all done (D5), an org that
-   * is made, a comparison or a commit read. Only an invalidation reads it again.
-   */
-  const final = (entry: Entry): boolean => {
-    if (entry.cell.held.state === "gone") return true;
-    switch (entry.fact.kind) {
-      case "statuses":
-        return holds<"statuses">(entry, statusesDone);
-      case "organization":
-        return holds<"organization">(entry, (organization) => organization.kind === "made");
-      case "compare":
-      case "commit":
-        return entry.cell.held.state === "known";
-      default:
-        return false;
-    }
-  };
+  /** What no read changes: an org that is made. Only an invalidation reads it again. */
+  const final = (entry: Entry): boolean =>
+    entry.fact.kind === "organization" &&
+    holds<"organization">(entry, (organization) => organization.kind === "made");
 
   /** A key never read waits for the Gitea session, which is not a failure. */
   const waitForSession = (entry: Entry): void => {
@@ -492,15 +383,8 @@ export function makeForgeStore(ports: ForgeStorePorts): ForgeStore {
     switch (entry.fact.kind) {
       case "user-repos":
       case "tags":
-      case "branch":
       case "commits":
-      case "file":
         return mono + FORGE_LIST_BACKSTOP_MS;
-      case "declarations":
-        return mono + FORGE_DECLARATIONS_BACKSTOP_MS;
-      case "compare":
-      case "commit":
-        return null;
       case "organization":
       case "repository": {
         // Not made yet is asked about again on the ladder until it is. A made org is final; a
@@ -511,18 +395,6 @@ export function makeForgeStore(ports: ForgeStorePorts): ForgeStore {
         const retry = scheduleRetry(entry.backoff, wall, ports.random);
         entry.backoff = retry.backoff;
         return mono + (retry.retryAtMs - wall);
-      }
-      case "statuses": {
-        const statuses = value as ReadonlyArray<GiteaCommitStatus>;
-        if (statuses.length === 0) return mono + FORGE_LIST_BACKSTOP_MS;
-        if (statusesDone(statuses)) {
-          entry.pendingSince = null;
-          return null;
-        }
-        entry.pendingSince ??= mono;
-        return mono - entry.pendingSince < FORGE_PENDING_STATUS_LIMIT_MS
-          ? mono + FORGE_PENDING_STATUS_MS
-          : null;
       }
     }
   };
@@ -536,14 +408,6 @@ export function makeForgeStore(ports: ForgeStorePorts): ForgeStore {
   const admit = (entry: Entry, readOrdinal: number, at: Instant, outcome: Outcome): void => {
     const fact = entry.fact;
     switch (outcome.kind) {
-      case "absent":
-        apply(entry, {
-          kind: "proven-absent",
-          evidence: "direct-not-found",
-          ordinal: readOrdinal,
-          atMs: at.wall,
-        });
-        return;
       case "failed": {
         const now = ports.now();
         if (outcome.failure.kind === "unauthorized") {

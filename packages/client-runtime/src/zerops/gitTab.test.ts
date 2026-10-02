@@ -21,15 +21,14 @@ import { mateNextStep } from "./mateNextStep.ts";
 import { changeState, type FlowPullRequest } from "./projectFlow.ts";
 
 const DECLARATIONS: ReadonlyArray<GroupEnvironment> = [
-  { name: "stage", tier: "stage", project: "p1", sources: ["main"], deploy: "on-push" },
+  { name: "stage", tier: "stage", project: "p1", sources: ["main"] },
   {
     name: "stage-client-x",
     tier: "stage",
     project: "p2",
     sources: ["main", "feature/invoices"],
-    deploy: "on-push",
   },
-  { name: "production", tier: "production", project: "p3", sources: "release", deploy: undefined },
+  { name: "production", tier: "production", project: "p3", sources: "release" },
 ];
 
 function checkout(overrides: Partial<GitCheckoutState> = {}): GitCheckoutState {

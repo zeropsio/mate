@@ -20,8 +20,6 @@ import {
   type Deployment,
   type DeploymentStore,
   type EnvelopeServices,
-  type FlowAttempt,
-  type FlowCommand,
   type StopService,
 } from "@t3tools/client-runtime/zerops/flow";
 import { projectKeyOf, type ProjectRef } from "@t3tools/client-runtime/zerops/data";
@@ -274,30 +272,4 @@ function stopServicesSnapshot(
     }
     return read.services;
   };
-}
-
-/**
- * One flow verb as a command attempt (§4.9): how its latest attempt on that target stands, and the
- * way to run it; `run` is `null` while the account has no forge or nothing to run.
- */
-export function useFlowCommand(command: FlowCommand | null): {
-  readonly attempt: FlowAttempt | null;
-  readonly run: (() => Promise<FlowAttempt>) | null;
-} {
-  const flow = useAccountFlow();
-  const commands = flow?.forge?.commands ?? null;
-  const subscribe = useCallback(
-    (listener: () => void) => commands?.subscribe(() => listener()) ?? (() => undefined),
-    [commands],
-  );
-  const snapshot = useCallback(
-    () => (commands === null || command === null ? null : commands.attempt(command)),
-    [command, commands],
-  );
-  const attempt = useSyncExternalStore(subscribe, snapshot, snapshot);
-  const run = useMemo(
-    () => (commands === null || command === null ? null : () => commands.run(command)),
-    [command, commands],
-  );
-  return { attempt, run };
 }

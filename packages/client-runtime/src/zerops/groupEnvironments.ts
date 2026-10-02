@@ -5,8 +5,7 @@
  * An environment is a Zerops project created from a tier, attached to its application in the
  * organization's HQ as its stage or production — HQ records the environment with the attach, its
  * name, its sources and its place in the order — and keyed: the deploy token HQ deploys it with,
- * minted by the person's own client (`deployToken.ts`). Main's `environments.yaml` is read here only
- * while the Gitea deploy half still reads it.
+ * minted by the person's own client (`deployToken.ts`).
  *
  * ## Public access
  *
@@ -37,7 +36,7 @@ export function environmentTierForRole(
   return role === "stage" ? "stage" : role === "prod" ? "production" : undefined;
 }
 
-/** One entry of `environments.yaml`. */
+/** An environment of an application, as HQ records it: its name, tier, project and sources. */
 export interface GroupEnvironment {
   readonly name: string;
   readonly tier: GroupEnvironmentTier;
@@ -48,8 +47,6 @@ export interface GroupEnvironment {
    * the newest approved `v*` tag and nothing else.
    */
   readonly sources: ReadonlyArray<string> | "release";
-  /** `on-push` (the default) or `on-request`. */
-  readonly deploy: "on-push" | "on-request" | undefined;
 }
 
 /**
@@ -97,95 +94,6 @@ export function missingEnvironmentRows(input: {
       name: tier === "stage" ? "Stage" : "Production",
       line: MISSING_ENVIRONMENT_LINE,
     }));
-}
-
-const ENVIRONMENTS_KEY = /^environments:\s*$/u;
-const ENTRY_KEY = /^ {2}([^\s#:][^:]*):\s*(?:#.*)?$/u;
-const TIER = /^ {4}tier:\s*(\S+)/u;
-const PROJECT = /^ {4}project:\s*(\S+)/u;
-const SOURCES = /^ {4}sources:\s*(\S.*)$/u;
-const DEPLOY = /^ {4}deploy:\s*(\S+)/u;
-
-/**
- * Every environment the document declares, in its order.
- *
- * Tolerant by design: it is a file people edit, and an entry this build cannot
- * make sense of is skipped rather than made to fail the whole read — the broker
- * is the authority on what it will deploy, and the app's job here is to show
- * what is there and refuse a second production.
- */
-export function readGroupEnvironments(yaml: string): ReadonlyArray<GroupEnvironment> {
-  const lines = yaml.split("\n");
-  const start = lines.findIndex((line) => ENVIRONMENTS_KEY.test(line));
-  if (start === -1) return [];
-
-  const found: Array<GroupEnvironment> = [];
-  let current: { name: string; body: Array<string> } | null = null;
-  const flush = () => {
-    if (current === null) return;
-    const entry = entryOf(current.name, current.body);
-    if (entry !== undefined) found.push(entry);
-    current = null;
-  };
-
-  for (let index = start + 1; index < lines.length; index += 1) {
-    const line = lines[index] ?? "";
-    if (line.trim().length > 0 && !line.startsWith(" ")) break;
-    const key = ENTRY_KEY.exec(line);
-    if (key?.[1] !== undefined) {
-      flush();
-      current = { name: key[1].trim(), body: [] };
-      continue;
-    }
-    current?.body.push(line);
-  }
-  flush();
-  return found;
-}
-
-function entryOf(name: string, body: ReadonlyArray<string>): GroupEnvironment | undefined {
-  const tier = first(body, TIER);
-  const project = first(body, PROJECT);
-  if (name.length === 0 || project === undefined) return undefined;
-  if (tier !== "stage" && tier !== "production") return undefined;
-  const sourcesRaw = first(body, SOURCES);
-  const deploy = first(body, DEPLOY);
-  return {
-    name,
-    tier,
-    project,
-    sources: readSources(sourcesRaw, tier),
-    deploy: deploy === "on-push" || deploy === "on-request" ? deploy : undefined,
-  };
-}
-
-function first(body: ReadonlyArray<string>, pattern: RegExp): string | undefined {
-  for (const line of body) {
-    const match = pattern.exec(line);
-    if (match?.[1] !== undefined) return match[1].trim();
-  }
-  return undefined;
-}
-
-/**
- * `sources` is either the word `release` or a flow list of branches. A
- * production's is always `release` whatever it says — that is the only value
- * the broker accepts for one, and reading anything else back would show a
- * production following a branch, which cannot happen.
- */
-function readSources(
-  raw: string | undefined,
-  tier: GroupEnvironmentTier,
-): ReadonlyArray<string> | "release" {
-  if (tier === "production") return "release";
-  if (raw === undefined) return [];
-  const list = raw.replace(/#.*$/u, "").trim();
-  if (list === "release") return "release";
-  return list
-    .replace(/^\[|\]$/gu, "")
-    .split(",")
-    .map((entry) => entry.trim().replace(/^["']|["']$/gu, ""))
-    .filter((entry) => entry.length > 0);
 }
 
 /**

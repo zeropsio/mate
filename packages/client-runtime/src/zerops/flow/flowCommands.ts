@@ -29,8 +29,7 @@ import { GiteaApiError, type GiteaClient } from "../giteaClient.ts";
 import type { Invalidation } from "../knowledge/invalidation.ts";
 import { flowVerbKey } from "../projectFlow.ts";
 import { GROUP_REPOSITORY } from "../release.ts";
-import { RELEASE_NOT_A_RELEASER, releaseMessage, releaseTagName, rollbackTo } from "../release.ts";
-import type { GroupFlow } from "./groupFlow.ts";
+import { RELEASE_NOT_A_RELEASER, rollbackTo } from "../release.ts";
 
 export type FlowCommand =
   | {
@@ -113,49 +112,6 @@ export function flowCommandInvalidations(command: FlowCommand): ReadonlyArray<In
           repo: GROUP_REPOSITORY,
         },
       ];
-  }
-}
-
-/** Tagging what the release offer showed; `null` while the offer is not known. */
-export function releaseCommand(flow: GroupFlow, origin: string): FlowCommand | null {
-  if (flow.release.state !== "known") return null;
-  const offer = flow.release.value;
-  return {
-    kind: "release",
-    origin,
-    slug: flow.slug,
-    groupId: flow.groupId,
-    tag: releaseTagName(offer.suggestion.replace(/^v/u, "")),
-    message: releaseMessage(offer.entries),
-  };
-}
-
-/** A verb as a surface asks for it: by its group. */
-export type FlowRequest =
-  | { readonly kind: "release"; readonly groupId: string }
-  | { readonly kind: "roll-back"; readonly groupId: string; readonly tag: string };
-
-/**
- * The command a surface's request is, over the flows read: `null` for a verb on a group whose
- * flow is not read, or a release whose offer is not.
- */
-export function flowCommandFor(
-  request: FlowRequest,
-  flows: Iterable<GroupFlow>,
-  origin: string,
-): FlowCommand | null {
-  const groups = [...flows];
-  switch (request.kind) {
-    case "release": {
-      const flow = groups.find(({ groupId }) => groupId === request.groupId);
-      return flow === undefined ? null : releaseCommand(flow, origin);
-    }
-    case "roll-back": {
-      const flow = groups.find(({ groupId }) => groupId === request.groupId);
-      return flow === undefined
-        ? null
-        : { kind: "roll-back", origin, slug: flow.slug, groupId: flow.groupId, tag: request.tag };
-    }
   }
 }
 

@@ -173,7 +173,7 @@ describe("an application's stops, as HQ records them", () => {
       recipe: { tiers: ["stage", "production"], repositories: new Map([["api", "apidev"]]) },
     });
     expect(stops.declarations).toEqual([
-      { name: "stage", tier: "stage", project: "p-stage", sources: ["main"], deploy: undefined },
+      { name: "stage", tier: "stage", project: "p-stage", sources: ["main"] },
     ]);
     expect(stops.environments.map((entry) => [entry.name, entry.services])).toEqual([
       [

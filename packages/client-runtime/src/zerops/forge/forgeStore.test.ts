@@ -9,11 +9,8 @@ import {
 } from "../giteaClient.ts";
 import {
   FORGE_COMMITS_READ,
-  FORGE_DECLARATIONS_BACKSTOP_MS,
   FORGE_HOST_CONCURRENCY,
   FORGE_LIST_BACKSTOP_MS,
-  FORGE_PENDING_STATUS_LIMIT_MS,
-  FORGE_PENDING_STATUS_MS,
   FORGE_WAKE_REVALIDATE_MS,
   makeForgeStore,
   type ForgeFact,
@@ -112,23 +109,11 @@ function rig() {
     return {
       origin: ORIGIN,
       listAllTags: (owner: string, repo: string) => at(`tags ${owner}/${repo}`),
-      getBranch: (owner: string, repo: string, branch: string) =>
-        at(`branch ${owner}/${repo} ${branch}`),
-      readFile: (owner: string, repo: string, path: string, ref?: string) =>
-        at(`file ${owner}/${repo} ${path}${ref === undefined ? "" : `@${ref}`}`),
-      listDirectory: (owner: string, repo: string, path: string, ref?: string) =>
-        at(`dir ${owner}/${repo} ${path === "" ? "/" : path}${ref === undefined ? "" : `@${ref}`}`),
-      listCommitStatuses: (owner: string, repo: string, sha: string) =>
-        at(`statuses ${owner}/${repo}@${sha}`),
       listCommits: (owner: string, repo: string, options?: { readonly limit?: number }) =>
         at(`commits ${owner}/${repo} ${String(options?.limit)}`),
       getRepository: (owner: string, repo: string) => at(`repository ${owner}/${repo}`),
       listUserRepositories: () => at("user repos"),
       getOrganization: (slug: string) => at(`org ${slug}`),
-      compareCommits: (owner: string, repo: string, base: string, head: string) =>
-        at(`compare ${owner}/${repo} ${base}...${head}`),
-      commitDetail: (owner: string, repo: string, sha: string) =>
-        at(`commit ${owner}/${repo}@${sha}`),
     } as unknown as GiteaClient;
   };
   let view: GiteaSessionView = { ...GITEA_SIGNED_OUT, signedIn: true, readable: true };
@@ -393,21 +378,6 @@ describe("forge store failures and the session (DESIGN §4.6, §6.4)", () => {
     expect(sent("tags shop/app")).toHaveLength(2);
   });
 
-  it("a wake reads nothing that is final: a branch gone, statuses done", async () => {
-    const { clock, store, sent, pending } = rig();
-    store.demand({ kind: "branch", origin: ORIGIN, owner: "shop", repo: "app", branch: "next" });
-    store.demand({ kind: "statuses", origin: ORIGIN, owner: "shop", repo: "app", sha: "h4" });
-    await clock.advance(0);
-    await pending("branch shop/app next").answer(undefined);
-    await pending("statuses shop/app@h4").answer([{ context: "ci", state: "success" }]);
-
-    await clock.advance(FORGE_WAKE_REVALIDATE_MS * 4);
-    store.wake();
-    await clock.advance(0);
-    expect(sent("branch shop/app next")).toHaveLength(1);
-    expect(sent("statuses shop/app@h4")).toHaveLength(1);
-  });
-
   it("the store's end aborts the reads in flight and publishes nothing after", async () => {
     const { clock, store, pending } = rig();
     const fact = tags("shop", "app");
@@ -423,111 +393,7 @@ describe("forge store failures and the session (DESIGN §4.6, §6.4)", () => {
   });
 });
 
-describe("forge store backstops (DESIGN §6.3)", () => {
-  it("a commit's statuses are read every 15 s while one is pending, for at most 20 minutes", async () => {
-    const { clock, store, sent, pending } = rig();
-    store.demand({ kind: "statuses", origin: ORIGIN, owner: "shop", repo: "app", sha: "h4" });
-    await clock.advance(0);
-    const running = [{ context: "ci", state: "pending" as const }];
-    await pending("statuses shop/app@h4").answer(running);
-    for (let read = 0; read < FORGE_PENDING_STATUS_LIMIT_MS / FORGE_PENDING_STATUS_MS; read += 1) {
-      await clock.advance(FORGE_PENDING_STATUS_MS);
-      await pending("statuses shop/app@h4").answer(running);
-    }
-    const reads = sent("statuses shop/app@h4").length;
-    await clock.advance(FORGE_PENDING_STATUS_LIMIT_MS);
-    expect(sent("statuses shop/app@h4")).toHaveLength(reads);
-  });
-
-  it("final statuses are not read again", async () => {
-    const { clock, store, sent, pending } = rig();
-    store.demand({ kind: "statuses", origin: ORIGIN, owner: "shop", repo: "app", sha: "h4" });
-    await clock.advance(0);
-    await pending("statuses shop/app@h4").answer([{ context: "ci", state: "success" }]);
-    await clock.advance(FORGE_LIST_BACKSTOP_MS * 10);
-    expect(sent("statuses shop/app@h4")).toHaveLength(1);
-  });
-
-  it("a commit CI has posted nothing on yet is read again at the list backstop and on a wake", async () => {
-    const { clock, store, sent, pending } = rig();
-    store.demand({ kind: "statuses", origin: ORIGIN, owner: "shop", repo: "app", sha: "h4" });
-    await clock.advance(0);
-    await pending("statuses shop/app@h4").answer([]);
-    await clock.advance(FORGE_LIST_BACKSTOP_MS);
-    await pending("statuses shop/app@h4").answer([]);
-
-    await clock.advance(FORGE_WAKE_REVALIDATE_MS);
-    store.wake();
-    await clock.advance(0);
-    expect(sent("statuses shop/app@h4")).toHaveLength(3);
-  });
-
-  it.each([
-    [
-      "a group whose main has no environments.yaml asks only for the listing: no 404 per load",
-      ["README.md", "3 — Stage"],
-      [] as ReadonlyArray<string>,
-    ],
-    [
-      "an empty group repo, with no main yet, declares none",
-      undefined,
-      [] as ReadonlyArray<string>,
-    ],
-    [
-      "a group whose main lists environments.yaml reads it",
-      ["environments.yaml", "README.md"],
-      ["file shop/group environments.yaml@main"],
-    ],
-  ])("%s", async (_case, listing, fileReads) => {
-    const { clock, store, sent, pending } = rig();
-    const fact: ForgeFact = { kind: "declarations", origin: ORIGIN, owner: "shop", repo: "group" };
-    store.demand(fact);
-    await clock.advance(0);
-    await pending("dir shop/group /@main").answer(listing);
-    if (fileReads.length > 0) {
-      await pending("file shop/group environments.yaml@main").answer({
-        path: "environments.yaml",
-        sha: "s1",
-        content: "environments: []\n",
-      });
-    }
-    expect(sent("file shop/group environments.yaml")).toEqual([]);
-    expect(sent("file shop/group environments.yaml@main")).toHaveLength(fileReads.length);
-    expect(store.read(fact)).toMatchObject({ state: "known", value: [], coverage: "complete" });
-    await clock.advance(FORGE_DECLARATIONS_BACKSTOP_MS - 1);
-    expect(sent("dir shop/group /@main")).toHaveLength(1);
-    await clock.advance(1);
-    expect(sent("dir shop/group /@main")).toHaveLength(2);
-  });
-
-  it("a branch's head is its commit, read at the list backstop, and a missing branch is gone", async () => {
-    const { clock, store, sent, pending } = rig();
-    const main: ForgeFact = {
-      kind: "branch",
-      origin: ORIGIN,
-      owner: "shop",
-      repo: "app",
-      branch: "main",
-    };
-    const next: ForgeFact = {
-      kind: "branch",
-      origin: ORIGIN,
-      owner: "shop",
-      repo: "app",
-      branch: "next",
-    };
-    store.demand(main);
-    store.demand(next);
-    await clock.advance(0);
-    await pending("branch shop/app main").answer({ name: "main", commit: { id: "c1" } });
-    await pending("branch shop/app next").answer(undefined);
-
-    expect(store.read(main)).toMatchObject({ state: "known", value: "c1" });
-    expect(store.read(next)).toMatchObject({ state: "gone", evidence: "direct-not-found" });
-    await clock.advance(FORGE_LIST_BACKSTOP_MS);
-    expect(sent("branch shop/app main")).toHaveLength(2);
-  });
-
+describe("forge store invalidations (DESIGN §6.2)", () => {
   it("shows an invalidation only while a view demands a fact under its key", async () => {
     const { clock, store, pending } = rig();
     const release = store.demand(tags("shop", "app"));
@@ -641,86 +507,5 @@ describe("forge store facts the flow's surfaces read (DESIGN §2.D D3)", () => {
     store.wake();
     await clock.advance(0);
     expect(sent("org shop")).toHaveLength(3);
-  });
-
-  it("a file at main is unread until read, known after, and one main does not hold is known as none until it lands", async () => {
-    const { clock, store, sent, pending } = rig();
-    const stage: ForgeFact = {
-      kind: "file",
-      origin: ORIGIN,
-      owner: "shop",
-      repo: "group",
-      path: "3 — Stage/import.yaml",
-    };
-    expect(store.read(stage)).toEqual({ state: "unread", waitingFor: null });
-    store.demand(stage);
-    await clock.advance(0);
-    await pending("file shop/group 3 — Stage/import.yaml@main").answer(undefined);
-    expect(store.read(stage)).toMatchObject({ state: "known", value: null, coverage: "complete" });
-
-    // The broker merges the recipe onto main minutes after the Mate is up.
-    await clock.advance(FORGE_LIST_BACKSTOP_MS);
-    await pending("file shop/group 3 — Stage/import.yaml@main").answer({
-      path: "3 — Stage/import.yaml",
-      content: "services: []",
-      sha: "f1",
-    });
-    expect(store.read(stage)).toMatchObject({ state: "known", value: "services: []" });
-    expect(sent("file shop/group 3 — Stage/import.yaml@main")).toHaveLength(2);
-  });
-
-  it("what one commit has over another is unread until read, known after, and never read again", async () => {
-    const { clock, store, sent, pending } = rig();
-    const fact: ForgeFact = {
-      kind: "compare",
-      origin: ORIGIN,
-      owner: "shop",
-      repo: "app",
-      base: "b1",
-      head: "h2",
-    };
-    expect(store.read(fact)).toEqual({ state: "unread", waitingFor: null });
-    store.demand(fact);
-    await clock.advance(0);
-    const commits = [{ sha: "h2", subject: "Add cart" }];
-    await pending("compare shop/app b1...h2").answer(commits);
-    expect(store.read(fact)).toMatchObject({ state: "known", value: commits });
-
-    // Two commits never change what one has over the other.
-    await clock.advance(FORGE_LIST_BACKSTOP_MS * 5);
-    store.wake();
-    await clock.advance(0);
-    expect(sent("compare shop/app b1...h2")).toHaveLength(1);
-  });
-
-  it("a commit's detail is unread until read, known after, gone when Gitea has none, and never read again", async () => {
-    const { clock, store, sent, pending } = rig();
-    const fact = (sha: string): ForgeFact => ({
-      kind: "commit",
-      origin: ORIGIN,
-      owner: "shop",
-      repo: "app",
-      sha,
-    });
-    expect(store.read(fact("h2"))).toEqual({ state: "unread", waitingFor: null });
-    store.demand(fact("h2"));
-    store.demand(fact("h9"));
-    await clock.advance(0);
-    const detail = {
-      sha: "h2",
-      subject: "Add cart",
-      files: [],
-      additions: 3,
-      deletions: 1,
-    };
-    await pending("commit shop/app@h2").answer(detail);
-    await pending("commit shop/app@h9").answer(undefined);
-    expect(store.read(fact("h2"))).toMatchObject({ state: "known", value: detail });
-    expect(store.read(fact("h9"))).toMatchObject({ state: "gone", evidence: "direct-not-found" });
-
-    await clock.advance(FORGE_LIST_BACKSTOP_MS * 5);
-    store.wake();
-    await clock.advance(0);
-    expect(sent("commit shop/app@h2")).toHaveLength(1);
   });
 });

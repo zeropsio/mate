@@ -7,13 +7,10 @@ import { flowVerbKey } from "../projectFlow.ts";
 import { RELEASE_NOT_A_RELEASER } from "../release.ts";
 import {
   FLOW_COMMAND_UNCERTAIN,
-  flowCommandFor,
   makeFlowCommands,
-  releaseCommand,
   type FlowCommand,
   type FlowCommandPorts,
 } from "./flowCommands.ts";
-import type { GroupFlow } from "./groupFlow.ts";
 
 const GITEA = "https://gitea-1-3000.prg1.zerops.app";
 const HEAD = "a".repeat(40);
@@ -250,60 +247,5 @@ describe("flow commands (DESIGN §4.9, §4.7 verbs)", () => {
     expect(await first).toEqual({ phase: "accepted" });
     expect(await second).toEqual({ phase: "accepted" });
     expect(calls).toEqual(["branch harbor/group main", "tag harbor/group v1.0.1"]);
-  });
-});
-
-describe("a group flow's commands", () => {
-  const flow = (release: GroupFlow["release"]): GroupFlow => ({
-    groupId: "g1",
-    slug: "harbor",
-    stops: { state: "unread", waitingFor: null },
-    missing: { state: "unread", waitingFor: null },
-    release,
-    releaseContents: { state: "unread", waitingFor: null },
-    releases: { state: "unread", waitingFor: null },
-    releaseGate: { allowed: true },
-    releaseAffordance: null,
-    feeds: () => ({ state: "unread", waitingFor: null }),
-  });
-  const offer = {
-    gate: { allowed: true },
-    suggestion: "v1.0.1",
-    comparison: [],
-    entries: [{ service: "appdev", commit: HEAD }],
-  } as const;
-
-  it("a release tags what the offer showed, and only a known offer", () => {
-    const known = flow({
-      state: "known",
-      value: offer,
-      asOf: { ordinal: 1, atMs: 1 },
-      coverage: "complete",
-      freshness: { kind: "live" },
-    });
-    expect(releaseCommand(known, GITEA)).toEqual(RELEASE);
-    expect(releaseCommand(flow({ state: "reading", sinceMs: 1, attempt: 1 }), GITEA)).toBeNull();
-  });
-
-  it("verbs are addressed as surfaces call them: by their group", () => {
-    const flows = [
-      flow({
-        state: "known",
-        value: offer,
-        asOf: { ordinal: 1, atMs: 1 },
-        coverage: "complete",
-        freshness: { kind: "live" },
-      }),
-    ];
-
-    expect(flowCommandFor({ kind: "release", groupId: "g1" }, flows, GITEA)).toEqual(RELEASE);
-    expect(
-      flowCommandFor({ kind: "roll-back", groupId: "g1", tag: "v1.0.0" }, flows, GITEA),
-    ).toEqual({ kind: "roll-back", origin: GITEA, slug: "harbor", groupId: "g1", tag: "v1.0.0" });
-    // A group whose flow is not read has no offer to tag and no slug to tag in.
-    expect(flowCommandFor({ kind: "release", groupId: "g2" }, flows, GITEA)).toBeNull();
-    expect(
-      flowCommandFor({ kind: "roll-back", groupId: "g2", tag: "v1.0.0" }, flows, GITEA),
-    ).toBeNull();
   });
 });

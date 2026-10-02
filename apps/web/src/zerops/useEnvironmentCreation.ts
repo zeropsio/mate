@@ -30,7 +30,7 @@ import { officialHq, useAccountHq } from "./accountHq";
 import { invalidateZerops } from "./accountInvalidations";
 import { captureAccountLifetime } from "./accountLifetime";
 import { beginPress, pressPlatform, pressRegistration, pressViewer, runPress } from "./matePress";
-import { readZeropsCellOnce } from "./useZeropsDeployedVersion";
+import { readZeropsCellOnce } from "./readZeropsCell";
 import { useZeropsInventory } from "./ZeropsInventoryProvider";
 import { useZeropsSession } from "./ZeropsSessionProvider";
 import { useZeropsData } from "./zeropsDataContext";

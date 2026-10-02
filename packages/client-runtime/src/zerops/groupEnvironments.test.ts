@@ -5,37 +5,7 @@ import {
   halfMadeGroupEnvironments,
   missingEnvironmentRows,
   MISSING_ENVIRONMENT_LINE,
-  readGroupEnvironments,
 } from "./groupEnvironments.ts";
-
-const ONE_STAGE = `version: 1
-environments:
-  stage:
-    tier: stage
-    project: p-stage
-    sources: [main]
-    deploy: on-push
-`;
-
-const FULL = `version: 1
-environments:
-  stage:
-    tier: stage
-    project: p-stage
-    sources: [main]
-    deploy: on-push
-  stage-client-x:
-    tier: stage
-    project: p-clientx
-    # Shown to a client, so it carries the invoices work too.
-    sources: [main, feature/invoices]
-  production:
-    tier: production
-    project: p-prod
-    sources: release
-    gates:
-      requireOnStage: stage
-`;
 
 /** HQ's registry of group `g-1`, with these members. */
 const registryOf = (
@@ -49,59 +19,6 @@ const registryOf = (
       projects: members.map(([projectId, kind]) => ({ projectId, kind })),
     },
   ],
-});
-
-describe("readGroupEnvironments", () => {
-  it("reads every environment, its tier, its project and what feeds it", () => {
-    expect(readGroupEnvironments(FULL)).toEqual([
-      {
-        name: "stage",
-        tier: "stage",
-        project: "p-stage",
-        sources: ["main"],
-        deploy: "on-push",
-      },
-      {
-        name: "stage-client-x",
-        tier: "stage",
-        project: "p-clientx",
-        sources: ["main", "feature/invoices"],
-        deploy: undefined,
-      },
-      {
-        name: "production",
-        tier: "production",
-        project: "p-prod",
-        sources: "release",
-        deploy: undefined,
-      },
-    ]);
-  });
-
-  it.each([
-    { name: "an empty file", yaml: "" },
-    { name: "a file with a version and no environments", yaml: "version: 1\n" },
-    { name: "an environments key with nothing under it", yaml: "version: 1\nenvironments:\n" },
-  ])("reads $name as no environments", ({ yaml }) => {
-    expect(readGroupEnvironments(yaml)).toEqual([]);
-  });
-
-  it("skips an entry it cannot make sense of rather than failing the read", () => {
-    const yaml = `environments:
-  broken:
-    tier: staging
-    project: p-1
-  stage:
-    tier: stage
-    project: p-stage
-    sources: [main]
-`;
-    expect(readGroupEnvironments(yaml).map((entry) => entry.name)).toEqual(["stage"]);
-  });
-
-  it("stops at the next top-level key", () => {
-    expect(readGroupEnvironments(`${ONE_STAGE}other:\n  nope: true\n`)).toHaveLength(1);
-  });
 });
 
 describe("halfMadeGroupEnvironments", () => {

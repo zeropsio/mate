@@ -165,7 +165,7 @@ import { useZeropsGroupOrganizations } from "~/zerops/useZeropsGroupOrganization
 import { useZeropsRegistry } from "~/zerops/useZeropsRegistry";
 import { useZeropsProjectFlow } from "~/zerops/projectFlowContext";
 import { REVIEW_LABEL, REVIEW_RELEASE_LABEL, useOpenReview } from "~/zerops/review";
-import { readZeropsCellOnce } from "~/zerops/useZeropsDeployedVersion";
+import { readZeropsCellOnce } from "~/zerops/readZeropsCell";
 import { deployRowTone, TAKING_LONGER_LINE } from "./ZeropsProjectRow.logic";
 import { ZeropsReleaseRows } from "./ZeropsReleaseRows";
 import { ZeropsReleaseVerb } from "./ZeropsGroupDetail";

@@ -69,9 +69,6 @@
 /** The tier directories, spelled as an application's recipe repository spells them in HQ. */
 export { RECIPE_TIER_PATHS, type RecipeTier } from "@t3tools/shared/hqRecipe";
 
-/** The environments document, beside the tiers (guide 5.1). */
-export const ENVIRONMENTS_DOCUMENT_PATH = "environments.yaml";
-
 /** A runtime of a tier: a pair's dev half, its stage half, or a public-build utility. */
 export type RecipeRuntimeRole = "dev" | "stage" | "utility";
 

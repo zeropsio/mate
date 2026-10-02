@@ -188,7 +188,6 @@ export function groupStopsOf(input: {
     tier: environment.tier,
     project: environment.projectId,
     sources: environment.tier === "production" ? "release" : environment.sources,
-    deploy: undefined,
   }));
   return {
     declarations,

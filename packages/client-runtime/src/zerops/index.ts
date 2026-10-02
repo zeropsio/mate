@@ -105,7 +105,6 @@ export {
 } from "./groups.ts";
 export {
   deployTargetTier,
-  ENVIRONMENTS_DOCUMENT_PATH,
   hasProjectBlock,
   RECIPE_TIER_PATHS,
   recipeProjectImportYaml,
@@ -447,8 +446,6 @@ export {
   type ChangeDiffLine,
 } from "./changeDiff.ts";
 export {
-  base64Decode,
-  base64Encode,
   createGiteaClient,
   GiteaApiError,
   type GiteaBranch,
@@ -458,15 +455,12 @@ export {
   type GiteaCommitDetail,
   type GiteaCommitFile,
   type GiteaCommitStatus,
-  type GiteaFile,
-  type GiteaFileChange,
   type GiteaIssueSearchHit,
   type GiteaOrganization,
   type GiteaPullRequest,
   type GiteaRepository,
   type GiteaRepositoryPermissions,
   type GiteaTag,
-  type GiteaUser,
 } from "./giteaClient.ts";
 export {
   flowChange,
@@ -533,7 +527,6 @@ export {
   halfMadeGroupEnvironments,
   type HalfMadeGroupEnvironment,
   environmentTierForRole,
-  readGroupEnvironments,
   type GroupEnvironment,
   type GroupEnvironmentTier,
   missingEnvironmentRows,

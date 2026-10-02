@@ -784,7 +784,6 @@ describe("a project's next step on the projects page", () => {
 
   it("merges, closes, releases and rolls back from no row: every such verb opens a review", () => {
     for (const source of [projectsPageSource, groupDetailSource]) {
-      expect(source).not.toContain("mergePullRequest(");
       expect(source).not.toContain(".merge(");
       expect(source).not.toContain(".close(");
       expect(source).not.toContain(".release(");
