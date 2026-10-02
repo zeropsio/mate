@@ -5,11 +5,15 @@ import {
   deriveZeropsCandidates,
 } from "@t3tools/client-runtime/zerops/candidates";
 import {
+  IDLE_GUARDS,
   candidatePresence,
   initialEnvironment,
   mateLink,
   reachabilityPhrase,
   selectReachability,
+  transitionEnvironment,
+  type EnvironmentEvent,
+  type EnvironmentMachine,
 } from "@t3tools/client-runtime/zerops/environments";
 import { describe, expect, it } from "vite-plus/test";
 
@@ -1082,14 +1086,41 @@ describe("a Mate whose address landed, not answering yet, in a window that did n
     last: { kind: "descriptor-unreachable" },
     restart: false,
   };
-  const link = (reachability: Reachability | null, answered = false, failures = 0) =>
+  const link = (reachability: Reachability | null, answered = false, failures = 0, errors = 0) =>
     ({
       key: "project-larch:service-larch",
       environmentId: undefined,
       reachability,
       failuresSinceConnect: failures,
+      errorsSinceConnect: errors,
       answered,
     }) satisfies MateLink;
+
+  const KEY = "project-larch:service-larch";
+  /** Its link as this window's machine reads it, after `events` from a machine that saw it present. */
+  const machineLink = (events: ReadonlyArray<EnvironmentEvent>): MateLink => {
+    let machine: EnvironmentMachine = initialEnvironment({ record: null });
+    for (const [index, event] of [
+      { type: "PRESENCE", presence: { kind: "present", origin: ORIGIN } } as const,
+      ...events,
+    ].entries()) {
+      const at = CREATED + 160_000 + index * 1_000;
+      machine = transitionEnvironment(machine, event, {
+        now: { wall: at, mono: at },
+        random: () => 0.5,
+      }).state;
+    }
+    return mateLink({
+      key: KEY,
+      projectId: "project-larch",
+      machines: new Map([[KEY, machine]]),
+      index: { serving: new Map(), reported: new Map(), unanswered: [], failed: [] },
+      records: [],
+      registered: new Set(),
+    });
+  };
+  const READY = { type: "CONTAINER", container: { level: "ready" } } as const;
+  const WANTED = { type: "GUARDS", guards: { ...IDLE_GUARDS, want: true } } as const;
 
   const STEPS: ReadonlyArray<{
     readonly step: string;
@@ -1125,6 +1156,13 @@ describe("a Mate whose address landed, not answering yet, in a window that did n
       atMs: 166_800,
       service: zcp("ACTIVE", true),
       link: link(NOT_ANSWERING, false, 5),
+      coming: true,
+    },
+    {
+      step: "its probe found it ready, auto-connect making its link",
+      atMs: 166_900,
+      service: zcp("ACTIVE", true),
+      link: machineLink([WANTED, READY]),
       coming: true,
     },
     {
@@ -1198,8 +1236,9 @@ describe("a Mate whose address landed, not answering yet, in a window that did n
 
   it("watched in its first build, its address landing with ACTIVE in one read: still coming up", () => {
     // An org socket's recovery re-read, or one push carrying both: no read between them.
-    const read = replay([STEPS[0]!, { ...STEPS[2]!, atMs: 152_000 }, STEPS[3]!, STEPS[4]!]);
+    const read = replay([STEPS[0]!, { ...STEPS[2]!, atMs: 152_000 }, ...STEPS.slice(3)]);
     expect(read.map((coming) => coming?.kind ?? "up")).toEqual([
+      "coming",
       "coming",
       "coming",
       "coming",
@@ -1212,25 +1251,42 @@ describe("a Mate whose address landed, not answering yet, in a window that did n
   it.each([
     {
       case: "a 5xx, its first failure",
-      last: { kind: "server", status: 502 },
+      reachability: { ...NOT_ANSWERING, last: { kind: "server", status: 502 } },
       failures: 1,
+      errors: 1,
       coming: true,
     },
     {
       case: "a 5xx past an arrival's held failures",
-      last: { kind: "server", status: 502 },
+      reachability: { ...NOT_ANSWERING, last: { kind: "server", status: 502 } },
       failures: 5,
+      errors: 5,
       coming: false,
     },
     {
       case: "its fresh credentials refused past them",
-      last: { kind: "rejected" },
+      reachability: { ...NOT_ANSWERING, last: { kind: "rejected" } },
       failures: 4,
+      errors: 4,
       coming: false,
     },
-    { case: "no answer at all, past them", last: { kind: "timeout" }, failures: 5, coming: true },
-  ] as const)("inside its two minutes, $case: coming up $coming", ({ last, failures, coming }) => {
-    const errored = link({ ...NOT_ANSWERING, last } as Reachability, false, failures);
+    {
+      case: "an attempt between errors its server answered, past them",
+      reachability: { kind: "connecting", waitingOn: "exchange" },
+      failures: 5,
+      errors: 5,
+      coming: false,
+    },
+    {
+      case: "no answer at all, past them",
+      reachability: { ...NOT_ANSWERING, last: { kind: "timeout" } },
+      failures: 5,
+      errors: 0,
+      coming: true,
+    },
+  ] as const)("inside its two minutes, $case: coming up $coming", (row) => {
+    const { reachability, failures, errors, coming } = row;
+    const errored = link(reachability as Reachability, false, failures, errors);
     const [, , , read] = replay([...STEPS.slice(0, 3), { ...STEPS[3]!, link: errored }]);
     expect(read?.kind === "coming").toBe(coming);
   });
@@ -1245,26 +1301,21 @@ describe("a Mate whose address landed, not answering yet, in a window that did n
   // ceiling — sits waiting for an exchange nobody asks for. Its probe found it up: it is not coming
   // up, and its row offers what it offers (Finish setup) at once.
   it("its probe found it up, auto-connect leaving it unlinked: no longer coming up", () => {
-    const key = "project-larch:service-larch";
-    const unlinked = mateLink({
-      key,
-      projectId: "project-larch",
-      machines: new Map([
-        [
-          key,
-          {
-            ...initialEnvironment({ record: null }),
-            presence: { kind: "present", origin: ORIGIN },
-            container: { level: "ready" },
-          },
-        ],
-      ]),
-      index: { serving: new Map(), reported: new Map(), unanswered: [], failed: [] },
-      records: [],
-      registered: new Set(),
-    });
+    const unlinked = machineLink([READY]);
     expect(unlinked.reachability?.kind).toBe("connecting");
     const [, , , read] = replay([...STEPS.slice(0, 3), { ...STEPS[3]!, link: unlinked }]);
+    expect(read).toBeUndefined();
+  });
+
+  // Review, pass 34: a ready Mate silent past its grace is booting again by guess; it answered,
+  // and never reads as coming up again — nor hides its Finish setup behind it.
+  it("found up, then silent and booting again, nothing wanting its link: still not coming up", () => {
+    const silent = machineLink([
+      READY,
+      { type: "CONTAINER", container: { level: "booting", overdue: false } },
+    ]);
+    expect(silent.reachability?.kind).toBe("container");
+    const [, , , read] = replay([...STEPS.slice(0, 3), { ...STEPS[3]!, link: silent }]);
     expect(read).toBeUndefined();
   });
 
