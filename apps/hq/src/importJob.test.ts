@@ -11,7 +11,13 @@ import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Redacted from "effect/Redacted";
 
-import { PICTURE, PICTURE_URL, STAGE_TIER, syntheticBundle } from "../test/harness/bundle.ts";
+import {
+  type BundleParts,
+  PICTURE,
+  PICTURE_URL,
+  STAGE_TIER,
+  syntheticBundle,
+} from "../test/harness/bundle.ts";
 import { addProject, rowsWhere } from "../test/harness/mates.ts";
 import { sessionFor, startCore, untilHealth } from "../test/harness/runningCore.ts";
 import { tempPostgresLayer } from "../test/harness/tempPostgres.ts";
@@ -23,6 +29,36 @@ const tempDir = (prefix: string) =>
     Effect.sync(() => NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), prefix))),
     (dir) => Effect.sync(() => NodeFS.rmSync(dir, { recursive: true, force: true })),
   );
+
+/** A directory `name` under `root`, for one bundle of several. */
+const under = (root: string, name: string) => {
+  const dir = NodePath.join(root, name);
+  NodeFS.mkdirSync(dir);
+  return dir;
+};
+
+/** The synthetic bundle as another application's: its own key, name, projects and picture. */
+const anotherApp = (parts: BundleParts): BundleParts => {
+  const moved = (value: Record<string, unknown>) =>
+    JSON.parse(
+      [
+        ['"g1"', '"g2"'],
+        ['"Shop"', '"Lab"'],
+        ['"P_MATE"', '"Q_MATE"'],
+        ['"P_BEA"', '"Q_BEA"'],
+        ['"P_STAGE"', '"Q_STAGE"'],
+        ['"P_PROD"', '"Q_PROD"'],
+        ['"shop-stage"', '"lab-stage"'],
+        ['"shop-production"', '"lab-production"'],
+        ['"u1"', '"u2"'],
+      ].reduce((text, [from = "", to = ""]) => text.replaceAll(from, to), JSON.stringify(value)),
+    ) as Record<string, unknown>;
+  return {
+    mapping: moved(parts.mapping),
+    changes: moved(parts.changes),
+    releases: moved(parts.releases),
+  };
+};
 
 /** `import <bundle>` as the migrating person runs it in the container, against Core's database. */
 const importAs = (url: string, dir: string) =>
@@ -408,66 +444,296 @@ describe("the migration's import", () => {
       }).pipe(Effect.scoped),
     );
 
-    it.effect("takes one bundle: another is refused, and the same again only verifies", () =>
+    it.effect(
+      "imports a second application's bundle beside the first, each verified on its own",
+      () =>
+        Effect.gen(function* () {
+          const importRoot = yield* tempDir("hq-import-");
+          const gitRoot = yield* tempDir("hq-git-");
+          const { call, fake, url } = yield* startCore(true, { importRoot, gitRoot });
+          for (const id of ["P_BEA", "P_STAGE", "P_PROD", "Q_MATE", "Q_BEA", "Q_STAGE", "Q_PROD"]) {
+            addProject(fake, id);
+          }
+          yield* untilHealth(call, "active");
+          const shop = yield* syntheticBundle(under(importRoot, "shop"));
+          assert.strictEqual(
+            (yield* importAs(url, shop.dir)).lines[1],
+            `import ${shop.digest} done and verified`,
+          );
+          const [first] = yield* rowsWhere(
+            url,
+            "SELECT id::text AS id FROM hq_app",
+            (rows) => rows.length === 1,
+          );
+          const shopId = String(first?.["id"]);
+          const recipe = mainCommit(gitRoot, shopId, "group");
+
+          const lab = yield* syntheticBundle(under(importRoot, "lab"), anotherApp);
+          assert.strictEqual(
+            (yield* importAs(url, lab.dir)).lines[1],
+            `import ${lab.digest} done and verified`,
+          );
+          // The first application is as its import left it.
+          assert.deepStrictEqual(mainCommit(gitRoot, shopId, "group"), recipe);
+          const apps = yield* rowsWhere(
+            url,
+            `SELECT a.name,
+                  (SELECT count(*) FROM hq_change c WHERE c.app_id = a.id)::int AS changes,
+                  (SELECT count(*) FROM hq_release r WHERE r.app_id = a.id)::int AS releases
+           FROM hq_app a ORDER BY a.name`,
+            (rows) => rows.length === 2,
+          );
+          assert.deepStrictEqual(
+            apps.map((row) => Object.values(row)),
+            [
+              ["Lab", 3, 1],
+              ["Shop", 3, 1],
+            ],
+          );
+          const done = yield* rowsWhere(
+            url,
+            "SELECT digest FROM hq_import WHERE state = 'done' ORDER BY digest",
+            () => true,
+          );
+          assert.deepStrictEqual(
+            done.map((row) => row["digest"]),
+            [shop.digest, lab.digest].toSorted(),
+          );
+        }).pipe(Effect.scoped),
+    );
+
+    it.effect("refuses a bundle while another import is not done, until that one is", () =>
       Effect.gen(function* () {
         const importRoot = yield* tempDir("hq-import-");
         const gitRoot = yield* tempDir("hq-git-");
         const { call, fake, url } = yield* startCore(true, { importRoot, gitRoot });
-        for (const id of ["P_BEA", "P_STAGE", "P_PROD"]) addProject(fake, id);
+        for (const id of ["P_BEA", "P_STAGE", "P_PROD", "Q_MATE", "Q_BEA", "Q_STAGE", "Q_PROD"]) {
+          addProject(fake, id);
+        }
         yield* untilHealth(call, "active");
-        const under = (name: string) => {
-          const dir = NodePath.join(importRoot, name);
-          NodeFS.mkdirSync(dir);
-          return dir;
-        };
-        const shop = yield* syntheticBundle(under("shop"));
-        assert.strictEqual((yield* importAs(url, shop.dir)).code, 0);
-        const [app] = yield* rowsWhere(
+        const shop = yield* syntheticBundle(under(importRoot, "shop"));
+        const appdev = NodePath.join(shop.dir, "repos", "g1", "appdev.bundle");
+        const frozen = NodeFS.readFileSync(appdev);
+        NodeFS.writeFileSync(appdev, "not what was frozen");
+        // Queued as the command queues it: the command itself would refuse what the run finds.
+        yield* rowsWhere(
           url,
-          "SELECT id::text AS id FROM hq_app",
+          `INSERT INTO hq_import (digest, dir, state)
+           VALUES ('${shop.digest}', '${shop.dir}', 'queued') RETURNING digest`,
           (rows) => rows.length === 1,
         );
-        const recipe = mainCommit(gitRoot, String(app?.["id"]), "group");
+        yield* rowsWhere(
+          url,
+          "SELECT state FROM hq_import",
+          (rows) => rows[0]?.["state"] === "failed",
+        );
 
-        const other = yield* syntheticBundle(under("other"), (parts) => ({
-          ...parts,
-          mapping: {
-            apps: (parts.mapping["apps"] as ReadonlyArray<Record<string, unknown>>).map((app) => ({
-              ...app,
-              name: "Other",
-            })),
-          },
-        }));
-        const refused = yield* importAs(url, other.dir);
-        assert.deepStrictEqual(refused, {
+        const lab = yield* syntheticBundle(under(importRoot, "lab"), anotherApp);
+        assert.deepStrictEqual(yield* importAs(url, lab.dir), {
           code: 1,
           lines: [
-            `bundle ${other.digest}: 1 application, 2 repositories, 3 changes, 1 picture, 1 release`,
-            `this HQ holds import ${shop.digest}: one HQ takes one import`,
+            `bundle ${lab.digest}: 1 application, 2 repositories, 3 changes, 1 picture, 1 release`,
+            `import ${shop.digest} is not done: run its bundle again to finish it`,
           ],
         });
 
-        const again = yield* importAs(url, shop.dir);
-        // The recipe was rewritten once: the same run again commits nothing more.
-        assert.deepStrictEqual(mainCommit(gitRoot, String(app?.["id"]), "group"), recipe);
-        assert.strictEqual(again.lines[1], `import ${shop.digest} done and verified`);
-        const [counts] = yield* rowsWhere(
-          url,
-          `SELECT (SELECT count(*) FROM hq_app)::int AS apps,
+        NodeFS.writeFileSync(appdev, frozen);
+        assert.strictEqual(
+          (yield* importAs(url, shop.dir)).lines[1],
+          `import ${shop.digest} done and verified`,
+        );
+        assert.strictEqual(
+          (yield* importAs(url, lab.dir)).lines[1],
+          `import ${lab.digest} done and verified`,
+        );
+      }).pipe(Effect.scoped),
+    );
+
+    it.effect(
+      "a takeover during a later import reconciles the applications done, and leaves the importing one to its import",
+      () =>
+        Effect.gen(function* () {
+          const importRoot = yield* tempDir("hq-import-");
+          const gitRoot = yield* tempDir("hq-git-");
+          const projects = ["P_BEA", "P_STAGE", "P_PROD", "Q_MATE", "Q_BEA", "Q_STAGE", "Q_PROD"];
+          const first = yield* startCore(true, { gitRoot, importRoot });
+          for (const id of projects) addProject(first.fake, id);
+          yield* untilHealth(first.call, "active");
+          const shop = yield* syntheticBundle(under(importRoot, "shop"));
+          assert.strictEqual(
+            (yield* importAs(first.url, shop.dir)).lines[1],
+            `import ${shop.digest} done and verified`,
+          );
+          const [done] = yield* rowsWhere(
+            first.url,
+            "SELECT id::text AS id FROM hq_app",
+            (rows) => rows.length === 1,
+          );
+          // Git holds a release of Shop's that the records lack: a takeover records it.
+          const shopRelease = (tag: string) =>
+            NodeChildProcess.execFileSync("git", [
+              "-C",
+              NodePath.join(gitRoot, String(done?.["id"]), "group.git"),
+              "-c",
+              "user.name=Ada",
+              "-c",
+              "user.email=ada@mate.test",
+              "tag",
+              "-a",
+              tag,
+              "-m",
+              `app ${shop.shas.squash}`,
+              "main",
+            ]);
+          const releases = `SELECT a.name, r.tag, r.released_by FROM hq_release r
+                            JOIN hq_app a ON a.id = r.app_id ORDER BY a.name, r.tag`;
+          const lab = yield* syntheticBundle(under(importRoot, "lab"), anotherApp);
+          const spoilt = (path: string) => {
+            const file = NodePath.join(lab.dir, path);
+            const frozen = NodeFS.readFileSync(file);
+            NodeFS.writeFileSync(file, "not what was frozen");
+            return () => NodeFS.writeFileSync(file, frozen);
+          };
+          const restoreAppdev = spoilt(NodePath.join("repos", "g1", "appdev.bundle"));
+          const restorePicture = spoilt(NodePath.join("attachments", "u1.png"));
+          /** Lab's run queued as the command queues it, and followed until it stops: its error. */
+          const runLab = (url: string) =>
+            Effect.gen(function* () {
+              yield* rowsWhere(
+                url,
+                `INSERT INTO hq_import (digest, dir, state)
+                 VALUES ('${lab.digest}', '${lab.dir}', 'queued')
+                 ON CONFLICT (digest) DO UPDATE SET state = 'queued' RETURNING digest`,
+                (rows) => rows.length === 1,
+              );
+              const [stopped] = yield* rowsWhere(
+                url,
+                `SELECT state, error FROM hq_import WHERE digest = '${lab.digest}'`,
+                (rows) => rows[0]?.["state"] === "failed",
+              );
+              return String(stopped?.["error"]);
+            });
+
+          // Lab stops at appdev: its changes are recorded, and git holds no appdev yet.
+          assert.strictEqual(
+            yield* runLab(first.url),
+            "git:g2/appdev: repos/g1/appdev.bundle is not what was frozen",
+          );
+          shopRelease("v0.2.0");
+          yield* first.stop;
+          const second = yield* startCore(true, { url: first.url, gitRoot, importRoot });
+          for (const id of projects) addProject(second.fake, id);
+          yield* untilHealth(second.call, "active");
+          const once = yield* rowsWhere(second.url, releases, (rows) =>
+            rows.some((row) => row["tag"] === "v0.2.0"),
+          );
+          assert.deepStrictEqual(
+            once.map((row) => Object.values(row)),
+            [
+              ["Shop", "v0.1.0", "owner"],
+              ["Shop", "v0.2.0", "restore"],
+            ],
+          );
+
+          // Lab stops at its picture: every repository is in git, its release tag too, and the
+          // release not recorded yet.
+          restoreAppdev();
+          assert.match(yield* runLab(second.url), /^picture:u2: /u);
+          shopRelease("v0.3.0");
+          yield* second.stop;
+          const third = yield* startCore(true, { url: first.url, gitRoot, importRoot });
+          for (const id of projects) addProject(third.fake, id);
+          yield* untilHealth(third.call, "active");
+          const twice = yield* rowsWhere(third.url, releases, (rows) =>
+            rows.some((row) => row["tag"] === "v0.3.0"),
+          );
+          assert.deepStrictEqual(
+            twice.map((row) => Object.values(row)),
+            [
+              ["Shop", "v0.1.0", "owner"],
+              ["Shop", "v0.2.0", "restore"],
+              ["Shop", "v0.3.0", "restore"],
+            ],
+          );
+
+          restorePicture();
+          assert.strictEqual(
+            (yield* importAs(third.url, lab.dir)).lines[1],
+            `import ${lab.digest} done and verified`,
+          );
+          // Lab's release is its import's, by its tagger, not a takeover's.
+          const after = yield* rowsWhere(third.url, releases, (rows) => rows.length === 4);
+          assert.deepStrictEqual(
+            after.map((row) => Object.values(row)),
+            [
+              ["Lab", "v0.1.0", "owner"],
+              ["Shop", "v0.1.0", "owner"],
+              ["Shop", "v0.2.0", "restore"],
+              ["Shop", "v0.3.0", "restore"],
+            ],
+          );
+        }).pipe(Effect.scoped),
+    );
+
+    it.effect(
+      "refuses a bundle for an application another import brought; the same again only verifies",
+      () =>
+        Effect.gen(function* () {
+          const importRoot = yield* tempDir("hq-import-");
+          const gitRoot = yield* tempDir("hq-git-");
+          const { call, fake, url } = yield* startCore(true, { importRoot, gitRoot });
+          for (const id of ["P_BEA", "P_STAGE", "P_PROD"]) addProject(fake, id);
+          yield* untilHealth(call, "active");
+          const shop = yield* syntheticBundle(under(importRoot, "shop"));
+          assert.strictEqual((yield* importAs(url, shop.dir)).code, 0);
+          const [app] = yield* rowsWhere(
+            url,
+            "SELECT id::text AS id FROM hq_app",
+            (rows) => rows.length === 1,
+          );
+          const recipe = mainCommit(gitRoot, String(app?.["id"]), "group");
+
+          const other = yield* syntheticBundle(under(importRoot, "other"), (parts) => ({
+            ...parts,
+            mapping: {
+              apps: (parts.mapping["apps"] as ReadonlyArray<Record<string, unknown>>).map(
+                (app) => ({
+                  ...app,
+                  name: "Other",
+                }),
+              ),
+            },
+          }));
+          const refused = yield* importAs(url, other.dir);
+          assert.deepStrictEqual(refused, {
+            code: 1,
+            lines: [
+              `bundle ${other.digest}: 1 application, 2 repositories, 3 changes, 1 picture, 1 release`,
+              `application g1 (Other) came with import ${shop.digest}`,
+            ],
+          });
+
+          const again = yield* importAs(url, shop.dir);
+          // The recipe was rewritten once: the same run again commits nothing more.
+          assert.deepStrictEqual(mainCommit(gitRoot, String(app?.["id"]), "group"), recipe);
+          assert.strictEqual(again.lines[1], `import ${shop.digest} done and verified`);
+          const [counts] = yield* rowsWhere(
+            url,
+            `SELECT (SELECT count(*) FROM hq_app)::int AS apps,
                   (SELECT count(*) FROM hq_change)::int AS changes,
                   (SELECT count(*) FROM hq_change_attachment)::int AS pictures,
                   (SELECT count(*) FROM hq_release)::int AS releases,
                   (SELECT count(*) FROM hq_import)::int AS imports`,
-          () => true,
-        );
-        assert.deepStrictEqual(counts, {
-          apps: 1,
-          changes: 3,
-          pictures: 1,
-          releases: 1,
-          imports: 1,
-        });
-      }).pipe(Effect.scoped),
+            () => true,
+          );
+          assert.deepStrictEqual(counts, {
+            apps: 1,
+            changes: 3,
+            pictures: 1,
+            releases: 1,
+            imports: 1,
+          });
+        }).pipe(Effect.scoped),
     );
   });
 });
