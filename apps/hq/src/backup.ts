@@ -12,10 +12,11 @@
  *    the database's position (the event log's last `seq`, the WAL position). A set without its
  *    manifest is incomplete and never restored.
  *
- * A set is staged on the volume (`stagingDir/<id>/`), uploaded to the store (`sets/<id>/…`, its
- * manifest last), and the newest complete one stays staged, so the platform's own volume backup
- * carries a restorable set too. The database's address reaches `pg_dump` in libpq's own environment
- * variables, never in its arguments, and no log carries it.
+ * A set is staged on the volume (`stagingDir/sets/<id>/`), uploaded to the store (`sets/<id>/…`, its
+ * manifest last), and the newest complete one stays staged, laid out as the store keeps it: the
+ * platform's own volume backup carries a set that restores as it is (`directoryStore(stagingDir)`).
+ * With no store, backup is off and a set is only staged. The database's address reaches `pg_dump` in
+ * libpq's own environment variables, never in its arguments, and no log carries it.
  *
  * @module backup
  */
@@ -207,7 +208,7 @@ export interface BackupOptions {
   readonly databaseUrl: Redacted.Redacted;
   /** Where sets are staged before they upload: the volume's `/mnt/vol/backup` in the container. */
   readonly stagingDir: string;
-  /** Where sets are kept; none: backup off. */
+  /** Where sets are kept; none: backup off, a set only staged. */
   readonly store: BackupStore | null;
   /** The `pg_dump` this Core runs; the one on its path. */
   readonly pgDump?: string;
@@ -218,7 +219,7 @@ export interface BackupOptions {
 export class Backup extends Context.Service<
   Backup,
   {
-    /** A set taken now, staged and kept in the store; its manifest. */
+    /** A set taken now, staged and kept in the store if there is one; its manifest. */
     readonly take: Effect.Effect<Manifest, BackupError | GitError | NotLeader | SqlError>;
   }
 >()("@t3tools/hq/backup") {}
@@ -237,12 +238,11 @@ export const backupLayer = (
       const pgDump = options.pgDump ?? "pg_dump";
 
       const take = Effect.gen(function* () {
-        const store = options.store;
-        if (store === null) return yield* failure("store", "backup is off: no store");
         const git = yield* gitHost.git;
         const takenAt = DateTime.formatIso(yield* DateTime.now);
         const id = idOf(takenAt);
-        const dir = NodePath.join(options.stagingDir, id);
+        const staged = NodePath.join(options.stagingDir, "sets");
+        const dir = NodePath.join(staged, id);
         yield* io("stage", () => NodeFSP.mkdir(dir, { recursive: true }));
         const [position] = yield* sql<{ readonly seq: string; readonly lsn: string }>`
           SELECT COALESCE((SELECT max(seq) FROM hq_git_event), 0)::text AS seq,
@@ -289,26 +289,26 @@ export const backupLayer = (
         };
         const manifestPath = NodePath.join(dir, "manifest.json");
         yield* io("stage", () => NodeFSP.writeFile(manifestPath, encodeManifest(manifest)));
-        // The files, then the manifest that makes the set whole.
-        yield* store.put(setKey(id, "db.dump"), dump);
-        for (const repo of repos) {
-          if (repo.file !== null) {
-            yield* store.put(setKey(id, repo.file), NodePath.join(dir, ...repo.file.split("/")));
+        const store = options.store;
+        if (store !== null) {
+          // The files, then the manifest that makes the set whole.
+          yield* store.put(setKey(id, "db.dump"), dump);
+          for (const repo of repos) {
+            if (repo.file !== null) {
+              yield* store.put(setKey(id, repo.file), NodePath.join(dir, ...repo.file.split("/")));
+            }
           }
+          yield* store.put(setKey(id, "manifest.json"), manifestPath);
         }
-        yield* store.put(setKey(id, "manifest.json"), manifestPath);
         // The newest complete set stays staged; the older go.
-        for (const entry of yield* io("staged", () => NodeFSP.readdir(options.stagingDir))) {
+        for (const entry of yield* io("staged", () => NodeFSP.readdir(staged))) {
           if (entry !== id) {
             yield* io("unstage", () =>
-              NodeFSP.rm(NodePath.join(options.stagingDir, entry), {
-                recursive: true,
-                force: true,
-              }),
+              NodeFSP.rm(NodePath.join(staged, entry), { recursive: true, force: true }),
             );
           }
         }
-        yield* Effect.logInfo("backup set kept", {
+        yield* Effect.logInfo(store === null ? "backup set staged" : "backup set kept", {
           id,
           repos: repos.length,
           bytes: manifest.database.size + repos.reduce((sum, repo) => sum + repo.size, 0),

@@ -133,8 +133,8 @@ const world = (now: number, anchored: boolean, orgId: string): FakeWorld => {
  * Core on a fresh database and git root (or the given ones), served over a real Node server on a
  * free port, as the container serves it; requests as `{ status, body, headers }`. `stop` ends it —
  * drain included — before the test does. `gitHost` is its git host, for what only it shows: whether
- * it holds git open, and its record of git's events (`recorded`); `backup` takes a set into
- * `storeDir`.
+ * it holds git open, and its record of git's events (`recorded`); `backup` takes a set, staged in
+ * `stagingDir`, into `storeDir`.
  */
 export const startCore = (
   anchored: boolean,
@@ -147,6 +147,8 @@ export const startCore = (
     readonly reconcileEvery?: Duration.Duration;
     /** The directory backup sets are kept in; a fresh one by default. */
     readonly storeDir?: string;
+    /** Backup with no store: sets are only staged. */
+    readonly storeless?: boolean;
     /** What happens between a set's dump and its bundles. */
     readonly afterDump?: Effect.Effect<void>;
   } = {},
@@ -164,13 +166,14 @@ export const startCore = (
       (dir) => Effect.sync(() => NodeFS.rmSync(dir, { recursive: true, force: true })),
     );
     const storeDir = given.storeDir ?? (yield* temporary);
+    const stagingDir = yield* temporary;
     const fake = world(yield* Clock.currentTimeMillis, anchored, given.orgId ?? "ORG");
     const options = {
       databaseUrl: Redacted.make(url),
       gitRoot,
       backup: {
-        stagingDir: yield* temporary,
-        store: directoryStore(storeDir),
+        stagingDir,
+        store: given.storeless === true ? null : directoryStore(storeDir),
         ...(given.afterDump === undefined ? {} : { afterDump: given.afterDump }),
       },
       migrations: treeMigrations(),
@@ -301,6 +304,7 @@ export const startCore = (
       gitHost: Context.get(context, GitHost),
       backup: Context.get(context, Backup),
       storeDir,
+      stagingDir,
     };
   });
 
