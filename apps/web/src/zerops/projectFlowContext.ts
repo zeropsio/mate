@@ -123,6 +123,11 @@ export interface ZeropsProjectFlowValue {
   readonly deployments: ReadonlyMap<string, Shown<Deployment>>;
   /** Each group's Gitea org, from the registry — known before its flow has been read. */
   readonly slugs: ReadonlyMap<string, string>;
+  /**
+   * Whether the broker has made each group's Gitea org, by slug — what the forge's listing last
+   * answered; a slug not answered for yet is absent and says nothing (`resolveGroupGitea`).
+   */
+  readonly organizations: ReadonlyMap<string, boolean>;
   /** Every Mate's name by its project, for a surface that meets a bot login (`mate-{projectId}`). */
   readonly mateNames: ReadonlyMap<string, string>;
   /** The verbs in flight, by `flowVerbKey`: a row shows its own running and takes no second click. */

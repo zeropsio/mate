@@ -172,7 +172,6 @@ import { useMateActions } from "~/zerops/useMateActions";
 import { useZeropsGroupRecipe } from "~/zerops/useZeropsGroupRecipe";
 import { useAccountGitea, useAccountHoldsGitea } from "~/zerops/giteaProject";
 import { useZeropsGroupEnvironmentReconcile } from "~/zerops/useZeropsGroupEnvironmentReconcile";
-import { useZeropsGroupOrganizations } from "~/zerops/useZeropsGroupOrganizations";
 import { registryGroupSlug, useZeropsRegistry } from "~/zerops/useZeropsRegistry";
 import { useZeropsProjectFlow } from "~/zerops/projectFlowContext";
 import { REVIEW_LABEL, REVIEW_RELEASE_LABEL, useOpenReview } from "~/zerops/review";
@@ -1626,14 +1625,6 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
     enabled: creationRequest !== null,
   });
 
-  // The registry says which groups were asked for; `GET /orgs/{slug}` says
-  // which the broker has actually made (guide 4.5).
-  const giteaOrganizations = useZeropsGroupOrganizations({
-    giteaOrigin,
-    slugs: registryState.registry.groups.map((group) => group.slug),
-    enabled: status === "signed-in",
-  });
-
   // Every group's flow — its declared environments and what they run, what
   // is waiting to land, what was released — is read once for the account
   // (`ZeropsProjectFlowProvider`, D26); the page draws its share of it.
@@ -1832,9 +1823,13 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
 
   /**
    * The one line a group says about itself: that the broker has not finished
-   * its Gitea side yet (`groupRows.ts`). A group whose org has not been asked
-   * about says nothing, so the heading never grows a line and then loses it.
+   * its Gitea side yet (`groupRows.ts`). The registry says which groups were
+   * asked for; the forge's listing of each org, on its own clock and on every
+   * screen, says which the broker has made (guide 4.5). A group whose org has
+   * not been answered for says nothing, so the heading never grows a line and
+   * then loses it.
    */
+  const giteaOrganizations = projectFlow.organizations;
   const groupLines = useMemo(() => {
     const lines = new Map<string, string>();
     for (const entry of registryState.registry.groups) {
