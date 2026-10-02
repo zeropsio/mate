@@ -1043,10 +1043,6 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
       ) : null}
       {dialog?.kind === "assign" ? (
         <ZeropsAssignMateDialog
-          currentOwnerId={
-            dialog.candidate.project.userRoles?.find((entry) => entry.roleCode === "OWNER")
-              ?.clientUserId
-          }
           key={`assign:${dialog.candidate.key}`}
           members={members}
           onCancel={close}

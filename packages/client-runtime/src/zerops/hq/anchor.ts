@@ -16,11 +16,9 @@
  * @module hq/anchor
  */
 import type { ZeropsOrganizationMember } from "../api.ts";
+import { isTokenMember } from "../mateAccess.ts";
 
 const ANCHOR_PREFIX = "mate-hq:";
-
-/** A member row is a token when its address is the token's own (`token-<id>@zerops.io`). */
-const TOKEN_EMAIL = /^token-[^@]+@zerops\.io$/iu;
 
 /** The anchor's name: what Core reads to know it is the official HQ. */
 export function hqAnchorName(projectId: string, address: string): string {
@@ -60,7 +58,7 @@ export function findOfficialHq(members: ReadonlyArray<ZeropsOrganizationMember>)
   const active = anchors.find(
     (anchor) =>
       anchor.member.status === "ACTIVE" &&
-      TOKEN_EMAIL.test(anchor.member.user?.email ?? "") &&
+      isTokenMember(anchor.member) &&
       anchor.address.length > 0,
   );
   if (projectIds.length > 1 || active === undefined) return { kind: "unclear", projectIds };
@@ -78,6 +76,6 @@ export function ownersAndAdmins(
     (member) =>
       (member.roleCode === "OWNER" || member.roleCode === "ADMIN") &&
       member.status === "ACTIVE" &&
-      !TOKEN_EMAIL.test(member.user?.email ?? ""),
+      !isTokenMember(member),
   );
 }

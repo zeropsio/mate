@@ -110,25 +110,19 @@ describe("the Overview", () => {
       productionAddable: true,
       missing: [{ tier: "production" }],
     });
-    const renderNextStep = (value: typeof group, placement: "cell" | "strip") => (
-      <button
-        data-test-placement={placement}
-        data-test-verb={value.flow.nextStep.kind}
-        type="button"
-      >
+    const renderNextStep = (value: typeof group) => (
+      <button data-test-verb={value.flow.nextStep.kind} type="button">
         {value.flow.nextStep.verb}
       </button>
     );
     const tree = mount(
       <ZeropsProjectsFlow<Item> {...FLOW_PROPS} groups={[group]} renderNextStep={renderNextStep} />,
     );
-    expect(tree.root.findAll((node) => node.props["data-test-placement"] === "strip")).toHaveLength(
-      0,
-    );
+    expect(tree.root.findAllByProps({ "data-zerops-surface": "next-steps" })).toHaveLength(0);
     const [inRow] = tree.root
       .findByProps({ "data-zerops-surface": "flow-rows" })
       .findAll((node) => node.props["data-test-verb"] !== undefined);
-    expect(inRow?.props["data-test-placement"]).toBe("cell");
+    expect(inRow?.props["data-test-verb"]).toBe(group.flow.nextStep.kind);
   });
 
   it.each([
@@ -136,9 +130,8 @@ describe("the Overview", () => {
     ["Release v0.1.0", RELEASING],
   ])("carries the step's verb %s on each strip item, the row's own verb", (_verb, group) => {
     const act_ = vi.fn();
-    const renderNextStep = (value: typeof group, placement: "cell" | "strip") => (
+    const renderNextStep = (value: typeof group) => (
       <button
-        data-test-placement={placement}
         data-test-verb={value.flow.nextStep.kind}
         onClick={() => act_(value.group.groupId, value.flow.nextStep.kind)}
         type="button"
@@ -154,8 +147,8 @@ describe("the Overview", () => {
     const [inRow] = tree.root
       .findByProps({ "data-zerops-surface": "flow-rows" })
       .findAll((node) => node.props["data-test-verb"] !== undefined);
-    expect(inStrip?.props["data-test-placement"]).toBe("strip");
-    expect(inRow?.props["data-test-placement"]).toBe("cell");
+    expect(inStrip?.props["data-test-verb"]).toBe(group.flow.nextStep.kind);
+    expect(inRow?.props["data-test-verb"]).toBe(group.flow.nextStep.kind);
     act(() => inStrip?.props.onClick());
     act(() => inRow?.props.onClick());
     const step = group.flow.nextStep.kind;
@@ -171,8 +164,8 @@ describe("the Overview", () => {
   it("leaves a step with no verb to press out of the strip", () => {
     const html = render({
       groups: [MERGING, RELEASING],
-      renderNextStep: (value, placement) =>
-        placement === "strip" && value.flow.nextStep.kind === "release" ? null : (
+      renderNextStep: (value) =>
+        value.flow.nextStep.kind === "release" ? null : (
           <button data-test-verb={value.flow.nextStep.kind} type="button" />
         ),
     });

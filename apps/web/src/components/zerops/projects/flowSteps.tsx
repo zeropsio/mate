@@ -662,7 +662,7 @@ export function verbFor<T>(
   cell: FlowCell,
   renderNextStep: ZeropsProjectsFlowProps<T>["renderNextStep"],
 ): ReactNode {
-  return nextStepCell(entry.flow) === cell ? renderNextStep(entry, "cell") : null;
+  return nextStepCell(entry.flow) === cell ? renderNextStep(entry) : null;
 }
 
 export function GroupName<T>({
