@@ -9,6 +9,7 @@
  * @module hq/refusals
  */
 import type { MERGE_REFUSALS } from "@t3tools/shared/hqChanges";
+import type { ReleaseRefusal } from "@t3tools/shared/hqRelease";
 import type { Reason } from "@t3tools/shared/zeropsPermissions";
 
 /** Every permission's refusal, in words: a reason left out does not compile. */
@@ -65,6 +66,20 @@ const MERGE_WORDS: { readonly [R in (typeof MERGE_REFUSALS)[number]]: string } =
 };
 
 /**
+ * Why HQ made no release or rollback (`RELEASE_REFUSALS`), in words: only a main that moved, or a
+ * newer release, is helped by reviewing it again. A refusal left out does not compile.
+ */
+const RELEASE_WORDS: { readonly [R in ReleaseRefusal]: string } = {
+  group_moved: "Main moved since you opened this. Review it again.",
+  no_group_main: "The project's recipe has nothing on main to tag yet.",
+  tag_taken: "A release of this name was made meanwhile. Review it again.",
+  tag_not_newer: "A newer release was made meanwhile. Review it again.",
+  unknown_service: "It lists a service the project's production does not have.",
+  entry_not_on_main: "It lists a commit that is not on main.",
+  release_not_approved: "That release was refused, so production cannot go back to it.",
+};
+
+/**
  * HQ's own refusals — its structure's (`StructureRefused` in `apps/hq/src/structure.ts`) and its
  * changes' (`ChangeRefused` in `apps/hq/src/changes.ts`) — in words.
  */
@@ -101,6 +116,8 @@ const STRUCTURE_WORDS: Readonly<Record<string, string>> = {
   deploy_not_found: "HQ has no such deploy.",
   deploy_superseded: "A newer deploy took this one's place.",
   deploy_not_failed: "This deploy has not failed.",
+  // A release rolled back to (`apps/hq/src/releases.ts`).
+  release_not_found: "HQ has no such release.",
 };
 
 /** What anything asked of the organization's HQ says where its official HQ is not open here. */
@@ -110,6 +127,8 @@ const isPermissionReason = (reason: string): reason is Reason =>
   Object.hasOwn(PERMISSION_WORDS, reason);
 const isMergeRefusal = (reason: string): reason is keyof typeof MERGE_WORDS =>
   Object.hasOwn(MERGE_WORDS, reason);
+const isReleaseRefusal = (reason: string): reason is ReleaseRefusal =>
+  Object.hasOwn(RELEASE_WORDS, reason);
 
 /** What HQ's refusal says to the person: its reason in words, else named by its reason or code. */
 export function hqRefusalWords(refusal: {
@@ -120,6 +139,7 @@ export function hqRefusalWords(refusal: {
   if (reason !== undefined) {
     if (isPermissionReason(reason)) return PERMISSION_WORDS[reason];
     if (isMergeRefusal(reason)) return MERGE_WORDS[reason];
+    if (isReleaseRefusal(reason)) return RELEASE_WORDS[reason];
     const words = STRUCTURE_WORDS[reason];
     if (words !== undefined) return words;
   }

@@ -25,6 +25,12 @@ import {
   type RepoListEntry,
 } from "@t3tools/shared/hqChanges";
 import { RecipeTierResponse, type RecipeTier } from "@t3tools/shared/hqRecipe";
+import {
+  Release,
+  ReleaseListResponse,
+  type CreateReleaseRequest,
+  type RollbackRequest,
+} from "@t3tools/shared/hqRelease";
 import type { MateSummary } from "@t3tools/shared/mateLink";
 import type { RoleProjectKind } from "@t3tools/shared/zeropsRoles";
 import * as Option from "effect/Option";
@@ -206,6 +212,15 @@ export interface HqApi {
    * read its changes.
    */
   readonly appRepos: (appId: string, signal?: AbortSignal) => Promise<ReadonlyArray<RepoListEntry>>;
+  /**
+   * An application's releases, newest first by version, read as the person (`GET
+   * /api/apps/:appId/releases`): whoever may read its changes.
+   */
+  readonly releases: (appId: string, signal?: AbortSignal) => Promise<ReadonlyArray<Release>>;
+  /** A release made in HQ as the person, of what its offer showed; HQ tags and deploys it. */
+  readonly release: (appId: string, request: CreateReleaseRequest) => Promise<Release>;
+  /** Production back to `tag` as the person: a new release listing its entries. */
+  readonly rollback: (appId: string, tag: string, request: RollbackRequest) => Promise<Release>;
 }
 
 /** A socket the structure stream reads, opened by the host (`WebSocket` in a browser). */
@@ -330,6 +345,11 @@ const readChange = decoded(HqChange);
 const readRecipeTier = decoded(RecipeTierResponse);
 
 const readAppRepos = decoded(RepoListResponse);
+const readReleases = decoded(ReleaseListResponse);
+const readRelease = decoded(Release);
+
+/** An application's releases' path at HQ's API. */
+const releasesPath = (appId: string): string => `/api/apps/${encodeURIComponent(appId)}/releases`;
 
 /** A change's own path at HQ's API. */
 const changePath = ({ appId, repo, number }: ChangeLink): string =>
@@ -551,6 +571,23 @@ export function makeHqApi(input: {
           ),
         )
       ).repos,
+    releases: async (appId, signal) =>
+      (
+        await readReleases(
+          await authorized(releasesPath(appId), signal === undefined ? {} : { signal }),
+        )
+      ).releases,
+    release: async (appId, request) =>
+      readRelease(
+        await authorized(releasesPath(appId), { method: "POST", body: JSON.stringify(request) }),
+      ),
+    rollback: async (appId, tag, request) =>
+      readRelease(
+        await authorized(`${releasesPath(appId)}/${encodeURIComponent(tag)}/rollback`, {
+          method: "POST",
+          body: JSON.stringify(request),
+        }),
+      ),
     recipeTier: async (appId, tier, signal) =>
       readRecipeTier(
         await authorized(

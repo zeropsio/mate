@@ -1,5 +1,6 @@
 import { describe, expect, it } from "@effect/vitest";
 import { MERGE_REFUSALS } from "@t3tools/shared/hqChanges";
+import { RELEASE_REFUSALS } from "@t3tools/shared/hqRelease";
 import { REASONS } from "@t3tools/shared/zeropsPermissions";
 
 import { hqRefusalWords } from "./refusals.ts";
@@ -63,6 +64,34 @@ describe("hqRefusalWords — HQ's refusal, in the person's words", () => {
     ["change_not_open", "This change is merged or closed already."],
   ])("says %s as it stands", (reason, words) => {
     expect(hqRefusalWords({ code: "conflict", reason })).toBe(words);
+  });
+
+  it.each([...RELEASE_REFUSALS])(
+    "says why HQ made no release, %s, in words of its own",
+    (reason) => {
+      const words = hqRefusalWords({ code: "conflict", reason });
+      expect(words).not.toContain(reason);
+      expect(words).toMatch(/^[A-Z].*\.$/u);
+    },
+  );
+
+  // A release or a rollback HQ did not make (`RELEASE_REFUSALS`): only a main that moved, or a
+  // newer release, is helped by reviewing it again.
+  it.each([
+    ["group_moved", "conflict", "Main moved since you opened this. Review it again."],
+    ["no_group_main", "conflict", "The project's recipe has nothing on main to tag yet."],
+    ["tag_taken", "conflict", "A release of this name was made meanwhile. Review it again."],
+    ["tag_not_newer", "conflict", "A newer release was made meanwhile. Review it again."],
+    ["unknown_service", "conflict", "It lists a service the project's production does not have."],
+    ["entry_not_on_main", "conflict", "It lists a commit that is not on main."],
+    [
+      "release_not_approved",
+      "conflict",
+      "That release was refused, so production cannot go back to it.",
+    ],
+    ["release_not_found", "release_not_found", "HQ has no such release."],
+  ])("says %s as it stands", (reason, code, words) => {
+    expect(hqRefusalWords({ code, reason })).toBe(words);
   });
 
   it("names a refusal this build has no words for by its code", () => {

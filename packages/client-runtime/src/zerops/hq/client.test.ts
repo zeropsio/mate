@@ -754,6 +754,47 @@ describe("makeHqApi — a Mate's changes, as the person reads them", () => {
     await expect(hqApi.appRepos("app-1")).rejects.toMatchObject({ code: "unreadable" });
   });
 
+  // An application's releases (`@t3tools/shared/hqRelease`): read, made and rolled back as the person.
+  const RELEASE = {
+    tag: "v0.1.1",
+    sha: SHA,
+    entries: [{ service: "app", sha: "b".repeat(40) }],
+    by: "u1",
+    at: "2026-10-02T10:00:00.000Z",
+    state: "approved",
+    reason: null,
+    rollbackOf: null,
+  } as const;
+
+  it("lists an application's releases, as the person", async () => {
+    const { hq, api: hqApi } = api((seen) =>
+      seen.path === "/api/apps/app-1/releases" && seen.method === "GET"
+        ? json(200, { releases: [RELEASE] })
+        : undefined,
+    );
+    await expect(hqApi.releases("app-1")).resolves.toEqual([RELEASE]);
+    expect(hq.seen.at(-1)).toMatchObject({ method: "GET", authorization: "Bearer session-1" });
+  });
+
+  it("releases what the offer showed, and rolls back with main's head read with the offer", async () => {
+    const { hq, api: hqApi } = api((seen) =>
+      seen.method === "POST" && seen.path.startsWith("/api/apps/app-1/releases")
+        ? json(201, RELEASE)
+        : undefined,
+    );
+    const request = { tag: "v0.1.1", groupHead: SHA, entries: RELEASE.entries };
+    await expect(hqApi.release("app-1", request)).resolves.toEqual(RELEASE);
+    await expect(hqApi.rollback("app-1", "v0.1.0", { groupHead: SHA })).resolves.toEqual(RELEASE);
+    expect(hq.seen.slice(-2)).toMatchObject([
+      { method: "POST", path: "/api/apps/app-1/releases", body: request },
+      {
+        method: "POST",
+        path: "/api/apps/app-1/releases/v0.1.0/rollback",
+        body: { groupHead: SHA },
+      },
+    ]);
+  });
+
   it("fetches a change's picture with the session, as the picture it is", async () => {
     const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47]);
     const { hq, api: hqApi } = api((seen) =>
