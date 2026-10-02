@@ -79,6 +79,10 @@
       "types": "./src/hqRecipe.ts",
       "import": "./src/hqRecipe.ts"
     },
+    "./hqRelease": {
+      "types": "./src/hqRelease.ts",
+      "import": "./src/hqRelease.ts"
+    },
     "./primaryConversation": {
       "types": "./src/primaryConversation.ts",
       "import": "./src/primaryConversation.ts"
