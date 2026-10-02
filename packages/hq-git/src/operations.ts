@@ -343,8 +343,13 @@ export const makeOperations = (
         /^# -{24} >8 -{24}$/m.test(opts.message)
       )
         throw error("Invalid merge message");
-      const trailers = { ...opts.trailers, "Mate-Change": `${opts.mateId}/${opts.number}` };
-      for (const [key, val] of Object.entries(trailers)) {
+      const trailers: ReadonlyArray<readonly [string, string]> = [
+        ...Object.entries(opts.trailers).flatMap(([key, values]) =>
+          (typeof values === "string" ? [values] : values).map((val) => [key, val] as const),
+        ),
+        ["Mate-Change", `${opts.mateId}/${opts.number}`],
+      ];
+      for (const [key, val] of trailers) {
         if (
           !/^[A-Za-z0-9][A-Za-z0-9-]*$/.test(key) ||
           /[\0\r\n]/.test(val) ||
@@ -360,7 +365,7 @@ export const makeOperations = (
       const result = await inspect(dir, repo, opts.mateId, opts.number, main, head, signal);
       if (result.kind !== "clean") return result;
       // Git reads trailers only from the last paragraph, so the trusted block always ends the message.
-      const message = `${opts.message.trimEnd()}\n\n${Object.entries(trailers)
+      const message = `${opts.message.trimEnd()}\n\n${trailers
         .map(([k, v]) => `${k}: ${v}`)
         .join("\n")}\n`;
       const sha = (

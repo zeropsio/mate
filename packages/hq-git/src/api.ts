@@ -134,7 +134,8 @@ export interface SquashOptions {
    * refused; the trusted trailers and `Mate-Change` always form the last paragraph.
    */
   readonly message: string;
-  readonly trailers: Readonly<Record<string, string>>;
+  /** A key with several values is written once per value, in order. */
+  readonly trailers: Readonly<Record<string, string | ReadonlyArray<string>>>;
   readonly author: Author;
 }
 export interface CommitFilesOptions {
