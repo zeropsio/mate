@@ -44,6 +44,8 @@ const RecordSchema = Schema.Struct({
   projectId: Schema.NullOr(Schema.String),
   serviceId: Schema.NullOr(Schema.String),
   address: Schema.NullOr(Schema.String),
+  // Absent from a birth kept before its record named the app version: none uploaded.
+  appVersionId: Schema.optionalKey(Schema.NullOr(Schema.String)),
   deployProcessId: Schema.NullOr(Schema.String),
 });
 const KeptSchema = Schema.fromJsonString(Schema.Record(Schema.String, RecordSchema));
@@ -53,7 +55,13 @@ const writeKept = Schema.encodeSync(KeptSchema);
 function kept(): Readonly<Record<string, HqBirthRecord>> {
   try {
     const stored = accountLocalStorage.getItem(HQ_BIRTHS_STORAGE_KEY);
-    return stored === null ? {} : readKept(stored);
+    if (stored === null) return {};
+    return Object.fromEntries(
+      Object.entries(readKept(stored)).map(([clientId, record]) => [
+        clientId,
+        { ...record, appVersionId: record.appVersionId ?? null },
+      ]),
+    );
   } catch {
     // Unreadable: nothing kept, and the birth reads the member list before it makes anything.
     return {};
