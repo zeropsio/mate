@@ -45,6 +45,10 @@ function fakeZerops(
     readonly projects?: ReadonlyArray<ZeropsProject>;
     /** The import is carried out, and its answer never reaches the birth: this is thrown instead. */
     readonly importAnswerLost?: unknown;
+    /** How many builds Zerops refuses while the service's variables still sync. */
+    readonly variablesSyncing?: number;
+    /** How many variable writes Zerops refuses while the import's variables still sync. */
+    readonly importVariablesSyncing?: number;
   } = {},
 ) {
   const calls: string[] = [];
@@ -65,6 +69,9 @@ function fakeZerops(
   /** Core is deployed: `hq` has its HTTP port, and a routing may name it. */
   let deployed = options.coreDeployed === true;
   let minted = 0;
+  let versions = 0;
+  let syncing = options.variablesSyncing ?? 0;
+  let importSyncing = options.importVariablesSyncing ?? 0;
   let routing: {
     id: string;
     isSynced: boolean;
@@ -157,17 +164,36 @@ function fakeZerops(
     },
     writeServiceSecret: async ({ serviceId, key, content }) => {
       step(`secret ${serviceId} ${key}`);
+      if (importSyncing > 0) {
+        importSyncing -= 1;
+        throw new ZeropsApiError(
+          "Service environment variable synchronization is already running.",
+          "invalid-input",
+          400,
+          "userDataSyncRunning",
+        );
+      }
       env.set(key, content);
     },
     createAppVersion: async (serviceId) => {
       step(`app-version ${serviceId}`);
-      return { id: "av-1" };
+      return { id: `av-${String(++versions)}` };
     },
-    uploadAppVersionArchive: async (_id, archive) => {
-      step(`upload ${archive.byteLength}`);
+    uploadAppVersionArchive: async (id, archive) => {
+      step(`upload ${id} ${archive.byteLength}`);
     },
-    buildAndDeployAppVersion: async (_id, input) => {
-      step(`deploy ${input.setup}`);
+    buildAndDeployAppVersion: async (id, input) => {
+      step(`deploy ${id} ${input.setup}`);
+      if (syncing > 0) {
+        syncing -= 1;
+        // Measured in Mate s.r.o., 2026-10-03: the build right after HQ_ORG_TOKEN was written.
+        throw new ZeropsApiError(
+          "Service environment variable synchronization is already running.",
+          "invalid-input",
+          400,
+          "userDataSyncRunning",
+        );
+      }
       processReads = 0;
       return { processId: "process-1" };
     },
@@ -289,6 +315,7 @@ describe("runHqBirth", () => {
       projectId: "hq1",
       serviceId: "svc-hq",
       address: ADDRESS,
+      appVersionId: "av-1",
       deployProcessId: "process-1",
     });
     expect(zerops.calls).toEqual([
@@ -303,8 +330,8 @@ describe("runHqBirth", () => {
       "mint mate-hq-org:hq1 READ_ONLY",
       "secret svc-hq HQ_ORG_TOKEN",
       "app-version svc-hq",
-      "upload 7",
-      "deploy hq",
+      "upload av-1 7",
+      "deploy av-1 hq",
       "process process-1",
       "process process-1",
       // Its HTTP port open, HQ's address is its project's own domain, routed to Core with SSL…
@@ -349,7 +376,7 @@ describe("runHqBirth", () => {
   it("names the step that stopped, and Try again resumes there without making anything twice", async () => {
     const zerops = fakeZerops();
     zerops.failOnce(
-      "deploy hq",
+      "deploy av-1 hq",
       new ZeropsApiError("Network error contacting Zerops: offline", "network"),
     );
     const first = await birth(HQ_BIRTH_START, zerops);
@@ -368,7 +395,9 @@ describe("runHqBirth", () => {
     expect(zerops.calls.filter((call) => /^(import|mint|secret)/u.test(call))).toEqual([
       `mint mate-hq:hq1:${ADDRESS} ADMIN`,
     ]);
-    expect(zerops.calls[0]).toBe("app-version svc-hq");
+    // The version it uploaded is built: none is made and left behind.
+    expect(zerops.calls[0]).toBe("deploy av-1 hq");
+    expect(zerops.calls.filter((call) => /^(app-version|upload)/u.test(call))).toEqual([]);
   });
 
   it.each<[string, ReadonlyArray<ZeropsOrganizationMember>]>([
@@ -550,6 +579,7 @@ describe("runHqBirth", () => {
       projectId: "hq1",
       serviceId: "svc-hq",
       address: ADDRESS,
+      appVersionId: null,
       deployProcessId: null,
     };
     const zerops = fakeZerops();
@@ -576,6 +606,76 @@ describe("runHqBirth", () => {
     expect(zerops.calls[1]).toBe("app-version svc-hq");
   });
 
+  // Mate s.r.o., 2026-10-03: the build right after Core's token was written was refused, 400
+  // userDataSyncRunning, while the service's variables synced.
+  it("waits out a variable sync its build is refused for, and builds the one version it uploaded", async () => {
+    const zerops = fakeZerops({ variablesSyncing: 2 });
+    const { outcome, record } = await birth(HQ_BIRTH_START, zerops);
+    expect(outcome).toMatchObject({ ok: true });
+    expect(zerops.calls.filter((call) => /^(app-version|upload|deploy)/u.test(call))).toEqual([
+      "app-version svc-hq",
+      "upload av-1 7",
+      "deploy av-1 hq",
+      "deploy av-1 hq",
+      "deploy av-1 hq",
+    ]);
+    expect(record.deployProcessId).toBe("process-1");
+  });
+
+  it("stops at once, in Zerops' words, where its build is refused for anything else", async () => {
+    const zerops = fakeZerops();
+    zerops.failOnce(
+      "deploy av-1 hq",
+      new ZeropsApiError(
+        "Invalid zerops.yml: setup hq not found.",
+        "invalid-input",
+        400,
+        "zeropsYamlInvalidParameter",
+      ),
+    );
+    const { outcome, record } = await birth(HQ_BIRTH_START, zerops);
+    expect(outcome).toEqual({
+      ok: false,
+      step: "deploy",
+      reason: "Invalid zerops.yml: setup hq not found.",
+      uncertain: false,
+    });
+    expect(zerops.calls.filter((call) => call.startsWith("deploy "))).toEqual(["deploy av-1 hq"]);
+    expect(record.appVersionId).toBe("av-1");
+  });
+
+  it("stops where the variables still sync past the deploy's wait, keeping the version it uploaded", async () => {
+    const zerops = fakeZerops({ variablesSyncing: Number.POSITIVE_INFINITY });
+    const { outcome, record } = await birth(HQ_BIRTH_START, zerops);
+    expect(outcome).toEqual({
+      ok: false,
+      step: "deploy",
+      reason: "Zerops was still syncing HQ's variables. Try again in a minute.",
+      uncertain: false,
+    });
+    expect(record).toMatchObject({ appVersionId: "av-1", deployProcessId: null });
+    expect(zerops.calls.filter((call) => /^(app-version|upload)/u.test(call))).toEqual([
+      "app-version svc-hq",
+      "upload av-1 7",
+    ]);
+  });
+
+  // The import's own variables (its `envSecrets`) may still sync when Core's token is written.
+  it("waits out a variable sync its token's write is refused for, minting the token once", async () => {
+    const zerops = fakeZerops({ importVariablesSyncing: 2 });
+    const { outcome } = await birth(HQ_BIRTH_START, zerops);
+    expect(outcome).toMatchObject({ ok: true });
+    expect(
+      zerops.calls.filter((call) => /^(mint mate-hq-org|regenerate|secret)/u.test(call)),
+    ).toEqual([
+      "mint mate-hq-org:hq1 READ_ONLY",
+      "secret svc-hq HQ_ORG_TOKEN",
+      "secret svc-hq HQ_ORG_TOKEN",
+      "secret svc-hq HQ_ORG_TOKEN",
+    ]);
+    expect(zerops.env.get("HQ_ORG_TOKEN")).toBe("value-1");
+  });
+
   it("deploys anew on Try again after a deploy that failed", async () => {
     const zerops = fakeZerops();
     const atDeploy: HqBirthRecord = {
@@ -584,16 +684,22 @@ describe("runHqBirth", () => {
       projectId: "hq1",
       serviceId: "svc-hq",
       address: ADDRESS,
+      appVersionId: null,
       deployProcessId: null,
     };
     const failing = { ...zerops.platform, readProcessStatus: async () => "FAILED" };
     const first = await birth(atDeploy, zerops, { ...deps(zerops), platform: failing });
     expect(first.outcome).toMatchObject({ ok: false, step: "deploy" });
     expect(first.record.deployProcessId).toBeNull();
+    expect(first.record.appVersionId).toBeNull();
 
     zerops.calls.length = 0;
     await birth(first.record, zerops);
-    expect(zerops.calls.slice(0, 3)).toEqual(["app-version svc-hq", "upload 7", "deploy hq"]);
+    expect(zerops.calls.slice(0, 3)).toEqual([
+      "app-version svc-hq",
+      "upload av-2 7",
+      "deploy av-2 hq",
+    ]);
   });
 
   it("stops at ready when HQ never answers as the official one", async () => {
@@ -629,7 +735,7 @@ describe("runHqBirth", () => {
     const order = zerops.calls.filter((call) => /^(secret|deploy|route|mint mate-hq:)/u.test(call));
     expect(order).toEqual([
       "secret svc-hq HQ_ORG_TOKEN",
-      "deploy hq",
+      "deploy av-1 hq",
       `route ${PUBLIC_ZONE} -> svc-hq:8080/`,
       `mint mate-hq:hq1:${ADDRESS} ADMIN`,
     ]);

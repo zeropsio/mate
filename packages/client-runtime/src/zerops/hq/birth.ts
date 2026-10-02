@@ -11,12 +11,15 @@
  *    while a `mate:hq` project no anchor names stands: one is being set up elsewhere, or stopped.
  * 2. `services` — the three services up.
  * 3. `credential` — `mate-hq-org:<projectId>`, org Read only and nothing else, written as the
- *    sensitive `HQ_ORG_TOKEN` of `hq`. A token's value is shown once: a token whose variable is
- *    missing is regenerated; a variable that is there is never written again.
+ *    sensitive `HQ_ORG_TOKEN` of `hq`, once the import's variables have synced. A token's value is
+ *    shown once: a token whose variable is missing is regenerated; a variable that is there is
+ *    never written again.
  * 4. `deploy` — Core's archive and `zerops.yml` (`core`), as an app version built and deployed. Core
  *    starts as a standby, its anchor missing; its deploy opens `hq`'s HTTP port, which a fresh
  *    import's `hq` does not have (measured in KRLS, 2026-10-02: a routing before it is refused,
- *    400 "ServiceStack must supported http protocol").
+ *    400 "ServiceStack must supported http protocol"). The version is uploaded once and kept: a
+ *    build refused while the variables `credential` wrote still sync is asked again, and a step
+ *    that stopped builds the same version on *Try again*.
  * 5. `domain` — HQ's address is its project's own domain (`publicZone`), the one Core names itself
  *    by: a routing of it to Core's port with SSL, the project's routings synced, and its
  *    certificate active (about ten seconds, measured on the rig 2026-10-02). An address that never
@@ -61,6 +64,14 @@ const HQ_SERVICES = ["db", "vol", HQ_SERVICE] as const;
 const HQ_ORG_TOKEN_ENV = "HQ_ORG_TOKEN";
 /** The `zerops.yml` entry Core deploys from (`apps/hq/zerops.yml`). */
 const HQ_SETUP = "hq";
+/**
+ * Zerops refuses a build, or a variable's write, while the service's variables sync, which a
+ * variable just written starts (measured in Mate s.r.o., 2026-10-03: a build refused 400 right after
+ * `HQ_ORG_TOKEN`), and the import's own `envSecrets` too.
+ */
+const VARIABLES_SYNCING = "userDataSyncRunning";
+/** The longest wait between two builds refused while the variables sync. */
+const SYNC_BACKOFF_MAX_MS = 30_000;
 
 export type HqBirthStep =
   | "project"
@@ -106,6 +117,8 @@ export interface HqBirthRecord {
   readonly serviceId: string | null;
   /** Core's address, as its anchor names it. */
   readonly address: string | null;
+  /** Core's app version, its archive uploaded: what the deploy builds, made once. */
+  readonly appVersionId: string | null;
   /** The deploy Zerops took, followed until it ends. */
   readonly deployProcessId: string | null;
 }
@@ -116,6 +129,7 @@ export const HQ_BIRTH_START: HqBirthRecord = {
   projectId: null,
   serviceId: null,
   address: null,
+  appVersionId: null,
   deployProcessId: null,
 };
 
@@ -284,6 +298,28 @@ export async function runHqBirth(input: {
     }
   };
 
+  /**
+   * `call`, again while Zerops refuses it for the service's variables still syncing: waits twice as
+   * long each time, up to {@link SYNC_BACKOFF_MAX_MS}, and stops once `capMs` has passed. Any other
+   * refusal stops at once, in its own words.
+   */
+  const afterVariablesSync = async <T>(capMs: number, call: () => Promise<T>): Promise<T> => {
+    const startedAt = deps.now();
+    let backoffMs = waits.pollMs;
+    for (;;) {
+      try {
+        return await call();
+      } catch (cause) {
+        if (!(cause instanceof ZeropsApiError && cause.code === VARIABLES_SYNCING)) throw cause;
+        if (deps.now() - startedAt >= capMs) {
+          throw new BirthStopped("Zerops was still syncing HQ's variables. Try again in a minute.");
+        }
+        await deps.sleep(backoffMs);
+        backoffMs = Math.min(backoffMs * 2, SYNC_BACKOFF_MAX_MS);
+      }
+    }
+  };
+
   /** Anchors naming a project but this one stop the birth: two HQs are none. */
   const assertNoOtherHq = async (own: string | null) => {
     const found = findOfficialHq(await platform.listOrganizationMembers(clientId));
@@ -388,7 +424,10 @@ export async function runHqBirth(input: {
                 })
               ).token
             : await platform.regenerateIntegrationToken({ clientId, tokenId: held[0].id });
-        await platform.writeServiceSecret({ serviceId, key: HQ_ORG_TOKEN_ENV, content });
+        // The import's own variables may still sync: the write waits them out with the token held.
+        await afterVariablesSync(waits.servicesCapMs, () =>
+          platform.writeServiceSecret({ serviceId, key: HQ_ORG_TOKEN_ENV, content }),
+        );
       }
       advance({ step: "deploy" });
     }
@@ -396,12 +435,18 @@ export async function runHqBirth(input: {
     if (record.step === "deploy") {
       if (record.deployProcessId === null) {
         const core = await deps.core();
-        const version = await platform.createAppVersion(serviceId, "hq-core");
-        await platform.uploadAppVersionArchive(version.id, core.archive);
-        const { processId } = await platform.buildAndDeployAppVersion(version.id, {
-          zeropsYaml: core.zeropsYaml,
-          setup: HQ_SETUP,
-        });
+        if (record.appVersionId === null) {
+          const version = await platform.createAppVersion(serviceId, "hq-core");
+          await platform.uploadAppVersionArchive(version.id, core.archive);
+          advance({ appVersionId: version.id });
+        }
+        const appVersionId = record.appVersionId!;
+        const { processId } = await afterVariablesSync(waits.deployCapMs, () =>
+          platform.buildAndDeployAppVersion(appVersionId, {
+            zeropsYaml: core.zeropsYaml,
+            setup: HQ_SETUP,
+          }),
+        );
         advance({ deployProcessId: processId });
       }
       const processId = record.deployProcessId!;
@@ -410,8 +455,8 @@ export async function runHqBirth(input: {
         return read === "FINISHED" || read === "FAILED" || read === "CANCELED" ? read : undefined;
       });
       if (status !== "FINISHED") {
-        // Try again deploys anew.
-        advance({ deployProcessId: null });
+        // Try again uploads and deploys anew.
+        advance({ deployProcessId: null, appVersionId: null });
         throw new BirthStopped("HQ's deploy did not finish. Its build log in Zerops says why.");
       }
       advance({ step: "domain" });
