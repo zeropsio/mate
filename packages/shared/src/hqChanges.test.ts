@@ -1,0 +1,308 @@
+import * as Schema from "effect/Schema";
+import { describe, expect, it } from "vite-plus/test";
+
+import {
+  CHANGE_BODY_MAX,
+  CHANGE_TITLE_MAX,
+  COMMENT_BODY_MAX,
+  AttachmentResponse,
+  ChangeDetailResponse,
+  ChangeListResponse,
+  ChangesMessage,
+  ChangesSnapshot,
+  CommentListResponse,
+  EditChangeRequest,
+  EnsureRepoRequest,
+  HqChange,
+  MateChanges,
+  OpenChangeRequest,
+  OpenChangeResponse,
+  PostCommentRequest,
+  attachmentPath,
+  changeRoutePath,
+  changeUrl,
+  parseAttachmentUrl,
+  parseChangeUrl,
+} from "./hqChanges.ts";
+
+const HQ = "https://hqzone.prg1-zerops.zone";
+const APP = "0b7c4c1e-9f1d-4a43-8f43-6d2b8a1c2e10";
+
+describe("hqChanges — the change link", () => {
+  it("names a change at HQ's address, reads it back, and routes it in the client", () => {
+    const url = changeUrl(HQ, APP, "appdev", 7);
+    expect(url).toBe(`${HQ}/changes/${APP}/appdev/7`);
+    expect(parseChangeUrl(url, HQ)).toEqual({ appId: APP, repo: "appdev", number: 7 });
+    // An official address written with a trailing slash names the same HQ.
+    expect(changeUrl(`${HQ}/`, APP, "appdev", 7)).toBe(url);
+    expect(parseChangeUrl(url, `${HQ}/`)).toEqual({ appId: APP, repo: "appdev", number: 7 });
+    expect(changeRoutePath(APP, "appdev", 7)).toBe(`/change/${APP}/appdev/7`);
+  });
+
+  it.each([
+    ["a query and a fragment", `${HQ}/changes/${APP}/appdev/7?tab=files#c3`, true],
+    ["a trailing slash", `${HQ}/changes/${APP}/appdev/7/`, true],
+    ["the host in capitals", `https://HQZONE.prg1-zerops.zone/changes/${APP}/appdev/7`, true],
+    [
+      "the same port spelled out",
+      `https://hqzone.prg1-zerops.zone:443/changes/${APP}/appdev/7`,
+      true,
+    ],
+    ["another host", `https://other.prg1-zerops.zone/changes/${APP}/appdev/7`, false],
+    [
+      "a host shaped like HQ's",
+      `https://hqzone.prg1-zerops.zone.evil.example/changes/${APP}/a/7`,
+      false,
+    ],
+    ["plain http", `http://hqzone.prg1-zerops.zone/changes/${APP}/appdev/7`, false],
+    ["another port", `https://hqzone.prg1-zerops.zone:8443/changes/${APP}/appdev/7`, false],
+    ["the client's route", `${HQ}/change/${APP}/appdev/7`, false],
+    ["a path below the change", `${HQ}/changes/${APP}/appdev/7/files`, false],
+    ["number zero", `${HQ}/changes/${APP}/appdev/0`, false],
+    ["no number", `${HQ}/changes/${APP}/appdev/seven`, false],
+    ["a number past the safe integers", `${HQ}/changes/${APP}/appdev/9007199254740993`, false],
+    ["a repository no git layer takes", `${HQ}/changes/${APP}/-dev/7`, false],
+    ["no url", "not a url", false],
+  ])("%s", (_name, href, read) => {
+    expect(parseChangeUrl(href, HQ) !== null).toBe(read);
+  });
+
+  it("recognises nothing without an official address", () => {
+    expect(parseChangeUrl(changeUrl(HQ, APP, "appdev", 7), "")).toBeNull();
+  });
+});
+
+describe("hqChanges — a picture of a change", () => {
+  const ID = "4f1c2b9a-0d3e-4c55-9b8f-2a7e6d1c0b3a";
+
+  it("is served at a path of HQ's API, which a description names at the official address", () => {
+    const path = attachmentPath(APP, "appdev", 7, ID);
+    expect(path).toBe(`/api/apps/${APP}/changes/appdev/7/attachments/${ID}`);
+    expect(parseAttachmentUrl(`${HQ}${path}`, HQ)).toEqual({
+      appId: APP,
+      repo: "appdev",
+      number: 7,
+      id: ID,
+    });
+    expect(parseAttachmentUrl(`https://elsewhere.example${path}`, HQ)).toBeNull();
+    expect(
+      parseAttachmentUrl(`${HQ}/api/apps/${APP}/changes/appdev/0/attachments/${ID}`, HQ),
+    ).toBeNull();
+    expect(parseAttachmentUrl(`${HQ}${changeRoutePath(APP, "appdev", 7)}`, HQ)).toBeNull();
+  });
+});
+
+const SHA = "a".repeat(40);
+
+const change = (patch: Record<string, unknown> = {}) => ({
+  appId: APP,
+  repo: "appdev",
+  number: 7,
+  mateProjectId: "P_MATE",
+  title: "Add a login page",
+  body: "",
+  state: "open",
+  head: SHA,
+  mergedSha: null,
+  landedHead: null,
+  openedAt: "2026-10-02T10:00:00.000Z",
+  mergedAt: null,
+  closedAt: null,
+  ...patch,
+});
+
+describe("hqChanges — the wire", () => {
+  const read = (schema: Schema.Codec<unknown, unknown>, value: unknown) =>
+    Schema.decodeUnknownExit(schema)(value)._tag;
+
+  it.each([
+    ["an open change", {}, "Success"],
+    ["a change with no head yet", { head: null }, "Success"],
+    [
+      "a merged change",
+      {
+        state: "merged",
+        mergedSha: "b".repeat(64),
+        landedHead: SHA,
+        mergedAt: "2026-10-02T11:00:00Z",
+      },
+      "Success",
+    ],
+    ["a title of the most characters", { title: "🙂".repeat(CHANGE_TITLE_MAX) }, "Success"],
+    ["a title past them", { title: "🙂".repeat(CHANGE_TITLE_MAX + 1) }, "Failure"],
+    ["a blank title", { title: "  " }, "Failure"],
+    ["a body of the most characters", { body: "🙂".repeat(CHANGE_BODY_MAX) }, "Success"],
+    ["a body past them", { body: "x".repeat(CHANGE_BODY_MAX + 1) }, "Failure"],
+    ["number zero", { number: 0 }, "Failure"],
+    ["a fractional number", { number: 1.5 }, "Failure"],
+    ["a head that is no commit", { head: "main" }, "Failure"],
+    ["a state this build does not know", { state: "draft" }, "Failure"],
+    ["a repository no git layer takes", { repo: "a/b" }, "Failure"],
+  ])("a change: %s", (_name, patch, expected) => {
+    expect(read(HqChange, change(patch))).toBe(expected);
+  });
+
+  it.each([
+    ["ensure a repository", EnsureRepoRequest, { name: "appdev" }, "Success"],
+    ["ensure a repository no git layer takes", EnsureRepoRequest, { name: "../x" }, "Failure"],
+    ["open a change", OpenChangeRequest, { repo: "appdev", title: "Mate: appdev" }, "Success"],
+    ["open a change without a title", OpenChangeRequest, { repo: "appdev", title: "" }, "Failure"],
+    ["the change opened", OpenChangeResponse, { change: change(), created: true }, "Success"],
+    ["retitle a change", EditChangeRequest, { title: "Add a login page" }, "Success"],
+    ["describe a change", EditChangeRequest, { body: "It adds **a login page**." }, "Success"],
+    ["an edit of nothing", EditChangeRequest, {}, "Failure"],
+  ])("a Mate's request: %s", (_name, schema, value, expected) => {
+    expect(read(schema as Schema.Codec<unknown, unknown>, value)).toBe(expected);
+  });
+
+  it.each([
+    [
+      "a picture kept",
+      AttachmentResponse,
+      { id: "4f1c2b9a", path: `/api/apps/${APP}/changes/appdev/7/attachments/4f1c2b9a` },
+      "Success",
+    ],
+    ["a Mate in no application", MateChanges, { appId: null, changes: [] }, "Success"],
+    [
+      "a Mate's changes, settled and open",
+      MateChanges,
+      {
+        appId: APP,
+        changes: [
+          {
+            repo: "appdev",
+            number: 8,
+            state: "open",
+            head: null,
+            mergedSha: null,
+            landedHead: null,
+          },
+          {
+            repo: "appdev",
+            number: 7,
+            state: "merged",
+            head: SHA,
+            mergedSha: SHA,
+            landedHead: SHA,
+          },
+          { repo: "api", number: 2, state: "closed", head: SHA, mergedSha: null, landedHead: null },
+        ],
+      },
+      "Success",
+    ],
+    [
+      "a change of a state this build does not know",
+      MateChanges,
+      {
+        appId: APP,
+        changes: [
+          {
+            repo: "appdev",
+            number: 1,
+            state: "gone",
+            head: null,
+            mergedSha: null,
+            landedHead: null,
+          },
+        ],
+      },
+      "Failure",
+    ],
+  ])("a Mate's answer: %s", (_name, schema, value, expected) => {
+    expect(read(schema as Schema.Codec<unknown, unknown>, value)).toBe(expected);
+  });
+
+  const detail = (patch: Record<string, unknown> = {}) => ({
+    change: change(),
+    mainHead: SHA,
+    mergeBase: SHA,
+    mergeability: { kind: "clean" },
+    files: [
+      {
+        path: "src/login.ts",
+        added: 40,
+        deleted: 0,
+        hunks: "@@ -0,0 +1,40 @@",
+        binary: false,
+        truncated: false,
+      },
+      { path: "logo.png", added: null, deleted: null, hunks: "", binary: true, truncated: false },
+    ],
+    filesTruncated: false,
+    commits: [
+      { sha: SHA, subject: "Add a login page", authorName: "Ada", at: "2026-10-02T10:00:00Z" },
+    ],
+    commitsTruncated: false,
+    ...patch,
+  });
+  const comment = (body: string) => ({
+    id: "c1",
+    authorUserId: "owner",
+    body,
+    createdAt: "2026-10-02T10:05:00Z",
+  });
+
+  it.each([
+    [
+      "an application's changes",
+      ChangeListResponse,
+      { changes: [change(), change({ number: 6 })] },
+      "Success",
+    ],
+    ["a change's detail", ChangeDetailResponse, detail(), "Success"],
+    [
+      "a change in conflict",
+      ChangeDetailResponse,
+      detail({ mergeability: { kind: "conflict", paths: ["src/app.ts"] } }),
+      "Success",
+    ],
+    [
+      "a change with no push yet",
+      ChangeDetailResponse,
+      detail({
+        mainHead: SHA,
+        mergeBase: null,
+        mergeability: { kind: "no_change" },
+        files: [],
+        commits: [],
+      }),
+      "Success",
+    ],
+    [
+      "a mergeability this build does not know",
+      ChangeDetailResponse,
+      detail({ mergeability: { kind: "maybe" } }),
+      "Failure",
+    ],
+    ["a change's comments", CommentListResponse, { comments: [comment("Looks good")] }, "Success"],
+    ["say something", PostCommentRequest, { body: "Please rename it." }, "Success"],
+    ["say nothing", PostCommentRequest, { body: " " }, "Failure"],
+    ["say too much", PostCommentRequest, { body: "x".repeat(COMMENT_BODY_MAX + 1) }, "Failure"],
+  ])("a person's read: %s", (_name, schema, value, expected) => {
+    expect(read(schema as Schema.Codec<unknown, unknown>, value)).toBe(expected);
+  });
+
+  it.each([
+    [
+      "a snapshot's changes, by application",
+      ChangesSnapshot,
+      { [APP]: [change()], other: [] },
+      "Success",
+    ],
+    [
+      "an application's changes now",
+      ChangesMessage,
+      { type: "changes", appId: APP, changes: [change()] },
+      "Success",
+    ],
+    [
+      "an application gone from view",
+      ChangesMessage,
+      { type: "changes", appId: APP, changes: null },
+      "Success",
+    ],
+    ["a structure change", ChangesMessage, { type: "change", key: APP, value: null }, "Failure"],
+  ])("the stream: %s", (_name, schema, value, expected) => {
+    expect(read(schema as Schema.Codec<unknown, unknown>, value)).toBe(expected);
+  });
+});
