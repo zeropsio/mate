@@ -189,22 +189,32 @@ export function settledOperationBar(
 }
 
 /**
- * Whether opening a row adds anything (the owner's colleague, 2026-10-01:
- * "you don't need an arrow if it doesn't show anything"): its services'
- * lines (`lines`, null for a kind that opens to its own card), or the whole
- * of a reason its one line cut short. A row with nothing to add wears no
- * chevron and does not press.
+ * How much an operation opens to (`opensOnto`, the owner's colleague, 2026-10-01:
+ * "you don't need an arrow if it doesn't show anything"): a stand-up's
+ * services, an import's, else the parts its own card draws — its steps, a
+ * reason and its log, the version whose pipeline and log it reads, its links,
+ * what a read returned, a check's picture or what it read of the page. None:
+ * a deploy with no steps and no log yet opens onto nothing.
  */
-export function opensTo(input: {
-  readonly lines: number | null;
-  readonly reasonCut: boolean;
-}): boolean {
-  return input.lines === null || input.lines > 0 || input.reasonCut;
-}
-
-/** How many lines an operation opens to, by kind; null for one that opens to its own card. */
-export function detailLines(operation: ZeropsOperation, standupRows: number | null): number | null {
+export function detailLines(operation: ZeropsOperation, standupRows: number | null): number {
   if (operation.kind === "standup") return standupRows ?? 0;
   if (operation.kind === "import") return operation.steps.length;
-  return null;
+  const read = operation.readResult;
+  const returned =
+    read === undefined
+      ? 0
+      : read.kind === "logs"
+        ? read.lines.length + (read.note === undefined ? 0 : 1)
+        : read.kind === "events" || read.kind === "discover"
+          ? read.rows.length
+          : 0;
+  return (
+    operation.steps.length +
+    operation.links.length +
+    returned +
+    (operation.explanation === undefined ? 0 : 1) +
+    (operation.version === undefined ? 0 : 1) +
+    (operation.screenshot === undefined ? 0 : 1) +
+    (operation.browserRead === undefined ? 0 : 1)
+  );
 }

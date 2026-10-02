@@ -38,6 +38,7 @@ import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { CrewTryIt } from "../zerops/crew/CrewTryIt";
 import type { OutcomeModel } from "./conversation.logic";
 import type { ExpandedImagePreview } from "./ExpandedImagePreview";
+import { opensOnto } from "./opens.logic";
 import {
   resultPictures,
   rowPictures,
@@ -243,6 +244,11 @@ function PictureTile({
   readonly onOpen: (() => void) | null;
 }) {
   const status = state._tag === "Success" ? "ready" : state._tag === "Failure" ? "gone" : "loading";
+  // A file that is gone opens onto nothing: it is no button, unless it stands for more.
+  const open =
+    onOpen !== null && opensOnto({ control: "picture", gone: status === "gone", more })
+      ? onOpen
+      : null;
   const own = status === "gone" ? `${picture.label}, gone` : picture.label;
   const said = more > 0 ? `${own}, and ${more} more` : own;
   const failed = (picture.kind === "check" && picture.failed) || undefined;
@@ -263,7 +269,7 @@ function PictureTile({
     <Tooltip>
       <TooltipTrigger
         render={
-          onOpen === null ? (
+          open === null ? (
             <span
               aria-label={said}
               className="run-result-tile"
@@ -278,7 +284,7 @@ function PictureTile({
               className="run-result-tile"
               data-failed={failed}
               data-result-picture={status}
-              onClick={onOpen}
+              onClick={open}
               style={shape}
               type="button"
             />

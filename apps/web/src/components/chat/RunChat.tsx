@@ -114,7 +114,8 @@ import { StatusBar } from "./StatusBar";
 import { versionText } from "../zerops/operation/version";
 import { ImportDetail } from "./ImportDetail";
 import { useStandupReading } from "../../zerops/activity/useStandupReading";
-import { detailLines, opensTo, settledOperationBar } from "./operationBar.logic";
+import { detailLines, settledOperationBar } from "./operationBar.logic";
+import { helperReportPreview, opensOnto, stepOutput } from "./opens.logic";
 import { StandupDetail } from "./StandupDetail";
 import type { ExpandedImagePreview } from "./ExpandedImagePreview";
 import {
@@ -972,61 +973,6 @@ function ThoughtBubble({ messages }: { readonly messages: ReadonlyArray<ChatMess
 // Its calls
 // ---------------------------------------------------------------------------
 
-/** The runtime's `Name: {json}` detail of a call: its arguments, never output to show. */
-const CALL_ARGUMENTS = /^[A-Za-z][\w-]*:\s*[{[]/;
-
-interface StepOutput {
-  readonly key: string;
-  readonly label: string | null;
-  readonly text: string;
-}
-
-/**
- * What a step holds besides what its bubble says: what it printed or
- * returned, the files an edit touched where they are, what a search or a read
- * of the web was asked. Nothing for a call that returned nothing to read.
- */
-export function stepOutput(step: WorkStep): ReadonlyArray<StepOutput> {
-  const blocks: StepOutput[] = [];
-  step.entries.forEach((entry, index) => {
-    const command = (entry.rawCommand ?? entry.command)?.trim();
-    if (step.kind === "edit") {
-      const files = [
-        ...new Set([
-          ...(entry.changedFiles ?? []),
-          ...(entry.callInput?.filePath ? [entry.callInput.filePath] : []),
-        ]),
-      ];
-      if (files.length > 0)
-        blocks.push({ key: `${index}:files`, label: "Files", text: files.join("\n") });
-    }
-    const asked = [
-      entry.callInput?.pattern ? `pattern  ${entry.callInput.pattern}` : null,
-      entry.callInput?.glob ? `glob     ${entry.callInput.glob}` : null,
-      entry.callInput?.path ? `in       ${entry.callInput.path}` : null,
-      entry.callInput?.url ? `address  ${entry.callInput.url}` : null,
-      entry.callInput?.query ? `query    ${entry.callInput.query}` : null,
-    ].filter((line): line is string => line !== null);
-    if (asked.length > 0 && (step.kind === "search" || step.kind === "web")) {
-      blocks.push({ key: `${index}:asked`, label: "Asked", text: asked.join("\n") });
-    }
-    const detail = entry.detail?.trim();
-    if (
-      detail &&
-      detail !== command &&
-      !CALL_ARGUMENTS.test(detail) &&
-      !(step.kind === "look" && step.images.includes(detail))
-    ) {
-      blocks.push({
-        key: `${index}:output`,
-        label: step.kind === "command" && blocks.length === 0 ? null : "Returned",
-        text: detail,
-      });
-    }
-  });
-  return blocks;
-}
-
 /**
  * A call said plainly: the verb in the secondary ink, the names it took in
  * full ink — in mono where the code knows them, a file by its name alone,
@@ -1295,7 +1241,7 @@ function StepBubble({
   const [taller, watchCode] = useTallerThan(CODE_CAP_PX, step.codeLines > CODE_CAP_LINES);
   const cut = script !== null && (bare ? step.codeLines > 1 : taller);
   const showsCode = script !== null && (!bare || disclosure.open);
-  const opens = outputs.length > 0 || cut;
+  const opens = opensOnto({ control: "step", step, codeCut: cut });
   const title = step.words ?? step.code ?? "A command";
   const headline = (
     <Headline
@@ -1458,8 +1404,8 @@ function OperationBubble({
   readonly operation: ZeropsOperation;
   /** It failed, and a later one on the same service went through: quiet (K9). */
   readonly undone?: boolean;
-  /** How many lines it opens to; null, its own card (`detailLines`). */
-  readonly lines?: number | null;
+  /** How much it opens to: its services' lines, its card's parts (`detailLines`). */
+  readonly lines?: number;
 }) {
   const ctx = use(TimelineRowCtx);
   const disclosure = useDisclosure();
@@ -1476,7 +1422,7 @@ function OperationBubble({
   const [cut, watchDetail] = useRunsPast(false, true);
   const reasonCut = reason !== null && (cut || disclosure.open);
   // Nothing to add: no chevron, and it does not press.
-  const opens = opensTo({ lines, reasonCut });
+  const opens = opensOnto({ control: "operation", lines, reasonCut });
   const head = (
     <Headline
       column
@@ -1595,29 +1541,47 @@ function ChecksBubble({ strip }: { readonly strip: BrowserStripModel }) {
       check.phase === "running" ||
       browserTakeState(check, strip.checks) === "failed",
   );
+  // One take with no picture and nothing read opens onto the same check.
+  const opens = opensOnto({
+    control: "checks",
+    checks: strip.checks.length,
+    shown: strip.checks.filter(
+      (check) =>
+        check.screenshot !== undefined ||
+        check.browserRead !== undefined ||
+        check.explanation !== undefined,
+    ).length,
+  });
+  const head = (
+    <Headline column opens={opens} time={time} timeTone={failed ? "failed" : "muted"}>
+      <span>
+        <span className="text-foreground/75">{words}</span>
+        {verdict === null ? null : (
+          <span className={failed ? "text-status-failed-text" : "text-muted-foreground"}>
+            {` · ${verdict}`}
+          </span>
+        )}
+      </span>
+    </Headline>
+  );
   return (
     <CallRow
       failure={failed ? "broken" : null}
       kind="checks"
       mark={failed ? <FailedMark failure="broken" /> : <DidMark icon={AppWindowIcon} />}
     >
-      <DisclosureButton
-        className={CALL_PAD}
-        label={`${words}${verdict === null ? "" : `, ${verdict}`}. ${disclosure.open ? "Hide" : "Show"} the checks`}
-        onToggle={disclosure.toggle}
-        open={disclosure.open}
-      >
-        <Headline column opens time={time} timeTone={failed ? "failed" : "muted"}>
-          <span>
-            <span className="text-foreground/75">{words}</span>
-            {verdict === null ? null : (
-              <span className={failed ? "text-status-failed-text" : "text-muted-foreground"}>
-                {` · ${verdict}`}
-              </span>
-            )}
-          </span>
-        </Headline>
-      </DisclosureButton>
+      {opens ? (
+        <DisclosureButton
+          className={CALL_PAD}
+          label={`${words}${verdict === null ? "" : `, ${verdict}`}. ${disclosure.open ? "Hide" : "Show"} the checks`}
+          onToggle={disclosure.toggle}
+          open={disclosure.open}
+        >
+          {head}
+        </DisclosureButton>
+      ) : (
+        <div className={CALL_PAD}>{head}</div>
+      )}
       {disclosure.open || !takes ? null : (
         <div className="px-3 pb-2">
           <BrowserTakes
@@ -1627,7 +1591,7 @@ function ChecksBubble({ strip }: { readonly strip: BrowserStripModel }) {
           />
         </div>
       )}
-      {disclosure.open ? (
+      {opens && disclosure.open ? (
         <div className="animate-detail-in px-3 pb-2 motion-reduce:animate-none" data-chat-detail>
           <BrowserStrip
             bare
@@ -1704,7 +1668,11 @@ function HelperRow({ agent }: { readonly agent: RuntimeSubagent }) {
     !active && durationMs !== null && durationMs >= 1000
       ? `${AGENT_STATUS_WORD[agent.status]} · ${formatWorkDuration(durationMs)}`
       : AGENT_STATUS_WORD[agent.status];
-  const firstLine = said?.split("\n").find((line) => line.trim().length > 0) ?? null;
+  const word = AGENT_STATUS_WORD[agent.status];
+  // Its report's first line under it, unless it says its state again; it
+  // opens only onto more than that line says.
+  const firstLine = helperReportPreview(said ?? null, word);
+  const opens = opensOnto({ control: "helper", report: said ?? null, state: word });
   const line = (
     <span className={cn("flex min-w-0 items-baseline gap-3", META)}>
       <span
@@ -1720,7 +1688,7 @@ function HelperRow({ agent }: { readonly agent: RuntimeSubagent }) {
   );
   return (
     <li className="grid min-w-0 gap-1">
-      {said ? (
+      {opens ? (
         <button
           aria-expanded={open}
           className="grid min-w-0 cursor-pointer gap-0.5 rounded-lg px-1.5 py-1 text-start transition-colors hover:bg-foreground/4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70"
@@ -1736,9 +1704,14 @@ function HelperRow({ agent }: { readonly agent: RuntimeSubagent }) {
           )}
         </button>
       ) : (
-        <div className="px-1.5 py-1">{line}</div>
+        <div className="grid min-w-0 gap-0.5 px-1.5 py-1">
+          {line}
+          {firstLine === null ? null : (
+            <span className={cn("truncate text-muted-foreground", META)}>{firstLine}</span>
+          )}
+        </div>
       )}
-      {open && said ? <OutputBlock mono={false} text={said} /> : null}
+      {open && opens && said ? <OutputBlock mono={false} text={said} /> : null}
     </li>
   );
 }
@@ -1779,26 +1752,35 @@ function HelpersBubble({ entry }: { readonly entry: WorkLogEntry }) {
     workflowName ??
     (agents.length === 1 ? agents[0]!.title : agents.map((agent) => agent.title).join(" · "));
   const failed = summary.tone === "failed";
+  // Helpers not known yet: nothing to open onto.
+  const opens = opensOnto({ control: "helpers", agents: agents.length });
+  const head = (
+    <Headline column opens={opens} timeTone="muted" time={summary.live ? "Working" : null}>
+      <span>
+        <span className="text-foreground/75">{words}</span>
+        {what ? <span className="text-muted-foreground">{` · ${what}`}</span> : null}
+      </span>
+    </Headline>
+  );
   return (
     <CallRow
       failure={failed ? "broken" : null}
       kind="helpers"
       mark={failed ? <FailedMark failure="broken" /> : <DidMark icon={BotIcon} />}
     >
-      <DisclosureButton
-        className={CALL_PAD}
-        label={`${words}. ${disclosure.open ? "Hide" : "Show"} them`}
-        onToggle={disclosure.toggle}
-        open={disclosure.open}
-      >
-        <Headline column opens timeTone="muted" time={summary.live ? "Working" : null}>
-          <span>
-            <span className="text-foreground/75">{words}</span>
-            {what ? <span className="text-muted-foreground">{` · ${what}`}</span> : null}
-          </span>
-        </Headline>
-      </DisclosureButton>
-      {disclosure.open ? (
+      {opens ? (
+        <DisclosureButton
+          className={CALL_PAD}
+          label={`${words}. ${disclosure.open ? "Hide" : "Show"} them`}
+          onToggle={disclosure.toggle}
+          open={disclosure.open}
+        >
+          {head}
+        </DisclosureButton>
+      ) : (
+        <div className={CALL_PAD}>{head}</div>
+      )}
+      {opens && disclosure.open ? (
         // Its helpers' words on the bubble's text edge: 8 px in, and their own 6.
         <div
           className="grid animate-detail-in gap-2 px-2 pb-2.5 motion-reduce:animate-none"
@@ -1897,24 +1879,31 @@ function PlanBubble({ plan }: { readonly plan: TurnPlanEntry }) {
     steps.find((step) => step.status === "inProgress")?.step ??
     steps.find((step) => step.status === "pending")?.step ??
     null;
+  // A list of the one step its line names is the whole of it.
+  const opens = opensOnto({ control: "plan", steps: steps.map((step) => step.step), current });
+  const head = (
+    <Headline column opens={opens} time={`${done}/${steps.length}`}>
+      <span>
+        <span className="text-foreground/75">To-do list</span>
+        {current !== null ? <span className="text-muted-foreground">{` · ${current}`}</span> : null}
+      </span>
+    </Headline>
+  );
   return (
     <CallRow kind="plan" mark={<DidMark icon={ListTodoIcon} />}>
-      <DisclosureButton
-        className={CALL_PAD}
-        label={`To-do list, ${done} of ${steps.length} done. ${disclosure.open ? "Hide" : "Show"} it`}
-        onToggle={disclosure.toggle}
-        open={disclosure.open}
-      >
-        <Headline column opens time={`${done}/${steps.length}`}>
-          <span>
-            <span className="text-foreground/75">To-do list</span>
-            {current !== null ? (
-              <span className="text-muted-foreground">{` · ${current}`}</span>
-            ) : null}
-          </span>
-        </Headline>
-      </DisclosureButton>
-      {disclosure.open ? (
+      {opens ? (
+        <DisclosureButton
+          className={CALL_PAD}
+          label={`To-do list, ${done} of ${steps.length} done. ${disclosure.open ? "Hide" : "Show"} it`}
+          onToggle={disclosure.toggle}
+          open={disclosure.open}
+        >
+          {head}
+        </DisclosureButton>
+      ) : (
+        <div className={CALL_PAD}>{head}</div>
+      )}
+      {opens && disclosure.open ? (
         <div className="animate-detail-in px-3 pb-2 motion-reduce:animate-none" data-chat-detail>
           <PlanSteps steps={steps} />
         </div>
@@ -2175,6 +2164,8 @@ function itemLine(item: RecordItem, undone: ReadonlySet<string>): ChatLine | nul
         call: true,
       };
     case "thought":
+      // A thought with no words shows nothing: no line of the chat.
+      if (item.messages.every((message) => message.text.trim().length === 0)) return null;
       return {
         key: item.key,
         bubble: <ThoughtBubble messages={item.messages} />,
@@ -2720,8 +2711,10 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
           answering={false}
           outcome={row.outcome}
           end={
-            // A chat opens from its first thing the Mate did (`chatLines`).
-            shows.toggle !== null && row.items.some((item) => item.kind !== "person") ? (
+            // A chat opens from its first thing the Mate did (`chatLines`),
+            // and only onto a line that shows something.
+            shows.toggle !== null &&
+            opensOnto({ control: "work", lines: chatLines(row.items, undone).length }) ? (
               <WorkToggle
                 onToggle={() => {
                   hold();
