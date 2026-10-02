@@ -14,6 +14,29 @@ import {
   untilHealth,
 } from "../test/harness/runningCore.ts";
 import { tempPostgresLayer } from "../test/harness/tempPostgres.ts";
+import { failure } from "./api.ts";
+import { NotLeader } from "./leader.ts";
+import { ZeropsUnavailable } from "./zerops/api.ts";
+
+describe("HQ's failures", () => {
+  it.effect("answers every 503 with Retry-After: whatever is unavailable now, try again", () =>
+    Effect.gen(function* () {
+      for (const error of [
+        new NotLeader({ reason: "fenced" }),
+        new ZeropsUnavailable({ operation: "members", message: "down" }),
+        { _tag: "SqlError" },
+        { _tag: "GitError" },
+      ]) {
+        const response = yield* failure(error);
+        assert.deepStrictEqual(
+          [response.status, response.headers["retry-after"]],
+          [503, "5"],
+          error._tag,
+        );
+      }
+    }),
+  );
+});
 
 describe("HQ API", () => {
   it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {

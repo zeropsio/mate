@@ -43,7 +43,7 @@ const getHealth = (
       ),
     );
     const body: unknown = yield* Effect.promise(() => HttpServerResponse.toWeb(response).json());
-    return { status: response.status, body };
+    return { status: response.status, body, retryAfter: response.headers["retry-after"] };
   }).pipe(Effect.scoped);
 
 const cases: ReadonlyArray<{
@@ -87,6 +87,8 @@ describe("GET /health", () => {
               database === "up" ? yield* postgres.createDatabase : yield* postgres.deadUrl;
             const response = yield* getHealth(leader, official, url);
             assert.strictEqual(response.status, status);
+            // Every 503 HQ answers says when to try again.
+            assert.strictEqual(response.retryAfter, status === 503 ? "5" : undefined);
             assert.deepStrictEqual(response.body, {
               state: leader.state,
               official,

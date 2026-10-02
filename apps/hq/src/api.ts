@@ -72,7 +72,7 @@ import { ChangeRefused, Changes } from "./changes.ts";
 import { Door } from "./door.ts";
 import { GitHost } from "./gitHost.ts";
 import { type LinkOptions, serveMateLink } from "./link.ts";
-import { Leader, NotLeader } from "./leader.ts";
+import { Leader, NotLeader, RETRY_AFTER } from "./leader.ts";
 import { MateCredentials, MateRefused } from "./mateCredentials.ts";
 import { DoorRateLimit } from "./rateLimit.ts";
 import { Roles } from "./roles.ts";
@@ -156,12 +156,9 @@ const CHANGE_STATUS = {
 
 const json = (body: unknown, status: number) => HttpServerResponse.jsonUnsafe(body, { status });
 
-/** How long a caller waits before it tries a Core that cannot serve now again, in seconds. */
-const RETRY_AFTER = "5";
-
-/** Try again: this Core does not lead now, or Zerops did not answer. */
+/** Try again: this Core does not lead now, Zerops did not answer, or a failure HQ cannot name. */
 const unavailable = (code: string) =>
-  HttpServerResponse.jsonUnsafe({ code }, { status: 503, headers: { "retry-after": RETRY_AFTER } });
+  HttpServerResponse.jsonUnsafe({ code }, { status: 503, headers: RETRY_AFTER });
 
 const isStructureRefused = Schema.is(StructureRefused);
 const isChangeRefused = Schema.is(ChangeRefused);
@@ -184,7 +181,7 @@ const jsonBody = <A, RD>(schema: Schema.Codec<A, unknown, RD>, limit: number) =>
   });
 
 /** Every failure as one status and one code. */
-const failure = (error: {
+export const failure = (error: {
   readonly _tag: string;
 }): Effect.Effect<HttpServerResponse.HttpServerResponse> => {
   if (isStructureRefused(error)) {
@@ -229,7 +226,7 @@ const failure = (error: {
     case "HttpServerError":
       return Effect.succeed(json({ code: "invalid" }, 400));
     default:
-      return Effect.as(Effect.logError("api failed", error), json({ code: "unavailable" }, 503));
+      return Effect.as(Effect.logError("api failed", error), unavailable("unavailable"));
   }
 };
 

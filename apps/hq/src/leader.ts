@@ -42,6 +42,12 @@ export interface LeaderStatus {
   readonly epoch: number | null;
 }
 
+/**
+ * What every `503` HQ answers carries: it serves nothing now — a standby, a Zerops that did not
+ * answer, a failure it cannot name — and the caller tries again in this many seconds.
+ */
+export const RETRY_AFTER = { "retry-after": "5" } as const;
+
 /** A write refused: this instance does not lead, or another took the lead under a later epoch. */
 export class NotLeader extends Schema.TaggedError<NotLeader>()("NotLeader", {
   reason: Schema.Literals(["standby", "fenced"]),
