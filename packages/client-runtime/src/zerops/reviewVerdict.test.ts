@@ -102,15 +102,6 @@ describe("changeReview: the verdict comes first (R2)", () => {
         why: "main moved on since Nova branched · it still merges cleanly",
       },
     ],
-    // Only Mates open changes (SPEC §5.4): one whose name is not known yet is still a Mate.
-    [
-      "behind main, its Mate not named",
-      { pull: pull({ behind: true }), mateName: undefined },
-      {
-        state: "behind-clean",
-        why: "main moved on since the Mate branched · it still merges cleanly",
-      },
-    ],
     [
       "nothing main does not have",
       { pull: pull({ mergeability: "empty" }) },
@@ -944,7 +935,7 @@ describe("changeReview: Close without merging, the review its one confirmation (
       title: "Close #2 without merging?",
       why: "Nothing of it reaches main",
     });
-    expect(review.consequence).toBe("Closes #2 for good. Nova's branch stays as it is.");
+    expect(review.consequence).toBe("Closes #2 for good; Nova's branch stays as it is.");
     expect(review.primary).toEqual({ label: "Close without merging", enabled: true, safe: false });
     expect(review.secondary).toEqual({ label: "Keep it open", enabled: true });
   });

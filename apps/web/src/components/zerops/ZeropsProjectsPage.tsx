@@ -1755,7 +1755,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
       />
     ) : undefined;
     const key = `pull-${group.groupId}-${pull.repository}-${pull.number}`;
-    const line = pullRequestLineWith(pull, mateNames.get(pull.mateProjectId ?? ""));
+    const line = pullRequestLineWith(pull, mateNames.get(pull.mateProjectId));
     const open = () => {
       void navigate({
         to: "/change/$groupId/$repository/$number",

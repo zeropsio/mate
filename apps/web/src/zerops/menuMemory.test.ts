@@ -11,6 +11,7 @@ import {
   MENU_MEMORY_STORAGE_KEY,
   menuMemory,
   rememberedChangeOf,
+  rememberedChanges,
   rememberedCrewOf,
   rememberedRowOf,
   rememberMenu,
@@ -446,6 +447,22 @@ describe("the memory in this browser", () => {
     );
     openAccountLifetime("user-ales");
     expect(menuMemory().changes.g1).toEqual([rememberedChangeOf(PULL)]);
+  });
+
+  // Only Mates open changes (SPEC §5.4): a change remembered with no Mate — a person's own branch,
+  // from before — reads, and is drawn nowhere; the rest of what was remembered still is.
+  it("reads a change remembered without its Mate, and draws it nowhere", () => {
+    const key = `mate:account:user-ales:${MENU_MEMORY_STORAGE_KEY}`;
+    const { mateProjectId: _mate, ...personal } = { ...rememberedChangeOf(PULL), number: 15 };
+    stored.set(
+      key,
+      JSON.stringify({
+        ...EMPTY_MENU_MEMORY,
+        changes: { g1: [personal, rememberedChangeOf(PULL)] },
+      }),
+    );
+    openAccountLifetime("user-ales");
+    expect(rememberedChanges("g1")?.map((pull) => pull.number)).toEqual([14]);
   });
 
   it("reads nothing another account remembered", () => {

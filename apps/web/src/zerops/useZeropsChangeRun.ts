@@ -32,7 +32,7 @@ const NO_RUN: ZeropsChangeRun = { words: undefined, reading: false, threadRef: u
 
 export function useZeropsChangeRun(
   change: {
-    readonly mateProjectId: string | undefined;
+    readonly mateProjectId: string;
     /** Its application, which is its group. */
     readonly appId: string;
     readonly repository: string;

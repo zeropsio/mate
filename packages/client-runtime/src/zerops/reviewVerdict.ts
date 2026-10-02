@@ -207,8 +207,8 @@ export interface ChangeReviewInput {
     /** Whether `main` has moved on past the commit it was cut from. */
     readonly behind: boolean;
   };
-  /** The name of the Mate that wrote it — only Mates open changes; `undefined` until it is known. */
-  readonly mateName: string | undefined;
+  /** The name of the Mate that wrote it: only Mates open changes (SPEC §5.4). */
+  readonly mateName: string;
   /**
    * How far its files were read for the head it is at. Merge takes only a head whose change was
    * shown: it waits while they are read, and one that could not be read is merged only by a
@@ -283,8 +283,7 @@ function closeReview(
 ): ReviewModel {
   const { pull } = input;
   const number = `#${String(pull.number)}`;
-  const branch = input.mateName === undefined ? "The Mate's" : `${input.mateName}'s`;
-  const consequence = `Closes ${number} for good. ${branch} branch stays as it is.`;
+  const consequence = `Closes ${number} for good; ${input.mateName}'s branch stays as it is.`;
   const primary = (enabled: boolean): ReviewPrimary => ({
     label: CLOSE_LABEL,
     enabled,
@@ -437,7 +436,7 @@ function changeVerdictOf(input: ChangeReviewInput): {
 } {
   const { pull } = input;
   const base = pull.baseBranch;
-  const who = input.mateName ?? "the Mate";
+  const who = input.mateName;
 
   if (pull.mergeability === "conflicting") {
     const files = input.conflict?.files ?? [];

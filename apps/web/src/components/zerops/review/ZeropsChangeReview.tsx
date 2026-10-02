@@ -227,14 +227,10 @@ function ChangeReviewData({
     setClosing(outcome.ok ? { kind: "done" } : { kind: "refused", reason: outcome.reason });
   };
 
-  const mate = pull.mateProjectId === undefined ? undefined : mates.get(pull.mateProjectId);
+  const mate = mates.get(pull.mateProjectId);
   // Only the Mate that wrote it can push to its branch: the fix goes to it, if it is the
   // person's own (S6, the one rule `fixMates.ts` keeps for every surface).
-  const fixers = useFixMates(
-    pull.mateProjectId === undefined
-      ? undefined
-      : { projectId: pull.mateProjectId, groupId: target.groupId },
-  );
+  const fixers = useFixMates({ projectId: pull.mateProjectId, groupId: target.groupId });
   const mine = fixers.some((option) => option.mateProjectId === pull.mateProjectId);
   const detail = useZeropsChangeDetail({
     link: { appId: target.groupId, repo: pull.repository, number: pull.number },
@@ -290,13 +286,11 @@ function ChangeReviewData({
       live={flow?.releases.find((entry) => entry.standing === "live")?.tag}
       mate={
         mate === undefined
-          ? pull.mateProjectId === undefined
-            ? undefined
-            : {
-                name: flowValue.mateNames.get(pull.mateProjectId) ?? "the Mate",
-                tint: undefined,
-                mine,
-              }
+          ? {
+              name: flowValue.mateNames.get(pull.mateProjectId) ?? "the Mate",
+              tint: undefined,
+              mine,
+            }
           : { name: mate.name, tint: mate.tint, shape: mate.shape, mine }
       }
       now={now}
@@ -315,7 +309,6 @@ function ChangeReviewData({
       onAsk={async (said) => {
         // The change keeps the record of what was asked; the Mate gets the words to act on.
         const refusal = await comments.say(said);
-        if (pull.mateProjectId === undefined) return;
         askMate(
           pull.mateProjectId,
           changeAskPrompt({
@@ -330,7 +323,6 @@ function ChangeReviewData({
       onClose={onClose}
       onRetry={detail.retry}
       onFix={(problem) => {
-        if (pull.mateProjectId === undefined) return;
         askMateToFix(pull.mateProjectId, problem);
         onClose();
       }}
@@ -371,14 +363,12 @@ export interface ChangeReviewViewProps {
   readonly frame?: ReviewFrame | undefined;
   readonly pull: FlowPullRequest;
   /** The Mate that wrote it — its name, its face, and whether it is the person's own. */
-  readonly mate:
-    | {
-        readonly name: string;
-        readonly tint: MateTintId | undefined;
-        readonly shape?: MateShapeId | undefined;
-        readonly mine: boolean;
-      }
-    | undefined;
+  readonly mate: {
+    readonly name: string;
+    readonly tint: MateTintId | undefined;
+    readonly shape?: MateShapeId | undefined;
+    readonly mine: boolean;
+  };
   /** HQ's detail of it: its files and diffs, its commits, how it merges. */
   readonly readout: ReadoutPart<ChangeReadout>;
   /** What was said on it, and the way to say something back. */
@@ -446,7 +436,7 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
             mergeability: read.mergeability,
             behind: read.behind,
           },
-    mateName: mate?.name,
+    mateName: mate.name,
     readout: readout.kind === "read" ? "read" : readout.kind === "failed" ? "failed" : "reading",
     commits: read?.commits.length,
     conflict:
@@ -489,7 +479,7 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
         : { kind: "reading" };
   const commits: ReadoutPart<ReadonlyArray<ChangeReadoutCommit>> =
     readout.kind === "read" ? { kind: "read", value: readout.value.commits } : readout;
-  const mine = mate?.mine === true ? mate : undefined;
+  const mine = mate.mine ? mate : undefined;
   const fix = model.verdict.fix;
   // Once merged, its one button is the release's review.
   const next = model.primary?.label === REVIEW_RELEASE_LABEL;
@@ -524,11 +514,11 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
         <ChangeMeta
           age={historyAge(pull.updatedAt, props.now)}
           base={pull.baseBranch}
-          face={mate?.tint}
-          faceShape={mate?.shape}
+          face={mate.tint}
+          faceShape={mate.shape}
           number={pull.number}
           repository={pull.repository}
-          who={mate?.name}
+          who={mate.name}
         />
       }
       onOpenPage={props.onOpenPage}
@@ -623,7 +613,7 @@ function ChangeMeta({
   number,
   age,
 }: {
-  readonly who: string | undefined;
+  readonly who: string;
   readonly face: MateTintId | undefined;
   readonly faceShape: MateShapeId | undefined;
   readonly repository: string;
@@ -631,9 +621,8 @@ function ChangeMeta({
   readonly number: number;
   readonly age: string | undefined;
 }) {
-  const parts: Array<{ readonly key: string; readonly node: ReactNode }> = [];
-  if (who !== undefined) {
-    parts.push({
+  const parts: Array<{ readonly key: string; readonly node: ReactNode }> = [
+    {
       key: "who",
       node: (
         <span className="rv-meta-who">
@@ -643,8 +632,8 @@ function ChangeMeta({
           {who}
         </span>
       ),
-    });
-  }
+    },
+  ];
   parts.push({ key: "where", node: <span>{`${repository} → ${base}`}</span> });
   parts.push({ key: "number", node: <span>#{number}</span> });
   if (age !== undefined) parts.push({ key: "age", node: <span>{age}</span> });

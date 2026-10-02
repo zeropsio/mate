@@ -46,6 +46,8 @@ const ChangeSchema = Schema.Struct({
   repository: Schema.String,
   number: Schema.Number,
   title: Schema.String,
+  // Absent from a change remembered as a person's own branch, from before only Mates opened
+  // changes: it still reads, and is drawn nowhere (`rememberedChanges`).
   mateProjectId: Schema.optionalKey(Schema.String),
   url: Schema.optionalKey(Schema.String),
   line: Schema.String,
@@ -173,6 +175,8 @@ const MenuMemorySchema = Schema.Struct({
 
 export type RememberedRow = typeof RowSchema.Type;
 export type RememberedChange = typeof ChangeSchema.Type;
+/** A remembered change as this build writes it: always a Mate's. */
+export type RememberedMateChange = RememberedChange & { readonly mateProjectId: string };
 export type RememberedChip = typeof ChipSchema.Type;
 export type RememberedChips = typeof ChipsSchema.Type;
 /** A draw's word on a project's chips: one to keep, `null` to forget, absent to leave as it is. */
@@ -240,12 +244,12 @@ export function activityFromMemory(row: RememberedRow): ZeropsAgentActivity {
 }
 
 /** What a change row needs of a pull request to be drawn again. */
-export function rememberedChangeOf(pull: FlowPullRequest): RememberedChange {
+export function rememberedChangeOf(pull: FlowPullRequest): RememberedMateChange {
   return {
     repository: pull.repository,
     number: pull.number,
     title: pull.title,
-    ...(pull.mateProjectId === undefined ? {} : { mateProjectId: pull.mateProjectId }),
+    mateProjectId: pull.mateProjectId,
     ...(pull.url === undefined ? {} : { url: pull.url }),
     line: pull.line,
     baseBranch: pull.baseBranch,
@@ -257,7 +261,7 @@ export function rememberedChangeOf(pull: FlowPullRequest): RememberedChange {
  * A remembered change as a pull request: its title where it hung, and no
  * verdict — whether it merges is to be said again.
  */
-export function changeFromMemory(change: RememberedChange): FlowPullRequest {
+export function changeFromMemory(change: RememberedMateChange): FlowPullRequest {
   return {
     repository: change.repository,
     number: change.number,
@@ -465,7 +469,10 @@ export function rememberedChanges(groupId: string): ReadonlyArray<FlowPullReques
   if (changes === undefined) return undefined;
   let drawn = pulls.get(changes);
   if (drawn === undefined) {
-    drawn = changes.map(changeFromMemory);
+    // One remembered with no Mate is no change anybody draws now.
+    drawn = changes.flatMap(({ mateProjectId, ...change }) =>
+      mateProjectId === undefined ? [] : [changeFromMemory({ ...change, mateProjectId })],
+    );
     pulls.set(changes, drawn);
   }
   return drawn;

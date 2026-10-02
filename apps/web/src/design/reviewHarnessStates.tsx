@@ -438,7 +438,7 @@ function Change({
       hqAddress={HARNESS_HQ}
       initiallyOpen={open}
       live="v0.1.0"
-      mate={value.mateProjectId === undefined ? undefined : NOVA}
+      mate={NOVA}
       now={NOW}
       onAsk={async () => {}}
       onClose={noop}

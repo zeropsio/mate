@@ -140,7 +140,7 @@ function render(
 ): string {
   const props: ChangeReviewViewProps = {
     pull,
-    mate: undefined,
+    mate: { name: "Wren", tint: undefined, mine: false },
     readout: {
       kind: "read",
       value: changeReadout({

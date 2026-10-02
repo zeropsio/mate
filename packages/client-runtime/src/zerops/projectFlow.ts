@@ -36,8 +36,8 @@ export interface FlowPullRequest {
   readonly number: number;
   readonly title: string;
   readonly kind: FlowPullRequestKind;
-  /** The Mate that opened it. */
-  readonly mateProjectId: string | undefined;
+  /** The Mate that opened it: only Mates open changes (SPEC §5.4). */
+  readonly mateProjectId: string;
   readonly url: string | undefined;
   /** HQ's word on whether it merges (`changeMergeability.ts`), never the app's. */
   readonly mergeability: MergeabilityKind;
@@ -295,7 +295,7 @@ export function pullRequestsByMate(
     mateProjectIds.map((projectId) => [projectId, []]),
   );
   for (const pull of [...pulls].sort(byNewest)) {
-    if (pull.mateProjectId !== undefined) byMate.get(pull.mateProjectId)?.push(pull);
+    byMate.get(pull.mateProjectId)?.push(pull);
   }
   return byMate;
 }

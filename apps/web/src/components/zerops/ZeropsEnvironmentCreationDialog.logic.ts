@@ -446,8 +446,7 @@ export function newMateRecipeChange(input: {
     if (first === undefined || pull.number < first.number) first = pull;
   }
   if (first === undefined) return undefined;
-  const mate = first.mateProjectId === undefined ? undefined : input.mateName(first.mateProjectId);
-  return { number: first.number, mate };
+  return { number: first.number, mate: input.mateName(first.mateProjectId) };
 }
 
 /** The proposal of the recipe that landed last, by its number: another landing may put one on `main`. */
