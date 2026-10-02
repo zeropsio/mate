@@ -223,6 +223,26 @@ describe("a Mate's changes in HQ", () => {
           [fetching.status, fetching.body],
           [403, { code: "forbidden", reason: "not_your_app" }],
         );
+        // Credential misses are limited per client address, like the doors; a Mate's own passes.
+        const knock = (credential: string | undefined) =>
+          Effect.map(
+            call("GET", `/git/${shop.appId}/appdev.git/info/refs?service=git-upload-pack`, {
+              headers: {
+                "x-real-ip": "10.0.0.7",
+                ...(credential === undefined
+                  ? {}
+                  : {
+                      authorization: `Basic ${Buffer.from(`mate:${credential}`).toString("base64")}`,
+                    }),
+              },
+            }),
+            (answer) => answer.status,
+          );
+        const misses = yield* Effect.forEach(Array.from({ length: 11 }), () => knock("forged"));
+        assert.deepStrictEqual(misses, [...Array(10).fill(401), 429]);
+        // git's own first request presents no credential: never a guess, never limited.
+        assert.strictEqual(yield* knock(undefined), 401);
+        assert.strictEqual(yield* knock(shop.credential), 200);
         const pushing = yield* refs("git-receive-pack");
         assert.deepStrictEqual([pushing.status, pushing.body], [403, "App read access refused\n"]);
         // No credential, a forged one, or a user other than `mate`: git is asked for one.

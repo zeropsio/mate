@@ -256,7 +256,7 @@ const holderOf = (token: string | undefined) =>
 const principal = Effect.flatMap(bearer, holderOf);
 
 /** A token of the client address's bucket at `door`; none left is `429`. */
-const knock = (door: "person" | "mate") =>
+const knock = (door: "person" | "mate" | "git") =>
   Effect.gen(function* () {
     // `X-Real-IP` is the client address the Zerops L7 balancer sets.
     const request = yield* HttpServerRequest.HttpServerRequest;
@@ -356,9 +356,9 @@ const gitAppId = (url: string) => /^\/git\/([^/?]+)\//u.exec(url)?.[1] ?? "";
 
 /**
  * git at `/git/<appId>/<repo>.git` for a Mate, decided here before the git layer sees the request:
- * its credential (a `401` asks git for it); a push by `can`'s `open_change` over the org read now,
- * a fetch by `fetch_repo`, which also decides every repository the layer serves the request
- * (`gitHost.ts`).
+ * its credential (a `401` asks git for it, and a client address's misses are limited as a door's
+ * knocks are); a push by `can`'s `open_change` over the org read now, a fetch by `fetch_repo`,
+ * which also decides every repository the layer serves the request (`gitHost.ts`).
  */
 const serveGit = Effect.gen(function* () {
   const request = yield* HttpServerRequest.HttpServerRequest;
@@ -366,6 +366,9 @@ const serveGit = Effect.gen(function* () {
   const holder =
     presented === undefined ? Option.none() : yield* (yield* MateCredentials).whoami(presented);
   if (Option.isNone(holder)) {
+    // A credential presented and missed is a guess: limited per client address, like the doors.
+    // git's first request of every command presents none, to be asked: that guesses nothing.
+    if (presented !== undefined) yield* knock("git");
     return HttpServerResponse.text("Authentication required\n", {
       status: 401,
       headers: { "www-authenticate": 'Basic realm="HQ"' },
