@@ -223,9 +223,14 @@ export interface ZeropsBoundedIngress<Input> {
 
 /**
  * Account-wide serialized ingress with independent decoded-event and raw-byte
- * limits. The overflow callback runs while admission is locked and before the
- * rejected event is counted as discarded, so callers can publish recovering
- * state before losing data.
+ * limits. The overflow callback runs before the rejected event is counted as
+ * discarded, so callers can publish recovering state before losing data.
+ *
+ * The limits are the counters', never the queue's: a bounded queue suspended an
+ * admitted producer that held admission while the one consumer needed admission to
+ * count its take, and a burst that filled it stopped every input of the account for
+ * good (measured on mate.zerops.io, pass 31). Nothing here waits while holding
+ * anything, and an uncounted marker is never refused nor kept waiting.
  */
 export const makeZeropsBoundedIngress = Effect.fn("ZeropsDataRuntime.makeBoundedIngress")(
   function* <Input>(options: {
@@ -234,8 +239,9 @@ export const makeZeropsBoundedIngress = Effect.fn("ZeropsDataRuntime.makeBounded
     readonly maxFrameBytes: number;
     readonly onOverflow: (input: Input) => Effect.Effect<void>;
   }) {
-    const queue = yield* Queue.bounded<QueuedIngress<Input>>(options.maxEvents);
-    const admission = yield* Semaphore.make(1);
+    const queue = yield* Queue.unbounded<QueuedIngress<Input>>();
+    // Overflows publish one at a time; a take never waits for it.
+    const overflow = yield* Semaphore.make(1);
     const counters = yield* Ref.make<ZeropsIngressSnapshot>({
       events: 0,
       bytes: 0,
@@ -245,53 +251,63 @@ export const makeZeropsBoundedIngress = Effect.fn("ZeropsDataRuntime.makeBounded
     });
 
     const offer = (input: Input, bytes: number): Effect.Effect<boolean> =>
-      admission.withPermit(
-        Effect.gen(function* () {
-          const current = yield* Ref.get(counters);
+      Effect.gen(function* () {
+        const admitted = yield* Ref.modify(counters, (state) => {
           const admissible =
             Number.isSafeInteger(bytes) &&
             bytes >= 0 &&
             bytes <= options.maxFrameBytes &&
-            current.events < options.maxEvents &&
-            current.bytes + bytes <= options.maxBytes;
-          if (!admissible) {
-            yield* options.onOverflow(input);
-            yield* Ref.update(counters, (state) => ({
-              ...state,
-              discardedEvents: state.discardedEvents + 1,
-            }));
-            return false;
-          }
-
-          const queued = yield* Queue.offer(queue, { input, bytes, budgeted: true });
-          if (!queued) return false;
-          yield* Ref.update(counters, (state) => {
-            const events = state.events + 1;
-            const nextBytes = state.bytes + bytes;
-            return {
+            state.events < options.maxEvents &&
+            state.bytes + bytes <= options.maxBytes;
+          if (!admissible) return [false, state] as const;
+          const events = state.events + 1;
+          const nextBytes = state.bytes + bytes;
+          return [
+            true,
+            {
               ...state,
               events,
               bytes: nextBytes,
               peakEvents: Math.max(state.peakEvents, events),
               peakBytes: Math.max(state.peakBytes, nextBytes),
-            };
-          });
-          return true;
-        }),
-      );
+            },
+          ] as const;
+        });
+        if (!admitted) {
+          yield* overflow.withPermit(
+            options.onOverflow(input).pipe(
+              Effect.andThen(
+                Ref.update(counters, (state) => ({
+                  ...state,
+                  discardedEvents: state.discardedEvents + 1,
+                })),
+              ),
+            ),
+          );
+          return false;
+        }
+        const queued = yield* Queue.offer(queue, { input, bytes, budgeted: true });
+        // A shut-down queue keeps nothing: the reserved budget goes back.
+        if (!queued)
+          yield* Ref.update(counters, (state) => ({
+            ...state,
+            events: state.events - 1,
+            bytes: state.bytes - bytes,
+          }));
+        return queued;
+      });
 
     const take = Queue.take(queue).pipe(
-      Effect.flatMap((entry) =>
+      Effect.tap((entry) =>
         entry.budgeted
-          ? admission.withPermit(
-              Ref.update(counters, (state) => ({
-                ...state,
-                events: state.events - 1,
-                bytes: state.bytes - entry.bytes,
-              })).pipe(Effect.as(entry.input)),
-            )
-          : Effect.succeed(entry.input),
+          ? Ref.update(counters, (state) => ({
+              ...state,
+              events: state.events - 1,
+              bytes: state.bytes - entry.bytes,
+            }))
+          : Effect.void,
       ),
+      Effect.map((entry) => entry.input),
     );
 
     return {

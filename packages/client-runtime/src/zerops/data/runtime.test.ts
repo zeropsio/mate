@@ -128,7 +128,7 @@ describe("makeZeropsBoundedIngress", () => {
     }),
   );
 
-  it.effect("never drops an uncounted ordering marker when the data queue is full", () =>
+  it.effect("takes an uncounted ordering marker at once when the data budget is spent", () =>
     Effect.gen(function* () {
       const ingress = yield* makeZeropsBoundedIngress({
         maxEvents: 1,
@@ -138,11 +138,8 @@ describe("makeZeropsBoundedIngress", () => {
       });
 
       expect(yield* ingress.offer("data", 8)).toBe(true);
-      const marker = yield* Effect.forkChild(ingress.offerUncounted("barrier"));
-      yield* Effect.yieldNow;
-      expect(marker.pollUnsafe()).toBeUndefined();
+      expect(yield* ingress.offerUncounted("barrier")).toBe(true);
       expect(yield* ingress.take).toBe("data");
-      expect(yield* Fiber.join(marker)).toBe(true);
       expect(yield* ingress.take).toBe("barrier");
       expect(yield* ingress.snapshot).toEqual({
         events: 0,
@@ -151,6 +148,36 @@ describe("makeZeropsBoundedIngress", () => {
         peakBytes: 8,
         discardedEvents: 0,
       });
+    }),
+  );
+
+  // Measured on mate.zerops.io (pass 31, 2026-10-02): a creation's burst left the queue holding
+  // 2047 counted events and one marker; an admitted offer waited for room holding admission, a
+  // marker took the room the consumer freed, and the consumer then waited for admission —
+  // no input was applied again until the page reloaded.
+  it.effect("drains every input when markers and counted data compete for the last room", () =>
+    Effect.gen(function* () {
+      const ingress = yield* makeZeropsBoundedIngress({
+        maxEvents: 2,
+        maxBytes: 100,
+        maxFrameBytes: 100,
+        onOverflow: () => Effect.void,
+      });
+
+      expect(yield* ingress.offer("a", 1)).toBe(true);
+      expect(yield* ingress.offerUncounted("marker-1")).toBe(true);
+      const marker = yield* Effect.forkChild(ingress.offerUncounted("marker-2"));
+      yield* Effect.yieldNow;
+      const admitted = yield* Effect.forkChild(ingress.offer("b", 1));
+      yield* Effect.yieldNow;
+      const consumer = yield* Effect.forkChild(Effect.forEach([1, 2, 3, 4], () => ingress.take));
+      for (let tick = 0; tick < 50; tick += 1) yield* Effect.yieldNow;
+
+      expect(consumer.pollUnsafe()).toBeDefined();
+      expect(yield* Fiber.join(consumer)).toEqual(["a", "marker-1", "marker-2", "b"]);
+      expect(yield* Fiber.join(marker)).toBe(true);
+      expect(yield* Fiber.join(admitted)).toBe(true);
+      expect((yield* ingress.snapshot).events).toBe(0);
     }),
   );
 });
