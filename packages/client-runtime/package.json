@@ -275,6 +275,10 @@
       "types": "./src/zerops/doorThrowaway.ts",
       "default": "./src/zerops/doorThrowaway.ts"
     },
+    "./zerops/keptSessions": {
+      "types": "./src/zerops/keptSessions.ts",
+      "default": "./src/zerops/keptSessions.ts"
+    },
     "./zerops/diagnostics": {
       "types": "./src/zerops/diagnostics.ts",
       "default": "./src/zerops/diagnostics.ts"

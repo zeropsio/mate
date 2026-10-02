@@ -282,6 +282,41 @@ export interface DoorExchangeDeps<C, E> {
   }) => Promise<AtomCommandResult<C, E>>;
   readonly environmentOf: (credential: C) => EnvironmentId;
   readonly onOrphanedThrowaway?: ((cause: unknown) => void) | undefined;
+  /** The session an earlier load kept for this target (`keptSessions.ts`); null when none. */
+  readonly kept?: KeptDoorSession<C> | null;
+}
+
+/** A kept session as one exchange may present it again. */
+export interface KeptDoorSession<C> {
+  readonly credential: C;
+  /**
+   * Whether the Mate the descriptor names, at this base URL, still holds the session: false is
+   * its word that it does not, and a throw is no word at all.
+   */
+  readonly check: (input: {
+    readonly httpBaseUrl: string;
+    readonly environmentId: EnvironmentId;
+  }) => Promise<boolean>;
+  /** Forgets the session: its Mate said it is not its own any more. */
+  readonly forget: () => void;
+}
+
+/**
+ * What the Mate says of a kept session: still its own, ended, or nothing this time. A session kept
+ * for an environment this origin no longer serves has ended here, and is never presented.
+ */
+async function keptSessionWord<C>(
+  kept: KeptDoorSession<C>,
+  environmentOf: (credential: C) => EnvironmentId,
+  at: { readonly httpBaseUrl: string; readonly environmentId: EnvironmentId },
+): Promise<"held" | "ended" | "no-word"> {
+  if (environmentOf(kept.credential) !== at.environmentId) return "ended";
+  try {
+    return (await kept.check(at)) ? "held" : "ended";
+  } catch {
+    // No answer is no verdict: a throwaway connects this time, and the session stays kept.
+    return "no-word";
+  }
 }
 
 /**
@@ -290,7 +325,9 @@ export interface DoorExchangeDeps<C, E> {
  *
  * The descriptor is read first, so a Mate that cannot answer for the person
  * (`zerops.identity = "failed"`), runs a server below the client floor or belongs to another
- * project costs no throwaway.
+ * project costs no throwaway. A session kept from an earlier load is presented next, once its
+ * Mate says it still holds it; only then is a throwaway minted. A kept session the Mate ended is
+ * forgotten; one the Mate gave no word on stays kept for the next exchange.
  */
 export async function exchangeAtDoor<C, E>(
   deps: DoorExchangeDeps<C, E>,
@@ -343,6 +380,24 @@ export async function exchangeAtDoor<C, E>(
     return fail(retryableFailure({ kind: "identity-failed" }), descriptor, {
       code: "identity-failed",
     });
+  }
+
+  const kept = deps.kept ?? null;
+  if (kept !== null) {
+    const word = await keptSessionWord(kept, deps.environmentOf, {
+      httpBaseUrl,
+      environmentId: descriptor.environmentId,
+    });
+    if (word === "held") {
+      span.end({ outcome: "success", kept: true });
+      return {
+        ok: true,
+        environmentId: deps.environmentOf(kept.credential),
+        descriptor,
+        credential: kept.credential,
+      };
+    }
+    if (word === "ended") kept.forget();
   }
 
   let result: AtomCommandResult<C, E>;

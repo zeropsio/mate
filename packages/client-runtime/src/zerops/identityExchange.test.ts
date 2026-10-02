@@ -597,6 +597,143 @@ describe("exchangeAtDoor: every answer read into the machine's failure classes (
   });
 });
 
+describe("exchangeAtDoor: a kept session is presented again before any throwaway", () => {
+  const ENV = "env-door" as EnvironmentId;
+  const KEPT = { environmentId: ENV, generation: 7 };
+
+  const rows: ReadonlyArray<{
+    readonly name: string;
+    readonly mate?: Partial<Parameters<typeof makeFakeMate>[0]>;
+    readonly arrange?: (mate: FakeMate) => void;
+    readonly signedOut?: boolean;
+    /** The environment the session was kept for; the descriptor's own by default. */
+    readonly keptFor?: EnvironmentId;
+    /** What the Mate says of the kept session: still its own, ended, or nothing at all. */
+    readonly check: "held" | "ended" | "no-answer";
+    readonly answer: unknown;
+    readonly checked: boolean;
+    readonly minted: boolean;
+    readonly forgotten: boolean;
+  }> = [
+    {
+      name: "the Mate still holds it: connected with it, nothing minted",
+      check: "held",
+      answer: { ok: true, environmentId: ENV, credential: KEPT, descriptor: { identity: "ok" } },
+      checked: true,
+      minted: false,
+      forgotten: false,
+    },
+    {
+      name: "the Mate has ended it: forgotten, and a throwaway opens a new one",
+      check: "ended",
+      answer: { ok: true, credential: { environmentId: ENV, generation: 1 } },
+      checked: true,
+      minted: true,
+      forgotten: true,
+    },
+    {
+      name: "the Mate gave no answer about it: a throwaway connects, and it stays kept",
+      check: "no-answer",
+      answer: { ok: true, credential: { environmentId: ENV, generation: 1 } },
+      checked: true,
+      minted: true,
+      forgotten: false,
+    },
+    {
+      name: "it was kept for an environment this Mate no longer is: forgotten unasked, and minted",
+      keptFor: "env-replaced" as EnvironmentId,
+      check: "held",
+      answer: { ok: true, credential: { environmentId: ENV, generation: 1 } },
+      checked: false,
+      minted: true,
+      forgotten: true,
+    },
+    {
+      name: "the origin serves another project's Mate: never presented",
+      mate: { projectId: "another-project" },
+      check: "held",
+      answer: { ok: false, failure: { class: "refusal", reason: { kind: "project-mismatch" } } },
+      checked: false,
+      minted: false,
+      forgotten: false,
+    },
+    {
+      name: "the server is below the client floor: never presented",
+      mate: { serverVersion: "0.10.4" },
+      check: "held",
+      answer: { ok: false, failure: { class: "refusal", reason: { kind: "version" } } },
+      checked: false,
+      minted: false,
+      forgotten: false,
+    },
+    {
+      name: "the descriptor is unreachable: never presented",
+      arrange: (mate) => mate.setReachable(false),
+      check: "held",
+      answer: {
+        ok: false,
+        failure: { class: "retryable", cause: { kind: "descriptor-unreachable" } },
+      },
+      checked: false,
+      minted: false,
+      forgotten: false,
+    },
+    {
+      name: "nobody is signed in: never presented",
+      signedOut: true,
+      check: "held",
+      answer: {
+        ok: false,
+        failure: { class: "refusal", reason: { kind: "access", reason: "epoch-closed" } },
+      },
+      checked: false,
+      minted: false,
+      forgotten: false,
+    },
+  ];
+
+  it.each(rows.map((row) => [row.name, row] as const))("%s", async (_name, row) => {
+    const mate = makeFakeMate({
+      origin: CONTAINER_ORIGIN,
+      projectId: PROJECT_ID,
+      environmentId: ENV,
+      ...row.mate,
+    });
+    row.arrange?.(mate);
+    const recording = recordingPlatform();
+    const checks: Array<unknown> = [];
+    let forgotten = 0;
+    const answer = await exchangeAtDoor(
+      {
+        throwaway: row.signedOut ? null : throwaway(recording.platform),
+        readDescriptor: mate.readDescriptor,
+        prepare: mate.prepare,
+        environmentOf: (credential) => credential.environmentId,
+        kept: {
+          credential: { ...KEPT, environmentId: row.keptFor ?? ENV },
+          check: async (input) => {
+            checks.push(input);
+            if (row.check === "no-answer") throw new Error("The Mate did not answer.");
+            return row.check === "held";
+          },
+          forget: () => {
+            forgotten += 1;
+          },
+        },
+      },
+      CONTAINER_ORIGIN,
+      { reason: "restore", expectedProjectId: PROJECT_ID },
+    );
+    expect(answer).toMatchObject(row.answer as object);
+    // It is asked about the Mate the descriptor names, at the URL the session would be sent to.
+    expect(checks).toEqual(
+      row.checked ? [{ httpBaseUrl: `${CONTAINER_ORIGIN}/mate`, environmentId: ENV }] : [],
+    );
+    expect(recording.minted.length > 0).toBe(row.minted);
+    expect(forgotten > 0).toBe(row.forgotten);
+  });
+});
+
 describe("installDoorRegistration", () => {
   const ENV = "env-install" as EnvironmentId;
   const registration = new BearerConnectionRegistration({
