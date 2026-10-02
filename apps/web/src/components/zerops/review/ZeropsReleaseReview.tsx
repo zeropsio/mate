@@ -545,6 +545,7 @@ function RollbackData({
 }) {
   const flowValue = useZeropsProjectFlowOptional();
   const mates = useZeropsReviewMates(flow.groupId);
+  const askMateToFix = useAskMateToFix();
   const now = useNowMs();
   const [press, setPress] = useState<ReviewPress>({ kind: "idle" });
   // The release the roll back made — HQ's answer, not the flow's guess — which the review follows
@@ -593,6 +594,12 @@ function RollbackData({
           }),
           ...movedCount(moved.moved),
         };
+  // A roll back that hasn't landed is anybody's to look into, as a release's (S6, `fixMates.ts`).
+  const production = flow.environmentInputs.find((entry) => entry.tier === "production");
+  const [fixer] = useFixMates({
+    projectId: production?.projectId ?? flow.groupId,
+    groupId: flow.groupId,
+  });
   const rollBack = async () => {
     if (flowValue === null) return;
     setPress({ kind: "running" });
@@ -603,6 +610,7 @@ function RollbackData({
   return (
     <RollbackReviewView
       comingBack={listOf(lists.comingBack)}
+      fixer={fixer?.name}
       leaving={listOf(lists.leaving)}
       line={earlier?.line}
       live={(keep ?? current).live}
@@ -613,6 +621,11 @@ function RollbackData({
       nextTag={made ?? flow.release.suggestion}
       now={now}
       onClose={onClose}
+      onFix={(problem) => {
+        if (fixer === undefined) return;
+        askMateToFix(fixer.mateProjectId, problem);
+        onClose();
+      }}
       onOpenChange={onOpenChange}
       onRollBack={() => {
         void rollBack();
@@ -653,6 +666,9 @@ export interface RollbackReviewViewProps {
   /** HQ's rule for this person, its refusal in words; `undefined` while it cannot be asked. */
   readonly permission: ReleaseGate | undefined;
   readonly press: ReviewPress;
+  /** The person's own Mate a roll back that hasn't landed is handed to, the one they used last. */
+  readonly fixer?: string | undefined;
+  readonly onFix?: ((problem: FixProblem) => void) | undefined;
   /** Where the tag it made stands, once it was made. */
   readonly outcome: ReleaseOutcome;
   readonly now: number;
@@ -703,10 +719,22 @@ export function RollbackReviewView(props: RollbackReviewViewProps) {
     outcome: props.outcome,
     now: props.now,
   });
+  const fix = model.verdict.fix;
+  const onFix = props.onFix;
   return (
     <ZeropsReviewSurface
       consequence={model.consequence}
       dismiss={model.primary === undefined ? "Close" : "Cancel"}
+      fix={
+        fix === undefined || props.fixer === undefined || onFix === undefined
+          ? undefined
+          : {
+              label: `Ask ${props.fixer} to ${fix.verb}`,
+              onPress: () => {
+                onFix(fix.problem);
+              },
+            }
+      }
       kind="rollback"
       kindLabel={reviewKindLine("rollback")}
       meta={
