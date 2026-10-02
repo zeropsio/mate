@@ -203,7 +203,11 @@ const refusedOutright = (cause: unknown): boolean =>
   cause instanceof ZeropsApiError &&
   (cause.kind === "invalid-input" || cause.kind === "forbidden" || cause.kind === "not-found");
 
-/** HQ's import: Core, its Postgres and its volume, and the variables Core reads besides its token. */
+/**
+ * HQ's import: Core, its Postgres, its volume and its backup bucket, and the variables Core reads
+ * besides its token. The bucket's quota is 80 GB: a day of hourly sets, two weeks of daily, six
+ * months of monthly, at five times today's data (vysledky/hq-backup.md §4).
+ */
 export function hqImportYaml(input: {
   /** The birth's own tag (`hqBirthTag`). */
   readonly birthTag: string;
@@ -224,6 +228,10 @@ export function hqImportYaml(input: {
     "    mode: NON_HA",
     "  - hostname: vol",
     "    type: local-storage:single@1",
+    "  - hostname: backup",
+    "    type: objectstorage",
+    "    objectStorageSize: 80",
+    "    objectStoragePolicy: private",
     `  - hostname: ${HQ_SERVICE}`,
     "    type: nodejs@24",
     "    startWithoutCode: true",
@@ -234,6 +242,12 @@ export function hqImportYaml(input: {
     "    envSecrets:",
     `      HQ_CLIENT_ORIGINS: ${JSON.stringify([...new Set(input.origins)].join(","))}`,
     `      HQ_ZEROPS_API: ${JSON.stringify(input.zeropsApi)}`,
+    // The bucket's own variables, by reference: Core's backup reads them (apps/hq bucketStore.ts).
+    "      HQ_BACKUP_URL: ${backup_apiUrl}",
+    "      HQ_BACKUP_KEY_ID: ${backup_accessKeyId}",
+    "      HQ_BACKUP_SECRET: ${backup_secretAccessKey}",
+    "      HQ_BACKUP_BUCKET: ${backup_bucketName}",
+    "      HQ_BACKUP_QUOTA_GB: ${backup_quotaGBytes}",
     "",
   ].join("\n");
 }
