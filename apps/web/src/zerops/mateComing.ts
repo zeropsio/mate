@@ -464,32 +464,20 @@ export function arrivalHoldsThrough(
   }
 }
 
-/** The failures that say a Mate's server has not answered at all: it is still starting. */
-const NOT_ANSWERING_CAUSES: ReadonlySet<string> = new Set([
-  "network",
-  "timeout",
-  "descriptor-unreachable",
-]);
-
 /**
  * Whether a Mate's link still waits for its first answer, on what an arrival holds through: it has
- * not answered on this page, and nothing it waits for is a verdict — a Mate gone or refused, a
- * restart asked for, its container down. A server still starting fails its probes until it
- * answers, so failures that say nothing answered do not count — its listing's clock
- * (`ZeropsCandidate.arriving`) bounds the wait instead; a server that answered with an error is
- * held through an arrival's first failures only, as the window that made it holds it.
+ * not answered on this page (`MateLink.answered`), and nothing it waits for is a verdict — a Mate
+ * gone or refused, a restart asked for, its container down. A server still starting fails its
+ * probes until it answers, so failures that say nothing answered do not count — its listing's
+ * clock (`ZeropsCandidate.arriving`) bounds the wait instead; the errors a server answered with
+ * are held through an arrival's first failures only, as the window that made it holds them,
+ * whatever its link is doing between them.
  */
 export const arrivalAwaitsAnswer = (
-  link: Pick<MateLink, "reachability" | "answered" | "failuresSinceConnect">,
-): boolean => {
-  if (link.answered) return false;
-  const { reachability } = link;
-  const silent =
-    reachability?.kind !== "retrying" || NOT_ANSWERING_CAUSES.has(reachability.last.kind);
-  return arrivalHoldsThrough(reachability, {
-    failuresSinceConnect: silent ? 0 : link.failuresSinceConnect,
-  });
-};
+  link: Pick<MateLink, "reachability" | "answered" | "errorsSinceConnect">,
+): boolean =>
+  !link.answered &&
+  arrivalHoldsThrough(link.reachability, { failuresSinceConnect: link.errorsSinceConnect });
 
 /** Whether a Mate's link, as its machine reads it (`MateLink`), waits on what an arrival holds through. */
 export const arrivalLinkHolds = (link: {
