@@ -8,6 +8,7 @@ import { assert, describe, it } from "@effect/vitest";
 import * as Context from "effect/Context";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
+import * as Exit from "effect/Exit";
 import * as Layer from "effect/Layer";
 import * as Schedule from "effect/Schedule";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
@@ -112,6 +113,34 @@ const hostWithChanges = (
 
 describe("gitHost", () => {
   it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+    it.effect("opens git again with backoff while it leads, once opening can succeed", () =>
+      Effect.gen(function* () {
+        const url = yield* (yield* TempPostgres).createDatabase;
+        const dir = yield* Effect.acquireRelease(
+          Effect.sync(() => NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "hq-git-"))),
+          (dir) => Effect.sync(() => NodeFS.rmSync(dir, { recursive: true, force: true })),
+        );
+        // The volume is a file, not a directory: no repository root can be made under it.
+        const volume = NodePath.join(dir, "vol");
+        NodeFS.writeFileSync(volume, "");
+        const context = yield* Layer.build(
+          gitHostLayer({
+            rootDir: NodePath.join(volume, "git"),
+            openBackoff: Duration.millis(20),
+          }).pipe(Layer.provideMerge(activeCoreLayer(url))),
+        );
+        yield* untilActive.pipe(Effect.provide(context));
+        const host = Context.get(context, GitHost);
+        yield* Effect.sleep(Duration.millis(300));
+        assert.isTrue(Exit.isFailure(yield* Effect.exit(host.git)), "git opened on a file");
+        NodeFS.rmSync(volume);
+        yield* host.git.pipe(
+          Effect.retry(Schedule.spaced(Duration.millis(50))),
+          Effect.timeout(Duration.seconds(10)),
+        );
+      }),
+    );
+
     it.effect("judges a repository's open changes again when its main moves", () =>
       Effect.gen(function* () {
         // M1 changes a.txt, as main is about to; M2 adds b.txt.

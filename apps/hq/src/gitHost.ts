@@ -22,10 +22,12 @@ import * as NodeHttpServerRequest from "@effect/platform-node/NodeHttpServerRequ
 import { type GitEvent, type HqGit, type Principal, type Repo, makeHqGit } from "@t3tools/hq-git";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
+import * as Duration from "effect/Duration";
 import * as Exit from "effect/Exit";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Ref from "effect/Ref";
+import * as Schedule from "effect/Schedule";
 import * as Scope from "effect/Scope";
 import * as Semaphore from "effect/Semaphore";
 import * as Stream from "effect/Stream";
@@ -96,6 +98,8 @@ export const judge = (git: HqGit, repo: Repo, mateId: string, number: number) =>
 export const gitHostLayer = (options: {
   /** Where the bare repositories live: `/mnt/vol/git` in the container. */
   readonly rootDir: string;
+  /** The first pause before opening git again after it failed, doubling up to 30 s; 1 s. */
+  readonly openBackoff?: Duration.Duration;
 }): Layer.Layer<GitHost, never, Leader | SqlClient.SqlClient> =>
   Layer.effect(
     GitHost,
@@ -322,11 +326,23 @@ export const gitHostLayer = (options: {
         }),
       );
 
+      // A failed opening is tried again while this Core leads, its pauses growing to 30 s; a change
+      // of the lead cuts the pauses short, never an opening or a closing half done.
+      const backoff = Schedule.min([
+        Schedule.exponential(options.openBackoff ?? Duration.seconds(1)),
+        Schedule.spaced(Duration.seconds(30)),
+      ]);
+      const openWhileLeading = Effect.uninterruptible(
+        open.pipe(Effect.tapError((error) => Effect.logError("git open failed", error))),
+      ).pipe(Effect.retry(backoff), Effect.ignore);
       yield* Effect.forkScoped(
-        Stream.runForEach(leader.changes, (status) =>
-          status.state === "active"
-            ? open.pipe(Effect.catch((error) => Effect.logError("git open failed", error)))
-            : shut,
+        leader.changes.pipe(
+          Stream.switchMap((status) =>
+            Stream.fromEffect(
+              status.state === "active" ? openWhileLeading : Effect.uninterruptible(shut),
+            ),
+          ),
+          Stream.runDrain,
         ),
       );
       yield* Effect.addFinalizer(() => shut);
