@@ -679,6 +679,16 @@ describe("deriveZeropsGroups — creations under way", () => {
       environments: { new: ["p-made"] },
     },
     {
+      // Its project made, its container's import refused: the stopped row and its Try again stay.
+      case: "a creation that stopped stays pending, its project listed or not",
+      projects: [project("Todo - Wren", ["mate:g:new", "mate:bot:Wren"], "p-made")],
+      births: [
+        { ...birth("new", "new", 1, { botName: "Wren" }), awaitingProject: true, failed: true },
+      ],
+      pending: { new: ["new"] },
+      environments: { new: ["p-made"] },
+    },
+    {
       case: "a creation not named yet stays pending beside a listed Mate of another name",
       projects: [project("Todo - Otto", ["mate:g:aaa", "mate:bot:Otto"], "p-otto")],
       births: [{ ...birth("aaa", "aaa", 1, { botName: "Wren" }), awaitingProject: true }],

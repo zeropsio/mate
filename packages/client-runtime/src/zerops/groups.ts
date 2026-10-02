@@ -702,8 +702,10 @@ export function deriveZeropsGroups(
   for (const birth of births) {
     if (listed.has(birth.projectId)) continue;
     const { botName } = birth.placement;
+    // A creation that stopped keeps its own row, and its Try again, whatever the listing holds.
     if (
       birth.awaitingProject === true &&
+      birth.failed !== true &&
       botName !== undefined &&
       listedMates.has(`${birth.placement.groupId}\n${botName.trim().toLowerCase()}`)
     )
