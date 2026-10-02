@@ -33,6 +33,9 @@ const BASE: Point = {
   present: true,
 };
 
+/** U's grant on each project beside P: one table, the facts' and the properties' alike. */
+const FIXTURE_GRANTS = { P_SEEN: "READ_ONLY", P_DEV: "BASIC_USER", P_HIDDEN: "NO_ACCESS" } as const;
+
 const factsOf = (point: Point): Facts<"fresh"> => ({
   freshness: "fresh",
   members: [
@@ -65,9 +68,10 @@ const factsOf = (point: Point): Facts<"fresh"> => ({
           },
         ]
       : []),
-    { id: "P_SEEN", userRoles: [{ clientUserId: "C-U", roleCode: "READ_ONLY" }] },
-    { id: "P_DEV", userRoles: [{ clientUserId: "C-U", roleCode: "BASIC_USER" }] },
-    { id: "P_HIDDEN", userRoles: [{ clientUserId: "C-U", roleCode: "NO_ACCESS" }] },
+    ...Object.entries(FIXTURE_GRANTS).map(([id, roleCode]) => ({
+      id,
+      userRoles: [{ clientUserId: "C-U", roleCode }],
+    })),
   ],
 });
 
@@ -823,6 +827,130 @@ const TABLES: Readonly<Record<Verb, ReadonlyArray<Row>>> = {
       "not_active_member",
     ],
   ],
+  merge_change: [
+    [
+      "a developer of the application: Basic user on one of its projects",
+      {},
+      { verb: "merge_change", target: { projectIds: ["P_SEEN", "P_DEV"] } },
+      "allow",
+    ],
+    [
+      "org Basic user, through the org's role on a project of it",
+      { orgRole: "BASIC_USER" },
+      { verb: "merge_change", target: { projectIds: ["P"] } },
+      "allow",
+    ],
+    [
+      "org Read only sees it, does not develop it",
+      { orgRole: "READ_ONLY" },
+      { verb: "merge_change", target: { projectIds: ["P"] } },
+      "not_app_developer",
+    ],
+    [
+      "org none, a Read only grant on a project of it",
+      {},
+      { verb: "merge_change", target: { projectIds: ["P_SEEN"] } },
+      "not_app_developer",
+    ],
+    [
+      "an org owner lowered to none on its only project",
+      { orgRole: "OWNER", override: "NO_ACCESS" },
+      { verb: "merge_change", target: { projectIds: ["P"] } },
+      "not_app_developer",
+    ],
+    [
+      "an org owner, an application with no project left: merging is a developer's",
+      { orgRole: "OWNER" },
+      { verb: "merge_change", target: { projectIds: [] } },
+      "not_app_developer",
+    ],
+    [
+      "an org admin with Read only on its only project: the org's role falls back per project",
+      { orgRole: "ADMIN", override: "READ_ONLY" },
+      { verb: "merge_change", target: { projectIds: ["P"] } },
+      "not_app_developer",
+    ],
+    [
+      "a Basic user grant on P beside a hidden project",
+      { override: "BASIC_USER" },
+      { verb: "merge_change", target: { projectIds: ["P", "P_HIDDEN"] } },
+      "allow",
+    ],
+    [
+      "org none, only a hidden project",
+      {},
+      { verb: "merge_change", target: { projectIds: ["P_HIDDEN"] } },
+      "app_not_seen",
+    ],
+    [
+      "an invited owner",
+      { orgRole: "OWNER", status: "INVITED" },
+      { verb: "merge_change", target: { projectIds: ["P"] } },
+      "not_active_member",
+    ],
+  ],
+  close_change: [
+    [
+      "a developer of the application: Basic user on one of its projects",
+      {},
+      { verb: "close_change", target: { projectIds: ["P_SEEN", "P_DEV"] } },
+      "allow",
+    ],
+    [
+      "org Basic user, through the org's role on a project of it",
+      { orgRole: "BASIC_USER" },
+      { verb: "close_change", target: { projectIds: ["P"] } },
+      "allow",
+    ],
+    [
+      "org Read only sees it, does not develop it",
+      { orgRole: "READ_ONLY" },
+      { verb: "close_change", target: { projectIds: ["P"] } },
+      "not_app_developer",
+    ],
+    [
+      "org none, a Read only grant on a project of it",
+      {},
+      { verb: "close_change", target: { projectIds: ["P_SEEN"] } },
+      "not_app_developer",
+    ],
+    [
+      "an org owner lowered to none on its only project: closes as the structure's writer",
+      { orgRole: "OWNER", override: "NO_ACCESS" },
+      { verb: "close_change", target: { projectIds: ["P"] } },
+      "allow",
+    ],
+    [
+      "an org owner, an application with no project left: still closes its changes",
+      { orgRole: "OWNER" },
+      { verb: "close_change", target: { projectIds: [] } },
+      "allow",
+    ],
+    [
+      "an org admin with Read only on its only project",
+      { orgRole: "ADMIN", override: "READ_ONLY" },
+      { verb: "close_change", target: { projectIds: ["P"] } },
+      "allow",
+    ],
+    [
+      "a Basic user grant on P beside a hidden project",
+      { override: "BASIC_USER" },
+      { verb: "close_change", target: { projectIds: ["P", "P_HIDDEN"] } },
+      "allow",
+    ],
+    [
+      "org none, only a hidden project",
+      {},
+      { verb: "close_change", target: { projectIds: ["P_HIDDEN"] } },
+      "app_not_seen",
+    ],
+    [
+      "an invited owner",
+      { orgRole: "OWNER", status: "INVITED" },
+      { verb: "close_change", target: { projectIds: ["P"] } },
+      "not_active_member",
+    ],
+  ],
 };
 
 const MATE_P: Principal = { kind: "mate", projectId: "P" };
@@ -856,6 +984,10 @@ describe("can — one table per verb", () => {
     expect(can(PERSON, "read_change", { projectIds: [] }, cached).allow).toBe(false);
     // @ts-expect-error -- a comment is a write.
     can(PERSON, "comment_change", { projectIds: [] }, cached);
+    // @ts-expect-error -- and a merge.
+    can(PERSON, "merge_change", { projectIds: [] }, cached);
+    // @ts-expect-error -- and a close.
+    can(PERSON, "close_change", { projectIds: [] }, cached);
     // @ts-expect-error -- so is a Mate's change.
     can(MATE_P, "open_change", { projectId: "P", appId: "A", held: "mate" }, cached);
     // A Mate's fetch is a read.
@@ -911,7 +1043,7 @@ const REQUESTS: ReadonlyArray<Request> = [
   ...HELD.flatMap((held) =>
     [null, "A"].flatMap((appId) => ["A", "B"].map((repoAppId) => fetchOf(held, appId, repoAppId))),
   ),
-  ...(["read_change", "comment_change"] as const).flatMap((verb) =>
+  ...(["read_change", "comment_change", "merge_change", "close_change"] as const).flatMap((verb) =>
     APPS.map((projectIds): Request => ({ verb, target: { projectIds } })),
   ),
 ];
@@ -1050,6 +1182,36 @@ describe("can — over the whole input space", () => {
     });
   });
 
+  it("lets a person merge a change only where they develop the application, and close it there or as the structure's writer", () => {
+    everywhere((principal, request, point) => {
+      if (request.verb !== "merge_change" && request.verb !== "close_change") return;
+      const decision = decide(principal, request, point);
+      // Close is allowed wherever merge is, not the reverse (Gitea's split: an admin closes).
+      if (request.verb === "merge_change" && decision.allow) {
+        const close: Request = { verb: "close_change", target: request.target };
+        expect(decide(principal, close, point).allow).toBe(true);
+      }
+      if (!decision.allow) return;
+      const read: Request = { verb: "read_change", target: request.target };
+      expect(decide(principal, read, point).allow).toBe(true);
+      const writer =
+        principal.kind === "person" &&
+        principal.userId === "U" &&
+        point.status === "ACTIVE" &&
+        (point.orgRole === "ADMIN" || point.orgRole === "OWNER");
+      if (request.verb === "close_change" && writer) return;
+      // Developing it: Basic user or above on one of its projects (P is the point's own).
+      const ranked = (role: string) => RANKED.indexOf(role as (typeof RANKED)[number]);
+      const roleIn = (projectId: string) =>
+        projectId === "P"
+          ? point.present
+            ? ranked(point.override ?? point.orgRole)
+            : 0
+          : ranked(FIXTURE_GRANTS[projectId as keyof typeof FIXTURE_GRANTS]);
+      expect(request.target.projectIds.some((projectId) => roleIn(projectId) >= 2)).toBe(true);
+    });
+  });
+
   it("refuses a person every verb a Mate asks for itself", () => {
     everywhere((principal, request, point) => {
       if (principal.kind === "person" && MATE_VERBS.has(request.verb)) {
@@ -1153,16 +1315,11 @@ describe("can — over the whole input space", () => {
             })),
           );
           // Who sees the application, and who develops it: a role on one of its projects (P's
-          // is the point's own; P_SEEN is Read only, P_DEV Basic user, P_HIDDEN none), or for
-          // seeing, the org's Read only.
+          // is the point's own, the others FIXTURE_GRANTS'), or for seeing, the org's Read only.
           const roleIn = (projectId: string) =>
             projectId === "P"
               ? effective(point)
-              : RANKED.indexOf(
-                  ({ P_SEEN: "READ_ONLY", P_DEV: "BASIC_USER", P_HIDDEN: "NO_ACCESS" } as const)[
-                    projectId as "P_SEEN" | "P_DEV" | "P_HIDDEN"
-                  ],
-                );
+              : RANKED.indexOf(FIXTURE_GRANTS[projectId as keyof typeof FIXTURE_GRANTS]);
           const sees =
             RANKED.indexOf(point.orgRole as (typeof RANKED)[number]) >= 1 ||
             app.some((projectId) => roleIn(projectId) >= 1);

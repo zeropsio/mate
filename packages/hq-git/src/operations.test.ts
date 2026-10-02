@@ -152,6 +152,35 @@ describe("git operations", () => {
       expect(await merge(git, deleted, 1, "fix: thing")).toEqual({ kind: "already_merged" });
     }),
   );
+  it.live("carries a trailer key once per value, as a crew's landings name their tasks", () =>
+    fixture(async (git, dir) => {
+      const main = await write(git, { base: "base" }, null);
+      const head = await branch(git, dir, main, { "new.txt": "new" });
+      const result = await value(
+        git.squashMerge(repo, {
+          mateId: "alice",
+          number: 1,
+          expectedMain: main,
+          expectedHead: head,
+          message: "Add a page (#1)",
+          trailers: { "Crew-Lane": "ada", "Crew-Assignment": ["task-1", "task-2"] },
+          author,
+        }),
+      );
+      if (!("merged" in result)) throw new Error("merge refused");
+      expect((await value(git.commit(repo, result.merged))).message).toBe(
+        "Add a page (#1)\n\nCrew-Lane: ada\nCrew-Assignment: task-1\nCrew-Assignment: task-2\nMate-Change: alice/1\n",
+      );
+      expect(
+        await native(dir, [
+          "log",
+          "-1",
+          "--format=%(trailers:key=Crew-Assignment,valueonly,separator=%x0A)",
+          result.merged,
+        ]),
+      ).toBe("task-1\ntask-2");
+    }),
+  );
   it.live.each([
     ["an empty message", ""],
     ["an empty first line", "\nAdd file"],
@@ -344,6 +373,68 @@ describe("git operations", () => {
 });
 
 describe("a change's own history", () => {
+  it.live(
+    "reads every trailer of the change's commits as git parses them, oldest first, however many",
+    () =>
+      fixture(async (git, dir) => {
+        const main = await write(git, { base: "base\n" }, null);
+        const tree = await native(dir, ["rev-parse", `${main}^{tree}`]);
+        let parent = main;
+        for (let i = 1; i <= 150; i++) {
+          parent = await native(dir, [
+            "commit-tree",
+            tree,
+            "-p",
+            parent,
+            "-m",
+            `Task ${i}`,
+            "-m",
+            `Crew-Lane: ada\nCrew-Assignment: task-${i}`,
+          ]);
+        }
+        // A folded trailer is read whole; a key in another case is the key asked.
+        parent = await native(dir, [
+          "commit-tree",
+          tree,
+          "-p",
+          parent,
+          "-m",
+          "Long",
+          "-m",
+          "Crew-Assignment: a long\n  task\ncrew-lane: bo",
+        ]);
+        // A paragraph before the last is no trailer.
+        parent = await native(dir, [
+          "commit-tree",
+          tree,
+          "-p",
+          parent,
+          "-m",
+          "Prose",
+          "-m",
+          "Crew-Assignment: not a trailer",
+          "-m",
+          "Just words.",
+        ]);
+        await native(dir, ["update-ref", "refs/heads/mate/alice/1", parent]);
+        // On main, past the change's base: not the change's.
+        await write(git, { base: "moved\n" }, main);
+
+        const trailers = await value(
+          git.changeTrailers(repo, "alice", 1, ["Crew-Lane", "Crew-Assignment"]),
+        );
+        const of = (key: string) =>
+          trailers.filter((entry) => entry.key === key).map((entry) => entry.value);
+        expect(of("Crew-Assignment")).toEqual([
+          ...Array.from({ length: 150 }, (_, i) => `task-${i + 1}`),
+          "a long task",
+        ]);
+        expect(of("Crew-Lane")).toEqual([...Array(150).fill("ada"), "bo"]);
+        expect(trailers).toHaveLength(302);
+        expect(await value(git.changeTrailers(repo, "alice", 2, ["Crew-Lane"]))).toEqual([]);
+      }),
+  );
+
   it.live(
     "reads the change's commits not on main, newest first with their dates, and its merge base",
     () =>

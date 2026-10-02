@@ -14,6 +14,7 @@ import {
   EditChangeRequest,
   EnsureRepoRequest,
   HqChange,
+  MergeChangeRequest,
   MateChanges,
   OpenChangeRequest,
   OpenChangeResponse,
@@ -21,6 +22,7 @@ import {
   attachmentPath,
   changeRoutePath,
   changeUrl,
+  mergeSubject,
   parseAttachmentUrl,
   parseChangeUrl,
 } from "./hqChanges.ts";
@@ -313,5 +315,18 @@ describe("hqChanges — the wire", () => {
     ["a structure change", ChangesMessage, { type: "change", key: APP, value: null }, "Failure"],
   ])("the stream: %s", (_name, schema, value, expected) => {
     expect(read(schema as Schema.Codec<unknown, unknown>, value)).toBe(expected);
+  });
+});
+
+describe("hqChanges — a merge", () => {
+  it("is asked with the head the person was shown, never with main", () => {
+    const read = (value: unknown) => Schema.decodeUnknownExit(MergeChangeRequest)(value)._tag;
+    expect(read({ expectedHead: SHA })).toBe("Success");
+    expect(read({ expectedHead: "HEAD" })).toBe("Failure");
+    expect(read({})).toBe("Failure");
+  });
+
+  it("lands as Gitea's squash did: the change's title, its number after it", () => {
+    expect(mergeSubject("Add a login page", 7)).toBe("Add a login page (#7)");
   });
 });

@@ -343,8 +343,13 @@ export const makeOperations = (
         /^# -{24} >8 -{24}$/m.test(opts.message)
       )
         throw error("Invalid merge message");
-      const trailers = { ...opts.trailers, "Mate-Change": `${opts.mateId}/${opts.number}` };
-      for (const [key, val] of Object.entries(trailers)) {
+      const trailers: ReadonlyArray<readonly [string, string]> = [
+        ...Object.entries(opts.trailers).flatMap(([key, values]) =>
+          (typeof values === "string" ? [values] : values).map((val) => [key, val] as const),
+        ),
+        ["Mate-Change", `${opts.mateId}/${opts.number}`],
+      ];
+      for (const [key, val] of trailers) {
         if (
           !/^[A-Za-z0-9][A-Za-z0-9-]*$/.test(key) ||
           /[\0\r\n]/.test(val) ||
@@ -360,7 +365,7 @@ export const makeOperations = (
       const result = await inspect(dir, repo, opts.mateId, opts.number, main, head, signal);
       if (result.kind !== "clean") return result;
       // Git reads trailers only from the last paragraph, so the trusted block always ends the message.
-      const message = `${opts.message.trimEnd()}\n\n${Object.entries(trailers)
+      const message = `${opts.message.trimEnd()}\n\n${trailers
         .map(([k, v]) => `${k}: ${v}`)
         .join("\n")}\n`;
       const sha = (
@@ -588,6 +593,43 @@ export const makeOperations = (
       const { items, cut } = await summaries(dir, shas.slice(0, limit), signal);
       return { items, truncated: shas.length > limit || cut };
     });
+  const changeTrailers: HqGit["changeTrailers"] = (repo, mateId, number, keys) =>
+    inRepo("changeTrailers", repo, async (dir, signal) => {
+      if (keys.length === 0 || keys.some((key) => !/^[A-Za-z0-9][A-Za-z0-9-]*$/.test(key)))
+        throw error("Invalid trailer key");
+      const head = await refHead(dir, changeRef(mateId, number), signal);
+      if (!head) return [];
+      const main = await refHead(dir, "refs/heads/main", signal);
+      const range = [head, ...(main ? [`^${main}`] : []), "--"];
+      const count = Number(await text(dir, ["rev-list", "--count", ...range], signal));
+      if (count > readLimits.history) throw error("Change history exceeds safety bound");
+      // One record per commit (0x1e), one trailer per field (0x1f), each `Key: value` unfolded.
+      const read = await prefix(
+        dir,
+        [
+          "log",
+          "--reverse",
+          "--topo-order",
+          `--format=%(trailers:${keys.map((key) => `key=${key}`).join(",")},unfold,separator=%x1f)%x1e`,
+          ...range,
+        ],
+        signal,
+        readLimits.diffBytes,
+      );
+      if (read.truncated) throw error("Change trailers exceed read bound");
+      const asked = new Map(keys.map((key) => [key.toLowerCase(), key]));
+      return read.bytes
+        .toString()
+        .split("\x1e")
+        .flatMap((record) => record.replace(/^\n/, "").split("\x1f"))
+        .flatMap((field) => {
+          const mark = field.indexOf(":");
+          const key = asked.get(field.slice(0, mark).trim().toLowerCase());
+          return mark < 0 || key === undefined
+            ? []
+            : [{ key, value: field.slice(mark + 1).trim() }];
+        });
+    });
   const log: HqGit["log"] = (repo, rev, opts) =>
     inRepo("log", repo, async (dir, signal) => {
       const limit = bound(opts.limit, readLimits.log);
@@ -763,6 +805,7 @@ export const makeOperations = (
     changeHead,
     mergeBase,
     changeLog,
+    changeTrailers,
     mergeability,
     squashMerge,
     commitFiles,
