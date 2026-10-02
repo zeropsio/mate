@@ -133,9 +133,13 @@ describe("mateLink — what a door opens of a Mate, and what its own view waits 
     readonly machines: ReadonlyArray<readonly [string, EnvironmentMachine]>;
     readonly registered: ReadonlyArray<EnvironmentId>;
     readonly index?: DescriptorIndex;
-    /** What it opens and waits for; its failures since it last connected are none unless said. */
-    readonly link: Omit<MateLink, "failuresSinceConnect"> & {
+    /**
+     * What it opens and waits for; its failures since it last connected are none, and it has not
+     * answered, unless said.
+     */
+    readonly link: Omit<MateLink, "failuresSinceConnect" | "answered"> & {
       readonly failuresSinceConnect?: number;
+      readonly answered?: boolean;
     };
   }>([
     {
@@ -143,7 +147,12 @@ describe("mateLink — what a door opens of a Mate, and what its own view waits 
       key: KEY,
       machines: [[KEY, machine({ credential: HELD, link: CONNECTED })]],
       registered: [ENV_A],
-      link: { key: KEY, environmentId: ENV_A, reachability: { kind: "ready", notice: null } },
+      link: {
+        key: KEY,
+        environmentId: ENV_A,
+        reachability: { kind: "ready", notice: null },
+        answered: true,
+      },
     },
     {
       case: "the project's row while its services are unread: its Mate's conversation opens",
@@ -153,7 +162,12 @@ describe("mateLink — what a door opens of a Mate, and what its own view waits 
         [KEY, machine({ credential: HELD, link: CONNECTED })],
       ],
       registered: [ENV_A],
-      link: { key: KEY, environmentId: ENV_A, reachability: { kind: "ready", notice: null } },
+      link: {
+        key: KEY,
+        environmentId: ENV_A,
+        reachability: { kind: "ready", notice: null },
+        answered: true,
+      },
     },
     {
       case: "reconnecting on its record after its session ended: still its conversation",
@@ -224,6 +238,26 @@ describe("mateLink — what a door opens of a Mate, and what its own view waits 
       },
     },
     {
+      case: "its link lost since it connected: it has answered, whatever it waits for now",
+      key: KEY,
+      machines: [
+        [
+          KEY,
+          machine({
+            credential: { kind: "none", reconnect: true },
+            linkLostAt: { wall: 5_000, mono: 5_000 },
+          }),
+        ],
+      ],
+      registered: [ENV_A],
+      link: {
+        key: KEY,
+        environmentId: ENV_A,
+        reachability: { kind: "reconnecting" },
+        answered: true,
+      },
+    },
+    {
       case: "no machine names it yet (the stage not bound)",
       key: KEY,
       machines: [],
@@ -240,6 +274,6 @@ describe("mateLink — what a door opens of a Mate, and what its own view waits 
         records: [],
         registered: new Set(registered),
       }),
-    ).toEqual({ failuresSinceConnect: 0, ...link });
+    ).toEqual({ failuresSinceConnect: 0, answered: false, ...link });
   });
 });
