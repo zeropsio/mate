@@ -27,6 +27,7 @@ import { deploysLayer } from "./deploys.ts";
 import { doorLayer } from "./door.ts";
 import { GitHost, gitHostLayer } from "./gitHost.ts";
 import { healthRoute } from "./health.ts";
+import { importsLayer } from "./importJob.ts";
 import { Leader, leaderLayer } from "./leader.ts";
 import { mateCredentialsLayer } from "./mateCredentials.ts";
 import { mateLiveLayer } from "./mateLive.ts";
@@ -49,6 +50,8 @@ export interface CoreOptions {
   readonly databaseUrl: Redacted.Redacted;
   /** Where the bare repositories live: the volume's `/mnt/vol/git` in the container. */
   readonly gitRoot: string;
+  /** Where the migration's bundles lie: the volume's `/mnt/vol/import`; none takes no import. */
+  readonly importRoot?: string;
   /** Where a backup set is staged, the store it is kept in, and how often (`backup.ts`). */
   readonly backup: Omit<BackupOptions, "databaseUrl">;
   readonly migrations: ReadonlyArray<Migration>;
@@ -66,6 +69,7 @@ export interface CoreOptions {
   readonly reconcileEvery?: Duration.Duration;
   readonly streamRecheck?: Duration.Duration;
   readonly pingEvery?: Duration.Duration;
+  readonly importPoll?: Duration.Duration;
 }
 
 const routes = (options: CoreOptions) =>
@@ -109,13 +113,27 @@ const services = (options: CoreOptions) => {
     mateLinkTicketsLayer,
     liveSocketsLayer,
     Layer.mergeAll(
-      deploysLayer(),
+      importsLayer({
+        importRoot: options.importRoot,
+        hqProjectId: options.hqProjectId,
+        credential: options.credential,
+        ...(options.importPoll === undefined ? {} : { poll: options.importPoll }),
+      }),
       backupLayer({ databaseUrl: options.databaseUrl, ...options.backup }),
     ).pipe(
-      Layer.provideMerge(releasesLayer),
-      Layer.provide(recipeTiersLayer),
-      Layer.provideMerge(changesLayer),
-      Layer.provideMerge(gitHostLayer({ rootDir: options.gitRoot })),
+      Layer.provideMerge(
+        deploysLayer().pipe(
+          Layer.provideMerge(releasesLayer),
+          Layer.provide(recipeTiersLayer),
+          Layer.provideMerge(changesLayer),
+        ),
+      ),
+      Layer.provideMerge(
+        gitHostLayer({
+          rootDir: options.gitRoot,
+          ...(options.importRoot === undefined ? {} : { importRoots: [options.importRoot] }),
+        }),
+      ),
     ),
   ).pipe(
     Layer.provideMerge(mateLiveLayer),

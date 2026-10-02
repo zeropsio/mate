@@ -1,0 +1,94 @@
+/**
+ * index.html's first frame (`#boot-shell`), kept: it stands while the app draws nothing into
+ * #root, and goes in the frame the app first draws there. The waits before the app can draw — the
+ * session check, the account's data, its inventory, the sign-in's return — draw nothing into
+ * #root; their one line goes into the frame's page (`bootFrameSlot`). So the frame is mounted once,
+ * by the HTML, and never replaced by a copy of itself (the owner, 2026-10-02: "full animated Mate
+ * logo, then it turns into a little different smaller logo").
+ */
+import * as Schema from "effect/Schema";
+
+import { isElectron } from "~/env";
+import { getLocalStorageItem } from "~/hooks/useLocalStorage";
+import {
+  resolveInitialThreadSidebarWidth,
+  THREAD_SIDEBAR_WIDTH_STORAGE_KEY,
+} from "~/components/threadSidebarWidth";
+import type { ZeropsSessionStatus } from "./ZeropsSessionProvider";
+import {
+  BOOT_FRAME_SIGNED_IN,
+  BOOT_FRAME_STORAGE_KEY,
+  bootFrameMemory,
+  bootFrameSync,
+  livePalette,
+} from "./bootFrame.logic";
+
+/** Shows the frame while #root is empty, from now on. Called once, before the app renders. */
+export function keepBootFrame(root: HTMLElement): void {
+  const shell = document.getElementById("boot-shell");
+  if (shell === null) return;
+  // A mutation's callback runs before the next paint: the frame goes in the frame the app draws.
+  let drawn = false;
+  const sync = () => {
+    const next = bootFrameSync({ rootChildren: root.childElementCount, drawn });
+    drawn = next.drawn;
+    if (next.repaint) repaintFromApp();
+    shell.hidden = !next.shown;
+  };
+  new MutationObserver(sync).observe(root, { childList: true });
+  sync();
+}
+
+/** The app's colours and menu width as they are now, for a frame shown again after it drew. */
+function repaintFromApp(): void {
+  const root = document.documentElement;
+  const style = getComputedStyle(root);
+  const palette = livePalette((name) => style.getPropertyValue(name));
+  for (const [name, value] of Object.entries(palette)) root.style.setProperty(name, value);
+  if (palette["--boot-background"] !== undefined) root.dataset.themeSelected = "true";
+  root.style.setProperty("--boot-menu-width", `${menuWidthNow()}px`);
+}
+
+function menuWidthNow(): number {
+  let stored: number | null = null;
+  try {
+    stored = getLocalStorageItem(THREAD_SIDEBAR_WIDTH_STORAGE_KEY, Schema.Finite);
+  } catch {
+    stored = null;
+  }
+  return resolveInitialThreadSidebarWidth(stored, window.innerWidth);
+}
+
+/** Where a wait's line stands in the frame's page; null where there is no frame (tests, SSR). */
+export function bootFrameSlot(): HTMLElement | null {
+  return typeof document === "undefined" ? null : document.getElementById("boot-shell-page");
+}
+
+/**
+ * The app's frame from now on: a wait that knows the person is signed in (the account's data, its
+ * inventory, the sign-in's return) draws it even where the load painted the sign-in's mark.
+ */
+export function showAppFrame(): void {
+  const root = document.documentElement;
+  // A desktop window keeps the sign-in's mark (`bootFrameMode`).
+  if (isElectron || root.dataset.bootFrame === "app") return;
+  root.style.setProperty("--boot-menu-width", `${menuWidthNow()}px`);
+  root.dataset.bootFrame = "app";
+}
+
+/** What the session says, kept for the next load's first frame. */
+export function rememberBootFrame(status: ZeropsSessionStatus): void {
+  const memory = bootFrameMemory(status);
+  if (memory === "keep") return;
+  try {
+    if (memory === "remember") {
+      window.localStorage.setItem(BOOT_FRAME_STORAGE_KEY, BOOT_FRAME_SIGNED_IN);
+    } else {
+      window.localStorage.removeItem(BOOT_FRAME_STORAGE_KEY);
+      // Signed out, a frame shown again is the sign-in's.
+      delete document.documentElement.dataset.bootFrame;
+    }
+  } catch {
+    // Storage refused: the next load paints the sign-in's mark, and the app takes over from it.
+  }
+}

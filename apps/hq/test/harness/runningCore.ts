@@ -142,6 +142,8 @@ export const startCore = (
     readonly url?: string;
     readonly orgId?: string;
     readonly gitRoot?: string;
+    /** Where the migration's bundles may be imported from; none by default. */
+    readonly importRoot?: string;
     /** How long the org's view is kept, and how often the structure reconciles; 200 ms each. */
     readonly viewTtl?: Duration.Duration;
     readonly reconcileEvery?: Duration.Duration;
@@ -201,6 +203,8 @@ export const startCore = (
       reconcileEvery: given.reconcileEvery ?? Duration.millis(200),
       streamRecheck: Duration.millis(200),
       pingEvery: Duration.millis(300),
+      importPoll: Duration.millis(100),
+      ...(given.importRoot === undefined ? {} : { importRoot: given.importRoot }),
     };
     const scope = yield* Scope.make();
     const context = yield* Layer.buildWithScope(

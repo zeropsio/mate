@@ -3,6 +3,7 @@
  * connection runtime, the connection catalog and its links, the probe over `fetch`, and this
  * account's storage. Adapters only: every decision is the runtime's.
  */
+import { fetchRemoteSessionState } from "@t3tools/client-runtime/authorization";
 import {
   connectionAdmission,
   type BearerConnectionRegistration,
@@ -20,7 +21,10 @@ import type {
   RegisteredEnvironment,
 } from "@t3tools/client-runtime/zerops/account/runtime";
 import { normalizeOrigin, zeropsMateBaseUrl } from "@t3tools/client-runtime/zerops/candidates";
-import { readZeropsContainer } from "@t3tools/client-runtime/zerops/containerHealth";
+import {
+  readZeropsContainer,
+  readZeropsInitAt,
+} from "@t3tools/client-runtime/zerops/containerHealth";
 import { zeropsThrowawayPlatform } from "@t3tools/client-runtime/zerops/doorThrowaway";
 import {
   REGISTRATION_RECORDS_KEY,
@@ -32,7 +36,7 @@ import {
   exchangeAtDoor,
   installDoorRegistration,
   prepareDoorRegistration,
-  readDoorDescriptor,
+  type KeptDoorSession,
 } from "@t3tools/client-runtime/zerops/identityExchange";
 import {
   createAtomCommandScheduler,
@@ -53,17 +57,14 @@ import { randomUUID } from "~/lib/utils";
 import { environmentIdFromAddress } from "~/routes/-environmentRoute";
 
 import { hqPlacementsAtom } from "~/state/zerops";
-import { accountLocalStorage, accountStorageKey } from "./accountLifetime";
+import { accountLocalStorage, accountStorageKey, captureAccountLifetime } from "./accountLifetime";
+import { endKeptSession, keptSessionHeld, keptSessions } from "./keptSessions";
+import { mateDescriptors } from "./mateDescriptors";
 import { pressingProjects } from "./matePress";
 
 // ── The door, through the connection runtime ─────────────────────────────────────────────────
 
 const doorScheduler = createAtomCommandScheduler();
-
-const readDescriptorCommand = createRuntimeCommand(connectionAtomRuntime, {
-  label: "web:zerops:read-door-descriptor",
-  execute: readDoorDescriptor,
-});
 
 /**
  * The Zerops door. Single-flight on the container's base URL so two exchanges can never mint
@@ -84,6 +85,18 @@ const installCommand = createRuntimeCommand(connectionAtomRuntime, {
   execute: installDoorRegistration,
 });
 
+/**
+ * How long a kept session's check may take: a Mate that answers its descriptor and stalls here
+ * must leave the exchange's deadline to the throwaway that follows.
+ */
+const KEPT_SESSION_CHECK_TIMEOUT_MS = 3_000;
+
+/** The Mate's own word on a session: `/api/auth/session` with it as the bearer. */
+const sessionStateCommand = createRuntimeCommand(connectionAtomRuntime, {
+  label: "web:zerops:read-kept-session",
+  execute: fetchRemoteSessionState,
+});
+
 const retryLinkCommand = createRuntimeCommand(connectionAtomRuntime, {
   label: "web:zerops:retry-link",
   execute: (environmentId: EnvironmentId) =>
@@ -94,15 +107,119 @@ const quiet = { reportFailure: false } as const;
 
 const servedApp = () => ({ origin: window.location.origin, basePath: appBasePath() });
 
-/** An accepted registration, installed through `registry.rotateCredential` or `register`. */
+/**
+ * An accepted registration, installed through `registry.rotateCredential` or `register`, and kept
+ * for the target once installed, so the next load presents it again (`keptSessions.ts`) — only
+ * for the account whose exchange opened it, and ending at its Mate whatever session it displaced.
+ */
 function doorCredential(
   registry: AtomRegistry.AtomRegistry,
+  key: string,
   registration: BearerConnectionRegistration,
+  sameAccount: () => boolean,
 ): DoorCredential {
   return {
     install: async () => {
       const result = await runAtomCommand(registry, installCommand, registration, quiet);
-      return { ok: result._tag !== "Failure" };
+      if (result._tag === "Failure") return { ok: false };
+      if (sameAccount()) {
+        const displaced = keptSessions.keep(key, registration);
+        if (displaced !== null) endKeptSession(displaced);
+      }
+      return { ok: true };
+    },
+  };
+}
+
+/** Whether two base URLs name the same place; one that does not parse names none. */
+function sameBaseUrl(left: string, right: string): boolean {
+  try {
+    return new URL(left).href.replace(/\/+$/, "") === new URL(right).href.replace(/\/+$/, "");
+  } catch {
+    return false;
+  }
+}
+
+/** The tags of an answer the Mate gave about a session: it said something this client can act on. */
+const SESSION_ANSWER_TAGS: ReadonlySet<string> = new Set([
+  "RemoteEnvironmentAuthInvalidJsonError",
+  "EnvironmentRequestInvalidError",
+  "EnvironmentAuthInvalidError",
+  "EnvironmentScopeRequiredError",
+  "EnvironmentOperationForbiddenError",
+  "EnvironmentResourceNotFoundError",
+]);
+
+/**
+ * Whether a kept session's check failing is no word from its Mate — no answer in time, no answer
+ * at all, a server error — rather than an answer: a state this client cannot read, a refusal or a
+ * route it does not serve all say the session is not one this client can present.
+ */
+export function keptSessionUnanswered(cause: unknown): boolean {
+  if (typeof cause !== "object" || cause === null || !("_tag" in cause)) return true;
+  const tag = String(cause._tag);
+  if (tag === "RemoteEnvironmentAuthUndeclaredStatusError") {
+    return !("status" in cause) || typeof cause.status !== "number" || cause.status >= 500;
+  }
+  return !SESSION_ANSWER_TAGS.has(tag);
+}
+
+/** Kept sessions an exchange of this page got no word on: the next exchange of each mints. */
+const unansweredKept = new Set<string>();
+
+/** Whether the target's exchange presents a kept session first, past the mint pace. */
+function presentsKept(key: string): boolean {
+  const registration = keptSessions.read(key);
+  return registration !== null && !unansweredKept.has(registration.credential.token);
+}
+
+/**
+ * The session an earlier load kept for this target, as one exchange presents it again: only at
+ * the base URL it was opened at, and only once its Mate says it still holds it.
+ */
+function keptDoorSession(
+  registry: AtomRegistry.AtomRegistry,
+  key: string,
+): KeptDoorSession<BearerConnectionRegistration> | null {
+  const registration = keptSessions.read(key);
+  if (registration === null) return null;
+  const { httpBaseUrl } = registration.profile;
+  return {
+    credential: registration,
+    check: async (at) => {
+      if (!sameBaseUrl(httpBaseUrl, at.httpBaseUrl)) {
+        // Kept at another address: ended there, and never presented here.
+        endKeptSession(registration);
+        return false;
+      }
+      const result = await runAtomCommand(
+        registry,
+        sessionStateCommand,
+        {
+          httpBaseUrl,
+          bearerToken: registration.credential.token,
+          timeoutMs: KEPT_SESSION_CHECK_TIMEOUT_MS,
+        },
+        quiet,
+      );
+      if (result._tag === "Failure") {
+        const cause = squashAtomCommandFailure(result);
+        // An answer this client cannot use is not held: a throwaway opens a session it can.
+        if (!keptSessionUnanswered(cause)) return false;
+        throw cause;
+      }
+      if (keptSessionHeld(result.value)) return true;
+      // Live but short of a scope this client asks for now: ended, so a throwaway opens one.
+      if (result.value.authenticated) endKeptSession(registration);
+      return false;
+    },
+    forget: () => {
+      keptSessions.forget(key, registration.credential.token);
+    },
+    unanswered: unansweredKept.has(registration.credential.token),
+    answered: (answered) => {
+      if (answered) unansweredKept.delete(registration.credential.token);
+      else unansweredKept.add(registration.credential.token);
     },
   };
 }
@@ -260,15 +377,11 @@ export function webEnvironmentPorts(input: {
   readonly registry: AtomRegistry.AtomRegistry;
 }): AccountEnvironmentPorts {
   const { client, registry } = input;
-  const descriptorAt = async (httpBaseUrl: string) => {
-    const result = await runAtomCommand(registry, readDescriptorCommand, { httpBaseUrl }, quiet);
-    if (result._tag === "Failure") throw squashAtomCommandFailure(result);
-    return result.value;
-  };
   return {
     clock: systemExchangeClock,
     door: {
       exchange: async (request) => {
+        const sameAccount = captureAccountLifetime();
         const answer = await exchangeAtDoor(
           {
             // The token is minted in the organization that lists the Mate's project.
@@ -283,9 +396,11 @@ export function webEnvironmentPorts(input: {
                   nonce: randomUUID(),
                 }
               : null,
-            readDescriptor: descriptorAt,
+            readDescriptor: (httpBaseUrl) =>
+              mateDescriptors.descriptor(httpBaseUrl, request.signal),
             prepare: (prepared) => runAtomCommand(registry, prepareCommand, prepared, quiet),
             environmentOf: (registration) => registration.target.environmentId,
+            kept: keptDoorSession(registry, request.key),
           },
           request.origin,
           {
@@ -295,11 +410,18 @@ export function webEnvironmentPorts(input: {
           },
         );
         return answer.ok
-          ? { ...answer, credential: doorCredential(registry, answer.credential) }
+          ? {
+              ...answer,
+              credential: doorCredential(registry, request.key, answer.credential, sameAccount),
+            }
           : answer;
       },
-      readDescriptor: async (origin) =>
-        descriptorFacts(await descriptorAt(zeropsMateBaseUrl(origin, servedApp()))),
+      // A kept session its Mate gave no word on mints next time: that exchange waits on the pace.
+      kept: presentsKept,
+      readDescriptor: async (origin, signal) =>
+        descriptorFacts(
+          await mateDescriptors.descriptor(zeropsMateBaseUrl(origin, servedApp()), signal),
+        ),
       retryLink: (environmentId) => {
         void runAtomCommand(registry, retryLinkCommand, environmentId, quiet);
       },
@@ -307,8 +429,15 @@ export function webEnvironmentPorts(input: {
         void runAtomCommand(registry, environmentCatalog.remove, environmentId, quiet);
       },
     },
-    probe: (origin, signal) =>
-      readZeropsContainer(origin, globalThis.fetch.bind(globalThis), signal),
+    probe: (origin, signal, ask) =>
+      readZeropsContainer(
+        origin,
+        { descriptor: mateDescriptors.read, fetch: (url, init) => globalThis.fetch(url, init) },
+        signal,
+        ask,
+      ),
+    readInitAt: (origin, signal) =>
+      readZeropsInitAt(origin, (url, init) => globalThis.fetch(url, init), signal),
     intents: intentStorage,
     records: recordsStorage,
     catalog: catalogPort(registry),

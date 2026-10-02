@@ -1,81 +1,54 @@
 /**
- * Minting an environment's deploy token and handing it to the broker (D27).
+ * Minting an environment's deploy token and handing it to HQ (SPEC §3.2b, main D27/E03).
  *
- * A job deploys, with `zcli push`; the account's broker hands it the key. The
- * key is one integration token per stage and production — `BASIC_USER` on that
- * project and nothing else — and only a person can mint one (a token cannot
- * mint a token, ledger 2026-09-15). So the app mints it, as the person adding
- * the environment, and writes it where only the broker reads it: a secret
- * variable on the broker's own service in the account's Gitea project. A
- * container reads only its own service's variables, so no job can.
+ * HQ deploys a stage and a production with the environment's own key, and only a person can mint
+ * one (a token cannot mint a token, ledger 2026-09-15): so the app mints it, as the person adding
+ * the environment or finishing its key, and hands it to HQ, which keeps it and never answers it
+ * back (`PUT …/environments/:name/deploy-token`).
  *
- * The decision is `client-runtime/zerops/deployToken.ts`; this performs it and
- * answers what happened rather than throwing. The value passes through this
- * function and nowhere else in the app: it is never logged, stored or shown.
+ * The decision is `client-runtime/zerops/deployToken.ts`; this performs it and answers what
+ * happened rather than throwing. The value passes through this function and nowhere else in the
+ * app: it is never logged, stored or shown.
  */
 
-import {
-  BROKER_HOSTNAME,
-  planDeployToken,
-  type ZeropsApiClient,
-} from "@t3tools/client-runtime/zerops";
+import { deployTokenMint, type ZeropsApiClient } from "@t3tools/client-runtime/zerops";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
+import type { HqApi } from "@t3tools/client-runtime/zerops/hq";
 
 export type DeployTokenOutcome =
-  /** The broker holds the environment's key — written now, or already there. */
+  /** HQ holds the environment's key, minted now. */
   | { readonly kind: "held" }
-  /** An account whose Gitea project has no broker service has nowhere to keep one. */
-  | { readonly kind: "no-broker"; readonly reason: string }
-  /** A read, the mint or the write did not go through; the next attempt asks again. */
+  /** The mint or HQ's write did not go through; the next attempt asks again. */
   | { readonly kind: "failed"; readonly reason: string };
 
 export type DeployTokenClient = Pick<
   ZeropsApiClient,
-  | "listProjectServices"
-  | "listServiceVariableNames"
-  | "mintIntegrationToken"
-  | "writeServiceSecret"
-  | "deleteIntegrationToken"
+  "mintIntegrationToken" | "deleteIntegrationToken"
 >;
 
-export async function ensureDeployToken(input: {
+export async function keepDeployToken(input: {
   readonly client: DeployTokenClient;
+  readonly hq: Pick<HqApi, "keepDeployToken">;
   readonly clientId: string;
-  /** The account's Gitea project, where the broker's service lives. */
-  readonly giteaProjectId: string;
+  /** The application whose environment it is. */
+  readonly appId: string;
   readonly environment: { readonly projectId: string; readonly name: string };
   readonly signal?: AbortSignal | undefined;
 }): Promise<DeployTokenOutcome> {
   try {
-    const services = await input.client.listProjectServices(input.giteaProjectId, input.signal);
-    const broker = services.find((service) => service.name === BROKER_HOSTNAME);
-    if (broker === undefined) {
-      return { kind: "no-broker", reason: "This account has no broker to keep a deploy key yet." };
-    }
-    const plan = planDeployToken({
+    const mint = deployTokenMint({
       projectId: input.environment.projectId,
       environmentName: input.environment.name,
-      brokerVariables: await input.client.listServiceVariableNames(broker.id, input.signal),
     });
-    if (plan.kind === "held") return { kind: "held" };
-
     const minted = await input.client.mintIntegrationToken(
-      {
-        clientId: input.clientId,
-        name: plan.name,
-        roleCode: plan.roleCode,
-        projects: plan.projects,
-      },
+      { clientId: input.clientId, ...mint },
       input.signal,
     );
     try {
-      await input.client.writeServiceSecret(
-        { serviceId: broker.id, key: plan.variable, content: minted.token },
-        input.signal,
-      );
+      await input.hq.keepDeployToken(input.appId, input.environment.name, minted.token);
     } catch (cause) {
-      // A key the broker never got is a key nobody needs: taken back, so the
-      // account's token list holds no orphan of a write that failed.
+      // A key HQ never got is a key nobody needs: taken back, so the account's token list holds no
+      // orphan of a write that failed (main E06).
       await input.client
         .deleteIntegrationToken({ clientId: input.clientId, tokenId: minted.id }, input.signal)
         .catch(() => undefined);

@@ -90,6 +90,8 @@ const mock = vi.hoisted(() => ({
   view: undefined as unknown,
   restart: vi.fn(),
   reconnect: vi.fn(),
+  /** The container's initAt read before the verb. */
+  readInitAt: vi.fn(),
   intents: [] as Array<unknown>,
   container: {
     verdict: { level: "ready" } as ContainerVerdict,
@@ -124,6 +126,7 @@ vi.mock("./accountLifetime", () => ({
 }));
 vi.mock("./zeropsContainers", () => ({
   useTargetContainer: (key: string | null) => ({ key, ...mock.container }),
+  readContainerInitAt: (key: string) => mock.readInitAt(key),
   intendContainer: (key: string, intent: unknown) => {
     mock.intents.push({ key, intent });
     mock.container.verdict = { level: "restarting", by: "you", overdue: false };
@@ -150,11 +153,14 @@ async function restart() {
   return render();
 }
 
+const INIT_AT = "2026-09-23T08:00:00Z";
+
 beforeEach(() => {
   reactHookHarness.reset();
   mock.view = grantedAs("ADMIN");
   mock.restart.mockReset().mockResolvedValue(undefined);
   mock.reconnect.mockReset();
+  mock.readInitAt.mockReset().mockResolvedValue(INIT_AT);
   mock.intents = [];
   mock.container.verdict = { level: "ready" };
   mock.container.serverVersion = "0.10.0";
@@ -163,7 +169,13 @@ beforeEach(() => {
 describe("useZeropsUpgradeRestart", () => {
   it("our restart holds the container until it is back, then reconnects on a compatible version", async () => {
     let recovery = await restart();
-    expect(mock.intents).toEqual([{ key: KEY, intent: { kind: "upgrade-restart" } }]);
+    // The initAt is read before the verb is sent, and the restart is judged by it.
+    expect(mock.readInitAt.mock.invocationCallOrder[0]).toBeLessThan(
+      mock.restart.mock.invocationCallOrder[0]!,
+    );
+    expect(mock.intents).toEqual([
+      { key: KEY, intent: { kind: "upgrade-restart", initAt: INIT_AT } },
+    ]);
     expect(recovery.state).toBe("waiting");
 
     // The old server answering is not the restart being over; the container says when it is.

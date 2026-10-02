@@ -17,6 +17,7 @@
  * Pure: the words, the face and the steps; the views draw them.
  */
 import type { BirthRuntimeFact } from "@t3tools/client-runtime/zerops/birthProgress";
+import { enrollmentRefusalWords, NO_HQ_WORDS } from "@t3tools/client-runtime/zerops/hq";
 import type { MateSetup } from "@t3tools/client-runtime/zerops/mateSetup";
 import type { MateMarkState } from "@t3tools/shared/brand";
 
@@ -246,7 +247,7 @@ export function arrivalSteps(
     /** The tier's runtimes, imported once the project is closed off (`birthRuntimesFacts`). */
     readonly runtimes?: { readonly runtimes: ReadonlyArray<BirthService> };
     /** What the Mate's own setup says (`/mate/setup.json`); absent before it answers, or ever. */
-    readonly setup?: Pick<MateSetup, "git" | "signin" | "standup"> | undefined;
+    readonly setup?: Pick<MateSetup, "git" | "gitFailure" | "signin" | "standup"> | undefined;
   },
   mate: Named,
   nowMs: number,
@@ -318,10 +319,21 @@ export function arrivalSteps(
   }
   const setup = progress.setup;
   if (setup?.git !== undefined) {
+    // Its enrollment with HQ: where it failed, why and what the person can do — a New project's
+    // first Mate has no stand-up to say it otherwise.
+    const failure = setup.git === "failed" ? setup.gitFailure : undefined;
     steps.push({
       id: "git",
       label: `${mate.name}'s Git access`,
-      state: setup.git === "done" ? "done" : "active",
+      state: setup.git === "done" ? "done" : setup.git === "failed" ? "failed" : "active",
+      ...optional(
+        "why",
+        failure === undefined
+          ? undefined
+          : failure.reason === "no_hq"
+            ? NO_HQ_WORDS
+            : enrollmentRefusalWords(failure.code),
+      ),
     });
   }
   const phrase = signInPhrase(mate.name);
@@ -331,7 +343,8 @@ export function arrivalSteps(
     phrase,
     state: setup?.signin === "done" ? "done" : "you",
   });
-  if (setup?.standup !== undefined) {
+  // A Mate with no stand-up to run (a New project's first) has no step for one.
+  if (setup?.standup !== undefined && setup.standup !== "none") {
     steps.push({
       id: "standup",
       label: `${mate.name} stands up development`,
@@ -342,7 +355,9 @@ export function arrivalSteps(
 }
 
 /** The stand-up as the Mate's setup says it, as a step. */
-const STANDUP_STATES: Readonly<Record<NonNullable<MateSetup["standup"]>, ArrivalStep["state"]>> = {
+const STANDUP_STATES: Readonly<
+  Record<Exclude<MateSetup["standup"], "none" | undefined>, ArrivalStep["state"]>
+> = {
   waiting: "waiting",
   running: "active",
   done: "done",

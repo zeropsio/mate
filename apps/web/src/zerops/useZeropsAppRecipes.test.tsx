@@ -1,0 +1,132 @@
+/**
+ * What each application's recipe on `main` offers, read through the organization's HQ as the
+ * person: its stage's and its production's tier, read when it is first shown and again when a
+ * change of its recipe lands.
+ */
+import type { AppRecipe } from "@t3tools/client-runtime/zerops";
+import type { RecipeTier, RecipeTierResponse } from "@t3tools/shared/hqRecipe";
+import { act } from "react";
+import { create, type ReactTestRenderer } from "react-test-renderer";
+import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+
+import { useZeropsAppRecipes } from "./useZeropsAppRecipes";
+
+const hq = vi.hoisted(() => {
+  const reads: Array<{
+    readonly appId: string;
+    readonly tier: RecipeTier;
+    readonly resolve: (tier: RecipeTierResponse) => void;
+    readonly reject: (cause: unknown) => void;
+  }> = [];
+  const official = {
+    address: "https://hq.example.test",
+    api: {
+      recipeTier: (appId: string, tier: RecipeTier) =>
+        new Promise<RecipeTierResponse>((resolve, reject) => {
+          reads.push({ appId, tier, resolve, reject });
+        }),
+    },
+  };
+  return { reads, official, open: true };
+});
+
+vi.mock("./accountHq", () => ({
+  useOfficialHq: () => (hq.open ? hq.official : null),
+}));
+
+const STAGE = [
+  "services:",
+  "  - hostname: app",
+  "    type: nodejs@22",
+  "    buildFromGit: https://hq.example.test/git/app-1/appdev.git",
+  "    zeropsSetup: app",
+  "",
+].join("\n");
+
+const renders: Array<ReadonlyMap<string, AppRecipe>> = [];
+const seen = () => renders.at(-1);
+
+function Probe({ revision }: { readonly revision?: string | undefined }) {
+  renders.push(useZeropsAppRecipes({ apps: new Map([["app-1", revision]]), enabled: true }));
+  return null;
+}
+
+const mounted: ReactTestRenderer[] = [];
+afterEach(() => {
+  for (const tree of mounted.splice(0)) {
+    act(() => {
+      tree.unmount();
+    });
+  }
+  hq.open = true;
+  hq.reads.length = 0;
+  renders.length = 0;
+});
+
+function mount(revision?: string): ReactTestRenderer {
+  (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+  let tree: ReactTestRenderer | undefined;
+  act(() => {
+    tree = create(<Probe revision={revision} />);
+  });
+  mounted.push(tree!);
+  return tree!;
+}
+
+/** Answers the oldest read still waiting: the tier `main` holds, or none. */
+async function answer(tier: RecipeTier, file: string | null) {
+  const read = hq.reads.shift();
+  expect(read).toMatchObject({ appId: "app-1", tier });
+  await act(async () => {
+    read?.resolve(
+      file === null
+        ? { state: "absent" }
+        : { state: "present", importYaml: file, mainHead: "a".repeat(40) },
+    );
+  });
+}
+
+describe("useZeropsAppRecipes", () => {
+  it("reads an application's stage and production through HQ, and offers what main holds", async () => {
+    mount();
+    await answer("stage", STAGE);
+    await answer("production", null);
+    expect(seen()?.get("app-1")).toEqual({
+      tiers: ["stage"],
+      repositories: new Map([["app", "appdev"]]),
+    });
+  });
+
+  it("reads again once a change of the recipe lands, and keeps what it read meanwhile", async () => {
+    const tree = mount("b".repeat(40));
+    await answer("stage", null);
+    await answer("production", null);
+    act(() => {
+      tree.update(<Probe revision={"c".repeat(40)} />);
+    });
+    expect(seen()?.get("app-1")?.tiers).toEqual([]);
+    await answer("stage", STAGE);
+    await answer("production", STAGE);
+    expect(seen()?.get("app-1")?.tiers).toEqual(["stage", "production"]);
+  });
+
+  it("keeps what it read when a read fails", async () => {
+    const tree = mount("b".repeat(40));
+    await answer("stage", STAGE);
+    await answer("production", null);
+    act(() => {
+      tree.update(<Probe revision={"c".repeat(40)} />);
+    });
+    await act(async () => {
+      hq.reads.shift()?.reject(new Error("HQ is not answering right now."));
+    });
+    expect(seen()?.get("app-1")?.tiers).toEqual(["stage"]);
+  });
+
+  it("reads nothing while the organization's HQ is not open here", () => {
+    hq.open = false;
+    mount();
+    expect(hq.reads).toEqual([]);
+    expect(seen()?.size).toBe(0);
+  });
+});

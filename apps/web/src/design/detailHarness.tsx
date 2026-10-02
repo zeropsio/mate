@@ -32,11 +32,13 @@ import {
 import {
   serviceRows,
   stopFailedDeploy,
+  stopKeyGap,
   stopVerdict,
   stopView,
   type Deployment,
   type StopService,
 } from "@t3tools/client-runtime/zerops/flow";
+import type { HqDeploy } from "@t3tools/client-runtime/zerops/hq";
 import {
   makeZeropsApiOrigin,
   ZeropsAccountId,
@@ -51,7 +53,6 @@ import {
   ZeropsStopPane,
   type ReleaseOffer,
 } from "~/components/zerops/ZeropsGroupDetail";
-import type { ZeropsDeployRun } from "~/zerops/useZeropsDeployRun";
 import type { ZeropsCommitsState } from "~/zerops/useZeropsRepositoryCommits";
 
 import { SidebarProvider } from "~/components/ui/sidebar";
@@ -209,6 +210,7 @@ const RELEASE_WAITING: ReleaseOffer = {
   offered: true,
   releasing: false,
   tag: "v1.5.0",
+  reason: undefined,
   onReview: () => {},
 };
 
@@ -217,6 +219,7 @@ const RELEASE_NONE: ReleaseOffer = {
   offered: false,
   releasing: false,
   tag: undefined,
+  reason: undefined,
   onReview: () => {},
 };
 
@@ -237,78 +240,12 @@ const READ_DETAIL = async (sha: string) => ({
 
 const NOW = Date.now();
 
-function run(state: ZeropsDeployRun["state"]): ZeropsDeployRun {
-  return {
-    state,
-    readLog: async () => "",
-    rerun: async () => {},
-    refresh: () => {},
-    rerunning: false,
-    rerunFailure: null,
-  };
-}
-
-/** A build that went through, as an opened service row shows it. */
-const BUILT: ZeropsDeployRun = run({
-  kind: "read",
-  runId: 41,
-  runNumber: 12,
-  jobs: [
-    {
-      id: 1,
-      name: "build",
-      status: "completed",
-      conclusion: "success",
-      run_id: 41,
-      started_at: "2026-09-19T11:00:00Z",
-      completed_at: "2026-09-19T11:01:32Z",
-    },
-    {
-      id: 2,
-      name: "deploy",
-      status: "completed",
-      conclusion: "success",
-      run_id: 41,
-      started_at: "2026-09-19T11:01:32Z",
-      completed_at: "2026-09-19T11:01:50Z",
-    },
-  ],
-});
-
-/** A build whose deploy job failed: the row a failed service opens onto. */
-const BROKEN: ZeropsDeployRun = run({
-  kind: "read",
-  runId: 42,
-  runNumber: 13,
-  jobs: [
-    {
-      id: 3,
-      name: "build",
-      status: "completed",
-      conclusion: "success",
-      run_id: 42,
-      started_at: "2026-09-19T11:00:00Z",
-      completed_at: "2026-09-19T11:02:11Z",
-    },
-    {
-      id: 4,
-      name: "deploy",
-      status: "completed",
-      conclusion: "failure",
-      run_id: 42,
-      started_at: "2026-09-19T11:02:11Z",
-      completed_at: "2026-09-19T11:02:15Z",
-    },
-  ],
-});
-
-/** One service of a stop, as the group's Gitea read it: what it runs and how its deploy went. */
+/** One service of a stop: what it runs, and how HQ records its deploy of that commit went. */
 function service(
-  environment: string,
   hostname: string,
   seed: string | undefined,
   name: string | undefined,
-  state: "success" | "pending" | "failure" = "success",
+  state: HqDeploy["state"] = "live",
   repository = "appdev",
 ): EnvironmentServiceState {
   return {
@@ -316,7 +253,23 @@ function service(
     repository,
     appVersionName:
       seed === undefined ? undefined : name === undefined ? sha(seed) : `${sha(seed)} ${name} ales`,
-    statuses: [{ context: `mate/deploy/${environment}/${hostname}`, state }],
+    ...(seed === undefined
+      ? {}
+      : { deploy: { latest: deployRecord(sha(seed), state), live: null } }),
+  };
+}
+
+/** HQ's record of a deploy of `commit` in `state`. */
+function deployRecord(commit: string, state: HqDeploy["state"]): HqDeploy {
+  return {
+    sha: commit,
+    state,
+    failure: state === "failed" ? "job" : null,
+    message: null,
+    appVersionId: null,
+    processId: null,
+    requestedBy: null,
+    at: "2026-09-19T11:00:00Z",
   };
 }
 
@@ -376,8 +329,8 @@ const managed = (hostname: string): EnvironmentServiceState => ({ hostname });
  */
 const BEVIRO_LIVE = [
   managed("db"),
-  service("production", "medusa", MEDUSA, "v0.1.9", "success", "medusadev"),
-  service("production", "nextstore", NEXTSTORE[0], "v0.1.13", "success", "nextstoredev"),
+  service("medusa", MEDUSA, "v0.1.9", "live", "medusadev"),
+  service("nextstore", NEXTSTORE[0], "v0.1.13", "live", "nextstoredev"),
   managed("redis"),
   managed("storage"),
 ];
@@ -412,6 +365,7 @@ const BEVIRO_BEHIND: ReleaseOffer = {
   offered: true,
   releasing: false,
   tag: "v0.1.14",
+  reason: undefined,
   onReview: () => {},
 };
 
@@ -514,8 +468,14 @@ interface StopFixture {
   }>;
   /** The tag being released; production only. */
   readonly releasing?: string;
-  /** Whether the failed deploy's job is known, so the verdict offers *Run again*. */
-  readonly jobKnown?: boolean;
+  /** Whether the person may ask HQ to run the failed deploy again, so the verdict offers it. */
+  readonly mayRunAgain?: boolean;
+  /** Whether the deploy key HQ holds for the stop no longer works. */
+  readonly keyInvalid?: boolean;
+  /** Whether HQ holds a deploy key for the stop; held unless given. */
+  readonly keyHeld?: boolean;
+  /** Whether the person may keep the stop's deploy key. */
+  readonly mayKeep?: boolean;
   readonly commits?: ZeropsCommitsState;
   /** A production's releases, newest first. */
   readonly releases?: ReadonlyArray<FlowRelease>;
@@ -604,7 +564,6 @@ function StopState({ fixture }: { readonly fixture: StopFixture }) {
     tier: fixture.tier,
     sources: production ? "release" : ["main"],
     services: fixture.services,
-    environment: name,
   });
   const live = releaseRunBy(listing, running);
   const stop = production && live !== undefined ? nameStopByRelease(row, live) : row;
@@ -641,7 +600,7 @@ function StopState({ fixture }: { readonly fixture: StopFixture }) {
   const failed =
     failedDeploy === undefined
       ? undefined
-      : { ...failedDeploy, jobKnown: fixture.jobKnown ?? false };
+      : { ...failedDeploy, mayRunAgain: fixture.mayRunAgain ?? false };
   // The code services' repositories, as the page maps them.
   const repositoryOf = new Map(
     fixture.services.flatMap((entry) =>
@@ -650,7 +609,6 @@ function StopState({ fixture }: { readonly fixture: StopFixture }) {
   );
   return (
     <ZeropsStopPane
-      buildOf={(entry) => (entry.tone === "bad" ? BROKEN : BUILT)}
       commits={commits}
       crumbs={crumbs(group)}
       deployed={new Map(stop.version.sha === undefined ? [] : [[name, stop.version.sha]])}
@@ -675,8 +633,8 @@ function StopState({ fixture }: { readonly fixture: StopFixture }) {
       routeTrouble={null}
       routes={routes}
       runAgain={
-        failed?.jobKnown === true
-          ? { rerunning: false, failure: null, onRunAgain: () => {} }
+        failed?.redeploy !== undefined && failed.mayRunAgain
+          ? { running: false, refused: null, onRunAgain: () => {} }
           : undefined
       }
       services={services}
@@ -695,6 +653,12 @@ function StopState({ fixture }: { readonly fixture: StopFixture }) {
           !production &&
           commits.kind === "read" &&
           sameCommit(view.version?.sha, commits.commits[0]?.sha),
+        keyGap: stopKeyGap({
+          keyHeld: fixture.keyHeld ?? true,
+          keyInvalid: fixture.keyInvalid ?? false,
+          mayKeep: fixture.mayKeep,
+          project: stop.name,
+        }),
       })}
       view={view}
       waiting={waiting}
@@ -803,8 +767,8 @@ function Harness() {
             tier: "production",
             group: "Beviro",
             services: [
-              service("production", "medusa", undefined, undefined, "success", "medusadev"),
-              service("production", "nextstore", undefined, undefined, "success", "nextstoredev"),
+              service("medusa", undefined, undefined, "live", "medusadev"),
+              service("nextstore", undefined, undefined, "live", "nextstoredev"),
             ],
             releases: BEVIRO_RELEASES,
             reads: BEVIRO_READS,
@@ -832,10 +796,7 @@ function Harness() {
         <StopState
           fixture={{
             tier: "stage",
-            services: [
-              service("stage", "api", undefined, undefined),
-              service("stage", "app", undefined, undefined),
-            ],
+            services: [service("api", undefined, undefined), service("app", undefined, undefined)],
             offers: [{ service: "api", serviceId: "svc-api", port: 8080 }],
             deployment: NOTHING_RUNS,
             commits: { kind: "read", commits: [], releases: new Map() },
@@ -851,8 +812,8 @@ function Harness() {
           fixture={{
             tier: "stage",
             services: [
-              service("stage", "api", "b21d904c", undefined, "pending"),
-              service("stage", "app", "5c3ea18b", undefined),
+              service("api", "b21d904c", undefined, "deploying"),
+              service("app", "5c3ea18b", undefined),
             ],
             deployment: {
               kind: "deploying",
@@ -895,33 +856,71 @@ function Harness() {
       </State>
 
       <State
-        label="A stage whose deploy failed, its job known"
-        note="api's deploy of the commit it runs failed: the verdict names the service and runs its failed job again, and its row opens onto the failed job."
+        label="A stage whose deploy failed, for one who may run it again"
+        note="HQ records api's newest deploy failed: the verdict names the service and asks HQ to run it again."
       >
         <StopState
           fixture={{
             tier: "stage",
             services: [
-              service("stage", "api", "b21d904c", undefined, "failure"),
-              service("stage", "app", "5c3ea18b", undefined),
+              service("api", "b21d904c", undefined, "failed"),
+              service("app", "5c3ea18b", undefined),
             ],
             deployment: STAGE_RUNNING,
             routes: ROUTES,
-            jobKnown: true,
+            mayRunAgain: true,
           }}
         />
       </State>
 
       <State
-        label="A stage whose deploy failed, its job unknown"
-        note="No job to run again, so no verb."
+        label="A stage whose deploy key no longer works"
+        note="HQ records the key it deploys the stage with as broken: the verdict names who mints a new one, and offers no Run again — HQ would refuse it."
       >
         <StopState
           fixture={{
             tier: "stage",
             services: [
-              service("stage", "api", "b21d904c", undefined, "failure"),
-              service("stage", "app", "5c3ea18b", undefined),
+              service("api", "b21d904c", undefined, "failed"),
+              service("app", "5c3ea18b", undefined),
+            ],
+            deployment: STAGE_RUNNING,
+            routes: ROUTES,
+            mayRunAgain: true,
+            keyInvalid: true,
+          }}
+        />
+      </State>
+
+      <State
+        label="A stage with no deploy key yet, for one who may not mint it"
+        note="HQ holds no key to deploy the stage with: the verdict names who mints one. One who may mint it is offered the mint instead."
+      >
+        <StopState
+          fixture={{
+            tier: "stage",
+            services: [
+              service("api", "b21d904c", undefined, "failed"),
+              service("app", "5c3ea18b", undefined),
+            ],
+            deployment: STAGE_RUNNING,
+            routes: ROUTES,
+            keyHeld: false,
+            mayKeep: false,
+          }}
+        />
+      </State>
+
+      <State
+        label="A stage whose deploy failed, for one who may not run it again"
+        note="HQ's rule offers Run again only to who develops the application: no verb."
+      >
+        <StopState
+          fixture={{
+            tier: "stage",
+            services: [
+              service("api", "b21d904c", undefined, "failed"),
+              service("app", "5c3ea18b", undefined),
             ],
             deployment: STAGE_RUNNING,
             routes: ROUTES,
@@ -1029,8 +1028,8 @@ function Harness() {
           fixture={{
             tier: "stage",
             services: [
-              service("stage", "api", "b21d904c", undefined),
-              service("stage", "app", "b21d904c", undefined),
+              service("api", "b21d904c", undefined),
+              service("app", "b21d904c", undefined),
               managed("db"),
             ],
             deployment: STAGE_RUNNING,
@@ -1047,8 +1046,8 @@ function Harness() {
           fixture={{
             tier: "stage",
             services: [
-              service("stage", "api", "5c3ea18b", undefined),
-              service("stage", "app", "5c3ea18b", undefined),
+              service("api", "5c3ea18b", undefined),
+              service("app", "5c3ea18b", undefined),
             ],
             routes: ROUTES,
           }}
@@ -1063,8 +1062,8 @@ function Harness() {
           fixture={{
             tier: "stage",
             services: [
-              service("stage", "api", "b21d904c", undefined),
-              service("stage", "app", "b21d904c", undefined),
+              service("api", "b21d904c", undefined),
+              service("app", "b21d904c", undefined),
             ],
             routes: ROUTES.filter((route) => route.service === "app"),
             offers: [{ service: "api", serviceId: "svc-api", port: 3000 }],

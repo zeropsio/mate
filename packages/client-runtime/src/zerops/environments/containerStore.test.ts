@@ -1,11 +1,15 @@
 import { EnvironmentId } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
+import { readZeropsContainer } from "../containerHealth.ts";
+import { makeDescriptorShare } from "../descriptorShare.ts";
 import type { MateFlag, PlatformStatus } from "./containerMachine.ts";
 import {
   bindContainerStore,
+  INIT_AT_READ_DEADLINE_MS,
   makeContainerStore,
   type ContainerStore,
+  type ContainerTarget,
   type IntentStorage,
 } from "./containerStore.ts";
 import { makeExchangeDriver, type ExchangeClock } from "./exchangeDriver.ts";
@@ -91,8 +95,14 @@ interface Rig {
   readonly store: ContainerStore;
   /** Every probe started, in order. */
   readonly probes: Array<string>;
+  /** Whether each probe asked for a read started now. */
+  readonly asks: Array<boolean>;
   /** What the next probes answer. */
   answer: ProbeReading;
+  /** Every `/healthz` read for a verb's baseline, by origin. */
+  readonly initAtReads: Array<string>;
+  /** What those reads answer: an initAt, null, or never. */
+  initAt: string | null | "never";
 }
 
 function memoryStorage(): IntentStorage & { value: string | null } {
@@ -115,15 +125,30 @@ function rig(
 ): Rig {
   const clock = options.clock ?? manualClock();
   const probes: Array<string> = [];
+  const asks: Array<boolean> = [];
+  const initAtReads: Array<string> = [];
   const result: Rig = {
     clock,
     probes,
+    asks,
+    initAtReads,
+    initAt: null,
     answer: ready("0.11.40"),
     store: makeContainerStore({
       clock,
-      probe: (origin) => {
+      probe: (origin, _signal, ask) => {
         probes.push(origin);
-        return Promise.resolve(result.answer);
+        asks.push(ask.fresh);
+        return Promise.resolve({ reading: result.answer, sentAt: clock.now() });
+      },
+      readInitAt: (origin, signal) => {
+        initAtReads.push(origin);
+        const initAt = result.initAt;
+        return initAt === "never"
+          ? new Promise((_resolve, reject) =>
+              signal.addEventListener("abort", () => reject(new Error("aborted"))),
+            )
+          : Promise.resolve(initAt);
       },
       readMateFlag: () => Promise.resolve(options.flag ?? "unknown"),
       intents: options.intents ?? memoryStorage(),
@@ -186,7 +211,7 @@ async function boundDriver(rig: Rig) {
 }
 
 describe("container store (DESIGN §4.5)", () => {
-  it("ready re-probes on status push, connect failure or wake", async () => {
+  it("ready re-probes on a status move, connect failure or wake", async () => {
     const setup = rig();
     const { clock, store, probes } = setup;
     store.setTargets([target("ACTIVE")]);
@@ -218,7 +243,11 @@ describe("container store (DESIGN §4.5)", () => {
     await clock.advance(0);
     expect(probes).toHaveLength(1);
 
-    // So does a visible wake.
+    // So does a visible wake, once that reading is a minute old.
+    store.wake(true);
+    await clock.advance(0);
+    expect(probes).toHaveLength(1);
+    await clock.advance(60_000);
     store.wake(true);
     await clock.advance(0);
     expect(probes).toHaveLength(2);
@@ -321,7 +350,7 @@ describe("container store (DESIGN §4.5)", () => {
     after.store.dispose();
   });
 
-  it("the route's Mate takes the first probe slot that frees", async () => {
+  it("the route's Mate takes the first probe slot, and the first that frees", async () => {
     const clock = manualClock();
     const probes: Array<string> = [];
     const store = makeContainerStore({
@@ -333,6 +362,7 @@ describe("container store (DESIGN §4.5)", () => {
           signal.addEventListener("abort", () => reject(new Error("aborted"))),
         );
       },
+      readInitAt: () => Promise.resolve(null),
       readMateFlag: () => Promise.resolve("unknown"),
       intents: memoryStorage(),
     });
@@ -359,7 +389,7 @@ describe("container store (DESIGN §4.5)", () => {
     driver.setDemand("route", ["project-route:zcp"]);
     await clock.advance(0);
 
-    // Listed last, the route's Mate misses the pool's first four slots.
+    // Listed last, the route's Mate still takes the pool's first slot.
     store.setTargets(
       ids.map((id) => ({
         key: `project-${id}:zcp`,
@@ -368,10 +398,12 @@ describe("container store (DESIGN §4.5)", () => {
       })),
     );
     await clock.advance(0);
-    expect(probes).toEqual(["o1", "o2", "o3", "o4"].map(originOf));
+    expect(probes).toEqual(["route", "o1", "o2", "o3"].map(originOf));
 
+    // The route's read again takes the first slot that frees.
+    store.request("project-route:zcp");
     await clock.advance(8_000);
-    expect(probes.slice(4, 6)).toEqual([originOf("route"), originOf("o5")]);
+    expect(probes.slice(4, 6)).toEqual([originOf("route"), originOf("o4")]);
     unbind();
     driver.dispose();
     store.dispose();
@@ -471,5 +503,278 @@ describe("container store (DESIGN §4.5)", () => {
     expect(retried).toEqual([environmentId]);
     dispose();
     store.dispose();
+  });
+});
+
+describe("container store: what reads a container again", () => {
+  /** The target held only by its record: the listing does not say its service's status. */
+  const remembered = { key: KEY, origin: ORIGIN, platform: { project: "ACTIVE", service: null } };
+
+  const rows: ReadonlyArray<{
+    readonly name: string;
+    /** The target as first listed; ACTIVE by default. */
+    readonly initial?: ContainerTarget;
+    /** Whether the Mate's socket is live once its first reading landed. */
+    readonly connected: boolean;
+    readonly act: (store: ContainerStore, clock: ReturnType<typeof manualClock>) => Promise<void>;
+    readonly reads: number;
+    /** Whether those reads are started now, past a descriptor another reader just made. */
+    readonly fresh?: boolean;
+  }> = [
+    {
+      name: "a connected Mate the listing sends again unchanged",
+      connected: true,
+      act: async (store) => store.setTargets([target("ACTIVE")]),
+      reads: 0,
+    },
+    {
+      name: "a connected Mate on a visible wake",
+      connected: true,
+      act: async (store, clock) => {
+        await clock.advance(120_000);
+        store.wake(true);
+      },
+      reads: 0,
+    },
+    {
+      name: "a connected Mate somebody asks about",
+      connected: true,
+      act: async (store) => store.request(KEY),
+      reads: 0,
+    },
+    {
+      name: "a connected Mate the listing drops to its record and lists again",
+      connected: true,
+      act: async (store) => {
+        store.setTargets([remembered]);
+        store.setTargets([target("ACTIVE")]);
+      },
+      reads: 0,
+    },
+    {
+      name: "a Mate the listing drops to its record and lists again",
+      connected: false,
+      act: async (store) => {
+        store.setTargets([remembered]);
+        store.setTargets([target("ACTIVE")]);
+      },
+      reads: 0,
+    },
+    {
+      name: "a Mate whose service the listing reads for the first time",
+      initial: remembered,
+      connected: false,
+      act: async (store) => store.setTargets([target("ACTIVE")]),
+      reads: 0,
+    },
+    {
+      name: "a Mate whose service's creation time the listing adds",
+      connected: false,
+      act: async (store) =>
+        store.setTargets([
+          {
+            ...target("ACTIVE"),
+            platform: { project: "ACTIVE", service: "ACTIVE", serviceCreated: "2026-10-01" },
+          },
+        ]),
+      reads: 0,
+    },
+    {
+      name: "a Mate whose service restarted and is ACTIVE again",
+      connected: false,
+      act: async (store) => {
+        store.setTargets([target("RESTARTING")]);
+        store.setTargets([target("ACTIVE")]);
+      },
+      reads: 1,
+      fresh: true,
+    },
+    {
+      name: "a Mate whose service went RESTARTING while the listing lost it, then came back",
+      connected: false,
+      act: async (store) => {
+        store.setTargets([target("RESTARTING")]);
+        store.setTargets([remembered]);
+        store.setTargets([target("ACTIVE")]);
+      },
+      reads: 1,
+      fresh: true,
+    },
+    {
+      name: "a Mate at a new address",
+      connected: false,
+      act: async (store) => store.setTargets([target("ACTIVE", "https://zcp-2.prg1.zerops.app")]),
+      reads: 1,
+      fresh: true,
+    },
+    {
+      name: "a Mate read moments ago, on a visible wake",
+      connected: false,
+      act: async (store, clock) => {
+        await clock.advance(5_000);
+        store.wake(true);
+      },
+      reads: 0,
+    },
+    {
+      name: "a Mate last read a minute ago, on a visible wake",
+      connected: false,
+      act: async (store, clock) => {
+        await clock.advance(60_000);
+        store.wake(true);
+      },
+      reads: 1,
+      fresh: false,
+    },
+    {
+      name: "a Mate last read a minute ago, on a hidden wake",
+      connected: false,
+      act: async (store, clock) => {
+        await clock.advance(60_000);
+        store.wake(false);
+      },
+      reads: 0,
+    },
+    {
+      name: "a Mate whose socket drops",
+      connected: true,
+      act: async (store) => store.link(KEY, false),
+      reads: 1,
+      fresh: true,
+    },
+    {
+      name: "a Mate somebody asks about",
+      connected: false,
+      act: async (store) => store.request(KEY),
+      reads: 1,
+      fresh: true,
+    },
+    {
+      name: "a Mate an exchange is about to read anyway",
+      connected: false,
+      act: async (store) => store.request(KEY, { fresh: false }),
+      reads: 1,
+      fresh: false,
+    },
+  ];
+
+  it.each(rows.map((row) => [row.name, row] as const))("%s", async (_name, row) => {
+    const { clock, store, probes, asks } = rig();
+    store.setTargets([row.initial ?? target("ACTIVE")]);
+    await clock.advance(0);
+    expect(probes).toHaveLength(1);
+    if (row.connected) store.link(KEY, true);
+    await clock.advance(0);
+    probes.length = 0;
+
+    await row.act(store, clock);
+    await clock.advance(0);
+    expect(probes).toHaveLength(row.reads);
+    expect(asks.slice(1)).toEqual(probes.map(() => row.fresh));
+    store.dispose();
+  });
+});
+
+describe("container store: a reading counts only from when its read was sent", () => {
+  it("a platform restart is not ended by a descriptor read before it, which the share still holds", async () => {
+    const clock = manualClock();
+    let up = true;
+    const requests: Array<string> = [];
+    const fetch = async (url: string): Promise<Response> => {
+      requests.push(url);
+      if (!up) throw new TypeError("Failed to fetch");
+      const body = url.endsWith("/healthz")
+        ? { initComplete: true, initAt: "2026-10-01T00:00:00Z" }
+        : {
+            environmentId: "env-a",
+            label: "zcp",
+            platform: { os: "linux", arch: "x64" },
+            serverVersion: "0.11.83",
+            capabilities: { repositoryIdentity: true },
+            basePath: "/mate",
+            zerops: { projectId: "project-1" },
+          };
+      return new Response(JSON.stringify(body), {
+        headers: { "content-type": "application/json" },
+      });
+    };
+    const share = makeDescriptorShare({ clock, fetch });
+    const store = makeContainerStore({
+      clock,
+      probe: (origin, signal, ask) =>
+        readZeropsContainer(origin, { descriptor: share.read, fetch }, signal, ask),
+      readInitAt: () => Promise.resolve(null),
+      readMateFlag: () => Promise.resolve("unknown"),
+      intents: memoryStorage(),
+    });
+    store.setTargets([target("ACTIVE")]);
+    store.link(KEY, true);
+    await clock.advance(0);
+
+    // The socket drops: the container is read, and answers.
+    store.link(KEY, false);
+    await clock.advance(1_000);
+    expect(store.verdict(KEY)).toEqual({ level: "ready" });
+
+    // The platform restarts it, and says ACTIVE again while the server is still away.
+    up = false;
+    store.setTargets([target("RESTARTING")]);
+    await clock.advance(5_000);
+    requests.length = 0;
+    store.setTargets([target("ACTIVE")]);
+    await clock.advance(0);
+
+    // The read from before the restart ends nothing: a read is sent, and finds it away.
+    expect(requests.length).toBeGreaterThan(0);
+    expect(store.verdict(KEY)).not.toEqual({ level: "ready" });
+    store.dispose();
+  });
+});
+
+describe("container store: a restart's baseline is read before its verb", () => {
+  it("reads /healthz once before the verb, and judges the restart by it across a reload", async () => {
+    const intents = memoryStorage();
+    const clock = manualClock();
+    const before = rig({ clock, intents });
+    before.store.setTargets([target("ACTIVE")]);
+    await clock.advance(0);
+    before.initAt = "2026-09-23T08:00:00Z";
+    const initAt = await before.store.initAt(KEY);
+    expect(initAt).toBe("2026-09-23T08:00:00Z");
+    expect(before.initAtReads).toEqual([ORIGIN]);
+    before.store.intend(KEY, { kind: "restart", initAt });
+    await clock.advance(1_000);
+    before.store.dispose();
+
+    // The tab reloads; the first read is already the restarted server.
+    clock.reload();
+    const after = rig({ clock, intents });
+    after.answer = { kind: "initializing", initAt: "2026-09-23T09:00:00Z" };
+    after.store.setTargets([target("ACTIVE")]);
+    await clock.advance(0);
+    expect(after.store.verdict(KEY)).toEqual({ level: "booting", overdue: false });
+    after.store.dispose();
+  });
+
+  it.each([
+    { name: "a Mate that answers no initAt", initAt: null, deadline: false },
+    { name: "a Mate that never answers, by its deadline", initAt: "never", deadline: true },
+  ] as const)("names no baseline for $name", async ({ initAt, deadline }) => {
+    const setup = rig();
+    setup.store.setTargets([target("ACTIVE")]);
+    await setup.clock.advance(0);
+    setup.initAt = initAt;
+    const read = setup.store.initAt(KEY);
+    if (deadline) await setup.clock.advance(INIT_AT_READ_DEADLINE_MS);
+    expect(await read).toBeNull();
+    expect(setup.initAtReads).toHaveLength(1);
+    setup.store.dispose();
+  });
+
+  it("reads nothing for a target it does not hold", async () => {
+    const setup = rig();
+    expect(await setup.store.initAt(KEY)).toBeNull();
+    expect(setup.initAtReads).toEqual([]);
+    setup.store.dispose();
   });
 });

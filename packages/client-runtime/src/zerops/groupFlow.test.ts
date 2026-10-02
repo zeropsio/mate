@@ -12,6 +12,19 @@ import { deployedVersion, environmentRow, type EnvironmentRow } from "./groupRow
 import type { Shown } from "./knowledge/known.ts";
 import { nameStopByRelease } from "./release.ts";
 import type { FlowPullRequest } from "./projectFlow.ts";
+import type { HqDeploy } from "./hq/environments.ts";
+
+/** HQ's record of a deploy in `state`. */
+const deployRecord = (state: HqDeploy["state"]): HqDeploy => ({
+  sha: "0000000000000000000000000000000000000000",
+  state,
+  failure: state === "failed" ? "job" : null,
+  message: null,
+  appVersionId: null,
+  processId: null,
+  requestedBy: null,
+  at: "2026-10-02T10:00:00.000Z",
+});
 
 const MAIN_SHA = "055a7e8f0c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f";
 const STAGE_SHA = "e014b0e5d7a4c6f8e0b1d2a3c4f5e6d7a8b9c0d1";
@@ -53,22 +66,20 @@ function declared(input: {
   readonly name: string;
   readonly tier: "stage" | "production";
   readonly appVersionName?: string;
-  readonly status?: "success" | "failure" | "pending";
+  readonly status?: HqDeploy["state"];
 }): EnvironmentRow {
-  const environment = input.tier;
   return environmentRow({
     projectId: input.projectId,
     name: input.name,
     tier: input.tier,
     sources: input.tier === "production" ? "release" : ["main"],
-    environment,
     services: [
       {
         hostname: "app",
         ...(input.appVersionName === undefined ? {} : { appVersionName: input.appVersionName }),
         ...(input.status === undefined
           ? {}
-          : { statuses: [{ context: `mate/deploy/${environment}/app`, state: input.status }] }),
+          : { deploy: { latest: deployRecord(input.status), live: null } }),
       },
     ],
   });
@@ -144,7 +155,7 @@ const SM_FIXTURE = group({
         name: "stage",
         tier: "stage",
         appVersionName: STAGE_SHA,
-        status: "success",
+        status: "live",
       }),
       deployment: runs(STAGE_SHA),
       route: "https://app-31f4-3000.prg1.zerops.app",
@@ -309,7 +320,7 @@ describe("groupFlow", () => {
         name: "stage",
         tier: "stage",
         appVersionName: STAGE_SHA,
-        status: "failure",
+        status: "failed",
       }),
     })),
   };
@@ -327,7 +338,7 @@ describe("groupFlow", () => {
           name: "stage",
           tier: "stage",
           appVersionName: STAGE_SHA,
-          status: "failure",
+          status: "failed",
         }),
         deployment: runs(STAGE_SHA),
         route: undefined,
@@ -469,7 +480,7 @@ describe("groupFlow", () => {
           name: "production",
           tier: "production",
           appVersionName: released,
-          status: "success",
+          status: "live",
         }),
         deployment: runs(MAIN_SHA),
       }),
@@ -484,7 +495,7 @@ describe("groupFlow", () => {
             name: "production",
             tier: "production",
             appVersionName: released,
-            status: "success",
+            status: "live",
           }),
           "v0.1.4",
         ),
@@ -504,7 +515,7 @@ describe("groupFlow", () => {
           name: "production",
           tier: "production",
           appVersionName: released,
-          status: "success",
+          status: "live",
         }),
         deployment: known({
           kind: "running",
@@ -527,7 +538,7 @@ describe("groupFlow", () => {
             name: "production",
             tier: "production",
             appVersionName: released,
-            status: "failure",
+            status: "failed",
           }),
           deployment: runs(MAIN_SHA),
         },
@@ -563,7 +574,7 @@ describe("groupFlow", () => {
           name: "production",
           tier: "production",
           appVersionName: released,
-          status: "pending",
+          status: "deploying",
         }),
         deployment: runs(MAIN_SHA),
       }),
@@ -577,7 +588,7 @@ describe("groupFlow", () => {
           name: "production",
           tier: "production",
           appVersionName: released,
-          status: "success",
+          status: "live",
         }),
         deployment: known({
           kind: "deploying",
@@ -621,7 +632,7 @@ describe("groupFlow", () => {
             name: "production",
             tier: "production",
             appVersionName: MAIN_SHA,
-            status: "failure",
+            status: "failed",
           }),
           deployment: runs(MAIN_SHA),
         },
@@ -652,7 +663,7 @@ describe("groupFlow", () => {
             name: "production",
             tier: "production",
             appVersionName: MAIN_SHA,
-            status: "failure",
+            status: "failed",
           }),
           deployment: runs(MAIN_SHA),
         },

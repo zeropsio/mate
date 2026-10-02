@@ -43,6 +43,37 @@ describe("parseMateSetup", () => {
     });
   });
 
+  it.each([
+    {
+      case: "no official HQ",
+      step: { id: "git", state: "failed", at: "", reason: "no_hq" },
+      want: { git: "failed", gitFailure: { reason: "no_hq" } },
+    },
+    {
+      case: "HQ refused it, with its code",
+      step: { id: "git", state: "failed", at: "", reason: "refused", code: "not_a_mate" },
+      want: { git: "failed", gitFailure: { reason: "refused", code: "not_a_mate" } },
+    },
+    {
+      case: "HQ refused it, with no code",
+      step: { id: "git", state: "failed", at: "", reason: "refused" },
+      want: { git: "failed", gitFailure: { reason: "refused" } },
+    },
+    {
+      case: "a reason this build does not know: failed, why left unsaid",
+      step: { id: "git", state: "failed", at: "", reason: "later" },
+      want: { git: "failed" },
+    },
+  ])("reads Git access that failed, and why: $case", ({ step, want }) => {
+    expect(parseMateSetup(document([step]))).toEqual({ at: "2026-10-01T10:00:00Z", ...want });
+  });
+
+  it("reads a Mate with no stand-up to run as one, never as one done", () => {
+    expect(parseMateSetup(document([{ id: "standup", state: "none", at: "" }]))?.standup).toBe(
+      "none",
+    );
+  });
+
   it("reads a later version's known steps the same", () => {
     expect(parseMateSetup(document([{ id: "git", state: "done", extra: 1 }], 2))?.git).toBe("done");
   });

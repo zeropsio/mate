@@ -8,7 +8,6 @@ import {
   releaseRunBy,
   nameStopByRelease,
   newestReleaseTag,
-  planReleaseReads,
   readReleaseMessage,
   releaseEntries,
   releaseGate,
@@ -678,7 +677,6 @@ describe("the release a stop is named by", () => {
       name: "production",
       tier: "production",
       sources: "release",
-      environment: "production",
       services: [
         { hostname: "medusa", appVersionName: `${MEDUSA} v0.1.9 ada` },
         { hostname: "nextstore", appVersionName: `${NEXT(5)} v0.1.13 broker` },
@@ -695,49 +693,6 @@ describe("the release a stop is named by", () => {
     expect(named.commit).toBe(shortCommit(MEDUSA));
     expect(named.line).toBe("release · v0.1.13");
     expect(named.tone).toBe(row.tone);
-  });
-});
-
-describe("planReleaseReads", () => {
-  const table: ReadonlyArray<{
-    readonly name: string;
-    readonly heads: ReadonlyArray<readonly [string, string]>;
-    readonly running: ReadonlyArray<readonly [string, string]>;
-    readonly expected: ReadonlyArray<{ service: string; head: string; from: string | undefined }>;
-  }> = [
-    {
-      name: "a service production already runs is not read",
-      heads: [["web", "aaa"]],
-      running: [["web", "aaa"]],
-      expected: [],
-    },
-    {
-      name: "a service production runs behind is read from what it runs",
-      heads: [["web", "bbb"]],
-      running: [["web", "aaa"]],
-      expected: [{ service: "web", head: "bbb", from: "aaa" }],
-    },
-    {
-      // The first release: production runs nothing, so there is no base to
-      // compare against — and the head is exactly what would go live.
-      name: "a service production runs nothing of is read with no base",
-      heads: [["web", "bbb"]],
-      running: [],
-      expected: [{ service: "web", head: "bbb", from: undefined }],
-    },
-    {
-      name: "every service is decided on its own",
-      heads: [
-        ["api", "ccc"],
-        ["web", "bbb"],
-      ],
-      running: [["api", "ccc"]],
-      expected: [{ service: "web", head: "bbb", from: undefined }],
-    },
-  ];
-
-  it.each(table.map((row) => [row.name, row] as const))("%s", (_name, row) => {
-    expect(planReleaseReads(new Map(row.heads), new Map(row.running))).toEqual(row.expected);
   });
 });
 
@@ -867,10 +822,6 @@ describe("a production whose version names spell short shas", () => {
 
   it("names the release it runs, and not one listing another commit", () => {
     expect(releaseRunBy([listing("v1.1.0", OLD), listing("v1.0.0")], RUNS)).toBe("v1.0.0");
-  });
-
-  it("reads nothing for a service it already runs main's head of", () => {
-    expect(planReleaseReads(new Map([["api", API]]), RUNS)).toEqual([]);
   });
 
   it("holds no release in flight once production runs every commit it lists", () => {

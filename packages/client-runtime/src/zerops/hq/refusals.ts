@@ -88,7 +88,45 @@ const STRUCTURE_WORDS: Readonly<Record<string, string>> = {
   attachment_not_found: "HQ has no such picture.",
   // An application's recipe (`@t3tools/shared/hqRecipe`).
   recipe_too_large: "This project's recipe is too large to read here.",
+  // An application's environments and their deploy keys (`apps/hq/src/environments.ts`).
+  environment_with_kind: "Only a stage or a production is an environment.",
+  environment_name_missing: "An environment needs a name.",
+  environment_name_invalid:
+    "An environment's name starts with a letter and has only small letters, digits and dashes.",
+  environment_name_taken: "This project has an environment of that name already.",
+  environment_not_found: "HQ has no such environment.",
+  deploy_token_refused: "Zerops did not accept this deploy key.",
+  deploy_token_scope: "This deploy key reaches more than its own project.",
+  // A deploy asked again ("Run again", `apps/hq/src/deploys.ts`).
+  deploy_not_found: "HQ has no such deploy.",
+  deploy_superseded: "A newer deploy took this one's place.",
+  deploy_not_failed: "This deploy has not failed.",
 };
+
+/**
+ * Why HQ did not enroll a Mate (`MateRefused` in `apps/hq/src/mateCredentials.ts`; zcp's
+ * `~/.zcp/hq/outcome.json`), in words: what stands, and what the person can do — or that zcp tries
+ * again on its own, which it always does.
+ */
+const ENROLLMENT_WORDS: Readonly<Record<string, string>> = {
+  // Its record comes with its press: one that stopped before it wrote it, Finish setup writes it.
+  not_a_mate: "HQ has no record of this Mate yet. Finish its setup from its menu.",
+  project_not_in_org: "Its Zerops project is not in this HQ's organization.",
+  project_gone: "Its Zerops project is gone.",
+  // HQ reads zcp's proof off the project a moment later than zcp writes it.
+  env_mismatch: "HQ could not check its Zerops project yet. It tries again on its own.",
+  expired: "HQ could not check its Zerops project yet. It tries again on its own.",
+  unknown_nonce: "HQ could not check its Zerops project yet. It tries again on its own.",
+};
+
+/** HQ's refusal of a Mate's enrollment, in words; a code this build has none for is named. */
+export function enrollmentRefusalWords(code: string | undefined): string {
+  if (code === undefined) return "HQ refused it. It tries again on its own.";
+  return ENROLLMENT_WORDS[code] ?? `HQ refused it (${code}). It tries again on its own.`;
+}
+
+/** Where zcp found no official HQ in the organization: an admin sets one up. */
+export const NO_HQ_WORDS = "This organization has no HQ yet. Ask an admin to set it up.";
 
 /** What anything asked of the organization's HQ says where its official HQ is not open here. */
 export const HQ_NOT_OPEN = "This organization's HQ is not open here.";

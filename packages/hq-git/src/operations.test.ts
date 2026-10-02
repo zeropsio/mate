@@ -492,6 +492,55 @@ describe("main's own history", () => {
   );
 });
 
+describe("what lies between two commits", () => {
+  const shas = (read: { readonly items: ReadonlyArray<{ readonly sha: string }> }) =>
+    read.items.map((item) => item.sha);
+
+  it.live(
+    "names base..head both ways, newest first, with how many, from the root without a base",
+    () =>
+      fixture(async (git, dir) => {
+        const first = await write(git, { "a.txt": "1\n" }, null);
+        const second = await write(git, { "a.txt": "2\n" }, first);
+        const third = await write(git, { "a.txt": "3\n" }, second);
+        // A commit beside main: no ancestor of main's head, nor main's of it.
+        const beside = await branch(git, dir, second, { "b.txt": "b\n" });
+        const range = (base: string | null, head: string, limit = 100) =>
+          value(git.range(repo, base, head, { limit }));
+
+        const all = await range(null, third);
+        expect([shas(all), all.truncated, all.total]).toEqual([[third, second, first], false, 3]);
+        const forward = await range(first, third);
+        expect([shas(forward), forward.total]).toEqual([[third, second], 2]);
+        expect(forward.items[0]).toMatchObject({ message: "Core write", author });
+        // Neither comes before the other: what each has that the other has not.
+        expect(shas(await range(third, beside))).toEqual([beside]);
+        expect(shas(await range(beside, third))).toEqual([third]);
+        const none = await range(third, third);
+        expect([shas(none), none.truncated, none.total]).toEqual([[], false, 0]);
+        const cut = await range(null, third, 2);
+        expect([shas(cut), cut.truncated, cut.total]).toEqual([[third, second], true, 3]);
+      }),
+  );
+
+  it.live("refuses a commit the repository lacks, and an argument posing as an option", () =>
+    fixture(async (git) => {
+      const first = await write(git, { "a.txt": "1\n" }, null);
+      const range = (base: string | null, head: string) =>
+        value(git.range(repo, base, head, { limit: 10 }));
+      await expect(range(null, "f".repeat(40))).rejects.toHaveProperty("reason", "not_found");
+      await expect(range("f".repeat(40), first)).rejects.toHaveProperty("reason", "not_found");
+      for (const [base, head] of [
+        [null, "--all"],
+        ["--all", first],
+        [null, "main"],
+      ] as const) {
+        await expect(range(base, head)).rejects.toHaveProperty("reason", "invalid_config");
+      }
+    }),
+  );
+});
+
 describe("a change's own history", () => {
   it.live("names what squashing the change does to main now, against the main and head read", () =>
     fixture(async (git, dir) => {

@@ -25,7 +25,6 @@ import {
   readZeropsToolKind,
   type ZeropsEnvironmentRole,
   type ZeropsEnvironmentServices,
-  type ZeropsGiteaState,
   type FlowReleaseRow,
   type GroupRowTone,
 } from "@t3tools/client-runtime/zerops";
@@ -84,6 +83,11 @@ export interface ZeropsRowInput {
    * the conversation, not on a click.
    */
   readonly waiting?: boolean | undefined;
+  /**
+   * Its container's first build is past its grace (`firstBuildOverdue`): still on its way, taking
+   * longer than usual.
+   */
+  readonly firstBuildOverdue?: boolean | undefined;
   /** Which verbs the caller can actually perform; a verb it cannot is never offered. */
   readonly can: {
     /** Opening covers connecting: a ready Mate opens by connecting first. */
@@ -356,7 +360,10 @@ export function deriveZeropsRowPresentation(input: ZeropsRowInput): ZeropsRowPre
         detail: RESTARTING_PHRASE,
       };
     }
-    return { status: { label: "Preparing", pulse: true, tone: "busy" }, detail: COMING_UP_LINE };
+    return {
+      status: { label: "Preparing", pulse: true, tone: "busy" },
+      detail: input.firstBuildOverdue === true ? TAKING_LONGER_LINE : COMING_UP_LINE,
+    };
   }
   if (candidate.group === "unavailable") {
     // The platform failed to make the project: it will sit in NEW for good,
@@ -632,52 +639,5 @@ export function deployRowTone(tone: GroupRowTone): ServiceStatusToneId | undefin
       return "failed";
     case "neutral":
       return undefined;
-  }
-}
-
-export type ZeropsToolLine =
-  /** Its services are coming up, or the project itself still is. */
-  | { readonly kind: "setting-up" }
-  /** Up: where it is, as a link, the host as its label. */
-  | { readonly kind: "link"; readonly url: string; readonly label: string }
-  /** The project is there and its web service is not. */
-  | { readonly kind: "unavailable" }
-  /** Nothing to say yet: unread, or up without an address. */
-  | { readonly kind: "none" };
-
-/**
- * Gitea's one line on its card, from its own state (`tools.ts`) rather than
- * the platform's service list: "setting up" while it comes up, its address
- * once it is there — never the hostnames "broker, db, volume, web", which
- * say nothing about whether it is ready or where it is. The address is the
- * derived one (`deriveGiteaState`), never a guessed host.
- */
-export function giteaToolLine(input: {
-  readonly projectStatus: string;
-  readonly phase: ZeropsGiteaState["phase"] | undefined;
-  readonly url: string | undefined;
-}): ZeropsToolLine {
-  if (input.projectStatus !== "ACTIVE") {
-    return input.phase === "unavailable" ? { kind: "unavailable" } : { kind: "setting-up" };
-  }
-  switch (input.phase) {
-    case undefined:
-      return { kind: "none" };
-    case "provisioning":
-      return { kind: "setting-up" };
-    case "unavailable":
-      return { kind: "unavailable" };
-    case "running":
-      return input.url === undefined
-        ? { kind: "none" }
-        : { kind: "link", url: input.url, label: hostOf(input.url) };
-  }
-}
-
-function hostOf(url: string): string {
-  try {
-    return new URL(url).host;
-  } catch {
-    return url;
   }
 }

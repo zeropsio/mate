@@ -82,7 +82,7 @@ describe("sidebarAccountDestinationOf", () => {
     ["/settings", "settings"],
     ["/settings/appearance", "settings"],
     ["/usage", "usage"],
-    ["/gitea", "gitea"],
+    ["/git", "git"],
     ["/zerops", "projects"],
     ["/", null],
     ["/chat/env/thread", null],

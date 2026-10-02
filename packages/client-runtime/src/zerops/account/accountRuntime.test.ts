@@ -54,7 +54,6 @@ import {
   makeAccountHarness,
 } from "../testing/accountHarness.ts";
 import type { ZeropsThrowawayPlatform } from "../../authorization/zeropsThrowaway.ts";
-import type { ForgeFact } from "../forge/forgeStore.ts";
 import {
   makeAccountRuntime,
   type AccountEnvironmentPorts,
@@ -259,7 +258,11 @@ const environmentRig = (clock: DeadlineClock, remembered: ReadonlyArray<Registra
       retryLink: () => undefined,
       remove: (environmentId) => void removed.push(environmentId),
     },
-    probe: (origin, signal) => pending(probes, origin, signal),
+    probe: (origin, signal) => {
+      const sentAt = { wall: clock.wallMs(), mono: clock.monoMs() };
+      return pending(probes, origin, signal).then((reading) => ({ reading, sentAt }));
+    },
+    readInitAt: async () => null,
     intents: { read: () => null, write: () => undefined },
     records: {
       getItem: (key) => {
@@ -2413,21 +2416,15 @@ describe("the post-grant stage's Mate environments", () => {
   );
 });
 
-describe("the post-grant stage's forge", () => {
+describe("the post-grant stage's Gitea sessions", () => {
   const throwaways: ZeropsThrowawayPlatform = {
     mint: async () => ({ id: "throwaway", token: "the-throwaway" }),
     remove: async () => undefined,
   };
-  const TAGS: ForgeFact = {
-    kind: "tags",
-    origin: HARNESS_GITEA_ORIGIN,
-    owner: "acme",
-    repo: "group",
-  };
 
   /**
-   * An account runtime whose forge reaches a fake Gitea and broker; every Gitea read after `hold`
-   * waits, and ends only by its signal. The forge's timers run on the test's clock.
+   * An account runtime whose Gitea sessions reach a fake Gitea and broker. Their timers run on the
+   * test's clock.
    */
   const openAccount = Effect.fnUntraced(function* () {
     const clock = yield* makeDeadlineClock({ startWallMs: START_WALL_MS });
@@ -2435,24 +2432,13 @@ describe("the post-grant stage's forge", () => {
     const page = yield* makePage(clock);
     const grant = heldVerifier();
     const harness = makeAccountHarness({ people: [] });
-    harness.gitea.setTags("acme", "group", ["v1.0.0"]);
     const direct = fetchAcross(harness.gitea, harness.broker);
     const sent: Array<string> = [];
-    const held: Array<AbortSignal> = [];
-    let holding = false;
-    /** The forge's timers, fired by `turn` once the clock reaches them. */
+    /** The sessions' timers, fired by `turn` once the clock reaches them. */
     const timers = new Set<{ readonly at: number; readonly fire: () => void }>();
     const forge: AccountForgePorts = {
       fetch: async (input, init) => {
-        const url = String(input);
-        sent.push(url);
-        if (holding && url.startsWith(HARNESS_GITEA_ORIGIN)) {
-          const signal = init?.signal ?? new AbortController().signal;
-          held.push(signal);
-          return new Promise<Response>((_resolve, reject) =>
-            signal.addEventListener("abort", () => reject(signal.reason), { once: true }),
-          );
-        }
+        sent.push(String(input));
         return direct(input, init);
       },
       now: () => ({ wall: clock.wallMs(), mono: clock.monoMs() }),
@@ -2490,11 +2476,7 @@ describe("the post-grant stage's forge", () => {
       grant,
       built,
       sent,
-      held,
-      hold: () => {
-        holding = true;
-      },
-      /** Lets the forge's answers land and fires the timers they arm that are due. */
+      /** Lets the sessions' answers land and fires the timers they arm that are due. */
       turn: Effect.gen(function* () {
         for (let step = 0; step < 10; step++) {
           for (const timer of timers) {
@@ -2508,69 +2490,42 @@ describe("the post-grant stage's forge", () => {
     };
   });
 
-  it.effect("the forge store is built only after the first grant and disposed at sign-out", () =>
-    Effect.scoped(
-      Effect.gen(function* () {
-        const { clock, grant, built, sent, held, hold, turn } = yield* openAccount();
-        const postGrant = yield* Effect.forkChild(built.postGrant);
-        yield* clock.advance(SECOND);
-        yield* settle;
-        // Nothing of the forge stands, and nothing reached Gitea or its broker.
-        expect(postGrant.pollUnsafe()).toBeUndefined();
-        expect(sent).toEqual([]);
+  it.effect(
+    "the Gitea sessions are built only after the first grant and forgotten at sign-out",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const { clock, grant, built, sent, turn } = yield* openAccount();
+          const postGrant = yield* Effect.forkChild(built.postGrant);
+          yield* clock.advance(SECOND);
+          yield* settle;
+          // Nothing of the forge stands, and nothing reached Gitea or its broker.
+          expect(postGrant.pollUnsafe()).toBeUndefined();
+          expect(sent).toEqual([]);
 
-        yield* grant.answer();
-        yield* clock.advance(SECOND);
-        yield* settle;
-        const { forge } = yield* Fiber.join(postGrant);
-        if (forge === null) throw new Error("the web host gives the forge its ports");
-        forge.sessions.demand({
-          giteaOrigin: HARNESS_GITEA_ORIGIN,
-          brokerOrigin: HARNESS_BROKER_ORIGIN,
-          clientId: "org-1",
-          platform: throwaways,
-        });
-        forge.store.demand(TAGS);
-        yield* turn;
-        expect(forge.store.read(TAGS).state).toBe("known");
+          yield* grant.answer();
+          yield* clock.advance(SECOND);
+          yield* settle;
+          const { forge } = yield* Fiber.join(postGrant);
+          if (forge === null) throw new Error("the web host gives the forge its ports");
+          forge.sessions.demand({
+            giteaOrigin: HARNESS_GITEA_ORIGIN,
+            brokerOrigin: HARNESS_BROKER_ORIGIN,
+            clientId: "org-1",
+            platform: throwaways,
+          });
+          yield* turn;
+          expect(forge.sessions.view(HARNESS_GITEA_ORIGIN).signedIn).toBe(true);
 
-        // A re-read on the bus is in flight when the person signs out.
-        hold();
-        yield* built.invalidations
-          .invalidate({
-            topic: "forge-repo",
-            origin: HARNESS_GITEA_ORIGIN,
-            owner: "acme",
-            repo: "group",
-          })
-          .pipe(Effect.provideService(Clock.Clock, clock));
-        yield* clock.advance(SECOND);
-        yield* turn;
-        expect(held).toHaveLength(1);
+          yield* built.close("logout");
 
-        yield* built.close("logout");
-
-        expect(held.map((signal) => signal.aborted)).toEqual([true]);
-        expect(forge.store.read(TAGS).state).toBe("unread");
-        expect(forge.sessions.view(HARNESS_GITEA_ORIGIN).signedIn).toBe(false);
-        expect(forge.sessions.capability(HARNESS_GITEA_ORIGIN)).toEqual({
-          allowed: false,
-          reason: "epoch-closed",
-          waitable: false,
-        });
-        expect(
-          yield* Effect.promise(() =>
-            forge.commands.run({
-              kind: "release",
-              origin: HARNESS_GITEA_ORIGIN,
-              slug: "acme",
-              groupId: "g1",
-              tag: "v1.0.1",
-              message: "",
-            }),
-          ),
-        ).toMatchObject({ phase: "refused", refusal: { reason: "epoch-closed" } });
-      }),
-    ),
+          expect(forge.sessions.view(HARNESS_GITEA_ORIGIN).signedIn).toBe(false);
+          expect(forge.sessions.capability(HARNESS_GITEA_ORIGIN)).toEqual({
+            allowed: false,
+            reason: "epoch-closed",
+            waitable: false,
+          });
+        }),
+      ),
   );
 });

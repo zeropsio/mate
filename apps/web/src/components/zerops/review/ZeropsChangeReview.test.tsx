@@ -89,7 +89,7 @@ vi.mock("~/zerops/fixMates", () => ({ useFixMates: () => [] }));
 vi.mock("~/zerops/useZeropsReviewMates", () => ({ useZeropsReviewMates: () => new Map() }));
 /** What HQ's rule offers the person of the application's changes; the one function every render. */
 const offers = vi.hoisted(() => {
-  const held = { current: { read: true, comment: true, merge: true, close: true } };
+  const held = { current: { read: true, comment: true, merge: true, close: true, redeploy: true } };
   return { held, of: () => held.current };
 });
 vi.mock("~/zerops/useChangeOffers", () => ({ useChangeOffers: () => offers.of }));
@@ -130,7 +130,7 @@ const changed = (path: string): ChangeFile => ({
 });
 
 /** Everything HQ's rule offers a developer of the application. */
-const DEVELOPS = { read: true, comment: true, merge: true, close: true } as const;
+const DEVELOPS = { read: true, comment: true, merge: true, close: true, redeploy: true } as const;
 
 /** The review of `pull` in a project with a stage and a production two changes behind `main`. */
 function render(
@@ -237,7 +237,7 @@ describe("ChangeReviewView: an open change", () => {
   // Guide 0.8: a verb this person cannot finish is not offered.
   it("offers neither where HQ's rule does not, and says what merging takes", () => {
     const html = render(open, files, {
-      offers: { read: true, comment: true, merge: false, close: false },
+      offers: { read: true, comment: true, merge: false, close: false, redeploy: false },
     });
     expect(footOf(html)).not.toContain("<button");
     expect(textOf(html)).toContain(
@@ -324,7 +324,7 @@ describe("ZeropsChangeReview: a change its project's flow does not hold yet", ()
     account.verbs.length = 0;
     account.answer = { ok: true };
     detail.readout = { kind: "reading" };
-    offers.held.current = { read: true, comment: true, merge: true, close: true };
+    offers.held.current = { read: true, comment: true, merge: true, close: true, redeploy: true };
     vi.unstubAllGlobals();
   });
 
@@ -437,7 +437,7 @@ describe("ZeropsChangeReview: a change its project's flow does not hold yet", ()
   });
 
   it("offers no box where HQ's rule does not let the person comment on it", async () => {
-    offers.held.current = { read: true, comment: false, merge: true, close: true };
+    offers.held.current = { read: true, comment: false, merge: true, close: true, redeploy: true };
     await reviewed((host) => {
       expect(host.textContent).toContain("Rebuild the full API on the new schema");
       expect(elementsOf(host, "textarea")).toHaveLength(0);

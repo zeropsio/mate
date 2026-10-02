@@ -508,6 +508,41 @@ describe("makeHqApi — application name and a project's application", () => {
       (api) => api.recordClosedOff("p1"),
       { method: "POST", path: "/api/mates/p1/closed-off" },
     ],
+    // SPEC §3.2b: a stage or a production attached as an environment of the application, named.
+    [
+      "attaches a stage under the environment's name",
+      (api) =>
+        api.attachProject("app-1", {
+          projectId: "p2",
+          kind: "stage",
+          environment: { name: "stage" },
+        }),
+      {
+        method: "POST",
+        path: "/api/apps/app-1/projects",
+        body: { projectId: "p2", kind: "stage", environment: { name: "stage" } },
+      },
+    ],
+    // Main B36/B37: "Run again" of an environment's newest failed deploy of a service.
+    [
+      "asks an environment's failed deploy of a service again",
+      (api) => api.redeploy("app-1", "stage", { service: "api", sha: "a".repeat(40) }),
+      {
+        method: "POST",
+        path: "/api/apps/app-1/environments/stage/redeploy",
+        body: { service: "api", sha: "a".repeat(40) },
+      },
+    ],
+    // Minted by the person's own client; HQ keeps it, and says of it only that it holds one.
+    [
+      "hands HQ an environment's deploy token",
+      (api) => api.keepDeployToken("app-1", "stage", "tok-1"),
+      {
+        method: "PUT",
+        path: "/api/apps/app-1/environments/stage/deploy-token",
+        body: { token: "tok-1" },
+      },
+    ],
   ])("%s", async (_name, act, expected) => {
     const hq = fakeHq();
     await act(

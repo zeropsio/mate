@@ -9,7 +9,6 @@ import {
   creationFailedLine,
   setUpMateRecord,
   setUpMateVerb,
-  giteaToolLine,
   deriveZeropsRestartAction,
   deriveZeropsRowAction,
   deriveZeropsRowPresentation,
@@ -776,48 +775,22 @@ describe("connectFailureLine", () => {
   });
 });
 
-describe("giteaToolLine", () => {
-  const URL = "https://web-abc-3000.prg1.zerops.app";
+// A first build past its grace (measured 2026-10-02: about a minute) is still on its way: a slow
+// or queued build looks the same from its status as one that failed, so the row says it is taking
+// longer, never that it is gone.
+describe("a first build past its grace", () => {
   it.each([
-    [
-      "the project is still being created",
-      "CREATING",
-      undefined,
-      undefined,
-      { kind: "setting-up" },
-    ],
-    [
-      "its services are unread on an active project",
-      "ACTIVE",
-      undefined,
-      undefined,
-      { kind: "none" },
-    ],
-    ["its web service is provisioning", "ACTIVE", "provisioning", URL, { kind: "setting-up" }],
-    [
-      "it runs and has an address",
-      "ACTIVE",
-      "running",
-      URL,
-      { kind: "link", url: URL, label: "web-abc-3000.prg1.zerops.app" },
-    ],
-    ["it runs without an address yet", "ACTIVE", "running", undefined, { kind: "none" }],
-    [
-      "its web service is gone from an active project",
-      "ACTIVE",
-      "unavailable",
-      undefined,
-      { kind: "unavailable" },
-    ],
-    ["the project is stopped", "STOPPED", "unavailable", undefined, { kind: "unavailable" }],
-  ] as const)("says the right thing when %s", (_case, projectStatus, phase, url, expected) => {
-    expect(giteaToolLine({ projectStatus, phase, url })).toEqual(expected);
-  });
-
-  it("never lists the services by hostname", () => {
-    expect(
-      JSON.stringify(giteaToolLine({ projectStatus: "ACTIVE", phase: "running", url: URL })),
-    ).not.toMatch(/broker|db|volume/u);
+    { case: "within it", overdue: false, detail: "Coming up. A few minutes." },
+    { case: "past it", overdue: true, detail: "Taking longer than usual." },
+  ])("$case: $detail", ({ overdue, detail }) => {
+    const presentation = deriveZeropsRowPresentation({
+      candidate: { ...READY, group: "provisioning" },
+      health: undefined,
+      can: ALL,
+      firstBuildOverdue: overdue,
+    });
+    expect(presentation.status.label).toBe("Preparing");
+    expect(presentation.detail).toBe(detail);
   });
 });
 

@@ -14,14 +14,19 @@
  * into an empty database no Core holds and an empty `/mnt/vol/git`: with `hq` started as
  * `zsc noop`, the database emptied and the git root cleared; then `hq` deploys as it was.
  *
+ * `main.mjs import …` is no server but the migration's command (`importCli.ts`): its lines on the
+ * standard output, its outcome the exit code.
+ *
  * @module main
  */
 import * as NodeHttp from "node:http";
 
 import * as NodeHttpClient from "@effect/platform-node/NodeHttpClient";
 import * as NodeHttpServer from "@effect/platform-node/NodeHttpServer";
+import * as PgClient from "@effect/sql-pg/PgClient";
 import * as NodeRuntime from "@effect/platform-node/NodeRuntime";
 import * as Config from "effect/Config";
+import * as Console from "effect/Console";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -30,6 +35,7 @@ import * as Option from "effect/Option";
 import { directoryStore } from "./backup.ts";
 import { BUCKET_ENV, bucketFromEnv, bucketStore } from "./bucketStore.ts";
 import { type CoreOptions, coreApp } from "./core.ts";
+import { USAGE, checkCommand, importArgs, queueCommand } from "./importCli.ts";
 import { bundledMigrations } from "./migrationFiles.ts";
 import { restoreSet } from "./restore.ts";
 import { ZeropsApi, ZeropsDeploy } from "./zerops/api.ts";
@@ -73,6 +79,8 @@ const core = Layer.unwrap(
       ),
       databaseUrl: yield* Config.Redacted("DATABASE_URL"),
       gitRoot: GIT_ROOT,
+      // The migration's bundles, copied beside the repositories (`importJob.ts`).
+      importRoot: "/mnt/vol/import",
       backup: {
         stagingDir: STAGING_DIR,
         store: bucket === null ? null : bucketStore(bucket.access),
@@ -118,9 +126,38 @@ const restore = (set: string, fromVolume: boolean) =>
     });
   });
 
-const [command, set, flag] = process.argv.slice(2);
-if (command === "restore" && set !== undefined) {
-  restore(set, flag === "--from-volume").pipe(NodeRuntime.runMain);
+const [command, ...args] = process.argv.slice(2);
+if (command === "import") {
+  const asked = importArgs(args);
+  Effect.gen(function* () {
+    const result =
+      asked.kind === "check"
+        ? yield* checkCommand(asked.dir)
+        : asked.kind === "import"
+          ? yield* queueCommand(asked.dir).pipe(
+              Effect.provide(
+                Layer.unwrap(
+                  Effect.map(Config.Redacted("DATABASE_URL"), (url) =>
+                    PgClient.layer({ url, applicationName: "hq-import" }),
+                  ),
+                ),
+              ),
+            )
+          : USAGE;
+    for (const line of result.lines) yield* Console.log(line);
+    process.exitCode = result.code;
+  }).pipe(NodeRuntime.runMain);
+} else if (command === "restore") {
+  const [set, flag] = args;
+  (set === undefined
+    ? Effect.andThen(
+        Console.log("usage: main.mjs restore <set> [--from-volume]"),
+        Effect.sync(() => {
+          process.exitCode = 2;
+        }),
+      )
+    : restore(set, flag === "--from-volume")
+  ).pipe(NodeRuntime.runMain);
 } else {
   Layer.launch(core).pipe(NodeRuntime.runMain);
 }

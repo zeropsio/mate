@@ -25,11 +25,8 @@
  * Pure: no React, no clock, no store.
  */
 import {
-  deployedCommit,
-  deployStatusContext,
   sameCommit,
   type FlowReleaseRow,
-  type GiteaCommitStatus,
   type GroupEnvironmentRowInput,
   type GroupFlowProduction,
   type GroupFlowStop,
@@ -37,6 +34,7 @@ import {
 } from "@t3tools/client-runtime/zerops";
 
 import { deployBuilding, type Deployment } from "@t3tools/client-runtime/zerops/flow";
+import type { HqDeploy } from "@t3tools/client-runtime/zerops/hq";
 import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
 
 import type { FixProblem } from "~/zerops/fixRequest";
@@ -103,9 +101,9 @@ export interface ReleaseFailure {
   readonly tag: string;
   /** Its production deploy failed, or the broker refused the tag. */
   readonly kind: "deploy-failed" | "refused";
-  /** When: the failed deploy's status, or the refused tag's; `undefined` where nothing read says. */
+  /** When: the failed deploy's, as HQ records it, or the refused tag's; `undefined` where unread. */
   readonly at: string | undefined;
-  /** The broker's words: the failed deploy's status description, or the refusal's reason. */
+  /** The words for it: the failed deploy's message, as HQ records it, or the refusal's reason. */
   readonly error: string | undefined;
   /** The service whose deploy failed. */
   readonly service: string | undefined;
@@ -114,9 +112,7 @@ export interface ReleaseFailure {
 /**
  * The newest release that failed or was refused, among the ones newer than
  * the release production runs (`stopFailedDeploy`'s rule): an older failure
- * is history. The broker's status on the failed commit carries its words and
- * its time, and it is read wherever that commit runs — the stage, which ran it
- * first, carries production's status too.
+ * is history. HQ's record of the failed deploy carries its words and its time.
  */
 export function releaseFailureOf(input: {
   /** Newest first. */
@@ -139,13 +135,12 @@ export function releaseFailureOf(input: {
     };
   }
   const entry = release.failedEntry;
-  const status =
-    entry === undefined ? undefined : failedDeployStatus(input.environmentInputs, entry);
+  const failed = entry === undefined ? undefined : failedDeploy(input.environmentInputs, entry);
   return {
     tag: release.tag,
     kind: "deploy-failed",
-    at: status?.created_at,
-    error: wordsOf(status?.description),
+    at: failed?.at,
+    error: wordsOf(failed?.message ?? undefined),
     service: entry?.service,
   };
 }
@@ -155,23 +150,15 @@ const wordsOf = (text: string | undefined): string | undefined => {
   return trimmed === undefined || trimmed.length === 0 ? undefined : trimmed;
 };
 
-/** The broker's failed production status for one service on one commit, wherever it is read. */
-function failedDeployStatus(
+/** HQ's record of one service's failed production deploy of one commit, while it is the newest. */
+function failedDeploy(
   environments: ReadonlyArray<GroupEnvironmentRowInput>,
   entry: { readonly service: string; readonly commit: string },
-): GiteaCommitStatus | undefined {
+): HqDeploy | undefined {
   const production = environments.find((environment) => environment.tier === "production");
-  if (production === undefined) return undefined;
-  const context = deployStatusContext(production.environment, entry.service);
-  for (const environment of environments) {
-    for (const service of environment.services) {
-      if (!sameCommit(deployedCommit(service.appVersionName), entry.commit)) continue;
-      // Newest first: only the newest of a context says how that deploy went.
-      const status = (service.statuses ?? []).find((each) => each.context === context);
-      if (status?.state === "failure" || status?.state === "error") return status;
-    }
-  }
-  return undefined;
+  const latest = production?.services.find((service) => service.hostname === entry.service)?.deploy
+    ?.latest;
+  return latest?.state === "failed" && sameCommit(entry.commit, latest.sha) ? latest : undefined;
 }
 
 export type ChipLabel = "prod" | "stage";

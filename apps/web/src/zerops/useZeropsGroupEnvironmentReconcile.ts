@@ -1,15 +1,14 @@
 /**
- * Finishes a stage or a production whose creation lost its last writes.
+ * Finishes a stage or a production whose creation lost its last writes, or whose deploy key HQ
+ * does not hold, or holds broken (main D21, E07).
  *
- * A creation makes its project, waits for its services, then registers the
- * project in the group, grants the broker and declares it on the group repo
- * (`addGroupEnvironment.ts`). Those three live in the page that made it: a
- * reload in that minute kept the project and lost them, and the page went on
- * asking for a production it already had (the rehearsal of 2026-09-17). Off
- * the list the projects screen already reads, this runs the same three
- * writes for every half-made environment — each idempotent, so a creation
- * still on its way in this tab is not raced (the reconcile waits for it) and
- * one that finished elsewhere is a no-op.
+ * A creation makes its project, waits for its services, then attaches the project to its
+ * application in HQ and hands HQ its deploy key (`addGroupEnvironment.ts`). Those live in the page
+ * that made it: a reload in that minute kept the project and lost them, and the page went on
+ * asking for a production it already had (the rehearsal of 2026-09-17). Off the list the projects
+ * screen already reads, this runs the same writes for every half-made environment — each
+ * idempotent, so a creation still on its way in this tab is not raced (the reconcile waits for it)
+ * and one that finished elsewhere is a no-op.
  *
  * Each repair runs once per change in what it repairs — the half-made
  * environment as the list states it — and never again because the page's
@@ -17,10 +16,7 @@
  * entry already repaired is not started over when it opens (a cold load's
  * loading flips repeated it, a `GET /project` and two broker reads each time).
  * A failed one is tried again on a backoff (`RECONCILE_RETRY_MS`); what is
- * outstanding meanwhile shows as the row that still asks. The declaration is
- * written as the person, so no repair starts while Gitea holds no token for
- * them, and one that loses it part-way is given back unreported and tried
- * again on the backoff.
+ * outstanding meanwhile shows as the row that still asks.
  */
 
 import type { HalfMadeGroupEnvironment, ZeropsApiClient } from "@t3tools/client-runtime/zerops";
@@ -28,30 +24,21 @@ import type { HqEndpoint } from "@t3tools/client-runtime/zerops/hq";
 import { useEffect, useRef, useState } from "react";
 
 import { addGroupEnvironment, type AddGroupEnvironmentOutcome } from "./addGroupEnvironment";
-import { giteaClientFor } from "./accountGiteaSessions";
 import { accountHqApi } from "./accountHq";
-import { brokerGrantTokens } from "./brokerGrant";
-import type { ZeropsDataContextValue } from "./zeropsDataContext";
 
 export function useZeropsGroupEnvironmentReconcile(input: {
   readonly enabled: boolean;
   readonly client: ZeropsApiClient;
-  /** The account's runtime, whose token commands grant the broker. */
-  readonly data: Pick<ZeropsDataContextValue, "runtime">;
   readonly clientId: string | undefined;
-  /** The organization's HQ, where the registry lives; none while no organization is open. */
+  /** The organization's HQ, where the registry and the keys live; none while no organization is open. */
   readonly hq: HqEndpoint | undefined;
-  readonly giteaOrigin: string | undefined;
-  readonly giteaProjectId: string | undefined;
   readonly halfMade: ReadonlyArray<HalfMadeGroupEnvironment>;
   /** What each repair came to — the caller says what is still outstanding. */
   readonly onOutcome?:
     | ((entry: HalfMadeGroupEnvironment, outcome: AddGroupEnvironmentOutcome) => void)
     | undefined;
 }): void {
-  const { client, clientId, enabled, giteaOrigin, giteaProjectId, halfMade, hq } = input;
-  const data = useRef(input.data);
-  data.current = input.data;
+  const { client, clientId, enabled, halfMade, hq } = input;
   const onOutcome = useRef(input.onOutcome);
   onOutcome.current = input.onOutcome;
   // The list through a ref: its identity changes on every inventory push,
@@ -62,10 +49,9 @@ export function useZeropsGroupEnvironmentReconcile(input: {
   latest.current = halfMade;
   // What this tab has run a repair for, per project: the entry it repaired (a changed entry is
   // repaired again), and how its last run ended. An entry is put in before its repair starts, so
-  // two runs cannot repair the same one; one given back (a Gitea token lost part-way, an unmount
-  // before its turn) is taken out, so the next enabled run reaches it — otherwise a page with two
-  // half-made environments repaired the first, was remounted, and never looked at the second
-  // again (measured 2026-09-18).
+  // two runs cannot repair the same one; one given back (an unmount before its turn) is taken out,
+  // so the next enabled run reaches it — otherwise a page with two half-made environments repaired
+  // the first, was remounted, and never looked at the second again (measured 2026-09-18).
   const attempted = useRef(
     new Map<
       string,
@@ -94,16 +80,7 @@ export function useZeropsGroupEnvironmentReconcile(input: {
     .join(";");
 
   useEffect(() => {
-    if (
-      !enabled ||
-      clientId === undefined ||
-      hq === undefined ||
-      giteaOrigin === undefined ||
-      key === ""
-    ) {
-      return;
-    }
-    if (giteaClientFor(giteaOrigin) === null) return;
+    if (!enabled || clientId === undefined || hq === undefined || key === "") return;
     const now = Date.now();
     const pending = latest.current.filter((entry) => {
       const record = attempted.current.get(entry.projectId);
@@ -145,35 +122,16 @@ export function useZeropsGroupEnvironmentReconcile(input: {
       try {
         for (const [index, entry] of pending.entries()) {
           if (controller.signal.aborted) return release(index);
-          let unauthorized = false;
-          const gitea = giteaClientFor(giteaOrigin, () => {
-            unauthorized = true;
-          });
           const outcome = await addGroupEnvironment({
             client,
-            tokens: brokerGrantTokens(data.current.runtime),
             hq: accountHqApi(client, clientId, hq),
-            gitea,
             clientId,
-            giteaProjectId,
             groupId: entry.groupId,
-            environment: {
-              displayName: entry.displayName,
-              tier: entry.tier,
-              project: entry.projectId,
-            },
+            environment: { tier: entry.tier, project: entry.projectId },
             signal: controller.signal,
           }).catch((): AddGroupEnvironmentOutcome | undefined => undefined);
           // An abort — the page went — leaves it unfinished, so this entry is given back too.
           if (controller.signal.aborted) return release(index);
-          // Its Gitea half ran without a token, or met a 401 no token recovered, and says only
-          // that: not an outcome, a repair tried again on the backoff — never on the gate's next
-          // opening, which a cold load's loading flips made a loop of the Zerops half's reads.
-          if (gitea === null || unauthorized) {
-            failed(entry);
-            release(index + 1);
-            return;
-          }
           if (outcome === undefined || outcome.failed !== undefined) failed(entry);
           else {
             const record = attempted.current.get(entry.projectId);
@@ -186,9 +144,9 @@ export function useZeropsGroupEnvironmentReconcile(input: {
       }
     })();
     // No cleanup: the gate closing (a loading flip) does not abort a repair in flight; the
-    // page going does (above). `key` is the half-made list; the list and the runtime are read
-    // through refs so a re-render does not abort a repair in flight either.
-  }, [client, clientId, due, enabled, giteaOrigin, giteaProjectId, hq, key]);
+    // page going does (above). `key` is the half-made list; the list is read through a ref so a
+    // re-render does not abort a repair in flight either.
+  }, [client, clientId, due, enabled, hq, key]);
 }
 
 /** How long a failed repair waits before it is tried again, by its count of failures. */

@@ -503,20 +503,26 @@ describe("index.html boot script", () => {
       prefersDark: false,
     });
 
-    expect(boot.themeId).toBeUndefined();
-    expect(boot.themeSelected).toBeUndefined();
-    expect(boot.backgroundColor).toBe("#ffffff");
-    expect(boot.metaContent).toBe("#ffffff");
+    // The runtime reads a preference it cannot use as its default, and so does the first frame.
+    expect(boot.themeId).toBe("zerops");
+    expect(boot.bootVariables["--boot-background"]).toBe(
+      getThemeColorsForMode(ZEROPS_THEME, "light")!.canvas,
+    );
   });
 
-  it("leaves unknown preferences unthemed so the runtime default applies", () => {
-    const boot = runBootScript({
-      storage: { [THEME_STORAGE_KEY]: "gone-theme" },
-      prefersDark: true,
-    });
-    expect(boot.themeId).toBeUndefined();
-    expect(boot.themeSelected).toBeUndefined();
-    expect(boot.isDark).toBe(true);
+  it.each([
+    { name: "an unknown preference", storage: { [THEME_STORAGE_KEY]: "gone-theme" } },
+    { name: "no preference at all", storage: {} },
+  ])("paints the runtime's default palette for $name", ({ storage }) => {
+    for (const prefersDark of [false, true]) {
+      const boot = runBootScript({ storage, prefersDark });
+      const colors = getThemeColorsForMode(ZEROPS_THEME, prefersDark ? "dark" : "light")!;
+      expect(boot.themeId).toBe("zerops");
+      expect(boot.isDark).toBe(prefersDark);
+      expect(boot.backgroundColor).toBe(colors.chrome);
+      expect(boot.bootVariables["--boot-background"]).toBe(colors.canvas);
+      expect(boot.bootVariables["--boot-sidebar"]).toBe(colors.sidebar);
+    }
   });
 
   it("follows the OS appearance when storage is unavailable", () => {

@@ -56,10 +56,10 @@ import {
   NONE_YET,
   NOT_PUBLIC_YET,
   NOTHING_DEPLOYED,
-  serviceBuildToggleLabel,
   serviceRows,
   stopCardTitle,
   stopFailedDeploy,
+  stopKeyGap,
   stopMetaLine,
   stopVerdict,
   stopView,
@@ -93,12 +93,11 @@ import { mateUpdateStatus, type MateUpdateStatus } from "~/zerops/mateUpdate";
 import { useZeropsMateUpdateStates } from "~/zerops/useZeropsMateUpdate";
 import { useZeropsCandidates } from "~/zerops/useZeropsCandidates";
 import { useZeropsProjectFlowOptional } from "~/zerops/projectFlowContext";
+import { useChangeOffers, useKeepDeployKeyOffer } from "~/zerops/useChangeOffers";
 import { REVIEW_RELEASE_LABEL, useOpenReview } from "~/zerops/review";
 import type { ZeropsCommitDetailResult } from "~/zerops/useZeropsCommitDetail";
 import type { ZeropsCommitsState } from "~/zerops/useZeropsRepositoryCommits";
 import { useZeropsCommitDetailReader } from "~/zerops/useZeropsCommitDetail";
-import type { ZeropsDeployRun, ZeropsDeployRunRequest } from "~/zerops/useZeropsDeployRun";
-import { useZeropsDeployRun } from "~/zerops/useZeropsDeployRun";
 import {
   useZeropsRepositoriesCommits,
   useZeropsRepositoryCommits,
@@ -113,7 +112,6 @@ import {
 import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
 import { mateIsViewers } from "@t3tools/client-runtime/zerops/mateAccess";
 import { ZeropsHostedFrame } from "./landing/ZeropsHostedFrame";
-import { failedJob, runAgainLabel, ZeropsDeployRunView } from "./ZeropsDeployRun";
 import { ZeropsRoleTag } from "./ZeropsEnvironmentRow";
 import { ZeropsHistoryView, type HistoryNames } from "./ZeropsHistoryView";
 import {
@@ -576,8 +574,10 @@ function useReleaseOffer(groupId: string): ReleaseOffer {
     },
     [groupId, openReview],
   );
+  const gate = flow?.release.gate;
   return {
-    offered: flow?.release.gate.allowed ?? false,
+    offered: gate?.allowed ?? false,
+    reason: gate === undefined || gate.allowed ? undefined : gate.reason,
     releasing:
       flow?.release.inFlight !== undefined ||
       (flowValue?.pending.has(flowVerbKey({ kind: "release", groupId })) ?? false),
@@ -958,18 +958,11 @@ export function ZeropsStopDetailPage({
     flow === undefined || stop === undefined
       ? undefined
       : stopFailedDeploy({ tier: stop.tier, rows: services, releases: flow.releases });
-  // The build behind the deploy that failed — its service's repository, the
-  // commit it deployed — read whether or not its row is open: whether its job
-  // is known decides the verdict's *Run again*.
-  const failedRow =
-    failedDeploy === undefined
-      ? undefined
-      : services.find((row) => row.hostname === failedDeploy.service);
-  const failedRun = useZeropsDeployRun(
-    failedDeploy === undefined || failedRow === undefined
-      ? null
-      : serviceBuildRequest({ repository: failedRow.repository, sha: failedDeploy.sha }, forge),
-  );
+  // *Run again* asks HQ, by its rule for who develops the application.
+  const mayRunAgain = useChangeOffers()(groupId)?.redeploy ?? false;
+  const mayKeepKey = useKeepDeployKeyOffer();
+  // Why HQ refused the last *Run again*, until another is pressed.
+  const [runAgainRefused, setRunAgainRefused] = useState<string | null>(null);
 
   if (flowValue === null || flow === undefined || stop === undefined) {
     return (
@@ -990,19 +983,22 @@ export function ZeropsStopDetailPage({
   const view = stopView({ deployment, row: stop, nowMs });
   const live = flow.releases.find((entry) => entry.standing === "live");
   const releasedAge = live?.taggedAt === undefined ? "" : formatRelativeTimeLabel(live.taggedAt);
-  const job = failedJob(failedRun.state);
+  const redeploy = failedDeploy?.redeploy;
   const verdict = stopVerdict({
     tier: stop.tier,
     view,
     releasing: flow.release.inFlight ?? (release.releasing ? release.tag : undefined),
-    failed:
-      failedDeploy === undefined ? undefined : { ...failedDeploy, jobKnown: job !== undefined },
+    failed: failedDeploy === undefined ? undefined : { ...failedDeploy, mayRunAgain },
     waiting: releaseContentsSummary(flow.release.contents, 20).total,
     release,
     releasedAge: releasedAge.length === 0 ? undefined : releasedAge,
     since: view.activatedAt === null ? undefined : formatRelativeTimeLabel(view.activatedAt),
     atMainHead:
       stage && commits.kind === "read" && sameCommit(view.version?.sha, commits.commits[0]?.sha),
+    keyGap:
+      declared === undefined
+        ? undefined
+        : stopKeyGap({ ...declared, mayKeep: mayKeepKey(projectId), project: stop.name }),
   });
 
   return (
@@ -1032,13 +1028,18 @@ export function ZeropsStopDetailPage({
       routeTrouble={route.trouble}
       routes={routes}
       runAgain={
-        job === undefined
+        redeploy === undefined || !mayRunAgain
           ? undefined
           : {
-              rerunning: failedRun.rerunning,
-              failure: failedRun.rerunFailure,
+              running: flowValue.pending.has(
+                flowVerbKey({ kind: "redeploy", groupId, projectId, service: redeploy.service }),
+              ),
+              refused: runAgainRefused,
               onRunAgain: () => {
-                void failedRun.rerun(job.id);
+                setRunAgainRefused(null);
+                void flowValue.redeploy(groupId, projectId, redeploy).then((outcome) => {
+                  setRunAgainRefused(outcome.ok ? null : outcome.reason);
+                });
               },
             }
       }
@@ -1052,22 +1053,10 @@ export function ZeropsStopDetailPage({
   );
 }
 
-/** Where a service's build is read from: its own repository and the commit it runs. */
-interface StopBuildForge {
+/** Where a stop's repositories are read from: the account's Gitea, and the group's org there. */
+interface StopForge {
   readonly giteaOrigin: string | undefined;
   readonly owner: string | undefined;
-}
-
-/**
- * The read behind one service's build — that service's repository and commit,
- * never the stop's first service's. `null` where it names no commit: nothing to read.
- */
-export function serviceBuildRequest(
-  row: Pick<StopServiceRow, "repository" | "sha">,
-  forge: StopBuildForge,
-): ZeropsDeployRunRequest | null {
-  if (row.sha === undefined) return null;
-  return { ...forge, repo: row.repository, sha: row.sha };
 }
 
 /** A commit merged to `main` and not in front of people yet. */
@@ -1076,11 +1065,11 @@ interface WaitingCommit {
   readonly subject: string;
 }
 
-/** *Run again* on the verdict: the failed job of the service whose deploy failed. */
+/** *Run again* on the verdict: the failed deploy, asked again in HQ. */
 interface StopRunAgain {
-  readonly rerunning: boolean;
-  /** Why Gitea refused the last one, until another is pressed. */
-  readonly failure: string | null;
+  readonly running: boolean;
+  /** Why HQ refused the last one, until another is pressed. */
+  readonly refused: string | null;
   readonly onRunAgain: () => void;
 }
 
@@ -1091,10 +1080,10 @@ const ROLE_TAG: Record<GroupEnvironmentTier, ZeropsEnvironmentRole> = {
 };
 
 /**
- * Where a stop's repositories live, held across renders: the build and
+ * Where a stop's repositories live, held across renders: the commit and
  * release reads that take it are not asked again by a render alone.
  */
-function useStopForge(giteaOrigin: string | undefined, owner: string | undefined): StopBuildForge {
+function useStopForge(giteaOrigin: string | undefined, owner: string | undefined): StopForge {
   return useMemo(() => ({ giteaOrigin, owner }), [giteaOrigin, owner]);
 }
 
@@ -1108,7 +1097,7 @@ function useStopReleaseReads({
   giteaOrigin,
   owner,
   services,
-}: StopBuildForge & {
+}: StopForge & {
   readonly services: GroupEnvironmentRowInput["services"] | undefined;
 }): StopReleaseReads | undefined {
   const repositoryOf = useMemo(
@@ -1156,7 +1145,6 @@ const RELEASES_SHOWN = 5;
  * and how the stop got here (a production's releases, a stage's deploys).
  */
 export function ZeropsStopPane({
-  buildOf,
   commits,
   crumbs,
   deployed,
@@ -1194,13 +1182,8 @@ export function ZeropsStopPane({
   readonly verdict: StopVerdict;
   /** One row per service, as `serviceRows` says it. */
   readonly services: ReadonlyArray<StopServiceRow>;
-  /** Where an opened service's build is read from. */
-  readonly forge: StopBuildForge;
-  /**
-   * The build behind a service's commit where the caller already holds it — the design harness's
-   * canned runs; read from Gitea by `forge` otherwise.
-   */
-  readonly buildOf?: ((row: StopServiceRow) => ZeropsDeployRun) | undefined;
+  /** Where a production's release rows read what each carried. */
+  readonly forge: StopForge;
   /** Offered on a production that is behind — the one stop a release moves. */
   readonly release: ReleaseOffer;
   readonly runAgain?: StopRunAgain | undefined;
@@ -1283,18 +1266,18 @@ export function ZeropsStopPane({
           ) : verb?.kind === "run-again" && runAgain !== undefined ? (
             <Button
               data-zerops-primary-action="Run again"
-              disabled={runAgain.rerunning}
+              disabled={runAgain.running}
               onClick={runAgain.onRunAgain}
               size="compact"
               variant="outline"
             >
-              {runAgainLabel(runAgain.rerunning)}
+              {flowVerbLabel("redeploy", runAgain.running)}
             </Button>
           ) : undefined}
         </VerdictPanel>
-        {runAgain?.failure === null || runAgain?.failure === undefined ? null : (
+        {runAgain?.refused === null || runAgain?.refused === undefined ? null : (
           <p className="mt-1.5 px-3 text-sm text-[var(--zerops-status-failed-text)]">
-            {runAgain.failure}
+            {runAgain.refused}
           </p>
         )}
       </div>
@@ -1325,9 +1308,7 @@ export function ZeropsStopPane({
             <ul className="flex flex-col">
               {services.map((row) => (
                 <StopServiceLine
-                  buildOf={buildOf}
                   enablingServiceId={enablingServiceId ?? null}
-                  forge={forge}
                   key={row.hostname}
                   onEnableRoute={onEnableRoute}
                   row={row}
@@ -1415,12 +1396,12 @@ export function ZeropsStopPane({
 const CARD_ROW_CLASS = "grid min-h-11 items-center gap-x-4 border-t border-border/60 py-2";
 
 /**
- * A service's row: the same five places on every row, so the status dots run
+ * A service's row: the same four places on every row, so the status dots run
  * down one column — collapsed to name and state over the rest on a phone.
  */
 const SERVICE_ROW_CLASS = cn(
   CARD_ROW_CLASS,
-  "grid-cols-[1.25rem_minmax(0,1fr)_auto] gap-y-1 sm:grid-cols-[1.25rem_minmax(0,1.1fr)_minmax(0,1.8fr)_minmax(0,1fr)_minmax(0,1.4fr)]",
+  "grid-cols-[minmax(0,1fr)_auto] gap-y-1 sm:grid-cols-[minmax(0,1.1fr)_minmax(0,1.8fr)_minmax(0,1fr)_minmax(0,1.4fr)]",
 );
 
 /**
@@ -1452,23 +1433,17 @@ function CardGroup({
 
 /**
  * One service of a stop: what it is, what it runs, how that deploy went, and
- * where it answers. Its chevron opens the build behind the commit *it* runs.
+ * where it answers.
  */
 function StopServiceLine({
   row,
-  forge,
-  buildOf,
   onEnableRoute,
   enablingServiceId,
 }: {
   readonly row: StopServiceRow;
-  readonly forge: StopBuildForge;
-  readonly buildOf: ((row: StopServiceRow) => ZeropsDeployRun) | undefined;
   readonly onEnableRoute: ((serviceId: string) => void) | undefined;
   readonly enablingServiceId: string | null;
 }) {
-  const [open, setOpen] = useState(false);
-  const request = serviceBuildRequest(row, forge);
   const dot = STOP_DOT_TONE[row.tone];
   // Nothing to offer where the caller cannot act on it — a row with a button
   // that does nothing is worse than no row.
@@ -1476,31 +1451,13 @@ function StopServiceLine({
   return (
     <li className="flex flex-col">
       <div className={SERVICE_ROW_CLASS}>
-        {request === null ? (
-          <span aria-hidden="true" />
-        ) : (
-          <button
-            aria-expanded={open}
-            aria-label={serviceBuildToggleLabel(row.hostname, open)}
-            className="flex size-5 cursor-pointer items-center justify-center rounded-sm text-muted-foreground hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-hidden"
-            onClick={() => {
-              setOpen((current) => !current);
-            }}
-            type="button"
-          >
-            <ChevronRightIcon
-              aria-hidden="true"
-              className={cn("size-3.5 transition-transform", open && "rotate-90")}
-            />
-          </button>
-        )}
         <span className="flex min-w-0 flex-col">
           <span className="truncate text-sm leading-5 font-medium text-foreground">
             {row.hostname}
           </span>
           <span className="truncate text-xs leading-4 text-muted-foreground">{row.repository}</span>
         </span>
-        <span className="col-span-2 col-start-2 flex min-w-0 flex-col sm:col-span-1 sm:col-start-3 sm:row-start-1">
+        <span className="col-span-2 col-start-1 flex min-w-0 flex-col sm:col-span-1 sm:col-start-2 sm:row-start-1">
           {/* No commit and a state: what runs is not stated yet, so nothing is claimed. */}
           {row.commit !== undefined ? (
             <span className="truncate font-mono text-[13px] leading-5 text-foreground tabular-nums">
@@ -1515,14 +1472,14 @@ function StopServiceLine({
             <span className="truncate text-xs leading-4 text-muted-foreground">{row.line}</span>
           )}
         </span>
-        <span className="col-start-3 row-start-1 min-w-0 text-[13px] text-foreground sm:col-start-4">
+        <span className="col-start-2 row-start-1 min-w-0 text-[13px] text-foreground sm:col-start-3">
           {row.status === undefined ? null : dot === undefined ? (
             <span className="truncate text-muted-foreground">{row.status}</span>
           ) : (
             <StatusDot label={row.status} sentence tone={dot} />
           )}
         </span>
-        <span className="col-span-2 col-start-2 flex min-w-0 flex-col gap-1 sm:col-span-1 sm:col-start-5 sm:row-start-1">
+        <span className="col-span-2 col-start-1 flex min-w-0 flex-col gap-1 sm:col-span-1 sm:col-start-4 sm:row-start-1">
           {row.routes.length === 0 && offers.length === 0 ? (
             <span className="truncate text-[13px] text-muted-foreground">{NOT_PUBLIC_YET}</span>
           ) : null}
@@ -1567,25 +1524,7 @@ function StopServiceLine({
           })}
         </span>
       </div>
-      {!open || request === null ? null : buildOf === undefined ? (
-        <ServiceBuild request={request} />
-      ) : (
-        <ServiceBuildView run={buildOf(row)} />
-      )}
     </li>
-  );
-}
-
-/** The build behind one service's commit — read only while its row is open. */
-function ServiceBuild({ request }: { readonly request: ZeropsDeployRunRequest }) {
-  return <ServiceBuildView run={useZeropsDeployRun(request)} />;
-}
-
-function ServiceBuildView({ run }: { readonly run: ZeropsDeployRun }) {
-  return (
-    <div className="mb-2 ml-9 rounded-md bg-muted/50 px-3 py-2">
-      <ZeropsDeployRunView run={run} />
-    </div>
   );
 }
 
@@ -1710,6 +1649,8 @@ export interface ReleaseOffer {
   readonly releasing: boolean;
   /** The version it would cut, where the flow suggested one. */
   readonly tag: string | undefined;
+  /** Why it is not offered, as the flow's gate says; `undefined` while it is. */
+  readonly reason: string | undefined;
   /** Opens the release's review from what was pressed: nothing is tagged from a page (R1). */
   readonly onReview: (from: HTMLElement) => void;
 }

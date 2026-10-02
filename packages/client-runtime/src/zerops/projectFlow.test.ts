@@ -282,10 +282,18 @@ describe("a verb in flight", () => {
     );
   });
 
+  it("keys a deploy asked again by its environment and service", () => {
+    const api = { kind: "redeploy", groupId: "g1", projectId: "p-stage", service: "api" } as const;
+    expect(flowVerbKey(api)).toBe("redeploy g1/p-stage/api");
+    expect(flowVerbKey(api)).not.toBe(flowVerbKey({ ...api, service: "web" }));
+    expect(flowVerbKey(api)).not.toBe(flowVerbKey({ ...api, projectId: "p-prod" }));
+  });
+
   it.each([
     ["merge", "Merge", "Merging…"],
     ["release", "Release", "Releasing…"],
     ["roll-back", "Roll back to this", "Rolling back…"],
+    ["redeploy", "Run again", "Redeploying…"],
   ] as const)("says what %s does, then that it is doing it", (kind, idle, running) => {
     expect(flowVerbLabel(kind, false)).toBe(idle);
     expect(flowVerbLabel(kind, true)).toBe(running);

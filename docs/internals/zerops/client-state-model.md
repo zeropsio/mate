@@ -183,7 +183,7 @@ not the person's.
 | Project-creation verdict                                                                                                                               | Runtime activity (the `project.create` process)                                       | Datastream                                                               | Epoch                        |
 | Configuration, export, token, deployed-version and Mate-flag resources                                                                                 | Runtime resource broker                                                               | REST, on lease                                                           | Lease                        |
 | Registration record                                                                                                                                    | `cr/zerops/environments/records.ts`, written only by the environment machine          | Written on exchange success; `localStorage`                              | Account, persisted           |
-| Mate credential and install generation                                                                                                                 | T3 credential store, written only by the environment machine                          | Door exchange                                                            | Epoch, memory only           |
+| Mate credential and install generation                                                                                                                 | T3 credential store, written only by the environment machine                          | Door exchange; a kept session once its Mate confirms it                  | Epoch; kept per account      |
 | Reachability                                                                                                                                           | `cr/zerops/environments/reachability.ts`, pure                                        | Derived                                                                  | Epoch                        |
 | Link phase                                                                                                                                             | T3 supervisor, mirrored read-only                                                     | Mate WebSocket                                                           | Per environment              |
 | Descriptor facts (`environmentId`, `serverVersion`, `update`, `capabilities`, `zerops.identity`)                                                       | Probe store, one per origin                                                           | HTTP descriptor                                                          | Epoch                        |
@@ -195,7 +195,6 @@ not the person's.
 | Server session validity and revocation                                                                                                                 | Mate server `ZeropsMembershipWatch`                                                   | Socket close, auth block                                                 | Per session                  |
 | Gitea discovery per org                                                                                                                                | Selector over the records                                                             | Derived                                                                  | Epoch                        |
 | Gitea person session                                                                                                                                   | `cr/zerops/forge/giteaSession.ts`, one per (epoch, Gitea origin)                      | Broker `POST /person/token` via a throwaway                              | Epoch                        |
-| Repositories, pull requests, tags, releases, `environments.yaml`, branch heads, commit statuses                                                        | `cr/zerops/forge/forgeStore.ts`                                                       | Gitea REST as the person                                                 | Epoch; bounded LRU unleased  |
 | Deployment per service                                                                                                                                 | `cr/zerops/flow/deploymentStore.ts`                                                   | Pushed `activeDeploy`; REST for the version name; Gitea for build status | Epoch, per service           |
 | Group flow, release offer, mergeability                                                                                                                | Pure projections                                                                      | Derived                                                                  | —                            |
 | Verb attempts                                                                                                                                          | Command attempts keyed by target                                                      | Our verbs                                                                | Epoch                        |
@@ -511,7 +510,7 @@ Observations flow only into owners; surfaces read only projections and send back
 **The invalidation bus** is a `PubSub` owned by the account runtime: a closed, typed set of
 revalidation requests with no data and no merge semantics. Topics: `access` (granted, lapsed,
 renew-now), `inventory(org)`, `project`, `environment(target, why)`, `container(target)`,
-`deployment(service)`, `gitea-session(origin)`, `forge-org`, `forge-repo`. Only owners
+`deployment(service)`, `gitea-session(origin)`. Only owners
 of pull-based facts subscribe; the runtime accepts only `inventory` and `access`. Invalidations
 coalesce per key over 250 ms; in a hidden tab they collect into a dirty set flushed, visible first,
 on the next visible wake.
@@ -578,7 +577,7 @@ data/          the data runtime, plus access/grant.ts, access/verifier.ts, acces
 environments/  records.ts, probeStore.ts, containerMachine.ts, environmentMachine.ts,
                exchangeDriver.ts, reachability.ts, gate.ts, descriptorIndex.ts
 birth/         birthStore.ts
-forge/         giteaSession.ts, forgeStore.ts
+forge/         giteaSession.ts
 flow/          deploymentStore.ts, groupFlow.ts, envelopeInvalidations.ts
                (projectFlow.ts, release.ts, groupDeploys.ts)
 reconcilers/   groupReach.ts, deployTokenGaps.ts, throwawaySweep.ts
@@ -627,7 +626,7 @@ carries it. "Live" means it holds on `main` today.
 | Active organization per tab                                                                       | Live                                                                                   |
 | Agent availability as one projection                                                              | Live                                                                                   |
 | Server membership watch: 300 s re-check, two-pass rule, 24-hour maximum age                       | Live; the interval clamped to at most 300 s (S.0) from the first release after 0.11.41 |
-| Mate credentials in memory only                                                                   | Live                                                                                   |
+| Mate sessions kept per account, presented again once their Mate confirms them                     | Live                                                                                   |
 | Gitea sessions forgotten on account close                                                         | Live                                                                                   |
 | Account harness and sign-in guards                                                                | Live                                                                                   |
 | `Known`, `Shown`, `Cell`, `knownPresentation`, retry policy                                       | Live                                                                                   |
@@ -677,7 +676,7 @@ carries it. "Live" means it holds on `main` today.
 | Agent login reports its exit                                                                      | Live from the first release after 0.11.41                                              |
 | A deploy operation becomes uncertain after its cap                                                | Live                                                                                   |
 | Descriptor boot identity, server state stream, identity verdict split, close reasons              | S.6                                                                                    |
-| Persisted UI keys under the account key; the last route through the gate                          | Live                                                                                   |
+| Persisted UI keys under the account key; a sign-in lands on its deep link or /zerops              | Live                                                                                   |
 | Zone tests: one owner per fact family, no component I/O, no data timers                           | 5.5                                                                                    |
 | Dependency rule 1 (`cr/zerops/**` imports no React and no DOM globals)                            | Live                                                                                   |
 | Dependency rule 2 (machine and reducer files import no Effect runtime, fetch or storage)          | Live; zone test "rule 2"                                                               |

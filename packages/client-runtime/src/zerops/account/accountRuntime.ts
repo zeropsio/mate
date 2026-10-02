@@ -14,8 +14,7 @@
  *   account's organizations, projects and roles (AL-01, AL-04, MC-10): the Mate environments —
  *   the registration records, the container store with its probe store, and the exchange driver,
  *   joined and fed by `environments.ts` — and the project flow's stores: the deployment store,
- *   and on a host that gives the forge its ports the person's Gitea sessions, the forge store and
- *   the flow's command attempts, fed by `flow.ts`.
+ *   and on a host that gives the forge its ports the person's Gitea sessions, fed by `flow.ts`.
  *
  * It hands the tab's signals (§6.4, the PlatformSignals port) to the grant, the bus and the
  * post-grant stage: the page's visibility, its network and the coalesced wake become the grant's
@@ -48,8 +47,6 @@ import { makeExchangeDriver } from "../environments/exchangeDriver.ts";
 import { makeRegistrationRecords } from "../environments/records.ts";
 import { makeDeploymentStore, type DeploymentStore } from "../flow/deploymentStore.ts";
 import type { EnvelopeServices } from "../flow/envelopeInvalidations.ts";
-import { makeFlowCommands } from "../flow/flowCommands.ts";
-import { makeForgeStore } from "../forge/forgeStore.ts";
 import { makeGiteaSessions } from "../forge/giteaSession.ts";
 import {
   deploymentStorePorts,
@@ -175,9 +172,6 @@ export const makeAccountRuntime = Effect.fnUntraced(function* (
             "project" in descriptor &&
             projectKeyOf(descriptor.project) === projectKeyOf(invalidation.project),
         );
-      case "forge-org":
-      case "forge-repo":
-        return stage?.forge?.shows(invalidation) ?? false;
       case "deployment":
         return stage?.deployments.shows(invalidation.service) ?? false;
       default:
@@ -217,18 +211,8 @@ export const makeAccountRuntime = Effect.fnUntraced(function* (
       ports.forge === undefined
         ? null
         : (() => {
-            const forgeWiring = makeForgeWiring({
-              ports: ports.forge,
-              signals,
-              invalidations,
-              services,
-            });
-            const sessions = makeGiteaSessions(forgeWiring.sessionPorts);
-            return forgeWiring.start({
-              sessions,
-              store: makeForgeStore(forgeWiring.storePorts(sessions)),
-              commands: makeFlowCommands(forgeWiring.commandPorts(sessions)),
-            });
+            const forgeWiring = makeForgeWiring({ ports: ports.forge, signals });
+            return forgeWiring.start({ sessions: makeGiteaSessions(forgeWiring.sessionPorts) });
           })();
     // Finalizers run in reverse: the Gitea tokens are forgotten first, then the stores end.
     yield* Scope.addFinalizer(postGrantScope, Effect.sync(built.dispose));
@@ -245,10 +229,6 @@ export const makeAccountRuntime = Effect.fnUntraced(function* (
               return;
             case "deployment":
               deployments.invalidate(invalidation);
-              return;
-            case "forge-org":
-            case "forge-repo":
-              forge?.invalidate(invalidation);
               return;
             default:
               return;

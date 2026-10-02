@@ -50,7 +50,8 @@ export {
   type HqChanges,
   type HqStructureEvent,
 } from "./stream.ts";
-export { HQ_NOT_OPEN, hqRefusalWords } from "./refusals.ts";
+export { environmentsOf, type HqDeploy, type HqEnvironment } from "./environments.ts";
+export { enrollmentRefusalWords, HQ_NOT_OPEN, hqRefusalWords, NO_HQ_WORDS } from "./refusals.ts";
 export {
   EMPTY_REGISTRY,
   registryFromHq,

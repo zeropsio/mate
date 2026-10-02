@@ -10,12 +10,14 @@ import {
 } from "@t3tools/client-runtime/zerops";
 import {
   serviceRows,
+  stopKeyGap,
   stopVerdict,
   stopView,
   type Deployment,
   type StopFailure,
   type StopService,
 } from "@t3tools/client-runtime/zerops/flow";
+import type { HqDeploy } from "@t3tools/client-runtime/zerops/hq";
 import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vite-plus/test";
@@ -23,7 +25,7 @@ import { describe, expect, it, vi } from "vite-plus/test";
 import { service as platformService } from "~/zerops/__fixtures__/platformData";
 import type { ZeropsCommitsState } from "~/zerops/useZeropsRepositoryCommits";
 
-import { serviceBuildRequest, ZeropsGroupPane, ZeropsStopPane } from "./ZeropsGroupDetail";
+import { ZeropsGroupPane, ZeropsStopPane } from "./ZeropsGroupDetail";
 import { ZeropsReleaseRows } from "./ZeropsReleaseRows";
 
 /** The rows' one clock, fixed: an age is the producer's to test, not the minute this ran in. */
@@ -112,6 +114,7 @@ function render(
         offered: false,
         releasing: false,
         tag: undefined,
+        reason: undefined,
         onReview: () => {},
       }}
       repo={undefined}
@@ -212,20 +215,31 @@ describe("ZeropsGroupPane", () => {
 
 const fullSha = (seed: string) => seed.padEnd(40, "0");
 
-/** One service of a stop, as the group's Gitea reads it: what it runs and how its deploy went. */
+/** HQ's record of a deploy of `commit` in `state`. */
+const deployRecord = (commit: string, state: HqDeploy["state"]): HqDeploy => ({
+  sha: commit,
+  state,
+  failure: state === "failed" ? "job" : null,
+  message: null,
+  appVersionId: null,
+  processId: null,
+  requestedBy: null,
+  at: "2026-09-19T11:00:00Z",
+});
+
+/** One service of a stop: what it runs, and how HQ records its deploy of that commit went. */
 const service = (
-  environment: string,
   hostname: string,
   seed: string,
   name: string | undefined,
-  state: "success" | "failure" = "success",
+  state: HqDeploy["state"] = "live",
 ): EnvironmentServiceState => ({
   hostname,
   repository: `${hostname}dev`,
   appVersionName: [fullSha(seed), name, name === undefined ? undefined : "gitea"]
     .filter((part) => part !== undefined)
     .join(" "),
-  statuses: [{ context: `mate/deploy/${environment}/${hostname}`, state }],
+  deploy: { latest: deployRecord(fullSha(seed), state), live: null },
 });
 
 const UNREAD: Shown<Deployment> = { state: "unread", waitingFor: null };
@@ -241,6 +255,7 @@ const RELEASE_OFF = {
   offered: false,
   releasing: false,
   tag: undefined,
+  reason: undefined,
   onReview: () => {},
 };
 
@@ -329,7 +344,15 @@ interface StopCase {
   readonly platform?: Shown<ReadonlyArray<StopService>>;
   readonly waiting?: ReadonlyArray<{ readonly sha: string; readonly subject: string }>;
   readonly offered?: string;
+  /** Why the release is not offered, as the flow's gate says. */
+  readonly releaseReason?: string;
   readonly failed?: StopFailure;
+  /** Whether the deploy key HQ holds for the stop no longer works. */
+  readonly keyInvalid?: boolean;
+  /** Whether HQ holds a deploy key for the stop; held unless given. */
+  readonly keyHeld?: boolean;
+  /** Whether the person may keep the stop's deploy key. */
+  readonly mayKeep?: boolean;
   readonly releases?: number;
   readonly atMainHead?: boolean;
   readonly commits?: ZeropsCommitsState;
@@ -349,6 +372,8 @@ function renderStop(input: StopCase): string {
     sources: input.tier === "production" ? ("release" as const) : ["main"],
     services: input.services,
     environment: name,
+    keyHeld: input.keyHeld ?? true,
+    keyInvalid: input.keyInvalid ?? false,
   };
   const stop = environmentRow(declared);
   const view = stopView({ deployment: input.deployment ?? UNREAD, row: stop, nowMs: NOW });
@@ -372,10 +397,15 @@ function renderStop(input: StopCase): string {
     releasing: undefined,
     failed: input.failed,
     waiting: waiting.length,
-    release: { offered: input.offered !== undefined, tag: input.offered },
+    release: {
+      offered: input.offered !== undefined,
+      tag: input.offered,
+      reason: input.releaseReason,
+    },
     releasedAge: undefined,
     since: undefined,
     atMainHead: input.atMainHead ?? false,
+    keyGap: stopKeyGap({ ...declared, mayKeep: input.mayKeep, project: stop.name }),
   });
   return renderToStaticMarkup(
     <ZeropsStopPane
@@ -422,10 +452,7 @@ function renderStop(input: StopCase): string {
   );
 }
 
-const TWO_LIVE = [
-  service("production", "api", "a1", "v0.1.13"),
-  service("production", "web", "b2", "v0.1.13"),
-];
+const TWO_LIVE = [service("api", "a1", "v0.1.13"), service("web", "b2", "v0.1.13")];
 
 const count = (markup: string, needle: string | RegExp) => markup.split(needle).length - 1;
 
@@ -452,7 +479,7 @@ describe("ZeropsStopPane", () => {
       name: "a production three changes behind, with a release offered",
       input: {
         tier: "production",
-        services: [service("production", "api", "a1", "v0.1.13")],
+        services: [service("api", "a1", "v0.1.13")],
         releases: 1,
         waiting: [
           { sha: fullSha("c1"), subject: "Two-step checkout" },
@@ -474,22 +501,71 @@ describe("ZeropsStopPane", () => {
       name: "a production whose deploy failed",
       input: {
         tier: "production",
-        services: [service("production", "api", "a1", "v0.1.14", "failure")],
+        services: [service("api", "a1", "v0.1.14", "failed")],
         failed: {
           label: "v0.1.14",
           service: "api",
           sha: undefined,
           running: undefined,
-          jobKnown: false,
+          redeploy: undefined,
+          mayRunAgain: false,
         },
       },
       contains: ["The deploy of v0.1.14 failed on api."],
     },
     {
+      name: "a stage with no deploy key yet, to one who may not mint it",
+      input: {
+        tier: "stage",
+        services: [service("api", "a1", undefined, "failed")],
+        keyHeld: false,
+        mayKeep: false,
+      },
+      contains: [
+        "It has no deploy key yet.",
+        "Someone with Full access to the stage project in Zerops mints one here.",
+      ],
+      lacks: ["Run again"],
+    },
+    {
+      name: "a stage with no deploy key yet, to one who may mint it",
+      input: {
+        tier: "stage",
+        services: [service("api", "a1", undefined)],
+        keyHeld: false,
+        mayKeep: true,
+      },
+      contains: [],
+      lacks: ["It has no deploy key yet."],
+    },
+    {
+      name: "a production whose release is not offered says why",
+      input: {
+        tier: "production",
+        services: [service("api", "a1", "v0.1.13")],
+        releaseReason: "Releases move to HQ next; none is offered until then.",
+      },
+      contains: ["Releases move to HQ next; none is offered until then."],
+      lacks: ["Production already runs what is merged."],
+    },
+    {
+      name: "a stage whose deploy key no longer works",
+      input: {
+        tier: "stage",
+        services: [service("api", "a1", undefined, "failed")],
+        keyInvalid: true,
+      },
+      contains: [
+        "Its deploy key no longer works.",
+        "Someone with Full access to the stage project in Zerops mints a new one here.",
+      ],
+      lacks: ["Run again"],
+    },
+    {
       name: "a stage at the head of main",
       input: {
         tier: "stage",
-        services: [service("stage", "api", "a1", undefined)],
+        services: [service("api", "a1", undefined)],
         atMainHead: true,
         commits: {
           kind: "read",
@@ -539,7 +615,7 @@ describe("ZeropsStopPane", () => {
       name: "a production behind",
       input: {
         tier: "production",
-        services: [service("production", "api", "a1", "v0.1.13")],
+        services: [service("api", "a1", "v0.1.13")],
         waiting: [{ sha: fullSha("c1"), subject: "Two-step checkout" }],
         offered: "v0.1.14",
       },
@@ -549,7 +625,7 @@ describe("ZeropsStopPane", () => {
       name: "a stage at the head of main",
       input: {
         tier: "stage",
-        services: [service("stage", "api", "a1", undefined)],
+        services: [service("api", "a1", undefined)],
         atMainHead: true,
       },
       detail: fullSha("a1").slice(0, 7),
@@ -604,7 +680,7 @@ describe("ZeropsStopPane", () => {
     };
     const markup = renderStop({
       tier: "stage",
-      services: [service("stage", "api", "b2", undefined)],
+      services: [service("api", "b2", undefined)],
       deployment: deploying,
       platform: {
         ...NONE,
@@ -637,7 +713,7 @@ describe("ZeropsStopPane", () => {
   it("draws the verdict's verb as an outline button, not a filled one", () => {
     const markup = renderStop({
       tier: "production",
-      services: [service("production", "api", "a1", "v0.1.13")],
+      services: [service("api", "a1", "v0.1.13")],
       waiting: [{ sha: fullSha("c1"), subject: "Two-step checkout" }],
       offered: "v0.1.14",
     });
@@ -675,7 +751,7 @@ describe("ZeropsStopPane", () => {
         name: "a single repository: its newest commit's subject, over who, when and the sha",
         input: {
           tier: "production",
-          services: [service("production", "api", "a1", "v0.1.13")],
+          services: [service("api", "a1", "v0.1.13")],
           releases: 2,
           reads: READ_BRANCHES,
         },
@@ -707,7 +783,7 @@ describe("ZeropsStopPane", () => {
         name: "the last row shown: what came after the first release not shown",
         input: {
           tier: "production",
-          services: [service("production", "api", "a1", "v0.1.13")],
+          services: [service("api", "a1", "v0.1.13")],
           releases: 6,
           reads: READ_BRANCHES,
         },
@@ -785,30 +861,5 @@ describe("ZeropsStopPane", () => {
       "Deploys",
     );
     expect(renderStop({ tier: "stage", services: [] })).not.toContain("Releases");
-  });
-});
-
-describe("serviceBuildRequest", () => {
-  const forge = { giteaOrigin: "https://gitea.example", owner: "shop" };
-  const rows = serviceRows({
-    environment: "production",
-    services: TWO_LIVE,
-    platform: { state: "unread", waitingFor: null },
-    mainHead: undefined,
-    routes: [],
-    offers: [],
-    nowMs: NOW,
-    age: () => "",
-  });
-
-  it("reads the build of the service it expands, not the first one's", () => {
-    expect(rows.map((row) => serviceBuildRequest(row, forge))).toEqual([
-      { ...forge, repo: "apidev", sha: fullSha("a1") },
-      { ...forge, repo: "webdev", sha: fullSha("b2") },
-    ]);
-  });
-
-  it("reads nothing for a service with nothing deployed", () => {
-    expect(serviceBuildRequest({ repository: "apidev", sha: undefined }, forge)).toBeNull();
   });
 });

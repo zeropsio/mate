@@ -72,12 +72,65 @@ describe("arrivalSteps — what the Mate's own setup says (`/mate/setup.json`)",
       want: ["git:done", "you:done", "standup:done"],
     },
     {
+      case: "a Mate with no stand-up to run: no stand-up step",
+      setup: { git: "done", signin: "done", standup: "none" },
+      want: ["git:done", "you:done"],
+    },
+    {
       case: "a stand-up that failed",
       setup: { git: "done", signin: "done", standup: "failed" },
       want: ["git:done", "you:done", "standup:failed"],
     },
   ] as const)("draws $case", ({ setup, want }) => {
     expect(ids(setup)).toEqual(["copy:done", "workspace:active", ...want]);
+  });
+});
+// A New project's first Mate has no stand-up, so its Git access is the one place its HQ says it
+// cannot come: failed, with why and what the person can do — and done once it is granted.
+describe("arrivalSteps — Git access that failed", () => {
+  const gitStep = (setup: Parameters<typeof arrivalSteps>[0]["setup"]) =>
+    arrivalSteps({ ...deriveBirthProgress(CREATING, NOW), setup }, WREN, NOW).find(
+      (step) => step.id === "git",
+    );
+
+  it.each([
+    {
+      case: "no official HQ: an admin sets it up",
+      setup: { git: "failed", gitFailure: { reason: "no_hq" }, signin: "waiting", standup: "none" },
+      why: "This organization has no HQ yet. Ask an admin to set it up.",
+    },
+    {
+      case: "HQ refused it: its reason",
+      setup: {
+        git: "failed",
+        gitFailure: { reason: "refused", code: "not_a_mate" },
+        signin: "waiting",
+        standup: "none",
+      },
+      why: "HQ has no record of this Mate yet. Finish its setup from its menu.",
+    },
+    {
+      case: "failed, why not said",
+      setup: { git: "failed", signin: "waiting", standup: "none" },
+      why: undefined,
+    },
+  ] as const)("$case", ({ setup, why }) => {
+    expect(gitStep(setup)).toEqual({
+      id: "git",
+      label: "Wren's Git access",
+      state: "failed",
+      ...(why === undefined ? {} : { why }),
+    });
+  });
+
+  it("is done once it is granted, after it failed", () => {
+    const failed = { git: "failed", gitFailure: { reason: "no_hq" } } as const;
+    expect(gitStep({ ...failed, signin: "waiting", standup: "none" })?.state).toBe("failed");
+    expect(gitStep({ git: "done", signin: "waiting", standup: "none" })).toEqual({
+      id: "git",
+      label: "Wren's Git access",
+      state: "done",
+    });
   });
 });
 

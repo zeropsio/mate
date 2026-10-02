@@ -48,7 +48,7 @@ import { JUDGED_PER_MAIN_MOVE, type MergeabilityKind } from "@t3tools/shared/hqC
 
 import { type GitEventKind, appendEvent } from "./gitEvents.ts";
 import { Leader, NotLeader } from "./leader.ts";
-import { catchUp, missing } from "./reconcile.ts";
+import { catchUp, importing, missing } from "./reconcile.ts";
 
 /** A change whose branch moved: its repository, its Mate, its number. */
 export interface PushedChange {
@@ -130,6 +130,8 @@ export const judge = (git: HqGit, repo: Repo, mateId: string, number: number) =>
 export const gitHostLayer = (options: {
   /** Where the bare repositories live: `/mnt/vol/git` in the container. */
   readonly rootDir: string;
+  /** Where a repository may be imported from on disk: the migration's bundles (`importJob.ts`). */
+  readonly importRoots?: ReadonlyArray<string>;
   /** The first pause before opening git again after it failed, doubling up to 30 s; 1 s. */
   readonly openBackoff?: Duration.Duration;
 }): Layer.Layer<GitHost, never, Leader | SqlClient.SqlClient> =>
@@ -256,13 +258,16 @@ export const gitHostLayer = (options: {
               .convergeRepo(repo)
               .pipe(Effect.catch((error) => Effect.logWarning("git converge failed", error)));
           }
-          const lacked = yield* missing(git, sql);
-          if (Object.keys(lacked).length > 0) {
-            yield* Effect.logError("HQ's records name what git lacks: serving nothing", lacked);
-            yield* leader.hold("restore_mismatch");
-            return found;
+          // An unfinished import agrees its own records and git as it resumes (`reconcile.ts`).
+          if (!(yield* importing(sql))) {
+            const lacked = yield* missing(git, sql);
+            if (Object.keys(lacked).length > 0) {
+              yield* Effect.logError("HQ's records name what git lacks: serving nothing", lacked);
+              yield* leader.hold("restore_mismatch");
+              return found;
+            }
+            yield* catchUp(git, sql, leader);
           }
-          yield* catchUp(git, sql, leader);
           const repos = yield* sql<{
             readonly app_id: string;
             readonly name: string;
@@ -322,6 +327,7 @@ export const gitHostLayer = (options: {
           const opened: { git?: HqGit } = {};
           const git = yield* makeHqGit({
             rootDir: options.rootDir,
+            importRoots: options.importRoots ?? [],
             authenticate: (request) => principals.get(request) ?? null,
             canRead: (principal, repo) => {
               const mayRead = readers.get(principal);

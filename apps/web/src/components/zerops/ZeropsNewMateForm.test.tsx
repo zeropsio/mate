@@ -176,7 +176,7 @@ describe("the New Mate dialog", () => {
       steps: [
         ["Otto comes up", "about 1½–2 min"],
         ["You sign Otto in with your Claude or ChatGPT subscription", ""],
-        ["Otto sets up development, deploying Acme Docs' code", "about 6–10 min"],
+        ["Otto sets up development, deploying Acme Docs' code", "up to 15 min"],
       ],
       note: "You can leave meanwhile.",
     });

@@ -406,6 +406,56 @@ describe("environment machine (DESIGN §4.4)", () => {
     expect(retryDelays).toEqual([2_000, 4_000, 8_000, 15_000, CAPPED_RETRY_MS]);
   });
 
+  it("counts the failures since its link last connected, through a Try now, until it connects", () => {
+    const fail = (machine: EnvironmentMachine, nowMs: number) =>
+      drive(
+        machine,
+        [
+          {
+            type: "EXCHANGE_FAILED",
+            attempt: lastExchange(machine),
+            failure: { class: "retryable", cause: { kind: "network" } },
+            descriptor: null,
+          },
+        ],
+        nowMs,
+      );
+    const started = drive(initialEnvironment({ record: null }), [
+      { type: "GUARDS", guards: GUARDS },
+      { type: "CONTAINER", container: { level: "ready" } },
+      { type: "PRESENCE", presence: { kind: "present", origin: ORIGIN } },
+    ]);
+    expect(started.machine.failuresSinceConnect).toBe(0);
+    const once = fail(started.machine, started.nowMs);
+    expect(once.machine.failuresSinceConnect).toBe(1);
+    // Try now starts the ladder over; what failed since the link connected still stands.
+    const retried = drive(once.machine, [{ type: "USER_RETRY" }], once.nowMs);
+    expect(retried.machine.failuresSinceConnect).toBe(1);
+    const twice = fail(retried.machine, retried.nowMs);
+    expect(twice.machine.failuresSinceConnect).toBe(2);
+    const again = drive(twice.machine, [{ type: "TICK" }], twice.nowMs);
+    const held = drive(
+      again.machine,
+      [
+        {
+          type: "EXCHANGE_SUCCEEDED",
+          attempt: lastExchange(again.machine),
+          environmentId: ENV_A,
+          descriptor: null,
+        },
+        { type: "INSTALLED", environmentId: ENV_A },
+      ],
+      again.nowMs,
+    );
+    expect(held.machine.failuresSinceConnect).toBe(2);
+    const linked = drive(
+      held.machine,
+      [{ type: "LINK", link: { phase: "connected" } }],
+      held.nowMs,
+    );
+    expect(linked.machine.failuresSinceConnect).toBe(0);
+  });
+
   it("the ladder starts over once the registry took the credential", () => {
     const started = drive(initialEnvironment({ record: null }), [
       { type: "GUARDS", guards: GUARDS },

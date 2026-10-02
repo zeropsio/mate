@@ -737,6 +737,7 @@
       "title": "Zerops hosted landing",
       "components": [
         "apps/web/src/components/zerops/landing/ZeropsAccountControl.tsx",
+        "apps/web/src/components/zerops/landing/ZeropsAppFailed.tsx",
         "apps/web/src/components/zerops/landing/ZeropsHandoverFailed.tsx",
         "apps/web/src/components/zerops/landing/ZeropsHostedFrame.tsx",
         "apps/web/src/components/zerops/landing/ZeropsHostedLanding.tsx",
@@ -818,6 +819,7 @@
         "apps/web/src/components/zerops/MateLinkLine.tsx",
         "apps/web/src/components/zerops/MateLinkStage.tsx",
         "apps/web/src/components/zerops/RouteStandIn.tsx",
+        "apps/web/src/components/zerops/WaitLine.tsx",
         "apps/web/src/components/zerops/ZeropsArrivalSteps.tsx",
         "apps/web/src/components/zerops/ArrivalSwap.tsx",
         "apps/web/src/components/zerops/MateFacePicker.tsx",
@@ -833,7 +835,6 @@
         "apps/web/src/components/zerops/projects/ProjectsView.tsx",
         "apps/web/src/components/zerops/projects/projectsView.logic.ts",
         "apps/web/src/components/zerops/ZeropsAskDialog.tsx",
-        "apps/web/src/components/zerops/ZeropsDeployRun.tsx",
         "apps/web/src/components/zerops/ZeropsChangeLinkChip.tsx",
         "apps/web/src/components/zerops/ZeropsGroupDetail.tsx",
         "apps/web/src/components/zerops/ZeropsHistoryView.tsx",
@@ -1030,7 +1031,6 @@
         "apps/web/src/components/zerops/ZeropsStopMenu.test.tsx",
         "apps/web/src/components/zerops/ZeropsReleaseRows.test.tsx",
         "apps/web/src/components/zerops/ZeropsGroupDetail.test.tsx",
-        "apps/web/src/components/zerops/ZeropsDeployRun.test.tsx",
         "apps/web/src/zerops/agentActivity.test.ts",
         "packages/client-runtime/src/zerops/mateTints.test.ts",
         "packages/client-runtime/src/zerops/publicRoutes.test.ts",
@@ -1052,7 +1052,7 @@
       "captures": []
     },
     {
-      "id": "zerops-gitea",
+      "id": "zerops-git",
       "title": "Git page",
       "components": [
         "apps/web/src/components/zerops/ZeropsGitPage.tsx",
@@ -1063,7 +1063,7 @@
       "entryPoints": [
         {
           "kind": "route",
-          "value": "/gitea"
+          "value": "/git"
         },
         {
           "kind": "sidebar-item",

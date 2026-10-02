@@ -474,7 +474,6 @@ describe("useMateActions — Finish setup on a Mate HQ holds no record of", () =
       registration: {
         hq: { kind: "official", projectId: "p-hq" },
         kind: "mate-record",
-        displayName: unrecorded.project.name,
         record: { name: expect.any(String), face: expect.any(String) },
         birth: { standUp: false, closedOff: true },
       },

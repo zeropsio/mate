@@ -10,6 +10,7 @@ import {
   candidatesNotice,
   findCandidate,
   heldCandidates,
+  learnAddresses,
   listsNoProject,
   presentCandidates,
   selectCandidates,
@@ -509,6 +510,49 @@ describe("candidatesNotice", () => {
   });
 });
 
+describe("candidatesNotice for a region that says nothing while it reads", () => {
+  const surface = {
+    subject: "your projects",
+    entity: "project",
+    source: "zerops" as const,
+    checking: "Reading your projects…",
+    negative: null,
+  };
+
+  it.each<{ readonly name: string; readonly listing: Known<ReadonlyArray<CandidateRow>> }>([
+    { name: "unread", listing: { state: "unread", waitingFor: null } },
+    { name: "being read", listing: { state: "reading", sinceMs: 10, attempt: 1 } },
+  ])("is silent while $name", ({ listing }) => {
+    expect(candidatesNotice(listing, surface, 0, { readingSilent: true })).toBeNull();
+  });
+
+  it.each<{ readonly name: string; readonly listing: Known<ReadonlyArray<CandidateRow>> }>([
+    { name: "waiting for a connection", listing: { state: "unread", waitingFor: "online" } },
+    { name: "paused in the background", listing: { state: "unread", waitingFor: "visible" } },
+    { name: "still reading over its rows", listing: known([row("a")], "partial") },
+    { name: "still reading with none", listing: known([], "partial") },
+  ])("still says why it waits when $name", ({ listing }) => {
+    expect(candidatesNotice(listing, surface, 0, { readingSilent: true })).not.toBeNull();
+  });
+
+  it("still says a failed read, with its one Try again", () => {
+    const notice = candidatesNotice(
+      {
+        state: "failed",
+        failure: { kind: "transport", detail: "gateway" },
+        atMs: 10,
+        attempt: 1,
+        retryAtMs: null,
+      },
+      surface,
+      0,
+      { readingSilent: true },
+    );
+    expect(notice?.region).toBe("message");
+    expect(notice?.affordance).toEqual({ kind: "retry", label: "Try again" });
+  });
+});
+
 describe("listsNoProject", () => {
   const isProject = (row: ZeropsCandidate) => !row.project.tagList?.includes("tool");
 
@@ -587,5 +631,38 @@ describe("a withheld listing", () => {
 
   it("leaves its words to the app's one lapse banner", () => {
     expect(candidatesNotice(withheld, surface, 0)).toBeNull();
+  });
+});
+
+// Review, pass 32: mobile read a listing's value to remember addresses, which web and mobile never
+// do (rule 5) — the runtime reads the known listings for them.
+describe("learnAddresses — what the listings teach the address memory, and the soonest wait's end", () => {
+  const CREATED = "2026-10-02T12:00:00.000Z";
+  const row = (serviceId: string, seen: { until: number } | { origin: string }) =>
+    ({
+      key: `p-${serviceId}:${serviceId}`,
+      project: { id: `p-${serviceId}` },
+      group: "until" in seen ? "provisioning" : "ready",
+      service: { id: serviceId, name: "zcp", status: "ACTIVE", created: CREATED },
+      ...("until" in seen
+        ? { addressAwaited: { since: seen.until - 120_000, until: seen.until } }
+        : { containerOrigin: seen.origin }),
+    }) as unknown as ZeropsCandidate;
+  const unread: Known<ReadonlyArray<ZeropsCandidate>> = { state: "unread", waitingFor: null };
+
+  it("reads nothing off a listing not known yet", () => {
+    expect(learnAddresses(new Map(), [unread])).toEqual({ memory: new Map(), waitEnd: null });
+  });
+
+  it("remembers every known listing's containers, and says when the soonest wait ends", () => {
+    const learned = learnAddresses(new Map(), [
+      known([row("s-wait", { until: 300_000 }), row("s-up", { origin: "https://up.example" })]),
+      unread,
+      known([row("s-later", { until: 500_000 })]),
+    ]);
+    expect(learned.waitEnd).toBe(300_000);
+    expect(learned.memory.get("s-up")).toEqual({ addressed: true });
+    expect(learned.memory.get("s-wait")).toEqual({ addressed: false, since: 180_000 });
+    expect(learned.memory.get("s-later")).toEqual({ addressed: false, since: 380_000 });
   });
 });

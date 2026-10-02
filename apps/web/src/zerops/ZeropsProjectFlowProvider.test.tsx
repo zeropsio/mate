@@ -1,4 +1,4 @@
-import { flowVerbKey, type ZeropsProject } from "@t3tools/client-runtime/zerops";
+import { flowVerbKey, type AppRecipe, type ZeropsProject } from "@t3tools/client-runtime/zerops";
 import {
   ZeropsAccountId,
   ZeropsOrganizationId,
@@ -9,6 +9,7 @@ import {
   type ProjectRef,
 } from "@t3tools/client-runtime/zerops/data";
 import type { DeploymentStore, StopService } from "@t3tools/client-runtime/zerops/flow";
+import type { HqEnvironment } from "@t3tools/client-runtime/zerops/hq";
 import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
 import { changeUrl, type HqChange } from "@t3tools/shared/hqChanges";
 import { RegistryContext } from "@effect/atom-react";
@@ -26,9 +27,9 @@ import { bindAccountFlow } from "./accountForge";
 import { HeldInventoryContext } from "./inventoryContext";
 import { useZeropsProjectFlow, type ZeropsProjectFlowValue } from "./projectFlowContext";
 import {
-  activeDeployOf,
   HELD_VERB_MS,
   HQ_CHANGES_UNANSWERED,
+  RELEASE_MOVES_TO_HQ,
   VERB_ALREADY_RUNNING,
   ZeropsProjectFlowProvider,
 } from "./ZeropsProjectFlowProvider";
@@ -53,13 +54,9 @@ const access = vi.hoisted(() => ({
     | { readonly kind: "withheld"; readonly reason: "access-lapsed"; readonly cause: null },
 }));
 
-/**
- * What the verbs act on: the client they act as, and what each half answers for `g1` — `null`
- * leaves the half unread, as the tests above expect.
- */
+/** What the verbs act on: the client they act as, and what the Gitea half answers for `g1`. */
 const verbs = vi.hoisted(() => ({
   client: null as unknown,
-  deploys: null as unknown,
   forge: { released: { releases: [], tags: [] } } as unknown,
   invalidated: [] as Array<readonly [string, unknown]>,
   forgeFailures: new Map<string, string>(),
@@ -139,31 +136,19 @@ vi.mock("./accountHq", async (importOriginal) => ({
       hq.asked.push(["close", link]);
       return hq.answer();
     },
+    redeploy: (appId: string, environment: string, deploy: unknown) => {
+      hq.asked.push(["redeploy", { appId, environment, deploy }]);
+      return hq.answer();
+    },
   }),
 }));
 vi.mock("./useZeropsRegistry", () => ({
   useZeropsRegistry: () => ({ registry: { groups: registryGroups.groups } }),
 }));
-vi.mock("./useZeropsDeployedVersion", () => ({
-  useZeropsDeployedVersionReader: () => async () => undefined,
-}));
-/** The groups the deploy half was last asked to read. */
-const deployReads = vi.hoisted(() => ({
-  groups: [] as ReadonlyArray<{
-    readonly groupId: string;
-    readonly projects: ReadonlyArray<{ readonly projectId: string }>;
-  }>,
-}));
-
-vi.mock("./useZeropsGroupDeploys", () => ({
-  useZeropsGroupDeploys: (input: { readonly groups: typeof deployReads.groups }) => {
-    deployReads.groups = input.groups;
-    return {
-      deploys: verbs.deploys === null ? new Map() : new Map([["g1", verbs.deploys]]),
-      failures: new Map(),
-      invalidate: () => {},
-    };
-  },
+/** What each application's recipe on `main` offers, as HQ answered it. */
+const recipes = vi.hoisted(() => ({ read: new Map<string, AppRecipe>() }));
+vi.mock("./useZeropsAppRecipes", () => ({
+  useZeropsAppRecipes: () => recipes.read,
 }));
 vi.mock("./useZeropsGroupForge", () => ({
   useZeropsGroupForge: () => ({
@@ -239,6 +224,46 @@ function installTestDom(): void {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
 }
 
+/** An atom registry signed in to org-1, as HQ's atoms read it. */
+function signedInAtoms() {
+  const atoms = AtomRegistry.make();
+  atoms.set(zeropsSessionAtom, {
+    status: "signed-in",
+    organizationStatus: "selected",
+    activeOrganization: { organizationId: "org-1" },
+  } as ZeropsSessionView);
+  return atoms;
+}
+
+/** An environment of `g1` as HQ records it, with no deploy yet. */
+function environment(projectId: string, tier: HqEnvironment["tier"]): HqEnvironment {
+  return {
+    projectId,
+    tier,
+    name: tier,
+    sources: tier === "production" ? ["release"] : ["main"],
+    order: 1,
+    keyHeld: true,
+    keyInvalid: false,
+    deploys: [],
+  };
+}
+
+/** HQ's stream for org-1 telling `g1`'s environments. */
+function structureWith(environments: ReadonlyArray<HqEnvironment>): HqStructureView {
+  return {
+    organizationId: "org-1",
+    structure: {
+      ungrouped: [],
+      apps: [{ id: "g1", name: "Harbor", projects: [], environments }],
+    },
+    changes: null,
+    readAt: 1,
+    current: true,
+    unavailableSince: null,
+  };
+}
+
 describe("ZeropsProjectFlowProvider", () => {
   afterEach(() => {
     gitea.readable = false;
@@ -250,8 +275,8 @@ describe("ZeropsProjectFlowProvider", () => {
     inventoryRefs.authority = new Map();
     registryGroups.groups = [{ groupId: "g1", slug: "harbor" }];
     verbs.client = null;
-    verbs.deploys = null;
     verbs.invalidated = [];
+    recipes.read = new Map();
     verbs.forgeFailures = new Map();
     verbs.forge = { released: { releases: [], tags: [] } };
     vi.unstubAllGlobals();
@@ -459,9 +484,9 @@ describe("ZeropsProjectFlowProvider", () => {
     });
   });
 
-  // DESIGN M7: withholding is not loss. A project the grant withholds alone leaves every shown
-  // read, and its group's deploy read keeps it, so its tier is never offered as missing again.
-  it("a project the grant withholds alone stays in its group's deploy read", async () => {
+  // DESIGN M7: withholding is not loss. A project the grant withholds alone keeps its stop, from
+  // HQ's record, so its tier is never offered as missing again.
+  it("a project the grant withholds alone keeps its stop, and its tier is not asked for", async () => {
     installTestDom();
     const { createRoot } = await import("react-dom/client");
     const held = {
@@ -476,24 +501,37 @@ describe("ZeropsProjectFlowProvider", () => {
       ],
       services: new Map(),
     };
+    recipes.read = new Map([
+      ["g1", { tiers: ["stage", "production"], repositories: new Map([["app", "appdev"]]) }],
+    ]);
+    const atoms = signedInAtoms();
+    atoms.set(hqStructureAtom, structureWith([environment("prod-1", "production")]));
+    const seen: Array<ZeropsProjectFlowValue> = [];
+    function Probe() {
+      seen.push(useZeropsProjectFlow());
+      return null;
+    }
 
     const root = createRoot(document.createElement("div") as unknown as Element);
     await act(async () => {
       root.render(
         createElement(
-          HeldInventoryContext,
-          { value: held },
-          createElement(ZeropsProjectFlowProvider, null, null),
+          RegistryContext.Provider,
+          { value: atoms },
+          createElement(
+            HeldInventoryContext,
+            { value: held },
+            createElement(ZeropsProjectFlowProvider, null, createElement(Probe)),
+          ),
         ),
       );
     });
 
-    expect(
-      deployReads.groups.map(({ groupId, projects }) => [
-        groupId,
-        projects.map(({ projectId }) => projectId),
-      ]),
-    ).toEqual([["g1", ["prod-1"]]]);
+    const flow = seen.at(-1)?.flows.get("g1");
+    expect(flow?.environments.map(({ projectId, name }) => [projectId, name])).toEqual([
+      ["prod-1", "harbor-prod"],
+    ]);
+    expect(flow?.missing.map(({ tier }) => tier)).toEqual(["stage"]);
 
     await act(async () => {
       root.unmount();
@@ -607,30 +645,47 @@ describe("ZeropsProjectFlowProvider", () => {
     });
   });
 
-  describe("release", () => {
-    const SHOWN = "a".repeat(40);
+  it("refuses a release: its offer moves to HQ next", async () => {
+    installTestDom();
+    const { createRoot } = await import("react-dom/client");
+    const seen: Array<ZeropsProjectFlowValue> = [];
+    function Probe() {
+      seen.push(useZeropsProjectFlow());
+      return null;
+    }
+    const root = createRoot(document.createElement("div") as unknown as Element);
+    await act(async () => {
+      root.render(createElement(ZeropsProjectFlowProvider, null, createElement(Probe)));
+    });
+    expect(seen.at(-1)?.flows.get("g1")?.release.gate).toEqual({
+      allowed: false,
+      reason: RELEASE_MOVES_TO_HQ,
+    });
+    let outcome: unknown;
+    await act(async () => {
+      outcome = await seen.at(-1)?.release("g1");
+    });
+    expect(outcome).toEqual({ ok: false, reason: RELEASE_MOVES_TO_HQ });
+    await act(async () => {
+      root.unmount();
+    });
+  });
+
+  describe("roll back", () => {
     const MOVED = "b".repeat(40);
     const MERGED = "2".repeat(40);
+    const ROLL_BACK = flowVerbKey({ kind: "roll-back", groupId: "g1", tag: "v1.0.0" });
 
-    /** A releasable group whose group repo `main` was at `SHOWN` when it was read. */
-    async function mountReleasable() {
+    /** A group whose group repo `main` is at `MOVED` at the press, and whose `v1.0.0` lists MERGED. */
+    async function mountRollBack() {
       gitea.readable = true;
       const tags: Array<{ tag: string; target: string; message?: string | undefined }> = [];
       verbs.client = {
         getBranch: async () => ({ name: "main", commit: { id: MOVED } }),
+        listTags: async () => [{ name: "v1.0.0", message: `app ${MERGED}` }],
         createTag: async (_owner: string, _repo: string, input: (typeof tags)[number]) => {
           tags.push(input);
         },
-      };
-      verbs.deploys = {
-        declarations: [],
-        environments: [],
-        pullRequests: [],
-        missing: [],
-        mainHeadRepositories: new Map([["app", "appdev"]]),
-        mainHeads: new Map([["app", MERGED]]),
-        groupHead: SHOWN,
-        releaseContents: [],
       };
       installTestDom();
       const { createRoot } = await import("react-dom/client");
@@ -645,70 +700,59 @@ describe("ZeropsProjectFlowProvider", () => {
           root.render(createElement(ZeropsProjectFlowProvider, null, createElement(Probe)));
         });
       await render();
-      expect(seen.at(-1)?.flows.get("g1")?.release.gate).toEqual({ allowed: true });
       return { seen, tags, render, root };
     }
 
-    it("one click creates one tag", async () => {
-      const { seen, tags, root } = await mountReleasable();
-      const value = seen.at(-1)!;
+    it("tags main as read at the press, and answers with the tag it made", async () => {
+      const { seen, tags, root } = await mountRollBack();
+      let outcome: unknown;
       await act(async () => {
-        await Promise.all([value.release("g1"), value.release("g1")]);
+        outcome = await seen.at(-1)!.rollBack("g1", "v1.0.0");
       });
-      expect(tags).toHaveLength(1);
+      expect(tags.map(({ target }) => target)).toEqual([MOVED]);
+      expect(outcome).toEqual({ ok: true, tag: tags[0]?.tag });
+      expect(seen.at(-1)?.trouble).toBeNull();
       await act(async () => {
         root.unmount();
       });
     });
 
-    it("the group is re-read right after a release tag is created, and Release waits for it", async () => {
-      const { seen, render, root } = await mountReleasable();
+    it("the group's tags are re-read right after the tag is made, and Roll back waits for them", async () => {
+      const { seen, render, root } = await mountRollBack();
       await act(async () => {
-        await seen.at(-1)!.release("g1");
+        await seen.at(-1)!.rollBack("g1", "v1.0.0");
       });
       expect(verbs.invalidated).toEqual([["g1", { kind: "tags" }]]);
-      // The tag is made; until the group's tags answer again Release stays pressed.
-      expect(seen.at(-1)?.pending.has(flowVerbKey({ kind: "release", groupId: "g1" }))).toBe(true);
+      expect(seen.at(-1)?.pending.has(ROLL_BACK)).toBe(true);
       verbs.forge = { ...(verbs.forge as object) };
       await render();
-      expect(seen.at(-1)?.pending.has(flowVerbKey({ kind: "release", groupId: "g1" }))).toBe(false);
+      expect(seen.at(-1)?.pending.has(ROLL_BACK)).toBe(false);
       await act(async () => {
         root.unmount();
       });
     });
 
-    it("a failed re-read after a tag does not leave Release pending", async () => {
-      const { seen, render, root } = await mountReleasable();
-      const key = flowVerbKey({ kind: "release", groupId: "g1" });
+    it("a failed re-read after the tag does not leave Roll back pending", async () => {
+      const { seen, render, root } = await mountRollBack();
       await act(async () => {
-        await seen.at(-1)!.release("g1");
+        await seen.at(-1)!.rollBack("g1", "v1.0.0");
       });
-      expect(seen.at(-1)?.pending.has(key)).toBe(true);
+      expect(seen.at(-1)?.pending.has(ROLL_BACK)).toBe(true);
       // The re-read the tag asked for fails: the forge answer stays the one the tag was made against.
       verbs.forgeFailures = new Map([["g1", "Gitea did not answer"]]);
       await render();
-      expect(seen.at(-1)?.pending.has(key)).toBe(false);
+      expect(seen.at(-1)?.pending.has(ROLL_BACK)).toBe(false);
       // The failure clearing does not bring back a wait that already ended.
       verbs.forgeFailures = new Map();
       await render();
-      expect(seen.at(-1)?.pending.has(key)).toBe(false);
+      expect(seen.at(-1)?.pending.has(ROLL_BACK)).toBe(false);
       await act(async () => {
         root.unmount();
       });
     });
 
-    it("Release tags the sha the offer showed even after main moved", async () => {
-      const { seen, tags, root } = await mountReleasable();
-      await act(async () => {
-        await seen.at(-1)!.release("g1");
-      });
-      expect(tags.map(({ target }) => target)).toEqual([SHOWN]);
-      await act(async () => {
-        root.unmount();
-      });
-    });
-    it("Release keeps waiting when the group's tags answer again while the tag is being made", async () => {
-      const { seen, render, root } = await mountReleasable();
+    it("keeps waiting when the group's tags answer again while the tag is being made", async () => {
+      const { seen, render, root } = await mountRollBack();
       let finish = () => {};
       const client = verbs.client as Record<string, unknown>;
       verbs.client = {
@@ -718,9 +762,9 @@ describe("ZeropsProjectFlowProvider", () => {
             finish = resolve;
           }),
       };
-      let pressed: Promise<void> = Promise.resolve();
+      let pressed: Promise<unknown> = Promise.resolve();
       await act(async () => {
-        pressed = seen.at(-1)!.release("g1");
+        pressed = seen.at(-1)!.rollBack("g1", "v1.0.0");
       });
       // A pass that started before the tag existed answers while it is being made.
       verbs.forge = { ...(verbs.forge as object) };
@@ -729,81 +773,36 @@ describe("ZeropsProjectFlowProvider", () => {
         finish();
         await pressed;
       });
-      expect(seen.at(-1)?.pending.has(flowVerbKey({ kind: "release", groupId: "g1" }))).toBe(true);
+      expect(seen.at(-1)?.pending.has(ROLL_BACK)).toBe(true);
       verbs.forge = { ...(verbs.forge as object) };
       await render();
-      expect(seen.at(-1)?.pending.has(flowVerbKey({ kind: "release", groupId: "g1" }))).toBe(false);
+      expect(seen.at(-1)?.pending.has(ROLL_BACK)).toBe(false);
       await act(async () => {
         root.unmount();
       });
     });
 
-    it.each([
-      ["a release", (value: ZeropsProjectFlowValue) => value.release("g1")],
-      ["a roll back", (value: ZeropsProjectFlowValue) => value.rollBack("g1", "v1.0.0")],
-    ] as const)(
-      "%s answers with the tag it made, which its review follows",
-      async (_case, press) => {
-        const { seen, tags, render, root } = await mountReleasable();
-        const client = verbs.client as Record<string, unknown>;
-        verbs.client = {
-          ...client,
-          listTags: async () => [{ name: "v1.0.0", message: `app ${MERGED}` }],
-        };
-        await render();
-        let outcome: Awaited<ReturnType<typeof press>> | undefined;
-        await act(async () => {
-          outcome = await press(seen.at(-1)!);
-        });
-        expect(tags).toHaveLength(1);
-        expect(outcome).toEqual({ ok: true, tag: tags[0]?.tag });
-        await act(async () => {
-          root.unmount();
-        });
-      },
-    );
-
-    it("Release stops being pending once the forge has not answered again in time", async () => {
+    it("stops being pending once the forge has not answered again in time", async () => {
       vi.useFakeTimers();
       try {
-        const { seen, root } = await mountReleasable();
-        const key = flowVerbKey({ kind: "release", groupId: "g1" });
+        const { seen, root } = await mountRollBack();
         await act(async () => {
-          await seen.at(-1)!.release("g1");
+          await seen.at(-1)!.rollBack("g1", "v1.0.0");
         });
         await act(async () => {
           vi.advanceTimersByTime(HELD_VERB_MS - 1);
         });
-        expect(seen.at(-1)?.pending.has(key)).toBe(true);
+        expect(seen.at(-1)?.pending.has(ROLL_BACK)).toBe(true);
         await act(async () => {
           vi.advanceTimersByTime(1);
         });
-        expect(seen.at(-1)?.pending.has(key)).toBe(false);
+        expect(seen.at(-1)?.pending.has(ROLL_BACK)).toBe(false);
         await act(async () => {
           root.unmount();
         });
       } finally {
         vi.useRealTimers();
       }
-    });
-
-    it("Roll back tags main as read at the press while what production runs is not read yet", async () => {
-      const { seen, tags, render, root } = await mountReleasable();
-      const client = verbs.client as Record<string, unknown>;
-      verbs.client = {
-        ...client,
-        listTags: async () => [{ name: "v1.0.0", message: `app ${MERGED}` }],
-      };
-      verbs.deploys = null;
-      await render();
-      await act(async () => {
-        await seen.at(-1)!.rollBack("g1", "v1.0.0");
-      });
-      expect(tags.map(({ target }) => target)).toEqual([MOVED]);
-      expect(seen.at(-1)?.trouble).toBeNull();
-      await act(async () => {
-        root.unmount();
-      });
     });
   });
 });
@@ -1066,21 +1065,95 @@ describe("merging and closing a change in HQ", () => {
   });
 });
 
-describe("a group read's key on what its services run", () => {
-  const pushed = {
-    id: "service-1",
-    activeAppVersion: { id: "version-1", lastUpdate: "2026-10-01T09:00:00Z" },
-  } as never;
-  it("moves once the account's store states the version, so a fallen-back read reads again", () => {
-    const unread = activeDeployOf(pushed, { state: "unread", waitingFor: null });
-    const known = activeDeployOf(pushed, {
-      state: "known",
-      value: { activeId: "version-1", source: "GIT", name: "3f9c1b2 v1.0.0" },
-      asOf: { ordinal: 1, atMs: 0 },
-      coverage: "complete",
-      freshness: { kind: "live" },
+describe("asking HQ to run a failed deploy again", () => {
+  const FAILED_SHA = "f".repeat(40);
+  const REDEPLOY = flowVerbKey({
+    kind: "redeploy",
+    groupId: "g1",
+    projectId: "p-stage",
+    service: "app",
+  });
+  const record = (state: "failed" | "pending"): HqEnvironment["deploys"][number]["latest"] => ({
+    sha: FAILED_SHA,
+    state,
+    failure: state === "failed" ? "job" : null,
+    message: null,
+    appVersionId: null,
+    processId: null,
+    requestedBy: null,
+    at: "2026-10-02T10:00:00.000Z",
+  });
+  const stageWith = (state: "failed" | "pending"): HqEnvironment => ({
+    ...environment("p-stage", "stage"),
+    deploys: [{ service: "app", latest: record(state), live: null }],
+  });
+
+  afterEach(() => {
+    hq.asked = [];
+    hq.answer = () => Promise.resolve({});
+    vi.unstubAllGlobals();
+  });
+
+  /** The provider over HQ's stream recording the stage's newest deploy of `app` as failed. */
+  async function mount() {
+    const atoms = signedInAtoms();
+    atoms.set(hqStructureAtom, structureWith([stageWith("failed")]));
+    installTestDom();
+    const { createRoot } = await import("react-dom/client");
+    const seen: Array<ZeropsProjectFlowValue> = [];
+    function Probe() {
+      seen.push(useZeropsProjectFlow());
+      return null;
+    }
+    const root = createRoot(document.createElement("div") as unknown as Element);
+    await act(async () => {
+      root.render(
+        createElement(
+          RegistryContext.Provider,
+          { value: atoms },
+          createElement(ZeropsProjectFlowProvider, null, createElement(Probe)),
+        ),
+      );
     });
-    expect(known).not.toBe(unread);
-    expect(activeDeployOf(pushed, { state: "unread", waitingFor: null })).toBe(unread);
+    const say = (state: "failed" | "pending") =>
+      act(async () => {
+        atoms.set(hqStructureAtom, structureWith([stageWith(state)]));
+      });
+    const unmount = () =>
+      act(async () => {
+        root.unmount();
+      });
+    return { seen, say, unmount };
+  }
+
+  it("asks it by the environment's name, held until HQ's stream no longer records it failed", async () => {
+    const { seen, say, unmount } = await mount();
+    let outcome: unknown;
+    await act(async () => {
+      outcome = await seen.at(-1)!.redeploy("g1", "p-stage", { service: "app", sha: FAILED_SHA });
+    });
+    expect(outcome).toEqual({ ok: true });
+    expect(hq.asked).toEqual([
+      [
+        "redeploy",
+        { appId: "g1", environment: "stage", deploy: { service: "app", sha: FAILED_SHA } },
+      ],
+    ]);
+    expect(seen.at(-1)?.pending.has(REDEPLOY)).toBe(true);
+    await say("pending");
+    expect(seen.at(-1)?.pending.has(REDEPLOY)).toBe(false);
+    await unmount();
+  });
+
+  it("hands HQ's refusal back in its words, and holds nothing", async () => {
+    hq.answer = () => Promise.reject(new Error("A newer deploy took its place."));
+    const { seen, unmount } = await mount();
+    let outcome: unknown;
+    await act(async () => {
+      outcome = await seen.at(-1)!.redeploy("g1", "p-stage", { service: "app", sha: FAILED_SHA });
+    });
+    expect(outcome).toEqual({ ok: false, reason: "A newer deploy took its place." });
+    expect(seen.at(-1)?.pending.has(REDEPLOY)).toBe(false);
+    await unmount();
   });
 });

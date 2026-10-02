@@ -11,6 +11,19 @@ import {
   type StageMark,
   type StageStandings,
 } from "./stageMarks.ts";
+import type { HqDeploy } from "./hq/environments.ts";
+
+/** HQ's record of a deploy in `state`. */
+const deployRecord = (state: HqDeploy["state"]): HqDeploy => ({
+  sha: "0000000000000000000000000000000000000000",
+  state,
+  failure: state === "failed" ? "job" : null,
+  message: null,
+  appVersionId: null,
+  processId: null,
+  requestedBy: null,
+  at: "2026-10-02T10:00:00.000Z",
+});
 
 /** A full sha whose first character says which commit it is. */
 const sha = (mark: string): string => mark.repeat(40);
@@ -23,9 +36,6 @@ const change = (commit: string, subject = `Change ${commit.slice(0, 1)}`) => ({
   sha: commit,
   subject,
 });
-
-const heads = (entries: Record<string, string>): ReadonlyMap<string, string> =>
-  new Map(Object.entries(entries));
 
 describe("stageMarks", () => {
   const contents: ReadonlyArray<ServiceChanges> = [
@@ -41,35 +51,23 @@ describe("stageMarks", () => {
   it.each<{
     readonly name: string;
     readonly contents?: ReadonlyArray<ServiceChanges>;
-    readonly mainHeads?: ReadonlyMap<string, string>;
     readonly stage: StageStandings | undefined;
     readonly expected: Record<string, StageMark>;
   }>([
     {
-      name: "at or older than the stage's commit is on stage",
+      name: "the commit the stage runs is on stage, wherever it is listed",
       stage: standing(),
-      expected: { [D]: "none", [C]: "on-stage", [B]: "on-stage" },
-    },
-    {
-      name: "the same in an oldest-first list",
-      contents: [{ service: "app", commits: [change(B), change(C), change(D)] }],
-      stage: standing(),
-      expected: { [D]: "none", [C]: "on-stage", [B]: "on-stage" },
-    },
-    {
-      name: "a stage at main's head has every change",
-      stage: standing({ runs: new Map([["app", D]]) }),
-      expected: { [D]: "on-stage", [C]: "on-stage", [B]: "on-stage" },
+      expected: { [D]: "none", [C]: "on-stage", [B]: "none" },
     },
     {
       name: "the commit the stage deploys now",
       stage: standing({ deploying: D }),
-      expected: { [D]: "deploying-on-stage", [C]: "on-stage", [B]: "on-stage" },
+      expected: { [D]: "deploying-on-stage", [C]: "on-stage", [B]: "none" },
     },
     {
       name: "the commit whose deploy failed on the stage",
       stage: standing({ failed: new Set(["app"]) }),
-      expected: { [D]: "none", [C]: "failed-on-stage", [B]: "on-stage" },
+      expected: { [D]: "none", [C]: "failed-on-stage", [B]: "none" },
     },
     {
       name: "no main-following stage marks nothing",
@@ -85,7 +83,7 @@ describe("stageMarks", () => {
       // A version name since 2026-09-30 spells the commit short: it is the listed one it begins.
       name: "a short sha places the stage as the listed commit it begins",
       stage: standing({ runs: new Map([["app", C.slice(0, 7)]]), deploying: D.slice(0, 7) }),
-      expected: { [D]: "deploying-on-stage", [C]: "on-stage", [B]: "on-stage" },
+      expected: { [D]: "deploying-on-stage", [C]: "on-stage", [B]: "none" },
     },
     {
       name: "a short sha two listed commits begin places nothing",
@@ -109,19 +107,18 @@ describe("stageMarks", () => {
       expected: { [D]: "none", [C]: "none", [B]: "none" },
     },
     {
-      name: "a shared commit is on stage only where every service has it",
+      name: "a shared commit is on stage only where every service runs it",
       contents: [
         { service: "app", commits: [change(D), change(C)] },
         { service: "api", commits: [change(D), change(C)] },
       ],
-      mainHeads: heads({ app: D, api: D }),
       stage: standing({
         runs: new Map([
           ["app", D],
-          ["api", C],
+          ["api", D],
         ]),
       }),
-      expected: { [D]: "none", [C]: "on-stage" },
+      expected: { [D]: "on-stage", [C]: "none" },
     },
     {
       name: "a failure on one service of a shared commit is the commit's",
@@ -129,15 +126,14 @@ describe("stageMarks", () => {
         { service: "app", commits: [change(D), change(C)] },
         { service: "api", commits: [change(D), change(C)] },
       ],
-      mainHeads: heads({ app: D, api: D }),
       stage: standing({
         runs: new Map([
           ["app", D],
-          ["api", C],
+          ["api", D],
         ]),
         failed: new Set(["app"]),
       }),
-      expected: { [D]: "failed-on-stage", [C]: "on-stage" },
+      expected: { [D]: "failed-on-stage", [C]: "none" },
     },
     {
       name: "a failure marks only what the failed service runs",
@@ -145,7 +141,6 @@ describe("stageMarks", () => {
         { service: "app", commits: [change(D), change(C)] },
         { service: "api", commits: [change(D), change(C)] },
       ],
-      mainHeads: heads({ app: D, api: D }),
       stage: standing({
         runs: new Map([
           ["app", C],
@@ -155,12 +150,8 @@ describe("stageMarks", () => {
       }),
       expected: { [D]: "none", [C]: "failed-on-stage" },
     },
-  ])("$name", ({ contents: listed, mainHeads, stage, expected }) => {
-    const marks = stageMarks({
-      contents: listed ?? contents,
-      mainHeads: mainHeads ?? heads({ app: D }),
-      stage,
-    });
+  ])("$name", ({ contents: listed, stage, expected }) => {
+    const marks = stageMarks({ contents: listed ?? contents, stage });
     expect(Object.fromEntries(marks)).toEqual(expected);
   });
 });
@@ -176,13 +167,11 @@ describe("stageStandings", () => {
   const service = (
     hostname: string,
     appVersionName: string | undefined,
-    status?: "success" | "failure" | "pending",
+    status?: HqDeploy["state"],
   ): EnvironmentServiceState => ({
     hostname,
     appVersionName,
-    ...(status === undefined
-      ? {}
-      : { statuses: [{ context: `mate/deploy/stage/${hostname}`, state: status }] }),
+    ...(status === undefined ? {} : { deploy: { latest: deployRecord(status), live: null } }),
   });
 
   it.each<{
@@ -193,7 +182,7 @@ describe("stageStandings", () => {
   }>([
     {
       name: "each service's whole commit from its version name",
-      services: [service("app", `${C} v1.2.0 ada`, "success"), service("api", B)],
+      services: [service("app", `${C} v1.2.0 ada`, "live"), service("api", B)],
       deployment: known({ kind: "running", activatedAt: null, version: deployedVersion(C) }),
       expected: {
         runs: new Map([
@@ -222,7 +211,7 @@ describe("stageStandings", () => {
     },
     {
       name: "a failed deploy is the failed service's alone",
-      services: [service("app", C, "success"), service("api", C, "failure")],
+      services: [service("app", C, "live"), service("api", C, "failed")],
       deployment: undefined,
       expected: {
         runs: new Map([
@@ -234,8 +223,6 @@ describe("stageStandings", () => {
       },
     },
   ])("$name", ({ services, deployment, expected }) => {
-    expect(stageStandings({ environment: { environment: "stage", services }, deployment })).toEqual(
-      expected,
-    );
+    expect(stageStandings({ environment: { services }, deployment })).toEqual(expected);
   });
 });

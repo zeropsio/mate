@@ -15,7 +15,7 @@ import type {
 } from "@t3tools/client-runtime/zerops";
 import type { TakenBotNames } from "@t3tools/client-runtime/zerops/projections";
 import type { MateTintId } from "@t3tools/shared/brand";
-import { useId, useMemo, useState } from "react";
+import { useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 import { Button } from "../ui/button";
 import {
@@ -151,14 +151,14 @@ export function PressingPanel({ pressing }: { readonly pressing: PressingView })
         <DialogDescription>
           {pressing.failed ??
             pressing.notice ??
-            "Keep this open for a few seconds: after this it needs nobody."}
+            "Keep this open for about half a minute: after this it needs nobody."}
         </DialogDescription>
       </DialogHeader>
       <DialogPanel>
         <PressSteps name={pressing.name} steps={pressing.steps} />
       </DialogPanel>
       {pressing.onTryAgain === undefined && pressing.onOpen === undefined ? null : (
-        <DialogFooter>
+        <DialogFooter className="mt-auto">
           {pressing.onTryAgain === undefined ? null : (
             <Button onClick={pressing.onTryAgain}>Try again</Button>
           )}
@@ -171,9 +171,60 @@ export function PressingPanel({ pressing }: { readonly pressing: PressingView })
   );
 }
 
+/**
+ * The form, then the press in its place at the height the form had: Create pressed dropped the
+ * New project dialog from 673 to 386 px under the pointer, and Add's from 599 to 258 (pass 30,
+ * 2026-10-02). The press's steps keep the top of the dialog, the footer its bottom.
+ */
+export function FormOrPress({
+  pressing,
+  children,
+}: {
+  readonly pressing: PressingView | undefined;
+  readonly children: ReactNode;
+}) {
+  const box = useRef<HTMLDivElement>(null);
+  const formHeight = useRef<number | null>(null);
+  const [held, setHeld] = useState<number | null>(null);
+  const pressed = pressing !== undefined;
+  useLayoutEffect(() => {
+    const element = box.current;
+    if (element === null || pressed) return;
+    const measure = () => {
+      formHeight.current = element.getBoundingClientRect().height;
+    };
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(element);
+    return () => {
+      observer.disconnect();
+    };
+  }, [pressed]);
+  useLayoutEffect(() => {
+    setHeld(pressed ? formHeight.current : null);
+  }, [pressed]);
+  return (
+    <div
+      className="flex min-h-0 flex-col"
+      ref={box}
+      style={held === null ? undefined : { minHeight: held }}
+    >
+      {pressing === undefined ? children : <PressingPanel pressing={pressing} />}
+    </div>
+  );
+}
+
 /** The form on its own, so it can be rendered and read without a portal. */
 export function ZeropsEnvironmentCreationForm(props: ZeropsEnvironmentCreationFormProps) {
-  if (props.pressing !== undefined) return <PressingPanel pressing={props.pressing} />;
+  return (
+    <FormOrPress pressing={props.pressing}>
+      <CreationForm {...props} />
+    </FormOrPress>
+  );
+}
+
+function CreationForm(props: ZeropsEnvironmentCreationFormProps) {
   if (props.role !== "dev") return <EnvironmentForm {...props} />;
   const { groupName, defaultBotName, proposeName, takenBotNames, tier, tierLoading } = props;
   const { defaultTintFor, adding, addError, closed, onDoorAction, onCancel, onCreate } = props;

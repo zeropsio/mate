@@ -17,6 +17,10 @@
  *
  * Afterwards no change branch is without its record, and a new change's number passes them all.
  *
+ * While the migration's import is unfinished (`importing`), neither runs: the import records a
+ * repository before it brings it, and its releases after, and agrees the two itself as it resumes
+ * under the next leader (`importJob.ts`; migration-only, it goes with T14).
+ *
  * @module reconcile
  */
 import type { GitError, HqGit, Repo } from "@t3tools/hq-git";
@@ -41,6 +45,14 @@ const isReleaseTag = Schema.is(ReleaseTag);
 
 /** Who a reconciled record is by. */
 const BY = "restore";
+
+/** Whether the migration's import is queued, running, or stopped short of done. */
+export const importing = (sql: SqlClient.SqlClient): Effect.Effect<boolean, SqlError> =>
+  Effect.map(
+    sql<{ readonly unfinished: boolean }>`
+      SELECT EXISTS (SELECT 1 FROM hq_import WHERE state <> 'done') AS unfinished`,
+    ([row]) => row?.unfinished === true,
+  );
 
 /** How many recorded things git lacks, by kind; none when the records and git agree. */
 export type Missing = Readonly<Record<string, number>>;

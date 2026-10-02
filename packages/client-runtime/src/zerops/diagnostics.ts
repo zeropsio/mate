@@ -70,7 +70,8 @@ interface MateDiagnosticSpans {
   readonly "identity-exchange": {
     readonly start: { readonly origin: string; readonly reason: IdentityExchangeReason };
     readonly end:
-      | { readonly outcome: "success" }
+      /** `kept`: connected with a session kept from an earlier load, nothing minted. */
+      | { readonly outcome: "success"; readonly kept?: true }
       | ({ readonly outcome: "failure"; readonly retryable: boolean } & DiagnosticFailure);
   };
   /**
@@ -88,7 +89,7 @@ interface MateDiagnosticSpans {
   };
   /** One pass over every group of the project flow; `answered` is how many groups it read. */
   readonly "flow-pass": {
-    readonly start: { readonly pass: "forge" | "deploys"; readonly groups: number };
+    readonly start: { readonly pass: "forge"; readonly groups: number };
     readonly end: { readonly answered: number };
   };
 }

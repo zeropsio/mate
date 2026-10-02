@@ -2,7 +2,6 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   deployTargetTier,
-  ENVIRONMENTS_DOCUMENT_PATH,
   RECIPE_TIER_PATHS,
   recipeProjectImportYaml,
   recipeServicesWithout,
@@ -51,7 +50,6 @@ describe("the group repo's paths", () => {
       stage: "3 — Stage/import.yaml",
       production: "4 — Small Production/import.yaml",
     });
-    expect(ENVIRONMENTS_DOCUMENT_PATH).toBe("environments.yaml");
   });
 });
 

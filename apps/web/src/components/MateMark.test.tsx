@@ -31,6 +31,17 @@ describe("MateMark", () => {
     expect(html).toContain('visibility="hidden"');
   });
 
+  it("renders an awake live mark open from its first frame, where the still one stood", () => {
+    const html = renderToStaticMarkup(<MateMark awake playful />);
+
+    expect(html).toContain('data-mate-mark="live"');
+    // The eyes show and the band, still drawn for the driver, is out of sight.
+    const eyes = /<g fill="currentColor"[^>]*visibility="([a-z]+)"/u.exec(html)?.[1];
+    const band = /<g clip-path="[^"]+"[^>]*visibility="([a-z]+)"/u.exec(html)?.[1];
+    expect(eyes).toBe("visible");
+    expect(band).toBe("hidden");
+  });
+
   it("keeps the extruded side wall invisible until the slab turns", () => {
     const html = renderToStaticMarkup(<MateMark playful />);
     expect(html).toContain('opacity="0"');

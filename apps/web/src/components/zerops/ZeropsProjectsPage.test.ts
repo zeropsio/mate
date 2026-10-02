@@ -42,7 +42,6 @@ import gitPageSource from "./ZeropsGitPage.tsx?raw";
 import sidebarTreeSource from "./SidebarZeropsTree.tsx?raw";
 import sidebarSource from "../Sidebar.tsx?raw";
 import newProjectSource from "./ZeropsNewProjectHost.tsx?raw";
-import deployRunSource from "./ZeropsDeployRun.tsx?raw";
 import verdictPanelSource from "./primitives/VerdictPanel.tsx?raw";
 import releaseRowsSource from "./ZeropsReleaseRows.tsx?raw";
 import historyViewSource from "./ZeropsHistoryView.tsx?raw";
@@ -729,7 +728,6 @@ describe("a status word's hand", () => {
     ["the projects screen", projectsPageSource],
     ["a project's own page", groupDetailSource],
     ["the Git page", gitPageSource],
-    ["a deploy's run", deployRunSource],
     ["the verdict panel", verdictPanelSource],
     ["a project's releases", releaseRowsSource],
     ["a history", historyViewSource],
@@ -786,7 +784,6 @@ describe("a project's next step on the projects page", () => {
 
   it("merges, closes, releases and rolls back from no row: every such verb opens a review", () => {
     for (const source of [projectsPageSource, groupDetailSource]) {
-      expect(source).not.toContain("mergePullRequest(");
       expect(source).not.toContain(".merge(");
       expect(source).not.toContain(".close(");
       expect(source).not.toContain(".release(");

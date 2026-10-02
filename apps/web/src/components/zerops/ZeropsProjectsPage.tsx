@@ -28,6 +28,7 @@ import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../
 import { Spinner } from "../ui/spinner";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { environmentsWithSnapshotAtom } from "~/state/shell";
+import { hqEnvironmentsAtom } from "~/state/zerops";
 import {
   PROJECT_ORDER_CHOICES,
   readProjectsOnScreen,
@@ -35,6 +36,8 @@ import {
   useProjectOrderOptions,
 } from "~/zerops/projectOrderPreference";
 import {
+  applyFirstBuildGiveUp,
+  firstBuildOverdue,
   applyProjectCreationVerdict,
   normalizeOrigin,
   type ZeropsCandidate,
@@ -64,8 +67,13 @@ import { useSetUpEnvironment } from "~/zerops/setUpEnvironment";
 import { askNewProject } from "~/zerops/newProjectAsk";
 import { useEnvironmentCreation } from "~/zerops/useEnvironmentCreation";
 import { useConnectMate, type MateConnectTarget } from "~/zerops/accountEnvironments";
-import { intendContainer, useZeropsContainers } from "~/zerops/zeropsContainers";
 import {
+  intendContainer,
+  readContainerInitAt,
+  useZeropsContainers,
+} from "~/zerops/zeropsContainers";
+import {
+  birthPresses,
   beginPress,
   finishMateSetup,
   forgetPress,
@@ -91,7 +99,6 @@ import { useZeropsCreationVerdicts } from "~/zerops/useZeropsCreationVerdicts";
 import { useNowMs } from "~/zerops/useNowMs";
 import { mateUpdateStatus } from "~/zerops/mateUpdate";
 import { useZeropsMateUpdateStates } from "~/zerops/useZeropsMateUpdate";
-import { useZeropsDeployTokenGaps } from "~/zerops/useZeropsDeployTokenGaps";
 import { runZeropsCommand, useZeropsData } from "~/zerops/zeropsDataContext";
 import type { AuthGateState } from "~/environments/primary/auth";
 import { mateFaceOf, mateReviewWaits, type ZeropsAgentActivity } from "~/zerops/agentActivity";
@@ -129,6 +136,7 @@ import {
   type ZeropsGroup,
   type ZeropsMembership,
   type ZeropsProjectOrder,
+  mayOffer,
   offerAsker,
 } from "@t3tools/client-runtime/zerops";
 import { invalidateZerops } from "~/zerops/accountInvalidations";
@@ -164,7 +172,7 @@ import { useZeropsGroupOrganizations } from "~/zerops/useZeropsGroupOrganization
 import { useZeropsRegistry } from "~/zerops/useZeropsRegistry";
 import { useZeropsProjectFlow } from "~/zerops/projectFlowContext";
 import { REVIEW_LABEL, REVIEW_RELEASE_LABEL, useOpenReview } from "~/zerops/review";
-import { readZeropsCellOnce } from "~/zerops/useZeropsDeployedVersion";
+import { readZeropsCellOnce } from "~/zerops/readZeropsCell";
 import { deployRowTone, TAKING_LONGER_LINE } from "./ZeropsProjectRow.logic";
 import { ZeropsReleaseRows } from "./ZeropsReleaseRows";
 import { ZeropsReleaseVerb } from "./ZeropsGroupDetail";
@@ -210,6 +218,8 @@ import {
 import { ZeropsOrganizationScope, ZeropsOrganizationSwitcher } from "./ZeropsOrganizationScope";
 import { ZeropsSessionAccountControl } from "./landing/ZeropsAccountControl";
 import { ZeropsHostedFrame } from "./landing/ZeropsHostedFrame";
+import { PageWaitLine } from "./WaitLine";
+import { BOOT_WAIT_LINE_MS } from "~/zerops/waitLine.logic";
 
 /** One creation in flight, or just finished, on this screen. */
 interface EnvironmentCreationView {
@@ -844,12 +854,16 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
     presses.find((press) => press.organizationId === activeOrganization?.id && press.container)
       ?.projectId ?? null,
   );
+  // A first build half an hour on reads as the platform leaves it, with what removes it.
   const candidates = useMemo(
     () =>
       observedCandidates.map((candidate) =>
-        applyProjectCreationVerdict(candidate, creationVerdicts.get(candidate.project.id)),
+        applyFirstBuildGiveUp(
+          applyProjectCreationVerdict(candidate, creationVerdicts.get(candidate.project.id)),
+          nowMs,
+        ),
       ),
-    [creationVerdicts, observedCandidates],
+    [creationVerdicts, nowMs, observedCandidates],
   );
   // A Mate this tab pressed lands the person in its conversation once it is
   // connected. Auto-connect (the account runtime's) reaches the door — it never
@@ -861,7 +875,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
   const seenBirthsRef = useRef(new Set<string>());
   const finishedBirthProjectsRef = useRef(new Set<string>());
   useEffect(() => {
-    for (const press of presses) seenBirthsRef.current.add(press.projectId);
+    for (const projectId of birthPresses(presses)) seenBirthsRef.current.add(projectId);
     // A connect this page's own `connectContainer` is mid-flight on will
     // reach `finishBirth` itself; racing in here would only navigate twice.
     if (connectingOrigin !== null) return;
@@ -1011,6 +1025,8 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
     return {
       candidate,
       health: candidateHealth.get(candidate.key),
+      // A first build past its grace is still on its way, taking longer.
+      firstBuildOverdue: firstBuildOverdue(candidate, nowMs),
       ...(mateFlag === undefined ? {} : { mateFlag }),
       waiting,
       can: mateRowCan(asker, candidate.project.id),
@@ -1112,7 +1128,6 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
               : {
                   hq,
                   kind: "mate-record",
-                  displayName: candidate.project.name,
                   record,
                   birth: { standUp: false, closedOff: true },
                 },
@@ -1497,17 +1512,20 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
         setConnectError(null);
         setRestartingCandidateKey(candidate.key);
         const project = projectRef(activeOrganization.id, candidate.project.id);
+        // The container's initAt is read before the verb: the restart is over once it moves.
         void readContainerAfter(
           candidate,
-          runZeropsCommand(
-            runtime.commands.restartService({
-              kind: "service",
-              project,
-              serviceId: ZeropsServiceId.make(serviceId),
+          readContainerInitAt(candidate.key).then((initAt) =>
+            runZeropsCommand(
+              runtime.commands.restartService({
+                kind: "service",
+                project,
+                serviceId: ZeropsServiceId.make(serviceId),
+              }),
+            ).then(() => {
+              intendContainer(candidate.key, { kind: "restart", initAt });
             }),
-          ).then(() => {
-            intendContainer(candidate.key, { kind: "restart" });
-          }),
+          ),
         )
           .catch((cause: unknown) => {
             setConnectError(zeropsErrorMessage(cause));
@@ -1577,7 +1595,6 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
   // project states it: an account on a devel region or behind a custom domain is read, never
   // guessed.
   const accountGitea = useAccountGitea(activeOrganization?.id);
-  const giteaProjectId = accountGitea?.projectId;
   const giteaOrigin = accountGitea?.state.url;
   // The registry — which groups exist and which projects are in them (ADR 0002), read from HQ.
   const registryState = useZeropsRegistry();
@@ -1938,62 +1955,35 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
     ),
   });
 
-  // A stage or a production whose creation lost its last writes — the
-  // registry, the broker's grant, the declaration — is finished here, off the
-  // same list, once no creation is on its way in this tab
-  // (`useZeropsGroupEnvironmentReconcile`).
-  // Only a group whose `environments.yaml` was read says what it declares: one still unread
-  // would read as declaring nothing, and every environment in it as half-made.
-  const declaredByGroup = useMemo(
-    () =>
-      new Map(
-        [...groupDeploys].flatMap(([groupId, state]) =>
-          state.declarationsRead
-            ? [[groupId, new Set(state.environments.map((entry) => entry.projectId))] as const]
-            : [],
-        ),
-      ),
-    [groupDeploys],
-  );
-  // An environment made before a job deployed (D27) has no deploy token on
-  // the broker; a person who may mint one finishes it here like any other
-  // write a creation lost.
-  const declaredProjects = useMemo(
-    () => [...declaredByGroup.values()].flatMap((projects) => [...projects]),
-    [declaredByGroup],
-  );
-  const [deployTokenGeneration, setDeployTokenGeneration] = useState(0);
-  const withoutDeployToken = useZeropsDeployTokenGaps({
-    giteaProjectId,
-    declaredProjects,
-    enabled:
-      status === "signed-in" &&
-      (activeOrganization?.roleCode === "ADMIN" || activeOrganization?.roleCode === "OWNER"),
-    generation: deployTokenGeneration,
-  });
+  // A stage or a production whose creation lost its last writes — its attach to its application,
+  // its deploy key — or whose key HQ does not hold, or holds broken (main E07), is finished here,
+  // off the same list, once no creation is on its way in this tab
+  // (`useZeropsGroupEnvironmentReconcile`). Only an application whose environments HQ has said says
+  // what it holds: one still unsaid would read as holding nothing, and every environment in it as
+  // half-made.
+  const heldEnvironments = useAtomValue(hqEnvironmentsAtom);
   const halfMade = useMemo(
     () =>
-      halfMadeGroupEnvironments({
-        projects: candidates.map((candidate) => candidate.project),
-        registry: registryState.registry,
-        declared: declaredByGroup,
-        withoutDeployToken,
-      }),
-    [candidates, declaredByGroup, registryState.registry, withoutDeployToken],
+      heldEnvironments === null
+        ? []
+        : halfMadeGroupEnvironments({
+            projects: candidates.map((candidate) => candidate.project),
+            registry: registryState.registry,
+            environments: heldEnvironments,
+            // A key is minted only by somebody HQ's rule lets keep it (`keep_deploy_token`).
+            mayKey: (projectId) => mayOffer(asker, "keep_deploy_token", { projectId }),
+          }),
+    [asker, candidates, heldEnvironments, registryState.registry],
   );
   useZeropsGroupEnvironmentReconcile({
-    enabled: status === "signed-in" && projectFlow.readable && !isLoading && !creationRunning,
+    enabled: status === "signed-in" && !isLoading && !creationRunning,
     client,
-    data: { runtime },
     clientId: activeOrganization?.id,
     hq,
-    giteaOrigin,
-    giteaProjectId,
     halfMade,
     // Not a failed creation: the project runs, and what is outstanding is
     // said on its group's row (`projectsGroupLine`), not under the page.
     onOutcome: (entry, outcome) => {
-      setDeployTokenGeneration((current) => current + 1);
       setUnfinished((current) => {
         const next = new Map(current);
         if (outcome.failed === undefined) next.delete(entry.groupId);
@@ -2102,14 +2092,8 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
     runtime,
   ]);
 
-  if (status === "loading") {
-    return (
-      <div className="flex items-center gap-2 text-sm text-muted-foreground">
-        <Spinner size="md" />
-        Checking your Zerops session…
-      </div>
-    );
-  }
+  // The session is checked before this page can draw (`ZeropsHostedLanding`): nothing to say here.
+  if (status === "loading") return null;
   if (status === "signed-out") {
     return <SignedOutNotice message="Sign in with your Zerops account to see your projects." />;
   }
@@ -2633,7 +2617,10 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
     // The page's end clears the app's fixed "Open main sidebar" control, so
     // the last row is never under it with the menu closed.
     <div className="space-y-6 pb-12">
-      {listingNotice === null ? null : listingNotice.region === "message" ? (
+      {listingNotice === null ? null : listingNotice.region === "placeholder" ? (
+        // Nothing read yet: the one wait line at the page's centre, where the boot frame said it.
+        <PageWaitLine delayMs={BOOT_WAIT_LINE_MS} from="mount" text={listingNotice.message.text} />
+      ) : listingNotice.region === "message" ? (
         <div
           className="flex items-center gap-3 rounded-md border border-[var(--zerops-status-failed)]/40 bg-[var(--zerops-status-failed-surface)] px-3 py-2 text-sm text-[var(--zerops-status-failed-text)]"
           role="alert"

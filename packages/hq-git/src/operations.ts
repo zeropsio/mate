@@ -677,6 +677,47 @@ export const makeOperations = (
         .trim();
       return base || null;
     });
+  const range: HqGit["range"] = (repo, base, head, opts) =>
+    inRepo("range", repo, async (dir, signal) => {
+      const limit = bound(opts.limit, readLimits.log);
+      const ends = base === null ? [head] : [base, head];
+      if (!ends.every(validSha)) throw error("Invalid commit");
+      for (const sha of ends) {
+        const commit = await git.exec(
+          ["-C", dir, "cat-file", "-e", "--end-of-options", `${sha}^{commit}`],
+          { signal, acceptExitCodes: [1, 128] },
+        );
+        if (commit.code !== 0)
+          throw new GitError({
+            operation: "range",
+            reason: "not_found",
+            message: "Commit not found",
+          });
+      }
+      const revisions = ["--end-of-options", head, ...(base === null ? [] : [`^${base}`]), "--"];
+      const shas = (
+        await text(
+          dir,
+          ["rev-list", "--topo-order", `--max-count=${limit + 1}`, ...revisions],
+          signal,
+        )
+      )
+        .split("\n")
+        .filter(Boolean);
+      const counted = Number(
+        await text(
+          dir,
+          ["rev-list", "--count", `--max-count=${readLimits.history + 1}`, ...revisions],
+          signal,
+        ),
+      );
+      const { items, cut } = await summaries(dir, shas.slice(0, limit), signal);
+      return {
+        items,
+        truncated: shas.length > limit || cut,
+        total: Math.min(counted, readLimits.history),
+      };
+    });
   const changeLog: HqGit["changeLog"] = (repo, mateId, number, opts) =>
     inRepo("changeLog", repo, async (dir, signal) => {
       const limit = bound(opts.limit, readLimits.log);
@@ -955,6 +996,7 @@ export const makeOperations = (
     missingCommits,
     onMain,
     mergeBase,
+    range,
     changeLog,
     squashNames,
     changeTrailers,

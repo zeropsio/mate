@@ -8,6 +8,7 @@
  * Seal picked; `refused` — the Mate named as another already is, Create pressed; `checking` — the
  * account's Mates' names still being read; `creating` — Create pressed, the first Mate's view on
  * its way; `closed` — the person may not add projects here, the reason in the form's place;
+ * `pressing` — Create pressed, the press's steps in the form's place at the form's height;
  * `&locations=2` offers two locations, at the footer's start). The die at the name's
  * end rolls another name. The dialog stands over the page beside the left menu at the owner's
  * 435 px, as it does in the app. Open it at 1786 × 1000. `window.__newProjectHarness.created`
@@ -24,9 +25,10 @@ import {
 } from "@tanstack/react-router";
 import { newMateTint } from "@t3tools/client-runtime/zerops";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
-import { StrictMode, useEffect } from "react";
+import { StrictMode, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 
+import type { PressingView } from "~/components/zerops/ZeropsEnvironmentCreationDialog";
 import {
   ZeropsNewProjectDialog,
   type NewProjectChoice,
@@ -89,7 +91,18 @@ function click(selector: string): void {
   document.querySelector<HTMLElement>(selector)?.click();
 }
 
+const PRESSING: PressingView = {
+  name: "Quinn",
+  steps: [
+    { label: "Project", state: "done" },
+    { label: "Container", state: "active" },
+    { label: "Closed off", state: "waiting" },
+    { label: "Registered", state: "waiting" },
+  ],
+};
+
 function Harness() {
+  const [pressing, setPressing] = useState<PressingView | undefined>(undefined);
   useEffect(() => {
     window.__newProjectHarness = { created };
     if (STATE === "idle" || STATE === "checking" || STATE === "closed") return;
@@ -104,7 +117,7 @@ function Harness() {
       if (STATE === "refused") typeInto("zerops-new-project-mate", "Fen");
     }, 200);
     const pressing =
-      STATE === "refused"
+      STATE === "refused" || STATE === "pressing"
         ? window.setTimeout(() => {
             click('[data-zerops-new-project="create"]');
           }, 450)
@@ -141,9 +154,11 @@ function Harness() {
         onCancel={() => {}}
         onCreate={(choice) => {
           created.push(choice);
+          if (STATE === "pressing") setPressing(PRESSING);
         }}
         onLocation={() => {}}
         onOpenChange={() => {}}
+        pressing={pressing}
         proposeAnotherName={(current) => ROLLS.find((name) => name !== current) ?? current}
         takenBotNames={{
           names: ["Fen", "Ada", "Nova"],

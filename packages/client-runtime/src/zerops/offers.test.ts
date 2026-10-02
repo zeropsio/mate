@@ -76,6 +76,8 @@ describe("changeOffers — what a person may do with an application's changes (S
     comment: read,
     merge: develop,
     close,
+    // Main re-ran a deploy's job with write on its repository (B36): as a merge.
+    redeploy: develop,
   });
 
   it.each<[string, OfferViewer, ReturnType<typeof granted>, ReturnType<typeof offers>]>([
@@ -119,6 +121,30 @@ describe("changeOffers — what a person may do with an application's changes (S
 
   it("offers nothing to a person the client does not know", () => {
     expect(changeOffers(null, PLACED, "app-1")).toEqual(offers(false, false));
+  });
+});
+
+// SPEC §3.2b, main E03: an environment's deploy key is minted on the client of who may attach its
+// project — Full access on it, or the organization's owner or admin.
+describe("mayOffer keep_deploy_token — who hands HQ an environment's deploy key", () => {
+  const person = (roleCode: string, grant?: string): Parameters<typeof offerAsker> => [
+    { userId: "u-ola", clientUserId: "cu-ola", roleCode, canCreateProjects: false },
+    [
+      {
+        id: "p-stage",
+        userRoles: grant === undefined ? [] : [{ clientUserId: "cu-ola", roleCode: grant }],
+      },
+    ],
+  ];
+  it.each<[string, Parameters<typeof offerAsker>, boolean]>([
+    ["the organization's owner", person("OWNER"), true],
+    ["Full access on the project", person("NO_ACCESS", "ADMIN"), true],
+    ["never Basic user on it", person("NO_ACCESS", "BASIC_USER"), false],
+    ["never Read only on the organization", person("READ_ONLY"), false],
+  ])("%s", (_name, [viewer, projects], offered) => {
+    expect(
+      mayOffer(offerAsker(viewer, projects), "keep_deploy_token", { projectId: "p-stage" }),
+    ).toBe(offered);
   });
 });
 

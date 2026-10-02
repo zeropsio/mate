@@ -179,7 +179,7 @@ import { zeropsMateAt } from "../zerops/mateIdentities";
 import { mateVoiceSpeaks } from "@t3tools/client-runtime/zerops/environments";
 import { useMateVoice } from "../zerops/mateVoiceContext";
 import { useReviveFailedMate } from "../zerops/mateRestart";
-import { useZeropsMateDirectory } from "../zerops/useZeropsMates";
+import { useKnownMate, useZeropsMateDirectory } from "../zerops/useZeropsMates";
 import { ZeropsPanel } from "./zerops/ZeropsPanel";
 import { ZeropsLifecycleStrip } from "./zerops/ZeropsLifecycleStrip";
 import { ZeropsReadOnlyConversationFooter } from "./zerops/ZeropsReadOnlyConversationFooter";
@@ -198,7 +198,7 @@ import { crewCommands } from "../zerops/crew/crewCommands";
 import { openCrewView } from "../zerops/crew/crewTab";
 import { crewFailureSentence } from "../zerops/crew/useCrewCommand";
 import { resolveZeropsChatChrome } from "../zerops/chatChrome";
-import { resolveConnectedComposerPlaceholder } from "../composerPlaceholder";
+import { resolveComposerPlaceholders } from "../composerPlaceholder";
 import { useZeropsAgentAuth, useZeropsLifecycle } from "../zerops/useZeropsFeeds";
 import { useNowMs } from "../zerops/useNowMs";
 import {
@@ -343,6 +343,7 @@ import {
 import { resolveAgentAuthorizer } from "~/zerops/agentSigner";
 import { mateArrivalHoldsComposer } from "~/zerops/mateStandUp";
 import { useMateStandUp } from "~/zerops/useMateStandUp";
+import { useSentAsks } from "~/zerops/sentAsk";
 import { takeHandedOverCaret } from "~/zerops/mateHandOver";
 import { useZeropsAgentSignInDialog } from "~/zerops/useZeropsAgentSignInDialog";
 import { ExpandedImageDialog } from "./chat/ExpandedImageDialog";
@@ -2313,6 +2314,8 @@ export default function ChatView(props: ChatViewProps) {
   // The banner names the Mate, never the environment's label: on a Mate that
   // is the container's internal host.
   const zeropsMates = useZeropsMateDirectory();
+  // Read, or remembered until read: the composer of a Mate's conversation says one thing at once.
+  const knownMateHere = useKnownMate(environmentId);
   const mateLinkVoice = useMateVoice();
   const reviveFailedMate = useReviveFailedMate();
   const systemComposerBannerItems = useMemo<ComposerBannerStackItem[]>(() => {
@@ -3891,7 +3894,8 @@ export default function ChatView(props: ChatViewProps) {
       ),
     [activeThread?.environmentId, logicalProjectEnvironments, zeropsChrome.projectName],
   );
-  const connectedComposerPlaceholder = resolveConnectedComposerPlaceholder({
+  const composerPlaceholders = resolveComposerPlaceholders({
+    mateHere: knownMateHere !== undefined,
     zeropsAvailable: zeropsChrome.panel === "available",
   });
   const openFileSurface = useCallback(
@@ -6755,6 +6759,15 @@ export default function ChatView(props: ChatViewProps) {
       );
     }
     if (!queuedMessage) {
+      // The menu's row says what went until the conversation does (`sentAsk.ts`).
+      if (trimmed.length > 0 && !isSlashCommand(trimmed)) {
+        useSentAsks.getState().note(environmentId, {
+          messageId: messageIdForSend,
+          threadId: threadIdForSend,
+          text: trimmed,
+          at: messageCreatedAt,
+        });
+      }
       promptRef.current = "";
       clearComposerDraftContent(composerDraftTarget);
       composerRef.current?.resetCursorState();
@@ -6959,6 +6972,7 @@ export default function ChatView(props: ChatViewProps) {
     }
 
     if (failure !== null) {
+      useSentAsks.getState().forget(environmentId, messageIdForSend);
       if (queuedMessage) {
         setOptimisticUserMessages((existing) => {
           const removed = existing.filter((message) => message.id === messageIdForSend);
@@ -8370,8 +8384,9 @@ export default function ChatView(props: ChatViewProps) {
                                 isLocalDraftThread && activeProject === null
                               }
                               connectedPlaceholder={
-                                crewComposerPlaceholder ?? connectedComposerPlaceholder
+                                crewComposerPlaceholder ?? composerPlaceholders.connected
                               }
+                              idlePlaceholder={crewComposerPlaceholder ?? composerPlaceholders.idle}
                               mentionCrewmates={crewMentions}
                               top={composerTop}
                               {...(crewRunsOnLabel === null || activeCrewmate === null
@@ -8382,11 +8397,6 @@ export default function ChatView(props: ChatViewProps) {
                                       onEdit: () => editCrewmateJob(activeCrewmate.crewmate.handle),
                                     },
                                   })}
-                              {...(crewComposerPlaceholder !== null
-                                ? { idlePlaceholder: crewComposerPlaceholder }
-                                : zeropsChrome.panel === "available"
-                                  ? { idlePlaceholder: connectedComposerPlaceholder }
-                                  : {})}
                               phase={phase}
                               isConnecting={isConnecting}
                               // A session starting for the message just sent

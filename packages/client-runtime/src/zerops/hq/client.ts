@@ -31,6 +31,7 @@ import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 
 import type { FetchImplementation } from "../api.ts";
+import type { HqEnvironment } from "./environments.ts";
 import { hqRefusalWords } from "./refusals.ts";
 import { structureEventOf, type HqStructureEvent } from "./stream.ts";
 
@@ -80,6 +81,11 @@ export interface HqStructure {
       readonly kind: string;
       readonly mate: HqMate | null;
     }>;
+    /**
+     * Its stage and production with their deploys (`hq/environments.ts`), to whoever reads its
+     * changes — none to one who only sees it; absent where HQ sent none this build can read.
+     */
+    readonly environments?: ReadonlyArray<HqEnvironment>;
   }>;
 }
 
@@ -88,6 +94,8 @@ export interface HqAttach {
   readonly kind: RoleProjectKind;
   /** The Mate's name and face; with kind `mate`, and only with it. */
   readonly mate?: HqMateRecord;
+  /** A stage's or a production's environment name; HQ names it from its project without one. */
+  readonly environment?: { readonly name: string };
 }
 
 export class HqError extends Error {
@@ -151,6 +159,20 @@ export interface HqApi {
   readonly recordClosedOff: (projectId: string) => Promise<void>;
   readonly createApp: (name: string) => Promise<{ readonly id: string; readonly name: string }>;
   readonly attachProject: (appId: string, attach: HqAttach) => Promise<void>;
+  /**
+   * An environment's deploy token, minted by the person's own client, kept by HQ (`PUT
+   * /api/apps/:appId/environments/:name/deploy-token`); the structure says only that it holds one.
+   */
+  readonly keepDeployToken: (appId: string, environment: string, token: string) => Promise<void>;
+  /**
+   * "Run again": the environment's newest deploy of `service`, at `sha`, failed, asked again as
+   * the person (`POST /api/apps/:appId/environments/:name/redeploy`); HQ's stream brings it.
+   */
+  readonly redeploy: (
+    appId: string,
+    environment: string,
+    deploy: { readonly service: string; readonly sha: string },
+  ) => Promise<void>;
   /** A Mate's change with what its review reads (`GET /api/apps/:appId/changes/:repo/:n`). */
   readonly change: (link: ChangeLink, signal?: AbortSignal) => Promise<ChangeDetailResponse>;
   /** What was said on a change, oldest first. */
@@ -455,6 +477,18 @@ export function makeHqApi(input: {
         method: "POST",
         body: JSON.stringify(attach),
       });
+    },
+    keepDeployToken: async (appId, environment, token) => {
+      await authorized(
+        `/api/apps/${encodeURIComponent(appId)}/environments/${encodeURIComponent(environment)}/deploy-token`,
+        { method: "PUT", body: JSON.stringify({ token }) },
+      );
+    },
+    redeploy: async (appId, environment, deploy) => {
+      await authorized(
+        `/api/apps/${encodeURIComponent(appId)}/environments/${encodeURIComponent(environment)}/redeploy`,
+        { method: "POST", body: JSON.stringify(deploy) },
+      );
     },
     updateMate: async (projectId, change) => {
       await authorized(`/api/mates/${encodeURIComponent(projectId)}`, {

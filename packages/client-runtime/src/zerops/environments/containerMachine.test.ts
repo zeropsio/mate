@@ -236,6 +236,12 @@ describe("container machine (DESIGN §4.5)", () => {
       service: "RELOADING",
       verdict: { level: "restarting", by: "platform", overdue: false },
     },
+    // Its first build, which the import started: a Mate's container is never deployed by hand.
+    {
+      project: "ACTIVE",
+      service: "READY_TO_DEPLOY",
+      verdict: { level: "provisioning", overdue: false },
+    },
     { project: "ACTIVE", service: "STOPPED", verdict: { level: "inactive", status: "STOPPED" } },
     // Nothing read about the Mate behind an ACTIVE service yet.
     { project: "ACTIVE", service: "ACTIVE", verdict: { level: "unknown" } },
@@ -249,6 +255,65 @@ describe("container machine (DESIGN §4.5)", () => {
       expect(containerVerdict(run.machine)).toEqual(row.verdict);
     });
   }
+
+  it("a new Mate's container comes up through its first build, never reading as not running", () => {
+    // An Add, as the platform said it (2026-10-02): the import, the first build, the container.
+    const statuses: ReadonlyArray<readonly [string, string | null]> = [
+      ["CREATING", null],
+      ["CREATING", "NEW"],
+      ["ACTIVE", "NEW"],
+      ["ACTIVE", "READY_TO_DEPLOY"],
+      ["ACTIVE", "CREATING"],
+    ];
+    let run: Run = { machine: initialContainer(), nowMs: START_MS };
+    const levels: Array<string> = [];
+    for (const [project, service] of statuses) {
+      run = drive([{ type: "PLATFORM", status: { project, service } }], run);
+      levels.push(containerVerdict(run.machine).level);
+    }
+    expect(levels).toEqual([
+      "creating",
+      "creating",
+      "provisioning",
+      "provisioning",
+      "provisioning",
+    ]);
+    // One wait from the import on: its cap runs from when the platform first brought it up.
+    expect(run.machine.timer).toEqual(instant(START_MS + 3_000 + CONTAINER_CAPS_MS.provisioning));
+    run = drive([active], run);
+    expect(containerVerdict(run.machine)).toEqual({ level: "booting", overdue: false });
+  });
+
+  it("a first build's wait runs from the service's creation, in any tab that sees it", () => {
+    // A minute, and twenty minutes, before the tab's first event (`START_MS`).
+    const MINUTE_BEFORE = "2027-01-15T07:59:00.000Z";
+    const TWENTY_BEFORE = "2027-01-15T07:40:00.000Z";
+    const firstBuild = (serviceCreated: string): ContainerEvent => ({
+      type: "PLATFORM",
+      status: { project: "ACTIVE", service: "READY_TO_DEPLOY", serviceCreated },
+    });
+    // A tab opened a minute into the build: its cap is the build's, not the tab's.
+    const young = drive([firstBuild(MINUTE_BEFORE)]);
+    expect(containerVerdict(young.machine)).toEqual({ level: "provisioning", overdue: false });
+    expect(young.machine.timer).toEqual(
+      instant(START_MS - 60_000 + CONTAINER_CAPS_MS.provisioning),
+    );
+    // A tab opened twenty minutes on: past its cap at once, so it says it is taking longer.
+    const stale = drive([firstBuild(TWENTY_BEFORE), { type: "TICK" }]);
+    expect(containerVerdict(stale.machine)).toEqual({ level: "provisioning", overdue: true });
+    // A service starting again long after it was made is timed from now, as before.
+    const restarted = drive([
+      {
+        type: "PLATFORM",
+        status: {
+          project: "ACTIVE",
+          service: "STARTING",
+          serviceCreated: TWENTY_BEFORE,
+        },
+      },
+    ]);
+    expect(containerVerdict(restarted.machine)).toEqual({ level: "provisioning", overdue: false });
+  });
 
   it("a service the platform brought up boots until a probe sent after it answers", () => {
     const provisioning = drive([
@@ -463,6 +528,8 @@ describe("container machine (DESIGN §4.5)", () => {
     readonly name: string;
     readonly held: ReadonlyArray<ContainerEvent>;
     readonly intent: "restart" | "enable";
+    /** The initAt read just before the verb was sent; absent when that read could not say. */
+    readonly initAt?: string;
     readonly after: ReadonlyArray<ProbeReading>;
   }> = [
     {
@@ -476,16 +543,34 @@ describe("container machine (DESIGN §4.5)", () => {
       after: [{ kind: "initializing", initAt: "2026-09-23T09:00:00Z" }],
     },
     {
-      name: "no initAt held: the first one read is the old server's, a different one is new",
+      name: "the old server answers after the verb with the initAt read before it, then a new one",
       held: [active, probed(READY, START_MS)],
       intent: "restart",
+      initAt: "2026-09-23T08:00:00Z",
       after: [
         { ...READY, initAt: "2026-09-23T08:00:00Z" },
         { kind: "initializing", initAt: "2026-09-23T09:00:00Z" },
       ],
     },
     {
-      name: "no initAt held: one later than the restart's start is new at once",
+      name: "the first read after the verb is already the new server",
+      held: [active, probed(READY, START_MS)],
+      intent: "restart",
+      initAt: "2026-09-23T08:00:00Z",
+      after: [{ kind: "initializing", initAt: "2026-09-23T09:00:00Z" }],
+    },
+    {
+      name: "the container's clock runs ahead of the browser's: still the initAt read before the verb",
+      held: [active, probed(READY, START_MS)],
+      intent: "restart",
+      initAt: "2027-01-15T09:00:00.000Z",
+      after: [
+        { ...READY, initAt: "2027-01-15T09:00:00.000Z" },
+        { kind: "initializing", initAt: "2027-01-15T09:05:00.000Z" },
+      ],
+    },
+    {
+      name: "nothing said the initAt before the verb: one later than the restart's start is new",
       held: [active, probed(READY, START_MS)],
       intent: "restart",
       after: [{ kind: "initializing", initAt: "2027-01-15T08:10:00.000Z" }],
@@ -495,8 +580,17 @@ describe("container machine (DESIGN §4.5)", () => {
   for (const row of REINIT_ROWS) {
     it(`a re-init ends our ${row.intent} whatever the browser's clock says: ${row.name}`, () => {
       const up = drive(row.held);
+      const since = instant(up.nowMs + 1_000);
       let run = drive(
-        [{ type: "INTENT", intent: { kind: row.intent, since: instant(up.nowMs + 1_000) } }],
+        [
+          {
+            type: "INTENT",
+            intent:
+              row.initAt === undefined
+                ? { kind: row.intent, since }
+                : { kind: row.intent, since, initAt: row.initAt },
+          },
+        ],
         up,
       );
       for (const reading of row.after) {
@@ -506,4 +600,22 @@ describe("container machine (DESIGN §4.5)", () => {
       expect(containerVerdict(run.machine)).toEqual({ level: "booting", overdue: false });
     });
   }
+
+  it("a read sent after the verb is never the restart's baseline", () => {
+    // Nothing said the initAt before the verb, and the container's clock runs behind the browser's.
+    const up = drive([active, probed(READY, START_MS)]);
+    const asked = drive(
+      [{ type: "INTENT", intent: { kind: "restart", since: instant(up.nowMs + 1_000) } }],
+      up,
+    );
+    const first = drive([probed({ ...READY, initAt: "2026-09-23T08:00:00Z" }, asked.nowMs)], asked);
+    const second = drive(
+      [probed({ ...READY, initAt: "2026-09-23T09:00:00Z" }, first.nowMs)],
+      first,
+    );
+    // Neither read is judged against the other: the platform's word or a connect ends it.
+    expect(containerVerdict(second.machine).level).toBe("restarting");
+    const connected = drive([{ type: "LINK", connected: true }], second);
+    expect(containerVerdict(connected.machine)).toEqual({ level: "ready" });
+  });
 });

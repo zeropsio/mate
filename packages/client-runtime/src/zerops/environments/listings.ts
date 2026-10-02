@@ -11,6 +11,11 @@
  * - A read with no value yet is dated by the moment this listing first saw it wait that way
  *   (`known.ts`): a new read that still waits the same way keeps the date, so no clock derives
  *   the listing again.
+ * - A young container ACTIVE before its address landed is on its way to it from the moment this
+ *   listing first saw it so (`addressAwaited`), unless it saw it with its address. What it saw is
+ *   kept for as long as the listing lives (`AddressMemory`), through every read and every blink,
+ *   so a wait never begins again; the one clock that derives the listing again is a wait's end,
+ *   when the same facts read as the platform leaves them.
  */
 import { Atom } from "effect/unstable/reactivity";
 
@@ -31,8 +36,13 @@ import {
 } from "../data/types.ts";
 import type { Known } from "../knowledge/known.ts";
 import {
+  addressClockOf,
+  addressWaitEnd,
   candidateListing,
+  NO_ADDRESS_MEMORY,
   projectCandidates,
+  rememberAddresses,
+  type AddressMemory,
   type CandidateRow,
 } from "../projections/candidates.ts";
 import { systemExchangeClock } from "./exchangeDriver.ts";
@@ -64,6 +74,8 @@ interface ProjectEntry {
   readonly services: CollectionRead<ServiceRecord> | null;
   /** Null while its record does not name it yet. */
   readonly rows: ReadonlyArray<CandidateRow> | null;
+  /** When the first of its rows' address waits ends, wall ms; null when none waits. */
+  readonly waitEnds: number | null;
   readonly directRead: number | null;
 }
 
@@ -119,6 +131,9 @@ export function candidateListingsAtom(
   const held = listings.get(data);
   if (held !== undefined) return held;
   let organizations = new Map<string, OrganizationEntry>();
+  // Outlives every entry: a read that blinks drops its project's entry, never what it knew of an
+  // address (`AddressMemory`).
+  let addresses: AddressMemory = NO_ADDRESS_MEMORY;
   let published: ReadonlyArray<OrganizationListing> = [];
 
   const atom = Atom.make((get): ReadonlyArray<OrganizationListing> => {
@@ -140,7 +155,8 @@ export function candidateListingsAtom(
       before: ProjectEntry | undefined,
     ): ProjectEntry => {
       const isAdmitted = admitted.has(projectKeyOf(record.ref));
-      if (before?.record === record && before.admitted === isAdmitted) {
+      const waitOver = before?.waitEnds != null && before.waitEnds <= nowMs;
+      if (before?.record === record && before.admitted === isAdmitted && !waitOver) {
         if (before.services === null) return before;
         const read = get(data.reads.servicesOf(record.ref));
         if (read === before.services) return before;
@@ -157,14 +173,19 @@ export function candidateListingsAtom(
     ): ProjectEntry => {
       let services: CollectionRead<ServiceRecord> | null = null;
       let directRead: number | null = null;
-      const rows = projectCandidates(record, (ref) => {
-        if (!isAdmitted) return UNREAD_SERVICES;
-        const read = known ?? get(data.reads.servicesOf(ref));
-        const value = knownServicesOf(read, nowMs);
-        services = read;
-        directRead = directReadOf(read, value);
-        return value;
-      });
+      const rows = projectCandidates(
+        record,
+        (ref) => {
+          if (!isAdmitted) return UNREAD_SERVICES;
+          const read = known ?? get(data.reads.servicesOf(ref));
+          const value = knownServicesOf(read, nowMs);
+          services = read;
+          directRead = directReadOf(read, value);
+          return value;
+        },
+        addressClockOf(addresses, nowMs),
+      );
+      addresses = rememberAddresses(addresses, rows ?? []);
       const same = before?.rows != null && rows !== null && sameJson(before.rows, rows);
       return {
         record,
@@ -172,6 +193,7 @@ export function candidateListingsAtom(
         services,
         rows: same ? before.rows : rows,
         directRead,
+        waitEnds: addressWaitEnd(rows ?? []),
       };
     };
 
@@ -227,6 +249,20 @@ export function candidateListingsAtom(
       ]),
     );
     organizations = next;
+    // A young container's wait for its address ends on a clock, not on a read: the listing is
+    // derived again then, so it never says "on its way" past its wait.
+    const waitEnds = [...next.values()].flatMap((organization) =>
+      [...organization.entries.values()].flatMap((entry) =>
+        entry.waitEnds === null ? [] : [entry.waitEnds],
+      ),
+    );
+    if (waitEnds.length > 0) {
+      get.addFinalizer(
+        systemExchangeClock.setTimer(Math.max(0, Math.min(...waitEnds) - nowMs), () =>
+          get.refreshSelf(),
+        ),
+      );
+    }
     const listed = [...next.values()].map((entry) => entry.listed);
     if (!sameItems(published, listed)) published = listed;
     return published;

@@ -91,6 +91,13 @@ export interface ImportCredentials {
   readonly username: string;
   readonly password: string;
 }
+/** A change's head brought in by an import: the source's `ref`, at `sha`, as the change's branch. */
+export interface ImportedChangeHead {
+  readonly mateId: string;
+  readonly number: number;
+  readonly ref: string;
+  readonly sha: string;
+}
 export class GitError extends Schema.TaggedError<GitError>()("GitError", {
   operation: Schema.String,
   reason: Schema.Literals([
@@ -211,12 +218,16 @@ export interface HqGit {
   readonly restore: (repo: Repo, bundle: string | null) => Effect.Effect<Repo, GitError>;
   /**
    * Fetches branches (except `mate/*`) and tags; HEAD is always main, so a source without main is
-   * refused. Credentials travel in environment config, never in a URL or argv.
+   * refused. Credentials travel in environment config, never in a URL or argv. Each of
+   * `changeHeads` becomes its change's branch, only where Core's record of the change exists
+   * (`lookupChange`) and only at the commit it names: a change branch never exists without its
+   * record, and the repository appears with all its refs at once or not at all.
    */
   readonly import: (
     repo: Repo,
     source: string,
     credentials?: ImportCredentials,
+    changeHeads?: ReadonlyArray<ImportedChangeHead>,
   ) => Effect.Effect<Repo, GitError>;
   readonly list: (appId?: string) => Effect.Effect<ReadonlyArray<Repo>, GitError>;
   /** Core calls this on takeover: converges config and sweeps stale locks, quarantines, scratch. */
@@ -323,6 +334,18 @@ export interface HqGit {
     mateId: string,
     number: number,
   ) => Effect.Effect<string | null, GitError>;
+  /**
+   * The commits `base..head` names — reachable from `head` and not from `base`, every one up to
+   * `head` without a `base` — children before parents, at most `limit`; and how many there are,
+   * counted up to the history bound (that many means at least as many). `base` need not come before
+   * `head`. Both are full shas, and a commit the repository lacks is `not_found`.
+   */
+  readonly range: (
+    repo: Repo,
+    base: string | null,
+    head: string,
+    options: { readonly limit: number },
+  ) => Effect.Effect<Bounded<CommitSummary> & { readonly total: number }, GitError>;
   /**
    * The change's commits not on main (`main..head`), children before parents, at most `limit`;
    * without a main, all of the change's. None without a change head.

@@ -26,7 +26,7 @@ import {
 } from "@t3tools/client-runtime/zerops/doorThrowaway";
 import { useEffect, useRef } from "react";
 
-import { readZeropsCell } from "./useZeropsDeployedVersion";
+import { readZeropsCell } from "./readZeropsCell";
 import { useZeropsData } from "./zeropsDataContext";
 
 import { useZeropsSession } from "./ZeropsSessionProvider";

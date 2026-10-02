@@ -20,7 +20,7 @@ import { ArrivalServices } from "./ZeropsArrivalSteps";
 export type Spoken = Exclude<MateVoice, { readonly surface: "none" }>;
 
 /** The platform's processes under the line, their names in the order first seen. */
-function MateLinkProcesses({
+export function MateLinkProcesses({
   projectId,
   mateServiceId,
 }: {

@@ -128,7 +128,7 @@ export interface GroupFlowInput {
   /** The tiers the recipe on `main` offers and the project lacks (`missingEnvironmentRows`). */
   readonly missing: ReadonlyArray<Pick<MissingEnvironmentRow, "tier">>;
   readonly release: {
-    /** The flow's own gate, both halves read (`flowReleaseGate`). */
+    /** The flow's own gate (`ZeropsReleaseOffer.gate`). */
     readonly gate: ReleaseGate;
     /** The tag a release would take (`releaseOffer`). */
     readonly suggestion: string;
@@ -140,8 +140,7 @@ export interface GroupFlowInput {
   /**
    * Whether any of the project's code repositories has a commit on `main`,
    * from a default-branch read of each (`GET /repos/{org}/{repo}/branches/main`).
-   * `undefined` where that was not read — today it is read only for a project
-   * with a production (`planMainHeadReads`). A merged code change proves it
+   * `undefined` where that was not read. A merged code change proves it
    * either way.
    */
   readonly mainHasCode: boolean | undefined;

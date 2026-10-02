@@ -28,6 +28,23 @@ describe("generateBotName", () => {
     expect(new Set(taken).size).toBe(ZEROPS_BOT_NAME_POOL.length);
   });
 
+  it.each([30, 100, 150])("proposes no numbered name in an organisation of %i Mates", (mates) => {
+    const taken: Array<string> = [];
+    for (let i = 0; i <= mates; i += 1) {
+      taken.push(generateBotName(taken, bytesReturning(i * 37, i * 11, 5)));
+    }
+    expect(taken.filter((name) => /\d/u.test(name))).toEqual([]);
+  });
+
+  it("draws from a pool of short, readable, distinct names", () => {
+    const lowered = ZEROPS_BOT_NAME_POOL.map((name) => name.toLowerCase());
+    expect(new Set(lowered).size).toBe(ZEROPS_BOT_NAME_POOL.length);
+    expect(ZEROPS_BOT_NAME_POOL.length).toBeGreaterThanOrEqual(150);
+    // `pick` draws one byte per choice.
+    expect(ZEROPS_BOT_NAME_POOL.length).toBeLessThanOrEqual(256);
+    expect(ZEROPS_BOT_NAME_POOL.filter((name) => !/^[A-Z][a-z]{2,4}$/u.test(name))).toEqual([]);
+  });
+
   it("ignores case when deciding what is taken", () => {
     const name = generateBotName(["ada"], bytesReturning(0));
     expect(name.toLowerCase()).not.toBe("ada");
