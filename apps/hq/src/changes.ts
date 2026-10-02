@@ -129,7 +129,10 @@ export class Changes extends Context.Service<
       projectId: string,
       tier: RecipeTier,
     ) => Effect.Effect<RecipeTierResponse, ReadError | NotLeader | GitError>;
-    /** The repository `name` in the Mate's application, made if new: `main` begins with HQ's commit. */
+    /**
+     * The repository `name` in the Mate's application, made if new: `main` begins with HQ's commit.
+     * The recipe's (`RECIPE_REPO`) is Core's, whichever Mate asks for it first.
+     */
     readonly ensureRepo: (
       projectId: string,
       name: string,
@@ -810,7 +813,8 @@ export const changesLayer: Layer.Layer<
       mateFetch,
       ensureRepo: (projectId, name) =>
         Effect.flatMap(mateApp(projectId, "ensure_repo"), (appId) =>
-          makeRepo(appId, name, projectId),
+          // The recipe's is Core's, whoever asks for it first: a Mate joins it.
+          makeRepo(appId, name, name === RECIPE_REPO ? "core" : projectId),
         ),
       ensureGroupRepo: (appId) => makeRepo(appId, RECIPE_REPO, "core"),
       recipeTier,

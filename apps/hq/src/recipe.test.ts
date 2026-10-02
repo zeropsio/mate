@@ -485,6 +485,43 @@ describe("an application's recipe in HQ", () => {
         }),
     );
 
+    it.effect(
+      "a Mate asking for the recipe's repository joins Core's, made for an application older than it too",
+      () =>
+        Effect.gen(function* () {
+          const { call, fake, url, gitRoot } = yield* startCore(true);
+          yield* untilHealth(call, "active");
+          const owner = yield* sessionFor(call, "door-owner");
+          const { appId, ada, bo } = yield* twoMates(call, fake, owner);
+          // An application made before its recipe had a repository.
+          yield* rowsWhere(
+            url,
+            `DELETE FROM hq_repo WHERE name = '${RECIPE_REPO}' RETURNING 1`,
+            (rows) => rows.length === 1,
+          );
+          NodeFS.rmSync(NodePath.join(gitRoot, appId, `${RECIPE_REPO}.git`), { recursive: true });
+          for (const auth of [ada.auth, bo.auth]) {
+            const joined = yield* call("POST", "/api/mate/repos", {
+              headers: auth,
+              body: { name: RECIPE_REPO },
+            });
+            assert.deepStrictEqual(
+              [joined.status, joined.body],
+              [200, { appId, name: RECIPE_REPO }],
+            );
+          }
+          yield* rowsWhere(
+            url,
+            `SELECT created_by FROM hq_repo WHERE name = '${RECIPE_REPO}'`,
+            (rows) => rows.length === 1 && rows[0]?.["created_by"] === "core",
+          );
+          assert.deepStrictEqual(
+            (yield* call("GET", "/api/mate/recipe/mate", { headers: ada.auth })).body,
+            { state: "absent" },
+          );
+        }),
+    );
+
     it.effect("a tier past the read's bound is refused, never cut", () =>
       Effect.gen(function* () {
         const { call, fake, origin } = yield* startCore(true);
