@@ -33,7 +33,8 @@
  *   /api/mate/changes/:repo/:n/attachments`, a PNG of at most 20 MiB → `{ id, path }`; and git
  *   itself at `/git/<appId>/<repo>.git`, Basic auth with the user `mate` and the Mate's credential
  *   (`gitHost.ts`).
- * - A person's side of the changes: `GET /api/apps/:appId/changes` → `{ changes }`; `GET
+ * - A person's side of the changes: `GET /api/apps/:appId/repos` → `{ repos }`, its repositories;
+ *   `GET /api/apps/:appId/changes` → `{ changes }`; `GET
  *   /api/apps/:appId/changes/:repo/:n` → the change's review; `GET`, `POST …/comments`; `GET
  *   …/attachments/:id` → a picture; `POST …/merge` `{ expectedHead }` and `POST …/close` → the
  *   change, merged or closed. A tier of the application's recipe (`@t3tools/shared/hqRecipe`):
@@ -829,6 +830,17 @@ const routes = (
             sha,
           );
           return HttpServerResponse.empty({ status: 202 });
+        }),
+      ),
+    ),
+    HttpRouter.add(
+      "GET",
+      "/api/apps/:appId/repos",
+      handle(
+        Effect.gen(function* () {
+          const { userId } = yield* principal;
+          const appId = (yield* HttpRouter.params)["appId"] ?? "";
+          return json({ repos: yield* (yield* Changes).listRepos(userId, appId) }, 200);
         }),
       ),
     ),

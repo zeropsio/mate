@@ -23,6 +23,7 @@ import {
   MATE_CHANGES_PER_REPO,
   type MateChanges,
   type OpenChangeResponse,
+  type RepoListEntry,
   attachmentPath,
   mergeSubject,
 } from "@t3tools/shared/hqChanges";
@@ -170,6 +171,11 @@ export class Changes extends Context.Service<
       userId: string,
       appId: string,
     ) => Effect.Effect<ReadonlyArray<HqChange>, ReadError>;
+    /** The application's repositories, its recipe's too, by name, as `RepoListEntry`. */
+    readonly listRepos: (
+      userId: string,
+      appId: string,
+    ) => Effect.Effect<ReadonlyArray<RepoListEntry>, ReadError>;
     /** A change and what its review reads, from git. */
     readonly changeDetail: (
       userId: string,
@@ -948,6 +954,25 @@ export const changesLayer: Layer.Layer<
         }),
       listChanges: (userId, appId) =>
         Effect.andThen(personApp(userId, appId, "read_change"), windowOf([appId])),
+      listRepos: (userId, appId) =>
+        Effect.andThen(
+          personApp(userId, appId, "read_change"),
+          Effect.map(
+            sql<{
+              readonly name: string;
+              readonly main_head: string | null;
+              readonly updated_at: string;
+            }>`
+              SELECT name, main_head, ${sql.literal(instant("updated_at"))}
+              FROM hq_repo WHERE app_id::text = ${appId} ORDER BY name`,
+            (rows) =>
+              rows.map((row) => ({
+                name: row.name,
+                mainHead: row.main_head,
+                updatedAt: row.updated_at,
+              })),
+          ),
+        ),
       changeDetail: (userId, appId, repo, number) =>
         Effect.gen(function* () {
           yield* personApp(userId, appId, "read_change");

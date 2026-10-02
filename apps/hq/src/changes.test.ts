@@ -539,6 +539,54 @@ describe("a Mate's changes in HQ", () => {
         }),
     );
 
+    it.effect(
+      "lists an application's repositories, its recipe's too, to whoever reads its changes",
+      () =>
+        Effect.gen(function* () {
+          const { call, fake, url } = yield* startCore(true);
+          yield* untilHealth(call, "active");
+          const owner = yield* sessionFor(call, "door-owner");
+          const { appId, auth } = yield* mateInApp(call, fake, owner, "P_MATE", "Shop");
+          yield* call("POST", "/api/mate/repos", { headers: auth, body: { name: "appdev" } });
+          const heads = yield* rowsWhere(
+            url,
+            `SELECT name, main_head FROM hq_repo WHERE app_id = '${appId}' ORDER BY name`,
+            (rows) => rows.length === 2 && rows.every((row) => row["main_head"] !== null),
+          );
+          const repos = (session: string, app = appId) =>
+            Effect.map(call("GET", `/api/apps/${app}/repos`, { session }), (answer) => [
+              answer.status,
+              answer.body,
+            ]);
+          const [status, body] = yield* repos(owner);
+          const listed = (body as { readonly repos: ReadonlyArray<Record<string, unknown>> }).repos;
+          assert.deepStrictEqual(
+            [status, listed.map(({ name, mainHead }) => [name, mainHead])],
+            [200, heads.map((row) => [row["name"], row["main_head"]])],
+          );
+          assert.isTrue(
+            listed.every((repo) => !Number.isNaN(Date.parse(String(repo["updatedAt"])))),
+          );
+          // Who reads the application's changes: the org's reader too; not who sees nothing of it.
+          const reader = yield* sessionFor(call, "door-reader");
+          assert.strictEqual((yield* repos(reader))[0], 200);
+          const dev = yield* sessionFor(call, "door-dev");
+          assert.deepStrictEqual(yield* repos(dev), [
+            403,
+            { code: "forbidden", reason: "app_not_seen" },
+          ]);
+          // An application with no repository yet lists none.
+          const made = yield* call("POST", "/api/apps", { session: owner, body: { name: "Bare" } });
+          const bare = (made.body as { readonly id: string }).id;
+          yield* rowsWhere(
+            url,
+            `DELETE FROM hq_repo WHERE app_id = '${bare}' RETURNING 1`,
+            () => true,
+          );
+          assert.deepStrictEqual(yield* repos(owner, bare), [200, { repos: [] }]);
+        }),
+    );
+
     it.effect("whoever sees the application reads its changes and a change's review", () =>
       Effect.gen(function* () {
         const { call, fake, origin } = yield* startCore(true);
