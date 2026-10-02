@@ -141,8 +141,28 @@ describe("ZeropsEnvironmentCreation", () => {
       outcome: { kind: "done", deployments: [nothingDeployed("app")] },
     });
     expect(html).toContain("app has nothing deployed yet");
-    expect(html).toContain("main lands here on its own");
+    expect(html).toContain("its first deploy of main shows on its line above");
     expect(html).not.toContain("Zerops dashboard");
+    // The card cannot see the group's runner: it promises no time (run 4, F2 — the runner was
+    // dead and "within a few minutes" stood for 4.6 min).
+    expect(html).not.toContain("within a few minutes");
+  });
+
+  it.each([
+    { outcome: undefined, title: "Creating Beviro CRM - production" },
+    {
+      outcome: { kind: "done", deployments: [nothingDeployed("app")] } as const,
+      title: "Beviro CRM - production is up",
+    },
+    // Handed off, its container is still on its way: still being created.
+    { outcome: { kind: "handed-off" } as const, title: "Creating Beviro CRM - production" },
+    {
+      outcome: { kind: "failed", error: "No.", projectExists: true } as const,
+      title: "Beviro CRM - production didn’t come up",
+    },
+  ])("is titled $title", ({ outcome, title }) => {
+    const html = render(outcome === undefined ? {} : { outcome });
+    expect(html).toContain(`>${title}</h2>`);
   });
 
   it("says a production waits for a release", () => {
