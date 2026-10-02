@@ -364,8 +364,13 @@ function decide(principal: Principal, request: Request, facts: Facts): Decision 
     // or above there (SPEC §3.3a), as main's broker had it — never its client's org admin alone.
     case "release": {
       const { projectIds, productionProjectId } = request.target;
-      if (!seesApp(projectIds)) return deny("app_not_seen");
-      if (productionProjectId === null) return deny("no_production");
+      // Its production is one of its projects, whatever HQ named beside it.
+      const app = productionProjectId === null ? projectIds : [...projectIds, productionProjectId];
+      if (!seesApp(app)) return deny("app_not_seen");
+      // That it has none is told to whoever reads its changes, as its environments are.
+      if (productionProjectId === null) {
+        return deny(seesChanges(app) ? "no_production" : "not_releaser");
+      }
       return roleAtLeast(roleOn(productionProjectId), "BASIC_USER")
         ? ALLOW
         : lacking(productionProjectId, "not_releaser");

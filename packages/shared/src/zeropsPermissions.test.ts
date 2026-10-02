@@ -1096,6 +1096,21 @@ const TABLES: Readonly<Record<Verb, ReadonlyArray<Row>>> = {
   ],
   release: [
     ["Basic user on its production", { override: "BASIC_USER" }, releaseOf(["P"], "P"), "allow"],
+    ["its production's owner, who made it", MAKER, releaseOf(["P"], "P"), "allow"],
+    ["the structure's writer", WRITER, releaseOf(["P"], "P"), "allow"],
+    [
+      "a grant on its production this build does not know",
+      { override: "FUTURE" },
+      releaseOf(["P_SEEN", "P"], "P"),
+      "not_releaser",
+    ],
+    // Its production is the application's, whatever else HQ named beside it.
+    [
+      "Basic user on its production, named apart from the projects",
+      { override: "BASIC_USER" },
+      releaseOf(["P_HIDDEN"], "P"),
+      "allow",
+    ],
     ["Full access on its production", { override: "ADMIN" }, releaseOf(["P"], "P"), "allow"],
     ["org Basic user, no grant there", { orgRole: "BASIC_USER" }, releaseOf(["P"], "P"), "allow"],
     [
@@ -1118,6 +1133,13 @@ const TABLES: Readonly<Record<Verb, ReadonlyArray<Row>>> = {
       "not_releaser",
     ],
     ["no production yet", { override: "BASIC_USER" }, releaseOf(["P"], null), "no_production"],
+    // That it has none is told to whoever reads its changes, as its environments are.
+    [
+      "no production yet, to someone who only sees it",
+      { override: "READ_ONLY" },
+      releaseOf(["P"], null),
+      "not_releaser",
+    ],
     ["an application they do not see", {}, releaseOf(["P_HIDDEN"], "P_HIDDEN"), "app_not_seen"],
     // Seeing comes first: no production tells nothing to whoever does not see the application.
     [
@@ -1469,9 +1491,15 @@ describe("can — over the whole input space", () => {
     everywhere((principal, request, point, holds) => {
       if (request.verb !== "release" || principal.kind !== "person") return;
       const { projectIds, productionProjectId } = request.target;
-      const sees = decide(principal, { verb: "read_app", target: { projectIds } }, point).allow;
+      const app = productionProjectId === null ? projectIds : [...projectIds, productionProjectId];
+      const sees = decide(principal, { verb: "read_app", target: { projectIds: app } }, point);
+      const reads = decide(principal, { verb: "read_change", target: { projectIds: app } }, point);
       const deploys = productionProjectId !== null && rankOn(point, productionProjectId) >= 2;
-      holds(decide(principal, request, point).allow === (sees && deploys), "its production's");
+      const decision = outcome(decide(principal, request, point));
+      holds((decision === "allow") === (sees.allow && deploys), "its production's");
+      holds(decision !== "allow" || reads.allow, "reads the changes it releases");
+      // That it has no production is told only to whoever reads its changes.
+      holds(decision !== "no_production" || reads.allow, "no production, told to a reader");
     });
   });
 
