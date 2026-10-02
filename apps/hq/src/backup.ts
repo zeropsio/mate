@@ -272,6 +272,21 @@ export class BucketFull extends Schema.TaggedError<BucketFull>()("BucketFull", {
   quota: Schema.Number,
 }) {}
 
+/**
+ * Refused unless `pgDump` is at least the major version of the server, whose `server_version_num`
+ * is `serverVersionNum`: a dump it writes then restores.
+ */
+export const pgDumpFits = (pgDump: string, url: Redacted.Redacted, serverVersionNum: string) =>
+  Effect.gen(function* () {
+    const answer = yield* runTool(pgDump, ["--version"], url);
+    const client = Number(/\(PostgreSQL\) (\d+)/u.exec(answer)?.[1] ?? Number.NaN);
+    const server = Math.floor(Number(serverVersionNum || Number.NaN) / 10_000);
+    if (!Number.isInteger(client) || !Number.isInteger(server)) {
+      return yield* failure("tool", `versions unreadable: ${answer.trim()}`);
+    }
+    if (client < server) return yield* new PgDumpOlder({ pgDump: client, server });
+  });
+
 type TakeError = BackupError | PgDumpOlder | BucketFull | GitError | NotLeader | SqlError;
 
 /** The store's bytes after a set's room was made, the set's own, and the quota. */
@@ -477,17 +492,11 @@ export const backupLayer = (
       const staged = NodePath.join(options.stagingDir, "sets");
 
       /** Refused unless `pg_dump` is at least the server's major version: a dump that restores. */
-      const restorable = Effect.gen(function* () {
-        const answer = yield* runTool(pgDump, ["--version"], options.databaseUrl);
-        const client = Number(/\(PostgreSQL\) (\d+)/u.exec(answer)?.[1] ?? Number.NaN);
-        const [setting] = yield* sql<{ readonly version: string }>`
-          SELECT current_setting('server_version_num') AS version`;
-        const server = Math.floor(Number(setting?.version ?? Number.NaN) / 10_000);
-        if (!Number.isInteger(client) || !Number.isInteger(server)) {
-          return yield* failure("tool", `versions unreadable: ${answer.trim()}`);
-        }
-        if (client < server) return yield* new PgDumpOlder({ pgDump: client, server });
-      });
+      const restorable = Effect.flatMap(
+        sql<{ readonly version: string }>`
+          SELECT current_setting('server_version_num') AS version`,
+        ([setting]) => pgDumpFits(pgDump, options.databaseUrl, setting?.version ?? ""),
+      );
 
       /** Where the database stands: the event log's last `seq` and the snapshot's `xmax`. */
       const positionNow = Effect.map(

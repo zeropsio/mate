@@ -10,10 +10,12 @@
  * leading Core takes a backup set every hour (`backup.ts`).
  *
  * `sets` lists the backup sets staged on the volume and kept in the bucket, each whole or not, with
- * its bytes. `restore <set> [--from-volume]` makes HQ again from set `<set>` (`restore.ts`), from
- * the bucket, or from the sets staged on the volume (with no bucket, or `--from-volume`), and ends.
- * It writes only into an empty database no Core holds and an empty `/mnt/vol/git`: with `hq` started
- * as `zsc noop`, the database emptied and the git root cleared; then `hq` deploys as it was.
+ * its bytes. `restore <set> [--from-volume] [--replace]` makes HQ again from set `<set>`
+ * (`restore.ts`), from the bucket, or from the sets staged on the volume (with no bucket, or
+ * `--from-volume`), and ends. It writes only while no Core holds the database (`hq` started as
+ * `zsc noop`), into an empty database and `/mnt/vol/git`, or with `--replace` over the live ones,
+ * kept first (`/mnt/vol/restore/before-<time>.dump`, `/mnt/vol/git.before-<time>`); then `hq`
+ * deploys as it was (vysledky/hq-backup.md §10).
  *
  * `main.mjs import …` is no server but the migration's command (`importCli.ts`): its lines on the
  * standard output, its outcome the exit code.
@@ -108,22 +110,27 @@ const core = Layer.unwrap(
   }),
 );
 
-const restore = (set: string, fromVolume: boolean) =>
+const restore = (set: string, flags: ReadonlySet<string>) =>
   Effect.gen(function* () {
     const bucket = yield* bucketOfEnv;
-    const manifest = yield* restoreSet(
-      fromVolume || bucket === null ? directoryStore(STAGING_DIR) : bucketStore(bucket.access),
+    const { manifest, kept } = yield* restoreSet(
+      flags.has("--from-volume") || bucket === null
+        ? directoryStore(STAGING_DIR)
+        : bucketStore(bucket.access),
       set,
       {
         databaseUrl: yield* Config.Redacted("DATABASE_URL"),
         gitRoot: GIT_ROOT,
         workDir: "/mnt/vol/restore",
+        replace: flags.has("--replace"),
       },
     );
     yield* Effect.logInfo("restored", {
       set: manifest.id,
       takenAt: manifest.takenAt,
       repos: manifest.repos.length,
+      ...(kept.dump === null ? {} : { keptDatabase: kept.dump }),
+      ...(kept.git === null ? {} : { keptGit: kept.git }),
     });
   });
 
@@ -164,15 +171,15 @@ if (command === "import") {
     }
   }).pipe(NodeRuntime.runMain);
 } else if (command === "restore") {
-  const [set, flag] = args;
-  (set === undefined
+  const [set, ...flags] = args;
+  (set === undefined || flags.some((flag) => flag !== "--from-volume" && flag !== "--replace")
     ? Effect.andThen(
-        Console.log("usage: main.mjs restore <set> [--from-volume]"),
+        Console.log("usage: main.mjs restore <set> [--from-volume] [--replace]"),
         Effect.sync(() => {
           process.exitCode = 2;
         }),
       )
-    : restore(set, flag === "--from-volume")
+    : restore(set, new Set(flags))
   ).pipe(NodeRuntime.runMain);
 } else {
   Layer.launch(core).pipe(NodeRuntime.runMain);
