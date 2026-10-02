@@ -348,6 +348,7 @@ import {
 } from "~/zerops/useZeropsAgentSigner";
 import { mateArrivalHoldsComposer } from "~/zerops/mateStandUp";
 import { useMateStandUp } from "~/zerops/useMateStandUp";
+import { useSentAsks } from "~/zerops/sentAsk";
 import { takeHandedOverCaret } from "~/zerops/mateHandOver";
 import { useZeropsAgentSignInDialog } from "~/zerops/useZeropsAgentSignInDialog";
 import { ExpandedImageDialog } from "./chat/ExpandedImageDialog";
@@ -6793,6 +6794,15 @@ export default function ChatView(props: ChatViewProps) {
       );
     }
     if (!queuedMessage) {
+      // The menu's row says what went until the conversation does (`sentAsk.ts`).
+      if (trimmed.length > 0 && !isSlashCommand(trimmed)) {
+        useSentAsks.getState().note(environmentId, {
+          messageId: messageIdForSend,
+          threadId: threadIdForSend,
+          text: trimmed,
+          at: messageCreatedAt,
+        });
+      }
       promptRef.current = "";
       clearComposerDraftContent(composerDraftTarget);
       composerRef.current?.resetCursorState();
@@ -6997,6 +7007,7 @@ export default function ChatView(props: ChatViewProps) {
     }
 
     if (failure !== null) {
+      useSentAsks.getState().forget(environmentId, messageIdForSend);
       if (queuedMessage) {
         setOptimisticUserMessages((existing) => {
           const removed = existing.filter((message) => message.id === messageIdForSend);
