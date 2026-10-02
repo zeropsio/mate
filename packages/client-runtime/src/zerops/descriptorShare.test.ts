@@ -37,6 +37,8 @@ const flush = async (): Promise<void> => {
  */
 function rig() {
   let mono = 0;
+  /** Wall time a sleep added: the monotonic clock stands still while the machine sleeps. */
+  let slept = 0;
   const timers = new Map<number, { readonly at: number; readonly fire: () => void }>();
   let nextTimer = 0;
   const requests: Array<string> = [];
@@ -58,7 +60,7 @@ function rig() {
   };
   const share = makeDescriptorShare({
     clock: {
-      now: () => ({ wall: 1_800_000_000_000 + mono, mono }),
+      now: () => ({ wall: 1_800_000_000_000 + mono + slept, mono }),
       setTimer: (delayMs, fire) => {
         const id = nextTimer;
         nextTimer += 1;
@@ -85,6 +87,10 @@ function rig() {
         request!.reject(cause);
       }
       await flush();
+    },
+    /** The machine sleeps: wall time moves, the monotonic clock does not. */
+    sleep: (ms: number) => {
+      slept += ms;
     },
     advance: async (ms: number) => {
       mono += ms;
@@ -160,6 +166,22 @@ describe("descriptor share: one read of a Mate's descriptor serves one connect",
         await setup.answer(DESCRIPTOR_URL, () => json(DESCRIPTOR));
         await first;
         await setup.advance(DESCRIPTOR_SHARE_MS + 1);
+        const second = readers.driver(setup, signal);
+        await flush();
+        await setup.answer(DESCRIPTOR_URL, () => json(DESCRIPTOR));
+        await second;
+      },
+      reads: 2,
+    },
+    {
+      name: "a reader once the machine slept past the window, by the wall clock alone",
+      run: async (setup) => {
+        const first = readers.door(setup, signal);
+        await flush();
+        await setup.answer(DESCRIPTOR_URL, () => json(DESCRIPTOR));
+        await first;
+        setup.sleep(60 * 60_000);
+        expect(setup.share.recent(BASE)).toBeNull();
         const second = readers.driver(setup, signal);
         await flush();
         await setup.answer(DESCRIPTOR_URL, () => json(DESCRIPTOR));

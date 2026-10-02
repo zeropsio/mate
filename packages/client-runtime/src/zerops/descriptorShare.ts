@@ -4,9 +4,10 @@
  * connect reads it once (measured on v0.11.83: three to four reads of it per Mate per load).
  *
  * - A read in flight is joined by every reader that does not ask `fresh`.
- * - The latest settled read is served for `DESCRIPTOR_SHARE_MS` from when it was sent, and only
- *   when it answered as a descriptor: a read that failed is never served, and it ends the one
- *   before it, so nobody is told a Mate is up after a later read found it away.
+ * - The latest settled read is served for `DESCRIPTOR_SHARE_MS` from when it was sent, on both
+ *   clocks (a sleep stops the monotonic one), and only when it answered as a descriptor: a read
+ *   that failed is never served, and it ends the one before it, so nobody is told a Mate is up
+ *   after a later read found it away.
  * - `fresh` starts a read now, whatever is held: a container coming up, or a caller that waits for
  *   a reading started after it asked. Its answer is shared like any other.
  * - Each read is one header-less GET (no CORS preflight), ended at `DESCRIPTOR_READ_DEADLINE_MS`
@@ -17,6 +18,7 @@ import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 
 import { readMatePath, type FetchLike, type MatePathReading } from "./containerHealth.ts";
+import type { Instant } from "./data/access/grant.ts";
 import type { ExchangeClock } from "./environments/exchangeDriver.ts";
 
 /** How long a descriptor read is served to the readers after it. */
@@ -45,8 +47,8 @@ export interface DescriptorSharePorts {
 
 interface Settled {
   readonly reading: MatePathReading;
-  /** Monotonic time its read was sent. */
-  readonly sentAt: number;
+  /** When its read was sent. */
+  readonly sentAt: Instant;
   readonly descriptor: ExecutionEnvironmentDescriptor | null;
 }
 
@@ -100,13 +102,17 @@ export function makeDescriptorShare(ports: DescriptorSharePorts): DescriptorShar
   const servable = (slot: Slot | undefined): Settled | null => {
     const settled = slot?.settled ?? null;
     if (settled === null || settled.descriptor === null) return null;
-    return clock.now().mono - settled.sentAt <= DESCRIPTOR_SHARE_MS ? settled : null;
+    // Either clock past the window makes it stale: the monotonic one stands still while the
+    // machine sleeps.
+    const now = clock.now();
+    const age = Math.max(now.mono - settled.sentAt.mono, now.wall - settled.sentAt.wall);
+    return age <= DESCRIPTOR_SHARE_MS ? settled : null;
   };
 
   const start = (key: string, slot: Slot): Promise<MatePathReading> => {
     slot.sent += 1;
     const order = slot.sent;
-    const sentAt = clock.now().mono;
+    const sentAt = clock.now();
     const controller = new AbortController();
     const cancelDeadline = clock.setTimer(DESCRIPTOR_READ_DEADLINE_MS, () => controller.abort());
     const read = readMatePath(
