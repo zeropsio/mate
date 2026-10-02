@@ -719,6 +719,11 @@ export interface ReleaseReviewInput {
    */
   readonly replaces: ReleaseReplaces;
   readonly outcome: ReleaseOutcome;
+  /**
+   * After a failure, whether production no longer runs what it replaced (`releaseStep`): a deploy
+   * that moved some services before another failed leaves something to roll back from.
+   */
+  readonly productionMoved?: boolean | undefined;
   readonly now: number;
 }
 
@@ -764,8 +769,14 @@ export function releaseReview(input: ReleaseReviewInput): ReleaseReviewModel {
   const { tag, replaces } = input;
   // The release a roll back goes to — never the tag itself, which is a release read after it
   // landed; none for the first release, and production's menu for one no release names.
+  // Nothing went out — a release that hasn't landed, one a newer release followed, a failure
+  // that moved nothing: production runs what it ran, and there is nothing to roll back from.
+  const nothingWentOut =
+    input.outcome.kind === "stalled" ||
+    input.outcome.kind === "superseded" ||
+    (input.outcome.kind === "failed" && input.productionMoved !== true);
   const back =
-    replaces.kind === "first"
+    replaces.kind === "first" || nothingWentOut
       ? undefined
       : replaces.kind === "release" && replaces.tag !== tag
         ? `roll back to ${replaces.tag} from production's menu`

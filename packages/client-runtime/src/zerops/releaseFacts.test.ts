@@ -128,6 +128,7 @@ function walk(steps: ReadonlyArray<Step>) {
       services: facts.services,
       replaces: facts.replaces,
       outcome: shown.outcome,
+      productionMoved: shown.productionMoved,
       now: step.nowMs ?? NOW,
     });
     return { name: step.name, facts, model, follows };
@@ -362,6 +363,8 @@ describe("a release that never lands ends: past the cutoff it says so", () => {
         ask: "Find out why production hasn't deployed it, and fix what holds it.",
       },
     });
+    // Nothing went out: production runs v0.1.0, and there is nothing to roll back.
+    expect(last?.model.ifWrong).toBeUndefined();
     expect(last?.model.meta.join(" · ")).toBe("replaces v0.1.0 · 1 change");
   });
 
@@ -376,6 +379,28 @@ describe("a release that never lands ends: past the cutoff it says so", () => {
       state: "released",
       title: "Released v0.1.1",
     });
+  });
+
+  it("a failed release whose deploy moved nothing offers no roll back; one that moved some does", () => {
+    const failed = row("v0.1.1", "deploy-failed", {
+      failedEntry: { service: "app", commit: HEAD },
+    });
+    const still = walk([tagging, onItsWay, later(5, failed)]).at(-1);
+    expect(still?.model.verdict.state).toBe("release-failed");
+    expect(still?.model.ifWrong).toBeUndefined();
+    // Production moved: no release runs in full now.
+    const moved = walk([
+      tagging,
+      onItsWay,
+      {
+        ...later(5, failed),
+        moment: { ...before, live: undefined },
+        releases: [failed, row("v0.1.0", undefined)],
+      },
+    ]).at(-1);
+    expect(moved?.model.ifWrong).toBe(
+      "Roll back to v0.1.0 from production's menu. It gets its own review.",
+    );
   });
 });
 
@@ -432,6 +457,7 @@ describe("a followed release ends when a newer one sits above it", () => {
     });
     expect(steps.at(-1)?.model.verdict.why).toBe("Production runs v0.1.2");
     expect(steps.at(-1)?.model.consequence).toBe("The project's line in the menu follows v0.1.2.");
+    expect(steps.at(-1)?.model.ifWrong).toBeUndefined();
     expect(steps.at(-1)?.model.primary).toBeUndefined();
   });
 
