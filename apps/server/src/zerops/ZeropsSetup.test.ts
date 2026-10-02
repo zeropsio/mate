@@ -20,6 +20,7 @@ import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Ref from "effect/Ref";
+import * as SqlClient from "effect/unstable/sql/SqlClient";
 
 import * as ServerConfig from "../config.ts";
 import { OrchestrationEngineService } from "../orchestration/Services/OrchestrationEngine.ts";
@@ -857,9 +858,12 @@ describe("ZeropsSetup: the document", () => {
       const world = yield* makeWorld;
       yield* Ref.set(world.tags, SIGNED);
       const half = (hostname: string, step: string, state: string) => ({ hostname, step, state });
-      yield* withServer(world, freshDatabase(), (setup) =>
+      const database = freshDatabase();
+      yield* withServer(world, database, (setup) =>
         Effect.gen(function* () {
-          yield* eventually(turnsOf(world), (turns) => turns.length === 1);
+          const [standUp] = yield* eventually(turnsOf(world), (turns) => turns.length === 1);
+          // The stand-up's own turn runs while zcp makes its two calls.
+          yield* turnRow(database, standUp!.threadId, standUp!.message.messageId, "running");
           const sequence: ReadonlyArray<[unknown, string]> = [
             [
               {
@@ -905,7 +909,64 @@ describe("ZeropsSetup: the document", () => {
       );
     }),
   );
+
+  const afterDev = {
+    state: "done",
+    phase: "development",
+    services: [
+      { hostname: "appdev", step: "verify", state: "done" },
+      { hostname: "appstage", step: "build", state: "pending" },
+    ],
+  };
+  const pendingStage: ReadonlyArray<
+    [string, (database: string, threadId: string, messageId: string) => Effect.Effect<void>, string]
+  > = [
+    ["its own turn not read (its thread gone): zcp's word", () => Effect.void, "done"],
+    [
+      "its own turn over, a later message's turn running: zcp's word, never a flap",
+      (database, threadId, messageId) =>
+        Effect.andThen(
+          turnRow(database, threadId, messageId, "completed"),
+          turnRow(database, threadId, "a-later-message", "running"),
+        ),
+      "done",
+    ],
+    [
+      "its own turn still running: the stage call is still to come",
+      (database, threadId, messageId) => turnRow(database, threadId, messageId, "running"),
+      "running",
+    ],
+  ];
+  for (const [name, arrange, expected] of pendingStage) {
+    it.live(`zcp done with the stage halves pending, ${name}`, () =>
+      Effect.gen(function* () {
+        const world = yield* makeWorld;
+        yield* Ref.set(world.tags, SIGNED);
+        const database = freshDatabase();
+        yield* withServer(world, database, (setup) =>
+          Effect.gen(function* () {
+            const [standUp] = yield* eventually(turnsOf(world), (turns) => turns.length === 1);
+            yield* arrange(database, standUp!.threadId, standUp!.message.messageId);
+            yield* Ref.set(world.statusFile, { version: 1, standup: afterDev });
+            assert.strictEqual(yield* stateOf(setup, "standup"), expected);
+          }),
+        );
+      }),
+    );
+  }
 });
+
+/** A turn of the projection's, as the engine records one, written into the Mate's database. */
+const turnRow = (database: string, threadId: string, messageId: string, state: string) =>
+  Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
+    yield* sql`
+      INSERT INTO projection_turns
+        (thread_id, turn_id, pending_message_id, state, requested_at, checkpoint_files_json)
+      VALUES (${threadId}, ${`turn-${messageId}`}, ${messageId}, ${state},
+        '2026-10-01T10:00:00.000Z', '[]')
+    `;
+  }).pipe(Effect.provide(NodeSqliteClient.layer({ filename: database })), Effect.orDie);
 
 describe("standUpPollDelay", () => {
   const cases: ReadonlyArray<[string, Duration.Duration, Duration.Duration]> = [
