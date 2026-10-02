@@ -39,7 +39,7 @@ export interface ZeropsEnvironmentCreationProps {
 }
 
 /**
- * What the environment runs, once it is up. The one negative, "nothing
+ * What the environment runs, once it is set up. The one negative, "nothing
  * deployed yet", is earned only when every service's deployment is known
  * (DESIGN §3.4): a service not yet read, or whose read failed, is what the
  * sentence says instead.
@@ -55,12 +55,12 @@ function upNote(
       nowMs,
       updateOffered: false,
     });
-    return `The environment is up. ${presentation.message?.text ?? CHECKING_WHAT_RUNS}`;
+    return `The environment is set up. ${presentation.message?.text ?? CHECKING_WHAT_RUNS}`;
   }
   const undeployed = deployments
     .filter(({ deployment }) => deployment.state === "known" && deployment.value.kind === "none")
     .map(({ service }) => service);
-  return undeployed.length === 0 ? "The environment is up." : undeployedNote(tier, undeployed);
+  return undeployed.length === 0 ? "The environment is set up." : undeployedNote(tier, undeployed);
 }
 
 /**
@@ -78,12 +78,26 @@ export function undeployedNote(
 ): string {
   const subject = `${undeployed.join(", ")} ${undeployed.length === 1 ? "has" : "have"} nothing deployed yet`;
   switch (tier) {
+    // The card sees neither the broker's deploy nor the group's runner it waits for (run 4: a dead
+    // runner held it 4.6 min under "within a few minutes"); the stage's own line does.
     case "stage":
-      return `The environment is up. ${subject} — main lands here on its own, usually within a few minutes.`;
+      return `The environment is set up. ${subject} — its first deploy of main shows on its line above.`;
     case "production":
-      return `The environment is up. ${subject}: a production runs what a release names, so it fills on the next release.`;
+      return `The environment is set up. ${subject}: a production runs what a release names, so it fills on the next release.`;
     default:
-      return `The environment is up. ${subject} — the agent sets the application up.`;
+      return `The environment is set up. ${subject} — the agent sets the application up.`;
+  }
+}
+
+/** Creating it while it runs, then what became of it: up, or not. */
+function creationTitle(name: string, outcome: ZeropsEnvironmentCreationProps["outcome"]): string {
+  switch (outcome?.kind) {
+    case "done":
+      return `${name} is set up`;
+    case "failed":
+      return `${name} didn’t come up`;
+    default:
+      return `Creating ${name}`;
   }
 }
 
@@ -129,7 +143,7 @@ export function ZeropsEnvironmentCreation({
       data-zerops-creation-outcome={outcome?.kind ?? "running"}
     >
       <div>
-        <h2 className="text-sm font-semibold text-foreground">Creating {name}</h2>
+        <h2 className="text-sm font-semibold text-foreground">{creationTitle(name, outcome)}</h2>
         <p className="text-xs text-muted-foreground">
           {outcome === undefined
             ? "Each step is a platform call with your own token. A first import takes a couple of minutes."

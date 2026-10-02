@@ -54,18 +54,22 @@ import {
   type ZeropsGroup,
   type ZeropsRouteOffer,
   sameCommit,
+  firstDeployLine,
+  firstDeployTone,
+  stageFirstDeploy,
+  type FirstDeploy,
 } from "@t3tools/client-runtime/zerops";
 import {
   DEPLOYS_ASIDE,
   earlierReleasesLabel,
   NONE_YET,
   NOT_PUBLIC_YET,
-  NOTHING_DEPLOYED,
   serviceRows,
   stopCardTitle,
   stopFailedDeploy,
   stopKeyGap,
   stopMetaLine,
+  stopTone,
   stopVerdict,
   stopView,
   type Deployment,
@@ -604,6 +608,32 @@ export function ZeropsReleaseVerb({
   return <ReleaseAction label={label} release={release} size="compact" />;
 }
 
+/**
+ * Where each declared stage of the group that runs nothing stands on its first deploy
+ * (`stageFirstDeploy`), as its cell on the projects page and the menu say it: on the minute clock,
+ * from what the flow and the account already hold.
+ */
+function useStageFirstDeploys(groupId: string): (projectId: string) => FirstDeploy | undefined {
+  const flowValue = useZeropsProjectFlowOptional();
+  const flow = flowValue?.flows.get(groupId);
+  const inventory = useZeropsInventory();
+  const nowMs = useNowMs();
+  return (projectId) =>
+    flow === undefined
+      ? undefined
+      : stageFirstDeploy({
+          deployment: flowValue?.deployments.get(projectId),
+          declared: flow.environments.some(
+            (entry) => entry.projectId === projectId && entry.tier === "stage",
+          ),
+          mainHasCode: undefined,
+          merged: flow.merged,
+          runner: undefined,
+          createdAt: inventory.projects.find((entry) => entry.id === projectId)?.created,
+          nowMs,
+        });
+}
+
 export function ZeropsGroupDetailPage({ groupId }: { readonly groupId: string }) {
   const flowValue = useZeropsProjectFlowOptional();
   const flow = flowValue?.flows.get(groupId);
@@ -625,6 +655,7 @@ export function ZeropsGroupDetailPage({ groupId }: { readonly groupId: string })
   const { mates, notice: matesNotice, refresh: rereadMates } = useGroupMates(groupId);
   const openMate = useOpenMateOf();
   const { withheldNotice, shown } = useWithheldStops(environments);
+  const firstDeployOf = useStageFirstDeploys(groupId);
   const attention = useProjectAttention(groupId, mates, {
     environments: shown,
     pullRequests: flow?.pullRequests ?? EMPTY_PULLS,
@@ -678,6 +709,7 @@ export function ZeropsGroupDetailPage({ groupId }: { readonly groupId: string })
       tags={tags}
       waiting={waiting}
       withheldNotice={withheldNotice}
+      firstDeployOf={firstDeployOf}
     />
   );
 }
@@ -714,6 +746,7 @@ export function ZeropsGroupPane({
   tags,
   waiting,
   withheldNotice,
+  firstDeployOf,
 }: {
   /** What has landed on the repository, as HQ compares it. */
   readonly history: ZeropsHistoryState;
@@ -758,6 +791,8 @@ export function ZeropsGroupPane({
    * project (DESIGN §3.4); `null` while it may be shown. Absent, every stop is.
    */
   readonly withheldNotice?: (projectId: string) => string | null;
+  /** Where a stage that runs nothing stands on its first deploy (`useStageFirstDeploys`). */
+  readonly firstDeployOf?: (projectId: string) => FirstDeploy | undefined;
 }) {
   const deployed = useMemo(
     () =>
@@ -836,6 +871,7 @@ export function ZeropsGroupPane({
                 groupName={name}
                 key={environment.projectId}
                 notice={withheldNotice?.(environment.projectId) ?? null}
+                firstDeploy={firstDeployOf?.(environment.projectId)}
               />
             ))
           )}
@@ -951,6 +987,9 @@ export function ZeropsStopDetailPage({
   // Only a countdown reads the clock, and nothing here counts down: the time
   // the page was first drawn is enough, as it is for the left menu's rows.
   const [nowMs] = useState(Date.now);
+  // Where a stage that runs nothing stands on its first deploy, as its cell and the menu say it.
+  const firstDeployOf = useStageFirstDeploys(groupId);
+  const firstDeploy = stop?.tier === "stage" ? firstDeployOf(projectId) : undefined;
   // A withheld stop lists no service, so no build of one is read either.
   const services =
     declared === undefined || withheld !== null
@@ -964,6 +1003,7 @@ export function ZeropsStopDetailPage({
           offers,
           nowMs,
           age: formatRelativeTimeLabel,
+          firstDeploy,
         });
   const failedDeploy =
     flow === undefined || stop === undefined
@@ -1013,6 +1053,7 @@ export function ZeropsStopDetailPage({
       declared === undefined
         ? undefined
         : stopKeyGap({ ...declared, mayKeep: mayKeepKey(projectId), project: stop.name }),
+    firstDeploy,
   });
 
   return (
@@ -1505,9 +1546,7 @@ function StopServiceLine({
               {row.commit}
             </span>
           ) : row.status === undefined ? (
-            <span className="truncate text-sm leading-5 text-muted-foreground">
-              {NOTHING_DEPLOYED}
-            </span>
+            <span className="truncate text-sm leading-5 text-muted-foreground">{row.word}</span>
           ) : null}
           {row.line === undefined ? null : (
             <span className="truncate text-xs leading-4 text-muted-foreground">{row.line}</span>
@@ -1946,6 +1985,7 @@ function MateLine({
 
 function StopLine({
   environment,
+  firstDeploy,
   groupId,
   groupName,
   notice,
@@ -1959,10 +1999,18 @@ function StopLine({
    * tier stays, and its name, what it runs and its page do not (DESIGN §3.4).
    */
   readonly notice: string | null;
+  /** A stage that runs nothing: where its first deploy stands, said as its cell says it. */
+  readonly firstDeploy?: FirstDeploy | undefined;
 }) {
   const navigate = useNavigate();
-  const word = deployWord(environment.tone);
-  const dotTone = STOP_DOT_TONE[environment.tone];
+  const deployments = useZeropsProjectFlowOptional()?.deployments;
+  // The one rule every surface words a stop by (`stopTone`), with the platform's answer beside it.
+  const tone = stopTone(deployments?.get(environment.projectId), environment);
+  // No word for what runs and a first deploy asked for: the line its cell and its page say.
+  const said = deployWord(tone);
+  const firstWord = said === undefined ? firstDeployLine(firstDeploy) : undefined;
+  const word = said ?? firstWord;
+  const dotTone = firstWord === undefined ? STOP_DOT_TONE[tone] : firstDeployTone(firstDeploy);
   const open = useCallback(() => {
     void navigate({
       to: "/group/$groupId/$projectId",

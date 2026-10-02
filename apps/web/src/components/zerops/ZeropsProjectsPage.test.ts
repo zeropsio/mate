@@ -933,6 +933,14 @@ describe("a declared environment's row", () => {
   ] as const)("says what %s runs, not a bare source", (_name, row, expected) => {
     expect(declaredEnvironmentSummary(row)).toBe(expected);
   });
+
+  it("says an empty stage's first deploy as its cell does", () => {
+    const row = { line: "main", tone: "neutral", version: version(undefined) } as const;
+    expect(declaredEnvironmentSummary(row, { kind: "on-its-way" })).toBe("First deploy on its way");
+    expect(declaredEnvironmentSummary(row, { kind: "runner", why: "missing" })).toBe(
+      "Waiting for the runner · it isn’t there",
+    );
+  });
 });
 
 describe("a group's one line about itself", () => {

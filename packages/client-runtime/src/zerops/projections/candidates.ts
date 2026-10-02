@@ -133,11 +133,14 @@ export function rememberAddresses(
   return next ?? memory;
 }
 
-/** When the first of the rows' address waits ends, wall ms; null when none waits. */
+/**
+ * When the first of the rows' address waits ends — for its address, or for its Mate to answer
+ * once it landed (`arriving`) — wall ms; null when none waits.
+ */
 export function addressWaitEnd(rows: ReadonlyArray<ZeropsCandidate>): number | null {
   let end: number | null = null;
   for (const row of rows) {
-    const until = row.addressAwaited?.until;
+    const until = row.addressAwaited?.until ?? row.arriving?.until;
     if (until !== undefined && (end === null || until < end)) end = until;
   }
   return end;

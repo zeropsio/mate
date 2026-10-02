@@ -9,8 +9,10 @@ import type {
 } from "../data/types.ts";
 import { ReceiptOrdinal } from "../data/types.ts";
 import { serviceRecordToZeropsService } from "../data/dto.ts";
-import { deployedVersion, type EnvironmentRow } from "../groupRows.ts";
-import type { Freshness, Shown, WithheldReason } from "../knowledge/known.ts";
+import { deployWord } from "../groupDeploys.ts";
+import { groupFlow } from "../groupFlow.ts";
+import { deployedVersion, environmentRow, type EnvironmentRow } from "../groupRows.ts";
+import type { Freshness, Known, Shown, WithheldReason } from "../knowledge/known.ts";
 import { projectTopology } from "../topology.ts";
 import {
   buildNames,
@@ -19,9 +21,12 @@ import {
   deployBuilding,
   NOTHING_DEPLOYED,
   stopServices,
+  stopTone,
   stopView,
+  heldThroughRecheck,
   type Deployment,
   type StopReads,
+  type StopService,
 } from "./deployment.ts";
 import { processesRead, runningProcess } from "./__fixtures__/processes.ts";
 import {
@@ -142,6 +147,24 @@ const ROWS: ReadonlyArray<{ readonly name: string; readonly row: EnvironmentRow 
 ];
 
 describe("stopView", () => {
+  it("colours a stop as stopTone does, in every state and with every row", () => {
+    const toned = ROWS.flatMap((entry) =>
+      entry.row === undefined
+        ? [entry]
+        : (["neutral", "pending", "good", "bad"] as const).map((tone) => ({
+            name: `${entry.name}, ${tone}`,
+            row: { ...entry.row!, tone },
+          })),
+    );
+    for (const { name, shown } of STATES) {
+      for (const entry of toned) {
+        expect(stopTone(shown, entry.row), `${name}, ${entry.name}`).toBe(
+          stopView({ deployment: shown, row: entry.row, nowMs: NOW }).tone,
+        );
+      }
+    }
+  });
+
   it("unknown never reads Nothing deployed yet", () => {
     for (const { name, shown } of STATES) {
       for (const entry of ROWS) {
@@ -246,7 +269,8 @@ describe("stopView", () => {
         },
         "good",
       ),
-      expected: { tone: "neutral", word: "Deployed", line: "v1.4.0" },
+      // Named by the platform; Gitea was read, and the platform says it runs.
+      expected: { tone: "good", word: "Deployed", line: "v1.4.0" },
     },
   ])("$name", ({ row: read, expected }) => {
     const view = stopView({ deployment: known(RUNNING), row: read, nowMs: NOW });
@@ -254,7 +278,7 @@ describe("stopView", () => {
     expect(view.version?.label).toBe(expected.line);
   });
 
-  it("never names or colours a stop by a version the deploy half read that does not run there", () => {
+  it("never names or fails a stop by a version the deploy half read that does not run there", () => {
     // userData moved to a build that then failed; the service still runs RUNNING (A11, A14).
     const failedBuild = "9d8e7f6000000000000000000000000000000000";
     const read = row(
@@ -268,7 +292,7 @@ describe("stopView", () => {
       "bad",
     );
     expect(stopView({ deployment: known(RUNNING), row: read, nowMs: NOW })).toMatchObject({
-      tone: "neutral",
+      tone: "good",
       word: "Deployed",
       line: "v1.4.0",
       version: RUNNING.version,
@@ -865,5 +889,210 @@ describe("what a surface reads off a stop's deployment", () => {
   ])("$name", ({ deployment, activatedAt, building: expected }) => {
     expect(deployActivatedAt(deployment)).toBe(activatedAt);
     expect(deployBuilding(deployment)).toEqual(expected);
+  });
+});
+
+describe("a deploy of a commit only moves forward", () => {
+  // Invented commits: the one a stage ran, the one deployed over it, and a newer one after.
+  const OLD = "a11ce5e0b0c0d0e0f0a1b2c3d4e5f60718293a4b";
+  const NEW = "b0b5c0de1f2e3d4c5b6a79881726354453627180";
+  const NEWER = "c4fe0011223344556677889900aabbccddeeff00";
+  const runs = (sha: string): Shown<Deployment> =>
+    known({ kind: "running", activatedAt: null, version: deployedVersion(sha) });
+  const building = (sha: string, ran: string): Shown<Deployment> =>
+    known({
+      kind: "deploying",
+      version: deployedVersion(sha),
+      previous: { kind: "running", activatedAt: null, version: deployedVersion(ran) },
+    });
+  /** The deploy half's row: the commit a service runs and HQ's record of its deploy, as read. */
+  const read = (sha: string, state: "pending" | "live" | "failed"): EnvironmentRow =>
+    environmentRow({
+      projectId: "p-stage",
+      name: "stage",
+      tier: "stage",
+      sources: ["main"],
+      services: [
+        {
+          hostname: "app",
+          appVersionName: sha,
+          deploy: {
+            latest: {
+              sha,
+              state,
+              failure: state === "failed" ? "job" : null,
+              message: null,
+              appVersionId: null,
+              processId: null,
+              requestedBy: null,
+              at: "2026-10-02T10:00:00.000Z",
+            },
+            live: null,
+          },
+        },
+      ],
+    });
+  /** What the menu and the chips read: the group flow's stop. */
+  const flowState = (deployment: Shown<Deployment>, row: EnvironmentRow) =>
+    groupFlow({
+      groupId: "g",
+      mates: [],
+      pullRequests: [],
+      merged: [],
+      stops: [
+        { projectId: "p-stage", name: "stage", tier: "stage", row, deployment, route: undefined },
+      ],
+      missing: [],
+      release: {
+        gate: { allowed: false, reason: "" },
+        suggestion: "v0.1.0",
+        waiting: 0,
+        waitingAtLeast: false,
+        untold: [],
+      },
+      mainHasCode: true,
+      mainHead: undefined,
+      productionAddable: false,
+      pending: [],
+    }).stages[0]?.state;
+
+  // The measured order: the platform's version went active before the deploy's record turned
+  // live, and HQ's read from before that moment arrived after it.
+  const STEPS = [
+    {
+      step: "the build runs",
+      deployment: building(NEW, OLD),
+      row: read(OLD, "live"),
+      word: "Deploying…",
+      state: "deploying",
+    },
+    {
+      step: "the platform runs it, the row still reads the commit before",
+      deployment: runs(NEW),
+      row: read(OLD, "live"),
+      word: "Deployed",
+      state: "deployed",
+    },
+    {
+      step: "a status read before that moment arrives after it",
+      deployment: runs(NEW),
+      row: read(NEW, "pending"),
+      word: "Deployed",
+      state: "deployed",
+    },
+    {
+      step: "the platform's answer goes unknown on a reconnect, the stale read standing",
+      deployment: { state: "reading", sinceMs: 0, attempt: 1 },
+      row: read(NEW, "pending"),
+      word: "Deployed",
+      state: "deployed",
+    },
+    {
+      step: "the active version arrives unstated, the stale read standing",
+      deployment: { state: "unread", waitingFor: null },
+      row: read(NEW, "pending"),
+      word: "Deployed",
+      state: "deployed",
+    },
+    {
+      step: "HQ's record of it going live lands",
+      deployment: runs(NEW),
+      row: read(NEW, "live"),
+      word: "Deployed",
+      state: "deployed",
+    },
+    {
+      step: "a newer commit's deploy starts its own sequence",
+      deployment: building(NEWER, NEW),
+      row: read(NEW, "live"),
+      word: "Deploying…",
+      state: "deploying",
+    },
+    {
+      step: "the newer commit runs before its status says so",
+      deployment: runs(NEWER),
+      row: read(NEWER, "pending"),
+      word: "Deployed",
+      state: "deployed",
+    },
+    {
+      step: "a failure on the commit it runs says so",
+      deployment: runs(NEWER),
+      row: read(NEWER, "failed"),
+      word: "Failed",
+      state: "failed",
+    },
+  ] as const satisfies ReadonlyArray<{
+    step: string;
+    deployment: Shown<Deployment>;
+    row: EnvironmentRow;
+    word: string;
+    state: string;
+  }>;
+
+  // Every surface that words a stop: its page (`stopView`), the menu, the chips and the collapsed
+  // card (the group flow's stop), and the expanded card and the group page's rows (`stopTone`).
+  it.each(STEPS)("$step: $word", ({ deployment, row, word, state }) => {
+    expect(stopView({ deployment, row, nowMs: NOW }).word).toBe(word);
+    expect(flowState(deployment, row)).toBe(state);
+    expect(deployWord(stopTone(deployment, row))).toBe(word);
+  });
+});
+
+describe("heldThroughRecheck — a re-check keeps the last answer only where it is none (F5)", () => {
+  const NOW = 50_000;
+  const at = { ordinal: 1, atMs: 0 };
+  const deployment = (kind: "none" | "running"): Shown<Deployment> => ({
+    state: "known",
+    value:
+      kind === "none"
+        ? { kind: "none" }
+        : { kind: "running", activatedAt: null, version: deployedVersion("v1.0.0") },
+    asOf: at,
+    coverage: "complete",
+    freshness: { kind: "live" },
+  });
+  const stopOf = (
+    entry: Shown<Deployment>,
+  ): Extract<Known<ReadonlyArray<StopService>>, { state: "known" }> => ({
+    state: "known",
+    value: [{ service: service("app-id"), hostname: "app", deployment: entry }],
+    asOf: at,
+    coverage: "complete",
+    freshness: { kind: "live" },
+  });
+  const READING = { state: "reading", sinceMs: NOW, attempt: 1 } as const;
+  const PAUSED = { state: "unread", waitingFor: "visible" } as const;
+  it.each([
+    {
+      case: "nothing deployed, checked again: held, revalidating",
+      shown: deployment("none"),
+      next: READING,
+      held: { state: "known", value: { kind: "none" }, freshness: { kind: "revalidating" } },
+    },
+    {
+      case: "a version, checked again (a roll back no build named): never shown as current",
+      shown: deployment("running"),
+      next: READING,
+      held: READING,
+    },
+    {
+      case: "nothing deployed, its source paused: paused, never revalidating",
+      shown: deployment("none"),
+      next: PAUSED,
+      held: PAUSED,
+    },
+  ] as const)("$case", ({ shown, next, held }) => {
+    const result = heldThroughRecheck(stopOf(shown), stopOf(next as Shown<Deployment>), NOW);
+    expect(result.state === "known" ? result.value[0]?.deployment : result).toMatchObject(held);
+  });
+
+  it("holds a listing read again only where every service it showed ran nothing", () => {
+    expect(heldThroughRecheck(stopOf(deployment("none")), READING, NOW)).toMatchObject({
+      state: "known",
+      freshness: { kind: "revalidating" },
+    });
+    expect(heldThroughRecheck(stopOf(deployment("running")), READING, NOW)).toEqual(READING);
+    expect(heldThroughRecheck(stopOf(deployment("none")), PAUSED, NOW)).toEqual(PAUSED);
   });
 });

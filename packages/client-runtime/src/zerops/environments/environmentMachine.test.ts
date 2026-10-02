@@ -6,12 +6,14 @@ import {
   identityRestartOffered,
   initialEnvironment,
   transitionEnvironment,
+  type ContainerVerdict,
   type DescriptorFacts,
   type EnvironmentContext,
   type EnvironmentEffect,
   type EnvironmentEvent,
   type EnvironmentGuards,
   type EnvironmentMachine,
+  type ExchangeCause,
 } from "./environmentMachine.ts";
 import { selectReachability } from "./reachability.ts";
 
@@ -454,6 +456,55 @@ describe("environment machine (DESIGN §4.4)", () => {
       held.nowMs,
     );
     expect(linked.machine.failuresSinceConnect).toBe(0);
+  });
+
+  // Review, pass 34: a server that answered with an error is not one still starting. Of the
+  // failures since its link connected, those its server answered are counted apart, whatever the
+  // link is doing between them.
+  it("counts apart the failures its server answered", () => {
+    const fail = (machine: EnvironmentMachine, nowMs: number, cause: ExchangeCause) => {
+      const failed = drive(
+        machine,
+        [
+          {
+            type: "EXCHANGE_FAILED",
+            attempt: lastExchange(machine),
+            failure: { class: "retryable", cause },
+            descriptor: null,
+          },
+        ],
+        nowMs,
+      );
+      return drive(failed.machine, [{ type: "TICK" }], failed.nowMs);
+    };
+    const started = drive(initialEnvironment({ record: null }), [
+      { type: "GUARDS", guards: GUARDS },
+      { type: "CONTAINER", container: { level: "ready" } },
+      { type: "PRESENCE", presence: { kind: "present", origin: ORIGIN } },
+    ]);
+    const causes: ReadonlyArray<ExchangeCause> = [
+      { kind: "network" },
+      { kind: "server", status: 502 },
+      { kind: "timeout" },
+      { kind: "rejected" },
+      { kind: "descriptor-unreachable" },
+    ];
+    let run = started;
+    for (const cause of causes) run = fail(run.machine, run.nowMs, cause);
+    expect(run.machine.failuresSinceConnect).toBe(5);
+    expect(run.machine.errorsSinceConnect).toBe(2);
+  });
+
+  it("remembers its container was found ready, through a boot that follows", () => {
+    const seen = (containers: ReadonlyArray<ContainerVerdict>) =>
+      drive(
+        initialEnvironment({ record: null }),
+        containers.map((container) => ({ type: "CONTAINER", container }) as const),
+      ).machine.readySeen;
+    const booting = { level: "booting", overdue: false } as const;
+    expect(seen([booting])).toBe(false);
+    expect(seen([booting, { level: "ready" }])).toBe(true);
+    expect(seen([booting, { level: "ready" }, booting])).toBe(true);
   });
 
   it("the ladder starts over once the registry took the credential", () => {

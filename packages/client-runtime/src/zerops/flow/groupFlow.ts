@@ -105,7 +105,16 @@ export function stopDeploymentOf(services: Shown<ReadonlyArray<StopService>>): S
     { shown: services, source: "zerops" },
     ...services.value.map(({ deployment }) => ({ shown: deployment, source: "zerops" as const })),
   ]);
-  return withValue(combined.shown, (): Deployment => ({ kind: "none" }));
+  // A build seen to end with nothing running on any of its services: its first deploy failed.
+  const afterBuild = services.value.some(
+    ({ deployment }) =>
+      deployment.state === "known" &&
+      deployment.value.kind === "none" &&
+      deployment.value.afterBuild === true,
+  );
+  return withValue(combined.shown, (): Deployment =>
+    afterBuild ? { kind: "none", afterBuild: true } : { kind: "none" },
+  );
 }
 
 /**

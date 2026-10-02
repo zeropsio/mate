@@ -54,6 +54,15 @@ export interface MateLink {
   readonly reachability: Reachability | null;
   /** Its link's failures since it last connected (`EnvironmentMachine.failuresSinceConnect`). */
   readonly failuresSinceConnect: number;
+  /** Of those, the ones its server answered (`EnvironmentMachine.errorsSinceConnect`). */
+  readonly errorsSinceConnect: number;
+  /**
+   * Its Mate has answered on this page: its link is connected or was, or its probe found it ready
+   * while nothing wants its link — one auto-connect leaves unlinked (its close-off pending, past
+   * the ceiling). A link wanted after a ready probe answers by connecting: until then its Mate
+   * is still on its way. Once answered, it is no longer arriving, whatever it waits for now.
+   */
+  readonly answered: boolean;
 }
 
 export function mateLink(input: {
@@ -68,7 +77,14 @@ export function mateLink(input: {
   const key = rowTarget(input);
   const machine = key === undefined ? undefined : input.machines.get(key);
   if (machine === undefined) {
-    return { key, environmentId: undefined, reachability: null, failuresSinceConnect: 0 };
+    return {
+      key,
+      environmentId: undefined,
+      reachability: null,
+      failuresSinceConnect: 0,
+      errorsSinceConnect: 0,
+      answered: false,
+    };
   }
   // A restarting Mate has no origin in the inventory; its target key still finds it.
   const named =
@@ -86,5 +102,10 @@ export function mateLink(input: {
     environmentId: opens ? named : undefined,
     reachability,
     failuresSinceConnect: machine.failuresSinceConnect,
+    errorsSinceConnect: machine.errorsSinceConnect,
+    answered:
+      machine.link.phase === "connected" ||
+      machine.linkLostAt !== null ||
+      (machine.readySeen && !machine.guards.want),
   };
 }

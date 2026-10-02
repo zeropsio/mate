@@ -5,14 +5,20 @@ import {
   deriveZeropsCandidates,
 } from "@t3tools/client-runtime/zerops/candidates";
 import {
+  IDLE_GUARDS,
   candidatePresence,
   initialEnvironment,
+  mateLink,
   reachabilityPhrase,
   selectReachability,
+  transitionEnvironment,
+  type EnvironmentEvent,
+  type EnvironmentMachine,
 } from "@t3tools/client-runtime/zerops/environments";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
+  arrivalAwaitsAnswer,
   arrivalLinkHolds,
   mateComing,
   mateComingHeadlineClauses,
@@ -28,7 +34,13 @@ import {
   mateArrivalShown,
   type MateComingPage,
 } from "./mateComing";
-import type { Reachability } from "@t3tools/client-runtime/zerops/environments";
+import type { MateLink, Reachability } from "@t3tools/client-runtime/zerops/environments";
+import {
+  NO_ADDRESS_MEMORY,
+  addressClockOf,
+  rememberAddresses,
+  type AddressMemory,
+} from "@t3tools/client-runtime/zerops/projections";
 
 const NOW = Date.parse("2026-10-01T20:00:00.000Z");
 const HELD = { startedAt: 1_000, container: true, retryable: false } as const;
@@ -1034,5 +1046,284 @@ describe("a new Mate whose container is ACTIVE before its address landed", () =>
     });
     expect(read.coming).toBeUndefined();
     expect(read.reachability.kind).toBe("no-address");
+  });
+});
+
+// Run 4 (2026-10-02), replayed in the window that did not make the Mate: its container turned
+// ACTIVE, its address landed seconds later, and its server answered about 15 s after ACTIVE. In that
+// gap the row read asleep — "Nobody has signed in yet" under an asleep face — and took it back when
+// the Mate answered. Each step is a listing derivation over the memory the listing keeps, then the
+// link this window's machine reads.
+describe("a Mate whose address landed, not answering yet, in a window that did not make it", () => {
+  const CREATED_AT = "2026-10-02T12:00:00.000Z";
+  const CREATED = Date.parse(CREATED_AT);
+  const ENV = EnvironmentId.make("environment-larch");
+  const PROJECT: ZeropsProject = {
+    id: "project-larch",
+    name: "Larch",
+    status: "ACTIVE",
+    clientId: "org-1",
+    publicZone: "fte2334ab.prg1-zerops.zone",
+    zeropsSubdomainHost: "1",
+  };
+  const ORIGIN = "https://zcp-1-8080.prg1.zerops.app";
+  const zcp = (status: string, subdomainAccess: boolean): ZeropsService => ({
+    id: "service-larch",
+    name: "zcp",
+    status,
+    subdomainAccess,
+    ports: [{ port: 8080, httpSupport: true }],
+    serviceStackTypeInfo: { serviceStackTypeVersionName: "zcp@1" },
+    created: CREATED_AT,
+  });
+  const BOOTING: Reachability = {
+    kind: "container",
+    container: { level: "booting", overdue: false },
+  };
+  const NOT_ANSWERING: Reachability = {
+    kind: "retrying",
+    retryAtMs: CREATED + 160_000,
+    last: { kind: "descriptor-unreachable" },
+    restart: false,
+  };
+  const link = (reachability: Reachability | null, answered = false, failures = 0, errors = 0) =>
+    ({
+      key: "project-larch:service-larch",
+      environmentId: undefined,
+      reachability,
+      failuresSinceConnect: failures,
+      errorsSinceConnect: errors,
+      answered,
+    }) satisfies MateLink;
+
+  const KEY = "project-larch:service-larch";
+  /** Its link as this window's machine reads it, after `events` from a machine that saw it present. */
+  const machineLink = (events: ReadonlyArray<EnvironmentEvent>): MateLink => {
+    let machine: EnvironmentMachine = initialEnvironment({ record: null });
+    for (const [index, event] of [
+      { type: "PRESENCE", presence: { kind: "present", origin: ORIGIN } } as const,
+      ...events,
+    ].entries()) {
+      const at = CREATED + 160_000 + index * 1_000;
+      machine = transitionEnvironment(machine, event, {
+        now: { wall: at, mono: at },
+        random: () => 0.5,
+      }).state;
+    }
+    return mateLink({
+      key: KEY,
+      projectId: "project-larch",
+      machines: new Map([[KEY, machine]]),
+      index: { serving: new Map(), reported: new Map(), unanswered: [], failed: [] },
+      records: [],
+      registered: new Set(),
+    });
+  };
+  const READY = { type: "CONTAINER", container: { level: "ready" } } as const;
+  const WANTED = { type: "GUARDS", guards: { ...IDLE_GUARDS, want: true } } as const;
+
+  const STEPS: ReadonlyArray<{
+    readonly step: string;
+    readonly atMs: number;
+    readonly service: ZeropsService;
+    readonly link: MateLink;
+    readonly connected?: true;
+    readonly coming: boolean;
+  }> = [
+    {
+      step: "its first build",
+      atMs: 60_000,
+      service: zcp("READY_TO_DEPLOY", false),
+      link: link(null),
+      coming: true,
+    },
+    {
+      step: "ACTIVE, its address not enabled yet",
+      atMs: 152_000,
+      service: zcp("ACTIVE", false),
+      link: link(BOOTING),
+      coming: true,
+    },
+    {
+      step: "its address landed, its Mate not answering",
+      atMs: 157_600,
+      service: zcp("ACTIVE", true),
+      link: link(BOOTING),
+      coming: true,
+    },
+    {
+      step: "its probes failing past an arrival's held failures",
+      atMs: 166_800,
+      service: zcp("ACTIVE", true),
+      link: link(NOT_ANSWERING, false, 5),
+      coming: true,
+    },
+    {
+      step: "its probe found it ready, auto-connect making its link",
+      atMs: 166_900,
+      service: zcp("ACTIVE", true),
+      link: machineLink([WANTED, READY]),
+      coming: true,
+    },
+    {
+      step: "its Mate answered and its link connected",
+      atMs: 167_000,
+      service: zcp("ACTIVE", true),
+      link: link({ kind: "ready", notice: null }, true),
+      connected: true,
+      coming: false,
+    },
+  ];
+
+  /** The steps in order, the listing's memory carried from each to the next. */
+  const replay = (steps: typeof STEPS, created = false) => {
+    let memory: AddressMemory = NO_ADDRESS_MEMORY;
+    return steps.map((step) => {
+      const nowMs = CREATED + step.atMs;
+      const candidate = deriveZeropsCandidates(
+        PROJECT,
+        [step.service],
+        new Map(step.connected === true ? [[ORIGIN, ENV]] : []),
+        undefined,
+        addressClockOf(memory, nowMs),
+      )[0]!;
+      memory = rememberAddresses(memory, [candidate]);
+      return mateComing({
+        press: undefined,
+        candidate,
+        nowMs,
+        ...(created ? { created, linkHolds: arrivalLinkHolds(step.link) } : {}),
+        answerAwaited: arrivalAwaitsAnswer(step.link),
+      });
+    });
+  };
+
+  it("reads coming up at every step until its Mate answers, never asleep in between", () => {
+    expect(replay(STEPS).map((coming) => coming?.kind ?? "up")).toEqual(
+      STEPS.map((step) => (step.coming ? "coming" : "up")),
+    );
+  });
+
+  it("says it in the words a Mate coming up says everywhere", () => {
+    expect(replay(STEPS)[3]).toEqual({ kind: "coming", line: "Coming up. A few minutes." });
+  });
+
+  it("past its two minutes, a Mate that never answered reads as any other", () => {
+    const late = replay([...STEPS.slice(0, 3), { ...STEPS[3]!, atMs: 152_000 + ADDRESS_GRACE_MS }]);
+    expect(late[3]).toBeUndefined();
+  });
+
+  it.each<{ readonly case: string; readonly link: MateLink }>([
+    {
+      case: "it answered once and its link dropped",
+      link: link({ kind: "reconnecting" }, true),
+    },
+    { case: "it is gone", link: link({ kind: "gone", because: "direct-not-found" }) },
+    {
+      case: "its link asks for a restart",
+      link: link({ ...NOT_ANSWERING, restart: true } as Reachability),
+    },
+    {
+      case: "its container stopped",
+      link: link({
+        kind: "container",
+        container: { level: "inactive", status: "STOPPED" },
+      } as Reachability),
+    },
+  ])("within its two minutes, not coming up when $case", ({ link: now }) => {
+    expect(replay([...STEPS.slice(0, 3), { ...STEPS[3]!, link: now }])[3]).toBeUndefined();
+  });
+
+  it("watched in its first build, its address landing with ACTIVE in one read: still coming up", () => {
+    // An org socket's recovery re-read, or one push carrying both: no read between them.
+    const read = replay([STEPS[0]!, { ...STEPS[2]!, atMs: 152_000 }, ...STEPS.slice(3)]);
+    expect(read.map((coming) => coming?.kind ?? "up")).toEqual([
+      "coming",
+      "coming",
+      "coming",
+      "coming",
+      "up",
+    ]);
+  });
+
+  // Review, pass 34: a server that answers with an error is not one still starting — an arrival
+  // holds through its first failures only, as the making window's does, and then its words speak.
+  it.each([
+    {
+      case: "a 5xx, its first failure",
+      reachability: { ...NOT_ANSWERING, last: { kind: "server", status: 502 } },
+      failures: 1,
+      errors: 1,
+      coming: true,
+    },
+    {
+      case: "a 5xx past an arrival's held failures",
+      reachability: { ...NOT_ANSWERING, last: { kind: "server", status: 502 } },
+      failures: 5,
+      errors: 5,
+      coming: false,
+    },
+    {
+      case: "its fresh credentials refused past them",
+      reachability: { ...NOT_ANSWERING, last: { kind: "rejected" } },
+      failures: 4,
+      errors: 4,
+      coming: false,
+    },
+    {
+      case: "an attempt between errors its server answered, past them",
+      reachability: { kind: "connecting", waitingOn: "exchange" },
+      failures: 5,
+      errors: 5,
+      coming: false,
+    },
+    {
+      case: "no answer at all, past them",
+      reachability: { ...NOT_ANSWERING, last: { kind: "timeout" } },
+      failures: 5,
+      errors: 0,
+      coming: true,
+    },
+  ] as const)("inside its two minutes, $case: coming up $coming", (row) => {
+    const { reachability, failures, errors, coming } = row;
+    const errored = link(reachability as Reachability, false, failures, errors);
+    const [, , , read] = replay([...STEPS.slice(0, 3), { ...STEPS[3]!, link: errored }]);
+    expect(read?.kind === "coming").toBe(coming);
+  });
+
+  it("in the window that made it, past an arrival's held failures, its link's words speak", () => {
+    // Pass 31: "This Mate isn't answering" with Try now — never "Coming up" over it.
+    const [, , , read] = replay(STEPS.slice(0, 4), true);
+    expect(read).toBeUndefined();
+  });
+
+  // Review, pass 34: a Mate auto-connect leaves unlinked — its close-off pending, past the
+  // ceiling — sits waiting for an exchange nobody asks for. Its probe found it up: it is not coming
+  // up, and its row offers what it offers (Finish setup) at once.
+  it("its probe found it up, auto-connect leaving it unlinked: no longer coming up", () => {
+    const unlinked = machineLink([READY]);
+    expect(unlinked.reachability?.kind).toBe("connecting");
+    const [, , , read] = replay([...STEPS.slice(0, 3), { ...STEPS[3]!, link: unlinked }]);
+    expect(read).toBeUndefined();
+  });
+
+  // Review, pass 34: a ready Mate silent past its grace is booting again by guess; it answered,
+  // and never reads as coming up again — nor hides its Finish setup behind it.
+  it("found up, then silent and booting again, nothing wanting its link: still not coming up", () => {
+    const silent = machineLink([
+      READY,
+      { type: "CONTAINER", container: { level: "booting", overdue: false } },
+    ]);
+    expect(silent.reachability?.kind).toBe("container");
+    const [, , , read] = replay([...STEPS.slice(0, 3), { ...STEPS[3]!, link: silent }]);
+    expect(read).toBeUndefined();
+  });
+
+  it("an old Mate that stops answering still reads as asleep, never coming up", () => {
+    // A reload — or an old Mate: first seen with its address, nothing watched it come.
+    const [read] = replay([{ ...STEPS[3]!, atMs: 3 * 60 * 60_000 }]);
+    expect(read).toBeUndefined();
+    const [reloaded] = replay([STEPS[3]!]);
+    expect(reloaded).toBeUndefined();
   });
 });

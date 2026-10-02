@@ -18,6 +18,8 @@ import {
   changesNotLive,
   deployWord,
   environmentNameUnderGroup,
+  firstDeployLine,
+  firstDeployTone,
   flowVerbKey,
   flowVerbLabel,
   hasMate,
@@ -37,6 +39,7 @@ import {
   type GroupFlowStopState,
   type GroupNextStepKind,
   type GroupRowTone,
+  type GroupRunner,
   type MissingEnvironmentRow,
   type ReleaseGate,
   type ZeropsEnvironmentRole,
@@ -491,8 +494,17 @@ export function stopLine(stop: GroupFlowStop): {
   switch (stop.state) {
     case "checking":
       return { word: CHECKING_WHAT_RUNS, version: undefined, tone };
-    case "empty":
-      return { word: NOTHING_DEPLOYED, version: undefined, tone };
+    case "empty": {
+      // A stage that runs nothing says where its first deploy stands, where one was asked for.
+      const first = firstDeployLine(stop.firstDeploy);
+      return first === undefined
+        ? { word: NOTHING_DEPLOYED, version: undefined, tone }
+        : {
+            word: first,
+            version: undefined,
+            tone: firstDeployTone(stop.firstDeploy),
+          };
+    }
     default:
       return {
         word: deployWord(STOP_ROW_TONE[stop.state]) ?? "",
@@ -581,6 +593,8 @@ export interface GroupMemberFacts {
   readonly routes: ReadonlyArray<ZeropsPublicRoute>;
   /** The developer's services by hostname — the pair `pairPreviewRoute` looks for. */
   readonly hostnames: ReadonlyArray<string>;
+  /** When its project was made. */
+  readonly createdAt?: string | undefined;
 }
 
 /** A group member as the group tree carries it: a candidate, with what its container serves. */
@@ -636,6 +650,7 @@ export function groupMemberFactsOf<T extends GroupMemberCandidate>(
         : undefined,
       routes: item.routes ?? [],
       hostnames: item.services?.hostnames ?? [],
+      createdAt: item.project.created,
     };
   });
 }
@@ -715,6 +730,10 @@ export function groupFlowInputOf(input: {
   readonly productionAddable: boolean;
   /** The group's creations under way (the group tree's `pending`). */
   readonly pending: ReadonlyArray<ZeropsGroupPendingMember>;
+  /** The group's runner, as the account holds the Gitea project's services; `undefined` unread. */
+  readonly runner?: GroupRunner | undefined;
+  /** The clock a stage's first deploy on its way is bounded by. */
+  readonly nowMs?: number | undefined;
 }): GroupFlowInput {
   const { flow } = input;
   return {
@@ -749,6 +768,7 @@ export function groupFlowInputOf(input: {
           row,
           deployment: input.deployments?.get(member.projectId),
           route: member.routes[0]?.url,
+          createdAt: member.createdAt,
         },
       ];
     }),
@@ -761,5 +781,7 @@ export function groupFlowInputOf(input: {
     mainHead: undefined,
     productionAddable: input.productionAddable,
     pending: input.pending,
+    runner: input.runner,
+    nowMs: input.nowMs,
   };
 }
