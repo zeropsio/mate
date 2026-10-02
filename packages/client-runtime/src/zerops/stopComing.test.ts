@@ -2,7 +2,7 @@ import * as DateTime from "effect/DateTime";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
-  comingWords,
+  comingLine,
   COMING_UP_WINDOW_MS,
   firstDeploy,
   firstDeployLine,
@@ -150,7 +150,10 @@ describe("a stage coming up, replayed as run 4 measured it (Larder - stage)", ()
     });
     const coming = stopComing({ ...base, ...over, firstDeploy: first });
     return {
-      line: coming?.kind === "coming" ? comingWords(coming) : (coming?.reason ?? null),
+      line:
+        coming?.kind === "coming"
+          ? Object.values(comingLine("Stage", coming)).join(" · ")
+          : (coming?.reason ?? null),
       cell: over.deployed === false ? (firstDeployLine(first) ?? "Nothing deployed yet") : null,
     };
   };
@@ -164,7 +167,7 @@ describe("a stage coming up, replayed as run 4 measured it (Larder - stage)", ()
       over: { ...fresh, projectStatus: "CREATING", services: undefined },
       runner: first(1060),
       declared: false,
-      line: "making the project",
+      line: "Stage coming up · making the project",
       cell: "Nothing deployed yet",
     },
     {
@@ -172,7 +175,7 @@ describe("a stage coming up, replayed as run 4 measured it (Larder - stage)", ()
       over: { ...fresh, services: [db("CREATING"), app("NEW")] },
       runner: first(1090),
       declared: false,
-      line: "adding the database",
+      line: "Stage coming up · adding the database",
       cell: "Nothing deployed yet",
     },
     {
@@ -180,7 +183,7 @@ describe("a stage coming up, replayed as run 4 measured it (Larder - stage)", ()
       over: { ...fresh, services: [db("ACTIVE"), app("CREATING")] },
       runner: first(1103),
       declared: false,
-      line: "adding the app",
+      line: "Stage coming up · adding the app",
       cell: "Nothing deployed yet",
     },
     {
@@ -188,7 +191,7 @@ describe("a stage coming up, replayed as run 4 measured it (Larder - stage)", ()
       over: fresh,
       runner: first(1115),
       declared: false,
-      line: "waiting for its first deploy",
+      line: "Stage coming up · waiting for its first deploy",
       cell: "Nothing deployed yet",
     },
     {
@@ -196,7 +199,7 @@ describe("a stage coming up, replayed as run 4 measured it (Larder - stage)", ()
       over: fresh,
       runner: first(1121),
       declared: true,
-      line: "waiting for the runner · it’s being built",
+      line: "Stage awaits the runner · it’s being built",
       cell: "Waiting for the runner · it’s being built",
     },
     {
@@ -204,15 +207,15 @@ describe("a stage coming up, replayed as run 4 measured it (Larder - stage)", ()
       over: fresh,
       runner: first(1262),
       declared: true,
-      line: "waiting for the runner · its build failed, the broker rebuilds it",
-      cell: "Waiting for the runner · its build failed, the broker rebuilds it",
+      line: "Stage awaits the runner · it’s being rebuilt",
+      cell: "Waiting for the runner · it’s being rebuilt",
     },
     {
       at: "+1268 s the runner deleted to be replaced",
       over: fresh,
       runner: undefined,
       declared: true,
-      line: "waiting for the runner · it isn’t there",
+      line: "Stage awaits the runner · it isn’t there",
       cell: "Waiting for the runner · it isn’t there",
     },
     {
@@ -220,7 +223,7 @@ describe("a stage coming up, replayed as run 4 measured it (Larder - stage)", ()
       over: fresh,
       runner: ["READY_TO_DEPLOY", 0] as Runner,
       declared: true,
-      line: "waiting for the runner · it’s being built",
+      line: "Stage awaits the runner · it’s being built",
       cell: "Waiting for the runner · it’s being built",
     },
     {
@@ -228,7 +231,7 @@ describe("a stage coming up, replayed as run 4 measured it (Larder - stage)", ()
       over: fresh,
       runner: ACTIVE,
       declared: true,
-      line: "its first deploy is on its way",
+      line: "Stage coming up · its first deploy is on its way",
       cell: "First deploy on its way",
     },
     {
@@ -236,7 +239,7 @@ describe("a stage coming up, replayed as run 4 measured it (Larder - stage)", ()
       over: { ...fresh, building: true },
       runner: ACTIVE,
       declared: true,
-      line: "building the app",
+      line: "Stage coming up · building the app",
       cell: "First deploy on its way",
     },
     {
@@ -244,7 +247,7 @@ describe("a stage coming up, replayed as run 4 measured it (Larder - stage)", ()
       over: { ...fresh, building: true, services: [db("ACTIVE"), app("UPGRADING")] },
       runner: ACTIVE,
       declared: true,
-      line: "building the app",
+      line: "Stage coming up · building the app",
       cell: "First deploy on its way",
     },
     {
@@ -252,7 +255,7 @@ describe("a stage coming up, replayed as run 4 measured it (Larder - stage)", ()
       over: { deployed: true, routes: 0 },
       runner: ACTIVE,
       declared: true,
-      line: "turning its address on",
+      line: "Stage coming up · turning its address on",
       cell: null,
     },
     {
@@ -278,7 +281,7 @@ describe("a stage coming up, replayed as run 4 measured it (Larder - stage)", ()
     ];
     for (const runner of runners) {
       for (const declared of [false, true]) {
-        expect(stageAt(fresh, runner, declared).line).not.toBe("turning its address on");
+        expect(stageAt(fresh, runner, declared).line).not.toContain("turning its address on");
       }
     }
   });
@@ -366,12 +369,24 @@ describe("firstDeploy — where a stage's first deploy stands while it runs noth
   });
 });
 
-describe("comingWords", () => {
-  it.each<[StopComing & { kind: "coming" }, string]>([
-    [{ kind: "coming", step: "project" }, "making the project"],
-    [{ kind: "coming", step: "app" }, "adding the app"],
-    [{ kind: "coming", step: "runner", why: "waking" }, "waiting for the runner · it’s waking up"],
-  ])("%j", (coming, words) => {
-    expect(comingWords(coming)).toBe(words);
+describe("comingLine — the line an environment coming up says", () => {
+  it.each<[string, StopComing & { kind: "coming" }, { fact: string; rest: string }]>([
+    [
+      "Stage",
+      { kind: "coming", step: "project" },
+      { fact: "Stage coming up", rest: "making the project" },
+    ],
+    [
+      "Production",
+      { kind: "coming", step: "app" },
+      { fact: "Production coming up", rest: "adding the app" },
+    ],
+    [
+      "demo",
+      { kind: "coming", step: "runner", why: "waking" },
+      { fact: "demo awaits the runner", rest: "it’s waking up" },
+    ],
+  ])("%s %j", (subject, coming, line) => {
+    expect(comingLine(subject, coming)).toEqual(line);
   });
 });

@@ -17,7 +17,7 @@
  *
  * Pure: no clock of its own, no platform globals.
  */
-import { comingWords, type StopComing } from "@t3tools/client-runtime/zerops";
+import { comingLine, type StopComing } from "@t3tools/client-runtime/zerops";
 
 import type { ChipState, ProductionChip, ReleaseFailure } from "./SidebarProductionChip.logic";
 
@@ -138,8 +138,7 @@ export function headingLine(
   }
   if (production?.coming?.kind === "coming") {
     return {
-      fact: "Production coming up",
-      rest: comingWords(production.coming),
+      ...comingLine("Production", production.coming),
       tone: "ink",
       spinner: false,
       release: false,
@@ -149,8 +148,7 @@ export function headingLine(
   for (const stage of stages) {
     if (stage.coming?.kind !== "coming") continue;
     return {
-      fact: `${stageWord(stages, stage)} coming up`,
-      rest: comingWords(stage.coming),
+      ...comingLine(stageWord(stages, stage), stage.coming),
       tone: "ink",
       spinner: false,
       release: false,

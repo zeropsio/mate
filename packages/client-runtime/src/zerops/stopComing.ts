@@ -259,20 +259,27 @@ const STEP_WORDS: Record<ComingStep, string> = {
   address: "turning its address on",
 };
 
-/** Why the runner holds a deploy, in the words after "waiting for the runner". */
+/** Why the runner holds a deploy, after "Stage awaits the runner · ". */
 export const RUNNER_TROUBLE_WORDS: Record<RunnerTrouble, string> = {
   missing: "it isn’t there",
   building: "it’s being built",
-  failed: "its build failed, the broker rebuilds it",
+  // The broker deletes it and imports it again on its own: nobody is asked to fix it.
+  failed: "it’s being rebuilt",
   waking: "it’s waking up",
 };
 
-/** "waiting for the runner · its build failed" */
-const runnerWait = (why: RunnerTrouble) => `waiting for the runner · ${RUNNER_TROUBLE_WORDS[why]}`;
-
-/** A step of an environment coming up, in the words after "Stage coming up · ". */
-export function comingWords(coming: Extract<StopComing, { readonly kind: "coming" }>): string {
-  return coming.step === "runner" ? runnerWait(coming.why) : STEP_WORDS[coming.step];
+/**
+ * The line an environment coming up says, about `subject` ("Stage", a stage's own name,
+ * "Production"): "Stage coming up · building the app", or — a new truth, so its own words —
+ * "Stage awaits the runner · it’s being built". Short enough for a 253 px line.
+ */
+export function comingLine(
+  subject: string,
+  coming: Extract<StopComing, { readonly kind: "coming" }>,
+): { readonly fact: string; readonly rest: string } {
+  return coming.step === "runner"
+    ? { fact: `${subject} awaits the runner`, rest: RUNNER_TROUBLE_WORDS[coming.why] }
+    : { fact: `${subject} coming up`, rest: STEP_WORDS[coming.step] };
 }
 
 /** A stage's first deploy on its way, where its line would say nothing is deployed. */

@@ -158,6 +158,20 @@ const RUNGS: ReadonlyArray<Rung> = [
     line: input({ stages: [{ projectId: "stage", name: "stage", coming: coming("build") }] }),
   },
   {
+    label: "14″ A stage's first deploy waits for the group's runner",
+    name: "Larder",
+    chips: [stageChip("creating")],
+    line: input({
+      stages: [
+        {
+          projectId: "stage",
+          name: "stage",
+          coming: { kind: "coming", step: "runner", why: "failed" },
+        },
+      ],
+    }),
+  },
+  {
     label: "14′ the stage up (replays)",
     name: "ZIT",
     chips: [stageChip("ok")],

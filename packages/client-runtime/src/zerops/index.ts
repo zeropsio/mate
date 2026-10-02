@@ -435,7 +435,7 @@ export {
   type GroupNextStepTarget,
 } from "./groupFlow.ts";
 export {
-  comingWords,
+  comingLine,
   COMING_UP_WINDOW_MS,
   FIRST_DEPLOY_ON_ITS_WAY,
   firstDeploy,

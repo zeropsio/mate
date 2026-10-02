@@ -136,12 +136,7 @@ describe("headingLine — the heading's second line, the board's D′ ladder", (
         production: undefined,
         stages: [stage({ kind: "coming", step: "runner", why: "failed" })],
       },
-      line: [
-        "Stage coming up · waiting for the runner · its build failed, the broker rebuilds it",
-        "ink",
-        "",
-        "",
-      ],
+      line: ["Stage awaits the runner · it’s being rebuilt", "ink", "", ""],
     },
     {
       case: "15 a stage that didn't come up",
