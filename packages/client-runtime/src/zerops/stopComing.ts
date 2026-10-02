@@ -70,8 +70,12 @@ export type FirstDeploy =
   | { readonly kind: "on-its-way" }
   /** Asked for, and the group's runner cannot run it. */
   | { readonly kind: "runner"; readonly why: RunnerTrouble }
-  /** A build of it was seen to end with nothing running (`Deployment.afterBuild`). */
-  | { readonly kind: "failed" };
+  /**
+   * A build of it was seen to end with nothing running (`Deployment.afterBuild`), or the job that
+   * deploys it failed on `main`'s head before any build (`firstDeployFailure`): `reason` only where
+   * the broker's status carries the job's own words.
+   */
+  | { readonly kind: "failed"; readonly reason?: string };
 
 /**
  * How long after its project was made an environment may still be coming up. The owner's stage

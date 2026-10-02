@@ -78,6 +78,8 @@ export interface EnvironmentRow {
   readonly versionRepository: string | undefined;
   readonly line: string;
   readonly tone: GroupRowTone;
+  /** A stage's first deploy failing on `main`'s head (`firstDeployFailure`); absent otherwise. */
+  readonly firstDeployFailure?: FirstDeployFailure;
 }
 
 export interface PullRequestRow {
@@ -227,6 +229,65 @@ export interface EnvironmentServiceState {
   readonly appVersionName?: string | undefined;
   /** Every commit status on that commit, as Gitea returned them. */
   readonly statuses?: ReadonlyArray<GiteaCommitStatus> | undefined;
+  /**
+   * Its repository's `main` head and every status on it — read only while its stage runs
+   * nothing (`planFirstDeployHeadReads`): where its first deploy failed before any build.
+   */
+  readonly head?: MainHeadStatuses | undefined;
+}
+
+/** A repository's `main` head, and every commit status on it as Gitea returned them. */
+export interface MainHeadStatuses {
+  readonly sha: string;
+  readonly statuses: ReadonlyArray<GiteaCommitStatus>;
+}
+
+/** A stage's first deploy failing on `main`'s head, before any build of it ran. */
+export interface FirstDeployFailure {
+  /** When the failure was posted: a commit landing after it starts the deploy again. */
+  readonly at: string;
+  /** What the job reported, where the broker's status carries its words; `undefined` otherwise. */
+  readonly reason: string | undefined;
+}
+
+/** How the broker opens a job's own failure report on its status (gitea-mate `DescriptionFailed`). */
+const JOB_REPORT = "failed: ";
+
+/**
+ * Whether a stage's first deploy failed on `main`'s head, from the statuses there: the newest of
+ * the broker's `mate/deploy/{environment}/{service}`, or of a context the broker does not write —
+ * the group's workflow's own (run 5: its Test step failed on a bare runner, and the job never
+ * asked the broker for its grant, whose status stayed pending) — failing or erroring. The newest
+ * such, with the job's own words where the broker's status carries them ("failed: …"); Gitea's
+ * own description of a workflow ("Failing after 9s") is no reason. A failure that says not when
+ * it was posted is none: nothing could tell it from one before the stage asked for its deploy.
+ */
+export function firstDeployFailure(input: {
+  readonly environment: string;
+  readonly services: ReadonlyArray<EnvironmentServiceState>;
+}): FirstDeployFailure | undefined {
+  let failure: FirstDeployFailure | undefined;
+  for (const service of input.services) {
+    const broker = deployStatusContext(input.environment, service.hostname);
+    const seen = new Set<string>();
+    // Gitea lists a commit's statuses newest first and keeps every one it was given.
+    for (const status of service.head?.statuses ?? []) {
+      if (seen.has(status.context)) continue;
+      seen.add(status.context);
+      if (status.context !== broker && status.context.startsWith("mate/")) continue;
+      if (status.state !== "failure" && status.state !== "error") continue;
+      if (status.created_at === undefined || Number.isNaN(Date.parse(status.created_at))) continue;
+      if (failure !== undefined && Date.parse(failure.at) >= Date.parse(status.created_at))
+        continue;
+      const description = status.description?.trim() ?? "";
+      const reported =
+        status.context === broker && description.startsWith(JOB_REPORT)
+          ? description.slice(JOB_REPORT.length).trim()
+          : "";
+      failure = { at: status.created_at, reason: reported.length === 0 ? undefined : reported };
+    }
+  }
+  return failure;
 }
 
 /**
@@ -280,6 +341,10 @@ export function environmentRow(input: {
     .find((entry) => entry.version.label !== undefined);
   const version = named?.version ?? NO_VERSION;
   const tone = deployTone({ environment: input.environment, services: input.services });
+  const failure =
+    input.tier === "stage"
+      ? firstDeployFailure({ environment: input.environment, services: input.services })
+      : undefined;
   return {
     kind: "environment",
     projectId: input.projectId,
@@ -295,6 +360,7 @@ export function environmentRow(input: {
     versionRepository: named?.service.repository,
     line: version.label === undefined ? source : `${source} · ${version.label}`,
     tone,
+    ...(failure === undefined ? {} : { firstDeployFailure: failure }),
   };
 }
 

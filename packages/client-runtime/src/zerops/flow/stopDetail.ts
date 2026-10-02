@@ -117,7 +117,14 @@ export function stopVerdict(input: {
     // A stage's first deploy asked for says where it stands, as its cell and the menu do.
     const first = tier === "stage" ? firstDeployLine(input.firstDeploy) : undefined;
     if (first !== undefined) {
-      return { tone: firstDeployTone(input.firstDeploy), text: `${first}.`, ...quiet };
+      // Why it failed, only where the job's own words say it (`firstDeployFailure`).
+      const why = input.firstDeploy?.kind === "failed" ? input.firstDeploy.reason : undefined;
+      return {
+        tone: firstDeployTone(input.firstDeploy),
+        text: `${first}.`,
+        ...quiet,
+        ...(why === undefined ? {} : { detail: why }),
+      };
     }
     // An empty production moves by its first release, offered as soon as main has something.
     return {

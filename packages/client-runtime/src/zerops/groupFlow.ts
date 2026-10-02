@@ -59,7 +59,12 @@ import {
 import { pullRequestBlocked, type PullRequestBlocked } from "./gitTab.ts";
 import type { GroupEnvironmentTier, MissingEnvironmentRow } from "./groupEnvironments.ts";
 import type { ZeropsMateFace } from "./groups.ts";
-import type { DeployedVersion, EnvironmentRow, GroupRowTone } from "./groupRows.ts";
+import type {
+  DeployedVersion,
+  EnvironmentRow,
+  FirstDeployFailure,
+  GroupRowTone,
+} from "./groupRows.ts";
 import type { Shown } from "./knowledge/known.ts";
 import {
   PROJECT_ALL_CLEAR,
@@ -370,6 +375,7 @@ function withFirstDeploy(
   const first = stageFirstDeploy({
     projectStatus: input.projectStatus,
     services: input.services,
+    headFailure: input.row?.firstDeployFailure,
     deployment: input.deployment,
     declared: input.row !== undefined,
     mainHasCode: main.hasCode,
@@ -407,8 +413,9 @@ export function stageSettingUp(
 
 /**
  * Where a stage's first deploy stands (`firstDeploy`), the one reading every surface says it by —
- * its cell, the menu, its own page: only for a stage known to run nothing — a first deploy seen to
- * fail, held by the runner, or on its way — asked for from the
+ * its cell, the menu, its own page: only for a stage known to run nothing, once its own import is
+ * done — a first deploy seen to fail, failing on `main`'s head after it was asked for, held by the
+ * runner, or on its way — asked for from the
  * later of its making and `main`'s last code landing. `undefined` while nothing asked for one, or
  * nothing can be promised.
  */
@@ -419,6 +426,8 @@ export function stageFirstDeploy(input: {
   readonly services?: ReadonlyArray<PlatformService> | undefined;
   /** What it runs, as the platform pushed it (`ZeropsProjectFlowValue.deployments`). */
   readonly deployment: Shown<Deployment> | undefined;
+  /** Its deploy failing on `main`'s head (`EnvironmentRow.firstDeployFailure`), where read. */
+  readonly headFailure?: FirstDeployFailure | undefined;
   /** The group's environments declare it. */
   readonly declared: boolean;
   /** Whether `main` has code, where it was read; a merged code change proves it either way. */
@@ -437,12 +446,26 @@ export function stageFirstDeploy(input: {
   if (input.nowMs === undefined) return undefined;
   // Its own import comes first: the runner matters only once the stage is made (run 5).
   if (stageSettingUp(input, input.nowMs)) return undefined;
+  const askedAt = firstDeployAskedAt(input.createdAt, input.merged);
+  // The job that deploys it failed on main's head after it was asked for — a fact, like a build
+  // seen to fail; a commit landing after it asks again, and a failure from before is another's.
+  const failure = input.headFailure;
+  if (
+    input.declared &&
+    failure !== undefined &&
+    askedAt !== undefined &&
+    Date.parse(failure.at) >= Date.parse(askedAt)
+  ) {
+    return failure.reason === undefined
+      ? { kind: "failed" }
+      : { kind: "failed", reason: failure.reason };
+  }
   const landedCode = input.merged.some((pull) => pull.kind === "code");
   const first = firstDeploy({
     declared: input.declared,
     mainHasCode: input.mainHasCode ?? (landedCode ? true : undefined),
     runner: input.runner,
-    askedAt: firstDeployAskedAt(input.createdAt, input.merged),
+    askedAt,
     nowMs: input.nowMs,
   });
   return first.kind === "awaited" ? undefined : first;

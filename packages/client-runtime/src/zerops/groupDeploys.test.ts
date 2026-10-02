@@ -1,5 +1,7 @@
+import * as DateTime from "effect/DateTime";
 import { describe, expect, it } from "vite-plus/test";
 
+import { STATUS_RECHECK_LADDER_MS, VERDICT_RECHECK_LADDER_MS } from "./forge/statusMemo.ts";
 import type { GiteaCommitStatus } from "./giteaClient.ts";
 import {
   buildGroupEnvironmentRowInputs,
@@ -8,6 +10,9 @@ import {
   deployWord,
   planDeployStatusReads,
   planDeployedVersionReads,
+  firstDeployHeadLadder,
+  firstDeployHeadSettled,
+  planFirstDeployHeadReads,
   planMainHeadReads,
   releaseDeploys,
 } from "./groupDeploys.ts";
@@ -387,5 +392,108 @@ describe("what a release has to read", () => {
 
   it("asks for nothing where no production is declared", () => {
     expect(planMainHeadReads({ declarations: [], services, repositories })).toEqual([]);
+  });
+});
+
+describe("what a stage's first deploy has to read", () => {
+  const repositories = new Map([
+    ["api", "apidev"],
+    ["web", "webdev"],
+  ]);
+  const NOTHING = new Map<string, string>();
+  it.each([
+    {
+      case: "a declared stage that runs nothing: each service's repository's main",
+      declarations: [stage, production],
+      versions: NOTHING,
+      reads: ["p-stage stage api@apidev", "p-stage stage web@webdev"],
+    },
+    {
+      case: "the stage runs a deploy: nothing",
+      declarations: [stage, production],
+      versions: new Map([["s1", `main ${API.slice(0, 7)}`]]),
+      reads: [],
+    },
+    {
+      case: "the import's no-code version, which names no commit: still its first deploy",
+      declarations: [stage],
+      versions: new Map([["s1", ""]]),
+      reads: ["p-stage stage api@apidev", "p-stage stage web@webdev"],
+    },
+    {
+      case: "no stage declared: nothing",
+      declarations: [production],
+      versions: NOTHING,
+      reads: [],
+    },
+    { case: "nothing declared: nothing", declarations: [], versions: NOTHING, reads: [] },
+  ])("$case", ({ declarations, versions, reads }) => {
+    expect(
+      planFirstDeployHeadReads({ declarations, services, versions, repositories }).map(
+        (read) => `${read.projectId} ${read.environment} ${read.hostname}@${read.repo}`,
+      ),
+    ).toEqual(reads);
+  });
+
+  it("asks nothing of a service the tiers build from no repository of the group", () => {
+    expect(
+      planFirstDeployHeadReads({
+        declarations: [stage],
+        services,
+        versions: NOTHING,
+        repositories: new Map(),
+      }),
+    ).toEqual([]);
+  });
+});
+
+describe("how often a first deploy's head is read again", () => {
+  const NOW = Date.parse("2026-10-02T22:30:00Z");
+  const head = (minutesAgo: number | undefined) => ({
+    sha: API,
+    statuses: [
+      {
+        context: "mate/deploy/stage/api",
+        state: "pending" as const,
+        ...(minutesAgo === undefined
+          ? {}
+          : { created_at: DateTime.formatIso(DateTime.makeUnsafe(NOW - minutesAgo * 60_000)) }),
+      },
+    ],
+  });
+  it.each([
+    { case: "a head not read before", previous: undefined, sha: API, ladder: "busy" },
+    { case: "a new head on main", previous: head(40), sha: WEB, ladder: "busy" },
+    { case: "a head whose job posted a minute ago", previous: head(1), sha: API, ladder: "busy" },
+    { case: "a head quiet past the window", previous: head(15), sha: API, ladder: "quiet" },
+    { case: "a head that says not when", previous: head(undefined), sha: API, ladder: "quiet" },
+  ])("$case", ({ previous, sha, ladder }) => {
+    expect(firstDeployHeadLadder(previous, sha, NOW)).toBe(
+      ladder === "busy" ? STATUS_RECHECK_LADDER_MS : VERDICT_RECHECK_LADDER_MS,
+    );
+  });
+
+  it.each([
+    { case: "still pending", statuses: [status("mate/deploy/stage/api", "pending")], done: false },
+    {
+      case: "this stage's deploy failed: nothing more to read",
+      statuses: [
+        {
+          context: "Zerops deploy / deploy (push)",
+          state: "failure" as const,
+          created_at: "2026-10-02T22:12:00Z",
+        },
+        status("mate/deploy/stage/api", "pending"),
+      ],
+      done: true,
+    },
+    {
+      case: "every context done",
+      statuses: [status("mate/deploy/stage/api", "success")],
+      done: true,
+    },
+    { case: "nothing posted yet", statuses: [], done: false },
+  ])("is settled where $case", ({ statuses, done }) => {
+    expect(firstDeployHeadSettled({ environment: "stage", hostname: "api" }, statuses)).toBe(done);
   });
 });
