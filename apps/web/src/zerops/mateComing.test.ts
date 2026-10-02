@@ -1066,7 +1066,7 @@ describe("a Mate whose address landed, not answering yet, in a window that did n
     publicZone: "fte2334ab.prg1-zerops.zone",
     zeropsSubdomainHost: "7c2e",
   };
-  const ORIGIN = "https://zcp-7c2e-8080.prg1.zerops.app";
+  const ORIGIN = "https://zcp-1-8080.prg1.zerops.app";
   const zcp = (status: string, subdomainAccess: boolean): ZeropsService => ({
     id: "service-larch",
     name: "zcp",
