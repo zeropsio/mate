@@ -658,16 +658,22 @@ export function runningVersion(
 }
 
 /**
- * How the deploy a stop runs went, the one rule every surface colours it by — the projects page,
- * the menu and the chips (`groupFlow`'s `stopOf`): the deploy half's row, only where it read the
- * version the platform runs, or the platform names none.
+ * How the deploy a stop runs went, the one rule every surface colours a running stop by — its
+ * page (`stopView`), the menu, the chips and the projects page's cards (`groupFlow`'s `stopOf`,
+ * {@link stopTone}).
  *
- * A deploy of a commit only moves forward. Once the platform runs that commit's version, it is
- * deployed: a `pending` status on it was read before that moment — the broker turns it to
- * success after the version goes active (run 4, 2026-10-02: active at +1478.7 s, success by
- * +1482.9 s) — and can never move it back to deploying. A newer commit starts its own sequence,
- * from the platform's build. A failure on the commit it runs is a new fact, a failed redeploy,
- * and says so.
+ * A deploy of a commit only moves forward: a stop that runs a version is deployed. The row's
+ * statuses are on the commit a service runs — its active version — and the broker never deploys
+ * a commit a service already runs (gitea-mate grants it as live). So a `pending` there was read
+ * before the version went active (run 4, 2026-10-02: active at +1478.7 s, success by +1482.9 s),
+ * and never moves a running stop back to deploying, whether or not the platform's own answer is
+ * known just now. A newer commit starts its own sequence, from the platform's build.
+ *
+ * A failure on the version the stop runs still says Failed. A row read at another version — the
+ * one before, or a build that failed after its name moved (A11, A14) — names nothing there
+ * (`runningVersion`) and fails nothing there; the platform says the stop runs, so it is deployed.
+ * What the row still says is whether Gitea was read at all: a stop with no status read has no
+ * colour and no word (`deployWord`).
  */
 export function runningTone(
   runs: DeployedVersion | undefined,
@@ -675,10 +681,28 @@ export function runningTone(
 ): GroupRowTone {
   const named = runs?.label === undefined ? undefined : runs;
   const read = row?.version.label === undefined ? undefined : row;
-  if (read === undefined) return "neutral";
-  if (named === undefined) return read.tone;
-  if (!sameVersion(named, read.version)) return "neutral";
-  return read.tone === "pending" ? "good" : read.tone;
+  if (read === undefined || read.tone === "neutral") return "neutral";
+  const same = named === undefined || sameVersion(named, read.version);
+  return read.tone === "bad" && same ? "bad" : "good";
+}
+
+/**
+ * A stop's tone with no clock — what `stopView` colours it, for a surface that draws only the dot
+ * and its word: a build the platform runs is deploying; a version it runs, or the row's while its
+ * answer is on its way, is {@link runningTone}'s; nothing running, or nothing known, says nothing.
+ */
+export function stopTone(
+  deployment: Shown<Deployment> | undefined,
+  row: EnvironmentRow | undefined,
+): GroupRowTone {
+  if (deployment?.state === "known" && deployment.value.kind === "deploying") return "pending";
+  // "Nothing deployed yet" is earned only by a complete answer; a partial one leaves the row's.
+  if (deployment?.state === "known" && deployment.value.kind === "none") {
+    if (deployment.coverage === "complete") return "neutral";
+  }
+  if (deployment?.state === "known" && deployment.value.kind === "running")
+    return runningTone(deployment.value.version, row);
+  return runningTone(undefined, row);
 }
 
 /**
