@@ -144,11 +144,13 @@ export interface ForgeRead<T> {
 export interface ForgeReads {
   /**
    * The org's repositories: one listing shared by every reader while it is {@link GATE_FRESH_MS}
-   * old, and a listing that moved drops what it moved before it answers.
+   * old — or `maxAgeMs`, for a reader that looks more often (`forge/pullWatch.ts`) — and a listing
+   * that moved drops what it moved before it answers.
    */
   readonly repositories: (
     owner: string,
     load: () => Promise<ReadonlyArray<GiteaRepository>>,
+    options?: { readonly maxAgeMs?: number | undefined },
   ) => Promise<ReadonlyArray<GiteaRepository>>;
   /**
    * What is kept for `ref` while the listing says it has not moved — and while it is no older
@@ -282,14 +284,15 @@ export function createForgeReads(options: { readonly now?: () => number } = {}):
       };
     },
 
-    repositories: (owner, load) => {
+    repositories: (owner, load, listOptions) => {
       const held = listings.get(owner);
       const at = now();
+      const freshMs = listOptions?.maxAgeMs ?? GATE_FRESH_MS;
       const missing = notFound.get(owner);
-      if (missing !== undefined && at - missing.atMs < GATE_FRESH_MS) {
+      if (missing !== undefined && at - missing.atMs < freshMs) {
         return Promise.reject(missing.cause);
       }
-      if (missing === undefined && held !== undefined && at - held.atMs < GATE_FRESH_MS) {
+      if (missing === undefined && held !== undefined && at - held.atMs < freshMs) {
         return Promise.resolve(held.repositories);
       }
       const running = listing.get(owner);

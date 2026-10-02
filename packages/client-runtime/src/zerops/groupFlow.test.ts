@@ -558,7 +558,7 @@ describe("groupFlow", () => {
       expected: { kind: "checking", line: "Checking what runs here…", stop: { state: "checking" } },
     },
     {
-      case: "deploying: a deploy is running, whatever it ran before",
+      case: "live: the platform runs the release a pending status was read on before it went active",
       production: productionOf({
         row: declared({
           projectId: "p-prod",
@@ -569,7 +569,7 @@ describe("groupFlow", () => {
         }),
         deployment: runs(MAIN_SHA),
       }),
-      expected: { kind: "deploying", line: "Deploying…", stop: { state: "deploying" } },
+      expected: { kind: "live", line: "v0.1.0", stop: { state: "deployed" } },
     },
     {
       case: "deploying: the platform's build runs on it, whatever the row read before",

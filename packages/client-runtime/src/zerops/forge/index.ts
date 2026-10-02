@@ -5,4 +5,5 @@ export * from "./forgeStore.ts";
 export * from "./giteaSession.ts";
 export * from "./giteaSessionMachine.ts";
 export * from "./mergeState.ts";
+export * from "./pullWatch.ts";
 export * from "./statusMemo.ts";
