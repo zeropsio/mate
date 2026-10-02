@@ -593,6 +593,10 @@ const knownNone = (
 ): shown is Extract<Shown<Deployment>, { state: "known" }> =>
   shown.state === "known" && shown.value.kind === "none";
 
+/** A build in flight: a re-check of the whole listing is no news of its end (run 5). */
+const knownDeploying = (shown: Shown<Deployment>): boolean =>
+  shown.state === "known" && shown.value.kind === "deploying";
+
 /** A known answer, now being checked again: since when, kept from a check already under way. */
 function revalidating<T>(
   held: Extract<Known<T>, { readonly state: "known" }>,
@@ -604,7 +608,7 @@ function revalidating<T>(
 
 /**
  * A stop read again, over what it showed: a re-check keeps the last answer where that answer was
- * "nothing deployed" (run 4, F5) — the import's own no-code version, which a push names only by
+ * "nothing deployed" (run 4, F5), or a build in flight (run 5) — the import's own no-code version, which a push names only by
  * its id (A14), then the account's store states, never ran anything either way. The listing read
  * again keeps the services it showed where each ran nothing, and a service checked again keeps its
  * none, revalidating, until an answer or a failure replaces it. A version is never held: one
@@ -619,7 +623,9 @@ export function heldThroughRecheck(
 ): Known<ReadonlyArray<StopService>> {
   if (shown.state !== "known") return next;
   if (rechecking(next)) {
-    return shown.value.every(({ deployment }) => knownNone(deployment))
+    return shown.value.every(
+      ({ deployment }) => knownNone(deployment) || knownDeploying(deployment),
+    )
       ? revalidating(shown, nowMs)
       : next;
   }
@@ -660,7 +666,9 @@ export interface SeenBuild {
  * run nothing ran no build of its — its first deploy failed (`afterBuild`), which no running-process
  * listing keeps once the build is gone. Only after {@link AFTER_BUILD_GRACE_MS} with still nothing
  * running: until then it says what it said while it built, since its new version may be on its
- * way. One running anything is forgotten. Returns the services seen building, the stop as shown,
+ * way — and so does one whose answer is not known yet, its new version unstated or a listing read
+ * again (run 5: "Checking what runs here…" for 1.2 s as a build ended). One running anything is
+ * forgotten. Returns the services seen building, the stop as shown,
  * and when the store must read it again for a grace to run out (`null` for none).
  */
 export function afterBuilds(
@@ -678,13 +686,12 @@ export function afterBuilds(
   let wakeAtMs: number | null = null;
   const value = next.value.map((service): StopService => {
     const { deployment } = service;
-    if (deployment.state !== "known") return service;
     const id = service.service.serviceId;
-    if (deployment.value.kind === "deploying") {
+    if (deployment.state === "known" && deployment.value.kind === "deploying") {
       seen.set(id, { building: deployment, endedAtMs: null });
       return service;
     }
-    if (deployment.value.kind === "running") {
+    if (deployment.state === "known" && deployment.value.kind === "running") {
       seen.delete(id);
       return service;
     }
@@ -692,12 +699,16 @@ export function afterBuilds(
     if (build === undefined) return service;
     const endedAtMs = build.endedAtMs ?? nowMs;
     if (build.endedAtMs === null) seen.set(id, { ...build, endedAtMs });
-    changed = true;
     const graceEndsAtMs = endedAtMs + AFTER_BUILD_GRACE_MS;
+    // Its new version not known yet, or nothing running yet: the deploy is still finishing.
     if (nowMs < graceEndsAtMs) {
+      changed = true;
       wakeAtMs = wakeAtMs === null ? graceEndsAtMs : Math.min(wakeAtMs, graceEndsAtMs);
       return { ...service, deployment: build.building };
     }
+    // Past the grace, what is not known reads as not known; only a known none failed.
+    if (deployment.state !== "known") return service;
+    changed = true;
     return { ...service, deployment: { ...deployment, value: { kind: "none", afterBuild: true } } };
   });
   return { built: seen, shown: changed ? { ...next, value } : next, wakeAtMs };

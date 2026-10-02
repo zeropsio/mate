@@ -273,6 +273,57 @@ describe("the deployment store (DESIGN §2.D D6)", () => {
       expect(deploymentOf(store.stop(STAGE), "app")).toMatchObject({ value: { kind: "running" } });
     });
 
+    // Run 5 (window B): the build's process left, the stop was read again, then its version was
+    // known — and for a moment the menu said "awaiting a first deploy" and the cell "Checking…".
+    it.each([
+      {
+        case: "its new version active and stated by nothing yet (A14)",
+        between: (platform: ReturnType<typeof listings>) =>
+          platform.publish(STAGE, stage({ ...NEVER_DEPLOYED, id: "version-9", source: null })),
+      },
+      {
+        case: "its listing read again",
+        between: (platform: ReturnType<typeof listings>) =>
+          platform.publish(
+            STAGE,
+            servicesRead([record("app-id", "app", deployed(NEVER_DEPLOYED), { project: STAGE })], {
+              project: STAGE,
+              coverage: { kind: "none" },
+            }),
+          ),
+      },
+      {
+        case: "its processes read again",
+        between: (platform: ReturnType<typeof listings>) =>
+          platform.publishProcesses(STAGE, processesRead([], { coverage: { kind: "none" } })),
+      },
+    ])("a build's end, then $case, then its version: deploying throughout", ({ between }) => {
+      const { platform, clock, store } = clocked();
+      platform.publishProcesses(STAGE, building());
+      clock.ms += 400;
+      between(platform);
+      expect(deploymentOf(store.stop(STAGE), "app")).toMatchObject({
+        state: "known",
+        value: { kind: "deploying", version: { sha: SHA } },
+      });
+      clock.ms += 1_200;
+      platform.publishProcesses(STAGE, building());
+      platform.publish(STAGE, stage({ ...NEVER_DEPLOYED, id: "version-2", source: null }));
+      expect(deploymentOf(store.stop(STAGE), "app")).toMatchObject({ value: { kind: "running" } });
+    });
+
+    it("a version still unknown when the grace runs out: Checking, never deploying for ever", () => {
+      const { platform, clock, store } = clocked();
+      platform.publishProcesses(STAGE, building());
+      platform.publish(STAGE, stage({ ...NEVER_DEPLOYED, id: "version-9", source: null }));
+      expect(deploymentOf(store.stop(STAGE), "app")).toMatchObject({
+        value: { kind: "deploying" },
+      });
+      clock.ms += AFTER_BUILD_GRACE_MS;
+      platform.fire();
+      expect(deploymentOf(store.stop(STAGE), "app")?.state).not.toBe("known");
+    });
+
     it("a stop let go stops the grace's timer", () => {
       const platform = listings();
       const store = makeDeploymentStore(platform.ports);
