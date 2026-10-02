@@ -2391,6 +2391,39 @@ describe("makeZeropsDataRuntime", () => {
     }),
   );
 
+  it.effect("a token listing answers beside a stuck write, and is no write itself", () =>
+    Effect.gen(function* () {
+      const registry = AtomRegistry.make();
+      const runtime = yield* commandRuntime(registry, (command) =>
+        command.kind === "list-integration-token-grants"
+          ? Effect.succeed({
+              processRefs: [],
+              observations: [],
+              result: { kind: command.kind, value: [] },
+            } as never)
+          : Effect.never,
+      );
+      const write = yield* Effect.forkChild(
+        runtime.commands.setIntegrationTokenProjects(tokenWrite),
+      );
+      for (let turn = 0; turn < 20; turn++) yield* Effect.yieldNow;
+      const listing = yield* Effect.forkChild(
+        runtime.commands.listIntegrationTokenGrants(topologyDescriptor.project.organization),
+      );
+      for (let turn = 0; turn < 20; turn++) yield* Effect.yieldNow;
+
+      expect(listing.pollUnsafe()).toBeDefined();
+      expect((yield* Fiber.join(listing)).value).toEqual([]);
+      const commands = [...registry.get(runtime.stateAtom).commands.values()];
+      expect(commands.map((attempt) => attempt.commandKind)).toEqual([
+        "set-integration-token-projects",
+      ]);
+      yield* Fiber.interrupt(write);
+      yield* runtime.shutdown("application-close");
+      registry.dispose();
+    }),
+  );
+
   it.effect("an interrupted command is no longer counted as pending", () =>
     Effect.gen(function* () {
       const registry = AtomRegistry.make();

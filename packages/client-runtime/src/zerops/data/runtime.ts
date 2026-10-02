@@ -3513,6 +3513,56 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
       }),
     );
 
+  /**
+   * A read the platform answers with a value alone — a token listing: admitted as a command is,
+   * on the same grant and target, but never queued behind the account's writes, never waiting on
+   * its ingress, never counted against its command queue. Run as commands, group reach's listings
+   * filled that queue and refused a New project's close-off (measured live, pass 31).
+   */
+  const runReadIntent = (
+    intent: Extract<
+      PlatformCommandIntent,
+      { readonly kind: "list-integration-token-grants" | "list-token-delegations" }
+    >,
+  ): Effect.Effect<
+    { readonly attempt: ReturnType<typeof attemptRef>; readonly result: PlatformCommandResult },
+    CommandAdmissionError | AdapterError
+  > =>
+    Effect.gen(function* () {
+      const command = yield* modelLock.withPermit(
+        Effect.gen(function* () {
+          const current = yield* Ref.get(model);
+          if ((yield* Ref.get(closed)) || current.closed) {
+            return yield* Effect.fail({
+              _tag: "ZeropsCommandAdmissionError",
+              reason: "runtime-closed",
+              message: "The Zerops account data runtime is closed.",
+            } satisfies CommandAdmissionError);
+          }
+          const admission = commandAdmissionError(
+            options.scope,
+            current.access,
+            commandTarget(intent),
+            yield* Clock.currentTimeMillis,
+            yield* accountCapability,
+          );
+          if (admission !== null) return yield* Effect.fail(admission);
+          return {
+            ...intent,
+            attemptId: ZeropsCommandAttemptId.make(options.makeOpaqueId()),
+            accountEpoch: options.scope.epoch,
+            startedAtReceiptOrdinal: ReceiptOrdinal.make(receiptOrdinal),
+            dispatchOrdinal: DispatchOrdinal.make(dispatchOrdinal),
+          } satisfies PlatformCommand;
+        }),
+      );
+      const receipt = yield* context(policy.httpDeadlineMs, (requestContext) =>
+        options.adapter.execute(command, requestContext),
+      );
+      if (receipt.result === undefined) return yield* Effect.fail(missingCommandResult());
+      return { attempt: attemptRef(command), result: receipt.result };
+    });
+
   const attemptRef = (command: PlatformCommand) => ({
     account: options.scope.account,
     accountEpoch: options.scope.epoch,
@@ -3810,7 +3860,7 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
         ),
       ),
     listIntegrationTokenGrants: (organization) =>
-      runCommand({ kind: "list-integration-token-grants", organization }).pipe(
+      runReadIntent({ kind: "list-integration-token-grants", organization }).pipe(
         Effect.flatMap(({ attempt, result }) =>
           result.kind === "list-integration-token-grants"
             ? Effect.succeed({ attempt, value: result.value })
@@ -3826,7 +3876,7 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
         ),
       ),
     listTokenDelegations: (input) =>
-      runCommand({ kind: "list-token-delegations", ...input }).pipe(
+      runReadIntent({ kind: "list-token-delegations", ...input }).pipe(
         Effect.flatMap(({ attempt, result }) =>
           result.kind === "list-token-delegations"
             ? Effect.succeed({ attempt, value: result.value })
