@@ -61,6 +61,7 @@ import {
   stopCardTitle,
   stopFailedDeploy,
   stopMetaLine,
+  stopTone,
   stopVerdict,
   stopView,
   type Deployment,
@@ -1978,8 +1979,11 @@ function StopLine({
   readonly notice: string | null;
 }) {
   const navigate = useNavigate();
-  const word = deployWord(environment.tone);
-  const dotTone = STOP_DOT_TONE[environment.tone];
+  const deployments = useZeropsProjectFlowOptional()?.deployments;
+  // The one rule every surface words a stop by (`stopTone`), with the platform's answer beside it.
+  const tone = stopTone(deployments?.get(environment.projectId), environment);
+  const word = deployWord(tone);
+  const dotTone = STOP_DOT_TONE[tone];
   const open = useCallback(() => {
     void navigate({
       to: "/group/$groupId/$projectId",

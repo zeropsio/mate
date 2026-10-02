@@ -50,7 +50,7 @@ import {
   type RoleMateVisibility,
 } from "@t3tools/client-runtime/zerops/mateAccess";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
-import { NOTHING_DEPLOYED } from "@t3tools/client-runtime/zerops/flow";
+import { NOTHING_DEPLOYED, stopTone } from "@t3tools/client-runtime/zerops/flow";
 import {
   knownPresentation,
   type KnownAffordance,
@@ -2239,9 +2239,15 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
     // branch and the deployed commit, from the two parties that can
     // prove each (`groupDeploys.ts`). Anything else keeps the summary of
     // what it holds.
+    // Coloured by the one rule every surface words a stop by (`stopTone`): the platform's build
+    // is a deploy on its way, and a version it runs is deployed whatever a status read before said.
     const declared = declaredEnvironment(candidate.project.id);
-    const deployTone = declared === undefined ? undefined : deployRowTone(declared.tone);
-    const deployLabel = declared === undefined ? undefined : deployWord(declared.tone);
+    const stopDeployTone =
+      declared === undefined
+        ? undefined
+        : stopTone(projectFlow.deployments.get(candidate.project.id), declared);
+    const deployTone = stopDeployTone === undefined ? undefined : deployRowTone(stopDeployTone);
+    const deployLabel = stopDeployTone === undefined ? undefined : deployWord(stopDeployTone);
     // *Release* is the project's next step, in production's cell beside
     // the fact it acts on — never a second copy on this row, which put the
     // same verb on the page twice with nothing beside it saying why (the
