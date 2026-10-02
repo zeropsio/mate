@@ -1,11 +1,17 @@
 import * as DateTime from "effect/DateTime";
 import { describe, expect, it } from "vite-plus/test";
 
+import type { Deployment } from "./flow/deployment.ts";
+import { groupFlow } from "./groupFlow.ts";
+import { deployedVersion, environmentRow } from "./groupRows.ts";
+import type { HqDeploy } from "./hq/environments.ts";
+import type { Shown } from "./knowledge/known.ts";
 import {
   comingLine,
   COMING_UP_WINDOW_MS,
   firstDeploy,
   groupRunner,
+  listedStopComing,
   runnerHostname,
   stopComing,
   stopDeployed,
@@ -293,6 +299,118 @@ describe("firstDeploy — where a stage's first deploy stands while it runs noth
     },
   ])("$case", ({ over, first }) => {
     expect(firstDeploy({ ...asked, ...over })).toEqual(first);
+  });
+});
+
+describe("listedStopComing — a production, read the way the menu reads it", () => {
+  // Karel's xyz (2026-10-02): a production no release reached, its runtimes up on the import's
+  // no-code version, read "Production coming up · turning its address on" until its window ran out.
+  const SHA = "7c41d9e0a2b35f6e8d1c0b9a4f3e2d1c0b9a8f7e";
+  const known = (value: Deployment): Shown<Deployment> => ({
+    state: "known",
+    value,
+    asOf: { ordinal: 1, atMs: 0 },
+    coverage: "complete",
+    freshness: { kind: "live" },
+  });
+  const live: HqDeploy = {
+    sha: SHA,
+    state: "live",
+    failure: null,
+    message: null,
+    appVersionId: null,
+    processId: null,
+    requestedBy: null,
+    at: ago(30_000),
+  };
+  const comingOf = (deployment: Shown<Deployment> | undefined, released: boolean) => {
+    const appVersionName = released ? `${SHA} v1.0.0 u-jan` : undefined;
+    const flow = groupFlow({
+      groupId: "g-xyz",
+      mates: [],
+      pullRequests: [],
+      merged: [],
+      stops: [
+        {
+          projectId: "p-xyz-prod",
+          name: "xyz - production",
+          tier: "production",
+          row: environmentRow({
+            projectId: "p-xyz-prod",
+            name: "xyz - production",
+            tier: "production",
+            sources: "release",
+            services: [
+              {
+                hostname: "app",
+                ...(appVersionName === undefined ? {} : { appVersionName }),
+                ...(released ? { deploy: { latest: live, live } } : {}),
+              },
+            ],
+          }),
+          deployment,
+          route: undefined,
+        },
+      ],
+      missing: [],
+      release: {
+        gate: { allowed: false, reason: "" },
+        suggestion: "v1.0.0",
+        waiting: 0,
+        waitingAtLeast: false,
+        untold: [],
+      },
+      mainHasCode: true,
+      mainHead: undefined,
+      productionAddable: false,
+      pending: [],
+    });
+    if (!("stop" in flow.production)) throw new Error("the production is listed");
+    return listedStopComing(
+      "production",
+      {
+        stop: flow.production.stop,
+        projectStatus: "ACTIVE",
+        createdAt: ago(60_000),
+        services: [db("ACTIVE"), app("ACTIVE")],
+        building: false,
+        routes: 0,
+      },
+      NOW,
+    );
+  };
+
+  it.each([
+    {
+      case: "the platform knows it runs nothing: no line",
+      deployment: known({ kind: "none" }),
+      released: false,
+      coming: undefined,
+    },
+    {
+      case: "what it runs unread, and HQ records no deploy: no line",
+      deployment: undefined,
+      released: false,
+      coming: undefined,
+    },
+    {
+      case: "what it runs being read again: no line",
+      deployment: { state: "reading", sinceMs: 0, attempt: 1 } as const,
+      released: false,
+      coming: undefined,
+    },
+    {
+      case: "a release runs and its address is not on yet: the address step",
+      deployment: known({
+        kind: "running",
+        activatedAt: null,
+        version: deployedVersion(`${SHA} v1.0.0 u-jan`),
+      }),
+      released: true,
+      coming: { kind: "coming", step: "address" },
+    },
+  ])("$case", ({ deployment, released, coming }) => {
+    expect(comingOf(deployment, released)).toEqual(coming);
   });
 });
 
