@@ -692,6 +692,19 @@ describe("makeHqApi — a Mate's changes, as the person reads them", () => {
     });
   });
 
+  // The Git page's repositories: an application's, each with its main as HQ holds it.
+  it("lists an application's repositories, as the person", async () => {
+    const REPOS = [
+      { name: "appdev", mainHead: SHA, updatedAt: "2026-10-02T09:00:00.000Z" },
+      { name: "group", mainHead: null, updatedAt: null },
+    ];
+    const { hq, api: hqApi } = api((seen) =>
+      seen.path === "/api/apps/app-1/repos" ? json(200, REPOS) : undefined,
+    );
+    await expect(hqApi.appRepos("app-1")).resolves.toEqual(REPOS);
+    expect(hq.seen.at(-1)).toMatchObject({ method: "GET", authorization: "Bearer session-1" });
+  });
+
   it("fetches a change's picture with the session, as the picture it is", async () => {
     const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47]);
     const { hq, api: hqApi } = api((seen) =>
