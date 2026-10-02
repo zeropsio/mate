@@ -227,6 +227,11 @@ describe("readForge", () => {
       await expect(
         readForge(gone, "harbor", "group", createMergeabilityTracker(), reads),
       ).rejects.toThrow("404");
+      // And on the next refresh too: the first 404 does not make it "not made yet".
+      vi.advanceTimersByTime(GATE_FRESH_MS + 1);
+      await expect(
+        readForge(gone, "harbor", "group", createMergeabilityTracker(), reads),
+      ).rejects.toThrow("404");
     } finally {
       vi.useRealTimers();
     }

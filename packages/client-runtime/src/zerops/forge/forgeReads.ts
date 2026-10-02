@@ -171,8 +171,10 @@ export interface ForgeReads {
   readonly unauthorized: () => number;
   /**
    * Whether each org a listing answered for is made, by owner: `true` for a listing, `false` for a
-   * `404` — the broker has not made it yet. An org never answered for, or answered only with
-   * another failure, is absent: nothing is proved. The same map until an answer changes it.
+   * `404` on one never listed — the broker has not made it yet. One listed once stays made: its
+   * `404` is a failure, and its readers keep what they held. An org never answered for, or
+   * answered only with another failure, is absent: nothing is proved. The same map until an
+   * answer changes it.
    */
   readonly organizations: () => ReadonlyMap<string, boolean>;
   /** Told when {@link organizations} changes; returns the unsubscribe. */
@@ -230,6 +232,8 @@ export function createForgeReads(options: { readonly now?: () => number } = {}):
   /** Each owner's last `404`, shared like a listing while it is fresh. */
   const notFound = new Map<string, { readonly cause: unknown; readonly atMs: number }>();
   let organizations: ReadonlyMap<string, boolean> = new Map();
+  /** Owners whose listing answered once: made, so a `404` after is a failure, never "not yet". */
+  const listedOnce = new Set<string>();
   const listeners = new Set<() => void>();
   const made = (owner: string, exists: boolean) => {
     if (organizations.get(owner) === exists) return;
@@ -297,13 +301,14 @@ export function createForgeReads(options: { readonly now?: () => number } = {}):
             for (const [repo, parts] of plan.reread) forget(owner, repo, parts);
             listings.set(owner, { gate: plan.gate, repositories, atMs: at });
             notFound.delete(owner);
+            listedOnce.add(owner);
             made(owner, true);
             return repositories;
           },
           (cause: unknown) => {
             if (giteaNotFound(cause)) {
               notFound.set(owner, { cause, atMs: at });
-              made(owner, false);
+              if (!listedOnce.has(owner)) made(owner, false);
             }
             throw cause;
           },

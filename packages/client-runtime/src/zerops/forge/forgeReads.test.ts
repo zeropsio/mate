@@ -307,11 +307,13 @@ describe("createForgeReads — whether a group's Gitea org is made", () => {
       told: 1,
     },
     {
-      name: "an org gone again is not made",
-      answers: [listed, missing],
-      made: [true, false],
-      line: ["ready", "being-set-up"],
-      told: 2,
+      // Pass 32 review: a 404 on an org listed before is a failure, read after read — never
+      // "not made yet", which would wipe what its group held.
+      name: "an org listed before stays made through its 404s",
+      answers: [listed, missing, missing],
+      made: [true, true, true],
+      line: ["ready", "ready", "ready"],
+      told: 1,
     },
   ])("$name", async ({ answers, made, line, told: expectedTold }) => {
     let clock = NOW;
