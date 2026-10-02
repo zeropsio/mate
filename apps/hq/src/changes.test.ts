@@ -2,16 +2,20 @@
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 
-import * as PgConnection from "@effect/sql-pg/PgConnection";
 import { assert, describe, it } from "@effect/vitest";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
-import * as Redacted from "effect/Redacted";
 import * as Schedule from "effect/Schedule";
 
 import { gitClient } from "../test/harness/gitClient.ts";
 import {
-  type Call,
+  addProject,
+  mateInApp,
+  mateWithChange,
+  remoteOf,
+  rowsWhere,
+} from "../test/harness/mates.ts";
+import {
   enrollMate,
   sessionFor,
   startCore,
@@ -19,76 +23,9 @@ import {
   untilHealth,
 } from "../test/harness/runningCore.ts";
 import { tempPostgresLayer } from "../test/harness/tempPostgres.ts";
-import type { FakeWorld } from "../test/harness/zeropsFake.ts";
-
-/** The owner makes an application and attaches `projectId` to it as a Mate, which enrolls. */
-const mateInApp = (
-  call: Call,
-  fake: FakeWorld,
-  owner: string,
-  projectId: string,
-  appName: string,
-) =>
-  Effect.gen(function* () {
-    const app = yield* call("POST", "/api/apps", { session: owner, body: { name: appName } });
-    const appId = (app.body as { readonly id: string }).id;
-    const attached = yield* call("POST", `/api/apps/${appId}/projects`, {
-      session: owner,
-      body: { projectId, kind: "mate", mate: { name: "Ada", face: "face-1" } },
-    });
-    assert.strictEqual(attached.status, 201);
-    const credential = yield* enrollMate(call, fake, projectId);
-    return { appId, credential, auth: { authorization: `Mate ${credential}` } };
-  });
-
-/** Another project of the org beside the rig's own. */
-const addProject = (fake: FakeWorld, id: string) =>
-  fake.projects.push({
-    id,
-    orgId: "ORG",
-    name: id,
-    status: "ACTIVE",
-    tags: [],
-    userRoles: [],
-    publicZone: `${id}.prg1-zerops.zone`,
-  });
-
-/** git's address of a repository at Core, the Mate's credential in it. */
-const remoteOf = (origin: string, credential: string, appId: string, repo: string) =>
-  `${origin.replace("http://", `http://mate:${credential}@`)}/git/${appId}/${repo}.git`;
-
-/** The rows `query` answers on Core's database, once `matches` holds of them; fails after ten seconds. */
-const rowsWhere = (
-  url: string,
-  query: string,
-  matches: (rows: ReadonlyArray<Record<string, unknown>>) => boolean,
-) =>
-  Effect.scoped(
-    Effect.gen(function* () {
-      const db = yield* PgConnection.make({ url: Redacted.make(url) });
-      return yield* db.query(query).pipe(
-        Effect.map((result) => result.rows as ReadonlyArray<Record<string, unknown>>),
-        Effect.filterOrFail(matches),
-        Effect.retry(Schedule.spaced(Duration.millis(50))),
-        Effect.timeout(Duration.seconds(10)),
-      );
-    }),
-  ).pipe(Effect.orDie);
 
 /** A PNG's signature and a little more: what HQ checks a picture by. */
 const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13]);
-
-/** A Mate with the repository `appdev` and its open change 1 there. */
-const mateWithChange = (call: Call, fake: FakeWorld, owner: string, projectId = "P_MATE") =>
-  Effect.gen(function* () {
-    const mate = yield* mateInApp(call, fake, owner, projectId, "Shop");
-    yield* call("POST", "/api/mate/repos", { headers: mate.auth, body: { name: "appdev" } });
-    yield* call("POST", "/api/mate/changes", {
-      headers: mate.auth,
-      body: { repo: "appdev", title: "Mate: appdev" },
-    });
-    return mate;
-  });
 
 describe("a Mate's changes in HQ", () => {
   it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
