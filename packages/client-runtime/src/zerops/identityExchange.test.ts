@@ -632,11 +632,11 @@ describe("exchangeAtDoor: a kept session is presented again before any throwaway
       forgotten: true,
     },
     {
-      name: "the Mate gave no answer about it: a throwaway connects, and it stays kept",
+      name: "the Mate gave no answer about it: nothing minted, it stays kept for the retry",
       check: "no-answer",
-      answer: { ok: true, credential: { environmentId: ENV, generation: 1 } },
+      answer: { ok: false, failure: { class: "retryable" }, descriptor: { identity: "ok" } },
       checked: true,
-      minted: true,
+      minted: false,
       forgotten: false,
     },
     {
