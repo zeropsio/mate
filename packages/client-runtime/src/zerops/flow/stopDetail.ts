@@ -76,6 +76,27 @@ const withSince = (text: string, since: string | undefined): string =>
 const plural = (count: number, one: string, many: string): string =>
   `${count} ${count === 1 ? one : many}`;
 
+/** The deploy key a stop's verdict speaks of (`stopVerdict`'s `keyGap`). */
+export type StopKeyGap = NonNullable<Parameters<typeof stopVerdict>[0]["keyGap"]>;
+
+/**
+ * What a stop's verdict says of its deploy key, as HQ records it (main E07): a key that no longer
+ * works, to anyone; no key, only to one HQ's rule does not let keep one (`keep_deploy_token`) —
+ * one it does is offered the mint itself — and nothing while that is not known.
+ */
+export function stopKeyGap(input: {
+  readonly keyHeld: boolean;
+  readonly keyInvalid: boolean;
+  /** Whether this person may keep the stop's deploy key; `undefined` while not known. */
+  readonly mayKeep: boolean | undefined;
+  /** The Zerops project's name. */
+  readonly project: string;
+}): StopKeyGap | undefined {
+  if (input.keyInvalid) return { kind: "invalid", project: input.project };
+  if (!input.keyHeld && input.mayKeep === false) return { kind: "missing", project: input.project };
+  return undefined;
+}
+
 /** What a stop's page says first: the first state that holds, in the order a person needs them. */
 export function stopVerdict(input: {
   readonly tier: GroupEnvironmentTier;
@@ -98,24 +119,28 @@ export function stopVerdict(input: {
   /** Whether a stage runs main's head commit; stage only. */
   readonly atMainHead: boolean;
   /**
-   * The stop's deploy key no longer works, as HQ records it, and the Zerops project whose Full
-   * access mints a new one; `undefined` while it works.
+   * The deploy key HQ deploys the stop with, where it keeps HQ from deploying — missing, or no
+   * longer working — and the Zerops project whose Full access mints one; `undefined` while it
+   * works.
    */
-  readonly brokenKey: { readonly project: string } | undefined;
+  readonly keyGap: { readonly kind: "missing" | "invalid"; readonly project: string } | undefined;
 }): StopVerdict {
   const { tier, view } = input;
   const quiet = { detail: undefined, verb: null } as const;
   if (tier === "production" && input.releasing !== undefined)
     return { tone: "busy", text: releaseInFlightReason(input.releasing), ...quiet };
   if (view.tone === "pending") return { tone: "busy", text: view.word, ...quiet };
-  // HQ refuses every deploy made with it, so its failures follow from it and are not said.
-  if (input.brokenKey !== undefined)
+  // HQ deploys nothing without a key that works, so the failures that follow are not said, and
+  // nothing is asked again.
+  if (input.keyGap !== undefined) {
+    const { kind, project } = input.keyGap;
     return {
       tone: "failed",
-      text: "Its deploy key no longer works.",
-      detail: `Someone with Full access to the ${input.brokenKey.project} project in Zerops mints a new one here.`,
+      text: kind === "missing" ? "It has no deploy key yet." : "Its deploy key no longer works.",
+      detail: `Someone with Full access to the ${project} project in Zerops mints ${kind === "missing" ? "one" : "a new one"} here.`,
       verb: null,
     };
+  }
   if (input.failed !== undefined) {
     const { label, service, running, redeploy, mayRunAgain } = input.failed;
     return {

@@ -10,6 +10,7 @@ import {
 } from "@t3tools/client-runtime/zerops";
 import {
   serviceRows,
+  stopKeyGap,
   stopVerdict,
   stopView,
   type Deployment,
@@ -348,6 +349,10 @@ interface StopCase {
   readonly failed?: StopFailure;
   /** Whether the deploy key HQ holds for the stop no longer works. */
   readonly keyInvalid?: boolean;
+  /** Whether HQ holds a deploy key for the stop; held unless given. */
+  readonly keyHeld?: boolean;
+  /** Whether the person may keep the stop's deploy key. */
+  readonly mayKeep?: boolean;
   readonly releases?: number;
   readonly atMainHead?: boolean;
   readonly commits?: ZeropsCommitsState;
@@ -367,6 +372,7 @@ function renderStop(input: StopCase): string {
     sources: input.tier === "production" ? ("release" as const) : ["main"],
     services: input.services,
     environment: name,
+    keyHeld: input.keyHeld ?? true,
     keyInvalid: input.keyInvalid ?? false,
   };
   const stop = environmentRow(declared);
@@ -399,7 +405,7 @@ function renderStop(input: StopCase): string {
     releasedAge: undefined,
     since: undefined,
     atMainHead: input.atMainHead ?? false,
-    brokenKey: declared.keyInvalid ? { project: stop.name } : undefined,
+    keyGap: stopKeyGap({ ...declared, mayKeep: input.mayKeep, project: stop.name }),
   });
   return renderToStaticMarkup(
     <ZeropsStopPane
@@ -506,6 +512,31 @@ describe("ZeropsStopPane", () => {
         },
       },
       contains: ["The deploy of v0.1.14 failed on api."],
+    },
+    {
+      name: "a stage with no deploy key yet, to one who may not mint it",
+      input: {
+        tier: "stage",
+        services: [service("api", "a1", undefined, "failed")],
+        keyHeld: false,
+        mayKeep: false,
+      },
+      contains: [
+        "It has no deploy key yet.",
+        "Someone with Full access to the stage project in Zerops mints one here.",
+      ],
+      lacks: ["Run again"],
+    },
+    {
+      name: "a stage with no deploy key yet, to one who may mint it",
+      input: {
+        tier: "stage",
+        services: [service("api", "a1", undefined)],
+        keyHeld: false,
+        mayKeep: true,
+      },
+      contains: [],
+      lacks: ["It has no deploy key yet."],
     },
     {
       name: "a production whose release is not offered says why",

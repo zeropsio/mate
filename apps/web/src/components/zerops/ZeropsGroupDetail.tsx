@@ -59,6 +59,7 @@ import {
   serviceRows,
   stopCardTitle,
   stopFailedDeploy,
+  stopKeyGap,
   stopMetaLine,
   stopVerdict,
   stopView,
@@ -92,7 +93,7 @@ import { mateUpdateStatus, type MateUpdateStatus } from "~/zerops/mateUpdate";
 import { useZeropsMateUpdateStates } from "~/zerops/useZeropsMateUpdate";
 import { useZeropsCandidates } from "~/zerops/useZeropsCandidates";
 import { useZeropsProjectFlowOptional } from "~/zerops/projectFlowContext";
-import { useChangeOffers } from "~/zerops/useChangeOffers";
+import { useChangeOffers, useKeepDeployKeyOffer } from "~/zerops/useChangeOffers";
 import { REVIEW_RELEASE_LABEL, useOpenReview } from "~/zerops/review";
 import type { ZeropsCommitDetailResult } from "~/zerops/useZeropsCommitDetail";
 import type { ZeropsCommitsState } from "~/zerops/useZeropsRepositoryCommits";
@@ -959,6 +960,7 @@ export function ZeropsStopDetailPage({
       : stopFailedDeploy({ tier: stop.tier, rows: services, releases: flow.releases });
   // *Run again* asks HQ, by its rule for who develops the application.
   const mayRunAgain = useChangeOffers()(groupId)?.redeploy ?? false;
+  const mayKeepKey = useKeepDeployKeyOffer();
   // Why HQ refused the last *Run again*, until another is pressed.
   const [runAgainRefused, setRunAgainRefused] = useState<string | null>(null);
 
@@ -993,7 +995,10 @@ export function ZeropsStopDetailPage({
     since: view.activatedAt === null ? undefined : formatRelativeTimeLabel(view.activatedAt),
     atMainHead:
       stage && commits.kind === "read" && sameCommit(view.version?.sha, commits.commits[0]?.sha),
-    brokenKey: declared?.keyInvalid === true ? { project: stop.name } : undefined,
+    keyGap:
+      declared === undefined
+        ? undefined
+        : stopKeyGap({ ...declared, mayKeep: mayKeepKey(projectId), project: stop.name }),
   });
 
   return (

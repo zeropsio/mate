@@ -23,6 +23,7 @@ import {
   serviceRows,
   stopCardTitle,
   stopFailedDeploy,
+  stopKeyGap,
   stopMetaLine,
   stopVerdict,
   type StopFailedDeploy,
@@ -89,7 +90,7 @@ const BASE: VerdictInput = {
   releasedAge: undefined,
   since: undefined,
   atMainHead: false,
-  brokenKey: undefined,
+  keyGap: undefined,
 };
 
 const FAILED: StopFailure = {
@@ -141,12 +142,31 @@ describe("stopVerdict", () => {
     {
       // HQ refuses every deploy with it, so its failures follow from it and are not said.
       name: "a deploy key that no longer works, over the deploy it failed",
-      input: { tier: "stage", failed: FAILED, brokenKey: { project: "Shop - stage" } },
+      input: {
+        tier: "stage",
+        failed: FAILED,
+        keyGap: { kind: "invalid", project: "Shop - stage" },
+      },
       expected: {
         tone: "failed",
         text: "Its deploy key no longer works.",
         detail:
           "Someone with Full access to the Shop - stage project in Zerops mints a new one here.",
+        verb: null,
+      },
+    },
+    {
+      name: "no deploy key yet, over the deploy it failed",
+      input: {
+        tier: "production",
+        failed: FAILED,
+        keyGap: { kind: "missing", project: "Shop - production" },
+      },
+      expected: {
+        tone: "failed",
+        text: "It has no deploy key yet.",
+        detail:
+          "Someone with Full access to the Shop - production project in Zerops mints one here.",
         verb: null,
       },
     },
@@ -311,6 +331,45 @@ describe("stopVerdict", () => {
     },
   ])("$name", ({ input, expected }) => {
     expect(stopVerdict({ ...BASE, ...input })).toEqual(expected);
+  });
+});
+
+describe("stopKeyGap", () => {
+  it.each([
+    { name: "a key that works", keyHeld: true, keyInvalid: false, mayKeep: false, kind: undefined },
+    {
+      name: "a broken key, to anyone",
+      keyHeld: true,
+      keyInvalid: true,
+      mayKeep: true,
+      kind: "invalid",
+    },
+    {
+      name: "no key, to one who may not mint",
+      keyHeld: false,
+      keyInvalid: false,
+      mayKeep: false,
+      kind: "missing",
+    },
+    // One who may mint is offered the mint itself, and told nothing here.
+    {
+      name: "no key, to one who may mint",
+      keyHeld: false,
+      keyInvalid: false,
+      mayKeep: true,
+      kind: undefined,
+    },
+    {
+      name: "no key, while who may mint is not known",
+      keyHeld: false,
+      keyInvalid: false,
+      mayKeep: undefined,
+      kind: undefined,
+    },
+  ] as const)("$name", ({ keyHeld, keyInvalid, mayKeep, kind }) => {
+    expect(stopKeyGap({ keyHeld, keyInvalid, mayKeep, project: "Shop - stage" })).toEqual(
+      kind === undefined ? undefined : { kind, project: "Shop - stage" },
+    );
   });
 });
 

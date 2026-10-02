@@ -76,6 +76,7 @@ describe("the join — HQ's record of an environment, a version and a deploy", (
         tier: "stage",
         sources: ["main"],
         environment: "stage",
+        keyHeld: true,
         keyInvalid: true,
         services: [
           {
@@ -93,6 +94,7 @@ describe("the join — HQ's record of an environment, a version and a deploy", (
         tier: "production",
         sources: "release",
         environment: "production",
+        keyHeld: true,
         keyInvalid: false,
         services: [{ hostname: "api", repository: "apidev" }],
       },

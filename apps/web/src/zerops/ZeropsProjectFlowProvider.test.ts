@@ -82,6 +82,7 @@ describe("joinProjectFlows", () => {
       tier: "stage",
       sources: ["main"],
       environment: "stage",
+      keyHeld: true,
       keyInvalid: false,
       services: [],
     };
@@ -108,6 +109,7 @@ describe("joinProjectFlows", () => {
       tier: "production",
       sources: "release",
       environment: "production",
+      keyHeld: true,
       keyInvalid: false,
       services: [{ hostname: "app", appVersionName: "1".repeat(40) }],
     };
@@ -168,6 +170,7 @@ describe("joinProjectFlows", () => {
               tier,
               sources: tier === "production" ? "release" : ["main"],
               environment: tier,
+              keyHeld: true,
               keyInvalid: false,
               services: [
                 { hostname: "medusa", appVersionName: `${MEDUSA} v0.1.9 broker` },
@@ -215,6 +218,7 @@ describe("joinProjectFlows", () => {
               tier: "production",
               sources: "release",
               environment: "production",
+              keyHeld: true,
               keyInvalid: false,
               services: [
                 {

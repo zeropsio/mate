@@ -32,6 +32,7 @@ import {
 import {
   serviceRows,
   stopFailedDeploy,
+  stopKeyGap,
   stopVerdict,
   stopView,
   type Deployment,
@@ -471,6 +472,10 @@ interface StopFixture {
   readonly mayRunAgain?: boolean;
   /** Whether the deploy key HQ holds for the stop no longer works. */
   readonly keyInvalid?: boolean;
+  /** Whether HQ holds a deploy key for the stop; held unless given. */
+  readonly keyHeld?: boolean;
+  /** Whether the person may keep the stop's deploy key. */
+  readonly mayKeep?: boolean;
   readonly commits?: ZeropsCommitsState;
   /** A production's releases, newest first. */
   readonly releases?: ReadonlyArray<FlowRelease>;
@@ -648,7 +653,12 @@ function StopState({ fixture }: { readonly fixture: StopFixture }) {
           !production &&
           commits.kind === "read" &&
           sameCommit(view.version?.sha, commits.commits[0]?.sha),
-        brokenKey: fixture.keyInvalid === true ? { project: stop.name } : undefined,
+        keyGap: stopKeyGap({
+          keyHeld: fixture.keyHeld ?? true,
+          keyInvalid: fixture.keyInvalid ?? false,
+          mayKeep: fixture.mayKeep,
+          project: stop.name,
+        }),
       })}
       view={view}
       waiting={waiting}
@@ -878,6 +888,25 @@ function Harness() {
             routes: ROUTES,
             mayRunAgain: true,
             keyInvalid: true,
+          }}
+        />
+      </State>
+
+      <State
+        label="A stage with no deploy key yet, for one who may not mint it"
+        note="HQ holds no key to deploy the stage with: the verdict names who mints one. One who may mint it is offered the mint instead."
+      >
+        <StopState
+          fixture={{
+            tier: "stage",
+            services: [
+              service("api", "b21d904c", undefined, "failed"),
+              service("app", "5c3ea18b", undefined),
+            ],
+            deployment: STAGE_RUNNING,
+            routes: ROUTES,
+            keyHeld: false,
+            mayKeep: false,
           }}
         />
       </State>
