@@ -34,12 +34,12 @@ export function changeFaceWords(name: string): ChangeFaceWords {
 
 /**
  * Whether a Mate's menus offer *Change face…*: on a Mate, where this viewer may rename it — the
- * same write of the project's own tags (`resolveMateVerbs`), so a face the platform would refuse
- * is never offered.
+ * same write of the Mate's record in HQ (`edit_mate_record`), so a face HQ would refuse is never
+ * offered.
  */
 export function changeFaceOffered(input: {
   readonly candidate: ZeropsCandidate;
-  /** `resolveMateVerbs(...).rename`, or the menus' own fallback where no viewer is read. */
+  /** Whether HQ's rule offers the viewer the Mate's record (`mayOffer`); never for an unknown one. */
   readonly mayRename: boolean;
 }): boolean {
   return input.mayRename && hasMate(input.candidate);

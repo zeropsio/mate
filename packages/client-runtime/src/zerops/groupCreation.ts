@@ -22,7 +22,8 @@
  */
 
 import type { ZeropsRegistry } from "./hq/registry.ts";
-import { mateMemberName, type MateAccessViewer, type MateOwnerCandidate } from "./mateAccess.ts";
+import { mateMemberName, type MateOwnerCandidate } from "./mateAccess.ts";
+import { mayOffer, offerAsker, type OfferViewer } from "./offers.ts";
 
 /** A verb is either offered, or refused in words that name who can do it. */
 export type GroupVerb =
@@ -31,9 +32,9 @@ export type GroupVerb =
 
 const OFFERED: GroupVerb = { offered: true };
 
-/** Who may write the registry: an org owner or admin, and nobody else (D3, HQ's own rule). */
-export function canWriteRegistry(viewer: { readonly roleCode?: string | undefined }): boolean {
-  return viewer.roleCode === "OWNER" || viewer.roleCode === "ADMIN";
+/** Who may write the registry: whom HQ's rule lets make an application (`create_app`). */
+export function canWriteRegistry(viewer: OfferViewer | undefined): boolean {
+  return mayOffer(offerAsker(viewer, []), "create_app", null);
 }
 
 /**
@@ -41,7 +42,8 @@ export function canWriteRegistry(viewer: { readonly roleCode?: string | undefine
  * not the one who does this.
  */
 export function resolveAddProjectVerb(input: {
-  readonly viewer: MateAccessViewer;
+  /** Nobody where the session names nobody: then it is not offered. */
+  readonly viewer: OfferViewer | undefined;
   /** The org's owners and admins, for the refusal that names them. */
   readonly admins?: ReadonlyArray<MateOwnerCandidate> | undefined;
 }): GroupVerb {
@@ -167,10 +169,10 @@ export function finishMateSetupVerb(input: {
   readonly viewerIsAdder: boolean;
   /** Its project has its container: without one there is nothing for a close-off to finish. */
   readonly hasContainer: boolean;
-  /** The viewer's org role, as the platform spells it. */
-  readonly viewerRole?: string | undefined;
+  /** The viewer writes the registry (`canWriteRegistry`). */
+  readonly writer: boolean;
 }): string | undefined {
-  if (input.viewerRole === "OWNER" || input.viewerRole === "ADMIN") {
+  if (input.writer) {
     const halfMade =
       input.pressStopped ||
       (input.pastGrace &&
@@ -194,9 +196,9 @@ export function finishMateSetupVerb(input: {
   return undefined;
 }
 
-/** What a viewer's *Finish setup* runs: all of it for an owner or an admin, else the close-off. */
-export function finishMateSetupScope(viewerRole: string | undefined): "whole" | "close-off" {
-  return viewerRole === "OWNER" || viewerRole === "ADMIN" ? "whole" : "close-off";
+/** What a viewer's *Finish setup* runs: all of it for a registry writer, else the close-off. */
+export function finishMateSetupScope(writer: boolean): "whole" | "close-off" {
+  return writer ? "whole" : "close-off";
 }
 
 export const FINISH_MATE_SETUP_VERB = "Finish setup";

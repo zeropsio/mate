@@ -12,7 +12,7 @@ import {
   type MateRegistration,
 } from "./groupCreation.ts";
 import type { ZeropsRegistry } from "./hq/registry.ts";
-import type { MateAccessViewer } from "./mateAccess.ts";
+import type { OfferViewer } from "./offers.ts";
 
 const ACME: ZeropsRegistry = {
   groups: [
@@ -25,8 +25,8 @@ const ACME: ZeropsRegistry = {
   ],
 };
 
-function viewer(roleCode: string, extra: Partial<MateAccessViewer> = {}): MateAccessViewer {
-  return { id: "org-1", membershipId: "cu-1", roleCode, ...extra };
+function viewer(roleCode: string | undefined, extra: Partial<OfferViewer> = {}): OfferViewer {
+  return { userId: "u-1", clientUserId: "cu-1", roleCode, canCreateProjects: false, ...extra };
 }
 
 describe("who may add a project", () => {
@@ -37,7 +37,12 @@ describe("who may add a project", () => {
     { role: "READ_ONLY", expected: false },
     { role: "NO_ACCESS", expected: false },
   ])("$role writes the registry: $expected", ({ role, expected }) => {
-    expect(canWriteRegistry({ roleCode: role })).toBe(expected);
+    expect(canWriteRegistry(viewer(role))).toBe(expected);
+  });
+
+  it("is nobody the session does not name: unknown is no", () => {
+    expect(canWriteRegistry(undefined)).toBe(false);
+    expect(resolveAddProjectVerb({ viewer: undefined })).toMatchObject({ offered: false });
   });
 
   it("does not offer it to a member who can create projects — the registry is not theirs", () => {
@@ -251,9 +256,9 @@ describe("finishMateSetupVerb", () => {
       expected: undefined,
     },
   ] as const)("offers nothing but the right verb to $name", ({ input, viewerRole, expected }) => {
-    expect(
-      finishMateSetupVerb({ ...input, ...(viewerRole === undefined ? {} : { viewerRole }) }),
-    ).toBe(expected);
+    expect(finishMateSetupVerb({ ...input, writer: canWriteRegistry(viewer(viewerRole)) })).toBe(
+      expected,
+    );
   });
 });
 
@@ -264,6 +269,6 @@ describe("finishMateSetupScope", () => {
     { role: "BASIC_USER", want: "close-off" },
     { role: undefined, want: "close-off" },
   ])("$role: $want", ({ role, want }) => {
-    expect(finishMateSetupScope(role)).toBe(want);
+    expect(finishMateSetupScope(canWriteRegistry(viewer(role)))).toBe(want);
   });
 });

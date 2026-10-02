@@ -34,6 +34,7 @@ import {
   parseProjectsSearch,
   stripColumns,
   talkSettled,
+  withoutOfficialHq,
   type FoldedGroupInput,
 } from "./projectsView.logic";
 
@@ -944,5 +945,40 @@ describe("groupFlowInputOf", () => {
       pending,
     });
     expect(input.pending).toEqual(pending);
+  });
+});
+
+describe("withoutOfficialHq — the page's projects, never the organization's HQ", () => {
+  const row = (id: string, name: string) => ({ project: { id, name } });
+  const ROWS = [row("hq-1", "Headquarters"), row("old-hq", "Headquarters"), row("shop", "Shop")];
+  const OFFICIAL = {
+    kind: "official",
+    projectId: "hq-1",
+    address: "https://hq-1.prg1-zerops.zone",
+  } as const;
+
+  it.each([
+    {
+      case: "leaves out the project the anchor names, whatever it is called",
+      hq: OFFICIAL,
+      ids: ["old-hq", "shop"],
+    },
+    {
+      case: "keeps a project merely named Headquarters that no anchor names",
+      hq: { ...OFFICIAL, projectId: "elsewhere" },
+      ids: ["hq-1", "old-hq", "shop"],
+    },
+    {
+      case: "leaves nothing out while the anchor is unknown, and guesses by no name",
+      hq: { kind: "none" } as const,
+      ids: ["hq-1", "old-hq", "shop"],
+    },
+    {
+      case: "leaves nothing out where two anchors leave the HQ unclear",
+      hq: { kind: "unclear", projectIds: ["hq-1", "old-hq"] } as const,
+      ids: ["hq-1", "old-hq", "shop"],
+    },
+  ])("$case", ({ hq, ids }) => {
+    expect(withoutOfficialHq(ROWS, hq).map(({ project }) => project.id)).toEqual(ids);
   });
 });

@@ -193,15 +193,12 @@ describe("makeHqApi", () => {
 
   it.each<[string, Response | "throw", Partial<HqError>]>([
     [
-      "a refusal carries HQ's code and words",
-      json(403, {
-        code: "forbidden",
-        message: "Only an org owner or admin changes the structure.",
-      }),
+      "a refusal carries HQ's code, and its reason in words",
+      json(403, { code: "forbidden", reason: "not_structure_writer" }),
       {
         kind: "refused",
         code: "forbidden",
-        message: "Only an org owner or admin changes the structure.",
+        message: "Only an owner or admin of the organization can do this.",
       },
     ],
     [

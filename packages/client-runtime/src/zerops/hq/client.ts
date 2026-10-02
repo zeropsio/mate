@@ -16,6 +16,7 @@
 import type { RoleProjectKind } from "@t3tools/shared/zeropsRoles";
 
 import type { FetchImplementation } from "../api.ts";
+import { hqRefusalWords } from "./refusals.ts";
 import { structureEventOf, type HqStructureEvent } from "./stream.ts";
 
 /** An organization's HQ: its project, and the address its anchor names. */
@@ -136,8 +137,8 @@ const PONG = JSON.stringify({ type: "pong" });
 
 const CALL_TIMEOUT_MS = 20_000;
 
-/** HQ's code and words in an answer's body; a body that is not HQ's JSON names neither. */
-function said(text: string): { readonly code?: unknown; readonly message?: unknown } {
+/** HQ's code and reason in an answer's body; a body that is not HQ's JSON names neither. */
+function said(text: string): { readonly code?: unknown; readonly reason?: unknown } {
   try {
     const body: unknown = JSON.parse(text);
     return typeof body === "object" && body !== null ? body : { code: undefined };
@@ -149,7 +150,6 @@ function said(text: string): { readonly code?: unknown; readonly message?: unkno
 async function errorOf(response: Response): Promise<HqError> {
   const body = said(await response.text());
   const code = typeof body.code === "string" ? body.code : `http_${response.status}`;
-  const words = typeof body.message === "string" ? body.message : undefined;
   if (response.status >= 500 || response.status === 429) {
     return new HqError({
       kind: "unavailable",
@@ -162,7 +162,10 @@ async function errorOf(response: Response): Promise<HqError> {
     kind: "refused",
     code,
     status: response.status,
-    message: words ?? `HQ refused this (${code}).`,
+    message: hqRefusalWords({
+      code,
+      reason: typeof body.reason === "string" ? body.reason : undefined,
+    }),
   });
 }
 

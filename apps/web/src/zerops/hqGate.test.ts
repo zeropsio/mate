@@ -28,7 +28,8 @@ const gate = (
   } = {},
 ) =>
   resolveHqGate({
-    organization: { roleCode },
+    organization: { id: "org-1" },
+    viewer: { userId: "u-1", clientUserId: "cu-1", roleCode, canCreateProjects: false },
     accountHq: { status, hq, admins: options.admins ?? [] },
     pathname: options.pathname ?? "/zerops",
   });
@@ -64,6 +65,17 @@ describe("resolveHqGate", () => {
     });
   });
 
+  it("never has a person the session does not name bear HQ: unknown is no", () => {
+    expect(
+      resolveHqGate({
+        organization: { id: "org-1" },
+        viewer: undefined,
+        accountHq: { status: "ready", hq: NONE, admins: [] },
+        pathname: "/zerops",
+      }),
+    ).toMatchObject({ kind: "ask" });
+  });
+
   it("waits for the member list before it says anything of HQ", () => {
     expect(gate("OWNER", NONE, "loading")).toEqual({ kind: "reading", failed: false });
     expect(gate("OWNER", NONE, "idle")).toEqual({ kind: "reading", failed: false });
@@ -80,6 +92,7 @@ describe("resolveHqGate", () => {
     expect(
       resolveHqGate({
         organization: null,
+        viewer: undefined,
         accountHq: { status: "idle", hq: NONE, admins: [] },
         pathname: "/zerops",
       }),

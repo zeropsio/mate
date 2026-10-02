@@ -131,8 +131,10 @@ import {
   type ZeropsGroup,
   type ZeropsMembership,
   type ZeropsProjectOrder,
+  offerAsker,
 } from "@t3tools/client-runtime/zerops";
 import { invalidateZerops } from "~/zerops/accountInvalidations";
+import { sessionOfferViewer } from "~/zerops/offerViewer";
 
 import { MateFace, MicroLabel, StatusDot } from "./primitives";
 import { stopLinkOf, ZeropsEnvironmentRow } from "./ZeropsEnvironmentRow";
@@ -187,6 +189,7 @@ import {
   parseProjectsSearch,
   productionAddable,
   talkSettled,
+  withoutOfficialHq,
   type ProjectsSearch,
 } from "./projects/projectsView.logic";
 import { lastGroupPlacement } from "./projects/groupPlacementMemory";
@@ -201,6 +204,7 @@ import {
   environmentSummaryLine,
   groupAddsOffered,
   isZeropsToolCandidate,
+  mateRowCan,
 } from "./ZeropsProjectRow.logic";
 import { ZeropsOrganizationScope, ZeropsOrganizationSwitcher } from "./ZeropsOrganizationScope";
 import { ZeropsSessionAccountControl } from "./landing/ZeropsAccountControl";
@@ -941,11 +945,18 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
         };
   const visibilityOf = (candidate: ZeropsCandidate): RoleMateVisibility | undefined =>
     viewer === null ? undefined : resolveMateVisibility({ project: candidate.project, viewer });
+  // Whom HQ's rule is asked about for each row's verbs (`mateRowCan`): nobody where the session
+  // names nobody, and nothing is then offered.
+  const asker = offerAsker(
+    sessionOfferViewer(user, activeOrganization),
+    candidates.map((candidate) => candidate.project),
+  );
   // Guide 0.8: a verb this person cannot finish is not offered. Every one of
-  // them is a platform write the platform would refuse from the wrong role.
+  // them is a platform write the platform would refuse from the wrong role;
+  // a person the session does not name is offered none.
   const verbsOf = (candidate: ZeropsCandidate): MateVerbs =>
-    viewer === null
-      ? { open: true, rename: true, tag: true, move: true, delete: false, assign: false }
+    viewer === null || user === null
+      ? { rename: false, tag: false, move: false, delete: false, assign: false }
       : resolveMateVerbs({ project: candidate.project, viewer });
   // The member list is read when a row would use a name — a Mate this person
   // may see and not open — and when they may hand a Mate over and so need
@@ -990,7 +1001,6 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
     role?: ZeropsEnvironmentRole | undefined,
   ): ZeropsRowInput => {
     const visibility = visibilityOf(candidate);
-    const openable = visibility !== "listed";
     const ownerName =
       visibility === "listed"
         ? resolveMateOwnerName({ project: candidate.project, members })
@@ -1002,14 +1012,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
       health: candidateHealth.get(candidate.key),
       ...(mateFlag === undefined ? {} : { mateFlag }),
       waiting,
-      can: {
-        open: openable,
-        enable: openable,
-        setUpMate: openable,
-        start: openable,
-        restart: openable,
-        remove: openable,
-      },
+      can: mateRowCan(asker, candidate.project.id),
       ...(role === undefined ? {} : { role }),
       ...(visibility === undefined ? {} : { visibility }),
       ...(ownerName === undefined ? {} : { ownerName }),
@@ -2612,12 +2615,10 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
   // The page's one line of trouble: a refusal of something done here — a
   // merge or a release the project flow refused included — one at a time.
   const trouble = toolError ?? renameGroup.trouble ?? route.trouble ?? projectFlow.trouble;
-  const ungroupedRows = groupTree.ungrouped
-    .filter((candidate) => candidate.project.id !== hq?.projectId)
-    .map((candidate) => ({
-      item: candidate,
-      action: deriveZeropsRowAction(rowInput(candidate)).kind,
-    }));
+  const ungroupedRows = withoutOfficialHq(groupTree.ungrouped, accountHq.hq).map((candidate) => ({
+    item: candidate,
+    action: deriveZeropsRowAction(rowInput(candidate)).kind,
+  }));
 
   return (
     // The page's end clears the app's fixed "Open main sidebar" control, so

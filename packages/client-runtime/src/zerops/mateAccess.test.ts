@@ -398,52 +398,32 @@ describe("the verbs a Mate offers (guide 0.8)", () => {
   // there, and so is deleting the project; handing a Mate over writes a
   // per-project role, which is an org owner's or admin's verb only.
   for (const [orgRole, override, expected] of [
-    [
-      "OWNER",
-      undefined,
-      { open: true, rename: true, tag: true, move: true, delete: true, assign: true },
-    ],
-    [
-      "ADMIN",
-      undefined,
-      { open: true, rename: true, tag: true, move: true, delete: true, assign: true },
-    ],
+    ["OWNER", undefined, { rename: true, tag: true, move: true, delete: true, assign: true }],
+    ["ADMIN", undefined, { rename: true, tag: true, move: true, delete: true, assign: true }],
     // A plain member with a Mate of their own: theirs to rename, to move and
     // to delete (measured 2026-09-15), never theirs to give away.
-    [
-      "READ_ONLY",
-      "OWNER",
-      { open: true, rename: true, tag: true, move: true, delete: true, assign: false },
-    ],
-    [
-      "NO_ACCESS",
-      "OWNER",
-      { open: true, rename: true, tag: true, move: true, delete: true, assign: false },
-    ],
+    ["READ_ONLY", "OWNER", { rename: true, tag: true, move: true, delete: true, assign: false }],
+    ["NO_ACCESS", "OWNER", { rename: true, tag: true, move: true, delete: true, assign: false }],
     // A member of the org with no standing on this project: they see it.
     [
       "BASIC_USER",
       undefined,
-      { open: true, rename: false, tag: false, move: false, delete: false, assign: false },
+      { rename: false, tag: false, move: false, delete: false, assign: false },
     ],
     [
       "READ_ONLY",
       undefined,
-      { open: false, rename: false, tag: false, move: false, delete: false, assign: false },
+      { rename: false, tag: false, move: false, delete: false, assign: false },
     ],
     [
       "NO_ACCESS",
       undefined,
-      { open: false, rename: false, tag: false, move: false, delete: false, assign: false },
+      { rename: false, tag: false, move: false, delete: false, assign: false },
     ],
     // An override lowers an org owner here, but their org role still lets them
     // hand the Mate to somebody — that is what makes a leaver's Mate
     // recoverable at all.
-    [
-      "OWNER",
-      "READ_ONLY",
-      { open: false, rename: false, tag: false, move: false, delete: false, assign: true },
-    ],
+    ["OWNER", "READ_ONLY", { rename: false, tag: false, move: false, delete: false, assign: true }],
   ] as const) {
     it(`${String(orgRole)} with project override ${String(override)}`, () => {
       expect(verbs(orgRole, override)).toEqual(expected);
@@ -457,7 +437,6 @@ describe("the verbs a Mate offers (guide 0.8)", () => {
         viewer: viewer("OWNER"),
       }),
     ).toEqual({
-      open: false,
       rename: false,
       tag: false,
       move: false,

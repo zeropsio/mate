@@ -144,7 +144,11 @@ const cases: ReadonlyArray<{ readonly name: string; readonly render: () => strin
         <ZeropsMoveToGroupForm
           currentGroupId={undefined}
           currentRole={undefined}
-          groups={[{ id: "g1", name: "Acme Docs" }]}
+          choices={{
+            apps: [{ id: "g1", name: "Acme Docs", roles: ["dev", "stage", "prod"] }],
+            newApp: ["dev", "stage", "prod"],
+            none: true,
+          }}
           onCancel={noop}
           onSubmit={noop}
           projectName="Acme Docs - stage"

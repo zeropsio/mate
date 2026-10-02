@@ -17,7 +17,6 @@
  * group at birth — draws the rest.
  */
 import {
-  canWriteRegistry,
   findHeldMateKey,
   isZeropsMateClosedOff,
   planGroupReach,
@@ -729,9 +728,6 @@ async function pressRun(
   });
   return outcome;
 }
-
-/** Who may finish a Mate's setup: an owner or an admin, who may write its registration. */
-export const canFinishMateSetup = canWriteRegistry;
 
 /**
  * The press's steps on a Mate whose project exists: its container with its key — nothing written

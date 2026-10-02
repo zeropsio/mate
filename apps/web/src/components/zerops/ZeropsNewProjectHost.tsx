@@ -69,6 +69,7 @@ import {
   type NewProjectAsk,
 } from "~/zerops/newProjectBirth";
 import { useNewProjectAsk } from "~/zerops/newProjectAsk";
+import { sessionOfferViewer } from "~/zerops/offerViewer";
 import { useTakenBotNames, useZeropsCandidates } from "~/zerops/useZeropsCandidates";
 import { invalidateZerops } from "~/zerops/accountInvalidations";
 import { captureAccountLifetime } from "~/zerops/accountLifetime";
@@ -149,12 +150,7 @@ function NewProjectDialog() {
   // application — a stricter gate than *can create projects*, and the one HQ applies.
   const accountHq = useAccountHq(activeOrganization?.id);
   const addProject = resolveAddProjectVerb({
-    viewer: {
-      id: activeOrganization?.id ?? "",
-      membershipId: activeOrganization?.membershipId ?? "",
-      roleCode: activeOrganization?.roleCode,
-      canCreateProjects: activeOrganization?.canCreateProjects,
-    },
+    viewer: sessionOfferViewer(user, activeOrganization),
     admins: accountHq.admins,
   });
   const canCreate = addProject.offered;

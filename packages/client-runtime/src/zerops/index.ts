@@ -526,6 +526,7 @@ export {
   type GiteaOverviewPullRequest,
   type GiteaOverviewRepository,
 } from "./giteaOverview.ts";
+export { heldOf, mayOffer, offerAsker, type OfferAsker, type OfferViewer } from "./offers.ts";
 export {
   canWriteRegistry,
   onlyTheseCanAddAProject,

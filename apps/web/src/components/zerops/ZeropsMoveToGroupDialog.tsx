@@ -1,5 +1,6 @@
 /**
- * Moving a project into a group, out of one, or into a new one.
+ * Moving a project into a group, out of one, or into a new one: only the groups and roles HQ's
+ * rule lets this person place it as are drawn (`moveChoices`).
  */
 import type { ZeropsEnvironmentRole } from "@t3tools/client-runtime/zerops";
 import { useId, useState } from "react";
@@ -20,33 +21,37 @@ import { Radio, RadioGroup } from "../ui/radio-group";
 import { cn } from "~/lib/utils";
 import { environmentRoleLabel } from "./ZeropsGroupTree.logic";
 import {
+  initialMoveForm,
+  moveRolesFor,
   resolveMoveMembership,
+  roleWithin,
   validateMoveForm,
-  type MoveGroupChoice,
+  type MoveChoices,
   type MoveMembership,
 } from "./ZeropsMoveToGroupDialog.logic";
 
-const ROLES: ReadonlyArray<ZeropsEnvironmentRole> = ["dev", "stage", "prod"];
-
 export function ZeropsMoveToGroupForm({
   projectName,
-  groups,
+  choices,
   currentGroupId,
   currentRole,
   onCancel,
   onSubmit,
 }: {
   readonly projectName: string;
-  readonly groups: ReadonlyArray<MoveGroupChoice>;
+  readonly choices: MoveChoices;
   readonly currentGroupId: string | undefined;
   readonly currentRole: ZeropsEnvironmentRole | undefined;
   readonly onCancel: () => void;
   readonly onSubmit: (membership: MoveMembership) => void;
 }) {
   const id = useId();
-  const [target, setTarget] = useState<string>(currentGroupId ?? groups[0]?.id ?? "new");
+  const [opened] = useState(() =>
+    initialMoveForm(choices, { groupId: currentGroupId, role: currentRole }),
+  );
+  const [target, setTarget] = useState<string>(opened.target);
   const [newGroupName, setNewGroupName] = useState("");
-  const [role, setRole] = useState<ZeropsEnvironmentRole | "">(currentRole ?? "dev");
+  const [role, setRole] = useState<ZeropsEnvironmentRole | "">(opened.role);
   const [submitted, setSubmitted] = useState(false);
   const form = { target, newGroupName, role };
   const errors = validateMoveForm(form);
@@ -77,21 +82,27 @@ export function ZeropsMoveToGroupForm({
             aria-label="Group"
             className="gap-2"
             onValueChange={(value) => {
-              setTarget(String(value));
+              const next = String(value);
+              setTarget(next);
+              setRole(roleWithin(choices, next, role));
             }}
             value={target}
           >
-            {groups.map((group) => (
+            {choices.apps.map((group) => (
               <Choice key={group.id} selected={target === group.id} value={group.id}>
                 {group.name}
               </Choice>
             ))}
-            <Choice selected={target === "new"} value="new">
-              New group
-            </Choice>
-            <Choice selected={target === "none"} value="none">
-              No group
-            </Choice>
+            {choices.newApp.length > 0 ? (
+              <Choice selected={target === "new"} value="new">
+                New group
+              </Choice>
+            ) : null}
+            {choices.none ? (
+              <Choice selected={target === "none"} value="none">
+                No group
+              </Choice>
+            ) : null}
           </RadioGroup>
           {target === "new" ? (
             <div className="space-y-1.5 pt-1">
@@ -123,7 +134,7 @@ export function ZeropsMoveToGroupForm({
               }}
               value={role}
             >
-              {ROLES.map((entry) => (
+              {moveRolesFor(choices, target).map((entry) => (
                 <Choice compact key={entry} selected={role === entry} value={entry}>
                   {environmentRoleLabel(entry) ?? entry}
                 </Choice>

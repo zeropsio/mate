@@ -2,6 +2,7 @@ import { definePlugin } from "@oxlint/plugins";
 
 import namespaceNodeImports from "./rules/namespace-node-imports.ts";
 import noArbitraryValues from "./rules/no-arbitrary-values.ts";
+import noDirectPermissionRule from "./rules/no-direct-permission-rule.ts";
 import noFailureToEmpty from "./rules/no-failure-to-empty.ts";
 import noGlobalProcessRuntime from "./rules/no-global-process-runtime.ts";
 import noHermesUnsupportedApis from "./rules/no-hermes-unsupported-apis.ts";
@@ -23,6 +24,7 @@ export default definePlugin({
   rules: {
     "namespace-node-imports": namespaceNodeImports,
     "no-arbitrary-values": noArbitraryValues,
+    "no-direct-permission-rule": noDirectPermissionRule,
     "no-failure-to-empty": noFailureToEmpty,
     "no-global-process-runtime": noGlobalProcessRuntime,
     "no-hermes-unsupported-apis": noHermesUnsupportedApis,

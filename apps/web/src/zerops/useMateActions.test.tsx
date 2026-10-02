@@ -31,6 +31,8 @@ const mock = vi.hoisted(() => ({
   /** HQ's `PATCH /api/mates/{projectId}`, a write here being the promise the test answers. */
   updateMate: vi.fn(),
   roleCode: "OWNER",
+  /** Who the session says is signed in; null where it names nobody. */
+  user: { id: "user-ada" } as { readonly id: string } | null,
   listing: { current: undefined as unknown },
   /** The press's marker on each container, by service id, as the store states it. */
   markers: new Map<string, boolean | "unknown" | "unread">(),
@@ -47,7 +49,7 @@ vi.mock("./ZeropsSessionProvider", () => ({
       canCreateProjects: true,
     },
     client: {},
-    user: { id: "user-ada" },
+    user: mock.user,
   }),
 }));
 // The account's runtime: no platform command is answered here.
@@ -156,6 +158,7 @@ const mounted: ReactTestRenderer[] = [];
 beforeEach(() => {
   openAccountLifetime("user-ada");
   mock.roleCode = "OWNER";
+  mock.user = { id: "user-ada" };
   mock.markers.clear();
   mock.dialog.current = null;
   mock.updateMate.mockReset();
@@ -213,6 +216,15 @@ describe("useMateActions — Change face…", () => {
       expect(verbs(FEN).find((verb) => verb.id === "face")?.label).toBe("Change face…");
     }
     expect(actions().changeFace(FEN) !== undefined).toBe(offered);
+  });
+
+  it("offers no Mate verb of HQ's to a person the session does not name: unknown is no", () => {
+    mock.user = null;
+    mount();
+    const ids = verbs(FEN).map((verb) => verb.id);
+    expect(ids.filter((id) => ["rename-agent", "face", "move", "leave"].includes(id))).toEqual([]);
+    expect(actions().changeFace(FEN)).toBeUndefined();
+    expect(actions().renameInPlace(FEN)).toBeUndefined();
   });
 
   it.each([
@@ -359,5 +371,74 @@ describe("useMateActions — Finish setup on a Mate its press left open", () => 
     listing(candidate);
     mount();
     expect(offered(candidate)).toBe(false);
+  });
+});
+
+describe("useMateActions — a Mate's own verbs, where its door opens for this person", () => {
+  const STOPPED = {
+    ...FEN,
+    group: "unavailable",
+    project: { ...FEN.project, status: "STOPPED" },
+  } as ZeropsCandidatePresentation;
+  const ids = () => verbs(STOPPED).map((verb) => verb.id);
+
+  it.each([
+    { who: "a member", role: "BASIC_USER", user: { id: "user-ada" }, offered: true },
+    {
+      who: "a read-only member, whose Mate is listed",
+      role: "READ_ONLY",
+      user: { id: "user-ada" },
+      offered: false,
+    },
+    { who: "a person the session does not name", role: "OWNER", user: null, offered: false },
+  ])("$who: Start offered $offered", ({ role, user, offered }) => {
+    mock.roleCode = role;
+    mock.user = user;
+    mock.listing.current = {
+      state: "known",
+      value: [STOPPED],
+      asOf: { ordinal: 1, atMs: 1_000 },
+      coverage: "complete",
+      freshness: { kind: "live" },
+    };
+    mount();
+    expect(ids().includes("start")).toBe(offered);
+  });
+});
+
+describe("useMateActions — HQ's verbs only on a Mate HQ holds", () => {
+  it("offers no rename, face, move or leave on a Mate HQ has no record of", () => {
+    const { hq: _none, ...project } = FEN.project as typeof FEN.project & { hq?: unknown };
+    const unrecorded = { ...FEN, project } as ZeropsCandidatePresentation;
+    mock.listing.current = {
+      state: "known",
+      value: [unrecorded],
+      asOf: { ordinal: 1, atMs: 1_000 },
+      coverage: "complete",
+      freshness: { kind: "live" },
+    };
+    mount();
+    const ids = verbs(unrecorded).map((verb) => verb.id);
+    expect(ids.filter((id) => ["rename-agent", "face", "move", "leave"].includes(id))).toEqual([]);
+    expect(actions().renameInPlace(unrecorded)).toBeUndefined();
+  });
+});
+
+describe("useMateActions — Move, for the person who made the Mate", () => {
+  it("offers Change project or role to a member with no org access who owns the Mate's project", () => {
+    mock.roleCode = "NO_ACCESS";
+    const made = {
+      ...FEN,
+      project: { ...FEN.project, userRoles: [{ clientUserId: "member-ada", roleCode: "OWNER" }] },
+    } as ZeropsCandidatePresentation;
+    mock.listing.current = {
+      state: "known",
+      value: [made],
+      asOf: { ordinal: 1, atMs: 1_000 },
+      coverage: "complete",
+      freshness: { kind: "live" },
+    };
+    mount();
+    expect(verbs(made).map((verb) => verb.id)).toContain("move");
   });
 });

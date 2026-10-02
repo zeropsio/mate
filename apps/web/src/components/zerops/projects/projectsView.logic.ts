@@ -11,6 +11,7 @@
  * lays a set of them out.
  */
 
+import type { OfficialHq } from "@t3tools/client-runtime/zerops/hq";
 import { mateIsViewers } from "@t3tools/client-runtime/zerops/mateAccess";
 import {
   botDisplayName,
@@ -271,6 +272,20 @@ export function containersSummary(kinds: ReadonlyArray<ZeropsRowAction["kind"]>)
     line: [CONTAINERS_NOT_IN_A_PROJECT, ...parts].join(" · "),
     retry: counts.get("not-answering") ?? 0,
   };
+}
+
+/**
+ * The projects the page lists, without the organization's HQ — the project its anchor names
+ * (`findOfficialHq`), which the Tools row stands for, and which is never a Mate to set up. A
+ * project is never left out by its name or its tag, and none at all while the anchor names no one
+ * HQ.
+ */
+export function withoutOfficialHq<T extends { readonly project: { readonly id: string } }>(
+  rows: ReadonlyArray<T>,
+  hq: OfficialHq,
+): ReadonlyArray<T> {
+  if (hq.kind !== "official") return rows;
+  return rows.filter((row) => row.project.id !== hq.projectId);
 }
 
 /**

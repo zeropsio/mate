@@ -27,6 +27,8 @@
  */
 
 import {
+  asOrgRole,
+  roleAtLeast,
   zeropsRoleAnswer,
   type RoleMateVisibility,
   type ZeropsOrgRole,
@@ -54,23 +56,6 @@ export interface MateAccessViewer {
   readonly membershipId: string;
   readonly roleCode?: string | undefined;
   readonly canCreateProjects?: boolean | undefined;
-}
-
-const KNOWN_ROLES: ReadonlyArray<ZeropsOrgRole> = [
-  "NO_ACCESS",
-  "READ_ONLY",
-  "BASIC_USER",
-  "ADMIN",
-  "OWNER",
-];
-
-/**
- * A role neither side recognises is not a role: it reads as `NO_ACCESS`, so a
- * role the platform grew and this build has never heard of hides the Mate
- * rather than opening it — the same way the door treats it.
- */
-function asOrgRole(value: string | undefined): ZeropsOrgRole {
-  return KNOWN_ROLES.find((role) => role === value) ?? "NO_ACCESS";
 }
 
 /**
@@ -129,7 +114,8 @@ export function resolveMateProjectRole(input: {
 }
 
 /**
- * What this person may do with a Mate besides open it.
+ * What this person may do with a Mate besides open it — opening it is HQ's rule's
+ * (`observe_mate`, `mateRowCan`).
  *
  * One rule for the whole screen (guide 0.8): **a verb a person cannot finish
  * is not offered**. Every one of these is a platform write that the platform
@@ -155,7 +141,6 @@ export function resolveMateProjectRole(input: {
  *   hand their Mate — and whatever is in its conversation — to anyone.
  */
 export interface MateVerbs {
-  readonly open: boolean;
   readonly rename: boolean;
   readonly tag: boolean;
   readonly move: boolean;
@@ -163,24 +148,13 @@ export interface MateVerbs {
   readonly assign: boolean;
 }
 
-const RANK: Readonly<Record<ZeropsOrgRole, number>> = {
-  NO_ACCESS: 0,
-  READ_ONLY: 1,
-  BASIC_USER: 2,
-  ADMIN: 3,
-  OWNER: 4,
-};
-
 export function resolveMateVerbs(input: {
   readonly project: MateAccessProject;
   readonly viewer: MateAccessViewer;
 }): MateVerbs {
-  const visibility = resolveMateVisibility(input);
-  const projectRole = resolveMateProjectRole(input);
-  const writesHere = RANK[projectRole] >= RANK.ADMIN;
-  const orgAdmin = RANK[asOrgRole(input.viewer.roleCode)] >= RANK.ADMIN;
+  const writesHere = roleAtLeast(resolveMateProjectRole(input), "ADMIN");
+  const orgAdmin = roleAtLeast(input.viewer.roleCode, "ADMIN");
   return {
-    open: visibility === "open",
     rename: writesHere,
     tag: writesHere,
     move: writesHere,

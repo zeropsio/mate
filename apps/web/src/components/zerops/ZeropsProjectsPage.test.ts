@@ -693,15 +693,17 @@ describe("an environment's menu", () => {
   it("gates each verb on what this person may finish, wherever the menu is drawn", () => {
     // Guide 0.8: a verb the platform would refuse from this role is not
     // offered. The gate lives with the verb now, so a second surface cannot
-    // grow a menu without it.
+    // grow a menu without it: the platform's own verbs by its role function,
+    // HQ's by HQ's rule (`mayOffer`), none of either for an unknown person.
     expect(mateActionsSource).toContain("resolveMateVerbs({ project: candidate.project, viewer })");
-    expect(mateActionsSource).toContain("...(verbs.assign");
-    expect(mateActionsSource).toContain("...(verbs.move");
-    expect(mateActionsSource).toContain("...(verbs.rename");
-    expect(mateActionsSource).toContain("...(verbs.move && tags.groupId !== undefined");
-    // Change face writes the project's tags, as a rename does: the same gate, on a Mate.
+    expect(mateActionsSource).toContain("...(platformVerbs.assign");
+    expect(mateActionsSource).toContain('mayOffer(asker, "edit_mate_record"');
+    expect(mateActionsSource).toContain("...(hqVerbs.edit");
+    expect(mateActionsSource).toContain("...(hqVerbs.move");
+    expect(mateActionsSource).toContain("...(hqVerbs.leave && tags.groupId !== undefined");
+    // Change face writes HQ's record of the Mate, as a rename does: the same gate, on a Mate.
     expect(mateActionsSource).toContain(
-      "resolveMateVerbs({ project: candidate.project, viewer }).rename;\n      if (!changeFaceOffered({ candidate, mayRename })) return undefined;",
+      "if (!changeFaceOffered({ candidate, mayRename: hqVerbsOf(candidate).edit })) return undefined;",
     );
   });
 
@@ -758,9 +760,8 @@ describe("a status word's hand", () => {
 describe("the tools line", () => {
   it("is the organization's HQ, whose project is no project of the page's", () => {
     expect(projectsPageSource).toContain("hqTool={<ZeropsHqTool />}");
-    expect(projectsPageSource).toContain(
-      ".filter((candidate) => candidate.project.id !== hq?.projectId)",
-    );
+    // The project its anchor names, never one by its name (`withoutOfficialHq`).
+    expect(projectsPageSource).toContain("withoutOfficialHq(groupTree.ungrouped, accountHq.hq)");
   });
 });
 

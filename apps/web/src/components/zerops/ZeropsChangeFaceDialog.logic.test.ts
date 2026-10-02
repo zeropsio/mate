@@ -1,11 +1,13 @@
 import {
   assignCandidateMateTints,
   changedMateFace,
+  heldOf,
+  mayOffer,
+  offerAsker,
   readZeropsMembership,
 } from "@t3tools/client-runtime/zerops";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import type { HqPlacement } from "@t3tools/client-runtime/zerops/hq";
-import { resolveMateVerbs } from "@t3tools/client-runtime/zerops/mateAccess";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
@@ -72,11 +74,16 @@ describe("changeFaceWords — what the dialog says", () => {
 
 /**
  * Changing a face is a write to HQ's record of the Mate, as a rename is, so it is offered exactly
- * where Rename is: effective OWNER or ADMIN on the project (`resolveMateVerbs`), and only on a
- * Mate.
+ * where Rename is: where HQ's rule offers the Mate's record (`mayOffer`, `edit_mate_record`:
+ * effective OWNER or ADMIN on the project), and only on a Mate.
  */
 describe("changeFaceOffered — where a Mate's menus offer Change face…", () => {
-  const viewer = (roleCode: string) => ({ id: ORG, membershipId: "member-ada", roleCode });
+  const viewer = (roleCode: string) => ({
+    userId: "user-ada",
+    clientUserId: "member-ada",
+    roleCode,
+    canCreateProjects: true,
+  });
 
   it.each([
     { who: "an org owner", role: "OWNER", override: undefined, offered: true },
@@ -110,9 +117,12 @@ describe("changeFaceOffered — where a Mate's menus offer Change face…", () =
         override === undefined ? undefined : [{ clientUserId: "member-ada", roleCode: override }],
       ),
     };
-    const verbs = resolveMateVerbs({ project: candidate.project, viewer: viewer(role) });
-    expect(changeFaceOffered({ candidate, mayRename: verbs.rename })).toBe(offered);
-    expect(verbs.rename).toBe(offered);
+    const mayRename = mayOffer(offerAsker(viewer(role), [candidate.project]), "edit_mate_record", {
+      projectId: candidate.project.id,
+      held: heldOf(candidate.project),
+    });
+    expect(changeFaceOffered({ candidate, mayRename })).toBe(offered);
+    expect(mayRename).toBe(offered);
   });
 
   it("is never offered where no Mate lives: a stage has no face to change", () => {

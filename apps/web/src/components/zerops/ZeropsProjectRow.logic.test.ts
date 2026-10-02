@@ -1,4 +1,4 @@
-import { newMateTint, type RandomBytes } from "@t3tools/client-runtime/zerops";
+import { newMateTint, offerAsker, type RandomBytes } from "@t3tools/client-runtime/zerops";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import type { ZeropsContainerHealth } from "@t3tools/client-runtime/zerops/provisioning";
 import { MATE_SHAPE_OF_TINT } from "@t3tools/shared/brand";
@@ -15,6 +15,7 @@ import {
   deriveZeropsRowPresentation,
   environmentSummaryLine,
   mateIsUp,
+  mateRowCan,
   mateSetupOffered,
   releaseRowTone,
   zeropsReasonSentence,
@@ -958,5 +959,34 @@ describe("releaseRowTone", () => {
     ],
   ] as const)("colours %s by where it stands first", (_case, release, tone) => {
     expect(releaseRowTone(release)).toBe(tone);
+  });
+});
+
+describe("mateRowCan — a row's verbs, where its Mate's door opens for this person", () => {
+  const PROJECTS = [{ id: "p1", userRoles: [{ clientUserId: "cu-ada", roleCode: "OWNER" }] }];
+  const asker = (roleCode: string) =>
+    offerAsker(
+      { userId: "u-ada", clientUserId: "cu-other", roleCode, canCreateProjects: false },
+      PROJECTS,
+    );
+  it.each([
+    ["a member", "BASIC_USER", true],
+    ["an org admin", "ADMIN", true],
+    ["a read-only member, whose row is listed", "READ_ONLY", false],
+    ["a member with no access", "NO_ACCESS", false],
+  ])("%s: %s", (_name, roleCode, opens) => {
+    expect(mateRowCan(asker(roleCode), "p1")).toEqual(opens ? ALL : NONE);
+  });
+
+  it("offers a row's owner all of it through their grant on its project", () => {
+    const owner = offerAsker(
+      { userId: "u-ada", clientUserId: "cu-ada", roleCode: "NO_ACCESS", canCreateProjects: true },
+      PROJECTS,
+    );
+    expect(mateRowCan(owner, "p1").open).toBe(true);
+  });
+
+  it("offers nothing where the client knows no one: unknown is no", () => {
+    expect(mateRowCan(offerAsker(undefined, PROJECTS), "p1")).toEqual(NONE);
   });
 });

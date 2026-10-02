@@ -18,7 +18,9 @@ import {
   generateBotName,
   hasMate,
   isGenericPlatformError,
+  mayOffer,
   newMateTint,
+  type OfferAsker,
   type RandomBytes,
   readZeropsToolKind,
   type ZeropsEnvironmentRole,
@@ -92,6 +94,23 @@ export interface ZeropsRowInput {
     readonly restart: boolean;
     /** Deleting a project the platform failed to create. */
     readonly remove: boolean;
+  };
+}
+
+/**
+ * A row's verbs for this person: every one where its Mate's door opens for them — HQ's rule
+ * (`observe_mate`) over what the client holds — none where it does not, nor where the client knows
+ * nobody.
+ */
+export function mateRowCan(asker: OfferAsker | null, projectId: string): ZeropsRowInput["can"] {
+  const opens = mayOffer(asker, "observe_mate", { projectId });
+  return {
+    open: opens,
+    enable: opens,
+    setUpMate: opens,
+    start: opens,
+    restart: opens,
+    remove: opens,
   };
 }
 

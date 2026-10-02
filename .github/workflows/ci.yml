@@ -86,6 +86,9 @@ jobs:
       - name: Reconcile no-arbitrary-values exceptions
         run: node scripts/check-guard-exceptions.ts --rule no-arbitrary-values
 
+      - name: Reconcile no-direct-permission-rule exceptions
+        run: node scripts/check-guard-exceptions.ts --rule no-direct-permission-rule
+
       - name: Check CSS theme tokens
         run: node scripts/check-css-tokens.ts
 
