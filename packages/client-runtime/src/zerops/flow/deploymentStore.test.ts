@@ -275,12 +275,8 @@ describe("the deployment store (DESIGN §2.D D6)", () => {
     // No build of it was seen: the push names only the new version's id (A14).
     platform.publish(STAGE, stage({ ...NEVER_DEPLOYED, id: "version-2", source: null }));
     expect(platform.asked()).toContain("app-id");
-    // Until it states the new one, the stop keeps the version it ran, checking it again.
-    expect(deploymentOf(store.stop(STAGE), "app")).toMatchObject({
-      state: "known",
-      value: { kind: "running", version: { label: "v1.0.0" } },
-      freshness: { kind: "revalidating" },
-    });
+    // A version no build named — a roll back — is checked again, never shown as the old one.
+    expect(deploymentOf(store.stop(STAGE), "app")?.state).toBe("unread");
 
     platform.answer(stated({ activeId: "version-2", source: "GIT", name: `${SHA} v1.1.0 ada` }));
 

@@ -11,7 +11,7 @@ import { ReceiptOrdinal } from "../data/types.ts";
 import { serviceRecordToZeropsService } from "../data/dto.ts";
 import { groupFlow } from "../groupFlow.ts";
 import { deployedVersion, environmentRow, type EnvironmentRow } from "../groupRows.ts";
-import type { Freshness, Shown, WithheldReason } from "../knowledge/known.ts";
+import type { Freshness, Known, Shown, WithheldReason } from "../knowledge/known.ts";
 import { projectTopology } from "../topology.ts";
 import {
   buildNames,
@@ -21,8 +21,10 @@ import {
   NOTHING_DEPLOYED,
   stopServices,
   stopView,
+  heldThroughRecheck,
   type Deployment,
   type StopReads,
+  type StopService,
 } from "./deployment.ts";
 import { processesRead, runningProcess } from "./__fixtures__/processes.ts";
 import {
@@ -973,5 +975,63 @@ describe("a deploy of a commit only moves forward", () => {
   it.each(STEPS)("$step: $word", ({ deployment, row, word, state }) => {
     expect(stopView({ deployment, row, nowMs: NOW }).word).toBe(word);
     expect(flowState(deployment, row)).toBe(state);
+  });
+});
+
+describe("heldThroughRecheck — a re-check keeps the last answer only where it is none (F5)", () => {
+  const NOW = 50_000;
+  const at = { ordinal: 1, atMs: 0 };
+  const deployment = (kind: "none" | "running"): Shown<Deployment> => ({
+    state: "known",
+    value:
+      kind === "none"
+        ? { kind: "none" }
+        : { kind: "running", activatedAt: null, version: deployedVersion("v1.0.0") },
+    asOf: at,
+    coverage: "complete",
+    freshness: { kind: "live" },
+  });
+  const stopOf = (
+    entry: Shown<Deployment>,
+  ): Extract<Known<ReadonlyArray<StopService>>, { state: "known" }> => ({
+    state: "known",
+    value: [{ service: service("app-id"), hostname: "app", deployment: entry }],
+    asOf: at,
+    coverage: "complete",
+    freshness: { kind: "live" },
+  });
+  const READING = { state: "reading", sinceMs: NOW, attempt: 1 } as const;
+  const PAUSED = { state: "unread", waitingFor: "visible" } as const;
+  it.each([
+    {
+      case: "nothing deployed, checked again: held, revalidating",
+      shown: deployment("none"),
+      next: READING,
+      held: { state: "known", value: { kind: "none" }, freshness: { kind: "revalidating" } },
+    },
+    {
+      case: "a version, checked again (a roll back no build named): never shown as current",
+      shown: deployment("running"),
+      next: READING,
+      held: READING,
+    },
+    {
+      case: "nothing deployed, its source paused: paused, never revalidating",
+      shown: deployment("none"),
+      next: PAUSED,
+      held: PAUSED,
+    },
+  ] as const)("$case", ({ shown, next, held }) => {
+    const result = heldThroughRecheck(stopOf(shown), stopOf(next as Shown<Deployment>), NOW);
+    expect(result.state === "known" ? result.value[0]?.deployment : result).toMatchObject(held);
+  });
+
+  it("holds a listing read again only where every service it showed ran nothing", () => {
+    expect(heldThroughRecheck(stopOf(deployment("none")), READING, NOW)).toMatchObject({
+      state: "known",
+      freshness: { kind: "revalidating" },
+    });
+    expect(heldThroughRecheck(stopOf(deployment("running")), READING, NOW)).toEqual(READING);
+    expect(heldThroughRecheck(stopOf(deployment("none")), PAUSED, NOW)).toEqual(PAUSED);
   });
 });
