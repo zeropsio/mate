@@ -150,7 +150,14 @@ export interface ForgeReads {
   readonly repositories: (
     owner: string,
     load: () => Promise<ReadonlyArray<GiteaRepository>>,
-    options?: { readonly maxAgeMs?: number | undefined },
+    options?: {
+      readonly maxAgeMs?: number | undefined;
+      /**
+       * Told what a listing this call asked for dropped, against the one before it — never for an
+       * org's first listing, which drops nothing that was read, nor for one answered from another.
+       */
+      readonly moved?: ((reread: ReadonlyMap<string, ReadonlySet<ForgePart>>) => void) | undefined;
+    },
   ) => Promise<ReadonlyArray<GiteaRepository>>;
   /**
    * What is kept for `ref` while the listing says it has not moved — and while it is no older
@@ -300,8 +307,10 @@ export function createForgeReads(options: { readonly now?: () => number } = {}):
       const read = counted(load)()
         .then(
           (repositories) => {
-            const plan = planGateReads(listings.get(owner)?.gate, repositories, at);
+            const previous = listings.get(owner)?.gate;
+            const plan = planGateReads(previous, repositories, at);
             for (const [repo, parts] of plan.reread) forget(owner, repo, parts);
+            if (previous !== undefined) listOptions?.moved?.(plan.reread);
             listings.set(owner, { gate: plan.gate, repositories, atMs: at });
             notFound.delete(owner);
             listedOnce.add(owner);
