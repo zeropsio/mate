@@ -4,6 +4,7 @@ import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Redacted from "effect/Redacted";
+import * as Stream from "effect/Stream";
 import * as HttpRouter from "effect/unstable/http/HttpRouter";
 import * as HttpServerRequest from "effect/unstable/http/HttpServerRequest";
 import * as HttpServerResponse from "effect/unstable/http/HttpServerResponse";
@@ -30,6 +31,7 @@ const getHealth = (
         Layer.mergeAll(
           Layer.succeed(Leader, {
             status: Effect.succeed(status),
+            changes: Stream.make(status),
             write: () => Effect.die("no writes"),
             release: Effect.void,
           }),
@@ -41,7 +43,7 @@ const getHealth = (
       ),
     );
     const body: unknown = yield* Effect.promise(() => HttpServerResponse.toWeb(response).json());
-    return { status: response.status, body };
+    return { status: response.status, body, retryAfter: response.headers["retry-after"] };
   }).pipe(Effect.scoped);
 
 const cases: ReadonlyArray<{
@@ -85,6 +87,8 @@ describe("GET /health", () => {
               database === "up" ? yield* postgres.createDatabase : yield* postgres.deadUrl;
             const response = yield* getHealth(leader, official, url);
             assert.strictEqual(response.status, status);
+            // Every 503 HQ answers says when to try again.
+            assert.strictEqual(response.retryAfter, status === 503 ? "5" : undefined);
             assert.deepStrictEqual(response.body, {
               state: leader.state,
               official,

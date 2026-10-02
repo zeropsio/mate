@@ -343,6 +343,75 @@ describe("git operations", () => {
   );
 });
 
+describe("a change's own history", () => {
+  it.live(
+    "reads the change's commits not on main, newest first with their dates, and its merge base",
+    () =>
+      fixture(async (git, dir) => {
+        // While main is unborn, all of a change is its own, and it has no base.
+        const lone = await native(dir, [
+          "commit-tree",
+          await native(dir, ["mktree"], ""),
+          "-m",
+          "Alone",
+        ]);
+        await native(dir, ["update-ref", "refs/heads/mate/alice/2", lone]);
+        expect(
+          (await value(git.changeLog(repo, "alice", 2, { limit: 10 }))).items.map((c) => c.sha),
+        ).toEqual([lone]);
+        expect(await value(git.mergeBase(repo, "alice", 2))).toBeNull();
+
+        const main = await write(git, { "base.txt": "base\n" }, null);
+        expect(await value(git.mergeBase(repo, "alice", 1))).toBeNull();
+        expect(await value(git.changeLog(repo, "alice", 1, { limit: 10 }))).toEqual({
+          items: [],
+          truncated: false,
+        });
+        const first = await branch(git, dir, main, { "a.txt": "a\n" });
+        expect(await value(git.mergeBase(repo, "alice", 1))).toBe(main);
+        // main moves on, and the change takes it in with a merge before its next commit.
+        const moved = await write(git, { "base.txt": "base 2\n" }, main);
+        const tree = await native(dir, ["merge-tree", "--write-tree", first, moved]);
+        const merged = await native(dir, [
+          "commit-tree",
+          tree,
+          "-p",
+          first,
+          "-p",
+          moved,
+          "-m",
+          "Merge main",
+        ]);
+        await native(dir, ["update-ref", "refs/heads/core/build", merged]);
+        const second = await write(git, { "b.txt": "b\n" }, merged, "refs/heads/core/build");
+        await native(dir, ["update-ref", "refs/heads/mate/alice/1", second]);
+        await native(dir, ["update-ref", "-d", "refs/heads/core/build"]);
+
+        expect(await value(git.mergeBase(repo, "alice", 1))).toBe(moved);
+        const log = await value(git.changeLog(repo, "alice", 1, { limit: 10 }));
+        expect(log.items.map((commit) => commit.sha)).toEqual([second, merged, first]);
+        // Messages as stored: `commit-tree -m` ends its with a newline.
+        expect(log.items.map((commit) => commit.message)).toEqual([
+          "Core write",
+          "Merge main\n",
+          "Core write",
+        ]);
+        expect(log.truncated).toBe(false);
+        for (const commit of log.items) {
+          expect(commit.committedAt).toMatch(
+            /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:Z|[+-]\d\d:\d\d)$/u,
+          );
+        }
+        const capped = await value(git.changeLog(repo, "alice", 1, { limit: 1 }));
+        expect([capped.items.map((commit) => commit.sha), capped.truncated]).toEqual([
+          [second],
+          true,
+        ]);
+        expect((await value(git.commit(repo, first))).committedAt).toBe(log.items[2]!.committedAt);
+      }),
+  );
+});
+
 describe("Core file writes", () => {
   it.live("deletes only an existing file, never a directory or a missing path", () =>
     fixture(async (git, dir) => {

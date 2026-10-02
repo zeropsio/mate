@@ -16,16 +16,31 @@
  * - The Mate's own door (`mateCredentials.ts`): `POST /api/mate/challenge` `{ projectId }` →
  *   `{ nonce, expiresIn }`; `POST /api/mate/credential` `{ projectId, nonce }` → `{ credential }`;
  *   `GET /api/mate/whoami` with `Authorization: Mate <credential>` → `{ projectId }`;
- *   `GET /api/mate/self`, the same → the Mate's state (`@t3tools/shared/mateLink` `MateState`).
+ *   `GET /api/mate/self`, the same → the Mate's state (`@t3tools/shared/mateLink` `MateState`)
+ *   with its changes (`@t3tools/shared/hqChanges` `MateChanges`).
  * - `POST /api/mates/:projectId/standup`, `POST /api/mates/:projectId/closed-off` → the Mate's state:
  *   its birth, recorded by the client that set it up (the caller asks for the stand-up).
+ * - A Mate's changes (`changes.ts`, the wire in `@t3tools/shared/hqChanges`): `POST /api/mate/repos`
+ *   `{ name }` → the repository; `POST /api/mate/changes` `{ repo, title }` → `{ change, created }`;
+ *   `PATCH /api/mate/changes/:repo/:n` `{ title?, body? }` → the change; `POST
+ *   /api/mate/changes/:repo/:n/attachments`, a PNG of at most 20 MiB → `{ id, path }`; and git
+ *   itself at `/git/<appId>/<repo>.git`, Basic auth with the user `mate` and the Mate's credential
+ *   (`gitHost.ts`).
+ * - A person's side of the changes: `GET /api/apps/:appId/changes` → `{ changes }`; `GET
+ *   /api/apps/:appId/changes/:repo/:n` → the change's review; `GET`, `POST …/comments`; `GET
+ *   …/attachments/:id` → a picture. And `GET /changes/:appId/:repo/:n`, a change's address at HQ,
+ *   redirects to the change in the first client origin.
  *
  * Every call but the doors carries `Authorization: Bearer <session>`, of a session issued for this
  * HQ's org. Only the leading HQ answers: a standby or an HQ that is not the official one answers
- * `503 not_active`. A refusal answers one code, and for the structure a reason code beside it
- * (`zeropsPermissions.ts`'s or the structure's own) — the words for a person are the client's; a
- * refusal at the person's door says nothing of which rule the token broke. Bodies are bounded (8 KiB at the doors, 64 KiB elsewhere: `413 too_large`), and each door
- * is limited per client address (`rateLimit.ts`: `429 too_many_requests`).
+ * `503 not_active` with `Retry-After`, as does a Zerops that cannot be read (`zerops_unavailable`) —
+ * a deploy runs two Cores side by side for a while, and zcp tries again. A refusal answers one
+ * code, and for the structure and a Mate's changes a reason code beside it (`zeropsPermissions.ts`'s
+ * or their own) — the words for a person are the client's; a
+ * refusal at the person's door says nothing of which rule the token broke. Bodies are bounded (8
+ * KiB at the doors, 128 KiB for a change's words, 20 MiB for its picture, 64 KiB elsewhere: `413
+ * too_large`), and each door is limited per client address (`rateLimit.ts`: `429
+ * too_many_requests`).
  *
  * @module api
  */
@@ -41,9 +56,23 @@ import * as HttpRouter from "effect/unstable/http/HttpRouter";
 import * as HttpServerRequest from "effect/unstable/http/HttpServerRequest";
 import * as HttpServerResponse from "effect/unstable/http/HttpServerResponse";
 
+import {
+  ATTACHMENT_CONTENT_TYPE,
+  ATTACHMENT_MAX_BYTES,
+  ChangeNumber,
+  EditChangeRequest,
+  EnsureRepoRequest,
+  OpenChangeRequest,
+  PostCommentRequest,
+  RepoName,
+  changeRoutePath,
+} from "@t3tools/shared/hqChanges";
+
+import { ChangeRefused, Changes } from "./changes.ts";
 import { Door } from "./door.ts";
+import { GitHost } from "./gitHost.ts";
 import { type LinkOptions, serveMateLink } from "./link.ts";
-import { Leader, NotLeader } from "./leader.ts";
+import { Leader, NotLeader, RETRY_AFTER } from "./leader.ts";
 import { MateCredentials, MateRefused } from "./mateCredentials.ts";
 import { DoorRateLimit } from "./rateLimit.ts";
 import { Roles } from "./roles.ts";
@@ -67,6 +96,11 @@ class TooManyRequests extends Schema.TaggedError<TooManyRequests>()("TooManyRequ
 
 const DOOR_BODY_LIMIT = 8 * 1024;
 const BODY_LIMIT = 64 * 1024;
+/**
+ * A change's description or a comment: 20 000 characters, which JSON may spell in up to six bytes
+ * each (`\u0001`).
+ */
+const TEXT_BODY_LIMIT = 128 * 1024;
 
 const DoorBody = Schema.Struct({ token: Schema.String });
 const ChallengeBody = Schema.Struct({ projectId: Schema.String });
@@ -109,9 +143,25 @@ const MATE_STATUS = {
   not_a_mate: 403,
 } as const;
 
+const CHANGE_STATUS = {
+  forbidden: 403,
+  project_not_found: 404,
+  app_not_found: 404,
+  repo_not_found: 404,
+  change_not_found: 404,
+  attachment_not_found: 404,
+  conflict: 409,
+  invalid: 400,
+} as const;
+
 const json = (body: unknown, status: number) => HttpServerResponse.jsonUnsafe(body, { status });
 
+/** Try again: this Core does not lead now, Zerops did not answer, or a failure HQ cannot name. */
+const unavailable = (code: string) =>
+  HttpServerResponse.jsonUnsafe({ code }, { status: 503, headers: RETRY_AFTER });
+
 const isStructureRefused = Schema.is(StructureRefused);
+const isChangeRefused = Schema.is(ChangeRefused);
 const isMateRefused = Schema.is(MateRefused);
 
 /**
@@ -131,12 +181,17 @@ const jsonBody = <A, RD>(schema: Schema.Codec<A, unknown, RD>, limit: number) =>
   });
 
 /** Every failure as one status and one code. */
-const failure = (error: {
+export const failure = (error: {
   readonly _tag: string;
 }): Effect.Effect<HttpServerResponse.HttpServerResponse> => {
   if (isStructureRefused(error)) {
     return Effect.succeed(
       json({ code: error.code, reason: error.reason }, STRUCTURE_STATUS[error.code]),
+    );
+  }
+  if (isChangeRefused(error)) {
+    return Effect.succeed(
+      json({ code: error.code, reason: error.reason }, CHANGE_STATUS[error.code]),
     );
   }
   if (isMateRefused(error)) {
@@ -156,12 +211,12 @@ const failure = (error: {
     case "MateCredentialRequired":
       return Effect.succeed(json({ code: "mate_credential_required" }, 401));
     case "NotLeader":
-      return Effect.succeed(json({ code: "not_active" }, 503));
+      return Effect.succeed(unavailable("not_active"));
     case "ZeropsUnavailable":
     case "ZeropsRefused":
       return Effect.as(
         Effect.logWarning("zerops read failed", error),
-        json({ code: "zerops_unavailable" }, 503),
+        unavailable("zerops_unavailable"),
       );
     case "TooLarge":
       return Effect.succeed(json({ code: "too_large" }, 413));
@@ -171,7 +226,7 @@ const failure = (error: {
     case "HttpServerError":
       return Effect.succeed(json({ code: "invalid" }, 400));
     default:
-      return Effect.as(Effect.logError("api failed", error), json({ code: "unavailable" }, 503));
+      return Effect.as(Effect.logError("api failed", error), unavailable("unavailable"));
   }
 };
 
@@ -201,7 +256,7 @@ const holderOf = (token: string | undefined) =>
 const principal = Effect.flatMap(bearer, holderOf);
 
 /** A token of the client address's bucket at `door`; none left is `429`. */
-const knock = (door: "person" | "mate") =>
+const knock = (door: "person" | "mate" | "git") =>
   Effect.gen(function* () {
     // `X-Real-IP` is the client address the Zerops L7 balancer sets.
     const request = yield* HttpServerRequest.HttpServerRequest;
@@ -227,8 +282,187 @@ const mate = Effect.flatMap(HttpServerRequest.HttpServerRequest, (request) =>
   mateHolding(/^Mate (\S+)$/u.exec(request.headers["authorization"] ?? "")?.[1]),
 );
 
-const routes = (options: StreamOptions & { readonly link?: LinkOptions }) =>
+/** A change as a path names it, `:repo/:n`: a repository's name and a change's number. */
+const decodeChangePath = Schema.decodeUnknownEffect(
+  Schema.Struct({
+    repo: RepoName,
+    n: Schema.NumberFromString.pipe(Schema.decodeTo(ChangeNumber)),
+  }),
+);
+const changePath = Effect.map(
+  Effect.flatMap(HttpRouter.params, decodeChangePath),
+  ({ repo, n }) => ({ repo, number: n }),
+);
+
+/**
+ * A change of an application as a person's path names it, `/api/apps/:appId/changes/:repo/:n`.
+ * The application's id is taken as given: HQ compares it as text, so any spelling is no match.
+ */
+const appChangePath = Effect.gen(function* () {
+  const appId = (yield* HttpRouter.params)["appId"] ?? "";
+  return { appId, ...(yield* changePath) };
+});
+
+/**
+ * HQ's address of a change, `/changes/:appId/:repo/:n`, as it leads into the client: an
+ * application's id meets the git layer's id pattern, as a repository's name does.
+ */
+const decodeChangeAddress = Schema.decodeUnknownEffect(
+  Schema.Struct({
+    appId: RepoName,
+    repo: RepoName,
+    n: Schema.NumberFromString.pipe(Schema.decodeTo(ChangeNumber)),
+  }),
+);
+
+/**
+ * A picture as a Mate sends it: the body itself, `Content-Type: image/png`, at most 20 MiB — a
+ * declared length above it refused before a byte is read.
+ */
+const pngBody = Effect.gen(function* () {
+  const request = yield* HttpServerRequest.HttpServerRequest;
+  if (Number(request.headers["content-length"] ?? 0) > ATTACHMENT_MAX_BYTES) {
+    return yield* new TooLarge();
+  }
+  if (request.headers["content-type"]?.split(";")[0]?.trim() !== ATTACHMENT_CONTENT_TYPE) {
+    return yield* new ChangeRefused({ code: "invalid", reason: "not_png" });
+  }
+  const body = yield* request.arrayBuffer.pipe(
+    Effect.provideService(HttpIncomingMessage.MaxBodySize, ByteSize.bytes(ATTACHMENT_MAX_BYTES)),
+  );
+  if (body.byteLength > ATTACHMENT_MAX_BYTES) return yield* new TooLarge();
+  return new Uint8Array(body);
+});
+
+/** The credential git presents for the user `mate`: `Authorization: Basic base64(mate:<credential>)`. */
+const gitCredential = (authorization: string | undefined) => {
+  const encoded = /^Basic ([A-Za-z0-9+/=]+)$/u.exec(authorization ?? "")?.[1];
+  const decoded = encoded === undefined ? "" : Buffer.from(encoded, "base64").toString("utf8");
+  return decoded.startsWith("mate:") ? decoded.slice("mate:".length) : undefined;
+};
+
+/**
+ * git at `/git/<appId>/<repo>.git` for a Mate, decided before the git layer serves the request:
+ * its credential (a `401` asks git for it, and a client address's misses are limited as a door's
+ * knocks are); then, on the service as the layer reads the request (`gitHost.ts`), a push by
+ * `can`'s `open_change` over the org read now; and any request by `fetch_repo` on the repository's
+ * application, which also decides every repository the layer serves it.
+ */
+const serveGit = Effect.gen(function* () {
+  const request = yield* HttpServerRequest.HttpServerRequest;
+  const presented = gitCredential(request.headers["authorization"]);
+  const holder =
+    presented === undefined ? Option.none() : yield* (yield* MateCredentials).whoami(presented);
+  if (Option.isNone(holder)) {
+    // A credential presented and missed is a guess: limited per client address, like the doors.
+    // git's first request of every command presents none, to be asked: that guesses nothing.
+    if (presented !== undefined) yield* knock("git");
+    return HttpServerResponse.text("Authentication required\n", {
+      status: 401,
+      headers: { "www-authenticate": 'Basic realm="HQ"' },
+    });
+  }
+  const { projectId } = holder.value;
+  const changes = yield* Changes;
+  yield* (yield* GitHost).serve(
+    request,
+    ({ repo, service }) =>
+      Effect.gen(function* () {
+        if (service === "git-receive-pack") yield* changes.mateApp(projectId, "open_change");
+        const appId = yield* changes.mateFetch(projectId, repo.appId);
+        return { kind: "mate", mateId: projectId, appId } as const;
+      }),
+    (repo) => Effect.isSuccess(changes.mateFetch(projectId, repo.appId)),
+  );
+  return HttpServerResponse.empty();
+});
+
+const routes = (
+  options: { readonly clientOrigins: ReadonlyArray<string> } & StreamOptions & {
+      readonly link?: LinkOptions;
+    },
+) =>
   Layer.mergeAll(
+    // No state is read, so any Core answers it, standby or not.
+    HttpRouter.add(
+      "GET",
+      "/changes/:appId/:repo/:n",
+      Effect.flatMap(HttpRouter.params, decodeChangeAddress).pipe(
+        Effect.map(({ appId, repo, n }) =>
+          HttpServerResponse.redirect(
+            `${options.clientOrigins[0] ?? ""}${changeRoutePath(appId, repo, n)}`,
+            { status: 302 },
+          ),
+        ),
+        Effect.orElseSucceed(() => HttpServerResponse.text("No such change\n", { status: 404 })),
+      ),
+    ),
+    HttpRouter.add(
+      "GET",
+      "/api/apps/:appId/changes",
+      handle(
+        Effect.gen(function* () {
+          const { userId } = yield* principal;
+          const appId = (yield* HttpRouter.params)["appId"] ?? "";
+          return json({ changes: yield* (yield* Changes).listChanges(userId, appId) }, 200);
+        }),
+      ),
+    ),
+    HttpRouter.add(
+      "GET",
+      "/api/apps/:appId/changes/:repo/:n",
+      handle(
+        Effect.gen(function* () {
+          const { userId } = yield* principal;
+          const { appId, repo, number } = yield* appChangePath;
+          return json(yield* (yield* Changes).changeDetail(userId, appId, repo, number), 200);
+        }),
+      ),
+    ),
+    HttpRouter.add(
+      "GET",
+      "/api/apps/:appId/changes/:repo/:n/comments",
+      handle(
+        Effect.gen(function* () {
+          const { userId } = yield* principal;
+          const { appId, repo, number } = yield* appChangePath;
+          const comments = yield* (yield* Changes).listComments(userId, appId, repo, number);
+          return json({ comments }, 200);
+        }),
+      ),
+    ),
+    HttpRouter.add(
+      "POST",
+      "/api/apps/:appId/changes/:repo/:n/comments",
+      handle(
+        Effect.gen(function* () {
+          const { userId } = yield* principal;
+          const { appId, repo, number } = yield* appChangePath;
+          const { body } = yield* jsonBody(PostCommentRequest, TEXT_BODY_LIMIT);
+          return json(yield* (yield* Changes).postComment(userId, appId, repo, number, body), 200);
+        }),
+      ),
+    ),
+    HttpRouter.add(
+      "GET",
+      "/api/apps/:appId/changes/:repo/:n/attachments/:id",
+      handle(
+        Effect.gen(function* () {
+          const { userId } = yield* principal;
+          const { appId, repo, number } = yield* appChangePath;
+          const id = (yield* HttpRouter.params)["id"] ?? "";
+          const png = yield* (yield* Changes).attachment(userId, appId, repo, number, id);
+          // A picture is kept once and never changes; nosniff keeps it a picture.
+          return HttpServerResponse.uint8Array(png, {
+            contentType: ATTACHMENT_CONTENT_TYPE,
+            headers: {
+              "cache-control": "private, max-age=31536000, immutable",
+              "x-content-type-options": "nosniff",
+            },
+          });
+        }),
+      ),
+    ),
     HttpRouter.add(
       "POST",
       "/api/door",
@@ -264,6 +498,53 @@ const routes = (options: StreamOptions & { readonly link?: LinkOptions }) =>
           yield* knock("mate");
           const { projectId, nonce } = yield* jsonBody(CredentialBody, DOOR_BODY_LIMIT);
           return json(yield* (yield* MateCredentials).issue(projectId, nonce), 200);
+        }),
+      ),
+    ),
+    HttpRouter.add("*", "/git/*", handle(serveGit)),
+    HttpRouter.add(
+      "POST",
+      "/api/mate/repos",
+      handle(
+        Effect.gen(function* () {
+          const { projectId } = yield* mate;
+          const { name } = yield* jsonBody(EnsureRepoRequest, BODY_LIMIT);
+          return json(yield* (yield* Changes).ensureRepo(projectId, name), 200);
+        }),
+      ),
+    ),
+    HttpRouter.add(
+      "POST",
+      "/api/mate/changes",
+      handle(
+        Effect.gen(function* () {
+          const { projectId } = yield* mate;
+          const { repo, title } = yield* jsonBody(OpenChangeRequest, BODY_LIMIT);
+          return json(yield* (yield* Changes).openChange(projectId, repo, title), 200);
+        }),
+      ),
+    ),
+    HttpRouter.add(
+      "PATCH",
+      "/api/mate/changes/:repo/:n",
+      handle(
+        Effect.gen(function* () {
+          const { projectId } = yield* mate;
+          const { repo, number } = yield* changePath;
+          const edit = yield* jsonBody(EditChangeRequest, TEXT_BODY_LIMIT);
+          return json(yield* (yield* Changes).editChange(projectId, repo, number, edit), 200);
+        }),
+      ),
+    ),
+    HttpRouter.add(
+      "POST",
+      "/api/mate/changes/:repo/:n/attachments",
+      handle(
+        Effect.gen(function* () {
+          const { projectId } = yield* mate;
+          const { repo, number } = yield* changePath;
+          const png = yield* pngBody;
+          return json(yield* (yield* Changes).attach(projectId, repo, number, png), 200);
         }),
       ),
     ),
@@ -309,7 +590,7 @@ const routes = (options: StreamOptions & { readonly link?: LinkOptions }) =>
           const { projectId } = yield* mate;
           const state = yield* (yield* Structure).mateState(projectId);
           return Option.isSome(state)
-            ? json(state.value, 200)
+            ? json({ ...state.value, ...(yield* (yield* Changes).mateChanges(projectId)) }, 200)
             : json({ code: "mate_not_found", reason: "mate_not_found" }, 404);
         }),
       ),

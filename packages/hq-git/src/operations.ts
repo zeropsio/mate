@@ -55,10 +55,18 @@ const identity = (author: Author): Record<string, string> => {
   };
 };
 const summary = (record: string): CommitSummary => {
-  const [sha = "", name = "", email = "", parents = "", message = ""] = record.split("\0");
-  return { sha, author: { name, email }, parents: parents.split(" ").filter(Boolean), message };
+  const [sha = "", name = "", email = "", parents = "", committedAt = "", ...rest] =
+    record.split("\0");
+  return {
+    sha,
+    author: { name, email },
+    parents: parents.split(" ").filter(Boolean),
+    committedAt,
+    message: rest.join("\0"),
+  };
 };
-const format = "%H%x00%an%x00%ae%x00%P%x00%B";
+// The message comes last: it is the only field that may hold anything.
+const format = "%H%x00%an%x00%ae%x00%P%x00%cI%x00%B";
 const stats = (bytes: Buffer): FileStat[] =>
   bytes
     .toString()
@@ -525,6 +533,61 @@ export const makeOperations = (
         truncated: result.truncated || result.bytes.length > max,
       };
     });
+  /** The commits `rev-list` names, each read with its bounded message. */
+  const summaries = async (dir: string, shas: ReadonlyArray<string>, signal: AbortSignal) => {
+    const items: CommitSummary[] = [];
+    let cut = false;
+    for (const id of shas) {
+      const record = await prefix(
+        dir,
+        ["show", "-s", `--format=${format}`, id, "--"],
+        signal,
+        readLimits.messageBytes,
+      );
+      const parsed = summary(record.bytes.toString());
+      items.push({
+        ...parsed,
+        message: record.truncated ? parsed.message : parsed.message.replace(/\n$/, ""),
+      });
+      cut ||= record.truncated;
+    }
+    return { items, cut };
+  };
+  const mergeBase: HqGit["mergeBase"] = (repo, mateId, number) =>
+    inRepo("mergeBase", repo, async (dir, signal) => {
+      const head = await refHead(dir, changeRef(mateId, number), signal);
+      const main = await refHead(dir, "refs/heads/main", signal);
+      if (!head || !main) return null;
+      const base = (await run(dir, ["merge-base", main, head], signal, undefined, undefined, [1]))
+        .toString()
+        .trim();
+      return base || null;
+    });
+  const changeLog: HqGit["changeLog"] = (repo, mateId, number, opts) =>
+    inRepo("changeLog", repo, async (dir, signal) => {
+      const limit = bound(opts.limit, readLimits.log);
+      const head = await refHead(dir, changeRef(mateId, number), signal);
+      if (!head) return { items: [], truncated: false };
+      const main = await refHead(dir, "refs/heads/main", signal);
+      const shas = (
+        await text(
+          dir,
+          [
+            "rev-list",
+            "--topo-order",
+            `--max-count=${limit + 1}`,
+            head,
+            ...(main ? [`^${main}`] : []),
+            "--",
+          ],
+          signal,
+        )
+      )
+        .split("\n")
+        .filter(Boolean);
+      const { items, cut } = await summaries(dir, shas.slice(0, limit), signal);
+      return { items, truncated: shas.length > limit || cut };
+    });
   const log: HqGit["log"] = (repo, rev, opts) =>
     inRepo("log", repo, async (dir, signal) => {
       const limit = bound(opts.limit, readLimits.log);
@@ -544,22 +607,7 @@ export const makeOperations = (
       )
         .split("\n")
         .filter(Boolean);
-      const items: CommitSummary[] = [];
-      let cut = false;
-      for (const id of shas.slice(0, limit)) {
-        const record = await prefix(
-          dir,
-          ["show", "-s", `--format=${format}`, id, "--"],
-          signal,
-          readLimits.messageBytes,
-        );
-        const parsed = summary(record.bytes.toString());
-        items.push({
-          ...parsed,
-          message: record.truncated ? parsed.message : parsed.message.replace(/\n$/, ""),
-        });
-        cut ||= record.truncated;
-      }
+      const { items, cut } = await summaries(dir, shas.slice(0, limit), signal);
       const more = shas.length > limit;
       return {
         items,
@@ -713,6 +761,8 @@ export const makeOperations = (
     });
   return {
     changeHead,
+    mergeBase,
+    changeLog,
     mergeability,
     squashMerge,
     commitFiles,

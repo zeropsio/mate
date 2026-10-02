@@ -71,6 +71,10 @@
       "types": "./src/mateLink.ts",
       "import": "./src/mateLink.ts"
     },
+    "./hqChanges": {
+      "types": "./src/hqChanges.ts",
+      "import": "./src/hqChanges.ts"
+    },
     "./primaryConversation": {
       "types": "./src/primaryConversation.ts",
       "import": "./src/primaryConversation.ts"

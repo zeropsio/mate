@@ -13,7 +13,7 @@ import * as HttpRouter from "effect/unstable/http/HttpRouter";
 import * as HttpServerResponse from "effect/unstable/http/HttpServerResponse";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
 
-import { Leader } from "./leader.ts";
+import { Leader, RETRY_AFTER } from "./leader.ts";
 import { Official } from "./official.ts";
 
 /** A stuck database must not hang the health check with it. */
@@ -35,7 +35,7 @@ export const healthRoute = (build: string) =>
       const serving = state === "standby" || state === "active";
       return HttpServerResponse.jsonUnsafe(
         { state, official, db, epoch, build },
-        { status: serving ? 200 : 503 },
+        serving ? { status: 200 } : { status: 503, headers: RETRY_AFTER },
       );
     }),
   );

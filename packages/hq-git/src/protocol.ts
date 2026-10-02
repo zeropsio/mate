@@ -1,4 +1,24 @@
-import type { RefDecision, RefUpdate } from "./api.ts";
+import type { GitService, GitTarget, RefDecision, RefUpdate } from "./api.ts";
+
+const TARGET =
+  /^([A-Za-z0-9][A-Za-z0-9_-]{0,127})\/([A-Za-z0-9][A-Za-z0-9_-]{0,127})\.git\/(info\/refs|git-upload-pack|git-receive-pack)$/;
+
+/**
+ * What a request asks, read off its raw path as the handler serves it — a URL parser would resolve
+ * `..` and `%2e%2e` into another repository — and its query, everything after the first `?`.
+ */
+export const gitTarget = (prefix: string, url: string): GitTarget | null => {
+  const mark = url.includes("?") ? url.indexOf("?") : url.length;
+  const [path, query] = [url.slice(0, mark), url.slice(mark + 1)];
+  if (!path.startsWith(`${prefix}/`)) return null;
+  const match = TARGET.exec(path.slice(prefix.length + 1));
+  if (!match) return null;
+  const operation = match[3] as GitTarget["operation"];
+  const asked = operation === "info/refs" ? new URLSearchParams(query).get("service") : operation;
+  const service: GitService | null =
+    asked === "git-upload-pack" || asked === "git-receive-pack" ? asked : null;
+  return { repo: { appId: match[1]!, id: match[2]! }, operation, service };
+};
 
 export class HttpError extends Error {
   readonly status: number;

@@ -5,11 +5,13 @@ import * as Context from "effect/Context";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
+import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as Redacted from "effect/Redacted";
 import * as Ref from "effect/Ref";
 import * as Schedule from "effect/Schedule";
 import * as Scope from "effect/Scope";
+import * as Stream from "effect/Stream";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
 
 import { TempPostgres, tempPostgresLayer } from "../test/harness/tempPostgres.ts";
@@ -275,6 +277,33 @@ describe("leaderLayer", () => {
         yield* rival.query(`SELECT pg_advisory_unlock(${String(LOCK_KEY)})`);
         yield* Effect.sleep(Duration.millis(500));
         assert.deepStrictEqual(yield* core.leader.status, { state: "standby", epoch: null });
+        yield* core.stop;
+      }),
+    );
+
+    it.effect("tells its status as it changes: what runs only while leading follows it", () =>
+      Effect.gen(function* () {
+        const url = yield* (yield* TempPostgres).createDatabase;
+        const core = yield* startInstance(url);
+        const seen: Array<LeaderStatus> = [];
+        const following = yield* Effect.forkChild(
+          Stream.runForEach(core.leader.changes, (status) => Effect.sync(() => seen.push(status))),
+        );
+        yield* statusWhere(core.leader, (status) => status.state === "active");
+        yield* core.leader.release;
+        yield* Effect.sleep(Duration.millis(200));
+        yield* Fiber.interrupt(following);
+        // The current status first, then each change once: never the same status twice in a row.
+        assert.deepStrictEqual(seen.slice(-2), [
+          { state: "active", epoch: 1 },
+          { state: "standby", epoch: null },
+        ]);
+        assert.isTrue(
+          seen.every(
+            (status, i) =>
+              i === 0 || status.state !== seen[i - 1]!.state || status.epoch !== seen[i - 1]!.epoch,
+          ),
+        );
         yield* core.stop;
       }),
     );

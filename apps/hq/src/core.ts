@@ -4,7 +4,8 @@
  * HTTP in production, the fake in tests.
  *
  * On shutdown (`SIGTERM`, a deploy replacing this container) the drain runs before the server
- * stops: the lead goes at once, so the next Core takes it within milliseconds; every open socket
+ * stops: git closes, then the lead goes at once, so the next Core takes it within milliseconds and
+ * finds no git of this one still writing on the shared volume (`gitHost.ts`); every open socket
  * is closed `1001 going away`, so its client reconnects to the next Core; and for `drainFor` more
  * the server still answers — a request the balancer still routes here gets an answer (`/health` a
  * standby's 200, the API `503 not_active`), not a reset.
@@ -20,7 +21,9 @@ import type * as Redacted from "effect/Redacted";
 import * as HttpRouter from "effect/unstable/http/HttpRouter";
 
 import { apiRoutes } from "./api.ts";
+import { changesLayer } from "./changes.ts";
 import { doorLayer } from "./door.ts";
+import { GitHost, gitHostLayer } from "./gitHost.ts";
 import { healthRoute } from "./health.ts";
 import { Leader, leaderLayer } from "./leader.ts";
 import { mateCredentialsLayer } from "./mateCredentials.ts";
@@ -40,6 +43,8 @@ import { structureLayer } from "./structure.ts";
 
 export interface CoreOptions {
   readonly databaseUrl: Redacted.Redacted;
+  /** Where the bare repositories live: the volume's `/mnt/vol/git` in the container. */
+  readonly gitRoot: string;
   readonly migrations: ReadonlyArray<Migration>;
   readonly hqProjectId: string;
   /** `HQ_ORG_TOKEN`. */
@@ -97,6 +102,7 @@ const services = (options: CoreOptions) => {
     streamTicketsLayer,
     mateLinkTicketsLayer,
     liveSocketsLayer,
+    changesLayer.pipe(Layer.provideMerge(gitHostLayer({ rootDir: options.gitRoot }))),
   ).pipe(
     Layer.provideMerge(mateLiveLayer),
     Layer.provideMerge(
@@ -113,15 +119,20 @@ const services = (options: CoreOptions) => {
   );
 };
 
-/** On shutdown, before the server stops: lead and sockets go, the server answers `drainFor` more. */
-const drainLayer = (drainFor: Duration.Duration) =>
+/**
+ * On shutdown, before the server stops: git, the lead and the sockets go, the server answers
+ * `drainFor` more.
+ */
+export const drainLayer = (drainFor: Duration.Duration) =>
   Layer.effectDiscard(
     Effect.gen(function* () {
       const leader = yield* Leader;
+      const git = yield* GitHost;
       const sockets = yield* LiveSockets;
       yield* Effect.addFinalizer(() =>
         Effect.gen(function* () {
           yield* Effect.logInfo("draining");
+          yield* git.close;
           yield* leader.release;
           yield* sockets.closeAll(1001, "going away");
           yield* Effect.sleep(drainFor);
