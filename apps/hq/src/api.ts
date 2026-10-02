@@ -132,7 +132,13 @@ const AttachBody = Schema.Struct({
   mate: Schema.optionalKey(Schema.Struct({ name: Schema.String, face: Schema.String })),
   environment: Schema.optionalKey(Schema.Struct({ name: Schema.String })),
 });
-const DeployTokenBody = Schema.Struct({ token: Schema.String });
+/**
+ * A Zerops token as the platform spells one, at most 512 characters: one HQ sends on as a bearer
+ * header, so a character no header may carry is refused here, never by the HTTP client later.
+ */
+const DeployTokenBody = Schema.Struct({
+  token: Schema.String.check(Schema.isPattern(/^[A-Za-z0-9._~+/=-]{1,512}$/u)),
+});
 
 const STRUCTURE_STATUS = {
   forbidden: 403,

@@ -14,6 +14,7 @@ import {
   untilHealth,
 } from "../test/harness/runningCore.ts";
 import { tempPostgresLayer } from "../test/harness/tempPostgres.ts";
+import type { ZeropsOwnToken } from "./zerops/api.ts";
 import { failure } from "./api.ts";
 import { NotLeader } from "./leader.ts";
 import { ZeropsUnavailable } from "./zerops/api.ts";
@@ -143,8 +144,8 @@ describe("HQ API", () => {
           session,
           body: { projectId: "P_MATE", kind: "stage", environment: { name: "stage" } },
         });
-        fake.tokens.set("key-stage", {
-          id: "T_STAGE",
+        const key = (over: Partial<ZeropsOwnToken> = {}) => ({
+          id: "T_KEY",
           name: "deploy-stage",
           orgId: "ORG",
           roleCode: "NO_ACCESS",
@@ -154,24 +155,59 @@ describe("HQ API", () => {
           projects: [{ projectId: "P_MATE", roleCode: "BASIC_USER" }],
           createdMs: 0,
           createdByUser: "owner",
+          ...over,
         });
-        const put = (name: string, token: string) =>
+        fake.tokens.set("key-stage", key());
+        // One key per way a token reaches more than its project (main E02).
+        const scope = {
+          "key-other-org": key({ orgId: "ORG2" }),
+          "key-two-projects": key({
+            projects: [
+              { projectId: "P_MATE", roleCode: "BASIC_USER" },
+              { projectId: "HQ_PROJECT", roleCode: "BASIC_USER" },
+            ],
+          }),
+          "key-admin-on-p": key({ projects: [{ projectId: "P_MATE", roleCode: "ADMIN" }] }),
+          "key-org-read": key({ roleCode: "READ_ONLY" }),
+          "key-creates-projects": key({ canCreateProjects: true }),
+          "key-sees-finances": key({ canViewFinances: true }),
+        };
+        for (const [value, record] of Object.entries(scope)) fake.tokens.set(value, record);
+        // dev develops Shop through a Basic user grant on its stage's project: no Full access.
+        const project = fake.projects.find((candidate) => candidate.id === "P_MATE")!;
+        Object.assign(project, { userRoles: [{ clientUserId: "C-dev", roleCode: "BASIC_USER" }] });
+        const dev = yield* sessionFor(call, "door-dev");
+        const put = (name: string, token: string, as = session) =>
           Effect.map(
             call("PUT", `/api/apps/${appId}/environments/${name}/deploy-token`, {
-              session,
+              session: as,
               body: { token },
             }),
             (response) => [response.status, response.body],
           );
+        const SCOPE = [400, { code: "invalid", reason: "deploy_token_scope" }];
         assert.deepStrictEqual(
           [
             yield* put("production", "key-stage"),
             yield* put("stage", "key-bogus"),
+            ...(yield* Effect.forEach(Object.keys(scope), (value) => put("stage", value))),
+            yield* put("stage", "key-stage", dev),
+            yield* put("stage", "key\r\nX-Injected: 1"),
+            yield* put("stage", "k".repeat(513)),
             yield* put("stage", "key-stage"),
           ],
           [
             [404, { code: "environment_not_found", reason: "environment_not_found" }],
             [400, { code: "invalid", reason: "deploy_token_refused" }],
+            SCOPE,
+            SCOPE,
+            SCOPE,
+            SCOPE,
+            SCOPE,
+            SCOPE,
+            [403, { code: "forbidden", reason: "not_project_admin" }],
+            [400, { code: "invalid" }],
+            [400, { code: "invalid" }],
             [204, null],
           ],
         );

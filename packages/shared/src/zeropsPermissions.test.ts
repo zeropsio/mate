@@ -192,6 +192,14 @@ const TABLES: Readonly<Record<Verb, ReadonlyArray<Row>>> = {
     ["P's admin", P_ADMIN, KEEP_TOKEN, "allow"],
     ["P's owner, who made it", MAKER, KEEP_TOKEN, "allow"],
     ["a Basic user there", { override: "BASIC_USER" }, KEEP_TOKEN, "not_project_admin"],
+    // The writer's shortcut: an org admin lowered to Read only on P still hands it over.
+    [
+      "an org admin, Read only on P",
+      { orgRole: "ADMIN", override: "READ_ONLY" },
+      KEEP_TOKEN,
+      "allow",
+    ],
+    ["org Basic user", { orgRole: "BASIC_USER" }, KEEP_TOKEN, "not_project_admin"],
     ["org Read only", { orgRole: "READ_ONLY" }, KEEP_TOKEN, "not_project_admin"],
     [
       "P's admin, a project the org no longer has",

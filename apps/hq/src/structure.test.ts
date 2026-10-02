@@ -1182,10 +1182,19 @@ describe("structure", () => {
               (environments) => environments["P_OWNED"]?.keyHeld,
             );
             assert.strictEqual(yield* keyHeld, false);
+            // Whether an environment of a name exists is told only to whoever sees the application.
+            assert.deepStrictEqual(
+              [
+                yield* keep("nobody", "production", "key-stage"),
+                yield* keep("nobody", "stage", "key-stage"),
+              ],
+              ["app_not_seen", "app_not_seen"],
+            );
             assert.deepStrictEqual(
               [
                 yield* keep("owner", "production", "key-stage"),
-                yield* keep("dev", "stage", "key-stage"),
+                // reader sees Shop (org Read only), with no Full access on its stage's project.
+                yield* keep("reader", "stage", "key-stage"),
                 yield* keep("owner", "stage", "key-bogus"),
                 yield* keep("owner", "stage", "key-wide"),
                 yield* keep("owner", "stage", "key-other"),

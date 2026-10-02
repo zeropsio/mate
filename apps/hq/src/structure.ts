@@ -42,11 +42,12 @@ import {
   deriveEnvironmentName,
   environmentNameProblem,
 } from "./environments.ts";
+import { reachesOnly } from "./deployTokens.ts";
 import { heldOf, lockProject } from "./held.ts";
 import { Leader, type NotLeader } from "./leader.ts";
 import { MateLive, type MateLiveEntry } from "./mateLive.ts";
 import { Roles } from "./roles.ts";
-import { ZeropsApi, type ZeropsError, type ZeropsOwnToken } from "./zerops/api.ts";
+import { ZeropsApi, type ZeropsError } from "./zerops/api.ts";
 
 export class StructureRefused extends Schema.TaggedError<StructureRefused>()("StructureRefused", {
   code: Schema.Literals([
@@ -277,20 +278,6 @@ const tierOf = (kind: string): EnvironmentTier | undefined =>
 /** An environment's sources as the JSON its insert spreads into a text array. */
 const encodeSources = Schema.encodeSync(Schema.fromJsonString(Schema.Array(Schema.String)));
 
-/**
- * Whether a token reaches exactly one project, `projectId`, as a Basic user, in the org `orgId`
- * and nothing more: no org role, no project making, no finances (main E02).
- */
-const reachesOnly = (token: ZeropsOwnToken, orgId: string, projectId: string) =>
-  token.orgId === orgId &&
-  token.roleCode === "NO_ACCESS" &&
-  !token.canCreateProjects &&
-  !token.canViewFinances &&
-  !token.canEditFinances &&
-  token.projects.length === 1 &&
-  token.projects[0]?.projectId === projectId &&
-  token.projects[0].roleCode === "BASIC_USER";
-
 /** An environment's row, as a takeover keeps it (main D13). */
 interface EnvironmentRow {
   readonly project_id: string;
@@ -486,6 +473,17 @@ export const structureLayer = (options: {
         mateState: stateOf,
         keepDeployToken: (userId, appId, name, token) =>
           Effect.gen(function* () {
+            const view = yield* roles.fresh;
+            // Whether the application has an environment of that name is told only to whoever sees
+            // the application.
+            const appProjects = yield* sql<{ readonly project_id: string }>`
+              SELECT project_id FROM hq_app_project WHERE app_id::text = ${appId}`;
+            yield* allowed(
+              userId,
+              "read_app",
+              { projectIds: appProjects.map((row) => row.project_id) },
+              view,
+            );
             const named = yield* sql<{ readonly project_id: string }>`
               SELECT project_id FROM hq_environment
               WHERE app_id::text = ${appId} AND name = ${name}`;
@@ -493,7 +491,6 @@ export const structureLayer = (options: {
             if (projectId === undefined) {
               return yield* refuse("environment_not_found", "environment_not_found");
             }
-            const view = yield* roles.fresh;
             yield* allowed(userId, "keep_deploy_token", { projectId }, view);
             const own = yield* zerops
               .ownToken(token)
@@ -506,6 +503,8 @@ export const structureLayer = (options: {
             const kept = yield* leader.write(
               Effect.gen(function* () {
                 yield* lockProject(sql, projectId);
+                // The token is this statement's parameter: it must never reach statement logging
+                // or a span's attributes.
                 return yield* sql`
                   INSERT INTO hq_deploy_token (project_id, token, kept_by)
                   SELECT project_id, ${Redacted.value(token)}, ${userId} FROM hq_environment

@@ -26,6 +26,7 @@ import {
 import { Deploys, type DeploysOptions, deploysLayer } from "./deploys.ts";
 import { GitHost, gitHostLayer } from "./gitHost.ts";
 import { type RecipeTierRead, RecipeTiers } from "./recipeTiers.ts";
+import { Roles } from "./roles.ts";
 import { ZeropsApi, ZeropsDeploy } from "./zerops/api.ts";
 
 const AUTHOR = { name: "Ada", email: "ada@mate.test" };
@@ -119,6 +120,23 @@ const withDeploys = <A, E>(
         Layer.provideMerge(activeCoreLayer(url)),
         Layer.provide(Layer.succeed(ZeropsApi, fakeZeropsApi(world))),
         Layer.provide(Layer.succeed(ZeropsDeploy, fakeZeropsDeploy(world))),
+        Layer.provide(
+          Layer.succeed(Roles, {
+            view: Effect.succeed({
+              orgId: "ORG",
+              members: [],
+              projects: [],
+              freshness: "cached" as const,
+            }),
+            fresh: Effect.succeed({
+              orgId: "ORG",
+              members: [],
+              projects: [],
+              freshness: "fresh" as const,
+            }),
+            exists: () => Effect.succeed(true),
+          }),
+        ),
         Layer.provide(
           Layer.succeed(RecipeTiers, {
             read: (appId, tier) => Effect.succeed(tiers.get(`${appId}/${tier}`) ?? ABSENT),
@@ -332,6 +350,34 @@ describe("deploys", () => {
             yield* until(settled("live"));
           }),
         ),
+    );
+
+    // A key is checked again at every hand-over: one that now reaches more than its project, or no
+    // longer answers, is no key — the deploy is refused in main's words (E08), never attempted.
+    it.effect("refuses a deploy with a key that now reaches more, or no longer answers", () =>
+      withDeploys(({ appId, world, tiers, commit, deploys, until }) =>
+        Effect.gen(function* () {
+          const deploysService = yield* Deploys;
+          const kept = world.tokens.get("key-stage")!;
+          const refusedInMainsWords = (rows: Effect.Success<typeof deploys>) =>
+            rows.length === 1 &&
+            rows[0]?.failure === "refused" &&
+            rows[0].message ===
+              "shop-stage has no deploy token yet; an admin who opens the projects page in Zerops Mate mints it";
+          tiers.set(`${appId}/stage`, stageTier(appId, [{ hostname: "web" }]));
+          world.tokens.set("key-stage", { ...kept, roleCode: "READ_ONLY" });
+          yield* commit("web", { "zerops.yaml": ZEROPS_YAML });
+          yield* until(refusedInMainsWords);
+          world.tokens.delete("key-stage");
+          yield* deploysService.catchUp;
+          yield* Effect.sleep(Duration.millis(200));
+          assert.isTrue(refusedInMainsWords(yield* deploys));
+          assert.deepStrictEqual(versions(world), []);
+          world.tokens.set("key-stage", kept);
+          yield* deploysService.catchUp;
+          yield* until(settled("live"));
+        }),
+      ),
     );
 
     // Main B37/B38: a build's own failure is final — no pass deploys that commit again; HQ's own

@@ -12,8 +12,10 @@
  * - **One queue per environment, the newest wins** (B20): its services one after another, higher
  *   priority first (B19); a commit main moved past while a deploy ran is never deployed.
  * - **A build's own failure is final** (B37): only a person asks for that commit again. HQ's own
- *   refusals — no key (E08), a Zerops that did not answer, git that failed — are asked again by
- *   the next pass, and a deploy still running after `patience` (20 min) is deployed again (B38).
+ *   refusals — no key (E08), or one that no longer answers or now reaches more than its project
+ *   (checked again at every hand-over, `deployTokens.ts`), a Zerops that did not answer, git that
+ *   failed — are asked again by the next pass, and a deploy still running after `patience` (20
+ *   min) is deployed again (B38).
  * - **Every pass is a catch-up**: at takeover and every 5 min, each environment's wanted commits
  *   against what its services run (B22); `main` moving asks only for the commits with no deploy
  *   yet. Only the leading Core deploys.
@@ -38,9 +40,11 @@ import * as SubscriptionRef from "effect/SubscriptionRef";
 import * as Ref from "effect/Ref";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
 
+import { noDeployToken, reachesOnly } from "./deployTokens.ts";
 import { GitHost } from "./gitHost.ts";
 import { Leader, NotLeader } from "./leader.ts";
 import { RecipeTiers } from "./recipeTiers.ts";
+import { Roles } from "./roles.ts";
 import { tierRuntimes } from "./tierRuntimes.ts";
 import { sameCommit, versionName, versionSha } from "./versionNames.ts";
 import { ZeropsApi, ZeropsDeploy, type ZeropsError, type ZeropsService } from "./zerops/api.ts";
@@ -145,7 +149,7 @@ export const deploysLayer = (
 ): Layer.Layer<
   Deploys,
   never,
-  Leader | SqlClient.SqlClient | GitHost | ZeropsApi | ZeropsDeploy | RecipeTiers
+  Leader | SqlClient.SqlClient | GitHost | Roles | ZeropsApi | ZeropsDeploy | RecipeTiers
 > =>
   Layer.effect(
     Deploys,
@@ -156,6 +160,7 @@ export const deploysLayer = (
       const zerops = yield* ZeropsApi;
       const deploy = yield* ZeropsDeploy;
       const recipes = yield* RecipeTiers;
+      const roles = yield* Roles;
       const catchUpEvery = options.catchUpEvery ?? Duration.minutes(5);
       const pollEvery = options.pollEvery ?? Duration.seconds(10);
       const patience = options.patience ?? Duration.minutes(20);
@@ -368,14 +373,16 @@ export const deploysLayer = (
           if (existing?.state === "failed" && existing.failure === "job") return;
           const token = yield* tokenOf(target.projectId);
           if (token === undefined) {
-            return yield* record(
-              target,
-              refused(
-                `${target.envName} has no deploy token yet; an admin who opens the projects page in Zerops Mate mints it`,
-              ),
-            );
+            return yield* record(target, refused(noDeployToken(target.envName)));
           }
           const ended = yield* Effect.gen(function* () {
+            // Checked again at every hand-over: a key that no longer answers, or now reaches more
+            // than its project, is no key.
+            const own = yield* zerops.ownToken(token).pipe(Effect.option);
+            const { orgId } = yield* roles.view;
+            if (Option.isNone(own) || !reachesOnly(own.value, orgId, target.projectId)) {
+              return refused(noDeployToken(target.envName));
+            }
             const services = yield* zerops.services(target.projectId)(token);
             const service = services.find((candidate) => candidate.name === target.service);
             if (service === undefined) {
