@@ -209,6 +209,14 @@ describe("ChangeReviewView: a change after its merge", () => {
     expect(text).not.toContain("Review release");
   });
 
+  it("read from the roll back that lists it, goes back to it and offers nothing", () => {
+    const html = render(merged(), [changed("src/mail.ts")], {
+      back: { label: "Roll back", onPress: noop },
+    });
+    expect(html).toMatch(/<button class="rv-back" data-review-back=""[^>]*>[\s\S]*?Roll back/u);
+    expect(html).not.toContain("data-review-primary");
+  });
+
   it("a code change hands over to the release production waits for", () => {
     const html = render(merged(), [changed("src/mail.ts")]);
     expect(textOf(html)).toContain("Production still serves v0.1.0 until you release.");
