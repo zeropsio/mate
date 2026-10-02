@@ -900,6 +900,27 @@ describe("groupFlow — a stage's first deploy, while it runs nothing (run 4)", 
       first: undefined,
     },
     {
+      case: "its project still being made (run 5): the import first, never the runner",
+      over: { projectStatus: "CREATING", services: [] },
+      runner: stuck,
+      mainHasCode: true,
+      first: undefined,
+    },
+    {
+      case: "its app still being added: the import first, never the runner",
+      over: { services: [{ hostname: "app", status: "CREATING", runtime: true }] },
+      runner: stuck,
+      mainHasCode: true,
+      first: undefined,
+    },
+    {
+      case: "its import done: the runner",
+      over: { services: [{ hostname: "app", status: "ACTIVE", runtime: true }] },
+      runner: stuck,
+      mainHasCode: true,
+      first: { kind: "runner", why: "not-started" },
+    },
+    {
       case: "running a deploy: none to wait for",
       over: { deployment: runs(STAGE_SHA) },
       runner: stuck,
@@ -957,6 +978,22 @@ describe("groupFlow — a stage's first deploy, while it runs nothing (run 4)", 
   it("promises nothing without a clock", () => {
     const flow = groupFlow(group({ stops: [stageStop()], mainHasCode: true, runner: able }));
     expect(flow.stages[0]?.firstDeploy).toBeUndefined();
+  });
+
+  it("is setting up while its own import runs, and only then", () => {
+    const settingUp = (over: Partial<GroupFlowStopInput>) =>
+      groupFlow(group({ stops: [stageStop(over)], mainHasCode: true, runner: stuck, nowMs: NOW }))
+        .stages[0]?.settingUp;
+    const making = { hostname: "app", status: "NEW", runtime: true };
+    expect(settingUp({ projectStatus: "CREATING", services: [] })).toBe(true);
+    expect(settingUp({ services: [making] })).toBe(true);
+    expect(settingUp({ services: [making], deployment: undefined })).toBe(true);
+    // Done, unread or long ago: what it runs says it.
+    expect(settingUp({ services: [{ ...making, status: "ACTIVE" }] })).toBeUndefined();
+    expect(settingUp({ services: undefined })).toBeUndefined();
+    expect(settingUp({ services: [making], createdAt: at(20 * MINUTE) })).toBeUndefined();
+    // Something runs there: never setting up again.
+    expect(settingUp({ services: [making], deployment: runs(STAGE_SHA) })).toBeUndefined();
   });
 });
 

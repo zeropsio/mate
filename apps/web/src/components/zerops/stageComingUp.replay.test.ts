@@ -121,6 +121,8 @@ function said(moment: Moment) {
         deployment: moment.deployment,
         route: undefined,
         createdAt: iso(1061),
+        projectStatus: moment.projectStatus ?? "ACTIVE",
+        services: moment.services ?? [db("ACTIVE"), app("ACTIVE")],
       },
     ],
     missing: [],
@@ -169,7 +171,8 @@ function said(moment: Moment) {
 }
 
 const READY = "READY_TO_DEPLOY";
-const MAKING = { projectStatus: "CREATING", services: undefined };
+/** A project not active yet is listed with none of its services (`candidateListingAtom`). */
+const MAKING = { projectStatus: "CREATING", services: [] };
 
 describe("a stage coming up, replayed as run 4 measured it", () => {
   const moments: ReadonlyArray<Moment & { readonly line: string | null; readonly cell: string }> = [
@@ -180,7 +183,7 @@ describe("a stage coming up, replayed as run 4 measured it", () => {
       runner: READY,
       declared: false,
       line: "Stage coming up · making the project",
-      cell: "Checking what runs here…",
+      cell: "Setting up a stage…",
     },
     {
       t: 1090,
@@ -189,7 +192,7 @@ describe("a stage coming up, replayed as run 4 measured it", () => {
       runner: READY,
       declared: false,
       line: "Stage coming up · adding the database",
-      cell: "Nothing deployed yet",
+      cell: "Setting up a stage…",
     },
     {
       t: 1103,
@@ -198,7 +201,7 @@ describe("a stage coming up, replayed as run 4 measured it", () => {
       runner: READY,
       declared: true,
       line: "Stage coming up · adding the app",
-      cell: "Waiting for the runner · it hasn’t started",
+      cell: "Setting up a stage…",
     },
     {
       t: 1121,

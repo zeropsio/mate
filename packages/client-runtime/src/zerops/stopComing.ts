@@ -213,13 +213,7 @@ export function stopComing(input: {
   readonly createdAt: string | undefined;
   readonly nowMs: number;
   /** Its services as the platform lists them; `undefined` while unread. */
-  readonly services:
-    | ReadonlyArray<{
-        readonly hostname: string;
-        readonly status: string;
-        readonly runtime: boolean;
-      }>
-    | undefined;
+  readonly services: ReadonlyArray<PlatformService> | undefined;
   /** A deploy runs on it (`deployBuilding`). */
   readonly building: boolean;
   /** It has run a deploy (`stopDeployed`); `undefined` while that is not known. */
@@ -259,7 +253,10 @@ export function stopComing(input: {
       : { kind: "failed", reason: `the ${broken.hostname}’s build failed` };
   }
   if (input.building) return coming("build");
-  // The import's own deploy carries no code: the app being added, never a build.
+  // The import's own deploy carries no code: the app being added, never a build — and a stage
+  // listing no runtime yet is still having it added (run 5: "awaits the runner" at +696 s, while
+  // the import ran until +710 s).
+  if (runtimes.length === 0 && deployed !== true) return coming("app");
   if (runtimes.some(({ status }) => MAKING.has(status))) return coming("app");
   if (deployed !== true) {
     if (input.tier === "production") return undefined;
@@ -278,6 +275,42 @@ export function stopComing(input: {
   }
   if (runtimes.some(({ status }) => !running(status))) return coming("build");
   if (input.routes === 0) return coming("address");
+  return undefined;
+}
+
+/** One service of an environment, as the platform lists it (`summarizeEnvironmentServices`). */
+export interface PlatformService {
+  readonly hostname: string;
+  readonly status: string;
+  readonly runtime: boolean;
+}
+
+/**
+ * Where an environment's own import has got, from what the platform says of it alone — the
+ * coming-up steps that come before any word about its first deploy, in {@link stopComing}'s order:
+ * its project being made, a database not running yet, its app being added (none listed yet, or
+ * being made). `undefined` once the import is done, where something failed, it is stopped, or its
+ * window went by. A surface that cannot read the platform's steps still keeps their order by it:
+ * the projects page's cell says nothing of a first deploy, or of the runner, before this is done.
+ */
+export function stopImport(input: {
+  readonly projectStatus: string | undefined;
+  readonly createdAt: string | undefined;
+  readonly nowMs: number;
+  /** Its services as the platform lists them; `undefined` while unread. */
+  readonly services: ReadonlyArray<PlatformService> | undefined;
+}): "project" | "database" | "app" | undefined {
+  if (input.projectStatus === "STOPPED") return undefined;
+  if (input.projectStatus !== undefined && input.projectStatus !== "ACTIVE") return "project";
+  const made = input.createdAt === undefined ? Number.NaN : Date.parse(input.createdAt);
+  if (Number.isNaN(made) || input.nowMs - made >= COMING_UP_WINDOW_MS) return undefined;
+  if (input.services === undefined) return "project";
+  if (input.services.some(({ status }) => failing(status))) return undefined;
+  const runtimes = input.services.filter((service) => service.runtime);
+  if (input.services.some((service) => !service.runtime && service.status !== "ACTIVE")) {
+    return "database";
+  }
+  if (runtimes.length === 0 || runtimes.some(({ status }) => MAKING.has(status))) return "app";
   return undefined;
 }
 
