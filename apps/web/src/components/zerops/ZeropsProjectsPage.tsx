@@ -118,7 +118,6 @@ import {
   readZeropsToolKind,
   defaultAgentForRole,
   generateBotName,
-  GROUP_BEING_SET_UP_LINE,
   hasMate,
   canCreateProjectsInOrganization,
   groupFlow,
@@ -127,7 +126,6 @@ import {
   releaseContentsCommits,
   type FlowPullRequest,
   readZeropsMembership,
-  resolveGroupGitea,
   unionAgents,
   type EnvironmentCreationStepProgress,
   type EnvironmentRow,
@@ -167,9 +165,7 @@ import { useMateActions } from "~/zerops/useMateActions";
 import { useChangeOffers } from "~/zerops/useChangeOffers";
 import { useZeropsGroupRecipe } from "~/zerops/useZeropsGroupRecipe";
 import { officialHq, useAccountHq } from "~/zerops/accountHq";
-import { useAccountGitea } from "~/zerops/giteaProject";
 import { useZeropsGroupEnvironmentReconcile } from "~/zerops/useZeropsGroupEnvironmentReconcile";
-import { useZeropsGroupOrganizations } from "~/zerops/useZeropsGroupOrganizations";
 import { useZeropsRegistry } from "~/zerops/useZeropsRegistry";
 import { useZeropsProjectFlow } from "~/zerops/projectFlowContext";
 import { REVIEW_LABEL, REVIEW_RELEASE_LABEL, useOpenReview } from "~/zerops/review";
@@ -475,19 +471,18 @@ export function declaredEnvironmentSummary(
 
 /**
  * The one line a group says about itself, in its own row: that it has no name
- * yet, that a stage or production the page repaired in the background is not
- * finished, or that the broker's Gitea side is still being set up. A repair's
- * failure is the group's to show, in the page's words — the platform's own
- * message is not the person's to read, and a line under the page is nobody's.
+ * yet, or that a stage or production the page repaired in the background is
+ * not finished. A repair's failure is the group's to show, in the page's words
+ * — the platform's own message is not the person's to read, and a line under
+ * the page is nobody's.
  */
 export function projectsGroupLine(input: {
   readonly placeholder: boolean;
   readonly unfinished: GroupEnvironmentTier | undefined;
-  readonly gitea: string;
 }): string | undefined {
   if (input.placeholder) return "This project has no name yet";
   if (input.unfinished !== undefined) return `Couldn't finish setting up ${input.unfinished}`;
-  return input.gitea.length > 0 ? input.gitea : undefined;
+  return undefined;
 }
 
 function SignedOutNotice({ message }: { readonly message: string }) {
@@ -1592,11 +1587,6 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
         : groupTree.groups.find((entry) => entry.group.groupId === creationRequest.groupId),
     [creationRequest, groupTree.groups],
   );
-  // What a Gitea project the organization still has holds for its groups, read exactly as that
-  // project states it: an account on a devel region or behind a custom domain is read, never
-  // guessed.
-  const accountGitea = useAccountGitea(activeOrganization?.id);
-  const giteaOrigin = accountGitea?.state.url;
   // The registry — which groups exist and which projects are in them (ADR 0002), read from HQ.
   const registryState = useZeropsRegistry();
 
@@ -1616,14 +1606,6 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
           ? "stage"
           : "mate",
     enabled: creationRequest !== null,
-  });
-
-  // The registry says which groups were asked for; `GET /orgs/{slug}` says
-  // which the broker has actually made (guide 4.5).
-  const giteaOrganizations = useZeropsGroupOrganizations({
-    giteaOrigin,
-    slugs: registryState.registry.groups.map((group) => group.slug),
-    enabled: status === "signed-in",
   });
 
   // Every group's flow — its declared environments and what they run, what
@@ -1818,20 +1800,6 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
       />
     );
   };
-
-  /**
-   * The one line a group says about itself: that the broker has not finished
-   * its Gitea side yet (`groupRows.ts`). A group whose org has not been asked
-   * about says nothing, so the heading never grows a line and then loses it.
-   */
-  const groupLines = useMemo(() => {
-    const lines = new Map<string, string>();
-    for (const entry of registryState.registry.groups) {
-      const state = resolveGroupGitea({ organizationExists: giteaOrganizations.get(entry.slug) });
-      lines.set(entry.groupId, state === "being-set-up" ? GROUP_BEING_SET_UP_LINE : "");
-    }
-    return lines;
-  }, [giteaOrganizations, registryState.registry.groups]);
 
   /**
    * Publish a service on its `*.zerops.app` subdomain.
@@ -2547,11 +2515,9 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
         read: reads !== undefined,
         changesKnown: reads?.changesKnown === true,
         changesUnknown,
-        // Out and expected back: a Gitea session is held or coming, and the
-        // group has an org to read (or the registry has not answered yet).
-        readOut:
-          projectFlow.signInTrouble === null &&
-          (projectFlow.slugs.size === 0 || projectFlow.slugs.has(group.groupId)),
+        // Out and expected back: the organization's HQ is known, whose answer
+        // the group's changes are.
+        readOut: projectFlow.hqAddress !== undefined,
       });
       const members = groupMemberFactsOf(
         environments,
@@ -2598,11 +2564,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
         lastMerged: reads === undefined ? undefined : lastMergedCode(reads.merged),
         // Visible rather than a tooltip: it is an invitation to name the
         // project, and it disappears the moment one does.
-        line: projectsGroupLine({
-          placeholder,
-          unfinished: unfinished.get(group.groupId),
-          gitea: groupLines.get(group.groupId) ?? "",
-        }),
+        line: projectsGroupLine({ placeholder, unfinished: unfinished.get(group.groupId) }),
         placeholder,
       };
     },

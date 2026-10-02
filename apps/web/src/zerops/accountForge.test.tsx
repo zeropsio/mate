@@ -1,7 +1,5 @@
-import type { AccountForge } from "@t3tools/client-runtime/zerops/account/runtime";
 import type { ProjectRef, ServiceRef } from "@t3tools/client-runtime/zerops/data";
 import type { Deployment, DeploymentStore, StopService } from "@t3tools/client-runtime/zerops/flow";
-import type { GiteaSessions } from "@t3tools/client-runtime/zerops/forge";
 import type { Known, Shown } from "@t3tools/client-runtime/zerops/knowledge";
 import type { ZeropsStateEnvelope } from "@t3tools/contracts";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
@@ -65,7 +63,6 @@ function stage() {
       listeners.delete(listener);
     };
   };
-  const sessions = { subscribe, close: vi.fn() } as unknown as GiteaSessions;
   const stopDemands: Array<string> = [];
   let stopDemandCalls = 0;
   const stops = new Map<string, Shown<ReadonlyArray<StopService>>>();
@@ -79,17 +76,14 @@ function stage() {
     },
     subscribe,
   } as unknown as DeploymentStore;
-  const forge: AccountForge = { sessions };
   return {
     stage: {
-      forge,
       deployments,
       services: {
         serviceOf: (projectId: string, hostname: string) =>
           projectId === "p-stage" && hostname === "appstage" ? APPSTAGE : null,
       },
     },
-    sessions,
     stopDemands,
     stopDemandCalls: () => stopDemandCalls,
     holdStop: (projectId: string, shown: Shown<ReadonlyArray<StopService>>) => {
@@ -98,6 +92,22 @@ function stage() {
     },
   };
 }
+
+/** A Mate's envelope, its stage deploy succeeded or not. */
+const envelope = (success: boolean) =>
+  ({
+    phase: "develop-active",
+    environment: "container",
+    project: { id: "p-stage", name: "harbor stage" },
+    services: [],
+    workSession: {
+      intent: "ship",
+      services: ["appstage"],
+      createdAt: "2026-09-23T09:00:00Z",
+      deploys: { appstage: success ? [{ at: "t1", success, iteration: 1 }] : [] },
+    },
+    generated: "2026-09-23T10:00:00Z",
+  }) as ZeropsStateEnvelope;
 
 afterEach(async () => {
   const { closeAccountLifetime } = await import("./accountLifetime");
@@ -109,21 +119,6 @@ afterEach(async () => {
 describe("the account's project flow in the web", () => {
   it("a Mate's envelope that moved on asks the bound account to re-read what it made old", async () => {
     const { bindAccountFlow, lifecycleEnvelopeChanged } = await import("./accountForge");
-    const envelope = (success: boolean) =>
-      ({
-        phase: "develop-active",
-        environment: "container",
-        project: { id: "p-stage", name: "harbor stage" },
-        services: [],
-        workSession: {
-          intent: "ship",
-          services: ["appstage"],
-          createdAt: "2026-09-23T09:00:00Z",
-          deploys: { appstage: success ? [{ at: "t1", success, iteration: 1 }] : [] },
-        },
-        generated: "2026-09-23T10:00:00Z",
-      }) as ZeropsStateEnvelope;
-
     // Nothing is bound before the epoch's first grant: nobody resolves the hostname.
     lifecycleEnvelopeChanged(envelope(false), envelope(true));
     expect(invalidated).toEqual([]);
@@ -134,19 +129,16 @@ describe("the account's project flow in the web", () => {
     unbind();
   });
 
-  it("closing the account lifetime unbinds the flow and forgets its Gitea tokens at once", async () => {
+  it("closing the account lifetime unbinds the flow at once", async () => {
     const { openAccountLifetime, closeAccountLifetime } = await import("./accountLifetime");
-    const { bindAccountFlow } = await import("./accountForge");
-    const { accountGiteaSessions } = await import("./accountGiteaSessions");
+    const { bindAccountFlow, lifecycleEnvelopeChanged } = await import("./accountForge");
     openAccountLifetime("person-a");
-    const rig = stage();
-    bindAccountFlow(rig.stage);
-    expect(accountGiteaSessions()).toBe(rig.sessions);
+    bindAccountFlow(stage().stage);
 
     closeAccountLifetime();
 
-    expect(accountGiteaSessions()).toBeNull();
-    expect(rig.sessions.close).toHaveBeenCalledTimes(1);
+    lifecycleEnvelopeChanged(envelope(false), envelope(true));
+    expect(invalidated).toEqual([]);
   });
 
   it("the stop rows read what each stop deploys from the account's store while they are shown", async () => {

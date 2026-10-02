@@ -348,7 +348,7 @@ export function flowStepsAwaiting(input: {
    * forever.
    */
   readonly changesUnknown?: ChangesUnknown | undefined;
-  /** Its read is out: a Gitea session is held or coming, and it has an org to read. */
+  /** Its read is out: the organization's HQ is known, whose answer its changes are. */
   readonly readOut: boolean;
 }): { readonly steps: boolean; readonly changes: boolean } {
   const { read, changesKnown, changesUnknown, readOut } = input;

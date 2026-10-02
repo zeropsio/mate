@@ -121,11 +121,6 @@ export interface ZeropsProjectFlowValue {
    * anchor is resolved, and nothing is read as one of its changes until then.
    */
   readonly hqAddress: string | undefined;
-  /**
-   * Why no Gitea token is held: a refusal at once, a Gitea or broker that does not answer only
-   * after two failed tries. Nothing a flow shows or does reads Gitea.
-   */
-  readonly signInTrouble: string | null;
   readonly flows: ReadonlyMap<string, ZeropsProjectFlow>;
   /**
    * Why HQ's last read of an application's releases and repositories did not answer, by its id;
@@ -134,11 +129,9 @@ export interface ZeropsProjectFlowValue {
   readonly releaseFailures: ReadonlyMap<string, string>;
   /**
    * What each Zerops project's stop runs, by project id — the platform's
-   * answer, read whether or not Gitea is. A project missing here is unread.
+   * answer. A project missing here is unread.
    */
   readonly deployments: ReadonlyMap<string, Shown<Deployment>>;
-  /** Each group's Gitea org, from the registry — known before its flow has been read. */
-  readonly slugs: ReadonlyMap<string, string>;
   /** Every Mate's name by its project, for a surface that meets a bot login (`mate-{projectId}`). */
   readonly mateNames: ReadonlyMap<string, string>;
   /** The verbs in flight, by `flowVerbKey`: a row shows its own running and takes no second click. */

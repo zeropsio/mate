@@ -107,7 +107,6 @@ vi.mock("~/zerops/useMateActions", () => ({
   useMateActions: () => ({ actionsFor: () => [], busyKey: null, trouble: null }),
 }));
 vi.mock("~/zerops/useZeropsRegistry", () => ({ useZeropsRegistry: () => null }));
-vi.mock("~/zerops/giteaProject", () => ({ useAccountGitea: () => undefined }));
 vi.mock("~/zerops/newMate", () => ({
   useNewMate: (select: (state: unknown) => unknown) =>
     select({ creations: app.creations, forget: () => undefined, handingOver: app.handingOver }),
