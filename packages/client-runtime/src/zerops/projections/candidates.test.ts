@@ -354,38 +354,51 @@ describe("findCandidate", () => {
 });
 
 describe("takenBotNames", () => {
+  /** A Mate HQ records by `name`, in its application. */
+  const named = (id: string, name: string, presence: CandidateRow["presence"] = "known") => {
+    const base = row(id, presence, ["mate"]);
+    return {
+      ...base,
+      project: {
+        ...base.project,
+        hq: { appId: "app-acme", appName: "Acme", kind: "mate" as const, mate: { name, face: "" } },
+      },
+    };
+  };
+
   it.each<{
     readonly name: string;
     readonly listing: Known<ReadonlyArray<CandidateRow>>;
     readonly withheldMembers?: boolean;
+    readonly structureKnown?: boolean;
     readonly taken: object;
   }>([
     {
-      name: "a complete listing names every Mate's bot, a presence unread included",
-      listing: known([
-        row("a", "known", ["mate:bot:Fen"]),
-        row("b", "unknown", ["mate:bot:Ada"]),
-        row("c"),
-      ]),
+      name: "a complete listing names every Mate HQ records, a presence unread included",
+      listing: known([named("a", "Fen"), named("b", "Ada", "unknown"), row("c")]),
       taken: { names: ["Fen", "Ada"], complete: true },
     },
     {
-      name: "a partial listing names the bots it read and is never all of them",
-      listing: known([row("a", "known", ["mate:bot:Fen"])], "partial"),
+      name: "a partial listing names the Mates it read and is never all of them",
+      listing: known([named("a", "Fen")], "partial"),
       taken: { names: ["Fen"], complete: false },
     },
     {
-      // A colleague's new Mate, pushed before any read that carries its project's tags.
-      name: "a complete listing holding a project whose tags are unread is not all of them",
-      listing: known([
-        row("a", "known", ["mate:bot:Fen"]),
-        { ...row("b"), project: { id: "b", name: "b", status: "ACTIVE" } },
-      ]),
+      // Until HQ answers, where it places a project — and the name of the Mate in it — is unread.
+      name: "a complete listing before HQ's structure is known is not all of them",
+      listing: known([named("a", "Fen"), row("b", "known", ["mate"])]),
+      structureKnown: false,
       taken: { names: ["Fen"], complete: false },
+    },
+    {
+      // A name planted in a tag is nobody's name: HQ is the only record of one.
+      name: "a name a project's tags carry is no Mate's",
+      listing: known([row("a", "known", ["mate", "mate:bot:Fen"])]),
+      taken: { names: [], complete: true },
     },
     {
       name: "a complete listing whose list held a member it may not read is not all of them",
-      listing: known([row("a", "known", ["mate:bot:Fen"])]),
+      listing: known([named("a", "Fen")]),
       withheldMembers: true,
       taken: { names: ["Fen"], complete: false },
     },
@@ -394,8 +407,8 @@ describe("takenBotNames", () => {
       listing,
       taken: { names: [], complete: false },
     })),
-  ])("$name", ({ listing, withheldMembers = false, taken }) => {
-    expect(takenBotNames(listing, { withheldMembers })).toEqual(taken);
+  ])("$name", ({ listing, withheldMembers = false, structureKnown = true, taken }) => {
+    expect(takenBotNames(listing, { withheldMembers, structureKnown })).toEqual(taken);
   });
 });
 
@@ -564,7 +577,10 @@ describe("a withheld listing", () => {
     expect(heldCandidates(withheld)).toEqual({ rows: [], complete: false });
     expect(candidatesComplete(withheld)).toBe(false);
     expect(findCandidate(withheld, () => true)).toEqual({ kind: "unknown" });
-    expect(takenBotNames(withheld)).toEqual({ names: [], complete: false });
+    expect(takenBotNames(withheld, { structureKnown: true })).toEqual({
+      names: [],
+      complete: false,
+    });
     expect(listsNoProject(withheld, () => true)).toBe(false);
     expect(presentCandidates(withheld, (entry: CandidateRow) => entry.key)).toBe(withheld);
   });

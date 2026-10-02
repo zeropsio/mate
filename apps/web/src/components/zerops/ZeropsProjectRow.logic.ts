@@ -14,8 +14,12 @@ import {
   type EnvironmentConnectionPresentation,
 } from "@t3tools/client-runtime/connection";
 import {
+  formatMateFace,
+  generateBotName,
   hasMate,
   isGenericPlatformError,
+  newMateTint,
+  type RandomBytes,
   readZeropsToolKind,
   type ZeropsEnvironmentRole,
   type ZeropsEnvironmentServices,
@@ -31,7 +35,7 @@ import {
   type RoleMateVisibility,
 } from "@t3tools/client-runtime/zerops/mateAccess";
 import type { ZeropsContainerHealth } from "@t3tools/client-runtime/zerops/provisioning";
-import type { ServiceStatusToneId } from "@t3tools/shared/brand";
+import { MATE_SHAPE_OF_TINT, type ServiceStatusToneId } from "@t3tools/shared/brand";
 
 export type ZeropsRowCandidate = ZeropsCandidate & {
   readonly connection?: EnvironmentConnectionPresentation;
@@ -133,6 +137,24 @@ export function setUpMateVerb(input: {
   return input.settingUpKey === input.candidateKey
     ? { disabled: true, label: "Setting up…" }
     : { disabled: true, label: "Set up Mate" };
+}
+
+/**
+ * The record *Set up Mate* writes to HQ (`POST /api/mates`): a name nobody in the organization goes
+ * by, and the face a new Mate of that name is born with — its tint among the account's
+ * (`newMateTint`) and that tint's shape. None for a project whose Mate HQ holds already.
+ */
+export function setUpMateRecord(input: {
+  readonly project: ZeropsCandidate["project"];
+  readonly candidates: ReadonlyArray<ZeropsCandidate>;
+  /** The names the organization's Mates go by (`TakenBotNames.names`). */
+  readonly taken: ReadonlyArray<string>;
+  readonly random: RandomBytes;
+}): { readonly name: string; readonly face: string } | undefined {
+  if (input.project.hq?.mate != null) return undefined;
+  const name = generateBotName(input.taken, input.random);
+  const tint = newMateTint(input.candidates, name);
+  return { name, face: formatMateFace({ tint, shape: MATE_SHAPE_OF_TINT[tint] }) };
 }
 
 export interface ZeropsRowPresentation {

@@ -19,7 +19,7 @@ import {
   environmentNameUnderGroup,
   hasMate,
   pairPreviewRoute,
-  readZeropsGroupTags,
+  readZeropsMembership,
   releaseContentsSummary,
   releaseInFlightReason,
   type EnvironmentRow,
@@ -536,7 +536,7 @@ export function groupMemberFactsOf<T extends GroupMemberCandidate>(
   viewer: string | undefined,
 ): ReadonlyArray<GroupMemberFacts> {
   return environments.map(({ item, role }) => {
-    const tags = readZeropsGroupTags(item.project.tagList);
+    const tags = readZeropsMembership(item.project);
     const connected = item.group === "connected" && item.environmentId !== undefined;
     const activity = activityOf(item);
     return {

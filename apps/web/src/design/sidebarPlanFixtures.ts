@@ -17,6 +17,7 @@
  * Fixtures only: nothing here ships in the app bundle.
  */
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
+import type { HqPlacement } from "@t3tools/client-runtime/zerops/hq";
 import {
   deployedVersion,
   type EnvironmentRow,
@@ -33,7 +34,9 @@ const minutesAgo = (minutes: number) => new Date(Date.now() - minutes * 60_000).
 
 const sha = (seed: string) => seed.padEnd(40, "0").slice(0, 40);
 
-const group = (id: string, name: string) => [`mate:g:${id}`, `mate:name:${name}`];
+/** A project of the plan: its application in HQ. */
+const group = (appId: string, appName: string) => ({ appId, appName });
+type PlanGroup = ReturnType<typeof group>;
 
 function routes(...hosts: ReadonlyArray<string>): ReadonlyArray<ZeropsPublicRoute> {
   return hosts.map((host) => ({ service: "app", port: 80, host, url: `https://${host}` }));
@@ -47,7 +50,7 @@ function routes(...hosts: ReadonlyArray<string>): ReadonlyArray<ZeropsPublicRout
 function mate(
   id: string,
   bot: string,
-  groupTags: ReadonlyArray<string>,
+  app: PlanGroup,
   options: {
     readonly signer?: string | null;
     readonly owner?: string;
@@ -61,13 +64,8 @@ function mate(
       id,
       name: `${bot} - dev`,
       status: "ACTIVE",
-      tagList: [
-        "mate",
-        ...groupTags,
-        "mate:role:dev",
-        `mate:bot:${bot}`,
-        ...(signer === null ? [] : [`mate:signer:claude-code:${signer}`]),
-      ],
+      tagList: ["mate", ...(signer === null ? [] : [`mate:signer:claude-code:${signer}`])],
+      hq: { ...app, kind: "mate", mate: { name: bot, face: "" } } satisfies HqPlacement,
       ...(owner === undefined ? {} : { userRoles: [{ clientUserId: owner, roleCode: "OWNER" }] }),
     },
     group: connected ? "connected" : "ready",
@@ -80,7 +78,7 @@ function mate(
 function stop(
   id: string,
   role: "stage" | "prod",
-  groupTags: ReadonlyArray<string>,
+  app: PlanGroup,
   options: {
     readonly hosts: ReadonlyArray<string>;
     readonly status?: string;
@@ -95,7 +93,11 @@ function stop(
       id,
       name: options.name ?? (role === "prod" ? "production" : "stage"),
       status: "ACTIVE",
-      tagList: [...groupTags, `mate:role:${role}`],
+      hq: {
+        ...app,
+        kind: role === "prod" ? "production" : "stage",
+        mate: null,
+      } satisfies HqPlacement,
     },
     group: "unavailable",
     reason: "no Zerops Mate container in this project",

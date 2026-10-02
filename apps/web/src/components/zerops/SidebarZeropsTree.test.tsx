@@ -9,6 +9,7 @@ import {
   type ZeropsPlacedBirth,
 } from "@t3tools/client-runtime/zerops";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
+import type { HqPlacement } from "@t3tools/client-runtime/zerops/hq";
 import { crewSnapshotFixture } from "@t3tools/client-runtime/zerops/crew/testing/fixtures";
 import type { Deployment } from "@t3tools/client-runtime/zerops/flow";
 import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
@@ -94,15 +95,39 @@ import {
 } from "./SidebarZeropsTree";
 import { groupAddsOffered } from "./ZeropsProjectRow.logic";
 
+/** Where HQ places a project: in application `appId`, named `appName`, as `kind`; a Mate by its name. */
+function inApp(
+  appId: string,
+  appName: string,
+  kind: HqPlacement["kind"] = "mate",
+  mate?: string,
+): HqPlacement {
+  return { appId, appName, kind, mate: mate === undefined ? null : { name: mate, face: "" } };
+}
+const AAA = (kind?: HqPlacement["kind"], mate?: string) => inApp("aaa", "Beviro CRM", kind, mate);
+const IN_LINKS = (kind?: HqPlacement["kind"]) => inApp("links", "Links", kind);
+
+/** A project's own tags, and where HQ places it, if anywhere. */
+interface Own {
+  readonly tags?: ReadonlyArray<string>;
+  readonly hq?: HqPlacement;
+}
+
 function candidate(
   id: string,
-  tagList: ReadonlyArray<string>,
+  own: Own,
   group: ZeropsCandidate["group"] = "ready",
   withContainer = true,
 ): ZeropsCandidate {
   const base = {
     key: `${id}:zcp`,
-    project: { id, name: id, status: "ACTIVE", tagList },
+    project: {
+      id,
+      name: id,
+      status: "ACTIVE",
+      tagList: own.tags ?? [],
+      ...(own.hq === undefined ? {} : { hq: own.hq }),
+    },
     group,
   };
   return withContainer
@@ -126,20 +151,10 @@ function mine(item: ZeropsCandidate, signer = SIGNER): ZeropsCandidate {
   };
 }
 
-const CRM_DEV = candidate("crm-dev", [
-  "mate",
-  "mate:g:aaa",
-  "mate:role:dev",
-  "mate:name:Beviro CRM",
-]);
-const CRM_STAGE = candidate("crm-stage", ["mate:g:aaa", "mate:role:stage"], "ready", false);
-const CRM_PROD = candidate(
-  "crm-prod",
-  ["mate:g:aaa", "mate:role:prod", "mate:name:Beviro CRM"],
-  "ready",
-  false,
-);
-const LOOSE = candidate("loose", ["mate"]);
+const CRM_DEV = candidate("crm-dev", { tags: ["mate"], hq: AAA() });
+const CRM_STAGE = candidate("crm-stage", { hq: AAA("stage") }, "ready", false);
+const CRM_PROD = candidate("crm-prod", { hq: AAA("production") }, "ready", false);
+const LOOSE = candidate("loose", { tags: ["mate"] });
 /**
  * Connected, so its activity is read — a Mate that is only ready has not been
  * spoken to as far as anyone here knows, as on the projects page — and up.
@@ -151,25 +166,14 @@ const CRM_DEV_CONNECTED = {
 } as ZeropsCandidate;
 
 /** A group whose environments are named the way Zerops names them: after it. */
-function named(id: string, name: string, tags: ReadonlyArray<string>, withContainer = true) {
-  const base = candidate(id, tags, "ready", withContainer);
+function named(id: string, name: string, own: Own, withContainer = true) {
+  const base = candidate(id, own, "ready", withContainer);
   return { ...base, project: { ...base.project, name } } as ZeropsCandidate;
 }
 
-const LINKS_TAGS = ["mate:g:links", "mate:name:Links"];
-const LINKS_MATE = named("links-dev", "Links - dev", ["mate", ...LINKS_TAGS, "mate:role:dev"]);
-const LINKS_STAGE = named(
-  "links-stage",
-  "Links - stage",
-  [...LINKS_TAGS, "mate:role:stage"],
-  false,
-);
-const LINKS_PROD = named(
-  "links-prod",
-  "Links - production",
-  [...LINKS_TAGS, "mate:role:prod"],
-  false,
-);
+const LINKS_MATE = named("links-dev", "Links - dev", { tags: ["mate"], hq: IN_LINKS() });
+const LINKS_STAGE = named("links-stage", "Links - stage", { hq: IN_LINKS("stage") }, false);
+const LINKS_PROD = named("links-prod", "Links - production", { hq: IN_LINKS("production") }, false);
 
 /** A stop whose services the platform has read, standing as given, reachable at `routes`. */
 function up<T extends ZeropsCandidate>(
@@ -323,7 +327,7 @@ describe("SidebarZeropsTree", () => {
     // Somebody its records name, whom the member list has not named: it may be
     // the viewer, so the face waits whole — the badge only ever arrives, and
     // in the face's box, so nothing moves when it does.
-    const signed = candidate("crm-dev", [...CRM_DEV.project.tagList!, SIGNER]);
+    const signed = candidate("crm-dev", { tags: [...CRM_DEV.project.tagList!, SIGNER], hq: AAA() });
     const unnamed = render([signed], { getOwner: () => undefined });
     expect(unnamed).not.toContain('data-zerops-surface="sidebar-mate-owner"');
     expect(unnamed).not.toContain("menu-face-cut");
@@ -447,6 +451,17 @@ describe("SidebarZeropsTree", () => {
     );
   });
 
+  it("says HQ is not answering at the menu's top, over the structure it last read", () => {
+    const line = "HQ unavailable since 14:05. Projects as of 13:58.";
+    const html = render([CRM_DEV], { hqOutage: line });
+    expect(html).toContain('data-zerops-surface="sidebar-hq-outage"');
+    expect(html.indexOf(line)).toBeLessThan(html.indexOf('data-zerops-surface="sidebar-mate"'));
+    // No Mate to draw, or no project at all: the line still stands.
+    expect(render([CRM_STAGE], { hqOutage: line })).toContain(line);
+    expect(render([], { hqOutage: line })).toContain(line);
+    expect(render([CRM_DEV])).not.toContain("sidebar-hq-outage");
+  });
+
   // One band in the list lights the open Mate's row and slides to the next
   // one opened (M11): the row itself paints nothing for being open, and
   // lights only under the pointer.
@@ -461,7 +476,7 @@ describe("SidebarZeropsTree", () => {
   });
 
   it("never makes production a Mate, whatever runs in it", () => {
-    const prodWithContainer = candidate("crm-prod", ["mate:g:aaa", "mate:role:prod"], "connected");
+    const prodWithContainer = candidate("crm-prod", { hq: AAA("production") }, "connected");
     const html = render([CRM_DEV, prodWithContainer]);
     expect(html.match(/data-zerops-surface="sidebar-mate"/gu)).toHaveLength(1);
   });
@@ -475,7 +490,7 @@ describe("SidebarZeropsTree", () => {
   it("leaves out a project nobody lives in", () => {
     const html = render([
       CRM_DEV,
-      candidate("other", ["mate:g:bbb", "mate:role:dev"], "ready", false),
+      candidate("other", { hq: inApp("bbb", "Other", "stage") }, "ready", false),
     ]);
     expect(html).toContain('data-zerops-group="aaa"');
     expect(html).not.toContain('data-zerops-group="bbb"');
@@ -495,7 +510,7 @@ describe("SidebarZeropsTree", () => {
   });
 
   it("keeps a declared Mate whose container is gone — the tag is its existence", () => {
-    const declared = candidate("crm-dev", ["mate", "mate:g:aaa", "mate:role:dev"], "ready", false);
+    const declared = candidate("crm-dev", { tags: ["mate"], hq: AAA() }, "ready", false);
     expect(render([declared])).toContain('data-zerops-surface="sidebar-mate"');
   });
 
@@ -611,7 +626,11 @@ describe("a Mate with no owner, or nobody signed in", () => {
       readonly userRoles?: ReadonlyArray<{ clientUserId: string; roleCode: string }>;
     } = {},
   ): ZeropsCandidate => {
-    const base = candidate("crm-dev", [...CRM_DEV.project.tagList!, ...tags], options.group);
+    const base = candidate(
+      "crm-dev",
+      { tags: [...CRM_DEV.project.tagList!, ...tags], hq: AAA() },
+      options.group,
+    );
     return {
       ...base,
       project: { ...base.project, userRoles: options.userRoles ?? [] },
@@ -880,6 +899,36 @@ describe("a creation under way in the menu", () => {
     expect(comingRows(html)).toHaveLength(1);
   });
 
+  // A project's name is its application's in HQ; until HQ holds one, the name its creation was
+  // asked under; until anything names it, its id.
+  it.each([
+    {
+      case: "HQ's, over the one its creation was asked under",
+      candidates: [CRM_DEV],
+      over: { groupName: "Old CRM" },
+      shows: ">Beviro CRM<",
+      hides: ">Old CRM<",
+    },
+    {
+      case: "its creation's, while HQ holds none",
+      candidates: [],
+      over: { groupId: "new", groupName: "Todo" },
+      shows: ">Todo<",
+      hides: ">new<",
+    },
+    {
+      case: "its id, while nothing names it",
+      candidates: [],
+      over: { groupId: "new", groupName: "" },
+      shows: ">new<",
+      hides: ">Todo<",
+    },
+  ])("names a project by $case", ({ candidates, over, shows, hides }) => {
+    const html = render(candidates, { births: [birth({ projectId: "vera-dev", ...over })] });
+    expect(html).toContain(shows);
+    expect(html).not.toContain(hides);
+  });
+
   it("draws a first project being created in an account with no Mate listed yet", () => {
     const html = render([], { births: [birth({ groupId: "new", groupName: "Todo" })] });
     expect(html).toContain('data-zerops-group="new"');
@@ -923,7 +972,7 @@ describe("a listed Mate still coming up", () => {
   it("offers no menu while it comes up: nothing on it is about a Mate still being made", () => {
     const html = render([CRM_DEV], {
       getComing: () => COMING,
-      getMateActions: () => ({ onMenuOpen: () => {} }),
+      getMateActions: () => ({ entries: [] }),
     });
     expect(html).not.toContain('data-zerops-surface="sidebar-mate-actions"');
   });
@@ -1753,12 +1802,10 @@ describe("a project collapsed to its heading", () => {
   // projects is at the end of an open one — its rows unfold below the heading
   // with the room after them — and folded projects stack as a list of names.
   it("keeps the room at the end of an open project, never above a heading", () => {
-    const notes = named("notes-dev", "Notes - dev", [
-      "mate",
-      "mate:g:notes",
-      "mate:name:Notes",
-      "mate:role:dev",
-    ]);
+    const notes = named("notes-dev", "Notes - dev", {
+      tags: ["mate"],
+      hq: inApp("notes", "Notes"),
+    });
     stored.collapsed = new Set(["links", "notes"]);
     const html = render([CRM_DEV, LINKS_MATE, notes]);
     const sections = [...html.matchAll(/<section class="([^"]*)" data-zerops-group="([^"]*)"/g)];
@@ -1782,13 +1829,11 @@ describe("a project collapsed to its heading", () => {
   // next at 50 — the folded 20 and one Mate's 30. Each group reads as one:
   // heading to row < row to row < project to project.
   it("steps 20 from a heading to what follows it, 30 from Mate to Mate, 50 from an open project to the next", () => {
-    const notes = named("notes-dev", "Notes - dev", [
-      "mate",
-      "mate:g:notes",
-      "mate:name:Notes",
-      "mate:role:dev",
-    ]);
-    const two = { ...named("crm-b", "CRM - b", ["mate", "mate:g:aaa", "mate:role:dev"]) };
+    const notes = named("notes-dev", "Notes - dev", {
+      tags: ["mate"],
+      hq: inApp("notes", "Notes"),
+    });
+    const two = { ...named("crm-b", "CRM - b", { tags: ["mate"], hq: AAA() }) };
     stored.collapsed = new Set(["links", "notes"]);
     const html = render([CRM_DEV, two, LINKS_MATE, notes]);
     const PX: Record<string, number> = {
@@ -1831,12 +1876,10 @@ describe("a project collapsed to its heading", () => {
   // closed projects"): 12 px under a folded heading, its own — the room a
   // fold leaves and an unfold starts from — so no heading moves.
   it("leaves 12 px under a folded heading, and none under the list's last", () => {
-    const notes = named("notes-dev", "Notes - dev", [
-      "mate",
-      "mate:g:notes",
-      "mate:name:Notes",
-      "mate:role:dev",
-    ]);
+    const notes = named("notes-dev", "Notes - dev", {
+      tags: ["mate"],
+      hq: inApp("notes", "Notes"),
+    });
     stored.collapsed = new Set(["links", "notes"]);
     const html = render([CRM_DEV, LINKS_MATE, notes]);
     const room = (group: string) => {
@@ -1854,9 +1897,9 @@ describe("a project collapsed to its heading", () => {
   // that need you, work, or finished unseen, a dot for what is not work.
   it("shows its busy Mates' faces while folded, and none while open", () => {
     const MATES = [
-      { ...named("crm-a", "CRM - a", ["mate", "mate:g:aaa", "mate:role:dev", "mate:bot:Ada"]) },
-      { ...named("crm-b", "CRM - b", ["mate", "mate:g:aaa", "mate:role:dev", "mate:bot:Bo"]) },
-      { ...named("crm-c", "CRM - c", ["mate", "mate:g:aaa", "mate:role:dev", "mate:bot:Cy"]) },
+      { ...named("crm-a", "CRM - a", { tags: ["mate"], hq: AAA("mate", "Ada") }) },
+      { ...named("crm-b", "CRM - b", { tags: ["mate"], hq: AAA("mate", "Bo") }) },
+      { ...named("crm-c", "CRM - c", { tags: ["mate"], hq: AAA("mate", "Cy") }) },
     ].map((item) => mine({ ...item, group: "connected" }) as ZeropsCandidate);
     session.viewer = "u-ada";
     const busy = (id: string): ZeropsAgentActivity => ({
@@ -2308,13 +2351,7 @@ describe("a project collapsed to its heading", () => {
 });
 
 describe("the Mate's card", () => {
-  const NAMED = candidate("crm-dev", [
-    "mate",
-    "mate:g:aaa",
-    "mate:role:dev",
-    "mate:name:Beviro CRM",
-    "mate:bot:Ada",
-  ]);
+  const NAMED = candidate("crm-dev", { tags: ["mate"], hq: AAA("mate", "Ada") });
   const working: ZeropsAgentActivity = {
     threadId: "t1" as ZeropsAgentActivity["threadId"],
     kind: "working",
@@ -2507,12 +2544,7 @@ describe("arranging the projects by hand", () => {
     new URL("../../index.css", import.meta.url),
     "utf8",
   ).replace(/\/\*[\s\S]*?\*\//gu, "");
-  const SHOP_MATE = named("shop-dev", "Shop - dev", [
-    "mate",
-    "mate:g:shop",
-    "mate:name:Shop",
-    "mate:role:dev",
-  ]);
+  const SHOP_MATE = named("shop-dev", "Shop - dev", { tags: ["mate"], hq: inApp("shop", "Shop") });
   const order = (html: string) =>
     [...html.matchAll(/data-zerops-group="([^"]+)"/gu)].map((match) => match[1]);
   afterEach(() => {
@@ -3327,7 +3359,7 @@ describe("a Mate's own menu opens its crew, or sets one up", () => {
 
 describe("a long list, kept scannable", () => {
   const QUIET_MATE = {
-    ...named("crm-old", "CRM - old", ["mate", "mate:g:aaa", "mate:role:dev", "mate:bot:Olga"]),
+    ...named("crm-old", "CRM - old", { tags: ["mate"], hq: AAA("mate", "Olga") }),
     group: "connected",
   } as ZeropsCandidate;
   const act = (overrides: Partial<ZeropsAgentActivity> = {}): ZeropsAgentActivity => ({
@@ -3576,7 +3608,7 @@ describe("what the jump box finds in the menu", () => {
   });
 
   it("finds nothing the viewer asked not to see, nor a hidden Mate's changes", () => {
-    const THEO = named("links-theo", "Links - theo", ["mate", ...LINKS_TAGS, "mate:role:dev"]);
+    const THEO = named("links-theo", "Links - theo", { tags: ["mate"], hq: IN_LINKS() });
     const theirs = pull(9, { mateProjectId: "links-theo", title: "Theirs" });
     mount(
       tree({

@@ -26,7 +26,7 @@ import {
   environmentNameUnderGroup,
   flowVerbKey,
   flowVerbLabel,
-  readZeropsGroupTags,
+  readZeropsMembership,
   PROJECT_ALL_CLEAR,
   projectAttention,
   releaseContentsCommits,
@@ -218,18 +218,17 @@ function useMateMenus(): {
   readonly dialogs: React.ReactNode;
   readonly trouble: string | null;
 } {
-  const { status } = useZeropsSession();
   const { listing } = useZeropsCandidates();
   const candidates = useMemo(() => heldCandidates(listing).rows, [listing]);
   const { serverVersions } = useZeropsContainers();
-  const registry = useZeropsRegistry({ enabled: status === "signed-in" });
+  const registry = useZeropsRegistry();
   const actions = useMateActions({ registry, serverVersions });
   const menuForMate = useCallback(
     (projectId: string) => {
       const found = findCandidate(listing, (entry) => entry.project.id === projectId);
       if (found.kind !== "found") return null;
       const candidate = found.row;
-      const tags = readZeropsGroupTags(candidate.project.tagList);
+      const tags = readZeropsMembership(candidate.project);
       const menu = (extra: ReadonlyArray<ZeropsMenuAction>) => {
         const entries = actions.actionsFor(candidate, tags, extra);
         // A menu with nothing in it is a button that opens an empty box.
@@ -402,7 +401,7 @@ function useGroupMates(groupId: string): {
     return (group?.environments ?? [])
       .filter(({ item }) => hasMate(item))
       .map(({ item }) => {
-        const tags = readZeropsGroupTags(item.project.tagList);
+        const tags = readZeropsMembership(item.project);
         const live =
           item.group === "connected" && item.environmentId !== undefined
             ? activity.get(item.environmentId)
@@ -414,7 +413,7 @@ function useGroupMates(groupId: string): {
           projectId: item.project.id,
           name: botDisplayName({ bot: tags.bot, projectName: item.project.name }),
           tint,
-          shape: mateShapeOf(item.project.tagList, tint),
+          shape: mateShapeOf(item.project, tint),
           // Its row's face (`mateFaceOf`): needing you while it asks, or while its own change
           // waits for your review — your own Mate only; another's waits on its owner.
           face: mateFaceOf({

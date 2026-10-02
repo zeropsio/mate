@@ -280,7 +280,7 @@ describe("listsMates", () => {
     },
     { name: "a tag that only starts like a Mate's", projects: [{ tags: ["mates"] }], mates: false },
     { name: "a Mate", projects: [{}, { tags: ["mate"] }], mates: true },
-    { name: "a Mate's group", projects: [{ tags: ["mate:g:team"] }], mates: true },
+    { name: "a tag of ours", projects: [{ tags: ["mate:closed-off"] }], mates: true },
     { name: "a Mate not read yet", projects: [{ observed: false }], mates: false },
   ])("says an organization listing $name has Mates: $mates", ({ projects, mates }) => {
     expect(listsMates(listed(projects))).toBe(mates);

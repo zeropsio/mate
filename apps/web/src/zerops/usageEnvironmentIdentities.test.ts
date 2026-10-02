@@ -1,5 +1,6 @@
 import type { ZeropsOrganizationMember } from "@t3tools/client-runtime/zerops";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
+import type { HqPlacement } from "@t3tools/client-runtime/zerops/hq";
 import { EnvironmentId } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
@@ -33,9 +34,18 @@ const JAN_OWNER = {
 };
 const EVA_OWNER = { id: "user-eva", name: "Eva Dvorak", initials: "ED", avatarUrl: null };
 
+/** A Mate HQ places in application `appId`, named `appName`, as `name`. */
+function placedMate(appId: string, appName: string, name: string): HqPlacement {
+  return { appId, appName, kind: "mate", mate: { name, face: "" } };
+}
+
+const titan = (name: string) => placedMate("titan", "Imperial Titan", name);
+const docs = (name: string) => placedMate("docs", "Acme Docs", name);
+
 function candidate(input: {
   readonly id: string;
   readonly tags: ReadonlyArray<string>;
+  readonly hq?: HqPlacement;
   readonly environmentId?: EnvironmentId;
   readonly ownerMemberId?: string;
 }): ZeropsCandidate {
@@ -46,6 +56,7 @@ function candidate(input: {
       name: input.id,
       status: "ACTIVE",
       tagList: input.tags,
+      ...(input.hq === undefined ? {} : { hq: input.hq }),
       ...(input.ownerMemberId === undefined
         ? {}
         : { userRoles: [{ clientUserId: input.ownerMemberId, roleCode: "OWNER" }] }),
@@ -68,19 +79,9 @@ describe("usageEnvironmentIdentities", () => {
     readonly expected: ReadonlyArray<readonly [EnvironmentId, UsageEnvironmentIdentity]>;
   }> = [
     {
-      name: "names a Mate by its bot and its project by the group's header",
+      name: "names a Mate by its name and its project by the group's header",
       candidates: [
-        candidate({
-          id: "titan-dev",
-          tags: [
-            "mate",
-            "mate:g:titan",
-            "mate:role:dev",
-            "mate:name:Imperial Titan",
-            "mate:bot:Lena",
-          ],
-          environmentId: LENA,
-        }),
+        candidate({ id: "titan-dev", tags: ["mate"], hq: titan("Lena"), environmentId: LENA }),
       ],
       expected: [[LENA, { mateName: "Lena", projectName: "Imperial Titan", owner: null }]],
     },
@@ -89,19 +90,15 @@ describe("usageEnvironmentIdentities", () => {
       candidates: [
         candidate({
           id: "titan-dev",
-          tags: [
-            "mate",
-            "mate:g:titan",
-            "mate:role:dev",
-            "mate:name:Imperial Titan",
-            "mate:bot:Lena",
-          ],
+          tags: ["mate"],
+          hq: titan("Lena"),
           environmentId: LENA,
           ownerMemberId: "member-jan",
         }),
         candidate({
           id: "titan-otto",
-          tags: ["mate", "mate:g:titan", "mate:name:Imperial Titan", "mate:bot:Otto"],
+          tags: ["mate"],
+          hq: titan("Otto"),
           environmentId: OTTO,
           ownerMemberId: "member-eva",
         }),
@@ -132,7 +129,8 @@ describe("usageEnvironmentIdentities", () => {
       candidates: [
         candidate({
           id: "loose-dev",
-          tags: ["mate", "mate:g:k2m9", "mate:role:dev", "mate:bot:Lena"],
+          tags: ["mate"],
+          hq: placedMate("k2m9", "", "Lena"),
           environmentId: LENA,
         }),
       ],
@@ -141,10 +139,11 @@ describe("usageEnvironmentIdentities", () => {
     {
       name: "leaves out a Mate no environment reaches, and an environment nobody lives in",
       candidates: [
-        candidate({ id: "unreached-dev", tags: ["mate", "mate:bot:Lena"] }),
+        candidate({ id: "unreached-dev", tags: ["mate"] }),
         candidate({
           id: "titan-stage",
-          tags: ["mate:g:titan", "mate:role:stage", "mate:name:Imperial Titan"],
+          tags: [],
+          hq: { appId: "titan", appName: "Imperial Titan", kind: "stage", mate: null },
           environmentId: OTTO,
         }),
       ],
@@ -154,25 +153,26 @@ describe("usageEnvironmentIdentities", () => {
       name: "knows a Mate by its container's origin before its socket is up",
       candidates: [
         {
-          ...candidate({ id: "titan-dev", tags: ["mate", "mate:g:titan", "mate:bot:Lena"] }),
+          ...candidate({ id: "titan-dev", tags: ["mate"], hq: titan("Lena") }),
           containerOrigin: "https://node-lena.runtime.zcp.zerops.app",
         },
       ],
       registeredOrigins: new Map([["https://node-lena.runtime.zcp.zerops.app", LENA]]),
-      expected: [[LENA, { mateName: "Lena", projectName: null, owner: null }]],
+      expected: [[LENA, { mateName: "Lena", projectName: "Imperial Titan", owner: null }]],
     },
     {
+      // In no project, so HQ records no name for either: each goes by its project's.
       name: "an owner the member list does not have, or who names no person, is nobody",
       candidates: [
         candidate({
           id: "gone-dev",
-          tags: ["mate", "mate:bot:Lena"],
+          tags: ["mate"],
           environmentId: LENA,
           ownerMemberId: "member-left",
         }),
         candidate({
           id: "faceless-dev",
-          tags: ["mate", "mate:bot:Otto"],
+          tags: ["mate"],
           environmentId: OTTO,
           ownerMemberId: "member-faceless",
         }),
@@ -180,8 +180,8 @@ describe("usageEnvironmentIdentities", () => {
       members: [JAN, { id: "member-faceless" }],
       viewerUserId: "user-jan",
       expected: [
-        [LENA, { mateName: "Lena", projectName: null, owner: null }],
-        [OTTO, { mateName: "Otto", projectName: null, owner: null }],
+        [LENA, { mateName: "gone-dev", projectName: null, owner: null }],
+        [OTTO, { mateName: "faceless-dev", projectName: null, owner: null }],
       ],
     },
     {
@@ -189,7 +189,7 @@ describe("usageEnvironmentIdentities", () => {
       candidates: [
         candidate({
           id: "titan-dev",
-          tags: ["mate", "mate:bot:Lena"],
+          tags: ["mate"],
           environmentId: LENA,
           ownerMemberId: "member-anon",
         }),
@@ -200,7 +200,7 @@ describe("usageEnvironmentIdentities", () => {
         [
           LENA,
           {
-            mateName: "Lena",
+            mateName: "titan-dev",
             projectName: null,
             owner: {
               id: "member-anon",
@@ -218,31 +218,22 @@ describe("usageEnvironmentIdentities", () => {
       candidates: [
         candidate({
           id: "titan-dev",
-          tags: [
-            "mate",
-            "mate:g:titan",
-            "mate:role:dev",
-            "mate:name:Imperial Titan",
-            "mate:bot:Lena",
-          ],
+          tags: ["mate"],
+          hq: titan("Lena"),
           environmentId: LENA,
           ownerMemberId: "member-jan",
         }),
         candidate({
           id: "docs-dev",
-          tags: ["mate", "mate:g:docs", "mate:name:Acme Docs", "mate:bot:Otto"],
+          tags: ["mate"],
+          hq: docs("Otto"),
           environmentId: OTTO,
           ownerMemberId: "member-jan",
         }),
         candidate({
           id: "docs-fen",
-          tags: [
-            "mate",
-            "mate:g:docs",
-            "mate:name:Acme Docs",
-            "mate:bot:Fen",
-            "mate:signer:claude-code:user-eva",
-          ],
+          tags: ["mate", "mate:signer:claude-code:user-eva"],
+          hq: docs("Fen"),
           environmentId: FEN,
         }),
       ],

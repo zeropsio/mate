@@ -17,30 +17,27 @@ describe("validateMoveForm", () => {
 });
 
 describe("resolveMoveMembership", () => {
-  it("mints an id for a new group and carries its name", () => {
+  it("asks for a new application by its name, which HQ makes", () => {
     expect(
-      resolveMoveMembership(
-        { target: "new", newGroupName: " Beviro CRM ", role: "stage" },
-        () => "fresh-id",
-      ),
-    ).toEqual({ kind: "group", groupId: "fresh-id", role: "stage", label: "Beviro CRM" });
+      resolveMoveMembership({ target: "new", newGroupName: " Beviro CRM ", role: "stage" }),
+    ).toEqual({ kind: "new", name: "Beviro CRM", role: "stage" });
   });
 
-  it("joins an existing group without renaming it", () => {
-    expect(
-      resolveMoveMembership({ target: "g1", newGroupName: "", role: "prod" }, () => "unused"),
-    ).toEqual({ kind: "group", groupId: "g1", role: "prod" });
+  it("joins an existing application without renaming it", () => {
+    expect(resolveMoveMembership({ target: "g1", newGroupName: "", role: "prod" })).toEqual({
+      kind: "group",
+      appId: "g1",
+      role: "prod",
+    });
   });
 
-  it("leaves every group", () => {
-    expect(
-      resolveMoveMembership({ target: "none", newGroupName: "", role: "" }, () => "unused"),
-    ).toEqual({ kind: "none" });
+  it("leaves every application", () => {
+    expect(resolveMoveMembership({ target: "none", newGroupName: "", role: "" })).toEqual({
+      kind: "none",
+    });
   });
 
   it("refuses an incomplete form", () => {
-    expect(
-      resolveMoveMembership({ target: "new", newGroupName: "", role: "dev" }, () => "x"),
-    ).toBeUndefined();
+    expect(resolveMoveMembership({ target: "new", newGroupName: "", role: "dev" })).toBeUndefined();
   });
 });

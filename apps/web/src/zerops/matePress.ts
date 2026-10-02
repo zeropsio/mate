@@ -31,6 +31,7 @@ import {
   type EnvironmentCreationPlatform,
   type EnvironmentCreationStep,
   type EnvironmentCreationStepProgress,
+  formatMateFace,
   type RecipeRuntime,
   type ZeropsAgentType,
   type ZeropsApiClient,
@@ -375,14 +376,6 @@ export type PressRegistration = {
 );
 
 /**
- * A Mate's face as HQ records it: `<tint>:<shape>`, as its project's `mate:face:` tag spells it;
- * empty where none was picked.
- */
-export function hqMateFace(face: ZeropsMateFace | undefined): string {
-  return face === undefined ? "" : `${face.tint}:${face.shape}`;
-}
-
-/**
  * The `register` step: a Mate attached to its application in HQ, and the broker's grant where an
  * older broker needs one; for a stage or a production, `addGroupEnvironment` — the attachment,
  * the grant, its deploy token and its declaration. Each write reads what is there first, so asking
@@ -398,7 +391,11 @@ export function pressRegistration(
       await attachToApp(hq, registration.groupId, {
         projectId,
         kind: "mate",
-        mate: { name: registration.mate.name, face: hqMateFace(registration.mate.face) },
+        mate: {
+          name: registration.mate.name,
+          // Empty where none was picked: the Mate wears its name's tint.
+          face: registration.mate.face === undefined ? "" : formatMateFace(registration.mate.face),
+        },
       });
       const grant = await grantBrokerProject({
         client: brokerGrantTokens(inputs.data.runtime),

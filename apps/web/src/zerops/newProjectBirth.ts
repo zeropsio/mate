@@ -101,14 +101,14 @@ export type NewProjectPatch = Partial<
   Pick<NewProjectBirth, "step" | "hqBirth" | "hq" | "appId" | "failed" | "projectId">
 >;
 
-/** What the first Mate's project is created with (`createProjectWithMate`). */
+/**
+ * What the first Mate's project is created with (`createProjectWithMate`). Its application, name
+ * and face are HQ's, written by the press's registration.
+ */
 export interface NewProjectCreation {
   readonly name: string;
   readonly location?: string;
   readonly agents: ReadonlyArray<ZeropsAgentType>;
-  readonly group: { readonly groupId: string; readonly role: "dev"; readonly label: string };
-  readonly botName: string;
-  readonly face: ZeropsMateFace;
 }
 
 /** Where the project stands once registered: its organization's HQ, and its application in it. */
@@ -364,9 +364,6 @@ export async function runNewProjectBirth(
       name: newProjectPlacement(birth).displayName,
       ...(birth.locationId === null ? {} : { location: birth.locationId }),
       agents: birth.agents,
-      group: { groupId: appId, role: "dev", label: birth.name },
-      botName: birth.botName,
-      face: birth.face,
     });
     projectId = created.project.id;
   } catch (cause) {

@@ -25,7 +25,7 @@
  * somewhere anyone works.
  */
 import type { ZeropsCandidate } from "./candidates.ts";
-import { readZeropsGroupTags } from "./groups.ts";
+import { readZeropsMembership } from "./groups.ts";
 import { readZeropsToolKind } from "./tools.ts";
 
 /**
@@ -59,7 +59,7 @@ function isTool(candidate: ZeropsCandidate): boolean {
 /** A Mate lives here — see the module doc for the rule. */
 export function hasMate(candidate: ZeropsCandidate): boolean {
   if (isTool(candidate)) return false;
-  const tags = readZeropsGroupTags(candidate.project.tagList);
+  const tags = readZeropsMembership(candidate.project);
   if (tags.role === "stage" || tags.role === "prod") return false;
   return tags.mate || hasMateContainer(candidate);
 }

@@ -58,7 +58,8 @@ function mate(bot: string): ZeropsCandidate {
       id,
       name: `Acme Docs - ${bot}`,
       status: "ACTIVE",
-      tagList: ["mate", "mate:g:acme", "mate:role:dev", `mate:bot:${bot}`],
+      tagList: ["mate"],
+      hq: { appId: "acme", appName: "Acme Docs", kind: "mate", mate: { name: bot, face: "" } },
     },
     service: { id: "zcp", name: "zcp", status: "ACTIVE" },
   };

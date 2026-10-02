@@ -53,7 +53,7 @@ type MateFaceGaze = "up" | "down";
 
 type MateFaceProps = Omit<React.ComponentProps<"svg">, "children" | "viewBox"> & {
   readonly tint: MateTintId;
-  /** The silhouette its Mate chose (`mate:face:`); the tint's own (`MATE_SHAPE_OF_TINT`) when absent. */
+  /** The silhouette its Mate chose (HQ's record); the tint's own (`MATE_SHAPE_OF_TINT`) when absent. */
   readonly shape?: MateShapeId | undefined;
   readonly state: MateMarkState;
   readonly size?: MateFaceSize;

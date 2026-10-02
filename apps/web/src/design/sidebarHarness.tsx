@@ -37,12 +37,13 @@ import { StrictMode, useCallback, useEffect, useMemo, useState, type CSSProperti
 import { createRoot } from "react-dom/client";
 
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
+import type { HqPlacement } from "@t3tools/client-runtime/zerops/hq";
 import {
   assignCandidateMateTints,
   botDisplayName,
   deployedVersion,
   mateShapeOf,
-  readZeropsGroupTags,
+  readZeropsMembership,
   type EnvironmentRow,
   type FlowPullRequest,
   type ZeropsPublicRoute,
@@ -152,7 +153,7 @@ const COLLEAGUES_MATES: ReadonlySet<string> = new Set([
 function candidate(
   id: string,
   name: string,
-  tags: ReadonlyArray<string>,
+  hq: HqPlacement,
   options: {
     readonly connected?: boolean;
     readonly container?: boolean;
@@ -163,10 +164,10 @@ function candidate(
   // Every Mate here has its agent signed in (D6's tag) — by the viewer, or by a colleague where
   // its owner is not the viewer; the plan set's Hollin holds the ones nobody has.
   const signer = COLLEAGUES_MATES.has(id) ? "u-colleague" : "u-harness";
-  const tagList = tags.includes("mate") ? [...tags, `mate:signer:claude-code:${signer}`] : tags;
+  const tagList = hq.kind === "mate" ? ["mate", `mate:signer:claude-code:${signer}`] : [];
   const base = {
     key: `${id}:zcp`,
-    project: { id, name, status: "ACTIVE", tagList },
+    project: { id, name, status: "ACTIVE", tagList, hq },
     group: connected ? ("connected" as const) : ("ready" as const),
     // Where its conversation lives: what the jump box searches.
     ...(connected && container ? { environmentId: EnvironmentId.make(`env-${id}`) } : {}),
@@ -221,7 +222,16 @@ function activity(input: {
   };
 }
 
-const group = (id: string, name: string) => [`mate:g:${id}`, `mate:name:${name}`];
+/** A project of the harness — an application in its HQ — placing a Mate or a stop in it. */
+const group = (appId: string, appName: string) => ({
+  mate: (name: string): HqPlacement => ({
+    appId,
+    appName,
+    kind: "mate",
+    mate: { name, face: "" },
+  }),
+  stop: (kind: "stage" | "production"): HqPlacement => ({ appId, appName, kind, mate: null }),
+});
 
 /** What a waiting Mate's thread says it waits on, as the jump box reads it. */
 const DECISIONS = new Map<string, MateDecision>([
@@ -267,27 +277,27 @@ const LONG = group("design-tokens", "Design system tokens and primitives");
 
 const CANDIDATES: ReadonlyArray<ZeropsCandidate> = [
   // A busy, healthy project: three Mates, a change of each kind waiting.
-  candidate("links-enzo", "Links - enzo", ["mate", ...LINKS, "mate:role:dev", "mate:bot:Enzo"]),
-  candidate("links-theo", "Links - theo", ["mate", ...LINKS, "mate:role:dev", "mate:bot:Theo"]),
-  candidate("links-wren", "Links - wren", ["mate", ...LINKS, "mate:role:dev", "mate:bot:Wren"]),
-  candidate("links-stage", "Links - stage", [...LINKS, "mate:role:stage"], {
+  candidate("links-enzo", "Links - enzo", LINKS.mate("Enzo")),
+  candidate("links-theo", "Links - theo", LINKS.mate("Theo")),
+  candidate("links-wren", "Links - wren", LINKS.mate("Wren")),
+  candidate("links-stage", "Links - stage", LINKS.stop("stage"), {
     container: false,
     routes: routes(["app", "links-stage.zerops.app"]),
   }),
-  candidate("links-prod", "Links - production", [...LINKS, "mate:role:prod"], {
+  candidate("links-prod", "Links - production", LINKS.stop("production"), {
     container: false,
     routes: routes(["app", "links.example.com"]),
   }),
 
   // The hostile one: a Mate buried in pull requests, a production ten routes
   // wide and twelve changes behind, a stage mid-deploy.
-  candidate("shop-mira", "Shop - mira", ["mate", ...SHOP, "mate:role:dev", "mate:bot:Mira"]),
-  candidate("shop-otto", "Shop - otto", ["mate", ...SHOP, "mate:role:dev", "mate:bot:Otto"]),
-  candidate("shop-stage", "Shop - stage", [...SHOP, "mate:role:stage"], {
+  candidate("shop-mira", "Shop - mira", SHOP.mate("Mira")),
+  candidate("shop-otto", "Shop - otto", SHOP.mate("Otto")),
+  candidate("shop-stage", "Shop - stage", SHOP.stop("stage"), {
     container: false,
     routes: routes(["app", "shop-stage.zerops.app"], ["api", "api-shop-stage.zerops.app"]),
   }),
-  candidate("shop-prod", "Shop - production", [...SHOP, "mate:role:prod"], {
+  candidate("shop-prod", "Shop - production", SHOP.stop("production"), {
     container: false,
     routes: routes(
       ["api", "api.shop.example.com"],
@@ -304,36 +314,31 @@ const CANDIDATES: ReadonlyArray<ZeropsCandidate> = [
   }),
 
   // A production somebody deployed by hand, and a stage that does not exist.
-  candidate("notes-iris", "Notes - iris", ["mate", ...NOTES, "mate:role:dev", "mate:bot:Iris"]),
-  candidate("notes-kai", "Notes - kai", ["mate", ...NOTES, "mate:role:dev", "mate:bot:Kai"]),
-  candidate("notes-lena", "Notes - lena", ["mate", ...NOTES, "mate:role:dev", "mate:bot:Lena"]),
+  candidate("notes-iris", "Notes - iris", NOTES.mate("Iris")),
+  candidate("notes-kai", "Notes - kai", NOTES.mate("Kai")),
+  candidate("notes-lena", "Notes - lena", NOTES.mate("Lena")),
   // Signed in, and nobody has asked either anything yet: one says so, one holds a draft.
-  candidate("notes-juno", "Notes - juno", ["mate", ...NOTES, "mate:role:dev", "mate:bot:Juno"]),
-  candidate("notes-rhea", "Notes - rhea", ["mate", ...NOTES, "mate:role:dev", "mate:bot:Rhea"]),
-  candidate("notes-prod", "Notes - production", [...NOTES, "mate:role:prod"], {
+  candidate("notes-juno", "Notes - juno", NOTES.mate("Juno")),
+  candidate("notes-rhea", "Notes - rhea", NOTES.mate("Rhea")),
+  candidate("notes-prod", "Notes - production", NOTES.stop("production"), {
     container: false,
     routes: routes(["app", "notes.example.com"], ["app", "www.notes.example.com"]),
   }),
 
   // The dead end: a production whose last deploy failed, running nothing.
-  candidate("todo-vera", "Todo - vera", ["mate", ...TODO, "mate:role:dev", "mate:bot:Vera"]),
-  candidate("todo-fen", "Todo - fen", ["mate", ...TODO, "mate:role:dev", "mate:bot:Fen"]),
+  candidate("todo-vera", "Todo - vera", TODO.mate("Vera")),
+  candidate("todo-fen", "Todo - fen", TODO.mate("Fen")),
   // A colleague's Mate asking its owner, beside Vera asking the viewer.
-  candidate("todo-nils", "Todo - nils", ["mate", ...TODO, "mate:role:dev", "mate:bot:Nils"]),
-  candidate("todo-stage", "Todo - stage", [...TODO, "mate:role:stage"], {
+  candidate("todo-nils", "Todo - nils", TODO.mate("Nils")),
+  candidate("todo-stage", "Todo - stage", TODO.stop("stage"), {
     container: false,
     routes: routes(["app", "todo-stage.zerops.app"]),
   }),
-  candidate("todo-prod", "Todo - production", [...TODO, "mate:role:prod"], { container: false }),
+  candidate("todo-prod", "Todo - production", TODO.stop("production"), { container: false }),
 
   // A name longer than any width here, and a project that is only a Mate:
   // nothing has been set up for it to travel to yet.
-  candidate("tokens-ada", "Design system tokens and primitives - ada", [
-    "mate",
-    ...LONG,
-    "mate:role:dev",
-    "mate:bot:Ada",
-  ]),
+  candidate("tokens-ada", "Design system tokens and primitives - ada", LONG.mate("Ada")),
 ];
 
 const ACTIVITY = new Map<string, ZeropsAgentActivity>([
@@ -1005,10 +1010,7 @@ function SidebarFrame({
               toggleUnread: () => {},
               copyLink: () => {},
               rename: {
-                initialValue:
-                  item.project.tagList
-                    ?.find((tag) => tag.startsWith("mate:bot:"))
-                    ?.slice("mate:bot:".length) ?? item.project.name,
+                initialValue: item.project.hq?.mate?.name ?? item.project.name,
                 validate: (value) => (value.trim() === "" ? "Give the Mate a name." : undefined),
                 commit: () => {},
               },
@@ -1236,7 +1238,7 @@ function ConversationPane({ open }: { readonly open: string }) {
   const activity = FIXTURES.activity.get(open);
   const tint = TINTS.get(open) ?? "slate";
   const name = botDisplayName({
-    bot: readZeropsGroupTags(candidate?.project.tagList).bot,
+    bot: readZeropsMembership(candidate?.project).bot,
     projectName: candidate?.project.name ?? open,
   });
   return (
@@ -1265,7 +1267,7 @@ function ConversationPane({ open }: { readonly open: string }) {
             mate={{
               name,
               tint,
-              shape: mateShapeOf(candidate?.project.tagList, tint),
+              shape: mateShapeOf(candidate?.project, tint),
               face: activity?.face ?? "idle",
               open: true,
               threadId: activity?.threadId ?? null,
@@ -1399,9 +1401,7 @@ writeCollapsedProjects(
     fold === null
       ? FIXTURES.collapsed
       : fold === "all"
-        ? FIXTURES.candidates.flatMap(
-            (item) => readZeropsGroupTags(item.project.tagList).groupId ?? [],
-          )
+        ? FIXTURES.candidates.flatMap((item) => readZeropsMembership(item.project).groupId ?? [])
         : fold.split(","),
   ),
 );

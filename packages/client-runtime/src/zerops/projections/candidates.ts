@@ -14,7 +14,7 @@ import type { EnvironmentId } from "@t3tools/contracts";
 
 import type { ZeropsService } from "../api.ts";
 import { deriveZeropsCandidates, isZcpService, type ZeropsCandidate } from "../candidates.ts";
-import { readZeropsGroupTags } from "../groups.ts";
+import { readZeropsMembership } from "../groups.ts";
 import { projectRecordToZeropsProject, serviceRecordToZeropsService } from "../data/dto.ts";
 import type { ProjectRecord, ProjectRef, ServiceRecord } from "../data/types.ts";
 import type { Known, Shown } from "../knowledge/known.ts";
@@ -262,12 +262,11 @@ export function findCandidate<Row extends CandidateRow>(
 }
 
 /**
- * The names the organization's Mates already go by (`mate:bot:`), read off the listing's projects.
- * A name lives on the project, so a row whose presence is unread still names its bot; `complete`
- * — the one licence to call a name free — is the listing being known and complete, every row's
- * tags read (a project pushed before any read that carries them names no bot yet), and no member
- * of its list withheld from this account (`withheldMembers`: its name is on it, unread). Until
- * then a name found here is taken and one missing may still be.
+ * The names the organization's Mates already go by, as HQ records them (`ZeropsProject.hq`).
+ * `complete` — the one licence to call a name free — is the listing being known and complete, HQ's
+ * structure known (`structureKnown`: until it answers, a Mate's name is unread), and no member of
+ * its list withheld from this account (`withheldMembers`: its name is on it, unread). Until then a
+ * name found here is taken and one missing may still be.
  */
 export interface TakenBotNames {
   readonly names: ReadonlyArray<string>;
@@ -276,19 +275,19 @@ export interface TakenBotNames {
 
 export function takenBotNames(
   listing: Shown<ReadonlyArray<ZeropsCandidate>>,
-  options: { readonly withheldMembers?: boolean } = {},
+  options: { readonly withheldMembers?: boolean; readonly structureKnown: boolean },
 ): TakenBotNames {
   switch (listing.state) {
     case "known":
       return {
         names: listing.value.flatMap((row) => {
-          const bot = readZeropsGroupTags(row.project.tagList).bot;
+          const bot = readZeropsMembership(row.project).bot;
           return bot === undefined ? [] : [bot];
         }),
         complete:
           listing.coverage === "complete" &&
           options.withheldMembers !== true &&
-          listing.value.every((row) => row.project.tagList !== undefined),
+          options.structureKnown,
       };
     default:
       return { names: [], complete: false };

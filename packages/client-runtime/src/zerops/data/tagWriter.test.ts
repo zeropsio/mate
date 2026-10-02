@@ -61,50 +61,32 @@ describe("updateProjectTags' writer", () => {
     const rest = platform(["mate:tool:gitea"], row.between);
     const writer = makeProjectTagWriter({ source: rest.source });
 
-    const written = await writer.write("p1", { kind: "agent-name", name: "Vera" });
+    const written = await writer.write("p1", { kind: "mate" });
 
     expect(written.kind).toBe("written");
-    expect(rest.tags()).toEqual(
-      expect.arrayContaining(["mate:tool:gitea", "theirs", "mate:bot:Vera", "mate"]),
-    );
+    expect(rest.tags()).toEqual(expect.arrayContaining(["mate:tool:gitea", "theirs", "mate"]));
     expect(rest.log).toEqual(row.requests);
   });
 
-  it("a face changed puts back every tag the platform holds, and only its face changes", async () => {
-    const held = [
-      "mate:g:g1",
-      "mate:role:dev",
-      "mate:bot:Ada",
-      "mate",
-      "mate:face:coral:gem",
-      "person:own",
-    ];
+  it("a project closed off puts back every tag the platform holds, and only adds its mark", async () => {
+    const held = ["mate", "mate:standup:u-ada", "mate:signer:codex:u1", "person:own"];
     const rest = platform(held, {
       beforeRead: (tags: ReadonlyArray<string>) => [...tags, "theirs"],
     });
     const writer = makeProjectTagWriter({ source: rest.source });
 
-    const written = await writer.write("p1", {
-      kind: "mate-face",
-      face: { tint: "sky", shape: "seal" },
-    });
+    const written = await writer.write("p1", { kind: "closed-off" });
 
     expect(written.kind).toBe("written");
-    expect([...rest.tags()].sort()).toEqual(
-      [
-        ...held.filter((tag) => tag !== "mate:face:coral:gem"),
-        "theirs",
-        "mate:face:sky:seal",
-      ].sort(),
-    );
+    expect([...rest.tags()].sort()).toEqual([...held, "theirs", "mate:closed-off"].sort());
     expect(rest.log).toEqual(["GET", "PUT", "GET"]);
   });
 
   it("a patch the project already holds costs a read and writes nothing", async () => {
-    const rest = platform(["mate:bot:Vera", "mate"]);
+    const rest = platform(["mate"]);
     const writer = makeProjectTagWriter({ source: rest.source });
 
-    const written = await writer.write("p1", { kind: "agent-name", name: "Vera" });
+    const written = await writer.write("p1", { kind: "mate" });
 
     expect(written.kind).toBe("unchanged");
     expect(rest.log).toEqual(["GET"]);
@@ -119,7 +101,7 @@ describe("updateProjectTags' writer", () => {
     };
     const writer = makeProjectTagWriter({ source: replaced });
 
-    await expect(writer.write("p1", { kind: "agent-name", name: "Vera" })).rejects.toMatchObject({
+    await expect(writer.write("p1", { kind: "mate" })).rejects.toMatchObject({
       _tag: "ZeropsDataAdapterError",
       kind: "rejected",
       retryable: true,
@@ -133,12 +115,10 @@ describe("updateProjectTags' writer", () => {
 
     await Promise.all([
       writer.write("p1", { kind: "agent-signer", agentId: "codex", userId: "u1" }),
-      writer.write("p1", { kind: "agent-name", name: "Vera" }),
+      writer.write("p1", { kind: "mate" }),
     ]);
 
-    expect(rest.tags()).toEqual(
-      expect.arrayContaining(["mate:signer:codex:u1", "mate:bot:Vera", "mate"]),
-    );
+    expect(rest.tags()).toEqual(expect.arrayContaining(["mate:signer:codex:u1", "mate"]));
     expect(rest.log).toEqual(["GET", "PUT", "GET", "GET", "PUT", "GET"]);
   });
 
@@ -168,14 +148,14 @@ describe("updateProjectTags' writer", () => {
     const first = browser.openTab();
     const second = browser.openTab();
 
-    const [named, signed] = await Promise.all([
-      writerIn(first).write("p1", { kind: "agent-name", name: "Vera" }),
+    const [declared, signed] = await Promise.all([
+      writerIn(first).write("p1", { kind: "mate" }),
       writerIn(second).write("p1", { kind: "agent-signer", agentId: "codex", userId: "u1" }),
     ]);
 
-    expect([named.kind, signed.kind]).toEqual(["written", "written"]);
+    expect([declared.kind, signed.kind]).toEqual(["written", "written"]);
     expect(rest.project("p1")?.tagList).toEqual(
-      expect.arrayContaining(["person:own", "mate:bot:Vera", "mate", "mate:signer:codex:u1"]),
+      expect.arrayContaining(["person:own", "mate", "mate:signer:codex:u1"]),
     );
     // One tab's read, write and read-back, then the other's: never interleaved.
     expect(rest.requests().map(({ route, tab }) => `${tab} ${route}`)).toEqual([

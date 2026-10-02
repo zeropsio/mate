@@ -9,7 +9,7 @@ import {
   botDisplayName,
   hasMate,
   mateShapeOf,
-  readZeropsGroupTags,
+  readZeropsMembership,
 } from "@t3tools/client-runtime/zerops";
 import { heldCandidates } from "@t3tools/client-runtime/zerops/projections";
 import type { MateShapeId, MateTintId } from "@t3tools/shared/brand";
@@ -35,14 +35,14 @@ export function useZeropsReviewMates(
     const rows = heldCandidates(listing).rows;
     const tints = assignCandidateMateTints(rows);
     for (const row of rows) {
-      const tags = readZeropsGroupTags(row.project.tagList);
+      const tags = readZeropsMembership(row.project);
       if (tags.groupId !== groupId || !hasMate(row) || mates.has(row.project.id)) continue;
       const tint = tints.get(row.project.id) ?? "slate";
       mates.set(row.project.id, {
         mateProjectId: row.project.id,
         name: botDisplayName({ bot: tags.bot, projectName: row.project.name }),
         tint,
-        shape: mateShapeOf(row.project.tagList, tint),
+        shape: mateShapeOf(row.project, tint),
       });
     }
     return mates;

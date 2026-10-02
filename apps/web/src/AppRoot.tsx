@@ -2,6 +2,7 @@ import { useEffect, type ReactNode } from "react";
 import { ZeropsProjectFlowProvider } from "./zerops/ZeropsProjectFlowProvider";
 import { ZeropsDataProvider } from "./zerops/ZeropsDataProvider";
 import { ZeropsInventoryProvider } from "./zerops/ZeropsInventoryProvider";
+import { ZeropsHqStructure } from "./zerops/hqStructure";
 import { ZEROPS_HANDOVER_CALLBACK_PATH } from "@t3tools/client-runtime/zerops/handover";
 import { ZeropsHostedLanding } from "./components/zerops/landing/ZeropsHostedLanding";
 import { appBasePath } from "./basePath";
@@ -22,11 +23,17 @@ export function ZeropsProductHosts({ status }: { readonly status: ZeropsSessionS
   return <QuitHoldOverlay />;
 }
 
-/** The verified account's platform-data owner precedes every inventory consumer. */
+/**
+ * The verified account's platform-data owner precedes every inventory consumer; beside the
+ * product, the organization's structure from its HQ, which places the inventory's projects.
+ */
 export function ZeropsAccountDataBoundary({ children }: { readonly children: ReactNode }) {
   return (
     <ZeropsDataProvider>
-      <ZeropsInventoryProvider>{children}</ZeropsInventoryProvider>
+      <ZeropsInventoryProvider>
+        <ZeropsHqStructure />
+        {children}
+      </ZeropsInventoryProvider>
     </ZeropsDataProvider>
   );
 }

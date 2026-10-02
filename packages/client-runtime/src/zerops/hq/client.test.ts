@@ -1,6 +1,18 @@
 import { describe, expect, it } from "@effect/vitest";
 
-import { attachToApp, HqError, makeHqApi, readHqHealth, type HqApi } from "./client.ts";
+import {
+  attachToApp,
+  HqError,
+  makeHqApi,
+  readHqHealth,
+  type HqApi,
+  type OpenHqSocket,
+} from "./client.ts";
+
+/** No socket is opened by a call that is no structure stream. */
+const NO_SOCKET: OpenHqSocket = () => {
+  throw new Error("no socket in this test");
+};
 
 const ADDRESS = "https://hq-30db-8080.prg1.zerops.app";
 
@@ -62,7 +74,12 @@ describe("makeHqApi", () => {
   it("comes through the door once and carries its session on every call", async () => {
     const hq = fakeHq();
     const door = doors();
-    const api = makeHqApi({ address: ADDRESS, fetch: hq.fetch, throughDoor: door.throughDoor });
+    const api = makeHqApi({
+      address: ADDRESS,
+      fetch: hq.fetch,
+      throughDoor: door.throughDoor,
+      openSocket: NO_SOCKET,
+    });
 
     await api.structure();
     await api.createApp("Acme");
@@ -79,7 +96,12 @@ describe("makeHqApi", () => {
   it("comes through the door again once HQ no longer takes the session, and only once", async () => {
     const hq = fakeHq();
     const door = doors();
-    const api = makeHqApi({ address: ADDRESS, fetch: hq.fetch, throughDoor: door.throughDoor });
+    const api = makeHqApi({
+      address: ADDRESS,
+      fetch: hq.fetch,
+      throughDoor: door.throughDoor,
+      openSocket: NO_SOCKET,
+    });
     await api.structure();
     hq.expire();
 
@@ -92,6 +114,7 @@ describe("makeHqApi", () => {
         seen.path === "/api/structure" ? json(401, { code: "session_required" }) : undefined,
       ).fetch,
       throughDoor: doors().throughDoor,
+      openSocket: NO_SOCKET,
     });
     await expect(stuck.structure()).rejects.toMatchObject({ code: "session_required" });
   });
@@ -121,7 +144,12 @@ describe("makeHqApi", () => {
       if (answer === "throw") throw new TypeError("Failed to fetch");
       return answer;
     });
-    const api = makeHqApi({ address: ADDRESS, fetch: hq.fetch, throughDoor: doors().throughDoor });
+    const api = makeHqApi({
+      address: ADDRESS,
+      fetch: hq.fetch,
+      throughDoor: doors().throughDoor,
+      openSocket: NO_SOCKET,
+    });
     const failure = await api.createApp("Acme").catch((cause: unknown) => cause);
     expect(failure).toBeInstanceOf(HqError);
     expect(failure).toMatchObject(expected);
@@ -167,6 +195,7 @@ describe("attachToApp", () => {
   const api = (attached: ReadonlyArray<{ readonly projectId: string; readonly kind: string }>) => {
     const made: HqApi = {
       structure: async () => ({
+        ungrouped: [],
         apps: [
           {
             id: "app-1",
@@ -175,10 +204,15 @@ describe("attachToApp", () => {
           },
         ],
       }),
+      streamStructure: async () => undefined,
       createApp: async () => ({ id: "app-1", name: "Acme" }),
       attachProject: async () => {
         throw conflict;
       },
+      updateMate: async () => undefined,
+      renameApp: async () => undefined,
+      moveProject: async () => undefined,
+      createMate: async () => undefined,
     };
     return made;
   };
@@ -203,5 +237,212 @@ describe("attachToApp", () => {
     });
     if (attachedAsAsked) await expect(attaching).resolves.toBeUndefined();
     else await expect(attaching).rejects.toBe(conflict);
+  });
+});
+
+describe("makeHqApi — the structure socket", () => {
+  interface FakeSocket {
+    readonly url: string;
+    readonly sent: Array<string>;
+    readonly on: Parameters<OpenHqSocket>[1];
+    closed: boolean;
+  }
+
+  /** Sockets as HQ would open them, handed to the test in the order they open. */
+  function fakeSockets() {
+    const opened: Array<FakeSocket> = [];
+    const arrivals: Array<(socket: FakeSocket) => void> = [];
+    let asked = 0;
+    const openSocket: OpenHqSocket = (url, on) => {
+      const socket: FakeSocket = { url, sent: [], on, closed: false };
+      opened.push(socket);
+      arrivals[opened.length - 1]?.(socket);
+      return {
+        send: (data) => socket.sent.push(data),
+        close: () => {
+          socket.closed = true;
+          queueMicrotask(() => on.close(1005));
+        },
+      };
+    };
+    /** The socket opened after the ones taken so far. */
+    const next = () => {
+      const index = asked++;
+      const ready = opened[index];
+      return ready !== undefined
+        ? Promise.resolve(ready)
+        : new Promise<FakeSocket>((resolve) => {
+            arrivals[index] = resolve;
+          });
+    };
+    return { openSocket, next };
+  }
+
+  /** HQ minting `t-<n>` for every ticket asked for. */
+  const ticketing = () => {
+    let tickets = 0;
+    return fakeHq((seen) =>
+      seen.path === "/api/stream-ticket"
+        ? json(200, { ticket: `t-${++tickets}`, expiresIn: 60 })
+        : undefined,
+    );
+  };
+
+  const streaming = (api: HqApi, signal = new AbortController().signal) => {
+    const events: Array<unknown> = [];
+    let alive = 0;
+    const done = api.streamStructure(
+      { onEvent: (event) => events.push(event), onAlive: () => (alive += 1) },
+      signal,
+    );
+    return { done, events, alive: () => alive };
+  };
+
+  it("opens the socket with a ticket minted through the door, reads the snapshot and each change, and answers every ping", async () => {
+    const hq = ticketing();
+    const sockets = fakeSockets();
+    const api = makeHqApi({
+      address: ADDRESS,
+      fetch: hq.fetch,
+      throughDoor: doors().throughDoor,
+      openSocket: sockets.openSocket,
+    });
+    const stream = streaming(api);
+    const socket = await sockets.next();
+    socket.on.message(JSON.stringify({ type: "snapshot", ungrouped: [], apps: [] }));
+    socket.on.message(JSON.stringify({ type: "ping" }));
+    socket.on.message(
+      JSON.stringify({
+        type: "change",
+        key: "app-1",
+        value: { id: "app-1", name: "Acme", projects: [] },
+      }),
+    );
+    socket.on.close(1001);
+    await stream.done;
+
+    expect(socket.url).toBe("wss://hq-30db-8080.prg1.zerops.app/api/structure/ws?ticket=t-1");
+    expect(stream.events).toEqual([
+      { kind: "snapshot", structure: { ungrouped: [], apps: [] } },
+      { kind: "change", appId: "app-1", app: { id: "app-1", name: "Acme", projects: [] } },
+    ]);
+    expect(socket.sent).toEqual([JSON.stringify({ type: "pong" })]);
+    expect(stream.alive()).toBe(3);
+    expect(hq.seen.map((entry) => `${entry.method} ${entry.path} ${entry.authorization}`)).toEqual([
+      "POST /api/door null",
+      "POST /api/stream-ticket Bearer session-1",
+    ]);
+  });
+
+  it.each<[string, number, "resolves" | "rejects"]>([
+    ["ends when another Core leads now, to be read again at once", 1001, "resolves"],
+    ["breaks when HQ could not read the view", 1011, "rejects"],
+    ["breaks when the connection dropped", 1006, "rejects"],
+  ])("%s (%i)", async (_name, code, ends) => {
+    const sockets = fakeSockets();
+    const api = makeHqApi({
+      address: ADDRESS,
+      fetch: ticketing().fetch,
+      throughDoor: doors().throughDoor,
+      openSocket: sockets.openSocket,
+    });
+    const stream = streaming(api);
+    (await sockets.next()).on.close(code);
+    if (ends === "resolves") await expect(stream.done).resolves.toBeUndefined();
+    else await expect(stream.done).rejects.toBeInstanceOf(HqError);
+  });
+
+  it("comes through the door again for the next socket once HQ ended the session (4401)", async () => {
+    const hq = ticketing();
+    const door = doors();
+    const sockets = fakeSockets();
+    const api = makeHqApi({
+      address: ADDRESS,
+      fetch: hq.fetch,
+      throughDoor: door.throughDoor,
+      openSocket: sockets.openSocket,
+    });
+    const first = streaming(api);
+    (await sockets.next()).on.close(4401);
+    await expect(first.done).resolves.toBeUndefined();
+    streaming(api);
+    await sockets.next();
+    expect(door.minted).toEqual(["door-1", "door-2"]);
+    expect(hq.seen.at(-1)).toMatchObject({
+      path: "/api/stream-ticket",
+      authorization: "Bearer session-2",
+    });
+  });
+
+  it("closes its socket when the reader stops", async () => {
+    const sockets = fakeSockets();
+    const api = makeHqApi({
+      address: ADDRESS,
+      fetch: ticketing().fetch,
+      throughDoor: doors().throughDoor,
+      openSocket: sockets.openSocket,
+    });
+    const stop = new AbortController();
+    const stream = streaming(api, stop.signal);
+    const socket = await sockets.next();
+    stop.abort();
+    await stream.done.catch(() => undefined);
+    expect(socket.closed).toBe(true);
+  });
+
+  it("writes a Mate's name and face to HQ", async () => {
+    const hq = fakeHq();
+    const api = makeHqApi({
+      address: ADDRESS,
+      fetch: hq.fetch,
+      throughDoor: doors().throughDoor,
+      openSocket: NO_SOCKET,
+    });
+    await api.updateMate("p1", { name: "Vera", face: "rose:seal:named" });
+    expect(hq.seen.at(-1)).toMatchObject({
+      method: "PATCH",
+      path: "/api/mates/p1",
+      body: { name: "Vera", face: "rose:seal:named" },
+    });
+  });
+});
+
+describe("makeHqApi — application name and a project's application", () => {
+  it.each<[string, (api: HqApi) => Promise<void>, Partial<Seen>]>([
+    [
+      "renames an application",
+      (api) => api.renameApp("app-1", "Acme CRM"),
+      { method: "PATCH", path: "/api/apps/app-1", body: { name: "Acme CRM" } },
+    ],
+    [
+      "moves a project into another application",
+      (api) => api.moveProject("p1", { appId: "app-2", kind: "mate" }),
+      { method: "PUT", path: "/api/projects/p1/app", body: { appId: "app-2", kind: "mate" } },
+    ],
+    [
+      "takes a Mate out of every application",
+      (api) => api.moveProject("p1", { appId: null, kind: "mate" }),
+      { method: "PUT", path: "/api/projects/p1/app", body: { appId: null, kind: "mate" } },
+    ],
+    [
+      "sets a Mate up in no application, by its record",
+      (api) => api.createMate({ projectId: "p1", name: "Ada", face: "sky:flower:named" }),
+      {
+        method: "POST",
+        path: "/api/mates",
+        body: { projectId: "p1", name: "Ada", face: "sky:flower:named" },
+      },
+    ],
+  ])("%s", async (_name, act, expected) => {
+    const hq = fakeHq();
+    await act(
+      makeHqApi({
+        address: ADDRESS,
+        fetch: hq.fetch,
+        throughDoor: doors().throughDoor,
+        openSocket: NO_SOCKET,
+      }),
+    );
+    expect(hq.seen.at(-1)).toMatchObject(expected);
   });
 });

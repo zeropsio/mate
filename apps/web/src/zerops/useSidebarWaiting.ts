@@ -11,7 +11,7 @@ import {
   botDisplayName,
   hasMate,
   mateShapeOf,
-  readZeropsGroupTags,
+  readZeropsMembership,
 } from "@t3tools/client-runtime/zerops";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import { mateIsViewers } from "@t3tools/client-runtime/zerops/mateAccess";
@@ -56,14 +56,14 @@ export function waitingMatesOf<T extends ZeropsCandidate>(input: {
         mine: mateIsViewers(candidate.project, input.viewer),
       });
       if (face !== "needs") return [];
-      const tags = readZeropsGroupTags(candidate.project.tagList);
+      const tags = readZeropsMembership(candidate.project);
       const tint = input.tints.get(candidate.project.id) ?? "slate";
       return [
         {
           projectId: candidate.project.id,
           name: botDisplayName({ bot: tags.bot, projectName: candidate.project.name }),
           tint,
-          shape: mateShapeOf(candidate.project.tagList, tint),
+          shape: mateShapeOf(candidate.project, tint),
           face,
         },
       ];
@@ -96,7 +96,7 @@ export function useSidebarWaiting<T extends ZeropsCandidate>(input: {
   const viewer = useZeropsSessionOptional()?.user?.id;
   const reviewWaits = useCallback(
     (candidate: T) => {
-      const groupId = readZeropsGroupTags(candidate.project.tagList).groupId;
+      const groupId = readZeropsMembership(candidate.project).groupId;
       return mateReviewWaits(
         groupId === undefined ? undefined : flows?.get(groupId),
         candidate.project.id,

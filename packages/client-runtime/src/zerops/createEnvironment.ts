@@ -28,12 +28,7 @@
  */
 
 import type { ZeropsAgentType } from "./newProject.ts";
-import {
-  withZeropsGroupTags,
-  withZeropsMateAtBirth,
-  type ZeropsEnvironmentRole,
-  type ZeropsMateFace,
-} from "./groups.ts";
+import { withZeropsMateAtBirth, type ZeropsEnvironmentRole } from "./groups.ts";
 import {
   deployTargetTier,
   hasProjectBlock,
@@ -49,16 +44,16 @@ import {
  * Whether a new environment gets a `zcp` container — and so an agent, and a
  * conversation — or is a deployment target mate only watches.
  *
- * The default is deliberate: `dev`, `devstage` and `stage` are places somebody
- * works, so they get one. `prod` does not. An agent with a shell in production
+ * The default is deliberate: `dev` is where somebody works, so it gets one.
+ * `prod` does not. An agent with a shell in production
  * is a different product decision from anything settled so far, and a default
  * is the wrong way to make it — a caller that wants one has to say so.
  */
 export function defaultAgentForRole(role: ZeropsEnvironmentRole): boolean {
   // A stage is a deploy target, as its form's note says; an agent there is
-  // the person's decision, like production's. A dev environment, on its own
-  // or with its stage half, is a Mate by default.
-  return role === "dev" || role === "devstage";
+  // the person's decision, like production's. A dev environment is a Mate by
+  // default.
+  return role === "dev";
 }
 
 /**
@@ -80,9 +75,6 @@ export type EnvironmentRecipeChoice =
 
 export interface EnvironmentCreationInput {
   readonly clientId: string;
-  readonly groupId: string;
-  /** The group's display name, mirrored into the project's tags. */
-  readonly groupName?: string;
   readonly role: ZeropsEnvironmentRole;
   /** What this environment is called, e.g. `"Beviro CRM - production"`. */
   readonly name: string;
@@ -92,22 +84,11 @@ export interface EnvironmentCreationInput {
   /** Overrides {@link defaultAgentForRole}. */
   readonly withAgent?: boolean;
   /**
-   * The agent's name, written onto the project at birth (`bots.ts`). A caller
-   * that omits it gets an environment whose menu row falls back to the project
-   * name — legible, but not somebody you can address.
-   */
-  readonly botName?: string;
-  /**
    * The Zerops user adding this Mate. A dev environment with an agent is born asking for its
    * development to be stood up on their behalf (`mate:standup:`): the services arrive empty
    * (`startWithoutCode`), and their first sign-in sends the Mate the ask that finishes the setup.
    */
   readonly standUpBy?: string;
-  /**
-   * The face its person picked for the agent, written beside its name. A
-   * caller that omits it gets a Mate whose face is derived from its name.
-   */
-  readonly face?: ZeropsMateFace;
   /**
    * The coding agents the new container offers, normally the ones this
    * group's existing environments are signed in with (`agentSelection.ts`).
@@ -370,18 +351,12 @@ export function environmentCreationStepLabel(step: EnvironmentCreationStep): str
 }
 
 /**
- * The tags a new environment is created with: its membership, and — when it
- * gets an agent — the `mate` marker, the agent's name and its face. The marker is
- * written here, at birth, rather than after the container import, so a
- * creation that fails between the two still leaves a project that says what
- * it was meant to be.
+ * The tags a new environment is created with: when it gets an agent, the `mate` marker and who
+ * asked for its development to be stood up. The marker is written here, at birth, rather than
+ * after the container import, so a creation that fails between the two still leaves a project
+ * that says what it was meant to be. Its application, kind, name and face are HQ's, written by
+ * the press's registration.
  */
 function taggedAtBirth(input: EnvironmentCreationInput, withAgent: boolean): ReadonlyArray<string> {
-  const membership = withZeropsGroupTags([], {
-    groupId: input.groupId,
-    role: input.role,
-    ...(input.groupName === undefined ? {} : { label: input.groupName }),
-  });
-  if (!withAgent) return membership;
-  return withZeropsMateAtBirth(membership, input);
+  return withAgent ? withZeropsMateAtBirth([], input) : [];
 }

@@ -126,6 +126,7 @@ import {
   useThreadShells,
 } from "../state/entities";
 import { environmentServerConfigsAtom, primaryServerKeybindingsAtom } from "../state/server";
+import { hqStructureAtom } from "../state/zerops";
 import { vcsEnvironment } from "../state/vcs";
 import { threadEnvironment } from "../state/threads";
 import { useEnvironmentQuery } from "../state/query";
@@ -231,6 +232,7 @@ import { useZeropsMateOwners } from "../zerops/useZeropsMateOwners";
 import { useZeropsSession } from "../zerops/ZeropsSessionProvider";
 import { AccountVoiceLine } from "./zerops/AccountVoiceLine";
 import { useListingPatience } from "../zerops/useListingPatience";
+import { hqOutageLine } from "../zerops/hqStructure";
 import { useNowMs } from "../zerops/useNowMs";
 import { useZeropsContainers } from "../zerops/zeropsContainers";
 import { SidebarProjectTree } from "./sidebar/SidebarProjectTree";
@@ -257,7 +259,7 @@ import { useZeropsProjectFlowOptional } from "../zerops/projectFlowContext";
 import { placedPressesIn, useForgetConnectedPresses, useMatePresses } from "../zerops/matePress";
 import {
   canCreateProjectsInOrganization,
-  readZeropsGroupTags,
+  readZeropsMembership,
   type EnvironmentRow,
 } from "@t3tools/client-runtime/zerops";
 import {
@@ -1942,6 +1944,13 @@ export default function Sidebar() {
   const confirmThreadArchive = useClientSettings((s) => s.confirmThreadArchive);
   const sidebarProjectSortOrder = useClientSettings((s) => s.sidebarProjectSortOrder);
   const timestampFormat = useClientSettings((s) => s.timestampFormat);
+  // HQ not answering: the menu draws the structure it last read, says since when and how old that
+  // is (SPEC §6.2.3); the Mates' conversations go on without HQ.
+  const zeropsHqView = useAtomValue(hqStructureAtom);
+  const zeropsHqOutage =
+    zeropsHqView?.organizationId === zeropsSession.activeOrganization?.id
+      ? hqOutageLine(zeropsHqView, timestampFormat, zeropsNowMs)
+      : null;
   const projectGroupingSettings = useClientSettings(selectProjectGroupingSettings);
   const {
     settleThread,
@@ -2343,7 +2352,7 @@ export default function Sidebar() {
     const listed = new Set<string>();
     const groups = new Set<string>();
     for (const candidate of zeropsCandidates) {
-      const { groupId } = readZeropsGroupTags(candidate.project.tagList);
+      const { groupId } = readZeropsMembership(candidate.project);
       if (groupId !== undefined) groups.add(groupId);
       if (mateDeleting(candidate.project, zeropsDeleting)) continue;
       listed.add(candidate.project.id);
@@ -4178,6 +4187,7 @@ export default function Sidebar() {
               className="mb-2"
               complete={zeropsHeld.complete}
               notice={zeropsNotice}
+              hqOutage={zeropsHqOutage}
               onNoticeAct={(affordance) => {
                 if (affordance.kind === "go-to-projects") navigateToZeropsProjects();
                 else refreshZeropsCandidates();

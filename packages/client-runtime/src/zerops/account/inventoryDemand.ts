@@ -53,7 +53,7 @@ export interface InventoryDemandInput {
   readonly projectStatus: (project: ProjectRef) => string | undefined;
   /** Whether the organization's project list has answered. */
   readonly organizationListed: (organization: ProjectRef["organization"]) => boolean;
-  /** Whether the organization's list names a project of this product (a Mate, or its group). */
+  /** Whether the organization's list names a Mate. */
   readonly organizationHasMates: (organization: ProjectRef["organization"]) => boolean;
   /**
    * Whether the project's own record is a Mate's: this tab's new Mate, recorded from the press's
@@ -62,7 +62,7 @@ export interface InventoryDemandInput {
   readonly projectIsMate: (project: ProjectRef) => boolean;
 }
 
-/** Whether a project's tags make it a Mate, or a Mate group's (`mate`, `mate:…`). */
+/** Whether a project's tags make it a Mate's: its marker, or a tag only a Mate carries (`mate:…`). */
 const isMateRecord = (record: ProjectRecord): boolean =>
   (projectRecordToZeropsProject(record)?.tagList ?? []).some(
     (tag) => tag === MATE_TAG_NAMESPACE || tag.startsWith(`${MATE_TAG_NAMESPACE}:`),

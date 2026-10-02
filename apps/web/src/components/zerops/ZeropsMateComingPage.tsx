@@ -33,7 +33,7 @@ import {
 import {
   assignCandidateMateTints,
   FINISH_MATE_SETUP_VERB,
-  readZeropsGroupTags,
+  readZeropsMembership,
   resolvePrimaryConversation,
   type ZeropsMateFace,
 } from "@t3tools/client-runtime/zerops";
@@ -448,13 +448,13 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
   // *Finish setup*, where its press stopped before its container: the same verb as its menu's,
   // offered to an owner or an admin in any browser.
   const halfMade = coming?.kind === "failed" && coming.verb === "finish-setup";
-  const registryState = useZeropsRegistry({ enabled: halfMade });
+  const registryState = useZeropsRegistry();
   const mateActions = useMateActions({ registry: registryState, serverVersions: NO_VERSIONS });
   const finishEntry =
     !halfMade || candidate === undefined
       ? undefined
       : mateActions
-          .actionsFor(candidate, readZeropsGroupTags(candidate.project.tagList))
+          .actionsFor(candidate, readZeropsMembership(candidate.project))
           .find((entry) => entry.id === "finish-setup");
   const finishSetup =
     finishEntry === undefined || "separator" in finishEntry ? undefined : finishEntry.onSelect;

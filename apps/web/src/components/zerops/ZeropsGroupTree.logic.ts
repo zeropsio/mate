@@ -20,8 +20,6 @@ export function environmentRoleLabel(role: ZeropsEnvironmentRole | undefined): s
   switch (role) {
     case "dev":
       return "Dev";
-    case "devstage":
-      return "Dev / Stage";
     case "stage":
       return "Stage";
     case "prod":
@@ -40,8 +38,6 @@ export function environmentRoleTag(role: ZeropsEnvironmentRole | undefined): str
   switch (role) {
     case "dev":
       return "dev";
-    case "devstage":
-      return "dev/stage";
     case "stage":
       return "stage";
     case "prod":
@@ -60,12 +56,6 @@ export function groupNameIsPlaceholder(group: ZeropsGroup): boolean {
   return group.nameSource === "id";
 }
 
-/**
- * Which roles a group could still be given, in the order the UI offers them.
- * A role already taken is not offered again; `devstage` is left out entirely
- * because it is a thing you mark an existing environment as, not a thing you
- * create.
- */
 /**
  * Which roles a group can still be given.
  *

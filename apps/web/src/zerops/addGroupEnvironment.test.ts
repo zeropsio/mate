@@ -8,9 +8,14 @@ import { addGroupEnvironment } from "./addGroupEnvironment";
 /** HQ, taking every attachment unless told otherwise. */
 function hqFake(attachProject: HqApi["attachProject"] = vi.fn(async () => undefined)) {
   const api: HqApi = {
-    structure: vi.fn(async () => ({ apps: [] })),
+    structure: vi.fn(async () => ({ ungrouped: [], apps: [] })),
+    streamStructure: vi.fn(async () => undefined),
     createApp: vi.fn(async () => ({ id: "g-1", name: "Acme" })),
     attachProject: vi.fn(attachProject),
+    updateMate: vi.fn(async () => undefined),
+    renameApp: vi.fn(async () => undefined),
+    moveProject: vi.fn(async () => undefined),
+    createMate: vi.fn(async () => undefined),
   };
   return api;
 }

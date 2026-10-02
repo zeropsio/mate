@@ -5,7 +5,7 @@
  * per session; until every one has answered, or a second and a half has passed, the answer is not
  * settled, so a sign-in never paints its cards in one order and then another.
  */
-import { hasMate, readZeropsGroupTags } from "@t3tools/client-runtime/zerops";
+import { hasMate, readZeropsMembership } from "@t3tools/client-runtime/zerops";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import { ZeropsServiceId, type AgentsCellRequest } from "@t3tools/client-runtime/zerops/data";
 import { heldCandidates } from "@t3tools/client-runtime/zerops/projections";
@@ -37,14 +37,14 @@ export function otherMatesOf(
 ): ReadonlyArray<ZeropsCandidate> {
   if (projectId === undefined) return [];
   const own = rows.find((row) => row.project.id === projectId);
-  const groupId = own === undefined ? undefined : readZeropsGroupTags(own.project.tagList).groupId;
+  const groupId = own === undefined ? undefined : readZeropsMembership(own.project).groupId;
   if (groupId === undefined) return [];
   return rows.filter(
     (row) =>
       row.project.id !== projectId &&
       row.service !== undefined &&
       hasMate(row) &&
-      readZeropsGroupTags(row.project.tagList).groupId === groupId,
+      readZeropsMembership(row.project).groupId === groupId,
   );
 }
 

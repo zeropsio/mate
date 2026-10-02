@@ -27,7 +27,7 @@ import {
 } from "@t3tools/client-runtime/zerops";
 import type { ServiceStatusToneId } from "@t3tools/shared/brand";
 import { GitMergeIcon, GitPullRequestArrow } from "lucide-react";
-import { createContext, useContext, useEffect, type ReactNode } from "react";
+import { createContext, useContext, type ReactNode } from "react";
 
 import { cn } from "~/lib/utils";
 import { AppLinkContext } from "../ServiceBrowserLink";
@@ -72,12 +72,6 @@ export function ZeropsChangeLinkChip({
     link !== null && flowValue !== null
       ? groupForGiteaOwner(flowValue.slugs, link.owner)
       : undefined;
-  const unknownOwner =
-    link !== null && flowValue !== null && groupId === undefined ? link.owner : undefined;
-  const askForOwner = flowValue?.askForOwner;
-  useEffect(() => {
-    if (unknownOwner !== undefined) askForOwner?.(unknownOwner);
-  }, [askForOwner, unknownOwner]);
   const open =
     groupId === undefined
       ? undefined

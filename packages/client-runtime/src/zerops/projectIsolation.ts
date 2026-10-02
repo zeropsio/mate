@@ -40,9 +40,8 @@
  * A project with no control plane — a stage or production project made the old
  * way, which carries the same `none` and the same key — has nothing to move
  * the key to, so the key is simply deleted. The presence of a container is the
- * input, not the project's `mate:role:` tag: a tag is a label somebody wrote,
- * and what decides where a key can live is whether there is a container to put
- * it in.
+ * input, not the kind HQ places the project as: what decides where a key can
+ * live is whether there is a container to put it in.
  *
  * `sshIsolation` is never touched. zcp's SSH into the app containers is the
  * one cross-service path it needs, and it is not what leaks a sibling's

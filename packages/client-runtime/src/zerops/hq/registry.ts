@@ -4,7 +4,7 @@
  * (`GET /api/structure`, filtered to what the reader sees in Zerops) and writes it through
  * `POST /api/apps` and `POST /api/apps/{id}/projects`.
  *
- * An application is a group: its HQ id is the group id the per-project `mate:g:` tag carries.
+ * An application is a group: its HQ id is the group's id.
  *
  * Pure: no network (rule R1).
  *

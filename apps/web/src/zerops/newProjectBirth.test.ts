@@ -409,15 +409,10 @@ describe("runNewProjectBirth — the project, then its first Mate", () => {
 
   it.each<{ readonly case: string; readonly ask: Partial<NewProjectAsk>; readonly args: object }>([
     {
-      case: "named after its Mate, tagged into the project, with the face picked and no stand-up",
+      // Its application, name and face are HQ's: the press's registration writes them.
+      case: "named after its Mate, and nothing of its place on the project",
       ask: {},
-      args: {
-        name: "Acme CRM - Vera",
-        agents: [],
-        group: { groupId: "app-acme", role: "dev", label: "Acme CRM" },
-        botName: "Vera",
-        face: { tint: "rose", shape: "seal" },
-      },
+      args: { name: "Acme CRM - Vera", agents: [] },
     },
     {
       case: "in the location chosen, with the agents selected",
@@ -426,9 +421,6 @@ describe("runNewProjectBirth — the project, then its first Mate", () => {
         name: "Acme CRM - Vera",
         location: "prg1",
         agents: ["claude-code"],
-        group: { groupId: "app-acme", role: "dev", label: "Acme CRM" },
-        botName: "Vera",
-        face: { tint: "rose", shape: "seal" },
       },
     },
   ])("creates its first Mate $case", async ({ ask, args }) => {

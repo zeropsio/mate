@@ -6,6 +6,7 @@ import type { AppRouter } from "./router";
 import { ZeropsSessionProvider } from "./zerops/ZeropsSessionProvider";
 import { ZeropsDataProvider } from "./zerops/ZeropsDataProvider";
 import { ZeropsInventoryProvider } from "./zerops/ZeropsInventoryProvider";
+import { ZeropsHqStructure } from "./zerops/hqStructure";
 import { AppRoot, ZeropsAccountDataBoundary, ZeropsProductHosts } from "./AppRoot";
 
 function childrenOf(node: unknown): ReadonlyArray<ReactNode> {
@@ -40,5 +41,14 @@ describe("AppRoot", () => {
     expect(boundary.type).toBe(ZeropsDataProvider);
     const inventory = childrenOf(boundary)[0];
     expect(isValidElement(inventory) && inventory.type).toBe(ZeropsInventoryProvider);
+  });
+
+  it("holds the organization's HQ structure beside the product, inside the account runtime", () => {
+    const boundary = ZeropsAccountDataBoundary({ children: "product" });
+    const inside = childrenOf(childrenOf(boundary)[0]);
+    expect(inside.map((child) => (isValidElement(child) ? child.type : child))).toEqual([
+      ZeropsHqStructure,
+      "product",
+    ]);
   });
 });

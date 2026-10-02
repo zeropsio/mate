@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import type { ZeropsCandidate } from "./candidates.ts";
+import type { HqPlacement } from "./hq/placement.ts";
 import {
   hasMate,
   hasMateContainer,
@@ -39,6 +40,14 @@ function tagged(candidate: ZeropsCandidate, tagList: ReadonlyArray<string>): Zer
   return { ...candidate, project: { ...candidate.project, tagList } };
 }
 
+/** The candidate where HQ places its project: in an application, as `kind`. */
+function placedAs(candidate: ZeropsCandidate, kind: HqPlacement["kind"]): ZeropsCandidate {
+  return {
+    ...candidate,
+    project: { ...candidate.project, hq: { appId: "x", appName: "Acme", kind, mate: null } },
+  };
+}
+
 describe("hasMateContainer", () => {
   it.each([
     ["a container backs it", withMate("a"), true],
@@ -61,25 +70,13 @@ describe("hasMateContainer", () => {
 
 describe("hasMate", () => {
   it.each([
-    [
-      "the project declares it, container or not",
-      withoutMate("a", ["mate", "mate:role:dev"]),
-      true,
-    ],
+    ["the project declares it, container or not", withoutMate("a", ["mate"]), true],
+    ["HQ places it as a Mate, container or not", placedAs(withoutMate("h"), "mate"), true],
     ["a container is there, declared or not", withMate("b"), true],
-    ["a dev environment with neither", withoutMate("c", ["mate:g:x", "mate:role:dev"]), false],
+    ["a project with neither, whatever tags it carries", withoutMate("c", ["mate:g:x"]), false],
     ["a bare project with neither", withoutMate("d"), false],
-    [
-      "a stage environment, even with a container",
-      tagged(withMate("e"), ["mate:role:stage"]),
-      false,
-    ],
-    ["production, even declared", tagged(withMate("f"), ["mate", "mate:role:prod"]), false],
-    [
-      "a dev/stage environment with a container",
-      tagged(withMate("g"), ["mate:role:devstage"]),
-      true,
-    ],
+    ["a stage environment, even with a container", placedAs(withMate("e"), "stage"), false],
+    ["production, even declared", placedAs(tagged(withMate("f"), ["mate"]), "production"), false],
   ] as const)("%s", (_label, candidate, expected) => {
     expect(hasMate(candidate)).toBe(expected);
   });
@@ -97,7 +94,7 @@ describe("selectMateEnvironments", () => {
   });
 
   it("never lists production as a Mate, whatever runs in it", () => {
-    expect(selectMateEnvironments([tagged(withMate("p"), ["mate:role:prod"])])).toEqual([]);
+    expect(selectMateEnvironments([placedAs(withMate("p"), "production")])).toEqual([]);
   });
 
   it("shows one row per project, however many containers it runs", () => {

@@ -36,8 +36,9 @@
  * @module groupEnvironments
  */
 
+import type { HqPlacement } from "./hq/placement.ts";
 import type { ZeropsRegistry } from "./hq/registry.ts";
-import { readZeropsGroupTags } from "./groups.ts";
+import { readZeropsMembership } from "./groups.ts";
 import type { ZeropsEnvironmentRole } from "./groups.ts";
 import type { ZeropsProjectGrant } from "./groupReach.ts";
 
@@ -549,7 +550,8 @@ export function halfMadeGroupEnvironments(input: {
   readonly projects: ReadonlyArray<{
     readonly id: string;
     readonly name: string;
-    readonly tagList?: ReadonlyArray<string> | undefined;
+    /** Where HQ places it (`ZeropsProject.hq`). */
+    readonly hq?: HqPlacement | undefined;
   }>;
   readonly registry: ZeropsRegistry;
   /**
@@ -566,21 +568,26 @@ export function halfMadeGroupEnvironments(input: {
 }): ReadonlyArray<HalfMadeGroupEnvironment> {
   const out: Array<HalfMadeGroupEnvironment> = [];
   for (const project of input.projects) {
-    const tags = readZeropsGroupTags(project.tagList);
-    if (tags.groupId === undefined) continue;
-    const tier = environmentTierForRole(tags.role);
+    const membership = readZeropsMembership(project);
+    if (membership.groupId === undefined) continue;
+    const tier = environmentTierForRole(membership.role);
     if (tier === undefined) continue;
-    const group = input.registry.groups.find((entry) => entry.groupId === tags.groupId);
+    const group = input.registry.groups.find((entry) => entry.groupId === membership.groupId);
     if (group === undefined) continue;
     const registered = group.projects.some(
       (entry) => entry.projectId === project.id && entry.kind === tier,
     );
-    const declarations = input.declared.get(tags.groupId);
+    const declarations = input.declared.get(membership.groupId);
     if (declarations === undefined) continue;
     const declared = declarations.has(project.id);
     const keyed = !(input.withoutDeployToken?.has(project.id) ?? false);
     if (registered && declared && keyed) continue;
-    out.push({ groupId: tags.groupId, projectId: project.id, displayName: project.name, tier });
+    out.push({
+      groupId: membership.groupId,
+      projectId: project.id,
+      displayName: project.name,
+      tier,
+    });
   }
   return out;
 }

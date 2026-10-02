@@ -12,6 +12,7 @@ import {
   type ZeropsGroup,
   type ZeropsProject,
 } from "@t3tools/client-runtime/zerops";
+import type { HqPlacement } from "@t3tools/client-runtime/zerops/hq";
 import { act, createElement as h, type ReactElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { create, type ReactTestRenderer } from "react-test-renderer";
@@ -28,8 +29,21 @@ export interface Item {
   readonly mate?: boolean;
 }
 
-export function item(name: string, tagList: ReadonlyArray<string>, mate = true): Item {
-  return { project: { id: name, name, status: "ACTIVE", tagList }, mate };
+/** Where HQ places a project: in application `appId`, named `appName`, as `kind`. */
+export function placed(
+  appId: string,
+  appName: string,
+  kind: HqPlacement["kind"] = "mate",
+): HqPlacement {
+  return { appId, appName, kind, mate: null };
+}
+
+/** A project as the listing holds it, where HQ places it, if anywhere. */
+export function item(name: string, hq?: HqPlacement, mate = true): Item {
+  return {
+    project: { id: name, name, status: "ACTIVE", tagList: [], ...(hq === undefined ? {} : { hq }) },
+    mate,
+  };
 }
 
 export function pull(over: Partial<FlowPullRequest> = {}): FlowPullRequest {
@@ -59,18 +73,10 @@ function groupOf(items: ReadonlyArray<Item>): ZeropsGroup {
   return group!.group;
 }
 
-export const WREN = item("wren-dev", ["mate:g:aaa", "mate:role:dev", "mate:name:sm-fixture"]);
-export const STAGE = item(
-  "fixture-stage",
-  ["mate:g:aaa", "mate:role:stage", "mate:name:sm-fixture"],
-  false,
-);
-export const PROD = item(
-  "fixture-prod",
-  ["mate:g:aaa", "mate:role:prod", "mate:name:sm-fixture"],
-  false,
-);
-export const UMA = item("uma-dev", ["mate:g:bbb", "mate:role:dev", "mate:name:hokuspokus"]);
+export const WREN = item("wren-dev", placed("aaa", "sm-fixture"));
+export const STAGE = item("fixture-stage", placed("aaa", "sm-fixture", "stage"), false);
+export const PROD = item("fixture-prod", placed("aaa", "sm-fixture", "production"), false);
+export const UMA = item("uma-dev", placed("bbb", "hokuspokus"));
 
 export const PRODUCTION_STOP = {
   projectId: "fixture-prod",

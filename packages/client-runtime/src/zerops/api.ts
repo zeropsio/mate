@@ -42,12 +42,8 @@ import type {
   ZeropsProjectRole,
   ZeropsTokenDelegation,
 } from "./groupReach.ts";
-import {
-  withZeropsGroupTags,
-  withZeropsMateAtBirth,
-  type ZeropsEnvironmentRole,
-  type ZeropsMateFace,
-} from "./groups.ts";
+import { withZeropsMateAtBirth } from "./groups.ts";
+import type { HqPlacement } from "./hq/placement.ts";
 import { agentsFromOAuthFlags } from "./agentSelection.ts";
 import {
   buildCreateProjectBody,
@@ -173,6 +169,13 @@ export interface ZeropsProject {
    * and `GET /project/{id}` — return it.
    */
   readonly tagList?: ReadonlyArray<string>;
+  /**
+   * Where the organization's HQ places this project (ADR 0002): its application, its kind, its
+   * Mate's name and face. Not a platform field: the client joins it from HQ's structure where
+   * projects enter the screen (`placeProjects`), and it is absent while that structure is unknown
+   * or places no such project.
+   */
+  readonly hq?: HqPlacement;
   /** Round-tripped by every project write, which must not blank it. */
   readonly description?: string;
   /**
@@ -466,37 +469,6 @@ export type ZeropsApiErrorKind =
   | "invalid-input"
   | "server"
   | "unexpected";
-
-/**
- * The tags a project is created with when Mate makes it: its group, its role
- * in that group, the group's name, then the Mate as *New Mate* makes one
- * (`withZeropsMateAtBirth`): the `mate` marker, the agent's own name, the face
- * its person picked and who asked for its development to be stood up.
- *
- * A project made from the wizard **is** a group with one dev environment in
- * it — that is what a project is (`spec-mate.md` §10). Creating it ungrouped
- * left an environment nothing could ever be added to: "Add stage" and "Add
- * production" render for a group, and a loose project is not one.
- */
-function taggedProjectAtBirth(input: {
-  readonly group?: {
-    readonly groupId: string;
-    readonly role?: ZeropsEnvironmentRole;
-    readonly label?: string;
-  };
-  readonly botName?: string;
-  readonly face?: ZeropsMateFace;
-  readonly standUpBy?: string;
-}): ReadonlyArray<string> {
-  const membership = input.group
-    ? withZeropsGroupTags([], {
-        groupId: input.group.groupId,
-        ...(input.group.role ? { role: input.group.role } : {}),
-        ...(input.group.label ? { label: input.group.label } : {}),
-      })
-    : [];
-  return withZeropsMateAtBirth(membership, { ...input, role: input.group?.role });
-}
 
 export class ZeropsApiError extends Error {
   readonly kind: ZeropsApiErrorKind;
@@ -1870,17 +1842,6 @@ export class ZeropsApiClient {
       readonly location?: string;
       readonly zcpVersion?: string;
       readonly agents?: ReadonlyArray<ZeropsAgentType>;
-      /** The group this environment joins, and what it is for (`groups.ts`). */
-      readonly group?: {
-        readonly groupId: string;
-        readonly role?: ZeropsEnvironmentRole;
-        /** The group's display name, mirrored into `mate:name:`. */
-        readonly label?: string;
-      };
-      /** The agent's name, written at birth so its menu row is somebody. */
-      readonly botName?: string;
-      /** The face its person picked, written beside its name (`mate:face:`). */
-      readonly face?: ZeropsMateFace;
       /** Who asks, by adding it, for the project's development to be stood up (`mate:standup:`). */
       readonly standUpBy?: string;
     },
@@ -1899,10 +1860,13 @@ export class ZeropsApiClient {
             clientId: input.clientId,
             name: input.name,
             ...(input.location ? { location: input.location } : {}),
-            // Born a Mate, in its project, with its name: the whole identity
-            // goes on before the container does, so a creation that fails
-            // halfway still leaves a project that says what it was meant to be.
-            tagList: taggedProjectAtBirth(input),
+            // Born a Mate: the marker goes on before the container does, so a creation that
+            // fails halfway still leaves a project that says what it was meant to be. Its
+            // application, name and face are HQ's, written by the press's registration.
+            tagList: withZeropsMateAtBirth([], {
+              role: "dev",
+              ...(input.standUpBy === undefined ? {} : { standUpBy: input.standUpBy }),
+            }),
           }),
         ),
       },

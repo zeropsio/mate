@@ -20,7 +20,7 @@ import {
   botDisplayName,
   hasMate,
   mateShapeOf,
-  readZeropsGroupTags,
+  readZeropsMembership,
 } from "@t3tools/client-runtime/zerops";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import type { CandidateRow } from "@t3tools/client-runtime/zerops/projections";
@@ -36,9 +36,9 @@ export interface ZeropsMateIdentity {
   readonly serviceId?: string | undefined;
   readonly name: string;
   readonly tint: MateTintId;
-  /** The shape its person picked (`mate:face:`), else its tint's own — `mateShapeOf`. */
+  /** The shape its person picked (HQ's record), else its tint's own — `mateShapeOf`. */
   readonly shape: MateShapeId;
-  /** The project the Mate belongs to, as its label tag reads; absent for one in no project. */
+  /** The project the Mate belongs to, as HQ names it; absent for one in no project. */
   readonly project: string | undefined;
   /** The Mate's project on the Zerops dashboard: where a conversation's "Open in Zerops" goes. */
   readonly projectUrl: string;
@@ -81,13 +81,13 @@ export function zeropsMateIdentityOf(
   candidate: ZeropsCandidate,
   tints: ReadonlyMap<string, MateTintId>,
 ): ZeropsMateIdentity {
-  const tags = readZeropsGroupTags(candidate.project.tagList);
+  const tags = readZeropsMembership(candidate.project);
   const tint = tints.get(candidate.project.id) ?? "slate";
   return {
     serviceId: candidate.service?.id,
     name: botDisplayName({ bot: tags.bot, projectName: candidate.project.name }),
     tint,
-    shape: mateShapeOf(candidate.project.tagList, tint),
+    shape: mateShapeOf(candidate.project, tint),
     project: tags.label,
     projectUrl: zeropsProjectUrl(candidate.project.id),
     connected: candidate.group === "connected",

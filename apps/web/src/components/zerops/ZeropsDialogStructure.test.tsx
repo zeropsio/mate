@@ -145,7 +145,6 @@ const cases: ReadonlyArray<{ readonly name: string; readonly render: () => strin
           currentGroupId={undefined}
           currentRole={undefined}
           groups={[{ id: "g1", name: "Acme Docs" }]}
-          mintGroupId={() => "new-group"}
           onCancel={noop}
           onSubmit={noop}
           projectName="Acme Docs - stage"

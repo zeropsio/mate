@@ -18,8 +18,6 @@ const MANAGED_YAML = "services:\n  - hostname: db\n    type: postgresql@17\n";
 function plan(role: ZeropsEnvironmentRole): ReadonlyArray<EnvironmentCreationStep> {
   const result = planEnvironmentCreation({
     clientId: "client-1",
-    groupId: "7k2m9qx4vb1c",
-    groupName: "Go Hello World",
     name: `Go Hello World - ${role}`,
     recipe: {
       kind: "tier",
@@ -29,7 +27,6 @@ function plan(role: ZeropsEnvironmentRole): ReadonlyArray<EnvironmentCreationSte
     role,
     agents: ["claude-code"],
     register: true,
-    ...(role === "prod" ? {} : { botName: "Ada" }),
   });
   if (!result.ok) throw new Error(result.reason);
   return result.steps;
@@ -182,7 +179,7 @@ describe("runEnvironmentCreation", () => {
       awaitingAgent: true,
     });
     expect(calls).toEqual([
-      "create:Go Hello World - dev:mate:g:7k2m9qx4vb1c,mate:role:dev,mate:name:Go Hello World,mate,mate:bot:Ada",
+      "create:Go Hello World - dev:mate",
       // The 200 is an acceptance; the platform's `project.create` process is
       // the creation, and the step is not done until it has finished.
       "creation:proj-1",
@@ -241,7 +238,6 @@ describe("runEnvironmentCreation", () => {
     const { platform } = fakePlatform();
     const steps = planEnvironmentCreation({
       clientId: "client-1",
-      groupId: "7k2m9qx4vb1c",
       name: "Go Hello World - dev",
       role: "dev",
       recipe: { kind: "none" },
@@ -445,9 +441,7 @@ describe("runEnvironmentCreation — the platform's verdict on the project", () 
     });
     // Nothing after it runs: no container, no token, no import. (The verdict
     // read is this test's own and records nothing.)
-    expect(calls).toEqual([
-      "create:Go Hello World - dev:mate:g:7k2m9qx4vb1c,mate:role:dev,mate:name:Go Hello World,mate,mate:bot:Ada",
-    ]);
+    expect(calls).toEqual(["create:Go Hello World - dev:mate"]);
     const last = reports.at(-1)!;
     expect(last[0]).toMatchObject({ state: "failed", error: row.error });
     expect(last.slice(1).every((entry) => entry.state === "queued")).toBe(true);

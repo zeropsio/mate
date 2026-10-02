@@ -2201,7 +2201,7 @@ describe("ZeropsApiClient.setProjectMemberRole — handing a Mate over", () => {
     status: "ACTIVE",
     clientId: "org-1",
     description: "the Mate",
-    tagList: ["mate", "mate:g:acme"],
+    tagList: ["mate", "person:own"],
     userRoles: [{ clientUserId: "cu-jan", roleCode: "OWNER" }],
   };
 
@@ -2222,7 +2222,7 @@ describe("ZeropsApiClient.setProjectMemberRole — handing a Mate over", () => {
       name: "Fen",
       description: "the Mate",
       // The tags survive the write — this is a role change, not a re-tag.
-      tagList: ["mate", "mate:g:acme"],
+      tagList: ["mate", "person:own"],
       userRoles: [
         { clientUserId: "cu-jan", roleCode: "OWNER" },
         { clientUserId: "cu-eva", roleCode: "OWNER" },

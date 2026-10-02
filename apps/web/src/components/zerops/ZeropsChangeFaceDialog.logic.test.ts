@@ -1,9 +1,10 @@
 import {
   assignCandidateMateTints,
-  readZeropsGroupTags,
-  withZeropsChangedFace,
+  changedMateFace,
+  readZeropsMembership,
 } from "@t3tools/client-runtime/zerops";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
+import type { HqPlacement } from "@t3tools/client-runtime/zerops/hq";
 import { resolveMateVerbs } from "@t3tools/client-runtime/zerops/mateAccess";
 import { describe, expect, it } from "vite-plus/test";
 
@@ -17,9 +18,20 @@ import {
 
 const ORG = "org-acme";
 
+/** Where HQ places a project of Acme Docs, as `kind`; a Mate by its name and face. */
+function inAcme(kind: HqPlacement["kind"], mate?: { name: string; face?: string }): HqPlacement {
+  return {
+    appId: "acme",
+    appName: "Acme Docs",
+    kind,
+    mate: mate === undefined ? null : { name: mate.name, face: mate.face ?? "" },
+  };
+}
+
 function project(
   id: string,
   tagList: ReadonlyArray<string>,
+  hq: HqPlacement,
   userRoles?: ReadonlyArray<{ readonly clientUserId: string; readonly roleCode: string }>,
 ): ZeropsCandidate["project"] {
   return {
@@ -28,15 +40,17 @@ function project(
     status: "ACTIVE",
     clientId: ORG,
     tagList,
+    hq,
     ...(userRoles === undefined ? {} : { userRoles }),
   };
 }
 
-function mate(id: string, tagList: ReadonlyArray<string>): ZeropsCandidate {
+/** A Mate of Acme Docs, named and faced as HQ records it. */
+function mate(id: string, name: string, face?: string): ZeropsCandidate {
   return {
     key: `${id}:zcp`,
     group: "ready",
-    project: project(id, tagList),
+    project: project(id, ["mate"], inAcme("mate", face === undefined ? { name } : { name, face })),
     service: { id: `zcp-${id}`, name: "zcp", status: "ACTIVE" },
   };
 }
@@ -57,8 +71,9 @@ describe("changeFaceWords — what the dialog says", () => {
 });
 
 /**
- * Changing a face writes the project's tags, so it is offered exactly where Rename is: effective
- * OWNER or ADMIN on the project (`resolveMateVerbs`), and only on a Mate.
+ * Changing a face is a write to HQ's record of the Mate, as a rename is, so it is offered exactly
+ * where Rename is: effective OWNER or ADMIN on the project (`resolveMateVerbs`), and only on a
+ * Mate.
  */
 describe("changeFaceOffered — where a Mate's menus offer Change face…", () => {
   const viewer = (roleCode: string) => ({ id: ORG, membershipId: "member-ada", roleCode });
@@ -87,10 +102,11 @@ describe("changeFaceOffered — where a Mate's menus offer Change face…", () =
     },
   ])("$who: $offered, as Rename is", ({ role, override, offered }) => {
     const candidate: ZeropsCandidate = {
-      ...mate("fen", ["mate", "mate:bot:Fen"]),
+      ...mate("fen", "Fen"),
       project: project(
         "fen",
-        ["mate", "mate:bot:Fen"],
+        ["mate"],
+        inAcme("mate", { name: "Fen" }),
         override === undefined ? undefined : [{ clientUserId: "member-ada", roleCode: override }],
       ),
     };
@@ -105,7 +121,7 @@ describe("changeFaceOffered — where a Mate's menus offer Change face…", () =
       group: "unavailable",
       reason: "no container",
       missingContainer: true,
-      project: project("stage", ["mate:role:stage"]),
+      project: project("stage", [], inAcme("stage")),
     };
     expect(changeFaceOffered({ candidate: stage, mayRename: true })).toBe(false);
   });
@@ -113,9 +129,9 @@ describe("changeFaceOffered — where a Mate's menus offer Change face…", () =
 
 describe("mateFaceOf — the face a Mate wears now, as every surface draws it", () => {
   const account = [
-    mate("p-ada", ["mate", "mate:bot:Ada"]),
-    mate("p-otto", ["mate", "mate:bot:Otto"]),
-    mate("p-quinn", ["mate", "mate:bot:Quinn", "mate:face:coral:seal"]),
+    mate("p-ada", "Ada"),
+    mate("p-otto", "Otto"),
+    mate("p-quinn", "Quinn", "coral:seal"),
   ];
   const tints = assignCandidateMateTints(account);
 
@@ -136,15 +152,15 @@ describe("mateFaceOf — the face a Mate wears now, as every surface draws it", 
     expect(mateFaceOf(tints, candidate.project)).toEqual(face);
   });
 
-  it("is the face the dialog saved, once the write has landed", () => {
+  it("is the face the dialog saved, once HQ's structure carries it", () => {
     const saved = { tint: "rose", shape: "gem" } as const;
     const after = account.map((entry) =>
       entry.project.id === "p-ada"
-        ? mate("p-ada", withZeropsChangedFace(entry.project.tagList, saved))
+        ? mate("p-ada", "Ada", changedMateFace(readZeropsMembership(entry.project).face, saved))
         : entry,
     );
     const ada = after[0]!;
-    expect(readZeropsGroupTags(ada.project.tagList).face).toMatchObject(saved);
+    expect(readZeropsMembership(ada.project).face).toMatchObject(saved);
     expect(mateFaceOf(assignCandidateMateTints(after), ada.project)).toEqual(saved);
   });
 });

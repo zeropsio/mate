@@ -1,9 +1,8 @@
 /**
  * Moving a project into a group, or out of one — the decision without React.
  *
- * Membership is a wholesale write (`groups.ts`): the answer here is the
- * complete next membership, and "no group" is a valid answer that leaves the
- * project ungrouped with its agent's name intact.
+ * The answer is where HQ is asked to place the project: an application that exists, a new one
+ * by its name (HQ makes it, and names its id), or none — which leaves the project ungrouped.
  */
 
 import type { ZeropsEnvironmentRole } from "@t3tools/client-runtime/zerops";
@@ -27,13 +26,8 @@ export interface MoveFormErrors {
 
 export type MoveMembership =
   | { readonly kind: "none" }
-  | {
-      readonly kind: "group";
-      readonly groupId: string;
-      readonly role: ZeropsEnvironmentRole;
-      /** Set when the group is new, so the name travels with the first member. */
-      readonly label?: string;
-    };
+  | { readonly kind: "group"; readonly appId: string; readonly role: ZeropsEnvironmentRole }
+  | { readonly kind: "new"; readonly name: string; readonly role: ZeropsEnvironmentRole };
 
 export function validateMoveForm(form: MoveForm): MoveFormErrors {
   const errors: { newGroupName?: string; role?: string } = {};
@@ -45,20 +39,12 @@ export function validateMoveForm(form: MoveForm): MoveFormErrors {
   return errors;
 }
 
-export function resolveMoveMembership(
-  form: MoveForm,
-  mintGroupId: () => string,
-): MoveMembership | undefined {
+export function resolveMoveMembership(form: MoveForm): MoveMembership | undefined {
   const errors = validateMoveForm(form);
   if (errors.newGroupName !== undefined || errors.role !== undefined) return undefined;
   if (form.target === "none" || form.role === "") return { kind: "none" };
   if (form.target === "new") {
-    return {
-      kind: "group",
-      groupId: mintGroupId(),
-      role: form.role,
-      label: form.newGroupName.trim(),
-    };
+    return { kind: "new", name: form.newGroupName.trim(), role: form.role };
   }
-  return { kind: "group", groupId: form.target, role: form.role };
+  return { kind: "group", appId: form.target, role: form.role };
 }

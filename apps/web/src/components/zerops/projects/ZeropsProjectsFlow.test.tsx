@@ -23,7 +23,7 @@ const render = renderFlow;
 
 describe("the containers no project holds", () => {
   const rows = (kinds: ReadonlyArray<ZeropsRowAction["kind"]>) =>
-    kinds.map((action, index) => ({ item: item(`loose-${String(index)}`, []), action }));
+    kinds.map((action, index) => ({ item: item(`loose-${String(index)}`), action }));
 
   it("fold into one line with their states and a re-probe for the ones not answering", () => {
     const html = render({
@@ -54,7 +54,7 @@ describe("the containers no project holds", () => {
 
   it("keeps a project with no Mate container for the quiet line at the end", () => {
     const html = render({
-      ungrouped: [{ item: item("zerops-ads", [], false), action: "set-up-mate" }],
+      ungrouped: [{ item: item("zerops-ads", undefined, false), action: "set-up-mate" }],
     });
     expect(html).not.toContain('data-zerops-surface="other-containers"');
     const end = html.slice(html.indexOf('data-zerops-surface="quiet-end"'));
@@ -66,7 +66,7 @@ describe("the tools", () => {
   it("are one quiet line at the end, after the containers: the organization's HQ", () => {
     const html = render({
       groups: [MERGING],
-      ungrouped: [{ item: item("loose", []), action: "open" }],
+      ungrouped: [{ item: item("loose"), action: "open" }],
     });
     expect(html).toContain('data-test-hq-tool="true"');
     expect(html.indexOf('data-zerops-surface="other-containers"')).toBeLessThan(

@@ -20,6 +20,7 @@ import {
   withMembers,
   withoutMate,
   withRows,
+  withStructure,
 } from "./menuMemory";
 
 const WORKING: ZeropsAgentActivity = {
@@ -212,6 +213,43 @@ describe("what the memory keeps", () => {
   });
 });
 
+describe("a remembered HQ structure", () => {
+  const STRUCTURE = {
+    ungrouped: [{ projectId: "p9", name: "scratch", mate: { name: "Ada", face: "sky:flower" } }],
+    apps: [
+      {
+        id: "app-1",
+        name: "Acme CRM",
+        projects: [
+          {
+            projectId: "p-vera",
+            name: "Acme CRM - Vera",
+            kind: "mate",
+            mate: { name: "Vera", face: "rose:seal" },
+          },
+        ],
+      },
+    ],
+  };
+
+  it("keeps an organization's structure with when HQ answered it, and is the same memory for the same one", () => {
+    const memory = withStructure(EMPTY_MENU_MEMORY, "org-1", STRUCTURE, 1_000);
+    expect(memory.structures["org-1"]).toEqual({
+      readAt: 1_000,
+      ungrouped: STRUCTURE.ungrouped,
+      apps: STRUCTURE.apps,
+    });
+    expect(
+      withStructure(
+        memory,
+        "org-1",
+        { ungrouped: [...STRUCTURE.ungrouped], apps: [...STRUCTURE.apps] },
+        1_000,
+      ),
+    ).toBe(memory);
+  });
+});
+
 describe("a project's remembered chips", () => {
   const OK = { label: "prod", state: "ok", version: "v0.1.0" } as const;
   const WAITING = { label: "prod", state: "waiting", version: "v0.1.44", waiting: 1 } as const;
@@ -324,6 +362,21 @@ describe("the memory in this browser", () => {
     expect(stored.has(key)).toBe(false);
     openAccountLifetime("user-ales");
     expect(menuMemory()).toEqual(EMPTY_MENU_MEMORY);
+  });
+
+  it("reads a memory written before HQ structures were kept, with none", () => {
+    const key = `mate:account:user-ales:${MENU_MEMORY_STORAGE_KEY}`;
+    stored.set(key, JSON.stringify({ rows: {}, changes: {}, chips: {}, crews: {}, members: {} }));
+    openAccountLifetime("user-ales");
+    expect(menuMemory().structures).toEqual({});
+  });
+
+  it("reads a structure remembered before the Mates in no application, with none of them", () => {
+    const key = `mate:account:user-ales:${MENU_MEMORY_STORAGE_KEY}`;
+    const structures = { "org-1": { readAt: 1_000, apps: [] } };
+    stored.set(key, JSON.stringify({ rows: {}, changes: {}, members: {}, structures }));
+    openAccountLifetime("user-ales");
+    expect(menuMemory().structures["org-1"]).toEqual({ readAt: 1_000, ungrouped: [], apps: [] });
   });
 
   // A reload after an upgrade paints what the last version drew: a memory

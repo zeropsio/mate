@@ -5,6 +5,7 @@ import type {
   ZeropsGroupPendingMember,
 } from "@t3tools/client-runtime/zerops";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
+import type { HqPlacement } from "@t3tools/client-runtime/zerops/hq";
 import type { MateShapeId, MateTintId } from "@t3tools/shared/brand";
 import { describe, expect, it } from "vite-plus/test";
 
@@ -711,11 +712,28 @@ describe("landedRecipeProposal — the proposal that landed last", () => {
 });
 
 describe("newMateDoorMates — the project's Mates, listed and coming", () => {
-  function listed(id: string, tagList: ReadonlyArray<string>): { readonly item: ZeropsCandidate } {
+  /** A project of Beviro, placed by HQ as `kind`; a Mate under the name HQ records, if any. */
+  function listed(
+    id: string,
+    kind: HqPlacement["kind"],
+    mate: string | null = null,
+  ): { readonly item: ZeropsCandidate } {
+    const hq: HqPlacement = {
+      appId: "beviro",
+      appName: "Beviro",
+      kind,
+      mate: mate === null ? null : { name: mate, face: "" },
+    };
     return {
       item: {
         key: `${id}:zcp`,
-        project: { id, name: `Beviro - ${id}`, status: "ACTIVE", tagList },
+        project: {
+          id,
+          name: `Beviro - ${id}`,
+          status: "ACTIVE",
+          tagList: kind === "mate" ? ["mate"] : [],
+          hq,
+        },
         group: "ready",
         service: { id: "zcp", name: "zcp", status: "ACTIVE" },
       },
@@ -731,9 +749,9 @@ describe("newMateDoorMates — the project's Mates, listed and coming", () => {
   it("names each Mate by its agent, then those still coming, and leaves the stops out", () => {
     const mates = newMateDoorMates({
       environments: [
-        listed("cleo-project", ["mate", "mate:g:beviro", "mate:role:dev", "mate:bot:Cleo"]),
-        listed("stage-project", ["mate:g:beviro", "mate:role:stage"]),
-        listed("unnamed-project", ["mate", "mate:g:beviro", "mate:role:dev"]),
+        listed("cleo-project", "mate", "Cleo"),
+        listed("stage-project", "stage"),
+        listed("unnamed-project", "mate"),
       ],
       pending: [
         coming("wren-project", "mate", "Wren"),

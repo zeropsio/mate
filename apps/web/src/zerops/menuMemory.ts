@@ -8,13 +8,16 @@
  * - a project's change rows, drawn without their verbs;
  * - a project's chips, production's and the stages', as they last said it;
  * - a Mate's crew, its faces, so its line keeps its place;
- * - an organization's members, whose each Mate is.
+ * - an organization's members, whose each Mate is;
+ * - an organization's structure as its HQ last told it — its applications and where each project
+ *   is in them — with when, so the menu stands while HQ is read or is down, saying since when.
  *
  * Kept per account, like the project order, and forgotten when the account
  * closes: it quotes conversations — masked, as every quote is
  * (`maskSecrets`), but still what was said.
  */
 import type { FlowPullRequest, ZeropsOrganizationMember } from "@t3tools/client-runtime/zerops";
+import type { HqStructure } from "@t3tools/client-runtime/zerops/hq";
 import { ThreadId } from "@t3tools/contracts";
 import { MATE_TINT_IDS, type MateTintId } from "@t3tools/shared/brand";
 import * as Effect from "effect/Effect";
@@ -125,6 +128,31 @@ const MemberSchema = Schema.Struct({
   ),
 });
 
+const MateRecordSchema = Schema.Struct({ name: Schema.String, face: Schema.String });
+
+/** An organization's structure as its HQ answered it (`GET /api/structure`), and when. */
+const StructureSchema = Schema.Struct({
+  readAt: Schema.Number,
+  // A structure remembered before HQ held Mates in no application holds none.
+  ungrouped: Schema.Array(
+    Schema.Struct({ projectId: Schema.String, name: Schema.String, mate: MateRecordSchema }),
+  ).pipe(Schema.withDecodingDefault(Effect.succeed([]))),
+  apps: Schema.Array(
+    Schema.Struct({
+      id: Schema.String,
+      name: Schema.String,
+      projects: Schema.Array(
+        Schema.Struct({
+          projectId: Schema.String,
+          name: Schema.String,
+          kind: Schema.String,
+          mate: Schema.NullOr(MateRecordSchema),
+        }),
+      ),
+    }),
+  ),
+});
+
 const MenuMemorySchema = Schema.Struct({
   rows: Schema.Record(Schema.String, RowSchema),
   changes: Schema.Record(Schema.String, Schema.Array(ChangeSchema)),
@@ -138,6 +166,10 @@ const MenuMemorySchema = Schema.Struct({
     Schema.withDecodingDefault(Effect.succeed({})),
   ),
   members: Schema.Record(Schema.String, Schema.Array(MemberSchema)),
+  // A memory written before HQ's structure was kept reads with none.
+  structures: Schema.Record(Schema.String, StructureSchema).pipe(
+    Schema.withDecodingDefault(Effect.succeed({})),
+  ),
 });
 
 export type RememberedRow = typeof RowSchema.Type;
@@ -150,6 +182,7 @@ export type DrawnChips = {
 };
 export type RememberedCrew = typeof CrewSchema.Type;
 export type RememberedMember = typeof MemberSchema.Type;
+export type RememberedStructure = typeof StructureSchema.Type;
 export type MenuMemory = typeof MenuMemorySchema.Type;
 
 export const EMPTY_MENU_MEMORY: MenuMemory = {
@@ -158,6 +191,7 @@ export const EMPTY_MENU_MEMORY: MenuMemory = {
   chips: {},
   crews: {},
   members: {},
+  structures: {},
 };
 
 /**
@@ -363,6 +397,23 @@ export function withMembers(
   members: ReadonlyArray<ZeropsOrganizationMember>,
 ): MenuMemory {
   return withPart(memory, "members", { [clientId]: members.flatMap(memberOf) });
+}
+
+/** An organization's structure as its HQ answered it at `readAt`. */
+export function withStructure(
+  memory: MenuMemory,
+  clientId: string,
+  structure: HqStructure,
+  readAt: number,
+): MenuMemory {
+  const kept: RememberedStructure = {
+    readAt,
+    ungrouped: structure.ungrouped,
+    apps: structure.apps,
+  };
+  return same(memory.structures[clientId], kept)
+    ? memory
+    : { ...memory, structures: { ...memory.structures, [clientId]: kept } };
 }
 
 const decodeMember = Schema.decodeUnknownOption(MemberSchema);

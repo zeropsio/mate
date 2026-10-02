@@ -12,7 +12,8 @@ const HOME = EnvironmentId.make("env-nova");
 const project = {
   id: PROJECT,
   name: "nova",
-  tagList: ["mate", `mate:g:${GROUP}`],
+  tagList: ["mate"],
+  hq: { appId: GROUP, appName: "Snap", kind: "mate", mate: { name: "Nova", face: "" } },
 } as unknown as ZeropsProject;
 
 const zeropsService = (name: string, status: string, versionAt?: string): ZeropsService =>

@@ -16,8 +16,8 @@
  *
  * Until its person picks, the face follows the name as it is typed or rolled: the tint the account
  * would give that name (`newMateTint`, which never takes a tint another Mate wears) and that
- * tint's shape. A pick sticks. The face is written onto the project at birth (`mate:face:`), so
- * the Mate wears it everywhere from its first moment.
+ * tint's shape. A pick sticks. The face is HQ's record from the Mate's birth (its registration),
+ * so the Mate wears it everywhere from its first moment.
  */
 import type { EnvironmentRecipeChoice, ZeropsMateFace } from "@t3tools/client-runtime/zerops";
 import type { TakenBotNames } from "@t3tools/client-runtime/zerops/projections";

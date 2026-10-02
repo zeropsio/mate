@@ -2,15 +2,21 @@ import { describe, expect, it } from "vite-plus/test";
 
 import type { ZeropsProject } from "./api.ts";
 import { buildZeropsGroupTree } from "./groupTree.ts";
+import type { HqPlacement } from "./hq/placement.ts";
 
 interface Candidate {
   readonly project: ZeropsProject;
   readonly connected: boolean;
 }
 
+/** Where HQ places a project: in application `appId`, named `appName`, as `kind`. */
+function placed(appId: string, kind: HqPlacement["kind"] = "mate", appName = ""): HqPlacement {
+  return { appId, appName, kind, mate: null };
+}
+
 function candidate(
   name: string,
-  tagList: ReadonlyArray<string>,
+  where: { readonly hq?: HqPlacement; readonly tagList?: ReadonlyArray<string> } = {},
   connected = false,
   created?: string,
 ): Candidate {
@@ -19,18 +25,19 @@ function candidate(
       id: name,
       name,
       status: "ACTIVE",
-      tagList,
+      tagList: where.tagList ?? [],
+      ...(where.hq === undefined ? {} : { hq: where.hq }),
       ...(created === undefined ? {} : { created }),
     },
     connected,
   };
 }
 
-const CRM_DEV = candidate("crm-dev", ["mate:g:aaa", "mate:role:dev", "mate:name:Beviro CRM"], true);
-const CRM_PROD = candidate("crm-prod", ["mate:g:aaa", "mate:role:prod", "mate:name:Beviro CRM"]);
-const SHOP_DEV = candidate("shop-dev", ["mate:g:bbb", "mate:role:dev"]);
-const LOOSE = candidate("loose", []);
-const GITEA = candidate("mate-gitea", ["mate:tool:gitea"]);
+const CRM_DEV = candidate("crm-dev", { hq: placed("aaa", "mate", "Beviro CRM") }, true);
+const CRM_PROD = candidate("crm-prod", { hq: placed("aaa", "production", "Beviro CRM") });
+const SHOP_DEV = candidate("shop-dev", { hq: placed("bbb") });
+const LOOSE = candidate("loose");
+const GITEA = candidate("mate-gitea", { tagList: ["mate:tool:gitea"] });
 
 describe("buildZeropsGroupTree", () => {
   it("hangs each carrier on its place in the tree", () => {
@@ -61,22 +68,14 @@ describe("buildZeropsGroupTree", () => {
     expect(view.groups[0]?.environments.map((entry) => entry.role)).toEqual(["dev", "prod"]);
   });
 
-  it("keeps a tool out of the groups even when it also carries a group tag", () => {
-    const confused = candidate("confused", ["mate:g:aaa", "mate:tool:gitea"]);
+  it("keeps a tool out of the groups even when HQ places it in one", () => {
+    const confused = candidate("confused", { hq: placed("aaa"), tagList: ["mate:tool:gitea"] });
     const view = buildZeropsGroupTree([CRM_DEV, confused], { order: "name" });
 
     expect(view.tools).toHaveLength(1);
     expect(view.groups[0]?.environments.map((entry) => entry.item.project.name)).toEqual([
       "crm-dev",
     ]);
-  });
-
-  it("names a group from the store when one is supplied, over the tag mirror", () => {
-    const view = buildZeropsGroupTree([CRM_DEV], {
-      names: { aaa: "Renamed In Store" },
-      order: "name",
-    });
-    expect(view.groups[0]?.group.name).toBe("Renamed In Store");
   });
 
   it("is empty when the account has only ungrouped projects", () => {
@@ -96,8 +95,8 @@ describe("buildZeropsGroupTree", () => {
   });
 
   it("collapses two carriers for one project into the newer read", () => {
-    const stale = candidate("crm-dev", ["mate:g:aaa", "mate:role:dev"], false);
-    const fresh = candidate("crm-dev", ["mate:g:aaa", "mate:role:dev"], true);
+    const stale = candidate("crm-dev", { hq: placed("aaa") }, false);
+    const fresh = candidate("crm-dev", { hq: placed("aaa") }, true);
 
     const view = buildZeropsGroupTree([stale, fresh], { order: "name" });
     expect(view.groups[0]?.environments).toHaveLength(1);
@@ -105,8 +104,8 @@ describe("buildZeropsGroupTree", () => {
   });
 
   it("ranks the ungrouped list by `options.rank` ahead of name, leaving groups untouched", () => {
-    const zebra = candidate("zebra", []);
-    const apple = candidate("apple", []);
+    const zebra = candidate("zebra");
+    const apple = candidate("apple");
     const rank = (item: Candidate) => (item.project.name === "zebra" ? 0 : 1);
 
     const view = buildZeropsGroupTree([CRM_DEV, CRM_PROD, zebra, apple], { rank, order: "name" });
@@ -121,7 +120,7 @@ describe("buildZeropsGroupTree", () => {
   it("keeps name order as the tiebreak within a rank tier", () => {
     const rank = () => 0;
     const view = buildZeropsGroupTree(
-      [candidate("zebra", []), candidate("apple", []), candidate("mango", [])],
+      [candidate("zebra"), candidate("apple"), candidate("mango")],
       { rank, order: "name" },
     );
 
@@ -129,9 +128,9 @@ describe("buildZeropsGroupTree", () => {
   });
 
   it("orders newest first when asked, through to the tree", () => {
-    const older = candidate("older-dev", ["mate:g:aaa"], false, "2024-01-01T00:00:00Z");
-    const newer = candidate("newer-dev", ["mate:g:bbb"], false, "2024-06-01T00:00:00Z");
-    const undated = candidate("undated", []);
+    const older = candidate("older-dev", { hq: placed("aaa") }, false, "2024-01-01T00:00:00Z");
+    const newer = candidate("newer-dev", { hq: placed("bbb") }, false, "2024-06-01T00:00:00Z");
+    const undated = candidate("undated");
 
     const view = buildZeropsGroupTree([older, newer, undated], { order: "newest" });
 

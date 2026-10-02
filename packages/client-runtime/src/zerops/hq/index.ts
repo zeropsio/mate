@@ -29,10 +29,21 @@ export {
   readHqHealth,
   type HqApi,
   type HqAttach,
+  type HqMate,
   type HqEndpoint,
   type HqHealth,
+  type HqSocket,
   type HqStructure,
+  type OpenHqSocket,
 } from "./client.ts";
+export {
+  placeListing,
+  placeProject,
+  placeProjects,
+  placementsOf,
+  type HqPlacement,
+} from "./placement.ts";
+export { applyStructureEvent, structureEventOf, type HqStructureEvent } from "./stream.ts";
 export {
   EMPTY_REGISTRY,
   registryFromHq,

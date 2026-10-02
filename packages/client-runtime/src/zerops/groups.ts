@@ -4,42 +4,27 @@
  * one conversation.
  *
  * The mental shift this module encodes: a **Zerops project is an environment**,
- * not a project. What the user calls a project is the group above it.
+ * not a project. What the user calls a project is the group above it: an
+ * application in the organization's HQ (ADR 0002).
  *
- * ## Where the two facts live, and why they are split
+ * ## Where the facts live
  *
- * - **Membership is a tag on each project** (`mate:g:<id>`). Symmetric, so no
- *   member is the master and none carries the others' data — delete a project
- *   and it leaves the group by construction. It is also the only placement
- *   that keeps the whole tree readable from Zerops business data with the
- *   user's own token, which is what spec §0 boundary 1 requires: nothing here
- *   reads the container.
- * - **The group's name lives in the recipe store**, keyed by the same id. A
- *   name in the tag cannot be the authority: a rename would be an N-project
- *   retag with no atomicity, and human input — spaces, diacritics, length —
- *   has no business in a field the platform matches on exactly.
- * - **…and is mirrored into a `mate:name:<name>` tag, for legibility only.**
- *   The Zerops GUI shows a project's tags and filters on them (its dashboard
- *   has a tag filter), so a member carrying nothing but `mate:g:7k2m9qx4vb1c`
- *   is unreadable in the platform's own UI. The mirror is written
- *   best-effort, never read as authority, and a stale one loses to the store.
- *   It also means the tree names itself correctly with no store at all, which
- *   is what lets this ship before the store exists.
+ * - **Membership, kind, the application's name, a Mate's name and face** are
+ *   HQ's: it is their only writer, and the client joins where HQ places each
+ *   project onto the projects it reads from Zerops (`ZeropsProject.hq`,
+ *   `hq/placement.ts`). Delete a project in Zerops and HQ lets it go.
+ * - **That a Mate lives here** is the project's own `mate` marker, for the
+ *   Zerops GUI too, and a Mate HQ places is one whatever its tags say.
+ * - **Who asked for the project's development to be stood up** is its
+ *   `mate:standup:` tag, until the Mate's birth record holds it (T6).
  *
- * Neither side can corrupt the other. A group whose store record is missing
- * still renders — named by its label tag, or by its id as a last resort, with
- * `nameSource` saying which; a project whose group tag is missing is simply
- * ungrouped.
+ * A project HQ does not place is in no group: ungrouped.
  *
  * ## Why grouping is computed here rather than queried
  *
- * `tagList` is searchable server-side (`POST /project/search`, operators `eq`
- * and `in`, measured 2026-09-05), but that index is Elasticsearch-backed and
- * trails writes — a just-created environment is absent from its own group for
- * the first seconds, which is exactly when the user is watching it appear. So
- * the tree is derived from the project list the picker already fetches through
- * the lag-free client read, and the tag search stays an optimization nobody
- * depends on.
+ * The tree is derived from the project list the picker already fetches
+ * through the lag-free client read, joined with HQ's structure, so a
+ * just-created environment is in its group the moment both have it.
  *
  * @module groups
  */
@@ -53,25 +38,19 @@ import {
 import type { RoleProjectKind } from "@t3tools/shared/zeropsRoles";
 
 import type { ZeropsProject } from "./api.ts";
+import type { HqPlacement } from "./hq/placement.ts";
 import { compareZeropsHostnames } from "./listingOrder.ts";
 import type { RandomBytes } from "./newProject.ts";
 
 /** Namespace every tag this product writes shares, so nothing collides with a user's own tags. */
 export const MATE_TAG_NAMESPACE = "mate";
 
-const GROUP_TAG_PREFIX = `${MATE_TAG_NAMESPACE}:g:`;
-const ROLE_TAG_PREFIX = `${MATE_TAG_NAMESPACE}:role:`;
-const LABEL_TAG_PREFIX = `${MATE_TAG_NAMESPACE}:name:`;
-/** The agent living in this environment, named so a person can address it. */
-const BOT_TAG_PREFIX = `${MATE_TAG_NAMESPACE}:bot:`;
 /**
  * A Mate whose project's development is still to be stood up, and the Zerops user who asked for
  * it by adding the Mate: their first sign-in sends "Stand up development of the project."
  * (`mateStandUp.ts` in the web app), and the send clears the tag.
  */
 const STAND_UP_TAG_PREFIX = `${MATE_TAG_NAMESPACE}:standup:`;
-/** The face its person picked for it: `mate:face:<tint>:<shape>`. */
-const FACE_TAG_PREFIX = `${MATE_TAG_NAMESPACE}:face:`;
 
 /**
  * The marker: this project has a Mate. The bare namespace word, so the Zerops
@@ -82,131 +61,78 @@ const FACE_TAG_PREFIX = `${MATE_TAG_NAMESPACE}:face:`;
  */
 export const MATE_MARKER_TAG = MATE_TAG_NAMESPACE;
 
-/** Any tag this module owns; everything else on a project is foreign and preserved verbatim. */
-const MATE_TAG_PREFIX = `${MATE_TAG_NAMESPACE}:`;
+/** What an environment is for: the place HQ gives its project (`ROLE_OF_KIND`). */
+export type ZeropsEnvironmentRole = "dev" | "stage" | "prod";
 
-/**
- * What an environment is for. Four values rather than two so a group can say
- * "this one is both my dev box and what I show people" without inventing a
- * fifth environment.
- */
-export type ZeropsEnvironmentRole = "dev" | "devstage" | "stage" | "prod";
+const ROLE_ORDER: ReadonlyArray<ZeropsEnvironmentRole> = ["dev", "stage", "prod"];
 
-const ROLE_ORDER: ReadonlyArray<ZeropsEnvironmentRole> = ["dev", "devstage", "stage", "prod"];
-
-const ROLE_VALUES: ReadonlySet<string> = new Set(ROLE_ORDER);
-
-function isEnvironmentRole(value: string): value is ZeropsEnvironmentRole {
-  return ROLE_VALUES.has(value);
-}
-
-export function formatGroupTag(groupId: string): string {
-  return `${GROUP_TAG_PREFIX}${groupId}`;
-}
-
-export function formatRoleTag(role: ZeropsEnvironmentRole): string {
-  return `${ROLE_TAG_PREFIX}${role}`;
-}
-
-/**
- * The longest label the mirror tag carries. Nothing on the platform enforces
- * it (a 1024-character tag was accepted, measured 2026-09-05) — this is a
- * legibility budget for a tag chip in the Zerops GUI, not a limit.
- */
-export const ZEROPS_GROUP_LABEL_MAX_LENGTH = 64;
-
-/**
- * Collapses whitespace and truncates, because the label is a mirror of a name
- * the user typed into a field that has none of those constraints. Returns
- * `undefined` when nothing legible survives, so an empty name writes no tag at
- * all rather than `mate:name:`.
- */
-export function formatLabelTag(name: string): string | undefined {
-  const normalized = name
-    .replace(/\s+/g, " ")
-    .trim()
-    .slice(0, ZEROPS_GROUP_LABEL_MAX_LENGTH)
-    .trim();
-  return normalized.length === 0 ? undefined : `${LABEL_TAG_PREFIX}${normalized}`;
-}
-
-/**
- * The agent's name as a tag. Same normalisation as the group label — it is a
- * name a person types — but short, because it is read in a menu row rather
- * than a heading.
- */
-export function formatBotTag(name: string): string | undefined {
-  const normalized = name.replace(/\s+/g, " ").trim().slice(0, ZEROPS_BOT_NAME_MAX_LENGTH).trim();
-  return normalized.length === 0 ? undefined : `${BOT_TAG_PREFIX}${normalized}`;
-}
-
+/** The longest name a Mate goes by: it is read in a menu row. */
 export const ZEROPS_BOT_NAME_MAX_LENGTH = 24;
 
-export interface ZeropsGroupTags {
-  /** The project carries the `mate` marker: a Mate lives here. */
+/** Where a project belongs and who lives in it: HQ's placement, and the project's own tags. */
+export interface ZeropsMembership {
+  /** A Mate lives here: HQ places it as one, or the project carries the `mate` marker. */
   readonly mate: boolean;
+  /** Its application in HQ. */
   readonly groupId: string | undefined;
   readonly role: ZeropsEnvironmentRole | undefined;
-  /** The display mirror (`mate:name:`), never authoritative — see the module doc. */
+  /** Its application's name, as HQ holds it. */
   readonly label: string | undefined;
-  /** The agent's own name (`mate:bot:`), the thing a person addresses. */
+  /** The Mate's own name, the thing a person addresses. */
   readonly bot: string | undefined;
   /** Who asked for the project's development to be stood up (`mate:standup:`), while it waits. */
   readonly standUp?: { readonly by: string } | undefined;
-  /** The face its person picked (`mate:face:`); absent where the tag says nothing this client knows. */
+  /** The face its person picked; absent where HQ's record says nothing this client knows. */
   readonly face: ZeropsMateFaceTag | undefined;
 }
 
-/**
- * Permissive on read, strict on write: an unknown `mate:` kind or an
- * unrecognized role is ignored rather than guessed at, so a tag written by a
- * newer client never resolves to the wrong thing in an older one.
- */
-export function readZeropsGroupTags(tagList: ReadonlyArray<string> | undefined): ZeropsGroupTags {
-  let mate = false;
-  let groupId: string | undefined;
-  let role: ZeropsEnvironmentRole | undefined;
-  let label: string | undefined;
-  let bot: string | undefined;
-  let standUp: { readonly by: string } | undefined;
-  let face: ZeropsMateFaceTag | undefined;
+const ROLE_OF_KIND: Readonly<Record<RoleProjectKind, ZeropsEnvironmentRole>> = {
+  mate: "dev",
+  stage: "stage",
+  production: "prod",
+};
 
-  for (const tag of tagList ?? []) {
-    if (tag === MATE_MARKER_TAG) {
-      mate = true;
-      continue;
-    }
-    if (tag.startsWith(STAND_UP_TAG_PREFIX)) {
+/** What HQ calls a project placed for `role`: a dev place is a Mate's. */
+export function kindOfRole(role: ZeropsEnvironmentRole): RoleProjectKind {
+  return role === "stage" ? "stage" : role === "prod" ? "production" : "mate";
+}
+
+/**
+ * Where a project belongs and who lives in it, from where HQ places it (`hq`) and its own tags.
+ * Permissive on read: a face part this client does not know is left out, never guessed at.
+ */
+export function readZeropsMembership(
+  project:
+    | {
+        readonly tagList?: ReadonlyArray<string> | undefined;
+        readonly hq?: HqPlacement | undefined;
+      }
+    | undefined,
+): ZeropsMembership {
+  let marker = false;
+  let standUp: { readonly by: string } | undefined;
+  for (const tag of project?.tagList ?? []) {
+    if (tag === MATE_MARKER_TAG) marker = true;
+    else if (standUp === undefined && tag.startsWith(STAND_UP_TAG_PREFIX)) {
       const by = tag.slice(STAND_UP_TAG_PREFIX.length).trim();
-      if (standUp === undefined && by.length > 0) standUp = { by };
-      continue;
-    }
-    if (groupId === undefined && tag.startsWith(GROUP_TAG_PREFIX)) {
-      const value = tag.slice(GROUP_TAG_PREFIX.length);
-      if (value.length > 0) groupId = value;
-      continue;
-    }
-    if (role === undefined && tag.startsWith(ROLE_TAG_PREFIX)) {
-      const value = tag.slice(ROLE_TAG_PREFIX.length);
-      if (isEnvironmentRole(value)) role = value;
-      continue;
-    }
-    if (bot === undefined && tag.startsWith(BOT_TAG_PREFIX)) {
-      const value = tag.slice(BOT_TAG_PREFIX.length).trim();
-      if (value.length > 0) bot = value;
-      continue;
-    }
-    if (face === undefined && tag.startsWith(FACE_TAG_PREFIX)) {
-      face = readFaceTag(tag.slice(FACE_TAG_PREFIX.length));
-      continue;
-    }
-    if (label === undefined && tag.startsWith(LABEL_TAG_PREFIX)) {
-      const value = tag.slice(LABEL_TAG_PREFIX.length).trim();
-      if (value.length > 0) label = value;
+      if (by.length > 0) standUp = { by };
     }
   }
-
-  return { mate, groupId, role, label, bot, standUp, face };
+  const placed = project?.hq;
+  // A Mate HQ holds in no application has its record, and no place.
+  const app = placed?.appId === null ? undefined : placed;
+  const label = app?.appName.trim();
+  const name = placed?.mate?.name.trim();
+  return {
+    mate: marker || placed?.kind === "mate",
+    groupId: app?.appId,
+    role: app === undefined ? undefined : ROLE_OF_KIND[app.kind],
+    label: label === undefined || label === "" ? undefined : label,
+    bot: name === undefined || name === "" ? undefined : name,
+    standUp,
+    face:
+      placed?.mate === null || placed === undefined ? undefined : readMateFace(placed.mate.face),
+  };
 }
 
 /** A Mate's face: the colour and the shape its person picked for it. */
@@ -216,9 +142,9 @@ export interface ZeropsMateFace {
 }
 
 /**
- * A face as its tag reads. A part this client does not know — a tint or a
- * shape a newer client added, a tag edited by hand — is absent, and the face
- * derived from the Mate's name stands in for it (`mateTints.ts`).
+ * A face as HQ records it. A part this client does not know — a tint or a
+ * shape a newer client added — is absent, and the face derived from the
+ * Mate's name stands in for it (`mateTints.ts`).
  */
 export interface ZeropsMateFaceTag {
   readonly tint: MateTintId | undefined;
@@ -226,7 +152,7 @@ export interface ZeropsMateFaceTag {
   /**
    * The Mate wore its name's tint before this face was picked for it, and its
    * name keeps its place among the names the tints are shared out over
-   * (`mate:face:<tint>:<shape>:named`, `assignCandidateMateTints`): so picking
+   * (`<tint>:<shape>:named`, `assignCandidateMateTints`): so picking
    * it a face recoloured nobody else. Absent on a face picked at its birth.
    */
   readonly named?: true;
@@ -238,7 +164,8 @@ const SHAPE_VALUES: ReadonlySet<string> = new Set(MATE_SHAPE_IDS);
 /** The part after the shape saying the Mate's name keeps its place (`ZeropsMateFaceTag.named`). */
 const NAMED_FACE_PART = "named";
 
-function readFaceTag(value: string): ZeropsMateFaceTag | undefined {
+/** A face as HQ records it: `<tint>:<shape>`, `:named` after it where the name kept its place. */
+export function readMateFace(value: string): ZeropsMateFaceTag | undefined {
   // Parts past these three are a newer client's; the ones this one knows still read.
   const [tint, shape, named] = value.split(":");
   const face = {
@@ -249,120 +176,29 @@ function readFaceTag(value: string): ZeropsMateFaceTag | undefined {
   return named === NAMED_FACE_PART ? { ...face, named: true } : face;
 }
 
-export function formatFaceTag(
+/** A face in the grammar HQ records it in (`readMateFace`). */
+export function formatMateFace(
   face: ZeropsMateFace,
   options: { readonly named?: boolean } = {},
 ): string {
-  const tag = `${FACE_TAG_PREFIX}${face.tint}:${face.shape}`;
-  return options.named === true ? `${tag}:${NAMED_FACE_PART}` : tag;
+  const value = `${face.tint}:${face.shape}`;
+  return options.named === true ? `${value}:${NAMED_FACE_PART}` : value;
 }
 
 /**
- * The tag list to `PUT` back, given the one the project already carries.
- *
- * `PUT /project/{id}` replaces `tagList` wholesale, so every caller has to
- * read-modify-write; doing it here is what keeps a user's own tags from being
- * deleted by a group rename. Omit `groupId` to take the project out of its
- * group entirely.
+ * The face a Mate already born changes to. One that wore its name's tint — no face this client
+ * reads a tint from, or one changed before — keeps its name's place among the names the tints
+ * are shared out over (`named`), so no other Mate changes colour; one whose face was picked at its
+ * birth never had a place there, and takes none now.
  */
-export function withZeropsGroupTags(
-  tagList: ReadonlyArray<string> | undefined,
-  next: {
-    readonly groupId?: string;
-    readonly role?: ZeropsEnvironmentRole;
-    /** The group's name, mirrored into `mate:name:` for the Zerops GUI. */
-    readonly label?: string;
-  },
-): ReadonlyArray<string> {
-  const existing = tagList ?? [];
-  // The marker is not membership either: a Mate that changes project is
-  // still a Mate. It reads as foreign here — it has no colon — and so
-  // survives untouched, which is the point.
-  const foreign = existing.filter((tag) => !tag.startsWith(MATE_TAG_PREFIX));
-  // Tags this call was not asked about survive it. A caller changing a role
-  // must not silently drop the agent's name or the project's tool marker —
-  // rewriting the whole `mate:` namespace on every write did exactly that.
-  // Membership is written wholesale: `next` IS the desired membership, and an
-  // empty one means the project leaves its group. What survives that is
-  // everything in the `mate:` namespace that is not membership — the agent's
-  // name and the tool marker belong to the project, not to its group, and a
-  // regrouping must not delete them.
-  const untouched = existing.filter(
-    (tag) =>
-      tag.startsWith(MATE_TAG_PREFIX) &&
-      !tag.startsWith(GROUP_TAG_PREFIX) &&
-      !tag.startsWith(ROLE_TAG_PREFIX) &&
-      !tag.startsWith(LABEL_TAG_PREFIX),
-  );
-
-  const mate: Array<string> = [];
-  if (next.groupId !== undefined) mate.push(formatGroupTag(next.groupId));
-  if (next.role !== undefined) mate.push(formatRoleTag(next.role));
-  // A label with no group is a label for nothing — the mirror only ever
-  // accompanies membership.
-  if (next.groupId !== undefined && next.label !== undefined) {
-    const labelTag = formatLabelTag(next.label);
-    if (labelTag !== undefined) mate.push(labelTag);
-  }
-  return [...foreign, ...untouched, ...mate];
-}
-
-/**
- * Names the agent living in this project, touching nothing else.
- *
- * Deliberately not a parameter of {@link withZeropsGroupTags}: that function
- * writes *membership*, and an empty membership means "leave the group". Naming
- * an agent through it therefore un-grouped the project — which is not a
- * hypothetical, it happened to a live account before this split existed.
- *
- * A blank name removes the tag, so an agent can be un-named back to its
- * project's own name.
- */
-export function withZeropsBotTag(
-  tagList: ReadonlyArray<string> | undefined,
-  name: string,
-): ReadonlyArray<string> {
-  const kept = (tagList ?? []).filter((tag) => !tag.startsWith(BOT_TAG_PREFIX));
-  const botTag = formatBotTag(name);
-  return botTag === undefined ? kept : [...kept, botTag];
-}
-
-/**
- * Gives the Mate living in this project its face, touching nothing else. Like
- * its name, the face belongs to the project and not to its group, so no
- * membership write drops it (`withZeropsGroupTags` keeps every `mate:` tag it
- * was not asked about).
- */
-export function withZeropsFaceTag(
-  tagList: ReadonlyArray<string> | undefined,
-  face: ZeropsMateFace,
-  options: { readonly named?: boolean } = {},
-): ReadonlyArray<string> {
-  const kept = (tagList ?? []).filter((tag) => !tag.startsWith(FACE_TAG_PREFIX));
-  return [...kept, formatFaceTag(face, options)];
-}
-
-/**
- * Changes the face of a Mate already born, touching nothing else. A Mate
- * that wore its name's tint — no face this client reads a tint from, or one
- * changed before — keeps its name's place among the names the tints are
- * shared out over (`named`), so no other Mate changes colour; one whose face
- * was picked at its birth never had a place there, and takes none now.
- */
-export function withZeropsChangedFace(
-  tagList: ReadonlyArray<string> | undefined,
-  face: ZeropsMateFace,
-): ReadonlyArray<string> {
-  const worn = readZeropsGroupTags(tagList).face;
-  return withZeropsFaceTag(tagList, face, {
-    named: worn?.tint === undefined || worn.named === true,
-  });
+export function changedMateFace(worn: ZeropsMateFaceTag | undefined, face: ZeropsMateFace): string {
+  return formatMateFace(face, { named: worn?.tint === undefined || worn.named === true });
 }
 
 /**
  * Declares the Mate: the marker, once, after every other tag. Idempotent, so
  * every path that stands a Mate up — the wizard, "Add dev" with an agent,
- * "Set up Mate", naming the agent — can write it without checking first.
+ * "Set up Mate" — can write it without checking first.
  */
 export function withZeropsMateTag(
   tagList: ReadonlyArray<string> | undefined,
@@ -414,27 +250,23 @@ export function withoutZeropsStandUpTag(
 }
 
 /**
- * A Mate as it is born, after its membership: the marker, the agent's name, the face its person
- * picked, and — for a dev Mate — who asked for the project's development to be stood up. The one
- * birth whichever call creates the project: *New Mate* (`planEnvironmentCreation`) and the New
- * project wizard's first Mate (`createProjectWithZeropsMate`). A stage or a production with an
- * agent is a target, not a place development is stood up.
+ * A Mate as it is born: the marker, and — for a dev Mate — who asked for the project's
+ * development to be stood up. The one birth whichever call creates the project: *New Mate*
+ * (`planEnvironmentCreation`) and the New project wizard's first Mate (`createProjectWithZeropsMate`).
+ * Its name, its face and its application are HQ's, written by the press's registration. A stage
+ * or a production with an agent is a target, not a place development is stood up.
  */
 export function withZeropsMateAtBirth(
   tagList: ReadonlyArray<string> | undefined,
   mate: {
     readonly role?: ZeropsEnvironmentRole | undefined;
-    readonly botName?: string | undefined;
-    readonly face?: ZeropsMateFace | undefined;
     readonly standUpBy?: string | undefined;
   },
 ): ReadonlyArray<string> {
   const declared = withZeropsMateTag(tagList);
-  const named = mate.botName === undefined ? declared : withZeropsBotTag(declared, mate.botName);
-  const faced = mate.face === undefined ? named : withZeropsFaceTag(named, mate.face);
   return mate.role === "dev" && mate.standUpBy !== undefined
-    ? withZeropsStandUpTag(faced, mate.standUpBy)
-    : faced;
+    ? withZeropsStandUpTag(declared, mate.standUpBy)
+    : declared;
 }
 
 export const ZEROPS_GROUP_ID_LENGTH = 12;
@@ -468,12 +300,11 @@ export interface ZeropsGroupEnvironment {
 }
 
 /**
- * Where a group's displayed name came from — the store, the label tags its
- * members carry, the creation under way in it, or nothing at all. The UI wants
- * this: a group named `"id"` is one the user should be invited to name, and a
- * group named `"tag"` or `"birth"` is one whose store record has not caught up.
+ * Where a group's displayed name came from — its application in HQ, the creation under way in it,
+ * or nothing at all. The UI wants this: a group named `"id"` is one the user should be invited to
+ * name, and a group named `"birth"` is one HQ has not placed a project of yet.
  */
-export type ZeropsGroupNameSource = "store" | "tag" | "birth" | "id";
+export type ZeropsGroupNameSource = "hq" | "birth" | "id";
 
 /**
  * Where an environment being created stands in the account's projects, as the press that made it
@@ -523,7 +354,7 @@ export interface ZeropsGroupPendingMember {
 
 export interface ZeropsGroup {
   readonly groupId: string;
-  /** Store name, else the members' label tag, else the id. */
+  /** Its application's name in HQ, else the creation's under way, else the id. */
   readonly name: string;
   readonly nameSource: ZeropsGroupNameSource;
   readonly environments: ReadonlyArray<ZeropsGroupEnvironment>;
@@ -543,7 +374,7 @@ export interface ZeropsGroup {
 
 export interface ZeropsGroupTree {
   readonly groups: ReadonlyArray<ZeropsGroup>;
-  /** Projects carrying no group tag — every Zerops project predating this feature. */
+  /** Projects HQ places in no application. */
   readonly ungrouped: ReadonlyArray<ZeropsProject>;
 }
 
@@ -561,8 +392,6 @@ export interface ZeropsGroupTree {
 export type ZeropsProjectOrder = "newest" | "name" | "custom";
 
 export interface DeriveZeropsGroupsOptions {
-  /** Group id → display name, as read from the recipe store. */
-  readonly names?: Readonly<Record<string, string>>;
   readonly order: ZeropsProjectOrder;
   /**
    * `custom` only: group ids in the order the viewer put them. A group it
@@ -628,58 +457,30 @@ function byBornNewestFirst(left: number | undefined, right: number | undefined):
 }
 
 /**
- * The label most of a group's members agree on.
- *
- * A rename writes one tag per member and is not atomic, so a half-applied one
- * leaves the group disagreeing with itself. Taking the majority means the
- * displayed name flips only once the rename is more done than not, and ties
- * break deterministically rather than by whichever project the API listed
- * first.
- */
-function consensusLabel(labels: ReadonlyArray<string>): string | undefined {
-  const counts = new Map<string, number>();
-  for (const label of labels) counts.set(label, (counts.get(label) ?? 0) + 1);
-
-  let winner: string | undefined;
-  let best = 0;
-  for (const [label, count] of counts) {
-    if (count > best || (count === best && winner !== undefined && byName(label, winner) < 0)) {
-      winner = label;
-      best = count;
-    }
-  }
-  return winner;
-}
-
-/**
  * The left menu's whole data model: projects in, a group tree out. Pure, and
- * total — a project with no `tagList` at all is ungrouped rather than an error.
+ * total — a project HQ does not place is ungrouped rather than an error.
  */
 export function deriveZeropsGroups(
   projects: ReadonlyArray<ZeropsProject>,
   options: DeriveZeropsGroupsOptions,
 ): ZeropsGroupTree {
   const members = new Map<string, Array<ZeropsGroupEnvironment>>();
-  const labels = new Map<string, Array<string>>();
+  const labels = new Map<string, string>();
   const ungrouped: Array<ZeropsProject> = [];
   const births = options.births ?? [];
   const born = new Set(births.map((birth) => birth.projectId));
 
   for (const project of projects) {
-    const { groupId, role, label } = readZeropsGroupTags(project.tagList);
+    const { groupId, role, label } = readZeropsMembership(project);
     if (groupId === undefined) {
-      // Listed before its group tag is written: its birth still places it.
+      // Listed before HQ places it: its birth still does.
       if (!born.has(project.id)) ungrouped.push(project);
       continue;
     }
     const bucket = members.get(groupId);
     if (bucket) bucket.push({ project, role });
     else members.set(groupId, [{ project, role }]);
-    if (label !== undefined) {
-      const found = labels.get(groupId);
-      if (found) found.push(label);
-      else labels.set(groupId, [label]);
-    }
+    if (label !== undefined) labels.set(groupId, label);
   }
 
   // A creation stays pending until a group of the listing holds its project;
@@ -706,18 +507,15 @@ export function deriveZeropsGroups(
     const coming = [...(pending.get(groupId) ?? [])].sort(
       (left, right) => left.startedAt - right.startedAt || byName(left.projectId, right.projectId),
     );
-    const stored = options.names?.[groupId];
-    const mirrored = consensusLabel(labels.get(groupId) ?? []);
+    const named = labels.get(groupId);
     const created = coming.find((birth) => birth.placement.groupName.trim() !== "")?.placement
       .groupName;
     const [name, nameSource]: [string, ZeropsGroupNameSource] =
-      stored !== undefined
-        ? [stored, "store"]
-        : mirrored !== undefined
-          ? [mirrored, "tag"]
-          : created !== undefined
-            ? [created, "birth"]
-            : [groupId, "id"];
+      named !== undefined
+        ? [named, "hq"]
+        : created !== undefined
+          ? [created, "birth"]
+          : [groupId, "id"];
     return {
       groupId,
       name,

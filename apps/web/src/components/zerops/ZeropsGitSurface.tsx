@@ -11,7 +11,11 @@
  *
  * Signed out of Gitea, only the checkout half can speak; the tab says so.
  */
-import { botDisplayName, readZeropsGroupTags, type GitBlock } from "@t3tools/client-runtime/zerops";
+import {
+  botDisplayName,
+  readZeropsMembership,
+  type GitBlock,
+} from "@t3tools/client-runtime/zerops";
 import { resolveMateProjectRole } from "@t3tools/client-runtime/zerops/mateAccess";
 import type { ScopedThreadRef } from "@t3tools/contracts";
 import { useNavigate } from "@tanstack/react-router";
@@ -33,7 +37,7 @@ export function ZeropsGitSurface({ threadRef }: { readonly threadRef: ScopedThre
   const projectRef = useRegistrationRecord(environmentId)?.projectRef;
 
   const project = inventory.projects.find((entry) => entry.id === projectRef?.projectId);
-  const tags = readZeropsGroupTags(project?.tagList ?? []);
+  const tags = readZeropsMembership(project);
   const groupId = tags.groupId;
   /**
    * The Mate this panel belongs to, by the name every other surface calls it —

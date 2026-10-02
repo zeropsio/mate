@@ -16,7 +16,7 @@
  */
 import {
   mateNextStep,
-  readZeropsGroupTags,
+  readZeropsMembership,
   type MateNextStep,
 } from "@t3tools/client-runtime/zerops";
 import type { ScopedThreadRef } from "@t3tools/contracts";
@@ -59,7 +59,7 @@ export function useZeropsMateNextStep(threadRef: ScopedThreadRef | null): Zerops
   const mates = useZeropsMateDirectory();
 
   const project = inventory.projects.find((entry) => entry.id === projectId);
-  const groupId = readZeropsGroupTags(project?.tagList ?? []).groupId;
+  const groupId = readZeropsMembership(project).groupId;
   const projectFlow = groupId === undefined ? undefined : flow?.flows.get(groupId);
 
   if (threadRef === null) return NOTHING;

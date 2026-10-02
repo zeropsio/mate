@@ -6,6 +6,10 @@ describe("registryFromHq", () => {
   it("is HQ's structure, each application a group under its own id", () => {
     expect(
       registryFromHq({
+        // A Mate in no application is in no group.
+        ungrouped: [
+          { projectId: "p5", name: "scratch", mate: { name: "Ada", face: "sky:flower" } },
+        ],
         apps: [
           {
             id: "app-1",

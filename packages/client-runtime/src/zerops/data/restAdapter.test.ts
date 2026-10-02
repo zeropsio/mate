@@ -170,11 +170,11 @@ const startProjectCommand: PlatformCommand = {
   dispatchOrdinal: DispatchOrdinal.make(8),
 };
 
-const nameProjectCommand: PlatformCommand = {
+const declareMateCommand: PlatformCommand = {
   kind: "update-project-tags",
   project,
-  patch: { kind: "agent-name", name: "Ada" },
-  attemptId: ZeropsCommandAttemptId.make("name-attempt"),
+  patch: { kind: "mate" },
+  attemptId: ZeropsCommandAttemptId.make("declare-attempt"),
   accountEpoch: scope.epoch,
   startedAtReceiptOrdinal: ReceiptOrdinal.make(9),
   dispatchOrdinal: DispatchOrdinal.make(10),
@@ -1041,7 +1041,7 @@ describe("ZeropsDataAdapter receiver", () => {
   );
 
   it.effect(
-    "creates the New project wizard's first Mate with the face and the stand-up it asks",
+    "creates the New project wizard's first Mate with the stand-up it asks, and nothing of its place",
     () =>
       Effect.gen(function* () {
         const bodies: Array<string> = [];
@@ -1074,19 +1074,15 @@ describe("ZeropsDataAdapter receiver", () => {
             kind: "create-project-with-mate",
             organization,
             name: "Acme Docs - Ada",
-            group: { groupId: "g-acme", role: "dev", label: "Acme Docs" },
-            botName: "Ada",
-            face: { tint: "coral", shape: "gem" },
             standUpBy: "u-ada",
             ...commandBase,
           },
           context(),
         );
 
-        // The project's own POST: the one body the platform creates it with.
-        for (const tag of ["mate:bot:Ada", "mate:face:coral:gem", "mate:standup:u-ada"]) {
-          expect(bodies[0]).toContain(`"${tag}"`);
-        }
+        // The project's own POST: the one body the platform creates it with. Its application,
+        // name and face are HQ's.
+        expect(bodies[0]).toContain('"tagList":["mate","mate:standup:u-ada"]');
       }),
   );
 
@@ -1124,13 +1120,13 @@ describe("ZeropsDataAdapter receiver", () => {
       const requests: RequestInit[] = [];
       const client = clientFor((_url, init) => {
         requests.push(init ?? {});
-        // The first read finds no name; the write and its read-back carry it.
+        // The first read finds no marker; the write and its read-back carry it.
         return new Response(
           JSON.stringify({
             id: "project",
             name: "application",
             status: "ACTIVE",
-            tagList: requests.length === 1 ? [] : ["mate", "mate:bot:Ada"],
+            tagList: requests.length === 1 ? [] : ["mate"],
           }),
           { status: 200 },
         );
@@ -1141,12 +1137,12 @@ describe("ZeropsDataAdapter receiver", () => {
         timers,
       });
 
-      const receipt = yield* adapter.execute(nameProjectCommand, context());
+      const receipt = yield* adapter.execute(declareMateCommand, context());
 
       expect(requests.map((request) => request.method ?? "GET")).toEqual(["GET", "PUT", "GET"]);
       expect(receipt.result).toMatchObject({
         kind: "update-project-tags",
-        value: { kind: "written", project: { id: "project", tagList: ["mate", "mate:bot:Ada"] } },
+        value: { kind: "written", project: { id: "project", tagList: ["mate"] } },
       });
       expect(receipt.observations).toEqual(
         expect.arrayContaining([
@@ -1155,7 +1151,7 @@ describe("ZeropsDataAdapter receiver", () => {
             ref: project,
             observation: expect.objectContaining({
               source: "command-response",
-              command: nameProjectCommand,
+              command: declareMateCommand,
             }),
           }),
         ]),

@@ -176,7 +176,7 @@ describe("resolveMateOwner", () => {
   it("is whoever signed the agent in, when the project raised nobody to OWNER", () => {
     expect(
       resolveMateOwner({
-        project: signedIn("mate", "mate:bot:Kai", "mate:signer:claude-code:u-eva"),
+        project: signedIn("mate", "mate:signer:claude-code:u-eva"),
         members: [jan, eva],
       }),
     ).toBe(eva);
@@ -261,7 +261,7 @@ describe("mateOwnerRecords — what a Mate's own records say of its person", () 
     {
       name: "no OWNER entry and nobody signed in: nobody's",
       userRoles: [SERVICE],
-      tagList: ["mate", "mate:bot:Kai"],
+      tagList: ["mate"],
       records: { named: false, signedIn: false },
     },
     {
@@ -323,16 +323,16 @@ describe("mateOwnerRecords — what a Mate's own records say of its person", () 
 });
 
 describe("the signer tag (D6)", () => {
-  const OTHER = "mate:g:acme";
+  const OTHER = "person:own";
 
   it("keeps every other tag and replaces this agent's signer", () => {
     expect(
       withMateSignerTag(
-        [OTHER, mateSignerTag("claude-code", "old"), "mate:role:dev"],
+        [OTHER, mateSignerTag("claude-code", "old"), "mate:closed-off"],
         "claude-code",
         "jan",
       ),
-    ).toEqual([OTHER, "mate:role:dev", mateSignerTag("claude-code", "jan")]);
+    ).toEqual([OTHER, "mate:closed-off", mateSignerTag("claude-code", "jan")]);
   });
 
   it("leaves the other agent's signer alone", () => {

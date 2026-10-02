@@ -18,8 +18,6 @@ const TIER = {
 
 const BASE = {
   clientId: "client-1",
-  groupId: "7k2m9qx4vb1c",
-  groupName: "Go Hello World",
   name: "Go Hello World - production",
   recipe: TIER,
   role: "prod" as ZeropsEnvironmentRole,
@@ -32,7 +30,6 @@ function stepKinds(steps: ReadonlyArray<EnvironmentCreationStep>): ReadonlyArray
 describe("defaultAgentForRole", () => {
   it.each([
     { role: "dev", expected: true },
-    { role: "devstage", expected: true },
     // A stage is a deploy target (its form says so); an agent there is the
     // person's decision, like production's (2026-09-17).
     { role: "stage", expected: false },
@@ -61,9 +58,7 @@ describe("planEnvironmentCreation", () => {
     if (!plan.ok) expect(plan.reason).toContain("name");
   });
 
-  it("creates the project with its group tags already on it", () => {
-    // It must never exist as an untagged project, or it would be briefly
-    // missing from its own group while the user watches it appear.
+  it("creates a production with no tag of ours: where it stands is HQ's to say", () => {
     const plan = planEnvironmentCreation(BASE);
     expect(plan.ok).toBe(true);
     if (!plan.ok) return;
@@ -72,20 +67,9 @@ describe("planEnvironmentCreation", () => {
     expect(first).toEqual({
       kind: "create-project",
       name: "Go Hello World - production",
-      tagList: ["mate:g:7k2m9qx4vb1c", "mate:role:prod", "mate:name:Go Hello World"],
+      tagList: [],
       location: undefined,
     });
-  });
-
-  it("omits the name mirror when the group has no name yet", () => {
-    const { groupName: _groupName, ...withoutName } = BASE;
-    const plan = planEnvironmentCreation(withoutName);
-    if (!plan.ok) throw new Error("expected a plan");
-    const [first] = plan.steps;
-    expect(first?.kind === "create-project" && first.tagList).toEqual([
-      "mate:g:7k2m9qx4vb1c",
-      "mate:role:prod",
-    ]);
   });
 
   it("gives production no agent container by default", () => {
@@ -238,23 +222,7 @@ describe("environmentCreationStepLabel", () => {
   });
 });
 
-describe("the agent's name", () => {
-  it("is written onto the project at birth, not added afterwards", () => {
-    const plan = planEnvironmentCreation({
-      clientId: "c1",
-      groupId: "g1",
-      role: "stage",
-      name: "crm-stage",
-      recipe: { ...TIER, tier: "stage" as const },
-      withAgent: true,
-      botName: "Ada",
-    });
-    expect(plan.ok).toBe(true);
-    const step = plan.ok ? plan.steps[0] : undefined;
-    expect(step?.kind).toBe("create-project");
-    expect(step?.kind === "create-project" ? step.tagList : []).toContain("mate:bot:Ada");
-  });
-
+describe("the Mate's marker", () => {
   it("declares the Mate at birth when the environment gets an agent, and not otherwise", () => {
     const tags = (plan: ReturnType<typeof planEnvironmentCreation>) => {
       const step = plan.ok ? plan.steps[0] : undefined;
@@ -271,20 +239,6 @@ describe("the agent's name", () => {
     expect(tags(planEnvironmentCreation({ ...BASE, role: "prod", withAgent: true }))).toContain(
       "mate",
     );
-  });
-
-  it("is optional — an unnamed environment still plans", () => {
-    const plan = planEnvironmentCreation({
-      clientId: "c1",
-      groupId: "g1",
-      role: "stage",
-      name: "crm-stage",
-      recipe: { ...TIER, tier: "stage" as const },
-    });
-    expect(plan.ok).toBe(true);
-    const step = plan.ok ? plan.steps[0] : undefined;
-    const tags = step?.kind === "create-project" ? step.tagList : [];
-    expect(tags.some((tag) => tag.startsWith("mate:bot:"))).toBe(false);
   });
 });
 
@@ -342,10 +296,11 @@ describe("the stand-up ask", () => {
 });
 
 /**
- * The face its person picked is the Mate's from its first moment: written with
- * its name, onto the project the platform creates, whichever call creates it.
+ * A Mate's application, its kind, its name and its face are HQ's, written by the press's
+ * registration: the project the platform creates carries the marker alone, whichever call
+ * creates it.
  */
-describe("the Mate's face", () => {
+describe("nothing of a Mate's place on its project", () => {
   const WHOLE = "project:\n  name: published-name\nservices:\n  - hostname: app\n";
   const birthTags = (plan: ReturnType<typeof planEnvironmentCreation>) => {
     if (!plan.ok) throw new Error(plan.reason);
@@ -361,37 +316,18 @@ describe("the Mate's face", () => {
       recipe: { ...TIER, yaml: WHOLE },
       step: "import-project",
     },
-  ])("is written at birth for $case", ({ recipe, step }) => {
+  ])("is written at birth for $case: the marker alone", ({ recipe, step }) => {
     const plan = planEnvironmentCreation({
       ...BASE,
       role: "dev",
       name: "Go Hello World - Ada",
       recipe,
-      botName: "Ada",
-      face: { tint: "coral", shape: "gem" },
     });
     expect(plan.ok && plan.steps[0]?.kind).toBe(step);
-    const tags = birthTags(plan);
-    expect(tags).toContain("mate:face:coral:gem");
-    expect(tags).toContain("mate:bot:Ada");
-    expect(tags).toContain("mate");
+    expect(birthTags(plan)).toEqual(["mate"]);
     if (plan.ok && plan.steps[0]?.kind === "import-project") {
-      expect(plan.steps[0].yaml).toContain("- mate:face:coral:gem");
+      expect(plan.steps[0].yaml).toContain("  tags:\n    - mate\n");
     }
-  });
-
-  it.each([
-    {
-      case: "a Mate whose person picked nothing: its face is derived, as today",
-      input: { role: "dev" as const },
-    },
-    {
-      case: "an environment with no agent: there is no Mate to wear it",
-      input: { role: "prod" as const, face: { tint: "sky" as const, shape: "pick" as const } },
-    },
-  ])("is not written for $case", ({ input }) => {
-    const tags = birthTags(planEnvironmentCreation({ ...BASE, ...input }));
-    expect(tags.some((tag) => tag.startsWith("mate:face:"))).toBe(false);
   });
 });
 
@@ -467,10 +403,8 @@ services:
   function plan(yaml: string, extra: Partial<EnvironmentCreationInput> = {}) {
     const result = planEnvironmentCreation({
       clientId: "c1",
-      groupId: "g1",
       role: "dev",
       name: "Acme - Wren",
-      botName: "Wren",
       recipe: { kind: "tier", tier: "mate", yaml },
       ...extra,
     });
@@ -531,10 +465,7 @@ services:
 project:
   name: Acme - Wren
   tags:
-    - mate:g:g1
-    - mate:role:dev
     - mate
-    - mate:bot:Wren
   envVariables:
     APP_KEY: <@generateRandomString(<32>)>
 services:
@@ -572,7 +503,6 @@ services:
   it("refuses a tier that declares no services: nothing has been merged yet", () => {
     const result = planEnvironmentCreation({
       clientId: "c1",
-      groupId: "g1",
       role: "dev",
       name: "Acme - Wren",
       recipe: { kind: "tier", tier: "mate", yaml: "project:\n  name: x\n" },
@@ -595,7 +525,6 @@ services:
   function plan(recipe: string, extra: Record<string, unknown> = {}) {
     const result = planEnvironmentCreation({
       clientId: "c1",
-      groupId: "g1",
       role: "prod",
       name: "Aurora - production",
       recipe: { kind: "tier" as const, tier: "production" as const, yaml: recipe },
@@ -619,7 +548,6 @@ services:
     expect(step.yaml).toContain("APP_KEY: <@generateRandomString(<32>)>");
     expect(step.yaml).toContain("name: Aurora - production");
     expect(step.yaml).not.toContain("published-name");
-    expect(step.yaml).toContain("- mate:g:g1");
   });
 
   it("still adds the agent's container after it", () => {

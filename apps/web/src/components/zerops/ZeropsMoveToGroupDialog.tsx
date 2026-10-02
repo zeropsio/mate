@@ -33,7 +33,6 @@ export function ZeropsMoveToGroupForm({
   groups,
   currentGroupId,
   currentRole,
-  mintGroupId,
   onCancel,
   onSubmit,
 }: {
@@ -41,7 +40,6 @@ export function ZeropsMoveToGroupForm({
   readonly groups: ReadonlyArray<MoveGroupChoice>;
   readonly currentGroupId: string | undefined;
   readonly currentRole: ZeropsEnvironmentRole | undefined;
-  readonly mintGroupId: () => string;
   readonly onCancel: () => void;
   readonly onSubmit: (membership: MoveMembership) => void;
 }) {
@@ -61,7 +59,7 @@ export function ZeropsMoveToGroupForm({
       onSubmit={(event) => {
         event.preventDefault();
         setSubmitted(true);
-        const membership = resolveMoveMembership(form, mintGroupId);
+        const membership = resolveMoveMembership(form);
         if (membership !== undefined) onSubmit(membership);
       }}
     >

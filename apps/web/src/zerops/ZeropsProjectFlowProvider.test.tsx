@@ -84,7 +84,7 @@ const inventoryRefs = vi.hoisted(() => ({
     | { readonly kind: "withheld"; readonly reason: string; readonly cause: null }
   >(),
 }));
-/** The groups the account's Gitea registry lists. */
+/** The groups the account's registry lists, as HQ holds it. */
 const registryGroups = vi.hoisted(() => ({
   groups: [{ groupId: "g1", slug: "harbor" }] as ReadonlyArray<{
     readonly groupId: string;
@@ -446,7 +446,7 @@ describe("ZeropsProjectFlowProvider", () => {
           clientId: "org-1",
           name: "harbor-prod",
           status: "ACTIVE",
-          tagList: ["mate:g:g1", "mate:role:prod"],
+          hq: { appId: "g1", appName: "Harbor", kind: "production", mate: null },
         } as ZeropsProject,
       ],
       services: new Map(),

@@ -22,8 +22,6 @@ const gitea = vi.hoisted(() => ({
   hold: null as Promise<void> | null,
   /** The next repair's outcome fails a step the page cannot fix by itself. */
   failNext: false,
-  /** Each registry read the page asked for after a repair. */
-  refreshes: 0,
 }));
 
 /** The fake client's side door: its request ended in a 401 no token recovered. */
@@ -152,7 +150,6 @@ describe("useZeropsGroupEnvironmentReconcile", () => {
     gitea.outwaitReacquireOnRepair = false;
     gitea.hold = null;
     gitea.failNext = false;
-    gitea.refreshes = 0;
     vi.useRealTimers();
     vi.unstubAllGlobals();
   });
@@ -170,9 +167,6 @@ describe("useZeropsGroupEnvironmentReconcile", () => {
         hq: HQ,
         giteaOrigin: "https://gitea.example.test",
         giteaProjectId: "gitea-project",
-        refreshRegistry: () => {
-          gitea.refreshes += 1;
-        },
         halfMade: HALF_MADE,
         onOutcome: (_entry, outcome) => onOutcome(outcome),
       });
@@ -242,7 +236,7 @@ describe("useZeropsGroupEnvironmentReconcile", () => {
     },
   );
 
-  it("a cold load with a half-made environment repairs it once, reads the registry once, and settles", async () => {
+  it("a cold load with a half-made environment repairs it once, and settles", async () => {
     vi.useFakeTimers();
     const outcomes: Array<AddGroupEnvironmentOutcome> = [];
     const page = await mount((outcome) => outcomes.push(outcome));
@@ -255,7 +249,6 @@ describe("useZeropsGroupEnvironmentReconcile", () => {
       await vi.advanceTimersByTimeAsync(10 * 60_000);
     });
     expect(gitea.repairs).toHaveLength(1);
-    expect(gitea.refreshes).toBe(1);
     expect(outcomes.map((outcome) => outcome.failed)).toEqual([undefined]);
     await page.unmount();
   });

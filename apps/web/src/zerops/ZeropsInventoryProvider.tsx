@@ -20,6 +20,7 @@ import {
   type ViewObservation,
 } from "@t3tools/client-runtime/zerops/data";
 import { mateDiagnostics } from "@t3tools/client-runtime/zerops/diagnostics";
+import { placeProjects } from "@t3tools/client-runtime/zerops/hq";
 import type { Invalidation } from "@t3tools/client-runtime/zerops/knowledge";
 import * as Effect from "effect/Effect";
 import {
@@ -33,7 +34,12 @@ import {
 } from "react";
 
 import { ZeropsLandingWait } from "../components/zerops/landing/ZeropsLandingShell";
-import { zeropsDataRuntimeAtom, zeropsInventoryAtom, zeropsSessionAtom } from "../state/zerops";
+import {
+  hqPlacementsAtom,
+  zeropsDataRuntimeAtom,
+  zeropsInventoryAtom,
+  zeropsSessionAtom,
+} from "../state/zerops";
 import { invalidateZerops } from "./accountInvalidations";
 import {
   HeldInventoryContext,
@@ -614,6 +620,14 @@ export function ZeropsInventoryProvider({ children }: { readonly children: React
     [lapseRetry, lapseSentence, retryNow, signOutNow, subject, unanswered, voice],
   );
 
+  // Each project where the organization's HQ places it (ADR 0002), as last known.
+  const placements = useAtomValue(hqPlacementsAtom);
+  const placed = useMemo(
+    () =>
+      placements === null ? projected.projects : placeProjects(projected.projects, placements),
+    [placements, projected.projects],
+  );
+
   // Withholding is applied here, at the inventory's one read (DESIGN law 5, §3.1): a withheld
   // project's content leaves `projects` and `services` and comes back with its next authority.
   const shown = useMemo(() => {
@@ -625,13 +639,13 @@ export function ZeropsInventoryProvider({ children }: { readonly children: React
       ),
     );
     return {
-      projects: projected.projects.filter(({ id }) => !withheld.has(id)),
+      projects: placed.filter(({ id }) => !withheld.has(id)),
       services: new Map([...projected.services].filter(([id]) => !withheld.has(id))),
     };
-  }, [account, authority, projected]);
+  }, [account, authority, placed, projected]);
   const held = useMemo(
-    () => ({ projects: projected.projects, services: projected.services }),
-    [projected.projects, projected.services],
+    () => ({ projects: placed, services: projected.services }),
+    [placed, projected.services],
   );
   const snapshot = selectSnapshot({
     projects: shown.projects,

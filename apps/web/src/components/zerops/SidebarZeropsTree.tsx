@@ -60,7 +60,7 @@ import {
   pullRequestsByMate,
   pullRequestsFolded,
   rankZeropsCandidateForListing,
-  readZeropsGroupTags,
+  readZeropsMembership,
   selectMateEnvironments,
   sidebarChangeLabel,
   type EnvironmentRow,
@@ -264,7 +264,7 @@ function holdsRevealTarget(
     return candidates.some((candidate) => candidate.project.id === target.projectId);
   }
   return candidates.some(
-    (candidate) => readZeropsGroupTags(candidate.project.tagList).groupId === target.groupId,
+    (candidate) => readZeropsMembership(candidate.project).groupId === target.groupId,
   );
 }
 
@@ -275,7 +275,7 @@ function groupIdOf(
 ): string | undefined {
   if (projectId === undefined || projectId === null) return undefined;
   const open = candidates.find((candidate) => candidate.project.id === projectId);
-  return open === undefined ? undefined : readZeropsGroupTags(open.project.tagList).groupId;
+  return open === undefined ? undefined : readZeropsMembership(open.project).groupId;
 }
 
 /**
@@ -479,6 +479,11 @@ export interface SidebarZeropsTreeProps<T extends RosterCandidate> {
   /** How clock times read — the paused Mate's "picks up at" — per the viewer's setting. */
   readonly timestampFormat?: TimestampFormat;
   /**
+   * Since when HQ does not answer and how old the structure drawn is (`hqOutageLine`), at the
+   * menu's top while it lasts; `null` while HQ answers.
+   */
+  readonly hqOutage?: string | null | undefined;
+  /**
    * What each Mate's own menu can do (`useSidebarMateMenus`). Absent — a
    * harness, a test — the rows carry no menu.
    */
@@ -576,6 +581,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
   complete,
   notice = null,
   onNoticeAct,
+  hqOutage = null,
   className,
   births = NO_BIRTHS,
   timestampFormat = "locale",
@@ -804,13 +810,21 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
   // Nothing to draw, and the listing may not say "none" yet: its notice, at
   // the menu's own left edge, never an empty state it has not earned.
   if (nothing !== undefined && !complete) {
-    if (notice === null) return null;
-    return <ListingNotice className={className} notice={notice} onAct={onNoticeAct} />;
+    if (notice === null)
+      return hqOutage === null ? null : <HqOutage className={className} line={hqOutage} />;
+    return (
+      <>
+        {hqOutage === null ? null : <HqOutage line={hqOutage} />}
+        <ListingNotice className={className} notice={notice} onAct={onNoticeAct} />
+      </>
+    );
   }
 
   // No project at all: nothing to list, and nothing to say — the one thing to
   // do is *New project*, at the menu's foot (`SidebarNewProject`).
-  if (nothing === "no-projects") return null;
+  if (nothing === "no-projects") {
+    return hqOutage === null ? null : <HqOutage className={className} line={hqOutage} />;
+  }
 
   // Projects, but none with a Mate: one quiet line on the menu's own left
   // edge, where every other row starts, and the way to the projects screen —
@@ -821,6 +835,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
         className={cn("flex flex-col items-start gap-1.5 px-2.5 py-2", className)}
         data-zerops-surface="sidebar-environments-empty"
       >
+        {hqOutage === null ? null : <HqOutage className="px-0 py-0" line={hqOutage} />}
         <span className="text-xs text-sidebar-muted-foreground">No environment has Mate yet</span>
         <button
           className="inline-flex cursor-pointer items-center rounded-md border border-sidebar-border px-2.5 py-1 text-xs font-medium text-sidebar-muted-foreground transition-colors hover:bg-sidebar-row-hover hover:text-sidebar-foreground"
@@ -855,7 +870,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
   /** A Mate's face: its tint, and the shape its person picked or that tint's own. */
   const faceOf = (project: ZeropsCandidate["project"]) => {
     const tint = tints.get(project.id) ?? "slate";
-    return { tint, shape: mateShapeOf(project.tagList, tint) };
+    return { tint, shape: mateShapeOf(project, tint) };
   };
 
   const toggle = (key: string) => {
@@ -909,7 +924,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
     const names = new Map<string, string>();
     for (const { item } of mateEntries) {
       const name = botDisplayName({
-        bot: readZeropsGroupTags(item.project.tagList).bot,
+        bot: readZeropsMembership(item.project).bot,
         projectName: item.project.name,
       });
       names.set(item.project.id, name);
@@ -1209,7 +1224,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
             return {
               projectId: item.project.id,
               name: botDisplayName({
-                bot: readZeropsGroupTags(item.project.tagList).bot,
+                bot: readZeropsMembership(item.project).bot,
                 projectName: item.project.name,
               }),
               ...faceOf(item.project),
@@ -1655,6 +1670,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
       ref={treeRef}
     >
       <SidebarSelectedBand current={activeProjectId} />
+      {hqOutage === null ? null : <HqOutage className="mb-2" line={hqOutage} />}
       {groupSections}
       {ungroupedSection}
 
@@ -1765,6 +1781,28 @@ function scrollingAncestor(element: HTMLElement | null): HTMLElement | null {
 }
 
 /** The listing's notice (`candidatesNotice`) with its one affordance, at the menu's left edge. */
+/**
+ * HQ not answering (SPEC §6.2.3): the structure under it is the last one read. A status, not an
+ * alert — the Mates' conversations go on without HQ.
+ */
+function HqOutage({
+  line,
+  className,
+}: {
+  readonly line: string;
+  readonly className?: string | undefined;
+}) {
+  return (
+    <div
+      className={cn("px-2.5 py-2 text-xs text-sidebar-muted-foreground", className)}
+      data-zerops-surface="sidebar-hq-outage"
+      role="status"
+    >
+      {line}
+    </div>
+  );
+}
+
 function ListingNotice({
   notice,
   onAct,
@@ -2415,7 +2453,7 @@ function MateRow<T extends RosterCandidate>({
   /** Its own change waits on the person's review (`mateNextStep`): it wears needs-you. */
   readonly reviewWaits?: boolean;
 }) {
-  const tags = readZeropsGroupTags(candidate.project.tagList);
+  const tags = readZeropsMembership(candidate.project);
   const name = botDisplayName({ bot: tags.bot, projectName: candidate.project.name });
   // On its way off Zerops (`deletingMates.ts`): it says so in its last line,
   // offers no menu and does not open, until the listing lets it go.
@@ -2544,7 +2582,6 @@ function MateRow<T extends RosterCandidate>({
   const openMenu = (at?: MenuPoint) => {
     setMenuAt(at);
     setMenuOpen(true);
-    actions?.onMenuOpen?.();
   };
   // A finger held on the row opens its menu, as a right-click does: a phone
   // has neither that nor a hover to show the menu's trigger. The click that
@@ -3330,7 +3367,7 @@ function ComingMateRow({
       <span className="relative flex size-7">
         <span className="menu-face-cut menu-face-pale relative flex">
           <MateFace
-            shape={coming.face?.shape ?? mateShapeOf([], tint)}
+            shape={coming.face?.shape ?? mateShapeOf(undefined, tint)}
             size="md"
             state="sleep"
             tint={tint}

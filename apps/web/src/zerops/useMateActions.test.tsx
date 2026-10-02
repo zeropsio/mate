@@ -1,10 +1,11 @@
 /**
  * *Change face…* as `useMateActions` offers it, wherever a Mate is listed: beside Rename, where
  * the viewer may rename the Mate; its dialog opening on the face the Mate wears; a save that is
- * the tag writer's one patch, closing once the platform takes it; and a refusal said in the
- * dialog, nothing else changed.
+ * one write to the organization's HQ, closing once HQ takes it; and a refusal said in the dialog,
+ * nothing else changed.
  */
 import type { ZeropsMateFace } from "@t3tools/client-runtime/zerops";
+import type { HqPlacement } from "@t3tools/client-runtime/zerops/hq";
 import { EnvironmentId } from "@t3tools/contracts";
 import { act } from "react";
 import { create, type ReactTestRenderer } from "react-test-renderer";
@@ -27,7 +28,8 @@ interface FaceDialogProps {
 }
 
 const mock = vi.hoisted(() => ({
-  updateProjectTags: vi.fn(),
+  /** HQ's `PATCH /api/mates/{projectId}`, a write here being the promise the test answers. */
+  updateMate: vi.fn(),
   roleCode: "OWNER",
   listing: { current: undefined as unknown },
   /** The press's marker on each container, by service id, as the store states it. */
@@ -48,13 +50,13 @@ vi.mock("./ZeropsSessionProvider", () => ({
     user: { id: "user-ada" },
   }),
 }));
-// The account's runtime: the one tag command, a command here being the promise the test answers.
+// The account's runtime: no platform command is answered here.
 vi.mock("./zeropsDataContext", () => ({
   useZeropsData: () => ({
     organizationRef: (organizationId: string) => ({ organizationId }),
     projectRef: (organizationId: string, projectId: string) => ({ organizationId, projectId }),
     runtime: {
-      commands: { updateProjectTags: mock.updateProjectTags },
+      commands: {},
       reads: { setupMarker: () => null },
       cells: { known: () => null },
     },
@@ -85,8 +87,15 @@ vi.mock("./useZeropsMateOwners", () => ({
   useZeropsOrganizationMembers: () => [],
   zeropsMateOwner: () => undefined,
 }));
+// The organization's official HQ, where a Mate's face is written.
 vi.mock("./accountHq", () => ({
-  useAccountHq: () => ({ status: "ready", hq: { kind: "none" }, admins: [], reread: () => {} }),
+  useAccountHq: () => ({
+    status: "ready",
+    hq: { kind: "official", projectId: "p-hq", address: "https://hq.example.test" },
+    admins: [],
+    reread: () => {},
+  }),
+  accountHqApi: () => ({ updateMate: mock.updateMate }),
 }));
 vi.mock("./projectOrderPreference", () => ({ useProjectOrderOptions: () => ({ order: "name" }) }));
 // The dialog as the hook mounts it: what it is handed, and the two answers it gives.
@@ -97,8 +106,19 @@ vi.mock("../components/zerops/ZeropsChangeFaceDialog", () => ({
   },
 }));
 
-function mate(bot: string, tags: ReadonlyArray<string> = []): ZeropsCandidatePresentation {
+/** A Mate of Acme Docs as HQ places it, wearing `face` as HQ records it ("" where none was picked). */
+function mate(
+  bot: string,
+  tags: ReadonlyArray<string> = [],
+  face = "",
+): ZeropsCandidatePresentation {
   const id = `acme-docs-${bot.toLowerCase()}`;
+  const hq: HqPlacement = {
+    appId: "acme",
+    appName: "Acme Docs",
+    kind: "mate",
+    mate: { name: bot, face },
+  };
   return {
     key: `${id}:zcp`,
     group: "connected",
@@ -109,21 +129,22 @@ function mate(bot: string, tags: ReadonlyArray<string> = []): ZeropsCandidatePre
       name: `Acme Docs - ${bot}`,
       status: "ACTIVE",
       clientId: "org-acme",
-      tagList: ["mate", "mate:g:acme", "mate:role:dev", `mate:bot:${bot}`, ...tags],
+      tagList: ["mate", ...tags],
+      hq,
     },
     service: { id: `zcp-${id}`, name: "zcp", status: "ACTIVE" },
   } as ZeropsCandidatePresentation;
 }
 
 const FEN = mate("Fen");
-const QUINN = mate("Quinn", ["mate:face:coral:gem"]);
+const QUINN = mate("Quinn", [], "coral:gem");
 
 /** Every value the hook handed back, the latest last. */
 const seen: Array<MateActions> = [];
 const actions = () => seen.at(-1)!;
 function Probe() {
   const handed = useMateActions({
-    registry: { registry: { groups: [] }, refresh: () => {} },
+    registry: { registry: { groups: [] } },
     serverVersions: new Map(),
   });
   seen.push(handed);
@@ -136,7 +157,7 @@ beforeEach(() => {
   mock.roleCode = "OWNER";
   mock.markers.clear();
   mock.dialog.current = null;
-  mock.updateProjectTags.mockReset();
+  mock.updateMate.mockReset();
   seen.length = 0;
   mock.listing.current = {
     state: "known",
@@ -210,9 +231,9 @@ describe("useMateActions — Change face…", () => {
     expect(mock.dialog.current).toMatchObject({ face, pending: false, error: null });
   });
 
-  it("saves through the tag writer's one patch, and closes once the platform takes it", async () => {
+  it("saves to HQ in one write, and closes once HQ takes it", async () => {
     let answer: (value: unknown) => void = () => {};
-    mock.updateProjectTags.mockReturnValue(
+    mock.updateMate.mockReturnValue(
       new Promise((resolve) => {
         answer = resolve;
       }),
@@ -220,16 +241,15 @@ describe("useMateActions — Change face…", () => {
     mount();
     openFace(FEN);
     expect(mock.dialog.current).toMatchObject({ open: true });
-    act(() => {
+    await act(async () => {
       mock.dialog.current!.onSave({ tint: "rose", shape: "seal" });
     });
-    expect(mock.updateProjectTags).toHaveBeenCalledWith(
-      { organizationId: "org-acme", projectId: FEN.project.id },
-      { kind: "mate-face", face: { tint: "rose", shape: "seal" } },
-    );
+    // Fen wore its name's tint: its name keeps its place among the names the tints are shared
+    // out over (`changedMateFace`).
+    expect(mock.updateMate).toHaveBeenCalledWith(FEN.project.id, { face: "rose:seal:named" });
     expect(mock.dialog.current).toMatchObject({ open: true, pending: true, error: null });
     await act(async () => {
-      answer({ kind: "written" });
+      answer(undefined);
     });
     // It closes the way a dialog does, fading over the face it saved, still saying Saving…
     expect(mock.dialog.current).toMatchObject({ open: false, pending: true });
@@ -258,15 +278,11 @@ describe("useMateActions — Change face…", () => {
       mounted[0]!.update(<Probe />);
     });
     expect(mock.dialog.current).toBeNull();
-    expect(mock.updateProjectTags).not.toHaveBeenCalled();
+    expect(mock.updateMate).not.toHaveBeenCalled();
   });
 
   it("says a refused write's reason in the dialog, and changes nothing else", async () => {
-    mock.updateProjectTags.mockRejectedValue({
-      _tag: "ZeropsDataAdapterError",
-      kind: "rejected",
-      message: "Zerops rejected the request (forbidden).",
-    });
+    mock.updateMate.mockRejectedValue(new Error("HQ refused the change (forbidden)."));
     mount();
     openFace(FEN);
     await act(async () => {
@@ -275,9 +291,9 @@ describe("useMateActions — Change face…", () => {
     expect(mock.dialog.current).toMatchObject({
       open: true,
       pending: false,
-      error: "Zerops rejected the request (forbidden).",
+      error: "HQ refused the change (forbidden).",
     });
-    expect(mock.updateProjectTags).toHaveBeenCalledTimes(1);
+    expect(mock.updateMate).toHaveBeenCalledTimes(1);
     expect(actions().trouble).toBeNull();
   });
 });

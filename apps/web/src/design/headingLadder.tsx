@@ -16,7 +16,7 @@ const group = (name: string): ZeropsGroup =>
   ({
     groupId: `g-${name}`,
     name,
-    nameSource: "store",
+    nameSource: "hq",
     environments: [],
     pending: [],
     production: undefined,

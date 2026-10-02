@@ -10,7 +10,7 @@
  * change it will keep rather than growing it in a second later.
  */
 import {
-  readZeropsGroupTags,
+  readZeropsMembership,
   type FlowPullRequest,
   type ZeropsProject,
   type ZeropsService,
@@ -65,7 +65,7 @@ export function readRunResultFacts(input: {
   const { projectId, inventory, flows } = input;
   if (projectId === undefined) return {};
   const project = inventory?.projects.find((entry) => entry.id === projectId);
-  const groupId = project === undefined ? undefined : readZeropsGroupTags(project.tagList).groupId;
+  const groupId = project === undefined ? undefined : readZeropsMembership(project).groupId;
   const read = inventory?.services.get(projectId);
   const flow = groupId === undefined ? undefined : flows?.get(groupId);
   const changes =

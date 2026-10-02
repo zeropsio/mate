@@ -1,4 +1,5 @@
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
+import type { HqPlacement } from "@t3tools/client-runtime/zerops/hq";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
@@ -76,53 +77,84 @@ describe("deleteMateConfirmed — the name, typed", () => {
   });
 });
 
+/** Where HQ places a project of Acme Docs, as `kind`; a Mate by its name. */
+function inAcme(kind: HqPlacement["kind"], mate: string | null = null): HqPlacement {
+  return {
+    appId: "acme",
+    appName: "Acme Docs",
+    kind,
+    mate: mate === null ? null : { name: mate, face: "" },
+  };
+}
+
 function candidate(
   tagList: ReadonlyArray<string>,
+  hq: HqPlacement | undefined,
   over: Partial<ZeropsCandidate> & { readonly status?: string } = {},
 ): ZeropsCandidate {
   const { status = "ACTIVE", ...rest } = over;
   return {
     key: "acme-docs-quinn:zcp",
     group: "ready",
-    project: { id: "acme-docs-quinn", name: "Acme Docs - Quinn", status, tagList },
+    project: {
+      id: "acme-docs-quinn",
+      name: "Acme Docs - Quinn",
+      status,
+      tagList,
+      ...(hq === undefined ? {} : { hq }),
+    },
     service: { id: "zcp", name: "zcp", status: "ACTIVE" },
     ...rest,
   };
 }
 
-const MATE = ["mate", "mate:g:acme", "mate:role:dev", "mate:bot:Quinn"];
+const MATE = ["mate"];
+const QUINN = inAcme("mate", "Quinn");
 
 describe("deleteMateOffered — where a Mate's menu offers Delete", () => {
   it.each([
-    { case: "a Mate the viewer may delete", item: candidate(MATE), may: true, offered: true },
-    { case: "a Mate the viewer may not delete", item: candidate(MATE), may: false, offered: false },
+    {
+      case: "a Mate the viewer may delete",
+      item: candidate(MATE, QUINN),
+      may: true,
+      offered: true,
+    },
+    {
+      case: "a Mate the viewer may not delete",
+      item: candidate(MATE, QUINN),
+      may: false,
+      offered: false,
+    },
     {
       case: "production, whoever looks",
-      item: candidate(["mate:g:acme", "mate:role:prod"]),
+      item: candidate([], inAcme("production")),
       may: true,
       offered: false,
     },
     {
       case: "a stage",
-      item: candidate(["mate:g:acme", "mate:role:stage"]),
+      item: candidate([], inAcme("stage")),
       may: true,
       offered: false,
     },
     {
       case: "the account's Gitea project",
-      item: candidate(["mate:tool:gitea"]),
+      item: candidate(["mate:tool:gitea"], undefined),
       may: true,
       offered: false,
     },
     {
       case: "a creation the platform failed: its row's Remove does it",
-      item: candidate(MATE, { group: "unavailable", creationFailed: { message: undefined } }),
+      item: candidate(MATE, QUINN, {
+        group: "unavailable",
+        creationFailed: { message: undefined },
+      }),
       may: true,
       offered: false,
     },
     {
       case: "a Mate the platform is deleting already",
-      item: candidate(MATE, { status: "DELETING", group: "unavailable" }),
+      item: candidate(MATE, QUINN, { status: "DELETING", group: "unavailable" }),
       may: true,
       offered: false,
     },
@@ -131,9 +163,9 @@ describe("deleteMateOffered — where a Mate's menu offers Delete", () => {
   });
 
   it("is not offered again while this tab waits for the platform to let it go", () => {
-    expect(deleteMateOffered({ candidate: candidate(MATE), mayDelete: true, deleting: true })).toBe(
-      false,
-    );
+    expect(
+      deleteMateOffered({ candidate: candidate(MATE, QUINN), mayDelete: true, deleting: true }),
+    ).toBe(false);
   });
 });
 

@@ -3,139 +3,153 @@ import { describe, expect, it } from "vite-plus/test";
 
 import type { ZeropsProject } from "./api.ts";
 import {
+  changedMateFace,
   deriveZeropsGroups,
-  formatFaceTag,
-  formatGroupTag,
-  formatRoleTag,
+  formatMateFace,
   generateZeropsGroupId,
-  readZeropsGroupTags,
-  withZeropsBotTag,
-  withZeropsChangedFace,
-  withZeropsFaceTag,
-  withZeropsGroupTags,
+  readMateFace,
+  readZeropsMembership,
+  withZeropsClosedOffTag,
+  withZeropsMateAtBirth,
   withZeropsMateTag,
   withZeropsStandUpTag,
   withoutZeropsStandUpTag,
-  formatLabelTag,
   ZEROPS_GROUP_ID_LENGTH,
-  ZEROPS_GROUP_LABEL_MAX_LENGTH,
-  type ZeropsEnvironmentRole,
   type ZeropsPlacedBirth,
 } from "./groups.ts";
+import type { HqPlacement } from "./hq/placement.ts";
 import { withMateSignerTag } from "./mateAccess.ts";
+
+/** Where HQ places a project: in application `appId`, as `kind`, with its Mate's record. */
+function placed(
+  appId: string,
+  kind: HqPlacement["kind"] = "mate",
+  options: { readonly appName?: string; readonly mate?: HqPlacement["mate"] } = {},
+): HqPlacement {
+  return { appId, appName: options.appName ?? "", kind, mate: options.mate ?? null };
+}
 
 function project(
   name: string,
-  tagList: ReadonlyArray<string> | undefined = [],
-  id = name,
-  created?: string,
+  options: {
+    readonly hq?: HqPlacement;
+    readonly tagList?: ReadonlyArray<string> | undefined;
+    readonly id?: string;
+    readonly created?: string;
+  } = {},
 ): ZeropsProject {
+  const tagList = "tagList" in options ? options.tagList : [];
   return {
-    id,
+    id: options.id ?? name,
     name,
     status: "ACTIVE",
     ...(tagList === undefined ? {} : { tagList }),
-    ...(created === undefined ? {} : { created }),
+    ...(options.created === undefined ? {} : { created: options.created }),
+    ...(options.hq === undefined ? {} : { hq: options.hq }),
   };
 }
 
-describe("tag format", () => {
-  it.each([
-    { gid: "7k2m9qx4vb1c", expected: "mate:g:7k2m9qx4vb1c" },
-    { gid: "0", expected: "mate:g:0" },
-  ])("formats the group tag for $gid", ({ gid, expected }) => {
-    expect(formatGroupTag(gid)).toBe(expected);
-  });
-
-  it.each([
-    { role: "dev", expected: "mate:role:dev" },
-    { role: "stage", expected: "mate:role:stage" },
-    { role: "devstage", expected: "mate:role:devstage" },
-    { role: "prod", expected: "mate:role:prod" },
-  ] satisfies ReadonlyArray<{ role: ZeropsEnvironmentRole; expected: string }>)(
-    "formats the role tag for $role",
-    ({ role, expected }) => {
-      expect(formatRoleTag(role)).toBe(expected);
-    },
-  );
-});
-
-describe("readZeropsGroupTags", () => {
+describe("readZeropsMembership", () => {
   it.each([
     {
-      name: "reads all three tags",
-      tagList: ["mate:g:abc", "mate:role:prod", "mate:name:Beviro CRM"],
+      name: "reads where HQ places the project: its application, its role, the application's name",
+      input: { hq: placed("abc", "production", { appName: "Beviro CRM" }) },
       expected: { groupId: "abc", role: "prod", label: "Beviro CRM" },
     },
     {
-      name: "ignores foreign tags",
-      tagList: ["billing:team-a", "mate:g:abc", "internal"],
-      expected: { groupId: "abc", role: undefined, label: undefined },
+      name: "reads a stage HQ places as the stage",
+      input: { hq: placed("abc", "stage") },
+      expected: { groupId: "abc", role: "stage" },
     },
     {
-      name: "is absent for an untagged project",
-      tagList: [],
-      expected: { groupId: undefined, role: undefined, label: undefined },
+      name: "is absent for a project HQ does not place",
+      input: { tagList: [] },
+      expected: {},
     },
     {
-      name: "takes the first group tag when a project carries several",
-      tagList: ["mate:g:first", "mate:g:second"],
-      expected: { groupId: "first", role: undefined, label: undefined },
+      // HQ is the structure's only writer: a tag anybody could plant places nothing.
+      name: "ignores the structure tags a project still carries",
+      input: { tagList: ["mate:g:abc", "mate:role:dev", "mate:name:Beviro CRM", "mate:bot:Ada"] },
+      expected: {},
     },
     {
-      name: "rejects an unknown role rather than inventing one",
-      tagList: ["mate:g:abc", "mate:role:production"],
-      expected: { groupId: "abc", role: undefined, label: undefined },
+      name: "trims the application's name",
+      input: { hq: placed("abc", "stage", { appName: "  Beviro: the CRM " }) },
+      expected: { groupId: "abc", role: "stage", label: "Beviro: the CRM" },
     },
     {
-      name: "rejects an empty group id",
-      tagList: ["mate:g:"],
-      expected: { groupId: undefined, role: undefined, label: undefined },
-    },
-    {
-      name: "ignores an unknown mate kind",
-      tagList: ["mate:vg:abc"],
-      expected: { groupId: undefined, role: undefined, label: undefined },
-    },
-    {
-      name: "keeps colons inside a label — a name may contain them",
-      tagList: ["mate:g:abc", "mate:name:Beviro: the CRM"],
-      expected: { groupId: "abc", role: undefined, label: "Beviro: the CRM" },
-    },
-    {
-      name: "rejects a blank label",
-      tagList: ["mate:g:abc", "mate:name:   "],
-      expected: { groupId: "abc", role: undefined, label: undefined },
+      name: "takes a blank application name for none",
+      input: { hq: placed("abc", "stage", { appName: "   " }) },
+      expected: { groupId: "abc", role: "stage" },
     },
     {
       name: "reads the bare marker as the Mate's existence, wherever it sits",
-      tagList: ["mate:g:abc", "mate:role:dev", "mate"],
-      expected: { mate: true, groupId: "abc", role: "dev", label: undefined },
+      input: { tagList: ["billing:team-a", "mate", "internal"] },
+      expected: { mate: true },
+    },
+    {
+      name: "takes a Mate HQ places for one, whatever its tags say",
+      input: { hq: placed("abc", "mate"), tagList: [] },
+      expected: { mate: true, groupId: "abc", role: "dev" },
     },
     {
       name: "does not mistake a namespaced tag for the marker",
-      tagList: ["mate:role:dev", "mate:bot:Ada"],
-      expected: { groupId: undefined, role: "dev", label: undefined, bot: "Ada" },
+      input: { tagList: ["mate:standup:u-ada", "mate:signer:codex:u-ada", "mate:closed-off"] },
+      expected: { standUp: { by: "u-ada" } },
     },
-  ])("$name", ({ tagList, expected }) => {
-    expect(readZeropsGroupTags(tagList)).toEqual({ mate: false, ...expected });
-  });
-
-  it("treats a project with no tagList field as untagged", () => {
-    expect(readZeropsGroupTags(undefined)).toEqual({
+    {
+      name: "reads the Mate's name HQ records, trimmed",
+      input: { hq: placed("abc", "mate", { mate: { name: " Ada ", face: "" } }) },
+      expected: { mate: true, groupId: "abc", role: "dev", bot: "Ada" },
+    },
+    {
+      name: "reads a Mate HQ holds in no application by its record, in no group",
+      input: {
+        hq: {
+          appId: null,
+          appName: null,
+          kind: "mate",
+          mate: { name: "Ada", face: "sky:flower" },
+        } satisfies HqPlacement,
+      },
+      expected: { mate: true, bot: "Ada", face: { tint: "sky", shape: "flower" } },
+    },
+    {
+      name: "takes a blank Mate name for none",
+      input: { hq: placed("abc", "mate", { mate: { name: "  ", face: "" } }) },
+      expected: { mate: true, groupId: "abc", role: "dev" },
+    },
+  ])("$name", ({ input, expected }) => {
+    expect(readZeropsMembership(input)).toEqual({
       mate: false,
       groupId: undefined,
       role: undefined,
       label: undefined,
+      bot: undefined,
+      standUp: undefined,
+      face: undefined,
+      ...expected,
+    });
+  });
+
+  it("treats a project with no tagList field and no placement as neither", () => {
+    expect(readZeropsMembership(undefined)).toEqual({
+      mate: false,
+      groupId: undefined,
+      role: undefined,
+      label: undefined,
+      bot: undefined,
+      standUp: undefined,
+      face: undefined,
     });
   });
 });
 
 describe("withZeropsMateTag", () => {
   it("declares the Mate once, after every other tag", () => {
-    expect(withZeropsMateTag(["mate:g:abc", "mate:role:dev"])).toEqual([
-      "mate:g:abc",
-      "mate:role:dev",
+    expect(withZeropsMateTag(["billing:team-a", "mate:standup:u-ada"])).toEqual([
+      "billing:team-a",
+      "mate:standup:u-ada",
       "mate",
     ]);
     expect(withZeropsMateTag(undefined)).toEqual(["mate"]);
@@ -145,11 +159,24 @@ describe("withZeropsMateTag", () => {
     const once = withZeropsMateTag(["keep"]);
     expect(withZeropsMateTag(once)).toEqual(once);
   });
+});
 
-  it("survives a regroup and a leave: existence is not membership", () => {
-    const declared = withZeropsMateTag(["mate:g:old", "mate:role:dev"]);
-    expect(withZeropsGroupTags(declared, { groupId: "new", role: "dev" })).toContain("mate");
-    expect(withZeropsGroupTags(declared, {})).toEqual(["mate"]);
+/** A Mate's birth writes the marker and, for a dev Mate, who asked for its stand-up — no more. */
+describe("withZeropsMateAtBirth", () => {
+  it.each([
+    {
+      case: "a dev Mate somebody asked for",
+      mate: { role: "dev", standUpBy: "u-ada" },
+      expected: ["keep", "mate", "mate:standup:u-ada"],
+    },
+    { case: "a dev Mate nobody asked for", mate: { role: "dev" }, expected: ["keep", "mate"] },
+    {
+      case: "a stage with an agent: a target, not a place development is stood up",
+      mate: { role: "stage", standUpBy: "u-ada" },
+      expected: ["keep", "mate"],
+    },
+  ] as const)("$case", ({ mate, expected }) => {
+    expect(withZeropsMateAtBirth(["keep"], mate)).toEqual(expected);
   });
 });
 
@@ -157,12 +184,12 @@ describe("the stand-up marker (mate:standup:)", () => {
   it.each([
     {
       name: "names who asked for it",
-      tagList: ["mate:g:abc", "mate", "mate:standup:u-ada"],
+      tagList: ["mate", "mate:standup:u-ada"],
       standUp: { by: "u-ada" },
     },
     {
       name: "is absent on a Mate nobody asked it of",
-      tagList: ["mate:g:abc", "mate"],
+      tagList: ["mate"],
       standUp: undefined,
     },
     {
@@ -181,15 +208,15 @@ describe("the stand-up marker (mate:standup:)", () => {
       standUp: undefined,
     },
   ])("$name", ({ tagList, standUp }) => {
-    expect(readZeropsGroupTags(tagList).standUp).toEqual(standUp);
+    expect(readZeropsMembership({ tagList }).standUp).toEqual(standUp);
   });
 
   it.each([
     {
       name: "is written after every other tag",
-      tagList: ["mate:g:abc", "mate"],
+      tagList: ["keep", "mate"],
       userId: "u-ada",
-      expected: ["mate:g:abc", "mate", "mate:standup:u-ada"],
+      expected: ["keep", "mate", "mate:standup:u-ada"],
     },
     {
       name: "replaces one naming somebody else",
@@ -205,99 +232,32 @@ describe("the stand-up marker (mate:standup:)", () => {
   it("clears every stand-up and nothing else, and clearing again changes nothing", () => {
     const cleared = withoutZeropsStandUpTag([
       "person:own",
-      "mate:g:abc",
       "mate:standup:u-ada",
-      "mate:bot:Ada",
       "mate:signer:codex:u-ada",
       "mate:standup:u-fen",
+      "mate:closed-off",
       "mate",
     ]);
-    expect(cleared).toEqual([
-      "person:own",
-      "mate:g:abc",
-      "mate:bot:Ada",
-      "mate:signer:codex:u-ada",
-      "mate",
-    ]);
+    expect(cleared).toEqual(["person:own", "mate:signer:codex:u-ada", "mate:closed-off", "mate"]);
     expect(withoutZeropsStandUpTag(cleared)).toEqual(cleared);
   });
 
   it.each([
     {
-      name: "a move to another group",
-      write: (tags: ReadonlyArray<string>) =>
-        withZeropsGroupTags(tags, { groupId: "new", role: "dev", label: "Acme Docs" }),
-    },
-    {
-      name: "leaving the group",
-      write: (tags: ReadonlyArray<string>) => withZeropsGroupTags(tags, {}),
-    },
-    {
-      name: "naming the agent",
-      write: (tags: ReadonlyArray<string>) => withZeropsBotTag(tags, "Fen"),
-    },
-    {
       name: "declaring the Mate again",
       write: (tags: ReadonlyArray<string>) => withZeropsMateTag(tags),
     },
+    {
+      name: "closing the project off",
+      write: (tags: ReadonlyArray<string>) => withZeropsClosedOffTag(tags),
+    },
+    {
+      name: "a signer recorded",
+      write: (tags: ReadonlyArray<string>) => withMateSignerTag(tags, "claude", "user-1"),
+    },
   ])("stands through $name", ({ write }) => {
-    const asked = withZeropsStandUpTag(["mate:g:old", "mate:role:dev", "mate"], "u-ada");
-    expect(readZeropsGroupTags(write(asked)).standUp).toEqual({ by: "u-ada" });
-  });
-});
-
-describe("formatLabelTag", () => {
-  it.each([
-    { name: "collapses whitespace", input: "Beviro   CRM\n", expected: "mate:name:Beviro CRM" },
-    { name: "is absent for a blank name", input: "   ", expected: undefined },
-    { name: "is absent for an empty name", input: "", expected: undefined },
-  ])("$name", ({ input, expected }) => {
-    expect(formatLabelTag(input)).toBe(expected);
-  });
-
-  it("truncates a long name to the legibility budget without leaving a trailing space", () => {
-    const tag = formatLabelTag(`${"a".repeat(ZEROPS_GROUP_LABEL_MAX_LENGTH)} tail`);
-    expect(tag).toBe(`mate:name:${"a".repeat(ZEROPS_GROUP_LABEL_MAX_LENGTH)}`);
-  });
-});
-
-describe("withZeropsGroupTags", () => {
-  it("keeps every foreign tag and replaces only the mate ones", () => {
-    expect(
-      withZeropsGroupTags(["billing:team-a", "mate:g:old", "mate:role:dev", "keep-me"], {
-        groupId: "new",
-        role: "prod",
-      }),
-    ).toEqual(["billing:team-a", "keep-me", "mate:g:new", "mate:role:prod"]);
-  });
-
-  it("mirrors the group's name so the Zerops GUI shows something readable", () => {
-    expect(withZeropsGroupTags([], { groupId: "abc", role: "dev", label: "Beviro CRM" })).toEqual([
-      "mate:g:abc",
-      "mate:role:dev",
-      "mate:name:Beviro CRM",
-    ]);
-  });
-
-  it("drops the old label too when a project leaves its group", () => {
-    expect(withZeropsGroupTags(["mate:g:a", "mate:name:Old", "keep"], {})).toEqual(["keep"]);
-  });
-
-  it("writes no label without a group — a label for nothing is not written", () => {
-    expect(withZeropsGroupTags([], { label: "Orphan" })).toEqual([]);
-  });
-
-  it("drops the mate tags when the project leaves its group", () => {
-    expect(withZeropsGroupTags(["mate:g:old", "mate:role:dev", "other"], {})).toEqual(["other"]);
-  });
-
-  it("writes a group with no role", () => {
-    expect(withZeropsGroupTags([], { groupId: "abc" })).toEqual(["mate:g:abc"]);
-  });
-
-  it("is idempotent", () => {
-    const once = withZeropsGroupTags(["x"], { groupId: "abc", role: "dev" });
-    expect(withZeropsGroupTags(once, { groupId: "abc", role: "dev" })).toEqual(once);
+    const asked = withZeropsStandUpTag(["mate"], "u-ada");
+    expect(readZeropsMembership({ tagList: write(asked) }).standUp).toEqual({ by: "u-ada" });
   });
 });
 
@@ -336,13 +296,13 @@ describe("generateZeropsGroupId", () => {
 });
 
 describe("deriveZeropsGroups", () => {
-  it("groups environments by their group tag and leaves the rest ungrouped", () => {
+  it("groups environments by where HQ places them and leaves the rest ungrouped", () => {
     const result = deriveZeropsGroups(
       [
-        project("crm-dev", ["mate:g:aaa", "mate:role:dev"]),
-        project("crm-prod", ["mate:g:aaa", "mate:role:prod"]),
-        project("shop-dev", ["mate:g:bbb", "mate:role:dev"]),
-        project("loose", []),
+        project("crm-dev", { hq: placed("aaa", "mate") }),
+        project("crm-prod", { hq: placed("aaa", "production") }),
+        project("shop-dev", { hq: placed("bbb", "mate") }),
+        project("loose"),
       ],
       { order: "name" },
     );
@@ -355,112 +315,55 @@ describe("deriveZeropsGroups", () => {
     expect(result.ungrouped.map((entry) => entry.name)).toEqual(["loose"]);
   });
 
-  it("orders environments dev → devstage → stage → prod, then by name", () => {
+  it("orders environments Mate → stage → production, then by name", () => {
     const result = deriveZeropsGroups(
       [
-        project("d", ["mate:g:aaa", "mate:role:prod"]),
-        project("c", ["mate:g:aaa", "mate:role:stage"]),
-        project("b", ["mate:g:aaa", "mate:role:devstage"]),
-        project("a", ["mate:g:aaa", "mate:role:dev"]),
+        project("d", { hq: placed("aaa", "production") }),
+        project("c", { hq: placed("aaa", "stage") }),
+        project("b", { hq: placed("aaa", "mate") }),
+        project("a", { hq: placed("aaa", "stage") }),
       ],
       { order: "name" },
     );
 
-    expect(result.groups[0]?.environments.map((environment) => environment.role)).toEqual([
-      "dev",
-      "devstage",
-      "stage",
-      "prod",
+    expect(
+      result.groups[0]?.environments.map((environment) => [
+        environment.project.name,
+        environment.role,
+      ]),
+    ).toEqual([
+      ["b", "dev"],
+      ["a", "stage"],
+      ["c", "stage"],
+      ["d", "prod"],
     ]);
   });
 
-  it("sorts a roleless environment last, and ties by name", () => {
+  it("names a group after its application in HQ, and says so", () => {
     const result = deriveZeropsGroups(
-      [
-        project("zzz", ["mate:g:aaa"]),
-        project("bbb", ["mate:g:aaa", "mate:role:prod"]),
-        project("aaa", ["mate:g:aaa"]),
-      ],
+      [project("crm-dev", { hq: placed("aaa", "mate", { appName: "Beviro CRM" }) })],
       { order: "name" },
     );
 
-    expect(result.groups[0]?.environments.map((environment) => environment.project.name)).toEqual([
-      "bbb",
-      "aaa",
-      "zzz",
-    ]);
+    expect(result.groups[0]).toMatchObject({ name: "Beviro CRM", nameSource: "hq" });
   });
 
-  it("names a group from the store record when there is one", () => {
-    const result = deriveZeropsGroups([project("crm-dev", ["mate:g:aaa", "mate:name:Stale"])], {
-      names: { aaa: "Beviro CRM" },
+  it("falls back to the group id when its application has no name, and says so", () => {
+    const result = deriveZeropsGroups([project("crm-dev", { hq: placed("aaa", "mate") })], {
       order: "name",
     });
 
-    expect(result.groups[0]?.name).toBe("Beviro CRM");
-    expect(result.groups[0]?.nameSource).toBe("store");
-  });
-
-  it("falls back to the label tag when the store knows nothing — the tree names itself with no store at all", () => {
-    const result = deriveZeropsGroups(
-      [project("crm-dev", ["mate:g:aaa", "mate:name:Beviro CRM"])],
-      {
-        order: "name",
-      },
-    );
-
-    expect(result.groups[0]?.name).toBe("Beviro CRM");
-    expect(result.groups[0]?.nameSource).toBe("tag");
-  });
-
-  it("falls back to the group id when nothing names it, and says so", () => {
-    const result = deriveZeropsGroups([project("crm-dev", ["mate:g:aaa"])], { order: "name" });
-
-    expect(result.groups[0]?.name).toBe("aaa");
-    expect(result.groups[0]?.nameSource).toBe("id");
-  });
-
-  it("takes the majority label when a rename only half-applied", () => {
-    const result = deriveZeropsGroups(
-      [
-        project("a", ["mate:g:aaa", "mate:name:New"]),
-        project("b", ["mate:g:aaa", "mate:name:New"]),
-        project("c", ["mate:g:aaa", "mate:name:Old"]),
-      ],
-      { order: "name" },
-    );
-
-    expect(result.groups[0]?.name).toBe("New");
-  });
-
-  it("breaks a label tie deterministically rather than by list order", () => {
-    const forward = deriveZeropsGroups(
-      [
-        project("a", ["mate:g:aaa", "mate:name:Zebra"]),
-        project("b", ["mate:g:aaa", "mate:name:Apple"]),
-      ],
-      { order: "name" },
-    );
-    const backward = deriveZeropsGroups(
-      [
-        project("b", ["mate:g:aaa", "mate:name:Apple"]),
-        project("a", ["mate:g:aaa", "mate:name:Zebra"]),
-      ],
-      { order: "name" },
-    );
-
-    expect(forward.groups[0]?.name).toBe("Apple");
-    expect(backward.groups[0]?.name).toBe("Apple");
+    expect(result.groups[0]).toMatchObject({ name: "aaa", nameSource: "id" });
   });
 
   it("orders groups by display name, case-insensitively", () => {
     const result = deriveZeropsGroups(
       [
-        project("one", ["mate:g:aaa"]),
-        project("two", ["mate:g:bbb"]),
-        project("three", ["mate:g:ccc"]),
+        project("one", { hq: placed("aaa", "mate", { appName: "zebra" }) }),
+        project("two", { hq: placed("bbb", "mate", { appName: "Apple" }) }),
+        project("three", { hq: placed("ccc", "mate", { appName: "mango" }) }),
       ],
-      { names: { aaa: "zebra", bbb: "Apple", ccc: "mango" }, order: "name" },
+      { order: "name" },
     );
 
     expect(result.groups.map((group) => group.name)).toEqual(["Apple", "mango", "zebra"]);
@@ -469,8 +372,8 @@ describe("deriveZeropsGroups", () => {
   it("reports the production environment of a group, and none when there is not exactly one", () => {
     const [single] = deriveZeropsGroups(
       [
-        project("p", ["mate:g:aaa", "mate:role:prod"]),
-        project("d", ["mate:g:aaa", "mate:role:dev"]),
+        project("p", { hq: placed("aaa", "production") }),
+        project("d", { hq: placed("aaa", "mate") }),
       ],
       { order: "name" },
     ).groups;
@@ -478,14 +381,14 @@ describe("deriveZeropsGroups", () => {
 
     const [ambiguous] = deriveZeropsGroups(
       [
-        project("p1", ["mate:g:aaa", "mate:role:prod"]),
-        project("p2", ["mate:g:aaa", "mate:role:prod"]),
+        project("p1", { hq: placed("aaa", "production") }),
+        project("p2", { hq: placed("aaa", "production") }),
       ],
       { order: "name" },
     ).groups;
     expect(ambiguous?.production).toBeUndefined();
 
-    const [none] = deriveZeropsGroups([project("d", ["mate:g:aaa", "mate:role:dev"])], {
+    const [none] = deriveZeropsGroups([project("d", { hq: placed("aaa", "mate") })], {
       order: "name",
     }).groups;
     expect(none?.production).toBeUndefined();
@@ -494,8 +397,8 @@ describe("deriveZeropsGroups", () => {
   it("orders group names numerically, not lexically: env2 < env10", () => {
     const result = deriveZeropsGroups(
       [
-        project("env10", ["mate:g:aaa", "mate:name:env10"]),
-        project("env2", ["mate:g:bbb", "mate:name:env2"]),
+        project("env10", { hq: placed("aaa", "mate", { appName: "env10" }) }),
+        project("env2", { hq: placed("bbb", "mate", { appName: "env2" }) }),
       ],
       { order: "name" },
     );
@@ -506,15 +409,15 @@ describe("deriveZeropsGroups", () => {
   it("breaks an environment name tie by project id, deterministically", () => {
     const forward = deriveZeropsGroups(
       [
-        project("dev", ["mate:g:aaa", "mate:role:dev"], "z"),
-        project("dev", ["mate:g:aaa", "mate:role:dev"], "a"),
+        project("dev", { hq: placed("aaa", "mate"), id: "z" }),
+        project("dev", { hq: placed("aaa", "mate"), id: "a" }),
       ],
       { order: "name" },
     );
     const backward = deriveZeropsGroups(
       [
-        project("dev", ["mate:g:aaa", "mate:role:dev"], "a"),
-        project("dev", ["mate:g:aaa", "mate:role:dev"], "z"),
+        project("dev", { hq: placed("aaa", "mate"), id: "a" }),
+        project("dev", { hq: placed("aaa", "mate"), id: "z" }),
       ],
       { order: "name" },
     );
@@ -525,9 +428,9 @@ describe("deriveZeropsGroups", () => {
 
   it("is stable regardless of the order projects arrive in", () => {
     const projects = [
-      project("crm-prod", ["mate:g:aaa", "mate:role:prod"]),
-      project("shop-dev", ["mate:g:bbb", "mate:role:dev"]),
-      project("crm-dev", ["mate:g:aaa", "mate:role:dev"]),
+      project("crm-prod", { hq: placed("aaa", "production") }),
+      project("shop-dev", { hq: placed("bbb", "mate") }),
+      project("crm-dev", { hq: placed("aaa", "mate") }),
     ];
     const forward = deriveZeropsGroups(projects, { order: "name" });
     const backward = deriveZeropsGroups(projects.toReversed(), { order: "name" });
@@ -535,11 +438,17 @@ describe("deriveZeropsGroups", () => {
     expect(JSON.stringify(forward)).toBe(JSON.stringify(backward));
   });
 
-  it("treats a project with no tagList field as ungrouped rather than throwing", () => {
-    const result = deriveZeropsGroups([project("legacy", undefined)], { order: "name" });
+  it("leaves a project HQ does not place ungrouped, whatever tags it carries, rather than throwing", () => {
+    const result = deriveZeropsGroups(
+      [
+        project("legacy", { tagList: undefined }),
+        project("planted", { tagList: ["mate:g:aaa", "mate:role:dev", "mate:name:Acme"] }),
+      ],
+      { order: "name" },
+    );
 
     expect(result.groups).toEqual([]);
-    expect(result.ungrouped.map((entry) => entry.name)).toEqual(["legacy"]);
+    expect(result.ungrouped.map((entry) => entry.name)).toEqual(["legacy", "planted"]);
   });
 });
 
@@ -547,9 +456,9 @@ describe("deriveZeropsGroups — newest first", () => {
   it("orders groups by their earliest member's created time, newest first", () => {
     const result = deriveZeropsGroups(
       [
-        project("crm-dev", ["mate:g:aaa"], "crm-dev", "2024-01-01T00:00:00Z"),
-        project("shop-dev", ["mate:g:bbb"], "shop-dev", "2024-03-01T00:00:00Z"),
-        project("blog-dev", ["mate:g:ccc"], "blog-dev", "2024-02-01T00:00:00Z"),
+        project("crm-dev", { hq: placed("aaa"), created: "2024-01-01T00:00:00Z" }),
+        project("shop-dev", { hq: placed("bbb"), created: "2024-03-01T00:00:00Z" }),
+        project("blog-dev", { hq: placed("ccc"), created: "2024-02-01T00:00:00Z" }),
       ],
       { order: "newest" },
     );
@@ -560,12 +469,15 @@ describe("deriveZeropsGroups — newest first", () => {
   it("takes a group's birth from its earliest member — a later stage must not reorder it", () => {
     const result = deriveZeropsGroups(
       [
-        project("crm-dev", ["mate:g:aaa"], "crm-dev", "2024-01-01T00:00:00Z"),
+        project("crm-dev", { hq: placed("aaa"), created: "2024-01-01T00:00:00Z" }),
         // aaa's prod is added after bbb was born; if the group's birth were
         // taken from its newest member instead of its earliest, aaa would
         // wrongly jump ahead of bbb.
-        project("crm-prod", ["mate:g:aaa"], "crm-prod", "2024-06-01T00:00:00Z"),
-        project("shop-dev", ["mate:g:bbb"], "shop-dev", "2024-03-01T00:00:00Z"),
+        project("crm-prod", {
+          hq: placed("aaa", "production"),
+          created: "2024-06-01T00:00:00Z",
+        }),
+        project("shop-dev", { hq: placed("bbb"), created: "2024-03-01T00:00:00Z" }),
       ],
       { order: "newest" },
     );
@@ -576,9 +488,12 @@ describe("deriveZeropsGroups — newest first", () => {
   it("sorts a group with no created member last, and ties by name then id", () => {
     const result = deriveZeropsGroups(
       [
-        project("zzz", ["mate:g:aaa", "mate:name:Zzz"]),
-        project("bbb", ["mate:g:bbb", "mate:name:Bbb"], "bbb", "2024-01-01T00:00:00Z"),
-        project("aaa", ["mate:g:ccc", "mate:name:Aaa"]),
+        project("zzz", { hq: placed("aaa", "mate", { appName: "Zzz" }) }),
+        project("bbb", {
+          hq: placed("bbb", "mate", { appName: "Bbb" }),
+          created: "2024-01-01T00:00:00Z",
+        }),
+        project("aaa", { hq: placed("ccc", "mate", { appName: "Aaa" }) }),
       ],
       { order: "newest" },
     );
@@ -591,9 +506,9 @@ describe("deriveZeropsGroups — newest first", () => {
   it("orders ungrouped projects by their own created time, newest first, missing created last", () => {
     const result = deriveZeropsGroups(
       [
-        project("old", [], "old", "2024-01-01T00:00:00Z"),
-        project("new", [], "new", "2024-06-01T00:00:00Z"),
-        project("undated", []),
+        project("old", { created: "2024-01-01T00:00:00Z" }),
+        project("new", { created: "2024-06-01T00:00:00Z" }),
+        project("undated"),
       ],
       { order: "newest" },
     );
@@ -604,8 +519,8 @@ describe("deriveZeropsGroups — newest first", () => {
   it("breaks an ungrouped created tie by name, then id", () => {
     const result = deriveZeropsGroups(
       [
-        project("b", [], "z", "2024-01-01T00:00:00Z"),
-        project("a", [], "a", "2024-01-01T00:00:00Z"),
+        project("b", { id: "z", created: "2024-01-01T00:00:00Z" }),
+        project("a", { id: "a", created: "2024-01-01T00:00:00Z" }),
       ],
       { order: "newest" },
     );
@@ -615,9 +530,9 @@ describe("deriveZeropsGroups — newest first", () => {
 
   it("is stable regardless of the order projects arrive in", () => {
     const projects = [
-      project("crm-dev", ["mate:g:aaa"], "crm-dev", "2024-01-01T00:00:00Z"),
-      project("shop-dev", ["mate:g:bbb"], "shop-dev", "2024-03-01T00:00:00Z"),
-      project("loose", [], "loose", "2024-02-01T00:00:00Z"),
+      project("crm-dev", { hq: placed("aaa"), created: "2024-01-01T00:00:00Z" }),
+      project("shop-dev", { hq: placed("bbb"), created: "2024-03-01T00:00:00Z" }),
+      project("loose", { created: "2024-02-01T00:00:00Z" }),
     ];
     const forward = deriveZeropsGroups(projects, { order: "newest" });
     const backward = deriveZeropsGroups(projects.toReversed(), { order: "newest" });
@@ -650,21 +565,21 @@ describe("deriveZeropsGroups — creations under way", () => {
   it.each([
     {
       case: "a birth the listing does not hold yet is a pending member of its group",
-      projects: [project("crm-dev", ["mate:g:aaa"], "crm-dev")],
+      projects: [project("crm-dev", { hq: placed("aaa") })],
       births: [birth("p-new", "aaa", 1)],
       pending: { aaa: ["p-new"] },
       environments: { aaa: ["crm-dev"] },
     },
     {
-      case: "a birth whose project the listing holds in a group is that listed member, once",
-      projects: [project("crm-dev", ["mate:g:aaa"], "crm-dev")],
+      case: "a birth whose project HQ places in a group is that listed member, once",
+      projects: [project("crm-dev", { hq: placed("aaa") })],
       births: [birth("crm-dev", "aaa", 1)],
       pending: { aaa: [] },
       environments: { aaa: ["crm-dev"] },
     },
     {
-      case: "a birth listed before its group tag is written stays pending, not ungrouped",
-      projects: [project("p-new", [], "p-new")],
+      case: "a birth listed before HQ places it stays pending, not ungrouped",
+      projects: [project("p-new")],
       births: [birth("p-new", "aaa", 1)],
       pending: { aaa: ["p-new"] },
       environments: { aaa: [] },
@@ -749,15 +664,16 @@ describe("deriveZeropsGroups — creations under way", () => {
   });
 
   it.each([
-    { case: "the store's name first", names: { aaa: "Stored" }, tags: [], expected: "Stored" },
-    { case: "then the members' label", names: {}, tags: ["mate:name:Label"], expected: "Label" },
-    { case: "then the name its creation gave it", names: {}, tags: [], expected: "Todo" },
-  ])("names a group being created from $case", ({ names, tags, expected }) => {
-    const [group] = deriveZeropsGroups([project("crm-dev", ["mate:g:aaa", ...tags], "crm-dev")], {
-      order: "name",
-      names,
-      births: [birth("p-new", "aaa", 1)],
-    }).groups;
+    { case: "its application's name in HQ first", appName: "Stored", expected: "Stored" },
+    { case: "then the name its creation gave it", appName: "", expected: "Todo" },
+  ])("names a group being created from $case", ({ appName, expected }) => {
+    const [group] = deriveZeropsGroups(
+      [project("crm-dev", { hq: placed("aaa", "mate", { appName }) })],
+      {
+        order: "name",
+        births: [birth("p-new", "aaa", 1)],
+      },
+    ).groups;
     expect(group?.name).toBe(expected);
   });
 
@@ -772,10 +688,10 @@ describe("deriveZeropsGroups — creations under way", () => {
   it("orders a group only its creations date by when they started, newest first", () => {
     const result = deriveZeropsGroups(
       [
-        project("crm-dev", ["mate:g:aaa"], "crm-dev", "2024-01-01T00:00:00Z"),
-        project("shop-dev", ["mate:g:bbb"], "shop-dev", "2024-03-01T00:00:00Z"),
+        project("crm-dev", { hq: placed("aaa"), created: "2024-01-01T00:00:00Z" }),
+        project("shop-dev", { hq: placed("bbb"), created: "2024-03-01T00:00:00Z" }),
         // Listed with no created time yet: its group is dated by the birth beside it.
-        project("new-dev", ["mate:g:new"], "new-dev"),
+        project("new-dev", { hq: placed("new") }),
       ],
       {
         order: "newest",
@@ -793,175 +709,69 @@ describe("deriveZeropsGroups — creations under way", () => {
   });
 });
 
-describe("bot names on the tag", () => {
-  it("reads the agent's name off the project", () => {
-    expect(readZeropsGroupTags(["mate:g:aaa", "mate:bot:Ada"]).bot).toBe("Ada");
+describe("a Mate's name, as HQ records it", () => {
+  it("reads the Mate's name off where HQ places it", () => {
+    expect(
+      readZeropsMembership({ hq: placed("aaa", "mate", { mate: { name: "Ada", face: "" } }) }).bot,
+    ).toBe("Ada");
   });
 
-  it("has no name when the project carries none", () => {
-    expect(readZeropsGroupTags(["mate:g:aaa"]).bot).toBeUndefined();
-  });
-
-  it("writes a name", () => {
-    expect(withZeropsBotTag([], "Ada")).toContain("mate:bot:Ada");
-  });
-
-  /**
-   * The writer used to rewrite the whole `mate:` namespace, so changing a role
-   * silently deleted the agent's name — and a tool marker with it. Anything
-   * the call was not asked about now survives it.
-   */
-  it("keeps the agent's name through an unrelated role change", () => {
-    const after = withZeropsGroupTags(["mate:g:aaa", "mate:role:dev", "mate:bot:Ada"], {
-      groupId: "aaa",
-      role: "stage",
-    });
-    expect(after).toContain("mate:bot:Ada");
-    expect(after).toContain("mate:role:stage");
-    expect(after).not.toContain("mate:role:dev");
-  });
-
-  it("keeps a tool marker through a group write", () => {
-    expect(withZeropsGroupTags(["mate:tool:gitea"], { groupId: "aaa" })).toContain(
-      "mate:tool:gitea",
-    );
-  });
-
-  it("replaces the name when a new one is given", () => {
-    const after = withZeropsBotTag(["mate:bot:Ada"], "Bruno");
-    expect(after).toContain("mate:bot:Bruno");
-    expect(after).not.toContain("mate:bot:Ada");
-  });
-
-  it("writes no tag for a blank name rather than an empty one", () => {
-    expect(withZeropsBotTag([], "   ")).toEqual([]);
-  });
-
-  it("still preserves tags this product does not own", () => {
-    expect(withZeropsBotTag(["billing:team-a"], "Ada")).toContain("billing:team-a");
+  it("has no name where HQ records no Mate", () => {
+    expect(readZeropsMembership({ hq: placed("aaa", "mate") }).bot).toBeUndefined();
   });
 });
 
 /**
- * A Mate's face — the colour and the shape its person picked — rides on one
- * tag, `mate:face:<tint>:<shape>`. Read permissively: a part this client does
- * not know is left out, so the derived one stands in for it.
+ * A Mate's face — the colour and the shape its person picked — is one value in HQ's record of
+ * it, `<tint>:<shape>`. Read permissively: a part this client does not know is left out, so the
+ * derived one stands in for it.
  */
-describe("a Mate's face on the tag", () => {
+describe("a Mate's face, as HQ records it", () => {
   it.each(MATE_TINT_IDS)("reads back every shape %s is written with", (tint) => {
     for (const shape of MATE_SHAPE_IDS) {
-      const tag = formatFaceTag({ tint, shape });
-      expect(tag).toBe(`mate:face:${tint}:${shape}`);
-      expect(readZeropsGroupTags(["mate:g:aaa", tag]).face).toEqual({ tint, shape });
+      const face = formatMateFace({ tint, shape });
+      expect(face).toBe(`${tint}:${shape}`);
+      expect(readMateFace(face)).toEqual({ tint, shape });
     }
   });
 
   it.each([
-    { case: "no face tag", tagList: ["mate:g:aaa", "mate:bot:Ada"], face: undefined },
+    { case: "no face recorded", face: "", expected: undefined },
     {
       case: "a tint a newer client added",
-      tagList: ["mate:face:teal:gem"],
-      face: { tint: undefined, shape: "gem" },
+      face: "teal:gem",
+      expected: { tint: undefined, shape: "gem" },
     },
     {
       case: "a shape a newer client added",
-      tagList: ["mate:face:coral:blob"],
-      face: { tint: "coral", shape: undefined },
+      face: "coral:blob",
+      expected: { tint: "coral", shape: undefined },
     },
-    { case: "nothing this client knows", tagList: ["mate:face:teal:blob"], face: undefined },
-    {
-      case: "a tag with no shape",
-      tagList: ["mate:face:coral"],
-      face: { tint: "coral", shape: undefined },
-    },
+    { case: "nothing this client knows", face: "teal:blob", expected: undefined },
+    { case: "a face with no shape", face: "coral", expected: { tint: "coral", shape: undefined } },
     {
       case: "a part a newer client appended",
-      tagList: ["mate:face:coral:gem:wink"],
-      face: { tint: "coral", shape: "gem" },
+      face: "coral:gem:wink",
+      expected: { tint: "coral", shape: "gem" },
     },
-    {
-      case: "an id in another case, never guessed at",
-      tagList: ["mate:face:Coral:Gem"],
-      face: undefined,
-    },
-    { case: "an empty tag", tagList: ["mate:face:"], face: undefined },
-    {
-      case: "two tags: the first this client can read",
-      tagList: ["mate:face:teal:blob", "mate:face:sky:seal", "mate:face:rose:pick"],
-      face: { tint: "sky", shape: "seal" },
-    },
-  ] as const)("reads $case", ({ tagList, face }) => {
-    expect(readZeropsGroupTags(tagList).face).toEqual(face);
+    { case: "an id in another case, never guessed at", face: "Coral:Gem", expected: undefined },
+  ] as const)("reads $case", ({ face, expected }) => {
+    expect(readMateFace(face)).toEqual(expected);
   });
 
-  it("does not mistake a face for the marker, the name or membership", () => {
-    const tags = readZeropsGroupTags(["mate:face:olive:clover"]);
-    expect(tags).toMatchObject({ mate: false, groupId: undefined, bot: undefined });
-  });
-
-  it("writes one face, replacing the one before and keeping every other tag", () => {
-    expect(
-      withZeropsFaceTag(["billing:team-a", "mate:g:aaa", "mate:face:coral:gem", "mate"], {
-        tint: "sky",
-        shape: "seal",
-      }),
-    ).toEqual(["billing:team-a", "mate:g:aaa", "mate", "mate:face:sky:seal"]);
-  });
-
-  /** A face belongs to the Mate, not to its group: no other write of the list drops it. */
-  it.each([
-    {
-      write: "a move to another group",
-      after: (tags: ReadonlyArray<string>) =>
-        withZeropsGroupTags(tags, { groupId: "bbb", role: "dev", label: "Acme Shop" }),
-    },
-    {
-      write: "leaving the group",
-      after: (tags: ReadonlyArray<string>) => withZeropsGroupTags(tags, {}),
-    },
-    {
-      write: "a role change",
-      after: (tags: ReadonlyArray<string>) =>
-        withZeropsGroupTags(tags, { groupId: "aaa", role: "devstage", label: "Acme Docs" }),
-    },
-    {
-      write: "a renamed project",
-      after: (tags: ReadonlyArray<string>) =>
-        withZeropsGroupTags(tags, { groupId: "aaa", role: "dev", label: "Acme Handbook" }),
-    },
-    {
-      write: "a renamed Mate",
-      after: (tags: ReadonlyArray<string>) => withZeropsBotTag(tags, "Bo"),
-    },
-    {
-      write: "an unnamed Mate",
-      after: (tags: ReadonlyArray<string>) => withZeropsBotTag(tags, ""),
-    },
-    { write: "the marker", after: (tags: ReadonlyArray<string>) => withZeropsMateTag(tags) },
-    {
-      write: "a signer recorded",
-      after: (tags: ReadonlyArray<string>) => withMateSignerTag(tags, "claude", "user-1"),
-    },
-  ])("keeps the face through $write", ({ after }) => {
-    const tags = after([
-      "mate:g:aaa",
-      "mate:role:dev",
-      "mate:name:Acme Docs",
-      "mate:bot:Ada",
-      "mate",
-      "mate:face:violet:flower",
-    ]);
-    expect(tags).toContain("mate:face:violet:flower");
-    expect(readZeropsGroupTags(tags).face).toEqual({ tint: "violet", shape: "flower" });
+  it("reads the face off where HQ places its Mate, and none where HQ records no Mate", () => {
+    const ada = placed("aaa", "mate", { mate: { name: "Ada", face: "violet:flower" } });
+    expect(readZeropsMembership({ hq: ada }).face).toEqual({ tint: "violet", shape: "flower" });
+    expect(readZeropsMembership({ hq: placed("aaa", "mate") }).face).toBeUndefined();
   });
 });
 
 /**
  * A face changed after the Mate's birth. A Mate that wore its name's tint —
  * no face picked, or one picked since — keeps its name among the names the
- * tints are shared out over (`mate:face:<tint>:<shape>:named`), so nobody else
- * changes colour; a Mate whose face was picked at its birth never had a place
- * there and takes none now.
+ * tints are shared out over (`<tint>:<shape>:named`), so nobody else changes
+ * colour; a Mate whose face was picked at its birth never had a place there
+ * and takes none now.
  */
 describe("a Mate's face changed after its birth", () => {
   const SKY_SEAL = { tint: "sky", shape: "seal" } as const;
@@ -969,128 +779,56 @@ describe("a Mate's face changed after its birth", () => {
   it.each([
     {
       case: "a Mate that wore its name's tint keeps its name's place",
-      before: ["mate", "mate:bot:Ada"],
-      tag: "mate:face:sky:seal:named",
+      worn: "",
+      face: "sky:seal:named",
     },
     {
       case: "a Mate whose face was picked at its birth takes no place",
-      before: ["mate", "mate:bot:Ada", "mate:face:coral:gem"],
-      tag: "mate:face:sky:seal",
+      worn: "coral:gem",
+      face: "sky:seal",
     },
     {
       case: "a Mate changed before keeps the place it kept",
-      before: ["mate", "mate:bot:Ada", "mate:face:coral:gem:named"],
-      tag: "mate:face:sky:seal:named",
+      worn: "coral:gem:named",
+      face: "sky:seal:named",
     },
     {
       case: "a Mate whose face this client reads no tint from wore its name's",
-      before: ["mate", "mate:bot:Ada", "mate:face:teal:gem"],
-      tag: "mate:face:sky:seal:named",
+      worn: "teal:gem",
+      face: "sky:seal:named",
     },
-  ])("$case", ({ before, tag }) => {
-    const after = withZeropsChangedFace(before, SKY_SEAL);
-    expect(after.filter((entry) => entry.startsWith("mate:face:"))).toEqual([tag]);
-    expect(readZeropsGroupTags(after).face).toMatchObject(SKY_SEAL);
+  ])("$case", ({ worn, face }) => {
+    const changed = changedMateFace(readMateFace(worn), SKY_SEAL);
+    expect(changed).toBe(face);
+    expect(readMateFace(changed)).toMatchObject(SKY_SEAL);
   });
 
   it.each([
-    { tagList: ["mate:face:sky:seal:named"], face: { ...SKY_SEAL, named: true } },
-    { tagList: ["mate:face:sky:seal"], face: SKY_SEAL },
-    { tagList: ["mate:face:sky:seal:wink"], face: SKY_SEAL },
-    { tagList: ["mate:face:teal:blob:named"], face: undefined },
-  ] as const)("reads $tagList", ({ tagList, face }) => {
-    expect(readZeropsGroupTags(tagList).face).toStrictEqual(face);
-  });
-
-  it("keeps every other tag, a person's own and every other kind of ours", () => {
-    const before = [
-      "billing:team-a",
-      "mate:g:aaa",
-      "mate:role:dev",
-      "mate:name:Acme Docs",
-      "mate:bot:Ada",
-      "mate",
-      "mate:standup:user-1",
-      "mate:signer:claude:user-1",
-      "mate:face:coral:gem",
-    ];
-    const after = withZeropsChangedFace(before, SKY_SEAL);
-    expect(after).toEqual([...before.slice(0, -1), "mate:face:sky:seal"]);
-  });
-
-  it("changes nothing when it is the face the Mate already wears", () => {
-    const once = withZeropsChangedFace(["mate", "mate:bot:Ada"], SKY_SEAL);
-    expect(withZeropsChangedFace(once, SKY_SEAL)).toEqual(once);
-  });
-});
-
-/**
- * Writing one kind must not delete the others. The first version of the
- * preserve rule dropped group, role and label unconditionally, so naming an
- * agent silently un-grouped its project — on a live account, before this test
- * existed.
- */
-describe("withZeropsGroupTags preserves what it was not asked to change", () => {
-  const FULL = ["mate:g:aaa", "mate:role:dev", "mate:name:Beviro CRM", "mate:bot:Ada"];
-
-  it("keeps group, role and label when only the agent is named", () => {
-    const after = withZeropsBotTag(FULL, "Bruno");
-    expect(after).toContain("mate:g:aaa");
-    expect(after).toContain("mate:role:dev");
-    expect(after).toContain("mate:name:Beviro CRM");
-    expect(after).toContain("mate:bot:Bruno");
-  });
-
-  /**
-   * Membership is written as a whole, so a caller changing a role passes the
-   * group with it. A role alone is a project that has left its group and kept
-   * a role — which is why a membership patch meets a fresh read (`data/tagWriter.ts`).
-   */
-  it("treats a role without a group as leaving the group", () => {
-    const after = withZeropsGroupTags(FULL, { role: "prod" });
-    expect(after).toContain("mate:role:prod");
-    expect(after).not.toContain("mate:g:aaa");
-    expect(after).not.toContain("mate:name:Beviro CRM");
-    // The agent still travels with the project.
-    expect(after).toContain("mate:bot:Ada");
-  });
-
-  it("keeps the group and the name when the whole membership is passed", () => {
-    const after = withZeropsGroupTags(FULL, {
-      groupId: "aaa",
-      role: "prod",
-      label: "Beviro CRM",
-    });
-    expect(after).toContain("mate:g:aaa");
-    expect(after).toContain("mate:name:Beviro CRM");
-    expect(after).toContain("mate:role:prod");
-    expect(after).not.toContain("mate:role:dev");
-  });
-
-  it("keeps the agent through a regrouping — it belongs to the project", () => {
-    expect(withZeropsGroupTags(FULL, { groupId: "bbb" })).toContain("mate:bot:Ada");
-  });
-
-  it("drops a stale name mirror when the project moves group unnamed", () => {
-    const after = withZeropsGroupTags(FULL, { groupId: "bbb" });
-    expect(after).toContain("mate:g:bbb");
-    expect(after).not.toContain("mate:name:Beviro CRM");
-  });
-
-  it("carries the new mirror when the move names the group", () => {
-    const after = withZeropsGroupTags(FULL, { groupId: "bbb", label: "Acme Docs" });
-    expect(after).toContain("mate:name:Acme Docs");
-    expect(after).not.toContain("mate:name:Beviro CRM");
+    { face: "sky:seal:named", expected: { ...SKY_SEAL, named: true } },
+    { face: "sky:seal", expected: SKY_SEAL },
+    { face: "sky:seal:wink", expected: SKY_SEAL },
+    { face: "teal:blob:named", expected: undefined },
+  ] as const)("reads $face", ({ face, expected }) => {
+    expect(readMateFace(face)).toStrictEqual(expected);
   });
 });
 
 describe("deriveZeropsGroups — the viewer's own order", () => {
   const PROJECTS = [
-    project("crm-dev", ["mate:g:aaa", "mate:name:Crm"], "crm-dev", "2024-01-01T00:00:00Z"),
-    project("shop-dev", ["mate:g:bbb", "mate:name:Shop"], "shop-dev", "2024-03-01T00:00:00Z"),
-    project("blog-dev", ["mate:g:ccc", "mate:name:Blog"], "blog-dev", "2024-02-01T00:00:00Z"),
-    project("new-old", [], "loose-old", "2024-01-01T00:00:00Z"),
-    project("new-new", [], "loose-new", "2024-06-01T00:00:00Z"),
+    project("crm-dev", {
+      hq: placed("aaa", "mate", { appName: "Crm" }),
+      created: "2024-01-01T00:00:00Z",
+    }),
+    project("shop-dev", {
+      hq: placed("bbb", "mate", { appName: "Shop" }),
+      created: "2024-03-01T00:00:00Z",
+    }),
+    project("blog-dev", {
+      hq: placed("ccc", "mate", { appName: "Blog" }),
+      created: "2024-02-01T00:00:00Z",
+    }),
+    project("new-old", { id: "loose-old", created: "2024-01-01T00:00:00Z" }),
+    project("new-new", { id: "loose-new", created: "2024-06-01T00:00:00Z" }),
   ];
 
   it.each([

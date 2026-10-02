@@ -53,7 +53,6 @@ const PROJECT: ZeropsProject = {
   status: "ACTIVE",
   publicZone: "fte2334ab.prg1-zerops.zone",
   zeropsSubdomainHost: "24cb",
-  tagList: ["mate:bot:Fen"],
 };
 const ZCP: ZeropsService = {
   id: "service-1",

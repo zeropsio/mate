@@ -1,4 +1,4 @@
-import { PRODUCTION_ADDED_HERE, readZeropsGroupTags } from "@t3tools/client-runtime/zerops";
+import { PRODUCTION_ADDED_HERE, readZeropsMembership } from "@t3tools/client-runtime/zerops";
 import type * as React from "react";
 import { act } from "react";
 import { describe, expect, it, vi } from "vite-plus/test";
@@ -44,6 +44,7 @@ import {
   FRESH,
   item,
   MERGING,
+  placed,
   mount,
   PROD,
   PRODUCTION_STOP,
@@ -311,7 +312,7 @@ describe("the Overview", () => {
 
   it("opens any Mate a row names into its conversation, by a real button in reading order", () => {
     const opened: Array<string> = [];
-    const KAI = item("kai-dev", ["mate:g:aaa", "mate:role:dev", "mate:name:sm-fixture"]);
+    const KAI = item("kai-dev", placed("aaa", "sm-fixture"));
     const group = entry([WREN, UMA, KAI], { pullRequests: [pull()] });
     const tree = mount(
       <ZeropsProjectsFlow<Item>
@@ -563,7 +564,7 @@ describe("a creation under way on the Overview", () => {
 
   it("opens a row to its coming Mate's card, which says how far it has got and opens nothing", () => {
     // Two listed Mates are the row's names, so the one being created is its count.
-    const KAI = item("kai-dev", ["mate:g:aaa", "mate:role:dev", "mate:name:sm-fixture"]);
+    const KAI = item("kai-dev", placed("aaa", "sm-fixture"));
     const group = entry([WREN, KAI], { pullRequests: [pull()], pending: [VERA_COMING] });
     const tree = mount(<ZeropsProjectsFlow<Item> {...FLOW_PROPS} groups={[group]} />);
     act(() => tree.root.findByProps({ "aria-expanded": false }).props.onClick());
@@ -675,7 +676,7 @@ describe("production and stages in flight on the Overview", () => {
 
 describe("an opened row's environments", () => {
   it("open their stop's page from the stage's and the production's names, never from another's", () => {
-    const DEV_BOX = item("fixture-box", ["mate:g:aaa", "mate:role:dev"], false);
+    const DEV_BOX = item("fixture-box", placed("aaa", "sm-fixture"), false);
     const group = {
       ...entry([WREN, STAGE, PROD], {
         pullRequests: [pull()],
@@ -690,11 +691,7 @@ describe("an opened row's environments", () => {
         // The page's row, linked the way the page links it.
         renderEnvironment={(value, role) => (
           <ZeropsEnvironmentRow
-            link={stopLinkOf(
-              readZeropsGroupTags(value.project.tagList).groupId,
-              value.project.id,
-              role,
-            )}
+            link={stopLinkOf(readZeropsMembership(value.project).groupId, value.project.id, role)}
             name={value.project.name}
             tag={role ?? null}
           />
@@ -719,7 +716,7 @@ describe("the quiet end", () => {
   it("sets the tools line on the environment rows' grid, one list with them", () => {
     const html = render({
       groups: [MERGING],
-      ungrouped: [{ item: item("zerops-ads", [], false), action: "set-up-mate" }],
+      ungrouped: [{ item: item("zerops-ads", undefined, false), action: "set-up-mate" }],
       renderEnvironment: (value) => (
         <li className={ENVIRONMENT_ROW_GRID_CLASS} data-test-environment={value.project.id} />
       ),

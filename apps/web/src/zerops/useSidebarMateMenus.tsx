@@ -15,14 +15,14 @@
  * what *Finish setup* needs to know a Mate unregistered, and the menu is on every screen.
  */
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
-import { botDisplayName, readZeropsGroupTags } from "@t3tools/client-runtime/zerops";
+import { botDisplayName, readZeropsMembership } from "@t3tools/client-runtime/zerops";
 import {
   isAtomCommandInterrupted,
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/models";
 import { useRouter } from "@tanstack/react-router";
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, type ReactNode } from "react";
 
 import type { MateRowActions } from "~/components/zerops/SidebarMateMenu";
 import type { ZeropsMenuEntry } from "~/components/zerops/ZeropsProjectMenu";
@@ -38,7 +38,6 @@ import { useMateActions } from "./useMateActions";
 import { useMutedMates } from "./mutedMates";
 import type { ZeropsCandidatePresentation } from "./useZeropsCandidates";
 import { useZeropsRegistry } from "./useZeropsRegistry";
-import { useZeropsSession } from "./ZeropsSessionProvider";
 import { useZeropsContainers } from "./zeropsContainers";
 
 /** The shared verbs this menu carries, relabelled for a Mate's own menu. */
@@ -72,10 +71,8 @@ export function useSidebarMateMenus(input: {
   ) => MateRowActions | undefined;
   readonly dialogs: ReactNode;
 } {
-  const { status } = useZeropsSession();
   const { serverVersions } = useZeropsContainers();
-  const [registryWanted, setRegistryWanted] = useState(false);
-  const registry = useZeropsRegistry({ enabled: registryWanted && status === "signed-in" });
+  const registry = useZeropsRegistry();
   const mateActions = useMateActions({ registry, serverVersions });
   const { muted, toggle } = useMutedMates();
   const markThreadUnread = useUiStateStore((store) => store.markThreadUnread);
@@ -117,7 +114,7 @@ export function useSidebarMateMenus(input: {
       activity: ZeropsAgentActivity | undefined,
     ): MateRowActions | undefined => {
       const environmentId = candidate.environmentId;
-      const tags = readZeropsGroupTags(candidate.project.tagList);
+      const tags = readZeropsMembership(candidate.project);
       const name = botDisplayName({ bot: tags.bot, projectName: candidate.project.name });
       const threadRef =
         environmentId === undefined || activity === undefined
@@ -171,9 +168,6 @@ export function useSidebarMateMenus(input: {
                 });
               },
         entries: sidebarMateVerbs(mateActions.actionsFor(candidate, tags)),
-        onMenuOpen: () => {
-          setRegistryWanted(true);
-        },
       };
     },
     [

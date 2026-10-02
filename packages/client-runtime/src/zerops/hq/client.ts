@@ -16,6 +16,7 @@
 import type { RoleProjectKind } from "@t3tools/shared/zeropsRoles";
 
 import type { FetchImplementation } from "../api.ts";
+import { structureEventOf, type HqStructureEvent } from "./stream.ts";
 
 /** An organization's HQ: its project, and the address its anchor names. */
 export interface HqEndpoint {
@@ -23,8 +24,20 @@ export interface HqEndpoint {
   readonly address: string;
 }
 
+/** A Mate's record in HQ: its name, and its face in the grammar `readMateFace` reads. */
+export interface HqMate {
+  readonly name: string;
+  readonly face: string;
+}
+
 /** What `GET /api/structure` answers: the applications as the reader sees them in Zerops. */
 export interface HqStructure {
+  /** The Mates HQ holds in no application: their project's name in Zerops, and their record. */
+  readonly ungrouped: ReadonlyArray<{
+    readonly projectId: string;
+    readonly name: string;
+    readonly mate: HqMate;
+  }>;
   readonly apps: ReadonlyArray<{
     readonly id: string;
     readonly name: string;
@@ -32,7 +45,7 @@ export interface HqStructure {
       readonly projectId: string;
       readonly name: string;
       readonly kind: string;
-      readonly mate: { readonly name: string; readonly face: string } | null;
+      readonly mate: HqMate | null;
     }>;
   }>;
 }
@@ -65,9 +78,61 @@ export class HqError extends Error {
 
 export interface HqApi {
   readonly structure: (signal?: AbortSignal) => Promise<HqStructure>;
+  /**
+   * The structure as it changes (`stream.ts`), over a socket opened with a ticket for the session:
+   * every event to `onEvent`, every message — events and pings alike — to `onAlive`. Ends when HQ
+   * hands the reader to another Core, or ends the session (the next call enters the door again);
+   * fails when the socket breaks; runs until `signal` aborts.
+   */
+  readonly streamStructure: (
+    handlers: {
+      readonly onEvent: (event: HqStructureEvent) => void;
+      readonly onAlive: () => void;
+    },
+    signal: AbortSignal,
+  ) => Promise<void>;
+  /** A Mate's name or face, as HQ records them (`PATCH /api/mates/{projectId}`). */
+  readonly updateMate: (
+    projectId: string,
+    change: { readonly name?: string; readonly face?: string },
+  ) => Promise<void>;
+  /** An application's name (`PATCH /api/apps/{id}`). */
+  readonly renameApp: (appId: string, name: string) => Promise<void>;
+  /**
+   * A project into an application as `kind`, or a Mate out of every one — `appId: null` (`PUT
+   * /api/projects/{projectId}/app`).
+   */
+  readonly moveProject: (
+    projectId: string,
+    to: { readonly appId: string | null; readonly kind: RoleProjectKind },
+  ) => Promise<void>;
+  /** A Mate set up on a project of its own, in no application (`POST /api/mates`). */
+  readonly createMate: (mate: { readonly projectId: string } & HqMate) => Promise<void>;
   readonly createApp: (name: string) => Promise<{ readonly id: string; readonly name: string }>;
   readonly attachProject: (appId: string, attach: HqAttach) => Promise<void>;
 }
+
+/** A socket the structure stream reads, opened by the host (`WebSocket` in a browser). */
+export interface HqSocket {
+  readonly send: (data: string) => void;
+  readonly close: () => void;
+}
+
+/** Opens `url`, telling `on` of every text message and of the close, with its code. */
+export type OpenHqSocket = (
+  url: string,
+  on: { readonly message: (data: string) => void; readonly close: (code: number) => void },
+) => HqSocket;
+
+/** How HQ closes a structure socket (`apps/hq/src/stream.ts`). */
+const SOCKET_CLOSE = {
+  /** Another Core leads now, or this one is stopping: read again at once. */
+  goingAway: 1001,
+  /** The session ended: enter the door again. */
+  sessionEnded: 4401,
+} as const;
+
+const PONG = JSON.stringify({ type: "pong" });
 
 const CALL_TIMEOUT_MS = 20_000;
 
@@ -101,8 +166,8 @@ async function errorOf(response: Response): Promise<HqError> {
   });
 }
 
-/** One call to HQ: its JSON answer, or an {@link HqError}. */
-async function call<T>(fetch: FetchImplementation, url: string, init: RequestInit): Promise<T> {
+/** One call to HQ: its answer, or an {@link HqError}. */
+async function send(fetch: FetchImplementation, url: string, init: RequestInit): Promise<Response> {
   let response: Response;
   try {
     response = await fetch(url, {
@@ -122,8 +187,10 @@ async function call<T>(fetch: FetchImplementation, url: string, init: RequestIni
     });
   }
   if (!response.ok) throw await errorOf(response);
-  return (await response.json()) as T;
+  return response;
 }
+
+const json = async <T>(response: Response): Promise<T> => (await response.json()) as T;
 
 /**
  * What HQ's `/health` says (`apps/hq/src/health.ts`): `healthy` while it leads as the official
@@ -167,6 +234,7 @@ export function makeHqApi(input: {
   readonly fetch: FetchImplementation;
   /** Mints a throwaway for HQ's door, hands its value to `use` alone, and deletes it. */
   readonly throughDoor: <T>(use: (token: string) => Promise<T>) => Promise<T>;
+  readonly openSocket: OpenHqSocket;
 }): HqApi {
   const origin = input.address.replace(/\/+$/u, "");
   /** The session HQ issued, or the door exchange under way that will issue it. */
@@ -174,11 +242,13 @@ export function makeHqApi(input: {
 
   const enter = () => {
     const entering = input
-      .throughDoor((token) =>
-        call<{ readonly session: string }>(input.fetch, `${origin}/api/door`, {
-          method: "POST",
-          body: JSON.stringify({ token }),
-        }),
+      .throughDoor(async (token) =>
+        json<{ readonly session: string }>(
+          await send(input.fetch, `${origin}/api/door`, {
+            method: "POST",
+            body: JSON.stringify({ token }),
+          }),
+        ),
       )
       .then((answer) => answer.session);
     // A door that refused is not a session: the next call asks again.
@@ -190,14 +260,14 @@ export function makeHqApi(input: {
   };
 
   /** A call as the session's holder; a session HQ no longer takes is replaced once. */
-  const authorized = async <T>(path: string, init: RequestInit = {}): Promise<T> => {
+  const authorized = async (path: string, init: RequestInit = {}): Promise<Response> => {
     for (let attempt = 0; ; attempt += 1) {
       const held = session ?? enter();
       const token = await held;
       try {
-        return await call<T>(input.fetch, `${origin}${path}`, {
+        return await send(input.fetch, `${origin}${path}`, {
           ...init,
-          headers: { Authorization: `Bearer ${token}` },
+          headers: { ...init.headers, Authorization: `Bearer ${token}` },
         });
       } catch (cause) {
         const stale = cause instanceof HqError && cause.code === "session_required";
@@ -208,15 +278,83 @@ export function makeHqApi(input: {
   };
 
   return {
-    structure: (signal) =>
-      authorized<HqStructure>("/api/structure", signal === undefined ? {} : { signal }),
-    createApp: (name) =>
-      authorized("/api/apps", { method: "POST", body: JSON.stringify({ name }) }),
+    structure: async (signal) =>
+      json<HqStructure>(await authorized("/api/structure", signal === undefined ? {} : { signal })),
+    streamStructure: async (handlers, signal) => {
+      const { ticket } = await json<{ readonly ticket: string }>(
+        await authorized("/api/stream-ticket", { method: "POST", signal }),
+      );
+      /** The session the ticket was minted for. */
+      const held = session;
+      const url = `${origin.replace(/^http/u, "ws")}/api/structure/ws?ticket=${encodeURIComponent(ticket)}`;
+      await new Promise<void>((resolve, reject) => {
+        const socket = input.openSocket(url, {
+          message: (data) => {
+            handlers.onAlive();
+            let message: unknown;
+            try {
+              message = JSON.parse(data);
+            } catch {
+              return;
+            }
+            if ((message as { readonly type?: unknown } | null)?.type === "ping") {
+              socket.send(PONG);
+              return;
+            }
+            const event = structureEventOf(message);
+            if (event !== undefined) handlers.onEvent(event);
+          },
+          close: (code) => {
+            signal.removeEventListener("abort", stop);
+            if (code === SOCKET_CLOSE.sessionEnded) {
+              // The next call enters the door again, the next socket with it.
+              if (session === held) session = null;
+              resolve();
+            } else if (code === SOCKET_CLOSE.goingAway) {
+              resolve();
+            } else {
+              reject(
+                new HqError({
+                  kind: "unavailable",
+                  code: `socket_${code}`,
+                  message: "HQ's stream broke.",
+                }),
+              );
+            }
+          },
+        });
+        const stop = () => socket.close();
+        signal.addEventListener("abort", stop, { once: true });
+      });
+    },
+    createApp: async (name) =>
+      json(await authorized("/api/apps", { method: "POST", body: JSON.stringify({ name }) })),
     attachProject: async (appId, attach) => {
       await authorized(`/api/apps/${encodeURIComponent(appId)}/projects`, {
         method: "POST",
         body: JSON.stringify(attach),
       });
+    },
+    updateMate: async (projectId, change) => {
+      await authorized(`/api/mates/${encodeURIComponent(projectId)}`, {
+        method: "PATCH",
+        body: JSON.stringify(change),
+      });
+    },
+    renameApp: async (appId, name) => {
+      await authorized(`/api/apps/${encodeURIComponent(appId)}`, {
+        method: "PATCH",
+        body: JSON.stringify({ name }),
+      });
+    },
+    moveProject: async (projectId, to) => {
+      await authorized(`/api/projects/${encodeURIComponent(projectId)}/app`, {
+        method: "PUT",
+        body: JSON.stringify(to),
+      });
+    },
+    createMate: async (mate) => {
+      await authorized("/api/mates", { method: "POST", body: JSON.stringify(mate) });
     },
   };
 }

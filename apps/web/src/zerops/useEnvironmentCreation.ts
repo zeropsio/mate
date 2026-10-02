@@ -154,18 +154,13 @@ export function useEnvironmentCreation(): (
 
       const plan = planEnvironmentCreation({
         clientId: organization.id,
-        groupId: group.groupId,
-        // A group named by its id has no name to mirror.
-        ...(group.nameSource === "id" ? {} : { groupName: group.name }),
         role,
         name,
         agents: await readGroupAgents(request.environments),
         recipe: choice.recipe,
         withAgent: choice.withAgent,
         register: true,
-        ...(choice.botName === undefined ? {} : { botName: choice.botName }),
         ...(asker ? { standUpBy: asker } : {}),
-        ...(choice.face === undefined ? {} : { face: choice.face }),
       });
       if (!isCurrent()) return { kind: "refused", reason: null };
       if (!plan.ok) return { kind: "refused", reason: plan.reason };

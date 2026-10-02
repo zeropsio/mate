@@ -10,6 +10,7 @@ import {
   type ProtocolDecodeResult,
 } from "@t3tools/client-runtime/zerops/data";
 import { candidateListingsAtom } from "@t3tools/client-runtime/zerops/environments";
+import type { HqStructure } from "@t3tools/client-runtime/zerops/hq";
 import { heldCandidates } from "@t3tools/client-runtime/zerops/projections";
 import { Atom, AtomRegistry } from "effect/unstable/reactivity";
 import { describe, expect, it } from "vite-plus/test";
@@ -23,8 +24,10 @@ import {
   scope,
   stamp,
 } from "../zerops/__fixtures__/platformData";
+import type { InventoryProjection } from "../zerops/inventoryContext";
 import {
   candidateRowsAtom,
+  hqStructureAtom,
   takenBotNamesAtom,
   zeropsDataRuntimeAtom,
   zeropsInventoryAtom,
@@ -152,7 +155,56 @@ describe("the candidate rows", () => {
       .find(({ organizationId }) => organizationId === organization.organizationId);
 
     expect(heldCandidates(rows).rows.map(({ key }) => key)).toEqual([`${PROJECT.id}:${ZCP.id}`]);
-    expect(rows).toBe(listed?.listing);
+    // HQ places nothing yet: each row is the listing's own.
+    expect(rows).toEqual(listed?.listing);
+    expect(heldCandidates(rows).rows[0]).toBe(heldCandidates(listed!.listing).rows[0]);
+  });
+
+  it("each row carries where the organization's HQ places its project", () => {
+    const registry = AtomRegistry.make();
+    registry.set(zeropsDataRuntimeAtom, readRuntime());
+    registry.set(zeropsSessionAtom, {
+      status: "signed-in",
+      organizationStatus: "selected",
+      activeOrganization: organization,
+    });
+    registry.set(zeropsInventoryAtom, {
+      projects: [PROJECT],
+      services: new Map([[PROJECT.id, { status: "resolved" as const, services: [ZCP] }]]),
+      projectRefs: new Map([[projectKeyOf(owner), owner]]),
+      authority: new Map(),
+      account: { kind: "authorized" },
+    });
+    registry.set(hqStructureAtom, {
+      organizationId: organization.organizationId,
+      structure: {
+        ungrouped: [],
+        apps: [
+          {
+            id: "app-kanban",
+            name: "Kanban",
+            projects: [
+              {
+                projectId: PROJECT.id,
+                name: PROJECT.name,
+                kind: "mate",
+                mate: { name: "Ada", face: "" },
+              },
+            ],
+          },
+        ],
+      },
+      readAt: 1_000,
+      current: true,
+      unavailableSince: null,
+    });
+
+    expect(heldCandidates(registry.get(candidateRowsAtom)).rows[0]?.project.hq).toEqual({
+      appId: "app-kanban",
+      appName: "Kanban",
+      kind: "mate",
+      mate: { name: "Ada", face: "" },
+    });
   });
 });
 
@@ -163,9 +215,23 @@ describe("the names the organization's Mates go by", () => {
     clientId: owner.organization.organizationId,
     name: "heron uma",
     status: "ACTIVE",
-    tagList: ["mate", "mate:bot:Uma"],
+    tagList: ["mate"],
   };
-  const named = { ...PROJECT, tagList: ["mate", "mate:bot:Ada"] };
+  const named = { ...PROJECT, tagList: ["mate"] };
+  /** HQ names both Mates, in one application. */
+  const STRUCTURE: HqStructure = {
+    ungrouped: [],
+    apps: [
+      {
+        id: "app-heron",
+        name: "Heron",
+        projects: [
+          { projectId: PROJECT.id, name: "kanban", kind: "mate", mate: { name: "Ada", face: "" } },
+          { projectId: UMA.id, name: "heron uma", kind: "mate", mate: { name: "Uma", face: "" } },
+        ],
+      },
+    ],
+  };
 
   it.each([
     {
@@ -183,13 +249,28 @@ describe("the names the organization's Mates go by", () => {
       expected: { names: ["Ada"], complete: false },
     },
     {
+      label: "a list read whole, with HQ's structure not answered now: a name is unread",
+      listed: [named, UMA],
+      totalCount: 2,
+      account: { kind: "authorized" as const },
+      current: false,
+      expected: { names: ["Ada", "Uma"], complete: false },
+    },
+    {
       label: "an account whose access lapsed",
       listed: [named, UMA],
       totalCount: 2,
       account: { kind: "withheld" as const, reason: "access-lapsed" as const, cause: null },
       expected: { names: [], complete: false },
     },
-  ])("$label", ({ listed, totalCount, account, expected }) => {
+  ] as ReadonlyArray<{
+    readonly label: string;
+    readonly listed: ReadonlyArray<ZeropsProject>;
+    readonly totalCount: number;
+    readonly account: InventoryProjection["account"];
+    readonly current?: boolean;
+    readonly expected: { readonly names: ReadonlyArray<string>; readonly complete: boolean };
+  }>)("$label", ({ listed, totalCount, account, current = true, expected }) => {
     const registry = AtomRegistry.make();
     registry.set(zeropsDataRuntimeAtom, readRuntime(listed, totalCount));
     registry.set(zeropsSessionAtom, {
@@ -204,6 +285,13 @@ describe("the names the organization's Mates go by", () => {
       projectRefs: new Map([[projectKeyOf(owner), owner]]),
       authority: new Map(),
       account,
+    });
+    registry.set(hqStructureAtom, {
+      organizationId: organization.organizationId,
+      structure: STRUCTURE,
+      readAt: 1_000,
+      current,
+      unavailableSince: current ? null : 2_000,
     });
 
     const taken = registry.get(takenBotNamesAtom);

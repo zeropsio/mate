@@ -22,6 +22,7 @@ import {
   type HqEndpoint,
   type HqHealth,
   type OfficialHq,
+  type OpenHqSocket,
 } from "@t3tools/client-runtime/zerops/hq";
 import {
   connectThroughThrowaway,
@@ -77,6 +78,22 @@ export function useAccountHq(clientId: string | undefined): AccountHq {
 const apis = new Map<string, HqApi>();
 onAccountLifetimeClose(() => apis.clear());
 
+/** HQ's structure socket, as this browser opens it. */
+const openBrowserSocket: OpenHqSocket = (url, on) => {
+  const socket = new WebSocket(url);
+  socket.addEventListener("message", (event) => {
+    if (typeof event.data === "string") on.message(event.data);
+  });
+  socket.addEventListener("close", (event) => on.close(event.code));
+  return {
+    // A pong to a socket already closing is lost with it.
+    send: (data) => {
+      if (socket.readyState === WebSocket.OPEN) socket.send(data);
+    },
+    close: () => socket.close(),
+  };
+};
+
 /** HQ's API for this account and org, entered through its door on the first call. */
 export function accountHqApi(client: ZeropsApiClient, clientId: string, hq: HqEndpoint): HqApi {
   const key = `${client.accountEpoch}:${clientId}:${hq.projectId}:${hq.address}`;
@@ -94,6 +111,7 @@ export function accountHqApi(client: ZeropsApiClient, clientId: string, hq: HqEn
         nonce: randomUUID(),
         connect: use,
       }),
+    openSocket: openBrowserSocket,
   });
   apis.set(key, api);
   return api;

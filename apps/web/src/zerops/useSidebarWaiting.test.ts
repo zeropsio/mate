@@ -12,6 +12,7 @@ const mate = (
   bot: string,
   group: ZeropsCandidate["group"] = "connected",
   signer: string | null = VIEWER,
+  face = "",
 ) =>
   ({
     key: `${id}:zcp`,
@@ -19,13 +20,8 @@ const mate = (
       id,
       name: id,
       status: "ACTIVE",
-      tagList: [
-        "mate",
-        "mate:g:aaa",
-        "mate:role:dev",
-        `mate:bot:${bot}`,
-        ...(signer === null ? [] : [`mate:signer:claude-code:${signer}`]),
-      ],
+      tagList: ["mate", ...(signer === null ? [] : [`mate:signer:claude-code:${signer}`])],
+      hq: { appId: "aaa", appName: "Acme", kind: "mate", mate: { name: bot, face } },
     },
     group,
     service: { id: "zcp", name: "zcp", status: "ACTIVE" },
@@ -91,11 +87,7 @@ describe("waitingMatesOf — the faces the header stacks", () => {
   });
 
   it("wears the shape a Mate's person picked", () => {
-    const picked = mate("juno", "Juno");
-    const juno = {
-      ...picked,
-      project: { ...picked.project, tagList: [...picked.project.tagList!, "mate:face:rose:seal"] },
-    };
+    const juno = mate("juno", "Juno", "connected", VIEWER, "rose:seal");
     const [waiting] = waitingMatesOf({
       candidates: [juno],
       activityOf: () => face("needs"),

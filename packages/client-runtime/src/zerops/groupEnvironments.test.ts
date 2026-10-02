@@ -463,10 +463,18 @@ describe("halfMadeGroupEnvironments", () => {
     ["p-mate", "mate"],
     ["p-stage", "stage"],
   ]);
+  /** Where HQ places a project in `g-1`, as `kind`. */
+  const inAcme = (kind: "mate" | "stage" | "production") => ({
+    appId: "g-1",
+    appName: "Acme",
+    kind,
+    mate: null,
+  });
   const projects = [
-    { id: "p-mate", name: "Acme - dev", tagList: ["mate:g:g-1", "mate:role:dev", "mate"] },
-    { id: "p-stage", name: "Acme - stage", tagList: ["mate:g:g-1", "mate:role:stage"] },
-    { id: "p-prod", name: "Acme - production", tagList: ["mate:g:g-1", "mate:role:prod"] },
+    { id: "p-mate", name: "Acme - dev", tagList: ["mate"], hq: inAcme("mate") },
+    { id: "p-stage", name: "Acme - stage", tagList: [], hq: inAcme("stage") },
+    { id: "p-prod", name: "Acme - production", tagList: [], hq: inAcme("production") },
+    // A stage by its tags alone: HQ places it nowhere, so it is in no group's count.
     { id: "p-loose", name: "Loose", tagList: ["mate:role:stage"] },
   ];
 

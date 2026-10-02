@@ -9,7 +9,7 @@ import {
   HQ_UNCLEAR,
   hasMate,
   isRecipeProposal,
-  readZeropsGroupTags,
+  readZeropsMembership,
   ZEROPS_BOT_NAME_MAX_LENGTH,
   type EnvironmentCreationStep,
   type EnvironmentCreationStepProgress,
@@ -448,7 +448,7 @@ export function newMateDoorMates(input: {
           {
             projectId: item.project.id,
             name: botDisplayName({
-              bot: readZeropsGroupTags(item.project.tagList).bot,
+              bot: readZeropsMembership(item.project).bot,
               projectName: item.project.name,
             }),
           },

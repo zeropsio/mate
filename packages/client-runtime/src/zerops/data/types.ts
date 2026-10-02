@@ -11,7 +11,6 @@ import type { ZeropsProject } from "../api.ts";
 import type { ZeropsProjectGrant, ZeropsTokenDelegation } from "../groupReach.ts";
 import type { Shown } from "../knowledge/known.ts";
 import type { ZeropsServiceDeployedVersion } from "./deployedVersion.ts";
-import type { ZeropsEnvironmentRole, ZeropsMateFace } from "../groups.ts";
 import type { ZeropsAgentType } from "../newProject.ts";
 import type { ZeropsIntegrationTokenGrantMetadata } from "./cells.ts";
 import type { ProjectTagPatch } from "./tagPatch.ts";
@@ -1875,14 +1874,6 @@ export interface CreateProjectWithMateCommandIntent {
   readonly location?: string;
   readonly zcpVersion?: string;
   readonly agents?: ReadonlyArray<ZeropsAgentType>;
-  readonly group?: {
-    readonly groupId: string;
-    readonly role?: ZeropsEnvironmentRole;
-    readonly label?: string;
-  };
-  readonly botName?: string;
-  /** The face its person picked (`mate:face:`). */
-  readonly face?: ZeropsMateFace;
   /** Who asks, by making it, for the project's development to be stood up (`mate:standup:`). */
   readonly standUpBy?: string;
 }

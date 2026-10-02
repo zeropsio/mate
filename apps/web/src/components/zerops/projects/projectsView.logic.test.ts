@@ -660,7 +660,13 @@ describe("groupMemberFactsOf — whether a Mate was spoken to", () => {
   const mate = (group: ZeropsCandidate["group"]): ZeropsCandidate =>
     ({
       key: "p-wren:zcp",
-      project: { id: "p-wren", name: "p-wren", status: "ACTIVE", tagList: ["mate", "mate:g:g"] },
+      project: {
+        id: "p-wren",
+        name: "p-wren",
+        status: "ACTIVE",
+        tagList: ["mate"],
+        hq: { appId: "g", appName: "G", kind: "mate", mate: { name: "Wren", face: "" } },
+      },
       group,
       environmentId: "env-wren" as EnvironmentId,
       service: { id: "zcp", name: "zcp", status: "ACTIVE" },

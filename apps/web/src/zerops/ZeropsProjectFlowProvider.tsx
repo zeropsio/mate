@@ -23,7 +23,7 @@ import {
   flowVerbKey,
   releaseRunBy,
   nameStopByRelease,
-  readZeropsGroupTags,
+  readZeropsMembership,
   releaseDeploys,
   releaseInFlight,
   releaseMessage,
@@ -365,8 +365,7 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
   const brokerOrigin = accountGitea?.state.brokerUrl;
   const signedInToMate = session.status === "signed-in";
 
-  const registry = useZeropsRegistry({ enabled: signedInToMate });
-  const { askForOwner } = registry;
+  const registry = useZeropsRegistry();
   const platform = useMemo(() => zeropsThrowawayPlatform(session.client), [session.client]);
   const {
     signedIn,
@@ -393,7 +392,7 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
     if (data === null || held === null) return [];
     return registry.registry.groups.flatMap((entry) =>
       held.projects
-        .filter((project) => readZeropsGroupTags(project.tagList ?? []).groupId === entry.groupId)
+        .filter((project) => readZeropsMembership(project).groupId === entry.groupId)
         .flatMap((project) => {
           const services = held.services.get(project.id);
           const ref = inventory.projectRefs.get(project.id);
@@ -419,10 +418,10 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
         groupId: entry.groupId,
         slug: entry.slug,
         projects: (held === null ? [] : held.projects)
-          .filter((project) => readZeropsGroupTags(project.tagList ?? []).groupId === entry.groupId)
+          .filter((project) => readZeropsMembership(project).groupId === entry.groupId)
           .map((project) => {
             const services = held?.services.get(project.id);
-            const tags = readZeropsGroupTags(project.tagList ?? []);
+            const tags = readZeropsMembership(project);
             return {
               projectId: project.id,
               name: project.name,
@@ -675,7 +674,7 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
         inventory.projects.map((project) => [
           project.id,
           botDisplayName({
-            bot: readZeropsGroupTags(project.tagList ?? []).bot,
+            bot: readZeropsMembership(project).bot,
             projectName: project.name,
           }),
         ]),
@@ -888,7 +887,6 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
       flows: lapsed ? EMPTY_FLOWS : flows,
       deployments,
       slugs: lapsed ? EMPTY_SLUGS : slugs,
-      askForOwner,
       mateNames,
       pending: pendingOrHeld,
       // Flows that stand with no token say why where the verbs are, ahead of what a verb said.
@@ -899,7 +897,6 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
       rollBack,
     }),
     [
-      askForOwner,
       createPullRequest,
       deployments,
       flows,

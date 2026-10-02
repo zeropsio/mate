@@ -1,5 +1,4 @@
 import { EnvironmentId } from "@t3tools/contracts";
-import type { RandomBytes } from "@t3tools/client-runtime/zerops";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import {
   ZeropsAccountId,
@@ -27,7 +26,6 @@ import {
   readContainerAgain,
   removeFailedZeropsProject,
   retryZeropsProjectConnection,
-  setUpMateBotName,
   showsZeropsBirthLine,
   ZeropsProjectsHeader,
 } from "./ZeropsProjectsPage";
@@ -479,48 +477,17 @@ describe("removeFailedZeropsProject", () => {
   });
 });
 
-describe("setUpMateBotName", () => {
-  /** Always the pool's first name, so a generated one is predictable. */
-  const firstName: RandomBytes = (bytes) => bytes.fill(0);
-
-  it.each<{
-    readonly name: string;
-    readonly existing: string | undefined;
-    readonly taken: { readonly names: ReadonlyArray<string>; readonly complete: boolean };
-    readonly named: "kept" | "fresh" | "wait";
-  }>([
-    {
-      name: "a partial listing never hands out a fresh name as free",
-      existing: undefined,
-      taken: { names: [], complete: false },
-      named: "wait",
-    },
-    {
-      name: "a Mate that has a name keeps it while the rest are read",
-      existing: "Fen",
-      taken: { names: [], complete: false },
-      named: "kept",
-    },
-    {
-      name: "a complete listing hands out a fresh name nobody goes by",
-      existing: undefined,
-      taken: { names: ["Fen"], complete: true },
-      named: "fresh",
-    },
-  ])("$name", ({ existing, taken, named }) => {
-    const name = setUpMateBotName(existing, taken, firstName);
-    if (named === "wait") expect(name).toBeUndefined();
-    else if (named === "kept") expect(name).toBe(existing);
-    else {
-      expect(name).toBeDefined();
-      expect(taken.names).not.toContain(name);
-    }
-  });
-});
-
 describe("hasNoZeropsProject", () => {
-  const candidate = (tagList: ReadonlyArray<string>) =>
-    ({ project: { id: tagList.join("|"), name: "p", status: "ACTIVE", tagList } }) as never;
+  const candidate = (tagList: ReadonlyArray<string>, appId?: string) =>
+    ({
+      project: {
+        id: [...tagList, appId ?? ""].join("|"),
+        name: "p",
+        status: "ACTIVE",
+        tagList,
+        ...(appId === undefined ? {} : { hq: { appId, appName: "P", kind: "mate", mate: null } }),
+      },
+    }) as never;
   const listing = (
     value: ReadonlyArray<ZeropsCandidate>,
     overrides: Partial<Extract<Known<ReadonlyArray<ZeropsCandidate>>, { state: "known" }>> = {},
@@ -535,7 +502,7 @@ describe("hasNoZeropsProject", () => {
 
   it.each([
     ["nothing at all", [], true],
-    ["a project in a group", [candidate(["mate:g:aaa", "mate:role:dev"])], false],
+    ["a project in a group", [candidate([], "aaa")], false],
     ["a project in no group", [candidate([])], false],
     // A tool is not a project: an account holding only Gitea has not started.
     ["only a tool", [candidate(["mate:tool:gitea"])], true],

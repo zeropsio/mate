@@ -797,8 +797,8 @@ describe("Zerops platform protocol decoding", () => {
     const command: PlatformCommand = {
       kind: "update-project-tags",
       project,
-      patch: { kind: "agent-name", name: "Ada" },
-      attemptId: ZeropsCommandAttemptId.make("name-attempt"),
+      patch: { kind: "mate" },
+      attemptId: ZeropsCommandAttemptId.make("declare-attempt"),
       accountEpoch: AccountEpoch.make(1),
       startedAtReceiptOrdinal: ReceiptOrdinal.make(2),
       dispatchOrdinal: DispatchOrdinal.make(3),
@@ -807,7 +807,7 @@ describe("Zerops platform protocol decoding", () => {
       id: "project",
       name: "application",
       status: "ACTIVE",
-      tagList: ["mate", "mate:bot:Ada"],
+      tagList: ["mate"],
     });
 
     expect(result.issues).toEqual([]);
@@ -826,7 +826,7 @@ describe("Zerops platform protocol decoding", () => {
     const command: PlatformCommand = {
       kind: "update-project-tags",
       project,
-      patch: { kind: "group-membership", next: {} },
+      patch: { kind: "closed-off" },
       attemptId: ZeropsCommandAttemptId.make("tags-attempt"),
       accountEpoch: AccountEpoch.make(1),
       startedAtReceiptOrdinal: ReceiptOrdinal.make(2),

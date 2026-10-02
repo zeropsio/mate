@@ -109,7 +109,7 @@ function NewMateDialog({
   readonly groupId: string;
   readonly create: ReturnType<typeof useEnvironmentCreation>;
 }) {
-  const { activeOrganization, status } = useZeropsSession();
+  const { activeOrganization } = useZeropsSession();
   // ADR 0001: a Mate works only in an organization with its HQ.
   const accountHq = useAccountHq(activeOrganization?.id);
   const { listing } = useZeropsCandidates();
@@ -129,7 +129,7 @@ function NewMateDialog({
   );
   const accountGitea = useAccountGitea(activeOrganization?.id);
   const holdsGitea = useAccountHoldsGitea(activeOrganization?.id);
-  const registry = useZeropsRegistry({ enabled: status === "signed-in" });
+  const registry = useZeropsRegistry();
   // The account's flow: the group's org, known from its registry long before this opened, and
   // the group's changes, open and landed, as the forge last read them.
   const flow = useZeropsProjectFlowOptional();

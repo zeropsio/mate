@@ -22,6 +22,12 @@ import {
   candidateListingsAtom,
   type RegistrationRecord,
 } from "@t3tools/client-runtime/zerops/environments";
+import {
+  placeListing,
+  placementsOf,
+  type HqPlacement,
+  type HqStructure,
+} from "@t3tools/client-runtime/zerops/hq";
 import type { Known, Shown } from "@t3tools/client-runtime/zerops/knowledge";
 import {
   admittedOnly,
@@ -82,6 +88,41 @@ export const zeropsSessionAtom = Atom.make<ZeropsSessionView | null>(null).pipe(
   Atom.keepAlive,
   Atom.withLabel("zerops:session"),
 );
+
+/**
+ * The organization's structure as HQ last told this tab (`ZeropsHqStructure`, ADR 0002): its
+ * applications and the projects HQ places in them.
+ */
+export interface HqStructureView {
+  readonly organizationId: string;
+  /** Null while nothing is known: never read here, nothing remembered from before. */
+  readonly structure: HqStructure | null;
+  /** When `structure` was HQ's answer, wall ms. */
+  readonly readAt: number | null;
+  /** `structure` is HQ's answer now — or the organization has no HQ, and none to answer. */
+  readonly current: boolean;
+  /** When HQ stopped answering, wall ms, while it does not; the last known structure stands. */
+  readonly unavailableSince: number | null;
+}
+
+export const hqStructureAtom = Atom.make<HqStructureView | null>(null).pipe(
+  Atom.keepAlive,
+  Atom.withLabel("zerops:hq-structure"),
+);
+
+/**
+ * Where HQ places each project of the organization in view, as last known; null while nothing
+ * is known of its structure — its projects are then placed nowhere.
+ */
+export const hqPlacementsAtom = Atom.make((get): ReadonlyMap<string, HqPlacement> | null => {
+  const view = get(hqStructureAtom);
+  const organizationId = get(zeropsSessionAtom)?.activeOrganization?.organizationId;
+  return view === null || view.organizationId !== organizationId || view.structure === null
+    ? null
+    : placementsOf(view.structure);
+}).pipe(Atom.withLabel("zerops:hq-placements"));
+
+const NO_PLACEMENTS: ReadonlyMap<string, HqPlacement> = new Map();
 
 /** The account's inventory as `ZeropsInventoryProvider` projects it; null before its first grant. */
 export const zeropsInventoryAtom = Atom.make<InventoryProjection | null>(null).pipe(
@@ -157,8 +198,11 @@ const organizationListingAtom = Atom.make(
     const listed = get(candidateListingsAtom(runtime)).find(
       ({ organizationId }) => organizationId === organization.organizationId,
     );
+    const placements = get(hqPlacementsAtom) ?? NO_PLACEMENTS;
+    const listing = listed?.listing ?? UNREAD;
     return {
-      listing: listed?.listing ?? UNREAD,
+      // Each project where HQ places it (ADR 0002): its group, its kind, its Mate's name and face.
+      listing: placeListing(listing, placements),
       withheldMembers: get(runtime.reads.projectsOf(organization)).value.some(
         (member) => member.knowledge === "unavailable" && member.reason === "forbidden",
       ),
@@ -191,16 +235,19 @@ export const candidateRowsAtom = Atom.make((get): Shown<ReadonlyArray<CandidateR
 }).pipe(Atom.withLabel("zerops:candidate-rows"));
 
 /**
- * The names the active organization's Mates go by (`takenBotNames`), read off its project list:
- * a name lives on its project's tags, so it is known the moment the list is — a project the grant
- * has not verified yet, or that this account may not open, still holds its name, and no project's
- * services need reading. Complete only as the list is, with every project's tags read and no
+ * The names the active organization's Mates go by (`takenBotNames`), read off its project list
+ * where HQ places each: a project the grant has not verified yet, or that this account may not
+ * open, still holds its name, and no project's services need reading. Complete only as the list
+ * is, with HQ's structure answered and no
  * member withheld (`takenBotNames`), so a name missing from it is never called free while it may
  * still be there; nothing while the account's access lapses.
  */
 export const takenBotNamesAtom = Atom.make((get): TakenBotNames => {
   const { listing, withheldMembers } = get(organizationListingAtom);
-  return takenBotNames(listing, { withheldMembers });
+  return takenBotNames(listing, {
+    withheldMembers,
+    structureKnown: get(hqPlacementsAtom) !== null && get(hqStructureAtom)?.current === true,
+  });
 }).pipe(Atom.withLabel("zerops:taken-bot-names"));
 
 /**

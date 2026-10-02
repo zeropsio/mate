@@ -4,8 +4,7 @@
  * environment's spend up per Mate, per project and per person.
  *
  * Every name is the one the left menu draws: the Mate by `botDisplayName`, the
- * project by the group header `buildZeropsGroupTree` derives (never the single
- * project's own `mate:name:` tag, which can differ), the owner by
+ * project by the group header `buildZeropsGroupTree` derives, the owner by
  * `resolveMateOwner` over the org's members. An environment no Mate lives in is
  * left out.
  */
@@ -13,7 +12,7 @@ import {
   botDisplayName,
   buildZeropsGroupTree,
   hasMate,
-  readZeropsGroupTags,
+  readZeropsMembership,
 } from "@t3tools/client-runtime/zerops";
 import type { ZeropsOrganizationMember } from "@t3tools/client-runtime/zerops";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
@@ -88,7 +87,7 @@ export function usageEnvironmentIdentities(input: {
     const environmentId = rowEnvironment(candidate, input.registeredOrigins);
     if (environmentId === undefined || identities.has(environmentId) || !hasMate(candidate))
       continue;
-    const tags = readZeropsGroupTags(candidate.project.tagList);
+    const tags = readZeropsMembership(candidate.project);
     identities.set(environmentId, {
       mateName: botDisplayName({ bot: tags.bot, projectName: candidate.project.name }),
       projectName: projectNames.get(candidate.project.id) ?? null,

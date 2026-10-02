@@ -49,7 +49,7 @@ describe("tool tags", () => {
   it.each([
     { name: "reads a known kind", tagList: ["mate:tool:gitea"], expected: "gitea" },
     { name: "ignores an unknown kind", tagList: ["mate:tool:jenkins"], expected: undefined },
-    { name: "ignores an ordinary project", tagList: ["mate:g:aaa"], expected: undefined },
+    { name: "ignores a Mate's project", tagList: ["mate"], expected: undefined },
     { name: "ignores no tags at all", tagList: undefined, expected: undefined },
   ])("$name", ({ tagList, expected }) => {
     expect(readZeropsToolKind(tagList)).toBe(expected);
@@ -58,7 +58,7 @@ describe("tool tags", () => {
 
 describe("partitionZeropsToolProjects", () => {
   it("takes tools out of the list the group tree is built from", () => {
-    const app: ZeropsProject = { id: "a", name: "crm", status: "ACTIVE", tagList: ["mate:g:aaa"] };
+    const app: ZeropsProject = { id: "a", name: "crm", status: "ACTIVE", tagList: ["mate"] };
     const plain: ZeropsProject = { id: "b", name: "plain", status: "ACTIVE" };
 
     const { tools, rest } = partitionZeropsToolProjects([app, GITEA_PROJECT, plain]);
@@ -67,12 +67,13 @@ describe("partitionZeropsToolProjects", () => {
     expect(rest.map((project) => project.name)).toEqual(["crm", "plain"]);
   });
 
-  it("treats a tool that also carries a group tag as a tool — the two are disjoint", () => {
+  it("treats a tool HQ also places in a group as a tool — the two are disjoint", () => {
     const confused: ZeropsProject = {
       id: "c",
       name: "confused",
       status: "ACTIVE",
-      tagList: ["mate:g:aaa", "mate:tool:gitea"],
+      tagList: ["mate:tool:gitea"],
+      hq: { appId: "aaa", appName: "Acme", kind: "mate", mate: null },
     };
 
     const { tools, rest } = partitionZeropsToolProjects([confused]);

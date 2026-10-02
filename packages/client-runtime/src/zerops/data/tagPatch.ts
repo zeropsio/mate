@@ -11,32 +11,12 @@
  *
  * Pure: no I/O, no clock.
  */
-import {
-  withZeropsBotTag,
-  withZeropsChangedFace,
-  withZeropsClosedOffTag,
-  withZeropsGroupTags,
-  withZeropsMateTag,
-  withoutZeropsStandUpTag,
-  type ZeropsEnvironmentRole,
-  type ZeropsMateFace,
-} from "../groups.ts";
+import { withZeropsClosedOffTag, withZeropsMateTag, withoutZeropsStandUpTag } from "../groups.ts";
 import { withMateSignerTag } from "../mateAccess.ts";
 
 export type ProjectTagPatch =
-  /** Moves a project into a group, out of one, or changes its role or the group's mirrored name. */
-  | {
-      readonly kind: "group-membership";
-      readonly next: {
-        readonly groupId?: string;
-        readonly role?: ZeropsEnvironmentRole;
-        readonly label?: string;
-      };
-    }
-  /** Names the project's agent; a non-blank name also declares the Mate. */
-  | { readonly kind: "agent-name"; readonly name: string }
-  /** Changes the Mate's face (`mate:face:`), recolouring no other Mate (`withZeropsChangedFace`). */
-  | { readonly kind: "mate-face"; readonly face: ZeropsMateFace }
+  /** Declares the Mate: the `mate` marker, for the Zerops GUI and this client alike. */
+  | { readonly kind: "mate" }
   /** Records who signed an agent in (D6). */
   | { readonly kind: "agent-signer"; readonly agentId: string; readonly userId: string }
   /** The Mate was asked to stand the project's development up: the ask (`mate:standup:`) goes. */
@@ -50,14 +30,8 @@ export function applyProjectTagPatch(
   patch: ProjectTagPatch,
 ): ReadonlyArray<string> {
   switch (patch.kind) {
-    case "group-membership":
-      return withZeropsGroupTags(tags, patch.next);
-    case "agent-name": {
-      const named = withZeropsBotTag(tags, patch.name);
-      return patch.name.trim().length === 0 ? named : withZeropsMateTag(named);
-    }
-    case "mate-face":
-      return withZeropsChangedFace(tags, patch.face);
+    case "mate":
+      return withZeropsMateTag(tags);
     case "agent-signer":
       return withMateSignerTag(tags, patch.agentId, patch.userId);
     case "stand-up-done":

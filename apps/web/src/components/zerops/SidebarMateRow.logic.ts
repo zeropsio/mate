@@ -120,7 +120,7 @@ export function mateOwnerView(input: {
   readonly records: { readonly named: boolean; readonly signedIn: boolean };
   /** The row already says what was asked under the name. */
   readonly asked: boolean;
-  /** Who added it, as its stand-up tag names them (`readZeropsGroupTags(…).standUp`). */
+  /** Who added it, as its stand-up tag names them (`readZeropsMembership(…).standUp`). */
   readonly standUpBy?: string | undefined;
   /** The Zerops user looking, when known. */
   readonly viewer?: string | undefined;

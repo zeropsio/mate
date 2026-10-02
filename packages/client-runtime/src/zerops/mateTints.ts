@@ -4,7 +4,7 @@
  * A Mate is somebody, and a menu of six of them should read as six people
  * rather than six copies of the logo — so each gets one of the eight tints in
  * `MATE_TINTS` (shared/brand.ts). A Mate whose person picked its face when
- * they made it (`mate:face:`, `groups.ts`) wears the tint they picked. Every
+ * they made it (HQ's record, `groups.ts`) wears the tint they picked. Every
  * other Mate's is deterministic from the name, so a Mate keeps its colour
  * across reloads and across the places it appears: the left menu and the
  * projects screen both derive from the same account-wide list and so agree.
@@ -27,7 +27,7 @@ import {
 
 import { botDisplayName } from "./bots.ts";
 import type { ZeropsCandidate } from "./candidates.ts";
-import { readZeropsGroupTags } from "./groups.ts";
+import { readZeropsMembership } from "./groups.ts";
 import { selectMateEnvironments } from "./mateEnvironments.ts";
 
 /** FNV-1a over the name's code units — small, stable, and even over eight buckets. */
@@ -97,7 +97,7 @@ export function assignCandidateMateTints(
   const byProject = new Map<string, MateTintId>();
   const nameByProject = new Map<string, string>();
   for (const mate of mates) {
-    const tags = readZeropsGroupTags(mate.project.tagList);
+    const tags = readZeropsMembership(mate.project);
     const picked = tags.face?.tint;
     if (picked !== undefined) byProject.set(mate.project.id, picked);
     if (picked !== undefined && tags.face?.named !== true) continue;
@@ -132,13 +132,13 @@ export function newMateTint(candidates: ReadonlyArray<ZeropsCandidate>, name: st
 }
 
 /**
- * The shape a Mate wears: the one its person picked (`mate:face:`), else its
+ * The shape a Mate wears: the one its person picked (its face in HQ), else its
  * tint's own (`MATE_SHAPE_OF_TINT`) — which is every Mate's shape from before
  * a face could be picked.
  */
 export function mateShapeOf(
-  tagList: ReadonlyArray<string> | undefined,
+  project: Parameters<typeof readZeropsMembership>[0],
   tint: MateTintId,
 ): MateShapeId {
-  return readZeropsGroupTags(tagList).face?.shape ?? MATE_SHAPE_OF_TINT[tint];
+  return readZeropsMembership(project).face?.shape ?? MATE_SHAPE_OF_TINT[tint];
 }
