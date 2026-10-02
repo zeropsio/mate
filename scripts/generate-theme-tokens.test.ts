@@ -34,6 +34,7 @@ type BootPalette = Readonly<{
   foreground: string;
   accent: string;
   chrome: string;
+  sidebar: string;
 }>;
 type SplashPalette = Readonly<Omit<BootPalette, "chrome">>;
 type AppearanceRecord<T> = Readonly<Record<ThemeAppearance, T>>;
@@ -190,11 +191,13 @@ describe("generate theme tokens", () => {
         foreground: colors.text,
         accent: colors.accent,
         chrome: colors.chrome,
+        sidebar: colors.sidebar,
       });
       expect(splash[appearance]).toEqual({
         background: themeColorToNativeColor(colors.canvas),
         foreground: themeColorToNativeColor(colors.text),
         accent: themeColorToNativeColor(colors.accent),
+        sidebar: themeColorToNativeColor(colors.sidebar),
       });
     }
 
@@ -209,6 +212,7 @@ describe("generate theme tokens", () => {
           foreground: colors.text,
           accent: colors.accent,
           chrome: colors.chrome,
+          sidebar: colors.sidebar,
         });
       }
     }

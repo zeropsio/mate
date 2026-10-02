@@ -26,6 +26,8 @@ export interface NewMateCreation {
   readonly face: ZeropsMateFace;
   /** Why a step after the platform took the project failed; absent while it runs or once through. */
   readonly failed?: string | undefined;
+  /** When the platform took it, wall ms: the store stamps it. */
+  readonly at?: number | undefined;
 }
 
 interface NewMateState {
@@ -63,7 +65,9 @@ export const useNewMate = create<NewMateState>((set) => ({
     set({ asked: null });
   },
   created: (creation) => {
-    set((state) => ({ creations: { ...state.creations, [creation.projectId]: creation } }));
+    set((state) => ({
+      creations: { ...state.creations, [creation.projectId]: { ...creation, at: Date.now() } },
+    }));
   },
   settled: (projectId, failed) => {
     set((state) => {

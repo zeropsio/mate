@@ -3,7 +3,7 @@
  * §2.B B4, §2.C C1). Pure.
  *
  * - A row the inventory read names its target's presence: present at its origin, in a platform
- *   transition, inactive, or without a public address.
+ *   transition, young and ACTIVE before its address landed, inactive, or without a public address.
  * - A row whose project's services are not read yet says nothing of any Mate in it: those
  *   targets' presence is `unknown`. A target a record names there, like one whose organization's
  *   listing no read has answered yet, is `remembered` at the origin the record kept (A16): its
@@ -32,12 +32,14 @@ const SERVICE_TRANSITIONS: ReadonlySet<string> = new Set<ServiceTransition>([
   "STARTING",
   "RESTARTING",
   "UPGRADING",
+  "READY_TO_DEPLOY",
 ]);
 
 /** Region P for a target a listing row names (§4.4). */
 export function candidatePresence(row: CandidateRow): Presence {
   if (row.presence === "unknown") return { kind: "unknown" };
   if (row.containerOrigin !== undefined) return { kind: "present", origin: row.containerOrigin };
+  if (row.addressAwaited !== undefined) return { kind: "address-pending" };
   const status = row.service?.status ?? row.project.status;
   if (SERVICE_TRANSITIONS.has(status)) {
     return { kind: "transitioning", status: status as ServiceTransition };
@@ -202,7 +204,11 @@ export function containerTargetsOf(
   const listed = rows.map((row) => ({
     key: row.key,
     origin: row.containerOrigin ?? null,
-    platform: { project: row.project.status, service: row.service?.status ?? null },
+    platform: {
+      project: row.project.status,
+      service: row.service?.status ?? null,
+      ...(row.service?.created === undefined ? {} : { serviceCreated: row.service.created }),
+    },
   }));
   const all = [...remembered, ...listed];
   const route = all.find((target) => target.key === first);

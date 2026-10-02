@@ -202,9 +202,6 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   --animate-status-ping: status-ping 2s infinite;
   /* A verb arriving in a row: it fades into the place a skeleton held, once. */
   --animate-zerops-appear: zerops-appear 220ms cubic-bezier(0.23, 1, 0.32, 1) both;
-  /* Something that is only worth showing if it is still there in 400 ms: a
-     wait that ends sooner shows nothing at all. */
-  --animate-held-appear: zerops-appear 300ms cubic-bezier(0.23, 1, 0.32, 1) 400ms both;
   /* The Mate at work. Its panel after the turn rises in once; a status bar
      arriving opens its room; the result settles where the bars were. All
      once. */

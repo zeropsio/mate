@@ -7,7 +7,13 @@ import { mountTab, settle, unmountTabs, type MountedTab } from "./__fixtures__/h
 import { buttonsLabelled, press } from "./__fixtures__/testDom";
 
 vi.mock("../components/zerops/landing/ZeropsLandingShell", () => ({
-  ZeropsLandingWait: ({ label }: { readonly label: string }) => label,
+  ZeropsFrameWait: ({
+    label,
+    children,
+  }: {
+    readonly label: string;
+    readonly children?: import("react").ReactNode;
+  }) => children ?? label,
 }));
 
 const person: ZeropsUser = {

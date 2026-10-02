@@ -230,6 +230,8 @@ describe("the menu draws it from the press", () => {
     startedAt: PRESSED_AT,
     step: "tags",
     overdue: false,
+    // The platform has not answered with its project: the listing may hold it already.
+    awaitingProject: true,
     placement: {
       groupId: "b-acme",
       groupName: "Acme CRM",
@@ -320,6 +322,12 @@ describe("runNewProjectBirth — the project, then its first Mate", () => {
     // The registry lives in HQ: the project is registered there before anything is created in it,
     // and its Mate goes into the application HQ named.
     expect(order).toEqual(["register:hq-1:Acme CRM", "create", "accepted:p-vera:hq-1:app-acme"]);
+    // Its Mate's row counts on from the press, not from when the platform answered.
+    expect(made.accepted).toHaveBeenCalledWith(
+      "p-vera",
+      expect.objectContaining({ appId: "app-acme" }),
+      PRESSED_AT,
+    );
     expect(moved).toEqual([
       { step: "create", appId: "app-acme" },
       { step: "created", projectId: "p-vera" },

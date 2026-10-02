@@ -499,6 +499,74 @@ function birth(
   };
 }
 
+describe("deriveZeropsGroups — a creation awaiting its project", () => {
+  // Pressed at 10:00:00; the platform lists the project before its call answers with the id.
+  const T0 = Date.parse("2026-10-02T10:00:00.000Z");
+  const at = (seconds: string) => `2026-10-02T${seconds}.000Z`;
+  const awaiting = (over: Partial<ZeropsPlacedBirth> = {}): ZeropsPlacedBirth => ({
+    ...birth("c-acme", "aaa", T0),
+    awaitingProject: true,
+    ...over,
+  });
+  const drawn = (tree: ReturnType<typeof deriveZeropsGroups>) => ({
+    ungrouped: tree.ungrouped.map((entry) => entry.id),
+    pending: tree.groups.flatMap((group) => group.pending.map((member) => member.projectId)),
+  });
+
+  it("holds back a listed unplaced project while it waits, and is that project once the id matches", () => {
+    const projects = [project("p-acme", { created: at("10:00:02") })];
+    expect(drawn(deriveZeropsGroups(projects, { order: "name", births: [awaiting()] }))).toEqual({
+      ungrouped: [],
+      pending: ["c-acme"],
+    });
+    expect(
+      drawn(deriveZeropsGroups(projects, { order: "name", births: [birth("p-acme", "aaa", T0)] })),
+    ).toEqual({ ungrouped: [], pending: ["p-acme"] });
+  });
+
+  it("draws another person's project made in the same span once the id arrives and is not it", () => {
+    const projects = [project("p-other", { created: at("10:00:01") })];
+    expect(
+      drawn(deriveZeropsGroups(projects, { order: "name", births: [awaiting()] })).ungrouped,
+    ).toEqual([]);
+    expect(
+      drawn(deriveZeropsGroups(projects, { order: "name", births: [birth("p-acme", "aaa", T0)] }))
+        .ungrouped,
+    ).toEqual(["p-other"]);
+  });
+
+  it.each([
+    {
+      case: "a stopped creation without an id draws the project it held back",
+      projects: [project("p-other", { created: at("10:00:01") })],
+      births: [awaiting({ failed: true })],
+      ungrouped: ["p-other"],
+    },
+    {
+      case: "a project made before the press is always drawn",
+      projects: [project("p-old", { created: at("09:59:59") })],
+      births: [awaiting()],
+      ungrouped: ["p-old"],
+    },
+    {
+      case: "a project whose making is not known is drawn",
+      projects: [project("p-unknown")],
+      births: [awaiting()],
+      ungrouped: ["p-unknown"],
+    },
+    {
+      case: "a project HQ places is drawn in its group whatever waits",
+      projects: [project("p-placed", { created: at("10:00:01"), hq: placed("bbb") })],
+      births: [awaiting()],
+      ungrouped: [],
+    },
+  ])("$case", ({ projects, births, ungrouped }) => {
+    expect(drawn(deriveZeropsGroups(projects, { order: "name", births })).ungrouped).toEqual(
+      ungrouped,
+    );
+  });
+});
+
 describe("deriveZeropsGroups — creations under way", () => {
   it.each([
     {

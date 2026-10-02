@@ -258,7 +258,11 @@ const environmentRig = (clock: DeadlineClock, remembered: ReadonlyArray<Registra
       retryLink: () => undefined,
       remove: (environmentId) => void removed.push(environmentId),
     },
-    probe: (origin, signal) => pending(probes, origin, signal),
+    probe: (origin, signal) => {
+      const sentAt = { wall: clock.wallMs(), mono: clock.monoMs() };
+      return pending(probes, origin, signal).then((reading) => ({ reading, sentAt }));
+    },
+    readInitAt: async () => null,
     intents: { read: () => null, write: () => undefined },
     records: {
       getItem: (key) => {

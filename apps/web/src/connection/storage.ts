@@ -27,6 +27,7 @@ import * as Schema from "effect/Schema";
 import * as Semaphore from "effect/Semaphore";
 
 import { currentAccountId, onAccountLifetimeClose } from "../zerops/accountLifetime";
+import { endMateSession } from "../zerops/keptSessions";
 
 const jsonCatalog = Schema.fromJsonString(ConnectionCatalogDocument);
 const catalogError = (cause: unknown) =>
@@ -131,6 +132,7 @@ export const makeCatalogStore = Effect.fn("web.connectionStorage.makeCatalogStor
 /**
  * The logouts an account's close sends: one per stored bearer whose session may still be live. A
  * session past its deadline has already ended on its Mate; presenting it would only be refused.
+ * The sessions kept for later loads are ended by their own closer (`zerops/keptSessions.ts`).
  */
 export function accountCloseLogouts(
   document: ConnectionCatalogDocumentType,
@@ -175,13 +177,7 @@ export const connectionStorageLayer = Layer.effectContext(
     const unregisterLogout = onAccountLifetimeClose(() => {
       // Start requests before disposing the Effect runtime. Each request uses
       // a captured credential; none can touch a subsequent login's catalog.
-      for (const logout of accountCloseLogouts(currentCatalog, Date.now())) {
-        void fetch(logout.url, {
-          method: "POST",
-          headers: { Authorization: `Bearer ${logout.token}` },
-          keepalive: true,
-        }).catch(() => undefined);
-      }
+      for (const logout of accountCloseLogouts(currentCatalog, Date.now())) endMateSession(logout);
     });
     yield* Effect.addFinalizer(() => Effect.sync(unregisterLogout));
     const targetStore = ConnectionTargetStore.of({

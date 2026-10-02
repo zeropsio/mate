@@ -279,6 +279,10 @@
       "types": "./src/zerops/doorThrowaway.ts",
       "default": "./src/zerops/doorThrowaway.ts"
     },
+    "./zerops/keptSessions": {
+      "types": "./src/zerops/keptSessions.ts",
+      "default": "./src/zerops/keptSessions.ts"
+    },
     "./zerops/diagnostics": {
       "types": "./src/zerops/diagnostics.ts",
       "default": "./src/zerops/diagnostics.ts"
@@ -338,6 +342,10 @@
     "./zerops/containerHealth": {
       "types": "./src/zerops/containerHealth.ts",
       "default": "./src/zerops/containerHealth.ts"
+    },
+    "./zerops/descriptorShare": {
+      "types": "./src/zerops/descriptorShare.ts",
+      "default": "./src/zerops/descriptorShare.ts"
     },
     "./zerops/dataBlob": {
       "types": "./src/zerops/dataBlob.ts",

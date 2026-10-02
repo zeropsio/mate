@@ -127,6 +127,7 @@ function shellStage(): AccountEnvironments {
     },
     connect: () => new Promise(() => undefined),
     intend: () => false,
+    initAt: async () => null,
     next: () => new Promise(() => undefined),
     setRoute: (environmentId) => {
       shell.routes.push(environmentId);
@@ -917,11 +918,14 @@ function descriptorRig(
   let intents: string | null = null;
   const containers: ContainerStore = makeContainerStore({
     clock,
-    probe: (origin) =>
-      new Promise((resolve, reject) => {
+    probe: (origin) => {
+      const sentAt = clock.now();
+      return new Promise((resolve, reject) => {
         probed.push(origin);
-        pending.set(origin, { resolve, reject });
-      }),
+        pending.set(origin, { resolve: (reading) => resolve({ reading, sentAt }), reject });
+      });
+    },
+    readInitAt: async () => null,
     readMateFlag: async () => "unknown",
     intents: {
       read: () => intents,

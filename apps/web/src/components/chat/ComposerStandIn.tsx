@@ -10,14 +10,17 @@
  *
  * It takes typing: what the person writes while the Mate connects is the
  * conversation's draft once it opens (`mateHandOver.ts`), the caret where
- * they left it. Nothing is sent from it — its send waits, as Enter does — and
- * the toolbar's model and meter come with the conversation.
+ * they left it. Nothing is sent from it — its send waits, as Enter does. The
+ * toolbar's model stands as the conversation's last stood, still; its meter
+ * comes with the conversation.
  */
 import { useEffect, useRef } from "react";
 
 import { ZEROPS_CONNECTED_COMPOSER_PLACEHOLDER } from "../../composerPlaceholder";
 import { COMPOSER_PROMPT_TYPE_CLASS_NAME } from "../ComposerPromptEditor";
+import type { ComposerControlLook } from "./composerControlMemory";
 import { ComposerPrimaryActions } from "./ComposerPrimaryActions";
+import { ComposerModelControlStill } from "./ProviderModelPicker";
 import { ContextWindowMeterPlaceholder } from "./ContextWindowMeter";
 import { shouldTypeToFocusComposer } from "./typeToFocus";
 
@@ -32,9 +35,12 @@ export interface StandInTyped {
 export function ComposerStandIn({
   typed,
   onType,
+  control = null,
 }: {
   readonly typed: StandInTyped;
   readonly onType: (typed: StandInTyped) => void;
+  /** The conversation's control as it last stood (`composerControlMemory`), drawn still. */
+  readonly control?: ComposerControlLook | null;
 }) {
   const report = (field: HTMLTextAreaElement) =>
     onType({ text: field.value, caret: field.selectionEnd });
@@ -108,7 +114,11 @@ export function ComposerStandIn({
                             </div>
                           </div>
                           <div className="flex min-w-0 flex-nowrap items-center justify-between gap-2 overflow-visible pt-1.5 pe-3 pb-3 ps-3.5">
-                            <div className="flex min-w-0 flex-1" />
+                            <div className="-m-1 -ms-3.5 flex min-w-0 flex-1 items-center gap-2 overflow-hidden p-1 ps-3.5">
+                              {control === null ? null : (
+                                <ComposerModelControlStill look={control} />
+                              )}
+                            </div>
                             <div className="flex shrink-0 flex-nowrap items-center justify-end gap-2">
                               <ContextWindowMeterPlaceholder />
                               <ComposerPrimaryActions

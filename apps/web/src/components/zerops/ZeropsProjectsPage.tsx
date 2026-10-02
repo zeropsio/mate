@@ -36,6 +36,8 @@ import {
   useProjectOrderOptions,
 } from "~/zerops/projectOrderPreference";
 import {
+  applyFirstBuildGiveUp,
+  firstBuildOverdue,
   applyProjectCreationVerdict,
   normalizeOrigin,
   type ZeropsCandidate,
@@ -65,8 +67,13 @@ import { useSetUpEnvironment } from "~/zerops/setUpEnvironment";
 import { askNewProject } from "~/zerops/newProjectAsk";
 import { useEnvironmentCreation } from "~/zerops/useEnvironmentCreation";
 import { useConnectMate, type MateConnectTarget } from "~/zerops/accountEnvironments";
-import { intendContainer, useZeropsContainers } from "~/zerops/zeropsContainers";
 import {
+  intendContainer,
+  readContainerInitAt,
+  useZeropsContainers,
+} from "~/zerops/zeropsContainers";
+import {
+  birthPresses,
   beginPress,
   finishMateSetup,
   forgetPress,
@@ -211,6 +218,8 @@ import {
 import { ZeropsOrganizationScope, ZeropsOrganizationSwitcher } from "./ZeropsOrganizationScope";
 import { ZeropsSessionAccountControl } from "./landing/ZeropsAccountControl";
 import { ZeropsHostedFrame } from "./landing/ZeropsHostedFrame";
+import { PageWaitLine } from "./WaitLine";
+import { BOOT_WAIT_LINE_MS } from "~/zerops/waitLine.logic";
 
 /** One creation in flight, or just finished, on this screen. */
 interface EnvironmentCreationView {
@@ -845,12 +854,16 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
     presses.find((press) => press.organizationId === activeOrganization?.id && press.container)
       ?.projectId ?? null,
   );
+  // A first build half an hour on reads as the platform leaves it, with what removes it.
   const candidates = useMemo(
     () =>
       observedCandidates.map((candidate) =>
-        applyProjectCreationVerdict(candidate, creationVerdicts.get(candidate.project.id)),
+        applyFirstBuildGiveUp(
+          applyProjectCreationVerdict(candidate, creationVerdicts.get(candidate.project.id)),
+          nowMs,
+        ),
       ),
-    [creationVerdicts, observedCandidates],
+    [creationVerdicts, nowMs, observedCandidates],
   );
   // A Mate this tab pressed lands the person in its conversation once it is
   // connected. Auto-connect (the account runtime's) reaches the door — it never
@@ -862,7 +875,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
   const seenBirthsRef = useRef(new Set<string>());
   const finishedBirthProjectsRef = useRef(new Set<string>());
   useEffect(() => {
-    for (const press of presses) seenBirthsRef.current.add(press.projectId);
+    for (const projectId of birthPresses(presses)) seenBirthsRef.current.add(projectId);
     // A connect this page's own `connectContainer` is mid-flight on will
     // reach `finishBirth` itself; racing in here would only navigate twice.
     if (connectingOrigin !== null) return;
@@ -1012,6 +1025,8 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
     return {
       candidate,
       health: candidateHealth.get(candidate.key),
+      // A first build past its grace is still on its way, taking longer.
+      firstBuildOverdue: firstBuildOverdue(candidate, nowMs),
       ...(mateFlag === undefined ? {} : { mateFlag }),
       waiting,
       can: mateRowCan(asker, candidate.project.id),
@@ -1497,17 +1512,20 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
         setConnectError(null);
         setRestartingCandidateKey(candidate.key);
         const project = projectRef(activeOrganization.id, candidate.project.id);
+        // The container's initAt is read before the verb: the restart is over once it moves.
         void readContainerAfter(
           candidate,
-          runZeropsCommand(
-            runtime.commands.restartService({
-              kind: "service",
-              project,
-              serviceId: ZeropsServiceId.make(serviceId),
+          readContainerInitAt(candidate.key).then((initAt) =>
+            runZeropsCommand(
+              runtime.commands.restartService({
+                kind: "service",
+                project,
+                serviceId: ZeropsServiceId.make(serviceId),
+              }),
+            ).then(() => {
+              intendContainer(candidate.key, { kind: "restart", initAt });
             }),
-          ).then(() => {
-            intendContainer(candidate.key, { kind: "restart" });
-          }),
+          ),
         )
           .catch((cause: unknown) => {
             setConnectError(zeropsErrorMessage(cause));
@@ -2074,14 +2092,8 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
     runtime,
   ]);
 
-  if (status === "loading") {
-    return (
-      <div className="flex items-center gap-2 text-sm text-muted-foreground">
-        <Spinner size="md" />
-        Checking your Zerops session…
-      </div>
-    );
-  }
+  // The session is checked before this page can draw (`ZeropsHostedLanding`): nothing to say here.
+  if (status === "loading") return null;
   if (status === "signed-out") {
     return <SignedOutNotice message="Sign in with your Zerops account to see your projects." />;
   }
@@ -2605,7 +2617,10 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
     // The page's end clears the app's fixed "Open main sidebar" control, so
     // the last row is never under it with the menu closed.
     <div className="space-y-6 pb-12">
-      {listingNotice === null ? null : listingNotice.region === "message" ? (
+      {listingNotice === null ? null : listingNotice.region === "placeholder" ? (
+        // Nothing read yet: the one wait line at the page's centre, where the boot frame said it.
+        <PageWaitLine delayMs={BOOT_WAIT_LINE_MS} from="mount" text={listingNotice.message.text} />
+      ) : listingNotice.region === "message" ? (
         <div
           className="flex items-center gap-3 rounded-md border border-[var(--zerops-status-failed)]/40 bg-[var(--zerops-status-failed-surface)] px-3 py-2 text-sm text-[var(--zerops-status-failed-text)]"
           role="alert"

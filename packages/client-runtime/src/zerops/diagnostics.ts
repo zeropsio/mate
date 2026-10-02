@@ -70,7 +70,8 @@ interface MateDiagnosticSpans {
   readonly "identity-exchange": {
     readonly start: { readonly origin: string; readonly reason: IdentityExchangeReason };
     readonly end:
-      | { readonly outcome: "success" }
+      /** `kept`: connected with a session kept from an earlier load, nothing minted. */
+      | { readonly outcome: "success"; readonly kept?: true }
       | ({ readonly outcome: "failure"; readonly retryable: boolean } & DiagnosticFailure);
   };
   /**

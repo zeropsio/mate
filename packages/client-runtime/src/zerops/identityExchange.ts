@@ -4,7 +4,6 @@ import type { BearerConnectionRegistration } from "../connection/catalog.ts";
 import { ConnectionBlockedError, ConnectionTransientError } from "../connection/model.ts";
 import { prepareZeropsIdentityRegistration } from "../connection/onboarding.ts";
 import * as EnvironmentRegistry from "../connection/registry.ts";
-import { fetchRemoteEnvironmentDescriptor } from "../environment/descriptor.ts";
 /**
  * The container's `/mate` door, shared by every client.
  *
@@ -282,6 +281,45 @@ export interface DoorExchangeDeps<C, E> {
   }) => Promise<AtomCommandResult<C, E>>;
   readonly environmentOf: (credential: C) => EnvironmentId;
   readonly onOrphanedThrowaway?: ((cause: unknown) => void) | undefined;
+  /** The session an earlier load kept for this target (`keptSessions.ts`); null when none. */
+  readonly kept?: KeptDoorSession<C> | null;
+}
+
+/** A kept session as one exchange may present it again. */
+export interface KeptDoorSession<C> {
+  readonly credential: C;
+  /**
+   * Whether the Mate the descriptor names, at this base URL, still holds the session: false is
+   * its word that it does not, and a throw is no word at all.
+   */
+  readonly check: (input: {
+    readonly httpBaseUrl: string;
+    readonly environmentId: EnvironmentId;
+  }) => Promise<boolean>;
+  /** Forgets the session: its Mate said it is not its own any more. */
+  readonly forget: () => void;
+  /** An earlier exchange got no word on it: one more silence mints a throwaway after all. */
+  readonly unanswered: boolean;
+  /** Whether the Mate gave its word on it this time, held or ended. */
+  readonly answered: (answered: boolean) => void;
+}
+
+/**
+ * What the Mate says of a kept session: still its own, ended, or nothing this time. A session kept
+ * for an environment this origin no longer serves has ended here, and is never presented.
+ */
+async function keptSessionWord<C>(
+  kept: KeptDoorSession<C>,
+  environmentOf: (credential: C) => EnvironmentId,
+  at: { readonly httpBaseUrl: string; readonly environmentId: EnvironmentId },
+): Promise<"held" | "ended" | { readonly noWord: unknown }> {
+  if (environmentOf(kept.credential) !== at.environmentId) return "ended";
+  try {
+    return (await kept.check(at)) ? "held" : "ended";
+  } catch (cause) {
+    // No answer is no verdict: the session stays kept, and the exchange is tried again.
+    return { noWord: cause };
+  }
 }
 
 /**
@@ -290,7 +328,10 @@ export interface DoorExchangeDeps<C, E> {
  *
  * The descriptor is read first, so a Mate that cannot answer for the person
  * (`zerops.identity = "failed"`), runs a server below the client floor or belongs to another
- * project costs no throwaway.
+ * project costs no throwaway. A session kept from an earlier load is presented next, once its
+ * Mate says it still holds it. A throwaway is minted when no session is kept, when the Mate ended
+ * the kept one (forgotten), or when the Mate gave no word on it twice running: the first silence
+ * fails the exchange retryable so the next one asks again, and the session stays kept.
  */
 export async function exchangeAtDoor<C, E>(
   deps: DoorExchangeDeps<C, E>,
@@ -345,6 +386,35 @@ export async function exchangeAtDoor<C, E>(
     });
   }
 
+  const kept = deps.kept ?? null;
+  if (kept !== null) {
+    const word = await keptSessionWord(kept, deps.environmentOf, {
+      httpBaseUrl,
+      environmentId: descriptor.environmentId,
+    });
+    kept.answered(word === "held" || word === "ended");
+    if (word === "held") {
+      span.end({ outcome: "success", kept: true });
+      return {
+        ok: true,
+        environmentId: deps.environmentOf(kept.credential),
+        descriptor,
+        credential: kept.credential,
+      };
+    }
+    if (word === "ended") kept.forget();
+    else if (!kept.unanswered) {
+      // A Mate that gave no word on its kept session is asked once more before a second session is
+      // opened beside it; a second silence mints, and the session stays kept.
+      const failure = exchangeFailureOf(word.noWord);
+      return fail(
+        failure.class === "retryable" ? failure : retryableFailure({ kind: "network" }),
+        descriptor,
+        diagnosticFailure(word.noWord),
+      );
+    }
+  }
+
   let result: AtomCommandResult<C, E>;
   try {
     result = await connectThroughThrowaway({
@@ -378,10 +448,6 @@ export async function exchangeAtDoor<C, E>(
 }
 
 // ── The door's steps as the connection runtime runs them ─────────────────────────────────────
-
-/** `/.well-known/t3/environment` at a Mate's base URL. */
-export const readDoorDescriptor = (input: { readonly httpBaseUrl: string }) =>
-  fetchRemoteEnvironmentDescriptor(input);
 
 /** The door and the token exchange: a registration for the Mate, installed nowhere yet. */
 export const prepareDoorRegistration = prepareZeropsIdentityRegistration;

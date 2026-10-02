@@ -1,5 +1,5 @@
 diff --git a/dist/unstable/ai/McpServer.js b/dist/unstable/ai/McpServer.js
-index e8b9be4..9cffc5c 100644
+index e8b9be465ab495cf8264d5f6b7375b7b8ea63d48..9cffc5cd63265814a8cb53042e916faf52372ac6 100644
 --- a/dist/unstable/ai/McpServer.js
 +++ b/dist/unstable/ai/McpServer.js
 @@ -450,6 +450,26 @@ const runWithProtocolState = /*#__PURE__*/Effect.fnUntraced(function* (options,
@@ -39,7 +39,7 @@ index e8b9be4..9cffc5c 100644
  };
  const layerMcpProtocolHttp = options => Layer.effect(RpcServer.Protocol)(Effect.gen(function* () {
 diff --git a/dist/unstable/http/HttpClientResponse.js b/dist/unstable/http/HttpClientResponse.js
-index 59a2b12..ef54250 100644
+index 59a2b12243df2304c5893a28f4723c673e96e5c1..ef542500492bb21203f5636fc0fd6215ce81806b 100644
 --- a/dist/unstable/http/HttpClientResponse.js
 +++ b/dist/unstable/http/HttpClientResponse.js
 @@ -180,7 +180,7 @@ class WebHttpClientResponse extends Inspectable.Class {
@@ -51,8 +51,45 @@ index 59a2b12..ef54250 100644
    }
    get remoteAddress() {
      return Option.none();
+diff --git a/dist/unstable/reactivity/AtomRegistry.js b/dist/unstable/reactivity/AtomRegistry.js
+index b6c25f794751e9d3b806068688d7ceccaf5bcbeb..150da52cb5eef702ee785ba60fb2aa9dc6b73dcd 100644
+--- a/dist/unstable/reactivity/AtomRegistry.js
++++ b/dist/unstable/reactivity/AtomRegistry.js
+@@ -168,8 +168,18 @@ export const mount = /*#__PURE__*/dual(2, (self, atom) => Effect.acquireRelease(
+ const constImmediate = {
+   immediate: true
+ };
++// A listener's or a child's throw is its own: it is reported, and every other listener and child
++// still hears the change. Unguarded, one throw left the rest notified of nothing and detached from
++// their parent for good, reading old values while mounted.
++const reportNodeError = error => {
++  console.error("AtomRegistry: a listener or a derived atom threw while the registry propagated a change", error);
++};
+ const notifyListener = listener => {
+-  listener();
++  try {
++    listener();
++  } catch (error) {
++    reportNodeError(error);
++  }
+ };
+ const SerializableTypeId = "~effect-atom/atom/Atom/Serializable";
+ const atomKey = atom => SerializableTypeId in atom ? atom[SerializableTypeId].key : atom;
+@@ -552,7 +562,11 @@ class NodeImpl {
+     const children = this.children;
+     this.children = new Set();
+     for (const child of children) {
+-      child.invalidate();
++      try {
++        child.invalidate();
++      } catch (error) {
++        reportNodeError(error);
++      }
+     }
+   }
+   notify() {
 diff --git a/dist/unstable/rpc/RpcClient.d.ts b/dist/unstable/rpc/RpcClient.d.ts
-index 1a471aa..7233784 100644
+index 1a471aa9f39ee9d6fbb71915d745be08eba947af..72337840e679cb594e99543536592716ff5bf723 100644
 --- a/dist/unstable/rpc/RpcClient.d.ts
 +++ b/dist/unstable/rpc/RpcClient.d.ts
 @@ -2,6 +2,7 @@ import * as Cause from "../../Cause.ts";
@@ -105,7 +142,7 @@ index 1a471aa..7233784 100644
  /**
   * Represents optional client protocol hooks that run when a transport connects
 diff --git a/dist/unstable/rpc/RpcClient.js b/dist/unstable/rpc/RpcClient.js
-index c586c60..49886d8 100644
+index c586c60856508c8ecc2e0476d56f748420fad53a..49886d805cb3f84f065d9b10ea8e6a4a91c8f14b 100644
 --- a/dist/unstable/rpc/RpcClient.js
 +++ b/dist/unstable/rpc/RpcClient.js
 @@ -49,6 +49,7 @@ export const makeNoSerialization = /*#__PURE__*/Effect.fnUntraced(function* (gro
@@ -338,7 +375,7 @@ index c586c60..49886d8 100644
   * Represents optional client protocol hooks that run when a transport connects
   * and disconnects.
 diff --git a/src/unstable/http/HttpClientResponse.ts b/src/unstable/http/HttpClientResponse.ts
-index cbf047f..c7d5cc2 100644
+index cbf047f4c67b40eba3653e8a575212ae7bbe168f..c7d5cc25f6c94d42e89e3b954ec4300d2dc47bcc 100644
 --- a/src/unstable/http/HttpClientResponse.ts
 +++ b/src/unstable/http/HttpClientResponse.ts
 @@ -321,7 +321,7 @@ class WebHttpClientResponse extends Inspectable.Class implements HttpClientRespo
@@ -350,3 +387,41 @@ index cbf047f..c7d5cc2 100644
    }
  
    get remoteAddress(): Option.Option<string> {
+diff --git a/src/unstable/reactivity/AtomRegistry.ts b/src/unstable/reactivity/AtomRegistry.ts
+index 1000d26eec7c05088dedf80bf7b99f7f1fc01a3d..5c5c8f9043e2d47e36f05839715548aaa07ad2ab 100644
+--- a/src/unstable/reactivity/AtomRegistry.ts
++++ b/src/unstable/reactivity/AtomRegistry.ts
+@@ -429,8 +429,19 @@ export const mount: {
+ 
+ const constImmediate = { immediate: true }
+ 
++// A listener's or a child's throw is its own: it is reported, and every other listener and child
++// still hears the change. Unguarded, one throw left the rest notified of nothing and detached from
++// their parent for good, reading old values while mounted.
++const reportNodeError = (error: unknown): void => {
++  console.error("AtomRegistry: a listener or a derived atom threw while the registry propagated a change", error)
++}
++
+ const notifyListener = (listener: () => void): void => {
+-  listener()
++  try {
++    listener()
++  } catch (error) {
++    reportNodeError(error)
++  }
+ }
+ 
+ const SerializableTypeId: Atom.SerializableTypeId = "~effect-atom/atom/Atom/Serializable"
+@@ -885,7 +896,11 @@ class NodeImpl<A> {
+     const children = this.children
+     this.children = new Set()
+     for (const child of children) {
+-      child.invalidate()
++      try {
++        child.invalidate()
++      } catch (error) {
++        reportNodeError(error)
++      }
+     }
+   }
+ 

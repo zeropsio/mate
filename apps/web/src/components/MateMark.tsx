@@ -36,12 +36,18 @@ const TINT_CLASS: Record<MateTintId, string> = {
 export function MateMark({
   className,
   playful = false,
+  awake = false,
   state,
   tint,
 }: {
   className?: string;
   /** Renders the live mark rather than the still one. */
   playful?: boolean;
+  /**
+   * A live mark that is already open as it mounts — where the still mark stood before it (the
+   * boot frame's, in the menu's corner) — so it takes over without waking: no band, eyes open.
+   */
+  awake?: boolean;
   /** Drives the face directly; otherwise it idles, blinks and reacts to hover. */
   state?: MateMarkState;
   /**
@@ -59,8 +65,8 @@ export function MateMark({
     if (!playful) return;
     const root = parts.current.svg;
     if (!root) return;
-    return registerLiveMark(root, parts.current, state);
-  }, [playful, state]);
+    return registerLiveMark(root, parts.current, state, { awake });
+  }, [awake, playful, state]);
 
   const [eyeLeft, eyeRight] = MATE_MARK_LIVE.eyeCentres;
   const eyeW = MATE_MARK.eyeWidth;
@@ -129,6 +135,7 @@ export function MateMark({
             ref={(node) => {
               parts.current.band = node;
             }}
+            visibility={awake ? "hidden" : undefined}
           >
             <path
               className={tint === undefined ? undefined : TINT_CLASS[tint]}
@@ -158,7 +165,7 @@ export function MateMark({
           ref={(node) => {
             parts.current.eyes = node;
           }}
-          visibility={playful ? "hidden" : "visible"}
+          visibility={playful && !awake ? "hidden" : "visible"}
         >
           <rect
             height={eyeH}

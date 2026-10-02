@@ -120,6 +120,19 @@ export function zeropsMateAt(
 }
 
 /**
+ * Who a page draws as living somewhere now: the directory's Mate once read, else — before it is
+ * read, a reload's first frames — the one this browser last knew there (`mateIdentityMemory`),
+ * so a Mate's page wears its face and name from its first frame. None where nobody lives.
+ */
+export function knownMate(
+  at: ZeropsMateAt,
+  remembered: () => ZeropsMateIdentity | undefined,
+): ZeropsMateIdentity | undefined {
+  if (at.kind === "mate") return at.mate;
+  return at.kind === "unknown" ? remembered() : undefined;
+}
+
+/**
  * The directory with every environment whose own server says it runs outside
  * Zerops (its descriptor carries no `zerops`) decided: no Mate lives there,
  * whether or not the candidate list has been read. A Zerops environment, or

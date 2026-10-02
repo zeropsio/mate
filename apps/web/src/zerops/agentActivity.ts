@@ -115,6 +115,12 @@ export interface ZeropsAgentActivity {
    */
   readonly task: string | undefined;
   /**
+   * When the person last wrote into it: the time their own browser stamped
+   * on the message, so a browser holding what it sent (`sentAsk.ts`) knows
+   * the echo by its own clock.
+   */
+  readonly askedAt?: string;
+  /**
    * What this browser remembered the row saying (`menuMemory.ts`), standing
    * until the Mate's own conversation is read: its words and its time, at
    * rest, with nothing only true now.
@@ -310,6 +316,7 @@ export function threadAgentActivity(
     pausedUntil: pause?.resetsAt,
     threadKey: scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id)),
     task: agentActivitySubject(thread, "idle"),
+    ...(thread.latestUserMessageAt === null ? {} : { askedAt: thread.latestUserMessageAt }),
     ...agentActivityLiveStep(thread, resolved.kind),
     ...agentActivityQuestion(thread, resolved.kind),
     ...agentActivityErrorLine(thread, resolved.kind),

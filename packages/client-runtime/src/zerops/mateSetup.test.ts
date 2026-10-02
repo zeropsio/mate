@@ -43,6 +43,12 @@ describe("parseMateSetup", () => {
     });
   });
 
+  it("reads a Mate with no stand-up to run as one, never as one done", () => {
+    expect(parseMateSetup(document([{ id: "standup", state: "none", at: "" }]))?.standup).toBe(
+      "none",
+    );
+  });
+
   it("reads a later version's known steps the same", () => {
     expect(parseMateSetup(document([{ id: "git", state: "done", extra: 1 }], 2))?.git).toBe("done");
   });

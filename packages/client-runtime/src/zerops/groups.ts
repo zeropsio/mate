@@ -273,6 +273,11 @@ export interface ZeropsPlacedBirth {
   readonly placement: BirthPlacement;
   /** The client's creation stopped before the platform took it: it says so where it is drawn. */
   readonly failed?: boolean | undefined;
+  /**
+   * The platform has not answered with its project yet, so `projectId` is the creation's own id:
+   * the listing may hold its project already, under an id the creation does not know.
+   */
+  readonly awaitingProject?: boolean | undefined;
 }
 
 /** A member of a group still being created: drawn until the listing holds its project. */
@@ -394,6 +399,28 @@ function byBornNewestFirst(left: number | undefined, right: number | undefined):
 }
 
 /**
+ * Whether an unplaced listed project may be a creation's that still awaits the platform's answer:
+ * one made since a running creation began. It is held back until the creation knows its id —
+ * then it is that creation's row, or drawn as what it is. Never by name (two Mates may share one):
+ * by when it was made. A project made before, or whose making is not known, is drawn; a creation
+ * that stopped holds nothing back. A clock that runs ahead of the platform's only draws it twice
+ * for a moment, never hides an older project.
+ */
+function heldBackByCreations(
+  births: ReadonlyArray<ZeropsPlacedBirth>,
+): (project: ZeropsProject) => boolean {
+  const since = births
+    .filter((birth) => birth.awaitingProject === true && birth.failed !== true)
+    .map((birth) => birth.startedAt);
+  if (since.length === 0) return () => false;
+  const earliest = Math.min(...since);
+  return (project) => {
+    const made = Date.parse(project.created ?? "");
+    return Number.isFinite(made) && made >= earliest;
+  };
+}
+
+/**
  * The left menu's whole data model: projects in, a group tree out. Pure, and
  * total — a project HQ does not place is ungrouped rather than an error.
  */
@@ -406,12 +433,14 @@ export function deriveZeropsGroups(
   const ungrouped: Array<ZeropsProject> = [];
   const births = options.births ?? [];
   const born = new Set(births.map((birth) => birth.projectId));
+  const heldBack = heldBackByCreations(births);
 
   for (const project of projects) {
     const { groupId, role, label } = readZeropsMembership(project);
     if (groupId === undefined) {
-      // Listed before HQ places it: its birth still does.
-      if (!born.has(project.id)) ungrouped.push(project);
+      // Listed before HQ places it: its birth still does — or, made while a creation still awaits
+      // the platform's answer, it may be that creation's, which draws it.
+      if (!born.has(project.id) && !heldBack(project)) ungrouped.push(project);
       continue;
     }
     const bucket = members.get(groupId);

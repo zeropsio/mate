@@ -4,6 +4,7 @@ import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Fiber from "effect/Fiber";
+import * as Option from "effect/Option";
 import * as Queue from "effect/Queue";
 import * as Ref from "effect/Ref";
 import * as Result from "effect/Result";
@@ -12,7 +13,7 @@ import * as Scheduler from "effect/Scheduler";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 import * as TestClock from "effect/testing/TestClock";
-import { AtomRegistry } from "effect/unstable/reactivity";
+import { Atom, AtomRegistry } from "effect/unstable/reactivity";
 
 import {
   interestKeyOf,
@@ -128,7 +129,7 @@ describe("makeZeropsBoundedIngress", () => {
     }),
   );
 
-  it.effect("never drops an uncounted ordering marker when the data queue is full", () =>
+  it.effect("takes an uncounted ordering marker at once when the data budget is spent", () =>
     Effect.gen(function* () {
       const ingress = yield* makeZeropsBoundedIngress({
         maxEvents: 1,
@@ -138,11 +139,8 @@ describe("makeZeropsBoundedIngress", () => {
       });
 
       expect(yield* ingress.offer("data", 8)).toBe(true);
-      const marker = yield* Effect.forkChild(ingress.offerUncounted("barrier"));
-      yield* Effect.yieldNow;
-      expect(marker.pollUnsafe()).toBeUndefined();
+      expect(yield* ingress.offerUncounted("barrier")).toBe(true);
       expect(yield* ingress.take).toBe("data");
-      expect(yield* Fiber.join(marker)).toBe(true);
       expect(yield* ingress.take).toBe("barrier");
       expect(yield* ingress.snapshot).toEqual({
         events: 0,
@@ -151,6 +149,67 @@ describe("makeZeropsBoundedIngress", () => {
         peakBytes: 8,
         discardedEvents: 0,
       });
+    }),
+  );
+
+  // Measured on mate.zerops.io (pass 31, 2026-10-02): a creation's burst left the queue holding
+  // 2047 counted events and one marker; an admitted offer waited for room holding admission, a
+  // marker took the room the consumer freed, and the consumer then waited for admission —
+  // no input was applied again until the page reloaded.
+  it.effect("drains every input when markers and counted data compete for the last room", () =>
+    Effect.gen(function* () {
+      const ingress = yield* makeZeropsBoundedIngress({
+        maxEvents: 2,
+        maxBytes: 100,
+        maxFrameBytes: 100,
+        onOverflow: () => Effect.void,
+      });
+
+      expect(yield* ingress.offer("a", 1)).toBe(true);
+      expect(yield* ingress.offerUncounted("marker-1")).toBe(true);
+      const marker = yield* Effect.forkChild(ingress.offerUncounted("marker-2"));
+      yield* Effect.yieldNow;
+      const admitted = yield* Effect.forkChild(ingress.offer("b", 1));
+      yield* Effect.yieldNow;
+      const consumer = yield* Effect.forkChild(Effect.forEach([1, 2, 3, 4], () => ingress.take));
+      for (let tick = 0; tick < 50; tick += 1) yield* Effect.yieldNow;
+
+      expect(consumer.pollUnsafe()).toBeDefined();
+      expect(yield* Fiber.join(consumer)).toEqual(["a", "marker-1", "marker-2", "b"]);
+      expect(yield* Fiber.join(marker)).toBe(true);
+      expect(yield* Fiber.join(admitted)).toBe(true);
+      expect((yield* ingress.snapshot).events).toBe(0);
+    }),
+  );
+});
+
+describe("makeZeropsBoundedIngress — interrupted producers", () => {
+  // Found in review (pass 31): a producer interrupted between reserving its budget and queueing
+  // its input kept the reservation for good; enough of them and every later offer overflowed.
+  it.live("gives back every reservation of a producer interrupted at any point", () =>
+    Effect.gen(function* () {
+      for (let ops = 2; ops < 40; ops += 1) {
+        const ingress = yield* makeZeropsBoundedIngress<number>({
+          maxEvents: 1_000,
+          maxBytes: 1_000_000,
+          maxFrameBytes: 100,
+          onOverflow: () => Effect.void,
+        });
+        const producer = yield* Effect.forkChild(
+          Effect.forEach(
+            Array.from({ length: 20 }, (_, index) => index),
+            (index) => ingress.offer(index, 7),
+            { discard: true },
+          ).pipe(Effect.provideService(Scheduler.MaxOpsBeforeYield, ops)),
+          { startImmediately: true },
+        );
+        yield* Fiber.interrupt(producer);
+        while (Option.isSome(yield* Effect.timeoutOption(ingress.take, "1 millis"))) {
+          // Drain what was queued: the budget must come back to nothing.
+        }
+        const { events, bytes } = yield* ingress.snapshot;
+        expect({ ops, events, bytes }).toEqual({ ops, events: 0, bytes: 0 });
+      }
     }),
   );
 });
@@ -2328,6 +2387,114 @@ describe("makeZeropsDataRuntime", () => {
         expect(write.pollUnsafe()).toBeDefined();
         registry.dispose();
       }),
+  );
+
+  it.effect("a subscriber that throws while the account publishes stops no write", () =>
+    Effect.gen(function* () {
+      const registry = AtomRegistry.make();
+      const runtime = yield* commandRuntime(registry, (command) =>
+        Effect.succeed({
+          processRefs: [],
+          observations: [],
+          result: { kind: command.kind, value: undefined },
+        } as never),
+      );
+      let armed = true;
+      const unsubscribe = registry.subscribe(runtime.stateAtom, () => {
+        if (armed) throw new Error("a subscriber's own bug");
+      });
+      const first = yield* Effect.forkChild(
+        Effect.exit(runtime.commands.setIntegrationTokenProjects(tokenWrite)),
+      );
+      for (let turn = 0; turn < 50; turn++) yield* Effect.yieldNow;
+      armed = false;
+      const second = yield* Effect.forkChild(
+        Effect.exit(runtime.commands.setIntegrationTokenProjects(tokenWrite)),
+      );
+      for (let turn = 0; turn < 50; turn++) yield* Effect.yieldNow;
+
+      expect(first.pollUnsafe()).toBeDefined();
+      expect(Exit.isSuccess(yield* Fiber.join(first))).toBe(true);
+      expect(second.pollUnsafe()).toBeDefined();
+      expect(Exit.isSuccess(yield* Fiber.join(second))).toBe(true);
+      unsubscribe();
+      yield* runtime.shutdown("application-close");
+      registry.dispose();
+    }),
+  );
+
+  // Found in review (pass 31): the registry detaches a parent's children before invalidating
+  // them, so one projection's throw left every projection after it reading old state for good.
+  it.effect("a projection that throws leaves every other projection of the account live", () =>
+    Effect.gen(function* () {
+      const registry = AtomRegistry.make();
+      const runtime = yield* commandRuntime(registry, (command) =>
+        Effect.succeed({
+          processRefs: [],
+          observations: [],
+          result: { kind: command.kind, value: undefined },
+        } as never),
+      );
+      let armed = false;
+      const broken = Atom.make((get) => get(runtime.stateAtom).commands.size);
+      const healthy = Atom.make((get) => get(runtime.stateAtom).commands.size);
+      // Read at once, as every subscriber of the app does.
+      const stopBroken = registry.subscribe(
+        broken,
+        () => {
+          if (armed) throw new Error("a projection's own bug");
+        },
+        { immediate: true },
+      );
+      const stopHealthy = registry.subscribe(healthy, () => undefined, { immediate: true });
+      armed = true;
+      yield* Effect.exit(runtime.commands.setIntegrationTokenProjects(tokenWrite));
+      armed = false;
+      yield* Effect.exit(runtime.commands.setIntegrationTokenProjects(tokenWrite));
+      for (let turn = 0; turn < 20; turn++) yield* Effect.yieldNow;
+
+      const size = registry.get(runtime.stateAtom).commands.size;
+      expect(size).toBe(2);
+      expect(registry.get(healthy)).toBe(size);
+      expect(registry.get(broken)).toBe(size);
+      stopBroken();
+      stopHealthy();
+      yield* runtime.shutdown("application-close");
+      registry.dispose();
+    }),
+  );
+
+  it.effect("a token listing answers beside a stuck write, and is no write itself", () =>
+    Effect.gen(function* () {
+      const registry = AtomRegistry.make();
+      const runtime = yield* commandRuntime(registry, (command) =>
+        command.kind === "list-integration-token-grants"
+          ? Effect.succeed({
+              processRefs: [],
+              observations: [],
+              result: { kind: command.kind, value: [] },
+            } as never)
+          : Effect.never,
+      );
+      const write = yield* Effect.forkChild(
+        runtime.commands.setIntegrationTokenProjects(tokenWrite),
+      );
+      for (let turn = 0; turn < 20; turn++) yield* Effect.yieldNow;
+      const listing = yield* Effect.forkChild(
+        runtime.commands.listIntegrationTokenGrants(topologyDescriptor.project.organization),
+      );
+      for (let turn = 0; turn < 20; turn++) yield* Effect.yieldNow;
+
+      expect(listing.pollUnsafe()).toBeDefined();
+      expect((yield* Fiber.join(listing)).value).toEqual([]);
+      const commands = [...registry.get(runtime.stateAtom).commands.values()];
+      expect(commands.map((attempt) => attempt.commandKind)).toEqual([
+        "set-integration-token-projects",
+      ]);
+      yield* Fiber.interrupt(write);
+      yield* runtime.shutdown("application-close");
+      registry.dispose();
+    }),
   );
 
   it.effect("an interrupted command is no longer counted as pending", () =>
