@@ -469,6 +469,7 @@ export {
   type CrewTaskReviewInput,
   type ReleaseOutcome,
   type ReleaseReviewInput,
+  type ReleaseReviewModel,
   type ReviewFix,
   type ReviewFixProblem,
   type ReviewModel,
@@ -479,6 +480,7 @@ export {
   type ReviewVerdict,
   type RollbackReviewInput,
 } from "./reviewVerdict.ts";
+export { holdReleaseFacts, releaseFacts, type ReleaseFacts } from "./releaseFacts.ts";
 export {
   changeFileParts,
   parseChangeDiff,

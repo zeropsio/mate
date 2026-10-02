@@ -16,7 +16,9 @@
  */
 import {
   buildZeropsGroupTree,
+  holdReleaseFacts,
   RELEASE_NOT_A_RELEASER,
+  releaseFacts,
   releaseContentsCommits,
   releaseReview,
   reviewAge,
@@ -27,12 +29,13 @@ import {
   stageMarks,
   stageStandings,
   type FlowReleaseRow,
+  type ReleaseFacts,
   type ReleaseGate,
   type ReleaseOutcome,
   type ReviewPress,
 } from "@t3tools/client-runtime/zerops";
 import { heldCandidates } from "@t3tools/client-runtime/zerops/projections";
-import { useMemo, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 
 import { useFixMates } from "~/zerops/fixMates";
 import { useAskMateToFix, type FixProblem } from "~/zerops/fixRequest";
@@ -44,7 +47,7 @@ import { useZeropsReviewMates } from "~/zerops/useZeropsReviewMates";
 
 import { ZeropsChangeReview } from "./ZeropsChangeReview";
 import { useReleaseSteps, ZeropsReleaseSteps } from "./ZeropsReleaseSteps";
-import { releaseChangeRows, reviewKindLine } from "./ZeropsReview.logic";
+import { releaseChangeRows, reviewKindLine, type ReleaseChangeRow } from "./ZeropsReview.logic";
 import {
   ReviewReleaseRows,
   ReviewSection,
@@ -247,11 +250,25 @@ function ReleaseData({
       }),
     [flow.mainHeads, flow.release.contents, flowValue?.deployments, mainStage],
   );
-  const rows = releaseChangeRows({
-    commits: releaseContentsCommits(flow.release.contents),
-    merged: flow.merged,
-    marks,
-  }).map((row) => {
+  const production = flow.environmentInputs.find((entry) => entry.tier === "production");
+  // What the release is — its tag, what it replaces, what goes out and where — as read now…
+  const current = releaseFacts({
+    tag,
+    live: flow.releases.find((entry) => entry.standing === "live")?.tag,
+    rows: releaseChangeRows({
+      commits: releaseContentsCommits(flow.release.contents),
+      merged: flow.merged,
+      marks,
+    }),
+    comparison: flow.release.comparison,
+    productionServices: production?.services.map((entry) => entry.hostname) ?? [],
+  });
+  // …and as it was pressed, from then on: once it lands, the reads are the state it made.
+  const [held, setHeld] = useState<ReleaseFacts<ReleaseChangeRow> | undefined>(undefined);
+  const keep = holdReleaseFacts({ held, current, press, outcome });
+  if (keep !== held) setHeld(keep);
+  const facts = keep ?? current;
+  const rows = facts.rows.map((row) => {
     const mate = row.mateProjectId === undefined ? undefined : mates.get(row.mateProjectId);
     const mateName =
       mate?.name ??
@@ -266,8 +283,6 @@ function ReleaseData({
         .join(" · "),
     };
   });
-  const production = flow.environmentInputs.find((entry) => entry.tier === "production");
-  const moving = flow.release.comparison.filter((row) => row.changed).map((row) => row.service);
   // A failed release is anybody's to fix: the person's own Mate in the project, the one they
   // used last (S6, `fixMates.ts`).
   const [fixer] = useFixMates({
@@ -290,7 +305,6 @@ function ReleaseData({
       fixer={fixer?.name}
       gate={flow.release.gate}
       hasStage={mainStage !== undefined}
-      live={flow.releases.find((entry) => entry.standing === "live")?.tag}
       name={name}
       now={now}
       onClose={onClose}
@@ -305,18 +319,12 @@ function ReleaseData({
       }}
       outcome={outcome}
       press={press}
+      replaces={facts.replaces}
       rows={rows}
-      services={
-        moving.length === 0 ? (production?.services.map((entry) => entry.hostname) ?? []) : moving
-      }
-      tag={tag}
+      services={facts.services}
+      tag={facts.tag}
       titleId={titleId}
-      where={flow.release.comparison.map((row) => ({
-        service: row.service,
-        line: row.changed
-          ? `redeploys from ${row.candidate ?? "main"}`
-          : `stays on ${row.production ?? "what it runs"}`,
-      }))}
+      where={facts.where}
     />
   );
 }
@@ -330,7 +338,8 @@ export interface ReleaseReviewViewProps {
   readonly where: ReadonlyArray<{ readonly service: string; readonly line: string }>;
   readonly hasStage: boolean;
   readonly services: ReadonlyArray<string>;
-  readonly live: string | undefined;
+  /** The release production ran as this one was offered; `undefined` for the first release. */
+  readonly replaces: string | undefined;
   readonly outcome: ReleaseOutcome;
   readonly press: ReviewPress;
   /** The person's own Mate a failure is handed to, the one they used last. */
@@ -354,7 +363,7 @@ export function ReleaseReviewView(props: ReleaseReviewViewProps) {
       ? { total: rows.length, running: rows.filter((row) => row.stage === "on-stage").length }
       : undefined,
     services: props.services,
-    live: props.live,
+    replaces: props.replaces,
     outcome: props.outcome,
     now: props.now,
   });
@@ -376,15 +385,12 @@ export function ReleaseReviewView(props: ReleaseReviewViewProps) {
       }
       kind="release"
       kindLabel={reviewKindLine("release")}
-      meta={
-        <>
-          <span>{props.live === undefined ? "the first release" : `replaces ${props.live}`}</span>
-          <span aria-hidden="true">·</span>
-          <span>
-            {rows.length} {rows.length === 1 ? "change" : "changes"}
-          </span>
-        </>
-      }
+      meta={model.meta.map((part, index) => (
+        <Fragment key={part}>
+          {index === 0 ? null : <span aria-hidden="true">·</span>}
+          <span>{part}</span>
+        </Fragment>
+      ))}
       onClose={props.onClose}
       primary={
         model.primary === undefined
@@ -414,11 +420,9 @@ export function ReleaseReviewView(props: ReleaseReviewViewProps) {
           <ReviewWhere rows={props.where} />
         </ReviewSection>
       )}
-      {props.live === undefined ? null : (
+      {model.ifWrong === undefined ? null : (
         <ReviewSection title="If it goes wrong">
-          <p className="rv-words">
-            Roll back to {props.live} from production's menu. It gets its own review.
-          </p>
+          <p className="rv-words">{model.ifWrong}</p>
         </ReviewSection>
       )}
     </ZeropsReviewSurface>
