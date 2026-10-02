@@ -38,7 +38,8 @@ export function PageWaitLine({
     <div
       aria-live="polite"
       className={cn(
-        "pointer-events-none fixed inset-y-0 right-0 left-0 z-10 flex items-center justify-center",
+        // m-0: a parent's space-y never moves it off the frame's centre.
+        "pointer-events-none fixed inset-y-0 right-0 left-0 z-10 m-0 flex items-center justify-center",
         beside && "md:left-(--sidebar-width)",
       )}
       role="status"

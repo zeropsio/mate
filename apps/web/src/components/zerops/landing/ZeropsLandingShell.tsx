@@ -120,8 +120,7 @@ export function ZeropsFrameWait({
   return createPortal(
     children ?? (
       <div {...props} aria-live="polite" role="status">
-        {line === null ? null : <WaitLine text={line} />}
-        <span className="sr-only">{label}</span>
+        {line === null ? <span className="sr-only">{label}</span> : <WaitLine text={line} />}
       </div>
     ),
     slot,
