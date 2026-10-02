@@ -233,6 +233,49 @@ describe("useZeropsGiteaOverview", () => {
     });
   });
 
+  it("reads nothing while the page is hidden, and once on coming back", async () => {
+    vi.useFakeTimers();
+    installTestDom();
+    const page = document as unknown as {
+      hidden: boolean;
+      addEventListener: (type: string, listener: () => void) => void;
+    };
+    const shown: Array<() => void> = [];
+    page.addEventListener = (type, listener) => {
+      if (type === "visibilitychange") shown.push(listener);
+    };
+    const { createRoot } = await import("react-dom/client");
+
+    function Probe() {
+      useZeropsGiteaOverview({ giteaOrigin: "https://gitea.example.test", enabled: true });
+      return null;
+    }
+
+    const root = createRoot(document.createElement("div") as unknown as Element);
+    await act(async () => {
+      root.render(createElement(Probe));
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(gitea.listings).toBe(1);
+
+    page.hidden = true;
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5 * GITEA_OVERVIEW_REFRESH_MS);
+    });
+    expect(gitea.listings).toBe(1);
+
+    page.hidden = false;
+    await act(async () => {
+      for (const listener of shown) listener();
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(gitea.listings).toBe(2);
+
+    await act(async () => {
+      root.unmount();
+    });
+  });
+
   it("keeps a list that answered when the other one fails beside it", async () => {
     vi.useFakeTimers();
     installTestDom();

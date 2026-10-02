@@ -4,8 +4,8 @@
  *
  * Two account-wide reads, issued together — Gitea's list of the person's
  * repositories and its search over open pull requests — and re-read every
- * sixty seconds while the page is open, and at once when the Gitea session is
- * readable again. Each list stands on its own: one that fails keeps what it
+ * sixty seconds while the page is open and visible (`refreshClock.ts`), and at
+ * once when the Gitea session is readable again. Each list stands on its own: one that fails keeps what it
  * read before and names its cause beside it, and never takes the other's
  * answer with it; neither ever answers "no repositories" or "no pull
  * requests". Nothing here is per project; a project's own flow is the
@@ -21,6 +21,7 @@ import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 import { useEffect, useMemo, useState } from "react";
 
 import { giteaClientFor, useGiteaReadable } from "./accountGiteaSessions";
+import { startRefreshClock } from "./refreshClock";
 
 /** How often the overview is read again while the page is open. */
 export const GITEA_OVERVIEW_REFRESH_MS = 60_000;
@@ -58,12 +59,10 @@ export function useZeropsGiteaOverview(input: {
 
   useEffect(() => {
     if (key === "") return;
-    const timer = window.setInterval(() => {
-      setTick((count) => count + 1);
-    }, GITEA_OVERVIEW_REFRESH_MS);
-    return () => {
-      window.clearInterval(timer);
-    };
+    return startRefreshClock({
+      refresh: () => setTick((count) => count + 1),
+      everyMs: GITEA_OVERVIEW_REFRESH_MS,
+    });
   }, [key]);
 
   useEffect(() => {

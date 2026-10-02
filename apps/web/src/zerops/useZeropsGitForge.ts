@@ -11,8 +11,9 @@
  * The checkout side is a live subscription and needs nothing from here. This
  * side has no event stream at all (Gitea's API has none), so it is re-read when
  * the tab opens, after each action — the caller bumps `generation` — and every
- * sixty seconds while the tab is open. A poll that ran while the tab was closed
- * would cost a request a minute for a panel nobody is looking at.
+ * sixty seconds while the tab is open and the page visible (`refreshClock.ts`).
+ * A poll that ran while the tab was closed, or the page hidden, would cost a
+ * request a minute for a panel nobody is looking at.
  *
  * Whether its pull request merges is what the reads so far came to
  * (`forge/mergeState.ts`), never one answer: Gitea says "no" for a moment
@@ -32,6 +33,7 @@ import {
 import { useEffect, useState } from "react";
 
 import { giteaClientFor } from "./accountGiteaSessions";
+import { startRefreshClock } from "./refreshClock";
 
 /** How often the forge side is re-read while the tab is open. */
 export const GIT_FORGE_REFRESH_MS = 60_000;
@@ -93,10 +95,10 @@ export function useZeropsGitForge(input: {
 
   useEffect(() => {
     if (key === "") return;
-    const timer = setInterval(() => setTick((current) => current + 1), GIT_FORGE_REFRESH_MS);
-    return () => {
-      clearInterval(timer);
-    };
+    return startRefreshClock({
+      refresh: () => setTick((current) => current + 1),
+      everyMs: GIT_FORGE_REFRESH_MS,
+    });
   }, [key]);
 
   useEffect(() => {
