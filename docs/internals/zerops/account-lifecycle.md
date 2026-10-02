@@ -41,10 +41,12 @@ trades warm offline startup for a smaller, verifiable ownership model.
 
 A Mate's session is kept per account (`keptSessions.ts`, 2026-10-02). A later load presents it again
 only where the door would present a fresh one — the Mate's descriptor names the expected project
-and the environment it was kept for — and only once the Mate answers that it still holds it
-(`GET /api/auth/session`). A session the Mate ended is forgotten, and a throwaway opens a new one; a
-kept session spends no mint and waits on no mint pace. The account's close ends every kept session
-at its Mate and forgets them all.
+and the environment it was kept for — and only once the Mate answers that it still holds it with
+every scope the client asks for now (`GET /api/auth/session`, 3 s). A session the Mate ended, or one
+short of a scope, is forgotten, and a throwaway opens a new one; a kept session spends no mint and
+waits on no mint pace. No kept session outlives its login: the account's close ends every one at
+its Mate however the account closes, a stored login the platform refuses ends every one the origin
+holds, and a session displaced from the store is ended too.
 
 One inventory supplies overview, sidebar and restore. Direct platform lists and permission-filtered
 search are paginated; malformed pages, changing totals and duplicate pages fail the read. Reads use
