@@ -1084,8 +1084,9 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
   let publicationEvents = 0;
   /**
    * The atoms notify their subscribers inside `set`, on whichever fiber published: the ingress's
-   * one consumer, a command, a scheduler task. One subscriber's throw must not stop the account:
-   * the state is published, that subscriber missed it, and its error is handed back to be logged.
+   * one consumer, a command, a scheduler task. The registry reports a subscriber's or a
+   * projection's own throw itself and still updates every other one (the `effect` patch); anything
+   * that escapes `set` regardless is handed back to be logged, so no fiber or task dies of it.
    */
   const flushPendingPublication = (): { readonly subscriberError: unknown } | null => {
     const next = pendingPublication;

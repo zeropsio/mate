@@ -13,7 +13,7 @@ import * as Scheduler from "effect/Scheduler";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 import * as TestClock from "effect/testing/TestClock";
-import { AtomRegistry } from "effect/unstable/reactivity";
+import { Atom, AtomRegistry } from "effect/unstable/reactivity";
 
 import {
   interestKeyOf,
@@ -2418,6 +2418,47 @@ describe("makeZeropsDataRuntime", () => {
       expect(second.pollUnsafe()).toBeDefined();
       expect(Exit.isSuccess(yield* Fiber.join(second))).toBe(true);
       unsubscribe();
+      yield* runtime.shutdown("application-close");
+      registry.dispose();
+    }),
+  );
+
+  // Found in review (pass 31): the registry detaches a parent's children before invalidating
+  // them, so one projection's throw left every projection after it reading old state for good.
+  it.effect("a projection that throws leaves every other projection of the account live", () =>
+    Effect.gen(function* () {
+      const registry = AtomRegistry.make();
+      const runtime = yield* commandRuntime(registry, (command) =>
+        Effect.succeed({
+          processRefs: [],
+          observations: [],
+          result: { kind: command.kind, value: undefined },
+        } as never),
+      );
+      let armed = false;
+      const broken = Atom.make((get) => get(runtime.stateAtom).commands.size);
+      const healthy = Atom.make((get) => get(runtime.stateAtom).commands.size);
+      // Read at once, as every subscriber of the app does.
+      const stopBroken = registry.subscribe(
+        broken,
+        () => {
+          if (armed) throw new Error("a projection's own bug");
+        },
+        { immediate: true },
+      );
+      const stopHealthy = registry.subscribe(healthy, () => undefined, { immediate: true });
+      armed = true;
+      yield* Effect.exit(runtime.commands.setIntegrationTokenProjects(tokenWrite));
+      armed = false;
+      yield* Effect.exit(runtime.commands.setIntegrationTokenProjects(tokenWrite));
+      for (let turn = 0; turn < 20; turn++) yield* Effect.yieldNow;
+
+      const size = registry.get(runtime.stateAtom).commands.size;
+      expect(size).toBe(2);
+      expect(registry.get(healthy)).toBe(size);
+      expect(registry.get(broken)).toBe(size);
+      stopBroken();
+      stopHealthy();
       yield* runtime.shutdown("application-close");
       registry.dispose();
     }),
