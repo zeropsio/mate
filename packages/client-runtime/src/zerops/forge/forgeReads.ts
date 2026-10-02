@@ -202,7 +202,7 @@ interface Listing {
 const signatureOf = (value: unknown): string => JSON.stringify(value) ?? "";
 
 /** A Gitea 404, as the client throws it: here, an org the broker has not made yet. */
-const giteaNotFound = (cause: unknown): boolean =>
+export const giteaNotFound = (cause: unknown): boolean =>
   cause instanceof GiteaApiError && cause.status === 404;
 
 /** A Gitea 401 no token recovered, as the client throws it. */

@@ -53,6 +53,7 @@ import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 import {
   createForgeReads,
   createMergeabilityTracker,
+  giteaNotFound,
   giteaUnauthorized,
   MERGE_RECHECK_AFTER_MS,
   mergeReadOf,
@@ -390,6 +391,14 @@ async function answered<T>(read: () => Promise<T>): Promise<Answered<T>> {
   }
 }
 
+/** A group whose org the broker has not made yet: no repository, no pull request, no release. */
+const NOTHING_YET: ZeropsGroupForgeState = {
+  repositories: [],
+  pullRequests: [],
+  merged: [],
+  released: { releases: [], tags: [] },
+};
+
 /**
  * Reads one scope of a group's forge. A whole read keeps, per repository and
  * for the releases, what is held where that part did not answer. A repository
@@ -421,9 +430,16 @@ export async function readForge(
     const released = await readReleases(client, slug, reads);
     return (held) => (held === undefined ? undefined : { ...held, released });
   }
-  const repositories = (
-    await reads.repositories(slug, () => client.listOrganizationRepositories(slug))
-  ).map((repository) => repository.name);
+  const listed = await reads
+    .repositories(slug, () => client.listOrganizationRepositories(slug))
+    .catch((cause: unknown) => {
+      // The broker has not made its org yet (`ForgeReads.organizations`): there is nothing to
+      // read, and nothing failed — its row says it is being set up.
+      if (giteaNotFound(cause)) return null;
+      throw cause;
+    });
+  if (listed === null) return () => NOTHING_YET;
+  const repositories = listed.map((repository) => repository.name);
   const read = new Map<string, RepositoryPulls>();
   for (const repository of repositories) {
     const pulls = await answered(() =>
