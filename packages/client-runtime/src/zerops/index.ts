@@ -452,7 +452,6 @@ export {
   releaseFollows,
   releaseOutcomeOf,
   releaseStageMarks,
-  releaseStalled,
   releaseStep,
   type ReleaseFacts,
 } from "./releaseFacts.ts";

@@ -712,6 +712,20 @@ describe("rollbackReview: roll back gets the same review, naming where it goes b
       "Production still runs v0.1.57.",
     ],
     [
+      "a newer release sits above the one it made",
+      {
+        press: { kind: "done" },
+        outcome: { kind: "superseded", by: "v0.1.59", live: "v0.1.59" },
+      },
+      {
+        state: "rollback-superseded",
+        tone: "quiet",
+        title: "v0.1.59 was tagged after v0.1.58",
+        why: "Production runs v0.1.59",
+      },
+      "The project's line in the menu follows v0.1.59.",
+    ],
+    [
       "tagged, and past the wait for it with no landing",
       { press: { kind: "done" }, outcome: { kind: "stalled", at: minutesAgo(34) } },
       {

@@ -379,6 +379,94 @@ describe("a release that never lands ends: past the cutoff it says so", () => {
   });
 });
 
+describe("a followed release ends when a newer one sits above it", () => {
+  const before: Moment = { live: "v0.1.0", contents: ONE_CHANGE, production: "4c3b2a1" };
+  const after: Moment = { live: "v0.1.1", contents: [], production: HEAD };
+  const [, tagging, onItsWay, released] = release("v0.1.1", "v0.1.2", before, after, [
+    row("v0.1.0", "live"),
+  ]);
+  if (tagging === undefined || onItsWay === undefined || released === undefined)
+    throw new Error("no steps");
+  const above = (
+    minutes: number,
+    newer: FlowReleaseRow,
+    below: ReadonlyArray<FlowReleaseRow>,
+    live: string | undefined,
+  ): Step => ({
+    ...onItsWay,
+    name: `${String(minutes)} minutes on`,
+    nowMs: NOW + minutes * 60_000,
+    inFlight: newer.standing === undefined ? newer.tag : undefined,
+    suggestion: "v0.1.3",
+    moment: { ...before, live },
+    releases: [newer, ...below],
+  });
+  const v011 = row("v0.1.1", undefined);
+
+  it("A: stalled, then v0.1.2 is made in another window: it ends, and never ticks again", () => {
+    const steps = walk([
+      tagging,
+      onItsWay,
+      { ...onItsWay, nowMs: NOW + 31 * 60_000, inFlight: undefined },
+      above(33, row("v0.1.2", undefined), [v011, row("v0.1.0", "live")], "v0.1.0"),
+      above(40, row("v0.1.2", "live"), [v011, row("v0.1.0", undefined)], "v0.1.2"),
+      above(120, row("v0.1.2", "live"), [v011, row("v0.1.0", undefined)], "v0.1.2"),
+    ]);
+    expect(steps.map((step) => step.model.verdict.state)).toEqual([
+      "releasing",
+      "releasing",
+      "release-stalled",
+      "release-superseded",
+      "release-superseded",
+      "release-superseded",
+    ]);
+    expect(steps.slice(2).map((step) => step.follows.ticking)).toEqual([
+      false,
+      false,
+      false,
+      false,
+    ]);
+    expect(steps[3]?.model.verdict).toMatchObject({
+      title: "v0.1.2 was tagged after v0.1.1",
+      why: "Production runs v0.1.0",
+    });
+    expect(steps.at(-1)?.model.verdict.why).toBe("Production runs v0.1.2");
+    expect(steps.at(-1)?.model.consequence).toBe("The project's line in the menu follows v0.1.2.");
+    expect(steps.at(-1)?.model.primary).toBeUndefined();
+  });
+
+  it("B: released, then rolled back in another window as v0.1.2: it ends, never Releasing", () => {
+    const steps = walk([
+      tagging,
+      onItsWay,
+      released,
+      above(10, row("v0.1.2", "live"), [v011, row("v0.1.0", undefined)], "v0.1.2"),
+    ]);
+    expect(steps.map((step) => step.model.verdict.state)).toEqual([
+      "releasing",
+      "releasing",
+      "released",
+      "release-superseded",
+    ]);
+    expect(steps.at(-1)?.follows.ticking).toBe(false);
+    expect(steps.at(-1)?.model.verdict.title).toBe("v0.1.2 was tagged after v0.1.1");
+  });
+
+  it("a refused release above it is no newer release", () => {
+    const steps = walk([
+      tagging,
+      onItsWay,
+      above(
+        5,
+        row("v0.1.2", undefined, { verdict: "refused" }),
+        [row("v0.1.1", undefined), row("v0.1.0", "live")],
+        "v0.1.0",
+      ),
+    ]);
+    expect(steps.at(-1)?.model.verdict.state).toBe("releasing");
+  });
+});
+
 describe("a release opened on its way follows its own tag to the end", () => {
   const before: Moment = { live: undefined, contents: ONE_CHANGE, production: undefined };
   const after: Moment = { live: "v0.1.0", contents: [], production: HEAD };

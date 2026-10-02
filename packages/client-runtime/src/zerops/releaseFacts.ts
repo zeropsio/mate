@@ -120,7 +120,12 @@ export function releaseFollows(input: {
    * over, and the review says the tag hasn't landed.
    */
   readonly stalled: boolean;
-  /** Whether the release's clock runs: on its way, neither live, failed nor stalled. */
+  /**
+   * The newer release HQ did not refuse that sits above the followed one, and what production runs
+   * in full: the follow is over. `undefined` while the followed release is the newest, or live.
+   */
+  readonly superseded: { readonly by: string; readonly live: string | undefined } | undefined;
+  /** Whether the release's clock runs: on its way, and not yet live, failed, stalled or followed. */
   readonly ticking: boolean;
 } {
   const pinned = input.press.kind === "refused" ? undefined : input.held?.tag;
@@ -131,13 +136,23 @@ export function releaseFollows(input: {
     input.press.kind === "done" ||
     input.inFlight === tag ||
     pinned === tag;
-  const stalled = releasing && releaseStalled(tagged, input.nowMs);
+  const at = input.releases.findIndex((entry) => entry.tag === tag);
+  const newer =
+    releasing && at > 0 && tagged?.standing !== "live"
+      ? input.releases.slice(0, at).find((entry) => entry.verdict !== "refused")
+      : undefined;
+  const superseded =
+    newer === undefined
+      ? undefined
+      : { by: newer.tag, live: input.releases.find((entry) => entry.standing === "live")?.tag };
+  const stalled = releasing && superseded === undefined && releaseStalled(tagged, input.nowMs);
   return {
     tag,
     tagged,
     releasing,
     stalled,
-    ticking: releasing && tagged?.standing === undefined && !stalled,
+    superseded,
+    ticking: releasing && tagged?.standing === undefined && !stalled && superseded === undefined,
   };
 }
 
@@ -146,7 +161,7 @@ export function releaseFollows(input: {
  * neither a landing nor a failure — the cutoff `releaseInFlight` stops holding Release back at. A
  * release HQ has not listed yet has no age to measure.
  */
-export function releaseStalled(tagged: FlowReleaseRow | undefined, nowMs: number): boolean {
+function releaseStalled(tagged: FlowReleaseRow | undefined, nowMs: number): boolean {
   if (tagged === undefined || tagged.standing !== undefined || tagged.verdict === "refused")
     return false;
   return nowMs - Date.parse(tagged.taggedAt) >= RELEASE_IN_FLIGHT_MS;
@@ -158,6 +173,8 @@ export function releaseOutcomeOf(input: {
   readonly releasing: boolean;
   /** Past the cutoff with no landing and no failure (`releaseFollows`). */
   readonly stalled?: boolean | undefined;
+  /** A newer release above it (`releaseFollows`). */
+  readonly superseded?: { readonly by: string; readonly live: string | undefined } | undefined;
   readonly pressing: boolean;
   readonly tag: string;
   readonly clockMs: number;
@@ -179,6 +196,7 @@ export function releaseOutcomeOf(input: {
     };
   }
   if (!input.releasing) return { kind: "offered" };
+  if (input.superseded !== undefined) return { kind: "superseded", ...input.superseded };
   if (input.stalled === true) return { kind: "stalled", at: tagged?.taggedAt };
   if (input.pressing && tagged === undefined) {
     return { kind: "releasing", progress: `Tagging main as ${input.tag}` };
@@ -212,6 +230,7 @@ export function releaseStep(input: {
     tagged: follows.tagged,
     releasing: follows.releasing,
     stalled: follows.stalled,
+    superseded: follows.superseded,
     pressing: press.kind === "running",
     tag: follows.tag,
     clockMs: input.clockMs,
