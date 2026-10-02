@@ -19,9 +19,10 @@ import * as Fiber from "effect/Fiber";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import type * as Redacted from "effect/Redacted";
-import * as Ref from "effect/Ref";
 import * as Schedule from "effect/Schedule";
 import * as Schema from "effect/Schema";
+import * as Stream from "effect/Stream";
+import * as SubscriptionRef from "effect/SubscriptionRef";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
 import type { SqlError } from "effect/unstable/sql/SqlError";
 
@@ -50,6 +51,8 @@ export class Leader extends Context.Service<
   Leader,
   {
     readonly status: Effect.Effect<LeaderStatus>;
+    /** The status now, then each change of it: what runs only while this Core leads follows it. */
+    readonly changes: Stream.Stream<LeaderStatus>;
     /**
      * Runs `effect` in a transaction that first takes the epoch row `FOR SHARE` and checks it is
      * still this instance's. The next holder's raise waits for every such transaction, and one
@@ -131,7 +134,7 @@ export const leaderLayer = (
       const stillOfficial = Effect.flatMap(allowed, (ok) =>
         ok ? Effect.void : Effect.fail(new NotOfficial()),
       );
-      const status = yield* Ref.make<Internal>({
+      const status = yield* SubscriptionRef.make<Internal>({
         state: "starting",
         epoch: null,
         migrationFailed: false,
@@ -160,11 +163,11 @@ export const leaderLayer = (
         const connection = yield* PgConnection.make({
           url: options.databaseUrl,
           applicationName: "hq-leader",
-        }).pipe(Effect.tapError(() => Ref.update(status, unreachable)));
+        }).pipe(Effect.tapError(() => SubscriptionRef.update(status, unreachable)));
         yield* Effect.forEach(SESSION_SETTINGS, (statement) => connection.query(statement), {
           discard: true,
         });
-        yield* Ref.update(status, reached);
+        yield* SubscriptionRef.update(status, reached);
         yield* allowed.pipe(
           Effect.repeat({ schedule: Schedule.spaced(heartbeat), until: (ok) => ok }),
         );
@@ -178,7 +181,7 @@ export const leaderLayer = (
           "UPDATE hq_leader SET epoch = epoch + 1, acquired_at = now() WHERE id = 1 RETURNING epoch",
         );
         const runMigrations = migrate(options.migrations).pipe(
-          Effect.tapError(() => Ref.set(status, MIGRATION_FAILED)),
+          Effect.tapError(() => SubscriptionRef.set(status, MIGRATION_FAILED)),
         );
         const schemaThere = yield* connection
           .query("SELECT to_regclass('hq_leader') IS NOT NULL AS present")
@@ -186,7 +189,7 @@ export const leaderLayer = (
         const epoch = schemaThere
           ? yield* Effect.tap(raise, () => runMigrations)
           : yield* Effect.andThen(runMigrations, raise);
-        yield* Ref.set(status, { state: "active", epoch, migrationFailed: false });
+        yield* SubscriptionRef.set(status, { state: "active", epoch, migrationFailed: false });
 
         const check = withinTimeout(
           readEpoch(connection, "SELECT epoch FROM hq_leader WHERE id = 1"),
@@ -200,12 +203,12 @@ export const leaderLayer = (
       }).pipe(
         Effect.scoped,
         Effect.catch((error) =>
-          Ref.update(status, ended).pipe(
+          SubscriptionRef.update(status, ended).pipe(
             Effect.andThen(Effect.logWarning("leader session ended", error)),
           ),
         ),
         Effect.catchDefect((defect) =>
-          Ref.update(status, ended).pipe(
+          SubscriptionRef.update(status, ended).pipe(
             Effect.andThen(Effect.logError("leader session crashed", defect)),
           ),
         ),
@@ -215,11 +218,15 @@ export const leaderLayer = (
         Effect.forever(Effect.andThen(session, Effect.sleep(retryAfter))),
       );
       return Leader.of({
-        status: Effect.map(Ref.get(status), ({ state, epoch }) => ({ state, epoch })),
-        release: Effect.andThen(Fiber.interrupt(loop), Ref.set(status, STANDBY)),
+        status: Effect.map(SubscriptionRef.get(status), ({ state, epoch }) => ({ state, epoch })),
+        changes: SubscriptionRef.changes(status).pipe(
+          Stream.map(({ state, epoch }): LeaderStatus => ({ state, epoch })),
+          Stream.changesWith((a, b) => a.state === b.state && a.epoch === b.epoch),
+        ),
+        release: Effect.andThen(Fiber.interrupt(loop), SubscriptionRef.set(status, STANDBY)),
         write: (effect) =>
           Effect.gen(function* () {
-            const { state, epoch } = yield* Ref.get(status);
+            const { state, epoch } = yield* SubscriptionRef.get(status);
             if (state !== "active" || epoch === null) {
               return yield* new NotLeader({ reason: "standby" });
             }

@@ -7,7 +7,10 @@
  *
  * @module test/harness/runningCore
  */
+import * as NodeFS from "node:fs";
 import * as NodeHttp from "node:http";
+import * as NodeOS from "node:os";
+import * as NodePath from "node:path";
 
 import * as NodeHttpServer from "@effect/platform-node/NodeHttpServer";
 import { assert } from "@effect/vitest";
@@ -120,19 +123,26 @@ const world = (now: number, anchored: boolean, orgId: string): FakeWorld => {
 };
 
 /**
- * Core on a fresh database (or `url`'s), served over a real Node server on a free port, as the
- * container serves it; requests as `{ status, body, headers }`. `stop` ends it — drain included —
- * before the test does.
+ * Core on a fresh database and git root (or the given ones), served over a real Node server on a
+ * free port, as the container serves it; requests as `{ status, body, headers }`. `stop` ends it —
+ * drain included — before the test does.
  */
 export const startCore = (
   anchored: boolean,
-  given?: { readonly url: string; readonly orgId: string },
+  given: { readonly url?: string; readonly orgId?: string; readonly gitRoot?: string } = {},
 ) =>
   Effect.gen(function* () {
-    const url = given?.url ?? (yield* (yield* TempPostgres).createDatabase);
-    const fake = world(yield* Clock.currentTimeMillis, anchored, given?.orgId ?? "ORG");
+    const url = given.url ?? (yield* (yield* TempPostgres).createDatabase);
+    const gitRoot =
+      given.gitRoot ??
+      (yield* Effect.acquireRelease(
+        Effect.sync(() => NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "hq-git-"))),
+        (root) => Effect.sync(() => NodeFS.rmSync(root, { recursive: true, force: true })),
+      ));
+    const fake = world(yield* Clock.currentTimeMillis, anchored, given.orgId ?? "ORG");
     const options = {
       databaseUrl: Redacted.make(url),
+      gitRoot,
       migrations: treeMigrations(),
       hqProjectId: HQ,
       credential: Option.some(Redacted.make("hq")),
@@ -240,10 +250,10 @@ export const startCore = (
           send: (message: unknown) => Effect.sync(() => ws.send(encodeJson(message))),
         };
       });
-    return { call, fake, url, stop, socket };
+    return { call, fake, url, gitRoot, origin: `http://${base}`, stop, socket };
   });
 
-type Call = Effect.Success<ReturnType<typeof startCore>>["call"];
+export type Call = Effect.Success<ReturnType<typeof startCore>>["call"];
 
 export const untilHealth = (call: Call, state: string) =>
   call("GET", "/health").pipe(

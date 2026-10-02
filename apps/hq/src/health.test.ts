@@ -4,6 +4,7 @@ import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Redacted from "effect/Redacted";
+import * as Stream from "effect/Stream";
 import * as HttpRouter from "effect/unstable/http/HttpRouter";
 import * as HttpServerRequest from "effect/unstable/http/HttpServerRequest";
 import * as HttpServerResponse from "effect/unstable/http/HttpServerResponse";
@@ -30,6 +31,7 @@ const getHealth = (
         Layer.mergeAll(
           Layer.succeed(Leader, {
             status: Effect.succeed(status),
+            changes: Stream.make(status),
             write: () => Effect.die("no writes"),
             release: Effect.void,
           }),

@@ -19,11 +19,17 @@
  *   `GET /api/mate/self`, the same → the Mate's state (`@t3tools/shared/mateLink` `MateState`).
  * - `POST /api/mates/:projectId/standup`, `POST /api/mates/:projectId/closed-off` → the Mate's state:
  *   its birth, recorded by the client that set it up (the caller asks for the stand-up).
+ * - A Mate's changes (`changes.ts`, the wire in `@t3tools/shared/hqChanges`): `POST /api/mate/repos`
+ *   `{ name }` → the repository; `POST /api/mate/changes` `{ repo, title }` → `{ change, created }`;
+ *   and git itself at `/git/<appId>/<repo>.git`, Basic auth with the user `mate` and the Mate's
+ *   credential (`gitHost.ts`).
  *
  * Every call but the doors carries `Authorization: Bearer <session>`, of a session issued for this
  * HQ's org. Only the leading HQ answers: a standby or an HQ that is not the official one answers
- * `503 not_active`. A refusal answers one code, and for the structure a reason code beside it
- * (`zeropsPermissions.ts`'s or the structure's own) — the words for a person are the client's; a
+ * `503 not_active` with `Retry-After`, as does a Zerops that cannot be read (`zerops_unavailable`) —
+ * a deploy runs two Cores side by side for a while, and zcp tries again. A refusal answers one
+ * code, and for the structure and a Mate's changes a reason code beside it (`zeropsPermissions.ts`'s
+ * or their own) — the words for a person are the client's; a
  * refusal at the person's door says nothing of which rule the token broke. Bodies are bounded (8 KiB at the doors, 64 KiB elsewhere: `413 too_large`), and each door
  * is limited per client address (`rateLimit.ts`: `429 too_many_requests`).
  *
@@ -41,7 +47,11 @@ import * as HttpRouter from "effect/unstable/http/HttpRouter";
 import * as HttpServerRequest from "effect/unstable/http/HttpServerRequest";
 import * as HttpServerResponse from "effect/unstable/http/HttpServerResponse";
 
+import { EnsureRepoRequest, OpenChangeRequest } from "@t3tools/shared/hqChanges";
+
+import { ChangeRefused, Changes } from "./changes.ts";
 import { Door } from "./door.ts";
+import { GitHost } from "./gitHost.ts";
 import { type LinkOptions, serveMateLink } from "./link.ts";
 import { Leader, NotLeader } from "./leader.ts";
 import { MateCredentials, MateRefused } from "./mateCredentials.ts";
@@ -109,9 +119,27 @@ const MATE_STATUS = {
   not_a_mate: 403,
 } as const;
 
+const CHANGE_STATUS = {
+  forbidden: 403,
+  project_not_found: 404,
+  repo_not_found: 404,
+  change_not_found: 404,
+  attachment_not_found: 404,
+  conflict: 409,
+  invalid: 400,
+} as const;
+
 const json = (body: unknown, status: number) => HttpServerResponse.jsonUnsafe(body, { status });
 
+/** How long a caller waits before it tries a Core that cannot serve now again, in seconds. */
+const RETRY_AFTER = "5";
+
+/** Try again: this Core does not lead now, or Zerops did not answer. */
+const unavailable = (code: string) =>
+  HttpServerResponse.jsonUnsafe({ code }, { status: 503, headers: { "retry-after": RETRY_AFTER } });
+
 const isStructureRefused = Schema.is(StructureRefused);
+const isChangeRefused = Schema.is(ChangeRefused);
 const isMateRefused = Schema.is(MateRefused);
 
 /**
@@ -139,6 +167,11 @@ const failure = (error: {
       json({ code: error.code, reason: error.reason }, STRUCTURE_STATUS[error.code]),
     );
   }
+  if (isChangeRefused(error)) {
+    return Effect.succeed(
+      json({ code: error.code, reason: error.reason }, CHANGE_STATUS[error.code]),
+    );
+  }
   if (isMateRefused(error)) {
     return Effect.as(
       Effect.logInfo("mate refused", error),
@@ -156,12 +189,12 @@ const failure = (error: {
     case "MateCredentialRequired":
       return Effect.succeed(json({ code: "mate_credential_required" }, 401));
     case "NotLeader":
-      return Effect.succeed(json({ code: "not_active" }, 503));
+      return Effect.succeed(unavailable("not_active"));
     case "ZeropsUnavailable":
     case "ZeropsRefused":
       return Effect.as(
         Effect.logWarning("zerops read failed", error),
-        json({ code: "zerops_unavailable" }, 503),
+        unavailable("zerops_unavailable"),
       );
     case "TooLarge":
       return Effect.succeed(json({ code: "too_large" }, 413));
@@ -227,6 +260,35 @@ const mate = Effect.flatMap(HttpServerRequest.HttpServerRequest, (request) =>
   mateHolding(/^Mate (\S+)$/u.exec(request.headers["authorization"] ?? "")?.[1]),
 );
 
+/** The credential git presents for the user `mate`: `Authorization: Basic base64(mate:<credential>)`. */
+const gitCredential = (authorization: string | undefined) => {
+  const encoded = /^Basic ([A-Za-z0-9+/=]+)$/u.exec(authorization ?? "")?.[1];
+  const decoded = encoded === undefined ? "" : Buffer.from(encoded, "base64").toString("utf8");
+  return decoded.startsWith("mate:") ? decoded.slice("mate:".length) : undefined;
+};
+
+/**
+ * git at `/git/<appId>/<repo>.git` for a Mate, decided here before the git layer sees the request:
+ * its credential (a `401` asks git for it), `can`'s `open_change` over the org read now, which
+ * gives the application the layer serves it.
+ */
+const serveGit = Effect.gen(function* () {
+  const request = yield* HttpServerRequest.HttpServerRequest;
+  const presented = gitCredential(request.headers["authorization"]);
+  const holder =
+    presented === undefined ? Option.none() : yield* (yield* MateCredentials).whoami(presented);
+  if (Option.isNone(holder)) {
+    return HttpServerResponse.text("Authentication required\n", {
+      status: 401,
+      headers: { "www-authenticate": 'Basic realm="HQ"' },
+    });
+  }
+  const { projectId } = holder.value;
+  const appId = yield* (yield* Changes).mateApp(projectId, "open_change");
+  yield* (yield* GitHost).serve({ kind: "mate", mateId: projectId, appId }, request);
+  return HttpServerResponse.empty();
+});
+
 const routes = (options: StreamOptions & { readonly link?: LinkOptions }) =>
   Layer.mergeAll(
     HttpRouter.add(
@@ -264,6 +326,29 @@ const routes = (options: StreamOptions & { readonly link?: LinkOptions }) =>
           yield* knock("mate");
           const { projectId, nonce } = yield* jsonBody(CredentialBody, DOOR_BODY_LIMIT);
           return json(yield* (yield* MateCredentials).issue(projectId, nonce), 200);
+        }),
+      ),
+    ),
+    HttpRouter.add("*", "/git/*", handle(serveGit)),
+    HttpRouter.add(
+      "POST",
+      "/api/mate/repos",
+      handle(
+        Effect.gen(function* () {
+          const { projectId } = yield* mate;
+          const { name } = yield* jsonBody(EnsureRepoRequest, BODY_LIMIT);
+          return json(yield* (yield* Changes).ensureRepo(projectId, name), 200);
+        }),
+      ),
+    ),
+    HttpRouter.add(
+      "POST",
+      "/api/mate/changes",
+      handle(
+        Effect.gen(function* () {
+          const { projectId } = yield* mate;
+          const { repo, title } = yield* jsonBody(OpenChangeRequest, BODY_LIMIT);
+          return json(yield* (yield* Changes).openChange(projectId, repo, title), 200);
         }),
       ),
     ),
