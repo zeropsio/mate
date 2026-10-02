@@ -116,7 +116,10 @@ const readers: Record<
   (rig: Pick<Rig, "share" | "fetch">, signal: AbortSignal) => Promise<unknown>
 > = {
   probe: ({ share, fetch }, signal) =>
-    readZeropsContainer(ORIGIN, { descriptor: share.read, fetch }, signal, { fresh: false }),
+    readZeropsContainer(ORIGIN, { descriptor: share.read, fetch }, signal, {
+      fresh: false,
+      initAt: false,
+    }),
   driver: ({ share }, signal) => share.descriptor(BASE, signal),
   door: ({ share }, signal) => share.descriptor(BASE, signal),
 };

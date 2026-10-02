@@ -313,42 +313,49 @@ describe("probe store: which probes may take a reading another reader just made"
     readonly cadence: ProbeCadence;
     readonly ask: (store: ReturnType<typeof makeProbeStore>) => void;
     readonly fresh: boolean;
+    /** Whether `/healthz` is read beside the descriptor, for its `initAt`. */
+    readonly initAt: boolean;
   }> = [
     {
       name: "a read asked of a container read on demand",
       cadence: { kind: "on-demand" },
       ask: (store) => store.request("a", { fresh: false }),
       fresh: false,
+      initAt: false,
     },
     {
       name: "a read asked fresh",
       cadence: { kind: "on-demand" },
       ask: (store) => store.request("a", { fresh: true }),
       fresh: true,
+      initAt: false,
     },
     {
       name: "a read a caller waits on, started after it asked",
       cadence: { kind: "on-demand" },
       ask: (store) => void store.next("a"),
       fresh: true,
+      initAt: true,
     },
     {
       name: "a poll of a container coming up",
       cadence: poll(false),
       ask: () => undefined,
       fresh: true,
+      initAt: true,
     },
     {
       name: "an overdue poll",
       cadence: poll(true),
       ask: () => undefined,
       fresh: true,
+      initAt: true,
     },
   ];
 
   it.each(rows.map((row) => [row.name, row] as const))("%s", async (_name, row) => {
     const clock = manualClock();
-    const asks: Array<{ readonly fresh: boolean }> = [];
+    const asks: Array<{ readonly fresh: boolean; readonly initAt: boolean }> = [];
     const store = makeProbeStore({
       clock,
       probe: (_origin, _signal, ask) => {
@@ -359,7 +366,7 @@ describe("probe store: which probes may take a reading another reader just made"
     store.setCadences(new Map([["a", row.cadence]]));
     row.ask(store);
     await clock.advance(0);
-    expect(asks).toEqual([{ fresh: row.fresh }]);
+    expect(asks).toEqual([{ fresh: row.fresh, initAt: row.initAt }]);
     store.dispose();
   });
 });

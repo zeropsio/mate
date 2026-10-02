@@ -73,6 +73,14 @@ export interface ProbeAsk {
 }
 
 /**
+ * What one probe reads: `fresh` as asked, and `initAt` — `/healthz` beside the descriptor — for a
+ * container coming up or a caller waiting on a probe started now, whose restart is judged by it.
+ */
+export interface ProbeRead extends ProbeAsk {
+  readonly initAt: boolean;
+}
+
+/**
  * What one probe read, and when the read it rests on was sent: a descriptor another reader read a
  * moment ago (`descriptorShare.ts`) is as old as that read, never as new as the probe.
  */
@@ -84,7 +92,7 @@ export interface ProbeAnswer {
 export interface ProbeStorePorts {
   readonly clock: Pick<ExchangeClock, "now" | "setTimer">;
   /** Reads the origin's container (`readZeropsContainer`); rejects when the signal aborts it. */
-  readonly probe: (origin: string, signal: AbortSignal, ask: ProbeAsk) => Promise<ProbeAnswer>;
+  readonly probe: (origin: string, signal: AbortSignal, ask: ProbeRead) => Promise<ProbeAnswer>;
 }
 
 export interface ProbeStore {
@@ -209,9 +217,8 @@ export function makeProbeStore(ports: ProbeStorePorts): ProbeStore {
     const controller = new AbortController();
     const sentAt = clock.now();
     const overdue = overdueOnly(entry);
-    const ask: ProbeAsk = {
-      fresh: entry.requestedFresh || polls(entry.cadence) || entry.waiting.length > 0,
-    };
+    const initAt = polls(entry.cadence) || entry.waiting.length > 0;
+    const ask: ProbeRead = { fresh: initAt || entry.requestedFresh, initAt };
     entry.inFlight = { controller, overdue };
     entry.requested = false;
     entry.requestedFresh = false;
