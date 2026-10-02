@@ -20,6 +20,7 @@ import {
   directoryStore,
   retained,
   roomFor,
+  setsIn,
 } from "./backup.ts";
 import { restoreSet } from "./restore.ts";
 
@@ -112,6 +113,23 @@ describe("the sets kept", () => {
       assert.deepStrictEqual([...retained(ids, NOW)].sort(), kept);
     });
   }
+});
+
+describe("the sets of a store", () => {
+  it("are its objects by set, sorted, whole where the manifest is", () => {
+    assert.deepStrictEqual(
+      setsIn([
+        { key: "sets/2/db.dump", size: 5 },
+        { key: "sets/1/db.dump", size: 10 },
+        { key: "sets/1/git/a/r.bundle", size: 3 },
+        { key: "sets/1/manifest.json", size: 2 },
+      ]),
+      [
+        { id: "1", bytes: 15, whole: true },
+        { id: "2", bytes: 5, whole: false },
+      ],
+    );
+  });
 });
 
 describe("the room a set makes in its store", () => {

@@ -388,6 +388,26 @@ export interface StoredSet {
   readonly whole: boolean;
 }
 
+/** A store's objects by the set they belong to (`sets/<id>/…`). */
+const bySet = (objects: ReadonlyArray<StoredObject>) => {
+  const found = new Map<string, Array<StoredObject>>();
+  for (const object of objects) {
+    const id = object.key.split("/")[1] ?? "";
+    found.set(id, [...(found.get(id) ?? []), object]);
+  }
+  return found;
+};
+
+/** A store's sets, oldest first: each with its bytes, whole when its manifest is there. */
+export const setsIn = (objects: ReadonlyArray<StoredObject>): ReadonlyArray<StoredSet> =>
+  [...bySet(objects)]
+    .map(([id, files]) => ({
+      id,
+      bytes: files.reduce((sum, file) => sum + file.size, 0),
+      whole: files.some((file) => file.key === setKey(id, "manifest.json")),
+    }))
+    .sort((a, b) => (a.id < b.id ? -1 : 1));
+
 /** What a new set's room costs: the sets to remove, and the bytes the store holds after. */
 export interface Room {
   readonly remove: ReadonlyArray<string>;
@@ -574,16 +594,9 @@ export const backupLayer = (
        */
       const makeRoom = (store: BackupStore, manifest: Manifest, dir: string, now: DateTime.Utc) =>
         Effect.gen(function* () {
-          const objects = new Map<string, Array<StoredObject>>();
-          for (const object of yield* store.list("sets/")) {
-            const id = object.key.split("/")[1] ?? "";
-            objects.set(id, [...(objects.get(id) ?? []), object]);
-          }
-          const stored = [...objects].map(([id, files]) => ({
-            id,
-            bytes: files.reduce((sum, file) => sum + file.size, 0),
-            whole: files.some((file) => file.key === setKey(id, "manifest.json")),
-          }));
+          const listed = yield* store.list("sets/");
+          const objects = bySet(listed);
+          const stored = setsIn(listed);
           const needed =
             manifest.database.size +
             manifest.repos.reduce((sum, repo) => sum + repo.size, 0) +

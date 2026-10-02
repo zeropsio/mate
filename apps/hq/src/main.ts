@@ -9,10 +9,11 @@
  * server answers from the first moment; the official check and the leader work behind it. The
  * leading Core takes a backup set every hour (`backup.ts`).
  *
- * `restore <set> [--from-volume]` makes HQ again from set `<set>` (`restore.ts`), from the bucket, or
- * from the sets staged on the volume (with no bucket, or `--from-volume`), and ends. It writes only
- * into an empty database no Core holds and an empty `/mnt/vol/git`: with `hq` started as
- * `zsc noop`, the database emptied and the git root cleared; then `hq` deploys as it was.
+ * `sets` lists the backup sets staged on the volume and kept in the bucket, each whole or not, with
+ * its bytes. `restore <set> [--from-volume]` makes HQ again from set `<set>` (`restore.ts`), from
+ * the bucket, or from the sets staged on the volume (with no bucket, or `--from-volume`), and ends.
+ * It writes only into an empty database no Core holds and an empty `/mnt/vol/git`: with `hq` started
+ * as `zsc noop`, the database emptied and the git root cleared; then `hq` deploys as it was.
  *
  * `main.mjs import …` is no server but the migration's command (`importCli.ts`): its lines on the
  * standard output, its outcome the exit code.
@@ -32,7 +33,7 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 
-import { directoryStore } from "./backup.ts";
+import { directoryStore, setsIn } from "./backup.ts";
 import { BUCKET_ENV, bucketFromEnv, bucketStore } from "./bucketStore.ts";
 import { type CoreOptions, coreApp } from "./core.ts";
 import { USAGE, checkCommand, importArgs, queueCommand } from "./importCli.ts";
@@ -146,6 +147,21 @@ if (command === "import") {
           : USAGE;
     for (const line of result.lines) yield* Console.log(line);
     process.exitCode = result.code;
+  }).pipe(NodeRuntime.runMain);
+} else if (command === "sets") {
+  Effect.gen(function* () {
+    const bucket = yield* bucketOfEnv;
+    const stores = [
+      ["volume", directoryStore(STAGING_DIR)] as const,
+      ...(bucket === null ? [] : [["bucket", bucketStore(bucket.access)] as const]),
+    ];
+    for (const [where, store] of stores) {
+      for (const set of setsIn(yield* store.list("sets/"))) {
+        yield* Console.log(
+          `${where} ${set.id} ${set.whole ? "whole" : "incomplete"} ${String(set.bytes)}`,
+        );
+      }
+    }
   }).pipe(NodeRuntime.runMain);
 } else if (command === "restore") {
   const [set, flag] = args;
