@@ -638,6 +638,7 @@ const stageRow: EnvironmentRow = {
   line: "main · 3f9c1b2",
   tone: "good",
   deploys: [],
+  keyGap: false,
 };
 const productionRow: EnvironmentRow = {
   ...stageRow,

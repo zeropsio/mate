@@ -617,14 +617,17 @@ function useStageFirstDeploys(groupId: string): (projectId: string) => FirstDepl
   const flowValue = useZeropsProjectFlowOptional();
   const flow = flowValue?.flows.get(groupId);
   const nowMs = useNowMs();
-  return (projectId) =>
-    stageFirstDeploy({
+  return (projectId) => {
+    const row = flow?.environments.find(
+      (entry) => entry.projectId === projectId && entry.tier === "stage",
+    );
+    return stageFirstDeploy({
       deployment: flowValue?.deployments.get(projectId),
-      deploys: flow?.environments.find(
-        (entry) => entry.projectId === projectId && entry.tier === "stage",
-      )?.deploys,
+      deploys: row?.deploys,
+      keyGap: row?.keyGap ?? false,
       nowMs,
     });
+  };
 }
 
 export function ZeropsGroupDetailPage({ groupId }: { readonly groupId: string }) {

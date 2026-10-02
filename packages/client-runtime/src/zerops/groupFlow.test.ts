@@ -935,6 +935,23 @@ describe("groupFlow — a stage's first deploy, while it runs nothing (run 4)", 
       }),
     });
   it.each([
+    { keyHeld: false, keyInvalid: false, keyGap: true },
+    { keyHeld: true, keyInvalid: true, keyGap: true },
+    { keyHeld: true, keyInvalid: false, keyGap: false },
+  ])("reads HQ's key, held $keyHeld and invalid $keyInvalid, as a gap: $keyGap", (key) => {
+    const row = environmentRow({
+      projectId: "p-pantry-stage",
+      name: "Pantry - stage",
+      tier: "stage",
+      sources: ["main"],
+      services: [],
+      keyHeld: key.keyHeld,
+      keyInvalid: key.keyInvalid,
+    });
+    expect(row.keyGap).toBe(key.keyGap);
+  });
+
+  it.each([
     {
       case: "HQ queued its first deploy: on its way",
       row: withDeploys({ state: "pending", msAgo: MINUTE }),
@@ -951,9 +968,14 @@ describe("groupFlow — a stage's first deploy, while it runs nothing (run 4)", 
       first: { kind: "failed" },
     },
     {
-      case: "HQ refused it (no key, Zerops not answering) and asks again: nothing promised",
+      case: "HQ refused it for a reason it does not say, and asks again: nothing promised",
       row: withDeploys({ state: "failed", failure: "refused", msAgo: MINUTE }),
       first: undefined,
+    },
+    {
+      case: "HQ holds no deploy key for it: held for the key",
+      row: { ...withDeploys({ state: "pending", msAgo: MINUTE }), keyGap: true },
+      first: { kind: "held", why: "key" },
     },
     {
       case: "HQ's queued record unchanged for a window: never on its way for ever",

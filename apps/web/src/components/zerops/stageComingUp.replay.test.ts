@@ -19,6 +19,7 @@ import {
 } from "@t3tools/client-runtime/zerops";
 import type { Deployment } from "@t3tools/client-runtime/zerops/flow";
 import type { HqDeploy } from "@t3tools/client-runtime/zerops/hq";
+import { zeropsDidNotAnswer } from "@t3tools/shared/hqDeploys";
 import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
 import { deployedVersion } from "@t3tools/client-runtime/zerops";
 import { describe, expect, it } from "vite-plus/test";
@@ -78,11 +79,17 @@ const db = (status: string) => ({ hostname: "db", status, runtime: false });
 interface HqRecord {
   readonly state: HqDeploy["state"];
   readonly failure?: HqDeploy["failure"];
+  readonly message?: string;
   readonly t: number;
 }
 
 const QUEUED: HqRecord = { state: "pending", t: 1092 };
-const REFUSED: HqRecord = { state: "failed", failure: "refused", t: 1268 };
+const REFUSED: HqRecord = {
+  state: "failed",
+  failure: "refused",
+  message: "Brine - stage has no deploy token yet",
+  t: 1268,
+};
 const QUEUED_AGAIN: HqRecord = { state: "pending", t: 1389 };
 const HQ_DEPLOYING: HqRecord = { state: "deploying", t: 1400 };
 const LIVE: HqRecord = { state: "live", t: 1481 };
@@ -96,14 +103,16 @@ interface Moment {
   /** HQ's record of its deploy; `undefined` for none. */
   readonly hq: HqRecord | undefined;
   readonly declared: boolean;
+  /** HQ holds no deploy key that works for the stage. */
+  readonly keyless?: boolean;
 }
 
-function record({ state, failure, t }: HqRecord): HqDeploy {
+function record({ state, failure, message, t }: HqRecord): HqDeploy {
   return {
     sha: SHA,
     state,
     failure: failure ?? null,
-    message: null,
+    message: message ?? null,
     appVersionId: null,
     processId: null,
     requestedBy: null,
@@ -136,6 +145,7 @@ function said(moment: Moment) {
                   ? { hostname: "app" }
                   : { hostname: "app", deploy: { latest, live: null } },
               ],
+              keyHeld: moment.keyless !== true,
             })
           : undefined,
         deployment: moment.deployment,
@@ -233,8 +243,9 @@ describe("a stage coming up, replayed on run 4's clock with HQ deploying it", ()
       deployment: NONE,
       hq: REFUSED,
       declared: true,
-      line: "Stage coming up · awaiting a first deploy",
-      cell: "Nothing deployed yet",
+      keyless: true,
+      line: "Stage coming up · awaits a deploy key",
+      cell: "Awaiting a deploy key",
     },
     {
       t: 1389,
@@ -329,6 +340,26 @@ describe("a stage whose first build failed", () => {
     });
     expect(said({ t: 86_400, deployment: NONE, hq: failed, declared: true }).cell).toBe(
       "First deploy failed",
+    );
+  });
+});
+
+describe("a stage whose first deploy waits on Zerops", () => {
+  // HQ refused it because Zerops did not answer, and asks again on its next pass.
+  const silent: HqRecord = {
+    state: "failed",
+    failure: "refused",
+    message: zeropsDidNotAnswer("connect ETIMEDOUT"),
+    t: 1290,
+  };
+
+  it("says HQ is retrying, for a window after its record last changed", () => {
+    expect(said({ t: 1300, deployment: NONE, hq: silent, declared: true })).toMatchObject({
+      line: "Stage coming up · Zerops not answering, retrying",
+      cell: "Zerops not answering, retrying",
+    });
+    expect(said({ t: 1290 + 15 * 60, deployment: NONE, hq: silent, declared: true })).toMatchObject(
+      { line: null, cell: "Nothing deployed yet" },
     );
   });
 });

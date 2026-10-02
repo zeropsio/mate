@@ -43,6 +43,7 @@ import * as NodeCrypto from "node:crypto";
 import type * as NodeStream from "node:stream";
 
 import type { HqGit } from "@t3tools/hq-git";
+import { zeropsDidNotAnswer } from "@t3tools/shared/hqDeploys";
 import { REASONS, can } from "@t3tools/shared/zeropsPermissions";
 import * as Context from "effect/Context";
 import * as Duration from "effect/Duration";
@@ -196,7 +197,7 @@ const runningOf = (service: ZeropsService | undefined) => {
 
 /** What a Zerops failure means for a deploy: a verdict on the commit, or HQ's own refusal. */
 const zeropsEnded = (target: Target, error: ZeropsError): Ended => {
-  if (error._tag === "ZeropsUnavailable") return refused(`Zerops did not answer: ${error.message}`);
+  if (error._tag === "ZeropsUnavailable") return refused(zeropsDidNotAnswer(error.message));
   switch (error.reason) {
     case "invalid":
       return job(`Zerops refused the deploy: ${error.code}`);
@@ -567,7 +568,7 @@ export const deploysLayer = (
               Effect.succeed(
                 refused(
                   error._tag === "ZeropsUnavailable"
-                    ? `Zerops did not answer: ${error.message}`
+                    ? zeropsDidNotAnswer(error.message)
                     : `HQ could not read its org: ${error.code}`,
                 ),
               ),

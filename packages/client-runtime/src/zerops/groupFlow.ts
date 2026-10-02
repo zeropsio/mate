@@ -346,6 +346,7 @@ function withFirstDeploy(
   const first = stageFirstDeploy({
     deployment: input.deployment,
     deploys: input.row?.deploys,
+    keyGap: input.row?.keyGap ?? false,
     nowMs: flow.nowMs,
   });
   return first === undefined ? stop : { ...stop, firstDeploy: first };
@@ -362,6 +363,8 @@ export function stageFirstDeploy(input: {
   readonly deployment: Shown<Deployment> | undefined;
   /** HQ's newest deploy of each of its services (`EnvironmentRow.deploys`); `undefined` undeclared. */
   readonly deploys: ReadonlyArray<HqDeploy> | undefined;
+  /** HQ holds no deploy key that works for it (`EnvironmentRow.keyGap`). */
+  readonly keyGap: boolean;
   /** Without a clock, nothing is promised. */
   readonly nowMs: number | undefined;
 }): Exclude<FirstDeploy, { readonly kind: "awaited" }> | undefined {
@@ -370,7 +373,7 @@ export function stageFirstDeploy(input: {
   // A build of it was seen to end with nothing running: a fact, however long ago it was asked.
   if (deployment.value.afterBuild === true) return { kind: "failed" };
   if (input.nowMs === undefined || input.deploys === undefined) return undefined;
-  const first = firstDeploy({ deploys: input.deploys, nowMs: input.nowMs });
+  const first = firstDeploy({ deploys: input.deploys, keyGap: input.keyGap, nowMs: input.nowMs });
   return first.kind === "awaited" ? undefined : first;
 }
 

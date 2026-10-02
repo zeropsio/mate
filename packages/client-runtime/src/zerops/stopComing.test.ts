@@ -1,3 +1,4 @@
+import { zeropsDidNotAnswer } from "@t3tools/shared/hqDeploys";
 import * as DateTime from "effect/DateTime";
 import { describe, expect, it } from "vite-plus/test";
 
@@ -123,6 +124,24 @@ describe("stopComing — where a stage or a production coming up has got", () =>
       coming: { kind: "coming", step: "deploy-on-its-way" },
     },
     {
+      case: "a first deploy known not to have run, held for a deploy key",
+      over: {
+        deployed: false,
+        routes: 0,
+        firstDeploy: { kind: "held", why: "key" } as FirstDeploy,
+      },
+      coming: { kind: "coming", step: "awaiting-key" },
+    },
+    {
+      case: "a first deploy known not to have run, HQ retrying while Zerops is silent",
+      over: {
+        deployed: false,
+        routes: 0,
+        firstDeploy: { kind: "held", why: "zerops" } as FirstDeploy,
+      },
+      coming: { kind: "coming", step: "zerops-retrying" },
+    },
+    {
       case: "its first build failed",
       over: { services: [db("ACTIVE"), app("ACTION_FAILED")], deployed: false },
       coming: { kind: "failed", reason: "the app’s build failed" },
@@ -232,8 +251,27 @@ describe("firstDeploy — where a stage's first deploy stands by HQ's records of
       first: { kind: "failed" },
     },
     {
-      case: "HQ refused it and asks again: nothing promised",
-      deploys: [record({ state: "failed", failure: "refused" })],
+      case: "HQ refused it for a reason the client does not say: nothing promised",
+      deploys: [record({ state: "failed", failure: "refused", message: "git: object not found" })],
+      first: { kind: "awaited" },
+    },
+    {
+      case: "HQ refused it, Zerops not answering, and asks again: held, retrying",
+      deploys: [
+        record({ state: "failed", failure: "refused", message: zeropsDidNotAnswer("timeout") }),
+      ],
+      first: { kind: "held", why: "zerops" },
+    },
+    {
+      case: "refused for Zerops a window ago and never asked again: nothing promised",
+      deploys: [
+        record({
+          state: "failed",
+          failure: "refused",
+          message: zeropsDidNotAnswer("timeout"),
+          at: ago(COMING_UP_WINDOW_MS),
+        }),
+      ],
       first: { kind: "awaited" },
     },
     {
@@ -247,7 +285,27 @@ describe("firstDeploy — where a stage's first deploy stands by HQ's records of
       first: { kind: "awaited" },
     },
   ])("$case", ({ deploys, first }) => {
-    expect(firstDeploy({ deploys, nowMs: NOW })).toEqual(first);
+    expect(firstDeploy({ deploys, keyGap: false, nowMs: NOW })).toEqual(first);
+  });
+
+  // HQ deploys nothing without a key that works: whatever it has queued waits for one.
+  it.each([
+    { case: "nothing recorded", deploys: [], first: { kind: "held", why: "key" } },
+    { case: "a deploy queued", deploys: [record({})], first: { kind: "held", why: "key" } },
+    {
+      case: "refused for the key",
+      deploys: [
+        record({ state: "failed", failure: "refused", message: "stage has no deploy token yet" }),
+      ],
+      first: { kind: "held", why: "key" },
+    },
+    {
+      case: "its build failed before: still failed",
+      deploys: [record({ state: "failed", failure: "job" })],
+      first: { kind: "failed" },
+    },
+  ])("no deploy key that works, $case", ({ deploys, first }) => {
+    expect(firstDeploy({ deploys, keyGap: true, nowMs: NOW })).toEqual(first);
   });
 });
 
@@ -374,6 +432,16 @@ describe("comingLine — the line an environment coming up says", () => {
       "Production",
       { kind: "coming", step: "app" },
       { fact: "Production coming up", rest: "adding the app" },
+    ],
+    [
+      "Stage",
+      { kind: "coming", step: "awaiting-key" },
+      { fact: "Stage coming up", rest: "awaits a deploy key" },
+    ],
+    [
+      "Stage",
+      { kind: "coming", step: "zerops-retrying" },
+      { fact: "Stage coming up", rest: "Zerops not answering, retrying" },
     ],
   ])("%s %j", (subject, coming, line) => {
     expect(comingLine(subject, coming)).toEqual(line);

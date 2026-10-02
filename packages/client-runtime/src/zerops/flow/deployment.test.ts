@@ -125,6 +125,7 @@ const row = (version: EnvironmentRow["version"], tone: EnvironmentRow["tone"]): 
   line: "main",
   tone,
   deploys: [],
+  keyGap: false,
 });
 
 const NO_VERSION: EnvironmentRow["version"] = {
