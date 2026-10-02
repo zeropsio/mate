@@ -105,7 +105,8 @@ const services = (options: CoreOptions) => {
     streamTicketsLayer,
     mateLinkTicketsLayer,
     liveSocketsLayer,
-    Layer.mergeAll(deploysLayer(), releasesLayer).pipe(
+    deploysLayer().pipe(
+      Layer.provideMerge(releasesLayer),
       Layer.provide(recipeTiersLayer),
       Layer.provideMerge(changesLayer),
       Layer.provideMerge(gitHostLayer({ rootDir: options.gitRoot })),

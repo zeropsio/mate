@@ -37,6 +37,8 @@ import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
+import * as Stream from "effect/Stream";
+import * as SubscriptionRef from "effect/SubscriptionRef";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
 import type { SqlError } from "effect/unstable/sql/SqlError";
 
@@ -76,6 +78,10 @@ export class Releases extends Context.Service<
       tag: string,
       request: RollbackRequest,
     ) => Made;
+    /** The application's newest approved release by version: what its production runs. */
+    readonly newest: (appId: string) => Effect.Effect<Release | undefined, SqlError>;
+    /** Ticks after every release made, starting with the current tick. */
+    readonly changes: Stream.Stream<number>;
   }
 >()("@t3tools/hq/releases") {}
 
@@ -124,6 +130,7 @@ export const releasesLayer: Layer.Layer<
     const gitHost = yield* GitHost;
     const roles = yield* Roles;
     const recipes = yield* RecipeTiers;
+    const ticks = yield* SubscriptionRef.make(0);
 
     /** The person's ask, allowed by `decision`, or refused with its reason. */
     const allowed = (userId: string, appId: string, decision: Decision) =>
@@ -188,7 +195,7 @@ export const releasesLayer: Layer.Layer<
       Effect.gen(function* () {
         const git = yield* gitHost.git;
         const group = { appId, id: RECIPE_REPO };
-        return yield* leader.write(
+        const made = yield* leader.write(
           Effect.gen(function* () {
             // The recipe repository's row, locked: its releases, and its merges, one at a time.
             const repos = yield* sql`
@@ -247,9 +254,14 @@ export const releasesLayer: Layer.Layer<
             return releaseOf(row!);
           }),
         );
+        yield* SubscriptionRef.update(ticks, (n) => n + 1);
+        return made;
       });
 
     return Releases.of({
+      newest: (appId) =>
+        Effect.map(releasesOf(appId), (all) => all.find((release) => release.state === "approved")),
+      changes: SubscriptionRef.changes(ticks),
       list: (userId, appId) =>
         Effect.gen(function* () {
           const facts = yield* roles.view;

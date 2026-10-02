@@ -27,6 +27,7 @@ import {
 import { Deploys, type DeploysOptions, deploysLayer } from "./deploys.ts";
 import { GitHost, gitHostLayer } from "./gitHost.ts";
 import { RecipeTiers } from "./recipeTiers.ts";
+import { Releases, releasesLayer } from "./releases.ts";
 import { Roles } from "./roles.ts";
 import { ZeropsApi, ZeropsDeploy, type ZeropsMember } from "./zerops/api.ts";
 
@@ -50,8 +51,9 @@ const member = (userId: string, roleCode: string): ZeropsMember => ({
 });
 
 /**
- * The org as HQ reads it: its owner; dev, who develops Shop (Basic user on its stage's project);
- * viewer, who sees it through a Read only grant; stranger, who has nothing there.
+ * The org as HQ reads it: its owner; dev, who develops Shop (Basic user on its stage's project)
+ * and may release it (Basic user on its production's); viewer, who sees it through a Read only
+ * grant; stranger, who has nothing there.
  */
 const ORG_VIEW = {
   orgId: "ORG",
@@ -73,6 +75,15 @@ const ORG_VIEW = {
         { clientUserId: "C-viewer", roleCode: "READ_ONLY" },
       ],
       publicZone: "pstage.prg1-zerops.zone",
+    },
+    {
+      id: "P_PROD",
+      orgId: "ORG",
+      name: "Shop - production",
+      status: "ACTIVE",
+      tags: [],
+      userRoles: [{ clientUserId: "C-dev", roleCode: "BASIC_USER" }],
+      publicZone: "pprod.prg1-zerops.zone",
     },
   ],
 };
@@ -139,6 +150,7 @@ interface Rig {
   /** The deploys HQ records, oldest first. */
   readonly deploys: Effect.Effect<
     ReadonlyArray<{
+      readonly project: string;
       readonly service: string;
       readonly sha: string;
       readonly state: string;
@@ -158,7 +170,7 @@ interface Rig {
  * has the service `web`, and Shop's stage tier as `tiers` holds it.
  */
 const withDeploys = <A, E>(
-  use: (rig: Rig) => Effect.Effect<A, E, Deploys | SqlClient.SqlClient>,
+  use: (rig: Rig) => Effect.Effect<A, E, Deploys | Releases | SqlClient.SqlClient>,
   options: DeploysOptions = FAST,
 ) =>
   Effect.gen(function* () {
@@ -171,6 +183,7 @@ const withDeploys = <A, E>(
     const tiers = new Map<string, RecipeTierResponse>();
     const context = yield* Layer.build(
       deploysLayer(options).pipe(
+        Layer.provideMerge(releasesLayer),
         Layer.provideMerge(gitHostLayer({ rootDir: root })),
         Layer.provideMerge(activeCoreLayer(url)),
         Layer.provide(Layer.succeed(ZeropsApi, fakeZeropsApi(world))),
@@ -260,15 +273,15 @@ const withDeploys = <A, E>(
         return sha;
       }).pipe(Effect.orDie);
     const deploys = sql<{
+      readonly project: string;
       readonly service: string;
       readonly sha: string;
       readonly state: string;
       readonly failure: string | null;
       readonly message: string | null;
     }>`
-      SELECT service, sha, state, failure, message FROM hq_deploy ORDER BY created_at, service`.pipe(
-      Effect.orDie,
-    );
+      SELECT project_id AS project, service, sha, state, failure, message FROM hq_deploy
+      ORDER BY created_at, service`.pipe(Effect.orDie);
     const until = (found: (rows: Effect.Success<typeof deploys>) => boolean) =>
       deploys.pipe(
         Effect.filterOrFail(found, () => "not yet"),
@@ -288,6 +301,49 @@ const settled = (state: string) => (rows: ReadonlyArray<{ readonly state: string
 /** The names of every version Zerops was asked to make, in order. */
 const versions = (world: FakeWorld) =>
   [...world.appVersions.values()].map((version) => version.name);
+
+/**
+ * Shop's production environment `shop-production` (project P_PROD, its deploy token kept, its
+ * service `web`), following its releases.
+ */
+const withProduction = (appId: string, world: FakeWorld) =>
+  Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
+    yield* sql`
+      INSERT INTO hq_app_project (project_id, app_id, kind, created_by)
+      VALUES ('P_PROD', ${appId}::uuid, 'production', 'owner')`;
+    yield* sql`
+      INSERT INTO hq_environment (project_id, app_id, tier, name, sources, created_by)
+      VALUES ('P_PROD', ${appId}::uuid, 'production', 'shop-production', '{release}', 'owner')`;
+    yield* sql`
+      INSERT INTO hq_deploy_token (project_id, token, kept_by) VALUES ('P_PROD', 'key-prod', 'owner')`;
+    world.projects.push({
+      id: "P_PROD",
+      orgId: "ORG",
+      name: "Shop - production",
+      status: "ACTIVE",
+      tags: [],
+      userRoles: [],
+      publicZone: "pprod.prg1-zerops.zone",
+    });
+    world.services.push(fakeService("web", { id: "S-web-prod", projectId: "P_PROD" }));
+    world.tokens.set("key-prod", {
+      id: "T_PROD",
+      name: "deploy-shop-production",
+      orgId: "ORG",
+      roleCode: "NO_ACCESS",
+      canCreateProjects: false,
+      canViewFinances: false,
+      canEditFinances: false,
+      projects: [{ projectId: "P_PROD", roleCode: "BASIC_USER" }],
+      createdMs: 0,
+      createdByUser: "owner",
+    });
+  }).pipe(Effect.orDie);
+
+/** Production's `web`, as the fake Zerops holds it. */
+const prodService = (world: FakeWorld) =>
+  world.services.find((service) => service.id === "S-web-prod");
 
 describe("deploys", () => {
   it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
@@ -797,6 +853,93 @@ describe("deploys", () => {
           yield* Effect.sleep(Duration.millis(200));
           assert.deepStrictEqual(yield* deploys, []);
           assert.deepStrictEqual(versions(world), []);
+        }),
+      ),
+    );
+
+    // SPEC §3.2d, main C15/C16/B16: an approved release deploys every production environment, each
+    // service at the commit the release lists, named `{tag} <7 hex>`; production follows the
+    // newest approved release by version, and a rollback is the newest.
+    it.effect(
+      "deploys an approved release to production, and follows the newest by version, rollbacks too",
+      () =>
+        withDeploys(({ appId, world, tiers, commit, deploys, until }) =>
+          Effect.gen(function* () {
+            yield* withProduction(appId, world);
+            const releases = yield* Releases;
+            const groupHead = yield* commit("group", { "README.md": "# Shop\n" });
+            tiers.set(`${appId}/production`, tierOf(...runtime(appId, "web")));
+            const one = yield* commit("web", { "zerops.yaml": ZEROPS_YAML, "index.js": "1\n" });
+            const atProduction = (sha: string) => (rows: Effect.Success<typeof deploys>) =>
+              rows.some(
+                (row) => row.project === "P_PROD" && row.sha === sha && row.state === "live",
+              );
+            yield* releases.release("dev", appId, {
+              tag: "v0.1.0",
+              groupHead,
+              entries: [{ service: "web", sha: one }],
+            });
+            yield* until(atProduction(one));
+            const two = yield* commit("web", { "index.js": "2\n" });
+            yield* releases.release("dev", appId, {
+              tag: "v0.2.0",
+              groupHead,
+              entries: [{ service: "web", sha: two }],
+            });
+            yield* until(atProduction(two));
+            yield* releases.rollback("dev", appId, "v0.1.0", { groupHead });
+            yield* until(
+              (rows) =>
+                atProduction(one)(rows) &&
+                prodService(world)?.named?.name === `v0.2.1 ${one.slice(0, 7)}`,
+            );
+            assert.deepStrictEqual(
+              versions(world).filter((name) => name.startsWith("v")),
+              [
+                `v0.1.0 ${one.slice(0, 7)}`,
+                `v0.2.0 ${two.slice(0, 7)}`,
+                `v0.2.1 ${one.slice(0, 7)}`,
+              ],
+            );
+          }),
+        ),
+    );
+
+    // Main C16: a production service the release does not list is reported and not deployed; the
+    // rest deploy. No approved release deploys nothing, and is no failure.
+    it.effect("deploys what the release lists of production, and nothing before a release", () =>
+      withDeploys(({ appId, world, tiers, commit, deploys, until }) =>
+        Effect.gen(function* () {
+          yield* withProduction(appId, world);
+          world.services.push(fakeService("api", { id: "S-api-prod", projectId: "P_PROD" }));
+          const sql = yield* SqlClient.SqlClient;
+          const groupHead = yield* commit("group", { "README.md": "# Shop\n" });
+          tiers.set(
+            `${appId}/production`,
+            tierOf(...runtime(appId, "web"), ...runtime(appId, "api")),
+          );
+          const web = yield* commit("web", { "zerops.yaml": ZEROPS_YAML });
+          yield* commit("api", { "zerops.yaml": ZEROPS_YAML });
+          yield* (yield* Deploys).catchUp;
+          assert.deepStrictEqual(
+            (yield* sql`SELECT service FROM hq_deploy WHERE project_id = 'P_PROD'`).length,
+            0,
+          );
+          yield* (yield* Releases).release("dev", appId, {
+            tag: "v0.1.0",
+            groupHead,
+            entries: [{ service: "web", sha: web }],
+          });
+          yield* until((rows) =>
+            rows.some((row) => row.project === "P_PROD" && row.state === "live"),
+          );
+          yield* (yield* Deploys).catchUp;
+          assert.deepStrictEqual(
+            (yield* deploys)
+              .filter((row) => row.project === "P_PROD")
+              .map(({ service, sha, state }) => [service, sha, state]),
+            [["web", web, "live"]],
+          );
         }),
       ),
     );
