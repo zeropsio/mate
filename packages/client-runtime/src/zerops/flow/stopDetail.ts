@@ -117,7 +117,8 @@ export function stopVerdict(input: {
     // A stage's first deploy asked for says where it stands, as its cell and the menu do.
     const first = tier === "stage" ? firstDeployLine(input.firstDeploy) : undefined;
     if (first !== undefined) {
-      const tone = input.firstDeploy?.kind === "on-its-way" ? "busy" : "off";
+      const kind = input.firstDeploy?.kind;
+      const tone = kind === "on-its-way" ? "busy" : kind === "failed" ? "failed" : "off";
       return { tone, text: `${first}.`, ...quiet };
     }
     // An empty production moves by its first release, offered as soon as main has something.

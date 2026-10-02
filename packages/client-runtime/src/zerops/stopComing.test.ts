@@ -106,6 +106,11 @@ describe("stopComing — where a stage or a production coming up has got", () =>
       coming: { kind: "coming", step: "awaiting-deploy" },
     },
     {
+      case: "a first deploy that failed: the stage didn't come up",
+      over: { deployed: false, routes: 0, firstDeploy: { kind: "failed" } as FirstDeploy },
+      coming: { kind: "failed", reason: "its first deploy failed" },
+    },
+    {
       case: "a first deploy known not to have run: the runner holding it",
       over: {
         deployed: false,

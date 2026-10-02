@@ -42,6 +42,16 @@ const known = (value: Deployment): Shown<Deployment> => ({
   freshness: { kind: "live" },
 });
 const NONE = known({ kind: "none" });
+/**
+ * +1121 s: the import's no-code version activates, named by its id only (A14); the store keeps its
+ * "nothing deployed" while the version is stated (F5), revalidating.
+ */
+const NONE_RECHECKED: Shown<Deployment> = {
+  ...NONE,
+  ...(NONE.state === "known" ? { freshness: { kind: "revalidating", sinceMs: 0 } } : {}),
+} as Shown<Deployment>;
+/** A build was seen to end and nothing it built runs (`afterBuild`). */
+const FAILED_BUILD = known({ kind: "none", afterBuild: true });
 const DEPLOYING = known({ kind: "deploying", version: deployedVersion(SHA), previous: null });
 const RUNNING = known({ kind: "running", activatedAt: null, version: deployedVersion(SHA) });
 
@@ -192,7 +202,7 @@ describe("a stage coming up, replayed as run 4 measured it", () => {
     },
     {
       t: 1121,
-      deployment: NONE,
+      deployment: NONE_RECHECKED,
       runner: READY,
       declared: true,
       line: "Stage awaits the runner · it hasn’t started",
@@ -213,6 +223,14 @@ describe("a stage coming up, replayed as run 4 measured it", () => {
       declared: true,
       line: "Stage awaits the runner · it hasn’t started",
       cell: "Waiting for the runner · it hasn’t started",
+    },
+    {
+      t: 1370,
+      deployment: NONE,
+      runner: "CREATING",
+      declared: true,
+      line: "Stage awaits the runner · it’s being built",
+      cell: "Waiting for the runner · it’s being built",
     },
     {
       t: 1389,
@@ -286,8 +304,22 @@ describe("a stage coming up, replayed as run 4 measured it", () => {
   });
 });
 
-describe("a stage whose first deploy does not come", () => {
-  // Its first build failed: the app keeps the import's no-code version, and runs nothing.
+describe("a stage whose first build failed", () => {
+  // The build ended and the app keeps the import's no-code version: nothing it built runs.
+  it("says so on the line and the cell, at once and after the window", () => {
+    for (const t of [1500, 1061 + 15 * 60 - 1]) {
+      expect(said({ t, deployment: FAILED_BUILD, runner: "ACTIVE", declared: true })).toMatchObject(
+        { line: "Stage didn’t come up · its first deploy failed", cell: "First deploy failed" },
+      );
+    }
+    expect(
+      said({ t: 86_400, deployment: FAILED_BUILD, runner: "STOPPED", declared: true }).cell,
+    ).toBe("First deploy failed");
+  });
+});
+
+describe("a stage whose first deploy never starts", () => {
+  // The broker asked; no build of it was ever seen.
   const waiting: Moment = { t: 1500, deployment: NONE, runner: "ACTIVE", declared: true };
   // 15 min after the later of the stage's making (+1061 s) and main's last code (+1032 s).
   const past: Moment = { ...waiting, t: 1061 + 15 * 60 };
@@ -298,6 +330,15 @@ describe("a stage whose first deploy does not come", () => {
       cell: "First deploy on its way",
     });
     expect(said(past)).toMatchObject({ line: null, cell: "Nothing deployed yet" });
+  });
+
+  it("drops the runner's words with the window: a stopped runner past it has no job to wake for", () => {
+    expect(said({ ...waiting, runner: "STOPPED" }).cell).toBe(
+      "Waiting for the runner · it’s waking up",
+    );
+    for (const t of [past.t, 86_400]) {
+      expect(said({ ...past, t, runner: "STOPPED" }).cell).toBe("Nothing deployed yet");
+    }
   });
 
   it("never lands up as its window runs out", () => {
@@ -311,6 +352,32 @@ describe("a stage whose first deploy does not come", () => {
       line: "Stage coming up · awaiting a first deploy",
       cell: "Nothing deployed yet",
     });
+  });
+});
+
+describe("a redeploy over the serving stage (its runtime UPGRADING)", () => {
+  const serving: Moment = {
+    t: 1490,
+    deployment: RUNNING,
+    routes: 1,
+    runner: "ACTIVE",
+    declared: true,
+  };
+  const redeploying: Moment = {
+    ...serving,
+    t: 1500,
+    services: [db("ACTIVE"), app("UPGRADING")],
+    deployment: known({
+      kind: "deploying",
+      version: deployedVersion(SHA),
+      previous: { kind: "running", activatedAt: null, version: deployedVersion(SHA) },
+    }),
+  };
+  it("is the deploy's to say, never the stage coming up, and lands nothing after", () => {
+    expect(said(redeploying)).toMatchObject({ line: null, cell: "Deploying… 7c41d9e" });
+    expect(headingLanding(said(redeploying).heading, said({ ...serving, t: 1560 }).heading)).toBe(
+      undefined,
+    );
   });
 });
 

@@ -222,6 +222,39 @@ describe("the deployment store (DESIGN §2.D D6)", () => {
     expect(heard).toEqual(["project-stage"]);
   });
 
+  it("a build seen to end with nothing running is kept: the first deploy failed", () => {
+    const platform = listings();
+    const store = makeDeploymentStore(platform.ports);
+    store.demand(STAGE);
+    platform.publish(STAGE, stage(NEVER_DEPLOYED));
+    platform.publishProcesses(STAGE, building({ id: "version-2", name: SHA }));
+    expect(deploymentOf(store.stop(STAGE), "app")).toMatchObject({ value: { kind: "deploying" } });
+
+    // The build ends and the service still carries its NONE version: nothing it built runs.
+    platform.publishProcesses(STAGE, building());
+    expect(deploymentOf(store.stop(STAGE), "app")).toMatchObject({
+      state: "known",
+      value: { kind: "none", afterBuild: true },
+    });
+
+    // The next build activates: it runs, and the failure is forgotten.
+    platform.publishProcesses(STAGE, building({ id: "version-3", name: SHA }));
+    platform.publishProcesses(STAGE, building());
+    platform.publish(STAGE, stage({ ...NEVER_DEPLOYED, id: "version-3", source: null }));
+    expect(deploymentOf(store.stop(STAGE), "app")).toMatchObject({ value: { kind: "running" } });
+  });
+
+  it("a never-built runtime's none says nothing of a build", () => {
+    const platform = listings();
+    const store = makeDeploymentStore(platform.ports);
+    store.demand(STAGE);
+    platform.publishProcesses(STAGE, building());
+    platform.publish(STAGE, stage(NEVER_DEPLOYED));
+    expect(deploymentOf(store.stop(STAGE), "app")).toEqual(
+      expect.objectContaining({ value: { kind: "none" } }),
+    );
+  });
+
   it("a deploy in progress reads deploying(sha), never nothing deployed", () => {
     const platform = listings();
     const store = makeDeploymentStore(platform.ports);

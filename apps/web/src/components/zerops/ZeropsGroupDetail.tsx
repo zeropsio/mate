@@ -950,7 +950,7 @@ export function ZeropsStopDetailPage({
     flow === undefined || stop === undefined || stop.tier !== "stage"
       ? undefined
       : stageFirstDeploy({
-          empty: stopDeployment?.state === "known" && stopDeployment.value.kind === "none",
+          deployment: stopDeployment,
           declared: true,
           mainHasCode: undefined,
           merged: flow.merged,

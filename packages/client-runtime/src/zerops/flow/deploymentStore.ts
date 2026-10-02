@@ -35,6 +35,7 @@ import type { Invalidation } from "../knowledge/invalidation.ts";
 import type { Known, Shown } from "../knowledge/known.ts";
 import { INITIAL_BACKOFF, scheduleRetry, type Backoff } from "../knowledge/retryPolicy.ts";
 import {
+  afterBuilds,
   buildNames,
   heldThroughRecheck,
   stopServices,
@@ -98,6 +99,8 @@ interface Entry {
   /** Disarms the next ask for a refused demand. */
   disarm: () => void;
   shown: Known<ReadonlyArray<StopService>>;
+  /** The services seen building while demanded and not seen running since (`afterBuilds`). */
+  built: ReadonlySet<string>;
   unfollow: () => void;
 }
 
@@ -134,8 +137,11 @@ export function makeDeploymentStore(ports: DeploymentStorePorts): DeploymentStor
       },
       ports.nowMs(),
     );
+    // A build seen to end with nothing running is the first deploy failing; no listing keeps it.
+    const after = afterBuilds(entry.built, next);
+    entry.built = after.built;
     // A stop read again keeps its last answer while nothing new is known (F5).
-    entry.shown = heldThroughRecheck(entry.shown, next, ports.nowMs());
+    entry.shown = heldThroughRecheck(entry.shown, after.shown, ports.nowMs());
   };
 
   const publish = (entry: Entry): void => {
@@ -195,6 +201,7 @@ export function makeDeploymentStore(ports: DeploymentStorePorts): DeploymentStor
           backoff: INITIAL_BACKOFF,
           disarm: () => undefined,
           shown: UNREAD,
+          built: new Set(),
           unfollow: () => undefined,
         };
         // Held before it is followed: a demand refused as it is taken reaches the entry.

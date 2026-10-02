@@ -69,7 +69,9 @@ export type FirstDeploy =
   /** Asked for within the window, and the group's runner is known able to run it. */
   | { readonly kind: "on-its-way" }
   /** Asked for, and the group's runner cannot run it. */
-  | { readonly kind: "runner"; readonly why: RunnerTrouble };
+  | { readonly kind: "runner"; readonly why: RunnerTrouble }
+  /** A build of it was seen to end with nothing running (`Deployment.afterBuild`). */
+  | { readonly kind: "failed" };
 
 /**
  * How long after its project was made an environment may still be coming up. The owner's stage
@@ -270,6 +272,8 @@ export function stopComing(input: {
         return coming("deploy-on-its-way");
       case "runner":
         return { kind: "coming", step: "runner", why: first.why };
+      case "failed":
+        return { kind: "failed", reason: "its first deploy failed" };
     }
   }
   if (runtimes.some(({ status }) => !running(status))) return coming("build");
@@ -354,6 +358,9 @@ export function comingLine(
     : { fact: `${subject} coming up`, rest: STEP_WORDS[coming.step] };
 }
 
+/** A stage whose first build was seen to end with nothing running. */
+export const FIRST_DEPLOY_FAILED = "First deploy failed";
+
 /** A stage's first deploy on its way, where its line would say nothing is deployed. */
 export const FIRST_DEPLOY_ON_ITS_WAY = "First deploy on its way";
 
@@ -367,6 +374,8 @@ export function firstDeployLine(first: FirstDeploy | undefined): string | undefi
       return FIRST_DEPLOY_ON_ITS_WAY;
     case "runner":
       return `Waiting for the runner · ${RUNNER_TROUBLE_WORDS[first.why]}`;
+    case "failed":
+      return FIRST_DEPLOY_FAILED;
     default:
       return undefined;
   }
