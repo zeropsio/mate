@@ -54,6 +54,7 @@ import {
 import type { DeployScope, GroupUpdate } from "@t3tools/client-runtime/zerops/flow";
 import {
   createForgeReads,
+  giteaUnauthorized,
   type ForgePart,
   type ForgeReadRef,
   type ForgeReads,
@@ -196,6 +197,7 @@ export function useZeropsGroupDeploys(input: {
     groups: input.groups,
     refreshMs: GROUP_DEPLOYS_REFRESH_MS,
     keyOf: deployGroupKey,
+    unauthorizedReads: reads.unauthorized,
     read: (client, group, scope, signal, held) =>
       readGroupDeploys({
         client,
@@ -238,16 +240,16 @@ export async function readGroupDeploys(input: {
 }): Promise<GroupUpdate<ZeropsGroupDeployState>> {
   const { group, held, scope, signal } = input;
   const reads = input.reads ?? createForgeReads();
-  const client = keptClient(input.client, reads);
+  const kept = keptClient(input.client, reads);
   if (scope !== "group") {
     if (held === undefined) return () => undefined;
     const moved = new Map(
       [...held.mainHeadRepositories].filter(([, repository]) => repository === scope.repository),
     );
-    const heads = await readMainHeads(client, group.slug, moved, signal);
+    const heads = await readMainHeads(kept, group.slug, moved, signal);
     const running = releaseDeploys(held.environments).production;
     const contents = await readReleaseContents(
-      client,
+      kept,
       group.slug,
       moved,
       planReleaseReads(heads, running),
@@ -256,8 +258,19 @@ export async function readGroupDeploys(input: {
     return (current) =>
       current === undefined ? undefined : withMainHeads(current, moved, heads, contents);
   }
-  // The org's listing first: what it says moved is read again below, and the rest is kept.
-  await reads.repositories(group.slug, () => input.client.listOrganizationRepositories(group.slug));
+  // The org's listing first: what it says moved is read again below, and the rest is kept. One
+  // that does not answer is no reason for this half to fail, which never needed it: it reads the
+  // group repo itself, this once. A 401 is the session's, and ends the read.
+  const listed = await reads
+    .repositories(group.slug, () => input.client.listOrganizationRepositories(group.slug))
+    .then(
+      () => true,
+      (cause: unknown) => {
+        if (giteaUnauthorized(cause)) throw cause;
+        return false;
+      },
+    );
+  const client = listed ? kept : input.client;
   const declarations = await readDeclarations(client, group.slug);
   const pullRequests = await client.listPullRequests(group.slug, GROUP_REPOSITORY, {
     state: "open",

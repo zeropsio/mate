@@ -23,7 +23,10 @@ interface PendingRead {
   readonly reject: (cause: unknown) => void;
 }
 
-function harness(initial?: ReadonlyMap<string, Answer>) {
+function harness(
+  initial?: ReadonlyMap<string, Answer>,
+  initialFailures?: ReadonlyMap<string, string>,
+) {
   const reads: PendingRead[] = [];
   const published: Array<{ readonly groupId: string; readonly answer: Answer }> = [];
   const forgotten: string[] = [];
@@ -46,6 +49,7 @@ function harness(initial?: ReadonlyMap<string, Answer>) {
       failures.push({ groupId, cause });
     },
     ...(initial === undefined ? {} : { initial }),
+    ...(initialFailures === undefined ? {} : { initialFailures }),
   });
   const settle = async () => {
     for (let turn = 0; turn < 10; turn += 1) await Promise.resolve();
@@ -218,6 +222,26 @@ describe("createGroupAnswers", () => {
     await settle();
     expect(failures.at(-1)).toEqual({ groupId: "g1", cause: null });
     expect(published.at(-1)).toEqual({ groupId: "g1", answer: answer("g1, appdev merged") });
+  });
+
+  it("takes back a failure an earlier owner said, once a whole read answers", async () => {
+    const { answers, next, failures, settle } = harness(
+      new Map([["g1", { rows: ["a"] }]]),
+      new Map([["g1", "Gitea refused to list the org's repositories."]]),
+    );
+    answers.setGroups([{ groupId: "g1", key: "k" }]);
+    next("g1").resolve(() => ({ rows: ["a"] }));
+    await settle();
+    expect(failures).toEqual([{ groupId: "g1", cause: null }]);
+  });
+
+  it("says nothing again of a failure an earlier owner said, while it goes on", async () => {
+    const cause = "Gitea refused to list the org's repositories.";
+    const { answers, next, failures, settle } = harness(undefined, new Map([["g1", cause]]));
+    answers.setGroups([{ groupId: "g1", key: "k" }]);
+    next("g1").reject(new Error(cause));
+    await settle();
+    expect(failures).toEqual([]);
   });
 
   it("a pass longer than 60 s still publishes", async () => {

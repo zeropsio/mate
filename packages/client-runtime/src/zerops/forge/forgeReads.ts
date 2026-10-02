@@ -29,7 +29,7 @@
  *
  * @module forge/forgeReads
  */
-import type { GiteaRepository } from "../giteaClient.ts";
+import { GiteaApiError, type GiteaRepository } from "../giteaClient.ts";
 import { createCommitStatusMemo, type CommitStatusMemo } from "./statusMemo.ts";
 
 /** How long one listing of an org answers for every reader that asks: under the readers' clock. */
@@ -158,6 +158,12 @@ export interface ForgeReads {
   /** The commits' statuses, kept and forgotten with the rest. */
   readonly statuses: CommitStatusMemo;
   /**
+   * How many reads so far met a Gitea 401 no token recovered. A read is shared by every reader
+   * that asks while it runs, but only the one whose client sent it is told of the 401; a reader
+   * that sees this move while it read has met it too, and answered nothing.
+   */
+  readonly unauthorized: () => number;
+  /**
    * Drops what is kept for an owner — or one repository, or some of its parts — and every read
    * running for it: a verb changed it, and the next read asks Gitea.
    */
@@ -181,9 +187,26 @@ interface Listing {
 
 const signatureOf = (value: unknown): string => JSON.stringify(value) ?? "";
 
+/** A Gitea 401 no token recovered, as the client throws it. */
+export const giteaUnauthorized = (cause: unknown): boolean =>
+  cause instanceof GiteaApiError && cause.status === 401;
+
 export function createForgeReads(options: { readonly now?: () => number } = {}): ForgeReads {
   const now = options.now ?? Date.now;
-  const statuses = createCommitStatusMemo({ now });
+  const memo = createCommitStatusMemo({ now });
+  let unauthorized = 0;
+  /** `load`, counting a 401 it meets. */
+  const counted =
+    <T>(load: () => Promise<T>) =>
+    (): Promise<T> =>
+      load().catch((cause: unknown) => {
+        if (giteaUnauthorized(cause)) unauthorized += 1;
+        throw cause;
+      });
+  const statuses: CommitStatusMemo = {
+    read: (commit, load, readOptions) => memo.read(commit, counted(load), readOptions),
+    forget: memo.forget,
+  };
   const listings = new Map<string, Listing>();
   const listing = new Map<string, Promise<ReadonlyArray<GiteaRepository>>>();
   const kept = new Map<string, KeptRead>();
@@ -219,6 +242,7 @@ export function createForgeReads(options: { readonly now?: () => number } = {}):
   return {
     statuses,
     forget,
+    unauthorized: () => unauthorized,
 
     repositories: (owner, load) => {
       const held = listings.get(owner);
@@ -228,7 +252,7 @@ export function createForgeReads(options: { readonly now?: () => number } = {}):
       }
       const running = listing.get(owner);
       if (running !== undefined) return running;
-      const read = load()
+      const read = counted(load)()
         .then((repositories) => {
           const plan = planGateReads(listings.get(owner)?.gate, repositories, at);
           for (const [repo, parts] of plan.reread) forget(owner, repo, parts);
@@ -250,7 +274,7 @@ export function createForgeReads(options: { readonly now?: () => number } = {}):
       const vouched = gateKnown(listings.get(ref.owner)?.gate.get(ref.repo));
       const at = now();
       if (!vouched) {
-        return load().then((value) => ({ value, atMs: at, changed: true }));
+        return counted(load)().then((value) => ({ value, atMs: at, changed: true }));
       }
       const key = keyOf(ref);
       const held = kept.get(key);
@@ -263,7 +287,7 @@ export function createForgeReads(options: { readonly now?: () => number } = {}):
       const scope = partKey(ref.owner, ref.repo, ref.part);
       const generation = generations.get(scope) ?? 0;
       const current = () => (generations.get(scope) ?? 0) === generation;
-      const read = load().then(
+      const read = counted(load)().then(
         (value): ForgeRead<T> => {
           const signature = signatureOf(value);
           const changed = held === undefined || held.signature !== signature;

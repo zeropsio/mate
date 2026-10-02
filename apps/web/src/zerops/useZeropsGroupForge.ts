@@ -52,6 +52,7 @@ import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 import {
   createForgeReads,
   createMergeabilityTracker,
+  giteaUnauthorized,
   MERGE_RECHECK_AFTER_MS,
   mergeReadOf,
   TAGS_MAX_AGE_MS,
@@ -154,6 +155,7 @@ export function useZeropsGroupForge(input: {
     groups: input.groups,
     refreshMs: GROUP_FORGE_REFRESH_MS,
     keyOf: (group) => group.slug,
+    unauthorizedReads: reads.unauthorized,
     read: (client, group, scope) => readForge(client, group.slug, scope, mergeability, reads),
     // A release changes the group repo's tags and what their commits are told; a group read again
     // whole forgets all. A repository read again — a merge, or Gitea saying "checking" after a
@@ -220,6 +222,8 @@ export function useGroupAnswers<Group extends { readonly groupId: string }, Scop
   ) => Promise<GroupUpdate<Answer>>;
   /** Drops what the reads keep about a group beside its answer: a verb, or its key, changed it. */
   readonly forget?: (group: Group, scope: Scope | "group") => void;
+  /** How many shared reads met a 401 no token recovered (`ForgeReads.unauthorized`). */
+  readonly unauthorizedReads: () => number;
 }): {
   readonly answers: ReadonlyMap<string, Answer>;
   readonly failures: ReadonlyMap<string, string>;
@@ -245,8 +249,10 @@ export function useGroupAnswers<Group extends { readonly groupId: string }, Scop
   useEffect(() => {
     if (!enabled || giteaOrigin === undefined || !readable) return;
     if (giteaClientFor(giteaOrigin) === null) return;
-    const kept =
-      latest.current.held.origin === giteaOrigin ? latest.current.held.answers : undefined;
+    const same = latest.current.held.origin === giteaOrigin;
+    const kept = same ? latest.current.held.answers : undefined;
+    // What the last driver said is failing is this one's to take back, or it would stand for good.
+    const failing = same ? latest.current.held.failures : undefined;
     const answers = createGroupAnswers<Group, Scope, Answer>({
       pass,
       idOf: (group) => group.groupId,
@@ -254,17 +260,22 @@ export function useGroupAnswers<Group extends { readonly groupId: string }, Scop
       read: async (group, scope, signal, previous) => {
         // A read that met a 401 no token recovered answered nothing for what
         // came after it: it is not an answer, even if the token is back by its
-        // end, and the group keeps what it had without a cause of its own.
+        // end, and the group keeps what it had without a cause of its own. A
+        // read shared with the other pass met it too, though only the client
+        // that sent it was told.
         let unauthorized = false;
         const client = giteaClientFor(giteaOrigin, () => {
           unauthorized = true;
         });
         if (client === null) return () => undefined;
+        const { unauthorizedReads } = latest.current.input;
+        const before = unauthorizedReads();
+        const met = () => unauthorized || unauthorizedReads() !== before;
         try {
           const update = await latest.current.input.read(client, group, scope, signal, previous);
-          return unauthorized ? () => undefined : update;
+          return met() ? () => undefined : update;
         } catch (cause) {
-          if (unauthorized) return () => undefined;
+          if (met() || giteaUnauthorized(cause)) return () => undefined;
           throw cause;
         }
       },
@@ -303,6 +314,7 @@ export function useGroupAnswers<Group extends { readonly groupId: string }, Scop
         });
       },
       ...(kept === undefined ? {} : { initial: kept }),
+      ...(failing === undefined ? {} : { initialFailures: failing }),
     });
     driver.current = answers;
     answers.setGroups(latest.current.input.groups);
@@ -361,6 +373,8 @@ async function answered<T>(read: () => Promise<T>): Promise<Answered<T>> {
   try {
     return { value: await read() };
   } catch (cause) {
+    // A 401 no token recovered is no part's answer: the whole read answered nothing.
+    if (giteaUnauthorized(cause)) throw cause;
     return { failure: zeropsErrorMessage(cause) };
   }
 }

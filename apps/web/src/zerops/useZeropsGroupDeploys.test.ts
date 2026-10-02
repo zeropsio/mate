@@ -1,4 +1,4 @@
-import type { GiteaClient } from "@t3tools/client-runtime/zerops";
+import { GiteaApiError, type GiteaClient } from "@t3tools/client-runtime/zerops";
 import { createGroupAnswers, flowVerbInvalidations } from "@t3tools/client-runtime/zerops/flow";
 import { createForgeReads, GATE_FRESH_MS } from "@t3tools/client-runtime/zerops/forge";
 import { act, createElement } from "react";
@@ -13,7 +13,7 @@ import {
   type ZeropsGroupDeployAnswers,
   type ZeropsGroupDeployState,
 } from "./useZeropsGroupDeploys";
-import { useForgeReads } from "./useZeropsGroupForge";
+import { useForgeReads, useZeropsGroupForge, type ZeropsGroupForge } from "./useZeropsGroupForge";
 
 /**
  * Whether this tab holds a Gitea token now, how often the org was listed and the group repo's
@@ -31,6 +31,8 @@ const gitea = vi.hoisted(() => ({
   declares: false,
   loseTokenOnRead: false,
   outwaitReacquireOnRead: false,
+  /** The next listing answers Gitea's 401 to whichever pass's client sends it. */
+  listingRefusedOnce: false,
 }));
 
 vi.mock("./accountGiteaSessions", () => ({
@@ -53,6 +55,11 @@ vi.mock("./accountGiteaSessions", () => ({
           gitea.outwaitReacquireOnRead = false;
           return refuse();
         }
+        if (gitea.listingRefusedOnce) {
+          gitea.listingRefusedOnce = false;
+          onUnauthorized?.();
+          throw new GiteaApiError("You are not signed in to Gitea.", 401);
+        }
         return LISTED;
       },
       listDirectory: async () =>
@@ -74,6 +81,7 @@ vi.mock("./accountGiteaSessions", () => ({
         return [{ context: "deploy", state: "success" }];
       },
       getBranch: async () => (gitea.readable ? undefined : refuse()),
+      listTags: async () => (gitea.readable ? [] : refuse()),
     };
   },
 }));
@@ -633,6 +641,32 @@ describe("readGroupDeploys on the org's listing", () => {
   });
 });
 
+describe("a listing that does not answer", () => {
+  it("leaves the deploy half reading the group repo itself, as it did before the listing", async () => {
+    const { client: base, calls } = listedGroupRepo();
+    const client = {
+      ...base,
+      listOrganizationRepositories: async () => {
+        calls.push("repos");
+        throw new GiteaApiError("Gitea answered 500.", 500);
+      },
+    } as unknown as GiteaClient;
+    const update = await readGroupDeploys({
+      client,
+      group: GROUP,
+      scope: "group",
+      readVersion: async () => SHA,
+      held: undefined,
+      signal: new AbortController().signal,
+      reads: createForgeReads(),
+    });
+    expect(calls).toEqual(["repos", ...GROUP_REPO_READ, "statuses app@3f9c1b2"]);
+    expect(update(undefined)?.declarations.map((declaration) => declaration.name)).toEqual([
+      "stage",
+    ]);
+  });
+});
+
 describe("a late check on a deploy's commit", () => {
   afterEach(() => {
     vi.useRealTimers();
@@ -677,6 +711,7 @@ describe("useZeropsGroupDeploys", () => {
   afterEach(() => {
     gitea.readable = true;
     gitea.listings = 0;
+    gitea.listingRefusedOnce = false;
     gitea.pullReads = 0;
     gitea.statusReads = 0;
     gitea.declares = false;
@@ -772,6 +807,62 @@ describe("useZeropsGroupDeploys", () => {
     });
     expect(seen.at(-1)?.deploys.get("g1")?.pullRequests).toHaveLength(1);
     expect(gitea.pullReads).toBe(1);
+
+    await act(async () => {
+      root.unmount();
+    });
+  });
+
+  it("a 401 the shared listing met through the other pass's client fails neither pass", async () => {
+    vi.useFakeTimers();
+    installTestDom();
+    const { createRoot } = await import("react-dom/client");
+    const seen: Array<{ forge: ZeropsGroupForge; deploys: ZeropsGroupDeployAnswers }> = [];
+    const groups: ReadonlyArray<ZeropsDeployGroup> = [
+      { groupId: "g1", slug: "harbor", projects: [] },
+    ];
+    const readVersion = async () => undefined;
+
+    function Probe() {
+      const reads = useForgeReads("https://gitea.example.test");
+      // The forge pass first: its clock ticks first, and its client sends the shared listing.
+      const forge = useZeropsGroupForge({
+        giteaOrigin: "https://gitea.example.test",
+        groups,
+        enabled: true,
+        readable: true,
+        reads,
+      });
+      const deploys = useZeropsGroupDeploys({
+        groups,
+        giteaOrigin: "https://gitea.example.test",
+        readVersion,
+        enabled: true,
+        readable: true,
+        reads,
+      });
+      seen.push({ forge, deploys });
+      return null;
+    }
+
+    const root = createRoot(document.createElement("div") as unknown as Element);
+    await act(async () => {
+      root.render(createElement(Probe));
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(gitea.listings).toBe(1);
+    expect(seen.at(-1)?.deploys.deploys.get("g1")?.pullRequests).toHaveLength(1);
+
+    gitea.listingRefusedOnce = true;
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(GROUP_DEPLOYS_REFRESH_MS);
+    });
+    expect(gitea.listingRefusedOnce).toBe(false);
+    expect(seen.at(-1)?.forge.failures.get("g1")).toBeUndefined();
+    expect(seen.at(-1)?.deploys.failures.get("g1")).toBeUndefined();
+    expect(seen.at(-1)?.deploys.deploys.get("g1")?.pullRequests).toHaveLength(1);
 
     await act(async () => {
       root.unmount();

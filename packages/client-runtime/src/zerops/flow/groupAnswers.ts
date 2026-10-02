@@ -68,6 +68,11 @@ export function createGroupAnswers<Group, Scope, Answer>(options: {
   readonly failure: (groupId: string, cause: string | null) => void;
   /** What an earlier owner already published, kept until a read replaces it. */
   readonly initial?: ReadonlyMap<string, Answer>;
+  /**
+   * Why an earlier owner's reads of each group were failing, as it said: taken back by the first
+   * whole read that answers, and not said again while they go on failing for the same cause.
+   */
+  readonly initialFailures?: ReadonlyMap<string, string>;
 }): GroupAnswers<Group, Scope> {
   const controller = new AbortController();
   const held = new Map<string, { readonly ticket: number; readonly answer: Answer }>();
@@ -82,6 +87,9 @@ export function createGroupAnswers<Group, Scope, Answer>(options: {
     string,
     { readonly ticket: number; readonly cause: string; readonly scope: Scope | "group" }
   >();
+  for (const [groupId, cause] of options.initialFailures ?? []) {
+    failing.set(groupId, { ticket: 0, cause, scope: "group" });
+  }
   /** Groups owed a whole read, in the order they became due. */
   const due = new Set<string>();
   /** The groups a pass reads now. */
