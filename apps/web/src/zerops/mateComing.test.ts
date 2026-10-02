@@ -940,8 +940,10 @@ describe("a new Mate whose container is ACTIVE before its address landed", () =>
       undefined,
       {
         nowMs,
-        addressAwaitedSince: () =>
-          input.seenMs === undefined ? undefined : CREATED + input.seenMs,
+        addressSeen: () =>
+          input.seenMs === undefined
+            ? undefined
+            : { addressed: false, since: CREATED + input.seenMs },
       },
     )[0]!;
     const presence = candidatePresence({ ...candidate, presence: "known" });
