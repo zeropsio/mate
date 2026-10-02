@@ -13,6 +13,7 @@
  * organization's official HQ is known, it is still being read.
  */
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
+import { HQ_NOT_OPEN } from "@t3tools/client-runtime/zerops/hq";
 import type { ChangeLink, HqChangeComment } from "@t3tools/shared/hqChanges";
 import { useCallback, useEffect, useState } from "react";
 
@@ -53,9 +54,6 @@ function known(key: string | null): ZeropsChangeCommentsState {
 export function forgetChangeComments(): void {
   kept.clear();
 }
-
-/** HQ is not known here: nothing can be said through it. */
-const NO_HQ = "This organization's HQ is not open here.";
 
 export function useZeropsChangeComments(link: ChangeLink | null): ZeropsChangeComments {
   const hq = useOfficialHq();
@@ -109,8 +107,8 @@ export function useZeropsChangeComments(link: ChangeLink | null): ZeropsChangeCo
 
   const say = useCallback(
     async (body: string): Promise<string | null> => {
-      if (key === null || hq === null) return NO_HQ;
-      if (appId === undefined || repo === undefined || number === undefined) return NO_HQ;
+      if (key === null || hq === null) return HQ_NOT_OPEN;
+      if (appId === undefined || repo === undefined || number === undefined) return HQ_NOT_OPEN;
       setSaying(true);
       try {
         const posted = await hq.api.commentOnChange({ appId, repo, number }, body);

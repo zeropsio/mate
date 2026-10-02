@@ -14,6 +14,7 @@
  */
 import {
   findOfficialHq,
+  HQ_NOT_OPEN,
   makeHqApi,
   ownersAndAdmins,
   readHqHealth,
@@ -86,7 +87,7 @@ onAccountLifetimeClose(() => apis.clear());
  */
 export function officialHq(accountHq: Pick<AccountHq, "hq">): HqEndpoint {
   if (accountHq.hq.kind !== "official") {
-    throw new Error("This organization's HQ is not open here.");
+    throw new Error(HQ_NOT_OPEN);
   }
   return accountHq.hq;
 }

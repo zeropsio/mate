@@ -46,7 +46,7 @@ import {
   type FlowVerb,
   type ZeropsService,
 } from "@t3tools/client-runtime/zerops";
-import { hqRefusalWords, type HqApi } from "@t3tools/client-runtime/zerops/hq";
+import { HQ_NOT_OPEN, hqRefusalWords, type HqApi } from "@t3tools/client-runtime/zerops/hq";
 import {
   flowReleaseGate,
   flowVerbInvalidations,
@@ -125,8 +125,6 @@ type ChangeVerb = Extract<FlowVerb, { readonly kind: "merge" | "close" }>;
 
 /** What a merge refused for a head nobody was shown says: HQ's own words for it. */
 const HEAD_NOT_SHOWN = hqRefusalWords({ code: "conflict", reason: "head_moved" });
-/** What a change's verb says where the organization's HQ is not open here. */
-const HQ_NOT_OPEN = "This organization's HQ is not open here.";
 
 /**
  * A verb whose call landed, waiting until its effect is read: a tag, for any forge answer of its
