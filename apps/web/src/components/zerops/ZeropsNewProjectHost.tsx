@@ -73,13 +73,7 @@ import { sessionOfferViewer } from "~/zerops/offerViewer";
 import { useTakenBotNames, useZeropsCandidates } from "~/zerops/useZeropsCandidates";
 import { invalidateZerops } from "~/zerops/accountInvalidations";
 import { captureAccountLifetime } from "~/zerops/accountLifetime";
-import {
-  beginPress,
-  finishMateSetup,
-  pressViewer,
-  useMatePress,
-  type MatePress,
-} from "~/zerops/matePress";
+import { beginPress, finishMateSetup, useMatePress, type MatePress } from "~/zerops/matePress";
 import { runZeropsCommand, useKnown, useZeropsData } from "~/zerops/zeropsDataContext";
 import type { ZeropsOrganizationStatus } from "~/zerops/ZeropsSessionProvider";
 import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
@@ -292,8 +286,6 @@ function NewProjectDialog() {
             projectName: placement.displayName,
             // Imported a moment ago, with the project, by the one call that made it.
             container: null,
-            groupProjectIds: [],
-            viewer: pressViewer(user, activeOrganization),
             registration: {
               hq,
               groupId: appId,

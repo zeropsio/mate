@@ -1280,9 +1280,6 @@ export function makeZeropsDataAdapter(options: ZeropsDataAdapterOptions): Zerops
               clientId: command.project.organization.organizationId,
               projectId: command.project.projectId,
               projectName: command.projectName,
-              ...(command.groupProjectIds === undefined
-                ? {}
-                : { groupProjectIds: command.groupProjectIds }),
               ...(command.zcpVersion === undefined ? {} : { zcpVersion: command.zcpVersion }),
               ...(command.agents === undefined ? {} : { agents: command.agents }),
               ...(command.setupRuntimesYaml === undefined

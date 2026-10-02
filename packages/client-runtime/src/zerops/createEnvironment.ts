@@ -106,8 +106,8 @@ export type EnvironmentCreationStep =
     }
   /**
    * `PUT /project/{id}/first-class-recipe/development-container` — the zcp
-   * that carries the agent, holding the key the person mints for it with the
-   * Mate's reach (`api.ts`, `importDevelopmentContainer`), and the tier's
+   * that carries the agent, holding the key the person mints for it on its
+   * own project (`api.ts`, `importDevelopmentContainer`), and the tier's
    * runtimes for zcp to import on its first boot (`MATE_SETUP_RUNTIMES`).
    *
    * `agents` is the group's own selection, so a Mate added to a group comes up
@@ -138,13 +138,6 @@ export type EnvironmentCreationStep =
        */
       readonly isolated?: true;
     }
-  /**
-   * The group's other Mates given sight of the new project: each one's key
-   * extended to `READ_ONLY` on it, where this person may edit those keys (an
-   * org owner, or their creator). Anyone else's press skips it, and the
-   * group-reach reconcile gives the sight later.
-   */
-  | { readonly kind: "share-reach" }
   /**
    * The environment's group registration: its registry entry, and for a stage
    * or a production its deploy token and its declaration. Each write is safe to
@@ -276,11 +269,9 @@ export function planEnvironmentCreation(input: EnvironmentCreationInput): Enviro
     });
   }
   // The close-off first: it is what makes the Mate need no browser, and a registration refused
-  // — a member who may not write the registry — never keeps the Mate open. The group's sight of it is best-effort, last, and the group-reach
-  // reconcile covers it anyway.
+  // — a member who may not write the registry — never keeps the Mate open.
   if (withAgent) steps.push({ kind: "close-off" });
   if (input.register === true) steps.push({ kind: "register" });
-  if (withAgent) steps.push({ kind: "share-reach" });
   // Last, and the only step that waits on anything: everything the person's rights are needed
   // for is done before it.
   steps.push({ kind: "await-ready", withAgent });
@@ -330,8 +321,6 @@ export function environmentCreationStepLabel(step: EnvironmentCreationStep): str
       return "Adding the agent container";
     case "close-off":
       return "Closing the project off";
-    case "share-reach":
-      return "Letting the project's other Mates see it";
     case "register":
       return "Registering it in its project";
     case "import-recipe":

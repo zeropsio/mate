@@ -89,11 +89,6 @@ export interface EnvironmentCreationPlatform {
    */
   readonly markClosedOff: (projectId: string) => Promise<void>;
   /**
-   * The group's other Mates' keys extended to `READ_ONLY` on the project, where this person may
-   * edit them; quietly nothing where they may not. Never fails the press.
-   */
-  readonly shareReach: (projectId: string) => Promise<void>;
-  /**
    * The environment's group registration (`addGroupEnvironment.ts`); safe to ask again. Throws
    * with the reason a write did not go through.
    */
@@ -211,12 +206,7 @@ export const PRESS_STEP_RETRY_MS = 2_000;
  * there, or at the project itself, is removed rather than resumed.
  */
 export function resumableEnvironmentCreationStep(step: EnvironmentCreationStep): boolean {
-  return (
-    step.kind === "import-container" ||
-    step.kind === "close-off" ||
-    step.kind === "register" ||
-    step.kind === "share-reach"
-  );
+  return step.kind === "import-container" || step.kind === "close-off" || step.kind === "register";
 }
 
 /** Measured at ~2 minutes for a two-service recipe; a build can take longer. */
@@ -402,19 +392,6 @@ export async function runEnvironmentCreation(
           // 2026-10-01). A harden's isolation is trusted only where no container came after it.
           if (step.isolated !== true || containerImported) await confirmClosed(target);
           await withTries(() => input.platform.markClosedOff(target));
-          break;
-        }
-        case "share-reach": {
-          const target = requireProject(projectId);
-          // Best-effort: what it could not do is said on its step, and the press goes on — the
-          // group-reach reconcile gives the sight later.
-          try {
-            await input.platform.shareReach(target);
-          } catch (cause) {
-            assertCurrent();
-            mark(index, { state: "failed", error: describeError(cause), finishedAtMs: now() });
-            continue;
-          }
           break;
         }
         case "register": {

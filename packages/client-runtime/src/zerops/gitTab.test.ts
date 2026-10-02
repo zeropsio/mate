@@ -274,7 +274,7 @@ describe("where the work stands", () => {
         checkout({ headRef: "feature/invoices" }),
         changes({ change: change("conflicting") }),
       ),
-      ask: "Pull request #12 no longer merges cleanly. Rebase it on main, resolve the conflicts, and push.",
+      ask: "Change #12 no longer merges cleanly. Merge main into it, resolve the conflicts, and deliver it again.",
     },
   ] as const)("hands $name back in words the Mate can act on", ({ answer, ask }) => {
     expect(answer.verdict?.ask).toBe(ask);
@@ -737,7 +737,7 @@ describe("one answer on every surface (DESIGN §4.7)", () => {
       expect(seen.tab.verdict?.ask).toBe(seen.blocked?.ask);
       const rebase = {
         tab: /no longer merges/.test(seen.tab.verdict?.text ?? ""),
-        row: seen.row?.word === "Needs a rebase",
+        row: seen.row?.word === "Conflicts with main",
       };
       expect(rebase.tab).toBe(rebase.row);
       expect(rebase.row).toBe(mergeability === "conflicting");

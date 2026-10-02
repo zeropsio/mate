@@ -305,7 +305,7 @@ describe("pullRequestBlockedReason", () => {
     // Gitea says it merges: the verb is the whole answer.
     ["mergeable", null],
     // It does not, and the row says why rather than dropping its verb silently.
-    ["conflicting", "needs a rebase"],
+    ["conflicting", "conflicts with main"],
     // Gitea is still working it out after a push: nobody is asked to rebase.
     ["checking", "checking"],
     // Nothing in it main does not have: nobody is asked anything either.
@@ -321,7 +321,7 @@ describe("pullRequestBlockedReason", () => {
   it("tones each reason to itself", () => {
     expect(pullRequestBlocked({ number: 4, mergeability: "conflicting" })).toMatchObject({
       kind: "behind",
-      word: "needs a rebase",
+      word: "conflicts with main",
       tone: "attention",
     });
     expect(pullRequestBlocked({ number: 4, mergeability: "checking" })).toMatchObject({
@@ -338,8 +338,8 @@ describe("pullRequestBlockedReason", () => {
     const behind = pullRequestBlocked({ number: 4, mergeability: "conflicting" });
     // Shown verbatim on a change's page as well as written into a composer, so
     // it opens as a sentence does.
-    expect(behind?.ask).toContain("Pull request #4");
-    expect(behind?.ask).toContain("Rebase");
+    expect(behind?.ask).toContain("Change #4");
+    expect(behind?.ask).toContain("Merge main into it");
     // A merge still being worked out is the one refusal with nothing to ask
     // for: waiting is the correct move.
     expect(pullRequestBlocked({ number: 4, mergeability: "checking" })?.ask).toBeUndefined();
@@ -532,7 +532,12 @@ describe("changeState", () => {
       changeState({ number: 3, mergeability: "checking" }),
       changeState({ number: 4, mergeability: "empty" }),
     ].map((state) => state?.word);
-    expect(words).toEqual(["Ready to merge", "Needs a rebase", "Checking", "Nothing to merge"]);
+    expect(words).toEqual([
+      "Ready to merge",
+      "Conflicts with main",
+      "Checking",
+      "Nothing to merge",
+    ]);
     for (const word of words) expect(word?.charAt(0)).toBe(word?.charAt(0).toLocaleUpperCase());
   });
 

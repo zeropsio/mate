@@ -3526,8 +3526,8 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
   /**
    * A read the platform answers with a value alone — a token listing: admitted as a command is,
    * on the same grant and target, but never queued behind the account's writes, never waiting on
-   * its ingress, never counted against its command queue. Run as commands, group reach's listings
-   * filled that queue and refused a New project's close-off (measured live, pass 31).
+   * its ingress, never counted against its command queue. Run as commands, the Mate-key
+   * reconcile's listings filled that queue and refused a New project's close-off (measured live, pass 31).
    */
   const runReadIntent = (
     intent: Extract<

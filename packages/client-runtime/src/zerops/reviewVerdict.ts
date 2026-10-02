@@ -439,9 +439,9 @@ function changeVerdictOf(input: ChangeReviewInput): {
       problem: {
         what:
           files.length === 0
-            ? `Pull request #${String(pull.number)} no longer merges cleanly into ${base}`
-            : `Pull request #${String(pull.number)} conflicts with ${base} in ${listed(files.map(baseName))}`,
-        ask: `Rebase it on ${base}, resolve the conflicts, and push.`,
+            ? `Change #${String(pull.number)} no longer merges cleanly into ${base}`
+            : `Change #${String(pull.number)} conflicts with ${base} in ${listed(files.map(baseName))}`,
+        ask: `Merge ${base} into it, resolve the conflicts, and deliver it again.`,
       },
     };
     if (files.length === 0) {
@@ -517,8 +517,8 @@ function changeVerdictOf(input: ChangeReviewInput): {
         fix: {
           verb: "update it",
           problem: {
-            what: `Pull request #${String(pull.number)} is behind ${base}`,
-            ask: `Bring it up to date with ${base}, check it still works, and push.`,
+            what: `Change #${String(pull.number)} is behind ${base}`,
+            ask: `Merge ${base} into it, check it still works, and deliver it again.`,
           },
         },
       },

@@ -27,13 +27,12 @@ import {
   type ZeropsProjectCreation,
 } from "./projectCreation.ts";
 import {
-  buildGroupGrants,
   findHeldMateKey,
   makeTokenWriteLock,
   mateAdminKeys,
   MATE_SELF_PROJECT_ROLE,
   newestMateKey,
-  planGroupReach,
+  planMateKey,
   type TokenWriteHold,
 } from "./groupReach.ts";
 import type {
@@ -1750,9 +1749,9 @@ export class ZeropsApiClient {
    * that carries the agent, imported into a project that already exists,
    * holding the Mate's own key.
    *
-   * The key is minted here, by the person, with the Mate's reach and nothing
-   * more (`buildGroupGrants`): `BASIC_USER` on its project, `READ_ONLY` on
-   * the group's other environments, no delegation. It goes into the container
+   * The key is minted here, by the person, with its own project and nothing
+   * more: `BASIC_USER` there, no grant on any other project (ADR 0003), no
+   * delegation. It goes into the container
    * as the secret `ZCP_API_KEY`, and the platform is asked for no token of
    * its own (`createIntegrationToken: false`). The platform's would be
    * `ADMIN`, a project variable every service can read, and a one-time
@@ -1763,8 +1762,9 @@ export class ZeropsApiClient {
    * the first one started:
    * - a project that has its container already makes no write at all;
    * - a key an earlier press minted, its container never imported, is reused
-   *   — its reach set again and its value regenerated, because the value is
-   *   shown once and nothing kept it — never a second key beside it.
+   *   — its own grant set again where it is not `BASIC_USER` (`planMateKey`),
+   *   and its value regenerated, because the value is shown once and nothing
+   *   kept it — never a second key beside it.
    *
    * The value lives in this call alone: it is in the import's body and in no
    * answer, no log and no error.
@@ -1775,8 +1775,6 @@ export class ZeropsApiClient {
       readonly projectId: string;
       /** The project's name: the key is `zcp-<name>`, as the platform names its own. */
       readonly projectName: string;
-      /** The group's environments, this one included: the key reads the others. */
-      readonly groupProjectIds?: ReadonlyArray<string>;
       readonly zcpVersion?: string;
       readonly agents?: ReadonlyArray<ZeropsAgentType>;
       /** The tier's runtimes, for zcp to import on boot (`MATE_SETUP_RUNTIMES`). */
@@ -1790,10 +1788,9 @@ export class ZeropsApiClient {
     if (container !== undefined) return { serviceName: container.name, imported: false };
 
     const generation = this.#generation;
-    const grants = buildGroupGrants({
-      selfProjectId: input.projectId,
-      groupProjectIds: input.groupProjectIds ?? [input.projectId],
-    });
+    const grants: ReadonlyArray<ZeropsProjectGrant> = [
+      { projectId: input.projectId, roleCode: MATE_SELF_PROJECT_ROLE },
+    ];
     const tokens = await this.listIntegrationTokens(input.clientId, signal);
     const earlier = newestMateKey(tokens, input.projectId);
     this.#assertGeneration(generation);
@@ -1837,18 +1834,14 @@ export class ZeropsApiClient {
         );
         if (current === undefined) return;
         this.#assertGeneration(generation);
-        const reach = planGroupReach({
-          token: current,
-          selfProjectId: input.projectId,
-          groupProjectIds: input.groupProjectIds ?? [input.projectId],
-        });
-        if (reach === undefined) return;
+        const lowered = planMateKey({ token: current, selfProjectId: input.projectId });
+        if (lowered === undefined) return;
         await this.setIntegrationTokenProjects(
           {
             clientId: input.clientId,
             tokenId: current.id,
             name: current.name,
-            projects: reach.projects,
+            projects: lowered.projects,
           },
           signal,
           beforeWrite,
@@ -2049,7 +2042,7 @@ export class ZeropsApiClient {
    * gains or loses sight of a project immediately, with nothing written into
    * its environment and no restart (measured 2026-09-06: a read of a sibling
    * went 200 → 403 → 200 across two of these calls, on one unchanged token).
-   * That is what makes a Mate's group maintainable rather than seeded once.
+   * That is what lets a Mate's key be lowered where it runs.
    *
    * The whole body is sent because the platform replaces the record: omitting
    * a field is not "leave it alone", it is "set it to nothing".
@@ -2273,9 +2266,8 @@ export class ZeropsApiClient {
    * and the isolation half, together, for one Mate's own project.
    *
    * The token half lowers the Mate's own grant to `BASIC_USER` and leaves
-   * every other grant as it is: what the Mate reads of its group is the
-   * group-reach reconcile's (`planAccountGroupReach`), and a key the press
-   * minted already has it. Every delegation the token carries is then dropped: the one-time mint the platform grants at
+   * every other grant as it is, as the projects screen's reconcile does
+   * (`planAccountMateKeys`); a key the press minted holds nothing else. Every delegation the token carries is then dropped: the one-time mint the platform grants at
    * creation, which nothing here needs (`groupReach.ts`, guide 0.4).
    *
    * Idempotent, and cheap to prove so: a token already at `BASIC_USER` with
@@ -2320,8 +2312,8 @@ export class ZeropsApiClient {
     for (const tokenId of keys) {
       this.#assertGeneration(generation);
       // The write replaces the token's whole project list: it is planned from the token as read
-      // under its lock. Only the Mate's own grant is lowered; what else it reads is its group's,
-      // kept as it is (`planAccountGroupReach` keeps it). A key already lowered is left alone.
+      // under its lock. Only the Mate's own grant is lowered, every other kept as it is
+      // (`planMateKey`). A key already lowered is left alone.
       const lowered = await this.#holdToken(tokenId, async () => {
         const current = (await this.listIntegrationTokens(clientId, signal)).find(
           (listed) => listed.id === tokenId,

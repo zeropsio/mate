@@ -29,7 +29,7 @@ import type { EnvironmentCreationChoice } from "../components/zerops/ZeropsEnvir
 import { officialHq, useAccountHq } from "./accountHq";
 import { invalidateZerops } from "./accountInvalidations";
 import { captureAccountLifetime } from "./accountLifetime";
-import { beginPress, pressPlatform, pressRegistration, pressViewer, runPress } from "./matePress";
+import { beginPress, pressPlatform, pressRegistration, runPress } from "./matePress";
 import { readZeropsCellOnce } from "./readZeropsCell";
 import { useZeropsInventory } from "./ZeropsInventoryProvider";
 import { useZeropsSession } from "./ZeropsSessionProvider";
@@ -89,7 +89,7 @@ export function pressPlanned(steps: ReadonlyArray<EnvironmentCreationStep>): {
 export function useEnvironmentCreation(): (
   request: EnvironmentCreationRequest,
 ) => Promise<EnvironmentCreationRun> {
-  const { activeOrganization, client, user } = useZeropsSession();
+  const { activeOrganization, client } = useZeropsSession();
   const { organizationRef, projectRef, runtime } = useZeropsData();
   const inventory = useZeropsInventory();
   const inventoryRef = useRef(inventory);
@@ -161,8 +161,6 @@ export function useEnvironmentCreation(): (
         organizationId: organization.id,
       };
       const platform = pressPlatform(inputs, {
-        groupProjectIds: request.environments.map(({ item }) => item.project.id),
-        viewer: pressViewer(user, organization),
         register: pressRegistration(
           inputs,
           tier === null
@@ -221,15 +219,6 @@ export function useEnvironmentCreation(): (
       });
       return { kind: "ran", outcome, withAgent };
     },
-    [
-      accountHq,
-      activeOrganization,
-      client,
-      organizationRef,
-      projectRef,
-      readGroupAgents,
-      runtime,
-      user,
-    ],
+    [accountHq, activeOrganization, client, organizationRef, projectRef, readGroupAgents, runtime],
   );
 }

@@ -1286,7 +1286,7 @@ describe("the project's flow under it", () => {
       [CRM_DEV, CRM_STAGE],
       flow({ pullRequests: [pull(1), pull(2), pull(3), pull(4)] }),
     );
-    expect(html).toContain("4 pull requests");
+    expect(html).toContain("4 changes");
     expect(html).toContain('aria-expanded="false"');
     expect(html).not.toContain('data-zerops-surface="sidebar-pull-request"');
     // Three read at a glance.
@@ -1294,7 +1294,7 @@ describe("the project's flow under it", () => {
       [CRM_DEV, CRM_STAGE],
       flow({ pullRequests: [pull(1), pull(2), pull(3)] }),
     );
-    expect(three).not.toContain("pull requests");
+    expect(three).not.toContain("changes<");
     expect(three.match(/data-zerops-surface="sidebar-pull-request"/gu)).toHaveLength(3);
   });
 

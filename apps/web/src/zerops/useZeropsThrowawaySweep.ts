@@ -14,7 +14,7 @@
  * another tab's live connect is never swept out from under it, and nothing
  * else on the token list is ours to touch.
  *
- * It runs beside `useZeropsGroupReach` for the same reason that one does: the
+ * It runs beside `useZeropsMateKeys` for the same reason that one does: the
  * projects screen is where an account is read, and a repair nobody asked for
  * belongs where it costs nothing. Failures are swallowed — a token the account
  * may not delete, or a network that dropped, must not put an error on a screen

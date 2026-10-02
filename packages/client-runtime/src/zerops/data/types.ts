@@ -1841,8 +1841,6 @@ export interface ImportDevelopmentContainerCommandIntent {
   readonly project: ProjectRef;
   /** The project's name: the Mate's key is named after it (`zcp-<name>`). */
   readonly projectName: string;
-  /** The group's environments, this one included: the key reads the others. */
-  readonly groupProjectIds?: ReadonlyArray<string>;
   readonly zcpVersion?: string;
   readonly agents?: ReadonlyArray<ZeropsAgentType>;
   /** The tier's runtimes, for zcp to import on boot (`MATE_SETUP_RUNTIMES`). */

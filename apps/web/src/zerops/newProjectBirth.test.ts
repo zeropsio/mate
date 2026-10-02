@@ -514,7 +514,7 @@ describe("the tab holds a New project's creation until the platform takes it", (
 // a tab closed after a dialog that had left stranded a Mate with no container).
 describe("newProjectPressSteps — a New project's press, as its dialog draws it", () => {
   const press = (states: ReadonlyArray<"queued" | "running" | "done" | "failed">) =>
-    (["close-off", "register", "share-reach", "await-ready"] as const).map((kind, index) => ({
+    (["close-off", "register", "await-ready"] as const).map((kind, index) => ({
       step: kind === "await-ready" ? { kind, withAgent: true } : { kind },
       state: states[index]!,
     }));
@@ -547,7 +547,7 @@ describe("newProjectPressSteps — a New project's press, as its dialog draws it
     {
       case: "its Mate being closed off",
       made: birth({ step: "created", projectId: "p-1" }),
-      progress: press(["running", "queued", "queued", "queued"]),
+      progress: press(["running", "queued", "queued"]),
       want: [
         "Project registered:done",
         "Creating the project:done",
@@ -571,9 +571,9 @@ describe("newProjectPressSteps — a New project's press, as its dialog draws it
   });
 
   it("is through once its Mate is marked closed off and registered, and not before", () => {
-    expect(newProjectPressThrough(press(["running", "queued", "queued", "queued"]))).toBe(false);
-    expect(newProjectPressThrough(press(["done", "running", "queued", "queued"]))).toBe(false);
-    expect(newProjectPressThrough(press(["done", "done", "running", "queued"]))).toBe(true);
+    expect(newProjectPressThrough(press(["running", "queued", "queued"]))).toBe(false);
+    expect(newProjectPressThrough(press(["done", "running", "queued"]))).toBe(false);
+    expect(newProjectPressThrough(press(["done", "done", "running"]))).toBe(true);
     expect(newProjectPressThrough(null)).toBe(false);
   });
 });

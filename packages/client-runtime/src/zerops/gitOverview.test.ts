@@ -80,9 +80,9 @@ describe("the Git page's overview (SPEC §5.3)", () => {
   });
 
   it.each([
-    [0, "No open pull request"],
-    [1, "1 open pull request"],
-    [3, "3 open pull requests"],
+    [0, "No open change"],
+    [1, "1 open change"],
+    [3, "3 open changes"],
   ])("says a repository with %i open as %s", (open, line) => {
     expect(gitRepositoryLine(open)).toBe(line);
   });

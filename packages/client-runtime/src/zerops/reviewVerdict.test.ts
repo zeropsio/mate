@@ -156,13 +156,13 @@ describe("changeReview: the verdict comes first (R2)", () => {
         conflict: { files: ["src/server/index.ts"], by: undefined },
       },
       "resolve it",
-      "Rebase it on main, resolve the conflicts, and push.",
+      "Merge main into it, resolve the conflicts, and deliver it again.",
     ],
     [
       "a branch main moved past",
       { pull: pull({ behind: true }) },
       "update it",
-      "Bring it up to date with main, check it still works, and push.",
+      "Merge main into it, check it still works, and deliver it again.",
     ],
   ])("hands %s to the Mate, the problem written out", (_name, over, verb, ask) => {
     const fix = changeReview(change(over)).verdict.fix;

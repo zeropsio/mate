@@ -11,11 +11,10 @@ import {
   type TokensCellRequest,
   type ZeropsIntegrationTokenGrantMetadata,
 } from "@t3tools/client-runtime/zerops/data";
-import type { ZeropsGroupReachGroup } from "@t3tools/client-runtime/zerops";
 import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
 
 import { FakeCells } from "./__fixtures__/cells";
-import { integrationTokensFromGrantMetadata, useZeropsGroupReach } from "./useZeropsGroupReach";
+import { integrationTokensFromGrantMetadata, useZeropsMateKeys } from "./useZeropsMateKeys";
 import { ZeropsDataContext, type ZeropsDataContextValue } from "./zeropsDataContext";
 
 class TestNode {
@@ -93,9 +92,8 @@ const organization = {
   organizationId: ZeropsOrganizationId.make("org-1"),
 };
 
-// A Mate token as the platform minted it: ADMIN on its own project and
-// nothing else — a group of two calls for one write that both lowers it to
-// BASIC_USER (guide 0.2) and gives it READ_ONLY on the sibling.
+// A Mate's key as the platform minted it: ADMIN on its own project and nothing else — one write
+// lowers it to BASIC_USER (guide 0.2), and none gives it anything beside (ADR 0003).
 const NARROW_GRANTS: ReadonlyArray<ZeropsIntegrationTokenGrantMetadata> = [
   {
     tokenId: "token-a",
@@ -103,10 +101,8 @@ const NARROW_GRANTS: ReadonlyArray<ZeropsIntegrationTokenGrantMetadata> = [
     grants: [{ projectId: "project-a", roleCode: "ADMIN" }],
   },
 ];
-const GROUP: ZeropsGroupReachGroup = {
-  projectIds: ["project-a", "project-b"],
-  mateProjectIds: ["project-a"],
-};
+/** The account's one Mate, in project-a; project-b is another project of its application. */
+const MATES: ReadonlyArray<string> = ["project-a"];
 
 /** The grants as the read with `ordinal` settled them. */
 const knownGrants = (
@@ -155,13 +151,13 @@ function contextFor(
       // ever called any of these again, the command would throw and fail
       // the test.
       isolateProjectEnv: () => {
-        throw new Error("useZeropsGroupReach must never restart a project");
+        throw new Error("useZeropsMateKeys must never restart a project");
       },
       listTokenDelegations: () => {
-        throw new Error("useZeropsGroupReach must never read a token's delegations");
+        throw new Error("useZeropsMateKeys must never read a token's delegations");
       },
       deleteTokenDelegation: () => {
-        throw new Error("useZeropsGroupReach must never delete a token's delegations");
+        throw new Error("useZeropsMateKeys must never delete a token's delegations");
       },
     },
   } as unknown as ManagedZeropsDataRuntime;
@@ -214,13 +210,13 @@ describe("integrationTokensFromGrantMetadata", () => {
   });
 });
 
-describe("useZeropsGroupReach", () => {
-  /** Renders the reconcile for `GROUP` over `context`, and answers its root. */
+describe("useZeropsMateKeys", () => {
+  /** Renders the reconcile for `MATES` over `context`, and answers its root. */
   async function mounted(context: ZeropsDataContextValue) {
     installTestDom();
     const { createRoot } = await import("react-dom/client");
     function Probe() {
-      useZeropsGroupReach({ clientId: "org-1", groups: [GROUP], enabled: true });
+      useZeropsMateKeys({ clientId: "org-1", mateProjectIds: MATES, enabled: true });
       return null;
     }
     const root = createRoot(document.createElement("div") as unknown as Element);
@@ -235,10 +231,10 @@ describe("useZeropsGroupReach", () => {
     return root;
   }
 
-  it("plans from the live list, not the shared one: nothing to write for a token already reaching", async () => {
+  it("plans from the live list, not the shared one: nothing to write for a key already lowered", async () => {
     const broker = new FakeCells<TokensCellRequest>();
     const writes: unknown[] = [];
-    // The shared list is older: on the platform, the token already reaches its group.
+    // The shared list is older: on the platform, the key is already lowered.
     const reached: ReadonlyArray<ZeropsIntegrationTokenGrantMetadata> = [
       {
         tokenId: "token-a",
@@ -312,7 +308,7 @@ describe("useZeropsGroupReach", () => {
     }
   });
 
-  it("issues exactly one PUT for a group whose token does not yet reach it, and none once it does", async () => {
+  it("issues exactly one PUT for a key the platform minted with ADMIN, and none once it is lowered", async () => {
     installTestDom();
     const { createRoot } = await import("react-dom/client");
     const broker = new FakeCells<TokensCellRequest>();
@@ -320,7 +316,7 @@ describe("useZeropsGroupReach", () => {
     const context = contextFor(broker, (input) => writes.push(input));
 
     function Probe() {
-      useZeropsGroupReach({ clientId: "org-1", groups: [GROUP], enabled: true });
+      useZeropsMateKeys({ clientId: "org-1", mateProjectIds: MATES, enabled: true });
       return null;
     }
 
@@ -345,10 +341,7 @@ describe("useZeropsGroupReach", () => {
           organization,
           tokenId: "token-a",
           name: "zcp-a",
-          projects: [
-            { projectId: "project-a", roleCode: "BASIC_USER" },
-            { projectId: "project-b", roleCode: "READ_ONLY" },
-          ],
+          projects: [{ projectId: "project-a", roleCode: "BASIC_USER" }],
         },
       ]);
 
@@ -383,7 +376,7 @@ describe("useZeropsGroupReach", () => {
     const context = contextFor(broker, (input) => writes.push(input));
 
     function Probe() {
-      useZeropsGroupReach({ clientId: "org-1", groups: [GROUP], enabled: true });
+      useZeropsMateKeys({ clientId: "org-1", mateProjectIds: MATES, enabled: true });
       return null;
     }
 
@@ -431,7 +424,7 @@ describe("useZeropsGroupReach", () => {
     ];
 
     function Probe() {
-      useZeropsGroupReach({ clientId: "org-1", groups: [GROUP], enabled: true });
+      useZeropsMateKeys({ clientId: "org-1", mateProjectIds: MATES, enabled: true });
       return null;
     }
 
@@ -455,7 +448,7 @@ describe("useZeropsGroupReach", () => {
     }
   });
 
-  it("a reach re-runs when a token appears, even though the group shape did not move", async () => {
+  it("a key that appears is lowered, though the Mates did not change", async () => {
     // Live measurement 2026-09-22: a Mate came up hardened through
     // `hardenMate`, but its token had not existed yet the last time this
     // hook's key was built, so `lastKey` (group shape alone) never changed
@@ -467,7 +460,7 @@ describe("useZeropsGroupReach", () => {
     const context = contextFor(broker, (input) => writes.push(input));
 
     function Probe() {
-      useZeropsGroupReach({ clientId: "org-1", groups: [GROUP], enabled: true });
+      useZeropsMateKeys({ clientId: "org-1", mateProjectIds: MATES, enabled: true });
       return null;
     }
 
@@ -489,10 +482,100 @@ describe("useZeropsGroupReach", () => {
       await flushEffects();
       expect(writes).toEqual([]);
 
-      // The token now exists, freshly minted with ADMIN — the group's shape
-      // (`GROUP`) has not changed at all.
+      // The key now exists, freshly minted with ADMIN — the Mates (`MATES`) have not changed
+      // at all.
       await act(async () => {
         await broker.publish(knownGrants(NARROW_GRANTS, 2));
+      });
+      await flushEffects();
+
+      expect(writes).toEqual([
+        {
+          organization,
+          tokenId: "token-a",
+          name: "zcp-a",
+          projects: [{ projectId: "project-a", roleCode: "BASIC_USER" }],
+        },
+      ]);
+    } finally {
+      await act(() => root.unmount());
+    }
+  });
+
+  it("the reconcile never restarts a project", async () => {
+    // The birth's one restart runs before anyone is admitted
+    // (`provisioning.ts`'s `hardening` phase, spec-mate §3 B-1/B-2/B-3); a
+    // background reconcile that runs on every read of the projects screen,
+    // possibly with the person already inside a conversation, must not carry
+    // it along. `contextFor`'s `isolateProjectEnv` throws if this hook ever
+    // calls it, so this test's pass is itself the assertion.
+    installTestDom();
+    const { createRoot } = await import("react-dom/client");
+    const broker = new FakeCells<TokensCellRequest>();
+    const context = contextFor(broker, () => {});
+
+    function Probe() {
+      useZeropsMateKeys({ clientId: "org-1", mateProjectIds: MATES, enabled: true });
+      return null;
+    }
+
+    const root = createRoot(document.createElement("div") as unknown as Element);
+    try {
+      await act(() => {
+        root.render(
+          <ZeropsDataContext value={context}>
+            <Probe />
+          </ZeropsDataContext>,
+        );
+      });
+      await flushEffects();
+
+      await act(async () => {
+        await broker.publish(knownGrants(NARROW_GRANTS, 1));
+      });
+      await flushEffects();
+    } finally {
+      await act(() => root.unmount());
+    }
+  });
+
+  // ADR 0003: a grant a key already holds on another project is neither widened nor taken away
+  // here; a separate step removes it.
+  it("lowers a key and leaves a sibling grant it already holds, adding none", async () => {
+    installTestDom();
+    const { createRoot } = await import("react-dom/client");
+    const broker = new FakeCells<TokensCellRequest>();
+    const writes: unknown[] = [];
+    const context = contextFor(broker, (input) => writes.push(input));
+    const withSibling: ReadonlyArray<ZeropsIntegrationTokenGrantMetadata> = [
+      {
+        tokenId: "token-a",
+        name: "zcp-a",
+        grants: [
+          { projectId: "project-a", roleCode: "ADMIN" },
+          { projectId: "project-b", roleCode: "READ_ONLY" },
+        ],
+      },
+    ];
+
+    function Probe() {
+      useZeropsMateKeys({ clientId: "org-1", mateProjectIds: MATES, enabled: true });
+      return null;
+    }
+
+    const root = createRoot(document.createElement("div") as unknown as Element);
+    try {
+      await act(() => {
+        root.render(
+          <ZeropsDataContext value={context}>
+            <Probe />
+          </ZeropsDataContext>,
+        );
+      });
+      await flushEffects();
+
+      await act(async () => {
+        await broker.publish(knownGrants(withSibling, 1));
       });
       await flushEffects();
 
@@ -512,89 +595,7 @@ describe("useZeropsGroupReach", () => {
     }
   });
 
-  it("a reach reconcile never restarts a project", async () => {
-    // The birth's one restart runs before anyone is admitted
-    // (`provisioning.ts`'s `hardening` phase, spec-mate §3 B-1/B-2/B-3); a
-    // background reconcile that runs on every read of the projects screen,
-    // possibly with the person already inside a conversation, must not carry
-    // it along. `contextFor`'s `isolateProjectEnv` throws if this hook ever
-    // calls it, so this test's pass is itself the assertion.
-    installTestDom();
-    const { createRoot } = await import("react-dom/client");
-    const broker = new FakeCells<TokensCellRequest>();
-    const context = contextFor(broker, () => {});
-
-    function Probe() {
-      useZeropsGroupReach({ clientId: "org-1", groups: [GROUP], enabled: true });
-      return null;
-    }
-
-    const root = createRoot(document.createElement("div") as unknown as Element);
-    try {
-      await act(() => {
-        root.render(
-          <ZeropsDataContext value={context}>
-            <Probe />
-          </ZeropsDataContext>,
-        );
-      });
-      await flushEffects();
-
-      await act(async () => {
-        await broker.publish(knownGrants(NARROW_GRANTS, 1));
-      });
-      await flushEffects();
-    } finally {
-      await act(() => root.unmount());
-    }
-  });
-
-  it("lowers a solo Mate, which has no sibling to reach but a token to secure", async () => {
-    installTestDom();
-    const { createRoot } = await import("react-dom/client");
-    const broker = new FakeCells<TokensCellRequest>();
-    const writes: unknown[] = [];
-    const context = contextFor(broker, (input) => writes.push(input));
-    const solo: ZeropsGroupReachGroup = {
-      projectIds: ["project-a"],
-      mateProjectIds: ["project-a"],
-    };
-
-    function Probe() {
-      useZeropsGroupReach({ clientId: "org-1", groups: [solo], enabled: true });
-      return null;
-    }
-
-    const root = createRoot(document.createElement("div") as unknown as Element);
-    try {
-      await act(() => {
-        root.render(
-          <ZeropsDataContext value={context}>
-            <Probe />
-          </ZeropsDataContext>,
-        );
-      });
-      await flushEffects();
-
-      await act(async () => {
-        await broker.publish(knownGrants(NARROW_GRANTS, 1));
-      });
-      await flushEffects();
-
-      expect(writes).toEqual([
-        {
-          organization,
-          tokenId: "token-a",
-          name: "zcp-a",
-          projects: [{ projectId: "project-a", roleCode: "BASIC_USER" }],
-        },
-      ]);
-    } finally {
-      await act(() => root.unmount());
-    }
-  });
-
-  it("does not write when the token already reaches exactly its group", async () => {
+  it("does not write for a key already lowered, whatever else it holds", async () => {
     installTestDom();
     const { createRoot } = await import("react-dom/client");
     const broker = new FakeCells<TokensCellRequest>();
@@ -612,7 +613,7 @@ describe("useZeropsGroupReach", () => {
     ];
 
     function Probe() {
-      useZeropsGroupReach({ clientId: "org-1", groups: [GROUP], enabled: true });
+      useZeropsMateKeys({ clientId: "org-1", mateProjectIds: MATES, enabled: true });
       return null;
     }
 
@@ -672,16 +673,8 @@ describe("useZeropsGroupReach", () => {
       },
     };
 
-    // Two groups, each with its own Mate token, so the reconcile plans two
-    // sequential writes: "token-a" first, "token-c" second.
-    const groupA: ZeropsGroupReachGroup = {
-      projectIds: ["project-a", "project-b"],
-      mateProjectIds: ["project-a"],
-    };
-    const groupC: ZeropsGroupReachGroup = {
-      projectIds: ["project-c", "project-d"],
-      mateProjectIds: ["project-c"],
-    };
+    // Two Mates, each with its own key, so the reconcile plans two sequential writes: "token-a"
+    // first, "token-c" second.
     const grants: ReadonlyArray<ZeropsIntegrationTokenGrantMetadata> = [
       ...NARROW_GRANTS,
       {
@@ -692,7 +685,11 @@ describe("useZeropsGroupReach", () => {
     ];
 
     function Probe() {
-      useZeropsGroupReach({ clientId: "org-1", groups: [groupA, groupC], enabled: true });
+      useZeropsMateKeys({
+        clientId: "org-1",
+        mateProjectIds: ["project-a", "project-c"],
+        enabled: true,
+      });
       return null;
     }
 
@@ -767,16 +764,8 @@ describe("useZeropsGroupReach", () => {
       },
     };
 
-    // Two groups, each with its own Mate token, so the reconcile plans two
-    // sequential writes: "token-a" first, "token-c" second.
-    const groupA: ZeropsGroupReachGroup = {
-      projectIds: ["project-a", "project-b"],
-      mateProjectIds: ["project-a"],
-    };
-    const groupC: ZeropsGroupReachGroup = {
-      projectIds: ["project-c", "project-d"],
-      mateProjectIds: ["project-c"],
-    };
+    // Two Mates, each with its own key, so the reconcile plans two sequential writes: "token-a"
+    // first, "token-c" second.
     const grants: ReadonlyArray<ZeropsIntegrationTokenGrantMetadata> = [
       ...NARROW_GRANTS,
       {
@@ -787,7 +776,11 @@ describe("useZeropsGroupReach", () => {
     ];
 
     function Probe() {
-      useZeropsGroupReach({ clientId: "org-1", groups: [groupA, groupC], enabled: true });
+      useZeropsMateKeys({
+        clientId: "org-1",
+        mateProjectIds: ["project-a", "project-c"],
+        enabled: true,
+      });
       return null;
     }
 
@@ -822,7 +815,7 @@ describe("useZeropsGroupReach", () => {
       await new Promise((resolve) => setTimeout(resolve, 0));
     });
     await flushEffects();
-    // The reach still owed is planned again: token-c is written too.
+    // The lowering still owed is planned again: token-c is written too.
     expect(writes.map(({ tokenId }) => tokenId)).toContain("token-c");
     await act(() => root.unmount());
   });

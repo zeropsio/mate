@@ -77,7 +77,6 @@ import {
   beginPress,
   finishMateSetup,
   forgetPress,
-  pressViewer,
   pressFailureLine,
   placedPressesIn,
   useMatePresses,
@@ -89,7 +88,7 @@ import {
   useZeropsCandidates,
   type ZeropsCandidatePresentation,
 } from "~/zerops/useZeropsCandidates";
-import { useZeropsGroupReach } from "~/zerops/useZeropsGroupReach";
+import { useZeropsMateKeys } from "~/zerops/useZeropsMateKeys";
 import { useZeropsThrowawaySweep } from "~/zerops/useZeropsThrowawaySweep";
 import { useZeropsOrganizationMembers } from "~/zerops/useZeropsMateOwners";
 import { useZeropsSession, type ZeropsSessionStatus } from "~/zerops/ZeropsSessionProvider";
@@ -1114,10 +1113,6 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
           projectId,
           projectName: candidate.project.name,
           container: { agents },
-          groupProjectIds: (group?.environments ?? []).flatMap(({ item }) =>
-            item.project.id === projectId ? [] : [item.project.id],
-          ),
-          viewer: pressViewer(user, activeOrganization),
           registration:
             record === undefined
               ? null
@@ -1158,7 +1153,6 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
       settingUpKey,
       runtime,
       taken.names,
-      user,
     ],
   );
 
@@ -1906,21 +1900,17 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
     [activeOrganization, creationRunning, groupTree.groups, runCreation, setConnectError],
   );
 
-  // A Mate's group is its token: every environment in the group readable,
-  // its own writable. Reconciled off the list this screen already has, on
-  // every read — a grant write restarts nothing, and a group that has not
-  // moved is not written (`groupReach.ts`).
-  useZeropsGroupReach({
+  // Every Mate's key lowered to its own project, and nothing added beside it (ADR 0003).
+  // Reconciled off the list this screen already has, on every read — a grant write restarts
+  // nothing, and a key already lowered is not written (`groupReach.ts`).
+  useZeropsMateKeys({
     clientId: activeOrganization?.id,
     enabled: status === "signed-in" && !isLoading,
-    groups: useMemo(
+    mateProjectIds: useMemo(
       () =>
-        groupTree.groups.map((entry) => ({
-          projectIds: entry.environments.map(({ item }) => item.project.id),
-          mateProjectIds: entry.environments
-            .filter(({ item }) => hasMate(item))
-            .map(({ item }) => item.project.id),
-        })),
+        groupTree.groups.flatMap((entry) =>
+          entry.environments.filter(({ item }) => hasMate(item)).map(({ item }) => item.project.id),
+        ),
       [groupTree.groups],
     ),
   });
@@ -2043,8 +2033,6 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
       projectName: claimed.name,
       // The pool made its container.
       container: null,
-      groupProjectIds: [],
-      viewer: null,
       registration: null,
       hq: accountHq.hq.kind === "official" ? accountHq.hq : null,
       isCurrent: captureAccountLifetime(),

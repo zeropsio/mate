@@ -3457,7 +3457,7 @@ function PullRequestList({
           <span className="flex justify-center">
             <FoldGlyph open={open} />
           </span>
-          <span className="truncate">{`${String(pulls.length)} pull requests`}</span>
+          <span className="truncate">{`${String(pulls.length)} changes`}</span>
         </button>
       ) : null}
       {!folded || open ? (

@@ -86,7 +86,7 @@ describe("projectAttention", () => {
       pullRequests: [pull({ mergeability: "conflicting" })],
     });
     expect(item?.verb).toBe("Ask Theo");
-    expect(item?.text).toBe("#4 needs a rebase");
+    expect(item?.text).toBe("#4 conflicts with main");
   });
 
   it("falls back to a nameless Mate rather than a blank verb", () => {

@@ -13,8 +13,8 @@
  *   lapse never tears it down (G11). Nothing in it runs before the platform confirmed the
  *   account's organizations, projects and roles (AL-01, AL-04, MC-10): the Mate environments —
  *   the registration records, the container store with its probe store, and the exchange driver,
- *   joined and fed by `environments.ts` — and the project flow's stores: the deployment store,
- *   and on a host that gives the forge its ports the person's Gitea sessions, fed by `flow.ts`.
+ *   joined and fed by `environments.ts` — and the project flow's deployment store, fed by
+ *   `flow.ts`.
  *
  * It hands the tab's signals (§6.4, the PlatformSignals port) to the grant, the bus and the
  * post-grant stage: the page's visibility, its network and the coalesced wake become the grant's

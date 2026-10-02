@@ -259,11 +259,11 @@ export function pullRequestBlocked(pull: {
     return { kind: "checking", word: "checking", tone: "busy", ask: undefined };
   return {
     kind: "behind",
-    word: "needs a rebase",
+    word: "conflicts with main",
     tone: "attention",
     // Capitalised: the sentence is shown verbatim on a change's page as well
     // as written into a composer, and a page does not open mid-sentence.
-    ask: `Pull request #${pull.number} no longer merges cleanly. Rebase it on main, resolve the conflicts, and push.`,
+    ask: `Change #${pull.number} no longer merges cleanly. Merge main into it, resolve the conflicts, and deliver it again.`,
   };
 }
 

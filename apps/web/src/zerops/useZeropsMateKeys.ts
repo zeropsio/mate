@@ -1,27 +1,18 @@
 /**
- * Keeps every Mate's token reaching exactly its group, holding no more of that
- * group than it needs, and carrying no one-time mint — and every project in
- * the group from handing its variables to each of its own containers.
+ * Keeps every Mate's key lowered: `BASIC_USER` on its own project and nothing
+ * added beside it (`groupReach.ts`, guide 0.2, ADR 0003).
  *
- * The decision is `groupReach.ts`; this is the shell that reads the account
- * and performs the writes. It runs off the same candidate list the projects
- * screen already has, because that list *is* the group — membership is a tag
- * on each project — and a screen that can see a group is the only thing that
- * can keep a container's reach honest.
+ * The decision is `planAccountMateKeys`; this is the shell that reads the
+ * account and performs the writes. A key this client mints holds its own
+ * project from the start; this is how a Mate this client never created — the
+ * pool's from sign-up, an older account's, one made in the Zerops GUI — has the
+ * `ADMIN` the platform minted its key with lowered at all. It writes no grant on
+ * another project. One a key already holds stays as it is: a separate step
+ * removes those.
  *
  * Running on every read is deliberate and cheap. A token write changes grants,
  * never a container's environment, so nothing restarts, and an account whose
- * groups have not moved plans no writes at all. That is the whole reason this
- * lives here rather than at creation time: an environment added, renamed or
- * removed from anywhere — this client, another device, the Zerops GUI — is
- * reconciled the next time somebody looks at their projects.
- *
- * Every Mate is read, solo ones included. Reach is not the only thing the plan
- * decides any more: it also lowers the token the platform minted with `ADMIN`
- * to `BASIC_USER` (guide 0.2), and that is how a Mate this client never
- * created — the pool's from sign-up, an older account's — is secured at all. A
- * group of one used to be skipped because it had no sibling to reach; it has a
- * token to lower.
+ * keys are lowered plans no write at all.
  *
  * Failures are swallowed on purpose. This is a background repair of something
  * the user did not ask for; a token the account is not allowed to rewrite, or
@@ -30,23 +21,20 @@
  *
  * This reconcile never restarts a Mate (spec-mate §3 B-1/B-2/B-3): a birth
  * has exactly one restart and it runs before anyone is admitted, in
- * `provisioning.ts`'s `hardening` phase. A reach running from a page a
+ * `provisioning.ts`'s `hardening` phase. A reconcile running from a page a
  * person is already in must not carry that restart along with it —
  * `isolateProjectEnv` used to run here too and would throw someone already
  * inside a conversation out of it mid-session.
  *
- * The delegation drop (guide 0.4) lives in the birth now too
- * (`ZeropsApiClient.hardenMate`, run from `hardening`) — the one-time mint a
- * Mate this client never created still needs the reconcile's other half, the
- * token-widening plan below, but the delegation itself is dropped once, at
- * birth, never re-read here.
+ * The delegation drop (guide 0.4) lives in the birth too
+ * (`ZeropsApiClient.hardenMate`, run from `hardening`): the one-time mint is
+ * dropped once, at birth, never re-read here.
  *
- * The re-run key covers the token set, not only the group shape: a token
- * that appears after a Mate finishes hardening changes nothing about which
- * projects are in which group, so a key built from `groups` alone never
- * changed and the reconcile never re-ran for it (measured live 2026-09-22,
- * a hardened Mate's token still carrying a delegation because its
- * `lastKey` had not moved).
+ * The re-run key covers the token set, not only the Mates: a token that
+ * appears after a Mate finishes hardening changes nothing about which projects
+ * are Mates, so a key built from the Mates alone never changed and the
+ * reconcile never re-ran for it (measured live 2026-09-22, a hardened Mate's
+ * token still carrying a delegation because its `lastKey` had not moved).
  */
 
 import {
@@ -57,30 +45,23 @@ import {
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import {
-  planAccountGroupReach,
+  planAccountMateKeys,
   writeTokenProjectsFresh,
-  type ZeropsGroupReachGroup,
   type ZeropsIntegrationToken,
 } from "@t3tools/client-runtime/zerops";
 import { tokenWrites } from "./tokenWriteLock";
 import { runZeropsCommand, useKnown, useZeropsData } from "./zeropsDataContext";
 
-/** Serialises a plan input so an unchanged account is not re-read. */
-function groupsKey(groups: ReadonlyArray<ZeropsGroupReachGroup>): string {
-  return groups
-    .map(
-      (group) =>
-        `${[...group.projectIds].sort().join(",")}|${[...group.mateProjectIds].sort().join(",")}`,
-    )
-    .sort()
-    .join(";");
+/** Serialises the Mates so an unchanged account is not re-read. */
+function matesKey(mateProjectIds: ReadonlyArray<string>): string {
+  return [...new Set(mateProjectIds)].sort().join(",");
 }
 
 /**
  * Serialises the token set the plan reads from: which tokens exist and what
  * they currently grant. A token that appears, disappears, or has its grants
  * changed by anything other than this reconcile (a hardened birth, a manual
- * edit) is a reason to re-plan even when the group shape itself did not move.
+ * edit) is a reason to re-plan even when the Mates themselves did not change.
  */
 function tokensKey(tokens: ReadonlyArray<ZeropsIntegrationToken>): string {
   return [...tokens]
@@ -109,18 +90,19 @@ export function integrationTokensFromGrantMetadata(
   }));
 }
 
-/** How long a reach the platform refused waits before it is planned again. */
-export const GROUP_REACH_BACKOFF_MS: ReadonlyArray<number> = [30_000, 120_000, 600_000];
+/** How long a write the platform refused waits before it is planned again. */
+export const MATE_KEYS_BACKOFF_MS: ReadonlyArray<number> = [30_000, 120_000, 600_000];
 
-export function useZeropsGroupReach(input: {
+export function useZeropsMateKeys(input: {
   readonly clientId: string | undefined;
-  readonly groups: ReadonlyArray<ZeropsGroupReachGroup>;
+  /** Every project that holds a Mate: the projects whose keys this lowers. */
+  readonly mateProjectIds: ReadonlyArray<string>;
   readonly enabled: boolean;
 }): void {
-  const { clientId, groups, enabled } = input;
+  const { clientId, mateProjectIds, enabled } = input;
   const { organizationRef, runtime } = useZeropsData();
   const lastKey = useRef<string | null>(null);
-  /** A reach the platform refused: when it may be planned again, and how often it was. */
+  /** A write the platform refused: when it may be planned again, and how often it was. */
   const refused = useRef<{
     readonly key: string;
     readonly attempts: number;
@@ -134,8 +116,8 @@ export function useZeropsGroupReach(input: {
     },
     [],
   );
-  const key = groupsKey(groups);
-  const hasMate = groups.some((group) => group.mateProjectIds.length > 0);
+  const key = matesKey(mateProjectIds);
+  const hasMate = mateProjectIds.length > 0;
   const request = useMemo<TokensCellRequest | null>(
     () =>
       enabled && clientId !== undefined && hasMate
@@ -166,9 +148,9 @@ export function useZeropsGroupReach(input: {
       return;
     }
     if (tokens === null || tokenSetKey === null) return;
-    // A reach the platform refused waits out its back-off, however often the list is read again.
-    const reachKey = `${clientId}:${key}`;
-    if (refused.current?.key === reachKey && performance.now() < refused.current.retryAtMs) return;
+    // A write the platform refused waits out its back-off, however often the list is read again.
+    const planKey = `${clientId}:${key}`;
+    if (refused.current?.key === planKey && performance.now() < refused.current.retryAtMs) return;
     const runKey = `${clientId}:${key}:${tokenSetKey}`;
     if (lastKey.current === runKey) return;
     lastKey.current = runKey;
@@ -185,7 +167,8 @@ export function useZeropsGroupReach(input: {
             integrationTokensFromGrantMetadata(
               await runZeropsCommand(runtime.commands.listIntegrationTokenGrants(organization)),
             ),
-          plan: (fresh) => (cancelled ? [] : planAccountGroupReach({ groups, tokens: fresh })),
+          plan: (fresh) =>
+            cancelled ? [] : planAccountMateKeys({ mateProjectIds, tokens: fresh }),
           write: (write) =>
             runZeropsCommand(
               runtime.commands.setIntegrationTokenProjects({ organization, ...write }),
@@ -193,15 +176,14 @@ export function useZeropsGroupReach(input: {
           hold: tokenWrites,
         });
         finished = true;
-        if (refused.current?.key === reachKey) refused.current = null;
+        if (refused.current?.key === planKey) refused.current = null;
       } catch {
         finished = true;
         // Background repair: never an error the person did not ask for, and never a loop on a
         // write the platform keeps refusing — it is planned again after 30 s, 2 min, then 10 min.
-        const attempts = (refused.current?.key === reachKey ? refused.current.attempts : 0) + 1;
-        const waitMs =
-          GROUP_REACH_BACKOFF_MS[Math.min(attempts, GROUP_REACH_BACKOFF_MS.length) - 1]!;
-        refused.current = { key: reachKey, attempts, retryAtMs: performance.now() + waitMs };
+        const attempts = (refused.current?.key === planKey ? refused.current.attempts : 0) + 1;
+        const waitMs = MATE_KEYS_BACKOFF_MS[Math.min(attempts, MATE_KEYS_BACKOFF_MS.length) - 1]!;
+        refused.current = { key: planKey, attempts, retryAtMs: performance.now() + waitMs };
         lastKey.current = null;
         if (wakeTimer.current !== null) clearTimeout(wakeTimer.current);
         wakeTimer.current = setTimeout(() => {
@@ -223,7 +205,7 @@ export function useZeropsGroupReach(input: {
     tokens,
     tokenSetKey,
     grants.status,
-    groups,
+    mateProjectIds,
     hasMate,
     key,
     organizationRef,

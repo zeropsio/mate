@@ -51,8 +51,8 @@ describe("ZeropsGitOverview", () => {
     expect(html).toContain(">Todo</h2>");
     expect(html).toContain('data-zerops-git-app="a-todo"');
     expect(html).toContain('data-zerops-git-repository="appdev"');
-    expect(html).toContain("1 open pull request");
-    expect(html).toContain("No open pull request");
+    expect(html).toContain("1 open change");
+    expect(html).toContain("No open change");
     expect(html).toContain("Add a due date to each todo");
     expect(html).toContain("#4 · Vera");
   });
