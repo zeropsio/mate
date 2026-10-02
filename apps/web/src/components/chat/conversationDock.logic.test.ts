@@ -8,7 +8,10 @@ import { describe, expect, it } from "vite-plus/test";
 
 import { assistant, at, operation, tool, user } from "./conversationFixtures";
 import {
+  bandKeys,
   deriveDock,
+  endedSince,
+  withEndingsHeld,
   dockHelpers,
   foldBackgroundTasks,
   latestUsagePause,
@@ -315,6 +318,38 @@ describe("deriveDock", () => {
       ],
     });
     expect(dock?.operations.map((op) => op.key)).toEqual(["op:s1"]);
+  });
+
+  // A bar the person watched run shows how it ended a moment, then leaves
+  // (pass 35): what ended is the band's to hold, never the dock's to keep.
+  it("says what the band drew running that has ended since, and draws it as it ended while held", () => {
+    const running = deriveDock({
+      ...base,
+      timelineEntries: [
+        operation("s1", "t1", 1, { kind: "standup", phase: "running", returnedAt: at(1, 5) }),
+      ],
+      backgroundTasks: foldBackgroundTasks([
+        task("task.started", "b1", 2, { detail: "Smoke tests" }),
+      ]),
+    });
+    expect([...bandKeys(running)]).toEqual(["op:s1", "task:b1"]);
+    const ended = deriveDock({
+      ...base,
+      timelineEntries: [
+        operation("s1", "t1", 1, { kind: "standup", phase: "done", returnedAt: at(1, 5) }),
+      ],
+      backgroundTasks: foldBackgroundTasks([
+        task("task.started", "b1", 2, { detail: "Smoke tests" }),
+        task("task.completed", "b1", 3, { status: "failed" }),
+      ]),
+    });
+    expect(ended?.operations).toEqual([]);
+    expect(ended?.background).toBeNull();
+    expect(endedSince(bandKeys(running), ended)).toEqual(["op:s1", "task:b1"]);
+    const held = withEndingsHeld(ended, new Set(["op:s1", "task:b1"]));
+    expect(held?.operations.map((op) => [op.key, op.phase])).toEqual([["op:s1", "done"]]);
+    expect(held?.background).toMatchObject({ running: 0, failed: 1 });
+    expect(withEndingsHeld(ended, new Set())).toBe(ended);
   });
 
   it("drops the helpers' bar once none works, and the task list's once all is done", () => {

@@ -78,6 +78,67 @@ export interface DockModel {
    */
   readonly afterTurn: "working" | "monitoring" | null;
   readonly pause: { readonly resetsAt: string | null } | null;
+  /**
+   * The running turn's pipelines and background tasks that ended, as they
+   * ended: a bar the person watched run shows how it ended a moment before
+   * its room eases shut (`withEndingsHeld`).
+   */
+  readonly endings?: {
+    readonly operations: ReadonlyArray<ZeropsOperation>;
+    readonly tasks: ReadonlyArray<DockBackgroundTask>;
+  };
+}
+
+/** How long a bar that ended shows how it ended before its room eases shut (pass 35). */
+export const BAND_ENDING_MS = 800;
+
+/** What the band draws running, by key: each pipeline's, each background task's. */
+export function bandKeys(dock: DockModel | null): ReadonlySet<string> {
+  return new Set([
+    ...(dock?.operations ?? []).map((operation) => operation.key),
+    ...(dock?.background?.tasks ?? [])
+      .filter((task) => task.state === "running")
+      .map((task) => `task:${task.id}`),
+  ]);
+}
+
+/** Of what the band drew running before, what has ended since: it shows its ending a moment. */
+export function endedSince(
+  before: ReadonlySet<string>,
+  dock: DockModel | null,
+): ReadonlyArray<string> {
+  const running = bandKeys(dock);
+  const ended = new Set([
+    ...(dock?.endings?.operations ?? []).map((operation) => operation.key),
+    ...(dock?.endings?.tasks ?? []).map((task) => `task:${task.id}`),
+  ]);
+  return [...before].filter((key) => !running.has(key) && ended.has(key));
+}
+
+/**
+ * The dock as the band draws it, with the endings `held` drawn as they ended
+ * (`BAND_ENDING_MS`), beside what runs: a deploy that finished shows it
+ * finished, a task that failed says so, then the bar leaves. A failure is
+ * then told once, as its row in the record.
+ */
+export function withEndingsHeld(
+  dock: DockModel | null,
+  held: ReadonlySet<string>,
+): DockModel | null {
+  if (dock === null || held.size === 0) return dock;
+  const operations = (dock.endings?.operations ?? []).filter((operation) =>
+    held.has(operation.key),
+  );
+  const tasks = (dock.endings?.tasks ?? []).filter((task) => held.has(`task:${task.id}`));
+  if (operations.length === 0 && tasks.length === 0) return dock;
+  const shownTasks = [...(dock.background?.tasks ?? []), ...tasks];
+  return {
+    ...dock,
+    operations: [...dock.operations, ...operations.flatMap(splitBatchDeploy)].toSorted((a, b) =>
+      a.anchorAt.localeCompare(b.anchorAt),
+    ),
+    background: backgroundGroup(shownTasks),
+  };
 }
 
 function payloadString(payload: Record<string, unknown>, key: string): string | undefined {
@@ -337,13 +398,40 @@ export function deriveDock(input: {
     : null;
 
   const pause = input.isWorking ? null : input.pause;
+  // What ended this turn: a bar the person watched shows its ending a moment.
+  const endings =
+    input.isWorking && input.runningTurnId !== null
+      ? {
+          operations: input.timelineEntries.flatMap((entry) =>
+            entry.kind === "operation" &&
+            DOCKED_KINDS.has(entry.operation.kind) &&
+            entry.operation.turnId === input.runningTurnId &&
+            entry.operation.phase !== "running"
+              ? [entry.operation]
+              : [],
+          ),
+          tasks: backgroundTasks.filter(
+            (task) => task.state !== "running" && task.turnId === input.runningTurnId,
+          ),
+        }
+      : null;
+  const ends = endings !== null && (endings.operations.length > 0 || endings.tasks.length > 0);
   return operations.length === 0 &&
     helpers === null &&
     tasks === null &&
     background === null &&
-    pause === null
+    pause === null &&
+    !ends
     ? null
-    : { operations, helpers, tasks, background, afterTurn: null, pause };
+    : {
+        operations,
+        helpers,
+        tasks,
+        background,
+        afterTurn: null,
+        pause,
+        ...(ends ? { endings } : {}),
+      };
 }
 
 /**
