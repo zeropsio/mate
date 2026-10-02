@@ -7,7 +7,9 @@
  *   application, attaching, moving or detaching a project, a Mate's record, a Mate's enrollment,
  *   following a Mate's live summary (who may operate it: open it, as its door does), and reading and
  *   commenting on an application's changes (`hqChanges.ts`), as main's Gitea read them, and
- *   merging or closing one, as its write team did — closing also the structure's writer.
+ *   merging or closing one, as its write team did — closing also the structure's writer; and
+ *   releasing an application to production, or rolling it back (`hqRelease.ts`), by whoever may
+ *   deploy there.
  * - **A Mate's own verbs** — its enrollment, and its repositories, its own changes and git in the
  *   application HQ holds it in — are a Mate's alone, for its own project only; it is refused every
  *   other verb.
@@ -112,6 +114,15 @@ export interface RecipeLandingTarget {
   readonly empty: boolean;
 }
 
+/**
+ * A release of an application to production, or a rollback: the application's projects, and its
+ * production (`null`: none yet).
+ */
+export interface ReleaseTarget {
+  readonly projectIds: ReadonlyArray<string>;
+  readonly productionProjectId: string | null;
+}
+
 /** A project placed into an application as `to`, beside the application's projects. */
 export interface PlacementTarget extends ProjectTarget {
   readonly to: string;
@@ -135,6 +146,7 @@ export interface Targets {
   readonly merge_change: { readonly projectIds: ReadonlyArray<string> };
   /** A change of an application closed without merging: whoever may merge it, or a writer. */
   readonly close_change: { readonly projectIds: ReadonlyArray<string> };
+  readonly release: ReleaseTarget;
   readonly create_app: null;
   readonly rename_app: null;
   readonly attach: AttachTarget;
@@ -192,6 +204,8 @@ export const REASONS = [
   "author_not_in_app",
   "recipe_empty",
   "recipe_changes_files",
+  "no_production",
+  "not_releaser",
 ] as const;
 
 export type Reason = (typeof REASONS)[number];
@@ -337,6 +351,16 @@ function decide(principal: Principal, request: Request, facts: Facts): Decision 
       if (!seesApp(request.target.projectIds)) return deny("app_not_seen");
       if (request.verb === "close_change" && writer) return ALLOW;
       return writesApp(request.target.projectIds) ? ALLOW : deny("not_app_developer");
+    // A release, and a rollback, by whoever may deploy to the application's production: Basic user
+    // or above there (SPEC §3.3a), as main's broker had it — never its client's org admin alone.
+    case "release": {
+      const { projectIds, productionProjectId } = request.target;
+      if (!seesApp(projectIds)) return deny("app_not_seen");
+      if (productionProjectId === null) return deny("no_production");
+      return roleAtLeast(roleOn(productionProjectId), "BASIC_USER")
+        ? ALLOW
+        : lacking(productionProjectId, "not_releaser");
+    }
     case "observe_mate":
       // Who may operate a Mate is who its door opens for: Basic user or above there. No kind check:
       // HQ has a live summary only for a project it holds as a Mate.
