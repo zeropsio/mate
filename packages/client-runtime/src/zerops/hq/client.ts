@@ -19,8 +19,10 @@ import {
   CommentListResponse,
   HqChange,
   HqChangeComment,
+  RepoListResponse,
   type AttachmentLink,
   type ChangeLink,
+  type RepoListEntry,
 } from "@t3tools/shared/hqChanges";
 import { RecipeTierResponse, type RecipeTier } from "@t3tools/shared/hqRecipe";
 import type { MateSummary } from "@t3tools/shared/mateLink";
@@ -181,7 +183,7 @@ export interface HqApi {
    * An application's repositories, read as the person (`GET /api/apps/:appId/repos`): whoever may
    * read its changes.
    */
-  readonly appRepos: (appId: string, signal?: AbortSignal) => Promise<ReadonlyArray<HqAppRepo>>;
+  readonly appRepos: (appId: string, signal?: AbortSignal) => Promise<ReadonlyArray<RepoListEntry>>;
 }
 
 /** A socket the structure stream reads, opened by the host (`WebSocket` in a browser). */
@@ -305,18 +307,7 @@ const readComment = decoded(HqChangeComment);
 const readChange = decoded(HqChange);
 const readRecipeTier = decoded(RecipeTierResponse);
 
-/**
- * One of an application's repositories as `GET /api/apps/:appId/repos` answers it: its name, its
- * `main` — none yet in a repository nothing has landed in — and when that last moved, or when the
- * repository was made.
- */
-const HqAppRepo = Schema.Struct({
-  name: Schema.String,
-  mainHead: Schema.NullOr(Schema.String),
-  updatedAt: Schema.String,
-});
-export type HqAppRepo = typeof HqAppRepo.Type;
-const readAppRepos = decoded(Schema.Struct({ repos: Schema.Array(HqAppRepo) }));
+const readAppRepos = decoded(RepoListResponse);
 
 /** A change's own path at HQ's API. */
 const changePath = ({ appId, repo, number }: ChangeLink): string =>

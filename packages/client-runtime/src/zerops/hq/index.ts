@@ -28,7 +28,6 @@ export {
   makeHqApi,
   readHqHealth,
   type HqApi,
-  type HqAppRepo,
   type HqAttach,
   type HqMate,
   type HqEndpoint,

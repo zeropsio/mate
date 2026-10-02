@@ -7,7 +7,7 @@
  * cause beside it, and never takes another's answer with it — nor ever answers "no repositories".
  * The changes open on them come down HQ's stream, the flow's (`ZeropsProjectFlowProvider`).
  */
-import type { HqAppRepo } from "@t3tools/client-runtime/zerops/hq";
+import type { RepoListEntry } from "@t3tools/shared/hqChanges";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 import { useEffect, useMemo, useState } from "react";
 
@@ -18,7 +18,7 @@ export const APP_REPOS_REFRESH_MS = 60_000;
 
 export interface ZeropsAppRepos {
   /** Each application's repositories, as HQ last listed them; absent until its first answer. */
-  readonly repos: ReadonlyMap<string, ReadonlyArray<HqAppRepo>>;
+  readonly repos: ReadonlyMap<string, ReadonlyArray<RepoListEntry>>;
   /** Why an application's last read did not answer, beside what it read before. */
   readonly failures: ReadonlyMap<string, string>;
 }
@@ -26,7 +26,7 @@ export interface ZeropsAppRepos {
 /** What HQ last answered each application, for one HQ. */
 interface Held {
   readonly address: string;
-  readonly repos: ReadonlyMap<string, ReadonlyArray<HqAppRepo>>;
+  readonly repos: ReadonlyMap<string, ReadonlyArray<RepoListEntry>>;
   readonly failures: ReadonlyMap<string, string>;
 }
 
@@ -87,5 +87,5 @@ export function useZeropsAppRepos(appIds: ReadonlyArray<string>): ZeropsAppRepos
 }
 
 /** Nothing answered yet: not "no repositories". */
-const NONE_READ: ReadonlyMap<string, ReadonlyArray<HqAppRepo>> = new Map();
+const NONE_READ: ReadonlyMap<string, ReadonlyArray<RepoListEntry>> = new Map();
 const NO_FAILURES: ReadonlyMap<string, string> = new Map();

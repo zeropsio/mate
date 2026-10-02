@@ -3,7 +3,7 @@
  * organization's HQ: together, again every minute while the page is open, and an application whose
  * read fails keeps what it read before and says why — it never answers "no repositories".
  */
-import type { HqAppRepo } from "@t3tools/client-runtime/zerops/hq";
+import type { RepoListEntry } from "@t3tools/shared/hqChanges";
 import { act, type ReactElement } from "react";
 import { create, type ReactTestRenderer } from "react-test-renderer";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
@@ -18,7 +18,7 @@ const hq = vi.hoisted(() => {
   const state = {
     open: true,
     asked: [] as Array<string>,
-    answers: new Map<string, ReadonlyArray<HqAppRepo> | Error>(),
+    answers: new Map<string, ReadonlyArray<RepoListEntry> | Error>(),
   };
   const official = {
     address: "https://hq.example.test",
@@ -40,12 +40,12 @@ vi.mock("./accountHq", () => ({
   useOfficialHq: () => (hq.state.open ? hq.official : null),
 }));
 
-const APPDEV: HqAppRepo = {
+const APPDEV: RepoListEntry = {
   name: "appdev",
   mainHead: "a".repeat(40),
   updatedAt: "2026-10-02T09:00:00.000Z",
 };
-const API: HqAppRepo = { name: "api", mainHead: null, updatedAt: "2026-10-02T08:00:00.000Z" };
+const API: RepoListEntry = { name: "api", mainHead: null, updatedAt: "2026-10-02T08:00:00.000Z" };
 
 /** What the hook said, render by render. */
 const renders: ZeropsAppRepos[] = [];
@@ -106,7 +106,7 @@ describe("useZeropsAppRepos", () => {
       ["a-crm", [API]],
     ]);
     await mount(<Probe appIds={TWO} />);
-    hq.state.answers = new Map<string, ReadonlyArray<HqAppRepo> | Error>([
+    hq.state.answers = new Map<string, ReadonlyArray<RepoListEntry> | Error>([
       ["a-todo", [APPDEV]],
       ["a-crm", new Error("HQ is not answering right now.")],
     ]);

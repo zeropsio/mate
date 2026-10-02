@@ -707,6 +707,18 @@ describe("makeHqApi — a Mate's changes, as the person reads them", () => {
     expect(hq.seen.at(-1)).toMatchObject({ method: "GET", authorization: "Bearer session-1" });
   });
 
+  // The shape is HQ's contract (`RepoListResponse`): a main that is no commit is no answer.
+  it("reads no repository list whose main is no commit", async () => {
+    const { api: hqApi } = api((seen) =>
+      seen.path === "/api/apps/app-1/repos"
+        ? json(200, {
+            repos: [{ name: "appdev", mainHead: "main", updatedAt: "2026-10-02T09:00:00.000Z" }],
+          })
+        : undefined,
+    );
+    await expect(hqApi.appRepos("app-1")).rejects.toMatchObject({ code: "unreadable" });
+  });
+
   it("fetches a change's picture with the session, as the picture it is", async () => {
     const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47]);
     const { hq, api: hqApi } = api((seen) =>
