@@ -45,6 +45,8 @@ const PERMISSION_WORDS: { readonly [R in Reason]: string } = {
   recipe_empty: "This change changes nothing, so it was closed.",
   recipe_changes_files:
     "This change edits the project's recipe, so it waits for someone who develops the project to merge it.",
+  no_production: "This project has no production yet.",
+  not_releaser: "You need at least Basic user access to this project's production to release it.",
 };
 
 /**
