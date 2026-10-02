@@ -284,6 +284,37 @@ describe("container machine (DESIGN §4.5)", () => {
     expect(containerVerdict(run.machine)).toEqual({ level: "booting", overdue: false });
   });
 
+  it("a first build's wait runs from the service's creation, in any tab that sees it", () => {
+    // A minute, and twenty minutes, before the tab's first event (`START_MS`).
+    const MINUTE_BEFORE = "2027-01-15T07:59:00.000Z";
+    const TWENTY_BEFORE = "2027-01-15T07:40:00.000Z";
+    const firstBuild = (serviceCreated: string): ContainerEvent => ({
+      type: "PLATFORM",
+      status: { project: "ACTIVE", service: "READY_TO_DEPLOY", serviceCreated },
+    });
+    // A tab opened a minute into the build: its cap is the build's, not the tab's.
+    const young = drive([firstBuild(MINUTE_BEFORE)]);
+    expect(containerVerdict(young.machine)).toEqual({ level: "provisioning", overdue: false });
+    expect(young.machine.timer).toEqual(
+      instant(START_MS - 60_000 + CONTAINER_CAPS_MS.provisioning),
+    );
+    // A tab opened twenty minutes on: past its cap at once, so it says it is taking longer.
+    const stale = drive([firstBuild(TWENTY_BEFORE), { type: "TICK" }]);
+    expect(containerVerdict(stale.machine)).toEqual({ level: "provisioning", overdue: true });
+    // A service starting again long after it was made is timed from now, as before.
+    const restarted = drive([
+      {
+        type: "PLATFORM",
+        status: {
+          project: "ACTIVE",
+          service: "STARTING",
+          serviceCreated: TWENTY_BEFORE,
+        },
+      },
+    ]);
+    expect(containerVerdict(restarted.machine)).toEqual({ level: "provisioning", overdue: false });
+  });
+
   it("a service the platform brought up boots until a probe sent after it answers", () => {
     const provisioning = drive([
       { type: "PLATFORM", status: { project: "ACTIVE", service: "STARTING" } },
