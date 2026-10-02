@@ -125,6 +125,9 @@ const ServicePage = Schema.Struct({
   total: Schema.optionalKey(Schema.Number),
 });
 const Created = Schema.Struct({ id: Schema.String });
+const Imported = Schema.Struct({
+  serviceStacks: Schema.Array(Schema.Struct({ name: Schema.String })),
+});
 const ProcessRow = Schema.Struct({
   status: Schema.Literals(["PENDING", "RUNNING", "FINISHED", "FAILED", "CANCELED"]),
   error: Schema.optionalKey(
@@ -432,5 +435,18 @@ export const makeZeropsDeployHttp = (
           HttpClientRequest.put(`${baseUrl}/service-stack/${serviceId}/enable-subdomain-access`),
           Created,
         ).pipe(Effect.map(({ id }) => ({ processId: id }))),
+      importServices: (projectId, yaml) => (credential) =>
+        send(
+          "importServices",
+          credential,
+          HttpClientRequest.post(`${baseUrl}/project/${projectId}/service-stack/import`).pipe(
+            HttpClientRequest.bodyJsonUnsafe({ yaml }),
+          ),
+          Imported,
+        ).pipe(
+          Effect.map(({ serviceStacks }) => ({
+            services: serviceStacks.map((stack) => stack.name),
+          })),
+        ),
     };
   });

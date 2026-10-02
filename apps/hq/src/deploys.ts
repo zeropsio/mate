@@ -1,4 +1,5 @@
-// @effect-diagnostics nodeBuiltinImport:off -- a commit's archive comes from git as a Node stream.
+// @effect-diagnostics nodeBuiltinImport:off -- a commit's archive comes from git as a Node stream;
+// a tier's digest is the system's SHA-256.
 /**
  * Deploying an application's stage environments (SPEC §3.2b), where main's broker and each
  * repository's workflow did it (main B). When `main` of one of an application's repositories moves,
@@ -19,6 +20,14 @@
  * - **Every pass is a catch-up**: at takeover and every 5 min, each environment's wanted commits
  *   against what its services run (B22); `main` moving asks only for the commits with no deploy
  *   yet. Only the leading Core deploys.
+ * - **A tier that changed adds what it declares** (main D15): before a pass deploys, every
+ *   environment of a tier whose import file changed since HQ last saw it gets the services it
+ *   lacks, created empty where HQ deploys them (`recipeDeltas.ts`). A changed declaration of a
+ *   service the project has is reported, never applied; a service the tier no longer declares is
+ *   reported, never deleted. What HQ saw is kept in its database (`hq_recipe_seen`): a tier first
+ *   seen is the one its environments were made from and imports nothing, and after a restart the
+ *   first pass is a pass like any other — main's broker forgot it, so its first pass only
+ *   reported (D16).
  *
  * A deploy's record (`hq_deploy`) is per environment, service and commit: pending, deploying, live
  * or failed — the build's own (`job`) or HQ's (`refused`) — with the platform's version and job.
@@ -26,6 +35,7 @@
  *
  * @module deploys
  */
+import * as NodeCrypto from "node:crypto";
 import type * as NodeStream from "node:stream";
 
 import type { HqGit } from "@t3tools/hq-git";
@@ -46,6 +56,7 @@ import type { SqlError } from "effect/unstable/sql/SqlError";
 import { deadDeployToken, noDeployToken, reachesOnly, widenedDeployToken } from "./deployTokens.ts";
 import { GitHost } from "./gitHost.ts";
 import { Leader, NotLeader } from "./leader.ts";
+import { type TierService, deltaImport, tierServices } from "./recipeDeltas.ts";
 import { RecipeTiers } from "./recipeTiers.ts";
 import { Roles } from "./roles.ts";
 import { tierRuntimes } from "./tierRuntimes.ts";
@@ -114,6 +125,10 @@ type Ended =
 
 const job = (message: string): Ended => ({ state: "failed", failure: "job", message });
 const refused = (message: string): Ended => ({ state: "failed", failure: "refused", message });
+
+const encodeBlocks = Schema.encodeSync(
+  Schema.fromJsonString(Schema.Record(Schema.String, Schema.String)),
+);
 
 /** A record's words are at most 240 characters (main B27). */
 const cut = (message: string) => (message.length <= 240 ? message : `${message.slice(0, 239)}…`);
@@ -456,6 +471,142 @@ export const deploysLayer = (
           return checked === undefined ? { token } : refused(checked);
         });
 
+      /**
+       * What changed tiers added, imported into their environments (main D15), before a pass
+       * deploys: per application and tier, its import file against what HQ last saw of it. What it
+       * saw moves on only once every environment of the tier has what the tier declares.
+       */
+      const recipeDeltas = Effect.gen(function* () {
+        const environments = yield* sql<{
+          readonly project_id: string;
+          readonly app_id: string;
+          readonly tier: "stage" | "production";
+          readonly name: string;
+        }>`
+          SELECT project_id, app_id::text AS app_id, tier, name FROM hq_environment
+          ORDER BY declared_seq`;
+        const groups = new Map<string, Array<(typeof environments)[number]>>();
+        for (const environment of environments) {
+          const key = `${environment.app_id}/${environment.tier}`;
+          groups.set(key, [...(groups.get(key) ?? []), environment]);
+        }
+        for (const group of groups.values()) {
+          const { app_id: appId, tier } = group[0]!;
+          const read = yield* recipes.read(appId, tier).pipe(
+            Effect.tapError((error) =>
+              Effect.logWarning("tier unreadable", { appId, tier, error }),
+            ),
+            Effect.option,
+          );
+          if (Option.isNone(read) || read.value.state === "absent") continue;
+          const declared = tierServices(read.value.importYaml);
+          if (!declared.ok) {
+            yield* Effect.logWarning("tier refused", { appId, tier, problem: declared.problem });
+            continue;
+          }
+          const digest = NodeCrypto.createHash("sha256")
+            .update(read.value.importYaml)
+            .digest("hex");
+          const [seen] = yield* sql<{
+            readonly digest: string;
+            readonly blocks: Readonly<Record<string, string>>;
+          }>`
+            SELECT digest, blocks FROM hq_recipe_seen
+            WHERE app_id::text = ${appId} AND tier = ${tier}`;
+          if (seen?.digest === digest) continue;
+          let everywhere = true;
+          for (const environment of group) {
+            const done = yield* deltaOf(
+              environment.project_id,
+              environment.name,
+              declared.services,
+              seen,
+            );
+            if (!done) everywhere = false;
+          }
+          if (!everywhere) continue;
+          const blocks = encodeBlocks(
+            Object.fromEntries(
+              declared.services.map((service) => [service.hostname, service.block]),
+            ),
+          );
+          yield* leader.write(sql`
+            INSERT INTO hq_recipe_seen (app_id, tier, digest, blocks)
+            VALUES (${appId}::uuid, ${tier}, ${digest}, ${blocks}::jsonb)
+            ON CONFLICT (app_id, tier) DO UPDATE SET
+              digest = EXCLUDED.digest, blocks = EXCLUDED.blocks, seen_at = now()`);
+        }
+      });
+
+      /**
+       * One environment against its tier: the services it lacks imported — none where HQ sees the
+       * tier for the first time — and what a delta never does reported. Whether it has them now.
+       */
+      const deltaOf = (
+        projectId: string,
+        envName: string,
+        declared: ReadonlyArray<TierService>,
+        seen: { readonly blocks: Readonly<Record<string, string>> } | undefined,
+      ) =>
+        Effect.gen(function* () {
+          const key = yield* keyOf(projectId, envName);
+          if (!("token" in key)) {
+            yield* Effect.logWarning("recipe delta waits", {
+              environment: envName,
+              why: "message" in key ? key.message : key.state,
+            });
+            return false;
+          }
+          const present = new Set(
+            (yield* zerops.services(projectId)(key.token))
+              .filter((service) => !service.isSystem)
+              .map((service) => service.name),
+          );
+          const hostnames = new Set(declared.map((service) => service.hostname));
+          for (const name of present) {
+            if (!hostnames.has(name)) {
+              yield* Effect.logWarning(
+                `${envName}: ${name} is in the project and no longer in the recipe; HQ never deletes a service`,
+              );
+            }
+          }
+          for (const service of declared) {
+            const was = seen?.blocks[service.hostname];
+            if (present.has(service.hostname) && was !== undefined && was !== service.block) {
+              yield* Effect.logWarning(
+                `${envName}: the recipe for ${service.hostname} changed — scaling and shape are reported, never applied to a service that exists`,
+              );
+            }
+          }
+          const missing = declared.filter((service) => !present.has(service.hostname));
+          if (missing.length === 0) return true;
+          if (seen === undefined) {
+            yield* Effect.logWarning(
+              `${envName}: the recipe declares ${missing.map((service) => service.hostname).join(", ")}, which the project does not have (reported, not imported: HQ sees this tier for the first time)`,
+            );
+            return true;
+          }
+          yield* deploy.importServices(projectId, deltaImport(missing))(key.token);
+          yield* Effect.logInfo("a recipe delta was imported", {
+            environment: envName,
+            services: missing.map((service) => service.hostname),
+          });
+          return true;
+        }).pipe(
+          Effect.catchTags({
+            ZeropsRefused: (error) =>
+              Effect.as(
+                Effect.logWarning("recipe delta not imported", { environment: envName, error }),
+                false,
+              ),
+            ZeropsUnavailable: (error) =>
+              Effect.as(
+                Effect.logWarning("recipe delta not imported", { environment: envName, error }),
+                false,
+              ),
+          }),
+        );
+
       /** One service of an environment brought to `target.sha` with its key, as far as it goes now. */
       const deployOne = (target: Target, token: Redacted.Redacted) =>
         Effect.gen(function* () {
@@ -574,6 +725,12 @@ export const deploysLayer = (
           });
         const pass = (all: boolean, only?: string) =>
           Effect.gen(function* () {
+            // A new service exists before anything is deployed to it.
+            if (only === undefined) {
+              yield* recipeDeltas.pipe(
+                Effect.catch((error) => Effect.logWarning("recipe deltas failed", error)),
+              );
+            }
             for (const { projectId, targets } of yield* wanted) {
               if (only !== undefined && projectId !== only) continue;
               let fresh = false;

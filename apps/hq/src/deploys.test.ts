@@ -97,6 +97,22 @@ const stageTier = (
   ].join("\n"),
 });
 
+/** A stage tier written out, its services' lines as given. */
+const tierOf = (...lines: ReadonlyArray<string>): RecipeTierResponse => ({
+  state: "present",
+  mainHead: "0".repeat(40),
+  importYaml: ["services:", ...lines, ""].join("\n"),
+});
+
+/** A runtime of the application `appId`, built from its repository of the same name. */
+const runtime = (appId: string, hostname: string, ...extra: ReadonlyArray<string>) => [
+  `  - hostname: ${hostname}`,
+  "    type: nodejs@22",
+  `    buildFromGit: https://hq.example.test/git/${appId}/${hostname}.git`,
+  `    zeropsSetup: ${hostname}`,
+  ...extra,
+];
+
 const fakeService = (name: string, over: Partial<FakeService> = {}): FakeService => ({
   id: `S-${name}`,
   projectId: "P_STAGE",
@@ -610,6 +626,110 @@ describe("deploys", () => {
               }),
             );
           assert.strictEqual(yield* reasonOf(first), "deploy_superseded");
+        }),
+      ),
+    );
+
+    // Main D15, with what HQ saw of a tier kept in its database: a tier first seen is the one its
+    // environments were made from, and imports nothing; a later change imports into every
+    // environment of the tier the services it lacks — a runtime created empty, for HQ deploys it,
+    // a managed one as declared. After a restart the first pass is a pass like any other (D16).
+    it.effect("imports what a changed tier adds into its environments, created empty", () =>
+      withDeploys(({ appId, world, tiers, commit, until }) =>
+        Effect.gen(function* () {
+          const deploysService = yield* Deploys;
+          const sql = yield* SqlClient.SqlClient;
+          const digest = Effect.map(
+            sql<{ readonly digest: string }>`SELECT digest FROM hq_recipe_seen`,
+            (rows) => rows.map((row) => row.digest),
+          );
+          tiers.set(`${appId}/stage`, tierOf(...runtime(appId, "web"), ...runtime(appId, "api")));
+          yield* commit("web", { "zerops.yaml": ZEROPS_YAML });
+          yield* until(settled("live"));
+          yield* deploysService.catchUp;
+          // First seen: api is reported, not imported.
+          assert.deepStrictEqual(world.imports, []);
+          const first = yield* digest;
+          assert.lengthOf(first, 1);
+
+          tiers.set(
+            `${appId}/stage`,
+            tierOf(
+              ...runtime(appId, "web"),
+              ...runtime(appId, "api"),
+              "  - hostname: cache",
+              "    type: valkey@7.2",
+              "    mode: NON_HA",
+            ),
+          );
+          yield* deploysService.catchUp;
+          assert.lengthOf(world.imports, 1);
+          const [delta] = world.imports;
+          assert.strictEqual(delta?.projectId, "P_STAGE");
+          assert.include(delta?.yaml ?? "", "hostname: api");
+          assert.include(delta?.yaml ?? "", "startWithoutCode: true");
+          assert.notInclude(delta?.yaml ?? "", "buildFromGit");
+          assert.include(delta?.yaml ?? "", "hostname: cache");
+          assert.notInclude(delta?.yaml ?? "", "hostname: web");
+          assert.deepStrictEqual(
+            world.services.map((service) => service.name),
+            ["web", "api", "cache"],
+          );
+          assert.notDeepEqual(yield* digest, first);
+          // Seen: no second import.
+          yield* deploysService.catchUp;
+          assert.lengthOf(world.imports, 1);
+        }),
+      ),
+    );
+
+    // Main D15: a changed declaration of a service the project has is reported, never applied, and
+    // a service the tier no longer declares is reported, never deleted.
+    it.effect("never applies a changed declaration, nor deletes a service the tier drops", () =>
+      withDeploys(({ appId, world, tiers, commit, until }) =>
+        Effect.gen(function* () {
+          const deploysService = yield* Deploys;
+          world.services.push(fakeService("worker", { http: false }));
+          tiers.set(
+            `${appId}/stage`,
+            tierOf(...runtime(appId, "web"), ...runtime(appId, "worker")),
+          );
+          yield* commit("web", { "zerops.yaml": ZEROPS_YAML });
+          yield* until((rows) => rows.some((row) => row.state === "live"));
+          yield* deploysService.catchUp;
+          tiers.set(`${appId}/stage`, tierOf(...runtime(appId, "web", "    minContainers: 2")));
+          yield* deploysService.catchUp;
+          assert.deepStrictEqual(world.imports, []);
+          assert.deepStrictEqual(
+            world.services.map((service) => service.name),
+            ["web", "worker"],
+          );
+        }),
+      ),
+    );
+
+    // A delta not imported everywhere is asked again: what HQ saw stays the tier before it.
+    it.effect("asks a delta again until every environment of the tier has it", () =>
+      withDeploys(({ appId, world, tiers, commit, until }) =>
+        Effect.gen(function* () {
+          const deploysService = yield* Deploys;
+          const sql = yield* SqlClient.SqlClient;
+          tiers.set(`${appId}/stage`, tierOf(...runtime(appId, "web")));
+          yield* commit("web", { "zerops.yaml": ZEROPS_YAML });
+          yield* until(settled("live"));
+          yield* deploysService.catchUp;
+          const kept = world.tokens.get("key-stage")!;
+          world.tokens.delete("key-stage");
+          tiers.set(
+            `${appId}/stage`,
+            tierOf(...runtime(appId, "web"), "  - hostname: cache", "    type: valkey@7.2"),
+          );
+          yield* deploysService.catchUp;
+          assert.deepStrictEqual(world.imports, []);
+          world.tokens.set("key-stage", kept);
+          yield* sql`UPDATE hq_deploy_token SET invalid_since = NULL`;
+          yield* deploysService.catchUp;
+          assert.lengthOf(world.imports, 1);
         }),
       ),
     );

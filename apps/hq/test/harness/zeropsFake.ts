@@ -76,6 +76,8 @@ export interface FakeWorld {
   jobs: Map<string, FakeJob>;
   /** How a version's deploy ends; `ACTIVE` unless it says otherwise. */
   outcome: (version: FakeAppVersion) => FakeOutcome;
+  /** Every services import, as asked. */
+  imports: Array<{ readonly projectId: string; readonly yaml: string }>;
 }
 
 export const emptyWorld = (): FakeWorld => ({
@@ -90,6 +92,7 @@ export const emptyWorld = (): FakeWorld => ({
   appVersions: new Map(),
   jobs: new Map(),
   outcome: () => "ACTIVE",
+  imports: [],
 });
 
 export const fakeZeropsApi = (world: FakeWorld): ZeropsApi["Service"] => {
@@ -317,6 +320,44 @@ export const fakeZeropsDeploy = (world: FakeWorld): ZeropsDeploy["Service"] => {
           }
         }
         return Effect.succeed({ status: job.status, failure: job.failure });
+      }),
+    importServices: (projectId, yaml) => (credential) =>
+      Effect.flatMap(tokenOf(world, "importServices", credential), (token) => {
+        const project = world.projects.find((candidate) => candidate.id === projectId);
+        if (project === undefined)
+          return Effect.fail(notFound("importServices", "projectNotFound"));
+        const grant = token.projects.find((entry) => entry.projectId === projectId);
+        if (
+          project.orgId !== token.orgId ||
+          !(roleAtLeast(token.roleCode, "BASIC_USER") || roleAtLeast(grant?.roleCode, "BASIC_USER"))
+        ) {
+          return Effect.fail(
+            new ZeropsRefused({
+              operation: "importServices",
+              reason: "forbidden",
+              status: 403,
+              code: "insufficientPermissions",
+            }),
+          );
+        }
+        world.imports.push({ projectId, yaml });
+        const hostnames = [...yaml.matchAll(/^\s*-\s+hostname:\s*(\S+)\s*$/gmu)].map(
+          (match) => match[1] ?? "",
+        );
+        for (const name of hostnames) {
+          world.services.push({
+            id: id("S"),
+            projectId,
+            name,
+            status: "ACTIVE",
+            isSystem: false,
+            subdomainAccess: false,
+            http: false,
+            named: null,
+            activeVersionId: null,
+          });
+        }
+        return Effect.succeed({ services: hostnames });
       }),
     enableSubdomainAccess: (serviceId) => (credential) =>
       Effect.map(deployedBy(world, "enableSubdomainAccess", credential, serviceId), (service) => {
