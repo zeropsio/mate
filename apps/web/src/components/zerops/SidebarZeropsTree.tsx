@@ -2486,9 +2486,14 @@ function MateRow<T extends RosterCandidate>({
     linked: candidate.group === "connected",
   });
   // The sign-in line stands where nothing else is said of a Mate that is up: to the person who
-  // added it, that it waits on them — with the amber dot of what needs them.
+  // added it, that it waits on them — with the amber dot of what needs them. A Mate with no
+  // container the listing has read — none in its project, or its services not read yet — has
+  // nothing to sign in, and says nothing of it.
   const signIn =
-    deleting || finishing !== undefined || view.coming !== undefined
+    deleting ||
+    finishing !== undefined ||
+    view.coming !== undefined ||
+    candidate.service === undefined
       ? undefined
       : seated.signInLine;
   const dot = view.dot ?? (signIn !== undefined && seated.waitsOnViewer ? "attention" : undefined);

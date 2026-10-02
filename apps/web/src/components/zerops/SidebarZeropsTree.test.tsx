@@ -735,6 +735,25 @@ describe("a Mate with no owner, or nobody signed in", () => {
     },
   );
 
+  // E2E 2026-10-03 (F6): a `mate` project whose press stopped before its container read "Nobody
+  // has signed in yet" after a reload — a Mate nobody can sign in, its container never made, or
+  // its services not read yet. Asleep under its name, it says nothing it does not know.
+  const bare = (over: Partial<ZeropsCandidate> & { readonly presence?: "unknown" }) => {
+    const { service: _service, ...rest } = mate(null);
+    return { ...rest, group: "unavailable", ...over } as ZeropsCandidate;
+  };
+  it.each([
+    { case: "its services not read yet", item: bare({ presence: "unknown" }) },
+    {
+      case: "no container in its project",
+      item: bare({ reason: "no Zerops Mate container in this project", missingContainer: true }),
+    },
+  ])("says nothing of signing in where there is no container to sign in: $case", ({ item }) => {
+    const html = render([item], { getOwner: () => undefined });
+    expect(html).toContain('data-mate-face-state="sleep"');
+    expect(html).not.toContain("sidebar-mate-sign-in");
+  });
+
   it("says nothing of signing in once somebody has, or once it was asked something", () => {
     const signed = render([mate(signedBy(SIGNER), { group: "connected" })], {
       getOwner: () => KAREL,
