@@ -2536,6 +2536,29 @@ describe("operationLineWords", () => {
       statusWord: "Read",
       words: "Read the app log",
     },
+    // "Done app" and "Complete app" read oddly (pass 35): a followed process
+    // says it followed, a set-up session that it stood its services up.
+    {
+      kind: "process",
+      phase: "done",
+      voice: "Following app.",
+      statusWord: "Done",
+      words: "Followed app",
+    },
+    {
+      kind: "process",
+      phase: "done",
+      voice: "Following app.",
+      statusWord: "Cancelled",
+      words: "Cancelled app",
+    },
+    {
+      kind: "bootstrap",
+      phase: "done",
+      voice: "Setting up app.",
+      statusWord: "Complete",
+      words: "Stood app up",
+    },
   ] as const)("$kind $phase: $words", ({ words, ...fields }) => {
     expect(operationLineWords(op({ subject: "app", ...fields }))).toBe(words);
   });
@@ -2625,6 +2648,19 @@ describe("operationLineWords — a stand-up call, by what its report said", () =
       name: "the development call running",
       fields: { subject: "development", phase: "running", voice: "Standing development up." },
       words: "Standing development up",
+    },
+    // Its call returned while its builds run on (pass 35): the record's line
+    // says what it stood up, the band runs the builds.
+    {
+      name: "the development call returned, its builds running on",
+      fields: {
+        subject: "development",
+        phase: "running",
+        voice: "Standing development up.",
+        returnedAt: "2026-09-24T20:01:05.000Z",
+        steps: [building("apidev"), building("db")],
+      },
+      words: "Stood development up · apidev and db still building",
     },
     {
       name: "the development call stood, its stages next",

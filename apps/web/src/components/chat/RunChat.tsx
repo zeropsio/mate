@@ -247,9 +247,14 @@ function stepTime(step: WorkStep): ReactNode {
   return Number.isFinite(ms) && ms >= 1000 ? formatWorkDuration(ms) : null;
 }
 
-/** How long a platform operation took; one still running says so. */
+/**
+ * How long a platform operation took; one still running says so — one whose
+ * call returned while it runs on says nothing: the band times it.
+ */
 function operationTime(operation: ZeropsOperation): ReactNode {
-  if (operation.phase === "running") return STILL_RUNNING;
+  if (operation.phase === "running") {
+    return operation.returnedAt === undefined ? STILL_RUNNING : null;
+  }
   if (operation.settledAt === undefined) return null;
   const ms = Date.parse(operation.settledAt) - Date.parse(operation.anchorAt);
   return Number.isFinite(ms) && ms >= 1000 ? formatWorkDuration(ms) : null;

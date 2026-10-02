@@ -1438,13 +1438,15 @@ function stretchRecord(input: {
         if (incident !== undefined) {
           push({ kind: "incident", key: incident.key, at: incident.appearedAt, incident });
         }
-        // What it runs stands beside its face and in its bar until it settles.
-        if (stretch.live && op.phase === "running") break;
+        // What the Mate waits on stands in the live slot until its call
+        // returns; one that runs on after (a stand-up's builds) is the band's,
+        // and its line joins the record where its call returned.
+        if (stretch.live && op.phase === "running" && op.returnedAt === undefined) break;
         push({
           kind: "operation",
           key: `operation:${op.key}`,
           at: joinedAt(
-            op.phase === "running" ? null : (op.settledAt ?? entry.createdAt),
+            op.returnedAt ?? (op.phase === "running" ? null : (op.settledAt ?? entry.createdAt)),
             entry.createdAt,
           ),
           operation: op,

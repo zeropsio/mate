@@ -601,6 +601,25 @@ describe("deriveMessagesTimelineRows", () => {
     }
   });
 
+  it("lands a stand-up in the record where its call returned, while its builds run on in the band", () => {
+    const standup = (phase: "running" | "done") =>
+      operation("s1", "t1", 1, {
+        kind: "standup",
+        subject: "development",
+        phase,
+        returnedAt: at(1, 30),
+        ...(phase === "done" ? { settledAt: at(1, 30) } : {}),
+      });
+    const entries = [user("m0", 0), standup("running"), returned("w2", 2, 0, 2, 5)];
+    const running = recordOf(rows({ entries, live: "t1" }));
+    expect(running?.items.map((item) => item.key)).toEqual(["operation:op:s1", "step:w2"]);
+    // Settled, it stands where it stood.
+    const settled = recordOf(
+      rows({ entries: [user("m0", 0), standup("done"), returned("w2", 2, 0, 2, 5)], live: "t1" }),
+    );
+    expect(settled?.items.map((item) => item.key)).toEqual(["operation:op:s1", "step:w2"]);
+  });
+
   it("lands a stale call in the record once the newer batch starts, and closes it as no result", () => {
     const entries = [user("m0", 0), open("w1", 1), returned("w2", 2, 0, 2, 5), open("w3", 3)];
     const live = recordOf(rows({ entries, live: "t1" }));
