@@ -1,11 +1,15 @@
 // @effect-diagnostics nodeBuiltinImport:off -- a commit's archive comes from git as a Node stream;
 // a tier's digest is the system's SHA-256.
 /**
- * Deploying an application's stage environments (SPEC §3.2b), where main's broker and each
- * repository's workflow did it (main B). When `main` of one of an application's repositories moves,
- * every stage environment that follows `main` gets the services its stage tier builds from that
- * repository (`tierRuntimes.ts`, main B10/B11): the exact commit's archive, deployed with the tier's
- * setup by the environment's own deploy token, its version named `main <7 hex>` (B15/B16).
+ * Deploying an application's stage and production environments (SPEC §3.2b, §3.2d), where main's
+ * broker and each repository's workflow did it (main B, C). When `main` of one of an application's
+ * repositories moves, every stage environment that follows `main` gets the services its stage tier
+ * builds from that repository (`tierRuntimes.ts`, main B10/B11): the exact commit's archive, deployed
+ * with the tier's setup by the environment's own deploy token, its version named `main <7 hex>`
+ * (B15/B16). When a release is made, every production environment gets its application's newest
+ * approved release by version (`releases.ts`, C15/C16): each service its production tier builds at
+ * the commit the release lists, named `<tag> <7 hex>`; a service it does not list is reported, and
+ * the rest deploy.
  *
  * - **Live is what runs**: a deploy is live only once the service runs the commit, read back from
  *   the version it names (B17); an HTTP service then gets its subdomain, with the same token (E13,
@@ -58,6 +62,7 @@ import { GitHost } from "./gitHost.ts";
 import { Leader, NotLeader } from "./leader.ts";
 import { type TierService, deltaImport, tierServices } from "./recipeDeltas.ts";
 import { RecipeTiers } from "./recipeTiers.ts";
+import { Releases } from "./releases.ts";
 import { Roles } from "./roles.ts";
 import { tierRuntimes } from "./tierRuntimes.ts";
 import { sameCommit, versionName, versionSha } from "./versionNames.ts";
@@ -116,6 +121,8 @@ interface Target {
   readonly repo: string;
   readonly sha: string;
   readonly setup: string;
+  /** What its version is named by: `main`, or the release's tag. */
+  readonly label: string;
 }
 
 /** Where a deploy ended, if it ended. */
@@ -192,7 +199,7 @@ export const deploysLayer = (
 ): Layer.Layer<
   Deploys,
   never,
-  Leader | SqlClient.SqlClient | GitHost | Roles | ZeropsApi | ZeropsDeploy | RecipeTiers
+  Leader | SqlClient.SqlClient | GitHost | Roles | ZeropsApi | ZeropsDeploy | RecipeTiers | Releases
 > =>
   Layer.effect(
     Deploys,
@@ -204,6 +211,7 @@ export const deploysLayer = (
       const deploy = yield* ZeropsDeploy;
       const recipes = yield* RecipeTiers;
       const roles = yield* Roles;
+      const releases = yield* Releases;
       const catchUpEvery = options.catchUpEvery ?? Duration.minutes(5);
       const pollEvery = options.pollEvery ?? Duration.seconds(10);
       const patience = options.patience ?? Duration.minutes(20);
@@ -211,56 +219,123 @@ export const deploysLayer = (
       const ticks = yield* SubscriptionRef.make(0);
       const tick = SubscriptionRef.update(ticks, (n) => n + 1);
 
-      /** Every stage environment following `main`, and the commit each of its runtimes is wanted at. */
-      const wanted = Effect.gen(function* () {
-        const environments = yield* sql<{
-          readonly project_id: string;
-          readonly app_id: string;
-          readonly name: string;
-        }>`
-          SELECT project_id, app_id::text AS app_id, name FROM hq_environment
-          WHERE tier = 'stage' AND 'main' = ANY (sources)
-          ORDER BY declared_seq`;
-        const byApp = new Map<string, ReadonlyArray<Omit<Target, "projectId" | "envName">>>();
-        for (const appId of new Set(environments.map((row) => row.app_id))) {
-          const tier = yield* recipes.read(appId, "stage").pipe(
+      /** The runtimes a tier of the application builds, as its recipe's `main` declares them. */
+      const runtimesOf = (appId: string, tier: "stage" | "production") =>
+        Effect.gen(function* () {
+          const read = yield* recipes.read(appId, tier).pipe(
             Effect.tapError((error) =>
-              Effect.logWarning("stage tier unreadable", { appId, error }),
+              Effect.logWarning(`${tier} tier unreadable`, { appId, error }),
             ),
             Effect.option,
           );
-          if (Option.isNone(tier) || tier.value.state === "absent") continue;
-          const read = tierRuntimes(tier.value.importYaml, appId);
-          if (!read.ok) {
-            yield* Effect.logWarning("stage tier refused", { appId, problem: read.problem });
-            continue;
+          if (Option.isNone(read) || read.value.state === "absent") return [];
+          const runtimes = tierRuntimes(read.value.importYaml, appId);
+          if (!runtimes.ok) {
+            yield* Effect.logWarning(`${tier} tier refused`, { appId, problem: runtimes.problem });
+            return [];
           }
+          return runtimes.runtimes;
+        });
+
+      type Wanted = ReadonlyArray<Omit<Target, "projectId" | "envName">>;
+
+      /** A stage's: each runtime at the head of its repository's `main` (B10). */
+      const stageWanted = (appId: string): Effect.Effect<Wanted, SqlError> =>
+        Effect.gen(function* () {
+          const runtimes = yield* runtimesOf(appId, "stage");
           const heads = new Map(
             (yield* sql<{ readonly name: string; readonly main_head: string | null }>`
               SELECT name, main_head FROM hq_repo WHERE app_id::text = ${appId}`).map(
               (row) => [row.name, row.main_head] as const,
             ),
           );
-          byApp.set(
-            appId,
-            read.runtimes.flatMap((runtime) => {
-              const sha = heads.get(runtime.repo);
-              return sha === undefined || sha === null
-                ? []
-                : [
-                    {
-                      appId,
-                      service: runtime.hostname,
-                      repo: runtime.repo,
-                      sha,
-                      setup: runtime.zeropsSetup,
-                    },
-                  ];
-            }),
+          return runtimes.flatMap((runtime) => {
+            const sha = heads.get(runtime.repo);
+            return sha === undefined || sha === null
+              ? []
+              : [
+                  {
+                    appId,
+                    service: runtime.hostname,
+                    repo: runtime.repo,
+                    sha,
+                    setup: runtime.zeropsSetup,
+                    label: "main",
+                  },
+                ];
+          });
+        });
+
+      /**
+       * A production's: each runtime at the commit the newest approved release lists (C16) — none
+       * before a release, which is no failure; a runtime it does not list, and a service it lists
+       * that production no longer builds, are reported, and the rest deploy.
+       */
+      const productionWanted = (appId: string): Effect.Effect<Wanted, SqlError> =>
+        Effect.gen(function* () {
+          const release = yield* releases.newest(appId);
+          if (release === undefined) return [];
+          const runtimes = yield* runtimesOf(appId, "production");
+          const listed = new Map(release.entries.map((entry) => [entry.service, entry.sha]));
+          const unlisted = runtimes.filter((runtime) => !listed.has(runtime.hostname));
+          if (unlisted.length > 0) {
+            yield* Effect.logWarning("production services not in the release", {
+              appId,
+              release: release.tag,
+              services: unlisted.map((runtime) => runtime.hostname),
+            });
+          }
+          const built = new Set(runtimes.map((runtime) => runtime.hostname));
+          const gone = release.entries.filter((entry) => !built.has(entry.service));
+          if (gone.length > 0) {
+            yield* Effect.logWarning("release services production no longer builds", {
+              appId,
+              release: release.tag,
+              services: gone.map((entry) => entry.service),
+            });
+          }
+          return runtimes.flatMap((runtime) => {
+            const sha = listed.get(runtime.hostname);
+            return sha === undefined
+              ? []
+              : [
+                  {
+                    appId,
+                    service: runtime.hostname,
+                    repo: runtime.repo,
+                    sha,
+                    setup: runtime.zeropsSetup,
+                    label: release.tag,
+                  },
+                ];
+          });
+        });
+
+      /** Every environment HQ deploys, and the commit each of its runtimes is wanted at. */
+      const wanted = Effect.gen(function* () {
+        const environments = yield* sql<{
+          readonly project_id: string;
+          readonly app_id: string;
+          readonly name: string;
+          readonly tier: "stage" | "production";
+        }>`
+          SELECT project_id, app_id::text AS app_id, name, tier FROM hq_environment
+          WHERE (tier = 'stage' AND 'main' = ANY (sources))
+             OR (tier = 'production' AND 'release' = ANY (sources))
+          ORDER BY declared_seq`;
+        const byTier = new Map<string, Wanted>();
+        for (const environment of environments) {
+          const key = `${environment.app_id}/${environment.tier}`;
+          if (byTier.has(key)) continue;
+          byTier.set(
+            key,
+            environment.tier === "stage"
+              ? yield* stageWanted(environment.app_id)
+              : yield* productionWanted(environment.app_id),
           );
         }
         return environments.flatMap((environment) => {
-          const targets = byApp.get(environment.app_id) ?? [];
+          const targets = byTier.get(`${environment.app_id}/${environment.tier}`) ?? [];
           return targets.length === 0
             ? []
             : [
@@ -637,7 +712,7 @@ export const deploysLayer = (
             yield* tick;
             const version = yield* deploy.createAppVersion(
               service.id,
-              versionName("main", target.sha),
+              versionName(target.label, target.sha),
             )(token);
             yield* deploy.upload(version.id, commit.archive)(token);
             const started = yield* deploy.buildAndDeploy(
@@ -746,10 +821,18 @@ export const deploysLayer = (
         yield* Effect.acquireRelease(Ref.set(leading, Option.some(pass)), () =>
           Ref.set(leading, Option.none()),
         );
-        // At takeover and every `catchUpEvery` a catch-up (B22); as main moves, its new commits.
-        yield* Stream.merge(
-          Stream.tick(catchUpEvery).pipe(Stream.map(() => true)),
-          gitHost.recorded.pipe(Stream.map(() => false)),
+        // At takeover and every `catchUpEvery` a catch-up (B22); as main moves, its new commits; as
+        // a release is made, a catch-up, for a rollback's commits may each have a record already.
+        yield* Stream.mergeAll(
+          [
+            Stream.tick(catchUpEvery).pipe(Stream.map(() => true)),
+            gitHost.recorded.pipe(Stream.map(() => false)),
+            releases.changes.pipe(
+              Stream.drop(1),
+              Stream.map(() => true),
+            ),
+          ],
+          { concurrency: "unbounded" },
         ).pipe(Stream.runForEach((all) => pass(all)));
       });
 

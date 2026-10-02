@@ -208,11 +208,11 @@ export const gitHostLayer = (options: {
           );
         });
 
-      /** `main` now at `head`: the repository's record follows, and the log says so. */
+      /** `main` now at `head`: the repository's record follows, with when, and the log says so. */
       const mainMoved = (repo: Repo, old: string | null, head: string, by: string) =>
         Effect.andThen(
           sql`
-            UPDATE hq_repo SET main_head = ${head}
+            UPDATE hq_repo SET main_head = ${head}, updated_at = now()
             WHERE app_id::text = ${repo.appId} AND name = ${repo.id}`,
           event(repo, "main_moved", null, { old, new: head, by }),
         );

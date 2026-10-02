@@ -10,7 +10,8 @@ import * as Effect from "effect/Effect";
 import * as Schedule from "effect/Schedule";
 
 import { gitClient } from "../test/harness/gitClient.ts";
-import { addProject, mateInApp, remoteOf, rowsWhere } from "../test/harness/mates.ts";
+import { addProject, mateInApp, rowsWhere } from "../test/harness/mates.ts";
+import { groupCheckout, propose, stateBecomes } from "../test/harness/recipe.ts";
 import {
   type Call,
   enrollMate,
@@ -21,72 +22,9 @@ import {
 import { tempPostgresLayer } from "../test/harness/tempPostgres.ts";
 import type { FakeWorld } from "../test/harness/zeropsFake.ts";
 
-type Git = Effect.Success<typeof gitClient>;
-
 const AI_AGENT = "0 — AI Agent/import.yaml";
 const STAGE = "3 — Stage/import.yaml";
 const TIER = "project:\n  name: shop\nservices:\n  - hostname: api\n    type: nodejs@22\n";
-
-/** The Mate opens a recipe proposal in its application's recipe repository; its number. */
-const propose = (call: Call, auth: Record<string, string>) =>
-  Effect.gen(function* () {
-    const made = yield* call("POST", "/api/mate/repos", {
-      headers: auth,
-      body: { name: RECIPE_REPO },
-    });
-    assert.strictEqual(made.status, 200);
-    const opened = yield* call("POST", "/api/mate/changes", {
-      headers: auth,
-      body: { repo: RECIPE_REPO, title: RECIPE_PROPOSAL_TITLE },
-    });
-    return (opened.body as { readonly change: { readonly number: number } }).change.number;
-  });
-
-/** A Mate's checkout of the recipe repository in `dir`. */
-const groupCheckout = (git: Git, origin: string, credential: string, appId: string, dir: string) =>
-  Effect.gen(function* () {
-    yield* git.checked(["clone", remoteOf(origin, credential, appId, RECIPE_REPO), dir]);
-    const work = NodePath.join(git.dir, dir);
-    return {
-      work,
-      write: (files: Record<string, string>, message: string) =>
-        Effect.andThen(
-          Effect.sync(() => {
-            for (const [path, content] of Object.entries(files)) {
-              NodeFS.mkdirSync(NodePath.dirname(NodePath.join(work, path)), { recursive: true });
-              NodeFS.writeFileSync(NodePath.join(work, path), content);
-            }
-          }),
-          Effect.andThen(
-            git.checked(["add", "-A"], work),
-            git.checked(["commit", "-q", "-m", message], work),
-          ),
-        ),
-      push: (mateId: string, number: number, rev = "HEAD") =>
-        git.checked(
-          ["push", "-q", "origin", `${rev}:refs/heads/mate/${mateId}/${String(number)}`],
-          work,
-        ),
-      main: Effect.andThen(
-        git.checked(["fetch", "-q", "origin"], work),
-        git.checked(["rev-parse", "origin/main"], work),
-      ),
-    };
-  });
-
-/** The recipe change `number`'s state, once it is `state`. */
-const stateBecomes = (call: Call, session: string, appId: string, number: number, state: string) =>
-  call("GET", `/api/apps/${appId}/changes`, { session }).pipe(
-    Effect.map(
-      (answer) =>
-        (answer.body as { readonly changes: ReadonlyArray<Record<string, unknown>> }).changes.find(
-          (change) => change["repo"] === RECIPE_REPO && change["number"] === number,
-        ) ?? {},
-    ),
-    Effect.filterOrFail((change) => change["state"] === state),
-    Effect.retry(Schedule.spaced(Duration.millis(50))),
-    Effect.timeout(Duration.seconds(10)),
-  );
 
 /** Ada and Bo, two Mates of one application. */
 const twoMates = (call: Call, fake: FakeWorld, owner: string) =>

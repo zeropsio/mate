@@ -264,6 +264,11 @@ export interface HqGit {
     options: { readonly cursor?: string; readonly limit: number },
   ) => Effect.Effect<Bounded<CommitSummary> & { readonly cursor: string | null }, GitError>;
   readonly commit: (repo: Repo, sha: string) => Effect.Effect<CommitRead, GitError>;
+  /**
+   * Whether the commit `sha` is main's head or before it on main's history; false for an object
+   * that is no commit, one the repository lacks, or an unborn main.
+   */
+  readonly onMain: (repo: Repo, sha: string) => Effect.Effect<boolean, GitError>;
   /** The change's merge base with main; null without a change head, a main, or shared history. */
   readonly mergeBase: (
     repo: Repo,

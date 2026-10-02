@@ -209,7 +209,13 @@ function detail(over: Partial<ChangeDetailResponse> = {}): ReadoutPart<ChangeRea
 const READ = detail();
 
 function said(id: number, author: string, body: string, minutes: number): HqChangeComment {
-  return { id: `c${String(id)}`, authorUserId: author, body, createdAt: minutesAgo(minutes) };
+  return {
+    id: `c${String(id)}`,
+    authorUserId: author,
+    authorMateProjectId: null,
+    body,
+    createdAt: minutesAgo(minutes),
+  };
 }
 
 const TALK: ReadonlyArray<HqChangeComment> = [
@@ -254,6 +260,7 @@ function remarksOf(conversation: ZeropsChangeComments) {
     ? changeRemarks({
         comments: conversation.state.comments,
         nameOf: (userId) => MEMBERS.get(userId),
+        mateNameOf: () => NOVA.name,
         me: "u-ales",
       })
     : [];

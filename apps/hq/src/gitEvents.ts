@@ -7,7 +7,14 @@
  */
 import type * as SqlClient from "effect/unstable/sql/SqlClient";
 
-export type GitEventKind = "pushed" | "opened" | "main_moved" | "merged" | "closed" | "commented";
+export type GitEventKind =
+  | "pushed"
+  | "opened"
+  | "main_moved"
+  | "merged"
+  | "closed"
+  | "commented"
+  | "released";
 
 /** Appends one event; inside a fenced write (`leader.ts`). */
 export const appendEvent = (
