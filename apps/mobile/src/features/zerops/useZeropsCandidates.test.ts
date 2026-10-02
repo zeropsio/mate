@@ -1,5 +1,6 @@
-import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { EnvironmentId } from "@t3tools/contracts";
+import { ADDRESS_GRACE_MS } from "@t3tools/client-runtime/zerops/candidates";
 import {
   initialEnvironment,
   type EnvironmentMachine,
@@ -80,6 +81,7 @@ vi.mock("react", async (importOriginal) => {
     useCallback: reactHookHarness.useCallback,
     useEffect: reactHookHarness.useEffect,
     useMemo: reactHookHarness.useMemo,
+    useRef: reactHookHarness.useRef,
     useState: reactHookHarness.useState,
     useSyncExternalStore: reactHookHarness.useSyncExternalStore,
   };
@@ -390,6 +392,90 @@ describe("candidate inventory demand", () => {
     expect(row === undefined ? null : zeropsCandidatePresentation(row, 0)).toMatchObject({
       label: "Restarting",
       notice: "Zerops is restarting this Mate.",
+    });
+  });
+
+  // A phone opened while a new Mate's container is ACTIVE before its address landed reads it as
+  // web does (live run 3): on its way, never "public access is off" — until its wait ends.
+  describe("a young Mate ACTIVE before its address landed", () => {
+    const CREATED_AT = "2026-10-02T12:00:00.000Z";
+    const CREATED = Date.parse(CREATED_AT);
+
+    beforeEach(() => {
+      vi.useFakeTimers({ toFake: ["Date", "setTimeout", "clearTimeout"] });
+      vi.setSystemTime(CREATED + 110_000);
+      reads.services = {
+        value: [
+          {
+            knowledge: "observed",
+            record: {
+              ref: { kind: "service", project: reads.project, serviceId: "service-a" },
+              identity: {
+                knowledge: "observed",
+                fields: {
+                  hostname: "zcp",
+                  type: { versionName: "zcp@1", displayName: null, category: null },
+                },
+              },
+              lifecycle: {
+                knowledge: "observed",
+                fields: { status: "ACTIVE", createdAt: CREATED_AT, updatedAt: null },
+              },
+              routing: {
+                knowledge: "observed",
+                fields: {
+                  subdomainAccess: false,
+                  ports: [{ port: 8080, protocol: "TCP", scheme: "http", httpSupport: true }],
+                },
+              },
+              deployment: { knowledge: "unresolved" },
+              scaling: { knowledge: "unresolved" },
+            },
+          },
+        ],
+        query: {
+          status: "observed",
+          descriptor: { project: reads.project },
+          unresolvedMemberKeys: [],
+          stamp: { receiptOrdinal: 2, observedAtMs: 20 },
+          coverage: { kind: "exhausted-traversal" },
+        },
+        observation: { required: [], optional: [], access: { status: "unverified" } },
+      };
+    });
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    const rowOf = (listing: ReturnType<typeof useZeropsCandidates>["listing"]) =>
+      listing.state === "known" ? listing.value[0] : undefined;
+
+    it.each<{
+      readonly case: string;
+      /** How long after it was first seen the row is read. */
+      readonly afterMs: number;
+      readonly group: "provisioning" | "unavailable";
+    }>([
+      { case: "first seen: on its way", afterMs: 0, group: "provisioning" },
+      { case: "a moment on: still on its way", afterMs: 5_000, group: "provisioning" },
+      {
+        case: "its wait over: as the platform leaves it",
+        afterMs: ADDRESS_GRACE_MS,
+        group: "unavailable",
+      },
+    ])("$case", async ({ afterMs, group }) => {
+      render();
+      await settle();
+      listenerOf(runtime.binding?.projectAtom)?.();
+      await settle();
+      expect(rowOf(render().listing)?.group).toBe("provisioning");
+
+      vi.advanceTimersByTime(afterMs);
+      const row = rowOf(render().listing);
+      expect(row?.group).toBe(group);
+      if (group === "provisioning") {
+        expect(row?.reason ?? "").not.toMatch(/public access/i);
+      }
     });
   });
 });
