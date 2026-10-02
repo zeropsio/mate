@@ -262,6 +262,12 @@ export interface ZeropsOperation {
   readonly anchorAt: string;
   readonly anchorActivityId: string;
   readonly settledAt?: string;
+  /**
+   * When its call returned — a session's latest call — absent while the Mate
+   * waits on it. A stand-up's call returns while its builds run on: the
+   * operation still runs, but the Mate is no longer waiting on it.
+   */
+  readonly returnedAt?: string;
   readonly turnId: string | null;
   /** Hostname / project / session target. */
   readonly subject: string;
