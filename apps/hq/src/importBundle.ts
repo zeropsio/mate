@@ -69,11 +69,16 @@ export const Manifest = Schema.Struct({
 });
 export type Manifest = typeof Manifest.Type;
 
+/** A Zerops user's id, as main's `mate:by:<userId>` tag names the person who made a Mate. */
+const PERSON_ID = /^[A-Za-z0-9_-]{22}$/u;
+
 export const BundleMate = Schema.Struct({
   name: Name,
   face: Schema.String,
   standupRequestedBy: Schema.NullOr(Id),
   closedOff: Schema.Boolean,
+  /** Who made it, where main's client recorded it (`mate:by:`, 0.11.87 on); HQ's `made_by`. */
+  madeBy: Schema.optionalKey(Schema.String),
 });
 
 export const BundleProject = Schema.Struct({
@@ -344,6 +349,9 @@ export const bundleProblems = (bundle: Omit<Bundle, "dir" | "digest">): Readonly
     for (const project of app.projects) {
       if ((project.kind === "mate") !== (project.mate !== null))
         problems.push(`${at}: project ${project.projectId} has a Mate record only if it is a Mate`);
+      const madeBy = project.mate?.madeBy;
+      if (madeBy !== undefined && !PERSON_ID.test(madeBy))
+        problems.push(`${at}: Mate ${project.projectId} was made by ${madeBy}, no person's id`);
     }
     if (app.projects.filter((project) => project.kind === "production").length > 1)
       problems.push(`${at}: more than one production`);

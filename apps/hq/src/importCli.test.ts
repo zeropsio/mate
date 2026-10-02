@@ -80,6 +80,25 @@ describe("hq import", () => {
     }).pipe(Effect.scoped),
   );
 
+  it.effect("--check refuses a Mate's maker that is no person's id", () =>
+    Effect.gen(function* () {
+      const written = yield* syntheticBundle(yield* tempDir, (parts) => {
+        const [app] = parts.mapping["apps"] as Array<Record<string, unknown>>;
+        const projects = ((app?.["projects"] ?? []) as Array<Record<string, unknown>>).map(
+          (project) =>
+            project["projectId"] === "P_BEA"
+              ? { ...project, mate: { ...(project["mate"] as object), madeBy: "mate-P_BEA" } }
+              : project,
+        );
+        return { ...parts, mapping: { apps: [{ ...app, projects }] } };
+      });
+      assert.deepStrictEqual(yield* checkCommand(written.dir), {
+        code: 1,
+        lines: ["bundle refused:", "  app g1: Mate P_BEA was made by mate-P_BEA, no person's id"],
+      });
+    }).pipe(Effect.scoped),
+  );
+
   it.each([
     [["--check", "/b"], { kind: "check", dir: "/b" }],
     [["/b"], { kind: "import", dir: "/b" }],

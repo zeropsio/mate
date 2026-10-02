@@ -806,6 +806,43 @@ describe("the migration's import", () => {
         }).pipe(Effect.scoped),
     );
 
+    it.effect("a Mate's maker comes with it, and a Mate the bundle names none for has none", () =>
+      Effect.gen(function* () {
+        const importRoot = yield* tempDir("hq-import-");
+        const gitRoot = yield* tempDir("hq-git-");
+        const { call, fake, url } = yield* startCore(true, { importRoot, gitRoot });
+        for (const id of ["P_BEA", "P_STAGE", "P_PROD"]) addProject(fake, id);
+        yield* untilHealth(call, "active");
+        const maker = "wz2BmqnSQZWBylBf9c9l1Q";
+        const written = yield* syntheticBundle(importRoot, (parts) => {
+          const [app] = parts.mapping["apps"] as Array<Record<string, unknown>>;
+          const projects = ((app?.["projects"] ?? []) as Array<Record<string, unknown>>).map(
+            (project) =>
+              project["projectId"] === "P_BEA"
+                ? { ...project, mate: { ...(project["mate"] as object), madeBy: maker } }
+                : project,
+          );
+          return { ...parts, mapping: { apps: [{ ...app, projects }] } };
+        });
+        assert.strictEqual(
+          (yield* importAs(url, written.dir)).lines[1],
+          `import ${written.digest} done and verified`,
+        );
+        const mates = yield* rowsWhere(
+          url,
+          "SELECT project_id, made_by FROM hq_mate ORDER BY project_id",
+          (rows) => rows.length === 2,
+        );
+        assert.deepStrictEqual(
+          mates.map((row) => [row["project_id"], row["made_by"]]),
+          [
+            ["P_BEA", maker],
+            ["P_MATE", null],
+          ],
+        );
+      }).pipe(Effect.scoped),
+    );
+
     it.effect(
       "imports a second application's bundle beside the first, each verified on its own",
       () =>
