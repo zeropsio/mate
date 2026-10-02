@@ -1396,12 +1396,12 @@ export function ZeropsStopPane({
 const CARD_ROW_CLASS = "grid min-h-11 items-center gap-x-4 border-t border-border/60 py-2";
 
 /**
- * A service's row: the same five places on every row, so the status dots run
+ * A service's row: the same four places on every row, so the status dots run
  * down one column — collapsed to name and state over the rest on a phone.
  */
 const SERVICE_ROW_CLASS = cn(
   CARD_ROW_CLASS,
-  "grid-cols-[1.25rem_minmax(0,1fr)_auto] gap-y-1 sm:grid-cols-[1.25rem_minmax(0,1.1fr)_minmax(0,1.8fr)_minmax(0,1fr)_minmax(0,1.4fr)]",
+  "grid-cols-[minmax(0,1fr)_auto] gap-y-1 sm:grid-cols-[minmax(0,1.1fr)_minmax(0,1.8fr)_minmax(0,1fr)_minmax(0,1.4fr)]",
 );
 
 /**
@@ -1451,14 +1451,13 @@ function StopServiceLine({
   return (
     <li className="flex flex-col">
       <div className={SERVICE_ROW_CLASS}>
-        <span aria-hidden="true" />
         <span className="flex min-w-0 flex-col">
           <span className="truncate text-sm leading-5 font-medium text-foreground">
             {row.hostname}
           </span>
           <span className="truncate text-xs leading-4 text-muted-foreground">{row.repository}</span>
         </span>
-        <span className="col-span-2 col-start-2 flex min-w-0 flex-col sm:col-span-1 sm:col-start-3 sm:row-start-1">
+        <span className="col-span-2 col-start-1 flex min-w-0 flex-col sm:col-span-1 sm:col-start-2 sm:row-start-1">
           {/* No commit and a state: what runs is not stated yet, so nothing is claimed. */}
           {row.commit !== undefined ? (
             <span className="truncate font-mono text-[13px] leading-5 text-foreground tabular-nums">
@@ -1473,14 +1472,14 @@ function StopServiceLine({
             <span className="truncate text-xs leading-4 text-muted-foreground">{row.line}</span>
           )}
         </span>
-        <span className="col-start-3 row-start-1 min-w-0 text-[13px] text-foreground sm:col-start-4">
+        <span className="col-start-2 row-start-1 min-w-0 text-[13px] text-foreground sm:col-start-3">
           {row.status === undefined ? null : dot === undefined ? (
             <span className="truncate text-muted-foreground">{row.status}</span>
           ) : (
             <StatusDot label={row.status} sentence tone={dot} />
           )}
         </span>
-        <span className="col-span-2 col-start-2 flex min-w-0 flex-col gap-1 sm:col-span-1 sm:col-start-5 sm:row-start-1">
+        <span className="col-span-2 col-start-1 flex min-w-0 flex-col gap-1 sm:col-span-1 sm:col-start-4 sm:row-start-1">
           {row.routes.length === 0 && offers.length === 0 ? (
             <span className="truncate text-[13px] text-muted-foreground">{NOT_PUBLIC_YET}</span>
           ) : null}

@@ -850,7 +850,7 @@
   {
     "path": "apps/web/src/components/zerops/ZeropsGroupDetail.tsx",
     "kind": "Literal",
-    "fingerprint": "<> text-[13px] in \"col-start-3 row-start-1 min-w-0 text-[13px] text-foreground sm:col-start-4\"",
+    "fingerprint": "<> text-[13px] in \"col-start-2 row-start-1 min-w-0 text-[13px] text-foreground sm:col-start-3\"",
     "owner": "web-intake",
     "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
     "expires": "F6"
