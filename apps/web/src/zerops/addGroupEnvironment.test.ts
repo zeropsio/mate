@@ -74,7 +74,7 @@ describe("addGroupEnvironment", () => {
     expect(api.mintIntegrationToken).toHaveBeenCalledWith(
       {
         clientId: "org-1",
-        name: "deploy-acme-stage",
+        name: "mate-hq-deploy:acme-stage:p-stage",
         roleCode: "NO_ACCESS",
         projects: [{ projectId: "p-stage", roleCode: "BASIC_USER" }],
       },
